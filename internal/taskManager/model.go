@@ -1,0 +1,428 @@
+package taskManager
+
+import (
+	"context"
+	"database/sql"
+	"io"
+	"os"
+	"sync"
+	"sync/atomic"
+
+	domain "github.com/library-squirrel/wails/internal/model"
+	"github.com/library-squirrel/wails/pkg/model"
+)
+
+// TaskState 任务状态
+type TaskState int32
+
+const (
+	TaskStateCreated    TaskState = iota // 0: 已创建（未启动）
+	TaskStateWaiting                     // 1: 等待中（排队中）
+	TaskStateProcessing                  // 2: 处理中
+	TaskStatePausing                     // 3: 暂停中
+	TaskStatePaused                      // 4: 已暂停
+	TaskStateStopping                    // 5: 停止中
+	TaskStateFinished                    // 6: 已完成
+	TaskStateFailed                      // 7: 失败
+)
+
+// TaskExecutor 任务执行器接口
+// 由 TaskManager 定义，Plugin 模块实现
+type TaskExecutor interface {
+	// CreateWorkInfo 创建作品信息
+	CreateWorkInfo(ctx context.Context, task *domain.Task) (*domain.WorkResponse, error)
+
+	// Start 开始任务
+	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
+	// 调用方负责关闭返回的 ReadCloser
+	Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *domain.WorkResponse, error)
+
+	// Pause 暂停任务
+	// 返回是否真正暂停成功（插件可能不支持暂停）
+	Pause(ctx context.Context, param *domain.TaskResParam) error
+
+	// Stop 停止任务
+	Stop(ctx context.Context, param *domain.TaskResParam) error
+
+	// Resume 恢复任务
+	Resume(ctx context.Context, param *domain.TaskResParam) (*domain.WorkResponse, error)
+}
+
+// WorkSaver 工作保存接口
+type WorkSaver interface {
+	Save(ctx context.Context, work *domain.Work) (int64, error)
+}
+
+// ResourceSaver 资源保存接口
+type ResourceSaver interface {
+	Save(ctx context.Context, resource *domain.Resource) (int64, error)
+}
+
+// ManagedTask 任务运行控制结构体
+type ManagedTask struct {
+	taskId   int64
+	parentId int64 // 父任务ID，0表示无父任务
+	state    atomic.Int32
+	ctx      context.Context
+	cancel   context.CancelFunc
+
+	// 任务执行器（通过接口调用）
+	pluginExec TaskExecutor
+
+	// 工作保存器
+	workSaver WorkSaver
+	// 资源保存器
+	resourceSaver ResourceSaver
+
+	// 任务信息
+	task   *domain.Task
+	workId int64
+
+	// 资源响应（插件返回）
+	resourceResp *domain.WorkResponse
+
+	// 回调函数
+	onStateChange func(taskId int64, oldState, newState TaskState)
+	onProgress    func(taskId int64, progress int) // 进度百分比
+}
+
+// NewManagedTask 创建托管任务
+func NewManagedTask(taskId, parentId int64, task *domain.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver) *ManagedTask {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &ManagedTask{
+		taskId:        taskId,
+		parentId:      parentId,
+		state:         atomic.Int32{},
+		ctx:           ctx,
+		cancel:        cancel,
+		pluginExec:    pluginExec,
+		workSaver:     workSaver,
+		resourceSaver: resourceSaver,
+		task:          task,
+		workId:        taskId,
+	}
+}
+
+// Start 启动任务（在独立协程中运行）
+func (m *ManagedTask) Start() {
+	go m.run()
+}
+
+// run 核心执行逻辑
+func (m *ManagedTask) run() {
+	defer func() {
+		if r := recover(); r != nil {
+			m.setState(TaskStateFailed)
+		}
+	}()
+
+	m.setState(TaskStateProcessing)
+
+	// 1. 调用 CreateWorkInfo 创建作品信息
+	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
+	if err != nil {
+		m.setState(TaskStateFailed)
+		return
+	}
+
+	// 2. 保存 Work 到数据库
+	workId, err := m.workSaver.Save(m.ctx, workResp.Work)
+	if err != nil {
+		m.setState(TaskStateFailed)
+		return
+	}
+	m.workId = workId
+
+	// 3. 保存 Resource 到数据库
+	// 将 ResourceDTO 转换为 domain.Resource
+	resource := &domain.Resource{
+		BaseEntity:        &model.BaseEntity{},
+		WorkID:            workId,
+		TaskID:            m.task.GetID(),
+		FilePath:          sql.NullString{String: workResp.Resource.LocalPath, Valid: true},
+		FileName:          sql.NullString{String: "", Valid: true},
+		FilenameExtension: sql.NullString{String: workResp.Resource.Format, Valid: true},
+		SuggestName:       sql.NullString{String: "", Valid: true},
+		ResourceSize:      sql.NullInt64{Int64: workResp.Resource.Size, Valid: true},
+		Workdir:           sql.NullString{String: "", Valid: true},
+		ResourceComplete:  workResp.Resource.Completeness,
+	}
+	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
+	if err != nil {
+		m.setState(TaskStateFailed)
+		return
+	}
+
+	// 4. 更新任务的 pendingResourceId
+	m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+
+	// 5. 获取资源读取器并下载
+	reader, resp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
+	if err != nil {
+		m.setState(TaskStateFailed)
+		return
+	}
+	defer reader.Close()
+
+	// 6. 创建文件并使用 io.Copy 写入（支持 context 取消）
+	localPath := workResp.Resource.LocalPath
+	file, err := os.Create(localPath)
+	if err != nil {
+		m.setState(TaskStateFailed)
+		return
+	}
+	defer file.Close()
+
+	// 使用带缓冲的 io.Copy 以支持进度报告
+	buf := make([]byte, 32*1024) // 32KB buffer
+	var totalWritten int64
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			// Context 取消，停止下载
+			reader.Close()
+			m.setState(TaskStateFailed)
+			return
+		default:
+			n, readErr := reader.Read(buf)
+			if n > 0 {
+				written, writeErr := file.Write(buf[:n])
+				if written > 0 {
+					totalWritten += int64(written)
+				}
+				if writeErr != nil {
+					reader.Close()
+					m.setState(TaskStateFailed)
+					return
+				}
+				// 报告进度
+				if workResp.Resource.Size > 0 && m.onProgress != nil {
+					progress := int(float64(totalWritten) / float64(workResp.Resource.Size) * 100)
+					m.onProgress(m.taskId, progress)
+				}
+			}
+			if readErr != nil {
+				if readErr == io.EOF {
+					// 下载完成
+					reader.Close()
+					file.Sync()
+					m.resourceResp = resp
+					m.setState(TaskStateFinished)
+					return
+				}
+				reader.Close()
+				m.setState(TaskStateFailed)
+				return
+			}
+		}
+	}
+}
+
+// Pause 暂停任务
+func (m *ManagedTask) Pause() error {
+	if m.state.Load() != int32(TaskStateProcessing) {
+		return ErrTaskNotProcessing
+	}
+	m.setState(TaskStatePausing)
+
+	// 调用插件 Pause
+	param := &domain.TaskResParam{
+		Task:       m.task,
+		ResourceID: m.resourceResp.Resource.ResourceID,
+	}
+	err := m.pluginExec.Pause(m.ctx, param)
+	if err != nil {
+		m.setState(TaskStateProcessing) // 暂停失败，恢复处理中
+		return err
+	}
+
+	m.setState(TaskStatePaused)
+	return nil
+}
+
+// Resume 恢复任务
+func (m *ManagedTask) Resume() error {
+	if m.state.Load() != int32(TaskStatePaused) {
+		return ErrTaskNotPaused
+	}
+
+	// 调用插件 Resume
+	param := &domain.TaskResParam{
+		Task:       m.task,
+		ResourceID: m.resourceResp.Resource.ResourceID,
+	}
+	resp, err := m.pluginExec.Resume(m.ctx, param)
+	if err != nil {
+		return err
+	}
+
+	m.resourceResp = resp
+	m.setState(TaskStateProcessing)
+	return nil
+}
+
+// Stop 停止任务
+func (m *ManagedTask) Stop() {
+	m.setState(TaskStateStopping)
+	m.cancel() // 触发 context 取消
+
+	// 调用插件 Stop
+	param := &domain.TaskResParam{
+		Task:       m.task,
+		ResourceID: m.resourceResp.Resource.ResourceID,
+	}
+	m.pluginExec.Stop(m.ctx, param)
+
+	m.setState(TaskStateFailed)
+}
+
+// setState 设置任务状态
+func (m *ManagedTask) setState(state TaskState) {
+	old := TaskState(m.state.Swap(int32(state)))
+	if old != state && m.onStateChange != nil {
+		m.onStateChange(m.taskId, old, state)
+	}
+}
+
+// GetState 获取当前状态
+func (m *ManagedTask) GetState() TaskState {
+	return TaskState(m.state.Load())
+}
+
+// isRunning 检查任务是否在处理中
+func (m *ManagedTask) isRunning() bool {
+	return m.state.Load() == int32(TaskStateProcessing)
+}
+
+// isPaused 检查任务是否已暂停
+func (m *ManagedTask) isPaused() bool {
+	return m.state.Load() == int32(TaskStatePaused)
+}
+
+// isStopped 检查任务是否已停止
+func (m *ManagedTask) isStopped() bool {
+	return m.state.Load() == int32(TaskStateFailed)
+}
+
+// SetOnStateChange 设置状态变化回调
+func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState TaskState)) {
+	m.onStateChange = fn
+}
+
+// SetOnProgress 设置进度回调
+func (m *ManagedTask) SetOnProgress(fn func(taskId int64, progress int)) {
+	m.onProgress = fn
+}
+
+// ParentTask 父任务运行结构体
+type ParentTask struct {
+	taskId   int64
+	state    atomic.Int32
+	children map[int64]*ManagedTask
+	mu       sync.RWMutex
+}
+
+// NewParentTask 创建父任务
+func NewParentTask(taskId int64) *ParentTask {
+	return &ParentTask{
+		taskId:   taskId,
+		state:    atomic.Int32{},
+		children: make(map[int64]*ManagedTask),
+	}
+}
+
+// AddChild 添加子任务
+func (p *ParentTask) AddChild(child *ManagedTask) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.children[child.taskId] = child
+}
+
+// GetChildren 获取所有子任务
+func (p *ParentTask) GetChildren() []*ManagedTask {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	children := make([]*ManagedTask, 0, len(p.children))
+	for _, child := range p.children {
+		children = append(children, child)
+	}
+	return children
+}
+
+// GetChild 获取指定子任务
+func (p *ParentTask) GetChild(taskId int64) (*ManagedTask, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	child, ok := p.children[taskId]
+	return child, ok
+}
+
+// RemoveChild 移除子任务
+func (p *ParentTask) RemoveChild(taskId int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.children, taskId)
+}
+
+// RefreshState 根据子任务状态刷新父任务状态
+func (p *ParentTask) RefreshState() {
+	children := p.GetChildren()
+	if len(children) == 0 {
+		return
+	}
+
+	var allFinished, anyFailed, anyProcessing, anyPaused, anyWaiting bool
+	for _, child := range children {
+		switch child.GetState() {
+		case TaskStateFinished:
+			allFinished = true
+		case TaskStateFailed:
+			anyFailed = true
+		case TaskStateProcessing:
+			anyProcessing = true
+		case TaskStatePaused:
+			anyPaused = true
+		case TaskStateWaiting:
+			anyWaiting = true
+		}
+	}
+
+	var newState TaskState
+	if anyFailed {
+		newState = TaskStateFailed
+	} else if allFinished {
+		newState = TaskStateFinished
+	} else if anyPaused {
+		newState = TaskStatePaused
+	} else if anyProcessing {
+		newState = TaskStateProcessing
+	} else if anyWaiting {
+		newState = TaskStateWaiting
+	} else {
+		newState = TaskStateCreated
+	}
+
+	p.state.Store(int32(newState))
+}
+
+// GetState 获取父任务状态
+func (p *ParentTask) GetState() TaskState {
+	return TaskState(p.state.Load())
+}
+
+// 任务管理错误定义
+var (
+	ErrTaskNotProcessing = &TaskManagerError{message: "task is not in processing state"}
+	ErrTaskNotPaused     = &TaskManagerError{message: "task is not in paused state"}
+	ErrTaskTreeNotFound  = &TaskManagerError{message: "task tree not found"}
+)
+
+// TaskManagerError 任务管理器错误
+type TaskManagerError struct {
+	message string
+}
+
+func (e *TaskManagerError) Error() string {
+	return e.message
+}
