@@ -1,0 +1,7 @@
+/* scroll-text-center.css */
+.scroll-text-center-container {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+}

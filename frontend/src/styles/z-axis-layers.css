@@ -1,0 +1,13 @@
+/* z-axis-layers.css - Z-index layer management */
+.z-layer-1 { z-index: 100; }
+.z-layer-2 { z-index: 200; }
+.z-layer-3 { z-index: 300; }
+.z-layer-4 { z-index: 400; }
+.z-layer-5 { z-index: 500; }
+.z-dropdown { z-index: 1000; }
+.z-sticky { z-index: 1020; }
+.z-fixed { z-index: 1030; }
+.z-modal-backdrop { z-index: 1040; }
+.z-modal { z-index: 1050; }
+.z-popover { z-index: 1060; }
+.z-tooltip { z-index: 1070; }
