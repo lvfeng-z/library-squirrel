@@ -34,7 +34,6 @@ import (
 	"github.com/library-squirrel/wails/internal/work"
 	"github.com/library-squirrel/wails/internal/workSet"
 	"github.com/library-squirrel/wails/pkg/logger"
-	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // App Wails应用主结构
@@ -292,44 +291,16 @@ func (a *resourceSaverAdapter) Save(ctx context.Context, resource *domain.Resour
 	return resource.GetID(), nil
 }
 
-// Wails bindings - these methods will be exposed to the frontend
-
-// Greet is a simple test method for Wails bindings
-func (a *App) Greet(name string) string {
-	return "Hello, " + name + "! Welcome to Library Squirrel."
-}
-
-// GetVersion returns the application version
-func (a *App) GetVersion() string {
-	return "1.0.0-wails"
-}
-
-// DirSelect opens a directory/file selection dialog
-// openFile: true=select file, false=select directory
-func (a *App) DirSelect(openFile bool) (*fileSysUtil.OpenDialogResult, error) {
-	return a.FileSysUtilService.DirSelect(openFile, false)
-}
-
-// OpenPath opens a file with the system's default application
-func (a *App) OpenPath(path string) error {
-	return a.AppLauncherService.OpenPath(path)
-}
-
-// OpenExternal opens a URL in the default browser
-func (a *App) OpenExternal(url string) error {
-	return a.AppLauncherService.OpenExternal(url)
-}
-
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
-func (a *App) onDomReady() {
+func (app *App) onDomReady() {
 	logger.Log.Info("Window DOM is ready")
 }
 
 // onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）
 // 返回 true 表示阻止关闭，false 表示允许关闭
-func (a *App) onBeforeClose() bool {
+func (app *App) onBeforeClose() bool {
 	// 检查任务队列是否空闲
-	if !a.TaskManagerService.IsIdle() {
+	if !app.TaskManagerService.IsIdle() {
 		logger.Log.Info("Tasks are running, window close cancelled")
 		// TODO: 显示确认对话框让用户选择是否强制关闭
 		// 在 Wails v3 中，可以通过 dialog.MessageBox 或前端对话框实现
@@ -337,85 +308,4 @@ func (a *App) onBeforeClose() bool {
 	}
 	logger.Log.Info("Window closing, all tasks idle")
 	return false // 允许关闭
-}
-
-// ==================== LocalTag Wails Bindings ====================
-
-// LocalTagSave 保存本地标签
-func (a *App) LocalTagSave(tag *domain.LocalTag) (int64, error) {
-	if err := a.LocalTagService.Save(context.Background(), tag); err != nil {
-		return 0, err
-	}
-	return tag.ID, nil
-}
-
-// LocalTagDeleteById 删除本地标签
-func (a *App) LocalTagDeleteById(id int64) error {
-	return a.LocalTagService.Delete(context.Background(), id)
-}
-
-// LocalTagUpdateById 更新本地标签
-func (a *App) LocalTagUpdateById(tag *domain.LocalTag) error {
-	return a.LocalTagService.UpdateById(context.Background(), tag)
-}
-
-// LocalTagGetById 获取本地标签
-func (a *App) LocalTagGetById(id int64) (*domain.LocalTag, error) {
-	return a.LocalTagService.GetById(context.Background(), id)
-}
-
-// LocalTagQueryPage 分页查询本地标签
-func (a *App) LocalTagQueryPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
-	return a.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
-}
-
-// LocalTagQueryDTOPage DTO分页查询本地标签
-func (a *App) LocalTagQueryDTOPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
-	return a.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
-}
-
-// LocalTagGetTree 获取标签树形结构
-func (a *App) LocalTagGetTree(rootId int64, depth int) ([]*domain.LocalTag, error) {
-	return a.LocalTagService.GetTree(context.Background(), rootId, depth)
-}
-
-// LocalTagListSelectItems 查询选择项列表
-func (a *App) LocalTagListSelectItems(query *localTag.LocalTagQueryDTO) ([]*domain.SelectItem, error) {
-	return a.LocalTagService.ListSelectItemsByDTO(context.Background(), *query)
-}
-
-// LocalTagQuerySelectItemPage 分页查询选择项
-func (a *App) LocalTagQuerySelectItemPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.SelectItem], error) {
-	return a.LocalTagService.QuerySelectItemPageByDTO(context.Background(), 1, 10, *query, "")
-}
-
-// LocalTagListByWorkId 查询作品关联的标签
-func (a *App) LocalTagListByWorkId(workId int64) ([]*domain.LocalTag, error) {
-	return a.LocalTagService.ListByWorkId(context.Background(), workId)
-}
-
-// LocalTagQuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (a *App) LocalTagQuerySelectItemPageByWorkId(query *localTag.LocalTagQueryDTO, workId int64) (*model.Page[domain.SelectItem], error) {
-	return a.LocalTagService.QuerySelectItemPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId)
-}
-
-// ==================== Slot Wails Bindings ====================
-
-// SetEventEmitter 设置 Wails 事件发射器（在应用启动后调用）
-func (a *App) SetEventEmitter(emitter extension.WailsEventEmitter) {
-	a.eventEmitter = emitter
-	a.SlotPusher = extension.NewWailsSlotPusher(emitter)
-	logger.Log.Info("Wails event emitter set for slot pusher")
-}
-
-// GetAllSlots 获取所有插槽配置
-func (a *App) GetAllSlots() []*domain.SlotConfig {
-	return a.SlotRegistry.GetSlotConfigs()
-}
-
-// ==================== Plugin Wails Bindings ====================
-
-// GetPluginVueFile 读取插件的 Vue 文件内容
-func (a *App) GetPluginVueFile(pluginPublicId string, filePath string) (string, error) {
-	return a.PluginService.ReadVueFile(pluginPublicId, filePath)
 }
