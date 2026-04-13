@@ -1,6 +1,0 @@
-{"level":"INFO","time":"2026-04-13T00:14:26.167+0800","msg":"Config loaded"}
-{"level":"ERROR","time":"2026-04-13T00:14:26.177+0800","msg":"Failed to init database: failed to open database: Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work. This is a stub"}
-{"level":"INFO","time":"2026-04-13T00:19:58.812+0800","msg":"Config loaded"}
-{"level":"ERROR","time":"2026-04-13T00:19:58.822+0800","msg":"Failed to init database: failed to open database: Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work. This is a stub"}
-{"level":"INFO","time":"2026-04-13T00:23:30.722+0800","msg":"Config loaded"}
-{"level":"ERROR","time":"2026-04-13T00:23:30.729+0800","msg":"Failed to init database: failed to open database: unable to open database file: The system cannot find the path specified."}
