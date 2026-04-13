@@ -1,127 +1,118 @@
-import { useTaskStore } from "@renderer/store/UseTaskStore";
-import { ElMessageBox, ElNotification } from "element-plus";
-import { useParentTaskStore } from "@renderer/store/UseParentTaskStore";
-import ConfirmConfig from "@renderer/model/util/ConfirmConfig";
-import GotoPageConfig from "@renderer/model/util/GotoPageConfig";
-import { h } from "vue";
-import NotifyConfig from "@renderer/model/util/NotifyConfig";
-import { askGotoPage } from "@renderer/utils/PageUtil";
-import { initSlotSyncListener } from "@renderer/composables/useSlotSyncListener";
+import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
+import { ElMessageBox, ElNotification } from 'element-plus'
+import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
+import ConfirmConfig from '@renderer/model/util/ConfirmConfig.ts'
+import GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
+import { h } from 'vue'
+import NotifyConfig from '@renderer/model/util/NotifyConfig.ts'
+import { isNullish } from '@renderer/utils/CommonUtil.ts'
+import { askGotoPage } from '@renderer/utils/PageUtil.ts'
+import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
+import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
+import TaskProgressMapTreeDTO from '@renderer/model/model/dto/TaskProgressMapTreeDTO.ts'
+import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 
-// Helper function to check if value is null or undefined
-function isNullish(val: any): boolean {
-  return val === null || val === undefined;
-}
+export function iniListener() {
+  // 任务队列
+  window.electron.ipcRenderer.on('taskStatus-setTask', (_event, [taskList]: [TaskProgressDTO[]]) => useTaskStore().setTask(taskList))
 
-export function initListener() {
-  // 任务队列 - 使用 Wails Events
-  window.wails.Events.On("taskStatus-setTask", (data: any) => {
-    const taskList = data as TaskProgressDTO[];
-    useTaskStore().setTask(taskList);
-  });
+  window.electron.ipcRenderer.on('taskStatus-updateTask', (_event, [taskList]: [TaskProgressDTO[]]) =>
+    useTaskStore().updateTask(taskList)
+  )
 
-  window.wails.Events.On("taskStatus-updateTask", (data: any) => {
-    const taskList = data as TaskProgressDTO[];
-    useTaskStore().updateTask(taskList);
-  });
+  window.electron.ipcRenderer.on('taskStatus-updateSchedule', (_event, [scheduleDTOList]: [TaskScheduleDTO[]]) =>
+    useTaskStore().updateTaskSchedule(scheduleDTOList)
+  )
 
-  window.wails.Events.On("taskStatus-updateSchedule", (data: any) => {
-    const scheduleDTOList = data as TaskScheduleDTO[];
-    useTaskStore().updateTaskSchedule(scheduleDTOList);
-  });
+  window.electron.ipcRenderer.on('taskStatus-removeTask', (_event, [ids]: [number[]]) => useTaskStore().removeTask(ids))
 
-  window.wails.Events.On("taskStatus-removeTask", (data: any) => {
-    const ids = data as number[];
-    useTaskStore().removeTask(ids);
-  });
+  window.electron.ipcRenderer.on('parentTaskStatus-setParentTask', (_event, [taskList]: [TaskProgressMapTreeDTO[]]) =>
+    useParentTaskStore().setParentTask(taskList)
+  )
 
-  // 父任务状态
-  window.wails.Events.On(
-    "parentTaskStatus-setParentTask",
-    (data: any) => {
-      const taskList = data as TaskProgressMapTreeDTO[];
-      useParentTaskStore().setParentTask(taskList);
-    }
-  );
+  window.electron.ipcRenderer.on('parentTaskStatus-updateParentTask', (_event, [taskList]: [TaskProgressMapTreeDTO[]]) =>
+    useParentTaskStore().updateParentTask(taskList)
+  )
 
-  window.wails.Events.On(
-    "parentTaskStatus-updateParentTask",
-    (data: any) => {
-      const taskList = data as TaskProgressMapTreeDTO[];
-      useParentTaskStore().updateParentTask(taskList);
-    }
-  );
+  window.electron.ipcRenderer.on('parentTaskStatus-updateSchedule', (_event, [taskList]: [TaskScheduleDTO[]]) =>
+    useParentTaskStore().updateParentTaskSchedule(taskList)
+  )
 
-  window.wails.Events.On("parentTaskStatus-updateSchedule", (data: any) => {
-    const taskList = data as TaskScheduleDTO[];
-    useParentTaskStore().updateParentTaskSchedule(taskList);
-  });
+  window.electron.ipcRenderer.on('parentTaskStatus-removeParentTask', (_event, [ids]: [number[]]) =>
+    useParentTaskStore().removeParentTask(ids)
+  )
 
-  window.wails.Events.On("parentTaskStatus-removeParentTask", (data: any) => {
-    const ids = data as number[];
-    useParentTaskStore().removeParentTask(ids);
-  });
-
-  // 自定义确认弹窗 - 需要 Wails 绑定支持
-  // window.wails.Events.On("custom-confirm", (confirmId: string, config: ConfirmConfig) => {
-  //   ElMessageBox.confirm(config.msg, config.title, {
-  //     confirmButtonText: config.confirmButtonText,
-  //     cancelButtonText: config.cancelButtonText,
-  //     type: config.type
-  //   })
-  //     .then(() => window.wails.Events.Emit("custom-confirm-echo", confirmId, true))
-  //     .catch(() => window.wails.Events.Emit("custom-confirm-echo", confirmId, false));
-  // });
+  // 自定义确认弹窗
+  window.electron.ipcRenderer.on('custom-confirm', (_event: Electron.IpcRendererEvent, confirmId: string, config: ConfirmConfig) => {
+    ElMessageBox.confirm(config.msg, config.title, {
+      confirmButtonText: config.confirmButtonText,
+      cancelButtonText: config.cancelButtonText,
+      type: config.type
+    })
+      .then(() => window.electron.ipcRenderer.send('custom-confirm-echo', confirmId, true))
+      .catch(() => window.electron.ipcRenderer.send('custom-confirm-echo', confirmId, false))
+  })
 
   // 自定义通知
-  window.wails.Events.On("custom-notify", (config: NotifyConfig) => {
+  window.electron.ipcRenderer.on('custom-notify', (_event: Electron.IpcRendererEvent, config: NotifyConfig) => {
     ElNotification({
       type: config.type,
       message: h(
-        "span",
+        'span',
         {
           style: {
-            display: "-webkit-box",
-            "-webkit-box-orient": "vertical",
-            "-webkit-line-clamp": isNullish(config.maxRow) ? 3 : config.maxRow,
-            overflow: "hidden",
-            "text-overflow": "ellipsis",
-          },
+            display: '-webkit-box',
+            '-webkit-box-orient': 'vertical',
+            '-webkit-line-clamp': isNullish(config.maxRow) ? 3 : config.maxRow,
+            overflow: 'hidden',
+            'text-overflow': 'ellipsis'
+          }
         },
         config.msg
       ),
-      duration: config.duration,
-    });
-  });
+      duration: config.duration
+    })
+  })
 
-  // 页面跳转
-  window.wails.Events.On("goto-page", (config: GotoPageConfig) => {
-    askGotoPage(config);
-  });
+  // // 已有资源替换确认弹窗
+  // const resourceReplaceConfirmList: Ref<{ confirmId: string; msg: string }[]> = ref([])
+  // let resourceReplaceConfirmState: boolean = false
+  // window.electron.ipcRenderer.on(
+  //   'task-queue-resource-replace-confirm',
+  //   (_event: Electron.IpcRendererEvent, config: { confirmId: string; msg: string }) => {
+  //     resourceReplaceConfirmList.value.push(config)
+  //     if (!resourceReplaceConfirmState) {
+  //       resourceReplaceConfirmState = true
+  //       ElMessageBox.confirm(
+  //         () => h(TaskQueueResourceReplaceConfirmList, { confirmList: resourceReplaceConfirmList.value }),
+  //         `以下任务下载的作品已有可用的资源，是否替换？`,
+  //         {
+  //           confirmButtonText: '替换原有资源',
+  //           cancelButtonText: '保留原有资源',
+  //           type: 'warning'
+  //         }
+  //       )
+  //         .then(() => {
+  //           const responseConfirmIds = resourceReplaceConfirmList.value.map(
+  //             (resourceReplaceConfirm) => resourceReplaceConfirm.confirmId
+  //           )
+  //           window.electron.ipcRenderer.send('task-queue-resource-replace-confirm-echo', responseConfirmIds, true)
+  //           resourceReplaceConfirmList.value.splice(0, responseConfirmIds.length)
+  //         })
+  //         .catch(() => {
+  //           const responseConfirmIds = resourceReplaceConfirmList.value.map(
+  //             (resourceReplaceConfirm) => resourceReplaceConfirm.confirmId
+  //           )
+  //           window.electron.ipcRenderer.send('task-queue-resource-replace-confirm-echo', responseConfirmIds, false)
+  //           resourceReplaceConfirmList.value.splice(0, responseConfirmIds.length)
+  //         })
+  //         .finally(() => (resourceReplaceConfirmState = false))
+  //     }
+  //   }
+  // )
+
+  window.electron.ipcRenderer.on('goto-page', (_event, config: GotoPageConfig) => askGotoPage(config))
 
   // 初始化插槽同步监听器
-  initSlotSyncListener();
-}
-
-// 类型定义
-interface TaskProgressDTO {
-  id?: number;
-  taskName?: string;
-  status?: number;
-  total?: number;
-  finished?: number;
-}
-
-interface TaskScheduleDTO {
-  id?: number;
-  status?: number;
-  total?: number;
-  finished?: number;
-}
-
-interface TaskProgressMapTreeDTO {
-  id?: number;
-  taskName?: string;
-  status?: number;
-  children?: TaskProgressMapTreeDTO[];
+  initSlotSyncListener()
 }

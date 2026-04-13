@@ -1,7 +1,8 @@
-import * as ElementPlusIconsVue from "@element-plus/icons-vue";
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
-export function elementIconRegister(app: any) {
-  for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-    app.component(key, component);
-  }
+export const elementIconRegister = (app) => {
+  // 全局注册图标
+  Object.values(ElementPlusIconsVue).forEach((component) => {
+    app.component(component.name, component)
+  })
 }

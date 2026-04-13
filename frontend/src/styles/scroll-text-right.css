@@ -1,0 +1,20 @@
+@keyframes scroll-text-left {
+  0% {
+    transform: translateX(0);
+  }
+  5% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(50%);
+  }
+  50% {
+    transform: translateX(50%);
+  }
+  95% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}

@@ -11,13 +11,13 @@ import (
 // RootPath 获取根目录
 func RootPath() string {
 	appEnv, ok := os.LookupEnv("APP_ENV")
-	var entryPath string
+	var rootPath string
 	var err error
 	if ok {
 		switch appEnv {
 		case "development":
 			// 如果是 go run，则返回当前的源代码目录
-			entryPath, err = os.Getwd()
+			rootPath, err = os.Getwd()
 			if err != nil {
 				panic(err)
 			}
@@ -25,14 +25,10 @@ func RootPath() string {
 			panic(errors.New("unknown APP_ENV environment: " + appEnv))
 		}
 	} else {
-		entryPath, err = os.Executable()
+		rootPath, err = os.Executable()
 		if err != nil {
 			panic(err)
 		}
-	}
-	rootPath := entryPath
-	for i := 0; i < 2; i++ {
-		rootPath = filepath.Dir(rootPath)
 	}
 	return rootPath
 }

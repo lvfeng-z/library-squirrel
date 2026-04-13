@@ -1,10 +1,6 @@
-/* rounded-borders.css */
-.rounded-border {
-  border: 1px solid #dcdfe6;
+.rounded-borders {
+  border: 1px solid var(--el-border-color);
   border-radius: 4px;
-}
-
-.rounded-border-light {
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
 }

@@ -1,21 +1,20 @@
-/* scroll-text-left.css */
-.scroll-text-container {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.scroll-text-marquee {
-  display: inline-block;
-  white-space: nowrap;
-  animation: scroll-left 10s linear infinite;
-}
-
-@keyframes scroll-left {
+@keyframes scroll-text-left {
   0% {
-    transform: translateX(100%);
+    transform: translateX(0);
+  }
+  5% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(-50%);
+  }
+  50% {
+    transform: translateX(-50%);
+  }
+  95% {
+    transform: translateX(0);
   }
   100% {
-    transform: translateX(-100%);
+    transform: translateX(0);
   }
 }

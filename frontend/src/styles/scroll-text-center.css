@@ -1,7 +1,20 @@
-/* scroll-text-center.css */
-.scroll-text-center-container {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  text-align: center;
+@keyframes scroll-text-center {
+  0% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(50%);
+  }
+  25% {
+    transform: translateX(50%);
+  }
+  75% {
+    transform: translateX(-50%);
+  }
+  85% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }

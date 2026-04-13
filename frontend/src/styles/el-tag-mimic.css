@@ -1,12 +1,8 @@
-/* el-tag-mimic.css - Tag-like styling */
-.tag-mimic {
-  display: inline-block;
-  padding: 0 8px;
-  height: 24px;
-  line-height: 22px;
+.el-tag-mimic {
+  color: #3f9dfd;
+  border-radius: 3.5px;
+  border: 0.5px solid #d7eafd;
+  background-color: #eaf3fd;
+  background-clip: padding-box;
   font-size: 12px;
-  border-radius: 4px;
-  border: 1px solid;
-  box-sizing: border-box;
-  white-space: nowrap;
 }
