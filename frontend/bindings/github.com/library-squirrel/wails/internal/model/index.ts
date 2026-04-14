@@ -3,8 +3,24 @@
 
 export {
     ContentType,
+    LocalAuthor,
     LocalTag,
+    Plugin,
+    Resource,
+    SearchCondition,
+    SearchType,
     SelectItem,
+    Site,
+    SiteAuthor,
+    SiteAuthorFullDTO,
+    SiteAuthorLocalRelateDTO,
+    SiteTag,
+    SiteTagFullDTO,
+    SiteTagLocalRelateDTO,
     SlotConfig,
-    SlotType
+    SlotType,
+    Task,
+    Work,
+    WorkFullDTO,
+    WorkSet
 } from "./models.js";

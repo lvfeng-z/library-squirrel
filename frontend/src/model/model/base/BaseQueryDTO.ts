@@ -1,6 +1,6 @@
 import { Id } from './BaseEntity.ts'
-import { Operator } from '@renderer/utils/Operator.ts'
-import { QuerySortOption } from '../util/QuerySortOption.ts'
+import { Operator } from '@renderer/model/util/Operator.ts'
+import { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
 
 export default class BaseQueryDTO {
   /**

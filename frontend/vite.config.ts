@@ -11,6 +11,7 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
       "@renderer": resolve(__dirname, "src"),
       "@shared": resolve(__dirname, "src/shared"),
+      "@/bindings": resolve(__dirname, "bindings"),
     },
   },
 });

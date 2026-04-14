@@ -25,9 +25,14 @@ func RootPath() string {
 			panic(errors.New("unknown APP_ENV environment: " + appEnv))
 		}
 	} else {
-		rootPath, err = os.Executable()
+		execPath, err := os.Executable()
 		if err != nil {
 			panic(err)
+		}
+		rootPath = filepath.Dir(execPath)
+		// 如果可执行文件在 bin 目录下，返回上级目录（项目根目录）
+		if filepath.Base(rootPath) == "bin" {
+			rootPath = filepath.Dir(rootPath)
 		}
 	}
 	return rootPath

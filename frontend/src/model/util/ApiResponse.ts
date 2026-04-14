@@ -1,5 +1,5 @@
-export default interface ApiResponse {
+export default interface ApiResponse<T = unknown> {
   success: boolean
   msg: string
-  data: unknown | unknown[] | undefined
+  data?: T
 }

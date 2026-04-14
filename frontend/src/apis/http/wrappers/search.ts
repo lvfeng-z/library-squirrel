@@ -5,7 +5,7 @@
 import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
 import type WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO'
-import Page from '@renderer/model/model/util/Page'
+import type Page from '@renderer/model/util/Page'
 
 export interface SearchConditionItem {
   siteId: number
