@@ -14,6 +14,7 @@ import (
 	"github.com/library-squirrel/wails/internal/fileSysUtil"
 	"github.com/library-squirrel/wails/internal/localAuthor"
 	"github.com/library-squirrel/wails/internal/localTag"
+	"github.com/library-squirrel/wails/internal/migration"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/plugin"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
@@ -109,11 +110,13 @@ func NewApp() (*App, error) {
 	}
 	app.db = database.GetDB()
 	logger.Log.Infof("Database initialized: %s", dbPath)
-	defer func() {
-		if err := database.Close(); err != nil {
-			logger.Log.Errorf("Failed to close database: %v", err)
-		}
-	}()
+
+	// 自动迁移数据库表结构
+	if err := migration.AutoMigrate(app.db); err != nil {
+		logger.Log.Errorf("Failed to auto migrate database: %v", err)
+		return nil, err
+	}
+	logger.Log.Infof("Database migration completed")
 
 	// 4. 初始化扩展注册中心
 	app.TaskHandlerRegistry = extension.NewTaskHandlerRegistry()

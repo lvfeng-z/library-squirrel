@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/library-squirrel/wails/internal/database"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -103,6 +104,9 @@ func main() {
 
 	// Run the application. This blocks until the application has been exited.
 	err = wailsApp.Run()
+
+	// 关闭数据库连接
+	database.Close()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
