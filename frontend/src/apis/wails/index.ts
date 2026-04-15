@@ -19,25 +19,3 @@ export * from './secureStorage'
 export * from './appLauncher'
 export * from './siteBrowser'
 export * from './common'
-
-import type { ApiResponse } from '@/apis/http'
-
-/**
- * 将 Wails CancellablePromise 转换为 ApiResponse 格式
- */
-export async function toApiResponse<T>(promise: Promise<T>): Promise<ApiResponse<T>> {
-  try {
-    const data = await promise
-    return {
-      success: true,
-      msg: '',
-      data
-    }
-  } catch (error) {
-    return {
-      success: false,
-      msg: error instanceof Error ? error.message : 'Unknown error',
-      data: undefined
-    }
-  }
-}

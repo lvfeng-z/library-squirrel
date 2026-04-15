@@ -4,7 +4,6 @@
 
 import { App } from '../../../bindings/github.com/library-squirrel/wails'
 import type { ApiResponse } from '@/apis/http'
-import { toApiResponse } from './index'
 import type { SearchType, SearchCondition } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
 import type { Page } from '../../../bindings/github.com/library-squirrel/wails/pkg/model/models'
 import type { SelectItem, WorkFullDTO } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
@@ -18,7 +17,7 @@ export async function searchQuerySearchConditionPage(
   keyword: string,
   types: SearchType[]
 ): Promise<ApiResponse<Page<SelectItem> | null>> {
-  return toApiResponse(App.SearchQuerySearchConditionPage(keyword, types))
+  return App.SearchQuerySearchConditionPage(keyword, types)
 }
 
 /**
@@ -27,7 +26,7 @@ export async function searchQuerySearchConditionPage(
 export async function searchQueryWorkPage(
   conditions: SearchCondition[]
 ): Promise<ApiResponse<Page<WorkFullDTO> | null>> {
-  return toApiResponse(App.SearchQueryWorkPage(conditions))
+  return App.SearchQueryWorkPage(conditions)
 }
 
 /**
@@ -37,5 +36,5 @@ export async function searchQueryWorkSetPage(
   keyword: string,
   siteId: number
 ): Promise<ApiResponse<Page<SelectItem> | null>> {
-  return toApiResponse(App.SearchQueryWorkSetPage(keyword, siteId))
+  return App.SearchQueryWorkSetPage(keyword, siteId)
 }

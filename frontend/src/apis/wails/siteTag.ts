@@ -4,7 +4,6 @@
 
 import { App } from '../../../bindings/github.com/library-squirrel/wails'
 import type { ApiResponse } from '@/apis/http'
-import { toApiResponse } from './index'
 
 // ========== API 方法 ==========
 
@@ -12,63 +11,63 @@ import { toApiResponse } from './index'
  * 保存站点标签
  */
 export async function siteTagSave(tag: any): Promise<ApiResponse<void>> {
-  return toApiResponse(App.SiteTagSave(tag))
+  return App.SiteTagSave(tag)
 }
 
 /**
  * 批量保存站点标签
  */
 export async function siteTagSaveBatch(tags: any[]): Promise<ApiResponse<void>> {
-  return toApiResponse(App.SiteTagSaveBatch(tags))
+  return App.SiteTagSaveBatch(tags)
 }
 
 /**
  * 删除站点标签
  */
 export async function siteTagDeleteById(id: number): Promise<ApiResponse<void>> {
-  return toApiResponse(App.SiteTagDeleteById(id))
+  return App.SiteTagDeleteById(id)
 }
 
 /**
  * 更新站点标签
  */
 export async function siteTagUpdateById(tag: any): Promise<ApiResponse<void>> {
-  return toApiResponse(App.SiteTagUpdateById(tag))
+  return App.SiteTagUpdateById(tag)
 }
 
 /**
  * 获取单个站点标签
  */
 export async function siteTagGetById(id: number): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagGetById(id))
+  return App.SiteTagGetById(id)
 }
 
 /**
  * 分页查询站点标签
  */
 export async function siteTagQueryPage(query: any): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagQueryPage(query))
+  return App.SiteTagQueryPage(query)
 }
 
 /**
  * 查询已绑定或未绑定到本地标签的站点标签分页
  */
 export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: any): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagQueryBoundOrUnboundToLocalTagPage(query))
+  return App.SiteTagQueryBoundOrUnboundToLocalTagPage(query)
 }
 
 /**
  * 根据作品ID查询站点标签分页
  */
 export async function siteTagQueryPageByWorkId(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagQueryPageByWorkId(query, workId, boundOnWorkId))
+  return App.SiteTagQueryPageByWorkId(query, workId, boundOnWorkId)
 }
 
 /**
  * 查询本地关联DTO分页
  */
 export async function siteTagQueryLocalRelateDTOPage(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagQueryLocalRelateDTOPage(query, workId, boundOnWorkId))
+  return App.SiteTagQueryLocalRelateDTOPage(query, workId, boundOnWorkId)
 }
 
 /**
@@ -79,33 +78,33 @@ export async function siteTagQuerySelectItemPageByWorkId(
   workId: number,
   query: any
 ): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagQuerySelectItemPageByWorkId(query, workId))
+  return App.SiteTagQuerySelectItemPageByWorkId(query, workId)
 }
 
 /**
  * 根据作品ID获取站点标签列表
  */
 export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<any[]>> {
-  return toApiResponse(App.SiteTagListByWorkId(workId))
+  return App.SiteTagListByWorkId(workId)
 }
 
 /**
  * 根据站点标签ID列表获取站点标签
  */
 export async function siteTagListBySiteTagIds(ids: number[]): Promise<ApiResponse<any[]>> {
-  return toApiResponse(App.SiteTagListBySiteTagIds(ids))
+  return App.SiteTagListBySiteTagIds(ids)
 }
 
 /**
  * 更新绑定本地标签
  */
 export async function siteTagUpdateBindLocalTag(localTagId: number, siteTagIds: number[]): Promise<ApiResponse<boolean>> {
-  return toApiResponse(App.SiteTagUpdateBindLocalTag(localTagId, siteTagIds))
+  return App.SiteTagUpdateBindLocalTag(localTagId, siteTagIds)
 }
 
 /**
  * 创建并绑定同名的本地标签
  */
 export async function siteTagCreateAndBindSameNameLocalTag(tag: any): Promise<ApiResponse<any>> {
-  return toApiResponse(App.SiteTagCreateAndBindSameNameLocalTag(tag))
+  return App.SiteTagCreateAndBindSameNameLocalTag(tag)
 }

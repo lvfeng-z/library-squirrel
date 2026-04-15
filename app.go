@@ -160,6 +160,12 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
+// SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher
+func (app *App) SetEventEmitter(emitter extension.WailsEventEmitter) {
+	app.eventEmitter = emitter
+	app.SlotPusher = extension.NewWailsSlotPusher(emitter)
+}
+
 // initBaseServices 初始化基础服务（无服务依赖）
 func (app *App) initBaseServices() {
 	rootPath := util.RootPath()
