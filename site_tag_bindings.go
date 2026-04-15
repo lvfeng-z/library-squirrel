@@ -31,43 +31,75 @@ func (app *App) SiteTagUpdateById(tag *domain.SiteTag) error {
 }
 
 // SiteTagGetById 获取站点标签
-func (app *App) SiteTagGetById(id int64) (*domain.SiteTag, error) {
-	return app.SiteTagService.GetById(context.Background(), id)
+func (app *App) SiteTagGetById(id int64) (*model.ApiResponse[*domain.SiteTag], error) {
+	tag, err := app.SiteTagService.GetById(context.Background(), id)
+	if err != nil {
+		return model.Error[*domain.SiteTag](err.Error()), nil
+	}
+	return model.Success(tag), nil
 }
 
 // SiteTagQueryPage 分页查询站点标签
-func (app *App) SiteTagQueryPage(query *siteTag.SiteTagQueryDTO) (*model.Page[domain.SiteTag], error) {
-	return app.SiteTagService.PageByDTO(context.Background(), 1, 10, *query)
+func (app *App) SiteTagQueryPage(query *siteTag.SiteTagQueryDTO) (*model.ApiResponse[*model.Page[domain.SiteTag]], error) {
+	page, err := app.SiteTagService.PageByDTO(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.SiteTag]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteTagQueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (app *App) SiteTagQueryBoundOrUnboundToLocalTagPage(query *siteTag.SiteTagQueryDTO) (*model.Page[domain.SiteTagFullDTO], error) {
-	return app.SiteTagService.QueryBoundOrUnboundToLocalTagPage(context.Background(), 1, 10, *query)
+func (app *App) SiteTagQueryBoundOrUnboundToLocalTagPage(query *siteTag.SiteTagQueryDTO) (*model.ApiResponse[*model.Page[domain.SiteTagFullDTO]], error) {
+	page, err := app.SiteTagService.QueryBoundOrUnboundToLocalTagPage(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.SiteTagFullDTO]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteTagQueryPageByWorkId 根据作品ID分页查询站点标签
-func (app *App) SiteTagQueryPageByWorkId(query *siteTag.SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO], error) {
-	return app.SiteTagService.QueryPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId, boundOnWorkId)
+func (app *App) SiteTagQueryPageByWorkId(query *siteTag.SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.ApiResponse[*model.Page[domain.SiteTagFullDTO]], error) {
+	page, err := app.SiteTagService.QueryPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId, boundOnWorkId)
+	if err != nil {
+		return model.Error[*model.Page[domain.SiteTagFullDTO]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteTagQueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (app *App) SiteTagQueryLocalRelateDTOPage(query *siteTag.SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO], error) {
-	return app.SiteTagService.QueryLocalRelateDTOPageByDTO(context.Background(), 1, 10, *query, workId, boundOnWorkId)
+func (app *App) SiteTagQueryLocalRelateDTOPage(query *siteTag.SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.ApiResponse[*model.Page[domain.SiteTagLocalRelateDTO]], error) {
+	page, err := app.SiteTagService.QueryLocalRelateDTOPageByDTO(context.Background(), 1, 10, *query, workId, boundOnWorkId)
+	if err != nil {
+		return model.Error[*model.Page[domain.SiteTagLocalRelateDTO]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteTagQuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (app *App) SiteTagQuerySelectItemPageByWorkId(query *siteTag.SiteTagQueryDTO, workId int64) (*model.Page[domain.SelectItem], error) {
-	return app.SiteTagService.QuerySelectItemPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId)
+func (app *App) SiteTagQuerySelectItemPageByWorkId(query *siteTag.SiteTagQueryDTO, workId int64) (*model.ApiResponse[*model.Page[domain.SelectItem]], error) {
+	page, err := app.SiteTagService.QuerySelectItemPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId)
+	if err != nil {
+		return model.Error[*model.Page[domain.SelectItem]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteTagListByWorkId 查询作品的站点标签
-func (app *App) SiteTagListByWorkId(workId int64) ([]*domain.SiteTag, error) {
-	return app.SiteTagService.ListByWorkId(context.Background(), workId)
+func (app *App) SiteTagListByWorkId(workId int64) (*model.ApiResponse[[]*domain.SiteTag], error) {
+	tags, err := app.SiteTagService.ListByWorkId(context.Background(), workId)
+	if err != nil {
+		return model.Error[[]*domain.SiteTag](err.Error()), nil
+	}
+	return model.Success(tags), nil
 }
 
 // SiteTagListBySiteTagIds 根据站点标签ID列表查询
-func (app *App) SiteTagListBySiteTagIds(siteTagIds []int64) ([]*domain.SiteTag, error) {
-	return app.SiteTagService.ListBySiteTagIds(context.Background(), siteTagIds)
+func (app *App) SiteTagListBySiteTagIds(siteTagIds []int64) (*model.ApiResponse[[]*domain.SiteTag], error) {
+	tags, err := app.SiteTagService.ListBySiteTagIds(context.Background(), siteTagIds)
+	if err != nil {
+		return model.Error[[]*domain.SiteTag](err.Error()), nil
+	}
+	return model.Success(tags), nil
 }
 
 // SiteTagUpdateBindLocalTag 绑定或解除本地标签绑定
@@ -76,6 +108,10 @@ func (app *App) SiteTagUpdateBindLocalTag(localTagId int64, siteTagIds []int64) 
 }
 
 // SiteTagCreateAndBindSameNameLocalTag 创建并绑定同名本地标签
-func (app *App) SiteTagCreateAndBindSameNameLocalTag(tag *domain.SiteTag) (*domain.LocalTag, error) {
-	return app.SiteTagService.CreateAndBindSameNameLocalTag(context.Background(), tag)
+func (app *App) SiteTagCreateAndBindSameNameLocalTag(tag *domain.SiteTag) (*model.ApiResponse[*domain.LocalTag], error) {
+	localTag, err := app.SiteTagService.CreateAndBindSameNameLocalTag(context.Background(), tag)
+	if err != nil {
+		return model.Error[*domain.LocalTag](err.Error()), nil
+	}
+	return model.Success(localTag), nil
 }

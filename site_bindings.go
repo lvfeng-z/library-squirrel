@@ -34,11 +34,19 @@ func (app *App) SiteGetById(id int64) (*domain.Site, error) {
 }
 
 // SiteQueryPage 分页查询站点
-func (app *App) SiteQueryPage(query *site.SiteQueryDTO) (*model.Page[domain.Site], error) {
-	return app.SiteService.Page(context.Background(), 1, 10, *query)
+func (app *App) SiteQueryPage(query *site.SiteQueryDTO) (*model.ApiResponse[*model.Page[domain.Site]], error) {
+	page, err := app.SiteService.Page(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.Site]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // SiteQuerySelectItemPage 分页查询选择项
-func (app *App) SiteQuerySelectItemPage(query *site.SiteQueryDTO) (*model.Page[domain.SelectItem], error) {
-	return app.SiteService.QuerySelectItemPage(context.Background(), 1, 10, *query)
+func (app *App) SiteQuerySelectItemPage(query *site.SiteQueryDTO) (*model.ApiResponse[*model.Page[domain.SelectItem]], error) {
+	page, err := app.SiteService.QuerySelectItemPage(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.SelectItem]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }

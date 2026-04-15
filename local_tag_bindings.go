@@ -34,36 +34,64 @@ func (app *App) LocalTagGetById(id int64) (*domain.LocalTag, error) {
 }
 
 // LocalTagQueryPage 分页查询本地标签
-func (app *App) LocalTagQueryPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
-	return app.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
+func (app *App) LocalTagQueryPage(query *localTag.LocalTagQueryDTO) (*model.ApiResponse[*model.Page[domain.LocalTag]], error) {
+	page, err := app.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.LocalTag]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // LocalTagQueryDTOPage DTO分页查询本地标签
-func (app *App) LocalTagQueryDTOPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
-	return app.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
+func (app *App) LocalTagQueryDTOPage(query *localTag.LocalTagQueryDTO) (*model.ApiResponse[*model.Page[domain.LocalTag]], error) {
+	page, err := app.LocalTagService.PageByDTO(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.LocalTag]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // LocalTagGetTree 获取标签树形结构
-func (app *App) LocalTagGetTree(rootId int64, depth int) ([]*domain.LocalTag, error) {
-	return app.LocalTagService.GetTree(context.Background(), rootId, depth)
+func (app *App) LocalTagGetTree(rootId int64, depth int) (*model.ApiResponse[[]*domain.LocalTag], error) {
+	tree, err := app.LocalTagService.GetTree(context.Background(), rootId, depth)
+	if err != nil {
+		return model.Error[[]*domain.LocalTag](err.Error()), nil
+	}
+	return model.Success(tree), nil
 }
 
 // LocalTagListSelectItems 查询选择项列表
-func (app *App) LocalTagListSelectItems(query *localTag.LocalTagQueryDTO) ([]*domain.SelectItem, error) {
-	return app.LocalTagService.ListSelectItemsByDTO(context.Background(), *query)
+func (app *App) LocalTagListSelectItems(query *localTag.LocalTagQueryDTO) (*model.ApiResponse[[]*domain.SelectItem], error) {
+	items, err := app.LocalTagService.ListSelectItemsByDTO(context.Background(), *query)
+	if err != nil {
+		return model.Error[[]*domain.SelectItem](err.Error()), nil
+	}
+	return model.Success(items), nil
 }
 
 // LocalTagQuerySelectItemPage 分页查询选择项
-func (app *App) LocalTagQuerySelectItemPage(query *localTag.LocalTagQueryDTO) (*model.Page[domain.SelectItem], error) {
-	return app.LocalTagService.QuerySelectItemPageByDTO(context.Background(), 1, 10, *query, "")
+func (app *App) LocalTagQuerySelectItemPage(query *localTag.LocalTagQueryDTO) (*model.ApiResponse[*model.Page[domain.SelectItem]], error) {
+	page, err := app.LocalTagService.QuerySelectItemPageByDTO(context.Background(), 1, 10, *query, "")
+	if err != nil {
+		return model.Error[*model.Page[domain.SelectItem]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // LocalTagListByWorkId 查询作品关联的标签
-func (app *App) LocalTagListByWorkId(workId int64) ([]*domain.LocalTag, error) {
-	return app.LocalTagService.ListByWorkId(context.Background(), workId)
+func (app *App) LocalTagListByWorkId(workId int64) (*model.ApiResponse[[]*domain.LocalTag], error) {
+	tags, err := app.LocalTagService.ListByWorkId(context.Background(), workId)
+	if err != nil {
+		return model.Error[[]*domain.LocalTag](err.Error()), nil
+	}
+	return model.Success(tags), nil
 }
 
 // LocalTagQuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (app *App) LocalTagQuerySelectItemPageByWorkId(query *localTag.LocalTagQueryDTO, workId int64) (*model.Page[domain.SelectItem], error) {
-	return app.LocalTagService.QuerySelectItemPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId)
+func (app *App) LocalTagQuerySelectItemPageByWorkId(query *localTag.LocalTagQueryDTO, workId int64) (*model.ApiResponse[*model.Page[domain.SelectItem]], error) {
+	page, err := app.LocalTagService.QuerySelectItemPageByWorkIdByDTO(context.Background(), 1, 10, *query, workId)
+	if err != nil {
+		return model.Error[*model.Page[domain.SelectItem]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }

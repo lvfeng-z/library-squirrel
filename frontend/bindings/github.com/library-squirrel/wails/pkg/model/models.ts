@@ -6,6 +6,54 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * ApiResponse 统一API响应格式（匹配前端 ApiResponse.ts）
+ */
+export class ApiResponse<T> {
+    /**
+     * 是否成功
+     */
+    "success": boolean;
+
+    /**
+     * 消息
+     */
+    "msg": string;
+
+    /**
+     * 数据
+     */
+    "data"?: T;
+
+    /** Creates a new ApiResponse instance. */
+    constructor($$source: Partial<ApiResponse<T>> = {}) {
+        if (!("success" in $$source)) {
+            this["success"] = false;
+        }
+        if (!("msg" in $$source)) {
+            this["msg"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Given creation functions for each type parameter,
+     * returns a creation function for a concrete instance
+     * of the generic class ApiResponse.
+     */
+    static createFrom<T = any>($$createParamT: (source: any) => T): ($$source?: any) => ApiResponse<T> {
+        const $$createField2_0 = $$createParamT;
+        return ($$source: any = {}) => {
+            let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+            if ("data" in $$parsedSource) {
+                $$parsedSource["data"] = $$createField2_0($$parsedSource["data"]);
+            }
+            return new ApiResponse<T>($$parsedSource as Partial<ApiResponse<T>>);
+        };
+    }
+}
+
+/**
  * ExtensionType 扩展点类型
  */
 export enum ExtensionType {

@@ -11,18 +11,30 @@ import (
 // ==================== Plugin Wails Bindings ====================
 
 // PluginGetById 获取插件
-func (app *App) PluginGetById(id int64) (*domain.Plugin, error) {
-	return app.PluginService.GetById(context.Background(), id)
+func (app *App) PluginGetById(id int64) (*model.ApiResponse[*domain.Plugin], error) {
+	plugin, err := app.PluginService.GetById(context.Background(), id)
+	if err != nil {
+		return model.Error[*domain.Plugin](err.Error()), nil
+	}
+	return model.Success(plugin), nil
 }
 
 // PluginGetByPublicId 根据公开ID获取插件
-func (app *App) PluginGetByPublicId(publicId string) (*domain.Plugin, error) {
-	return app.PluginService.GetByPublicId(context.Background(), publicId)
+func (app *App) PluginGetByPublicId(publicId string) (*model.ApiResponse[*domain.Plugin], error) {
+	plugin, err := app.PluginService.GetByPublicId(context.Background(), publicId)
+	if err != nil {
+		return model.Error[*domain.Plugin](err.Error()), nil
+	}
+	return model.Success(plugin), nil
 }
 
 // PluginQueryPage 分页查询插件
-func (app *App) PluginQueryPage(query *plugin.PluginQueryDTO) (*model.Page[domain.Plugin], error) {
-	return app.PluginService.Page(context.Background(), 1, 10, *query)
+func (app *App) PluginQueryPage(query *plugin.PluginQueryDTO) (*model.ApiResponse[*model.Page[domain.Plugin]], error) {
+	page, err := app.PluginService.Page(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.Plugin]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // PluginCheckInstalled 检查插件是否已安装
@@ -46,18 +58,30 @@ func (app *App) PluginDelete(id int64) error {
 }
 
 // PluginInstallFromPath 从插件包路径安装插件
-func (app *App) PluginInstallFromPath(packagePath string) (*domain.Plugin, error) {
-	return app.PluginService.InstallFromPath(context.Background(), packagePath, domain.InstallTypeManual)
+func (app *App) PluginInstallFromPath(packagePath string) (*model.ApiResponse[*domain.Plugin], error) {
+	plugin, err := app.PluginService.InstallFromPath(context.Background(), packagePath, domain.InstallTypeManual)
+	if err != nil {
+		return model.Error[*domain.Plugin](err.Error()), nil
+	}
+	return model.Success(plugin), nil
 }
 
 // PluginReinstall 重新安装插件
-func (app *App) PluginReinstall(publicId string) (*domain.Plugin, error) {
-	return app.PluginService.Reinstall(context.Background(), publicId, domain.InstallTypeManual)
+func (app *App) PluginReinstall(publicId string) (*model.ApiResponse[*domain.Plugin], error) {
+	plugin, err := app.PluginService.Reinstall(context.Background(), publicId, domain.InstallTypeManual)
+	if err != nil {
+		return model.Error[*domain.Plugin](err.Error()), nil
+	}
+	return model.Success(plugin), nil
 }
 
 // PluginReinstallFromPath 从指定路径重新安装插件
-func (app *App) PluginReinstallFromPath(publicId string, packagePath string) (*domain.Plugin, error) {
-	return app.PluginService.ReinstallFromPath(context.Background(), publicId, packagePath, domain.InstallTypeManual)
+func (app *App) PluginReinstallFromPath(publicId string, packagePath string) (*model.ApiResponse[*domain.Plugin], error) {
+	plugin, err := app.PluginService.ReinstallFromPath(context.Background(), publicId, packagePath, domain.InstallTypeManual)
+	if err != nil {
+		return model.Error[*domain.Plugin](err.Error()), nil
+	}
+	return model.Success(plugin), nil
 }
 
 // PluginUninstall 卸载插件

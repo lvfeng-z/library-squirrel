@@ -26,23 +26,39 @@ func (app *App) WorkSetDelete(id int64) error {
 }
 
 // WorkSetGetById 获取作品集
-func (app *App) WorkSetGetById(id int64) (*domain.WorkSet, error) {
-	return app.WorkSetService.GetById(context.Background(), id)
+func (app *App) WorkSetGetById(id int64) (*model.ApiResponse[*domain.WorkSet], error) {
+	workSet, err := app.WorkSetService.GetById(context.Background(), id)
+	if err != nil {
+		return model.Error[*domain.WorkSet](err.Error()), nil
+	}
+	return model.Success(workSet), nil
 }
 
 // WorkSetQueryPage 分页查询作品集
-func (app *App) WorkSetQueryPage(query *workSet.WorkSetQueryDTO) (*model.Page[domain.WorkSet], error) {
-	return app.WorkSetService.PageByDTO(context.Background(), 1, 10, *query)
+func (app *App) WorkSetQueryPage(query *workSet.WorkSetQueryDTO) (*model.ApiResponse[*model.Page[domain.WorkSet]], error) {
+	page, err := app.WorkSetService.PageByDTO(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[domain.WorkSet]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // WorkSetQueryPageWithCover 带封面的作品集分页查询
-func (app *App) WorkSetQueryPageWithCover(query *workSet.WorkSetQueryDTO) (*model.Page[workSet.WorkSetWithCoverDTO], error) {
-	return app.WorkSetService.QueryPageWithCoverByDTO(context.Background(), 1, 10, *query)
+func (app *App) WorkSetQueryPageWithCover(query *workSet.WorkSetQueryDTO) (*model.ApiResponse[*model.Page[workSet.WorkSetWithCoverDTO]], error) {
+	page, err := app.WorkSetService.QueryPageWithCoverByDTO(context.Background(), 1, 10, *query)
+	if err != nil {
+		return model.Error[*model.Page[workSet.WorkSetWithCoverDTO]](err.Error()), nil
+	}
+	return model.Success(page), nil
 }
 
 // WorkSetGetWorks 获取作品集关联的作品列表
-func (app *App) WorkSetGetWorks(id int64) ([]*domain.Work, error) {
-	return app.WorkSetService.GetWorksByWorkSetId(context.Background(), id)
+func (app *App) WorkSetGetWorks(id int64) (*model.ApiResponse[[]*domain.Work], error) {
+	works, err := app.WorkSetService.GetWorksByWorkSetId(context.Background(), id)
+	if err != nil {
+		return model.Error[[]*domain.Work](err.Error()), nil
+	}
+	return model.Success(works), nil
 }
 
 // WorkSetLinkBatch 批量链接作品到作品集
@@ -71,6 +87,10 @@ func (app *App) WorkSetGetCoverWorkId(workSetId int64) (int64, error) {
 }
 
 // WorkSetListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品信息
-func (app *App) WorkSetListWorkSetWithWorkByIds(workSetIds []int64) ([]*workSet.WorkSetWithWorksDTO, error) {
-	return app.WorkSetService.ListWorkSetWithWorkByIds(context.Background(), workSetIds)
+func (app *App) WorkSetListWorkSetWithWorkByIds(workSetIds []int64) (*model.ApiResponse[[]*workSet.WorkSetWithWorksDTO], error) {
+	workSets, err := app.WorkSetService.ListWorkSetWithWorkByIds(context.Background(), workSetIds)
+	if err != nil {
+		return model.Error[[]*workSet.WorkSetWithWorksDTO](err.Error()), nil
+	}
+	return model.Success(workSets), nil
 }

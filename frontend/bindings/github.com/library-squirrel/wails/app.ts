@@ -27,7 +27,7 @@ import * as localAuthor$0 from "./internal/localAuthor/models.js";
 import * as localTag$0 from "./internal/localTag/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "./internal/model/models.js";
+import * as model$1 from "./internal/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as plugin$0 from "./internal/plugin/models.js";
@@ -57,7 +57,7 @@ import * as work$0 from "./internal/work/models.js";
 import * as workSet$0 from "./internal/workSet/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "./pkg/model/models.js";
+import * as model$0 from "./pkg/model/models.js";
 
 /**
  * AppLauncherOpen 使用指定应用打开文件
@@ -77,18 +77,18 @@ export function AppLauncherOpenImage(url: string): $CancellablePromise<void> {
  * DirSelect opens a directory/file selection dialog
  * openFile: true=select file, false=select directory
  */
-export function DirSelect(openFile: boolean): $CancellablePromise<fileSysUtil$0.OpenDialogResult | null> {
+export function DirSelect(openFile: boolean): $CancellablePromise<model$0.ApiResponse<fileSysUtil$0.OpenDialogResult | null> | null> {
     return $Call.ByID(465687812, openFile).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
 /**
  * GetAllSlots 获取所有插槽配置
  */
-export function GetAllSlots(): $CancellablePromise<(model$0.SlotConfig | null)[]> {
+export function GetAllSlots(): $CancellablePromise<(model$1.SlotConfig | null)[]> {
     return $Call.ByID(1722208631).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
 }
 
@@ -123,50 +123,50 @@ export function LocalAuthorDeleteById(id: number): $CancellablePromise<void> {
 /**
  * LocalAuthorGetById 获取本地作者
  */
-export function LocalAuthorGetById(id: number): $CancellablePromise<model$0.LocalAuthor | null> {
+export function LocalAuthorGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.LocalAuthor | null> | null> {
     return $Call.ByID(2011374273, id).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType10($result);
     });
 }
 
 /**
  * LocalAuthorListSelectItems 查询选择项列表
  */
-export function LocalAuthorListSelectItems(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<(model$0.SelectItem | null)[]> {
+export function LocalAuthorListSelectItems(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(model$1.SelectItem | null)[]> | null> {
     return $Call.ByID(816895597, query).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType15($result);
     });
 }
 
 /**
  * LocalAuthorQueryPage 分页查询本地作者
  */
-export function LocalAuthorQueryPage(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<model$1.Page<model$0.LocalAuthor> | null> {
+export function LocalAuthorQueryPage(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.LocalAuthor> | null> | null> {
     return $Call.ByID(3708023858, query).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType19($result);
     });
 }
 
 /**
  * LocalAuthorQuerySelectItemPage 分页查询选择项
  */
-export function LocalAuthorQuerySelectItemPage(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function LocalAuthorQuerySelectItemPage(query: localAuthor$0.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(3505696681, query).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * LocalAuthorSave 保存本地作者
  */
-export function LocalAuthorSave(author: model$0.LocalAuthor | null): $CancellablePromise<number> {
+export function LocalAuthorSave(author: model$1.LocalAuthor | null): $CancellablePromise<number> {
     return $Call.ByID(1856528990, author);
 }
 
 /**
  * LocalAuthorUpdateById 更新本地作者
  */
-export function LocalAuthorUpdateById(author: model$0.LocalAuthor | null): $CancellablePromise<void> {
+export function LocalAuthorUpdateById(author: model$1.LocalAuthor | null): $CancellablePromise<void> {
     return $Call.ByID(3549886774, author);
 }
 
@@ -180,86 +180,86 @@ export function LocalTagDeleteById(id: number): $CancellablePromise<void> {
 /**
  * LocalTagGetById 获取本地标签
  */
-export function LocalTagGetById(id: number): $CancellablePromise<model$0.LocalTag | null> {
+export function LocalTagGetById(id: number): $CancellablePromise<model$1.LocalTag | null> {
     return $Call.ByID(2403234636, id).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType25($result);
     });
 }
 
 /**
  * LocalTagGetTree 获取标签树形结构
  */
-export function LocalTagGetTree(rootId: number, depth: number): $CancellablePromise<(model$0.LocalTag | null)[]> {
+export function LocalTagGetTree(rootId: number, depth: number): $CancellablePromise<model$0.ApiResponse<(model$1.LocalTag | null)[]> | null> {
     return $Call.ByID(1047318428, rootId, depth).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType28($result);
     });
 }
 
 /**
  * LocalTagListByWorkId 查询作品关联的标签
  */
-export function LocalTagListByWorkId(workId: number): $CancellablePromise<(model$0.LocalTag | null)[]> {
+export function LocalTagListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.LocalTag | null)[]> | null> {
     return $Call.ByID(3776292877, workId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType28($result);
     });
 }
 
 /**
  * LocalTagListSelectItems 查询选择项列表
  */
-export function LocalTagListSelectItems(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<(model$0.SelectItem | null)[]> {
+export function LocalTagListSelectItems(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(model$1.SelectItem | null)[]> | null> {
     return $Call.ByID(620412228, query).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType15($result);
     });
 }
 
 /**
  * LocalTagQueryDTOPage DTO分页查询本地标签
  */
-export function LocalTagQueryDTOPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$1.Page<model$0.LocalTag> | null> {
+export function LocalTagQueryDTOPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.LocalTag> | null> | null> {
     return $Call.ByID(1040351930, query).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType32($result);
     });
 }
 
 /**
  * LocalTagQueryPage 分页查询本地标签
  */
-export function LocalTagQueryPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$1.Page<model$0.LocalTag> | null> {
+export function LocalTagQueryPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.LocalTag> | null> | null> {
     return $Call.ByID(876321231, query).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType32($result);
     });
 }
 
 /**
  * LocalTagQuerySelectItemPage 分页查询选择项
  */
-export function LocalTagQuerySelectItemPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function LocalTagQuerySelectItemPage(query: localTag$0.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(2021674520, query).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * LocalTagQuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function LocalTagQuerySelectItemPageByWorkId(query: localTag$0.LocalTagQueryDTO | null, workId: number): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function LocalTagQuerySelectItemPageByWorkId(query: localTag$0.LocalTagQueryDTO | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(3950833805, query, workId).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * LocalTagSave 保存本地标签
  */
-export function LocalTagSave(tag: model$0.LocalTag | null): $CancellablePromise<number> {
+export function LocalTagSave(tag: model$1.LocalTag | null): $CancellablePromise<number> {
     return $Call.ByID(2071544525, tag);
 }
 
 /**
  * LocalTagUpdateById 更新本地标签
  */
-export function LocalTagUpdateById(tag: model$0.LocalTag | null): $CancellablePromise<void> {
+export function LocalTagUpdateById(tag: model$1.LocalTag | null): $CancellablePromise<void> {
     return $Call.ByID(862537037, tag);
 }
 
@@ -294,61 +294,61 @@ export function PluginDelete(id: number): $CancellablePromise<void> {
 /**
  * PluginGetById 获取插件
  */
-export function PluginGetById(id: number): $CancellablePromise<model$0.Plugin | null> {
+export function PluginGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
     return $Call.ByID(4028113562, id).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType36($result);
     });
 }
 
 /**
  * PluginGetByPublicId 根据公开ID获取插件
  */
-export function PluginGetByPublicId(publicId: string): $CancellablePromise<model$0.Plugin | null> {
+export function PluginGetByPublicId(publicId: string): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
     return $Call.ByID(2401997535, publicId).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType36($result);
     });
 }
 
 /**
  * PluginInstallFromPath 从插件包路径安装插件
  */
-export function PluginInstallFromPath(packagePath: string): $CancellablePromise<model$0.Plugin | null> {
+export function PluginInstallFromPath(packagePath: string): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
     return $Call.ByID(2919852866, packagePath).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType36($result);
     });
 }
 
 /**
  * PluginQueryPage 分页查询插件
  */
-export function PluginQueryPage(query: plugin$0.PluginQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Plugin> | null> {
+export function PluginQueryPage(query: plugin$0.PluginQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Plugin> | null> | null> {
     return $Call.ByID(3224216517, query).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType40($result);
     });
 }
 
 /**
  * PluginReinstall 重新安装插件
  */
-export function PluginReinstall(publicId: string): $CancellablePromise<model$0.Plugin | null> {
+export function PluginReinstall(publicId: string): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
     return $Call.ByID(2048201158, publicId).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType36($result);
     });
 }
 
 /**
  * PluginReinstallFromPath 从指定路径重新安装插件
  */
-export function PluginReinstallFromPath(publicId: string, packagePath: string): $CancellablePromise<model$0.Plugin | null> {
+export function PluginReinstallFromPath(publicId: string, packagePath: string): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
     return $Call.ByID(4010602881, publicId, packagePath).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType36($result);
     });
 }
 
 /**
  * PluginSave 保存插件
  */
-export function PluginSave(plugin: model$0.Plugin | null): $CancellablePromise<void> {
+export function PluginSave(plugin: model$1.Plugin | null): $CancellablePromise<void> {
     return $Call.ByID(3361152159, plugin);
 }
 
@@ -362,34 +362,34 @@ export function PluginUninstall(publicId: string): $CancellablePromise<void> {
 /**
  * PluginUpdate 更新插件
  */
-export function PluginUpdate(plugin: model$0.Plugin | null): $CancellablePromise<void> {
+export function PluginUpdate(plugin: model$1.Plugin | null): $CancellablePromise<void> {
     return $Call.ByID(88403595, plugin);
 }
 
 /**
  * SearchQuerySearchConditionPage 查询搜索条件分页
  */
-export function SearchQuerySearchConditionPage(keyword: string, types: model$0.SearchType[]): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function SearchQuerySearchConditionPage(keyword: string, types: model$1.SearchType[]): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(1879546651, keyword, types).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * SearchQueryWorkPage 查询作品分页
  */
-export function SearchQueryWorkPage(conditions: (model$0.SearchCondition | null)[]): $CancellablePromise<model$1.Page<model$0.WorkFullDTO> | null> {
+export function SearchQueryWorkPage(conditions: (model$1.SearchCondition | null)[]): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.WorkFullDTO> | null> | null> {
     return $Call.ByID(3258723913, conditions).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType45($result);
     });
 }
 
 /**
  * SearchQueryWorkSetPage 查询作品集分页
  */
-export function SearchQueryWorkSetPage(keyword: string, siteId: number): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function SearchQueryWorkSetPage(keyword: string, siteId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(2787187833, keyword, siteId).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
@@ -412,7 +412,7 @@ export function SecureStorageHasKey(storageKey: string): $CancellablePromise<boo
  */
 export function SecureStorageListKeys(): $CancellablePromise<string[]> {
     return $Call.ByID(1475378861).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType46($result);
     });
 }
 
@@ -442,7 +442,7 @@ export function SetEventEmitter(emitter: extension$0.WailsEventEmitter): $Cancel
  */
 export function SettingsGetSettings(): $CancellablePromise<settings$0.Settings | null> {
     return $Call.ByID(4192390385).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType48($result);
     });
 }
 
@@ -463,7 +463,7 @@ export function SettingsSaveSettings(changes: settings$0.SettingChange[]): $Canc
 /**
  * SiteAuthorCreateAndBindSameNameLocalAuthor 创建并绑定同名的本地作者
  */
-export function SiteAuthorCreateAndBindSameNameLocalAuthor(author: model$0.SiteAuthor | null): $CancellablePromise<boolean> {
+export function SiteAuthorCreateAndBindSameNameLocalAuthor(author: model$1.SiteAuthor | null): $CancellablePromise<boolean> {
     return $Call.ByID(2020438472, author);
 }
 
@@ -477,77 +477,77 @@ export function SiteAuthorDeleteById(id: number): $CancellablePromise<void> {
 /**
  * SiteAuthorGetById 获取站点作者
  */
-export function SiteAuthorGetById(id: number): $CancellablePromise<model$0.SiteAuthor | null> {
+export function SiteAuthorGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.SiteAuthor | null> | null> {
     return $Call.ByID(4251560035, id).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType52($result);
     });
 }
 
 /**
  * SiteAuthorListBySiteAuthorIds 根据站点作者ID列表查询
  */
-export function SiteAuthorListBySiteAuthorIds(siteAuthorIds: number[]): $CancellablePromise<(model$0.SiteAuthor | null)[]> {
+export function SiteAuthorListBySiteAuthorIds(siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$1.SiteAuthor | null)[]> | null> {
     return $Call.ByID(1012776162, siteAuthorIds).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType55($result);
     });
 }
 
 /**
  * SiteAuthorListByWorkId 查询作品的站点作者
  */
-export function SiteAuthorListByWorkId(workId: number): $CancellablePromise<(model$1.RankedSiteAuthor | null)[]> {
+export function SiteAuthorListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$0.RankedSiteAuthor | null)[]> | null> {
     return $Call.ByID(1769741964, workId).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType60($result);
     });
 }
 
 /**
  * SiteAuthorListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
  */
-export function SiteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<(model$1.RankedSiteAuthorWithWorkId | null)[]> {
+export function SiteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$0.RankedSiteAuthorWithWorkId | null)[]> | null> {
     return $Call.ByID(2190011240, workIds).then(($result: any) => {
-        return $$createType37($result);
+        return $$createType65($result);
     });
 }
 
 /**
  * SiteAuthorQueryBoundOrUnboundInLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
  */
-export function SiteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SiteAuthorFullDTO> | null> {
+export function SiteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteAuthorFullDTO> | null> | null> {
     return $Call.ByID(364052781, query).then(($result: any) => {
-        return $$createType40($result);
+        return $$createType70($result);
     });
 }
 
 /**
  * SiteAuthorQueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
  */
-export function SiteAuthorQueryLocalRelateDTOPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SiteAuthorLocalRelateDTO> | null> {
+export function SiteAuthorQueryLocalRelateDTOPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteAuthorLocalRelateDTO> | null> | null> {
     return $Call.ByID(1730462483, query).then(($result: any) => {
-        return $$createType43($result);
+        return $$createType75($result);
     });
 }
 
 /**
  * SiteAuthorQueryPage 分页查询站点作者
  */
-export function SiteAuthorQueryPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SiteAuthor> | null> {
+export function SiteAuthorQueryPage(query: siteAuthor$0.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteAuthor> | null> | null> {
     return $Call.ByID(516878028, query).then(($result: any) => {
-        return $$createType45($result);
+        return $$createType79($result);
     });
 }
 
 /**
  * SiteAuthorSave 保存站点作者
  */
-export function SiteAuthorSave(author: model$0.SiteAuthor | null): $CancellablePromise<void> {
+export function SiteAuthorSave(author: model$1.SiteAuthor | null): $CancellablePromise<void> {
     return $Call.ByID(460779588, author);
 }
 
 /**
  * SiteAuthorSaveBatch 批量保存站点作者
  */
-export function SiteAuthorSaveBatch(authors: (model$0.SiteAuthor | null)[]): $CancellablePromise<void> {
+export function SiteAuthorSaveBatch(authors: (model$1.SiteAuthor | null)[]): $CancellablePromise<void> {
     return $Call.ByID(1500792172, authors);
 }
 
@@ -561,7 +561,7 @@ export function SiteAuthorUpdateBindLocalAuthor(localAuthorId: number, siteAutho
 /**
  * SiteAuthorUpdateById 更新站点作者
  */
-export function SiteAuthorUpdateById(author: model$0.SiteAuthor | null): $CancellablePromise<void> {
+export function SiteAuthorUpdateById(author: model$1.SiteAuthor | null): $CancellablePromise<void> {
     return $Call.ByID(1973443432, author);
 }
 
@@ -570,7 +570,7 @@ export function SiteAuthorUpdateById(author: model$0.SiteAuthor | null): $Cancel
  */
 export function SiteBrowserGetById(pluginPublicId: string, contributionId: string): $CancellablePromise<siteBrowser$0.SiteBrowserDTO | null> {
     return $Call.ByID(3561778450, pluginPublicId, contributionId).then(($result: any) => {
-        return $$createType47($result);
+        return $$createType81($result);
     });
 }
 
@@ -579,7 +579,7 @@ export function SiteBrowserGetById(pluginPublicId: string, contributionId: strin
  */
 export function SiteBrowserGetByPluginId(pluginId: number): $CancellablePromise<(siteBrowser$0.SiteBrowserDTO | null)[]> {
     return $Call.ByID(1011055753, pluginId).then(($result: any) => {
-        return $$createType48($result);
+        return $$createType82($result);
     });
 }
 
@@ -588,7 +588,7 @@ export function SiteBrowserGetByPluginId(pluginId: number): $CancellablePromise<
  */
 export function SiteBrowserList(): $CancellablePromise<(siteBrowser$0.SiteBrowserDTO | null)[]> {
     return $Call.ByID(1984071190).then(($result: any) => {
-        return $$createType48($result);
+        return $$createType82($result);
     });
 }
 
@@ -604,7 +604,7 @@ export function SiteBrowserOpen(pluginPublicId: string, contributionId: string):
  */
 export function SiteBrowserQueryPage(): $CancellablePromise<(siteBrowser$0.SiteBrowserDTO | null)[]> {
     return $Call.ByID(3976384365).then(($result: any) => {
-        return $$createType48($result);
+        return $$createType82($result);
     });
 }
 
@@ -618,43 +618,43 @@ export function SiteDeleteById(id: number): $CancellablePromise<void> {
 /**
  * SiteGetById 获取站点
  */
-export function SiteGetById(id: number): $CancellablePromise<model$0.Site | null> {
+export function SiteGetById(id: number): $CancellablePromise<model$1.Site | null> {
     return $Call.ByID(1395703030, id).then(($result: any) => {
-        return $$createType50($result);
+        return $$createType84($result);
     });
 }
 
 /**
  * SiteQueryPage 分页查询站点
  */
-export function SiteQueryPage(query: site$0.SiteQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Site> | null> {
+export function SiteQueryPage(query: site$0.SiteQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Site> | null> | null> {
     return $Call.ByID(108838609, query).then(($result: any) => {
-        return $$createType52($result);
+        return $$createType88($result);
     });
 }
 
 /**
  * SiteQuerySelectItemPage 分页查询选择项
  */
-export function SiteQuerySelectItemPage(query: site$0.SiteQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function SiteQuerySelectItemPage(query: site$0.SiteQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(566700810, query).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * SiteSave 保存站点
  */
-export function SiteSave(site: model$0.Site | null): $CancellablePromise<number> {
+export function SiteSave(site: model$1.Site | null): $CancellablePromise<number> {
     return $Call.ByID(3882637251, site);
 }
 
 /**
  * SiteTagCreateAndBindSameNameLocalTag 创建并绑定同名本地标签
  */
-export function SiteTagCreateAndBindSameNameLocalTag(tag: model$0.SiteTag | null): $CancellablePromise<model$0.LocalTag | null> {
+export function SiteTagCreateAndBindSameNameLocalTag(tag: model$1.SiteTag | null): $CancellablePromise<model$0.ApiResponse<model$1.LocalTag | null> | null> {
     return $Call.ByID(1248514268, tag).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType90($result);
     });
 }
 
@@ -668,86 +668,86 @@ export function SiteTagDeleteById(id: number): $CancellablePromise<void> {
 /**
  * SiteTagGetById 获取站点标签
  */
-export function SiteTagGetById(id: number): $CancellablePromise<model$0.SiteTag | null> {
+export function SiteTagGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.SiteTag | null> | null> {
     return $Call.ByID(805393414, id).then(($result: any) => {
-        return $$createType54($result);
+        return $$createType94($result);
     });
 }
 
 /**
  * SiteTagListBySiteTagIds 根据站点标签ID列表查询
  */
-export function SiteTagListBySiteTagIds(siteTagIds: number[]): $CancellablePromise<(model$0.SiteTag | null)[]> {
+export function SiteTagListBySiteTagIds(siteTagIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$1.SiteTag | null)[]> | null> {
     return $Call.ByID(473628218, siteTagIds).then(($result: any) => {
-        return $$createType55($result);
+        return $$createType97($result);
     });
 }
 
 /**
  * SiteTagListByWorkId 查询作品的站点标签
  */
-export function SiteTagListByWorkId(workId: number): $CancellablePromise<(model$0.SiteTag | null)[]> {
+export function SiteTagListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.SiteTag | null)[]> | null> {
     return $Call.ByID(2800655243, workId).then(($result: any) => {
-        return $$createType55($result);
+        return $$createType97($result);
     });
 }
 
 /**
  * SiteTagQueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
  */
-export function SiteTagQueryBoundOrUnboundToLocalTagPage(query: siteTag$0.SiteTagQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SiteTagFullDTO> | null> {
+export function SiteTagQueryBoundOrUnboundToLocalTagPage(query: siteTag$0.SiteTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteTagFullDTO> | null> | null> {
     return $Call.ByID(1802486415, query).then(($result: any) => {
-        return $$createType58($result);
+        return $$createType102($result);
     });
 }
 
 /**
  * SiteTagQueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
  */
-export function SiteTagQueryLocalRelateDTOPage(query: siteTag$0.SiteTagQueryDTO | null, workId: number, boundOnWorkId: boolean | null): $CancellablePromise<model$1.Page<model$0.SiteTagLocalRelateDTO> | null> {
+export function SiteTagQueryLocalRelateDTOPage(query: siteTag$0.SiteTagQueryDTO | null, workId: number, boundOnWorkId: boolean | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteTagLocalRelateDTO> | null> | null> {
     return $Call.ByID(3174379342, query, workId, boundOnWorkId).then(($result: any) => {
-        return $$createType61($result);
+        return $$createType107($result);
     });
 }
 
 /**
  * SiteTagQueryPage 分页查询站点标签
  */
-export function SiteTagQueryPage(query: siteTag$0.SiteTagQueryDTO | null): $CancellablePromise<model$1.Page<model$0.SiteTag> | null> {
+export function SiteTagQueryPage(query: siteTag$0.SiteTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteTag> | null> | null> {
     return $Call.ByID(3164557441, query).then(($result: any) => {
-        return $$createType63($result);
+        return $$createType111($result);
     });
 }
 
 /**
  * SiteTagQueryPageByWorkId 根据作品ID分页查询站点标签
  */
-export function SiteTagQueryPageByWorkId(query: siteTag$0.SiteTagQueryDTO | null, workId: number, boundOnWorkId: boolean | null): $CancellablePromise<model$1.Page<model$0.SiteTagFullDTO> | null> {
+export function SiteTagQueryPageByWorkId(query: siteTag$0.SiteTagQueryDTO | null, workId: number, boundOnWorkId: boolean | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteTagFullDTO> | null> | null> {
     return $Call.ByID(2841155544, query, workId, boundOnWorkId).then(($result: any) => {
-        return $$createType58($result);
+        return $$createType102($result);
     });
 }
 
 /**
  * SiteTagQuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
  */
-export function SiteTagQuerySelectItemPageByWorkId(query: siteTag$0.SiteTagQueryDTO | null, workId: number): $CancellablePromise<model$1.Page<model$0.SelectItem> | null> {
+export function SiteTagQuerySelectItemPageByWorkId(query: siteTag$0.SiteTagQueryDTO | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
     return $Call.ByID(2927192419, query, workId).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType23($result);
     });
 }
 
 /**
  * SiteTagSave 保存站点标签
  */
-export function SiteTagSave(tag: model$0.SiteTag | null): $CancellablePromise<void> {
+export function SiteTagSave(tag: model$1.SiteTag | null): $CancellablePromise<void> {
     return $Call.ByID(3380364275, tag);
 }
 
 /**
  * SiteTagSaveBatch 批量保存站点标签
  */
-export function SiteTagSaveBatch(tags: (model$0.SiteTag | null)[]): $CancellablePromise<void> {
+export function SiteTagSaveBatch(tags: (model$1.SiteTag | null)[]): $CancellablePromise<void> {
     return $Call.ByID(1111165445, tags);
 }
 
@@ -761,32 +761,32 @@ export function SiteTagUpdateBindLocalTag(localTagId: number, siteTagIds: number
 /**
  * SiteTagUpdateById 更新站点标签
  */
-export function SiteTagUpdateById(tag: model$0.SiteTag | null): $CancellablePromise<void> {
+export function SiteTagUpdateById(tag: model$1.SiteTag | null): $CancellablePromise<void> {
     return $Call.ByID(2386805239, tag);
 }
 
 /**
  * SiteUpdateById 更新站点
  */
-export function SiteUpdateById(site: model$0.Site | null): $CancellablePromise<void> {
+export function SiteUpdateById(site: model$1.Site | null): $CancellablePromise<void> {
     return $Call.ByID(3909961863, site);
 }
 
 /**
  * TaskCreate 创建任务
  */
-export function TaskCreate(req: task$0.CreateTaskRequest | null): $CancellablePromise<model$0.Task | null> {
+export function TaskCreate(req: task$0.CreateTaskRequest | null): $CancellablePromise<model$0.ApiResponse<model$1.Task | null> | null> {
     return $Call.ByID(3040982704, req).then(($result: any) => {
-        return $$createType65($result);
+        return $$createType115($result);
     });
 }
 
 /**
  * TaskCreateByURL 根据URL创建任务
  */
-export function TaskCreateByURL(url: string): $CancellablePromise<task$0.CreateTaskByURLResponse | null> {
+export function TaskCreateByURL(url: string): $CancellablePromise<model$0.ApiResponse<task$0.CreateTaskByURLResponse | null> | null> {
     return $Call.ByID(3168484342, url).then(($result: any) => {
-        return $$createType67($result);
+        return $$createType119($result);
     });
 }
 
@@ -800,36 +800,36 @@ export function TaskDelete(id: number): $CancellablePromise<void> {
 /**
  * TaskGetById 获取任务
  */
-export function TaskGetById(id: number): $CancellablePromise<model$0.Task | null> {
+export function TaskGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Task | null> | null> {
     return $Call.ByID(3655530136, id).then(($result: any) => {
-        return $$createType65($result);
+        return $$createType115($result);
     });
 }
 
 /**
  * TaskListSchedule 查询任务进度列表
  */
-export function TaskListSchedule(ids: number[]): $CancellablePromise<(task$0.TaskScheduleDTO | null)[]> {
+export function TaskListSchedule(ids: number[]): $CancellablePromise<model$0.ApiResponse<(task$0.TaskScheduleDTO | null)[]> | null> {
     return $Call.ByID(1609018865, ids).then(($result: any) => {
-        return $$createType70($result);
+        return $$createType124($result);
     });
 }
 
 /**
  * TaskListStatus 查询状态列表
  */
-export function TaskListStatus(ids: number[]): $CancellablePromise<(task$0.TaskScheduleDTO | null)[]> {
+export function TaskListStatus(ids: number[]): $CancellablePromise<model$0.ApiResponse<(task$0.TaskScheduleDTO | null)[]> | null> {
     return $Call.ByID(295692598, ids).then(($result: any) => {
-        return $$createType70($result);
+        return $$createType124($result);
     });
 }
 
 /**
  * TaskListTree 获取任务树列表
  */
-export function TaskListTree(taskIds: number[]): $CancellablePromise<(model$0.Task | null)[]> {
+export function TaskListTree(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$1.Task | null)[]> | null> {
     return $Call.ByID(2663562940, taskIds).then(($result: any) => {
-        return $$createType71($result);
+        return $$createType127($result);
     });
 }
 
@@ -871,27 +871,27 @@ export function TaskManagerStopTree(taskId: number): $CancellablePromise<void> {
 /**
  * TaskQueryChildrenTaskPage 查询子任务分页
  */
-export function TaskQueryChildrenTaskPage(pid: number, query: task$0.TaskQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Task> | null> {
+export function TaskQueryChildrenTaskPage(pid: number, query: task$0.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
     return $Call.ByID(2032898653, pid, query).then(($result: any) => {
-        return $$createType73($result);
+        return $$createType131($result);
     });
 }
 
 /**
  * TaskQueryPage 分页查询任务
  */
-export function TaskQueryPage(query: task$0.TaskQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Task> | null> {
+export function TaskQueryPage(query: task$0.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
     return $Call.ByID(3107137131, query).then(($result: any) => {
-        return $$createType73($result);
+        return $$createType131($result);
     });
 }
 
 /**
  * TaskQueryParentPage 分页查询父任务
  */
-export function TaskQueryParentPage(query: task$0.TaskQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Task> | null> {
+export function TaskQueryParentPage(query: task$0.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
     return $Call.ByID(631058699, query).then(($result: any) => {
-        return $$createType73($result);
+        return $$createType131($result);
     });
 }
 
@@ -905,14 +905,14 @@ export function TaskRefreshStatus(taskId: number): $CancellablePromise<number> {
 /**
  * TaskSave 保存任务
  */
-export function TaskSave(task: model$0.Task | null): $CancellablePromise<void> {
+export function TaskSave(task: model$1.Task | null): $CancellablePromise<void> {
     return $Call.ByID(1784775745, task);
 }
 
 /**
  * TaskUpdate 更新任务
  */
-export function TaskUpdate(task: model$0.Task | null): $CancellablePromise<void> {
+export function TaskUpdate(task: model$1.Task | null): $CancellablePromise<void> {
     return $Call.ByID(1735381669, task);
 }
 
@@ -926,45 +926,45 @@ export function WorkDeleteWorkAndSurroundingData(id: number): $CancellablePromis
 /**
  * WorkGetById 获取作品
  */
-export function WorkGetById(id: number): $CancellablePromise<model$0.Work | null> {
+export function WorkGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Work | null> | null> {
     return $Call.ByID(2050133172, id).then(($result: any) => {
-        return $$createType75($result);
+        return $$createType135($result);
     });
 }
 
 /**
  * WorkGetBySiteAndSiteWorkID 根据站点和站点作品ID查询
  */
-export function WorkGetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.Work | null> {
+export function WorkGetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.ApiResponse<model$1.Work | null> | null> {
     return $Call.ByID(2299831656, siteId, siteWorkId).then(($result: any) => {
-        return $$createType75($result);
+        return $$createType135($result);
     });
 }
 
 /**
  * WorkGetFullWorkInfoById 获取作品完整信息
  */
-export function WorkGetFullWorkInfoById(id: number): $CancellablePromise<model$0.WorkFullDTO | null> {
+export function WorkGetFullWorkInfoById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.WorkFullDTO | null> | null> {
     return $Call.ByID(3543933152, id).then(($result: any) => {
-        return $$createType76($result);
+        return $$createType138($result);
     });
 }
 
 /**
  * WorkListByIds 根据ID列表批量查询
  */
-export function WorkListByIds(ids: number[]): $CancellablePromise<(model$0.Work | null)[]> {
+export function WorkListByIds(ids: number[]): $CancellablePromise<model$0.ApiResponse<(model$1.Work | null)[]> | null> {
     return $Call.ByID(1553060769, ids).then(($result: any) => {
-        return $$createType77($result);
+        return $$createType141($result);
     });
 }
 
 /**
  * WorkQueryPage 分页查询作品
  */
-export function WorkQueryPage(query: work$0.WorkQueryDTO | null): $CancellablePromise<model$1.Page<model$0.Work> | null> {
+export function WorkQueryPage(query: work$0.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Work> | null> | null> {
     return $Call.ByID(1574219143, query).then(($result: any) => {
-        return $$createType79($result);
+        return $$createType145($result);
     });
 }
 
@@ -978,9 +978,9 @@ export function WorkSetDelete(id: number): $CancellablePromise<void> {
 /**
  * WorkSetGetById 获取作品集
  */
-export function WorkSetGetById(id: number): $CancellablePromise<model$0.WorkSet | null> {
+export function WorkSetGetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.WorkSet | null> | null> {
     return $Call.ByID(1028931508, id).then(($result: any) => {
-        return $$createType81($result);
+        return $$createType149($result);
     });
 }
 
@@ -994,9 +994,9 @@ export function WorkSetGetCoverWorkId(workSetId: number): $CancellablePromise<nu
 /**
  * WorkSetGetWorks 获取作品集关联的作品列表
  */
-export function WorkSetGetWorks(id: number): $CancellablePromise<(model$0.Work | null)[]> {
+export function WorkSetGetWorks(id: number): $CancellablePromise<model$0.ApiResponse<(model$1.Work | null)[]> | null> {
     return $Call.ByID(2454336438, id).then(($result: any) => {
-        return $$createType77($result);
+        return $$createType141($result);
     });
 }
 
@@ -1010,27 +1010,27 @@ export function WorkSetLinkBatch(workSetId: number, workIds: number[]): $Cancell
 /**
  * WorkSetListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品信息
  */
-export function WorkSetListWorkSetWithWorkByIds(workSetIds: number[]): $CancellablePromise<(workSet$0.WorkSetWithWorksDTO | null)[]> {
+export function WorkSetListWorkSetWithWorkByIds(workSetIds: number[]): $CancellablePromise<model$0.ApiResponse<(workSet$0.WorkSetWithWorksDTO | null)[]> | null> {
     return $Call.ByID(650571035, workSetIds).then(($result: any) => {
-        return $$createType84($result);
+        return $$createType154($result);
     });
 }
 
 /**
  * WorkSetQueryPage 分页查询作品集
  */
-export function WorkSetQueryPage(query: workSet$0.WorkSetQueryDTO | null): $CancellablePromise<model$1.Page<model$0.WorkSet> | null> {
+export function WorkSetQueryPage(query: workSet$0.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.WorkSet> | null> | null> {
     return $Call.ByID(3690272903, query).then(($result: any) => {
-        return $$createType86($result);
+        return $$createType158($result);
     });
 }
 
 /**
  * WorkSetQueryPageWithCover 带封面的作品集分页查询
  */
-export function WorkSetQueryPageWithCover(query: workSet$0.WorkSetQueryDTO | null): $CancellablePromise<model$1.Page<workSet$0.WorkSetWithCoverDTO> | null> {
+export function WorkSetQueryPageWithCover(query: workSet$0.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<workSet$0.WorkSetWithCoverDTO> | null> | null> {
     return $Call.ByID(1265583158, query).then(($result: any) => {
-        return $$createType89($result);
+        return $$createType163($result);
     });
 }
 
@@ -1044,7 +1044,7 @@ export function WorkSetRemoveBatch(workSetId: number, workIds: number[]): $Cance
 /**
  * WorkSetSave 保存作品集
  */
-export function WorkSetSave(workSet: model$0.WorkSet | null): $CancellablePromise<void> {
+export function WorkSetSave(workSet: model$1.WorkSet | null): $CancellablePromise<void> {
     return $Call.ByID(577934917, workSet);
 }
 
@@ -1065,98 +1065,172 @@ export function WorkSetUnsetCover(workSetId: number, workId: number): $Cancellab
 /**
  * WorkSetUpdate 更新作品集
  */
-export function WorkSetUpdate(workSet: model$0.WorkSet | null): $CancellablePromise<void> {
+export function WorkSetUpdate(workSet: model$1.WorkSet | null): $CancellablePromise<void> {
     return $Call.ByID(2110825641, workSet);
 }
 
 // Private type creation functions
 const $$createType0 = fileSysUtil$0.OpenDialogResult.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$0.SlotConfig.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = model$0.LocalAuthor.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = model$0.SelectItem.createFrom;
+const $$createType4 = model$1.SlotConfig.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = model$1.LocalAuthor.createFrom;
 const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = model$1.Page.createFrom($$createType5);
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = model$1.Page.createFrom($$createType7);
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = model$0.LocalTag.createFrom;
+const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = model$1.SelectItem.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = model$0.ApiResponse.createFrom($$createType13);
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = model$1.Page.createFrom($$createType14);
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = model$0.Plugin.createFrom;
-const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = model$1.Page.createFrom($$createType19);
-const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = model$0.WorkFullDTO.createFrom;
-const $$createType24 = model$1.Page.createFrom($$createType23);
+const $$createType16 = model$0.Page.createFrom($$createType7);
+const $$createType17 = $Create.Nullable($$createType16);
+const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = model$0.Page.createFrom($$createType11);
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = model$0.ApiResponse.createFrom($$createType21);
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = model$1.LocalTag.createFrom;
 const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = $Create.Array($Create.Any);
-const $$createType27 = settings$0.Settings.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = model$0.ApiResponse.createFrom($$createType26);
 const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = model$0.SiteAuthor.createFrom;
+const $$createType29 = model$0.Page.createFrom($$createType24);
 const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = model$1.RankedSiteAuthor.createFrom;
-const $$createType33 = $Create.Nullable($$createType32);
-const $$createType34 = $Create.Array($$createType33);
-const $$createType35 = model$1.RankedSiteAuthorWithWorkId.createFrom;
+const $$createType31 = model$0.ApiResponse.createFrom($$createType30);
+const $$createType32 = $Create.Nullable($$createType31);
+const $$createType33 = model$1.Plugin.createFrom;
+const $$createType34 = $Create.Nullable($$createType33);
+const $$createType35 = model$0.ApiResponse.createFrom($$createType34);
 const $$createType36 = $Create.Nullable($$createType35);
-const $$createType37 = $Create.Array($$createType36);
-const $$createType38 = model$0.SiteAuthorFullDTO.createFrom;
-const $$createType39 = model$1.Page.createFrom($$createType38);
+const $$createType37 = model$0.Page.createFrom($$createType33);
+const $$createType38 = $Create.Nullable($$createType37);
+const $$createType39 = model$0.ApiResponse.createFrom($$createType38);
 const $$createType40 = $Create.Nullable($$createType39);
-const $$createType41 = model$0.SiteAuthorLocalRelateDTO.createFrom;
-const $$createType42 = model$1.Page.createFrom($$createType41);
+const $$createType41 = model$1.WorkFullDTO.createFrom;
+const $$createType42 = model$0.Page.createFrom($$createType41);
 const $$createType43 = $Create.Nullable($$createType42);
-const $$createType44 = model$1.Page.createFrom($$createType29);
+const $$createType44 = model$0.ApiResponse.createFrom($$createType43);
 const $$createType45 = $Create.Nullable($$createType44);
-const $$createType46 = siteBrowser$0.SiteBrowserDTO.createFrom;
-const $$createType47 = $Create.Nullable($$createType46);
-const $$createType48 = $Create.Array($$createType47);
-const $$createType49 = model$0.Site.createFrom;
+const $$createType46 = $Create.Array($Create.Any);
+const $$createType47 = settings$0.Settings.createFrom;
+const $$createType48 = $Create.Nullable($$createType47);
+const $$createType49 = model$1.SiteAuthor.createFrom;
 const $$createType50 = $Create.Nullable($$createType49);
-const $$createType51 = model$1.Page.createFrom($$createType49);
+const $$createType51 = model$0.ApiResponse.createFrom($$createType50);
 const $$createType52 = $Create.Nullable($$createType51);
-const $$createType53 = model$0.SiteTag.createFrom;
-const $$createType54 = $Create.Nullable($$createType53);
-const $$createType55 = $Create.Array($$createType54);
-const $$createType56 = model$0.SiteTagFullDTO.createFrom;
-const $$createType57 = model$1.Page.createFrom($$createType56);
-const $$createType58 = $Create.Nullable($$createType57);
-const $$createType59 = model$0.SiteTagLocalRelateDTO.createFrom;
-const $$createType60 = model$1.Page.createFrom($$createType59);
-const $$createType61 = $Create.Nullable($$createType60);
-const $$createType62 = model$1.Page.createFrom($$createType53);
-const $$createType63 = $Create.Nullable($$createType62);
-const $$createType64 = model$0.Task.createFrom;
+const $$createType53 = $Create.Array($$createType50);
+const $$createType54 = model$0.ApiResponse.createFrom($$createType53);
+const $$createType55 = $Create.Nullable($$createType54);
+const $$createType56 = model$0.RankedSiteAuthor.createFrom;
+const $$createType57 = $Create.Nullable($$createType56);
+const $$createType58 = $Create.Array($$createType57);
+const $$createType59 = model$0.ApiResponse.createFrom($$createType58);
+const $$createType60 = $Create.Nullable($$createType59);
+const $$createType61 = model$0.RankedSiteAuthorWithWorkId.createFrom;
+const $$createType62 = $Create.Nullable($$createType61);
+const $$createType63 = $Create.Array($$createType62);
+const $$createType64 = model$0.ApiResponse.createFrom($$createType63);
 const $$createType65 = $Create.Nullable($$createType64);
-const $$createType66 = task$0.CreateTaskByURLResponse.createFrom;
-const $$createType67 = $Create.Nullable($$createType66);
-const $$createType68 = task$0.TaskScheduleDTO.createFrom;
-const $$createType69 = $Create.Nullable($$createType68);
-const $$createType70 = $Create.Array($$createType69);
-const $$createType71 = $Create.Array($$createType65);
-const $$createType72 = model$1.Page.createFrom($$createType64);
+const $$createType66 = model$1.SiteAuthorFullDTO.createFrom;
+const $$createType67 = model$0.Page.createFrom($$createType66);
+const $$createType68 = $Create.Nullable($$createType67);
+const $$createType69 = model$0.ApiResponse.createFrom($$createType68);
+const $$createType70 = $Create.Nullable($$createType69);
+const $$createType71 = model$1.SiteAuthorLocalRelateDTO.createFrom;
+const $$createType72 = model$0.Page.createFrom($$createType71);
 const $$createType73 = $Create.Nullable($$createType72);
-const $$createType74 = model$0.Work.createFrom;
+const $$createType74 = model$0.ApiResponse.createFrom($$createType73);
 const $$createType75 = $Create.Nullable($$createType74);
-const $$createType76 = $Create.Nullable($$createType23);
-const $$createType77 = $Create.Array($$createType75);
-const $$createType78 = model$1.Page.createFrom($$createType74);
+const $$createType76 = model$0.Page.createFrom($$createType49);
+const $$createType77 = $Create.Nullable($$createType76);
+const $$createType78 = model$0.ApiResponse.createFrom($$createType77);
 const $$createType79 = $Create.Nullable($$createType78);
-const $$createType80 = model$0.WorkSet.createFrom;
+const $$createType80 = siteBrowser$0.SiteBrowserDTO.createFrom;
 const $$createType81 = $Create.Nullable($$createType80);
-const $$createType82 = workSet$0.WorkSetWithWorksDTO.createFrom;
-const $$createType83 = $Create.Nullable($$createType82);
-const $$createType84 = $Create.Array($$createType83);
-const $$createType85 = model$1.Page.createFrom($$createType80);
+const $$createType82 = $Create.Array($$createType81);
+const $$createType83 = model$1.Site.createFrom;
+const $$createType84 = $Create.Nullable($$createType83);
+const $$createType85 = model$0.Page.createFrom($$createType83);
 const $$createType86 = $Create.Nullable($$createType85);
-const $$createType87 = workSet$0.WorkSetWithCoverDTO.createFrom;
-const $$createType88 = model$1.Page.createFrom($$createType87);
-const $$createType89 = $Create.Nullable($$createType88);
+const $$createType87 = model$0.ApiResponse.createFrom($$createType86);
+const $$createType88 = $Create.Nullable($$createType87);
+const $$createType89 = model$0.ApiResponse.createFrom($$createType25);
+const $$createType90 = $Create.Nullable($$createType89);
+const $$createType91 = model$1.SiteTag.createFrom;
+const $$createType92 = $Create.Nullable($$createType91);
+const $$createType93 = model$0.ApiResponse.createFrom($$createType92);
+const $$createType94 = $Create.Nullable($$createType93);
+const $$createType95 = $Create.Array($$createType92);
+const $$createType96 = model$0.ApiResponse.createFrom($$createType95);
+const $$createType97 = $Create.Nullable($$createType96);
+const $$createType98 = model$1.SiteTagFullDTO.createFrom;
+const $$createType99 = model$0.Page.createFrom($$createType98);
+const $$createType100 = $Create.Nullable($$createType99);
+const $$createType101 = model$0.ApiResponse.createFrom($$createType100);
+const $$createType102 = $Create.Nullable($$createType101);
+const $$createType103 = model$1.SiteTagLocalRelateDTO.createFrom;
+const $$createType104 = model$0.Page.createFrom($$createType103);
+const $$createType105 = $Create.Nullable($$createType104);
+const $$createType106 = model$0.ApiResponse.createFrom($$createType105);
+const $$createType107 = $Create.Nullable($$createType106);
+const $$createType108 = model$0.Page.createFrom($$createType91);
+const $$createType109 = $Create.Nullable($$createType108);
+const $$createType110 = model$0.ApiResponse.createFrom($$createType109);
+const $$createType111 = $Create.Nullable($$createType110);
+const $$createType112 = model$1.Task.createFrom;
+const $$createType113 = $Create.Nullable($$createType112);
+const $$createType114 = model$0.ApiResponse.createFrom($$createType113);
+const $$createType115 = $Create.Nullable($$createType114);
+const $$createType116 = task$0.CreateTaskByURLResponse.createFrom;
+const $$createType117 = $Create.Nullable($$createType116);
+const $$createType118 = model$0.ApiResponse.createFrom($$createType117);
+const $$createType119 = $Create.Nullable($$createType118);
+const $$createType120 = task$0.TaskScheduleDTO.createFrom;
+const $$createType121 = $Create.Nullable($$createType120);
+const $$createType122 = $Create.Array($$createType121);
+const $$createType123 = model$0.ApiResponse.createFrom($$createType122);
+const $$createType124 = $Create.Nullable($$createType123);
+const $$createType125 = $Create.Array($$createType113);
+const $$createType126 = model$0.ApiResponse.createFrom($$createType125);
+const $$createType127 = $Create.Nullable($$createType126);
+const $$createType128 = model$0.Page.createFrom($$createType112);
+const $$createType129 = $Create.Nullable($$createType128);
+const $$createType130 = model$0.ApiResponse.createFrom($$createType129);
+const $$createType131 = $Create.Nullable($$createType130);
+const $$createType132 = model$1.Work.createFrom;
+const $$createType133 = $Create.Nullable($$createType132);
+const $$createType134 = model$0.ApiResponse.createFrom($$createType133);
+const $$createType135 = $Create.Nullable($$createType134);
+const $$createType136 = $Create.Nullable($$createType41);
+const $$createType137 = model$0.ApiResponse.createFrom($$createType136);
+const $$createType138 = $Create.Nullable($$createType137);
+const $$createType139 = $Create.Array($$createType133);
+const $$createType140 = model$0.ApiResponse.createFrom($$createType139);
+const $$createType141 = $Create.Nullable($$createType140);
+const $$createType142 = model$0.Page.createFrom($$createType132);
+const $$createType143 = $Create.Nullable($$createType142);
+const $$createType144 = model$0.ApiResponse.createFrom($$createType143);
+const $$createType145 = $Create.Nullable($$createType144);
+const $$createType146 = model$1.WorkSet.createFrom;
+const $$createType147 = $Create.Nullable($$createType146);
+const $$createType148 = model$0.ApiResponse.createFrom($$createType147);
+const $$createType149 = $Create.Nullable($$createType148);
+const $$createType150 = workSet$0.WorkSetWithWorksDTO.createFrom;
+const $$createType151 = $Create.Nullable($$createType150);
+const $$createType152 = $Create.Array($$createType151);
+const $$createType153 = model$0.ApiResponse.createFrom($$createType152);
+const $$createType154 = $Create.Nullable($$createType153);
+const $$createType155 = model$0.Page.createFrom($$createType146);
+const $$createType156 = $Create.Nullable($$createType155);
+const $$createType157 = model$0.ApiResponse.createFrom($$createType156);
+const $$createType158 = $Create.Nullable($$createType157);
+const $$createType159 = workSet$0.WorkSetWithCoverDTO.createFrom;
+const $$createType160 = model$0.Page.createFrom($$createType159);
+const $$createType161 = $Create.Nullable($$createType160);
+const $$createType162 = model$0.ApiResponse.createFrom($$createType161);
+const $$createType163 = $Create.Nullable($$createType162);

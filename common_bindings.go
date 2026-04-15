@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/library-squirrel/wails/internal/fileSysUtil"
+	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // ==================== Common Wails Bindings ====================
@@ -18,8 +19,12 @@ func (app *App) GetVersion() string {
 
 // DirSelect opens a directory/file selection dialog
 // openFile: true=select file, false=select directory
-func (app *App) DirSelect(openFile bool) (*fileSysUtil.OpenDialogResult, error) {
-	return app.FileSysUtilService.DirSelect(openFile, false)
+func (app *App) DirSelect(openFile bool) (*model.ApiResponse[*fileSysUtil.OpenDialogResult], error) {
+	result, err := app.FileSysUtilService.DirSelect(openFile, false)
+	if err != nil {
+		return model.Error[*fileSysUtil.OpenDialogResult](err.Error()), nil
+	}
+	return model.Success(result), nil
 }
 
 // OpenPath opens a file with the system's default application
