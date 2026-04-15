@@ -6,6 +6,42 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * SiteTagDTO 站点标签数据传输对象
+ */
+export class SiteTagDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteTagId": string | null;
+    "siteTagName": string | null;
+
+    /** Creates a new SiteTagDTO instance. */
+    constructor($$source: Partial<SiteTagDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteTagId" in $$source)) {
+            this["siteTagId"] = null;
+        }
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteTagDTO($$parsedSource as Partial<SiteTagDTO>);
+    }
+}
+
+/**
  * SiteTagQueryDTO 站点标签查询条件
  */
 export class SiteTagQueryDTO {

@@ -6,6 +6,42 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * WorkDTO 作品数据传输对象
+ */
+export class WorkDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "siteWorkName": string | null;
+
+    /** Creates a new WorkDTO instance. */
+    constructor($$source: Partial<WorkDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("siteWorkName" in $$source)) {
+            this["siteWorkName"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkDTO($$parsedSource as Partial<WorkDTO>);
+    }
+}
+
+/**
  * WorkQueryDTO 作品查询条件
  */
 export class WorkQueryDTO {

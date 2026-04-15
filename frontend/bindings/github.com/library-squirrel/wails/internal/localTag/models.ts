@@ -6,6 +6,38 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * LocalTagDTO 本地标签数据传输对象
+ */
+export class LocalTagDTO {
+    "id": number;
+    "localTagName": string | null;
+    "baseLocalTagId": number | null;
+
+    /** Creates a new LocalTagDTO instance. */
+    constructor($$source: Partial<LocalTagDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("localTagName" in $$source)) {
+            this["localTagName"] = null;
+        }
+        if (!("baseLocalTagId" in $$source)) {
+            this["baseLocalTagId"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalTagDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalTagDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LocalTagDTO($$parsedSource as Partial<LocalTagDTO>);
+    }
+}
+
+/**
  * LocalTagQueryDTO 本地标签查询条件
  */
 export class LocalTagQueryDTO {

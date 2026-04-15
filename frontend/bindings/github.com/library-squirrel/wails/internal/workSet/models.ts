@@ -5,9 +5,37 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as model$0 from "../model/models.js";
+/**
+ * WorkSetDTO 作品集数据传输对象
+ */
+export class WorkSetDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkSetName": string | null;
+
+    /** Creates a new WorkSetDTO instance. */
+    constructor($$source: Partial<WorkSetDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkSetName" in $$source)) {
+            this["siteWorkSetName"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkSetDTO($$parsedSource as Partial<WorkSetDTO>);
+    }
+}
 
 /**
  * WorkSetQueryDTO 作品集查询条件
@@ -101,79 +129,3 @@ export class WorkSetQueryDTO {
         return new WorkSetQueryDTO($$parsedSource as Partial<WorkSetQueryDTO>);
     }
 }
-
-/**
- * WorkSetWithCoverDTO 作品集及其封面作品信息
- */
-export class WorkSetWithCoverDTO {
-    "workSet": model$0.WorkSet | null;
-    "coverWork"?: model$0.Work | null;
-
-    /** Creates a new WorkSetWithCoverDTO instance. */
-    constructor($$source: Partial<WorkSetWithCoverDTO> = {}) {
-        if (!("workSet" in $$source)) {
-            this["workSet"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSetWithCoverDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetWithCoverDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("workSet" in $$parsedSource) {
-            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
-        }
-        if ("coverWork" in $$parsedSource) {
-            $$parsedSource["coverWork"] = $$createField1_0($$parsedSource["coverWork"]);
-        }
-        return new WorkSetWithCoverDTO($$parsedSource as Partial<WorkSetWithCoverDTO>);
-    }
-}
-
-/**
- * WorkSetWithWorksDTO 作品集及其作品信息
- */
-export class WorkSetWithWorksDTO {
-    "workSet": model$0.WorkSet | null;
-    "works": (model$0.Work | null)[];
-
-    /** Creates a new WorkSetWithWorksDTO instance. */
-    constructor($$source: Partial<WorkSetWithWorksDTO> = {}) {
-        if (!("workSet" in $$source)) {
-            this["workSet"] = null;
-        }
-        if (!("works" in $$source)) {
-            this["works"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSetWithWorksDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetWithWorksDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType4;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("workSet" in $$parsedSource) {
-            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
-        }
-        if ("works" in $$parsedSource) {
-            $$parsedSource["works"] = $$createField1_0($$parsedSource["works"]);
-        }
-        return new WorkSetWithWorksDTO($$parsedSource as Partial<WorkSetWithWorksDTO>);
-    }
-}
-
-// Private type creation functions
-const $$createType0 = model$0.WorkSet.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$0.Work.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($$createType3);

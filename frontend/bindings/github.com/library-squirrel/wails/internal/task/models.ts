@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as model$0 from "../model/models.js";
+
 /**
  * CreateTaskByURLResponse 根据URL创建任务的响应
  */
@@ -237,3 +241,48 @@ export class TaskScheduleDTO {
         return new TaskScheduleDTO($$parsedSource as Partial<TaskScheduleDTO>);
     }
 }
+
+/**
+ * TreeDataPageDTO 任务树数据分页DTO
+ */
+export class TreeDataPageDTO {
+    "treeId": number;
+    "treeName": string;
+    "total": number;
+    "tasks": (model$0.Task | null)[];
+
+    /** Creates a new TreeDataPageDTO instance. */
+    constructor($$source: Partial<TreeDataPageDTO> = {}) {
+        if (!("treeId" in $$source)) {
+            this["treeId"] = 0;
+        }
+        if (!("treeName" in $$source)) {
+            this["treeName"] = "";
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("tasks" in $$source)) {
+            this["tasks"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TreeDataPageDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TreeDataPageDTO {
+        const $$createField3_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tasks" in $$parsedSource) {
+            $$parsedSource["tasks"] = $$createField3_0($$parsedSource["tasks"]);
+        }
+        return new TreeDataPageDTO($$parsedSource as Partial<TreeDataPageDTO>);
+    }
+}
+
+// Private type creation functions
+const $$createType0 = model$0.Task.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

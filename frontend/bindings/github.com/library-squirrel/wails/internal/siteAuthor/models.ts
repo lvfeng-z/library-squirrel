@@ -6,6 +6,42 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * SiteAuthorDTO 站点作者数据传输对象
+ */
+export class SiteAuthorDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteAuthorId": string | null;
+    "authorName": string | null;
+
+    /** Creates a new SiteAuthorDTO instance. */
+    constructor($$source: Partial<SiteAuthorDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteAuthorDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteAuthorDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteAuthorDTO($$parsedSource as Partial<SiteAuthorDTO>);
+    }
+}
+
+/**
  * SiteAuthorQueryDTO 站点作者查询条件
  */
 export class SiteAuthorQueryDTO {

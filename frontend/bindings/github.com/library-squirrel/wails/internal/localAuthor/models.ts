@@ -6,6 +6,38 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * LocalAuthorDTO 本地作者数据传输对象
+ */
+export class LocalAuthorDTO {
+    "id": number;
+    "authorName": string | null;
+    "introduce": string | null;
+
+    /** Creates a new LocalAuthorDTO instance. */
+    constructor($$source: Partial<LocalAuthorDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = null;
+        }
+        if (!("introduce" in $$source)) {
+            this["introduce"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalAuthorDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalAuthorDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LocalAuthorDTO($$parsedSource as Partial<LocalAuthorDTO>);
+    }
+}
+
+/**
  * LocalAuthorQueryDTO 本地作者查询条件
  */
 export class LocalAuthorQueryDTO {

@@ -19,7 +19,8 @@ import {
 } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
 import { GO_BACKEND_URL } from '@renderer/apis/http/types'
-import { App } from '../../bindings/github.com/library-squirrel/wails'
+import { Handler as SlotHandler } from '../../bindings/github.com/library-squirrel/wails/internal/slot'
+import { Handler as PluginHandler } from '../../bindings/github.com/library-squirrel/wails/internal/plugin'
 
 // SSE 客户端 ID（用于标识当前渲染进程连接）
 const SSE_CLIENT_ID = `renderer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -264,7 +265,8 @@ function createCodeComponent(code: string): Promise<DefineComponent> {
 async function loadVueSourceComponent(vuePath: string, pluginPublicId: string): Promise<DefineComponent> {
   try {
     // 阶段 1: 文件获取 - 通过 Wails 绑定读取 .vue 文件内容
-    const sourceCode = await App.GetPluginVueFile(pluginPublicId, vuePath)
+    const resp = await PluginHandler.ReadVueFile(pluginPublicId, vuePath)
+    const sourceCode = resp?.data ?? ''
     if (!sourceCode) {
       throw new Error(`加载Vue源码失败，返回内容为空`)
     }
@@ -488,7 +490,8 @@ export function initSlotSyncListener() {
   })
 
   // 同步所有已注册的插槽（用于处理插件激活时渲染进程还未准备好的情况）
-  App.GetAllSlots().then((slots: any[]) => {
+  SlotHandler.GetAllSlots().then((resp) => {
+    const slots = resp?.data ?? []
     slots.forEach((config: unknown) => {
       const syncConfig = config as SyncSlotConfig
       if (syncConfig.type === 'view') {

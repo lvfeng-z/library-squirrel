@@ -6,6 +6,42 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * SiteDTO 站点数据传输对象
+ */
+export class SiteDTO {
+    "id": number;
+    "siteName": string | null;
+    "siteDescription": string | null;
+    "homepage": string | null;
+
+    /** Creates a new SiteDTO instance. */
+    constructor($$source: Partial<SiteDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = null;
+        }
+        if (!("siteDescription" in $$source)) {
+            this["siteDescription"] = null;
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteDTO($$parsedSource as Partial<SiteDTO>);
+    }
+}
+
+/**
  * SiteQueryDTO 站点查询条件
  */
 export class SiteQueryDTO {

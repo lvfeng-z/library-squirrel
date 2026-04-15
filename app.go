@@ -81,6 +81,28 @@ type App struct {
 
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
+
+	// Handlers（用于 Bind[] 参数）
+	LocalTagHandler        *localTag.Handler
+	LocalAuthorHandler     *localAuthor.Handler
+	SiteTagHandler         *siteTag.Handler
+	SiteAuthorHandler      *siteAuthor.Handler
+	SiteHandler            *site.Handler
+	ResourceHandler        *resource.Handler
+	WorkHandler            *work.Handler
+	WorkSetHandler         *workSet.Handler
+	SearchHandler          *search.Handler
+	SettingsHandler        *settings.Handler
+	SecureStorageHandler   *secureStorage.Handler
+	BackupHandler          *backup.Handler
+	AppLauncherHandler     *appLauncher.Handler
+	FileSysUtilHandler     *fileSysUtil.Handler
+	PluginHandler          *plugin.Handler
+	TaskHandler            *task.Handler
+	TaskManagerHandler     *taskManager.Handler
+	SlotHandler            *slot.Handler
+	SiteBrowserHandler     *siteBrowser.Handler
+	ReWorkTagHandler       *reWorkTag.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -131,6 +153,9 @@ func NewApp() (*App, error) {
 	if err := app.initAdvancedServices(); err != nil {
 		return nil, err
 	}
+
+	// 7. 初始化 Handlers
+	app.initHandlers()
 
 	return app, nil
 }
@@ -292,6 +317,30 @@ func (a *resourceSaverAdapter) Save(ctx context.Context, resource *domain.Resour
 		return 0, err
 	}
 	return resource.GetID(), nil
+}
+
+// initHandlers 初始化 Handlers（用于 Bind[] 参数暴露给前端）
+func (app *App) initHandlers() {
+	app.LocalTagHandler = localTag.NewHandler(app.LocalTagService)
+	app.LocalAuthorHandler = localAuthor.NewHandler(app.LocalAuthorService)
+	app.SiteTagHandler = siteTag.NewHandler(app.SiteTagService)
+	app.SiteAuthorHandler = siteAuthor.NewHandler(app.SiteAuthorService)
+	app.SiteHandler = site.NewHandler(app.SiteService)
+	app.ResourceHandler = resource.NewHandler(app.ResourceService)
+	app.WorkHandler = work.NewHandler(app.WorkService)
+	app.WorkSetHandler = workSet.NewHandler(app.WorkSetService)
+	app.SearchHandler = search.NewHandler(app.SearchService)
+	app.SettingsHandler = settings.NewHandler(app.SettingsService)
+	app.SecureStorageHandler = secureStorage.NewHandler(app.SecureStorageService)
+	app.BackupHandler = backup.NewHandler(app.BackupService)
+	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
+	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
+	app.PluginHandler = plugin.NewHandler(app.PluginService)
+	app.TaskHandler = task.NewHandler(app.TaskService)
+	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
+	app.SlotHandler = slot.NewHandler(app.SlotService)
+	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
+	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）

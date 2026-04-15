@@ -6,6 +6,5 @@ export {
     ExtensionType,
     Page,
     RankedLocalAuthor,
-    RankedSiteAuthor,
-    RankedSiteAuthorWithWorkId
+    RankedSiteAuthor
 } from "./models.js";
