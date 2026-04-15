@@ -7,6 +7,7 @@ import type { ApiResponse } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/wails/internal/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/internal/taskManager'
 import { CreateTaskRequest, TaskQueryDTO, TaskResultDTO, TaskScheduleDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface TaskVO {
   id: number
@@ -67,7 +68,7 @@ export async function taskQueryPage(query: {
   page: number
   pageSize: number
   query?: { status?: number; pid?: number }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<TaskResultDTO>>> {
   const queryDTO = new TaskQueryDTO({
     pid: query.query?.pid ?? null,
     status: query.query?.status ?? null
@@ -76,47 +77,15 @@ export async function taskQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toTaskVO).filter((item): item is TaskVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
-export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<PageResult>> {
+export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<TaskResultDTO>>> {
   const result = await TaskHandler.QueryParentPage(query.page, query.pageSize, null)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toTaskVO).filter((item): item is TaskVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 /**
@@ -204,28 +173,12 @@ export async function taskQueryChildrenTaskPage(
   pageNumber: number,
   pageSize: number,
   _query?: Record<string, unknown>
-): Promise<ApiResponse<PageResult>> {
+): Promise<ApiResponse<Page<TaskResultDTO>>> {
   const result = await TaskHandler.QueryChildrenTaskPage(pid, pageNumber, pageSize, null)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: pageNumber, pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toTaskVO).filter((item): item is TaskVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? pageNumber,
-      pageSize: page.pageSize ?? pageSize
-    }
-  }
+  return result
 }
 
 // ========== TaskManager ==========

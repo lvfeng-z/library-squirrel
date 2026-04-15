@@ -5,6 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as PluginHandler, PluginQueryDTO, PluginResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface PluginVO {
   id: number
@@ -71,7 +72,7 @@ export async function pluginQueryPage(query: {
   page: number
   pageSize: number
   query?: { name?: string; enable?: boolean }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<PluginResultDTO>>> {
   const queryDTO = new PluginQueryDTO({
     nameLike: query.query?.name ?? null
   })
@@ -79,23 +80,7 @@ export async function pluginQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toPluginVO).filter((item): item is PluginVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 export async function pluginCheckInstalled(publicId: string): Promise<ApiResponse<boolean>> {

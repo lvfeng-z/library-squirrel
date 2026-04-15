@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as LocalAuthorHandler, LocalAuthorDTO, LocalAuthorQueryDTO, LocalAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface LocalAuthorVO {
   id: number
@@ -100,7 +101,7 @@ export async function localAuthorQueryPage(query: {
   page: number
   pageSize: number
   query?: { authorName?: string }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<LocalAuthorResultDTO>>> {
   const queryDTO = new LocalAuthorQueryDTO({
     authorName: query.query?.authorName ?? null
   })
@@ -108,23 +109,7 @@ export async function localAuthorQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toLocalAuthorVO).filter((item): item is LocalAuthorVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 export async function localAuthorListSelectItems(
@@ -145,27 +130,11 @@ export async function localAuthorQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new LocalAuthorQueryDTO({})
   const result = await LocalAuthorHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as LocalAuthorVO[] : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }

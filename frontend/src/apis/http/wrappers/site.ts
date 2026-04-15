@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as SiteHandler, SiteDTO, SiteQueryDTO, SiteResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/site'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteVO {
   id: number
@@ -98,7 +99,7 @@ export async function siteQueryPage(query: {
   page: number
   pageSize: number
   query?: { name?: string; enable?: boolean }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteResultDTO>>> {
   const queryDTO = new SiteQueryDTO({
     siteNameLike: query.query?.name ?? null
   })
@@ -106,48 +107,16 @@ export async function siteQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toSiteVO).filter((item): item is SiteVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
-export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<PageResult>> {
+export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new SiteQueryDTO({})
   const result = await SiteHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as SiteVO[] : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 /**

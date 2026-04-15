@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteTagVO {
   id: number
@@ -109,7 +110,7 @@ export async function siteTagQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; siteTagName?: string }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteTagResultDTO>>> {
   const queryDTO = new SiteTagQueryDTO({
     siteId: query.query?.siteId ?? null,
     siteTagNameLike: query.query?.siteTagName ?? null
@@ -118,23 +119,7 @@ export async function siteTagQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(toSiteTagVO).filter((item): item is SiteTagVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 /**
@@ -178,29 +163,13 @@ export async function siteTagQueryLocalRelateDTOPage(_query: {
 export async function siteTagQuerySelectItemPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number }
-): Promise<ApiResponse<PageResult>> {
+): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new SiteTagQueryDTO({})
   const result = await SiteTagHandler.QuerySelectItemPageByWorkId(query.page, query.pageSize, queryDTO, workId)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as SiteTagVO[] : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<SiteTagVO[]>> {

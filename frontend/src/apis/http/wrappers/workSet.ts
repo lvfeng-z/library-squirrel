@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import type { Work } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface WorkSetVO {
   id: number
@@ -100,7 +101,7 @@ export async function workSetQueryPage(query: {
   page: number
   pageSize: number
   query?: { name?: string }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<WorkSetResultDTO>>> {
   const queryDTO = new WorkSetQueryDTO({
     siteWorkSetNameLike: query.query?.name ?? null
   })
@@ -108,23 +109,7 @@ export async function workSetQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(item => item ? toWorkSetVO(item) : null).filter((item): item is WorkSetVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 export async function workSetSave(workSet: {

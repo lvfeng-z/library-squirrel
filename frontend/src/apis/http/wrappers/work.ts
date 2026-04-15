@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as WorkHandler, WorkDTO, WorkQueryDTO, WorkResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/work'
 import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface WorkVO {
   id: number
@@ -73,7 +74,7 @@ export async function workQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; title?: string }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<WorkResultDTO>>> {
   const queryDTO = new WorkQueryDTO({
     siteId: query.query?.siteId ?? null,
     siteWorkNameLike: query.query?.title ?? null
@@ -82,23 +83,7 @@ export async function workQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  const page = result.data
-  if (!page) {
-    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
-  }
-  return {
-    success: true,
-    msg: result.msg ?? '',
-    data: {
-      items: page.data ? page.data.map(item => item ? toWorkVO(item) : null).filter((item): item is WorkVO => item !== null) : [],
-      total: page.dataCount ?? 0,
-      page: page.pageNumber ?? query.page,
-      pageSize: page.pageSize ?? query.pageSize
-    }
-  }
+  return result
 }
 
 export async function workDeleteWorkAndSurroundingData(id: number): Promise<ApiResponse<boolean>> {
