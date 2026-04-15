@@ -10,34 +10,34 @@ import type { ApiResponse } from '@apis/http'
 /**
  * 分页查询站点浏览器
  */
-export async function siteBrowserQueryPage(): Promise<ApiResponse<any[]>> {
+export async function siteBrowserQueryPage(): Promise<ApiResponse<any[]> | null> {
   return Handler.List()
 }
 
 /**
  * 获取站点浏览器列表
  */
-export async function siteBrowserList(): Promise<ApiResponse<any[]>> {
+export async function siteBrowserList(): Promise<ApiResponse<any[]> | null> {
   return Handler.List()
 }
 
 /**
  * 获取单个站点浏览器
  */
-export async function siteBrowserGetById(pluginPublicId: string, contributionId: string): Promise<ApiResponse<any>> {
+export async function siteBrowserGetById(pluginPublicId: string, contributionId: string): Promise<ApiResponse<any> | null> {
   return Handler.GetByID(pluginPublicId, contributionId)
 }
 
 /**
  * 根据插件公开ID获取站点浏览器
  */
-export async function siteBrowserGetByPluginId(pluginId: number): Promise<ApiResponse<any[]>> {
+export async function siteBrowserGetByPluginId(pluginId: number): Promise<ApiResponse<any[]> | null> {
   return Handler.GetByPluginID(pluginId)
 }
 
 /**
  * 打开站点浏览器
  */
-export async function siteBrowserOpen(pluginPublicId: string, contributionId: string): Promise<ApiResponse<any>> {
+export async function siteBrowserOpen(pluginPublicId: string, contributionId: string): Promise<ApiResponse<any> | null> {
   return Handler.Open(pluginPublicId, contributionId)
 }

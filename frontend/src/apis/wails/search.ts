@@ -16,7 +16,7 @@ import type { SelectItem, WorkFullDTO } from '@bindings/github.com/library-squir
 export async function searchQuerySearchConditionPage(
   keyword: string,
   types: SearchType[]
-): Promise<ApiResponse<Page<SelectItem> | null>> {
+): Promise<ApiResponse<Page<SelectItem> | null> | null> {
   return Handler.QuerySearchConditionPage(1, 10, { keyword, types })
 }
 
@@ -25,7 +25,7 @@ export async function searchQuerySearchConditionPage(
  */
 export async function searchQueryWorkPage(
   conditions: SearchCondition[]
-): Promise<ApiResponse<Page<WorkFullDTO> | null>> {
+): Promise<ApiResponse<Page<WorkFullDTO> | null> | null> {
   return Handler.QueryWorkPage(1, 10, conditions)
 }
 
@@ -35,6 +35,6 @@ export async function searchQueryWorkPage(
 export async function searchQueryWorkSetPage(
   keyword: string,
   siteId: number
-): Promise<ApiResponse<Page<SelectItem> | null>> {
+): Promise<ApiResponse<Page<SelectItem> | null> | null> {
   return Handler.QueryWorkSetPage(1, 10, keyword, siteId)
 }

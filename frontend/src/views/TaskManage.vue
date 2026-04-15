@@ -62,7 +62,7 @@ const apis = {
   taskPauseTaskTree: (taskId: number) => taskApi.taskPauseTree(taskId),
   taskStopTaskTree: (taskId: number) => taskApi.taskStopTree(taskId),
   taskResumeTaskTree: (taskId: number) => taskApi.taskResumeTree(taskId),
-  dirSelect: fileSysUtilApi.fileSysUtilDirSelect
+  dirSelect: fileSysUtilApi.dirSelect
 }
 // taskManageSearchTable的组件实例
 const taskManageSearchTable = ref()
@@ -379,7 +379,7 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
 }
 // 选择目录
 async function selectDir(openFile: boolean) {
-  const response = await apis.dirSelect(openFile, true)
+  const response = await apis.dirSelect(openFile)
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled) {

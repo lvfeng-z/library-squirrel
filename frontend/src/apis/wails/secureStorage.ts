@@ -10,28 +10,28 @@ import type { ApiResponse } from '@apis/http'
 /**
  * 设置安全存储值
  */
-export async function secureStorageSet(key: string, value: string): Promise<ApiResponse<number>> {
+export async function secureStorageSet(key: string, value: string): Promise<ApiResponse<number> | null> {
   return Handler.Set(key, value, '')
 }
 
 /**
  * 获取安全存储值
  */
-export async function secureStorageGet(key: string): Promise<ApiResponse<string | null>> {
+export async function secureStorageGet(key: string): Promise<ApiResponse<string | null> | null> {
   return Handler.Get(key)
 }
 
 /**
  * 删除安全存储值
  */
-export async function secureStorageRemove(key: string): Promise<ApiResponse<number>> {
+export async function secureStorageRemove(key: string): Promise<ApiResponse<number> | null> {
   return Handler.Delete(key)
 }
 
 /**
  * 检查安全存储键是否存在
  */
-export async function secureStorageHasKey(key: string): Promise<ApiResponse<boolean>> {
+export async function secureStorageHasKey(key: string): Promise<ApiResponse<boolean> | null> {
   const keys = await Handler.Keys()
   return keys as ApiResponse<boolean>
 }
@@ -39,6 +39,6 @@ export async function secureStorageHasKey(key: string): Promise<ApiResponse<bool
 /**
  * 列出所有安全存储键
  */
-export async function secureStorageListKeys(): Promise<ApiResponse<string[]>> {
+export async function secureStorageListKeys(): Promise<ApiResponse<string[]> | null> {
   return Handler.Keys()
 }

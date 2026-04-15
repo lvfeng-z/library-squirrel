@@ -10,34 +10,34 @@ import type { ApiResponse } from '@apis/http'
 /**
  * 启动任务树
  */
-export async function taskManagerStartTree(taskId: number): Promise<ApiResponse<void>> {
+export async function taskManagerStartTree(taskId: number): Promise<ApiResponse<void> | null> {
   return Handler.StartTaskTree(taskId)
 }
 
 /**
  * 暂停任务树
  */
-export async function taskManagerPauseTree(taskId: number): Promise<ApiResponse<void>> {
+export async function taskManagerPauseTree(taskId: number): Promise<ApiResponse<void> | null> {
   return Handler.PauseTaskTree(taskId)
 }
 
 /**
  * 恢复任务树
  */
-export async function taskManagerResumeTree(taskId: number): Promise<ApiResponse<void>> {
+export async function taskManagerResumeTree(taskId: number): Promise<ApiResponse<void> | null> {
   return Handler.ResumeTaskTree(taskId)
 }
 
 /**
  * 停止任务树
  */
-export async function taskManagerStopTree(taskId: number): Promise<ApiResponse<void>> {
+export async function taskManagerStopTree(taskId: number): Promise<ApiResponse<void> | null> {
   return Handler.StopTaskTree(taskId)
 }
 
 /**
  * 重试任务树
  */
-export async function taskManagerRetryTree(taskId: number): Promise<ApiResponse<void>> {
+export async function taskManagerRetryTree(taskId: number): Promise<ApiResponse<void> | null> {
   return Handler.RetryTaskTree(taskId)
 }

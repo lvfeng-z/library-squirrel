@@ -10,20 +10,20 @@ import type { ApiResponse } from '@apis/http'
 /**
  * 获取设置
  */
-export async function settingsGetSettings(): Promise<ApiResponse<any>> {
+export async function settingsGetSettings(): Promise<ApiResponse<any> | null> {
   return Handler.Get()
 }
 
 /**
  * 保存设置
  */
-export async function settingsSaveSettings(settings: any): Promise<ApiResponse<void>> {
+export async function settingsSaveSettings(settings: any): Promise<ApiResponse<void> | null> {
   return Handler.Save(settings)
 }
 
 /**
  * 重置设置
  */
-export async function settingsResetSettings(): Promise<ApiResponse<void>> {
+export async function settingsResetSettings(): Promise<ApiResponse<void> | null> {
   return Handler.Reset()
 }

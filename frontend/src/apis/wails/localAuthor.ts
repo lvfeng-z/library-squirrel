@@ -34,14 +34,14 @@ function nullLocalAuthorToVO(author: LocalAuthor | null): LocalAuthorVO | null {
  */
 export async function localAuthorSave(author: {
   localAuthorName?: string
-}): Promise<ApiResponse<number>> {
+}): Promise<ApiResponse<number> | null> {
   return Handler.Save(author as any)
 }
 
 /**
  * 删除本地作者
  */
-export async function localAuthorDeleteById(id: number): Promise<ApiResponse<void>> {
+export async function localAuthorDeleteById(id: number): Promise<ApiResponse<void> | null> {
   return Handler.Delete(id)
 }
 
@@ -51,14 +51,14 @@ export async function localAuthorDeleteById(id: number): Promise<ApiResponse<voi
 export async function localAuthorUpdateById(author: {
   id: number
   localAuthorName?: string
-}): Promise<ApiResponse<void>> {
+}): Promise<ApiResponse<void> | null> {
   return Handler.Update(author as any)
 }
 
 /**
  * 获取单个本地作者
  */
-export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalAuthorVO | null>> {
+export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalAuthorVO | null> | null> {
   const result = await Handler.GetById(id)
   if (result.success && result.data) {
     return {
@@ -72,20 +72,20 @@ export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalA
 /**
  * 分页查询本地作者
  */
-export async function localAuthorQueryPage(query: any): Promise<ApiResponse<any>> {
+export async function localAuthorQueryPage(query: any): Promise<ApiResponse<any> | null> {
   return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query)
 }
 
 /**
  * 获取选择项列表
  */
-export async function localAuthorListSelectItems(query?: any): Promise<ApiResponse<any[]>> {
+export async function localAuthorListSelectItems(query?: any): Promise<ApiResponse<any[]> | null> {
   return Handler.ListSelectItems(query)
 }
 
 /**
  * 分页查询选择项
  */
-export async function localAuthorQuerySelectItemPage(query: any): Promise<ApiResponse<any>> {
+export async function localAuthorQuerySelectItemPage(query: any): Promise<ApiResponse<any> | null> {
   return Handler.QuerySelectItemPage(query.page ?? 1, query.pageSize ?? 10, query.query, '')
 }

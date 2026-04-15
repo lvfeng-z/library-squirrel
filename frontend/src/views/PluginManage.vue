@@ -22,6 +22,7 @@ import {
   pluginReinstallFromPath,
   pluginUnInstall
 } from '@renderer/apis/http/wrappers/plugin'
+import {dirSelect} from "@apis/wails";
 
 // onMounted
 onMounted(() => {
@@ -37,7 +38,7 @@ onMounted(() => {
 
 // 变量
 const apis = {
-  dirSelect: fileSysUtilApi.fileSysUtilDirSelect,
+  dirSelect: fileSysUtilApi.dirSelect,
   pluginQueryPage,
   pluginInstallFromPath,
   pluginReinstall,
@@ -197,7 +198,7 @@ async function unInstall(pluginPublicId: string) {
 }
 // 选择安装包
 async function selectPackage(): Promise<string | undefined> {
-  const response = await apis.dirSelect(true, true)
+  const response = await apis.dirSelect(true)
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {

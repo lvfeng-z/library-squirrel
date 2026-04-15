@@ -11,6 +11,6 @@ import type { ExternalAppEnum } from '@bindings/github.com/library-squirrel/wail
 /**
  * 打开文件或链接
  */
-export async function appLauncherOpen(appEnum: ExternalAppEnum, filePath: string): Promise<ApiResponse<void>> {
+export async function appLauncherOpen(appEnum: ExternalAppEnum, filePath: string): Promise<ApiResponse<void> | null> {
   return Handler.Open(appEnum, filePath)
 }

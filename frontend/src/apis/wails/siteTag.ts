@@ -10,63 +10,63 @@ import type { ApiResponse } from '@apis/http'
 /**
  * 保存站点标签
  */
-export async function siteTagSave(tag: any): Promise<ApiResponse<void>> {
+export async function siteTagSave(tag: any): Promise<ApiResponse<void> | null> {
   return Handler.Save(tag)
 }
 
 /**
  * 批量保存站点标签
  */
-export async function siteTagSaveBatch(tags: any[]): Promise<ApiResponse<void>> {
+export async function siteTagSaveBatch(tags: any[]): Promise<ApiResponse<void> | null> {
   return Handler.Save(tags)
 }
 
 /**
  * 删除站点标签
  */
-export async function siteTagDeleteById(id: number): Promise<ApiResponse<void>> {
+export async function siteTagDeleteById(id: number): Promise<ApiResponse<void> | null> {
   return Handler.Delete(id)
 }
 
 /**
  * 更新站点标签
  */
-export async function siteTagUpdateById(tag: any): Promise<ApiResponse<void>> {
+export async function siteTagUpdateById(tag: any): Promise<ApiResponse<void> | null> {
   return Handler.Update(tag)
 }
 
 /**
  * 获取单个站点标签
  */
-export async function siteTagGetById(id: number): Promise<ApiResponse<any>> {
+export async function siteTagGetById(id: number): Promise<ApiResponse<any> | null> {
   return Handler.GetById(id)
 }
 
 /**
  * 分页查询站点标签
  */
-export async function siteTagQueryPage(query: any): Promise<ApiResponse<any>> {
+export async function siteTagQueryPage(query: any): Promise<ApiResponse<any> | null> {
   return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
 /**
  * 查询已绑定或未绑定到本地标签的站点标签分页
  */
-export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: any): Promise<ApiResponse<any>> {
+export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: any): Promise<ApiResponse<any> | null> {
   return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
 /**
  * 根据作品ID查询站点标签分页
  */
-export async function siteTagQueryPageByWorkId(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any>> {
+export async function siteTagQueryPageByWorkId(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any> | null> {
   return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
 /**
  * 查询本地关联DTO分页
  */
-export async function siteTagQueryLocalRelateDTOPage(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any>> {
+export async function siteTagQueryLocalRelateDTOPage(query: any, workId: number, boundOnWorkId: boolean | null): Promise<ApiResponse<any> | null> {
   return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
@@ -76,21 +76,21 @@ export async function siteTagQueryLocalRelateDTOPage(query: any, workId: number,
 export async function siteTagQuerySelectItemPageByWorkId(
   workId: number,
   query: any
-): Promise<ApiResponse<any>> {
+): Promise<ApiResponse<any> | null> {
   return Handler.QuerySelectItemPageByWorkId(query.page ?? 1, query.pageSize ?? 10, query.query, workId)
 }
 
 /**
  * 根据作品ID获取站点标签列表
  */
-export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<any[]>> {
+export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<any[]> | null> {
   return Handler.ListByWorkId(workId)
 }
 
 /**
  * 根据站点标签ID列表获取站点标签
  */
-export async function siteTagListBySiteTagIds(ids: number[]): Promise<ApiResponse<any[]>> {
+export async function siteTagListBySiteTagIds(ids: number[]): Promise<ApiResponse<any[]> | null> {
   const promises = ids.map(id => Handler.GetById(id))
   const results = await Promise.all(promises)
   return results as ApiResponse<any[]>
@@ -99,13 +99,13 @@ export async function siteTagListBySiteTagIds(ids: number[]): Promise<ApiRespons
 /**
  * 更新绑定本地标签
  */
-export async function siteTagUpdateBindLocalTag(localTagId: number, siteTagIds: number[]): Promise<ApiResponse<boolean>> {
+export async function siteTagUpdateBindLocalTag(localTagId: number, siteTagIds: number[]): Promise<ApiResponse<boolean> | null> {
   return Handler.Update({ localTagId, siteTagIds }) as ApiResponse<boolean>
 }
 
 /**
  * 创建并绑定同名的本地标签
  */
-export async function siteTagCreateAndBindSameNameLocalTag(tag: any): Promise<ApiResponse<any>> {
+export async function siteTagCreateAndBindSameNameLocalTag(tag: any): Promise<ApiResponse<any> | null> {
   return Handler.Save(tag)
 }

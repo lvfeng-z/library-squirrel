@@ -11,6 +11,7 @@ import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'
+import {dirSelect} from "@apis/wails";
 
 // onBeforeMount
 onBeforeMount(() => {
@@ -19,7 +20,7 @@ onBeforeMount(() => {
 
 // 变量
 const apis = {
-  dirSelect: fileSysUtilApi.fileSysUtilDirSelect,
+  dirSelect: fileSysUtilApi.dirSelect,
   settingsGetSettings: settingsApi.settingsGetSettings,
   settingsSaveSettings: settingsApi.settingsSaveSettings,
   settingsResetSettings: settingsApi.settingsResetSettings
@@ -155,7 +156,7 @@ function getChangedProperties(newVal: object, oldVal: object, root?: string) {
 }
 // 选择目录
 async function selectDir() {
-  const response = await apis.dirSelect(false, true)
+  const response = await apis.dirSelect(false)
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths) && notNullish(settings.value)) {

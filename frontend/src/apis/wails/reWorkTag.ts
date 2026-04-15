@@ -35,7 +35,7 @@ export async function reWorkTagLink(
   workId: number,
   tagType: number,
   tagIds: number[]
-): Promise<ApiResponse<boolean>> {
+): Promise<ApiResponse<boolean> | null> {
   console.error('reWorkTagLink is not implemented in Wails backend')
   return notImplemented()
 }
@@ -47,7 +47,7 @@ export async function reWorkTagLinkBatch(
   workId: number,
   tagType: number,
   tagIds: number[]
-): Promise<ApiResponse<boolean>> {
+): Promise<ApiResponse<boolean> | null> {
   console.error('reWorkTagLinkBatch is not implemented in Wails backend')
   return notImplemented()
 }
@@ -59,7 +59,7 @@ export async function reWorkTagUnlink(
   workId: number,
   tagType: number,
   tagIds: number[]
-): Promise<ApiResponse<boolean>> {
+): Promise<ApiResponse<boolean> | null> {
   console.error('reWorkTagUnlink is not implemented in Wails backend')
   return notImplemented()
 }
@@ -71,7 +71,7 @@ export async function reWorkTagRemoveBatch(
   workId: number,
   tagType: number,
   tagIds: number[]
-): Promise<ApiResponse<boolean>> {
+): Promise<ApiResponse<boolean> | null> {
   console.error('reWorkTagRemoveBatch is not implemented in Wails backend')
   return notImplemented()
 }
@@ -79,7 +79,7 @@ export async function reWorkTagRemoveBatch(
 /**
  * 获取作品标签列表
  */
-export async function reWorkTagList(workId: number): Promise<ApiResponse<ReWorkTagVO[]>> {
+export async function reWorkTagList(workId: number): Promise<ApiResponse<ReWorkTagVO[]> | null> {
   console.error('reWorkTagList is not implemented in Wails backend')
   return notImplemented()
 }
