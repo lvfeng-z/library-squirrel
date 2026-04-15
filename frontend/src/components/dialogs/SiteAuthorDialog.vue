@@ -5,10 +5,11 @@ import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { localAuthorQuerySelectItemPageByName } from '@renderer/apis/LocalAuthorApi.ts'
-import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import SiteAuthorLocalRelateDTO from '@renderer/model/model/dto/SiteAuthorLocalRelateDTO.ts'
-import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
+import { localAuthorApi, siteApi, siteAuthorApi } from '@renderer/apis/http'
+import IPage from '@renderer/model/util/IPage.ts'
+import SelectItem from '@renderer/model/util/SelectItem.ts'
+import Page from '@renderer/model/util/Page.ts'
 
 // props
 const props = withDefaults(
@@ -37,6 +38,55 @@ const apis = {
   localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
   siteAuthorSave: siteAuthorApi.siteAuthorSave,
   siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById
+}
+
+// 适配器函数：将 ApiResponse<PageResult> 转换为 IPage
+async function localAuthorQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
+  const response = await localAuthorApi.localAuthorQuerySelectItemPage({
+    page: page.pageNumber,
+    pageSize: page.pageSize,
+    query: { authorName: input }
+  })
+  if (!response.success) {
+    return new Page<unknown, SelectItem>()
+  }
+  const data = response.data
+  if (!data) {
+    return new Page<unknown, SelectItem>()
+  }
+  return {
+    paging: true,
+    pageNumber: data.page,
+    pageSize: data.pageSize,
+    pageCount: Math.ceil(data.total / data.pageSize),
+    dataCount: data.total,
+    currentCount: data.items.length,
+    data: data.items.map(item => new SelectItem({ value: item.id, label: item.authorName ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+  }
+}
+
+async function siteQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, _input: string): Promise<IPage<unknown, SelectItem>> {
+  // 注意：siteName 过滤在 bindings 中未实现
+  const response = await siteApi.siteQuerySelectItemPage({
+    page: page.pageNumber,
+    pageSize: page.pageSize
+  })
+  if (!response.success) {
+    return new Page<unknown, SelectItem>()
+  }
+  const data = response.data
+  if (!data) {
+    return new Page<unknown, SelectItem>()
+  }
+  return {
+    paging: true,
+    pageNumber: data.page,
+    pageSize: data.pageSize,
+    pageCount: Math.ceil(data.total / data.pageSize),
+    dataCount: data.total,
+    currentCount: data.items.length,
+    data: data.items.map(item => new SelectItem({ value: item.id, label: item.name ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+  }
 }
 
 // 方法
@@ -103,7 +153,7 @@ async function handleSaveButtonClicked() {
           <el-form-item label="本地作者">
             <auto-load-select
               v-model="formData.localAuthorId"
-              :load="localAuthorQuerySelectItemPageByName"
+              :load="localAuthorQuerySelectItemPageAdapter"
               remote
               filterable
               clearable
@@ -124,7 +174,7 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="站点">
-            <auto-load-select v-model="formData.siteId" :load="siteQuerySelectItemPageBySiteName" remote filterable clearable>
+            <auto-load-select v-model="formData.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.site)"

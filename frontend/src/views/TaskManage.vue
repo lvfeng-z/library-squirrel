@@ -5,7 +5,7 @@ import ApiUtil from '../utils/ApiUtil.ts'
 import SearchTable from '../components/common/SearchTable.vue'
 import { Thead } from '../model/util/Thead.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import { ElTag } from 'element-plus'
+import { ElMessage, ElTag } from 'element-plus'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
@@ -22,7 +22,7 @@ import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
-import { fileSysUtilApi, taskApi, siteApi, apiProxy } from '@renderer/apis/http'
+import { fileSysUtilApi, taskApi, siteApi } from '@renderer/apis/http'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
 import Task from '@renderer/model/model/entity/Task.ts'
@@ -42,7 +42,11 @@ const emits = defineEmits(['openReplaceResConfirmDialog'])
 // 变量
 // 接口 - 使用 HTTP API
 const apis = {
-  pluginTaskUrlListenerManagerListListener: (url: string) => apiProxy.invoke('pluginTaskUrlListener-listListener', { url }),
+  // TODO: pluginTaskUrlListener-listListener 接口在 bindings 中未实现
+  pluginTaskUrlListenerManagerListListener: async (_url: string) => {
+    ElMessage.error('此功能暂未实现：pluginTaskUrlListenerManagerListListener')
+    return { success: false, msg: '此功能暂未实现', data: [] }
+  },
   siteQuerySelectItemPage: (query: Record<string, unknown>) => siteApi.siteQuerySelectItemPage(query),
   taskCreateTask: (url: string) => taskApi.taskCreateByUrl(url),
   taskListStatus: (ids: number[]) => taskApi.taskListStatus(ids),

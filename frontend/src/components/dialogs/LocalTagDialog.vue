@@ -5,9 +5,11 @@ import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import LocalTagDTO from '@renderer/model/model/dto/LocalTagDTO.ts'
 import { localTagApi } from '@renderer/apis/http'
+import IPage from '@renderer/model/util/IPage.ts'
+import SelectItem from '@renderer/model/util/SelectItem.ts'
+import Page from '@renderer/model/util/Page.ts'
 
 // props
 const props = withDefaults(
@@ -38,6 +40,31 @@ const apis = {
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
   localTagGetTree: localTagApi.localTagGetTree,
   localTagGetById: localTagApi.localTagGetById
+}
+
+// 适配器函数：将 ApiResponse<PageResult> 转换为 IPage
+async function localTagQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
+  const response = await localTagApi.localTagQuerySelectItemPage({
+    page: page.pageNumber,
+    pageSize: page.pageSize,
+    query: { localTagName: input }
+  })
+  if (!response.success) {
+    return new Page<unknown, SelectItem>()
+  }
+  const data = response.data
+  if (!data) {
+    return new Page<unknown, SelectItem>()
+  }
+  return {
+    paging: true,
+    pageNumber: data.page,
+    pageSize: data.pageSize,
+    pageCount: Math.ceil(data.total / data.pageSize),
+    dataCount: data.total,
+    currentCount: data.items.length,
+    data: data.items.map(item => new SelectItem({ value: item.id, label: item.localTagName ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+  }
 }
 
 // 方法
@@ -104,7 +131,7 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="基础标签">
-            <auto-load-select v-model="formData.baseLocalTagId" :load="localTagQuerySelectItemPageByName" remote filterable clearable>
+            <auto-load-select v-model="formData.baseLocalTagId" :load="localTagQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.baseTag)"
