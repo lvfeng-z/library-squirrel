@@ -22,7 +22,6 @@ import {
   pluginReinstallFromPath,
   pluginUnInstall
 } from '@renderer/apis/http/wrappers/plugin'
-import {dirSelect} from "@apis/wails";
 
 // onMounted
 onMounted(() => {

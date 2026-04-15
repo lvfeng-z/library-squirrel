@@ -1,10 +1,11 @@
 /**
  * FileSysUtil HTTP API 包装器
- * 提供目录/文件选择功能的 HTTP API 调用
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as FileSysUtilHandler } from '@bindings/github.com/library-squirrel/wails/internal/fileSysUtil'
+import type { OpenDialogResult as BindingOpenDialogResult } from '@bindings/github.com/library-squirrel/wails/internal/fileSysUtil/models'
 
 // ========== 类型定义 ==========
 
@@ -16,6 +17,19 @@ export interface OpenDialogResult {
   filePaths: string[]
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 Binding 的 OpenDialogResult 转换为我们的格式
+ */
+function toOpenDialogResult(dto: BindingOpenDialogResult | null): OpenDialogResult | null {
+  if (!dto) return null
+  return {
+    canceled: dto.canceled ?? false,
+    filePaths: dto.filePaths ?? []
+  }
+}
+
 // ========== API 方法 ==========
 
 /**
@@ -24,5 +38,12 @@ export interface OpenDialogResult {
  * @param isModal 是否模态对话框
  */
 export async function fileSysUtilDirSelect(openFile: boolean, isModal: boolean): Promise<ApiResponse<OpenDialogResult>> {
-  return apiProxy.invoke<OpenDialogResult>('fileSysUtil-dirSelect', { openFile, isModal })
+  const result = await FileSysUtilHandler.DirSelect(openFile, isModal)
+  if (!result) {
+    return { success: false, msg: '选择失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '选择失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? (toOpenDialogResult(result.data) ?? undefined) : undefined }
 }

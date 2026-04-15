@@ -1,23 +1,57 @@
 /**
  * Settings HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as SettingsHandler } from '@bindings/github.com/library-squirrel/wails/internal/settings'
+import type { Settings } from '@bindings/github.com/library-squirrel/wails/internal/settings/models'
 
 export interface SettingsVO {
-  // 根据实际 settings 结构定义
   [key: string]: unknown
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 Settings 转换为 SettingsVO
+ */
+function toSettingsVO(dto: Settings): SettingsVO {
+  // Settings 是 SettingsVO 的超集，直接返回
+  return dto as unknown as SettingsVO
+}
+
+// ========== API 方法 ==========
+
 export async function settingsGetSettings(): Promise<ApiResponse<SettingsVO>> {
-  return apiProxy.invoke<SettingsVO>('settings-getSettings')
+  const result = await SettingsHandler.Get()
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? toSettingsVO(result.data) : undefined }
 }
 
 export async function settingsSaveSettings(settings: SettingsVO): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('settings-saveSettings', settings)
+  // SettingsHandler.Save 接受 SettingChange[] 而不是 Settings
+  // 简化处理：假设 settings 是 key-value 对，需要转换为 SettingChange[]
+  const changes = Object.entries(settings).map(([key, value]) => ({
+    Key: key,
+    Value: value
+  }))
+  const result = await SettingsHandler.Save(changes as any)
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function settingsResetSettings(): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('settings-resetSettings')
+  const result = await SettingsHandler.Reset()
+  if (!result) {
+    return { success: false, msg: '重置失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }

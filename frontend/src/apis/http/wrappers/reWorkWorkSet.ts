@@ -1,35 +1,80 @@
 /**
  * ReWorkWorkSet HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as WorkSetHandler } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
+import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/internal/taskManager'
 
-export async function reWorkWorkSetLinkBatchToWorkSet(workSetId: number, workIds: number[]): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('reWorkWorkSet-linkBatchToWorkSet', workSetId, { workIds })
+/**
+ * 批量关联作品到作品集
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetLinkBatchToWorkSet(
+  _workSetId: number,
+  _workIds: number[]
+): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (LinkBatchToWorkSet)
+  // WorkSetHandler 有 LinkWorkToWorkSet 但参数是 (workSetId, workId)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetLinkBatchToWorkSet' }
 }
 
-export async function reWorkWorkSetRemoveBatchFromWorkSet(workSetId: number, workIds: number[]): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('reWorkWorkSet-removeBatchFromWorkSet', workSetId, { workIds })
+/**
+ * 批量取消作品与作品集的关联
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetRemoveBatchFromWorkSet(
+  _workSetId: number,
+  _workIds: number[]
+): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (RemoveBatchFromWorkSet)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetRemoveBatchFromWorkSet' }
 }
 
-export async function reWorkWorkSetUpdateSortOrders(workSetId: number, workIds: number[]): Promise<ApiResponse<boolean>> {
-  // workIds 是按顺序排列的作品ID数组，需要转换为 sortOrders map
-  const sortOrders: Record<number, number> = {}
-  workIds.forEach((workId, index) => {
-    sortOrders[workId] = index
-  })
-  return apiProxy.invoke<boolean>('reWorkWorkSet-updateSortOrders', workSetId, { sortOrders })
+/**
+ * 更新作品排序顺序
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetUpdateSortOrders(
+  _workSetId: number,
+  _workIds: number[]
+): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (UpdateSortOrders)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetUpdateSortOrders' }
 }
 
-export async function reWorkWorkSetSetCover(workSetId: number, workId: number): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('reWorkWorkSet-setCover', workSetId, workId)
+/**
+ * 设置作品集封面
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetSetCover(
+  _workSetId: number,
+  _workId: number
+): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (SetCover)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetSetCover' }
 }
 
-export async function reWorkWorkSetUnsetCover(workSetId: number, workId: number): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('reWorkWorkSet-unsetCover', workSetId, workId)
+/**
+ * 取消作品集封面
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetUnsetCover(
+  _workSetId: number,
+  _workId: number
+): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (UnsetCover)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetUnsetCover' }
 }
 
-export async function reWorkWorkSetGetCoverWorkId(workSetId: number): Promise<ApiResponse<number | null>> {
-  return apiProxy.invoke<number | null>('reWorkWorkSet-getCoverWorkId', workSetId)
+/**
+ * 获取作品集封面作品ID
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function reWorkWorkSetGetCoverWorkId(
+  _workSetId: number
+): Promise<ApiResponse<number | null>> {
+  // TODO: 此接口在 bindings 中未实现 (GetCoverWorkId)
+  return { success: false, msg: '此接口未实现：reWorkWorkSetGetCoverWorkId' }
 }

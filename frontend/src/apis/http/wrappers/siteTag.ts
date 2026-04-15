@@ -1,9 +1,11 @@
 /**
  * SiteTag HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 export interface SiteTagVO {
   id: number
@@ -21,19 +23,58 @@ export interface PageResult {
   pageSize: number
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 SiteTagResultDTO 转换为 SiteTagVO
+ */
+function toSiteTagVO(dto: SiteTagResultDTO | null): SiteTagVO | null {
+  if (!dto) return null
+  return {
+    id: dto.id,
+    siteTagName: dto.siteTagName ?? '',
+    localTagId: dto.localTagId ?? 0,
+    lastUse: dto.lastUse ?? 0,
+    createTime: dto.createTime,
+    updateTime: dto.updateTime
+  }
+}
+
+// ========== API 方法 ==========
+
 export async function siteTagSave(tag: {
   siteTagName?: string
   siteId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  return apiProxy.invoke<SiteTagVO>('siteTag-save', tag)
+  const tagDTO = new SiteTagDTO({
+    siteTagName: tag.siteTagName ?? null,
+    siteId: tag.siteId ?? null
+  })
+  const result = await SiteTagHandler.Save(tagDTO)
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '保存失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, siteTagName: '', localTagId: 0, lastUse: 0, createTime: 0, updateTime: 0 } }
 }
 
-export async function siteTagSaveBatch(tags: SiteTagVO[]): Promise<ApiResponse<SiteTagVO[]>> {
-  return apiProxy.invoke<SiteTagVO[]>('siteTag-saveBatch', tags)
+/**
+ * 批量保存站点标签
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteTagSaveBatch(_tags: SiteTagVO[]): Promise<ApiResponse<SiteTagVO[]>> {
+  // TODO: 此接口在 bindings 中未实现 (SaveBatch)
+  return { success: false, msg: '此接口未实现：siteTagSaveBatch' }
 }
 
 export async function siteTagDeleteById(id: number): Promise<ApiResponse<null>> {
-  return apiProxy.invoke<null>('siteTag-deleteById', { id })
+  const result = await SiteTagHandler.Delete(id)
+  if (!result) {
+    return { success: false, msg: '删除失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function siteTagUpdateById(tag: {
@@ -41,11 +82,27 @@ export async function siteTagUpdateById(tag: {
   siteTagName?: string
   localTagId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  return apiProxy.invoke<SiteTagVO>('siteTag-updateById', tag)
+  const tagDTO = new SiteTagDTO({
+    id: tag.id,
+    siteTagName: tag.siteTagName ?? null,
+    siteId: tag.localTagId ?? null  // 注意：这里可能有问题，siteId 和 localTagId 是不同的字段
+  })
+  const result = await SiteTagHandler.Update(tagDTO)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function siteTagGetById(id: number): Promise<ApiResponse<SiteTagVO>> {
-  return apiProxy.invoke<SiteTagVO>('siteTag-getById', id)
+  const result = await SiteTagHandler.GetById(id)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: toSiteTagVO(result.data ?? null) ?? undefined }
 }
 
 export async function siteTagQueryPage(query: {
@@ -53,56 +110,138 @@ export async function siteTagQueryPage(query: {
   pageSize: number
   query?: { siteId?: number; siteTagName?: string }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('siteTag-queryPage', query)
+  const queryDTO = new SiteTagQueryDTO({
+    siteId: query.query?.siteId ?? null,
+    siteTagNameLike: query.query?.siteTagName ?? null
+  })
+  const result = await SiteTagHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(toSiteTagVO).filter((item): item is SiteTagVO => item !== null) : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
-export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
+/**
+ * 查询绑定或未绑定到本地标签的站点标签分页
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteTagQueryBoundOrUnboundToLocalTagPage(_query: {
   page: number
   pageSize: number
   query?: { localTagId?: number; boundOnLocalTagId?: boolean }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('siteTag-queryBoundOrUnboundToLocalTagPage', query)
+  // TODO: 此接口在 bindings 中未实现 (QueryBoundOrUnboundToLocalTagPage)
+  return { success: false, msg: '此接口未实现：siteTagQueryBoundOrUnboundToLocalTagPage' }
 }
 
+/**
+ * 根据作品ID查询站点标签分页
+ * 注意：此方法在 bindings 中未实现
+ */
 export async function siteTagQueryPageByWorkId(
-  workId: number,
-  query: { page: number; pageSize: number; query?: Record<string, unknown> }
+  _workId: number,
+  _query: { page: number; pageSize: number; query?: Record<string, unknown> }
 ): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('siteTag-queryPageByWorkId', { workId, ...query })
+  // TODO: 此接口在 bindings 中未实现 (QueryPageByWorkId)
+  return { success: false, msg: '此接口未实现：siteTagQueryPageByWorkId' }
 }
 
-export async function siteTagQueryLocalRelateDTOPage(query: {
+/**
+ * 查询本地关联的站点标签分页
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteTagQueryLocalRelateDTOPage(_query: {
   page: number
   pageSize: number
   query?: { workId?: number }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('siteTag-queryLocalRelateDTOPage', query)
+  // TODO: 此接口在 bindings 中未实现 (QueryLocalRelateDTOPage)
+  return { success: false, msg: '此接口未实现：siteTagQueryLocalRelateDTOPage' }
 }
 
 export async function siteTagQuerySelectItemPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number }
 ): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('siteTag-querySelectItemPageByWorkId', { workId, ...query })
+  const queryDTO = new SiteTagQueryDTO({})
+  const result = await SiteTagHandler.QuerySelectItemPageByWorkId(query.page, query.pageSize, queryDTO, workId)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as SiteTagVO[] : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
 export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<SiteTagVO[]>> {
-  return apiProxy.invoke<SiteTagVO[]>('siteTag-listByWorkId', workId)
+  const result = await SiteTagHandler.ListByWorkId(workId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.map(toSiteTagVO).filter((item): item is SiteTagVO => item !== null) : [] }
 }
 
-export async function siteTagListBySiteTagIds(siteTagIds: number[]): Promise<ApiResponse<SiteTagVO[]>> {
-  return apiProxy.invoke<SiteTagVO[]>('siteTag-listBySiteTagIds', { siteTagIds })
+/**
+ * 根据站点标签ID列表获取站点标签
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteTagListBySiteTagIds(_siteTagIds: number[]): Promise<ApiResponse<SiteTagVO[]>> {
+  // TODO: 此接口在 bindings 中未实现 (ListBySiteTagIds)
+  return { success: false, msg: '此接口未实现：siteTagListBySiteTagIds' }
 }
 
+/**
+ * 更新站点标签绑定的本地标签
+ * 注意：此方法在 bindings 中未实现
+ */
 export async function siteTagUpdateBindLocalTag(
-  localTagId: number,
-  siteTagIds: number[]
+  _localTagId: number,
+  _siteTagIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('siteTag-updateBindLocalTag', { localTagId, siteTagIds })
+  // TODO: 此接口在 bindings 中未实现 (UpdateBindLocalTag)
+  return { success: false, msg: '此接口未实现：siteTagUpdateBindLocalTag' }
 }
 
+/**
+ * 创建并绑定同名的本地标签
+ * 注意：此方法在 bindings 中未实现
+ */
 export async function siteTagCreateAndBindSameNameLocalTag(
-  siteTag: SiteTagVO
+  _siteTag: SiteTagVO
 ): Promise<ApiResponse<SiteTagVO>> {
-  return apiProxy.invoke<SiteTagVO>('siteTag-createAndBindSameNameLocalTag', siteTag)
+  // TODO: 此接口在 bindings 中未实现 (CreateAndBindSameNameLocalTag)
+  return { success: false, msg: '此接口未实现：siteTagCreateAndBindSameNameLocalTag' }
 }

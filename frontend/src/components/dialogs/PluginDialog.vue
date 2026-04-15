@@ -34,6 +34,10 @@ const apis = {
 // 方法
 // 重新安装
 async function reInstall(pluginPublicId: string | undefined | null) {
+  if (!pluginPublicId) {
+    ElMessage({ type: 'error', message: '插件ID不能为空' })
+    return
+  }
   const response = await apis.pluginReinstall(pluginPublicId)
   if (ApiUtil.check(response)) {
     ElMessage({
@@ -43,12 +47,16 @@ async function reInstall(pluginPublicId: string | undefined | null) {
   } else {
     ElMessage({
       type: 'error',
-      message: `修复失败，${response.message}`
+      message: `修复失败，${response.msg}`
     })
   }
 }
 // 卸载
 async function unInstall(pluginPublicId: string | undefined | null) {
+  if (!pluginPublicId) {
+    ElMessage({ type: 'error', message: '插件ID不能为空' })
+    return
+  }
   const response = await apis.pluginUnInstall(pluginPublicId)
   if (ApiUtil.check(response)) {
     ElMessage({
@@ -57,8 +65,8 @@ async function unInstall(pluginPublicId: string | undefined | null) {
     })
   } else {
     ElMessage({
-      type: 'success',
-      message: `卸载失败，${response.message}`
+      type: 'error',
+      message: `卸载失败，${response.msg}`
     })
   }
 }

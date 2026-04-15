@@ -27,7 +27,7 @@ export async function localAuthorQuerySelectItemPage(page: IPage<unknown, Select
   const response = await localAuthorApi.localAuthorQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
-    query: page.query
+    query: page.query as Record<string, unknown> | undefined
   })
 
   // 解析响应值

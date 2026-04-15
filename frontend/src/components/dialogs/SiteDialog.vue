@@ -39,7 +39,10 @@ async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
     if (props.mode === DialogMode.NEW) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteSave(tempFormData)
+      const response = await apis.siteSave({
+        name: tempFormData.siteName ?? undefined,
+        url: tempFormData.homepage ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -48,7 +51,11 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteUpdateById(tempFormData)
+      const response = await apis.siteUpdateById({
+        id: tempFormData.id ?? 0,
+        name: tempFormData.siteName ?? undefined,
+        url: tempFormData.homepage ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false

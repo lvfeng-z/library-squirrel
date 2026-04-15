@@ -46,7 +46,10 @@ async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
     if (props.mode === DialogMode.NEW) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localTagSave(tempFormData)
+      const response = await apis.localTagSave({
+        localTagName: tempFormData.localTagName ?? undefined,
+        baseLocalTagId: tempFormData.baseLocalTagId ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -55,7 +58,11 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localTagUpdateById(tempFormData)
+      const response = await apis.localTagUpdateById({
+        id: tempFormData.id ?? 0,
+        localTagName: tempFormData.localTagName ?? undefined,
+        baseLocalTagId: tempFormData.baseLocalTagId ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false

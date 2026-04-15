@@ -11,7 +11,6 @@ import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'
-import {dirSelect} from "@apis/wails";
 
 // onBeforeMount
 onBeforeMount(() => {

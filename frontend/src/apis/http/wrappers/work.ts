@@ -1,9 +1,11 @@
 /**
  * Work HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as WorkHandler, WorkDTO, WorkQueryDTO, WorkResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/work'
+import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 export interface WorkVO {
   id: number
@@ -22,8 +24,49 @@ export interface PageResult {
   pageSize: number
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 WorkResultDTO 转换为 WorkVO
+ */
+function toWorkVO(dto: WorkResultDTO): WorkVO {
+  return {
+    id: dto.id,
+    title: dto.siteWorkName ?? '',
+    siteId: dto.siteId ?? 0,
+    siteWorkId: dto.siteWorkId ?? '',
+    coverUrl: '',
+    createTime: dto.createTime,
+    updateTime: dto.updateTime
+  }
+}
+
+/**
+ * 将 WorkFullDTO 转换为 WorkVO
+ */
+function toWorkVOFromFullDTO(dto: WorkFullDTO): WorkVO {
+  return {
+    id: dto.id,
+    title: dto.siteWorkName ?? '',
+    siteId: dto.siteId,
+    siteWorkId: dto.siteWorkId ?? '',
+    coverUrl: '',
+    createTime: dto.createTime,
+    updateTime: dto.updateTime
+  }
+}
+
+// ========== API 方法 ==========
+
 export async function workGetFullWorkInfoById(id: number): Promise<ApiResponse<WorkVO>> {
-  return apiProxy.invoke<WorkVO>('work-getFullWorkInfoById', id)
+  const result = await WorkHandler.GetFullWorkInfoById(id)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? toWorkVOFromFullDTO(result.data) : undefined }
 }
 
 export async function workQueryPage(query: {
@@ -31,29 +74,77 @@ export async function workQueryPage(query: {
   pageSize: number
   query?: { siteId?: number; title?: string }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('work-queryPage', query)
+  const queryDTO = new WorkQueryDTO({
+    siteId: query.query?.siteId ?? null,
+    siteWorkNameLike: query.query?.title ?? null
+  })
+  const result = await WorkHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(item => item ? toWorkVO(item) : null).filter((item): item is WorkVO => item !== null) : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
 export async function workDeleteWorkAndSurroundingData(id: number): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('work-deleteWorkAndSurroundingData', { id })
+  const result = await WorkHandler.DeleteWorkAndSurroundingData(id)
+  if (!result) {
+    return { success: false, msg: '删除失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
+/**
+ * 根据作品ID列表获取关联的本地作者信息
+ * 注意：此方法在 bindings 中未实现
+ */
 export async function workListRankedLocalAuthorWithWorkIdByWorkIds(
-  workIds: number[]
+  _workIds: number[]
 ): Promise<ApiResponse<WorkVO[]>> {
-  return apiProxy.invoke<WorkVO[]>('work-listRankedLocalAuthorWithWorkIdByWorkIds', { workIds })
+  // TODO: 此接口在 bindings 中未实现 (ListRankedLocalAuthorWithWorkIdByWorkIds)
+  return { success: false, msg: '此接口未实现：workListRankedLocalAuthorWithWorkIdByWorkIds' }
 }
 
+/**
+ * 根据作品ID列表获取关联的站点作者信息
+ * 注意：此方法在 bindings 中未实现
+ */
 export async function workListRankedSiteAuthorWithWorkIdByWorkIds(
-  workIds: number[]
+  _workIds: number[]
 ): Promise<ApiResponse<WorkVO[]>> {
-  return apiProxy.invoke<WorkVO[]>('work-listRankedSiteAuthorWithWorkIdByWorkIds', { workIds })
+  // TODO: 此接口在 bindings 中未实现 (ListRankedSiteAuthorWithWorkIdByWorkIds)
+  return { success: false, msg: '此接口未实现：workListRankedSiteAuthorWithWorkIdByWorkIds' }
 }
 
-export async function workListReWorkAuthor(workId: number): Promise<ApiResponse<WorkVO[]>> {
-  return apiProxy.invoke<WorkVO[]>('work-listReWorkAuthor', { workId })
+/**
+ * 获取作品的重新整理的作者信息
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function workListReWorkAuthor(_workId: number): Promise<ApiResponse<WorkVO[]>> {
+  // TODO: 此接口在 bindings 中未实现 (ListReWorkAuthor)
+  return { success: false, msg: '此接口未实现：workListReWorkAuthor' }
 }
 
-export async function workUpdateLastUsed(ids: number[]): Promise<ApiResponse<boolean>> {
-  return apiProxy.invoke<boolean>('work-updateLastUsed', { ids })
+/**
+ * 更新作品最后使用时间
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function workUpdateLastUsed(_ids: number[]): Promise<ApiResponse<boolean>> {
+  // TODO: 此接口在 bindings 中未实现 (UpdateLastUsed)
+  return { success: false, msg: '此接口未实现：workUpdateLastUsed' }
 }

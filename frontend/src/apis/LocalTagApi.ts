@@ -14,7 +14,7 @@ export async function localTagQuerySelectItemPage(page: IPage<unknown, SelectIte
   const response = await localTagApi.localTagQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
-    query: page.query
+    query: page.query as Record<string, unknown> | undefined
   })
 
   // 解析响应值

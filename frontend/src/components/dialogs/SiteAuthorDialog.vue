@@ -45,7 +45,11 @@ async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
     if (props.mode === DialogMode.NEW) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteAuthorSave(tempFormData)
+      const response = await apis.siteAuthorSave({
+        authorName: tempFormData.authorName ?? undefined,
+        introduce: tempFormData.introduce ?? undefined,
+        siteId: tempFormData.siteId ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -54,7 +58,12 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteAuthorUpdateById(tempFormData)
+      const response = await apis.siteAuthorUpdateById({
+        id: tempFormData.id ?? 0,
+        authorName: tempFormData.authorName ?? undefined,
+        introduce: tempFormData.introduce ?? undefined,
+        localAuthorId: tempFormData.localAuthor?.id ?? undefined
+      })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false

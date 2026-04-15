@@ -3,7 +3,7 @@
  * 用于渲染进程与 Go 后端的 HTTP 通信
  */
 
-// Go 后端基础 URL
+// Go 后端基础 URL（保留但不再用于 HTTP 请求）
 export const GO_BACKEND_URL = 'http://localhost:8080'
 
 // HTTP 方法类型
@@ -24,12 +24,3 @@ export interface RequestConfig {
   body?: unknown // JSON body
   headers?: Record<string, string>
 }
-
-// IPC Channel 到 HTTP Route 的映射类型
-export interface IpcToHttpRoute {
-  method: HttpMethod
-  path: string
-}
-
-// 路由映射表类型
-export type IpcRouteMapping = Record<string, IpcToHttpRoute>

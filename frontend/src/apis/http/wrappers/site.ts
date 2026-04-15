@@ -1,9 +1,11 @@
 /**
  * Site HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as SiteHandler, SiteDTO, SiteQueryDTO, SiteResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/site'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 export interface SiteVO {
   id: number
@@ -21,12 +23,46 @@ export interface PageResult {
   pageSize: number
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 SiteResultDTO 转换为 SiteVO
+ */
+function toSiteVO(dto: SiteResultDTO | null): SiteVO | null {
+  if (!dto) return null
+  return {
+    id: dto.id,
+    name: dto.siteName ?? '',
+    url: dto.homepage ?? '',
+    enable: true,  // SiteResultDTO 没有 enable 字段，默认 true
+    createTime: dto.createTime,
+    updateTime: dto.updateTime
+  }
+}
+
+// ========== API 方法 ==========
+
 export async function siteSave(site: { name?: string; url?: string; enable?: boolean }): Promise<ApiResponse<SiteVO>> {
-  return apiProxy.invoke<SiteVO>('site-save', site)
+  const siteDTO = new SiteDTO({
+    siteName: site.name ?? null,
+    homepage: site.url ?? null
+  })
+  const result = await SiteHandler.Save(siteDTO)
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '保存失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, name: '', url: '', enable: true, createTime: 0, updateTime: 0 } }
 }
 
 export async function siteDeleteById(id: number): Promise<ApiResponse<null>> {
-  return apiProxy.invoke<null>('site-deleteById', { id })
+  const result = await SiteHandler.Delete(id)
+  if (!result) {
+    return { success: false, msg: '删除失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function siteUpdateById(site: {
@@ -35,11 +71,27 @@ export async function siteUpdateById(site: {
   url?: string
   enable?: boolean
 }): Promise<ApiResponse<SiteVO>> {
-  return apiProxy.invoke<SiteVO>('site-updateById', site)
+  const siteDTO = new SiteDTO({
+    id: site.id,
+    siteName: site.name ?? null,
+    homepage: site.url ?? null
+  })
+  const result = await SiteHandler.Update(siteDTO)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function siteGetById(id: number): Promise<ApiResponse<SiteVO>> {
-  return apiProxy.invoke<SiteVO>('site-getById', id)
+  const result = await SiteHandler.GetById(id)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: toSiteVO(result.data ?? null) ?? undefined }
 }
 
 export async function siteQueryPage(query: {
@@ -47,17 +99,71 @@ export async function siteQueryPage(query: {
   pageSize: number
   query?: { name?: string; enable?: boolean }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('site-queryPage', query)
+  const queryDTO = new SiteQueryDTO({
+    siteNameLike: query.query?.name ?? null
+  })
+  const result = await SiteHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(toSiteVO).filter((item): item is SiteVO => item !== null) : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
 export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('site-querySelectItemPage', query)
+  const queryDTO = new SiteQueryDTO({})
+  const result = await SiteHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as SiteVO[] : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
-export async function siteGetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): Promise<ApiResponse<SiteVO>> {
-  return apiProxy.invoke<SiteVO>('site-getBySiteAndSiteWorkID', { siteId, siteWorkId })
+/**
+ * 根据站点ID和站点作品ID获取站点
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteGetBySiteAndSiteWorkID(_siteId: number, _siteWorkId: string): Promise<ApiResponse<SiteVO>> {
+  // TODO: 此接口在 bindings 中未实现 (GetBySiteAndSiteWorkID)
+  return { success: false, msg: '此接口未实现：siteGetBySiteAndSiteWorkID' }
 }
 
-export async function siteGetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: string): Promise<ApiResponse<SiteVO>> {
-  return apiProxy.invoke<SiteVO>('site-getBySiteWorkSetIdAndSiteName', { siteWorkSetId, siteName })
+/**
+ * 根据作品集ID和站点名称获取站点
+ * 注意：此方法在 bindings 中未实现
+ */
+export async function siteGetBySiteWorkSetIdAndSiteName(_siteWorkSetId: string, _siteName: string): Promise<ApiResponse<SiteVO>> {
+  // TODO: 此接口在 bindings 中未实现 (GetBySiteWorkSetIdAndSiteName)
+  return { success: false, msg: '此接口未实现：siteGetBySiteWorkSetIdAndSiteName' }
 }

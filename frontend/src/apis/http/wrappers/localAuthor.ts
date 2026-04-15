@@ -1,9 +1,11 @@
 /**
  * LocalAuthor HTTP API 包装器
+ * 直接调用 bindings 接口
  */
 
-import { apiProxy } from '../proxy'
 import type { ApiResponse } from '../types'
+import { Handler as LocalAuthorHandler, LocalAuthorDTO, LocalAuthorQueryDTO, LocalAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 export interface LocalAuthorVO {
   id: number
@@ -21,15 +23,49 @@ export interface PageResult {
   pageSize: number
 }
 
+// ========== 工具函数 ==========
+
+/**
+ * 将 LocalAuthorResultDTO 转换为 LocalAuthorVO
+ */
+function toLocalAuthorVO(dto: LocalAuthorResultDTO | null): LocalAuthorVO | null {
+  if (!dto) return null
+  return {
+    id: dto.id,
+    authorName: dto.authorName ?? '',
+    introduce: dto.introduce ?? '',
+    lastUse: dto.lastUse ?? 0,
+    createTime: dto.createTime,
+    updateTime: dto.updateTime
+  }
+}
+
+// ========== API 方法 ==========
+
 export async function localAuthorSave(author: {
   authorName?: string
   introduce?: string
 }): Promise<ApiResponse<LocalAuthorVO>> {
-  return apiProxy.invoke<LocalAuthorVO>('localAuthor-save', author)
+  const authorDTO = new LocalAuthorDTO({
+    authorName: author.authorName ?? null,
+    introduce: author.introduce ?? null
+  })
+  const result = await LocalAuthorHandler.Save(authorDTO)
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '保存失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0 } as LocalAuthorVO }
 }
 
 export async function localAuthorDeleteById(id: number): Promise<ApiResponse<null>> {
-  return apiProxy.invoke<null>('localAuthor-deleteById', { id })
+  const result = await LocalAuthorHandler.Delete(id)
+  if (!result) {
+    return { success: false, msg: '删除失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function localAuthorUpdateById(author: {
@@ -37,11 +73,27 @@ export async function localAuthorUpdateById(author: {
   authorName?: string
   introduce?: string
 }): Promise<ApiResponse<LocalAuthorVO>> {
-  return apiProxy.invoke<LocalAuthorVO>('localAuthor-updateById', author)
+  const authorDTO = new LocalAuthorDTO({
+    id: author.id,
+    authorName: author.authorName ?? null,
+    introduce: author.introduce ?? null
+  })
+  const result = await LocalAuthorHandler.Update(authorDTO)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalAuthorVO>> {
-  return apiProxy.invoke<LocalAuthorVO>('localAuthor-getById', id)
+  const result = await LocalAuthorHandler.GetById(id)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: toLocalAuthorVO(result.data ?? null) ?? undefined }
 }
 
 export async function localAuthorQueryPage(query: {
@@ -49,13 +101,44 @@ export async function localAuthorQueryPage(query: {
   pageSize: number
   query?: { authorName?: string }
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('localAuthor-queryPage', query)
+  const queryDTO = new LocalAuthorQueryDTO({
+    authorName: query.query?.authorName ?? null
+  })
+  const result = await LocalAuthorHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(toLocalAuthorVO).filter((item): item is LocalAuthorVO => item !== null) : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
 
 export async function localAuthorListSelectItems(
-  query?: Record<string, unknown>
-): Promise<ApiResponse<LocalAuthorVO[]>> {
-  return apiProxy.invoke<LocalAuthorVO[]>('localAuthor-listSelectItems', query)
+  _query?: Record<string, unknown>
+): Promise<ApiResponse<SelectItem[]>> {
+  const queryDTO = new LocalAuthorQueryDTO({})
+  const result = await LocalAuthorHandler.ListSelectItems(queryDTO)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: (result.data ?? []).filter((item): item is SelectItem => item !== null) }
 }
 
 export async function localAuthorQuerySelectItemPage(query: {
@@ -63,5 +146,26 @@ export async function localAuthorQuerySelectItemPage(query: {
   pageSize: number
   query?: Record<string, unknown>
 }): Promise<ApiResponse<PageResult>> {
-  return apiProxy.invoke<PageResult>('localAuthor-querySelectItemPage', query)
+  const queryDTO = new LocalAuthorQueryDTO({})
+  const result = await LocalAuthorHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  const page = result.data
+  if (!page) {
+    return { success: true, msg: '', data: { items: [], total: 0, page: query.page, pageSize: query.pageSize } }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: {
+      items: page.data ? page.data.map(item => ({ value: item?.value, label: item?.label ?? '', lastUse: item?.lastUse ?? 0 })) as unknown as LocalAuthorVO[] : [],
+      total: page.dataCount ?? 0,
+      page: page.pageNumber ?? query.page,
+      pageSize: page.pageSize ?? query.pageSize
+    }
+  }
 }
