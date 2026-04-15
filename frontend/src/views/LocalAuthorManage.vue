@@ -43,9 +43,15 @@ const apis = {
   localAuthorDeleteById: localAuthorApi.localAuthorDeleteById,
   localAuthorUpdateById: localAuthorApi.localAuthorUpdateById,
   localAuthorQueryPage: localAuthorApi.localAuthorQueryPage,
-  siteAuthorUpdateBindLocalAuthor: siteAuthorApi.siteAuthorUpdateBindLocalAuthor,
+  siteAuthorUpdateBindLocalAuthor: async (localAuthorId: number | null, siteAuthorIds: number[]) => {
+    ElMessage.error('此功能暂未实现：siteAuthorUpdateBindLocalAuthor')
+    return { success: false, msg: '此功能暂未实现' }
+  },
   siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
-  siteAuthorQueryBoundOrUnboundInLocalAuthorPage: siteAuthorApi.siteAuthorQueryBoundOrUnboundInLocalAuthorPage
+  siteAuthorQueryBoundOrUnboundInLocalAuthorPage: async (page: any) => {
+    ElMessage.error('此功能暂未实现：siteAuthorQueryBoundOrUnboundInLocalAuthorPage')
+    return { success: false, msg: '此功能暂未实现', data: page }
+  }
 }
 // localAuthorSearchTable的组件实例
 const localAuthorSearchTable = ref()

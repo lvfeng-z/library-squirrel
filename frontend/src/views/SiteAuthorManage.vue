@@ -9,6 +9,7 @@ import { Thead } from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
+import { ElMessage } from 'element-plus'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
@@ -38,10 +39,16 @@ onMounted(() => {
 // 接口
 const apis = {
   localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
-  siteAuthorCreateAndBindSameNameLocalAuthor: siteAuthorApi.siteAuthorCreateAndBindSameNameLocalAuthor,
+  siteAuthorCreateAndBindSameNameLocalAuthor: async (siteAuthor: any) => {
+    ElMessage.error('此功能暂未实现：siteAuthorCreateAndBindSameNameLocalAuthor')
+    return { success: false, msg: '此功能暂未实现' }
+  },
   siteAuthorDeleteById: siteAuthorApi.siteAuthorDeleteById,
   siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById,
-  siteAuthorQueryLocalRelateDTOPage: siteAuthorApi.siteAuthorQueryLocalRelateDTOPage
+  siteAuthorQueryLocalRelateDTOPage: async (page: any) => {
+    ElMessage.error('此功能暂未实现：siteAuthorQueryLocalRelateDTOPage')
+    return { success: false, msg: '此功能暂未实现', data: page }
+  }
 }
 // siteAuthorSearchTable的组件实例
 const siteAuthorSearchTable = ref()

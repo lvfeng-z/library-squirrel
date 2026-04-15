@@ -44,13 +44,19 @@ onMounted(() => {
 const apis = {
   localTagDeleteById: localTagApi.localTagDeleteById,
   localTagUpdateById: localTagApi.localTagUpdateById,
-  localTagQueryDTOPage: localTagApi.localTagQueryDTOPage,
+  localTagQueryPage: localTagApi.localTagQueryPage,
   localTagListSelectItems: localTagApi.localTagListSelectItems,
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
   localTagGetTree: localTagApi.localTagGetTree,
-  siteTagUpdateBindLocalTag: siteTagApi.siteTagUpdateBindLocalTag,
+  siteTagUpdateBindLocalTag: async (localTagId: number | null, siteTagIds: number[]) => {
+    ElMessage.error('此功能暂未实现：siteTagUpdateBindLocalTag')
+    return { success: false, msg: '此功能暂未实现' }
+  },
   siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
-  siteTagQueryBoundOrUnboundToLocalTagPage: siteTagApi.siteTagQueryBoundOrUnboundToLocalTagPage
+  siteTagQueryBoundOrUnboundToLocalTagPage: async (page: any) => {
+    ElMessage.error('此功能暂未实现：siteTagQueryBoundOrUnboundToLocalTagPage')
+    return { success: false, msg: '此功能暂未实现', data: page }
+  }
 }
 // localTagSearchTable的组件实例
 const localTagSearchTable = ref()

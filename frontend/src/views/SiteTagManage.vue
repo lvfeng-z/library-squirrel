@@ -10,6 +10,7 @@ import { Thead } from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
+import { ElMessage } from 'element-plus'
 import { isNullish, arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 import SelectItem from '@renderer/model/util/SelectItem.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
@@ -40,10 +41,16 @@ onMounted(() => {
 // 接口
 const apis = {
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
-  siteTagCreateAndBindSameNameLocalTag: siteTagApi.siteTagCreateAndBindSameNameLocalTag,
+  siteTagCreateAndBindSameNameLocalTag: async (siteTag: any) => {
+    ElMessage.error('此功能暂未实现：siteTagCreateAndBindSameNameLocalTag')
+    return { success: false, msg: '此功能暂未实现' }
+  },
   siteTagDeleteById: siteTagApi.siteTagDeleteById,
   siteTagUpdateById: siteTagApi.siteTagUpdateById,
-  siteTagQueryLocalRelateDTOPage: siteTagApi.siteTagQueryLocalRelateDTOPage
+  siteTagQueryLocalRelateDTOPage: async (page: any) => {
+    ElMessage.error('此功能暂未实现：siteTagQueryLocalRelateDTOPage')
+    return { success: false, msg: '此功能暂未实现', data: page }
+  }
 }
 // siteTagSearchTable的组件实例
 const siteTagSearchTable = ref()
