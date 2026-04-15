@@ -2,6 +2,7 @@ package siteTag
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -79,33 +80,51 @@ func (h *Handler) Update(ctx context.Context, tag *SiteTagDTO) *model.ApiRespons
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.SiteTag] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*SiteTagResultDTO] {
 	tag, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.SiteTag](err.Error())
+		return model.Error[*SiteTagResultDTO](err.Error())
 	}
-	return model.Success(tag)
+	return model.Success(ToSiteTagResultDTO(tag))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO) *model.ApiResponse[*model.Page[domain.SiteTag]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO) *model.ApiResponse[*model.Page[SiteTagResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &SiteTagQueryDTO{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.SiteTag]](err.Error())
+		return model.Error[*model.Page[SiteTagResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	data := make([]*SiteTagResultDTO, 0, len(result.Data))
+	for _, tag := range result.Data {
+		data = append(data, ToSiteTagResultDTO(tag))
+	}
+	return model.Success(&model.Page[SiteTagResultDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Query:        result.Query,
+		Data:         data,
+	})
 }
 
 // ListByWorkId 根据作品ID获取标签列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*domain.SiteTag] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*SiteTagResultDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*domain.SiteTag](err.Error())
+		return model.Error[[]*SiteTagResultDTO](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	resultDTOs := make([]*SiteTagResultDTO, len(result))
+	for i, tag := range result {
+		resultDTOs[i] = ToSiteTagResultDTO(tag)
+	}
+	return model.Success(resultDTOs)
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
@@ -136,4 +155,53 @@ type SiteTagDTO struct {
 	SiteID     *int64  `json:"siteId"`
 	SiteTagID  *string `json:"siteTagId"`
 	SiteTagName *string `json:"siteTagName"`
+}
+
+// SiteTagResultDTO 站点标签返回结果DTO（用于屏蔽sql.Null*类型）
+type SiteTagResultDTO struct {
+	ID           int64   `json:"id"`
+	SiteID      *int64  `json:"siteId"`
+	SiteTagID   *string `json:"siteTagId"`
+	SiteTagName *string `json:"siteTagName"`
+	BaseSiteTagID *string `json:"baseSiteTagId"`
+	Description *string `json:"description"`
+	LocalTagID  *int64  `json:"localTagId"`
+	LastUse     *int64  `json:"lastUse"`
+	CreateTime  int64   `json:"createTime"`
+	UpdateTime  int64   `json:"updateTime"`
+}
+
+// ToSiteTagResultDTO 将 domain.SiteTag 转换为 SiteTagResultDTO
+func ToSiteTagResultDTO(tag *domain.SiteTag) *SiteTagResultDTO {
+	if tag == nil {
+		return nil
+	}
+	return &SiteTagResultDTO{
+		ID:           tag.GetID(),
+		SiteID:       nullInt64ToPointer(tag.SiteID),
+		SiteTagID:    nullStringToPointer(tag.SiteTagID),
+		SiteTagName:  nullStringToPointer(tag.SiteTagName),
+		BaseSiteTagID: nullStringToPointer(tag.BaseSiteTagID),
+		Description:  nullStringToPointer(tag.Description),
+		LocalTagID:  nullInt64ToPointer(tag.LocalTagID),
+		LastUse:     nullInt64ToPointer(tag.LastUse),
+		CreateTime:  tag.GetCreateTime(),
+		UpdateTime:  tag.GetUpdateTime(),
+	}
+}
+
+// nullStringToPointer 将 sql.NullString 转换为 *string
+func nullStringToPointer(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
+}
+
+// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
+func nullInt64ToPointer(ns sql.NullInt64) *int64 {
+	if ns.Valid {
+		return &ns.Int64
+	}
+	return nil
 }

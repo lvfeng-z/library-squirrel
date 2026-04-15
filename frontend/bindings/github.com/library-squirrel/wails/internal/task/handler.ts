@@ -12,9 +12,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as model$0 from "../../pkg/model/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -51,7 +48,7 @@ export function DeleteTask(id: number): $CancellablePromise<model$0.ApiResponse<
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Task | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.TaskResultDTO | null> | null> {
     return $Call.ByID(1004381334, id).then(($result: any) => {
         return $$createType11($result);
     });
@@ -60,7 +57,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * ListChildrenTask 查询子任务列表
  */
-export function ListChildrenTask(pid: number): $CancellablePromise<model$0.ApiResponse<(model$1.Task | null)[]> | null> {
+export function ListChildrenTask(pid: number): $CancellablePromise<model$0.ApiResponse<($models.TaskResultDTO | null)[]> | null> {
     return $Call.ByID(4128042548, pid).then(($result: any) => {
         return $$createType14($result);
     });
@@ -87,7 +84,7 @@ export function ListStatus(ids: number[]): $CancellablePromise<model$0.ApiRespon
 /**
  * ListTaskTree 获取任务树列表
  */
-export function ListTaskTree(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$1.Task | null)[]> | null> {
+export function ListTaskTree(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.TaskResultDTO | null)[]> | null> {
     return $Call.ByID(867436771, taskIds).then(($result: any) => {
         return $$createType14($result);
     });
@@ -96,7 +93,7 @@ export function ListTaskTree(taskIds: number[]): $CancellablePromise<model$0.Api
 /**
  * QueryChildrenTaskPage 查询子任务分页
  */
-export function QueryChildrenTaskPage(pid: number, page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
+export function QueryChildrenTaskPage(pid: number, page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
     return $Call.ByID(3312153847, pid, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType23($result);
     });
@@ -105,7 +102,7 @@ export function QueryChildrenTaskPage(pid: number, page: number, pageSize: numbe
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
     return $Call.ByID(2367410609, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType23($result);
     });
@@ -114,7 +111,7 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Task
 /**
  * QueryParentPage 分页查询父任务
  */
-export function QueryParentPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Task> | null> | null> {
+export function QueryParentPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
     return $Call.ByID(39626201, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType23($result);
     });
@@ -138,7 +135,7 @@ const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$1.Task.createFrom;
+const $$createType8 = $models.TaskResultDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
 const $$createType11 = $Create.Nullable($$createType10);

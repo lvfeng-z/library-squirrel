@@ -105,3 +105,79 @@ export class PluginQueryDTO {
         return new PluginQueryDTO($$parsedSource as Partial<PluginQueryDTO>);
     }
 }
+
+/**
+ * PluginResultDTO 插件返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class PluginResultDTO {
+    "id": number;
+    "publicId": string | null;
+    "author": string | null;
+    "name": string | null;
+    "version": string | null;
+    "entryPath": string | null;
+    "rootPath": string | null;
+    "backupId": number | null;
+    "sortNum": number | null;
+    "pluginData": string | null;
+    "uninstalled": number | null;
+    "activationType": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new PluginResultDTO instance. */
+    constructor($$source: Partial<PluginResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("publicId" in $$source)) {
+            this["publicId"] = null;
+        }
+        if (!("author" in $$source)) {
+            this["author"] = null;
+        }
+        if (!("name" in $$source)) {
+            this["name"] = null;
+        }
+        if (!("version" in $$source)) {
+            this["version"] = null;
+        }
+        if (!("entryPath" in $$source)) {
+            this["entryPath"] = null;
+        }
+        if (!("rootPath" in $$source)) {
+            this["rootPath"] = null;
+        }
+        if (!("backupId" in $$source)) {
+            this["backupId"] = null;
+        }
+        if (!("sortNum" in $$source)) {
+            this["sortNum"] = null;
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = null;
+        }
+        if (!("uninstalled" in $$source)) {
+            this["uninstalled"] = null;
+        }
+        if (!("activationType" in $$source)) {
+            this["activationType"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginResultDTO($$parsedSource as Partial<PluginResultDTO>);
+    }
+}

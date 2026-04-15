@@ -141,3 +141,75 @@ export class WorkQueryDTO {
         return new WorkQueryDTO($$parsedSource as Partial<WorkQueryDTO>);
     }
 }
+
+/**
+ * WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class WorkResultDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "siteWorkName": string | null;
+    "siteAuthorId": string | null;
+    "siteWorkDescription": string | null;
+    "siteUploadTime": number | null;
+    "siteUpdateTime": number | null;
+    "nickName": string | null;
+    "localAuthorId": number | null;
+    "lastView": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new WorkResultDTO instance. */
+    constructor($$source: Partial<WorkResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("siteWorkName" in $$source)) {
+            this["siteWorkName"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("siteWorkDescription" in $$source)) {
+            this["siteWorkDescription"] = null;
+        }
+        if (!("siteUploadTime" in $$source)) {
+            this["siteUploadTime"] = null;
+        }
+        if (!("siteUpdateTime" in $$source)) {
+            this["siteUpdateTime"] = null;
+        }
+        if (!("nickName" in $$source)) {
+            this["nickName"] = null;
+        }
+        if (!("localAuthorId" in $$source)) {
+            this["localAuthorId"] = null;
+        }
+        if (!("lastView" in $$source)) {
+            this["lastView"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkResultDTO($$parsedSource as Partial<WorkResultDTO>);
+    }
+}

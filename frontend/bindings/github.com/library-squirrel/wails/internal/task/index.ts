@@ -10,6 +10,7 @@ export {
     CreateTaskByURLResponse,
     CreateTaskRequest,
     TaskQueryDTO,
+    TaskResultDTO,
     TaskScheduleDTO,
     TreeDataPageDTO
 } from "./models.js";

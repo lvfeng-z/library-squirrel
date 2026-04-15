@@ -42,7 +42,7 @@ export function DeleteWorkAndSurroundingData(id: number): $CancellablePromise<mo
 /**
  * GetById 根据ID获取作品
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Work | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.WorkResultDTO | null> | null> {
     return $Call.ByID(4285741466, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -60,7 +60,7 @@ export function GetFullWorkInfoById(id: number): $CancellablePromise<model$0.Api
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Work> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkResultDTO> | null> | null> {
     return $Call.ByID(2743079621, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType13($result);
     });
@@ -87,7 +87,7 @@ export function Update(work: $models.WorkDTO | null): $CancellablePromise<model$
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.Work.createFrom;
+const $$createType2 = $models.WorkResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

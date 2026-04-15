@@ -7,5 +7,6 @@ export {
 };
 
 export {
-    ResourceDTO
+    ResourceDTO,
+    ResourceResultDTO
 } from "./models.js";

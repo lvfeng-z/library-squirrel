@@ -134,3 +134,67 @@ export class SiteAuthorQueryDTO {
         return new SiteAuthorQueryDTO($$parsedSource as Partial<SiteAuthorQueryDTO>);
     }
 }
+
+/**
+ * SiteAuthorResultDTO 站点作者返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class SiteAuthorResultDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteAuthorId": string | null;
+    "authorName": string | null;
+    "fixedAuthorName": string | null;
+    "siteAuthorNameBefore": string | null;
+    "introduce": string | null;
+    "localAuthorId": number | null;
+    "lastUse": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new SiteAuthorResultDTO instance. */
+    constructor($$source: Partial<SiteAuthorResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = null;
+        }
+        if (!("fixedAuthorName" in $$source)) {
+            this["fixedAuthorName"] = null;
+        }
+        if (!("siteAuthorNameBefore" in $$source)) {
+            this["siteAuthorNameBefore"] = null;
+        }
+        if (!("introduce" in $$source)) {
+            this["introduce"] = null;
+        }
+        if (!("localAuthorId" in $$source)) {
+            this["localAuthorId"] = null;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteAuthorResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteAuthorResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteAuthorResultDTO($$parsedSource as Partial<SiteAuthorResultDTO>);
+    }
+}

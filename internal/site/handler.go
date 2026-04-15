@@ -2,6 +2,7 @@ package site
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -79,24 +80,37 @@ func (h *Handler) Update(ctx context.Context, site *SiteDTO) *model.ApiResponse[
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.Site] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*SiteResultDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.Site](err.Error())
+		return model.Error[*SiteResultDTO](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToSiteResultDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteQueryDTO) *model.ApiResponse[*model.Page[domain.Site]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteQueryDTO) *model.ApiResponse[*model.Page[SiteResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &SiteQueryDTO{}
 	}
 	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.Site]](err.Error())
+		return model.Error[*model.Page[SiteResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	data := make([]*SiteResultDTO, 0, len(result.Data))
+	for _, site := range result.Data {
+		data = append(data, ToSiteResultDTO(site))
+	}
+	return model.Success(&model.Page[SiteResultDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Query:        result.Query,
+		Data:         data,
+	})
 }
 
 // QuerySelectItemPage 分页查询选择项
@@ -112,12 +126,12 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page, pageSize int, q
 }
 
 // GetByName 根据名称获取
-func (h *Handler) GetByName(ctx context.Context, siteName string) *model.ApiResponse[*domain.Site] {
+func (h *Handler) GetByName(ctx context.Context, siteName string) *model.ApiResponse[*SiteResultDTO] {
 	result, err := h.svc.GetByName(ctx, siteName)
 	if err != nil {
-		return model.Error[*domain.Site](err.Error())
+		return model.Error[*SiteResultDTO](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToSiteResultDTO(result))
 }
 
 // ========== DTO 定义 ==========
@@ -128,4 +142,37 @@ type SiteDTO struct {
 	SiteName        *string `json:"siteName"`
 	SiteDescription *string `json:"siteDescription"`
 	Homepage        *string `json:"homepage"`
+}
+
+// SiteResultDTO 站点返回结果DTO（用于屏蔽sql.Null*类型）
+type SiteResultDTO struct {
+	ID              int64   `json:"id"`
+	SiteName       *string `json:"siteName"`
+	SiteDescription *string `json:"siteDescription"`
+	Homepage       *string `json:"homepage"`
+	CreateTime     int64   `json:"createTime"`
+	UpdateTime     int64   `json:"updateTime"`
+}
+
+// ToSiteResultDTO 将 domain.Site 转换为 SiteResultDTO
+func ToSiteResultDTO(site *domain.Site) *SiteResultDTO {
+	if site == nil {
+		return nil
+	}
+	return &SiteResultDTO{
+		ID:              site.GetID(),
+		SiteName:       nullStringToPointer(site.SiteName),
+		SiteDescription: nullStringToPointer(site.SiteDescription),
+		Homepage:       nullStringToPointer(site.Homepage),
+		CreateTime:     site.GetCreateTime(),
+		UpdateTime:     site.GetUpdateTime(),
+	}
+}
+
+// nullStringToPointer 将 sql.NullString 转换为 *string
+func nullStringToPointer(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
 }

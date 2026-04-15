@@ -2,6 +2,7 @@ package work
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -87,24 +88,37 @@ func (h *Handler) DeleteWorkAndSurroundingData(ctx context.Context, id int64) *m
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取作品
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.Work] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*WorkResultDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.Work](err.Error())
+		return model.Error[*WorkResultDTO](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToWorkResultDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[domain.Work]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[WorkResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &WorkQueryDTO{}
 	}
 	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.Work]](err.Error())
+		return model.Error[*model.Page[WorkResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	data := make([]*WorkResultDTO, 0, len(result.Data))
+	for _, work := range result.Data {
+		data = append(data, ToWorkResultDTO(work))
+	}
+	return model.Success(&model.Page[WorkResultDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Query:        result.Query,
+		Data:         data,
+	})
 }
 
 // GetFullWorkInfoById 获取完整作品信息
@@ -124,4 +138,59 @@ type WorkDTO struct {
 	SiteID       *int64  `json:"siteId"`
 	SiteWorkID   *string `json:"siteWorkId"`
 	SiteWorkName *string `json:"siteWorkName"`
+}
+
+// WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
+type WorkResultDTO struct {
+	ID                  int64   `json:"id"`
+	SiteID             *int64  `json:"siteId"`
+	SiteWorkID         *string `json:"siteWorkId"`
+	SiteWorkName       *string `json:"siteWorkName"`
+	SiteAuthorID       *string `json:"siteAuthorId"`
+	SiteWorkDescription *string `json:"siteWorkDescription"`
+	SiteUploadTime     *int64  `json:"siteUploadTime"`
+	SiteUpdateTime     *int64  `json:"siteUpdateTime"`
+	NickName           *string `json:"nickName"`
+	LocalAuthorID      *int64  `json:"localAuthorId"`
+	LastView           *int64  `json:"lastView"`
+	CreateTime         int64   `json:"createTime"`
+	UpdateTime         int64   `json:"updateTime"`
+}
+
+// ToWorkResultDTO 将 domain.Work 转换为 WorkResultDTO
+func ToWorkResultDTO(work *domain.Work) *WorkResultDTO {
+	if work == nil {
+		return nil
+	}
+	return &WorkResultDTO{
+		ID:                    work.GetID(),
+		SiteID:                nullInt64ToPointer(work.SiteID),
+		SiteWorkID:            nullStringToPointer(work.SiteWorkID),
+		SiteWorkName:          nullStringToPointer(work.SiteWorkName),
+		SiteAuthorID:          nullStringToPointer(work.SiteAuthorID),
+		SiteWorkDescription:   nullStringToPointer(work.SiteWorkDescription),
+		SiteUploadTime:        nullInt64ToPointer(work.SiteUploadTime),
+		SiteUpdateTime:        nullInt64ToPointer(work.SiteUpdateTime),
+		NickName:              nullStringToPointer(work.NickName),
+		LocalAuthorID:         nullInt64ToPointer(work.LocalAuthorID),
+		LastView:              nullInt64ToPointer(work.LastView),
+		CreateTime:            work.GetCreateTime(),
+		UpdateTime:            work.GetUpdateTime(),
+	}
+}
+
+// nullStringToPointer 将 sql.NullString 转换为 *string
+func nullStringToPointer(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
+}
+
+// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
+func nullInt64ToPointer(ns sql.NullInt64) *int64 {
+	if ns.Valid {
+		return &ns.Int64
+	}
+	return nil
 }

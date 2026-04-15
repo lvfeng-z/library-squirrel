@@ -207,6 +207,90 @@ export class TaskQueryDTO {
 }
 
 /**
+ * TaskResultDTO 任务返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class TaskResultDTO {
+    "id": number;
+    "isCollection": number | null;
+    "pid": number | null;
+    "taskName": string | null;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "url": string | null;
+    "status": number;
+    "pendingResourceId": number | null;
+    "continuable": number | null;
+    "pluginPublicId": string | null;
+    "pluginContributionId": string | null;
+    "pluginData": string | null;
+    "errorMessage": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new TaskResultDTO instance. */
+    constructor($$source: Partial<TaskResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("isCollection" in $$source)) {
+            this["isCollection"] = null;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = null;
+        }
+        if (!("taskName" in $$source)) {
+            this["taskName"] = null;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("url" in $$source)) {
+            this["url"] = null;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = 0;
+        }
+        if (!("pendingResourceId" in $$source)) {
+            this["pendingResourceId"] = null;
+        }
+        if (!("continuable" in $$source)) {
+            this["continuable"] = null;
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = null;
+        }
+        if (!("pluginContributionId" in $$source)) {
+            this["pluginContributionId"] = null;
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = null;
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TaskResultDTO($$parsedSource as Partial<TaskResultDTO>);
+    }
+}
+
+/**
  * TaskScheduleDTO 任务进度DTO
  */
 export class TaskScheduleDTO {

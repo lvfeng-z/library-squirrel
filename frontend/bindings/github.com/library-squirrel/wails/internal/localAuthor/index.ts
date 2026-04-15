@@ -8,5 +8,6 @@ export {
 
 export {
     LocalAuthorDTO,
-    LocalAuthorQueryDTO
+    LocalAuthorQueryDTO,
+    LocalAuthorResultDTO
 } from "./models.js";

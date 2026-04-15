@@ -33,7 +33,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.SiteTag | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.SiteTagResultDTO | null> | null> {
     return $Call.ByID(2899204012, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -42,7 +42,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * ListByWorkId 根据作品ID获取标签列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.SiteTag | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<($models.SiteTagResultDTO | null)[]> | null> {
     return $Call.ByID(94223277, workId).then(($result: any) => {
         return $$createType8($result);
     });
@@ -51,7 +51,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.SiteTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SiteTag> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.SiteTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagResultDTO> | null> | null> {
     return $Call.ByID(4275757295, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType12($result);
     });
@@ -96,7 +96,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.SiteTag.createFrom;
+const $$createType2 = $models.SiteTagResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

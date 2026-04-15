@@ -100,3 +100,47 @@ export class SiteQueryDTO {
         return new SiteQueryDTO($$parsedSource as Partial<SiteQueryDTO>);
     }
 }
+
+/**
+ * SiteResultDTO 站点返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class SiteResultDTO {
+    "id": number;
+    "siteName": string | null;
+    "siteDescription": string | null;
+    "homepage": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new SiteResultDTO instance. */
+    constructor($$source: Partial<SiteResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = null;
+        }
+        if (!("siteDescription" in $$source)) {
+            this["siteDescription"] = null;
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteResultDTO($$parsedSource as Partial<SiteResultDTO>);
+    }
+}

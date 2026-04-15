@@ -7,5 +7,6 @@ export {
 };
 
 export {
-    PluginQueryDTO
+    PluginQueryDTO,
+    PluginResultDTO
 } from "./models.js";

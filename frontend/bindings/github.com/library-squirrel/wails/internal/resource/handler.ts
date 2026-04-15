@@ -12,9 +12,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as model$0 from "../../pkg/model/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -42,7 +39,7 @@ export function DeleteByWorkId(workId: number): $CancellablePromise<model$0.ApiR
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Resource | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.ResourceResultDTO | null> | null> {
     return $Call.ByID(2112164391, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -51,7 +48,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * ListByWorkId 根据作品ID获取资源列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.Resource | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<($models.ResourceResultDTO | null)[]> | null> {
     return $Call.ByID(3126823840, workId).then(($result: any) => {
         return $$createType8($result);
     });
@@ -78,7 +75,7 @@ export function Update(resource: $models.ResourceDTO | null): $CancellablePromis
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.Resource.createFrom;
+const $$createType2 = $models.ResourceResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

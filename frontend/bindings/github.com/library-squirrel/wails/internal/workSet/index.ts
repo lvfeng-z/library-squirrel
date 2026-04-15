@@ -8,5 +8,6 @@ export {
 
 export {
     WorkSetDTO,
-    WorkSetQueryDTO
+    WorkSetQueryDTO,
+    WorkSetResultDTO
 } from "./models.js";

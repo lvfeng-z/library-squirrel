@@ -134,3 +134,63 @@ export class SiteTagQueryDTO {
         return new SiteTagQueryDTO($$parsedSource as Partial<SiteTagQueryDTO>);
     }
 }
+
+/**
+ * SiteTagResultDTO 站点标签返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class SiteTagResultDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteTagId": string | null;
+    "siteTagName": string | null;
+    "baseSiteTagId": string | null;
+    "description": string | null;
+    "localTagId": number | null;
+    "lastUse": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new SiteTagResultDTO instance. */
+    constructor($$source: Partial<SiteTagResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteTagId" in $$source)) {
+            this["siteTagId"] = null;
+        }
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = null;
+        }
+        if (!("baseSiteTagId" in $$source)) {
+            this["baseSiteTagId"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
+        if (!("localTagId" in $$source)) {
+            this["localTagId"] = null;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteTagResultDTO($$parsedSource as Partial<SiteTagResultDTO>);
+    }
+}

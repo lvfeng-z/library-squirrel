@@ -12,15 +12,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as $models from "./models.js";
 
 /**
  * Create 创建备份
  */
-export function Create(sourceType: number, sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<model$1.Backup | null> | null> {
+export function Create(sourceType: number, sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<$models.BackupResultDTO | null> | null> {
     return $Call.ByID(1143455539, sourceType, sourceId, fileName, sourcePath, workDir).then(($result: any) => {
         return $$createType3($result);
     });
@@ -29,7 +30,7 @@ export function Create(sourceType: number, sourceId: number, fileName: string, s
 /**
  * CreatePluginBackup 创建插件备份
  */
-export function CreatePluginBackup(sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<model$1.Backup | null> | null> {
+export function CreatePluginBackup(sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<$models.BackupResultDTO | null> | null> {
     return $Call.ByID(2101407254, sourceId, fileName, sourcePath, workDir).then(($result: any) => {
         return $$createType3($result);
     });
@@ -38,7 +39,7 @@ export function CreatePluginBackup(sourceId: number, fileName: string, sourcePat
 /**
  * GetById 根据ID获取备份
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Backup | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.BackupResultDTO | null> | null> {
     return $Call.ByID(3776170593, id).then(($result: any) => {
         return $$createType3($result);
     });
@@ -47,14 +48,14 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * GetPluginBackup 获取插件备份
  */
-export function GetPluginBackup(sourceId: number): $CancellablePromise<model$0.ApiResponse<model$1.Backup | null> | null> {
+export function GetPluginBackup(sourceId: number): $CancellablePromise<model$0.ApiResponse<$models.BackupResultDTO | null> | null> {
     return $Call.ByID(1046577748, sourceId).then(($result: any) => {
         return $$createType3($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = model$1.Backup.createFrom;
+const $$createType0 = $models.BackupResultDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);

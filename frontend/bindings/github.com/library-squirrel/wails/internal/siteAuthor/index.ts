@@ -8,5 +8,6 @@ export {
 
 export {
     SiteAuthorDTO,
-    SiteAuthorQueryDTO
+    SiteAuthorQueryDTO,
+    SiteAuthorResultDTO
 } from "./models.js";

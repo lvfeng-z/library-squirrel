@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -48,57 +49,62 @@ func (h *Handler) CreateTaskByURL(ctx context.Context, url string) *model.ApiRes
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.Task] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*TaskResultDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.Task](err.Error())
+		return model.Error[*TaskResultDTO](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToTaskResultDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[domain.Task]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &TaskQueryDTO{}
 	}
 	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.Task]](err.Error())
+		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToTaskPageResultDTO(result))
 }
 
 // QueryParentPage 分页查询父任务
-func (h *Handler) QueryParentPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[domain.Task]] {
+func (h *Handler) QueryParentPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &TaskQueryDTO{}
 	}
 	result, err := h.svc.QueryParentPageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.Task]](err.Error())
+		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToTaskPageResultDTO(result))
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[domain.Task]] {
+func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &TaskQueryDTO{}
 	}
 	result, err := h.svc.QueryChildrenTaskPageByDTO(ctx, pid, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[domain.Task]](err.Error())
+		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
-	return model.Success(result)
+	return model.Success(ToTaskPageResultDTO(result))
 }
 
 // ListChildrenTask 查询子任务列表
-func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiResponse[[]*domain.Task] {
+func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiResponse[[]*TaskResultDTO] {
 	result, err := h.svc.ListChildrenTask(ctx, pid)
 	if err != nil {
-		return model.Error[[]*domain.Task](err.Error())
+		return model.Error[[]*TaskResultDTO](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	resultDTOs := make([]*TaskResultDTO, len(result))
+	for i, task := range result {
+		resultDTOs[i] = ToTaskResultDTO(task)
+	}
+	return model.Success(resultDTOs)
 }
 
 // QueryTreeDataPage 查询任务树数据分页
@@ -111,12 +117,17 @@ func (h *Handler) QueryTreeDataPage(ctx context.Context, treeId int64) *model.Ap
 }
 
 // ListTaskTree 获取任务树列表
-func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64) *model.ApiResponse[[]*domain.Task] {
+func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64) *model.ApiResponse[[]*TaskResultDTO] {
 	result, err := h.svc.ListTaskTree(ctx, taskIds)
 	if err != nil {
-		return model.Error[[]*domain.Task](err.Error())
+		return model.Error[[]*TaskResultDTO](err.Error())
 	}
-	return model.Success(result)
+	// 转换为 ResultDTO
+	resultDTOs := make([]*TaskResultDTO, len(result))
+	for i, task := range result {
+		resultDTOs[i] = ToTaskResultDTO(task)
+	}
+	return model.Success(resultDTOs)
 }
 
 // ListStatus 查询状态列表
@@ -135,4 +146,85 @@ func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiRespo
 		return model.Error[[]*TaskScheduleDTO](err.Error())
 	}
 	return model.Success(result)
+}
+
+// TaskResultDTO 任务返回结果DTO（用于屏蔽sql.Null*类型）
+type TaskResultDTO struct {
+	ID                   int64   `json:"id"`
+	IsCollection        *int64  `json:"isCollection"`
+	Pid                 *int64  `json:"pid"`
+	TaskName            *string `json:"taskName"`
+	SiteID              *int64  `json:"siteId"`
+	SiteWorkID          *string `json:"siteWorkId"`
+	URL                 *string `json:"url"`
+	Status              int     `json:"status"`
+	PendingResourceID   *int64  `json:"pendingResourceId"`
+	Continuable         *int64  `json:"continuable"`
+	PluginPublicID      *string `json:"pluginPublicId"`
+	PluginContributionID *string `json:"pluginContributionId"`
+	PluginData          *string `json:"pluginData"`
+	ErrorMessage        *string `json:"errorMessage"`
+	CreateTime          int64   `json:"createTime"`
+	UpdateTime          int64   `json:"updateTime"`
+}
+
+// ToTaskResultDTO 将 domain.Task 转换为 TaskResultDTO
+func ToTaskResultDTO(task *domain.Task) *TaskResultDTO {
+	if task == nil {
+		return nil
+	}
+	return &TaskResultDTO{
+		ID:                    task.GetID(),
+		IsCollection:         nullInt64ToPointer(task.IsCollection),
+		Pid:                  nullInt64ToPointer(task.Pid),
+		TaskName:             nullStringToPointer(task.TaskName),
+		SiteID:               nullInt64ToPointer(task.SiteID),
+		SiteWorkID:           nullStringToPointer(task.SiteWorkID),
+		URL:                  nullStringToPointer(task.URL),
+		Status:               task.Status,
+		PendingResourceID:    nullInt64ToPointer(task.PendingResourceID),
+		Continuable:          nullInt64ToPointer(task.Continuable),
+		PluginPublicID:       nullStringToPointer(task.PluginPublicID),
+		PluginContributionID: nullStringToPointer(task.PluginContributionID),
+		PluginData:           nullStringToPointer(task.PluginData),
+		ErrorMessage:         nullStringToPointer(task.ErrorMessage),
+		CreateTime:           task.GetCreateTime(),
+		UpdateTime:           task.GetUpdateTime(),
+	}
+}
+
+// ToTaskPageResultDTO 将 *model.Page[domain.Task] 转换为 *model.Page[TaskResultDTO]
+func ToTaskPageResultDTO(page *model.Page[domain.Task]) *model.Page[TaskResultDTO] {
+	if page == nil {
+		return nil
+	}
+	data := make([]*TaskResultDTO, 0, len(page.Data))
+	for _, task := range page.Data {
+		data = append(data, ToTaskResultDTO(task))
+	}
+	return &model.Page[TaskResultDTO]{
+		PageNumber:   page.PageNumber,
+		PageSize:     page.PageSize,
+		PageCount:    page.PageCount,
+		DataCount:    page.DataCount,
+		CurrentCount: page.CurrentCount,
+		Query:        page.Query,
+		Data:         data,
+	}
+}
+
+// nullStringToPointer 将 sql.NullString 转换为 *string
+func nullStringToPointer(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
+}
+
+// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
+func nullInt64ToPointer(ns sql.NullInt64) *int64 {
+	if ns.Valid {
+		return &ns.Int64
+	}
+	return nil
 }

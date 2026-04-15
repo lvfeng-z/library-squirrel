@@ -12,9 +12,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as model$0 from "../../pkg/model/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -33,7 +30,7 @@ export function CheckInstalled(publicId: string): $CancellablePromise<model$0.Ap
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.PluginResultDTO | null> | null> {
     return $Call.ByID(2694458004, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -42,7 +39,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * GetByPublicId 根据公开ID获取插件
  */
-export function GetByPublicId(publicId: string): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
+export function GetByPublicId(publicId: string): $CancellablePromise<model$0.ApiResponse<$models.PluginResultDTO | null> | null> {
     return $Call.ByID(2423447601, publicId).then(($result: any) => {
         return $$createType5($result);
     });
@@ -60,7 +57,7 @@ export function GetPluginRoot(): $CancellablePromise<model$0.ApiResponse<string>
 /**
  * InstallFromPath 从插件包路径安装插件
  */
-export function InstallFromPath(packagePath: string, installType: number): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
+export function InstallFromPath(packagePath: string, installType: number): $CancellablePromise<model$0.ApiResponse<$models.PluginResultDTO | null> | null> {
     return $Call.ByID(3794219392, packagePath, installType).then(($result: any) => {
         return $$createType5($result);
     });
@@ -69,7 +66,7 @@ export function InstallFromPath(packagePath: string, installType: number): $Canc
 /**
  * Page 分页查询
  */
-export function Page(page: number, pageSize: number, queryDTO: $models.PluginQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.Plugin> | null> | null> {
+export function Page(page: number, pageSize: number, queryDTO: $models.PluginQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.PluginResultDTO> | null> | null> {
     return $Call.ByID(4119841619, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType11($result);
     });
@@ -87,7 +84,7 @@ export function ReadVueFile(pluginPublicId: string, filePath: string): $Cancella
 /**
  * Reinstall 重新安装插件
  */
-export function Reinstall(pluginPublicId: string, installType: number): $CancellablePromise<model$0.ApiResponse<model$1.Plugin | null> | null> {
+export function Reinstall(pluginPublicId: string, installType: number): $CancellablePromise<model$0.ApiResponse<$models.PluginResultDTO | null> | null> {
     return $Call.ByID(1898980484, pluginPublicId, installType).then(($result: any) => {
         return $$createType5($result);
     });
@@ -114,7 +111,7 @@ export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.A
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.Plugin.createFrom;
+const $$createType2 = $models.PluginResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

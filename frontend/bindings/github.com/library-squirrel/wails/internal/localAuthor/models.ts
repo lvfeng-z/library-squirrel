@@ -97,3 +97,47 @@ export class LocalAuthorQueryDTO {
         return new LocalAuthorQueryDTO($$parsedSource as Partial<LocalAuthorQueryDTO>);
     }
 }
+
+/**
+ * LocalAuthorResultDTO 本地作者返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class LocalAuthorResultDTO {
+    "id": number;
+    "authorName": string | null;
+    "introduce": string | null;
+    "lastUse": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new LocalAuthorResultDTO instance. */
+    constructor($$source: Partial<LocalAuthorResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = null;
+        }
+        if (!("introduce" in $$source)) {
+            this["introduce"] = null;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalAuthorResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalAuthorResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LocalAuthorResultDTO($$parsedSource as Partial<LocalAuthorResultDTO>);
+    }
+}

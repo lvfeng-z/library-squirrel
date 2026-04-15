@@ -33,7 +33,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.LocalAuthor | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.LocalAuthorResultDTO | null> | null> {
     return $Call.ByID(3189236341, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -60,7 +60,7 @@ export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.LocalAuthor> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalAuthorResultDTO> | null> | null> {
     return $Call.ByID(1132350838, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType19($result);
     });
@@ -105,7 +105,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.LocalAuthor.createFrom;
+const $$createType2 = $models.LocalAuthorResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

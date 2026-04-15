@@ -34,7 +34,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.LocalTag | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.LocalTagResultDTO | null> | null> {
     return $Call.ByID(3237147342, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -43,7 +43,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<mod
 /**
  * GetTree 获取标签树形结构
  */
-export function GetTree(rootId: number, depth: number): $CancellablePromise<model$0.ApiResponse<(model$1.LocalTag | null)[]> | null> {
+export function GetTree(rootId: number, depth: number): $CancellablePromise<model$0.ApiResponse<($models.LocalTagResultDTO | null)[]> | null> {
     return $Call.ByID(4269917526, rootId, depth).then(($result: any) => {
         return $$createType8($result);
     });
@@ -52,7 +52,7 @@ export function GetTree(rootId: number, depth: number): $CancellablePromise<mode
 /**
  * ListByWorkId 根据作品ID获取标签列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.LocalTag | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<($models.LocalTagResultDTO | null)[]> | null> {
     return $Call.ByID(3732754883, workId).then(($result: any) => {
         return $$createType8($result);
     });
@@ -70,7 +70,7 @@ export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $Can
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.LocalTag> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO> | null> | null> {
     return $Call.ByID(112028121, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType17($result);
     });
@@ -124,7 +124,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.LocalTag.createFrom;
+const $$createType2 = $models.LocalTagResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

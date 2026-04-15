@@ -8,5 +8,6 @@ export {
 
 export {
     SiteDTO,
-    SiteQueryDTO
+    SiteQueryDTO,
+    SiteResultDTO
 } from "./models.js";

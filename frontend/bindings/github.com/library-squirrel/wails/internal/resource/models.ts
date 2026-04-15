@@ -40,3 +40,75 @@ export class ResourceDTO {
         return new ResourceDTO($$parsedSource as Partial<ResourceDTO>);
     }
 }
+
+/**
+ * ResourceResultDTO 资源返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class ResourceResultDTO {
+    "id": number;
+    "workId": number;
+    "taskId": number;
+    "state": number;
+    "filePath": string | null;
+    "fileName": string | null;
+    "filenameExtension": string | null;
+    "suggestName": string | null;
+    "resourceSize": number | null;
+    "workdir": string | null;
+    "resourceComplete": number;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new ResourceResultDTO instance. */
+    constructor($$source: Partial<ResourceResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("workId" in $$source)) {
+            this["workId"] = 0;
+        }
+        if (!("taskId" in $$source)) {
+            this["taskId"] = 0;
+        }
+        if (!("state" in $$source)) {
+            this["state"] = 0;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = null;
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = null;
+        }
+        if (!("filenameExtension" in $$source)) {
+            this["filenameExtension"] = null;
+        }
+        if (!("suggestName" in $$source)) {
+            this["suggestName"] = null;
+        }
+        if (!("resourceSize" in $$source)) {
+            this["resourceSize"] = null;
+        }
+        if (!("workdir" in $$source)) {
+            this["workdir"] = null;
+        }
+        if (!("resourceComplete" in $$source)) {
+            this["resourceComplete"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ResourceResultDTO($$parsedSource as Partial<ResourceResultDTO>);
+    }
+}
