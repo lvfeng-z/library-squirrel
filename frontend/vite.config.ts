@@ -8,10 +8,9 @@ export default defineConfig({
   plugins: [vue(), wails("./bindings")],
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src"),
-      "@renderer": resolve(__dirname, "src"),
-      "@shared": resolve(__dirname, "src/shared"),
-      "@bindings": resolve(__dirname, "bindings"),
+      "@renderer": resolve("src"),
+      "@bindings": resolve("bindings"),
+      "@apis": resolve("src/apis")
     },
   },
 });

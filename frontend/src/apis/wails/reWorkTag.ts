@@ -3,7 +3,7 @@
  * 注意：这些方法在 Go 后端尚未实现，使用 stub 返回错误
  */
 
-import type { ApiResponse } from '@/apis/http'
+import type { ApiResponse } from '@apis/http'
 
 // ========== 类型定义 ==========
 

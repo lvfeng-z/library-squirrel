@@ -3,11 +3,11 @@
  * 直接调用 Wails bindings，绕过 HTTP 代理层
  */
 
-import { App } from '../../../bindings/github.com/library-squirrel/wails'
-import { LocalTag } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
-import { LocalTagQueryDTO } from '../../../bindings/github.com/library-squirrel/wails/internal/localTag/models'
-import type { Page, ApiResponse } from '../../../bindings/github.com/library-squirrel/wails/pkg/model/models'
-import type { SelectItem } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
+import { Handler } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
+import { LocalTag } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
+import type { Page, ApiResponse } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 // ========== 类型定义 ==========
 
@@ -41,16 +41,6 @@ function nullLocalTagToVO(tag: LocalTag | null): LocalTagVO | null {
   }
 }
 
-function nullPageToPageResult(page: Page<LocalTag> | null): PageResult | null {
-  if (!page) return null
-  return {
-    items: (page.data ?? []).map(nullLocalTagToVO).filter((t): t is LocalTagVO => t !== null),
-    total: page.dataCount,
-    page: page.pageNumber,
-    pageSize: page.pageSize
-  }
-}
-
 // ========== API 方法 ==========
 
 /**
@@ -65,12 +55,11 @@ export async function localTagSave(tag: {
     baseLocalTagId: { Int64: tag.baseLocalTagId ?? 0, Valid: true }
   })
   try {
-    const id = await App.LocalTagSave(localTag)
-    return {
-      success: true,
-      msg: 'success',
-      data: id
+    const result = await Handler.Save(localTag)
+    if (result && result.success) {
+      return { success: true, msg: 'success', data: result.data }
     }
+    return { success: false, msg: result?.msg ?? 'Unknown error', data: undefined }
   } catch (error) {
     return {
       success: false,
@@ -85,12 +74,11 @@ export async function localTagSave(tag: {
  */
 export async function localTagDeleteById(id: number): Promise<ApiResponse<void>> {
   try {
-    await App.LocalTagDeleteById(id)
-    return {
-      success: true,
-      msg: 'success',
-      data: undefined
+    const result = await Handler.Delete(id)
+    if (result && result.success) {
+      return { success: true, msg: 'success', data: undefined }
     }
+    return { success: false, msg: result?.msg ?? 'Unknown error', data: undefined }
   } catch (error) {
     return {
       success: false,
@@ -114,12 +102,11 @@ export async function localTagUpdateById(tag: {
     baseLocalTagId: tag.baseLocalTagId !== undefined ? { Int64: tag.baseLocalTagId, Valid: true } : { Int64: 0, Valid: false }
   })
   try {
-    await App.LocalTagUpdateById(localTag)
-    return {
-      success: true,
-      msg: 'success',
-      data: undefined
+    const result = await Handler.Update(localTag)
+    if (result && result.success) {
+      return { success: true, msg: 'success', data: undefined }
     }
+    return { success: false, msg: result?.msg ?? 'Unknown error', data: undefined }
   } catch (error) {
     return {
       success: false,
@@ -133,7 +120,7 @@ export async function localTagUpdateById(tag: {
  * 获取单个本地标签
  */
 export async function localTagGetById(id: number): Promise<ApiResponse<LocalTagVO>> {
-  const result = await App.LocalTagGetById(id)
+  const result = await Handler.GetById(id)
   if (result && result.success && result.data) {
     return {
       ...result,
@@ -160,12 +147,9 @@ export async function localTagQueryPage(query: {
     localTagNameLike: query.query?.localTagNameLike ?? null,
     baseLocalTagId: query.query?.baseLocalTagId ?? null
   })
-  const result = await App.LocalTagQueryPage(queryDTO)
+  const result = await Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, queryDTO)
   if (result && result.success) {
-    return {
-      ...result,
-      data: nullPageToPageResult(result.data ?? null) ?? undefined
-    }
+    return result
   }
   return result as unknown as ApiResponse<PageResult>
 }
@@ -187,12 +171,9 @@ export async function localTagQueryDTOPage(query: {
     localTagNameLike: query.query?.localTagNameLike ?? null,
     baseLocalTagId: query.query?.baseLocalTagId ?? null
   })
-  const result = await App.LocalTagQueryDTOPage(queryDTO)
+  const result = await Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, queryDTO)
   if (result && result.success) {
-    return {
-      ...result,
-      data: nullPageToPageResult(result.data ?? null) ?? undefined
-    }
+    return result
   }
   return result as unknown as ApiResponse<PageResult>
 }
@@ -201,7 +182,7 @@ export async function localTagQueryDTOPage(query: {
  * 获取本地标签树
  */
 export async function localTagGetTree(rootId?: number, depth?: number): Promise<ApiResponse<LocalTagVO[]>> {
-  const result = await App.LocalTagGetTree(rootId ?? 0, depth ?? -1)
+  const result = await Handler.GetTree(rootId ?? 0, depth ?? -1)
   if (result && result.success) {
     return {
       ...result,
@@ -218,7 +199,7 @@ export async function localTagListSelectItems(
   query?: Record<string, unknown>
 ): Promise<ApiResponse<(SelectItem | null)[]>> {
   const queryDTO = new LocalTagQueryDTO({})
-  return await App.LocalTagListSelectItems(queryDTO)
+  return await Handler.ListSelectItems(queryDTO)
 }
 
 /**
@@ -230,7 +211,7 @@ export async function localTagQuerySelectItemPage(query: {
   query?: Record<string, unknown>
 }): Promise<ApiResponse<PageResult>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const result = await App.LocalTagQuerySelectItemPage(queryDTO)
+  const result = await Handler.QuerySelectItemPage(query.page ?? 1, query.pageSize ?? 10, queryDTO, '')
   if (result && result.success) {
     const page = result.data ?? null
     return {
@@ -250,7 +231,7 @@ export async function localTagQuerySelectItemPage(query: {
  * 根据作品ID获取标签列表
  */
 export async function localTagListByWorkId(workId: number): Promise<ApiResponse<LocalTagVO[]>> {
-  const result = await App.LocalTagListByWorkId(workId)
+  const result = await Handler.ListByWorkId(workId)
   if (result && result.success) {
     return {
       ...result,
@@ -268,7 +249,7 @@ export async function localTagQuerySelectItemPageByWorkId(
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
 ): Promise<ApiResponse<PageResult>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const result = await App.LocalTagQuerySelectItemPageByWorkId(queryDTO, workId)
+  const result = await Handler.QuerySelectItemPageByWorkId(query.page ?? 1, query.pageSize ?? 10, queryDTO, workId)
   if (result && result.success) {
     const page = result.data ?? null
     return {

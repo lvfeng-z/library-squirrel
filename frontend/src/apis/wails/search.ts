@@ -2,11 +2,11 @@
  * Search Wails 绑定包装器
  */
 
-import { App } from '../../../bindings/github.com/library-squirrel/wails'
-import type { ApiResponse } from '@/apis/http'
-import type { SearchType, SearchCondition } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '../../../bindings/github.com/library-squirrel/wails/pkg/model/models'
-import type { SelectItem, WorkFullDTO } from '../../../bindings/github.com/library-squirrel/wails/internal/model/models'
+import { Handler } from '@bindings/github.com/library-squirrel/wails/internal/search'
+import type { ApiResponse } from '@apis/http'
+import type { SearchType, SearchCondition } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 // ========== API 方法 ==========
 
@@ -17,7 +17,7 @@ export async function searchQuerySearchConditionPage(
   keyword: string,
   types: SearchType[]
 ): Promise<ApiResponse<Page<SelectItem> | null>> {
-  return App.SearchQuerySearchConditionPage(keyword, types)
+  return Handler.QuerySearchConditionPage(1, 10, { keyword, types })
 }
 
 /**
@@ -26,7 +26,7 @@ export async function searchQuerySearchConditionPage(
 export async function searchQueryWorkPage(
   conditions: SearchCondition[]
 ): Promise<ApiResponse<Page<WorkFullDTO> | null>> {
-  return App.SearchQueryWorkPage(conditions)
+  return Handler.QueryWorkPage(1, 10, conditions)
 }
 
 /**
@@ -36,5 +36,5 @@ export async function searchQueryWorkSetPage(
   keyword: string,
   siteId: number
 ): Promise<ApiResponse<Page<SelectItem> | null>> {
-  return App.SearchQueryWorkSetPage(keyword, siteId)
+  return Handler.QueryWorkSetPage(1, 10, keyword, siteId)
 }

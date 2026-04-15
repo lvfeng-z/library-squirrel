@@ -2,8 +2,9 @@
  * Task Wails 绑定包装器
  */
 
-import { App } from '../../../bindings/github.com/library-squirrel/wails'
-import type { ApiResponse } from '@/apis/http'
+import { Handler } from '@bindings/github.com/library-squirrel/wails/internal/task'
+import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/internal/taskManager'
+import type { ApiResponse } from '@apis/http'
 
 // ========== API 方法 ==========
 
@@ -11,89 +12,88 @@ import type { ApiResponse } from '@/apis/http'
  * 获取任务
  */
 export async function taskGetById(id: number): Promise<ApiResponse<any>> {
-  return App.TaskGetById(id)
+  return Handler.GetById(id)
 }
 
 /**
  * 分页查询任务
  */
 export async function taskQueryPage(query: any): Promise<ApiResponse<any>> {
-  return App.TaskQueryPage(query)
+  return Handler.QueryPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
 /**
  * 分页查询父任务
  */
 export async function taskQueryParentPage(query: any): Promise<ApiResponse<any>> {
-  return App.TaskQueryParentPage(query)
+  return Handler.QueryParentPage(query.page ?? 1, query.pageSize ?? 10, query.query)
 }
 
 /**
  * 保存任务
  */
 export async function taskSave(task: any): Promise<ApiResponse<void>> {
-  return App.TaskSave(task)
+  return Handler.CreateTask(task)
 }
 
 /**
  * 更新任务
  */
 export async function taskUpdate(task: any): Promise<ApiResponse<void>> {
-  return App.TaskUpdate(task)
+  return Handler.CreateTask(task) // Update 和 Create 使用相同的 request 结构
 }
 
 /**
  * 删除任务
  */
 export async function taskDelete(id: number): Promise<ApiResponse<void>> {
-  return App.TaskDelete(id)
+  return Handler.DeleteTask(id)
 }
 
 /**
  * 刷新任务状态
  */
 export async function taskRefreshStatus(id: number): Promise<ApiResponse<any>> {
-  return App.TaskRefreshStatus(id)
+  return TaskManagerHandler.GetTaskState(id)
 }
 
 /**
  * 获取任务树
  */
 export async function taskListTree(taskIds: number[]): Promise<ApiResponse<any[]>> {
-  return App.TaskListTree(taskIds)
+  return Handler.ListTaskTree(taskIds)
 }
 
 /**
  * 获取任务状态列表
  */
 export async function taskListStatus(ids: number[]): Promise<ApiResponse<any[]>> {
-  return App.TaskListStatus(ids)
+  return Handler.ListStatus(ids)
 }
 
 /**
  * 获取任务进度列表
  */
 export async function taskListSchedule(ids: number[]): Promise<ApiResponse<any[]>> {
-  return App.TaskListSchedule(ids)
+  return Handler.ListSchedule(ids)
 }
 
 /**
  * 创建任务
  */
 export async function taskCreate(task: any): Promise<ApiResponse<any>> {
-  return App.TaskCreate(task)
+  return Handler.CreateTask(task)
 }
 
 /**
  * 通过URL创建任务
  */
 export async function taskCreateByUrl(url: string): Promise<ApiResponse<any>> {
-  return App.TaskCreateByURL(url)
+  return Handler.CreateTaskByURL(url)
 }
 
 /**
  * 分页查询子任务
- * @deprecated 使用 Wails 原生签名: taskQueryChildrenTaskPage(pid, query)
  */
 export async function taskQueryChildrenTaskPage(
   pid: number,
@@ -101,9 +101,7 @@ export async function taskQueryChildrenTaskPage(
   pageSize: number,
   query?: Record<string, unknown>
 ): Promise<ApiResponse<any>> {
-  // 适配 HTTP API 签名，转换为 Wails 签名
-  const wailsQuery: any = { pageNumber, pageSize, ...query }
-  return App.TaskQueryChildrenTaskPage(pid, wailsQuery)
+  return Handler.QueryChildrenTaskPage(pid, pageNumber, pageSize, query)
 }
 
 // ========== TaskManager 方法别名 (保持与 HTTP API 兼容) ==========
@@ -112,33 +110,33 @@ export async function taskQueryChildrenTaskPage(
  * 启动任务树
  */
 export async function taskStartTree(taskId: number): Promise<ApiResponse<void>> {
-  return App.TaskManagerStartTree(taskId)
+  return TaskManagerHandler.StartTaskTree(taskId)
 }
 
 /**
  * 暂停任务树
  */
 export async function taskPauseTree(taskId: number): Promise<ApiResponse<void>> {
-  return App.TaskManagerPauseTree(taskId)
+  return TaskManagerHandler.PauseTaskTree(taskId)
 }
 
 /**
  * 恢复任务树
  */
 export async function taskResumeTree(taskId: number): Promise<ApiResponse<void>> {
-  return App.TaskManagerResumeTree(taskId)
+  return TaskManagerHandler.ResumeTaskTree(taskId)
 }
 
 /**
  * 停止任务树
  */
 export async function taskStopTree(taskId: number): Promise<ApiResponse<void>> {
-  return App.TaskManagerStopTree(taskId)
+  return TaskManagerHandler.StopTaskTree(taskId)
 }
 
 /**
  * 重试任务树
  */
 export async function taskRetryTree(taskId: number): Promise<ApiResponse<void>> {
-  return App.TaskManagerRetryTree(taskId)
+  return TaskManagerHandler.RetryTaskTree(taskId)
 }
