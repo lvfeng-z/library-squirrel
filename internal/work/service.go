@@ -4,6 +4,7 @@ import (
 	"context"
 
 	domain "github.com/library-squirrel/wails/internal/model"
+	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 
 	"gorm.io/gorm/clause"
@@ -413,39 +414,6 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	return result, nil
 }
 
-// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
-func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedSiteAuthor, error) {
-	if len(workIds) == 0 {
-		return []*model.RankedSiteAuthor{}, nil
-	}
-	// 获取作品列表
-	works, err := s.repo.ListByIds(ctx, workIds)
-	if err != nil {
-		return nil, err
-	}
-
-	// 收集所有站点作者ID
-	authorMap := make(map[string]*model.RankedSiteAuthor)
-	for _, work := range works {
-		if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
-			siteAuthorId := work.SiteAuthorID.String
-			if _, exists := authorMap[siteAuthorId]; !exists {
-				siteAuthor, err := s.siteAuthorReader.GetById(ctx, siteAuthorId)
-				if err == nil && siteAuthor != nil {
-					authorMap[siteAuthorId] = siteAuthor
-				}
-			}
-		}
-	}
-
-	// 转换为列表
-	result := make([]*model.RankedSiteAuthor, 0, len(authorMap))
-	for _, author := range authorMap {
-		result = append(result, author)
-	}
-	return result, nil
-}
-
 // ListReWorkAuthor 获取作品关联的作者信息（包含本地作者和站点作者）
 func (s *Service) ListReWorkAuthor(ctx context.Context, workId int64) (*WorkAuthorDTO, error) {
 	work, err := s.repo.GetById(ctx, workId)
@@ -493,12 +461,12 @@ func (s *Service) ListReWorkAuthor(ctx context.Context, workId int64) (*WorkAuth
 	return dto, nil
 }
 
-// UpdateLastUsed 批量更新作品最后使用时间
-func (s *Service) UpdateLastUsed(ctx context.Context, ids []int64) error {
+// UpdateLastView 批量更新作品最后使用时间
+func (s *Service) UpdateLastView(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.repo.UpdateLastViewBatch(ctx, ids, model.GetCurrentTimestamp())
+	return s.repo.UpdateLastViewBatch(ctx, ids, util.GetCurrentTimestamp())
 }
 
 // WorkAuthorDTO 作品作者信息

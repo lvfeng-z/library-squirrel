@@ -148,15 +148,6 @@ func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	return model.Success(result)
 }
 
-// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
-func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*model.RankedSiteAuthor] {
-	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
-	if err != nil {
-		return model.Error[[]*model.RankedSiteAuthor](err.Error())
-	}
-	return model.Success(result)
-}
-
 // ListReWorkAuthor 获取作品关联的作者信息
 func (h *Handler) ListReWorkAuthor(ctx context.Context, workId int64) *model.ApiResponse[*WorkAuthorResultDTO] {
 	result, err := h.svc.ListReWorkAuthor(ctx, workId)
@@ -168,7 +159,7 @@ func (h *Handler) ListReWorkAuthor(ctx context.Context, workId int64) *model.Api
 
 // UpdateLastUsed 批量更新作品最后使用时间
 func (h *Handler) UpdateLastUsed(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUsed(ctx, ids); err != nil {
+	if err := h.svc.UpdateLastView(ctx, ids); err != nil {
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
@@ -187,24 +178,24 @@ type WorkDTO struct {
 // WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
 type WorkResultDTO struct {
 	ID                  int64   `json:"id"`
-	SiteID             *int64  `json:"siteId"`
-	SiteWorkID         *string `json:"siteWorkId"`
-	SiteWorkName       *string `json:"siteWorkName"`
-	SiteAuthorID       *string `json:"siteAuthorId"`
+	SiteID              *int64  `json:"siteId"`
+	SiteWorkID          *string `json:"siteWorkId"`
+	SiteWorkName        *string `json:"siteWorkName"`
+	SiteAuthorID        *string `json:"siteAuthorId"`
 	SiteWorkDescription *string `json:"siteWorkDescription"`
-	SiteUploadTime     *int64  `json:"siteUploadTime"`
-	SiteUpdateTime     *int64  `json:"siteUpdateTime"`
-	NickName           *string `json:"nickName"`
-	LocalAuthorID      *int64  `json:"localAuthorId"`
-	LastView           *int64  `json:"lastView"`
-	CreateTime         int64   `json:"createTime"`
-	UpdateTime         int64   `json:"updateTime"`
+	SiteUploadTime      *int64  `json:"siteUploadTime"`
+	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
+	NickName            *string `json:"nickName"`
+	LocalAuthorID       *int64  `json:"localAuthorId"`
+	LastView            *int64  `json:"lastView"`
+	CreateTime          int64   `json:"createTime"`
+	UpdateTime          int64   `json:"updateTime"`
 }
 
 // WorkAuthorResultDTO 作品作者信息返回结果DTO
 type WorkAuthorResultDTO struct {
 	LocalAuthor *model.RankedLocalAuthor `json:"localAuthor,omitempty"`
-	SiteAuthor  *model.RankedSiteAuthor `json:"siteAuthor,omitempty"`
+	SiteAuthor  *model.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
 }
 
 // ToWorkAuthorResultDTO 将 Service WorkAuthorDTO 转换为 WorkAuthorResultDTO
@@ -224,19 +215,19 @@ func ToWorkResultDTO(work *domain.Work) *WorkResultDTO {
 		return nil
 	}
 	return &WorkResultDTO{
-		ID:                    work.GetID(),
-		SiteID:                nullInt64ToPointer(work.SiteID),
-		SiteWorkID:            nullStringToPointer(work.SiteWorkID),
-		SiteWorkName:          nullStringToPointer(work.SiteWorkName),
-		SiteAuthorID:          nullStringToPointer(work.SiteAuthorID),
-		SiteWorkDescription:   nullStringToPointer(work.SiteWorkDescription),
-		SiteUploadTime:        nullInt64ToPointer(work.SiteUploadTime),
-		SiteUpdateTime:        nullInt64ToPointer(work.SiteUpdateTime),
-		NickName:              nullStringToPointer(work.NickName),
-		LocalAuthorID:         nullInt64ToPointer(work.LocalAuthorID),
-		LastView:              nullInt64ToPointer(work.LastView),
-		CreateTime:            work.GetCreateTime(),
-		UpdateTime:            work.GetUpdateTime(),
+		ID:                  work.GetID(),
+		SiteID:              nullInt64ToPointer(work.SiteID),
+		SiteWorkID:          nullStringToPointer(work.SiteWorkID),
+		SiteWorkName:        nullStringToPointer(work.SiteWorkName),
+		SiteAuthorID:        nullStringToPointer(work.SiteAuthorID),
+		SiteWorkDescription: nullStringToPointer(work.SiteWorkDescription),
+		SiteUploadTime:      nullInt64ToPointer(work.SiteUploadTime),
+		SiteUpdateTime:      nullInt64ToPointer(work.SiteUpdateTime),
+		NickName:            nullStringToPointer(work.NickName),
+		LocalAuthorID:       nullInt64ToPointer(work.LocalAuthorID),
+		LastView:            nullInt64ToPointer(work.LastView),
+		CreateTime:          work.GetCreateTime(),
+		UpdateTime:          work.GetUpdateTime(),
 	}
 }
 
