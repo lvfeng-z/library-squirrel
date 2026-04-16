@@ -40,15 +40,28 @@ function toSiteBrowserDTO(dto: BindingSiteBrowserDTO | null): SiteBrowserDTO | n
 
 /**
  * 分页查询站点浏览器
- * 注意：此方法在 bindings 中未实现
  */
-export async function siteBrowserQueryPage(_query: {
+export async function siteBrowserQueryPage(query: {
   pageNumber?: number
   pageSize?: number
 }): Promise<ApiResponse<PageResult>> {
-  // TODO: 此接口在 bindings 中未实现 (QueryPage)
-  // bindings 中有 List、GetByPluginID、GetByID 等方法，但没有 QueryPage
-  return { success: false, msg: '此接口未实现：siteBrowserQueryPage' }
+  const result = await SiteBrowserHandler.QueryPage(query.pageNumber ?? 1, query.pageSize ?? 10)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return {
+    success: true,
+    msg: result.msg ?? '',
+    data: result.data ? {
+      data: result.data.data.map(toSiteBrowserDTO).filter((item): item is SiteBrowserDTO => item !== null),
+      pageNumber: result.data.pageNumber,
+      pageSize: result.data.pageSize,
+      total: result.data.total
+    } : undefined
+  }
 }
 
 export async function siteBrowserOpen(pluginPublicId: string, contributionId: string): Promise<ApiResponse<void>> {

@@ -90,25 +90,43 @@ export async function taskQueryParentPage(query: { page: number; pageSize: numbe
 
 /**
  * 保存任务
- * 注意：此方法在 bindings 中未实现
  */
-export async function taskSave(_task: { pid?: number; name?: string; status?: number }): Promise<ApiResponse<TaskVO>> {
-  // TODO: 此接口在 bindings 中未实现 (Save)
-  return { success: false, msg: '此接口未实现：taskSave' }
+export async function taskSave(task: { pid?: number; name?: string; status?: number; isCollection?: number }): Promise<ApiResponse<TaskVO>> {
+  const taskDTO = new (await import('@bindings/github.com/library-squirrel/wails/internal/task/models')).TaskDTO({
+    pid: task.pid ?? null,
+    taskName: task.name ?? null,
+    status: task.status ?? 0,
+    isCollection: task.isCollection ?? null
+  })
+  const result = await TaskHandler.Save(taskDTO)
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '保存失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, pid: task.pid ?? 0, name: task.name ?? '', status: task.status ?? 0, schedule: 0, createTime: 0, updateTime: 0 } }
 }
 
 /**
  * 更新任务
- * 注意：此方法在 bindings 中未实现
  */
-export async function taskUpdate(_task: {
+export async function taskUpdate(task: {
   id: number
   name?: string
   status?: number
   schedule?: number
 }): Promise<ApiResponse<TaskVO>> {
-  // TODO: 此接口在 bindings 中未实现 (Update)
-  return { success: false, msg: '此接口未实现：taskUpdate' }
+  const taskDTO = new (await import('@bindings/github.com/library-squirrel/wails/internal/task/models')).TaskDTO({
+    id: task.id,
+    taskName: task.name ?? null,
+    status: task.status ?? 0
+  })
+  const result = await TaskHandler.Update(taskDTO)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function taskDelete(taskId: number): Promise<ApiResponse<null>> {
@@ -121,24 +139,34 @@ export async function taskDelete(taskId: number): Promise<ApiResponse<null>> {
 
 /**
  * 刷新任务状态
- * 注意：此方法在 bindings 中未实现
  */
-export async function taskRefreshStatus(_id: number): Promise<ApiResponse<number>> {
-  // TODO: 此接口在 bindings 中未实现 (RefreshStatus)
-  return { success: false, msg: '此接口未实现：taskRefreshStatus' }
+export async function taskRefreshStatus(id: number): Promise<ApiResponse<number>> {
+  const result = await TaskHandler.RefreshStatus(id)
+  if (!result) {
+    return { success: false, msg: '刷新失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '刷新失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 /**
  * 设置任务树状态
- * 注意：此方法在 bindings 中未实现
  */
 export async function taskSetTreeStatus(
-  _taskIds: number[],
-  _status: number,
-  _includeStatus?: number[]
+  taskIds: number[],
+  status: number,
+  includeStatus?: number[]
 ): Promise<ApiResponse<number>> {
-  // TODO: 此接口在 bindings 中未实现 (SetTreeStatus)
-  return { success: false, msg: '此接口未实现：taskSetTreeStatus' }
+  const result = await TaskHandler.SetTreeStatus(taskIds, status, includeStatus ?? [])
+  if (!result) {
+    return { success: false, msg: '设置失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '设置失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 export async function taskListTree(taskIds: number[], _includeStatus?: number[]): Promise<ApiResponse<TaskVO[]>> {

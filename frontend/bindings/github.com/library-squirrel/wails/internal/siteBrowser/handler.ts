@@ -54,6 +54,15 @@ export function Open(pluginPublicId: string, contributionId: string): $Cancellab
     });
 }
 
+/**
+ * QueryPage 分页查询站点浏览器
+ */
+export function QueryPage(page: number, pageSize: number): $CancellablePromise<model$0.ApiResponse<$models.PageResult | null> | null> {
+    return $Call.ByID(4199501247, page, pageSize).then(($result: any) => {
+        return $$createType12($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.SiteBrowserDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
@@ -64,3 +73,7 @@ const $$createType5 = model$0.ApiResponse.createFrom($$createType4);
 const $$createType6 = $Create.Nullable($$createType5);
 const $$createType7 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = $models.PageResult.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
+const $$createType12 = $Create.Nullable($$createType11);

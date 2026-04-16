@@ -274,6 +274,11 @@ func (s *Service) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, e
 	return s.repo.RefreshTaskStatus(ctx, taskId)
 }
 
+// SetTreeStatus 设置任务树状态
+func (s *Service) SetTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error) {
+	return s.repo.SetTaskTreeStatus(ctx, taskIds, status, includeStatus...)
+}
+
 // ListTaskTree 获取任务树列表
 func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
 	return s.repo.ListTaskTree(ctx, taskIds, includeStatus...)

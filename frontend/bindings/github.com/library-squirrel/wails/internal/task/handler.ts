@@ -126,6 +126,42 @@ export function QueryTreeDataPage(treeId: number): $CancellablePromise<model$0.A
     });
 }
 
+/**
+ * RefreshStatus 刷新任务状态
+ */
+export function RefreshStatus(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(3363566231, taskId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * Save 保存任务
+ */
+export function Save(task: $models.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(1923742947, task).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * SetTreeStatus 设置任务树状态
+ */
+export function SetTreeStatus(taskIds: number[], status: number, includeStatus: number[]): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(3797064012, taskIds, status, includeStatus).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * Update 更新任务
+ */
+export function Update(task: $models.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3556737999, task).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);

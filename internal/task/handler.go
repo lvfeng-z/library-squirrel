@@ -20,6 +20,141 @@ func NewHandler(svc *Service) *Handler {
 
 // ========== 增删改操作 ==========
 
+// Save 保存任务
+func (h *Handler) Save(ctx context.Context, task *TaskDTO) *model.ApiResponse[int64] {
+	domainTask := &domain.Task{
+		BaseEntity: &model.BaseEntity{},
+	}
+	if task.ID != 0 {
+		domainTask.SetID(task.ID)
+	}
+	if task.Pid != nil {
+		domainTask.Pid.Valid = true
+		domainTask.Pid.Int64 = *task.Pid
+	}
+	if task.TaskName != nil {
+		domainTask.TaskName.Valid = true
+		domainTask.TaskName.String = *task.TaskName
+	}
+	if task.SiteID != nil {
+		domainTask.SiteID.Valid = true
+		domainTask.SiteID.Int64 = *task.SiteID
+	}
+	if task.SiteWorkID != nil {
+		domainTask.SiteWorkID.Valid = true
+		domainTask.SiteWorkID.String = *task.SiteWorkID
+	}
+	if task.URL != nil {
+		domainTask.URL.Valid = true
+		domainTask.URL.String = *task.URL
+	}
+	if task.Status != 0 {
+		domainTask.Status = task.Status
+	}
+	if task.IsCollection != nil {
+		domainTask.IsCollection.Valid = true
+		domainTask.IsCollection.Int64 = *task.IsCollection
+	}
+	if task.PluginPublicID != nil {
+		domainTask.PluginPublicID.Valid = true
+		domainTask.PluginPublicID.String = *task.PluginPublicID
+	}
+	if task.PluginContributionID != nil {
+		domainTask.PluginContributionID.Valid = true
+		domainTask.PluginContributionID.String = *task.PluginContributionID
+	}
+	if task.PluginData != nil {
+		domainTask.PluginData.Valid = true
+		domainTask.PluginData.String = *task.PluginData
+	}
+
+	if err := h.svc.Save(ctx, domainTask); err != nil {
+		return model.Error[int64](err.Error())
+	}
+	return model.Success(domainTask.GetID())
+}
+
+// Update 更新任务
+func (h *Handler) Update(ctx context.Context, task *TaskDTO) *model.ApiResponse[any] {
+	domainTask := &domain.Task{
+		BaseEntity: &model.BaseEntity{},
+	}
+	if task.ID == 0 {
+		return model.Error[any]("更新任务失败，id不能为空")
+	}
+	domainTask.SetID(task.ID)
+	if task.Pid != nil {
+		domainTask.Pid.Valid = true
+		domainTask.Pid.Int64 = *task.Pid
+	}
+	if task.TaskName != nil {
+		domainTask.TaskName.Valid = true
+		domainTask.TaskName.String = *task.TaskName
+	}
+	if task.SiteID != nil {
+		domainTask.SiteID.Valid = true
+		domainTask.SiteID.Int64 = *task.SiteID
+	}
+	if task.SiteWorkID != nil {
+		domainTask.SiteWorkID.Valid = true
+		domainTask.SiteWorkID.String = *task.SiteWorkID
+	}
+	if task.URL != nil {
+		domainTask.URL.Valid = true
+		domainTask.URL.String = *task.URL
+	}
+	if task.Status != 0 {
+		domainTask.Status = task.Status
+	}
+	if task.IsCollection != nil {
+		domainTask.IsCollection.Valid = true
+		domainTask.IsCollection.Int64 = *task.IsCollection
+	}
+	if task.PluginPublicID != nil {
+		domainTask.PluginPublicID.Valid = true
+		domainTask.PluginPublicID.String = *task.PluginPublicID
+	}
+	if task.PluginContributionID != nil {
+		domainTask.PluginContributionID.Valid = true
+		domainTask.PluginContributionID.String = *task.PluginContributionID
+	}
+	if task.PluginData != nil {
+		domainTask.PluginData.Valid = true
+		domainTask.PluginData.String = *task.PluginData
+	}
+
+	if err := h.svc.Update(ctx, domainTask); err != nil {
+		return model.Error[any](err.Error())
+	}
+	return model.Success[any](nil)
+}
+
+// RefreshStatus 刷新任务状态
+func (h *Handler) RefreshStatus(ctx context.Context, taskId int64) *model.ApiResponse[int64] {
+	result, err := h.svc.RefreshTaskStatus(ctx, taskId)
+	if err != nil {
+		return model.Error[int64](err.Error())
+	}
+	return model.Success(result)
+}
+
+// SetTreeStatus 设置任务树状态
+func (h *Handler) SetTreeStatus(ctx context.Context, taskIds []int64, status int, includeStatus []int) *model.ApiResponse[int64] {
+	// 转换status
+	taskStatus := TaskStatusEnum(status)
+	// 转换includeStatus
+	var incStatus []TaskStatusEnum
+	for _, s := range includeStatus {
+		incStatus = append(incStatus, TaskStatusEnum(s))
+	}
+
+	result, err := h.svc.SetTreeStatus(ctx, taskIds, taskStatus, incStatus...)
+	if err != nil {
+		return model.Error[int64](err.Error())
+	}
+	return model.Success(result)
+}
+
 // CreateTask 创建任务
 func (h *Handler) CreateTask(ctx context.Context, req *CreateTaskRequest) *model.ApiResponse[int64] {
 	result, err := h.svc.CreateTask(ctx, req)
@@ -166,6 +301,23 @@ type TaskResultDTO struct {
 	ErrorMessage        *string `json:"errorMessage"`
 	CreateTime          int64   `json:"createTime"`
 	UpdateTime          int64   `json:"updateTime"`
+}
+
+// TaskDTO 任务数据传输对象
+type TaskDTO struct {
+	ID                   int64   `json:"id"`
+	IsCollection        *int64  `json:"isCollection,omitempty"`
+	Pid                 *int64  `json:"pid,omitempty"`
+	TaskName            *string `json:"taskName,omitempty"`
+	SiteID              *int64  `json:"siteId,omitempty"`
+	SiteWorkID          *string `json:"siteWorkId,omitempty"`
+	URL                 *string `json:"url,omitempty"`
+	Status              int     `json:"status,omitempty"`
+	PendingResourceID   *int64  `json:"pendingResourceId,omitempty"`
+	Continuable         *int64  `json:"continuable,omitempty"`
+	PluginPublicID      *string `json:"pluginPublicId,omitempty"`
+	PluginContributionID *string `json:"pluginContributionId,omitempty"`
+	PluginData          *string `json:"pluginData,omitempty"`
 }
 
 // ToTaskResultDTO 将 domain.Task 转换为 TaskResultDTO

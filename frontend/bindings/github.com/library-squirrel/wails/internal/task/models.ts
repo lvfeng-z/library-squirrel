@@ -98,6 +98,42 @@ export class CreateTaskRequest {
 }
 
 /**
+ * TaskDTO 任务数据传输对象
+ */
+export class TaskDTO {
+    "id": number;
+    "isCollection"?: number | null;
+    "pid"?: number | null;
+    "taskName"?: string | null;
+    "siteId"?: number | null;
+    "siteWorkId"?: string | null;
+    "url"?: string | null;
+    "status"?: number;
+    "pendingResourceId"?: number | null;
+    "continuable"?: number | null;
+    "pluginPublicId"?: string | null;
+    "pluginContributionId"?: string | null;
+    "pluginData"?: string | null;
+
+    /** Creates a new TaskDTO instance. */
+    constructor($$source: Partial<TaskDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TaskDTO($$parsedSource as Partial<TaskDTO>);
+    }
+}
+
+/**
  * TaskQueryDTO 任务查询条件
  */
 export class TaskQueryDTO {

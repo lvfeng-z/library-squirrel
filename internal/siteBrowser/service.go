@@ -26,6 +26,14 @@ type SiteBrowserDTO struct {
 	PluginID       int64  `json:"pluginId"`
 }
 
+// PageResult 分页结果
+type PageResult struct {
+	Data       []*SiteBrowserDTO `json:"data"`
+	PageNumber int               `json:"pageNumber"`
+	PageSize   int               `json:"pageSize"`
+	Total      int               `json:"total"`
+}
+
 // GetID 获取完整ID
 func (d *SiteBrowserDTO) GetID() string {
 	return d.PluginPublicID + "-" + d.ContributionID
@@ -39,6 +47,41 @@ func (s *Service) List() []*SiteBrowserDTO {
 		dtos = append(dtos, toDTO(ext))
 	}
 	return dtos
+}
+
+// Page 分页查询
+func (s *Service) Page(page, pageSize int) *PageResult {
+	extensions := s.registry.List()
+	total := len(extensions)
+
+	// 计算分页范围
+	start := (page - 1) * pageSize
+	if start >= total {
+		return &PageResult{
+			Data:       []*SiteBrowserDTO{},
+			PageNumber: page,
+			PageSize:   pageSize,
+			Total:      total,
+		}
+	}
+
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	// 构建分页数据
+	dtos := make([]*SiteBrowserDTO, 0, end-start)
+	for i := start; i < end; i++ {
+		dtos = append(dtos, toDTO(extensions[i]))
+	}
+
+	return &PageResult{
+		Data:       dtos,
+		PageNumber: page,
+		PageSize:   pageSize,
+		Total:      total,
+	}
 }
 
 // GetByID 根据ID获取站点浏览器

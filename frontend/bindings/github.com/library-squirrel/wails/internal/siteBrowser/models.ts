@@ -6,6 +6,46 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * PageResult 分页结果
+ */
+export class PageResult {
+    "data": (SiteBrowserDTO | null)[];
+    "pageNumber": number;
+    "pageSize": number;
+    "total": number;
+
+    /** Creates a new PageResult instance. */
+    constructor($$source: Partial<PageResult> = {}) {
+        if (!("data" in $$source)) {
+            this["data"] = [];
+        }
+        if (!("pageNumber" in $$source)) {
+            this["pageNumber"] = 0;
+        }
+        if (!("pageSize" in $$source)) {
+            this["pageSize"] = 0;
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PageResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PageResult {
+        const $$createField0_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("data" in $$parsedSource) {
+            $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
+        }
+        return new PageResult($$parsedSource as Partial<PageResult>);
+    }
+}
+
+/**
  * SiteBrowserDTO 站点浏览器DTO
  */
 export class SiteBrowserDTO {
@@ -40,3 +80,8 @@ export class SiteBrowserDTO {
         return new SiteBrowserDTO($$parsedSource as Partial<SiteBrowserDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = SiteBrowserDTO.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

@@ -18,6 +18,12 @@ func (h *Handler) List() *model.ApiResponse[[]*SiteBrowserDTO] {
 	return model.Success(result)
 }
 
+// QueryPage 分页查询站点浏览器
+func (h *Handler) QueryPage(page, pageSize int) *model.ApiResponse[*PageResult] {
+	result := h.svc.Page(page, pageSize)
+	return model.Success(result)
+}
+
 // GetByID 根据ID获取站点浏览器
 func (h *Handler) GetByID(pluginPublicId string, contributionId string) *model.ApiResponse[*SiteBrowserDTO] {
 	result, err := h.svc.GetByID(pluginPublicId, contributionId)
