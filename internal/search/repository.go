@@ -53,7 +53,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 	// 本地标签查询
 	if includeLocalTag {
-		stmt := `SELECT id || 'localTag' AS value, local_tag_name AS label,
+		stmt := `SELECT id || 'localTag' AS value, local_tag_name AS label, last_use AS lastUse,
 				 JSON_OBJECT('type', 1, 'id', id) AS extraData
 				 FROM local_tag`
 		countStmt := `SELECT COUNT(*) FROM local_tag`
@@ -68,7 +68,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 	// 站点标签查询
 	if includeSiteTag {
-		stmt := `SELECT t1.id || 'siteTag' AS value, t1.site_tag_name AS label,
+		stmt := `SELECT t1.id || 'siteTag' AS value, t1.site_tag_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 2, 'id', t1.id,
 				 'localTag', JSON_OBJECT('id', COALESCE(t2.id, 0), 'localTagName', COALESCE(t2.local_tag_name, ''), 'baseLocalTagId', COALESCE(t2.base_local_tag_id, 0)),
 				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, ''))
@@ -88,7 +88,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 	// 本地作者查询
 	if includeLocalAuthor {
-		stmt := `SELECT id || 'localAuthor' AS value, author_name AS label,
+		stmt := `SELECT id || 'localAuthor' AS value, author_name AS label, last_use AS lastUse,
 				 JSON_OBJECT('type', 3, 'id', id) AS extraData
 				 FROM local_author`
 		countStmt := `SELECT COUNT(*) FROM local_author`
@@ -103,7 +103,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 	// 站点作者查询
 	if includeSiteAuthor {
-		stmt := `SELECT t1.id || 'siteAuthor' AS value, t1.author_name AS label,
+		stmt := `SELECT t1.id || 'siteAuthor' AS value, t1.author_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 4, 'id', t1.id,
 				 'siteAuthor', JSON_OBJECT('id', COALESCE(t2.id, 0), 'authorName', COALESCE(t2.author_name, '')),
 				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, ''))
@@ -138,7 +138,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	query := fmt.Sprintf("%s ORDER BY lastUse DESC LIMIT %d OFFSET %d", unionStatement, pageSize, offset)
+	query := fmt.Sprintf("SELECT value, label, extraData FROM (%s ORDER BY lastUse DESC LIMIT %d OFFSET %d)", unionStatement, pageSize, offset)
 
 	rows, err := r.db.WithContext(ctx).Raw(query, params...).Rows()
 	if err != nil {
@@ -153,7 +153,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 		err := rows.Scan(&item.Value, &item.Label, &extraData)
 		if err != nil {
-			return nil, 0, fmt.Errorf("error scanning row: %w", err)
+			return nil, 0, err
 		}
 
 		// 解析 extraData JSON
