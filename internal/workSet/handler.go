@@ -210,13 +210,13 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page, pageSize int, queryDTO *WorkSetQueryDTO) *model.ApiResponse[*model.Page[*WorkSetWithCoverResultDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page, pageSize int, queryDTO *WorkSetQueryDTO) *model.ApiResponse[*model.Page[WorkSetWithCoverResultDTO]] {
 	if queryDTO == nil {
 		queryDTO = &WorkSetQueryDTO{}
 	}
 	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[*WorkSetWithCoverResultDTO]](err.Error())
+		return model.Error[*model.Page[WorkSetWithCoverResultDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*WorkSetWithCoverResultDTO, 0, len(result.Data))
@@ -229,7 +229,7 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page, pageSize int, qu
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[*WorkSetWithCoverResultDTO]{
+	return model.Success(&model.Page[WorkSetWithCoverResultDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -251,35 +251,35 @@ type WorkSetDTO struct {
 
 // WorkSetResultDTO 作品集返回结果DTO（用于屏蔽sql.Null*类型）
 type WorkSetResultDTO struct {
-	ID                  int64   `json:"id"`
-	SiteID             *int64  `json:"siteId"`
-	SiteWorkSetID      *string `json:"siteWorkSetId"`
-	SiteWorkSetName    *string `json:"siteWorkSetName"`
-	SiteAuthorID       *string `json:"siteAuthorId"`
+	ID                     int64   `json:"id"`
+	SiteID                 *int64  `json:"siteId"`
+	SiteWorkSetID          *string `json:"siteWorkSetId"`
+	SiteWorkSetName        *string `json:"siteWorkSetName"`
+	SiteAuthorID           *string `json:"siteAuthorId"`
 	SiteWorkSetDescription *string `json:"siteWorkSetDescription"`
-	SiteUploadTime     *int64  `json:"siteUploadTime"`
-	SiteUpdateTime     *int64  `json:"siteUpdateTime"`
-	NickName           *string `json:"nickName"`
-	LastView           *int64  `json:"lastView"`
-	CreateTime         int64   `json:"createTime"`
-	UpdateTime         int64   `json:"updateTime"`
+	SiteUploadTime         *int64  `json:"siteUploadTime"`
+	SiteUpdateTime         *int64  `json:"siteUpdateTime"`
+	NickName               *string `json:"nickName"`
+	LastView               *int64  `json:"lastView"`
+	CreateTime             int64   `json:"createTime"`
+	UpdateTime             int64   `json:"updateTime"`
 }
 
 // WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
 type WorkResultDTO struct {
 	ID                  int64   `json:"id"`
-	SiteID             *int64  `json:"siteId"`
-	SiteWorkID         *string `json:"siteWorkId"`
-	SiteWorkName       *string `json:"siteWorkName"`
-	SiteAuthorID       *string `json:"siteAuthorId"`
+	SiteID              *int64  `json:"siteId"`
+	SiteWorkID          *string `json:"siteWorkId"`
+	SiteWorkName        *string `json:"siteWorkName"`
+	SiteAuthorID        *string `json:"siteAuthorId"`
 	SiteWorkDescription *string `json:"siteWorkDescription"`
-	SiteUploadTime     *int64  `json:"siteUploadTime"`
-	SiteUpdateTime     *int64  `json:"siteUpdateTime"`
-	NickName           *string `json:"nickName"`
-	LocalAuthorID      *int64  `json:"localAuthorId"`
-	LastView           *int64  `json:"lastView"`
-	CreateTime         int64   `json:"createTime"`
-	UpdateTime         int64   `json:"updateTime"`
+	SiteUploadTime      *int64  `json:"siteUploadTime"`
+	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
+	NickName            *string `json:"nickName"`
+	LocalAuthorID       *int64  `json:"localAuthorId"`
+	LastView            *int64  `json:"lastView"`
+	CreateTime          int64   `json:"createTime"`
+	UpdateTime          int64   `json:"updateTime"`
 }
 
 // WorkSetWithWorksResultDTO 作品集及其作品信息
@@ -300,18 +300,18 @@ func ToWorkSetResultDTO(workSet *domain.WorkSet) *WorkSetResultDTO {
 		return nil
 	}
 	return &WorkSetResultDTO{
-		ID:                    workSet.GetID(),
-		SiteID:                nullInt64ToPointer(workSet.SiteID),
-		SiteWorkSetID:         nullStringToPointer(workSet.SiteWorkSetID),
-		SiteWorkSetName:       nullStringToPointer(workSet.SiteWorkSetName),
-		SiteAuthorID:          nullStringToPointer(workSet.SiteAuthorID),
+		ID:                     workSet.GetID(),
+		SiteID:                 nullInt64ToPointer(workSet.SiteID),
+		SiteWorkSetID:          nullStringToPointer(workSet.SiteWorkSetID),
+		SiteWorkSetName:        nullStringToPointer(workSet.SiteWorkSetName),
+		SiteAuthorID:           nullStringToPointer(workSet.SiteAuthorID),
 		SiteWorkSetDescription: nullStringToPointer(workSet.SiteWorkSetDescription),
-		SiteUploadTime:        nullInt64ToPointer(workSet.SiteUploadTime),
-		SiteUpdateTime:        nullInt64ToPointer(workSet.SiteUpdateTime),
-		NickName:              nullStringToPointer(workSet.NickName),
-		LastView:              nullInt64ToPointer(workSet.LastView),
-		CreateTime:            workSet.GetCreateTime(),
-		UpdateTime:            workSet.GetUpdateTime(),
+		SiteUploadTime:         nullInt64ToPointer(workSet.SiteUploadTime),
+		SiteUpdateTime:         nullInt64ToPointer(workSet.SiteUpdateTime),
+		NickName:               nullStringToPointer(workSet.NickName),
+		LastView:               nullInt64ToPointer(workSet.LastView),
+		CreateTime:             workSet.GetCreateTime(),
+		UpdateTime:             workSet.GetUpdateTime(),
 	}
 }
 
@@ -321,19 +321,19 @@ func ToWorkResultDTO(work *domain.Work) *WorkResultDTO {
 		return nil
 	}
 	return &WorkResultDTO{
-		ID:                    work.GetID(),
-		SiteID:                nullInt64ToPointer(work.SiteID),
-		SiteWorkID:            nullStringToPointer(work.SiteWorkID),
-		SiteWorkName:          nullStringToPointer(work.SiteWorkName),
-		SiteAuthorID:          nullStringToPointer(work.SiteAuthorID),
-		SiteWorkDescription:   nullStringToPointer(work.SiteWorkDescription),
-		SiteUploadTime:        nullInt64ToPointer(work.SiteUploadTime),
-		SiteUpdateTime:        nullInt64ToPointer(work.SiteUpdateTime),
-		NickName:              nullStringToPointer(work.NickName),
-		LocalAuthorID:         nullInt64ToPointer(work.LocalAuthorID),
-		LastView:              nullInt64ToPointer(work.LastView),
-		CreateTime:            work.GetCreateTime(),
-		UpdateTime:            work.GetUpdateTime(),
+		ID:                  work.GetID(),
+		SiteID:              nullInt64ToPointer(work.SiteID),
+		SiteWorkID:          nullStringToPointer(work.SiteWorkID),
+		SiteWorkName:        nullStringToPointer(work.SiteWorkName),
+		SiteAuthorID:        nullStringToPointer(work.SiteAuthorID),
+		SiteWorkDescription: nullStringToPointer(work.SiteWorkDescription),
+		SiteUploadTime:      nullInt64ToPointer(work.SiteUploadTime),
+		SiteUpdateTime:      nullInt64ToPointer(work.SiteUpdateTime),
+		NickName:            nullStringToPointer(work.NickName),
+		LocalAuthorID:       nullInt64ToPointer(work.LocalAuthorID),
+		LastView:            nullInt64ToPointer(work.LastView),
+		CreateTime:          work.GetCreateTime(),
+		UpdateTime:          work.GetUpdateTime(),
 	}
 }
 

@@ -105,9 +105,9 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
 /**
  * QueryPageWithCover 分页查询作品集（带封面）
  */
-export function QueryPageWithCover(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetWithCoverResultDTO | null> | null> | null> {
+export function QueryPageWithCover(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetWithCoverResultDTO> | null> | null> {
     return $Call.ByID(1391581908, page, pageSize, queryDTO).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType26($result);
     });
 }
 
@@ -198,8 +198,7 @@ const $$createType19 = $Create.Nullable($$createType18);
 const $$createType20 = model$0.ApiResponse.createFrom($$createType19);
 const $$createType21 = $Create.Nullable($$createType20);
 const $$createType22 = $models.WorkSetWithCoverResultDTO.createFrom;
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = model$0.Page.createFrom($$createType23);
-const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = model$0.ApiResponse.createFrom($$createType25);
-const $$createType27 = $Create.Nullable($$createType26);
+const $$createType23 = model$0.Page.createFrom($$createType22);
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = model$0.ApiResponse.createFrom($$createType24);
+const $$createType26 = $Create.Nullable($$createType25);
