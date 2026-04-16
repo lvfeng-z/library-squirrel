@@ -65,25 +65,33 @@ function workToWorkSetVO(work: Work): WorkSetVO {
 
 /**
  * 根据作品集ID列表获取作品集及作品信息
- * 注意：此方法在 bindings 中未实现
  */
 export async function workSetListWorkSetWithWorkByIds(
-  _workSetIds: number[]
+  workSetIds: number[]
 ): Promise<ApiResponse<WorkSetWithWorksVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListWorkSetWithWorkByIds)
-  return { success: false, msg: '此接口未实现：workSetListWorkSetWithWorkByIds' }
+  const result = await WorkSetHandler.ListWorkSetWithWorkByIds(workSetIds)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: undefined }
 }
 
 /**
  * 分页查询作品集（带封面）
- * 注意：此方法在 bindings 中未实现
  */
-export async function workSetQueryPageWithCover(_query: {
+export async function workSetQueryPageWithCover(query: {
   page: number
   pageSize: number
-}): Promise<ApiResponse<PageResult>> {
-  // TODO: 此接口在 bindings 中未实现 (QueryPageWithCover)
-  return { success: false, msg: '此接口未实现：workSetQueryPageWithCover' }
+}): Promise<ApiResponse<Page<any>>> {
+  const queryDTO = new WorkSetQueryDTO({})
+  const result = await WorkSetHandler.QueryPageWithCover(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  return result
 }
 
 export async function workSetGetById(id: number): Promise<ApiResponse<WorkSetVO>> {
@@ -172,47 +180,58 @@ export async function workSetGetBySiteWorkSetIdAndSiteName(
 
 /**
  * 批量关联作品到作品集
- * 注意：此方法在 bindings 中未实现
  */
 export async function workSetLinkBatch(
-  _workSetId: number,
-  _workIds: number[]
+  workSetId: number,
+  workIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (LinkBatch)
-  return { success: false, msg: '此接口未实现：workSetLinkBatch' }
+  const result = await WorkSetHandler.LinkBatchToWorkSet(workSetId, workIds)
+  if (!result) {
+    return { success: false, msg: '操作失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 /**
  * 批量取消作品与作品集的关联
- * 注意：此方法在 bindings 中未实现
  */
 export async function workSetRemoveBatch(
-  _workSetId: number,
-  _workIds: number[]
+  workSetId: number,
+  workIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (RemoveBatch)
-  return { success: false, msg: '此接口未实现：workSetRemoveBatch' }
+  const result = await WorkSetHandler.RemoveBatchFromWorkSet(workSetId, workIds)
+  if (!result) {
+    return { success: false, msg: '操作失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 /**
  * 获取作品集下的作品列表
- * 注意：此方法在 bindings 中未实现
  */
 export async function workSetGetWorks(
-  _workSetId: number
-): Promise<ApiResponse<WorkSetVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (GetWorksByWorkSetId)
-  return { success: false, msg: '此接口未实现：workSetGetWorks' }
+  workSetId: number
+): Promise<ApiResponse<Work[]>> {
+  const result = await WorkSetHandler.GetWorksByWorkSetId(workSetId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
  * 设置作品集封面
- * 注意：此方法在 bindings 中未实现
  */
 export async function workSetSetCover(
-  _workSetId: number,
-  _workId: number
+  workSetId: number,
+  workId: number
 ): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (SetCover)
-  return { success: false, msg: '此接口未实现：workSetSetCover' }
+  const result = await WorkSetHandler.SetCover(workSetId, workId)
+  if (!result) {
+    return { success: false, msg: '操作失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }

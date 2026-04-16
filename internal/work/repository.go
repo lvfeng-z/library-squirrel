@@ -55,6 +55,18 @@ func (r *workRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.
 	return r.BaseRepository.List(ctx, []clause.Expression{where}, nil, 0, 0)
 }
 
+// UpdateLastViewBatch 批量更新最后查看时间
+func (r *workRepository) UpdateLastViewBatch(ctx context.Context, ids []int64, lastView int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.BaseRepository.GORM().
+		WithContext(ctx).
+		Model(new(domain.Work)).
+		Where("id IN ?", ids).
+		Update("last_view", lastView).Error
+}
+
 // toInterfaceSlice converts int64 slice to interface{} slice
 func toInterfaceSlice(ids []int64) []interface{} {
 	result := make([]interface{}, len(ids))

@@ -49,11 +49,29 @@ export function GetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: s
 }
 
 /**
+ * GetCoverWorkId 获取封面作品ID
+ */
+export function GetCoverWorkId(workSetId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(589631381, workSetId).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+/**
  * GetWorksByWorkSetId 获取作品集下的作品列表
  */
 export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(model$1.Work | null)[]> | null> {
     return $Call.ByID(3166169653, workSetId).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
+    });
+}
+
+/**
+ * LinkBatchToWorkSet 批量关联作品到作品集
+ */
+export function LinkBatchToWorkSet(workSetId: number, workIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1202620814, workSetId, workIds).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 
@@ -67,11 +85,38 @@ export function LinkWorkToWorkSet(workId: number, workSetId: number): $Cancellab
 }
 
 /**
+ * ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品
+ */
+export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.WorkSetWithWorksResultDTO | null)[]> | null> {
+    return $Call.ByID(1542209505, workSetIds).then(($result: any) => {
+        return $$createType17($result);
+    });
+}
+
+/**
  * QueryPage 分页查询
  */
 export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetResultDTO> | null> | null> {
     return $Call.ByID(306740245, page, pageSize, queryDTO).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType21($result);
+    });
+}
+
+/**
+ * QueryPageWithCover 分页查询作品集（带封面）
+ */
+export function QueryPageWithCover(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetWithCoverResultDTO | null> | null> | null> {
+    return $Call.ByID(1391581908, page, pageSize, queryDTO).then(($result: any) => {
+        return $$createType27($result);
+    });
+}
+
+/**
+ * RemoveBatchFromWorkSet 批量从作品集移除作品
+ */
+export function RemoveBatchFromWorkSet(workSetId: number, workIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(4280868937, workSetId, workIds).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 
@@ -80,7 +125,16 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
  */
 export function Save(workSet: $models.WorkSetDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1135512815, workSet).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType7($result);
+    });
+}
+
+/**
+ * SetCover 设置作品集封面
+ */
+export function SetCover(workSetId: number, workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3062994113, workSetId, workId).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 
@@ -94,10 +148,28 @@ export function UnlinkWorkFromWorkSet(workId: number, workSetId: number): $Cance
 }
 
 /**
+ * UnsetCover 取消作品集封面
+ */
+export function UnsetCover(workSetId: number, workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(220337390, workSetId, workId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * Update 更新作品集
  */
 export function Update(workSet: $models.WorkSetDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3898832955, workSet).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * UpdateSortOrders 批量更新排序顺序
+ */
+export function UpdateSortOrders(workSetId: number, sortOrders: { [_ in `${number}`]?: number }): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1453918114, workSetId, sortOrders).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -109,14 +181,25 @@ const $$createType2 = $models.WorkSetResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$1.Work.createFrom;
+const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = model$0.Page.createFrom($$createType2);
+const $$createType8 = model$1.Work.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
+const $$createType13 = $models.WorkSetWithWorksResultDTO.createFrom;
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType16 = $Create.Nullable($$createType15);
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = model$0.ApiResponse.createFrom($$createType15);
+const $$createType17 = $Create.Nullable($$createType16);
+const $$createType18 = model$0.Page.createFrom($$createType2);
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = model$0.ApiResponse.createFrom($$createType19);
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = $models.WorkSetWithCoverResultDTO.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = model$0.Page.createFrom($$createType23);
+const $$createType25 = $Create.Nullable($$createType24);
+const $$createType26 = model$0.ApiResponse.createFrom($$createType25);
+const $$createType27 = $Create.Nullable($$createType26);

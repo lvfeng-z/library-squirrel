@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    WorkAuthorResultDTO,
     WorkDTO,
     WorkQueryDTO,
     WorkResultDTO

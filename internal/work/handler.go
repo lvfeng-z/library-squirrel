@@ -139,6 +139,41 @@ func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, site
 	return model.Success(ToWorkResultDTO(result))
 }
 
+// ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
+func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*model.RankedLocalAuthor] {
+	result, err := h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return model.Error[[]*model.RankedLocalAuthor](err.Error())
+	}
+	return model.Success(result)
+}
+
+// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
+func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*model.RankedSiteAuthor] {
+	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return model.Error[[]*model.RankedSiteAuthor](err.Error())
+	}
+	return model.Success(result)
+}
+
+// ListReWorkAuthor 获取作品关联的作者信息
+func (h *Handler) ListReWorkAuthor(ctx context.Context, workId int64) *model.ApiResponse[*WorkAuthorResultDTO] {
+	result, err := h.svc.ListReWorkAuthor(ctx, workId)
+	if err != nil {
+		return model.Error[*WorkAuthorResultDTO](err.Error())
+	}
+	return model.Success(ToWorkAuthorResultDTO(result))
+}
+
+// UpdateLastUsed 批量更新作品最后使用时间
+func (h *Handler) UpdateLastUsed(ctx context.Context, ids []int64) *model.ApiResponse[any] {
+	if err := h.svc.UpdateLastUsed(ctx, ids); err != nil {
+		return model.Error[any](err.Error())
+	}
+	return model.Success[any](nil)
+}
+
 // ========== DTO 定义 ==========
 
 // WorkDTO 作品数据传输对象
@@ -164,6 +199,23 @@ type WorkResultDTO struct {
 	LastView           *int64  `json:"lastView"`
 	CreateTime         int64   `json:"createTime"`
 	UpdateTime         int64   `json:"updateTime"`
+}
+
+// WorkAuthorResultDTO 作品作者信息返回结果DTO
+type WorkAuthorResultDTO struct {
+	LocalAuthor *model.RankedLocalAuthor `json:"localAuthor,omitempty"`
+	SiteAuthor  *model.RankedSiteAuthor `json:"siteAuthor,omitempty"`
+}
+
+// ToWorkAuthorResultDTO 将 Service WorkAuthorDTO 转换为 WorkAuthorResultDTO
+func ToWorkAuthorResultDTO(dto *WorkAuthorDTO) *WorkAuthorResultDTO {
+	if dto == nil {
+		return nil
+	}
+	return &WorkAuthorResultDTO{
+		LocalAuthor: dto.LocalAuthor,
+		SiteAuthor:  dto.SiteAuthor,
+	}
 }
 
 // ToWorkResultDTO 将 domain.Work 转换为 WorkResultDTO

@@ -130,6 +130,8 @@ type Repository interface {
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error)
 	// ListByIds 根据ID列表批量查询
 	ListByIds(ctx context.Context, ids []int64) ([]*domain.Work, error)
+	// UpdateLastViewBatch 批量更新最后查看时间
+	UpdateLastViewBatch(ctx context.Context, ids []int64, lastView int64) error
 }
 
 // Service 作品服务
@@ -357,6 +359,152 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 	}
 
 	return fullDTO, nil
+}
+
+// ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthor, error) {
+	if len(workIds) == 0 {
+		return []*model.RankedLocalAuthor{}, nil
+	}
+	// 获取作品列表
+	works, err := s.repo.ListByIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+
+	// 收集所有本地作者ID
+	authorMap := make(map[int64]*model.RankedLocalAuthor)
+	for _, work := range works {
+		if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
+			localAuthorId := work.LocalAuthorID.Int64
+			if _, exists := authorMap[localAuthorId]; !exists {
+				localAuthor, err := s.localAuthorReader.GetById(ctx, localAuthorId)
+				if err == nil && localAuthor != nil {
+					authorName := ""
+					if localAuthor.AuthorName.Valid {
+						authorName = localAuthor.AuthorName.String
+					}
+					introduce := ""
+					if localAuthor.Introduce.Valid {
+						introduce = localAuthor.Introduce.String
+					}
+					lastUse := int64(0)
+					if localAuthor.LastUse.Valid {
+						lastUse = localAuthor.LastUse.Int64
+					}
+					authorMap[localAuthorId] = &model.RankedLocalAuthor{
+						ID:         localAuthor.ID,
+						AuthorName: authorName,
+						Introduce:  introduce,
+						LastUse:    lastUse,
+						CreateTime: localAuthor.CreateTime,
+						UpdateTime: localAuthor.UpdateTime,
+					}
+				}
+			}
+		}
+	}
+
+	// 转换为列表
+	result := make([]*model.RankedLocalAuthor, 0, len(authorMap))
+	for _, author := range authorMap {
+		result = append(result, author)
+	}
+	return result, nil
+}
+
+// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
+func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedSiteAuthor, error) {
+	if len(workIds) == 0 {
+		return []*model.RankedSiteAuthor{}, nil
+	}
+	// 获取作品列表
+	works, err := s.repo.ListByIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+
+	// 收集所有站点作者ID
+	authorMap := make(map[string]*model.RankedSiteAuthor)
+	for _, work := range works {
+		if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
+			siteAuthorId := work.SiteAuthorID.String
+			if _, exists := authorMap[siteAuthorId]; !exists {
+				siteAuthor, err := s.siteAuthorReader.GetById(ctx, siteAuthorId)
+				if err == nil && siteAuthor != nil {
+					authorMap[siteAuthorId] = siteAuthor
+				}
+			}
+		}
+	}
+
+	// 转换为列表
+	result := make([]*model.RankedSiteAuthor, 0, len(authorMap))
+	for _, author := range authorMap {
+		result = append(result, author)
+	}
+	return result, nil
+}
+
+// ListReWorkAuthor 获取作品关联的作者信息（包含本地作者和站点作者）
+func (s *Service) ListReWorkAuthor(ctx context.Context, workId int64) (*WorkAuthorDTO, error) {
+	work, err := s.repo.GetById(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+
+	dto := &WorkAuthorDTO{}
+
+	// 获取本地作者信息
+	if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
+		localAuthor, err := s.localAuthorReader.GetById(ctx, work.LocalAuthorID.Int64)
+		if err == nil && localAuthor != nil {
+			authorName := ""
+			if localAuthor.AuthorName.Valid {
+				authorName = localAuthor.AuthorName.String
+			}
+			introduce := ""
+			if localAuthor.Introduce.Valid {
+				introduce = localAuthor.Introduce.String
+			}
+			lastUse := int64(0)
+			if localAuthor.LastUse.Valid {
+				lastUse = localAuthor.LastUse.Int64
+			}
+			dto.LocalAuthor = &model.RankedLocalAuthor{
+				ID:         localAuthor.ID,
+				AuthorName: authorName,
+				Introduce:  introduce,
+				LastUse:    lastUse,
+				CreateTime: localAuthor.CreateTime,
+				UpdateTime: localAuthor.UpdateTime,
+			}
+		}
+	}
+
+	// 获取站点作者信息
+	if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
+		siteAuthor, err := s.siteAuthorReader.GetById(ctx, work.SiteAuthorID.String)
+		if err == nil && siteAuthor != nil {
+			dto.SiteAuthor = siteAuthor
+		}
+	}
+
+	return dto, nil
+}
+
+// UpdateLastUsed 批量更新作品最后使用时间
+func (s *Service) UpdateLastUsed(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.repo.UpdateLastViewBatch(ctx, ids, model.GetCurrentTimestamp())
+}
+
+// WorkAuthorDTO 作品作者信息
+type WorkAuthorDTO struct {
+	LocalAuthor *model.RankedLocalAuthor `json:"localAuthor,omitempty"`
+	SiteAuthor  *model.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
 }
 
 // buildConditionsFromDTO 根据查询DTO构建查询条件

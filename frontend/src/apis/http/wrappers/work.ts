@@ -113,40 +113,57 @@ export async function workGetBySiteAndSiteWorkID(
 
 /**
  * 根据作品ID列表获取关联的本地作者信息
- * 注意：此方法在 bindings 中未实现
  */
 export async function workListRankedLocalAuthorWithWorkIdByWorkIds(
-  _workIds: number[]
-): Promise<ApiResponse<WorkVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListRankedLocalAuthorWithWorkIdByWorkIds)
-  return { success: false, msg: '此接口未实现：workListRankedLocalAuthorWithWorkIdByWorkIds' }
+  workIds: number[]
+): Promise<ApiResponse<any[]>> {
+  const result = await WorkHandler.ListRankedLocalAuthorWithWorkIdByWorkIds(workIds)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
  * 根据作品ID列表获取关联的站点作者信息
- * 注意：此方法在 bindings 中未实现
  */
 export async function workListRankedSiteAuthorWithWorkIdByWorkIds(
-  _workIds: number[]
-): Promise<ApiResponse<WorkVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListRankedSiteAuthorWithWorkIdByWorkIds)
-  return { success: false, msg: '此接口未实现：workListRankedSiteAuthorWithWorkIdByWorkIds' }
+  workIds: number[]
+): Promise<ApiResponse<any[]>> {
+  const result = await WorkHandler.ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
  * 获取作品的重新整理的作者信息
- * 注意：此方法在 bindings 中未实现
  */
-export async function workListReWorkAuthor(_workId: number): Promise<ApiResponse<WorkVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListReWorkAuthor)
-  return { success: false, msg: '此接口未实现：workListReWorkAuthor' }
+export async function workListReWorkAuthor(workId: number): Promise<ApiResponse<any>> {
+  const result = await WorkHandler.ListReWorkAuthor(workId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
  * 更新作品最后使用时间
- * 注意：此方法在 bindings 中未实现
  */
-export async function workUpdateLastUsed(_ids: number[]): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (UpdateLastUsed)
-  return { success: false, msg: '此接口未实现：workUpdateLastUsed' }
+export async function workUpdateLastUsed(ids: number[]): Promise<ApiResponse<boolean>> {
+  const result = await WorkHandler.UpdateLastUsed(ids)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }

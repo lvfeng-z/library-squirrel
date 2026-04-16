@@ -6,6 +6,78 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
+ */
+export class WorkResultDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "siteWorkName": string | null;
+    "siteAuthorId": string | null;
+    "siteWorkDescription": string | null;
+    "siteUploadTime": number | null;
+    "siteUpdateTime": number | null;
+    "nickName": string | null;
+    "localAuthorId": number | null;
+    "lastView": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new WorkResultDTO instance. */
+    constructor($$source: Partial<WorkResultDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("siteWorkName" in $$source)) {
+            this["siteWorkName"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("siteWorkDescription" in $$source)) {
+            this["siteWorkDescription"] = null;
+        }
+        if (!("siteUploadTime" in $$source)) {
+            this["siteUploadTime"] = null;
+        }
+        if (!("siteUpdateTime" in $$source)) {
+            this["siteUpdateTime"] = null;
+        }
+        if (!("nickName" in $$source)) {
+            this["nickName"] = null;
+        }
+        if (!("localAuthorId" in $$source)) {
+            this["localAuthorId"] = null;
+        }
+        if (!("lastView" in $$source)) {
+            this["lastView"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkResultDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkResultDTO($$parsedSource as Partial<WorkResultDTO>);
+    }
+}
+
+/**
  * WorkSetDTO 作品集数据传输对象
  */
 export class WorkSetDTO {
@@ -197,3 +269,79 @@ export class WorkSetResultDTO {
         return new WorkSetResultDTO($$parsedSource as Partial<WorkSetResultDTO>);
     }
 }
+
+/**
+ * WorkSetWithCoverResultDTO 作品集及其封面作品信息
+ */
+export class WorkSetWithCoverResultDTO {
+    "workSet": WorkSetResultDTO | null;
+    "coverWork"?: WorkResultDTO | null;
+
+    /** Creates a new WorkSetWithCoverResultDTO instance. */
+    constructor($$source: Partial<WorkSetWithCoverResultDTO> = {}) {
+        if (!("workSet" in $$source)) {
+            this["workSet"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workSet" in $$parsedSource) {
+            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
+        }
+        if ("coverWork" in $$parsedSource) {
+            $$parsedSource["coverWork"] = $$createField1_0($$parsedSource["coverWork"]);
+        }
+        return new WorkSetWithCoverResultDTO($$parsedSource as Partial<WorkSetWithCoverResultDTO>);
+    }
+}
+
+/**
+ * WorkSetWithWorksResultDTO 作品集及其作品信息
+ */
+export class WorkSetWithWorksResultDTO {
+    "workSet": WorkSetResultDTO | null;
+    "works": (WorkResultDTO | null)[];
+
+    /** Creates a new WorkSetWithWorksResultDTO instance. */
+    constructor($$source: Partial<WorkSetWithWorksResultDTO> = {}) {
+        if (!("workSet" in $$source)) {
+            this["workSet"] = null;
+        }
+        if (!("works" in $$source)) {
+            this["works"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workSet" in $$parsedSource) {
+            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
+        }
+        if ("works" in $$parsedSource) {
+            $$parsedSource["works"] = $$createField1_0($$parsedSource["works"]);
+        }
+        return new WorkSetWithWorksResultDTO($$parsedSource as Partial<WorkSetWithWorksResultDTO>);
+    }
+}
+
+// Private type creation functions
+const $$createType0 = WorkSetResultDTO.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = WorkResultDTO.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);
