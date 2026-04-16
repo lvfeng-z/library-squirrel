@@ -154,7 +154,7 @@ tasks:
 
   run:
     cmds:
-      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
+      - 'dlv --listen=:2345 --headless=true --api-version=2 --accept-multiclient exec {{.BIN_DIR}}/{{.APP_NAME}}.exe'
 
   sign:
     summary: Signs the Windows executable
