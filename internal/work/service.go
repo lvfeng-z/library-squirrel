@@ -327,14 +327,9 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 			if tag.LocalTagName.Valid {
 				tagName = tag.LocalTagName.String
 			}
-			lastUse := int64(0)
-			if tag.LastUse.Valid {
-				lastUse = tag.LastUse.Int64
-			}
 			fullDTO.LocalTags[i] = &domain.SelectItem{
-				Value:   tag.ID,
-				Label:   tagName,
-				LastUse: lastUse,
+				Value: tag.ID,
+				Label: tagName,
 			}
 		}
 	}
@@ -348,14 +343,9 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 			if tag.SiteTagName.Valid {
 				tagName = tag.SiteTagName.String
 			}
-			lastUse := int64(0)
-			if tag.LastUse.Valid {
-				lastUse = tag.LastUse.Int64
-			}
 			fullDTO.SiteTags[i] = &domain.SelectItem{
-				Value:   tag.ID,
-				Label:   tagName,
-				LastUse: lastUse,
+				Value: tag.ID,
+				Label: tagName,
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	domain "github.com/library-squirrel/wails/internal/model"
@@ -62,9 +63,12 @@ func NewService(
 
 // QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
 func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *domain.SearchConditionQuery) (*model.Page[domain.SelectItem], error) {
+	if query == nil {
+		query = &domain.SearchConditionQuery{}
+	}
 	items, total, err := s.repo.QuerySearchConditionPage(ctx, page, pageSize, query.Keyword, query.Types)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query search condition page error: %w", err)
 	}
 	return model.NewPage(items, total, page, pageSize), nil
 }

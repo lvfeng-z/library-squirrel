@@ -147,11 +147,11 @@ type SiteDTO struct {
 // SiteResultDTO 站点返回结果DTO（用于屏蔽sql.Null*类型）
 type SiteResultDTO struct {
 	ID              int64   `json:"id"`
-	SiteName       *string `json:"siteName"`
+	SiteName        *string `json:"siteName"`
 	SiteDescription *string `json:"siteDescription"`
-	Homepage       *string `json:"homepage"`
-	CreateTime     int64   `json:"createTime"`
-	UpdateTime     int64   `json:"updateTime"`
+	Homepage        *string `json:"homepage"`
+	CreateTime      int64   `json:"createTime"`
+	UpdateTime      int64   `json:"updateTime"`
 }
 
 // ToSiteResultDTO 将 domain.Site 转换为 SiteResultDTO
@@ -161,11 +161,11 @@ func ToSiteResultDTO(site *domain.Site) *SiteResultDTO {
 	}
 	return &SiteResultDTO{
 		ID:              site.GetID(),
-		SiteName:       nullStringToPointer(site.SiteName),
+		SiteName:        nullStringToPointer(site.SiteName),
 		SiteDescription: nullStringToPointer(site.SiteDescription),
-		Homepage:       nullStringToPointer(site.Homepage),
-		CreateTime:     site.GetCreateTime(),
-		UpdateTime:     site.GetUpdateTime(),
+		Homepage:        nullStringToPointer(site.Homepage),
+		CreateTime:      site.GetCreateTime(),
+		UpdateTime:      site.GetUpdateTime(),
 	}
 }
 

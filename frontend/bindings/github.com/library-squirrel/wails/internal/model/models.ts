@@ -300,7 +300,6 @@ export class SelectItem {
     "label": string;
     "rootId"?: string;
     "subLabels"?: string[];
-    "lastUse": number;
     "extraData"?: any;
 
     /** Creates a new SelectItem instance. */
@@ -310,9 +309,6 @@ export class SelectItem {
         }
         if (!("label" in $$source)) {
             this["label"] = "";
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = 0;
         }
 
         Object.assign(this, $$source);

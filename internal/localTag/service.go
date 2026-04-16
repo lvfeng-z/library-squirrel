@@ -286,14 +286,9 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSiz
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		lastUse := int64(0)
-		if tag.LastUse.Valid {
-			lastUse = tag.LastUse.Int64
-		}
 		items[i] = &domain.SelectItem{
-			Value:   tag.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: tag.ID,
+			Label: label,
 		}
 	}
 	return model.NewPage(items, pageResult.DataCount, page, pageSize), nil
@@ -316,14 +311,9 @@ func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pa
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		lastUse := int64(0)
-		if tag.LastUse.Valid {
-			lastUse = tag.LastUse.Int64
-		}
 		items[i] = &domain.SelectItem{
-			Value:   tag.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: tag.ID,
+			Label: label,
 		}
 	}
 	return model.NewPage(items, pageResult.DataCount, page, pageSize), nil

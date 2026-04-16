@@ -159,14 +159,9 @@ func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where claus
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		lastUse := int64(0)
-		if author.LastUse.Valid {
-			lastUse = author.LastUse.Int64
-		}
 		results = append(results, &domain.SelectItem{
-			Value:   author.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: author.ID,
+			Label: label,
 		})
 	}
 
@@ -210,14 +205,9 @@ func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, page, p
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		lastUse := int64(0)
-		if author.LastUse.Valid {
-			lastUse = author.LastUse.Int64
-		}
 		results = append(results, &domain.SelectItem{
-			Value:   author.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: author.ID,
+			Label: label,
 		})
 	}
 

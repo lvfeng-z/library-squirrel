@@ -186,14 +186,9 @@ func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.E
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		lastUse := int64(0)
-		if tag.LastUse.Valid {
-			lastUse = tag.LastUse.Int64
-		}
 		results = append(results, &domain.SelectItem{
-			Value:   tag.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: tag.ID,
+			Label: label,
 		})
 	}
 
@@ -237,14 +232,9 @@ func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		lastUse := int64(0)
-		if tag.LastUse.Valid {
-			lastUse = tag.LastUse.Int64
-		}
 		item := &domain.SelectItem{
-			Value:   tag.ID,
-			Label:   label,
-			LastUse: lastUse,
+			Value: tag.ID,
+			Label: label,
 		}
 		if secondaryLabel != "" {
 			item.SubLabels = []string{secondaryLabel}
