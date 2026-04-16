@@ -207,6 +207,58 @@ export class RankedLocalAuthor {
 }
 
 /**
+ * RankedLocalAuthorWithWorkId 带作品ID的本地作者
+ */
+export class RankedLocalAuthorWithWorkId {
+    "id": number;
+    "authorName": string;
+    "introduce": string;
+    "lastUse": number;
+    "createTime": number;
+    "updateTime": number;
+    "authorRank": number;
+    "workId": number;
+
+    /** Creates a new RankedLocalAuthorWithWorkId instance. */
+    constructor($$source: Partial<RankedLocalAuthorWithWorkId> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = "";
+        }
+        if (!("introduce" in $$source)) {
+            this["introduce"] = "";
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("authorRank" in $$source)) {
+            this["authorRank"] = 0;
+        }
+        if (!("workId" in $$source)) {
+            this["workId"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RankedLocalAuthorWithWorkId instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RankedLocalAuthorWithWorkId {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RankedLocalAuthorWithWorkId($$parsedSource as Partial<RankedLocalAuthorWithWorkId>);
+    }
+}
+
+/**
  * RankedSiteAuthor 带排名的站点作者
  */
 export class RankedSiteAuthor {
@@ -271,6 +323,78 @@ export class RankedSiteAuthor {
     static createFrom($$source: any = {}): RankedSiteAuthor {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RankedSiteAuthor($$parsedSource as Partial<RankedSiteAuthor>);
+    }
+}
+
+/**
+ * RankedSiteAuthorWithWorkId 带作品ID的站点作者
+ */
+export class RankedSiteAuthorWithWorkId {
+    "id": number;
+    "siteId": number;
+    "siteAuthorId": string;
+    "authorName": string;
+    "fixedAuthorName": string;
+    "siteAuthorNameBefore": string;
+    "introduce": string;
+    "localAuthorId": number;
+    "lastUse": number;
+    "createTime": number;
+    "updateTime": number;
+    "authorRank": number;
+    "workId": number;
+
+    /** Creates a new RankedSiteAuthorWithWorkId instance. */
+    constructor($$source: Partial<RankedSiteAuthorWithWorkId> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = 0;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = "";
+        }
+        if (!("authorName" in $$source)) {
+            this["authorName"] = "";
+        }
+        if (!("fixedAuthorName" in $$source)) {
+            this["fixedAuthorName"] = "";
+        }
+        if (!("siteAuthorNameBefore" in $$source)) {
+            this["siteAuthorNameBefore"] = "";
+        }
+        if (!("introduce" in $$source)) {
+            this["introduce"] = "";
+        }
+        if (!("localAuthorId" in $$source)) {
+            this["localAuthorId"] = 0;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("authorRank" in $$source)) {
+            this["authorRank"] = 0;
+        }
+        if (!("workId" in $$source)) {
+            this["workId"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RankedSiteAuthorWithWorkId instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RankedSiteAuthorWithWorkId {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RankedSiteAuthorWithWorkId($$parsedSource as Partial<RankedSiteAuthorWithWorkId>);
     }
 }
 

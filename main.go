@@ -63,6 +63,7 @@ func main() {
 			application.NewService(app.TaskManagerHandler),
 			application.NewService(app.SlotHandler),
 			application.NewService(app.SiteBrowserHandler),
+			application.NewService(app.ReWorkAuthorHandler),
 			application.NewService(app.ReWorkTagHandler),
 		},
 		Assets: application.AssetOptions{

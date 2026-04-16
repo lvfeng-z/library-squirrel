@@ -18,6 +18,7 @@ import (
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/plugin"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
+	"github.com/library-squirrel/wails/internal/reWorkAuthor"
 	"github.com/library-squirrel/wails/internal/reWorkTag"
 	"github.com/library-squirrel/wails/internal/reWorkWorkSet"
 	"github.com/library-squirrel/wails/internal/resource"
@@ -51,6 +52,7 @@ type App struct {
 	SiteAuthorService    *siteAuthor.Service
 	SiteService          *site.Service
 	ResourceService      *resource.Service
+	ReWorkAuthorService  *reWorkAuthor.Service
 	ReWorkTagService     *reWorkTag.Service
 	ReWorkWorkSetRepo    reWorkWorkSet.Repository
 	WorkService          *work.Service
@@ -83,26 +85,27 @@ type App struct {
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
 	// Handlers（用于 Bind[] 参数）
-	LocalTagHandler        *localTag.Handler
-	LocalAuthorHandler     *localAuthor.Handler
-	SiteTagHandler         *siteTag.Handler
-	SiteAuthorHandler      *siteAuthor.Handler
-	SiteHandler            *site.Handler
-	ResourceHandler        *resource.Handler
-	WorkHandler            *work.Handler
-	WorkSetHandler         *workSet.Handler
-	SearchHandler          *search.Handler
-	SettingsHandler        *settings.Handler
-	SecureStorageHandler   *secureStorage.Handler
-	BackupHandler          *backup.Handler
-	AppLauncherHandler     *appLauncher.Handler
-	FileSysUtilHandler     *fileSysUtil.Handler
-	PluginHandler          *plugin.Handler
-	TaskHandler            *task.Handler
-	TaskManagerHandler     *taskManager.Handler
-	SlotHandler            *slot.Handler
-	SiteBrowserHandler     *siteBrowser.Handler
-	ReWorkTagHandler       *reWorkTag.Handler
+	LocalTagHandler      *localTag.Handler
+	LocalAuthorHandler   *localAuthor.Handler
+	SiteTagHandler       *siteTag.Handler
+	SiteAuthorHandler    *siteAuthor.Handler
+	SiteHandler          *site.Handler
+	ResourceHandler      *resource.Handler
+	WorkHandler          *work.Handler
+	WorkSetHandler       *workSet.Handler
+	SearchHandler        *search.Handler
+	SettingsHandler      *settings.Handler
+	SecureStorageHandler *secureStorage.Handler
+	BackupHandler        *backup.Handler
+	AppLauncherHandler   *appLauncher.Handler
+	FileSysUtilHandler   *fileSysUtil.Handler
+	PluginHandler        *plugin.Handler
+	TaskHandler          *task.Handler
+	TaskManagerHandler   *taskManager.Handler
+	SlotHandler          *slot.Handler
+	SiteBrowserHandler   *siteBrowser.Handler
+	ReWorkAuthorHandler  *reWorkAuthor.Handler
+	ReWorkTagHandler     *reWorkTag.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -196,6 +199,10 @@ func (app *App) initBaseServices() {
 
 	// reWorkWorkSet 仓储
 	app.ReWorkWorkSetRepo = reWorkWorkSet.NewRepository(app.db)
+
+	// reWorkAuthor 服务
+	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
+	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
 
 	// reWorkTag 服务
 	reWorkTagRepo := reWorkTag.NewRepository(app.db)
@@ -346,6 +353,7 @@ func (app *App) initHandlers() {
 	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
 	app.SlotHandler = slot.NewHandler(app.SlotService)
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
+	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 }
 
