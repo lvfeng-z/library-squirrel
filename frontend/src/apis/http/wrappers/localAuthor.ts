@@ -66,7 +66,7 @@ export async function localAuthorDeleteById(id: number): Promise<ApiResponse<nul
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function localAuthorUpdateById(author: {
@@ -83,7 +83,7 @@ export async function localAuthorUpdateById(author: {
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalAuthorVO>> {

@@ -74,7 +74,7 @@ export async function localTagDeleteById(id: number): Promise<ApiResponse<null>>
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 /**
@@ -94,7 +94,7 @@ export async function localTagUpdateById(tag: {
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 /**

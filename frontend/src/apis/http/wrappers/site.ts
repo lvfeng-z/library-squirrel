@@ -63,7 +63,7 @@ export async function siteDeleteById(id: number): Promise<ApiResponse<null>> {
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function siteUpdateById(site: {
@@ -81,7 +81,7 @@ export async function siteUpdateById(site: {
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function siteGetById(id: number): Promise<ApiResponse<SiteVO>> {

@@ -116,7 +116,7 @@ export async function taskDelete(taskId: number): Promise<ApiResponse<null>> {
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 /**
@@ -255,7 +255,7 @@ export async function taskStartTree(taskId: number): Promise<ApiResponse<null>> 
   if (!result) {
     return { success: false, msg: '启动失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function taskPauseTree(taskId: number): Promise<ApiResponse<null>> {
@@ -263,7 +263,7 @@ export async function taskPauseTree(taskId: number): Promise<ApiResponse<null>> 
   if (!result) {
     return { success: false, msg: '暂停失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function taskResumeTree(taskId: number): Promise<ApiResponse<null>> {
@@ -271,7 +271,7 @@ export async function taskResumeTree(taskId: number): Promise<ApiResponse<null>>
   if (!result) {
     return { success: false, msg: '恢复失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function taskStopTree(taskId: number): Promise<ApiResponse<null>> {
@@ -279,7 +279,7 @@ export async function taskStopTree(taskId: number): Promise<ApiResponse<null>> {
   if (!result) {
     return { success: false, msg: '停止失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
 
 export async function taskRetryTree(taskId: number): Promise<ApiResponse<null>> {
@@ -287,5 +287,5 @@ export async function taskRetryTree(taskId: number): Promise<ApiResponse<null>> 
   if (!result) {
     return { success: false, msg: '重试失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return result
 }
