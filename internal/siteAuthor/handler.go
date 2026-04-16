@@ -37,11 +37,47 @@ func (h *Handler) Save(ctx context.Context, author *SiteAuthorDTO) *model.ApiRes
 		domainAuthor.AuthorName.Valid = true
 		domainAuthor.AuthorName.String = *author.AuthorName
 	}
+	if author.Introduce != nil {
+		domainAuthor.Introduce.Valid = true
+		domainAuthor.Introduce.String = *author.Introduce
+	}
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
 		return model.Error[int64](err.Error())
 	}
 	return model.Success(domainAuthor.GetID())
+}
+
+// SaveBatch 批量保存站点作者
+func (h *Handler) SaveBatch(ctx context.Context, authors []*SiteAuthorDTO) *model.ApiResponse[any] {
+	domainAuthors := make([]*domain.SiteAuthor, 0, len(authors))
+	for _, author := range authors {
+		domainAuthor := &domain.SiteAuthor{
+			BaseEntity: &model.BaseEntity{},
+		}
+		if author.SiteID != nil {
+			domainAuthor.SiteID.Valid = true
+			domainAuthor.SiteID.Int64 = *author.SiteID
+		}
+		if author.SiteAuthorID != nil {
+			domainAuthor.SiteAuthorID.Valid = true
+			domainAuthor.SiteAuthorID.String = *author.SiteAuthorID
+		}
+		if author.AuthorName != nil {
+			domainAuthor.AuthorName.Valid = true
+			domainAuthor.AuthorName.String = *author.AuthorName
+		}
+		if author.Introduce != nil {
+			domainAuthor.Introduce.Valid = true
+			domainAuthor.Introduce.String = *author.Introduce
+		}
+		domainAuthors = append(domainAuthors, domainAuthor)
+	}
+
+	if err := h.svc.SaveBatch(ctx, domainAuthors); err != nil {
+		return model.Error[any](err.Error())
+	}
+	return model.Success[any](nil)
 }
 
 // Delete 删除站点作者
@@ -69,6 +105,10 @@ func (h *Handler) Update(ctx context.Context, author *SiteAuthorDTO) *model.ApiR
 	if author.AuthorName != nil {
 		domainAuthor.AuthorName.Valid = true
 		domainAuthor.AuthorName.String = *author.AuthorName
+	}
+	if author.Introduce != nil {
+		domainAuthor.Introduce.Valid = true
+		domainAuthor.Introduce.String = *author.Introduce
 	}
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
@@ -113,6 +153,122 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *S
 	})
 }
 
+// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, queryDTO *SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[SiteAuthorFullDTO]] {
+	if queryDTO == nil {
+		queryDTO = &SiteAuthorQueryDTO{}
+	}
+	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page, pageSize, *queryDTO)
+	if err != nil {
+		return model.Error[*model.Page[SiteAuthorFullDTO]](err.Error())
+	}
+	// 转换为 ResultDTO
+	data := make([]*SiteAuthorFullDTO, 0, len(result.Data))
+	for _, author := range result.Data {
+		data = append(data, ToSiteAuthorFullDTO(author))
+	}
+	return model.Success(&model.Page[SiteAuthorFullDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Query:        result.Query,
+		Data:         data,
+	})
+}
+
+// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, queryDTO *SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO]] {
+	if queryDTO == nil {
+		queryDTO = &SiteAuthorQueryDTO{}
+	}
+	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page, pageSize, *queryDTO)
+	if err != nil {
+		return model.Error[*model.Page[SiteAuthorLocalRelateDTO]](err.Error())
+	}
+	// 转换为 ResultDTO
+	data := make([]*SiteAuthorLocalRelateDTO, 0, len(result.Data))
+	for _, author := range result.Data {
+		data = append(data, ToSiteAuthorLocalRelateDTO(author))
+	}
+	return model.Success(&model.Page[SiteAuthorLocalRelateDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Query:        result.Query,
+		Data:         data,
+	})
+}
+
+// ListBySiteAuthorIds 根据站点作者ID列表获取
+func (h *Handler) ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) *model.ApiResponse[[]*SiteAuthorResultDTO] {
+	result, err := h.svc.ListBySiteAuthorIds(ctx, siteAuthorIds)
+	if err != nil {
+		return model.Error[[]*SiteAuthorResultDTO](err.Error())
+	}
+	// 转换为 ResultDTO
+	data := make([]*SiteAuthorResultDTO, 0, len(result))
+	for _, author := range result {
+		data = append(data, ToSiteAuthorResultDTO(author))
+	}
+	return model.Success(data)
+}
+
+// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
+func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*RankedSiteAuthorWithWorkIdDTO] {
+	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return model.Error[[]*RankedSiteAuthorWithWorkIdDTO](err.Error())
+	}
+	// 转换为 ResultDTO
+	data := make([]*RankedSiteAuthorWithWorkIdDTO, 0, len(result))
+	for _, author := range result {
+		data = append(data, ToRankedSiteAuthorWithWorkIdDTO(author))
+	}
+	return model.Success(data)
+}
+
+// UpdateBindLocalAuthor 更新绑定本地作者
+func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) *model.ApiResponse[bool] {
+	result, err := h.svc.UpdateBindLocalAuthor(ctx, localAuthorId, siteAuthorIds)
+	if err != nil {
+		return model.Error[bool](err.Error())
+	}
+	return model.Success(result)
+}
+
+// CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
+func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *SiteAuthorDTO) *model.ApiResponse[bool] {
+	if siteAuthor.ID == 0 {
+		return model.Error[bool]("创建同名本地作者失败，作者ID不能为空")
+	}
+	if siteAuthor.AuthorName == nil || *siteAuthor.AuthorName == "" {
+		return model.Error[bool]("创建同名本地作者失败，作者名称不能为空")
+	}
+
+	domainAuthor := &domain.SiteAuthor{
+		BaseEntity: &model.BaseEntity{},
+	}
+	domainAuthor.SetID(siteAuthor.ID)
+	if siteAuthor.AuthorName != nil {
+		domainAuthor.AuthorName.Valid = true
+		domainAuthor.AuthorName.String = *siteAuthor.AuthorName
+	}
+	if siteAuthor.Introduce != nil {
+		domainAuthor.Introduce.Valid = true
+		domainAuthor.Introduce.String = *siteAuthor.Introduce
+	}
+
+	result, err := h.svc.CreateAndBindSameNameLocalAuthor(ctx, domainAuthor)
+	if err != nil {
+		return model.Error[bool](err.Error())
+	}
+	return model.Success(result)
+}
+
 // ListByWorkId 根据作品ID获取作者列表
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*model.RankedSiteAuthor] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
@@ -138,6 +294,7 @@ type SiteAuthorDTO struct {
 	SiteID       *int64  `json:"siteId"`
 	SiteAuthorID *string `json:"siteAuthorId"`
 	AuthorName   *string `json:"authorName"`
+	Introduce    *string `json:"introduce"`
 }
 
 // SiteAuthorResultDTO 站点作者返回结果DTO（用于屏蔽sql.Null*类型）
@@ -153,6 +310,35 @@ type SiteAuthorResultDTO struct {
 	LastUse            *int64  `json:"lastUse"`
 	CreateTime         int64   `json:"createTime"`
 	UpdateTime         int64   `json:"updateTime"`
+}
+
+// SiteAuthorFullDTO 站点作者完整信息DTO
+type SiteAuthorFullDTO struct {
+	SiteAuthorResultDTO
+	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
+}
+
+// SiteAuthorLocalRelateDTO 站点作者与本地作者关联DTO
+type SiteAuthorLocalRelateDTO struct {
+	SiteAuthorResultDTO
+	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
+}
+
+// RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
+type RankedSiteAuthorWithWorkIdDTO struct {
+	WorkId      int64   `json:"workId"`
+	SiteAuthorID *string `json:"siteAuthorId"`
+	AuthorName  *string `json:"authorName"`
+	Rank        int     `json:"rank"`
+}
+
+// LocalAuthorDTO 本地作者数据传输对象
+type LocalAuthorDTO struct {
+	ID           int64   `json:"id"`
+	AuthorName   *string `json:"authorName"`
+	Introduce    *string `json:"introduce"`
+	CreateTime   int64   `json:"createTime"`
+	UpdateTime   int64   `json:"updateTime"`
 }
 
 // ToSiteAuthorResultDTO 将 domain.SiteAuthor 转换为 SiteAuthorResultDTO
@@ -175,6 +361,77 @@ func ToSiteAuthorResultDTO(author *domain.SiteAuthor) *SiteAuthorResultDTO {
 	}
 }
 
+// ToSiteAuthorFullDTO 将 domain.SiteAuthorFullDTO 转换为 SiteAuthorFullDTO
+func ToSiteAuthorFullDTO(dto *domain.SiteAuthorFullDTO) *SiteAuthorFullDTO {
+	if dto == nil {
+		return nil
+	}
+	return &SiteAuthorFullDTO{
+		SiteAuthorResultDTO: SiteAuthorResultDTO{
+			ID:                   dto.ID,
+			SiteAuthorID:         stringPtrIfValid(dto.SiteAuthorID),
+			AuthorName:           stringPtrIfValid(dto.AuthorName),
+			FixedAuthorName:      stringPtrIfValid(dto.FixedAuthorName),
+			SiteAuthorNameBefore: stringPtrIfValid(dto.SiteAuthorNameBefore),
+			Introduce:            stringPtrIfValid(dto.Introduce),
+			LocalAuthorID:        int64PtrIfValid(dto.LocalAuthorID),
+			LastUse:              int64PtrIfValid(dto.LastUse),
+			CreateTime:           dto.CreateTime,
+			UpdateTime:           dto.UpdateTime,
+		},
+		LocalAuthor: ToLocalAuthorDTO(dto.LocalAuthor),
+	}
+}
+
+// ToSiteAuthorLocalRelateDTO 将 domain.SiteAuthorLocalRelateDTO 转换为 SiteAuthorLocalRelateDTO
+func ToSiteAuthorLocalRelateDTO(dto *domain.SiteAuthorLocalRelateDTO) *SiteAuthorLocalRelateDTO {
+	if dto == nil {
+		return nil
+	}
+	return &SiteAuthorLocalRelateDTO{
+		SiteAuthorResultDTO: SiteAuthorResultDTO{
+			ID:                   dto.ID,
+			SiteAuthorID:         stringPtrIfValid(dto.SiteAuthorID),
+			AuthorName:           stringPtrIfValid(dto.AuthorName),
+			FixedAuthorName:      stringPtrIfValid(dto.FixedAuthorName),
+			SiteAuthorNameBefore: stringPtrIfValid(dto.SiteAuthorNameBefore),
+			Introduce:            stringPtrIfValid(dto.Introduce),
+			LocalAuthorID:        int64PtrIfValid(dto.LocalAuthorID),
+			LastUse:              int64PtrIfValid(dto.LastUse),
+			CreateTime:           dto.CreateTime,
+			UpdateTime:           dto.UpdateTime,
+		},
+		LocalAuthor: ToLocalAuthorDTO(dto.LocalAuthor),
+	}
+}
+
+// ToRankedSiteAuthorWithWorkIdDTO 将 model.RankedSiteAuthorWithWorkId 转换为 RankedSiteAuthorWithWorkIdDTO
+func ToRankedSiteAuthorWithWorkIdDTO(dto *model.RankedSiteAuthorWithWorkId) *RankedSiteAuthorWithWorkIdDTO {
+	if dto == nil {
+		return nil
+	}
+	return &RankedSiteAuthorWithWorkIdDTO{
+		WorkId:       dto.WorkId,
+		SiteAuthorID: stringPtrIfValid(dto.SiteAuthorID),
+		AuthorName:   stringPtrIfValid(dto.AuthorName),
+		Rank:         dto.AuthorRank,
+	}
+}
+
+// ToLocalAuthorDTO 将 domain.LocalAuthor 转换为 LocalAuthorDTO
+func ToLocalAuthorDTO(author *domain.LocalAuthor) *LocalAuthorDTO {
+	if author == nil {
+		return nil
+	}
+	return &LocalAuthorDTO{
+		ID:         author.GetID(),
+		AuthorName: nullStringToPointer(author.AuthorName),
+		Introduce:  nullStringToPointer(author.Introduce),
+		CreateTime: author.GetCreateTime(),
+		UpdateTime: author.GetUpdateTime(),
+	}
+}
+
 // nullStringToPointer 将 sql.NullString 转换为 *string
 func nullStringToPointer(ns sql.NullString) *string {
 	if ns.Valid {
@@ -187,6 +444,22 @@ func nullStringToPointer(ns sql.NullString) *string {
 func nullInt64ToPointer(ns sql.NullInt64) *int64 {
 	if ns.Valid {
 		return &ns.Int64
+	}
+	return nil
+}
+
+// stringPtrIfValid 将 string 转换为 *string（非空时返回指针）
+func stringPtrIfValid(s string) *string {
+	if s != "" {
+		return &s
+	}
+	return nil
+}
+
+// int64PtrIfValid 将 int64 转换为 *int64（非零时返回指针）
+func int64PtrIfValid(i int64) *int64 {
+	if i != 0 {
+		return &i
 	}
 	return nil
 }

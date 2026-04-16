@@ -81,11 +81,19 @@ export async function siteAuthorSave(author: {
 
 /**
  * 批量保存站点作者
- * 注意：此方法在 bindings 中未实现
  */
-export async function siteAuthorSaveBatch(_authors: SiteAuthorVO[]): Promise<ApiResponse<SiteAuthorVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (SaveBatch)
-  return { success: false, msg: '此接口未实现：siteAuthorSaveBatch' }
+export async function siteAuthorSaveBatch(authors: SiteAuthorVO[]): Promise<ApiResponse<SiteAuthorVO[]>> {
+  const result = await SiteAuthorHandler.SaveBatch(authors.map(author => ({
+    id: author.id,
+    siteId: author.id,
+    siteAuthorId: author.id.toString(),
+    authorName: author.authorName,
+    introduce: author.introduce
+  })))
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 export async function siteAuthorDeleteById(id: number): Promise<ApiResponse<null>> {
@@ -142,27 +150,42 @@ export async function siteAuthorQueryPage(query: {
 
 /**
  * 查询绑定或未绑定到本地作者的站点作者分页
- * 注意：此方法在 bindings 中未实现
  */
-export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(_query: {
+export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: {
   page: number
   pageSize: number
   query?: { localAuthorId?: number; boundOnLocalAuthorId?: boolean }
 }): Promise<ApiResponse<PageResult>> {
-  // TODO: 此接口在 bindings 中未实现 (QueryBoundOrUnboundInLocalAuthorPage)
-  return { success: false, msg: '此接口未实现：siteAuthorQueryBoundOrUnboundInLocalAuthorPage' }
+  const queryDTO = new SiteAuthorQueryDTO({
+    localAuthorId: query.query?.localAuthorId ?? null,
+    boundOnLocalAuthorId: query.query?.boundOnLocalAuthorId ?? null
+  })
+  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 /**
  * 查询本地关联的站点作者分页
- * 注意：此方法在 bindings 中未实现
  */
-export async function siteAuthorQueryLocalRelateDTOPage(_query: {
+export async function siteAuthorQueryLocalRelateDTOPage(query: {
   page: number
   pageSize: number
 }): Promise<ApiResponse<PageResult>> {
-  // TODO: 此接口在 bindings 中未实现 (QueryLocalRelateDTOPage)
-  return { success: false, msg: '此接口未实现：siteAuthorQueryLocalRelateDTOPage' }
+  const queryDTO = new SiteAuthorQueryDTO({})
+  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(query.page, query.pageSize, queryDTO)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 export async function siteAuthorListByWorkId(workId: number): Promise<ApiResponse<SiteAuthorVO[]>> {
@@ -178,43 +201,67 @@ export async function siteAuthorListByWorkId(workId: number): Promise<ApiRespons
 
 /**
  * 根据站点作者ID列表获取站点作者
- * 注意：此方法在 bindings 中未实现
  */
-export async function siteAuthorListBySiteAuthorIds(_siteAuthorIds: number[]): Promise<ApiResponse<SiteAuthorVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListBySiteAuthorIds)
-  return { success: false, msg: '此接口未实现：siteAuthorListBySiteAuthorIds' }
+export async function siteAuthorListBySiteAuthorIds(siteAuthorIds: number[]): Promise<ApiResponse<SiteAuthorVO[]>> {
+  const result = await SiteAuthorHandler.ListBySiteAuthorIds(siteAuthorIds)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.map(toSiteAuthorVO).filter((item): item is SiteAuthorVO => item !== null) : [] }
 }
 
 /**
  * 根据作品ID列表获取关联的站点作者信息
- * 注意：此方法在 bindings 中未实现
  */
 export async function siteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(
-  _workIds: number[]
+  workIds: number[]
 ): Promise<ApiResponse<SiteAuthorVO[]>> {
-  // TODO: 此接口在 bindings 中未实现 (ListRankedSiteAuthorWithWorkIdByWorkIds)
-  return { success: false, msg: '此接口未实现：siteAuthorListRankedSiteAuthorWithWorkIdByWorkIds' }
+  const result = await SiteAuthorHandler.ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 /**
  * 更新站点作者绑定的本地作者
- * 注意：此方法在 bindings 中未实现
  */
 export async function siteAuthorUpdateBindLocalAuthor(
-  _localAuthorId: number,
-  _siteAuthorIds: number[]
+  localAuthorId: number,
+  siteAuthorIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (UpdateBindLocalAuthor)
-  return { success: false, msg: '此接口未实现：siteAuthorUpdateBindLocalAuthor' }
+  const result = await SiteAuthorHandler.UpdateBindLocalAuthor(localAuthorId, siteAuthorIds)
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '更新失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }
 
 /**
  * 创建并绑定同名的本地作者
- * 注意：此方法在 bindings 中未实现
  */
 export async function siteAuthorCreateAndBindSameNameLocalAuthor(
-  _siteAuthor: SiteAuthorVO
+  siteAuthor: SiteAuthorVO
 ): Promise<ApiResponse<boolean>> {
-  // TODO: 此接口在 bindings 中未实现 (CreateAndBindSameNameLocalAuthor)
-  return { success: false, msg: '此接口未实现：siteAuthorCreateAndBindSameNameLocalAuthor' }
+  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor({
+    id: siteAuthor.id,
+    authorName: siteAuthor.authorName,
+    introduce: siteAuthor.introduce
+  })
+  if (!result) {
+    return { success: false, msg: '创建失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '创建失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }

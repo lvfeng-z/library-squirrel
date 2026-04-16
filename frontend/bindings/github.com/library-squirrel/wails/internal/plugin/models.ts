@@ -6,6 +6,58 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * PluginDTO 插件数据传输对象
+ */
+export class PluginDTO {
+    "id": number;
+    "publicId": string | null;
+    "author": string | null;
+    "name": string | null;
+    "version": string | null;
+    "entryPath": string | null;
+    "rootPath": string | null;
+    "activationType": string | null;
+
+    /** Creates a new PluginDTO instance. */
+    constructor($$source: Partial<PluginDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("publicId" in $$source)) {
+            this["publicId"] = null;
+        }
+        if (!("author" in $$source)) {
+            this["author"] = null;
+        }
+        if (!("name" in $$source)) {
+            this["name"] = null;
+        }
+        if (!("version" in $$source)) {
+            this["version"] = null;
+        }
+        if (!("entryPath" in $$source)) {
+            this["entryPath"] = null;
+        }
+        if (!("rootPath" in $$source)) {
+            this["rootPath"] = null;
+        }
+        if (!("activationType" in $$source)) {
+            this["activationType"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginDTO($$parsedSource as Partial<PluginDTO>);
+    }
+}
+
+/**
  * PluginQueryDTO 插件查询条件
  */
 export class PluginQueryDTO {

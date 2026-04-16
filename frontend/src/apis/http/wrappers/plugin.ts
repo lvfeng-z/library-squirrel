@@ -96,31 +96,61 @@ export async function pluginCheckInstalled(publicId: string): Promise<ApiRespons
 
 /**
  * 保存插件
- * 注意：此方法在 bindings 中未实现
  */
-export async function pluginSave(_plugin: {
+export async function pluginSave(plugin: {
   publicId?: string
   name?: string
   version?: string
   author?: string
-  enable?: boolean
+  entryPath?: string
+  rootPath?: string
+  activationType?: string
 }): Promise<ApiResponse<PluginVO>> {
-  // TODO: 此接口在 bindings 中未实现 (Save)
-  return { success: false, msg: '此接口未实现：pluginSave' }
+  const result = await PluginHandler.Save({
+    publicId: plugin.publicId,
+    author: plugin.author,
+    name: plugin.name,
+    version: plugin.version,
+    entryPath: plugin.entryPath,
+    rootPath: plugin.rootPath,
+    activationType: plugin.activationType
+  })
+  if (!result) {
+    return { success: false, msg: '保存失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '保存失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: toPluginVO(result.data ?? null) ?? undefined }
 }
 
 /**
  * 更新插件
- * 注意：此方法在 bindings 中未实现
  */
-export async function pluginUpdate(_plugin: {
+export async function pluginUpdate(plugin: {
   id: number
+  publicId?: string
   name?: string
   version?: string
-  enable?: boolean
+  author?: string
+  entryPath?: string
+  rootPath?: string
+  activationType?: string
 }): Promise<ApiResponse<PluginVO>> {
-  // TODO: 此接口在 bindings 中未实现 (Update)
-  return { success: false, msg: '此接口未实现：pluginUpdate' }
+  const result = await PluginHandler.Update({
+    id: plugin.id,
+    publicId: plugin.publicId,
+    author: plugin.author,
+    name: plugin.name,
+    version: plugin.version,
+    entryPath: plugin.entryPath,
+    rootPath: plugin.rootPath,
+    activationType: plugin.activationType
+  })
+  if (!result) {
+    return { success: false, msg: '更新失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 /**
@@ -159,15 +189,20 @@ export async function pluginReinstall(publicId: string, installType?: number): P
 
 /**
  * 从路径重新安装插件
- * 注意：此方法在 bindings 中未实现
  */
 export async function pluginReinstallFromPath(
-  _publicId: string,
-  _packagePath: string,
-  _installType?: number
+  publicId: string,
+  packagePath: string,
+  installType?: number
 ): Promise<ApiResponse<PluginVO>> {
-  // TODO: 此接口在 bindings 中未实现 (ReinstallFromPath)
-  return { success: false, msg: '此接口未实现：pluginReinstallFromPath' }
+  const result = await PluginHandler.ReinstallFromPath(publicId, packagePath, installType ?? 0)
+  if (!result) {
+    return { success: false, msg: '重新安装失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '重新安装失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: toPluginVO(result.data ?? null) ?? undefined }
 }
 
 export async function pluginUnInstall(publicId: string): Promise<ApiResponse<null>> {

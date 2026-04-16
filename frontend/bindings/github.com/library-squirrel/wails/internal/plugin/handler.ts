@@ -91,11 +91,20 @@ export function Reinstall(pluginPublicId: string, installType: number): $Cancell
 }
 
 /**
+ * Save 保存插件
+ */
+export function Save(plugin: $models.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(3241584933, plugin).then(($result: any) => {
+        return $$createType13($result);
+    });
+}
+
+/**
  * SetUninstalled 设置插件为已卸载状态
  */
 export function SetUninstalled(pluginId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(4054926875, pluginId).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
     });
 }
 
@@ -104,7 +113,16 @@ export function SetUninstalled(pluginId: number): $CancellablePromise<model$0.Ap
  */
 export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2508918090, pluginPublicId).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
+    });
+}
+
+/**
+ * Update 更新插件
+ */
+export function Update(plugin: $models.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1290196617, plugin).then(($result: any) => {
+        return $$createType15($result);
     });
 }
 
@@ -123,3 +141,5 @@ const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
 const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType15 = $Create.Nullable($$createType14);

@@ -6,6 +6,50 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * LocalTagDTO 本地标签数据传输对象
+ */
+export class LocalTagDTO {
+    "id": number;
+    "localTagName": string | null;
+    "baseLocalTagId": number | null;
+    "description": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new LocalTagDTO instance. */
+    constructor($$source: Partial<LocalTagDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("localTagName" in $$source)) {
+            this["localTagName"] = null;
+        }
+        if (!("baseLocalTagId" in $$source)) {
+            this["baseLocalTagId"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalTagDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalTagDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LocalTagDTO($$parsedSource as Partial<LocalTagDTO>);
+    }
+}
+
+/**
  * SiteTagDTO 站点标签数据传输对象
  */
 export class SiteTagDTO {
@@ -13,6 +57,7 @@ export class SiteTagDTO {
     "siteId": number | null;
     "siteTagId": string | null;
     "siteTagName": string | null;
+    "description": string | null;
 
     /** Creates a new SiteTagDTO instance. */
     constructor($$source: Partial<SiteTagDTO> = {}) {
@@ -28,6 +73,9 @@ export class SiteTagDTO {
         if (!("siteTagName" in $$source)) {
             this["siteTagName"] = null;
         }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
 
         Object.assign(this, $$source);
     }
@@ -38,6 +86,136 @@ export class SiteTagDTO {
     static createFrom($$source: any = {}): SiteTagDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new SiteTagDTO($$parsedSource as Partial<SiteTagDTO>);
+    }
+}
+
+/**
+ * SiteTagFullDTO 站点标签完整信息DTO
+ */
+export class SiteTagFullDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteTagId": string | null;
+    "siteTagName": string | null;
+    "baseSiteTagId": string | null;
+    "description": string | null;
+    "localTagId": number | null;
+    "lastUse": number | null;
+    "createTime": number;
+    "updateTime": number;
+    "localTag"?: LocalTagDTO | null;
+
+    /** Creates a new SiteTagFullDTO instance. */
+    constructor($$source: Partial<SiteTagFullDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteTagId" in $$source)) {
+            this["siteTagId"] = null;
+        }
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = null;
+        }
+        if (!("baseSiteTagId" in $$source)) {
+            this["baseSiteTagId"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
+        if (!("localTagId" in $$source)) {
+            this["localTagId"] = null;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagFullDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagFullDTO {
+        const $$createField10_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("localTag" in $$parsedSource) {
+            $$parsedSource["localTag"] = $$createField10_0($$parsedSource["localTag"]);
+        }
+        return new SiteTagFullDTO($$parsedSource as Partial<SiteTagFullDTO>);
+    }
+}
+
+/**
+ * SiteTagLocalRelateDTO 站点标签与本地标签关联DTO
+ */
+export class SiteTagLocalRelateDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteTagId": string | null;
+    "siteTagName": string | null;
+    "baseSiteTagId": string | null;
+    "description": string | null;
+    "localTagId": number | null;
+    "lastUse": number | null;
+    "createTime": number;
+    "updateTime": number;
+    "localTag"?: LocalTagDTO | null;
+
+    /** Creates a new SiteTagLocalRelateDTO instance. */
+    constructor($$source: Partial<SiteTagLocalRelateDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteTagId" in $$source)) {
+            this["siteTagId"] = null;
+        }
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = null;
+        }
+        if (!("baseSiteTagId" in $$source)) {
+            this["baseSiteTagId"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
+        if (!("localTagId" in $$source)) {
+            this["localTagId"] = null;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagLocalRelateDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagLocalRelateDTO {
+        const $$createField10_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("localTag" in $$parsedSource) {
+            $$parsedSource["localTag"] = $$createField10_0($$parsedSource["localTag"]);
+        }
+        return new SiteTagLocalRelateDTO($$parsedSource as Partial<SiteTagLocalRelateDTO>);
     }
 }
 
@@ -194,3 +372,7 @@ export class SiteTagResultDTO {
         return new SiteTagResultDTO($$parsedSource as Partial<SiteTagResultDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = LocalTagDTO.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
