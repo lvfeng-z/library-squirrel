@@ -194,12 +194,15 @@ export async function localTagListByWorkId(workId: number): Promise<ApiResponse<
 
 /**
  * 根据作品ID分页查询选择项
- * 注意：此方法在 bindings 中未实现
  */
 export async function localTagQuerySelectItemPageByWorkId(
-  _workId: number,
-  _query: { page: number; pageSize: number; query?: Record<string, unknown> }
+  workId: number,
+  query: { page: number; pageSize: number; query?: Record<string, unknown> }
 ): Promise<ApiResponse<PageResult>> {
-  // TODO: 此接口在 bindings 中未实现 (QuerySelectItemPageByWorkId)
-  return { success: false, msg: '此接口未实现：localTagQuerySelectItemPageByWorkId' }
+  const queryDTO = new LocalTagQueryDTO({})
+  const result = await LocalTagHandler.QuerySelectItemPageByWorkId(query.page, query.pageSize, queryDTO, workId)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  return result
 }

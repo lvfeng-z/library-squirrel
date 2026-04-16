@@ -40,6 +40,15 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 }
 
 /**
+ * GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
+ */
+export function GetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: string): $CancellablePromise<model$0.ApiResponse<$models.WorkSetResultDTO | null> | null> {
+    return $Call.ByID(495360619, siteWorkSetId, siteName).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
  * GetWorksByWorkSetId 获取作品集下的作品列表
  */
 export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(model$1.Work | null)[]> | null> {

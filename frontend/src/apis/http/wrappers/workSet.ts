@@ -154,6 +154,23 @@ export async function workSetDelete(id: number): Promise<ApiResponse<null>> {
 }
 
 /**
+ * 根据站点作品集ID和站点名称获取作品集
+ */
+export async function workSetGetBySiteWorkSetIdAndSiteName(
+  siteWorkSetId: string,
+  siteName: string
+): Promise<ApiResponse<WorkSetVO>> {
+  const result = await WorkSetHandler.GetBySiteWorkSetIdAndSiteName(siteWorkSetId, siteName)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
+}
+
+/**
  * 批量关联作品到作品集
  * 注意：此方法在 bindings 中未实现
  */

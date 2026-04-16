@@ -118,21 +118,3 @@ export async function siteQuerySelectItemPage(query: { page: number; pageSize: n
   }
   return result
 }
-
-/**
- * 根据站点ID和站点作品ID获取站点
- * 注意：此方法在 bindings 中未实现
- */
-export async function siteGetBySiteAndSiteWorkID(_siteId: number, _siteWorkId: string): Promise<ApiResponse<SiteVO>> {
-  // TODO: 此接口在 bindings 中未实现 (GetBySiteAndSiteWorkID)
-  return { success: false, msg: '此接口未实现：siteGetBySiteAndSiteWorkID' }
-}
-
-/**
- * 根据作品集ID和站点名称获取站点
- * 注意：此方法在 bindings 中未实现
- */
-export async function siteGetBySiteWorkSetIdAndSiteName(_siteWorkSetId: string, _siteName: string): Promise<ApiResponse<SiteVO>> {
-  // TODO: 此接口在 bindings 中未实现 (GetBySiteWorkSetIdAndSiteName)
-  return { success: false, msg: '此接口未实现：siteGetBySiteWorkSetIdAndSiteName' }
-}

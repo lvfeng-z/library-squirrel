@@ -130,6 +130,15 @@ func (h *Handler) GetFullWorkInfoById(ctx context.Context, id int64) *model.ApiR
 	return model.Success(result)
 }
 
+// GetBySiteAndSiteWorkID 根据站点ID和站点作品ID获取作品
+func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) *model.ApiResponse[*WorkResultDTO] {
+	result, err := h.svc.GetBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+	if err != nil {
+		return model.Error[*WorkResultDTO](err.Error())
+	}
+	return model.Success(ToWorkResultDTO(result))
+}
+
 // ========== DTO 定义 ==========
 
 // WorkDTO 作品数据传输对象

@@ -130,6 +130,15 @@ func (h *Handler) UnlinkWorkFromWorkSet(ctx context.Context, workId, workSetId i
 	return model.Success[any](nil)
 }
 
+// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
+func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*WorkSetResultDTO] {
+	result, err := h.svc.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
+	if err != nil {
+		return model.Error[*WorkSetResultDTO](err.Error())
+	}
+	return model.Success(ToWorkSetResultDTO(result))
+}
+
 // ========== DTO 定义 ==========
 
 // WorkSetDTO 作品集数据传输对象

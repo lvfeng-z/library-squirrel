@@ -95,6 +95,23 @@ export async function workDeleteWorkAndSurroundingData(id: number): Promise<ApiR
 }
 
 /**
+ * 根据站点ID和站点作品ID获取作品
+ */
+export async function workGetBySiteAndSiteWorkID(
+  siteId: number,
+  siteWorkId: string
+): Promise<ApiResponse<WorkVO>> {
+  const result = await WorkHandler.GetBySiteAndSiteWorkID(siteId, siteWorkId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ? toWorkVO(result.data) : undefined }
+}
+
+/**
  * 根据作品ID列表获取关联的本地作者信息
  * 注意：此方法在 bindings 中未实现
  */
