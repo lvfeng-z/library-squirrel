@@ -13,5 +13,6 @@ export {
     TaskQueryDTO,
     TaskResultDTO,
     TaskScheduleDTO,
+    TaskTreeDTO,
     TreeDataPageDTO
 } from "./models.js";

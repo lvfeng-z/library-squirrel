@@ -168,8 +168,8 @@ export function Update(workSet: $models.WorkSetDTO | null): $CancellablePromise<
 /**
  * UpdateSortOrders 批量更新排序顺序
  */
-export function UpdateSortOrders(workSetId: number, sortOrders: { [_ in `${number}`]?: number }): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(1453918114, workSetId, sortOrders).then(($result: any) => {
+export function UpdateSortOrders(workSetId: number, workIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1453918114, workSetId, workIds).then(($result: any) => {
         return $$createType1($result);
     });
 }

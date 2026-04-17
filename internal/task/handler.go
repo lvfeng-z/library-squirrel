@@ -252,8 +252,8 @@ func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiRes
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (h *Handler) QueryTreeDataPage(ctx context.Context, treeId int64) *model.ApiResponse[*TreeDataPageDTO] {
-	result, err := h.svc.QueryTreeDataPage(ctx, treeId)
+func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[TaskQueryDTO]) *model.ApiResponse[*TreeDataPageDTO] {
+	result, err := h.svc.QueryTreeDataPage(ctx, page)
 	if err != nil {
 		return model.Error[*TreeDataPageDTO](err.Error())
 	}

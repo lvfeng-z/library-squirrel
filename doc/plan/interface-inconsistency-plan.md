@@ -72,7 +72,7 @@
 |--------|----------------|----------------|------|
 | DeleteTask | `DeleteTask(ctx, id int64)` | `deleteTask(taskIds number[])` | ✅ 已完成（单个改为批量） |
 | ListTaskTree | `ListTaskTree(ctx, taskIds []int64)` | `listTaskTree(taskIds, includeStatus[])` | ✅ 已完成（添加 includeStatus 参数） |
-| QueryTreeDataPage | `QueryTreeDataPage(ctx, treeId int64)` | `queryTreeDataPage(page Page<...>)` | **跳过**（设计差异太大） |
+| QueryTreeDataPage | `QueryTreeDataPage(ctx, treeId int64)` | `queryTreeDataPage(page Page<...>)` | ✅ 已完成（改为 Page<T> 参数） |
 | QueryParentPage | `QueryParentPage(ctx, page, pageSize int, queryDTO *TaskQueryDTO)` | `queryParentPage(page Page<...>)` | ✅ 已完成 |
 | QueryChildrenTaskPage | `QueryChildrenTaskPage(ctx, pid int64, page, pageSize int, queryDTO *TaskQueryDTO)` | `queryChildrenTaskPage(page Page<...>)` | ✅ 已完成 |
 

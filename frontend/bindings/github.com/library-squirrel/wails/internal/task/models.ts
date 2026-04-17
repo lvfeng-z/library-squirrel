@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as model$0 from "../model/models.js";
-
 /**
  * CreateTaskByURLResponse 根据URL创建任务的响应
  */
@@ -363,13 +359,86 @@ export class TaskScheduleDTO {
 }
 
 /**
+ * TaskTreeDTO 任务树DTO
+ */
+export class TaskTreeDTO {
+    "id": number;
+    "pid": number;
+    "taskName": string;
+    "siteId": number;
+    "siteWorkId": string;
+    "url": string;
+    "status": number;
+    "isCollection": number;
+    "pluginPublicId": string;
+    "pluginContributionId": string;
+    "pluginData": string;
+    "errorMessage": string;
+    "children"?: (TaskTreeDTO | null)[];
+
+    /** Creates a new TaskTreeDTO instance. */
+    constructor($$source: Partial<TaskTreeDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("taskName" in $$source)) {
+            this["taskName"] = "";
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = 0;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = "";
+        }
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = 0;
+        }
+        if (!("isCollection" in $$source)) {
+            this["isCollection"] = 0;
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = "";
+        }
+        if (!("pluginContributionId" in $$source)) {
+            this["pluginContributionId"] = "";
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = "";
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskTreeDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskTreeDTO {
+        const $$createField12_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("children" in $$parsedSource) {
+            $$parsedSource["children"] = $$createField12_0($$parsedSource["children"]);
+        }
+        return new TaskTreeDTO($$parsedSource as Partial<TaskTreeDTO>);
+    }
+}
+
+/**
  * TreeDataPageDTO 任务树数据分页DTO
  */
 export class TreeDataPageDTO {
     "treeId": number;
     "treeName": string;
     "total": number;
-    "tasks": (model$0.Task | null)[];
+    "tasks": (TaskTreeDTO | null)[];
 
     /** Creates a new TreeDataPageDTO instance. */
     constructor($$source: Partial<TreeDataPageDTO> = {}) {
@@ -403,6 +472,6 @@ export class TreeDataPageDTO {
 }
 
 // Private type creation functions
-const $$createType0 = model$0.Task.createFrom;
+const $$createType0 = TaskTreeDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);

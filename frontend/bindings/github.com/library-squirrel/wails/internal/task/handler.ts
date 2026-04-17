@@ -37,10 +37,10 @@ export function CreateTaskByURL(url: string): $CancellablePromise<model$0.ApiRes
 }
 
 /**
- * DeleteTask 删除任务（包含子任务）
+ * DeleteTask 删除任务（包含子任务）- 批量删除
  */
-export function DeleteTask(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2576136752, id).then(($result: any) => {
+export function DeleteTask(ids: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2576136752, ids).then(($result: any) => {
         return $$createType7($result);
     });
 }
@@ -84,8 +84,8 @@ export function ListStatus(ids: number[]): $CancellablePromise<model$0.ApiRespon
 /**
  * ListTaskTree 获取任务树列表
  */
-export function ListTaskTree(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.TaskResultDTO | null)[]> | null> {
-    return $Call.ByID(867436771, taskIds).then(($result: any) => {
+export function ListTaskTree(taskIds: number[], ...includeStatus: number[]): $CancellablePromise<model$0.ApiResponse<($models.TaskResultDTO | null)[]> | null> {
+    return $Call.ByID(867436771, taskIds, includeStatus).then(($result: any) => {
         return $$createType14($result);
     });
 }
@@ -120,8 +120,8 @@ export function QueryParentPage(page: model$0.Page<$models.TaskQueryDTO> | null)
 /**
  * QueryTreeDataPage 查询任务树数据分页
  */
-export function QueryTreeDataPage(treeId: number): $CancellablePromise<model$0.ApiResponse<$models.TreeDataPageDTO | null> | null> {
-    return $Call.ByID(1518321709, treeId).then(($result: any) => {
+export function QueryTreeDataPage(page: model$0.Page<$models.TaskQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<$models.TreeDataPageDTO | null> | null> {
+    return $Call.ByID(1518321709, page).then(($result: any) => {
         return $$createType27($result);
     });
 }

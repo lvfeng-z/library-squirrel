@@ -11,7 +11,6 @@ export {
     SelectItem,
     SlotConfig,
     SlotType,
-    Task,
     Work,
     WorkFullDTO
 } from "./models.js";

@@ -152,6 +152,99 @@ type CreateTaskRequest struct {
 	PluginData           string `json:"pluginData"`
 }
 
+// TaskTreeDTO 任务树DTO
+type TaskTreeDTO struct {
+	ID                   int64          `json:"id"`
+	Pid                  int64          `json:"pid"`
+	TaskName             string         `json:"taskName"`
+	SiteID               int            `json:"siteId"`
+	SiteWorkID           string         `json:"siteWorkId"`
+	URL                  string         `json:"url"`
+	Status               int            `json:"status"`
+	IsCollection         int            `json:"isCollection"`
+	PluginPublicID       string         `json:"pluginPublicId"`
+	PluginContributionID string         `json:"pluginContributionId"`
+	PluginData           string         `json:"pluginData"`
+	ErrorMessage         string         `json:"errorMessage"`
+	Children             []*TaskTreeDTO `json:"children,omitempty"`
+}
+
+// ToTaskTreeDTO 将 domain.Task 转换为 TaskTreeDTO
+func ToTaskTreeDTO(task *domain.Task) *TaskTreeDTO {
+	if task == nil {
+		return nil
+	}
+	return &TaskTreeDTO{
+		ID:                   task.GetID(),
+		Pid:                  nullInt64ToInt64(task.Pid),
+		TaskName:             task.TaskName.String,
+		SiteID:               int(nullInt64ToInt64(task.SiteID)),
+		SiteWorkID:           task.SiteWorkID.String,
+		URL:                  task.URL.String,
+		Status:               task.Status,
+		IsCollection:         int(nullInt64ToInt64(task.IsCollection)),
+		PluginPublicID:       task.PluginPublicID.String,
+		PluginContributionID: task.PluginContributionID.String,
+		PluginData:           task.PluginData.String,
+		ErrorMessage:         task.ErrorMessage.String,
+	}
+}
+
+// nullInt64ToInt64 将 sql.NullInt64 转换为 int64
+func nullInt64ToInt64(ni sql.NullInt64) int64 {
+	if ni.Valid {
+		return ni.Int64
+	}
+	return 0
+}
+
+// buildTaskTree 将任务列表构建为树形结构
+func buildTaskTree(tasks []*domain.Task) []*TaskTreeDTO {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	// 转换为 DTO
+	dtos := make([]*TaskTreeDTO, len(tasks))
+	for i, task := range tasks {
+		dtos[i] = ToTaskTreeDTO(task)
+	}
+
+	// 构建树形结构
+	tree := make([]*TaskTreeDTO, 0)
+	nodeMap := make(map[int64]*TaskTreeDTO)
+
+	// 先按 pid 分组
+	for _, dto := range dtos {
+		nodeMap[dto.ID] = dto
+	}
+
+	// 遍历找到根节点（pid 为 0 或 nil）
+	for _, dto := range dtos {
+		if dto.Pid == 0 {
+			tree = append(tree, dto)
+		}
+	}
+
+	// 递归构建子树
+	var buildChildren func(dto *TaskTreeDTO)
+	buildChildren = func(dto *TaskTreeDTO) {
+		dto.Children = make([]*TaskTreeDTO, 0)
+		for _, node := range dtos {
+			if node.Pid == dto.ID {
+				dto.Children = append(dto.Children, node)
+				buildChildren(node)
+			}
+		}
+	}
+
+	for _, root := range tree {
+		buildChildren(root)
+	}
+
+	return tree
+}
+
 // TreeDataPageRequest 任务树数据分页请求
 type TreeDataPageRequest struct {
 	TreeID int64 `json:"treeId"`
@@ -162,7 +255,7 @@ type TreeDataPageDTO struct {
 	TreeID   int64          `json:"treeId"`
 	TreeName string         `json:"treeName"`
 	Total    int64          `json:"total"`
-	Tasks    []*domain.Task `json:"tasks"`
+	Tasks    []*TaskTreeDTO `json:"tasks"`
 }
 
 // WorkSaver 作品保存接口
@@ -321,25 +414,80 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (s *Service) QueryTreeDataPage(ctx context.Context, treeId int64) (*TreeDataPageDTO, error) {
-	// 获取根任务
-	rootTask, err := s.repo.GetById(ctx, treeId)
+func (s *Service) QueryTreeDataPage(ctx context.Context, page *pkgModel.Page[TaskQueryDTO]) (*TreeDataPageDTO, error) {
+	// 获取查询条件
+	queryDTO := page.Query.(TaskQueryDTO)
+
+	// 构建查询条件
+	conditions := buildConditionsFromDTO(&queryDTO)
+	where := combineConditions(conditions)
+	orderBy := queryDTO.BuildOrderBy()
+
+	// 分页查询父任务（is_collection=1 OR pid IS NULL OR pid=0）
+	resultPage, err := s.repo.QueryParentPage(ctx, page.PageNumber, page.PageSize, where, orderBy)
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取任务树下的所有任务
-	tasks, err := s.repo.ListTaskTree(ctx, []int64{treeId})
-	if err != nil {
-		return nil, err
+	// 将分页数据转换为 TaskTreeDTO
+	treeDTOS := make([]*TaskTreeDTO, len(resultPage.Data))
+	for i, task := range resultPage.Data {
+		treeDTOS[i] = ToTaskTreeDTO(task)
+	}
+
+	// 构建树形结构
+	tree := buildTaskTreeByDTO(treeDTOS)
+
+	// 获取 TreeID 和 TreeName（从分页数据中获取）
+	var treeID int64
+	var treeName string
+	if len(resultPage.Data) > 0 {
+		treeID = resultPage.Data[0].GetID()
+		treeName = resultPage.Data[0].TaskName.String
 	}
 
 	return &TreeDataPageDTO{
-		TreeID:   treeId,
-		TreeName: rootTask.TaskName.String,
-		Total:    int64(len(tasks)),
-		Tasks:    tasks,
+		TreeID:   treeID,
+		TreeName: treeName,
+		Total:    resultPage.DataCount,
+		Tasks:    tree,
 	}, nil
+}
+
+// buildTaskTreeByDTO 将 TaskTreeDTO 列表构建为树形结构
+func buildTaskTreeByDTO(dtos []*TaskTreeDTO) []*TaskTreeDTO {
+	if len(dtos) == 0 {
+		return nil
+	}
+
+	tree := make([]*TaskTreeDTO, 0)
+	nodeMap := make(map[int64]*TaskTreeDTO)
+
+	// 建立 ID 到节点的映射，并收集根节点
+	for _, dto := range dtos {
+		nodeMap[dto.ID] = dto
+		if dto.Pid == 0 {
+			tree = append(tree, dto)
+		}
+	}
+
+	// 递归构建子树
+	var buildChildren func(dto *TaskTreeDTO)
+	buildChildren = func(dto *TaskTreeDTO) {
+		dto.Children = make([]*TaskTreeDTO, 0)
+		for _, node := range dtos {
+			if node.Pid == dto.ID {
+				dto.Children = append(dto.Children, node)
+				buildChildren(node)
+			}
+		}
+	}
+
+	for _, root := range tree {
+		buildChildren(root)
+	}
+
+	return tree
 }
 
 // ListChildrenTask 查询子任务列表
