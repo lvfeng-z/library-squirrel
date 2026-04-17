@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
-	"github.com/library-squirrel/wails/pkg/model"
 
 	"gorm.io/gorm"
 )
@@ -25,7 +24,7 @@ type Repository interface {
 	// GetByKey 根据存储键获取
 	GetByKey(ctx context.Context, storageKey string) (*domain.SecureStorage, error)
 	// List 查询列表
-	List(ctx context.Context, example *model.Example) ([]*domain.SecureStorage, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.SecureStorage, error)
 }
 
 // secureStorageRepository 安全存储仓储实现
@@ -65,18 +64,6 @@ func (r *secureStorageRepository) GetByKey(ctx context.Context, storageKey strin
 }
 
 // List 查询列表
-func (r *secureStorageRepository) List(ctx context.Context, example *model.Example) ([]*domain.SecureStorage, error) {
-	query := r.GORM().WithContext(ctx).Model(&domain.SecureStorage{})
-
-	if example != nil {
-		for _, cond := range example.Where {
-			query = query.Where(cond.Field+" "+cond.Op+" ?", cond.Value)
-		}
-	}
-
-	var results []*domain.SecureStorage
-	if err := query.Find(&results).Error; err != nil {
-		return nil, err
-	}
-	return results, nil
+func (r *secureStorageRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.SecureStorage, error) {
+	return r.BaseRepository.List(ctx, opt)
 }

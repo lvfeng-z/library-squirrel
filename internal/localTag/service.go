@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -59,11 +60,11 @@ type Repository interface {
 	// GetByName 根据名称获取
 	GetByName(ctx context.Context, name string) (*domain.LocalTag, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.LocalTag, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.LocalTag, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Page 分页查询
-	Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.LocalTag], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag], error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// SelectTreeNode 递归查询子标签
@@ -182,37 +183,33 @@ func (s *Service) GetByName(ctx context.Context, name string) (*domain.LocalTag,
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.LocalTag, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.LocalTag, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, where clause.Expression) (int64, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag], error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Page(ctx, page, pageSize, conditions, order)
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag], error) {
+	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	return s.repo.Page(ctx, opt)
 }
 
 // Delete 删除标签

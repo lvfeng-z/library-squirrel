@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/library-squirrel/wails/internal/database"
 	"golang.org/x/crypto/nacl/secretbox"
 
 	domain "github.com/library-squirrel/wails/internal/model"
-	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // 错误定义
@@ -130,8 +130,7 @@ func (s *Service) HasKey(ctx context.Context, storageKey string) (bool, error) {
 
 // ListKeys 获取所有存储键
 func (s *Service) ListKeys(ctx context.Context) ([]string, error) {
-	example := &model.Example{}
-	results, err := s.repo.List(ctx, example)
+	results, err := s.repo.List(ctx, &database.QueryOption{})
 	if err != nil {
 		return nil, err
 	}

@@ -28,11 +28,15 @@ func (r *workRepository) GORM() *gorm.DB {
 
 // GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 func (r *workRepository) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error) {
-	where := clause.And(
-		clause.Eq{Column: "site_id", Value: siteId},
-		clause.Eq{Column: "site_work_id", Value: siteWorkId},
-	)
-	return r.BaseRepository.Get(ctx, []clause.Expression{where}, nil)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.And(
+				clause.Eq{Column: "site_id", Value: siteId},
+				clause.Eq{Column: "site_work_id", Value: siteWorkId},
+			),
+		},
+	}
+	return r.BaseRepository.Get(ctx, opt)
 }
 
 // ListByIds 根据ID列表批量查询
@@ -40,8 +44,10 @@ func (r *workRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.
 	if len(ids) == 0 {
 		return []*domain.Work{}, nil
 	}
-	where := clause.IN{Column: "id", Values: toInterfaceSlice(ids)}
-	return r.BaseRepository.List(ctx, []clause.Expression{where}, nil, 0, 0)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: toInterfaceSlice(ids)}},
+	}
+	return r.BaseRepository.List(ctx, opt)
 }
 
 // UpdateLastViewBatch 批量更新最后查看时间

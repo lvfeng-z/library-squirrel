@@ -3,6 +3,7 @@ package work
 import (
 	"context"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -120,13 +121,13 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.Work, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.Work, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Work, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.Work], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error)
 	// ListByIds 根据ID列表批量查询
@@ -197,12 +198,8 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.Work, error) {
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.Work, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Work, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // ListByIds 根据ID列表批量查询
@@ -211,12 +208,8 @@ func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.Work, e
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, where clause.Expression) (int64, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // Delete 删除作品
@@ -246,11 +239,23 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 
 // Page 分页查询
-// Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[domain.Work], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work], error) {
+	return s.repo.Page(ctx, opt)
+}
+
+// PageByDTO 分页查询（基于 QueryDTO）
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[domain.Work], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	return s.repo.Page(ctx, opt)
 }
 
 // GetBySiteAndSiteWorkID 根据站点和站点作品ID查询

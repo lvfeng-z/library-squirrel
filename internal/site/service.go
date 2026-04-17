@@ -3,6 +3,7 @@ package site
 import (
 	"context"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
 
@@ -50,15 +51,15 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.Site, error)
 	// Get 根据条件获取单个
-	Get(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression) (*domain.Site, error)
+	Get(ctx context.Context, opt *database.QueryOption) (*domain.Site, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.Site, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Site, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.Site], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site], error)
 	// QuerySelectItemPage 分页查询选择项
 	QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem], error)
 }
@@ -94,21 +95,13 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.Site, error) {
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.Site, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Site, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, where clause.Expression) (int64, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // Delete 删除站点
@@ -116,11 +109,24 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site], error) {
+// Page 分页查询
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site], error) {
+	return s.repo.Page(ctx, opt)
+}
+
+// PageByDTO 分页查询（基于 QueryDTO）
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	return s.repo.Page(ctx, opt)
 }
 
 // QuerySelectItemPage 分页查询选择项（基于 QueryDTO）
@@ -133,7 +139,10 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, q
 // GetByName 根据站点名称获取
 func (s *Service) GetByName(ctx context.Context, siteName string) (*domain.Site, error) {
 	where := clause.Eq{Column: "site_name", Value: siteName}
-	return s.repo.Get(ctx, []clause.Expression{where}, nil)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{where},
+	}
+	return s.repo.Get(ctx, opt)
 }
 
 // buildConditionsFromDTO 根据查询DTO构建查询条件

@@ -25,6 +25,27 @@ func NewBaseRepository[T model.Entity](db *gorm.DB) *BaseRepository[T] {
 	return &BaseRepository[T]{db: db}
 }
 
+// ========== 查询选项 ==========
+
+// QueryOption SQL 查询选项
+type QueryOption struct {
+	Select     clause.Expression   // SELECT 子句（覆盖型）
+	Conditions []clause.Expression // WHERE 条件切片（叠加型）
+	Joins      []clause.Expression // JOIN 子句切片（叠加型）
+	OrderBy    []clause.Expression // 排序表达式切片（叠加型）
+	GroupBy    clause.Expression   // GROUP BY 表达式（覆盖型）
+	Having     clause.Expression   // HAVING 表达式（覆盖型）
+	Limit      int                 // 限制返回数量（覆盖型）
+	Offset     int                 // 偏移量（覆盖型）
+}
+
+// PageOption 分页查询选项（嵌入 QueryOption + 分页参数）
+type PageOption struct {
+	QueryOption
+	Page     int // 页码（从 1 开始）
+	PageSize int // 每页数量
+}
+
 // ========== 字段名映射 ==========
 
 // ErrFieldNotFound 字段不存在错误
@@ -162,19 +183,10 @@ func (r *BaseRepository[T]) GetById(ctx context.Context, id int64) (*T, error) {
 }
 
 // Get 根据查询条件获取单个
-// conditions: WHERE 条件切片，支持多个条件 AND 连接
-// orderBy: ORDER BY 排序表达式
-func (r *BaseRepository[T]) Get(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression) (*T, error) {
+func (r *BaseRepository[T]) Get(ctx context.Context, opt *QueryOption) (*T, error) {
 	var entity T
 	db := r.db.WithContext(ctx).Model(new(T))
-	if len(conditions) > 0 {
-		for _, cond := range conditions {
-			db = db.Clauses(cond)
-		}
-	}
-	if orderBy != nil {
-		db = db.Clauses(orderBy)
-	}
+	db = applyQueryOption(db, opt)
 	err := db.First(&entity).Error
 	if err != nil {
 		return nil, err
@@ -183,22 +195,10 @@ func (r *BaseRepository[T]) Get(ctx context.Context, conditions []clause.Express
 }
 
 // List 根据查询条件获取列表
-// conditions: WHERE 条件切片，支持多个条件 AND 连接
-// orderBy: ORDER BY 排序表达式
-func (r *BaseRepository[T]) List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*T, error) {
+func (r *BaseRepository[T]) List(ctx context.Context, opt *QueryOption) ([]*T, error) {
 	var entities []*T
 	db := r.db.WithContext(ctx).Model(new(T))
-	if len(conditions) > 0 {
-		for _, cond := range conditions {
-			db = db.Clauses(cond)
-		}
-	}
-	if orderBy != nil {
-		db = db.Clauses(orderBy)
-	}
-	if limit > 0 {
-		db = db.Clauses(clause.Limit{Limit: &limit, Offset: offset})
-	}
+	db = applyQueryOption(db, opt)
 	err := db.Find(&entities).Error
 	if err != nil {
 		return nil, err
@@ -206,24 +206,63 @@ func (r *BaseRepository[T]) List(ctx context.Context, conditions []clause.Expres
 	return entities, nil
 }
 
+// applyQueryOption 将 QueryOption 应用到 db 实例
+func applyQueryOption(db *gorm.DB, opt *QueryOption) *gorm.DB {
+	// 1. Select（覆盖型）
+	if opt.Select != nil {
+		db = db.Select(opt.Select)
+	}
+
+	// 2. Joins（叠加型）
+	for _, join := range opt.Joins {
+		db = db.Clauses(join)
+	}
+
+	// 3. Conditions（叠加型）
+	for _, cond := range opt.Conditions {
+		db = db.Where(cond)
+	}
+
+	// 4. OrderBy（叠加型）
+	if len(opt.OrderBy) > 0 {
+		db = db.Order(opt.OrderBy)
+	}
+
+	// 5. GroupBy（覆盖型）
+	if opt.GroupBy != nil {
+		db = db.Clauses(opt.GroupBy)
+	}
+
+	// 6. Having（覆盖型）
+	if opt.Having != nil {
+		db = db.Having(opt.Having)
+	}
+
+	// 7. Limit & Offset（覆盖型）
+	if opt.Limit > 0 {
+		db = db.Limit(opt.Limit)
+	}
+	if opt.Offset > 0 {
+		db = db.Offset(opt.Offset)
+	}
+
+	return db
+}
+
 // Count 统计数量
-// conditions: WHERE 条件切片，支持多个条件 AND 连接
-func (r *BaseRepository[T]) Count(ctx context.Context, conditions []clause.Expression) (int64, error) {
+func (r *BaseRepository[T]) Count(ctx context.Context, opt *QueryOption) (int64, error) {
 	var count int64
 	db := r.db.WithContext(ctx).Model(new(T))
-	if len(conditions) > 0 {
-		for _, cond := range conditions {
-			db = db.Clauses(cond)
-		}
-	}
+	db = applyQueryOption(db, opt)
 	err := db.Count(&count).Error
 	return count, err
 }
 
 // Page 分页查询
-// conditions: WHERE 条件切片，支持多个条件 AND 连接
-// orderBy: ORDER BY 排序表达式
-func (r *BaseRepository[T]) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[T], error) {
+func (r *BaseRepository[T]) Page(ctx context.Context, opt *PageOption) (*model.Page[T], error) {
+	page := opt.Page
+	pageSize := opt.PageSize
+
 	if page <= 0 {
 		page = 1
 	}
@@ -232,14 +271,22 @@ func (r *BaseRepository[T]) Page(ctx context.Context, page, pageSize int, condit
 	}
 	offset := (page - 1) * pageSize
 
+	// 构建查询选项（设置 Limit 和 Offset）
+	queryOpt := opt.QueryOption
+	queryOpt.Limit = pageSize
+	queryOpt.Offset = offset
+
 	// 查询列表
-	list, err := r.List(ctx, conditions, orderBy, pageSize, offset)
+	list, err := r.List(ctx, &queryOpt)
 	if err != nil {
 		return nil, err
 	}
 
-	// 统计总数
-	total, err := r.Count(ctx, conditions)
+	// 统计总数（不需要 Limit 和 Offset）
+	countOpt := opt.QueryOption
+	countOpt.Limit = 0
+	countOpt.Offset = 0
+	total, err := r.Count(ctx, &countOpt)
 	if err != nil {
 		return nil, err
 	}

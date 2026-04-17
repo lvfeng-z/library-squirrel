@@ -19,7 +19,7 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.Resource, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.Resource, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Resource, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// DeleteByWorkId 根据作品ID删除所有资源
@@ -43,7 +43,10 @@ func NewRepository(db *gorm.DB) Repository {
 // ListByWorkId 查询作品关联的资源
 func (r *resourceRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
 	where := clause.Eq{Column: "work_id", Value: workId}
-	return r.BaseRepository.List(ctx, []clause.Expression{where}, nil, 0, 0)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{where},
+	}
+	return r.BaseRepository.List(ctx, opt)
 }
 
 // DeleteByWorkId 根据作品ID删除所有资源

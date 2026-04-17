@@ -101,7 +101,7 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *W
 	if queryDTO == nil {
 		queryDTO = &WorkQueryDTO{}
 	}
-	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
+	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
 		return model.Error[*model.Page[WorkResultDTO]](err.Error())
 	}

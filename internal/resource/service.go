@@ -3,9 +3,8 @@ package resource
 import (
 	"context"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
-
-	"gorm.io/gorm/clause"
 )
 
 // Service 资源服务
@@ -36,12 +35,8 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.Resource, erro
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.Resource, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Resource, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Delete 删除资源

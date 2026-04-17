@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
 
@@ -119,21 +120,13 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.WorkSet, error
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.WorkSet, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.WorkSet, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, where clause.Expression) (int64, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // Delete 删除作品集
@@ -146,19 +139,23 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.WorkSet], error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Page(ctx, page, pageSize, conditions, order)
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet], error) {
+	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	return s.repo.Page(ctx, opt)
 }
 
 // QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
@@ -320,7 +317,10 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	}
 
 	// 查询作品集
-	workSets, err := s.repo.List(ctx, []clause.Expression{clause.IN{Column: "id", Values: toInterfaceSlice(workSetIds)}}, nil, 0, 0)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: toInterfaceSlice(workSetIds)}},
+	}
+	workSets, err := s.repo.List(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +365,15 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 	if where != nil {
 		conditions = []clause.Expression{where}
 	}
-	pageResult, err := s.repo.Page(ctx, page, pageSize, conditions, order)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{order},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	pageResult, err := s.repo.Page(ctx, opt)
 	if err != nil {
 		return nil, err
 	}

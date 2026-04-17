@@ -197,7 +197,7 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *T
 	if queryDTO == nil {
 		queryDTO = &TaskQueryDTO{}
 	}
-	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
+	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
 		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
@@ -286,38 +286,38 @@ func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiRespo
 // TaskResultDTO 任务返回结果DTO（用于屏蔽sql.Null*类型）
 type TaskResultDTO struct {
 	ID                   int64   `json:"id"`
-	IsCollection        *int64  `json:"isCollection"`
-	Pid                 *int64  `json:"pid"`
-	TaskName            *string `json:"taskName"`
-	SiteID              *int64  `json:"siteId"`
-	SiteWorkID          *string `json:"siteWorkId"`
-	URL                 *string `json:"url"`
-	Status              int     `json:"status"`
-	PendingResourceID   *int64  `json:"pendingResourceId"`
-	Continuable         *int64  `json:"continuable"`
-	PluginPublicID      *string `json:"pluginPublicId"`
+	IsCollection         *int64  `json:"isCollection"`
+	Pid                  *int64  `json:"pid"`
+	TaskName             *string `json:"taskName"`
+	SiteID               *int64  `json:"siteId"`
+	SiteWorkID           *string `json:"siteWorkId"`
+	URL                  *string `json:"url"`
+	Status               int     `json:"status"`
+	PendingResourceID    *int64  `json:"pendingResourceId"`
+	Continuable          *int64  `json:"continuable"`
+	PluginPublicID       *string `json:"pluginPublicId"`
 	PluginContributionID *string `json:"pluginContributionId"`
-	PluginData          *string `json:"pluginData"`
-	ErrorMessage        *string `json:"errorMessage"`
-	CreateTime          int64   `json:"createTime"`
-	UpdateTime          int64   `json:"updateTime"`
+	PluginData           *string `json:"pluginData"`
+	ErrorMessage         *string `json:"errorMessage"`
+	CreateTime           int64   `json:"createTime"`
+	UpdateTime           int64   `json:"updateTime"`
 }
 
 // TaskDTO 任务数据传输对象
 type TaskDTO struct {
 	ID                   int64   `json:"id"`
-	IsCollection        *int64  `json:"isCollection,omitempty"`
-	Pid                 *int64  `json:"pid,omitempty"`
-	TaskName            *string `json:"taskName,omitempty"`
-	SiteID              *int64  `json:"siteId,omitempty"`
-	SiteWorkID          *string `json:"siteWorkId,omitempty"`
-	URL                 *string `json:"url,omitempty"`
-	Status              int     `json:"status,omitempty"`
-	PendingResourceID   *int64  `json:"pendingResourceId,omitempty"`
-	Continuable         *int64  `json:"continuable,omitempty"`
-	PluginPublicID      *string `json:"pluginPublicId,omitempty"`
+	IsCollection         *int64  `json:"isCollection,omitempty"`
+	Pid                  *int64  `json:"pid,omitempty"`
+	TaskName             *string `json:"taskName,omitempty"`
+	SiteID               *int64  `json:"siteId,omitempty"`
+	SiteWorkID           *string `json:"siteWorkId,omitempty"`
+	URL                  *string `json:"url,omitempty"`
+	Status               int     `json:"status,omitempty"`
+	PendingResourceID    *int64  `json:"pendingResourceId,omitempty"`
+	Continuable          *int64  `json:"continuable,omitempty"`
+	PluginPublicID       *string `json:"pluginPublicId,omitempty"`
 	PluginContributionID *string `json:"pluginContributionId,omitempty"`
-	PluginData          *string `json:"pluginData,omitempty"`
+	PluginData           *string `json:"pluginData,omitempty"`
 }
 
 // ToTaskResultDTO 将 domain.Task 转换为 TaskResultDTO
@@ -326,7 +326,7 @@ func ToTaskResultDTO(task *domain.Task) *TaskResultDTO {
 		return nil
 	}
 	return &TaskResultDTO{
-		ID:                    task.GetID(),
+		ID:                   task.GetID(),
 		IsCollection:         nullInt64ToPointer(task.IsCollection),
 		Pid:                  nullInt64ToPointer(task.Pid),
 		TaskName:             nullStringToPointer(task.TaskName),

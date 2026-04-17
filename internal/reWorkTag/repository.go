@@ -81,8 +81,10 @@ func (r *reWorkTagRepository) DeleteByWorkId(ctx context.Context, workId int64) 
 
 // ListByWorkId 查询作品关联的所有标签
 func (r *reWorkTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkTag, error) {
-	where := clause.Eq{Column: "work_id", Value: workId}
-	return r.BaseRepository.List(ctx, []clause.Expression{where}, nil, 0, 0)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{clause.Eq{Column: "work_id", Value: workId}},
+	}
+	return r.BaseRepository.List(ctx, opt)
 }
 
 // ListLocalTagIdsByWorkId 查询作品关联的本地标签ID列表

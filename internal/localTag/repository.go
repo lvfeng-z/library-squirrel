@@ -154,7 +154,12 @@ func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize in
 func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
 	var results []*domain.SelectItem
 
-	tags, err := r.List(ctx, []clause.Expression{where}, order, -1, 0)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{where},
+		OrderBy:    []clause.Expression{order},
+		Limit:      -1,
+	}
+	tags, err := r.List(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +183,15 @@ func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.E
 func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
 
-	rawPage, err := r.Page(ctx, page, pageSize, []clause.Expression{where}, order)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: []clause.Expression{where},
+			OrderBy:    []clause.Expression{order},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
 		return nil, err
 	}

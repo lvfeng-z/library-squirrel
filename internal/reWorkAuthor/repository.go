@@ -10,7 +10,6 @@ import (
 	"github.com/library-squirrel/wails/pkg/model"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Repository 作品-作者关联仓储接口
@@ -26,9 +25,9 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.ReWorkAuthor, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.ReWorkAuthor, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.ReWorkAuthor, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
@@ -95,13 +94,13 @@ func (r *reWorkAuthorRepository) GetById(ctx context.Context, id int64) (*domain
 }
 
 // List 查询列表
-func (r *reWorkAuthorRepository) List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.ReWorkAuthor, error) {
-	return r.BaseRepository.List(ctx, conditions, orderBy, limit, offset)
+func (r *reWorkAuthorRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.ReWorkAuthor, error) {
+	return r.BaseRepository.List(ctx, opt)
 }
 
 // Count 统计数量
-func (r *reWorkAuthorRepository) Count(ctx context.Context, conditions []clause.Expression) (int64, error) {
-	return r.BaseRepository.Count(ctx, conditions)
+func (r *reWorkAuthorRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return r.BaseRepository.Count(ctx, opt)
 }
 
 // DeleteByWorkId 根据作品ID删除所有关联

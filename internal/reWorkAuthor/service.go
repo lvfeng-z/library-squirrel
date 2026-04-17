@@ -3,10 +3,9 @@ package reWorkAuthor
 import (
 	"context"
 
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
-
-	"gorm.io/gorm/clause"
 )
 
 // WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）
@@ -62,13 +61,13 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.ReWorkAuthor, 
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.ReWorkAuthor, error) {
-	return s.repo.List(ctx, conditions, orderBy, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.ReWorkAuthor, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, conditions []clause.Expression) (int64, error) {
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // DeleteByWorkId 根据作品ID删除所有关联

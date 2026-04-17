@@ -160,7 +160,7 @@ func (h *Handler) Page(ctx context.Context, page, pageSize int, queryDTO *Plugin
 	if queryDTO == nil {
 		queryDTO = &PluginQueryDTO{}
 	}
-	result, err := h.svc.Page(ctx, page, pageSize, *queryDTO)
+	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
 		return model.Error[*model.Page[PluginResultDTO]](err.Error())
 	}
@@ -206,7 +206,7 @@ func (h *Handler) ReadVueFile(pluginPublicId string, filePath string) *model.Api
 
 // PluginDTO 插件数据传输对象
 type PluginDTO struct {
-	ID              int64   `json:"id"`
+	ID             int64   `json:"id"`
 	PublicID       *string `json:"publicId"`
 	Author         *string `json:"author"`
 	Name           *string `json:"name"`
@@ -219,19 +219,19 @@ type PluginDTO struct {
 // PluginResultDTO 插件返回结果DTO（用于屏蔽sql.Null*类型）
 type PluginResultDTO struct {
 	ID             int64   `json:"id"`
-	PublicID      *string `json:"publicId"`
-	Author        *string `json:"author"`
-	Name          *string `json:"name"`
-	Version       *string `json:"version"`
-	EntryPath     *string `json:"entryPath"`
-	RootPath      *string `json:"rootPath"`
-	BackupID      *int64  `json:"backupId"`
-	SortNum       *int64  `json:"sortNum"`
-	PluginData    *string `json:"pluginData"`
-	Uninstalled   *int64  `json:"uninstalled"`
+	PublicID       *string `json:"publicId"`
+	Author         *string `json:"author"`
+	Name           *string `json:"name"`
+	Version        *string `json:"version"`
+	EntryPath      *string `json:"entryPath"`
+	RootPath       *string `json:"rootPath"`
+	BackupID       *int64  `json:"backupId"`
+	SortNum        *int64  `json:"sortNum"`
+	PluginData     *string `json:"pluginData"`
+	Uninstalled    *int64  `json:"uninstalled"`
 	ActivationType *string `json:"activationType"`
-	CreateTime    int64   `json:"createTime"`
-	UpdateTime    int64   `json:"updateTime"`
+	CreateTime     int64   `json:"createTime"`
+	UpdateTime     int64   `json:"updateTime"`
 }
 
 // ToPluginResultDTO 将 domain.Plugin 转换为 PluginResultDTO
@@ -241,19 +241,19 @@ func ToPluginResultDTO(plugin *domain.Plugin) *PluginResultDTO {
 	}
 	return &PluginResultDTO{
 		ID:             plugin.GetID(),
-		PublicID:      nullStringToPointer(plugin.PublicID),
-		Author:        nullStringToPointer(plugin.Author),
-		Name:          nullStringToPointer(plugin.Name),
-		Version:       nullStringToPointer(plugin.Version),
-		EntryPath:     nullStringToPointer(plugin.EntryPath),
-		RootPath:      nullStringToPointer(plugin.RootPath),
-		BackupID:      nullInt64ToPointer(plugin.BackupID),
-		SortNum:       nullInt64ToPointer(plugin.SortNum),
-		PluginData:    nullStringToPointer(plugin.PluginData),
-		Uninstalled:   nullInt64ToPointer(plugin.Uninstalled),
+		PublicID:       nullStringToPointer(plugin.PublicID),
+		Author:         nullStringToPointer(plugin.Author),
+		Name:           nullStringToPointer(plugin.Name),
+		Version:        nullStringToPointer(plugin.Version),
+		EntryPath:      nullStringToPointer(plugin.EntryPath),
+		RootPath:       nullStringToPointer(plugin.RootPath),
+		BackupID:       nullInt64ToPointer(plugin.BackupID),
+		SortNum:        nullInt64ToPointer(plugin.SortNum),
+		PluginData:     nullStringToPointer(plugin.PluginData),
+		Uninstalled:    nullInt64ToPointer(plugin.Uninstalled),
 		ActivationType: nullStringToPointer(plugin.ActivationType),
-		CreateTime:    plugin.GetCreateTime(),
-		UpdateTime:    plugin.GetUpdateTime(),
+		CreateTime:     plugin.GetCreateTime(),
+		UpdateTime:     plugin.GetUpdateTime(),
 	}
 }
 

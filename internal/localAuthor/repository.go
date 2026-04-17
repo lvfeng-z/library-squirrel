@@ -127,7 +127,12 @@ func (r *localAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
 	var results []*domain.SelectItem
 
-	authors, err := r.List(ctx, []clause.Expression{where}, order, -1, -1)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{where},
+		OrderBy:    []clause.Expression{order},
+		Limit:      -1,
+	}
+	authors, err := r.List(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +156,15 @@ func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where claus
 func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
 
-	rawPage, err := r.Page(ctx, page, pageSize, []clause.Expression{where}, order)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: []clause.Expression{where},
+			OrderBy:    []clause.Expression{order},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
 		return nil, err
 	}

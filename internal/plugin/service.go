@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/library-squirrel/wails/internal/config"
+	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/logger"
@@ -141,13 +142,13 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.Plugin, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.Plugin, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Plugin, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.Plugin], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin], error)
 	// CheckInstalled 检查插件是否已安装
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
@@ -200,28 +201,33 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 
 // Page 分页查询
 // Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin], error) {
+	return s.repo.Page(ctx, opt)
+}
+
+// PageByDTO 分页查询（基于 QueryDTO）
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	return s.repo.Page(ctx, opt)
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, where clause.Expression, order clause.Expression, limit, offset int) ([]*domain.Plugin, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.List(ctx, conditions, order, limit, offset)
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Plugin, error) {
+	return s.repo.List(ctx, opt)
 }
 
 // Count 统计数量
-func (s *Service) Count(ctx context.Context, where clause.Expression) (int64, error) {
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	return s.repo.Count(ctx, conditions)
+func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	return s.repo.Count(ctx, opt)
 }
 
 // CheckInstalled 检查插件是否已安装

@@ -33,7 +33,15 @@ func (r *siteRepository) GORM() *gorm.DB {
 func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
 
-	rawPage, err := r.Page(ctx, page, pageSize, conditions, orderBy)
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conditions,
+			OrderBy:    []clause.Expression{orderBy},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
 		return nil, err
 	}

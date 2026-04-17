@@ -21,13 +21,13 @@ type Repository interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.WorkSet, error)
 	// List 查询列表
-	List(ctx context.Context, conditions []clause.Expression, orderBy clause.Expression, limit, offset int) ([]*domain.WorkSet, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.WorkSet, error)
 	// Count 统计数量
-	Count(ctx context.Context, conditions []clause.Expression) (int64, error)
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.WorkSet], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet], error)
 	// GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error)
 	// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
@@ -48,11 +48,15 @@ func NewRepository(db *gorm.DB) Repository {
 
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 func (r *workSetRepository) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error) {
-	where := clause.And(
-		clause.Eq{Column: "site_id", Value: siteId},
-		clause.Eq{Column: "site_work_set_id", Value: siteWorkSetId},
-	)
-	return r.BaseRepository.Get(ctx, []clause.Expression{where}, nil)
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.And(
+				clause.Eq{Column: "site_id", Value: siteId},
+				clause.Eq{Column: "site_work_set_id", Value: siteWorkSetId},
+			),
+		},
+	}
+	return r.BaseRepository.Get(ctx, opt)
 }
 
 // GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
