@@ -48,15 +48,9 @@ const apis = {
   localTagListSelectItems: localTagApi.localTagListSelectItems,
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
   localTagGetTree: localTagApi.localTagGetTree,
-  siteTagUpdateBindLocalTag: async (localTagId: number | null, siteTagIds: number[]) => {
-    ElMessage.error('此功能暂未实现：siteTagUpdateBindLocalTag')
-    return { success: false, msg: '此功能暂未实现' }
-  },
+  siteTagUpdateBindLocalTag: siteTagApi.siteTagUpdateBindLocalTag,
   siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
-  siteTagQueryBoundOrUnboundToLocalTagPage: async (page: any) => {
-    ElMessage.error('此功能暂未实现：siteTagQueryBoundOrUnboundToLocalTagPage')
-    return { success: false, msg: '此功能暂未实现', data: page }
-  }
+  siteTagQueryBoundOrUnboundToLocalTagPage: siteTagApi.siteTagQueryBoundOrUnboundToLocalTagPage
 }
 // localTagSearchTable的组件实例
 const localTagSearchTable = ref()

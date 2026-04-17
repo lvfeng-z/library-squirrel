@@ -71,14 +71,8 @@ onBeforeUnmount(() => {
 // 接口
 const apis = {
   localTagListByWorkId: localTagApi.localTagListByWorkId,
-  localTagQuerySelectItemPageByWorkId: async (page: any) => {
-    ElMessage.error('此功能暂未实现：localTagQuerySelectItemPageByWorkId')
-    return { success: false, msg: '此功能暂未实现', data: page }
-  },
-  siteTagQueryPageByWorkId: async (page: any) => {
-    ElMessage.error('此功能暂未实现：siteTagQueryPageByWorkId')
-    return { success: false, msg: '此功能暂未实现', data: page }
-  },
+  localTagQuerySelectItemPageByWorkId: localTagApi.localTagQuerySelectItemPageByWorkId,
+  siteTagQueryPageByWorkId: siteTagApi.siteTagQueryPageByWorkId,
   siteTagQuerySelectItemPageByWorkId: siteTagApi.siteTagQuerySelectItemPageByWorkId,
   reWorkTagLink: reWorkTagApi.reWorkTagLink,
   reWorkTagUnlink: reWorkTagApi.reWorkTagUnlink,

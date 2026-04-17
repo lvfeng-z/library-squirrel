@@ -65,6 +65,7 @@ func main() {
 			application.NewService(app.SiteBrowserHandler),
 			application.NewService(app.ReWorkAuthorHandler),
 			application.NewService(app.ReWorkTagHandler),
+			application.NewService(app.PluginTaskUrlListenerHandler),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -80,12 +81,12 @@ func main() {
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
 	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Library Squirrel",
+		Title:            "Library squirrel",
 		Width:            1280,
 		Height:           720,
 		MinWidth:         800,
 		MinHeight:        450,
-		BackgroundColour: application.NewRGB(27, 38, 54),
+		BackgroundColour: application.NewRGB(217, 217, 217),
 		URL:              "/",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
@@ -125,11 +126,15 @@ func main() {
 	// Run the application. This blocks until the application has been exited.
 	err = wailsApp.Run()
 
-	// 关闭数据库连接
-	database.Close()
-
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// 关闭数据库连接
+	err = database.Close()
+	if err != nil {
+		log.Fatal(err)
+		return
 	}
 }

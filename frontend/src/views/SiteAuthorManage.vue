@@ -39,16 +39,10 @@ onMounted(() => {
 // 接口
 const apis = {
   localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
-  siteAuthorCreateAndBindSameNameLocalAuthor: async (siteAuthor: any) => {
-    ElMessage.error('此功能暂未实现：siteAuthorCreateAndBindSameNameLocalAuthor')
-    return { success: false, msg: '此功能暂未实现' }
-  },
+  siteAuthorCreateAndBindSameNameLocalAuthor: siteAuthorApi.siteAuthorCreateAndBindSameNameLocalAuthor,
   siteAuthorDeleteById: siteAuthorApi.siteAuthorDeleteById,
   siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById,
-  siteAuthorQueryLocalRelateDTOPage: async (page: any) => {
-    ElMessage.error('此功能暂未实现：siteAuthorQueryLocalRelateDTOPage')
-    return { success: false, msg: '此功能暂未实现', data: page }
-  }
+  siteAuthorQueryLocalRelateDTOPage: siteAuthorApi.siteAuthorQueryLocalRelateDTOPage
 }
 // siteAuthorSearchTable的组件实例
 const siteAuthorSearchTable = ref()

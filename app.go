@@ -85,27 +85,28 @@ type App struct {
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
 	// Handlers（用于 Bind[] 参数）
-	LocalTagHandler      *localTag.Handler
-	LocalAuthorHandler   *localAuthor.Handler
-	SiteTagHandler       *siteTag.Handler
-	SiteAuthorHandler    *siteAuthor.Handler
-	SiteHandler          *site.Handler
-	ResourceHandler      *resource.Handler
-	WorkHandler          *work.Handler
-	WorkSetHandler       *workSet.Handler
-	SearchHandler        *search.Handler
-	SettingsHandler      *settings.Handler
-	SecureStorageHandler *secureStorage.Handler
-	BackupHandler        *backup.Handler
-	AppLauncherHandler   *appLauncher.Handler
-	FileSysUtilHandler   *fileSysUtil.Handler
-	PluginHandler        *plugin.Handler
-	TaskHandler          *task.Handler
-	TaskManagerHandler   *taskManager.Handler
-	SlotHandler          *slot.Handler
-	SiteBrowserHandler   *siteBrowser.Handler
-	ReWorkAuthorHandler  *reWorkAuthor.Handler
-	ReWorkTagHandler     *reWorkTag.Handler
+	LocalTagHandler             *localTag.Handler
+	LocalAuthorHandler          *localAuthor.Handler
+	SiteTagHandler              *siteTag.Handler
+	SiteAuthorHandler           *siteAuthor.Handler
+	SiteHandler                 *site.Handler
+	ResourceHandler             *resource.Handler
+	WorkHandler                 *work.Handler
+	WorkSetHandler              *workSet.Handler
+	SearchHandler               *search.Handler
+	SettingsHandler             *settings.Handler
+	SecureStorageHandler        *secureStorage.Handler
+	BackupHandler               *backup.Handler
+	AppLauncherHandler          *appLauncher.Handler
+	FileSysUtilHandler          *fileSysUtil.Handler
+	PluginHandler               *plugin.Handler
+	TaskHandler                 *task.Handler
+	TaskManagerHandler          *taskManager.Handler
+	SlotHandler                 *slot.Handler
+	SiteBrowserHandler          *siteBrowser.Handler
+	ReWorkAuthorHandler         *reWorkAuthor.Handler
+	ReWorkTagHandler            *reWorkTag.Handler
+	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -355,6 +356,7 @@ func (app *App) initHandlers() {
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
+	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）

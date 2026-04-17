@@ -41,16 +41,10 @@ onMounted(() => {
 // 接口
 const apis = {
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
-  siteTagCreateAndBindSameNameLocalTag: async (siteTag: any) => {
-    ElMessage.error('此功能暂未实现：siteTagCreateAndBindSameNameLocalTag')
-    return { success: false, msg: '此功能暂未实现' }
-  },
+  siteTagCreateAndBindSameNameLocalTag: siteTagApi.siteTagCreateAndBindSameNameLocalTag,
   siteTagDeleteById: siteTagApi.siteTagDeleteById,
   siteTagUpdateById: siteTagApi.siteTagUpdateById,
-  siteTagQueryLocalRelateDTOPage: async (page: any) => {
-    ElMessage.error('此功能暂未实现：siteTagQueryLocalRelateDTOPage')
-    return { success: false, msg: '此功能暂未实现', data: page }
-  }
+  siteTagQueryLocalRelateDTOPage: siteTagApi.siteTagQueryLocalRelateDTOPage
 }
 // siteTagSearchTable的组件实例
 const siteTagSearchTable = ref()
