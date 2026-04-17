@@ -17,13 +17,6 @@ export interface SiteVO {
   updateTime: number
 }
 
-export interface PageResult {
-  items: SiteVO[]
-  total: number
-  page: number
-  pageSize: number
-}
-
 // ========== 工具函数 ==========
 
 /**
@@ -99,7 +92,7 @@ export async function siteQueryPage(query: {
   page: number
   pageSize: number
   query?: { name?: string; enable?: boolean }
-}): Promise<ApiResponse<Page<SiteResultDTO>>> {
+}): Promise<ApiResponse<Page<SiteResultDTO> | null>> {
   const queryDTO = new SiteQueryDTO({
     siteNameLike: query.query?.name ?? null
   })
@@ -110,7 +103,7 @@ export async function siteQueryPage(query: {
   return result
 }
 
-export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<SelectItem>>> {
+export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<SelectItem> | null>> {
   const queryDTO = new SiteQueryDTO({})
   const result = await SiteHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
   if (!result) {

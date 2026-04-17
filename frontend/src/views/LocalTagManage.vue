@@ -4,7 +4,7 @@ import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
-import lodash from 'lodash'
+import lodash, {toNumber} from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
@@ -220,7 +220,7 @@ async function saveRowEdit(newData: LocalTagDTO) {
 }
 // 删除本地标签
 async function deleteLocalTag(id: string) {
-  const response = await apis.localTagDeleteById(id)
+  const response = await apis.localTagDeleteById(toNumber(id))
   ApiUtil.msg(response)
   if (ApiUtil.check(response)) {
     await localTagSearchTable.value.doSearch()

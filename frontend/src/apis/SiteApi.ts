@@ -1,6 +1,7 @@
 import type { ApiResponse } from '@renderer/apis/http/types'
-import type { PageResult } from '@renderer/apis/http/wrappers/site'
 import { siteApi } from '@renderer/apis/http'
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {SelectItem} from "@bindings/github.com/library-squirrel/wails/internal/model";
 
 /**
  * 分页查询站点选择列表
@@ -11,7 +12,7 @@ import { siteApi } from '@renderer/apis/http'
 export async function siteQuerySelectItemPageBySiteName(
   _siteName: string,
   query: { page: number; pageSize: number }
-): Promise<ApiResponse<PageResult>> {
+): Promise<ApiResponse<Page<SelectItem> | null>> {
   return siteApi.siteQuerySelectItemPage(query)
 }
 
@@ -22,6 +23,6 @@ export async function siteQuerySelectItemPageBySiteName(
 export async function siteQuerySelectItemPage(query: {
   page: number
   pageSize: number
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SelectItem> | null>> {
   return siteApi.siteQuerySelectItemPage(query)
 }
