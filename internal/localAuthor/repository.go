@@ -31,15 +31,6 @@ func (r *localAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// Page 分页查询
-func (r *localAuthorRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.LocalAuthor], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // ListReWorkAuthor 批量获取作品与作者的关联
 func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {

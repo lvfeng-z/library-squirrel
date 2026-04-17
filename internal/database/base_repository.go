@@ -223,7 +223,7 @@ func (r *BaseRepository[T]) Count(ctx context.Context, conditions []clause.Expre
 // Page 分页查询
 // conditions: WHERE 条件切片，支持多个条件 AND 连接
 // orderBy: ORDER BY 排序表达式
-func (r *BaseRepository[T]) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) ([]*T, int64, error) {
+func (r *BaseRepository[T]) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[T], error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -235,16 +235,16 @@ func (r *BaseRepository[T]) Page(ctx context.Context, page, pageSize int, condit
 	// 查询列表
 	list, err := r.List(ctx, conditions, orderBy, pageSize, offset)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// 统计总数
 	total, err := r.Count(ctx, conditions)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	return list, total, nil
+	return model.NewPage(list, total, page, pageSize), nil
 }
 
 // GetDB 获取底层 GORM DB 实例（供特殊查询使用）

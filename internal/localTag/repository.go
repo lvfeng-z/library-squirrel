@@ -30,15 +30,6 @@ func (r *localTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// Page 分页查询
-func (r *localTagRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // GetByName 根据名称获取
 func (r *localTagRepository) GetByName(ctx context.Context, name string) (*domain.LocalTag, error) {
 	var tag domain.LocalTag

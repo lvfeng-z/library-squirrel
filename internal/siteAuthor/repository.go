@@ -30,15 +30,6 @@ func (r *siteAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// Page 分页查询
-func (r *siteAuthorRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthor], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // ListByWorkId 查询作品的站点作者
 func (r *siteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error) {
 	query := `

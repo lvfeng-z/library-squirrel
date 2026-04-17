@@ -46,15 +46,6 @@ func NewRepository(db *gorm.DB) Repository {
 	}
 }
 
-// Page 分页查询
-func (r *workSetRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.WorkSet], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 func (r *workSetRepository) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error) {
 	where := clause.And(

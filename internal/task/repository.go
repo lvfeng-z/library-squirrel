@@ -31,15 +31,6 @@ func (r *taskRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// Page 分页查询
-func (r *taskRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.Task], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // QueryParentPage 分页查询父任务
 func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})

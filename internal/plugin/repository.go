@@ -6,10 +6,7 @@ import (
 
 	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
-	"github.com/library-squirrel/wails/pkg/model"
-
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // pluginRepository 插件仓储实现
@@ -28,15 +25,6 @@ func NewRepository(db *gorm.DB) Repository {
 // GORM 返回底层 GORM DB 实例
 func (r *pluginRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
-}
-
-// Page 分页查询
-func (r *pluginRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.Plugin], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
 }
 
 // CheckInstalled 检查插件是否已安装

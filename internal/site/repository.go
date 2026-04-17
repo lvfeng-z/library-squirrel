@@ -29,15 +29,6 @@ func (r *siteRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// Page 分页查询
-func (r *siteRepository) Page(ctx context.Context, page, pageSize int, conditions []clause.Expression, order clause.Expression) (*model.Page[domain.Site], error) {
-	data, total, err := r.BaseRepository.Page(ctx, page, pageSize, conditions, order)
-	if err != nil {
-		return nil, err
-	}
-	return model.NewPage(data, total, page, pageSize), nil
-}
-
 // QuerySelectItemPage 分页查询选择项
 func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
