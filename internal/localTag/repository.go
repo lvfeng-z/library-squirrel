@@ -163,20 +163,8 @@ func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize in
 func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
 	var results []*domain.SelectItem
 
-	db := r.GORM().WithContext(ctx).Model(&domain.LocalTag{})
-
-	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
-	}
-
-	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
-	}
-
-	var tags []*domain.LocalTag
-	if err := db.Find(&tags).Error; err != nil {
+	tags, err := r.List(ctx, []clause.Expression{where}, order, -1, 0)
+	if err != nil {
 		return nil, err
 	}
 
@@ -198,33 +186,12 @@ func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.E
 // QuerySelectItemPage 分页查询选择项
 func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
-	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&domain.LocalTag{})
-
-	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
-	}
-
-	// 统计总数
-	if err := db.Count(&total).Error; err != nil {
+	rawPage, err := r.Page(ctx, page, pageSize, []clause.Expression{where}, order)
+	if err != nil {
 		return nil, err
 	}
-
-	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
-
-	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
-	}
-
-	var tags []*domain.LocalTag
-	if err := db.Find(&tags).Error; err != nil {
-		return nil, err
-	}
+	tags := rawPage.Data
 
 	// 转换为 SelectItem
 	for _, tag := range tags {
@@ -242,7 +209,7 @@ func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 		results = append(results, item)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage(results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询

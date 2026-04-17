@@ -41,35 +41,12 @@ func (r *siteRepository) Page(ctx context.Context, page, pageSize int, condition
 // QuerySelectItemPage 分页查询选择项
 func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem], error) {
 	var results []*domain.SelectItem
-	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&domain.Site{})
-
-	// 应用查询条件
-	if len(conditions) > 0 {
-		for _, cond := range conditions {
-			db = db.Clauses(cond)
-		}
-	}
-
-	// 统计总数
-	if err := db.Count(&total).Error; err != nil {
+	rawPage, err := r.Page(ctx, page, pageSize, conditions, orderBy)
+	if err != nil {
 		return nil, err
 	}
-
-	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
-
-	// 应用排序
-	if orderBy != nil {
-		db = db.Clauses(orderBy)
-	}
-
-	var sites []*domain.Site
-	if err := db.Find(&sites).Error; err != nil {
-		return nil, err
-	}
+	sites := rawPage.Data
 
 	// 转换为 SelectItem
 	for _, site := range sites {
@@ -83,5 +60,5 @@ func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize
 		})
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage(results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
