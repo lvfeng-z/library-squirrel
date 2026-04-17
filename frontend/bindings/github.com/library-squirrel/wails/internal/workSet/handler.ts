@@ -96,8 +96,8 @@ export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellableProm
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetResultDTO> | null> | null> {
-    return $Call.ByID(306740245, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<$models.WorkSetQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetResultDTO> | null> | null> {
+    return $Call.ByID(306740245, page).then(($result: any) => {
         return $$createType21($result);
     });
 }
@@ -105,8 +105,8 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
 /**
  * QueryPageWithCover 分页查询作品集（带封面）
  */
-export function QueryPageWithCover(page: number, pageSize: number, queryDTO: $models.WorkSetQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetWithCoverResultDTO> | null> | null> {
-    return $Call.ByID(1391581908, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPageWithCover(page: model$0.Page<$models.WorkSetQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetWithCoverResultDTO> | null> | null> {
+    return $Call.ByID(1391581908, page).then(($result: any) => {
         return $$createType26($result);
     });
 }

@@ -89,11 +89,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteQueryDTO) *model.ApiResponse[*model.Page[SiteResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteQueryDTO]) *model.ApiResponse[*model.Page[SiteResultDTO]] {
+	if page == nil {
+		page = &model.Page[SiteQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteResultDTO]](err.Error())
 	}
@@ -114,11 +117,14 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *S
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO *SiteQueryDTO) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	if queryDTO == nil {
-		queryDTO = &SiteQueryDTO{}
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[SiteQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[SiteQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteQueryDTO{{}}
+	}
+	result, err := h.svc.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}

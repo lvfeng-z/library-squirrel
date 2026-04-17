@@ -81,11 +81,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Loc
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[LocalAuthorResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &LocalAuthorQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[LocalAuthorResultDTO]] {
+	if page == nil {
+		page = &model.Page[LocalAuthorQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*LocalAuthorQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[LocalAuthorResultDTO]](err.Error())
 	}
@@ -118,11 +121,14 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	if queryDTO == nil {
-		queryDTO = &LocalAuthorQueryDTO{}
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[LocalAuthorQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*LocalAuthorQueryDTO{{}}
+	}
+	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}

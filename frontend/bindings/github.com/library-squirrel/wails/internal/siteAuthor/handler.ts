@@ -75,8 +75,8 @@ export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $Can
 /**
  * QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
  */
-export function QueryBoundOrUnboundToLocalAuthorPage(page: number, pageSize: number, queryDTO: $models.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorFullDTO> | null> | null> {
-    return $Call.ByID(157583187, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorFullDTO> | null> | null> {
+    return $Call.ByID(157583187, page).then(($result: any) => {
         return $$createType25($result);
     });
 }
@@ -84,8 +84,8 @@ export function QueryBoundOrUnboundToLocalAuthorPage(page: number, pageSize: num
 /**
  * QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
  */
-export function QueryLocalRelateDTOPage(page: number, pageSize: number, queryDTO: $models.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorLocalRelateDTO> | null> | null> {
-    return $Call.ByID(4104954123, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorLocalRelateDTO> | null> | null> {
+    return $Call.ByID(4104954123, page).then(($result: any) => {
         return $$createType30($result);
     });
 }
@@ -93,8 +93,8 @@ export function QueryLocalRelateDTOPage(page: number, pageSize: number, queryDTO
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.SiteAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorResultDTO> | null> | null> {
-    return $Call.ByID(19819348, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorResultDTO> | null> | null> {
+    return $Call.ByID(19819348, page).then(($result: any) => {
         return $$createType34($result);
     });
 }

@@ -93,8 +93,8 @@ export function ListTaskTree(taskIds: number[]): $CancellablePromise<model$0.Api
 /**
  * QueryChildrenTaskPage 查询子任务分页
  */
-export function QueryChildrenTaskPage(pid: number, page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
-    return $Call.ByID(3312153847, pid, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryChildrenTaskPage(pid: number, page: model$0.Page<$models.TaskQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
+    return $Call.ByID(3312153847, pid, page).then(($result: any) => {
         return $$createType23($result);
     });
 }
@@ -102,8 +102,8 @@ export function QueryChildrenTaskPage(pid: number, page: number, pageSize: numbe
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
-    return $Call.ByID(2367410609, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<$models.TaskQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
+    return $Call.ByID(2367410609, page).then(($result: any) => {
         return $$createType23($result);
     });
 }
@@ -111,8 +111,8 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Task
 /**
  * QueryParentPage 分页查询父任务
  */
-export function QueryParentPage(page: number, pageSize: number, queryDTO: $models.TaskQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
-    return $Call.ByID(39626201, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryParentPage(page: model$0.Page<$models.TaskQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.TaskResultDTO> | null> | null> {
+    return $Call.ByID(39626201, page).then(($result: any) => {
         return $$createType23($result);
     });
 }

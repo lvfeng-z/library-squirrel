@@ -5,3 +5,7 @@ import * as Handler from "./handler.js";
 export {
     Handler
 };
+
+export {
+    WorkSetQueryDTO
+} from "./models.js";

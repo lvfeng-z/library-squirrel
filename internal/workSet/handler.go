@@ -81,11 +81,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Wor
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkSetQueryDTO) *model.ApiResponse[*model.Page[WorkSetResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &WorkSetQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[WorkSetQueryDTO]) *model.ApiResponse[*model.Page[WorkSetResultDTO]] {
+	if page == nil {
+		page = &model.Page[WorkSetQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*WorkSetQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[WorkSetResultDTO]](err.Error())
 	}
@@ -210,11 +213,14 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page, pageSize int, queryDTO *WorkSetQueryDTO) *model.ApiResponse[*model.Page[WorkSetWithCoverResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &WorkSetQueryDTO{}
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetQueryDTO]) *model.ApiResponse[*model.Page[WorkSetWithCoverResultDTO]] {
+	if page == nil {
+		page = &model.Page[WorkSetQueryDTO]{}
 	}
-	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*WorkSetQueryDTO{{}}
+	}
+	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[WorkSetWithCoverResultDTO]](err.Error())
 	}

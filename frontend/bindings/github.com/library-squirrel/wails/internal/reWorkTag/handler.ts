@@ -18,19 +18,10 @@ import * as model$1 from "../model/models.js";
 import * as model$0 from "../../pkg/model/models.js";
 
 /**
- * Delete 删除关联
+ * Link 链接标签到作品
  */
-export function Delete(workId: number, tagType: number, tagId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(1375490988, workId, tagType, tagId).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
- * DeleteBatch 批量删除关联
- */
-export function DeleteBatch(workId: number, tagType: number, tagIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(4046402356, workId, tagType, tagIds).then(($result: any) => {
+export function Link(tagType: number, tagIds: number[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(4153612931, tagType, tagIds, workId).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -63,19 +54,10 @@ export function ListSiteTagIdsByWorkId(workId: number): $CancellablePromise<mode
 }
 
 /**
- * Save 保存关联
+ * Unlink 从作品移除标签
  */
-export function Save(workId: number, tagType: number, tagId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2949175642, workId, tagType, tagId).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
- * SaveBatch 批量保存关联
- */
-export function SaveBatch(workId: number, tagType: number, tagIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3508387270, workId, tagType, tagIds).then(($result: any) => {
+export function Unlink(tagType: number, tagIds: number[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(209567024, tagType, tagIds, workId).then(($result: any) => {
         return $$createType1($result);
     });
 }

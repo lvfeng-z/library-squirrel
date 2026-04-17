@@ -70,8 +70,8 @@ export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $Can
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO> | null> | null> {
-    return $Call.ByID(112028121, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<$models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO> | null> | null> {
+    return $Call.ByID(112028121, page).then(($result: any) => {
         return $$createType17($result);
     });
 }
@@ -79,8 +79,8 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Loca
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: number, pageSize: number, queryDTO: $models.LocalTagQueryDTO | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
-    return $Call.ByID(3654385186, page, pageSize, queryDTO, secondaryLabel).then(($result: any) => {
+export function QuerySelectItemPage(page: model$0.Page<$models.LocalTagQueryDTO> | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
+    return $Call.ByID(3654385186, page, secondaryLabel).then(($result: any) => {
         return $$createType21($result);
     });
 }
@@ -88,8 +88,8 @@ export function QuerySelectItemPage(page: number, pageSize: number, queryDTO: $m
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: number, pageSize: number, queryDTO: $models.LocalTagQueryDTO | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
-    return $Call.ByID(3606327595, page, pageSize, queryDTO, workId).then(($result: any) => {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<$models.LocalTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
+    return $Call.ByID(3606327595, page, workId).then(($result: any) => {
         return $$createType21($result);
     });
 }

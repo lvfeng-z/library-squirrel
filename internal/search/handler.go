@@ -20,8 +20,14 @@ func NewHandler(svc *Service) *Handler {
 // ========== 查询操作 ==========
 
 // QueryWorkPage 查询作品分页
-func (h *Handler) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) *model.ApiResponse[*model.Page[domain.WorkFullDTO]] {
-	result, err := h.svc.QueryWorkPage(ctx, page, pageSize, conditions)
+func (h *Handler) QueryWorkPage(ctx context.Context, page *model.Page[domain.SearchCondition]) *model.ApiResponse[*model.Page[domain.WorkFullDTO]] {
+	if page == nil {
+		page = &model.Page[domain.SearchCondition]{}
+	}
+	if page.Data == nil {
+		page.Data = []*domain.SearchCondition{}
+	}
+	result, err := h.svc.QueryWorkPage(ctx, page.PageNumber, page.PageSize, page.Data)
 	if err != nil {
 		return model.Error[*model.Page[domain.WorkFullDTO]](err.Error())
 	}
@@ -29,8 +35,11 @@ func (h *Handler) QueryWorkPage(ctx context.Context, page, pageSize int, conditi
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (h *Handler) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	result, err := h.svc.QueryWorkSetPage(ctx, page, pageSize, keyword, siteId)
+func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[WorkSetQueryDTO], keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[WorkSetQueryDTO]{}
+	}
+	result, err := h.svc.QueryWorkSetPage(ctx, page.PageNumber, page.PageSize, keyword, siteId)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}
@@ -52,4 +61,12 @@ func (h *Handler) UpdateLastUsed(ctx context.Context, used map[domain.SearchType
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
+}
+
+// ========== DTO 定义 ==========
+
+// WorkSetQueryDTO 作品集查询条件
+type WorkSetQueryDTO struct {
+	Keyword string `json:"keyword"` // 关键词
+	SiteID  *int64 `json:"siteId"`  // 站点ID
 }

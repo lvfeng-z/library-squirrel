@@ -51,8 +51,8 @@ export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResp
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.SiteQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteResultDTO> | null> | null> {
-    return $Call.ByID(1707125239, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<$models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteResultDTO> | null> | null> {
+    return $Call.ByID(1707125239, page).then(($result: any) => {
         return $$createType9($result);
     });
 }
@@ -60,8 +60,8 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Site
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: number, pageSize: number, queryDTO: $models.SiteQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
-    return $Call.ByID(3582187088, page, pageSize, queryDTO).then(($result: any) => {
+export function QuerySelectItemPage(page: model$0.Page<$models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem> | null> | null> {
+    return $Call.ByID(3582187088, page).then(($result: any) => {
         return $$createType14($result);
     });
 }

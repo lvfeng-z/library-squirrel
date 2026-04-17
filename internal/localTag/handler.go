@@ -82,11 +82,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Loc
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *LocalTagQueryDTO) *model.ApiResponse[*model.Page[LocalTagResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &LocalTagQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalTagQueryDTO]) *model.ApiResponse[*model.Page[LocalTagResultDTO]] {
+	if page == nil {
+		page = &model.Page[LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*LocalTagQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[LocalTagResultDTO]](err.Error())
 	}
@@ -133,11 +136,14 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDT
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO *LocalTagQueryDTO, secondaryLabel string) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	if queryDTO == nil {
-		queryDTO = &LocalTagQueryDTO{}
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[LocalTagQueryDTO], secondaryLabel string) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page, pageSize, *queryDTO, secondaryLabel)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*LocalTagQueryDTO{{}}
+	}
+	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], secondaryLabel)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}
@@ -159,11 +165,14 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, queryDTO *LocalTagQueryDTO, workId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	if queryDTO == nil {
-		queryDTO = &LocalTagQueryDTO{}
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[LocalTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page, pageSize, *queryDTO, workId)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*LocalTagQueryDTO{{}}
+	}
+	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}

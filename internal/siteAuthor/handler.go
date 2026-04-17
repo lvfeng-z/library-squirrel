@@ -129,11 +129,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[SiteAuthorResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteAuthorQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorResultDTO]] {
+	if page == nil {
+		page = &model.Page[SiteAuthorQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteAuthorQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorResultDTO]](err.Error())
 	}
@@ -154,11 +157,14 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *S
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, queryDTO *SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[SiteAuthorFullDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteAuthorQueryDTO{}
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorFullDTO]] {
+	if page == nil {
+		page = &model.Page[SiteAuthorQueryDTO]{}
 	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteAuthorQueryDTO{{}}
+	}
+	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorFullDTO]](err.Error())
 	}
@@ -179,11 +185,14 @@ func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, queryDTO *SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteAuthorQueryDTO{}
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO]] {
+	if page == nil {
+		page = &model.Page[SiteAuthorQueryDTO]{}
 	}
-	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteAuthorQueryDTO{{}}
+	}
+	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorLocalRelateDTO]](err.Error())
 	}
@@ -299,17 +308,17 @@ type SiteAuthorDTO struct {
 
 // SiteAuthorResultDTO 站点作者返回结果DTO（用于屏蔽sql.Null*类型）
 type SiteAuthorResultDTO struct {
-	ID                 int64   `json:"id"`
-	SiteID             *int64  `json:"siteId"`
-	SiteAuthorID       *string `json:"siteAuthorId"`
-	AuthorName         *string `json:"authorName"`
-	FixedAuthorName    *string `json:"fixedAuthorName"`
+	ID                   int64   `json:"id"`
+	SiteID               *int64  `json:"siteId"`
+	SiteAuthorID         *string `json:"siteAuthorId"`
+	AuthorName           *string `json:"authorName"`
+	FixedAuthorName      *string `json:"fixedAuthorName"`
 	SiteAuthorNameBefore *string `json:"siteAuthorNameBefore"`
-	Introduce          *string `json:"introduce"`
-	LocalAuthorID      *int64  `json:"localAuthorId"`
-	LastUse            *int64  `json:"lastUse"`
-	CreateTime         int64   `json:"createTime"`
-	UpdateTime         int64   `json:"updateTime"`
+	Introduce            *string `json:"introduce"`
+	LocalAuthorID        *int64  `json:"localAuthorId"`
+	LastUse              *int64  `json:"lastUse"`
+	CreateTime           int64   `json:"createTime"`
+	UpdateTime           int64   `json:"updateTime"`
 }
 
 // SiteAuthorFullDTO 站点作者完整信息DTO
@@ -326,19 +335,19 @@ type SiteAuthorLocalRelateDTO struct {
 
 // RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
 type RankedSiteAuthorWithWorkIdDTO struct {
-	WorkId      int64   `json:"workId"`
+	WorkId       int64   `json:"workId"`
 	SiteAuthorID *string `json:"siteAuthorId"`
-	AuthorName  *string `json:"authorName"`
-	Rank        int     `json:"rank"`
+	AuthorName   *string `json:"authorName"`
+	Rank         int     `json:"rank"`
 }
 
 // LocalAuthorDTO 本地作者数据传输对象
 type LocalAuthorDTO struct {
-	ID           int64   `json:"id"`
-	AuthorName   *string `json:"authorName"`
-	Introduce    *string `json:"introduce"`
-	CreateTime   int64   `json:"createTime"`
-	UpdateTime   int64   `json:"updateTime"`
+	ID         int64   `json:"id"`
+	AuthorName *string `json:"authorName"`
+	Introduce  *string `json:"introduce"`
+	CreateTime int64   `json:"createTime"`
+	UpdateTime int64   `json:"updateTime"`
 }
 
 // ToSiteAuthorResultDTO 将 domain.SiteAuthor 转换为 SiteAuthorResultDTO

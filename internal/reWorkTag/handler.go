@@ -17,32 +17,16 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Save 保存关联
-func (h *Handler) Save(ctx context.Context, workId int64, tagType int, tagId int64) *model.ApiResponse[any] {
-	if err := h.svc.LinkTagToWork(ctx, workId, tagType, tagId); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
-}
-
-// SaveBatch 批量保存关联
-func (h *Handler) SaveBatch(ctx context.Context, workId int64, tagType int, tagIds []int64) *model.ApiResponse[any] {
+// Link 链接标签到作品
+func (h *Handler) Link(ctx context.Context, tagType int, tagIds []int64, workId int64) *model.ApiResponse[any] {
 	if err := h.svc.LinkBatchToWork(ctx, workId, tagType, tagIds); err != nil {
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
 }
 
-// Delete 删除关联
-func (h *Handler) Delete(ctx context.Context, workId int64, tagType int, tagId int64) *model.ApiResponse[any] {
-	if err := h.svc.UnlinkTagFromWork(ctx, workId, tagType, tagId); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
-}
-
-// DeleteBatch 批量删除关联
-func (h *Handler) DeleteBatch(ctx context.Context, workId int64, tagType int, tagIds []int64) *model.ApiResponse[any] {
+// Unlink 从作品移除标签
+func (h *Handler) Unlink(ctx context.Context, tagType int, tagIds []int64, workId int64) *model.ApiResponse[any] {
 	if err := h.svc.RemoveBatchFromWork(ctx, workId, tagType, tagIds); err != nil {
 		return model.Error[any](err.Error())
 	}

@@ -17,6 +17,10 @@ import * as model$0 from "../model/models.js";
 // @ts-ignore: Unused imports
 import * as model$1 from "../../pkg/model/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * QuerySearchConditionPage 查询搜索条件分页
  */
@@ -29,8 +33,8 @@ export function QuerySearchConditionPage(page: number, pageSize: number, query: 
 /**
  * QueryWorkPage 查询作品分页
  */
-export function QueryWorkPage(page: number, pageSize: number, conditions: (model$0.SearchCondition | null)[]): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.WorkFullDTO> | null> | null> {
-    return $Call.ByID(1330918209, page, pageSize, conditions).then(($result: any) => {
+export function QueryWorkPage(page: model$1.Page<model$0.SearchCondition> | null): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.WorkFullDTO> | null> | null> {
+    return $Call.ByID(1330918209, page).then(($result: any) => {
         return $$createType9($result);
     });
 }
@@ -38,8 +42,8 @@ export function QueryWorkPage(page: number, pageSize: number, conditions: (model
 /**
  * QueryWorkSetPage 查询作品集分页
  */
-export function QueryWorkSetPage(page: number, pageSize: number, keyword: string, siteId: number): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.SelectItem> | null> | null> {
-    return $Call.ByID(1971800641, page, pageSize, keyword, siteId).then(($result: any) => {
+export function QueryWorkSetPage(page: model$1.Page<$models.WorkSetQueryDTO> | null, keyword: string, siteId: number): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.SelectItem> | null> | null> {
+    return $Call.ByID(1971800641, page, keyword, siteId).then(($result: any) => {
         return $$createType4($result);
     });
 }

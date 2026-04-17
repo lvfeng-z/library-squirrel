@@ -129,11 +129,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO) *model.ApiResponse[*model.Page[SiteTagResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteTagQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagResultDTO]] {
+	if page == nil {
+		page = &model.Page[SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteTagQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteTagResultDTO]](err.Error())
 	}
@@ -154,11 +157,14 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *S
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteTagQueryDTO{}
+func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
+	if page == nil {
+		page = &model.Page[SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteTagQueryDTO{{}}
+	}
+	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[SiteTagFullDTO]](err.Error())
 	}
@@ -179,11 +185,14 @@ func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, p
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO) *model.ApiResponse[*model.Page[SiteTagLocalRelateDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteTagQueryDTO{}
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagLocalRelateDTO]] {
+	if page == nil {
+		page = &model.Page[SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page, pageSize, *queryDTO, 0, nil)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteTagQueryDTO{{}}
+	}
+	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], 0, nil)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagLocalRelateDTO]](err.Error())
 	}
@@ -204,11 +213,14 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize in
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (h *Handler) QueryPageByWorkId(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO, workId int64) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
-	if queryDTO == nil {
-		queryDTO = &SiteTagQueryDTO{}
+func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
+	if page == nil {
+		page = &model.Page[SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page, pageSize, *queryDTO, workId, nil)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteTagQueryDTO{{}}
+	}
+	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId, nil)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagFullDTO]](err.Error())
 	}
@@ -295,11 +307,14 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, queryDTO *SiteTagQueryDTO, workId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
-	if queryDTO == nil {
-		queryDTO = &SiteTagQueryDTO{}
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+	if page == nil {
+		page = &model.Page[SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page, pageSize, *queryDTO, workId)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*SiteTagQueryDTO{{}}
+	}
+	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem]](err.Error())
 	}
@@ -318,25 +333,25 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 
 // SiteTagDTO 站点标签数据传输对象
 type SiteTagDTO struct {
-	ID         int64   `json:"id"`
-	SiteID     *int64  `json:"siteId"`
-	SiteTagID  *string `json:"siteTagId"`
+	ID          int64   `json:"id"`
+	SiteID      *int64  `json:"siteId"`
+	SiteTagID   *string `json:"siteTagId"`
 	SiteTagName *string `json:"siteTagName"`
 	Description *string `json:"description"`
 }
 
 // SiteTagResultDTO 站点标签返回结果DTO（用于屏蔽sql.Null*类型）
 type SiteTagResultDTO struct {
-	ID           int64   `json:"id"`
-	SiteID      *int64  `json:"siteId"`
-	SiteTagID   *string `json:"siteTagId"`
-	SiteTagName *string `json:"siteTagName"`
+	ID            int64   `json:"id"`
+	SiteID        *int64  `json:"siteId"`
+	SiteTagID     *string `json:"siteTagId"`
+	SiteTagName   *string `json:"siteTagName"`
 	BaseSiteTagID *string `json:"baseSiteTagId"`
-	Description *string `json:"description"`
-	LocalTagID  *int64  `json:"localTagId"`
-	LastUse     *int64  `json:"lastUse"`
-	CreateTime  int64   `json:"createTime"`
-	UpdateTime  int64   `json:"updateTime"`
+	Description   *string `json:"description"`
+	LocalTagID    *int64  `json:"localTagId"`
+	LastUse       *int64  `json:"lastUse"`
+	CreateTime    int64   `json:"createTime"`
+	UpdateTime    int64   `json:"updateTime"`
 }
 
 // SiteTagFullDTO 站点标签完整信息DTO
@@ -353,12 +368,12 @@ type SiteTagLocalRelateDTO struct {
 
 // LocalTagDTO 本地标签数据传输对象
 type LocalTagDTO struct {
-	ID           int64   `json:"id"`
-	LocalTagName *string `json:"localTagName"`
+	ID             int64   `json:"id"`
+	LocalTagName   *string `json:"localTagName"`
 	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-	Description  *string `json:"description"`
-	CreateTime   int64   `json:"createTime"`
-	UpdateTime   int64   `json:"updateTime"`
+	Description    *string `json:"description"`
+	CreateTime     int64   `json:"createTime"`
+	UpdateTime     int64   `json:"updateTime"`
 }
 
 // ToSiteTagResultDTO 将 domain.SiteTag 转换为 SiteTagResultDTO
@@ -367,16 +382,16 @@ func ToSiteTagResultDTO(tag *domain.SiteTag) *SiteTagResultDTO {
 		return nil
 	}
 	return &SiteTagResultDTO{
-		ID:           tag.GetID(),
-		SiteID:       nullInt64ToPointer(tag.SiteID),
-		SiteTagID:    nullStringToPointer(tag.SiteTagID),
-		SiteTagName:  nullStringToPointer(tag.SiteTagName),
+		ID:            tag.GetID(),
+		SiteID:        nullInt64ToPointer(tag.SiteID),
+		SiteTagID:     nullStringToPointer(tag.SiteTagID),
+		SiteTagName:   nullStringToPointer(tag.SiteTagName),
 		BaseSiteTagID: nullStringToPointer(tag.BaseSiteTagID),
-		Description:  nullStringToPointer(tag.Description),
-		LocalTagID:  nullInt64ToPointer(tag.LocalTagID),
-		LastUse:     nullInt64ToPointer(tag.LastUse),
-		CreateTime:  tag.GetCreateTime(),
-		UpdateTime:  tag.GetUpdateTime(),
+		Description:   nullStringToPointer(tag.Description),
+		LocalTagID:    nullInt64ToPointer(tag.LocalTagID),
+		LastUse:       nullInt64ToPointer(tag.LastUse),
+		CreateTime:    tag.GetCreateTime(),
+		UpdateTime:    tag.GetUpdateTime(),
 	}
 }
 
@@ -433,7 +448,7 @@ func ToLocalTagDTO(tag *domain.LocalTag) *LocalTagDTO {
 		ID:             tag.GetID(),
 		LocalTagName:   nullStringToPointer(tag.LocalTagName),
 		BaseLocalTagID: nullInt64ToPointer(tag.BaseLocalTagID),
-		Description:   nil,
+		Description:    nil,
 		CreateTime:     tag.GetCreateTime(),
 		UpdateTime:     tag.GetUpdateTime(),
 	}

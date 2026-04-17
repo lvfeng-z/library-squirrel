@@ -156,11 +156,14 @@ func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.Api
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page, pageSize int, queryDTO *PluginQueryDTO) *model.ApiResponse[*model.Page[PluginResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &PluginQueryDTO{}
+func (h *Handler) Page(ctx context.Context, page *model.Page[PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO]] {
+	if page == nil {
+		page = &model.Page[PluginQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*PluginQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[PluginResultDTO]](err.Error())
 	}

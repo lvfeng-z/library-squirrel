@@ -193,11 +193,14 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Tas
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &TaskQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[TaskQueryDTO]) *model.ApiResponse[*model.Page[TaskResultDTO]] {
+	if page == nil {
+		page = &model.Page[TaskQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*TaskQueryDTO{{}}
+	}
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
@@ -205,11 +208,14 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *T
 }
 
 // QueryParentPage 分页查询父任务
-func (h *Handler) QueryParentPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &TaskQueryDTO{}
+func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[TaskQueryDTO]) *model.ApiResponse[*model.Page[TaskResultDTO]] {
+	if page == nil {
+		page = &model.Page[TaskQueryDTO]{}
 	}
-	result, err := h.svc.QueryParentPageByDTO(ctx, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*TaskQueryDTO{{}}
+	}
+	result, err := h.svc.QueryParentPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
@@ -217,11 +223,14 @@ func (h *Handler) QueryParentPage(ctx context.Context, page, pageSize int, query
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) *model.ApiResponse[*model.Page[TaskResultDTO]] {
-	if queryDTO == nil {
-		queryDTO = &TaskQueryDTO{}
+func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[TaskQueryDTO]) *model.ApiResponse[*model.Page[TaskResultDTO]] {
+	if page == nil {
+		page = &model.Page[TaskQueryDTO]{}
 	}
-	result, err := h.svc.QueryChildrenTaskPageByDTO(ctx, pid, page, pageSize, *queryDTO)
+	if page.Data == nil || len(page.Data) == 0 {
+		page.Data = []*TaskQueryDTO{{}}
+	}
+	result, err := h.svc.QueryChildrenTaskPageByDTO(ctx, pid, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
 		return model.Error[*model.Page[TaskResultDTO]](err.Error())
 	}
