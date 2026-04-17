@@ -159,8 +159,8 @@ func (h *Handler) RemoveBatchFromWorkSet(ctx context.Context, workSetId int64, w
 }
 
 // UpdateSortOrders 批量更新排序顺序
-func (h *Handler) UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) *model.ApiResponse[any] {
-	if err := h.svc.UpdateSortOrders(ctx, workSetId, sortOrders); err != nil {
+func (h *Handler) UpdateSortOrders(ctx context.Context, workSetId int64, workIds []int64) *model.ApiResponse[any] {
+	if err := h.svc.UpdateSortOrders(ctx, workSetId, workIds); err != nil {
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)

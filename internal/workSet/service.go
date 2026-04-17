@@ -290,7 +290,12 @@ func (s *Service) SetCoverWork(ctx context.Context, workSetId, workId int64) err
 }
 
 // UpdateSortOrders 批量更新排序顺序
-func (s *Service) UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error {
+func (s *Service) UpdateSortOrders(ctx context.Context, workSetId int64, workIds []int64) error {
+	// 将 workIds 数组转换为 map（索引即为 sortOrder）
+	sortOrders := make(map[int64]int)
+	for i, id := range workIds {
+		sortOrders[id] = i
+	}
 	return s.reWorkWorkSetRepo.UpdateSortOrders(ctx, workSetId, sortOrders)
 }
 

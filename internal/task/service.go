@@ -127,8 +127,8 @@ type Repository interface {
 	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
-	// DeleteTask 删除任务（包含子任务）
-	DeleteTask(ctx context.Context, id int64) error
+	// DeleteTask 删除任务（包含子任务）- 批量删除
+	DeleteTask(ctx context.Context, ids []int64) error
 }
 
 // TaskScheduleDTO 任务进度DTO
@@ -315,9 +315,9 @@ func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (*doma
 	return task, nil
 }
 
-// DeleteTask 删除任务（包含子任务）
-func (s *Service) DeleteTask(ctx context.Context, id int64) error {
-	return s.repo.DeleteTask(ctx, id)
+// DeleteTask 删除任务（包含子任务）- 批量删除
+func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
+	return s.repo.DeleteTask(ctx, ids)
 }
 
 // QueryTreeDataPage 查询任务树数据分页

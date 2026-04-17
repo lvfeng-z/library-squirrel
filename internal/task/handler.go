@@ -164,9 +164,9 @@ func (h *Handler) CreateTask(ctx context.Context, req *CreateTaskRequest) *model
 	return model.Success(result.GetID())
 }
 
-// DeleteTask 删除任务（包含子任务）
-func (h *Handler) DeleteTask(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.DeleteTask(ctx, id); err != nil {
+// DeleteTask 删除任务（包含子任务）- 批量删除
+func (h *Handler) DeleteTask(ctx context.Context, ids []int64) *model.ApiResponse[any] {
+	if err := h.svc.DeleteTask(ctx, ids); err != nil {
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
@@ -261,8 +261,13 @@ func (h *Handler) QueryTreeDataPage(ctx context.Context, treeId int64) *model.Ap
 }
 
 // ListTaskTree 获取任务树列表
-func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64) *model.ApiResponse[[]*TaskResultDTO] {
-	result, err := h.svc.ListTaskTree(ctx, taskIds)
+func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...int) *model.ApiResponse[[]*TaskResultDTO] {
+	// 转换 includeStatus
+	var statusEnums []TaskStatusEnum
+	for _, s := range includeStatus {
+		statusEnums = append(statusEnums, TaskStatusEnum(s))
+	}
+	result, err := h.svc.ListTaskTree(ctx, taskIds, statusEnums...)
 	if err != nil {
 		return model.Error[[]*TaskResultDTO](err.Error())
 	}

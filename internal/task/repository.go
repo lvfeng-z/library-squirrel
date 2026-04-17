@@ -269,14 +269,17 @@ func (r *taskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*Task
 	return r.ListStatus(ctx, ids)
 }
 
-// DeleteTask 删除任务（包含子任务）
-func (r *taskRepository) DeleteTask(ctx context.Context, id int64) error {
+// DeleteTask 删除任务（包含子任务）- 批量删除
+func (r *taskRepository) DeleteTask(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
 	// 先删除所有子任务
-	if err := r.GORM().WithContext(ctx).Where("pid = ?", id).Delete(&domain.Task{}).Error; err != nil {
+	if err := r.GORM().WithContext(ctx).Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
 		return err
 	}
 	// 再删除主任务
-	return r.Delete(ctx, id)
+	return r.GORM().WithContext(ctx).Where("id IN ?", ids).Delete(&domain.Task{}).Error
 }
 
 // listChildrenByParentsTask 按父任务ID列表查询子任务
