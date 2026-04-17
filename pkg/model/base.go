@@ -184,6 +184,9 @@ type Page[T any] struct {
 
 // NewPage 创建分页响应
 func NewPage[T any](data []*T, total int64, pageNumber, pageSize int) *Page[T] {
+	if pageSize < 1 {
+		pageSize = 10
+	}
 	pageCount := int(total) / pageSize
 	if int(total)%pageSize > 0 {
 		pageCount++
