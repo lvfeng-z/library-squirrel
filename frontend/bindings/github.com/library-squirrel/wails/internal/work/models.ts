@@ -5,40 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
-
-/**
- * WorkAuthorResultDTO 作品作者信息返回结果DTO
- */
-export class WorkAuthorResultDTO {
-    "localAuthor"?: model$0.RankedLocalAuthor | null;
-    "siteAuthor"?: model$0.RankedSiteAuthor | null;
-
-    /** Creates a new WorkAuthorResultDTO instance. */
-    constructor($$source: Partial<WorkAuthorResultDTO> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkAuthorResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkAuthorResultDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("localAuthor" in $$parsedSource) {
-            $$parsedSource["localAuthor"] = $$createField0_0($$parsedSource["localAuthor"]);
-        }
-        if ("siteAuthor" in $$parsedSource) {
-            $$parsedSource["siteAuthor"] = $$createField1_0($$parsedSource["siteAuthor"]);
-        }
-        return new WorkAuthorResultDTO($$parsedSource as Partial<WorkAuthorResultDTO>);
-    }
-}
-
 /**
  * WorkDTO 作品数据传输对象
  */
@@ -247,9 +213,3 @@ export class WorkResultDTO {
         return new WorkResultDTO($$parsedSource as Partial<WorkResultDTO>);
     }
 }
-
-// Private type creation functions
-const $$createType0 = model$0.RankedLocalAuthor.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$0.RankedSiteAuthor.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);

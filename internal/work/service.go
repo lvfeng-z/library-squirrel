@@ -414,53 +414,6 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	return result, nil
 }
 
-// ListReWorkAuthor 获取作品关联的作者信息（包含本地作者和站点作者）
-func (s *Service) ListReWorkAuthor(ctx context.Context, workId int64) (*WorkAuthorDTO, error) {
-	work, err := s.repo.GetById(ctx, workId)
-	if err != nil {
-		return nil, err
-	}
-
-	dto := &WorkAuthorDTO{}
-
-	// 获取本地作者信息
-	if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
-		localAuthor, err := s.localAuthorReader.GetById(ctx, work.LocalAuthorID.Int64)
-		if err == nil && localAuthor != nil {
-			authorName := ""
-			if localAuthor.AuthorName.Valid {
-				authorName = localAuthor.AuthorName.String
-			}
-			introduce := ""
-			if localAuthor.Introduce.Valid {
-				introduce = localAuthor.Introduce.String
-			}
-			lastUse := int64(0)
-			if localAuthor.LastUse.Valid {
-				lastUse = localAuthor.LastUse.Int64
-			}
-			dto.LocalAuthor = &model.RankedLocalAuthor{
-				ID:         localAuthor.ID,
-				AuthorName: authorName,
-				Introduce:  introduce,
-				LastUse:    lastUse,
-				CreateTime: localAuthor.CreateTime,
-				UpdateTime: localAuthor.UpdateTime,
-			}
-		}
-	}
-
-	// 获取站点作者信息
-	if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
-		siteAuthor, err := s.siteAuthorReader.GetById(ctx, work.SiteAuthorID.String)
-		if err == nil && siteAuthor != nil {
-			dto.SiteAuthor = siteAuthor
-		}
-	}
-
-	return dto, nil
-}
-
 // UpdateLastView 批量更新作品最后使用时间
 func (s *Service) UpdateLastView(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
