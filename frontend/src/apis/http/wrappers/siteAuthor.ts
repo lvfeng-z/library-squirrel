@@ -5,7 +5,8 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteAuthorHandler, SiteAuthorDTO, SiteAuthorQueryDTO, SiteAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import type { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { RankedSiteAuthor } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteAuthorVO {
   id: number
@@ -141,7 +142,8 @@ export async function siteAuthorQueryPage(query: {
     siteId: query.query?.siteId ?? null,
     authorNameLike: query.query?.authorName ?? null
   })
-  const result = await SiteAuthorHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
+  const result = await SiteAuthorHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -160,7 +162,8 @@ export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: {
     localAuthorId: query.query?.localAuthorId ?? null,
     boundOnLocalAuthorId: query.query?.boundOnLocalAuthorId ?? null
   })
-  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
+  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -178,7 +181,8 @@ export async function siteAuthorQueryLocalRelateDTOPage(query: {
   pageSize: number
 }): Promise<ApiResponse<PageResult>> {
   const queryDTO = new SiteAuthorQueryDTO({})
-  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
+  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

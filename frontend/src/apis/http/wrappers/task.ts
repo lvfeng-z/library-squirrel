@@ -73,7 +73,8 @@ export async function taskQueryPage(query: {
     pid: query.query?.pid ?? null,
     status: query.query?.status ?? null
   })
-  const result = await TaskHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
+  const result = await TaskHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -81,7 +82,8 @@ export async function taskQueryPage(query: {
 }
 
 export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<TaskResultDTO>>> {
-  const result = await TaskHandler.QueryParentPage(query.page, query.pageSize, null)
+  const page = new Page({ pageNumber: query.page, pageSize: query.pageSize })
+  const result = await TaskHandler.QueryParentPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -130,7 +132,7 @@ export async function taskUpdate(task: {
 }
 
 export async function taskDelete(taskId: number): Promise<ApiResponse<null>> {
-  const result = await TaskHandler.DeleteTask(taskId)
+  const result = await TaskHandler.DeleteTask([taskId])
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
@@ -202,7 +204,8 @@ export async function taskQueryChildrenTaskPage(
   pageSize: number,
   _query?: Record<string, unknown>
 ): Promise<ApiResponse<Page<TaskResultDTO>>> {
-  const result = await TaskHandler.QueryChildrenTaskPage(pid, pageNumber, pageSize, null)
+  const page = new Page({ pageNumber, pageSize })
+  const result = await TaskHandler.QueryChildrenTaskPage(pid, page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

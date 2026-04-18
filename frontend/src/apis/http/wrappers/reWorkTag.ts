@@ -39,11 +39,10 @@ export async function reWorkTagLink(
   tagType: number,
   tagIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // 找到第一个 tagId 进行关联
   if (tagIds.length === 0) {
     return { success: false, msg: 'tagIds 不能为空' }
   }
-  const result = await ReWorkTagHandler.Save(workId, tagType, tagIds[0])
+  const result = await ReWorkTagHandler.Link(tagType, tagIds, workId)
   if (!result) {
     return { success: false, msg: '关联失败：接口返回为空' }
   }
@@ -55,7 +54,7 @@ export async function reWorkTagLinkBatch(
   tagType: number,
   tagIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  const result = await ReWorkTagHandler.SaveBatch(workId, tagType, tagIds)
+  const result = await ReWorkTagHandler.Link(tagType, tagIds, workId)
   if (!result) {
     return { success: false, msg: '批量关联失败：接口返回为空' }
   }
@@ -67,11 +66,10 @@ export async function reWorkTagUnlink(
   tagType: number,
   tagIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // 找到第一个 tagId 进行取消关联
   if (tagIds.length === 0) {
     return { success: false, msg: 'tagIds 不能为空' }
   }
-  const result = await ReWorkTagHandler.Delete(workId, tagType, tagIds[0])
+  const result = await ReWorkTagHandler.Unlink(tagType, tagIds, workId)
   if (!result) {
     return { success: false, msg: '取消关联失败：接口返回为空' }
   }
@@ -83,7 +81,7 @@ export async function reWorkTagRemoveBatch(
   tagType: number,
   tagIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  const result = await ReWorkTagHandler.DeleteBatch(workId, tagType, tagIds)
+  const result = await ReWorkTagHandler.Unlink(tagType, tagIds, workId)
   if (!result) {
     return { success: false, msg: '批量取消关联失败：接口返回为空' }
   }

@@ -41,12 +41,8 @@ export async function reWorkWorkSetUpdateSortOrders(
   workSetId: number,
   workIds: number[]
 ): Promise<ApiResponse<boolean>> {
-  // workIds 是按顺序排列的作品ID数组，需要转换为 sortOrders map
-  const sortOrders: Record<number, number> = {}
-  workIds.forEach((workId, index) => {
-    sortOrders[workId] = index
-  })
-  const result = await WorkSetHandler.UpdateSortOrders(workSetId, sortOrders)
+  // workIds 是按顺序排列的作品ID数组
+  const result = await WorkSetHandler.UpdateSortOrders(workSetId, workIds)
   if (!result) {
     return { success: false, msg: '操作失败：接口返回为空' }
   }

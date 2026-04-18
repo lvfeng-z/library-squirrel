@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SearchHandler } from '@bindings/github.com/library-squirrel/wails/internal/search'
+import { Handler as SearchHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/search'
 import type { SearchCondition as BindingSearchCondition, SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SearchConditionItem {
   siteId: number
@@ -76,7 +76,8 @@ export async function searchQueryWorkPage(page: {
     type: c.type as any,
     value: c.value
   }))
-  const result = await SearchHandler.QueryWorkPage(page.pageNumber, page.pageSize, conditions)
+  const pageParam = new Page<BindingSearchCondition>({ pageNumber: page.pageNumber, pageSize: page.pageSize, query: conditions })
+  const result = await SearchHandler.QueryWorkPage(pageParam)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -92,21 +93,26 @@ export async function searchQueryWorkSetPage(query: {
   keyword?: string
   siteId?: number
 }): Promise<ApiResponse<SearchWorkSetItem[]>> {
-  const result = await SearchHandler.QueryWorkSetPage(query.pageNumber, query.pageSize, query.keyword ?? '', query.siteId ?? 0)
+  const queryDTO = new WorkSetQueryDTO({
+    keyword: query.keyword ?? '',
+    siteId: query.siteId ?? null
+  })
+  const page = new Page<WorkSetQueryDTO>({ pageNumber: query.pageNumber, pageSize: query.pageSize, query: queryDTO })
+  const result = await SearchHandler.QueryWorkSetPage(page, query.keyword ?? '', query.siteId ?? 0)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
   if (!result.success) {
     return { success: false, msg: result.msg ?? '查询失败' }
   }
-  const page = result.data
-  if (!page) {
+  const resultPage = result.data
+  if (!resultPage) {
     return { success: true, msg: '', data: [] }
   }
   return {
     success: true,
     msg: result.msg ?? '',
-    data: page.data ? page.data.map(item => ({
+    data: resultPage.data ? resultPage.data.map(item => ({
       id: parseInt(item?.value?.toString() ?? '0'),
       name: item?.label ?? '',
       coverId: 0
