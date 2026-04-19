@@ -6,7 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as LocalAuthorHandler, LocalAuthorDTO, LocalAuthorQueryDTO, LocalAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface LocalAuthorVO {
   id: number
@@ -105,8 +105,7 @@ export async function localAuthorQueryPage(query: {
   const queryDTO = new LocalAuthorQueryDTO({
     authorName: query.query?.authorName ?? null
   })
-  const page = new Page<LocalAuthorQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
-  const result = await LocalAuthorHandler.QueryPage(page)
+  const result = await LocalAuthorHandler.QueryPage(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -133,8 +132,7 @@ export async function localAuthorQuerySelectItemPage(query: {
   query?: Record<string, unknown>
 }): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new LocalAuthorQueryDTO({})
-  const page = new Page<LocalAuthorQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
-  const result = await LocalAuthorHandler.QuerySelectItemPage(page)
+  const result = await LocalAuthorHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

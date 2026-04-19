@@ -5,7 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as PluginHandler, PluginQueryDTO, PluginResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface PluginVO {
   id: number
@@ -76,8 +76,7 @@ export async function pluginQueryPage(query: {
   const queryDTO = new PluginQueryDTO({
     nameLike: query.query?.name ?? null
   })
-  const page = new Page<PluginQueryDTO>({ pageNumber: query.page, pageSize: query.pageSize, query: queryDTO })
-  const result = await PluginHandler.Page(page)
+  const result = await PluginHandler.Page(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
