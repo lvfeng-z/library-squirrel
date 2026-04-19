@@ -8,6 +8,7 @@ import (
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -16,33 +17,11 @@ import (
 
 // LocalAuthorQueryDTO 本地作者查询条件
 type LocalAuthorQueryDTO struct {
-	// 精确查询
-	ID         *int64  `json:"-"`          // 本地作者ID（程序设置，不从JSON解析）
-	AuthorName *string `json:"authorName"` // 作者名称（精确匹配）
-	// 模糊查询
-	AuthorNameLike *string `json:"authorNameLike"` // 作者名称（模糊匹配）
-	IntroduceLike  *string `json:"introduceLike"`  // 介绍（模糊匹配）
-	// 排序字段：create_time, update_time, author_name, last_use
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *LocalAuthorQueryDTO) BuildOrderBy() clause.Expression {
-	column := "id"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time": "create_time",
-			"update_time": "update_time",
-			"author_name": "author_name",
-			"last_use":    "last_use",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID           query.QueryAttribute `json:"-" query:"id"`                                         // 本地作者ID（程序设置，不从JSON解析）
+	AuthorName   query.QueryAttribute `json:"authorName" query:"author_name"`                     // 作者名称（精确匹配）
+	AuthorNameStr query.QueryAttribute `json:"authorNameStr" query:"author_name"`                 // 作者名称（模糊匹配）
+	Introduce    query.QueryAttribute `json:"introduce" query:"introduce"`                       // 介绍（模糊匹配）
+	OrderBy      query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
 }
 
 // Repository 本地作者仓储接口（由 service 定义需要的数据库操作方法）
@@ -142,68 +121,48 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.LocalAuthor, LocalAuthorQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.LocalAuthor{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
 // ListSelectItemsByDTO 查询选择项列表（基于 QueryDTO）
 func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*domain.SelectItem, error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.ListSelectItems(ctx, where, orderBy)
+	conv := query.NewConverter(domain.LocalAuthor{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	return s.repo.ListSelectItems(ctx, where, order)
 }
 
 // QuerySelectItemPageByDTO 分页查询选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.SelectItem, LocalAuthorQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QuerySelectItemPage(ctx, page, pageSize, where, orderBy)
-}
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *LocalAuthorQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
+	conv := query.NewConverter(domain.LocalAuthor{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
 	}
-	if dto.AuthorName != nil {
-		conditions = append(conditions, clause.Eq{Column: "author_name", Value: *dto.AuthorName})
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
 	}
-	if dto.AuthorNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "author_name", Value: *dto.AuthorNameLike})
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
 	}
-	if dto.IntroduceLike != nil {
-		conditions = append(conditions, clause.Like{Column: "introduce", Value: *dto.IntroduceLike})
-	}
-
-	return conditions
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
-	}
-	if len(conditions) == 1 {
-		return conditions[0]
-	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
-	}
-	return result
+	return s.repo.QuerySelectItemPage(ctx, page, pageSize, where, order)
 }
 
 // ListReWorkAuthor 批量获取作品与作者的关联

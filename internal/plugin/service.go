@@ -17,8 +17,7 @@ import (
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
-
-	"gorm.io/gorm/clause"
+	"github.com/library-squirrel/wails/pkg/query"
 )
 
 const (
@@ -36,39 +35,16 @@ const (
 
 // PluginQueryDTO 插件查询条件
 type PluginQueryDTO struct {
-	// 精确查询
-	ID             *int64  `json:"-"`              // 插件ID（程序设置，不从JSON解析）
-	PublicID       *string `json:"publicId"`       // 公开ID（精确匹配）
-	Name           *string `json:"name"`           // 插件名称（精确匹配）
-	Author         *string `json:"author"`         // 作者（精确匹配）
-	Version        *string `json:"version"`        // 版本号（精确匹配）
-	ActivationType *string `json:"activationType"` // 激活类型（精确匹配）
-	Uninstalled    *int    `json:"uninstalled"`    // 是否已卸载（0=未卸载，1=已卸载）
-	// 模糊查询
-	NameLike   *string `json:"nameLike"`   // 插件名称（模糊匹配）
-	AuthorLike *string `json:"authorLike"` // 作者（模糊匹配）
-	// 排序字段：create_time, update_time, name, author, sort_num
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *PluginQueryDTO) BuildOrderBy() clause.Expression {
-	column := "sort_num"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time": "create_time",
-			"update_time": "update_time",
-			"name":        "name",
-			"author":      "author",
-			"sort_num":    "sort_num",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID             query.QueryAttribute `json:"-" query:"id"`                                         // 插件ID（程序设置，不从JSON解析）
+	PublicID       query.QueryAttribute `json:"publicId" query:"public_id"`                         // 公开ID（精确匹配）
+	Name           query.QueryAttribute `json:"name" query:"name"`                                 // 插件名称（精确匹配）
+	Author         query.QueryAttribute `json:"author" query:"author"`                             // 作者（精确匹配）
+	Version        query.QueryAttribute `json:"version" query:"version"`                           // 版本号（精确匹配）
+	ActivationType query.QueryAttribute `json:"activationType" query:"activation_type"`           // 激活类型（精确匹配）
+	Uninstalled    query.QueryAttribute `json:"uninstalled" query:"uninstalled"`                     // 是否已卸载（0=未卸载，1=已卸载）
+	NameStr       query.QueryAttribute `json:"nameStr" query:"name"`                           // 插件名称（模糊匹配）
+	AuthorStr     query.QueryAttribute `json:"authorStr" query:"author"`                         // 作者（模糊匹配）
+	OrderBy        query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
 }
 
 // 错误定义
@@ -79,56 +55,6 @@ var (
 	ErrInvalidManifest     = errors.New("invalid plugin manifest")
 	ErrBackupNotFound      = errors.New("backup not found")
 )
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *PluginQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
-	}
-	if dto.PublicID != nil {
-		conditions = append(conditions, clause.Eq{Column: "public_id", Value: *dto.PublicID})
-	}
-	if dto.Name != nil {
-		conditions = append(conditions, clause.Eq{Column: "name", Value: *dto.Name})
-	}
-	if dto.Author != nil {
-		conditions = append(conditions, clause.Eq{Column: "author", Value: *dto.Author})
-	}
-	if dto.Version != nil {
-		conditions = append(conditions, clause.Eq{Column: "version", Value: *dto.Version})
-	}
-	if dto.ActivationType != nil {
-		conditions = append(conditions, clause.Eq{Column: "activation_type", Value: *dto.ActivationType})
-	}
-	if dto.Uninstalled != nil {
-		conditions = append(conditions, clause.Eq{Column: "uninstalled", Value: *dto.Uninstalled})
-	}
-	if dto.NameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "name", Value: *dto.NameLike})
-	}
-	if dto.AuthorLike != nil {
-		conditions = append(conditions, clause.Like{Column: "author", Value: *dto.AuthorLike})
-	}
-
-	return conditions
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
-	}
-	if len(conditions) == 1 {
-		return conditions[0]
-	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
-	}
-	return result
-}
 
 // Repository 插件仓储接口（由 service 定义需要的数据库操作方法）
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
@@ -207,15 +133,10 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin, PluginQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.Plugin{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }

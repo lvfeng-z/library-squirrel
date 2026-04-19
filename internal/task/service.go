@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
 	"github.com/library-squirrel/wails/pkg/logger"
+	"github.com/library-squirrel/wails/pkg/query"
 	pkgModel "github.com/library-squirrel/wails/pkg/model"
 
 	"gorm.io/gorm/clause"
@@ -22,38 +23,17 @@ import (
 
 // TaskQueryDTO 任务查询条件
 type TaskQueryDTO struct {
-	// 精确查询
-	ID                   *int64  `json:"-"`                    // 任务ID（程序设置，不从JSON解析）
-	Pid                  *int64  `json:"pid"`                  // 父任务ID
-	SiteID               *int    `json:"siteId"`               // 站点ID
-	SiteWorkID           *string `json:"siteWorkId"`           // 站点作品ID
-	Status               *int    `json:"status"`               // 任务状态
-	IsCollection         *int    `json:"isCollection"`         // 是否为合集（0=否，1=是）
-	PluginPublicID       *string `json:"pluginPublicId"`       // 插件公开ID
-	PluginContributionID *string `json:"pluginContributionId"` // 插件贡献ID
-	Continuable          *int    `json:"continuable"`          // 是否可继续（0=否，1=是）
-	// 模糊查询
-	TaskNameLike *string `json:"taskNameLike"` // 任务名称（模糊匹配）
-	// 排序字段：create_time, update_time, task_name
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *TaskQueryDTO) BuildOrderBy() clause.Expression {
-	column := "id"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time": "create_time",
-			"update_time": "update_time",
-			"task_name":   "task_name",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID                   query.QueryAttribute `json:"-" query:"id"`                             // 任务ID（程序设置，不从JSON解析）
+	Pid                  query.QueryAttribute `json:"pid" query:"pid"`                         // 父任务ID
+	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                   // 站点ID
+	SiteWorkID           query.QueryAttribute `json:"siteWorkId" query:"site_work_id"`           // 站点作品ID
+	Status               query.QueryAttribute `json:"status" query:"status"`                   // 任务状态
+	IsCollection         query.QueryAttribute `json:"isCollection" query:"is_collection"`       // 是否为合集（0=否，1=是）
+	PluginPublicID       query.QueryAttribute `json:"pluginPublicId" query:"plugin_public_id"`   // 插件公开ID
+	PluginContributionID query.QueryAttribute `json:"pluginContributionId" query:"plugin_contribution_id"` // 插件贡献ID
+	Continuable          query.QueryAttribute `json:"continuable" query:"continuable"`           // 是否可继续（0=否，1=是）
+	TaskName             query.QueryAttribute `json:"taskName" query:"task_name"`               // 任务名称（模糊匹配）
+	OrderBy              query.QueryAttribute `json:"orderBy" query:"order_by"`                 // 排序字段
 }
 
 // 错误定义
@@ -341,15 +321,10 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*pkgModel
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
-	conditions := buildConditionsFromDTO(queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.Task{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
@@ -361,10 +336,20 @@ func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where
 
 // QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
 func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
-	conditions := buildConditionsFromDTO(queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryParentPage(ctx, page, pageSize, where, orderBy)
+	conv := query.NewConverter(domain.Task{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -415,13 +400,22 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 
 // QueryTreeDataPage 查询任务树数据分页
 func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
-	// 构建查询条件
-	conditions := buildConditionsFromDTO(queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
+	conv := query.NewConverter(domain.Task{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
 
 	// 分页查询父任务（is_collection=1 OR pid IS NULL OR pid=0）
-	resultPage, err := s.repo.QueryParentPage(ctx, page, pageSize, where, orderBy)
+	resultPage, err := s.repo.QueryParentPage(ctx, page, pageSize, where, order)
 	if err != nil {
 		return nil, err
 	}
@@ -499,63 +493,20 @@ func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pa
 
 // QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
 func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
-	conditions := buildConditionsFromDTO(queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, orderBy)
-}
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *TaskQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
+	conv := query.NewConverter(domain.Task{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
 	}
-	if dto.Pid != nil {
-		conditions = append(conditions, clause.Eq{Column: "pid", Value: *dto.Pid})
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
 	}
-	if dto.SiteID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
 	}
-	if dto.SiteWorkID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_work_id", Value: *dto.SiteWorkID})
-	}
-	if dto.Status != nil {
-		conditions = append(conditions, clause.Eq{Column: "status", Value: *dto.Status})
-	}
-	if dto.IsCollection != nil {
-		conditions = append(conditions, clause.Eq{Column: "is_collection", Value: *dto.IsCollection})
-	}
-	if dto.PluginPublicID != nil {
-		conditions = append(conditions, clause.Eq{Column: "plugin_public_id", Value: *dto.PluginPublicID})
-	}
-	if dto.PluginContributionID != nil {
-		conditions = append(conditions, clause.Eq{Column: "plugin_contribution_id", Value: *dto.PluginContributionID})
-	}
-	if dto.Continuable != nil {
-		conditions = append(conditions, clause.Eq{Column: "continuable", Value: *dto.Continuable})
-	}
-	if dto.TaskNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "task_name", Value: *dto.TaskNameLike})
-	}
-
-	return conditions
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
-	}
-	if len(conditions) == 1 {
-		return conditions[0]
-	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
-	}
-	return result
+	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
 }
 
 // ListSchedule 查询任务进度列表

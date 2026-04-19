@@ -8,6 +8,7 @@ import (
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -16,38 +17,15 @@ import (
 
 // SiteTagQueryDTO 站点标签查询条件
 type SiteTagQueryDTO struct {
-	// 精确查询
-	ID            *int64  `json:"-"`             // 站点标签ID（程序设置，不从JSON解析）
-	SiteID        *int64  `json:"siteId"`        // 站点ID
-	SiteTagID     *string `json:"siteTagId"`     // 站点标签ID（外部）
-	BaseSiteTagID *string `json:"baseSiteTagId"` // 基础站点标签ID
-	LocalTagID    *int64  `json:"localTagId"`    // 本地标签ID
-	// 过滤绑定状态
-	BoundOnLocalTagId *bool `json:"boundOnLocalTagId"` // 是否绑定到指定本地标签（true=绑定的，false=未绑定的）
-	// 模糊查询
-	SiteTagNameLike *string `json:"siteTagNameLike"` // 站点标签名称（模糊匹配）
-	DescriptionLike *string `json:"descriptionLike"` // 描述（模糊匹配）
-	// 排序字段：create_time, update_time, site_tag_name, last_use
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *SiteTagQueryDTO) BuildOrderBy() clause.Expression {
-	column := "id"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time":   "create_time",
-			"update_time":   "update_time",
-			"site_tag_name": "site_tag_name",
-			"last_use":      "last_use",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID                query.QueryAttribute `json:"-" query:"id"`                                                 // 站点标签ID（程序设置，不从JSON解析）
+	SiteID            query.QueryAttribute `json:"siteId" query:"site_id"`                                     // 站点ID
+	SiteTagID         query.QueryAttribute `json:"siteTagId" query:"site_tag_id"`                             // 站点标签ID（外部）
+	BaseSiteTagID     query.QueryAttribute `json:"baseSiteTagId" query:"base_site_tag_id"`                     // 基础站点标签ID
+	LocalTagID        query.QueryAttribute `json:"localTagId" query:"local_tag_id"`                           // 本地标签ID
+	BoundOnLocalTagId query.QueryAttribute `json:"boundOnLocalTagId" query:""`                                   // 是否绑定到指定本地标签（非数据库字段）
+	SiteTagName       query.QueryAttribute `json:"siteTagName" query:"site_tag_name"`                         // 站点标签名称（模糊匹配）
+	Description       query.QueryAttribute `json:"description" query:"description"`                           // 描述（模糊匹配）
+	OrderBy           query.QueryAttribute `json:"orderBy" query:"order_by"`                                   // 排序字段
 }
 
 // ========== 外部模块接口定义（由 siteTag 模块定义自己需要的接口）==========
@@ -170,114 +148,96 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[domain.SiteTag, SiteTagQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.SiteTag{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页（基于 QueryDTO）
 func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
-	// 构建除了 LocalTagID 之外的其他条件
-	var conditions []clause.Expression
-	if dto := &queryDTO; dto != nil {
-		if dto.ID != nil {
-			conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
-		}
-		if dto.SiteID != nil {
-			conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
-		}
-		if dto.SiteTagID != nil {
-			conditions = append(conditions, clause.Eq{Column: "site_tag_id", Value: *dto.SiteTagID})
-		}
-		if dto.BaseSiteTagID != nil {
-			conditions = append(conditions, clause.Eq{Column: "base_site_tag_id", Value: *dto.BaseSiteTagID})
-		}
-		if dto.SiteTagNameLike != nil {
-			conditions = append(conditions, clause.Like{Column: "site_tag_name", Value: *dto.SiteTagNameLike})
-		}
-		if dto.DescriptionLike != nil {
-			conditions = append(conditions, clause.Like{Column: "description", Value: *dto.DescriptionLike})
+	conv := query.NewConverter(domain.SiteTag{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	var boundOnLocalTagId *bool
+	if queryDTO.BoundOnLocalTagId.Value != nil {
+		if v, ok := queryDTO.BoundOnLocalTagId.Value.(bool); ok {
+			boundOnLocalTagId = &v
 		}
 	}
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryBoundOrUnboundToLocalTagPage(ctx, page, pageSize, where, orderBy, queryDTO.BoundOnLocalTagId, queryDTO.LocalTagID)
+	var localTagId *int64
+	if queryDTO.LocalTagID.Value != nil {
+		if v, ok := queryDTO.LocalTagID.Value.(int64); ok {
+			localTagId = &v
+		}
+	}
+	return s.repo.QueryBoundOrUnboundToLocalTagPage(ctx, page, pageSize, where, order, boundOnLocalTagId, localTagId)
 }
 
 // QueryPageByWorkIdByDTO 根据作品ID分页查询站点标签（基于 QueryDTO）
 func (s *Service) QueryPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryPageByWorkId(ctx, page, pageSize, where, orderBy, workId, boundOnWorkId)
+	conv := query.NewConverter(domain.SiteTag{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	return s.repo.QueryPageByWorkId(ctx, page, pageSize, where, order, workId, boundOnWorkId)
 }
 
 // QueryLocalRelateDTOPageByDTO 查询站点标签与本地标签关联DTO分页（基于 QueryDTO）
 func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, orderBy, workId, boundOnWorkId)
+	conv := query.NewConverter(domain.SiteTag{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order, workId, boundOnWorkId)
 }
 
 // QuerySelectItemPageByWorkIdByDTO 根据作品ID分页查询站点标签选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64) (*model.Page[domain.SelectItem, SiteTagQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QuerySelectItemPageByWorkId(ctx, page, pageSize, where, orderBy, workId)
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
+	conv := query.NewConverter(domain.SiteTag{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
 	}
-	if len(conditions) == 1 {
-		return conditions[0]
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
 	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
 	}
-	return result
-}
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *SiteTagQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
-	}
-	if dto.SiteID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
-	}
-	if dto.SiteTagID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_tag_id", Value: *dto.SiteTagID})
-	}
-	if dto.BaseSiteTagID != nil {
-		conditions = append(conditions, clause.Eq{Column: "base_site_tag_id", Value: *dto.BaseSiteTagID})
-	}
-	if dto.LocalTagID != nil {
-		conditions = append(conditions, clause.Eq{Column: "local_tag_id", Value: *dto.LocalTagID})
-	}
-	if dto.SiteTagNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "site_tag_name", Value: *dto.SiteTagNameLike})
-	}
-	if dto.DescriptionLike != nil {
-		conditions = append(conditions, clause.Like{Column: "description", Value: *dto.DescriptionLike})
-	}
-
-	return conditions
+	return s.repo.QuerySelectItemPageByWorkId(ctx, page, pageSize, where, order, workId)
 }
 
 // ListByWorkId 查询作品的站点标签

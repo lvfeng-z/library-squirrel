@@ -8,6 +8,7 @@ import (
 	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -16,39 +17,15 @@ import (
 
 // WorkSetQueryDTO 作品集查询条件
 type WorkSetQueryDTO struct {
-	// 精确查询
-	ID            *int64  `json:"-"`             // 作品集ID（程序设置，不从JSON解析）
-	SiteID        *int64  `json:"siteId"`        // 站点ID
-	SiteWorkSetID *string `json:"siteWorkSetId"` // 站点作品集ID
-	SiteAuthorID  *string `json:"siteAuthorId"`  // 站点作者ID
-	NickName      *string `json:"nickName"`      // 昵称（精确匹配）
-	// 模糊查询
-	SiteWorkSetNameLike *string `json:"siteWorkSetNameLike"` // 站点作品集名称（模糊匹配）
-	SiteWorkSetDescLike *string `json:"siteWorkSetDescLike"` // 站点作品集描述（模糊匹配）
-	NickNameLike        *string `json:"nickNameLike"`        // 昵称（模糊匹配）
-	// 排序字段：create_time, update_time, site_upload_time, site_update_time, last_view, site_work_set_name
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *WorkSetQueryDTO) BuildOrderBy() clause.Expression {
-	column := "id"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time":        "create_time",
-			"update_time":        "update_time",
-			"site_upload_time":   "site_upload_time",
-			"site_update_time":   "site_update_time",
-			"last_view":          "last_view",
-			"site_work_set_name": "site_work_set_name",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID                   query.QueryAttribute `json:"-" query:"id"`                                         // 作品集ID（程序设置，不从JSON解析）
+	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                             // 站点ID
+	SiteWorkSetID        query.QueryAttribute `json:"siteWorkSetId" query:"site_work_set_id"`             // 站点作品集ID
+	SiteAuthorID         query.QueryAttribute `json:"siteAuthorId" query:"site_author_id"`                 // 站点作者ID
+	NickName             query.QueryAttribute `json:"nickName" query:"nick_name"`                         // 昵称（精确匹配）
+	SiteWorkSetName      query.QueryAttribute `json:"siteWorkSetName" query:"site_work_set_name"`         // 站点作品集名称（模糊匹配）
+	SiteWorkSetDesc     query.QueryAttribute `json:"siteWorkSetDesc" query:"site_work_set_description"`   // 站点作品集描述（模糊匹配）
+	NickNameStr          query.QueryAttribute `json:"nickNameStr" query:"nick_name"`                     // 昵称（模糊匹配）
+	OrderBy              query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
 }
 
 // ========== 外部模块接口定义（由 workSet 模块定义自己需要的接口）==========
@@ -145,72 +122,30 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet, WorkSetQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.WorkSet{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
 // QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
 func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.QueryPageWithCover(ctx, page, pageSize, where, orderBy)
-}
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *WorkSetQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
+	conv := query.NewConverter(domain.WorkSet{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
 	}
-	if dto.SiteID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
 	}
-	if dto.SiteWorkSetID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_work_set_id", Value: *dto.SiteWorkSetID})
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
 	}
-	if dto.SiteAuthorID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_author_id", Value: *dto.SiteAuthorID})
-	}
-	if dto.NickName != nil {
-		conditions = append(conditions, clause.Eq{Column: "nick_name", Value: *dto.NickName})
-	}
-	if dto.SiteWorkSetNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "site_work_set_name", Value: *dto.SiteWorkSetNameLike})
-	}
-	if dto.SiteWorkSetDescLike != nil {
-		conditions = append(conditions, clause.Like{Column: "site_work_set_description", Value: *dto.SiteWorkSetDescLike})
-	}
-	if dto.NickNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "nick_name", Value: *dto.NickNameLike})
-	}
-
-	return conditions
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
-	}
-	if len(conditions) == 1 {
-		return conditions[0]
-	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
-	}
-	return result
+	return s.QueryPageWithCover(ctx, page, pageSize, where, order)
 }
 
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询

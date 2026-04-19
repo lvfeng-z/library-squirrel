@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -17,38 +18,15 @@ import (
 
 // SiteAuthorQueryDTO 站点作者查询条件
 type SiteAuthorQueryDTO struct {
-	// 精确查询
-	ID              *int64  `json:"-"`               // 站点作者ID（程序设置，不从JSON解析）
-	SiteID          *int64  `json:"siteId"`          // 站点ID
-	SiteAuthorID    *string `json:"siteAuthorId"`    // 站点作者ID（外部）
-	LocalAuthorID   *int64  `json:"localAuthorId"`   // 本地作者ID
-	FixedAuthorName *string `json:"fixedAuthorName"` // 固定作者名称
-	// 过滤绑定状态
-	BoundOnLocalAuthorId *bool `json:"boundOnLocalAuthorId"` // 是否绑定到指定本地作者（true=绑定的，false=未绑定的）
-	// 模糊查询
-	AuthorNameLike *string `json:"authorNameLike"` // 作者名称（模糊匹配）
-	IntroduceLike  *string `json:"introduceLike"`  // 介绍（模糊匹配）
-	// 排序字段：create_time, update_time, author_name, last_use
-	OrderBy   string `json:"orderBy"`   // 排序字段
-	OrderDesc bool   `json:"orderDesc"` // 是否降序
-}
-
-// BuildOrderBy 根据查询DTO构建排序条件
-func (dto *SiteAuthorQueryDTO) BuildOrderBy() clause.Expression {
-	column := "id"
-	if dto.OrderBy != "" {
-		// 支持的排序字段映射
-		orderByMap := map[string]string{
-			"create_time": "create_time",
-			"update_time": "update_time",
-			"author_name": "author_name",
-			"last_use":    "last_use",
-		}
-		if v, ok := orderByMap[dto.OrderBy]; ok {
-			column = v
-		}
-	}
-	return clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: column}, Desc: dto.OrderDesc}}}
+	ID                   query.QueryAttribute `json:"-" query:"id"`                                         // 站点作者ID（程序设置，不从JSON解析）
+	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                             // 站点ID
+	SiteAuthorID         query.QueryAttribute `json:"siteAuthorId" query:"site_author_id"`               // 站点作者ID（外部）
+	LocalAuthorID        query.QueryAttribute `json:"localAuthorId" query:"local_author_id"`             // 本地作者ID
+	FixedAuthorName      query.QueryAttribute `json:"fixedAuthorName" query:"fixed_author_name"`         // 固定作者名称
+	BoundOnLocalAuthorId query.QueryAttribute `json:"boundOnLocalAuthorId" query:""`                                   // 是否绑定到指定本地作者（非数据库字段）
+	AuthorName           query.QueryAttribute `json:"authorName" query:"author_name"`                     // 作者名称（模糊匹配）
+	Introduce            query.QueryAttribute `json:"introduce" query:"introduce"`                       // 介绍（模糊匹配）
+	OrderBy              query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
 }
 
 // Repository 站点作者仓储接口（由 service 定义需要的数据库操作方法）
@@ -161,98 +139,61 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthor, SiteAuthorQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	orderBy := queryDTO.BuildOrderBy()
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
+	conv := query.NewConverter(domain.SiteAuthor{})
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
 // QueryBoundOrUnboundToLocalAuthorPageByDTO 查询绑定或未绑定到本地作者的站点作者分页（基于 QueryDTO）
 func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
-	// 构建除了 LocalAuthorID 之外的其他条件（LocalAuthorID 的绑定逻辑由 repository 处理）
-	var conditions []clause.Expression
-	if dto := &queryDTO; dto != nil {
-		if dto.ID != nil {
-			conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
-		}
-		if dto.SiteID != nil {
-			conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
-		}
-		if dto.SiteAuthorID != nil {
-			conditions = append(conditions, clause.Eq{Column: "site_author_id", Value: *dto.SiteAuthorID})
-		}
-		if dto.FixedAuthorName != nil {
-			conditions = append(conditions, clause.Eq{Column: "fixed_author_name", Value: *dto.FixedAuthorName})
-		}
-		if dto.AuthorNameLike != nil {
-			conditions = append(conditions, clause.Like{Column: "author_name", Value: *dto.AuthorNameLike})
-		}
-		if dto.IntroduceLike != nil {
-			conditions = append(conditions, clause.Like{Column: "introduce", Value: *dto.IntroduceLike})
+	conv := query.NewConverter(domain.SiteAuthor{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
+	// 类型断言获取 BoundOnLocalAuthorId 和 LocalAuthorID 的值
+	var boundOnLocalAuthorId *bool
+	if queryDTO.BoundOnLocalAuthorId.Value != nil {
+		if v, ok := queryDTO.BoundOnLocalAuthorId.Value.(bool); ok {
+			boundOnLocalAuthorId = &v
 		}
 	}
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page, pageSize, where, orderBy, queryDTO.BoundOnLocalAuthorId, queryDTO.LocalAuthorID)
+	var localAuthorId *int64
+	if queryDTO.LocalAuthorID.Value != nil {
+		if v, ok := queryDTO.LocalAuthorID.Value.(int64); ok {
+			localAuthorId = &v
+		}
+	}
+	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page, pageSize, where, order, boundOnLocalAuthorId, localAuthorId)
 }
 
 // QueryLocalRelateDTOPageByDTO 查询站点作者与本地作者关联DTO分页（基于 QueryDTO）
 func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
-	where := combineConditions(conditions)
-	orderBy := queryDTO.BuildOrderBy()
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, orderBy)
-}
-
-// combineConditions 将多个条件组合成单个表达式
-func combineConditions(conditions []clause.Expression) clause.Expression {
-	if len(conditions) == 0 {
-		return nil
+	conv := query.NewConverter(domain.SiteAuthor{})
+	queryOpt, err := conv.ToQueryOption(queryDTO)
+	if err != nil {
+		return nil, err
 	}
-	if len(conditions) == 1 {
-		return conditions[0]
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
 	}
-	result := clause.AndConditions{}
-	for _, cond := range conditions {
-		result.Exprs = append(result.Exprs, cond)
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
 	}
-	return result
-}
-
-// buildConditionsFromDTO 根据查询DTO构建查询条件
-func buildConditionsFromDTO(dto *SiteAuthorQueryDTO) []clause.Expression {
-	var conditions []clause.Expression
-
-	if dto.ID != nil {
-		conditions = append(conditions, clause.Eq{Column: "id", Value: *dto.ID})
-	}
-	if dto.SiteID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_id", Value: *dto.SiteID})
-	}
-	if dto.SiteAuthorID != nil {
-		conditions = append(conditions, clause.Eq{Column: "site_author_id", Value: *dto.SiteAuthorID})
-	}
-	if dto.LocalAuthorID != nil {
-		conditions = append(conditions, clause.Eq{Column: "local_author_id", Value: *dto.LocalAuthorID})
-	}
-	if dto.FixedAuthorName != nil {
-		conditions = append(conditions, clause.Eq{Column: "fixed_author_name", Value: *dto.FixedAuthorName})
-	}
-	if dto.AuthorNameLike != nil {
-		conditions = append(conditions, clause.Like{Column: "author_name", Value: *dto.AuthorNameLike})
-	}
-	if dto.IntroduceLike != nil {
-		conditions = append(conditions, clause.Like{Column: "introduce", Value: *dto.IntroduceLike})
-	}
-
-	return conditions
+	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order)
 }
 
 // ListByWorkId 查询作品的站点作者
