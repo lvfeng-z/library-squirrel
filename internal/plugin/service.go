@@ -148,7 +148,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin, PluginQueryDTO], error)
 	// CheckInstalled 检查插件是否已安装
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
@@ -201,12 +201,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 
 // Page 分页查询
 // Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin, PluginQueryDTO], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin, PluginQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	opt := &database.PageOption{

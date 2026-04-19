@@ -139,12 +139,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet, WorkSetQueryDTO], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet, WorkSetQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	opt := &database.PageOption{
@@ -159,7 +159,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Wo
 }
 
 // QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
-func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO], error) {
+func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	where := combineConditions(conditions)
 	orderBy := queryDTO.BuildOrderBy()
@@ -364,7 +364,7 @@ type WorkSetWithCoverDTO struct {
 }
 
 // QueryPageWithCover 带封面的作品集分页查询
-func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[WorkSetWithCoverDTO], error) {
+func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
 	// 先查询作品集分页
 	var conditions []clause.Expression
 	if where != nil {
@@ -384,7 +384,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 	}
 
 	if len(pageResult.Data) == 0 {
-		return model.NewPage([]*WorkSetWithCoverDTO{}, 0, page, pageSize), nil
+		return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO]([]*WorkSetWithCoverDTO{}, 0, page, pageSize), nil
 	}
 
 	// 构建结果
@@ -413,7 +413,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 		result = append(result, dto)
 	}
 
-	return model.NewPage(result, pageResult.DataCount, page, pageSize), nil
+	return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO](result, pageResult.DataCount, page, pageSize), nil
 }
 
 // ErrWorkSetIdRequired 错误定义

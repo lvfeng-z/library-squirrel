@@ -69,7 +69,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteAuthor], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteAuthor, SiteAuthorQueryDTO], error)
 	// ListByWorkId 查询作品的站点作者
 	ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error)
 	// ListBySiteAuthorIds 根据站点作者ID列表查询
@@ -79,9 +79,9 @@ type Repository interface {
 	// UpdateBindLocalAuthor 绑定本地作者
 	UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) (int64, error)
 	// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-	QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[domain.SiteAuthorFullDTO], error)
+	QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[domain.SiteAuthorFullDTO, SiteAuthorQueryDTO], error)
 	// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-	QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO], error)
+	QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error)
 	// GetLocalAuthorByName 根据作者名称查询本地作者
 	GetLocalAuthorByName(ctx context.Context, authorName string) (*domain.LocalAuthor, error)
 	// SaveLocalAuthor 保存本地作者
@@ -155,12 +155,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteAuthor], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteAuthor, SiteAuthorQueryDTO], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthor], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthor, SiteAuthorQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	opt := &database.PageOption{
@@ -175,7 +175,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Si
 }
 
 // QueryBoundOrUnboundToLocalAuthorPageByDTO 查询绑定或未绑定到本地作者的站点作者分页（基于 QueryDTO）
-func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorFullDTO], error) {
+func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	// 构建除了 LocalAuthorID 之外的其他条件（LocalAuthorID 的绑定逻辑由 repository 处理）
 	var conditions []clause.Expression
 	if dto := &queryDTO; dto != nil {
@@ -204,7 +204,7 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context,
 }
 
 // QueryLocalRelateDTOPageByDTO 查询站点作者与本地作者关联DTO分页（基于 QueryDTO）
-func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorLocalRelateDTO], error) {
+func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	where := combineConditions(conditions)
 	orderBy := queryDTO.BuildOrderBy()
@@ -324,7 +324,7 @@ func (s *Service) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO], error) {
+func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order)
 }
 

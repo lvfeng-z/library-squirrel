@@ -129,23 +129,23 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagResultDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagQueryDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagResultDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagQueryDTO]{}
+		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteTagQueryDTO{{}}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteTagResultDTO]](err.Error())
+		return model.Error[*model.Page[SiteTagResultDTO, SiteTagQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteTagResultDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
 		data = append(data, ToSiteTagResultDTO(tag))
 	}
-	return model.Success(&model.Page[SiteTagResultDTO]{
+	return model.Success(&model.Page[SiteTagResultDTO, SiteTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -157,23 +157,23 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagQueryDT
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
+func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[SiteTagQueryDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagQueryDTO]{}
+		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteTagQueryDTO{{}}
 	}
 	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteTagFullDTO]](err.Error())
+		return model.Error[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteTagFullDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
 		data = append(data, ToSiteTagFullDTO(tag))
 	}
-	return model.Success(&model.Page[SiteTagFullDTO]{
+	return model.Success(&model.Page[SiteTagFullDTO, SiteTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -185,23 +185,23 @@ func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *m
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagLocalRelateDTO]] {
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteTagQueryDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagQueryDTO]{}
+		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteTagQueryDTO{{}}
 	}
 	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], 0, nil)
 	if err != nil {
-		return model.Error[*model.Page[SiteTagLocalRelateDTO]](err.Error())
+		return model.Error[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteTagLocalRelateDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
 		data = append(data, ToSiteTagLocalRelateDTO(tag))
 	}
-	return model.Success(&model.Page[SiteTagLocalRelateDTO]{
+	return model.Success(&model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -213,23 +213,23 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[SiteTagFullDTO]] {
+func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO, SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagQueryDTO]{}
+		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteTagQueryDTO{{}}
 	}
 	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId, nil)
 	if err != nil {
-		return model.Error[*model.Page[SiteTagFullDTO]](err.Error())
+		return model.Error[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteTagFullDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
 		data = append(data, ToSiteTagFullDTO(tag))
 	}
-	return model.Success(&model.Page[SiteTagFullDTO]{
+	return model.Success(&model.Page[SiteTagFullDTO, SiteTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -307,16 +307,16 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[SiteTagQueryDTO, SiteTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[domain.SelectItem, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagQueryDTO]{}
+		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteTagQueryDTO{{}}
 	}
 	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem]](err.Error())
+		return model.Error[*model.Page[domain.SelectItem, SiteTagQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }

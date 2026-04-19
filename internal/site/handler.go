@@ -89,23 +89,23 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteQueryDTO]) *model.ApiResponse[*model.Page[SiteResultDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteQueryDTO, SiteQueryDTO]) *model.ApiResponse[*model.Page[SiteResultDTO, SiteQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteQueryDTO]{}
+		page = &model.Page[SiteQueryDTO, SiteQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteQueryDTO{{}}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteResultDTO]](err.Error())
+		return model.Error[*model.Page[SiteResultDTO, SiteQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteResultDTO, 0, len(result.Data))
 	for _, site := range result.Data {
 		data = append(data, ToSiteResultDTO(site))
 	}
-	return model.Success(&model.Page[SiteResultDTO]{
+	return model.Success(&model.Page[SiteResultDTO, SiteQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -117,16 +117,16 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteQueryDTO])
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[SiteQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[SiteQueryDTO, SiteQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem, SiteQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteQueryDTO]{}
+		page = &model.Page[SiteQueryDTO, SiteQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteQueryDTO{{}}
 	}
 	result, err := h.svc.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem]](err.Error())
+		return model.Error[*model.Page[domain.SelectItem, SiteQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }

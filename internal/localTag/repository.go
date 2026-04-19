@@ -13,21 +13,103 @@ import (
 )
 
 // localTagRepository 本地标签仓储实现
-// 嵌入 database.BaseRepository[domain.LocalTag] 获得基础 CRUD 实现
+// 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
 type localTagRepository struct {
-	*database.BaseRepository[domain.LocalTag]
+	db *gorm.DB
 }
 
 // NewRepository 创建本地标签仓储
 func NewRepository(db *gorm.DB) Repository {
 	return &localTagRepository{
-		BaseRepository: database.NewBaseRepository[domain.LocalTag](db),
+		db: db,
 	}
 }
 
-// GORM 返回底层 GORM DB 实例（供特殊查询使用）
+// GORM 返回底层 GORM DB 实例
 func (r *localTagRepository) GORM() *gorm.DB {
-	return r.BaseRepository.GORM()
+	return r.db
+}
+
+// Save 保存
+func (r *localTagRepository) Save(ctx context.Context, tag *domain.LocalTag) error {
+	return r.db.WithContext(ctx).Create(tag).Error
+}
+
+// Update 更新
+func (r *localTagRepository) Update(ctx context.Context, tag *domain.LocalTag) error {
+	return r.db.WithContext(ctx).Save(tag).Error
+}
+
+// GetById 根据ID获取
+func (r *localTagRepository) GetById(ctx context.Context, id int64) (*domain.LocalTag, error) {
+	var tag domain.LocalTag
+	err := r.db.WithContext(ctx).First(&tag, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}
+
+// List 查询列表
+func (r *localTagRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.LocalTag, error) {
+	var tags []*domain.LocalTag
+	db := r.db.WithContext(ctx).Model(new(domain.LocalTag))
+	db = applyQueryOption(db, opt)
+	err := db.Find(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// Count 统计数量
+func (r *localTagRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	var count int64
+	db := r.db.WithContext(ctx).Model(new(domain.LocalTag))
+	db = applyQueryOption(db, opt)
+	err := db.Count(&count).Error
+	return count, err
+}
+
+// Delete 删除
+func (r *localTagRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(new(domain.LocalTag), id).Error
+}
+
+// Page 分页查询
+func (r *localTagRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+	page := opt.Page
+	pageSize := opt.PageSize
+
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	// 构建查询选项（设置 Limit 和 Offset）
+	queryOpt := opt.QueryOption
+	queryOpt.Limit = pageSize
+	queryOpt.Offset = offset
+
+	// 查询列表
+	list, err := r.List(ctx, &queryOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 统计总数（不需要 Limit 和 Offset）
+	countOpt := opt.QueryOption
+	countOpt.Limit = 0
+	countOpt.Offset = 0
+	total, err := r.Count(ctx, &countOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	return model.NewPage[domain.LocalTag, LocalTagQueryDTO](list, total, page, pageSize), nil
 }
 
 // GetByName 根据名称获取
@@ -118,7 +200,7 @@ func (r *localTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 }
 
 // QueryDTOPage DTO分页查询
-func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag], error) {
+func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
 	var tags []*domain.LocalTag
 	var total int64
 
@@ -147,7 +229,7 @@ func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize in
 		return nil, err
 	}
 
-	return model.NewPage(tags, total, page, pageSize), nil
+	return model.NewPage[domain.LocalTag, LocalTagQueryDTO](tags, total, page, pageSize), nil
 }
 
 // ListSelectItems 查询选择项列表
@@ -180,7 +262,7 @@ func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.E
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem], error) {
+func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
 	var results []*domain.SelectItem
 
 	opt := &database.PageOption{
@@ -213,11 +295,11 @@ func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 		results = append(results, item)
 	}
 
-	return model.NewPage(results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[domain.SelectItem, LocalTagQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (r *localTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.LocalTag], error) {
+func (r *localTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
 	var tags []*domain.LocalTag
 	var total int64
 
@@ -249,5 +331,48 @@ func (r *localTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSi
 		return nil, err
 	}
 
-	return model.NewPage(tags, total, page, pageSize), nil
+	return model.NewPage[domain.LocalTag, LocalTagQueryDTO](tags, total, page, pageSize), nil
+}
+
+// applyQueryOption 将 QueryOption 应用到 db 实例
+func applyQueryOption(db *gorm.DB, opt *database.QueryOption) *gorm.DB {
+	// 1. Select（覆盖型）
+	if opt.Select != nil {
+		db = db.Select(opt.Select)
+	}
+
+	// 2. Joins（叠加型）
+	for _, join := range opt.Joins {
+		db = db.Clauses(join)
+	}
+
+	// 3. Conditions（叠加型）
+	for _, cond := range opt.Conditions {
+		db = db.Where(cond)
+	}
+
+	// 4. OrderBy（叠加型）
+	if len(opt.OrderBy) > 0 {
+		db = db.Order(opt.OrderBy)
+	}
+
+	// 5. GroupBy（覆盖型）
+	if opt.GroupBy != nil {
+		db = db.Clauses(opt.GroupBy)
+	}
+
+	// 6. Having（覆盖型）
+	if opt.Having != nil {
+		db = db.Having(opt.Having)
+	}
+
+	// 7. Limit & Offset（覆盖型）
+	if opt.Limit > 0 {
+		db = db.Limit(opt.Limit)
+	}
+	if opt.Offset > 0 {
+		db = db.Offset(opt.Offset)
+	}
+
+	return db
 }

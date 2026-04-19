@@ -81,23 +81,23 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Loc
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[LocalAuthorResultDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[LocalAuthorResultDTO, LocalAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[LocalAuthorQueryDTO]{}
+		page = &model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*LocalAuthorQueryDTO{{}}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[LocalAuthorResultDTO]](err.Error())
+		return model.Error[*model.Page[LocalAuthorResultDTO, LocalAuthorQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*LocalAuthorResultDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, ToLocalAuthorResultDTO(author))
 	}
-	return model.Success(&model.Page[LocalAuthorResultDTO]{
+	return model.Success(&model.Page[LocalAuthorResultDTO, LocalAuthorQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -121,16 +121,16 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem, LocalAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[LocalAuthorQueryDTO]{}
+		page = &model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*LocalAuthorQueryDTO{{}}
 	}
 	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem]](err.Error())
+		return model.Error[*model.Page[domain.SelectItem, LocalAuthorQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }

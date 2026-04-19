@@ -59,9 +59,9 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, SiteQueryDTO], error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem], error)
+	QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem, SiteQueryDTO], error)
 }
 
 // Service 站点服务
@@ -110,12 +110,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, SiteQueryDTO], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site, SiteQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	opt := &database.PageOption{
@@ -130,7 +130,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Si
 }
 
 // QuerySelectItemPage 分页查询选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.SelectItem], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.SelectItem, SiteQueryDTO], error) {
 	conditions := buildConditionsFromDTO(&queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	return s.repo.QuerySelectItemPage(ctx, page, pageSize, conditions, orderBy)

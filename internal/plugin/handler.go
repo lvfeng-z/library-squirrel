@@ -156,23 +156,23 @@ func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.Api
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page *model.Page[PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO]] {
+func (h *Handler) Page(ctx context.Context, page *model.Page[PluginQueryDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO, PluginQueryDTO]] {
 	if page == nil {
-		page = &model.Page[PluginQueryDTO]{}
+		page = &model.Page[PluginQueryDTO, PluginQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*PluginQueryDTO{{}}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[PluginResultDTO]](err.Error())
+		return model.Error[*model.Page[PluginResultDTO, PluginQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*PluginResultDTO, 0, len(result.Data))
 	for _, plugin := range result.Data {
 		data = append(data, ToPluginResultDTO(plugin))
 	}
-	return model.Success(&model.Page[PluginResultDTO]{
+	return model.Success(&model.Page[PluginResultDTO, PluginQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

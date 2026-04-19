@@ -50,16 +50,16 @@ func (b *BaseEntity) SetUpdateTime(time int64) {
 // ========== 分页模型 ==========
 
 // PageRequest 分页请求
-type PageRequest struct {
+type PageRequest[Q any] struct {
 	// 当前页码
 	PageNumber int `json:"pageNumber"`
 	// 分页大小
 	PageSize int `json:"pageSize"`
 	// 查询条件
-	Query interface{} `json:"query,omitempty"`
+	Query Q `json:"query,omitempty"`
 }
 
-func (p *PageRequest) GetOffset() int {
+func (p *PageRequest[Q]) GetOffset() int {
 	if p.PageNumber <= 0 {
 		p.PageNumber = 1
 	}
@@ -69,103 +69,15 @@ func (p *PageRequest) GetOffset() int {
 	return (p.PageNumber - 1) * p.PageSize
 }
 
-func (p *PageRequest) GetLimit() int {
+func (p *PageRequest[Q]) GetLimit() int {
 	if p.PageSize <= 0 {
 		return 10
 	}
 	return p.PageSize
 }
 
-// ToExample 将 Query 转换为 Example
-// Query 格式: map[string]interface{}{"field": value}
-// 支持的操作符前缀: "", "!", ">", "<", ">=", "<=", "~" (LIKE)
-// 示例: {"name": "test"} -> WHERE name = 'test'
-//
-//	{"name!": "test"} -> WHERE name != 'test'
-//	{"name~": "%test%"} -> WHERE name LIKE '%test%'
-func (p *PageRequest) ToExample() *Example {
-	example := NewExample()
-
-	if p.Query == nil {
-		return example
-	}
-
-	queryMap, ok := p.Query.(map[string]interface{})
-	if !ok {
-		return example
-	}
-
-	// 特殊字段，不作为查询条件
-	nonQueryFields := map[string]bool{
-		"sort":     true,
-		"page":     true,
-		"pageSize": true,
-	}
-
-	for field, value := range queryMap {
-		if nonQueryFields[field] {
-			continue
-		}
-
-		// 解析操作符
-		op := "="
-		actualField := field
-
-		if len(field) > 0 {
-			switch field[0] {
-			case '!':
-				op = "!="
-				actualField = field[1:]
-			case '>':
-				if len(field) > 1 && field[1] == '=' {
-					op = ">="
-					actualField = field[2:]
-				} else {
-					op = ">"
-					actualField = field[1:]
-				}
-			case '<':
-				if len(field) > 1 && field[1] == '=' {
-					op = "<="
-					actualField = field[2:]
-				} else {
-					op = "<"
-					actualField = field[1:]
-				}
-			case '~':
-				op = "LIKE"
-				actualField = field[1:]
-			}
-		}
-
-		// 跳过空值
-		if value == nil {
-			continue
-		}
-
-		example.WithCondition(actualField, op, value)
-	}
-
-	// 处理排序
-	if sort, ok := queryMap["sort"]; ok {
-		if sortList, ok := sort.([]interface{}); ok {
-			for _, s := range sortList {
-				if sortMap, ok := s.(map[string]interface{}); ok {
-					key, _ := sortMap["key"].(string)
-					asc, _ := sortMap["asc"].(bool)
-					if key != "" {
-						example.WithOrder(key, asc)
-					}
-				}
-			}
-		}
-	}
-
-	return example
-}
-
 // Page 分页响应（与渲染进程 IPage 保持一致）
-type Page[T any] struct {
+type Page[D any, Q any] struct {
 	// 当前页码
 	PageNumber int `json:"pageNumber"`
 	// 分页大小
@@ -177,13 +89,13 @@ type Page[T any] struct {
 	// 本页数据量
 	CurrentCount int `json:"currentCount"`
 	// 查询条件
-	Query interface{} `json:"query,omitempty"`
+	Query Q `json:"query,omitempty"`
 	// 数据列表
-	Data []*T `json:"data"`
+	Data []*D `json:"data"`
 }
 
 // NewPage 创建分页响应
-func NewPage[T any](data []*T, total int64, pageNumber, pageSize int) *Page[T] {
+func NewPage[D any, Q any](data []*D, total int64, pageNumber, pageSize int) *Page[D, Q] {
 	pageCount := int(total) / pageSize
 	if int(total)%pageSize > 0 {
 		pageCount++
@@ -191,7 +103,7 @@ func NewPage[T any](data []*T, total int64, pageNumber, pageSize int) *Page[T] {
 	if pageCount < 1 {
 		pageCount = 1
 	}
-	return &Page[T]{
+	return &Page[D, Q]{
 		PageNumber:   pageNumber,
 		PageSize:     pageSize,
 		PageCount:    pageCount,

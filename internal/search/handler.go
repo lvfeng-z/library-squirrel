@@ -20,37 +20,37 @@ func NewHandler(svc *Service) *Handler {
 // ========== 查询操作 ==========
 
 // QueryWorkPage 查询作品分页
-func (h *Handler) QueryWorkPage(ctx context.Context, page *model.Page[domain.SearchCondition]) *model.ApiResponse[*model.Page[domain.WorkFullDTO]] {
+func (h *Handler) QueryWorkPage(ctx context.Context, page *model.Page[domain.SearchCondition, domain.SearchCondition]) *model.ApiResponse[*model.Page[domain.WorkFullDTO, domain.SearchCondition]] {
 	if page == nil {
-		page = &model.Page[domain.SearchCondition]{}
+		page = &model.Page[domain.SearchCondition, domain.SearchCondition]{}
 	}
 	if page.Data == nil {
 		page.Data = []*domain.SearchCondition{}
 	}
 	result, err := h.svc.QueryWorkPage(ctx, page.PageNumber, page.PageSize, page.Data)
 	if err != nil {
-		return model.Error[*model.Page[domain.WorkFullDTO]](err.Error())
+		return model.Error[*model.Page[domain.WorkFullDTO, domain.SearchCondition]](err.Error())
 	}
 	return model.Success(result)
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[WorkSetQueryDTO], keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[WorkSetQueryDTO, WorkSetQueryDTO], keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem, WorkSetQueryDTO]] {
 	if page == nil {
-		page = &model.Page[WorkSetQueryDTO]{}
+		page = &model.Page[WorkSetQueryDTO, WorkSetQueryDTO]{}
 	}
 	result, err := h.svc.QueryWorkSetPage(ctx, page.PageNumber, page.PageSize, keyword, siteId)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem]](err.Error())
+		return model.Error[*model.Page[domain.SelectItem, WorkSetQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }
 
 // QuerySearchConditionPage 查询搜索条件分页
-func (h *Handler) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *domain.SearchConditionQuery) *model.ApiResponse[*model.Page[domain.SelectItem]] {
+func (h *Handler) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *domain.SearchConditionQuery) *model.ApiResponse[*model.Page[domain.SelectItem, domain.SearchConditionQuery]] {
 	result, err := h.svc.QuerySearchConditionPage(ctx, page, pageSize, query)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem]](err.Error())
+		return model.Error[*model.Page[domain.SelectItem, domain.SearchConditionQuery]](err.Error())
 	}
 	return model.Success(result)
 }

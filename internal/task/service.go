@@ -108,9 +108,9 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task], error)
+	Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
 	// QueryParentPage 分页查询父任务
-	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task], error)
+	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
 	// RefreshTaskStatus 刷新任务状态
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
 	// ListTaskTree 获取任务树列表
@@ -124,7 +124,7 @@ type Repository interface {
 	// ListChildrenTask 查询子任务列表
 	ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error)
 	// QueryChildrenTaskPage 查询子任务分页
-	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task], error)
+	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
@@ -335,13 +335,13 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO TaskQueryDTO) (*pkgModel.Page[domain.Task], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+	conditions := buildConditionsFromDTO(queryDTO)
 	orderBy := queryDTO.BuildOrderBy()
 	opt := &database.PageOption{
 		QueryOption: database.QueryOption{
@@ -355,13 +355,13 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Ta
 }
 
 // QueryParentPage 分页查询父任务
-func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task], error) {
+func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
 	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
 }
 
 // QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
-func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO TaskQueryDTO) (*pkgModel.Page[domain.Task], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
+func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+	conditions := buildConditionsFromDTO(queryDTO)
 	where := combineConditions(conditions)
 	orderBy := queryDTO.BuildOrderBy()
 	return s.repo.QueryParentPage(ctx, page, pageSize, where, orderBy)
@@ -414,17 +414,14 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (s *Service) QueryTreeDataPage(ctx context.Context, page *pkgModel.Page[TaskQueryDTO]) (*TreeDataPageDTO, error) {
-	// 获取查询条件
-	queryDTO := page.Query.(TaskQueryDTO)
-
+func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
 	// 构建查询条件
-	conditions := buildConditionsFromDTO(&queryDTO)
+	conditions := buildConditionsFromDTO(queryDTO)
 	where := combineConditions(conditions)
 	orderBy := queryDTO.BuildOrderBy()
 
 	// 分页查询父任务（is_collection=1 OR pid IS NULL OR pid=0）
-	resultPage, err := s.repo.QueryParentPage(ctx, page.PageNumber, page.PageSize, where, orderBy)
+	resultPage, err := s.repo.QueryParentPage(ctx, page, pageSize, where, orderBy)
 	if err != nil {
 		return nil, err
 	}
@@ -496,13 +493,13 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Ta
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task], error) {
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
 	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
 }
 
 // QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
-func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO TaskQueryDTO) (*pkgModel.Page[domain.Task], error) {
-	conditions := buildConditionsFromDTO(&queryDTO)
+func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+	conditions := buildConditionsFromDTO(queryDTO)
 	where := combineConditions(conditions)
 	orderBy := queryDTO.BuildOrderBy()
 	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, orderBy)

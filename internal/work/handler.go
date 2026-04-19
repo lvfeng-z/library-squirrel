@@ -97,20 +97,20 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Wor
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[WorkResultDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[WorkResultDTO, WorkQueryDTO]] {
 	if queryDTO == nil {
 		queryDTO = &WorkQueryDTO{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[WorkResultDTO]](err.Error())
+		return model.Error[*model.Page[WorkResultDTO, WorkQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*WorkResultDTO, 0, len(result.Data))
 	for _, work := range result.Data {
 		data = append(data, ToWorkResultDTO(work))
 	}
-	return model.Success(&model.Page[WorkResultDTO]{
+	return model.Success(&model.Page[WorkResultDTO, WorkQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

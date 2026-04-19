@@ -15,19 +15,106 @@ import (
 
 // siteAuthorRepository 站点作者仓储实现
 type siteAuthorRepository struct {
-	*database.BaseRepository[domain.SiteAuthor]
+	db *gorm.DB
 }
 
 // NewRepository 创建站点作者仓储
 func NewRepository(db *gorm.DB) Repository {
 	return &siteAuthorRepository{
-		BaseRepository: database.NewBaseRepository[domain.SiteAuthor](db),
+		db: db,
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
 func (r *siteAuthorRepository) GORM() *gorm.DB {
-	return r.BaseRepository.GORM()
+	return r.db
+}
+
+// Save 保存
+func (r *siteAuthorRepository) Save(ctx context.Context, author *domain.SiteAuthor) error {
+	return r.db.WithContext(ctx).Create(author).Error
+}
+
+// SaveBatch 批量保存
+func (r *siteAuthorRepository) SaveBatch(ctx context.Context, authors []*domain.SiteAuthor) error {
+	return r.db.WithContext(ctx).Create(authors).Error
+}
+
+// Update 更新
+func (r *siteAuthorRepository) Update(ctx context.Context, author *domain.SiteAuthor) error {
+	return r.db.WithContext(ctx).Save(author).Error
+}
+
+// GetById 根据ID获取
+func (r *siteAuthorRepository) GetById(ctx context.Context, id int64) (*domain.SiteAuthor, error) {
+	var author domain.SiteAuthor
+	err := r.db.WithContext(ctx).First(&author, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &author, nil
+}
+
+// List 查询列表
+func (r *siteAuthorRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.SiteAuthor, error) {
+	var authors []*domain.SiteAuthor
+	db := r.db.WithContext(ctx).Model(new(domain.SiteAuthor))
+	db = applyQueryOption(db, opt)
+	err := db.Find(&authors).Error
+	if err != nil {
+		return nil, err
+	}
+	return authors, nil
+}
+
+// Count 统计数量
+func (r *siteAuthorRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	var count int64
+	db := r.db.WithContext(ctx).Model(new(domain.SiteAuthor))
+	db = applyQueryOption(db, opt)
+	err := db.Count(&count).Error
+	return count, err
+}
+
+// Delete 删除
+func (r *siteAuthorRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(new(domain.SiteAuthor), id).Error
+}
+
+// Page 分页查询
+func (r *siteAuthorRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteAuthor, SiteAuthorQueryDTO], error) {
+	page := opt.Page
+	pageSize := opt.PageSize
+
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	// 构建查询选项（设置 Limit 和 Offset）
+	queryOpt := opt.QueryOption
+	queryOpt.Limit = pageSize
+	queryOpt.Offset = offset
+
+	// 查询列表
+	list, err := r.List(ctx, &queryOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 统计总数（不需要 Limit 和 Offset）
+	countOpt := opt.QueryOption
+	countOpt.Limit = 0
+	countOpt.Offset = 0
+	total, err := r.Count(ctx, &countOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	return model.NewPage[domain.SiteAuthor, SiteAuthorQueryDTO](list, total, page, pageSize), nil
 }
 
 // ListByWorkId 查询作品的站点作者
@@ -130,7 +217,7 @@ func (r *siteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (r *siteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[domain.SiteAuthorFullDTO], error) {
+func (r *siteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[domain.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	var results []*domain.SiteAuthorFullDTO
 	var total int64
 
@@ -192,11 +279,11 @@ func (r *siteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 		results = append(results, dto)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SiteAuthorFullDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (r *siteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO], error) {
+func (r *siteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	var results []*domain.SiteAuthorLocalRelateDTO
 	var total int64
 
@@ -252,7 +339,7 @@ func (r *siteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page
 		results = append(results, dto)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil
 }
 
 // GetLocalAuthorByName 根据作者名称查询本地作者
@@ -268,4 +355,47 @@ func (r *siteAuthorRepository) GetLocalAuthorByName(ctx context.Context, authorN
 // SaveLocalAuthor 保存本地作者
 func (r *siteAuthorRepository) SaveLocalAuthor(ctx context.Context, author *domain.LocalAuthor) error {
 	return r.GORM().WithContext(ctx).Save(author).Error
+}
+
+// applyQueryOption 将 QueryOption 应用到 db 实例
+func applyQueryOption(db *gorm.DB, opt *database.QueryOption) *gorm.DB {
+	// 1. Select（覆盖型）
+	if opt.Select != nil {
+		db = db.Select(opt.Select)
+	}
+
+	// 2. Joins（叠加型）
+	for _, join := range opt.Joins {
+		db = db.Clauses(join)
+	}
+
+	// 3. Conditions（叠加型）
+	for _, cond := range opt.Conditions {
+		db = db.Where(cond)
+	}
+
+	// 4. OrderBy（叠加型）
+	if len(opt.OrderBy) > 0 {
+		db = db.Order(opt.OrderBy)
+	}
+
+	// 5. GroupBy（覆盖型）
+	if opt.GroupBy != nil {
+		db = db.Clauses(opt.GroupBy)
+	}
+
+	// 6. Having（覆盖型）
+	if opt.Having != nil {
+		db = db.Having(opt.Having)
+	}
+
+	// 7. Limit & Offset（覆盖型）
+	if opt.Limit > 0 {
+		db = db.Limit(opt.Limit)
+	}
+	if opt.Offset > 0 {
+		db = db.Offset(opt.Offset)
+	}
+
+	return db
 }

@@ -8,15 +8,15 @@ import (
 type Operator string
 
 const (
-	OpEq        Operator = "eq"         // =
-	OpNe        Operator = "ne"         // !=
-	OpGt        Operator = "gt"         // >
-	OpGte       Operator = "gte"        // >=
-	OpLt        Operator = "lt"         // <
-	OpLte       Operator = "lte"        // <=
-	OpLike      Operator = "like"       // LIKE
-	OpIn        Operator = "in"         // IN
-	OpIsNull    Operator = "is_null"    // IS NULL
+	OpEq        Operator = "eq"          // =
+	OpNe        Operator = "ne"          // !=
+	OpGt        Operator = "gt"          // >
+	OpGte       Operator = "gte"         // >=
+	OpLt        Operator = "lt"          // <
+	OpLte       Operator = "lte"         // <=
+	OpLike      Operator = "like"        // LIKE
+	OpIn        Operator = "in"          // IN
+	OpIsNull    Operator = "is_null"     // IS NULL
 	OpIsNotNull Operator = "is_not_null" // IS NOT NULL
 )
 
@@ -45,7 +45,7 @@ type WhereDTO struct {
 // 在 JSON 反序列化时自动区分
 type ConditionOrGroup struct {
 	Condition *Condition `json:"-"`
-	Group      *WhereDTO  `json:"-"`
+	Group     *WhereDTO  `json:"-"`
 }
 
 // MarshalJSON 实现 ConditionOrGroup 的 JSON 序列化

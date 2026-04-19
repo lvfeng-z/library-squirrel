@@ -62,7 +62,7 @@ func NewService(
 }
 
 // QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
-func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *domain.SearchConditionQuery) (*model.Page[domain.SelectItem], error) {
+func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *domain.SearchConditionQuery) (*model.Page[domain.SelectItem, domain.SearchConditionQuery], error) {
 	if query == nil {
 		query = &domain.SearchConditionQuery{}
 	}
@@ -70,11 +70,11 @@ func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize i
 	if err != nil {
 		return nil, fmt.Errorf("query search condition page error: %w", err)
 	}
-	return model.NewPage(items, total, page, pageSize), nil
+	return model.NewPage[domain.SelectItem, domain.SearchConditionQuery](items, total, page, pageSize), nil
 }
 
 // QueryWorkPage 查询作品分页
-func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) (*model.Page[domain.WorkFullDTO], error) {
+func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) (*model.Page[domain.WorkFullDTO, domain.SearchCondition], error) {
 	items, total, err := s.repo.QueryWorkPage(ctx, page, pageSize, conditions)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditi
 		}()
 	}
 
-	return model.NewPage(items, total, page, pageSize), nil
+	return model.NewPage[domain.WorkFullDTO, domain.SearchCondition](items, total, page, pageSize), nil
 }
 
 // extractUsedConditions 从搜索条件中提取需要更新lastUse的ID
@@ -109,12 +109,12 @@ func extractUsedConditions(conditions []*domain.SearchCondition) map[domain.Sear
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) (*model.Page[domain.SelectItem], error) {
+func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) (*model.Page[domain.SelectItem, WorkSetQueryDTO], error) {
 	items, total, err := s.repo.QueryWorkSetPage(ctx, page, pageSize, keyword, siteId)
 	if err != nil {
 		return nil, err
 	}
-	return model.NewPage(items, total, page, pageSize), nil
+	return model.NewPage[domain.SelectItem, WorkSetQueryDTO](items, total, page, pageSize), nil
 }
 
 // UpdateLastUsed 更新搜索条件最后使用时间

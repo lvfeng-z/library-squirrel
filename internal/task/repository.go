@@ -14,25 +14,127 @@ import (
 )
 
 // taskRepository 任务仓储实现
-// 嵌入 database.BaseRepository[domain.Task] 获得基础 CRUD 实现
+// 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
 type taskRepository struct {
-	*database.BaseRepository[domain.Task]
+	db *gorm.DB
 }
 
 // NewRepository 创建任务仓储
 func NewRepository(db *gorm.DB) Repository {
 	return &taskRepository{
-		BaseRepository: database.NewBaseRepository[domain.Task](db),
+		db: db,
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
 func (r *taskRepository) GORM() *gorm.DB {
-	return r.BaseRepository.GORM()
+	return r.db
+}
+
+// Save 保存
+func (r *taskRepository) Save(ctx context.Context, task *domain.Task) error {
+	return r.db.WithContext(ctx).Create(task).Error
+}
+
+// SaveBatch 批量保存
+func (r *taskRepository) SaveBatch(ctx context.Context, tasks []*domain.Task) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(tasks).Error
+}
+
+// Update 更新
+func (r *taskRepository) Update(ctx context.Context, task *domain.Task) error {
+	return r.db.WithContext(ctx).Save(task).Error
+}
+
+// GetById 根据ID获取
+func (r *taskRepository) GetById(ctx context.Context, id int64) (*domain.Task, error) {
+	var task domain.Task
+	err := r.db.WithContext(ctx).First(&task, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+// Get 根据条件获取单个
+func (r *taskRepository) Get(ctx context.Context, opt *database.QueryOption) (*domain.Task, error) {
+	var task domain.Task
+	db := r.db.WithContext(ctx).Model(new(domain.Task))
+	db = applyQueryOption(db, opt)
+	err := db.First(&task).Error
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+// List 查询列表
+func (r *taskRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Task, error) {
+	var tasks []*domain.Task
+	db := r.db.WithContext(ctx).Model(new(domain.Task))
+	db = applyQueryOption(db, opt)
+	err := db.Find(&tasks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+// Count 统计数量
+func (r *taskRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	var count int64
+	db := r.db.WithContext(ctx).Model(new(domain.Task))
+	db = applyQueryOption(db, opt)
+	err := db.Count(&count).Error
+	return count, err
+}
+
+// Delete 删除
+func (r *taskRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(new(domain.Task), id).Error
+}
+
+// Page 分页查询
+func (r *taskRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, TaskQueryDTO], error) {
+	page := opt.Page
+	pageSize := opt.PageSize
+
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	// 构建查询选项（设置 Limit 和 Offset）
+	queryOpt := opt.QueryOption
+	queryOpt.Limit = pageSize
+	queryOpt.Offset = offset
+
+	// 查询列表
+	list, err := r.List(ctx, &queryOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 统计总数（不需要 Limit 和 Offset）
+	countOpt := opt.QueryOption
+	countOpt.Limit = 0
+	countOpt.Offset = 0
+	total, err := r.Count(ctx, &countOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	return model.NewPage[domain.Task, TaskQueryDTO](list, total, page, pageSize), nil
 }
 
 // QueryParentPage 分页查询父任务
-func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task], error) {
+func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, TaskQueryDTO], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	// 查询是父任务的或者只有单个任务的
@@ -59,7 +161,7 @@ func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int
 		return nil, err
 	}
 
-	return model.NewPage(tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, TaskQueryDTO](tasks, total, page, pageSize), nil
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -237,7 +339,7 @@ func (r *taskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (r *taskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task], error) {
+func (r *taskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, TaskQueryDTO], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("pid = ?", pid)
 
 	if where != nil {
@@ -261,7 +363,7 @@ func (r *taskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, p
 		return nil, err
 	}
 
-	return model.NewPage(tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, TaskQueryDTO](tasks, total, page, pageSize), nil
 }
 
 // ListSchedule 查询任务进度列表
@@ -300,6 +402,49 @@ func (r *taskRepository) listChildrenByParentsTask(ctx context.Context, pids []i
 		return nil, err
 	}
 	return tasks, nil
+}
+
+// applyQueryOption 将 QueryOption 应用到 db 实例
+func applyQueryOption(db *gorm.DB, opt *database.QueryOption) *gorm.DB {
+	// 1. Select（覆盖型）
+	if opt.Select != nil {
+		db = db.Select(opt.Select)
+	}
+
+	// 2. Joins（叠加型）
+	for _, join := range opt.Joins {
+		db = db.Clauses(join)
+	}
+
+	// 3. Conditions（叠加型）
+	for _, cond := range opt.Conditions {
+		db = db.Where(cond)
+	}
+
+	// 4. OrderBy（叠加型）
+	if len(opt.OrderBy) > 0 {
+		db = db.Order(opt.OrderBy)
+	}
+
+	// 5. GroupBy（覆盖型）
+	if opt.GroupBy != nil {
+		db = db.Clauses(opt.GroupBy)
+	}
+
+	// 6. Having（覆盖型）
+	if opt.Having != nil {
+		db = db.Having(opt.Having)
+	}
+
+	// 7. Limit & Offset（覆盖型）
+	if opt.Limit > 0 {
+		db = db.Limit(opt.Limit)
+	}
+	if opt.Offset > 0 {
+		db = db.Offset(opt.Offset)
+	}
+
+	return db
 }
 
 // 辅助函数：将int64数组转换为逗号分隔的字符串

@@ -3,21 +3,25 @@
 ## 1. 需求概述
 
 ### 1.1 目标
-设计一套能够被 JSON 反序列化的 DTO 数据结构，用于前端构建 SQL 查询条件（WHERE 和 ORDER BY），并提供对应的反序列化与转换逻辑，将 DTO 转换为 GORM 的 `clause.Expression`。
+设计一套通用的查询 DTO 结构和转换机制，用于替代现有各模块的 QueryDTO，实现：
+- 前端构建查询条件
+- 后端将 DTO 转换为 `database.PageOption` / `database.QueryOption`
+- 复用现有的 `List`、`Page` 等数据库查询方法
 
 ### 1.2 使用场景
 - 前端通过 JSON 构建查询条件
-- 后端接收 JSON 后反序列化为 DTO，再转换为 GORM clause 使用
-- **限制**：后端构建 SQL 时不允许使用此 DTO
+- 后端解析 DTO 并转换为 GORM clause 表达式
+- 非数据库字段由特定业务逻辑处理
 
 ### 1.3 需求范围
 | 功能 | 优先级 | 说明 |
 |-----|-------|------|
-| WHERE 条件 | P0 | 支持 AND/OR 嵌套逻辑组合 |
-| ORDER BY 排序 | P0 | 支持多字段排序 |
-| 操作符支持 | P0 | eq, ne, gt, gte, lt, lte, like, in, is_null, is_not_null |
-| 泛型约束 | P0 | 使用 Go 泛型约束 LogicalGroup 的条件类型 |
-| JSON 多态反序列化 | P0 | 支持 conditions 中混合 Condition 和嵌套 LogicGroup |
+| QueryAttribute 定义 | P0 | 值 + 运算符 + 排序组合 |
+| query tag 字段映射 | P0 | 通过自定义 tag 映射数据库列名 |
+| 字段类型区分 | P0 | query tag 为空 = 非数据库字段 |
+| 结构体 → PageOption 转换 | P0 | 转换为现有查询方法所需格式 |
+| 嵌套 AND/OR 逻辑 | P0 | 支持复杂查询条件组合 |
+| 排序构建 | P0 | Order 不为空的字段纳入排序 |
 
 ---
 
@@ -27,192 +31,234 @@
 
 ```
 pkg/query/
-├── dto.go           # DTO 数据结构定义（含泛型）
-├── dto_test.go      # DTO 单元测试
-└── builder.go       # 反序列化与转换逻辑
+├── dto.go              # 已有：基础 DTO（Condition, WhereDTO, OrderDTO, QueryDTO）
+├── builder.go          # 已有：WhereDTO/OrderDTO → clause.Expression
+├── field_mapper.go     # 新增：字段映射器（反射获取 query tag）
+├── converter.go        # 新增：结构体 → PageOption/QueryOption 转换器
+├── converter_test.go   # 新增：转换器单元测试
+└── attribute.go        # 新增：QueryAttribute 定义
 ```
 
-### 2.2 目录定位
+### 2.2 核心数据结构
 
-选择 `pkg/query/` 而非 `internal/`：
-- `pkg/` 表示公共包，可被外部引用
-- `internal/` 仅限内部使用
-- 此 DTO 需被前端调用（通过 Wails），属于公共接口
+#### 2.2.1 QueryAttribute（查询属性）
 
-### 2.3 核心数据结构
+```go
+// QueryAttribute 查询属性：值 + 运算符 + 排序
+type QueryAttribute struct {
+    Value    interface{} `json:"value"`              // 查询值
+    Operator Operator    `json:"operator,omitempty"` // 运算符（可省略，默认 eq）
+    Order    SortOrder   `json:"order,omitempty"`    // 排序（可省略）
+}
+```
 
-#### 2.3.1 操作符定义
+#### 2.2.2 各模块 QueryDTO 示例
+
+```go
+// TaskQueryDTO
+type TaskQueryDTO struct {
+    TaskName     query.QueryAttribute `json:"taskName" query:"task_name"`
+    SiteId       query.QueryAttribute `json:"siteId" query:"site_id"`
+    Status       query.QueryAttribute `json:"status" query:"status"`
+    CreateTime   query.QueryAttribute `json:"createTime" query:"create_time"`
+    // 非数据库字段，query tag 为空
+    NonDbField   query.QueryAttribute `json:"nonDbField" query:""`
+}
+```
+
+#### 2.2.3 query tag 规则
+
+| 字段类型 | query tag 示例 | 说明 |
+|---------|---------------|------|
+| 数据库字段 | `query:"task_name"` | 参与通用查询条件转换 |
+| 非数据库字段 | `query:""` | 跳过通用转换，由业务逻辑处理 |
+
+### 2.3 前端 JSON 示例
+
+```json
+{
+  "taskName": {"value": "test", "operator": "like", "order": "asc"},
+  "siteId": {"value": 123},
+  "status": {"value": 1, "order": "desc"},
+  "createTime": {"value": null, "order": "asc"},
+  "nonDbField": {"value": "special"}
+}
+```
+
+**处理逻辑**：
+- `taskName`: 值非空 + 操作符 like → `task_name LIKE '%test%'`，Order=asc 纳入排序
+- `siteId`: 值非空 + 操作符默认 eq → `site_id = 123`，无 Order 不排序
+- `status`: 值非空 + 操作符默认 eq → `status = 1`，Order=desc 纳入排序
+- `createTime`: 值为 null → 不作为查询条件，但 Order=asc 纳入排序
+- `nonDbField`: query tag 为空 → 跳过通用转换
+
+### 2.4 运算符定义（已有）
 
 ```go
 type Operator string
 
 const (
-    OpEq        Operator = "eq"
-    OpNe        Operator = "ne"
-    OpGt        Operator = "gt"
-    OpGte       Operator = "gte"
-    OpLt        Operator = "lt"
-    OpLte       Operator = "lte"
-    OpLike      Operator = "like"
-    OpIn        Operator = "in"
-    OpIsNull    Operator = "is_null"
-    OpIsNotNull Operator = "is_not_null"
+    OpEq        Operator = "eq"         // =
+    OpNe        Operator = "ne"         // !=
+    OpGt        Operator = "gt"         // >
+    OpGte       Operator = "gte"        // >=
+    OpLt        Operator = "lt"         // <
+    OpLte       Operator = "lte"        // <=
+    OpLike      Operator = "like"       // LIKE（自动加 %）
+    OpIn        Operator = "in"         // IN
+    OpIsNull    Operator = "is_null"   // IS NULL
+    OpIsNotNull Operator = "is_not_null" // IS NOT NULL
 )
 ```
 
-#### 2.3.2 Condition（单个条件）
+### 2.5 FieldMapper（字段映射器）
 
 ```go
-type Condition struct {
-    Field    string      `json:"field"`
-    Operator Operator    `json:"operator"`
-    Value    interface{} `json:"value"`
+// FieldMapper 通过反射获取结构体字段的 query tag 映射
+type FieldMapper struct {
+    structType reflect.Type
+}
+
+// NewFieldMapper 创建字段映射器
+func NewFieldMapper(model interface{}) *FieldMapper {
+    t := reflect.TypeOf(model)
+    if t.Kind() == reflect.Ptr {
+        t = t.Elem()
+    }
+    return &FieldMapper{structType: t}
+}
+
+// GetColumnName 获取 query tag 映射的列名
+// 返回 (列名, 是否为数据库字段)
+func (m *FieldMapper) GetColumnName(fieldName string) (string, bool) {
+    field, ok := m.structType.FieldByName(fieldName)
+    if !ok {
+        return "", false
+    }
+    colName := field.Tag.Get("query")
+    if colName == "" {
+        return "", false // 非数据库字段
+    }
+    return colName, true
 }
 ```
 
-#### 2.3.3 LogicGroup（逻辑组合树）
-
-使用 Go 泛型约束条件类型，支持递归嵌套：
+### 2.6 Converter（转换器）
 
 ```go
-type LogicalItem any
-
-type LogicGroup[T LogicalItem] struct {
-    Type       string `json:"type"`       // "and" 或 "or"
-    Conditions []T    `json:"conditions"` // T 只能是 Condition 或 *LogicGroup[Condition]
+// Converter 结构体 → PageOption/QueryOption 转换器
+type Converter struct {
+    mapper *FieldMapper
 }
+
+func NewConverter(model interface{}) *Converter {
+    return &Converter{
+        mapper: NewFieldMapper(model),
+    }
+}
+
+// ToPageOption 将 DTO 转换为 PageOption
+func (c *Converter) ToPageOption(dto interface{}, page, pageSize int) (*database.PageOption, error)
+
+// ToQueryOption 将 DTO 转换为 QueryOption
+func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error)
 ```
 
-#### 2.3.4 WhereDTO
+### 2.7 转换流程
 
-直接使用 `LogicGroup[Condition]` 作为 WHERE 子句：
-
-```go
-type WhereDTO = LogicGroup[Condition]
 ```
-
-#### 2.3.5 OrderDTO（排序）
-
-```go
-type SortOrder string
-
-const (
-    OrderAsc  SortOrder = "asc"
-    OrderDesc SortOrder = "desc"
-)
-
-type OrderDTO struct {
-    Field string    `json:"field"`
-    Order SortOrder `json:"order"`
-}
-```
-
-#### 2.3.6 QueryDTO（完整查询）
-
-```go
-type QueryDTO struct {
-    Where *WhereDTO  `json:"where,omitempty"`
-    Order []OrderDTO `json:"order,omitempty"`
-}
-```
-
-### 2.4 JSON 格式示例
-
-```json
-{
-  "where": {
-    "type": "and",
-    "conditions": [
-      {"field": "status", "operator": "eq", "value": 1},
-      {
-        "type": "or",
-        "conditions": [
-          {"field": "name", "operator": "like", "value": "Alice"},
-          {"field": "email", "operator": "like", "value": "alice@example.com"}
-        ]
-      }
-    ]
-  },
-  "order": [
-    {"field": "create_time", "order": "desc"},
-    {"field": "update_time", "order": "asc"}
-  ]
-}
+前端 JSON → TaskQueryDTO 结构体
+    ↓
+Converter.ToQueryOption(dto)
+    ↓
+遍历 TaskQueryDTO 的所有字段
+    ↓
+获取字段的 query tag：
+    - 为空 → 跳过通用转换（由业务逻辑处理）
+    - 非空 → 获取列名映射
+    ↓
+构建 WhereClause：
+    - Field = query tag 值
+    - Operator = QueryAttribute.Operator（默认 eq）
+    - Value = QueryAttribute.Value
+    ↓
+收集 Order 不为空的字段 → 构建 OrderBy
+    ↓
+返回 database.PageOption / QueryOption
 ```
 
 ---
 
-## 3. 实现细节
+## 3. 开发任务
 
-### 3.1 多态反序列化实现
+### 3.1 任务列表
 
-由于 Go 的 `encoding/json` 无法自动区分泛型类型，需自定义 `UnmarshalJSON` 方法：
-
-```go
-func (lg *LogicGroup[Condition]) UnmarshalJSON(data []byte) error {
-    // 1. 解析基础结构（type 和 raw conditions）
-    // 2. 遍历 conditions，逐个判断类型：
-    //    - 如果是对象且包含 "type" 和 "conditions" 字段 -> 递归解析为 *LogicGroup[Condition]
-    //    - 否则解析为 Condition
-    // 3. 返回解析结果
-}
-```
-
-### 3.2 GORM Clause 转换逻辑
-
-```go
-type QueryBuilder struct{}
-
-func (b *QueryBuilder) BuildWhere(dto *WhereDTO) ([]clause.Expression, error)
-func (b *QueryBuilder) BuildOrder(dtos []OrderDTO) []clause.Expression
-```
-
-转换映射关系：
-
-| Operator | GORM Clause |
-|----------|-------------|
-| eq | `clause.Eq{Column, Value}` |
-| ne | `clause.Neq{Column, Value}` |
-| gt | `clause.Gt{Column, Value}` |
-| gte | `clause.Gte{Column, Value}` |
-| lt | `clause.Lt{Column, Value}` |
-| lte | `clause.Lte{Column, Value}` |
-| like | `clause.Like{Column, Value}` (自动添加 %) |
-| in | `clause.IN{Column, Values}` |
-| is_null | `clause.Expr{SQL: "? IS NULL", Vars: []}` |
-| is_not_null | `clause.Expr{SQL: "? IS NOT NULL", Vars: []}` |
-
-逻辑组合：
-- `type: "and"` -> `clause.And(subExprs...)`
-- `type: "or"` -> `clause.Or(subExprs...)`
-
----
-
-## 4. 开发任务
-
-### 4.1 任务列表
-
-| # | 任务 | 描述 | 优先级 |
+| # | 任务 | 文件 | 优先级 |
 |---|------|------|--------|
-| 1 | 创建 pkg/query/ 目录 | 确定包路径 | P0 |
-| 2 | 实现 dto.go | 定义数据结构 | P0 |
-| 3 | 实现 builder.go | 实现反序列化与转换逻辑 | P0 |
-| 4 | 编写单元测试 | 覆盖核心功能 | P0 |
+| 1 | 新增 attribute.go | `pkg/query/attribute.go` | P0 |
+| 2 | 新增 field_mapper.go | `pkg/query/field_mapper.go` | P0 |
+| 3 | 新增 converter.go | `pkg/query/converter.go` | P0 |
+| 4 | 新增 converter_test.go | `pkg/query/converter_test.go` | P0 |
 
-### 4.2 验收标准
+### 3.2 验收标准
 
-1. **JSON 反序列化正确**
-   - `{"field": "status", "operator": "eq", "value": 1}` -> `Condition{Field: "status", Operator: OpEq, Value: 1}`
-   - 嵌套的 LogicGroup 能正确解析
+1. **QueryAttribute 正确解析**
+   - Value、Operator、Order 正确反序列化
+   - Operator 省略时默认为 eq
 
-2. **GORM Clause 转换正确**
-   - 简单条件转换正确
-   - AND/OR 嵌套逻辑转换正确
+2. **query tag 映射正确**
+   - 有 query tag 的字段返回列名
+   - query tag 为空的字段返回非数据库字段标识
 
-3. **单元测试覆盖**
-   - `BuildWhere` 方法覆盖
-   - `BuildOrder` 方法覆盖
-   - 边界条件测试
+3. **转换结果正确**
+   - 数据库字段转换为 clause.Expression
+   - 非数据库字段被正确跳过
+   - Order 不为空的字段正确构建排序
+
+4. **与现有查询方法兼容**
+   - 转换结果可直接用于 `BaseRepository.Page()`
+   - 转换结果可直接用于 `BaseRepository.List()`
+
+---
+
+## 4. 使用示例
+
+### 4.1 定义 QueryDTO
+
+```go
+// internal/task/query.go
+package task
+
+import "github.com/library-squirrel/wails/pkg/query"
+
+type TaskQueryDTO struct {
+    TaskName   query.QueryAttribute `json:"taskName" query:"task_name"`
+    SiteId     query.QueryAttribute `json:"siteId" query:"site_id"`
+    Status     query.QueryAttribute `json:"status" query:"status"`
+    CreateTime query.QueryAttribute `json:"createTime" query:"create_time"`
+    // 非数据库字段
+    ExtraField query.QueryAttribute `json:"extraField" query:""`
+}
+```
+
+### 4.2 Service 层使用
+
+```go
+func (s *Service) QueryTaskPage(ctx context.Context, page, pageSize int, dto *TaskQueryDTO) (*pkgModel.Page[domain.Task], error) {
+    conv := query.NewConverter(domain.Task{})
+    pageOpt, err := conv.ToPageOption(dto, page, pageSize)
+    if err != nil {
+        return nil, err
+    }
+
+    // 处理非数据库字段（如需特殊逻辑）
+    if dto.ExtraField.Value != nil {
+        // 业务特定处理
+    }
+
+    return s.repo.Page(ctx, pageOpt)
+}
+```
 
 ---
 
@@ -220,9 +266,10 @@ func (b *QueryBuilder) BuildOrder(dtos []OrderDTO) []clause.Expression
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `pkg/query/dto.go` | 新增 | DTO 数据结构定义 |
-| `pkg/query/dto_test.go` | 新增 | DTO 单元测试 |
-| `pkg/query/builder.go` | 新增 | 反序列化与转换逻辑 |
+| `pkg/query/attribute.go` | 新增 | QueryAttribute 定义 |
+| `pkg/query/field_mapper.go` | 新增 | 字段映射器 |
+| `pkg/query/converter.go` | 新增 | 结构体转换器 |
+| `pkg/query/converter_test.go` | 新增 | 转换器单元测试 |
 
 ---
 
@@ -232,18 +279,6 @@ func (b *QueryBuilder) BuildOrder(dtos []OrderDTO) []clause.Expression
 |------|------|------|
 | gorm.io/gorm | ^1.31 | ORM 框架 |
 | gorm.io/gorm/clause | - | SQL 字句构建 |
+| internal/database | - | PageOption, QueryOption |
 
 ---
-
-## 7. 后续扩展（预留）
-
-以下功能暂不实现，记录于此以便后续扩展：
-
-| 功能 | 说明 |
-|------|------|
-| SELECT 字句 | 指定返回字段 |
-| JOIN 字句 | 关联查询 |
-| GROUP BY | 分组聚合 |
-| HAVING | 分组后过滤 |
-| LIMIT/OFFSET | 分页控制 |
-| 字段白名单验证 | SQL 注入防护 |

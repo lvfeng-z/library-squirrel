@@ -129,23 +129,23 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorResultDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteAuthorQueryDTO{{}}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteAuthorResultDTO]](err.Error())
+		return model.Error[*model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteAuthorResultDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, ToSiteAuthorResultDTO(author))
 	}
-	return model.Success(&model.Page[SiteAuthorResultDTO]{
+	return model.Success(&model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -157,23 +157,23 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQuer
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorFullDTO]] {
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteAuthorQueryDTO{{}}
 	}
 	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteAuthorFullDTO]](err.Error())
+		return model.Error[*model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteAuthorFullDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, ToSiteAuthorFullDTO(author))
 	}
-	return model.Success(&model.Page[SiteAuthorFullDTO]{
+	return model.Success(&model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -185,23 +185,23 @@ func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO]] {
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
 	if page.Data == nil || len(page.Data) == 0 {
 		page.Data = []*SiteAuthorQueryDTO{{}}
 	}
 	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
 	if err != nil {
-		return model.Error[*model.Page[SiteAuthorLocalRelateDTO]](err.Error())
+		return model.Error[*model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*SiteAuthorLocalRelateDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, ToSiteAuthorLocalRelateDTO(author))
 	}
-	return model.Success(&model.Page[SiteAuthorLocalRelateDTO]{
+	return model.Success(&model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

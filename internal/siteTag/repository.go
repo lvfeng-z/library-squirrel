@@ -14,20 +14,123 @@ import (
 )
 
 // siteTagRepository 站点标签仓储实现
+// 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
 type siteTagRepository struct {
-	*database.BaseRepository[domain.SiteTag]
+	db *gorm.DB
 }
 
 // NewRepository 创建站点标签仓储
 func NewRepository(db *gorm.DB) Repository {
 	return &siteTagRepository{
-		BaseRepository: database.NewBaseRepository[domain.SiteTag](db),
+		db: db,
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
 func (r *siteTagRepository) GORM() *gorm.DB {
-	return r.BaseRepository.GORM()
+	return r.db
+}
+
+// Save 保存
+func (r *siteTagRepository) Save(ctx context.Context, tag *domain.SiteTag) error {
+	return r.db.WithContext(ctx).Create(tag).Error
+}
+
+// SaveBatch 批量保存
+func (r *siteTagRepository) SaveBatch(ctx context.Context, tags []*domain.SiteTag) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(tags).Error
+}
+
+// Update 更新
+func (r *siteTagRepository) Update(ctx context.Context, tag *domain.SiteTag) error {
+	return r.db.WithContext(ctx).Save(tag).Error
+}
+
+// GetById 根据ID获取
+func (r *siteTagRepository) GetById(ctx context.Context, id int64) (*domain.SiteTag, error) {
+	var tag domain.SiteTag
+	err := r.db.WithContext(ctx).First(&tag, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}
+
+// Get 根据条件获取单个
+func (r *siteTagRepository) Get(ctx context.Context, opt *database.QueryOption) (*domain.SiteTag, error) {
+	var tag domain.SiteTag
+	db := r.db.WithContext(ctx).Model(new(domain.SiteTag))
+	db = applyQueryOption(db, opt)
+	err := db.First(&tag).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}
+
+// List 查询列表
+func (r *siteTagRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.SiteTag, error) {
+	var tags []*domain.SiteTag
+	db := r.db.WithContext(ctx).Model(new(domain.SiteTag))
+	db = applyQueryOption(db, opt)
+	err := db.Find(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// Count 统计数量
+func (r *siteTagRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
+	var count int64
+	db := r.db.WithContext(ctx).Model(new(domain.SiteTag))
+	db = applyQueryOption(db, opt)
+	err := db.Count(&count).Error
+	return count, err
+}
+
+// Delete 删除
+func (r *siteTagRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(new(domain.SiteTag), id).Error
+}
+
+// Page 分页查询
+func (r *siteTagRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteTag, SiteTagQueryDTO], error) {
+	page := opt.Page
+	pageSize := opt.PageSize
+
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	// 构建查询选项（设置 Limit 和 Offset）
+	queryOpt := opt.QueryOption
+	queryOpt.Limit = pageSize
+	queryOpt.Offset = offset
+
+	// 查询列表
+	list, err := r.List(ctx, &queryOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 统计总数（不需要 Limit 和 Offset）
+	countOpt := opt.QueryOption
+	countOpt.Limit = 0
+	countOpt.Offset = 0
+	total, err := r.Count(ctx, &countOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	return model.NewPage[domain.SiteTag, SiteTagQueryDTO](list, total, page, pageSize), nil
 }
 
 // ListByWorkId 查询作品的站点标签
@@ -97,7 +200,7 @@ func (r *siteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId i
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (r *siteTagRepository) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalTagId *bool, localTagId *int64) (*model.Page[domain.SiteTagFullDTO], error) {
+func (r *siteTagRepository) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalTagId *bool, localTagId *int64) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	var results []*domain.SiteTagFullDTO
 	var total int64
 
@@ -159,11 +262,11 @@ func (r *siteTagRepository) QueryBoundOrUnboundToLocalTagPage(ctx context.Contex
 		results = append(results, dto)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *siteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO], error) {
+func (r *siteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	var results []*domain.SiteTagFullDTO
 	var total int64
 
@@ -221,11 +324,11 @@ func (r *siteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 		results = append(results, dto)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *siteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO], error) {
+func (r *siteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	var results []*domain.SiteTagLocalRelateDTO
 	var total int64
 
@@ -288,11 +391,11 @@ func (r *siteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 		results = append(results, dto)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *siteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem], error) {
+func (r *siteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem, SiteTagQueryDTO], error) {
 	var results []*domain.SelectItem
 	var total int64
 
@@ -354,5 +457,48 @@ func (r *siteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 		results = append(results, item)
 	}
 
-	return model.NewPage(results, total, page, pageSize), nil
+	return model.NewPage[domain.SelectItem, SiteTagQueryDTO](results, total, page, pageSize), nil
+}
+
+// applyQueryOption 将 QueryOption 应用到 db 实例
+func applyQueryOption(db *gorm.DB, opt *database.QueryOption) *gorm.DB {
+	// 1. Select（覆盖型）
+	if opt.Select != nil {
+		db = db.Select(opt.Select)
+	}
+
+	// 2. Joins（叠加型）
+	for _, join := range opt.Joins {
+		db = db.Clauses(join)
+	}
+
+	// 3. Conditions（叠加型）
+	for _, cond := range opt.Conditions {
+		db = db.Where(cond)
+	}
+
+	// 4. OrderBy（叠加型）
+	if len(opt.OrderBy) > 0 {
+		db = db.Order(opt.OrderBy)
+	}
+
+	// 5. GroupBy（覆盖型）
+	if opt.GroupBy != nil {
+		db = db.Clauses(opt.GroupBy)
+	}
+
+	// 6. Having（覆盖型）
+	if opt.Having != nil {
+		db = db.Having(opt.Having)
+	}
+
+	// 7. Limit & Offset（覆盖型）
+	if opt.Limit > 0 {
+		db = db.Limit(opt.Limit)
+	}
+	if opt.Offset > 0 {
+		db = db.Offset(opt.Offset)
+	}
+
+	return db
 }
