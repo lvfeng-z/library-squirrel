@@ -116,13 +116,13 @@ type ResourceDTO struct {
 
 // ResourceResultDTO 资源返回结果DTO（用于屏蔽sql.Null*类型）
 type ResourceResultDTO struct {
-	ID                 int64   `json:"id"`
-	WorkID             int64   `json:"workId"`
-	TaskID             int64   `json:"taskId"`
-	State              int     `json:"state"`
+	ID                int64   `json:"id"`
+	WorkID            int64   `json:"workId"`
+	TaskID            int64   `json:"taskId"`
+	State             int     `json:"state"`
 	FilePath          *string `json:"filePath"`
 	FileName          *string `json:"fileName"`
-	FilenameExtension  *string `json:"filenameExtension"`
+	FilenameExtension *string `json:"filenameExtension"`
 	SuggestName       *string `json:"suggestName"`
 	ResourceSize      *int64  `json:"resourceSize"`
 	Workdir           *string `json:"workdir"`
@@ -137,10 +137,10 @@ func ToResourceResultDTO(resource *domain.Resource) *ResourceResultDTO {
 		return nil
 	}
 	return &ResourceResultDTO{
-		ID:                 resource.GetID(),
-		WorkID:             resource.WorkID,
-		TaskID:             resource.TaskID,
-		State:              resource.State,
+		ID:                resource.GetID(),
+		WorkID:            resource.WorkID,
+		TaskID:            resource.TaskID,
+		State:             resource.State,
 		FilePath:          nullStringToPointer(resource.FilePath),
 		FileName:          nullStringToPointer(resource.FileName),
 		FilenameExtension: nullStringToPointer(resource.FilenameExtension),

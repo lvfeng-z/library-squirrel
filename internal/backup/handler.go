@@ -58,12 +58,12 @@ func (h *Handler) GetPluginBackup(ctx context.Context, sourceId int64) *model.Ap
 type BackupResultDTO struct {
 	ID         int64   `json:"id"`
 	SourceType *int64  `json:"sourceType"`
-	SourceID  *int64  `json:"sourceId"`
-	FileName  *string `json:"fileName"`
-	FilePath  *string `json:"filePath"`
-	Workdir   *string `json:"workdir"`
-	CreateTime int64  `json:"createTime"`
-	UpdateTime int64  `json:"updateTime"`
+	SourceID   *int64  `json:"sourceId"`
+	FileName   *string `json:"fileName"`
+	FilePath   *string `json:"filePath"`
+	Workdir    *string `json:"workdir"`
+	CreateTime int64   `json:"createTime"`
+	UpdateTime int64   `json:"updateTime"`
 }
 
 // ToBackupResultDTO 将 domain.Backup 转换为 BackupResultDTO
