@@ -5,7 +5,8 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as ReWorkAuthorHandler } from '@bindings/github.com/library-squirrel/wails/internal/reWorkAuthor'
-import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId, WorkAuthorsResultDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { WorkAuthorsResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/reWorkAuthor/models'
+import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 // ========== VO 定义 ==========
 
@@ -141,8 +142,8 @@ export async function reWorkAuthorListByWorkIds(workIds: number[]): Promise<ApiR
     msg: result.msg ?? '',
     data: data.map(item => ({
       workId: item.workId,
-      localAuthors: (item.localAuthors ?? []).filter((a): a is RankedLocalAuthor => a !== null).map(toLocalAuthorVO),
-      siteAuthors: (item.siteAuthors ?? []).filter((a): a is RankedSiteAuthor => a !== null).map(toSiteAuthorVO)
+      localAuthors: (item.localAuthors ?? []).filter((a) => a !== null).map(a => toLocalAuthorVO(a as RankedLocalAuthor)).filter((a): a is LocalAuthorVO => a !== null),
+      siteAuthors: (item.siteAuthors ?? []).filter((a) => a !== null).map(a => toSiteAuthorVO(a as RankedSiteAuthor)).filter((a): a is SiteAuthorVO => a !== null)
     }))
   }
 }

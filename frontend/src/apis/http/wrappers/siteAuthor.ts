@@ -5,6 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteAuthorHandler, SiteAuthorDTO, SiteAuthorQueryDTO, SiteAuthorResultDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
+import type { RankedSiteAuthorWithWorkIdDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
@@ -53,6 +54,22 @@ function rankedToSiteAuthorVO(dto: RankedSiteAuthor | null): SiteAuthorVO | null
     authorName: dto.authorName ?? '',
     introduce: '',
     localAuthorId: dto.localAuthorId ?? 0,
+    lastUse: 0,
+    createTime: 0,
+    updateTime: 0
+  }
+}
+
+/**
+ * 将 RankedSiteAuthorWithWorkIdDTO 转换为 SiteAuthorVO
+ */
+function rankedWithWorkIdToSiteAuthorVO(dto: RankedSiteAuthorWithWorkIdDTO | null): SiteAuthorVO | null {
+  if (!dto) return null
+  return {
+    id: dto.workId, // 使用 workId 作为 id（临时方案，因为 RankedSiteAuthorWithWorkIdDTO 没有 id 字段）
+    authorName: dto.authorName ?? '',
+    introduce: '',
+    localAuthorId: 0,
     lastUse: 0,
     createTime: 0,
     updateTime: 0
@@ -242,7 +259,7 @@ export async function siteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.filter((item): item is RankedSiteAuthor => item !== null) : [] }
+  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.filter((item) => item !== null).map(item => rankedWithWorkIdToSiteAuthorVO(item as RankedSiteAuthorWithWorkIdDTO)).filter((item): item is SiteAuthorVO => item !== null) : [] }
 }
 
 /**

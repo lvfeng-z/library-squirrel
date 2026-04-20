@@ -1,9 +1,5 @@
 export default interface IPage<Query, Result> {
   /**
-   * 是否分页
-   */
-  paging: boolean
-  /**
    * 当前页码
    */
   pageNumber: number

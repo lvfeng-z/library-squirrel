@@ -40,28 +40,24 @@ const apis = {
   siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById
 }
 
-// 适配器函数：将 ApiResponse<PageResult> 转换为 IPage
+// 适配器函数：将 bindings Page 转换为 IPage
 async function localAuthorQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
   const response = await localAuthorApi.localAuthorQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { authorName: input }
   })
-  if (!response.success) {
-    return new Page<unknown, SelectItem>()
-  }
-  const data = response.data
-  if (!data) {
+  if (!response.success || !response.data) {
     return new Page<unknown, SelectItem>()
   }
   return {
-    paging: true,
-    pageNumber: data.page,
-    pageSize: data.pageSize,
-    pageCount: Math.ceil(data.total / data.pageSize),
-    dataCount: data.total,
-    currentCount: data.items.length,
-    data: data.items.map(item => new SelectItem({ value: item.id, label: item.authorName ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+    pageNumber: response.data.pageNumber,
+    pageSize: response.data.pageSize,
+    pageCount: response.data.pageCount,
+    dataCount: response.data.dataCount,
+    currentCount: response.data.currentCount,
+    query: response.data.query,
+    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
 
@@ -71,21 +67,17 @@ async function siteQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, 
     page: page.pageNumber,
     pageSize: page.pageSize
   })
-  if (!response.success) {
-    return new Page<unknown, SelectItem>()
-  }
-  const data = response.data
-  if (!data) {
+  if (!response.success || !response.data) {
     return new Page<unknown, SelectItem>()
   }
   return {
-    paging: true,
-    pageNumber: data.page,
-    pageSize: data.pageSize,
-    pageCount: Math.ceil(data.total / data.pageSize),
-    dataCount: data.total,
-    currentCount: data.items.length,
-    data: data.items.map(item => new SelectItem({ value: item.id, label: item.name ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+    pageNumber: response.data.pageNumber,
+    pageSize: response.data.pageSize,
+    pageCount: response.data.pageCount,
+    dataCount: response.data.dataCount,
+    currentCount: response.data.currentCount,
+    query: response.data.query,
+    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
 

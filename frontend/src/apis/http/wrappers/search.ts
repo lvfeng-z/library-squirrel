@@ -6,6 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as SearchHandler } from '@bindings/github.com/library-squirrel/wails/internal/search'
 import type { SearchCondition as BindingSearchCondition, SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import { WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/search/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SearchConditionItem {
@@ -97,9 +98,8 @@ export async function searchQueryWorkSetPage(query: {
   keyword?: string
   siteId?: number
 }): Promise<ApiResponse<SearchWorkSetItem[]>> {
-  const { WorkSetQueryDTO } = await import('@bindings/github.com/library-squirrel/wails/internal/workSet/models')
   const queryDTO = new WorkSetQueryDTO({})
-  const pageObj = new Page<typeof WorkSetQueryDTO, typeof WorkSetQueryDTO>({
+  const pageObj = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
     pageNumber: query.pageNumber,
     pageSize: query.pageSize,
     query: queryDTO

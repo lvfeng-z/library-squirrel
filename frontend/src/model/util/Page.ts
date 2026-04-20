@@ -2,10 +2,6 @@ import IPage from '@renderer/model/util/IPage.ts'
 
 export default class Page<Query, Result> implements IPage<Query, Result> {
   /**
-   * 是否分页
-   */
-  paging: boolean
-  /**
    * 当前页码
    */
   pageNumber: number
@@ -36,7 +32,6 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
 
   constructor(page?: IPage<Query, Result>) {
     if (page === undefined) {
-      this.paging = true
       this.pageNumber = 1
       this.pageSize = 10
       this.pageCount = 0
@@ -45,7 +40,6 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
       this.query = undefined
       this.data = undefined
     } else {
-      this.paging = page.paging
       this.pageNumber = page.pageNumber
       this.pageSize = page.pageSize
       this.pageCount = page.pageCount
@@ -61,7 +55,6 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
    */
   public transform<T>(): Page<Query, T> {
     const result = new Page<Query, T>()
-    result.paging = this.paging
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount
@@ -78,7 +71,6 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
    */
   public copy<NewQuery, NewResult>(): Page<NewQuery, NewResult> {
     const result = new Page<NewQuery, NewResult>()
-    result.paging = this.paging
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount

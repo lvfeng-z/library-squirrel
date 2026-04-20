@@ -42,28 +42,26 @@ const apis = {
   localTagGetById: localTagApi.localTagGetById
 }
 
-// 适配器函数：将 ApiResponse<PageResult> 转换为 IPage
+// 适配器函数：将 bindings 的 Page<SelectItem, LocalTagQueryDTO> 转换为 IPage
+// bindings 的 Page 没有 paging 属性，需要手动添加
 async function localTagQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
   const response = await localTagApi.localTagQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { localTagName: input }
   })
-  if (!response.success) {
+  if (!response.success || !response.data) {
     return new Page<unknown, SelectItem>()
   }
-  const data = response.data
-  if (!data) {
-    return new Page<unknown, SelectItem>()
-  }
+  // 将 bindings Page 转换为 IPage（bindings Page 没有 paging 属性）
   return {
-    paging: true,
-    pageNumber: data.page,
-    pageSize: data.pageSize,
-    pageCount: Math.ceil(data.total / data.pageSize),
-    dataCount: data.total,
-    currentCount: data.items.length,
-    data: data.items.map(item => new SelectItem({ value: item.id, label: item.localTagName ?? '', subLabels: undefined, rootId: undefined, extraData: undefined }))
+    pageNumber: response.data.pageNumber,
+    pageSize: response.data.pageSize,
+    pageCount: response.data.pageCount,
+    dataCount: response.data.dataCount,
+    currentCount: response.data.currentCount,
+    query: response.data.query,
+    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
 

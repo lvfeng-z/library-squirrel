@@ -1,6 +1,10 @@
 import type { ApiResponse } from '@renderer/apis/http/types'
-import type { PageResult } from '@renderer/apis/http/wrappers/localTag'
 import { localTagApi } from '@renderer/apis/http'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
+import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import IPage from '@renderer/model/util/IPage.ts'
+import PageModel from '@renderer/model/util/Page.ts'
 
 /**
  * 分页查询本地标签选择列表
@@ -10,21 +14,34 @@ export async function localTagQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
   return localTagApi.localTagQuerySelectItemPage(query)
 }
 
 /**
- * 分页查询本地标签选择列表
- * @param localTagName
- * @param query
+ * 分页查询本地标签选择列表（适配器版本，供 AutoLoadSelect 使用）
+ * @param page 分页信息
+ * @param input 搜索关键字
  */
 export async function localTagQuerySelectItemPageByName(
-  localTagName: string,
-  query: { page: number; pageSize: number }
-): Promise<ApiResponse<PageResult>> {
-  return localTagApi.localTagQuerySelectItemPage({
-    ...query,
-    query: { localTagName }
+  page: IPage<unknown, SelectItem>,
+  input: string
+): Promise<IPage<unknown, SelectItem>> {
+  const response = await localTagApi.localTagQuerySelectItemPage({
+    page: page.pageNumber,
+    pageSize: page.pageSize,
+    query: { localTagName: input }
   })
+  if (!response.success || !response.data) {
+    return new PageModel<unknown, SelectItem>()
+  }
+  return {
+    pageNumber: response.data.pageNumber,
+    pageSize: response.data.pageSize,
+    pageCount: response.data.pageCount,
+    dataCount: response.data.dataCount,
+    currentCount: response.data.currentCount,
+    query: response.data.query,
+    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
+  }
 }
