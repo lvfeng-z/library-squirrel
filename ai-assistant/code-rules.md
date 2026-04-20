@@ -8,44 +8,38 @@
 
 ### 目录结构约定
 
-- **src/main/** - 主进程代码 (Node.js/Electron)
-  - `base/` - 基类 (BaseDao, BaseService, BasePlugin)
-  - `constant/` - 常量与枚举（主进程专用）
-  - `core/` - 核心服务 (MainProcessApi, Initialize)
-  - `dao/` - 数据访问对象
-  - `database/` - 数据库初始化
-  - `model/` - 领域模型和实体（主进程专用）
-  - `plugin/` - 插件系统
-  - `service/` - 业务逻辑服务
-  - `resources/` - YAML 配置文件
-  - `util/` - 工具类（主进程专用）
-- **src/shared/** - 主进程和渲染进程共用代码
-  - `model/` - 共用实体类、DTO、枚举、常量
-    - `constant/` - 枚举和常量
-    - `dto/` - 数据传输对象
-    - `domain/` - 领域模型
-    - `entity/` - 实体类
-    - `interface/` - 接口定义
-    - `queryDTO/` - 查询DTO
-    - `util/` - 工具类型
-  - `util/` - 共用工具函数（StringUtil, TreeUtil, AssertUtil等）
-- **src/preload/** - 预加载脚本 (IPC 桥接)
-- **src/renderer/** - 渲染进程代码 (Vue 3)
-  - `src/apis/` - IPC API 封装
-  - `src/components/` - Vue 组件
-  - `src/store/` - Pinia 状态管理
-  - `src/utils/` - 渲染进程工具类
+- **internal/** - 后端代码 (Go)
+  - `{module}/` - 业务模块（如 localTag、work）
+    - `handler.go` - Handler（Wails Bind）
+    - `service.go` - 业务逻辑
+    - `repository.go` - 数据访问接口
+    - `repository_impl.go` - 数据访问实现
+    - `model.go` - 领域实体
+  - `database/` - 数据库基础设施
+    - `db.go` - 数据库连接
+    - `transaction.go` - 事务封装
+    - `resources/` - SQL 迁移文件
+  - `model/` - 领域模型
+- **pkg/model/** - 共享 DTO（ApiResponse等）
+- **frontend/src/** - 前端代码 (Vue 3)
+  - `components/` - Vue 组件
+  - `store/` - Pinia 状态管理
+  - `model/` - 前端类型定义
+  - `utils/` - 工具函数
+  - `apis/` - API 包装器
+- **plugin/** - 插件目录
 
 ### 文件命名规则
 
 | 文件类型                 | 命名规则                    | 示例                                        |
 | ------------------------ | --------------------------- | ------------------------------------------- |
-| **类文件**               | PascalCase + `.ts`          | `WorkService.ts`, `BaseDao.ts`              |
-| **Vue 组件**             | PascalCase + `.vue`         | `WorkCard.vue`, `WorkSetDialog.vue`         |
-| **TypeScript 类型/接口** | PascalCase + `.ts`          | `WorkDTO.ts`, `TaskStatus.ts`               |
-| **工具函数**             | camelCase + `.ts`           | `logUtil.ts`, `apiUtil.ts`                  |
-| **常量文件**             | camelCase + `.ts`           | `errorCode.ts`, `httpStatus.ts`             |
-| **配置文件**             | kebab-case + `.yml`/`.json` | `createDataTables.yml`, `tsconfig.web.json` |
+| **Go 源文件**            | snake_case + `.go`          | `handler.go`, `work_service.go`             |
+| **Go 结构体/接口**       | PascalCase                  | `Handler`, `WorkService`                    |
+| **Vue 组件**             | PascalCase + `.vue`         | `WorkCard.vue`, `MainLayout.vue`            |
+| **TypeScript 类型/接口** | PascalCase + `.ts`          | `ApiResponse.ts`, `Page.ts`                 |
+| **前端工具函数**         | PascalCase + `.ts`          | `treeUtil.ts`, `apiUtil.ts`                 |
+| **前端常量文件**         | camelCase + `.ts`           | `httpStatus.ts`                             |
+| **配置文件**             | kebab-case + `.json`/`.yml` | `tsconfig.json`, `create-data-table.yml`    |
 
 ## 代码风格规范
 
@@ -140,10 +134,10 @@ async function fetchWorkPage(page: Page) {
 
 ### TypeScript 规范
 
-- **模块解析**: 主进程使用 `node16`，渲染进程使用 `bundler`
+- **模块解析**: 使用 `bundler`
 - **路径别名**:
-  - `@renderer/*` → `src/renderer/src/*`（渲染进程专用）
-  - `@shared/*` → `src/shared/*`（主进程和渲染进程共用，推荐使用）
+  - `@renderer/*` → `frontend/src/*`（前端专用）
+  - `@shared/*` → `frontend/src/model/*`（共用类型）
 - **类型定义**: 优先使用 `interface` 定义对象结构，`type` 用于联合类型或工具类型
 - **空值处理**: 使用可选链 `?.` 和空值合并 `??` 运算符
 - **严格模式**: 启用 TypeScript 严格模式 (`strict: true`)
@@ -401,133 +395,141 @@ if (!name) { ... }
 
 ### IPC 通信模式
 
-- **方法命名**: `serviceName-methodName` (kebab-case)
-- **主进程注册** (`MainProcessApi.ts`):
-  ```typescript
-  Electron.ipcMain.handle('workService-getById', async (_event, args) => {
-    const service = new WorkService()
-    try {
-      return ApiUtil.response(await service.getById(args))
-    } catch (error) {
-      return returnError(error)
-    }
-  })
+- **方法命名**: Wails 自动绑定，无需手动注册
+- **Go 主进程注册** (使用 Wails `Bind`):
+  ```go
+  // wails.go 中定义
+  type App struct {
+    workService *service.WorkService
+  }
+  // Wails 自动将方法绑定到 window.api
   ```
-- **预加载桥接** (`preload/index.ts`):
-  ```typescript
-  workServiceGetById: (args) => Electron.ipcRenderer.invoke('workService-getById', args)
-  ```
-- **渲染进程调用**:
+- **前端调用**:
   ```typescript
   const response = await window.api.workServiceGetById(workId)
   ```
 
 ### 响应处理
 
-- **统一响应格式**: 使用 `ApiUtil.response(data)` / `ApiUtil.error(message)`
-- **错误包装**: 所有错误通过 `returnError(error)` 包装
+- **Go 主进程**: 直接返回数据或 error，Wails 自动序列化
 - **前端处理**:
   ```typescript
-  const response = await window.api.someMethod(args)
-  if (ApiUtil.check(response)) {
-    const data = ApiUtil.data(response)
-    // 处理成功数据
-  } else {
-    const error = ApiUtil.error(response)
-    // 处理错误
+  try {
+    const result = await window.api.someMethod(args)
+    // result 是 Go 端直接返回的数据
+  } catch (error) {
+    // error 是 Go 端返回的 error
   }
   ```
 
-### DTO 设计与数据暴露原则
+### DTO 设计规范
 
-规则名称：DTO_FLATTENING_AND_ISOLATION
-优先级：P0 (最高)
-适用范围：所有涉及数据传输对象（DTO）、API 响应/请求类、VO（View Object）生成的场景。
+**核心原则**：禁止在 DTO 中直接嵌入 Entity（领域实体），允许组合其他 DTO 类型。
 
-#### 1. 核心指令 (Core Directive)
+**规则名称**：DTO_COMPOSITION_OVER_EMBEDDING
+**优先级**：P0（最高）
+**适用范围**：所有 DTO、DTO 构造器函数的实现
 
-在生成或修改 DTO 类时，严禁直接将领域实体（Entity/Domain Model）或数据库模型作为属性嵌套在 DTO 中。必须采用扁平化结构，将需要的属性显式复制到 DTO 类中。
+#### 1. 禁止直接嵌入 Entity
 
-#### 2. 具体执行标准 (Execution Standards)
+**❌ 禁止模式**：
 
-**❌ 禁止模式 (Anti-Pattern)**：
-
-- 禁止在 DTO 中定义类型为 Entity 的属性（例如：`user: User`）
-- 禁止直接使用 `@JsonIgnore` 等注解来"修补"直接嵌套实体带来的安全问题
-- 禁止让 DTO 的字段结构完全被动地跟随数据库表结构变更
-
-**✅ 推荐模式 (Best Practice)**：
-
-- 显式复制：DTO 应包含独立的、基础类型的字段（如 `id: number`, `username: string`, `createTime: number`）
-- 按需裁剪：只复制业务场景真正需要的字段，自动过滤掉敏感字段（如 `password`, `salt`, `internalFlag`）
-- 语义重命名：如果前端需要的字段名与数据库不一致，直接在 DTO 中定义符合前端语义的字段名（例如：数据库叫 `usr_nm`，DTO 叫 `userName`）
-- 嵌套即嵌套 DTO：如果确实需要层级结构（如订单包含地址），嵌套的对象必须是另一个专门的 DTO（如 `AddressDTO`），绝不能是 `Address` 实体
-
-**🛠️ 映射要求 (Mapping Requirement)**：
-
-当实体与 DTO 字段较多时，必须生成或使用现有的映射代码（推荐使用手动 `convert()` 方法），严禁省略映射步骤。
-
-#### 3. 理由与约束 (Rationale & Constraints)
-
-- **安全性 (Security)**：防止因实体类新增敏感字段而意外泄露给前端（Over-exposure）
-- **解耦 (Decoupling)**：确保 API 契约（Contract）独立于内部数据库模型，允许数据库重构而不破坏前端接口
-- **序列化安全 (Serialization Safety)**：避免懒加载（Lazy Loading）导致的异常或循环引用导致的栈溢出
-- **前端友好 (Frontend Friendly)**：提供扁平、直观的 JSON 结构，减少前端访问路径深度
-
-#### 4. 示例对比 (Example)
-
-**❌ 错误示例 (AI 不应生成)**：
-
-```typescript
-// 违反规则：直接嵌套实体，可能泄露 password 和 salt
-class UserResponseDTO {
-  user: User
-  token: string
+```go
+// 错误：直接嵌入 Entity（领域实体）
+type SiteTagFullDTO struct {
+    *SiteTag              // ✗ 禁止：嵌入 Entity
 }
-// 输出 JSON: { "user": { "id": 1, "username": "admin", "password": "...", "salt": "..." }, "token": "..." }
 ```
 
-**✅ 正确示例 (AI 应生成)**：
+```typescript
+// 错误：直接嵌入 Entity
+class UserResponseDTO {
+  user: User  // ✗ 禁止
+  token: string
+}
+```
+
+**问题**：
+- DTO 与 Entity 耦合过紧，实体变更会直接影响 DTO
+- 可能意外暴露实体中的敏感字段（如 password、salt）
+- 无法显式控制字段的 JSON tag
+
+#### 2. 允许组合其他 DTO
+
+**✅ 允许模式**：
+
+```go
+// 正确：组合其他 DTO 类型
+type SiteTagFullDTO struct {
+    ID         int64        `json:"id"`
+    CreateTime int64        `json:"createTime"`
+    UpdateTime int64        `json:"updateTime"`
+    SiteID     int64        `json:"siteId"`
+    SiteTagID  string       `json:"siteTagId"`
+    SiteTagName string      `json:"siteTagName"`
+    // 组合其他 DTO（允许）
+    LocalTag *LocalTagDTO   `json:"localTag,omitempty"`
+    Site     *SiteDTO       `json:"site,omitempty"`
+}
+```
 
 ```typescript
-// 遵守规则：扁平化，只暴露必要字段，独立于 User 实体
+// 正确：组合其他 DTO
 class UserResponseDTO {
   id: number
   username: string
   email: string
   token: string
-  // 即使 User 实体中有 password 字段，这里也不会出现
-}
-// 输出 JSON: { "id": 1, "username": "admin", "email": "admin@example.com", "token": "..." }
-
-// 映射方法
-function fromEntity(user: User, token: string): UserResponseDTO {
-  const dto = new UserResponseDTO()
-  dto.id = user.id
-  dto.username = user.username
-  dto.email = user.email
-  dto.token = token
-  return dto
+  // 组合其他 DTO（允许）
+  address: AddressDTO
 }
 ```
 
-#### 5. 异常处理 (Exception Handling)
+**优点**：
+- DTO 之间解耦，各自独立演进
+- 显式控制字段的 JSON tag
+- 便于组合复杂业务场景
 
-仅在以下极端情况可考虑嵌套对象，但嵌套的子对象必须也是 DTO：
+#### 3. 具体执行标准
 
-- 业务逻辑明确要求复杂的层级分组，且该子结构在多个 API 中复用（此时应创建 `XXXSubDTO`）
+**✅ 推荐模式**：
+
+- 显式定义：DTO 应包含独立的、基础类型的字段（如 `id: number`, `username: string`）
+- 按需裁剪：只复制业务场景真正需要的字段，过滤敏感字段
+- 语义重命名：如果前端需要的字段名与数据库不一致，在 DTO 中定义符合前端语义的字段名
+- 组合优于嵌入：嵌套对象必须是另一个 DTO，不能是 Entity
+
+**🛠️ 映射要求**：
+
+当实体与 DTO 字段较多时，必须生成或使用映射代码（推荐手动 `convert()` 方法），严禁省略映射步骤。
+
+#### 4. 理由与约束
+
+| 原因 | 说明 |
+|------|------|
+| **安全性** | 防止实体类新增敏感字段而意外泄露 |
+| **解耦** | API 契约独立于内部数据库模型 |
+| **显式控制** | 显式定义字段，便于控制 JSON 序列化 |
+
+#### 5. 适用场景汇总
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 基础字段 | 显式定义所有字段 |
+| 关联其他 DTO | 组合（composition）其他 DTO |
+| 关联 Entity | ✗ 禁止，必须先转换为 DTO |
 
 ### 数据库操作
 
-- **事务处理**: 使用 `db.transaction()` 支持嵌套 SAVEPOINT
-  ```typescript
-  await db.transaction(async (tx) => {
-    await tx.run('INSERT INTO ...')
-    await tx.run('UPDATE ...')
-  }, '操作描述')
+- **事务处理**: 使用 `gorm.Transaction` 支持嵌套事务
+  ```go
+  err := database.WithTransaction(db, func(tx *gorm.DB) error {
+      // 多个操作
+      return nil
+  })
   ```
-- **DAO 模式**: 所有数据库操作通过 DAO 层进行
-- **SQL 文件**: 表结构定义在 YAML 配置文件中 (`src/main/resources/database/`)
+- **Repository 模式**: 所有数据库操作通过 Repository 层进行
+- **SQL 文件**: 表结构定义在 YAML 配置文件中 (`internal/database/resources/`)
 
 ### 数据库连接使用规范
 
@@ -543,160 +545,74 @@ function fromEntity(user: User, token: string): UserResponseDTO {
   - 独立的查询操作
   - 各 Service 独立管理自己的数据库连接和生命周期
 
-#### 2. Service 实例创建规范
+#### 2. Repository 数据库连接管理
 
-**❌ 错误示例**:
+**核心原则**: GORM 自动管理连接池，Repository 持有 `*gorm.DB` 实例。
 
-```typescript
-// 错误：传入数据库连接但不用于事务，导致连接无法自动释放
-class SearchService {
-  queryWorkSetPage() {
-    // 传入 db 但不是为了事务，会导致 WorkSetService 无法释放连接
-    const workSetService = new WorkSetService(this.db)
-    return workSetService.queryPageByWorkConditionsWithCover(page, searchConditions)
-  }
-}
-```
+- **Repository 创建**: 通过 `NewRepository(db *gorm.DB)` 创建
+- **GORM 连接池**: GORM 自动处理连接复用，无需手动管理
+- **事务处理**: 使用 `database.WithTransaction()` 包装事务
+- **Context 传递**: 所有 Repository 方法接收 `context.Context`
 
-**✅ 正确示例**:
+#### 3. Repository 查询方法标准模式
 
-```typescript
-// 正确：不传入数据库连接，让被调用的 Service 创建并管理自己的连接
-class SearchService {
-  queryWorkSetPage() {
-    // WorkSetService 会创建自己的数据库连接，查询完成后自动释放
-    const workSetService = new WorkSetService()
-    return workSetService.queryPageByWorkConditionsWithCover(page, searchConditions)
-  }
+```go
+// Repository 实现示例
+type localTagRepository struct {
+    db *gorm.DB
 }
 
-// 正确：需要事务时传入数据库连接
-class SomeTransactionService {
-  async doTransaction() {
-    const db = new DatabaseClient(this.constructor.name)
-    try {
-      const workService = new WorkService(db)
-      const workSetService = new WorkSetService(db)
-      // 在同一个事务中执行
-      await db.transaction(async (tx) => {
-        await workService.save(work)
-        await workSetService.save(workSet)
-      }, '操作描述')
-    } finally {
-      db.release()
+func NewRepository(db *gorm.DB) Repository {
+    return &localTagRepository{db: db}
+}
+
+func (r *localTagRepository) Save(ctx context.Context, tag *domain.LocalTag) error {
+    return r.db.WithContext(ctx).Create(tag).Error
+}
+
+func (r *localTagRepository) GetById(ctx context.Context, id int64) (*domain.LocalTag, error) {
+    var tag domain.LocalTag
+    err := r.db.WithContext(ctx).First(&tag, id).Error
+    if err != nil {
+        return nil, err
     }
-  }
+    return &tag, nil
 }
 ```
 
-#### 3. BaseService 构造函数参数说明
+**关键点**:
+- 使用 `r.db.WithContext(ctx)` 传递 Context
+- GORM 自动处理连接释放
+- 返回领域实体而非 raw rows
 
-```typescript
-// BaseService 构造函数
-class BaseService {
-  constructor(
-    dao: new (db: DatabaseClient, injectedDB: boolean) => Dao,
-    db?: DatabaseClient, // 可选：传入数据库客户端用于事务
-    injectedDB?: boolean // 可选：显式指定是否为注入的连接
-  ) {
-    //...
-  }
+#### 4. 常见错误避免
+
+1. **Context 泄漏**: 所有数据库操作必须传递 Context
+2. **错误处理**: 使用 `errors.Is()` 判断特定错误类型
+3. **事务回滚**: 事务中返回 error 即可触发回滚
+
+### 数据库布尔值处理
+
+Go 实体类与数据库之间的布尔值转换由 GORM 自动处理：
+
+- **Go 实体使用 native `bool` 类型**
+- **数据库存储使用 `int` 类型**（0 = false, 1 = true）
+- **GORM 自动处理类型转换**，无需手动转换
+
+**Go DTO 示例**（使用 native bool）:
+```go
+type SiteTagLocalRelateDTO struct {
+    HasSameNameLocalTag bool `json:"hasSameNameLocalTag"`
 }
 ```
 
-- **不传 db 参数**: Service 创建自己的数据库连接，查询完成后自动释放
-- **传入 db 参数**: 使用传入的数据库连接，通常仅用于事务场景
-
-#### 4. DAO 层连接管理
-
-DAO 层通过 `injectedDB` 标志管理连接释放：
-
-- `injectedDB = false`: Service 创建的连接，查询完成后在 `finally` 块中释放
-- `injectedDB = true`: 外部注入的连接（用于事务），不自动释放，由外部事务管理器控制
-
-**DAO 查询方法标准模式**:
-
-```typescript
-class demoDao {
-  async queryByConditions(params): Promise<Result> {
-    const db = this.acquire()
-    try {
-      const rows = await db.all(/*...*/)
-      return this.toResultTypeDataList(rows)
-    } finally {
-      if (!this.injectedDB) {
-        db.release()
-      }
-    }
-  }
+**Go Model 示例**（使用 int 存储）:
+```go
+type Resource struct {
+    State            int `gorm:"column:state" json:"state"`
+    ResourceComplete int `gorm:"column:resource_complete" json:"resourceComplete"`
 }
 ```
-
-#### 5. 常见错误避免
-
-1. **连接泄漏**: 不要在非事务场景下传递数据库连接
-2. **重复释放**: 确保只在 `injectedDB = false` 时释放连接
-3. **事务回滚**: 事务中使用 `throw` 触发回滚，避免手动处理
-
-### 数据库布尔类型转换
-
-- **原则**: 数据库中使用整数（0/1）表示布尔值，转换为 JS 布尔值时必须使用 `BOOL` 常量进行比较
-- **常量位置**: `src/shared/model/constant/BOOL.ts`
-- **正确示例**:
-
-  ```typescript
-  import { BOOL } from '@shared/model/constant/BOOL.ts'
-
-  // 从数据库读取后转换
-  item.isCover = isCoverValue === BOOL.TRUE
-
-  // 写入数据库前转换
-  link.isCover = true ? BOOL.TRUE : BOOL.FALSE
-  ```
-
-- **错误示例**:
-
-  ```typescript
-  // 禁止使用硬编码数字比较
-  item.isCover = isCoverValue === 1 // ✗
-
-  // 禁止使用布尔字面量比较
-  item.isCover = isCoverValue === true // ✗
-  ```
-
-### 数据库查询结果转换为实体类
-
-- **原则**: 从数据库查询出的元数据应先通过框架的转换方法（`toResultTypeData`/`toResultTypeDataList`）转换为项目中定义的实体类或其他对应类，再进行后续操作
-- **避免使用 `as` 类型断言**: 不要直接使用 `as` 从 `Record<string, unknown>` 中提取字段
-- **需要额外字段时创建 DTO 类**: 如果查询结果需要返回比实体类更多的字段（如关联表的外键），应在 `src/shared/model/domain/` 目录下创建对应的 DTO 类继承原实体类
-- **正确示例**:
-
-  ```typescript
-  // 1. 创建继承实体类的 DTO（包含额外字段）
-  // 文件: src/shared/model/domain/ResourceWithWorkSetId.ts
-  import Resource from '../entity/Resource.ts'
-  export default class ResourceWithWorkSetId extends Resource {
-    workSetId: number | undefined | null
-  }
-
-  // 2. 在 DAO 中使用框架方法转换
-  const resultList = super.toResultTypeDataList<ResourceWithWorkSetId>(rows)
-
-  // 3. 从实体类中获取属性（无需类型断言）
-  for (const item of resultList) {
-    const workSetId = item.workSetId // 类型安全
-  }
-  ```
-
-- **错误示例**:
-
-  ```typescript
-  // 禁止直接使用 as 类型断言提取字段
-  const workSetId = row['work_set_id'] as number // ✗
-
-  // 禁止直接访问 Record 的索引
-  const id = row['id'] // ✗ 类型为 unknown
-  ```
 
 ### 数据库路径存储规范
 
@@ -704,22 +620,22 @@ class demoDao {
 - **根目录定义**: 项目配置中定义的资源库根目录路径
 - **正确示例**:
 
-  ```typescript
+  ```
   // 正确：相对于根目录的路径
-  const path = 'images/2024/01/photo.jpg'
-  const coverPath = 'covers/work_001.jpg'
+  path = 'images/2024/01/photo.jpg'
+  coverPath = 'covers/work_001.jpg'
 
   // 存储到数据库
-  await resourceDao.save({ path: 'images/2024/01/photo.jpg' })
+  resource.FilePath = 'images/2024/01/photo.jpg'
   ```
 
 - **错误示例**:
 
-  ```typescript
+  ```
   // 错误：相对于当前工作目录或其他位置的路径
-  const path = '../shared/images/photo.jpg' // ✗ 包含 ../
-  const path = './cache/thumbnail.jpg' // ✗ 包含 ./
-  const path = 'C:/Users/Admin/pictures/1.jpg' // ✗ 绝对路径
+  path = '../shared/images/photo.jpg' // ✗ 包含 ../
+  path = './cache/thumbnail.jpg' // ✗ 包含 ./
+  path = 'C:/Users/Admin/pictures/1.jpg' // ✗ 绝对路径
   ```
 
 - **路径拼接规范**: 使用统一的路径工具类进行路径拼接，确保生成相对路径
@@ -734,30 +650,30 @@ class demoDao {
 
 当存储此类路径时，应在字段命名或注释中明确标识其性质：
 
-```typescript
+```go
 // 正确示例：使用明确的字段命名
-interface ResourceRecord {
-  // 相对于根目录的资源路径
-  path: string
-  // 外部关联文件的绝对路径
-  externalPath: string | null
-  // 用户配置的资源库根目录
-  libraryRoot: string
+type Resource struct {
+    // 相对于根目录的资源路径
+    FilePath sql.NullString `gorm:"column:file_path" json:"filePath"`
+    // 外部关联文件的绝对路径
+    ExternalPath sql.NullString `gorm:"column:external_path" json:"externalPath"`
+    // 用户配置的资源库根目录
+    Workdir sql.NullString `gorm:"column:workdir" json:"workdir"`
 }
 ```
 
 ### 插件开发规范
 
-- **目录位置**: `src/main/plugin/package/`
+- **目录位置**: `plugin/package/`
 - **插件结构**: 每个插件是独立包，包含 `package.json`
-- **基类**: 实现 `BasePlugin` 接口，至少包含 `pluginId: number`
-- **插件工厂**: 通过 `PluginFactory.create()` 创建插件实例
+- **基类**: 实现插件接口，至少包含插件标识
+- **插件工厂**: 通过工厂方法创建插件实例
 
 ## 代码质量工具
 
 ### ESLint 配置
 
-- **基础配置**: `@electron-toolkit/eslint-config`
+- **基础配置**: Wails 默认 ESLint 配置
 - **Vue 规则**: `vue/require-default-prop` 已禁用
 - **自动修复**: `yarn lint` 运行 ESLint 并自动修复问题
 
@@ -794,32 +710,38 @@ interface ResourceRecord {
 
 ## 新增功能开发流程
 
-### 1. 添加新 Service
+### 1. 添加新 Handler（Wails Bind）
 
-1. 在 `src/main/service/` 创建 Service 类
-2. 在 `MainProcessApi.ts` 注册 IPC 处理器
-3. 在 `preload/index.ts` 添加 API 包装
-4. 前端通过 `window.api` 调用
+1. 在 `internal/{module}/handler.go` 创建 Handler 结构体
+2. 在 Handler 中定义业务方法（Wails 自动绑定到 `window.api`）
+3. 运行 `wails3 generate bindings -ts` 生成前端 TypeScript 绑定
+4. 前端通过 `window.api.{methodName}()` 调用
 
-### 2. 添加新 Vue 组件
+### 2. 添加新 Service
 
-1. 在 `src/renderer/src/components/` 创建 `.vue` 文件
-2. 使用 `<script setup lang="ts">` 语法
-3. 定义 Props 接口（使用 `Props` 后缀）
-4. 通过路径别名导入其他组件
+1. 在 `internal/{module}/` 目录创建 `service.go`
+2. 定义 Service 结构体和业务方法
+3. 在 Handler 中引用 Service 实例
 
-### 3. 添加数据库表
+### 3. 添加新 Repository
 
-1. 在 `src/main/resources/database/createDataTables.yml` 定义表结构
-2. 创建对应的 Model 类（`src/main/model/`）
-3. 创建 DAO 类（`src/main/dao/`）
-4. 在 Service 层调用 DAO 方法
+1. 在 `internal/{module}/` 目录创建 `repository.go`
+2. 定义 Repository 接口
+3. 创建 `repository_impl.go` 实现接口
+4. 在 Service 中通过接口依赖
+
+### 4. 添加数据库表
+
+1. 在 `internal/database/resources/` 创建 YAML 迁移文件
+2. 创建对应的 Model（`internal/model/`）
+3. 创建 Repository 实现（`internal/{module}/repository_impl.go`）
+4. 在 Service 层调用 Repository 方法
 
 ## 常见注意事项
 
-1. **避免直接使用 SQLite API**: 始终通过 DAO 层访问数据库
-2. **错误处理**: 所有异步操作都需要 try-catch 并返回统一错误格式
-3. **类型安全**: 充分利用 TypeScript 类型系统，避免使用 `any`
+1. **避免直接使用 GORM DB**: 始终通过 Repository 层访问数据库
+2. **错误处理**: Go 方法返回 error，前端通过 try-catch 处理
+3. **类型安全**: 充分利用 Go 类型系统，避免使用 `any`
 4. **组件通信**: 优先使用 Props/Emits，复杂状态使用 Pinia Store
 5. **性能优化**: 大型列表使用虚拟滚动，图片使用懒加载
 
@@ -829,7 +751,6 @@ interface ResourceRecord {
 
 1. 本文档（`code-rules.md`）
 2. `CLAUDE.md` 中的 Key Conventions 部分
-3. 相关开发示例（`development-scenarios.md`）
 
 ---
 
@@ -960,123 +881,6 @@ if errors.Is(err, author.ErrNotFound) {
 - 所有 public 方法必须接收 `context.Context` 作为第一个参数
 - 在调用下游服务时传递 `ctx`
 - 不要在 `context.WithValue` 中存储业务数据
-
-### DTO 设计规范（Go 主进程）
-
-**核心原则**：Go 的结构体嵌入（embedding）不能复现 TypeScript 的继承语义，DTO 必须显式定义所有字段。
-
-**规则名称**：DTO_EXPLICIT_FIELDS
-**优先级**：P0（最高）
-**适用范围**：所有 DTO、DTO 构造器函数的实现
-
-#### 1. 禁止使用嵌入（Embedding）
-
-**❌ 禁止模式**：
-
-```go
-// 错误：使用嵌入来"继承"父结构体的字段
-type SiteTagFullDTO struct {
-    *SiteTag              // 禁止：使用嵌入
-    LocalTag *LocalTag    `json:"localTag,omitempty"`
-    Site     *Site        `json:"site,omitempty"`
-}
-
-type SiteTagLocalRelateDTO struct {
-    *SiteTagFullDTO       // 禁止：使用嵌入
-    HasSameNameLocalTag bool `json:"hasSameNameLocalTag"`
-}
-```
-
-**问题**：
-- Go 的嵌入是"委托"而非"继承"，字段访问语义不同
-- JSON 序列化时字段提升（field promotion）行为与 TypeScript class inheritance 不同
-- 无法显式控制字段的 JSON tag
-- DTO 与实体类耦合过紧，实体变更会直接影响 DTO
-
-#### 2. 正确做法：显式定义所有字段
-
-**✅ 推荐模式**：
-
-```go
-type SiteTagFullDTO struct {
-    // 基础实体字段（显式列出）
-    ID         int64  `json:"id"`
-    CreateTime int64  `json:"createTime"`
-    UpdateTime int64  `json:"updateTime"`
-    // 站点标签字段（显式列出）
-    SiteID        int64  `json:"siteId"`
-    SiteTagID     string `json:"siteTagId"`
-    SiteTagName   string `json:"siteTagName"`
-    BaseSiteTagID string `json:"baseSiteTagId"`
-    Description   string `json:"description"`
-    LocalTagID    int64  `json:"localTagId"`
-    LastUse       int64  `json:"lastUse"`
-    // 关联对象（显式定义）
-    LocalTag *LocalTag `json:"localTag,omitempty"`
-    Site     *Site     `json:"site,omitempty"`
-}
-
-type SiteTagLocalRelateDTO struct {
-    // 基础实体字段（显式列出）
-    ID         int64  `json:"id"`
-    CreateTime int64  `json:"createTime"`
-    UpdateTime int64  `json:"updateTime"`
-    // 站点标签字段（显式列出）
-    SiteID        int64  `json:"siteId"`
-    SiteTagID     string `json:"siteTagId"`
-    SiteTagName   string `json:"siteTagName"`
-    BaseSiteTagID string `json:"baseSiteTagId"`
-    Description   string `json:"description"`
-    LocalTagID    int64  `json:"localTagId"`
-    LastUse       int64  `json:"lastUse"`
-    // 关联对象（显式定义）
-    LocalTag *LocalTag `json:"localTag,omitempty"`
-    Site     *Site     `json:"site,omitempty"`
-    // 额外字段（显式定义）
-    HasSameNameLocalTag bool `json:"hasSameNameLocalTag"`
-}
-```
-
-#### 3. 构造函数实现
-
-```go
-// NewSiteTagFullDTO 创建站点标签完整DTO
-func NewSiteTagFullDTO(siteTag *SiteTag) *SiteTagFullDTO {
-    if siteTag == nil {
-        return nil
-    }
-    dto := &SiteTagFullDTO{
-        ID:            siteTag.ID,
-        CreateTime:    siteTag.CreateTime,
-        UpdateTime:    siteTag.UpdateTime,
-        SiteID:        siteTag.SiteID,
-        SiteTagID:     siteTag.SiteTagID,
-        SiteTagName:   siteTag.SiteTagName,
-        BaseSiteTagID: siteTag.BaseSiteTagID,
-        Description:   siteTag.Description,
-        LocalTagID:    siteTag.LocalTagID,
-        LastUse:       siteTag.LastUse,
-    }
-    return dto
-}
-```
-
-#### 4. 理由与约束
-
-| 问题 | 说明 |
-|------|------|
-| **语义差异** | Go embedding 是"委托"，不是 TypeScript 的"继承" |
-| **JSON 序列化** | 嵌入字段的 JSON tag 行为与预期不符 |
-| **解耦** | DTO 应独立于实体类，允许各自独立演进 |
-| **显式优于隐式** | 显式列出所有字段，代码可读性更好 |
-
-#### 5. 适用场景汇总
-
-| 场景 | 推荐方式 |
-|------|----------|
-| 创建包含实体字段的 DTO | 显式定义所有字段 |
-| 创建继承自其他 DTO 的 DTO | 显式定义所有字段（包括父 DTO 的字段） |
-| 添加额外关联对象 | 在 DTO 中显式添加关联字段 |
 
 ### Service 依赖规范（Go 主进程）
 

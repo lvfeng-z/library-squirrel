@@ -267,13 +267,11 @@ await pluginService.uninstall(pluginId)
 
 ## IPC 通信
 
-插件通过 IPC 与主进程通信：
+插件通过 Wails 绑定与主进程通信：
 
 ```typescript
-# 主进程端
-Electron.ipcMain.handle('plugin-method', async (event, args) => {
-  # 处理逻辑
-})
+# Go 主进程端（使用 Wails Bind）
+// Wails 自动将方法绑定到 window.api
 
 # 插件端
 window.api.pluginMethod(args)
@@ -445,7 +443,7 @@ export function initSlotSyncListener() {
   const store = useSlotRegistryStore()
 
   // 监听注册事件
-  window.electron.onSlotRegister((...args) => {
+  window.api.onSlotRegister((...args) => {
     const config = args[0] as SyncSlotConfig
     if (config.type === 'view') {
       store.registerViewSlot(convertToViewSlot(config))
@@ -456,7 +454,7 @@ export function initSlotSyncListener() {
   })
 
   // 首次加载时同步所有插槽
-  window.electron.getAllSlots().then((slots) => {
+  window.api.getAllSlots().then((slots) => {
     slots.forEach(/* 注册到 store */)
   })
 }

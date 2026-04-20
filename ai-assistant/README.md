@@ -52,16 +52,7 @@
   - 主程序端管理器
   - IPC 通信和扩展方法
 
-### 5. [common-pitfalls.md](./common-pitfalls.md) - 常见误区与陷阱
-
-- **用途**：了解项目中容易犯的错误和需要特别注意的问题
-- **适合场景**：编写IPC通信代码、调试数据传输问题时参考
-- **包含内容**：
-  - IPC数据传输规则和常见错误
-  - 响应式变量处理注意事项
-  - 其他开发中容易忽略的陷阱
-
-### 6. [code-rules.md](./code-rules.md) - 代码规则与约定
+### 5. [code-rules.md](./code-rules.md) - 代码规则与约定
 
 - **用途**：查看项目的代码编写规范、命名约定和开发规范
 - **适合场景**：编写新代码、重构或评审代码时参考
@@ -110,13 +101,11 @@
 - **本地标签** ↔ **站点标签** = 跨站点标签统一检索
 - **业务价值**：一次检索，全站结果
 
-### Go 主进程重构
+### Go 主进程
 
-> **项目状态**：正在进行从 Node.js 到 Go 的重构
->
-> **详细进度**：[go-refactor-progress.md](./go-refactor-progress.md)
+> **项目状态**：已完成从 Node.js 到 Go 的重构
 
-**目标**：将 `src/main/` 的 Node.js 主进程迁移到 `src/main-go/` 的 Go 实现。
+主进程位于 `internal/` 目录，使用 Go 实现。
 
 **核心规范**：
 - Repository 模式：数据访问通过接口隔离
@@ -138,11 +127,11 @@
 - 预置：本地导入 + pixiv插件
 - BasePlugin 接口简化为只包含 `pluginId: number`
 
-### IPC通信模式
+### Wails IPC通信模式
 
-- 主进程：`Electron.ipcMain.handle('service-method', args)`
-- 预加载：`window.api.serviceNameMethodName(args)`
-- 响应格式：统一使用`ApiUtil.response()`/`.error()`
+- Go 主进程：使用 Wails 的 `Bind` 机制自动生成前端 API
+- 前端调用：`window.api.serviceNameMethodName(args)` (由 Wails 绑定自动生成)
+- 响应格式：Go 端直接返回数据或 error
 
 ### 数据库设计
 
@@ -161,33 +150,34 @@
 
 | 任务类型     | 主要文件位置                      |
 | ------------ | --------------------------------- |
-| 业务逻辑     | `src/main/service/`               |
-| 共用实体/DTO | `src/shared/model/`               |
-| 数据库操作   | `src/main/dao/`                   |
-| 插件开发     | `src/main/plugin/`                |
-| 前端路由     | `src/renderer/src/router/`        |
-| 前端组件     | `src/renderer/src/components/`    |
-| 前端视图     | `src/renderer/src/views/`         |
-| 状态管理     | `src/renderer/src/store/`         |
-| IPC注册      | `src/main/core/MainProcessApi.ts` |
-| 任务队列     | `src/main/core/taskQueue.ts`      |
-| 共用工具函数 | `src/shared/util/`                |
+| 业务逻辑     | `internal/{module}/service.go`   |
+| 共用实体/DTO | `frontend/src/model/`             |
+| 数据库操作   | `internal/{module}/repository.go` |
+| 插件开发     | `plugin/package/`                 |
+| 前端路由     | `frontend/src/router/`            |
+| 前端组件     | `frontend/src/components/`        |
+| 前端视图     | `frontend/src/views/`              |
+| 状态管理     | `frontend/src/store/`              |
+| Wails 绑定   | `internal/{module}/handler.go`    |
+| 共用工具函数 | `frontend/src/utils/`             |
 
 ## 常见开发任务参考
 
-### 添加新Service
+### 添加新 Handler
 
-1. `src/main/service/`创建Service类
-2. `MainProcessApi.ts`注册IPC
-3. `preload/index.ts`添加API包装
-4. 前端通过`window.api`调用
+1. `internal/{module}/handler.go` 创建 handler（包含 Wails Bind 方法）
+2. `internal/{module}/service.go` 实现业务逻辑
+3. `internal/{module}/repository.go` 实现数据访问
+4. 前端通过 `window.api.handlerMethod(args)` 调用
 
 ### 数据库事务
 
-```typescript
-await db.transaction(async (tx) => {
-  // 多个操作
-}, '操作描述')
+```go
+// Go 端使用 gorm.Transaction 支持嵌套事务
+err := database.WithTransaction(db, func(tx *gorm.DB) error {
+    // 多个操作
+    return nil
+})
 ```
 
 ### 响应处理
@@ -198,8 +188,7 @@ if (ApiUtil.check(response)) {
   const data = ApiUtil.data(response)
   // 处理成功
 } else {
-  const error = ApiUtil.error(response)
-  // 处理错误
+  // 处理错误 - Go 端返回 BusinessError
 }
 ```
 
@@ -209,9 +198,8 @@ if (ApiUtil.check(response)) {
 
 - 添加新的核心业务概念时更新`glossary.md`
 - 架构重大变更时更新`architecture-quick-reference.md`
-- 新增典型开发模式时更新`development-scenarios.md`
 - 代码规范变更时更新`code-rules.md`
-- 发现新的常见错误时更新`common-pitfalls.md`
+- 发现新的常见错误时更新文档
 
 ## 相关项目文档
 
