@@ -20,6 +20,7 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { LocalTagQueryDTO, LocalTagDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
@@ -30,10 +31,9 @@ onMounted(() => {
   if (isNullish(page.value.query)) {
     page.value.query = new LocalTagQueryDTO()
   }
-  page.value.query.sort = [
-    { key: 'updateTime', asc: false },
-    { key: 'createTime', asc: false }
-  ]
+  // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
+  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   localTagSearchTable.value.doSearch()
 })
 

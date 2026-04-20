@@ -18,6 +18,7 @@ import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { SiteTagLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import type { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
 import { SiteTagFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { LocalTagDTO as LocalTag } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
@@ -30,10 +31,9 @@ onMounted(() => {
   if (isNullish(page.value.query)) {
     page.value.query = new SiteTagQueryDTO()
   }
-  page.value.query.sort = [
-    { key: 'updateTime', asc: false },
-    { key: 'createTime', asc: false }
-  ]
+  // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
+  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteTagSearchTable.value.doSearch()
 })
 
@@ -197,24 +197,22 @@ const dialogData: Ref<SiteTagLocalRelateDTO> = ref(new SiteTagLocalRelateDTO())
 async function siteTagQueryPage(
   page: Page<SiteTagQueryDTO, object>
 ): Promise<Page<SiteTagQueryDTO, SiteTagLocalRelateDTO> | undefined> {
-  // 根据用户选择的排序构建排序配置
-  const userSort: QuerySortOption[] = []
-  // 添加用户选择的排序（如果存在）
-  if (sort.value.prop && sort.value.order) {
-    userSort.push({
-      key: sort.value.prop,
-      asc: sort.value.order === 'ascending'
-    })
-  }
-  // 添加默认排序（按修改时间和创建时间降序）
+  // 添加默认排序（按修改时间和创建时间降序，priority 控制排序优先级）
   if (isNullish(page.query)) {
     page.query = new SiteTagQueryDTO()
   }
-  if (arrayNotEmpty(page.query.sort)) {
-    page.query.sort = [...userSort, ...page.query.sort]
-  } else {
-    page.query.sort = [...userSort, { key: 'updateTime', asc: false }, { key: 'createTime', asc: false }]
+  // 用户选择的排序优先级最高（priority=-1）
+  if (sort.value.prop && sort.value.order) {
+    const orderField = sort.value.prop as keyof SiteTagQueryDTO
+    ;(page.query as any)[orderField] = {
+      value: null,
+      order: sort.value.order === 'ascending' ? SortOrder.OrderAsc : SortOrder.OrderDesc,
+      priority: -1  // 用户选择优先级最高
+    }
   }
+  // 设置默认排序（用户选择优先级最高，updateTime 次之，createTime 再次）
+  page.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   const response = await apis.siteTagQueryLocalRelateDTOPage(page)
   if (ApiUtil.check(response)) {
     let responsePage = ApiUtil.data<Page<SiteTagQueryDTO, SiteTagLocalRelateDTO>>(response)

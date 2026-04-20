@@ -27,6 +27,7 @@ import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
 import Task from '@renderer/model/model/entity/Task.ts'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import type { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
@@ -249,28 +250,18 @@ async function taskQueryParentPage(page: Page<TaskQueryDTO, object>): Promise<Pa
   if (isNullish(page.query)) {
     page.query = new TaskQueryDTO()
   }
-  // 根据用户选择的排序构建排序配置
-  const userSort: QuerySortOption[] = []
-  // 添加用户选择的排序（如果存在）
+  // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
-    userSort.push({
-      key: sort.value.prop,
-      asc: sort.value.order === 'ascending'
-    })
+    const orderField = sort.value.prop as keyof TaskQueryDTO
+    ;(page.query as any)[orderField] = {
+      value: null,
+      order: sort.value.order === 'ascending' ? SortOrder.OrderAsc : SortOrder.OrderDesc,
+      priority: -1
+    }
   }
-  // 添加默认排序（按创建时间和更新时间降序）
-  if (arrayNotEmpty(page.query.sort)) {
-    page.query.sort = [
-      ...userSort,
-      ...page.query.sort,
-      ...[
-        { key: 'createTime', asc: false },
-        { key: 'updateTime', asc: false }
-      ]
-    ]
-  } else {
-    page.query.sort = [...userSort, { key: 'createTime', asc: false }, { key: 'updateTime', asc: false }]
-  }
+  // 设置默认排序（用户选择优先级最高，createTime 次之，updateTime 再次）
+  page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  page.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   const response = await apis.taskQueryParentPage(page)
   if (ApiUtil.check(response)) {
     return ApiUtil.data<Page<TaskQueryDTO, object>>(response)

@@ -19,6 +19,7 @@ import SelectItem from '@renderer/model/util/SelectItem.ts'
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { LocalAuthorDTO as LocalAuthor } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { SiteAuthorDTO as SiteAuthor } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
@@ -28,10 +29,9 @@ onMounted(() => {
   if (isNullish(page.value.query)) {
     page.value.query = new SiteAuthorQueryDTO()
   }
-  page.value.query.sort = [
-    { key: 'updateTime', asc: false },
-    { key: 'createTime', asc: false }
-  ]
+  // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
+  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteAuthorSearchTable.value.doSearch()
 })
 

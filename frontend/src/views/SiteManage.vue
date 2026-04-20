@@ -13,6 +13,7 @@ import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
 import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { siteApi } from '@renderer/apis/http'
 
 // onMounted
@@ -20,10 +21,9 @@ onMounted(() => {
   if (isNullish(sitePage.value.query)) {
     sitePage.value.query = new SiteQueryDTO()
   }
-  sitePage.value.query.sort = [
-    { key: 'updateTime', asc: false },
-    { key: 'createTime', asc: false }
-  ]
+  // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
+  sitePage.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  sitePage.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteSearchTable.value.doSearch()
 })
 

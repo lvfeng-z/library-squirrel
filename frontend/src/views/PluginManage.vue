@@ -13,6 +13,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
 import { PluginDTO as Plugin } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { fileSysUtilApi } from '@renderer/apis/http'
 import {
@@ -28,10 +29,9 @@ onMounted(() => {
   if (isNullish(pluginPage.value.query)) {
     pluginPage.value.query = new PluginQueryDTO()
   }
-  pluginPage.value.query.sort = [
-    { key: 'updateTime', asc: false },
-    { key: 'createTime', asc: false }
-  ]
+  // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
+  pluginPage.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  pluginPage.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   pluginSearchTable.value.doSearch()
 })
 
