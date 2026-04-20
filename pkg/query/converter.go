@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"gorm.io/gorm/clause"
@@ -33,6 +34,14 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 	var conditions []clause.Expression
 	var orderColumns []clause.OrderByColumn
 
+	// 先收集所有有排序的字段
+	type orderField struct {
+		columnName string
+		desc       bool
+		priority   int
+	}
+	var orders []orderField
+
 	for _, field := range fields {
 		// 跳过非数据库字段
 		if !field.IsDbField || field.QueryAttr == nil {
@@ -43,10 +52,10 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 
 		// 处理排序（即使没有查询值，只要指定了排序就加入）
 		if attr.HasOrder() {
-			desc := attr.Order == OrderDesc
-			orderColumns = append(orderColumns, clause.OrderByColumn{
-				Column: clause.Column{Name: field.ColumnName},
-				Desc:   desc,
+			orders = append(orders, orderField{
+				columnName: field.ColumnName,
+				desc:       attr.Order == OrderDesc,
+				priority:   attr.Priority,
 			})
 		}
 
@@ -67,6 +76,20 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 		}
 		if expr != nil {
 			conditions = append(conditions, expr)
+		}
+	}
+
+	// 按 Priority 排序并构建 orderColumns
+	if len(orders) > 0 {
+		// 按 priority 从小到大排序（priority 越小优先级越高）
+		sort.Slice(orders, func(i, j int) bool {
+			return orders[i].priority < orders[j].priority
+		})
+		for _, o := range orders {
+			orderColumns = append(orderColumns, clause.OrderByColumn{
+				Column: clause.Column{Name: o.columnName},
+				Desc:   o.desc,
+			})
 		}
 	}
 
