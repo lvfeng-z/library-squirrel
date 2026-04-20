@@ -1,4 +1,4 @@
-import SelectItem, { CSelectItem } from './SelectItem.ts'
+import SelectItem from './SelectItem.ts'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class SegmentedTagItem extends SelectItem {
@@ -13,22 +13,22 @@ export default class SegmentedTagItem extends SelectItem {
   sub2BackGroundHover?: string
   sub2TextColor?: string
 
-  constructor(cSegmentedTagItem: CSegmentedTagItem) {
-    super(cSegmentedTagItem)
-    this.disabled = isNullish(cSegmentedTagItem.disabled) ? false : cSegmentedTagItem.disabled
-    this.mainBackGround = cSegmentedTagItem.mainBackGround
-    this.mainBackGroundHover = cSegmentedTagItem.mainBackGroundHover
-    this.mainTextColor = cSegmentedTagItem.mainTextColor
-    this.sub1BackGround = cSegmentedTagItem.sub1BackGround
-    this.sub1BackGroundHover = cSegmentedTagItem.sub1BackGroundHover
-    this.sub1TextColor = cSegmentedTagItem.sub1TextColor
-    this.sub2BackGround = cSegmentedTagItem.sub2BackGround
-    this.sub2BackGroundHover = cSegmentedTagItem.sub2BackGroundHover
-    this.sub2TextColor = cSegmentedTagItem.sub2TextColor
+  constructor(item: Partial<SelectItem> & CSegmentedTagItem) {
+    super(item)
+    this.disabled = isNullish(item.disabled) ? false : item.disabled
+    this.mainBackGround = item.mainBackGround
+    this.mainBackGroundHover = item.mainBackGroundHover
+    this.mainTextColor = item.mainTextColor
+    this.sub1BackGround = item.sub1BackGround
+    this.sub1BackGroundHover = item.sub1BackGroundHover
+    this.sub1TextColor = item.sub1TextColor
+    this.sub2BackGround = item.sub2BackGround
+    this.sub2BackGroundHover = item.sub2BackGroundHover
+    this.sub2TextColor = item.sub2TextColor
   }
 }
 
-interface CSegmentedTagItem extends CSelectItem {
+interface CSegmentedTagItem {
   disabled?: boolean
   mainBackGround?: string
   mainBackGroundHover?: string

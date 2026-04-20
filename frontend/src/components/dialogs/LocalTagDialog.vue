@@ -43,7 +43,6 @@ const apis = {
 }
 
 // 适配器函数：将 bindings 的 Page<SelectItem, LocalTagQueryDTO> 转换为 IPage
-// bindings 的 Page 没有 paging 属性，需要手动添加
 async function localTagQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
   const response = await localTagApi.localTagQuerySelectItemPage({
     page: page.pageNumber,
@@ -53,7 +52,7 @@ async function localTagQuerySelectItemPageAdapter(page: IPage<unknown, SelectIte
   if (!response.success || !response.data) {
     return new Page<unknown, SelectItem>()
   }
-  // 将 bindings Page 转换为 IPage（bindings Page 没有 paging 属性）
+  // 将 bindings Page 转换为 IPage
   return {
     pageNumber: response.data.pageNumber,
     pageSize: response.data.pageSize,
