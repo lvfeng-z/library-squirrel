@@ -65,9 +65,19 @@ export class SiteQueryDTO {
     "siteNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 是否启用
      */
-    "orderBy": query$0.QueryAttribute;
+    "enable": query$0.QueryAttribute;
+
+    /**
+     * 更新时间（可用于排序）
+     */
+    "updateTime": query$0.QueryAttribute;
+
+    /**
+     * 创建时间（可用于排序）
+     */
+    "createTime": query$0.QueryAttribute;
 
     /** Creates a new SiteQueryDTO instance. */
     constructor($$source: Partial<SiteQueryDTO> = {}) {
@@ -80,8 +90,14 @@ export class SiteQueryDTO {
         if (!("siteNameStr" in $$source)) {
             this["siteNameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("enable" in $$source)) {
+            this["enable"] = (new query$0.QueryAttribute());
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -95,6 +111,8 @@ export class SiteQueryDTO {
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteName" in $$parsedSource) {
             $$parsedSource["siteName"] = $$createField0_0($$parsedSource["siteName"]);
@@ -105,8 +123,14 @@ export class SiteQueryDTO {
         if ("siteNameStr" in $$parsedSource) {
             $$parsedSource["siteNameStr"] = $$createField2_0($$parsedSource["siteNameStr"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField3_0($$parsedSource["orderBy"]);
+        if ("enable" in $$parsedSource) {
+            $$parsedSource["enable"] = $$createField3_0($$parsedSource["enable"]);
+        }
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField4_0($$parsedSource["updateTime"]);
+        }
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField5_0($$parsedSource["createTime"]);
         }
         return new SiteQueryDTO($$parsedSource as Partial<SiteQueryDTO>);
     }

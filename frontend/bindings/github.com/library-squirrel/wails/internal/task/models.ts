@@ -183,9 +183,14 @@ export class TaskQueryDTO {
     "taskName": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 创建时间（可用于排序）
      */
-    "orderBy": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute;
+
+    /**
+     * 更新时间（可用于排序）
+     */
+    "updateTime": query$0.QueryAttribute;
 
     /** Creates a new TaskQueryDTO instance. */
     constructor($$source: Partial<TaskQueryDTO> = {}) {
@@ -216,8 +221,11 @@ export class TaskQueryDTO {
         if (!("taskName" in $$source)) {
             this["taskName"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -237,6 +245,7 @@ export class TaskQueryDTO {
         const $$createField7_0 = $$createType0;
         const $$createField8_0 = $$createType0;
         const $$createField9_0 = $$createType0;
+        const $$createField10_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pid" in $$parsedSource) {
             $$parsedSource["pid"] = $$createField0_0($$parsedSource["pid"]);
@@ -265,8 +274,11 @@ export class TaskQueryDTO {
         if ("taskName" in $$parsedSource) {
             $$parsedSource["taskName"] = $$createField8_0($$parsedSource["taskName"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField9_0($$parsedSource["orderBy"]);
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField9_0($$parsedSource["createTime"]);
+        }
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField10_0($$parsedSource["updateTime"]);
         }
         return new TaskQueryDTO($$parsedSource as Partial<TaskQueryDTO>);
     }

@@ -153,9 +153,14 @@ export class WorkSetQueryDTO {
     "nickNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 创建时间（可用于排序）
      */
-    "orderBy": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute;
+
+    /**
+     * 更新时间（可用于排序）
+     */
+    "updateTime": query$0.QueryAttribute;
 
     /** Creates a new WorkSetQueryDTO instance. */
     constructor($$source: Partial<WorkSetQueryDTO> = {}) {
@@ -180,8 +185,11 @@ export class WorkSetQueryDTO {
         if (!("nickNameStr" in $$source)) {
             this["nickNameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -199,6 +207,7 @@ export class WorkSetQueryDTO {
         const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
         const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
@@ -221,8 +230,11 @@ export class WorkSetQueryDTO {
         if ("nickNameStr" in $$parsedSource) {
             $$parsedSource["nickNameStr"] = $$createField6_0($$parsedSource["nickNameStr"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField7_0($$parsedSource["orderBy"]);
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField7_0($$parsedSource["createTime"]);
+        }
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField8_0($$parsedSource["updateTime"]);
         }
         return new WorkSetQueryDTO($$parsedSource as Partial<WorkSetQueryDTO>);
     }

@@ -81,9 +81,14 @@ export class QueryAttribute {
     "operator"?: Operator;
 
     /**
-     * 排序（可省略）
+     * 排序方向（asc/desc）
      */
     "order"?: SortOrder;
+
+    /**
+     * 排序优先级，数字越小优先级越高
+     */
+    "priority"?: number;
 
     /** Creates a new QueryAttribute instance. */
     constructor($$source: Partial<QueryAttribute> = {}) {

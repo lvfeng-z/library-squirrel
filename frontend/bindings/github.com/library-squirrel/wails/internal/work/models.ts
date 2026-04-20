@@ -90,9 +90,14 @@ export class WorkQueryDTO {
     "nickNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 创建时间（可用于排序）
      */
-    "orderBy": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute;
+
+    /**
+     * 更新时间（可用于排序）
+     */
+    "updateTime": query$0.QueryAttribute;
 
     /** Creates a new WorkQueryDTO instance. */
     constructor($$source: Partial<WorkQueryDTO> = {}) {
@@ -120,8 +125,11 @@ export class WorkQueryDTO {
         if (!("nickNameStr" in $$source)) {
             this["nickNameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -140,6 +148,7 @@ export class WorkQueryDTO {
         const $$createField6_0 = $$createType0;
         const $$createField7_0 = $$createType0;
         const $$createField8_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
@@ -165,8 +174,11 @@ export class WorkQueryDTO {
         if ("nickNameStr" in $$parsedSource) {
             $$parsedSource["nickNameStr"] = $$createField7_0($$parsedSource["nickNameStr"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField8_0($$parsedSource["orderBy"]);
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField8_0($$parsedSource["createTime"]);
+        }
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField9_0($$parsedSource["updateTime"]);
         }
         return new WorkQueryDTO($$parsedSource as Partial<WorkQueryDTO>);
     }

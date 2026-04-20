@@ -303,9 +303,14 @@ export class SiteAuthorQueryDTO {
     "introduce": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 更新时间（可用于排序）
      */
-    "orderBy": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute;
+
+    /**
+     * 创建时间（可用于排序）
+     */
+    "createTime": query$0.QueryAttribute;
 
     /** Creates a new SiteAuthorQueryDTO instance. */
     constructor($$source: Partial<SiteAuthorQueryDTO> = {}) {
@@ -330,8 +335,11 @@ export class SiteAuthorQueryDTO {
         if (!("introduce" in $$source)) {
             this["introduce"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -349,6 +357,7 @@ export class SiteAuthorQueryDTO {
         const $$createField5_0 = $$createType2;
         const $$createField6_0 = $$createType2;
         const $$createField7_0 = $$createType2;
+        const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
@@ -371,8 +380,11 @@ export class SiteAuthorQueryDTO {
         if ("introduce" in $$parsedSource) {
             $$parsedSource["introduce"] = $$createField6_0($$parsedSource["introduce"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField7_0($$parsedSource["orderBy"]);
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField7_0($$parsedSource["updateTime"]);
+        }
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField8_0($$parsedSource["createTime"]);
         }
         return new SiteAuthorQueryDTO($$parsedSource as Partial<SiteAuthorQueryDTO>);
     }

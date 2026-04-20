@@ -61,9 +61,14 @@ export class LocalTagQueryDTO {
     "localTagNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段
+     * 更新时间（可用于排序）
      */
-    "orderBy": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute;
+
+    /**
+     * 创建时间（可用于排序）
+     */
+    "createTime": query$0.QueryAttribute;
 
     /** Creates a new LocalTagQueryDTO instance. */
     constructor($$source: Partial<LocalTagQueryDTO> = {}) {
@@ -76,8 +81,11 @@ export class LocalTagQueryDTO {
         if (!("localTagNameStr" in $$source)) {
             this["localTagNameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("orderBy" in $$source)) {
-            this["orderBy"] = (new query$0.QueryAttribute());
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = (new query$0.QueryAttribute());
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -91,6 +99,7 @@ export class LocalTagQueryDTO {
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("baseLocalTagId" in $$parsedSource) {
             $$parsedSource["baseLocalTagId"] = $$createField0_0($$parsedSource["baseLocalTagId"]);
@@ -101,8 +110,11 @@ export class LocalTagQueryDTO {
         if ("localTagNameStr" in $$parsedSource) {
             $$parsedSource["localTagNameStr"] = $$createField2_0($$parsedSource["localTagNameStr"]);
         }
-        if ("orderBy" in $$parsedSource) {
-            $$parsedSource["orderBy"] = $$createField3_0($$parsedSource["orderBy"]);
+        if ("updateTime" in $$parsedSource) {
+            $$parsedSource["updateTime"] = $$createField3_0($$parsedSource["updateTime"]);
+        }
+        if ("createTime" in $$parsedSource) {
+            $$parsedSource["createTime"] = $$createField4_0($$parsedSource["createTime"]);
         }
         return new LocalTagQueryDTO($$parsedSource as Partial<LocalTagQueryDTO>);
     }
