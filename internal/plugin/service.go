@@ -35,16 +35,17 @@ const (
 
 // PluginQueryDTO 插件查询条件
 type PluginQueryDTO struct {
-	ID             query.QueryAttribute `json:"-" query:"id"`                                         // 插件ID（程序设置，不从JSON解析）
-	PublicID       query.QueryAttribute `json:"publicId" query:"public_id"`                         // 公开ID（精确匹配）
-	Name           query.QueryAttribute `json:"name" query:"name"`                                 // 插件名称（精确匹配）
-	Author         query.QueryAttribute `json:"author" query:"author"`                             // 作者（精确匹配）
-	Version        query.QueryAttribute `json:"version" query:"version"`                           // 版本号（精确匹配）
-	ActivationType query.QueryAttribute `json:"activationType" query:"activation_type"`           // 激活类型（精确匹配）
-	Uninstalled    query.QueryAttribute `json:"uninstalled" query:"uninstalled"`                     // 是否已卸载（0=未卸载，1=已卸载）
-	NameStr       query.QueryAttribute `json:"nameStr" query:"name"`                           // 插件名称（模糊匹配）
-	AuthorStr     query.QueryAttribute `json:"authorStr" query:"author"`                         // 作者（模糊匹配）
-	OrderBy        query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
+	ID             query.QueryAttribute `json:"-" query:"id"`                           // 插件ID（程序设置，不从JSON解析）
+	PublicID       query.QueryAttribute `json:"publicId" query:"public_id"`             // 公开ID（精确匹配）
+	Name           query.QueryAttribute `json:"name" query:"name"`                      // 插件名称（精确匹配）
+	Author         query.QueryAttribute `json:"author" query:"author"`                  // 作者（精确匹配）
+	Version        query.QueryAttribute `json:"version" query:"version"`                // 版本号（精确匹配）
+	ActivationType query.QueryAttribute `json:"activationType" query:"activation_type"` // 激活类型（精确匹配）
+	Uninstalled    query.QueryAttribute `json:"uninstalled" query:"uninstalled"`        // 是否已卸载（0=未卸载，1=已卸载）
+	NameStr        query.QueryAttribute `json:"nameStr" query:"name"`                   // 插件名称（模糊匹配）
+	AuthorStr      query.QueryAttribute `json:"authorStr" query:"author"`               // 作者（模糊匹配）
+	CreateTime     query.QueryAttribute `json:"createTime" query:"create_time"`         // 创建时间（可用于排序）
+	UpdateTime     query.QueryAttribute `json:"updateTime" query:"update_time"`         // 更新时间（可用于排序）
 }
 
 // 错误定义

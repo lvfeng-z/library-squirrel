@@ -15,11 +15,13 @@ import (
 
 // SiteQueryDTO 站点查询条件
 type SiteQueryDTO struct {
-	ID           query.QueryAttribute `json:"-" query:"id"`                                     // 站点ID（程序设置，不从JSON解析）
-	SiteName     query.QueryAttribute `json:"siteName" query:"site_name"`                     // 站点名称（精确匹配）
-	Homepage     query.QueryAttribute `json:"homepage" query:"homepage"`                     // 主页地址（精确匹配）
-	SiteNameStr  query.QueryAttribute `json:"siteNameStr" query:"site_name"`                 // 站点名称（模糊匹配）
-	OrderBy      query.QueryAttribute `json:"orderBy" query:"order_by"`                       // 排序字段
+	ID          query.QueryAttribute `json:"-" query:"id"`                   // 站点ID（程序设置，不从JSON解析）
+	SiteName    query.QueryAttribute `json:"siteName" query:"site_name"`     // 站点名称（精确匹配）
+	Homepage    query.QueryAttribute `json:"homepage" query:"homepage"`      // 主页地址（精确匹配）
+	SiteNameStr query.QueryAttribute `json:"siteNameStr" query:"site_name"`  // 站点名称（模糊匹配）
+	Enable      query.QueryAttribute `json:"enable" query:"enable"`          // 是否启用
+	UpdateTime  query.QueryAttribute `json:"updateTime" query:"update_time"` // 更新时间（可用于排序）
+	CreateTime  query.QueryAttribute `json:"createTime" query:"create_time"` // 创建时间（可用于排序）
 }
 
 // Repository 站点仓储接口（由 service 定义需要的数据库操作方法）

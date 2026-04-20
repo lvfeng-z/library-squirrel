@@ -17,15 +17,16 @@ import (
 
 // WorkSetQueryDTO 作品集查询条件
 type WorkSetQueryDTO struct {
-	ID                   query.QueryAttribute `json:"-" query:"id"`                                         // 作品集ID（程序设置，不从JSON解析）
-	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                             // 站点ID
-	SiteWorkSetID        query.QueryAttribute `json:"siteWorkSetId" query:"site_work_set_id"`             // 站点作品集ID
-	SiteAuthorID         query.QueryAttribute `json:"siteAuthorId" query:"site_author_id"`                 // 站点作者ID
-	NickName             query.QueryAttribute `json:"nickName" query:"nick_name"`                         // 昵称（精确匹配）
-	SiteWorkSetName      query.QueryAttribute `json:"siteWorkSetName" query:"site_work_set_name"`         // 站点作品集名称（模糊匹配）
-	SiteWorkSetDesc     query.QueryAttribute `json:"siteWorkSetDesc" query:"site_work_set_description"`   // 站点作品集描述（模糊匹配）
-	NickNameStr          query.QueryAttribute `json:"nickNameStr" query:"nick_name"`                     // 昵称（模糊匹配）
-	OrderBy              query.QueryAttribute `json:"orderBy" query:"order_by"`                           // 排序字段
+	ID              query.QueryAttribute `json:"-" query:"id"`                                      // 作品集ID（程序设置，不从JSON解析）
+	SiteID          query.QueryAttribute `json:"siteId" query:"site_id"`                            // 站点ID
+	SiteWorkSetID   query.QueryAttribute `json:"siteWorkSetId" query:"site_work_set_id"`            // 站点作品集ID
+	SiteAuthorID    query.QueryAttribute `json:"siteAuthorId" query:"site_author_id"`               // 站点作者ID
+	NickName        query.QueryAttribute `json:"nickName" query:"nick_name"`                        // 昵称（精确匹配）
+	SiteWorkSetName query.QueryAttribute `json:"siteWorkSetName" query:"site_work_set_name"`        // 站点作品集名称（模糊匹配）
+	SiteWorkSetDesc query.QueryAttribute `json:"siteWorkSetDesc" query:"site_work_set_description"` // 站点作品集描述（模糊匹配）
+	NickNameStr     query.QueryAttribute `json:"nickNameStr" query:"nick_name"`                     // 昵称（模糊匹配）
+	CreateTime      query.QueryAttribute `json:"createTime" query:"create_time"`                    // 创建时间（可用于排序）
+	UpdateTime      query.QueryAttribute `json:"updateTime" query:"update_time"`                    // 更新时间（可用于排序）
 }
 
 // ========== 外部模块接口定义（由 workSet 模块定义自己需要的接口）==========

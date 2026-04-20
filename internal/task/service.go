@@ -13,8 +13,8 @@ import (
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
 	"github.com/library-squirrel/wails/pkg/logger"
-	"github.com/library-squirrel/wails/pkg/query"
 	pkgModel "github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -23,17 +23,18 @@ import (
 
 // TaskQueryDTO 任务查询条件
 type TaskQueryDTO struct {
-	ID                   query.QueryAttribute `json:"-" query:"id"`                             // 任务ID（程序设置，不从JSON解析）
-	Pid                  query.QueryAttribute `json:"pid" query:"pid"`                         // 父任务ID
-	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                   // 站点ID
-	SiteWorkID           query.QueryAttribute `json:"siteWorkId" query:"site_work_id"`           // 站点作品ID
-	Status               query.QueryAttribute `json:"status" query:"status"`                   // 任务状态
-	IsCollection         query.QueryAttribute `json:"isCollection" query:"is_collection"`       // 是否为合集（0=否，1=是）
-	PluginPublicID       query.QueryAttribute `json:"pluginPublicId" query:"plugin_public_id"`   // 插件公开ID
+	ID                   query.QueryAttribute `json:"-" query:"id"`                                        // 任务ID（程序设置，不从JSON解析）
+	Pid                  query.QueryAttribute `json:"pid" query:"pid"`                                     // 父任务ID
+	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                              // 站点ID
+	SiteWorkID           query.QueryAttribute `json:"siteWorkId" query:"site_work_id"`                     // 站点作品ID
+	Status               query.QueryAttribute `json:"status" query:"status"`                               // 任务状态
+	IsCollection         query.QueryAttribute `json:"isCollection" query:"is_collection"`                  // 是否为合集（0=否，1=是）
+	PluginPublicID       query.QueryAttribute `json:"pluginPublicId" query:"plugin_public_id"`             // 插件公开ID
 	PluginContributionID query.QueryAttribute `json:"pluginContributionId" query:"plugin_contribution_id"` // 插件贡献ID
-	Continuable          query.QueryAttribute `json:"continuable" query:"continuable"`           // 是否可继续（0=否，1=是）
-	TaskName             query.QueryAttribute `json:"taskName" query:"task_name"`               // 任务名称（模糊匹配）
-	OrderBy              query.QueryAttribute `json:"orderBy" query:"order_by"`                 // 排序字段
+	Continuable          query.QueryAttribute `json:"continuable" query:"continuable"`                     // 是否可继续（0=否，1=是）
+	TaskName             query.QueryAttribute `json:"taskName" query:"task_name"`                          // 任务名称（模糊匹配）
+	CreateTime           query.QueryAttribute `json:"createTime" query:"create_time"`                      // 创建时间（可用于排序）
+	UpdateTime           query.QueryAttribute `json:"updateTime" query:"update_time"`                      // 更新时间（可用于排序）
 }
 
 // 错误定义
