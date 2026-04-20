@@ -115,7 +115,10 @@ export async function localAuthorQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function localAuthorListSelectItems(
@@ -147,5 +150,8 @@ export async function localAuthorQuerySelectItemPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }

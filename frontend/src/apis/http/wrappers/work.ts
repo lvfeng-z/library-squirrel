@@ -7,6 +7,7 @@ import type { ApiResponse } from '../types'
 import { Handler as WorkHandler, WorkDTO, WorkQueryDTO, WorkResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/work'
 import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 
 export interface WorkVO {
   id: number
@@ -76,14 +77,17 @@ export async function workQueryPage(query: {
   query?: { siteId?: number; title?: string }
 }): Promise<ApiResponse<Page<WorkResultDTO, WorkQueryDTO>>> {
   const queryDTO = new WorkQueryDTO({
-    siteId: query.query?.siteId ?? null,
-    siteWorkNameLike: query.query?.title ?? null
+    siteId: { value: query.query?.siteId } as QueryAttribute,
+    siteWorkName: { value: query.query?.title } as QueryAttribute
   })
   const result = await WorkHandler.QueryPage(query.page, query.pageSize, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function workDeleteWorkAndSurroundingData(id: number): Promise<ApiResponse<boolean>> {
@@ -133,7 +137,7 @@ export async function workListRankedLocalAuthorWithWorkIdByWorkIds(
 export async function workListRankedSiteAuthorWithWorkIdByWorkIds(
   workIds: number[]
 ): Promise<ApiResponse<any[]>> {
-  const result = await WorkHandler.ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)
+  const result = await WorkHandler.ListRankedLocalAuthorWithWorkIdByWorkIds(workIds)
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
   }
@@ -147,7 +151,7 @@ export async function workListRankedSiteAuthorWithWorkIdByWorkIds(
  * 获取作品的重新整理的作者信息
  */
 export async function workListReWorkAuthor(workId: number): Promise<ApiResponse<any>> {
-  const result = await WorkHandler.ListReWorkAuthor(workId)
+  const result = await WorkHandler.ListRankedLocalAuthorWithWorkIdByWorkIds([workId])
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
   }

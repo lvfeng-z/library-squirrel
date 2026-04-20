@@ -7,6 +7,7 @@ import type { ApiResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import type { Work } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 
 export interface WorkSetVO {
   id: number
@@ -96,7 +97,10 @@ export async function workSetQueryPageWithCover(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function workSetGetById(id: number): Promise<ApiResponse<WorkSetVO>> {
@@ -116,7 +120,7 @@ export async function workSetQueryPage(query: {
   query?: { name?: string }
 }): Promise<ApiResponse<Page<WorkSetResultDTO, WorkSetQueryDTO>>> {
   const queryDTO = new WorkSetQueryDTO({
-    siteWorkSetNameLike: query.query?.name ?? null
+    siteWorkSetName: { value: query.query?.name } as QueryAttribute
   })
   const page = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
     pageNumber: query.page,
@@ -127,7 +131,10 @@ export async function workSetQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function workSetSave(workSet: {
@@ -229,7 +236,7 @@ export async function workSetGetWorks(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+  return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is Work => item !== null) ?? undefined }
 }
 
 /**

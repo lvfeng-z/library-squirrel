@@ -5,7 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as ReWorkAuthorHandler } from '@bindings/github.com/library-squirrel/wails/internal/reWorkAuthor'
-import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId, WorkAuthorsResultDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 // ========== VO 定义 ==========
 
@@ -117,7 +117,10 @@ export async function reWorkAuthorListByWorkId(workId: number): Promise<ApiRespo
   return {
     success: true,
     msg: result.msg ?? '',
-    data: toWorkAuthorVO(data.localAuthors ?? [], data.siteAuthors ?? [])
+    data: toWorkAuthorVO(
+      (data.localAuthors ?? []).filter((item): item is RankedLocalAuthor => item !== null),
+      (data.siteAuthors ?? []).filter((item): item is RankedSiteAuthor => item !== null)
+    )
   }
 }
 
@@ -132,14 +135,14 @@ export async function reWorkAuthorListByWorkIds(workIds: number[]): Promise<ApiR
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  const data = result.data ?? []
+  const data = (result.data ?? []).filter((item): item is WorkAuthorsResultDTO => item !== null)
   return {
     success: true,
     msg: result.msg ?? '',
     data: data.map(item => ({
       workId: item.workId,
-      localAuthors: (item.localAuthors ?? []).map(toLocalAuthorVO).filter((item): item is LocalAuthorVO => item !== null),
-      siteAuthors: (item.siteAuthors ?? []).map(toSiteAuthorVO).filter((item): item is SiteAuthorVO => item !== null)
+      localAuthors: (item.localAuthors ?? []).filter((a): a is RankedLocalAuthor => a !== null).map(toLocalAuthorVO),
+      siteAuthors: (item.siteAuthors ?? []).filter((a): a is RankedSiteAuthor => a !== null).map(toSiteAuthorVO)
     }))
   }
 }
@@ -193,7 +196,7 @@ export async function reWorkAuthorListRankedLocalAuthorWithWorkIdByWorkIds(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? [] }
+  return { success: true, msg: result.msg ?? '', data: (result.data ?? []).filter((item): item is RankedLocalAuthorWithWorkId => item !== null) }
 }
 
 /**
@@ -209,5 +212,5 @@ export async function reWorkAuthorListRankedSiteAuthorWithWorkIdByWorkIds(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? [] }
+  return { success: true, msg: result.msg ?? '', data: (result.data ?? []).filter((item): item is RankedSiteAuthorWithWorkId => item !== null) }
 }

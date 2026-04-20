@@ -83,7 +83,10 @@ export async function taskQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
@@ -95,7 +98,10 @@ export async function taskQueryParentPage(query: { page: number; pageSize: numbe
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -140,11 +146,11 @@ export async function taskUpdate(task: {
 }
 
 export async function taskDelete(taskId: number): Promise<ApiResponse<null>> {
-  const result = await TaskHandler.DeleteTask(taskId)
+  const result = await TaskHandler.DeleteTask([taskId])
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
-  return result
+  return { success: result.success, msg: result.msg ?? '' }
 }
 
 /**
@@ -220,7 +226,10 @@ export async function taskQueryChildrenTaskPage(
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 // ========== TaskManager ==========

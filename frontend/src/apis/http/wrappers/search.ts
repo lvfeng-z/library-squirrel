@@ -99,7 +99,7 @@ export async function searchQueryWorkSetPage(query: {
 }): Promise<ApiResponse<SearchWorkSetItem[]>> {
   const { WorkSetQueryDTO } = await import('@bindings/github.com/library-squirrel/wails/internal/workSet/models')
   const queryDTO = new WorkSetQueryDTO({})
-  const pageObj = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
+  const pageObj = new Page<typeof WorkSetQueryDTO, typeof WorkSetQueryDTO>({
     pageNumber: query.pageNumber,
     pageSize: query.pageSize,
     query: queryDTO

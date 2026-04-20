@@ -4,7 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
+import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
@@ -66,9 +66,12 @@ export async function siteTagSave(tag: {
  * 批量保存站点标签
  */
 export async function siteTagSaveBatch(tags: SiteTagVO[]): Promise<ApiResponse<SiteTagVO[]>> {
-  const result = await SiteTagHandler.SaveBatch(tags.map(tag => ({
+  const result = await SiteTagHandler.SaveBatch(tags.map(tag => new SiteTagDTO({
     id: tag.id,
-    siteTagName: tag.siteTagName
+    siteTagName: tag.siteTagName,
+    siteId: null,
+    siteTagId: null,
+    description: null
   })))
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
@@ -130,7 +133,7 @@ export async function siteTagQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  return { success: result.success, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -140,7 +143,7 @@ export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
   page: number
   pageSize: number
   query?: { localTagId?: number; boundOnLocalTagId?: boolean }
-}): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
+}): Promise<ApiResponse<Page<SiteTagFullDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({
     localTagId: { value: query.query?.localTagId } as QueryAttribute,
     boundOnLocalTagId: { value: query.query?.boundOnLocalTagId } as QueryAttribute
@@ -157,7 +160,7 @@ export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
   if (!result.success) {
     return { success: false, msg: result.msg ?? '查询失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -166,7 +169,7 @@ export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
 export async function siteTagQueryPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
-): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
+): Promise<ApiResponse<Page<SiteTagFullDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({})
   const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
     pageNumber: query.page,
@@ -180,7 +183,7 @@ export async function siteTagQueryPageByWorkId(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '查询失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -190,7 +193,7 @@ export async function siteTagQueryLocalRelateDTOPage(query: {
   page: number
   pageSize: number
   query?: { workId?: number }
-}): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
+}): Promise<ApiResponse<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({})
   const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
     pageNumber: query.page,
@@ -204,7 +207,7 @@ export async function siteTagQueryLocalRelateDTOPage(query: {
   if (!result.success) {
     return { success: false, msg: result.msg ?? '查询失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function siteTagQuerySelectItemPageByWorkId(
@@ -221,7 +224,7 @@ export async function siteTagQuerySelectItemPageByWorkId(
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  return { success: result.success, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function siteTagListByWorkId(workId: number): Promise<ApiResponse<SiteTagVO[]>> {
@@ -272,15 +275,18 @@ export async function siteTagUpdateBindLocalTag(
 export async function siteTagCreateAndBindSameNameLocalTag(
   siteTag: SiteTagVO
 ): Promise<ApiResponse<boolean>> {
-  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag({
+  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagDTO({
     id: siteTag.id,
-    siteTagName: siteTag.siteTagName
-  })
+    siteTagName: siteTag.siteTagName,
+    siteId: null,
+    siteTagId: null,
+    description: null
+  }))
   if (!result) {
     return { success: false, msg: '创建失败：接口返回为空' }
   }
   if (!result.success) {
     return { success: false, msg: result.msg ?? '创建失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+  return { success: true, msg: result.msg ?? '', data: result.data !== null }
 }

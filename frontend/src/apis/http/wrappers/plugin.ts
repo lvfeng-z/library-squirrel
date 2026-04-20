@@ -86,7 +86,10 @@ export async function pluginQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 export async function pluginCheckInstalled(publicId: string): Promise<ApiResponse<boolean>> {
@@ -111,15 +114,16 @@ export async function pluginSave(plugin: {
   entryPath?: string
   rootPath?: string
   activationType?: string
-}): Promise<ApiResponse<PluginVO>> {
+}): Promise<ApiResponse<number>> {
   const result = await PluginHandler.Save({
-    publicId: plugin.publicId,
-    author: plugin.author,
-    name: plugin.name,
-    version: plugin.version,
-    entryPath: plugin.entryPath,
-    rootPath: plugin.rootPath,
-    activationType: plugin.activationType
+    id: 0,
+    publicId: plugin.publicId ?? null,
+    author: plugin.author ?? null,
+    name: plugin.name ?? null,
+    version: plugin.version ?? null,
+    entryPath: plugin.entryPath ?? null,
+    rootPath: plugin.rootPath ?? null,
+    activationType: plugin.activationType ?? null
   })
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
@@ -127,7 +131,7 @@ export async function pluginSave(plugin: {
   if (!result.success) {
     return { success: false, msg: result.msg ?? '保存失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: toPluginVO(result.data ?? null) ?? undefined }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -142,16 +146,16 @@ export async function pluginUpdate(plugin: {
   entryPath?: string
   rootPath?: string
   activationType?: string
-}): Promise<ApiResponse<PluginVO>> {
+}): Promise<ApiResponse<null>> {
   const result = await PluginHandler.Update({
     id: plugin.id,
-    publicId: plugin.publicId,
-    author: plugin.author,
-    name: plugin.name,
-    version: plugin.version,
-    entryPath: plugin.entryPath,
-    rootPath: plugin.rootPath,
-    activationType: plugin.activationType
+    publicId: plugin.publicId ?? null,
+    author: plugin.author ?? null,
+    name: plugin.name ?? null,
+    version: plugin.version ?? null,
+    entryPath: plugin.entryPath ?? null,
+    rootPath: plugin.rootPath ?? null,
+    activationType: plugin.activationType ?? null
   })
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
@@ -194,19 +198,18 @@ export async function pluginReinstall(publicId: string, installType?: number): P
 }
 
 /**
- * 从路径重新安装插件
+ * 从路径安装插件（实际上是 InstallFromPath，因为 bindings 中没有 ReinstallFromPath）
  */
 export async function pluginReinstallFromPath(
-  publicId: string,
   packagePath: string,
   installType?: number
 ): Promise<ApiResponse<PluginVO>> {
-  const result = await PluginHandler.ReinstallFromPath(publicId, packagePath, installType ?? 0)
+  const result = await PluginHandler.InstallFromPath(packagePath, installType ?? 0)
   if (!result) {
-    return { success: false, msg: '重新安装失败：接口返回为空' }
+    return { success: false, msg: '安装失败：接口返回为空' }
   }
   if (!result.success) {
-    return { success: false, msg: result.msg ?? '重新安装失败' }
+    return { success: false, msg: result.msg ?? '安装失败' }
   }
   return { success: true, msg: result.msg ?? '', data: toPluginVO(result.data ?? null) ?? undefined }
 }

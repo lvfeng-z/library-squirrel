@@ -134,7 +134,10 @@ export async function localTagQueryPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -186,7 +189,10 @@ export async function localTagQuerySelectItemPage(query: {
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
@@ -209,7 +215,7 @@ export async function localTagListByWorkId(workId: number): Promise<ApiResponse<
 export async function localTagQuerySelectItemPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
-): Promise<ApiResponse<PageResult>> {
+): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
   const queryDTO = new LocalTagQueryDTO({})
   const page = new Page<LocalTagQueryDTO, LocalTagQueryDTO>({
     pageNumber: query.page,
@@ -220,5 +226,8 @@ export async function localTagQuerySelectItemPageByWorkId(
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
-  return result
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
