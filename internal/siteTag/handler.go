@@ -133,10 +133,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagQueryDT
 	if page == nil {
 		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteTagQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagResultDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -161,10 +158,7 @@ func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *m
 	if page == nil {
 		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteTagQueryDTO{{}}
-	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -189,10 +183,7 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 	if page == nil {
 		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteTagQueryDTO{{}}
-	}
-	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], 0, nil)
+	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query, 0, nil)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -217,10 +208,7 @@ func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[SiteTa
 	if page == nil {
 		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteTagQueryDTO{{}}
-	}
-	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId, nil)
+	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId, nil)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -311,10 +299,7 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 	if page == nil {
 		page = &model.Page[SiteTagQueryDTO, SiteTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteTagQueryDTO{{}}
-	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId)
+	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem, SiteTagQueryDTO]](err.Error())
 	}

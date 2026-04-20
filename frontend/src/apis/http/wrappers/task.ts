@@ -7,7 +7,8 @@ import type { ApiResponse } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/wails/internal/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/internal/taskManager'
 import { CreateTaskRequest, TaskQueryDTO, TaskResultDTO, TaskScheduleDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface TaskVO {
   id: number
@@ -68,20 +69,29 @@ export async function taskQueryPage(query: {
   page: number
   pageSize: number
   query?: { status?: number; pid?: number }
-}): Promise<ApiResponse<Page<TaskResultDTO>>> {
+}): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
   const queryDTO = new TaskQueryDTO({
-    pid: query.query?.pid ?? null,
-    status: query.query?.status ?? null
+    pid: { value: query.query?.pid } as QueryAttribute,
+    status: { value: query.query?.status } as QueryAttribute
   })
-  const result = await TaskHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<TaskResultDTO, TaskQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await TaskHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
   return result
 }
 
-export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<TaskResultDTO>>> {
-  const result = await TaskHandler.QueryParentPage(query.page, query.pageSize, null)
+export async function taskQueryParentPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
+  const page = new Page<TaskResultDTO, TaskQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize
+  })
+  const result = await TaskHandler.QueryParentPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -201,8 +211,12 @@ export async function taskQueryChildrenTaskPage(
   pageNumber: number,
   pageSize: number,
   _query?: Record<string, unknown>
-): Promise<ApiResponse<Page<TaskResultDTO>>> {
-  const result = await TaskHandler.QueryChildrenTaskPage(pid, pageNumber, pageSize, null)
+): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
+  const page = new Page<TaskResultDTO, TaskQueryDTO>({
+    pageNumber: pageNumber,
+    pageSize: pageSize
+  })
+  const result = await TaskHandler.QueryChildrenTaskPage(pid, page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

@@ -11,8 +11,8 @@ import DataTableOperationResponse from '@renderer/model/util/DataTableOperationR
 import lodash from 'lodash'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
-import SiteQueryDTO from '@renderer/model/model/queryDTO/SiteQueryDTO.ts'
-import Site from '@renderer/model/model/entity/Site.ts'
+import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
+import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { siteApi } from '@renderer/apis/http'
 
 // onMounted

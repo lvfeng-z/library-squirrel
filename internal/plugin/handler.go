@@ -160,10 +160,7 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[PluginQueryDTO, Plu
 	if page == nil {
 		page = &model.Page[PluginQueryDTO, PluginQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*PluginQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[PluginResultDTO, PluginQueryDTO]](err.Error())
 	}

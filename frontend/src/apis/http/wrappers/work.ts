@@ -74,7 +74,7 @@ export async function workQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; title?: string }
-}): Promise<ApiResponse<Page<WorkResultDTO>>> {
+}): Promise<ApiResponse<Page<WorkResultDTO, WorkQueryDTO>>> {
   const queryDTO = new WorkQueryDTO({
     siteId: query.query?.siteId ?? null,
     siteWorkNameLike: query.query?.title ?? null

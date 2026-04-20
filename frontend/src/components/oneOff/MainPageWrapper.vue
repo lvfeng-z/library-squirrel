@@ -17,7 +17,6 @@ import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
 import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import WorkSetCoverDTO from '@renderer/model/model/dto/WorkSetCoverDTO.ts'
-import BaseQueryDTO from '@renderer/model/model/base/BaseQueryDTO.ts'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
 import WorkQueryDTO from '@renderer/model/model/queryDTO/WorkQueryDTO.ts'
 import WorkSetQueryDTO from '@renderer/model/model/queryDTO/WorkSetQueryDTO.ts'
@@ -89,7 +88,7 @@ onBeforeUnmount(() => {
 
 // 方法
 // 查询标签选择列表
-async function querySearchItemPage(page: IPage<BaseQueryDTO, SelectItem>, input?: string): Promise<IPage<BaseQueryDTO, SelectItem>> {
+async function querySearchItemPage(page: IPage<any, SelectItem>, input?: string): Promise<IPage<any, SelectItem>> {
   const query = new SearchConditionQueryDTO()
   query.nonFieldKeyword = input
   query.types = lodash.cloneDeep(searchConditionType.value)
@@ -102,7 +101,7 @@ async function querySearchItemPage(page: IPage<BaseQueryDTO, SelectItem>, input?
     return page
   }
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<Page<BaseQueryDTO, SelectItem>>(response)
+    const newPage = ApiUtil.data<Page<any, SelectItem>>(response)
     if (isNullish(newPage)) {
       ApiUtil.msg(response)
       throw new Error(response.msg)

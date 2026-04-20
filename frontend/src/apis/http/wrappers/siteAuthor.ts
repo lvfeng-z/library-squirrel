@@ -5,7 +5,8 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteAuthorHandler, SiteAuthorDTO, SiteAuthorQueryDTO, SiteAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import type { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteAuthorVO {
   id: number
@@ -136,12 +137,17 @@ export async function siteAuthorQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; authorName?: string }
-}): Promise<ApiResponse<Page<SiteAuthorResultDTO>>> {
+}): Promise<ApiResponse<Page<SiteAuthorResultDTO, SiteAuthorQueryDTO>>> {
   const queryDTO = new SiteAuthorQueryDTO({
-    siteId: query.query?.siteId ?? null,
-    authorNameLike: query.query?.authorName ?? null
+    siteId: { value: query.query?.siteId } as QueryAttribute,
+    authorName: { value: query.query?.authorName, operator: "like" } as QueryAttribute
   })
-  const result = await SiteAuthorHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO, SiteAuthorQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteAuthorHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -155,12 +161,17 @@ export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: {
   page: number
   pageSize: number
   query?: { localAuthorId?: number; boundOnLocalAuthorId?: boolean }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteAuthorResultDTO, SiteAuthorQueryDTO>>> {
   const queryDTO = new SiteAuthorQueryDTO({
-    localAuthorId: query.query?.localAuthorId ?? null,
-    boundOnLocalAuthorId: query.query?.boundOnLocalAuthorId ?? null
+    localAuthorId: { value: query.query?.localAuthorId } as QueryAttribute,
+    boundOnLocalAuthorId: { value: query.query?.boundOnLocalAuthorId } as QueryAttribute
   })
-  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO, SiteAuthorQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -176,9 +187,14 @@ export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(query: {
 export async function siteAuthorQueryLocalRelateDTOPage(query: {
   page: number
   pageSize: number
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteAuthorResultDTO, SiteAuthorQueryDTO>>> {
   const queryDTO = new SiteAuthorQueryDTO({})
-  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteAuthorQueryDTO, SiteAuthorQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

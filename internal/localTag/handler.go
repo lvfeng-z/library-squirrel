@@ -82,14 +82,11 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Loc
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalTagQueryDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[LocalTagResultDTO, LocalTagQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalTagResultDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[LocalTagResultDTO, LocalTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[LocalTagQueryDTO, LocalTagQueryDTO]{}
+		page = &model.Page[LocalTagResultDTO, LocalTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*LocalTagQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[LocalTagResultDTO, LocalTagQueryDTO]](err.Error())
 	}
@@ -140,10 +137,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[Loca
 	if page == nil {
 		page = &model.Page[LocalTagQueryDTO, LocalTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*LocalTagQueryDTO{{}}
-	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], secondaryLabel)
+	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query, secondaryLabel)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem, LocalTagQueryDTO]](err.Error())
 	}
@@ -169,10 +163,7 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 	if page == nil {
 		page = &model.Page[LocalTagQueryDTO, LocalTagQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*LocalTagQueryDTO{{}}
-	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0], workId)
+	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem, LocalTagQueryDTO]](err.Error())
 	}

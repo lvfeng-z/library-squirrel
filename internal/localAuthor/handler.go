@@ -85,10 +85,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalAuthorQue
 	if page == nil {
 		page = &model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*LocalAuthorQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[LocalAuthorResultDTO, LocalAuthorQueryDTO]](err.Error())
 	}
@@ -125,10 +122,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[Loca
 	if page == nil {
 		page = &model.Page[LocalAuthorQueryDTO, LocalAuthorQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*LocalAuthorQueryDTO{{}}
-	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[domain.SelectItem, LocalAuthorQueryDTO]](err.Error())
 	}

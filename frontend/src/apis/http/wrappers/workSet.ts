@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
+import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import type { Work } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface WorkSetVO {
   id: number
@@ -85,9 +85,14 @@ export async function workSetListWorkSetWithWorkByIds(
 export async function workSetQueryPageWithCover(query: {
   page: number
   pageSize: number
-}): Promise<ApiResponse<Page<any>>> {
+}): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>>> {
   const queryDTO = new WorkSetQueryDTO({})
-  const result = await WorkSetHandler.QueryPageWithCover(query.page, query.pageSize, queryDTO)
+  const page = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await WorkSetHandler.QueryPageWithCover(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -109,11 +114,16 @@ export async function workSetQueryPage(query: {
   page: number
   pageSize: number
   query?: { name?: string }
-}): Promise<ApiResponse<Page<WorkSetResultDTO>>> {
+}): Promise<ApiResponse<Page<WorkSetResultDTO, WorkSetQueryDTO>>> {
   const queryDTO = new WorkSetQueryDTO({
     siteWorkSetNameLike: query.query?.name ?? null
   })
-  const result = await WorkSetHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await WorkSetHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

@@ -5,8 +5,9 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteTagVO {
   id: number
@@ -115,12 +116,17 @@ export async function siteTagQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; siteTagName?: string }
-}): Promise<ApiResponse<Page<SiteTagResultDTO>>> {
+}): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({
-    siteId: query.query?.siteId ?? null,
-    siteTagNameLike: query.query?.siteTagName ?? null
+    siteId: { value: query.query?.siteId } as QueryAttribute,
+    siteTagName: { value: query.query?.siteTagName, operator: "like" } as QueryAttribute
   })
-  const result = await SiteTagHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteTagHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -134,12 +140,17 @@ export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
   page: number
   pageSize: number
   query?: { localTagId?: number; boundOnLocalTagId?: boolean }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({
-    localTagId: query.query?.localTagId ?? null,
-    boundOnLocalTagId: query.query?.boundOnLocalTagId ?? null
+    localTagId: { value: query.query?.localTagId } as QueryAttribute,
+    boundOnLocalTagId: { value: query.query?.boundOnLocalTagId } as QueryAttribute
   })
-  const result = await SiteTagHandler.QueryBoundOrUnboundToLocalTagPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteTagHandler.QueryBoundOrUnboundToLocalTagPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -155,9 +166,14 @@ export async function siteTagQueryBoundOrUnboundToLocalTagPage(query: {
 export async function siteTagQueryPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
-): Promise<ApiResponse<PageResult>> {
+): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({})
-  const result = await SiteTagHandler.QueryPageByWorkId(query.page, query.pageSize, queryDTO, workId)
+  const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteTagHandler.QueryPageByWorkId(page, workId)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -174,9 +190,14 @@ export async function siteTagQueryLocalRelateDTOPage(query: {
   page: number
   pageSize: number
   query?: { workId?: number }
-}): Promise<ApiResponse<PageResult>> {
+}): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({})
-  const result = await SiteTagHandler.QueryLocalRelateDTOPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteTagHandler.QueryLocalRelateDTOPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -189,9 +210,14 @@ export async function siteTagQueryLocalRelateDTOPage(query: {
 export async function siteTagQuerySelectItemPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number }
-): Promise<ApiResponse<Page<SelectItem>>> {
+): Promise<ApiResponse<Page<SelectItem, SiteTagQueryDTO>>> {
   const queryDTO = new SiteTagQueryDTO({})
-  const result = await SiteTagHandler.QuerySelectItemPageByWorkId(query.page, query.pageSize, queryDTO, workId)
+  const page = new Page<SiteTagQueryDTO, SiteTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SiteTagHandler.QuerySelectItemPageByWorkId(page, workId)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

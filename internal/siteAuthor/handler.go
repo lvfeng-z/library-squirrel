@@ -133,10 +133,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQuer
 	if page == nil {
 		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteAuthorQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]](err.Error())
 	}
@@ -161,10 +158,7 @@ func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 	if page == nil {
 		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteAuthorQueryDTO{{}}
-	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]](err.Error())
 	}
@@ -189,10 +183,7 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 	if page == nil {
 		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*SiteAuthorQueryDTO{{}}
-	}
-	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]](err.Error())
 	}

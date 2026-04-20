@@ -1,5 +1,4 @@
 import IPage from '@renderer/model/util/IPage.ts'
-import BaseQueryDTO from '@renderer/model/model/base/BaseQueryDTO.ts'
 
 export default class Page<Query, Result> implements IPage<Query, Result> {
   /**
@@ -52,7 +51,7 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
       this.pageCount = page.pageCount
       this.dataCount = page.dataCount
       this.currentCount = page.currentCount
-      this.query = Object.assign(new BaseQueryDTO(), page.query)
+      this.query = page.query
       this.data = page.data
     }
   }

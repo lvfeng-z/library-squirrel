@@ -5,8 +5,9 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as LocalAuthorHandler, LocalAuthorDTO, LocalAuthorQueryDTO, LocalAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface LocalAuthorVO {
   id: number
@@ -101,11 +102,16 @@ export async function localAuthorQueryPage(query: {
   page: number
   pageSize: number
   query?: { authorName?: string }
-}): Promise<ApiResponse<Page<LocalAuthorResultDTO>>> {
+}): Promise<ApiResponse<Page<LocalAuthorResultDTO, LocalAuthorQueryDTO>>> {
   const queryDTO = new LocalAuthorQueryDTO({
-    authorName: query.query?.authorName ?? null
+    authorName: { value: query.query?.authorName } as QueryAttribute
   })
-  const result = await LocalAuthorHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<LocalAuthorQueryDTO, LocalAuthorQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await LocalAuthorHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -130,9 +136,14 @@ export async function localAuthorQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem>>> {
+}): Promise<ApiResponse<Page<SelectItem, LocalAuthorQueryDTO>>> {
   const queryDTO = new LocalAuthorQueryDTO({})
-  const result = await LocalAuthorHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<LocalAuthorQueryDTO, LocalAuthorQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await LocalAuthorHandler.QuerySelectItemPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

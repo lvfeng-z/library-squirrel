@@ -5,7 +5,8 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as LocalTagHandler, LocalTagDTO, LocalTagQueryDTO, LocalTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
 // ========== 类型定义 ==========
@@ -120,11 +121,16 @@ export async function localTagQueryPage(query: {
   query?: {
     localTagName?: string
   }
-}): Promise<ApiResponse<Page<LocalTagResultDTO>>> {
+}): Promise<ApiResponse<Page<LocalTagResultDTO, LocalTagQueryDTO>>> {
   const queryDTO = new LocalTagQueryDTO({
-    localTagName: query.query?.localTagName ?? null
+    localTagName: { value: query.query?.localTagName } as QueryAttribute
   })
-  const result = await LocalTagHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<LocalTagResultDTO, LocalTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await LocalTagHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -169,9 +175,14 @@ export async function localTagQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem>>> {
+}): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const result = await LocalTagHandler.QuerySelectItemPage(query.page, query.pageSize, queryDTO, '')
+  const page = new Page<LocalTagQueryDTO, LocalTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await LocalTagHandler.QuerySelectItemPage(page, '')
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -200,7 +211,12 @@ export async function localTagQuerySelectItemPageByWorkId(
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
 ): Promise<ApiResponse<PageResult>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const result = await LocalTagHandler.QuerySelectItemPageByWorkId(query.page, query.pageSize, queryDTO, workId)
+  const page = new Page<LocalTagQueryDTO, LocalTagQueryDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await LocalTagHandler.QuerySelectItemPageByWorkId(page, workId)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

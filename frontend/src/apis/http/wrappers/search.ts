@@ -6,7 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as SearchHandler } from '@bindings/github.com/library-squirrel/wails/internal/search'
 import type { SearchCondition as BindingSearchCondition, SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SearchConditionItem {
   siteId: number
@@ -71,12 +71,17 @@ export async function searchQueryWorkPage(page: {
   pageNumber: number
   pageSize: number
   query?: SearchCondition[]
-}): Promise<ApiResponse<Page<WorkFullDTO>>> {
+}): Promise<ApiResponse<Page<WorkFullDTO, BindingSearchCondition>>> {
   const conditions: BindingSearchCondition[] = (page.query ?? []).map(c => ({
     type: c.type as any,
     value: c.value
   }))
-  const result = await SearchHandler.QueryWorkPage(page.pageNumber, page.pageSize, conditions)
+  const pageObj = new Page<BindingSearchCondition, BindingSearchCondition>({
+    pageNumber: page.pageNumber,
+    pageSize: page.pageSize,
+    query: conditions as any
+  })
+  const result = await SearchHandler.QueryWorkPage(pageObj)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -92,7 +97,14 @@ export async function searchQueryWorkSetPage(query: {
   keyword?: string
   siteId?: number
 }): Promise<ApiResponse<SearchWorkSetItem[]>> {
-  const result = await SearchHandler.QueryWorkSetPage(query.pageNumber, query.pageSize, query.keyword ?? '', query.siteId ?? 0)
+  const { WorkSetQueryDTO } = await import('@bindings/github.com/library-squirrel/wails/internal/workSet/models')
+  const queryDTO = new WorkSetQueryDTO({})
+  const pageObj = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
+    pageNumber: query.pageNumber,
+    pageSize: query.pageSize,
+    query: queryDTO
+  })
+  const result = await SearchHandler.QueryWorkSetPage(pageObj, query.keyword ?? '', query.siteId ?? 0)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

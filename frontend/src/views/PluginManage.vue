@@ -11,8 +11,8 @@ import DataTableOperationResponse from '@renderer/model/util/DataTableOperationR
 import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
-import PluginQueryDTO from '@renderer/model/model/queryDTO/PluginQueryDTO.ts'
-import Plugin from '@renderer/model/model/entity/Plugin.ts'
+import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
+import { PluginDTO as Plugin } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { fileSysUtilApi } from '@renderer/apis/http'
 import {

@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="Query extends BaseQueryDTO, Data extends object">
+<script setup lang="ts" generic="Query, Data extends object">
 import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
 import { ref, toRaw } from 'vue'
 import OperationItem from '../../model/util/OperationItem'
@@ -11,7 +11,6 @@ import TreeNode from '../../model/util/TreeNode'
 import { TableColumnCtx, TreeNode as ElTreeNode } from 'element-plus'
 import { getNode } from '@renderer/utils/TreeUtil.ts'
 import DataTable from '@renderer/components/common/DataTable.vue'
-import BaseQueryDTO from '@renderer/model/model/base/BaseQueryDTO.ts'
 
 // props
 const props = withDefaults(

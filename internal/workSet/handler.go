@@ -85,10 +85,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[WorkSetQueryDT
 	if page == nil {
 		page = &model.Page[WorkSetQueryDTO, WorkSetQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*WorkSetQueryDTO{{}}
-	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[WorkSetResultDTO, WorkSetQueryDTO]](err.Error())
 	}
@@ -217,10 +214,7 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 	if page == nil {
 		page = &model.Page[WorkSetQueryDTO, WorkSetQueryDTO]{}
 	}
-	if page.Data == nil || len(page.Data) == 0 {
-		page.Data = []*WorkSetQueryDTO{{}}
-	}
-	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page.PageNumber, page.PageSize, *page.Data[0])
+	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
 		return model.Error[*model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]](err.Error())
 	}

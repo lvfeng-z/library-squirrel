@@ -70,7 +70,7 @@ export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $Can
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.LocalTagQueryDTO, $models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO, $models.LocalTagQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<$models.LocalTagResultDTO, $models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(112028121, page).then(($result: any) => {
         return $$createType18($result);
     });

@@ -26,7 +26,7 @@ import { fileSysUtilApi, taskApi, siteApi, pluginTaskUrlListenerApi } from '@ren
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
 import Task from '@renderer/model/model/entity/Task.ts'
-import TaskQueryDTO from '@renderer/model/model/queryDTO/TaskQueryDTO.ts'
+import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import type { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'

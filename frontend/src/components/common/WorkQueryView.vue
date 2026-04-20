@@ -11,13 +11,12 @@ import { notNullish, arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
-import BaseQueryDTO from '@renderer/model/model/base/BaseQueryDTO.ts'
 
 // props
 const props = withDefaults(
   defineProps<{
     /** 查询标签选择列表的加载函数 */
-    loadSearchItemPage: (page: IPage<BaseQueryDTO, SelectItem>, input?: string) => Promise<IPage<BaseQueryDTO, SelectItem>>
+    loadSearchItemPage: (page: IPage<any, SelectItem>, input?: string) => Promise<IPage<any, SelectItem>>
     /** 作品查询函数 */
     fetchWorkPage: (page: Page<SearchCondition[], WorkCardItem>) => Promise<Page<SearchCondition[], WorkCardItem>>
     /** 可选的搜索条件类型列表 */
@@ -138,7 +137,7 @@ watch(autoLoadInput, () => {
 
 // 方法
 /** 查询标签选择列表 */
-async function querySearchItemPage(page: IPage<BaseQueryDTO, SelectItem>, input?: string): Promise<IPage<BaseQueryDTO, SelectItem>> {
+async function querySearchItemPage(page: IPage<any, SelectItem>, input?: string): Promise<IPage<any, SelectItem>> {
   return props.loadSearchItemPage(page, input)
 }
 

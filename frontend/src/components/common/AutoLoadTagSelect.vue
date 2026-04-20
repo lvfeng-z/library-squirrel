@@ -9,13 +9,12 @@ import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import Page from '@renderer/model/util/Page.ts'
-import BaseQueryDTO from '@renderer/model/model/base/BaseQueryDTO.ts'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 
 // props
 const props = withDefaults(
   defineProps<{
-    load: (page: IPage<BaseQueryDTO, SelectItem>, input?: string) => Promise<IPage<BaseQueryDTO, SelectItem>>
+    load: (page: IPage<any, SelectItem>, input?: string) => Promise<IPage<any, SelectItem>>
     pageSize?: number
     tagsGap?: string
     maxHeight?: string
@@ -96,7 +95,7 @@ const expand: Ref<boolean> = ref(false)
 
 // 方法
 // 加载分页的函数
-async function innerLoad(page: IPage<BaseQueryDTO, SegmentedTagItem>): Promise<IPage<BaseQueryDTO, SegmentedTagItem>> {
+async function innerLoad(page: IPage<any, SegmentedTagItem>): Promise<IPage<any, SegmentedTagItem>> {
   page.pageSize = props.pageSize
   const tempPage = lodash.cloneDeep(page)
   return props.load(tempPage, input.value).then((apiRespPage) => {
