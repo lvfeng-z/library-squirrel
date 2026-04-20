@@ -156,9 +156,9 @@ func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.Api
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page *model.Page[PluginQueryDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO, PluginQueryDTO]] {
+func (h *Handler) Page(ctx context.Context, page *model.Page[PluginResultDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO, PluginQueryDTO]] {
 	if page == nil {
-		page = &model.Page[PluginQueryDTO, PluginQueryDTO]{}
+		page = &model.Page[PluginResultDTO, PluginQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {

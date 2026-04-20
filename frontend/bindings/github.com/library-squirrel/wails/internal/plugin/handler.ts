@@ -66,7 +66,7 @@ export function InstallFromPath(packagePath: string, installType: number): $Canc
 /**
  * Page 分页查询
  */
-export function Page(page: model$0.Page<$models.PluginQueryDTO, $models.PluginQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.PluginResultDTO, $models.PluginQueryDTO> | null> | null> {
+export function Page(page: model$0.Page<$models.PluginResultDTO, $models.PluginQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.PluginResultDTO, $models.PluginQueryDTO> | null> | null> {
     return $Call.ByID(4119841619, page).then(($result: any) => {
         return $$createType12($result);
     });

@@ -129,9 +129,9 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Sit
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorResultDTO, SiteAuthorQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
@@ -154,9 +154,9 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteAuthorQuer
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorFullDTO, SiteAuthorQueryDTO]{}
 	}
 	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
@@ -179,9 +179,9 @@ func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteAuthorQueryDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]{}
 	}
 	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {

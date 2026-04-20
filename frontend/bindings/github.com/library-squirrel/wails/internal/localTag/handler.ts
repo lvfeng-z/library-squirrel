@@ -79,7 +79,7 @@ export function QueryPage(page: model$0.Page<$models.LocalTagResultDTO, $models.
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<$models.LocalTagQueryDTO, $models.LocalTagQueryDTO> | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(3654385186, page, secondaryLabel).then(($result: any) => {
         return $$createType22($result);
     });
@@ -88,7 +88,7 @@ export function QuerySelectItemPage(page: model$0.Page<$models.LocalTagQueryDTO,
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: model$0.Page<$models.LocalTagQueryDTO, $models.LocalTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(3606327595, page, workId).then(($result: any) => {
         return $$createType22($result);
     });

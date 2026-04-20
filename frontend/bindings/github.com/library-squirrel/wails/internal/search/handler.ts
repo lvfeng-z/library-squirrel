@@ -42,7 +42,7 @@ export function QueryWorkPage(page: model$1.Page<model$0.SearchCondition, model$
 /**
  * QueryWorkSetPage 查询作品集分页
  */
-export function QueryWorkSetPage(page: model$1.Page<$models.WorkSetQueryDTO, $models.WorkSetQueryDTO> | null, keyword: string, siteId: number): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.SelectItem, $models.WorkSetQueryDTO> | null> | null> {
+export function QueryWorkSetPage(page: model$1.Page<model$0.SelectItem, $models.WorkSetQueryDTO> | null, keyword: string, siteId: number): $CancellablePromise<model$1.ApiResponse<model$1.Page<model$0.SelectItem, $models.WorkSetQueryDTO> | null> | null> {
     return $Call.ByID(1971800641, page, keyword, siteId).then(($result: any) => {
         return $$createType16($result);
     });

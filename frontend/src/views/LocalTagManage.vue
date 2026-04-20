@@ -151,7 +151,7 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 // 方法
 // 分页查询本地标签的函数
 async function localTagQueryPage(page: Page<LocalTagQueryDTO, LocalTagDTO>): Promise<Page<LocalTagQueryDTO, LocalTagDTO> | undefined> {
-  const response = await localTagApi.localTagQueryPage({ page: 1, pageSize: 10 })
+  const response = await localTagApi.localTagQueryPage(page)
   if (ApiUtil.check(response)) {
     let responsePage = ApiUtil.data<Page<LocalTagQueryDTO, LocalTagDTO>>(response)
     if (isNullish(responsePage)) {

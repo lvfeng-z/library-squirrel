@@ -35,9 +35,9 @@ func (h *Handler) QueryWorkPage(ctx context.Context, page *model.Page[domain.Sea
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[WorkSetQueryDTO, WorkSetQueryDTO], keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem, WorkSetQueryDTO]] {
+func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[domain.SelectItem, WorkSetQueryDTO], keyword string, siteId int64) *model.ApiResponse[*model.Page[domain.SelectItem, WorkSetQueryDTO]] {
 	if page == nil {
-		page = &model.Page[WorkSetQueryDTO, WorkSetQueryDTO]{}
+		page = &model.Page[domain.SelectItem, WorkSetQueryDTO]{}
 	}
 	result, err := h.svc.QueryWorkSetPage(ctx, page.PageNumber, page.PageSize, keyword, siteId)
 	if err != nil {

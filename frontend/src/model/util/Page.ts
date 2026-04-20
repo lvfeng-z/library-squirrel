@@ -1,6 +1,6 @@
 import IPage from '@renderer/model/util/IPage.ts'
 
-export default class Page<Query, Result> implements IPage<Query, Result> {
+export default class Page<Data, Query> implements IPage<Data, Query> {
   /**
    * 当前页码
    */
@@ -28,9 +28,9 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
   /**
    * 数据
    */
-  data?: Result[]
+  data?: Data[]
 
-  constructor(page?: IPage<Query, Result>) {
+  constructor(page?: IPage<Data, Query>) {
     if (page === undefined) {
       this.pageNumber = 1
       this.pageSize = 10
@@ -53,8 +53,8 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
   /**
    * 返回一个指定类型的PageModel
    */
-  public transform<T>(): Page<Query, T> {
-    const result = new Page<Query, T>()
+  public transform<T>(): Page<T, Query> {
+    const result = new Page<T, Query>()
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount
@@ -69,8 +69,8 @@ export default class Page<Query, Result> implements IPage<Query, Result> {
   /**
    * 创建一个指定类型的副本
    */
-  public copy<NewQuery, NewResult>(): Page<NewQuery, NewResult> {
-    const result = new Page<NewQuery, NewResult>()
+  public copy<NewData, NewQuery>(): Page<NewData, NewQuery> {
+    const result = new Page<NewData, NewQuery>()
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount

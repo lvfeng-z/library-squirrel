@@ -69,7 +69,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
  */
-export function QueryBoundOrUnboundToLocalTagPage(page: model$0.Page<$models.SiteTagQueryDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
+export function QueryBoundOrUnboundToLocalTagPage(page: model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(4186749337, page).then(($result: any) => {
         return $$createType18($result);
     });
@@ -78,7 +78,7 @@ export function QueryBoundOrUnboundToLocalTagPage(page: model$0.Page<$models.Sit
 /**
  * QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
  */
-export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteTagQueryDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null> | null> {
+export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(1761256276, page).then(($result: any) => {
         return $$createType23($result);
     });
@@ -87,7 +87,7 @@ export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteTagQueryD
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.SiteTagQueryDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagResultDTO, $models.SiteTagQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<$models.SiteTagResultDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagResultDTO, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(4275757295, page).then(($result: any) => {
         return $$createType27($result);
     });
@@ -96,7 +96,7 @@ export function QueryPage(page: model$0.Page<$models.SiteTagQueryDTO, $models.Si
 /**
  * QueryPageByWorkId 根据作品ID分页查询站点标签
  */
-export function QueryPageByWorkId(page: model$0.Page<$models.SiteTagQueryDTO, $models.SiteTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
+export function QueryPageByWorkId(page: model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(1002654178, page, workId).then(($result: any) => {
         return $$createType18($result);
     });
@@ -105,7 +105,7 @@ export function QueryPageByWorkId(page: model$0.Page<$models.SiteTagQueryDTO, $m
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: model$0.Page<$models.SiteTagQueryDTO, $models.SiteTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.SiteTagQueryDTO> | null> | null> {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<model$1.SelectItem, $models.SiteTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(4042932845, page, workId).then(($result: any) => {
         return $$createType32($result);
     });

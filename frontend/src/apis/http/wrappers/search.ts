@@ -99,7 +99,7 @@ export async function searchQueryWorkSetPage(query: {
   siteId?: number
 }): Promise<ApiResponse<SearchWorkSetItem[]>> {
   const queryDTO = new WorkSetQueryDTO({})
-  const pageObj = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
+  const pageObj = new Page<SelectItem, WorkSetQueryDTO>({
     pageNumber: query.pageNumber,
     pageSize: query.pageSize,
     query: queryDTO

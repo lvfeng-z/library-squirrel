@@ -60,7 +60,7 @@ export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.LocalAuthorQueryDTO, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalAuthorResultDTO, $models.LocalAuthorQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<$models.LocalAuthorResultDTO, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalAuthorResultDTO, $models.LocalAuthorQueryDTO> | null> | null> {
     return $Call.ByID(1132350838, page).then(($result: any) => {
         return $$createType20($result);
     });
@@ -69,7 +69,7 @@ export function QueryPage(page: model$0.Page<$models.LocalAuthorQueryDTO, $model
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<$models.LocalAuthorQueryDTO, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalAuthorQueryDTO> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalAuthorQueryDTO> | null> | null> {
     return $Call.ByID(1610622229, page).then(($result: any) => {
         return $$createType24($result);
     });

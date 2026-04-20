@@ -5,7 +5,6 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as LocalTagHandler, LocalTagDTO, LocalTagQueryDTO, LocalTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
-import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 
@@ -114,22 +113,9 @@ export async function localTagGetById(id: number): Promise<ApiResponse<LocalTagV
 
 /**
  * 分页查询本地标签
+ * 直接透传 Page 对象给 binding，不做额外解包
  */
-export async function localTagQueryPage(query: {
-  page: number
-  pageSize: number
-  query?: {
-    localTagName?: string
-  }
-}): Promise<ApiResponse<Page<LocalTagResultDTO, LocalTagQueryDTO>>> {
-  const queryDTO = new LocalTagQueryDTO({
-    localTagName: { value: query.query?.localTagName } as QueryAttribute
-  })
-  const page = new Page<LocalTagResultDTO, LocalTagQueryDTO>({
-    pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
-  })
+export async function localTagQueryPage(page: Page<LocalTagResultDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagResultDTO, LocalTagQueryDTO>>> {
   const result = await LocalTagHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -180,7 +166,7 @@ export async function localTagQuerySelectItemPage(query: {
   query?: Record<string, unknown>
 }): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const page = new Page<LocalTagQueryDTO, LocalTagQueryDTO>({
+  const page = new Page<SelectItem, LocalTagQueryDTO>({
     pageNumber: query.page,
     pageSize: query.pageSize,
     query: queryDTO
@@ -217,7 +203,7 @@ export async function localTagQuerySelectItemPageByWorkId(
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
 ): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const page = new Page<LocalTagQueryDTO, LocalTagQueryDTO>({
+  const page = new Page<SelectItem, LocalTagQueryDTO>({
     pageNumber: query.page,
     pageSize: query.pageSize,
     query: queryDTO

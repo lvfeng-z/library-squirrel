@@ -5,7 +5,6 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteHandler, SiteDTO, SiteQueryDTO, SiteResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/site'
-import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
@@ -89,19 +88,7 @@ export async function siteGetById(id: number): Promise<ApiResponse<SiteVO>> {
   return { success: true, msg: result.msg ?? '', data: toSiteVO(result.data ?? null) ?? undefined }
 }
 
-export async function siteQueryPage(query: {
-  page: number
-  pageSize: number
-  query?: { name?: string; enable?: boolean }
-}): Promise<ApiResponse<Page<SiteResultDTO, SiteQueryDTO> | null>> {
-  const queryDTO = new SiteQueryDTO({
-    siteName: { value: query.query?.name, operator: "like" } as QueryAttribute
-  })
-  const page = new Page<SiteQueryDTO, SiteQueryDTO>({
-    pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
-  })
+export async function siteQueryPage(page: Page<SiteResultDTO, SiteQueryDTO>): Promise<ApiResponse<Page<SiteResultDTO, SiteQueryDTO> | null>> {
   const result = await SiteHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -109,13 +96,7 @@ export async function siteQueryPage(query: {
   return result
 }
 
-export async function siteQuerySelectItemPage(query: { page: number; pageSize: number }): Promise<ApiResponse<Page<SelectItem, SiteQueryDTO> | null>> {
-  const queryDTO = new SiteQueryDTO({})
-  const page = new Page<SiteQueryDTO, SiteQueryDTO>({
-    pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
-  })
+export async function siteQuerySelectItemPage(page: Page<SelectItem, SiteQueryDTO>): Promise<ApiResponse<Page<SelectItem, SiteQueryDTO> | null>> {
   const result = await SiteHandler.QuerySelectItemPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

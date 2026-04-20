@@ -7,7 +7,6 @@ import type { ApiResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import type { Work } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
-import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 
 export interface WorkSetVO {
   id: number
@@ -83,16 +82,7 @@ export async function workSetListWorkSetWithWorkByIds(
 /**
  * 分页查询作品集（带封面）
  */
-export async function workSetQueryPageWithCover(query: {
-  page: number
-  pageSize: number
-}): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>>> {
-  const queryDTO = new WorkSetQueryDTO({})
-  const page = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
-    pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
-  })
+export async function workSetQueryPageWithCover(page: Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>>> {
   const result = await WorkSetHandler.QueryPageWithCover(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -114,19 +104,7 @@ export async function workSetGetById(id: number): Promise<ApiResponse<WorkSetVO>
   return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
 }
 
-export async function workSetQueryPage(query: {
-  page: number
-  pageSize: number
-  query?: { name?: string }
-}): Promise<ApiResponse<Page<WorkSetResultDTO, WorkSetQueryDTO>>> {
-  const queryDTO = new WorkSetQueryDTO({
-    siteWorkSetName: { value: query.query?.name } as QueryAttribute
-  })
-  const page = new Page<WorkSetQueryDTO, WorkSetQueryDTO>({
-    pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
-  })
+export async function workSetQueryPage(page: Page<WorkSetResultDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetResultDTO, WorkSetQueryDTO>>> {
   const result = await WorkSetHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

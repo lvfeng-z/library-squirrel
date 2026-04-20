@@ -51,7 +51,7 @@ export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResp
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.SiteQueryDTO, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteResultDTO, $models.SiteQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<$models.SiteResultDTO, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteResultDTO, $models.SiteQueryDTO> | null> | null> {
     return $Call.ByID(1707125239, page).then(($result: any) => {
         return $$createType10($result);
     });
@@ -60,7 +60,7 @@ export function QueryPage(page: model$0.Page<$models.SiteQueryDTO, $models.SiteQ
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<$models.SiteQueryDTO, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.SiteQueryDTO> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.SiteQueryDTO> | null> | null> {
     return $Call.ByID(3582187088, page).then(($result: any) => {
         return $$createType15($result);
     });

@@ -1,4 +1,4 @@
-export default interface IPage<Query, Result> {
+export default interface IPage<Result, Data> {
   /**
    * 当前页码
    */
@@ -22,7 +22,7 @@ export default interface IPage<Query, Result> {
   /**
    * 查询条件
    */
-  query?: Query
+  query?: Data
   /**
    * 数据
    */
