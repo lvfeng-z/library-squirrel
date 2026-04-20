@@ -14,17 +14,19 @@ import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
+import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { LocalTagQueryDTO, LocalTagDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
+import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {SiteTagFullDTO, SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
 import { siteApi } from '@renderer/apis/http'
+import {copyPage} from "@renderer/utils/Pager.ts";
+import {isNotBlank} from "@renderer/utils/StringUtil.ts";
 
 // onMounted
 onMounted(() => {
@@ -258,22 +260,32 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
 }
 // 请求站点标签分页选择列表的函数
 async function requestSiteTagSelectItemPage(
-  page: IPage<SiteTagQueryDTO, SelectItem>,
+  page: IPage<SelectItem, SiteTagQueryDTO>,
   bounded: boolean
-): Promise<IPage<SiteTagQueryDTO, SelectItem>> {
-  // 创建新的 query 对象，避免与并发请求的竞态条件
+): Promise<IPage<SelectItem, SiteTagQueryDTO>> {
+  const queryPage = copyPage<SiteTagFullDTO, SiteTagQueryDTO>(page)
   const query = new SiteTagQueryDTO()
-  query.localTagId = localTagSelected.value.id
-  query.boundOnLocalTagId = bounded
-  page.query = query
-  return apis.siteTagQueryBoundOrUnboundToLocalTagPage(lodash.cloneDeep(page)).then((response) => {
-    if (ApiUtil.check(response)) {
-      const newPage = ApiUtil.data<IPage<SiteTagQueryDTO, SelectItem>>(response)
-      return isNullish(newPage) ? page : newPage
-    } else {
-      return page
+  query.localTagId = new QueryAttribute({ value: localTagSelected.value.id })
+  query.boundOnLocalTagId = new QueryAttribute({ value: bounded })
+  queryPage.query = query
+  const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage)
+  if (ApiUtil.check(response)) {
+    const newPage = ApiUtil.data<IPage<SiteTagFullDTO, SiteTagQueryDTO>>(response)
+    if (isNullish(newPage)) {
+      throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
     }
-  })
+    const result = copyPage(newPage)
+    result.data = newPage.data.filter(notNullish).map(data =>
+        new SelectItem({
+          extraData: undefined,
+          label: data.siteTagName,
+          rootId: data.baseSiteTagId,
+          subLabels: [isNotBlank(data.site?.siteName) ? data.site?.siteName : '?'],
+          value: String(data.id)
+        }))
+  } else {
+    throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空响应体')
+  }
 }
 </script>
 

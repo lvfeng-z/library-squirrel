@@ -7,6 +7,7 @@ import type { ApiResponse } from '../types'
 import { Handler as SiteTagHandler, SiteTagDTO, SiteTagQueryDTO, SiteTagResultDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import IPage from "@renderer/model/util/IPage.ts";
 
 export interface SiteTagVO {
   id: number
@@ -125,7 +126,7 @@ export async function siteTagQueryPage(page: Page<SiteTagResultDTO, SiteTagQuery
 /**
  * 查询绑定或未绑定到本地标签的站点标签分页
  */
-export async function siteTagQueryBoundOrUnboundToLocalTagPage(page: Page<SiteTagFullDTO, SiteTagQueryDTO>): Promise<ApiResponse<Page<SiteTagFullDTO, SiteTagQueryDTO>>> {
+export async function siteTagQueryBoundOrUnboundToLocalTagPage(page: IPage<SiteTagFullDTO, SiteTagQueryDTO>): Promise<ApiResponse<Page<SiteTagFullDTO, SiteTagQueryDTO>>> {
   const result = await SiteTagHandler.QueryBoundOrUnboundToLocalTagPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
