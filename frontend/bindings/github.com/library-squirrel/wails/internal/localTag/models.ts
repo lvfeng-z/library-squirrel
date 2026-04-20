@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * LocalTagDTO 本地标签数据传输对象
  */
@@ -44,46 +48,36 @@ export class LocalTagQueryDTO {
     /**
      * 基础本地标签ID
      */
-    "baseLocalTagId": number | null;
+    "baseLocalTagId": query$0.QueryAttribute;
 
     /**
      * 本地标签名称（精确匹配）
      */
-    "localTagName": string | null;
+    "localTagName": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 本地标签名称（模糊匹配）
      */
-    "localTagNameLike": string | null;
+    "localTagNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, local_tag_name, last_use
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new LocalTagQueryDTO instance. */
     constructor($$source: Partial<LocalTagQueryDTO> = {}) {
         if (!("baseLocalTagId" in $$source)) {
-            this["baseLocalTagId"] = null;
+            this["baseLocalTagId"] = (new query$0.QueryAttribute());
         }
         if (!("localTagName" in $$source)) {
-            this["localTagName"] = null;
+            this["localTagName"] = (new query$0.QueryAttribute());
         }
-        if (!("localTagNameLike" in $$source)) {
-            this["localTagNameLike"] = null;
+        if (!("localTagNameStr" in $$source)) {
+            this["localTagNameStr"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -93,7 +87,23 @@ export class LocalTagQueryDTO {
      * Creates a new LocalTagQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): LocalTagQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("baseLocalTagId" in $$parsedSource) {
+            $$parsedSource["baseLocalTagId"] = $$createField0_0($$parsedSource["baseLocalTagId"]);
+        }
+        if ("localTagName" in $$parsedSource) {
+            $$parsedSource["localTagName"] = $$createField1_0($$parsedSource["localTagName"]);
+        }
+        if ("localTagNameStr" in $$parsedSource) {
+            $$parsedSource["localTagNameStr"] = $$createField2_0($$parsedSource["localTagNameStr"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField3_0($$parsedSource["orderBy"]);
+        }
         return new LocalTagQueryDTO($$parsedSource as Partial<LocalTagQueryDTO>);
     }
 }
@@ -141,3 +151,6 @@ export class LocalTagResultDTO {
         return new LocalTagResultDTO($$parsedSource as Partial<LocalTagResultDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = query$0.QueryAttribute.createFrom;

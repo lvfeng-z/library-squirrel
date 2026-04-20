@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * LocalTagDTO 本地标签数据传输对象
  */
@@ -226,79 +230,68 @@ export class SiteTagQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": number | null;
+    "siteId": query$0.QueryAttribute;
 
     /**
      * 站点标签ID（外部）
      */
-    "siteTagId": string | null;
+    "siteTagId": query$0.QueryAttribute;
 
     /**
      * 基础站点标签ID
      */
-    "baseSiteTagId": string | null;
+    "baseSiteTagId": query$0.QueryAttribute;
 
     /**
      * 本地标签ID
      */
-    "localTagId": number | null;
+    "localTagId": query$0.QueryAttribute;
 
     /**
-     * 过滤绑定状态
-     * 是否绑定到指定本地标签（true=绑定的，false=未绑定的）
+     * 是否绑定到指定本地标签（非数据库字段）
      */
-    "boundOnLocalTagId": boolean | null;
+    "boundOnLocalTagId": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 站点标签名称（模糊匹配）
      */
-    "siteTagNameLike": string | null;
+    "siteTagName": query$0.QueryAttribute;
 
     /**
      * 描述（模糊匹配）
      */
-    "descriptionLike": string | null;
+    "description": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, site_tag_name, last_use
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new SiteTagQueryDTO instance. */
     constructor($$source: Partial<SiteTagQueryDTO> = {}) {
         if (!("siteId" in $$source)) {
-            this["siteId"] = null;
+            this["siteId"] = (new query$0.QueryAttribute());
         }
         if (!("siteTagId" in $$source)) {
-            this["siteTagId"] = null;
+            this["siteTagId"] = (new query$0.QueryAttribute());
         }
         if (!("baseSiteTagId" in $$source)) {
-            this["baseSiteTagId"] = null;
+            this["baseSiteTagId"] = (new query$0.QueryAttribute());
         }
         if (!("localTagId" in $$source)) {
-            this["localTagId"] = null;
+            this["localTagId"] = (new query$0.QueryAttribute());
         }
         if (!("boundOnLocalTagId" in $$source)) {
-            this["boundOnLocalTagId"] = null;
+            this["boundOnLocalTagId"] = (new query$0.QueryAttribute());
         }
-        if (!("siteTagNameLike" in $$source)) {
-            this["siteTagNameLike"] = null;
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = (new query$0.QueryAttribute());
         }
-        if (!("descriptionLike" in $$source)) {
-            this["descriptionLike"] = null;
+        if (!("description" in $$source)) {
+            this["description"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -308,7 +301,39 @@ export class SiteTagQueryDTO {
      * Creates a new SiteTagQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteTagQueryDTO {
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType2;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType2;
+        const $$createField6_0 = $$createType2;
+        const $$createField7_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteId" in $$parsedSource) {
+            $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
+        }
+        if ("siteTagId" in $$parsedSource) {
+            $$parsedSource["siteTagId"] = $$createField1_0($$parsedSource["siteTagId"]);
+        }
+        if ("baseSiteTagId" in $$parsedSource) {
+            $$parsedSource["baseSiteTagId"] = $$createField2_0($$parsedSource["baseSiteTagId"]);
+        }
+        if ("localTagId" in $$parsedSource) {
+            $$parsedSource["localTagId"] = $$createField3_0($$parsedSource["localTagId"]);
+        }
+        if ("boundOnLocalTagId" in $$parsedSource) {
+            $$parsedSource["boundOnLocalTagId"] = $$createField4_0($$parsedSource["boundOnLocalTagId"]);
+        }
+        if ("siteTagName" in $$parsedSource) {
+            $$parsedSource["siteTagName"] = $$createField5_0($$parsedSource["siteTagName"]);
+        }
+        if ("description" in $$parsedSource) {
+            $$parsedSource["description"] = $$createField6_0($$parsedSource["description"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField7_0($$parsedSource["orderBy"]);
+        }
         return new SiteTagQueryDTO($$parsedSource as Partial<SiteTagQueryDTO>);
     }
 }
@@ -376,3 +401,4 @@ export class SiteTagResultDTO {
 // Private type creation functions
 const $$createType0 = LocalTagDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = query$0.QueryAttribute.createFrom;

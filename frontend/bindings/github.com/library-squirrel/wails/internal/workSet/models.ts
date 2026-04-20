@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
  */
@@ -116,78 +120,68 @@ export class WorkSetQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": number | null;
+    "siteId": query$0.QueryAttribute;
 
     /**
      * 站点作品集ID
      */
-    "siteWorkSetId": string | null;
+    "siteWorkSetId": query$0.QueryAttribute;
 
     /**
      * 站点作者ID
      */
-    "siteAuthorId": string | null;
+    "siteAuthorId": query$0.QueryAttribute;
 
     /**
      * 昵称（精确匹配）
      */
-    "nickName": string | null;
+    "nickName": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 站点作品集名称（模糊匹配）
      */
-    "siteWorkSetNameLike": string | null;
+    "siteWorkSetName": query$0.QueryAttribute;
 
     /**
      * 站点作品集描述（模糊匹配）
      */
-    "siteWorkSetDescLike": string | null;
+    "siteWorkSetDesc": query$0.QueryAttribute;
 
     /**
      * 昵称（模糊匹配）
      */
-    "nickNameLike": string | null;
+    "nickNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, site_upload_time, site_update_time, last_view, site_work_set_name
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new WorkSetQueryDTO instance. */
     constructor($$source: Partial<WorkSetQueryDTO> = {}) {
         if (!("siteId" in $$source)) {
-            this["siteId"] = null;
+            this["siteId"] = (new query$0.QueryAttribute());
         }
         if (!("siteWorkSetId" in $$source)) {
-            this["siteWorkSetId"] = null;
+            this["siteWorkSetId"] = (new query$0.QueryAttribute());
         }
         if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
+            this["siteAuthorId"] = (new query$0.QueryAttribute());
         }
         if (!("nickName" in $$source)) {
-            this["nickName"] = null;
+            this["nickName"] = (new query$0.QueryAttribute());
         }
-        if (!("siteWorkSetNameLike" in $$source)) {
-            this["siteWorkSetNameLike"] = null;
+        if (!("siteWorkSetName" in $$source)) {
+            this["siteWorkSetName"] = (new query$0.QueryAttribute());
         }
-        if (!("siteWorkSetDescLike" in $$source)) {
-            this["siteWorkSetDescLike"] = null;
+        if (!("siteWorkSetDesc" in $$source)) {
+            this["siteWorkSetDesc"] = (new query$0.QueryAttribute());
         }
-        if (!("nickNameLike" in $$source)) {
-            this["nickNameLike"] = null;
+        if (!("nickNameStr" in $$source)) {
+            this["nickNameStr"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -197,7 +191,39 @@ export class WorkSetQueryDTO {
      * Creates a new WorkSetQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteId" in $$parsedSource) {
+            $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
+        }
+        if ("siteWorkSetId" in $$parsedSource) {
+            $$parsedSource["siteWorkSetId"] = $$createField1_0($$parsedSource["siteWorkSetId"]);
+        }
+        if ("siteAuthorId" in $$parsedSource) {
+            $$parsedSource["siteAuthorId"] = $$createField2_0($$parsedSource["siteAuthorId"]);
+        }
+        if ("nickName" in $$parsedSource) {
+            $$parsedSource["nickName"] = $$createField3_0($$parsedSource["nickName"]);
+        }
+        if ("siteWorkSetName" in $$parsedSource) {
+            $$parsedSource["siteWorkSetName"] = $$createField4_0($$parsedSource["siteWorkSetName"]);
+        }
+        if ("siteWorkSetDesc" in $$parsedSource) {
+            $$parsedSource["siteWorkSetDesc"] = $$createField5_0($$parsedSource["siteWorkSetDesc"]);
+        }
+        if ("nickNameStr" in $$parsedSource) {
+            $$parsedSource["nickNameStr"] = $$createField6_0($$parsedSource["nickNameStr"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField7_0($$parsedSource["orderBy"]);
+        }
         return new WorkSetQueryDTO($$parsedSource as Partial<WorkSetQueryDTO>);
     }
 }
@@ -290,8 +316,8 @@ export class WorkSetWithCoverResultDTO {
      * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType3;
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -326,8 +352,8 @@ export class WorkSetWithWorksResultDTO {
      * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType4;
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -340,8 +366,9 @@ export class WorkSetWithWorksResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = WorkSetResultDTO.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = WorkResultDTO.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($$createType3);
+const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType1 = WorkSetResultDTO.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = WorkResultDTO.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $Create.Array($$createType4);

@@ -75,27 +75,27 @@ export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $Can
 /**
  * QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
  */
-export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorFullDTO> | null> | null> {
+export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<$models.SiteAuthorQueryDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorFullDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(157583187, page).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
 /**
  * QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
  */
-export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorLocalRelateDTO> | null> | null> {
+export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteAuthorQueryDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorLocalRelateDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(4104954123, page).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType31($result);
     });
 }
 
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorResultDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<$models.SiteAuthorQueryDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorResultDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(19819348, page).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType35($result);
     });
 }
 
@@ -104,7 +104,7 @@ export function QueryPage(page: model$0.Page<$models.SiteAuthorQueryDTO> | null)
  */
 export function Save(author: $models.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1406741580, author).then(($result: any) => {
-        return $$createType36($result);
+        return $$createType37($result);
     });
 }
 
@@ -167,18 +167,19 @@ const $$createType18 = $Create.Array($$createType17);
 const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
 const $$createType20 = $Create.Nullable($$createType19);
 const $$createType21 = $models.SiteAuthorFullDTO.createFrom;
-const $$createType22 = model$0.Page.createFrom($$createType21);
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = model$0.ApiResponse.createFrom($$createType23);
-const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = $models.SiteAuthorLocalRelateDTO.createFrom;
-const $$createType27 = model$0.Page.createFrom($$createType26);
-const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = model$0.ApiResponse.createFrom($$createType28);
-const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = model$0.Page.createFrom($$createType4);
-const $$createType32 = $Create.Nullable($$createType31);
-const $$createType33 = model$0.ApiResponse.createFrom($$createType32);
-const $$createType34 = $Create.Nullable($$createType33);
-const $$createType35 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType36 = $Create.Nullable($$createType35);
+const $$createType22 = $models.SiteAuthorQueryDTO.createFrom;
+const $$createType23 = model$0.Page.createFrom($$createType21, $$createType22);
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = model$0.ApiResponse.createFrom($$createType24);
+const $$createType26 = $Create.Nullable($$createType25);
+const $$createType27 = $models.SiteAuthorLocalRelateDTO.createFrom;
+const $$createType28 = model$0.Page.createFrom($$createType27, $$createType22);
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = model$0.ApiResponse.createFrom($$createType29);
+const $$createType31 = $Create.Nullable($$createType30);
+const $$createType32 = model$0.Page.createFrom($$createType4, $$createType22);
+const $$createType33 = $Create.Nullable($$createType32);
+const $$createType34 = model$0.ApiResponse.createFrom($$createType33);
+const $$createType35 = $Create.Nullable($$createType34);
+const $$createType36 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType37 = $Create.Nullable($$createType36);

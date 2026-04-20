@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * LocalAuthorDTO 本地作者数据传输对象
  */
@@ -266,79 +270,68 @@ export class SiteAuthorQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": number | null;
+    "siteId": query$0.QueryAttribute;
 
     /**
      * 站点作者ID（外部）
      */
-    "siteAuthorId": string | null;
+    "siteAuthorId": query$0.QueryAttribute;
 
     /**
      * 本地作者ID
      */
-    "localAuthorId": number | null;
+    "localAuthorId": query$0.QueryAttribute;
 
     /**
      * 固定作者名称
      */
-    "fixedAuthorName": string | null;
+    "fixedAuthorName": query$0.QueryAttribute;
 
     /**
-     * 过滤绑定状态
-     * 是否绑定到指定本地作者（true=绑定的，false=未绑定的）
+     * 是否绑定到指定本地作者（非数据库字段）
      */
-    "boundOnLocalAuthorId": boolean | null;
+    "boundOnLocalAuthorId": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 作者名称（模糊匹配）
      */
-    "authorNameLike": string | null;
+    "authorName": query$0.QueryAttribute;
 
     /**
      * 介绍（模糊匹配）
      */
-    "introduceLike": string | null;
+    "introduce": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, author_name, last_use
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new SiteAuthorQueryDTO instance. */
     constructor($$source: Partial<SiteAuthorQueryDTO> = {}) {
         if (!("siteId" in $$source)) {
-            this["siteId"] = null;
+            this["siteId"] = (new query$0.QueryAttribute());
         }
         if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
+            this["siteAuthorId"] = (new query$0.QueryAttribute());
         }
         if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
+            this["localAuthorId"] = (new query$0.QueryAttribute());
         }
         if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = null;
+            this["fixedAuthorName"] = (new query$0.QueryAttribute());
         }
         if (!("boundOnLocalAuthorId" in $$source)) {
-            this["boundOnLocalAuthorId"] = null;
+            this["boundOnLocalAuthorId"] = (new query$0.QueryAttribute());
         }
-        if (!("authorNameLike" in $$source)) {
-            this["authorNameLike"] = null;
+        if (!("authorName" in $$source)) {
+            this["authorName"] = (new query$0.QueryAttribute());
         }
-        if (!("introduceLike" in $$source)) {
-            this["introduceLike"] = null;
+        if (!("introduce" in $$source)) {
+            this["introduce"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -348,7 +341,39 @@ export class SiteAuthorQueryDTO {
      * Creates a new SiteAuthorQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorQueryDTO {
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType2;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType2;
+        const $$createField6_0 = $$createType2;
+        const $$createField7_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteId" in $$parsedSource) {
+            $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
+        }
+        if ("siteAuthorId" in $$parsedSource) {
+            $$parsedSource["siteAuthorId"] = $$createField1_0($$parsedSource["siteAuthorId"]);
+        }
+        if ("localAuthorId" in $$parsedSource) {
+            $$parsedSource["localAuthorId"] = $$createField2_0($$parsedSource["localAuthorId"]);
+        }
+        if ("fixedAuthorName" in $$parsedSource) {
+            $$parsedSource["fixedAuthorName"] = $$createField3_0($$parsedSource["fixedAuthorName"]);
+        }
+        if ("boundOnLocalAuthorId" in $$parsedSource) {
+            $$parsedSource["boundOnLocalAuthorId"] = $$createField4_0($$parsedSource["boundOnLocalAuthorId"]);
+        }
+        if ("authorName" in $$parsedSource) {
+            $$parsedSource["authorName"] = $$createField5_0($$parsedSource["authorName"]);
+        }
+        if ("introduce" in $$parsedSource) {
+            $$parsedSource["introduce"] = $$createField6_0($$parsedSource["introduce"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField7_0($$parsedSource["orderBy"]);
+        }
         return new SiteAuthorQueryDTO($$parsedSource as Partial<SiteAuthorQueryDTO>);
     }
 }
@@ -420,3 +445,4 @@ export class SiteAuthorResultDTO {
 // Private type creation functions
 const $$createType0 = LocalAuthorDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = query$0.QueryAttribute.createFrom;

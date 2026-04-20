@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * SiteDTO 站点数据传输对象
  */
@@ -48,45 +52,36 @@ export class SiteQueryDTO {
     /**
      * 站点名称（精确匹配）
      */
-    "siteName": string | null;
+    "siteName": query$0.QueryAttribute;
 
     /**
      * 主页地址（精确匹配）
      */
-    "homepage": string | null;
+    "homepage": query$0.QueryAttribute;
 
     /**
      * 站点名称（模糊匹配）
      */
-    "siteNameLike": string | null;
+    "siteNameStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, site_name
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new SiteQueryDTO instance. */
     constructor($$source: Partial<SiteQueryDTO> = {}) {
         if (!("siteName" in $$source)) {
-            this["siteName"] = null;
+            this["siteName"] = (new query$0.QueryAttribute());
         }
         if (!("homepage" in $$source)) {
-            this["homepage"] = null;
+            this["homepage"] = (new query$0.QueryAttribute());
         }
-        if (!("siteNameLike" in $$source)) {
-            this["siteNameLike"] = null;
+        if (!("siteNameStr" in $$source)) {
+            this["siteNameStr"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -96,7 +91,23 @@ export class SiteQueryDTO {
      * Creates a new SiteQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteName" in $$parsedSource) {
+            $$parsedSource["siteName"] = $$createField0_0($$parsedSource["siteName"]);
+        }
+        if ("homepage" in $$parsedSource) {
+            $$parsedSource["homepage"] = $$createField1_0($$parsedSource["homepage"]);
+        }
+        if ("siteNameStr" in $$parsedSource) {
+            $$parsedSource["siteNameStr"] = $$createField2_0($$parsedSource["siteNameStr"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField3_0($$parsedSource["orderBy"]);
+        }
         return new SiteQueryDTO($$parsedSource as Partial<SiteQueryDTO>);
     }
 }
@@ -144,3 +155,6 @@ export class SiteResultDTO {
         return new SiteResultDTO($$parsedSource as Partial<SiteResultDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = query$0.QueryAttribute.createFrom;

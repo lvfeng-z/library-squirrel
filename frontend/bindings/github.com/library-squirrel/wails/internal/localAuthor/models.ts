@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * LocalAuthorDTO 本地作者数据传输对象
  */
@@ -44,46 +48,36 @@ export class LocalAuthorQueryDTO {
     /**
      * 作者名称（精确匹配）
      */
-    "authorName": string | null;
+    "authorName": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 作者名称（模糊匹配）
      */
-    "authorNameLike": string | null;
+    "authorNameStr": query$0.QueryAttribute;
 
     /**
      * 介绍（模糊匹配）
      */
-    "introduceLike": string | null;
+    "introduce": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, author_name, last_use
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new LocalAuthorQueryDTO instance. */
     constructor($$source: Partial<LocalAuthorQueryDTO> = {}) {
         if (!("authorName" in $$source)) {
-            this["authorName"] = null;
+            this["authorName"] = (new query$0.QueryAttribute());
         }
-        if (!("authorNameLike" in $$source)) {
-            this["authorNameLike"] = null;
+        if (!("authorNameStr" in $$source)) {
+            this["authorNameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("introduceLike" in $$source)) {
-            this["introduceLike"] = null;
+        if (!("introduce" in $$source)) {
+            this["introduce"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -93,7 +87,23 @@ export class LocalAuthorQueryDTO {
      * Creates a new LocalAuthorQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): LocalAuthorQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("authorName" in $$parsedSource) {
+            $$parsedSource["authorName"] = $$createField0_0($$parsedSource["authorName"]);
+        }
+        if ("authorNameStr" in $$parsedSource) {
+            $$parsedSource["authorNameStr"] = $$createField1_0($$parsedSource["authorNameStr"]);
+        }
+        if ("introduce" in $$parsedSource) {
+            $$parsedSource["introduce"] = $$createField2_0($$parsedSource["introduce"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField3_0($$parsedSource["orderBy"]);
+        }
         return new LocalAuthorQueryDTO($$parsedSource as Partial<LocalAuthorQueryDTO>);
     }
 }
@@ -141,3 +151,6 @@ export class LocalAuthorResultDTO {
         return new LocalAuthorResultDTO($$parsedSource as Partial<LocalAuthorResultDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = query$0.QueryAttribute.createFrom;

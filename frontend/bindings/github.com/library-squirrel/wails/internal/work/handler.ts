@@ -78,9 +78,9 @@ export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $Ca
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkResultDTO> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkResultDTO, $models.WorkQueryDTO> | null> | null> {
     return $Call.ByID(2743079621, page, pageSize, queryDTO).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -89,7 +89,7 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
  */
 export function Save(work: $models.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(111346079, work).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType21($result);
     });
 }
 
@@ -127,9 +127,10 @@ const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.Page.createFrom($$createType2);
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = model$0.ApiResponse.createFrom($$createType16);
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType20 = $Create.Nullable($$createType19);
+const $$createType15 = $models.WorkQueryDTO.createFrom;
+const $$createType16 = model$0.Page.createFrom($$createType2, $$createType15);
+const $$createType17 = $Create.Nullable($$createType16);
+const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType21 = $Create.Nullable($$createType20);

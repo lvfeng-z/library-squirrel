@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * CreateTaskByURLResponse 根据URL创建任务的响应
  */
@@ -136,94 +140,84 @@ export class TaskQueryDTO {
     /**
      * 父任务ID
      */
-    "pid": number | null;
+    "pid": query$0.QueryAttribute;
 
     /**
      * 站点ID
      */
-    "siteId": number | null;
+    "siteId": query$0.QueryAttribute;
 
     /**
      * 站点作品ID
      */
-    "siteWorkId": string | null;
+    "siteWorkId": query$0.QueryAttribute;
 
     /**
      * 任务状态
      */
-    "status": number | null;
+    "status": query$0.QueryAttribute;
 
     /**
      * 是否为合集（0=否，1=是）
      */
-    "isCollection": number | null;
+    "isCollection": query$0.QueryAttribute;
 
     /**
      * 插件公开ID
      */
-    "pluginPublicId": string | null;
+    "pluginPublicId": query$0.QueryAttribute;
 
     /**
      * 插件贡献ID
      */
-    "pluginContributionId": string | null;
+    "pluginContributionId": query$0.QueryAttribute;
 
     /**
      * 是否可继续（0=否，1=是）
      */
-    "continuable": number | null;
+    "continuable": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 任务名称（模糊匹配）
      */
-    "taskNameLike": string | null;
+    "taskName": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, task_name
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new TaskQueryDTO instance. */
     constructor($$source: Partial<TaskQueryDTO> = {}) {
         if (!("pid" in $$source)) {
-            this["pid"] = null;
+            this["pid"] = (new query$0.QueryAttribute());
         }
         if (!("siteId" in $$source)) {
-            this["siteId"] = null;
+            this["siteId"] = (new query$0.QueryAttribute());
         }
         if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
+            this["siteWorkId"] = (new query$0.QueryAttribute());
         }
         if (!("status" in $$source)) {
-            this["status"] = null;
+            this["status"] = (new query$0.QueryAttribute());
         }
         if (!("isCollection" in $$source)) {
-            this["isCollection"] = null;
+            this["isCollection"] = (new query$0.QueryAttribute());
         }
         if (!("pluginPublicId" in $$source)) {
-            this["pluginPublicId"] = null;
+            this["pluginPublicId"] = (new query$0.QueryAttribute());
         }
         if (!("pluginContributionId" in $$source)) {
-            this["pluginContributionId"] = null;
+            this["pluginContributionId"] = (new query$0.QueryAttribute());
         }
         if (!("continuable" in $$source)) {
-            this["continuable"] = null;
+            this["continuable"] = (new query$0.QueryAttribute());
         }
-        if (!("taskNameLike" in $$source)) {
-            this["taskNameLike"] = null;
+        if (!("taskName" in $$source)) {
+            this["taskName"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -233,7 +227,47 @@ export class TaskQueryDTO {
      * Creates a new TaskQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("pid" in $$parsedSource) {
+            $$parsedSource["pid"] = $$createField0_0($$parsedSource["pid"]);
+        }
+        if ("siteId" in $$parsedSource) {
+            $$parsedSource["siteId"] = $$createField1_0($$parsedSource["siteId"]);
+        }
+        if ("siteWorkId" in $$parsedSource) {
+            $$parsedSource["siteWorkId"] = $$createField2_0($$parsedSource["siteWorkId"]);
+        }
+        if ("status" in $$parsedSource) {
+            $$parsedSource["status"] = $$createField3_0($$parsedSource["status"]);
+        }
+        if ("isCollection" in $$parsedSource) {
+            $$parsedSource["isCollection"] = $$createField4_0($$parsedSource["isCollection"]);
+        }
+        if ("pluginPublicId" in $$parsedSource) {
+            $$parsedSource["pluginPublicId"] = $$createField5_0($$parsedSource["pluginPublicId"]);
+        }
+        if ("pluginContributionId" in $$parsedSource) {
+            $$parsedSource["pluginContributionId"] = $$createField6_0($$parsedSource["pluginContributionId"]);
+        }
+        if ("continuable" in $$parsedSource) {
+            $$parsedSource["continuable"] = $$createField7_0($$parsedSource["continuable"]);
+        }
+        if ("taskName" in $$parsedSource) {
+            $$parsedSource["taskName"] = $$createField8_0($$parsedSource["taskName"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField9_0($$parsedSource["orderBy"]);
+        }
         return new TaskQueryDTO($$parsedSource as Partial<TaskQueryDTO>);
     }
 }
@@ -422,7 +456,7 @@ export class TaskTreeDTO {
      * Creates a new TaskTreeDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskTreeDTO {
-        const $$createField12_0 = $$createType2;
+        const $$createField12_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField12_0($$parsedSource["children"]);
@@ -462,7 +496,7 @@ export class TreeDataPageDTO {
      * Creates a new TreeDataPageDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TreeDataPageDTO {
-        const $$createField3_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField3_0($$parsedSource["tasks"]);
@@ -472,6 +506,7 @@ export class TreeDataPageDTO {
 }
 
 // Private type creation functions
-const $$createType0 = TaskTreeDTO.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $Create.Array($$createType1);
+const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType1 = TaskTreeDTO.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = $Create.Array($$createType2);

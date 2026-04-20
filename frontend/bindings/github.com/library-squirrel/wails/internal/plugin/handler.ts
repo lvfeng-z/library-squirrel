@@ -66,9 +66,9 @@ export function InstallFromPath(packagePath: string, installType: number): $Canc
 /**
  * Page 分页查询
  */
-export function Page(page: model$0.Page<$models.PluginQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.PluginResultDTO> | null> | null> {
+export function Page(page: model$0.Page<$models.PluginQueryDTO, $models.PluginQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.PluginResultDTO, $models.PluginQueryDTO> | null> | null> {
     return $Call.ByID(4119841619, page).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
@@ -95,7 +95,7 @@ export function Reinstall(pluginPublicId: string, installType: number): $Cancell
  */
 export function Save(plugin: $models.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(3241584933, plugin).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
@@ -104,7 +104,7 @@ export function Save(plugin: $models.PluginDTO | null): $CancellablePromise<mode
  */
 export function SetUninstalled(pluginId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(4054926875, pluginId).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -113,7 +113,7 @@ export function SetUninstalled(pluginId: number): $CancellablePromise<model$0.Ap
  */
 export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2508918090, pluginPublicId).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -122,7 +122,7 @@ export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.A
  */
 export function Update(plugin: $models.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1290196617, plugin).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -135,11 +135,12 @@ const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$0.Page.createFrom($$createType2);
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType15 = $Create.Nullable($$createType14);
+const $$createType8 = $models.PluginQueryDTO.createFrom;
+const $$createType9 = model$0.Page.createFrom($$createType2, $$createType8);
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType16 = $Create.Nullable($$createType15);

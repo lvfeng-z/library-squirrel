@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as query$0 from "../../pkg/query/models.js";
+
 /**
  * PluginDTO 插件数据传输对象
  */
@@ -64,86 +68,76 @@ export class PluginQueryDTO {
     /**
      * 公开ID（精确匹配）
      */
-    "publicId": string | null;
+    "publicId": query$0.QueryAttribute;
 
     /**
      * 插件名称（精确匹配）
      */
-    "name": string | null;
+    "name": query$0.QueryAttribute;
 
     /**
      * 作者（精确匹配）
      */
-    "author": string | null;
+    "author": query$0.QueryAttribute;
 
     /**
      * 版本号（精确匹配）
      */
-    "version": string | null;
+    "version": query$0.QueryAttribute;
 
     /**
      * 激活类型（精确匹配）
      */
-    "activationType": string | null;
+    "activationType": query$0.QueryAttribute;
 
     /**
      * 是否已卸载（0=未卸载，1=已卸载）
      */
-    "uninstalled": number | null;
+    "uninstalled": query$0.QueryAttribute;
 
     /**
-     * 模糊查询
      * 插件名称（模糊匹配）
      */
-    "nameLike": string | null;
+    "nameStr": query$0.QueryAttribute;
 
     /**
      * 作者（模糊匹配）
      */
-    "authorLike": string | null;
+    "authorStr": query$0.QueryAttribute;
 
     /**
-     * 排序字段：create_time, update_time, name, author, sort_num
      * 排序字段
      */
-    "orderBy": string;
-
-    /**
-     * 是否降序
-     */
-    "orderDesc": boolean;
+    "orderBy": query$0.QueryAttribute;
 
     /** Creates a new PluginQueryDTO instance. */
     constructor($$source: Partial<PluginQueryDTO> = {}) {
         if (!("publicId" in $$source)) {
-            this["publicId"] = null;
+            this["publicId"] = (new query$0.QueryAttribute());
         }
         if (!("name" in $$source)) {
-            this["name"] = null;
+            this["name"] = (new query$0.QueryAttribute());
         }
         if (!("author" in $$source)) {
-            this["author"] = null;
+            this["author"] = (new query$0.QueryAttribute());
         }
         if (!("version" in $$source)) {
-            this["version"] = null;
+            this["version"] = (new query$0.QueryAttribute());
         }
         if (!("activationType" in $$source)) {
-            this["activationType"] = null;
+            this["activationType"] = (new query$0.QueryAttribute());
         }
         if (!("uninstalled" in $$source)) {
-            this["uninstalled"] = null;
+            this["uninstalled"] = (new query$0.QueryAttribute());
         }
-        if (!("nameLike" in $$source)) {
-            this["nameLike"] = null;
+        if (!("nameStr" in $$source)) {
+            this["nameStr"] = (new query$0.QueryAttribute());
         }
-        if (!("authorLike" in $$source)) {
-            this["authorLike"] = null;
+        if (!("authorStr" in $$source)) {
+            this["authorStr"] = (new query$0.QueryAttribute());
         }
         if (!("orderBy" in $$source)) {
-            this["orderBy"] = "";
-        }
-        if (!("orderDesc" in $$source)) {
-            this["orderDesc"] = false;
+            this["orderBy"] = (new query$0.QueryAttribute());
         }
 
         Object.assign(this, $$source);
@@ -153,7 +147,43 @@ export class PluginQueryDTO {
      * Creates a new PluginQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginQueryDTO {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("publicId" in $$parsedSource) {
+            $$parsedSource["publicId"] = $$createField0_0($$parsedSource["publicId"]);
+        }
+        if ("name" in $$parsedSource) {
+            $$parsedSource["name"] = $$createField1_0($$parsedSource["name"]);
+        }
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField2_0($$parsedSource["author"]);
+        }
+        if ("version" in $$parsedSource) {
+            $$parsedSource["version"] = $$createField3_0($$parsedSource["version"]);
+        }
+        if ("activationType" in $$parsedSource) {
+            $$parsedSource["activationType"] = $$createField4_0($$parsedSource["activationType"]);
+        }
+        if ("uninstalled" in $$parsedSource) {
+            $$parsedSource["uninstalled"] = $$createField5_0($$parsedSource["uninstalled"]);
+        }
+        if ("nameStr" in $$parsedSource) {
+            $$parsedSource["nameStr"] = $$createField6_0($$parsedSource["nameStr"]);
+        }
+        if ("authorStr" in $$parsedSource) {
+            $$parsedSource["authorStr"] = $$createField7_0($$parsedSource["authorStr"]);
+        }
+        if ("orderBy" in $$parsedSource) {
+            $$parsedSource["orderBy"] = $$createField8_0($$parsedSource["orderBy"]);
+        }
         return new PluginQueryDTO($$parsedSource as Partial<PluginQueryDTO>);
     }
 }
@@ -233,3 +263,6 @@ export class PluginResultDTO {
         return new PluginResultDTO($$parsedSource as Partial<PluginResultDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = query$0.QueryAttribute.createFrom;
