@@ -38,6 +38,62 @@ export enum ContentType {
 };
 
 /**
+ * LocalTag 本地标签
+ */
+export class LocalTag {
+    "id": number;
+    "createTime": number;
+    "updateTime": number;
+    "localTagName": sql$0.NullString;
+    "baseLocalTagId": sql$0.NullInt64;
+    "lastUse": sql$0.NullInt64;
+
+    /** Creates a new LocalTag instance. */
+    constructor($$source: Partial<LocalTag> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("localTagName" in $$source)) {
+            this["localTagName"] = (new sql$0.NullString());
+        }
+        if (!("baseLocalTagId" in $$source)) {
+            this["baseLocalTagId"] = (new sql$0.NullInt64());
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = (new sql$0.NullInt64());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalTag instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalTag {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("localTagName" in $$parsedSource) {
+            $$parsedSource["localTagName"] = $$createField3_0($$parsedSource["localTagName"]);
+        }
+        if ("baseLocalTagId" in $$parsedSource) {
+            $$parsedSource["baseLocalTagId"] = $$createField4_0($$parsedSource["baseLocalTagId"]);
+        }
+        if ("lastUse" in $$parsedSource) {
+            $$parsedSource["lastUse"] = $$createField5_0($$parsedSource["lastUse"]);
+        }
+        return new LocalTag($$parsedSource as Partial<LocalTag>);
+    }
+}
+
+/**
  * ReWorkTag 作品与标签关联
  */
 export class ReWorkTag {
@@ -80,10 +136,10 @@ export class ReWorkTag {
      * Creates a new ReWorkTag instance from a string or object.
      */
     static createFrom($$source: any = {}): ReWorkTag {
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workId" in $$parsedSource) {
             $$parsedSource["workId"] = $$createField3_0($$parsedSource["workId"]);
@@ -168,12 +224,12 @@ export class Resource {
      * Creates a new Resource instance from a string or object.
      */
     static createFrom($$source: any = {}): Resource {
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType1;
-        const $$createField8_0 = $$createType1;
-        const $$createField9_0 = $$createType1;
-        const $$createField10_0 = $$createType0;
-        const $$createField11_0 = $$createType1;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
+        const $$createField10_0 = $$createType1;
+        const $$createField11_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("filePath" in $$parsedSource) {
             $$parsedSource["filePath"] = $$createField6_0($$parsedSource["filePath"]);
@@ -324,6 +380,148 @@ export class SelectItem {
             $$parsedSource["subLabels"] = $$createField3_0($$parsedSource["subLabels"]);
         }
         return new SelectItem($$parsedSource as Partial<SelectItem>);
+    }
+}
+
+/**
+ * Site 站点
+ */
+export class Site {
+    "id": number;
+    "createTime": number;
+    "updateTime": number;
+    "siteName": sql$0.NullString;
+    "siteDescription": sql$0.NullString;
+    "homepage": sql$0.NullString;
+
+    /** Creates a new Site instance. */
+    constructor($$source: Partial<Site> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = (new sql$0.NullString());
+        }
+        if (!("siteDescription" in $$source)) {
+            this["siteDescription"] = (new sql$0.NullString());
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = (new sql$0.NullString());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Site instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Site {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteName" in $$parsedSource) {
+            $$parsedSource["siteName"] = $$createField3_0($$parsedSource["siteName"]);
+        }
+        if ("siteDescription" in $$parsedSource) {
+            $$parsedSource["siteDescription"] = $$createField4_0($$parsedSource["siteDescription"]);
+        }
+        if ("homepage" in $$parsedSource) {
+            $$parsedSource["homepage"] = $$createField5_0($$parsedSource["homepage"]);
+        }
+        return new Site($$parsedSource as Partial<Site>);
+    }
+}
+
+/**
+ * SiteTagFullDTO 站点标签完整DTO（包含绑定的本地标签和来源站点信息）
+ * 注意：显式定义所有字段，不使用嵌入（embedding）来复现 TypeScript 的继承行为
+ */
+export class SiteTagFullDTO {
+    /**
+     * 基础实体字段
+     */
+    "id": number;
+    "createTime": number;
+    "updateTime": number;
+
+    /**
+     * 站点标签字段
+     */
+    "siteId": number;
+    "siteTagId": string;
+    "siteTagName": string;
+    "baseSiteTagId": string;
+    "description": string;
+    "localTagId": number;
+    "lastUse": number;
+
+    /**
+     * 关联的本地标签
+     */
+    "localTag"?: LocalTag | null;
+
+    /**
+     * 来源站点
+     */
+    "site"?: Site | null;
+
+    /** Creates a new SiteTagFullDTO instance. */
+    constructor($$source: Partial<SiteTagFullDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = 0;
+        }
+        if (!("siteTagId" in $$source)) {
+            this["siteTagId"] = "";
+        }
+        if (!("siteTagName" in $$source)) {
+            this["siteTagName"] = "";
+        }
+        if (!("baseSiteTagId" in $$source)) {
+            this["baseSiteTagId"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+        if (!("localTagId" in $$source)) {
+            this["localTagId"] = 0;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagFullDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagFullDTO {
+        const $$createField10_0 = $$createType5;
+        const $$createField11_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("localTag" in $$parsedSource) {
+            $$parsedSource["localTag"] = $$createField10_0($$parsedSource["localTag"]);
+        }
+        if ("site" in $$parsedSource) {
+            $$parsedSource["site"] = $$createField11_0($$parsedSource["site"]);
+        }
+        return new SiteTagFullDTO($$parsedSource as Partial<SiteTagFullDTO>);
     }
 }
 
@@ -544,16 +742,16 @@ export class Work {
      * Creates a new Work instance from a string or object.
      */
     static createFrom($$source: any = {}): Work {
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType1;
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType1;
-        const $$createField8_0 = $$createType0;
-        const $$createField9_0 = $$createType0;
-        const $$createField10_0 = $$createType1;
-        const $$createField11_0 = $$createType0;
-        const $$createField12_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType1;
+        const $$createField9_0 = $$createType1;
+        const $$createField10_0 = $$createType0;
+        const $$createField11_0 = $$createType1;
+        const $$createField12_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField3_0($$parsedSource["siteId"]);
@@ -689,12 +887,12 @@ export class WorkFullDTO {
      * Creates a new WorkFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkFullDTO {
-        const $$createField13_0 = $$createType5;
-        const $$createField14_0 = $$createType7;
-        const $$createField15_0 = $$createType9;
-        const $$createField16_0 = $$createType10;
-        const $$createField17_0 = $$createType10;
-        const $$createField18_0 = $$createType13;
+        const $$createField13_0 = $$createType9;
+        const $$createField14_0 = $$createType11;
+        const $$createField15_0 = $$createType13;
+        const $$createField16_0 = $$createType14;
+        const $$createField17_0 = $$createType14;
+        const $$createField18_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("localAuthor" in $$parsedSource) {
             $$parsedSource["localAuthor"] = $$createField13_0($$parsedSource["localAuthor"]);
@@ -719,17 +917,21 @@ export class WorkFullDTO {
 }
 
 // Private type creation functions
-const $$createType0 = sql$0.NullInt64.createFrom;
-const $$createType1 = sql$0.NullString.createFrom;
+const $$createType0 = sql$0.NullString.createFrom;
+const $$createType1 = sql$0.NullInt64.createFrom;
 const $$createType2 = $Create.Array($Create.Any);
 const $$createType3 = $Create.Array($Create.Any);
-const $$createType4 = model$0.RankedLocalAuthor.createFrom;
+const $$createType4 = LocalTag.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$0.RankedSiteAuthor.createFrom;
+const $$createType6 = Site.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = SelectItem.createFrom;
+const $$createType8 = model$0.RankedLocalAuthor.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = Resource.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = $Create.Array($$createType12);
+const $$createType10 = model$0.RankedSiteAuthor.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = SelectItem.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = Resource.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = $Create.Array($$createType16);

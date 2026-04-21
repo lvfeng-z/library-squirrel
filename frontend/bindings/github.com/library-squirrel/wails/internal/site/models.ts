@@ -52,32 +52,32 @@ export class SiteQueryDTO {
     /**
      * 站点名称（精确匹配）
      */
-    "siteName": query$0.QueryAttribute;
+    "siteName": query$0.QueryAttribute<string>;
 
     /**
      * 主页地址（精确匹配）
      */
-    "homepage": query$0.QueryAttribute;
+    "homepage": query$0.QueryAttribute<string>;
 
     /**
      * 站点名称（模糊匹配）
      */
-    "siteNameStr": query$0.QueryAttribute;
+    "siteNameStr": query$0.QueryAttribute<string>;
 
     /**
      * 是否启用
      */
-    "enable": query$0.QueryAttribute;
+    "enable": query$0.QueryAttribute<boolean>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /** Creates a new SiteQueryDTO instance. */
     constructor($$source: Partial<SiteQueryDTO> = {}) {
@@ -110,9 +110,9 @@ export class SiteQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteName" in $$parsedSource) {
             $$parsedSource["siteName"] = $$createField0_0($$parsedSource["siteName"]);
@@ -181,4 +181,6 @@ export class SiteResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);

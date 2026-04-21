@@ -68,52 +68,52 @@ export class PluginQueryDTO {
     /**
      * 公开ID（精确匹配）
      */
-    "publicId": query$0.QueryAttribute;
+    "publicId": query$0.QueryAttribute<string>;
 
     /**
      * 插件名称（精确匹配）
      */
-    "name": query$0.QueryAttribute;
+    "name": query$0.QueryAttribute<string>;
 
     /**
      * 作者（精确匹配）
      */
-    "author": query$0.QueryAttribute;
+    "author": query$0.QueryAttribute<string>;
 
     /**
      * 版本号（精确匹配）
      */
-    "version": query$0.QueryAttribute;
+    "version": query$0.QueryAttribute<string>;
 
     /**
      * 激活类型（精确匹配）
      */
-    "activationType": query$0.QueryAttribute;
+    "activationType": query$0.QueryAttribute<string>;
 
     /**
      * 是否已卸载（0=未卸载，1=已卸载）
      */
-    "uninstalled": query$0.QueryAttribute;
+    "uninstalled": query$0.QueryAttribute<boolean>;
 
     /**
      * 插件名称（模糊匹配）
      */
-    "nameStr": query$0.QueryAttribute;
+    "nameStr": query$0.QueryAttribute<string>;
 
     /**
      * 作者（模糊匹配）
      */
-    "authorStr": query$0.QueryAttribute;
+    "authorStr": query$0.QueryAttribute<string>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /** Creates a new PluginQueryDTO instance. */
     constructor($$source: Partial<PluginQueryDTO> = {}) {
@@ -160,11 +160,11 @@ export class PluginQueryDTO {
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
+        const $$createField5_0 = $$createType1;
         const $$createField6_0 = $$createType0;
         const $$createField7_0 = $$createType0;
-        const $$createField8_0 = $$createType0;
-        const $$createField9_0 = $$createType0;
+        const $$createField8_0 = $$createType2;
+        const $$createField9_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField0_0($$parsedSource["publicId"]);
@@ -277,4 +277,6 @@ export class PluginResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);

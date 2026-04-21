@@ -51,10 +51,10 @@ func (m *FieldMapper) IterateFields(fn func(fieldName, columnName string, isDbFi
 
 // FieldInfo 字段信息
 type FieldInfo struct {
-	FieldName  string          // 结构体字段名
-	ColumnName string          // query tag 映射的列名
-	IsDbField  bool            // 是否为数据库字段
-	QueryAttr  *QueryAttribute // 查询属性
+	FieldName  string               // 结构体字段名
+	ColumnName string               // query tag 映射的列名
+	IsDbField  bool                 // 是否为数据库字段
+	QueryAttr  *QueryAttribute[any] // 查询属性
 }
 
 // CollectDbFields 收集所有数据库字段的查询信息
@@ -78,9 +78,9 @@ func (m *FieldMapper) CollectDbFields(dto interface{}) ([]FieldInfo, error) {
 		isDbField := colName != ""
 
 		// 获取 QueryAttribute 值
-		var attr *QueryAttribute
+		var attr *QueryAttribute[any]
 		if fieldValue.CanInterface() {
-			if attrVal, ok := fieldValue.Interface().(QueryAttribute); ok {
+			if attrVal, ok := fieldValue.Interface().(QueryAttribute[any]); ok {
 				attr = &attrVal
 			}
 		}

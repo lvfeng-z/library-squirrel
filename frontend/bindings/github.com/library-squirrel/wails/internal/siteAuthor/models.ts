@@ -270,47 +270,47 @@ export class SiteAuthorQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": query$0.QueryAttribute;
+    "siteId": query$0.QueryAttribute<number>;
 
     /**
      * 站点作者ID（外部）
      */
-    "siteAuthorId": query$0.QueryAttribute;
+    "siteAuthorId": query$0.QueryAttribute<string>;
 
     /**
      * 本地作者ID
      */
-    "localAuthorId": query$0.QueryAttribute;
+    "localAuthorId": query$0.QueryAttribute<number>;
 
     /**
      * 固定作者名称
      */
-    "fixedAuthorName": query$0.QueryAttribute;
+    "fixedAuthorName": query$0.QueryAttribute<string>;
 
     /**
      * 是否绑定到指定本地作者（非数据库字段）
      */
-    "boundOnLocalAuthorId": query$0.QueryAttribute;
+    "boundOnLocalAuthorId": query$0.QueryAttribute<boolean>;
 
     /**
      * 作者名称（模糊匹配）
      */
-    "authorName": query$0.QueryAttribute;
+    "authorName": query$0.QueryAttribute<string>;
 
     /**
      * 介绍（模糊匹配）
      */
-    "introduce": query$0.QueryAttribute;
+    "introduce": query$0.QueryAttribute<string>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /** Creates a new SiteAuthorQueryDTO instance. */
     constructor($$source: Partial<SiteAuthorQueryDTO> = {}) {
@@ -350,12 +350,12 @@ export class SiteAuthorQueryDTO {
      */
     static createFrom($$source: any = {}): SiteAuthorQueryDTO {
         const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType2;
+        const $$createField1_0 = $$createType3;
         const $$createField2_0 = $$createType2;
-        const $$createField3_0 = $$createType2;
-        const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType2;
-        const $$createField6_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType3;
+        const $$createField6_0 = $$createType3;
         const $$createField7_0 = $$createType2;
         const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -457,4 +457,6 @@ export class SiteAuthorResultDTO {
 // Private type creation functions
 const $$createType0 = LocalAuthorDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = query$0.QueryAttribute.createFrom;
+const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);

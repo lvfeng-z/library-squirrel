@@ -69,8 +69,8 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
  */
-export function QueryBoundOrUnboundToLocalTagPage(page: model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
-    return $Call.ByID(4186749337, page).then(($result: any) => {
+export function QueryBoundOrUnboundToLocalTagPage(pageQuery: model$0.Page<model$1.SiteTagFullDTO, $models.SiteTagQueryDTO>): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagFullDTO, $models.SiteTagQueryDTO> | null> | null> {
+    return $Call.ByID(4186749337, pageQuery).then(($result: any) => {
         return $$createType18($result);
     });
 }

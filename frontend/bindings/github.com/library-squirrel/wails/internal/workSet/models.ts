@@ -120,47 +120,47 @@ export class WorkSetQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": query$0.QueryAttribute;
+    "siteId": query$0.QueryAttribute<number>;
 
     /**
      * 站点作品集ID
      */
-    "siteWorkSetId": query$0.QueryAttribute;
+    "siteWorkSetId": query$0.QueryAttribute<number>;
 
     /**
      * 站点作者ID
      */
-    "siteAuthorId": query$0.QueryAttribute;
+    "siteAuthorId": query$0.QueryAttribute<number>;
 
     /**
      * 昵称（精确匹配）
      */
-    "nickName": query$0.QueryAttribute;
+    "nickName": query$0.QueryAttribute<string>;
 
     /**
      * 站点作品集名称（模糊匹配）
      */
-    "siteWorkSetName": query$0.QueryAttribute;
+    "siteWorkSetName": query$0.QueryAttribute<string>;
 
     /**
      * 站点作品集描述（模糊匹配）
      */
-    "siteWorkSetDesc": query$0.QueryAttribute;
+    "siteWorkSetDesc": query$0.QueryAttribute<string>;
 
     /**
      * 昵称（模糊匹配）
      */
-    "nickNameStr": query$0.QueryAttribute;
+    "nickNameStr": query$0.QueryAttribute<string>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /** Creates a new WorkSetQueryDTO instance. */
     constructor($$source: Partial<WorkSetQueryDTO> = {}) {
@@ -202,10 +202,10 @@ export class WorkSetQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
         const $$createField7_0 = $$createType0;
         const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -328,8 +328,8 @@ export class WorkSetWithCoverResultDTO {
      * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
-        const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType4;
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -364,8 +364,8 @@ export class WorkSetWithWorksResultDTO {
      * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType5;
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -378,9 +378,10 @@ export class WorkSetWithWorksResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
-const $$createType1 = WorkSetResultDTO.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = WorkResultDTO.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $Create.Array($$createType4);
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType2 = WorkSetResultDTO.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = WorkResultDTO.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Array($$createType5);

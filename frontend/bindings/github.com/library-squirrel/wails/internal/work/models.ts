@@ -52,52 +52,52 @@ export class WorkQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": query$0.QueryAttribute;
+    "siteId": query$0.QueryAttribute<number>;
 
     /**
      * 站点作品ID
      */
-    "siteWorkId": query$0.QueryAttribute;
+    "siteWorkId": query$0.QueryAttribute<string>;
 
     /**
      * 站点作者ID
      */
-    "siteAuthorId": query$0.QueryAttribute;
+    "siteAuthorId": query$0.QueryAttribute<number>;
 
     /**
      * 本地作者ID
      */
-    "localAuthorId": query$0.QueryAttribute;
+    "localAuthorId": query$0.QueryAttribute<number>;
 
     /**
      * 昵称（精确匹配）
      */
-    "nickName": query$0.QueryAttribute;
+    "nickName": query$0.QueryAttribute<string>;
 
     /**
      * 站点作品名称（模糊匹配）
      */
-    "siteWorkName": query$0.QueryAttribute;
+    "siteWorkName": query$0.QueryAttribute<string>;
 
     /**
      * 站点作品描述（模糊匹配）
      */
-    "siteWorkDesc": query$0.QueryAttribute;
+    "siteWorkDesc": query$0.QueryAttribute<string>;
 
     /**
      * 昵称（模糊匹配）
      */
-    "nickNameStr": query$0.QueryAttribute;
+    "nickNameStr": query$0.QueryAttribute<string>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /** Creates a new WorkQueryDTO instance. */
     constructor($$source: Partial<WorkQueryDTO> = {}) {
@@ -140,13 +140,13 @@ export class WorkQueryDTO {
      */
     static createFrom($$source: any = {}): WorkQueryDTO {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType1;
         const $$createField8_0 = $$createType0;
         const $$createField9_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -257,4 +257,5 @@ export class WorkResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);

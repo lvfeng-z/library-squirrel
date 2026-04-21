@@ -48,27 +48,27 @@ export class LocalTagQueryDTO {
     /**
      * 基础本地标签ID
      */
-    "baseLocalTagId": query$0.QueryAttribute;
+    "baseLocalTagId": query$0.QueryAttribute<number>;
 
     /**
      * 本地标签名称（精确匹配）
      */
-    "localTagName": query$0.QueryAttribute;
+    "localTagName": query$0.QueryAttribute<string>;
 
     /**
      * 本地标签名称（模糊匹配）
      */
-    "localTagNameStr": query$0.QueryAttribute;
+    "localTagNameStr": query$0.QueryAttribute<string>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /** Creates a new LocalTagQueryDTO instance. */
     constructor($$source: Partial<LocalTagQueryDTO> = {}) {
@@ -96,8 +96,8 @@ export class LocalTagQueryDTO {
      */
     static createFrom($$source: any = {}): LocalTagQueryDTO {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType1;
         const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -165,4 +165,5 @@ export class LocalTagResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);

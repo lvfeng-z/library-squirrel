@@ -140,57 +140,57 @@ export class TaskQueryDTO {
     /**
      * 父任务ID
      */
-    "pid": query$0.QueryAttribute;
+    "pid": query$0.QueryAttribute<number>;
 
     /**
      * 站点ID
      */
-    "siteId": query$0.QueryAttribute;
+    "siteId": query$0.QueryAttribute<number>;
 
     /**
      * 站点作品ID
      */
-    "siteWorkId": query$0.QueryAttribute;
+    "siteWorkId": query$0.QueryAttribute<string>;
 
     /**
      * 任务状态
      */
-    "status": query$0.QueryAttribute;
+    "status": query$0.QueryAttribute<string>;
 
     /**
      * 是否为合集（0=否，1=是）
      */
-    "isCollection": query$0.QueryAttribute;
+    "isCollection": query$0.QueryAttribute<boolean>;
 
     /**
      * 插件公开ID
      */
-    "pluginPublicId": query$0.QueryAttribute;
+    "pluginPublicId": query$0.QueryAttribute<string>;
 
     /**
      * 插件贡献ID
      */
-    "pluginContributionId": query$0.QueryAttribute;
+    "pluginContributionId": query$0.QueryAttribute<string>;
 
     /**
      * 是否可继续（0=否，1=是）
      */
-    "continuable": query$0.QueryAttribute;
+    "continuable": query$0.QueryAttribute<boolean>;
 
     /**
      * 任务名称（模糊匹配）
      */
-    "taskName": query$0.QueryAttribute;
+    "taskName": query$0.QueryAttribute<string>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /** Creates a new TaskQueryDTO instance. */
     constructor($$source: Partial<TaskQueryDTO> = {}) {
@@ -237,13 +237,13 @@ export class TaskQueryDTO {
     static createFrom($$source: any = {}): TaskQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType0;
-        const $$createField8_0 = $$createType0;
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType2;
+        const $$createField8_0 = $$createType1;
         const $$createField9_0 = $$createType0;
         const $$createField10_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -468,7 +468,7 @@ export class TaskTreeDTO {
      * Creates a new TaskTreeDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskTreeDTO {
-        const $$createField12_0 = $$createType3;
+        const $$createField12_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField12_0($$parsedSource["children"]);
@@ -508,7 +508,7 @@ export class TreeDataPageDTO {
      * Creates a new TreeDataPageDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TreeDataPageDTO {
-        const $$createField3_0 = $$createType3;
+        const $$createField3_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField3_0($$parsedSource["tasks"]);
@@ -518,7 +518,9 @@ export class TreeDataPageDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
-const $$createType1 = TaskTreeDTO.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = $Create.Array($$createType2);
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType3 = TaskTreeDTO.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $Create.Array($$createType4);

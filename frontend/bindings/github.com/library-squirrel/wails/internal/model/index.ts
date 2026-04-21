@@ -3,12 +3,15 @@
 
 export {
     ContentType,
+    LocalTag,
     ReWorkTag,
     Resource,
     SearchCondition,
     SearchConditionQuery,
     SearchType,
     SelectItem,
+    Site,
+    SiteTagFullDTO,
     SlotConfig,
     SlotType,
     Work,

@@ -69,11 +69,11 @@ export enum Operator {
  * QueryAttribute 查询属性：值 + 运算符 + 排序
  * 用于各模块 QueryDTO 的字段定义
  */
-export class QueryAttribute {
+export class QueryAttribute<T> {
     /**
      * 查询值
      */
-    "value": any;
+    "value": T | null;
 
     /**
      * 运算符（可省略，默认 eq）
@@ -91,7 +91,7 @@ export class QueryAttribute {
     "priority"?: number;
 
     /** Creates a new QueryAttribute instance. */
-    constructor($$source: Partial<QueryAttribute> = {}) {
+    constructor($$source: Partial<QueryAttribute<T>> = {}) {
         if (!("value" in $$source)) {
             this["value"] = null;
         }
@@ -100,11 +100,19 @@ export class QueryAttribute {
     }
 
     /**
-     * Creates a new QueryAttribute instance from a string or object.
+     * Given creation functions for each type parameter,
+     * returns a creation function for a concrete instance
+     * of the generic class QueryAttribute.
      */
-    static createFrom($$source: any = {}): QueryAttribute {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new QueryAttribute($$parsedSource as Partial<QueryAttribute>);
+    static createFrom<T = any>($$createParamT: (source: any) => T): ($$source?: any) => QueryAttribute<T> {
+        const $$createField0_0 = $$createType0($$createParamT);
+        return ($$source: any = {}) => {
+            let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+            if ("value" in $$parsedSource) {
+                $$parsedSource["value"] = $$createField0_0($$parsedSource["value"]);
+            }
+            return new QueryAttribute<T>($$parsedSource as Partial<QueryAttribute<T>>);
+        };
     }
 }
 
@@ -120,3 +128,6 @@ export enum SortOrder {
     OrderAsc = "asc",
     OrderDesc = "desc",
 };
+
+// Private type creation functions
+const $$createType0 = ($$createParamT: any) => $Create.Nullable($$createParamT);

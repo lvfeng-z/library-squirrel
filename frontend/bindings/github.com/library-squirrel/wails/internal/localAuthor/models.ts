@@ -48,27 +48,27 @@ export class LocalAuthorQueryDTO {
     /**
      * 作者名称（精确匹配）
      */
-    "authorName": query$0.QueryAttribute;
+    "authorName": query$0.QueryAttribute<string>;
 
     /**
      * 作者名称（模糊匹配）
      */
-    "authorNameStr": query$0.QueryAttribute;
+    "authorNameStr": query$0.QueryAttribute<string>;
 
     /**
      * 介绍（模糊匹配）
      */
-    "introduce": query$0.QueryAttribute;
+    "introduce": query$0.QueryAttribute<string>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /** Creates a new LocalAuthorQueryDTO instance. */
     constructor($$source: Partial<LocalAuthorQueryDTO> = {}) {
@@ -98,8 +98,8 @@ export class LocalAuthorQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("authorName" in $$parsedSource) {
             $$parsedSource["authorName"] = $$createField0_0($$parsedSource["authorName"]);
@@ -165,4 +165,5 @@ export class LocalAuthorResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom;
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);

@@ -230,47 +230,47 @@ export class SiteTagQueryDTO {
     /**
      * 站点ID
      */
-    "siteId": query$0.QueryAttribute;
+    "siteId": query$0.QueryAttribute<number>;
 
     /**
      * 站点标签ID（外部）
      */
-    "siteTagId": query$0.QueryAttribute;
+    "siteTagId": query$0.QueryAttribute<string>;
 
     /**
      * 基础站点标签ID
      */
-    "baseSiteTagId": query$0.QueryAttribute;
+    "baseSiteTagId": query$0.QueryAttribute<string>;
 
     /**
      * 本地标签ID
      */
-    "localTagId": query$0.QueryAttribute;
+    "localTagId": query$0.QueryAttribute<number>;
 
     /**
      * 是否绑定到指定本地标签（非数据库字段）
      */
-    "boundOnLocalTagId": query$0.QueryAttribute;
+    "boundOnLocalTagId": query$0.QueryAttribute<boolean>;
 
     /**
      * 站点标签名称（模糊匹配）
      */
-    "siteTagName": query$0.QueryAttribute;
+    "siteTagName": query$0.QueryAttribute<string>;
 
     /**
      * 描述（模糊匹配）
      */
-    "description": query$0.QueryAttribute;
+    "description": query$0.QueryAttribute<string>;
 
     /**
      * 更新时间（可用于排序）
      */
-    "updateTime": query$0.QueryAttribute;
+    "updateTime": query$0.QueryAttribute<number>;
 
     /**
      * 创建时间（可用于排序）
      */
-    "createTime": query$0.QueryAttribute;
+    "createTime": query$0.QueryAttribute<number>;
 
     /** Creates a new SiteTagQueryDTO instance. */
     constructor($$source: Partial<SiteTagQueryDTO> = {}) {
@@ -310,12 +310,12 @@ export class SiteTagQueryDTO {
      */
     static createFrom($$source: any = {}): SiteTagQueryDTO {
         const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType2;
-        const $$createField2_0 = $$createType2;
+        const $$createField1_0 = $$createType3;
+        const $$createField2_0 = $$createType3;
         const $$createField3_0 = $$createType2;
-        const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType2;
-        const $$createField6_0 = $$createType2;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType3;
+        const $$createField6_0 = $$createType3;
         const $$createField7_0 = $$createType2;
         const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -413,4 +413,6 @@ export class SiteTagResultDTO {
 // Private type creation functions
 const $$createType0 = LocalTagDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = query$0.QueryAttribute.createFrom;
+const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);
