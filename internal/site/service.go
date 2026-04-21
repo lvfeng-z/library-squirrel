@@ -5,6 +5,7 @@ import (
 
 	"github.com/library-squirrel/wails/internal/database"
 	domain "github.com/library-squirrel/wails/internal/model"
+	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/query"
 
@@ -87,16 +88,8 @@ func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, e
 	if len(ids) == 0 {
 		return make([]*domain.Site, 0), nil
 	}
-	// 1. 创建一个 []interface{} 切片，长度与 ids 相同
-	values := make([]interface{}, len(ids))
-
-	// 2. 遍历 ids，将 int64 逐个赋值给 interface{}
-	//    这一步是将具体类型“装箱”为接口类型的必要过程
-	for i, id := range ids {
-		values[i] = id
-	}
 	return s.repo.List(ctx, &database.QueryOption{
-		Conditions: []clause.Expression{clause.IN{Column: "id", Values: values}},
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: util.ToAnySlice(ids)}},
 	})
 }
 
