@@ -44,7 +44,7 @@ type Repository interface {
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, any], error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// SelectTreeNode 递归查询子标签
@@ -173,12 +173,12 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO) (*model.Page[domain.LocalTag, any], error) {
 	conv := query.NewConverter(domain.LocalTag{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {

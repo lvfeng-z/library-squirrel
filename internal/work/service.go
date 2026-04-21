@@ -103,7 +103,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, WorkQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, any], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error)
 	// ListByIds 根据ID列表批量查询
@@ -215,12 +215,12 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, WorkQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[domain.Work, WorkQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[domain.Work, any], error) {
 	conv := query.NewConverter(domain.Work{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {

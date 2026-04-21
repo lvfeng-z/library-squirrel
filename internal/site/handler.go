@@ -108,7 +108,6 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteResultDTO,
 		PageCount:    result.PageCount,
 		DataCount:    result.DataCount,
 		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
 		Data:         data,
 	})
 }

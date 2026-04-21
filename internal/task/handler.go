@@ -360,7 +360,7 @@ func ToTaskResultDTO(task *domain.Task) *TaskResultDTO {
 }
 
 // ToTaskPageResultDTO 将 *model.Page[domain.Task, TaskQueryDTO] 转换为 *model.Page[TaskResultDTO, TaskQueryDTO]
-func ToTaskPageResultDTO(page *model.Page[domain.Task, TaskQueryDTO]) *model.Page[TaskResultDTO, TaskQueryDTO] {
+func ToTaskPageResultDTO(page *model.Page[domain.Task, any]) *model.Page[TaskResultDTO, TaskQueryDTO] {
 	if page == nil {
 		return nil
 	}
@@ -374,7 +374,6 @@ func ToTaskPageResultDTO(page *model.Page[domain.Task, TaskQueryDTO]) *model.Pag
 		PageCount:    page.PageCount,
 		DataCount:    page.DataCount,
 		CurrentCount: page.CurrentCount,
-		Query:        page.Query,
 		Data:         data,
 	}
 }

@@ -175,7 +175,6 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[PluginResultDTO, Pl
 		PageCount:    result.PageCount,
 		DataCount:    result.DataCount,
 		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
 		Data:         data,
 	})
 }

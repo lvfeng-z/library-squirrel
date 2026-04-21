@@ -42,7 +42,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, SiteQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, any], error)
 	// QuerySelectItemPage 分页查询选择项
 	QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem, SiteQueryDTO], error)
 }
@@ -93,12 +93,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, SiteQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site, SiteQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site, any], error) {
 	conv := query.NewConverter(domain.Site{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {

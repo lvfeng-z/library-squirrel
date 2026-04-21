@@ -57,7 +57,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteTag, SiteTagQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteTag, any], error)
 	// ListByWorkId 查询作品的站点标签
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.SiteTag, error)
 	// ListBySiteTagIds 根据站点标签ID列表查询
@@ -143,12 +143,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteTag, SiteTagQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.SiteTag, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[domain.SiteTag, SiteTagQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[domain.SiteTag, any], error) {
 	conv := query.NewConverter(domain.SiteTag{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {

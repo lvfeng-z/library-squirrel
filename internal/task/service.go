@@ -13,7 +13,7 @@ import (
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
 	"github.com/library-squirrel/wails/pkg/logger"
-	pkgModel "github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
@@ -89,9 +89,9 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error)
 	// QueryParentPage 分页查询父任务
-	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
+	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error)
 	// RefreshTaskStatus 刷新任务状态
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
 	// ListTaskTree 获取任务树列表
@@ -105,7 +105,7 @@ type Repository interface {
 	// ListChildrenTask 查询子任务列表
 	ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error)
 	// QueryChildrenTaskPage 查询子任务分页
-	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error)
+	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
@@ -316,12 +316,12 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
 	conv := query.NewConverter(domain.Task{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
@@ -331,12 +331,12 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *T
 }
 
 // QueryParentPage 分页查询父任务
-func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
 	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
 }
 
 // QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
-func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
 	conv := query.NewConverter(domain.Task{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -376,7 +376,7 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleD
 // CreateTask 创建任务
 func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (*domain.Task, error) {
 	task := &domain.Task{
-		BaseEntity:           &pkgModel.BaseEntity{},
+		BaseEntity:           &model.BaseEntity{},
 		Pid:                  sql.NullInt64{Int64: req.Pid, Valid: true},
 		TaskName:             sql.NullString{String: req.TaskName, Valid: true},
 		SiteID:               sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
@@ -488,12 +488,12 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Ta
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
 	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
 }
 
 // QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
-func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*pkgModel.Page[domain.Task, TaskQueryDTO], error) {
+func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
 	conv := query.NewConverter(domain.Task{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -682,7 +682,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		// 单个任务不创建父任务，只创建子任务
 		if len(children) == 1 {
 			task := &domain.Task{
-				BaseEntity: &pkgModel.BaseEntity{},
+				BaseEntity: &model.BaseEntity{},
 			}
 			childResp := children[0]
 			if err := assignTask(task, &domain.TaskCreateResponse{
@@ -705,7 +705,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 
 		// 多个子任务：先创建父任务
 		parentTask := &domain.Task{
-			BaseEntity: &pkgModel.BaseEntity{},
+			BaseEntity: &model.BaseEntity{},
 		}
 		if err := assignTask(parentTask, &domain.TaskCreateResponse{
 			TaskName: parentResp.TaskName,
@@ -725,7 +725,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		// 创建子任务
 		for _, childResp := range children {
 			childTask := &domain.Task{
-				BaseEntity: &pkgModel.BaseEntity{},
+				BaseEntity: &model.BaseEntity{},
 			}
 			if err := assignTask(childTask, &domain.TaskCreateResponse{
 				TaskName:   childResp.TaskName,
@@ -797,7 +797,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 				flushBatch()
 
 				parentTask = &domain.Task{
-					BaseEntity: &pkgModel.BaseEntity{},
+					BaseEntity: &model.BaseEntity{},
 				}
 				parentTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
 				parentTask.URL = sql.NullString{String: taskResp.URL, Valid: true}
@@ -829,7 +829,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 			// 处理子任务
 			for _, childResp := range children {
 				childTask := &domain.Task{
-					BaseEntity: &pkgModel.BaseEntity{},
+					BaseEntity: &model.BaseEntity{},
 				}
 				childTask.Pid = sql.NullInt64{Int64: parentTask.GetID(), Valid: true}
 				childTask.TaskName = sql.NullString{String: childResp.TaskName, Valid: true}

@@ -117,12 +117,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet, WorkSetQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet, WorkSetQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet, any], error) {
 	conv := query.NewConverter(domain.WorkSet{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
