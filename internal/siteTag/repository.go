@@ -13,26 +13,26 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// siteTagRepository 站点标签仓储实现
+// SiteTagRepository 站点标签仓储实现
 // 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
-type siteTagRepository struct {
+type SiteTagRepository struct {
 	*database.BaseRepository[domain.SiteTag]
 }
 
 // NewRepository 创建站点标签仓储
-func NewRepository(db *gorm.DB) *siteTagRepository {
-	return &siteTagRepository{
+func NewRepository(db *gorm.DB) *SiteTagRepository {
+	return &SiteTagRepository{
 		BaseRepository: database.NewBaseRepository[domain.SiteTag](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
-func (r *siteTagRepository) GORM() *gorm.DB {
+func (r *SiteTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
 // ListByWorkId 查询作品的站点标签
-func (r *siteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.SiteTag, error) {
+func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.SiteTag, error) {
 	query := `
 		SELECT t1.*
 		FROM site_tag t1
@@ -50,7 +50,7 @@ func (r *siteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*
 }
 
 // ListBySiteTagIds 根据站点标签ID列表查询
-func (r *siteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error) {
+func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error) {
 	if len(siteTagIds) == 0 {
 		return make([]*domain.SiteTag, 0), nil
 	}
@@ -74,7 +74,7 @@ func (r *siteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []i
 }
 
 // UpdateBindLocalTag 绑定本地标签
-func (r *siteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (int64, error) {
+func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (int64, error) {
 	if len(siteTagIds) == 0 {
 		return 0, nil
 	}
@@ -97,64 +97,8 @@ func (r *siteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId i
 	return result.RowsAffected, nil
 }
 
-// QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (r *siteTagRepository) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalTagId *bool, localTagId *int64) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
-	var results []*domain.SiteTagFullDTO
-	var total int64
-
-	db := r.GORM().WithContext(ctx).Model(&domain.SiteTag{})
-
-	// 根据 boundOnLocalTagId 添加 localTagId 的过滤条件
-	if localTagId != nil {
-		if boundOnLocalTagId != nil && *boundOnLocalTagId {
-			// 绑定到指定本地标签
-			db = db.Where("local_tag_id = ?", *localTagId)
-		} else if boundOnLocalTagId != nil && !*boundOnLocalTagId {
-			// 未绑定到指定本地标签（包括绑定到其他本地标签或从未绑定过本地标签的）
-			db = db.Where("(local_tag_id != ? OR local_tag_id IS NULL)", *localTagId)
-		}
-	}
-
-	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
-	}
-
-	queryCondition := database.QueryOption{Conditions: []clause.Expression{where}, OrderBy: []clause.Expression{order}}
-	pageCondition := database.PageOption{QueryOption: queryCondition, Page: page, PageSize: pageSize}
-
-	resPage, err := r.Page(ctx, &pageCondition)
-
-	if err != nil {
-		return nil, err
-	}
-	siteTags := resPage.Data
-
-	// 转换为 DTO
-	for _, tag := range siteTags {
-		dto := domain.NewSiteTagFullDTO(tag)
-		// 查询关联的本地标签
-		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			dto.LocalTag = &domain.LocalTag{}
-			if err := r.GORM().WithContext(ctx).First(dto.LocalTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-		}
-		// 查询关联的站点
-		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			dto.Site = &domain.Site{}
-			if err := r.GORM().WithContext(ctx).First(dto.Site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-		}
-		results = append(results, dto)
-	}
-
-	return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
-}
-
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *siteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	var results []*domain.SiteTagFullDTO
 	var total int64
 
@@ -216,7 +160,7 @@ func (r *siteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *siteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	var results []*domain.SiteTagLocalRelateDTO
 	var total int64
 
@@ -283,7 +227,7 @@ func (r *siteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *siteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem, SiteTagQueryDTO], error) {
 	var results []*domain.SelectItem
 	var total int64
 

@@ -100,7 +100,6 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalAuthorRes
 		PageCount:    result.PageCount,
 		DataCount:    result.DataCount,
 		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
 		Data:         data,
 	})
 }

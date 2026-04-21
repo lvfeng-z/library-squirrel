@@ -181,17 +181,17 @@ func (app *App) initBaseServices() {
 	localAuthorRepo := localAuthor.NewRepository(app.db)
 	app.LocalAuthorService = localAuthor.NewService(localAuthorRepo)
 
+	// site 服务（需在 siteTag 之前初始化，因为 siteTag 依赖 site 的查询接口）
+	siteRepo := site.NewRepository(app.db)
+	app.SiteService = site.NewService(siteRepo)
+
 	// siteTag 服务
 	siteTagRepo := siteTag.NewRepository(app.db)
-	app.SiteTagService = siteTag.NewService(siteTagRepo, app.LocalTagService)
+	app.SiteTagService = siteTag.NewService(siteTagRepo, app.LocalTagService, app.LocalTagService, app.SiteService)
 
 	// siteAuthor 服务
 	siteAuthorRepo := siteAuthor.NewRepository(app.db)
 	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo)
-
-	// site 服务
-	siteRepo := site.NewRepository(app.db)
-	app.SiteService = site.NewService(siteRepo)
 
 	// resource 服务
 	resourceRepo := resource.NewRepository(app.db)

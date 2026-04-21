@@ -153,11 +153,8 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteTagResultD
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[SiteTagFullDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]] {
-	if page == nil {
-		page = &model.Page[SiteTagFullDTO, SiteTagQueryDTO]{}
-	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page.PageNumber, page.PageSize, page.Query)
+func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQuery model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]] {
+	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, pageQuery)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}

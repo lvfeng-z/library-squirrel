@@ -15,13 +15,13 @@ import (
 
 // SiteQueryDTO 站点查询条件
 type SiteQueryDTO struct {
-	ID          query.QueryAttribute `json:"-" query:"id"`                   // 站点ID（程序设置，不从JSON解析）
-	SiteName    query.QueryAttribute `json:"siteName" query:"site_name"`     // 站点名称（精确匹配）
-	Homepage    query.QueryAttribute `json:"homepage" query:"homepage"`      // 主页地址（精确匹配）
-	SiteNameStr query.QueryAttribute `json:"siteNameStr" query:"site_name"`  // 站点名称（模糊匹配）
-	Enable      query.QueryAttribute `json:"enable" query:"enable"`          // 是否启用
-	UpdateTime  query.QueryAttribute `json:"updateTime" query:"update_time"` // 更新时间（可用于排序）
-	CreateTime  query.QueryAttribute `json:"createTime" query:"create_time"` // 创建时间（可用于排序）
+	ID          query.QueryAttribute[int64]  `json:"-" query:"id"`                   // 站点ID（程序设置，不从JSON解析）
+	SiteName    query.QueryAttribute[string] `json:"siteName" query:"site_name"`     // 站点名称（精确匹配）
+	Homepage    query.QueryAttribute[string] `json:"homepage" query:"homepage"`      // 主页地址（精确匹配）
+	SiteNameStr query.QueryAttribute[string] `json:"siteNameStr" query:"site_name"`  // 站点名称（模糊匹配）
+	Enable      query.QueryAttribute[bool]   `json:"enable" query:"enable"`          // 是否启用
+	UpdateTime  query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"` // 更新时间（可用于排序）
+	CreateTime  query.QueryAttribute[int64]  `json:"createTime" query:"create_time"` // 创建时间（可用于排序）
 }
 
 // Repository 站点仓储接口（由 service 定义需要的数据库操作方法）
@@ -80,6 +80,24 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.Site, error) {
 // List 查询列表
 func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Site, error) {
 	return s.repo.List(ctx, opt)
+}
+
+// ListByIds 根据ID列表批量查询
+func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, error) {
+	if len(ids) == 0 {
+		return make([]*domain.Site, 0), nil
+	}
+	// 1. 创建一个 []interface{} 切片，长度与 ids 相同
+	values := make([]interface{}, len(ids))
+
+	// 2. 遍历 ids，将 int64 逐个赋值给 interface{}
+	//    这一步是将具体类型“装箱”为接口类型的必要过程
+	for i, id := range ids {
+		values[i] = id
+	}
+	return s.repo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: values}},
+	})
 }
 
 // Count 统计数量

@@ -13,25 +13,25 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// taskRepository 任务仓储实现
-type taskRepository struct {
+// TaskRepository 任务仓储实现
+type TaskRepository struct {
 	*database.BaseRepository[domain.Task]
 }
 
 // NewRepository 创建任务仓储
-func NewRepository(db *gorm.DB) *taskRepository {
-	return &taskRepository{
+func NewRepository(db *gorm.DB) *TaskRepository {
+	return &TaskRepository{
 		BaseRepository: database.NewBaseRepository[domain.Task](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
-func (r *taskRepository) GORM() *gorm.DB {
+func (r *TaskRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
 // QueryParentPage 分页查询父任务
-func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
+func (r *TaskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	// 查询是父任务的或者只有单个任务的
@@ -58,11 +58,11 @@ func (r *taskRepository) QueryParentPage(ctx context.Context, page, pageSize int
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, TaskQueryDTO](tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, any](tasks, total, page, pageSize), nil
 }
 
 // RefreshTaskStatus 刷新任务状态
-func (r *taskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error) {
+func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error) {
 	statement := fmt.Sprintf(`
 		WITH total AS (
 			SELECT COUNT(1) AS num FROM task WHERE pid = %d
@@ -92,7 +92,7 @@ func (r *taskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (i
 }
 
 // SetTaskTreeStatus 设置任务树状态
-func (r *taskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error) {
+func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error) {
 	if len(taskIds) == 0 {
 		return 0, nil
 	}
@@ -147,7 +147,7 @@ func (r *taskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 }
 
 // ListTaskTree 获取任务树列表
-func (r *taskRepository) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
+func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
 	if len(taskIds) == 0 {
 		return make([]*domain.Task, 0), nil
 	}
@@ -199,7 +199,7 @@ func (r *taskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 }
 
 // ListStatus 查询状态列表
-func (r *taskRepository) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
+func (r *TaskRepository) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
 	if len(ids) == 0 {
 		return make([]*TaskScheduleDTO, 0), nil
 	}
@@ -221,12 +221,12 @@ func (r *taskRepository) ListStatus(ctx context.Context, ids []int64) ([]*TaskSc
 }
 
 // CreateTask 创建任务
-func (r *taskRepository) CreateTask(ctx context.Context, task *domain.Task) error {
+func (r *TaskRepository) CreateTask(ctx context.Context, task *domain.Task) error {
 	return r.Save(ctx, task)
 }
 
 // ListChildrenTask 查询子任务列表
-func (r *taskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error) {
+func (r *TaskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error) {
 	var tasks []*domain.Task
 	err := r.GORM().WithContext(ctx).Where("pid = ?", pid).Find(&tasks).Error
 	if err != nil {
@@ -236,7 +236,7 @@ func (r *taskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (r *taskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, TaskQueryDTO], error) {
+func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("pid = ?", pid)
 
 	if where != nil {
@@ -260,16 +260,16 @@ func (r *taskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, p
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, TaskQueryDTO](tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, any](tasks, total, page, pageSize), nil
 }
 
 // ListSchedule 查询任务进度列表
-func (r *taskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
+func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
 	return r.ListStatus(ctx, ids)
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
-func (r *taskRepository) DeleteTask(ctx context.Context, ids []int64) error {
+func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -282,7 +282,7 @@ func (r *taskRepository) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // listChildrenByParentsTask 按父任务ID列表查询子任务
-func (r *taskRepository) listChildrenByParentsTask(ctx context.Context, pids []int64) ([]*domain.Task, error) {
+func (r *TaskRepository) listChildrenByParentsTask(ctx context.Context, pids []int64) ([]*domain.Task, error) {
 	if len(pids) == 0 {
 		return make([]*domain.Task, 0), nil
 	}

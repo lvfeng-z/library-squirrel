@@ -18,16 +18,16 @@ import (
 
 // SiteAuthorQueryDTO 站点作者查询条件
 type SiteAuthorQueryDTO struct {
-	ID                   query.QueryAttribute `json:"-" query:"id"`                              // 站点作者ID（程序设置，不从JSON解析）
-	SiteID               query.QueryAttribute `json:"siteId" query:"site_id"`                    // 站点ID
-	SiteAuthorID         query.QueryAttribute `json:"siteAuthorId" query:"site_author_id"`       // 站点作者ID（外部）
-	LocalAuthorID        query.QueryAttribute `json:"localAuthorId" query:"local_author_id"`     // 本地作者ID
-	FixedAuthorName      query.QueryAttribute `json:"fixedAuthorName" query:"fixed_author_name"` // 固定作者名称
-	BoundOnLocalAuthorId query.QueryAttribute `json:"boundOnLocalAuthorId" query:""`             // 是否绑定到指定本地作者（非数据库字段）
-	AuthorName           query.QueryAttribute `json:"authorName" query:"author_name"`            // 作者名称（模糊匹配）
-	Introduce            query.QueryAttribute `json:"introduce" query:"introduce"`               // 介绍（模糊匹配）
-	UpdateTime           query.QueryAttribute `json:"updateTime" query:"update_time"`            // 更新时间（可用于排序）
-	CreateTime           query.QueryAttribute `json:"createTime" query:"create_time"`            // 创建时间（可用于排序）
+	ID                   query.QueryAttribute[int64]  `json:"-" query:"id"`                              // 站点作者ID（程序设置，不从JSON解析）
+	SiteID               query.QueryAttribute[int64]  `json:"siteId" query:"site_id"`                    // 站点ID
+	SiteAuthorID         query.QueryAttribute[string] `json:"siteAuthorId" query:"site_author_id"`       // 站点作者ID（外部）
+	LocalAuthorID        query.QueryAttribute[int64]  `json:"localAuthorId" query:"local_author_id"`     // 本地作者ID
+	FixedAuthorName      query.QueryAttribute[string] `json:"fixedAuthorName" query:"fixed_author_name"` // 固定作者名称
+	BoundOnLocalAuthorId query.QueryAttribute[bool]   `json:"boundOnLocalAuthorId" query:""`             // 是否绑定到指定本地作者（非数据库字段）
+	AuthorName           query.QueryAttribute[string] `json:"authorName" query:"author_name"`            // 作者名称（模糊匹配）
+	Introduce            query.QueryAttribute[string] `json:"introduce" query:"introduce"`               // 介绍（模糊匹配）
+	UpdateTime           query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"`            // 更新时间（可用于排序）
+	CreateTime           query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`            // 创建时间（可用于排序）
 }
 
 // Repository 站点作者仓储接口（由 service 定义需要的数据库操作方法）
@@ -166,15 +166,11 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context,
 	// 类型断言获取 BoundOnLocalAuthorId 和 LocalAuthorID 的值
 	var boundOnLocalAuthorId *bool
 	if queryDTO.BoundOnLocalAuthorId.Value != nil {
-		if v, ok := queryDTO.BoundOnLocalAuthorId.Value.(bool); ok {
-			boundOnLocalAuthorId = &v
-		}
+		boundOnLocalAuthorId = queryDTO.BoundOnLocalAuthorId.Value
 	}
 	var localAuthorId *int64
 	if queryDTO.LocalAuthorID.Value != nil {
-		if v, ok := queryDTO.LocalAuthorID.Value.(int64); ok {
-			localAuthorId = &v
-		}
+		localAuthorId = queryDTO.LocalAuthorID.Value
 	}
 	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page, pageSize, where, order, boundOnLocalAuthorId, localAuthorId)
 }

@@ -17,12 +17,12 @@ import (
 
 // LocalAuthorQueryDTO 本地作者查询条件
 type LocalAuthorQueryDTO struct {
-	ID            query.QueryAttribute `json:"-" query:"id"`                      // 本地作者ID（程序设置，不从JSON解析）
-	AuthorName    query.QueryAttribute `json:"authorName" query:"author_name"`    // 作者名称（精确匹配）
-	AuthorNameStr query.QueryAttribute `json:"authorNameStr" query:"author_name"` // 作者名称（模糊匹配）
-	Introduce     query.QueryAttribute `json:"introduce" query:"introduce"`       // 介绍（模糊匹配）
-	UpdateTime    query.QueryAttribute `json:"updateTime" query:"update_time"`    // 更新时间（可用于排序）
-	CreateTime    query.QueryAttribute `json:"createTime" query:"create_time"`    // 创建时间（可用于排序）
+	ID            query.QueryAttribute[int64]  `json:"-" query:"id"`                      // 本地作者ID（程序设置，不从JSON解析）
+	AuthorName    query.QueryAttribute[string] `json:"authorName" query:"author_name"`    // 作者名称（精确匹配）
+	AuthorNameStr query.QueryAttribute[string] `json:"authorNameStr" query:"author_name"` // 作者名称（模糊匹配）
+	Introduce     query.QueryAttribute[string] `json:"introduce" query:"introduce"`       // 介绍（模糊匹配）
+	UpdateTime    query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"`    // 更新时间（可用于排序）
+	CreateTime    query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`    // 创建时间（可用于排序）
 }
 
 // Repository 本地作者仓储接口（由 service 定义需要的数据库操作方法）
@@ -41,7 +41,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, LocalAuthorQueryDTO], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, any], error)
 	// ListReWorkAuthor 批量获取作品与作者的关联
 	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error)
 	// ListByWorkId 查询作品的本地作者
@@ -116,12 +116,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, LocalAuthorQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.LocalAuthor, LocalAuthorQueryDTO], error) {
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.LocalAuthor, any], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {

@@ -128,7 +128,7 @@ fix: 修复 Go 迁移接口不一致问题
 
 ### 示例 3：迁移类
 ```
-refactor(渲染进程): 迁移 window.api 调用到 HTTP wrappers
+refactor(前端): 迁移 window.api 调用到 HTTP wrappers
 
 - 将 window.api.* 替换为 HTTP wrappers
 - 新增 appLauncher.ts, siteBrowser.ts wrappers

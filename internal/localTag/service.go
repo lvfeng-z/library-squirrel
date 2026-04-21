@@ -20,12 +20,12 @@ const RootLocalTagID = 0
 
 // LocalTagQueryDTO 本地标签查询条件
 type LocalTagQueryDTO struct {
-	ID              query.QueryAttribute `json:"-" query:"id"`                             // 本地标签ID（程序设置，不从JSON解析）
-	BaseLocalTagID  query.QueryAttribute `json:"baseLocalTagId" query:"base_local_tag_id"` // 基础本地标签ID
-	LocalTagName    query.QueryAttribute `json:"localTagName" query:"local_tag_name"`      // 本地标签名称（精确匹配）
-	LocalTagNameStr query.QueryAttribute `json:"localTagNameStr" query:"local_tag_name"`   // 本地标签名称（模糊匹配）
-	UpdateTime      query.QueryAttribute `json:"updateTime" query:"update_time"`           // 更新时间（可用于排序）
-	CreateTime      query.QueryAttribute `json:"createTime" query:"create_time"`           // 创建时间（可用于排序）
+	ID              query.QueryAttribute[int64]  `json:"-" query:"id"`                             // 本地标签ID（程序设置，不从JSON解析）
+	BaseLocalTagID  query.QueryAttribute[int64]  `json:"baseLocalTagId" query:"base_local_tag_id"` // 基础本地标签ID
+	LocalTagName    query.QueryAttribute[string] `json:"localTagName" query:"local_tag_name"`      // 本地标签名称（精确匹配）
+	LocalTagNameStr query.QueryAttribute[string] `json:"localTagNameStr" query:"local_tag_name"`   // 本地标签名称（模糊匹配）
+	UpdateTime      query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"`           // 更新时间（可用于排序）
+	CreateTime      query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`           // 创建时间（可用于排序）
 }
 
 // Repository 本地标签仓储接口（由 service 定义需要的数据库操作方法）
@@ -165,6 +165,24 @@ func (s *Service) GetByName(ctx context.Context, name string) (*domain.LocalTag,
 // List 查询列表
 func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.LocalTag, error) {
 	return s.repo.List(ctx, opt)
+}
+
+// ListByIds 根据ID列表批量查询
+func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalTag, error) {
+	if len(ids) == 0 {
+		return make([]*domain.LocalTag, 0), nil
+	}
+	// 1. 创建一个 []interface{} 切片，长度与 ids 相同
+	values := make([]interface{}, len(ids))
+
+	// 2. 遍历 ids，将 int64 逐个赋值给 interface{}
+	//    这一步是将具体类型“装箱”为接口类型的必要过程
+	for i, id := range ids {
+		values[i] = id
+	}
+	return s.repo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: values}},
+	})
 }
 
 // Count 统计数量

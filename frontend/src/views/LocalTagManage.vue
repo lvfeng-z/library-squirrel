@@ -274,7 +274,7 @@ async function requestSiteTagSelectItemPage(
     if (isNullish(newPage)) {
       throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
     }
-    const result = copyPage(newPage)
+    const result = copyPage<SelectItem, SiteTagQueryDTO>(newPage)
     result.data = newPage.data.filter(notNullish).map(data =>
         new SelectItem({
           extraData: undefined,
@@ -283,6 +283,7 @@ async function requestSiteTagSelectItemPage(
           subLabels: [isNotBlank(data.site?.siteName) ? data.site?.siteName : '?'],
           value: String(data.id)
         }))
+    return result
   } else {
     throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空响应体')
   }

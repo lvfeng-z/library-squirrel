@@ -9,7 +9,6 @@ import (
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/query"
-
 	"gorm.io/gorm/clause"
 )
 
@@ -17,16 +16,16 @@ import (
 
 // SiteTagQueryDTO 站点标签查询条件
 type SiteTagQueryDTO struct {
-	ID                query.QueryAttribute `json:"-" query:"id"`                           // 站点标签ID（程序设置，不从JSON解析）
-	SiteID            query.QueryAttribute `json:"siteId" query:"site_id"`                 // 站点ID
-	SiteTagID         query.QueryAttribute `json:"siteTagId" query:"site_tag_id"`          // 站点标签ID（外部）
-	BaseSiteTagID     query.QueryAttribute `json:"baseSiteTagId" query:"base_site_tag_id"` // 基础站点标签ID
-	LocalTagID        query.QueryAttribute `json:"localTagId" query:"local_tag_id"`        // 本地标签ID
-	BoundOnLocalTagId query.QueryAttribute `json:"boundOnLocalTagId" query:""`             // 是否绑定到指定本地标签（非数据库字段）
-	SiteTagName       query.QueryAttribute `json:"siteTagName" query:"site_tag_name"`      // 站点标签名称（模糊匹配）
-	Description       query.QueryAttribute `json:"description" query:"description"`        // 描述（模糊匹配）
-	UpdateTime        query.QueryAttribute `json:"updateTime" query:"update_time"`         // 更新时间（可用于排序）
-	CreateTime        query.QueryAttribute `json:"createTime" query:"create_time"`         // 创建时间（可用于排序）
+	ID                query.QueryAttribute[int64]  `json:"-" query:"id"`                           // 站点标签ID（程序设置，不从JSON解析）
+	SiteID            query.QueryAttribute[int64]  `json:"siteId" query:"site_id"`                 // 站点ID
+	SiteTagID         query.QueryAttribute[string] `json:"siteTagId" query:"site_tag_id"`          // 站点标签ID（外部）
+	BaseSiteTagID     query.QueryAttribute[string] `json:"baseSiteTagId" query:"base_site_tag_id"` // 基础站点标签ID
+	LocalTagID        query.QueryAttribute[int64]  `json:"localTagId" query:"local_tag_id"`        // 本地标签ID
+	BoundOnLocalTagId query.QueryAttribute[bool]   `json:"boundOnLocalTagId" query:""`             // 是否绑定到指定本地标签（非数据库字段）
+	SiteTagName       query.QueryAttribute[string] `json:"siteTagName" query:"site_tag_name"`      // 站点标签名称（模糊匹配）
+	Description       query.QueryAttribute[string] `json:"description" query:"description"`        // 描述（模糊匹配）
+	UpdateTime        query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"`         // 更新时间（可用于排序）
+	CreateTime        query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`         // 创建时间（可用于排序）
 }
 
 // ========== 外部模块接口定义（由 siteTag 模块定义自己需要的接口）==========
@@ -37,6 +36,16 @@ type LocalTagOperator interface {
 	Save(ctx context.Context, tag *domain.LocalTag) error
 	// GetByName 根据名称获取本地标签
 	GetByName(ctx context.Context, name string) (*domain.LocalTag, error)
+}
+
+// LocalTagQueryOperator 本地标签查询接口（用于siteTag模块查询关联数据）
+type LocalTagQueryOperator interface {
+	ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalTag, error)
+}
+
+// SiteQueryOperator 站点查询接口（用于siteTag模块查询关联数据）
+type SiteQueryOperator interface {
+	ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, error)
 }
 
 // Repository 站点标签仓储接口（由 service 定义需要的数据库操作方法）
@@ -64,8 +73,6 @@ type Repository interface {
 	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error)
 	// UpdateBindLocalTag 绑定本地标签
 	UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (int64, error)
-	// QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-	QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalTagId *bool, localTagId *int64) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
 	QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error)
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
@@ -78,13 +85,17 @@ type Repository interface {
 type Service struct {
 	repo             Repository
 	localTagOperator LocalTagOperator
+	localTagQueryOp  LocalTagQueryOperator
+	siteQueryOp      SiteQueryOperator
 }
 
 // NewService 创建站点标签服务
-func NewService(repo Repository, localTagOperator LocalTagOperator) *Service {
+func NewService(repo Repository, localTagOperator LocalTagOperator, localTagQueryOp LocalTagQueryOperator, siteQueryOp SiteQueryOperator) *Service {
 	return &Service{
 		repo:             repo,
 		localTagOperator: localTagOperator,
+		localTagQueryOp:  localTagQueryOp,
+		siteQueryOp:      siteQueryOp,
 	}
 }
 
@@ -158,33 +169,125 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Si
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页（基于 QueryDTO）
-func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
+func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQuery model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO]) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(domain.SiteTag{})
+	queryDTO := pageQuery.Query
+
+	var boundOnLocalTagId *bool
+	if queryDTO.BoundOnLocalTagId.Value != nil {
+		boundOnLocalTagId = queryDTO.BoundOnLocalTagId.Value
+	}
+	var localTagId *int64
+	if queryDTO.LocalTagID.Value != nil {
+		localTagId = queryDTO.LocalTagID.Value
+		// 避免ToQueryOption生成LocalTagID的默认条件
+		queryDTO.LocalTagID.Value = nil
+	}
+
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
+	var where []clause.Expression
 	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
+		where = queryOpt.Conditions
 	}
-	var order clause.Expression
+	var order []clause.Expression
 	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
+		order = queryOpt.OrderBy
 	}
-	var boundOnLocalTagId *bool
-	if queryDTO.BoundOnLocalTagId.Value != nil {
-		if v, ok := queryDTO.BoundOnLocalTagId.Value.(bool); ok {
-			boundOnLocalTagId = &v
+
+	// 根据 boundOnLocalTagId 添加 localTagId 的过滤条件
+	if localTagId != nil {
+		if boundOnLocalTagId != nil && *boundOnLocalTagId {
+			// 绑定到指定本地标签
+			where = append(where, clause.Eq{Column: "local_tag_id", Value: *localTagId})
+		} else if boundOnLocalTagId != nil && !*boundOnLocalTagId {
+			// 未绑定到指定本地标签（包括绑定到其他本地标签或从未绑定过本地标签的）
+			where = append(where, clause.Expr{SQL: "(local_tag_id != ? OR local_tag_id IS NULL)", Vars: []any{*localTagId}})
 		}
 	}
-	var localTagId *int64
-	if queryDTO.LocalTagID.Value != nil {
-		if v, ok := queryDTO.LocalTagID.Value.(int64); ok {
-			localTagId = &v
+	queryOption := database.QueryOption{Conditions: where, OrderBy: order}
+	pageOption := database.PageOption{PageSize: pageQuery.PageSize, Page: pageQuery.PageNumber, QueryOption: queryOption}
+	rawPage, err := s.repo.Page(ctx, &pageOption)
+	if err != nil {
+		return nil, err
+	}
+
+	// 填充关联数据
+	return s.enrichSiteTagsWithRelations(ctx, rawPage)
+}
+
+// enrichSiteTagsWithRelations 批量填充站点标签的关联数据（本地标签和站点）
+func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *model.Page[domain.SiteTag, any]) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
+	siteTags := rawPage.Data
+	if len(siteTags) == 0 {
+		return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	}
+
+	// 收集需要查询的 LocalTagID 和 SiteID
+	localTagIds := make([]int64, 0)
+	siteIds := make([]int64, 0)
+	for _, tag := range siteTags {
+		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
+			localTagIds = append(localTagIds, tag.LocalTagID.Int64)
+		}
+		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
+			siteIds = append(siteIds, tag.SiteID.Int64)
 		}
 	}
-	return s.repo.QueryBoundOrUnboundToLocalTagPage(ctx, page, pageSize, where, order, boundOnLocalTagId, localTagId)
+
+	// 批量查询 LocalTag
+	localTagMap := make(map[int64]*domain.LocalTag)
+	if len(localTagIds) > 0 {
+		localTags, err := s.localTagQueryOp.ListByIds(ctx, localTagIds)
+		if err != nil {
+			return nil, err
+		}
+		for _, lt := range localTags {
+			localTagMap[lt.ID] = lt
+		}
+	}
+
+	// 批量查询 Site
+	siteMap := make(map[int64]*domain.Site)
+	if len(siteIds) > 0 {
+		sites, err := s.siteQueryOp.ListByIds(ctx, unique(siteIds))
+		if err != nil {
+			return nil, err
+		}
+		for _, st := range sites {
+			siteMap[st.ID] = st
+		}
+	}
+
+	// 组装结果
+	results := make([]*domain.SiteTagFullDTO, 0, len(siteTags))
+	for _, tag := range siteTags {
+		dto := domain.NewSiteTagFullDTO(tag)
+		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
+			dto.LocalTag = localTagMap[tag.LocalTagID.Int64]
+		}
+		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
+			dto.Site = siteMap[tag.SiteID.Int64]
+		}
+		results = append(results, dto)
+	}
+
+	return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+}
+
+// unique 去重辅助函数
+func unique(ids []int64) []int64 {
+	seen := make(map[int64]struct{})
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, exists := seen[id]; !exists {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result
 }
 
 // QueryPageByWorkIdByDTO 根据作品ID分页查询站点标签（基于 QueryDTO）
