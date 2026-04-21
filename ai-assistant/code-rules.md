@@ -591,6 +591,90 @@ func (r *localTagRepository) GetById(ctx context.Context, id int64) (*domain.Loc
 2. **错误处理**: 使用 `errors.Is()` 判断特定错误类型
 3. **事务回滚**: 事务中返回 error 即可触发回滚
 
+#### 5. BaseRepository 复用原则
+
+**核心原则**: 各模块的 Service 和 Repository 应**尽可能复用 `BaseRepository` 提供的功能**，只在通过 `BaseRepository` 实现时较为复杂或无法实现时，才自行实现逻辑。
+
+**规则名称**: BASE_REPOSITORY_REUSE
+**优先级**: P0（最高）
+
+**BaseRepository 提供的核心能力**:
+
+| 方法 | 功能 |
+|------|------|
+| `Save` | 保存单个实体 |
+| `SaveBatch` | 批量保存 |
+| `Update` | 更新实体 |
+| `GetById` | 根据 ID 查询 |
+| `List` | 列表查询（支持 QueryOption 条件） |
+| `Count` | 统计数量 |
+| `Delete` | 删除 |
+| `Page` | 分页查询（支持 WHERE、ORDER、分页） |
+
+**✅ 正确做法**:
+
+```go
+// siteTag/service.go
+// 通过 BaseRepository.Page() 实现分页，不自行构建分页逻辑
+func (s *Service) QueryBoundOrUnboundToLocalTagPage(...) (*Page[SiteTagFullDTO], error) {
+    // 构建查询条件
+    pageOption := database.PageOption{
+        PageSize: pageQuery.PageSize,
+        Page: pageQuery.PageNumber,
+        QueryOption: database.QueryOption{
+            Conditions: where,
+            OrderBy: order,
+        },
+    }
+
+    // ✅ 复用 BaseRepository.Page()，不自行实现分页
+    rawPage, err := s.repo.Page(ctx, &pageOption)
+    if err != nil {
+        return nil, err
+    }
+
+    // 关联数据填充在 Service 层处理
+    return s.enrichSiteTagsWithRelations(ctx, rawPage)
+}
+```
+
+**❌ 错误做法**:
+
+```go
+// ❌ 错误：在 Repository 中自行实现完整分页逻辑
+func (r *SiteTagRepository) QueryBoundOrUnboundToLocalTagPage(...) (*Page[SiteTagFullDTO], error) {
+    db := r.GORM().Model(&domain.SiteTag{})
+
+    // ❌ 自行构建 WHERE 条件
+    if boundOnLocalTagId != nil {
+        db = db.Where("local_tag_id = ?", *localTagId)
+    }
+
+    // ❌ 自行处理分页和排序
+    queryCondition := database.QueryOption{...}
+    pageCondition := database.PageOption{...}
+    resPage, _ := r.Page(ctx, &pageCondition)
+
+    // ❌ 循环中查询关联数据（N+1 问题）
+    for _, tag := range siteTags {
+        r.GORM().First(dto.LocalTag, tag.LocalTagID)
+    }
+
+    return model.NewPage(results, total, page, pageSize), nil
+}
+```
+
+**收益**:
+
+| 方面 | 说明 |
+|------|------|
+| **代码复用** | 分页逻辑统一由 BaseRepository 处理，避免重复实现 |
+| **职责分离** | Repository 只负责数据存取，Service 负责业务组装 |
+| **可维护性** | 修
+
+改分页逻辑只需在一处 |
+| **可测试性** | BaseRepository 逻辑可独立测试 |
+
 ### 数据库布尔值处理
 
 Go 实体类与数据库之间的布尔值转换由 GORM 自动处理：
@@ -973,7 +1057,105 @@ func NewService(
 }
 ```
 
-#### 5. wire.go 注入依赖
+#### 5. 依赖倒置原则（DIP）
+
+**规则名称**: DEPENDENCY_INVERSION
+**优先级**: P0（最高）
+
+**核心原则**:
+- 高层模块不应依赖低层模块，两者都应依赖抽象
+- **接口由调用方定义，实现方负责实现**
+- 抽象不应依赖细节，细节应依赖抽象
+
+**接口定义位置**: 接口定义在**调用方模块**，而非被调用方模块
+
+**✅ 正确示例 - siteTag 模块**:
+
+```go
+// siteTag/service.go - 调用方定义接口
+
+// LocalTagQueryOperator 本地标签查询接口（由 siteTag 模块定义）
+type LocalTagQueryOperator interface {
+    ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalTag, error)
+}
+
+// SiteQueryOperator 站点查询接口（由 siteTag 模块定义）
+type SiteQueryOperator interface {
+    ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, error)
+}
+
+// Service 结构体
+type Service struct {
+    repo             Repository
+    localTagOperator LocalTagOperator        // 已有接口
+    localTagQueryOp  LocalTagQueryOperator  // 注入接口
+    siteQueryOp      SiteQueryOperator       // 注入接口
+}
+```
+
+```go
+// localTag/service.go - 实现方实现接口
+func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalTag, error) {
+    if len(ids) == 0 {
+        return make([]*domain.LocalTag, 0), nil
+    }
+    return s.repo.List(ctx, &database.QueryOption{
+        Conditions: []clause.Expression{clause.IN{Column: "id", Values: ids}},
+    })
+}
+```
+
+**❌ 错误示例**:
+
+```go
+// ❌ 错误：接口定义在被调用方（localTag）
+type LocalTagReader interface {
+    ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalTag, error)
+}
+
+// ❌ 错误：调用方直接依赖具体实现
+type Service struct {
+    localTagSvc *localTag.Service  // 直接依赖具体实现
+}
+```
+
+**依赖倒置与复用 BaseRepository 的结合**:
+
+```go
+// siteTag/service.go - 复用 BaseRepository.Page() + 依赖倒置填充关联数据
+func (s *Service) QueryBoundOrUnboundToLocalTagPage(...) (*Page[SiteTagFullDTO], error) {
+    // ✅ 复用 BaseRepository.Page() 实现分页
+    pageOption := database.PageOption{
+        PageSize: pageQuery.PageSize,
+        Page: pageQuery.PageNumber,
+        QueryOption: database.QueryOption{
+            Conditions: where,
+            OrderBy: order,
+        },
+    }
+    rawPage, err := s.repo.Page(ctx, &pageOption)
+    if err != nil {
+        return nil, err
+    }
+
+    // ✅ 通过依赖倒置接口填充关联数据
+    return s.enrichSiteTagsWithRelations(ctx, rawPage)
+}
+
+func (s *Service) enrichSiteTagsWithRelations(ctx, rawPage) (*Page[SiteTagFullDTO], error) {
+    localTagIds := collectIds(siteTags)
+    siteIds := collectIds(siteTags)
+
+    // ✅ 通过接口查询，不直接依赖实现
+    localTags, _ := s.localTagQueryOp.ListByIds(ctx, localTagIds)
+    sites, _ := s.siteQueryOp.ListByIds(ctx, siteIds)
+
+    // 组装结果
+    ...
+}
+```
+
+#### 6. wire.go 注入依赖
 
 ```go
 // cmd/server/wire.go
@@ -989,7 +1171,7 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 }
 ```
 
-#### 6. 理由与约束
+#### 7. 理由与约束
 
 | 原因 | 说明 |
 |------|------|
@@ -998,7 +1180,7 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 | **循环依赖避免** | 通过接口打破模块间的循环依赖 |
 | **单一职责** | 接口定义由调用方负责，清晰表达"我需要什么" |
 
-#### 7. 常见错误
+#### 8. 常见错误
 
 | 错误 | 正确做法 |
 |------|----------|
@@ -1008,5 +1190,5 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 
 ---
 
-**最后更新**: 2026-04-06
+**最后更新**: 2026-04-21
 **维护者**: AI Assistant
