@@ -19,7 +19,7 @@ type taskRepository struct {
 }
 
 // NewRepository 创建任务仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *taskRepository {
 	return &taskRepository{
 		BaseRepository: database.NewBaseRepository[domain.Task](db),
 	}

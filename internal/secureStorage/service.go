@@ -36,14 +36,15 @@ func NewService(repo Repository) *Service {
 	}
 }
 
-// Repository 仓储接口
-type RepositoryInterface interface {
+// Repository 仓储接口（由 service 定义需要的数据库操作方法）
+type Repository interface {
 	Save(ctx context.Context, entity *domain.SecureStorage) error
 	Update(ctx context.Context, entity *domain.SecureStorage) error
 	Delete(ctx context.Context, id int64) error
 	DeleteByKey(ctx context.Context, storageKey string) (int64, error)
 	GetById(ctx context.Context, id int64) (*domain.SecureStorage, error)
 	GetByKey(ctx context.Context, storageKey string) (*domain.SecureStorage, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.SecureStorage, error)
 }
 
 // Set 存储加密值

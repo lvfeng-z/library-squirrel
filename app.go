@@ -54,7 +54,6 @@ type App struct {
 	ResourceService      *resource.Service
 	ReWorkAuthorService  *reWorkAuthor.Service
 	ReWorkTagService     *reWorkTag.Service
-	ReWorkWorkSetRepo    reWorkWorkSet.Repository
 	WorkService          *work.Service
 	WorkSetService       *workSet.Service
 	SearchService        *search.Service
@@ -198,9 +197,6 @@ func (app *App) initBaseServices() {
 	resourceRepo := resource.NewRepository(app.db)
 	app.ResourceService = resource.NewService(resourceRepo)
 
-	// reWorkWorkSet 仓储
-	app.ReWorkWorkSetRepo = reWorkWorkSet.NewRepository(app.db)
-
 	// reWorkAuthor 服务
 	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
 	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
@@ -241,13 +237,13 @@ func (app *App) initAdvancedServices() error {
 		app.SiteService,
 		app.ResourceService,
 		app.ReWorkTagService,
-		app.ReWorkWorkSetRepo,
+		reWorkWorkSet.NewRepository(app.db),
 		app.ResourceService,
 	)
 
 	// workSet 服务
 	workSetRepo := workSet.NewRepository(app.db)
-	app.WorkSetService = workSet.NewService(workSetRepo, app.ReWorkWorkSetRepo, app.WorkService)
+	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSet.NewRepository(app.db), app.WorkService)
 
 	// search 服务
 	searchRepo := search.NewRepository(app.db)

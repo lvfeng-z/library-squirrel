@@ -12,28 +12,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository 搜索仓储接口（由 service 定义需要的数据库操作方法）
-type Repository interface {
-	// QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
-	QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []domain.SearchType) ([]*domain.SelectItem, int64, error)
-	// QueryWorkPage 查询作品分页
-	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) ([]*domain.WorkFullDTO, int64, error)
-	// QueryWorkSetPage 查询作品集分页
-	QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*domain.SelectItem, int64, error)
-}
-
-// searchRepository 搜索仓储实现
-type searchRepository struct {
+// SearchRepository 搜索仓储实现
+type SearchRepository struct {
 	db *gorm.DB
 }
 
 // NewRepository 创建搜索仓储
-func NewRepository(db *gorm.DB) Repository {
-	return &searchRepository{db: db}
+func NewRepository(db *gorm.DB) *SearchRepository {
+	return &SearchRepository{db: db}
 }
 
 // QuerySearchConditionPage 查询搜索条件分页
-func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []domain.SearchType) ([]*domain.SelectItem, int64, error) {
+func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []domain.SearchType) ([]*domain.SelectItem, int64, error) {
 	var statements []string
 	var countStatements []string
 	var params []interface{}
@@ -205,7 +195,7 @@ func (r *searchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 }
 
 // QueryWorkPage 查询作品分页
-func (r *searchRepository) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) ([]*domain.WorkFullDTO, int64, error) {
+func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) ([]*domain.WorkFullDTO, int64, error) {
 	// 构建 WHERE 子句
 	whereClause, params := buildWhereClause(conditions)
 
@@ -486,7 +476,7 @@ func getMediaExts(value interface{}) []string {
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (r *searchRepository) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*domain.SelectItem, int64, error) {
+func (r *SearchRepository) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*domain.SelectItem, int64, error) {
 	var conditions []string
 	var params []interface{}
 

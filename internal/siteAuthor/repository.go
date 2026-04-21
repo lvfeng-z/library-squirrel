@@ -19,7 +19,7 @@ type siteAuthorRepository struct {
 }
 
 // NewRepository 创建站点作者仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *siteAuthorRepository {
 	return &siteAuthorRepository{
 		db: db,
 	}

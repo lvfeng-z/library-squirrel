@@ -19,7 +19,7 @@ type localAuthorRepository struct {
 }
 
 // NewRepository 创建本地作者仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *localAuthorRepository {
 	return &localAuthorRepository{
 		BaseRepository: database.NewBaseRepository[domain.LocalAuthor](db),
 	}

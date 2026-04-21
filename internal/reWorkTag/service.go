@@ -7,6 +7,30 @@ import (
 	domain "github.com/library-squirrel/wails/internal/model"
 )
 
+// Repository 作品-标签关联仓储接口（由 service 定义需要的数据库操作方法）
+type Repository interface {
+	// Save 保存关联
+	Save(ctx context.Context, rel *domain.ReWorkTag) error
+	// SaveBatch 批量保存关联
+	SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error
+	// Delete 删除关联
+	Delete(ctx context.Context, id int64) error
+	// DeleteByWorkAndTag 根据作品ID和标签删除
+	DeleteByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) error
+	// DeleteByWorkId 根据作品ID删除所有关联
+	DeleteByWorkId(ctx context.Context, workId int64) error
+	// ListByWorkId 查询作品关联的所有标签
+	ListByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkTag, error)
+	// ListLocalTagIdsByWorkId 查询作品关联的本地标签ID列表
+	ListLocalTagIdsByWorkId(ctx context.Context, workId int64) ([]int64, error)
+	// ListSiteTagIdsByWorkId 查询作品关联的站点标签ID列表
+	ListSiteTagIdsByWorkId(ctx context.Context, workId int64) ([]int64, error)
+	// GetByWorkAndTag 根据作品ID和标签获取关联
+	GetByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) (*domain.ReWorkTag, error)
+	// CountByWorkId 统计作品关联的标签数量
+	CountByWorkId(ctx context.Context, workId int64) (int64, error)
+}
+
 // Service 作品-标签关联服务
 type Service struct {
 	repo Repository

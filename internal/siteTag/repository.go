@@ -20,7 +20,7 @@ type siteTagRepository struct {
 }
 
 // NewRepository 创建站点标签仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *siteTagRepository {
 	return &siteTagRepository{
 		BaseRepository: database.NewBaseRepository[domain.SiteTag](db),
 	}

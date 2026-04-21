@@ -12,25 +12,25 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// localTagRepository 本地标签仓储实现
-type localTagRepository struct {
+// LocalTagRepository 本地标签仓储实现
+type LocalTagRepository struct {
 	*database.BaseRepository[domain.LocalTag]
 }
 
 // NewRepository 创建本地标签仓储
-func NewRepository(db *gorm.DB) Repository {
-	return &localTagRepository{
+func NewRepository(db *gorm.DB) *LocalTagRepository {
+	return &LocalTagRepository{
 		BaseRepository: database.NewBaseRepository[domain.LocalTag](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
-func (r *localTagRepository) GORM() *gorm.DB {
+func (r *LocalTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
 // GetByName 根据名称获取
-func (r *localTagRepository) GetByName(ctx context.Context, name string) (*domain.LocalTag, error) {
+func (r *LocalTagRepository) GetByName(ctx context.Context, name string) (*domain.LocalTag, error) {
 	var tag domain.LocalTag
 	err := r.GORM().
 		WithContext(ctx).
@@ -46,7 +46,7 @@ func (r *localTagRepository) GetByName(ctx context.Context, name string) (*domai
 }
 
 // SelectTreeNode 递归查询子标签
-func (r *localTagRepository) SelectTreeNode(ctx context.Context, rootId int64, depth int) ([]*domain.LocalTag, error) {
+func (r *LocalTagRepository) SelectTreeNode(ctx context.Context, rootId int64, depth int) ([]*domain.LocalTag, error) {
 	if depth <= 0 {
 		depth = 10
 	}
@@ -76,7 +76,7 @@ func (r *localTagRepository) SelectTreeNode(ctx context.Context, rootId int64, d
 }
 
 // SelectParentNode 递归查询上级标签
-func (r *localTagRepository) SelectParentNode(ctx context.Context, nodeId int64) ([]*domain.LocalTag, error) {
+func (r *LocalTagRepository) SelectParentNode(ctx context.Context, nodeId int64) ([]*domain.LocalTag, error) {
 	query := `
 		WITH RECURSIVE parentNode AS
 		(
@@ -100,7 +100,7 @@ func (r *localTagRepository) SelectParentNode(ctx context.Context, nodeId int64)
 }
 
 // ListByWorkId 查询作品关联的本地标签
-func (r *localTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.LocalTag, error) {
+func (r *LocalTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.LocalTag, error) {
 	query := `
 		SELECT t1.id, t1.local_tag_name, t1.base_local_tag_id, t1.last_use, t1.create_time, t1.update_time
 		FROM local_tag t1
@@ -117,7 +117,7 @@ func (r *localTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 }
 
 // QueryDTOPage DTO分页查询
-func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QueryDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
 	var tags []*domain.LocalTag
 	var total int64
 
@@ -150,7 +150,7 @@ func (r *localTagRepository) QueryDTOPage(ctx context.Context, page, pageSize in
 }
 
 // ListSelectItems 查询选择项列表
-func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
+func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
 	var results []*domain.SelectItem
 
 	opt := &database.QueryOption{
@@ -179,7 +179,7 @@ func (r *localTagRepository) ListSelectItems(ctx context.Context, where clause.E
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
 	var results []*domain.SelectItem
 
 	opt := &database.PageOption{
@@ -216,7 +216,7 @@ func (r *localTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (r *localTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
 	var tags []*domain.LocalTag
 	var total int64
 

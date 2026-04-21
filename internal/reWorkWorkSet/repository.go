@@ -12,54 +12,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository 作品-作品集关联仓储接口
-type Repository interface {
-	// Save 保存关联
-	Save(ctx context.Context, reWorkWorkSet *domain.ReWorkWorkSet) error
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error
-	// Delete 删除关联
-	Delete(ctx context.Context, id int64) error
-	// DeleteByWorkAndWorkSet 根据作品ID和作品集ID删除
-	DeleteByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) error
-	// DeleteByWorkSetId 根据作品集ID删除所有关联
-	DeleteByWorkSetId(ctx context.Context, workSetId int64) error
-	// DeleteByWorkId 根据作品ID删除所有关联
-	DeleteByWorkId(ctx context.Context, workId int64) error
-	// ListByWorkSetId 查询作品集关联的所有作品ID
-	ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error)
-	// ListByWorkId 查询作品关联的所有作品集ID
-	ListByWorkId(ctx context.Context, workId int64) ([]int64, error)
-	// GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
-	GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error)
-	// CountByWorkSetId 统计作品集关联的作品数量
-	CountByWorkSetId(ctx context.Context, workSetId int64) (int64, error)
-	// UpdateSortOrder 更新排序顺序
-	UpdateSortOrder(ctx context.Context, workId, workSetId int64, sortOrder int) error
-	// UpdateSortOrders 批量更新排序顺序
-	UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
-	// UpdateIsCover 更新封面标记
-	UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover int) error
-	// ClearOtherCovers 清除作品集的其他封面
-	ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error
-	// GetCoverWorkId 获取封面作品ID
-	GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error)
-}
-
-// reWorkWorkSetRepository 作品-作品集关联仓储实现
-type reWorkWorkSetRepository struct {
+// ReWorkWorkSetRepository 作品-作品集关联仓储实现
+type ReWorkWorkSetRepository struct {
 	*database.BaseRepository[domain.ReWorkWorkSet]
 }
 
 // NewRepository 创建关联仓储
-func NewRepository(db *gorm.DB) Repository {
-	return &reWorkWorkSetRepository{
+func NewRepository(db *gorm.DB) *ReWorkWorkSetRepository {
+	return &ReWorkWorkSetRepository{
 		BaseRepository: database.NewBaseRepository[domain.ReWorkWorkSet](db),
 	}
 }
 
 // DeleteByWorkAndWorkSet 根据作品ID和作品集ID删除
-func (r *reWorkWorkSetRepository) DeleteByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) error {
+func (r *ReWorkWorkSetRepository) DeleteByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
@@ -67,7 +33,7 @@ func (r *reWorkWorkSetRepository) DeleteByWorkAndWorkSet(ctx context.Context, wo
 }
 
 // DeleteByWorkSetId 根据作品集ID删除所有关联
-func (r *reWorkWorkSetRepository) DeleteByWorkSetId(ctx context.Context, workSetId int64) error {
+func (r *ReWorkWorkSetRepository) DeleteByWorkSetId(ctx context.Context, workSetId int64) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Where("work_set_id = ?", workSetId).
@@ -75,7 +41,7 @@ func (r *reWorkWorkSetRepository) DeleteByWorkSetId(ctx context.Context, workSet
 }
 
 // DeleteByWorkId 根据作品ID删除所有关联
-func (r *reWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
+func (r *ReWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Where("work_id = ?", workId).
@@ -83,7 +49,7 @@ func (r *reWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int
 }
 
 // ListByWorkSetId 查询作品集关联的所有作品ID
-func (r *reWorkWorkSetRepository) ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error) {
+func (r *ReWorkWorkSetRepository) ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error) {
 	var workIds []int64
 	err := r.BaseRepository.GORM().
 		WithContext(ctx).
@@ -95,7 +61,7 @@ func (r *reWorkWorkSetRepository) ListByWorkSetId(ctx context.Context, workSetId
 }
 
 // ListByWorkId 查询作品关联的所有作品集ID
-func (r *reWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64) ([]int64, error) {
+func (r *ReWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64) ([]int64, error) {
 	var workSetIds []int64
 	err := r.BaseRepository.GORM().
 		WithContext(ctx).
@@ -106,7 +72,7 @@ func (r *reWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64
 }
 
 // GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
-func (r *reWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error) {
+func (r *ReWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error) {
 	var result domain.ReWorkWorkSet
 	err := r.BaseRepository.GORM().
 		WithContext(ctx).
@@ -119,7 +85,7 @@ func (r *reWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workI
 }
 
 // CountByWorkSetId 统计作品集关联的作品数量
-func (r *reWorkWorkSetRepository) CountByWorkSetId(ctx context.Context, workSetId int64) (int64, error) {
+func (r *ReWorkWorkSetRepository) CountByWorkSetId(ctx context.Context, workSetId int64) (int64, error) {
 	var count int64
 	err := r.BaseRepository.GORM().
 		WithContext(ctx).
@@ -130,7 +96,7 @@ func (r *reWorkWorkSetRepository) CountByWorkSetId(ctx context.Context, workSetI
 }
 
 // UpdateSortOrder 更新排序顺序
-func (r *reWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, workSetId int64, sortOrder int) error {
+func (r *ReWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, workSetId int64, sortOrder int) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
@@ -139,7 +105,7 @@ func (r *reWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, w
 }
 
 // UpdateIsCover 更新封面标记
-func (r *reWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover int) error {
+func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover int) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
@@ -148,7 +114,7 @@ func (r *reWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, wor
 }
 
 // ClearOtherCovers 清除作品集的其他封面
-func (r *reWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error {
+func (r *ReWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
@@ -157,7 +123,7 @@ func (r *reWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetI
 }
 
 // UpdateSortOrders 批量更新排序顺序
-func (r *reWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error {
+func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error {
 	if len(sortOrders) == 0 {
 		return nil
 	}
@@ -173,7 +139,7 @@ func (r *reWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 }
 
 // GetCoverWorkId 获取封面作品ID
-func (r *reWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
+func (r *ReWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
 	var workId int64
 	err := r.BaseRepository.GORM().
 		WithContext(ctx).
@@ -205,7 +171,7 @@ func buildCaseExpression(sortOrders map[int64]int) string {
 }
 
 // SaveBatch 批量保存
-func (r *reWorkWorkSetRepository) SaveBatch(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {
+func (r *ReWorkWorkSetRepository) SaveBatch(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {
 	if len(reWorkWorkSets) == 0 {
 		return nil
 	}

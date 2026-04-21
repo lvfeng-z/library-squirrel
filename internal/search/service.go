@@ -11,6 +11,16 @@ import (
 
 // ========== 外部模块接口定义（由 search 模块定义自己需要的接口）==========
 
+// Repository 搜索仓储接口（由 service 定义需要的数据库操作方法）
+type Repository interface {
+	// QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
+	QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []domain.SearchType) ([]*domain.SelectItem, int64, error)
+	// QueryWorkPage 查询作品分页
+	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*domain.SearchCondition) ([]*domain.WorkFullDTO, int64, error)
+	// QueryWorkSetPage 查询作品集分页
+	QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*domain.SelectItem, int64, error)
+}
+
 // LocalTagUpdater 本地标签更新接口
 type LocalTagUpdater interface {
 	UpdateLastUse(ctx context.Context, ids []int64) error

@@ -17,7 +17,7 @@ type siteRepository struct {
 }
 
 // NewRepository 创建站点仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *siteRepository {
 	return &siteRepository{
 		BaseRepository: database.NewBaseRepository[domain.Site](db),
 	}

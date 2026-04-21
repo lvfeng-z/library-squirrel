@@ -15,6 +15,16 @@ const (
 	SourceTypePlugin = 1
 )
 
+// Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
+type Repository interface {
+	// Save 保存备份
+	Save(ctx context.Context, backup *model.Backup) error
+	// GetById 根据ID获取
+	GetById(ctx context.Context, id int64) (*model.Backup, error)
+	// GetBySourceTypeAndSourceId 根据来源类型和来源ID获取
+	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*model.Backup, error)
+}
+
 // Service 备份服务
 type Service struct {
 	repo Repository

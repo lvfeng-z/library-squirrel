@@ -15,7 +15,7 @@ type workRepository struct {
 }
 
 // NewRepository 创建作品仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *workRepository {
 	return &workRepository{
 		BaseRepository: database.NewBaseRepository[domain.Work](db),
 	}

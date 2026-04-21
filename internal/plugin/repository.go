@@ -15,7 +15,7 @@ type pluginRepository struct {
 }
 
 // NewRepository 创建插件仓储
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB) *pluginRepository {
 	return &pluginRepository{
 		BaseRepository: database.NewBaseRepository[domain.Plugin](db),
 	}

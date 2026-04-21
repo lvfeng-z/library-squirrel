@@ -21,6 +21,45 @@ type WorkAuthorsResultDTO struct {
 	SiteAuthors  []*model.RankedSiteAuthor  `json:"siteAuthors,omitempty"`
 }
 
+// Repository 作品-作者关联仓储接口（由 service 定义需要的数据库操作方法）
+type Repository interface {
+	// Save 保存
+	Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
+	// SaveBatch 批量保存
+	SaveBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
+	// Update 更新
+	Update(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
+	// Delete 删除
+	Delete(ctx context.Context, id int64) error
+	// GetById 根据ID获取
+	GetById(ctx context.Context, id int64) (*domain.ReWorkAuthor, error)
+	// List 查询列表
+	List(ctx context.Context, opt *database.QueryOption) ([]*domain.ReWorkAuthor, error)
+	// Count 统计数量
+	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
+	// DeleteByWorkId 根据作品ID删除所有关联
+	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
+	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
+	// DeleteBySiteAuthorId 根据站点作者ID删除所有关联
+	DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error
+
+	// ========== 批量查询作者信息 ==========
+
+	// ListLocalAuthorsByWorkId 查询作品关联的本地作者
+	ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*model.RankedLocalAuthor, error)
+	// ListSiteAuthorsByWorkId 查询作品关联的站点作者
+	ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error)
+	// ListLocalAuthorsByWorkIds 批量查询作品的本地作者
+	ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error)
+	// ListSiteAuthorsByWorkIds 批量查询作品的站点作者
+	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*model.RankedSiteAuthor, error)
+	// ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
+	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthorWithWorkId, error)
+	// ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
+	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedSiteAuthorWithWorkId, error)
+}
+
 // Service 作品-作者关联服务
 type Service struct {
 	repo Repository
