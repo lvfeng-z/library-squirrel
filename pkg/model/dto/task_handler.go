@@ -67,14 +67,14 @@ type TaskCreateChildResponse struct {
 
 // WorkResponse 作品响应
 type WorkResponse struct {
-	Work         *entity2.Work         `json:"work"`         // 作品信息
-	Site         *SiteDTO              `json:"site"`         // 站点信息
-	LocalAuthors []*LocalAuthorDTO     `json:"localAuthors"` // 本地作者数组
-	LocalTags    []*LocalTagDTO        `json:"localTags"`    // 本地标签数组
-	SiteAuthors  []*TaskSiteAuthorDTO  `json:"siteAuthors"`  // 站点作者数组
-	SiteTags     []*TaskSiteTagDTO     `json:"siteTags"`     // 站点标签数组
-	WorkSets     []*WorkSetDTO         `json:"workSets"`     // 作品所属作品集
-	Resource     *TaskResourceDTO      `json:"resource"`     // 资源信息
+	Work         *entity2.Work        `json:"work"`         // 作品信息
+	Site         *SiteDTO             `json:"site"`         // 站点信息
+	LocalAuthors []*LocalAuthorDTO    `json:"localAuthors"` // 本地作者数组
+	LocalTags    []*LocalTagDTO       `json:"localTags"`    // 本地标签数组
+	SiteAuthors  []*TaskSiteAuthorDTO `json:"siteAuthors"`  // 站点作者数组
+	SiteTags     []*TaskSiteTagDTO    `json:"siteTags"`     // 站点标签数组
+	WorkSets     []*TaskWorkSetDTO    `json:"workSets"`     // 作品所属作品集
+	Resource     *TaskResourceDTO     `json:"resource"`     // 资源信息
 }
 
 // TaskSiteAuthorDTO 任务处理器站点作者DTO
@@ -92,8 +92,8 @@ type TaskSiteTagDTO struct {
 	URL         string `json:"url"`         // 标签页面URL
 }
 
-// WorkSetDTO 作品集DTO
-type WorkSetDTO struct {
+// TaskWorkSetDTO 任务处理器作品集DTO
+type TaskWorkSetDTO struct {
 	WorkSetID   int64  `json:"workSetId"`   // 作品集ID
 	WorkSetName string `json:"workSetName"` // 作品集名称
 }

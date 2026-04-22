@@ -9,9 +9,8 @@ export {
 export {
     CreateTaskByURLResponse,
     CreateTaskRequest,
-    TaskDTO,
+    TaskParamDTO,
     TaskQueryDTO,
-    TaskResultDTO,
     TaskScheduleDTO,
     TaskTreeDTO,
     TreeDataPageDTO

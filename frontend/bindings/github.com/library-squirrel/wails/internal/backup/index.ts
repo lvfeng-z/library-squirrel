@@ -5,7 +5,3 @@ import * as Handler from "./handler.js";
 export {
     Handler
 };
-
-export {
-    BackupResultDTO
-} from "./models.js";

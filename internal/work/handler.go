@@ -2,7 +2,6 @@ package work
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
@@ -22,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品
-func (h *Handler) Save(ctx context.Context, work *WorkDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, work *WorkParamDTO) *model.ApiResponse[int64] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -54,7 +53,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品
-func (h *Handler) Update(ctx context.Context, work *WorkDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, work *WorkParamDTO) *model.ApiResponse[any] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -89,29 +88,29 @@ func (h *Handler) DeleteWorkAndSurroundingData(ctx context.Context, id int64) *m
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取作品
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*WorkResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.WorkDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*WorkResultDTO](err.Error())
+		return model.Error[*dto.WorkDTO](err.Error())
 	}
-	return model.Success(ToWorkResultDTO(result))
+	return model.Success(dto.NewWorkDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[WorkResultDTO, WorkQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[dto.WorkDTO, WorkQueryDTO]] {
 	if queryDTO == nil {
 		queryDTO = &WorkQueryDTO{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
 	if err != nil {
-		return model.Error[*model.Page[WorkResultDTO, WorkQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.WorkDTO, WorkQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*WorkResultDTO, 0, len(result.Data))
+	// 转换为 DTO
+	data := make([]*dto.WorkDTO, 0, len(result.Data))
 	for _, work := range result.Data {
-		data = append(data, ToWorkResultDTO(work))
+		data = append(data, dto.NewWorkDTO(work))
 	}
-	return model.Success(&model.Page[WorkResultDTO, WorkQueryDTO]{
+	return model.Success(&model.Page[dto.WorkDTO, WorkQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -131,12 +130,12 @@ func (h *Handler) GetFullWorkInfoById(ctx context.Context, id int64) *model.ApiR
 }
 
 // GetBySiteAndSiteWorkID 根据站点ID和站点作品ID获取作品
-func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) *model.ApiResponse[*WorkResultDTO] {
+func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) *model.ApiResponse[*dto.WorkDTO] {
 	result, err := h.svc.GetBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 	if err != nil {
-		return model.Error[*WorkResultDTO](err.Error())
+		return model.Error[*dto.WorkDTO](err.Error())
 	}
-	return model.Success(ToWorkResultDTO(result))
+	return model.Success(dto.NewWorkDTO(result))
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
@@ -158,65 +157,10 @@ func (h *Handler) UpdateLastUsed(ctx context.Context, ids []int64) *model.ApiRes
 
 // ========== DTO 定义 ==========
 
-// WorkDTO 作品数据传输对象
-type WorkDTO struct {
+// WorkParamDTO 作品数据传输对象（增删改参数）
+type WorkParamDTO struct {
 	ID           int64   `json:"id"`
 	SiteID       *int64  `json:"siteId"`
 	SiteWorkID   *string `json:"siteWorkId"`
 	SiteWorkName *string `json:"siteWorkName"`
-}
-
-// WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
-type WorkResultDTO struct {
-	ID                  int64   `json:"id"`
-	SiteID              *int64  `json:"siteId"`
-	SiteWorkID          *string `json:"siteWorkId"`
-	SiteWorkName        *string `json:"siteWorkName"`
-	SiteAuthorID        *string `json:"siteAuthorId"`
-	SiteWorkDescription *string `json:"siteWorkDescription"`
-	SiteUploadTime      *int64  `json:"siteUploadTime"`
-	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
-	NickName            *string `json:"nickName"`
-	LocalAuthorID       *int64  `json:"localAuthorId"`
-	LastView            *int64  `json:"lastView"`
-	CreateTime          int64   `json:"createTime"`
-	UpdateTime          int64   `json:"updateTime"`
-}
-
-// ToWorkResultDTO 将 domain.Work 转换为 WorkResultDTO
-func ToWorkResultDTO(work *domain.Work) *WorkResultDTO {
-	if work == nil {
-		return nil
-	}
-	return &WorkResultDTO{
-		ID:                  work.GetID(),
-		SiteID:              nullInt64ToPointer(work.SiteID),
-		SiteWorkID:          nullStringToPointer(work.SiteWorkID),
-		SiteWorkName:        nullStringToPointer(work.SiteWorkName),
-		SiteAuthorID:        nullStringToPointer(work.SiteAuthorID),
-		SiteWorkDescription: nullStringToPointer(work.SiteWorkDescription),
-		SiteUploadTime:      nullInt64ToPointer(work.SiteUploadTime),
-		SiteUpdateTime:      nullInt64ToPointer(work.SiteUpdateTime),
-		NickName:            nullStringToPointer(work.NickName),
-		LocalAuthorID:       nullInt64ToPointer(work.LocalAuthorID),
-		LastView:            nullInt64ToPointer(work.LastView),
-		CreateTime:          work.GetCreateTime(),
-		UpdateTime:          work.GetUpdateTime(),
-	}
-}
-
-// nullStringToPointer 将 sql.NullString 转换为 *string
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
-func nullInt64ToPointer(ns sql.NullInt64) *int64 {
-	if ns.Valid {
-		return &ns.Int64
-	}
-	return nil
 }

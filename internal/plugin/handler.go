@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/wails/pkg/model"
 	domain "github.com/library-squirrel/wails/pkg/model/dto"
@@ -22,10 +21,8 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存插件
-func (h *Handler) Save(ctx context.Context, plugin *PluginDTO) *model.ApiResponse[int64] {
-	domainPlugin := &entity.Plugin{
-		BaseEntity: &model.BaseEntity{},
-	}
+func (h *Handler) Save(ctx context.Context, plugin *PluginParamDTO) *model.ApiResponse[int64] {
+	domainPlugin := &entity.Plugin{}
 	if plugin.PublicID != nil {
 		domainPlugin.PublicID.Valid = true
 		domainPlugin.PublicID.String = *plugin.PublicID
@@ -62,10 +59,8 @@ func (h *Handler) Save(ctx context.Context, plugin *PluginDTO) *model.ApiRespons
 }
 
 // Update 更新插件
-func (h *Handler) Update(ctx context.Context, plugin *PluginDTO) *model.ApiResponse[any] {
-	domainPlugin := &entity.Plugin{
-		BaseEntity: &model.BaseEntity{},
-	}
+func (h *Handler) Update(ctx context.Context, plugin *PluginParamDTO) *model.ApiResponse[any] {
+	domainPlugin := &entity.Plugin{}
 	domainPlugin.SetID(plugin.ID)
 	if plugin.PublicID != nil {
 		domainPlugin.PublicID.Valid = true
@@ -103,21 +98,21 @@ func (h *Handler) Update(ctx context.Context, plugin *PluginDTO) *model.ApiRespo
 }
 
 // InstallFromPath 从插件包路径安装插件
-func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*PluginResultDTO] {
+func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.InstallFromPath(ctx, packagePath, domain.InstallType(installType))
 	if err != nil {
-		return model.Error[*PluginResultDTO](err.Error())
+		return model.Error[*domain.PluginDTO](err.Error())
 	}
-	return model.Success(ToPluginResultDTO(result))
+	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Reinstall 重新安装插件
-func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*PluginResultDTO] {
+func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.Reinstall(ctx, pluginPublicId, domain.InstallType(installType))
 	if err != nil {
-		return model.Error[*PluginResultDTO](err.Error())
+		return model.Error[*domain.PluginDTO](err.Error())
 	}
-	return model.Success(ToPluginResultDTO(result))
+	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Uninstall 卸载插件
@@ -139,38 +134,38 @@ func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.Api
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*PluginResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*PluginResultDTO](err.Error())
+		return model.Error[*domain.PluginDTO](err.Error())
 	}
-	return model.Success(ToPluginResultDTO(result))
+	return model.Success(domain.NewPluginDTO(result))
 }
 
 // GetByPublicId 根据公开ID获取插件
-func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.ApiResponse[*PluginResultDTO] {
+func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.GetByPublicId(ctx, publicId)
 	if err != nil {
-		return model.Error[*PluginResultDTO](err.Error())
+		return model.Error[*domain.PluginDTO](err.Error())
 	}
-	return model.Success(ToPluginResultDTO(result))
+	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page *model.Page[PluginResultDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[PluginResultDTO, PluginQueryDTO]] {
+func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[domain.PluginDTO, PluginQueryDTO]] {
 	if page == nil {
-		page = &model.Page[PluginResultDTO, PluginQueryDTO]{}
+		page = &model.Page[domain.PluginDTO, PluginQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[PluginResultDTO, PluginQueryDTO]](err.Error())
+		return model.Error[*model.Page[domain.PluginDTO, PluginQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*PluginResultDTO, 0, len(result.Data))
+	// 转换为 DTO
+	data := make([]*domain.PluginDTO, 0, len(result.Data))
 	for _, plugin := range result.Data {
-		data = append(data, ToPluginResultDTO(plugin))
+		data = append(data, domain.NewPluginDTO(plugin))
 	}
-	return model.Success(&model.Page[PluginResultDTO, PluginQueryDTO]{
+	return model.Success(&model.Page[domain.PluginDTO, PluginQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -204,8 +199,8 @@ func (h *Handler) ReadVueFile(pluginPublicId string, filePath string) *model.Api
 	return model.Success(result)
 }
 
-// PluginDTO 插件数据传输对象
-type PluginDTO struct {
+// PluginParamDTO 插件数据传输对象（增删改参数）
+type PluginParamDTO struct {
 	ID             int64   `json:"id"`
 	PublicID       *string `json:"publicId"`
 	Author         *string `json:"author"`
@@ -214,61 +209,4 @@ type PluginDTO struct {
 	EntryPath      *string `json:"entryPath"`
 	RootPath       *string `json:"rootPath"`
 	ActivationType *string `json:"activationType"`
-}
-
-// PluginResultDTO 插件返回结果DTO（用于屏蔽sql.Null*类型）
-type PluginResultDTO struct {
-	ID             int64   `json:"id"`
-	PublicID       *string `json:"publicId"`
-	Author         *string `json:"author"`
-	Name           *string `json:"name"`
-	Version        *string `json:"version"`
-	EntryPath      *string `json:"entryPath"`
-	RootPath       *string `json:"rootPath"`
-	BackupID       *int64  `json:"backupId"`
-	SortNum        *int64  `json:"sortNum"`
-	PluginData     *string `json:"pluginData"`
-	Uninstalled    *int64  `json:"uninstalled"`
-	ActivationType *string `json:"activationType"`
-	CreateTime     int64   `json:"createTime"`
-	UpdateTime     int64   `json:"updateTime"`
-}
-
-// ToPluginResultDTO 将 domain.Plugin 转换为 PluginResultDTO
-func ToPluginResultDTO(plugin *entity.Plugin) *PluginResultDTO {
-	if plugin == nil {
-		return nil
-	}
-	return &PluginResultDTO{
-		ID:             plugin.GetID(),
-		PublicID:       nullStringToPointer(plugin.PublicID),
-		Author:         nullStringToPointer(plugin.Author),
-		Name:           nullStringToPointer(plugin.Name),
-		Version:        nullStringToPointer(plugin.Version),
-		EntryPath:      nullStringToPointer(plugin.EntryPath),
-		RootPath:       nullStringToPointer(plugin.RootPath),
-		BackupID:       nullInt64ToPointer(plugin.BackupID),
-		SortNum:        nullInt64ToPointer(plugin.SortNum),
-		PluginData:     nullStringToPointer(plugin.PluginData),
-		Uninstalled:    nullInt64ToPointer(plugin.Uninstalled),
-		ActivationType: nullStringToPointer(plugin.ActivationType),
-		CreateTime:     plugin.GetCreateTime(),
-		UpdateTime:     plugin.GetUpdateTime(),
-	}
-}
-
-// nullStringToPointer 将 sql.NullString 转换为 *string
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
-func nullInt64ToPointer(ns sql.NullInt64) *int64 {
-	if ns.Valid {
-		return &ns.Int64
-	}
-	return nil
 }

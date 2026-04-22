@@ -2,9 +2,9 @@ package workSet
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/wails/pkg/model"
+	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
@@ -21,10 +21,8 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品集
-func (h *Handler) Save(ctx context.Context, workSet *WorkSetDTO) *model.ApiResponse[int64] {
-	domainWorkSet := &entity2.WorkSet{
-		BaseEntity: &model.BaseEntity{},
-	}
+func (h *Handler) Save(ctx context.Context, workSet *WorkSetParamDTO) *model.ApiResponse[int64] {
+	domainWorkSet := &entity2.WorkSet{}
 	if workSet.SiteID != nil {
 		domainWorkSet.SiteID.Valid = true
 		domainWorkSet.SiteID.Int64 = *workSet.SiteID
@@ -49,10 +47,8 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品集
-func (h *Handler) Update(ctx context.Context, workSet *WorkSetDTO) *model.ApiResponse[any] {
-	domainWorkSet := &entity2.WorkSet{
-		BaseEntity: &model.BaseEntity{},
-	}
+func (h *Handler) Update(ctx context.Context, workSet *WorkSetParamDTO) *model.ApiResponse[any] {
+	domainWorkSet := &entity2.WorkSet{}
 	domainWorkSet.SetID(workSet.ID)
 	if workSet.SiteID != nil {
 		domainWorkSet.SiteID.Valid = true
@@ -72,29 +68,29 @@ func (h *Handler) Update(ctx context.Context, workSet *WorkSetDTO) *model.ApiRes
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取作品集
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*WorkSetResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto2.WorkSetDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*WorkSetResultDTO](err.Error())
+		return model.Error[*dto2.WorkSetDTO](err.Error())
 	}
-	return model.Success(ToWorkSetResultDTO(result))
+	return model.Success(dto2.NewWorkSetDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[WorkSetResultDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[WorkSetResultDTO, WorkSetQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]] {
 	if page == nil {
-		page = &model.Page[WorkSetResultDTO, WorkSetQueryDTO]{}
+		page = &model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[WorkSetResultDTO, WorkSetQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*WorkSetResultDTO, 0, len(result.Data))
+	// 转换为 DTO
+	data := make([]*dto2.WorkSetDTO, 0, len(result.Data))
 	for _, workSet := range result.Data {
-		data = append(data, ToWorkSetResultDTO(workSet))
+		data = append(data, dto2.NewWorkSetDTO(workSet))
 	}
-	return model.Success(&model.Page[WorkSetResultDTO, WorkSetQueryDTO]{
+	return model.Success(&model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -105,12 +101,16 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[WorkSetResultD
 }
 
 // GetWorksByWorkSetId 获取作品集下的作品列表
-func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*entity2.Work] {
+func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*dto2.WorkDTO] {
 	result, err := h.svc.GetWorksByWorkSetId(ctx, workSetId)
 	if err != nil {
-		return model.Error[[]*entity2.Work](err.Error())
+		return model.Error[[]*dto2.WorkDTO](err.Error())
 	}
-	return model.Success(result)
+	data := make([]*dto2.WorkDTO, 0, len(result))
+	for _, work := range result {
+		data = append(data, dto2.NewWorkDTO(work))
+	}
+	return model.Success(data)
 }
 
 // LinkWorkToWorkSet 关联作品到作品集
@@ -130,12 +130,12 @@ func (h *Handler) UnlinkWorkFromWorkSet(ctx context.Context, workId, workSetId i
 }
 
 // GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
-func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*WorkSetResultDTO] {
+func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*dto2.WorkSetDTO] {
 	result, err := h.svc.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 	if err != nil {
-		return model.Error[*WorkSetResultDTO](err.Error())
+		return model.Error[*dto2.WorkSetDTO](err.Error())
 	}
-	return model.Success(ToWorkSetResultDTO(result))
+	return model.Success(dto2.NewWorkSetDTO(result))
 }
 
 // LinkBatchToWorkSet 批量关联作品到作品集
@@ -196,12 +196,12 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	// 转换为 ResultDTO
 	dtos := make([]*WorkSetWithWorksResultDTO, 0, len(result))
 	for _, ws := range result {
-		works := make([]*WorkResultDTO, 0, len(ws.Works))
+		works := make([]*dto2.WorkDTO, 0, len(ws.Works))
 		for _, w := range ws.Works {
-			works = append(works, ToWorkResultDTO(w))
+			works = append(works, dto2.NewWorkDTO(w))
 		}
 		dtos = append(dtos, &WorkSetWithWorksResultDTO{
-			WorkSet: ToWorkSetResultDTO(ws.WorkSet),
+			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
 			Works:   works,
 		})
 	}
@@ -221,10 +221,10 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 	data := make([]*WorkSetWithCoverResultDTO, 0, len(result.Data))
 	for _, ws := range result.Data {
 		dto := &WorkSetWithCoverResultDTO{
-			WorkSet: ToWorkSetResultDTO(ws.WorkSet),
+			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
 		}
 		if ws.CoverWork != nil {
-			dto.CoverWork = ToWorkResultDTO(ws.CoverWork)
+			dto.CoverWork = dto2.NewWorkDTO(ws.CoverWork)
 		}
 		data = append(data, dto)
 	}
@@ -241,113 +241,21 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 
 // ========== DTO 定义 ==========
 
-// WorkSetDTO 作品集数据传输对象
-type WorkSetDTO struct {
+// WorkSetParamDTO 作品集数据传输对象（增删改参数）
+type WorkSetParamDTO struct {
 	ID              int64   `json:"id"`
 	SiteID          *int64  `json:"siteId"`
 	SiteWorkSetName *string `json:"siteWorkSetName"`
 }
 
-// WorkSetResultDTO 作品集返回结果DTO（用于屏蔽sql.Null*类型）
-type WorkSetResultDTO struct {
-	ID                     int64   `json:"id"`
-	SiteID                 *int64  `json:"siteId"`
-	SiteWorkSetID          *string `json:"siteWorkSetId"`
-	SiteWorkSetName        *string `json:"siteWorkSetName"`
-	SiteAuthorID           *string `json:"siteAuthorId"`
-	SiteWorkSetDescription *string `json:"siteWorkSetDescription"`
-	SiteUploadTime         *int64  `json:"siteUploadTime"`
-	SiteUpdateTime         *int64  `json:"siteUpdateTime"`
-	NickName               *string `json:"nickName"`
-	LastView               *int64  `json:"lastView"`
-	CreateTime             int64   `json:"createTime"`
-	UpdateTime             int64   `json:"updateTime"`
-}
-
-// WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
-type WorkResultDTO struct {
-	ID                  int64   `json:"id"`
-	SiteID              *int64  `json:"siteId"`
-	SiteWorkID          *string `json:"siteWorkId"`
-	SiteWorkName        *string `json:"siteWorkName"`
-	SiteAuthorID        *string `json:"siteAuthorId"`
-	SiteWorkDescription *string `json:"siteWorkDescription"`
-	SiteUploadTime      *int64  `json:"siteUploadTime"`
-	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
-	NickName            *string `json:"nickName"`
-	LocalAuthorID       *int64  `json:"localAuthorId"`
-	LastView            *int64  `json:"lastView"`
-	CreateTime          int64   `json:"createTime"`
-	UpdateTime          int64   `json:"updateTime"`
-}
-
 // WorkSetWithWorksResultDTO 作品集及其作品信息
 type WorkSetWithWorksResultDTO struct {
-	WorkSet *WorkSetResultDTO `json:"workSet"`
-	Works   []*WorkResultDTO  `json:"works"`
+	WorkSet *dto2.WorkSetDTO `json:"workSet"`
+	Works   []*dto2.WorkDTO  `json:"works"`
 }
 
 // WorkSetWithCoverResultDTO 作品集及其封面作品信息
 type WorkSetWithCoverResultDTO struct {
-	WorkSet   *WorkSetResultDTO `json:"workSet"`
-	CoverWork *WorkResultDTO    `json:"coverWork,omitempty"`
-}
-
-// ToWorkSetResultDTO 将 domain.WorkSet 转换为 WorkSetResultDTO
-func ToWorkSetResultDTO(workSet *entity2.WorkSet) *WorkSetResultDTO {
-	if workSet == nil {
-		return nil
-	}
-	return &WorkSetResultDTO{
-		ID:                     workSet.GetID(),
-		SiteID:                 nullInt64ToPointer(workSet.SiteID),
-		SiteWorkSetID:          nullStringToPointer(workSet.SiteWorkSetID),
-		SiteWorkSetName:        nullStringToPointer(workSet.SiteWorkSetName),
-		SiteAuthorID:           nullStringToPointer(workSet.SiteAuthorID),
-		SiteWorkSetDescription: nullStringToPointer(workSet.SiteWorkSetDescription),
-		SiteUploadTime:         nullInt64ToPointer(workSet.SiteUploadTime),
-		SiteUpdateTime:         nullInt64ToPointer(workSet.SiteUpdateTime),
-		NickName:               nullStringToPointer(workSet.NickName),
-		LastView:               nullInt64ToPointer(workSet.LastView),
-		CreateTime:             workSet.GetCreateTime(),
-		UpdateTime:             workSet.GetUpdateTime(),
-	}
-}
-
-// ToWorkResultDTO 将 domain.Work 转换为 WorkResultDTO
-func ToWorkResultDTO(work *entity2.Work) *WorkResultDTO {
-	if work == nil {
-		return nil
-	}
-	return &WorkResultDTO{
-		ID:                  work.GetID(),
-		SiteID:              nullInt64ToPointer(work.SiteID),
-		SiteWorkID:          nullStringToPointer(work.SiteWorkID),
-		SiteWorkName:        nullStringToPointer(work.SiteWorkName),
-		SiteAuthorID:        nullStringToPointer(work.SiteAuthorID),
-		SiteWorkDescription: nullStringToPointer(work.SiteWorkDescription),
-		SiteUploadTime:      nullInt64ToPointer(work.SiteUploadTime),
-		SiteUpdateTime:      nullInt64ToPointer(work.SiteUpdateTime),
-		NickName:            nullStringToPointer(work.NickName),
-		LocalAuthorID:       nullInt64ToPointer(work.LocalAuthorID),
-		LastView:            nullInt64ToPointer(work.LastView),
-		CreateTime:          work.GetCreateTime(),
-		UpdateTime:          work.GetUpdateTime(),
-	}
-}
-
-// nullStringToPointer 将 sql.NullString 转换为 *string
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
-func nullInt64ToPointer(ns sql.NullInt64) *int64 {
-	if ns.Valid {
-		return &ns.Int64
-	}
-	return nil
+	WorkSet   *dto2.WorkSetDTO `json:"workSet"`
+	CoverWork *dto2.WorkDTO    `json:"coverWork,omitempty"`
 }

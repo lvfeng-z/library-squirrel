@@ -10,9 +10,9 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * PluginDTO 插件数据传输对象
+ * PluginParamDTO 插件数据传输对象（增删改参数）
  */
-export class PluginDTO {
+export class PluginParamDTO {
     "id": number;
     "publicId": string | null;
     "author": string | null;
@@ -22,8 +22,8 @@ export class PluginDTO {
     "rootPath": string | null;
     "activationType": string | null;
 
-    /** Creates a new PluginDTO instance. */
-    constructor($$source: Partial<PluginDTO> = {}) {
+    /** Creates a new PluginParamDTO instance. */
+    constructor($$source: Partial<PluginParamDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -53,11 +53,11 @@ export class PluginDTO {
     }
 
     /**
-     * Creates a new PluginDTO instance from a string or object.
+     * Creates a new PluginParamDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): PluginDTO {
+    static createFrom($$source: any = {}): PluginParamDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new PluginDTO($$parsedSource as Partial<PluginDTO>);
+        return new PluginParamDTO($$parsedSource as Partial<PluginParamDTO>);
     }
 }
 
@@ -197,82 +197,6 @@ export class PluginQueryDTO {
             $$parsedSource["updateTime"] = $$createField9_0($$parsedSource["updateTime"]);
         }
         return new PluginQueryDTO($$parsedSource as Partial<PluginQueryDTO>);
-    }
-}
-
-/**
- * PluginResultDTO 插件返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class PluginResultDTO {
-    "id": number;
-    "publicId": string | null;
-    "author": string | null;
-    "name": string | null;
-    "version": string | null;
-    "entryPath": string | null;
-    "rootPath": string | null;
-    "backupId": number | null;
-    "sortNum": number | null;
-    "pluginData": string | null;
-    "uninstalled": number | null;
-    "activationType": string | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new PluginResultDTO instance. */
-    constructor($$source: Partial<PluginResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("publicId" in $$source)) {
-            this["publicId"] = null;
-        }
-        if (!("author" in $$source)) {
-            this["author"] = null;
-        }
-        if (!("name" in $$source)) {
-            this["name"] = null;
-        }
-        if (!("version" in $$source)) {
-            this["version"] = null;
-        }
-        if (!("entryPath" in $$source)) {
-            this["entryPath"] = null;
-        }
-        if (!("rootPath" in $$source)) {
-            this["rootPath"] = null;
-        }
-        if (!("backupId" in $$source)) {
-            this["backupId"] = null;
-        }
-        if (!("sortNum" in $$source)) {
-            this["sortNum"] = null;
-        }
-        if (!("pluginData" in $$source)) {
-            this["pluginData"] = null;
-        }
-        if (!("uninstalled" in $$source)) {
-            this["uninstalled"] = null;
-        }
-        if (!("activationType" in $$source)) {
-            this["activationType"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PluginResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): PluginResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new PluginResultDTO($$parsedSource as Partial<PluginResultDTO>);
     }
 }
 

@@ -7,10 +7,8 @@ export {
 };
 
 export {
-    WorkResultDTO,
-    WorkSetDTO,
+    WorkSetParamDTO,
     WorkSetQueryDTO,
-    WorkSetResultDTO,
     WorkSetWithCoverResultDTO,
     WorkSetWithWorksResultDTO
 } from "./models.js";

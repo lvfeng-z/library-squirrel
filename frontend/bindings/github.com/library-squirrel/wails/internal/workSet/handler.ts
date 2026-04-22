@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as entity$0 from "../../pkg/model/entity/models.js";
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -33,7 +33,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取作品集
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.WorkSetResultDTO | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkSetDTO | null> | null> {
     return $Call.ByID(1001500618, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -42,7 +42,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 /**
  * GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
  */
-export function GetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: string): $CancellablePromise<model$0.ApiResponse<$models.WorkSetResultDTO | null> | null> {
+export function GetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: string): $CancellablePromise<model$0.ApiResponse<dto$0.WorkSetDTO | null> | null> {
     return $Call.ByID(495360619, siteWorkSetId, siteName).then(($result: any) => {
         return $$createType5($result);
     });
@@ -60,7 +60,7 @@ export function GetCoverWorkId(workSetId: number): $CancellablePromise<model$0.A
 /**
  * GetWorksByWorkSetId 获取作品集下的作品列表
  */
-export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(entity$0.Work | null)[]> | null> {
+export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkDTO | null)[]> | null> {
     return $Call.ByID(3166169653, workSetId).then(($result: any) => {
         return $$createType12($result);
     });
@@ -96,7 +96,7 @@ export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellableProm
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.WorkSetResultDTO, $models.WorkSetQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkSetResultDTO, $models.WorkSetQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<dto$0.WorkSetDTO, $models.WorkSetQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkSetDTO, $models.WorkSetQueryDTO> | null> | null> {
     return $Call.ByID(306740245, page).then(($result: any) => {
         return $$createType22($result);
     });
@@ -123,7 +123,7 @@ export function RemoveBatchFromWorkSet(workSetId: number, workIds: number[]): $C
 /**
  * Save 保存作品集
  */
-export function Save(workSet: $models.WorkSetDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(workSet: $models.WorkSetParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1135512815, workSet).then(($result: any) => {
         return $$createType7($result);
     });
@@ -159,7 +159,7 @@ export function UnsetCover(workSetId: number, workId: number): $CancellablePromi
 /**
  * Update 更新作品集
  */
-export function Update(workSet: $models.WorkSetDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(workSet: $models.WorkSetParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3898832955, workSet).then(($result: any) => {
         return $$createType1($result);
     });
@@ -177,13 +177,13 @@ export function UpdateSortOrders(workSetId: number, workIds: number[]): $Cancell
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.WorkSetResultDTO.createFrom;
+const $$createType2 = dto$0.WorkSetDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = entity$0.Work.createFrom;
+const $$createType8 = dto$0.WorkDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = model$0.ApiResponse.createFrom($$createType10);

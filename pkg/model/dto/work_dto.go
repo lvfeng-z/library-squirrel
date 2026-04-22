@@ -1,25 +1,52 @@
 package dto
 
 import (
+	"github.com/library-squirrel/wails/internal/util"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
+// WorkDTO 作品数据传输对象（无 sql.Null* 版本）
+type WorkDTO struct {
+	ID                  int64   `json:"id"`
+	SiteID              *int64  `json:"siteId"`
+	SiteWorkID          *string `json:"siteWorkId"`
+	SiteWorkName        *string `json:"siteWorkName"`
+	SiteAuthorID        *string `json:"siteAuthorId"`
+	SiteWorkDescription *string `json:"siteWorkDescription"`
+	SiteUploadTime      *int64  `json:"siteUploadTime"`
+	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
+	NickName            *string `json:"nickName"`
+	LocalAuthorID       *int64  `json:"localAuthorId"`
+	LastView            *int64  `json:"lastView"`
+	CreateTime          int64   `json:"createTime"`
+	UpdateTime          int64   `json:"updateTime"`
+}
+
+// NewWorkDTO 从 entity.Work 创建 WorkDTO
+func NewWorkDTO(work *entity2.Work) *WorkDTO {
+	if work == nil {
+		return nil
+	}
+	return &WorkDTO{
+		ID:                  work.GetID(),
+		SiteID:              util.NullInt64ToPointer(work.SiteID),
+		SiteWorkID:          util.NullStringToPointer(work.SiteWorkID),
+		SiteWorkName:        util.NullStringToPointer(work.SiteWorkName),
+		SiteAuthorID:        util.NullStringToPointer(work.SiteAuthorID),
+		SiteWorkDescription: util.NullStringToPointer(work.SiteWorkDescription),
+		SiteUploadTime:      util.NullInt64ToPointer(work.SiteUploadTime),
+		SiteUpdateTime:      util.NullInt64ToPointer(work.SiteUpdateTime),
+		NickName:            util.NullStringToPointer(work.NickName),
+		LocalAuthorID:       util.NullInt64ToPointer(work.LocalAuthorID),
+		LastView:            util.NullInt64ToPointer(work.LastView),
+		CreateTime:          work.GetCreateTime(),
+		UpdateTime:          work.GetUpdateTime(),
+	}
+}
+
 // WorkFullDTO 作品完整信息DTO
 type WorkFullDTO struct {
-	// 基础字段
-	ID                  int64  `json:"id"`
-	CreateTime          int64  `json:"createTime"`
-	UpdateTime          int64  `json:"updateTime"`
-	SiteID              int64  `json:"siteId"`
-	SiteWorkID          string `json:"siteWorkId"`
-	SiteWorkName        string `json:"siteWorkName"`
-	SiteAuthorID        string `json:"siteAuthorId"`
-	SiteWorkDescription string `json:"siteWorkDescription"`
-	SiteUploadTime      int64  `json:"siteUploadTime"`
-	SiteUpdateTime      int64  `json:"siteUpdateTime"`
-	NickName            string `json:"nickName"`
-	LocalAuthorID       int64  `json:"localAuthorId"`
-	LastView            int64  `json:"lastView"`
+	WorkDTO
 
 	// 关联的本地作者列表
 	LocalAuthors []*LocalAuthorDTO `json:"localAuthors,omitempty"`
@@ -45,30 +72,7 @@ func NewWorkFullDTO(work *entity2.Work) *WorkFullDTO {
 	if work == nil {
 		return nil
 	}
-	dto := &WorkFullDTO{
-		ID:                  work.ID,
-		CreateTime:          work.CreateTime,
-		UpdateTime:          work.UpdateTime,
-		SiteWorkID:          work.SiteWorkID.String,
-		SiteWorkName:        work.SiteWorkName.String,
-		SiteAuthorID:        work.SiteAuthorID.String,
-		SiteWorkDescription: work.SiteWorkDescription.String,
-		NickName:            work.NickName.String,
+	return &WorkFullDTO{
+		WorkDTO: *NewWorkDTO(work),
 	}
-	if work.SiteID.Valid {
-		dto.SiteID = work.SiteID.Int64
-	}
-	if work.SiteUploadTime.Valid {
-		dto.SiteUploadTime = work.SiteUploadTime.Int64
-	}
-	if work.SiteUpdateTime.Valid {
-		dto.SiteUpdateTime = work.SiteUpdateTime.Int64
-	}
-	if work.LocalAuthorID.Valid {
-		dto.LocalAuthorID = work.LocalAuthorID.Int64
-	}
-	if work.LastView.Valid {
-		dto.LastView = work.LastView.Int64
-	}
-	return dto
 }

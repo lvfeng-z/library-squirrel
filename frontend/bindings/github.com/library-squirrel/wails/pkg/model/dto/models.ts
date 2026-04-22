@@ -5,12 +5,57 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as model$0 from "../models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as entity$0 from "../entity/models.js";
+/**
+ * BackupDTO 备份数据传输对象（无 sql.Null* 版本）
+ */
+export class BackupDTO {
+    "id": number;
+    "sourceType": number | null;
+    "sourceId": number | null;
+    "fileName": string | null;
+    "filePath": string | null;
+    "workdir": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new BackupDTO instance. */
+    constructor($$source: Partial<BackupDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("sourceType" in $$source)) {
+            this["sourceType"] = null;
+        }
+        if (!("sourceId" in $$source)) {
+            this["sourceId"] = null;
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = null;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = null;
+        }
+        if (!("workdir" in $$source)) {
+            this["workdir"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new BackupDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): BackupDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new BackupDTO($$parsedSource as Partial<BackupDTO>);
+    }
+}
 
 /**
  * LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）
@@ -105,6 +150,82 @@ export class LocalTagDTO {
 }
 
 /**
+ * PluginDTO 插件数据传输对象（无 sql.Null* 版本）
+ */
+export class PluginDTO {
+    "id": number;
+    "publicId": string | null;
+    "author": string | null;
+    "name": string | null;
+    "version": string | null;
+    "entryPath": string | null;
+    "rootPath": string | null;
+    "backupId": number | null;
+    "sortNum": number | null;
+    "pluginData": string | null;
+    "uninstalled": number | null;
+    "activationType": string | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new PluginDTO instance. */
+    constructor($$source: Partial<PluginDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("publicId" in $$source)) {
+            this["publicId"] = null;
+        }
+        if (!("author" in $$source)) {
+            this["author"] = null;
+        }
+        if (!("name" in $$source)) {
+            this["name"] = null;
+        }
+        if (!("version" in $$source)) {
+            this["version"] = null;
+        }
+        if (!("entryPath" in $$source)) {
+            this["entryPath"] = null;
+        }
+        if (!("rootPath" in $$source)) {
+            this["rootPath"] = null;
+        }
+        if (!("backupId" in $$source)) {
+            this["backupId"] = null;
+        }
+        if (!("sortNum" in $$source)) {
+            this["sortNum"] = null;
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = null;
+        }
+        if (!("uninstalled" in $$source)) {
+            this["uninstalled"] = null;
+        }
+        if (!("activationType" in $$source)) {
+            this["activationType"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginDTO($$parsedSource as Partial<PluginDTO>);
+    }
+}
+
+/**
  * RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
  */
 export class RankedSiteAuthorWithWorkIdDTO {
@@ -137,6 +258,78 @@ export class RankedSiteAuthorWithWorkIdDTO {
     static createFrom($$source: any = {}): RankedSiteAuthorWithWorkIdDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RankedSiteAuthorWithWorkIdDTO($$parsedSource as Partial<RankedSiteAuthorWithWorkIdDTO>);
+    }
+}
+
+/**
+ * ResourceDTO 资源数据传输对象（无 sql.Null* 版本）
+ */
+export class ResourceDTO {
+    "id": number;
+    "workId": number;
+    "taskId": number;
+    "state": number;
+    "filePath": string | null;
+    "fileName": string | null;
+    "filenameExtension": string | null;
+    "suggestName": string | null;
+    "resourceSize": number | null;
+    "workdir": string | null;
+    "resourceComplete": number;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new ResourceDTO instance. */
+    constructor($$source: Partial<ResourceDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("workId" in $$source)) {
+            this["workId"] = 0;
+        }
+        if (!("taskId" in $$source)) {
+            this["taskId"] = 0;
+        }
+        if (!("state" in $$source)) {
+            this["state"] = 0;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = null;
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = null;
+        }
+        if (!("filenameExtension" in $$source)) {
+            this["filenameExtension"] = null;
+        }
+        if (!("suggestName" in $$source)) {
+            this["suggestName"] = null;
+        }
+        if (!("resourceSize" in $$source)) {
+            this["resourceSize"] = null;
+        }
+        if (!("workdir" in $$source)) {
+            this["workdir"] = null;
+        }
+        if (!("resourceComplete" in $$source)) {
+            this["resourceComplete"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ResourceDTO($$parsedSource as Partial<ResourceDTO>);
     }
 }
 
@@ -666,60 +859,69 @@ export class SiteTagFullDTO {
 }
 
 /**
- * WorkFullDTO 作品完整信息DTO
+ * TaskDTO 任务数据传输对象（无 sql.Null* 版本）
  */
-export class WorkFullDTO {
-    /**
-     * 基础字段
-     */
+export class TaskDTO {
     "id": number;
+    "isCollection": number | null;
+    "pid": number | null;
+    "taskName": string | null;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "url": string | null;
+    "status": number;
+    "pendingResourceId": number | null;
+    "continuable": number | null;
+    "pluginPublicId": string | null;
+    "pluginContributionId": string | null;
+    "pluginData": string | null;
+    "errorMessage": string | null;
     "createTime": number;
     "updateTime": number;
-    "siteId": number;
-    "siteWorkId": string;
-    "siteWorkName": string;
-    "siteAuthorId": string;
-    "siteWorkDescription": string;
-    "siteUploadTime": number;
-    "siteUpdateTime": number;
-    "nickName": string;
-    "localAuthorId": number;
-    "lastView": number;
 
-    /**
-     * 关联的本地作者信息
-     */
-    "localAuthor"?: model$0.RankedLocalAuthor | null;
-
-    /**
-     * 关联的站点作者信息
-     */
-    "siteAuthor"?: model$0.RankedSiteAuthor | null;
-
-    /**
-     * 关联的站点信息
-     */
-    "site"?: SelectItem | null;
-
-    /**
-     * 关联的本地标签列表
-     */
-    "localTags"?: (SelectItem | null)[];
-
-    /**
-     * 关联的站点标签列表
-     */
-    "siteTags"?: (SelectItem | null)[];
-
-    /**
-     * 关联的资源列表
-     */
-    "resources"?: (entity$0.Resource | null)[];
-
-    /** Creates a new WorkFullDTO instance. */
-    constructor($$source: Partial<WorkFullDTO> = {}) {
+    /** Creates a new TaskDTO instance. */
+    constructor($$source: Partial<TaskDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
+        }
+        if (!("isCollection" in $$source)) {
+            this["isCollection"] = null;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = null;
+        }
+        if (!("taskName" in $$source)) {
+            this["taskName"] = null;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("url" in $$source)) {
+            this["url"] = null;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = 0;
+        }
+        if (!("pendingResourceId" in $$source)) {
+            this["pendingResourceId"] = null;
+        }
+        if (!("continuable" in $$source)) {
+            this["continuable"] = null;
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = null;
+        }
+        if (!("pluginContributionId" in $$source)) {
+            this["pluginContributionId"] = null;
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = null;
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = null;
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;
@@ -727,35 +929,179 @@ export class WorkFullDTO {
         if (!("updateTime" in $$source)) {
             this["updateTime"] = 0;
         }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TaskDTO($$parsedSource as Partial<TaskDTO>);
+    }
+}
+
+/**
+ * WorkDTO 作品数据传输对象（无 sql.Null* 版本）
+ */
+export class WorkDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "siteWorkName": string | null;
+    "siteAuthorId": string | null;
+    "siteWorkDescription": string | null;
+    "siteUploadTime": number | null;
+    "siteUpdateTime": number | null;
+    "nickName": string | null;
+    "localAuthorId": number | null;
+    "lastView": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new WorkDTO instance. */
+    constructor($$source: Partial<WorkDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
         if (!("siteId" in $$source)) {
-            this["siteId"] = 0;
+            this["siteId"] = null;
         }
         if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = "";
+            this["siteWorkId"] = null;
         }
         if (!("siteWorkName" in $$source)) {
-            this["siteWorkName"] = "";
+            this["siteWorkName"] = null;
         }
         if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = "";
+            this["siteAuthorId"] = null;
         }
         if (!("siteWorkDescription" in $$source)) {
-            this["siteWorkDescription"] = "";
+            this["siteWorkDescription"] = null;
         }
         if (!("siteUploadTime" in $$source)) {
-            this["siteUploadTime"] = 0;
+            this["siteUploadTime"] = null;
         }
         if (!("siteUpdateTime" in $$source)) {
-            this["siteUpdateTime"] = 0;
+            this["siteUpdateTime"] = null;
         }
         if (!("nickName" in $$source)) {
-            this["nickName"] = "";
+            this["nickName"] = null;
         }
         if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = 0;
+            this["localAuthorId"] = null;
         }
         if (!("lastView" in $$source)) {
-            this["lastView"] = 0;
+            this["lastView"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkDTO($$parsedSource as Partial<WorkDTO>);
+    }
+}
+
+/**
+ * WorkFullDTO 作品完整信息DTO
+ */
+export class WorkFullDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkId": string | null;
+    "siteWorkName": string | null;
+    "siteAuthorId": string | null;
+    "siteWorkDescription": string | null;
+    "siteUploadTime": number | null;
+    "siteUpdateTime": number | null;
+    "nickName": string | null;
+    "localAuthorId": number | null;
+    "lastView": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /**
+     * 关联的本地作者列表
+     */
+    "localAuthors"?: (LocalAuthorDTO | null)[];
+
+    /**
+     * 关联的站点作者列表
+     */
+    "siteAuthors"?: (SiteAuthorFullDTO | null)[];
+
+    /**
+     * 关联的站点信息
+     */
+    "site"?: SiteDTO | null;
+
+    /**
+     * 关联的本地标签列表
+     */
+    "localTags"?: (LocalTagDTO | null)[];
+
+    /**
+     * 关联的站点标签列表
+     */
+    "siteTags"?: (SiteTagFullDTO | null)[];
+
+    /**
+     * 关联的资源列表
+     */
+    "resources"?: (ResourceDTO | null)[];
+
+    /** Creates a new WorkFullDTO instance. */
+    constructor($$source: Partial<WorkFullDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("siteWorkName" in $$source)) {
+            this["siteWorkName"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("siteWorkDescription" in $$source)) {
+            this["siteWorkDescription"] = null;
+        }
+        if (!("siteUploadTime" in $$source)) {
+            this["siteUploadTime"] = null;
+        }
+        if (!("siteUpdateTime" in $$source)) {
+            this["siteUpdateTime"] = null;
+        }
+        if (!("nickName" in $$source)) {
+            this["nickName"] = null;
+        }
+        if (!("localAuthorId" in $$source)) {
+            this["localAuthorId"] = null;
+        }
+        if (!("lastView" in $$source)) {
+            this["lastView"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -765,18 +1111,18 @@ export class WorkFullDTO {
      * Creates a new WorkFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkFullDTO {
-        const $$createField13_0 = $$createType11;
+        const $$createField13_0 = $$createType10;
         const $$createField14_0 = $$createType13;
-        const $$createField15_0 = $$createType15;
-        const $$createField16_0 = $$createType16;
-        const $$createField17_0 = $$createType16;
-        const $$createField18_0 = $$createType19;
+        const $$createField15_0 = $$createType5;
+        const $$createField16_0 = $$createType14;
+        const $$createField17_0 = $$createType17;
+        const $$createField18_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("localAuthor" in $$parsedSource) {
-            $$parsedSource["localAuthor"] = $$createField13_0($$parsedSource["localAuthor"]);
+        if ("localAuthors" in $$parsedSource) {
+            $$parsedSource["localAuthors"] = $$createField13_0($$parsedSource["localAuthors"]);
         }
-        if ("siteAuthor" in $$parsedSource) {
-            $$parsedSource["siteAuthor"] = $$createField14_0($$parsedSource["siteAuthor"]);
+        if ("siteAuthors" in $$parsedSource) {
+            $$parsedSource["siteAuthors"] = $$createField14_0($$parsedSource["siteAuthors"]);
         }
         if ("site" in $$parsedSource) {
             $$parsedSource["site"] = $$createField15_0($$parsedSource["site"]);
@@ -794,6 +1140,74 @@ export class WorkFullDTO {
     }
 }
 
+/**
+ * WorkSetDTO 作品集数据传输对象（无 sql.Null* 版本）
+ */
+export class WorkSetDTO {
+    "id": number;
+    "siteId": number | null;
+    "siteWorkSetId": string | null;
+    "siteWorkSetName": string | null;
+    "siteAuthorId": string | null;
+    "siteWorkSetDescription": string | null;
+    "siteUploadTime": number | null;
+    "siteUpdateTime": number | null;
+    "nickName": string | null;
+    "lastView": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new WorkSetDTO instance. */
+    constructor($$source: Partial<WorkSetDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkSetId" in $$source)) {
+            this["siteWorkSetId"] = null;
+        }
+        if (!("siteWorkSetName" in $$source)) {
+            this["siteWorkSetName"] = null;
+        }
+        if (!("siteAuthorId" in $$source)) {
+            this["siteAuthorId"] = null;
+        }
+        if (!("siteWorkSetDescription" in $$source)) {
+            this["siteWorkSetDescription"] = null;
+        }
+        if (!("siteUploadTime" in $$source)) {
+            this["siteUploadTime"] = null;
+        }
+        if (!("siteUpdateTime" in $$source)) {
+            this["siteUpdateTime"] = null;
+        }
+        if (!("nickName" in $$source)) {
+            this["nickName"] = null;
+        }
+        if (!("lastView" in $$source)) {
+            this["lastView"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkSetDTO($$parsedSource as Partial<WorkSetDTO>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Array($Create.Any);
@@ -805,13 +1219,14 @@ const $$createType6 = SiteTagDTO.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = LocalTagDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.RankedLocalAuthor.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = model$0.RankedSiteAuthor.createFrom;
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = SelectItem.createFrom;
-const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = entity$0.Resource.createFrom;
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = $Create.Array($$createType18);
+const $$createType10 = $Create.Array($$createType3);
+const $$createType11 = SiteAuthorFullDTO.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $Create.Array($$createType9);
+const $$createType15 = SiteTagFullDTO.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = ResourceDTO.createFrom;
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = $Create.Array($$createType19);

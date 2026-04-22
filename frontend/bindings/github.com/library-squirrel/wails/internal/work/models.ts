@@ -10,16 +10,16 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * WorkDTO 作品数据传输对象
+ * WorkParamDTO 作品数据传输对象（增删改参数）
  */
-export class WorkDTO {
+export class WorkParamDTO {
     "id": number;
     "siteId": number | null;
     "siteWorkId": string | null;
     "siteWorkName": string | null;
 
-    /** Creates a new WorkDTO instance. */
-    constructor($$source: Partial<WorkDTO> = {}) {
+    /** Creates a new WorkParamDTO instance. */
+    constructor($$source: Partial<WorkParamDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -37,11 +37,11 @@ export class WorkDTO {
     }
 
     /**
-     * Creates a new WorkDTO instance from a string or object.
+     * Creates a new WorkParamDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): WorkDTO {
+    static createFrom($$source: any = {}): WorkParamDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkDTO($$parsedSource as Partial<WorkDTO>);
+        return new WorkParamDTO($$parsedSource as Partial<WorkParamDTO>);
     }
 }
 
@@ -181,78 +181,6 @@ export class WorkQueryDTO {
             $$parsedSource["updateTime"] = $$createField9_0($$parsedSource["updateTime"]);
         }
         return new WorkQueryDTO($$parsedSource as Partial<WorkQueryDTO>);
-    }
-}
-
-/**
- * WorkResultDTO 作品返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class WorkResultDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkId": string | null;
-    "siteWorkName": string | null;
-    "siteAuthorId": string | null;
-    "siteWorkDescription": string | null;
-    "siteUploadTime": number | null;
-    "siteUpdateTime": number | null;
-    "nickName": string | null;
-    "localAuthorId": number | null;
-    "lastView": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new WorkResultDTO instance. */
-    constructor($$source: Partial<WorkResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("siteWorkName" in $$source)) {
-            this["siteWorkName"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("siteWorkDescription" in $$source)) {
-            this["siteWorkDescription"] = null;
-        }
-        if (!("siteUploadTime" in $$source)) {
-            this["siteUploadTime"] = null;
-        }
-        if (!("siteUpdateTime" in $$source)) {
-            this["siteUpdateTime"] = null;
-        }
-        if (!("nickName" in $$source)) {
-            this["nickName"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastView" in $$source)) {
-            this["lastView"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkResultDTO($$parsedSource as Partial<WorkResultDTO>);
     }
 }
 

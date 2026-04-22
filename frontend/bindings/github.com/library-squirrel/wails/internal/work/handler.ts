@@ -42,7 +42,7 @@ export function DeleteWorkAndSurroundingData(id: number): $CancellablePromise<mo
 /**
  * GetById 根据ID获取作品
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.WorkResultDTO | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkDTO | null> | null> {
     return $Call.ByID(4285741466, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -51,7 +51,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 /**
  * GetBySiteAndSiteWorkID 根据站点ID和站点作品ID获取作品
  */
-export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.ApiResponse<$models.WorkResultDTO | null> | null> {
+export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.ApiResponse<dto$0.WorkDTO | null> | null> {
     return $Call.ByID(344468246, siteId, siteWorkId).then(($result: any) => {
         return $$createType5($result);
     });
@@ -78,7 +78,7 @@ export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $Ca
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.WorkResultDTO, $models.WorkQueryDTO> | null> | null> {
+export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkDTO, $models.WorkQueryDTO> | null> | null> {
     return $Call.ByID(2743079621, page, pageSize, queryDTO).then(($result: any) => {
         return $$createType19($result);
     });
@@ -87,7 +87,7 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
 /**
  * Save 保存作品
  */
-export function Save(work: $models.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(work: $models.WorkParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(111346079, work).then(($result: any) => {
         return $$createType21($result);
     });
@@ -96,7 +96,7 @@ export function Save(work: $models.WorkDTO | null): $CancellablePromise<model$0.
 /**
  * Update 更新作品
  */
-export function Update(work: $models.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(work: $models.WorkParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2273827723, work).then(($result: any) => {
         return $$createType1($result);
     });
@@ -114,7 +114,7 @@ export function UpdateLastUsed(ids: number[]): $CancellablePromise<model$0.ApiRe
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.WorkResultDTO.createFrom;
+const $$createType2 = dto$0.WorkDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
