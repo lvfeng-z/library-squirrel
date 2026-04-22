@@ -72,7 +72,6 @@ type ResourceDeleter interface {
 }
 
 // Repository 作品仓储接口（由 service 定义需要的数据库操作方法）
-// 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {
 	// Save 保存
 	Save(ctx context.Context, work *entity2.Work) error
