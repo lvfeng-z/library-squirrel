@@ -67,12 +67,15 @@ library-squirrel/
 │   │   ├── repository.go     # 数据访问接口
 │   │   ├── repository_impl.go # 数据访问实现
 │   │   └── model.go          # 领域实体
+│   │   └── query.go          # 查询DTO
 │   ├── database/             # 数据库基础设施
 │   │   ├── db.go             # 数据库连接
 │   │   ├── transaction.go    # 事务封装
 │   │   └── resources/        # SQL 迁移文件
 │   ├── model/                # 后端领域模型
-│   └── pkg/model/            # 共享 DTO（ApiResponse等）
+│   └── pkg/model/            # 共享模型
+│       └── entity/           # 实体 子目录
+│       └── dto/              # DTO 子目录
 ├── frontend/src/             # 前端 (Vue 3)
 │   ├── router/               # Vue Router 配置
 │   ├── views/                # 视图组件

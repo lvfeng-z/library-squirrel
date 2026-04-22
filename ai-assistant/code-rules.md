@@ -12,9 +12,9 @@
   - `{module}/` - 业务模块（如 localTag、work）
     - `handler.go` - Handler（Wails Bind）
     - `service.go` - 业务逻辑
-    - `repository.go` - 数据访问接口
-    - `repository_impl.go` - 数据访问实现
+    - `repository.go` - 数据访问实现
     - `model.go` - 领域实体
+    - `query.go` - 查询DTO
   - `database/` - 数据库基础设施
     - `db.go` - 数据库连接
     - `transaction.go` - 事务封装
@@ -1190,5 +1190,5 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 
 ---
 
-**最后更新**: 2026-04-21
+**最后更新**: 2026-04-22
 **维护者**: AI Assistant

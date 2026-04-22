@@ -183,9 +183,9 @@
 ### QueryDTO (Query Data Transfer Object)
 
 - **英文**：Query Data Transfer Object
-- **定义**：查询参数数据传输对象
-- **示例**：`WorkQueryDTO`、`SiteQueryDTO`
-- **位置**：`src/main/model/queryDTO/`
+- **定义**：查询参数数据传输对象，用于封装分页、排序、筛选等查询条件
+- **示例**：`WorkQueryDTO`、`SiteQueryDTO`、`LocalAuthorQueryDTO`
+- **位置**：`internal/{module}/query.go`
 
 ### Entity (实体)
 
@@ -276,3 +276,13 @@
 - **定义**：在依赖图中不依赖其他业务模块的模块
 - **示例**：`relations` 模块被 `work` 依赖，但不依赖其他业务模块
 - **优势**：不会形成循环依赖，可以安全地被多个模块引用
+
+---
+
+## 更新记录
+
+### 2026-04-22
+
+- [修改] QueryDTO 位置更新：`src/main/model/queryDTO/` → `pkg/model/dto/query/`
+- [修改] QueryDTO 示例补充完整模块列表
+- [新增] 说明 QueryDTO 按模块分文件存储

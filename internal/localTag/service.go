@@ -17,18 +17,6 @@ import (
 // 根标签ID
 const RootLocalTagID = 0
 
-// ========== 查询 DTO ==========
-
-// LocalTagQueryDTO 本地标签查询条件
-type LocalTagQueryDTO struct {
-	ID              query.QueryAttribute[int64]  `json:"-" query:"id"`                             // 本地标签ID（程序设置，不从JSON解析）
-	BaseLocalTagID  query.QueryAttribute[int64]  `json:"baseLocalTagId" query:"base_local_tag_id"` // 基础本地标签ID
-	LocalTagName    query.QueryAttribute[string] `json:"localTagName" query:"local_tag_name"`      // 本地标签名称（精确匹配）
-	LocalTagNameStr query.QueryAttribute[string] `json:"localTagNameStr" query:"local_tag_name"`   // 本地标签名称（模糊匹配）
-	UpdateTime      query.QueryAttribute[int64]  `json:"updateTime" query:"update_time"`           // 更新时间（可用于排序）
-	CreateTime      query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`           // 创建时间（可用于排序）
-}
-
 // Repository 本地标签仓储接口（由 service 定义需要的数据库操作方法）
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {

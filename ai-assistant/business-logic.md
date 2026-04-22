@@ -224,15 +224,16 @@
 
 ### 后端 (Go)
 
-| 组件 | 路径 |
-|------|------|
-| 程序入口 | `main.go` |
-| 业务模块 | `internal/{module}/` |
-| 数据库基础设施 | `internal/database/` |
-| 程序配置 | `internal/config/` |
-| 共享DTO | `pkg/model/` |
-| Handler | `internal/{module}/handler.go` |
-| Service | `internal/{module}/service.go` |
+| 组件 | 路径                                |
+|------|-----------------------------------|
+| 程序入口 | `main.go`                         |
+| 业务模块 | `internal/{module}/`              |
+| 数据库基础设施 | `internal/database/`              |
+| 程序配置 | `internal/config/`                |
+| 共享DTO | `pkg/model/`                      |
+| QueryDTO | `internal/{module}/query.go`      |
+| Handler | `internal/{module}/handler.go`    |
+| Service | `internal/{module}/service.go`    |
 | Repository | `internal/{module}/repository.go` |
 
 ### 前端 (Vue 3)
