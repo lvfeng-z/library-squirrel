@@ -213,11 +213,11 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 		SELECT t1.*,
 			CASE WHEN t2.id IS NOT NULL THEN
 				JSON_OBJECT('id', t2.id, 'workId', t2.work_id, 'taskId', t2.task_id, 'state', t2.state, 'filePath', t2.file_path, 'fileName', t2.file_name,
-					'filenameExtension', t2.filename_extension, 'suggestedName', t2.suggest_name, 'workdir', t2.workdir, 'resourceComplete', t2.resource_complete)
+					'filenameExtension', t2.filename_extension, 'suggestName', t2.suggest_name, 'workdir', t2.workdir, 'resourceComplete', t2.resource_complete)
 			END AS resource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
 				'id', rt1.id, 'workId', rt1.work_id, 'taskId', rt1.task_id, 'state', rt1.state, 'filePath', rt1.file_path, 'fileName', rt1.file_name, 'filenameExtension',
-				rt1.filename_extension, 'suggestedName', rt1.suggest_name, 'workdir', rt1.workdir, 'resourceComplete', rt1.resource_complete))
+				rt1.filename_extension, 'suggestName', rt1.suggest_name, 'workdir', rt1.workdir, 'resourceComplete', rt1.resource_complete))
 			FROM resource rt1
 			WHERE t1.id = rt1.work_id AND rt1.state = 0) AS inactiveResource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', rt2.id, 'localTagName', rt2.local_tag_name, 'baseLocalTagId', rt2.base_local_tag_id, 'lastUse', rt2.last_use))
@@ -278,7 +278,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 resource JSON
 		if resource.Valid && resource.String != "" {
-			var res entity2.Resource
+			var res dto2.ResourceDTO
 			if json.Unmarshal([]byte(resource.String), &res) == nil {
 				dto.Resources = append(dto.Resources, &res)
 			}
@@ -286,7 +286,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 inactiveResource JSON 数组
 		if inactiveResource.Valid && inactiveResource.String != "" {
-			var resList []entity2.Resource
+			var resList []dto2.ResourceDTO
 			if json.Unmarshal([]byte(inactiveResource.String), &resList) == nil {
 				for i := range resList {
 					dto.Resources = append(dto.Resources, &resList[i])
@@ -296,7 +296,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 localTags
 		if localTags.Valid && localTags.String != "" && localTags.String != "null" {
-			var tags []*dto2.SelectItem
+			var tags []*dto2.LocalTagDTO
 			if json.Unmarshal([]byte(localTags.String), &tags) == nil {
 				dto.LocalTags = tags
 			}
@@ -304,7 +304,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 siteTags
 		if siteTags.Valid && siteTags.String != "" && siteTags.String != "null" {
-			var tags []*dto2.SelectItem
+			var tags []*dto2.SiteTagFullDTO
 			if json.Unmarshal([]byte(siteTags.String), &tags) == nil {
 				dto.SiteTags = tags
 			}
@@ -312,17 +312,17 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 localAuthors
 		if localAuthors.Valid && localAuthors.String != "" && localAuthors.String != "null" {
-			var authors []*dto2.SelectItem
+			var authors []*dto2.LocalAuthorDTO
 			if json.Unmarshal([]byte(localAuthors.String), &authors) == nil {
-				dto.LocalTags = authors // 复用 SelectItem 切片
+				dto.LocalAuthors = authors
 			}
 		}
 
 		// 解析 siteAuthors
 		if siteAuthors.Valid && siteAuthors.String != "" && siteAuthors.String != "null" {
-			var authors []*dto2.SelectItem
+			var authors []*dto2.SiteAuthorFullDTO
 			if json.Unmarshal([]byte(siteAuthors.String), &authors) == nil {
-				dto.SiteTags = authors // 复用 SelectItem 切片
+				dto.SiteAuthors = authors
 			}
 		}
 

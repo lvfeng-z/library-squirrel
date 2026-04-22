@@ -232,36 +232,33 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.Work
 	if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
 		localAuthor, err := s.localAuthorReader.GetById(ctx, work.LocalAuthorID.Int64)
 		if err == nil && localAuthor != nil {
-			authorName := ""
-			if localAuthor.AuthorName.Valid {
-				authorName = localAuthor.AuthorName.String
-			}
-			introduce := ""
-			if localAuthor.Introduce.Valid {
-				introduce = localAuthor.Introduce.String
-			}
-			lastUse := int64(0)
-			if localAuthor.LastUse.Valid {
-				lastUse = localAuthor.LastUse.Int64
-			}
-			fullDTO.LocalAuthor = &model.RankedLocalAuthor{
-				ID:         localAuthor.ID,
-				AuthorName: authorName,
-				Introduce:  introduce,
-				LastUse:    lastUse,
-				CreateTime: localAuthor.CreateTime,
-				UpdateTime: localAuthor.UpdateTime,
-			}
+			fullDTO.LocalAuthors = []*dto2.LocalAuthorDTO{dto2.NewLocalAuthorDTO(localAuthor)}
 		}
 	}
 
 	// 获取站点作者信息
 	if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
-		// 注意：SiteAuthorID 在表中是 string 类型，需要通过其他方式查询
-		siteAuthors, err := s.siteAuthorReader.ListByWorkId(ctx, id)
-		if err == nil && len(siteAuthors) > 0 {
-			// 取第一个站点作者
-			fullDTO.SiteAuthor = siteAuthors[0]
+		rankedAuthors, err := s.siteAuthorReader.ListByWorkId(ctx, id)
+		if err == nil && len(rankedAuthors) > 0 {
+			fullDTO.SiteAuthors = make([]*dto2.SiteAuthorFullDTO, 0, len(rankedAuthors))
+			for _, ra := range rankedAuthors {
+				if ra == nil {
+					continue
+				}
+				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, &dto2.SiteAuthorFullDTO{
+					ID:                   ra.ID,
+					CreateTime:           ra.CreateTime,
+					UpdateTime:           ra.UpdateTime,
+					SiteID:               ra.SiteID,
+					SiteAuthorID:         ra.SiteAuthorID,
+					AuthorName:           ra.AuthorName,
+					FixedAuthorName:      ra.FixedAuthorName,
+					SiteAuthorNameBefore: ra.SiteAuthorNameBefore,
+					Introduce:            ra.Introduce,
+					LocalAuthorID:        ra.LocalAuthorID,
+					LastUse:              ra.LastUse,
+				})
+			}
 		}
 	}
 
@@ -269,53 +266,35 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.Work
 	if work.SiteID.Valid && work.SiteID.Int64 > 0 {
 		site, err := s.siteReader.GetById(ctx, work.SiteID.Int64)
 		if err == nil && site != nil {
-			siteName := ""
-			if site.SiteName.Valid {
-				siteName = site.SiteName.String
-			}
-			fullDTO.Site = &dto2.SelectItem{
-				Value: site.ID,
-				Label: siteName,
-			}
+			fullDTO.Site = dto2.NewSiteDTO(site)
 		}
 	}
 
 	// 获取本地标签信息
 	localTags, err := s.localTagReader.ListByWorkId(ctx, id)
 	if err == nil && len(localTags) > 0 {
-		fullDTO.LocalTags = make([]*dto2.SelectItem, len(localTags))
+		fullDTO.LocalTags = make([]*dto2.LocalTagDTO, len(localTags))
 		for i, tag := range localTags {
-			tagName := ""
-			if tag.LocalTagName.Valid {
-				tagName = tag.LocalTagName.String
-			}
-			fullDTO.LocalTags[i] = &dto2.SelectItem{
-				Value: tag.ID,
-				Label: tagName,
-			}
+			fullDTO.LocalTags[i] = dto2.NewLocalTagDTO(tag)
 		}
 	}
 
 	// 获取站点标签信息
 	siteTags, err := s.siteTagReader.ListByWorkId(ctx, id)
 	if err == nil && len(siteTags) > 0 {
-		fullDTO.SiteTags = make([]*dto2.SelectItem, len(siteTags))
+		fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, len(siteTags))
 		for i, tag := range siteTags {
-			tagName := ""
-			if tag.SiteTagName.Valid {
-				tagName = tag.SiteTagName.String
-			}
-			fullDTO.SiteTags[i] = &dto2.SelectItem{
-				Value: tag.ID,
-				Label: tagName,
-			}
+			fullDTO.SiteTags[i] = dto2.NewSiteTagFullDTO(tag)
 		}
 	}
 
 	// 获取资源信息
 	resources, err := s.resourceReader.ListByWorkId(ctx, id)
 	if err == nil && len(resources) > 0 {
-		fullDTO.Resources = resources
+		fullDTO.Resources = make([]*dto2.ResourceDTO, len(resources))
+		for i, res := range resources {
+			fullDTO.Resources[i] = dto2.NewResourceDTO(res)
+		}
 	}
 
 	return fullDTO, nil

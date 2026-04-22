@@ -74,7 +74,7 @@ type WorkResponse struct {
 	SiteAuthors  []*TaskSiteAuthorDTO  `json:"siteAuthors"`  // 站点作者数组
 	SiteTags     []*TaskSiteTagDTO     `json:"siteTags"`     // 站点标签数组
 	WorkSets     []*WorkSetDTO         `json:"workSets"`     // 作品所属作品集
-	Resource     *ResourceDTO          `json:"resource"`     // 资源信息
+	Resource     *TaskResourceDTO      `json:"resource"`     // 资源信息
 }
 
 // TaskSiteAuthorDTO 任务处理器站点作者DTO
@@ -98,8 +98,8 @@ type WorkSetDTO struct {
 	WorkSetName string `json:"workSetName"` // 作品集名称
 }
 
-// ResourceDTO 资源DTO
-type ResourceDTO struct {
+// TaskResourceDTO 任务处理器资源DTO
+type TaskResourceDTO struct {
 	ResourceID   int64  `json:"resourceId"`   // 资源ID
 	URL          string `json:"url"`          // 资源URL
 	Type         string `json:"type"`         // 资源类型

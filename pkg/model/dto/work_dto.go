@@ -1,7 +1,6 @@
 package dto
 
 import (
-	"github.com/library-squirrel/wails/pkg/model"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
@@ -22,23 +21,23 @@ type WorkFullDTO struct {
 	LocalAuthorID       int64  `json:"localAuthorId"`
 	LastView            int64  `json:"lastView"`
 
-	// 关联的本地作者信息
-	LocalAuthor *model.RankedLocalAuthor `json:"localAuthor,omitempty"`
+	// 关联的本地作者列表
+	LocalAuthors []*LocalAuthorDTO `json:"localAuthors,omitempty"`
 
-	// 关联的站点作者信息
-	SiteAuthor *model.RankedSiteAuthor `json:"siteAuthor,omitempty"`
+	// 关联的站点作者列表
+	SiteAuthors []*SiteAuthorFullDTO `json:"siteAuthors,omitempty"`
 
 	// 关联的站点信息
-	Site *SelectItem `json:"site,omitempty"`
+	Site *SiteDTO `json:"site,omitempty"`
 
 	// 关联的本地标签列表
-	LocalTags []*SelectItem `json:"localTags,omitempty"`
+	LocalTags []*LocalTagDTO `json:"localTags,omitempty"`
 
 	// 关联的站点标签列表
-	SiteTags []*SelectItem `json:"siteTags,omitempty"`
+	SiteTags []*SiteTagFullDTO `json:"siteTags,omitempty"`
 
 	// 关联的资源列表
-	Resources []*entity2.Resource `json:"resources,omitempty"`
+	Resources []*ResourceDTO `json:"resources,omitempty"`
 }
 
 // NewWorkFullDTO 创建WorkFullDTO
