@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteAuthorHandler, SiteAuthorDTO, SiteAuthorQueryDTO, SiteAuthorResultDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import type { RankedSiteAuthorWithWorkIdDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
+import { Handler as SiteAuthorHandler, SiteAuthorParamDTO, SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
+import { SiteAuthorDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO, RankedSiteAuthorWithWorkIdDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteAuthorVO {
@@ -30,7 +30,7 @@ export interface PageResult {
 /**
  * 将 SiteAuthorResultDTO 转换为 SiteAuthorVO
  */
-function toSiteAuthorVO(dto: SiteAuthorResultDTO | null): SiteAuthorVO | null {
+function toSiteAuthorVO(dto: SiteAuthorDTO | null): SiteAuthorVO | null {
   if (!dto) return null
   return {
     id: dto.id,
@@ -82,7 +82,7 @@ export async function siteAuthorSave(author: {
   introduce?: string
   siteId?: number
 }): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorDTO({
+  const authorDTO = new SiteAuthorParamDTO({
     authorName: author.authorName ?? null,
     siteId: author.siteId ?? null
   })
@@ -127,7 +127,7 @@ export async function siteAuthorUpdateById(author: {
   introduce?: string
   localAuthorId?: number
 }): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorDTO({
+  const authorDTO = new SiteAuthorParamDTO({
     id: author.id,
     authorName: author.authorName ?? null
   })
@@ -149,7 +149,7 @@ export async function siteAuthorGetById(id: number): Promise<ApiResponse<SiteAut
   return { success: true, msg: result.msg ?? '', data: toSiteAuthorVO(result.data ?? null) ?? undefined }
 }
 
-export async function siteAuthorQueryPage(page: Page<SiteAuthorResultDTO, SiteAuthorQueryDTO>): Promise<ApiResponse<Page<SiteAuthorResultDTO, SiteAuthorQueryDTO>>> {
+export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO, SiteAuthorQueryDTO>): Promise<ApiResponse<Page<SiteAuthorDTO, SiteAuthorQueryDTO>>> {
   const result = await SiteAuthorHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

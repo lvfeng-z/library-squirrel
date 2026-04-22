@@ -241,14 +241,14 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 	}
 
 	// 批量查询 Site
-	siteMap := make(map[int64]*entity2.Site)
+	siteMap := make(map[int64]*dto2.SiteDTO)
 	if len(siteIds) > 0 {
 		sites, err := s.siteQueryOp.ListByIds(ctx, unique(siteIds))
 		if err != nil {
 			return nil, err
 		}
 		for _, st := range sites {
-			siteMap[st.ID] = st
+			siteMap[st.ID] = dto2.NewSiteDTO(st)
 		}
 	}
 

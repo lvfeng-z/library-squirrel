@@ -4,6 +4,5 @@
 export {
     ReWorkTag,
     Resource,
-    Site,
     Work
 } from "./models.js";

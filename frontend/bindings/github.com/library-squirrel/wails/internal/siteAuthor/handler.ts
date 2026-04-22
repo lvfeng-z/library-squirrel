@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../../pkg/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -21,7 +24,7 @@ import * as $models from "./models.js";
 /**
  * CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
  */
-export function CreateAndBindSameNameLocalAuthor(siteAuthor: $models.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
+export function CreateAndBindSameNameLocalAuthor(siteAuthor: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(475611968, siteAuthor).then(($result: any) => {
         return $$createType1($result);
     });
@@ -39,7 +42,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.SiteAuthorResultDTO | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.SiteAuthorDTO | null> | null> {
     return $Call.ByID(3691656987, id).then(($result: any) => {
         return $$createType7($result);
     });
@@ -48,7 +51,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 /**
  * ListBySiteAuthorIds 根据站点作者ID列表获取
  */
-export function ListBySiteAuthorIds(siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.SiteAuthorResultDTO | null)[]> | null> {
+export function ListBySiteAuthorIds(siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.SiteAuthorDTO | null)[]> | null> {
     return $Call.ByID(1782483914, siteAuthorIds).then(($result: any) => {
         return $$createType10($result);
     });
@@ -66,7 +69,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
  */
-export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.RankedSiteAuthorWithWorkIdDTO | null)[]> | null> {
+export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.RankedSiteAuthorWithWorkIdDTO | null)[]> | null> {
     return $Call.ByID(3322239424, workIds).then(($result: any) => {
         return $$createType20($result);
     });
@@ -75,7 +78,7 @@ export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $Can
 /**
  * QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
  */
-export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<$models.SiteAuthorFullDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorFullDTO, $models.SiteAuthorQueryDTO> | null> | null> {
+export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<dto$0.SiteAuthorFullDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorFullDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(157583187, page).then(($result: any) => {
         return $$createType26($result);
     });
@@ -84,7 +87,7 @@ export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<$models.
 /**
  * QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
  */
-export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteAuthorLocalRelateDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorLocalRelateDTO, $models.SiteAuthorQueryDTO> | null> | null> {
+export function QueryLocalRelateDTOPage(page: model$0.Page<dto$0.SiteAuthorLocalRelateDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorLocalRelateDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(4104954123, page).then(($result: any) => {
         return $$createType31($result);
     });
@@ -93,7 +96,7 @@ export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteAuthorLoc
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.SiteAuthorResultDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteAuthorResultDTO, $models.SiteAuthorQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<dto$0.SiteAuthorDTO, $models.SiteAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorDTO, $models.SiteAuthorQueryDTO> | null> | null> {
     return $Call.ByID(19819348, page).then(($result: any) => {
         return $$createType35($result);
     });
@@ -102,7 +105,7 @@ export function QueryPage(page: model$0.Page<$models.SiteAuthorResultDTO, $model
 /**
  * Save 保存站点作者
  */
-export function Save(author: $models.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(author: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1406741580, author).then(($result: any) => {
         return $$createType37($result);
     });
@@ -111,7 +114,7 @@ export function Save(author: $models.SiteAuthorDTO | null): $CancellablePromise<
 /**
  * SaveBatch 批量保存站点作者
  */
-export function SaveBatch(authors: ($models.SiteAuthorDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function SaveBatch(authors: ($models.SiteAuthorParamDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(4158614420, authors).then(($result: any) => {
         return $$createType3($result);
     });
@@ -120,7 +123,7 @@ export function SaveBatch(authors: ($models.SiteAuthorDTO | null)[]): $Cancellab
 /**
  * Update 更新站点作者
  */
-export function Update(author: $models.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(author: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1576222040, author).then(($result: any) => {
         return $$createType3($result);
     });
@@ -149,7 +152,7 @@ const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.SiteAuthorResultDTO.createFrom;
+const $$createType4 = dto$0.SiteAuthorDTO.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
@@ -161,18 +164,18 @@ const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = model$0.ApiResponse.createFrom($$createType13);
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = $models.RankedSiteAuthorWithWorkIdDTO.createFrom;
+const $$createType16 = dto$0.RankedSiteAuthorWithWorkIdDTO.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
 const $$createType18 = $Create.Array($$createType17);
 const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = $models.SiteAuthorFullDTO.createFrom;
+const $$createType21 = dto$0.SiteAuthorFullDTO.createFrom;
 const $$createType22 = $models.SiteAuthorQueryDTO.createFrom;
 const $$createType23 = model$0.Page.createFrom($$createType21, $$createType22);
 const $$createType24 = $Create.Nullable($$createType23);
 const $$createType25 = model$0.ApiResponse.createFrom($$createType24);
 const $$createType26 = $Create.Nullable($$createType25);
-const $$createType27 = $models.SiteAuthorLocalRelateDTO.createFrom;
+const $$createType27 = dto$0.SiteAuthorLocalRelateDTO.createFrom;
 const $$createType28 = model$0.Page.createFrom($$createType27, $$createType22);
 const $$createType29 = $Create.Nullable($$createType28);
 const $$createType30 = model$0.ApiResponse.createFrom($$createType29);

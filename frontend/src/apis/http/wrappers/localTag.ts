@@ -4,9 +4,10 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as LocalTagHandler, LocalTagDTO, LocalTagQueryDTO, LocalTagResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
+import { Handler as LocalTagHandler, LocalTagParamDTO, LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
+import { LocalTagDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
-import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import { SelectItem } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 
 // ========== 类型定义 ==========
 
@@ -31,7 +32,7 @@ export interface PageResult {
 /**
  * 将 LocalTagResultDTO 转换为 LocalTagVO
  */
-function toLocalTagVO(dto: LocalTagResultDTO | null): LocalTagVO | null {
+function toLocalTagVO(dto: LocalTagDTO | null): LocalTagVO | null {
   if (!dto) return null
   return {
     id: dto.id,
@@ -52,7 +53,7 @@ export async function localTagSave(tag: {
   localTagName?: string
   baseLocalTagId?: number
 }): Promise<ApiResponse<LocalTagVO>> {
-  const tagDTO = new LocalTagDTO({
+  const tagDTO = new LocalTagParamDTO({
     localTagName: tag.localTagName ?? null,
     baseLocalTagId: tag.baseLocalTagId ?? null
   })
@@ -85,7 +86,7 @@ export async function localTagUpdateById(tag: {
   localTagName?: string
   baseLocalTagId?: number
 }): Promise<ApiResponse<LocalTagVO>> {
-  const tagDTO = new LocalTagDTO({
+  const tagDTO = new LocalTagParamDTO({
     id: tag.id,
     localTagName: tag.localTagName ?? null,
     baseLocalTagId: tag.baseLocalTagId ?? null
@@ -115,7 +116,7 @@ export async function localTagGetById(id: number): Promise<ApiResponse<LocalTagV
  * 分页查询本地标签
  * 直接透传 Page 对象给 binding，不做额外解包
  */
-export async function localTagQueryPage(page: Page<LocalTagResultDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagResultDTO, LocalTagQueryDTO>>> {
+export async function localTagQueryPage(page: Page<LocalTagDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagDTO, LocalTagQueryDTO>>> {
   const result = await LocalTagHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

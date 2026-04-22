@@ -10,93 +10,17 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * LocalAuthorDTO 本地作者数据传输对象
+ * SiteAuthorParamDTO 站点作者数据传输对象（增删改参数）
  */
-export class LocalAuthorDTO {
-    "id": number;
-    "authorName": string | null;
-    "introduce": string | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new LocalAuthorDTO instance. */
-    constructor($$source: Partial<LocalAuthorDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalAuthorDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalAuthorDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalAuthorDTO($$parsedSource as Partial<LocalAuthorDTO>);
-    }
-}
-
-/**
- * RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
- */
-export class RankedSiteAuthorWithWorkIdDTO {
-    "workId": number;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "rank": number;
-
-    /** Creates a new RankedSiteAuthorWithWorkIdDTO instance. */
-    constructor($$source: Partial<RankedSiteAuthorWithWorkIdDTO> = {}) {
-        if (!("workId" in $$source)) {
-            this["workId"] = 0;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("rank" in $$source)) {
-            this["rank"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RankedSiteAuthorWithWorkIdDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RankedSiteAuthorWithWorkIdDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new RankedSiteAuthorWithWorkIdDTO($$parsedSource as Partial<RankedSiteAuthorWithWorkIdDTO>);
-    }
-}
-
-/**
- * SiteAuthorDTO 站点作者数据传输对象
- */
-export class SiteAuthorDTO {
+export class SiteAuthorParamDTO {
     "id": number;
     "siteId": number | null;
     "siteAuthorId": string | null;
     "authorName": string | null;
     "introduce": string | null;
 
-    /** Creates a new SiteAuthorDTO instance. */
-    constructor($$source: Partial<SiteAuthorDTO> = {}) {
+    /** Creates a new SiteAuthorParamDTO instance. */
+    constructor($$source: Partial<SiteAuthorParamDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -117,149 +41,11 @@ export class SiteAuthorDTO {
     }
 
     /**
-     * Creates a new SiteAuthorDTO instance from a string or object.
+     * Creates a new SiteAuthorParamDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): SiteAuthorDTO {
+    static createFrom($$source: any = {}): SiteAuthorParamDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteAuthorDTO($$parsedSource as Partial<SiteAuthorDTO>);
-    }
-}
-
-/**
- * SiteAuthorFullDTO 站点作者完整信息DTO
- */
-export class SiteAuthorFullDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "fixedAuthorName": string | null;
-    "siteAuthorNameBefore": string | null;
-    "introduce": string | null;
-    "localAuthorId": number | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-    "localAuthor"?: LocalAuthorDTO | null;
-
-    /** Creates a new SiteAuthorFullDTO instance. */
-    constructor($$source: Partial<SiteAuthorFullDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = null;
-        }
-        if (!("siteAuthorNameBefore" in $$source)) {
-            this["siteAuthorNameBefore"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteAuthorFullDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteAuthorFullDTO {
-        const $$createField11_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("localAuthor" in $$parsedSource) {
-            $$parsedSource["localAuthor"] = $$createField11_0($$parsedSource["localAuthor"]);
-        }
-        return new SiteAuthorFullDTO($$parsedSource as Partial<SiteAuthorFullDTO>);
-    }
-}
-
-/**
- * SiteAuthorLocalRelateDTO 站点作者与本地作者关联DTO
- */
-export class SiteAuthorLocalRelateDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "fixedAuthorName": string | null;
-    "siteAuthorNameBefore": string | null;
-    "introduce": string | null;
-    "localAuthorId": number | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-    "localAuthor"?: LocalAuthorDTO | null;
-
-    /** Creates a new SiteAuthorLocalRelateDTO instance. */
-    constructor($$source: Partial<SiteAuthorLocalRelateDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = null;
-        }
-        if (!("siteAuthorNameBefore" in $$source)) {
-            this["siteAuthorNameBefore"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteAuthorLocalRelateDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteAuthorLocalRelateDTO {
-        const $$createField11_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("localAuthor" in $$parsedSource) {
-            $$parsedSource["localAuthor"] = $$createField11_0($$parsedSource["localAuthor"]);
-        }
-        return new SiteAuthorLocalRelateDTO($$parsedSource as Partial<SiteAuthorLocalRelateDTO>);
+        return new SiteAuthorParamDTO($$parsedSource as Partial<SiteAuthorParamDTO>);
     }
 }
 
@@ -349,15 +135,15 @@ export class SiteAuthorQueryDTO {
      * Creates a new SiteAuthorQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorQueryDTO {
-        const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType3;
-        const $$createField2_0 = $$createType2;
-        const $$createField3_0 = $$createType3;
-        const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType3;
-        const $$createField6_0 = $$createType3;
-        const $$createField7_0 = $$createType2;
-        const $$createField8_0 = $$createType2;
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
@@ -390,73 +176,7 @@ export class SiteAuthorQueryDTO {
     }
 }
 
-/**
- * SiteAuthorResultDTO 站点作者返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class SiteAuthorResultDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "fixedAuthorName": string | null;
-    "siteAuthorNameBefore": string | null;
-    "introduce": string | null;
-    "localAuthorId": number | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new SiteAuthorResultDTO instance. */
-    constructor($$source: Partial<SiteAuthorResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = null;
-        }
-        if (!("siteAuthorNameBefore" in $$source)) {
-            this["siteAuthorNameBefore"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteAuthorResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteAuthorResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteAuthorResultDTO($$parsedSource as Partial<SiteAuthorResultDTO>);
-    }
-}
-
 // Private type creation functions
-const $$createType0 = LocalAuthorDTO.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);

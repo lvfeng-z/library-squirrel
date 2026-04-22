@@ -142,17 +142,19 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 		dto := dto2.NewSiteTagFullDTO(tag)
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			dto.LocalTag = &dto2.LocalTagDTO{}
-			if err := r.GORM().WithContext(ctx).First(dto.LocalTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var localTag entity2.LocalTag
+			if err := r.GORM().WithContext(ctx).First(&localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			dto.LocalTag = dto2.NewLocalTagDTO(&localTag)
 		}
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			dto.Site = &entity2.Site{}
-			if err := r.GORM().WithContext(ctx).First(dto.Site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var site entity2.Site
+			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			dto.Site = dto2.NewSiteDTO(&site)
 		}
 		results = append(results, dto)
 	}
@@ -204,17 +206,19 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 		dto := dto2.NewSiteTagLocalRelateDTO(tag)
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			dto.LocalTag = &entity2.LocalTag{}
-			if err := r.GORM().WithContext(ctx).First(dto.LocalTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var localTag entity2.LocalTag
+			if err := r.GORM().WithContext(ctx).First(&localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			dto.LocalTag = dto2.NewLocalTagDTO(&localTag)
 		}
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			dto.Site = &entity2.Site{}
-			if err := r.GORM().WithContext(ctx).First(dto.Site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var site entity2.Site
+			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			dto.Site = dto2.NewSiteDTO(&site)
 		}
 		// 检查是否有同名本地标签
 		var count int64

@@ -170,62 +170,6 @@ export class Resource {
 }
 
 /**
- * Site 站点
- */
-export class Site {
-    "id": number;
-    "createTime": number;
-    "updateTime": number;
-    "siteName": sql$0.NullString;
-    "siteDescription": sql$0.NullString;
-    "homepage": sql$0.NullString;
-
-    /** Creates a new Site instance. */
-    constructor($$source: Partial<Site> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("siteName" in $$source)) {
-            this["siteName"] = (new sql$0.NullString());
-        }
-        if (!("siteDescription" in $$source)) {
-            this["siteDescription"] = (new sql$0.NullString());
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = (new sql$0.NullString());
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Site instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Site {
-        const $$createField3_0 = $$createType1;
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("siteName" in $$parsedSource) {
-            $$parsedSource["siteName"] = $$createField3_0($$parsedSource["siteName"]);
-        }
-        if ("siteDescription" in $$parsedSource) {
-            $$parsedSource["siteDescription"] = $$createField4_0($$parsedSource["siteDescription"]);
-        }
-        if ("homepage" in $$parsedSource) {
-            $$parsedSource["homepage"] = $$createField5_0($$parsedSource["homepage"]);
-        }
-        return new Site($$parsedSource as Partial<Site>);
-    }
-}
-
-/**
  * Work 作品
  */
 export class Work {

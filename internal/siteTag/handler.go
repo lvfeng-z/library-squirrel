@@ -22,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存站点标签
-func (h *Handler) Save(ctx context.Context, tag *SiteTagDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, tag *SiteTagParamDTO) *model.ApiResponse[int64] {
 	domainTag := &entity.SiteTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -50,7 +50,7 @@ func (h *Handler) Save(ctx context.Context, tag *SiteTagDTO) *model.ApiResponse[
 }
 
 // SaveBatch 批量保存站点标签
-func (h *Handler) SaveBatch(ctx context.Context, tags []*SiteTagDTO) *model.ApiResponse[any] {
+func (h *Handler) SaveBatch(ctx context.Context, tags []*SiteTagParamDTO) *model.ApiResponse[any] {
 	domainTags := make([]*entity.SiteTag, 0, len(tags))
 	for _, tag := range tags {
 		domainTag := &entity.SiteTag{
@@ -90,7 +90,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新站点标签
-func (h *Handler) Update(ctx context.Context, tag *SiteTagDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, tag *SiteTagParamDTO) *model.ApiResponse[any] {
 	domainTag := &entity.SiteTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -121,29 +121,29 @@ func (h *Handler) Update(ctx context.Context, tag *SiteTagDTO) *model.ApiRespons
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.SiteTagResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.SiteTagDTO] {
 	tag, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.SiteTagResultDTO](err.Error())
+		return model.Error[*dto.SiteTagDTO](err.Error())
 	}
-	return model.Success(ToSiteTagResultDTO(tag))
+	return model.Success(dto.NewSiteTagDTO(tag))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagResultDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteTagResultDTO, SiteTagQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteTagDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteTagResultDTO, SiteTagQueryDTO]{}
+		page = &model.Page[dto.SiteTagDTO, SiteTagQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteTagResultDTO, SiteTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteTagDTO, SiteTagQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*dto.SiteTagResultDTO, 0, len(result.Data))
+	// 转换为 DTO
+	data := make([]*dto.SiteTagDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
-		data = append(data, ToSiteTagResultDTO(tag))
+		data = append(data, dto.NewSiteTagDTO(tag))
 	}
-	return model.Success(&model.Page[dto.SiteTagResultDTO, SiteTagQueryDTO]{
+	return model.Success(&model.Page[dto.SiteTagDTO, SiteTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -210,15 +210,15 @@ func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[dto.Si
 }
 
 // ListBySiteTagIds 根据站点标签ID列表获取
-func (h *Handler) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) *model.ApiResponse[[]*dto.SiteTagResultDTO] {
+func (h *Handler) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) *model.ApiResponse[[]*dto.SiteTagDTO] {
 	result, err := h.svc.ListBySiteTagIds(ctx, siteTagIds)
 	if err != nil {
-		return model.Error[[]*dto.SiteTagResultDTO](err.Error())
+		return model.Error[[]*dto.SiteTagDTO](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*dto.SiteTagResultDTO, 0, len(result))
+	// 转换为 DTO
+	data := make([]*dto.SiteTagDTO, 0, len(result))
 	for _, tag := range result {
-		data = append(data, ToSiteTagResultDTO(tag))
+		data = append(data, dto.NewSiteTagDTO(tag))
 	}
 	return model.Success(data)
 }
@@ -233,7 +233,7 @@ func (h *Handler) UpdateBindLocalTag(ctx context.Context, localTagId *int64, sit
 }
 
 // CreateAndBindSameNameLocalTag 创建并绑定同名本地标签
-func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *SiteTagDTO) *model.ApiResponse[*dto.LocalTagDTO] {
+func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *SiteTagParamDTO) *model.ApiResponse[*dto.LocalTagDTO] {
 	if siteTag.ID == 0 {
 		return model.Error[*dto.LocalTagDTO]("创建同名本地标签失败，标签ID不能为空")
 	}
@@ -262,15 +262,15 @@ func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *Si
 }
 
 // ListByWorkId 根据作品ID获取标签列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.SiteTagResultDTO] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.SiteTagDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*dto.SiteTagResultDTO](err.Error())
+		return model.Error[[]*dto.SiteTagDTO](err.Error())
 	}
-	// 转换为 ResultDTO
-	resultDTOs := make([]*dto.SiteTagResultDTO, len(result))
+	// 转换为 DTO
+	resultDTOs := make([]*dto.SiteTagDTO, len(result))
 	for i, tag := range result {
-		resultDTOs[i] = ToSiteTagResultDTO(tag)
+		resultDTOs[i] = dto.NewSiteTagDTO(tag)
 	}
 	return model.Success(resultDTOs)
 }
@@ -297,8 +297,8 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 
 // ========== DTO 定义 ==========
 
-// SiteTagDTO 站点标签数据传输对象
-type SiteTagDTO struct {
+// SiteTagParamDTO 站点标签数据传输对象（增删改参数）
+type SiteTagParamDTO struct {
 	ID          int64   `json:"id"`
 	SiteID      *int64  `json:"siteId"`
 	SiteTagID   *string `json:"siteTagId"`
@@ -306,38 +306,19 @@ type SiteTagDTO struct {
 	Description *string `json:"description"`
 }
 
-// SiteTagLocalRelateDTO 站点标签与本地标签关联DTO
+// SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（Handler内部转换用）
 type SiteTagLocalRelateDTO struct {
-	dto.SiteTagResultDTO
+	dto.SiteTagDTO
 	LocalTag *dto.LocalTagDTO `json:"localTag,omitempty"`
 }
 
-// ToSiteTagResultDTO 将 domain.SiteTag 转换为 SiteTagResultDTO
-func ToSiteTagResultDTO(tag *entity.SiteTag) *dto.SiteTagResultDTO {
-	if tag == nil {
-		return nil
-	}
-	return &dto.SiteTagResultDTO{
-		ID:            tag.GetID(),
-		SiteID:        util.NullInt64ToPointer(tag.SiteID),
-		SiteTagID:     util.NullStringToPointer(tag.SiteTagID),
-		SiteTagName:   util.NullStringToPointer(tag.SiteTagName),
-		BaseSiteTagID: util.NullStringToPointer(tag.BaseSiteTagID),
-		Description:   util.NullStringToPointer(tag.Description),
-		LocalTagID:    util.NullInt64ToPointer(tag.LocalTagID),
-		LastUse:       util.NullInt64ToPointer(tag.LastUse),
-		CreateTime:    tag.GetCreateTime(),
-		UpdateTime:    tag.GetUpdateTime(),
-	}
-}
-
-// ToSiteTagLocalRelateDTO 将 domain.SiteTagLocalRelateDTO 转换为 SiteTagLocalRelateDTO
+// ToSiteTagLocalRelateDTO 将 dto.SiteTagLocalRelateDTO 转换为 SiteTagLocalRelateDTO
 func ToSiteTagLocalRelateDTO(fullDTO *dto.SiteTagLocalRelateDTO) *SiteTagLocalRelateDTO {
 	if fullDTO == nil {
 		return nil
 	}
 	return &SiteTagLocalRelateDTO{
-		SiteTagResultDTO: dto.SiteTagResultDTO{
+		SiteTagDTO: dto.SiteTagDTO{
 			ID:            fullDTO.ID,
 			SiteID:        util.Int64PtrIfValid(fullDTO.SiteID),
 			SiteTagID:     util.StringPtrIfValid(fullDTO.SiteTagID),
@@ -349,21 +330,11 @@ func ToSiteTagLocalRelateDTO(fullDTO *dto.SiteTagLocalRelateDTO) *SiteTagLocalRe
 			CreateTime:    fullDTO.CreateTime,
 			UpdateTime:    fullDTO.UpdateTime,
 		},
-		LocalTag: ToLocalTagDTO(fullDTO.LocalTag),
+		LocalTag: fullDTO.LocalTag,
 	}
 }
 
-// ToLocalTagDTO 将 domain.LocalTag 转换为 LocalTagDTO
+// ToLocalTagDTO 将 entity.LocalTag 转换为 dto.LocalTagDTO
 func ToLocalTagDTO(tag *entity.LocalTag) *dto.LocalTagDTO {
-	if tag == nil {
-		return nil
-	}
-	return &dto.LocalTagDTO{
-		ID:             tag.GetID(),
-		LocalTagName:   util.NullStringToPointer(tag.LocalTagName),
-		BaseLocalTagID: util.NullInt64ToPointer(tag.BaseLocalTagID),
-		Description:    nil,
-		CreateTime:     tag.GetCreateTime(),
-		UpdateTime:     tag.GetUpdateTime(),
-	}
+	return dto.NewLocalTagDTO(tag)
 }

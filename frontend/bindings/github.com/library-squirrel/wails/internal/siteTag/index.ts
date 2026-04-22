@@ -7,7 +7,7 @@ export {
 };
 
 export {
-    SiteTagDTO,
     SiteTagLocalRelateDTO,
+    SiteTagParamDTO,
     SiteTagQueryDTO
 } from "./models.js";

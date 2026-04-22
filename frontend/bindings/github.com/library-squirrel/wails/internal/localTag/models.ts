@@ -10,15 +10,15 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * LocalTagDTO 本地标签数据传输对象
+ * LocalTagParamDTO 本地标签数据传输对象（增删改参数）
  */
-export class LocalTagDTO {
+export class LocalTagParamDTO {
     "id": number;
     "localTagName": string | null;
     "baseLocalTagId": number | null;
 
-    /** Creates a new LocalTagDTO instance. */
-    constructor($$source: Partial<LocalTagDTO> = {}) {
+    /** Creates a new LocalTagParamDTO instance. */
+    constructor($$source: Partial<LocalTagParamDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -33,11 +33,11 @@ export class LocalTagDTO {
     }
 
     /**
-     * Creates a new LocalTagDTO instance from a string or object.
+     * Creates a new LocalTagParamDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): LocalTagDTO {
+    static createFrom($$source: any = {}): LocalTagParamDTO {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalTagDTO($$parsedSource as Partial<LocalTagDTO>);
+        return new LocalTagParamDTO($$parsedSource as Partial<LocalTagParamDTO>);
     }
 }
 
@@ -117,50 +117,6 @@ export class LocalTagQueryDTO {
             $$parsedSource["createTime"] = $$createField4_0($$parsedSource["createTime"]);
         }
         return new LocalTagQueryDTO($$parsedSource as Partial<LocalTagQueryDTO>);
-    }
-}
-
-/**
- * LocalTagResultDTO 本地标签返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class LocalTagResultDTO {
-    "id": number;
-    "localTagName": string | null;
-    "baseLocalTagId": number | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new LocalTagResultDTO instance. */
-    constructor($$source: Partial<LocalTagResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("localTagName" in $$source)) {
-            this["localTagName"] = null;
-        }
-        if (!("baseLocalTagId" in $$source)) {
-            this["baseLocalTagId"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalTagResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalTagResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalTagResultDTO($$parsedSource as Partial<LocalTagResultDTO>);
     }
 }
 

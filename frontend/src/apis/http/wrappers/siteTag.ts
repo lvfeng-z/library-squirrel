@@ -7,10 +7,13 @@ import type { ApiResponse } from '../types'
 import IPage from "@renderer/model/util/IPage.ts";
 import {
   Handler as SiteTagHandler,
-  SiteTagDTO, SiteTagFullDTO,
+  SiteTagParamDTO,
   SiteTagQueryDTO,
-  SiteTagResultDTO
+  SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
+import { SiteTagDTO, SiteTagFullDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model/models";
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 export interface SiteTagVO {
   id: number
@@ -33,7 +36,7 @@ export interface PageResult {
 /**
  * 将 SiteTagResultDTO 转换为 SiteTagVO
  */
-function toSiteTagVO(dto: SiteTagResultDTO | null): SiteTagVO | null {
+function toSiteTagVO(dto: SiteTagDTO | null): SiteTagVO | null {
   if (!dto) return null
   return {
     id: dto.id,
@@ -51,7 +54,7 @@ export async function siteTagSave(tag: {
   siteTagName?: string
   siteId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagDTO({
+  const tagDTO = new SiteTagParamDTO({
     siteTagName: tag.siteTagName ?? null,
     siteId: tag.siteId ?? null
   })
@@ -69,7 +72,7 @@ export async function siteTagSave(tag: {
  * 批量保存站点标签
  */
 export async function siteTagSaveBatch(tags: SiteTagVO[]): Promise<ApiResponse<SiteTagVO[]>> {
-  const result = await SiteTagHandler.SaveBatch(tags.map(tag => new SiteTagDTO({
+  const result = await SiteTagHandler.SaveBatch(tags.map(tag => new SiteTagParamDTO({
     id: tag.id,
     siteTagName: tag.siteTagName,
     siteId: null,
@@ -95,7 +98,7 @@ export async function siteTagUpdateById(tag: {
   siteTagName?: string
   localTagId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagDTO({
+  const tagDTO = new SiteTagParamDTO({
     id: tag.id,
     siteTagName: tag.siteTagName ?? null,
     siteId: tag.localTagId ?? null  // 注意：这里可能有问题，siteId 和 localTagId 是不同的字段
@@ -118,7 +121,7 @@ export async function siteTagGetById(id: number): Promise<ApiResponse<SiteTagVO>
   return { success: true, msg: result.msg ?? '', data: toSiteTagVO(result.data ?? null) ?? undefined }
 }
 
-export async function siteTagQueryPage(page: Page<SiteTagResultDTO, SiteTagQueryDTO>): Promise<ApiResponse<Page<SiteTagResultDTO, SiteTagQueryDTO>>> {
+export async function siteTagQueryPage(page: Page<SiteTagDTO, SiteTagQueryDTO>): Promise<ApiResponse<Page<SiteTagDTO, SiteTagQueryDTO>>> {
   const result = await SiteTagHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -230,7 +233,7 @@ export async function siteTagUpdateBindLocalTag(
 export async function siteTagCreateAndBindSameNameLocalTag(
   siteTag: SiteTagVO
 ): Promise<ApiResponse<boolean>> {
-  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagDTO({
+  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagParamDTO({
     id: siteTag.id,
     siteTagName: siteTag.siteTagName,
     siteId: null,

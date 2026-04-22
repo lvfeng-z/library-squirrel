@@ -262,22 +262,24 @@ func (r *siteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 
 	// 转换为 DTO
 	for _, author := range siteAuthors {
-		dto := dto.NewSiteAuthorFullDTO(author)
+		resultDTO := dto.NewSiteAuthorFullDTO(author)
 		// 查询关联的本地作者
 		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
-			dto.LocalAuthor = &entity2.LocalAuthor{}
-			if err := r.GORM().WithContext(ctx).First(dto.LocalAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var localAuthor entity2.LocalAuthor
+			if err := r.GORM().WithContext(ctx).First(&localAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			resultDTO.LocalAuthor = dto.NewLocalAuthorDTO(&localAuthor)
 		}
 		// 查询关联的站点
 		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
-			dto.Site = &entity2.Site{}
-			if err := r.GORM().WithContext(ctx).First(dto.Site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var site entity2.Site
+			if err := r.GORM().WithContext(ctx).First(&site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			resultDTO.Site = dto.NewSiteDTO(&site)
 		}
-		results = append(results, dto)
+		results = append(results, resultDTO)
 	}
 
 	return model.NewPage[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil
@@ -317,27 +319,29 @@ func (r *siteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page
 
 	// 转换为 DTO
 	for _, author := range siteAuthors {
-		dto := dto.NewSiteAuthorLocalRelateDTO(author)
+		resultDTO := dto.NewSiteAuthorLocalRelateDTO(author)
 		// 查询关联的本地作者
 		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
-			dto.LocalAuthor = &entity2.LocalAuthor{}
-			if err := r.GORM().WithContext(ctx).First(dto.LocalAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var localAuthor entity2.LocalAuthor
+			if err := r.GORM().WithContext(ctx).First(&localAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			resultDTO.LocalAuthor = dto.NewLocalAuthorDTO(&localAuthor)
 		}
 		// 查询关联的站点
 		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
-			dto.Site = &entity2.Site{}
-			if err := r.GORM().WithContext(ctx).First(dto.Site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			var site entity2.Site
+			if err := r.GORM().WithContext(ctx).First(&site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
+			resultDTO.Site = dto.NewSiteDTO(&site)
 		}
 		// 检查是否有同名本地作者
 		var count int64
 		r.GORM().WithContext(ctx).Model(&entity2.LocalAuthor{}).Where("author_name = ?", author.AuthorName).Count(&count)
-		dto.HasSameNameLocalAuthor = count > 0
+		resultDTO.HasSameNameLocalAuthor = count > 0
 
-		results = append(results, dto)
+		results = append(results, resultDTO)
 	}
 
 	return model.NewPage[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil

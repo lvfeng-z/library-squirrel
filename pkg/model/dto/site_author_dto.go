@@ -1,8 +1,52 @@
 package dto
 
 import (
+	"github.com/library-squirrel/wails/internal/util"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
+
+// SiteAuthorDTO 站点作者数据传输对象（无 sql.Null* 版本）
+type SiteAuthorDTO struct {
+	ID                   int64   `json:"id"`
+	SiteID               *int64  `json:"siteId"`
+	SiteAuthorID         *string `json:"siteAuthorId"`
+	AuthorName           *string `json:"authorName"`
+	FixedAuthorName      *string `json:"fixedAuthorName"`
+	SiteAuthorNameBefore *string `json:"siteAuthorNameBefore"`
+	Introduce            *string `json:"introduce"`
+	LocalAuthorID        *int64  `json:"localAuthorId"`
+	LastUse              *int64  `json:"lastUse"`
+	CreateTime           int64   `json:"createTime"`
+	UpdateTime           int64   `json:"updateTime"`
+}
+
+// NewSiteAuthorDTO 从 entity.SiteAuthor 创建 SiteAuthorDTO
+func NewSiteAuthorDTO(author *entity2.SiteAuthor) *SiteAuthorDTO {
+	if author == nil {
+		return nil
+	}
+	return &SiteAuthorDTO{
+		ID:                   author.GetID(),
+		SiteID:               util.NullInt64ToPointer(author.SiteID),
+		SiteAuthorID:         util.NullStringToPointer(author.SiteAuthorID),
+		AuthorName:           util.NullStringToPointer(author.AuthorName),
+		FixedAuthorName:      util.NullStringToPointer(author.FixedAuthorName),
+		SiteAuthorNameBefore: util.NullStringToPointer(author.SiteAuthorNameBefore),
+		Introduce:            util.NullStringToPointer(author.Introduce),
+		LocalAuthorID:        util.NullInt64ToPointer(author.LocalAuthorID),
+		LastUse:              util.NullInt64ToPointer(author.LastUse),
+		CreateTime:           author.GetCreateTime(),
+		UpdateTime:           author.GetUpdateTime(),
+	}
+}
+
+// RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
+type RankedSiteAuthorWithWorkIdDTO struct {
+	WorkId       int64   `json:"workId"`
+	SiteAuthorID *string `json:"siteAuthorId"`
+	AuthorName   *string `json:"authorName"`
+	Rank         int     `json:"rank"`
+}
 
 // SiteAuthorFullDTO 站点作者完整DTO（包含绑定的本地作者和来源站点信息）
 // 注意：显式定义所有字段，不使用嵌入（embedding）来复现 TypeScript 的继承行为
@@ -21,9 +65,9 @@ type SiteAuthorFullDTO struct {
 	LocalAuthorID        int64  `json:"localAuthorId"`
 	LastUse              int64  `json:"lastUse"`
 	// 关联的本地作者
-	LocalAuthor *entity2.LocalAuthor `json:"localAuthor,omitempty"`
+	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
 	// 来源站点
-	Site *entity2.Site `json:"site,omitempty"`
+	Site *SiteDTO `json:"site,omitempty"`
 }
 
 // NewSiteAuthorFullDTO 创建站点作者完整DTO
@@ -70,9 +114,9 @@ type SiteAuthorLocalRelateDTO struct {
 	LocalAuthorID        int64  `json:"localAuthorId"`
 	LastUse              int64  `json:"lastUse"`
 	// 关联的本地作者
-	LocalAuthor *entity2.LocalAuthor `json:"localAuthor,omitempty"`
+	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
 	// 来源站点
-	Site *entity2.Site `json:"site,omitempty"`
+	Site *SiteDTO `json:"site,omitempty"`
 	// 是否有同名本地作者
 	HasSameNameLocalAuthor bool `json:"hasSameNameLocalAuthor"`
 }

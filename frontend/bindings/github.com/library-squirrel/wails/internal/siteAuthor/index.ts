@@ -7,11 +7,6 @@ export {
 };
 
 export {
-    LocalAuthorDTO,
-    RankedSiteAuthorWithWorkIdDTO,
-    SiteAuthorDTO,
-    SiteAuthorFullDTO,
-    SiteAuthorLocalRelateDTO,
-    SiteAuthorQueryDTO,
-    SiteAuthorResultDTO
+    SiteAuthorParamDTO,
+    SiteAuthorQueryDTO
 } from "./models.js";

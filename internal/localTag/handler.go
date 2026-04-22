@@ -23,7 +23,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存本地标签
-func (h *Handler) Save(ctx context.Context, tag *LocalTagDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, tag *LocalTagParamDTO) *model.ApiResponse[int64] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -51,7 +51,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新本地标签
-func (h *Handler) Update(ctx context.Context, tag *LocalTagDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, tag *LocalTagParamDTO) *model.ApiResponse[any] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -74,29 +74,29 @@ func (h *Handler) Update(ctx context.Context, tag *LocalTagDTO) *model.ApiRespon
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*LocalTagResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.LocalTagDTO] {
 	tag, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*LocalTagResultDTO](err.Error())
+		return model.Error[*dto.LocalTagDTO](err.Error())
 	}
-	return model.Success(ToLocalTagResultDTO(tag))
+	return model.Success(dto.NewLocalTagDTO(tag))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalTagResultDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[LocalTagResultDTO, LocalTagQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[dto.LocalTagDTO, LocalTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[LocalTagResultDTO, LocalTagQueryDTO]{}
+		page = &model.Page[dto.LocalTagDTO, LocalTagQueryDTO]{}
 	}
 	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[LocalTagResultDTO, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.LocalTagDTO, LocalTagQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*LocalTagResultDTO, 0, len(result.Data))
+	// 转换为 DTO
+	data := make([]*dto.LocalTagDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
-		data = append(data, ToLocalTagResultDTO(tag))
+		data = append(data, dto.NewLocalTagDTO(tag))
 	}
-	return model.Success(&model.Page[LocalTagResultDTO, LocalTagQueryDTO]{
+	return model.Success(&model.Page[dto.LocalTagDTO, LocalTagQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -107,15 +107,15 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[LocalTagResult
 }
 
 // GetTree 获取标签树形结构
-func (h *Handler) GetTree(ctx context.Context, rootId int64, depth int) *model.ApiResponse[[]*LocalTagResultDTO] {
+func (h *Handler) GetTree(ctx context.Context, rootId int64, depth int) *model.ApiResponse[[]*dto.LocalTagDTO] {
 	result, err := h.svc.GetTree(ctx, rootId, depth)
 	if err != nil {
-		return model.Error[[]*LocalTagResultDTO](err.Error())
+		return model.Error[[]*dto.LocalTagDTO](err.Error())
 	}
-	// 转换为 ResultDTO
-	resultDTOs := make([]*LocalTagResultDTO, len(result))
+	// 转换为 DTO
+	resultDTOs := make([]*dto.LocalTagDTO, len(result))
 	for i, tag := range result {
-		resultDTOs[i] = ToLocalTagResultDTO(tag)
+		resultDTOs[i] = dto.NewLocalTagDTO(tag)
 	}
 	return model.Success(resultDTOs)
 }
@@ -145,15 +145,15 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // ListByWorkId 根据作品ID获取标签列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*LocalTagResultDTO] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.LocalTagDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*LocalTagResultDTO](err.Error())
+		return model.Error[[]*dto.LocalTagDTO](err.Error())
 	}
-	// 转换为 ResultDTO
-	resultDTOs := make([]*LocalTagResultDTO, len(result))
+	// 转换为 DTO
+	resultDTOs := make([]*dto.LocalTagDTO, len(result))
 	for i, tag := range result {
-		resultDTOs[i] = ToLocalTagResultDTO(tag)
+		resultDTOs[i] = dto.NewLocalTagDTO(tag)
 	}
 	return model.Success(resultDTOs)
 }
@@ -180,36 +180,11 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 
 // ========== DTO 定义 ==========
 
-// LocalTagDTO 本地标签数据传输对象
-type LocalTagDTO struct {
+// LocalTagParamDTO 本地标签数据传输对象（增删改参数）
+type LocalTagParamDTO struct {
 	ID             int64   `json:"id"`
 	LocalTagName   *string `json:"localTagName"`
 	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-}
-
-// LocalTagResultDTO 本地标签返回结果DTO（用于屏蔽sql.Null*类型）
-type LocalTagResultDTO struct {
-	ID             int64   `json:"id"`
-	LocalTagName   *string `json:"localTagName"`
-	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-	LastUse        *int64  `json:"lastUse"`
-	CreateTime     int64   `json:"createTime"`
-	UpdateTime     int64   `json:"updateTime"`
-}
-
-// ToLocalTagResultDTO 将 domain.LocalTag 转换为 LocalTagResultDTO
-func ToLocalTagResultDTO(tag *domain.LocalTag) *LocalTagResultDTO {
-	if tag == nil {
-		return nil
-	}
-	return &LocalTagResultDTO{
-		ID:             tag.GetID(),
-		LocalTagName:   nullStringToPointer(tag.LocalTagName),
-		BaseLocalTagID: nullInt64ToPointer(tag.BaseLocalTagID),
-		LastUse:        nullInt64ToPointer(tag.LastUse),
-		CreateTime:     tag.GetCreateTime(),
-		UpdateTime:     tag.GetUpdateTime(),
-	}
 }
 
 // nullStringToPointer 将 sql.NullString 转换为 *string

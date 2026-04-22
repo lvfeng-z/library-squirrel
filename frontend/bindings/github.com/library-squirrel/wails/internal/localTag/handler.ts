@@ -34,7 +34,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.LocalTagResultDTO | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.LocalTagDTO | null> | null> {
     return $Call.ByID(3237147342, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -43,7 +43,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 /**
  * GetTree 获取标签树形结构
  */
-export function GetTree(rootId: number, depth: number): $CancellablePromise<model$0.ApiResponse<($models.LocalTagResultDTO | null)[]> | null> {
+export function GetTree(rootId: number, depth: number): $CancellablePromise<model$0.ApiResponse<(dto$0.LocalTagDTO | null)[]> | null> {
     return $Call.ByID(4269917526, rootId, depth).then(($result: any) => {
         return $$createType8($result);
     });
@@ -52,7 +52,7 @@ export function GetTree(rootId: number, depth: number): $CancellablePromise<mode
 /**
  * ListByWorkId 根据作品ID获取标签列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<($models.LocalTagResultDTO | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.LocalTagDTO | null)[]> | null> {
     return $Call.ByID(3732754883, workId).then(($result: any) => {
         return $$createType8($result);
     });
@@ -70,7 +70,7 @@ export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $Can
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.LocalTagResultDTO, $models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.LocalTagResultDTO, $models.LocalTagQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<dto$0.LocalTagDTO, $models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.LocalTagDTO, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(112028121, page).then(($result: any) => {
         return $$createType18($result);
     });
@@ -97,7 +97,7 @@ export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem,
 /**
  * Save 保存本地标签
  */
-export function Save(tag: $models.LocalTagDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(tag: $models.LocalTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2374210955, tag).then(($result: any) => {
         return $$createType24($result);
     });
@@ -106,7 +106,7 @@ export function Save(tag: $models.LocalTagDTO | null): $CancellablePromise<model
 /**
  * Update 更新本地标签
  */
-export function Update(tag: $models.LocalTagDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(tag: $models.LocalTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(336289815, tag).then(($result: any) => {
         return $$createType1($result);
     });
@@ -124,7 +124,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.LocalTagResultDTO.createFrom;
+const $$createType2 = dto$0.LocalTagDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

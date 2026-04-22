@@ -15,13 +15,15 @@ import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localAuthorQuerySelectItemPageByName } from '@renderer/apis/LocalAuthorApi.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {
+  SelectItem,
+  SiteAuthorDTO,
+  SiteAuthorLocalRelateDTO
+} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
-import { SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { LocalAuthorDTO as LocalAuthor } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
-import { SiteAuthorDTO as SiteAuthor } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
 
 // onMounted
@@ -262,7 +264,7 @@ async function saveRowEdit(newData: SiteAuthorLocalRelateDTO) {
   }
 }
 // 创建同名本地作者并绑定
-async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthor) {
+async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthorDTO) {
   const response = await apis.siteAuthorCreateAndBindSameNameLocalAuthor(siteAuthor)
   if (!ApiUtil.check(response)) {
     ApiUtil.msg(response)
