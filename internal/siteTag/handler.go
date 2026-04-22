@@ -239,7 +239,7 @@ func (h *Handler) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) *mod
 }
 
 // UpdateBindLocalTag 更新绑定本地标签
-func (h *Handler) UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) *model.ApiResponse[bool] {
+func (h *Handler) UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) *model.ApiResponse[bool] {
 	result, err := h.svc.UpdateBindLocalTag(ctx, localTagId, siteTagIds)
 	if err != nil {
 		return model.Error[bool](err.Error())
@@ -319,20 +319,6 @@ type SiteTagDTO struct {
 	SiteTagID   *string `json:"siteTagId"`
 	SiteTagName *string `json:"siteTagName"`
 	Description *string `json:"description"`
-}
-
-// SiteTagResultDTO 站点标签返回结果DTO（用于屏蔽sql.Null*类型）
-type SiteTagResultDTO struct {
-	ID            int64   `json:"id"`
-	SiteID        *int64  `json:"siteId"`
-	SiteTagID     *string `json:"siteTagId"`
-	SiteTagName   *string `json:"siteTagName"`
-	BaseSiteTagID *string `json:"baseSiteTagId"`
-	Description   *string `json:"description"`
-	LocalTagID    *int64  `json:"localTagId"`
-	LastUse       *int64  `json:"lastUse"`
-	CreateTime    int64   `json:"createTime"`
-	UpdateTime    int64   `json:"updateTime"`
 }
 
 // SiteTagFullDTO 站点标签完整信息DTO

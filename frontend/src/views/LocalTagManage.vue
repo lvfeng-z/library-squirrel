@@ -230,7 +230,7 @@ async function deleteLocalTag(id: string) {
 async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: SelectItem[], lower: SelectItem[]) {
   if (isNullish(localTagSelected.value)) {
     ElMessage({
-      message: '确认修改时必须选中一个本地作者',
+      message: '确认修改时必须选中一个本地标签',
       type: 'warning'
     })
     return
@@ -239,7 +239,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
   if (isNullish(isUpper) ? true : isUpper) {
     let upperResponse: ApiResponse
     if (arrayNotEmpty(upper)) {
-      const boundIds = upper.map((item) => item.value)
+      const boundIds = upper.map((item) => Number(item.value))
       upperResponse = await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
     } else {
       upperResponse = { success: true, msg: '', data: undefined }
@@ -249,7 +249,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
   if (isNullish(isUpper) ? true : !isUpper) {
     let lowerResponse: ApiResponse
     if (arrayNotEmpty(lower)) {
-      const unBoundIds = lower.map((item) => item.value)
+      const unBoundIds = lower.map((item) => Number(item.value))
       lowerResponse = await apis.siteTagUpdateBindLocalTag(null, unBoundIds)
     } else {
       lowerResponse = { success: true, msg: '', data: undefined }

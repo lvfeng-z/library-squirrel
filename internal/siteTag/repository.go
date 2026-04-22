@@ -74,7 +74,7 @@ func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []i
 }
 
 // UpdateBindLocalTag 绑定本地标签
-func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (int64, error) {
+func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (int64, error) {
 	if len(siteTagIds) == 0 {
 		return 0, nil
 	}

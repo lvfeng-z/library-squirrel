@@ -141,7 +141,7 @@ export function Update(tag: $models.SiteTagDTO | null): $CancellablePromise<mode
 /**
  * UpdateBindLocalTag 更新绑定本地标签
  */
-export function UpdateBindLocalTag(localTagId: number, siteTagIds: number[]): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
+export function UpdateBindLocalTag(localTagId: number | null, siteTagIds: number[]): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(1869161719, localTagId, siteTagIds).then(($result: any) => {
         return $$createType36($result);
     });

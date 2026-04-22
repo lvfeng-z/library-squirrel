@@ -72,7 +72,7 @@ type Repository interface {
 	// ListBySiteTagIds 根据站点标签ID列表查询
 	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error)
 	// UpdateBindLocalTag 绑定本地标签
-	UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (int64, error)
+	UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (int64, error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
 	QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error)
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
@@ -355,7 +355,7 @@ func (s *Service) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*
 }
 
 // UpdateBindLocalTag 绑定或解除本地标签绑定
-func (s *Service) UpdateBindLocalTag(ctx context.Context, localTagId int64, siteTagIds []int64) (bool, error) {
+func (s *Service) UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (bool, error) {
 	if len(siteTagIds) == 0 {
 		return true, nil
 	}
@@ -402,7 +402,7 @@ func (s *Service) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *do
 	}
 
 	// 3. 绑定站点标签到本地标签
-	if _, err := s.repo.UpdateBindLocalTag(ctx, localTag.ID, []int64{siteTag.ID}); err != nil {
+	if _, err := s.repo.UpdateBindLocalTag(ctx, &localTag.ID, []int64{siteTag.ID}); err != nil {
 		return nil, err
 	}
 
