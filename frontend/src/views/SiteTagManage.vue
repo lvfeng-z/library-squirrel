@@ -10,18 +10,14 @@ import { Thead } from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { ElMessage } from 'element-plus'
-import { isNullish, arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
-import SelectItem from '@renderer/model/util/SelectItem.ts'
+import { isNullish } from '@renderer/utils/CommonUtil.ts'
+import { LocalTagDTO, SelectItem, SiteTagFullDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { SiteTagLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import type { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
-import { SiteTagFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
-import { LocalTagDTO as LocalTag } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { SiteTagDTO as SiteTag } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi, siteTagApi } from '@renderer/apis/http'
@@ -126,7 +122,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     },
     setCacheData: (rowData: SiteTagFullDTO, data: SelectItem) => {
       if (isNullish(rowData.localTag)) {
-        rowData.localTag = new LocalTag()
+        rowData.localTag = new LocalTagDTO()
       }
       rowData.localTag.id = Number(data.value)
       rowData.localTag.localTagName = data.label

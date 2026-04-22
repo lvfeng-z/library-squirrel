@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 站点作者 Handler
@@ -22,7 +23,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存站点作者
 func (h *Handler) Save(ctx context.Context, author *SiteAuthorDTO) *model.ApiResponse[int64] {
-	domainAuthor := &domain.SiteAuthor{
+	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
 	if author.SiteID != nil {
@@ -50,9 +51,9 @@ func (h *Handler) Save(ctx context.Context, author *SiteAuthorDTO) *model.ApiRes
 
 // SaveBatch 批量保存站点作者
 func (h *Handler) SaveBatch(ctx context.Context, authors []*SiteAuthorDTO) *model.ApiResponse[any] {
-	domainAuthors := make([]*domain.SiteAuthor, 0, len(authors))
+	domainAuthors := make([]*entity2.SiteAuthor, 0, len(authors))
 	for _, author := range authors {
-		domainAuthor := &domain.SiteAuthor{
+		domainAuthor := &entity2.SiteAuthor{
 			BaseEntity: &model.BaseEntity{},
 		}
 		if author.SiteID != nil {
@@ -90,7 +91,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新站点作者
 func (h *Handler) Update(ctx context.Context, author *SiteAuthorDTO) *model.ApiResponse[any] {
-	domainAuthor := &domain.SiteAuthor{
+	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
 	domainAuthor.SetID(author.ID)
@@ -249,7 +250,7 @@ func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 		return model.Error[bool]("创建同名本地作者失败，作者名称不能为空")
 	}
 
-	domainAuthor := &domain.SiteAuthor{
+	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
 	domainAuthor.SetID(siteAuthor.ID)
@@ -342,7 +343,7 @@ type LocalAuthorDTO struct {
 }
 
 // ToSiteAuthorResultDTO 将 domain.SiteAuthor 转换为 SiteAuthorResultDTO
-func ToSiteAuthorResultDTO(author *domain.SiteAuthor) *SiteAuthorResultDTO {
+func ToSiteAuthorResultDTO(author *entity2.SiteAuthor) *SiteAuthorResultDTO {
 	if author == nil {
 		return nil
 	}
@@ -362,7 +363,7 @@ func ToSiteAuthorResultDTO(author *domain.SiteAuthor) *SiteAuthorResultDTO {
 }
 
 // ToSiteAuthorFullDTO 将 domain.SiteAuthorFullDTO 转换为 SiteAuthorFullDTO
-func ToSiteAuthorFullDTO(dto *domain.SiteAuthorFullDTO) *SiteAuthorFullDTO {
+func ToSiteAuthorFullDTO(dto *dto.SiteAuthorFullDTO) *SiteAuthorFullDTO {
 	if dto == nil {
 		return nil
 	}
@@ -384,7 +385,7 @@ func ToSiteAuthorFullDTO(dto *domain.SiteAuthorFullDTO) *SiteAuthorFullDTO {
 }
 
 // ToSiteAuthorLocalRelateDTO 将 domain.SiteAuthorLocalRelateDTO 转换为 SiteAuthorLocalRelateDTO
-func ToSiteAuthorLocalRelateDTO(dto *domain.SiteAuthorLocalRelateDTO) *SiteAuthorLocalRelateDTO {
+func ToSiteAuthorLocalRelateDTO(dto *dto.SiteAuthorLocalRelateDTO) *SiteAuthorLocalRelateDTO {
 	if dto == nil {
 		return nil
 	}
@@ -419,7 +420,7 @@ func ToRankedSiteAuthorWithWorkIdDTO(dto *model.RankedSiteAuthorWithWorkId) *Ran
 }
 
 // ToLocalAuthorDTO 将 domain.LocalAuthor 转换为 LocalAuthorDTO
-func ToLocalAuthorDTO(author *domain.LocalAuthor) *LocalAuthorDTO {
+func ToLocalAuthorDTO(author *entity2.LocalAuthor) *LocalAuthorDTO {
 	if author == nil {
 		return nil
 	}

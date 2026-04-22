@@ -9,7 +9,7 @@ import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import { Thead } from '../model/util/Thead.ts'
-import SelectItem from '../model/util/SelectItem.ts'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'

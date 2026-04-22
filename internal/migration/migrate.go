@@ -3,7 +3,7 @@ package migration
 import (
 	"log"
 
-	"github.com/library-squirrel/wails/internal/model"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 )
@@ -13,27 +13,27 @@ func AutoMigrate(db *gorm.DB) error {
 	// 定义所有需要迁移的模型（按依赖顺序排列）
 	models := []interface{}{
 		// 基础表（无外键依赖）
-		&model.Backup{},
-		model.NewLocalAuthor(),
-		&model.Site{},
-		model.NewSiteTag(),
-		&model.WorkSet{},
-		model.NewWork(),
-		model.NewSiteAuthor(),
-		&model.Poi{},
-		&model.SecureStorage{},
-		&model.Plugin{},
-		&model.Task{},
-		&model.Resource{},
+		&entity2.Backup{},
+		entity2.NewLocalAuthor(),
+		&entity2.Site{},
+		entity2.NewSiteTag(),
+		&entity2.WorkSet{},
+		entity2.NewWork(),
+		entity2.NewSiteAuthor(),
+		&entity2.Poi{},
+		&entity2.SecureStorage{},
+		&entity2.Plugin{},
+		&entity2.Task{},
+		&entity2.Resource{},
 
 		// 关联表（有外键依赖）
-		&model.ReWorkAuthor{},
-		&model.ReWorkTag{},
-		&model.ReWorkWorkSet{},
-		&model.RePoiTarget{},
+		&entity2.ReWorkAuthor{},
+		&entity2.ReWorkTag{},
+		&entity2.ReWorkWorkSet{},
+		&entity2.RePoiTarget{},
 
 		// 本地标签（独立表）
-		model.NewLocalTag(),
+		entity2.NewLocalTag(),
 	}
 
 	// 执行自动迁移

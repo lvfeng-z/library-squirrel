@@ -13,10 +13,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -61,7 +61,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * ListSelectItems 查询选择项列表
  */
-export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(model$1.SelectItem | null)[]> | null> {
+export function ListSelectItems(queryDTO: $models.LocalTagQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(dto$0.SelectItem | null)[]> | null> {
     return $Call.ByID(4294102430, queryDTO).then(($result: any) => {
         return $$createType13($result);
     });
@@ -79,7 +79,7 @@ export function QueryPage(page: model$0.Page<$models.LocalTagResultDTO, $models.
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<dto$0.SelectItem, $models.LocalTagQueryDTO> | null, secondaryLabel: string): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(3654385186, page, secondaryLabel).then(($result: any) => {
         return $$createType22($result);
     });
@@ -88,7 +88,7 @@ export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $mode
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem, $models.LocalTagQueryDTO> | null, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem, $models.LocalTagQueryDTO> | null> | null> {
     return $Call.ByID(3606327595, page, workId).then(($result: any) => {
         return $$createType22($result);
     });
@@ -131,7 +131,7 @@ const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = $Create.Array($$createType3);
 const $$createType7 = model$0.ApiResponse.createFrom($$createType6);
 const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = model$1.SelectItem.createFrom;
+const $$createType9 = dto$0.SelectItem.createFrom;
 const $$createType10 = $Create.Nullable($$createType9);
 const $$createType11 = $Create.Array($$createType10);
 const $$createType12 = model$0.ApiResponse.createFrom($$createType11);

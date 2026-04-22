@@ -2,7 +2,7 @@
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
-import SelectItem from '@renderer/model/util/SelectItem.ts'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { ref, UnwrapRef, Ref, watch, onMounted, onUnmounted } from 'vue'

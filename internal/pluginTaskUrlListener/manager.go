@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"sync"
 
-	domain "github.com/library-squirrel/wails/internal/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // PluginTaskUrlListener 插件任务URL监听器

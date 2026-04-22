@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="Query extends object">
 import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
 import { Ref, ref, UnwrapRef } from 'vue'
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import TagBox from './TagBox.vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import Page from '@renderer/model/util/Page.ts'

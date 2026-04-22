@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 站点 Handler
@@ -113,13 +114,13 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteResultDTO,
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[domain.SelectItem, SiteQueryDTO]) *model.ApiResponse[*model.Page[domain.SelectItem, SiteQueryDTO]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, SiteQueryDTO]) *model.ApiResponse[*model.Page[dto.SelectItem, SiteQueryDTO]] {
 	if page == nil {
-		page = &model.Page[domain.SelectItem, SiteQueryDTO]{}
+		page = &model.Page[dto.SelectItem, SiteQueryDTO]{}
 	}
 	result, err := h.svc.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem, SiteQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem, SiteQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }

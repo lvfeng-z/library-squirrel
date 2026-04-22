@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

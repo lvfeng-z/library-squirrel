@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -16,13 +17,13 @@ import (
 // SiteTagRepository 站点标签仓储实现
 // 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
 type SiteTagRepository struct {
-	*database.BaseRepository[domain.SiteTag]
+	*database.BaseRepository[entity2.SiteTag]
 }
 
 // NewRepository 创建站点标签仓储
 func NewRepository(db *gorm.DB) *SiteTagRepository {
 	return &SiteTagRepository{
-		BaseRepository: database.NewBaseRepository[domain.SiteTag](db),
+		BaseRepository: database.NewBaseRepository[entity2.SiteTag](db),
 	}
 }
 
@@ -32,7 +33,7 @@ func (r *SiteTagRepository) GORM() *gorm.DB {
 }
 
 // ListByWorkId 查询作品的站点标签
-func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*domain.SiteTag, error) {
+func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*entity2.SiteTag, error) {
 	query := `
 		SELECT t1.*
 		FROM site_tag t1
@@ -40,7 +41,7 @@ func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*
 		WHERE t2.work_id = ?
 	`
 
-	var results []*domain.SiteTag
+	var results []*entity2.SiteTag
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -50,9 +51,9 @@ func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*
 }
 
 // ListBySiteTagIds 根据站点标签ID列表查询
-func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error) {
+func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*entity2.SiteTag, error) {
 	if len(siteTagIds) == 0 {
-		return make([]*domain.SiteTag, 0), nil
+		return make([]*entity2.SiteTag, 0), nil
 	}
 
 	placeholders := make([]string, len(siteTagIds))
@@ -64,7 +65,7 @@ func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []i
 
 	query := fmt.Sprintf(`SELECT * FROM site_tag WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
-	var results []*domain.SiteTag
+	var results []*entity2.SiteTag
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -98,11 +99,11 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagFullDTO, SiteTagQueryDTO], error) {
-	var results []*domain.SiteTagFullDTO
+func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
+	var results []*dto2.SiteTagFullDTO
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&domain.SiteTag{})
+	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
 
 	// 构建 EXISTS 子查询
 	if boundOnWorkId != nil && *boundOnWorkId {
@@ -131,24 +132,24 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 	}
 
 	// 执行查询
-	var siteTags []*domain.SiteTag
+	var siteTags []*entity2.SiteTag
 	if err := db.Find(&siteTags).Error; err != nil {
 		return nil, err
 	}
 
 	// 转换为 DTO
 	for _, tag := range siteTags {
-		dto := domain.NewSiteTagFullDTO(tag)
+		dto := dto2.NewSiteTagFullDTO(tag)
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			dto.LocalTag = &domain.LocalTag{}
+			dto.LocalTag = &dto2.LocalTagDTO{}
 			if err := r.GORM().WithContext(ctx).First(dto.LocalTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 		}
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			dto.Site = &domain.Site{}
+			dto.Site = &entity2.Site{}
 			if err := r.GORM().WithContext(ctx).First(dto.Site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
@@ -156,15 +157,15 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 		results = append(results, dto)
 	}
 
-	return model.NewPage[domain.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
-	var results []*domain.SiteTagLocalRelateDTO
+func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
+	var results []*dto2.SiteTagLocalRelateDTO
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&domain.SiteTag{})
+	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
 
 	// 构建基础查询
 	if boundOnWorkId != nil && *boundOnWorkId {
@@ -193,45 +194,45 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 	}
 
 	// 执行查询
-	var siteTags []*domain.SiteTag
+	var siteTags []*entity2.SiteTag
 	if err := db.Find(&siteTags).Error; err != nil {
 		return nil, err
 	}
 
 	// 转换为 DTO
 	for _, tag := range siteTags {
-		dto := domain.NewSiteTagLocalRelateDTO(tag)
+		dto := dto2.NewSiteTagLocalRelateDTO(tag)
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			dto.LocalTag = &domain.LocalTag{}
+			dto.LocalTag = &entity2.LocalTag{}
 			if err := r.GORM().WithContext(ctx).First(dto.LocalTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 		}
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			dto.Site = &domain.Site{}
+			dto.Site = &entity2.Site{}
 			if err := r.GORM().WithContext(ctx).First(dto.Site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 		}
 		// 检查是否有同名本地标签
 		var count int64
-		r.GORM().WithContext(ctx).Model(&domain.LocalTag{}).Where("local_tag_name = ?", tag.SiteTagName).Count(&count)
+		r.GORM().WithContext(ctx).Model(&entity2.LocalTag{}).Where("local_tag_name = ?", tag.SiteTagName).Count(&count)
 		dto.HasSameNameLocalTag = count > 0
 
 		results = append(results, dto)
 	}
 
-	return model.NewPage[domain.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem, SiteTagQueryDTO], error) {
-	var results []*domain.SelectItem
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
+	var results []*dto2.SelectItem
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&domain.SiteTag{})
+	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
 
 	// 查询已绑定到该作品的
 	db = db.Where(" EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
@@ -256,7 +257,7 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 	}
 
 	// 执行查询
-	var siteTags []*domain.SiteTag
+	var siteTags []*entity2.SiteTag
 	if err := db.Find(&siteTags).Error; err != nil {
 		return nil, err
 	}
@@ -267,13 +268,13 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 		if tag.SiteTagName.Valid {
 			label = tag.SiteTagName.String
 		}
-		item := &domain.SelectItem{
+		item := &dto2.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
 		// 查询站点名称作为副标题
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
-			var site domain.Site
+			var site entity2.Site
 			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err == nil {
 				subLabel := "?"
 				if site.SiteName.Valid {
@@ -289,5 +290,5 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 		results = append(results, item)
 	}
 
-	return model.NewPage[domain.SelectItem, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SelectItem, SiteTagQueryDTO](results, total, page, pageSize), nil
 }

@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 本地标签 Handler
@@ -120,25 +121,25 @@ func (h *Handler) GetTree(ctx context.Context, rootId int64, depth int) *model.A
 }
 
 // ListSelectItems 查询选择项列表
-func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDTO) *model.ApiResponse[[]*domain.SelectItem] {
+func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDTO) *model.ApiResponse[[]*dto.SelectItem] {
 	if queryDTO == nil {
 		queryDTO = &LocalTagQueryDTO{}
 	}
 	result, err := h.svc.ListSelectItemsByDTO(ctx, *queryDTO)
 	if err != nil {
-		return model.Error[[]*domain.SelectItem](err.Error())
+		return model.Error[[]*dto.SelectItem](err.Error())
 	}
 	return model.Success(result)
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[domain.SelectItem, LocalTagQueryDTO], secondaryLabel string) *model.ApiResponse[*model.Page[domain.SelectItem, LocalTagQueryDTO]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO], secondaryLabel string) *model.ApiResponse[*model.Page[dto.SelectItem, LocalTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[domain.SelectItem, LocalTagQueryDTO]{}
+		page = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
 	}
 	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query, secondaryLabel)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }
@@ -158,13 +159,13 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[domain.SelectItem, LocalTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[domain.SelectItem, LocalTagQueryDTO]] {
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO], workId int64) *model.ApiResponse[*model.Page[dto.SelectItem, LocalTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[domain.SelectItem, LocalTagQueryDTO]{}
+		page = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
 	}
 	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId)
 	if err != nil {
-		return model.Error[*model.Page[domain.SelectItem, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
 	}
 	return model.Success(result)
 }

@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 作品 Handler
@@ -121,10 +122,10 @@ func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *W
 }
 
 // GetFullWorkInfoById 获取完整作品信息
-func (h *Handler) GetFullWorkInfoById(ctx context.Context, id int64) *model.ApiResponse[*domain.WorkFullDTO] {
+func (h *Handler) GetFullWorkInfoById(ctx context.Context, id int64) *model.ApiResponse[*dto.WorkFullDTO] {
 	result, err := h.svc.GetFullWorkInfoById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.WorkFullDTO](err.Error())
+		return model.Error[*dto.WorkFullDTO](err.Error())
 	}
 	return model.Success(result)
 }

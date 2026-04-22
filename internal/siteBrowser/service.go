@@ -1,8 +1,7 @@
 package siteBrowser
 
 import (
-	"github.com/library-squirrel/wails/internal/extension"
-	domain "github.com/library-squirrel/wails/internal/model"
+	"github.com/library-squirrel/wails/internal/plugin/extension"
 	"github.com/library-squirrel/wails/pkg/model"
 )
 
@@ -115,7 +114,7 @@ func (s *Service) Open(pluginPublicId, contributionId string) error {
 }
 
 // toDTO 将扩展转换为DTO
-func toDTO(ext *model.Extension[domain.SiteBrowser]) *SiteBrowserDTO {
+func toDTO(ext *model.Extension[extension.SiteBrowser]) *SiteBrowserDTO {
 	return &SiteBrowserDTO{
 		ContributionID: ext.Metadata.ID,
 		PluginPublicID: ext.Metadata.PluginPublicID,

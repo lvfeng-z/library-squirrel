@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -29,8 +30,8 @@ func (r *siteRepository) GORM() *gorm.DB {
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[domain.SelectItem, SiteQueryDTO], error) {
-	var results []*domain.SelectItem
+func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
+	var results []*dto.SelectItem
 
 	opt := &database.PageOption{
 		QueryOption: database.QueryOption{
@@ -52,11 +53,11 @@ func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize
 		if site.SiteName.Valid {
 			siteName = site.SiteName.String
 		}
-		results = append(results, &domain.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: site.ID,
 			Label: siteName,
 		})
 	}
 
-	return model.NewPage[domain.SelectItem, SiteQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem, SiteQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

@@ -12,10 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -60,7 +60,7 @@ export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $Can
 /**
  * GetFullWorkInfoById 获取完整作品信息
  */
-export function GetFullWorkInfoById(id: number): $CancellablePromise<model$0.ApiResponse<model$1.WorkFullDTO | null> | null> {
+export function GetFullWorkInfoById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkFullDTO | null> | null> {
     return $Call.ByID(454836830, id).then(($result: any) => {
         return $$createType9($result);
     });
@@ -118,7 +118,7 @@ const $$createType2 = $models.WorkResultDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$1.WorkFullDTO.createFrom;
+const $$createType6 = dto$0.WorkFullDTO.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);

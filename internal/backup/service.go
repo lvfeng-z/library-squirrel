@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
+	"github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 const (
@@ -18,11 +18,11 @@ const (
 // Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
 	// Save 保存备份
-	Save(ctx context.Context, backup *model.Backup) error
+	Save(ctx context.Context, backup *entity.Backup) error
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*model.Backup, error)
+	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceId 根据来源类型和来源ID获取
-	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*model.Backup, error)
+	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
 }
 
 // Service 备份服务
@@ -36,8 +36,8 @@ func NewService(repo Repository) *Service {
 }
 
 // CreateBackup 创建备份
-func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) (*model.Backup, error) {
-	backup := model.NewBackup()
+func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
+	backup := entity.NewBackup()
 	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
 	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
 	backup.FileName = sql.NullString{String: fileName, Valid: true}
@@ -50,22 +50,22 @@ func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int
 }
 
 // CreatePluginBackup 创建插件备份
-func (s *Service) CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*model.Backup, error) {
+func (s *Service) CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
 	return s.CreateBackup(ctx, SourceTypePlugin, sourceId, fileName, sourcePath, workDir)
 }
 
 // GetById 根据ID获取备份
-func (s *Service) GetById(ctx context.Context, id int64) (*model.Backup, error) {
+func (s *Service) GetById(ctx context.Context, id int64) (*entity.Backup, error) {
 	return s.repo.GetById(ctx, id)
 }
 
 // GetPluginBackup 获取插件备份
-func (s *Service) GetPluginBackup(ctx context.Context, sourceId int64) (*model.Backup, error) {
+func (s *Service) GetPluginBackup(ctx context.Context, sourceId int64) (*entity.Backup, error) {
 	return s.repo.GetBySourceTypeAndSourceId(ctx, SourceTypePlugin, sourceId)
 }
 
 // GetBackupPath 获取备份文件的完整路径
-func (s *Service) GetBackupPath(backup *model.Backup) string {
+func (s *Service) GetBackupPath(backup *entity.Backup) string {
 	var workdir, filePath string
 	if backup.Workdir.Valid {
 		workdir = backup.Workdir.String

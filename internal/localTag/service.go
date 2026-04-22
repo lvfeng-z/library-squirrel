@@ -5,9 +5,10 @@ import (
 	"database/sql"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
@@ -56,9 +57,9 @@ type Repository interface {
 	// QueryDTOPage DTO分页查询
 	QueryDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error)
 	// ListSelectItems 查询选择项列表
-	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error)
+	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error)
 	// QueryPageByWorkId 根据作品ID分页查询
 	QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error)
 }
@@ -229,17 +230,17 @@ func (s *Service) QueryDTOPage(ctx context.Context, page, pageSize int, where cl
 }
 
 // ListSelectItems 查询选择项列表
-func (s *Service) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
+func (s *Service) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
 	return s.repo.ListSelectItems(ctx, where, order)
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	return s.repo.QuerySelectItemPage(ctx, page, pageSize, where, order, secondaryLabel)
 }
 
 // QuerySelectItemPageByDTO 分页查询选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
+func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -257,7 +258,7 @@ func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize i
 }
 
 // ListSelectItemsByDTO 查询选择项列表（基于 QueryDTO）
-func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*domain.SelectItem, error) {
+func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*dto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalTag{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -275,29 +276,29 @@ func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalTagQue
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	pageResult, err := s.repo.QueryPageByWorkId(ctx, page, pageSize, where, order, workId)
 	if err != nil {
 		return nil, err
 	}
 
 	// 转换为 SelectItem
-	items := make([]*domain.SelectItem, len(pageResult.Data))
+	items := make([]*dto.SelectItem, len(pageResult.Data))
 	for i, tag := range pageResult.Data {
 		label := ""
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		items[i] = &domain.SelectItem{
+		items[i] = &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
 	}
-	return model.NewPage[domain.SelectItem, LocalTagQueryDTO](items, pageResult.DataCount, page, pageSize), nil
+	return model.NewPage[dto.SelectItem, LocalTagQueryDTO](items, pageResult.DataCount, page, pageSize), nil
 }
 
 // QuerySelectItemPageByWorkIdByDTO 根据作品ID分页查询选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, workId int64) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
+func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, workId int64) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -317,18 +318,18 @@ func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pa
 	}
 
 	// 转换为 SelectItem
-	items := make([]*domain.SelectItem, len(pageResult.Data))
+	items := make([]*dto.SelectItem, len(pageResult.Data))
 	for i, tag := range pageResult.Data {
 		label := ""
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		items[i] = &domain.SelectItem{
+		items[i] = &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
 	}
-	return model.NewPage[domain.SelectItem, LocalTagQueryDTO](items, pageResult.DataCount, page, pageSize), nil
+	return model.NewPage[dto.SelectItem, LocalTagQueryDTO](items, pageResult.DataCount, page, pageSize), nil
 }
 
 // 辅助函数

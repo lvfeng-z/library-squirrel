@@ -13,10 +13,11 @@ import (
 
 	"github.com/library-squirrel/wails/internal/config"
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
+	domain "github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
 )
 
@@ -61,63 +62,61 @@ var (
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {
 	// Save 保存
-	Save(ctx context.Context, plugin *domain.Plugin) error
+	Save(ctx context.Context, plugin *entity2.Plugin) error
 	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, plugins []*domain.Plugin) error
+	SaveBatch(ctx context.Context, plugins []*entity2.Plugin) error
 	// Update 更新
-	Update(ctx context.Context, plugin *domain.Plugin) error
+	Update(ctx context.Context, plugin *entity2.Plugin) error
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.Plugin, error)
+	GetById(ctx context.Context, id int64) (*entity2.Plugin, error)
 	// List 查询列表
-	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Plugin, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Plugin, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin, any], error)
 	// CheckInstalled 检查插件是否已安装
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
-	GetByPublicId(ctx context.Context, publicId string) (*domain.Plugin, error)
+	GetByPublicId(ctx context.Context, publicId string) (*entity2.Plugin, error)
 }
 
 // BackupProvider 备份提供者接口（由 plugin service 定义需要的备份能力）
 type BackupProvider interface {
 	// CreatePluginBackup 创建插件备份
-	CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*domain.Backup, error)
+	CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*entity2.Backup, error)
 	// GetPluginBackup 获取插件备份
-	GetPluginBackup(ctx context.Context, sourceId int64) (*domain.Backup, error)
+	GetPluginBackup(ctx context.Context, sourceId int64) (*entity2.Backup, error)
 }
 
 // Service 插件服务
 type Service struct {
 	repo           Repository
 	backupProvider BackupProvider
-	loader         *Loader
 }
 
 // NewService 创建插件服务
-func NewService(repo Repository, backupProvider BackupProvider, loader *Loader) *Service {
+func NewService(repo Repository, backupProvider BackupProvider) *Service {
 	return &Service{
 		repo:           repo,
 		backupProvider: backupProvider,
-		loader:         loader,
 	}
 }
 
 // GetById 根据ID获取
-func (s *Service) GetById(ctx context.Context, id int64) (*domain.Plugin, error) {
+func (s *Service) GetById(ctx context.Context, id int64) (*entity2.Plugin, error) {
 	return s.repo.GetById(ctx, id)
 }
 
 // Save 保存插件
-func (s *Service) Save(ctx context.Context, plugin *domain.Plugin) error {
+func (s *Service) Save(ctx context.Context, plugin *entity2.Plugin) error {
 	return s.repo.Save(ctx, plugin)
 }
 
 // Update 更新插件
-func (s *Service) Update(ctx context.Context, plugin *domain.Plugin) error {
+func (s *Service) Update(ctx context.Context, plugin *entity2.Plugin) error {
 	return s.repo.Update(ctx, plugin)
 }
 
@@ -128,13 +127,13 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 
 // Page 分页查询
 // Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Plugin, any], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[domain.Plugin, any], error) {
-	conv := query.NewConverter(domain.Plugin{})
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[entity2.Plugin, any], error) {
+	conv := query.NewConverter(entity2.Plugin{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
 		return nil, err
@@ -143,7 +142,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Pl
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Plugin, error) {
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Plugin, error) {
 	return s.repo.List(ctx, opt)
 }
 
@@ -158,12 +157,12 @@ func (s *Service) CheckInstalled(ctx context.Context, publicId string) (bool, er
 }
 
 // GetByPublicId 根据公开ID获取插件
-func (s *Service) GetByPublicId(ctx context.Context, publicId string) (*domain.Plugin, error) {
+func (s *Service) GetByPublicId(ctx context.Context, publicId string) (*entity2.Plugin, error) {
 	return s.repo.GetByPublicId(ctx, publicId)
 }
 
 // InstallFromPath 从插件包路径安装插件
-func (s *Service) InstallFromPath(ctx context.Context, packagePath string, installType domain.InstallType) (*domain.Plugin, error) {
+func (s *Service) InstallFromPath(ctx context.Context, packagePath string, installType domain.InstallType) (*entity2.Plugin, error) {
 	// 验证文件存在
 	if !util.FileExists(packagePath) {
 		return nil, fmt.Errorf("plugin package not found: %s", packagePath)
@@ -231,14 +230,14 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 }
 
 // install 安装插件核心逻辑
-func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType) (*domain.Plugin, error) {
+func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType) (*entity2.Plugin, error) {
 	// 检查是否已安装
 	existing, err := s.repo.GetByPublicId(ctx, installDTO.PublicID)
 	if err != nil {
 		return nil, err
 	}
 
-	var uninstalledPlugin *domain.Plugin
+	var uninstalledPlugin *entity2.Plugin
 	if existing != nil {
 		if existing.Uninstalled.Valid && existing.Uninstalled.Int64 == UninstalledFalse {
 			return nil, ErrPluginAlreadyExists
@@ -271,7 +270,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	}
 
 	// 构建插件记录
-	plugin := domain.NewPlugin()
+	plugin := entity2.NewPlugin()
 	plugin.PublicID = sql.NullString{String: installDTO.PublicID, Valid: true}
 	plugin.Author = sql.NullString{String: installDTO.Author, Valid: true}
 	plugin.Name = sql.NullString{String: installDTO.Name, Valid: true}
@@ -301,7 +300,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 }
 
 // Reinstall 重新安装插件
-func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, installType domain.InstallType) (*domain.Plugin, error) {
+func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, installType domain.InstallType) (*entity2.Plugin, error) {
 	// 获取插件
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
@@ -338,7 +337,7 @@ func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, installT
 }
 
 // ReinstallFromPath 从指定路径重新安装插件
-func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType domain.InstallType) (*domain.Plugin, error) {
+func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType domain.InstallType) (*entity2.Plugin, error) {
 	if packagePath == "" {
 		return nil, fmt.Errorf("package path is required")
 	}

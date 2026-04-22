@@ -3,7 +3,7 @@ import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
 import { Ref, ref } from 'vue'
 import lodash from 'lodash'
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 
 // props

@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
+	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
 )
 
@@ -32,21 +33,21 @@ type WorkQueryDTO struct {
 // LocalTagReader 本地标签读取接口
 type LocalTagReader interface {
 	// ListByWorkId 查询作品关联的本地标签
-	ListByWorkId(ctx context.Context, workId int64) ([]*domain.LocalTag, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.LocalTag, error)
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.LocalTag, error)
+	GetById(ctx context.Context, id int64) (*entity2.LocalTag, error)
 }
 
 // LocalAuthorReader 本地作者读取接口
 type LocalAuthorReader interface {
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.LocalAuthor, error)
+	GetById(ctx context.Context, id int64) (*entity2.LocalAuthor, error)
 }
 
 // SiteTagReader 站点标签读取接口
 type SiteTagReader interface {
 	// ListByWorkId 查询作品关联的站点标签
-	ListByWorkId(ctx context.Context, workId int64) ([]*domain.SiteTag, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.SiteTag, error)
 }
 
 // SiteAuthorReader 站点作者读取接口
@@ -54,19 +55,19 @@ type SiteAuthorReader interface {
 	// ListByWorkId 查询作品关联的站点作者
 	ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error)
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.SiteAuthor, error)
+	GetById(ctx context.Context, id int64) (*entity2.SiteAuthor, error)
 }
 
 // SiteReader 站点读取接口
 type SiteReader interface {
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.Site, error)
+	GetById(ctx context.Context, id int64) (*entity2.Site, error)
 }
 
 // ResourceReader 资源读取接口
 type ResourceReader interface {
 	// ListByWorkId 查询作品关联的资源
-	ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.Resource, error)
 }
 
 // ReWorkTagDeleter 作品-标签关联删除接口
@@ -91,23 +92,23 @@ type ResourceDeleter interface {
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {
 	// Save 保存
-	Save(ctx context.Context, work *domain.Work) error
+	Save(ctx context.Context, work *entity2.Work) error
 	// Update 更新
-	Update(ctx context.Context, work *domain.Work) error
+	Update(ctx context.Context, work *entity2.Work) error
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.Work, error)
+	GetById(ctx context.Context, id int64) (*entity2.Work, error)
 	// List 查询列表
-	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Work, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Work, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work, any], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
-	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error)
+	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity2.Work, error)
 	// ListByIds 根据ID列表批量查询
-	ListByIds(ctx context.Context, ids []int64) ([]*domain.Work, error)
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error)
 	// UpdateLastViewBatch 批量更新最后查看时间
 	UpdateLastViewBatch(ctx context.Context, ids []int64, lastView int64) error
 }
@@ -156,12 +157,12 @@ func NewService(
 }
 
 // Save 保存作品
-func (s *Service) Save(ctx context.Context, work *domain.Work) error {
+func (s *Service) Save(ctx context.Context, work *entity2.Work) error {
 	return s.repo.Save(ctx, work)
 }
 
 // UpdateById 更新作品
-func (s *Service) UpdateById(ctx context.Context, work *domain.Work) error {
+func (s *Service) UpdateById(ctx context.Context, work *entity2.Work) error {
 	if work.ID == 0 {
 		return ErrWorkIdRequired
 	}
@@ -169,17 +170,17 @@ func (s *Service) UpdateById(ctx context.Context, work *domain.Work) error {
 }
 
 // GetById 根据ID获取
-func (s *Service) GetById(ctx context.Context, id int64) (*domain.Work, error) {
+func (s *Service) GetById(ctx context.Context, id int64) (*entity2.Work, error) {
 	return s.repo.GetById(ctx, id)
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Work, error) {
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Work, error) {
 	return s.repo.List(ctx, opt)
 }
 
 // ListByIds 根据ID列表批量查询
-func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.Work, error) {
+func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error) {
 	return s.repo.ListByIds(ctx, ids)
 }
 
@@ -215,13 +216,13 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Work, any], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[domain.Work, any], error) {
-	conv := query.NewConverter(domain.Work{})
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[entity2.Work, any], error) {
+	conv := query.NewConverter(entity2.Work{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
 		return nil, err
@@ -230,12 +231,12 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Wo
 }
 
 // GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
-func (s *Service) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error) {
+func (s *Service) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity2.Work, error) {
 	return s.repo.GetBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 }
 
 // GetFullWorkInfoById 获取作品完整信息
-func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.WorkFullDTO, error) {
+func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.WorkFullDTO, error) {
 	// 获取作品基本信息
 	work, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -243,7 +244,7 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 	}
 
 	// 构建 WorkFullDTO
-	fullDTO := domain.NewWorkFullDTO(work)
+	fullDTO := dto2.NewWorkFullDTO(work)
 
 	// 获取本地作者信息
 	if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
@@ -290,7 +291,7 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 			if site.SiteName.Valid {
 				siteName = site.SiteName.String
 			}
-			fullDTO.Site = &domain.SelectItem{
+			fullDTO.Site = &dto2.SelectItem{
 				Value: site.ID,
 				Label: siteName,
 			}
@@ -300,13 +301,13 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 	// 获取本地标签信息
 	localTags, err := s.localTagReader.ListByWorkId(ctx, id)
 	if err == nil && len(localTags) > 0 {
-		fullDTO.LocalTags = make([]*domain.SelectItem, len(localTags))
+		fullDTO.LocalTags = make([]*dto2.SelectItem, len(localTags))
 		for i, tag := range localTags {
 			tagName := ""
 			if tag.LocalTagName.Valid {
 				tagName = tag.LocalTagName.String
 			}
-			fullDTO.LocalTags[i] = &domain.SelectItem{
+			fullDTO.LocalTags[i] = &dto2.SelectItem{
 				Value: tag.ID,
 				Label: tagName,
 			}
@@ -316,13 +317,13 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*domain.Wo
 	// 获取站点标签信息
 	siteTags, err := s.siteTagReader.ListByWorkId(ctx, id)
 	if err == nil && len(siteTags) > 0 {
-		fullDTO.SiteTags = make([]*domain.SelectItem, len(siteTags))
+		fullDTO.SiteTags = make([]*dto2.SelectItem, len(siteTags))
 		for i, tag := range siteTags {
 			tagName := ""
 			if tag.SiteTagName.Valid {
 				tagName = tag.SiteTagName.String
 			}
-			fullDTO.SiteTags[i] = &domain.SelectItem{
+			fullDTO.SiteTags[i] = &dto2.SelectItem{
 				Value: tag.ID,
 				Label: tagName,
 			}

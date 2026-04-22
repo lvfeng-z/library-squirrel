@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Repository 资源仓储接口（由 service 定义需要的数据库操作方法）

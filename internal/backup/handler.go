@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 备份 Handler

@@ -5,8 +5,9 @@ import (
 	"errors"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -150,8 +151,8 @@ func (r *LocalTagRepository) QueryDTOPage(ctx context.Context, page, pageSize in
 }
 
 // ListSelectItems 查询选择项列表
-func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
-	var results []*domain.SelectItem
+func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
+	var results []*dto.SelectItem
 
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{where},
@@ -169,7 +170,7 @@ func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.E
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		results = append(results, &domain.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		})
@@ -179,8 +180,8 @@ func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.E
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[domain.SelectItem, LocalTagQueryDTO], error) {
-	var results []*domain.SelectItem
+func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
+	var results []*dto.SelectItem
 
 	opt := &database.PageOption{
 		QueryOption: database.QueryOption{
@@ -202,7 +203,7 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		item := &domain.SelectItem{
+		item := &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
@@ -212,7 +213,7 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, page, page
 		results = append(results, item)
 	}
 
-	return model.NewPage[domain.SelectItem, LocalTagQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem, LocalTagQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询

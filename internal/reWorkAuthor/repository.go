@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 )

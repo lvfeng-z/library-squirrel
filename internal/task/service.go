@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
 	"github.com/library-squirrel/wails/pkg/logger"
@@ -75,37 +76,37 @@ const (
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {
 	// Save 保存
-	Save(ctx context.Context, task *domain.Task) error
+	Save(ctx context.Context, task *entity2.Task) error
 	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, tasks []*domain.Task) error
+	SaveBatch(ctx context.Context, tasks []*entity2.Task) error
 	// Update 更新
-	Update(ctx context.Context, task *domain.Task) error
+	Update(ctx context.Context, task *entity2.Task) error
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.Task, error)
+	GetById(ctx context.Context, id int64) (*entity2.Task, error)
 	// List 查询列表
-	List(ctx context.Context, opt *database.QueryOption) ([]*domain.Task, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Task, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task, any], error)
 	// QueryParentPage 分页查询父任务
-	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error)
+	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error)
 	// RefreshTaskStatus 刷新任务状态
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
 	// ListTaskTree 获取任务树列表
-	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error)
+	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity2.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error)
 	// ListStatus 查询状态列表
 	ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// CreateTask 创建任务
-	CreateTask(ctx context.Context, task *domain.Task) error
+	CreateTask(ctx context.Context, task *entity2.Task) error
 	// ListChildrenTask 查询子任务列表
-	ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error)
+	ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.Task, error)
 	// QueryChildrenTaskPage 查询子任务分页
-	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error)
+	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
@@ -151,7 +152,7 @@ type TaskTreeDTO struct {
 }
 
 // ToTaskTreeDTO 将 domain.Task 转换为 TaskTreeDTO
-func ToTaskTreeDTO(task *domain.Task) *TaskTreeDTO {
+func ToTaskTreeDTO(task *entity2.Task) *TaskTreeDTO {
 	if task == nil {
 		return nil
 	}
@@ -180,7 +181,7 @@ func nullInt64ToInt64(ni sql.NullInt64) int64 {
 }
 
 // buildTaskTree 将任务列表构建为树形结构
-func buildTaskTree(tasks []*domain.Task) []*TaskTreeDTO {
+func buildTaskTree(tasks []*entity2.Task) []*TaskTreeDTO {
 	if len(tasks) == 0 {
 		return nil
 	}
@@ -242,20 +243,20 @@ type TreeDataPageDTO struct {
 // WorkSaver 作品保存接口
 type WorkSaver interface {
 	// Save 保存作品
-	Save(ctx context.Context, work *domain.Work) error
+	Save(ctx context.Context, work *entity2.Work) error
 }
 
 // ResourceSaver 资源保存接口
 type ResourceSaver interface {
 	// Save 保存资源
-	Save(ctx context.Context, resource *domain.Resource) error
+	Save(ctx context.Context, resource *entity2.Resource) error
 }
 
 // TaskHandlerProvider 任务处理器提供者接口
 // 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
 type TaskHandlerProvider interface {
 	// GetTaskHandler 获取任务处理器
-	GetTaskHandler(pluginPublicId, contributionId string) (domain.TaskHandler, error)
+	GetTaskHandler(pluginPublicId, contributionId string) (dto.TaskHandler, error)
 }
 
 // Service 任务服务
@@ -281,22 +282,22 @@ func NewService(repo Repository, workSaver WorkSaver, resourceSaver ResourceSave
 }
 
 // GetById 根据ID获取
-func (s *Service) GetById(ctx context.Context, id int64) (*domain.Task, error) {
+func (s *Service) GetById(ctx context.Context, id int64) (*entity2.Task, error) {
 	return s.repo.GetById(ctx, id)
 }
 
 // Save 保存任务
-func (s *Service) Save(ctx context.Context, task *domain.Task) error {
+func (s *Service) Save(ctx context.Context, task *entity2.Task) error {
 	return s.repo.Save(ctx, task)
 }
 
 // SaveBatch 批量保存任务
-func (s *Service) SaveBatch(ctx context.Context, tasks []*domain.Task) error {
+func (s *Service) SaveBatch(ctx context.Context, tasks []*entity2.Task) error {
 	return s.repo.SaveBatch(ctx, tasks)
 }
 
 // Update 更新任务
-func (s *Service) Update(ctx context.Context, task *domain.Task) error {
+func (s *Service) Update(ctx context.Context, task *entity2.Task) error {
 	return s.repo.Update(ctx, task)
 }
 
@@ -306,7 +307,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.Task, error) {
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Task, error) {
 	return s.repo.List(ctx, opt)
 }
 
@@ -316,13 +317,13 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
-	conv := query.NewConverter(domain.Task{})
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+	conv := query.NewConverter(entity2.Task{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
 		return nil, err
@@ -331,13 +332,13 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *T
 }
 
 // QueryParentPage 分页查询父任务
-func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
+func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error) {
 	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
 }
 
 // QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
-func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
-	conv := query.NewConverter(domain.Task{})
+func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+	conv := query.NewConverter(entity2.Task{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
 		return nil, err
@@ -364,7 +365,7 @@ func (s *Service) SetTreeStatus(ctx context.Context, taskIds []int64, status Tas
 }
 
 // ListTaskTree 获取任务树列表
-func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
+func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity2.Task, error) {
 	return s.repo.ListTaskTree(ctx, taskIds, includeStatus...)
 }
 
@@ -374,8 +375,8 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleD
 }
 
 // CreateTask 创建任务
-func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (*domain.Task, error) {
-	task := &domain.Task{
+func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (*entity2.Task, error) {
+	task := &entity2.Task{
 		BaseEntity:           &model.BaseEntity{},
 		Pid:                  sql.NullInt64{Int64: req.Pid, Valid: true},
 		TaskName:             sql.NullString{String: req.TaskName, Valid: true},
@@ -401,7 +402,7 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 
 // QueryTreeDataPage 查询任务树数据分页
 func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
-	conv := query.NewConverter(domain.Task{})
+	conv := query.NewConverter(entity2.Task{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
 		return nil, err
@@ -483,18 +484,18 @@ func buildTaskTreeByDTO(dtos []*TaskTreeDTO) []*TaskTreeDTO {
 }
 
 // ListChildrenTask 查询子任务列表
-func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*domain.Task, error) {
+func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.Task, error) {
 	return s.repo.ListChildrenTask(ctx, pid)
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error) {
 	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
 }
 
 // QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
-func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[domain.Task, any], error) {
-	conv := query.NewConverter(domain.Task{})
+func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+	conv := query.NewConverter(entity2.Task{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
 		return nil, err
@@ -516,7 +517,7 @@ func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*TaskSchedul
 }
 
 // SaveWorkInfo 保存作品信息
-func (s *Service) SaveWorkInfo(ctx context.Context, work *domain.Work, resources []*domain.Resource) error {
+func (s *Service) SaveWorkInfo(ctx context.Context, work *entity2.Work, resources []*entity2.Resource) error {
 	// 保存作品信息
 	if err := s.workSaver.Save(ctx, work); err != nil {
 		return err
@@ -629,7 +630,7 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 }
 
 // handleCreateTaskArray 处理插件返回的任务数组
-func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*domain.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithContribution) (int, error) {
+func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*dto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithContribution) (int, error) {
 	if len(pluginResponses) == 0 {
 		return 0, nil
 	}
@@ -638,7 +639,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 	siteCache := make(map[string]int) // siteName -> siteId 缓存
 
 	// 给任务赋值的函数
-	assignTask := func(task *domain.Task, taskResp *domain.TaskCreateResponse, pid int64) error {
+	assignTask := func(task *entity2.Task, taskResp *dto.TaskCreateResponse, pid int64) error {
 		task.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
 		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkID, Valid: true}
 		task.URL = sql.NullString{String: taskResp.URL, Valid: true}
@@ -681,11 +682,11 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 
 		// 单个任务不创建父任务，只创建子任务
 		if len(children) == 1 {
-			task := &domain.Task{
+			task := &entity2.Task{
 				BaseEntity: &model.BaseEntity{},
 			}
 			childResp := children[0]
-			if err := assignTask(task, &domain.TaskCreateResponse{
+			if err := assignTask(task, &dto.TaskCreateResponse{
 				TaskName:   childResp.TaskName,
 				SiteWorkID: childResp.SiteWorkID,
 				URL:        childResp.URL,
@@ -704,10 +705,10 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		}
 
 		// 多个子任务：先创建父任务
-		parentTask := &domain.Task{
+		parentTask := &entity2.Task{
 			BaseEntity: &model.BaseEntity{},
 		}
-		if err := assignTask(parentTask, &domain.TaskCreateResponse{
+		if err := assignTask(parentTask, &dto.TaskCreateResponse{
 			TaskName: parentResp.TaskName,
 			URL:      parentResp.URL,
 			SiteName: parentResp.SiteName,
@@ -724,10 +725,10 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 
 		// 创建子任务
 		for _, childResp := range children {
-			childTask := &domain.Task{
+			childTask := &entity2.Task{
 				BaseEntity: &model.BaseEntity{},
 			}
-			if err := assignTask(childTask, &domain.TaskCreateResponse{
+			if err := assignTask(childTask, &dto.TaskCreateResponse{
 				TaskName:   childResp.TaskName,
 				SiteWorkID: childResp.SiteWorkID,
 				URL:        childResp.URL,
@@ -751,22 +752,22 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 // CreateTaskStreamChan Go 风格的流式任务创建通道
 // 用于异步流式处理插件返回的任务
 type CreateTaskStreamChan struct {
-	Task   *domain.Task
-	Parent *domain.Task // 父任务（如果是子任务的话）
+	Task   *entity2.Task
+	Parent *entity2.Task // 父任务（如果是子任务的话）
 	Error  error
 }
 
 // handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）
 // 该方法会启动一个 goroutine 来读取任务流，并通过 channel 返回结果
-func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *domain.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithContribution, batchSize int) (<-chan *CreateTaskStreamChan, error) {
+func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *dto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithContribution, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
 		defer close(outChan)
 
-		var parentTask *domain.Task
+		var parentTask *entity2.Task
 		siteCache := make(map[string]int)
-		batch := make([]*domain.Task, 0, batchSize)
+		batch := make([]*entity2.Task, 0, batchSize)
 
 		// 确保批量保存
 		flushBatch := func() {
@@ -796,7 +797,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 			if parentTask == nil || (parentTask.TaskName.Valid && parentTask.TaskName.String != taskResp.TaskName) {
 				flushBatch()
 
-				parentTask = &domain.Task{
+				parentTask = &entity2.Task{
 					BaseEntity: &model.BaseEntity{},
 				}
 				parentTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
@@ -828,7 +829,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 
 			// 处理子任务
 			for _, childResp := range children {
-				childTask := &domain.Task{
+				childTask := &entity2.Task{
 					BaseEntity: &model.BaseEntity{},
 				}
 				childTask.Pid = sql.NullInt64{Int64: parentTask.GetID(), Valid: true}

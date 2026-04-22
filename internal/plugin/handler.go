@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	domain "github.com/library-squirrel/wails/pkg/model/dto"
+	"github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 插件 Handler
@@ -22,7 +23,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存插件
 func (h *Handler) Save(ctx context.Context, plugin *PluginDTO) *model.ApiResponse[int64] {
-	domainPlugin := &domain.Plugin{
+	domainPlugin := &entity.Plugin{
 		BaseEntity: &model.BaseEntity{},
 	}
 	if plugin.PublicID != nil {
@@ -62,7 +63,7 @@ func (h *Handler) Save(ctx context.Context, plugin *PluginDTO) *model.ApiRespons
 
 // Update 更新插件
 func (h *Handler) Update(ctx context.Context, plugin *PluginDTO) *model.ApiResponse[any] {
-	domainPlugin := &domain.Plugin{
+	domainPlugin := &entity.Plugin{
 		BaseEntity: &model.BaseEntity{},
 	}
 	domainPlugin.SetID(plugin.ID)
@@ -234,7 +235,7 @@ type PluginResultDTO struct {
 }
 
 // ToPluginResultDTO 将 domain.Plugin 转换为 PluginResultDTO
-func ToPluginResultDTO(plugin *domain.Plugin) *PluginResultDTO {
+func ToPluginResultDTO(plugin *entity.Plugin) *PluginResultDTO {
 	if plugin == nil {
 		return nil
 	}

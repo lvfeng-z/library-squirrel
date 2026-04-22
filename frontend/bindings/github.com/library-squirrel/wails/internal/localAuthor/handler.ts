@@ -12,10 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -51,7 +51,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * ListSelectItems 查询选择项列表
  */
-export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(model$1.SelectItem | null)[]> | null> {
+export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(dto$0.SelectItem | null)[]> | null> {
     return $Call.ByID(4229405961, queryDTO).then(($result: any) => {
         return $$createType15($result);
     });
@@ -69,7 +69,7 @@ export function QueryPage(page: model$0.Page<$models.LocalAuthorResultDTO, $mode
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<model$1.SelectItem, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<model$1.SelectItem, $models.LocalAuthorQueryDTO> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<dto$0.SelectItem, $models.LocalAuthorQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem, $models.LocalAuthorQueryDTO> | null> | null> {
     return $Call.ByID(1610622229, page).then(($result: any) => {
         return $$createType24($result);
     });
@@ -114,7 +114,7 @@ const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $Create.Array($$createType7);
 const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = model$1.SelectItem.createFrom;
+const $$createType11 = dto$0.SelectItem.createFrom;
 const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = model$0.ApiResponse.createFrom($$createType13);

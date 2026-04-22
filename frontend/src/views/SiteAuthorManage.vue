@@ -15,7 +15,7 @@ import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localAuthorQuerySelectItemPageByName } from '@renderer/apis/LocalAuthorApi.ts'
-import SelectItem from '@renderer/model/util/SelectItem.ts'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { LocalAuthorDTO as LocalAuthor } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'

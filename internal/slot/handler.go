@@ -1,7 +1,7 @@
 package slot
 
 import (
-	domain "github.com/library-squirrel/wails/internal/model"
+	domain "github.com/library-squirrel/wails/pkg"
 	"github.com/library-squirrel/wails/pkg/model"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）

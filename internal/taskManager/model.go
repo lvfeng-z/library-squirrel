@@ -8,8 +8,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // TaskState 任务状态
@@ -30,32 +31,32 @@ const (
 // 由 TaskManager 定义，Plugin 模块实现
 type TaskExecutor interface {
 	// CreateWorkInfo 创建作品信息
-	CreateWorkInfo(ctx context.Context, task *domain.Task) (*domain.WorkResponse, error)
+	CreateWorkInfo(ctx context.Context, task *entity2.Task) (*dto.WorkResponse, error)
 
 	// Start 开始任务
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *domain.WorkResponse, error)
+	Start(ctx context.Context, task *entity2.Task, workId int64) (io.ReadCloser, *dto.WorkResponse, error)
 
 	// Pause 暂停任务
 	// 返回是否真正暂停成功（插件可能不支持暂停）
-	Pause(ctx context.Context, param *domain.TaskResParam) error
+	Pause(ctx context.Context, param *dto.TaskResParam) error
 
 	// Stop 停止任务
-	Stop(ctx context.Context, param *domain.TaskResParam) error
+	Stop(ctx context.Context, param *dto.TaskResParam) error
 
 	// Resume 恢复任务
-	Resume(ctx context.Context, param *domain.TaskResParam) (*domain.WorkResponse, error)
+	Resume(ctx context.Context, param *dto.TaskResParam) (*dto.WorkResponse, error)
 }
 
 // WorkSaver 工作保存接口
 type WorkSaver interface {
-	Save(ctx context.Context, work *domain.Work) (int64, error)
+	Save(ctx context.Context, work *entity2.Work) (int64, error)
 }
 
 // ResourceSaver 资源保存接口
 type ResourceSaver interface {
-	Save(ctx context.Context, resource *domain.Resource) (int64, error)
+	Save(ctx context.Context, resource *entity2.Resource) (int64, error)
 }
 
 // ManagedTask 任务运行控制结构体
@@ -75,11 +76,11 @@ type ManagedTask struct {
 	resourceSaver ResourceSaver
 
 	// 任务信息
-	task   *domain.Task
+	task   *entity2.Task
 	workId int64
 
 	// 资源响应（插件返回）
-	resourceResp *domain.WorkResponse
+	resourceResp *dto.WorkResponse
 
 	// 回调函数
 	onStateChange func(taskId int64, oldState, newState TaskState)
@@ -87,7 +88,7 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *domain.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity2.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
 		taskId:        taskId,
@@ -135,7 +136,7 @@ func (m *ManagedTask) run() {
 
 	// 3. 保存 Resource 到数据库
 	// 将 ResourceDTO 转换为 domain.Resource
-	resource := &domain.Resource{
+	resource := &entity2.Resource{
 		BaseEntity:        &model.BaseEntity{},
 		WorkID:            workId,
 		TaskID:            m.task.GetID(),
@@ -227,7 +228,7 @@ func (m *ManagedTask) Pause() error {
 	m.setState(TaskStatePausing)
 
 	// 调用插件 Pause
-	param := &domain.TaskResParam{
+	param := &dto.TaskResParam{
 		Task:       m.task,
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
@@ -248,7 +249,7 @@ func (m *ManagedTask) Resume() error {
 	}
 
 	// 调用插件 Resume
-	param := &domain.TaskResParam{
+	param := &dto.TaskResParam{
 		Task:       m.task,
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
@@ -268,7 +269,7 @@ func (m *ManagedTask) Stop() {
 	m.cancel() // 触发 context 取消
 
 	// 调用插件 Stop
-	param := &domain.TaskResParam{
+	param := &dto.TaskResParam{
 		Task:       m.task,
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}

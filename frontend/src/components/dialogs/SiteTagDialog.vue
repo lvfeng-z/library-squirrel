@@ -8,7 +8,7 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import SiteTagLocalRelateDTO from '@renderer/model/model/dto/SiteTagLocalRelateDTO.ts'
 import { localTagApi, siteApi, siteTagApi } from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import SelectItem from '@renderer/model/util/SelectItem.ts'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 
 // props

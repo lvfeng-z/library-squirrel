@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="Query extends object">
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { nextTick, Ref, ref, UnwrapRef, watch } from 'vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'

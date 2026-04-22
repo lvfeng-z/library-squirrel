@@ -2,7 +2,7 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'

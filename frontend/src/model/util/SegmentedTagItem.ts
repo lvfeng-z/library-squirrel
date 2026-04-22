@@ -1,4 +1,4 @@
-import SelectItem from './SelectItem.ts'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class SegmentedTagItem extends SelectItem {

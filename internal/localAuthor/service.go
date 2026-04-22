@@ -5,9 +5,10 @@ import (
 	"database/sql"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
@@ -49,9 +50,9 @@ type Repository interface {
 	// ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
 	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthorWithWorkId, error)
 	// ListSelectItems 查询选择项列表
-	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error)
+	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SelectItem, LocalAuthorQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error)
 }
 
 // Service 本地作者服务
@@ -131,7 +132,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Lo
 }
 
 // ListSelectItemsByDTO 查询选择项列表（基于 QueryDTO）
-func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*domain.SelectItem, error) {
+func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*dto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -149,7 +150,7 @@ func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthor
 }
 
 // QuerySelectItemPageByDTO 分页查询选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.SelectItem, LocalAuthorQueryDTO], error) {
+func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
@@ -182,12 +183,12 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 }
 
 // ListSelectItems 查询选择项列表
-func (s *Service) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
+func (s *Service) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
 	return s.repo.ListSelectItems(ctx, where, order)
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SelectItem, LocalAuthorQueryDTO], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
 	return s.repo.QuerySelectItemPage(ctx, page, pageSize, where, order)
 }
 

@@ -10,9 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/library-squirrel/wails/internal/database"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 	"golang.org/x/crypto/nacl/secretbox"
-
-	domain "github.com/library-squirrel/wails/internal/model"
 )
 
 // 错误定义

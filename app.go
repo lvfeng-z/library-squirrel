@@ -4,18 +4,18 @@ import (
 	"context"
 	"path/filepath"
 
+	extension2 "github.com/library-squirrel/wails/internal/plugin/extension"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"gorm.io/gorm"
 
 	"github.com/library-squirrel/wails/internal/appLauncher"
 	"github.com/library-squirrel/wails/internal/backup"
 	"github.com/library-squirrel/wails/internal/config"
 	"github.com/library-squirrel/wails/internal/database"
-	"github.com/library-squirrel/wails/internal/extension"
 	"github.com/library-squirrel/wails/internal/fileSysUtil"
 	"github.com/library-squirrel/wails/internal/localAuthor"
 	"github.com/library-squirrel/wails/internal/localTag"
 	"github.com/library-squirrel/wails/internal/migration"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/plugin"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/reWorkAuthor"
@@ -72,39 +72,39 @@ type App struct {
 	taskRepo task.Repository
 
 	// 扩展注册中心
-	TaskHandlerRegistry *extension.TaskHandlerRegistry
-	SiteBrowserRegistry *extension.SiteBrowserRegistry
-	SlotRegistry        *extension.SlotRegistry
-	SlotPusher          *extension.WailsSlotPusher
+	TaskHandlerRegistry *extension2.TaskHandlerRegistry
+	SiteBrowserRegistry *extension2.SiteBrowserRegistry
+	SlotRegistry        *extension2.SlotRegistry
+	SlotPusher          *extension2.WailsSlotPusher
 
 	// Wails 事件发射器
-	eventEmitter extension.WailsEventEmitter
+	eventEmitter extension2.WailsEventEmitter
 
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
 	// Handlers（用于 Bind[] 参数）
-	LocalTagHandler             *localTag.Handler
-	LocalAuthorHandler          *localAuthor.Handler
-	SiteTagHandler              *siteTag.Handler
-	SiteAuthorHandler           *siteAuthor.Handler
-	SiteHandler                 *site.Handler
-	ResourceHandler             *resource.Handler
-	WorkHandler                 *work.Handler
-	WorkSetHandler              *workSet.Handler
-	SearchHandler               *search.Handler
-	SettingsHandler             *settings.Handler
-	SecureStorageHandler        *secureStorage.Handler
-	BackupHandler               *backup.Handler
-	AppLauncherHandler          *appLauncher.Handler
-	FileSysUtilHandler          *fileSysUtil.Handler
-	PluginHandler               *plugin.Handler
-	TaskHandler                 *task.Handler
-	TaskManagerHandler          *taskManager.Handler
-	SlotHandler                 *slot.Handler
-	SiteBrowserHandler          *siteBrowser.Handler
-	ReWorkAuthorHandler         *reWorkAuthor.Handler
-	ReWorkTagHandler            *reWorkTag.Handler
+	LocalTagHandler              *localTag.Handler
+	LocalAuthorHandler           *localAuthor.Handler
+	SiteTagHandler               *siteTag.Handler
+	SiteAuthorHandler            *siteAuthor.Handler
+	SiteHandler                  *site.Handler
+	ResourceHandler              *resource.Handler
+	WorkHandler                  *work.Handler
+	WorkSetHandler               *workSet.Handler
+	SearchHandler                *search.Handler
+	SettingsHandler              *settings.Handler
+	SecureStorageHandler         *secureStorage.Handler
+	BackupHandler                *backup.Handler
+	AppLauncherHandler           *appLauncher.Handler
+	FileSysUtilHandler           *fileSysUtil.Handler
+	PluginHandler                *plugin.Handler
+	TaskHandler                  *task.Handler
+	TaskManagerHandler           *taskManager.Handler
+	SlotHandler                  *slot.Handler
+	SiteBrowserHandler           *siteBrowser.Handler
+	ReWorkAuthorHandler          *reWorkAuthor.Handler
+	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 }
 
@@ -144,9 +144,9 @@ func NewApp() (*App, error) {
 	logger.Log.Infof("Database migration completed")
 
 	// 4. 初始化扩展注册中心
-	app.TaskHandlerRegistry = extension.NewTaskHandlerRegistry()
-	app.SiteBrowserRegistry = extension.NewSiteBrowserRegistry()
-	app.SlotRegistry = extension.NewSlotRegistry()
+	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
+	app.SiteBrowserRegistry = extension2.NewSiteBrowserRegistry()
+	app.SlotRegistry = extension2.NewSlotRegistry()
 	// SlotPusher 会在 SetEventEmitter 中创建
 
 	// 5. 初始化基础服务（按依赖顺序）
@@ -164,9 +164,9 @@ func NewApp() (*App, error) {
 }
 
 // SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher
-func (app *App) SetEventEmitter(emitter extension.WailsEventEmitter) {
+func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
 	app.eventEmitter = emitter
-	app.SlotPusher = extension.NewWailsSlotPusher(emitter)
+	app.SlotPusher = extension2.NewWailsSlotPusher(emitter)
 }
 
 // initBaseServices 初始化基础服务（无服务依赖）
@@ -262,9 +262,9 @@ func (app *App) initAdvancedServices() error {
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
 
 	// plugin 服务
-	pluginLoader := plugin.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry, app.SlotRegistry)
+	pluginLoader := extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry, app.SlotRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
-	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, pluginLoader)
+	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 
 	// pluginTaskUrlListener 服务
 	pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()
@@ -286,7 +286,7 @@ func (app *App) initAdvancedServices() error {
 	// taskManager 服务
 	taskManagerPusher := taskManager.NewSSEProgressPusher()
 	pluginExecFactory := func(pluginPublicId string) (taskManager.TaskExecutor, error) {
-		return plugin.NewTaskExecutor(pluginLoader), nil
+		return extension2.NewTaskExecutor(pluginLoader), nil
 	}
 
 	// 创建 WorkSaver 和 ResourceSaver 适配器
@@ -310,7 +310,7 @@ type workSaverAdapter struct {
 	svc *work.Service
 }
 
-func (a *workSaverAdapter) Save(ctx context.Context, work *domain.Work) (int64, error) {
+func (a *workSaverAdapter) Save(ctx context.Context, work *entity2.Work) (int64, error) {
 	if err := a.svc.Save(ctx, work); err != nil {
 		return 0, err
 	}
@@ -322,7 +322,7 @@ type resourceSaverAdapter struct {
 	svc *resource.Service
 }
 
-func (a *resourceSaverAdapter) Save(ctx context.Context, resource *domain.Resource) (int64, error) {
+func (a *resourceSaverAdapter) Save(ctx context.Context, resource *entity2.Resource) (int64, error) {
 	if err := a.svc.Save(ctx, resource); err != nil {
 		return 0, err
 	}

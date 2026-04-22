@@ -12,10 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as entity$0 from "../../pkg/model/entity/models.js";
 
 /**
  * Link 链接标签到作品
@@ -29,7 +29,7 @@ export function Link(tagType: number, tagIds: number[], workId: number): $Cancel
 /**
  * ListByWorkId 查询作品关联的所有标签
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$1.ReWorkTag | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(entity$0.ReWorkTag | null)[]> | null> {
     return $Call.ByID(2254837962, workId).then(($result: any) => {
         return $$createType6($result);
     });
@@ -65,7 +65,7 @@ export function Unlink(tagType: number, tagIds: number[], workId: number): $Canc
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$1.ReWorkTag.createFrom;
+const $$createType2 = entity$0.ReWorkTag.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = $Create.Array($$createType3);
 const $$createType5 = model$0.ApiResponse.createFrom($$createType4);

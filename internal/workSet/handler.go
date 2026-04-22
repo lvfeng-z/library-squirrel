@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 作品集 Handler
@@ -22,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存作品集
 func (h *Handler) Save(ctx context.Context, workSet *WorkSetDTO) *model.ApiResponse[int64] {
-	domainWorkSet := &domain.WorkSet{
+	domainWorkSet := &entity2.WorkSet{
 		BaseEntity: &model.BaseEntity{},
 	}
 	if workSet.SiteID != nil {
@@ -50,7 +50,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新作品集
 func (h *Handler) Update(ctx context.Context, workSet *WorkSetDTO) *model.ApiResponse[any] {
-	domainWorkSet := &domain.WorkSet{
+	domainWorkSet := &entity2.WorkSet{
 		BaseEntity: &model.BaseEntity{},
 	}
 	domainWorkSet.SetID(workSet.ID)
@@ -105,10 +105,10 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[WorkSetResultD
 }
 
 // GetWorksByWorkSetId 获取作品集下的作品列表
-func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*domain.Work] {
+func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*entity2.Work] {
 	result, err := h.svc.GetWorksByWorkSetId(ctx, workSetId)
 	if err != nil {
-		return model.Error[[]*domain.Work](err.Error())
+		return model.Error[[]*entity2.Work](err.Error())
 	}
 	return model.Success(result)
 }
@@ -294,7 +294,7 @@ type WorkSetWithCoverResultDTO struct {
 }
 
 // ToWorkSetResultDTO 将 domain.WorkSet 转换为 WorkSetResultDTO
-func ToWorkSetResultDTO(workSet *domain.WorkSet) *WorkSetResultDTO {
+func ToWorkSetResultDTO(workSet *entity2.WorkSet) *WorkSetResultDTO {
 	if workSet == nil {
 		return nil
 	}
@@ -315,7 +315,7 @@ func ToWorkSetResultDTO(workSet *domain.WorkSet) *WorkSetResultDTO {
 }
 
 // ToWorkResultDTO 将 domain.Work 转换为 WorkResultDTO
-func ToWorkResultDTO(work *domain.Work) *WorkResultDTO {
+func ToWorkResultDTO(work *entity2.Work) *WorkResultDTO {
 	if work == nil {
 		return nil
 	}

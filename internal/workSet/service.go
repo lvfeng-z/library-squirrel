@@ -6,8 +6,8 @@ import (
 	"errors"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
@@ -35,37 +35,37 @@ type WorkSetQueryDTO struct {
 // 注意：只定义 service 真正需要的方法，遵循最小依赖原则
 type Repository interface {
 	// Save 保存
-	Save(ctx context.Context, workSet *domain.WorkSet) error
+	Save(ctx context.Context, workSet *entity2.WorkSet) error
 	// Update 更新
-	Update(ctx context.Context, workSet *domain.WorkSet) error
+	Update(ctx context.Context, workSet *entity2.WorkSet) error
 	// GetById 根据ID获取
-	GetById(ctx context.Context, id int64) (*domain.WorkSet, error)
+	GetById(ctx context.Context, id int64) (*entity2.WorkSet, error)
 	// List 查询列表
-	List(ctx context.Context, opt *database.QueryOption) ([]*domain.WorkSet, error)
+	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.WorkSet, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet, any], error)
 	// GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
-	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error)
+	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
 	// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
-	GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*domain.WorkSet, error)
+	GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error)
 }
 
 // WorkReader 作品读取接口
 type WorkReader interface {
 	// ListByIds 根据ID列表批量查询
-	ListByIds(ctx context.Context, ids []int64) ([]*domain.Work, error)
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error)
 }
 
 // ReWorkWorkSetRepository 作品-作品集关联仓储接口
 type ReWorkWorkSetRepository interface {
 	// Save 保存关联
-	Save(ctx context.Context, rel *domain.ReWorkWorkSet) error
+	Save(ctx context.Context, rel *entity2.ReWorkWorkSet) error
 	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, rels []*domain.ReWorkWorkSet) error
+	SaveBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// Delete 删除关联
 	Delete(ctx context.Context, id int64) error
 	// DeleteByWorkAndWorkSet 根据作品ID和作品集ID删除
@@ -75,7 +75,7 @@ type ReWorkWorkSetRepository interface {
 	// ListByWorkSetId 查询作品集关联的所有作品ID
 	ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error)
 	// GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
-	GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error)
+	GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*entity2.ReWorkWorkSet, error)
 	// UpdateSortOrders 批量更新排序顺序
 	UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
 	// UpdateIsCover 更新封面标记
@@ -103,12 +103,12 @@ func NewService(repo Repository, reWorkWorkSetRepo ReWorkWorkSetRepository, work
 }
 
 // Save 保存作品集
-func (s *Service) Save(ctx context.Context, workSet *domain.WorkSet) error {
+func (s *Service) Save(ctx context.Context, workSet *entity2.WorkSet) error {
 	return s.repo.Save(ctx, workSet)
 }
 
 // Update 更新作品集
-func (s *Service) Update(ctx context.Context, workSet *domain.WorkSet) error {
+func (s *Service) Update(ctx context.Context, workSet *entity2.WorkSet) error {
 	if workSet.GetID() == 0 {
 		return ErrWorkSetIdRequired
 	}
@@ -116,12 +116,12 @@ func (s *Service) Update(ctx context.Context, workSet *domain.WorkSet) error {
 }
 
 // GetById 根据ID获取
-func (s *Service) GetById(ctx context.Context, id int64) (*domain.WorkSet, error) {
+func (s *Service) GetById(ctx context.Context, id int64) (*entity2.WorkSet, error) {
 	return s.repo.GetById(ctx, id)
 }
 
 // List 查询列表
-func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domain.WorkSet, error) {
+func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*entity2.WorkSet, error) {
 	return s.repo.List(ctx, opt)
 }
 
@@ -140,13 +140,13 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.WorkSet, any], error) {
+func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet, any], error) {
 	return s.repo.Page(ctx, opt)
 }
 
 // PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[domain.WorkSet, any], error) {
-	conv := query.NewConverter(domain.WorkSet{})
+func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[entity2.WorkSet, any], error) {
+	conv := query.NewConverter(entity2.WorkSet{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Wo
 
 // QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
 func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
-	conv := query.NewConverter(domain.WorkSet{})
+	conv := query.NewConverter(entity2.WorkSet{})
 	queryOpt, err := conv.ToQueryOption(queryDTO)
 	if err != nil {
 		return nil, err
@@ -173,18 +173,18 @@ func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize in
 }
 
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
-func (s *Service) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error) {
+func (s *Service) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error) {
 	return s.repo.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
 }
 
 // GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
-func (s *Service) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*domain.WorkSet, error) {
+func (s *Service) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error) {
 	return s.repo.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 }
 
 // LinkWorkToWorkSet 链接作品到作品集
 func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64, isCover int) error {
-	rel := &domain.ReWorkWorkSet{
+	rel := &entity2.ReWorkWorkSet{
 		WorkID:    sql.NullInt64{Int64: workId, Valid: true},
 		WorkSetID: sql.NullInt64{Int64: workSetId, Valid: true},
 		IsCover:   sql.NullInt64{Int64: int64(isCover), Valid: true},
@@ -202,9 +202,9 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 	if len(workIds) == 0 {
 		return nil
 	}
-	rels := make([]*domain.ReWorkWorkSet, len(workIds))
+	rels := make([]*entity2.ReWorkWorkSet, len(workIds))
 	for i, workId := range workIds {
-		rels[i] = &domain.ReWorkWorkSet{
+		rels[i] = &entity2.ReWorkWorkSet{
 			WorkID:    sql.NullInt64{Int64: workId, Valid: true},
 			WorkSetID: sql.NullInt64{Int64: workSetId, Valid: true},
 			IsCover:   sql.NullInt64{Int64: 0, Valid: true},
@@ -227,13 +227,13 @@ func (s *Service) RemoveBatchFromWorkSet(ctx context.Context, workSetId int64, w
 }
 
 // GetWorksByWorkSetId 获取作品集关联的作品列表
-func (s *Service) GetWorksByWorkSetId(ctx context.Context, workSetId int64) ([]*domain.Work, error) {
+func (s *Service) GetWorksByWorkSetId(ctx context.Context, workSetId int64) ([]*entity2.Work, error) {
 	workIds, err := s.reWorkWorkSetRepo.ListByWorkSetId(ctx, workSetId)
 	if err != nil {
 		return nil, err
 	}
 	if len(workIds) == 0 {
-		return []*domain.Work{}, nil
+		return []*entity2.Work{}, nil
 	}
 	return s.workReader.ListByIds(ctx, workIds)
 }
@@ -270,8 +270,8 @@ func (s *Service) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, e
 
 // WorkSetWithWorksDTO 作品集及其作品信息
 type WorkSetWithWorksDTO struct {
-	WorkSet *domain.WorkSet `json:"workSet"`
-	Works   []*domain.Work  `json:"works"`
+	WorkSet *entity2.WorkSet `json:"workSet"`
+	Works   []*entity2.Work  `json:"works"`
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品信息
@@ -294,7 +294,7 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	for _, ws := range workSets {
 		dto := &WorkSetWithWorksDTO{
 			WorkSet: ws,
-			Works:   []*domain.Work{},
+			Works:   []*entity2.Work{},
 		}
 
 		// 获取作品集关联的作品
@@ -318,8 +318,8 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 
 // WorkSetWithCoverDTO 作品集及其封面作品信息
 type WorkSetWithCoverDTO struct {
-	WorkSet   *domain.WorkSet `json:"workSet"`
-	CoverWork *domain.Work    `json:"coverWork,omitempty"`
+	WorkSet   *entity2.WorkSet `json:"workSet"`
+	CoverWork *entity2.Work    `json:"coverWork,omitempty"`
 }
 
 // QueryPageWithCover 带封面的作品集分页查询

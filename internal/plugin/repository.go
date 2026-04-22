@@ -5,29 +5,29 @@ import (
 	"fmt"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 	"gorm.io/gorm"
 )
 
-// pluginRepository 插件仓储实现
-type pluginRepository struct {
+// PluginRepository 插件仓储实现
+type PluginRepository struct {
 	*database.BaseRepository[domain.Plugin]
 }
 
 // NewRepository 创建插件仓储
-func NewRepository(db *gorm.DB) *pluginRepository {
-	return &pluginRepository{
+func NewRepository(db *gorm.DB) *PluginRepository {
+	return &PluginRepository{
 		BaseRepository: database.NewBaseRepository[domain.Plugin](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
-func (r *pluginRepository) GORM() *gorm.DB {
+func (r *PluginRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
 // CheckInstalled 检查插件是否已安装
-func (r *pluginRepository) CheckInstalled(ctx context.Context, publicId string) (bool, error) {
+func (r *PluginRepository) CheckInstalled(ctx context.Context, publicId string) (bool, error) {
 	var count int64
 	err := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
 		Where("public_id = ? AND uninstalled = 0", publicId).
@@ -39,7 +39,7 @@ func (r *pluginRepository) CheckInstalled(ctx context.Context, publicId string) 
 }
 
 // GetByPublicId 根据公开ID获取
-func (r *pluginRepository) GetByPublicId(ctx context.Context, publicId string) (*domain.Plugin, error) {
+func (r *PluginRepository) GetByPublicId(ctx context.Context, publicId string) (*domain.Plugin, error) {
 	var plugin domain.Plugin
 	err := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
 		Where("public_id = ?", publicId).

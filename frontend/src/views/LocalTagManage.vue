@@ -9,7 +9,7 @@ import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import { Thead } from '../model/util/Thead.ts'
-import SelectItem from '../model/util/SelectItem.ts'
+import { SelectItem, SiteTagFullDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'
@@ -21,7 +21,7 @@ import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { LocalTagQueryDTO, LocalTagDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import {SiteTagFullDTO, SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
+import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
 import { siteApi } from '@renderer/apis/http'
@@ -278,10 +278,10 @@ async function requestSiteTagSelectItemPage(
     result.data = newPage.data.filter(notNullish).map(data =>
         new SelectItem({
           extraData: undefined,
-          label: data.siteTagName,
-          rootId: data.baseSiteTagId,
-          subLabels: [isNotBlank(data.site?.siteName) ? data.site?.siteName : '?'],
-          value: String(data.id)
+          label: data.siteTag?.siteTagName,
+          rootId: data.siteTag?.baseSiteTagId,
+          subLabels: [isNotBlank(data.site?.siteName.String) ? data.site?.siteName.String : '?'],
+          value: String(data.siteTag.id)
         }))
     return result
   } else {

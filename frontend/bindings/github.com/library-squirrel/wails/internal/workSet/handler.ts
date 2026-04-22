@@ -12,10 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$1 from "../model/models.js";
+import * as model$0 from "../../pkg/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as entity$0 from "../../pkg/model/entity/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -60,7 +60,7 @@ export function GetCoverWorkId(workSetId: number): $CancellablePromise<model$0.A
 /**
  * GetWorksByWorkSetId 获取作品集下的作品列表
  */
-export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(model$1.Work | null)[]> | null> {
+export function GetWorksByWorkSetId(workSetId: number): $CancellablePromise<model$0.ApiResponse<(entity$0.Work | null)[]> | null> {
     return $Call.ByID(3166169653, workSetId).then(($result: any) => {
         return $$createType12($result);
     });
@@ -183,7 +183,7 @@ const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$1.Work.createFrom;
+const $$createType8 = entity$0.Work.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = model$0.ApiResponse.createFrom($$createType10);

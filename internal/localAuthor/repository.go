@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/wails/internal/database"
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/pkg/model"
+	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -123,8 +124,8 @@ func (r *localAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 }
 
 // ListSelectItems 查询选择项列表
-func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*domain.SelectItem, error) {
-	var results []*domain.SelectItem
+func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
+	var results []*dto.SelectItem
 
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{where},
@@ -142,7 +143,7 @@ func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where claus
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		results = append(results, &domain.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: author.ID,
 			Label: label,
 		})
@@ -152,8 +153,8 @@ func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where claus
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.SelectItem, LocalAuthorQueryDTO], error) {
-	var results []*domain.SelectItem
+func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
+	var results []*dto.SelectItem
 
 	opt := &database.PageOption{
 		QueryOption: database.QueryOption{
@@ -175,11 +176,11 @@ func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, page, p
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		results = append(results, &domain.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: author.ID,
 			Label: label,
 		})
 	}
 
-	return model.NewPage[domain.SelectItem, LocalAuthorQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem, LocalAuthorQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

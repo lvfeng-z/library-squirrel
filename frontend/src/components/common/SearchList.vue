@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { Ref, ref, UnwrapRef } from 'vue'
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 
 const props = defineProps<{
   multiSelect: boolean

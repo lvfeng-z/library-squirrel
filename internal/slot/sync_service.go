@@ -2,9 +2,8 @@ package slot
 
 import (
 	"github.com/gin-gonic/gin"
-
-	"github.com/library-squirrel/wails/internal/extension"
-	domain "github.com/library-squirrel/wails/internal/model"
+	"github.com/library-squirrel/wails/internal/plugin/extension"
+	domain "github.com/library-squirrel/wails/pkg"
 )
 
 // SlotEvent 插槽事件类型

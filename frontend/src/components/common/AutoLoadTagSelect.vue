@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import IPage from '@renderer/model/util/IPage.ts'
 import { nextTick, onMounted, onUnmounted, Ref, ref, watch } from 'vue'
-import SelectItem from '../../model/util/SelectItem'
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import TagBox from '@renderer/components/common/TagBox.vue'
 import lodash, { throttle } from 'lodash'
 import { Close } from '@element-plus/icons-vue'

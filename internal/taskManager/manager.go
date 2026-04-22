@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	domain "github.com/library-squirrel/wails/internal/model"
 	"github.com/library-squirrel/wails/internal/task"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Repository 任务仓储接口（TaskManager 需要的数据库操作）
