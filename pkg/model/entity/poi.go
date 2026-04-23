@@ -2,20 +2,22 @@ package entity
 
 import (
 	"database/sql"
+
+	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // Poi POI
 type Poi struct {
-	ID         int64          `gorm:"primaryKey;column:id" json:"id"`
+	*model.BaseEntity                // 嵌入基础实体
 	PoiName    sql.NullString `gorm:"column:poi_name" json:"poiName"`
-	CreateTime int64          `gorm:"column:create_time" json:"createTime"`
-	UpdateTime int64          `gorm:"column:update_time" json:"updateTime"`
+}
+
+func NewPoi() *Poi {
+	return &Poi{
+		BaseEntity: &model.BaseEntity{},
+	}
 }
 
 func (Poi) TableName() string {
 	return "poi"
-}
-
-func (e Poi) GetID() int64 {
-	return e.ID
 }

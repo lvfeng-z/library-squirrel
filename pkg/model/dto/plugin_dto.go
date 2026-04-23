@@ -49,3 +49,119 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		UpdateTime:     plugin.GetUpdateTime(),
 	}
 }
+
+// ToPluginEntity 将 PluginDTO 转换为 Plugin 实体
+func ToPluginEntity(dto *PluginDTO) *entity2.Plugin {
+	if dto == nil {
+		return nil
+	}
+
+	entity := &entity2.Plugin{}
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.PublicID != nil {
+		entity.PublicID.Valid = true
+		entity.PublicID.String = *dto.PublicID
+	} else {
+		entity.PublicID.Valid = false
+	}
+
+	if dto.Author != nil {
+		entity.Author.Valid = true
+		entity.Author.String = *dto.Author
+	} else {
+		entity.Author.Valid = false
+	}
+
+	if dto.Name != nil {
+		entity.Name.Valid = true
+		entity.Name.String = *dto.Name
+	} else {
+		entity.Name.Valid = false
+	}
+
+	if dto.Version != nil {
+		entity.Version.Valid = true
+		entity.Version.String = *dto.Version
+	} else {
+		entity.Version.Valid = false
+	}
+
+	if dto.Description != nil {
+		entity.Description.Valid = true
+		entity.Description.String = *dto.Description
+	} else {
+		entity.Description.Valid = false
+	}
+
+	if dto.Changelog != nil {
+		entity.Changelog.Valid = true
+		entity.Changelog.String = *dto.Changelog
+	} else {
+		entity.Changelog.Valid = false
+	}
+
+	if dto.EntryPath != nil {
+		entity.EntryPath.Valid = true
+		entity.EntryPath.String = *dto.EntryPath
+	} else {
+		entity.EntryPath.Valid = false
+	}
+
+	if dto.RootPath != nil {
+		entity.RootPath.Valid = true
+		entity.RootPath.String = *dto.RootPath
+	} else {
+		entity.RootPath.Valid = false
+	}
+
+	if dto.BackupID != nil {
+		entity.BackupID.Valid = true
+		entity.BackupID.Int64 = *dto.BackupID
+	} else {
+		entity.BackupID.Valid = false
+	}
+
+	if dto.SortNum != nil {
+		entity.SortNum.Valid = true
+		entity.SortNum.Int64 = *dto.SortNum
+	} else {
+		entity.SortNum.Valid = false
+	}
+
+	if dto.PluginData != nil {
+		entity.PluginData.Valid = true
+		entity.PluginData.String = *dto.PluginData
+	} else {
+		entity.PluginData.Valid = false
+	}
+
+	if dto.Uninstalled != nil {
+		entity.Uninstalled.Valid = true
+		entity.Uninstalled.Int64 = *dto.Uninstalled
+	} else {
+		entity.Uninstalled.Valid = false
+	}
+
+	if dto.ActivationType != nil {
+		entity.ActivationType.Valid = true
+		entity.ActivationType.String = *dto.ActivationType
+	} else {
+		entity.ActivationType.Valid = false
+	}
+
+	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
+	if dto.CreateTime != 0 {
+		entity.SetCreateTime(dto.CreateTime)
+	}
+	if dto.UpdateTime != 0 {
+		entity.SetUpdateTime(dto.UpdateTime)
+	}
+
+	return entity
+}

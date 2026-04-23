@@ -150,5 +150,13 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 		entity.ErrorMessage.Valid = false
 	}
 
+	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
+	if dto.CreateTime != 0 {
+		entity.SetCreateTime(dto.CreateTime)
+	}
+	if dto.UpdateTime != 0 {
+		entity.SetUpdateTime(dto.UpdateTime)
+	}
+
 	return entity
 }

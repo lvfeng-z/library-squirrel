@@ -80,6 +80,14 @@ func ToSiteTagEntity(dto *SiteTagDTO) *entity2.SiteTag {
 		entity.Description.Valid = false
 	}
 
+	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
+	if dto.CreateTime != 0 {
+		entity.SetCreateTime(dto.CreateTime)
+	}
+	if dto.UpdateTime != 0 {
+		entity.SetUpdateTime(dto.UpdateTime)
+	}
+
 	return entity
 }
 
