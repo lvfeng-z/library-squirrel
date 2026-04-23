@@ -53,13 +53,13 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 		if attr.HasOrder() {
 			orders = append(orders, orderField{
 				columnName: field.ColumnName,
-				desc:       attr.Order == OrderDesc,
-				priority:   attr.Priority,
+				desc:       attr.GetOrder() == OrderDesc,
+				priority:   attr.GetPriority(),
 			})
 		}
 
 		// 处理查询条件（需要有效值）
-		if attr.Value == nil {
+		if attr.GetValue() == nil {
 			continue
 		}
 
@@ -67,7 +67,7 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 		cond := Condition{
 			Field:    field.ColumnName,
 			Operator: attr.GetOperator(),
-			Value:    attr.Value,
+			Value:    attr.GetValue(),
 		}
 		expr, err := c.buildCondition(cond)
 		if err != nil {

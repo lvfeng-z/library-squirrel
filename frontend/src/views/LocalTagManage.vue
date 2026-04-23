@@ -4,7 +4,7 @@ import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
-import {toNumber} from 'lodash'
+import { toNumber } from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
@@ -327,11 +327,11 @@ async function requestSiteTagSelectItemPage(
               <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="16">
-                  <el-input v-model="localTagSearchParams.localTagName" placeholder="输入标签名称" clearable />
+                  <el-input v-model="localTagSearchParams.localTagName.value" placeholder="输入标签名称" clearable />
                 </el-col>
                 <el-col :span="8">
                   <auto-load-select
-                    v-model="localTagSearchParams.baseLocalTagId"
+                    v-model="localTagSearchParams.baseLocalTagId.value"
                     :load="localTagQuerySelectItemPageByName"
                     placeholder="选择上级标签"
                     remote
