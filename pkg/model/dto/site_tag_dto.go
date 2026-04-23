@@ -38,6 +38,51 @@ func NewSiteTagDTO(tag *entity2.SiteTag) *SiteTagDTO {
 	}
 }
 
+// ToSiteTagEntity 将 SiteTagDTO 转换为 SiteTag 实体
+func ToSiteTagEntity(dto *SiteTagDTO) *entity2.SiteTag {
+	if dto == nil {
+		return nil
+	}
+
+	entity := &entity2.SiteTag{}
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.SiteID != nil {
+		entity.SiteID.Valid = true
+		entity.SiteID.Int64 = *dto.SiteID
+	} else {
+		entity.SiteID.Valid = false
+	}
+
+	if dto.SiteTagID != nil {
+		entity.SiteTagID.Valid = true
+		entity.SiteTagID.String = *dto.SiteTagID
+	} else {
+		entity.SiteTagID.Valid = false
+	}
+
+	if dto.SiteTagName != nil {
+		entity.SiteTagName.Valid = true
+		entity.SiteTagName.String = *dto.SiteTagName
+	} else {
+		entity.SiteTagName.Valid = false
+	}
+
+	if dto.Description != nil {
+		entity.Description.Valid = true
+		entity.Description.String = *dto.Description
+	} else {
+		entity.Description.Valid = false
+	}
+
+	return entity
+}
+
 // SiteTagFullDTO 站点标签完整DTO（包含绑定的本地标签和来源站点信息）
 type SiteTagFullDTO struct {
 	SiteTag  *SiteTagDTO  `json:"siteTag,omitempty"`

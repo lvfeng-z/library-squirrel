@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
-	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 任务 Handler
@@ -22,49 +21,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存任务
 func (h *Handler) Save(ctx context.Context, task *dto2.TaskDTO) *model.ApiResponse[int64] {
-	domainTask := &domain.Task{}
-	if task.ID != 0 {
-		domainTask.SetID(task.ID)
-	}
-	if task.Pid != nil {
-		domainTask.Pid.Valid = true
-		domainTask.Pid.Int64 = *task.Pid
-	}
-	if task.TaskName != nil {
-		domainTask.TaskName.Valid = true
-		domainTask.TaskName.String = *task.TaskName
-	}
-	if task.SiteID != nil {
-		domainTask.SiteID.Valid = true
-		domainTask.SiteID.Int64 = *task.SiteID
-	}
-	if task.SiteWorkID != nil {
-		domainTask.SiteWorkID.Valid = true
-		domainTask.SiteWorkID.String = *task.SiteWorkID
-	}
-	if task.URL != nil {
-		domainTask.URL.Valid = true
-		domainTask.URL.String = *task.URL
-	}
-	if task.Status != 0 {
-		domainTask.Status = task.Status
-	}
-	if task.IsCollection != nil {
-		domainTask.IsCollection.Valid = true
-		domainTask.IsCollection.Int64 = *task.IsCollection
-	}
-	if task.PluginPublicID != nil {
-		domainTask.PluginPublicID.Valid = true
-		domainTask.PluginPublicID.String = *task.PluginPublicID
-	}
-	if task.PluginContributionID != nil {
-		domainTask.PluginContributionID.Valid = true
-		domainTask.PluginContributionID.String = *task.PluginContributionID
-	}
-	if task.PluginData != nil {
-		domainTask.PluginData.Valid = true
-		domainTask.PluginData.String = *task.PluginData
-	}
+	domainTask := dto2.ToTaskEntity(task)
 
 	if err := h.svc.Save(ctx, domainTask); err != nil {
 		return model.Error[int64](err.Error())
@@ -74,50 +31,7 @@ func (h *Handler) Save(ctx context.Context, task *dto2.TaskDTO) *model.ApiRespon
 
 // Update 更新任务
 func (h *Handler) Update(ctx context.Context, task *dto2.TaskDTO) *model.ApiResponse[any] {
-	domainTask := &domain.Task{}
-	if task.ID == 0 {
-		return model.Error[any]("更新任务失败，id不能为空")
-	}
-	domainTask.SetID(task.ID)
-	if task.Pid != nil {
-		domainTask.Pid.Valid = true
-		domainTask.Pid.Int64 = *task.Pid
-	}
-	if task.TaskName != nil {
-		domainTask.TaskName.Valid = true
-		domainTask.TaskName.String = *task.TaskName
-	}
-	if task.SiteID != nil {
-		domainTask.SiteID.Valid = true
-		domainTask.SiteID.Int64 = *task.SiteID
-	}
-	if task.SiteWorkID != nil {
-		domainTask.SiteWorkID.Valid = true
-		domainTask.SiteWorkID.String = *task.SiteWorkID
-	}
-	if task.URL != nil {
-		domainTask.URL.Valid = true
-		domainTask.URL.String = *task.URL
-	}
-	if task.Status != 0 {
-		domainTask.Status = task.Status
-	}
-	if task.IsCollection != nil {
-		domainTask.IsCollection.Valid = true
-		domainTask.IsCollection.Int64 = *task.IsCollection
-	}
-	if task.PluginPublicID != nil {
-		domainTask.PluginPublicID.Valid = true
-		domainTask.PluginPublicID.String = *task.PluginPublicID
-	}
-	if task.PluginContributionID != nil {
-		domainTask.PluginContributionID.Valid = true
-		domainTask.PluginContributionID.String = *task.PluginContributionID
-	}
-	if task.PluginData != nil {
-		domainTask.PluginData.Valid = true
-		domainTask.PluginData.String = *task.PluginData
-	}
+	domainTask := dto2.ToTaskEntity(task)
 
 	if err := h.svc.Update(ctx, domainTask); err != nil {
 		return model.Error[any](err.Error())
@@ -328,4 +242,3 @@ func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiRespo
 	}
 	return model.Success(result)
 }
-

@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
-	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 本地作者 Handler
@@ -22,17 +21,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存作者
 func (h *Handler) Save(ctx context.Context, author *dto.LocalAuthorDTO) *model.ApiResponse[int64] {
-	domainAuthor := &domain.LocalAuthor{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if author.AuthorName != nil {
-		domainAuthor.AuthorName.Valid = true
-		domainAuthor.AuthorName.String = *author.AuthorName
-	}
-	if author.Introduce != nil {
-		domainAuthor.Introduce.Valid = true
-		domainAuthor.Introduce.String = *author.Introduce
-	}
+	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
 		return model.Error[int64](err.Error())
@@ -50,18 +39,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新作者
 func (h *Handler) Update(ctx context.Context, author *dto.LocalAuthorDTO) *model.ApiResponse[any] {
-	domainAuthor := &domain.LocalAuthor{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainAuthor.SetID(author.ID)
-	if author.AuthorName != nil {
-		domainAuthor.AuthorName.Valid = true
-		domainAuthor.AuthorName.String = *author.AuthorName
-	}
-	if author.Introduce != nil {
-		domainAuthor.Introduce.Valid = true
-		domainAuthor.Introduce.String = *author.Introduce
-	}
+	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
 		return model.Error[any](err.Error())

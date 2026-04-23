@@ -147,3 +147,62 @@ func NewSiteAuthorLocalRelateDTO(siteAuthor *entity2.SiteAuthor) *SiteAuthorLoca
 	}
 	return dto
 }
+
+// ToSiteAuthorEntity 将 SiteAuthorDTO 转换为 SiteAuthor 实体
+func ToSiteAuthorEntity(dto *SiteAuthorDTO) *entity2.SiteAuthor {
+	if dto == nil {
+		return nil
+	}
+
+	entity := &entity2.SiteAuthor{}
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.SiteID != nil {
+		entity.SiteID.Valid = true
+		entity.SiteID.Int64 = *dto.SiteID
+	} else {
+		entity.SiteID.Valid = false
+	}
+
+	if dto.SiteAuthorID != nil {
+		entity.SiteAuthorID.Valid = true
+		entity.SiteAuthorID.String = *dto.SiteAuthorID
+	} else {
+		entity.SiteAuthorID.Valid = false
+	}
+
+	if dto.AuthorName != nil {
+		entity.AuthorName.Valid = true
+		entity.AuthorName.String = *dto.AuthorName
+	} else {
+		entity.AuthorName.Valid = false
+	}
+
+	if dto.FixedAuthorName != nil {
+		entity.FixedAuthorName.Valid = true
+		entity.FixedAuthorName.String = *dto.FixedAuthorName
+	} else {
+		entity.FixedAuthorName.Valid = false
+	}
+
+	if dto.SiteAuthorNameBefore != nil {
+		entity.SiteAuthorNameBefore.Valid = true
+		entity.SiteAuthorNameBefore.String = *dto.SiteAuthorNameBefore
+	} else {
+		entity.SiteAuthorNameBefore.Valid = false
+	}
+
+	if dto.Introduce != nil {
+		entity.Introduce.Valid = true
+		entity.Introduce.String = *dto.Introduce
+	} else {
+		entity.Introduce.Valid = false
+	}
+
+	return entity
+}

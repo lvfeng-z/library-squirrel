@@ -42,6 +42,86 @@ func NewWorkSetDTO(workSet *entity2.WorkSet) *WorkSetDTO {
 	}
 }
 
+// ToWorkSetEntity 将 WorkSetDTO 转换为 WorkSet 实体
+func ToWorkSetEntity(dto *WorkSetDTO) *entity2.WorkSet {
+	if dto == nil {
+		return nil
+	}
+
+	entity := &entity2.WorkSet{}
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.SiteID != nil {
+		entity.SiteID.Valid = true
+		entity.SiteID.Int64 = *dto.SiteID
+	} else {
+		entity.SiteID.Valid = false
+	}
+
+	if dto.SiteWorkSetID != nil {
+		entity.SiteWorkSetID.Valid = true
+		entity.SiteWorkSetID.String = *dto.SiteWorkSetID
+	} else {
+		entity.SiteWorkSetID.Valid = false
+	}
+
+	if dto.SiteWorkSetName != nil {
+		entity.SiteWorkSetName.Valid = true
+		entity.SiteWorkSetName.String = *dto.SiteWorkSetName
+	} else {
+		entity.SiteWorkSetName.Valid = false
+	}
+
+	if dto.SiteAuthorID != nil {
+		entity.SiteAuthorID.Valid = true
+		entity.SiteAuthorID.String = *dto.SiteAuthorID
+	} else {
+		entity.SiteAuthorID.Valid = false
+	}
+
+	if dto.SiteWorkSetDescription != nil {
+		entity.SiteWorkSetDescription.Valid = true
+		entity.SiteWorkSetDescription.String = *dto.SiteWorkSetDescription
+	} else {
+		entity.SiteWorkSetDescription.Valid = false
+	}
+
+	if dto.SiteUploadTime != nil {
+		entity.SiteUploadTime.Valid = true
+		entity.SiteUploadTime.Int64 = *dto.SiteUploadTime
+	} else {
+		entity.SiteUploadTime.Valid = false
+	}
+
+	if dto.SiteUpdateTime != nil {
+		entity.SiteUpdateTime.Valid = true
+		entity.SiteUpdateTime.Int64 = *dto.SiteUpdateTime
+	} else {
+		entity.SiteUpdateTime.Valid = false
+	}
+
+	if dto.NickName != nil {
+		entity.NickName.Valid = true
+		entity.NickName.String = *dto.NickName
+	} else {
+		entity.NickName.Valid = false
+	}
+
+	if dto.LastView != nil {
+		entity.LastView.Valid = true
+		entity.LastView.Int64 = *dto.LastView
+	} else {
+		entity.LastView.Valid = false
+	}
+
+	return entity
+}
+
 // WorkSetWithWorksResultDTO 作品集及其作品信息
 type WorkSetWithWorksResultDTO struct {
 	WorkSet *WorkSetDTO `json:"workSet"`

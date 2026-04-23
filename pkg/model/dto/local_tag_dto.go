@@ -31,3 +31,48 @@ func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
 		UpdateTime:     tag.GetUpdateTime(),
 	}
 }
+
+// ToLocalTagEntity 将 LocalTagDTO 转换为 LocalTag 实体
+func ToLocalTagEntity(dto *LocalTagDTO) *entity.LocalTag {
+	if dto == nil {
+		return nil
+	}
+
+	entity := entity.NewLocalTag()
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.LocalTagName != nil {
+		entity.LocalTagName.Valid = true
+		entity.LocalTagName.String = *dto.LocalTagName
+	} else {
+		entity.LocalTagName.Valid = false
+	}
+
+	if dto.BaseLocalTagID != nil {
+		entity.BaseLocalTagID.Valid = true
+		entity.BaseLocalTagID.Int64 = *dto.BaseLocalTagID
+	} else {
+		entity.BaseLocalTagID.Valid = false
+	}
+
+	if dto.Description != nil {
+		entity.Description.Valid = true
+		entity.Description.String = *dto.Description
+	} else {
+		entity.Description.Valid = false
+	}
+
+	if dto.LastUse != nil {
+		entity.LastUse.Valid = true
+		entity.LastUse.Int64 = *dto.LastUse
+	} else {
+		entity.LastUse.Valid = false
+	}
+
+	return entity
+}

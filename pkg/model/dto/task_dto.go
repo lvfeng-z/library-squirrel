@@ -49,3 +49,106 @@ func NewTaskDTO(task *entity2.Task) *TaskDTO {
 		UpdateTime:           task.GetUpdateTime(),
 	}
 }
+
+// ToTaskEntity 将 TaskDTO 转换为 Task 实体
+func ToTaskEntity(dto *TaskDTO) *entity2.Task {
+	if dto == nil {
+		return nil
+	}
+
+	entity := &entity2.Task{}
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.IsCollection != nil {
+		entity.IsCollection.Valid = true
+		entity.IsCollection.Int64 = *dto.IsCollection
+	} else {
+		entity.IsCollection.Valid = false
+	}
+
+	if dto.Pid != nil {
+		entity.Pid.Valid = true
+		entity.Pid.Int64 = *dto.Pid
+	} else {
+		entity.Pid.Valid = false
+	}
+
+	if dto.TaskName != nil {
+		entity.TaskName.Valid = true
+		entity.TaskName.String = *dto.TaskName
+	} else {
+		entity.TaskName.Valid = false
+	}
+
+	if dto.SiteID != nil {
+		entity.SiteID.Valid = true
+		entity.SiteID.Int64 = *dto.SiteID
+	} else {
+		entity.SiteID.Valid = false
+	}
+
+	if dto.SiteWorkID != nil {
+		entity.SiteWorkID.Valid = true
+		entity.SiteWorkID.String = *dto.SiteWorkID
+	} else {
+		entity.SiteWorkID.Valid = false
+	}
+
+	if dto.URL != nil {
+		entity.URL.Valid = true
+		entity.URL.String = *dto.URL
+	} else {
+		entity.URL.Valid = false
+	}
+
+	entity.Status = dto.Status
+
+	if dto.PendingResourceID != nil {
+		entity.PendingResourceID.Valid = true
+		entity.PendingResourceID.Int64 = *dto.PendingResourceID
+	} else {
+		entity.PendingResourceID.Valid = false
+	}
+
+	if dto.Continuable != nil {
+		entity.Continuable.Valid = true
+		entity.Continuable.Int64 = *dto.Continuable
+	} else {
+		entity.Continuable.Valid = false
+	}
+
+	if dto.PluginPublicID != nil {
+		entity.PluginPublicID.Valid = true
+		entity.PluginPublicID.String = *dto.PluginPublicID
+	} else {
+		entity.PluginPublicID.Valid = false
+	}
+
+	if dto.PluginContributionID != nil {
+		entity.PluginContributionID.Valid = true
+		entity.PluginContributionID.String = *dto.PluginContributionID
+	} else {
+		entity.PluginContributionID.Valid = false
+	}
+
+	if dto.PluginData != nil {
+		entity.PluginData.Valid = true
+		entity.PluginData.String = *dto.PluginData
+	} else {
+		entity.PluginData.Valid = false
+	}
+
+	if dto.ErrorMessage != nil {
+		entity.ErrorMessage.Valid = true
+		entity.ErrorMessage.String = *dto.ErrorMessage
+	} else {
+		entity.ErrorMessage.Valid = false
+	}
+
+	return entity
+}

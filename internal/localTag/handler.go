@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
-	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 本地标签 Handler
@@ -23,17 +22,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存本地标签
 func (h *Handler) Save(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiResponse[int64] {
-	domainTag := &domain.LocalTag{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if tag.LocalTagName != nil {
-		domainTag.LocalTagName.Valid = true
-		domainTag.LocalTagName.String = *tag.LocalTagName
-	}
-	if tag.BaseLocalTagID != nil {
-		domainTag.BaseLocalTagID.Valid = true
-		domainTag.BaseLocalTagID.Int64 = *tag.BaseLocalTagID
-	}
+	domainTag := dto.ToLocalTagEntity(tag)
 
 	if err := h.svc.Save(ctx, domainTag); err != nil {
 		return model.Error[int64](err.Error())
@@ -51,18 +40,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新本地标签
 func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiResponse[any] {
-	domainTag := &domain.LocalTag{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainTag.SetID(tag.ID)
-	if tag.LocalTagName != nil {
-		domainTag.LocalTagName.Valid = true
-		domainTag.LocalTagName.String = *tag.LocalTagName
-	}
-	if tag.BaseLocalTagID != nil {
-		domainTag.BaseLocalTagID.Valid = true
-		domainTag.BaseLocalTagID.Int64 = *tag.BaseLocalTagID
-	}
+	domainTag := dto.ToLocalTagEntity(tag)
 
 	if err := h.svc.UpdateById(ctx, domainTag); err != nil {
 		return model.Error[any](err.Error())

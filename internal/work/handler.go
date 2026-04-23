@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
-	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 作品 Handler
@@ -22,21 +21,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存作品
 func (h *Handler) Save(ctx context.Context, work *dto.WorkDTO) *model.ApiResponse[int64] {
-	domainWork := &domain.Work{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if work.SiteID != nil {
-		domainWork.SiteID.Valid = true
-		domainWork.SiteID.Int64 = *work.SiteID
-	}
-	if work.SiteWorkID != nil {
-		domainWork.SiteWorkID.Valid = true
-		domainWork.SiteWorkID.String = *work.SiteWorkID
-	}
-	if work.SiteWorkName != nil {
-		domainWork.SiteWorkName.Valid = true
-		domainWork.SiteWorkName.String = *work.SiteWorkName
-	}
+	domainWork := dto.ToWorkEntity(work)
 
 	if err := h.svc.Save(ctx, domainWork); err != nil {
 		return model.Error[int64](err.Error())
@@ -54,22 +39,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新作品
 func (h *Handler) Update(ctx context.Context, work *dto.WorkDTO) *model.ApiResponse[any] {
-	domainWork := &domain.Work{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainWork.SetID(work.ID)
-	if work.SiteID != nil {
-		domainWork.SiteID.Valid = true
-		domainWork.SiteID.Int64 = *work.SiteID
-	}
-	if work.SiteWorkID != nil {
-		domainWork.SiteWorkID.Valid = true
-		domainWork.SiteWorkID.String = *work.SiteWorkID
-	}
-	if work.SiteWorkName != nil {
-		domainWork.SiteWorkName.Valid = true
-		domainWork.SiteWorkName.String = *work.SiteWorkName
-	}
+	domainWork := dto.ToWorkEntity(work)
 
 	if err := h.svc.UpdateById(ctx, domainWork); err != nil {
 		return model.Error[any](err.Error())

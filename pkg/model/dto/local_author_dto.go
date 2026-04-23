@@ -29,3 +29,41 @@ func NewLocalAuthorDTO(author *entity.LocalAuthor) *LocalAuthorDTO {
 		UpdateTime: author.GetUpdateTime(),
 	}
 }
+
+// ToLocalAuthorEntity 将 LocalAuthorDTO 转换为 LocalAuthor 实体
+func ToLocalAuthorEntity(dto *LocalAuthorDTO) *entity.LocalAuthor {
+	if dto == nil {
+		return nil
+	}
+
+	entity := entity.NewLocalAuthor()
+
+	// 设置基础字段
+	if dto.ID != 0 {
+		entity.SetID(dto.ID)
+	}
+
+	// 设置业务字段
+	if dto.AuthorName != nil {
+		entity.AuthorName.Valid = true
+		entity.AuthorName.String = *dto.AuthorName
+	} else {
+		entity.AuthorName.Valid = false
+	}
+
+	if dto.Introduce != nil {
+		entity.Introduce.Valid = true
+		entity.Introduce.String = *dto.Introduce
+	} else {
+		entity.Introduce.Valid = false
+	}
+
+	if dto.LastUse != nil {
+		entity.LastUse.Valid = true
+		entity.LastUse.Int64 = *dto.LastUse
+	} else {
+		entity.LastUse.Valid = false
+	}
+
+	return entity
+}
