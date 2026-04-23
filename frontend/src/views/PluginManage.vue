@@ -12,7 +12,6 @@ import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
-import { PluginDTO as Plugin } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { fileSysUtilApi } from '@renderer/apis/http'
@@ -23,6 +22,7 @@ import {
   pluginReinstallFromPath,
   pluginUnInstall
 } from '@renderer/apis/http/wrappers/plugin'
+import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 // onMounted
 onMounted(() => {
@@ -37,7 +37,7 @@ onMounted(() => {
 
 // 变量
 const apis = {
-  dirSelect: fileSysUtilApi.dirSelect,
+  dirSelect: fileSysUtilApi.fileSysUtilDirSelect,
   pluginQueryPage,
   pluginInstallFromPath,
   pluginReinstall,
@@ -47,15 +47,15 @@ const apis = {
 // 插件数据表组件的实例
 const pluginSearchTable = ref()
 // 插件分页参数
-const pluginPage: Ref<Page<PluginQueryDTO, Plugin>> = ref(new Page<PluginQueryDTO, Plugin>())
+const pluginPage: Ref<Page<PluginDTO, PluginQueryDTO>> = ref(new Page<PluginDTO, PluginQueryDTO>())
 // 插件操作栏按钮
-const pluginOperationButton: OperationItem<Plugin>[] = [
+const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
   { label: '修复', icon: 'Refresh', code: 'reinstall' },
   { label: '卸载', icon: 'delete', code: 'uninstall' }
 ]
 // 插件的表头
-const pluginThead: Ref<Thead<Plugin>[]> = ref([
+const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
@@ -105,25 +105,25 @@ const pluginThead: Ref<Thead<Plugin>[]> = ref([
 // 插件的查询参数
 const pluginSearchParams: Ref<PluginQueryDTO> = ref<PluginQueryDTO>(new PluginQueryDTO())
 // 被选中的插件
-const pluginSelected: Ref<UnwrapRef<Plugin>> = ref(new Plugin())
+const pluginSelected: Ref<UnwrapRef<PluginDTO>> = ref(new PluginDTO())
 // 对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 对话框的数据
-const dialogData: Ref<Plugin> = ref(new Plugin())
+const dialogData: Ref<PluginDTO> = ref(new PluginDTO())
 
 // 方法
 // 分页查询插件
-async function pluginQueryPage(page: Page<PluginQueryDTO, Plugin>): Promise<Page<PluginQueryDTO, Plugin> | undefined> {
+async function queryPage(page: Page<PluginDTO, PluginQueryDTO>): Promise<Page<PluginDTO, PluginQueryDTO> | undefined> {
   const response = await apis.pluginQueryPage(page)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<PluginQueryDTO, Plugin>>(response)
+    return ApiUtil.data<Page<PluginDTO, PluginQueryDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
   }
 }
 // 处理插件数据行按钮点击事件
-function handleRowButtonClicked(op: DataTableOperationResponse<Plugin>) {
+function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
   switch (op.code) {
     case DialogMode.VIEW:
       dialogData.value = op.data
@@ -140,7 +140,7 @@ function handleRowButtonClicked(op: DataTableOperationResponse<Plugin>) {
   }
 }
 // 处理被选中的插件改变的事件
-async function handleSelectionChange(selections: Plugin[]) {
+async function handleSelectionChange(selections: PluginDTO[]) {
   if (selections.length > 0) {
     pluginSelected.value = selections[0]
   }
@@ -191,13 +191,13 @@ async function unInstall(pluginPublicId: string) {
   } else {
     ElMessage({
       type: 'error',
-      message: `卸载失败，${response.message}`
+      message: `卸载失败，${response.msg}`
     })
   }
 }
 // 选择安装包
 async function selectPackage(): Promise<string | undefined> {
-  const response = await apis.dirSelect(true)
+  const response = await apis.dirSelect(true, true)
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {
@@ -239,7 +239,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           data-key="id"
           :operation-button="pluginOperationButton"
           :thead="pluginThead"
-          :search="pluginQueryPage"
+          :search="queryPage"
           :multi-select="false"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"

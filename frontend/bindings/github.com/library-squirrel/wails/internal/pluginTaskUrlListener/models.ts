@@ -20,6 +20,8 @@ export class PluginWithContribution {
     "author": sql$0.NullString;
     "name": sql$0.NullString;
     "version": sql$0.NullString;
+    "description": sql$0.NullString;
+    "changelog": sql$0.NullString;
     "entryPath": sql$0.NullString;
     "rootPath": sql$0.NullString;
     "backupId": sql$0.NullInt64;
@@ -60,6 +62,12 @@ export class PluginWithContribution {
         }
         if (!("version" in $$source)) {
             this["version"] = (new sql$0.NullString());
+        }
+        if (!("description" in $$source)) {
+            this["description"] = (new sql$0.NullString());
+        }
+        if (!("changelog" in $$source)) {
+            this["changelog"] = (new sql$0.NullString());
         }
         if (!("entryPath" in $$source)) {
             this["entryPath"] = (new sql$0.NullString());
@@ -102,11 +110,13 @@ export class PluginWithContribution {
         const $$createField6_0 = $$createType0;
         const $$createField7_0 = $$createType0;
         const $$createField8_0 = $$createType0;
-        const $$createField9_0 = $$createType1;
-        const $$createField10_0 = $$createType1;
-        const $$createField11_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
+        const $$createField10_0 = $$createType0;
+        const $$createField11_0 = $$createType1;
         const $$createField12_0 = $$createType1;
         const $$createField13_0 = $$createType0;
+        const $$createField14_0 = $$createType1;
+        const $$createField15_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -120,26 +130,32 @@ export class PluginWithContribution {
         if ("version" in $$parsedSource) {
             $$parsedSource["version"] = $$createField6_0($$parsedSource["version"]);
         }
+        if ("description" in $$parsedSource) {
+            $$parsedSource["description"] = $$createField7_0($$parsedSource["description"]);
+        }
+        if ("changelog" in $$parsedSource) {
+            $$parsedSource["changelog"] = $$createField8_0($$parsedSource["changelog"]);
+        }
         if ("entryPath" in $$parsedSource) {
-            $$parsedSource["entryPath"] = $$createField7_0($$parsedSource["entryPath"]);
+            $$parsedSource["entryPath"] = $$createField9_0($$parsedSource["entryPath"]);
         }
         if ("rootPath" in $$parsedSource) {
-            $$parsedSource["rootPath"] = $$createField8_0($$parsedSource["rootPath"]);
+            $$parsedSource["rootPath"] = $$createField10_0($$parsedSource["rootPath"]);
         }
         if ("backupId" in $$parsedSource) {
-            $$parsedSource["backupId"] = $$createField9_0($$parsedSource["backupId"]);
+            $$parsedSource["backupId"] = $$createField11_0($$parsedSource["backupId"]);
         }
         if ("sortNum" in $$parsedSource) {
-            $$parsedSource["sortNum"] = $$createField10_0($$parsedSource["sortNum"]);
+            $$parsedSource["sortNum"] = $$createField12_0($$parsedSource["sortNum"]);
         }
         if ("pluginData" in $$parsedSource) {
-            $$parsedSource["pluginData"] = $$createField11_0($$parsedSource["pluginData"]);
+            $$parsedSource["pluginData"] = $$createField13_0($$parsedSource["pluginData"]);
         }
         if ("uninstalled" in $$parsedSource) {
-            $$parsedSource["uninstalled"] = $$createField12_0($$parsedSource["uninstalled"]);
+            $$parsedSource["uninstalled"] = $$createField14_0($$parsedSource["uninstalled"]);
         }
         if ("activationType" in $$parsedSource) {
-            $$parsedSource["activationType"] = $$createField13_0($$parsedSource["activationType"]);
+            $$parsedSource["activationType"] = $$createField15_0($$parsedSource["activationType"]);
         }
         return new PluginWithContribution($$parsedSource as Partial<PluginWithContribution>);
     }

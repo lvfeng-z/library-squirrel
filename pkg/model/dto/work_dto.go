@@ -46,7 +46,8 @@ func NewWorkDTO(work *entity2.Work) *WorkDTO {
 
 // WorkFullDTO 作品完整信息DTO
 type WorkFullDTO struct {
-	WorkDTO
+	// 基础作品信息（组合 WorkDTO，避免嵌入实体）
+	Work *WorkDTO `json:"work,omitempty"`
 
 	// 关联的本地作者列表
 	LocalAuthors []*LocalAuthorDTO `json:"localAuthors,omitempty"`
@@ -69,10 +70,7 @@ type WorkFullDTO struct {
 
 // NewWorkFullDTO 创建WorkFullDTO
 func NewWorkFullDTO(work *entity2.Work) *WorkFullDTO {
-	if work == nil {
-		return nil
-	}
 	return &WorkFullDTO{
-		WorkDTO: *NewWorkDTO(work),
+		Work: NewWorkDTO(work),
 	}
 }

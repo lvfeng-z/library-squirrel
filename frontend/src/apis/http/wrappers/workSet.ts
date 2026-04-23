@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkSetHandler, WorkSetDTO, WorkSetQueryDTO, WorkSetResultDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
-import type { Work } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import { Handler as WorkSetHandler, WorkSetQueryDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import {WorkDTO, WorkSetDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 export interface WorkSetVO {
   id: number
@@ -38,7 +38,7 @@ export interface PageResult {
 /**
  * 将 WorkSetResultDTO 转换为 WorkSetVO
  */
-function toWorkSetVO(dto: WorkSetResultDTO): WorkSetVO {
+function toWorkSetVO(dto: WorkSetDTO): WorkSetVO {
   return {
     id: dto.id,
     name: dto.siteWorkSetName ?? '',
@@ -51,7 +51,7 @@ function toWorkSetVO(dto: WorkSetResultDTO): WorkSetVO {
 /**
  * 将 Work 转换为 WorkSetVO
  */
-function workToWorkSetVO(work: Work): WorkSetVO {
+function workToWorkSetVO(work: WorkDTO): WorkSetVO {
   return {
     id: work.id,
     name: work.siteWorkName?.toString() ?? '',
@@ -104,7 +104,7 @@ export async function workSetGetById(id: number): Promise<ApiResponse<WorkSetVO>
   return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
 }
 
-export async function workSetQueryPage(page: Page<WorkSetResultDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetResultDTO, WorkSetQueryDTO>>> {
+export async function workSetQueryPage(page: Page<WorkSetDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetDTO, WorkSetQueryDTO>>> {
   const result = await WorkSetHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -206,7 +206,7 @@ export async function workSetRemoveBatch(
  */
 export async function workSetGetWorks(
   workSetId: number
-): Promise<ApiResponse<Work[]>> {
+): Promise<ApiResponse<WorkDTO[]>> {
   const result = await WorkSetHandler.GetWorksByWorkSetId(workSetId)
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
@@ -214,7 +214,7 @@ export async function workSetGetWorks(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is Work => item !== null) ?? undefined }
+  return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is WorkDTO => item !== null) ?? undefined }
 }
 
 /**

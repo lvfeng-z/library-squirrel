@@ -28,7 +28,7 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
   /**
    * 数据
    */
-  data?: Data[]
+  data: (Data | null)[]
 
   constructor(page?: IPage<Data, Query>) {
     if (page === undefined) {
@@ -38,7 +38,7 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
       this.dataCount = 0
       this.currentCount = 0
       this.query = undefined
-      this.data = undefined
+      this.data = []
     } else {
       this.pageNumber = page.pageNumber
       this.pageSize = page.pageSize
@@ -77,7 +77,7 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
     result.dataCount = this.dataCount
     result.currentCount = this.currentCount
     result.query = undefined
-    result.data = undefined
+    result.data = []
 
     return result
   }

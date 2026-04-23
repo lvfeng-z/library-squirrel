@@ -2,7 +2,7 @@
 import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import Plugin from '@renderer/model/model/entity/Plugin.ts'
+import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 import { ElMessage } from 'element-plus'
 import { pluginReinstall, pluginUnInstall } from '@renderer/apis/http/wrappers/plugin'
 
@@ -20,7 +20,7 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<Plugin>('formData', { required: true })
+const formData = defineModel<PluginDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 

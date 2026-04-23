@@ -12,25 +12,25 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// siteRepository 站点仓储实现
-type siteRepository struct {
+// SiteRepository 站点仓储实现
+type SiteRepository struct {
 	*database.BaseRepository[domain.Site]
 }
 
 // NewRepository 创建站点仓储
-func NewRepository(db *gorm.DB) *siteRepository {
-	return &siteRepository{
+func NewRepository(db *gorm.DB) *SiteRepository {
+	return &SiteRepository{
 		BaseRepository: database.NewBaseRepository[domain.Site](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
-func (r *siteRepository) GORM() *gorm.DB {
+func (r *SiteRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *siteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
+func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
 	var results []*dto.SelectItem
 
 	opt := &database.PageOption{

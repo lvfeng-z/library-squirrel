@@ -158,6 +158,8 @@ export class PluginDTO {
     "author": string | null;
     "name": string | null;
     "version": string | null;
+    "description": string | null;
+    "changelog": string | null;
     "entryPath": string | null;
     "rootPath": string | null;
     "backupId": number | null;
@@ -184,6 +186,12 @@ export class PluginDTO {
         }
         if (!("version" in $$source)) {
             this["version"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
+        }
+        if (!("changelog" in $$source)) {
+            this["changelog"] = null;
         }
         if (!("entryPath" in $$source)) {
             this["entryPath"] = null;
@@ -1018,19 +1026,10 @@ export class WorkDTO {
  * WorkFullDTO 作品完整信息DTO
  */
 export class WorkFullDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkId": string | null;
-    "siteWorkName": string | null;
-    "siteAuthorId": string | null;
-    "siteWorkDescription": string | null;
-    "siteUploadTime": number | null;
-    "siteUpdateTime": number | null;
-    "nickName": string | null;
-    "localAuthorId": number | null;
-    "lastView": number | null;
-    "createTime": number;
-    "updateTime": number;
+    /**
+     * 基础作品信息（组合 WorkDTO，避免嵌入实体）
+     */
+    "work"?: WorkDTO | null;
 
     /**
      * 关联的本地作者列表
@@ -1064,45 +1063,6 @@ export class WorkFullDTO {
 
     /** Creates a new WorkFullDTO instance. */
     constructor($$source: Partial<WorkFullDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("siteWorkName" in $$source)) {
-            this["siteWorkName"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("siteWorkDescription" in $$source)) {
-            this["siteWorkDescription"] = null;
-        }
-        if (!("siteUploadTime" in $$source)) {
-            this["siteUploadTime"] = null;
-        }
-        if (!("siteUpdateTime" in $$source)) {
-            this["siteUpdateTime"] = null;
-        }
-        if (!("nickName" in $$source)) {
-            this["nickName"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastView" in $$source)) {
-            this["lastView"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
 
         Object.assign(this, $$source);
     }
@@ -1111,30 +1071,34 @@ export class WorkFullDTO {
      * Creates a new WorkFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkFullDTO {
-        const $$createField13_0 = $$createType10;
-        const $$createField14_0 = $$createType13;
-        const $$createField15_0 = $$createType5;
-        const $$createField16_0 = $$createType14;
-        const $$createField17_0 = $$createType17;
-        const $$createField18_0 = $$createType20;
+        const $$createField0_0 = $$createType11;
+        const $$createField1_0 = $$createType12;
+        const $$createField2_0 = $$createType15;
+        const $$createField3_0 = $$createType5;
+        const $$createField4_0 = $$createType16;
+        const $$createField5_0 = $$createType19;
+        const $$createField6_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("work" in $$parsedSource) {
+            $$parsedSource["work"] = $$createField0_0($$parsedSource["work"]);
+        }
         if ("localAuthors" in $$parsedSource) {
-            $$parsedSource["localAuthors"] = $$createField13_0($$parsedSource["localAuthors"]);
+            $$parsedSource["localAuthors"] = $$createField1_0($$parsedSource["localAuthors"]);
         }
         if ("siteAuthors" in $$parsedSource) {
-            $$parsedSource["siteAuthors"] = $$createField14_0($$parsedSource["siteAuthors"]);
+            $$parsedSource["siteAuthors"] = $$createField2_0($$parsedSource["siteAuthors"]);
         }
         if ("site" in $$parsedSource) {
-            $$parsedSource["site"] = $$createField15_0($$parsedSource["site"]);
+            $$parsedSource["site"] = $$createField3_0($$parsedSource["site"]);
         }
         if ("localTags" in $$parsedSource) {
-            $$parsedSource["localTags"] = $$createField16_0($$parsedSource["localTags"]);
+            $$parsedSource["localTags"] = $$createField4_0($$parsedSource["localTags"]);
         }
         if ("siteTags" in $$parsedSource) {
-            $$parsedSource["siteTags"] = $$createField17_0($$parsedSource["siteTags"]);
+            $$parsedSource["siteTags"] = $$createField5_0($$parsedSource["siteTags"]);
         }
         if ("resources" in $$parsedSource) {
-            $$parsedSource["resources"] = $$createField18_0($$parsedSource["resources"]);
+            $$parsedSource["resources"] = $$createField6_0($$parsedSource["resources"]);
         }
         return new WorkFullDTO($$parsedSource as Partial<WorkFullDTO>);
     }
@@ -1219,14 +1183,16 @@ const $$createType6 = SiteTagDTO.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = LocalTagDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $Create.Array($$createType3);
-const $$createType11 = SiteAuthorFullDTO.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = $Create.Array($$createType9);
-const $$createType15 = SiteTagFullDTO.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = ResourceDTO.createFrom;
-const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = $Create.Array($$createType19);
+const $$createType10 = WorkDTO.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = $Create.Array($$createType3);
+const $$createType13 = SiteAuthorFullDTO.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $Create.Array($$createType9);
+const $$createType17 = SiteTagFullDTO.createFrom;
+const $$createType18 = $Create.Nullable($$createType17);
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = ResourceDTO.createFrom;
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = $Create.Array($$createType21);

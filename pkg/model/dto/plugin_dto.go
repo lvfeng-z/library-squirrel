@@ -12,6 +12,8 @@ type PluginDTO struct {
 	Author         *string `json:"author"`
 	Name           *string `json:"name"`
 	Version        *string `json:"version"`
+	Description    *string `json:"description"`
+	Changelog      *string `json:"changelog"`
 	EntryPath      *string `json:"entryPath"`
 	RootPath       *string `json:"rootPath"`
 	BackupID       *int64  `json:"backupId"`
@@ -34,6 +36,8 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		Author:         util.NullStringToPointer(plugin.Author),
 		Name:           util.NullStringToPointer(plugin.Name),
 		Version:        util.NullStringToPointer(plugin.Version),
+		Description:    util.NullStringToPointer(plugin.Description),
+		Changelog:      util.NullStringToPointer(plugin.Changelog),
 		EntryPath:      util.NullStringToPointer(plugin.EntryPath),
 		RootPath:       util.NullStringToPointer(plugin.RootPath),
 		BackupID:       util.NullInt64ToPointer(plugin.BackupID),
