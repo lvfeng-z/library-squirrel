@@ -107,10 +107,10 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // ListByWorkId 根据作品ID获取作者列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*model.RankedLocalAuthor] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*model.RankedLocalAuthor](err.Error())
+		return model.Error[[]*dto.RankedLocalAuthor](err.Error())
 	}
 	return model.Success(result)
 }

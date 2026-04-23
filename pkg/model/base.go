@@ -47,35 +47,6 @@ func (b *BaseEntity) SetUpdateTime(time int64) {
 	b.UpdateTime = time
 }
 
-// ========== 分页模型 ==========
-
-// PageRequest 分页请求
-type PageRequest[Q any] struct {
-	// 当前页码
-	PageNumber int `json:"pageNumber"`
-	// 分页大小
-	PageSize int `json:"pageSize"`
-	// 查询条件
-	Query Q `json:"query,omitempty"`
-}
-
-func (p *PageRequest[Q]) GetOffset() int {
-	if p.PageNumber <= 0 {
-		p.PageNumber = 1
-	}
-	if p.PageSize <= 0 {
-		p.PageSize = 10
-	}
-	return (p.PageNumber - 1) * p.PageSize
-}
-
-func (p *PageRequest[Q]) GetLimit() int {
-	if p.PageSize <= 0 {
-		return 10
-	}
-	return p.PageSize
-}
-
 // Page 分页响应（与渲染进程 IPage 保持一致）
 type Page[D any, Q any] struct {
 	// 当前页码

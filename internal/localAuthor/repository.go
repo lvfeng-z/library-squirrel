@@ -32,9 +32,9 @@ func (r *localAuthorRepository) GORM() *gorm.DB {
 }
 
 // ListReWorkAuthor 批量获取作品与作者的关联
-func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error) {
+func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*model.RankedLocalAuthor), nil
+		return make(map[int64][]*dto.RankedLocalAuthor), nil
 	}
 
 	// 构建 IN 子句
@@ -54,7 +54,7 @@ func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 
 	var results []*struct {
 		WorkID int64 `gorm:"column:work_id"`
-		model.RankedLocalAuthor
+		dto.RankedLocalAuthor
 	}
 
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
@@ -63,10 +63,10 @@ func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 	}
 
 	// 转换为 map
-	resultMap := make(map[int64][]*model.RankedLocalAuthor)
+	resultMap := make(map[int64][]*dto.RankedLocalAuthor)
 	for _, res := range results {
 		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*model.RankedLocalAuthor, 0)
+			resultMap[res.WorkID] = make([]*dto.RankedLocalAuthor, 0)
 		}
 		ranked := res.RankedLocalAuthor
 		resultMap[res.WorkID] = append(resultMap[res.WorkID], &ranked)
@@ -76,7 +76,7 @@ func (r *localAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 }
 
 // ListByWorkId 查询作品的本地作者
-func (r *localAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedLocalAuthor, error) {
+func (r *localAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
 	query := `
 		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank
 		FROM local_author t1
@@ -84,7 +84,7 @@ func (r *localAuthorRepository) ListByWorkId(ctx context.Context, workId int64) 
 		WHERE t2.work_id = ?
 	`
 
-	var results []*model.RankedLocalAuthor
+	var results []*dto.RankedLocalAuthor
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -94,9 +94,9 @@ func (r *localAuthorRepository) ListByWorkId(ctx context.Context, workId int64) 
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-func (r *localAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthorWithWorkId, error) {
+func (r *localAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*model.RankedLocalAuthorWithWorkId, 0), nil
+		return make([]*dto.RankedLocalAuthorWithWorkId, 0), nil
 	}
 
 	// 构建 IN 子句
@@ -114,7 +114,7 @@ func (r *localAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*model.RankedLocalAuthorWithWorkId
+	var results []*dto.RankedLocalAuthorWithWorkId
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err

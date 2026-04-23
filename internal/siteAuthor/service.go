@@ -34,11 +34,11 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error)
 	// ListByWorkId 查询作品的站点作者
-	ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error)
 	// ListBySiteAuthorIds 根据站点作者ID列表查询
 	ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) ([]*entity2.SiteAuthor, error)
 	// ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
-	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedSiteAuthorWithWorkId, error)
+	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error)
 	// UpdateBindLocalAuthor 绑定本地作者
 	UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) (int64, error)
 	// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
@@ -178,7 +178,7 @@ func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSi
 }
 
 // ListByWorkId 查询作品的站点作者
-func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error) {
+func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
 	return s.repo.ListByWorkId(ctx, workId)
 }
 
@@ -188,7 +188,7 @@ func (s *Service) ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
-func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedSiteAuthorWithWorkId, error) {
+func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
 	return s.repo.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
 

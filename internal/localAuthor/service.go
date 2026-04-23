@@ -31,11 +31,11 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, any], error)
 	// ListReWorkAuthor 批量获取作品与作者的关联
-	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error)
+	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error)
 	// ListByWorkId 查询作品的本地作者
-	ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedLocalAuthor, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error)
 	// ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthorWithWorkId, error)
+	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error)
 	// ListSelectItems 查询选择项列表
 	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
@@ -155,17 +155,17 @@ func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize i
 }
 
 // ListReWorkAuthor 批量获取作品与作者的关联
-func (s *Service) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*model.RankedLocalAuthor, error) {
+func (s *Service) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
 	return s.repo.ListReWorkAuthor(ctx, workIds)
 }
 
 // ListByWorkId 查询作品的本地作者
-func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedLocalAuthor, error) {
+func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
 	return s.repo.ListByWorkId(ctx, workId)
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthorWithWorkId, error) {
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
 	return s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
 

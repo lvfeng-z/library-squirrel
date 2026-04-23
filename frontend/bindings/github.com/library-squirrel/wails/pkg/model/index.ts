@@ -4,9 +4,5 @@
 export {
     ApiResponse,
     ExtensionType,
-    Page,
-    RankedLocalAuthor,
-    RankedLocalAuthorWithWorkId,
-    RankedSiteAuthor,
-    RankedSiteAuthorWithWorkId
+    Page
 } from "./models.js";

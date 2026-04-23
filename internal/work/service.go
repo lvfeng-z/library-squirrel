@@ -36,7 +36,7 @@ type SiteTagReader interface {
 // SiteAuthorReader 站点作者读取接口
 type SiteAuthorReader interface {
 	// ListByWorkId 查询作品关联的站点作者
-	ListByWorkId(ctx context.Context, workId int64) ([]*model.RankedSiteAuthor, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*dto2.RankedSiteAuthor, error)
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.SiteAuthor, error)
 }
@@ -301,9 +301,9 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.Work
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
-func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*model.RankedLocalAuthor, error) {
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto2.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return []*model.RankedLocalAuthor{}, nil
+		return []*dto2.RankedLocalAuthor{}, nil
 	}
 	// 获取作品列表
 	works, err := s.repo.ListByIds(ctx, workIds)
@@ -312,7 +312,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	}
 
 	// 收集所有本地作者ID
-	authorMap := make(map[int64]*model.RankedLocalAuthor)
+	authorMap := make(map[int64]*dto2.RankedLocalAuthor)
 	for _, work := range works {
 		if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
 			localAuthorId := work.LocalAuthorID.Int64
@@ -331,7 +331,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 					if localAuthor.LastUse.Valid {
 						lastUse = localAuthor.LastUse.Int64
 					}
-					authorMap[localAuthorId] = &model.RankedLocalAuthor{
+					authorMap[localAuthorId] = &dto2.RankedLocalAuthor{
 						ID:         localAuthor.ID,
 						AuthorName: authorName,
 						Introduce:  introduce,
@@ -345,7 +345,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	}
 
 	// 转换为列表
-	result := make([]*model.RankedLocalAuthor, 0, len(authorMap))
+	result := make([]*dto2.RankedLocalAuthor, 0, len(authorMap))
 	for _, author := range authorMap {
 		result = append(result, author)
 	}
@@ -362,8 +362,8 @@ func (s *Service) UpdateLastView(ctx context.Context, ids []int64) error {
 
 // WorkAuthorDTO 作品作者信息
 type WorkAuthorDTO struct {
-	LocalAuthor *model.RankedLocalAuthor `json:"localAuthor,omitempty"`
-	SiteAuthor  *model.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
+	LocalAuthor *dto2.RankedLocalAuthor `json:"localAuthor,omitempty"`
+	SiteAuthor  *dto2.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
 }
 
 // ErrWorkIdRequired 错误定义

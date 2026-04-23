@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/library-squirrel/wails/internal/database"
-	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // Converter 结构体 → PageOption/QueryOption 转换器
@@ -129,37 +128,6 @@ func (c *Converter) ToPageOption(dto interface{}, page, pageSize int) (*database
 	queryOpt, err := c.ToQueryOption(dto)
 	if err != nil {
 		return nil, err
-	}
-
-	return &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: queryOpt.Conditions,
-			OrderBy:    queryOpt.OrderBy,
-		},
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
-}
-
-// ToPageOptionFromRequest 将 PageRequest 转换为 PageOption
-// pageRequest.Query 应该是具体的 QueryDTO 类型
-func (c *Converter) ToPageOptionFromRequest(pageRequest *model.PageRequest[interface{}]) (*database.PageOption, error) {
-	if pageRequest == nil {
-		return &database.PageOption{}, nil
-	}
-
-	queryOpt, err := c.ToQueryOption(pageRequest.Query)
-	if err != nil {
-		return nil, err
-	}
-
-	page := pageRequest.PageNumber
-	pageSize := pageRequest.PageSize
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
 	}
 
 	return &database.PageOption{

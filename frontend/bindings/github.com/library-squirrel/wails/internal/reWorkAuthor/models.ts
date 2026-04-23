@@ -7,14 +7,14 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../../pkg/model/models.js";
+import * as dto$0 from "../../pkg/model/dto/models.js";
 
 /**
  * WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）
  */
 export class WorkAuthorDTO {
-    "localAuthors"?: (model$0.RankedLocalAuthor | null)[];
-    "siteAuthors"?: (model$0.RankedSiteAuthor | null)[];
+    "localAuthors"?: (dto$0.RankedLocalAuthor | null)[];
+    "siteAuthors"?: (dto$0.RankedSiteAuthor | null)[];
 
     /** Creates a new WorkAuthorDTO instance. */
     constructor($$source: Partial<WorkAuthorDTO> = {}) {
@@ -44,8 +44,8 @@ export class WorkAuthorDTO {
  */
 export class WorkAuthorsResultDTO {
     "workId": number;
-    "localAuthors"?: (model$0.RankedLocalAuthor | null)[];
-    "siteAuthors"?: (model$0.RankedSiteAuthor | null)[];
+    "localAuthors"?: (dto$0.RankedLocalAuthor | null)[];
+    "siteAuthors"?: (dto$0.RankedSiteAuthor | null)[];
 
     /** Creates a new WorkAuthorsResultDTO instance. */
     constructor($$source: Partial<WorkAuthorsResultDTO> = {}) {
@@ -74,9 +74,9 @@ export class WorkAuthorsResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = model$0.RankedLocalAuthor.createFrom;
+const $$createType0 = dto$0.RankedLocalAuthor.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = model$0.RankedSiteAuthor.createFrom;
+const $$createType3 = dto$0.RankedSiteAuthor.createFrom;
 const $$createType4 = $Create.Nullable($$createType3);
 const $$createType5 = $Create.Array($$createType4);

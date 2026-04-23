@@ -69,7 +69,7 @@ export function GetFullWorkInfoById(id: number): $CancellablePromise<model$0.Api
 /**
  * ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
  */
-export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(model$0.RankedLocalAuthor | null)[]> | null> {
+export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.RankedLocalAuthor | null)[]> | null> {
     return $Call.ByID(103270155, workIds).then(($result: any) => {
         return $$createType14($result);
     });
@@ -122,7 +122,7 @@ const $$createType6 = dto$0.WorkFullDTO.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.RankedLocalAuthor.createFrom;
+const $$createType10 = dto$0.RankedLocalAuthor.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);

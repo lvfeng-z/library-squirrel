@@ -1,10 +1,10 @@
-<script setup lang="ts" generic="Query, Data extends object">
+<script setup lang="ts" generic="Data extends object, Query">
 import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
 import { ref, toRaw } from 'vue'
 import OperationItem from '../../model/util/OperationItem'
 import { Thead } from '../../model/util/Thead'
 import DataTableOperationResponse from '../../model/util/DataTableOperationResponse'
-import Page from '../../model/util/Page.ts'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models.ts'
 import lodash from 'lodash'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TreeNode from '../../model/util/TreeNode'
@@ -29,7 +29,7 @@ const props = withDefaults(
     treeLoad?: (row: unknown) => Promise<unknown[]> // 懒加载处理函数
     border?: boolean // 是否带有纵向边框
     stripe?: boolean // 是否开启斑马纹
-    search: (page: Page<Query, Data>) => Promise<Page<Query, Data> | undefined> // 查询函数
+    search: (page: Page<Data, Query>) => Promise<Page<Data, Query> | undefined> // 查询函数
     updateLoad?: (ids: (number | string)[]) => Promise<object[] | undefined> // 更新数据的函数
     updateProperties?: string[] // 要更新的属性名
     createButton?: boolean // 是否展示新增按钮
@@ -48,7 +48,7 @@ const props = withDefaults(
 // DataTable的数据
 const data = defineModel<Data[]>('data', { default: [], required: false })
 // 分页查询配置
-const page = defineModel<Page<Query, Data>>('page', { required: true })
+const page = defineModel<Page<Data, Query>>('page', { required: true })
 // 工具栏查询参数
 const toolbarParams = defineModel<object>('toolbarParams', { default: {}, required: false })
 // 已编辑的行
@@ -118,9 +118,9 @@ async function doSearch() {
     ...tempPage.query,
     ...toRaw(toolbarParams.value)
   } as Query
-  const newPage: Page<Query, Data> | undefined = await props.search(tempPage)
+  const newPage: Page<Data, Query> | undefined = await props.search(tempPage)
   if (notNullish(newPage)) {
-    data.value = newPage.data === undefined ? [] : newPage.data
+    data.value = newPage.data
     page.value.dataCount = newPage.dataCount
   }
   // 刷新子数据

@@ -11,7 +11,7 @@ import {
   SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
 import {SelectItem, SiteTagDTO, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 export interface SiteTagVO {
   id: number
@@ -212,7 +212,7 @@ export async function siteTagListBySiteTagIds(siteTagIds: number[]): Promise<Api
  * 更新站点标签绑定的本地标签
  */
 export async function siteTagUpdateBindLocalTag(
-  localTagId: number,
+  localTagId: number | null,
   siteTagIds: number[]
 ): Promise<ApiResponse<boolean>> {
   const result = await SiteTagHandler.UpdateBindLocalTag(localTagId, siteTagIds)

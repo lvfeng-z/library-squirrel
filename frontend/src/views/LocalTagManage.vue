@@ -4,7 +4,7 @@ import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
-import lodash, {toNumber} from 'lodash'
+import {toNumber} from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
@@ -26,7 +26,7 @@ import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
 import { siteApi } from '@renderer/apis/http'
 import {copyPage} from "@renderer/utils/Pager.ts";
-import {isNotBlank} from "@renderer/utils/StringUtil.ts";
+import {isBlank} from "@renderer/utils/StringUtil.ts";
 
 // onMounted
 onMounted(() => {
@@ -153,7 +153,7 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 // 方法
 // 分页查询本地标签的函数
 async function localTagQueryPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>): Promise<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO> | undefined> {
-  const response = await localTagApi.localTagQueryWithBaseTagPage(page)
+  const response = await apis.localTagQueryWithBaseTagPage(page)
   if (ApiUtil.check(response)) {
     let responsePage = ApiUtil.data<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>>(response)
     if (isNullish(responsePage)) {
@@ -283,14 +283,18 @@ async function requestSiteTagSelectItemPage(
       throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
     }
     const result = copyPage<SelectItem, SiteTagQueryDTO>(newPage)
-    result.data = newPage.data.filter(notNullish).map(data =>
-        new SelectItem({
-          extraData: undefined,
-          label: data.siteTag?.siteTagName,
-          rootId: data.siteTag?.baseSiteTagId,
-          subLabels: [isNotBlank(data.site?.siteName.String) ? data.site?.siteName.String : '?'],
-          value: String(data.siteTag.id)
-        }))
+    result.data = newPage.data.filter(notNullish).map(data => {
+      const siteTagName = data.siteTag?.siteTagName
+      const baseSiteTagId = data.siteTag?.baseSiteTagId
+      const siteName = data.site?.siteName
+      return new SelectItem({
+        value: String(data.siteTag?.id),
+        label: isBlank(siteTagName) ? '?' : siteTagName,
+        rootId: isBlank(baseSiteTagId) ? '?' : baseSiteTagId,
+        subLabels: [isBlank(siteName) ? '?' : siteName],
+        extraData: undefined
+      })
+    })
     return result
   } else {
     throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空响应体')

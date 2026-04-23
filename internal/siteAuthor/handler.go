@@ -250,10 +250,10 @@ func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 }
 
 // ListByWorkId 根据作品ID获取作者列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*model.RankedSiteAuthor] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedSiteAuthor] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*model.RankedSiteAuthor](err.Error())
+		return model.Error[[]*dto.RankedSiteAuthor](err.Error())
 	}
 	return model.Success(result)
 }

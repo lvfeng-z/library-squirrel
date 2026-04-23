@@ -109,10 +109,10 @@ func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, site
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
-func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*model.RankedLocalAuthor] {
+func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
 	result, err := h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
 	if err != nil {
-		return model.Error[[]*model.RankedLocalAuthor](err.Error())
+		return model.Error[[]*dto.RankedLocalAuthor](err.Error())
 	}
 	return model.Success(result)
 }

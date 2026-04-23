@@ -42,7 +42,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
 /**
  * ListByWorkId 根据作品ID获取作者列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(model$0.RankedLocalAuthor | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.RankedLocalAuthor | null)[]> | null> {
     return $Call.ByID(3173747322, workId).then(($result: any) => {
         return $$createType10($result);
     });
@@ -109,7 +109,7 @@ const $$createType2 = dto$0.LocalAuthorDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$0.RankedLocalAuthor.createFrom;
+const $$createType6 = dto$0.RankedLocalAuthor.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $Create.Array($$createType7);
 const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
