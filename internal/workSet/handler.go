@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品集
-func (h *Handler) Save(ctx context.Context, workSet *WorkSetParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, workSet *dto2.WorkSetParamDTO) *model.ApiResponse[int64] {
 	domainWorkSet := &entity2.WorkSet{}
 	if workSet.SiteID != nil {
 		domainWorkSet.SiteID.Valid = true
@@ -47,7 +47,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品集
-func (h *Handler) Update(ctx context.Context, workSet *WorkSetParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, workSet *dto2.WorkSetParamDTO) *model.ApiResponse[any] {
 	domainWorkSet := &entity2.WorkSet{}
 	domainWorkSet.SetID(workSet.ID)
 	if workSet.SiteID != nil {
@@ -188,19 +188,19 @@ func (h *Handler) GetCoverWorkId(ctx context.Context, workSetId int64) *model.Ap
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品
-func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*WorkSetWithWorksResultDTO] {
+func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*dto2.WorkSetWithWorksResultDTO] {
 	result, err := h.svc.ListWorkSetWithWorkByIds(ctx, workSetIds)
 	if err != nil {
-		return model.Error[[]*WorkSetWithWorksResultDTO](err.Error())
+		return model.Error[[]*dto2.WorkSetWithWorksResultDTO](err.Error())
 	}
 	// 转换为 ResultDTO
-	dtos := make([]*WorkSetWithWorksResultDTO, 0, len(result))
+	dtos := make([]*dto2.WorkSetWithWorksResultDTO, 0, len(result))
 	for _, ws := range result {
 		works := make([]*dto2.WorkDTO, 0, len(ws.Works))
 		for _, w := range ws.Works {
 			works = append(works, dto2.NewWorkDTO(w))
 		}
-		dtos = append(dtos, &WorkSetWithWorksResultDTO{
+		dtos = append(dtos, &dto2.WorkSetWithWorksResultDTO{
 			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
 			Works:   works,
 		})
@@ -209,18 +209,18 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]] {
 	if page == nil {
-		page = &model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]{}
+		page = &model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]{}
 	}
 	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
 	if err != nil {
-		return model.Error[*model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
-	data := make([]*WorkSetWithCoverResultDTO, 0, len(result.Data))
+	data := make([]*dto2.WorkSetWithCoverResultDTO, 0, len(result.Data))
 	for _, ws := range result.Data {
-		dto := &WorkSetWithCoverResultDTO{
+		dto := &dto2.WorkSetWithCoverResultDTO{
 			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
 		}
 		if ws.CoverWork != nil {
@@ -228,7 +228,7 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[WorkSetWithCoverResultDTO, WorkSetQueryDTO]{
+	return model.Success(&model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -239,23 +239,3 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 	})
 }
 
-// ========== DTO 定义 ==========
-
-// WorkSetParamDTO 作品集数据传输对象（增删改参数）
-type WorkSetParamDTO struct {
-	ID              int64   `json:"id"`
-	SiteID          *int64  `json:"siteId"`
-	SiteWorkSetName *string `json:"siteWorkSetName"`
-}
-
-// WorkSetWithWorksResultDTO 作品集及其作品信息
-type WorkSetWithWorksResultDTO struct {
-	WorkSet *dto2.WorkSetDTO `json:"workSet"`
-	Works   []*dto2.WorkDTO  `json:"works"`
-}
-
-// WorkSetWithCoverResultDTO 作品集及其封面作品信息
-type WorkSetWithCoverResultDTO struct {
-	WorkSet   *dto2.WorkSetDTO `json:"workSet"`
-	CoverWork *dto2.WorkDTO    `json:"coverWork,omitempty"`
-}

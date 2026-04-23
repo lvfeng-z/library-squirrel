@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品
-func (h *Handler) Save(ctx context.Context, work *WorkParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, work *dto.WorkParamDTO) *model.ApiResponse[int64] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -53,7 +53,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品
-func (h *Handler) Update(ctx context.Context, work *WorkParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, work *dto.WorkParamDTO) *model.ApiResponse[any] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -153,14 +153,4 @@ func (h *Handler) UpdateLastUsed(ctx context.Context, ids []int64) *model.ApiRes
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
-}
-
-// ========== DTO 定义 ==========
-
-// WorkParamDTO 作品数据传输对象（增删改参数）
-type WorkParamDTO struct {
-	ID           int64   `json:"id"`
-	SiteID       *int64  `json:"siteId"`
-	SiteWorkID   *string `json:"siteWorkId"`
-	SiteWorkName *string `json:"siteWorkName"`
 }

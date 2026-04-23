@@ -116,3 +116,12 @@ func NewSiteTagDTO(tag *entity2.SiteTag) *SiteTagDTO {
 		UpdateTime:    tag.GetUpdateTime(),
 	}
 }
+
+// SiteTagParamDTO 站点标签数据传输对象（增删改参数）
+type SiteTagParamDTO struct {
+	ID          int64   `json:"id"`
+	SiteID      *int64  `json:"siteId"`
+	SiteTagID   *string `json:"siteTagId"`
+	SiteTagName *string `json:"siteTagName"`
+	Description *string `json:"description"`
+}

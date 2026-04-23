@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存任务
-func (h *Handler) Save(ctx context.Context, task *TaskParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, task *dto2.TaskParamDTO) *model.ApiResponse[int64] {
 	domainTask := &domain.Task{}
 	if task.ID != 0 {
 		domainTask.SetID(task.ID)
@@ -73,7 +73,7 @@ func (h *Handler) Save(ctx context.Context, task *TaskParamDTO) *model.ApiRespon
 }
 
 // Update 更新任务
-func (h *Handler) Update(ctx context.Context, task *TaskParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, task *dto2.TaskParamDTO) *model.ApiResponse[any] {
 	domainTask := &domain.Task{}
 	if task.ID == 0 {
 		return model.Error[any]("更新任务失败，id不能为空")
@@ -200,7 +200,19 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO, 
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
-	return model.Success(ToTaskPageResultDTO(result))
+	// 转换为 DTO
+	data := make([]*dto2.TaskDTO, 0, len(result.Data))
+	for _, task := range result.Data {
+		data = append(data, dto2.NewTaskDTO(task))
+	}
+	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Data:         data,
+	})
 }
 
 // QueryParentPage 分页查询父任务
@@ -215,7 +227,19 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.Tas
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
-	return model.Success(ToTaskPageResultDTO(result))
+	// 转换为 DTO
+	data := make([]*dto2.TaskDTO, 0, len(result.Data))
+	for _, task := range result.Data {
+		data = append(data, dto2.NewTaskDTO(task))
+	}
+	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Data:         data,
+	})
 }
 
 // QueryChildrenTaskPage 查询子任务分页
@@ -230,7 +254,19 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *mo
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
-	return model.Success(ToTaskPageResultDTO(result))
+	// 转换为 DTO
+	data := make([]*dto2.TaskDTO, 0, len(result.Data))
+	for _, task := range result.Data {
+		data = append(data, dto2.NewTaskDTO(task))
+	}
+	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+		PageNumber:   result.PageNumber,
+		PageSize:     result.PageSize,
+		PageCount:    result.PageCount,
+		DataCount:    result.DataCount,
+		CurrentCount: result.CurrentCount,
+		Data:         data,
+	})
 }
 
 // ListChildrenTask 查询子任务列表
@@ -293,38 +329,3 @@ func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiRespo
 	return model.Success(result)
 }
 
-// TaskParamDTO 任务数据传输对象（增删改参数）
-type TaskParamDTO struct {
-	ID                   int64   `json:"id"`
-	IsCollection         *int64  `json:"isCollection,omitempty"`
-	Pid                  *int64  `json:"pid,omitempty"`
-	TaskName             *string `json:"taskName,omitempty"`
-	SiteID               *int64  `json:"siteId,omitempty"`
-	SiteWorkID           *string `json:"siteWorkId,omitempty"`
-	URL                  *string `json:"url,omitempty"`
-	Status               int     `json:"status,omitempty"`
-	PendingResourceID    *int64  `json:"pendingResourceId,omitempty"`
-	Continuable          *int64  `json:"continuable,omitempty"`
-	PluginPublicID       *string `json:"pluginPublicId,omitempty"`
-	PluginContributionID *string `json:"pluginContributionId,omitempty"`
-	PluginData           *string `json:"pluginData,omitempty"`
-}
-
-// ToTaskPageResultDTO 将 *model.Page[domain.Task, any] 转换为 *model.Page[dto2.TaskDTO, TaskQueryDTO]
-func ToTaskPageResultDTO(page *model.Page[domain.Task, any]) *model.Page[dto2.TaskDTO, TaskQueryDTO] {
-	if page == nil {
-		return nil
-	}
-	data := make([]*dto2.TaskDTO, 0, len(page.Data))
-	for _, task := range page.Data {
-		data = append(data, dto2.NewTaskDTO(task))
-	}
-	return &model.Page[dto2.TaskDTO, TaskQueryDTO]{
-		PageNumber:   page.PageNumber,
-		PageSize:     page.PageSize,
-		PageCount:    page.PageCount,
-		DataCount:    page.DataCount,
-		CurrentCount: page.CurrentCount,
-		Data:         data,
-	}
-}

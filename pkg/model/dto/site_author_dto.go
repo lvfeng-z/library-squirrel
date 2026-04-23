@@ -147,3 +147,12 @@ func NewSiteAuthorLocalRelateDTO(siteAuthor *entity2.SiteAuthor) *SiteAuthorLoca
 	}
 	return dto
 }
+
+// SiteAuthorParamDTO 站点作者数据传输对象（增删改参数）
+type SiteAuthorParamDTO struct {
+	ID           int64   `json:"id"`
+	SiteID       *int64  `json:"siteId"`
+	SiteAuthorID *string `json:"siteAuthorId"`
+	AuthorName   *string `json:"authorName"`
+	Introduce    *string `json:"introduce"`
+}

@@ -41,3 +41,22 @@ func NewWorkSetDTO(workSet *entity2.WorkSet) *WorkSetDTO {
 		UpdateTime:             workSet.GetUpdateTime(),
 	}
 }
+
+// WorkSetParamDTO 作品集数据传输对象（增删改参数）
+type WorkSetParamDTO struct {
+	ID              int64   `json:"id"`
+	SiteID          *int64  `json:"siteId"`
+	SiteWorkSetName *string `json:"siteWorkSetName"`
+}
+
+// WorkSetWithWorksResultDTO 作品集及其作品信息
+type WorkSetWithWorksResultDTO struct {
+	WorkSet *WorkSetDTO `json:"workSet"`
+	Works   []*WorkDTO  `json:"works"`
+}
+
+// WorkSetWithCoverResultDTO 作品集及其封面作品信息
+type WorkSetWithCoverResultDTO struct {
+	WorkSet   *WorkSetDTO `json:"workSet"`
+	CoverWork *WorkDTO    `json:"coverWork,omitempty"`
+}

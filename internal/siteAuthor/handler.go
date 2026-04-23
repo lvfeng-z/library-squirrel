@@ -3,6 +3,7 @@ package siteAuthor
 import (
 	"context"
 
+	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
@@ -21,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存站点作者
-func (h *Handler) Save(ctx context.Context, author *SiteAuthorParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorParamDTO) *model.ApiResponse[int64] {
 	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -49,7 +50,7 @@ func (h *Handler) Save(ctx context.Context, author *SiteAuthorParamDTO) *model.A
 }
 
 // SaveBatch 批量保存站点作者
-func (h *Handler) SaveBatch(ctx context.Context, authors []*SiteAuthorParamDTO) *model.ApiResponse[any] {
+func (h *Handler) SaveBatch(ctx context.Context, authors []*dto.SiteAuthorParamDTO) *model.ApiResponse[any] {
 	domainAuthors := make([]*entity2.SiteAuthor, 0, len(authors))
 	for _, author := range authors {
 		domainAuthor := &entity2.SiteAuthor{
@@ -89,7 +90,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新站点作者
-func (h *Handler) Update(ctx context.Context, author *SiteAuthorParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorParamDTO) *model.ApiResponse[any] {
 	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -200,7 +201,12 @@ func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, w
 	// 转换为 DTO
 	data := make([]*dto.RankedSiteAuthorWithWorkIdDTO, 0, len(result))
 	for _, author := range result {
-		data = append(data, toRankedSiteAuthorWithWorkIdDTO(author))
+		data = append(data, &dto.RankedSiteAuthorWithWorkIdDTO{
+			WorkId:       author.WorkId,
+			SiteAuthorID: util.StringPtrIfValid(author.SiteAuthorID),
+			AuthorName:   util.StringPtrIfValid(author.AuthorName),
+			Rank:         author.AuthorRank,
+		})
 	}
 	return model.Success(data)
 }
@@ -215,7 +221,7 @@ func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64
 }
 
 // CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
-func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *SiteAuthorParamDTO) *model.ApiResponse[bool] {
+func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *dto.SiteAuthorParamDTO) *model.ApiResponse[bool] {
 	if siteAuthor.ID == 0 {
 		return model.Error[bool]("创建同名本地作者失败，作者ID不能为空")
 	}
@@ -258,36 +264,4 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
-}
-
-// ========== DTO 定义 ==========
-
-// SiteAuthorParamDTO 站点作者数据传输对象（增删改参数）
-type SiteAuthorParamDTO struct {
-	ID           int64   `json:"id"`
-	SiteID       *int64  `json:"siteId"`
-	SiteAuthorID *string `json:"siteAuthorId"`
-	AuthorName   *string `json:"authorName"`
-	Introduce    *string `json:"introduce"`
-}
-
-// toRankedSiteAuthorWithWorkIdDTO 将 model.RankedSiteAuthorWithWorkId 转换为 dto.RankedSiteAuthorWithWorkIdDTO
-func toRankedSiteAuthorWithWorkIdDTO(author *model.RankedSiteAuthorWithWorkId) *dto.RankedSiteAuthorWithWorkIdDTO {
-	if author == nil {
-		return nil
-	}
-	return &dto.RankedSiteAuthorWithWorkIdDTO{
-		WorkId:       author.WorkId,
-		SiteAuthorID: stringPtrIfValid(author.SiteAuthorID),
-		AuthorName:   stringPtrIfValid(author.AuthorName),
-		Rank:         author.AuthorRank,
-	}
-}
-
-// stringPtrIfValid 将 string 转换为 *string（非空时返回指针）
-func stringPtrIfValid(s string) *string {
-	if s != "" {
-		return &s
-	}
-	return nil
 }

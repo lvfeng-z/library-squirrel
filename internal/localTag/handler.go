@@ -2,7 +2,6 @@ package localTag
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
@@ -23,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存本地标签
-func (h *Handler) Save(ctx context.Context, tag *LocalTagParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, tag *dto.LocalTagParamDTO) *model.ApiResponse[int64] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -51,7 +50,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新本地标签
-func (h *Handler) Update(ctx context.Context, tag *LocalTagParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagParamDTO) *model.ApiResponse[any] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -176,29 +175,4 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 		return model.Error[any](err.Error())
 	}
 	return model.Success[any](nil)
-}
-
-// ========== DTO 定义 ==========
-
-// LocalTagParamDTO 本地标签数据传输对象（增删改参数）
-type LocalTagParamDTO struct {
-	ID             int64   `json:"id"`
-	LocalTagName   *string `json:"localTagName"`
-	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-}
-
-// nullStringToPointer 将 sql.NullString 转换为 *string
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
-func nullInt64ToPointer(ns sql.NullInt64) *int64 {
-	if ns.Valid {
-		return &ns.Int64
-	}
-	return nil
 }
