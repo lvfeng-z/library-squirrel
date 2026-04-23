@@ -154,3 +154,15 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 	}
 	return model.Success[any](nil)
 }
+
+// QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
+func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]] {
+	if page == nil {
+		page = &model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]{}
+	}
+	result, err := h.svc.QueryWithBaseTagPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	if err != nil {
+		return model.Error[*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]](err.Error())
+	}
+	return model.Success(result)
+}

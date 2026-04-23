@@ -8,7 +8,7 @@ import {
   Handler as LocalTagHandler,
   LocalTagQueryDTO
 } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
-import {LocalTagDTO, SelectItem} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {LocalTagDTO, SelectItem, LocalTagWithBaseTagDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 // ========== 类型定义 ==========
@@ -83,17 +83,8 @@ export async function localTagDeleteById(id: number): Promise<ApiResponse<null>>
 /**
  * 更新本地标签
  */
-export async function localTagUpdateById(tag: {
-  id: number
-  localTagName?: string
-  baseLocalTagId?: number
-}): Promise<ApiResponse<LocalTagVO>> {
-  const tagDTO = new LocalTagDTO({
-    id: tag.id,
-    localTagName: tag.localTagName ?? null,
-    baseLocalTagId: tag.baseLocalTagId ?? null
-  })
-  const result = await LocalTagHandler.Update(tagDTO)
+export async function localTagUpdateById(tag: LocalTagDTO): Promise<ApiResponse<LocalTagDTO>> {
+  const result = await LocalTagHandler.Update(tag)
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
@@ -212,6 +203,21 @@ export async function localTagQuerySelectItemPageByWorkId(
     query: queryDTO
   })
   const result = await LocalTagHandler.QuerySelectItemPageByWorkId(page, workId)
+  if (!result) {
+    return { success: false, msg: '查询失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '查询失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+}
+
+/**
+ * 分页查询包含基础标签信息的本地标签
+ * 直接透传 Page 对象给 binding，不做额外解包
+ */
+export async function localTagQueryWithBaseTagPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>>> {
+  const result = await LocalTagHandler.QueryWithBaseTagPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

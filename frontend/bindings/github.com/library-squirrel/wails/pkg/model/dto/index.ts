@@ -5,6 +5,7 @@ export {
     BackupDTO,
     LocalAuthorDTO,
     LocalTagDTO,
+    LocalTagWithBaseTagDTO,
     PluginDTO,
     RankedSiteAuthorWithWorkIdDTO,
     ResourceDTO,

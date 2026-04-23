@@ -95,11 +95,20 @@ export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem,
 }
 
 /**
+ * QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
+ */
+export function QueryWithBaseTagPage(page: model$0.Page<dto$0.LocalTagWithBaseTagDTO, $models.LocalTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.LocalTagWithBaseTagDTO, $models.LocalTagQueryDTO> | null> | null> {
+    return $Call.ByID(1968257282, page).then(($result: any) => {
+        return $$createType27($result);
+    });
+}
+
+/**
  * Save 保存本地标签
  */
 export function Save(tag: dto$0.LocalTagDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2374210955, tag).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType29($result);
     });
 }
 
@@ -145,5 +154,10 @@ const $$createType19 = model$0.Page.createFrom($$createType9, $$createType14);
 const $$createType20 = $Create.Nullable($$createType19);
 const $$createType21 = model$0.ApiResponse.createFrom($$createType20);
 const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType24 = $Create.Nullable($$createType23);
+const $$createType23 = dto$0.LocalTagWithBaseTagDTO.createFrom;
+const $$createType24 = model$0.Page.createFrom($$createType23, $$createType14);
+const $$createType25 = $Create.Nullable($$createType24);
+const $$createType26 = model$0.ApiResponse.createFrom($$createType25);
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType29 = $Create.Nullable($$createType28);

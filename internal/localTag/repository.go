@@ -2,6 +2,7 @@ package localTag
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/library-squirrel/wails/internal/database"
@@ -250,4 +251,106 @@ func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSi
 	}
 
 	return model.NewPage[domain.LocalTag, LocalTagQueryDTO](tags, total, page, pageSize), nil
+}
+
+// QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
+func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
+	var results []struct {
+		TagID             int64   `gorm:"column:id"`
+		TagName           *string `gorm:"column:local_tag_name"`
+		TagBaseID         *int64  `gorm:"column:base_local_tag_id"`
+		TagDescription    *string `gorm:"column:description"`
+		TagLastUse        *int64  `gorm:"column:last_use"`
+		TagCreateTime     int64   `gorm:"column:create_time"`
+		TagUpdateTime     int64   `gorm:"column:update_time"`
+		BaseTagID         *int64  `gorm:"column:base_tag__id"`
+		BaseTagName       *string `gorm:"column:base_tag__local_tag_name"`
+		BaseTagBaseID     *int64  `gorm:"column:base_tag__base_local_tag_id"`
+		BaseTagDescription *string `gorm:"column:base_tag__description"`
+		BaseTagLastUse    *int64  `gorm:"column:base_tag__last_use"`
+		BaseTagCreateTime *int64  `gorm:"column:base_tag__create_time"`
+		BaseTagUpdateTime *int64  `gorm:"column:base_tag__update_time"`
+	}
+	var total int64
+
+	db := r.GORM().WithContext(ctx).
+		Model(&domain.LocalTag{}).
+		Select("local_tag.*, base_tag.id as base_tag__id, base_tag.local_tag_name as base_tag__local_tag_name, base_tag.base_local_tag_id as base_tag__base_local_tag_id, base_tag.description as base_tag__description, base_tag.last_use as base_tag__last_use, base_tag.create_time as base_tag__create_time, base_tag.update_time as base_tag__update_time").
+		Joins("LEFT JOIN local_tag base_tag ON local_tag.base_local_tag_id = base_tag.id")
+
+	// 应用查询条件
+	if where != nil {
+		db = db.Clauses(where)
+	}
+
+	// 统计总数
+	if err := db.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	// 应用分页
+	offset := (page - 1) * pageSize
+	db = db.Offset(offset).Limit(pageSize)
+
+	// 应用排序
+	if order != nil {
+		db = db.Clauses(order)
+	}
+
+	if err := db.Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	// 转换为DTO
+	dtoList := make([]*dto.LocalTagWithBaseTagDTO, len(results))
+	for i, result := range results {
+		// 构建标签实体
+		tag := &domain.LocalTag{
+			BaseEntity: &model.BaseEntity{
+				ID:         result.TagID,
+				CreateTime: result.TagCreateTime,
+				UpdateTime: result.TagUpdateTime,
+			},
+		}
+		if result.TagName != nil {
+			tag.LocalTagName = sql.NullString{String: *result.TagName, Valid: true}
+		}
+		if result.TagBaseID != nil {
+			tag.BaseLocalTagID = sql.NullInt64{Int64: *result.TagBaseID, Valid: true}
+		}
+		if result.TagDescription != nil {
+			tag.Description = sql.NullString{String: *result.TagDescription, Valid: true}
+		}
+		if result.TagLastUse != nil {
+			tag.LastUse = sql.NullInt64{Int64: *result.TagLastUse, Valid: true}
+		}
+
+		// 构建基础标签实体
+		var baseTag *domain.LocalTag
+		if result.BaseTagID != nil {
+			baseTag = &domain.LocalTag{
+				BaseEntity: &model.BaseEntity{
+					ID:         *result.BaseTagID,
+					CreateTime: *result.BaseTagCreateTime,
+					UpdateTime: *result.BaseTagUpdateTime,
+				},
+			}
+			if result.BaseTagName != nil {
+				baseTag.LocalTagName = sql.NullString{String: *result.BaseTagName, Valid: true}
+			}
+			if result.BaseTagBaseID != nil {
+				baseTag.BaseLocalTagID = sql.NullInt64{Int64: *result.BaseTagBaseID, Valid: true}
+			}
+			if result.BaseTagDescription != nil {
+				baseTag.Description = sql.NullString{String: *result.BaseTagDescription, Valid: true}
+			}
+			if result.BaseTagLastUse != nil {
+				baseTag.LastUse = sql.NullInt64{Int64: *result.BaseTagLastUse, Valid: true}
+			}
+		}
+
+		dtoList[i] = dto.NewLocalTagWithBaseTagDTO(tag, baseTag)
+	}
+
+	return model.NewPage[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO](dtoList, total, page, pageSize), nil
 }
