@@ -9,7 +9,7 @@ import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import { Thead } from '../model/util/Thead.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import { LocalAuthorDTO, SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
@@ -19,7 +19,6 @@ import IPage from '@renderer/model/util/IPage.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { LocalAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
-import { LocalAuthorDTO as LocalAuthor } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { localAuthorApi } from '@renderer/apis/http'
@@ -52,13 +51,13 @@ const localAuthorSearchTable = ref()
 // siteAuthorExchangeBox的组件实例
 const siteAuthorExchangeBox = ref()
 // 本地作者SearchTable的分页
-const page: Ref<Page<LocalAuthorQueryDTO, LocalAuthor>> = ref(new Page<LocalAuthorQueryDTO, LocalAuthor>())
+const page: Ref<Page<LocalAuthorDTO, LocalAuthorQueryDTO>> = ref(new Page<LocalAuthorDTO, LocalAuthorQueryDTO>())
 // 被改变的数据行
 const changedRows: Ref<object[]> = ref([])
 // 被选中的本地作者
-const localAuthorSelected: Ref<LocalAuthor> = ref(new LocalAuthor())
+const localAuthorSelected: Ref<LocalAuthorDTO> = ref(new LocalAuthorDTO())
 // 本地作者SearchTable的operationButton
-const operationButton: OperationItem<LocalAuthor>[] = [
+const operationButton: OperationItem<LocalAuthorDTO>[] = [
   {
     label: '保存',
     icon: 'Checked',
@@ -71,7 +70,7 @@ const operationButton: OperationItem<LocalAuthor>[] = [
   { label: '删除', icon: 'delete', code: 'delete' }
 ]
 // 本地作者SearchTable的表头
-const localAuthorThead: Ref<Thead<LocalAuthor>[]> = ref([
+const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
@@ -128,7 +127,7 @@ const localAuthorDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 本地作者的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 本地作者对话框的数据
-const dialogData: Ref<LocalAuthor> = ref(new LocalAuthor())
+const dialogData: Ref<LocalAuthorDTO> = ref(new LocalAuthorDTO())
 // 站点作者ExchangeBox的upper的查询参数
 const exchangeBoxUpperSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者ExchangeBox的lower的查询参数
@@ -140,10 +139,10 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 // 分页查询本地作者的函数
 async function localAuthorQueryPage(
   page: Page<LocalAuthorQueryDTO, object>
-): Promise<Page<LocalAuthorQueryDTO, LocalAuthor> | undefined> {
+): Promise<Page<LocalAuthorDTO, LocalAuthorQueryDTO> | undefined> {
   const response = await apis.localAuthorQueryPage(page)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<LocalAuthorQueryDTO, LocalAuthor>>(response)
+    return ApiUtil.data<Page<LocalAuthorDTO, LocalAuthorQueryDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
@@ -152,11 +151,11 @@ async function localAuthorQueryPage(
 // 处理本地作者新增按钮点击事件
 async function handleCreateButtonClicked() {
   localAuthorDialogMode.value = DialogMode.NEW
-  dialogData.value = new LocalAuthor()
+  dialogData.value = new LocalAuthorDTO()
   dialogState.value = true
 }
 // 处理本地作者数据行按钮点击事件
-function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthor>) {
+function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthorDTO>) {
   switch (op.code) {
     case 'save':
       saveRowEdit(op.data)
@@ -179,7 +178,7 @@ function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthor>) {
   }
 }
 // 处理被选中的本地作者改变的事件
-async function handleLocalAuthorSelectionChange(selections: LocalAuthor[]) {
+async function handleLocalAuthorSelectionChange(selections: LocalAuthorDTO[]) {
   if (selections.length > 0) {
     disableExcSearchButton.value = false
     localAuthorSelected.value = selections[0]
@@ -193,7 +192,7 @@ function refreshTable() {
   localAuthorSearchTable.value.doSearch()
 }
 // 保存行数据编辑
-async function saveRowEdit(newData: LocalAuthor) {
+async function saveRowEdit(newData: LocalAuthorDTO) {
   const tempData = lodash.cloneDeep(newData)
 
   const response = await apis.localAuthorUpdateById(tempData)

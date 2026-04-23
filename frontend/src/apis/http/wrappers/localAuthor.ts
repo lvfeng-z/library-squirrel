@@ -3,10 +3,13 @@
  * 直接调用 bindings 接口
  */
 
+import {
+  Handler as LocalAuthorHandler,
+  LocalAuthorQueryDTO
+} from "@bindings/github.com/library-squirrel/wails/internal/localAuthor";
 import type { ApiResponse } from '../types'
-import { Handler as LocalAuthorHandler, LocalAuthorDTO, LocalAuthorQueryDTO, LocalAuthorResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
-import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import {LocalAuthorDTO, SelectItem} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 export interface LocalAuthorVO {
   id: number
@@ -27,9 +30,9 @@ export interface PageResult {
 // ========== 工具函数 ==========
 
 /**
- * 将 LocalAuthorResultDTO 转换为 LocalAuthorVO
+ * 将 LocalAuthorDTO 转换为 LocalAuthorVO
  */
-function toLocalAuthorVO(dto: LocalAuthorResultDTO | null): LocalAuthorVO | null {
+function toLocalAuthorVO(dto: LocalAuthorDTO | null): LocalAuthorVO | null {
   if (!dto) return null
   return {
     id: dto.id,
@@ -97,7 +100,7 @@ export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalA
   return { success: true, msg: result.msg ?? '', data: toLocalAuthorVO(result.data ?? null) ?? undefined }
 }
 
-export async function localAuthorQueryPage(page: Page< LocalAuthorResultDTO,LocalAuthorQueryDTO>): Promise<ApiResponse<Page<LocalAuthorResultDTO, LocalAuthorQueryDTO>>> {
+export async function localAuthorQueryPage(page: Page<LocalAuthorDTO, LocalAuthorQueryDTO>): Promise<ApiResponse<Page<LocalAuthorDTO, LocalAuthorQueryDTO>>> {
   const result = await LocalAuthorHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

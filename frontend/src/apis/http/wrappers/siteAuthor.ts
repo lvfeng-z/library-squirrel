@@ -4,7 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteAuthorHandler, SiteAuthorParamDTO, SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
+import { Handler as SiteAuthorHandler, SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
 import { SiteAuthorDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO, RankedSiteAuthorWithWorkIdDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
@@ -82,7 +82,7 @@ export async function siteAuthorSave(author: {
   introduce?: string
   siteId?: number
 }): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorParamDTO({
+  const authorDTO = new SiteAuthorDTO({
     authorName: author.authorName ?? null,
     siteId: author.siteId ?? null
   })
@@ -100,13 +100,14 @@ export async function siteAuthorSave(author: {
  * 批量保存站点作者
  */
 export async function siteAuthorSaveBatch(authors: SiteAuthorVO[]): Promise<ApiResponse<SiteAuthorVO[]>> {
-  const result = await SiteAuthorHandler.SaveBatch(authors.map(author => ({
-    id: author.id,
-    siteId: author.id,
-    siteAuthorId: author.id.toString(),
-    authorName: author.authorName,
-    introduce: author.introduce
-  })))
+  const result = await SiteAuthorHandler.SaveBatch(
+      authors.map(author => new SiteAuthorDTO({
+        id: author.id,
+        siteId: author.id,
+        siteAuthorId: author.id.toString(),
+        authorName: author.authorName,
+        introduce: author.introduce
+      })))
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
   }
@@ -127,7 +128,7 @@ export async function siteAuthorUpdateById(author: {
   introduce?: string
   localAuthorId?: number
 }): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorParamDTO({
+  const authorDTO = new SiteAuthorDTO({
     id: author.id,
     authorName: author.authorName ?? null
   })
@@ -249,13 +250,15 @@ export async function siteAuthorUpdateBindLocalAuthor(
 export async function siteAuthorCreateAndBindSameNameLocalAuthor(
   siteAuthor: SiteAuthorVO
 ): Promise<ApiResponse<boolean>> {
-  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor({
-    id: siteAuthor.id,
-    siteId: siteAuthor.localAuthorId > 0 ? siteAuthor.localAuthorId : null,
-    siteAuthorId: siteAuthor.id.toString(),
-    authorName: siteAuthor.authorName,
-    introduce: siteAuthor.introduce
-  })
+  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor(
+      new SiteAuthorDTO({
+        id: siteAuthor.id,
+        siteId: siteAuthor.localAuthorId > 0 ? siteAuthor.localAuthorId : null,
+        siteAuthorId: siteAuthor.id.toString(),
+        authorName: siteAuthor.authorName,
+        introduce: siteAuthor.introduce
+      })
+  )
   if (!result) {
     return { success: false, msg: '创建失败：接口返回为空' }
   }

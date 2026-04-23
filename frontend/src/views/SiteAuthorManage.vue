@@ -9,19 +9,18 @@ import { Thead } from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { ElMessage } from 'element-plus'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localAuthorQuerySelectItemPageByName } from '@renderer/apis/LocalAuthorApi.ts'
 import {
+  LocalAuthorDTO,
   SelectItem,
   SiteAuthorDTO,
   SiteAuthorLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
-import { LocalAuthorDTO as LocalAuthor } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
@@ -123,7 +122,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     },
     setCacheData: (rowData: SiteAuthorLocalRelateDTO, data: SelectItem) => {
       if (isNullish(rowData.localAuthor)) {
-        rowData.localAuthor = new LocalAuthor()
+        rowData.localAuthor = new LocalAuthorDTO()
       }
       rowData.localAuthor.id = Number(data.value)
       rowData.localAuthor.authorName = data.label

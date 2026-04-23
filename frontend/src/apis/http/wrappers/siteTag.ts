@@ -7,13 +7,11 @@ import type { ApiResponse } from '../types'
 import IPage from "@renderer/model/util/IPage.ts";
 import {
   Handler as SiteTagHandler,
-  SiteTagParamDTO,
   SiteTagQueryDTO,
   SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
-import { SiteTagDTO, SiteTagFullDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model/models";
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {SelectItem, SiteTagDTO, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 export interface SiteTagVO {
   id: number
@@ -54,7 +52,7 @@ export async function siteTagSave(tag: {
   siteTagName?: string
   siteId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagParamDTO({
+  const tagDTO = new SiteTagDTO({
     siteTagName: tag.siteTagName ?? null,
     siteId: tag.siteId ?? null
   })
@@ -72,7 +70,7 @@ export async function siteTagSave(tag: {
  * 批量保存站点标签
  */
 export async function siteTagSaveBatch(tags: SiteTagVO[]): Promise<ApiResponse<SiteTagVO[]>> {
-  const result = await SiteTagHandler.SaveBatch(tags.map(tag => new SiteTagParamDTO({
+  const result = await SiteTagHandler.SaveBatch(tags.map(tag => new SiteTagDTO({
     id: tag.id,
     siteTagName: tag.siteTagName,
     siteId: null,
@@ -98,7 +96,7 @@ export async function siteTagUpdateById(tag: {
   siteTagName?: string
   localTagId?: number
 }): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagParamDTO({
+  const tagDTO = new SiteTagDTO({
     id: tag.id,
     siteTagName: tag.siteTagName ?? null,
     siteId: tag.localTagId ?? null  // 注意：这里可能有问题，siteId 和 localTagId 是不同的字段
@@ -233,7 +231,7 @@ export async function siteTagUpdateBindLocalTag(
 export async function siteTagCreateAndBindSameNameLocalTag(
   siteTag: SiteTagVO
 ): Promise<ApiResponse<boolean>> {
-  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagParamDTO({
+  const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagDTO({
     id: siteTag.id,
     siteTagName: siteTag.siteTagName,
     siteId: null,
