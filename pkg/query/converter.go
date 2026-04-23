@@ -24,7 +24,7 @@ func NewConverter(model interface{}) *Converter {
 
 // ToQueryOption 将 DTO 转换为 QueryOption
 // 只处理数据库字段，非数据库字段会被跳过
-func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error) {
+func (c *Converter) ToQueryOption(dto interface{}, alias *string) (*database.QueryOption, error) {
 	fields, err := c.mapper.CollectDbFields(dto)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 		}
 
 		// 处理查询条件（需要有效值）
-		if attr.GetValue() == nil {
+		if attr.GetValue() == nil && attr.GetOperator() != OpIsNotNull && attr.GetOperator() != OpIsNull {
 			continue
 		}
 
@@ -69,7 +69,7 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 			Operator: attr.GetOperator(),
 			Value:    attr.GetValue(),
 		}
-		expr, err := c.buildCondition(cond)
+		expr, err := c.buildCondition(cond, alias)
 		if err != nil {
 			return nil, err
 		}
@@ -85,10 +85,17 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 			return orders[i].priority < orders[j].priority
 		})
 		for _, o := range orders {
-			orderColumns = append(orderColumns, clause.OrderByColumn{
-				Column: clause.Column{Name: o.columnName},
-				Desc:   o.desc,
-			})
+			if alias != nil {
+				orderColumns = append(orderColumns, clause.OrderByColumn{
+					Column: clause.Column{Name: o.columnName, Table: *alias},
+					Desc:   o.desc,
+				})
+			} else {
+				orderColumns = append(orderColumns, clause.OrderByColumn{
+					Column: clause.Column{Name: o.columnName},
+					Desc:   o.desc,
+				})
+			}
 		}
 	}
 
@@ -124,8 +131,8 @@ func (c *Converter) ToQueryOption(dto interface{}) (*database.QueryOption, error
 }
 
 // ToPageOption 将 DTO 转换为 PageOption
-func (c *Converter) ToPageOption(dto interface{}, page, pageSize int) (*database.PageOption, error) {
-	queryOpt, err := c.ToQueryOption(dto)
+func (c *Converter) ToPageOption(dto interface{}, page, pageSize int, alias *string) (*database.PageOption, error) {
+	queryOpt, err := c.ToQueryOption(dto, alias)
 	if err != nil {
 		return nil, err
 	}
@@ -141,8 +148,13 @@ func (c *Converter) ToPageOption(dto interface{}, page, pageSize int) (*database
 }
 
 // buildCondition 构建单个查询条件
-func (c *Converter) buildCondition(cond Condition) (clause.Expression, error) {
-	col := clause.Column{Name: cond.Field}
+func (c *Converter) buildCondition(cond Condition, alias *string) (clause.Expression, error) {
+	var col clause.Column
+	if alias != nil {
+		col = clause.Column{Name: cond.Field, Table: *alias}
+	} else {
+		col = clause.Column{Name: cond.Field}
+	}
 
 	switch cond.Operator {
 	case OpEq:

@@ -20,7 +20,7 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
-import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
@@ -153,6 +153,9 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 // 方法
 // 分页查询本地标签的函数
 async function localTagQueryPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>): Promise<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO> | undefined> {
+  if (notNullish(page.query?.localTagName)) {
+    page.query.localTagName.operator = Operator.OpLike
+  }
   const response = await apis.localTagQueryWithBaseTagPage(page)
   if (ApiUtil.check(response)) {
     let responsePage = ApiUtil.data<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>>(response)

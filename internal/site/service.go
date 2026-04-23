@@ -98,7 +98,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site, any], error) {
 	conv := query.NewConverter(domain.Site{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Si
 // QuerySelectItemPage 分页查询选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
 	conv := query.NewConverter(domain.Site{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

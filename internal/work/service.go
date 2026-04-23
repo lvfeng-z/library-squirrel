@@ -205,7 +205,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[entity2.Work, any], error) {
 	conv := query.NewConverter(entity2.Work{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}

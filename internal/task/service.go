@@ -305,7 +305,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +320,7 @@ func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where
 // QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
 func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 // QueryTreeDataPage 查询任务树数据分页
 func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +477,7 @@ func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pa
 // QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
 func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

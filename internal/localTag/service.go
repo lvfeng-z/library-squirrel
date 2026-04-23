@@ -180,7 +180,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO) (*model.Page[domain.LocalTag, any], error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, w
 // QuerySelectItemPageByDTO 分页查询选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize i
 // ListSelectItemsByDTO 查询选择项列表（基于 QueryDTO）
 func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*dto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSiz
 // QuerySelectItemPageByWorkIdByDTO 根据作品ID分页查询选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO, workId int64) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +324,8 @@ func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pa
 // QueryWithBaseTagPageByDTO 分页查询包含基础标签信息的本地标签（基于 QueryDTO）
 func (s *Service) QueryWithBaseTagPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalTagQueryDTO) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	alias := "local_tag"
+	queryOpt, err := conv.ToQueryOption(queryDTO, &alias)
 	if err != nil {
 		return nil, err
 	}

@@ -125,7 +125,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Si
 // QueryBoundOrUnboundToLocalAuthorPageByDTO 查询绑定或未绑定到本地作者的站点作者分页（基于 QueryDTO）
 func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,7 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context,
 // QueryLocalRelateDTOPageByDTO 查询站点作者与本地作者关联DTO分页（基于 QueryDTO）
 func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

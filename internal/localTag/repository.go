@@ -256,20 +256,20 @@ func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSi
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
 func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
 	var results []struct {
-		TagID             int64   `gorm:"column:id"`
-		TagName           *string `gorm:"column:local_tag_name"`
-		TagBaseID         *int64  `gorm:"column:base_local_tag_id"`
-		TagDescription    *string `gorm:"column:description"`
-		TagLastUse        *int64  `gorm:"column:last_use"`
-		TagCreateTime     int64   `gorm:"column:create_time"`
-		TagUpdateTime     int64   `gorm:"column:update_time"`
-		BaseTagID         *int64  `gorm:"column:base_tag__id"`
-		BaseTagName       *string `gorm:"column:base_tag__local_tag_name"`
-		BaseTagBaseID     *int64  `gorm:"column:base_tag__base_local_tag_id"`
+		TagID              int64   `gorm:"column:id"`
+		TagName            *string `gorm:"column:local_tag_name"`
+		TagBaseID          *int64  `gorm:"column:base_local_tag_id"`
+		TagDescription     *string `gorm:"column:description"`
+		TagLastUse         *int64  `gorm:"column:last_use"`
+		TagCreateTime      int64   `gorm:"column:create_time"`
+		TagUpdateTime      int64   `gorm:"column:update_time"`
+		BaseTagID          *int64  `gorm:"column:base_tag__id"`
+		BaseTagName        *string `gorm:"column:base_tag__local_tag_name"`
+		BaseTagBaseID      *int64  `gorm:"column:base_tag__base_local_tag_id"`
 		BaseTagDescription *string `gorm:"column:base_tag__description"`
-		BaseTagLastUse    *int64  `gorm:"column:base_tag__last_use"`
-		BaseTagCreateTime *int64  `gorm:"column:base_tag__create_time"`
-		BaseTagUpdateTime *int64  `gorm:"column:base_tag__update_time"`
+		BaseTagLastUse     *int64  `gorm:"column:base_tag__last_use"`
+		BaseTagCreateTime  *int64  `gorm:"column:base_tag__create_time"`
+		BaseTagUpdateTime  *int64  `gorm:"column:base_tag__update_time"`
 	}
 	var total int64
 
@@ -284,7 +284,7 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, page, pag
 	}
 
 	// 统计总数
-	if err := db.Count(&total).Error; err != nil {
+	if err := db.Debug().Count(&total).Error; err != nil {
 		return nil, err
 	}
 
@@ -297,7 +297,7 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, page, pag
 		db = db.Clauses(order)
 	}
 
-	if err := db.Scan(&results).Error; err != nil {
+	if err := db.Debug().Scan(&results).Error; err != nil {
 		return nil, err
 	}
 

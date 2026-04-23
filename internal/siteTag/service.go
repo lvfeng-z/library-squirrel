@@ -145,7 +145,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[entity2.SiteTag, any], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQue
 		queryDTO.LocalTagID.Value = nil
 	}
 
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func unique(ids []int64) []int64 {
 // QueryPageByWorkIdByDTO 根据作品ID分页查询站点标签（基于 QueryDTO）
 func (s *Service) QueryPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (s *Service) QueryPageByWorkIdByDTO(ctx context.Context, page, pageSize int
 // QueryLocalRelateDTOPageByDTO 查询站点标签与本地标签关联DTO分页（基于 QueryDTO）
 func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +320,7 @@ func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSi
 // QuerySelectItemPageByWorkIdByDTO 根据作品ID分页查询站点标签选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

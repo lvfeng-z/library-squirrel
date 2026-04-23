@@ -130,7 +130,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[entity2.WorkSet, any], error) {
 	conv := query.NewConverter(entity2.WorkSet{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Wo
 // QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
 func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
 	conv := query.NewConverter(entity2.WorkSet{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

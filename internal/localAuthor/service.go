@@ -111,7 +111,7 @@ func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Pa
 // PageByDTO 分页查询（基于 QueryDTO）
 func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[domain.LocalAuthor, any], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO Lo
 // ListSelectItemsByDTO 查询选择项列表（基于 QueryDTO）
 func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*dto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s *Service) ListSelectItemsByDTO(ctx context.Context, queryDTO LocalAuthor
 // QuerySelectItemPageByDTO 分页查询选择项（基于 QueryDTO）
 func (s *Service) QuerySelectItemPageByDTO(ctx context.Context, page, pageSize int, queryDTO LocalAuthorQueryDTO) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO)
+	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
 	}

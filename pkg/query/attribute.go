@@ -39,7 +39,10 @@ func (a QueryAttribute[T]) IsEmpty() bool {
 
 // GetValue 获取值
 func (a QueryAttribute[T]) GetValue() any {
-	return a.Value
+	if a.Value == nil {
+		return nil
+	}
+	return *a.Value
 }
 
 // GetOperator 获取运算符，默认返回 eq
