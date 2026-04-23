@@ -22,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存本地标签
-func (h *Handler) Save(ctx context.Context, tag *dto.LocalTagParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiResponse[int64] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -50,7 +50,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新本地标签
-func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiResponse[any] {
 	domainTag := &domain.LocalTag{
 		BaseEntity: &model.BaseEntity{},
 	}

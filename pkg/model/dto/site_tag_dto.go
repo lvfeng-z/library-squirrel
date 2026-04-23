@@ -5,6 +5,39 @@ import (
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
+// SiteTagDTO 站点标签数据传输对象（无 sql.Null* 版本）
+type SiteTagDTO struct {
+	ID            int64   `json:"id"`
+	SiteID        *int64  `json:"siteId"`
+	SiteTagID     *string `json:"siteTagId"`
+	SiteTagName   *string `json:"siteTagName"`
+	BaseSiteTagID *string `json:"baseSiteTagId"`
+	Description   *string `json:"description"`
+	LocalTagID    *int64  `json:"localTagId"`
+	LastUse       *int64  `json:"lastUse"`
+	CreateTime    int64   `json:"createTime"`
+	UpdateTime    int64   `json:"updateTime"`
+}
+
+// NewSiteTagDTO 从 entity.SiteTag 创建 SiteTagDTO
+func NewSiteTagDTO(tag *entity2.SiteTag) *SiteTagDTO {
+	if tag == nil {
+		return nil
+	}
+	return &SiteTagDTO{
+		ID:            tag.GetID(),
+		SiteID:        util.NullInt64ToPointer(tag.SiteID),
+		SiteTagID:     util.NullStringToPointer(tag.SiteTagID),
+		SiteTagName:   util.NullStringToPointer(tag.SiteTagName),
+		BaseSiteTagID: util.NullStringToPointer(tag.BaseSiteTagID),
+		Description:   util.NullStringToPointer(tag.Description),
+		LocalTagID:    util.NullInt64ToPointer(tag.LocalTagID),
+		LastUse:       util.NullInt64ToPointer(tag.LastUse),
+		CreateTime:    tag.GetCreateTime(),
+		UpdateTime:    tag.GetUpdateTime(),
+	}
+}
+
 // SiteTagFullDTO 站点标签完整DTO（包含绑定的本地标签和来源站点信息）
 type SiteTagFullDTO struct {
 	SiteTag  *SiteTagDTO  `json:"siteTag,omitempty"`
@@ -82,46 +115,4 @@ func NewSiteTagLocalRelateDTO(siteTag *entity2.SiteTag) *SiteTagLocalRelateDTO {
 		dto.LastUse = siteTag.LastUse.Int64
 	}
 	return dto
-}
-
-// SiteTagDTO 站点标签数据传输对象（无 sql.Null* 版本）
-type SiteTagDTO struct {
-	ID            int64   `json:"id"`
-	SiteID        *int64  `json:"siteId"`
-	SiteTagID     *string `json:"siteTagId"`
-	SiteTagName   *string `json:"siteTagName"`
-	BaseSiteTagID *string `json:"baseSiteTagId"`
-	Description   *string `json:"description"`
-	LocalTagID    *int64  `json:"localTagId"`
-	LastUse       *int64  `json:"lastUse"`
-	CreateTime    int64   `json:"createTime"`
-	UpdateTime    int64   `json:"updateTime"`
-}
-
-// NewSiteTagDTO 从 entity.SiteTag 创建 SiteTagDTO
-func NewSiteTagDTO(tag *entity2.SiteTag) *SiteTagDTO {
-	if tag == nil {
-		return nil
-	}
-	return &SiteTagDTO{
-		ID:            tag.GetID(),
-		SiteID:        util.NullInt64ToPointer(tag.SiteID),
-		SiteTagID:     util.NullStringToPointer(tag.SiteTagID),
-		SiteTagName:   util.NullStringToPointer(tag.SiteTagName),
-		BaseSiteTagID: util.NullStringToPointer(tag.BaseSiteTagID),
-		Description:   util.NullStringToPointer(tag.Description),
-		LocalTagID:    util.NullInt64ToPointer(tag.LocalTagID),
-		LastUse:       util.NullInt64ToPointer(tag.LastUse),
-		CreateTime:    tag.GetCreateTime(),
-		UpdateTime:    tag.GetUpdateTime(),
-	}
-}
-
-// SiteTagParamDTO 站点标签数据传输对象（增删改参数）
-type SiteTagParamDTO struct {
-	ID          int64   `json:"id"`
-	SiteID      *int64  `json:"siteId"`
-	SiteTagID   *string `json:"siteTagId"`
-	SiteTagName *string `json:"siteTagName"`
-	Description *string `json:"description"`
 }

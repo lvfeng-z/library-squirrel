@@ -24,7 +24,7 @@ import * as $models from "./models.js";
 /**
  * CreateAndBindSameNameLocalTag 创建并绑定同名本地标签
  */
-export function CreateAndBindSameNameLocalTag(siteTag: $models.SiteTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<dto$0.LocalTagDTO | null> | null> {
+export function CreateAndBindSameNameLocalTag(siteTag: dto$0.SiteTagDTO | null): $CancellablePromise<model$0.ApiResponse<dto$0.LocalTagDTO | null> | null> {
     return $Call.ByID(209855906, siteTag).then(($result: any) => {
         return $$createType3($result);
     });
@@ -114,7 +114,7 @@ export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem,
 /**
  * Save 保存站点标签
  */
-export function Save(tag: $models.SiteTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(tag: dto$0.SiteTagDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(4113095981, tag).then(($result: any) => {
         return $$createType34($result);
     });
@@ -123,7 +123,7 @@ export function Save(tag: $models.SiteTagParamDTO | null): $CancellablePromise<m
 /**
  * SaveBatch 批量保存站点标签
  */
-export function SaveBatch(tags: ($models.SiteTagParamDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function SaveBatch(tags: (dto$0.SiteTagDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(411851267, tags).then(($result: any) => {
         return $$createType5($result);
     });
@@ -132,7 +132,7 @@ export function SaveBatch(tags: ($models.SiteTagParamDTO | null)[]): $Cancellabl
 /**
  * Update 更新站点标签
  */
-export function Update(tag: $models.SiteTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(tag: dto$0.SiteTagDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3226027185, tag).then(($result: any) => {
         return $$createType5($result);
     });

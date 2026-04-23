@@ -141,7 +141,7 @@ export function RefreshStatus(taskId: number): $CancellablePromise<model$0.ApiRe
 /**
  * Save 保存任务
  */
-export function Save(task: $models.TaskParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(task: dto$0.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1923742947, task).then(($result: any) => {
         return $$createType1($result);
     });
@@ -159,7 +159,7 @@ export function SetTreeStatus(taskIds: number[], status: number, includeStatus: 
 /**
  * Update 更新任务
  */
-export function Update(task: $models.TaskParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(task: dto$0.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3556737999, task).then(($result: any) => {
         return $$createType7($result);
     });

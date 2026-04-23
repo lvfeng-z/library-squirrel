@@ -22,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存站点作者
-func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorDTO) *model.ApiResponse[int64] {
 	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -50,7 +50,7 @@ func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorParamDTO) *mod
 }
 
 // SaveBatch 批量保存站点作者
-func (h *Handler) SaveBatch(ctx context.Context, authors []*dto.SiteAuthorParamDTO) *model.ApiResponse[any] {
+func (h *Handler) SaveBatch(ctx context.Context, authors []*dto.SiteAuthorDTO) *model.ApiResponse[any] {
 	domainAuthors := make([]*entity2.SiteAuthor, 0, len(authors))
 	for _, author := range authors {
 		domainAuthor := &entity2.SiteAuthor{
@@ -90,7 +90,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新站点作者
-func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorDTO) *model.ApiResponse[any] {
 	domainAuthor := &entity2.SiteAuthor{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -221,7 +221,7 @@ func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64
 }
 
 // CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
-func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *dto.SiteAuthorParamDTO) *model.ApiResponse[bool] {
+func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *dto.SiteAuthorDTO) *model.ApiResponse[bool] {
 	if siteAuthor.ID == 0 {
 		return model.Error[bool]("创建同名本地作者失败，作者ID不能为空")
 	}

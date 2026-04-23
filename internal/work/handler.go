@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品
-func (h *Handler) Save(ctx context.Context, work *dto.WorkParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, work *dto.WorkDTO) *model.ApiResponse[int64] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -53,7 +53,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品
-func (h *Handler) Update(ctx context.Context, work *dto.WorkParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, work *dto.WorkDTO) *model.ApiResponse[any] {
 	domainWork := &domain.Work{
 		BaseEntity: &model.BaseEntity{},
 	}

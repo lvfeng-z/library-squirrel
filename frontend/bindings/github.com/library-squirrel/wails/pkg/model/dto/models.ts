@@ -1172,6 +1172,75 @@ export class WorkSetDTO {
     }
 }
 
+/**
+ * WorkSetWithCoverResultDTO 作品集及其封面作品信息
+ */
+export class WorkSetWithCoverResultDTO {
+    "workSet": WorkSetDTO | null;
+    "coverWork"?: WorkDTO | null;
+
+    /** Creates a new WorkSetWithCoverResultDTO instance. */
+    constructor($$source: Partial<WorkSetWithCoverResultDTO> = {}) {
+        if (!("workSet" in $$source)) {
+            this["workSet"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
+        const $$createField0_0 = $$createType24;
+        const $$createField1_0 = $$createType11;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workSet" in $$parsedSource) {
+            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
+        }
+        if ("coverWork" in $$parsedSource) {
+            $$parsedSource["coverWork"] = $$createField1_0($$parsedSource["coverWork"]);
+        }
+        return new WorkSetWithCoverResultDTO($$parsedSource as Partial<WorkSetWithCoverResultDTO>);
+    }
+}
+
+/**
+ * WorkSetWithWorksResultDTO 作品集及其作品信息
+ */
+export class WorkSetWithWorksResultDTO {
+    "workSet": WorkSetDTO | null;
+    "works": (WorkDTO | null)[];
+
+    /** Creates a new WorkSetWithWorksResultDTO instance. */
+    constructor($$source: Partial<WorkSetWithWorksResultDTO> = {}) {
+        if (!("workSet" in $$source)) {
+            this["workSet"] = null;
+        }
+        if (!("works" in $$source)) {
+            this["works"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
+        const $$createField0_0 = $$createType24;
+        const $$createField1_0 = $$createType25;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workSet" in $$parsedSource) {
+            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
+        }
+        if ("works" in $$parsedSource) {
+            $$parsedSource["works"] = $$createField1_0($$parsedSource["works"]);
+        }
+        return new WorkSetWithWorksResultDTO($$parsedSource as Partial<WorkSetWithWorksResultDTO>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Array($Create.Any);
@@ -1196,3 +1265,6 @@ const $$createType19 = $Create.Array($$createType18);
 const $$createType20 = ResourceDTO.createFrom;
 const $$createType21 = $Create.Nullable($$createType20);
 const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = WorkSetDTO.createFrom;
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = $Create.Array($$createType11);

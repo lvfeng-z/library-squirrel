@@ -21,5 +21,7 @@ export {
     TaskDTO,
     WorkDTO,
     WorkFullDTO,
-    WorkSetDTO
+    WorkSetDTO,
+    WorkSetWithCoverResultDTO,
+    WorkSetWithWorksResultDTO
 } from "./models.js";

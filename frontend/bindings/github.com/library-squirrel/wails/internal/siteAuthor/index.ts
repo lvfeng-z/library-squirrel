@@ -7,6 +7,5 @@ export {
 };
 
 export {
-    SiteAuthorParamDTO,
     SiteAuthorQueryDTO
 } from "./models.js";

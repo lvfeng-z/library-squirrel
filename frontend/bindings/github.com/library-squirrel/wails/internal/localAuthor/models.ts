@@ -10,38 +10,6 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * LocalAuthorDTO 本地作者数据传输对象
- */
-export class LocalAuthorDTO {
-    "id": number;
-    "authorName": string | null;
-    "introduce": string | null;
-
-    /** Creates a new LocalAuthorDTO instance. */
-    constructor($$source: Partial<LocalAuthorDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalAuthorDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalAuthorDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalAuthorDTO($$parsedSource as Partial<LocalAuthorDTO>);
-    }
-}
-
-/**
  * LocalAuthorQueryDTO 本地作者查询条件
  */
 export class LocalAuthorQueryDTO {
@@ -117,50 +85,6 @@ export class LocalAuthorQueryDTO {
             $$parsedSource["createTime"] = $$createField4_0($$parsedSource["createTime"]);
         }
         return new LocalAuthorQueryDTO($$parsedSource as Partial<LocalAuthorQueryDTO>);
-    }
-}
-
-/**
- * LocalAuthorResultDTO 本地作者返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class LocalAuthorResultDTO {
-    "id": number;
-    "authorName": string | null;
-    "introduce": string | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new LocalAuthorResultDTO instance. */
-    constructor($$source: Partial<LocalAuthorResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalAuthorResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalAuthorResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalAuthorResultDTO($$parsedSource as Partial<LocalAuthorResultDTO>);
     }
 }
 

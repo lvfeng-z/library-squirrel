@@ -87,7 +87,7 @@ export function QueryPage(page: number, pageSize: number, queryDTO: $models.Work
 /**
  * Save 保存作品
  */
-export function Save(work: $models.WorkParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(111346079, work).then(($result: any) => {
         return $$createType21($result);
     });
@@ -96,7 +96,7 @@ export function Save(work: $models.WorkParamDTO | null): $CancellablePromise<mod
 /**
  * Update 更新作品
  */
-export function Update(work: $models.WorkParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2273827723, work).then(($result: any) => {
         return $$createType1($result);
     });

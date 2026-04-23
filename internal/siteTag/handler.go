@@ -22,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存站点标签
-func (h *Handler) Save(ctx context.Context, tag *dto.SiteTagParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiResponse[int64] {
 	domainTag := &entity.SiteTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -50,7 +50,7 @@ func (h *Handler) Save(ctx context.Context, tag *dto.SiteTagParamDTO) *model.Api
 }
 
 // SaveBatch 批量保存站点标签
-func (h *Handler) SaveBatch(ctx context.Context, tags []*dto.SiteTagParamDTO) *model.ApiResponse[any] {
+func (h *Handler) SaveBatch(ctx context.Context, tags []*dto.SiteTagDTO) *model.ApiResponse[any] {
 	domainTags := make([]*entity.SiteTag, 0, len(tags))
 	for _, tag := range tags {
 		domainTag := &entity.SiteTag{
@@ -90,7 +90,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新站点标签
-func (h *Handler) Update(ctx context.Context, tag *dto.SiteTagParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiResponse[any] {
 	domainTag := &entity.SiteTag{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -233,7 +233,7 @@ func (h *Handler) UpdateBindLocalTag(ctx context.Context, localTagId *int64, sit
 }
 
 // CreateAndBindSameNameLocalTag 创建并绑定同名本地标签
-func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *dto.SiteTagParamDTO) *model.ApiResponse[*dto.LocalTagDTO] {
+func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *dto.SiteTagDTO) *model.ApiResponse[*dto.LocalTagDTO] {
 	if siteTag.ID == 0 {
 		return model.Error[*dto.LocalTagDTO]("创建同名本地标签失败，标签ID不能为空")
 	}
@@ -296,15 +296,6 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 }
 
 // ========== DTO 定义 ==========
-
-// SiteTagParamDTO 站点标签数据传输对象（增删改参数）
-type SiteTagParamDTO struct {
-	ID          int64   `json:"id"`
-	SiteID      *int64  `json:"siteId"`
-	SiteTagID   *string `json:"siteTagId"`
-	SiteTagName *string `json:"siteTagName"`
-	Description *string `json:"description"`
-}
 
 // SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（Handler内部转换用）
 type SiteTagLocalRelateDTO struct {

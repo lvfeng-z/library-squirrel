@@ -7,42 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../../pkg/model/dto/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as query$0 from "../../pkg/query/models.js";
-
-/**
- * WorkSetParamDTO 作品集数据传输对象（增删改参数）
- */
-export class WorkSetParamDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkSetName": string | null;
-
-    /** Creates a new WorkSetParamDTO instance. */
-    constructor($$source: Partial<WorkSetParamDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkSetName" in $$source)) {
-            this["siteWorkSetName"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSetParamDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetParamDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkSetParamDTO($$parsedSource as Partial<WorkSetParamDTO>);
-    }
-}
 
 /**
  * WorkSetQueryDTO 作品集查询条件
@@ -171,80 +136,6 @@ export class WorkSetQueryDTO {
     }
 }
 
-/**
- * WorkSetWithCoverResultDTO 作品集及其封面作品信息
- */
-export class WorkSetWithCoverResultDTO {
-    "workSet": dto$0.WorkSetDTO | null;
-    "coverWork"?: dto$0.WorkDTO | null;
-
-    /** Creates a new WorkSetWithCoverResultDTO instance. */
-    constructor($$source: Partial<WorkSetWithCoverResultDTO> = {}) {
-        if (!("workSet" in $$source)) {
-            this["workSet"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
-        const $$createField0_0 = $$createType3;
-        const $$createField1_0 = $$createType5;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("workSet" in $$parsedSource) {
-            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
-        }
-        if ("coverWork" in $$parsedSource) {
-            $$parsedSource["coverWork"] = $$createField1_0($$parsedSource["coverWork"]);
-        }
-        return new WorkSetWithCoverResultDTO($$parsedSource as Partial<WorkSetWithCoverResultDTO>);
-    }
-}
-
-/**
- * WorkSetWithWorksResultDTO 作品集及其作品信息
- */
-export class WorkSetWithWorksResultDTO {
-    "workSet": dto$0.WorkSetDTO | null;
-    "works": (dto$0.WorkDTO | null)[];
-
-    /** Creates a new WorkSetWithWorksResultDTO instance. */
-    constructor($$source: Partial<WorkSetWithWorksResultDTO> = {}) {
-        if (!("workSet" in $$source)) {
-            this["workSet"] = null;
-        }
-        if (!("works" in $$source)) {
-            this["works"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType3;
-        const $$createField1_0 = $$createType6;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("workSet" in $$parsedSource) {
-            $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
-        }
-        if ("works" in $$parsedSource) {
-            $$parsedSource["works"] = $$createField1_0($$parsedSource["works"]);
-        }
-        return new WorkSetWithWorksResultDTO($$parsedSource as Partial<WorkSetWithWorksResultDTO>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType2 = dto$0.WorkSetDTO.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = dto$0.WorkDTO.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $Create.Array($$createType5);

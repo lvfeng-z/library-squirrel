@@ -49,20 +49,3 @@ func NewTaskDTO(task *entity2.Task) *TaskDTO {
 		UpdateTime:           task.GetUpdateTime(),
 	}
 }
-
-// TaskParamDTO 任务数据传输对象（增删改参数）
-type TaskParamDTO struct {
-	ID                   int64   `json:"id"`
-	IsCollection         *int64  `json:"isCollection,omitempty"`
-	Pid                  *int64  `json:"pid,omitempty"`
-	TaskName             *string `json:"taskName,omitempty"`
-	SiteID               *int64  `json:"siteId,omitempty"`
-	SiteWorkID           *string `json:"siteWorkId,omitempty"`
-	URL                  *string `json:"url,omitempty"`
-	Status               int     `json:"status,omitempty"`
-	PendingResourceID    *int64  `json:"pendingResourceId,omitempty"`
-	Continuable          *int64  `json:"continuable,omitempty"`
-	PluginPublicID       *string `json:"pluginPublicId,omitempty"`
-	PluginContributionID *string `json:"pluginContributionId,omitempty"`
-	PluginData           *string `json:"pluginData,omitempty"`
-}

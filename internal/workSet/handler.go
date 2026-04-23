@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品集
-func (h *Handler) Save(ctx context.Context, workSet *dto2.WorkSetParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, workSet *dto2.WorkSetDTO) *model.ApiResponse[int64] {
 	domainWorkSet := &entity2.WorkSet{}
 	if workSet.SiteID != nil {
 		domainWorkSet.SiteID.Valid = true
@@ -47,7 +47,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品集
-func (h *Handler) Update(ctx context.Context, workSet *dto2.WorkSetParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, workSet *dto2.WorkSetDTO) *model.ApiResponse[any] {
 	domainWorkSet := &entity2.WorkSet{}
 	domainWorkSet.SetID(workSet.ID)
 	if workSet.SiteID != nil {

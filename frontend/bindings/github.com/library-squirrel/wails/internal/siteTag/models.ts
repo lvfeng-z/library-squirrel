@@ -78,46 +78,6 @@ export class SiteTagLocalRelateDTO {
 }
 
 /**
- * SiteTagParamDTO 站点标签数据传输对象（增删改参数）
- */
-export class SiteTagParamDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteTagId": string | null;
-    "siteTagName": string | null;
-    "description": string | null;
-
-    /** Creates a new SiteTagParamDTO instance. */
-    constructor($$source: Partial<SiteTagParamDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteTagId" in $$source)) {
-            this["siteTagId"] = null;
-        }
-        if (!("siteTagName" in $$source)) {
-            this["siteTagName"] = null;
-        }
-        if (!("description" in $$source)) {
-            this["description"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteTagParamDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteTagParamDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteTagParamDTO($$parsedSource as Partial<SiteTagParamDTO>);
-    }
-}
-
-/**
  * SiteTagQueryDTO 站点标签查询条件
  */
 export class SiteTagQueryDTO {

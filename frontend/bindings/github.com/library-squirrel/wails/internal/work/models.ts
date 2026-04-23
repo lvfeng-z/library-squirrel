@@ -10,42 +10,6 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * WorkParamDTO 作品数据传输对象（增删改参数）
- */
-export class WorkParamDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkId": string | null;
-    "siteWorkName": string | null;
-
-    /** Creates a new WorkParamDTO instance. */
-    constructor($$source: Partial<WorkParamDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("siteWorkName" in $$source)) {
-            this["siteWorkName"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkParamDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkParamDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkParamDTO($$parsedSource as Partial<WorkParamDTO>);
-    }
-}
-
-/**
  * WorkQueryDTO 作品查询条件
  */
 export class WorkQueryDTO {

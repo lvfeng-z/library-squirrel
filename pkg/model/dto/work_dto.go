@@ -74,11 +74,3 @@ func NewWorkFullDTO(work *entity2.Work) *WorkFullDTO {
 		Work: NewWorkDTO(work),
 	}
 }
-
-// WorkParamDTO 作品数据传输对象（增删改参数）
-type WorkParamDTO struct {
-	ID           int64   `json:"id"`
-	SiteID       *int64  `json:"siteId"`
-	SiteWorkID   *string `json:"siteWorkId"`
-	SiteWorkName *string `json:"siteWorkName"`
-}

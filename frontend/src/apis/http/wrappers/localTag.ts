@@ -4,10 +4,12 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as LocalTagHandler, LocalTagParamDTO, LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
-import { LocalTagDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
-import { SelectItem } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import {
+  Handler as LocalTagHandler,
+  LocalTagQueryDTO
+} from '@bindings/github.com/library-squirrel/wails/internal/localTag'
+import {LocalTagDTO, SelectItem} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 // ========== 类型定义 ==========
 
@@ -53,7 +55,7 @@ export async function localTagSave(tag: {
   localTagName?: string
   baseLocalTagId?: number
 }): Promise<ApiResponse<LocalTagVO>> {
-  const tagDTO = new LocalTagParamDTO({
+  const tagDTO = new LocalTagDTO({
     localTagName: tag.localTagName ?? null,
     baseLocalTagId: tag.baseLocalTagId ?? null
   })
@@ -86,7 +88,7 @@ export async function localTagUpdateById(tag: {
   localTagName?: string
   baseLocalTagId?: number
 }): Promise<ApiResponse<LocalTagVO>> {
-  const tagDTO = new LocalTagParamDTO({
+  const tagDTO = new LocalTagDTO({
     id: tag.id,
     localTagName: tag.localTagName ?? null,
     baseLocalTagId: tag.baseLocalTagId ?? null

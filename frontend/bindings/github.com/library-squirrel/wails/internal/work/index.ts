@@ -7,6 +7,5 @@ export {
 };
 
 export {
-    WorkParamDTO,
     WorkQueryDTO
 } from "./models.js";

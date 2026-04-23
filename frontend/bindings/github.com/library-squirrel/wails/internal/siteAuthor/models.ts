@@ -10,46 +10,6 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * SiteAuthorParamDTO 站点作者数据传输对象（增删改参数）
- */
-export class SiteAuthorParamDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "introduce": string | null;
-
-    /** Creates a new SiteAuthorParamDTO instance. */
-    constructor($$source: Partial<SiteAuthorParamDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteAuthorParamDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteAuthorParamDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteAuthorParamDTO($$parsedSource as Partial<SiteAuthorParamDTO>);
-    }
-}
-
-/**
  * SiteAuthorQueryDTO 站点作者查询条件
  */
 export class SiteAuthorQueryDTO {

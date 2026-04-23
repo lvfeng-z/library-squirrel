@@ -97,7 +97,7 @@ export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem,
 /**
  * Save 保存本地标签
  */
-export function Save(tag: $models.LocalTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(tag: dto$0.LocalTagDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2374210955, tag).then(($result: any) => {
         return $$createType24($result);
     });
@@ -106,7 +106,7 @@ export function Save(tag: $models.LocalTagParamDTO | null): $CancellablePromise<
 /**
  * Update 更新本地标签
  */
-export function Update(tag: $models.LocalTagParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(tag: dto$0.LocalTagDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(336289815, tag).then(($result: any) => {
         return $$createType1($result);
     });

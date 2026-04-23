@@ -31,10 +31,3 @@ func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
 		UpdateTime:     tag.GetUpdateTime(),
 	}
 }
-
-// LocalTagParamDTO 本地标签数据传输对象（增删改参数）
-type LocalTagParamDTO struct {
-	ID             int64   `json:"id"`
-	LocalTagName   *string `json:"localTagName"`
-	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-}

@@ -10,38 +10,6 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * LocalTagParamDTO 本地标签数据传输对象（增删改参数）
- */
-export class LocalTagParamDTO {
-    "id": number;
-    "localTagName": string | null;
-    "baseLocalTagId": number | null;
-
-    /** Creates a new LocalTagParamDTO instance. */
-    constructor($$source: Partial<LocalTagParamDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("localTagName" in $$source)) {
-            this["localTagName"] = null;
-        }
-        if (!("baseLocalTagId" in $$source)) {
-            this["baseLocalTagId"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalTagParamDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalTagParamDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalTagParamDTO($$parsedSource as Partial<LocalTagParamDTO>);
-    }
-}
-
-/**
  * LocalTagQueryDTO 本地标签查询条件
  */
 export class LocalTagQueryDTO {

@@ -7,6 +7,5 @@ export {
 };
 
 export {
-    LocalTagParamDTO,
     LocalTagQueryDTO
 } from "./models.js";

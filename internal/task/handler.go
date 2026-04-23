@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存任务
-func (h *Handler) Save(ctx context.Context, task *dto2.TaskParamDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, task *dto2.TaskDTO) *model.ApiResponse[int64] {
 	domainTask := &domain.Task{}
 	if task.ID != 0 {
 		domainTask.SetID(task.ID)
@@ -73,7 +73,7 @@ func (h *Handler) Save(ctx context.Context, task *dto2.TaskParamDTO) *model.ApiR
 }
 
 // Update 更新任务
-func (h *Handler) Update(ctx context.Context, task *dto2.TaskParamDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, task *dto2.TaskDTO) *model.ApiResponse[any] {
 	domainTask := &domain.Task{}
 	if task.ID == 0 {
 		return model.Error[any]("更新任务失败，id不能为空")

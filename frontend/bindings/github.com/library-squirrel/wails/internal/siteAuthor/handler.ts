@@ -24,7 +24,7 @@ import * as $models from "./models.js";
 /**
  * CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
  */
-export function CreateAndBindSameNameLocalAuthor(siteAuthor: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
+export function CreateAndBindSameNameLocalAuthor(siteAuthor: dto$0.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(475611968, siteAuthor).then(($result: any) => {
         return $$createType1($result);
     });
@@ -105,7 +105,7 @@ export function QueryPage(page: model$0.Page<dto$0.SiteAuthorDTO, $models.SiteAu
 /**
  * Save 保存站点作者
  */
-export function Save(author: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(author: dto$0.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1406741580, author).then(($result: any) => {
         return $$createType37($result);
     });
@@ -114,7 +114,7 @@ export function Save(author: $models.SiteAuthorParamDTO | null): $CancellablePro
 /**
  * SaveBatch 批量保存站点作者
  */
-export function SaveBatch(authors: ($models.SiteAuthorParamDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function SaveBatch(authors: (dto$0.SiteAuthorDTO | null)[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(4158614420, authors).then(($result: any) => {
         return $$createType3($result);
     });
@@ -123,7 +123,7 @@ export function SaveBatch(authors: ($models.SiteAuthorParamDTO | null)[]): $Canc
 /**
  * Update 更新站点作者
  */
-export function Update(author: $models.SiteAuthorParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(author: dto$0.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1576222040, author).then(($result: any) => {
         return $$createType3($result);
     });
