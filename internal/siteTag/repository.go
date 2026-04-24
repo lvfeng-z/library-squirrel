@@ -15,7 +15,6 @@ import (
 )
 
 // SiteTagRepository 站点标签仓储实现
-// 不嵌入 database.BaseRepository 以避免 Page 返回类型的泛型限制问题
 type SiteTagRepository struct {
 	*database.BaseRepository[entity2.SiteTag]
 }

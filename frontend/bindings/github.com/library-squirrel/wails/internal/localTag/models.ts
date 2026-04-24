@@ -33,6 +33,11 @@ export class LocalTagQueryDTO {
      */
     "createTime": query$0.QueryAttribute<number>;
 
+    /**
+     * 作品ID（用于关联查询）
+     */
+    "workId": query$0.QueryAttribute<number>;
+
     /** Creates a new LocalTagQueryDTO instance. */
     constructor($$source: Partial<LocalTagQueryDTO> = {}) {
         if (!("baseLocalTagId" in $$source)) {
@@ -47,6 +52,9 @@ export class LocalTagQueryDTO {
         if (!("createTime" in $$source)) {
             this["createTime"] = (new query$0.QueryAttribute());
         }
+        if (!("workId" in $$source)) {
+            this["workId"] = (new query$0.QueryAttribute());
+        }
 
         Object.assign(this, $$source);
     }
@@ -59,6 +67,7 @@ export class LocalTagQueryDTO {
         const $$createField1_0 = $$createType1;
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("baseLocalTagId" in $$parsedSource) {
             $$parsedSource["baseLocalTagId"] = $$createField0_0($$parsedSource["baseLocalTagId"]);
@@ -71,6 +80,9 @@ export class LocalTagQueryDTO {
         }
         if ("createTime" in $$parsedSource) {
             $$parsedSource["createTime"] = $$createField3_0($$parsedSource["createTime"]);
+        }
+        if ("workId" in $$parsedSource) {
+            $$parsedSource["workId"] = $$createField4_0($$parsedSource["workId"]);
         }
         return new LocalTagQueryDTO($$parsedSource as Partial<LocalTagQueryDTO>);
     }
