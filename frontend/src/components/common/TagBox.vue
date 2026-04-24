@@ -11,7 +11,7 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 // props
 const props = withDefaults(
   defineProps<{
-    load?: (page: IPage<Query, SegmentedTagItem>) => Promise<IPage<Query, SegmentedTagItem>>
+    load?: (page: IPage<SegmentedTagItem, Query>) => Promise<IPage<SegmentedTagItem, Query>>
     tagCloseable?: boolean
     tagsGap?: string
     maxHeight?: string
@@ -25,7 +25,7 @@ const props = withDefaults(
 
 // model
 // 分页参数
-const page = defineModel<IPage<Query, SegmentedTagItem>>('page', { default: new Page<Query, SegmentedTagItem>() })
+const page = defineModel<IPage<SegmentedTagItem, Query>>('page', { default: new Page<SegmentedTagItem, Query>() })
 // 数据列表
 const data = defineModel<SegmentedTagItem[]>('data', { default: [] })
 
@@ -85,7 +85,7 @@ async function nextPage(newSearch: boolean) {
     nextTick().then(async () => {
       //查询
       const tempPage = lodash.cloneDeep(page.value)
-      tempPage.data = undefined
+      tempPage.data = []
       const nextPage = await wrappedLoad(tempPage)
 
       if (notNullish(nextPage)) {
@@ -139,7 +139,7 @@ function refreshLoadButton() {
   showLoadButton.value = hasNextPage.value && notFull
 }
 // 包装过的load
-function wrappedLoad(page: IPage<Query, SegmentedTagItem>): Promise<IPage<Query, SegmentedTagItem> | undefined> | undefined {
+function wrappedLoad(page: IPage<SegmentedTagItem, Query>): Promise<IPage<SegmentedTagItem, Query> | undefined> | undefined {
   if (notNullish(props.load)) {
     return props
       .load(page)

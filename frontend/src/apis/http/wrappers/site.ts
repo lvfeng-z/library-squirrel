@@ -5,7 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SiteHandler, SiteDTO, SiteQueryDTO, SiteResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/site'
-import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteVO {

@@ -1,15 +1,14 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="Query">
 import IPage from '@renderer/model/util/IPage.ts'
-import Page from '@renderer/model/util/Page.ts'
-import { Ref, ref } from 'vue'
-import lodash from 'lodash'
+import {Ref, ref, toRaw} from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
+import {arrayNotEmpty, notNullish} from '@renderer/utils/CommonUtil.ts'
+import {newPage} from "@renderer/utils/Pager.ts";
 
 // props
 const props = withDefaults(
   defineProps<{
-    load: (page: IPage<unknown, SelectItem>, input: string) => Promise<IPage<unknown, SelectItem>>
+    load: (page: IPage<SelectItem, Query>, input: string) => Promise<IPage<SelectItem, Query>>
     pageSize?: number
   }>(),
   {
@@ -18,26 +17,25 @@ const props = withDefaults(
 )
 
 // model
-const data = defineModel<string | number>('data')
+const data = defineModel<string | number | null>('data')
 const selectList = defineModel<SelectItem[]>('selectList', { default: [] })
 
 // 变量
 // el-select组件的实例
 const select = ref()
-const page: Ref<IPage<unknown, SelectItem>> = ref(new Page<unknown, SelectItem>())
-
+const page: Ref<IPage<SelectItem, Query>> = ref(newPage<SelectItem, Query>({ pageSize: props.pageSize })) as Ref<IPage<SelectItem, Query>>
 // 方法
 // 查询页
 async function queryPage(newQuery: boolean, input: string) {
   // 新查询重置查询条件
   if (newQuery) {
-    page.value = new Page<unknown, SelectItem>()
+    page.value = newPage<SelectItem, Query>({ pageSize: props.pageSize })
     page.value.data = []
-    selectList.value = page.value.data
+    selectList.value = page.value.data.filter(notNullish)
   }
   //查询
-  const tempPage = lodash.cloneDeep(page.value)
-  tempPage.data = undefined
+  const tempPage = toRaw(page.value)
+  tempPage.data = []
   tempPage.pageSize = props.pageSize
   const nextPage = await props.load(tempPage, input)
 

@@ -5,10 +5,9 @@ import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import LocalTagDTO from '@renderer/model/model/dto/LocalTagDTO.ts'
 import { localTagApi } from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import { LocalTagWithBaseTagDTO, SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 
 // props
@@ -25,7 +24,7 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<LocalTagDTO>('formData', { required: true })
+const formData = defineModel<LocalTagWithBaseTagDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
@@ -43,14 +42,14 @@ const apis = {
 }
 
 // 适配器函数：将 bindings 的 Page<SelectItem, LocalTagQueryDTO> 转换为 IPage
-async function localTagQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
+async function localTagQuerySelectItemPageAdapter(page: IPage<SelectItem, unknown>, input: string): Promise<IPage<SelectItem, unknown>> {
   const response = await localTagApi.localTagQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { localTagName: input }
   })
   if (!response.success || !response.data) {
-    return new Page<unknown, SelectItem>()
+    return new Page<SelectItem, unknown>()
   }
   // 将 bindings Page 转换为 IPage
   return {
@@ -82,11 +81,7 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localTagUpdateById({
-        id: tempFormData.id ?? 0,
-        localTagName: tempFormData.localTagName ?? undefined,
-        baseLocalTagId: tempFormData.baseLocalTagId ?? undefined
-      })
+      const response = await apis.localTagUpdateById(tempFormData)
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false

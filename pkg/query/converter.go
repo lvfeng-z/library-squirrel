@@ -24,7 +24,7 @@ func NewConverter(model interface{}) *Converter {
 
 // ToQueryOption 将 DTO 转换为 QueryOption
 // 只处理数据库字段，非数据库字段会被跳过
-func (c *Converter) ToQueryOption(dto interface{}, alias *string) (*database.QueryOption, error) {
+func (c *Converter) ToQueryOption(dto interface{}, tableAlias *string) (*database.QueryOption, error) {
 	fields, err := c.mapper.CollectDbFields(dto)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (c *Converter) ToQueryOption(dto interface{}, alias *string) (*database.Que
 			Operator: attr.GetOperator(),
 			Value:    attr.GetValue(),
 		}
-		expr, err := c.buildCondition(cond, alias)
+		expr, err := c.buildCondition(cond, tableAlias)
 		if err != nil {
 			return nil, err
 		}
@@ -85,9 +85,9 @@ func (c *Converter) ToQueryOption(dto interface{}, alias *string) (*database.Que
 			return orders[i].priority < orders[j].priority
 		})
 		for _, o := range orders {
-			if alias != nil {
+			if tableAlias != nil {
 				orderColumns = append(orderColumns, clause.OrderByColumn{
-					Column: clause.Column{Name: o.columnName, Table: *alias},
+					Column: clause.Column{Name: o.columnName, Table: *tableAlias},
 					Desc:   o.desc,
 				})
 			} else {

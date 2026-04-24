@@ -12,8 +12,8 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 
 // props
 const props = defineProps<{
-  upperLoad: (page: IPage<Query, SelectItem>) => Promise<IPage<Query, SelectItem>> // upper的加载函数
-  lowerLoad: (page: IPage<Query, SelectItem>) => Promise<IPage<Query, SelectItem>> // lower的加载函数
+  upperLoad: (page: IPage<SelectItem, Query>) => Promise<IPage<SelectItem, Query>> // upper的加载函数
+  lowerLoad: (page: IPage<SelectItem, Query>) => Promise<IPage<SelectItem, Query>> // lower的加载函数
   searchButtonDisabled: boolean
   tagsGap?: string
 }>()
@@ -31,9 +31,9 @@ defineExpose({
 })
 
 // 变量
-const upperPage = new Page<Query, SegmentedTagItem>() // upper的分页
+const upperPage = new Page<SegmentedTagItem, Query>() // upper的分页
 const upperData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // upper的数据
-const lowerPage = new Page<Query, SegmentedTagItem>() // lower的分页
+const lowerPage = new Page<SegmentedTagItem, Query>() // lower的分页
 const lowerData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // lower的数据
 const upperTagBox = ref() // upperTagBox组件的实例
 const lowerTagBox = ref() // lowerTagBox组件的实例
@@ -99,11 +99,17 @@ function exchange(source: SelectItem[], target: SelectItem[], item: SelectItem) 
 }
 // 处理确认交换事件
 function handleExchangeConfirm(isUpper?: boolean) {
-  if (isNullish(isUpper) ? true : isUpper) {
-    emits('upperConfirm', upperBufferData.value, lowerBufferData.value)
+  if (isNullish(isUpper)) {
+    emits('allConfirm', upperBufferData.value, lowerBufferData.value)
+    return
   }
-  if (isNullish(isUpper) ? true : !isUpper) {
+  if (isUpper) {
+    emits('upperConfirm', upperBufferData.value, lowerBufferData.value)
+    return
+  }
+  if (!isUpper) {
     emits('lowerConfirm', upperBufferData.value, lowerBufferData.value)
+    return
   }
 }
 // 处理清空按钮点击
@@ -122,7 +128,7 @@ function handleClearButtonClicked(isUpper?: boolean) {
   // refreshData()
 }
 // 刷新内容
-function refreshData(isUpper: boolean | undefined) {
+function refreshData(isUpper?: boolean) {
   if (isNullish(isUpper) ? true : isUpper) {
     upperBufferData.value = []
     upperBufferId.value.clear()
@@ -137,9 +143,9 @@ function refreshData(isUpper: boolean | undefined) {
   handleBufferToggle()
 }
 // 请求DataScroll下一页数据
-async function requestNextPage(page: IPage<Query, SelectItem>, isUpper: boolean): Promise<IPage<Query, SegmentedTagItem>> {
+async function requestNextPage(page: IPage<SelectItem, Query>, isUpper: boolean): Promise<IPage<SegmentedTagItem, Query>> {
   // 请求接口
-  let newPagePromise: Promise<IPage<Query, SelectItem>>
+  let newPagePromise: Promise<IPage<SelectItem, Query>>
   if (isUpper) {
     page.query = upperSearchParams.value as Query
     newPagePromise = props.upperLoad(page)
@@ -151,7 +157,7 @@ async function requestNextPage(page: IPage<Query, SelectItem>, isUpper: boolean)
   return newPagePromise.then((newPage) => {
     const resultPage = new Page(newPage).transform<SegmentedTagItem>()
     if (arrayNotEmpty(newPage.data)) {
-      const segTagItems = newPage.data.map((selectItem) => new SegmentedTagItem(selectItem))
+      const segTagItems = newPage.data.filter(notNullish).map((selectItem) => new SegmentedTagItem(selectItem))
       resultPage.data = segTagItems
       newPage.data = leachBufferData(segTagItems, isUpper)
     }
@@ -236,7 +242,7 @@ function handleBufferToggle() {
             v-model:page="upperPage"
             v-model:data="upperData"
             class="exchange-box-upper-tag-box"
-            :load="(_page: IPage<Query, SelectItem>) => requestNextPage(_page, true)"
+            :load="(_page: IPage<SelectItem, Query>) => requestNextPage(_page, true)"
             :tags-gap="tagsGap"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperData')"
           />
@@ -278,7 +284,7 @@ function handleBufferToggle() {
             v-model:page="lowerPage"
             v-model:data="lowerData"
             class="exchange-box-lower-tag-box"
-            :load="(_page: IPage<Query, SelectItem>) => requestNextPage(_page, false)"
+            :load="(_page: IPage<SelectItem, Query>) => requestNextPage(_page, false)"
             :tags-gap="tagsGap"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'lowerData')"
           />

@@ -13,7 +13,6 @@ import { LocalTagDTO, SelectItem, SiteTagFullDTO, LocalTagWithBaseTagDTO } from 
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'
-import Page from '@renderer/model/util/Page.ts'
 import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
@@ -25,8 +24,9 @@ import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/inter
 import { localTagApi } from '@renderer/apis/http'
 import { siteTagApi } from '@renderer/apis/http'
 import { siteApi } from '@renderer/apis/http'
-import {copyPage} from "@renderer/utils/Pager.ts";
+import {copyPage, newPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 // onMounted
 onMounted(() => {
@@ -136,13 +136,13 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
 // 本地标签SearchTable的查询参数
 const localTagSearchParams: Ref<LocalTagQueryDTO> = ref(new LocalTagQueryDTO())
 // 本地标签SearchTable的分页
-const page: Ref<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>> = ref(new Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>())
+const page: Ref<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>> = ref(newPage<LocalTagWithBaseTagDTO, LocalTagQueryDTO>())
 // 本地标签弹窗的mode
 const localTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 本地标签的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 本地标签对话框的数据
-const dialogData: Ref<LocalTagDTO> = ref(new LocalTagDTO())
+const dialogData: Ref<LocalTagWithBaseTagDTO> = ref(new LocalTagWithBaseTagDTO())
 // 站点标签ExchangeBox的upper的查询参数
 const exchangeBoxUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签ExchangeBox的lower的查询参数
@@ -171,7 +171,7 @@ async function localTagQueryPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQuer
 // 处理本地标签新增按钮点击事件
 async function handleCreateButtonClicked() {
   localTagDialogMode.value = DialogMode.NEW
-  dialogData.value = new LocalTagDTO()
+  dialogData.value = new LocalTagWithBaseTagDTO()
   dialogState.value = true
 }
 // 处理本地标签数据行按钮点击事件
@@ -247,24 +247,14 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
     return
   }
 
-  if (isNullish(isUpper) ? true : isUpper) {
-    let upperResponse: ApiResponse
-    if (arrayNotEmpty(upper)) {
-      const boundIds = upper.map((item) => Number(item.value))
-      upperResponse = await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
-    } else {
-      upperResponse = { success: true, msg: '', data: undefined }
-    }
+  if (isNullish(isUpper) ? true : isUpper && arrayNotEmpty(upper)) {
+    const boundIds = upper.map((item) => Number(item.value))
+    const upperResponse: ApiResponse = await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
     ApiUtil.failedMsg(upperResponse)
   }
-  if (isNullish(isUpper) ? true : !isUpper) {
-    let lowerResponse: ApiResponse
-    if (arrayNotEmpty(lower)) {
-      const unBoundIds = lower.map((item) => Number(item.value))
-      lowerResponse = await apis.siteTagUpdateBindLocalTag(null, unBoundIds)
-    } else {
-      lowerResponse = { success: true, msg: '', data: undefined }
-    }
+  if (isNullish(isUpper) ? true : !isUpper && arrayNotEmpty(lower)) {
+    const unBoundIds = lower.map((item) => Number(item.value))
+    const lowerResponse: ApiResponse= await apis.siteTagUpdateBindLocalTag(null, unBoundIds)
     ApiUtil.failedMsg(lowerResponse)
   }
   siteTagExchangeBox.value.refreshData(isUpper)
@@ -279,6 +269,7 @@ async function requestSiteTagSelectItemPage(
   query.localTagId = new QueryAttribute({ value: localTagSelected.value.id })
   query.boundOnLocalTagId = new QueryAttribute({ value: bounded })
   queryPage.query = query
+  console.log(query)
   const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SiteTagFullDTO, SiteTagQueryDTO>>(response)
@@ -334,7 +325,7 @@ async function requestSiteTagSelectItemPage(
                 </el-col>
                 <el-col :span="8">
                   <auto-load-select
-                    v-model="localTagSearchParams.baseLocalTagId.value"
+                    v-model:data="localTagSearchParams.baseLocalTagId.value"
                     :load="localTagQuerySelectItemPageByName"
                     placeholder="选择上级标签"
                     remote
@@ -355,8 +346,8 @@ async function requestSiteTagSelectItemPage(
             ref="siteTagExchangeBox"
             v-model:upper-search-params="exchangeBoxUpperSearchParams"
             v-model:lower-search-params="exchangeBoxLowerSearchParams"
-            :upper-load="(_page: IPage<SiteTagQueryDTO, SelectItem>) => requestSiteTagSelectItemPage(_page, true)"
-            :lower-load="(_page: IPage<SiteTagQueryDTO, SelectItem>) => requestSiteTagSelectItemPage(_page, false)"
+            :upper-load="(temp: IPage<SelectItem, SiteTagQueryDTO>) => requestSiteTagSelectItemPage(temp, true)"
+            :lower-load="(temp: IPage<SelectItem, SiteTagQueryDTO>) => requestSiteTagSelectItemPage(temp, false)"
             :search-button-disabled="disableExcSearchButton"
             tags-gap="10px"
             @upper-confirm="(upper, lower) => handleExchangeBoxConfirm(true, upper, lower)"
@@ -366,11 +357,11 @@ async function requestSiteTagSelectItemPage(
             <template #upperToolbarMain>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxUpperSearchParams.siteTagName" placeholder="输入站点标签名称" clearable />
+                  <el-input v-model="exchangeBoxUpperSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
-                    v-model="exchangeBoxUpperSearchParams.siteId"
+                    v-model:data="exchangeBoxUpperSearchParams.siteId.value"
                     :load="siteQuerySelectItemPageBySiteName"
                     placeholder="选择站点"
                     remote
@@ -387,11 +378,11 @@ async function requestSiteTagSelectItemPage(
             <template #lowerToolbarMain>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxLowerSearchParams.siteTagName" placeholder="输入站点标签名称" clearable />
+                  <el-input v-model="exchangeBoxLowerSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
-                    v-model="exchangeBoxLowerSearchParams.siteId"
+                    v-model:data="exchangeBoxLowerSearchParams.siteId.value"
                     :load="siteQuerySelectItemPageBySiteName"
                     placeholder="选择站点"
                     remote

@@ -28,7 +28,7 @@ export class CommonInputConfig implements ICommonInputConfig {
   remote?: boolean // select | treeSelect - 是否使用remoteMethod函数获得选择列表数据
   remoteMethod?: (query?: unknown) => Promise<SelectItem[] | TreeSelectNode[]> // select | treeSelect - 选择项接口
   remotePaging?: boolean // select - 是否使用分页接口
-  remotePageMethod?: (page: IPage<unknown, SelectItem>, input: string) => Promise<IPage<unknown, SelectItem>> // select - 分页接口
+  remotePageMethod?: (page: IPage<SelectItem, unknown>, input: string) => Promise<IPage<SelectItem, unknown>> // select - 分页接口
   lazy?: boolean // treeSelect - 选择列表是否开启懒加载
   load?: (rootId?, node?) => Promise<TreeSelectNode[]> // treeSelect - 懒加载函数
 
@@ -78,7 +78,7 @@ export interface ICommonInputConfig {
   remote?: boolean // select | treeSelect - 是否使用remoteMethod函数获得选择列表数据
   remoteMethod?: (query?) => Promise<SelectItem[] | TreeSelectNode[]> // select | treeSelect - 选择项接口
   remotePaging?: boolean // select - 是否使用分页接口
-  remotePageMethod?: (page: IPage<unknown, SelectItem>, input: string) => Promise<IPage<unknown, SelectItem>> // select - 分页接口
+  remotePageMethod?: (page: IPage<SelectItem, unknown>, input: string) => Promise<IPage<SelectItem, unknown>> // select - 分页接口
   lazy?: boolean // treeSelect - 选择列表是否开启懒加载
   load?: (rootId?, node?) => Promise<TreeSelectNode[]> // treeSelect - 懒加载函数
 }
