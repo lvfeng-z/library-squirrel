@@ -138,22 +138,17 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.SiteTag, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO) (*model.Page[entity2.SiteTag, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.SiteTag, any]) (*model.Page[entity2.SiteTag, any], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
-// QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页（基于 QueryDTO）
-func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQuery model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO]) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
+// QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
+func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQuery *model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO]) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
 	queryDTO := pageQuery.Query
 
@@ -281,10 +276,10 @@ func unique(ids []int64) []int64 {
 	return result
 }
 
-// QueryPageByWorkIdByDTO 根据作品ID分页查询站点标签（基于 QueryDTO）
-func (s *Service) QueryPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
+// QueryPageByWorkId 根据作品ID分页查询站点标签
+func (s *Service) QueryPageByWorkId(ctx context.Context, page *model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -296,13 +291,13 @@ func (s *Service) QueryPageByWorkIdByDTO(ctx context.Context, page, pageSize int
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QueryPageByWorkId(ctx, page, pageSize, where, order, workId, boundOnWorkId)
+	return s.repo.QueryPageByWorkId(ctx, page.PageNumber, page.PageSize, where, order, workId, boundOnWorkId)
 }
 
-// QueryLocalRelateDTOPageByDTO 查询站点标签与本地标签关联DTO分页（基于 QueryDTO）
-func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
+// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
+func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -314,13 +309,13 @@ func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSi
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order, workId, boundOnWorkId)
+	return s.repo.QueryLocalRelateDTOPage(ctx, page.PageNumber, page.PageSize, where, order, workId, boundOnWorkId)
 }
 
-// QuerySelectItemPageByWorkIdByDTO 根据作品ID分页查询站点标签选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pageSize int, queryDTO SiteTagQueryDTO, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
+// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto2.SelectItem, SiteTagQueryDTO], workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +327,7 @@ func (s *Service) QuerySelectItemPageByWorkIdByDTO(ctx context.Context, page, pa
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QuerySelectItemPageByWorkId(ctx, page, pageSize, where, order, workId)
+	return s.repo.QuerySelectItemPageByWorkId(ctx, page.PageNumber, page.PageSize, where, order, workId)
 }
 
 // ListByWorkId 查询作品的站点标签
@@ -355,21 +350,6 @@ func (s *Service) UpdateBindLocalTag(ctx context.Context, localTagId *int64, sit
 		return false, err
 	}
 	return affected > 0, nil
-}
-
-// QueryPageByWorkId 根据作品ID分页查询站点标签
-func (s *Service) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
-	return s.repo.QueryPageByWorkId(ctx, page, pageSize, where, order, workId, boundOnWorkId)
-}
-
-// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order, workId, boundOnWorkId)
-}
-
-// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
-	return s.repo.QuerySelectItemPageByWorkId(ctx, page, pageSize, where, order, workId)
 }
 
 // CreateAndBindSameNameLocalTag 创建并绑定同名本地标签

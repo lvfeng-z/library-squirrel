@@ -134,7 +134,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagDTO
 	if page == nil {
 		page = &model.Page[dto.SiteTagDTO, SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	entityPage := &model.Page[entity.SiteTag, any]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto.SiteTagDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -155,7 +160,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagDTO
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
 func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQuery model.Page[dto.SiteTagFullDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteTagFullDTO, SiteTagQueryDTO]] {
-	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, pageQuery)
+	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, &pageQuery)
 	if err != nil {
 		return model.Error[*model.Page[dto.SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -167,7 +172,12 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 	if page == nil {
 		page = &model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryLocalRelateDTOPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query, 0, nil)
+	dtoPage := &model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.QueryLocalRelateDTOPage(ctx, dtoPage, 0, nil)
 	if err != nil {
 		return model.Error[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -192,7 +202,7 @@ func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[dto.Si
 	if page == nil {
 		page = &model.Page[dto.SiteTagFullDTO, SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId, nil)
+	result, err := h.svc.QueryPageByWorkId(ctx, page, workId, nil)
 	if err != nil {
 		return model.Error[*model.Page[dto.SiteTagFullDTO, SiteTagQueryDTO]](err.Error())
 	}
@@ -280,7 +290,7 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 	if page == nil {
 		page = &model.Page[dto.SelectItem, SiteTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page.PageNumber, page.PageSize, page.Query, workId)
+	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, page, workId)
 	if err != nil {
 		return model.Error[*model.Page[dto.SelectItem, SiteTagQueryDTO]](err.Error())
 	}
