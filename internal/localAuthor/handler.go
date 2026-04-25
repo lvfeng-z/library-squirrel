@@ -5,6 +5,7 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
+	domain "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 本地作者 Handler
@@ -63,11 +64,16 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAutho
 	if page == nil {
 		page = &model.Page[dto.LocalAuthorDTO, LocalAuthorQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	domainPage := &model.Page[domain.LocalAuthor, LocalAuthorQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, domainPage)
 	if err != nil {
 		return model.Error[*model.Page[dto.LocalAuthorDTO, LocalAuthorQueryDTO]](err.Error())
 	}
-	// 转换为 tDTO
+	// 转换为 DTO
 	data := make([]*dto.LocalAuthorDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, dto.NewLocalAuthorDTO(author))
@@ -87,7 +93,7 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 	if queryDTO == nil {
 		queryDTO = &LocalAuthorQueryDTO{}
 	}
-	result, err := h.svc.ListSelectItemsByDTO(ctx, *queryDTO)
+	result, err := h.svc.ListSelectItems(ctx, *queryDTO)
 	if err != nil {
 		return model.Error[[]*dto.SelectItem](err.Error())
 	}
@@ -99,7 +105,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 	if page == nil {
 		page = &model.Page[dto.SelectItem, LocalAuthorQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	result, err := h.svc.QuerySelectItemPage(ctx, page)
 	if err != nil {
 		return model.Error[*model.Page[dto.SelectItem, LocalAuthorQueryDTO]](err.Error())
 	}
