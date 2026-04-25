@@ -298,14 +298,9 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Task, TaskQueryDTO]) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -313,14 +308,9 @@ func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO *T
 }
 
 // QueryParentPage 分页查询父任务
-func (s *Service) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error) {
-	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
-}
-
-// QueryParentPageByDTO 分页查询父任务（基于 QueryDTO）
-func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity2.Task, TaskQueryDTO]) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +322,7 @@ func (s *Service) QueryParentPageByDTO(ctx context.Context, page, pageSize int, 
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QueryParentPage(ctx, page, pageSize, where, order)
+	return s.repo.QueryParentPage(ctx, page.PageNumber, page.PageSize, where, order)
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -470,14 +460,9 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.T
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error) {
-	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
-}
-
-// QueryChildrenTaskPageByDTO 查询子任务分页（基于 QueryDTO）
-func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, page, pageSize int, queryDTO *TaskQueryDTO) (*model.Page[entity2.Task, any], error) {
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[entity2.Task, TaskQueryDTO]) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +474,7 @@ func (s *Service) QueryChildrenTaskPageByDTO(ctx context.Context, pid int64, pag
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QueryChildrenTaskPage(ctx, pid, page, pageSize, where, order)
+	return s.repo.QueryChildrenTaskPage(ctx, pid, page.PageNumber, page.PageSize, where, order)
 }
 
 // ListSchedule 查询任务进度列表

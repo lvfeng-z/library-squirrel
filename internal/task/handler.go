@@ -5,6 +5,7 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 任务 Handler
@@ -110,7 +111,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO, 
 	if page.Query == (TaskQueryDTO{}) {
 		page.Query = TaskQueryDTO{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, &page.Query)
+	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
@@ -137,7 +143,12 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.Tas
 	if page.Query == (TaskQueryDTO{}) {
 		page.Query = TaskQueryDTO{}
 	}
-	result, err := h.svc.QueryParentPageByDTO(ctx, page.PageNumber, page.PageSize, &page.Query)
+	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.QueryParentPage(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
@@ -164,7 +175,12 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *mo
 	if page.Query == (TaskQueryDTO{}) {
 		page.Query = TaskQueryDTO{}
 	}
-	result, err := h.svc.QueryChildrenTaskPageByDTO(ctx, pid, page.PageNumber, page.PageSize, &page.Query)
+	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.QueryChildrenTaskPage(ctx, pid, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
 	}
