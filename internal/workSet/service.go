@@ -123,36 +123,13 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[entity2.WorkSet, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.WorkSet, WorkSetQueryDTO]) (*model.Page[entity2.WorkSet, any], error) {
 	conv := query.NewConverter(entity2.WorkSet{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
-}
-
-// QueryPageWithCoverByDTO 带封面的作品集分页查询（基于 QueryDTO）
-func (s *Service) QueryPageWithCoverByDTO(ctx context.Context, page, pageSize int, queryDTO WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
-	conv := query.NewConverter(entity2.WorkSet{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
-	if err != nil {
-		return nil, err
-	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.QueryPageWithCover(ctx, page, pageSize, where, order)
 }
 
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
@@ -306,7 +283,20 @@ type WorkSetWithCoverDTO struct {
 }
 
 // QueryPageWithCover 带封面的作品集分页查询
-func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
+func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO]) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
+	conv := query.NewConverter(entity2.WorkSet{})
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	if err != nil {
+		return nil, err
+	}
+	var where clause.Expression
+	if len(queryOpt.Conditions) > 0 {
+		where = queryOpt.Conditions[0]
+	}
+	var order clause.Expression
+	if len(queryOpt.OrderBy) > 0 {
+		order = queryOpt.OrderBy[0]
+	}
 	// 先查询作品集分页
 	var conditions []clause.Expression
 	if where != nil {
@@ -317,8 +307,8 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 			Conditions: conditions,
 			OrderBy:    []clause.Expression{order},
 		},
-		Page:     page,
-		PageSize: pageSize,
+		Page:     page.PageNumber,
+		PageSize: page.PageSize,
 	}
 	pageResult, err := s.repo.Page(ctx, opt)
 	if err != nil {
@@ -326,7 +316,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 	}
 
 	if len(pageResult.Data) == 0 {
-		return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO]([]*WorkSetWithCoverDTO{}, 0, page, pageSize), nil
+		return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO]([]*WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
 	}
 
 	// 构建结果
@@ -355,7 +345,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page, pageSize int, wh
 		result = append(result, dto)
 	}
 
-	return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO](result, pageResult.DataCount, page, pageSize), nil
+	return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
 }
 
 // ErrWorkSetIdRequired 错误定义

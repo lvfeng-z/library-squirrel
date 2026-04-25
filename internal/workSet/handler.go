@@ -5,6 +5,7 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
+	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 作品集 Handler
@@ -63,7 +64,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDT
 	if page == nil {
 		page = &model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	entityPage := &model.Page[entity2.WorkSet, WorkSetQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]](err.Error())
 	}
@@ -195,7 +201,12 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 	if page == nil {
 		page = &model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]{}
 	}
-	result, err := h.svc.QueryPageWithCoverByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	workSetPage := &model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.QueryPageWithCover(ctx, workSetPage)
 	if err != nil {
 		return model.Error[*model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]](err.Error())
 	}
