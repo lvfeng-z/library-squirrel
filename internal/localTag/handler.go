@@ -70,7 +70,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDT
 		PageSize:   page.PageSize,
 		Query:      page.Query,
 	}
-	result, err := h.svc.PageByDTO(ctx, domainPage)
+	result, err := h.svc.Page(ctx, domainPage)
 	if err != nil {
 		return model.Error[*model.Page[dto.LocalTagDTO, LocalTagQueryDTO]](err.Error())
 	}
@@ -108,7 +108,7 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDT
 	if queryDTO == nil {
 		queryDTO = &LocalTagQueryDTO{}
 	}
-	result, err := h.svc.ListSelectItemsByDTO(ctx, *queryDTO)
+	result, err := h.svc.ListSelectItems(ctx, *queryDTO)
 	if err != nil {
 		return model.Error[[]*dto.SelectItem](err.Error())
 	}
@@ -120,7 +120,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[d
 	if reqPage == nil {
 		reqPage = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByDTO(ctx, reqPage, secondaryLabel)
+	result, err := h.svc.QuerySelectItemPage(ctx, reqPage, secondaryLabel)
 	if err != nil {
 		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
 	}
@@ -146,7 +146,7 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 	if page == nil {
 		page = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkIdByDTO(ctx, page)
+	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, page)
 	if err != nil {
 		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
 	}
@@ -166,7 +166,7 @@ func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto
 	if page == nil {
 		page = &model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]{}
 	}
-	result, err := h.svc.QueryWithBaseTagPageByDTO(ctx, page)
+	result, err := h.svc.QueryWithBaseTagPage(ctx, page)
 	if err != nil {
 		return model.Error[*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]](err.Error())
 	}
