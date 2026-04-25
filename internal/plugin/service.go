@@ -108,15 +108,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-// Page 分页查询（基于 QueryDTO）
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO PluginQueryDTO) (*model.Page[entity2.Plugin, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Plugin, PluginQueryDTO]) (*model.Page[entity2.Plugin, any], error) {
 	conv := query.NewConverter(entity2.Plugin{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
