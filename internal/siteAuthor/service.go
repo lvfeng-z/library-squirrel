@@ -118,24 +118,19 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO]) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
-// QueryBoundOrUnboundToLocalAuthorPageByDTO 查询绑定或未绑定到本地作者的站点作者分页（基于 QueryDTO）
-func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
+// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
+func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -149,20 +144,20 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPageByDTO(ctx context.Context,
 	}
 	// 类型断言获取 BoundOnLocalAuthorId 和 LocalAuthorID 的值
 	var boundOnLocalAuthorId *bool
-	if queryDTO.BoundOnLocalAuthorId.Value != nil {
-		boundOnLocalAuthorId = queryDTO.BoundOnLocalAuthorId.Value
+	if page.Query.BoundOnLocalAuthorId.Value != nil {
+		boundOnLocalAuthorId = page.Query.BoundOnLocalAuthorId.Value
 	}
 	var localAuthorId *int64
-	if queryDTO.LocalAuthorID.Value != nil {
-		localAuthorId = queryDTO.LocalAuthorID.Value
+	if page.Query.LocalAuthorID.Value != nil {
+		localAuthorId = page.Query.LocalAuthorID.Value
 	}
-	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page, pageSize, where, order, boundOnLocalAuthorId, localAuthorId)
+	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page.PageNumber, page.PageSize, where, order, boundOnLocalAuthorId, localAuthorId)
 }
 
-// QueryLocalRelateDTOPageByDTO 查询站点作者与本地作者关联DTO分页（基于 QueryDTO）
-func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
+// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
+func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +169,7 @@ func (s *Service) QueryLocalRelateDTOPageByDTO(ctx context.Context, page, pageSi
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order)
+	return s.repo.QueryLocalRelateDTOPage(ctx, page.PageNumber, page.PageSize, where, order)
 }
 
 // ListByWorkId 查询作品的站点作者
@@ -243,11 +238,6 @@ func (s *Service) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 	}
 
 	return s.UpdateBindLocalAuthor(ctx, localAuthorId, []int64{siteAuthor.ID})
-}
-
-// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
-	return s.repo.QueryLocalRelateDTOPage(ctx, page, pageSize, where, order)
 }
 
 // 错误定义
