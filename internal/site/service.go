@@ -91,24 +91,19 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[domain.Site, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[domain.Site, SiteQueryDTO]) (*model.Page[domain.Site, any], error) {
 	conv := query.NewConverter(domain.Site{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
 	return s.repo.Page(ctx, opt)
 }
 
-// QuerySelectItemPage 分页查询选择项（基于 QueryDTO）
-func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, queryDTO SiteQueryDTO) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
+// QuerySelectItemPage 分页查询选择项
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, SiteQueryDTO]) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
 	conv := query.NewConverter(domain.Site{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	queryOpt, err := conv.ToQueryOption(page.Query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +115,7 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page, pageSize int, q
 	if len(queryOpt.OrderBy) > 0 {
 		order = queryOpt.OrderBy[0]
 	}
-	return s.repo.QuerySelectItemPage(ctx, page, pageSize, []clause.Expression{where}, order)
+	return s.repo.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, []clause.Expression{where}, order)
 }
 
 // GetByName 根据站点名称获取

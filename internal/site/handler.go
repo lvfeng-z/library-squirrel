@@ -94,7 +94,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[SiteResultDTO,
 	if page == nil {
 		page = &model.Page[SiteResultDTO, SiteQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page.PageNumber, page.PageSize, page.Query)
+	entityPage := &model.Page[domain.Site, SiteQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[SiteResultDTO, SiteQueryDTO]](err.Error())
 	}
@@ -118,7 +123,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 	if page == nil {
 		page = &model.Page[dto.SelectItem, SiteQueryDTO]{}
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, page.Query)
+	result, err := h.svc.QuerySelectItemPage(ctx, page)
 	if err != nil {
 		return model.Error[*model.Page[dto.SelectItem, SiteQueryDTO]](err.Error())
 	}
