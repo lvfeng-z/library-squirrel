@@ -5,6 +5,7 @@ import (
 
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
+	"github.com/library-squirrel/wails/pkg/model/entity"
 )
 
 // Handler 作品 Handler
@@ -67,11 +68,16 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page, pageSize int, queryDTO *WorkQueryDTO) *model.ApiResponse[*model.Page[dto.WorkDTO, WorkQueryDTO]] {
-	if queryDTO == nil {
-		queryDTO = &WorkQueryDTO{}
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.WorkDTO, WorkQueryDTO]) *model.ApiResponse[*model.Page[dto.WorkDTO, WorkQueryDTO]] {
+	if page == nil {
+		page = &model.Page[dto.WorkDTO, WorkQueryDTO]{}
 	}
-	result, err := h.svc.PageByDTO(ctx, page, pageSize, *queryDTO)
+	entityPage := &model.Page[entity.Work, WorkQueryDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+		Query:      page.Query,
+	}
+	result, err := h.svc.Page(ctx, entityPage)
 	if err != nil {
 		return model.Error[*model.Page[dto.WorkDTO, WorkQueryDTO]](err.Error())
 	}

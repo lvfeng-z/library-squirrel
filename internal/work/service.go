@@ -198,14 +198,9 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work, any], error) {
-	return s.repo.Page(ctx, opt)
-}
-
-// PageByDTO 分页查询（基于 QueryDTO）
-func (s *Service) PageByDTO(ctx context.Context, page, pageSize int, queryDTO WorkQueryDTO) (*model.Page[entity2.Work, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Work, WorkQueryDTO]) (*model.Page[entity2.Work, any], error) {
 	conv := query.NewConverter(entity2.Work{})
-	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
