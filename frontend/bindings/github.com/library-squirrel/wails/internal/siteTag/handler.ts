@@ -78,7 +78,7 @@ export function QueryBoundOrUnboundToLocalTagPage(pageQuery: model$0.Page<dto$0.
 /**
  * QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
  */
-export function QueryLocalRelateDTOPage(page: model$0.Page<$models.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null> | null> {
+export function QueryLocalRelateDTOPage(page: model$0.Page<dto$0.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteTagLocalRelateDTO, $models.SiteTagQueryDTO> | null> | null> {
     return $Call.ByID(1761256276, page).then(($result: any) => {
         return $$createType23($result);
     });
@@ -176,7 +176,7 @@ const $$createType15 = model$0.Page.createFrom($$createType13, $$createType14);
 const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = model$0.ApiResponse.createFrom($$createType16);
 const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = $models.SiteTagLocalRelateDTO.createFrom;
+const $$createType19 = dto$0.SiteTagLocalRelateDTO.createFrom;
 const $$createType20 = model$0.Page.createFrom($$createType19, $$createType14);
 const $$createType21 = $Create.Nullable($$createType20);
 const $$createType22 = model$0.ApiResponse.createFrom($$createType21);

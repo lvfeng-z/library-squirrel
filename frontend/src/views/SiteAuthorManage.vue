@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, Ref, ref, UnwrapRef } from 'vue'
+import { onMounted, Ref, ref } from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import lodash from 'lodash'
@@ -18,11 +18,10 @@ import {
   LocalAuthorDTO,
   SelectItem,
   SiteAuthorDTO,
-  SiteAuthorLocalRelateDTO
+  SiteAuthorLocalRelateDTO, SiteDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
 
 // onMounted
@@ -155,7 +154,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     },
     setCacheData: (rowData: SiteAuthorLocalRelateDTO, data: SelectItem) => {
       if (isNullish(rowData.site)) {
-        rowData.site = new Site()
+        rowData.site = new SiteDTO()
       }
       rowData.site.id = Number(data.value)
       rowData.site.siteName = data.label
@@ -178,8 +177,8 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
 // 站点作者SearchTable的查询参数
 const siteAuthorSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteAuthorQueryDTO, SiteAuthorLocalRelateDTO>>> = ref(
-  new Page<SiteAuthorQueryDTO, SiteAuthorLocalRelateDTO>()
+const page: Ref<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>> = ref(
+  new Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>()
 )
 // 站点作者弹窗的mode
 const siteAuthorDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
@@ -192,10 +191,10 @@ const dialogData: Ref<SiteAuthorLocalRelateDTO> = ref(new SiteAuthorLocalRelateD
 // 分页查询站点作者的函数
 async function siteAuthorQueryPage(
   page: Page<SiteAuthorQueryDTO, object>
-): Promise<Page<SiteAuthorQueryDTO, SiteAuthorLocalRelateDTO> | undefined> {
+): Promise<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO> | undefined> {
   const response = await apis.siteAuthorQueryLocalRelateDTOPage(page)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteAuthorQueryDTO, SiteAuthorLocalRelateDTO>>(response)
+    let responsePage = ApiUtil.data<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>>(response)
     if (isNullish(responsePage)) {
       return undefined
     }
@@ -232,7 +231,7 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorL
       dialogState.value = true
       break
     case 'delete':
-      deleteSiteAuthor(op.id)
+      deleteSiteAuthor(Number(op.id))
       break
     default:
       break
@@ -243,7 +242,7 @@ function refreshTable() {
   siteAuthorSearchTable.value.doSearch()
 }
 // 删除站点作者
-async function deleteSiteAuthor(id: string) {
+async function deleteSiteAuthor(id: number) {
   const response = await apis.siteAuthorDeleteById(id)
   ApiUtil.msg(response)
   if (ApiUtil.check(response)) {

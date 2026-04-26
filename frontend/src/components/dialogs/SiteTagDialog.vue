@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import lodash from 'lodash'
@@ -7,7 +8,7 @@ import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localTagApi, siteApi, siteTagApi } from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import {SelectItem, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {SelectItem, SiteTagDTO, SiteTagLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 
 // props
@@ -24,12 +25,22 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<SiteTagFullDTO>('formData', { required: true })
+const formData = defineModel<SiteTagLocalRelateDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
 // 事件
 const emits = defineEmits(['requestSuccess'])
+
+// 包装 siteTag，确保 v-model 始终有合法的赋值目标
+const siteTagRef = computed<SiteTagDTO>({
+  get() {
+    return formData.value.siteTag ?? new SiteTagDTO()
+  },
+  set(val) {
+    formData.value.siteTag = val
+  }
+})
 
 // 变量
 // 接口
@@ -118,21 +129,21 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.siteTag?.siteTagName"></el-input>
+            <el-input v-model="siteTagRef.siteTagName"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="描述">
-            <el-input v-model="formData.siteTag?.description" type="textarea"></el-input>
+            <el-input v-model="siteTagRef.description" type="textarea"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="本地标签">
-            <auto-load-select v-model:data="formData.siteTag?.localTagId" :load="localTagQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select v-model:data="siteTagRef.localTagId" :load="localTagQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.localTag)"
@@ -149,7 +160,7 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="站点">
-            <auto-load-select v-model:data="formData.siteTag?.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select v-model:data="siteTagRef.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   :value="formData.site?.id"
@@ -164,12 +175,12 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.siteTag?.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="siteTagRef.createTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.siteTag?.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="siteTagRef.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
       </el-row>

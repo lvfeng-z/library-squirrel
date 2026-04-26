@@ -1167,6 +1167,45 @@ export class SiteTagFullDTO {
 }
 
 /**
+ * SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（包含绑定的本地标签、来源站点信息和同名本地标签判断）
+ */
+export class SiteTagLocalRelateDTO {
+    "siteTag"?: SiteTagDTO | null;
+    "localTag"?: LocalTagDTO | null;
+    "site"?: SiteDTO | null;
+    "hasSameNameLocalTag": boolean;
+
+    /** Creates a new SiteTagLocalRelateDTO instance. */
+    constructor($$source: Partial<SiteTagLocalRelateDTO> = {}) {
+        if (!("hasSameNameLocalTag" in $$source)) {
+            this["hasSameNameLocalTag"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteTagLocalRelateDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteTagLocalRelateDTO {
+        const $$createField0_0 = $$createType9;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("siteTag" in $$parsedSource) {
+            $$parsedSource["siteTag"] = $$createField0_0($$parsedSource["siteTag"]);
+        }
+        if ("localTag" in $$parsedSource) {
+            $$parsedSource["localTag"] = $$createField1_0($$parsedSource["localTag"]);
+        }
+        if ("site" in $$parsedSource) {
+            $$parsedSource["site"] = $$createField2_0($$parsedSource["site"]);
+        }
+        return new SiteTagLocalRelateDTO($$parsedSource as Partial<SiteTagLocalRelateDTO>);
+    }
+}
+
+/**
  * TaskDTO 任务数据传输对象（无 sql.Null* 版本）
  */
 export class TaskDTO {

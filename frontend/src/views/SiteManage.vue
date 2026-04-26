@@ -12,9 +12,9 @@ import lodash from 'lodash'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
 import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
-import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { siteApi } from '@renderer/apis/http'
+import {SiteDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 // onMounted
 onMounted(() => {
@@ -38,11 +38,11 @@ const siteSearchTable = ref()
 // 是否调转站点和域名
 const reversed: Ref<boolean> = ref(false)
 // 站点分页参数
-const sitePage: Ref<Page<SiteQueryDTO, Site>> = ref(new Page<SiteQueryDTO, Site>())
+const sitePage: Ref<Page<SiteDTO, SiteQueryDTO>> = ref(new Page<SiteDTO, SiteQueryDTO>())
 // 站点被修改的行
-const siteChangedRows: Ref<Site[]> = ref([])
+const siteChangedRows: Ref<SiteDTO[]> = ref([])
 // 站点操作栏按钮
-const siteOperationButton: OperationItem<Site>[] = [
+const siteOperationButton: OperationItem<SiteDTO>[] = [
   {
     label: '保存',
     icon: 'Checked',
@@ -55,7 +55,7 @@ const siteOperationButton: OperationItem<Site>[] = [
   { label: '删除', icon: 'delete', code: 'delete' }
 ]
 // 站点的表头
-const siteThead: Ref<Thead<Site>[]> = ref([
+const siteThead: Ref<Thead<SiteDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
@@ -114,7 +114,7 @@ const siteDialogMode: Ref<UnwrapRef<DialogMode>> = ref(DialogMode.EDIT)
 // 站点对话框开关
 const siteDialogState: Ref<boolean> = ref(false)
 // 站点对话框的数据
-const siteDialogData: Ref<UnwrapRef<Site>> = ref(new Site())
+const siteDialogData: Ref<UnwrapRef<SiteDTO>> = ref(new SiteDTO())
 // // 被选中的站点
 // const siteSelected: Ref<Site | undefined> = computed(() => {
 //   if (IsNullish(siteSearchTable.value)) {
@@ -130,13 +130,13 @@ const siteDialogData: Ref<UnwrapRef<Site>> = ref(new Site())
 
 // 方法
 // 分页查询站点
-async function siteQueryPage(page: Page<SiteQueryDTO, Site>): Promise<Page<SiteQueryDTO, Site> | undefined> {
+async function siteQueryPage(page: Page<SiteDTO, SiteQueryDTO>): Promise<Page<SiteDTO, SiteQueryDTO> | undefined> {
   if (isNullish(page.query)) {
     page.query = new SiteQueryDTO()
   }
   const response = await apis.siteQueryPage(page)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<SiteQueryDTO, Site>>(response)
+    return ApiUtil.data<Page<SiteDTO, SiteQueryDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
@@ -145,11 +145,11 @@ async function siteQueryPage(page: Page<SiteQueryDTO, Site>): Promise<Page<SiteQ
 // 处理站点新增按钮点击事件
 async function handleSiteCreateButtonClicked() {
   siteDialogMode.value = DialogMode.NEW
-  siteDialogData.value = new Site()
+  siteDialogData.value = new SiteDTO()
   siteDialogState.value = true
 }
 // 处理站点数据行按钮点击事件
-function handleSiteRowButtonClicked(op: DataTableOperationResponse<Site>) {
+function handleSiteRowButtonClicked(op: DataTableOperationResponse<SiteDTO>) {
   switch (op.code) {
     case 'save':
       saveSiteRowEdit(op.data)
@@ -165,14 +165,14 @@ function handleSiteRowButtonClicked(op: DataTableOperationResponse<Site>) {
       siteDialogState.value = true
       break
     case 'delete':
-      deleteSite(op.id)
+      deleteSite(Number(op.id))
       break
     default:
       break
   }
 }
 // 保存站点行数据编辑
-async function saveSiteRowEdit(newData: Site) {
+async function saveSiteRowEdit(newData: SiteDTO) {
   const tempData = lodash.cloneDeep(newData)
 
   const response = await apis.siteUpdateById(tempData)
@@ -183,7 +183,7 @@ async function saveSiteRowEdit(newData: Site) {
   }
 }
 // 删除站点
-async function deleteSite(id: string) {
+async function deleteSite(id: number) {
   const response = await apis.siteDeleteById(id)
   ApiUtil.msg(response)
   if (ApiUtil.check(response)) {

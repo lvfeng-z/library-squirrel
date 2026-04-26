@@ -23,6 +23,7 @@ export {
     SiteDTO,
     SiteTagDTO,
     SiteTagFullDTO,
+    SiteTagLocalRelateDTO,
     TaskDTO,
     WorkDTO,
     WorkFullDTO,

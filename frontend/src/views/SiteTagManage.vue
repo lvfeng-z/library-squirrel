@@ -15,12 +15,12 @@ import {
   LocalTagDTO,
   SelectItem,
   SiteDTO, SiteTagDTO,
-  SiteTagFullDTO
+  SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
-import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
+import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { localTagApi, siteTagApi } from '@renderer/apis/http'
 
@@ -47,11 +47,11 @@ const apis = {
 // siteTagSearchTable的组件实例
 const siteTagSearchTable = ref()
 // 被改变的数据行
-const changedRows: Ref<SiteTagFullDTO[]> = ref([])
+const changedRows: Ref<SiteTagLocalRelateDTO[]> = ref([])
 // 排序配置
 const sort: Ref<{ prop: string; order: 'ascending' | 'descending' | null }> = ref({ prop: '', order: null })
 // 站点标签SearchTable的operationButton
-const operationButton: OperationItem<SiteTagFullDTO>[] = [
+const operationButton: OperationItem<SiteTagLocalRelateDTO>[] = [
   {
     label: '保存',
     icon: 'Checked',
@@ -71,12 +71,12 @@ const operationButton: OperationItem<SiteTagFullDTO>[] = [
   { label: '删除', icon: 'delete', code: 'delete' }
 ]
 // 站点标签SearchTable的表头
-const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
+const siteTagThead: Ref<Thead<SiteTagLocalRelateDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'siteTagName',
+    key: 'siteTag.siteTagName',
     title: '名称',
     hide: false,
     width: 250,
@@ -89,7 +89,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     type: 'textarea',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'description',
+    key: 'siteTag.description',
     title: '详情',
     hide: false,
     width: 400,
@@ -102,7 +102,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     editMethod: 'replace',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'localTagId',
+    key: 'siteTag.localTagId',
     title: '本地标签',
     hide: false,
     width: 150,
@@ -113,7 +113,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     remote: true,
     remotePaging: true,
     remotePageMethod: localTagQuerySelectItemPageByName,
-    getCacheData: (rowData: SiteTagFullDTO) => {
+    getCacheData: (rowData: SiteTagLocalRelateDTO) => {
       if (isNullish(rowData.localTag?.id)) {
         return undefined
       }
@@ -122,7 +122,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
         label: isNullish(rowData.localTag?.localTagName) ? '' : rowData.localTag.localTagName
       })
     },
-    setCacheData: (rowData: SiteTagFullDTO, data: SelectItem) => {
+    setCacheData: (rowData: SiteTagLocalRelateDTO, data: SelectItem) => {
       if (isNullish(rowData.localTag)) {
         rowData.localTag = new LocalTagDTO()
       }
@@ -135,7 +135,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     editMethod: 'replace',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'siteId',
+    key: 'siteTag.siteId',
     title: '站点',
     hide: false,
     width: 150,
@@ -147,7 +147,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     remote: true,
     remotePaging: true,
     remotePageMethod: siteQuerySelectItemPageBySiteName,
-    getCacheData: (rowData: SiteTagFullDTO) => {
+    getCacheData: (rowData: SiteTagLocalRelateDTO) => {
       if (isNullish(rowData.site?.id)) {
         return undefined
       }
@@ -156,7 +156,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
         label: isNullish(rowData.site?.siteName) ? '' : rowData.site.siteName
       })
     },
-    setCacheData: (rowData: SiteTagFullDTO, data: SelectItem) => {
+    setCacheData: (rowData: SiteTagLocalRelateDTO, data: SelectItem) => {
       if (isNullish(rowData.site)) {
         rowData.site = new SiteDTO()
       }
@@ -168,7 +168,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     type: 'datetime',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'updateTime',
+    key: 'siteTag.updateTime',
     title: '修改时间',
     hide: false,
     width: 200,
@@ -182,26 +182,34 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
 // 站点标签SearchTable的查询参数
 const siteTagSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteTagFullDTO, SiteTagQueryDTO>>> = ref(new Page<SiteTagFullDTO, SiteTagQueryDTO>())
+const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>>> = ref(new Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>())
 // 站点标签弹窗的mode
 const siteTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点标签的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 站点标签对话框的数据
-const dialogData: Ref<SiteTagFullDTO> = ref(new SiteTagFullDTO())
+const dialogData: Ref<SiteTagLocalRelateDTO> = ref(new SiteTagLocalRelateDTO())
+
+// 排序字段映射（将嵌套路径映射为查询字段名）
+const sortPropMap: Record<string, string> = {
+  'siteTag.siteTagName': 'siteTagName',
+  'siteTag.siteId': 'siteId',
+  'siteTag.updateTime': 'updateTime',
+  'siteTag.createTime': 'createTime'
+}
 
 // 方法
 // 分页查询站点标签的函数
 async function siteTagQueryPage(
-  page: Page<SiteTagFullDTO, SiteTagQueryDTO>
-): Promise<Page<SiteTagFullDTO, SiteTagQueryDTO>> {
+  page: Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>
+): Promise<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>> {
   // 添加默认排序（按修改时间和创建时间降序，priority 控制排序优先级）
   if (isNullish(page.query)) {
     page.query = new SiteTagQueryDTO()
   }
   // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
-    const orderField = sort.value.prop as keyof SiteTagQueryDTO
+    const orderField = (sortPropMap[sort.value.prop] || sort.value.prop) as keyof SiteTagQueryDTO
     ;(page.query as any)[orderField] = {
       value: null,
       order: sort.value.order === 'ascending' ? SortOrder.OrderAsc : SortOrder.OrderDesc,
@@ -213,7 +221,7 @@ async function siteTagQueryPage(
   page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   const response = await apis.siteTagQueryLocalRelateDTOPage(page)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteTagFullDTO, SiteTagQueryDTO>>(response)
+    let responsePage = ApiUtil.data<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>>(response)
     if (isNullish(responsePage)) {
       throw new Error('siteTagQueryLocalRelateDTOPage接口未返回数据')
     }
@@ -227,11 +235,11 @@ async function siteTagQueryPage(
 // 处理站点标签新增按钮点击事件
 async function handleCreateButtonClicked() {
   siteTagDialogMode.value = DialogMode.NEW
-  dialogData.value = new SiteTagFullDTO()
+  dialogData.value = new SiteTagLocalRelateDTO()
   dialogState.value = true
 }
 // 处理站点标签数据行按钮点击事件
-async function handleRowButtonClicked(op: DataTableOperationResponse<SiteTagFullDTO>) {
+async function handleRowButtonClicked(op: DataTableOperationResponse<SiteTagLocalRelateDTO>) {
   switch (op.code) {
     case 'create':
       await creatSameNameLocalTagAndBind(lodash.cloneDeep(op.data))
@@ -270,7 +278,7 @@ async function deleteSiteTag(id: number) {
   }
 }
 // 保存行数据编辑
-async function saveRowEdit(newData: SiteTagFullDTO) {
+async function saveRowEdit(newData: SiteTagLocalRelateDTO) {
   if (isNullish(newData.siteTag)) {
     return
   }
@@ -285,7 +293,7 @@ async function saveRowEdit(newData: SiteTagFullDTO) {
   }
 }
 // 创建同名本地标签并绑定
-async function creatSameNameLocalTagAndBind(siteTag: SiteTagFullDTO) {
+async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
   if (isNullish(siteTag.siteTag)) {
     return
   }

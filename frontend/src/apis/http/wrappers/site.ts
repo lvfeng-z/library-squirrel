@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteHandler, SiteDTO, SiteQueryDTO, SiteResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/site'
-import type { SelectItem } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import {Handler as SiteHandler, SiteQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/site'
+import {SelectItem, SiteDTO} from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 export interface SiteVO {
@@ -16,24 +16,6 @@ export interface SiteVO {
   createTime: number
   updateTime: number
 }
-
-// ========== 工具函数 ==========
-
-/**
- * 将 SiteResultDTO 转换为 SiteVO
- */
-function toSiteVO(dto: SiteResultDTO | null): SiteVO | null {
-  if (!dto) return null
-  return {
-    id: dto.id,
-    name: dto.siteName ?? '',
-    url: dto.homepage ?? '',
-    enable: true,  // SiteResultDTO 没有 enable 字段，默认 true
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
-  }
-}
-
 // ========== API 方法 ==========
 
 export async function siteSave(site: { name?: string; url?: string; enable?: boolean }): Promise<ApiResponse<SiteVO>> {
@@ -77,18 +59,7 @@ export async function siteUpdateById(site: {
   return result
 }
 
-export async function siteGetById(id: number): Promise<ApiResponse<SiteVO>> {
-  const result = await SiteHandler.GetById(id)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: toSiteVO(result.data ?? null) ?? undefined }
-}
-
-export async function siteQueryPage(page: Page<SiteResultDTO, SiteQueryDTO>): Promise<ApiResponse<Page<SiteResultDTO, SiteQueryDTO> | null>> {
+export async function siteQueryPage(page: Page<SiteDTO, SiteQueryDTO>): Promise<ApiResponse<Page<SiteDTO, SiteQueryDTO> | null>> {
   const result = await SiteHandler.QueryPage(page)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }

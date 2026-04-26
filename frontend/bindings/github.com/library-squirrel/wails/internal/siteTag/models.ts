@@ -7,75 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../../pkg/model/dto/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as query$0 from "../../pkg/query/models.js";
-
-/**
- * SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（Handler内部转换用）
- */
-export class SiteTagLocalRelateDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteTagId": string | null;
-    "siteTagName": string | null;
-    "baseSiteTagId": string | null;
-    "description": string | null;
-    "localTagId": number | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-    "localTag"?: dto$0.LocalTagDTO | null;
-
-    /** Creates a new SiteTagLocalRelateDTO instance. */
-    constructor($$source: Partial<SiteTagLocalRelateDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteTagId" in $$source)) {
-            this["siteTagId"] = null;
-        }
-        if (!("siteTagName" in $$source)) {
-            this["siteTagName"] = null;
-        }
-        if (!("baseSiteTagId" in $$source)) {
-            this["baseSiteTagId"] = null;
-        }
-        if (!("description" in $$source)) {
-            this["description"] = null;
-        }
-        if (!("localTagId" in $$source)) {
-            this["localTagId"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteTagLocalRelateDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteTagLocalRelateDTO {
-        const $$createField10_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("localTag" in $$parsedSource) {
-            $$parsedSource["localTag"] = $$createField10_0($$parsedSource["localTag"]);
-        }
-        return new SiteTagLocalRelateDTO($$parsedSource as Partial<SiteTagLocalRelateDTO>);
-    }
-}
 
 /**
  * SiteTagQueryDTO 站点标签查询条件
@@ -163,15 +95,15 @@ export class SiteTagQueryDTO {
      * Creates a new SiteTagQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteTagQueryDTO {
-        const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType3;
-        const $$createField2_0 = $$createType3;
-        const $$createField3_0 = $$createType2;
-        const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType3;
-        const $$createField6_0 = $$createType3;
-        const $$createField7_0 = $$createType2;
-        const $$createField8_0 = $$createType2;
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteId" in $$parsedSource) {
             $$parsedSource["siteId"] = $$createField0_0($$parsedSource["siteId"]);
@@ -205,8 +137,6 @@ export class SiteTagQueryDTO {
 }
 
 // Private type creation functions
-const $$createType0 = dto$0.LocalTagDTO.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
+const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);

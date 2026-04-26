@@ -6,9 +6,9 @@
 import type { ApiResponse } from '../types'
 import IPage from "@renderer/model/util/IPage.ts";
 import {
-  Handler as SiteTagHandler, SiteTagLocalRelateDTO, SiteTagQueryDTO
+  Handler as SiteTagHandler, SiteTagQueryDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
-import {SelectItem, SiteTagDTO, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 export interface SiteTagVO {

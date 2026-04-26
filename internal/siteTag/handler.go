@@ -3,7 +3,6 @@ package siteTag
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	"github.com/library-squirrel/wails/pkg/model/entity"
@@ -168,33 +167,15 @@ func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQue
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]] {
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]] {
 	if page == nil {
-		page = &model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]{}
+		page = &model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]{}
 	}
-	dtoPage := &model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]{
-		PageNumber: page.PageNumber,
-		PageSize:   page.PageSize,
-		Query:      page.Query,
-	}
-	result, err := h.svc.QueryLocalRelateDTOPage(ctx, dtoPage, 0, nil)
+	result, err := h.svc.QueryLocalRelateDTOPage(ctx, page, 0, nil)
 	if err != nil {
-		return model.Error[*model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteTagLocalRelateDTO, SiteTagQueryDTO]](err.Error())
 	}
-	// 转换为 ResultDTO
-	data := make([]*SiteTagLocalRelateDTO, 0, len(result.Data))
-	for _, tag := range result.Data {
-		data = append(data, ToSiteTagLocalRelateDTO(tag))
-	}
-	return model.Success(&model.Page[SiteTagLocalRelateDTO, SiteTagQueryDTO]{
-		PageNumber:   result.PageNumber,
-		PageSize:     result.PageSize,
-		PageCount:    result.PageCount,
-		DataCount:    result.DataCount,
-		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
-		Data:         data,
-	})
+	return model.Success(result)
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
@@ -306,34 +287,6 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 }
 
 // ========== DTO 定义 ==========
-
-// SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（Handler内部转换用）
-type SiteTagLocalRelateDTO struct {
-	dto.SiteTagDTO
-	LocalTag *dto.LocalTagDTO `json:"localTag,omitempty"`
-}
-
-// ToSiteTagLocalRelateDTO 将 dto.SiteTagLocalRelateDTO 转换为 SiteTagLocalRelateDTO
-func ToSiteTagLocalRelateDTO(fullDTO *dto.SiteTagLocalRelateDTO) *SiteTagLocalRelateDTO {
-	if fullDTO == nil {
-		return nil
-	}
-	return &SiteTagLocalRelateDTO{
-		SiteTagDTO: dto.SiteTagDTO{
-			ID:            fullDTO.ID,
-			SiteID:        util.Int64PtrIfValid(fullDTO.SiteID),
-			SiteTagID:     util.StringPtrIfValid(fullDTO.SiteTagID),
-			SiteTagName:   util.StringPtrIfValid(fullDTO.SiteTagName),
-			BaseSiteTagID: util.StringPtrIfValid(fullDTO.BaseSiteTagID),
-			Description:   util.StringPtrIfValid(fullDTO.Description),
-			LocalTagID:    util.Int64PtrIfValid(fullDTO.LocalTagID),
-			LastUse:       util.Int64PtrIfValid(fullDTO.LastUse),
-			CreateTime:    fullDTO.CreateTime,
-			UpdateTime:    fullDTO.UpdateTime,
-		},
-		LocalTag: fullDTO.LocalTag,
-	}
-}
 
 // ToLocalTagDTO 将 entity.LocalTag 转换为 dto.LocalTagDTO
 func ToLocalTagDTO(tag *entity.LocalTag) *dto.LocalTagDTO {

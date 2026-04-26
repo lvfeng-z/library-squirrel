@@ -121,27 +121,12 @@ func NewSiteTagFullDTO(siteTag *entity2.SiteTag) *SiteTagFullDTO {
 	return dto
 }
 
-// SiteTagLocalRelateDTO 站点标签与本地标签关联DTO
-// 注意：显式定义所有字段，不使用嵌入（embedding）来复现 TypeScript 的继承行为
+// SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（包含绑定的本地标签、来源站点信息和同名本地标签判断）
 type SiteTagLocalRelateDTO struct {
-	// 基础实体字段
-	ID         int64 `json:"id"`
-	CreateTime int64 `json:"createTime"`
-	UpdateTime int64 `json:"updateTime"`
-	// 站点标签字段
-	SiteID        int64  `json:"siteId"`
-	SiteTagID     string `json:"siteTagId"`
-	SiteTagName   string `json:"siteTagName"`
-	BaseSiteTagID string `json:"baseSiteTagId"`
-	Description   string `json:"description"`
-	LocalTagID    int64  `json:"localTagId"`
-	LastUse       int64  `json:"lastUse"`
-	// 关联的本地标签
-	LocalTag *LocalTagDTO `json:"localTag,omitempty"`
-	// 来源站点
-	Site *SiteDTO `json:"site,omitempty"`
-	// 是否有同名本地标签
-	HasSameNameLocalTag bool `json:"hasSameNameLocalTag"`
+	SiteTag             *SiteTagDTO  `json:"siteTag,omitempty"`
+	LocalTag            *LocalTagDTO `json:"localTag,omitempty"`
+	Site                *SiteDTO     `json:"site,omitempty"`
+	HasSameNameLocalTag bool         `json:"hasSameNameLocalTag"`
 }
 
 // NewSiteTagLocalRelateDTO 创建站点标签与本地标签关联DTO
@@ -149,23 +134,7 @@ func NewSiteTagLocalRelateDTO(siteTag *entity2.SiteTag) *SiteTagLocalRelateDTO {
 	if siteTag == nil {
 		return nil
 	}
-	dto := &SiteTagLocalRelateDTO{
-		ID:            siteTag.ID,
-		CreateTime:    siteTag.CreateTime,
-		UpdateTime:    siteTag.UpdateTime,
-		SiteTagID:     siteTag.SiteTagID.String,
-		SiteTagName:   siteTag.SiteTagName.String,
-		BaseSiteTagID: siteTag.BaseSiteTagID.String,
-		Description:   siteTag.Description.String,
+	return &SiteTagLocalRelateDTO{
+		SiteTag: NewSiteTagDTO(siteTag),
 	}
-	if siteTag.SiteID.Valid {
-		dto.SiteID = siteTag.SiteID.Int64
-	}
-	if siteTag.LocalTagID.Valid {
-		dto.LocalTagID = siteTag.LocalTagID.Int64
-	}
-	if siteTag.LastUse.Valid {
-		dto.LastUse = siteTag.LastUse.Int64
-	}
-	return dto
 }
