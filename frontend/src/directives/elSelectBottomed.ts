@@ -10,7 +10,7 @@ export default {
       if (scrollHeight <= clientHeight) {
         return
       }
-      if (scrollHeight - scrollTop <= clientHeight) {
+      if (scrollHeight - scrollTop <= clientHeight + 0.5) {
         // 把input元素的value属性（即输入的文本）传递过去
         binding.value(el.firstElementChild.firstElementChild.firstElementChild.firstElementChild.value)
       }

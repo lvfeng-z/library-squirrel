@@ -35,13 +35,5 @@ export async function localTagQuerySelectItemPageByName(
   if (!response.success || !response.data) {
     return new PageModel<SelectItem, unknown>()
   }
-  return {
-    pageNumber: response.data.pageNumber,
-    pageSize: response.data.pageSize,
-    pageCount: response.data.pageCount,
-    dataCount: response.data.dataCount,
-    currentCount: response.data.currentCount,
-    query: response.data.query,
-    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
-  }
+  return response.data
 }

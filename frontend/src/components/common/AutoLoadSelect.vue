@@ -1,9 +1,10 @@
 <script setup lang="ts" generic="Query">
 import IPage from '@renderer/model/util/IPage.ts'
-import {Ref, ref, toRaw} from 'vue'
+import {Ref, ref} from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import {arrayNotEmpty, notNullish} from '@renderer/utils/CommonUtil.ts'
+import {arrayNotEmpty} from "@renderer/utils/CommonUtil.ts";
 import {newPage} from "@renderer/utils/Pager.ts";
+import lodash from "lodash";
 
 // props
 const props = withDefaults(
@@ -31,10 +32,10 @@ async function queryPage(newQuery: boolean, input: string) {
   if (newQuery) {
     page.value = newPage<SelectItem, Query>({ pageSize: props.pageSize })
     page.value.data = []
-    selectList.value = page.value.data.filter(notNullish)
+    selectList.value = page.value.data as SelectItem[]
   }
   //查询
-  const tempPage = toRaw(page.value)
+  const tempPage = lodash.cloneDeep(page.value)
   tempPage.data = []
   tempPage.pageSize = props.pageSize
   const nextPage = await props.load(tempPage, input)

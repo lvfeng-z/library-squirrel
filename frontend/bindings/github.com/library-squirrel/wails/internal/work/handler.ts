@@ -78,8 +78,8 @@ export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $Ca
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: number, pageSize: number, queryDTO: $models.WorkQueryDTO | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkDTO, $models.WorkQueryDTO> | null> | null> {
-    return $Call.ByID(2743079621, page, pageSize, queryDTO).then(($result: any) => {
+export function QueryPage(page: model$0.Page<dto$0.WorkDTO, $models.WorkQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkDTO, $models.WorkQueryDTO> | null> | null> {
+    return $Call.ByID(2743079621, page).then(($result: any) => {
         return $$createType19($result);
     });
 }
