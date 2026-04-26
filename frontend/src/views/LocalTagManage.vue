@@ -1,29 +1,32 @@
 <script setup lang="ts">
-import { onMounted, Ref, ref } from 'vue'
+import {onMounted, Ref, ref} from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
-import { toNumber } from 'lodash'
+import {toNumber} from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
-import { Thead } from '../model/util/Thead.ts'
-import { LocalTagDTO, SelectItem, SiteTagFullDTO, LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {Thead} from '../model/util/Thead.ts'
+import {
+  LocalTagDTO,
+  LocalTagWithBaseTagDTO,
+  SelectItem,
+  SiteTagFullDTO
+} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
-import { ElMessage } from 'element-plus'
+import {ElMessage} from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
-import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
-import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
+import {localTagQuerySelectItemPageByName} from '@renderer/apis/LocalTagApi.ts'
+import {LocalTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
-import { localTagApi } from '@renderer/apis/http'
-import { siteTagApi } from '@renderer/apis/http'
-import { siteApi } from '@renderer/apis/http'
+import {localTagApi, siteApi, siteTagApi} from '@renderer/apis/http'
 import {copyPage, newPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
@@ -265,11 +268,12 @@ async function requestSiteTagSelectItemPage(
   bounded: boolean
 ): Promise<IPage<SelectItem, SiteTagQueryDTO>> {
   const queryPage = copyPage<SiteTagFullDTO, SiteTagQueryDTO>(page)
-  const query = new SiteTagQueryDTO()
-  query.localTagId = new QueryAttribute({ value: localTagSelected.value.id })
-  query.boundOnLocalTagId = new QueryAttribute({ value: bounded })
-  queryPage.query = query
-  console.log(query)
+  // 固定参数
+  exchangeBoxLowerSearchParams.value.localTagId = new QueryAttribute({ value: localTagSelected.value.id })
+  exchangeBoxLowerSearchParams.value.boundOnLocalTagId = new QueryAttribute({ value: bounded })
+  // 用户输入的参数
+  exchangeBoxLowerSearchParams.value.siteTagName.operator = Operator.OpLike
+  queryPage.query = exchangeBoxLowerSearchParams.value
   const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SiteTagFullDTO, SiteTagQueryDTO>>(response)
