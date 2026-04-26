@@ -10,42 +10,6 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../../pkg/query/models.js";
 
 /**
- * SiteDTO 站点数据传输对象
- */
-export class SiteDTO {
-    "id": number;
-    "siteName": string | null;
-    "siteDescription": string | null;
-    "homepage": string | null;
-
-    /** Creates a new SiteDTO instance. */
-    constructor($$source: Partial<SiteDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteName" in $$source)) {
-            this["siteName"] = null;
-        }
-        if (!("siteDescription" in $$source)) {
-            this["siteDescription"] = null;
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteDTO($$parsedSource as Partial<SiteDTO>);
-    }
-}
-
-/**
  * SiteQueryDTO 站点查询条件
  */
 export class SiteQueryDTO {
@@ -133,50 +97,6 @@ export class SiteQueryDTO {
             $$parsedSource["createTime"] = $$createField5_0($$parsedSource["createTime"]);
         }
         return new SiteQueryDTO($$parsedSource as Partial<SiteQueryDTO>);
-    }
-}
-
-/**
- * SiteResultDTO 站点返回结果DTO（用于屏蔽sql.Null*类型）
- */
-export class SiteResultDTO {
-    "id": number;
-    "siteName": string | null;
-    "siteDescription": string | null;
-    "homepage": string | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new SiteResultDTO instance. */
-    constructor($$source: Partial<SiteResultDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteName" in $$source)) {
-            this["siteName"] = null;
-        }
-        if (!("siteDescription" in $$source)) {
-            this["siteDescription"] = null;
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteResultDTO($$parsedSource as Partial<SiteResultDTO>);
     }
 }
 

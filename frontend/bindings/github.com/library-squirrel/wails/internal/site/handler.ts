@@ -33,7 +33,7 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 /**
  * GetById 根据ID获取
  */
-export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$models.SiteResultDTO | null> | null> {
+export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.SiteDTO | null> | null> {
     return $Call.ByID(1863754052, id).then(($result: any) => {
         return $$createType5($result);
     });
@@ -42,7 +42,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<$mo
 /**
  * GetByName 根据名称获取
  */
-export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResponse<$models.SiteResultDTO | null> | null> {
+export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResponse<dto$0.SiteDTO | null> | null> {
     return $Call.ByID(186415274, siteName).then(($result: any) => {
         return $$createType5($result);
     });
@@ -51,7 +51,7 @@ export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResp
 /**
  * QueryPage 分页查询
  */
-export function QueryPage(page: model$0.Page<$models.SiteResultDTO, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.SiteResultDTO, $models.SiteQueryDTO> | null> | null> {
+export function QueryPage(page: model$0.Page<dto$0.SiteDTO, $models.SiteQueryDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteDTO, $models.SiteQueryDTO> | null> | null> {
     return $Call.ByID(1707125239, page).then(($result: any) => {
         return $$createType10($result);
     });
@@ -69,7 +69,7 @@ export function QuerySelectItemPage(page: model$0.Page<dto$0.SelectItem, $models
 /**
  * Save 保存站点
  */
-export function Save(site: $models.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(site: dto$0.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(3913813173, site).then(($result: any) => {
         return $$createType17($result);
     });
@@ -78,7 +78,7 @@ export function Save(site: $models.SiteDTO | null): $CancellablePromise<model$0.
 /**
  * Update 更新站点
  */
-export function Update(site: $models.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(site: dto$0.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2677716985, site).then(($result: any) => {
         return $$createType1($result);
     });
@@ -87,7 +87,7 @@ export function Update(site: $models.SiteDTO | null): $CancellablePromise<model$
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.SiteResultDTO.createFrom;
+const $$createType2 = dto$0.SiteDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

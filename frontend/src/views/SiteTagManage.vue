@@ -10,16 +10,18 @@ import { Thead } from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
-import { LocalTagDTO, SelectItem, SiteTagFullDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {isNullish} from '@renderer/utils/CommonUtil.ts'
+import {
+  LocalTagDTO,
+  SelectItem,
+  SiteDTO, SiteTagDTO,
+  SiteTagFullDTO
+} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
 import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
-import { SiteTagLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import { SiteDTO as Site } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
-import { SiteTagDTO as SiteTag } from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
 import { localTagApi, siteTagApi } from '@renderer/apis/http'
 
 // onMounted
@@ -45,11 +47,11 @@ const apis = {
 // siteTagSearchTable的组件实例
 const siteTagSearchTable = ref()
 // 被改变的数据行
-const changedRows: Ref<SiteTagLocalRelateDTO[]> = ref([])
+const changedRows: Ref<SiteTagFullDTO[]> = ref([])
 // 排序配置
 const sort: Ref<{ prop: string; order: 'ascending' | 'descending' | null }> = ref({ prop: '', order: null })
 // 站点标签SearchTable的operationButton
-const operationButton: OperationItem<SiteTagLocalRelateDTO>[] = [
+const operationButton: OperationItem<SiteTagFullDTO>[] = [
   {
     label: '保存',
     icon: 'Checked',
@@ -156,7 +158,7 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
     },
     setCacheData: (rowData: SiteTagFullDTO, data: SelectItem) => {
       if (isNullish(rowData.site)) {
-        rowData.site = new Site()
+        rowData.site = new SiteDTO()
       }
       rowData.site.id = Number(data.value)
       rowData.site.siteName = data.label
@@ -180,19 +182,19 @@ const siteTagThead: Ref<Thead<SiteTagFullDTO>[]> = ref([
 // 站点标签SearchTable的查询参数
 const siteTagSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteTagQueryDTO, SiteTagLocalRelateDTO>>> = ref(new Page<SiteTagQueryDTO, SiteTagLocalRelateDTO>())
+const page: Ref<UnwrapRef<Page<SiteTagFullDTO, SiteTagQueryDTO>>> = ref(new Page<SiteTagFullDTO, SiteTagQueryDTO>())
 // 站点标签弹窗的mode
 const siteTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点标签的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 站点标签对话框的数据
-const dialogData: Ref<SiteTagLocalRelateDTO> = ref(new SiteTagLocalRelateDTO())
+const dialogData: Ref<SiteTagFullDTO> = ref(new SiteTagFullDTO())
 
 // 方法
 // 分页查询站点标签的函数
 async function siteTagQueryPage(
-  page: Page<SiteTagQueryDTO, object>
-): Promise<Page<SiteTagQueryDTO, SiteTagLocalRelateDTO> | undefined> {
+  page: Page<SiteTagFullDTO, SiteTagQueryDTO>
+): Promise<Page<SiteTagFullDTO, SiteTagQueryDTO>> {
   // 添加默认排序（按修改时间和创建时间降序，priority 控制排序优先级）
   if (isNullish(page.query)) {
     page.query = new SiteTagQueryDTO()
@@ -211,25 +213,25 @@ async function siteTagQueryPage(
   page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   const response = await apis.siteTagQueryLocalRelateDTOPage(page)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteTagQueryDTO, SiteTagLocalRelateDTO>>(response)
+    let responsePage = ApiUtil.data<Page<SiteTagFullDTO, SiteTagQueryDTO>>(response)
     if (isNullish(responsePage)) {
-      return undefined
+      throw new Error('siteTagQueryLocalRelateDTOPage接口未返回数据')
     }
     responsePage = new Page(responsePage)
     return responsePage
   } else {
     ApiUtil.msg(response)
-    return undefined
+    throw new Error(response.msg)
   }
 }
 // 处理站点标签新增按钮点击事件
 async function handleCreateButtonClicked() {
   siteTagDialogMode.value = DialogMode.NEW
-  dialogData.value = new SiteTagLocalRelateDTO()
+  dialogData.value = new SiteTagFullDTO()
   dialogState.value = true
 }
 // 处理站点标签数据行按钮点击事件
-async function handleRowButtonClicked(op: DataTableOperationResponse<SiteTagLocalRelateDTO>) {
+async function handleRowButtonClicked(op: DataTableOperationResponse<SiteTagFullDTO>) {
   switch (op.code) {
     case 'create':
       await creatSameNameLocalTagAndBind(lodash.cloneDeep(op.data))
@@ -249,7 +251,7 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteTagLoca
       dialogState.value = true
       break
     case 'delete':
-      deleteSiteTag(op.id)
+      deleteSiteTag(Number(op.id))
       break
     default:
       break
@@ -260,7 +262,7 @@ function refreshTable() {
   siteTagSearchTable.value.doSearch()
 }
 // 删除站点标签
-async function deleteSiteTag(id: string) {
+async function deleteSiteTag(id: number) {
   const response = await apis.siteTagDeleteById(id)
   ApiUtil.msg(response)
   if (ApiUtil.check(response)) {
@@ -268,8 +270,11 @@ async function deleteSiteTag(id: string) {
   }
 }
 // 保存行数据编辑
-async function saveRowEdit(newData: SiteTagLocalRelateDTO) {
-  const tempData = lodash.cloneDeep(newData)
+async function saveRowEdit(newData: SiteTagFullDTO) {
+  if (isNullish(newData.siteTag)) {
+    return
+  }
+  const tempData = new SiteTagDTO(newData.siteTag)
 
   const response = await apis.siteTagUpdateById(tempData)
   ApiUtil.msg(response)
@@ -280,8 +285,12 @@ async function saveRowEdit(newData: SiteTagLocalRelateDTO) {
   }
 }
 // 创建同名本地标签并绑定
-async function creatSameNameLocalTagAndBind(siteTag: SiteTag) {
-  const response = await apis.siteTagCreateAndBindSameNameLocalTag(siteTag)
+async function creatSameNameLocalTagAndBind(siteTag: SiteTagFullDTO) {
+  if (isNullish(siteTag.siteTag)) {
+    return
+  }
+  const tempData = new SiteTagDTO(siteTag.siteTag)
+  const response = await apis.siteTagCreateAndBindSameNameLocalTag(tempData)
   if (!ApiUtil.check(response)) {
     ApiUtil.msg(response)
   }
@@ -314,11 +323,11 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTag) {
             <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
             <el-row class="site-tag-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteTagSearchParams.siteTagName" placeholder="输入标签名称" clearable />
+                <el-input v-model="siteTagSearchParams.siteTagName.value" placeholder="输入标签名称" clearable />
               </el-col>
               <el-col :span="4">
                 <auto-load-select
-                  v-model="siteTagSearchParams.siteId"
+                  v-model:data="siteTagSearchParams.siteId.value"
                   :load="siteQuerySelectItemPageBySiteName"
                   placeholder="选择站点"
                   remote

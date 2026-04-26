@@ -205,11 +205,11 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 		dto := dto2.NewSiteTagLocalRelateDTO(tag)
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
-			var localTag entity2.LocalTag
-			if err := r.GORM().WithContext(ctx).First(&localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			localTag := entity2.NewLocalTag()
+			if err := r.GORM().WithContext(ctx).First(localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
-			dto.LocalTag = dto2.NewLocalTagDTO(&localTag)
+			dto.LocalTag = dto2.NewLocalTagDTO(localTag)
 		}
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {

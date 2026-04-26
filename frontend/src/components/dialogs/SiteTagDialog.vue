@@ -3,12 +3,11 @@ import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import { notNullish } from '@renderer/utils/CommonUtil.ts'
+import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import SiteTagLocalRelateDTO from '@renderer/model/model/dto/SiteTagLocalRelateDTO.ts'
 import { localTagApi, siteApi, siteTagApi } from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {SelectItem, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 
 // props
@@ -25,7 +24,7 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<SiteTagLocalRelateDTO>('formData', { required: true })
+const formData = defineModel<SiteTagFullDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
@@ -88,8 +87,8 @@ async function handleSaveButtonClicked() {
     if (props.mode === DialogMode.NEW) {
       const tempFormData = lodash.cloneDeep(formData.value)
       const response = await apis.siteTagSave({
-        siteTagName: tempFormData.siteTagName ?? undefined,
-        siteId: tempFormData.siteId ?? undefined
+        siteTagName: tempFormData.siteTag?.siteTagName ?? undefined,
+        siteId: tempFormData.siteTag?.siteId ?? undefined
       })
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
@@ -99,11 +98,10 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteTagUpdateById({
-        id: tempFormData.id ?? 0,
-        siteTagName: tempFormData.siteTagName ?? undefined,
-        localTagId: tempFormData.localTag?.id ?? undefined
-      })
+      if (isNullish(tempFormData.siteTag)) {
+        return
+      }
+      const response = await apis.siteTagUpdateById(tempFormData.siteTag)
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -120,21 +118,21 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.siteTagName"></el-input>
+            <el-input v-model="formData.siteTag?.siteTagName"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="描述">
-            <el-input v-model="formData.description" type="textarea"></el-input>
+            <el-input v-model="formData.siteTag?.description" type="textarea"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="本地标签">
-            <auto-load-select v-model="formData.localTagId" :load="localTagQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select v-model:data="formData.siteTag?.localTagId" :load="localTagQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.localTag)"
@@ -151,13 +149,11 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="站点">
-            <auto-load-select v-model="formData.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select v-model:data="formData.siteTag?.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
-                  v-if="notNullish(formData.site)"
-                  :hidden="true"
-                  :value="formData.site.id"
-                  :label="formData.site.siteName"
+                  :value="formData.site?.id"
+                  :label="formData.site?.siteName"
                 ></el-option>
                 <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
               </template>
@@ -168,12 +164,12 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="formData.siteTag?.createTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="formData.siteTag?.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
       </el-row>

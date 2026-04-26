@@ -6,12 +6,10 @@
 import type { ApiResponse } from '../types'
 import IPage from "@renderer/model/util/IPage.ts";
 import {
-  Handler as SiteTagHandler,
-  SiteTagQueryDTO,
-  SiteTagLocalRelateDTO
+  Handler as SiteTagHandler, SiteTagLocalRelateDTO, SiteTagQueryDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
 import {SelectItem, SiteTagDTO, SiteTagFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 export interface SiteTagVO {
   id: number
@@ -91,17 +89,8 @@ export async function siteTagDeleteById(id: number): Promise<ApiResponse<null>> 
   return { success: result.success, msg: result.msg ?? '' }
 }
 
-export async function siteTagUpdateById(tag: {
-  id: number
-  siteTagName?: string
-  localTagId?: number
-}): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagDTO({
-    id: tag.id,
-    siteTagName: tag.siteTagName ?? null,
-    siteId: tag.localTagId ?? null  // 注意：这里可能有问题，siteId 和 localTagId 是不同的字段
-  })
-  const result = await SiteTagHandler.Update(tagDTO)
+export async function siteTagUpdateById(tag: SiteTagDTO): Promise<ApiResponse<SiteTagDTO>> {
+  const result = await SiteTagHandler.Update(tag)
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
@@ -229,7 +218,7 @@ export async function siteTagUpdateBindLocalTag(
  * 创建并绑定同名的本地标签
  */
 export async function siteTagCreateAndBindSameNameLocalTag(
-  siteTag: SiteTagVO
+  siteTag: SiteTagDTO
 ): Promise<ApiResponse<boolean>> {
   const result = await SiteTagHandler.CreateAndBindSameNameLocalTag(new SiteTagDTO({
     id: siteTag.id,
