@@ -17,8 +17,8 @@
     "mitt": "^3.0.1",
     "pinia": "^2.1.7",
     "uuid": "^9.0.1",
-    "vue": "^3.2.45",
-    "vue-router": "^4.2.5"
+    "vue": "^3.5.33",
+    "vue-router": "^5.0.6"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.202",
@@ -27,6 +27,6 @@
     "@vitejs/plugin-vue": "^5.0.0",
     "typescript": "~5.4.0",
     "vite": "^5.0.0",
-    "vue-tsc": "^2.0.0"
+    "vue-tsc": "^3.2.7"
   }
 }
