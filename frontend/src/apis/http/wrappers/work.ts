@@ -4,10 +4,11 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkHandler, WorkDTO, WorkQueryDTO, WorkResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/work'
+import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/work'
+import { WorkDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
-import type { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 
 export interface WorkVO {
   id: number
@@ -29,9 +30,9 @@ export interface PageResult {
 // ========== 工具函数 ==========
 
 /**
- * 将 WorkResultDTO 转换为 WorkVO
+ * 将 WorkDTO 转换为 WorkVO
  */
-function toWorkVO(dto: WorkResultDTO): WorkVO {
+function toWorkVO(dto: WorkDTO): WorkVO {
   return {
     id: dto.id,
     title: dto.siteWorkName ?? '',
@@ -75,12 +76,16 @@ export async function workQueryPage(query: {
   page: number
   pageSize: number
   query?: { siteId?: number; title?: string }
-}): Promise<ApiResponse<Page<WorkResultDTO, WorkQueryDTO>>> {
+}): Promise<ApiResponse<Page<WorkDTO>>> {
   const queryDTO = new WorkQueryDTO({
-    siteId: { value: query.query?.siteId } as QueryAttribute,
-    siteWorkName: { value: query.query?.title } as QueryAttribute
+    siteId: { value: query.query?.siteId } as QueryAttribute<number>,
+    siteWorkName: { value: query.query?.title } as QueryAttribute<string>
   })
-  const result = await WorkHandler.QueryPage(query.page, query.pageSize, queryDTO)
+  const page = new Page<WorkDTO>({
+    pageNumber: query.page,
+    pageSize: query.pageSize
+  })
+  const result = await WorkHandler.QueryPage(page, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="Query extends object">
+<script setup lang="ts">
 import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
 import { Ref, ref, UnwrapRef } from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
@@ -12,8 +12,8 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 
 // props
 const props = defineProps<{
-  upperLoad: (page: IPage<SelectItem, Query>) => Promise<IPage<SelectItem, Query>> // upper的加载函数
-  lowerLoad: (page: IPage<SelectItem, Query>) => Promise<IPage<SelectItem, Query>> // lower的加载函数
+  upperLoad: (page: IPage<SelectItem>) => Promise<IPage<SelectItem>> // upper的加载函数
+  lowerLoad: (page: IPage<SelectItem>) => Promise<IPage<SelectItem>> // lower的加载函数
   searchButtonDisabled: boolean
   tagsGap?: string
 }>()
@@ -31,9 +31,9 @@ defineExpose({
 })
 
 // 变量
-const upperPage = new Page<SegmentedTagItem, Query>() // upper的分页
+const upperPage = new Page<SegmentedTagItem>() // upper的分页
 const upperData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // upper的数据
-const lowerPage = new Page<SegmentedTagItem, Query>() // lower的分页
+const lowerPage = new Page<SegmentedTagItem>() // lower的分页
 const lowerData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // lower的数据
 const upperTagBox = ref() // upperTagBox组件的实例
 const lowerTagBox = ref() // lowerTagBox组件的实例
@@ -143,14 +143,12 @@ function refreshData(isUpper?: boolean) {
   handleBufferToggle()
 }
 // 请求DataScroll下一页数据
-async function requestNextPage(page: IPage<SelectItem, Query>, isUpper: boolean): Promise<IPage<SegmentedTagItem, Query>> {
+async function requestNextPage(page: IPage<SelectItem>, isUpper: boolean): Promise<IPage<SegmentedTagItem>> {
   // 请求接口
-  let newPagePromise: Promise<IPage<SelectItem, Query>>
+  let newPagePromise: Promise<IPage<SelectItem>>
   if (isUpper) {
-    page.query = upperSearchParams.value as Query
     newPagePromise = props.upperLoad(page)
   } else {
-    page.query = lowerSearchParams.value as Query
     newPagePromise = props.lowerLoad(page)
   }
 
@@ -242,7 +240,7 @@ function handleBufferToggle() {
             v-model:page="upperPage"
             v-model:data="upperData"
             class="exchange-box-upper-tag-box"
-            :load="(_page: IPage<SelectItem, Query>) => requestNextPage(_page, true)"
+            :load="(_page: IPage<SelectItem>) => requestNextPage(_page, true)"
             :tags-gap="tagsGap"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperData')"
           />
@@ -284,7 +282,7 @@ function handleBufferToggle() {
             v-model:page="lowerPage"
             v-model:data="lowerData"
             class="exchange-box-lower-tag-box"
-            :load="(_page: IPage<SelectItem, Query>) => requestNextPage(_page, false)"
+            :load="(_page: IPage<SelectItem>) => requestNextPage(_page, false)"
             :tags-gap="tagsGap"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'lowerData')"
           />

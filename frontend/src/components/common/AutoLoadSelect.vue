@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="Query">
+<script setup lang="ts">
 import IPage from '@renderer/model/util/IPage.ts'
 import {Ref, ref} from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
@@ -9,7 +9,7 @@ import lodash from "lodash";
 // props
 const props = withDefaults(
   defineProps<{
-    load: (page: IPage<SelectItem, Query>, input: string) => Promise<IPage<SelectItem, Query>>
+    load: (page: IPage<SelectItem>, input: string) => Promise<IPage<SelectItem>>
     pageSize?: number
   }>(),
   {
@@ -24,13 +24,13 @@ const selectList = defineModel<SelectItem[]>('selectList', { default: [] })
 // 变量
 // el-select组件的实例
 const select = ref()
-const page: Ref<IPage<SelectItem, Query>> = ref(newPage<SelectItem, Query>({ pageSize: props.pageSize })) as Ref<IPage<SelectItem, Query>>
+const page: Ref<IPage<SelectItem>> = ref(newPage<SelectItem>({ pageSize: props.pageSize })) as Ref<IPage<SelectItem>>
 // 方法
 // 查询页
 async function queryPage(newQuery: boolean, input: string) {
   // 新查询重置查询条件
   if (newQuery) {
-    page.value = newPage<SelectItem, Query>({ pageSize: props.pageSize })
+    page.value = newPage<SelectItem>({ pageSize: props.pageSize })
     page.value.data = []
     selectList.value = page.value.data as SelectItem[]
   }

@@ -48,7 +48,7 @@ func (b *BaseEntity) SetUpdateTime(time int64) {
 }
 
 // Page 分页响应（与渲染进程 IPage 保持一致）
-type Page[D any, Q any] struct {
+type Page[D any] struct {
 	// 当前页码
 	PageNumber int `json:"pageNumber"`
 	// 分页大小
@@ -59,14 +59,12 @@ type Page[D any, Q any] struct {
 	DataCount int64 `json:"dataCount"`
 	// 本页数据量
 	CurrentCount int `json:"currentCount"`
-	// 查询条件
-	Query Q `json:"query,omitempty"`
 	// 数据列表
 	Data []*D `json:"data"`
 }
 
 // NewPage 创建分页响应
-func NewPage[D any, Q any](data []*D, total int64, pageNumber, pageSize int) *Page[D, Q] {
+func NewPage[D any](data []*D, total int64, pageNumber, pageSize int) *Page[D] {
 	pageCount := int(total) / pageSize
 	if int(total)%pageSize > 0 {
 		pageCount++
@@ -74,7 +72,7 @@ func NewPage[D any, Q any](data []*D, total int64, pageNumber, pageSize int) *Pa
 	if pageCount < 1 {
 		pageCount = 1
 	}
-	return &Page[D, Q]{
+	return &Page[D]{
 		PageNumber:   pageNumber,
 		PageSize:     pageSize,
 		PageCount:    pageCount,

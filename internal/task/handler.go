@@ -104,28 +104,24 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO, TaskQueryDTO]) *model.ApiResponse[*model.Page[dto2.TaskDTO, TaskQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.TaskDTO, TaskQueryDTO]{}
+		page = &model.Page[dto2.TaskDTO]{}
 	}
-	if page.Query == (TaskQueryDTO{}) {
-		page.Query = TaskQueryDTO{}
-	}
-	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto2.TaskDTO, 0, len(result.Data))
 	for _, task := range result.Data {
 		data = append(data, dto2.NewTaskDTO(task))
 	}
-	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+	return model.Success(&model.Page[dto2.TaskDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -136,28 +132,24 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO, 
 }
 
 // QueryParentPage 分页查询父任务
-func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.TaskDTO, TaskQueryDTO]) *model.ApiResponse[*model.Page[dto2.TaskDTO, TaskQueryDTO]] {
+func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.TaskDTO, TaskQueryDTO]{}
+		page = &model.Page[dto2.TaskDTO]{}
 	}
-	if page.Query == (TaskQueryDTO{}) {
-		page.Query = TaskQueryDTO{}
-	}
-	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.QueryParentPage(ctx, entityPage)
+	result, err := h.svc.QueryParentPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto2.TaskDTO, 0, len(result.Data))
 	for _, task := range result.Data {
 		data = append(data, dto2.NewTaskDTO(task))
 	}
-	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+	return model.Success(&model.Page[dto2.TaskDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -168,28 +160,24 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.Tas
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[dto2.TaskDTO, TaskQueryDTO]) *model.ApiResponse[*model.Page[dto2.TaskDTO, TaskQueryDTO]] {
+func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.TaskDTO, TaskQueryDTO]{}
+		page = &model.Page[dto2.TaskDTO]{}
 	}
-	if page.Query == (TaskQueryDTO{}) {
-		page.Query = TaskQueryDTO{}
-	}
-	entityPage := &model.Page[entity2.Task, TaskQueryDTO]{
+	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.QueryChildrenTaskPage(ctx, pid, entityPage)
+	result, err := h.svc.QueryChildrenTaskPage(ctx, pid, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO, TaskQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto2.TaskDTO, 0, len(result.Data))
 	for _, task := range result.Data {
 		data = append(data, dto2.NewTaskDTO(task))
 	}
-	return model.Success(&model.Page[dto2.TaskDTO, TaskQueryDTO]{
+	return model.Success(&model.Page[dto2.TaskDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -214,8 +202,8 @@ func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiRes
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[dto2.TaskDTO, TaskQueryDTO]) *model.ApiResponse[*TreeDataPageDTO] {
-	result, err := h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &page.Query)
+func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*TreeDataPageDTO] {
+	result, err := h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query)
 	if err != nil {
 		return model.Error[*TreeDataPageDTO](err.Error())
 	}

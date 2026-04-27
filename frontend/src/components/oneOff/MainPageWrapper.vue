@@ -48,7 +48,7 @@ const currentWorkIndex = ref(0)
 // 查询参数类型
 const searchConditionType: Ref<UnwrapRef<SearchType[]>> = ref([])
 // 作品分页
-const workPage: Ref<UnwrapRef<Page<SearchCondition[], WorkFullDTO>>> = ref(new Page<SearchCondition[], WorkFullDTO>())
+const workPage: Ref<UnwrapRef<Page<WorkFullDTO>>> = ref(new Page<WorkFullDTO>())
 // 搜索栏折叠面板开关
 const searchBarPanelState: Ref<boolean> = ref(false)
 // 加载更多按钮开关
@@ -73,7 +73,7 @@ const workSetList: Ref<UnwrapRef<WorkSetCoverDTO[]>> = ref([])
 // 当前作品集的索引
 const currentWorkSetIndex = ref(0)
 // 作品集分页
-const workSetPage: Ref<UnwrapRef<Page<SearchCondition[], WorkSetCoverDTO>>> = ref(new Page<SearchCondition[], WorkSetCoverDTO>())
+const workSetPage: Ref<UnwrapRef<Page<WorkSetCoverDTO>>> = ref(new Page<WorkSetCoverDTO>())
 
 // onMounted
 onMounted(() => {
@@ -88,20 +88,19 @@ onBeforeUnmount(() => {
 
 // 方法
 // 查询标签选择列表
-async function querySearchItemPage(page: IPage<any, SelectItem>, input?: string): Promise<IPage<any, SelectItem>> {
+async function querySearchItemPage(page: IPage<any>, input?: string): Promise<IPage<any>> {
   const query = new SearchConditionQueryDTO()
   query.nonFieldKeyword = input
   query.types = lodash.cloneDeep(searchConditionType.value)
-  page.query = query
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage(page)
+    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize })
   } catch (e) {
     console.log(e)
     return page
   }
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<Page<any, SelectItem>>(response)
+    const newPage = ApiUtil.data<Page<SelectItem>>(response)
     if (isNullish(newPage)) {
       ApiUtil.msg(response)
       throw new Error(response.msg)
@@ -114,9 +113,9 @@ async function querySearchItemPage(page: IPage<any, SelectItem>, input?: string)
 }
 
 // 请求作品接口
-async function searchWork(page: Page<SearchCondition[], WorkFullDTO>): Promise<Page<WorkQueryDTO, WorkFullDTO>> {
+async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
   // 处理搜索框的标签
-  page.query = selectedTagList.value
+  const conditions: SearchCondition[] = selectedTagList.value
     .map((searchCondition) => {
       let operator: CrudOperator | undefined = undefined
       if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
@@ -130,31 +129,21 @@ async function searchWork(page: Page<SearchCondition[], WorkFullDTO>): Promise<P
       }
     })
     .filter(notNullish)
-  if (isNullish(page.query)) {
-    page.query = []
-  }
   if (arrayNotEmpty(customTagList.value)) {
     customTagList.value.forEach((tag: SegmentedTagItem) =>
-      page.query?.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
+      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
     )
   }
   // 处理搜索框输入的文本
   if (isNotBlank(autoLoadInput.value)) {
     const workName = autoLoadInput.value
-    if (isNullish(page.query)) {
-      page.query = []
-    }
-    let tempCondition = new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE })
-    page.query.push(tempCondition)
-    tempCondition = new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE })
-    page.query.push(tempCondition)
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE }))
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
   }
 
-  page.pageSize = 16
-
-  return apis.searchQueryWorkPage(page).then((response: ApiResponse) => {
+  return apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: 16, query: conditions }).then((response: ApiResponse) => {
     if (ApiUtil.check(response)) {
-      const resultPage = ApiUtil.data<Page<WorkQueryDTO, WorkFullDTO>>(response)
+      const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
       if (notNullish(resultPage)) {
         resultPage.data = resultPage.data?.map((origin) => new WorkFullDTO(origin))
       }
@@ -166,48 +155,14 @@ async function searchWork(page: Page<SearchCondition[], WorkFullDTO>): Promise<P
 }
 
 // 请求作品集接口
-async function searchWorkSet(page: Page<SearchCondition[], WorkSetCoverDTO>): Promise<Page<WorkSetQueryDTO, WorkSetCoverDTO>> {
-  // 处理搜索框的标签
-  page.query = selectedTagList.value
-    .map((searchCondition) => {
-      let operator: CrudOperator | undefined = undefined
-      if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
-        operator = CrudOperator.NOT_EQUAL
-      }
-      if (notNullish(searchCondition.extraData)) {
-        const extraData = searchCondition.extraData as { type: SearchType; id: number }
-        return new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator })
-      } else {
-        return undefined
-      }
-    })
-    .filter(notNullish)
-  if (isNullish(page.query)) {
-    page.query = []
-  }
-  if (arrayNotEmpty(customTagList.value)) {
-    customTagList.value.forEach((tag: SegmentedTagItem) =>
-      page.query?.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
-    )
-  }
-  // 处理搜索框输入的文本
-  if (isNotBlank(autoLoadInput.value)) {
-    const workName = autoLoadInput.value
-    if (isNullish(page.query)) {
-      page.query = []
-    }
-    let tempCondition = new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE })
-    page.query.push(tempCondition)
-    tempCondition = new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE })
-    page.query.push(tempCondition)
-  }
+async function searchWorkSet(page: Page<WorkSetCoverDTO>): Promise<Page<WorkSetCoverDTO>> {
+  // 从输入框获取关键词
+  const keyword = isNotBlank(autoLoadInput.value) ? autoLoadInput.value : undefined
 
-  page.pageSize = 16
-
-  return apis.searchQueryWorkSetPage(page).then((response: ApiResponse) => {
+  return apis.searchQueryWorkSetPage({ pageNumber: page.pageNumber, pageSize: 16, keyword }).then((response: ApiResponse) => {
     if (ApiUtil.check(response)) {
       // WorkSetCoverDTO 没有继承 WorkSet，直接使用返回的数据即可
-      return ApiUtil.data<Page<WorkSetQueryDTO, WorkSetCoverDTO>>(response)
+      return ApiUtil.data<Page<WorkSetCoverDTO>>(response)
     } else {
       return page
     }
@@ -218,7 +173,7 @@ async function searchWorkSet(page: Page<SearchCondition[], WorkSetCoverDTO>): Pr
 async function queryWorkPage(next: boolean) {
   // 新查询重置查询条件
   if (!next) {
-    workPage.value = new Page<SearchCondition[], WorkFullDTO>()
+    workPage.value = new Page<WorkFullDTO>()
     workPage.value.pageSize = 12
     workList.value.length = 0
   }
@@ -228,7 +183,7 @@ async function queryWorkPage(next: boolean) {
   const nextPage = await searchWork(tempPage)
 
   // 没有新数据时，不再增加页码
-  if (arrayNotEmpty(nextPage.data)) {
+  if (arrayNotEmpty(nextPage?.data)) {
     workPage.value.pageNumber++
     workPage.value.pageCount = nextPage.pageCount
     workPage.value.dataCount = nextPage.dataCount
@@ -240,7 +195,7 @@ async function queryWorkPage(next: boolean) {
 async function queryWorkSetPage(next: boolean) {
   // 新查询重置查询条件
   if (!next) {
-    workSetPage.value = new Page<SearchCondition[], WorkSetCoverDTO>()
+    workSetPage.value = new Page<WorkSetCoverDTO>()
     workSetPage.value.pageSize = 12
     workSetList.value.length = 0
   }
@@ -250,7 +205,7 @@ async function queryWorkSetPage(next: boolean) {
   const nextPage = await searchWorkSet(tempPage)
 
   // 没有新数据时，不再增加页码
-  if (arrayNotEmpty(nextPage.data)) {
+  if (arrayNotEmpty(nextPage?.data)) {
     workSetPage.value.pageNumber++
     workSetPage.value.pageCount = nextPage.pageCount
     workSetPage.value.dataCount = nextPage.dataCount

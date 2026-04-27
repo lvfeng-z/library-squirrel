@@ -1,6 +1,6 @@
 import IPage from '@renderer/model/util/IPage.ts'
 
-export default class Page<Data, Query> implements IPage<Data, Query> {
+export default class Page<Data> implements IPage<Data> {
   /**
    * 当前页码
    */
@@ -22,22 +22,17 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
    */
   currentCount: number
   /**
-   * 查询条件
-   */
-  query?: Query
-  /**
    * 数据
    */
   data: (Data | null)[]
 
-  constructor(page?: IPage<Data, Query>) {
+  constructor(page?: IPage<Data>) {
     if (page === undefined) {
       this.pageNumber = 1
       this.pageSize = 10
       this.pageCount = 0
       this.dataCount = 0
       this.currentCount = 0
-      this.query = undefined
       this.data = []
     } else {
       this.pageNumber = page.pageNumber
@@ -45,7 +40,6 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
       this.pageCount = page.pageCount
       this.dataCount = page.dataCount
       this.currentCount = page.currentCount
-      this.query = page.query
       this.data = page.data
     }
   }
@@ -53,14 +47,13 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
   /**
    * 返回一个指定类型的PageModel
    */
-  public transform<T>(): Page<T, Query> {
-    const result = new Page<T, Query>()
+  public transform<T>(): Page<T> {
+    const result = new Page<T>()
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount
     result.dataCount = this.dataCount
     result.currentCount = this.currentCount
-    result.query = this.query
     result.data = []
 
     return result
@@ -69,14 +62,13 @@ export default class Page<Data, Query> implements IPage<Data, Query> {
   /**
    * 创建一个指定类型的副本
    */
-  public copy<NewData, NewQuery>(): Page<NewData, NewQuery> {
-    const result = new Page<NewData, NewQuery>()
+  public copy<NewData>(): Page<NewData> {
+    const result = new Page<NewData>()
     result.pageNumber = this.pageNumber
     result.pageSize = this.pageSize
     result.pageCount = this.pageCount
     result.dataCount = this.dataCount
     result.currentCount = this.currentCount
-    result.query = undefined
     result.data = []
 
     return result

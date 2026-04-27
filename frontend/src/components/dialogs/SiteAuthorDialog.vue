@@ -40,14 +40,14 @@ const apis = {
 }
 
 // 适配器函数：将 bindings Page 转换为 IPage
-async function localAuthorQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, input: string): Promise<IPage<unknown, SelectItem>> {
+async function localAuthorQuerySelectItemPageAdapter(page: IPage<SelectItem>, input: string): Promise<IPage<SelectItem>> {
   const response = await localAuthorApi.localAuthorQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { authorName: input }
   })
   if (!response.success || !response.data) {
-    return new Page<unknown, SelectItem>()
+    return new Page<SelectItem>()
   }
   return {
     pageNumber: response.data.pageNumber,
@@ -55,19 +55,18 @@ async function localAuthorQuerySelectItemPageAdapter(page: IPage<unknown, Select
     pageCount: response.data.pageCount,
     dataCount: response.data.dataCount,
     currentCount: response.data.currentCount,
-    query: response.data.query,
     data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
 
-async function siteQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, _input: string): Promise<IPage<unknown, SelectItem>> {
+async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, _input: string): Promise<IPage<SelectItem>> {
   // 注意：siteName 过滤在 bindings 中未实现
   const response = await siteApi.siteQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize
   })
   if (!response.success || !response.data) {
-    return new Page<unknown, SelectItem>()
+    return new Page<SelectItem>()
   }
   return {
     pageNumber: response.data.pageNumber,
@@ -75,7 +74,6 @@ async function siteQuerySelectItemPageAdapter(page: IPage<unknown, SelectItem>, 
     pageCount: response.data.pageCount,
     dataCount: response.data.dataCount,
     currentCount: response.data.currentCount,
-    query: response.data.query,
     data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }

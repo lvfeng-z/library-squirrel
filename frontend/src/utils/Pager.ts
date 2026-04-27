@@ -5,8 +5,8 @@ import {isNullish} from "@renderer/utils/CommonUtil.ts";
 /**
  * 创建一个指定类型的副本
  */
-export function copyPage<NewData, NewQuery>(source: IPage<unknown, unknown>): IPage<NewData, NewQuery> {
-    const result = new Page<NewData, NewQuery>()
+export function copyPage<NewData>(source: IPage<unknown>): IPage<NewData> {
+    const result = new Page<NewData>()
     result.pageNumber = source.pageNumber
     result.pageSize = source.pageSize
     result.pageCount = source.pageCount
@@ -16,12 +16,12 @@ export function copyPage<NewData, NewQuery>(source: IPage<unknown, unknown>): IP
     return result
 }
 
-export function newPage<D, Q>(source: Partial<Page<D, Q>> = {}): IPage<D, Q> {
+export function newPage<D>(source: Partial<Page<D>> = {}): IPage<D> {
     if (isNullish(source.pageNumber)) {
         source.pageNumber = 1
     }
     if (isNullish(source.pageSize)) {
         source.pageSize = 10
     }
-    return new Page<D, Q>(source)
+    return new Page<D>(source)
 }

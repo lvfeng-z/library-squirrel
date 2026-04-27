@@ -1,7 +1,6 @@
 import type { ApiResponse } from '@renderer/apis/http/types'
 import { localAuthorApi } from '@renderer/apis/http'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import type { LocalAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/localAuthor'
 import type { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 import IPage from '@renderer/model/util/IPage.ts'
 import PageModel from '@renderer/model/util/Page.ts'
@@ -12,16 +11,16 @@ import PageModel from '@renderer/model/util/Page.ts'
  * @param input 搜索关键字
  */
 export async function localAuthorQuerySelectItemPageByName(
-  page: IPage<SelectItem, unknown>,
+  page: IPage<SelectItem>,
   input: string
-): Promise<IPage<SelectItem, unknown>> {
+): Promise<IPage<SelectItem>> {
   const response = await localAuthorApi.localAuthorQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { authorName: input }
   })
   if (!response.success || !response.data) {
-    return new PageModel<SelectItem, unknown>()
+    return new PageModel<SelectItem>()
   }
   return {
     pageNumber: response.data.pageNumber,
@@ -29,7 +28,6 @@ export async function localAuthorQuerySelectItemPageByName(
     pageCount: response.data.pageCount,
     dataCount: response.data.dataCount,
     currentCount: response.data.currentCount,
-    query: response.data.query,
     data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
@@ -42,6 +40,6 @@ export async function localAuthorQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem, LocalAuthorQueryDTO>>> {
+}): Promise<ApiResponse<Page<SelectItem>>> {
   return localAuthorApi.localAuthorQuerySelectItemPage(query)
 }

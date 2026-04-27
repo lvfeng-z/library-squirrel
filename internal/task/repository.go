@@ -30,7 +30,7 @@ func (r *TaskRepository) GORM() *gorm.DB {
 }
 
 // QueryParentPage 分页查询父任务
-func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
+func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	// 查询是父任务的或者只有单个任务的
@@ -61,7 +61,7 @@ func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.Page
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, any](tasks, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[domain.Task](tasks, total, opt.Page, opt.PageSize), nil
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -239,7 +239,7 @@ func (r *TaskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
+func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("pid = ?", pid)
 
 	for _, cond := range opt.Conditions {
@@ -267,7 +267,7 @@ func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, o
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, any](tasks, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[domain.Task](tasks, total, opt.Page, opt.PageSize), nil
 }
 
 // ListSchedule 查询任务进度列表

@@ -182,20 +182,19 @@ async function handleSetCover() {
 }
 
 // 加载搜索条件选项
-async function loadSearchItemPage(page: IPage<any, SelectItem>, input?: string): Promise<IPage<any, SelectItem>> {
+async function loadSearchItemPage(page: IPage<SelectItem>, input?: string): Promise<IPage<SelectItem>> {
   const query = new SearchConditionQueryDTO()
   query.nonFieldKeyword = input
   query.types = lodash.cloneDeep(searchConditionType.value)
-  page.query = query
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage(page)
+    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize })
   } catch (e) {
     console.log(e)
     return page
   }
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<Page<any, SelectItem>>(response)
+    const newPage = ApiUtil.data<Page<SelectItem>>(response)
     if (isNullish(newPage)) {
       ApiUtil.msg(response)
       throw new Error(response.msg)
@@ -218,12 +217,9 @@ function handleAdd() {
 }
 
 // 作品查询函数 - 支持排除当前作品集的作品
-async function fetchWorkPageForAdd(page: Page<SearchCondition[], WorkCardItem>): Promise<Page<SearchCondition[], WorkCardItem>> {
+async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchCondition[]): Promise<Page<WorkCardItem>> {
   // 使用 WORK_SET 类型的 SearchCondition 排除当前作品集的作品
-  if (isNullish(page.query)) {
-    page.query = []
-  }
-  page.query.push(
+  conditions.push(
     new SearchCondition({
       type: SearchType.WORK_SET,
       value: currentWorkSetId.value,
@@ -232,16 +228,16 @@ async function fetchWorkPageForAdd(page: Page<SearchCondition[], WorkCardItem>):
   )
 
   // 调用原始 API
-  const response = await apis.searchQueryWorkPage(page)
+  const response = await apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: page.pageSize, query: conditions })
   if (ApiUtil.check(response)) {
-    const resultPage = ApiUtil.data<Page<SearchCondition[], WorkFullDTO>>(response)
+    const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
     if (isNullish(resultPage)) {
-      return new Page<SearchCondition[], WorkCardItem>()
+      return new Page<WorkCardItem>()
     }
     resultPage.data = resultPage.data?.map((origin: WorkFullDTO) => new WorkFullDTO(origin))
-    return resultPage as unknown as Page<SearchCondition[], WorkCardItem>
+    return resultPage as unknown as Page<WorkCardItem>
   }
-  return new Page<SearchCondition[], WorkCardItem>()
+  return new Page<WorkCardItem>()
 }
 
 // 点击选择面板的取消按钮

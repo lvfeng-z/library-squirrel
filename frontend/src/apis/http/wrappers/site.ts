@@ -59,16 +59,16 @@ export async function siteUpdateById(site: {
   return result
 }
 
-export async function siteQueryPage(page: Page<SiteDTO, SiteQueryDTO>): Promise<ApiResponse<Page<SiteDTO, SiteQueryDTO> | null>> {
-  const result = await SiteHandler.QueryPage(page)
+export async function siteQueryPage(page: Page<SiteDTO>, query: SiteQueryDTO): Promise<ApiResponse<Page<SiteDTO> | null>> {
+  const result = await SiteHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
   return result
 }
 
-export async function siteQuerySelectItemPage(page: Page<SelectItem, SiteQueryDTO>): Promise<ApiResponse<Page<SelectItem, SiteQueryDTO> | null>> {
-  const result = await SiteHandler.QuerySelectItemPage(page)
+export async function siteQuerySelectItemPage(page: Page<SelectItem>, query: SiteQueryDTO): Promise<ApiResponse<Page<SelectItem> | null>> {
+  const result = await SiteHandler.QuerySelectItemPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

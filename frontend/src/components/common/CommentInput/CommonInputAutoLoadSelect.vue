@@ -26,7 +26,7 @@ const input = ref()
 function focus() {
   input.value.focus()
 }
-function load(page: IPage<unknown, SelectItem>, input: string) {
+function load(page: IPage<SelectItem>, input: string) {
   assertNotNullish(props.config.remotePageMethod)
   return props.config.remotePageMethod(page, input)
 }

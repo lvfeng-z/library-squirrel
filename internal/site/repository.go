@@ -29,7 +29,7 @@ func (r *SiteRepository) GORM() *gorm.DB {
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
+func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error) {
 	var results []*dto.SelectItem
 
 	rawPage, err := r.Page(ctx, opt)
@@ -50,5 +50,5 @@ func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.
 		})
 	}
 
-	return model.NewPage[dto.SelectItem, SiteQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

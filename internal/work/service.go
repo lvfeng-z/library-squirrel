@@ -8,7 +8,7 @@ import (
 	"github.com/library-squirrel/wails/pkg/model"
 	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
-	"github.com/library-squirrel/wails/pkg/query"
+	querypkg "github.com/library-squirrel/wails/pkg/query"
 )
 
 // ========== 外部模块接口定义（由 work 模块定义自己需要的接口）==========
@@ -86,7 +86,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity2.Work, error)
 	// ListByIds 根据ID列表批量查询
@@ -198,9 +198,9 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Work, WorkQueryDTO]) (*model.Page[entity2.Work, any], error) {
-	conv := query.NewConverter(entity2.Work{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Work], query WorkQueryDTO) (*model.Page[entity2.Work], error) {
+	conv := querypkg.NewConverter(entity2.Work{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}

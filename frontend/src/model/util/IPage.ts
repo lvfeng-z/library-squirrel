@@ -1,4 +1,4 @@
-export default interface IPage<Data, Query> {
+export default interface IPage<Data> {
   /**
    * 当前页码
    */
@@ -19,10 +19,6 @@ export default interface IPage<Data, Query> {
    * 本页数据量
    */
   currentCount: number
-  /**
-   * 查询条件
-   */
-  query?: Query
   /**
    * 数据
    */

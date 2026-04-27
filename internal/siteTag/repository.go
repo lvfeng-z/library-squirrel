@@ -97,7 +97,7 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO], error) {
 	var results []*dto2.SiteTagFullDTO
 	var total int64
 
@@ -161,11 +161,11 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database
 		results = append(results, dto)
 	}
 
-	return model.NewPage[dto2.SiteTagFullDTO, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SiteTagFullDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error) {
 	var results []*dto2.SiteTagLocalRelateDTO
 	var total int64
 
@@ -234,11 +234,11 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 		results = append(results, dto)
 	}
 
-	return model.NewPage[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SiteTagLocalRelateDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem], error) {
 	var results []*dto2.SelectItem
 	var total int64
 
@@ -304,5 +304,5 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt
 		results = append(results, item)
 	}
 
-	return model.NewPage[dto2.SelectItem, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SelectItem](results, total, opt.Page, opt.PageSize), nil
 }

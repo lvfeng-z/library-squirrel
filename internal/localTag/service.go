@@ -10,7 +10,7 @@ import (
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	domain "github.com/library-squirrel/wails/pkg/model/entity"
-	"github.com/library-squirrel/wails/pkg/query"
+	querypkg "github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -33,7 +33,7 @@ type Repository interface {
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag], error)
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// SelectTreeNode 递归查询子标签
@@ -45,13 +45,13 @@ type Repository interface {
 	// ListSelectItems 查询选择项列表
 	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem], error)
 	// QueryPageByWorkId 根据作品ID分页查询
-	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error)
+	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem], error)
 	// QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-	QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error)
+	QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO], error)
 }
 
 // Service 本地标签服务
@@ -174,9 +174,9 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalTag, LocalTagQueryDTO]) (*model.Page[domain.LocalTag, any], error) {
-	conv := query.NewConverter(domain.LocalTag{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalTag], query LocalTagQueryDTO) (*model.Page[domain.LocalTag], error) {
+	conv := querypkg.NewConverter(domain.LocalTag{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Loc
 
 // ListSelectItems 查询选择项列表（基于 QueryDTO）
 func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*dto.SelectItem, error) {
-	conv := query.NewConverter(domain.LocalTag{})
+	conv := querypkg.NewConverter(domain.LocalTag{})
 	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
 		return nil, err
@@ -228,9 +228,9 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO], secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
-	conv := query.NewConverter(domain.LocalTag{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) (*model.Page[dto.SelectItem], error) {
+	conv := querypkg.NewConverter(domain.LocalTag{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -238,19 +238,18 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (s *Service) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (s *Service) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag], error) {
 	return s.repo.QueryPageByWorkId(ctx, opt, workId)
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO]) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
-	if page.Query.WorkId.Value == nil {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO) (*model.Page[dto.SelectItem], error) {
+	if query.WorkId.Value == nil {
 		return nil, errors.New("workId is required")
 	}
-	workId := *page.Query.WorkId.Value // 从 Query 中获取 workId
+	workId := *query.WorkId.Value
 	opt := &database.PageOption{
 		QueryOption: database.QueryOption{
-			// Conditions 和 OrderBy 从 Query 构建，但这里简化，直接使用空
 		},
 		Page:     page.PageNumber,
 		PageSize: page.PageSize,
@@ -259,10 +258,10 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
-	conv := query.NewConverter(domain.LocalTag{})
+func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) (*model.Page[dto.LocalTagWithBaseTagDTO], error) {
+	conv := querypkg.NewConverter(domain.LocalTag{})
 	alias := "local_tag"
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, &alias)
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, &alias)
 	if err != nil {
 		return nil, err
 	}

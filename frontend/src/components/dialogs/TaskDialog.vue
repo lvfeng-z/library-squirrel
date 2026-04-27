@@ -153,7 +153,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
 // 任务查询的参数
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 // 任务SearchTable的分页
-const page: Ref<Page<TaskQueryDTO, Task>> = ref(new Page<TaskQueryDTO, Task>())
+const page: Ref<Page<Task>> = ref(new Page<Task>())
 // 改变的行数据
 const changedRows: Ref<object[]> = ref([])
 // 是否正在刷新数据
@@ -166,18 +166,16 @@ let parentCache: TaskTreeDTO | undefined = undefined
 
 // 方法
 // 分页查询子任务的函数
-async function taskQueryChildrenTaskPage(page: Page<TaskQueryDTO, object>): Promise<Page<TaskQueryDTO, object> | undefined> {
-  if (isNullish(page.query)) {
-    page.query = new TaskQueryDTO()
-  }
+async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<object> | undefined> {
+  const query = new TaskQueryDTO()
   const pid = formData.value.id
   if (isNullish(pid)) {
     return undefined
   }
-  page.query.pid = pid
-  const response = await apis.taskQueryChildrenTaskPage(pid, page.pageNumber, page.pageSize, page.query as Record<string, unknown>)
+  query.pid = pid
+  const response = await apis.taskQueryChildrenTaskPage(pid, page.pageNumber, page.pageSize, query as Record<string, unknown>)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data(response) as Page<TaskQueryDTO, object>
+    return ApiUtil.data(response) as Page<object>
   } else {
     ApiUtil.msg(response)
     return undefined

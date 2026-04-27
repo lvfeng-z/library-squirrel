@@ -27,12 +27,9 @@ import { siteApi } from '@renderer/apis/http'
 
 // onMounted
 onMounted(() => {
-  if (isNullish(page.value.query)) {
-    page.value.query = new LocalAuthorQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  localAuthorQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  localAuthorQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   localAuthorSearchTable.value.doSearch()
 })
 
@@ -51,7 +48,9 @@ const localAuthorSearchTable = ref()
 // siteAuthorExchangeBox的组件实例
 const siteAuthorExchangeBox = ref()
 // 本地作者SearchTable的分页
-const page: Ref<Page<LocalAuthorDTO, LocalAuthorQueryDTO>> = ref(new Page<LocalAuthorDTO, LocalAuthorQueryDTO>())
+const page: Ref<Page<LocalAuthorDTO>> = ref(new Page<LocalAuthorDTO>())
+// 本地作者查询参数
+const localAuthorQuery: Ref<LocalAuthorQueryDTO> = ref(new LocalAuthorQueryDTO())
 // 被改变的数据行
 const changedRows: Ref<object[]> = ref([])
 // 被选中的本地作者
@@ -137,12 +136,12 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 
 // 方法
 // 分页查询本地作者的函数
-async function localAuthorQueryPage(
-  page: Page<LocalAuthorQueryDTO, object>
-): Promise<Page<LocalAuthorDTO, LocalAuthorQueryDTO> | undefined> {
-  const response = await apis.localAuthorQueryPage(page)
+async function localAuthorQueryPageFn(
+  page: Page<LocalAuthorDTO>
+): Promise<Page<LocalAuthorDTO> | undefined> {
+  const response = await apis.localAuthorQueryPage(page, localAuthorQuery.value)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<LocalAuthorDTO, LocalAuthorQueryDTO>>(response)
+    return ApiUtil.data<Page<LocalAuthorDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
@@ -244,15 +243,15 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
   siteAuthorExchangeBox.value.refreshData(isUpper)
 }
 // 请求站点作者分页选择列表的函数
-async function requestSiteAuthorSelectItemPage(page: IPage<SiteAuthorQueryDTO, SelectItem>, bounded: boolean) {
+async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded: boolean) {
   // 创建新的 query 对象，避免与并发请求的竞态条件
   const query = new SiteAuthorQueryDTO()
   query.localAuthorId = localAuthorSelected.value.id
   query.boundOnLocalAuthorId = bounded
-  page.query = query
-  const response = await apis.siteAuthorQueryBoundOrUnboundInLocalAuthorPage(lodash.cloneDeep(page))
+  const tempPage = lodash.cloneDeep(page) as Page<SiteAuthorFullDTO>
+  const response = await apis.siteAuthorQueryBoundOrUnboundInLocalAuthorPage(tempPage, query)
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<Page<LocalAuthorQueryDTO, SelectItem>>(response)
+    const newPage = ApiUtil.data<Page<SelectItem>>(response)
     return isNullish(newPage) ? page : newPage
   } else {
     throw new Error()
@@ -274,7 +273,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SiteAuthorQueryDTO, S
             data-key="id"
             :operation-button="operationButton as OperationItem<object>[]"
             :thead="localAuthorThead as Thead<object>[]"
-            :search="localAuthorQueryPage"
+            :search="localAuthorQueryPageFn"
             :multi-select="false"
             :selectable="true"
             @row-button-clicked="handleRowButtonClicked"

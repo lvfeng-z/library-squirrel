@@ -16,9 +16,9 @@ import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 const props = withDefaults(
   defineProps<{
     /** 查询标签选择列表的加载函数 */
-    loadSearchItemPage: (page: IPage<any, SelectItem>, input?: string) => Promise<IPage<any, SelectItem>>
+    loadSearchItemPage: (page: IPage<SelectItem>, input?: string) => Promise<IPage<SelectItem>>
     /** 作品查询函数 */
-    fetchWorkPage: (page: Page<SearchCondition[], WorkCardItem>) => Promise<Page<SearchCondition[], WorkCardItem>>
+    fetchWorkPage: (page: Page<WorkCardItem>, conditions: SearchCondition[]) => Promise<Page<WorkCardItem>>
     /** 可选的搜索条件类型列表 */
     searchTypes?: SearchType[]
     /** 标签颜色解析器 */
@@ -73,7 +73,7 @@ const searchConditionType: Ref<SearchType[]> = defineModel<SearchType[]>('search
 
 // 变量
 const workList: Ref<UnwrapRef<WorkCardItem[]>> = ref([])
-const workPage: Ref<UnwrapRef<Page<SearchCondition[], WorkCardItem>>> = ref(new Page<SearchCondition[], WorkCardItem>())
+const workPage: Ref<UnwrapRef<Page<WorkCardItem>>> = ref(new Page<WorkCardItem>())
 const loadMoreVisible: Ref<UnwrapRef<boolean>> = ref(false)
 const loading: Ref<UnwrapRef<boolean>> = ref(false)
 const searchConditionBar = ref()
@@ -137,7 +137,7 @@ watch(autoLoadInput, () => {
 
 // 方法
 /** 查询标签选择列表 */
-async function querySearchItemPage(page: IPage<any, SelectItem>, input?: string): Promise<IPage<any, SelectItem>> {
+async function querySearchItemPage(page: IPage<SelectItem>, input?: string): Promise<IPage<SelectItem>> {
   return props.loadSearchItemPage(page, input)
 }
 
@@ -175,10 +175,10 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
 }
 
 /** 执行作品查询 */
-async function doFetchWorkPage(page: Page<SearchCondition[], WorkCardItem>): Promise<Page<SearchCondition[], WorkCardItem>> {
-  page.query = await buildSearchConditions()
+async function doFetchWorkPage(page: Page<WorkCardItem>): Promise<Page<WorkCardItem>> {
+  const conditions = await buildSearchConditions()
   page.pageSize = props.workPageSize
-  return props.fetchWorkPage(page)
+  return props.fetchWorkPage(page, conditions)
 }
 
 /** 执行查询（首次查询或重新查询） */
@@ -189,7 +189,7 @@ async function queryWork(reset: boolean = true): Promise<void> {
   try {
     // 重置查询条件
     if (reset) {
-      workPage.value = new Page<SearchCondition[], WorkCardItem>()
+      workPage.value = new Page<WorkCardItem>()
       workList.value = []
     }
 

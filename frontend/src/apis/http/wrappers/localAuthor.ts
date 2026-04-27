@@ -100,8 +100,8 @@ export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalA
   return { success: true, msg: result.msg ?? '', data: toLocalAuthorVO(result.data ?? null) ?? undefined }
 }
 
-export async function localAuthorQueryPage(page: Page<LocalAuthorDTO, LocalAuthorQueryDTO>): Promise<ApiResponse<Page<LocalAuthorDTO, LocalAuthorQueryDTO>>> {
-  const result = await LocalAuthorHandler.QueryPage(page)
+export async function localAuthorQueryPage(page: Page<LocalAuthorDTO>, query: LocalAuthorQueryDTO): Promise<ApiResponse<Page<LocalAuthorDTO>>> {
+  const result = await LocalAuthorHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -129,14 +129,13 @@ export async function localAuthorQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem, LocalAuthorQueryDTO>>> {
+}): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new LocalAuthorQueryDTO({})
-  const page = new Page<SelectItem, LocalAuthorQueryDTO>({
+  const page = new Page<SelectItem>({
     pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
+    pageSize: query.pageSize
   })
-  const result = await LocalAuthorHandler.QuerySelectItemPage(page)
+  const result = await LocalAuthorHandler.QuerySelectItemPage(page, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

@@ -20,7 +20,7 @@ interface SiteBrowserItem {
 const siteBrowserList = ref<SiteBrowserItem[]>([])
 
 // 分页参数
-const page = ref<UnwrapRef<Page<object, SiteBrowserItem>>>(new Page<object, SiteBrowserItem>())
+const page = ref<UnwrapRef<Page<SiteBrowserItem>>>(new Page<SiteBrowserItem>())
 
 // 插槽存储
 const slotStore = useSlotRegistryStore()
@@ -64,7 +64,7 @@ async function querySiteBrowserList() {
   page.value.pageSize = 100 // 获取所有数据
   const response = await siteBrowserQueryPage({ pageNumber: page.value.pageNumber, pageSize: page.value.pageSize })
   if (ApiUtil.check(response)) {
-    const resultPage = ApiUtil.data<Page<object, SiteBrowserItem>>(response)
+    const resultPage = ApiUtil.data<Page<SiteBrowserItem>>(response)
     if (resultPage?.data) {
       siteBrowserList.value = resultPage.data
     }

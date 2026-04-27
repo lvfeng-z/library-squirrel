@@ -148,7 +148,7 @@ func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.E
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem], error) {
 	rawPage, err := r.BaseRepository.Page(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -172,11 +172,11 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *datab
 		results = append(results, item)
 	}
 
-	return model.NewPage[dto.SelectItem, LocalTagQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag], error) {
 	// 添加 JOIN 和条件
 	opt.Joins = []clause.Expression{clause.Join{Type: clause.InnerJoin, Table: clause.Table{Name: "re_work_tag"}, ON: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "local_tag.id = re_work_tag.local_tag_id"}}}}}
 	opt.Conditions = append(opt.Conditions, clause.Eq{Column: "re_work_tag.work_id", Value: workId})
@@ -187,11 +187,11 @@ func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *databas
 	}
 
 	// 转换类型参数（保持兼容性）
-	return model.NewPage[domain.LocalTag, LocalTagQueryDTO](rawPage.Data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[domain.LocalTag](rawPage.Data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem], error) {
 	pageResult, err := r.QueryPageByWorkId(ctx, opt, workId)
 	if err != nil {
 		return nil, err
@@ -209,11 +209,11 @@ func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, op
 			Label: label,
 		}
 	}
-	return model.NewPage[dto.SelectItem, LocalTagQueryDTO](items, pageResult.DataCount, pageResult.PageNumber, pageResult.PageSize), nil
+	return model.NewPage[dto.SelectItem](items, pageResult.DataCount, pageResult.PageNumber, pageResult.PageSize), nil
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
+func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO], error) {
 	var results []struct {
 		TagID              int64   `gorm:"column:id"`
 		TagName            *string `gorm:"column:local_tag_name"`
@@ -311,10 +311,10 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 		dtoList[i] = dto.NewLocalTagWithBaseTagDTO(tag, baseTag)
 	}
 
-	return model.NewPage[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO](dtoList, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto.LocalTagWithBaseTagDTO](dtoList, total, opt.Page, opt.PageSize), nil
 }
 
 // Page 分页查询
-func (r *LocalTagRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag, any], error) {
+func (r *LocalTagRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalTag], error) {
 	return r.BaseRepository.Page(ctx, opt)
 }

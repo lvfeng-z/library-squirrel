@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkSetHandler, WorkSetQueryDTO, WorkSetWithCoverResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
+import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/workSet'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
-import {WorkDTO, WorkSetDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {WorkDTO, WorkSetDTO, WorkSetWithCoverResultDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 export interface WorkSetVO {
   id: number
@@ -82,8 +82,8 @@ export async function workSetListWorkSetWithWorkByIds(
 /**
  * 分页查询作品集（带封面）
  */
-export async function workSetQueryPageWithCover(page: Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO, WorkSetQueryDTO>>> {
-  const result = await WorkSetHandler.QueryPageWithCover(page)
+export async function workSetQueryPageWithCover(page: Page<WorkSetWithCoverResultDTO>, query: WorkSetQueryDTO): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO>>> {
+  const result = await WorkSetHandler.QueryPageWithCover(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -104,8 +104,8 @@ export async function workSetGetById(id: number): Promise<ApiResponse<WorkSetVO>
   return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
 }
 
-export async function workSetQueryPage(page: Page<WorkSetDTO, WorkSetQueryDTO>): Promise<ApiResponse<Page<WorkSetDTO, WorkSetQueryDTO>>> {
-  const result = await WorkSetHandler.QueryPage(page)
+export async function workSetQueryPage(page: Page<WorkSetDTO>, query: WorkSetQueryDTO): Promise<ApiResponse<Page<WorkSetDTO>>> {
+  const result = await WorkSetHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

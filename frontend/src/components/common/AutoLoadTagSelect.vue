@@ -14,7 +14,7 @@ import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 // props
 const props = withDefaults(
   defineProps<{
-    load: (page: IPage<any, SelectItem>, input?: string) => Promise<IPage<any, SelectItem>>
+    load: (page: IPage<SelectItem>, input?: string) => Promise<IPage<SelectItem>>
     pageSize?: number
     tagsGap?: string
     maxHeight?: string
@@ -95,7 +95,7 @@ const expand: Ref<boolean> = ref(false)
 
 // 方法
 // 加载分页的函数
-async function innerLoad(page: IPage<any, SegmentedTagItem>): Promise<IPage<any, SegmentedTagItem>> {
+async function innerLoad(page: IPage<SegmentedTagItem>): Promise<IPage<SegmentedTagItem>> {
   page.pageSize = props.pageSize
   const tempPage = lodash.cloneDeep(page)
   return props.load(tempPage, input.value).then((apiRespPage) => {

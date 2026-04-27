@@ -109,8 +109,8 @@ export async function localTagGetById(id: number): Promise<ApiResponse<LocalTagV
  * 分页查询本地标签
  * 直接透传 Page 对象给 binding，不做额外解包
  */
-export async function localTagQueryPage(page: Page<LocalTagDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagDTO, LocalTagQueryDTO>>> {
-  const result = await LocalTagHandler.QueryPage(page)
+export async function localTagQueryPage(page: Page<LocalTagDTO>, query: LocalTagQueryDTO): Promise<ApiResponse<Page<LocalTagDTO>>> {
+  const result = await LocalTagHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -158,14 +158,13 @@ export async function localTagQuerySelectItemPage(query: {
   page: number
   pageSize: number
   query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
+}): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const page = new Page<SelectItem, LocalTagQueryDTO>({
+  const page = new Page<SelectItem>({
     pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
+    pageSize: query.pageSize
   })
-  const result = await LocalTagHandler.QuerySelectItemPage(page, '')
+  const result = await LocalTagHandler.QuerySelectItemPage(page, queryDTO, '')
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -195,14 +194,13 @@ export async function localTagListByWorkId(workId: number): Promise<ApiResponse<
 export async function localTagQuerySelectItemPageByWorkId(
   workId: number,
   query: { page: number; pageSize: number; query?: Record<string, unknown> }
-): Promise<ApiResponse<Page<SelectItem, LocalTagQueryDTO>>> {
+): Promise<ApiResponse<Page<SelectItem>>> {
   const queryDTO = new LocalTagQueryDTO({})
-  const page = new Page<SelectItem, LocalTagQueryDTO>({
+  const page = new Page<SelectItem>({
     pageNumber: query.page,
-    pageSize: query.pageSize,
-    query: queryDTO
+    pageSize: query.pageSize
   })
-  const result = await LocalTagHandler.QuerySelectItemPageByWorkId(page, workId)
+  const result = await LocalTagHandler.QuerySelectItemPageByWorkId(page, queryDTO)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -216,8 +214,8 @@ export async function localTagQuerySelectItemPageByWorkId(
  * 分页查询包含基础标签信息的本地标签
  * 直接透传 Page 对象给 binding，不做额外解包
  */
-export async function localTagQueryWithBaseTagPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>): Promise<ApiResponse<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>>> {
-  const result = await LocalTagHandler.QueryWithBaseTagPage(page)
+export async function localTagQueryWithBaseTagPage(page: Page<LocalTagWithBaseTagDTO>, query: LocalTagQueryDTO): Promise<ApiResponse<Page<LocalTagWithBaseTagDTO>>> {
+  const result = await LocalTagHandler.QueryWithBaseTagPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

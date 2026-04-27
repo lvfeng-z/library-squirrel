@@ -18,7 +18,7 @@ import (
 	"github.com/library-squirrel/wails/pkg/model"
 	domain "github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
-	"github.com/library-squirrel/wails/pkg/query"
+	querypkg "github.com/library-squirrel/wails/pkg/query"
 )
 
 const (
@@ -58,7 +58,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin], error)
 	// CheckInstalled 检查插件是否已安装
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
@@ -108,9 +108,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Plugin, PluginQueryDTO]) (*model.Page[entity2.Plugin, any], error) {
-	conv := query.NewConverter(entity2.Plugin{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Plugin], query PluginQueryDTO) (*model.Page[entity2.Plugin], error) {
+	conv := querypkg.NewConverter(entity2.Plugin{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}

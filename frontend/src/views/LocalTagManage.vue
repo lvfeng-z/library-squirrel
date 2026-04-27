@@ -33,12 +33,9 @@ import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 // onMounted
 onMounted(() => {
-  if (isNullish(page.value.query)) {
-    page.value.query = new LocalTagQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  localTagQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  localTagQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   localTagSearchTable.value.doSearch()
 })
 
@@ -139,7 +136,9 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
 // 本地标签SearchTable的查询参数
 const localTagSearchParams: Ref<LocalTagQueryDTO> = ref(new LocalTagQueryDTO())
 // 本地标签SearchTable的分页
-const page: Ref<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>> = ref(newPage<LocalTagWithBaseTagDTO, LocalTagQueryDTO>())
+const page: Ref<Page<LocalTagWithBaseTagDTO>> = ref(newPage<LocalTagWithBaseTagDTO>())
+// 本地标签查询参数
+const localTagQuery: Ref<LocalTagQueryDTO> = ref(new LocalTagQueryDTO())
 // 本地标签弹窗的mode
 const localTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 本地标签的对话框开关
@@ -155,13 +154,13 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 
 // 方法
 // 分页查询本地标签的函数
-async function localTagQueryPage(page: Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>): Promise<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO> | undefined> {
-  if (notNullish(page.query?.localTagName)) {
-    page.query.localTagName.operator = Operator.OpLike
+async function localTagQueryPageFn(page: Page<LocalTagWithBaseTagDTO>): Promise<Page<LocalTagWithBaseTagDTO> | undefined> {
+  if (notNullish(localTagQuery.value.localTagName)) {
+    localTagQuery.value.localTagName.operator = Operator.OpLike
   }
-  const response = await apis.localTagQueryWithBaseTagPage(page)
+  const response = await apis.localTagQueryWithBaseTagPage(page, localTagQuery.value)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<LocalTagWithBaseTagDTO, LocalTagQueryDTO>>(response)
+    let responsePage = ApiUtil.data<Page<LocalTagWithBaseTagDTO>>(response)
     if (isNullish(responsePage)) {
       return undefined
     }
@@ -264,23 +263,22 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
 }
 // 请求站点标签分页选择列表的函数
 async function requestSiteTagSelectItemPage(
-  page: IPage<SelectItem, SiteTagQueryDTO>,
+  page: IPage<SelectItem>,
   bounded: boolean
-): Promise<IPage<SelectItem, SiteTagQueryDTO>> {
-  const queryPage = copyPage<SiteTagFullDTO, SiteTagQueryDTO>(page)
+): Promise<IPage<SelectItem>> {
+  const queryPage = copyPage<SiteTagFullDTO>(page)
   // 固定参数
   exchangeBoxLowerSearchParams.value.localTagId = new QueryAttribute({ value: localTagSelected.value.id })
   exchangeBoxLowerSearchParams.value.boundOnLocalTagId = new QueryAttribute({ value: bounded })
   // 用户输入的参数
   exchangeBoxLowerSearchParams.value.siteTagName.operator = Operator.OpLike
-  queryPage.query = exchangeBoxLowerSearchParams.value
-  const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage)
+  const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage, exchangeBoxLowerSearchParams.value)
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<IPage<SiteTagFullDTO, SiteTagQueryDTO>>(response)
+    const newPage = ApiUtil.data<IPage<SiteTagFullDTO>>(response)
     if (isNullish(newPage)) {
       throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
     }
-    const result = copyPage<SelectItem, SiteTagQueryDTO>(newPage)
+    const result = copyPage<SelectItem>(newPage)
     result.data = newPage.data.filter(notNullish).map(data => {
       const siteTagName = data.siteTag?.siteTagName
       const baseSiteTagId = data.siteTag?.baseSiteTagId
@@ -314,7 +312,7 @@ async function requestSiteTagSelectItemPage(
             data-key="id"
             :operation-button="operationButton"
             :thead="localTagThead"
-            :search="localTagQueryPage"
+            :search="localTagQueryPageFn"
             :multi-select="false"
             :selectable="true"
             :page-sizes="[10, 20, 50, 100, 1000]"
@@ -350,8 +348,8 @@ async function requestSiteTagSelectItemPage(
             ref="siteTagExchangeBox"
             v-model:upper-search-params="exchangeBoxUpperSearchParams"
             v-model:lower-search-params="exchangeBoxLowerSearchParams"
-            :upper-load="(temp: IPage<SelectItem, SiteTagQueryDTO>) => requestSiteTagSelectItemPage(temp, true)"
-            :lower-load="(temp: IPage<SelectItem, SiteTagQueryDTO>) => requestSiteTagSelectItemPage(temp, false)"
+            :upper-load="(temp: IPage<SelectItem>) => requestSiteTagSelectItemPage(temp, true)"
+            :lower-load="(temp: IPage<SelectItem>) => requestSiteTagSelectItemPage(temp, false)"
             :search-button-disabled="disableExcSearchButton"
             tags-gap="10px"
             @upper-confirm="(upper, lower) => handleExchangeBoxConfirm(true, upper, lower)"

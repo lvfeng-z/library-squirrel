@@ -29,7 +29,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor], error)
 	// ListReWorkAuthor 批量获取作品与作者的关联
 	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error)
 	// ListByWorkId 查询作品的本地作者
@@ -39,7 +39,7 @@ type Repository interface {
 	// ListSelectItems 查询选择项列表
 	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
 }
 
 // Service 本地作者服务
@@ -104,9 +104,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalAuthor, LocalAuthorQueryDTO]) (*model.Page[domain.LocalAuthor, any], error) {
+func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalAuthor], queryDTO LocalAuthorQueryDTO) (*model.Page[domain.LocalAuthor], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+	opt, err := conv.ToPageOption(queryDTO, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,9 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQuery
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, LocalAuthorQueryDTO]) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], queryDTO LocalAuthorQueryDTO) (*model.Page[dto.SelectItem], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+	opt, err := conv.ToPageOption(queryDTO, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}

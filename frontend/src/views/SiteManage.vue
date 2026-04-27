@@ -18,12 +18,9 @@ import {SiteDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto
 
 // onMounted
 onMounted(() => {
-  if (isNullish(sitePage.value.query)) {
-    sitePage.value.query = new SiteQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  sitePage.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  sitePage.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  siteQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  siteQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteSearchTable.value.doSearch()
 })
 
@@ -38,7 +35,9 @@ const siteSearchTable = ref()
 // 是否调转站点和域名
 const reversed: Ref<boolean> = ref(false)
 // 站点分页参数
-const sitePage: Ref<Page<SiteDTO, SiteQueryDTO>> = ref(new Page<SiteDTO, SiteQueryDTO>())
+const sitePage: Ref<Page<SiteDTO>> = ref(new Page<SiteDTO>())
+// 站点查询参数
+const siteQuery: Ref<SiteQueryDTO> = ref(new SiteQueryDTO())
 // 站点被修改的行
 const siteChangedRows: Ref<SiteDTO[]> = ref([])
 // 站点操作栏按钮
@@ -130,13 +129,10 @@ const siteDialogData: Ref<UnwrapRef<SiteDTO>> = ref(new SiteDTO())
 
 // 方法
 // 分页查询站点
-async function siteQueryPage(page: Page<SiteDTO, SiteQueryDTO>): Promise<Page<SiteDTO, SiteQueryDTO> | undefined> {
-  if (isNullish(page.query)) {
-    page.query = new SiteQueryDTO()
-  }
-  const response = await apis.siteQueryPage(page)
+async function siteQueryPageFn(page: Page<SiteDTO>): Promise<Page<SiteDTO> | undefined> {
+  const response = await apis.siteQueryPage(page, siteQuery.value)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<SiteDTO, SiteQueryDTO>>(response)
+    return ApiUtil.data<Page<SiteDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
@@ -209,7 +205,7 @@ function handleSiteDialogRequestSuccess() {
           :operation-button="siteOperationButton"
           :operation-width="140"
           :thead="siteThead"
-          :search="siteQueryPage"
+          :search="siteQueryPageFn"
           :selectable="true"
           :multi-select="reversed"
           :page-sizes="[10, 20, 50, 100]"

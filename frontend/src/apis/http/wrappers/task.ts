@@ -64,8 +64,8 @@ export async function taskGetById(id: number): Promise<ApiResponse<TaskVO>> {
   return { success: true, msg: result.msg ?? '', data: toTaskVO(result.data ?? null) ?? undefined }
 }
 
-export async function taskQueryPage(page: Page<TaskResultDTO, TaskQueryDTO>): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
-  const result = await TaskHandler.QueryPage(page)
+export async function taskQueryPage(page: Page<TaskResultDTO>, query: TaskQueryDTO): Promise<ApiResponse<Page<TaskResultDTO>>> {
+  const result = await TaskHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -75,8 +75,8 @@ export async function taskQueryPage(page: Page<TaskResultDTO, TaskQueryDTO>): Pr
   return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
-export async function taskQueryParentPage(page: Page<TaskResultDTO, TaskQueryDTO>): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
-  const result = await TaskHandler.QueryParentPage(page)
+export async function taskQueryParentPage(page: Page<TaskResultDTO>, query: TaskQueryDTO): Promise<ApiResponse<Page<TaskResultDTO>>> {
+  const result = await TaskHandler.QueryParentPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -199,12 +199,12 @@ export async function taskQueryChildrenTaskPage(
   pageNumber: number,
   pageSize: number,
   _query?: Record<string, unknown>
-): Promise<ApiResponse<Page<TaskResultDTO, TaskQueryDTO>>> {
-  const page = new Page<TaskResultDTO, TaskQueryDTO>({
+): Promise<ApiResponse<Page<TaskResultDTO>>> {
+  const page = new Page<TaskResultDTO>({
     pageNumber: pageNumber,
     pageSize: pageSize
   })
-  const result = await TaskHandler.QueryChildrenTaskPage(pid, page)
+  const result = await TaskHandler.QueryChildrenTaskPage(pid, page, new TaskQueryDTO({}))
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

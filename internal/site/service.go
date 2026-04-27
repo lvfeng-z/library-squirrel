@@ -8,7 +8,7 @@ import (
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	domain "github.com/library-squirrel/wails/pkg/model/entity"
-	"github.com/library-squirrel/wails/pkg/query"
+	querypkg "github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -30,9 +30,9 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site], error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, SiteQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
 }
 
 // Service 站点服务
@@ -91,9 +91,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[domain.Site, SiteQueryDTO]) (*model.Page[domain.Site, any], error) {
-	conv := query.NewConverter(domain.Site{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) Page(ctx context.Context, page *model.Page[domain.Site], query SiteQueryDTO) (*model.Page[domain.Site], error) {
+	conv := querypkg.NewConverter(domain.Site{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +101,9 @@ func (s *Service) Page(ctx context.Context, page *model.Page[domain.Site, SiteQu
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, SiteQueryDTO]) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
-	conv := query.NewConverter(domain.Site{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query SiteQueryDTO) (*model.Page[dto.SelectItem], error) {
+	conv := querypkg.NewConverter(domain.Site{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}

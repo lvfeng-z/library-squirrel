@@ -69,8 +69,8 @@ export async function pluginGetByPublicId(publicId: string): Promise<ApiResponse
   return { success: true, msg: result.msg ?? '', data: toPluginVO(result.data ?? null) ?? undefined }
 }
 
-export async function pluginQueryPage(page: Page<PluginDTO, PluginQueryDTO>): Promise<ApiResponse<Page<PluginDTO, PluginQueryDTO>>> {
-  const result = await PluginHandler.Page(page)
+export async function pluginQueryPage(page: Page<PluginDTO>, query: PluginQueryDTO): Promise<ApiResponse<Page<PluginDTO>>> {
+  const result = await PluginHandler.Page(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

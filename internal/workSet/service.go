@@ -8,7 +8,7 @@ import (
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/pkg/model"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
-	"github.com/library-squirrel/wails/pkg/query"
+	querypkg "github.com/library-squirrel/wails/pkg/query"
 
 	"gorm.io/gorm/clause"
 )
@@ -30,7 +30,7 @@ type Repository interface {
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
-	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet, any], error)
+	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet], error)
 	// GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
 	// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
@@ -123,9 +123,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[entity2.WorkSet, WorkSetQueryDTO]) (*model.Page[entity2.WorkSet, any], error) {
-	conv := query.NewConverter(entity2.WorkSet{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) Page(ctx context.Context, page *model.Page[entity2.WorkSet], query WorkSetQueryDTO) (*model.Page[entity2.WorkSet], error) {
+	conv := querypkg.NewConverter(entity2.WorkSet{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -283,9 +283,9 @@ type WorkSetWithCoverDTO struct {
 }
 
 // QueryPageWithCover 带封面的作品集分页查询
-func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO]) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
-	conv := query.NewConverter(entity2.WorkSet{})
-	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
+func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverDTO], query WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO], error) {
+	conv := querypkg.NewConverter(entity2.WorkSet{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 	}
 
 	if len(pageResult.Data) == 0 {
-		return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO]([]*WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
+		return model.NewPage[WorkSetWithCoverDTO]([]*WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
 	}
 
 	// 构建结果
@@ -325,7 +325,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 		result = append(result, dto)
 	}
 
-	return model.NewPage[WorkSetWithCoverDTO, WorkSetQueryDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
+	return model.NewPage[WorkSetWithCoverDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
 }
 
 // ErrWorkSetIdRequired 错误定义

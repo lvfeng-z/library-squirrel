@@ -89,25 +89,24 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteDTO, SiteQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteDTO, SiteQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteDTO], query SiteQueryDTO) *model.ApiResponse[*model.Page[dto.SiteDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteDTO, SiteQueryDTO]{}
+		page = &model.Page[dto.SiteDTO]{}
 	}
-	entityPage := &model.Page[domain.Site, SiteQueryDTO]{
+	entityPage := &model.Page[domain.Site]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteDTO, SiteQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*dto.SiteDTO, 0, len(result.Data))
 	for _, site := range result.Data {
 		data = append(data, dto.NewSiteDTO(site))
 	}
-	return model.Success(&model.Page[dto.SiteDTO, SiteQueryDTO]{
+	return model.Success(&model.Page[dto.SiteDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -118,13 +117,13 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteDTO, S
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, SiteQueryDTO]) *model.ApiResponse[*model.Page[dto.SelectItem, SiteQueryDTO]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query SiteQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[dto.SelectItem, SiteQueryDTO]{}
+		page = &model.Page[dto.SelectItem]{}
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, page)
+	result, err := h.svc.QuerySelectItemPage(ctx, page, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem, SiteQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem]](err.Error())
 	}
 	return model.Success(result)
 }

@@ -152,25 +152,24 @@ func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.Api
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO, PluginQueryDTO]) *model.ApiResponse[*model.Page[domain.PluginDTO, PluginQueryDTO]] {
+func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO], query PluginQueryDTO) *model.ApiResponse[*model.Page[domain.PluginDTO]] {
 	if page == nil {
-		page = &model.Page[domain.PluginDTO, PluginQueryDTO]{}
+		page = &model.Page[domain.PluginDTO]{}
 	}
-	entityPage := &model.Page[entity.Plugin, PluginQueryDTO]{
+	entityPage := &model.Page[entity.Plugin]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[domain.PluginDTO, PluginQueryDTO]](err.Error())
+		return model.Error[*model.Page[domain.PluginDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*domain.PluginDTO, 0, len(result.Data))
 	for _, plugin := range result.Data {
 		data = append(data, domain.NewPluginDTO(plugin))
 	}
-	return model.Success(&model.Page[domain.PluginDTO, PluginQueryDTO]{
+	return model.Success(&model.Page[domain.PluginDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

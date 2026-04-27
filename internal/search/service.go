@@ -72,7 +72,7 @@ func NewService(
 }
 
 // QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
-func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *dto2.SearchConditionQuery) (*model.Page[dto2.SelectItem, dto2.SearchConditionQuery], error) {
+func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *dto2.SearchConditionQuery) (*model.Page[dto2.SelectItem], error) {
 	if query == nil {
 		query = &dto2.SearchConditionQuery{}
 	}
@@ -80,11 +80,11 @@ func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize i
 	if err != nil {
 		return nil, fmt.Errorf("query search condition page error: %w", err)
 	}
-	return model.NewPage[dto2.SelectItem, dto2.SearchConditionQuery](items, total, page, pageSize), nil
+	return model.NewPage[dto2.SelectItem](items, total, page, pageSize), nil
 }
 
 // QueryWorkPage 查询作品分页
-func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) (*model.Page[dto2.WorkFullDTO, dto2.SearchCondition], error) {
+func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) (*model.Page[dto2.WorkFullDTO], error) {
 	items, total, err := s.repo.QueryWorkPage(ctx, page, pageSize, conditions)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditi
 		}()
 	}
 
-	return model.NewPage[dto2.WorkFullDTO, dto2.SearchCondition](items, total, page, pageSize), nil
+	return model.NewPage[dto2.WorkFullDTO](items, total, page, pageSize), nil
 }
 
 // extractUsedConditions 从搜索条件中提取需要更新lastUse的ID
@@ -119,12 +119,12 @@ func extractUsedConditions(conditions []*dto2.SearchCondition) map[dto2.SearchTy
 }
 
 // QueryWorkSetPage 查询作品集分页
-func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) (*model.Page[dto2.SelectItem, WorkSetQueryDTO], error) {
+func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) (*model.Page[dto2.SelectItem], error) {
 	items, total, err := s.repo.QueryWorkSetPage(ctx, page, pageSize, keyword, siteId)
 	if err != nil {
 		return nil, err
 	}
-	return model.NewPage[dto2.SelectItem, WorkSetQueryDTO](items, total, page, pageSize), nil
+	return model.NewPage[dto2.SelectItem](items, total, page, pageSize), nil
 }
 
 // UpdateLastUsed 更新搜索条件最后使用时间

@@ -82,7 +82,7 @@ func (r *SiteAuthorRepository) Delete(ctx context.Context, id int64) error {
 }
 
 // Page 分页查询
-func (r *SiteAuthorRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO], error) {
+func (r *SiteAuthorRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.SiteAuthor], error) {
 	page := opt.Page
 	pageSize := opt.PageSize
 
@@ -114,7 +114,7 @@ func (r *SiteAuthorRepository) Page(ctx context.Context, opt *database.PageOptio
 		return nil, err
 	}
 
-	return model.NewPage[entity2.SiteAuthor, SiteAuthorQueryDTO](list, total, page, pageSize), nil
+	return model.NewPage[entity2.SiteAuthor](list, total, page, pageSize), nil
 }
 
 // ListByWorkId 查询作品的站点作者
@@ -217,7 +217,7 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, opt *database.PageOption, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
+func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, opt *database.PageOption, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO], error) {
 	var results []*dto.SiteAuthorFullDTO
 	var total int64
 
@@ -285,11 +285,11 @@ func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 		results = append(results, resultDTO)
 	}
 
-	return model.NewPage[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto.SiteAuthorFullDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
+func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
 	var results []*dto.SiteAuthorLocalRelateDTO
 	var total int64
 
@@ -351,7 +351,7 @@ func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, opt 
 		results = append(results, resultDTO)
 	}
 
-	return model.NewPage[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto.SiteAuthorLocalRelateDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // GetLocalAuthorByName 根据作者名称查询本地作者

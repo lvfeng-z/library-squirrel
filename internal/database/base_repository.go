@@ -259,7 +259,7 @@ func (r *BaseRepository[T]) Count(ctx context.Context, opt *QueryOption) (int64,
 }
 
 // Page 分页查询
-func (r *BaseRepository[T]) Page(ctx context.Context, opt *PageOption) (*model.Page[T, any], error) {
+func (r *BaseRepository[T]) Page(ctx context.Context, opt *PageOption) (*model.Page[T], error) {
 	page := opt.Page
 	pageSize := opt.PageSize
 
@@ -291,7 +291,7 @@ func (r *BaseRepository[T]) Page(ctx context.Context, opt *PageOption) (*model.P
 		return nil, err
 	}
 
-	return model.NewPage[T, any](list, total, page, pageSize), nil
+	return model.NewPage[T](list, total, page, pageSize), nil
 }
 
 // GetDB 获取底层 GORM DB 实例（供特殊查询使用）

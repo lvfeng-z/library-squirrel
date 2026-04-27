@@ -17,34 +17,30 @@ import * as model$0 from "../../pkg/model/models.js";
 // @ts-ignore: Unused imports
 import * as dto$0 from "../../pkg/model/dto/models.js";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as $models from "./models.js";
-
 /**
  * QuerySearchConditionPage 查询搜索条件分页
  */
-export function QuerySearchConditionPage(page: number, pageSize: number, query: dto$0.SearchConditionQuery | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem, dto$0.SearchConditionQuery> | null> | null> {
+export function QuerySearchConditionPage(page: number, pageSize: number, query: dto$0.SearchConditionQuery | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
     return $Call.ByID(2143692531, page, pageSize, query).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType4($result);
     });
 }
 
 /**
  * QueryWorkPage 查询作品分页
  */
-export function QueryWorkPage(page: model$0.Page<dto$0.SearchCondition, dto$0.SearchCondition> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkFullDTO, dto$0.SearchCondition> | null> | null> {
-    return $Call.ByID(1330918209, page).then(($result: any) => {
-        return $$createType11($result);
+export function QueryWorkPage(pageNumber: number, pageSize: number, conditions: (dto$0.SearchCondition | null)[]): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkFullDTO> | null> | null> {
+    return $Call.ByID(1330918209, pageNumber, pageSize, conditions).then(($result: any) => {
+        return $$createType9($result);
     });
 }
 
 /**
  * QueryWorkSetPage 查询作品集分页
  */
-export function QueryWorkSetPage(page: model$0.Page<dto$0.SelectItem, $models.WorkSetQueryDTO> | null, keyword: string, siteId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem, $models.WorkSetQueryDTO> | null> | null> {
-    return $Call.ByID(1971800641, page, keyword, siteId).then(($result: any) => {
-        return $$createType16($result);
+export function QueryWorkSetPage(pageNumber: number, pageSize: number, keyword: string, siteId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
+    return $Call.ByID(1971800641, pageNumber, pageSize, keyword, siteId).then(($result: any) => {
+        return $$createType4($result);
     });
 }
 
@@ -53,27 +49,20 @@ export function QueryWorkSetPage(page: model$0.Page<dto$0.SelectItem, $models.Wo
  */
 export function UpdateLastUsed(used: { [_ in dto$0.SearchType]?: number[] }): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(28143837, used).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType11($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = dto$0.SelectItem.createFrom;
-const $$createType1 = dto$0.SearchConditionQuery.createFrom;
-const $$createType2 = model$0.Page.createFrom($$createType0, $$createType1);
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = dto$0.WorkFullDTO.createFrom;
-const $$createType7 = dto$0.SearchCondition.createFrom;
-const $$createType8 = model$0.Page.createFrom($$createType6, $$createType7);
+const $$createType1 = model$0.Page.createFrom($$createType0);
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = model$0.ApiResponse.createFrom($$createType2);
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = dto$0.WorkFullDTO.createFrom;
+const $$createType6 = model$0.Page.createFrom($$createType5);
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
+const $$createType10 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $models.WorkSetQueryDTO.createFrom;
-const $$createType13 = model$0.Page.createFrom($$createType0, $$createType12);
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.ApiResponse.createFrom($$createType14);
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType18 = $Create.Nullable($$createType17);

@@ -41,15 +41,15 @@ const apis = {
   localTagGetById: localTagApi.localTagGetById
 }
 
-// 适配器函数：将 bindings 的 Page<SelectItem, LocalTagQueryDTO> 转换为 IPage
-async function localTagQuerySelectItemPageAdapter(page: IPage<SelectItem, unknown>, input: string): Promise<IPage<SelectItem, unknown>> {
+// 适配器函数：将 bindings 的 Page<SelectItem> 转换为 IPage
+async function localTagQuerySelectItemPageAdapter(page: IPage<SelectItem>, input: string): Promise<IPage<SelectItem>> {
   const response = await localTagApi.localTagQuerySelectItemPage({
     page: page.pageNumber,
     pageSize: page.pageSize,
     query: { localTagName: input }
   })
   if (!response.success || !response.data) {
-    return new Page<SelectItem, unknown>()
+    return new Page<SelectItem>()
   }
   // 将 bindings Page 转换为 IPage
   return {
@@ -58,7 +58,6 @@ async function localTagQuerySelectItemPageAdapter(page: IPage<SelectItem, unknow
     pageCount: response.data.pageCount,
     dataCount: response.data.dataCount,
     currentCount: response.data.currentCount,
-    query: response.data.query,
     data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }

@@ -68,25 +68,24 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.WorkDTO, WorkQueryDTO]) *model.ApiResponse[*model.Page[dto.WorkDTO, WorkQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.WorkDTO], query WorkQueryDTO) *model.ApiResponse[*model.Page[dto.WorkDTO]] {
 	if page == nil {
-		page = &model.Page[dto.WorkDTO, WorkQueryDTO]{}
+		page = &model.Page[dto.WorkDTO]{}
 	}
-	entityPage := &model.Page[entity.Work, WorkQueryDTO]{
+	entityPage := &model.Page[entity.Work]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.WorkDTO, WorkQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.WorkDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto.WorkDTO, 0, len(result.Data))
 	for _, work := range result.Data {
 		data = append(data, dto.NewWorkDTO(work))
 	}
-	return model.Success(&model.Page[dto.WorkDTO, WorkQueryDTO]{
+	return model.Success(&model.Page[dto.WorkDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

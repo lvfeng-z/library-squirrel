@@ -81,7 +81,7 @@ export enum ExtensionType {
 /**
  * Page 分页响应（与渲染进程 IPage 保持一致）
  */
-export class Page<D, Q> {
+export class Page<D> {
     /**
      * 当前页码
      */
@@ -108,17 +108,12 @@ export class Page<D, Q> {
     "currentCount": number;
 
     /**
-     * 查询条件
-     */
-    "query"?: Q;
-
-    /**
      * 数据列表
      */
     "data": (D | null)[];
 
     /** Creates a new Page instance. */
-    constructor($$source: Partial<Page<D, Q>> = {}) {
+    constructor($$source: Partial<Page<D>> = {}) {
         if (!("pageNumber" in $$source)) {
             this["pageNumber"] = 0;
         }
@@ -146,22 +141,18 @@ export class Page<D, Q> {
      * returns a creation function for a concrete instance
      * of the generic class Page.
      */
-    static createFrom<D = any, Q = any>($$createParamD: (source: any) => D, $$createParamQ: (source: any) => Q): ($$source?: any) => Page<D, Q> {
-        const $$createField5_0 = $$createParamQ;
-        const $$createField6_0 = $$createType1($$createParamD, $$createParamQ);
+    static createFrom<D = any>($$createParamD: (source: any) => D): ($$source?: any) => Page<D> {
+        const $$createField5_0 = $$createType1($$createParamD);
         return ($$source: any = {}) => {
             let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-            if ("query" in $$parsedSource) {
-                $$parsedSource["query"] = $$createField5_0($$parsedSource["query"]);
-            }
             if ("data" in $$parsedSource) {
-                $$parsedSource["data"] = $$createField6_0($$parsedSource["data"]);
+                $$parsedSource["data"] = $$createField5_0($$parsedSource["data"]);
             }
-            return new Page<D, Q>($$parsedSource as Partial<Page<D, Q>>);
+            return new Page<D>($$parsedSource as Partial<Page<D>>);
         };
     }
 }
 
 // Private type creation functions
-const $$createType0 = ($$createParamD: any, $$createParamQ: any) => $Create.Nullable($$createParamD);
-const $$createType1 = ($$createParamD: any, $$createParamQ: any) => $Create.Array($$createType0($$createParamD, $$createParamQ));
+const $$createType0 = ($$createParamD: any) => $Create.Nullable($$createParamD);
+const $$createType1 = ($$createParamD: any) => $Create.Array($$createType0($$createParamD));

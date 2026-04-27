@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="Query extends object">
+<script setup lang="ts">
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import { nextTick, Ref, ref, UnwrapRef, watch } from 'vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
@@ -11,7 +11,7 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 // props
 const props = withDefaults(
   defineProps<{
-    load?: (page: IPage<SegmentedTagItem, Query>) => Promise<IPage<SegmentedTagItem, Query>>
+    load?: (page: IPage<SegmentedTagItem>) => Promise<IPage<SegmentedTagItem>>
     tagCloseable?: boolean
     tagsGap?: string
     maxHeight?: string
@@ -25,7 +25,7 @@ const props = withDefaults(
 
 // model
 // 分页参数
-const page = defineModel<IPage<SegmentedTagItem, Query>>('page', { default: new Page<SegmentedTagItem, Query>() })
+const page = defineModel<IPage<SegmentedTagItem>>('page', { default: new Page<SegmentedTagItem>() })
 // 数据列表
 const data = defineModel<SegmentedTagItem[]>('data', { default: [] })
 
@@ -139,7 +139,7 @@ function refreshLoadButton() {
   showLoadButton.value = hasNextPage.value && notFull
 }
 // 包装过的load
-function wrappedLoad(page: IPage<SegmentedTagItem, Query>): Promise<IPage<SegmentedTagItem, Query> | undefined> | undefined {
+function wrappedLoad(page: IPage<SegmentedTagItem>): Promise<IPage<SegmentedTagItem> | undefined> | undefined {
   if (notNullish(props.load)) {
     return props
       .load(page)

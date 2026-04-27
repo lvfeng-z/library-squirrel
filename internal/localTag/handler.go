@@ -61,25 +61,24 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[dto.LocalTagDTO, LocalTagQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDTO], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[dto.LocalTagDTO]] {
 	if page == nil {
-		page = &model.Page[dto.LocalTagDTO, LocalTagQueryDTO]{}
+		page = &model.Page[dto.LocalTagDTO]{}
 	}
-	domainPage := &model.Page[domain.LocalTag, LocalTagQueryDTO]{
+	domainPage := &model.Page[domain.LocalTag]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, domainPage)
+	result, err := h.svc.Page(ctx, domainPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.LocalTagDTO, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.LocalTagDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto.LocalTagDTO, 0, len(result.Data))
 	for _, tag := range result.Data {
 		data = append(data, dto.NewLocalTagDTO(tag))
 	}
-	return model.Success(&model.Page[dto.LocalTagDTO, LocalTagQueryDTO]{
+	return model.Success(&model.Page[dto.LocalTagDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -116,13 +115,17 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDT
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[dto.SelectItem, LocalTagQueryDTO], secondaryLabel string) *model.ApiResponse[*model.Page[dto.SelectItem, LocalTagQueryDTO]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[dto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if reqPage == nil {
-		reqPage = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
+		reqPage = &model.Page[dto.SelectItem]{}
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, reqPage, secondaryLabel)
+	domainPage := &model.Page[dto.SelectItem]{
+		PageNumber: reqPage.PageNumber,
+		PageSize:   reqPage.PageSize,
+	}
+	result, err := h.svc.QuerySelectItemPage(ctx, domainPage, query, secondaryLabel)
 	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem]](err.Error())
 	}
 	return model.Success(result)
 }
@@ -142,13 +145,17 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[dto.SelectItem, LocalTagQueryDTO]] {
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[dto.SelectItem, LocalTagQueryDTO]{}
+		page = &model.Page[dto.SelectItem]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, page)
+	domainPage := &model.Page[dto.SelectItem]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+	}
+	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, domainPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SelectItem]](err.Error())
 	}
 	return model.Success(result)
 }
@@ -162,13 +169,17 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]) *model.ApiResponse[*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]] {
+func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[dto.LocalTagWithBaseTagDTO]] {
 	if page == nil {
-		page = &model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]{}
+		page = &model.Page[dto.LocalTagWithBaseTagDTO]{}
 	}
-	result, err := h.svc.QueryWithBaseTagPage(ctx, page)
+	domainPage := &model.Page[dto.LocalTagWithBaseTagDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+	}
+	result, err := h.svc.QueryWithBaseTagPage(ctx, domainPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.LocalTagWithBaseTagDTO]](err.Error())
 	}
 	return model.Success(result)
 }

@@ -130,55 +130,61 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteAuthorDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteAuthorDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteAuthorDTO], query SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SiteAuthorDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteAuthorDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[dto.SiteAuthorDTO]{}
 	}
-	entityPage := &model.Page[entity2.SiteAuthor, SiteAuthorQueryDTO]{
+	entityPage := &model.Page[entity2.SiteAuthor]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorDTO, SiteAuthorQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteAuthorDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto.SiteAuthorDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, dto.NewSiteAuthorDTO(author))
 	}
-	return model.Success(&model.Page[dto.SiteAuthorDTO, SiteAuthorQueryDTO]{
+	return model.Success(&model.Page[dto.SiteAuthorDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
 		DataCount:    result.DataCount,
 		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
 		Data:         data,
 	})
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO], query SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SiteAuthorFullDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[dto.SiteAuthorFullDTO]{}
 	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPage(ctx, page)
+	entityPage := &model.Page[dto.SiteAuthorFullDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+	}
+	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteAuthorFullDTO]](err.Error())
 	}
 	return model.Success(result)
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]) *model.ApiResponse[*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]] {
+func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO], query SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SiteAuthorLocalRelateDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]{}
+		page = &model.Page[dto.SiteAuthorLocalRelateDTO]{}
 	}
-	result, err := h.svc.QueryLocalRelateDTOPage(ctx, page)
+	entityPage := &model.Page[dto.SiteAuthorLocalRelateDTO]{
+		PageNumber: page.PageNumber,
+		PageSize:   page.PageSize,
+	}
+	result, err := h.svc.QueryLocalRelateDTOPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteAuthorLocalRelateDTO]](err.Error())
 	}
 	return model.Success(result)
 }

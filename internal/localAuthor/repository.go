@@ -153,7 +153,7 @@ func (r *localAuthorRepository) ListSelectItems(ctx context.Context, where claus
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
+func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error) {
 	var results []*dto.SelectItem
 
 	rawPage, err := r.Page(ctx, opt)
@@ -174,5 +174,5 @@ func (r *localAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *da
 		})
 	}
 
-	return model.NewPage[dto.SelectItem, LocalAuthorQueryDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

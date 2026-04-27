@@ -198,45 +198,44 @@ async function updateWorkTags(type: OriginType) {
       currentWorkFullInfo.value.localTags = ApiUtil.data<LocalTag[]>(response)
     }
   } else {
-    const tempSiteTagPage = new Page<SiteTagQueryDTO, SiteTag>()
+    const tempSiteTagPage = new Page<SiteTagFullDTO>()
     const tempSiteTagQuery = new SiteTagQueryDTO()
     tempSiteTagPage.pageSize = 100
     tempSiteTagQuery.workId = currentWorkFullInfo.value.id
     tempSiteTagQuery.boundOnWorkId = true
-    tempSiteTagPage.query = tempSiteTagQuery
-    const response = await apis.siteTagQueryPageByWorkId(tempSiteTagPage)
+    const response = await apis.siteTagQueryPageByWorkId(currentWorkFullInfo.value.id, tempSiteTagPage, tempSiteTagQuery)
     if (ApiUtil.check(response)) {
-      const tempResultPage = ApiUtil.data<Page<SiteTagQueryDTO, SiteTagFullDTO>>(response)
+      const tempResultPage = ApiUtil.data<Page<SiteTagFullDTO>>(response)
       currentWorkFullInfo.value.siteTags = isNullish(tempResultPage?.data) ? [] : tempResultPage.data
     }
   }
 }
 // 请求作品绑定的本地标签接口的函数
-async function requestWorkLocalTagPage(page: IPage<LocalTagQueryDTO, SelectItem>, bounded: boolean) {
-  if (isNullish(page.query)) {
-    page.query = new LocalTagQueryDTO()
-  }
-  page.query.workId = currentWorkFullInfo.value.id
-  page.query.boundOnWorkId = bounded
-  const tempPage = lodash.cloneDeep(page)
-  const response = await apis.localTagQuerySelectItemPageByWorkId(tempPage)
+async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean) {
+  const query = new LocalTagQueryDTO()
+  query.workId = currentWorkFullInfo.value.id
+  query.boundOnWorkId = bounded
+  const response = await apis.localTagQuerySelectItemPageByWorkId(currentWorkFullInfo.value.id, {
+    page: page.pageNumber,
+    pageSize: page.pageSize,
+    query: { workId: query.workId, boundOnWorkId: query.boundOnWorkId }
+  })
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<IPage<LocalTagQueryDTO, SelectItem>>(response)
-    return isNullish(newPage) ? tempPage : newPage
+    const newPage = ApiUtil.data<IPage<SelectItem>>(response)
+    return isNullish(newPage) ? page : newPage
   } else {
     throw new Error()
   }
 }
 // 请求作品绑定的站点标签接口的函数
-async function requestWorkSiteTagPage(page: IPage<SiteTagQueryDTO, SelectItem>, bounded: boolean) {
-  if (isNullish(page.query)) {
-    page.query = new SiteTagQueryDTO()
-  }
-  page.query.workId = currentWorkFullInfo.value.id
-  page.query.boundOnWorkId = bounded
-  const response = await apis.siteTagQuerySelectItemPageByWorkId(lodash.cloneDeep(page))
+async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean) {
+  const query = new SiteTagQueryDTO()
+  query.workId = currentWorkFullInfo.value.id
+  query.boundOnWorkId = bounded
+  const tempPage = lodash.cloneDeep(page)
+  const response = await apis.siteTagQuerySelectItemPageByWorkId(currentWorkFullInfo.value.id, tempPage as Page<SelectItem>, query)
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<IPage<SiteTagQueryDTO, SelectItem>>(response)
+    const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     return isNullish(newPage) ? page : newPage
   } else {
     throw new Error()
@@ -394,8 +393,8 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           v-model:upper-search-params="localTagExchangeUpperSearchParams"
           v-model:lower-search-params="localTagExchangeLowerSearchParams"
           class="work-dialog-tag-exchange-box"
-          :upper-load="(_page: IPage<LocalTagQueryDTO, SelectItem>) => requestWorkLocalTagPage(_page, true)"
-          :lower-load="(_page: IPage<LocalTagQueryDTO, SelectItem>) => requestWorkLocalTagPage(_page, false)"
+          :upper-load="(_page: IPage<SelectItem>) => requestWorkLocalTagPage(_page, true)"
+          :lower-load="(_page: IPage<SelectItem>) => requestWorkLocalTagPage(_page, false)"
           :search-button-disabled="false"
           tags-gap="10px"
           @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower, true)"

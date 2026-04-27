@@ -60,25 +60,24 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]{}
+		page = &model.Page[dto2.WorkSetDTO]{}
 	}
-	entityPage := &model.Page[entity2.WorkSet, WorkSetQueryDTO]{
+	entityPage := &model.Page[entity2.WorkSet]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.Page(ctx, entityPage)
+	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.WorkSetDTO]](err.Error())
 	}
 	// 转换为 DTO
 	data := make([]*dto2.WorkSetDTO, 0, len(result.Data))
 	for _, workSet := range result.Data {
 		data = append(data, dto2.NewWorkSetDTO(workSet))
 	}
-	return model.Success(&model.Page[dto2.WorkSetDTO, WorkSetQueryDTO]{
+	return model.Success(&model.Page[dto2.WorkSetDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -197,18 +196,17 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverResultDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverResultDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]{}
+		page = &model.Page[dto2.WorkSetWithCoverResultDTO]{}
 	}
-	workSetPage := &model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO]{
+	workSetPage := &model.Page[WorkSetWithCoverDTO]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
-		Query:      page.Query,
 	}
-	result, err := h.svc.QueryPageWithCover(ctx, workSetPage)
+	result, err := h.svc.QueryPageWithCover(ctx, workSetPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]](err.Error())
+		return model.Error[*model.Page[dto2.WorkSetWithCoverResultDTO]](err.Error())
 	}
 	// 转换为 ResultDTO
 	data := make([]*dto2.WorkSetWithCoverResultDTO, 0, len(result.Data))
@@ -221,13 +219,12 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[dto2.WorkSetWithCoverResultDTO, WorkSetQueryDTO]{
+	return model.Success(&model.Page[dto2.WorkSetWithCoverResultDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
 		DataCount:    result.DataCount,
 		CurrentCount: result.CurrentCount,
-		Query:        result.Query,
 		Data:         data,
 	})
 }

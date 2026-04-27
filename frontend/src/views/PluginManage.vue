@@ -26,12 +26,9 @@ import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/d
 
 // onMounted
 onMounted(() => {
-  if (isNullish(pluginPage.value.query)) {
-    pluginPage.value.query = new PluginQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  pluginPage.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  pluginPage.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  pluginQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  pluginQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   pluginSearchTable.value.doSearch()
 })
 
@@ -47,7 +44,9 @@ const apis = {
 // 插件数据表组件的实例
 const pluginSearchTable = ref()
 // 插件分页参数
-const pluginPage: Ref<Page<PluginDTO, PluginQueryDTO>> = ref(new Page<PluginDTO, PluginQueryDTO>())
+const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
+// 插件查询参数
+const pluginQuery: Ref<PluginQueryDTO> = ref(new PluginQueryDTO())
 // 插件操作栏按钮
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
@@ -113,10 +112,10 @@ const dialogData: Ref<PluginDTO> = ref(new PluginDTO())
 
 // 方法
 // 分页查询插件
-async function queryPage(page: Page<PluginDTO, PluginQueryDTO>): Promise<Page<PluginDTO, PluginQueryDTO> | undefined> {
-  const response = await apis.pluginQueryPage(page)
+async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO> | undefined> {
+  const response = await apis.pluginQueryPage(page, pluginQuery.value)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<PluginDTO, PluginQueryDTO>>(response)
+    return ApiUtil.data<Page<PluginDTO>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined

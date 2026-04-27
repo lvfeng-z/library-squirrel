@@ -150,8 +150,8 @@ export async function siteAuthorGetById(id: number): Promise<ApiResponse<SiteAut
   return { success: true, msg: result.msg ?? '', data: toSiteAuthorVO(result.data ?? null) ?? undefined }
 }
 
-export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO, SiteAuthorQueryDTO>): Promise<ApiResponse<Page<SiteAuthorDTO, SiteAuthorQueryDTO>>> {
-  const result = await SiteAuthorHandler.QueryPage(page)
+export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorDTO>>> {
+  const result = await SiteAuthorHandler.QueryPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -161,8 +161,8 @@ export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO, SiteAuthorQu
 /**
  * 查询绑定或未绑定到本地作者的站点作者分页
  */
-export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorFullDTO, SiteAuthorQueryDTO>): Promise<ApiResponse<Page<SiteAuthorFullDTO, SiteAuthorQueryDTO>>> {
-  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page)
+export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorFullDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorFullDTO>>> {
+  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }
@@ -175,8 +175,8 @@ export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<
 /**
  * 查询本地关联的站点作者分页
  */
-export async function siteAuthorQueryLocalRelateDTOPage(page: Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>): Promise<ApiResponse<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>>> {
-  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(page)
+export async function siteAuthorQueryLocalRelateDTOPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorLocalRelateDTO>>> {
+  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
   }

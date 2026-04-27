@@ -50,15 +50,10 @@ const apis = {
   taskStartTask: (taskId: number) => taskApi.taskStartTree(taskId),
   taskRetryTask: (taskId: number) => taskApi.taskRetryTree(taskId),
   taskDeleteTask: (id: number) => taskApi.taskDelete(id),
-  taskQueryParentPage: (page: Page<TaskQueryDTO, object>) =>
-    taskApi.taskQueryParentPage({
-      pageNumber: page.pageNumber,
-      pageSize: page.pageSize,
-      query: page.query as Record<string, unknown>
-    }),
-  taskQueryChildrenTaskPage: (page: Page<TaskQueryDTO, object>) => {
-    const query = page.query as Record<string, unknown>
-    return taskApi.taskQueryChildrenTaskPage(query.pid as number, page.pageNumber, page.pageSize, query)
+  taskQueryParentPage: (page: Page<object>, query: TaskQueryDTO) =>
+    taskApi.taskQueryParentPage(page, query),
+  taskQueryChildrenTaskPage: (pid: number, pageNumber: number, pageSize: number, query?: Record<string, unknown>) => {
+    return taskApi.taskQueryChildrenTaskPage(pid, pageNumber, pageSize, query)
   },
   taskPauseTaskTree: (taskId: number) => taskApi.taskPauseTree(taskId),
   taskStopTaskTree: (taskId: number) => taskApi.taskStopTree(taskId),
@@ -177,7 +172,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   })
 ])
 // 任务SearchTable的分页
-const page: Ref<Page<TaskQueryDTO, Task>> = ref(new Page<TaskQueryDTO, Task>())
+const page: Ref<Page<Task>> = ref(new Page<Task>())
 // 任务查询的参数
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 // 改变的行数据
@@ -246,25 +241,23 @@ function handleCreatTaskResponse(response: ApiResponse, notificationId: string) 
   })
 }
 // 分页查询父任务的函数
-async function taskQueryParentPage(page: Page<TaskQueryDTO, object>): Promise<Page<TaskQueryDTO, object> | undefined> {
-  if (isNullish(page.query)) {
-    page.query = new TaskQueryDTO()
-  }
+async function taskQueryParentPage(page: Page<object>): Promise<Page<object> | undefined> {
+  const query = new TaskQueryDTO()
   // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
     const orderField = sort.value.prop as keyof TaskQueryDTO
-    ;(page.query as any)[orderField] = {
+    ;(query as any)[orderField] = {
       value: null,
       order: sort.value.order === 'ascending' ? SortOrder.OrderAsc : SortOrder.OrderDesc,
       priority: -1
     }
   }
   // 设置默认排序（用户选择优先级最高，createTime 次之，updateTime 再次）
-  page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
-  const response = await apis.taskQueryParentPage(page)
+  query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  const response = await apis.taskQueryParentPage(page, query)
   if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<TaskQueryDTO, object>>(response)
+    return ApiUtil.data<Page<object>>(response)
   } else {
     ApiUtil.msg(response)
     return undefined
@@ -272,19 +265,15 @@ async function taskQueryParentPage(page: Page<TaskQueryDTO, object>): Promise<Pa
 }
 // 懒加载处理函数
 async function load(row: unknown): Promise<TaskTreeDTO[]> {
-  // 配置分页参数
-  const pageCondition: Page<TaskQueryDTO, object> = new Page()
-  pageCondition.pageSize = 100
-  pageCondition.pageNumber = 1
-  // 配置查询参数
-  pageCondition.query = { ...new TaskQueryDTO(), ...{ pid: (row as TaskTreeDTO).id } }
+  const pid = (row as TaskTreeDTO).id as number
+  const query = { ...new TaskQueryDTO(), ...{ pid } }
 
-  return apis.taskQueryChildrenTaskPage(pageCondition).then((response: ApiResponse) => {
+  return apis.taskQueryChildrenTaskPage(pid, 1, 100, query as Record<string, unknown>).then((response: ApiResponse) => {
     if (ApiUtil.check(response)) {
-      const page = ApiUtil.data(response) as Page<TaskQueryDTO, object>
-      const data = (page.data === undefined ? [] : page.data) as TaskTreeDTO[]
+      const resultPage = ApiUtil.data(response) as Page<object>
+      const data = (resultPage.data === undefined ? [] : resultPage.data) as TaskTreeDTO[]
       // 子任务列表赋值给对应的父任务的children
-      const parent = dataList.value.find((task) => (row as TaskTreeDTO).id === task.id)
+      const parent = dataList.value.find((task) => pid === task.id)
       if (notNullish(parent)) {
         parent.children = data
       }

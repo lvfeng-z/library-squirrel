@@ -26,12 +26,9 @@ import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
 
 // onMounted
 onMounted(() => {
-  if (isNullish(page.value.query)) {
-    page.value.query = new SiteAuthorQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  siteAuthorQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  siteAuthorQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteAuthorSearchTable.value.doSearch()
 })
 
@@ -177,9 +174,11 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
 // 站点作者SearchTable的查询参数
 const siteAuthorSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者SearchTable的分页
-const page: Ref<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>> = ref(
-  new Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>()
+const page: Ref<Page<SiteAuthorLocalRelateDTO>> = ref(
+  new Page<SiteAuthorLocalRelateDTO>()
 )
+// 站点作者查询参数
+const siteAuthorQuery: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者弹窗的mode
 const siteAuthorDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点作者的对话框开关
@@ -189,12 +188,12 @@ const dialogData: Ref<SiteAuthorLocalRelateDTO> = ref(new SiteAuthorLocalRelateD
 
 // 方法
 // 分页查询站点作者的函数
-async function siteAuthorQueryPage(
-  page: Page<SiteAuthorQueryDTO, object>
-): Promise<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO> | undefined> {
-  const response = await apis.siteAuthorQueryLocalRelateDTOPage(page)
+async function siteAuthorQueryPageFn(
+  page: Page<SiteAuthorLocalRelateDTO>
+): Promise<Page<SiteAuthorLocalRelateDTO> | undefined> {
+  const response = await apis.siteAuthorQueryLocalRelateDTOPage(page, siteAuthorQuery.value)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO>>(response)
+    let responsePage = ApiUtil.data<Page<SiteAuthorLocalRelateDTO>>(response)
     if (isNullish(responsePage)) {
       return undefined
     }
@@ -283,7 +282,7 @@ async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthorDTO) {
           data-key="id"
           :operation-button="operationButton"
           :thead="siteAuthorThead"
-          :search="siteAuthorQueryPage"
+          :search="siteAuthorQueryPageFn"
           :multi-select="true"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100, 1000]"

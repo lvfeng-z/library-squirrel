@@ -27,12 +27,9 @@ import {localTagApi, siteTagApi} from '@renderer/apis/http'
 
 // onMounted
 onMounted(() => {
-  if (isNullish(page.value.query)) {
-    page.value.query = new SiteTagQueryDTO()
-  }
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  page.value.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.value.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  siteTagQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  siteTagQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   siteTagSearchTable.value.doSearch()
 })
 
@@ -183,7 +180,9 @@ const siteTagThead: Ref<Thead<SiteTagLocalRelateDTO>[]> = ref([
 // 站点标签SearchTable的查询参数
 const siteTagSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>>> = ref(new Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>())
+const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO>>> = ref(new Page<SiteTagLocalRelateDTO>())
+// 站点标签查询参数
+const siteTagQuery: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签弹窗的mode
 const siteTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点标签的对话框开关
@@ -201,30 +200,27 @@ const sortPropMap: Record<string, string> = {
 
 // 方法
 // 分页查询站点标签的函数
-async function siteTagQueryPage(
-  page: Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>
-): Promise<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>> {
-  if (isNullish(page.query)) {
-    page.query = new SiteTagQueryDTO()
-  }
-  if (notNullish(page.query.siteTagName.value)) {
-    page.query.siteTagName.operator = Operator.OpLike
+async function siteTagQueryPageFn(
+  page: Page<SiteTagLocalRelateDTO>
+): Promise<Page<SiteTagLocalRelateDTO>> {
+  if (notNullish(siteTagQuery.value.siteTagName.value)) {
+    siteTagQuery.value.siteTagName.operator = Operator.OpLike
   }
   // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
     const orderField = (sortPropMap[sort.value.prop] || sort.value.prop) as keyof SiteTagQueryDTO
-    ;(page.query as any)[orderField] = {
+    ;(siteTagQuery.value as any)[orderField] = {
       value: null,
       order: sort.value.order === 'ascending' ? SortOrder.OrderAsc : SortOrder.OrderDesc,
       priority: -1  // 用户选择优先级最高
     }
   }
   // 设置默认排序（用户选择优先级最高，updateTime 次之，createTime 再次）
-  page.query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  page.query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
-  const response = await apis.siteTagQueryLocalRelateDTOPage(page)
+  siteTagQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  siteTagQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  const response = await apis.siteTagQueryLocalRelateDTOPage(page, siteTagQuery.value)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>>(response)
+    let responsePage = ApiUtil.data<Page<SiteTagLocalRelateDTO>>(response)
     if (isNullish(responsePage)) {
       throw new Error('siteTagQueryLocalRelateDTOPage接口未返回数据')
     }
@@ -322,7 +318,7 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
           data-key="id"
           :operation-button="operationButton"
           :thead="siteTagThead"
-          :search="siteTagQueryPage"
+          :search="siteTagQueryPageFn"
           :multi-select="true"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100, 1000]"
