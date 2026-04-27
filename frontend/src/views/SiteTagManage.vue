@@ -1,28 +1,29 @@
 <script setup lang="ts">
-import { onMounted, Ref, ref, UnwrapRef } from 'vue'
+import {onMounted, Ref, ref, UnwrapRef} from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import SiteTagDialog from '../components/dialogs/SiteTagDialog.vue'
 import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
-import { Thead } from '../model/util/Thead.ts'
+import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import Page from '@renderer/model/util/Page.ts'
-import {isNullish} from '@renderer/utils/CommonUtil.ts'
+import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import {
   LocalTagDTO,
   SelectItem,
-  SiteDTO, SiteTagDTO,
+  SiteDTO,
+  SiteTagDTO,
   SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
-import { localTagQuerySelectItemPageByName } from '@renderer/apis/LocalTagApi.ts'
-import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import { localTagApi, siteTagApi } from '@renderer/apis/http'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
+import {localTagQuerySelectItemPageByName} from '@renderer/apis/LocalTagApi.ts'
+import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
+import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {localTagApi, siteTagApi} from '@renderer/apis/http'
 
 // onMounted
 onMounted(() => {
@@ -203,9 +204,11 @@ const sortPropMap: Record<string, string> = {
 async function siteTagQueryPage(
   page: Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>
 ): Promise<Page<SiteTagLocalRelateDTO, SiteTagQueryDTO>> {
-  // 添加默认排序（按修改时间和创建时间降序，priority 控制排序优先级）
   if (isNullish(page.query)) {
     page.query = new SiteTagQueryDTO()
+  }
+  if (notNullish(page.query.siteTagName.value)) {
+    page.query.siteTagName.operator = Operator.OpLike
   }
   // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
@@ -331,7 +334,7 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
             <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
             <el-row class="site-tag-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteTagSearchParams.siteTagName.value" placeholder="输入标签名称" clearable />
+                <el-input v-model="siteTagSearchParams.siteTagName.value" placeholder="输入标签名称" clearable @clear="() => siteTagSearchParams.siteTagName.value = null" />
               </el-col>
               <el-col :span="4">
                 <auto-load-select

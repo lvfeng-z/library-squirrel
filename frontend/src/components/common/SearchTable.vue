@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="Data extends object, Query">
 import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
-import { ref, toRaw } from 'vue'
+import { ref } from 'vue'
 import OperationItem from '../../model/util/OperationItem'
 import { Thead } from '../../model/util/Thead'
 import DataTableOperationResponse from '../../model/util/DataTableOperationResponse'
@@ -113,14 +113,9 @@ const wrappedLoad = isNullish(props.treeLoad)
 async function doSearch() {
   dataTableRef.value.clearSelection()
   const tempPage = lodash.cloneDeep(page.value)
-  // 配置查询参数
-  tempPage.query = {
-    ...tempPage.query,
-    ...toRaw(toolbarParams.value)
-  } as Query
   const newPage: Page<Data, Query> | undefined = await props.search(tempPage)
   if (notNullish(newPage)) {
-    data.value = newPage.data
+    data.value = newPage.data as Data[]
     page.value.dataCount = newPage.dataCount
   }
   // 刷新子数据
