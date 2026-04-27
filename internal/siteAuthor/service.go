@@ -11,8 +11,6 @@ import (
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 	"github.com/library-squirrel/wails/pkg/query"
-
-	"gorm.io/gorm/clause"
 )
 
 // Repository 站点作者仓储接口（由 service 定义需要的数据库操作方法）
@@ -42,9 +40,9 @@ type Repository interface {
 	// UpdateBindLocalAuthor 绑定本地作者
 	UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) (int64, error)
 	// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-	QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error)
+	QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, opt *database.PageOption, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error)
 	// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-	QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error)
+	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error)
 	// GetLocalAuthorByName 根据作者名称查询本地作者
 	GetLocalAuthorByName(ctx context.Context, authorName string) (*entity2.LocalAuthor, error)
 	// SaveLocalAuthor 保存本地作者
@@ -130,19 +128,10 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.SiteAuthor,
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
 func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO]) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	// 类型断言获取 BoundOnLocalAuthorId 和 LocalAuthorID 的值
 	var boundOnLocalAuthorId *bool
 	if page.Query.BoundOnLocalAuthorId.Value != nil {
 		boundOnLocalAuthorId = page.Query.BoundOnLocalAuthorId.Value
@@ -151,25 +140,17 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 	if page.Query.LocalAuthorID.Value != nil {
 		localAuthorId = page.Query.LocalAuthorID.Value
 	}
-	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, page.PageNumber, page.PageSize, where, order, boundOnLocalAuthorId, localAuthorId)
+	return s.repo.QueryBoundOrUnboundToLocalAuthorPage(ctx, opt, boundOnLocalAuthorId, localAuthorId)
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
 func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO]) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteAuthor{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QueryLocalRelateDTOPage(ctx, page.PageNumber, page.PageSize, where, order)
+	return s.repo.QueryLocalRelateDTOPage(ctx, opt)
 }
 
 // ListByWorkId 查询作品的站点作者

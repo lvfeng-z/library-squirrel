@@ -9,7 +9,6 @@ import (
 	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // SiteRepository 站点仓储实现
@@ -30,17 +29,9 @@ func (r *SiteRepository) GORM() *gorm.DB {
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
+func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
 	var results []*dto.SelectItem
 
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{orderBy},
-		},
-		Page:     page,
-		PageSize: pageSize,
-	}
 	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
 		return nil, err

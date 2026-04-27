@@ -16,8 +16,6 @@ import (
 	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/query"
-
-	"gorm.io/gorm/clause"
 )
 
 // 错误定义
@@ -73,7 +71,7 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task, any], error)
 	// QueryParentPage 分页查询父任务
-	QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error)
+	QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task, any], error)
 	// RefreshTaskStatus 刷新任务状态
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
 	// ListTaskTree 获取任务树列表
@@ -87,7 +85,7 @@ type Repository interface {
 	// ListChildrenTask 查询子任务列表
 	ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.Task, error)
 	// QueryChildrenTaskPage 查询子任务分页
-	QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[entity2.Task, any], error)
+	QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[entity2.Task, any], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
@@ -310,19 +308,11 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Task, TaskQ
 // QueryParentPage 分页查询父任务
 func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity2.Task, TaskQueryDTO]) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QueryParentPage(ctx, page.PageNumber, page.PageSize, where, order)
+	return s.repo.QueryParentPage(ctx, opt)
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -374,21 +364,13 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 // QueryTreeDataPage 查询任务树数据分页
 func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
 
 	// 分页查询父任务（is_collection=1 OR pid IS NULL OR pid=0）
-	resultPage, err := s.repo.QueryParentPage(ctx, page, pageSize, where, order)
+	resultPage, err := s.repo.QueryParentPage(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -462,19 +444,11 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.T
 // QueryChildrenTaskPage 查询子任务分页
 func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[entity2.Task, TaskQueryDTO]) (*model.Page[entity2.Task, any], error) {
 	conv := query.NewConverter(entity2.Task{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QueryChildrenTaskPage(ctx, pid, page.PageNumber, page.PageSize, where, order)
+	return s.repo.QueryChildrenTaskPage(ctx, pid, opt)
 }
 
 // ListSchedule 查询任务进度列表

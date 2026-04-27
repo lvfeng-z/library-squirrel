@@ -230,25 +230,9 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO
 // QuerySelectItemPage 分页查询选择项
 func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, LocalTagQueryDTO], secondaryLabel string) (*model.Page[dto.SelectItem, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
-	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: []clause.Expression{where},
-			OrderBy:    []clause.Expression{order},
-		},
-		Page:     page.PageNumber,
-		PageSize: page.PageSize,
 	}
 	return s.repo.QuerySelectItemPage(ctx, opt, secondaryLabel)
 }
@@ -278,25 +262,9 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO]) (*model.Page[dto.LocalTagWithBaseTagDTO, LocalTagQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalTag{})
 	alias := "local_tag"
-	queryOpt, err := conv.ToQueryOption(page.Query, &alias)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, &alias)
 	if err != nil {
 		return nil, err
-	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: []clause.Expression{where},
-			OrderBy:    []clause.Expression{order},
-		},
-		Page:     page.PageNumber,
-		PageSize: page.PageSize,
 	}
 	return s.repo.QueryWithBaseTagPage(ctx, opt)
 }

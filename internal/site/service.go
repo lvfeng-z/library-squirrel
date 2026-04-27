@@ -32,7 +32,7 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Site, any], error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, page, pageSize int, conditions []clause.Expression, orderBy clause.Expression) (*model.Page[dto.SelectItem, SiteQueryDTO], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem, SiteQueryDTO], error)
 }
 
 // Service 站点服务
@@ -103,19 +103,11 @@ func (s *Service) Page(ctx context.Context, page *model.Page[domain.Site, SiteQu
 // QuerySelectItemPage 分页查询选择项
 func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, SiteQueryDTO]) (*model.Page[dto.SelectItem, SiteQueryDTO], error) {
 	conv := query.NewConverter(domain.Site{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QuerySelectItemPage(ctx, page.PageNumber, page.PageSize, []clause.Expression{where}, order)
+	return s.repo.QuerySelectItemPage(ctx, opt)
 }
 
 // GetByName 根据站点名称获取

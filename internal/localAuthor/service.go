@@ -134,25 +134,9 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQuery
 // QuerySelectItemPage 分页查询选择项
 func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem, LocalAuthorQueryDTO]) (*model.Page[dto.SelectItem, LocalAuthorQueryDTO], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
-	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: []clause.Expression{where},
-			OrderBy:    []clause.Expression{order},
-		},
-		Page:     page.PageNumber,
-		PageSize: page.PageSize,
 	}
 	return s.repo.QuerySelectItemPage(ctx, opt)
 }

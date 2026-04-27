@@ -58,11 +58,11 @@ type Repository interface {
 	// UpdateBindLocalTag 绑定本地标签
 	UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (int64, error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
-	QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error)
+	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error)
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-	QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error)
+	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error)
 }
 
 // Service 站点标签服务
@@ -159,36 +159,27 @@ func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, pageQue
 	var localTagId *int64
 	if queryDTO.LocalTagID.Value != nil {
 		localTagId = queryDTO.LocalTagID.Value
-		// 避免ToQueryOption生成LocalTagID的默认条件
+		// 避免ToPageOption生成LocalTagID的默认条件
 		queryDTO.LocalTagID.Value = nil
 	}
 
-	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
+	opt, err := conv.ToPageOption(queryDTO, pageQuery.PageNumber, pageQuery.PageSize, nil)
 	if err != nil {
 		return nil, err
-	}
-	var where []clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions
-	}
-	var order []clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy
 	}
 
 	// 根据 boundOnLocalTagId 添加 localTagId 的过滤条件
 	if localTagId != nil {
 		if boundOnLocalTagId != nil && *boundOnLocalTagId {
 			// 绑定到指定本地标签
-			where = append(where, clause.Eq{Column: "local_tag_id", Value: *localTagId})
+			opt.Conditions = append(opt.Conditions, clause.Eq{Column: "local_tag_id", Value: *localTagId})
 		} else if boundOnLocalTagId != nil && !*boundOnLocalTagId {
 			// 未绑定到指定本地标签（包括绑定到其他本地标签或从未绑定过本地标签的）
-			where = append(where, clause.Expr{SQL: "(local_tag_id != ? OR local_tag_id IS NULL)", Vars: []any{*localTagId}})
+			opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "(local_tag_id != ? OR local_tag_id IS NULL)", Vars: []any{*localTagId}})
 		}
 	}
-	queryOption := database.QueryOption{Conditions: where, OrderBy: order}
-	pageOption := database.PageOption{PageSize: pageQuery.PageSize, Page: pageQuery.PageNumber, QueryOption: queryOption}
-	rawPage, err := s.repo.Page(ctx, &pageOption)
+
+	rawPage, err := s.repo.Page(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -279,55 +270,31 @@ func unique(ids []int64) []int64 {
 // QueryPageByWorkId 根据作品ID分页查询站点标签
 func (s *Service) QueryPageByWorkId(ctx context.Context, page *model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QueryPageByWorkId(ctx, page.PageNumber, page.PageSize, where, order, workId, boundOnWorkId)
+	return s.repo.QueryPageByWorkId(ctx, opt, workId, boundOnWorkId)
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
 func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QueryLocalRelateDTOPage(ctx, page.PageNumber, page.PageSize, where, order, workId, boundOnWorkId)
+	return s.repo.QueryLocalRelateDTOPage(ctx, opt, workId, boundOnWorkId)
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
 func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto2.SelectItem, SiteTagQueryDTO], workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
 	conv := query.NewConverter(entity2.SiteTag{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
-	return s.repo.QuerySelectItemPageByWorkId(ctx, page.PageNumber, page.PageSize, where, order, workId)
+	return s.repo.QuerySelectItemPageByWorkId(ctx, opt, workId)
 }
 
 // ListByWorkId 查询作品的站点标签

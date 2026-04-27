@@ -285,31 +285,11 @@ type WorkSetWithCoverDTO struct {
 // QueryPageWithCover 带封面的作品集分页查询
 func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO]) (*model.Page[WorkSetWithCoverDTO, WorkSetQueryDTO], error) {
 	conv := query.NewConverter(entity2.WorkSet{})
-	queryOpt, err := conv.ToQueryOption(page.Query, nil)
+	opt, err := conv.ToPageOption(page.Query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	var where clause.Expression
-	if len(queryOpt.Conditions) > 0 {
-		where = queryOpt.Conditions[0]
-	}
-	var order clause.Expression
-	if len(queryOpt.OrderBy) > 0 {
-		order = queryOpt.OrderBy[0]
-	}
 	// 先查询作品集分页
-	var conditions []clause.Expression
-	if where != nil {
-		conditions = []clause.Expression{where}
-	}
-	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conditions,
-			OrderBy:    []clause.Expression{order},
-		},
-		Page:     page.PageNumber,
-		PageSize: page.PageSize,
-	}
 	pageResult, err := s.repo.Page(ctx, opt)
 	if err != nil {
 		return nil, err

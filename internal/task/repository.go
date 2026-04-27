@@ -10,7 +10,6 @@ import (
 	domain "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // TaskRepository 任务仓储实现
@@ -31,18 +30,22 @@ func (r *TaskRepository) GORM() *gorm.DB {
 }
 
 // QueryParentPage 分页查询父任务
-func (r *TaskRepository) QueryParentPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
+func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	// 查询是父任务的或者只有单个任务的
 	query = query.Where("is_collection = 1 OR pid IS NULL OR pid = 0")
 
-	if where != nil {
-		query = query.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			query = query.Clauses(cond)
+		}
 	}
 
-	if order != nil {
-		query = query.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			query = query.Clauses(order)
+		}
 	}
 
 	// 统计总数
@@ -52,13 +55,13 @@ func (r *TaskRepository) QueryParentPage(ctx context.Context, page, pageSize int
 	}
 
 	// 分页
-	offset := (page - 1) * pageSize
+	offset := (opt.Page - 1) * opt.PageSize
 	var tasks []*domain.Task
-	if err := query.Offset(offset).Limit(pageSize).Find(&tasks).Error; err != nil {
+	if err := query.Offset(offset).Limit(opt.PageSize).Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, any](tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, any](tasks, total, opt.Page, opt.PageSize), nil
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -236,15 +239,19 @@ func (r *TaskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[domain.Task, any], error) {
+func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[domain.Task, any], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("pid = ?", pid)
 
-	if where != nil {
-		query = query.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			query = query.Clauses(cond)
+		}
 	}
 
-	if order != nil {
-		query = query.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			query = query.Clauses(order)
+		}
 	}
 
 	// 统计总数
@@ -254,13 +261,13 @@ func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, p
 	}
 
 	// 分页
-	offset := (page - 1) * pageSize
+	offset := (opt.Page - 1) * opt.PageSize
 	var tasks []*domain.Task
-	if err := query.Offset(offset).Limit(pageSize).Find(&tasks).Error; err != nil {
+	if err := query.Offset(offset).Limit(opt.PageSize).Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 
-	return model.NewPage[domain.Task, any](tasks, total, page, pageSize), nil
+	return model.NewPage[domain.Task, any](tasks, total, opt.Page, opt.PageSize), nil
 }
 
 // ListSchedule 查询任务进度列表

@@ -11,7 +11,6 @@ import (
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // SiteAuthorRepository 站点作者仓储实现
@@ -218,7 +217,7 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
+func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, opt *database.PageOption, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO], error) {
 	var results []*dto.SiteAuthorFullDTO
 	var total int64
 
@@ -236,8 +235,10 @@ func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 	}
 
 	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			db = db.Clauses(cond)
+		}
 	}
 
 	// 统计总数
@@ -246,12 +247,14 @@ func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 	}
 
 	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
+	offset := (opt.Page - 1) * opt.PageSize
+	db = db.Offset(offset).Limit(opt.PageSize)
 
 	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			db = db.Clauses(order)
+		}
 	}
 
 	// 执行查询
@@ -282,19 +285,21 @@ func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.
 		results = append(results, resultDTO)
 	}
 
-	return model.NewPage[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto.SiteAuthorFullDTO, SiteAuthorQueryDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
+func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO], error) {
 	var results []*dto.SiteAuthorLocalRelateDTO
 	var total int64
 
 	db := r.GORM().WithContext(ctx).Model(&entity2.SiteAuthor{})
 
 	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			db = db.Clauses(cond)
+		}
 	}
 
 	// 统计总数
@@ -303,12 +308,14 @@ func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page
 	}
 
 	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
+	offset := (opt.Page - 1) * opt.PageSize
+	db = db.Offset(offset).Limit(opt.PageSize)
 
 	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			db = db.Clauses(order)
+		}
 	}
 
 	// 执行查询
@@ -344,7 +351,7 @@ func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, page
 		results = append(results, resultDTO)
 	}
 
-	return model.NewPage[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto.SiteAuthorLocalRelateDTO, SiteAuthorQueryDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // GetLocalAuthorByName 根据作者名称查询本地作者

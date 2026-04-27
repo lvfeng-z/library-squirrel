@@ -11,7 +11,6 @@ import (
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // SiteTagRepository 站点标签仓储实现
@@ -98,7 +97,7 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO, SiteTagQueryDTO], error) {
 	var results []*dto2.SiteTagFullDTO
 	var total int64
 
@@ -112,8 +111,10 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 	}
 
 	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			db = db.Clauses(cond)
+		}
 	}
 
 	// 统计总数
@@ -122,12 +123,14 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 	}
 
 	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
+	offset := (opt.Page - 1) * opt.PageSize
+	db = db.Offset(offset).Limit(opt.PageSize)
 
 	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			db = db.Clauses(order)
+		}
 	}
 
 	// 执行查询
@@ -158,11 +161,11 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, page, pageSiz
 		results = append(results, dto)
 	}
 
-	return model.NewPage[dto2.SiteTagFullDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SiteTagFullDTO, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO], error) {
 	var results []*dto2.SiteTagLocalRelateDTO
 	var total int64
 
@@ -176,8 +179,10 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 	}
 
 	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			db = db.Clauses(cond)
+		}
 	}
 
 	// 统计总数
@@ -186,12 +191,14 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 	}
 
 	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
+	offset := (opt.Page - 1) * opt.PageSize
+	db = db.Offset(offset).Limit(opt.PageSize)
 
 	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			db = db.Clauses(order)
+		}
 	}
 
 	// 执行查询
@@ -227,11 +234,11 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, page, p
 		results = append(results, dto)
 	}
 
-	return model.NewPage[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SiteTagLocalRelateDTO, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, page, pageSize int, where clause.Expression, order clause.Expression, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem, SiteTagQueryDTO], error) {
 	var results []*dto2.SelectItem
 	var total int64
 
@@ -241,8 +248,10 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 	db = db.Where(" EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
 
 	// 应用查询条件
-	if where != nil {
-		db = db.Clauses(where)
+	for _, cond := range opt.Conditions {
+		if cond != nil {
+			db = db.Clauses(cond)
+		}
 	}
 
 	// 统计总数
@@ -251,12 +260,14 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 	}
 
 	// 应用分页
-	offset := (page - 1) * pageSize
-	db = db.Offset(offset).Limit(pageSize)
+	offset := (opt.Page - 1) * opt.PageSize
+	db = db.Offset(offset).Limit(opt.PageSize)
 
 	// 应用排序
-	if order != nil {
-		db = db.Clauses(order)
+	for _, order := range opt.OrderBy {
+		if order != nil {
+			db = db.Clauses(order)
+		}
 	}
 
 	// 执行查询
@@ -293,5 +304,5 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, pag
 		results = append(results, item)
 	}
 
-	return model.NewPage[dto2.SelectItem, SiteTagQueryDTO](results, total, page, pageSize), nil
+	return model.NewPage[dto2.SelectItem, SiteTagQueryDTO](results, total, opt.Page, opt.PageSize), nil
 }
