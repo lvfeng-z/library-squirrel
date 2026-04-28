@@ -55,3 +55,16 @@ func UniqueInt64(ids []int64) []int64 {
 	}
 	return result
 }
+
+// UniqueString 对string的切片进行去重
+func UniqueString(items []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, exists := seen[item]; !exists {
+			seen[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
+}

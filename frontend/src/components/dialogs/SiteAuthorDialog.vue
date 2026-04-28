@@ -7,8 +7,10 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localAuthorApi, siteApi, siteAuthorApi } from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import {SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import Page from '@renderer/model/util/Page.ts'
+import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/internal/site/models"
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import {newPage} from "@renderer/utils/Pager.ts"
 
 // props
 const props = withDefaults(
@@ -47,7 +49,7 @@ async function localAuthorQuerySelectItemPageAdapter(page: IPage<SelectItem>, in
     query: { authorName: input }
   })
   if (!response.success || !response.data) {
-    return new Page<SelectItem>()
+    return newPage<SelectItem>()
   }
   return {
     pageNumber: response.data.pageNumber,
@@ -60,13 +62,10 @@ async function localAuthorQuerySelectItemPageAdapter(page: IPage<SelectItem>, in
 }
 
 async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, _input: string): Promise<IPage<SelectItem>> {
-  // 注意：siteName 过滤在 bindings 中未实现
-  const response = await siteApi.siteQuerySelectItemPage({
-    page: page.pageNumber,
-    pageSize: page.pageSize
-  })
+  const pageArg = new Page<SelectItem>({pageNumber: page.pageNumber, pageSize: page.pageSize})
+  const response = await siteApi.siteQuerySelectItemPage(pageArg, new SiteQueryDTO({}))
   if (!response.success || !response.data) {
-    return new Page<SelectItem>()
+    return newPage<SelectItem>()
   }
   return {
     pageNumber: response.data.pageNumber,
@@ -84,11 +83,13 @@ async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
     if (props.mode === DialogMode.NEW) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteAuthorSave({
-        authorName: tempFormData.authorName ?? undefined,
-        introduce: tempFormData.introduce ?? undefined,
-        siteId: tempFormData.siteId ?? undefined
+      const authorDTO = new SiteAuthorDTO({
+        authorName: tempFormData.siteAuthor?.authorName || null,
+        introduce: tempFormData.siteAuthor?.introduce || null,
+        siteId: tempFormData.siteAuthor?.siteId || null,
+        fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
       })
+      const response = await apis.siteAuthorSave(authorDTO)
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -97,12 +98,15 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteAuthorUpdateById({
-        id: tempFormData.id ?? 0,
-        authorName: tempFormData.authorName ?? undefined,
-        introduce: tempFormData.introduce ?? undefined,
-        localAuthorId: tempFormData.localAuthor?.id ?? undefined
+      const authorDTO = new SiteAuthorDTO({
+        id: tempFormData.siteAuthor?.id,
+        authorName: tempFormData.siteAuthor?.authorName || null,
+        introduce: tempFormData.siteAuthor?.introduce || null,
+        localAuthorId: tempFormData.localAuthor?.id || null,
+        siteId: tempFormData.siteAuthor?.siteId || null,
+        fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
       })
+      const response = await apis.siteAuthorUpdateById(authorDTO)
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false
@@ -119,21 +123,21 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.authorName"></el-input>
+            <el-input v-model="formData.siteAuthor!.authorName"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="固定名称">
-            <el-input v-model="formData.fixedAuthorName"></el-input>
+            <el-input v-model="formData.siteAuthor!.fixedAuthorName"></el-input>
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="介绍">
-            <el-input v-model="formData.introduce" type="textarea" autosize></el-input>
+            <el-input v-model="formData.siteAuthor!.introduce" type="textarea" autosize></el-input>
           </el-form-item>
         </el-col>
       </el-row>
@@ -141,7 +145,7 @@ async function handleSaveButtonClicked() {
         <el-col>
           <el-form-item label="本地作者">
             <auto-load-select
-              v-model="formData.localAuthorId"
+              v-model="formData.siteAuthor!.localAuthorId"
               :load="localAuthorQuerySelectItemPageAdapter"
               remote
               filterable
@@ -151,8 +155,8 @@ async function handleSaveButtonClicked() {
                 <el-option
                   v-if="notNullish(formData.localAuthor)"
                   :hidden="true"
-                  :value="formData.localAuthor.id"
-                  :label="formData.localAuthor.authorName"
+                  :value="formData.localAuthor!.id"
+                  :label="formData.localAuthor!.authorName"
                 ></el-option>
                 <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
               </template>
@@ -163,13 +167,13 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col>
           <el-form-item label="站点">
-            <auto-load-select v-model="formData.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select v-model="formData.siteAuthor!.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.site)"
                   :hidden="true"
-                  :value="formData.site.id"
-                  :label="formData.site.siteName"
+                  :value="formData.site!.id"
+                  :label="formData.site!.siteName"
                 ></el-option>
                 <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
               </template>
@@ -180,12 +184,12 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="formData.siteAuthor!.createTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker v-model="formData.siteAuthor!.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
         </el-col>
       </el-row>

@@ -3,6 +3,7 @@ package localAuthor
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
@@ -100,6 +101,31 @@ func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalAu
 	}
 	return s.repo.List(ctx, &database.QueryOption{
 		Conditions: []clause.Expression{clause.IN{Column: "id", Values: util.ToAnySlice(ids)}},
+	})
+}
+
+// GetByName 根据作者名称查询本地作者
+func (s *Service) GetByName(ctx context.Context, name string) (*domain.LocalAuthor, error) {
+	authors, err := s.repo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.Eq{Column: "author_name", Value: name}},
+		Limit:      1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(authors) == 0 {
+		return nil, fmt.Errorf("local author not found: %s", name)
+	}
+	return authors[0], nil
+}
+
+// GetByNames 根据作者名称列表批量查询本地作者
+func (s *Service) GetByNames(ctx context.Context, names []string) ([]*domain.LocalAuthor, error) {
+	if len(names) == 0 {
+		return make([]*domain.LocalAuthor, 0), nil
+	}
+	return s.repo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "author_name", Values: util.ToAnySlice(names)}},
 	})
 }
 

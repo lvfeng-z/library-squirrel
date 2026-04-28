@@ -1,28 +1,29 @@
 <script setup lang="ts">
-import { onMounted, Ref, ref } from 'vue'
+import {onMounted, Ref, ref} from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
-import { Thead } from '../model/util/Thead.ts'
+import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import Page from '@renderer/model/util/Page.ts'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
+import {isNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
-import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { localAuthorQuerySelectItemPageByName } from '@renderer/apis/LocalAuthorApi.ts'
+import {localAuthorQuerySelectItemPageByName} from '@renderer/apis/LocalAuthorApi.ts'
 import {
   LocalAuthorDTO,
   SelectItem,
   SiteAuthorDTO,
   SiteAuthorLocalRelateDTO, SiteDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import { localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
+import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
+import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {localAuthorApi, siteAuthorApi} from '@renderer/apis/http'
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted
 onMounted(() => {
@@ -71,7 +72,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     type: 'text',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'authorName',
+    key: 'siteAuthor.authorName',
     title: '名称',
     hide: false,
     width: 250,
@@ -83,7 +84,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     type: 'textarea',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'introduce',
+    key: 'siteAuthor.introduce',
     title: '介绍',
     hide: false,
     width: 400,
@@ -96,7 +97,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     editMethod: 'replace',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'localAuthorId',
+    key: 'siteAuthor.localAuthorId',
     title: '本地作者',
     hide: false,
     width: 150,
@@ -129,7 +130,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     editMethod: 'replace',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'siteId',
+    key: 'siteAuthor.siteId',
     title: '站点',
     hide: false,
     width: 150,
@@ -161,7 +162,7 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     type: 'datetime',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'updateTime',
+    key: 'siteAuthor.updateTime',
     title: '修改时间',
     hide: false,
     width: 200,
@@ -171,12 +172,8 @@ const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
     showOverflowTooltip: true
   })
 ])
-// 站点作者SearchTable的查询参数
-const siteAuthorSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者SearchTable的分页
-const page: Ref<Page<SiteAuthorLocalRelateDTO>> = ref(
-  new Page<SiteAuthorLocalRelateDTO>()
-)
+const page: Ref<Page<SiteAuthorLocalRelateDTO>> = ref(newPage<SiteAuthorLocalRelateDTO>())
 // 站点作者查询参数
 const siteAuthorQuery: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者弹窗的mode
@@ -190,30 +187,32 @@ const dialogData: Ref<SiteAuthorLocalRelateDTO> = ref(new SiteAuthorLocalRelateD
 // 分页查询站点作者的函数
 async function siteAuthorQueryPageFn(
   page: Page<SiteAuthorLocalRelateDTO>
-): Promise<Page<SiteAuthorLocalRelateDTO> | undefined> {
+): Promise<Page<SiteAuthorLocalRelateDTO>> {
+  siteAuthorQuery.value.authorName.operator = Operator.OpLike
   const response = await apis.siteAuthorQueryLocalRelateDTOPage(page, siteAuthorQuery.value)
   if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteAuthorLocalRelateDTO>>(response)
-    if (isNullish(responsePage)) {
-      return undefined
+    const result = ApiUtil.data<Page<SiteAuthorLocalRelateDTO>>(response)
+    if (isNullish(result)) {
+      throw new Error('siteAuthorQueryLocalRelateDTOPage未返回数据')
     }
-    return new Page(responsePage)
+    return result
   } else {
     ApiUtil.msg(response)
-    return undefined
+    throw new Error(response.msg)
   }
 }
 // 处理站点作者新增按钮点击事件
 async function handleCreateButtonClicked() {
   siteAuthorDialogMode.value = DialogMode.NEW
   dialogData.value = new SiteAuthorLocalRelateDTO()
+  dialogData.value.siteAuthor = new SiteAuthorDTO()
   dialogState.value = true
 }
 // 处理站点作者数据行按钮点击事件
 async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorLocalRelateDTO>) {
   switch (op.code) {
     case 'create':
-      await creatSameNameLocalAuthorAndBind(lodash.cloneDeep(op.data))
+      await creatSameNameLocalAuthorAndBind(op.data)
       siteAuthorSearchTable.value.doSearch()
       break
     case 'save':
@@ -250,9 +249,15 @@ async function deleteSiteAuthor(id: number) {
 }
 // 保存行数据编辑
 async function saveRowEdit(newData: SiteAuthorLocalRelateDTO) {
-  const tempData = lodash.cloneDeep(newData)
-
-  const response = await apis.siteAuthorUpdateById(tempData)
+  const authorDTO = new SiteAuthorDTO({
+    id: newData.siteAuthor?.id,
+    authorName: newData.siteAuthor?.authorName || null,
+    introduce: newData.siteAuthor?.introduce || null,
+    localAuthorId: newData.siteAuthor?.localAuthorId || null,
+    siteId: newData.siteAuthor?.siteId || null,
+    fixedAuthorName: newData.siteAuthor?.fixedAuthorName || null
+  })
+  const response = await apis.siteAuthorUpdateById(authorDTO)
   ApiUtil.msg(response)
   if (ApiUtil.check(response)) {
     const index = changedRows.value.indexOf(newData)
@@ -261,8 +266,13 @@ async function saveRowEdit(newData: SiteAuthorLocalRelateDTO) {
   }
 }
 // 创建同名本地作者并绑定
-async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthorDTO) {
-  const response = await apis.siteAuthorCreateAndBindSameNameLocalAuthor(siteAuthor)
+async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelateDTO) {
+  const authorDTO = new SiteAuthorDTO({
+    id: relateData.siteAuthor?.id,
+    authorName: relateData.siteAuthor?.authorName || null,
+    introduce: relateData.siteAuthor?.introduce || null
+  })
+  const response = await apis.siteAuthorCreateAndBindSameNameLocalAuthor(authorDTO)
   if (!ApiUtil.check(response)) {
     ApiUtil.msg(response)
   }
@@ -276,10 +286,10 @@ async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthorDTO) {
         <search-table
           ref="siteAuthorSearchTable"
           v-model:page="page"
-          v-model:toolbar-params="siteAuthorSearchParams"
+          v-model:toolbar-params="siteAuthorQuery"
           v-model:changed-rows="changedRows"
           class="tag-manage-search-table"
-          data-key="id"
+          data-key="siteAuthor.id"
           :operation-button="operationButton"
           :thead="siteAuthorThead"
           :search="siteAuthorQueryPageFn"
@@ -293,11 +303,11 @@ async function creatSameNameLocalAuthorAndBind(siteAuthor: SiteAuthorDTO) {
             <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
             <el-row class="site-author-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteAuthorSearchParams.authorName" placeholder="输入作者名称" clearable />
+                <el-input v-model="siteAuthorQuery.authorName.value" placeholder="输入作者名称" clearable @clear="() => siteAuthorQuery.authorName.value = null" />
               </el-col>
               <el-col :span="4">
                 <auto-load-select
-                  v-model="siteAuthorSearchParams.siteId"
+                  v-model="siteAuthorQuery.siteId.value"
                   :load="siteQuerySelectItemPageBySiteName"
                   placeholder="选择站点"
                   remote

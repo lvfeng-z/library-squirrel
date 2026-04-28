@@ -307,7 +307,7 @@ async function requestSiteTagSelectItemPage(
             v-model:toolbar-params="localTagQuery"
             v-model:changed-rows="changedRows"
             class="tag-manage-left-search-table"
-            data-key="id"
+            data-key="localTag.id"
             :operation-button="operationButton"
             :thead="localTagThead"
             :search="localTagQueryPageFn"

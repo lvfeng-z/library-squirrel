@@ -8,114 +8,13 @@ import {
   Handler as SiteAuthorHandler,
   SiteAuthorQueryDTO
 } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import {
-  RankedSiteAuthor,
-  RankedSiteAuthorWithWorkIdDTO,
-  SiteAuthorDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
-
-
-export interface SiteAuthorVO {
-  id: number
-  authorName: string
-  introduce: string
-  localAuthorId: number
-  lastUse: number
-  createTime: number
-  updateTime: number
-}
-
-export interface PageResult {
-  items: SiteAuthorVO[]
-  total: number
-  page: number
-  pageSize: number
-}
-
-// ========== 工具函数 ==========
-
-/**
- * 将 SiteAuthorResultDTO 转换为 SiteAuthorVO
- */
-function toSiteAuthorVO(dto: SiteAuthorDTO | null): SiteAuthorVO | null {
-  if (!dto) return null
-  return {
-    id: dto.id,
-    authorName: dto.authorName ?? '',
-    introduce: dto.introduce ?? '',
-    localAuthorId: dto.localAuthorId ?? 0,
-    lastUse: dto.lastUse ?? 0,
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
-  }
-}
-
-/**
- * 将 RankedSiteAuthor 转换为 SiteAuthorVO
- */
-function rankedToSiteAuthorVO(dto: RankedSiteAuthor | null): SiteAuthorVO | null {
-  if (!dto) return null
-  return {
-    id: dto.id,
-    authorName: dto.authorName ?? '',
-    introduce: '',
-    localAuthorId: dto.localAuthorId ?? 0,
-    lastUse: 0,
-    createTime: 0,
-    updateTime: 0
-  }
-}
-
-/**
- * 将 RankedSiteAuthorWithWorkIdDTO 转换为 SiteAuthorVO
- */
-function rankedWithWorkIdToSiteAuthorVO(dto: RankedSiteAuthorWithWorkIdDTO | null): SiteAuthorVO | null {
-  if (!dto) return null
-  return {
-    id: dto.workId, // 使用 workId 作为 id（临时方案，因为 RankedSiteAuthorWithWorkIdDTO 没有 id 字段）
-    authorName: dto.authorName ?? '',
-    introduce: '',
-    localAuthorId: 0,
-    lastUse: 0,
-    createTime: 0,
-    updateTime: 0
-  }
-}
 
 // ========== API 方法 ==========
 
-export async function siteAuthorSave(author: {
-  authorName?: string
-  introduce?: string
-  siteId?: number
-}): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorDTO({
-    authorName: author.authorName ?? null,
-    siteId: author.siteId ?? null
-  })
-  const result = await SiteAuthorHandler.Save(authorDTO)
-  if (!result) {
-    return { success: false, msg: '保存失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '保存失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, authorName: '', introduce: '', localAuthorId: 0, lastUse: 0, createTime: 0, updateTime: 0 } }
-}
-
-/**
- * 批量保存站点作者
- */
-export async function siteAuthorSaveBatch(authors: SiteAuthorVO[]): Promise<ApiResponse<SiteAuthorVO[]>> {
-  const result = await SiteAuthorHandler.SaveBatch(
-      authors.map(author => new SiteAuthorDTO({
-        id: author.id,
-        siteId: author.id,
-        siteAuthorId: author.id.toString(),
-        authorName: author.authorName,
-        introduce: author.introduce
-      })))
+export async function siteAuthorSave(author: SiteAuthorDTO): Promise<ApiResponse<SiteAuthorDTO>> {
+  const result = await SiteAuthorHandler.Save(author)
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
   }
@@ -130,32 +29,12 @@ export async function siteAuthorDeleteById(id: number): Promise<ApiResponse<null
   return { success: result.success, msg: result.msg ?? '' }
 }
 
-export async function siteAuthorUpdateById(author: {
-  id: number
-  authorName?: string
-  introduce?: string
-  localAuthorId?: number
-}): Promise<ApiResponse<SiteAuthorVO>> {
-  const authorDTO = new SiteAuthorDTO({
-    id: author.id,
-    authorName: author.authorName ?? null
-  })
-  const result = await SiteAuthorHandler.Update(authorDTO)
+export async function siteAuthorUpdateById(author: SiteAuthorDTO): Promise<ApiResponse<SiteAuthorDTO>> {
+  const result = await SiteAuthorHandler.Update(author)
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }
   return { success: result.success, msg: result.msg ?? '' }
-}
-
-export async function siteAuthorGetById(id: number): Promise<ApiResponse<SiteAuthorVO>> {
-  const result = await SiteAuthorHandler.GetById(id)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: toSiteAuthorVO(result.data ?? null) ?? undefined }
 }
 
 export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorDTO>>> {
@@ -169,7 +48,7 @@ export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: Site
 /**
  * 查询绑定或未绑定到本地作者的站点作者分页
  */
-export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorFullDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorFullDTO>>> {
+export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorLocalRelateDTO>>> {
   const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
@@ -194,47 +73,6 @@ export async function siteAuthorQueryLocalRelateDTOPage(page: Page<SiteAuthorLoc
   return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
-export async function siteAuthorListByWorkId(workId: number): Promise<ApiResponse<SiteAuthorVO[]>> {
-  const result = await SiteAuthorHandler.ListByWorkId(workId)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.map(rankedToSiteAuthorVO).filter((item): item is SiteAuthorVO => item !== null) : [] }
-}
-
-/**
- * 根据站点作者ID列表获取站点作者
- */
-export async function siteAuthorListBySiteAuthorIds(siteAuthorIds: number[]): Promise<ApiResponse<SiteAuthorVO[]>> {
-  const result = await SiteAuthorHandler.ListBySiteAuthorIds(siteAuthorIds)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.map(toSiteAuthorVO).filter((item): item is SiteAuthorVO => item !== null) : [] }
-}
-
-/**
- * 根据作品ID列表获取关联的站点作者信息
- */
-export async function siteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(
-  workIds: number[]
-): Promise<ApiResponse<SiteAuthorVO[]>> {
-  const result = await SiteAuthorHandler.ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ? result.data.filter((item) => item !== null).map(item => rankedWithWorkIdToSiteAuthorVO(item as RankedSiteAuthorWithWorkIdDTO)).filter((item): item is SiteAuthorVO => item !== null) : [] }
-}
-
 /**
  * 更新站点作者绑定的本地作者
  */
@@ -256,17 +94,9 @@ export async function siteAuthorUpdateBindLocalAuthor(
  * 创建并绑定同名的本地作者
  */
 export async function siteAuthorCreateAndBindSameNameLocalAuthor(
-  siteAuthor: SiteAuthorVO
+  siteAuthor: SiteAuthorDTO
 ): Promise<ApiResponse<boolean>> {
-  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor(
-      new SiteAuthorDTO({
-        id: siteAuthor.id,
-        siteId: siteAuthor.localAuthorId > 0 ? siteAuthor.localAuthorId : null,
-        siteAuthorId: siteAuthor.id.toString(),
-        authorName: siteAuthor.authorName,
-        introduce: siteAuthor.introduce
-      })
-  )
+  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor(siteAuthor)
   if (!result) {
     return { success: false, msg: '创建失败：接口返回为空' }
   }

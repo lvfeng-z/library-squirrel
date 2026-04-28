@@ -117,7 +117,7 @@ export function copyIgnoreUndefined(target: object, source: object) {
   })
 }
 
-export function getPropByPath(obj: object, path: string) {
+export function getPropByPath<T>(obj: object, path: string): T | undefined {
   // 将路径字符串按照'.'分割成数组
   const properties = path.split('.')
 
@@ -130,7 +130,7 @@ export function getPropByPath(obj: object, path: string) {
     }
     result = result[prop]
   }
-  return result
+  return result as T
 }
 
 export function setPropByPath(obj: object, path: string, val: unknown) {

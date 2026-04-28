@@ -2,7 +2,6 @@ package siteAuthor
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
@@ -40,17 +39,16 @@ type Repository interface {
 	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error)
 	// UpdateBindLocalAuthor 绑定本地作者
 	UpdateBindLocalAuthor(ctx context.Context, localAuthorId *int64, siteAuthorIds []int64) (int64, error)
-	// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO], error)
-	// GetLocalAuthorByName 根据作者名称查询本地作者
-	GetLocalAuthorByName(ctx context.Context, authorName string) (*entity2.LocalAuthor, error)
-	// SaveLocalAuthor 保存本地作者
-	SaveLocalAuthor(ctx context.Context, author *entity2.LocalAuthor) error
+	// UpdateLastUseByIds 批量更新最后使用时间
+	UpdateLastUseByIds(ctx context.Context, ids []int64, lastUse int64) error
 }
 
 // LocalAuthorOperator 本地作者接口
 type LocalAuthorOperator interface {
 	ListByIds(ctx context.Context, ids []int64) ([]*entity2.LocalAuthor, error)
+	GetByName(ctx context.Context, name string) (*entity2.LocalAuthor, error)
+	GetByNames(ctx context.Context, names []string) ([]*entity2.LocalAuthor, error)
+	Save(ctx context.Context, author *entity2.LocalAuthor) error
 }
 
 // SiteOperator 站点接口
@@ -95,17 +93,7 @@ func (s *Service) UpdateById(ctx context.Context, author *entity2.SiteAuthor) er
 // UpdateLastUse 批量更新最后使用时间
 func (s *Service) UpdateLastUse(ctx context.Context, ids []int64) error {
 	now := util.GetCurrentTimestamp()
-	for _, id := range ids {
-		author, err := s.repo.GetById(ctx, id)
-		if err != nil {
-			continue
-		}
-		author.LastUse = sql.NullInt64{Int64: now, Valid: true}
-		if err := s.repo.Update(ctx, author); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.repo.UpdateLastUseByIds(ctx, ids, now)
 }
 
 // GetById 根据ID获取
@@ -139,7 +127,7 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.SiteAuthor]
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO], query SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorFullDTO], error) {
+func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO], query SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
 	conv := querypkg.NewConverter(entity2.SiteAuthor{})
 
 	var boundOnLocalAuthorId *bool
@@ -174,20 +162,37 @@ func (s *Service) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 		return nil, err
 	}
 
-	// 填充关联数据
-	return s.enrichSiteAuthorsWithRelations(ctx, rawPage)
+	// 填充关联数据（含 HasSameNameLocalAuthor）
+	return s.enrichLocalRelateDTO(ctx, rawPage)
 }
 
-// enrichSiteAuthorsWithRelations 批量填充站点作者的关联数据（本地作者和站点）
-func (s *Service) enrichSiteAuthorsWithRelations(ctx context.Context, rawPage *model.Page[entity2.SiteAuthor]) (*model.Page[dto.SiteAuthorFullDTO], error) {
-	siteAuthors := rawPage.Data
-	if len(siteAuthors) == 0 {
-		return model.NewPage[dto.SiteAuthorFullDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
+func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO], query SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
+	conv := querypkg.NewConverter(entity2.SiteAuthor{})
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	// 收集需要查询的 LocalAuthorID 和 SiteID
+	rawPage, err := s.repo.Page(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.enrichLocalRelateDTO(ctx, rawPage)
+}
+
+// enrichLocalRelateDTO 批量填充站点作者关联DTO的关联数据
+func (s *Service) enrichLocalRelateDTO(ctx context.Context, rawPage *model.Page[entity2.SiteAuthor]) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
+	siteAuthors := rawPage.Data
+	if len(siteAuthors) == 0 {
+		return model.NewPage[dto.SiteAuthorLocalRelateDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	}
+
+	// 收集关联 ID 和作者名称
 	localAuthorIds := make([]int64, 0)
 	siteIds := make([]int64, 0)
+	authorNames := make([]string, 0)
 	for _, author := range siteAuthors {
 		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
 			localAuthorIds = append(localAuthorIds, author.LocalAuthorID.Int64)
@@ -195,9 +200,12 @@ func (s *Service) enrichSiteAuthorsWithRelations(ctx context.Context, rawPage *m
 		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
 			siteIds = append(siteIds, author.SiteID.Int64)
 		}
+		if author.AuthorName.Valid && author.AuthorName.String != "" {
+			authorNames = append(authorNames, author.AuthorName.String)
+		}
 	}
 
-	// 批量查询 LocalAuthor
+	// 批量查询 LocalAuthor by IDs
 	localAuthorMap := make(map[int64]*dto.LocalAuthorDTO)
 	if len(localAuthorIds) > 0 {
 		localAuthors, err := s.localAuthorOp.ListByIds(ctx, localAuthorIds)
@@ -227,30 +235,38 @@ func (s *Service) enrichSiteAuthorsWithRelations(ctx context.Context, rawPage *m
 		}
 	}
 
+	// 批量检查 HasSameNameLocalAuthor
+	sameNameMap := make(map[string]bool)
+	if len(authorNames) > 0 {
+		uniqueNames := util.UniqueString(authorNames)
+		localAuthors, err := s.localAuthorOp.GetByNames(ctx, uniqueNames)
+		if err != nil {
+			return nil, err
+		}
+		for _, la := range localAuthors {
+			if la.AuthorName.Valid {
+				sameNameMap[la.AuthorName.String] = true
+			}
+		}
+	}
+
 	// 组装结果
-	results := make([]*dto.SiteAuthorFullDTO, 0, len(siteAuthors))
+	results := make([]*dto.SiteAuthorLocalRelateDTO, 0, len(siteAuthors))
 	for _, author := range siteAuthors {
-		fullDTO := dto.NewSiteAuthorFullDTO(author)
+		relateDTO := dto.NewSiteAuthorLocalRelateDTO(author)
 		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
-			fullDTO.LocalAuthor = localAuthorMap[author.LocalAuthorID.Int64]
+			relateDTO.LocalAuthor = localAuthorMap[author.LocalAuthorID.Int64]
 		}
 		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
-			fullDTO.Site = siteMap[author.SiteID.Int64]
+			relateDTO.Site = siteMap[author.SiteID.Int64]
 		}
-		results = append(results, fullDTO)
+		if author.AuthorName.Valid {
+			relateDTO.HasSameNameLocalAuthor = sameNameMap[author.AuthorName.String]
+		}
+		results = append(results, relateDTO)
 	}
 
-	return model.NewPage[dto.SiteAuthorFullDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
-}
-
-// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO], query SiteAuthorQueryDTO) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
-	conv := querypkg.NewConverter(entity2.SiteAuthor{})
-	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
-	if err != nil {
-		return nil, err
-	}
-	return s.repo.QueryLocalRelateDTOPage(ctx, opt)
+	return model.NewPage[dto.SiteAuthorLocalRelateDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // ListByWorkId 查询作品的站点作者
@@ -285,18 +301,18 @@ func (s *Service) CreateSameNameLocalAuthor(ctx context.Context, siteAuthor *ent
 	if !siteAuthor.AuthorName.Valid {
 		return 0, nil
 	}
-	// 查询是否已有同名作者
-	existing, err := s.repo.GetLocalAuthorByName(ctx, siteAuthor.AuthorName.String)
+	// 查询是否已有同名作者（通过依赖注入的 LocalAuthorOperator）
+	existing, err := s.localAuthorOp.GetByName(ctx, siteAuthor.AuthorName.String)
 	if err == nil && existing != nil {
 		return existing.ID, nil
 	}
 
-	// 新增同名作者
+	// 新增同名作者（通过依赖注入的 LocalAuthorOperator）
 	newLocalAuthor := &entity2.LocalAuthor{
 		AuthorName: siteAuthor.AuthorName,
 		Introduce:  siteAuthor.Introduce,
 	}
-	if err := s.repo.SaveLocalAuthor(ctx, newLocalAuthor); err != nil {
+	if err := s.localAuthorOp.Save(ctx, newLocalAuthor); err != nil {
 		return 0, err
 	}
 	return newLocalAuthor.ID, nil

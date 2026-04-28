@@ -1,13 +1,14 @@
 <script setup lang="ts" generic="Data, OpParam">
-import { computed, onBeforeMount, onMounted, Ref, ref } from 'vue'
+import {computed, onBeforeMount, onMounted, Ref, ref} from 'vue'
 import OperationItem from '../../model/util/OperationItem'
-import { Thead } from '../../model/util/Thead'
+import {Thead} from '../../model/util/Thead'
 import DataTableOperationResponse from '../../model/util/DataTableOperationResponse'
 import PopperInput from './CommentInput/PopperInput.vue'
 import CommonInput from '@renderer/components/common/CommentInput/CommonInput.vue'
-import { TableColumnCtx, TreeNode } from 'element-plus'
-import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
-import { getPropByPath, setPropByPath } from '@renderer/utils/ObjectUtil.ts'
+import {TableColumnCtx, TreeNode} from 'element-plus'
+import {arrayNotEmpty} from '@renderer/utils/CommonUtil.ts'
+import {getPropByPath, setPropByPath} from '@renderer/utils/ObjectUtil.ts'
+import {isBlank} from "@renderer/utils/StringUtil.ts";
 
 // props
 const props = withDefaults(
@@ -61,7 +62,7 @@ const dataTable = ref() // el-table组件的实例
 const currentSelect: Ref<Data[]> = ref([])
 const currentSelectKey: Ref<unknown | undefined> = computed(() => {
   if (arrayNotEmpty(currentSelect.value)) {
-    return currentSelect.value[0][props.dataKey]
+    return getPropByPath(currentSelect.value[0] as object, props.dataKey)
   } else {
     return undefined
   }
@@ -104,8 +105,12 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
 }
 // 处理操作按钮点击事件
 function handleRowButtonClicked(operation: { row: Data; operationItem: OperationItem<OpParam> }) {
+  const id = getPropByPath<string>(operation.row as object, props.dataKey)
+  if (isBlank(id)) {
+    throw new Error('操作失败：无法获取行数据的唯一标识，请检查表格组件的dataKey属性配置是否正确')
+  }
   const operationResponse: DataTableOperationResponse<Data> = {
-    id: operation.row[props.dataKey],
+    id: id,
     code: operation.operationItem.code,
     data: operation.row
   }

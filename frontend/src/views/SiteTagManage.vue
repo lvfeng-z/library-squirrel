@@ -314,7 +314,7 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
           v-model:changed-rows="changedRows"
           v-model:sort="sort"
           class="tag-manage-search-table"
-          data-key="id"
+          data-key="siteTag.id"
           :operation-button="operationButton"
           :thead="siteTagThead"
           :search="siteTagQueryPageFn"

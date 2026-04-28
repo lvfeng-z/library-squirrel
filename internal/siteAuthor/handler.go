@@ -158,17 +158,17 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteAuthor
 }
 
 // QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorFullDTO], query SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SiteAuthorFullDTO]] {
+func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page *model.Page[dto.SiteAuthorLocalRelateDTO], query SiteAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SiteAuthorLocalRelateDTO]] {
 	if page == nil {
-		page = &model.Page[dto.SiteAuthorFullDTO]{}
+		page = &model.Page[dto.SiteAuthorLocalRelateDTO]{}
 	}
-	entityPage := &model.Page[dto.SiteAuthorFullDTO]{
+	entityPage := &model.Page[dto.SiteAuthorLocalRelateDTO]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
 	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorFullDTO]](err.Error())
+		return model.Error[*model.Page[dto.SiteAuthorLocalRelateDTO]](err.Error())
 	}
 	return model.Success(result)
 }

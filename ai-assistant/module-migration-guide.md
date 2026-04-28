@@ -268,7 +268,7 @@ async function requestSelectItemPage(page: IPage<SelectItem>, bounded: boolean):
 | 本地作者 (LocalAuthor) | ✅ 已完成 | N+1 查询消除、依赖注入、QueryAttribute 适配、nullable 绑定/解绑 |
 | 站点标签 (SiteTag) | ✅ 已完成 | N+1 查询消除、`unique` 函数公共化、Page 类型统一 |
 | 本地标签 (LocalTag) | ⏳ 待确认 | — |
-| 站点作者 (SiteAuthor) | ⏳ 待确认 | — |
+| 站点作者 (SiteAuthor) | ✅ 已完成 | N+1 查询消除（QueryLocalRelateDTOPage）、UpdateLastUse 批量化、跨域查询迁移到依赖注入、Wrapper 冗余类型清理、QueryAttribute 适配、Page 类型统一 |
 | 作品 (Work) | ⏳ 待修复 | — |
 | 任务 (Task) | ⏳ 待修复 | — |
 | 资源 (Resource) | ⏳ 待修复 | — |

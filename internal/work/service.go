@@ -241,17 +241,19 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.Work
 					continue
 				}
 				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, &dto2.SiteAuthorFullDTO{
-					ID:                   ra.ID,
-					CreateTime:           ra.CreateTime,
-					UpdateTime:           ra.UpdateTime,
-					SiteID:               ra.SiteID,
-					SiteAuthorID:         ra.SiteAuthorID,
-					AuthorName:           ra.AuthorName,
-					FixedAuthorName:      ra.FixedAuthorName,
-					SiteAuthorNameBefore: ra.SiteAuthorNameBefore,
-					Introduce:            ra.Introduce,
-					LocalAuthorID:        ra.LocalAuthorID,
-					LastUse:              ra.LastUse,
+					SiteAuthor: &dto2.SiteAuthorDTO{
+						ID:                   ra.ID,
+						CreateTime:           ra.CreateTime,
+						UpdateTime:           ra.UpdateTime,
+						SiteID:               util.Int64PtrIfValid(ra.SiteID),
+						SiteAuthorID:         util.StringPtrIfValid(ra.SiteAuthorID),
+						AuthorName:           util.StringPtrIfValid(ra.AuthorName),
+						FixedAuthorName:      util.StringPtrIfValid(ra.FixedAuthorName),
+						SiteAuthorNameBefore: util.StringPtrIfValid(ra.SiteAuthorNameBefore),
+						Introduce:            util.StringPtrIfValid(ra.Introduce),
+						LocalAuthorID:        util.Int64PtrIfValid(ra.LocalAuthorID),
+						LastUse:              util.Int64PtrIfValid(ra.LastUse),
+					},
 				})
 			}
 		}

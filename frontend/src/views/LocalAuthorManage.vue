@@ -259,10 +259,10 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
     }
     const resultPage = copyPage<SelectItem>(responsePage)
     resultPage.data = responsePage.data.filter(notNullish).map(data => {
-      const authorName = data.authorName
+      const authorName = data.siteAuthor?.authorName
       const siteName = data.site?.siteName
       return new SelectItem({
-        value: String(data.id),
+        value: String(data.siteAuthor?.id),
         label: isBlank(authorName) ? '?' : authorName,
         subLabels: [isBlank(siteName) ? '?' : siteName],
         extraData: undefined
@@ -286,7 +286,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             v-model:toolbar-params="localAuthorQuery"
             v-model:changed-rows="changedRows"
             class="local-author-manage-left-search-table"
-            data-key="id"
+            data-key="localAuthor.id"
             :operation-button="operationButton"
             :thead="localAuthorThead"
             :search="localAuthorQueryPageFn"

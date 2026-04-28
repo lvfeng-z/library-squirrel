@@ -78,7 +78,7 @@ export function ListRankedSiteAuthorWithWorkIdByWorkIds(workIds: number[]): $Can
 /**
  * QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
  */
-export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<dto$0.SiteAuthorFullDTO> | null, query: $models.SiteAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorFullDTO> | null> | null> {
+export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<dto$0.SiteAuthorLocalRelateDTO> | null, query: $models.SiteAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorLocalRelateDTO> | null> | null> {
     return $Call.ByID(157583187, page, query).then(($result: any) => {
         return $$createType25($result);
     });
@@ -89,7 +89,7 @@ export function QueryBoundOrUnboundToLocalAuthorPage(page: model$0.Page<dto$0.Si
  */
 export function QueryLocalRelateDTOPage(page: model$0.Page<dto$0.SiteAuthorLocalRelateDTO> | null, query: $models.SiteAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorLocalRelateDTO> | null> | null> {
     return $Call.ByID(4104954123, page, query).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType25($result);
     });
 }
 
@@ -98,7 +98,7 @@ export function QueryLocalRelateDTOPage(page: model$0.Page<dto$0.SiteAuthorLocal
  */
 export function QueryPage(page: model$0.Page<dto$0.SiteAuthorDTO> | null, query: $models.SiteAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteAuthorDTO> | null> | null> {
     return $Call.ByID(19819348, page, query).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType29($result);
     });
 }
 
@@ -107,7 +107,7 @@ export function QueryPage(page: model$0.Page<dto$0.SiteAuthorDTO> | null, query:
  */
 export function Save(author: dto$0.SiteAuthorDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1406741580, author).then(($result: any) => {
-        return $$createType36($result);
+        return $$createType31($result);
     });
 }
 
@@ -169,19 +169,14 @@ const $$createType17 = $Create.Nullable($$createType16);
 const $$createType18 = $Create.Array($$createType17);
 const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = dto$0.SiteAuthorFullDTO.createFrom;
+const $$createType21 = dto$0.SiteAuthorLocalRelateDTO.createFrom;
 const $$createType22 = model$0.Page.createFrom($$createType21);
 const $$createType23 = $Create.Nullable($$createType22);
 const $$createType24 = model$0.ApiResponse.createFrom($$createType23);
 const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = dto$0.SiteAuthorLocalRelateDTO.createFrom;
-const $$createType27 = model$0.Page.createFrom($$createType26);
-const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = model$0.ApiResponse.createFrom($$createType28);
-const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = model$0.Page.createFrom($$createType4);
-const $$createType32 = $Create.Nullable($$createType31);
-const $$createType33 = model$0.ApiResponse.createFrom($$createType32);
-const $$createType34 = $Create.Nullable($$createType33);
-const $$createType35 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType36 = $Create.Nullable($$createType35);
+const $$createType26 = model$0.Page.createFrom($$createType4);
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = model$0.ApiResponse.createFrom($$createType27);
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType31 = $Create.Nullable($$createType30);

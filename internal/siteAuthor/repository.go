@@ -142,22 +142,11 @@ func (r *SiteAuthorRepository) ListBySiteAuthorIds(ctx context.Context, siteAuth
 	if len(siteAuthorIds) == 0 {
 		return make([]*entity2.SiteAuthor, 0), nil
 	}
-
-	placeholders := make([]string, len(siteAuthorIds))
-	args := make([]interface{}, len(siteAuthorIds))
-	for i, id := range siteAuthorIds {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-
-	query := fmt.Sprintf(`SELECT * FROM site_author WHERE id IN (%s)`, strings.Join(placeholders, ","))
-
 	var results []*entity2.SiteAuthor
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.GORM().WithContext(ctx).Where("id IN ?", siteAuthorIds).Find(&results).Error
 	if err != nil {
 		return nil, err
 	}
-
 	return results, nil
 }
 
@@ -216,85 +205,14 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 	return result.RowsAffected, nil
 }
 
-// QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
-func (r *SiteAuthorRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SiteAuthorLocalRelateDTO], error) {
-	var results []*dto.SiteAuthorLocalRelateDTO
-	var total int64
-
-	db := r.GORM().WithContext(ctx).Model(&entity2.SiteAuthor{})
-
-	// 应用查询条件
-	for _, cond := range opt.Conditions {
-		if cond != nil {
-			db = db.Clauses(cond)
-		}
+// UpdateLastUseByIds 批量更新最后使用时间
+func (r *SiteAuthorRepository) UpdateLastUseByIds(ctx context.Context, ids []int64, lastUse int64) error {
+	if len(ids) == 0 {
+		return nil
 	}
-
-	// 统计总数
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
-
-	// 应用分页
-	offset := (opt.Page - 1) * opt.PageSize
-	db = db.Offset(offset).Limit(opt.PageSize)
-
-	// 应用排序
-	for _, order := range opt.OrderBy {
-		if order != nil {
-			db = db.Clauses(order)
-		}
-	}
-
-	// 执行查询
-	var siteAuthors []*entity2.SiteAuthor
-	if err := db.Find(&siteAuthors).Error; err != nil {
-		return nil, err
-	}
-
-	// 转换为 DTO
-	for _, author := range siteAuthors {
-		resultDTO := dto.NewSiteAuthorLocalRelateDTO(author)
-		// 查询关联的本地作者
-		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
-			var localAuthor entity2.LocalAuthor
-			if err := r.GORM().WithContext(ctx).First(&localAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-			resultDTO.LocalAuthor = dto.NewLocalAuthorDTO(&localAuthor)
-		}
-		// 查询关联的站点
-		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
-			var site entity2.Site
-			if err := r.GORM().WithContext(ctx).First(&site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-			resultDTO.Site = dto.NewSiteDTO(&site)
-		}
-		// 检查是否有同名本地作者
-		var count int64
-		r.GORM().WithContext(ctx).Model(&entity2.LocalAuthor{}).Where("author_name = ?", author.AuthorName).Count(&count)
-		resultDTO.HasSameNameLocalAuthor = count > 0
-
-		results = append(results, resultDTO)
-	}
-
-	return model.NewPage[dto.SiteAuthorLocalRelateDTO](results, total, opt.Page, opt.PageSize), nil
-}
-
-// GetLocalAuthorByName 根据作者名称查询本地作者
-func (r *SiteAuthorRepository) GetLocalAuthorByName(ctx context.Context, authorName string) (*entity2.LocalAuthor, error) {
-	var author entity2.LocalAuthor
-	err := r.GORM().WithContext(ctx).Where("author_name = ?", authorName).First(&author).Error
-	if err != nil {
-		return nil, err
-	}
-	return &author, nil
-}
-
-// SaveLocalAuthor 保存本地作者
-func (r *SiteAuthorRepository) SaveLocalAuthor(ctx context.Context, author *entity2.LocalAuthor) error {
-	return r.GORM().WithContext(ctx).Save(author).Error
+	return r.GORM().WithContext(ctx).Model(new(entity2.SiteAuthor)).
+		Where("id IN ?", ids).
+		Update("last_use", lastUse).Error
 }
 
 // applyQueryOption 将 QueryOption 应用到 db 实例
