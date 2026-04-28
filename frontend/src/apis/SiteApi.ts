@@ -28,11 +28,3 @@ export async function siteQuerySelectItemPageBySiteName(
     data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
-
-/**
- * 分页查询站点选择列表
- * @param page
- */
-export async function siteQuerySelectItemPage(page: Page<SelectItem>, query: SiteQueryDTO): Promise<ApiResponse<Page<SelectItem> | null>> {
-  return siteApi.siteQuerySelectItemPage(page, query)
-}

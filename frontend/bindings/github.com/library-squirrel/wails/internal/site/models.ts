@@ -24,11 +24,6 @@ export class SiteQueryDTO {
     "homepage": query$0.QueryAttribute<string>;
 
     /**
-     * 站点名称（模糊匹配）
-     */
-    "siteNameStr": query$0.QueryAttribute<string>;
-
-    /**
      * 是否启用
      */
     "enable": query$0.QueryAttribute<boolean>;
@@ -51,9 +46,6 @@ export class SiteQueryDTO {
         if (!("homepage" in $$source)) {
             this["homepage"] = (new query$0.QueryAttribute());
         }
-        if (!("siteNameStr" in $$source)) {
-            this["siteNameStr"] = (new query$0.QueryAttribute());
-        }
         if (!("enable" in $$source)) {
             this["enable"] = (new query$0.QueryAttribute());
         }
@@ -73,10 +65,9 @@ export class SiteQueryDTO {
     static createFrom($$source: any = {}): SiteQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType2;
         const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteName" in $$parsedSource) {
             $$parsedSource["siteName"] = $$createField0_0($$parsedSource["siteName"]);
@@ -84,17 +75,14 @@ export class SiteQueryDTO {
         if ("homepage" in $$parsedSource) {
             $$parsedSource["homepage"] = $$createField1_0($$parsedSource["homepage"]);
         }
-        if ("siteNameStr" in $$parsedSource) {
-            $$parsedSource["siteNameStr"] = $$createField2_0($$parsedSource["siteNameStr"]);
-        }
         if ("enable" in $$parsedSource) {
-            $$parsedSource["enable"] = $$createField3_0($$parsedSource["enable"]);
+            $$parsedSource["enable"] = $$createField2_0($$parsedSource["enable"]);
         }
         if ("updateTime" in $$parsedSource) {
-            $$parsedSource["updateTime"] = $$createField4_0($$parsedSource["updateTime"]);
+            $$parsedSource["updateTime"] = $$createField3_0($$parsedSource["updateTime"]);
         }
         if ("createTime" in $$parsedSource) {
-            $$parsedSource["createTime"] = $$createField5_0($$parsedSource["createTime"]);
+            $$parsedSource["createTime"] = $$createField4_0($$parsedSource["createTime"]);
         }
         return new SiteQueryDTO($$parsedSource as Partial<SiteQueryDTO>);
     }
