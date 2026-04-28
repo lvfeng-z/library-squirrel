@@ -132,7 +132,7 @@ export function Update(author: dto$0.SiteAuthorDTO | null): $CancellablePromise<
 /**
  * UpdateBindLocalAuthor 更新绑定本地作者
  */
-export function UpdateBindLocalAuthor(localAuthorId: number, siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
+export function UpdateBindLocalAuthor(localAuthorId: number | null, siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(2380047225, localAuthorId, siteAuthorIds).then(($result: any) => {
         return $$createType1($result);
     });

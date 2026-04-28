@@ -191,7 +191,7 @@ func (app *App) initBaseServices() {
 
 	// siteAuthor 服务
 	siteAuthorRepo := siteAuthor.NewRepository(app.db)
-	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo)
+	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo, app.LocalAuthorService, app.SiteService)
 
 	// resource 服务
 	resourceRepo := resource.NewRepository(app.db)

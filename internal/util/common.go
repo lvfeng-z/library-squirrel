@@ -42,3 +42,16 @@ func Int64PtrIfValid(i int64) *int64 {
 	}
 	return nil
 }
+
+// UniqueInt64 对Int64的切片进行去重
+func UniqueInt64(ids []int64) []int64 {
+	seen := make(map[int64]struct{})
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, exists := seen[id]; !exists {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result
+}

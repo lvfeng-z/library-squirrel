@@ -223,7 +223,7 @@ func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, w
 }
 
 // UpdateBindLocalAuthor 更新绑定本地作者
-func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) *model.ApiResponse[bool] {
+func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId *int64, siteAuthorIds []int64) *model.ApiResponse[bool] {
 	result, err := h.svc.UpdateBindLocalAuthor(ctx, localAuthorId, siteAuthorIds)
 	if err != nil {
 		return model.Error[bool](err.Error())

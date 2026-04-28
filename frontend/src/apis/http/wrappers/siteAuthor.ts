@@ -4,9 +4,17 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteAuthorHandler, SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import { SiteAuthorDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO, RankedSiteAuthorWithWorkIdDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
-import { RankedSiteAuthor, Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import {
+  Handler as SiteAuthorHandler,
+  SiteAuthorQueryDTO
+} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
+import {
+  RankedSiteAuthor,
+  RankedSiteAuthorWithWorkIdDTO,
+  SiteAuthorDTO, SiteAuthorFullDTO, SiteAuthorLocalRelateDTO
+} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+
 
 export interface SiteAuthorVO {
   id: number
@@ -231,7 +239,7 @@ export async function siteAuthorListRankedSiteAuthorWithWorkIdByWorkIds(
  * 更新站点作者绑定的本地作者
  */
 export async function siteAuthorUpdateBindLocalAuthor(
-  localAuthorId: number,
+  localAuthorId: number | null,
   siteAuthorIds: number[]
 ): Promise<ApiResponse<boolean>> {
   const result = await SiteAuthorHandler.UpdateBindLocalAuthor(localAuthorId, siteAuthorIds)

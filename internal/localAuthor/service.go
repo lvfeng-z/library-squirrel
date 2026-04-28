@@ -93,6 +93,16 @@ func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domai
 	return s.repo.List(ctx, opt)
 }
 
+// ListByIds 根据ID列表批量查询
+func (s *Service) ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalAuthor, error) {
+	if len(ids) == 0 {
+		return make([]*domain.LocalAuthor, 0), nil
+	}
+	return s.repo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.IN{Column: "id", Values: util.ToAnySlice(ids)}},
+	})
+}
+
 // Count 统计数量
 func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
 	return s.repo.Count(ctx, opt)

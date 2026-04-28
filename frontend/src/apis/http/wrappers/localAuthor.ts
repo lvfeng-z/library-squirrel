@@ -4,8 +4,7 @@
  */
 
 import {
-  Handler as LocalAuthorHandler,
-  LocalAuthorQueryDTO
+  Handler as LocalAuthorHandler, LocalAuthorQueryDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/localAuthor";
 import type { ApiResponse } from '../types'
 import {LocalAuthorDTO, SelectItem} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
@@ -18,13 +17,6 @@ export interface LocalAuthorVO {
   lastUse: number
   createTime: number
   updateTime: number
-}
-
-export interface PageResult {
-  items: LocalAuthorVO[]
-  total: number
-  page: number
-  pageSize: number
 }
 
 // ========== 工具函数 ==========
@@ -72,17 +64,8 @@ export async function localAuthorDeleteById(id: number): Promise<ApiResponse<nul
   return result
 }
 
-export async function localAuthorUpdateById(author: {
-  id: number
-  authorName?: string
-  introduce?: string
-}): Promise<ApiResponse<LocalAuthorVO>> {
-  const authorDTO = new LocalAuthorDTO({
-    id: author.id,
-    authorName: author.authorName ?? null,
-    introduce: author.introduce ?? null
-  })
-  const result = await LocalAuthorHandler.Update(authorDTO)
+export async function localAuthorUpdateById(author: LocalAuthorDTO): Promise<ApiResponse<LocalAuthorDTO>> {
+  const result = await LocalAuthorHandler.Update(author)
   if (!result) {
     return { success: false, msg: '更新失败：接口返回为空' }
   }

@@ -228,7 +228,7 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 	// 批量查询 Site
 	siteMap := make(map[int64]*dto2.SiteDTO)
 	if len(siteIds) > 0 {
-		sites, err := s.siteQueryOp.ListByIds(ctx, unique(siteIds))
+		sites, err := s.siteQueryOp.ListByIds(ctx, util.UniqueInt64(siteIds))
 		if err != nil {
 			return nil, err
 		}
@@ -251,19 +251,6 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 	}
 
 	return model.NewPage[dto2.SiteTagFullDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
-}
-
-// unique 去重辅助函数
-func unique(ids []int64) []int64 {
-	seen := make(map[int64]struct{})
-	result := make([]int64, 0, len(ids))
-	for _, id := range ids {
-		if _, exists := seen[id]; !exists {
-			seen[id] = struct{}{}
-			result = append(result, id)
-		}
-	}
-	return result
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签

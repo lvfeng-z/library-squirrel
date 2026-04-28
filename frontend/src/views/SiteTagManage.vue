@@ -24,6 +24,7 @@ import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/inter
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {localTagApi, siteTagApi} from '@renderer/apis/http'
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted
 onMounted(() => {
@@ -178,7 +179,7 @@ const siteTagThead: Ref<Thead<SiteTagLocalRelateDTO>[]> = ref([
   })
 ])
 // 站点标签SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO>>> = ref(new Page<SiteTagLocalRelateDTO>())
+const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO>>> = ref(newPage<SiteTagLocalRelateDTO>())
 // 站点标签查询参数
 const siteTagQuery: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签弹窗的mode
@@ -222,7 +223,7 @@ async function siteTagQueryPageFn(
     if (isNullish(responsePage)) {
       throw new Error('siteTagQueryLocalRelateDTOPage接口未返回数据')
     }
-    responsePage = new Page(responsePage)
+    responsePage = newPage(responsePage)
     return responsePage
   } else {
     ApiUtil.msg(response)

@@ -193,7 +193,7 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 }
 
 // UpdateBindLocalAuthor 绑定本地作者
-func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localAuthorId int64, siteAuthorIds []int64) (int64, error) {
+func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localAuthorId *int64, siteAuthorIds []int64) (int64, error) {
 	if len(siteAuthorIds) == 0 {
 		return 0, nil
 	}
@@ -214,78 +214,6 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 	}
 
 	return result.RowsAffected, nil
-}
-
-// QueryBoundOrUnboundToLocalAuthorPage 查询绑定或未绑定到本地作者的站点作者分页
-func (r *SiteAuthorRepository) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, opt *database.PageOption, boundOnLocalAuthorId *bool, localAuthorId *int64) (*model.Page[dto.SiteAuthorFullDTO], error) {
-	var results []*dto.SiteAuthorFullDTO
-	var total int64
-
-	db := r.GORM().WithContext(ctx).Model(&entity2.SiteAuthor{})
-
-	// 根据 boundOnLocalAuthorId 添加 localAuthorId 的过滤条件
-	if localAuthorId != nil {
-		if boundOnLocalAuthorId != nil && *boundOnLocalAuthorId {
-			// 绑定到指定本地作者
-			db = db.Where("local_author_id = ?", *localAuthorId)
-		} else if boundOnLocalAuthorId != nil && !*boundOnLocalAuthorId {
-			// 未绑定到指定本地作者（包括绑定到其他本地作者或从未绑定过本地作者的）
-			db = db.Where("(local_author_id != ? OR local_author_id IS NULL)", *localAuthorId)
-		}
-	}
-
-	// 应用查询条件
-	for _, cond := range opt.Conditions {
-		if cond != nil {
-			db = db.Clauses(cond)
-		}
-	}
-
-	// 统计总数
-	if err := db.Count(&total).Error; err != nil {
-		return nil, err
-	}
-
-	// 应用分页
-	offset := (opt.Page - 1) * opt.PageSize
-	db = db.Offset(offset).Limit(opt.PageSize)
-
-	// 应用排序
-	for _, order := range opt.OrderBy {
-		if order != nil {
-			db = db.Clauses(order)
-		}
-	}
-
-	// 执行查询
-	var siteAuthors []*entity2.SiteAuthor
-	if err := db.Find(&siteAuthors).Error; err != nil {
-		return nil, err
-	}
-
-	// 转换为 DTO
-	for _, author := range siteAuthors {
-		resultDTO := dto.NewSiteAuthorFullDTO(author)
-		// 查询关联的本地作者
-		if author.LocalAuthorID.Valid && author.LocalAuthorID.Int64 > 0 {
-			var localAuthor entity2.LocalAuthor
-			if err := r.GORM().WithContext(ctx).First(&localAuthor, author.LocalAuthorID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-			resultDTO.LocalAuthor = dto.NewLocalAuthorDTO(&localAuthor)
-		}
-		// 查询关联的站点
-		if author.SiteID.Valid && author.SiteID.Int64 > 0 {
-			var site entity2.Site
-			if err := r.GORM().WithContext(ctx).First(&site, author.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
-			resultDTO.Site = dto.NewSiteDTO(&site)
-		}
-		results = append(results, resultDTO)
-	}
-
-	return model.NewPage[dto.SiteAuthorFullDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
