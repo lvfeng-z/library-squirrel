@@ -286,7 +286,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             v-model:toolbar-params="localAuthorQuery"
             v-model:changed-rows="changedRows"
             class="local-author-manage-left-search-table"
-            data-key="localAuthor.id"
+            data-key="id"
             :operation-button="operationButton"
             :thead="localAuthorThead"
             :search="localAuthorQueryPageFn"

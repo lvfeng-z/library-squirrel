@@ -187,7 +187,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     <el-table-column v-if="props.selectable && props.multiSelect" type="selection" width="26" :reserve-selection="props.multiSelect" />
     <el-table-column v-if="props.selectable && !props.multiSelect" :fixed="true" width="26">
       <template #default="{ row }">
-        <el-radio v-model="currentSelectKey" :value="row[dataKey]" @click="handleSelectionChange([row])" />
+        <el-radio v-model="currentSelectKey" :value="getPropByPath(row, dataKey)" @click="handleSelectionChange([row])" />
       </template>
     </el-table-column>
     <el-table-column v-if="props.treeData" :fixed="true" width="28" />
