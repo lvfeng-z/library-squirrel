@@ -187,7 +187,10 @@ const siteTagDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点标签的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 站点标签对话框的数据
-const dialogData: Ref<SiteTagLocalRelateDTO> = ref(new SiteTagLocalRelateDTO())
+const dialogData: Ref<SiteTagLocalRelateDTO> = ref(new SiteTagLocalRelateDTO({
+  siteTag: new SiteTagDTO(),
+  site: new SiteDTO()
+}))
 
 // 排序字段映射（将嵌套路径映射为查询字段名）
 const sortPropMap: Record<string, string> = {
@@ -233,7 +236,10 @@ async function siteTagQueryPageFn(
 // 处理站点标签新增按钮点击事件
 async function handleCreateButtonClicked() {
   siteTagDialogMode.value = DialogMode.NEW
-  dialogData.value = new SiteTagLocalRelateDTO()
+  dialogData.value = new SiteTagLocalRelateDTO({
+    siteTag: new SiteTagDTO(),
+    site: new SiteDTO()
+  })
   dialogState.value = true
 }
 // 处理站点标签数据行按钮点击事件

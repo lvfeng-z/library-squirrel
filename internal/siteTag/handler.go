@@ -22,25 +22,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存站点标签
 func (h *Handler) Save(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiResponse[int64] {
-	domainTag := &entity.SiteTag{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if tag.SiteID != nil {
-		domainTag.SiteID.Valid = true
-		domainTag.SiteID.Int64 = *tag.SiteID
-	}
-	if tag.SiteTagID != nil {
-		domainTag.SiteTagID.Valid = true
-		domainTag.SiteTagID.String = *tag.SiteTagID
-	}
-	if tag.SiteTagName != nil {
-		domainTag.SiteTagName.Valid = true
-		domainTag.SiteTagName.String = *tag.SiteTagName
-	}
-	if tag.Description != nil {
-		domainTag.Description.Valid = true
-		domainTag.Description.String = *tag.Description
-	}
+	domainTag := dto.ToSiteTagEntity(tag)
 
 	if err := h.svc.Save(ctx, domainTag); err != nil {
 		return model.Error[int64](err.Error())
@@ -90,26 +72,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新站点标签
 func (h *Handler) Update(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiResponse[any] {
-	domainTag := &entity.SiteTag{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainTag.SetID(tag.ID)
-	if tag.SiteID != nil {
-		domainTag.SiteID.Valid = true
-		domainTag.SiteID.Int64 = *tag.SiteID
-	}
-	if tag.SiteTagID != nil {
-		domainTag.SiteTagID.Valid = true
-		domainTag.SiteTagID.String = *tag.SiteTagID
-	}
-	if tag.SiteTagName != nil {
-		domainTag.SiteTagName.Valid = true
-		domainTag.SiteTagName.String = *tag.SiteTagName
-	}
-	if tag.Description != nil {
-		domainTag.Description.Valid = true
-		domainTag.Description.String = *tag.Description
-	}
+	domainTag := dto.ToSiteTagEntity(tag)
 
 	if err := h.svc.UpdateById(ctx, domainTag); err != nil {
 		return model.Error[any](err.Error())

@@ -46,15 +46,8 @@ function toSiteTagVO(dto: SiteTagDTO | null): SiteTagVO | null {
 
 // ========== API 方法 ==========
 
-export async function siteTagSave(tag: {
-  siteTagName?: string
-  siteId?: number
-}): Promise<ApiResponse<SiteTagVO>> {
-  const tagDTO = new SiteTagDTO({
-    siteTagName: tag.siteTagName ?? null,
-    siteId: tag.siteId ?? null
-  })
-  const result = await SiteTagHandler.Save(tagDTO)
+export async function siteTagSave(tag: SiteTagDTO): Promise<ApiResponse<SiteTagVO>> {
+  const result = await SiteTagHandler.Save(tag)
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
   }
