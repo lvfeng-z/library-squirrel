@@ -133,8 +133,6 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     showOverflowTooltip: true
   })
 ])
-// 本地标签SearchTable的查询参数
-const localTagSearchParams: Ref<LocalTagQueryDTO> = ref(new LocalTagQueryDTO())
 // 本地标签SearchTable的分页
 const page: Ref<Page<LocalTagWithBaseTagDTO>> = ref(newPage<LocalTagWithBaseTagDTO>())
 // 本地标签查询参数
@@ -306,7 +304,7 @@ async function requestSiteTagSelectItemPage(
           <search-table
             ref="localTagSearchTable"
             v-model:page="page"
-            v-model:toolbar-params="localTagSearchParams"
+            v-model:toolbar-params="localTagQuery"
             v-model:changed-rows="changedRows"
             class="tag-manage-left-search-table"
             data-key="id"
@@ -323,11 +321,11 @@ async function requestSiteTagSelectItemPage(
               <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="16">
-                  <el-input v-model="localTagSearchParams.localTagName.value" placeholder="输入标签名称" clearable />
+                  <el-input v-model="localTagQuery.localTagName.value" placeholder="输入标签名称" clearable />
                 </el-col>
                 <el-col :span="8">
                   <auto-load-select
-                    v-model:data="localTagSearchParams.baseLocalTagId.value"
+                    v-model:data="localTagQuery.baseLocalTagId.value"
                     :load="localTagQuerySelectItemPageByName"
                     placeholder="选择上级标签"
                     remote

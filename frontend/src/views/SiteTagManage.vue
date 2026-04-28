@@ -9,7 +9,6 @@ import DataTableOperationResponse from '../model/util/DataTableOperationResponse
 import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import Page from '@renderer/model/util/Page.ts'
 import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import {
   LocalTagDTO,
@@ -24,6 +23,7 @@ import {localTagQuerySelectItemPageByName} from '@renderer/apis/LocalTagApi.ts'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {localTagApi, siteTagApi} from '@renderer/apis/http'
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 
 // onMounted
 onMounted(() => {
@@ -177,8 +177,6 @@ const siteTagThead: Ref<Thead<SiteTagLocalRelateDTO>[]> = ref([
     sortable: 'custom'
   })
 ])
-// 站点标签SearchTable的查询参数
-const siteTagSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签SearchTable的分页
 const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO>>> = ref(new Page<SiteTagLocalRelateDTO>())
 // 站点标签查询参数
@@ -311,7 +309,7 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
         <search-table
           ref="siteTagSearchTable"
           v-model:page="page"
-          v-model:toolbar-params="siteTagSearchParams"
+          v-model:toolbar-params="siteTagQuery"
           v-model:changed-rows="changedRows"
           v-model:sort="sort"
           class="tag-manage-search-table"
@@ -330,11 +328,11 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
             <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
             <el-row class="site-tag-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteTagSearchParams.siteTagName.value" placeholder="输入标签名称" clearable @clear="() => siteTagSearchParams.siteTagName.value = null" />
+                <el-input v-model="siteTagQuery.siteTagName.value" placeholder="输入标签名称" clearable @clear="() => siteTagQuery.siteTagName.value = null" />
               </el-col>
               <el-col :span="4">
                 <auto-load-select
-                  v-model:data="siteTagSearchParams.siteId.value"
+                  v-model:data="siteTagQuery.siteId.value"
                   :load="siteQuerySelectItemPageBySiteName"
                   placeholder="选择站点"
                   remote
