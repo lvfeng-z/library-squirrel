@@ -56,7 +56,7 @@ func ToPluginEntity(dto *PluginDTO) *entity2.Plugin {
 		return nil
 	}
 
-	entity := &entity2.Plugin{}
+	entity := entity2.NewPlugin()
 
 	// 设置基础字段
 	if dto.ID != 0 {

@@ -81,7 +81,7 @@ func ToWorkEntity(dto *WorkDTO) *entity2.Work {
 		return nil
 	}
 
-	entity := &entity2.Work{}
+	entity := entity2.NewWork()
 
 	// 设置基础字段
 	if dto.ID != 0 {

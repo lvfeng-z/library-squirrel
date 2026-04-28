@@ -44,7 +44,7 @@ func ToSiteTagEntity(dto *SiteTagDTO) *entity2.SiteTag {
 		return nil
 	}
 
-	entity := &entity2.SiteTag{}
+	entity := entity2.NewSiteTag()
 
 	// 设置基础字段
 	if dto.ID != 0 {
@@ -73,11 +73,32 @@ func ToSiteTagEntity(dto *SiteTagDTO) *entity2.SiteTag {
 		entity.SiteTagName.Valid = false
 	}
 
+	if dto.BaseSiteTagID != nil {
+		entity.BaseSiteTagID.Valid = true
+		entity.BaseSiteTagID.String = *dto.BaseSiteTagID
+	} else {
+		entity.BaseSiteTagID.Valid = false
+	}
+
 	if dto.Description != nil {
 		entity.Description.Valid = true
 		entity.Description.String = *dto.Description
 	} else {
 		entity.Description.Valid = false
+	}
+
+	if dto.LocalTagID != nil {
+		entity.LocalTagID.Valid = true
+		entity.LocalTagID.Int64 = *dto.LocalTagID
+	} else {
+		entity.LocalTagID.Valid = false
+	}
+
+	if dto.LastUse != nil {
+		entity.LastUse.Valid = true
+		entity.LastUse.Int64 = *dto.LastUse
+	} else {
+		entity.LastUse.Valid = false
 	}
 
 	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）

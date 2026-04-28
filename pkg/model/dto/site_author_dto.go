@@ -94,7 +94,7 @@ func ToSiteAuthorEntity(dto *SiteAuthorDTO) *entity2.SiteAuthor {
 		return nil
 	}
 
-	entity := &entity2.SiteAuthor{}
+	entity := entity2.NewSiteAuthor()
 
 	// 设置基础字段
 	if dto.ID != 0 {

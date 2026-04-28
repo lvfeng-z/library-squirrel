@@ -50,68 +50,68 @@ func ToResourceEntity(dto *ResourceDTO) *entity.Resource {
 		return nil
 	}
 
-	entity := &entity.Resource{}
+	newResource := entity.NewResource()
 
 	// 设置基础字段
 	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+		newResource.SetID(dto.ID)
 	}
 
 	// 设置业务字段
-	entity.WorkID = dto.WorkID
-	entity.TaskID = dto.TaskID
-	entity.State = dto.State
-	entity.ResourceComplete = dto.ResourceComplete
+	newResource.WorkID = dto.WorkID
+	newResource.TaskID = dto.TaskID
+	newResource.State = dto.State
+	newResource.ResourceComplete = dto.ResourceComplete
 
 	if dto.FilePath != nil {
-		entity.FilePath.Valid = true
-		entity.FilePath.String = *dto.FilePath
+		newResource.FilePath.Valid = true
+		newResource.FilePath.String = *dto.FilePath
 	} else {
-		entity.FilePath.Valid = false
+		newResource.FilePath.Valid = false
 	}
 
 	if dto.FileName != nil {
-		entity.FileName.Valid = true
-		entity.FileName.String = *dto.FileName
+		newResource.FileName.Valid = true
+		newResource.FileName.String = *dto.FileName
 	} else {
-		entity.FileName.Valid = false
+		newResource.FileName.Valid = false
 	}
 
 	if dto.FilenameExtension != nil {
-		entity.FilenameExtension.Valid = true
-		entity.FilenameExtension.String = *dto.FilenameExtension
+		newResource.FilenameExtension.Valid = true
+		newResource.FilenameExtension.String = *dto.FilenameExtension
 	} else {
-		entity.FilenameExtension.Valid = false
+		newResource.FilenameExtension.Valid = false
 	}
 
 	if dto.SuggestName != nil {
-		entity.SuggestName.Valid = true
-		entity.SuggestName.String = *dto.SuggestName
+		newResource.SuggestName.Valid = true
+		newResource.SuggestName.String = *dto.SuggestName
 	} else {
-		entity.SuggestName.Valid = false
+		newResource.SuggestName.Valid = false
 	}
 
 	if dto.ResourceSize != nil {
-		entity.ResourceSize.Valid = true
-		entity.ResourceSize.Int64 = *dto.ResourceSize
+		newResource.ResourceSize.Valid = true
+		newResource.ResourceSize.Int64 = *dto.ResourceSize
 	} else {
-		entity.ResourceSize.Valid = false
+		newResource.ResourceSize.Valid = false
 	}
 
 	if dto.Workdir != nil {
-		entity.Workdir.Valid = true
-		entity.Workdir.String = *dto.Workdir
+		newResource.Workdir.Valid = true
+		newResource.Workdir.String = *dto.Workdir
 	} else {
-		entity.Workdir.Valid = false
+		newResource.Workdir.Valid = false
 	}
 
 	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
 	if dto.CreateTime != 0 {
-		entity.SetCreateTime(dto.CreateTime)
+		newResource.SetCreateTime(dto.CreateTime)
 	}
 	if dto.UpdateTime != 0 {
-		entity.SetUpdateTime(dto.UpdateTime)
+		newResource.SetUpdateTime(dto.UpdateTime)
 	}
 
-	return entity
+	return newResource
 }

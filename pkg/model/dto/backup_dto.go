@@ -40,7 +40,7 @@ func ToBackupEntity(dto *BackupDTO) *entity2.Backup {
 		return nil
 	}
 
-	entity := &entity2.Backup{}
+	entity := entity2.NewBackup()
 
 	// 设置基础字段
 	if dto.ID != 0 {

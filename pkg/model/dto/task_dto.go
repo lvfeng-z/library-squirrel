@@ -56,7 +56,7 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 		return nil
 	}
 
-	entity := &entity2.Task{}
+	entity := entity2.NewTask()
 
 	// 设置基础字段
 	if dto.ID != 0 {

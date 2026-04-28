@@ -48,7 +48,7 @@ func ToWorkSetEntity(dto *WorkSetDTO) *entity2.WorkSet {
 		return nil
 	}
 
-	entity := &entity2.WorkSet{}
+	entity := entity2.NewWorkSet()
 
 	// 设置基础字段
 	if dto.ID != 0 {
