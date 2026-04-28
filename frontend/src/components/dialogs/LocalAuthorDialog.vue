@@ -5,6 +5,7 @@ import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import LocalAuthor from '@renderer/model/model/entity/LocalAuthor.ts'
 import { localAuthorApi } from '@renderer/apis/http'
+import {LocalAuthorDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 
 // props
 const props = withDefaults(
@@ -19,7 +20,7 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<LocalAuthor>('formData', { required: true })
+const formData = defineModel<LocalAuthorDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
@@ -52,11 +53,7 @@ async function handleSaveButtonClicked() {
     }
     if (props.mode === DialogMode.EDIT) {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localAuthorUpdateById({
-        id: tempFormData.id ?? 0,
-        authorName: tempFormData.authorName ?? undefined,
-        introduce: tempFormData.introduce ?? undefined
-      })
+      const response = await apis.localAuthorUpdateById(tempFormData)
       if (ApiUtil.check(response)) {
         emits('requestSuccess')
         state.value = false

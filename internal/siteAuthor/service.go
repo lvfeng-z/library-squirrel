@@ -308,10 +308,10 @@ func (s *Service) CreateSameNameLocalAuthor(ctx context.Context, siteAuthor *ent
 	}
 
 	// 新增同名作者（通过依赖注入的 LocalAuthorOperator）
-	newLocalAuthor := &entity2.LocalAuthor{
-		AuthorName: siteAuthor.AuthorName,
-		Introduce:  siteAuthor.Introduce,
-	}
+	newLocalAuthor := entity2.NewLocalAuthor()
+	newLocalAuthor.AuthorName = siteAuthor.AuthorName
+	newLocalAuthor.Introduce = siteAuthor.Introduce
+
 	if err := s.localAuthorOp.Save(ctx, newLocalAuthor); err != nil {
 		return 0, err
 	}

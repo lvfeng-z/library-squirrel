@@ -240,18 +240,7 @@ func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 		return model.Error[bool]("创建同名本地作者失败，作者名称不能为空")
 	}
 
-	domainAuthor := &entity2.SiteAuthor{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainAuthor.SetID(siteAuthor.ID)
-	if siteAuthor.AuthorName != nil {
-		domainAuthor.AuthorName.Valid = true
-		domainAuthor.AuthorName.String = *siteAuthor.AuthorName
-	}
-	if siteAuthor.Introduce != nil {
-		domainAuthor.Introduce.Valid = true
-		domainAuthor.Introduce.String = *siteAuthor.Introduce
-	}
+	domainAuthor := dto.ToSiteAuthorEntity(siteAuthor)
 
 	result, err := h.svc.CreateAndBindSameNameLocalAuthor(ctx, domainAuthor)
 	if err != nil {
