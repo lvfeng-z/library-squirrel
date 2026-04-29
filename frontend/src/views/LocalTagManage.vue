@@ -5,7 +5,6 @@ import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
 import ApiUtil from '../utils/ApiUtil.ts'
-import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
 import {
@@ -21,7 +20,7 @@ import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.t
 import {ElMessage} from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
-import {localTagApi, localTagQuerySelectItemPageByName, siteApi, siteTagApi} from '@renderer/apis/http'
+import {localTagApi, localTagQuerySelectItemPageByName, siteTagApi} from '@renderer/apis/http'
 import {LocalTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
@@ -47,7 +46,6 @@ const apis = {
   localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
   localTagGetTree: localTagApi.localTagGetTree,
   siteTagUpdateBindLocalTag: siteTagApi.siteTagUpdateBindLocalTag,
-  siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
   siteTagQueryBoundOrUnboundToLocalTagPage: siteTagApi.siteTagQueryBoundOrUnboundToLocalTagPage
 }
 // localTagSearchTable的组件实例
@@ -230,13 +228,11 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
 
   if (isNullish(isUpper) ? true : isUpper && arrayNotEmpty(upper)) {
     const boundIds = upper.map((item) => Number(item.value))
-    const upperResponse: ApiResponse = await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
-    ApiUtil.failedMsg(upperResponse)
+    await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
   }
   if (isNullish(isUpper) ? true : !isUpper && arrayNotEmpty(lower)) {
     const unBoundIds = lower.map((item) => Number(item.value))
-    const lowerResponse: ApiResponse= await apis.siteTagUpdateBindLocalTag(null, unBoundIds)
-    ApiUtil.failedMsg(lowerResponse)
+    await apis.siteTagUpdateBindLocalTag(null, unBoundIds)
   }
   siteTagExchangeBox.value.refreshData(isUpper)
 }
@@ -252,28 +248,21 @@ async function requestSiteTagSelectItemPage(
   // 用户输入的参数
   exchangeBoxLowerSearchParams.value.siteTagName.operator = Operator.OpLike
   const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage, exchangeBoxLowerSearchParams.value)
-  if (ApiUtil.check(response)) {
-    const responsePage = ApiUtil.data<IPage<SiteTagFullDTO>>(response)
-    if (isNullish(responsePage)) {
-      throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
-    }
-    const result = copyPage<SelectItem>(responsePage)
-    result.data = responsePage.data.filter(notNullish).map(data => {
-      const siteTagName = data.siteTag?.siteTagName
-      const baseSiteTagId = data.siteTag?.baseSiteTagId
-      const siteName = data.site?.siteName
-      return new SelectItem({
-        value: String(data.siteTag?.id),
-        label: isBlank(siteTagName) ? '?' : siteTagName,
-        rootId: isBlank(baseSiteTagId) ? '?' : baseSiteTagId,
-        subLabels: [isBlank(siteName) ? '?' : siteName],
-        extraData: undefined
-      })
+  const responsePage = response.data
+  const result = copyPage<SelectItem>(responsePage)
+  result.data = responsePage.data.filter(notNullish).map(data => {
+    const siteTagName = data.siteTag?.siteTagName
+    const baseSiteTagId = data.siteTag?.baseSiteTagId
+    const siteName = data.site?.siteName
+    return new SelectItem({
+      value: String(data.siteTag?.id),
+      label: isBlank(siteTagName) ? '?' : siteTagName,
+      rootId: isBlank(baseSiteTagId) ? '?' : baseSiteTagId,
+      subLabels: [isBlank(siteName) ? '?' : siteName],
+      extraData: undefined
     })
-    return result
-  } else {
-    throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空响应体')
-  }
+  })
+  return result
 }
 </script>
 

@@ -22,9 +22,10 @@ import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
 import {localTagQuerySelectItemPageByName} from '@renderer/apis/http'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import {localTagApi, siteTagApi} from '@renderer/apis/http'
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
-import {newPage} from "@renderer/utils/Pager.ts";
+import {siteTagApi} from '@renderer/apis/http'
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import {newPage} from "@renderer/utils/Pager.ts"
+import {ElMessage} from 'element-plus'
 
 // onMounted
 onMounted(() => {
@@ -37,7 +38,6 @@ onMounted(() => {
 // 变量
 // 接口
 const apis = {
-  localTagQuerySelectItemPage: localTagApi.localTagQuerySelectItemPage,
   siteTagCreateAndBindSameNameLocalTag: siteTagApi.siteTagCreateAndBindSameNameLocalTag,
   siteTagDeleteById: siteTagApi.siteTagDeleteById,
   siteTagUpdateById: siteTagApi.siteTagUpdateById,
@@ -221,17 +221,7 @@ async function siteTagQueryPageFn(
   siteTagQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
   siteTagQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   const response = await apis.siteTagQueryLocalRelateDTOPage(page, siteTagQuery.value)
-  if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<SiteTagLocalRelateDTO>>(response)
-    if (isNullish(responsePage)) {
-      throw new Error('siteTagQueryLocalRelateDTOPage接口未返回数据')
-    }
-    responsePage = newPage(responsePage)
-    return responsePage
-  } else {
-    ApiUtil.msg(response)
-    throw new Error(response.msg)
-  }
+  return response.data
 }
 // 处理站点标签新增按钮点击事件
 async function handleCreateButtonClicked() {
@@ -275,10 +265,12 @@ function refreshTable() {
 }
 // 删除站点标签
 async function deleteSiteTag(id: number) {
-  const response = await apis.siteTagDeleteById(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.siteTagDeleteById(id)
+    ApiUtil.msg(response)
     await siteTagSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 保存行数据编辑
@@ -287,13 +279,14 @@ async function saveRowEdit(newData: SiteTagLocalRelateDTO) {
     return
   }
   const tempData = new SiteTagDTO(newData.siteTag)
-
-  const response = await apis.siteTagUpdateById(tempData)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.siteTagUpdateById(tempData)
+    ApiUtil.msg(response)
     const index = changedRows.value.indexOf(newData)
     changedRows.value.splice(index, 1)
     refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 创建同名本地标签并绑定
@@ -302,9 +295,10 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
     return
   }
   const tempData = new SiteTagDTO(siteTag.siteTag)
-  const response = await apis.siteTagCreateAndBindSameNameLocalTag(tempData)
-  if (!ApiUtil.check(response)) {
-    ApiUtil.msg(response)
+  try {
+    await apis.siteTagCreateAndBindSameNameLocalTag(tempData)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 </script>
