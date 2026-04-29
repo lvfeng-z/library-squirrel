@@ -1,107 +1,60 @@
 /**
  * SiteAuthor HTTP API 包装器
- * 直接调用 bindings 接口
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
-import type { ApiResponse } from '../types'
 import {
   Handler as SiteAuthorHandler,
   SiteAuthorQueryDTO
 } from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor'
-import {SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import { SiteAuthorDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model'
+import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
 
 // ========== API 方法 ==========
 
-export async function siteAuthorSave(author: SiteAuthorDTO): Promise<ApiResponse<SiteAuthorDTO>> {
-  const result = await SiteAuthorHandler.Save(author)
-  if (!result) {
-    return { success: false, msg: '保存失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
+/** 保存站点作者 */
+export async function siteAuthorSave(author: SiteAuthorDTO): Promise<ApiResult<number>> {
+  return requireResponse(await SiteAuthorHandler.Save(author), '保存站点作者', false)
 }
 
-export async function siteAuthorDeleteById(id: number): Promise<ApiResponse<null>> {
-  const result = await SiteAuthorHandler.Delete(id)
-  if (!result) {
-    return { success: false, msg: '删除失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
+/** 删除站点作者 */
+export async function siteAuthorDeleteById(id: number): Promise<ApiResult<any>> {
+  return requireResponse(await SiteAuthorHandler.Delete(id), '删除站点作者', false)
 }
 
-export async function siteAuthorUpdateById(author: SiteAuthorDTO): Promise<ApiResponse<SiteAuthorDTO>> {
-  const result = await SiteAuthorHandler.Update(author)
-  if (!result) {
-    return { success: false, msg: '更新失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
+/** 更新站点作者 */
+export async function siteAuthorUpdateById(author: SiteAuthorDTO): Promise<ApiResult<any>> {
+  return requireResponse(await SiteAuthorHandler.Update(author), '更新站点作者', false)
 }
 
-export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorDTO>>> {
-  const result = await SiteAuthorHandler.QueryPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '', data: result.data ?? undefined }
+/** 分页查询站点作者 */
+export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResult<Page<SiteAuthorDTO>>> {
+  return requireResponse(await SiteAuthorHandler.QueryPage(page, query), '查询站点作者')
 }
 
-/**
- * 查询绑定或未绑定到本地作者的站点作者分页
- */
-export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorLocalRelateDTO>>> {
-  const result = await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+/** 查询绑定或未绑定到本地作者的站点作者分页 */
+export async function siteAuthorQueryBoundOrUnboundInLocalAuthorPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResult<Page<SiteAuthorLocalRelateDTO>>> {
+  return requireResponse(await SiteAuthorHandler.QueryBoundOrUnboundToLocalAuthorPage(page, query), '查询站点作者')
 }
 
-/**
- * 查询本地关联的站点作者分页
- */
-export async function siteAuthorQueryLocalRelateDTOPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResponse<Page<SiteAuthorLocalRelateDTO>>> {
-  const result = await SiteAuthorHandler.QueryLocalRelateDTOPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+/** 查询本地关联的站点作者分页 */
+export async function siteAuthorQueryLocalRelateDTOPage(page: Page<SiteAuthorLocalRelateDTO>, query: SiteAuthorQueryDTO): Promise<ApiResult<Page<SiteAuthorLocalRelateDTO>>> {
+  return requireResponse(await SiteAuthorHandler.QueryLocalRelateDTOPage(page, query), '查询站点作者')
 }
 
-/**
- * 更新站点作者绑定的本地作者
- */
+/** 更新站点作者绑定的本地作者 */
 export async function siteAuthorUpdateBindLocalAuthor(
   localAuthorId: number | null,
   siteAuthorIds: number[]
-): Promise<ApiResponse<boolean>> {
-  const result = await SiteAuthorHandler.UpdateBindLocalAuthor(localAuthorId, siteAuthorIds)
-  if (!result) {
-    return { success: false, msg: '更新失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '更新失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+): Promise<ApiResult<boolean>> {
+  return requireResponse(await SiteAuthorHandler.UpdateBindLocalAuthor(localAuthorId, siteAuthorIds), '更新本地作者绑定', false)
 }
 
-/**
- * 创建并绑定同名的本地作者
- */
+/** 创建并绑定同名的本地作者 */
 export async function siteAuthorCreateAndBindSameNameLocalAuthor(
   siteAuthor: SiteAuthorDTO
-): Promise<ApiResponse<boolean>> {
-  const result = await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor(siteAuthor)
-  if (!result) {
-    return { success: false, msg: '创建失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '创建失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data }
+): Promise<ApiResult<boolean>> {
+  return requireResponse(await SiteAuthorHandler.CreateAndBindSameNameLocalAuthor(siteAuthor), '创建同名本地作者', false)
 }

@@ -13,7 +13,7 @@ import TaskOperationBarActive from '@renderer/components/common/TaskOperationBar
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import Page from '@renderer/model/util/Page.ts'
-import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/SiteApi.ts'
+import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'

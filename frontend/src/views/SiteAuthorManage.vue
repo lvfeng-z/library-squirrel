@@ -2,17 +2,17 @@
 import {onMounted, Ref, ref} from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
-import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
+import {ElMessage} from 'element-plus'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import {isNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
-import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorQuerySelectItemPageByName} from '@renderer/apis/http'
+import {localAuthorQuerySelectItemPageByName, siteAuthorApi} from '@renderer/apis/http'
 import {
   LocalAuthorDTO,
   SelectItem,
@@ -21,7 +21,6 @@ import {
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import {localAuthorApi, siteAuthorApi} from '@renderer/apis/http'
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 import {newPage} from "@renderer/utils/Pager.ts";
 
@@ -34,14 +33,6 @@ onMounted(() => {
 })
 
 // 变量
-// 接口
-const apis = {
-  localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
-  siteAuthorCreateAndBindSameNameLocalAuthor: siteAuthorApi.siteAuthorCreateAndBindSameNameLocalAuthor,
-  siteAuthorDeleteById: siteAuthorApi.siteAuthorDeleteById,
-  siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById,
-  siteAuthorQueryLocalRelateDTOPage: siteAuthorApi.siteAuthorQueryLocalRelateDTOPage
-}
 // siteAuthorSearchTable的组件实例
 const siteAuthorSearchTable = ref()
 // 被改变的数据行
@@ -189,17 +180,8 @@ async function siteAuthorQueryPageFn(
   page: Page<SiteAuthorLocalRelateDTO>
 ): Promise<Page<SiteAuthorLocalRelateDTO>> {
   siteAuthorQuery.value.authorName.operator = Operator.OpLike
-  const response = await apis.siteAuthorQueryLocalRelateDTOPage(page, siteAuthorQuery.value)
-  if (ApiUtil.check(response)) {
-    const result = ApiUtil.data<Page<SiteAuthorLocalRelateDTO>>(response)
-    if (isNullish(result)) {
-      throw new Error('siteAuthorQueryLocalRelateDTOPage未返回数据')
-    }
-    return result
-  } else {
-    ApiUtil.msg(response)
-    throw new Error(response.msg)
-  }
+  const response = await siteAuthorApi.siteAuthorQueryLocalRelateDTOPage(page, siteAuthorQuery.value)
+  return response.data
 }
 // 处理站点作者新增按钮点击事件
 async function handleCreateButtonClicked() {
@@ -241,10 +223,12 @@ function refreshTable() {
 }
 // 删除站点作者
 async function deleteSiteAuthor(id: number) {
-  const response = await apis.siteAuthorDeleteById(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await siteAuthorApi.siteAuthorDeleteById(id)
+    ApiUtil.msg(response)
     await siteAuthorSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 保存行数据编辑
@@ -257,12 +241,14 @@ async function saveRowEdit(newData: SiteAuthorLocalRelateDTO) {
     siteId: newData.siteAuthor?.siteId || null,
     fixedAuthorName: newData.siteAuthor?.fixedAuthorName || null
   })
-  const response = await apis.siteAuthorUpdateById(authorDTO)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await siteAuthorApi.siteAuthorUpdateById(authorDTO)
+    ApiUtil.msg(response)
     const index = changedRows.value.indexOf(newData)
     changedRows.value.splice(index, 1)
     refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 创建同名本地作者并绑定
@@ -272,9 +258,10 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
     authorName: relateData.siteAuthor?.authorName || null,
     introduce: relateData.siteAuthor?.introduce || null
   })
-  const response = await apis.siteAuthorCreateAndBindSameNameLocalAuthor(authorDTO)
-  if (!ApiUtil.check(response)) {
-    ApiUtil.msg(response)
+  try {
+    await siteAuthorApi.siteAuthorCreateAndBindSameNameLocalAuthor(authorDTO)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 </script>

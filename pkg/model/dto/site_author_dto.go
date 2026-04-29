@@ -144,6 +144,13 @@ func ToSiteAuthorEntity(dto *SiteAuthorDTO) *entity2.SiteAuthor {
 		entity.Introduce.Valid = false
 	}
 
+	if dto.LocalAuthorID != nil {
+		entity.LocalAuthorID.Valid = true
+		entity.LocalAuthorID.Int64 = *dto.LocalAuthorID
+	} else {
+		entity.LocalAuthorID.Valid = false
+	}
+
 	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
 	if dto.CreateTime != 0 {
 		entity.SetCreateTime(dto.CreateTime)

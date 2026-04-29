@@ -18,7 +18,7 @@ import {
   SiteTagLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {localTagQuerySelectItemPageByName} from '@renderer/apis/http'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'

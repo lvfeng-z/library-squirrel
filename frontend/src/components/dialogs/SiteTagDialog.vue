@@ -39,14 +39,11 @@ const state = defineModel<boolean>('state', { required: true })
 // 事件
 const emits = defineEmits(['requestSuccess'])
 
-// 适配器函数：站点查询（site wrapper 尚未迁移，保留旧模式）
+// 适配器函数：站点查询
 async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, input: string): Promise<IPage<SelectItem>> {
   const query = new SiteQueryDTO({siteName: isBlank(input) ? undefined : new QueryAttribute({value: input})})
   const response = await siteApi.siteQuerySelectItemPage(page, query)
-  if (response.success && response.data) {
-    return response.data
-  }
-  throw new Error(response.msg || '查询站点失败')
+  return response.data
 }
 
 // 方法

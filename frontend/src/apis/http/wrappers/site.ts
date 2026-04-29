@@ -1,76 +1,63 @@
 /**
  * Site HTTP API 包装器
- * 直接调用 bindings 接口
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
-import type { ApiResponse } from '../types'
-import {Handler as SiteHandler, SiteQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/site'
-import {SelectItem, SiteDTO} from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import {
+  Handler as SiteHandler,
+  SiteQueryDTO
+} from '@bindings/github.com/library-squirrel/wails/internal/site'
+import { SelectItem, SiteDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model'
+import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
+import IPage from '@renderer/model/util/IPage.ts'
 
-export interface SiteVO {
-  id: number
-  name: string
-  url: string
-  enable: boolean
-  createTime: number
-  updateTime: number
-}
 // ========== API 方法 ==========
 
-export async function siteSave(site: { name?: string; url?: string; enable?: boolean }): Promise<ApiResponse<SiteVO>> {
-  const siteDTO = new SiteDTO({
-    siteName: site.name ?? null,
-    homepage: site.url ?? null
-  })
-  const result = await SiteHandler.Save(siteDTO)
-  if (!result) {
-    return { success: false, msg: '保存失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '保存失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, name: '', url: '', enable: true, createTime: 0, updateTime: 0 } }
+/** 保存站点 */
+export async function siteSave(site: SiteDTO): Promise<ApiResult<number>> {
+  return requireResponse(await SiteHandler.Save(site), '保存站点', false)
 }
 
-export async function siteDeleteById(id: number): Promise<ApiResponse<null>> {
-  const result = await SiteHandler.Delete(id)
-  if (!result) {
-    return { success: false, msg: '删除失败：接口返回为空' }
-  }
-  return result
+/** 删除站点 */
+export async function siteDeleteById(id: number): Promise<ApiResult<any>> {
+  return requireResponse(await SiteHandler.Delete(id), '删除站点', false)
 }
 
-export async function siteUpdateById(site: {
-  id: number
-  name?: string
-  url?: string
-  enable?: boolean
-}): Promise<ApiResponse<SiteVO>> {
-  const siteDTO = new SiteDTO({
-    id: site.id,
-    siteName: site.name ?? null,
-    homepage: site.url ?? null
-  })
-  const result = await SiteHandler.Update(siteDTO)
-  if (!result) {
-    return { success: false, msg: '更新失败：接口返回为空' }
-  }
-  return result
+/** 更新站点 */
+export async function siteUpdateById(site: SiteDTO): Promise<ApiResult<any>> {
+  return requireResponse(await SiteHandler.Update(site), '更新站点', false)
 }
 
-export async function siteQueryPage(page: Page<SiteDTO>, query: SiteQueryDTO): Promise<ApiResponse<Page<SiteDTO> | null>> {
-  const result = await SiteHandler.QueryPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  return result
+/** 分页查询站点 */
+export async function siteQueryPage(page: Page<SiteDTO>, query: SiteQueryDTO): Promise<ApiResult<Page<SiteDTO>>> {
+  return requireResponse(await SiteHandler.QueryPage(page, query), '查询站点')
 }
 
-export async function siteQuerySelectItemPage(page: Page<SelectItem>, query: SiteQueryDTO): Promise<ApiResponse<Page<SelectItem> | null>> {
-  const result = await SiteHandler.QuerySelectItemPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
+/** 分页查询站点选择列表 */
+export async function siteQuerySelectItemPage(page: Page<SelectItem>, query: SiteQueryDTO): Promise<ApiResult<Page<SelectItem>>> {
+  return requireResponse(await SiteHandler.QuerySelectItemPage(page, query), '查询站点选择列表')
+}
+
+/**
+ * 分页查询站点选择列表（适配器版本，供 AutoLoadSelect 使用）
+ * @param page 分页信息
+ * @param _input 搜索关键字（站点名称过滤在 bindings 中未实现）
+ */
+export async function siteQuerySelectItemPageBySiteName(
+  page: IPage<SelectItem>,
+  _input: string
+): Promise<IPage<SelectItem>> {
+  const pageArg = new Page<SelectItem>({ pageNumber: page.pageNumber, pageSize: page.pageSize })
+  const response = await siteQuerySelectItemPage(pageArg, new SiteQueryDTO({}))
+  const responseData = response.data
+  return {
+    pageNumber: responseData.pageNumber,
+    pageSize: responseData.pageSize,
+    pageCount: responseData.pageCount,
+    dataCount: responseData.dataCount,
+    currentCount: responseData.currentCount,
+    data: responseData.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
-  return result
 }

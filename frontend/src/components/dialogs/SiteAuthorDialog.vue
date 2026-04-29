@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
+import {ElMessage} from 'element-plus'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorApi, localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi} from '@renderer/apis/http'
+import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi} from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
 import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/internal/site/models"
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
-import {newPage} from "@renderer/utils/Pager.ts"
 
 // props
 const props = withDefaults(
@@ -34,26 +34,18 @@ const state = defineModel<boolean>('state', { required: true })
 const emits = defineEmits(['requestSuccess'])
 
 // 变量
-// 接口
-const apis = {
-  localAuthorQuerySelectItemPageByName: localAuthorApi.localAuthorQuerySelectItemPageByName,
-  siteAuthorSave: siteAuthorApi.siteAuthorSave,
-  siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById
-}
 
 async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, _input: string): Promise<IPage<SelectItem>> {
   const pageArg = new Page<SelectItem>({pageNumber: page.pageNumber, pageSize: page.pageSize})
   const response = await siteApi.siteQuerySelectItemPage(pageArg, new SiteQueryDTO({}))
-  if (!response.success || !response.data) {
-    return newPage<SelectItem>()
-  }
+  const responseData = response.data
   return {
-    pageNumber: response.data.pageNumber,
-    pageSize: response.data.pageSize,
-    pageCount: response.data.pageCount,
-    dataCount: response.data.dataCount,
-    currentCount: response.data.currentCount,
-    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
+    pageNumber: responseData.pageNumber,
+    pageSize: responseData.pageSize,
+    pageCount: responseData.pageCount,
+    dataCount: responseData.dataCount,
+    currentCount: responseData.currentCount,
+    data: responseData.data?.filter((item) => item !== null) as SelectItem[] ?? []
   }
 }
 
@@ -61,37 +53,37 @@ async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, _input: s
 // 处理保存按钮点击事件
 async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
-    if (props.mode === DialogMode.NEW) {
-      const tempFormData = lodash.cloneDeep(formData.value)
-      const authorDTO = new SiteAuthorDTO({
-        authorName: tempFormData.siteAuthor?.authorName || null,
-        introduce: tempFormData.siteAuthor?.introduce || null,
-        siteId: tempFormData.siteAuthor?.siteId || null,
-        fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
-      })
-      const response = await apis.siteAuthorSave(authorDTO)
-      if (ApiUtil.check(response)) {
+    try {
+      if (props.mode === DialogMode.NEW) {
+        const tempFormData = lodash.cloneDeep(formData.value)
+        const authorDTO = new SiteAuthorDTO({
+          authorName: tempFormData.siteAuthor?.authorName || null,
+          introduce: tempFormData.siteAuthor?.introduce || null,
+          siteId: tempFormData.siteAuthor?.siteId || null,
+          fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
+        })
+        const response = await siteAuthorApi.siteAuthorSave(authorDTO)
+        ApiUtil.msg(response)
         emits('requestSuccess')
         state.value = false
       }
-      ApiUtil.msg(response)
-    }
-    if (props.mode === DialogMode.EDIT) {
-      const tempFormData = lodash.cloneDeep(formData.value)
-      const authorDTO = new SiteAuthorDTO({
-        id: tempFormData.siteAuthor?.id,
-        authorName: tempFormData.siteAuthor?.authorName || null,
-        introduce: tempFormData.siteAuthor?.introduce || null,
-        localAuthorId: tempFormData.localAuthor?.id || null,
-        siteId: tempFormData.siteAuthor?.siteId || null,
-        fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
-      })
-      const response = await apis.siteAuthorUpdateById(authorDTO)
-      if (ApiUtil.check(response)) {
+      if (props.mode === DialogMode.EDIT) {
+        const tempFormData = lodash.cloneDeep(formData.value)
+        const authorDTO = new SiteAuthorDTO({
+          id: tempFormData.siteAuthor?.id,
+          authorName: tempFormData.siteAuthor?.authorName || null,
+          introduce: tempFormData.siteAuthor?.introduce || null,
+          localAuthorId: tempFormData.localAuthor?.id || null,
+          siteId: tempFormData.siteAuthor?.siteId || null,
+          fixedAuthorName: tempFormData.siteAuthor?.fixedAuthorName || null
+        })
+        const response = await siteAuthorApi.siteAuthorUpdateById(authorDTO)
+        ApiUtil.msg(response)
         emits('requestSuccess')
         state.value = false
       }
-      ApiUtil.msg(response)
+    } catch (e) {
+      ElMessage.error((e as Error).message)
     }
   }
 }

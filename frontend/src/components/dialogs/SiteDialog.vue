@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
+import {ElMessage} from 'element-plus'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import Site from '@renderer/model/model/entity/Site.ts'
 import { siteApi } from '@renderer/apis/http'
+import { SiteDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
 
 // props
 const props = withDefaults(
@@ -19,48 +20,44 @@ const props = withDefaults(
 
 // model
 // 表单数据
-const formData = defineModel<Site>('formData', { required: true })
+const formData = defineModel<SiteDTO>('formData', { required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
 // 事件
 const emits = defineEmits(['requestSuccess'])
 
-// 变量
-// 接口
-const apis = {
-  siteSave: siteApi.siteSave,
-  siteUpdateById: siteApi.siteUpdateById
-}
-
 // 方法
 // 处理保存按钮点击事件
 async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
-    if (props.mode === DialogMode.NEW) {
-      const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteSave({
-        name: tempFormData.siteName ?? undefined,
-        url: tempFormData.homepage ?? undefined
-      })
-      if (ApiUtil.check(response)) {
+    try {
+      if (props.mode === DialogMode.NEW) {
+        const tempFormData = lodash.cloneDeep(formData.value)
+        const siteDTO = new SiteDTO({
+          siteName: tempFormData.siteName ?? null,
+          homepage: tempFormData.homepage ?? null
+        })
+        const response = await siteApi.siteSave(siteDTO)
+        ApiUtil.msg(response)
         emits('requestSuccess')
         state.value = false
       }
-      ApiUtil.msg(response)
-    }
-    if (props.mode === DialogMode.EDIT) {
-      const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.siteUpdateById({
-        id: tempFormData.id ?? 0,
-        name: tempFormData.siteName ?? undefined,
-        url: tempFormData.homepage ?? undefined
-      })
-      if (ApiUtil.check(response)) {
+      if (props.mode === DialogMode.EDIT) {
+        const tempFormData = lodash.cloneDeep(formData.value)
+        const siteDTO = new SiteDTO({
+          id: tempFormData.id,
+          siteName: tempFormData.siteName ?? null,
+          siteDescription: tempFormData.siteDescription ?? null,
+          homepage: tempFormData.homepage ?? null
+        })
+        const response = await siteApi.siteUpdateById(siteDTO)
+        ApiUtil.msg(response)
         emits('requestSuccess')
         state.value = false
       }
-      ApiUtil.msg(response)
+    } catch (e) {
+      ElMessage.error((e as Error).message)
     }
   }
 }

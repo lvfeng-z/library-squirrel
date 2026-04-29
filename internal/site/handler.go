@@ -22,21 +22,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存站点
 func (h *Handler) Save(ctx context.Context, site *dto.SiteDTO) *model.ApiResponse[int64] {
-	domainSite := &domain.Site{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if site.SiteName != nil {
-		domainSite.SiteName.Valid = true
-		domainSite.SiteName.String = *site.SiteName
-	}
-	if site.SiteDescription != nil {
-		domainSite.SiteDescription.Valid = true
-		domainSite.SiteDescription.String = *site.SiteDescription
-	}
-	if site.Homepage != nil {
-		domainSite.Homepage.Valid = true
-		domainSite.Homepage.String = *site.Homepage
-	}
+	domainSite := dto.ToSiteEntity(site)
 
 	if err := h.svc.Save(ctx, domainSite); err != nil {
 		return model.Error[int64](err.Error())
@@ -54,22 +40,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新站点
 func (h *Handler) Update(ctx context.Context, site *dto.SiteDTO) *model.ApiResponse[any] {
-	domainSite := &domain.Site{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainSite.SetID(site.ID)
-	if site.SiteName != nil {
-		domainSite.SiteName.Valid = true
-		domainSite.SiteName.String = *site.SiteName
-	}
-	if site.SiteDescription != nil {
-		domainSite.SiteDescription.Valid = true
-		domainSite.SiteDescription.String = *site.SiteDescription
-	}
-	if site.Homepage != nil {
-		domainSite.Homepage.Valid = true
-		domainSite.Homepage.String = *site.Homepage
-	}
+	domainSite := dto.ToSiteEntity(site)
 
 	if err := h.svc.UpdateById(ctx, domainSite); err != nil {
 		return model.Error[any](err.Error())

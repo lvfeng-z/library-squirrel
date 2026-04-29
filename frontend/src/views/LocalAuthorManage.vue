@@ -8,7 +8,7 @@ import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
-import {LocalAuthorDTO, SelectItem, SiteAuthorFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {LocalAuthorDTO, SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
@@ -16,7 +16,7 @@ import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.t
 import {ElMessage} from 'element-plus'
 import IPage from '@renderer/model/util/IPage.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
+import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {LocalAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
@@ -37,9 +37,7 @@ onMounted(() => {
 const apis = {
   localAuthorDeleteById: localAuthorApi.localAuthorDeleteById,
   localAuthorUpdateById: localAuthorApi.localAuthorUpdateById,
-  localAuthorQueryPage: localAuthorApi.localAuthorQueryPage,
-  siteAuthorUpdateBindLocalAuthor: siteAuthorApi.siteAuthorUpdateBindLocalAuthor,
-  siteAuthorQueryBoundOrUnboundInLocalAuthorPage: siteAuthorApi.siteAuthorQueryBoundOrUnboundInLocalAuthorPage
+  localAuthorQueryPage: localAuthorApi.localAuthorQueryPage
 }
 // localAuthorSearchTable的组件实例
 const localAuthorSearchTable = ref()
@@ -214,19 +212,23 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
     return
   }
 
-  if (isNullish(isUpper) ? true : isUpper) {
-    if (arrayNotEmpty(upper)) {
-      const boundIds = upper.map((item) => Number(item.value))
-      await apis.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id, boundIds)
+  try {
+    if (isNullish(isUpper) ? true : isUpper) {
+      if (arrayNotEmpty(upper)) {
+        const boundIds = upper.map((item) => Number(item.value))
+        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id, boundIds)
+      }
     }
-  }
-  if (isNullish(isUpper) ? true : !isUpper) {
-    if (arrayNotEmpty(lower)) {
-      const unBoundIds = lower.map((item) => Number(item.value))
-      await apis.siteAuthorUpdateBindLocalAuthor(null, unBoundIds)
+    if (isNullish(isUpper) ? true : !isUpper) {
+      if (arrayNotEmpty(lower)) {
+        const unBoundIds = lower.map((item) => Number(item.value))
+        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(null, unBoundIds)
+      }
     }
+    siteAuthorExchangeBox.value.refreshData(isUpper)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
-  siteAuthorExchangeBox.value.refreshData(isUpper)
 }
 // 请求站点作者分页选择列表的函数
 async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded: boolean): Promise<Page<SelectItem>> {
@@ -234,28 +236,21 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
   query.authorName.operator = Operator.OpLike
   query.localAuthorId = new QueryAttribute({value: localAuthorSelected.value.id})
   query.boundOnLocalAuthorId = new QueryAttribute({value: bounded})
-  const tempPage = copyPage<SiteAuthorFullDTO>(page)
-  const response = await apis.siteAuthorQueryBoundOrUnboundInLocalAuthorPage(tempPage, query)
-  if (ApiUtil.check(response)) {
-    const responsePage: Page<SiteAuthorFullDTO> | undefined = ApiUtil.data(response)
-    if (isNullish(responsePage)) {
-      throw new Error('siteAuthorQueryBoundOrUnboundInLocalAuthorPage未返回数据')
-    }
-    const resultPage = copyPage<SelectItem>(responsePage)
-    resultPage.data = responsePage.data.filter(notNullish).map(data => {
-      const authorName = data.siteAuthor?.authorName
-      const siteName = data.site?.siteName
-      return new SelectItem({
-        value: String(data.siteAuthor?.id),
-        label: isBlank(authorName) ? '?' : authorName,
-        subLabels: [isBlank(siteName) ? '?' : siteName],
-        extraData: undefined
-      })
+  const tempPage = copyPage<SiteAuthorLocalRelateDTO>(page)
+  const response = await siteAuthorApi.siteAuthorQueryBoundOrUnboundInLocalAuthorPage(tempPage, query)
+  const responsePage = response.data
+  const resultPage = copyPage<SelectItem>(responsePage)
+  resultPage.data = responsePage.data.filter(notNullish).map(data => {
+    const authorName = data.siteAuthor?.authorName
+    const siteName = data.site?.siteName
+    return new SelectItem({
+      value: String(data.siteAuthor?.id),
+      label: isBlank(authorName) ? '?' : authorName,
+      subLabels: [isBlank(siteName) ? '?' : siteName],
+      extraData: undefined
     })
-    return resultPage
-  } else {
-    throw new Error(response.msg)
-  }
+  })
+  return resultPage
 }
 </script>
 

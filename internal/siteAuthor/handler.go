@@ -23,25 +23,7 @@ func NewHandler(svc *Service) *Handler {
 
 // Save 保存站点作者
 func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorDTO) *model.ApiResponse[int64] {
-	domainAuthor := &entity2.SiteAuthor{
-		BaseEntity: &model.BaseEntity{},
-	}
-	if author.SiteID != nil {
-		domainAuthor.SiteID.Valid = true
-		domainAuthor.SiteID.Int64 = *author.SiteID
-	}
-	if author.SiteAuthorID != nil {
-		domainAuthor.SiteAuthorID.Valid = true
-		domainAuthor.SiteAuthorID.String = *author.SiteAuthorID
-	}
-	if author.AuthorName != nil {
-		domainAuthor.AuthorName.Valid = true
-		domainAuthor.AuthorName.String = *author.AuthorName
-	}
-	if author.Introduce != nil {
-		domainAuthor.Introduce.Valid = true
-		domainAuthor.Introduce.String = *author.Introduce
-	}
+	domainAuthor := dto.ToSiteAuthorEntity(author)
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
 		return model.Error[int64](err.Error())
@@ -53,26 +35,7 @@ func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorDTO) *model.Ap
 func (h *Handler) SaveBatch(ctx context.Context, authors []*dto.SiteAuthorDTO) *model.ApiResponse[any] {
 	domainAuthors := make([]*entity2.SiteAuthor, 0, len(authors))
 	for _, author := range authors {
-		domainAuthor := &entity2.SiteAuthor{
-			BaseEntity: &model.BaseEntity{},
-		}
-		if author.SiteID != nil {
-			domainAuthor.SiteID.Valid = true
-			domainAuthor.SiteID.Int64 = *author.SiteID
-		}
-		if author.SiteAuthorID != nil {
-			domainAuthor.SiteAuthorID.Valid = true
-			domainAuthor.SiteAuthorID.String = *author.SiteAuthorID
-		}
-		if author.AuthorName != nil {
-			domainAuthor.AuthorName.Valid = true
-			domainAuthor.AuthorName.String = *author.AuthorName
-		}
-		if author.Introduce != nil {
-			domainAuthor.Introduce.Valid = true
-			domainAuthor.Introduce.String = *author.Introduce
-		}
-		domainAuthors = append(domainAuthors, domainAuthor)
+		domainAuthors = append(domainAuthors, dto.ToSiteAuthorEntity(author))
 	}
 
 	if err := h.svc.SaveBatch(ctx, domainAuthors); err != nil {
@@ -91,26 +54,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 
 // Update 更新站点作者
 func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorDTO) *model.ApiResponse[any] {
-	domainAuthor := &entity2.SiteAuthor{
-		BaseEntity: &model.BaseEntity{},
-	}
-	domainAuthor.SetID(author.ID)
-	if author.SiteID != nil {
-		domainAuthor.SiteID.Valid = true
-		domainAuthor.SiteID.Int64 = *author.SiteID
-	}
-	if author.SiteAuthorID != nil {
-		domainAuthor.SiteAuthorID.Valid = true
-		domainAuthor.SiteAuthorID.String = *author.SiteAuthorID
-	}
-	if author.AuthorName != nil {
-		domainAuthor.AuthorName.Valid = true
-		domainAuthor.AuthorName.String = *author.AuthorName
-	}
-	if author.Introduce != nil {
-		domainAuthor.Introduce.Valid = true
-		domainAuthor.Introduce.String = *author.Introduce
-	}
+	domainAuthor := dto.ToSiteAuthorEntity(author)
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
 		return model.Error[any](err.Error())

@@ -2,19 +2,19 @@
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
 import { onMounted, ref, Ref, UnwrapRef } from 'vue'
-import Page from '@renderer/model/util/Page.ts'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
 import { Thead } from '@renderer/model/util/Thead.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
+import {ElMessage} from 'element-plus'
 import DataTableOperationResponse from '@renderer/model/util/DataTableOperationResponse.ts'
 import lodash from 'lodash'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
 import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/site/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { siteApi } from '@renderer/apis/http'
-import {SiteDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {SiteDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
 
 // onMounted
 onMounted(() => {
@@ -25,11 +25,6 @@ onMounted(() => {
 })
 
 // 变量
-const apis = {
-  siteDeleteById: siteApi.siteDeleteById,
-  siteQueryPage: siteApi.siteQueryPage,
-  siteUpdateById: siteApi.siteUpdateById
-}
 // 站点数据表组件的实例
 const siteSearchTable = ref()
 // 是否调转站点和域名
@@ -129,14 +124,9 @@ const siteDialogData: Ref<UnwrapRef<SiteDTO>> = ref(new SiteDTO())
 
 // 方法
 // 分页查询站点
-async function siteQueryPageFn(page: Page<SiteDTO>): Promise<Page<SiteDTO> | undefined> {
-  const response = await apis.siteQueryPage(page, siteQuery.value)
-  if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<SiteDTO>>(response)
-  } else {
-    ApiUtil.msg(response)
-    return undefined
-  }
+async function siteQueryPageFn(page: Page<SiteDTO>): Promise<Page<SiteDTO>> {
+  const response = await siteApi.siteQueryPage(page, siteQuery.value)
+  return response.data
 }
 // 处理站点新增按钮点击事件
 async function handleSiteCreateButtonClicked() {
@@ -170,20 +160,23 @@ function handleSiteRowButtonClicked(op: DataTableOperationResponse<SiteDTO>) {
 // 保存站点行数据编辑
 async function saveSiteRowEdit(newData: SiteDTO) {
   const tempData = lodash.cloneDeep(newData)
-
-  const response = await apis.siteUpdateById(tempData)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await siteApi.siteUpdateById(tempData)
+    ApiUtil.msg(response)
     const index = siteChangedRows.value.indexOf(newData)
     siteChangedRows.value.splice(index, 1)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 删除站点
 async function deleteSite(id: number) {
-  const response = await apis.siteDeleteById(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await siteApi.siteDeleteById(id)
+    ApiUtil.msg(response)
     await siteSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 处理站点弹窗请求成功事件
@@ -213,7 +206,7 @@ function handleSiteDialogRequestSuccess() {
         >
           <template #toolbarMain>
             <el-button type="primary" @click="handleSiteCreateButtonClicked">新增</el-button>
-            <el-input v-model="siteSearchParams.siteName" placeholder="输入站点名称" clearable />
+            <el-input v-model="siteSearchParams.siteName.value" placeholder="输入站点名称" clearable @clear="() => siteSearchParams.siteName.value = null" />
           </template>
         </search-table>
       </div>
