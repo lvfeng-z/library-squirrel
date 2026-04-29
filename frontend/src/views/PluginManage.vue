@@ -2,7 +2,6 @@
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
 import { onMounted, ref, Ref, UnwrapRef } from 'vue'
-import Page from '@renderer/model/util/Page.ts'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
 import { Thead } from '@renderer/model/util/Thead.ts'
@@ -14,15 +13,9 @@ import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
-import { fileSysUtilApi } from '@renderer/apis/http'
-import {
-  pluginQueryPage,
-  pluginInstallFromPath,
-  pluginReinstall,
-  pluginReinstallFromPath,
-  pluginUnInstall
-} from '@renderer/apis/http/wrappers/plugin'
-import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import { fileSysUtilApi, pluginApi } from '@renderer/apis/http'
+import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
 
 // onMounted
 onMounted(() => {
@@ -33,14 +26,6 @@ onMounted(() => {
 })
 
 // 变量
-const apis = {
-  dirSelect: fileSysUtilApi.fileSysUtilDirSelect,
-  pluginQueryPage,
-  pluginInstallFromPath,
-  pluginReinstall,
-  pluginReinstallFromPath,
-  pluginUnInstall
-}
 // 插件数据表组件的实例
 const pluginSearchTable = ref()
 // 插件分页参数
@@ -112,14 +97,9 @@ const dialogData: Ref<PluginDTO> = ref(new PluginDTO())
 
 // 方法
 // 分页查询插件
-async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO> | undefined> {
-  const response = await apis.pluginQueryPage(page, pluginQuery.value)
-  if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<PluginDTO>>(response)
-  } else {
-    ApiUtil.msg(response)
-    return undefined
-  }
+async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO>> {
+  const response = await pluginApi.pluginQueryPage(page, pluginQuery.value)
+  return response.data
 }
 // 处理插件数据行按钮点击事件
 function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
@@ -164,39 +144,29 @@ async function beforeReInstall(pluginPublicId: string) {
 }
 // 重新安装
 async function reInstall(pluginPublicId: string) {
-  const response = await apis.pluginReinstall(pluginPublicId)
-  pluginSearchTable.value.doSearch()
-  if (ApiUtil.check(response)) {
-    ElMessage({
-      type: 'success',
-      message: '修复完成'
-    })
-  } else {
-    ElMessage({
-      type: 'error',
-      message: `修复失败，${response.msg}`
-    })
+  try {
+    await pluginApi.pluginReinstall(pluginPublicId)
+    pluginSearchTable.value.doSearch()
+    ElMessage({ type: 'success', message: '修复完成' })
+  } catch (e) {
+    pluginSearchTable.value.doSearch()
+    ElMessage({ type: 'error', message: `修复失败，${(e as Error).message}` })
   }
 }
 // 卸载
 async function unInstall(pluginPublicId: string) {
-  const response = await apis.pluginUnInstall(pluginPublicId)
-  pluginSearchTable.value.doSearch()
-  if (ApiUtil.check(response)) {
-    ElMessage({
-      type: 'success',
-      message: '已卸载'
-    })
-  } else {
-    ElMessage({
-      type: 'error',
-      message: `卸载失败，${response.msg}`
-    })
+  try {
+    await pluginApi.pluginUnInstall(pluginPublicId)
+    pluginSearchTable.value.doSearch()
+    ElMessage({ type: 'success', message: '已卸载' })
+  } catch (e) {
+    pluginSearchTable.value.doSearch()
+    ElMessage({ type: 'error', message: `卸载失败，${(e as Error).message}` })
   }
 }
 // 选择安装包
 async function selectPackage(): Promise<string | undefined> {
-  const response = await apis.dirSelect(true, true)
+  const response = await fileSysUtilApi.fileSysUtilDirSelect(true, true)
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {
@@ -213,17 +183,23 @@ async function handleInstallClicked() {
 }
 // 通过安装包路径安装插件
 async function installFromPath(packagePath: string) {
-  const result = await apis.pluginInstallFromPath(packagePath)
-  pluginSearchTable.value.doSearch()
-  if (ApiUtil.check(result)) {
+  try {
+    const result = await pluginApi.pluginInstallFromPath(packagePath)
     ApiUtil.msg(result)
+    pluginSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 通过安装包路径重新安装插件
 async function reInstallFromPath(publicPublicId: string, packagePath: string) {
-  const result = await apis.pluginReinstallFromPath(publicPublicId, packagePath)
-  pluginSearchTable.value.doSearch()
-  ApiUtil.msg(result)
+  try {
+    const result = await pluginApi.pluginReinstallFromPath(packagePath)
+    ApiUtil.msg(result)
+    pluginSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
 }
 </script>
 <template>

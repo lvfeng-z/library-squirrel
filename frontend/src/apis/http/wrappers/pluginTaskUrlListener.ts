@@ -1,10 +1,11 @@
 /**
  * PluginTaskUrlListener HTTP API 包装器
- * 直接调用 bindings 接口
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
-import type { ApiResponse } from '../types'
 import { Handler as PluginTaskUrlListenerHandler } from '@bindings/github.com/library-squirrel/wails/internal/pluginTaskUrlListener'
+import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
 
 export interface PluginWithContributionVO {
   id: number
@@ -16,23 +17,17 @@ export interface PluginWithContributionVO {
   createTime: number
   updateTime: number
   contributeKey: string
-  contributionId: string
+  contributionID: string
 }
 
 // ========== API 方法 ==========
 
-/**
- * 根据URL获取监听此链接的插件列表
- */
-export async function listListener(url: string): Promise<ApiResponse<PluginWithContributionVO[]>> {
-  const result = await PluginTaskUrlListenerHandler.ListListener(url)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  // 转换结果
+/** 根据URL获取监听此链接的插件列表 */
+export async function listListener(url: string): Promise<ApiResult<PluginWithContributionVO[]>> {
+  const result = requireResponse(
+    await PluginTaskUrlListenerHandler.ListListener(url),
+    '查询插件监听'
+  )
   const data = result.data?.map((item) => {
     if (!item) return null
     return {
@@ -45,8 +40,8 @@ export async function listListener(url: string): Promise<ApiResponse<PluginWithC
       createTime: item.createTime,
       updateTime: item.updateTime,
       contributeKey: item.ContributeKey,
-      contributionId: item.ContributionID
+      contributionID: item.ContributionID
     } as PluginWithContributionVO
   }).filter((item): item is PluginWithContributionVO => item !== null) ?? []
-  return { success: true, msg: result.msg ?? '', data }
+  return { success: true as const, msg: result.msg, data }
 }

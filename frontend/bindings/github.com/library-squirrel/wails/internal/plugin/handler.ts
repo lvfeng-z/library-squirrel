@@ -96,7 +96,7 @@ export function Reinstall(pluginPublicId: string, installType: number): $Cancell
 /**
  * Save 保存插件
  */
-export function Save(plugin: $models.PluginParamDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(3241584933, plugin).then(($result: any) => {
         return $$createType13($result);
     });
@@ -123,7 +123,7 @@ export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.A
 /**
  * Update 更新插件
  */
-export function Update(plugin: $models.PluginParamDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1290196617, plugin).then(($result: any) => {
         return $$createType15($result);
     });

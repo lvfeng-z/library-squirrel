@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
-import ApiUtil from '@renderer/utils/ApiUtil'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
 import { ElMessage } from 'element-plus'
-import { pluginReinstall, pluginUnInstall } from '@renderer/apis/http/wrappers/plugin'
+import { pluginApi } from '@renderer/apis/http'
 
 // props
 const props = withDefaults(
@@ -25,11 +24,6 @@ const formData = defineModel<PluginDTO>('formData', { required: true })
 const state = defineModel<boolean>('state', { required: true })
 
 // 变量
-// 接口
-const apis = {
-  pluginReinstall,
-  pluginUnInstall
-}
 
 // 方法
 // 重新安装
@@ -38,17 +32,11 @@ async function reInstall(pluginPublicId: string | undefined | null) {
     ElMessage({ type: 'error', message: '插件ID不能为空' })
     return
   }
-  const response = await apis.pluginReinstall(pluginPublicId)
-  if (ApiUtil.check(response)) {
-    ElMessage({
-      type: 'success',
-      message: '修复完成'
-    })
-  } else {
-    ElMessage({
-      type: 'error',
-      message: `修复失败，${response.msg}`
-    })
+  try {
+    await pluginApi.pluginReinstall(pluginPublicId)
+    ElMessage({ type: 'success', message: '修复完成' })
+  } catch (e) {
+    ElMessage({ type: 'error', message: `修复失败，${(e as Error).message}` })
   }
 }
 // 卸载
@@ -57,17 +45,11 @@ async function unInstall(pluginPublicId: string | undefined | null) {
     ElMessage({ type: 'error', message: '插件ID不能为空' })
     return
   }
-  const response = await apis.pluginUnInstall(pluginPublicId)
-  if (ApiUtil.check(response)) {
-    ElMessage({
-      type: 'success',
-      message: '已卸载'
-    })
-  } else {
-    ElMessage({
-      type: 'error',
-      message: `卸载失败，${response.msg}`
-    })
+  try {
+    await pluginApi.pluginUnInstall(pluginPublicId)
+    ElMessage({ type: 'success', message: '已卸载' })
+  } catch (e) {
+    ElMessage({ type: 'error', message: `卸载失败，${(e as Error).message}` })
   }
 }
 </script>

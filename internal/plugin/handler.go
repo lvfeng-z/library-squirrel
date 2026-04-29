@@ -21,36 +21,8 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存插件
-func (h *Handler) Save(ctx context.Context, plugin *PluginParamDTO) *model.ApiResponse[int64] {
-	domainPlugin := &entity.Plugin{}
-	if plugin.PublicID != nil {
-		domainPlugin.PublicID.Valid = true
-		domainPlugin.PublicID.String = *plugin.PublicID
-	}
-	if plugin.Author != nil {
-		domainPlugin.Author.Valid = true
-		domainPlugin.Author.String = *plugin.Author
-	}
-	if plugin.Name != nil {
-		domainPlugin.Name.Valid = true
-		domainPlugin.Name.String = *plugin.Name
-	}
-	if plugin.Version != nil {
-		domainPlugin.Version.Valid = true
-		domainPlugin.Version.String = *plugin.Version
-	}
-	if plugin.EntryPath != nil {
-		domainPlugin.EntryPath.Valid = true
-		domainPlugin.EntryPath.String = *plugin.EntryPath
-	}
-	if plugin.RootPath != nil {
-		domainPlugin.RootPath.Valid = true
-		domainPlugin.RootPath.String = *plugin.RootPath
-	}
-	if plugin.ActivationType != nil {
-		domainPlugin.ActivationType.Valid = true
-		domainPlugin.ActivationType.String = *plugin.ActivationType
-	}
+func (h *Handler) Save(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[int64] {
+	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Save(ctx, domainPlugin); err != nil {
 		return model.Error[int64](err.Error())
@@ -59,37 +31,8 @@ func (h *Handler) Save(ctx context.Context, plugin *PluginParamDTO) *model.ApiRe
 }
 
 // Update 更新插件
-func (h *Handler) Update(ctx context.Context, plugin *PluginParamDTO) *model.ApiResponse[any] {
-	domainPlugin := &entity.Plugin{}
-	domainPlugin.SetID(plugin.ID)
-	if plugin.PublicID != nil {
-		domainPlugin.PublicID.Valid = true
-		domainPlugin.PublicID.String = *plugin.PublicID
-	}
-	if plugin.Author != nil {
-		domainPlugin.Author.Valid = true
-		domainPlugin.Author.String = *plugin.Author
-	}
-	if plugin.Name != nil {
-		domainPlugin.Name.Valid = true
-		domainPlugin.Name.String = *plugin.Name
-	}
-	if plugin.Version != nil {
-		domainPlugin.Version.Valid = true
-		domainPlugin.Version.String = *plugin.Version
-	}
-	if plugin.EntryPath != nil {
-		domainPlugin.EntryPath.Valid = true
-		domainPlugin.EntryPath.String = *plugin.EntryPath
-	}
-	if plugin.RootPath != nil {
-		domainPlugin.RootPath.Valid = true
-		domainPlugin.RootPath.String = *plugin.RootPath
-	}
-	if plugin.ActivationType != nil {
-		domainPlugin.ActivationType.Valid = true
-		domainPlugin.ActivationType.String = *plugin.ActivationType
-	}
+func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[any] {
+	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Update(ctx, domainPlugin); err != nil {
 		return model.Error[any](err.Error())
@@ -201,16 +144,4 @@ func (h *Handler) ReadVueFile(pluginPublicId string, filePath string) *model.Api
 		return model.Error[string](err.Error())
 	}
 	return model.Success(result)
-}
-
-// PluginParamDTO 插件数据传输对象（增删改参数）
-type PluginParamDTO struct {
-	ID             int64   `json:"id"`
-	PublicID       *string `json:"publicId"`
-	Author         *string `json:"author"`
-	Name           *string `json:"name"`
-	Version        *string `json:"version"`
-	EntryPath      *string `json:"entryPath"`
-	RootPath       *string `json:"rootPath"`
-	ActivationType *string `json:"activationType"`
 }
