@@ -85,16 +85,10 @@ func ToLocalTagEntity(dto *LocalTagDTO) *entity.LocalTag {
 	return entity
 }
 
-// LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象
+// LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象（组合模式）
 type LocalTagWithBaseTagDTO struct {
-	ID             int64         `json:"id"`
-	LocalTagName   *string       `json:"localTagName"`
-	BaseLocalTagID *int64        `json:"baseLocalTagId"`
-	Description    *string       `json:"description"`
-	LastUse        *int64        `json:"lastUse"`
-	CreateTime     int64         `json:"createTime"`
-	UpdateTime     int64         `json:"updateTime"`
-	BaseTag        *LocalTagDTO  `json:"baseTag"` // 基础标签信息
+	LocalTag *LocalTagDTO `json:"localTag,omitempty"`
+	BaseTag  *LocalTagDTO `json:"baseTag,omitempty"`
 }
 
 // NewLocalTagWithBaseTagDTO 从 entity.LocalTag 创建 LocalTagWithBaseTagDTO
@@ -102,15 +96,8 @@ func NewLocalTagWithBaseTagDTO(tag *entity.LocalTag, baseTag *entity.LocalTag) *
 	if tag == nil {
 		return nil
 	}
-	dto := &LocalTagWithBaseTagDTO{
-		ID:             tag.GetID(),
-		LocalTagName:   util.NullStringToPointer(tag.LocalTagName),
-		BaseLocalTagID: util.NullInt64ToPointer(tag.BaseLocalTagID),
-		Description:    util.NullStringToPointer(tag.Description),
-		LastUse:        util.NullInt64ToPointer(tag.LastUse),
-		CreateTime:     tag.GetCreateTime(),
-		UpdateTime:     tag.GetUpdateTime(),
-		BaseTag:        NewLocalTagDTO(baseTag),
+	return &LocalTagWithBaseTagDTO{
+		LocalTag: NewLocalTagDTO(tag),
+		BaseTag:  NewLocalTagDTO(baseTag),
 	}
-	return dto
 }

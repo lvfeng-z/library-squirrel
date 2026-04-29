@@ -150,48 +150,14 @@ export class LocalTagDTO {
 }
 
 /**
- * LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象
+ * LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象（组合模式）
  */
 export class LocalTagWithBaseTagDTO {
-    "id": number;
-    "localTagName": string | null;
-    "baseLocalTagId": number | null;
-    "description": string | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /**
-     * 基础标签信息
-     */
-    "baseTag": LocalTagDTO | null;
+    "localTag"?: LocalTagDTO | null;
+    "baseTag"?: LocalTagDTO | null;
 
     /** Creates a new LocalTagWithBaseTagDTO instance. */
     constructor($$source: Partial<LocalTagWithBaseTagDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("localTagName" in $$source)) {
-            this["localTagName"] = null;
-        }
-        if (!("baseLocalTagId" in $$source)) {
-            this["baseLocalTagId"] = null;
-        }
-        if (!("description" in $$source)) {
-            this["description"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("baseTag" in $$source)) {
-            this["baseTag"] = null;
-        }
 
         Object.assign(this, $$source);
     }
@@ -200,10 +166,14 @@ export class LocalTagWithBaseTagDTO {
      * Creates a new LocalTagWithBaseTagDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): LocalTagWithBaseTagDTO {
-        const $$createField7_0 = $$createType1;
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("localTag" in $$parsedSource) {
+            $$parsedSource["localTag"] = $$createField0_0($$parsedSource["localTag"]);
+        }
         if ("baseTag" in $$parsedSource) {
-            $$parsedSource["baseTag"] = $$createField7_0($$parsedSource["baseTag"]);
+            $$parsedSource["baseTag"] = $$createField1_0($$parsedSource["baseTag"]);
         }
         return new LocalTagWithBaseTagDTO($$parsedSource as Partial<LocalTagWithBaseTagDTO>);
     }

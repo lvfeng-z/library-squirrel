@@ -6,12 +6,15 @@
 
 // 核心类型
 export { GO_BACKEND_URL } from './types'
-export type { ApiResponse } from './types'
+export type { ApiResponse, ApiResult } from './types'
 
 // 模块化 API 包装器（直接从 bindings 调用）
 export * as localTagApi from './wrappers/localTag'
 export * as localAuthorApi from './wrappers/localAuthor'
 export * as siteTagApi from './wrappers/siteTag'
+
+// 适配器函数（直接导出，供 AutoLoadSelect 等组件使用）
+export { localTagQuerySelectItemPageByName } from './wrappers/localTag'
 export * as siteAuthorApi from './wrappers/siteAuthor'
 export * as siteApi from './wrappers/site'
 export * as workApi from './wrappers/work'

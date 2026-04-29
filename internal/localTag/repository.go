@@ -2,7 +2,6 @@ package localTag
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/library-squirrel/wails/internal/database"
@@ -260,55 +259,36 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 		return nil, err
 	}
 
-	// 转换为DTO
+	// 直接构造组合 DTO，无需中间 entity 转换
 	dtoList := make([]*dto.LocalTagWithBaseTagDTO, len(results))
 	for i, result := range results {
-		// 构建标签实体
-		tag := &domain.LocalTag{
-			BaseEntity: &model.BaseEntity{
-				ID:         result.TagID,
-				CreateTime: result.TagCreateTime,
-				UpdateTime: result.TagUpdateTime,
-			},
-		}
-		if result.TagName != nil {
-			tag.LocalTagName = sql.NullString{String: *result.TagName, Valid: true}
-		}
-		if result.TagBaseID != nil {
-			tag.BaseLocalTagID = sql.NullInt64{Int64: *result.TagBaseID, Valid: true}
-		}
-		if result.TagDescription != nil {
-			tag.Description = sql.NullString{String: *result.TagDescription, Valid: true}
-		}
-		if result.TagLastUse != nil {
-			tag.LastUse = sql.NullInt64{Int64: *result.TagLastUse, Valid: true}
+		localTag := &dto.LocalTagDTO{
+			ID:             result.TagID,
+			LocalTagName:   result.TagName,
+			BaseLocalTagID: result.TagBaseID,
+			Description:    result.TagDescription,
+			LastUse:        result.TagLastUse,
+			CreateTime:     result.TagCreateTime,
+			UpdateTime:     result.TagUpdateTime,
 		}
 
-		// 构建基础标签实体
-		var baseTag *domain.LocalTag
+		var baseTag *dto.LocalTagDTO
 		if result.BaseTagID != nil {
-			baseTag = &domain.LocalTag{
-				BaseEntity: &model.BaseEntity{
-					ID:         *result.BaseTagID,
-					CreateTime: *result.BaseTagCreateTime,
-					UpdateTime: *result.BaseTagUpdateTime,
-				},
-			}
-			if result.BaseTagName != nil {
-				baseTag.LocalTagName = sql.NullString{String: *result.BaseTagName, Valid: true}
-			}
-			if result.BaseTagBaseID != nil {
-				baseTag.BaseLocalTagID = sql.NullInt64{Int64: *result.BaseTagBaseID, Valid: true}
-			}
-			if result.BaseTagDescription != nil {
-				baseTag.Description = sql.NullString{String: *result.BaseTagDescription, Valid: true}
-			}
-			if result.BaseTagLastUse != nil {
-				baseTag.LastUse = sql.NullInt64{Int64: *result.BaseTagLastUse, Valid: true}
+			baseTag = &dto.LocalTagDTO{
+				ID:             *result.BaseTagID,
+				LocalTagName:   result.BaseTagName,
+				BaseLocalTagID: result.BaseTagBaseID,
+				Description:    result.BaseTagDescription,
+				LastUse:        result.BaseTagLastUse,
+				CreateTime:     *result.BaseTagCreateTime,
+				UpdateTime:     *result.BaseTagUpdateTime,
 			}
 		}
 
-		dtoList[i] = dto.NewLocalTagWithBaseTagDTO(tag, baseTag)
+		dtoList[i] = &dto.LocalTagWithBaseTagDTO{
+			LocalTag: localTag,
+			BaseTag:  baseTag,
+		}
 	}
 
 	return model.NewPage[dto.LocalTagWithBaseTagDTO](dtoList, total, opt.Page, opt.PageSize), nil

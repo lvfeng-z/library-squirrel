@@ -4,7 +4,6 @@ import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
-import {toNumber} from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
@@ -22,11 +21,10 @@ import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.t
 import {ElMessage} from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
-import {localTagQuerySelectItemPageByName} from '@renderer/apis/LocalTagApi.ts'
+import {localTagApi, localTagQuerySelectItemPageByName, siteApi, siteTagApi} from '@renderer/apis/http'
 import {LocalTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localTag/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag/models'
-import {localTagApi, siteApi, siteTagApi} from '@renderer/apis/http'
 import {copyPage, newPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
@@ -79,7 +77,7 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     type: 'text',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'localTagName',
+    key: 'localTag.localTagName',
     title: '名称',
     hide: false,
     width: 150,
@@ -91,7 +89,7 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     type: 'autoLoadSelect',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'baseLocalTagId',
+    key: 'localTag.baseLocalTagId',
     title: '上级标签',
     hide: false,
     width: 150,
@@ -123,7 +121,7 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     type: 'datetime',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'updateTime',
+    key: 'localTag.updateTime',
     title: '修改时间',
     hide: false,
     width: 200,
@@ -152,26 +150,15 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 
 // 方法
 // 分页查询本地标签的函数
-async function localTagQueryPageFn(page: Page<LocalTagWithBaseTagDTO>): Promise<Page<LocalTagWithBaseTagDTO> | undefined> {
-  if (notNullish(localTagQuery.value.localTagName)) {
-    localTagQuery.value.localTagName.operator = Operator.OpLike
-  }
+async function localTagQueryPageFn(page: Page<LocalTagWithBaseTagDTO>): Promise<Page<LocalTagWithBaseTagDTO>> {
+  localTagQuery.value.localTagName.operator = Operator.OpLike
   const response = await apis.localTagQueryWithBaseTagPage(page, localTagQuery.value)
-  if (ApiUtil.check(response)) {
-    let responsePage = ApiUtil.data<Page<LocalTagWithBaseTagDTO>>(response)
-    if (isNullish(responsePage)) {
-      return undefined
-    }
-    return new Page(responsePage)
-  } else {
-    ApiUtil.msg(response)
-    return undefined
-  }
+  return response.data
 }
 // 处理本地标签新增按钮点击事件
 async function handleCreateButtonClicked() {
   localTagDialogMode.value = DialogMode.NEW
-  dialogData.value = new LocalTagWithBaseTagDTO()
+  dialogData.value = new LocalTagWithBaseTagDTO({ localTag: new LocalTagDTO() })
   dialogState.value = true
 }
 // 处理本地标签数据行按钮点击事件
@@ -201,7 +188,7 @@ function handleRowButtonClicked(op: DataTableOperationResponse<LocalTagWithBaseT
 async function handleLocalTagSelectionChange(selections: LocalTagWithBaseTagDTO[]) {
   if (selections.length > 0) {
     disableExcSearchButton.value = false
-    localTagSelected.value = selections[0]
+    localTagSelected.value = selections[0].localTag ?? new LocalTagDTO()
     siteTagExchangeBox.value.refreshData()
   }
 }
@@ -211,30 +198,24 @@ function refreshTable() {
 }
 // 保存行数据编辑
 async function saveRowEdit(newData: LocalTagWithBaseTagDTO) {
-  // 转换为LocalTagDTO进行保存
-  const tempData = new LocalTagDTO()
-  tempData.id = newData.id
-  tempData.localTagName = newData.localTagName
-  tempData.baseLocalTagId = newData.baseLocalTagId
-  tempData.description = newData.description
-  tempData.lastUse = newData.lastUse
-  tempData.createTime = newData.createTime
-  tempData.updateTime = newData.updateTime
-
-  const response = await apis.localTagUpdateById(tempData)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.localTagUpdateById(newData.localTag ?? new LocalTagDTO())
+    ApiUtil.msg(response)
     const index = changedRows.value.indexOf(newData)
     changedRows.value.splice(index, 1)
     refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 删除本地标签
 async function deleteLocalTag(id: string) {
-  const response = await apis.localTagDeleteById(toNumber(id))
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.localTagDeleteById(Number(id))
+    ApiUtil.msg(response)
     await localTagSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 处理站点标签ExchangeBox确认交换的事件
@@ -272,12 +253,12 @@ async function requestSiteTagSelectItemPage(
   exchangeBoxLowerSearchParams.value.siteTagName.operator = Operator.OpLike
   const response = await apis.siteTagQueryBoundOrUnboundToLocalTagPage(queryPage, exchangeBoxLowerSearchParams.value)
   if (ApiUtil.check(response)) {
-    const newPage = ApiUtil.data<IPage<SiteTagFullDTO>>(response)
-    if (isNullish(newPage)) {
+    const responsePage = ApiUtil.data<IPage<SiteTagFullDTO>>(response)
+    if (isNullish(responsePage)) {
       throw new Error('siteTagQueryBoundOrUnboundToLocalTagPage返回了空分页')
     }
-    const result = copyPage<SelectItem>(newPage)
-    result.data = newPage.data.filter(notNullish).map(data => {
+    const result = copyPage<SelectItem>(responsePage)
+    result.data = responsePage.data.filter(notNullish).map(data => {
       const siteTagName = data.siteTag?.siteTagName
       const baseSiteTagId = data.siteTag?.baseSiteTagId
       const siteName = data.site?.siteName
@@ -307,7 +288,7 @@ async function requestSiteTagSelectItemPage(
             v-model:toolbar-params="localTagQuery"
             v-model:changed-rows="changedRows"
             class="tag-manage-left-search-table"
-            data-key="id"
+            data-key="localTag.id"
             :operation-button="operationButton"
             :thead="localTagThead"
             :search="localTagQueryPageFn"
@@ -321,7 +302,7 @@ async function requestSiteTagSelectItemPage(
               <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="16">
-                  <el-input v-model="localTagQuery.localTagName.value" placeholder="输入标签名称" clearable />
+                  <el-input v-model="localTagQuery.localTagName.value" placeholder="输入标签名称" clearable @clear="() => localTagQuery.localTagName.value = null" />
                 </el-col>
                 <el-col :span="8">
                   <auto-load-select

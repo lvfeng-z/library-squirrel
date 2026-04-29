@@ -16,6 +16,14 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
+// Wrapper 校验后的响应类型，data 保证非空
+// requireResponse 校验通过后返回此类型，调用方无需再做 data 非空判断
+export interface ApiResult<T = unknown> {
+  readonly success: true
+  readonly msg: string
+  readonly data: T
+}
+
 // 请求配置接口
 export interface RequestConfig {
   method: HttpMethod
