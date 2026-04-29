@@ -4,8 +4,8 @@
  * 现在直接调用 bindings 接口，不再使用 HTTP 代理
  */
 
-// 核心类型
-export { GO_BACKEND_URL } from './types'
+// 核心类型与工具函数
+export { GO_BACKEND_URL, requireResponse } from './types'
 export type { ApiResponse, ApiResult } from './types'
 
 // 模块化 API 包装器（直接从 bindings 调用）
@@ -15,6 +15,7 @@ export * as siteTagApi from './wrappers/siteTag'
 
 // 适配器函数（直接导出，供 AutoLoadSelect 等组件使用）
 export { localTagQuerySelectItemPageByName } from './wrappers/localTag'
+export { localAuthorQuerySelectItemPageByName } from './wrappers/localAuthor'
 export * as siteAuthorApi from './wrappers/siteAuthor'
 export * as siteApi from './wrappers/site'
 export * as workApi from './wrappers/work'

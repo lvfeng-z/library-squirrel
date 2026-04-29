@@ -1,129 +1,80 @@
 /**
  * LocalAuthor HTTP API 包装器
- * 直接调用 bindings 接口
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
 import {
-  Handler as LocalAuthorHandler, LocalAuthorQueryDTO
-} from "@bindings/github.com/library-squirrel/wails/internal/localAuthor";
-import type { ApiResponse } from '../types'
-import {LocalAuthorDTO, SelectItem} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
-
-export interface LocalAuthorVO {
-  id: number
-  authorName: string
-  introduce: string
-  lastUse: number
-  createTime: number
-  updateTime: number
-}
-
-// ========== 工具函数 ==========
-
-/**
- * 将 LocalAuthorDTO 转换为 LocalAuthorVO
- */
-function toLocalAuthorVO(dto: LocalAuthorDTO | null): LocalAuthorVO | null {
-  if (!dto) return null
-  return {
-    id: dto.id,
-    authorName: dto.authorName ?? '',
-    introduce: dto.introduce ?? '',
-    lastUse: dto.lastUse ?? 0,
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
-  }
-}
+  Handler as LocalAuthorHandler,
+  LocalAuthorQueryDTO
+} from "@bindings/github.com/library-squirrel/wails/internal/localAuthor"
+import { LocalAuthorDTO, SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
+import { isBlank } from '@renderer/utils/StringUtil.ts'
+import { QueryAttribute } from "@bindings/github.com/library-squirrel/wails/pkg/query"
+import IPage from '@renderer/model/util/IPage.ts'
 
 // ========== API 方法 ==========
 
-export async function localAuthorSave(author: {
-  authorName?: string
-  introduce?: string
-}): Promise<ApiResponse<LocalAuthorVO>> {
-  const authorDTO = new LocalAuthorDTO({
-    authorName: author.authorName ?? null,
-    introduce: author.introduce ?? null
+/** 保存本地作者 */
+export async function localAuthorSave(author: LocalAuthorDTO): Promise<ApiResult<number>> {
+  return requireResponse(await LocalAuthorHandler.Save(author), '保存本地作者', false)
+}
+
+/** 删除本地作者 */
+export async function localAuthorDeleteById(id: number): Promise<ApiResult<any>> {
+  return requireResponse(await LocalAuthorHandler.Delete(id), '删除本地作者', false)
+}
+
+/** 更新本地作者 */
+export async function localAuthorUpdateById(author: LocalAuthorDTO): Promise<ApiResult<any>> {
+  return requireResponse(await LocalAuthorHandler.Update(author), '更新本地作者', false)
+}
+
+/** 获取单个本地作者 */
+export async function localAuthorGetById(id: number): Promise<ApiResult<LocalAuthorDTO>> {
+  return requireResponse(await LocalAuthorHandler.GetById(id), '获取本地作者')
+}
+
+/** 分页查询本地作者 */
+export async function localAuthorQueryPage(page: Page<LocalAuthorDTO>, query: LocalAuthorQueryDTO): Promise<ApiResult<Page<LocalAuthorDTO>>> {
+  return requireResponse(await LocalAuthorHandler.QueryPage(page, query), '查询本地作者')
+}
+
+/** 查询选择项列表 */
+export async function localAuthorListSelectItems(queryDTO?: LocalAuthorQueryDTO): Promise<ApiResult<(SelectItem | null)[]>> {
+  return requireResponse(await LocalAuthorHandler.ListSelectItems(queryDTO ?? new LocalAuthorQueryDTO()), '获取本地作者选择列表')
+}
+
+/** 分页查询选择项 */
+export async function localAuthorQuerySelectItemPage(page: Page<SelectItem>, query: LocalAuthorQueryDTO): Promise<ApiResult<Page<SelectItem>>> {
+  return requireResponse(await LocalAuthorHandler.QuerySelectItemPage(page, query), '查询本地作者选择列表')
+}
+
+/** 根据作品ID获取作者列表 */
+export async function localAuthorListByWorkId(workId: number): Promise<ApiResult<any>> {
+  return requireResponse(await LocalAuthorHandler.ListByWorkId(workId), '获取作品作者')
+}
+
+/** 更新最后使用时间 */
+export async function localAuthorUpdateLastUse(ids: number[]): Promise<ApiResult<any>> {
+  return requireResponse(await LocalAuthorHandler.UpdateLastUse(ids), '更新使用时间', false)
+}
+
+// ========== 适配器方法（供 AutoLoadSelect 等组件使用） ==========
+
+/**
+ * 分页查询本地作者选择列表（供 AutoLoadSelect 使用）
+ * 将输入关键词映射为 QueryAttribute 传递给后端
+ */
+export async function localAuthorQuerySelectItemPageByName(
+  page: IPage<SelectItem>,
+  input: string
+): Promise<IPage<SelectItem>> {
+  const queryDTO = new LocalAuthorQueryDTO({
+    authorName: isBlank(input) ? undefined : new QueryAttribute({ value: input })
   })
-  const result = await LocalAuthorHandler.Save(authorDTO)
-  if (!result) {
-    return { success: false, msg: '保存失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '保存失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0 } as LocalAuthorVO }
-}
-
-export async function localAuthorDeleteById(id: number): Promise<ApiResponse<null>> {
-  const result = await LocalAuthorHandler.Delete(id)
-  if (!result) {
-    return { success: false, msg: '删除失败：接口返回为空' }
-  }
-  return result
-}
-
-export async function localAuthorUpdateById(author: LocalAuthorDTO): Promise<ApiResponse<LocalAuthorDTO>> {
-  const result = await LocalAuthorHandler.Update(author)
-  if (!result) {
-    return { success: false, msg: '更新失败：接口返回为空' }
-  }
-  return result
-}
-
-export async function localAuthorGetById(id: number): Promise<ApiResponse<LocalAuthorVO>> {
-  const result = await LocalAuthorHandler.GetById(id)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: toLocalAuthorVO(result.data ?? null) ?? undefined }
-}
-
-export async function localAuthorQueryPage(page: Page<LocalAuthorDTO>, query: LocalAuthorQueryDTO): Promise<ApiResponse<Page<LocalAuthorDTO>>> {
-  const result = await LocalAuthorHandler.QueryPage(page, query)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
-}
-
-export async function localAuthorListSelectItems(
-  _query?: Record<string, unknown>
-): Promise<ApiResponse<SelectItem[]>> {
-  const queryDTO = new LocalAuthorQueryDTO({})
-  const result = await LocalAuthorHandler.ListSelectItems(queryDTO)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: (result.data ?? []).filter((item): item is SelectItem => item !== null) }
-}
-
-export async function localAuthorQuerySelectItemPage(query: {
-  page: number
-  pageSize: number
-  query?: Record<string, unknown>
-}): Promise<ApiResponse<Page<SelectItem>>> {
-  const queryDTO = new LocalAuthorQueryDTO({})
-  const page = new Page<SelectItem>({
-    pageNumber: query.page,
-    pageSize: query.pageSize
-  })
-  const result = await LocalAuthorHandler.QuerySelectItemPage(page, queryDTO)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+  const response = await localAuthorQuerySelectItemPage(page, queryDTO)
+  return response.data
 }

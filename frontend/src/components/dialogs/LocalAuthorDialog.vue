@@ -3,9 +3,9 @@ import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import LocalAuthor from '@renderer/model/model/entity/LocalAuthor.ts'
 import { localAuthorApi } from '@renderer/apis/http'
-import {LocalAuthorDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {LocalAuthorDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {ElMessage} from 'element-plus'
 
 // props
 const props = withDefaults(
@@ -27,38 +27,24 @@ const state = defineModel<boolean>('state', { required: true })
 // 事件
 const emits = defineEmits(['requestSuccess'])
 
-// 变量
-// 接口
-const apis = {
-  localAuthorSave: localAuthorApi.localAuthorSave,
-  localAuthorUpdateById: localAuthorApi.localAuthorUpdateById,
-  localAuthorGetById: localAuthorApi.localAuthorGetById
-}
-
 // 方法
 // 处理保存按钮点击事件
 async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
-    if (props.mode === DialogMode.NEW) {
+    try {
       const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localAuthorSave({
-        authorName: tempFormData.authorName ?? undefined,
-        introduce: tempFormData.introduce ?? undefined
-      })
-      if (ApiUtil.check(response)) {
-        emits('requestSuccess')
-        state.value = false
+      if (props.mode === DialogMode.NEW) {
+        const response = await localAuthorApi.localAuthorSave(tempFormData)
+        ApiUtil.msg(response)
       }
-      ApiUtil.msg(response)
-    }
-    if (props.mode === DialogMode.EDIT) {
-      const tempFormData = lodash.cloneDeep(formData.value)
-      const response = await apis.localAuthorUpdateById(tempFormData)
-      if (ApiUtil.check(response)) {
-        emits('requestSuccess')
-        state.value = false
+      if (props.mode === DialogMode.EDIT) {
+        const response = await localAuthorApi.localAuthorUpdateById(tempFormData)
+        ApiUtil.msg(response)
       }
-      ApiUtil.msg(response)
+      emits('requestSuccess')
+      state.value = false
+    } catch (e) {
+      ElMessage.error((e as Error).message)
     }
   }
 }

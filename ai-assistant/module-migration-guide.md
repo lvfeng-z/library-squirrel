@@ -371,12 +371,13 @@ query.authorName.operator = Operator.OpLike
 - 删除 Wrapper 中自定义的 `PageResult` 等冗余类型
 - 直接使用绑定层生成的类型（`Page<T>`、`LocalAuthorDTO` 等）
 - Wrapper 函数签名简化，直接接受绑定层 DTO 并透传给 Handler
-- 使用 `requireResponse<T>` 封装 Wails 绑定层的响应校验，将 `ApiResponse<T | null> | null` 统一转换为 `ApiResult<T>`（data 保证非空）
+- 使用公共 `requireResponse<T>` 函数封装 Wails 绑定层的响应校验，将 `ApiResponse<T | null> | null` 统一转换为 `ApiResult<T>`
+- `requireResponse` 定义在 `frontend/src/apis/http/types.ts`，各 Wrapper 通过 `import { requireResponse } from '@renderer/apis/http/types'` 导入使用
 - 将散落的 `XxxApi.ts` 适配器函数整合进 Wrapper 文件，通过 `http/index.ts` 统一导出
 
 **ApiResult 类型定义**（`frontend/src/apis/http/types.ts`）：
 
-Wails 生成的 `ApiResponse<T>` 的 `data` 为 `data?: T`（可 undefined），即使 `requireResponse` 校验了外层 null 和 success，调用方仍需检查 `response.data`。因此定义前端独有的 `ApiResult<T>` 类型，`data` 保证非空：
+Wails 生成的 `ApiResponse<T>` 的 `data` 为 `data?: T`（可 undefined），即使校验了外层 null 和 success，调用方仍需检查 `response.data`。因此定义前端独有的 `ApiResult<T>` 类型，`data` 保证非空：
 
 ```typescript
 // Wails 生成的类型（data 可为 undefined）
@@ -390,41 +391,47 @@ export interface ApiResult<T = unknown> {
 }
 ```
 
-**requireResponse 封装模式**：
+**requireResponse 公共校验函数**（`frontend/src/apis/http/types.ts`）：
 
 ```typescript
-function requireResponse<T>(
+/**
+ * @param requireData 是否校验 data 非空，默认 true
+ *   - 查询类接口（QueryPage, GetById, List）：默认 true，校验 data 非空
+ *   - 变更类接口（Save, Update, Delete）：传 false，不校验 data（成功时 data 可能为 null）
+ */
+export function requireResponse<T>(
   response: ApiResponse<T | null> | null,
-  operation: string
+  operation: string,
+  requireData = true
 ): ApiResult<T> {
   if (!response) throw new Error(`${operation}：接口返回为空`)
   if (!response.success) throw new Error(response.msg || `${operation}：操作失败`)
-  if (isNullish(response.data)) throw new Error(`${operation}：未返回数据`)
+  if (requireData && isNullish(response.data)) throw new Error(`${operation}：未返回数据`)
   return response as unknown as ApiResult<T>
 }
 ```
 
-校验三步骤：
-1. 外层 null 检查（响应为空）
-2. success 检查（后端返回失败）
-3. data 非空检查（业务数据缺失）
-
-校验通过返回 `ApiResult<T>`，校验失败抛出 Error，调用方通过 try/catch 捕获。
+校验失败抛出 Error，调用方通过 try/catch 捕获。
 
 **Wrapper 方法简化为单行**：
 
 ```typescript
 // ❌ 之前：每个方法都重复 null 检查
 export async function localTagSave(tag: LocalTagDTO): Promise<ApiResponse<number>> {
-  const response = await LocalTagHandler.Save(tag)
-  if (!response) throw new Error('保存本地标签：接口返回为空')
-  if (!response.success) throw new Error(response.msg || '保存失败')
-  return response as ApiResponse<number>
+  const result = await LocalTagHandler.Save(tag)
+  if (!result) return { success: false, msg: '保存失败：接口返回为空' }
+  if (!result.success) return { success: false, msg: result.msg ?? '保存失败' }
+  return { success: true, msg: result.msg ?? '', data: ... }
 }
 
-// ✅ 之后：使用 requireResponse 一行搞定，返回 ApiResult<T>
+// ✅ 之后：查询类接口（默认校验 data）
+export async function localTagQueryPage(page, query): Promise<ApiResult<Page<LocalTagDTO>>> {
+  return requireResponse(await LocalTagHandler.QueryPage(page, query), '查询本地标签')
+}
+
+// ✅ 之后：变更类接口（requireData=false，不校验 data）
 export async function localTagSave(tag: LocalTagDTO): Promise<ApiResult<number>> {
-  return requireResponse(await LocalTagHandler.Save(tag), '保存本地标签')
+  return requireResponse(await LocalTagHandler.Save(tag), '保存本地标签', false)
 }
 ```
 
@@ -665,8 +672,8 @@ const response = await apis.siteAuthorUpdateById(authorDTO)
 
 | 模块 | 状态 | 关键修复点 |
 |------|------|-----------|
-| 本地作者 (LocalAuthor) | ✅ 已完成 | N+1 查询消除、依赖注入、QueryAttribute 适配、nullable 绑定/解绑、Dialog 类型迁移到 LocalAuthorDTO |
-| 站点标签 (SiteTag) | ✅ 已完成 | N+1 查询消除、`unique` 函数公共化、Page 类型统一、Handler 使用 ToSiteTagEntity、Dialog 去掉 computed 中间层、Wrapper 直接透传 DTO、统一错误处理、嵌套对象预初始化 |
+| 本地作者 (LocalAuthor) | ✅ 已完成 | N+1 查询消除、依赖注入、QueryAttribute 适配、nullable 绑定/解绑、Dialog 类型迁移到 LocalAuthorDTO、Wrapper requireResponse+ApiResult 重构、LocalAuthorApi.ts 整合到 Wrapper、适配器导出 |
+| 站点标签 (SiteTag) | ✅ 已完成 | N+1 查询消除、`unique` 函数公共化、Page 类型统一、Handler 使用 ToSiteTagEntity、Dialog 去掉 computed 中间层、Wrapper requireResponse+ApiResult 重构（移除 SiteTagVO/PageResult）、统一错误处理、嵌套对象预初始化 |
 | 本地标签 (LocalTag) | ✅ 已完成 | DTO 组合重构（LocalTagWithBaseTagDTO）、QueryWithBaseTagPage LEFT JOIN 简化结果映射、Wrapper requireResponse 响应校验封装、API 适配器整合到 Wrapper、Dialog 嵌套绑定适配、组合 DTO 嵌套路径适配 |
 | 站点作者 (SiteAuthor) | ✅ 已完成 | N+1 查询消除（QueryLocalRelateDTOPage）、UpdateLastUse 批量化、跨域查询迁移到依赖注入、Wrapper 冗余类型清理、QueryAttribute 适配、Page 类型统一、DTO 组合重构、返回类型对齐前端需求（hasSameNameLocalAuthor）、嵌套路径适配、DI 接口扩展、Handler 使用 ToSiteAuthorEntity、Entity 使用 NewLocalAuthor 工厂方法 |
 | 作品 (Work) | ⏳ 待修复 | — |

@@ -38,6 +38,7 @@ async function queryPage(newQuery: boolean, input: string) {
   const tempPage = lodash.cloneDeep(page.value)
   tempPage.data = []
   tempPage.pageSize = props.pageSize
+  console.log(tempPage.pageNumber)
   const nextPage = await props.load(tempPage, input)
 
   // 没有新数据时，不再增加页码

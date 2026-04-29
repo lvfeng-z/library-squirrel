@@ -1,7 +1,6 @@
 /**
  * LocalTag HTTP API 包装器
- * 封装 Wails 绑定层响应校验，将 ApiResponse<T | null> | null 转换为 ApiResult<T>（data 保证非空）
- * 校验失败时抛出异常，调用方通过 try/catch 捕获
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
 import {
@@ -9,46 +8,28 @@ import {
   LocalTagQueryDTO
 } from '@bindings/github.com/library-squirrel/wails/internal/localTag'
 import { LocalTagDTO, SelectItem, LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import { Page, ApiResponse } from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model"
 import { QueryAttribute } from "@bindings/github.com/library-squirrel/wails/pkg/query/models"
 import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
 import IPage from '@renderer/model/util/IPage.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
-
-/**
- * 校验 Wails 绑定层响应
- * 1. 外层 null 检查（响应为空）
- * 2. success 检查（后端返回失败）
- * 3. data 非空检查
- * 校验通过返回 ApiResult<T>（data 保证非空）
- * 校验失败抛出 Error，调用方通过 try/catch 捕获
- */
-function requireResponse<T>(
-  response: ApiResponse<T | null> | null,
-  operation: string
-): ApiResult<T> {
-  if (!response) throw new Error(`${operation}：接口返回为空`)
-  if (!response.success) throw new Error(response.msg || `${operation}：操作失败`)
-  if (isNullish(response.data)) throw new Error(`${operation}：未返回数据`)
-  return response as unknown as ApiResult<T>
-}
 
 // ========== API 方法 ==========
 
 /** 保存本地标签 */
 export async function localTagSave(tag: LocalTagDTO): Promise<ApiResult<number>> {
-  return requireResponse(await LocalTagHandler.Save(tag), '保存本地标签')
+  return requireResponse(await LocalTagHandler.Save(tag), '保存本地标签', false)
 }
 
 /** 删除本地标签 */
 export async function localTagDeleteById(id: number): Promise<ApiResult<any>> {
-  return requireResponse(await LocalTagHandler.Delete(id), '删除本地标签')
+  return requireResponse(await LocalTagHandler.Delete(id), '删除本地标签', false)
 }
 
 /** 更新本地标签 */
 export async function localTagUpdateById(tag: LocalTagDTO): Promise<ApiResult<any>> {
-  return requireResponse(await LocalTagHandler.Update(tag), '更新本地标签')
+  return requireResponse(await LocalTagHandler.Update(tag), '更新本地标签', false)
 }
 
 /** 获取单个本地标签 */

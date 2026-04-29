@@ -12,7 +12,7 @@ import {isNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorQuerySelectItemPageByName} from '@renderer/apis/LocalAuthorApi.ts'
+import {localAuthorQuerySelectItemPageByName} from '@renderer/apis/http'
 import {
   LocalAuthorDTO,
   SelectItem,

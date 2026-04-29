@@ -5,7 +5,7 @@ import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { localAuthorApi, siteApi, siteAuthorApi } from '@renderer/apis/http'
+import {localAuthorApi, localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi} from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
 import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/internal/site/models"
@@ -36,29 +36,9 @@ const emits = defineEmits(['requestSuccess'])
 // 变量
 // 接口
 const apis = {
-  localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
+  localAuthorQuerySelectItemPageByName: localAuthorApi.localAuthorQuerySelectItemPageByName,
   siteAuthorSave: siteAuthorApi.siteAuthorSave,
   siteAuthorUpdateById: siteAuthorApi.siteAuthorUpdateById
-}
-
-// 适配器函数：将 bindings Page 转换为 IPage
-async function localAuthorQuerySelectItemPageAdapter(page: IPage<SelectItem>, input: string): Promise<IPage<SelectItem>> {
-  const response = await localAuthorApi.localAuthorQuerySelectItemPage({
-    page: page.pageNumber,
-    pageSize: page.pageSize,
-    query: { authorName: input }
-  })
-  if (!response.success || !response.data) {
-    return newPage<SelectItem>()
-  }
-  return {
-    pageNumber: response.data.pageNumber,
-    pageSize: response.data.pageSize,
-    pageCount: response.data.pageCount,
-    dataCount: response.data.dataCount,
-    currentCount: response.data.currentCount,
-    data: response.data.data?.filter((item) => item !== null) as SelectItem[] ?? []
-  }
 }
 
 async function siteQuerySelectItemPageAdapter(page: IPage<SelectItem>, _input: string): Promise<IPage<SelectItem>> {
@@ -146,7 +126,7 @@ async function handleSaveButtonClicked() {
           <el-form-item label="本地作者">
             <auto-load-select
               v-model="formData.siteAuthor!.localAuthorId"
-              :load="localAuthorQuerySelectItemPageAdapter"
+              :load="localAuthorQuerySelectItemPageByName"
               remote
               filterable
               clearable

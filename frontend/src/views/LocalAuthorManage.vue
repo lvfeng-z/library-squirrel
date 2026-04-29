@@ -6,7 +6,6 @@ import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalAuthorDialog from '../components/dialogs/LocalAuthorDialog.vue'
 import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
-import ApiResponse from '../model/util/ApiResponse.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
 import {LocalAuthorDTO, SelectItem, SiteAuthorFullDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
@@ -21,7 +20,7 @@ import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/SiteApi.ts'
 import {LocalAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
-import {localAuthorApi, siteApi, siteAuthorApi} from '@renderer/apis/http'
+import {localAuthorApi, siteAuthorApi} from '@renderer/apis/http'
 import {copyPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";
 
@@ -40,7 +39,6 @@ const apis = {
   localAuthorUpdateById: localAuthorApi.localAuthorUpdateById,
   localAuthorQueryPage: localAuthorApi.localAuthorQueryPage,
   siteAuthorUpdateBindLocalAuthor: siteAuthorApi.siteAuthorUpdateBindLocalAuthor,
-  siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
   siteAuthorQueryBoundOrUnboundInLocalAuthorPage: siteAuthorApi.siteAuthorQueryBoundOrUnboundInLocalAuthorPage
 }
 // localAuthorSearchTable的组件实例
@@ -138,16 +136,7 @@ async function localAuthorQueryPageFn(
   page: Page<LocalAuthorDTO>
 ): Promise<Page<LocalAuthorDTO>> {
   const response = await apis.localAuthorQueryPage(page, localAuthorQuery.value)
-  if (ApiUtil.check(response)) {
-    const result = ApiUtil.data<Page<LocalAuthorDTO>>(response)
-    if (isNullish(result)) {
-      throw new Error('localAuthorQueryPage未返回数据')
-    }
-    return result
-  } else {
-    ApiUtil.msg(response)
-    throw new Error(response.msg)
-  }
+  return response.data
 }
 // 处理本地作者新增按钮点击事件
 async function handleCreateButtonClicked() {
@@ -195,21 +184,24 @@ function refreshTable() {
 // 保存行数据编辑
 async function saveRowEdit(newData: LocalAuthorDTO) {
   const tempData = lodash.cloneDeep(newData)
-
-  const response = await apis.localAuthorUpdateById(tempData)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.localAuthorUpdateById(tempData)
+    ApiUtil.msg(response)
     const index = changedRows.value.indexOf(newData)
     changedRows.value.splice(index, 1)
     refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 删除本地作者
 async function deleteLocalAuthor(id: number) {
-  const response = await apis.localAuthorDeleteById(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    const response = await apis.localAuthorDeleteById(id)
+    ApiUtil.msg(response)
     await localAuthorSearchTable.value.doSearch()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 // 处理站点作者ExchangeBox确认交换的事件
@@ -223,24 +215,16 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
   }
 
   if (isNullish(isUpper) ? true : isUpper) {
-    let upperResponse: ApiResponse
     if (arrayNotEmpty(upper)) {
       const boundIds = upper.map((item) => Number(item.value))
-      upperResponse = await apis.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id, boundIds)
-    } else {
-      upperResponse = { success: true, msg: '', data: undefined }
+      await apis.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id, boundIds)
     }
-    ApiUtil.failedMsg(upperResponse)
   }
   if (isNullish(isUpper) ? true : !isUpper) {
-    let lowerResponse: ApiResponse
     if (arrayNotEmpty(lower)) {
       const unBoundIds = lower.map((item) => Number(item.value))
-      lowerResponse = await apis.siteAuthorUpdateBindLocalAuthor(null, unBoundIds)
-    } else {
-      lowerResponse = { success: true, msg: '', data: undefined }
+      await apis.siteAuthorUpdateBindLocalAuthor(null, unBoundIds)
     }
-    ApiUtil.failedMsg(lowerResponse)
   }
   siteAuthorExchangeBox.value.refreshData(isUpper)
 }

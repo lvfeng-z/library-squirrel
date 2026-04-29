@@ -1,7 +1,6 @@
 /**
  * SiteTag HTTP API 包装器
- * 封装 Wails 绑定层响应校验，将 ApiResponse<T | null> | null 转换为 ApiResult<T>（data 保证非空）
- * 校验失败时抛出异常，调用方通过 try/catch 捕获
+ * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
 import {
@@ -9,48 +8,30 @@ import {
   SiteTagQueryDTO
 } from "@bindings/github.com/library-squirrel/wails/internal/siteTag"
 import { LocalTagDTO, SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import { Page, ApiResponse } from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import { Page } from "@bindings/github.com/library-squirrel/wails/pkg/model"
 import type { ApiResult } from '@renderer/apis/http/types'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
-
-/**
- * 校验 Wails 绑定层响应
- * 1. 外层 null 检查（响应为空）
- * 2. success 检查（后端返回失败）
- * 3. data 非空检查（业务数据缺失）
- * 校验通过返回 ApiResult<T>（data 保证非空）
- * 校验失败抛出 Error，调用方通过 try/catch 捕获
- */
-function requireResponse<T>(
-  response: ApiResponse<T | null> | null,
-  operation: string
-): ApiResult<T> {
-  if (!response) throw new Error(`${operation}：接口返回为空`)
-  if (!response.success) throw new Error(response.msg || `${operation}：操作失败`)
-  if (isNullish(response.data)) throw new Error(`${operation}：未返回数据`)
-  return response as unknown as ApiResult<T>
-}
+import { requireResponse } from '@renderer/apis/http/types'
 
 // ========== API 方法 ==========
 
 /** 保存站点标签 */
 export async function siteTagSave(tag: SiteTagDTO): Promise<ApiResult<number>> {
-  return requireResponse(await SiteTagHandler.Save(tag), '保存站点标签')
+  return requireResponse(await SiteTagHandler.Save(tag), '保存站点标签', false)
 }
 
 /** 批量保存站点标签 */
 export async function siteTagSaveBatch(tags: SiteTagDTO[]): Promise<ApiResult<any>> {
-  return requireResponse(await SiteTagHandler.SaveBatch(tags), '批量保存站点标签')
+  return requireResponse(await SiteTagHandler.SaveBatch(tags), '批量保存站点标签', false)
 }
 
 /** 删除站点标签 */
 export async function siteTagDeleteById(id: number): Promise<ApiResult<any>> {
-  return requireResponse(await SiteTagHandler.Delete(id), '删除站点标签')
+  return requireResponse(await SiteTagHandler.Delete(id), '删除站点标签', false)
 }
 
 /** 更新站点标签 */
 export async function siteTagUpdateById(tag: SiteTagDTO): Promise<ApiResult<any>> {
-  return requireResponse(await SiteTagHandler.Update(tag), '更新站点标签')
+  return requireResponse(await SiteTagHandler.Update(tag), '更新站点标签', false)
 }
 
 /** 获取单个站点标签 */
@@ -105,5 +86,5 @@ export async function siteTagCreateAndBindSameNameLocalTag(siteTag: SiteTagDTO):
 
 /** 更新最后使用时间 */
 export async function siteTagUpdateLastUse(ids: number[]): Promise<ApiResult<any>> {
-  return requireResponse(await SiteTagHandler.UpdateLastUse(ids), '更新使用时间')
+  return requireResponse(await SiteTagHandler.UpdateLastUse(ids), '更新使用时间', false)
 }
