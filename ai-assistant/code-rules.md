@@ -519,6 +519,77 @@ class UserResponseDTO {
 | 关联其他 DTO | 组合（composition）其他 DTO |
 | 关联 Entity | ✗ 禁止，必须先转换为 DTO |
 
+#### 6. DTO 组合禁止匿名嵌入
+
+**规则名称**: `DTO_COMPOSITION_NO_EMBEDDING`（补充 `DTO_COMPOSITION_OVER_EMBEDDING`）
+**优先级**: P0（最高）
+
+复用其他 DTO 时禁止使用 Go 匿名嵌入（anonymous embedding），必须使用命名字段（组合方式）。
+
+**原因**：Wails 绑定生成会**扁平化** Go 匿名嵌入的 JSON tag，导致前端类型结构与后端不一致。组合方式的 JSON 为嵌套结构，前后端一致。
+
+**❌ 禁止模式**：
+
+```go
+// 禁止：Go 匿名嵌入，JSON 被扁平化为顶层字段
+type FullDTO struct {
+    TaskDTO  // JSON: taskName, siteId... 全部提升到顶层
+}
+```
+
+**✅ 正确模式**：
+
+```go
+// 正确：命名字段组合，JSON 保持嵌套结构
+type TaskProgressDTO struct {
+    Task     *TaskDTO `json:"task,omitempty"`
+    Total    *int64   `json:"total,omitempty"`
+    Finished *int64   `json:"finished,omitempty"`
+}
+
+type TaskProgressTreeDTO struct {
+    TaskProgress *TaskProgressDTO       `json:"taskProgress,omitempty"`
+    Children     []*TaskProgressTreeDTO `json:"children,omitempty"`
+    HasChildren  *bool                  `json:"hasChildren,omitempty"`
+    IsLeaf       *bool                  `json:"isLeaf,omitempty"`
+}
+```
+
+**参考示例**：`SiteTagLocalRelateDTO` 使用 `SiteTag *SiteTagDTO`、`LocalTag *LocalTagDTO` 命名字段组合。
+
+### DTO 转换规范
+
+**规则名称**: `DTO_USE_TO_ENTITY`
+**优先级**: P1
+
+所有 DTO 全量属性转换到 Entity 的逻辑都应使用 `ToXxxEntity()` 转换函数，禁止手动逐字段赋值。
+
+**❌ 禁止模式**：
+
+```go
+// 禁止：手动逐字段转换，容易遗漏且冗长
+func (h *Handler) Save(ctx context.Context, req *dto.SiteTagDTO) error {
+    entity := &domain.SiteTag{}
+    if req.Name != nil {
+        entity.Name = *req.Name
+    }
+    if req.SiteID != nil {
+        entity.SiteID = *req.SiteID
+    }
+    // ... 更多字段
+}
+```
+
+**✅ 正确模式**：
+
+```go
+// 正确：使用 ToXxxEntity() 转换函数
+func (h *Handler) Save(ctx context.Context, req *dto.SiteTagDTO) error {
+    entity := req.ToEntity()
+    return h.svc.Save(ctx, entity)
+}
+```
+
 ### 数据库操作
 
 - **事务处理**: 使用 `gorm.Transaction` 支持嵌套事务
@@ -674,6 +745,102 @@ func (r *SiteTagRepository) QueryBoundOrUnboundToLocalTagPage(...) (*Page[SiteTa
 
 改分页逻辑只需在一处 |
 | **可测试性** | BaseRepository 逻辑可独立测试 |
+
+### N+1 查询消除模式
+
+**规则名称**: `ELIMINATE_N_PLUS_1_QUERY`
+**优先级**: P0（最高）
+**适用范围**: 所有包含关联数据的查询方法
+
+**核心原则**: 禁止在遍历结果时逐条查询关联实体，必须在 Service 层批量查询后通过 Map 组装。
+
+**执行步骤**:
+
+1. 通过 `repo.Page()` 获取原始实体分页
+2. 收集所有关联 ID，使用 `util.UniqueInt64()` / `util.UniqueString()` 去重
+3. 通过依赖倒置接口批量查询关联数据（如 `localTagOp.ListByIds()`）
+4. 构建 `id → entity` 的 Map
+5. 遍历原始结果，组合 DTO 并填充关联数据
+6. 使用 `model.NewPage()` 包装结果
+
+**❌ 禁止模式**：
+
+```go
+// 禁止：N+1 查询，遍历中逐条查询关联数据
+for _, tag := range tags {
+    localTag, _ := localTagRepo.GetById(ctx, tag.LocalTagID)
+    // ...
+}
+```
+
+**✅ 正确模式**：
+
+```go
+func (s *Service) enrichWithRelations(ctx context.Context, rawPage *model.Page[SiteTag]) (*model.Page[dto.SiteTagFullDTO], error) {
+    // 1. 收集并去重 ID
+    localTagIds := util.UniqueInt64(collectLocalTagIds(rawPage.Data))
+
+    // 2. 批量查询
+    localTags, _ := s.localTagOp.ListByIds(ctx, localTagIds)
+
+    // 3. 构建 Map
+    localTagMap := lo.SliceToMap(localTags, func(t *domain.LocalTag) (int64, *domain.LocalTag) {
+        return t.ID, t
+    })
+
+    // 4. 组装 DTO
+    results := lo.Map(rawPage.Data, func(tag *domain.SiteTag, _ int) *dto.SiteTagFullDTO {
+        d := dto.NewSiteTagFullDTO(tag)
+        if lt, ok := localTagMap[tag.LocalTagID]; ok {
+            d.LocalTag = dto.NewLocalTagDTO(lt)
+        }
+        return d
+    })
+
+    return model.NewPage(results, *rawPage.Total, rawPage.Page, rawPage.PageSize), nil
+}
+```
+
+### 批量 UPDATE 优化
+
+**规则名称**: `BATCH_UPDATE_OPTIMIZATION`
+**优先级**: P1
+
+更新多条记录的同一字段时，禁止循环逐条执行 UPDATE SQL，应在 Repository 新增批量 UPDATE 方法，单条 SQL 完成。
+
+**❌ 禁止模式**：
+
+```go
+// 禁止：循环逐条更新
+for _, id := range ids {
+    db.Model(&Task{}).Where("id = ?", id).Update("status", newStatus)
+}
+```
+
+**✅ 正确模式**：
+
+```go
+// 正确：单条 SQL 批量更新
+func (r *repository) BatchUpdateStatus(ctx context.Context, ids []int64, status int) error {
+    return r.DB.WithContext(ctx).Model(&Task{}).
+        Where("id IN ?", ids).
+        Update("status", status).Error
+}
+```
+
+### Nullable 参数使用指针类型
+
+**规则名称**: `NULLABLE_PARAM_USE_POINTER`
+**优先级**: P1
+
+当参数需要支持"设为 NULL"语义（如绑定/解绑、可选关联）时，Handler/Service/Repository 参数使用 `*int64` / `*string` 等指针类型。前端传 `null` 表示清除关联，传具体值表示绑定。
+
+```go
+// Handler: *int64 允许 null 值
+func (h *Handler) BindToLocalTag(ctx context.Context, id int64, localTagID *int64) error {
+    return h.svc.BindToLocalTag(ctx, id, localTagID)
+}
+```
 
 ### 数据库布尔值处理
 
@@ -838,6 +1005,175 @@ type Resource struct {
 
 ---
 
+## 前端 API 与组件规范
+
+### requireResponse + ApiResult 统一响应校验
+
+**规则名称**: `WRAPPER_REQUIRE_RESPONSE`
+**优先级**: P0（最高）
+**适用范围**: 所有 `frontend/src/apis/http/wrappers/` 下的 Wrapper 函数
+
+**核心原则**: Wrapper 函数使用 `requireResponse<T>()` 封装 Wails Handler 返回值，统一返回 `ApiResult<T>`。
+
+- 查询类接口默认 `requireData=true`（校验 data 非空）
+- 变更类接口（Save/Update/Delete）传 `requireData=false`
+- `requireResponse` 内部已统一处理 null 检查和错误校验，禁止重复手写同类检查
+- Wrapper 中允许存在非重复的、针对特定业务逻辑的非空校验
+
+```typescript
+import { requireResponse } from '../types'
+import type { ApiResult } from '../types'
+
+// 查询类：默认校验 data 非空
+export async function queryPage(page: Page<TaskProgressTreeDTO>): ApiResult<Page<TaskProgressTreeDTO>> {
+  const resp = await handler.QueryPage(page)
+  return requireResponse(resp)
+}
+
+// 变更类：不校验 data
+export async function save(task: TaskDTO): ApiResult<void> {
+  const resp = await handler.Save(task)
+  return requireResponse(resp, false)
+}
+```
+
+### 统一错误处理：throw 不返回 undefined
+
+**规则名称**: `UNIFIED_ERROR_THROW`
+**优先级**: P0（最高）
+
+所有异步查询函数（SearchTable queryPageFn、Dialog 适配器等）校验失败时必须 `throw new Error(msg)`，禁止返回 `undefined` 或静默失败（返回空 Page）。
+
+**❌ 禁止模式**：
+
+```typescript
+// 禁止：返回 undefined 或空 Page
+async function loadPage(page: Page) {
+  const result = await taskQueryPage(page)
+  if (!result) return undefined  // ✗
+  return result
+}
+```
+
+**✅ 正确模式**：
+
+```typescript
+async function loadPage(page: Page) {
+  try {
+    return await taskQueryPage(page)
+  } catch (e) {
+    ElMessage.error(String(e))
+    throw e  // 向上抛出，让 SearchTable 知道失败
+  }
+}
+```
+
+### QueryAttribute .value 绑定
+
+**规则名称**: `QUERY_ATTRIBUTE_VALUE_BINDING`
+**优先级**: P1
+
+查询参数使用 `QueryAttribute` 包装时：
+
+- 通过 `.value` 属性读写实际值
+- `v-model` 绑定 `xxx.value`
+- `@clear` 事件重置为 `null`（而非空字符串）
+- 模糊搜索时设置 `operator: Operator.OpLike`
+
+```typescript
+const queryAttr = ref<QueryAttribute>({
+  value: null,
+  operator: Operator.OpLike  // 模糊匹配
+})
+
+// v-model 绑定 .value
+// <el-input v-model="queryAttr.value" @clear="queryAttr.value = null" />
+```
+
+### Page 类型统一
+
+**规则名称**: `PAGE_TYPE_UNIFICATION`
+**优先级**: P1
+
+前端统一使用 Wails 绑定层的 `Page<T>` 类型（`@bindings/.../pkg/model`），禁止自定义 `Page` 模型。
+
+- 使用 `copyPage<T>()` 转换类型（保留分页信息）
+- 使用 `newPage<T>()` 创建新分页实例
+- 禁止导入旧的本地 `Page` 类型定义
+
+```typescript
+import { Page } from '@bindings/.../pkg/model'
+import { copyPage, newPage } from '@renderer/utils/pageUtil'
+
+// 正确：使用绑定层 Page 类型
+async function loadPage(page: Page<TaskProgressTreeDTO>): Promise<Page<TaskProgressTreeDTO>> {
+  const result = await taskQueryPage(page)
+  return copyPage(result)
+}
+```
+
+### 组合 DTO 嵌套路径适配
+
+**规则名称**: `COMPOSITION_DTO_NESTED_PATH`
+**优先级**: P1
+
+后端使用组合 DTO 后，前端 DataTable thead 的 key 使用点号嵌套路径访问子 DTO 字段。
+
+```typescript
+// 组合 DTO 结构：TaskProgressTreeDTO { taskProgress: { task: { taskName }, siteName } }
+const thead = [
+  { label: '任务名称', key: 'taskProgress.task.taskName' },
+  { label: '站点名称', key: 'taskProgress.siteName' },
+  { label: '创建时间', key: 'taskProgress.task.createTime' },
+]
+
+// data-key 同理使用嵌套路径
+// <search-table :data-key="'taskProgress.task.id'" />
+```
+
+### Dialog 使用绑定层 DTO
+
+**规则名称**: `DIALOG_USE_BINDING_DTO`
+**优先级**: P1
+
+- Dialog 的 `formData` 使用 Wails 绑定层 DTO 类型，禁止使用旧实体类型
+- 组合 DTO 初始化时预创建嵌套对象，模板直接绑定，禁止使用 `computed` 中间层
+- 简单 DTO 直接透传给 API；组合 DTO 提取子字段构造新 DTO 传入
+
+```typescript
+import { TaskDTO } from '@bindings/.../pkg/model/dto'
+import { TaskProgressTreeDTO } from '@renderer/model/model/dto/TaskProgressTreeDTO'
+
+// formData 使用绑定层 DTO
+const formData = ref<TaskDTO>(new TaskDTO())
+
+// 组合 DTO 提取子字段传入 API
+async function handleSave() {
+  await taskSave(formData.value)  // 直接透传简单 DTO
+}
+```
+
+### ID 类型统一为 number
+
+**规则名称**: `ID_TYPE_NUMBER`
+**优先级**: P2
+
+前端 ID 统一使用 `number` 类型。从 SelectItem 的 `value`（string）取出时显式 `Number()` 转换，禁止函数签名中使用 `string` 类型的 ID。
+
+```typescript
+// ✅ 正确
+function handleSelect(item: SelectItem) {
+  formData.siteId = Number(item.value)
+}
+
+// ❌ 禁止
+function handleSelect(item: SelectItem) {
+  formData.siteId = item.value  // string 类型
+}
+```
+
+---
+
 ## Go 主进程代码规范
 
 ### 文件命名规范
@@ -902,6 +1238,38 @@ func NewService(repo Repository) *Service {
 2. 接口实现方法 (按接口定义顺序)
 3. 业务方法 (按调用频率或重要性)
 4. 私有辅助方法
+
+### Entity 使用 NewXxx() 工厂方法
+
+**规则名称**: `ENTITY_USE_NEW_FACTORY`
+**优先级**: P1
+
+创建实体实例时使用 `entity.NewXxx()` 工厂方法，禁止使用结构体字面量 `&entity.Xxx{}`，防止遗漏 `BaseEntity` 等必要字段的初始化。
+
+```go
+// ✅ 正确：使用工厂方法
+task := entity.NewTask()
+task.TaskName = req.TaskName
+
+// ❌ 禁止：结构体字面量，容易遗漏字段初始化
+task := &entity.Task{
+    TaskName: req.TaskName,
+}
+```
+
+### 移除冗余查询字段
+
+**规则名称**: `REMOVE_REDUNDANT_QUERY_FIELDS`
+**优先级**: P2
+
+QueryDTO 中禁止为同一数据库列定义多个语义重复的字段（如同时定义精确匹配和模糊匹配字段），应保留一个字段，通过 `QueryAttribute.operator` 控制匹配方式。
+
+### 重构后死代码清理
+
+**规则名称**: `DEAD_CODE_CLEANUP`
+**优先级**: P2
+
+重构后确认无调用方的旧方法直接删除，禁止保留"以防万一"的代码。可通过 IDE 的 "Find Usages" 确认无引用后安全删除。
 
 ### 注释规范
 
@@ -1190,5 +1558,5 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 
 ---
 
-**最后更新**: 2026-04-22
+**最后更新**: 2026-04-30
 **维护者**: AI Assistant
