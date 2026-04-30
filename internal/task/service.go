@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
+	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
 	querypkg "github.com/library-squirrel/wails/pkg/query"
@@ -130,6 +131,17 @@ type TaskTreeDTO struct {
 	Children             []*TaskTreeDTO `json:"children,omitempty"`
 }
 
+// taskTreeBuilder 任务树构建器，复用通用 TreeBuilder
+var taskTreeBuilder = util.NewTreeBuilder[*TaskTreeDTO](
+	func(dto *TaskTreeDTO) int64 { return dto.ID },
+	func(dto *TaskTreeDTO) int64 { return dto.Pid },
+	0,
+)
+
+func setTaskTreeChildren(dto *TaskTreeDTO, children []*TaskTreeDTO) {
+	dto.Children = children
+}
+
 // ToTaskTreeDTO 将 domain.Task 转换为 TaskTreeDTO
 func ToTaskTreeDTO(task *entity2.Task) *TaskTreeDTO {
 	if task == nil {
@@ -164,46 +176,11 @@ func buildTaskTree(tasks []*entity2.Task) []*TaskTreeDTO {
 	if len(tasks) == 0 {
 		return nil
 	}
-
-	// 转换为 DTO
 	dtos := make([]*TaskTreeDTO, len(tasks))
 	for i, task := range tasks {
 		dtos[i] = ToTaskTreeDTO(task)
 	}
-
-	// 构建树形结构
-	tree := make([]*TaskTreeDTO, 0)
-	nodeMap := make(map[int64]*TaskTreeDTO)
-
-	// 先按 pid 分组
-	for _, dto := range dtos {
-		nodeMap[dto.ID] = dto
-	}
-
-	// 遍历找到根节点（pid 为 0 或 nil）
-	for _, dto := range dtos {
-		if dto.Pid == 0 {
-			tree = append(tree, dto)
-		}
-	}
-
-	// 递归构建子树
-	var buildChildren func(dto *TaskTreeDTO)
-	buildChildren = func(dto *TaskTreeDTO) {
-		dto.Children = make([]*TaskTreeDTO, 0)
-		for _, node := range dtos {
-			if node.Pid == dto.ID {
-				dto.Children = append(dto.Children, node)
-				buildChildren(node)
-			}
-		}
-	}
-
-	for _, root := range tree {
-		buildChildren(root)
-	}
-
-	return tree
+	return taskTreeBuilder.BuildTree(dtos, setTaskTreeChildren)
 }
 
 // TreeDataPageRequest 任务树数据分页请求
@@ -402,38 +379,7 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 
 // buildTaskTreeByDTO 将 TaskTreeDTO 列表构建为树形结构
 func buildTaskTreeByDTO(dtos []*TaskTreeDTO) []*TaskTreeDTO {
-	if len(dtos) == 0 {
-		return nil
-	}
-
-	tree := make([]*TaskTreeDTO, 0)
-	nodeMap := make(map[int64]*TaskTreeDTO)
-
-	// 建立 ID 到节点的映射，并收集根节点
-	for _, dto := range dtos {
-		nodeMap[dto.ID] = dto
-		if dto.Pid == 0 {
-			tree = append(tree, dto)
-		}
-	}
-
-	// 递归构建子树
-	var buildChildren func(dto *TaskTreeDTO)
-	buildChildren = func(dto *TaskTreeDTO) {
-		dto.Children = make([]*TaskTreeDTO, 0)
-		for _, node := range dtos {
-			if node.Pid == dto.ID {
-				dto.Children = append(dto.Children, node)
-				buildChildren(node)
-			}
-		}
-	}
-
-	for _, root := range tree {
-		buildChildren(root)
-	}
-
-	return tree
+	return taskTreeBuilder.BuildTree(dtos, setTaskTreeChildren)
 }
 
 // ListChildrenTask 查询子任务列表
