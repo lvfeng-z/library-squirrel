@@ -4,8 +4,7 @@ import { computed, h, nextTick, Ref, ref, VNode } from 'vue'
 import SearchTable from '../common/SearchTable.vue'
 import { Thead } from '../../model/util/Thead'
 import { TaskStatusEnum } from '../../constants/TaskStatusEnum.ts'
-import { ElTag } from 'element-plus'
-import ApiUtil from '@renderer/utils/ApiUtil'
+import { ElMessage, ElTag } from 'element-plus'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { getNode } from '@renderer/utils/TreeUtil.ts'
 import { throttle } from 'lodash'
@@ -22,6 +21,7 @@ import Task from '@renderer/model/model/entity/Task.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { taskApi } from '@renderer/apis/http'
+import {QueryAttribute} from "@bindings/github.com/library-squirrel/wails/pkg/query";
 
 // props
 const props = defineProps<{
@@ -35,17 +35,6 @@ const formData: Ref<TaskTreeDTO> = defineModel('formData', { type: Object, requi
 const state = defineModel<boolean>('state', { required: true })
 
 // 变量
-// 接口
-const apis = {
-  taskStartTask: (taskId: number) => taskApi.taskStartTree(taskId),
-  taskRetryTask: (taskId: number) => taskApi.taskRetryTree(taskId),
-  taskDeleteTask: (id: number) => taskApi.taskDelete(id),
-  taskListSchedule: (ids: number[]) => taskApi.taskListStatus(ids),
-  taskQueryChildrenTaskPage: (pid: number, pageNumber: number, pageSize: number, query?: Record<string, unknown>) =>
-    taskApi.taskQueryChildrenTaskPage(pid, pageNumber, pageSize, query),
-  taskPauseTaskTree: (taskId: number) => taskApi.taskPauseTree(taskId),
-  taskResumeTaskTree: (taskId: number) => taskApi.taskResumeTree(taskId)
-}
 // childTaskSearchTable组件的实例
 const childTaskSearchTable = ref()
 // 下级任务
@@ -55,18 +44,19 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'taskName',
+    key: 'taskProgress.task.taskName',
     title: '名称',
     hide: false,
-    width: 380,
+    minWidth: 380,
     headerAlign: 'center',
     dataAlign: 'left',
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    sortable: 'custom'
   }),
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'siteName',
+    key: 'taskProgress.siteName',
     title: '站点',
     hide: false,
     width: 100,
@@ -77,29 +67,31 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'datetime',
     defaultDisabled: true,
-    key: 'createTime',
+    key: 'taskProgress.task.createTime',
     title: '创建时间',
     hide: false,
     width: 152,
     headerAlign: 'center',
     dataAlign: 'center',
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    sortable: 'custom'
   }),
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'url',
+    key: 'taskProgress.task.url',
     title: 'url',
     hide: false,
     width: 380,
     headerAlign: 'center',
     dataAlign: 'center',
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    sortable: 'custom'
   }),
   new Thead({
     type: 'custom',
     defaultDisabled: true,
-    key: 'status',
+    key: 'taskProgress.task.status',
     title: '状态',
     hide: false,
     width: 110,
@@ -172,22 +164,22 @@ async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<objec
   if (isNullish(pid)) {
     return undefined
   }
-  query.pid = pid
-  const response = await apis.taskQueryChildrenTaskPage(pid, page.pageNumber, page.pageSize, query as Record<string, unknown>)
-  if (ApiUtil.check(response)) {
-    return ApiUtil.data(response) as Page<object>
-  } else {
-    ApiUtil.msg(response)
+  query.pid = new QueryAttribute({value: pid})
+  try {
+    const response = await taskApi.taskQueryChildrenTaskPage(pid, page.pageNumber, page.pageSize, query as Record<string, unknown>)
+    return response.data as unknown as Page<object>
+  } catch (e: any) {
+    ElMessage.error(e.message)
     return undefined
   }
 }
 // 更新进度的数据加载函数
 async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] | undefined> {
-  const response = await apis.taskListSchedule(ids)
-  if (ApiUtil.check(response)) {
-    const scheduleList = ApiUtil.data(response) as TaskScheduleDTO[]
+  try {
+    const response = await taskApi.taskListStatus(ids)
+    const scheduleList = response.data as TaskScheduleDTO[]
     return arrayNotEmpty(scheduleList) ? scheduleList : undefined
-  } else {
+  } catch {
     return undefined
   }
 }
@@ -249,11 +241,11 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      apis.taskPauseTaskTree(row.id)
+      taskApi.taskPauseTree(row.id)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      apis.taskResumeTaskTree(row.id)
+      taskApi.taskResumeTree(row.id)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -308,11 +300,10 @@ function getTaskStatusElTag(data: TaskStatusEnum): VNode {
 }
 // 开始任务
 function startTask(row: TaskTreeDTO, retry: boolean) {
-  if (retry) {
-    apis.taskRetryTask(row.id)
-  } else {
-    apis.taskStartTask(row.id)
-  }
+  const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
+  apiCall(row.id).catch((e: Error) => {
+    ElMessage.error(e.message)
+  })
   row.status = TaskStatusEnum.WAITING
   if (row.isCollection && notNullish(row.children)) {
     row.children.forEach((child) => (child.status = TaskStatusEnum.WAITING))
@@ -320,10 +311,11 @@ function startTask(row: TaskTreeDTO, retry: boolean) {
 }
 // 删除任务
 async function deleteTask(id: number) {
-  const response = await apis.taskDeleteTask(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    await taskApi.taskDelete(id)
     await childTaskSearchTable.value.doSearch()
+  } catch (e: any) {
+    ElMessage.error(e.message)
   }
 }
 // 转到父任务
@@ -415,11 +407,11 @@ function toParent() {
         <template #toolbarMain>
           <el-row class="task-dialog-search-bar">
             <el-col :span="14">
-              <el-input v-model="taskSearchParams.taskName" placeholder="输入任务名称" clearable />
+              <el-input v-model="taskSearchParams.taskName.value" placeholder="输入任务名称" clearable />
             </el-col>
             <el-col :span="6">
               <auto-load-select
-                v-model="taskSearchParams.siteId"
+                v-model="taskSearchParams.siteId.value"
                 :load="siteQuerySelectItemPageBySiteName"
                 placeholder="选择站点"
                 remote
@@ -432,7 +424,7 @@ function toParent() {
               </auto-load-select>
             </el-col>
             <el-col :span="4">
-              <el-select v-model="taskSearchParams.status" placeholder="选择状态" clearable>
+              <el-select v-model="taskSearchParams.status.value" placeholder="选择状态" clearable>
                 <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
                 <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
                 <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>

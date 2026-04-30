@@ -131,10 +131,10 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO],
 	})
 }
 
-// QueryParentPage 分页查询父任务
-func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskDTO]] {
+// QueryParentPage 分页查询父任务（返回带站点名称的 TaskProgressTreeDTO）
+func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskProgressTreeDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.TaskDTO]{}
+		page = &model.Page[dto2.TaskProgressTreeDTO]{}
 	}
 	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
@@ -142,49 +142,33 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.Tas
 	}
 	result, err := h.svc.QueryParentPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
+		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
 	}
-	// 转换为 DTO
-	data := make([]*dto2.TaskDTO, 0, len(result.Data))
-	for _, task := range result.Data {
-		data = append(data, dto2.NewTaskDTO(task))
+	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
+	if err != nil {
+		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
 	}
-	return model.Success(&model.Page[dto2.TaskDTO]{
-		PageNumber:   result.PageNumber,
-		PageSize:     result.PageSize,
-		PageCount:    result.PageCount,
-		DataCount:    result.DataCount,
-		CurrentCount: result.CurrentCount,
-		Data:         data,
-	})
+	return model.Success(enriched)
 }
 
-// QueryChildrenTaskPage 查询子任务分页
-func (h *Handler) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskDTO]] {
+// QueryChildrenTaskPage 查询子任务分页（返回带站点名称的 TaskProgressTreeDTO）
+func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[dto2.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskProgressTreeDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.TaskDTO]{}
+		page = &model.Page[dto2.TaskProgressTreeDTO]{}
 	}
 	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QueryChildrenTaskPage(ctx, pid, entityPage, query)
+	result, err := h.svc.QueryChildrenTaskPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
+		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
 	}
-	// 转换为 DTO
-	data := make([]*dto2.TaskDTO, 0, len(result.Data))
-	for _, task := range result.Data {
-		data = append(data, dto2.NewTaskDTO(task))
+	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
+	if err != nil {
+		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
 	}
-	return model.Success(&model.Page[dto2.TaskDTO]{
-		PageNumber:   result.PageNumber,
-		PageSize:     result.PageSize,
-		PageCount:    result.PageCount,
-		DataCount:    result.DataCount,
-		CurrentCount: result.CurrentCount,
-		Data:         data,
-	})
+	return model.Success(enriched)
 }
 
 // ListChildrenTask 查询子任务列表

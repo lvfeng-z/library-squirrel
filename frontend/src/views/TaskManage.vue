@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import BaseSubpage from './BaseSubpage.vue'
 import { h, onMounted, Ref, ref, VNode } from 'vue'
-import ApiUtil from '../utils/ApiUtil.ts'
 import SearchTable from '../components/common/SearchTable.vue'
 import { Thead } from '../model/util/Thead.ts'
 import DialogMode from '../model/util/DialogMode.ts'
@@ -11,8 +10,6 @@ import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNode } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
-import Page from '../model/util/Page.ts'
-import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
@@ -22,15 +19,14 @@ import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
-import { fileSysUtilApi, taskApi, siteApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
+import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
-import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
-import Task from '@renderer/model/model/entity/Task.ts'
-import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {TaskQueryDTO, TaskScheduleDTO} from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
-import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
-import type { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
+import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+import {isBlank} from "@renderer/utils/StringUtil.ts";
 
 // onMounted
 onMounted(() => {
@@ -41,25 +37,6 @@ onMounted(() => {
 const emits = defineEmits(['openReplaceResConfirmDialog'])
 
 // 变量
-// 接口 - 使用 HTTP API
-const apis = {
-  pluginTaskUrlListenerManagerListListener: pluginTaskUrlListenerApi.listListener,
-  siteQuerySelectItemPage: siteApi.siteQuerySelectItemPage,
-  taskCreateTask: (url: string) => taskApi.taskCreateByUrl(url),
-  taskListStatus: (ids: number[]) => taskApi.taskListStatus(ids),
-  taskStartTask: (taskId: number) => taskApi.taskStartTree(taskId),
-  taskRetryTask: (taskId: number) => taskApi.taskRetryTree(taskId),
-  taskDeleteTask: (id: number) => taskApi.taskDelete(id),
-  taskQueryParentPage: (page: Page<object>, query: TaskQueryDTO) =>
-    taskApi.taskQueryParentPage(page, query),
-  taskQueryChildrenTaskPage: (pid: number, pageNumber: number, pageSize: number, query?: Record<string, unknown>) => {
-    return taskApi.taskQueryChildrenTaskPage(pid, pageNumber, pageSize, query)
-  },
-  taskPauseTaskTree: (taskId: number) => taskApi.taskPauseTree(taskId),
-  taskStopTaskTree: (taskId: number) => taskApi.taskStopTree(taskId),
-  taskResumeTaskTree: (taskId: number) => taskApi.taskResumeTree(taskId),
-  dirSelect: fileSysUtilApi.dirSelect
-}
 // taskManageSearchTable的组件实例
 const taskManageSearchTable = ref()
 // 本地导入按钮的实例
@@ -67,13 +44,13 @@ const localImportButton = ref()
 // 站点导入按钮的实例
 const siteDownloadButton = ref()
 // 任务SearchTable的数据
-const dataList: Ref<TaskTreeDTO[]> = ref([])
+const dataList: Ref<TaskProgressTreeDTO[]> = ref([])
 // 表头
 const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'taskName',
+    key: 'taskProgress.task.taskName',
     title: '名称',
     hide: false,
     minWidth: 380,
@@ -85,7 +62,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'siteName',
+    key: 'taskProgress.siteName',
     title: '站点',
     hide: false,
     width: 100,
@@ -95,7 +72,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'datetime',
     defaultDisabled: true,
-    key: 'createTime',
+    key: 'taskProgress.task.createTime',
     title: '创建时间',
     hide: false,
     width: 152,
@@ -107,7 +84,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
-    key: 'url',
+    key: 'taskProgress.task.url',
     title: 'url',
     hide: false,
     width: 380,
@@ -119,7 +96,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
     type: 'custom',
     defaultDisabled: true,
-    key: 'status',
+    key: 'taskProgress.task.status',
     title: '状态',
     hide: false,
     width: 110,
@@ -172,11 +149,11 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   })
 ])
 // 任务SearchTable的分页
-const page: Ref<Page<Task>> = ref(new Page<Task>())
+const page: Ref<Page<TaskProgressTreeDTO>> = ref(new Page<TaskProgressTreeDTO>())
 // 任务查询的参数
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 // 改变的行数据
-const changedRows: Ref<object[]> = ref([])
+const changedRows: Ref<TaskProgressTreeDTO[]> = ref([])
 // 排序配置
 const sort: Ref<{ prop: string; order: 'ascending' | 'descending' | null }> = ref({ prop: '', order: null })
 // 是否正在刷新数据
@@ -207,41 +184,24 @@ async function createTaskFromSource() {
   notificationItem.title = `正在根据【${sourceUrl.value}】创建任务`
   const notificationStore = useNotificationStore()
   const notificationId = notificationStore.add(notificationItem)
-  apis.taskCreateTask(sourceUrl.value).then((response: ApiResponse) => handleCreatTaskResponse(response, notificationId))
+  taskApi.taskCreateByUrl(sourceUrl.value)
+    .then((response) => {
+      const data = response.data
+      taskManageSearchTable.value.doSearch()
+      if (data.succeed) {
+        useNotificationStore().remove(notificationId, { type: 'success', msg: `成功创建了 ${data.addedQuantity} 个任务` })
+      } else {
+        useNotificationStore().remove(notificationId, { type: 'error', msg: '创建失败，' + (data.msg || '未知错误') })
+      }
+    })
+    .catch((e: Error) => {
+      useNotificationStore().remove(notificationId, { type: 'error', msg: e.message })
+    })
   downloadDialogState.value = false
   sourceUrl.value = ''
 }
-// 处理任务创建的响应
-function handleCreatTaskResponse(response: ApiResponse, notificationId: string) {
-  let type: 'error' | 'primary' | 'success' | 'warning' | 'info'
-  let msg: string
-  if (ApiUtil.check(response)) {
-    const data = ApiUtil.data<{ succeed: boolean; addedQuantity: number; msg?: string }>(response)
-    if (notNullish(data)) {
-      // 刷新一次列表
-      taskManageSearchTable.value.doSearch()
-      if (data.succeed) {
-        type = 'success'
-        msg = `成功创建了 ${data.addedQuantity} 个任务`
-      } else {
-        type = 'error'
-        msg = '创建失败，' + (data.msg || '未知错误')
-      }
-    } else {
-      type = 'error'
-      msg = '创建失败'
-    }
-  } else {
-    type = 'error'
-    msg = '创建失败'
-  }
-  useNotificationStore().remove(notificationId, {
-    type: type,
-    msg: msg
-  })
-}
 // 分页查询父任务的函数
-async function taskQueryParentPage(page: Page<object>): Promise<Page<object> | undefined> {
+async function taskQueryParentPage(page: Page<TaskProgressTreeDTO>): Promise<Page<TaskProgressTreeDTO>> {
   const query = new TaskQueryDTO()
   // 用户选择的排序优先级最高（priority=-1）
   if (sort.value.prop && sort.value.order) {
@@ -255,39 +215,43 @@ async function taskQueryParentPage(page: Page<object>): Promise<Page<object> | u
   // 设置默认排序（用户选择优先级最高，createTime 次之，updateTime 再次）
   query.createTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
   query.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
-  const response = await apis.taskQueryParentPage(page, query)
-  if (ApiUtil.check(response)) {
-    return ApiUtil.data<Page<object>>(response)
-  } else {
-    ApiUtil.msg(response)
-    return undefined
+  try {
+    const response = await taskApi.taskQueryParentPage(page, query)
+    return response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+    throw e
   }
 }
 // 懒加载处理函数
-async function load(row: unknown): Promise<TaskTreeDTO[]> {
-  const pid = (row as TaskTreeDTO).id as number
-  const query = { ...new TaskQueryDTO(), ...{ pid } }
+async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
+  const parentId = row.taskProgress?.task?.id
+  if (isNullish(parentId)) {
+    ElMessage.error('加载失败，父任务id不能为空')
+    return []
+  }
+  const query = new TaskQueryDTO({pid: new QueryAttribute({value: parentId})})
+  const tempPage = new Page<TaskProgressTreeDTO>()
 
-  return apis.taskQueryChildrenTaskPage(pid, 1, 100, query as Record<string, unknown>).then((response: ApiResponse) => {
-    if (ApiUtil.check(response)) {
-      const resultPage = ApiUtil.data(response) as Page<object>
-      const data = (resultPage.data === undefined ? [] : resultPage.data) as TaskTreeDTO[]
-      // 子任务列表赋值给对应的父任务的children
-      const parent = dataList.value.find((task) => pid === task.id)
-      if (notNullish(parent)) {
-        parent.children = data
-      }
-      return data
-    } else {
-      ApiUtil.msg(response)
-      return []
+  const response = await taskApi.taskQueryChildrenTaskPage(tempPage, query)
+  try {
+    const resultPage = response.data
+    const data = (resultPage.data ?? [])
+    // 子任务列表赋值给对应的父任务的children
+    const parent = dataList.value.find((task) => parentId === task.taskProgress?.task?.id)
+    if (notNullish(parent)) {
+      parent.children = data
     }
-  })
+    return data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+    return []
+  }
 }
 // 更新进度的数据加载函数
 async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] | undefined> {
   const scheduleList: TaskScheduleDTO[] = []
-  const notFoundList: (number | string)[] = []
+  const notFoundList: number[] = []
   for (const id of ids) {
     let tempStatus = useParentTaskStore().getTask(Number(id))
     if (notNullish(tempStatus)) {
@@ -299,15 +263,17 @@ async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] |
       scheduleList.push(tempStatus)
       continue
     }
-    notFoundList.push(id)
+    notFoundList.push(typeof id === 'string' ? Number(id) : id)
   }
   if (arrayNotEmpty(notFoundList)) {
-    const response = await apis.taskListStatus(notFoundList)
-    if (ApiUtil.check(response)) {
-      const responseScheduleList = ApiUtil.data<TaskScheduleDTO[]>(response)
+    try {
+      const response = await taskApi.taskListStatus(notFoundList)
+      const responseScheduleList = response.data
       if (arrayNotEmpty(responseScheduleList)) {
         scheduleList.push(...responseScheduleList)
       }
+    } catch {
+      // 查询状态失败，静默处理
     }
   }
   return arrayNotEmpty(scheduleList) ? scheduleList : undefined
@@ -333,11 +299,11 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       refreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      apis.taskPauseTaskTree(row.id)
+      taskApi.taskPauseTree(Number(row.id))
       refreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      apis.taskResumeTaskTree(row.id)
+      taskApi.taskResumeTree(Number(row.id))
       refreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -345,10 +311,10 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       refreshTask()
       break
     case TaskOperationCodeEnum.CANCEL:
-      apis.taskStopTaskTree(row.id)
+      taskApi.taskStopTree(Number(row.id))
       break
     case TaskOperationCodeEnum.DELETE:
-      deleteTask(row.id as number)
+      deleteTask(Number(row.id))
       break
     case TaskOperationCodeEnum.CONFIRM_REPLACE_RES:
       emits('openReplaceResConfirmDialog')
@@ -359,14 +325,16 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
 }
 // 选择目录
 async function selectDir(openFile: boolean) {
-  const response = await apis.dirSelect(openFile)
-  if (ApiUtil.check(response)) {
-    const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
+  try {
+    const response = await fileSysUtilApi.fileSysUtilDirSelect(openFile, true)
+    const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled) {
       for (const dir of dirSelectResult.filePaths) {
         sourceUrl.value = dir
       }
     }
+  } catch (e: any) {
+    ElMessage.error(e.message)
   }
 }
 // 打开下载dialog
@@ -392,17 +360,18 @@ async function refreshTask() {
       // 获取可视区域及附近的行id
       const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
       // 利用树形工具找到所有id对应的数据，判断是否需要刷新
-      const tempRoot = new TaskTreeDTO()
+      const tempRoot = new TaskProgressTreeDTO()
       tempRoot.children = dataList.value
       return visibleRowsId.filter((id: number) => {
-        const task = getNode<TaskTreeDTO>(tempRoot, id)
+        const taskProgressTree = getNode<TaskProgressTreeDTO>(tempRoot, id)
+        const task = taskProgressTree?.taskProgress?.task
         return (
           notNullish(task) &&
           (task.status === TaskStatusEnum.WAITING ||
-            task.status === TaskStatusEnum.PROCESSING ||
-            task.status === TaskStatusEnum.PAUSE ||
-            useParentTaskStore().hasTask(task.id as number) ||
-            useTaskStore().hasTask(task.id as number))
+              task.status === TaskStatusEnum.PROCESSING ||
+              task.status === TaskStatusEnum.PAUSE ||
+            useParentTaskStore().hasTask(task.id) ||
+            useTaskStore().hasTask(task.id))
         )
       })
     }
@@ -426,19 +395,10 @@ function handleScroll() {
 }
 // 开始任务
 function startTask(row: TaskTreeDTO, retry: boolean) {
-  if (retry) {
-    apis.taskRetryTask(row.id).then((response: ApiResponse) => {
-      if (!ApiUtil.check(response)) {
-        ApiUtil.failedMsg(response)
-      }
-    })
-  } else {
-    apis.taskStartTask(row.id).then((response: ApiResponse) => {
-      if (!ApiUtil.check(response)) {
-        ApiUtil.failedMsg(response)
-      }
-    })
-  }
+  const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
+  apiCall(Number(row.id)).catch((e: Error) => {
+    ElMessage.error(e.message)
+  })
   row.status = TaskStatusEnum.WAITING
   if (row.isCollection && notNullish(row.children)) {
     row.children.forEach((child) => (child.status = TaskStatusEnum.WAITING))
@@ -446,22 +406,21 @@ function startTask(row: TaskTreeDTO, retry: boolean) {
 }
 // 删除任务
 async function deleteTask(id: number) {
-  const response = await apis.taskDeleteTask(id)
-  ApiUtil.msg(response)
-  if (ApiUtil.check(response)) {
+  try {
+    await taskApi.taskDelete(id)
     await taskManageSearchTable.value.doSearch()
+  } catch (e: any) {
+    ElMessage.error(e.message)
   }
 }
 // 获取url匹配的插件
 async function getUrlMatchedPlugin(url: string): Promise<Plugin[]> {
-  const response = await apis.pluginTaskUrlListenerManagerListListener(url)
-  if (ApiUtil.check(response)) {
-    const plugins = ApiUtil.data<Plugin[]>(response)
-    if (notNullish(plugins)) {
-      return plugins
-    }
+  try {
+    const response = await pluginTaskUrlListenerApi.listListener(url)
+    return response.data as unknown as Plugin[]
+  } catch {
+    return []
   }
-  return []
 }
 // 获取受支持提示文本
 async function getSupportedText() {
@@ -527,7 +486,7 @@ async function handleSourceUrlInput() {
         v-model:sort="sort"
         class="task-manage-search-table"
         :selectable="true"
-        :thead="thead as Thead<object>[]"
+        :thead="thead"
         :search="taskQueryParentPage"
         :update-load="updateLoad"
         :update-properties="['status']"
@@ -546,11 +505,11 @@ async function handleSourceUrlInput() {
         <template #toolbarMain>
           <el-row class="task-manage-search-bar">
             <el-col :span="14">
-              <el-input v-model="taskSearchParams.taskName" placeholder="输入任务名称" clearable />
+              <el-input v-model="taskSearchParams.taskName.value" placeholder="输入任务名称" clearable />
             </el-col>
             <el-col :span="6">
               <auto-load-select
-                v-model="taskSearchParams.siteId"
+                v-model="taskSearchParams.siteId.value"
                 :load="siteQuerySelectItemPageBySiteName"
                 placeholder="选择站点"
                 remote
@@ -563,7 +522,7 @@ async function handleSourceUrlInput() {
               </auto-load-select>
             </el-col>
             <el-col :span="4">
-              <el-select v-model="taskSearchParams.status" placeholder="选择状态" clearable>
+              <el-select v-model="taskSearchParams.status.value" placeholder="选择状态" clearable>
                 <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
                 <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
                 <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>

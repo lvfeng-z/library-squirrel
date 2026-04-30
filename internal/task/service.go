@@ -85,7 +85,7 @@ type Repository interface {
 	// ListChildrenTask 查询子任务列表
 	ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.Task, error)
 	// QueryChildrenTaskPage 查询子任务分页
-	QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[entity2.Task], error)
+	QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
@@ -442,13 +442,64 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity2.T
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, pid int64, page *model.Page[entity2.Task], query TaskQueryDTO) (*model.Page[entity2.Task], error) {
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[entity2.Task], query TaskQueryDTO) (*model.Page[entity2.Task], error) {
 	conv := querypkg.NewConverter(entity2.Task{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.QueryChildrenTaskPage(ctx, pid, opt)
+	return s.repo.QueryChildrenTaskPage(ctx, opt)
+}
+
+// EnrichTaskProgressTreePage 将 Task 实体分页丰富为 TaskProgressTreeDTO 分页
+// 批量查询站点名称并注入，同时填充树形结构字段（hasChildren、children、isLeaf）
+func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity2.Task]) (*model.Page[dto.TaskProgressTreeDTO], error) {
+	tasks := rawPage.Data
+	if len(tasks) == 0 {
+		return model.NewPage[dto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	}
+
+	// 1. 收集 siteIds（去重）
+	siteIdSet := make(map[int64]struct{})
+	for _, task := range tasks {
+		if task.SiteID.Valid && task.SiteID.Int64 > 0 {
+			siteIdSet[task.SiteID.Int64] = struct{}{}
+		}
+	}
+
+	// 2. 批量查询站点名称，构建 id→siteName 映射
+	siteNameMap := make(map[int64]string)
+	if len(siteIdSet) > 0 {
+		siteIds := make([]int64, 0, len(siteIdSet))
+		for id := range siteIdSet {
+			siteIds = append(siteIds, id)
+		}
+		sites, err := s.siteSvc.ListByIds(ctx, siteIds)
+		if err != nil {
+			return nil, err
+		}
+		for _, site := range sites {
+			if site.SiteName.Valid {
+				siteNameMap[site.GetID()] = site.SiteName.String
+			}
+		}
+	}
+
+	// 3. 转换并丰富
+	data := make([]*dto.TaskProgressTreeDTO, 0, len(tasks))
+	for _, task := range tasks {
+		taskDTO := dto.NewTaskDTO(task)
+		treeDTO := dto.NewTaskProgressTreeDTO(taskDTO)
+		// 注入站点名称
+		if task.SiteID.Valid {
+			if siteName, ok := siteNameMap[task.SiteID.Int64]; ok {
+				treeDTO.TaskProgress.SiteName = &siteName
+			}
+		}
+		data = append(data, treeDTO)
+	}
+
+	return model.NewPage[dto.TaskProgressTreeDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // ListSchedule 查询任务进度列表

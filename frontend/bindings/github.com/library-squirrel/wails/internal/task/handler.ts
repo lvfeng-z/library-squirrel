@@ -94,11 +94,11 @@ export function ListTaskTree(taskIds: number[], ...includeStatus: number[]): $Ca
 }
 
 /**
- * QueryChildrenTaskPage 查询子任务分页
+ * QueryChildrenTaskPage 查询子任务分页（返回带站点名称的 TaskProgressTreeDTO）
  */
-export function QueryChildrenTaskPage(pid: number, page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskDTO> | null> | null> {
-    return $Call.ByID(3312153847, pid, page, query).then(($result: any) => {
-        return $$createType23($result);
+export function QueryChildrenTaskPage(page: model$0.Page<dto$0.TaskProgressTreeDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskProgressTreeDTO> | null> | null> {
+    return $Call.ByID(3312153847, page, query).then(($result: any) => {
+        return $$createType24($result);
     });
 }
 
@@ -107,16 +107,16 @@ export function QueryChildrenTaskPage(pid: number, page: model$0.Page<dto$0.Task
  */
 export function QueryPage(page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskDTO> | null> | null> {
     return $Call.ByID(2367410609, page, query).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType28($result);
     });
 }
 
 /**
- * QueryParentPage 分页查询父任务
+ * QueryParentPage 分页查询父任务（返回带站点名称的 TaskProgressTreeDTO）
  */
-export function QueryParentPage(page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskDTO> | null> | null> {
+export function QueryParentPage(page: model$0.Page<dto$0.TaskProgressTreeDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskProgressTreeDTO> | null> | null> {
     return $Call.ByID(39626201, page, query).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
@@ -125,7 +125,7 @@ export function QueryParentPage(page: model$0.Page<dto$0.TaskDTO> | null, query:
  */
 export function QueryTreeDataPage(page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<$models.TreeDataPageDTO | null> | null> {
     return $Call.ByID(1518321709, page, query).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType32($result);
     });
 }
 
@@ -186,11 +186,16 @@ const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = $Create.Array($$createType16);
 const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
 const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = model$0.Page.createFrom($$createType8);
-const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = model$0.ApiResponse.createFrom($$createType21);
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = $models.TreeDataPageDTO.createFrom;
-const $$createType25 = $Create.Nullable($$createType24);
-const $$createType26 = model$0.ApiResponse.createFrom($$createType25);
-const $$createType27 = $Create.Nullable($$createType26);
+const $$createType20 = dto$0.TaskProgressTreeDTO.createFrom;
+const $$createType21 = model$0.Page.createFrom($$createType20);
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = model$0.ApiResponse.createFrom($$createType22);
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = model$0.Page.createFrom($$createType8);
+const $$createType26 = $Create.Nullable($$createType25);
+const $$createType27 = model$0.ApiResponse.createFrom($$createType26);
+const $$createType28 = $Create.Nullable($$createType27);
+const $$createType29 = $models.TreeDataPageDTO.createFrom;
+const $$createType30 = $Create.Nullable($$createType29);
+const $$createType31 = model$0.ApiResponse.createFrom($$createType30);
+const $$createType32 = $Create.Nullable($$createType31);

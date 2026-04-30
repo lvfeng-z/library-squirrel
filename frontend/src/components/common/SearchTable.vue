@@ -26,7 +26,7 @@ const props = withDefaults(
     customOperationButton?: boolean // 是否使用自定义操作按钮
     treeData?: boolean //是否为树形数据
     treeLazy?: boolean // 树形数据是否懒加载
-    treeLoad?: (row: unknown) => Promise<unknown[]> // 懒加载处理函数
+    treeLoad?: (row: Data) => Promise<Data[]> // 懒加载处理函数
     border?: boolean // 是否带有纵向边框
     stripe?: boolean // 是否开启斑马纹
     search: (page: Page<Data>) => Promise<Page<Data> | undefined> // 查询函数

@@ -239,8 +239,8 @@ func (r *TaskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 }
 
 // QueryChildrenTaskPage 查询子任务分页
-func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, pid int64, opt *database.PageOption) (*model.Page[domain.Task], error) {
-	query := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("pid = ?", pid)
+func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task], error) {
+	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	for _, cond := range opt.Conditions {
 		if cond != nil {

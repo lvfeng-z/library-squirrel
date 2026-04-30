@@ -25,6 +25,8 @@ export {
     SiteTagFullDTO,
     SiteTagLocalRelateDTO,
     TaskDTO,
+    TaskProgressDTO,
+    TaskProgressTreeDTO,
     WorkDTO,
     WorkFullDTO,
     WorkSetDTO,

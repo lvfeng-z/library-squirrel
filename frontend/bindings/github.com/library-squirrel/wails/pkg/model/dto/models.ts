@@ -1166,6 +1166,66 @@ export class TaskDTO {
 }
 
 /**
+ * TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称字段）
+ */
+export class TaskProgressDTO {
+    "task"?: TaskDTO | null;
+    "total"?: number | null;
+    "finished"?: number | null;
+    "siteName"?: string | null;
+
+    /** Creates a new TaskProgressDTO instance. */
+    constructor($$source: Partial<TaskProgressDTO> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskProgressDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskProgressDTO {
+        const $$createField0_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("task" in $$parsedSource) {
+            $$parsedSource["task"] = $$createField0_0($$parsedSource["task"]);
+        }
+        return new TaskProgressDTO($$parsedSource as Partial<TaskProgressDTO>);
+    }
+}
+
+/**
+ * TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
+ */
+export class TaskProgressTreeDTO {
+    "taskProgress"?: TaskProgressDTO | null;
+    "children"?: (TaskProgressTreeDTO | null)[];
+    "hasChildren"?: boolean | null;
+    "isLeaf"?: boolean | null;
+
+    /** Creates a new TaskProgressTreeDTO instance. */
+    constructor($$source: Partial<TaskProgressTreeDTO> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskProgressTreeDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskProgressTreeDTO {
+        const $$createField0_0 = $$createType15;
+        const $$createField1_0 = $$createType18;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("taskProgress" in $$parsedSource) {
+            $$parsedSource["taskProgress"] = $$createField0_0($$parsedSource["taskProgress"]);
+        }
+        if ("children" in $$parsedSource) {
+            $$parsedSource["children"] = $$createField1_0($$parsedSource["children"]);
+        }
+        return new TaskProgressTreeDTO($$parsedSource as Partial<TaskProgressTreeDTO>);
+    }
+}
+
+/**
  * WorkDTO 作品数据传输对象（无 sql.Null* 版本）
  */
 export class WorkDTO {
@@ -1286,13 +1346,13 @@ export class WorkFullDTO {
      * Creates a new WorkFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkFullDTO {
-        const $$createField0_0 = $$createType13;
-        const $$createField1_0 = $$createType14;
-        const $$createField2_0 = $$createType17;
+        const $$createField0_0 = $$createType20;
+        const $$createField1_0 = $$createType21;
+        const $$createField2_0 = $$createType24;
         const $$createField3_0 = $$createType9;
-        const $$createField4_0 = $$createType18;
-        const $$createField5_0 = $$createType21;
-        const $$createField6_0 = $$createType24;
+        const $$createField4_0 = $$createType25;
+        const $$createField5_0 = $$createType28;
+        const $$createField6_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("work" in $$parsedSource) {
             $$parsedSource["work"] = $$createField0_0($$parsedSource["work"]);
@@ -1407,8 +1467,8 @@ export class WorkSetWithCoverResultDTO {
      * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
-        const $$createField0_0 = $$createType26;
-        const $$createField1_0 = $$createType13;
+        const $$createField0_0 = $$createType33;
+        const $$createField1_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1443,8 +1503,8 @@ export class WorkSetWithWorksResultDTO {
      * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType26;
-        const $$createField1_0 = $$createType27;
+        const $$createField0_0 = $$createType33;
+        const $$createField1_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1469,19 +1529,26 @@ const $$createType8 = SiteDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = SiteTagDTO.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = WorkDTO.createFrom;
+const $$createType12 = TaskDTO.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = $Create.Array($$createType7);
-const $$createType15 = SiteAuthorFullDTO.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = $Create.Array($$createType1);
-const $$createType19 = SiteTagFullDTO.createFrom;
+const $$createType14 = TaskProgressDTO.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = TaskProgressTreeDTO.createFrom;
+const $$createType17 = $Create.Nullable($$createType16);
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = WorkDTO.createFrom;
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = ResourceDTO.createFrom;
+const $$createType21 = $Create.Array($$createType7);
+const $$createType22 = SiteAuthorFullDTO.createFrom;
 const $$createType23 = $Create.Nullable($$createType22);
 const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = WorkSetDTO.createFrom;
-const $$createType26 = $Create.Nullable($$createType25);
-const $$createType27 = $Create.Array($$createType13);
+const $$createType25 = $Create.Array($$createType1);
+const $$createType26 = SiteTagFullDTO.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = $Create.Array($$createType27);
+const $$createType29 = ResourceDTO.createFrom;
+const $$createType30 = $Create.Nullable($$createType29);
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = WorkSetDTO.createFrom;
+const $$createType33 = $Create.Nullable($$createType32);
+const $$createType34 = $Create.Array($$createType20);

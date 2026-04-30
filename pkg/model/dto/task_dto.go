@@ -160,3 +160,46 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 
 	return entity
 }
+
+// ========== 任务进度相关 DTO ==========
+
+// TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称字段）
+type TaskProgressDTO struct {
+	Task     *TaskDTO `json:"task,omitempty"`
+	Total    *int64   `json:"total,omitempty"`
+	Finished *int64   `json:"finished,omitempty"`
+	SiteName *string  `json:"siteName,omitempty"`
+}
+
+// NewTaskProgressDTO 从 TaskDTO 创建 TaskProgressDTO
+func NewTaskProgressDTO(taskDTO *TaskDTO) *TaskProgressDTO {
+	if taskDTO == nil {
+		return nil
+	}
+	return &TaskProgressDTO{
+		Task: taskDTO,
+	}
+}
+
+// TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
+type TaskProgressTreeDTO struct {
+	TaskProgress *TaskProgressDTO        `json:"taskProgress,omitempty"`
+	Children     []*TaskProgressTreeDTO  `json:"children,omitempty"`
+	HasChildren  *bool                   `json:"hasChildren,omitempty"`
+	IsLeaf       *bool                   `json:"isLeaf,omitempty"`
+}
+
+// NewTaskProgressTreeDTO 从 TaskDTO 创建 TaskProgressTreeDTO
+func NewTaskProgressTreeDTO(taskDTO *TaskDTO) *TaskProgressTreeDTO {
+	if taskDTO == nil {
+		return nil
+	}
+	hasChildren := taskDTO.IsCollection != nil && *taskDTO.IsCollection == 1
+	isLeaf := !hasChildren
+	return &TaskProgressTreeDTO{
+		TaskProgress: NewTaskProgressDTO(taskDTO),
+		Children:     make([]*TaskProgressTreeDTO, 0),
+		HasChildren:  &hasChildren,
+		IsLeaf:       &isLeaf,
+	}
+}
