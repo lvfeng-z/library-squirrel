@@ -26,7 +26,7 @@ import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/w
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
 import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
-import {isBlank} from "@renderer/utils/StringUtil.ts";
+import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted
 onMounted(() => {
@@ -149,7 +149,7 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   })
 ])
 // 任务SearchTable的分页
-const page: Ref<Page<TaskProgressTreeDTO>> = ref(new Page<TaskProgressTreeDTO>())
+const page: Ref<Page<TaskProgressTreeDTO>> = ref(newPage<TaskProgressTreeDTO>())
 // 任务查询的参数
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 // 改变的行数据
@@ -231,7 +231,7 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
     return []
   }
   const query = new TaskQueryDTO({pid: new QueryAttribute({value: parentId})})
-  const tempPage = new Page<TaskProgressTreeDTO>()
+  const tempPage = newPage<TaskProgressTreeDTO>()
 
   const response = await taskApi.taskQueryChildrenTaskPage(tempPage, query)
   try {
