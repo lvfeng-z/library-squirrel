@@ -26,7 +26,7 @@ export function iniListener() {
   })
 
   Events.On('taskStatus-updateSchedule', (event: any) => {
-    const scheduleDTOList = event.data as TaskScheduleDTO[]
+    const scheduleDTOList = (event.data as any[]).map((d: any) => new TaskScheduleDTO(d))
     useTaskStore().updateTaskSchedule(scheduleDTOList)
   })
 
@@ -46,7 +46,7 @@ export function iniListener() {
   })
 
   Events.On('parentTaskStatus-updateSchedule', (event: any) => {
-    const taskList = event.data as TaskScheduleDTO[]
+    const taskList = (event.data as any[]).map((d: any) => new TaskScheduleDTO(d))
     useParentTaskStore().updateParentTaskSchedule(taskList)
   })
 

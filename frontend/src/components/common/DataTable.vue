@@ -176,6 +176,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     :data="data"
     :row-key="dataKey"
     :row-class-name="rowClassName"
+    :tree-props="treeData ? { hasChildren: 'hasChildren', children: 'children' } : undefined"
     :selectable="props.selectable"
     :border="props.border"
     :stripe="props.stripe"

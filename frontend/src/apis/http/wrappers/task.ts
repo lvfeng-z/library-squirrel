@@ -6,8 +6,8 @@
 import { requireResponse, type ApiResult } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/wails/internal/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/internal/taskManager'
-import { CreateTaskRequest, TaskQueryDTO, TaskScheduleDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
-import { TaskDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto/models'
+import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import { CreateTaskRequest, TaskDTO, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto/models'
 import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
 
 // ========== 查询操作 ==========
@@ -37,9 +37,9 @@ export async function taskListTree(taskIds: number[], ...includeStatus: number[]
   return { success: true as const, msg: result.msg, data }
 }
 
-export async function taskListStatus(ids: number[]): Promise<ApiResult<TaskScheduleDTO[]>> {
+export async function taskListStatus(ids: number[]): Promise<ApiResult<TaskProgressDTO[]>> {
   const result = requireResponse(await TaskHandler.ListStatus(ids), '查询任务状态')
-  const data = result.data?.filter((item): item is TaskScheduleDTO => item !== null) ?? []
+  const data = result.data?.filter((item): item is TaskProgressDTO => item !== null) ?? []
   return { success: true as const, msg: result.msg, data }
 }
 

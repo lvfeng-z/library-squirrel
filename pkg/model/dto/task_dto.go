@@ -163,12 +163,13 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 
 // ========== 任务进度相关 DTO ==========
 
-// TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称字段）
+// TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称/进度百分比字段）
 type TaskProgressDTO struct {
 	Task     *TaskDTO `json:"task,omitempty"`
 	Total    *int64   `json:"total,omitempty"`
 	Finished *int64   `json:"finished,omitempty"`
 	SiteName *string  `json:"siteName,omitempty"`
+	Schedule *int     `json:"schedule,"` // 任务进度百分比（100 表示完成）
 }
 
 // NewTaskProgressDTO 从 TaskDTO 创建 TaskProgressDTO
@@ -183,10 +184,10 @@ func NewTaskProgressDTO(taskDTO *TaskDTO) *TaskProgressDTO {
 
 // TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
 type TaskProgressTreeDTO struct {
-	TaskProgress *TaskProgressDTO        `json:"taskProgress,omitempty"`
-	Children     []*TaskProgressTreeDTO  `json:"children,omitempty"`
-	HasChildren  *bool                   `json:"hasChildren,omitempty"`
-	IsLeaf       *bool                   `json:"isLeaf,omitempty"`
+	TaskProgress *TaskProgressDTO       `json:"taskProgress,omitempty"`
+	Children     []*TaskProgressTreeDTO `json:"children,omitempty"`
+	HasChildren  *bool                  `json:"hasChildren,omitempty"`
+	IsLeaf       *bool                  `json:"isLeaf,omitempty"`
 }
 
 // NewTaskProgressTreeDTO 从 TaskDTO 创建 TaskProgressTreeDTO
@@ -202,4 +203,27 @@ func NewTaskProgressTreeDTO(taskDTO *TaskDTO) *TaskProgressTreeDTO {
 		HasChildren:  &hasChildren,
 		IsLeaf:       &isLeaf,
 	}
+}
+
+// ========== 任务创建/树数据请求 DTO ==========
+
+// CreateTaskRequest 创建任务请求
+type CreateTaskRequest struct {
+	Pid                  int64  `json:"pid"`
+	TaskName             string `json:"taskName"`
+	SiteID               int    `json:"siteId"`
+	SiteWorkID           string `json:"siteWorkId"`
+	URL                  string `json:"url"`
+	IsCollection         int    `json:"isCollection"`
+	PluginPublicID       string `json:"pluginPublicId"`
+	PluginContributionID string `json:"pluginContributionId"`
+	PluginData           string `json:"pluginData"`
+}
+
+// TreeDataPageDTO 任务树数据分页DTO
+type TreeDataPageDTO struct {
+	TreeID   int64                  `json:"treeId"`
+	TreeName string                 `json:"treeName"`
+	Total    int64                  `json:"total"`
+	Tasks    []*TaskProgressTreeDTO `json:"tasks"`
 }

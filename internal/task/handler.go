@@ -67,7 +67,7 @@ func (h *Handler) SetTreeStatus(ctx context.Context, taskIds []int64, status int
 }
 
 // CreateTask 创建任务
-func (h *Handler) CreateTask(ctx context.Context, req *CreateTaskRequest) *model.ApiResponse[int64] {
+func (h *Handler) CreateTask(ctx context.Context, req *dto2.CreateTaskRequest) *model.ApiResponse[int64] {
 	result, err := h.svc.CreateTask(ctx, req)
 	if err != nil {
 		return model.Error[int64](err.Error())
@@ -186,10 +186,10 @@ func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiRes
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*TreeDataPageDTO] {
+func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*dto2.TreeDataPageDTO] {
 	result, err := h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query)
 	if err != nil {
-		return model.Error[*TreeDataPageDTO](err.Error())
+		return model.Error[*dto2.TreeDataPageDTO](err.Error())
 	}
 	return model.Success(result)
 }
@@ -214,19 +214,19 @@ func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 }
 
 // ListStatus 查询状态列表
-func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiResponse[[]*TaskScheduleDTO] {
+func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
 	result, err := h.svc.ListStatus(ctx, ids)
 	if err != nil {
-		return model.Error[[]*TaskScheduleDTO](err.Error())
+		return model.Error[[]*dto2.TaskProgressDTO](err.Error())
 	}
 	return model.Success(result)
 }
 
 // ListSchedule 查询任务进度列表
-func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*TaskScheduleDTO] {
+func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
 	result, err := h.svc.ListSchedule(ctx, ids)
 	if err != nil {
-		return model.Error[[]*TaskScheduleDTO](err.Error())
+		return model.Error[[]*dto2.TaskProgressDTO](err.Error())
 	}
 	return model.Success(result)
 }

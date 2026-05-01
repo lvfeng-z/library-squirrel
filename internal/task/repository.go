@@ -202,25 +202,17 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 }
 
 // ListStatus 查询状态列表
-func (r *TaskRepository) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
+func (r *TaskRepository) ListStatus(ctx context.Context, ids []int64) ([]*domain.Task, error) {
 	if len(ids) == 0 {
-		return make([]*TaskScheduleDTO, 0), nil
+		return make([]*domain.Task, 0), nil
 	}
 
-	idsStr := int64ArrayToString(ids)
-	statement := fmt.Sprintf(`
-		SELECT id, pid, status,
-			CASE WHEN status = %d THEN 100 END AS schedule
-		FROM task
-		WHERE id IN (%s)`,
-		TaskStatusFinished, idsStr)
-
-	var results []*TaskScheduleDTO
-	err := r.GORM().WithContext(ctx).Raw(statement).Scan(&results).Error
+	var tasks []*domain.Task
+	err := r.GORM().WithContext(ctx).Where("id IN ?", ids).Find(&tasks).Error
 	if err != nil {
 		return nil, err
 	}
-	return results, nil
+	return tasks, nil
 }
 
 // CreateTask 创建任务
@@ -271,7 +263,7 @@ func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, opt *databas
 }
 
 // ListSchedule 查询任务进度列表
-func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
+func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*domain.Task, error) {
 	return r.ListStatus(ctx, ids)
 }
 

@@ -58,6 +58,62 @@ export class BackupDTO {
 }
 
 /**
+ * CreateTaskRequest 创建任务请求
+ */
+export class CreateTaskRequest {
+    "pid": number;
+    "taskName": string;
+    "siteId": number;
+    "siteWorkId": string;
+    "url": string;
+    "isCollection": number;
+    "pluginPublicId": string;
+    "pluginContributionId": string;
+    "pluginData": string;
+
+    /** Creates a new CreateTaskRequest instance. */
+    constructor($$source: Partial<CreateTaskRequest> = {}) {
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("taskName" in $$source)) {
+            this["taskName"] = "";
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = 0;
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = "";
+        }
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("isCollection" in $$source)) {
+            this["isCollection"] = 0;
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = "";
+        }
+        if (!("pluginContributionId" in $$source)) {
+            this["pluginContributionId"] = "";
+        }
+        if (!("pluginData" in $$source)) {
+            this["pluginData"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateTaskRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateTaskRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CreateTaskRequest($$parsedSource as Partial<CreateTaskRequest>);
+    }
+}
+
+/**
  * LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）
  */
 export class LocalAuthorDTO {
@@ -1166,7 +1222,7 @@ export class TaskDTO {
 }
 
 /**
- * TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称字段）
+ * TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称/进度百分比字段）
  */
 export class TaskProgressDTO {
     "task"?: TaskDTO | null;
@@ -1174,8 +1230,16 @@ export class TaskProgressDTO {
     "finished"?: number | null;
     "siteName"?: string | null;
 
+    /**
+     * 任务进度百分比（100 表示完成）
+     */
+    "schedule": number | null;
+
     /** Creates a new TaskProgressDTO instance. */
     constructor($$source: Partial<TaskProgressDTO> = {}) {
+        if (!("schedule" in $$source)) {
+            this["schedule"] = null;
+        }
 
         Object.assign(this, $$source);
     }
@@ -1222,6 +1286,46 @@ export class TaskProgressTreeDTO {
             $$parsedSource["children"] = $$createField1_0($$parsedSource["children"]);
         }
         return new TaskProgressTreeDTO($$parsedSource as Partial<TaskProgressTreeDTO>);
+    }
+}
+
+/**
+ * TreeDataPageDTO 任务树数据分页DTO
+ */
+export class TreeDataPageDTO {
+    "treeId": number;
+    "treeName": string;
+    "total": number;
+    "tasks": (TaskProgressTreeDTO | null)[];
+
+    /** Creates a new TreeDataPageDTO instance. */
+    constructor($$source: Partial<TreeDataPageDTO> = {}) {
+        if (!("treeId" in $$source)) {
+            this["treeId"] = 0;
+        }
+        if (!("treeName" in $$source)) {
+            this["treeName"] = "";
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("tasks" in $$source)) {
+            this["tasks"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TreeDataPageDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TreeDataPageDTO {
+        const $$createField3_0 = $$createType18;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tasks" in $$parsedSource) {
+            $$parsedSource["tasks"] = $$createField3_0($$parsedSource["tasks"]);
+        }
+        return new TreeDataPageDTO($$parsedSource as Partial<TreeDataPageDTO>);
     }
 }
 

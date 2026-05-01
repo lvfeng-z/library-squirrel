@@ -2,6 +2,11 @@ import lodash from 'lodash'
 import Task from '../entity/Task.ts'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 
+/**
+ * 任务进度 DTO，兼容两种数据格式：
+ * - 新 binding 格式：{task: TaskDTO, total, finished, siteName, schedule}
+ * - 旧 flat 格式：Task + {total, finished, siteName}
+ */
 export default class TaskProgressDTO extends Task {
   /**
    * 总量
@@ -18,10 +23,12 @@ export default class TaskProgressDTO extends Task {
    */
   siteName: string | undefined | null
 
-  constructor(taskProcessingDTO?: Task) {
-    super(taskProcessingDTO)
-    if (notNullish(taskProcessingDTO)) {
-      lodash.assign(this, lodash.pick(taskProcessingDTO, ['total', 'finished', 'siteName']))
+  constructor(data?: any) {
+    // 新 binding 格式：task 字段包含基础任务数据
+    const taskData = data?.task ?? data
+    super(taskData)
+    if (notNullish(data)) {
+      lodash.assign(this, lodash.pick(data, ['total', 'finished', 'siteName']))
     }
   }
 }

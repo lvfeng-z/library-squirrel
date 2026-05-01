@@ -1,15 +1,18 @@
-import TaskTreeDTO from './TaskTreeDTO.ts'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import lodash from 'lodash'
-import TreeNode from '../util/TreeNode.ts'
+import TreeNode from '../../util/TreeNode.ts'
 import TaskProgressDTO from './TaskProgressDTO.ts'
-import Task from '../entity/Task.ts'
 
+/**
+ * 任务进度树节点，兼容两种数据格式：
+ * - 新 binding 格式：{taskProgress: {task: {...}, total, finished, siteName}, children, hasChildren, isLeaf}
+ * - 旧 flat 格式：TaskProgressDTO + {children, hasChildren, isLeaf}
+ */
 export default class TaskProgressTreeDTO extends TaskProgressDTO implements TreeNode {
   /**
    * 子任务（用于el-table的树形数据回显）
    */
-  children: TaskTreeDTO[] | undefined | null
+  children: TaskProgressTreeDTO[] | undefined | null
 
   /**
    * 是否有子任务（用于el-table的树形数据回显）
@@ -21,10 +24,12 @@ export default class TaskProgressTreeDTO extends TaskProgressDTO implements Tree
    */
   isLeaf: boolean | undefined | null
 
-  constructor(taskProcessingDTO?: TaskProgressDTO | Task) {
-    super(taskProcessingDTO)
-    if (notNullish(taskProcessingDTO)) {
-      lodash.assign(this, lodash.pick(taskProcessingDTO, ['children', 'hasChildren', 'isLeaf']))
+  constructor(data?: any) {
+    // 新 binding 格式：将 taskProgress 整体传给 TaskProgressDTO 处理
+    const progressData = data?.taskProgress ?? data
+    super(progressData)
+    if (notNullish(data)) {
+      lodash.assign(this, lodash.pick(data, ['children', 'hasChildren', 'isLeaf']))
     }
   }
 }

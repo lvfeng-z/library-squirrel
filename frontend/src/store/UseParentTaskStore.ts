@@ -38,7 +38,8 @@ export const useParentTaskStore = defineStore('parentTask', {
     },
     updateParentTaskSchedule(scheduleDTOList: TaskScheduleDTO[]): void {
       const taskStatus = this.parentTasks
-      scheduleDTOList.forEach((scheduleDTO) => {
+      scheduleDTOList.forEach((rawData) => {
+        const scheduleDTO = rawData instanceof TaskScheduleDTO ? rawData : new TaskScheduleDTO(rawData)
         if (isNullish(scheduleDTO.id)) {
           throw new Error('UseTaskStatusStore: 更新父任务进度失败，任务id为空')
         }

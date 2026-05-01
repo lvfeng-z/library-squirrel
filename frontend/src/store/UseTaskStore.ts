@@ -70,7 +70,8 @@ export const useTaskStore = defineStore('task', {
       })
     },
     updateTaskSchedule(scheduleDTOList: TaskScheduleDTO[]): void {
-      scheduleDTOList.forEach((scheduleDTO) => {
+      scheduleDTOList.forEach((rawData) => {
+        const scheduleDTO = rawData instanceof TaskScheduleDTO ? rawData : new TaskScheduleDTO(rawData)
         if (isNullish(scheduleDTO.id)) {
           throw new Error('UseTaskStore: 更新任务进度失败，任务id为空')
         }

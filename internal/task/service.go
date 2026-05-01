@@ -80,7 +80,7 @@ type Repository interface {
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error)
 	// ListStatus 查询状态列表
-	ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
+	ListStatus(ctx context.Context, ids []int64) ([]*entity2.Task, error)
 	// CreateTask 创建任务
 	CreateTask(ctx context.Context, task *entity2.Task) error
 	// ListChildrenTask 查询子任务列表
@@ -88,112 +88,37 @@ type Repository interface {
 	// QueryChildrenTaskPage 查询子任务分页
 	QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Task], error)
 	// ListSchedule 查询任务进度列表
-	ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error)
+	ListSchedule(ctx context.Context, ids []int64) ([]*entity2.Task, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
 	DeleteTask(ctx context.Context, ids []int64) error
 }
 
-// TaskScheduleDTO 任务进度DTO
-type TaskScheduleDTO struct {
-	ID       int64 `json:"id"`
-	Pid      int64 `json:"pid"`
-	Status   int   `json:"status"`
-	Schedule int   `json:"schedule"`
-}
-
-// CreateTaskRequest 创建任务请求
-type CreateTaskRequest struct {
-	Pid                  int64  `json:"pid"`
-	TaskName             string `json:"taskName"`
-	SiteID               int    `json:"siteId"`
-	SiteWorkID           string `json:"siteWorkId"`
-	URL                  string `json:"url"`
-	IsCollection         int    `json:"isCollection"`
-	PluginPublicID       string `json:"pluginPublicId"`
-	PluginContributionID string `json:"pluginContributionId"`
-	PluginData           string `json:"pluginData"`
-}
-
-// TaskTreeDTO 任务树DTO
-type TaskTreeDTO struct {
-	ID                   int64          `json:"id"`
-	Pid                  int64          `json:"pid"`
-	TaskName             string         `json:"taskName"`
-	SiteID               int            `json:"siteId"`
-	SiteWorkID           string         `json:"siteWorkId"`
-	URL                  string         `json:"url"`
-	Status               int            `json:"status"`
-	IsCollection         int            `json:"isCollection"`
-	PluginPublicID       string         `json:"pluginPublicId"`
-	PluginContributionID string         `json:"pluginContributionId"`
-	PluginData           string         `json:"pluginData"`
-	ErrorMessage         string         `json:"errorMessage"`
-	Children             []*TaskTreeDTO `json:"children,omitempty"`
-}
-
-// taskTreeBuilder 任务树构建器，复用通用 TreeBuilder
-var taskTreeBuilder = util.NewTreeBuilder[*TaskTreeDTO](
-	func(dto *TaskTreeDTO) int64 { return dto.ID },
-	func(dto *TaskTreeDTO) int64 { return dto.Pid },
+// taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
+var taskProgressTreeBuilder = util.NewTreeBuilder[*dto.TaskProgressTreeDTO](
+	func(node *dto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
+	func(node *dto.TaskProgressTreeDTO) int64 {
+		if node.TaskProgress.Task.Pid != nil {
+			return *node.TaskProgress.Task.Pid
+		}
+		return 0
+	},
 	0,
 )
 
-func setTaskTreeChildren(dto *TaskTreeDTO, children []*TaskTreeDTO) {
-	dto.Children = children
+func setTaskProgressTreeChildren(node *dto.TaskProgressTreeDTO, children []*dto.TaskProgressTreeDTO) {
+	node.Children = children
 }
 
-// ToTaskTreeDTO 将 domain.Task 转换为 TaskTreeDTO
-func ToTaskTreeDTO(task *entity2.Task) *TaskTreeDTO {
-	if task == nil {
-		return nil
-	}
-	return &TaskTreeDTO{
-		ID:                   task.GetID(),
-		Pid:                  nullInt64ToInt64(task.Pid),
-		TaskName:             task.TaskName.String,
-		SiteID:               int(nullInt64ToInt64(task.SiteID)),
-		SiteWorkID:           task.SiteWorkID.String,
-		URL:                  task.URL.String,
-		Status:               task.Status,
-		IsCollection:         int(nullInt64ToInt64(task.IsCollection)),
-		PluginPublicID:       task.PluginPublicID.String,
-		PluginContributionID: task.PluginContributionID.String,
-		PluginData:           task.PluginData.String,
-		ErrorMessage:         task.ErrorMessage.String,
-	}
-}
-
-// nullInt64ToInt64 将 sql.NullInt64 转换为 int64
-func nullInt64ToInt64(ni sql.NullInt64) int64 {
-	if ni.Valid {
-		return ni.Int64
-	}
-	return 0
-}
-
-// buildTaskTree 将任务列表构建为树形结构
-func buildTaskTree(tasks []*entity2.Task) []*TaskTreeDTO {
+// buildTaskProgressTree 将任务实体列表构建为 TaskProgressTreeDTO 树形结构
+func buildTaskProgressTree(tasks []*entity2.Task) []*dto.TaskProgressTreeDTO {
 	if len(tasks) == 0 {
 		return nil
 	}
-	dtos := make([]*TaskTreeDTO, len(tasks))
+	dtos := make([]*dto.TaskProgressTreeDTO, len(tasks))
 	for i, task := range tasks {
-		dtos[i] = ToTaskTreeDTO(task)
+		dtos[i] = dto.NewTaskProgressTreeDTO(dto.NewTaskDTO(task))
 	}
-	return taskTreeBuilder.BuildTree(dtos, setTaskTreeChildren)
-}
-
-// TreeDataPageRequest 任务树数据分页请求
-type TreeDataPageRequest struct {
-	TreeID int64 `json:"treeId"`
-}
-
-// TreeDataPageDTO 任务树数据分页DTO
-type TreeDataPageDTO struct {
-	TreeID   int64          `json:"treeId"`
-	TreeName string         `json:"treeName"`
-	Total    int64          `json:"total"`
-	Tasks    []*TaskTreeDTO `json:"tasks"`
+	return taskProgressTreeBuilder.BuildTree(dtos, setTaskProgressTreeChildren)
 }
 
 // WorkSaver 作品保存接口
@@ -308,12 +233,26 @@ func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 }
 
 // ListStatus 查询状态列表
-func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
-	return s.repo.ListStatus(ctx, ids)
+func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
+	tasks, err := s.repo.ListStatus(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*dto.TaskProgressDTO, len(tasks))
+	for i, task := range tasks {
+		taskDTO := dto.NewTaskDTO(task)
+		progressDTO := dto.NewTaskProgressDTO(taskDTO)
+		if task.Status == int(TaskStatusFinished) {
+			schedule := 100
+			progressDTO.Schedule = &schedule
+		}
+		result[i] = progressDTO
+	}
+	return result, nil
 }
 
 // CreateTask 创建任务
-func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (*entity2.Task, error) {
+func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*entity2.Task, error) {
 	task := &entity2.Task{
 		BaseEntity:           &model.BaseEntity{},
 		Pid:                  sql.NullInt64{Int64: req.Pid, Valid: true},
@@ -339,7 +278,7 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*TreeDataPageDTO, error) {
+func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*dto.TreeDataPageDTO, error) {
 	conv := querypkg.NewConverter(entity2.Task{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
@@ -352,14 +291,8 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		return nil, err
 	}
 
-	// 将分页数据转换为 TaskTreeDTO
-	treeDTOS := make([]*TaskTreeDTO, len(resultPage.Data))
-	for i, task := range resultPage.Data {
-		treeDTOS[i] = ToTaskTreeDTO(task)
-	}
-
-	// 构建树形结构
-	tree := buildTaskTreeByDTO(treeDTOS)
+	// 将分页数据构建为 TaskProgressTreeDTO 树
+	tree := buildTaskProgressTree(resultPage.Data)
 
 	// 获取 TreeID 和 TreeName（从分页数据中获取）
 	var treeID int64
@@ -369,17 +302,12 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		treeName = resultPage.Data[0].TaskName.String
 	}
 
-	return &TreeDataPageDTO{
+	return &dto.TreeDataPageDTO{
 		TreeID:   treeID,
 		TreeName: treeName,
 		Total:    resultPage.DataCount,
 		Tasks:    tree,
 	}, nil
-}
-
-// buildTaskTreeByDTO 将 TaskTreeDTO 列表构建为树形结构
-func buildTaskTreeByDTO(dtos []*TaskTreeDTO) []*TaskTreeDTO {
-	return taskTreeBuilder.BuildTree(dtos, setTaskTreeChildren)
 }
 
 // ListChildrenTask 查询子任务列表
@@ -449,8 +377,8 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 }
 
 // ListSchedule 查询任务进度列表
-func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*TaskScheduleDTO, error) {
-	return s.repo.ListSchedule(ctx, ids)
+func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
+	return s.ListStatus(ctx, ids)
 }
 
 // SaveWorkInfo 保存作品信息

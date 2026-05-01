@@ -177,7 +177,7 @@ async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<objec
 async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] | undefined> {
   try {
     const response = await taskApi.taskListStatus(ids)
-    const scheduleList = response.data as TaskScheduleDTO[]
+    const scheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
     return arrayNotEmpty(scheduleList) ? scheduleList : undefined
   } catch {
     return undefined

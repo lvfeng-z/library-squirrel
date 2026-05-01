@@ -21,7 +21,8 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
-import {TaskQueryDTO, TaskScheduleDTO} from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
 import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
@@ -236,7 +237,7 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
   const response = await taskApi.taskQueryChildrenTaskPage(tempPage, query)
   try {
     const resultPage = response.data
-    const data = (resultPage.data ?? [])
+    const data = (resultPage.data ?? []).filter((d): d is TaskProgressTreeDTO => d !== null)
     // 子任务列表赋值给对应的父任务的children
     const parent = dataList.value.find((task) => parentId === task.taskProgress?.task?.id)
     if (notNullish(parent)) {
@@ -268,7 +269,7 @@ async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] |
   if (arrayNotEmpty(notFoundList)) {
     try {
       const response = await taskApi.taskListStatus(notFoundList)
-      const responseScheduleList = response.data
+      const responseScheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
       if (arrayNotEmpty(responseScheduleList)) {
         scheduleList.push(...responseScheduleList)
       }
@@ -360,10 +361,10 @@ async function refreshTask() {
       // 获取可视区域及附近的行id
       const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
       // 利用树形工具找到所有id对应的数据，判断是否需要刷新
-      const tempRoot = new TaskProgressTreeDTO()
+      const tempRoot: any = new TaskProgressTreeDTO()
       tempRoot.children = dataList.value
       return visibleRowsId.filter((id: number) => {
-        const taskProgressTree = getNode<TaskProgressTreeDTO>(tempRoot, id)
+        const taskProgressTree = getNode(tempRoot, id) as TaskProgressTreeDTO | undefined
         const task = taskProgressTree?.taskProgress?.task
         return (
           notNullish(task) &&
@@ -490,7 +491,7 @@ async function handleSourceUrlInput() {
         :search="taskQueryParentPage"
         :update-load="updateLoad"
         :update-properties="['status']"
-        data-key="id"
+        data-key="taskProgress.task.id"
         :row-class-name="rowClassName"
         :tree-lazy="true"
         :tree-load="load"

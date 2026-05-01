@@ -24,7 +24,7 @@ import * as $models from "./models.js";
 /**
  * CreateTask 创建任务
  */
-export function CreateTask(req: $models.CreateTaskRequest | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function CreateTask(req: dto$0.CreateTaskRequest | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(4186072591, req).then(($result: any) => {
         return $$createType1($result);
     });
@@ -69,7 +69,7 @@ export function ListChildrenTask(pid: number): $CancellablePromise<model$0.ApiRe
 /**
  * ListSchedule 查询任务进度列表
  */
-export function ListSchedule(ids: number[]): $CancellablePromise<model$0.ApiResponse<($models.TaskScheduleDTO | null)[]> | null> {
+export function ListSchedule(ids: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.TaskProgressDTO | null)[]> | null> {
     return $Call.ByID(4236291543, ids).then(($result: any) => {
         return $$createType19($result);
     });
@@ -78,7 +78,7 @@ export function ListSchedule(ids: number[]): $CancellablePromise<model$0.ApiResp
 /**
  * ListStatus 查询状态列表
  */
-export function ListStatus(ids: number[]): $CancellablePromise<model$0.ApiResponse<($models.TaskScheduleDTO | null)[]> | null> {
+export function ListStatus(ids: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.TaskProgressDTO | null)[]> | null> {
     return $Call.ByID(1739881180, ids).then(($result: any) => {
         return $$createType19($result);
     });
@@ -123,7 +123,7 @@ export function QueryParentPage(page: model$0.Page<dto$0.TaskProgressTreeDTO> | 
 /**
  * QueryTreeDataPage 查询任务树数据分页
  */
-export function QueryTreeDataPage(page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<$models.TreeDataPageDTO | null> | null> {
+export function QueryTreeDataPage(page: model$0.Page<dto$0.TaskDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<dto$0.TreeDataPageDTO | null> | null> {
     return $Call.ByID(1518321709, page, query).then(($result: any) => {
         return $$createType32($result);
     });
@@ -181,7 +181,7 @@ const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = $Create.Array($$createType9);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = $models.TaskScheduleDTO.createFrom;
+const $$createType15 = dto$0.TaskProgressDTO.createFrom;
 const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = $Create.Array($$createType16);
 const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
@@ -195,7 +195,7 @@ const $$createType25 = model$0.Page.createFrom($$createType8);
 const $$createType26 = $Create.Nullable($$createType25);
 const $$createType27 = model$0.ApiResponse.createFrom($$createType26);
 const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = $models.TreeDataPageDTO.createFrom;
+const $$createType29 = dto$0.TreeDataPageDTO.createFrom;
 const $$createType30 = $Create.Nullable($$createType29);
 const $$createType31 = model$0.ApiResponse.createFrom($$createType30);
 const $$createType32 = $Create.Nullable($$createType31);

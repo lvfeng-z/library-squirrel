@@ -3,6 +3,7 @@
 
 export {
     BackupDTO,
+    CreateTaskRequest,
     LocalAuthorDTO,
     LocalTagDTO,
     LocalTagWithBaseTagDTO,
@@ -27,6 +28,7 @@ export {
     TaskDTO,
     TaskProgressDTO,
     TaskProgressTreeDTO,
+    TreeDataPageDTO,
     WorkDTO,
     WorkFullDTO,
     WorkSetDTO,

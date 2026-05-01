@@ -1,9 +1,12 @@
 import Task from '../entity/Task.ts'
-import TreeNode from '../util/TreeNode.ts'
+import TreeNode from '../../util/TreeNode.ts'
 import lodash from 'lodash'
+import { notNullish } from '@renderer/utils/CommonUtil.ts'
 
 /**
- * 任务
+ * 任务树节点，兼容两种数据格式：
+ * - 新 binding 格式：TaskProgressTreeDTO = {taskProgress: {task: {...}, ...}, children, hasChildren, isLeaf}
+ * - 旧 flat 格式：Task + {children, hasChildren, isLeaf}
  */
 export default class TaskTreeDTO extends Task implements TreeNode {
   /**
@@ -21,8 +24,12 @@ export default class TaskTreeDTO extends Task implements TreeNode {
    */
   isLeaf: boolean | undefined | null
 
-  constructor(taskDTO?: Task) {
-    super(taskDTO)
-    lodash.assign(this, lodash.pick(taskDTO, ['children', 'hasChildren', 'isLeaf']))
+  constructor(data?: any) {
+    // 新 binding 格式：从 taskProgress.task 提取基础任务数据
+    const taskData = data?.taskProgress?.task ?? data
+    super(taskData)
+    if (notNullish(data)) {
+      lodash.assign(this, lodash.pick(data, ['children', 'hasChildren', 'isLeaf']))
+    }
   }
 }

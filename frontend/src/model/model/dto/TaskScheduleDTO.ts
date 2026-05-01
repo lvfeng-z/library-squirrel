@@ -1,7 +1,11 @@
 import { TaskStatusEnum } from '../constant/TaskStatusEnum.ts'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
-import lodash from 'lodash'
 
+/**
+ * 任务进度适配器，兼容两种数据格式：
+ * - 新 binding 格式：TaskProgressDTO = {task: {id, status, ...}, total, finished, ...}
+ * - 旧 flat 格式（IPC 事件）：{id, pid, status, total, finished}
+ */
 export default class TaskScheduleDTO {
   /**
    * 主键
@@ -28,9 +32,21 @@ export default class TaskScheduleDTO {
    */
   finished: number | undefined | null
 
-  constructor(taskScheduleDTO?: TaskScheduleDTO) {
-    if (notNullish(taskScheduleDTO)) {
-      lodash.assign(this, lodash.pick(taskScheduleDTO, ['id', 'pid', 'status', 'total', 'finished']))
+  constructor(data?: any) {
+    if (notNullish(data)) {
+      if (notNullish(data.task)) {
+        // 新 binding 格式：TaskProgressDTO
+        this.id = data.task.id
+        this.pid = data.task.pid
+        this.status = data.task.status
+      } else {
+        // 旧 flat 格式（IPC 事件）
+        this.id = data.id
+        this.pid = data.pid
+        this.status = data.status
+      }
+      this.total = data.total
+      this.finished = data.finished
     }
   }
 }
