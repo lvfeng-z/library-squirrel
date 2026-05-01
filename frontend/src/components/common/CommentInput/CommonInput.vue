@@ -170,7 +170,6 @@ function handleDataChange(newData) {
 
 <style scoped>
 .common-input {
-  display: grid;
   min-width: 10px;
   min-height: 10px;
   cursor: v-bind(cursor);

@@ -185,13 +185,12 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     @selection-change="handleSelectionChange"
     @sort-change="handleSortChange"
   >
-    <el-table-column v-if="props.selectable && props.multiSelect" type="selection" width="26" :reserve-selection="props.multiSelect" />
-    <el-table-column v-if="props.selectable && !props.multiSelect" :fixed="true" width="26">
+    <el-table-column v-if="props.selectable && props.multiSelect" :fixed="true" type="selection" width="35" :reserve-selection="props.multiSelect" />
+    <el-table-column v-if="props.selectable && !props.multiSelect" :fixed="true" width="35">
       <template #default="{ row }">
         <el-radio v-model="currentSelectKey" :value="getPropByPath(row, dataKey)" @click="handleSelectionChange([row])" />
       </template>
     </el-table-column>
-    <el-table-column v-if="props.treeData" :fixed="true" width="28" />
     <template v-for="(item, index) in props.thead">
       <template v-if="!item.hide">
         <el-table-column
@@ -216,6 +215,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
           </template>
           <template #default="scope">
             <component
+              class="data-table-data-cell"
               :is="item.editMethod === 'popper' ? PopperInput : CommonInput"
               :data="getPropByPath(scope.row, item.key)"
               :config="item"
@@ -275,5 +275,8 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
   justify-content: center; /* 水平居中，根据需求可改为 space-between 或 flex-start */
   align-items: center; /* 垂直居中 */
   gap: 1px; /* 两个元素之间的间距 */
+}
+.data-table-data-cell {
+  display: inline-block;
 }
 </style>
