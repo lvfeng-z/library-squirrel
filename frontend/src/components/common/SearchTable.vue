@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="Data extends object">
-import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
+import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
 import { ref } from 'vue'
 import OperationItem from '../../model/util/OperationItem'
 import { Thead } from '../../model/util/Thead'
@@ -246,7 +246,7 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
 <template>
   <div class="search-table">
     <!-- 为了不被el-table内置的2层z轴以及固定列的2+1增z轴遮挡，此处为3层z轴 -->
-    <search-toolbar-v1
+    <search-toolbar
       class="search-table-toolbar z-layer-3"
       :search-button-disabled="searchButtonDisabled"
       @search-button-clicked="doSearch"
@@ -257,7 +257,7 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
       <template #dropdown>
         <slot name="toolbarDropdown" />
       </template>
-    </search-toolbar-v1>
+    </search-toolbar>
     <div class="search-table-data">
       <data-table
         ref="dataTableRef"

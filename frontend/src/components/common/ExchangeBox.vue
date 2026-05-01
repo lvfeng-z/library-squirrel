@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SearchToolbarV1 from '@renderer/components/common/SearchToolbarV1.vue'
+import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
 import { Ref, ref, UnwrapRef } from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
 import TagBox from './TagBox.vue'
@@ -225,14 +225,14 @@ function handleBufferToggle() {
     <div class="exchange-box-main">
       <div class="exchange-box-upper-container">
         <div class="exchange-box-upper-toolbar z-layer-1">
-          <search-toolbar-v1 :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(true)">
+          <search-toolbar :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(true)">
             <template #main>
               <slot name="upperToolbarMain" />
             </template>
             <template #dropdown>
               <slot name="upperToolbarDropdown" />
             </template>
-          </search-toolbar-v1>
+          </search-toolbar>
         </div>
         <div class="exchange-box-upper-main">
           <tag-box
@@ -317,14 +317,14 @@ function handleBufferToggle() {
           </collapse-panel>
         </div>
         <div class="exchange-box-lower-toolbar z-layer-1">
-          <search-toolbar-v1 :reverse="true" :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(false)">
+          <search-toolbar :reverse="true" :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(false)">
             <template #main>
               <slot name="lowerToolbarMain" />
             </template>
             <template #dropdown>
               <slot name="lowerToolbarDropdown" />
             </template>
-          </search-toolbar-v1>
+          </search-toolbar>
         </div>
       </div>
     </div>
