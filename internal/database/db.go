@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	pkglogger "github.com/library-squirrel/wails/pkg/logger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 var (
@@ -20,7 +20,7 @@ func Init(path string) error {
 	once.Do(func() {
 		// 打开 SQLite 连接（GORM 自动使用 mattn/go-sqlite3）
 		gormDB, err = gorm.Open(sqlite.Open(path+"?_journal_mode=WAL&_synchronous=NORMAL"), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Silent), // 关闭 GORM 日志
+			Logger: pkglogger.NewGormLogger(), // GORM SQL 日志输出到 zap
 		})
 		if err != nil {
 			err = fmt.Errorf("failed to open database: %w", err)

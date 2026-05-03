@@ -41,11 +41,17 @@ func Init() error {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
+	// 文件 Core：JSON 编码
 	fileEncoder := zapcore.NewJSONEncoder(encoderConfig)
 	fileWriter := zapcore.AddSync(file)
 	fileCore := zapcore.NewCore(fileEncoder, fileWriter, zapcore.InfoLevel)
 
-	logger := zap.New(zapcore.NewTee(fileCore))
+	// 控制台 Core：Console 编码
+	consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
+	consoleWriter := zapcore.AddSync(os.Stdout)
+	consoleCore := zapcore.NewCore(consoleEncoder, consoleWriter, zapcore.DebugLevel)
+
+	logger := zap.New(zapcore.NewTee(fileCore, consoleCore))
 	Log = logger.Sugar()
 
 	return nil
