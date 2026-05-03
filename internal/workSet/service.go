@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/pkg/model"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
@@ -331,17 +332,8 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 // ErrWorkSetIdRequired 错误定义
 var (
 	ErrWorkSetIdRequired = errors.New("更新作品集失败，id不能为空")
+	_                     = (*pkgerr.BusinessError)(nil) // 确保 pkgerr 包被引用
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}
 
 // toInterfaceSlice converts int64 slice to interface{} slice
 func toInterfaceSlice(ids []int64) []interface{} {

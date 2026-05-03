@@ -100,6 +100,12 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 // startWithSemaphore 使用信号量启动任务
 func (m *Manager) startWithSemaphore(task *ManagedTask) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Errorf("[TaskManager] startWithSemaphore panic: %v", r)
+			}
+		}()
+
 		// 获取信号量
 		m.semaphore <- struct{}{}
 		defer func() { <-m.semaphore }()
@@ -269,7 +275,9 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {
 		// 更新数据库
 		dbStatus := m.taskStateToDbStatus(newState)
-		m.repo.SetTaskTreeStatus(context.Background(), []int64{taskId}, dbStatus)
+		if _, err := m.repo.SetTaskTreeStatus(context.Background(), []int64{taskId}, dbStatus); err != nil {
+			logger.Log.Errorf("[TaskManager] 更新任务 %d 状态到数据库失败: %v", taskId, err)
+		}
 
 		// 推送状态到前端
 		m.pusher.PushStateChange(taskId, newState)

@@ -24,11 +24,7 @@ func NewHandler(svc *Service) *Handler {
 // @Param workId path int true "作品ID"
 // @Success 200 {object} model.ApiResponse[*WorkAuthorDTO]
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[*WorkAuthorDTO] {
-	result, err := h.svc.ListByWorkId(ctx, workId)
-	if err != nil {
-		return model.Error[*WorkAuthorDTO](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 
 // ListByWorkIds 批量获取多个作品的作者关联信息
@@ -36,11 +32,7 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*WorkAuthorsResultDTO]
 func (h *Handler) ListByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*WorkAuthorsResultDTO] {
-	result, err := h.svc.ListByWorkIds(ctx, workIds)
-	if err != nil {
-		return model.Error[[]*WorkAuthorsResultDTO](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListByWorkIds(ctx, workIds))
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
@@ -48,11 +40,7 @@ func (h *Handler) ListByWorkIds(ctx context.Context, workIds []int64) *model.Api
 // @Param workId path int true "作品ID"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedLocalAuthor]
 func (h *Handler) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
-	result, err := h.svc.ListLocalAuthorsByWorkId(ctx, workId)
-	if err != nil {
-		return model.Error[[]*dto.RankedLocalAuthor](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListLocalAuthorsByWorkId(ctx, workId))
 }
 
 // ListSiteAuthorsByWorkId 查询作品关联的站点作者
@@ -60,11 +48,7 @@ func (h *Handler) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) *m
 // @Param workId path int true "作品ID"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedSiteAuthor]
 func (h *Handler) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedSiteAuthor] {
-	result, err := h.svc.ListSiteAuthorsByWorkId(ctx, workId)
-	if err != nil {
-		return model.Error[[]*dto.RankedSiteAuthor](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListSiteAuthorsByWorkId(ctx, workId))
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
@@ -72,11 +56,7 @@ func (h *Handler) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) *mo
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedLocalAuthorWithWorkId]
 func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedLocalAuthorWithWorkId] {
-	result, err := h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
-	if err != nil {
-		return model.Error[[]*dto.RankedLocalAuthorWithWorkId](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds))
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
@@ -84,9 +64,5 @@ func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedSiteAuthorWithWorkId]
 func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedSiteAuthorWithWorkId] {
-	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
-	if err != nil {
-		return model.Error[[]*dto.RankedSiteAuthorWithWorkId](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds))
 }

@@ -24,9 +24,9 @@ type BusinessError struct {
 
 func (e *BusinessError) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("[%d] %s: %v", e.Code, e.Message, e.Err)
+		return fmt.Sprintf("%s: %v", e.Message, e.Err)
 	}
-	return fmt.Sprintf("[%d] %s", e.Code, e.Message)
+	return e.Message
 }
 
 func (e *BusinessError) Unwrap() error {

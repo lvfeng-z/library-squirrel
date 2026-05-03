@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/library-squirrel/wails/internal/database"
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	dto2 "github.com/library-squirrel/wails/pkg/model/dto"
@@ -335,15 +336,5 @@ func (s *Service) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *en
 
 // 错误定义
 var (
-	ErrTagIdRequired = &BusinessError{Code: 400, Message: "更新站点标签失败，id不能为空"}
+	ErrTagIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新站点标签失败，id不能为空"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

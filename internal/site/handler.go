@@ -25,17 +25,14 @@ func (h *Handler) Save(ctx context.Context, site *dto.SiteDTO) *model.ApiRespons
 	domainSite := dto.ToSiteEntity(site)
 
 	if err := h.svc.Save(ctx, domainSite); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainSite.GetID())
 }
 
 // Delete 删除站点
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新站点
@@ -43,7 +40,7 @@ func (h *Handler) Update(ctx context.Context, site *dto.SiteDTO) *model.ApiRespo
 	domainSite := dto.ToSiteEntity(site)
 
 	if err := h.svc.UpdateById(ctx, domainSite); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -54,7 +51,7 @@ func (h *Handler) Update(ctx context.Context, site *dto.SiteDTO) *model.ApiRespo
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.SiteDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.SiteDTO](err.Error())
+		return model.HandleError[*dto.SiteDTO](err)
 	}
 	return model.Success(dto.NewSiteDTO(result))
 }
@@ -70,7 +67,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteDTO], 
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.SiteDTO]](err)
 	}
 	// 转换为 ResultDTO
 	data := make([]*dto.SiteDTO, 0, len(result.Data))
@@ -92,18 +89,14 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 	if page == nil {
 		page = &model.Page[dto.SelectItem]{}
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, page, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySelectItemPage(ctx, page, query))
 }
 
 // GetByName 根据名称获取
 func (h *Handler) GetByName(ctx context.Context, siteName string) *model.ApiResponse[*dto.SiteDTO] {
 	result, err := h.svc.GetByName(ctx, siteName)
 	if err != nil {
-		return model.Error[*dto.SiteDTO](err.Error())
+		return model.HandleError[*dto.SiteDTO](err)
 	}
 	return model.Success(dto.NewSiteDTO(result))
 }

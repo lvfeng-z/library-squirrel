@@ -25,7 +25,7 @@ func (h *Handler) Save(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiRespo
 	domainTag := dto.ToSiteTagEntity(tag)
 
 	if err := h.svc.Save(ctx, domainTag); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainTag.GetID())
 }
@@ -57,17 +57,14 @@ func (h *Handler) SaveBatch(ctx context.Context, tags []*dto.SiteTagDTO) *model.
 	}
 
 	if err := h.svc.SaveBatch(ctx, domainTags); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
 
 // Delete 删除站点标签
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新站点标签
@@ -75,7 +72,7 @@ func (h *Handler) Update(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiRes
 	domainTag := dto.ToSiteTagEntity(tag)
 
 	if err := h.svc.UpdateById(ctx, domainTag); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -86,7 +83,7 @@ func (h *Handler) Update(ctx context.Context, tag *dto.SiteTagDTO) *model.ApiRes
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.SiteTagDTO] {
 	tag, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.SiteTagDTO](err.Error())
+		return model.HandleError[*dto.SiteTagDTO](err)
 	}
 	return model.Success(dto.NewSiteTagDTO(tag))
 }
@@ -102,7 +99,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagDTO
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteTagDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.SiteTagDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.SiteTagDTO, 0, len(result.Data))
@@ -121,11 +118,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteTagDTO
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
 func (h *Handler) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[dto.SiteTagFullDTO], query SiteTagQueryDTO) *model.ApiResponse[*model.Page[dto.SiteTagFullDTO]] {
-	result, err := h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SiteTagFullDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryBoundOrUnboundToLocalTagPage(ctx, page, query))
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
@@ -133,11 +126,7 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 	if page == nil {
 		page = &model.Page[dto.SiteTagLocalRelateDTO]{}
 	}
-	result, err := h.svc.QueryLocalRelateDTOPage(ctx, page, query, 0, nil)
-	if err != nil {
-		return model.Error[*model.Page[dto.SiteTagLocalRelateDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryLocalRelateDTOPage(ctx, page, query, 0, nil))
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
@@ -147,7 +136,7 @@ func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[dto.Si
 	}
 	result, err := h.svc.QueryPageByWorkId(ctx, page, query, workId, nil)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteTagFullDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.SiteTagFullDTO]](err)
 	}
 	// 转换为 ResultDTO
 	data := make([]*dto.SiteTagFullDTO, 0, len(result.Data))
@@ -168,7 +157,7 @@ func (h *Handler) QueryPageByWorkId(ctx context.Context, page *model.Page[dto.Si
 func (h *Handler) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) *model.ApiResponse[[]*dto.SiteTagDTO] {
 	result, err := h.svc.ListBySiteTagIds(ctx, siteTagIds)
 	if err != nil {
-		return model.Error[[]*dto.SiteTagDTO](err.Error())
+		return model.HandleError[[]*dto.SiteTagDTO](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.SiteTagDTO, 0, len(result))
@@ -180,11 +169,7 @@ func (h *Handler) ListBySiteTagIds(ctx context.Context, siteTagIds []int64) *mod
 
 // UpdateBindLocalTag 更新绑定本地标签
 func (h *Handler) UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) *model.ApiResponse[bool] {
-	result, err := h.svc.UpdateBindLocalTag(ctx, localTagId, siteTagIds)
-	if err != nil {
-		return model.Error[bool](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.UpdateBindLocalTag(ctx, localTagId, siteTagIds))
 }
 
 // CreateAndBindSameNameLocalTag 创建并绑定同名本地标签
@@ -211,7 +196,7 @@ func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *dt
 
 	result, err := h.svc.CreateAndBindSameNameLocalTag(ctx, domainTag)
 	if err != nil {
-		return model.Error[*dto.LocalTagDTO](err.Error())
+		return model.HandleError[*dto.LocalTagDTO](err)
 	}
 	return model.Success(ToLocalTagDTO(result))
 }
@@ -220,7 +205,7 @@ func (h *Handler) CreateAndBindSameNameLocalTag(ctx context.Context, siteTag *dt
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.SiteTagDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*dto.SiteTagDTO](err.Error())
+		return model.HandleError[[]*dto.SiteTagDTO](err)
 	}
 	// 转换为 DTO
 	resultDTOs := make([]*dto.SiteTagDTO, len(result))
@@ -235,19 +220,12 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 	if page == nil {
 		page = &model.Page[dto.SelectItem]{}
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, page, query, workId)
-	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySelectItemPageByWorkId(ctx, page, query, workId))
 }
 
 // UpdateLastUse 更新最后使用时间
 func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUse(ctx, ids); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.UpdateLastUse(ctx, ids))
 }
 
 // ========== DTO 定义 ==========

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -194,15 +195,5 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 
 // 错误定义
 var (
-	ErrAuthorIdRequired = &BusinessError{Code: 400, Message: "更新本地作者失败，id不能为空"}
+	ErrAuthorIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新本地作者失败，id不能为空"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

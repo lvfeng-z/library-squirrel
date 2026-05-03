@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -280,17 +281,7 @@ func contains(slice []int64, item int64) bool {
 
 // 错误定义
 var (
-	ErrTagIdRequired       = &BusinessError{Code: 400, Message: "更新本地标签失败，id不能为空"}
-	ErrCannotBeBaseOfSelf  = &BusinessError{Code: 400, Message: "基础标签不能为自身"}
-	ErrOriginalTagNotFound = &BusinessError{Code: 404, Message: "修改本地标签失败，原标签信息不能为空"}
+	ErrTagIdRequired       = &pkgerr.BusinessError{Code: 400, Message: "更新本地标签失败，id不能为空"}
+	ErrCannotBeBaseOfSelf  = &pkgerr.BusinessError{Code: 400, Message: "基础标签不能为自身"}
+	ErrOriginalTagNotFound = &pkgerr.BusinessError{Code: 404, Message: "修改本地标签失败，原标签信息不能为空"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

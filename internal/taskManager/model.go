@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
@@ -113,6 +114,7 @@ func (m *ManagedTask) Start() {
 func (m *ManagedTask) run() {
 	defer func() {
 		if r := recover(); r != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d panic: %v", m.taskId, r)
 			m.setState(TaskStateFailed)
 		}
 	}()
@@ -122,6 +124,7 @@ func (m *ManagedTask) run() {
 	// 1. 调用 CreateWorkInfo 创建作品信息
 	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
 	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
 		return
 	}
@@ -129,6 +132,7 @@ func (m *ManagedTask) run() {
 	// 2. 保存 Work 到数据库
 	workId, err := m.workSaver.Save(m.ctx, workResp.Work)
 	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
 		return
 	}
@@ -150,6 +154,7 @@ func (m *ManagedTask) run() {
 	}
 	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
 	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
 		return
 	}
@@ -160,6 +165,7 @@ func (m *ManagedTask) run() {
 	// 5. 获取资源读取器并下载
 	reader, resp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
 	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
 		return
 	}
@@ -169,6 +175,7 @@ func (m *ManagedTask) run() {
 	localPath := workResp.Resource.LocalPath
 	file, err := os.Create(localPath)
 	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
 		m.setState(TaskStateFailed)
 		return
 	}
@@ -193,6 +200,7 @@ func (m *ManagedTask) run() {
 					totalWritten += int64(written)
 				}
 				if writeErr != nil {
+					logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
 					reader.Close()
 					m.setState(TaskStateFailed)
 					return
@@ -212,6 +220,7 @@ func (m *ManagedTask) run() {
 					m.setState(TaskStateFinished)
 					return
 				}
+				logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
 				reader.Close()
 				m.setState(TaskStateFailed)
 				return
@@ -273,7 +282,9 @@ func (m *ManagedTask) Stop() {
 		Task:       m.task,
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
-	m.pluginExec.Stop(m.ctx, param)
+	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+	}
 
 	m.setState(TaskStateFailed)
 }

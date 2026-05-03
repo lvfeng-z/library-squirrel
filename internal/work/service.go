@@ -3,6 +3,7 @@ package work
 import (
 	"context"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
@@ -365,15 +366,5 @@ type WorkAuthorDTO struct {
 
 // ErrWorkIdRequired 错误定义
 var (
-	ErrWorkIdRequired = &BusinessError{Code: 400, Message: "更新作品失败，id不能为空"}
+	ErrWorkIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新作品失败，id不能为空"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

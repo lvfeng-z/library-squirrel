@@ -25,7 +25,7 @@ func (h *Handler) Save(ctx context.Context, plugin *domain.PluginDTO) *model.Api
 	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Save(ctx, domainPlugin); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainPlugin.GetID())
 }
@@ -35,7 +35,7 @@ func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.A
 	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Update(ctx, domainPlugin); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -44,7 +44,7 @@ func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.A
 func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.InstallFromPath(ctx, packagePath, domain.InstallType(installType))
 	if err != nil {
-		return model.Error[*domain.PluginDTO](err.Error())
+		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
@@ -53,25 +53,19 @@ func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, insta
 func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.Reinstall(ctx, pluginPublicId, domain.InstallType(installType))
 	if err != nil {
-		return model.Error[*domain.PluginDTO](err.Error())
+		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Uninstall 卸载插件
 func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.ApiResponse[any] {
-	if err := h.svc.Uninstall(ctx, pluginPublicId); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Uninstall(ctx, pluginPublicId))
 }
 
 // SetUninstalled 设置插件为已卸载状态
 func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.ApiResponse[any] {
-	if err := h.svc.SetUninstalled(ctx, pluginId); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.SetUninstalled(ctx, pluginId))
 }
 
 // ========== 查询操作 ==========
@@ -80,7 +74,7 @@ func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.Api
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*domain.PluginDTO](err.Error())
+		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
@@ -89,7 +83,7 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dom
 func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.GetByPublicId(ctx, publicId)
 	if err != nil {
-		return model.Error[*domain.PluginDTO](err.Error())
+		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
@@ -105,7 +99,7 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO], 
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[domain.PluginDTO]](err.Error())
+		return model.HandleError[*model.Page[domain.PluginDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*domain.PluginDTO, 0, len(result.Data))
@@ -124,11 +118,7 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO], 
 
 // CheckInstalled 检查插件是否已安装
 func (h *Handler) CheckInstalled(ctx context.Context, publicId string) *model.ApiResponse[bool] {
-	result, err := h.svc.CheckInstalled(ctx, publicId)
-	if err != nil {
-		return model.Error[bool](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.CheckInstalled(ctx, publicId))
 }
 
 // GetPluginRoot 获取插件根目录
@@ -139,9 +129,5 @@ func (h *Handler) GetPluginRoot() *model.ApiResponse[string] {
 
 // ReadVueFile 读取插件的 Vue 文件内容
 func (h *Handler) ReadVueFile(pluginPublicId string, filePath string) *model.ApiResponse[string] {
-	result, err := h.svc.ReadVueFile(pluginPublicId, filePath)
-	if err != nil {
-		return model.Error[string](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ReadVueFile(pluginPublicId, filePath))
 }

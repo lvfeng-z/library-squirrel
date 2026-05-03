@@ -25,7 +25,7 @@ func (h *Handler) Save(ctx context.Context, task *dto2.TaskDTO) *model.ApiRespon
 	domainTask := dto2.ToTaskEntity(task)
 
 	if err := h.svc.Save(ctx, domainTask); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainTask.GetID())
 }
@@ -35,18 +35,14 @@ func (h *Handler) Update(ctx context.Context, task *dto2.TaskDTO) *model.ApiResp
 	domainTask := dto2.ToTaskEntity(task)
 
 	if err := h.svc.Update(ctx, domainTask); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
 
 // RefreshStatus 刷新任务状态
 func (h *Handler) RefreshStatus(ctx context.Context, taskId int64) *model.ApiResponse[int64] {
-	result, err := h.svc.RefreshTaskStatus(ctx, taskId)
-	if err != nil {
-		return model.Error[int64](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.RefreshTaskStatus(ctx, taskId))
 }
 
 // SetTreeStatus 设置任务树状态
@@ -61,7 +57,7 @@ func (h *Handler) SetTreeStatus(ctx context.Context, taskIds []int64, status int
 
 	result, err := h.svc.SetTreeStatus(ctx, taskIds, taskStatus, incStatus...)
 	if err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(result)
 }
@@ -70,26 +66,19 @@ func (h *Handler) SetTreeStatus(ctx context.Context, taskIds []int64, status int
 func (h *Handler) CreateTask(ctx context.Context, req *dto2.CreateTaskRequest) *model.ApiResponse[int64] {
 	result, err := h.svc.CreateTask(ctx, req)
 	if err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(result.GetID())
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
 func (h *Handler) DeleteTask(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.DeleteTask(ctx, ids); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.DeleteTask(ctx, ids))
 }
 
 // CreateTaskByURL 根据传入的url创建任务
 func (h *Handler) CreateTaskByURL(ctx context.Context, url string) *model.ApiResponse[*CreateTaskByURLResponse] {
-	result, err := h.svc.CreateTaskByURL(ctx, url)
-	if err != nil {
-		return model.Error[*CreateTaskByURLResponse](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.CreateTaskByURL(ctx, url))
 }
 
 // ========== 查询操作 ==========
@@ -98,7 +87,7 @@ func (h *Handler) CreateTaskByURL(ctx context.Context, url string) *model.ApiRes
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto2.TaskDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto2.TaskDTO](err.Error())
+		return model.HandleError[*dto2.TaskDTO](err)
 	}
 	return model.Success(dto2.NewTaskDTO(result))
 }
@@ -114,7 +103,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.TaskDTO],
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskDTO]](err.Error())
+		return model.HandleError[*model.Page[dto2.TaskDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto2.TaskDTO, 0, len(result.Data))
@@ -142,11 +131,11 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.Tas
 	}
 	result, err := h.svc.QueryParentPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	return model.Success(enriched)
 }
@@ -162,11 +151,11 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[dt
 	}
 	result, err := h.svc.QueryChildrenTaskPage(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
 	if err != nil {
-		return model.Error[*model.Page[dto2.TaskProgressTreeDTO]](err.Error())
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	return model.Success(enriched)
 }
@@ -175,7 +164,7 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[dt
 func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiResponse[[]*dto2.TaskDTO] {
 	result, err := h.svc.ListChildrenTask(ctx, pid)
 	if err != nil {
-		return model.Error[[]*dto2.TaskDTO](err.Error())
+		return model.HandleError[[]*dto2.TaskDTO](err)
 	}
 	// 转换为 DTO
 	resultDTOs := make([]*dto2.TaskDTO, len(result))
@@ -187,11 +176,7 @@ func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiRes
 
 // QueryTreeDataPage 查询任务树数据分页
 func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[dto2.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*dto2.TreeDataPageDTO] {
-	result, err := h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query)
-	if err != nil {
-		return model.Error[*dto2.TreeDataPageDTO](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query))
 }
 
 // ListTaskTree 获取任务树列表
@@ -203,7 +188,7 @@ func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 	}
 	result, err := h.svc.ListTaskTree(ctx, taskIds, statusEnums...)
 	if err != nil {
-		return model.Error[[]*dto2.TaskDTO](err.Error())
+		return model.HandleError[[]*dto2.TaskDTO](err)
 	}
 	// 转换为 DTO
 	resultDTOs := make([]*dto2.TaskDTO, len(result))
@@ -215,18 +200,10 @@ func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 
 // ListStatus 查询状态列表
 func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
-	result, err := h.svc.ListStatus(ctx, ids)
-	if err != nil {
-		return model.Error[[]*dto2.TaskProgressDTO](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListStatus(ctx, ids))
 }
 
 // ListSchedule 查询任务进度列表
 func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
-	result, err := h.svc.ListSchedule(ctx, ids)
-	if err != nil {
-		return model.Error[[]*dto2.TaskProgressDTO](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListSchedule(ctx, ids))
 }

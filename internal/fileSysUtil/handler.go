@@ -14,18 +14,10 @@ func NewHandler(svc *Service) *Handler {
 
 // DirSelect 打开目录/文件选择对话框
 func (h *Handler) DirSelect(openFile bool, isModal bool) *model.ApiResponse[*OpenDialogResult] {
-	result, err := h.svc.DirSelect(openFile, isModal)
-	if err != nil {
-		return model.Error[*OpenDialogResult](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.DirSelect(openFile, isModal))
 }
 
 // DirSelectMultiple 打开多选目录/文件选择对话框
 func (h *Handler) DirSelectMultiple(openFile bool, isModal bool) *model.ApiResponse[*OpenDialogResult] {
-	result, err := h.svc.DirSelectMultiple(openFile, isModal)
-	if err != nil {
-		return model.Error[*OpenDialogResult](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.DirSelectMultiple(openFile, isModal))
 }

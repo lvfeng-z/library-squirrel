@@ -26,7 +26,7 @@ func (h *Handler) Save(ctx context.Context, author *dto.SiteAuthorDTO) *model.Ap
 	domainAuthor := dto.ToSiteAuthorEntity(author)
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainAuthor.GetID())
 }
@@ -39,17 +39,14 @@ func (h *Handler) SaveBatch(ctx context.Context, authors []*dto.SiteAuthorDTO) *
 	}
 
 	if err := h.svc.SaveBatch(ctx, domainAuthors); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
 
 // Delete 删除站点作者
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新站点作者
@@ -57,7 +54,7 @@ func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorDTO) *model.
 	domainAuthor := dto.ToSiteAuthorEntity(author)
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -68,7 +65,7 @@ func (h *Handler) Update(ctx context.Context, author *dto.SiteAuthorDTO) *model.
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.SiteAuthorDTO] {
 	author, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.SiteAuthorDTO](err.Error())
+		return model.HandleError[*dto.SiteAuthorDTO](err)
 	}
 	return model.Success(dto.NewSiteAuthorDTO(author))
 }
@@ -84,7 +81,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.SiteAuthor
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.SiteAuthorDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.SiteAuthorDTO, 0, len(result.Data))
@@ -110,11 +107,7 @@ func (h *Handler) QueryBoundOrUnboundToLocalAuthorPage(ctx context.Context, page
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QueryBoundOrUnboundToLocalAuthorPage(ctx, entityPage, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorLocalRelateDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryBoundOrUnboundToLocalAuthorPage(ctx, entityPage, query))
 }
 
 // QueryLocalRelateDTOPage 查询站点作者与本地作者关联DTO分页
@@ -126,18 +119,14 @@ func (h *Handler) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QueryLocalRelateDTOPage(ctx, entityPage, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SiteAuthorLocalRelateDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryLocalRelateDTOPage(ctx, entityPage, query))
 }
 
 // ListBySiteAuthorIds 根据站点作者ID列表获取
 func (h *Handler) ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) *model.ApiResponse[[]*dto.SiteAuthorDTO] {
 	result, err := h.svc.ListBySiteAuthorIds(ctx, siteAuthorIds)
 	if err != nil {
-		return model.Error[[]*dto.SiteAuthorDTO](err.Error())
+		return model.HandleError[[]*dto.SiteAuthorDTO](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.SiteAuthorDTO, 0, len(result))
@@ -151,7 +140,7 @@ func (h *Handler) ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64
 func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedSiteAuthorWithWorkIdDTO] {
 	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
 	if err != nil {
-		return model.Error[[]*dto.RankedSiteAuthorWithWorkIdDTO](err.Error())
+		return model.HandleError[[]*dto.RankedSiteAuthorWithWorkIdDTO](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.RankedSiteAuthorWithWorkIdDTO, 0, len(result))
@@ -168,11 +157,7 @@ func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, w
 
 // UpdateBindLocalAuthor 更新绑定本地作者
 func (h *Handler) UpdateBindLocalAuthor(ctx context.Context, localAuthorId *int64, siteAuthorIds []int64) *model.ApiResponse[bool] {
-	result, err := h.svc.UpdateBindLocalAuthor(ctx, localAuthorId, siteAuthorIds)
-	if err != nil {
-		return model.Error[bool](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.UpdateBindLocalAuthor(ctx, localAuthorId, siteAuthorIds))
 }
 
 // CreateAndBindSameNameLocalAuthor 创建并绑定同名本地作者
@@ -188,24 +173,17 @@ func (h *Handler) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 
 	result, err := h.svc.CreateAndBindSameNameLocalAuthor(ctx, domainAuthor)
 	if err != nil {
-		return model.Error[bool](err.Error())
+		return model.HandleError[bool](err)
 	}
 	return model.Success(result)
 }
 
 // ListByWorkId 根据作品ID获取作者列表
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedSiteAuthor] {
-	result, err := h.svc.ListByWorkId(ctx, workId)
-	if err != nil {
-		return model.Error[[]*dto.RankedSiteAuthor](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 
 // UpdateLastUse 更新最后使用时间
 func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUse(ctx, ids); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.UpdateLastUse(ctx, ids))
 }

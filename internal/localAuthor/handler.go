@@ -25,17 +25,14 @@ func (h *Handler) Save(ctx context.Context, author *dto.LocalAuthorDTO) *model.A
 	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainAuthor.GetID())
 }
 
 // Delete 删除作者
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新作者
@@ -43,7 +40,7 @@ func (h *Handler) Update(ctx context.Context, author *dto.LocalAuthorDTO) *model
 	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -54,7 +51,7 @@ func (h *Handler) Update(ctx context.Context, author *dto.LocalAuthorDTO) *model
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.LocalAuthorDTO] {
 	author, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.LocalAuthorDTO](err.Error())
+		return model.HandleError[*dto.LocalAuthorDTO](err)
 	}
 	return model.Success(dto.NewLocalAuthorDTO(author))
 }
@@ -70,7 +67,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAutho
 	}
 	result, err := h.svc.Page(ctx, domainPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.LocalAuthorDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.LocalAuthorDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.LocalAuthorDTO, 0, len(result.Data))
@@ -92,11 +89,7 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 	if queryDTO == nil {
 		queryDTO = &LocalAuthorQueryDTO{}
 	}
-	result, err := h.svc.ListSelectItems(ctx, *queryDTO)
-	if err != nil {
-		return model.Error[[]*dto.SelectItem](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListSelectItems(ctx, *queryDTO))
 }
 
 // QuerySelectItemPage 分页查询选择项
@@ -108,26 +101,15 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, domainPage, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySelectItemPage(ctx, domainPage, query))
 }
 
 // ListByWorkId 根据作品ID获取作者列表
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
-	result, err := h.svc.ListByWorkId(ctx, workId)
-	if err != nil {
-		return model.Error[[]*dto.RankedLocalAuthor](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 
 // UpdateLastUse 更新最后使用时间
 func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUse(ctx, ids); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.UpdateLastUse(ctx, ids))
 }

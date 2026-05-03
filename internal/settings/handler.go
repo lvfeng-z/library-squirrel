@@ -22,16 +22,10 @@ func (h *Handler) Get() *model.ApiResponse[*Settings] {
 
 // Save 保存设置
 func (h *Handler) Save(changes []SettingChange) *model.ApiResponse[any] {
-	if err := h.svc.SaveSettings(changes); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.SaveSettings(changes))
 }
 
 // Reset 重置设置
 func (h *Handler) Reset() *model.ApiResponse[any] {
-	if err := h.svc.ResetSettings(); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.ResetSettings())
 }

@@ -3,9 +3,9 @@ package siteAuthor
 import (
 	"context"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
@@ -321,12 +321,10 @@ func (s *Service) CreateSameNameLocalAuthor(ctx context.Context, siteAuthor *ent
 // CreateAndBindSameNameLocalAuthor 创建并绑定同名的本地作者
 func (s *Service) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuthor *entity2.SiteAuthor) (bool, error) {
 	if siteAuthor.ID == 0 {
-		logger.Log.Error("创建同名本地作者失败，作者ID不能为空")
-		return false, nil
+		return false, pkgerr.NewBusinessError(400, "创建同名本地作者失败，作者ID不能为空")
 	}
 	if !siteAuthor.AuthorName.Valid || siteAuthor.AuthorName.String == "" {
-		logger.Log.Error("创建同名本地作者失败，作者名称不能为空")
-		return false, nil
+		return false, pkgerr.NewBusinessError(400, "创建同名本地作者失败，作者名称不能为空")
 	}
 
 	localAuthorId, err := s.CreateSameNameLocalAuthor(ctx, siteAuthor)
@@ -339,15 +337,6 @@ func (s *Service) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 
 // 错误定义
 var (
-	ErrAuthorIdRequired = &BusinessError{Code: 400, Message: "更新站点作者失败，id不能为空"}
+	ErrAuthorIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新站点作者失败，id不能为空"}
 )
 
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/wails/internal/database"
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/internal/util"
 	"github.com/library-squirrel/wails/pkg/model"
 	"github.com/library-squirrel/wails/pkg/model/dto"
@@ -121,15 +122,5 @@ func (s *Service) GetByName(ctx context.Context, siteName string) (*domain.Site,
 
 // 错误定义
 var (
-	ErrSiteIdRequired = &BusinessError{Code: 400, Message: "更新站点失败，id不能为空"}
+	ErrSiteIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新站点失败，id不能为空"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}

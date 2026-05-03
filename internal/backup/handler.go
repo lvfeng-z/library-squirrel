@@ -21,7 +21,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Create(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) *model.ApiResponse[*dto2.BackupDTO] {
 	result, err := h.svc.CreateBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
 	if err != nil {
-		return model.Error[*dto2.BackupDTO](err.Error())
+		return model.HandleError[*dto2.BackupDTO](err)
 	}
 	return model.Success(dto2.NewBackupDTO(result))
 }
@@ -30,7 +30,7 @@ func (h *Handler) Create(ctx context.Context, sourceType int, sourceId int64, fi
 func (h *Handler) CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) *model.ApiResponse[*dto2.BackupDTO] {
 	result, err := h.svc.CreatePluginBackup(ctx, sourceId, fileName, sourcePath, workDir)
 	if err != nil {
-		return model.Error[*dto2.BackupDTO](err.Error())
+		return model.HandleError[*dto2.BackupDTO](err)
 	}
 	return model.Success(dto2.NewBackupDTO(result))
 }
@@ -39,7 +39,7 @@ func (h *Handler) CreatePluginBackup(ctx context.Context, sourceId int64, fileNa
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto2.BackupDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto2.BackupDTO](err.Error())
+		return model.HandleError[*dto2.BackupDTO](err)
 	}
 	return model.Success(dto2.NewBackupDTO(result))
 }
@@ -48,7 +48,7 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto
 func (h *Handler) GetPluginBackup(ctx context.Context, sourceId int64) *model.ApiResponse[*dto2.BackupDTO] {
 	result, err := h.svc.GetPluginBackup(ctx, sourceId)
 	if err != nil {
-		return model.Error[*dto2.BackupDTO](err.Error())
+		return model.HandleError[*dto2.BackupDTO](err)
 	}
 	return model.Success(dto2.NewBackupDTO(result))
 }

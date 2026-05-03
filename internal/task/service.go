@@ -6,38 +6,27 @@ import (
 	"errors"
 	"fmt"
 
+	pkgerr "github.com/library-squirrel/wails/internal/error"
 	"github.com/library-squirrel/wails/pkg/model/dto"
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
-	"go.uber.org/zap"
 
 	"github.com/library-squirrel/wails/internal/database"
 	"github.com/library-squirrel/wails/internal/pluginTaskUrlListener"
 	"github.com/library-squirrel/wails/internal/site"
 	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/logger"
 	"github.com/library-squirrel/wails/pkg/model"
 	querypkg "github.com/library-squirrel/wails/pkg/query"
 )
 
 // 错误定义
 var (
-	ErrUrlNotSupported   = &BusinessError{Code: 400, Message: "url不受支持"}
-	ErrNoPluginFound     = &BusinessError{Code: 500, Message: "尝试了所有插件均未成功"}
-	ErrSiteNameRequired  = &BusinessError{Code: 400, Message: "创建任务失败，插件返回的任务信息中缺少站点名称"}
-	ErrSiteNotFound      = &BusinessError{Code: 400, Message: "创建任务失败，没有找到站点对应的信息"}
-	ErrPluginDataInvalid = &BusinessError{Code: 500, Message: "序列化插件保存的pluginData失败"}
-	ErrTaskHandlerFailed = &BusinessError{Code: 500, Message: "插件创建任务失败"}
+	ErrUrlNotSupported   = &pkgerr.BusinessError{Code: 400, Message: "url不受支持"}
+	ErrNoPluginFound     = &pkgerr.BusinessError{Code: 500, Message: "尝试了所有插件均未成功"}
+	ErrSiteNameRequired  = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，插件返回的任务信息中缺少站点名称"}
+	ErrSiteNotFound      = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，没有找到站点对应的信息"}
+	ErrPluginDataInvalid = &pkgerr.BusinessError{Code: 500, Message: "序列化插件保存的pluginData失败"}
+	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
 )
-
-// BusinessError 业务错误
-type BusinessError struct {
-	Code    int
-	Message string
-}
-
-func (e *BusinessError) Error() string {
-	return e.Message
-}
 
 // TaskStatusEnum 任务状态枚举
 type TaskStatusEnum int
@@ -433,7 +422,6 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 	// 1. 查询监听此url的插件
 	listeners := s.urlListener.ListListener(url)
 	if len(listeners) == 0 {
-		logger.Log.Info("CreateTaskByURL: no listener for url", zap.String("url", url))
 		return &CreateTaskByURLResponse{
 			Succeed:       false,
 			AddedQuantity: 0,
@@ -444,7 +432,6 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 	// 2. 按照排序尝试每个插件
 	for _, listener := range listeners {
 		if !listener.PublicID.Valid || listener.PublicID.String == "" {
-			logger.Log.Error("CreateTaskByURL: plugin publicId is empty", zap.Any("listener", listener))
 			continue
 		}
 		pluginPublicId := listener.PublicID.String
@@ -452,20 +439,12 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		// 获取任务处理器
 		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ContributionID)
 		if err != nil {
-			logger.Log.Error("CreateTaskByURL: failed to get task handler",
-				zap.String("pluginPublicId", pluginPublicId),
-				zap.String("contributionId", listener.ContributionID),
-				zap.Error(err))
 			continue
 		}
 
 		// 3. 调用插件的 create 方法
 		pluginResponses, err := taskHandler.Create(url)
 		if err != nil {
-			logger.Log.Error("CreateTaskByURL: plugin create failed",
-				zap.String("url", url),
-				zap.String("pluginPublicId", pluginPublicId),
-				zap.Error(err))
 			continue
 		}
 
@@ -473,9 +452,6 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		if len(pluginResponses) > 0 {
 			count, err := s.handleCreateTaskArray(ctx, pluginResponses, url, listener)
 			if err != nil {
-				logger.Log.Error("CreateTaskByURL: handle create task array failed",
-					zap.String("url", url),
-					zap.Error(err))
 				continue
 			}
 			return &CreateTaskByURLResponse{
@@ -558,11 +534,9 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 				SiteName:   childResp.SiteName,
 				PluginData: childResp.PluginData,
 			}, 0); err != nil {
-				logger.Log.Error("handleCreateTaskArray: failed to assign single task", zap.Error(err))
 				continue
 			}
 			if err := s.repo.CreateTask(ctx, task); err != nil {
-				logger.Log.Error("handleCreateTaskArray: failed to save single task", zap.Error(err))
 				continue
 			}
 			childrenCount++
@@ -578,12 +552,10 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			URL:      parentResp.URL,
 			SiteName: parentResp.SiteName,
 		}, 0); err != nil {
-			logger.Log.Error("handleCreateTaskArray: failed to assign parent task", zap.Error(err))
 			continue
 		}
 		parentTask.IsCollection = sql.NullInt64{Int64: 1, Valid: true} // 集合任务
 		if err := s.repo.CreateTask(ctx, parentTask); err != nil {
-			logger.Log.Error("handleCreateTaskArray: failed to save parent task", zap.Error(err))
 			continue
 		}
 		parentId := parentTask.GetID()
@@ -600,11 +572,9 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 				SiteName:   childResp.SiteName,
 				PluginData: childResp.PluginData,
 			}, parentId); err != nil {
-				logger.Log.Error("handleCreateTaskArray: failed to assign child task", zap.Error(err))
 				continue
 			}
 			if err := s.repo.CreateTask(ctx, childTask); err != nil {
-				logger.Log.Error("handleCreateTaskArray: failed to save child task", zap.Error(err))
 				continue
 			}
 			childrenCount++

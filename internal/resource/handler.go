@@ -36,17 +36,14 @@ func (h *Handler) Save(ctx context.Context, resource *ResourceDTO) *model.ApiRes
 	}
 
 	if err := h.svc.Save(ctx, domainResource); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainResource.GetID())
 }
 
 // Delete 删除资源
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新资源
@@ -66,7 +63,7 @@ func (h *Handler) Update(ctx context.Context, resource *ResourceDTO) *model.ApiR
 	}
 
 	if err := h.svc.Update(ctx, domainResource); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -77,7 +74,7 @@ func (h *Handler) Update(ctx context.Context, resource *ResourceDTO) *model.ApiR
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*ResourceResultDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*ResourceResultDTO](err.Error())
+		return model.HandleError[*ResourceResultDTO](err)
 	}
 	return model.Success(ToResourceResultDTO(result))
 }
@@ -86,7 +83,7 @@ func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*Res
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*ResourceResultDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*ResourceResultDTO](err.Error())
+		return model.HandleError[[]*ResourceResultDTO](err)
 	}
 	// 转换为 ResultDTO
 	resultDTOs := make([]*ResourceResultDTO, len(result))
@@ -98,10 +95,7 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 
 // DeleteByWorkId 根据作品ID删除资源
 func (h *Handler) DeleteByWorkId(ctx context.Context, workId int64) *model.ApiResponse[any] {
-	if err := h.svc.DeleteByWorkId(ctx, workId); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.DeleteByWorkId(ctx, workId))
 }
 
 // ========== DTO 定义 ==========

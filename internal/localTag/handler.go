@@ -26,17 +26,14 @@ func (h *Handler) Save(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiResp
 	domainTag := dto.ToLocalTagEntity(tag)
 
 	if err := h.svc.Save(ctx, domainTag); err != nil {
-		return model.Error[int64](err.Error())
+		return model.HandleError[int64](err)
 	}
 	return model.Success(domainTag.GetID())
 }
 
 // Delete 删除本地标签
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	if err := h.svc.Delete(ctx, id); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.Delete(ctx, id))
 }
 
 // Update 更新本地标签
@@ -44,7 +41,7 @@ func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiRe
 	domainTag := dto.ToLocalTagEntity(tag)
 
 	if err := h.svc.UpdateById(ctx, domainTag); err != nil {
-		return model.Error[any](err.Error())
+		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
 }
@@ -55,7 +52,7 @@ func (h *Handler) Update(ctx context.Context, tag *dto.LocalTagDTO) *model.ApiRe
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.LocalTagDTO] {
 	tag, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.Error[*dto.LocalTagDTO](err.Error())
+		return model.HandleError[*dto.LocalTagDTO](err)
 	}
 	return model.Success(dto.NewLocalTagDTO(tag))
 }
@@ -71,7 +68,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDT
 	}
 	result, err := h.svc.Page(ctx, domainPage, query)
 	if err != nil {
-		return model.Error[*model.Page[dto.LocalTagDTO]](err.Error())
+		return model.HandleError[*model.Page[dto.LocalTagDTO]](err)
 	}
 	// 转换为 DTO
 	data := make([]*dto.LocalTagDTO, 0, len(result.Data))
@@ -92,7 +89,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalTagDT
 func (h *Handler) GetTree(ctx context.Context, rootId int64, depth int) *model.ApiResponse[[]*dto.LocalTagDTO] {
 	result, err := h.svc.GetTree(ctx, rootId, depth)
 	if err != nil {
-		return model.Error[[]*dto.LocalTagDTO](err.Error())
+		return model.HandleError[[]*dto.LocalTagDTO](err)
 	}
 	// 转换为 DTO
 	resultDTOs := make([]*dto.LocalTagDTO, len(result))
@@ -107,11 +104,7 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDT
 	if queryDTO == nil {
 		queryDTO = &LocalTagQueryDTO{}
 	}
-	result, err := h.svc.ListSelectItems(ctx, *queryDTO)
-	if err != nil {
-		return model.Error[[]*dto.SelectItem](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.ListSelectItems(ctx, *queryDTO))
 }
 
 // QuerySelectItemPage 分页查询选择项
@@ -123,18 +116,14 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[d
 		PageNumber: reqPage.PageNumber,
 		PageSize:   reqPage.PageSize,
 	}
-	result, err := h.svc.QuerySelectItemPage(ctx, domainPage, query, secondaryLabel)
-	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySelectItemPage(ctx, domainPage, query, secondaryLabel))
 }
 
 // ListByWorkId 根据作品ID获取标签列表
 func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.LocalTagDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.Error[[]*dto.LocalTagDTO](err.Error())
+		return model.HandleError[[]*dto.LocalTagDTO](err)
 	}
 	// 转换为 DTO
 	resultDTOs := make([]*dto.LocalTagDTO, len(result))
@@ -153,19 +142,12 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QuerySelectItemPageByWorkId(ctx, domainPage, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySelectItemPageByWorkId(ctx, domainPage, query))
 }
 
 // UpdateLastUse 更新最后使用时间
 func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUse(ctx, ids); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.UpdateLastUse(ctx, ids))
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
@@ -177,9 +159,5 @@ func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	result, err := h.svc.QueryWithBaseTagPage(ctx, domainPage, query)
-	if err != nil {
-		return model.Error[*model.Page[dto.LocalTagWithBaseTagDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryWithBaseTagPage(ctx, domainPage, query))
 }

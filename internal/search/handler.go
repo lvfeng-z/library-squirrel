@@ -24,37 +24,22 @@ func (h *Handler) QueryWorkPage(ctx context.Context, pageNumber, pageSize int, c
 	if conditions == nil {
 		conditions = []*dto2.SearchCondition{}
 	}
-	result, err := h.svc.QueryWorkPage(ctx, pageNumber, pageSize, conditions)
-	if err != nil {
-		return model.Error[*model.Page[dto2.WorkFullDTO]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryWorkPage(ctx, pageNumber, pageSize, conditions))
 }
 
 // QueryWorkSetPage 查询作品集分页
 func (h *Handler) QueryWorkSetPage(ctx context.Context, pageNumber, pageSize int, keyword string, siteId int64) *model.ApiResponse[*model.Page[dto2.SelectItem]] {
-	result, err := h.svc.QueryWorkSetPage(ctx, pageNumber, pageSize, keyword, siteId)
-	if err != nil {
-		return model.Error[*model.Page[dto2.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QueryWorkSetPage(ctx, pageNumber, pageSize, keyword, siteId))
 }
 
 // QuerySearchConditionPage 查询搜索条件分页
 func (h *Handler) QuerySearchConditionPage(ctx context.Context, page, pageSize int, query *dto2.SearchConditionQuery) *model.ApiResponse[*model.Page[dto2.SelectItem]] {
-	result, err := h.svc.QuerySearchConditionPage(ctx, page, pageSize, query)
-	if err != nil {
-		return model.Error[*model.Page[dto2.SelectItem]](err.Error())
-	}
-	return model.Success(result)
+	return model.HandleResult(h.svc.QuerySearchConditionPage(ctx, page, pageSize, query))
 }
 
 // UpdateLastUsed 更新最后使用时间
 func (h *Handler) UpdateLastUsed(ctx context.Context, used map[dto2.SearchType][]int64) *model.ApiResponse[any] {
-	if err := h.svc.UpdateLastUsed(ctx, used); err != nil {
-		return model.Error[any](err.Error())
-	}
-	return model.Success[any](nil)
+	return model.HandleVoid(h.svc.UpdateLastUsed(ctx, used))
 }
 
 // ========== DTO 定义 ==========
