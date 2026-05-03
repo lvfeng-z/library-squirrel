@@ -3,6 +3,8 @@ package query
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/library-squirrel/wails/pkg/logger"
 )
 
 // FieldMapper 通过反射获取结构体字段的 query tag 映射
@@ -83,7 +85,7 @@ func (m *FieldMapper) CollectDbFields(dto interface{}) ([]FieldInfo, error) {
 			if attrVal, ok := fieldValue.Interface().(QueryAttributeInterface); ok {
 				attr = attrVal
 			} else {
-				fmt.Printf("query attribute must be QueryAttributeInterface, got %v\n", fieldValue.Type())
+				logger.Log.Warnf("query attribute must be QueryAttributeInterface, got %v", fieldValue.Type())
 			}
 		}
 

@@ -2,12 +2,12 @@ package taskManager
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/library-squirrel/wails/internal/task"
 	domain "github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/pkg/logger"
 )
 
 // Repository 任务仓储接口（TaskManager 需要的数据库操作）
@@ -133,7 +133,7 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 
 	for _, child := range parent.GetChildren() {
 		if err := child.Pause(); err != nil {
-			log.Printf("暂停子任务 %d 失败: %v", child.taskId, err)
+			logger.Log.Errorf("暂停子任务 %d 失败: %v", child.taskId, err)
 		}
 	}
 
@@ -152,7 +152,7 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
 
 	for _, child := range parent.GetChildren() {
 		if err := child.Resume(); err != nil {
-			log.Printf("恢复子任务 %d 失败: %v", child.taskId, err)
+			logger.Log.Errorf("恢复子任务 %d 失败: %v", child.taskId, err)
 		}
 	}
 
@@ -250,12 +250,12 @@ func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 	// 获取任务执行器
 	if !task.PluginPublicID.Valid {
-		log.Printf("获取任务执行器失败: pluginPublicID is null")
+		logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
 		return nil
 	}
 	pluginExec, err := m.pluginExecFactory(task.PluginPublicID.String)
 	if err != nil {
-		log.Printf("获取任务执行器失败: %v", err)
+		logger.Log.Errorf("获取任务执行器失败: %v", err)
 		return nil
 	}
 

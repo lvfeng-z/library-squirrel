@@ -2,10 +2,11 @@ package main
 
 import (
 	"embed"
-	"log"
 	"time"
 
 	"github.com/library-squirrel/wails/internal/database"
+	"github.com/library-squirrel/wails/pkg/logger"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -29,10 +30,16 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
+	// 初始化日志（最优先，确保后续所有代码都可使用 logger.Log）
+	if err := logger.Init(); err != nil {
+		panic("Failed to init logger: " + err.Error())
+	}
+	defer logger.Sync()
+
 	// Create App instance
 	app, err := NewApp()
 	if err != nil {
-		log.Fatalf("Failed to create app: %v", err)
+		logger.Log.Fatalf("Failed to create app: %v", err)
 	}
 
 	// Create a new Wails application by providing the necessary options.
@@ -128,13 +135,13 @@ func main() {
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
-		log.Fatal(err)
+		logger.Log.Fatal(err)
 	}
 
 	// 关闭数据库连接
 	err = database.Close()
 	if err != nil {
-		log.Fatal(err)
+		logger.Log.Fatal(err)
 		return
 	}
 }

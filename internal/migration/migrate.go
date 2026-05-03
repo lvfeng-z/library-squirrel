@@ -1,8 +1,6 @@
 package migration
 
 import (
-	"log"
-
 	entity2 "github.com/library-squirrel/wails/pkg/model/entity"
 
 	"gorm.io/gorm"
@@ -41,6 +39,5 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
-	log.Println("Database auto migration completed")
 	return nil
 }

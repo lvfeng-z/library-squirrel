@@ -112,13 +112,7 @@ type App struct {
 func NewApp() (*App, error) {
 	app := &App{}
 
-	// 1. 初始化日志
-	if err := logger.Init(); err != nil {
-		return nil, err
-	}
-	defer logger.Sync()
-
-	// 2. 加载配置
+	// 1. 加载配置
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		logger.Log.Errorf("Failed to load config: %v", err)
@@ -127,7 +121,7 @@ func NewApp() (*App, error) {
 	app.cfg = cfg
 	logger.Log.Infof("Config loaded")
 
-	// 3. 初始化数据库
+	// 2. 初始化数据库
 	dbPath := filepath.Join(util.RootPath(), "database/database.db")
 	if err := database.Init(dbPath); err != nil {
 		logger.Log.Errorf("Failed to init database: %v", err)
@@ -143,21 +137,21 @@ func NewApp() (*App, error) {
 	}
 	logger.Log.Infof("Database migration completed")
 
-	// 4. 初始化扩展注册中心
+	// 3. 初始化扩展注册中心
 	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
 	app.SiteBrowserRegistry = extension2.NewSiteBrowserRegistry()
 	app.SlotRegistry = extension2.NewSlotRegistry()
 	// SlotPusher 会在 SetEventEmitter 中创建
 
-	// 5. 初始化基础服务（按依赖顺序）
+	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
 
-	// 6. 初始化高级服务
+	// 5. 初始化高级服务
 	if err := app.initAdvancedServices(); err != nil {
 		return nil, err
 	}
 
-	// 7. 初始化 Handlers
+	// 6. 初始化 Handlers
 	app.initHandlers()
 
 	return app, nil
