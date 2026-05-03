@@ -5,7 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SettingsHandler } from '@bindings/github.com/library-squirrel/wails/internal/settings'
-import type { Settings } from '@bindings/github.com/library-squirrel/wails/internal/settings/models'
+import type { SettingChange, Settings } from '@bindings/github.com/library-squirrel/wails/internal/settings/models'
 
 export interface SettingsVO {
   [key: string]: unknown
@@ -34,18 +34,12 @@ export async function settingsGetSettings(): Promise<ApiResponse<SettingsVO>> {
   return { success: true, msg: result.msg ?? '', data: result.data ? toSettingsVO(result.data) : undefined }
 }
 
-export async function settingsSaveSettings(settings: SettingsVO): Promise<ApiResponse<boolean>> {
-  // SettingsHandler.Save 接受 SettingChange[] 而不是 Settings
-  // 简化处理：假设 settings 是 key-value 对，需要转换为 SettingChange[]
-  const changes = Object.entries(settings).map(([key, value]) => ({
-    Key: key,
-    Value: value
-  }))
-  const result = await SettingsHandler.Save(changes as any)
+export async function settingsSaveSettings(changes: SettingChange[]): Promise<ApiResponse<boolean>> {
+  const result = await SettingsHandler.Save(changes)
   if (!result) {
     return { success: false, msg: '保存失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return { success: result.success, msg: result.msg ?? '', data: result.success }
 }
 
 export async function settingsResetSettings(): Promise<ApiResponse<boolean>> {
@@ -53,5 +47,5 @@ export async function settingsResetSettings(): Promise<ApiResponse<boolean>> {
   if (!result) {
     return { success: false, msg: '重置失败：接口返回为空' }
   }
-  return { success: result.success, msg: result.msg ?? '' }
+  return { success: result.success, msg: result.msg ?? '', data: result.success }
 }
