@@ -199,7 +199,7 @@ func (r *BaseRepository[T]) List(ctx context.Context, opt *QueryOption) ([]*T, e
 	var entities []*T
 	db := r.db.WithContext(ctx).Model(new(T))
 	db = applyQueryOption(db, opt)
-	err := db.Debug().Find(&entities).Error
+	err := db.Find(&entities).Error
 	if err != nil {
 		return nil, err
 	}
