@@ -87,10 +87,42 @@
 ### 插件 (Plugin)
 
 - **英文**：Plugin
-- **定义**：扩展对不同站点的作品下载支持的模块
+- **定义**：扩展对不同站点的作品下载支持的 Go 共享库模块（`.dll`/`.so`）
 - **领域角色**：系统扩展性的核心组件
-- **结构**：独立包，包含作者、名称、版本元数据
-- **相关文件**：`PluginLoader.ts`，`PluginFactory.ts`
+- **结构**：独立包，包含作者、名称、版本元数据，导出 `Activate(PluginContext)` 函数
+- **相关文件**：`internal/plugin/`，`internal/plugin/extension/`
+
+### 插件上下文 (PluginContext)
+
+- **英文**：PluginContext
+- **定义**：主程序提供给插件的完整 API，每个插件拥有独立实例
+- **领域角色**：插件访问主程序能力的唯一入口
+- **能力**：扩展点注册/注销、数据持久化、加密存储、业务查询、任务管理、日志
+- **相关文件**：`internal/plugin/extension/plugin_context.go`
+
+### 注册器 (Registrar)
+
+- **英文**：Registrar
+- **定义**：PluginContext 内嵌的扩展点注册接口
+- **领域角色**：插件通过 Registrar 注册 TaskHandler、SiteBrowser、Slot 扩展点
+- **方法**：`RegisterTaskHandler`、`RegisterSiteBrowser`、`RegisterSlot`
+- **相关文件**：`internal/plugin/extension/registrar.go`
+
+### Provider 接口 (Provider Interface)
+
+- **英文**：Provider Interface
+- **定义**：PluginContext 的服务依赖接口，由 `extension` 包定义，各 `internal` 服务实现
+- **领域角色**：实现依赖倒置，隔离 PluginContext 与内部服务
+- **接口列表**：`PluginDataProvider`、`SecureStorageProvider`、`WorkSetQueryProvider`、`SiteSaveProvider`、`TaskCreateProvider`、`UrlListenerRegistry`
+- **相关文件**：`internal/plugin/extension/plugin_context.go`
+
+### 扩展点 (Extension Point)
+
+- **英文**：Extension Point
+- **定义**：插件可贡献的三类功能：TaskHandler、SiteBrowser、Slot
+- **领域角色**：插件与主程序的功能契约
+- **注册中心**：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`
+- **相关文件**：`internal/plugin/extension/`
 
 ### 插件任务 (Plugin Task)
 
@@ -280,6 +312,11 @@
 ---
 
 ## 更新记录
+
+### 2026-05-04
+
+- [修改] 插件术语更新为 Go/Wails 架构描述
+- [新增] PluginContext、Registrar、Provider 接口、扩展点术语
 
 ### 2026-04-22
 

@@ -146,8 +146,10 @@ export const routes = [
 
 ## 插件系统要点
 
-- 插件存储在 `plugin/package/` 目录
-- 每个插件是独立包（作者、名称、版本）
-- 插件通过 `PluginManager.ts` 管理
-- `BasePlugin` 接口简化为只包含 `pluginId: number`
-- 任务执行由 `PluginTaskResParam.ts` 处理
+- 插件为 Go 共享库（`.dll`/`.so`），存储在 `plugin/package/{publicId}/{version}/`
+- 入口函数：`func Activate(ctx extension.PluginContext)`，插件通过 PluginContext 自主注册扩展点
+- 三个扩展点：TaskHandler（任务处理）、SiteBrowser（站点浏览）、Slot（UI 插槽）
+- 三个注册中心：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`（线程安全）
+- PluginContext 封装主程序完整 API（数据持久化、加密存储、业务查询、任务管理、日志等）
+- 启动引导：`app.go` 的 `loadInstalledPlugins()` 自动加载所有已安装插件
+- Slot 同步：通过 Wails Events 推送到前端

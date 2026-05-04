@@ -2,7 +2,7 @@
 
 ## 概述
 
-插件系统是 LibrarySquirrel 扩展性的核心，允许通过插件支持不同的站点（如 pixiv、bilibili）。本指南介绍插件的架构和开发方法。
+插件系统是 LibrarySquirrel 扩展性的核心，允许通过 Go 共享库（`.dll`/`.so`）插件支持不同的站点（如 pixiv、bilibili）。插件在 `Activate` 函数中接收 `PluginContext`，自主注册所需的扩展点。
 
 ## 核心概念
 
@@ -10,282 +10,298 @@
 
 ```
 plugin/package/
-└── [插件名]/
-    ├── package.json           # 插件元信息
-    ├── index.js               # 插件入口文件
-    └── views/                 # 插件视图（可选）
+└── [pluginPublicId]/
+    └── [version]/
+        ├── plugin.json           # 插件清单
+        ├── entry.dll / entry.so  # Go 共享库（入口文件）
+        └── views/                # 插件视图资源（可选）
 ```
 
-### 插件清单 (package.json)
+### 插件清单 (plugin.json)
 
 ```json
 {
-  "name": "pixiv",
+  "id": "com.example.pixiv",
+  "name": "Pixiv Plugin",
   "version": "1.0.0",
   "author": "LibrarySquirrel",
-  "librarySquirrel": {
-    "activationType": "url"
-  }
+  "description": "Pixiv 站点支持插件",
+  "entryFile": "entry.dll",
+  "activation": { "type": 1 },
+  "contributes": [
+    { "type": "taskHandler", "id": "pixiv-task" },
+    { "type": "siteBrowser", "id": "pixiv-browser" },
+    { "type": "slot", "id": "pixiv-slot" }
+  ]
 }
 ```
 
 ### 激活类型
 
-| 类型     | 说明                            |
-| -------- | ------------------------------- |
-| `url`    | URL 激活，通过解析特定 URL 触发 |
-| `manual` | 手动激活，用户主动启用          |
-| `auto`   | 自动激活，启动时加载            |
+| Type | 说明                 |
+| ---- | -------------------- |
+| `0`  | 手动激活，用户主动启用 |
+| `1`  | 启动时自动加载         |
 
-## 插件接口
+## 插件入口函数
 
-### BasePlugin 接口
+每个插件 DLL 必须导出 `Activate` 函数：
 
-重构后的 `BasePlugin` 接口简化为只包含 `pluginId`：
+```go
+package main
 
-```typescript
-export interface BasePlugin {
-  pluginId: number
+import (
+    "github.com/library-squirrel/wails/internal/plugin/extension"
+    "github.com/library-squirrel/wails/pkg"
+)
+
+// Activate 插件入口函数，主程序加载 DLL 后调用
+func Activate(ctx extension.PluginContext) {
+    // 注册任务处理器
+    ctx.RegisterTaskHandler("pixiv-task", "Pixiv任务", "处理Pixiv下载任务", &PixivTaskHandler{})
+
+    // 注册站点浏览器
+    ctx.RegisterSiteBrowser("pixiv-browser", "Pixiv浏览器", "浏览Pixiv站点", &PixivBrowser{})
+
+    // 注册插槽（UI扩展）
+    ctx.RegisterSlot(
+        "pixiv-slot", "Pixiv入口", "Pixiv站点浏览器入口",
+        pkg.SlotTypeSiteBrowserList,   // 插槽类型
+        "",                             // 内容
+        pkg.ContentTypeComponent,       // 内容类型
+        "Pixiv",                        // 标题
+        "pixiv-icon.png",               // 图标
+        0,                              // 排序
+    )
+
+    // 注册 URL 监听器（任务路由）
+    ctx.RegisterUrlListener("pixiv-task", []string{`https?://www\.pixiv\.net/.*`})
 }
 ```
 
-### 插件实例 (PluginInstance)
+### 关键约定
 
-```typescript
-interface PluginInstance {
-  plugin: Plugin                    # 插件实体
-  contributions?: ContributionMap   # 贡献点映射
-  entryPoint?: PluginEntryPoint      # 入口点
+1. **一个 DLL 可以注册多个扩展点**：`Activate` 中可多次调用 `RegisterXxx`
+2. **主程序传递 PluginContext**：插件通过 `PluginContext` 访问主程序全部能力
+3. **panic 安全**：主程序会 recover 插件 Activate 中的 panic 并回滚已注册的扩展点
+
+## PluginContext
+
+`PluginContext` 是主程序提供给插件的完整 API，每个插件拥有独立的实例。
+
+### 接口总览
+
+```go
+type PluginContext interface {
+    // 扩展点注册
+    RegisterTaskHandler(id, name, desc string, handler dto.TaskHandler) error
+    RegisterSiteBrowser(id, name, desc string, browser SiteBrowser) error
+    RegisterSlot(id, name, desc string, slotType pkg.SlotType, ...) error
+
+    // 扩展点注销
+    UnregisterSlot(id string) error
+    UnregisterSiteBrowser(id string) error
+
+    // 插件数据持久化
+    GetPluginData() (string, error)
+    SetPluginData(data string) error
+
+    // 加密存储
+    StoreEncryptedValue(plainValue, description string) (string, error)
+    GetDecryptedValue(storageKey string) (string, error)
+    RemoveEncryptedValue(storageKey string) error
+
+    // 业务查询
+    GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName string) (*entity.WorkSet, error)
+    AddSite(sites []*entity.Site) error
+
+    // 任务管理
+    RegisterUrlListener(contributionId string, patterns []string) error
+    UnregisterUrlListener() error
+    CreateTask(url string) (*TaskCreateResult, error)
+
+    // 路径
+    GetPluginRoot(isRelative bool) string
+
+    // 窗口管理
+    GetMainWindow() WindowHandle
+    CreateWindow(options WindowOptions) (WindowHandle, error)
+
+    // 日志（带 Plugin[名称] 前缀）
+    Infof(template string, args ...any)
+    Debugf(template string, args ...any)
+    Warnf(template string, args ...any)
+    Errorf(template string, args ...any)
 }
 ```
 
-## 贡献点 (Contributions)
+### Provider 接口（依赖倒置）
 
-插件可以贡献以下功能：
+PluginContext 的服务依赖通过 Provider 接口注入，由 `extension` 包定义，各 `internal` 服务实现：
 
-### 1. TaskHandler - 任务处理器
+| Provider               | 方法                                            | 实现方                      |
+| ---------------------- | ----------------------------------------------- | --------------------------- |
+| `PluginDataProvider`   | `GetByPublicId`, `Update`                       | `plugin.Service`            |
+| `SecureStorageProvider`| `StoreAndGetKey`, `GetValueByKey`, `Remove`     | `secureStorage.Service`     |
+| `WorkSetQueryProvider` | `GetBySiteWorkSetIdAndSiteName`                 | `workSet.Service`           |
+| `SiteSaveProvider`     | `Save`                                          | `site.Service`              |
+| `TaskCreateProvider`   | `CreateTaskByURL`                               | `taskCreateAdapter`（适配） |
+| `UrlListenerRegistry`  | `RegisterUrlListener`, `UnregisterUrlListener`  | `urlListenerAdapter`（适配）|
 
-处理资源下载任务：
+## 扩展点
 
-```typescript
-class MyTaskHandler implements TaskHandler {
-  async handle(params: TaskHandlerParams): Promise<TaskResult> {
-    # 下载逻辑
-    return { success: true, works: [] }
-  }
+### 1. TaskHandler — 任务处理器
+
+处理资源下载任务的完整生命周期：
+
+```go
+type TaskHandler interface {
+    Create(url string) ([]*TaskCreateResponse, error)
+    CreateWorkInfo(task *entity.Task) (*WorkResponse, error)
+    Start(task *entity.Task) (io.ReadCloser, *WorkResponse, error)
+    Retry(task *entity.Task) (*WorkResponse, error)
+    Pause(param *TaskResParam) error
+    Stop(param *TaskResParam) error
+    Resume(param *TaskResParam) (*WorkResponse, error)
 }
 ```
 
-### 2. SiteBrowser - 站点浏览器
+**调用链**：`TaskManager → TaskExecutorImpl → Loader.GetTaskHandler() → Registry → 插件 DLL`
+
+### 2. SiteBrowser — 站点浏览器
 
 提供站点内容浏览能力：
 
-```typescript
-class MySiteBrowser implements SiteBrowser {
-  async search(keyword: string): Promise<SearchResult[]> {
-    # 搜索逻辑
-  }
+```go
+type SiteBrowser interface {
+    Open() error
+    Close() error
 }
 ```
 
-> **⚠️ 重要区分：站点浏览器注册 vs 站点浏览器列表插槽**
+> **⚠️ 站点浏览器注册 vs 站点浏览器列表插槽**
 >
-> 这两个概念容易被混淆，请注意区分：
+> | 概念                   | API                       | 用途                     |
+> | ---------------------- | ------------------------- | ------------------------ |
+> | **站点浏览器**         | `RegisterSiteBrowser()`   | 注册浏览器功能（业务）   |
+> | **站点浏览器列表插槽** | `RegisterSlot(SlotTypeSiteBrowserList)` | 在 UI 中添加入口（展示） |
 >
-> | 概念                   | API                               | 用途                                                                   |
-> | ---------------------- | --------------------------------- | ---------------------------------------------------------------------- |
-> | **站点浏览器**         | `app.registerSiteBrowser()`       | 注册站点浏览器本身（业务数据），使系统知道这个插件提供了站点浏览器功能 |
-> | **站点浏览器列表插槽** | `slots.registerSiteBrowserSlot()` | 在"站点浏览"页面的卡片列表中添加一个入口（UI），让用户能看到并点击进入 |
->
-> **两者必须同时注册**，站点浏览器功能才能完整工作：
->
-> 1. 先用 `app.registerSiteBrowser()` 注册站点浏览器
-> 2. 再用 `slots.registerSiteBrowserSlot()` 在 UI 中添加入口
->
-> ```javascript
-> // 激活函数中
-> async activate() {
->     // 1. 注册站点浏览器（业务功能）
->     await this.context.app.registerSiteBrowser({
->         contributionId: 'main',
->         pluginPublicId: this.manifest.id,
->         name: 'PixivSiteBrowser',
->     })
->
->     // 2. 注册站点浏览器列表插槽（UI入口）
->     this.context.slots.registerSiteBrowserSlot({
->         slotId: `siteBrowser-${this.manifest.id}-main`,
->         contributionId: 'main',
->         pluginPublicId: this.manifest.id,
->         name: 'PixivSiteBrowser',
->         imagePath: '/plugins/icon.png',
->         order: 0
->     })
-> }
-> ```
+> **两者必须同时注册**，站点浏览器功能才能完整工作。
 
-## 插件管理器
+### 3. Slot — 插槽（UI 扩展）
 
-`PluginManager` 负责插件的加载、缓存和生命周期管理：
+插件通过插槽贡献 UI 内容（Vue 组件、HTML 等）。
 
-```typescript
-import PluginManager from '@main/plugin/PluginManager'
+#### 插槽类型
 
-const pluginManager = new PluginManager()
+| SlotType              | 位置                | 说明                       |
+| --------------------- | ------------------- | -------------------------- |
+| `embed`               | 嵌入到指定位置      | 小组件（topbar/toolbar 等）|
+| `panel`               | left/right/bottom   | 侧边或底部面板             |
+| `view`                | 主视图              | 完整页面                   |
+| `menu`                | 侧边菜单            | 菜单项                     |
+| `siteBrowserList`     | 站点浏览器列表      | 站点浏览器卡片入口         |
 
-# 加载插件
-const instance = await pluginManager.load(pluginId)
+#### 内容类型
 
-# 卸载插件
-await pluginManager.unload(pluginId)
-```
+| ContentType         | 说明         |
+| ------------------- | ------------ |
+| `vueSource`         | Vue SFC 源码 |
+| `html`              | HTML 内容    |
+| `component`         | 组件引用     |
 
-## 插件上下文 (PluginContext)
+## 注册中心
 
-插件运行时上下文，提供服务访问：
+三个扩展点各有独立的线程安全注册中心：
 
-```typescript
-interface PluginContext {
-  pluginId: number
-  localAuthorService: LocalAuthorService
-  localTagService: LocalTagService
-  siteService: SiteService
-  workSetService: WorkSetService
-  secureStorageService: SecureStorageService
-}
-```
+| Registry               | 存储                                    | 关键文件                            |
+| ---------------------- | --------------------------------------- | ----------------------------------- |
+| `TaskHandlerRegistry`  | `map[string]*Extension[dto.TaskHandler]` | `extension/task_handler_registry.go`|
+| `SiteBrowserRegistry`  | `map[string]*Extension[SiteBrowser]`    | `extension/site_browser_registry.go`|
+| `SlotRegistry`         | `map[string]*Extension[*SlotConfig]`    | `extension/slot_registry.go`        |
 
-## 插槽系统 (Slots)
+key 格式：`pluginPublicId/extensionId`
 
-插件可以通过插槽贡献 UI：
+## 插件加载流程
 
-### 视图插槽 (ViewSlot)
-
-```typescript
-const viewSlot: ViewSlotConfig = {
-  id: 'my-plugin-view',
-  name: '我的插件视图',
-  icon: 'Document',
-  order: 10,
-  component: () => import('./views/MyView.vue')
-}
-```
-
-### 面板插槽 (PanelSlot)
-
-```typescript
-const panelSlot: PanelSlotConfig = {
-  id: 'my-plugin-panel',
-  name: '我的插件面板',
-  icon: 'Panel',
-  component: () => import('./views/MyPanel.vue')
-}
-```
-
-### 嵌入插槽 (EmbedSlot)
-
-```typescript
-const embedSlot: EmbedSlotConfig = {
-  id: 'my-plugin-embed',
-  name: '我的嵌入组件',
-  component: () => import('./components/MyEmbed.vue')
-}
-```
-
-## 开发示例
-
-### 创建简单插件
-
-1. 创建插件目录结构
+### 启动引导
 
 ```
-plugin/package/my-plugin/
-├── package.json
-└── index.js
+NewApp()
+  ├── initBaseServices()
+  ├── initAdvancedServices()    ← 创建 Loader、各注册中心
+  ├── initHandlers()
+  └── loadInstalledPlugins()    ← 遍历已安装插件
+        └── for each plugin:
+              ├── 创建 PluginInfo
+              ├── 创建 PluginContext（独立实例）
+              └── Loader.LoadPlugin(dllPath, publicId, ctx)
+                    ├── plugin.Open(dllPath)
+                    ├── Lookup("Activate")
+                    ├── Activate(ctx)         ← 插件内部注册扩展点
+                    └── recover panic → UnloadPlugin
 ```
 
-2. 编写 package.json
+### 安装流程
 
-```json
-{
-  "name": "my-plugin",
-  "version": "1.0.0",
-  "author": "YourName",
-  "librarySquirrel": {
-    "activationType": "url"
-  }
-}
+```
+InstallFromPath(zipPath)
+  ├── 解析 plugin.json
+  ├── 验证清单（ID、Name、Version、Author、Contributes、EntryFile）
+  ├── 创建备份
+  ├── 解压到 plugin/package/{publicId}/{version}/
+  └── 保存到数据库（plugin 表）
 ```
 
-3. 编写入口文件
+## 插件服务 (PluginService)
 
-```javascript
-export default {
-  pluginId: 1,
+| 方法               | 说明         |
+| ------------------ | ------------ |
+| `InstallFromPath`  | 从 ZIP 安装  |
+| `Uninstall`        | 卸载         |
+| `Reinstall`        | 重新安装     |
+| `GetByPublicId`    | 按公开ID查询 |
+| `Page`             | 分页查询     |
 
-  onLoad(context) {
-    console.log('插件加载', context.pluginId)
-  },
+## 关键文件
 
-  contributions: {
-    taskHandler: {
-      # 任务处理器
-    }
-  }
-}
-```
-
-## 主程序端管理
-
-### 插件服务 (PluginService)
-
-负责插件的 CRUD 操作：
-
-```typescript
-import PluginService from '@main/service/PluginService'
-
-const pluginService = new PluginService()
-
-# 获取所有插件
-const plugins = await pluginService.list()
-
-# 安装插件
-await pluginService.install(pluginPath)
-
-# 卸载插件
-await pluginService.uninstall(pluginId)
-```
-
-### 插件数据库表
-
-| 表名          | 说明         |
-| ------------- | ------------ |
-| `plugin`      | 插件基本信息 |
-| `site`        | 站点配置     |
-| `site_tag`    | 站点标签     |
-| `site_author` | 站点作者     |
-
-## IPC 通信
-
-插件通过 Wails 绑定与主进程通信：
-
-```typescript
-# Go 主进程端（使用 Wails Bind）
-// Wails 自动将方法绑定到 window.api
-
-# 插件端
-window.api.pluginMethod(args)
-```
+| 文件 | 职责 |
+|------|------|
+| `internal/plugin/extension/loader.go` | 插件 DLL 加载、Activate 调用、panic 恢复 |
+| `internal/plugin/extension/registrar.go` | Registrar 接口实现（扩展点注册） |
+| `internal/plugin/extension/plugin_context.go` | PluginContext 接口与实现、Provider 接口定义 |
+| `internal/plugin/extension/task_handler_registry.go` | TaskHandler 注册中心 |
+| `internal/plugin/extension/site_browser_registry.go` | SiteBrowser 注册中心 |
+| `internal/plugin/extension/slot_registry.go` | Slot 注册中心 + WailsSlotPusher |
+| `internal/plugin/extension/wails_pusher.go` | Slot 事件的 Wails Events 桥接 |
+| `internal/plugin/extension/task_executor.go` | TaskManager ↔ 插件桥接 |
+| `internal/plugin/service.go` | 插件安装/卸载（ZIP + 数据库） |
+| `internal/plugin/handler.go` | Wails Handler（前端 CRUD） |
+| `pkg/model/dto/task_handler.go` | TaskHandler 接口定义 |
+| `pkg/model/dto/plugin_types.go` | PluginManifest、PluginContribute |
+| `pkg/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
+| `pkg/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
+| `app.go` | 启动引导、loadInstalledPlugins、适配器 |
 
 ## 最佳实践
 
-1. **错误处理**：所有异步操作都需要 try-catch
-2. **资源清理**：卸载时释放所有资源
-3. **版本兼容**：检查主程序版本
-4. **日志记录**：使用 LogUtil 记录关键操作
-5. **配置存储**：使用 SecureStorageService 存储敏感信息
+1. **错误处理**：所有异步操作都需处理 error
+2. **资源清理**：插件 Activate 中的 panic 会自动回滚已注册的扩展点
+3. **日志记录**：使用 PluginContext 的 `Infof`/`Errorf` 等方法（自动带插件名前缀）
+4. **敏感数据**：使用 `StoreEncryptedValue` / `GetDecryptedValue` 存取
+5. **插件数据**：使用 `GetPluginData` / `SetPluginData` 持久化插件状态
 
 ## 更新记录
+
+### 2026-05-04
+
+- [重构] 插件系统从 TypeScript/Electron 迁移到 Go/Wails
+- [重构] 入口函数从 `PluginEntry()` 改为 `Activate(PluginContext)`
+- [新增] PluginContext 接口，封装主程序提供给插件的完整 API
+- [新增] Registrar 接口，支持插件自主注册多个扩展点
+- [新增] Provider 接口（依赖倒置），隔离 PluginContext 与内部服务
+- [新增] loadInstalledPlugins 启动引导
+- [修改] Slot 同步从 SSE 改为 Wails Events
 
 ### 2026-03-17
 
@@ -296,216 +312,3 @@ window.api.pluginMethod(args)
 
 - [修改] BasePlugin 接口简化为只包含 pluginId
 - [修改] 更新 PluginManager 说明
-
-## 插件贡献点注册流程
-
-### 设计理念：插件主动提供，主程序被动发现
-
-LibrarySquirrel 的插件系统采用**事件驱动/观察者模式**的变体：插件激活时主动注册自己的贡献点，主程序在需要时动态发现和调用。这种设计实现了：
-
-- **解耦**：主程序不需要知道有哪些插件
-- **灵活**：多个插件可以监听同一 URL 模式
-- **可扩展**：新增贡献点类型时无需大幅修改主程序
-
-### 1. 任务功能注册流程
-
-#### 注册阶段（插件激活时）
-
-插件通过 `PluginContext.app.registerUrlListener()` 方法注册任务监听器：
-
-```typescript
-// PluginManager.ts:200-206
-registerUrlListener: (conditions: { contributionId: string; listenerPatterns: RegExp[] }[]) => {
-  const listenerManager = getPluginTaskUrlListenerManager()
-  for (const condition of conditions) {
-    const pluginWithContribution = new PluginWithContribution(plugin, 'taskHandler', condition.contributionId)
-    listenerManager.register(pluginWithContribution, condition.listenerPatterns)
-  }
-}
-```
-
-- 插件在激活时调用 `registerUrlListener`，传入贡献点 ID 和正则表达式数组
-- `PluginTaskUrlListenerManager` 将每个正则表达式与对应的插件关联存储
-
-**关键文件**：
-
-- `src/main/core/pluginTaskUrlListener.ts` - 任务 URL 监听器管理器
-
-#### 触发阶段（创建任务时）
-
-当用户创建任务时，`TaskService` 会查询匹配的插件：
-
-```typescript
-// TaskService.ts:53-55
-const taskPlugins = await getPluginTaskUrlListenerManager().listListener(url)
-```
-
-- 根据 URL 匹配所有注册了监听器的插件
-- 按顺序尝试每个插件处理任务
-
-### 2. 站点浏览器功能注册流程
-
-#### 注册阶段（插件激活时）
-
-```typescript
-// PluginManager.ts:215-218
-registerSiteBrowser: (siteBrowser: SiteBrowserDTO) => {
-  const manager = getSiteBrowserManager()
-  siteBrowser = new SiteBrowserDTO(siteBrowser)
-  manager.register(siteBrowser)
-}
-```
-
-- 插件调用 `registerSiteBrowser` 注册一个站点浏览器
-- `SiteBrowserManager` 将站点浏览器信息存入缓存
-
-**关键文件**：
-
-- `src/main/core/classes/SiteBrowserManager.ts` - 站点浏览器管理器
-- `src/main/core/siteBrowserManager.ts` - 站点浏览器管理器导出
-
-#### 使用阶段
-
-在 `MainProcessApi.ts` 中处理前端打开站点浏览器的请求：
-
-```typescript
-ipcMain.handle('siteBrowser-open', async (pluginPublicId, contributionId) => {
-  const siteBrowser = siteBrowserManager.getById(`${pluginPublicId}-${contributionId}`)
-  const siteBrowserInstance = await pluginManager.getContribution(...)
-})
-```
-
-### 3. UI 插槽加载流程
-
-#### 整体架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  主进程                                                       │
-│  1. 插件激活 → 调用 context.slots.registerXxxSlot()          │
-│  2. SlotSyncService.registerSlot() → 缓存 + 推送IPC事件    │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ IPC: slot-register / slot-batch-register
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  渲染进程                                                     │
-│  3. useSlotSyncListener 监听IPC事件                          │
-│  4. 转换配置 → 调用 SlotRegistryStore 注册                   │
-│  5. Store 更新 → 触发响应式更新                              │
-│  6. 渲染器组件读取 Store → 渲染插件UI                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### 主进程注册阶段
-
-插件通过 `PluginContext.slots` 注册插槽：
-
-```typescript
-// PluginManager.ts:235-276
-slots: {
-  registerEmbedSlot: (config) => {
-    const fullConfig: EmbedSlotConfig = { ...config, pluginId, type: 'embed' }
-    getSlotSyncService().registerSlot(fullConfig)
-  },
-  registerPanelSlot: (config) => { /* ... */ },
-  registerViewSlot: (config) => { /* ... */ },
-  registerMenuSlot: (config) => { /* ... */ },
-  registerSiteBrowserSlot: (config) => { /* ... */ },
-  registerSlots: (configs) => { /* 批量注册 */ }
-}
-```
-
-**关键文件**：
-
-- `src/main/core/SlotSyncService.ts` - 插槽同步服务
-- `src/main/plugin/types/SlotTypes.ts` - 插槽类型定义
-
-#### 主进程同步到渲染进程
-
-`SlotSyncService` 通过 IPC 推送插槽变更到渲染进程：
-
-```typescript
-// SlotSyncService.ts:43-47
-registerSlot(config: SlotConfig): void {
-  const slotId = config.id
-  registeredSlots.set(slotId, config)  // 存入内存缓存
-  this.syncToRenderer(SlotEvent.REGISTER, config)  // 推送到渲染进程
-}
-```
-
-#### 渲染进程接收
-
-`useSlotSyncListener` 监听 IPC 事件并更新 Store：
-
-```typescript
-// src/renderer/src/composables/useSlotSyncListener.ts
-export function initSlotSyncListener() {
-  const store = useSlotRegistryStore()
-
-  // 监听注册事件
-  window.api.onSlotRegister((...args) => {
-    const config = args[0] as SyncSlotConfig
-    if (config.type === 'view') {
-      store.registerViewSlot(convertToViewSlot(config))
-    } else if (config.type === 'embed') {
-      store.registerEmbedSlot(convertToEmbedSlot(config))
-    }
-    // ... 其他类型
-  })
-
-  // 首次加载时同步所有插槽
-  window.api.getAllSlots().then((slots) => {
-    slots.forEach(/* 注册到 store */)
-  })
-}
-```
-
-#### 渲染阶段
-
-渲染器组件使用 Store 中的插槽数据：
-
-- `EmbedSlotRenderer.vue` - 渲染 embed 插槽（topbar/statusbar/toolbar）
-- `PanelSlotRenderer.vue` - 渲染 panel 插槽（sidebar/bottom）
-- `ViewSlotRenderer.vue` - 渲染 view 插槽（视图页面）
-- `DynamicSideMenu.vue` - 渲染 menu 插槽（侧边菜单）
-
-**关键文件**：
-
-- `src/renderer/src/store/SlotRegistryStore.ts` - 插槽注册 Store
-- `src/renderer/src/composables/useSlotSyncListener.ts` - 插槽同步监听器
-
-### 插槽类型
-
-| 类型              | 位置                              | 说明                                             |
-| ----------------- | --------------------------------- | ------------------------------------------------ |
-| `embed`           | 可能在主程序的任何位置            | 主程序可能在任何位置提供这种插槽，都是一些小组件 |
-| `panel`           | left-sidebar/right-sidebar/bottom | 侧边面板或底部面板（暂未实现）                   |
-| `view`            | 页面视图                          | 完整的页面视图，会在主视图中渲染                 |
-| `menu`            | 侧边菜单                          | 左侧侧边栏的菜单项                               |
-| `siteBrowserList` | 站点浏览器列表                    | 站点浏览器卡片入口                               |
-
-### 管理器初始化
-
-所有管理器在主进程启动时初始化：
-
-```typescript
-// src/main/index.ts:228-232
-createTaskQueue()
-createPluginTaskUrlListenerManager() // 任务URL监听器
-createSiteBrowserManager() // 站点浏览器管理器
-createPluginManager() // 插件管理器
-```
-
-### 停用时清理
-
-插件停用时，系统会自动清理注册的贡献点：
-
-```typescript
-// PluginManager.ts:400-404
-deactivatePlugin(pluginId: number): void {
-  // 清除激活类型
-  cached.activationType = undefined
-  // 注销插件贡献的所有插槽
-  getSlotSyncService().unregisterSlotsByPluginId(pluginId)
-}
-```
