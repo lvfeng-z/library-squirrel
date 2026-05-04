@@ -14,7 +14,7 @@ import (
 var (
 	ErrPluginLoadFailed = errors.New("plugin load failed")
 	ErrNoEntrySymbol    = errors.New("no Activate symbol found in plugin")
-	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(extension.Registrar)")
+	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(extension.PluginContext)")
 )
 
 // Loader 插件加载器
@@ -39,8 +39,9 @@ func NewLoader(
 
 // LoadPlugin 加载插件动态库并触发其 Activate 函数完成扩展点注册
 // pluginPath: 插件 DLL 路径
-// pluginInfo: 插件基本信息
-func (l *Loader) LoadPlugin(pluginPath string, pluginInfo *PluginInfo) (err error) {
+// pluginPublicId: 插件公开ID，用于 panic 回滚
+// ctx: 插件上下文，主程序提供给插件的完整 API
+func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx PluginContext) (err error) {
 	// 加载插件动态库
 	p, err := plugin.Open(pluginPath)
 	if err != nil {
@@ -53,28 +54,25 @@ func (l *Loader) LoadPlugin(pluginPath string, pluginInfo *PluginInfo) (err erro
 		return fmt.Errorf("%w: %v", ErrNoEntrySymbol, err)
 	}
 
-	// 类型断言为 func(Registrar)
-	activateFunc, ok := symbol.(func(Registrar))
+	// 类型断言为 func(PluginContext)
+	activateFunc, ok := symbol.(func(PluginContext))
 	if !ok {
 		return ErrInvalidEntry
 	}
-
-	// 创建注册器
-	reg := newRegistrar(pluginInfo, l.taskHandlerRegistry, l.siteBrowserRegistry, l.slotRegistry)
 
 	// 防止插件 panic 导致主程序崩溃
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("plugin Activate panicked: %v", r)
-			logger.Log.Errorf("Plugin %s Activate panicked, rolling back registered extensions", pluginInfo.PublicID)
-			l.UnloadPlugin(pluginInfo.PublicID)
+			logger.Log.Errorf("Plugin %s Activate panicked, rolling back registered extensions", pluginPublicId)
+			l.UnloadPlugin(pluginPublicId)
 		}
 	}()
 
 	// 触发插件初始化
-	activateFunc(reg)
+	activateFunc(ctx)
 
-	logger.Log.Infof("Plugin activated: %s, extensions: %v", pluginInfo.PublicID, reg.registeredExtensionIDs())
+	logger.Log.Infof("Plugin activated: %s", pluginPublicId)
 	return nil
 }
 

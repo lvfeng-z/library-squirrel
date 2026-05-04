@@ -176,7 +176,7 @@ func (app *App) loadInstalledPlugins() {
 		return
 	}
 
-	workDir := util.RootPath()
+	rootPath := util.RootPath()
 	loaded := 0
 
 	for _, p := range plugins {
@@ -195,7 +195,7 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
-		pluginPath := filepath.Join(workDir, p.EntryPath.String)
+		pluginPath := filepath.Join(rootPath, p.EntryPath.String)
 		pluginInfo := &extension2.PluginInfo{
 			ID:        p.GetID(),
 			PublicID:  p.PublicID.String,
@@ -206,7 +206,22 @@ func (app *App) loadInstalledPlugins() {
 			RootPath:  p.RootPath.String,
 		}
 
-		if err := app.pluginLoader.LoadPlugin(pluginPath, pluginInfo); err != nil {
+		// 构建插件上下文
+		pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
+			PluginInfo:          pluginInfo,
+			RootPath:            rootPath,
+			TaskHandlerRegistry: app.TaskHandlerRegistry,
+			SiteBrowserRegistry: app.SiteBrowserRegistry,
+			SlotRegistry:        app.SlotRegistry,
+			PluginData:          app.PluginService,
+			SecureStorage:       app.SecureStorageService,
+			WorkSetQuery:        app.WorkSetService,
+			SiteSave:            app.SiteService,
+			TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
+			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
+		})
+
+		if err := app.pluginLoader.LoadPlugin(pluginPath, p.PublicID.String, pluginCtx); err != nil {
 			logger.Log.Errorf("Failed to load plugin %s: %v", p.PublicID.String, err)
 			continue
 		}
@@ -214,6 +229,42 @@ func (app *App) loadInstalledPlugins() {
 	}
 
 	logger.Log.Infof("Plugins loaded: %d/%d", loaded, len(plugins))
+}
+
+// taskCreateAdapter 适配 task.Service.CreateTaskByURL 到 TaskCreateProvider 接口
+type taskCreateAdapter struct {
+	svc *task.Service
+}
+
+func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*extension2.TaskCreateResult, error) {
+	resp, err := a.svc.CreateTaskByURL(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return &extension2.TaskCreateResult{
+		Succeed:       resp.Succeed,
+		AddedQuantity: resp.AddedQuantity,
+		Msg:           resp.Msg,
+	}, nil
+}
+
+// urlListenerAdapter 适配 PluginTaskUrlListener.Service 到 UrlListenerRegistry 接口
+type urlListenerAdapter struct {
+	svc          *pluginTaskUrlListener.Service
+	pluginEntity *entity2.Plugin
+}
+
+func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, contributionId string, patterns []string) {
+	pwc := &pluginTaskUrlListener.PluginWithContribution{
+		Plugin:         a.pluginEntity,
+		ContributeKey:  "taskHandler",
+		ContributionID: contributionId,
+	}
+	a.svc.Register(pwc, patterns)
+}
+
+func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string) {
+	a.svc.Unregister(pluginPublicId)
 }
 
 // initBaseServices 初始化基础服务（无服务依赖）
