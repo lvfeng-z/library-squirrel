@@ -1,5 +1,24 @@
 package extension
 
+// SlotEventType 插槽事件类型
+type SlotEventType string
+
+const (
+	// SlotEventRegister 插槽注册
+	SlotEventRegister SlotEventType = "slot-register"
+	// SlotEventUnregister 插槽注销
+	SlotEventUnregister SlotEventType = "slot-unregister"
+	// SlotEventBatchRegister 批量注册
+	SlotEventBatchRegister SlotEventType = "slot-batch-register"
+)
+
+// SlotPusher 插槽事件推送器接口
+type SlotPusher interface {
+	PushRegister(slotID string, data interface{})
+	PushUnregister(slotID string, pluginID int64)
+	PushBatchRegister(slots []interface{})
+}
+
 // WailsEventEmitter Wails 事件发射器接口
 type WailsEventEmitter interface {
 	Emit(eventName string, data ...any) bool

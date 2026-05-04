@@ -18,12 +18,9 @@ import {
   VueSourceContent
 } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
-import { GO_BACKEND_URL } from '@renderer/apis/http/types'
+import { Events } from '@wailsio/runtime'
 import { Handler as SlotHandler } from '../../bindings/github.com/library-squirrel/wails/internal/slot'
 import { Handler as PluginHandler } from '../../bindings/github.com/library-squirrel/wails/internal/plugin'
-
-// SSE 客户端 ID（用于标识当前渲染进程连接）
-const SSE_CLIENT_ID = `renderer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 /**
  * 转换视图插槽配置
@@ -395,32 +392,25 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 
 /**
  * 初始化插槽同步监听器
- * 通过 SSE 监听 Go 后端的插槽注册/注销消息
+ * 通过 Wails Events 监听 Go 后端的插槽注册/注销消息
  */
 export function initSlotSyncListener() {
   const store = useSlotRegistryStore()
 
-  // 创建 SSE 连接
-  const eventSource = new EventSource(`${GO_BACKEND_URL}/api/slot/events?clientId=${SSE_CLIENT_ID}`)
-
   // 处理插槽注册事件
-  eventSource.addEventListener('slot-register', (event) => {
+  Events.On('slot-register', (event: any) => {
     try {
-      const data = JSON.parse(event.data)
-      const config = data.slot as SyncSlotConfig
+      const config = event.data.data as SyncSlotConfig
 
       if (config.type === 'view') {
-        const slot = convertToViewSlot(config)
-        store.registerViewSlot(slot)
+        store.registerViewSlot(convertToViewSlot(config))
       } else if (config.type === 'menu') {
-        const menuItem = convertToMenuSlot(config)
-        store.registerMenuSlot(menuItem)
+        store.registerMenuSlot(convertToMenuSlot(config))
       } else if (config.type === 'embed') {
         store.registerEmbedSlot(convertToEmbedSlot(config))
       } else if (config.type === 'panel') {
         store.registerPanelSlot(convertToPanelSlot(config))
 
-        // 处理页面替换
         if (config.replaceViewId) {
           store.replaceView(config.pluginPublicId, config.replaceViewId)
         }
@@ -433,22 +423,16 @@ export function initSlotSyncListener() {
   })
 
   // 处理插槽注销事件
-  eventSource.addEventListener('slot-unregister', (event) => {
+  Events.On('slot-unregister', (event: any) => {
     try {
-      const data = JSON.parse(event.data)
-      const slotId = data.slotId as string
-      const pluginId = data.pluginId as number
+      const slotId = event.data.slotId as string
+      const pluginId = event.data.pluginId as number
 
-      // 卸载插件CSS样式
       if (pluginId) {
         unloadPluginStyles(pluginId)
       }
 
-      // 根据 slotId 前缀推断类型并注销
-      // slotId 格式: pluginPublicId/contributionId
       if (slotId) {
-        // 尝试从已注册的插槽中查找类型
-        // 这里简化处理，假设所有未知类型的插槽都需要尝试注销
         store.unregisterViewSlot(slotId)
         store.unregisterMenuSlot(slotId)
         store.unregisterEmbedSlot(slotId)
@@ -461,10 +445,9 @@ export function initSlotSyncListener() {
   })
 
   // 处理批量插槽注册事件
-  eventSource.addEventListener('slot-batch-register', (event) => {
+  Events.On('slot-batch-register', (event: any) => {
     try {
-      const data = JSON.parse(event.data)
-      const configs = data.slots as SyncSlotConfig[]
+      const configs = event.data.slots as SyncSlotConfig[]
 
       configs.forEach((config) => {
         if (config.type === 'view') {
@@ -484,12 +467,7 @@ export function initSlotSyncListener() {
     }
   })
 
-  // 处理心跳事件（防止连接断开）
-  eventSource.addEventListener('heartbeat', () => {
-    console.debug('Slot SSE heartbeat received')
-  })
-
-  // 同步所有已注册的插槽（用于处理插件激活时渲染进程还未准备好的情况）
+  // 初始同步：获取所有已注册的插槽（处理插件激活时渲染进程还未准备好的情况）
   SlotHandler.GetAllSlots().then((resp) => {
     const slots = resp?.data ?? []
     slots.forEach((config: unknown) => {
@@ -507,9 +485,4 @@ export function initSlotSyncListener() {
       }
     })
   })
-
-  // 返回清理函数
-  return () => {
-    eventSource.close()
-  }
 }

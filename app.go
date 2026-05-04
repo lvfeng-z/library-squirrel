@@ -75,10 +75,6 @@ type App struct {
 	TaskHandlerRegistry *extension2.TaskHandlerRegistry
 	SiteBrowserRegistry *extension2.SiteBrowserRegistry
 	SlotRegistry        *extension2.SlotRegistry
-	SlotPusher          *extension2.WailsSlotPusher
-
-	// Wails 事件发射器
-	eventEmitter extension2.WailsEventEmitter
 
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
@@ -141,7 +137,7 @@ func NewApp() (*App, error) {
 	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
 	app.SiteBrowserRegistry = extension2.NewSiteBrowserRegistry()
 	app.SlotRegistry = extension2.NewSlotRegistry()
-	// SlotPusher 会在 SetEventEmitter 中创建
+	// SlotPusher 会在 SetEventEmitter 中创建并接入 SlotRegistry
 
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
@@ -159,8 +155,8 @@ func NewApp() (*App, error) {
 
 // SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
-	app.eventEmitter = emitter
-	app.SlotPusher = extension2.NewWailsSlotPusher(emitter)
+	pusher := extension2.NewWailsSlotPusher(emitter)
+	app.SlotRegistry.SetPusher(pusher)
 }
 
 // initBaseServices 初始化基础服务（无服务依赖）

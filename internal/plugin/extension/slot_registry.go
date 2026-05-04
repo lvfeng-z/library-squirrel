@@ -12,24 +12,23 @@ import (
 type SlotRegistry struct {
 	mu         sync.RWMutex
 	extensions map[string]*model.Extension[*domain.SlotConfig] // key: pluginPublicId/extensionId
-	pusher     *SSESlotPusher
+	pusher     SlotPusher
 }
 
 // NewSlotRegistry 创建插槽注册中心
 func NewSlotRegistry() *SlotRegistry {
 	return &SlotRegistry{
 		extensions: make(map[string]*model.Extension[*domain.SlotConfig]),
-		pusher:     NewSSESlotPusher(),
 	}
 }
 
 // SetPusher 设置事件推送器
-func (r *SlotRegistry) SetPusher(pusher *SSESlotPusher) {
+func (r *SlotRegistry) SetPusher(pusher SlotPusher) {
 	r.pusher = pusher
 }
 
 // GetPusher 获取事件推送器
-func (r *SlotRegistry) GetPusher() *SSESlotPusher {
+func (r *SlotRegistry) GetPusher() SlotPusher {
 	return r.pusher
 }
 
