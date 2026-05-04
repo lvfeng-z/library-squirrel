@@ -5,19 +5,16 @@ import (
 	"fmt"
 	"plugin"
 
-	"github.com/library-squirrel/wails/pkg"
 	"github.com/library-squirrel/wails/pkg/model/dto"
-	"go.uber.org/zap"
 
 	"github.com/library-squirrel/wails/pkg/logger"
-	"github.com/library-squirrel/wails/pkg/model"
 )
 
 // 错误定义
 var (
 	ErrPluginLoadFailed = errors.New("plugin load failed")
-	ErrNoEntrySymbol    = errors.New("no entry symbol found in plugin")
-	ErrInvalidEntry     = errors.New("invalid plugin entry")
+	ErrNoEntrySymbol    = errors.New("no Activate symbol found in plugin")
+	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(extension.Registrar)")
 )
 
 // Loader 插件加载器
@@ -40,110 +37,53 @@ func NewLoader(
 	}
 }
 
-// LoadPlugin 加载插件
+// LoadPlugin 加载插件动态库并触发其 Activate 函数完成扩展点注册
 // pluginPath: 插件 DLL 路径
 // pluginInfo: 插件基本信息
-func (l *Loader) LoadPlugin(pluginPath string, pluginInfo *PluginInfo) error {
+func (l *Loader) LoadPlugin(pluginPath string, pluginInfo *PluginInfo) (err error) {
 	// 加载插件动态库
 	p, err := plugin.Open(pluginPath)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrPluginLoadFailed, err)
 	}
 
-	// 查找入口符号
-	symbol, err := p.Lookup("PluginEntry")
+	// 查找 Activate 入口符号
+	symbol, err := p.Lookup("Activate")
 	if err != nil {
-		return fmt.Errorf("%w: no PluginEntry symbol", ErrNoEntrySymbol)
+		return fmt.Errorf("%w: %v", ErrNoEntrySymbol, err)
 	}
 
-	// 类型断言为函数
-	entryFunc, ok := symbol.(func() ExtensionPoint)
+	// 类型断言为 func(Registrar)
+	activateFunc, ok := symbol.(func(Registrar))
 	if !ok {
-		return fmt.Errorf("%w: PluginEntry is not a valid function", ErrInvalidEntry)
+		return ErrInvalidEntry
 	}
 
-	// 调用入口函数获取扩展点
-	entry := entryFunc()
-	if entry == nil {
-		return fmt.Errorf("%w: entry returned nil", ErrInvalidEntry)
-	}
+	// 创建注册器
+	reg := newRegistrar(pluginInfo, l.taskHandlerRegistry, l.siteBrowserRegistry, l.slotRegistry)
 
-	// 分发扩展点到注册中心
-	return l.registerExtensions(entry, pluginInfo)
-}
-
-// ExtensionPoint 扩展点接口
-// 由插件实现，主程序调用获取其提供的扩展点
-type ExtensionPoint interface {
-	// GetMetadata 返回扩展点元数据
-	GetMetadata() model.ExtensionMetadata
-}
-
-// registerExtensions 将扩展点注册到对应的注册中心
-func (l *Loader) registerExtensions(entry ExtensionPoint, pluginInfo *PluginInfo) error {
-	metadata := entry.GetMetadata()
-	metadata.PluginID = pluginInfo.ID
-	metadata.PluginPublicID = pluginInfo.PublicID
-
-	switch ext := entry.(type) {
-	case TaskHandlerExtension:
-		taskHandler := ext.GetTaskHandler()
-		metadata.Type = model.ExtensionTypeTaskHandler
-		extWrapper := model.NewExtension(metadata, taskHandler)
-		if err := l.taskHandlerRegistry.Register(extWrapper); err != nil {
-			return err
+	// 防止插件 panic 导致主程序崩溃
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("plugin Activate panicked: %v", r)
+			logger.Log.Errorf("Plugin %s Activate panicked, rolling back registered extensions", pluginInfo.PublicID)
+			l.UnloadPlugin(pluginInfo.PublicID)
 		}
-		logger.Log.Info("TaskHandler registered", zap.String("plugin", pluginInfo.PublicID), zap.String("id", metadata.ID))
+	}()
 
-	case SiteBrowserExtension:
-		siteBrowser := ext.GetSiteBrowser()
-		metadata.Type = model.ExtensionTypeSiteBrowser
-		extWrapper := model.NewExtension(metadata, siteBrowser)
-		if err := l.siteBrowserRegistry.Register(extWrapper); err != nil {
-			return err
-		}
-		logger.Log.Info("SiteBrowser registered", zap.String("plugin", pluginInfo.PublicID), zap.String("id", metadata.ID))
+	// 触发插件初始化
+	activateFunc(reg)
 
-	case SlotExtension:
-		slotConfig := ext.GetSlotConfig()
-		metadata.Type = model.ExtensionTypeSlot
-		// 构建 domain.SlotConfig
-		domainSlot := pkg.NewSlotConfig()
-		domainSlot.ExtensionMetadata = &model.ExtensionMetadata{
-			Type:           metadata.Type,
-			ID:             metadata.ID,
-			PluginID:       pluginInfo.ID,
-			PluginPublicID: pluginInfo.PublicID,
-			Name:           metadata.Name,
-			Description:    metadata.Description,
-		}
-		domainSlot.SlotType = pkg.SlotType(slotConfig.SlotType)
-		domainSlot.Content = slotConfig.Content
-		domainSlot.ContentType = pkg.ContentType(slotConfig.ContentType)
-		domainSlot.Title = slotConfig.Title
-		domainSlot.Icon = slotConfig.Icon
-		domainSlot.Order = slotConfig.Order
-
-		extWrapper := model.NewExtension(*domainSlot.ExtensionMetadata, domainSlot)
-		if err := l.slotRegistry.Register(extWrapper); err != nil {
-			return err
-		}
-		logger.Log.Info("Slot registered", zap.String("plugin", pluginInfo.PublicID), zap.String("id", metadata.ID))
-
-	default:
-		return fmt.Errorf("unknown extension type: %T", ext)
-	}
-
+	logger.Log.Infof("Plugin activated: %s, extensions: %v", pluginInfo.PublicID, reg.registeredExtensionIDs())
 	return nil
 }
 
 // UnloadPlugin 卸载插件的所有扩展点
 func (l *Loader) UnloadPlugin(pluginPublicId string) error {
-	// 从所有注册中心移除插件的扩展点
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
 	l.slotRegistry.UnregisterAll(pluginPublicId)
-	logger.Log.Info("Plugin unloaded", zap.String("plugin", pluginPublicId))
+	logger.Log.Info("Plugin unloaded", "plugin", pluginPublicId)
 	return nil
 }
 
@@ -165,22 +105,4 @@ type PluginInfo struct {
 	Author    string
 	EntryPath string
 	RootPath  string
-}
-
-// TaskHandlerExtension 任务处理器扩展点接口
-type TaskHandlerExtension interface {
-	ExtensionPoint
-	GetTaskHandler() dto.TaskHandler
-}
-
-// SiteBrowserExtension 站点浏览器扩展点接口
-type SiteBrowserExtension interface {
-	ExtensionPoint
-	GetSiteBrowser() SiteBrowser
-}
-
-// SlotExtension 插槽扩展点接口
-type SlotExtension interface {
-	ExtensionPoint
-	GetSlotConfig() *pkg.SlotConfig
 }

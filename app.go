@@ -76,6 +76,9 @@ type App struct {
 	SiteBrowserRegistry *extension2.SiteBrowserRegistry
 	SlotRegistry        *extension2.SlotRegistry
 
+	// 插件加载器
+	pluginLoader *extension2.Loader
+
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
@@ -150,6 +153,9 @@ func NewApp() (*App, error) {
 	// 6. 初始化 Handlers
 	app.initHandlers()
 
+	// 7. 加载已安装的插件
+	app.loadInstalledPlugins()
+
 	return app, nil
 }
 
@@ -157,6 +163,57 @@ func NewApp() (*App, error) {
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
 	pusher := extension2.NewWailsSlotPusher(emitter)
 	app.SlotRegistry.SetPusher(pusher)
+}
+
+// loadInstalledPlugins 加载所有已安装且需要启动时激活的插件
+func (app *App) loadInstalledPlugins() {
+	ctx := context.Background()
+
+	// 查询所有未卸载的插件
+	plugins, err := app.PluginService.List(ctx, &database.QueryOption{})
+	if err != nil {
+		logger.Log.Errorf("Failed to query installed plugins: %v", err)
+		return
+	}
+
+	workDir := util.RootPath()
+	loaded := 0
+
+	for _, p := range plugins {
+		// 跳过已卸载的插件
+		if p.Uninstalled.Valid && p.Uninstalled.Int64 == plugin.UninstalledTrue {
+			continue
+		}
+
+		// 跳过没有入口文件的插件
+		if !p.EntryPath.Valid || p.EntryPath.String == "" {
+			continue
+		}
+
+		// 跳过没有 PublicID 的插件
+		if !p.PublicID.Valid || p.PublicID.String == "" {
+			continue
+		}
+
+		pluginPath := filepath.Join(workDir, p.EntryPath.String)
+		pluginInfo := &extension2.PluginInfo{
+			ID:        p.GetID(),
+			PublicID:  p.PublicID.String,
+			Name:      p.Name.String,
+			Version:   p.Version.String,
+			Author:    p.Author.String,
+			EntryPath: p.EntryPath.String,
+			RootPath:  p.RootPath.String,
+		}
+
+		if err := app.pluginLoader.LoadPlugin(pluginPath, pluginInfo); err != nil {
+			logger.Log.Errorf("Failed to load plugin %s: %v", p.PublicID.String, err)
+			continue
+		}
+		loaded++
+	}
+
+	logger.Log.Infof("Plugins loaded: %d/%d", loaded, len(plugins))
 }
 
 // initBaseServices 初始化基础服务（无服务依赖）
@@ -252,7 +309,7 @@ func (app *App) initAdvancedServices() error {
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
 
 	// plugin 服务
-	pluginLoader := extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry, app.SlotRegistry)
+	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry, app.SlotRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 
@@ -268,7 +325,7 @@ func (app *App) initAdvancedServices() error {
 		app.taskRepo,
 		app.WorkService,
 		app.ResourceService,
-		pluginLoader, // 实现 TaskHandlerProvider 接口
+		app.pluginLoader, // 实现 TaskHandlerProvider 接口
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
 	)
@@ -276,7 +333,7 @@ func (app *App) initAdvancedServices() error {
 	// taskManager 服务
 	taskManagerPusher := taskManager.NewSSEProgressPusher()
 	pluginExecFactory := func(pluginPublicId string) (taskManager.TaskExecutor, error) {
-		return extension2.NewTaskExecutor(pluginLoader), nil
+		return extension2.NewTaskExecutor(app.pluginLoader), nil
 	}
 
 	// 创建 WorkSaver 和 ResourceSaver 适配器
