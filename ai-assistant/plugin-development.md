@@ -51,7 +51,7 @@ plugin/package/
 package main
 
 import (
-    "github.com/library-squirrel/wails/internal/plugin/extension"
+    "github.com/library-squirrel/wails/backend/plugin/extension"
     "github.com/library-squirrel/wails/pkg"
 )
 
@@ -277,10 +277,10 @@ InstallFromPath(zipPath)
 | `internal/plugin/extension/task_executor.go` | TaskManager ↔ 插件桥接 |
 | `internal/plugin/service.go` | 插件安装/卸载（ZIP + 数据库） |
 | `internal/plugin/handler.go` | Wails Handler（前端 CRUD） |
-| `pkg/model/dto/task_handler.go` | TaskHandler 接口定义 |
-| `pkg/model/dto/plugin_types.go` | PluginManifest、PluginContribute |
+| `backend/base/model/dto/task_handler.go` | TaskHandler 接口定义 |
+| `backend/base/model/dto/plugin_types.go` | PluginManifest、PluginContribute |
 | `pkg/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
-| `pkg/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
+| `backend/base/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
 | `app.go` | 启动引导、loadInstalledPlugins、适配器 |
 
 ## 最佳实践

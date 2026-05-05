@@ -16,12 +16,12 @@ import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
-import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/task/models'
+import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/wails/backend/task/models'
 import Task from '@renderer/model/model/entity/Task.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { taskApi } from '@renderer/apis/http'
-import {QueryAttribute} from "@bindings/github.com/library-squirrel/wails/pkg/query";
+import {QueryAttribute} from "@bindings/github.com/library-squirrel/wails/backend/base/query";
 
 // props
 const props = defineProps<{

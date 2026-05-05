@@ -1,8 +1,6 @@
 import type { MenuSlotItem, SiteBrowserListSlotItem } from '@renderer/store/SlotRegistryStore'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import type { EmbedSlot, PanelSlot, ViewSlot } from '@renderer/model/slot'
-import ApiUtil from '@renderer/utils/ApiUtil.ts'
-import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent } from 'vue'
@@ -19,8 +17,8 @@ import {
 } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
 import { Events } from '@wailsio/runtime'
-import { Handler as SlotHandler } from '../../bindings/github.com/library-squirrel/wails/internal/slot'
-import { Handler as PluginHandler } from '../../bindings/github.com/library-squirrel/wails/internal/plugin'
+import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/wails/backend/slot'
+import { Handler as PluginHandler } from '@bindings/github.com/library-squirrel/wails/backend/plugin'
 
 /**
  * 转换视图插槽配置

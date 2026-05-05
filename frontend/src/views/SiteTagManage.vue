@@ -16,14 +16,14 @@ import {
   SiteDTO,
   SiteTagDTO,
   SiteTagLocalRelateDTO
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {localTagQuerySelectItemPageByName} from '@renderer/apis/http'
-import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteTag'
-import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/siteTag'
+import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
 import {siteTagApi} from '@renderer/apis/http'
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model"
 import {newPage} from "@renderer/utils/Pager.ts"
 import {ElMessage} from 'element-plus'
 

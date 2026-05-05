@@ -20,7 +20,7 @@
     - `transaction.go` - 事务封装
     - `resources/` - SQL 迁移文件
   - `model/` - 领域模型
-- **pkg/model/** - 共享 DTO（ApiResponse等）
+- **backend/base/model** - 共享 DTO（ApiResponse等）
 - **frontend/src/** - 前端代码 (Vue 3)
   - `components/` - Vue 组件
   - `store/` - Pinia 状态管理
@@ -1141,7 +1141,7 @@ const thead = [
 - 简单 DTO 直接透传给 API；组合 DTO 提取子字段构造新 DTO 传入
 
 ```typescript
-import { TaskDTO } from '@bindings/.../pkg/model/dto'
+import { TaskDTO } from '@bindings/.../backend/base/model/dto'
 import { TaskProgressTreeDTO } from '@renderer/model/model/dto/TaskProgressTreeDTO'
 
 // formData 使用绑定层 DTO

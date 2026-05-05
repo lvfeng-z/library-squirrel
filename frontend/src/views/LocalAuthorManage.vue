@@ -8,18 +8,18 @@ import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
-import {LocalAuthorDTO, SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import {LocalAuthorDTO, SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model";
 import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import {ElMessage} from 'element-plus'
 import IPage from '@renderer/model/util/IPage.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
-import {LocalAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/localAuthor/models'
-import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
-import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/internal/siteAuthor/models'
+import {LocalAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/localAuthor/models'
+import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
+import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/siteAuthor/models'
 import {localAuthorApi, siteAuthorApi} from '@renderer/apis/http'
 import {copyPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";

@@ -12,9 +12,9 @@ import {
   SiteDTO,
   SiteTagDTO,
   SiteTagLocalRelateDTO
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/internal/site"
-import {QueryAttribute} from "@bindings/github.com/library-squirrel/wails/pkg/query"
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/backend/site"
+import {QueryAttribute} from "@bindings/github.com/library-squirrel/wails/backend/base/query"
 import {isBlank} from "@renderer/utils/StringUtil.ts"
 import {ElMessage} from 'element-plus'
 

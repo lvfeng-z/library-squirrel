@@ -34,7 +34,7 @@
 
 | 层级 | 文件 | 变更类型 |
 |------|------|----------|
-| Model | `pkg/model/base.go` | `Page` 和 `NewPage` 去掉 Q |
+| Model | `backend/base/model/base.go` | `Page` 和 `NewPage` 去掉 Q |
 | Handler | `internal/localAuthor/handler.go` | 签名变更 + 去掉 Query 回传 |
 | Handler | `internal/localTag/handler.go` | 签名变更 + 去掉 Query 回传 |
 | Handler | `internal/plugin/handler.go` | 签名变更 + 去掉 Query 回传 |
@@ -207,7 +207,7 @@ const result = await handler.QueryPage(page.value, query.value)
 
 ### Phase 1: Go Model 定义变更
 
-1. 修改 `pkg/model/base.go`
+1. 修改 `backend/base/model/base.go`
    - `Page[D any, Q any]` → `Page[D any]`
    - 移除 `Query Q` 字段
    - `NewPage[D any, Q any]` → `NewPage[D any]`

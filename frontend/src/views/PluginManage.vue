@@ -10,12 +10,12 @@ import DataTableOperationResponse from '@renderer/model/util/DataTableOperationR
 import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
-import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/internal/plugin/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/wails/backend/plugin/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { fileSysUtilApi, pluginApi } from '@renderer/apis/http'
-import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model"
 
 // onMounted
 onMounted(() => {

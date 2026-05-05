@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as ReWorkTagHandler } from '@bindings/github.com/library-squirrel/wails/internal/reWorkTag'
-import type { ReWorkTag } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
+import { Handler as ReWorkTagHandler } from '@bindings/github.com/library-squirrel/wails/backend/reWorkTag'
+import type { ReWorkTag } from '@bindings/github.com/library-squirrel/wails/backend/model/models'
 
 export interface ReWorkTagVO {
   id: number

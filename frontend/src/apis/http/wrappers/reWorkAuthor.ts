@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as ReWorkAuthorHandler } from '@bindings/github.com/library-squirrel/wails/internal/reWorkAuthor'
-import type { WorkAuthorsResultDTO } from '@bindings/github.com/library-squirrel/wails/internal/reWorkAuthor/models'
-import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Handler as ReWorkAuthorHandler } from '@bindings/github.com/library-squirrel/wails/backend/reWorkAuthor'
+import type { WorkAuthorsResultDTO } from '@bindings/github.com/library-squirrel/wails/backend/reWorkAuthor/models'
+import type { RankedLocalAuthor, RankedSiteAuthor, RankedLocalAuthorWithWorkId, RankedSiteAuthorWithWorkId } from '@bindings/github.com/library-squirrel/wails/backend/base/model/models'
 
 // ========== VO 定义 ==========
 

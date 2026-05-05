@@ -230,7 +230,7 @@
 | 业务模块 | `internal/{module}/`              |
 | 数据库基础设施 | `internal/database/`              |
 | 程序配置 | `internal/config/`                |
-| 共享DTO | `pkg/model/`                      |
+| 共享DTO | `backend/base/model/`                      |
 | QueryDTO | `internal/{module}/query.go`      |
 | Handler | `internal/{module}/handler.go`    |
 | Service | `internal/{module}/service.go`    |

@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SettingsHandler } from '@bindings/github.com/library-squirrel/wails/internal/settings'
-import type { SettingChange, Settings } from '@bindings/github.com/library-squirrel/wails/internal/settings/models'
+import { Handler as SettingsHandler } from '@bindings/github.com/library-squirrel/wails/backend/settings'
+import type { SettingChange, Settings } from '@bindings/github.com/library-squirrel/wails/backend/settings/models'
 
 export interface SettingsVO {
   [key: string]: unknown

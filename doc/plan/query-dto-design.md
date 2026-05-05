@@ -229,7 +229,7 @@ Converter.ToQueryOption(dto)
 // internal/task/query.go
 package task
 
-import "github.com/library-squirrel/wails/pkg/query"
+import "github.com/library-squirrel/wails/backend/base/query"
 
 type TaskQueryDTO struct {
     TaskName   query.QueryAttribute `json:"taskName" query:"task_name"`

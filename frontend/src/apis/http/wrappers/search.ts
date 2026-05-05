@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SearchHandler } from '@bindings/github.com/library-squirrel/wails/internal/search'
-import type { SearchCondition as BindingSearchCondition, SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/internal/model/models'
-import { Page } from '@bindings/github.com/library-squirrel/wails/pkg/model/models'
+import { Handler as SearchHandler } from '@bindings/github.com/library-squirrel/wails/backend/search'
+import type { SearchCondition as BindingSearchCondition, SelectItem, WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/backend/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model/models'
 
 export interface SearchConditionItem {
   siteId: number

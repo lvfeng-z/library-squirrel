@@ -8,9 +8,9 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi} from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
-import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/internal/site/models"
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model"
+import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/wails/backend/site/models"
+import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model"
 
 // props
 const props = withDefaults(

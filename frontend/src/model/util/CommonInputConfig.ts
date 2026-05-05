@@ -1,4 +1,4 @@
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/pkg/model/dto"
+import { SelectItem } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
 import { VNode } from 'vue'
 import TreeSelectNode from '@renderer/model/util/TreeSelectNode.ts'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'

@@ -320,6 +320,6 @@
 
 ### 2026-04-22
 
-- [修改] QueryDTO 位置更新：`src/main/model/queryDTO/` → `pkg/model/dto/query/`
+- [修改] QueryDTO 位置更新：`src/main/model/queryDTO/` → `backend/base/model/dto/query/`
 - [修改] QueryDTO 示例补充完整模块列表
 - [新增] 说明 QueryDTO 按模块分文件存储

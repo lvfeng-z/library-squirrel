@@ -73,7 +73,7 @@ library-squirrel/
 │   │   ├── transaction.go    # 事务封装
 │   │   └── resources/        # SQL 迁移文件
 │   ├── model/                # 后端领域模型
-│   └── pkg/model/            # 共享模型
+│   └── backend/base/model            # 共享模型
 │       └── entity/           # 实体 子目录
 │       └── dto/              # DTO 子目录
 ├── frontend/src/             # 前端 (Vue 3)

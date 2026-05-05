@@ -4,9 +4,8 @@ import (
 	"embed"
 	"time"
 
-	"github.com/library-squirrel/wails/internal/database"
-	"github.com/library-squirrel/wails/pkg/logger"
-
+	"github.com/library-squirrel/wails/backend/base/logger"
+	"github.com/library-squirrel/wails/backend/database"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )

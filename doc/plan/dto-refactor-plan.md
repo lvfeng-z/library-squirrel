@@ -11,9 +11,9 @@
 | DTO 类型 | 命名规则 | 说明 | 位置 |
 |---------|---------|------|------|
 | 增删改参数 DTO | `${Module}ParamDTO` | 前端传入的增删改参数（字段精简） | `internal/{module}/handler.go` |
-| 无 Null 实体映射 DTO | `${Module}DTO` | 实体的无 sql.Null* 版本（字段完整） | `pkg/model/dto/` |
-| 包含关联的完整 DTO | `${Module}FullDTO` | 组合 ${Module}DTO + 关联 DTO | `pkg/model/dto/` |
-| 关联关系 DTO | `${Module}RelateDTO` | 用于绑定/关联场景 | `pkg/model/dto/` |
+| 无 Null 实体映射 DTO | `${Module}DTO` | 实体的无 sql.Null* 版本（字段完整） | `backend/base/model/dto/` |
+| 包含关联的完整 DTO | `${Module}FullDTO` | 组合 ${Module}DTO + 关联 DTO | `backend/base/model/dto/` |
+| 关联关系 DTO | `${Module}RelateDTO` | 用于绑定/关联场景 | `backend/base/model/dto/` |
 
 ### 1.3 核心原则
 
@@ -29,22 +29,22 @@
 
 | 旧名称 | 新名称 | 位置变更 | 说明 |
 |-------|-------|---------|------|
-| `dto.SiteTagResultDTO` | `dto.SiteTagDTO` | `pkg/model/dto/site_tag_dto.go` | 无 Null 实体映射 |
-| `dto.LocalTagDTO` | `dto.LocalTagDTO` | `pkg/model/dto/local_tag_dto.go` | 从 site_tag_dto.go 移出 |
-| `dto.SiteTagFullDTO` | `dto.SiteTagFullDTO` | `pkg/model/dto/site_tag_dto.go` | 修复 SiteTag 为指针类型，Site 改为 `*dto.SiteDTO` |
-| `dto.SiteTagLocalRelateDTO` | `dto.SiteTagLocalRelateDTO` | `pkg/model/dto/site_tag_dto.go` | 修复 LocalTag/Site 为 DTO 类型 |
-| `dto.SiteAuthorFullDTO` | `dto.SiteAuthorFullDTO` | `pkg/model/dto/site_author_dto.go` | 修复 LocalAuthor/Site 为 DTO 类型 |
-| `dto.SiteAuthorLocalRelateDTO` | `dto.SiteAuthorLocalRelateDTO` | `pkg/model/dto/site_author_dto.go` | 修复 LocalAuthor/Site 为 DTO 类型 |
+| `dto.SiteTagResultDTO` | `dto.SiteTagDTO` | `backend/base/model/dto/site_tag_dto.go` | 无 Null 实体映射 |
+| `dto.LocalTagDTO` | `dto.LocalTagDTO` | `backend/base/model/dto/local_tag_dto.go` | 从 site_tag_dto.go 移出 |
+| `dto.SiteTagFullDTO` | `dto.SiteTagFullDTO` | `backend/base/model/dto/site_tag_dto.go` | 修复 SiteTag 为指针类型，Site 改为 `*dto.SiteDTO` |
+| `dto.SiteTagLocalRelateDTO` | `dto.SiteTagLocalRelateDTO` | `backend/base/model/dto/site_tag_dto.go` | 修复 LocalTag/Site 为 DTO 类型 |
+| `dto.SiteAuthorFullDTO` | `dto.SiteAuthorFullDTO` | `backend/base/model/dto/site_author_dto.go` | 修复 LocalAuthor/Site 为 DTO 类型 |
+| `dto.SiteAuthorLocalRelateDTO` | `dto.SiteAuthorLocalRelateDTO` | `backend/base/model/dto/site_author_dto.go` | 修复 LocalAuthor/Site 为 DTO 类型 |
 | `siteTag.SiteTagDTO` | `siteTag.SiteTagParamDTO` | `internal/siteTag/handler.go` | 增删改参数 |
 | `siteTag.SiteTagLocalRelateDTO` | `siteTag.SiteTagLocalRelateDTO` | `internal/siteTag/handler.go` | 保持不变（内部转换用） |
 | `localTag.LocalTagDTO` | `localTag.LocalTagParamDTO` | `internal/localTag/handler.go` | 增删改参数 |
 | `siteAuthor.SiteAuthorDTO` | `siteAuthor.SiteAuthorParamDTO` | `internal/siteAuthor/handler.go` | 增删改参数 |
-| `siteAuthor.SiteAuthorResultDTO` | `dto.SiteAuthorDTO` | `pkg/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
-| `siteAuthor.SiteAuthorFullDTO` | `dto.SiteAuthorFullDTO` | `pkg/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
-| `siteAuthor.SiteAuthorLocalRelateDTO` | `dto.SiteAuthorLocalRelateDTO` | `pkg/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
-| `siteAuthor.LocalAuthorDTO` | `dto.LocalAuthorDTO` | `pkg/model/dto/local_author_dto.go` | 新建公共 DTO |
-| `siteAuthor.RankedSiteAuthorWithWorkIdDTO` | `dto.RankedSiteAuthorWithWorkIdDTO` | `pkg/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
-| **新建** | `dto.SiteDTO` | `pkg/model/dto/site_dto.go` | 无 Null 版本的 Site 实体映射 |
+| `siteAuthor.SiteAuthorResultDTO` | `dto.SiteAuthorDTO` | `backend/base/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
+| `siteAuthor.SiteAuthorFullDTO` | `dto.SiteAuthorFullDTO` | `backend/base/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
+| `siteAuthor.SiteAuthorLocalRelateDTO` | `dto.SiteAuthorLocalRelateDTO` | `backend/base/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
+| `siteAuthor.LocalAuthorDTO` | `dto.LocalAuthorDTO` | `backend/base/model/dto/local_author_dto.go` | 新建公共 DTO |
+| `siteAuthor.RankedSiteAuthorWithWorkIdDTO` | `dto.RankedSiteAuthorWithWorkIdDTO` | `backend/base/model/dto/site_author_dto.go` | 移至公共 DTO 层 |
+| **新建** | `dto.SiteDTO` | `backend/base/model/dto/site_dto.go` | 无 Null 版本的 Site 实体映射 |
 
 ### 2.2 实体字段映射参考
 
@@ -103,7 +103,7 @@ UpdateTime int64   `json:"updateTime"`
 
 ### 阶段 1: 新建公共 DTO 文件（无编译依赖，可最先执行）
 
-#### 步骤 1.1: 新建 `pkg/model/dto/site_dto.go`
+#### 步骤 1.1: 新建 `backend/base/model/dto/site_dto.go`
 
 **文件路径**: `E:\code\lvfeng\library-squirrel\pkg\model\dto\site_dto.go`
 
@@ -113,8 +113,8 @@ UpdateTime int64   `json:"updateTime"`
 package dto
 
 import (
-	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/wails/backend/base/model/entity"
 )
 
 // SiteDTO 站点数据传输对象（无 sql.Null* 版本）
@@ -143,7 +143,7 @@ func NewSiteDTO(site *entity.Site) *SiteDTO {
 }
 ```
 
-#### 步骤 1.2: 新建 `pkg/model/dto/local_author_dto.go`
+#### 步骤 1.2: 新建 `backend/base/model/dto/local_author_dto.go`
 
 **文件路径**: `E:\code\lvfeng\library-squirrel\pkg\model\dto\local_author_dto.go`
 
@@ -153,8 +153,8 @@ func NewSiteDTO(site *entity.Site) *SiteDTO {
 package dto
 
 import (
-	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/wails/backend/base/model/entity"
 )
 
 // LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）
@@ -183,7 +183,7 @@ func NewLocalAuthorDTO(author *entity.LocalAuthor) *LocalAuthorDTO {
 }
 ```
 
-#### 步骤 1.3: 新建 `pkg/model/dto/local_tag_dto.go`
+#### 步骤 1.3: 新建 `backend/base/model/dto/local_tag_dto.go`
 
 **文件路径**: `E:\code\lvfeng\library-squirrel\pkg\model\dto\local_tag_dto.go`
 
@@ -193,8 +193,8 @@ func NewLocalAuthorDTO(author *entity.LocalAuthor) *LocalAuthorDTO {
 package dto
 
 import (
-	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/wails/backend/base/model/entity"
 )
 
 // LocalTagDTO 本地标签数据传输对象（无 sql.Null* 版本）
@@ -229,7 +229,7 @@ func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
 
 ### 阶段 2: 修改公共 DTO 文件
 
-#### 步骤 2.1: 修改 `pkg/model/dto/site_tag_dto.go`
+#### 步骤 2.1: 修改 `backend/base/model/dto/site_tag_dto.go`
 
 **变更要点**:
 
@@ -248,8 +248,8 @@ func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
 package dto
 
 import (
-	"github.com/library-squirrel/wails/internal/util"
-	"github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/wails/backend/base/model/entity"
 )
 
 // SiteTagFullDTO 站点标签完整DTO（包含绑定的本地标签和来源站点信息）
@@ -346,7 +346,7 @@ type SiteTagDTO struct {
 }
 ```
 
-#### 步骤 2.2: 修改 `pkg/model/dto/site_author_dto.go`
+#### 步骤 2.2: 修改 `backend/base/model/dto/site_author_dto.go`
 
 **变更要点**:
 
@@ -363,7 +363,7 @@ type SiteTagDTO struct {
 package dto
 
 import (
-	"github.com/library-squirrel/wails/pkg/model/entity"
+	"github.com/library-squirrel/wails/backend/base/model/entity"
 )
 
 // SiteAuthorFullDTO 站点作者完整DTO（包含绑定的本地作者和来源站点信息）
@@ -467,7 +467,7 @@ func NewSiteAuthorLocalRelateDTO(siteAuthor *entity.SiteAuthor) *SiteAuthorLocal
 }
 ```
 
-#### 步骤 2.3: 修改 `pkg/model/dto/task_handler.go`
+#### 步骤 2.3: 修改 `backend/base/model/dto/task_handler.go`
 
 **变更要点**:
 
@@ -690,8 +690,8 @@ func ToLocalTagDTO(tag *domain.LocalTag) *dto.LocalTagDTO {
 4. `SiteAuthorLocalRelateDTO` -> `dto.SiteAuthorLocalRelateDTO`
 5. `LocalAuthorDTO` -> `dto.LocalAuthorDTO`
 6. `RankedSiteAuthorWithWorkIdDTO` -> `dto.RankedSiteAuthorWithWorkIdDTO`
-7. 移除 Handler 中定义的所有 DTO 类型和转换函数（全部移至 `pkg/model/dto/`）
-8. 所有转换函数改为引用 `pkg/model/dto` 中的版本
+7. 移除 Handler 中定义的所有 DTO 类型和转换函数（全部移至 `backend/base/model/dto/`）
+8. 所有转换函数改为引用 `backend/base/model/dto` 中的版本
 
 **具体修改**:
 
@@ -735,7 +735,7 @@ type SiteAuthorParamDTO struct {
     Introduce    *string `json:"introduce"`
 }
 
-// 12. 移除以下所有定义（已移至 pkg/model/dto/）：
+// 12. 移除以下所有定义（已移至 backend/base/model/dto/）：
 // - SiteAuthorResultDTO
 // - SiteAuthorFullDTO
 // - SiteAuthorLocalRelateDTO
@@ -1026,9 +1026,9 @@ wails3 generate bindings -ts
 
 ```typescript
 // SiteTagFullDTO.ts
-import SiteTagDTO from '@bindings/github.com/library-squirrel/wails/pkg/model/dto' // 需要确认实际路径
-import LocalTagDTO from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
-import SiteDTO from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import SiteTagDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto' // 需要确认实际路径
+import LocalTagDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
+import SiteDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
 
 export default class SiteTagFullDTO {
   siteTag: SiteTagDTO | undefined | null
@@ -1108,7 +1108,7 @@ export default class SiteAuthorFullDTO {
 变更要点：
 
 1. `SiteTagDTO` -> `SiteTagParamDTO`（来自 `internal/siteTag` bindings）
-2. `SiteTagResultDTO` -> `SiteTagDTO`（来自 `pkg/model/dto` bindings）
+2. `SiteTagResultDTO` -> `SiteTagDTO`（来自 `backend/base/model/dto` bindings）
 3. `SiteTagLocalRelateDTO` 引用路径可能需要调整
 
 ```typescript
@@ -1118,19 +1118,19 @@ import {
   SiteTagDTO, SiteTagFullDTO,
   SiteTagQueryDTO,
   SiteTagResultDTO
-} from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
+} from "@bindings/github.com/library-squirrel/wails/backend/siteTag";
 
 // 新 import：
 import {
   Handler as SiteTagHandler,
   SiteTagParamDTO,  // 增删改参数
   SiteTagQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/internal/siteTag";
+} from "@bindings/github.com/library-squirrel/wails/backend/siteTag";
 import {
   SiteTagDTO,       // 无 Null 实体映射
   SiteTagFullDTO,
   SiteTagLocalRelateDTO,
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/siteAuthor.ts`
@@ -1146,13 +1146,13 @@ import {
   Handler as SiteAuthorHandler,
   SiteAuthorParamDTO,  // 增删改参数
   SiteAuthorQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/internal/siteAuthor";
+} from "@bindings/github.com/library-squirrel/wails/backend/siteAuthor";
 import {
   SiteAuthorDTO,       // 无 Null 实体映射
   SiteAuthorFullDTO,
   SiteAuthorLocalRelateDTO,
   RankedSiteAuthorWithWorkIdDTO,
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/localTag.ts`
@@ -1166,10 +1166,10 @@ import {
   Handler as LocalTagHandler,
   LocalTagParamDTO,  // 增删改参数
   LocalTagQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/internal/localTag";
+} from "@bindings/github.com/library-squirrel/wails/backend/localTag";
 import {
   LocalTagDTO,       // 无 Null 实体映射
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/localAuthor.ts`
@@ -1183,10 +1183,10 @@ import {
   Handler as LocalAuthorHandler,
   LocalAuthorParamDTO,  // 增删改参数
   LocalAuthorQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/internal/localAuthor";
+} from "@bindings/github.com/library-squirrel/wails/backend/localAuthor";
 import {
   LocalAuthorDTO,       // 无 Null 实体映射
-} from "@bindings/github.com/library-squirrel/wails/pkg/model/dto";
+} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
 ```
 
 #### 步骤 9.2: 更新 Vue 组件中的类型引用
@@ -1195,12 +1195,12 @@ import {
 
 ```typescript
 // 旧 import：
-import { LocalTagDTO, SelectItem, SiteTagFullDTO } from "@bindings/.../pkg/model/dto"
+import { LocalTagDTO, SelectItem, SiteTagFullDTO } from "@bindings/.../backend/base/model/dto"
 import { SiteTagLocalRelateDTO } from '@bindings/.../internal/siteTag/models'
 import { SiteTagDTO as SiteTag } from '@bindings/.../internal/siteTag/models'
 
 // 新 import：
-import { SelectItem, SiteTagFullDTO, SiteTagLocalRelateDTO, SiteTagDTO } from "@bindings/.../pkg/model/dto"
+import { SelectItem, SiteTagFullDTO, SiteTagLocalRelateDTO, SiteTagDTO } from "@bindings/.../backend/base/model/dto"
 import { SiteTagParamDTO as SiteTag } from '@bindings/.../internal/siteTag/models'
 ```
 
@@ -1208,11 +1208,11 @@ import { SiteTagParamDTO as SiteTag } from '@bindings/.../internal/siteTag/model
 
 ```typescript
 // 旧 import：
-import { SelectItem, SiteTagFullDTO } from "@bindings/.../pkg/model/dto"
+import { SelectItem, SiteTagFullDTO } from "@bindings/.../backend/base/model/dto"
 import { LocalTagQueryDTO, LocalTagDTO } from '@bindings/.../internal/localTag/models'
 
 // 新 import：
-import { SelectItem, SiteTagFullDTO, LocalTagDTO } from "@bindings/.../pkg/model/dto"
+import { SelectItem, SiteTagFullDTO, LocalTagDTO } from "@bindings/.../backend/base/model/dto"
 import { LocalTagQueryDTO, LocalTagParamDTO } from '@bindings/.../internal/localTag/models'
 ```
 
@@ -1225,7 +1225,7 @@ import { LocalAuthorDTO as LocalAuthor } from '@bindings/.../internal/localAutho
 import { SiteAuthorDTO as SiteAuthor } from '@bindings/.../internal/siteAuthor/models'
 
 // 新 import：
-import { SiteAuthorLocalRelateDTO, LocalAuthorDTO as LocalAuthor } from "@bindings/.../pkg/model/dto"
+import { SiteAuthorLocalRelateDTO, LocalAuthorDTO as LocalAuthor } from "@bindings/.../backend/base/model/dto"
 import { SiteAuthorParamDTO as SiteAuthor } from '@bindings/.../internal/siteAuthor/models'
 ```
 
@@ -1236,7 +1236,7 @@ import { SiteAuthorParamDTO as SiteAuthor } from '@bindings/.../internal/siteAut
 import { LocalAuthorDTO as LocalAuthor } from '@bindings/.../internal/localAuthor/models'
 
 // 新 import：
-import { LocalAuthorDTO as LocalAuthor } from "@bindings/.../pkg/model/dto"
+import { LocalAuthorDTO as LocalAuthor } from "@bindings/.../backend/base/model/dto"
 ```
 
 #### 步骤 9.3: 更新 Dialog 组件
@@ -1248,7 +1248,7 @@ import { LocalAuthorDTO as LocalAuthor } from "@bindings/.../pkg/model/dto"
 import SiteTagLocalRelateDTO from '@renderer/model/model/dto/SiteTagLocalRelateDTO.ts'
 
 // 新 import（如果使用 bindings 类型）：
-import { SiteTagLocalRelateDTO } from "@bindings/.../pkg/model/dto"
+import { SiteTagLocalRelateDTO } from "@bindings/.../backend/base/model/dto"
 // 或继续使用自定义 DTO，但需适配新结构
 ```
 
@@ -1263,7 +1263,7 @@ import { SiteTagLocalRelateDTO } from "@bindings/.../pkg/model/dto"
 import LocalTagDTO from '@renderer/model/model/dto/LocalTagDTO.ts'
 
 // 新 import：
-import { LocalTagDTO } from "@bindings/.../pkg/model/dto"
+import { LocalTagDTO } from "@bindings/.../backend/base/model/dto"
 // 或重命名前端自定义 DTO
 ```
 
@@ -1283,15 +1283,15 @@ import SiteTagFullDTO from '@renderer/model/model/dto/SiteTagFullDTO.ts'
 
 ### 第一轮：新建文件（无依赖）
 
-1. 新建 `pkg/model/dto/site_dto.go`
-2. 新建 `pkg/model/dto/local_author_dto.go`
-3. 新建 `pkg/model/dto/local_tag_dto.go`
+1. 新建 `backend/base/model/dto/site_dto.go`
+2. 新建 `backend/base/model/dto/local_author_dto.go`
+3. 新建 `backend/base/model/dto/local_tag_dto.go`
 
 ### 第二轮：修改公共 DTO（依赖第一轮）
 
-4. 修改 `pkg/model/dto/site_tag_dto.go`
-5. 修改 `pkg/model/dto/site_author_dto.go`
-6. 修改 `pkg/model/dto/task_handler.go`（重命名 PluginSiteAuthorDTO/PluginSiteTagDTO）
+4. 修改 `backend/base/model/dto/site_tag_dto.go`
+5. 修改 `backend/base/model/dto/site_author_dto.go`
+6. 修改 `backend/base/model/dto/task_handler.go`（重命名 PluginSiteAuthorDTO/PluginSiteTagDTO）
 
 ### 第三轮：修改 Handler（依赖第二轮）
 
@@ -1334,8 +1334,8 @@ import SiteTagFullDTO from '@renderer/model/model/dto/SiteTagFullDTO.ts'
 | 文件 | 行号 | 用途 |
 |------|------|------|
 | `internal/siteTag/handler.go` | 124, 133, 142, 213, 219, 265, 271, 316, 340 | 返回类型、转换函数 |
-| `pkg/model/dto/site_tag_dto.go` | 32, 97 | DTO 定义 |
-| `pkg/model/dto/task_handler.go` | 74 | WorkResponse.SiteTags（需检查） |
+| `backend/base/model/dto/site_tag_dto.go` | 32, 97 | DTO 定义 |
+| `backend/base/model/dto/task_handler.go` | 74 | WorkResponse.SiteTags（需检查） |
 
 #### `dto.LocalTagDTO` 引用处
 
@@ -1344,7 +1344,7 @@ import SiteTagFullDTO from '@renderer/model/model/dto/SiteTagFullDTO.ts'
 | `internal/siteTag/handler.go` | 236, 261, 312, 357-368 | 返回类型、转换函数 |
 | `internal/siteTag/repository.go` | 145 | 查询赋值 |
 | `internal/siteTag/service.go` | 225-240 | 构建 LocalTagDTO |
-| `pkg/model/dto/site_tag_dto.go` | 16-24 | DTO 定义 |
+| `backend/base/model/dto/site_tag_dto.go` | 16-24 | DTO 定义 |
 
 #### `dto.SiteTagFullDTO` 引用处
 
@@ -1466,7 +1466,7 @@ wails dev
 1. **Wails Bindings 生成失败**: 如果 Go 代码有编译错误，bindings 无法生成
 2. **前端类型不匹配**: bindings 生成后，前端大量类型引用需要更新
 3. **运行时 JSON 序列化问题**: 指针类型与值类型的 JSON 序列化行为差异
-4. **循环依赖**: `pkg/model/dto` 包引入 `pkg/model/entity` 和 `internal/util`，需确认无循环依赖
+4. **循环依赖**: `backend/base/model/dto` 包引入 `backend/base/model/entity` 和 `internal/util`，需确认无循环依赖
 
 ### 8.2 回滚方案
 
@@ -1489,16 +1489,16 @@ wails dev
 
 #### 新建文件
 
-- `pkg/model/dto/site_dto.go`
-- `pkg/model/dto/local_author_dto.go`
-- `pkg/model/dto/local_tag_dto.go`
+- `backend/base/model/dto/site_dto.go`
+- `backend/base/model/dto/local_author_dto.go`
+- `backend/base/model/dto/local_tag_dto.go`
 
 #### 修改文件
 
 **公共 DTO 层**:
-- `pkg/model/dto/site_tag_dto.go`
-- `pkg/model/dto/site_author_dto.go`
-- `pkg/model/dto/task_handler.go`
+- `backend/base/model/dto/site_tag_dto.go`
+- `backend/base/model/dto/site_author_dto.go`
+- `backend/base/model/dto/task_handler.go`
 
 **Handler 层**:
 - `internal/siteTag/handler.go`
@@ -1515,16 +1515,16 @@ wails dev
 - `internal/siteAuthor/service.go`
 
 **前端 Bindings**（自动生成）:
-- `frontend/bindings/github.com/library-squirrel/wails/pkg/model/dto/models.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/pkg/model/dto/index.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/siteTag/models.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/siteTag/index.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/siteAuthor/models.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/siteAuthor/index.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/localTag/models.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/localTag/index.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/localAuthor/models.ts`
-- `frontend/bindings/github.com/library-squirrel/wails/internal/localAuthor/index.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/base/model/dto/models.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/base/model/dto/index.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/siteTag/models.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/siteTag/index.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/siteAuthor/models.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/siteAuthor/index.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/localTag/models.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/localTag/index.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/localAuthor/models.ts`
+- `frontend/bindings/github.com/library-squirrel/wails/backend/localAuthor/index.ts`
 
 **前端自定义 DTO**:
 - `frontend/src/model/model/dto/SiteTagFullDTO.ts`

@@ -5,7 +5,7 @@ import {ElMessage} from 'element-plus'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { siteApi } from '@renderer/apis/http'
-import { SiteDTO } from '@bindings/github.com/library-squirrel/wails/pkg/model/dto'
+import { SiteDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
 
 // props
 const props = withDefaults(

@@ -1,5 +1,5 @@
 import IPage from "@renderer/model/util/IPage.ts";
-import {Page} from "@bindings/github.com/library-squirrel/wails/pkg/model";
+import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model";
 import {isNullish} from "@renderer/utils/CommonUtil.ts";
 
 /**
