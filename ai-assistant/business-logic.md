@@ -12,16 +12,16 @@
 
 - **定义**：远程作品源，如 bilibili、pixiv 等内容平台
 - **作用**：插件、站点标签、站点作者、作品的基础容器
-- **管理模块**：`internal/site/`
+- **管理模块**：`backend/site/`
 
 ### 2. 作品 (Work)
 
 - **定义**：图片、视频、音频、文本等资源与其相关信息的集合
 - **核心地位**：所有功能的中心数据实体
 - **数据模型**：
-  - 实体：`internal/work/model.go`
-  - 服务：`internal/work/service.go`
-  - Repository：`internal/work/repository.go`
+  - 实体：`backend/work/model.go`
+  - 服务：`backend/work/service.go`
+  - Repository：`backend/work/repository.go`
 - **关联关系**：多对多关联资源、作者、标签、任务
 
 ### 3. 任务 (Task)
@@ -33,8 +33,8 @@
   3. 开始执行任务
   4. 插件处理
   5. 保存作品到资源库
-- **管理模块**：`internal/task/`
-- **执行引擎**：任务队列系统 (`internal/taskManager/`)
+- **管理模块**：`backend/task/`
+- **执行引擎**：任务队列系统 (`backend/taskManager/`)
 
 ### 4. 作者系统 (双架构模式)
 
@@ -42,14 +42,14 @@
 
 - **来源**：来自远程站点的原始作者信息
 - **获取方式**：插件下载作品时自动添加
-- **管理模块**：`internal/siteAuthor/`
+- **管理模块**：`backend/siteAuthor/`
 - **特点**：直接对应站点上的真实作者账号
 
 #### 4.2 本地作者 (Local Author)
 
 - **定义**：本地创建的作者，用于统一作者在不同站点的身份
 - **业务价值**：实现跨站点作者统一检索
-- **管理模块**：`internal/localAuthor/`
+- **管理模块**：`backend/localAuthor/`
 - **检索优势**：
   - 本地作者 LA 关联站点作者 SA
   - 作品 W 包含作者 SA
@@ -61,13 +61,13 @@
 
 - **来源**：来自站点的原始标签
 - **获取方式**：插件下载作品时自动添加
-- **管理模块**：`internal/siteTag/`
+- **管理模块**：`backend/siteTag/`
 
 #### 5.2 本地标签 (Local Tag)
 
 - **定义**：本地创建的标签，用于统一具有相同含义的站点标签
 - **业务价值**：实现跨站点标签统一检索
-- **管理模块**：`internal/localTag/`
+- **管理模块**：`backend/localTag/`
 - **检索优势**：
   - 本地标签 LT 关联站点标签 ST
   - 作品 W 包含 ST 标签
@@ -78,9 +78,9 @@
 - **目的**：扩展对不同站点的作品下载支持
 - **架构位置**：`plugin/package/`
 - **核心组件**：
-  - `internal/plugin/loader.go` - 插件加载器
-  - `internal/plugin/service.go` - 插件服务
-  - `internal/pluginTaskUrlListener/` - 任务URL监听
+  - `backend/plugin/loader.go` - 插件加载器
+  - `backend/plugin/service.go` - 插件服务
+  - `backend/pluginTaskUrlListener/` - 任务URL监听
 - **预置插件**：
   - 本地导入作品插件
   - pixiv 作品下载插件
@@ -147,7 +147,7 @@
 ### 后端架构 (Go)
 
 - **IPC通信**：Wails Bind（`window.api.method(args)`）
-- **Handler注册**：`internal/{module}/handler.go` 中的 Handler 方法
+- **Handler注册**：`backend/{module}/handler.go` 中的 Handler 方法
 - **数据库**：
   - ORM：GORM
   - 模式：Repository层
@@ -156,14 +156,14 @@
 
 ### 核心模块
 
-- `internal/work/` - 作品业务逻辑
-- `internal/task/` - 任务管理
-- `internal/site/` - 站点管理
-- `internal/localAuthor/` - 本地作者管理
-- `internal/siteAuthor/` - 站点作者管理
-- `internal/localTag/` - 本地标签管理
-- `internal/siteTag/` - 站点标签管理
-- `internal/plugin/` - 插件管理
+- `backend/work/` - 作品业务逻辑
+- `backend/task/` - 任务管理
+- `backend/site/` - 站点管理
+- `backend/localAuthor/` - 本地作者管理
+- `backend/siteAuthor/` - 站点作者管理
+- `backend/localTag/` - 本地标签管理
+- `backend/siteTag/` - 站点标签管理
+- `backend/plugin/` - 插件管理
 
 ## 关键数据流转
 
@@ -227,14 +227,14 @@
 | 组件 | 路径                                |
 |------|-----------------------------------|
 | 程序入口 | `main.go`                         |
-| 业务模块 | `internal/{module}/`              |
-| 数据库基础设施 | `internal/database/`              |
-| 程序配置 | `internal/config/`                |
+| 业务模块 | `backend/{module}/`              |
+| 数据库基础设施 | `backend/database/`              |
+| 程序配置 | `backend/config/`                |
 | 共享DTO | `backend/base/model/`                      |
-| QueryDTO | `internal/{module}/query.go`      |
-| Handler | `internal/{module}/handler.go`    |
-| Service | `internal/{module}/service.go`    |
-| Repository | `internal/{module}/repository.go` |
+| QueryDTO | `backend/{module}/query.go`      |
+| Handler | `backend/{module}/handler.go`    |
+| Service | `backend/{module}/service.go`    |
+| Repository | `backend/{module}/repository.go` |
 
 ### 前端 (Vue 3)
 
@@ -245,3 +245,8 @@
 | API包装 | `frontend/src/apis/` |
 | 路由配置 | `frontend/src/router/` |
 | 前端DTO | `frontend/src/model/` |
+
+## 更新记录
+
+### 2026-05-05
+- [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

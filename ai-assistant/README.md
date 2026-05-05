@@ -104,7 +104,7 @@
 
 > **项目状态**：已完成从 Node.js 到 Go 的重构
 
-主进程位于 `internal/` 目录，使用 Go 实现。
+主进程位于 `backend/` 目录，使用 Go 实现。
 
 **核心规范**：
 - Repository 模式：数据访问通过接口隔离
@@ -149,24 +149,24 @@
 
 | 任务类型     | 主要文件位置                      |
 | ------------ | --------------------------------- |
-| 业务逻辑     | `internal/{module}/service.go`   |
+| 业务逻辑     | `backend/{module}/service.go`    |
 | 共用实体/DTO | `frontend/src/model/`             |
-| 数据库操作   | `internal/{module}/repository.go` |
+| 数据库操作   | `backend/{module}/repository.go`  |
 | 插件开发     | `plugin/package/`                 |
 | 前端路由     | `frontend/src/router/`            |
 | 前端组件     | `frontend/src/components/`        |
 | 前端视图     | `frontend/src/views/`              |
 | 状态管理     | `frontend/src/store/`              |
-| Wails 绑定   | `internal/{module}/handler.go`    |
+| Wails 绑定   | `backend/{module}/handler.go`     |
 | 共用工具函数 | `frontend/src/utils/`             |
 
 ## 常见开发任务参考
 
 ### 添加新 Handler
 
-1. `internal/{module}/handler.go` 创建 handler（包含 Wails Bind 方法）
-2. `internal/{module}/service.go` 实现业务逻辑
-3. `internal/{module}/repository.go` 实现数据访问
+1. `backend/{module}/handler.go` 创建 handler（包含 Wails Bind 方法）
+2. `backend/{module}/service.go` 实现业务逻辑
+3. `backend/{module}/repository.go` 实现数据访问
 4. 前端通过 `window.api.handlerMethod(args)` 调用
 
 ### 数据库事务

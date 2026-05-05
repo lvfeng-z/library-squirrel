@@ -4,14 +4,14 @@
 
 | 概念         | 定义                             | 关键模块                |
 | ------------ | -------------------------------- | ----------------------- |
-| **站点**     | 远程作品源（如pixiv、bilibili）  | `internal/site/`        |
-| **作品**     | 资源与信息的集合（核心数据实体） | `internal/work/`        |
-| **任务**     | 作品创建执行流程                 | `internal/task/`        |
-| **站点作者** | 来自站点的原始作者               | `internal/siteAuthor/`  |
-| **本地作者** | 本地创建，用于统一跨站点作者身份 | `internal/localAuthor/` |
-| **站点标签** | 来自站点的原始标签               | `internal/siteTag/`     |
-| **本地标签** | 本地创建，用于统一跨站点标签     | `internal/localTag/`    |
-| **插件**     | 扩展对不同站点的支持             | `internal/plugin/`      |
+| **站点**     | 远程作品源（如pixiv、bilibili）  | `backend/site/`        |
+| **作品**     | 资源与信息的集合（核心数据实体） | `backend/work/`        |
+| **任务**     | 作品创建执行流程                 | `backend/task/`        |
+| **站点作者** | 来自站点的原始作者               | `backend/siteAuthor/`  |
+| **本地作者** | 本地创建，用于统一跨站点作者身份 | `backend/localAuthor/` |
+| **站点标签** | 来自站点的原始标签               | `backend/siteTag/`     |
+| **本地标签** | 本地创建，用于统一跨站点标签     | `backend/localTag/`    |
+| **插件**     | 扩展对不同站点的支持             | `backend/plugin/`      |
 
 ## 关键业务逻辑
 
@@ -51,7 +51,7 @@ URL输入 → 任务创建 → 插件执行 → 获取作品信息 → 保存作
 ### 后端架构 (Go)
 
 - **IPC模式**：Wails Bind（`window.api.method(args)`）
-- **API注册**：`internal/{module}/handler.go` 中的 Handler 方法
+- **API注册**：`backend/{module}/handler.go` 中的 Handler 方法
 - **数据库**：GORM + Repository模式
 - **响应格式**：`model.Success(data)` / `model.Error(msg)`
 - **路径别名**：`@shared/*` → `src/shared/*`（前后端共用代码）
@@ -60,7 +60,7 @@ URL输入 → 任务创建 → 插件执行 → 获取作品信息 → 保存作
 
 ```
 library-squirrel/
-├── internal/                  # 后端 (Go)
+├── backend/                  # 后端 (Go)
 │   ├── {module}/             # 业务模块（以 localTag 为例）
 │   │   ├── handler.go        # Handler（Wails Bind）
 │   │   ├── service.go        # 业务逻辑
@@ -73,7 +73,7 @@ library-squirrel/
 │   │   ├── transaction.go    # 事务封装
 │   │   └── resources/        # SQL 迁移文件
 │   ├── model/                # 后端领域模型
-│   └── backend/base/model            # 共享模型
+│   └── base/model            # 共享模型
 │       └── entity/           # 实体 子目录
 │       └── dto/              # DTO 子目录
 ├── frontend/src/             # 前端 (Vue 3)
@@ -92,9 +92,9 @@ library-squirrel/
 
 ### 添加新 Handler
 
-1. `internal/{module}/handler.go` 创建 Handler（Wails Bind 方法）
-2. `internal/{module}/service.go` 实现业务逻辑
-3. `internal/{module}/repository.go` 实现数据访问
+1. `backend/{module}/handler.go` 创建 Handler（Wails Bind 方法）
+2. `backend/{module}/service.go` 实现业务逻辑
+3. `backend/{module}/repository.go` 实现数据访问
 4. 在 `wails.go` 中将 Handler 注入到 App 结构体
 5. 执行 `wails3 generate bindings -ts` 生成前端 TypeScript 绑定
 6. 前端通过 `window.api.handlerMethod(args)` 调用
@@ -153,3 +153,8 @@ export const routes = [
 - PluginContext 封装主程序完整 API（数据持久化、加密存储、业务查询、任务管理、日志等）
 - 启动引导：`app.go` 的 `loadInstalledPlugins()` 自动加载所有已安装插件
 - Slot 同步：通过 Wails Events 推送到前端
+
+## 更新记录
+
+### 2026-05-05
+- [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

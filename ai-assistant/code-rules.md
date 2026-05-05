@@ -8,7 +8,7 @@
 
 ### 目录结构约定
 
-- **internal/** - 后端代码 (Go)
+- **backend/** - 后端代码 (Go)
   - `{module}/` - 业务模块（如 localTag、work）
     - `handler.go` - Handler（Wails Bind）
     - `service.go` - 业务逻辑
@@ -20,7 +20,8 @@
     - `transaction.go` - 事务封装
     - `resources/` - SQL 迁移文件
   - `model/` - 领域模型
-- **backend/base/model** - 共享 DTO（ApiResponse等）
+  - `base/` - 基础设施
+    - `model/` - 共享 DTO（ApiResponse等）
 - **frontend/src/** - 前端代码 (Vue 3)
   - `components/` - Vue 组件
   - `store/` - Pinia 状态管理
@@ -600,7 +601,7 @@ func (h *Handler) Save(ctx context.Context, req *dto.SiteTagDTO) error {
   })
   ```
 - **Repository 模式**: 所有数据库操作通过 Repository 层进行
-- **SQL 文件**: 表结构定义在 YAML 配置文件中 (`internal/database/resources/`)
+- **SQL 文件**: 表结构定义在 YAML 配置文件中 (`backend/database/resources/`)
 
 ### 数据库连接使用规范
 
@@ -963,29 +964,29 @@ type Resource struct {
 
 ### 1. 添加新 Handler（Wails Bind）
 
-1. 在 `internal/{module}/handler.go` 创建 Handler 结构体
+1. 在 `backend/{module}/handler.go` 创建 Handler 结构体
 2. 在 Handler 中定义业务方法（Wails 自动绑定到 `window.api`）
 3. 运行 `wails3 generate bindings -ts` 生成前端 TypeScript 绑定
 4. 前端通过 `window.api.{methodName}()` 调用
 
 ### 2. 添加新 Service
 
-1. 在 `internal/{module}/` 目录创建 `service.go`
+1. 在 `backend/{module}/` 目录创建 `service.go`
 2. 定义 Service 结构体和业务方法
 3. 在 Handler 中引用 Service 实例
 
 ### 3. 添加新 Repository
 
-1. 在 `internal/{module}/` 目录创建 `repository.go`
+1. 在 `backend/{module}/` 目录创建 `repository.go`
 2. 定义 Repository 接口
 3. 创建 `repository_impl.go` 实现接口
 4. 在 Service 中通过接口依赖
 
 ### 4. 添加数据库表
 
-1. 在 `internal/database/resources/` 创建 YAML 迁移文件
-2. 创建对应的 Model（`internal/model/`）
-3. 创建 Repository 实现（`internal/{module}/repository_impl.go`）
+1. 在 `backend/database/resources/` 创建 YAML 迁移文件
+2. 创建对应的 Model（`backend/model/`）
+3. 创建 Repository 实现（`backend/{module}/repository_impl.go`）
 4. 在 Service 层调用 Repository 方法
 
 ## 常见注意事项
@@ -1095,14 +1096,14 @@ const queryAttr = ref<QueryAttribute>({
 **规则名称**: `PAGE_TYPE_UNIFICATION`
 **优先级**: P1
 
-前端统一使用 Wails 绑定层的 `Page<T>` 类型（`@bindings/.../pkg/model`），禁止自定义 `Page` 模型。
+前端统一使用 Wails 绑定层的 `Page<T>` 类型（`@bindings/.../backend/base/model`），禁止自定义 `Page` 模型。
 
 - 使用 `copyPage<T>()` 转换类型（保留分页信息）
 - 使用 `newPage<T>()` 创建新分页实例
 - 禁止导入旧的本地 `Page` 类型定义
 
 ```typescript
-import { Page } from '@bindings/.../pkg/model'
+import { Page } from '@bindings/.../backend/base/model'
 import { copyPage, newPage } from '@renderer/utils/pageUtil'
 
 // 正确：使用绑定层 Page 类型
@@ -1181,7 +1182,7 @@ function handleSelect(item: SelectItem) {
 | 元素 | 命名规则 | 示例 |
 |------|----------|------|
 | Go 源文件 | snake_case 或与类型同名 | `model.go`, `repository_impl.go` |
-| 目录 | 单元命名，全部小写 | `internal/author/` |
+| 目录 | 单元命名，全部小写 | `backend/author/` |
 | 包名 | 与目录同名，简洁 | `package author` |
 
 ### 命名规范
@@ -1205,7 +1206,7 @@ import (
     "context"
     "errors"
 
-    "my-ipc-service/internal/database"
+    "my-ipc-service/backend/database"
 )
 
 // 3. 错误定义
@@ -1299,7 +1300,7 @@ func (s *Service) Register(ctx context.Context, name string) (*Author, error) {
 
 | 禁止 | 正确做法 |
 |------|----------|
-| 在 Service 层 import `internal/database` | 在 `repository_impl.go` 中 import |
+| 在 Service 层 import `backend/database` | 在 `repository_impl.go` 中 import |
 | 返回 `*gorm.DB` 或 `sql.Rows` | 返回领域实体或 DTO |
 | 使用裸 `error` 作为全局变量 | 使用 `var ErrXxx = errors.New(...)` |
 | 跨模块直接引用其他业务的 Service | 使用接口隔离 |
@@ -1558,5 +1559,12 @@ func InitModules(db *gorm.DB, r *gin.Engine) *Modules {
 
 ---
 
-**最后更新**: 2026-04-30
+**最后更新**: 2026-05-05
 **维护者**: AI Assistant
+
+---
+
+## 文档更新记录
+
+### 2026-05-05
+- [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

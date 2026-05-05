@@ -157,10 +157,10 @@ func (r *Repository) UpdateBindLocalAuthor(ctx context.Context, localAuthorId *i
 
 **问题**：多个模块中存在重复的工具函数（如 `unique`）。
 
-**修复方式**：提取到 `internal/util/common.go`，各模块统一调用。
+**修复方式**：提取到 `backend/util/common.go`，各模块统一调用。
 
 ```go
-// internal/util/common.go
+// backend/util/common.go
 func UniqueInt64(ids []int64) []int64 { ... }
 func UniqueString(items []string) []string { ... }
 ```
@@ -480,7 +480,7 @@ export { localTagQuerySelectItemPageByName } from './wrappers/localTag'  // 适�
 **问题**：前端自定义了 `Page` 模型（`frontend/src/model/util/Page.ts`），与绑定层生成的 `Page` 不兼容。
 
 **修复方式**：
-- 统一使用绑定层的 `Page`：`import { Page } from "@bindings/.../pkg/model"`
+- 统一使用绑定层的 `Page`：`import { Page } from "@bindings/.../backend/base/model"`
 - 使用 `copyPage<T>()` 工具函数进行 Page 的类型转换（保留分页信息，替换 data 类型）
 - 使用 `newPage<T>()` 创建新的 Page 实例
 

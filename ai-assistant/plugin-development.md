@@ -52,7 +52,7 @@ package main
 
 import (
     "github.com/library-squirrel/wails/backend/plugin/extension"
-    "github.com/library-squirrel/wails/pkg"
+    "github.com/library-squirrel/wails/backend/base"
 )
 
 // Activate 插件入口函数，主程序加载 DLL 后调用
@@ -66,9 +66,9 @@ func Activate(ctx extension.PluginContext) {
     // 注册插槽（UI扩展）
     ctx.RegisterSlot(
         "pixiv-slot", "Pixiv入口", "Pixiv站点浏览器入口",
-        pkg.SlotTypeSiteBrowserList,   // 插槽类型
+        base.SlotTypeSiteBrowserList,   // 插槽类型
         "",                             // 内容
-        pkg.ContentTypeComponent,       // 内容类型
+        base.ContentTypeComponent,      // 内容类型
         "Pixiv",                        // 标题
         "pixiv-icon.png",               // 图标
         0,                              // 排序
@@ -96,7 +96,7 @@ type PluginContext interface {
     // 扩展点注册
     RegisterTaskHandler(id, name, desc string, handler dto.TaskHandler) error
     RegisterSiteBrowser(id, name, desc string, browser SiteBrowser) error
-    RegisterSlot(id, name, desc string, slotType pkg.SlotType, ...) error
+    RegisterSlot(id, name, desc string, slotType base.SlotType, ...) error
 
     // 扩展点注销
     UnregisterSlot(id string) error
@@ -137,7 +137,7 @@ type PluginContext interface {
 
 ### Provider 接口（依赖倒置）
 
-PluginContext 的服务依赖通过 Provider 接口注入，由 `extension` 包定义，各 `internal` 服务实现：
+PluginContext 的服务依赖通过 Provider 接口注入，由 `extension` 包定义，各 `backend` 服务实现：
 
 | Provider               | 方法                                            | 实现方                      |
 | ---------------------- | ----------------------------------------------- | --------------------------- |
@@ -267,19 +267,19 @@ InstallFromPath(zipPath)
 
 | 文件 | 职责 |
 |------|------|
-| `internal/plugin/extension/loader.go` | 插件 DLL 加载、Activate 调用、panic 恢复 |
-| `internal/plugin/extension/registrar.go` | Registrar 接口实现（扩展点注册） |
-| `internal/plugin/extension/plugin_context.go` | PluginContext 接口与实现、Provider 接口定义 |
-| `internal/plugin/extension/task_handler_registry.go` | TaskHandler 注册中心 |
-| `internal/plugin/extension/site_browser_registry.go` | SiteBrowser 注册中心 |
-| `internal/plugin/extension/slot_registry.go` | Slot 注册中心 + WailsSlotPusher |
-| `internal/plugin/extension/wails_pusher.go` | Slot 事件的 Wails Events 桥接 |
-| `internal/plugin/extension/task_executor.go` | TaskManager ↔ 插件桥接 |
-| `internal/plugin/service.go` | 插件安装/卸载（ZIP + 数据库） |
-| `internal/plugin/handler.go` | Wails Handler（前端 CRUD） |
+| `backend/plugin/extension/loader.go` | 插件 DLL 加载、Activate 调用、panic 恢复 |
+| `backend/plugin/extension/registrar.go` | Registrar 接口实现（扩展点注册） |
+| `backend/plugin/extension/plugin_context.go` | PluginContext 接口与实现、Provider 接口定义 |
+| `backend/plugin/extension/task_handler_registry.go` | TaskHandler 注册中心 |
+| `backend/plugin/extension/site_browser_registry.go` | SiteBrowser 注册中心 |
+| `backend/plugin/extension/slot_registry.go` | Slot 注册中心 + WailsSlotPusher |
+| `backend/plugin/extension/wails_pusher.go` | Slot 事件的 Wails Events 桥接 |
+| `backend/plugin/extension/task_executor.go` | TaskManager ↔ 插件桥接 |
+| `backend/plugin/service.go` | 插件安装/卸载（ZIP + 数据库） |
+| `backend/plugin/handler.go` | Wails Handler（前端 CRUD） |
 | `backend/base/model/dto/task_handler.go` | TaskHandler 接口定义 |
 | `backend/base/model/dto/plugin_types.go` | PluginManifest、PluginContribute |
-| `pkg/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
+| `backend/base/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
 | `backend/base/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
 | `app.go` | 启动引导、loadInstalledPlugins、适配器 |
 
@@ -292,6 +292,10 @@ InstallFromPath(zipPath)
 5. **插件数据**：使用 `GetPluginData` / `SetPluginData` 持久化插件状态
 
 ## 更新记录
+
+### 2026-05-05
+- [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`
+- [修改] 插件接口定义从 `internal/plugin/extension` 提取到 `backend/base/plugin`（公共包）
 
 ### 2026-05-04
 

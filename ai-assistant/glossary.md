@@ -90,7 +90,7 @@
 - **定义**：扩展对不同站点的作品下载支持的 Go 共享库模块（`.dll`/`.so`）
 - **领域角色**：系统扩展性的核心组件
 - **结构**：独立包，包含作者、名称、版本元数据，导出 `Activate(PluginContext)` 函数
-- **相关文件**：`internal/plugin/`，`internal/plugin/extension/`
+- **相关文件**：`backend/plugin/`，`backend/plugin/extension/`
 
 ### 插件上下文 (PluginContext)
 
@@ -98,7 +98,7 @@
 - **定义**：主程序提供给插件的完整 API，每个插件拥有独立实例
 - **领域角色**：插件访问主程序能力的唯一入口
 - **能力**：扩展点注册/注销、数据持久化、加密存储、业务查询、任务管理、日志
-- **相关文件**：`internal/plugin/extension/plugin_context.go`
+- **相关文件**：`backend/plugin/extension/plugin_context.go`
 
 ### 注册器 (Registrar)
 
@@ -106,15 +106,15 @@
 - **定义**：PluginContext 内嵌的扩展点注册接口
 - **领域角色**：插件通过 Registrar 注册 TaskHandler、SiteBrowser、Slot 扩展点
 - **方法**：`RegisterTaskHandler`、`RegisterSiteBrowser`、`RegisterSlot`
-- **相关文件**：`internal/plugin/extension/registrar.go`
+- **相关文件**：`backend/plugin/extension/registrar.go`
 
 ### Provider 接口 (Provider Interface)
 
 - **英文**：Provider Interface
-- **定义**：PluginContext 的服务依赖接口，由 `extension` 包定义，各 `internal` 服务实现
+- **定义**：PluginContext 的服务依赖接口，由 `extension` 包定义，各 `backend` 服务实现
 - **领域角色**：实现依赖倒置，隔离 PluginContext 与内部服务
 - **接口列表**：`PluginDataProvider`、`SecureStorageProvider`、`WorkSetQueryProvider`、`SiteSaveProvider`、`TaskCreateProvider`、`UrlListenerRegistry`
-- **相关文件**：`internal/plugin/extension/plugin_context.go`
+- **相关文件**：`backend/plugin/extension/plugin_context.go`
 
 ### 扩展点 (Extension Point)
 
@@ -122,7 +122,7 @@
 - **定义**：插件可贡献的三类功能：TaskHandler、SiteBrowser、Slot
 - **领域角色**：插件与主程序的功能契约
 - **注册中心**：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`
-- **相关文件**：`internal/plugin/extension/`
+- **相关文件**：`backend/plugin/extension/`
 
 ### 插件任务 (Plugin Task)
 
@@ -217,7 +217,7 @@
 - **英文**：Query Data Transfer Object
 - **定义**：查询参数数据传输对象，用于封装分页、排序、筛选等查询条件
 - **示例**：`WorkQueryDTO`、`SiteQueryDTO`、`LocalAuthorQueryDTO`
-- **位置**：`internal/{module}/query.go`
+- **位置**：`backend/{module}/query.go`
 
 ### Entity (实体)
 
@@ -264,8 +264,8 @@
 - **英文**：Repository Pattern
 - **定义**：数据访问逻辑的抽象，将业务逻辑与数据存储分离
 - **Go 实现**：
-  - 接口定义在 `internal/{module}/repository.go`
-  - 实现代码在 `internal/{module}/repository_impl.go`
+  - 接口定义在 `backend/{module}/repository.go`
+  - 实现代码在 `backend/{module}/repository_impl.go`
   - Service 只依赖接口，不直接访问数据库
 - **优势**：解耦、可测试、消除循环依赖
 
@@ -282,7 +282,7 @@
 - **定义**：将相关的接口、实现、实体放在同一包内
 - **结构**：
   ```
-  internal/author/
+  backend/author/
   ├── model.go             # 领域实体
   ├── repository.go        # 接口定义
   ├── repository_impl.go   # 实现
@@ -323,3 +323,6 @@
 - [修改] QueryDTO 位置更新：`src/main/model/queryDTO/` → `backend/base/model/dto/query/`
 - [修改] QueryDTO 示例补充完整模块列表
 - [新增] 说明 QueryDTO 按模块分文件存储
+
+### 2026-05-05
+- [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`
