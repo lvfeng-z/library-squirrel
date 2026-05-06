@@ -3,13 +3,13 @@ package work
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	dto2 "github.com/library-squirrel/wails/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
-	querypkg "github.com/library-squirrel/wails/backend/base/query"
-	"github.com/library-squirrel/wails/backend/database"
-	pkgerr "github.com/library-squirrel/wails/backend/error"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	querypkg "github.com/library-squirrel/backend/base/query"
+	"github.com/library-squirrel/backend/database"
+	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/util"
 )
 
 // ========== 外部模块接口定义（由 work 模块定义自己需要的接口）==========

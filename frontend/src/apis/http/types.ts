@@ -3,7 +3,7 @@
  * 用于渲染进程与 Go 后端的通信
  */
 
-import type { ApiResponse as WailsApiResponse } from '@bindings/github.com/library-squirrel/wails/backend/base/model'
+import type { ApiResponse as WailsApiResponse } from '@bindings/github.com/library-squirrel/backend/base/model'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 // Go 后端基础 URL（保留但不再用于 HTTP 请求）

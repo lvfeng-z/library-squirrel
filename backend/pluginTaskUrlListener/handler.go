@@ -3,7 +3,7 @@ package pluginTaskUrlListener
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 插件任务URL监听器 Handler

@@ -3,8 +3,8 @@ package reWorkAuthor
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 )
 
 // Handler 作品-作者关联 Handler

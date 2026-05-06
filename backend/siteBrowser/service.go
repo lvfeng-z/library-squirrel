@@ -1,8 +1,8 @@
 package siteBrowser
 
 import (
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/plugin/extension"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/plugin/extension"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 

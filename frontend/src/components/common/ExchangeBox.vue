@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
 import { Ref, ref, UnwrapRef } from 'vue'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import TagBox from './TagBox.vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import Page from '@renderer/model/util/Page.ts'

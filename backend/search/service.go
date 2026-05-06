@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	dto2 "github.com/library-squirrel/wails/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
 )
 
 // ========== 外部模块接口定义（由 search 模块定义自己需要的接口）==========

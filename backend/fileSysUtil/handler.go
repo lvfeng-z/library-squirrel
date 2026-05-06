@@ -1,6 +1,6 @@
 package fileSysUtil
 
-import "github.com/library-squirrel/wails/backend/base/model"
+import "github.com/library-squirrel/backend/base/model"
 
 // Handler 文件系统工具 Handler
 type Handler struct {

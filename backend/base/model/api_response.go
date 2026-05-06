@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/library-squirrel/wails/backend/base/logger"
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // ApiResponse 统一API响应格式（匹配前端 ApiResponse.ts）

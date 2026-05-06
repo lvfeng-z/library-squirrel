@@ -3,7 +3,7 @@ package taskManager
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 任务管理器 Handler

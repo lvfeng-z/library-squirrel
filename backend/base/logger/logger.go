@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/util"
 )
 
 var Log *zap.SugaredLogger

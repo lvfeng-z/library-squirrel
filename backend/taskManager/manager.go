@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/task"
+	"github.com/library-squirrel/backend/base/logger"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/task"
 )
 
 // Repository 任务仓储接口（TaskManager 需要的数据库操作）

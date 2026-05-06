@@ -1,6 +1,6 @@
 package siteTag
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // SiteTagQueryDTO 站点标签查询条件
 type SiteTagQueryDTO struct {

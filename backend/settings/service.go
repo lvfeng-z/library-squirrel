@@ -10,7 +10,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
-	"github.com/library-squirrel/wails/backend/base/logger"
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // Service 设置服务

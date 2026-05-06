@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as SiteBrowserHandler } from '@bindings/github.com/library-squirrel/wails/backend/siteBrowser'
-import type { SiteBrowserDTO as BindingSiteBrowserDTO } from '@bindings/github.com/library-squirrel/wails/backend/siteBrowser/models'
+import { Handler as SiteBrowserHandler } from '@bindings/github.com/library-squirrel/backend/siteBrowser'
+import type { SiteBrowserDTO as BindingSiteBrowserDTO } from '@bindings/github.com/library-squirrel/backend/siteBrowser/models'
 
 export interface SiteBrowserDTO {
   pluginPublicId: string

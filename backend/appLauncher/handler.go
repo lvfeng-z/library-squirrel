@@ -3,7 +3,7 @@ package appLauncher
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 应用启动器 Handler

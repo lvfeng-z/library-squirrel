@@ -3,10 +3,10 @@ package siteAuthor
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 )
 
 // Handler 站点作者 Handler

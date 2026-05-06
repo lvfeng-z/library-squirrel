@@ -3,8 +3,8 @@ package workSet
 import (
 	"context"
 
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/database"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/database"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

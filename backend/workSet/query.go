@@ -1,6 +1,6 @@
 package workSet
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // WorkSetQueryDTO 作品集查询条件
 type WorkSetQueryDTO struct {

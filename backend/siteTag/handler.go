@@ -3,9 +3,9 @@ package siteTag
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
 )
 
 // Handler 站点标签 Handler

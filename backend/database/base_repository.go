@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

@@ -4,12 +4,12 @@ import (
 	"context"
 	"io"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/dto"
+	domain "github.com/library-squirrel/backend/base/model/entity"
 	"go.uber.org/zap"
 
-	"github.com/library-squirrel/wails/backend/taskManager"
+	"github.com/library-squirrel/backend/taskManager"
 )
 
 // TaskExecutorImpl 任务执行器实现

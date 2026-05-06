@@ -4,7 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkSetHandler } from '@bindings/github.com/library-squirrel/wails/backend/workSet'
+import { Handler as WorkSetHandler } from '@bindings/github.com/library-squirrel/backend/workSet'
 
 /**
  * 批量关联作品到作品集

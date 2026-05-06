@@ -6,9 +6,9 @@
 import {
   Handler as SiteHandler,
   SiteQueryDTO
-} from '@bindings/github.com/library-squirrel/wails/backend/site'
-import { SelectItem, SiteDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model'
+} from '@bindings/github.com/library-squirrel/backend/site'
+import { SelectItem, SiteDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 import IPage from '@renderer/model/util/IPage.ts'

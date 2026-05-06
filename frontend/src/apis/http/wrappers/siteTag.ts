@@ -6,9 +6,9 @@
 import {
   Handler as SiteTagHandler,
   SiteTagQueryDTO
-} from "@bindings/github.com/library-squirrel/wails/backend/siteTag"
-import { LocalTagDTO, SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
-import { Page } from "@bindings/github.com/library-squirrel/wails/backend/base/model"
+} from "@bindings/github.com/library-squirrel/backend/siteTag"
+import { LocalTagDTO, SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

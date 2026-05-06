@@ -3,9 +3,9 @@ package task
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	dto2 "github.com/library-squirrel/wails/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // Handler 任务 Handler

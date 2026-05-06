@@ -8,10 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
 )
 
 // TaskState 任务状态

@@ -4,8 +4,8 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as FileSysUtilHandler } from '@bindings/github.com/library-squirrel/wails/backend/fileSysUtil'
-import type { OpenDialogResult as BindingOpenDialogResult } from '@bindings/github.com/library-squirrel/wails/backend/fileSysUtil/models'
+import { Handler as FileSysUtilHandler } from '@bindings/github.com/library-squirrel/backend/fileSysUtil'
+import type { OpenDialogResult as BindingOpenDialogResult } from '@bindings/github.com/library-squirrel/backend/fileSysUtil/models'
 
 // ========== 类型定义 ==========
 

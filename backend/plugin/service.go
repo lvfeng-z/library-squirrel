@@ -11,14 +11,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model"
-	domain "github.com/library-squirrel/wails/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
-	querypkg "github.com/library-squirrel/wails/backend/base/query"
-	"github.com/library-squirrel/wails/backend/config"
-	"github.com/library-squirrel/wails/backend/database"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
+	domain "github.com/library-squirrel/backend/base/model/dto"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	querypkg "github.com/library-squirrel/backend/base/query"
+	"github.com/library-squirrel/backend/config"
+	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 )
 
 const (

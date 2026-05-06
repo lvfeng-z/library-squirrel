@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 )
 
 const (

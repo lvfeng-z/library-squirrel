@@ -3,7 +3,7 @@
  * 封装 Wails 绑定层响应校验，校验失败时抛出异常，调用方通过 try/catch 捕获
  */
 
-import { Handler as PluginTaskUrlListenerHandler } from '@bindings/github.com/library-squirrel/wails/backend/pluginTaskUrlListener'
+import { Handler as PluginTaskUrlListenerHandler } from '@bindings/github.com/library-squirrel/backend/pluginTaskUrlListener'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

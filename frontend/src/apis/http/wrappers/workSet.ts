@@ -4,9 +4,9 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/wails/backend/workSet'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model/models'
-import {WorkDTO, WorkSetDTO, WorkSetWithCoverResultDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/backend/workSet'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
+import {WorkDTO, WorkSetDTO, WorkSetWithCoverResultDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 
 export interface WorkSetVO {
   id: number

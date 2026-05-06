@@ -3,8 +3,8 @@ package reWorkTag
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/model"
+	domain "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // Handler 作品-标签关联 Handler

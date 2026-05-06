@@ -1,8 +1,8 @@
 package slot
 
 import (
-	domain "github.com/library-squirrel/wails/backend/base"
-	"github.com/library-squirrel/wails/backend/base/model"
+	domain "github.com/library-squirrel/backend/base"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 插槽 Handler

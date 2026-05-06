@@ -4,7 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as AppLauncherHandler, ExternalAppEnum } from '@bindings/github.com/library-squirrel/wails/backend/appLauncher'
+import { Handler as AppLauncherHandler, ExternalAppEnum } from '@bindings/github.com/library-squirrel/backend/appLauncher'
 
 export async function appLauncherOpenImage(filePath: string): Promise<ApiResponse<void>> {
   // 使用 OpenPath 打开图片文件

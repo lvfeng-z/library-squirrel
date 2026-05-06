@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/database"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/database"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

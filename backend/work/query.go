@@ -1,6 +1,6 @@
 package work
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // WorkQueryDTO 作品查询条件
 type WorkQueryDTO struct {

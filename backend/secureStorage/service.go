@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/database"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/database"
 	"golang.org/x/crypto/nacl/secretbox"
 )
 

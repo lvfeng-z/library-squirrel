@@ -6,10 +6,10 @@
 import {
   Handler as LocalTagHandler,
   LocalTagQueryDTO
-} from '@bindings/github.com/library-squirrel/wails/backend/localTag'
-import { LocalTagDTO, SelectItem, LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
-import { Page } from "@bindings/github.com/library-squirrel/wails/backend/base/model"
-import { QueryAttribute } from "@bindings/github.com/library-squirrel/wails/backend/base/query/models"
+} from '@bindings/github.com/library-squirrel/backend/localTag'
+import { LocalTagDTO, SelectItem, LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
+import { QueryAttribute } from "@bindings/github.com/library-squirrel/backend/base/query/models"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 import IPage from '@renderer/model/util/IPage.ts'

@@ -4,11 +4,11 @@
  */
 
 import { requireResponse, type ApiResult } from '../types'
-import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/wails/backend/task'
-import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/wails/backend/taskManager'
-import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/wails/backend/task/models'
-import { CreateTaskRequest, TaskDTO, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto/models'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model/models'
+import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/backend/task'
+import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/backend/taskManager'
+import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
+import { CreateTaskRequest, TaskDTO, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto/models'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 
 // ========== 查询操作 ==========
 

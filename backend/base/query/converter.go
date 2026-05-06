@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/gorm/clause"
 
-	"github.com/library-squirrel/wails/backend/database"
+	"github.com/library-squirrel/backend/database"
 )
 
 // Converter 结构体 → PageOption/QueryOption 转换器

@@ -1,8 +1,8 @@
 package dto
 
 import (
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 )
 
 // LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）

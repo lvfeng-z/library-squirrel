@@ -6,16 +6,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	pkgerr "github.com/library-squirrel/wails/backend/error"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
+	pkgerr "github.com/library-squirrel/backend/error"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	querypkg "github.com/library-squirrel/wails/backend/base/query"
-	"github.com/library-squirrel/wails/backend/database"
-	"github.com/library-squirrel/wails/backend/pluginTaskUrlListener"
-	"github.com/library-squirrel/wails/backend/site"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model"
+	querypkg "github.com/library-squirrel/backend/base/query"
+	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/pluginTaskUrlListener"
+	"github.com/library-squirrel/backend/site"
+	"github.com/library-squirrel/backend/util"
 )
 
 // 错误定义

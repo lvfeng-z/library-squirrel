@@ -111,7 +111,7 @@ Property 'workId' does not exist on type 'LocalTagQueryDTO'
 localTagSearchParams.value.sort = page
 
 // 新代码（使用 bindings orderBy）
-import { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/pkg/query/models'
+import { QueryAttribute } from '@bindings/github.com/library-squirrel/pkg/query/models'
 localTagSearchParams.value.orderBy = new QueryAttribute({ value: page, operator: "eq" })
 ```
 

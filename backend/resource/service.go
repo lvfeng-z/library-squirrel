@@ -3,8 +3,8 @@ package resource
 import (
 	"context"
 
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/database"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/database"
 )
 
 // Repository 资源仓储接口（由 service 定义需要的数据库操作方法）

@@ -6,9 +6,9 @@
 import {
   Handler as SiteAuthorHandler,
   SiteAuthorQueryDTO
-} from '@bindings/github.com/library-squirrel/wails/backend/siteAuthor'
-import { SiteAuthorDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model'
+} from '@bindings/github.com/library-squirrel/backend/siteAuthor'
+import { SiteAuthorDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

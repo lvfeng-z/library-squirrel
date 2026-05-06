@@ -1,6 +1,6 @@
 package localAuthor
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // LocalAuthorQueryDTO 本地作者查询条件
 type LocalAuthorQueryDTO struct {

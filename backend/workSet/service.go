@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
-	querypkg "github.com/library-squirrel/wails/backend/base/query"
-	"github.com/library-squirrel/wails/backend/database"
-	pkgerr "github.com/library-squirrel/wails/backend/error"
+	"github.com/library-squirrel/backend/base/model"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	querypkg "github.com/library-squirrel/backend/base/query"
+	"github.com/library-squirrel/backend/database"
+	pkgerr "github.com/library-squirrel/backend/error"
 
 	"gorm.io/gorm/clause"
 )

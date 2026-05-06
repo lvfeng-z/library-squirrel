@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
+	domain "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // Repository 作品-标签关联仓储接口（由 service 定义需要的数据库操作方法）

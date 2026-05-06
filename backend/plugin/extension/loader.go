@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"plugin"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/dto"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 

@@ -12,7 +12,7 @@ import {
   LocalTagWithBaseTagDTO,
   SelectItem,
   SiteTagFullDTO
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'
@@ -21,12 +21,12 @@ import {ElMessage} from 'element-plus'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {localTagApi, localTagQuerySelectItemPageByName, siteTagApi} from '@renderer/apis/http'
-import {LocalTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/localTag/models'
-import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
-import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/siteTag/models'
+import {LocalTagQueryDTO} from '@bindings/github.com/library-squirrel/backend/localTag/models'
+import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import {SiteTagQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteTag/models'
 import {copyPage, newPage} from "@renderer/utils/Pager.ts";
 import {isBlank} from "@renderer/utils/StringUtil.ts";
-import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model";
+import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 
 // onMounted
 onMounted(() => {

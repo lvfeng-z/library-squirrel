@@ -17,8 +17,8 @@ import {
 } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
 import { Events } from '@wailsio/runtime'
-import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/wails/backend/slot'
-import { Handler as PluginHandler } from '@bindings/github.com/library-squirrel/wails/backend/plugin'
+import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/backend/slot'
+import { Handler as PluginHandler } from '@bindings/github.com/library-squirrel/backend/plugin'
 
 /**
  * 转换视图插槽配置

@@ -3,13 +3,13 @@ package site
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	querypkg "github.com/library-squirrel/wails/backend/base/query"
-	"github.com/library-squirrel/wails/backend/database"
-	pkgerr "github.com/library-squirrel/wails/backend/error"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
+	querypkg "github.com/library-squirrel/backend/base/query"
+	"github.com/library-squirrel/backend/database"
+	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm/clause"
 )

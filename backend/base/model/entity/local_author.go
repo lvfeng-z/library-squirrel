@@ -3,7 +3,7 @@ package entity
 import (
 	"database/sql"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // LocalAuthor 本地作者

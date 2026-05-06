@@ -3,9 +3,9 @@ package extension
 import (
 	"fmt"
 
-	"github.com/library-squirrel/wails/backend/base"
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"go.uber.org/zap"
 )

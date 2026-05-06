@@ -6,9 +6,9 @@
 import {
   Handler as PluginHandler,
   PluginQueryDTO
-} from '@bindings/github.com/library-squirrel/wails/backend/plugin'
-import { PluginDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model'
+} from '@bindings/github.com/library-squirrel/backend/plugin'
+import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

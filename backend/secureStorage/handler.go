@@ -3,7 +3,7 @@ package secureStorage
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 安全存储 Handler

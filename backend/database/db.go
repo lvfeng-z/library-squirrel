@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	pkglogger "github.com/library-squirrel/wails/backend/base/logger"
+	pkglogger "github.com/library-squirrel/backend/base/logger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

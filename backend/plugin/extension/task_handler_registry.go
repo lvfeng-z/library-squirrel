@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 

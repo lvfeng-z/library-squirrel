@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/fileSysUtil"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/fileSysUtil"
 )
 
 // ==================== Common Wails Bindings ====================

@@ -1026,9 +1026,9 @@ wails3 generate bindings -ts
 
 ```typescript
 // SiteTagFullDTO.ts
-import SiteTagDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto' // 需要确认实际路径
-import LocalTagDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
-import SiteDTO from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
+import SiteTagDTO from '@bindings/github.com/library-squirrel/backend/base/model/dto' // 需要确认实际路径
+import LocalTagDTO from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import SiteDTO from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 export default class SiteTagFullDTO {
   siteTag: SiteTagDTO | undefined | null
@@ -1118,19 +1118,19 @@ import {
   SiteTagDTO, SiteTagFullDTO,
   SiteTagQueryDTO,
   SiteTagResultDTO
-} from "@bindings/github.com/library-squirrel/wails/backend/siteTag";
+} from "@bindings/github.com/library-squirrel/backend/siteTag";
 
 // 新 import：
 import {
   Handler as SiteTagHandler,
   SiteTagParamDTO,  // 增删改参数
   SiteTagQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/siteTag";
+} from "@bindings/github.com/library-squirrel/backend/siteTag";
 import {
   SiteTagDTO,       // 无 Null 实体映射
   SiteTagFullDTO,
   SiteTagLocalRelateDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/siteAuthor.ts`
@@ -1146,13 +1146,13 @@ import {
   Handler as SiteAuthorHandler,
   SiteAuthorParamDTO,  // 增删改参数
   SiteAuthorQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/siteAuthor";
+} from "@bindings/github.com/library-squirrel/backend/siteAuthor";
 import {
   SiteAuthorDTO,       // 无 Null 实体映射
   SiteAuthorFullDTO,
   SiteAuthorLocalRelateDTO,
   RankedSiteAuthorWithWorkIdDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/localTag.ts`
@@ -1166,10 +1166,10 @@ import {
   Handler as LocalTagHandler,
   LocalTagParamDTO,  // 增删改参数
   LocalTagQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/localTag";
+} from "@bindings/github.com/library-squirrel/backend/localTag";
 import {
   LocalTagDTO,       // 无 Null 实体映射
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 ```
 
 **文件**: `frontend/src/apis/http/wrappers/localAuthor.ts`
@@ -1183,10 +1183,10 @@ import {
   Handler as LocalAuthorHandler,
   LocalAuthorParamDTO,  // 增删改参数
   LocalAuthorQueryDTO,
-} from "@bindings/github.com/library-squirrel/wails/backend/localAuthor";
+} from "@bindings/github.com/library-squirrel/backend/localAuthor";
 import {
   LocalAuthorDTO,       // 无 Null 实体映射
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 ```
 
 #### 步骤 9.2: 更新 Vue 组件中的类型引用

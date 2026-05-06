@@ -6,13 +6,13 @@
 import {
   Handler as LocalAuthorHandler,
   LocalAuthorQueryDTO
-} from "@bindings/github.com/library-squirrel/wails/backend/localAuthor"
-import { LocalAuthorDTO, SelectItem } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
-import { Page } from "@bindings/github.com/library-squirrel/wails/backend/base/model"
+} from "@bindings/github.com/library-squirrel/backend/localAuthor"
+import { LocalAuthorDTO, SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
-import { QueryAttribute } from "@bindings/github.com/library-squirrel/wails/backend/base/query"
+import { QueryAttribute } from "@bindings/github.com/library-squirrel/backend/base/query"
 import IPage from '@renderer/model/util/IPage.ts'
 
 // ========== API 方法 ==========

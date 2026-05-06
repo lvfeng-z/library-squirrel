@@ -18,10 +18,10 @@ import {
   SelectItem,
   SiteAuthorDTO,
   SiteAuthorLocalRelateDTO, SiteDTO
-} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
-import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/siteAuthor/models'
-import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
-import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model";
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
+import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted

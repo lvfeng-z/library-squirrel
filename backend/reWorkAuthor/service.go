@@ -3,9 +3,9 @@ package reWorkAuthor
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/database"
+	"github.com/library-squirrel/backend/base/model/dto"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/database"
 )
 
 // WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）

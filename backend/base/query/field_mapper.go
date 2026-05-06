@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // FieldMapper 通过反射获取结构体字段的 query tag 映射

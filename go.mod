@@ -1,4 +1,4 @@
-module github.com/library-squirrel/wails
+module github.com/library-squirrel
 
 go 1.26.1
 

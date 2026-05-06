@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
+import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'

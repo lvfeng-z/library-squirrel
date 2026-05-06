@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	domain "github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/model/dto"
+	domain "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // TaskExecutorInterface 任务执行器接口

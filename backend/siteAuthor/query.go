@@ -1,6 +1,6 @@
 package siteAuthor
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // SiteAuthorQueryDTO 站点作者查询条件
 type SiteAuthorQueryDTO struct {

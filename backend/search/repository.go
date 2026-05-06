@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	dto2 "github.com/library-squirrel/wails/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
 
 	"gorm.io/gorm"
 )

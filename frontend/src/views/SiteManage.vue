@@ -10,11 +10,11 @@ import {ElMessage} from 'element-plus'
 import DataTableOperationResponse from '@renderer/model/util/DataTableOperationResponse.ts'
 import lodash from 'lodash'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
-import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/wails/backend/site/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
+import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/backend/site/models'
+import { SortOrder } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import { siteApi } from '@renderer/apis/http'
-import {SiteDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto"
-import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model"
+import {SiteDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 
 // onMounted
 onMounted(() => {

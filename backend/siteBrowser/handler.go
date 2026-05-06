@@ -1,6 +1,6 @@
 package siteBrowser
 
-import "github.com/library-squirrel/wails/backend/base/model"
+import "github.com/library-squirrel/backend/base/model"
 
 // Handler 站点浏览器 Handler
 type Handler struct {

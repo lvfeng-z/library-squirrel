@@ -1,7 +1,7 @@
 package settings
 
 import (
-	"github.com/library-squirrel/wails/backend/base/model"
+	"github.com/library-squirrel/backend/base/model"
 )
 
 // Handler 设置 Handler

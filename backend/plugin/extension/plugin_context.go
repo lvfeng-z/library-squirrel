@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
+	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/entity"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"go.uber.org/zap"
 )

@@ -1,6 +1,6 @@
 package task
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // TaskQueryDTO 任务查询条件
 type TaskQueryDTO struct {

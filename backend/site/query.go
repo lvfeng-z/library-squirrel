@@ -1,6 +1,6 @@
 package site
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // SiteQueryDTO 站点查询条件
 type SiteQueryDTO struct {

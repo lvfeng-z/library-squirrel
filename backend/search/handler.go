@@ -3,8 +3,8 @@ package search
 import (
 	"context"
 
-	"github.com/library-squirrel/wails/backend/base/model"
-	dto2 "github.com/library-squirrel/wails/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
 )
 
 // Handler 搜索 Handler

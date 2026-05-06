@@ -3,7 +3,7 @@ package dto
 import (
 	"io"
 
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // TaskHandler 任务处理器接口

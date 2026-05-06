@@ -1,8 +1,8 @@
 package dto
 
 import (
-	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/util"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 )
 
 // SiteAuthorDTO 站点作者数据传输对象（无 sql.Null* 版本）

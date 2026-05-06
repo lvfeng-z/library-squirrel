@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import {PluginDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+import {PluginDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import { ElMessage } from 'element-plus'
 import { pluginApi } from '@renderer/apis/http'
 

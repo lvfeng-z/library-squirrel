@@ -1,6 +1,6 @@
 package localTag
 
-import "github.com/library-squirrel/wails/backend/base/query"
+import "github.com/library-squirrel/backend/base/query"
 
 // LocalTagQueryDTO 本地标签查询条件
 type LocalTagQueryDTO struct {

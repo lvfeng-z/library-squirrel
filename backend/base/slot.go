@@ -1,6 +1,6 @@
 package base
 
-import pkgmodel "github.com/library-squirrel/wails/backend/base/model"
+import pkgmodel "github.com/library-squirrel/backend/base/model"
 
 // SlotType 插槽类型
 type SlotType string

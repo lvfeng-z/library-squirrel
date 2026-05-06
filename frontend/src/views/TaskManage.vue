@@ -21,12 +21,12 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
-import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/wails/backend/task/models'
+import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/backend/task/models'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
-import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
+import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
-import {Page} from "@bindings/github.com/library-squirrel/wails/backend/base/model";
-import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/wails/backend/base/model/dto";
+import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
+import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted

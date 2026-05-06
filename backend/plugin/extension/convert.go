@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"io"
 
-	"github.com/library-squirrel/wails/backend/base/model/dto"
-	"github.com/library-squirrel/wails/backend/base/model/entity"
-	"github.com/library-squirrel/wails/backend/util"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 

@@ -4,11 +4,11 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/wails/backend/work'
-import { WorkDTO } from '@bindings/github.com/library-squirrel/wails/backend/base/model/dto'
-import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/wails/backend/model/models'
-import { Page } from '@bindings/github.com/library-squirrel/wails/backend/base/model/models'
-import { QueryAttribute } from '@bindings/github.com/library-squirrel/wails/backend/base/query/models'
+import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/backend/work'
+import { WorkDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/model/models'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
+import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 
 export interface WorkVO {
   id: number
