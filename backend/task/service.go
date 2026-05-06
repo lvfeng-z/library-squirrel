@@ -232,8 +232,7 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgr
 		taskDTO := dto.NewTaskDTO(task)
 		progressDTO := dto.NewTaskProgressDTO(taskDTO)
 		if task.Status == int(TaskStatusFinished) {
-			schedule := 100
-			progressDTO.Schedule = &schedule
+			progressDTO.Schedule = new(100)
 		}
 		result[i] = progressDTO
 	}

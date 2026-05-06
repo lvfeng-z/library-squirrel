@@ -68,8 +68,7 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 		if _, ok := resultMap[res.WorkID]; !ok {
 			resultMap[res.WorkID] = make([]*dto.RankedLocalAuthor, 0)
 		}
-		ranked := res.RankedLocalAuthor
-		resultMap[res.WorkID] = append(resultMap[res.WorkID], &ranked)
+		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedLocalAuthor))
 	}
 
 	return resultMap, nil

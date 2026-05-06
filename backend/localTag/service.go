@@ -260,8 +260,7 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
 func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) (*model.Page[dto.LocalTagWithBaseTagDTO], error) {
 	conv := querypkg.NewConverter(domain.LocalTag{})
-	alias := "local_tag"
-	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, &alias)
+	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, new("local_tag"))
 	if err != nil {
 		return nil, err
 	}

@@ -196,12 +196,11 @@ func NewTaskProgressTreeDTO(taskDTO *TaskDTO) *TaskProgressTreeDTO {
 		return nil
 	}
 	hasChildren := taskDTO.IsCollection != nil && *taskDTO.IsCollection == 1
-	isLeaf := !hasChildren
 	return &TaskProgressTreeDTO{
 		TaskProgress: NewTaskProgressDTO(taskDTO),
 		Children:     make([]*TaskProgressTreeDTO, 0),
 		HasChildren:  &hasChildren,
-		IsLeaf:       &isLeaf,
+		IsLeaf:       new(!hasChildren),
 	}
 }
 

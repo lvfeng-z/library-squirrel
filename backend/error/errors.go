@@ -68,8 +68,7 @@ func IsBusinessError(err error) bool {
 
 // GetBusinessError 获取业务错误
 func GetBusinessError(err error) *BusinessError {
-	var be *BusinessError
-	if errors.As(err, &be) {
+	if be, ok := errors.AsType[*BusinessError](err); ok {
 		return be
 	}
 	return nil
