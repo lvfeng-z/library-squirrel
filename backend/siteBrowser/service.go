@@ -3,6 +3,7 @@ package siteBrowser
 import (
 	"github.com/library-squirrel/wails/backend/base/model"
 	"github.com/library-squirrel/wails/backend/plugin/extension"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 
 // Service 站点浏览器服务
@@ -114,7 +115,7 @@ func (s *Service) Open(pluginPublicId, contributionId string) error {
 }
 
 // toDTO 将扩展转换为DTO
-func toDTO(ext *model.Extension[extension.SiteBrowser]) *SiteBrowserDTO {
+func toDTO(ext *model.Extension[pluginsdk.SiteBrowser]) *SiteBrowserDTO {
 	return &SiteBrowserDTO{
 		ContributionID: ext.Metadata.ID,
 		PluginPublicID: ext.Metadata.PluginPublicID,

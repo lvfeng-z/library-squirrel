@@ -5,19 +5,19 @@ import (
 	"sync"
 
 	"github.com/library-squirrel/wails/backend/base/model"
-	domain "github.com/library-squirrel/wails/backend/base/model/dto"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 
 // TaskHandlerRegistry 任务处理器注册中心
 type TaskHandlerRegistry struct {
 	mu         sync.RWMutex
-	extensions map[string]*model.Extension[domain.TaskHandler] // key: pluginPublicId/extensionId
+	extensions map[string]*model.Extension[pluginsdk.TaskHandler] // key: pluginPublicId/extensionId
 }
 
 // NewTaskHandlerRegistry 创建任务处理器注册中心
 func NewTaskHandlerRegistry() *TaskHandlerRegistry {
 	return &TaskHandlerRegistry{
-		extensions: make(map[string]*model.Extension[domain.TaskHandler]),
+		extensions: make(map[string]*model.Extension[pluginsdk.TaskHandler]),
 	}
 }
 
@@ -27,7 +27,7 @@ func makeKey(pluginPublicId, extensionId string) string {
 }
 
 // Register 注册扩展点
-func (r *TaskHandlerRegistry) Register(extension *model.Extension[domain.TaskHandler]) error {
+func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdk.TaskHandler]) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -67,7 +67,7 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 }
 
 // Get 获取扩展点
-func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[domain.TaskHandler], error) {
+func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdk.TaskHandler], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -80,11 +80,11 @@ func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*m
 }
 
 // GetByPlugin 获取插件的所有扩展点
-func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[domain.TaskHandler], error) {
+func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdk.TaskHandler], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []*model.Extension[domain.TaskHandler]
+	var result []*model.Extension[pluginsdk.TaskHandler]
 	prefix := pluginPublicId + "/"
 	for _, ext := range r.extensions {
 		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
@@ -95,11 +95,11 @@ func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 }
 
 // List 列出所有扩展点
-func (r *TaskHandlerRegistry) List() []*model.Extension[domain.TaskHandler] {
+func (r *TaskHandlerRegistry) List() []*model.Extension[pluginsdk.TaskHandler] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*model.Extension[domain.TaskHandler], 0, len(r.extensions))
+	result := make([]*model.Extension[pluginsdk.TaskHandler], 0, len(r.extensions))
 	for _, ext := range r.extensions {
 		result = append(result, ext)
 	}

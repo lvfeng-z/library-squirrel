@@ -7,6 +7,8 @@ import (
 	"github.com/library-squirrel/wails/backend/base/logger"
 	entity2 "github.com/library-squirrel/wails/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/wails/backend/plugin/extension"
+
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"gorm.io/gorm"
 
 	"github.com/library-squirrel/wails/backend/appLauncher"
@@ -236,12 +238,12 @@ type taskCreateAdapter struct {
 	svc *task.Service
 }
 
-func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*extension2.TaskCreateResult, error) {
+func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.TaskCreateResult, error) {
 	resp, err := a.svc.CreateTaskByURL(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	return &extension2.TaskCreateResult{
+	return &pluginsdk.TaskCreateResult{
 		Succeed:       resp.Succeed,
 		AddedQuantity: resp.AddedQuantity,
 		Msg:           resp.Msg,

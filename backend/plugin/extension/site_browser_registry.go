@@ -5,23 +5,24 @@ import (
 	"sync"
 
 	"github.com/library-squirrel/wails/backend/base/model"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 
 // SiteBrowserRegistry 站点浏览器注册中心
 type SiteBrowserRegistry struct {
 	mu         sync.RWMutex
-	extensions map[string]*model.Extension[SiteBrowser] // key: pluginPublicId/extensionId
+	extensions map[string]*model.Extension[pluginsdk.SiteBrowser] // key: pluginPublicId/extensionId
 }
 
 // NewSiteBrowserRegistry 创建站点浏览器注册中心
 func NewSiteBrowserRegistry() *SiteBrowserRegistry {
 	return &SiteBrowserRegistry{
-		extensions: make(map[string]*model.Extension[SiteBrowser]),
+		extensions: make(map[string]*model.Extension[pluginsdk.SiteBrowser]),
 	}
 }
 
 // Register 注册扩展点
-func (r *SiteBrowserRegistry) Register(extension *model.Extension[SiteBrowser]) error {
+func (r *SiteBrowserRegistry) Register(extension *model.Extension[pluginsdk.SiteBrowser]) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -61,7 +62,7 @@ func (r *SiteBrowserRegistry) UnregisterAll(pluginPublicId string) error {
 }
 
 // Get 获取扩展点
-func (r *SiteBrowserRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[SiteBrowser], error) {
+func (r *SiteBrowserRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdk.SiteBrowser], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -74,11 +75,11 @@ func (r *SiteBrowserRegistry) Get(pluginPublicId string, extensionId string) (*m
 }
 
 // GetByPlugin 获取插件的所有扩展点
-func (r *SiteBrowserRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[SiteBrowser], error) {
+func (r *SiteBrowserRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdk.SiteBrowser], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []*model.Extension[SiteBrowser]
+	var result []*model.Extension[pluginsdk.SiteBrowser]
 	prefix := pluginPublicId + "/"
 	for _, ext := range r.extensions {
 		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
@@ -89,11 +90,11 @@ func (r *SiteBrowserRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 }
 
 // List 列出所有扩展点
-func (r *SiteBrowserRegistry) List() []*model.Extension[SiteBrowser] {
+func (r *SiteBrowserRegistry) List() []*model.Extension[pluginsdk.SiteBrowser] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*model.Extension[SiteBrowser], 0, len(r.extensions))
+	result := make([]*model.Extension[pluginsdk.SiteBrowser], 0, len(r.extensions))
 	for _, ext := range r.extensions {
 		result = append(result, ext)
 	}

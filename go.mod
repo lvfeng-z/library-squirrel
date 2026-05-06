@@ -1,6 +1,6 @@
 module github.com/library-squirrel/wails
 
-go 1.25.0
+go 1.26.1
 
 require (
 	github.com/google/uuid v1.6.0
@@ -8,6 +8,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/structs v0.1.0
 	github.com/knadh/koanf/v2 v2.3.4
+	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.2
 	github.com/spf13/viper v1.19.0
 	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 	github.com/stretchr/testify v1.11.1

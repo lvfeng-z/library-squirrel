@@ -6,18 +6,18 @@ import (
 	"github.com/library-squirrel/wails/backend/base"
 	"github.com/library-squirrel/wails/backend/base/logger"
 	"github.com/library-squirrel/wails/backend/base/model"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"go.uber.org/zap"
 )
 
 // Registrar 插件扩展点注册器，由主程序提供给插件的注册接口
 type Registrar interface {
 	// RegisterTaskHandler 注册任务处理器扩展点
-	RegisterTaskHandler(id string, name string, description string, handler dto.TaskHandler) error
+	RegisterTaskHandler(id string, name string, description string, handler pluginsdk.TaskHandler) error
 	// RegisterSiteBrowser 注册站点浏览器扩展点
-	RegisterSiteBrowser(id string, name string, description string, browser SiteBrowser) error
+	RegisterSiteBrowser(id string, name string, description string, browser pluginsdk.SiteBrowser) error
 	// RegisterSlot 注册插槽扩展点
-	RegisterSlot(id string, name string, description string, slotType base.SlotType, content string, contentType base.ContentType, title string, icon string, order int) error
+	RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error
 }
 
 // registrar 注册器实现
@@ -50,7 +50,7 @@ func (r *registrar) buildMetadata(extType model.ExtensionType, id string, name s
 }
 
 // RegisterTaskHandler 注册任务处理器扩展点
-func (r *registrar) RegisterTaskHandler(id string, name string, description string, handler dto.TaskHandler) error {
+func (r *registrar) RegisterTaskHandler(id string, name string, description string, handler pluginsdk.TaskHandler) error {
 	metadata := r.buildMetadata(model.ExtensionTypeTaskHandler, id, name, description)
 	if err := r.taskHandlerRegistry.Register(model.NewExtension(metadata, handler)); err != nil {
 		return err
@@ -60,7 +60,7 @@ func (r *registrar) RegisterTaskHandler(id string, name string, description stri
 }
 
 // RegisterSiteBrowser 注册站点浏览器扩展点
-func (r *registrar) RegisterSiteBrowser(id string, name string, description string, browser SiteBrowser) error {
+func (r *registrar) RegisterSiteBrowser(id string, name string, description string, browser pluginsdk.SiteBrowser) error {
 	metadata := r.buildMetadata(model.ExtensionTypeSiteBrowser, id, name, description)
 	if err := r.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
 		return err
@@ -70,7 +70,7 @@ func (r *registrar) RegisterSiteBrowser(id string, name string, description stri
 }
 
 // RegisterSlot 注册插槽扩展点
-func (r *registrar) RegisterSlot(id string, name string, description string, slotType base.SlotType, content string, contentType base.ContentType, title string, icon string, order int) error {
+func (r *registrar) RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error {
 	metadata := r.buildMetadata(model.ExtensionTypeSlot, id, name, description)
 
 	domainSlot := base.NewSlotConfig()
@@ -82,9 +82,9 @@ func (r *registrar) RegisterSlot(id string, name string, description string, slo
 		Name:           metadata.Name,
 		Description:    metadata.Description,
 	}
-	domainSlot.SlotType = slotType
+	domainSlot.SlotType = base.SlotType(slotType)
 	domainSlot.Content = content
-	domainSlot.ContentType = contentType
+	domainSlot.ContentType = base.ContentType(contentType)
 	domainSlot.Title = title
 	domainSlot.Icon = icon
 	domainSlot.Order = order

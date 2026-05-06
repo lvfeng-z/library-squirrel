@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/library-squirrel/wails/backend/base"
 	"github.com/library-squirrel/wails/backend/base/logger"
-	"github.com/library-squirrel/wails/backend/base/model/dto"
 	"github.com/library-squirrel/wails/backend/base/model/entity"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"go.uber.org/zap"
 )
 
@@ -41,37 +40,13 @@ type SiteSaveProvider interface {
 
 // TaskCreateProvider 任务创建
 type TaskCreateProvider interface {
-	CreateTaskByURL(ctx context.Context, url string) (*TaskCreateResult, error)
+	CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.TaskCreateResult, error)
 }
 
 // UrlListenerRegistry URL监听器注册
 type UrlListenerRegistry interface {
 	RegisterUrlListener(pluginPublicId string, contributionId string, patterns []string)
 	UnregisterUrlListener(pluginPublicId string)
-}
-
-// --- Types ---
-
-// TaskCreateResult 任务创建结果
-type TaskCreateResult struct {
-	Succeed       bool
-	AddedQuantity int
-	Msg           string
-}
-
-// WindowHandle 窗口句柄
-type WindowHandle interface {
-	Show()
-	Close()
-	SetTitle(title string)
-}
-
-// WindowOptions 创建窗口的选项
-type WindowOptions struct {
-	Title  string
-	Width  int
-	Height int
-	URL    string
 }
 
 // PluginContextDeps PluginContext 的依赖项
@@ -89,51 +64,6 @@ type PluginContextDeps struct {
 	UrlListener         UrlListenerRegistry
 }
 
-// --- PluginContext Interface ---
-
-// PluginContext 插件上下文，主程序提供给插件的完整 API
-type PluginContext interface {
-	// 扩展点注册（来自 Registrar）
-	RegisterTaskHandler(id string, name string, description string, handler dto.TaskHandler) error
-	RegisterSiteBrowser(id string, name string, description string, browser SiteBrowser) error
-	RegisterSlot(id string, name string, description string, slotType base.SlotType, content string, contentType base.ContentType, title string, icon string, order int) error
-
-	// 扩展点注销
-	UnregisterSlot(id string) error
-	UnregisterSiteBrowser(id string) error
-
-	// 插件数据持久化
-	GetPluginData() (string, error)
-	SetPluginData(data string) error
-
-	// 加密存储
-	StoreEncryptedValue(plainValue string, description string) (string, error)
-	GetDecryptedValue(storageKey string) (string, error)
-	RemoveEncryptedValue(storageKey string) error
-
-	// 业务查询
-	GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteName string) (*entity.WorkSet, error)
-	AddSite(sites []*entity.Site) error
-
-	// 任务
-	RegisterUrlListener(contributionId string, patterns []string) error
-	UnregisterUrlListener() error
-	CreateTask(url string) (*TaskCreateResult, error)
-
-	// 路径
-	GetPluginRoot(isRelative bool) string
-
-	// 窗口管理
-	GetMainWindow() WindowHandle
-	CreateWindow(options WindowOptions) (WindowHandle, error)
-
-	// 日志
-	Infof(template string, args ...any)
-	Debugf(template string, args ...any)
-	Warnf(template string, args ...any)
-	Errorf(template string, args ...any)
-}
-
 // --- Implementation ---
 
 type pluginContext struct {
@@ -149,7 +79,7 @@ type pluginContext struct {
 }
 
 // NewPluginContext 创建插件上下文
-func NewPluginContext(deps PluginContextDeps) PluginContext {
+func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 	reg := newRegistrar(deps.PluginInfo, deps.TaskHandlerRegistry, deps.SiteBrowserRegistry, deps.SlotRegistry)
 
 	pluginName := deps.PluginInfo.Name
@@ -221,14 +151,18 @@ func (pc *pluginContext) RemoveEncryptedValue(storageKey string) error {
 
 // --- 业务查询 ---
 
-func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteName string) (*entity.WorkSet, error) {
-	return pc.workSetQuery.GetBySiteWorkSetIdAndSiteName(context.Background(), siteWorkSetId, siteName)
+func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteName string) (*pluginsdk.WorkSet, error) {
+	ws, err := pc.workSetQuery.GetBySiteWorkSetIdAndSiteName(context.Background(), siteWorkSetId, siteName)
+	if err != nil {
+		return nil, err
+	}
+	return EntityWorkSetToSDK(ws), nil
 }
 
-func (pc *pluginContext) AddSite(sites []*entity.Site) error {
+func (pc *pluginContext) AddSite(sites []*pluginsdk.Site) error {
 	ctx := context.Background()
 	for _, site := range sites {
-		if err := pc.siteSave.Save(ctx, site); err != nil {
+		if err := pc.siteSave.Save(ctx, SDKSiteToEntity(site)); err != nil {
 			return fmt.Errorf("add site: %w", err)
 		}
 	}
@@ -247,7 +181,7 @@ func (pc *pluginContext) UnregisterUrlListener() error {
 	return nil
 }
 
-func (pc *pluginContext) CreateTask(url string) (*TaskCreateResult, error) {
+func (pc *pluginContext) CreateTask(url string) (*pluginsdk.TaskCreateResult, error) {
 	return pc.taskCreate.CreateTaskByURL(context.Background(), url)
 }
 
@@ -262,12 +196,12 @@ func (pc *pluginContext) GetPluginRoot(isRelative bool) string {
 
 // --- 窗口管理 ---
 
-func (pc *pluginContext) GetMainWindow() WindowHandle {
+func (pc *pluginContext) GetMainWindow() pluginsdk.WindowHandle {
 	// TODO: 接入 Wails 窗口管理
 	return nil
 }
 
-func (pc *pluginContext) CreateWindow(options WindowOptions) (WindowHandle, error) {
+func (pc *pluginContext) CreateWindow(options pluginsdk.WindowOptions) (pluginsdk.WindowHandle, error) {
 	// TODO: 接入 Wails 窗口管理
 	return nil, fmt.Errorf("window management not yet implemented for Wails")
 }

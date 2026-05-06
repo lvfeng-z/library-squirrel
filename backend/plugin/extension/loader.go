@@ -7,13 +7,14 @@ import (
 
 	"github.com/library-squirrel/wails/backend/base/logger"
 	"github.com/library-squirrel/wails/backend/base/model/dto"
+	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 
 // 错误定义
 var (
 	ErrPluginLoadFailed = errors.New("plugin load failed")
 	ErrNoEntrySymbol    = errors.New("no Activate symbol found in plugin")
-	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(extension.PluginContext)")
+	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(pluginsdk.PluginContext)")
 )
 
 // Loader 插件加载器
@@ -40,7 +41,7 @@ func NewLoader(
 // pluginPath: 插件 DLL 路径
 // pluginPublicId: 插件公开ID，用于 panic 回滚
 // ctx: 插件上下文，主程序提供给插件的完整 API
-func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx PluginContext) (err error) {
+func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx pluginsdk.PluginContext) (err error) {
 	// 加载插件动态库
 	p, err := plugin.Open(pluginPath)
 	if err != nil {
@@ -53,8 +54,8 @@ func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx Plugin
 		return fmt.Errorf("%w: %v", ErrNoEntrySymbol, err)
 	}
 
-	// 类型断言为 func(PluginContext)
-	activateFunc, ok := symbol.(func(PluginContext))
+	// 类型断言为 func(pluginsdk.PluginContext)
+	activateFunc, ok := symbol.(func(pluginsdk.PluginContext))
 	if !ok {
 		return ErrInvalidEntry
 	}
@@ -90,7 +91,7 @@ func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (dto.Task
 	if err != nil {
 		return nil, err
 	}
-	return ext.Instance, nil
+	return &taskHandlerAdapter{handler: ext.Instance}, nil
 }
 
 // PluginInfo 插件基本信息
