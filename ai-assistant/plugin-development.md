@@ -4,6 +4,8 @@
 
 插件系统是 LibrarySquirrel 扩展性的核心，允许通过 Go 共享库（`.dll`/`.so`）插件支持不同的站点（如 pixiv、bilibili）。插件在 `Activate` 函数中接收 `PluginContext`，自主注册所需的扩展点。
 
+插件接口（`PluginContext`、`TaskHandler`、`SiteBrowser`、`SlotType`、`ContentType` 等）定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk` 中，主程序和插件共同依赖此 SDK。
+
 ## 核心概念
 
 ### 插件目录结构
@@ -51,12 +53,11 @@ plugin/package/
 package main
 
 import (
-    "github.com/library-squirrel/wails/backend/plugin/extension"
-    "github.com/library-squirrel/wails/backend/base"
+    pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 )
 
 // Activate 插件入口函数，主程序加载 DLL 后调用
-func Activate(ctx extension.PluginContext) {
+func Activate(ctx pluginsdk.PluginContext) {
     // 注册任务处理器
     ctx.RegisterTaskHandler("pixiv-task", "Pixiv任务", "处理Pixiv下载任务", &PixivTaskHandler{})
 
@@ -66,12 +67,12 @@ func Activate(ctx extension.PluginContext) {
     // 注册插槽（UI扩展）
     ctx.RegisterSlot(
         "pixiv-slot", "Pixiv入口", "Pixiv站点浏览器入口",
-        base.SlotTypeSiteBrowserList,   // 插槽类型
-        "",                             // 内容
-        base.ContentTypeComponent,      // 内容类型
-        "Pixiv",                        // 标题
-        "pixiv-icon.png",               // 图标
-        0,                              // 排序
+        pluginsdk.SlotTypeSiteBrowserList,   // 插槽类型
+        "",                                  // 内容
+        pluginsdk.ContentTypeComponent,      // 内容类型
+        "Pixiv",                             // 标题
+        "pixiv-icon.png",                    // 图标
+        0,                                   // 排序
     )
 
     // 注册 URL 监听器（任务路由）
@@ -94,9 +95,9 @@ func Activate(ctx extension.PluginContext) {
 ```go
 type PluginContext interface {
     // 扩展点注册
-    RegisterTaskHandler(id, name, desc string, handler dto.TaskHandler) error
+    RegisterTaskHandler(id, name, desc string, handler TaskHandler) error
     RegisterSiteBrowser(id, name, desc string, browser SiteBrowser) error
-    RegisterSlot(id, name, desc string, slotType base.SlotType, ...) error
+    RegisterSlot(id, name, desc string, slotType SlotType, ...) error
 
     // 扩展点注销
     UnregisterSlot(id string) error
@@ -111,9 +112,9 @@ type PluginContext interface {
     GetDecryptedValue(storageKey string) (string, error)
     RemoveEncryptedValue(storageKey string) error
 
-    // 业务查询
-    GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName string) (*entity.WorkSet, error)
-    AddSite(sites []*entity.Site) error
+    // 业务查询（返回 SDK 等效类型）
+    GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName string) (*WorkSet, error)
+    AddSite(sites []*Site) error
 
     // 任务管理
     RegisterUrlListener(contributionId string, patterns []string) error
@@ -134,6 +135,8 @@ type PluginContext interface {
     Errorf(template string, args ...any)
 }
 ```
+
+> **注意**：以上接口中所有类型（`TaskHandler`、`SiteBrowser`、`SlotType`、`WorkSet`、`Site`、`TaskCreateResult`、`WindowHandle`、`WindowOptions` 等）均来自 `pluginsdk` 包（`github.com/lvfeng-z/library-squirrel-plugin-sdk`）。
 
 ### Provider 接口（依赖倒置）
 
@@ -157,14 +160,16 @@ PluginContext 的服务依赖通过 Provider 接口注入，由 `extension` 包�
 ```go
 type TaskHandler interface {
     Create(url string) ([]*TaskCreateResponse, error)
-    CreateWorkInfo(task *entity.Task) (*WorkResponse, error)
-    Start(task *entity.Task) (io.ReadCloser, *WorkResponse, error)
-    Retry(task *entity.Task) (*WorkResponse, error)
+    CreateWorkInfo(task *Task) (*WorkResponse, error)
+    Start(task *Task) (io.ReadCloser, *WorkResponse, error)
+    Retry(task *Task) (*WorkResponse, error)
     Pause(param *TaskResParam) error
     Stop(param *TaskResParam) error
     Resume(param *TaskResParam) (*WorkResponse, error)
 }
 ```
+
+> **注意**：以上 `Task`、`WorkResponse`、`TaskResParam`、`TaskCreateResponse` 等类型均为 SDK 中的等效类型（使用 `*string`/`*int64` 指针替代 `sql.NullString`/`sql.NullInt64`）。主程序内部通过 `taskHandlerAdapter`（`convert.go`）自动完成 SDK 类型与内部 entity/DTO 类型的转换。
 
 **调用链**：`TaskManager → TaskExecutorImpl → Loader.GetTaskHandler() → Registry → 插件 DLL`
 
@@ -214,11 +219,11 @@ type SiteBrowser interface {
 
 三个扩展点各有独立的线程安全注册中心：
 
-| Registry               | 存储                                    | 关键文件                            |
-| ---------------------- | --------------------------------------- | ----------------------------------- |
-| `TaskHandlerRegistry`  | `map[string]*Extension[dto.TaskHandler]` | `extension/task_handler_registry.go`|
-| `SiteBrowserRegistry`  | `map[string]*Extension[SiteBrowser]`    | `extension/site_browser_registry.go`|
-| `SlotRegistry`         | `map[string]*Extension[*SlotConfig]`    | `extension/slot_registry.go`        |
+| Registry               | 存储                                           | 关键文件                            |
+| ---------------------- | ---------------------------------------------- | ----------------------------------- |
+| `TaskHandlerRegistry`  | `map[string]*Extension[pluginsdk.TaskHandler]` | `extension/task_handler_registry.go`|
+| `SiteBrowserRegistry`  | `map[string]*Extension[pluginsdk.SiteBrowser]` | `extension/site_browser_registry.go`|
+| `SlotRegistry`         | `map[string]*Extension[*SlotConfig]`           | `extension/slot_registry.go`        |
 
 key 格式：`pluginPublicId/extensionId`
 
@@ -268,20 +273,22 @@ InstallFromPath(zipPath)
 | 文件 | 职责 |
 |------|------|
 | `backend/plugin/extension/loader.go` | 插件 DLL 加载、Activate 调用、panic 恢复 |
-| `backend/plugin/extension/registrar.go` | Registrar 接口实现（扩展点注册） |
-| `backend/plugin/extension/plugin_context.go` | PluginContext 接口与实现、Provider 接口定义 |
-| `backend/plugin/extension/task_handler_registry.go` | TaskHandler 注册中心 |
+| `backend/plugin/extension/registrar.go` | Registrar 接口实现（扩展点注册，接受 SDK 类型） |
+| `backend/plugin/extension/plugin_context.go` | PluginContext 实现、Provider 接口定义 |
+| `backend/plugin/extension/convert.go` | SDK ↔ entity/DTO 类型转换、`taskHandlerAdapter` 适配器 |
+| `backend/plugin/extension/task_handler_registry.go` | TaskHandler 注册中心（存储 `pluginsdk.TaskHandler`） |
 | `backend/plugin/extension/site_browser_registry.go` | SiteBrowser 注册中心 |
 | `backend/plugin/extension/slot_registry.go` | Slot 注册中心 + WailsSlotPusher |
 | `backend/plugin/extension/wails_pusher.go` | Slot 事件的 Wails Events 桥接 |
 | `backend/plugin/extension/task_executor.go` | TaskManager ↔ 插件桥接 |
 | `backend/plugin/service.go` | 插件安装/卸载（ZIP + 数据库） |
 | `backend/plugin/handler.go` | Wails Handler（前端 CRUD） |
-| `backend/base/model/dto/task_handler.go` | TaskHandler 接口定义 |
+| `backend/base/model/dto/task_handler.go` | 内部 TaskHandler 接口定义（`dto.TaskHandler`，供主程序内部使用） |
 | `backend/base/model/dto/plugin_types.go` | PluginManifest、PluginContribute |
 | `backend/base/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
 | `backend/base/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
 | `app.go` | 启动引导、loadInstalledPlugins、适配器 |
+| **SDK 库** `github.com/lvfeng-z/library-squirrel-plugin-sdk` | 插件接口定义（PluginContext、TaskHandler、SiteBrowser、SlotType、ContentType、entity 等效类型、DTO 等） |
 
 ## 最佳实践
 
@@ -292,6 +299,14 @@ InstallFromPath(zipPath)
 5. **插件数据**：使用 `GetPluginData` / `SetPluginData` 持久化插件状态
 
 ## 更新记录
+
+### 2026-05-06
+- [重构] 插件接口迁移至独立 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk`
+- [修改] PluginContext、TaskHandler、SiteBrowser 接口改为 SDK 定义
+- [修改] 模块路径从 `github.com/library-squirrel/wails` 调整为 `github.com/library-squirrel`
+- [新增] `convert.go`：SDK 类型与 entity/DTO 类型之间的转换函数 + `taskHandlerAdapter` 适配器
+- [删除] `backend/base/plugin/` 目录（已被 SDK 替代）
+- [修改] 插件入口函数签名：`func Activate(ctx pluginsdk.PluginContext)`
 
 ### 2026-05-05
 - [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

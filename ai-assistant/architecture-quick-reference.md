@@ -147,7 +147,8 @@ export const routes = [
 ## 插件系统要点
 
 - 插件为 Go 共享库（`.dll`/`.so`），存储在 `plugin/package/{publicId}/{version}/`
-- 入口函数：`func Activate(ctx extension.PluginContext)`，插件通过 PluginContext 自主注册扩展点
+- 入口函数：`func Activate(ctx pluginsdk.PluginContext)`，插件通过 PluginContext 自主注册扩展点
+- PluginContext 接口定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk` 中，主程序和插件共同依赖
 - 三个扩展点：TaskHandler（任务处理）、SiteBrowser（站点浏览）、Slot（UI 插槽）
 - 三个注册中心：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`（线程安全）
 - PluginContext 封装主程序完整 API（数据持久化、加密存储、业务查询、任务管理、日志等）
@@ -155,6 +156,10 @@ export const routes = [
 - Slot 同步：通过 Wails Events 推送到前端
 
 ## 更新记录
+
+### 2026-05-06
+- [修改] 模块路径从 `github.com/library-squirrel/wails` 调整为 `github.com/library-squirrel`
+- [修改] 引入 SDK 第三方库 `github.com/lvfeng-z/library-squirrel-plugin-sdk`，PluginContext 等接口迁移至 SDK
 
 ### 2026-05-05
 - [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`
