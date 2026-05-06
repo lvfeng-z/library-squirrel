@@ -101,3 +101,10 @@ export interface VueSourceContent extends PrecompiledContent {
    */
   vue: string
 }
+
+/**
+ * HTML 内容类型 (仅用于 contentType 为 'html' 时)
+ */
+export interface HtmlContent {
+  html: string
+}

@@ -21,19 +21,16 @@ var (
 type Loader struct {
 	taskHandlerRegistry *TaskHandlerRegistry
 	siteBrowserRegistry *SiteBrowserRegistry
-	slotRegistry        *SlotRegistry
 }
 
 // NewLoader 创建插件加载器
 func NewLoader(
 	taskHandlerRegistry *TaskHandlerRegistry,
 	siteBrowserRegistry *SiteBrowserRegistry,
-	slotRegistry *SlotRegistry,
 ) *Loader {
 	return &Loader{
 		taskHandlerRegistry: taskHandlerRegistry,
 		siteBrowserRegistry: siteBrowserRegistry,
-		slotRegistry:        slotRegistry,
 	}
 }
 
@@ -80,7 +77,7 @@ func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx plugin
 func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-	l.slotRegistry.UnregisterAll(pluginPublicId)
+	// Slot 注销由 StaticResourceService + SlotRegistry 在外层处理
 	logger.Log.Info("Plugin unloaded", "plugin", pluginPublicId)
 	return nil
 }

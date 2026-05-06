@@ -126,8 +126,3 @@ func (h *Handler) GetPluginRoot() *model.ApiResponse[string] {
 	result := h.svc.GetPluginRoot()
 	return model.Success(result)
 }
-
-// ReadVueFile 读取插件的 Vue 文件内容
-func (h *Handler) ReadVueFile(pluginPublicId string, filePath string) *model.ApiResponse[string] {
-	return model.HandleResult(h.svc.ReadVueFile(pluginPublicId, filePath))
-}

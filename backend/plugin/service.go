@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -193,10 +192,17 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	if manifest.ID == "" || manifest.Name == "" || manifest.Version == "" || manifest.Author == "" {
 		return nil, ErrInvalidManifest
 	}
-	if len(manifest.Contributes) == 0 {
+	if manifest.Extensions == nil {
 		return nil, ErrInvalidManifest
 	}
-	if manifest.Activation.Type == 0 && manifest.EntryFile == "" {
+	ext := manifest.Extensions
+	hasExtensions := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0 || len(ext.Slots) > 0
+	if !hasExtensions {
+		return nil, ErrInvalidManifest
+	}
+	// EntryFile 仅在有运行时扩展点时必填
+	hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
+	if hasRuntime && manifest.EntryFile == "" {
 		return nil, ErrInvalidManifest
 	}
 
@@ -422,32 +428,4 @@ func (s *Service) getWorkDir() string {
 // GetPluginRoot 获取插件根目录
 func (s *Service) GetPluginRoot() string {
 	return PluginPackageRoot
-}
-
-// ReadVueFile 读取插件的 Vue 文件内容
-func (s *Service) ReadVueFile(pluginPublicId string, filePath string) (string, error) {
-	// 获取插件信息
-	plugin, err := s.repo.GetByPublicId(context.Background(), pluginPublicId)
-	if err != nil {
-		return "", fmt.Errorf("failed to get plugin: %w", err)
-	}
-	if plugin == nil {
-		return "", ErrPluginNotFound
-	}
-
-	// 构建文件完整路径
-	workDir := s.getWorkDir()
-	rootPath := ""
-	if plugin.RootPath.Valid {
-		rootPath = plugin.RootPath.String
-	}
-	fullPath := filepath.Join(workDir, rootPath, filePath)
-
-	// 读取文件
-	content, err := os.ReadFile(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
-	}
-
-	return string(content), nil
 }

@@ -7,6 +7,9 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as json$0 from "../../../../encoding/json/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as model$0 from "./model/models.js";
 
 /**
@@ -24,14 +27,19 @@ export enum ContentType {
     ContentTypeVueSource = "vueSource",
 
     /**
-     * ContentTypeHTML HTML 内容
+     * ContentTypePrecompiled 预编译 JS/CSS
      */
-    ContentTypeHTML = "html",
+    ContentTypePrecompiled = "precompiled",
 
     /**
-     * ContentTypeComponent 组件
+     * ContentTypeCode JavaScript 代码字符串
      */
-    ContentTypeComponent = "component",
+    ContentTypeCode = "code",
+
+    /**
+     * ContentTypeHTML HTML 文件
+     */
+    ContentTypeHTML = "html",
 };
 
 /**
@@ -74,9 +82,9 @@ export class SlotConfig {
     "SlotType": SlotType;
 
     /**
-     * 插槽内容
+     * 插槽内容（JSON 结构，前端根据 ContentType 解析）
      */
-    "Content": string;
+    "Content": json$0.RawMessage;
 
     /**
      * 内容类型
@@ -97,6 +105,32 @@ export class SlotConfig {
      * 排序
      */
     "Order": number;
+
+    /**
+     * 扩展字段（声明式注册使用）
+     * panel: left-sidebar|right-sidebar|bottom; embed: topbar|toolbar|statusbar
+     */
+    "Position": string;
+
+    /**
+     * panel: 宽度
+     */
+    "Width": number | null;
+
+    /**
+     * panel: 高度
+     */
+    "Height": number | null;
+
+    /**
+     * menu: 关联的 view slot ID
+     */
+    "ViewId": string;
+
+    /**
+     * siteBrowserList: 关联的 siteBrowser contribution ID
+     */
+    "ContributionId": string;
 
     /** Creates a new SlotConfig instance. */
     constructor($$source: Partial<SlotConfig> = {}) {
@@ -122,7 +156,7 @@ export class SlotConfig {
             this["SlotType"] = SlotType.$zero;
         }
         if (!("Content" in $$source)) {
-            this["Content"] = "";
+            this["Content"] = null;
         }
         if (!("ContentType" in $$source)) {
             this["ContentType"] = ContentType.$zero;
@@ -135,6 +169,21 @@ export class SlotConfig {
         }
         if (!("Order" in $$source)) {
             this["Order"] = 0;
+        }
+        if (!("Position" in $$source)) {
+            this["Position"] = "";
+        }
+        if (!("Width" in $$source)) {
+            this["Width"] = null;
+        }
+        if (!("Height" in $$source)) {
+            this["Height"] = null;
+        }
+        if (!("ViewId" in $$source)) {
+            this["ViewId"] = "";
+        }
+        if (!("ContributionId" in $$source)) {
+            this["ContributionId"] = "";
         }
 
         Object.assign(this, $$source);

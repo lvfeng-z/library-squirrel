@@ -55,7 +55,6 @@ type PluginContextDeps struct {
 	RootPath            string
 	TaskHandlerRegistry *TaskHandlerRegistry
 	SiteBrowserRegistry *SiteBrowserRegistry
-	SlotRegistry        *SlotRegistry
 	PluginData          PluginDataProvider
 	SecureStorage       SecureStorageProvider
 	WorkSetQuery        WorkSetQueryProvider
@@ -80,7 +79,7 @@ type pluginContext struct {
 
 // NewPluginContext 创建插件上下文
 func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
-	reg := newRegistrar(deps.PluginInfo, deps.TaskHandlerRegistry, deps.SiteBrowserRegistry, deps.SlotRegistry)
+	reg := newRegistrar(deps.PluginInfo, deps.TaskHandlerRegistry, deps.SiteBrowserRegistry)
 
 	pluginName := deps.PluginInfo.Name
 	if pluginName == "" {
@@ -102,8 +101,14 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 
 // --- 扩展点注销 ---
 
+func (pc *pluginContext) RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error {
+	// Slot 注册已改为配置文件声明式，此方法保留以兼容 SDK 接口
+	return fmt.Errorf("slot registration is now config-driven, use plugin.json extensions.slots instead")
+}
+
 func (pc *pluginContext) UnregisterSlot(id string) error {
-	return pc.slotRegistry.Unregister(pc.pluginInfo.PublicID, id)
+	// Slot 注册已改为配置文件声明式，此方法保留以兼容 SDK 接口
+	return fmt.Errorf("slot registration is now config-driven, unregister is not supported")
 }
 
 func (pc *pluginContext) UnregisterSiteBrowser(id string) error {

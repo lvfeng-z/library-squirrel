@@ -917,9 +917,11 @@ type Resource struct {
 ### 插件开发规范
 
 - **目录位置**: `plugin/package/`
-- **插件结构**: 每个插件是独立包，包含 `package.json`
-- **基类**: 实现插件接口，至少包含插件标识
-- **插件工厂**: 通过工厂方法创建插件实例
+- **插件结构**: 每个插件是独立包，包含 `plugin.json` 清单文件
+- **两种模式**: 运行时插件（Go DLL + `entryFile`）、纯 UI 插件（仅 `plugin.json` 声明 slots）
+- **Slot 注册**: 通过 `plugin.json` 的 `extensions.slots` 声明式注册，禁止在运行时调用 `RegisterSlot()`
+- **静态资源**: 在 `extensions.staticResources.directories` 声明可访问目录，通过 `resource://plugin/...` URL 访问
+- **入口函数**: 运行时插件导出 `func Activate(ctx pluginsdk.PluginContext)`
 
 ## 代码质量工具
 

@@ -1,5 +1,6 @@
 import {
   EmbedSlotConfig,
+  HtmlContent,
   MenuSlotConfig,
   PanelSlotConfig,
   PrecompiledContent,
@@ -9,13 +10,13 @@ import {
 } from '@renderer/model/model/interface/SlotConfigs.ts'
 
 /** 插槽内容类型 */
-export type SlotContentType = 'vueSource' | 'precompiled' | 'code'
+export type SlotContentType = 'vueSource' | 'precompiled' | 'code' | 'html'
 
 /**
  * 任意插槽内容类型 - 用于 IPC 序列化
  * 包含所有可能的内容格式
  */
-export type AnySlotContent = PrecompiledContent | VueSourceContent | string
+export type AnySlotContent = PrecompiledContent | VueSourceContent | HtmlContent | string
 
 /**
  * 插槽配置联合类型 - 使用可辨识联合实现类型安全

@@ -99,7 +99,7 @@ async function handleCardClick(item: SiteBrowserItem) {
               @click="handleCardClick(item)"
             >
               <div class="site-browser-card-image">
-                <el-image :src="`resource://${item.imagePath}`" fit="cover" class="site-browser-image">
+                <el-image :src="item.imagePath.startsWith('resource://') ? item.imagePath : `resource://${item.imagePath}`" fit="cover" class="site-browser-image">
                   <template #error>
                     <div class="site-browser-image-error">
                       <el-icon><Picture /></el-icon>

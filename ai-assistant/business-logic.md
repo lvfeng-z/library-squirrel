@@ -77,13 +77,13 @@
 
 - **目的**：扩展对不同站点的作品下载支持
 - **架构位置**：`plugin/package/`
+- **两种模式**：运行时插件（Go DLL）和纯 UI 插件（仅配置文件）
 - **核心组件**：
-  - `backend/plugin/loader.go` - 插件加载器
-  - `backend/plugin/service.go` - 插件服务
+  - `backend/plugin/extension/` - 插件加载器、注册中心、静态资源服务
+  - `backend/plugin/service.go` - 插件安装/卸载
   - `backend/pluginTaskUrlListener/` - 任务URL监听
-- **预置插件**：
-  - 本地导入作品插件
-  - pixiv 作品下载插件
+- **注册方式**：TaskHandler/SiteBrowser 通过 DLL 运行时注册，Slot 通过 `plugin.json` 声明式注册
+- **静态资源**：通过 `resource://plugin/{id}/{ver}/...` URL 访问插件文件
 - **扩展性**：每个插件是独立包，包含作者、名称和版本元数据
 
 ## 数据模型关系

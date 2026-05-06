@@ -105,8 +105,8 @@
 
 - **英文**：Registrar
 - **定义**：PluginContext 内嵌的扩展点注册接口
-- **领域角色**：插件通过 Registrar 注册 TaskHandler、SiteBrowser、Slot 扩展点
-- **方法**：`RegisterTaskHandler`、`RegisterSiteBrowser`、`RegisterSlot`
+- **领域角色**：插件通过 Registrar 注册 TaskHandler、SiteBrowser 扩展点（Slot 已改为声明式注册）
+- **方法**：`RegisterTaskHandler`、`RegisterSiteBrowser`（`RegisterSlot` 已移除）
 - **相关文件**：`backend/plugin/extension/registrar.go`
 
 ### Provider 接口 (Provider Interface)
@@ -132,6 +132,44 @@
 - **模块路径**：`github.com/lvfeng-z/library-squirrel-plugin-sdk`
 - **包含内容**：PluginContext、TaskHandler、SiteBrowser 接口；SlotType/ContentType 枚举；Task/Work/WorkSet/Site 等效实体类型（使用指针替代 sql.Null*）；各类 DTO
 - **领域角色**：主程序和插件共同依赖的接口契约，实现开发环境隔离
+
+### 声明式 Slot 注册 (Declarative Slot Registration)
+
+- **英文**：Declarative Slot Registration
+- **定义**：通过 `plugin.json` 的 `extensions.slots` 配置声明 UI 扩展，主程序在启动时自动读取和注册
+- **领域角色**：替代运行时 `PluginContext.RegisterSlot()`，简化插件开发，支持纯 UI 插件
+- **流程**：主程序读取 `plugin.json` → 构建 `SlotConfig` → `SlotRegistry.Register()`
+- **优势**：无需 DLL 加载、无需 Go 编译、配置即注册
+
+### 纯 UI 插件 (Pure UI Plugin)
+
+- **英文**：Pure UI Plugin
+- **定义**：仅包含 Slot 扩展（无 TaskHandler/SiteBrowser）的插件，不需要 DLL 入口文件
+- **领域角色**：降低插件开发门槛，轻量级 UI 扩展
+- **判断条件**：`extensions.taskHandlers` 和 `extensions.siteBrowsers` 均为空
+
+### 静态资源服务 (Static Resource Service)
+
+- **英文**：Static Resource Service
+- **定义**：线程安全的插件静态资源 HTTP 服务，提供 `resource://plugin/{id}/{ver}/...` URL 访问
+- **领域角色**：插件 Vue/JS/CSS/HTML/图片等文件的安全分发
+- **安全机制**：路径遍历防护、目录白名单校验、ETag 缓存
+- **相关文件**：`backend/plugin/extension/static_resource_service.go`
+
+### 组合 Asset Handler (PluginAwareAssetHandler)
+
+- **英文**：Plugin-Aware Asset Handler
+- **定义**：组合前端嵌入式资源（embed.FS）与插件静态资源的 HTTP handler
+- **领域角色**：Wails asset handler 的扩展，使插件资源通过同一 `resource://` 协议访问
+- **路由规则**：`/plugin/` 前缀 → StaticResourceService，其余 → 前端 embed.FS
+- **相关文件**：`backend/plugin/extension/asset_handler.go`
+
+### 内容类型 (ContentType)
+
+- **英文**：Content Type
+- **定义**：Slot 内容的格式类型
+- **可选值**：`vueSource`（Vue SFC）、`precompiled`（预编译 JS/CSS）、`code`（行内 JS）、`html`（HTML 文件）
+- **已废弃**：`component`
 
 ### 类型适配器 (Type Adapter)
 
@@ -329,6 +367,8 @@
 ## 更新记录
 
 ### 2026-05-06
+- [新增] 声明式 Slot 注册、纯 UI 插件、静态资源服务、组合 Asset Handler、ContentType 术语
+- [修改] 注册器 (Registrar) 说明：移除 RegisterSlot
 - [新增] 插件 SDK (Plugin SDK) 术语
 - [新增] 类型适配器 (Type Adapter) 术语
 - [修改] PluginContext 说明更新为 SDK 定义

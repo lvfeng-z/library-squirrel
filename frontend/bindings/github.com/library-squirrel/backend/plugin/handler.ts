@@ -76,15 +76,6 @@ export function Page(page: model$0.Page<dto$0.PluginDTO> | null, query: $models.
 }
 
 /**
- * ReadVueFile 读取插件的 Vue 文件内容
- */
-export function ReadVueFile(pluginPublicId: string, filePath: string): $CancellablePromise<model$0.ApiResponse<string> | null> {
-    return $Call.ByID(2110419852, pluginPublicId, filePath).then(($result: any) => {
-        return $$createType7($result);
-    });
-}
-
-/**
  * Reinstall 重新安装插件
  */
 export function Reinstall(pluginPublicId: string, installType: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {

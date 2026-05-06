@@ -74,7 +74,7 @@ func main() {
 			application.NewService(app.PluginTaskUrlListenerHandler),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: app.CreateAssetHandler(assets),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,

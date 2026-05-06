@@ -1,5 +1,7 @@
 package dto
 
+import "encoding/json"
+
 // InstallType 安装类型
 type InstallType int
 
@@ -25,12 +27,6 @@ type PluginActivation struct {
 	Type ActivationType `json:"type"`
 }
 
-// PluginContribute 插件贡献点
-type PluginContribute struct {
-	Type string `json:"type"` // taskHandler, slot, siteBrowser 等
-	ID   string `json:"id"`
-}
-
 // PluginManifest 插件清单（从 plugin.json 解析）
 type PluginManifest struct {
 	ID          string             `json:"id"`
@@ -38,7 +34,7 @@ type PluginManifest struct {
 	Version     string             `json:"version"`
 	Author      string             `json:"author"`
 	Description string             `json:"description,omitempty"`
-	Contributes []PluginContribute `json:"contributes"`
+	Extensions  *PluginExtensions  `json:"extensions"`
 	Activation  PluginActivation   `json:"activation"`
 	EntryFile   string             `json:"entryFile"`
 }
@@ -50,7 +46,7 @@ type PluginInstallDTO struct {
 	Version     string             `json:"version"`
 	Author      string             `json:"author"`
 	Description string             `json:"description,omitempty"`
-	Contributes []PluginContribute `json:"contributes"`
+	Extensions  *PluginExtensions  `json:"extensions"`
 	Activation  PluginActivation   `json:"activation"`
 	EntryFile   string             `json:"entryFile"`
 	PackagePath string             `json:"packagePath,omitempty"`
@@ -70,7 +66,7 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Version:     p.Version,
 		Author:      p.Author,
 		Description: p.Description,
-		Contributes: p.Contributes,
+		Extensions:  p.Extensions,
 		Activation:  p.Activation,
 		EntryFile:   p.EntryFile,
 		PackagePath: packagePath,
@@ -81,4 +77,51 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 // NewPluginManifest 创建插件清单
 func NewPluginManifest() *PluginManifest {
 	return &PluginManifest{}
+}
+
+// PluginExtensions 插件扩展点集合（plugin.json 的 extensions 段）
+type PluginExtensions struct {
+	TaskHandlers    []TaskHandlerDeclaration `json:"taskHandlers,omitempty"`
+	SiteBrowsers    []SiteBrowserDeclaration `json:"siteBrowsers,omitempty"`
+	Slots           []SlotDeclaration        `json:"slots,omitempty"`
+	StaticResources *StaticResourcesConfig   `json:"staticResources,omitempty"`
+}
+
+// TaskHandlerDeclaration 任务处理器声明
+type TaskHandlerDeclaration struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// SiteBrowserDeclaration 站点浏览器声明
+type SiteBrowserDeclaration struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// SlotDeclaration 插槽声明（plugin.json 中每个 slot 条目）
+type SlotDeclaration struct {
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Description    string            `json:"description,omitempty"`
+	SlotType       string            `json:"slotType"`
+	ContentType    string            `json:"contentType,omitempty"`
+	Content        json.RawMessage   `json:"content,omitempty"`
+	Title          string            `json:"title,omitempty"`
+	Icon           string            `json:"icon,omitempty"`
+	Order          int               `json:"order,omitempty"`
+	Position       string            `json:"position,omitempty"`
+	Width          *int              `json:"width,omitempty"`
+	Height         *int              `json:"height,omitempty"`
+	Props          json.RawMessage   `json:"props,omitempty"`
+	ViewId         string            `json:"viewId,omitempty"`
+	ContributionId string            `json:"contributionId,omitempty"`
+	Children       []SlotDeclaration `json:"children,omitempty"`
+}
+
+// StaticResourcesConfig 静态资源配置
+type StaticResourcesConfig struct {
+	Directories []string `json:"directories"`
 }

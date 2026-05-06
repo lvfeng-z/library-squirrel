@@ -8,6 +8,7 @@ import * as Vue from 'vue'
 import { AnySlotContent, SyncSlotConfig } from '@renderer/model/model/constant/SlotTypes.ts'
 import {
   EmbedSlotConfig,
+  HtmlContent,
   MenuSlotConfig,
   PanelSlotConfig,
   PrecompiledContent,
@@ -18,7 +19,6 @@ import {
 import { DefineComponent } from 'vue'
 import { Events } from '@wailsio/runtime'
 import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/backend/slot'
-import { Handler as PluginHandler } from '@bindings/github.com/library-squirrel/backend/plugin'
 
 /**
  * 转换视图插槽配置
@@ -151,34 +151,14 @@ function unloadPluginStyles(pluginId: number): void {
 
 /**
  * 加载预编译的插件组件
- * 直接加载主进程编译生成的 JS 文件
- * @param jsPath 编译后的 JS 文件路径
- * @param cssPath 编译后的 CSS 文件路径（可选）
+ * 路径已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
+ * @param jsUrl 编译后的 JS 文件 resource:// URL
+ * @param cssUrl 编译后的 CSS 文件 resource:// URL（可选）
  * @param pluginPublicId 插件公开ID
  */
-async function loadCompiledComponent(jsPath: string, cssPath: string | undefined, pluginPublicId: string): Promise<DefineComponent> {
-  // 使用 resource:// 协议加载 JS 文件
-  const protocolPrefix = 'resource://'
-  const pluginResPrefix = 'plugin/'
-
-  // 转换绝对路径为相对路径（相对于插件缓存目录）
-  const relativeJsPath = jsPath.replace(/\\/g, '/')
-  let jsUrl: string
-  if (relativeJsPath.startsWith(pluginResPrefix)) {
-    jsUrl = protocolPrefix + relativeJsPath
-  } else {
-    jsUrl = protocolPrefix + pluginResPrefix + relativeJsPath
-  }
-
+async function loadCompiledComponent(jsUrl: string, cssUrl: string | undefined, pluginPublicId: string): Promise<DefineComponent> {
   // 如果有CSS文件，先加载CSS
-  if (cssPath) {
-    const relativeCssPath = cssPath.replace(/\\/g, '/')
-    let cssUrl: string
-    if (relativeJsPath.startsWith(pluginResPrefix)) {
-      cssUrl = protocolPrefix + relativeCssPath
-    } else {
-      cssUrl = protocolPrefix + pluginResPrefix + relativeCssPath
-    }
+  if (cssUrl) {
     await loadPluginStyles(pluginPublicId, cssUrl)
   }
 
@@ -231,6 +211,12 @@ async function loadPluginComponent(contentType: string, content: AnySlotContent,
     return createCodeComponent(codeContent)
   }
 
+  // HTML 文件加载
+  if (contentType === 'html') {
+    const htmlContent = content as HtmlContent
+    return createHtmlComponent(htmlContent.html)
+  }
+
   throw new Error(`未知的内容类型: ${contentType}`)
 }
 
@@ -252,16 +238,35 @@ function createCodeComponent(code: string): Promise<DefineComponent> {
 }
 
 /**
+ * 创建 HTML 组件
+ * htmlPath 已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
+ * @param htmlPath HTML 文件 resource:// URL
+ */
+async function createHtmlComponent(htmlPath: string): Promise<DefineComponent> {
+  const response = await fetch(htmlPath)
+  if (!response.ok) {
+    throw new Error(`加载HTML文件失败: HTTP ${response.status}`)
+  }
+  const html = await response.text()
+  return defineComponent({
+    template: html
+  })
+}
+
+/**
  * 加载并编译 Vue 源码
- * 插件可使用主程序的依赖
- * @param vuePath Vue 文件路径
+ * vuePath 已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
+ * @param vuePath Vue 文件 resource:// URL
  * @param pluginPublicId 插件公开ID
  */
 async function loadVueSourceComponent(vuePath: string, pluginPublicId: string): Promise<DefineComponent> {
   try {
-    // 阶段 1: 文件获取 - 通过 Wails 绑定读取 .vue 文件内容
-    const resp = await PluginHandler.ReadVueFile(pluginPublicId, vuePath)
-    const sourceCode = resp?.data ?? ''
+    // 阶段 1: 文件获取 - 通过 resource:// URL 获取 .vue 文件内容
+    const response = await fetch(vuePath)
+    if (!response.ok) {
+      throw new Error(`加载Vue源码失败: HTTP ${response.status}`)
+    }
+    const sourceCode = await response.text()
     if (!sourceCode) {
       throw new Error(`加载Vue源码失败，返回内容为空`)
     }

@@ -2,9 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io/fs"
+	"net/http"
+	"os"
 	"path/filepath"
 
+	"github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
 
@@ -81,6 +88,9 @@ type App struct {
 	// 插件加载器
 	pluginLoader *extension2.Loader
 
+	// 静态资源服务
+	StaticResourceService *extension2.StaticResourceService
+
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
@@ -144,6 +154,9 @@ func NewApp() (*App, error) {
 	app.SlotRegistry = extension2.NewSlotRegistry()
 	// SlotPusher 会在 SetEventEmitter 中创建并接入 SlotRegistry
 
+	// 3.5 初始化静态资源服务
+	app.StaticResourceService = extension2.NewStaticResourceService()
+
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
 
@@ -167,11 +180,16 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
 	app.SlotRegistry.SetPusher(pusher)
 }
 
+// CreateAssetHandler 创建组合前端与插件资源的 asset handler
+func (app *App) CreateAssetHandler(frontendAssets fs.FS) http.Handler {
+	return extension2.NewPluginAwareAssetHandler(frontendAssets, app.StaticResourceService)
+}
+
 // loadInstalledPlugins 加载所有已安装且需要启动时激活的插件
 func (app *App) loadInstalledPlugins() {
 	ctx := context.Background()
 
-	// 查询所有未卸载的插件
+	// 查询所有插件
 	plugins, err := app.PluginService.List(ctx, &database.QueryOption{})
 	if err != nil {
 		logger.Log.Errorf("Failed to query installed plugins: %v", err)
@@ -179,16 +197,12 @@ func (app *App) loadInstalledPlugins() {
 	}
 
 	rootPath := util.RootPath()
-	loaded := 0
+	runtimeLoaded := 0
+	pureUICount := 0
 
 	for _, p := range plugins {
 		// 跳过已卸载的插件
 		if p.Uninstalled.Valid && p.Uninstalled.Int64 == plugin.UninstalledTrue {
-			continue
-		}
-
-		// 跳过没有入口文件的插件
-		if !p.EntryPath.Valid || p.EntryPath.String == "" {
 			continue
 		}
 
@@ -197,10 +211,93 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
+		// 跳过没有 RootPath 的插件
+		if !p.RootPath.Valid || p.RootPath.String == "" {
+			continue
+		}
+
+		publicId := p.PublicID.String
+		pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
+
+		// 读取 plugin.json
+		manifestPath := filepath.Join(pluginRootDir, "plugin.json")
+		manifestBytes, err := os.ReadFile(manifestPath)
+		if err != nil {
+			logger.Log.Errorf("Failed to read plugin.json for %s: %v", publicId, err)
+			continue
+		}
+
+		// 解析 manifest
+		var manifest dto.PluginManifest
+		if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+			logger.Log.Errorf("Failed to parse plugin.json for %s: %v", publicId, err)
+			continue
+		}
+
+		ext := manifest.Extensions
+		if ext == nil {
+			logger.Log.Warnf("Plugin %s has no extensions, skipping", publicId)
+			continue
+		}
+
+		// 注册静态资源
+		var allowedDirs []string
+		if ext.StaticResources != nil {
+			allowedDirs = ext.StaticResources.Directories
+		}
+		version := ""
+		if p.Version.Valid {
+			version = p.Version.String
+		}
+		app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
+
+		// 声明式注册 Slot
+		for _, slot := range ext.Slots {
+			slotConfig := base.NewSlotConfig()
+			slotConfig.ExtensionMetadata.ID = slot.ID
+			slotConfig.ExtensionMetadata.PluginID = p.GetID()
+			slotConfig.ExtensionMetadata.PluginPublicID = publicId
+			slotConfig.ExtensionMetadata.Name = slot.Name
+			slotConfig.ExtensionMetadata.Description = slot.Description
+			slotConfig.SlotType = base.SlotType(slot.SlotType)
+			slotConfig.ContentType = base.ContentType(slot.ContentType)
+			slotConfig.Content = resolveContentURLs(slot.Content, slot.ContentType, publicId, version)
+			slotConfig.Title = slot.Title
+			slotConfig.Order = slot.Order
+			slotConfig.Position = slot.Position
+			slotConfig.Width = slot.Width
+			slotConfig.Height = slot.Height
+			slotConfig.ViewId = slot.ViewId
+			slotConfig.ContributionId = slot.ContributionId
+
+			// 将相对路径的 Icon 转换为 resource:// URL
+			if slot.Icon != "" {
+				slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
+			}
+
+			extension := model.NewExtension(*slotConfig.ExtensionMetadata, slotConfig)
+			if err := app.SlotRegistry.Register(extension); err != nil {
+				logger.Log.Errorf("Failed to register slot %s/%s: %v", publicId, slot.ID, err)
+			}
+		}
+
+		// 判断是否为纯 UI 插件（无运行时扩展点）
+		hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
+		if !hasRuntime {
+			pureUICount++
+			continue
+		}
+
+		// 非纯 UI 插件：需要加载 DLL
+		if !p.EntryPath.Valid || p.EntryPath.String == "" {
+			logger.Log.Warnf("Plugin %s has runtime extensions but no entry path", publicId)
+			continue
+		}
+
 		pluginPath := filepath.Join(rootPath, p.EntryPath.String)
 		pluginInfo := &extension2.PluginInfo{
 			ID:        p.GetID(),
-			PublicID:  p.PublicID.String,
+			PublicID:  publicId,
 			Name:      p.Name.String,
 			Version:   p.Version.String,
 			Author:    p.Author.String,
@@ -208,13 +305,11 @@ func (app *App) loadInstalledPlugins() {
 			RootPath:  p.RootPath.String,
 		}
 
-		// 构建插件上下文
 		pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
 			PluginInfo:          pluginInfo,
 			RootPath:            rootPath,
 			TaskHandlerRegistry: app.TaskHandlerRegistry,
 			SiteBrowserRegistry: app.SiteBrowserRegistry,
-			SlotRegistry:        app.SlotRegistry,
 			PluginData:          app.PluginService,
 			SecureStorage:       app.SecureStorageService,
 			WorkSetQuery:        app.WorkSetService,
@@ -223,17 +318,41 @@ func (app *App) loadInstalledPlugins() {
 			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		})
 
-		if err := app.pluginLoader.LoadPlugin(pluginPath, p.PublicID.String, pluginCtx); err != nil {
-			logger.Log.Errorf("Failed to load plugin %s: %v", p.PublicID.String, err)
+		if err := app.pluginLoader.LoadPlugin(pluginPath, publicId, pluginCtx); err != nil {
+			logger.Log.Errorf("Failed to load plugin %s: %v", publicId, err)
 			continue
 		}
-		loaded++
+		runtimeLoaded++
 	}
 
-	logger.Log.Infof("Plugins loaded: %d/%d", loaded, len(plugins))
+	logger.Log.Infof("Plugins loaded: %d runtime, %d pure-UI, %d total", runtimeLoaded, pureUICount, len(plugins))
 }
 
-// taskCreateAdapter 适配 task.Service.CreateTaskByURL 到 TaskCreateProvider 接口
+// resolveContentURLs 将 Slot Content 中的相对路径转换为完整的 resource:// URL
+// 支持 vueSource、precompiled、html 类型，code 类型为行内代码无需转换
+func resolveContentURLs(content json.RawMessage, contentType, publicId, version string) json.RawMessage {
+	if len(content) == 0 || contentType == "code" {
+		return content
+	}
+
+	var c map[string]string
+	if err := json.Unmarshal(content, &c); err != nil {
+		return content
+	}
+
+	prefix := "resource://plugin/" + publicId + "/" + version + "/"
+	for key, path := range c {
+		if path != "" {
+			c[key] = prefix + path
+		}
+	}
+
+	result, err := json.Marshal(c)
+	if err != nil {
+		return content
+	}
+	return result
+}
 type taskCreateAdapter struct {
 	svc *task.Service
 }
@@ -362,7 +481,7 @@ func (app *App) initAdvancedServices() error {
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
 
 	// plugin 服务
-	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry, app.SlotRegistry)
+	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 

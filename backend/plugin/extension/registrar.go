@@ -3,7 +3,6 @@ package extension
 import (
 	"fmt"
 
-	"github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
@@ -16,8 +15,6 @@ type Registrar interface {
 	RegisterTaskHandler(id string, name string, description string, handler pluginsdk.TaskHandler) error
 	// RegisterSiteBrowser 注册站点浏览器扩展点
 	RegisterSiteBrowser(id string, name string, description string, browser pluginsdk.SiteBrowser) error
-	// RegisterSlot 注册插槽扩展点
-	RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error
 }
 
 // registrar 注册器实现
@@ -25,15 +22,13 @@ type registrar struct {
 	pluginInfo          *PluginInfo
 	taskHandlerRegistry *TaskHandlerRegistry
 	siteBrowserRegistry *SiteBrowserRegistry
-	slotRegistry        *SlotRegistry
 }
 
-func newRegistrar(pluginInfo *PluginInfo, thReg *TaskHandlerRegistry, sbReg *SiteBrowserRegistry, slotReg *SlotRegistry) *registrar {
+func newRegistrar(pluginInfo *PluginInfo, thReg *TaskHandlerRegistry, sbReg *SiteBrowserRegistry) *registrar {
 	return &registrar{
 		pluginInfo:          pluginInfo,
 		taskHandlerRegistry: thReg,
 		siteBrowserRegistry: sbReg,
-		slotRegistry:        slotReg,
 	}
 }
 
@@ -69,33 +64,6 @@ func (r *registrar) RegisterSiteBrowser(id string, name string, description stri
 	return nil
 }
 
-// RegisterSlot 注册插槽扩展点
-func (r *registrar) RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error {
-	metadata := r.buildMetadata(model.ExtensionTypeSlot, id, name, description)
-
-	domainSlot := base.NewSlotConfig()
-	domainSlot.ExtensionMetadata = &model.ExtensionMetadata{
-		Type:           metadata.Type,
-		ID:             metadata.ID,
-		PluginID:       metadata.PluginID,
-		PluginPublicID: metadata.PluginPublicID,
-		Name:           metadata.Name,
-		Description:    metadata.Description,
-	}
-	domainSlot.SlotType = base.SlotType(slotType)
-	domainSlot.Content = content
-	domainSlot.ContentType = base.ContentType(contentType)
-	domainSlot.Title = title
-	domainSlot.Icon = icon
-	domainSlot.Order = order
-
-	if err := r.slotRegistry.Register(model.NewExtension(metadata, domainSlot)); err != nil {
-		return err
-	}
-	logger.Log.Info("Slot registered", zap.String("plugin", r.pluginInfo.PublicID), zap.String("id", id), zap.String("slotType", string(slotType)))
-	return nil
-}
-
 // registeredExtensionIDs 返回已注册的扩展点ID列表，用于错误报告
 func (r *registrar) registeredExtensionIDs() []string {
 	var ids []string
@@ -104,9 +72,6 @@ func (r *registrar) registeredExtensionIDs() []string {
 	}
 	for _, ext := range r.siteBrowserRegistry.List() {
 		ids = append(ids, fmt.Sprintf("siteBrowser/%s", ext.Metadata.ID))
-	}
-	for _, ext := range r.slotRegistry.List() {
-		ids = append(ids, fmt.Sprintf("slot/%s", ext.Metadata.ID))
 	}
 	return ids
 }
