@@ -288,7 +288,7 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
-		// 非纯 UI 插件：需要加载 DLL
+		// 非纯 UI 插件：以子进程模式加载运行时
 		if !p.EntryPath.Valid || p.EntryPath.String == "" {
 			logger.Log.Warnf("Plugin %s has runtime extensions but no entry path", publicId)
 			continue
@@ -318,7 +318,12 @@ func (app *App) loadInstalledPlugins() {
 			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		})
 
-		if err := app.pluginLoader.LoadPlugin(pluginPath, publicId, pluginCtx); err != nil {
+		if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
+			PluginInfo:           pluginInfo,
+			PluginCtx:            pluginCtx,
+			TaskHandlerRegistry:  app.TaskHandlerRegistry,
+			SiteBrowserRegistry:  app.SiteBrowserRegistry,
+		}); err != nil {
 			logger.Log.Errorf("Failed to load plugin %s: %v", publicId, err)
 			continue
 		}

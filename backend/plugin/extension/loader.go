@@ -3,7 +3,7 @@ package extension
 import (
 	"errors"
 	"fmt"
-	"plugin"
+	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -13,14 +13,16 @@ import (
 // 错误定义
 var (
 	ErrPluginLoadFailed = errors.New("plugin load failed")
-	ErrNoEntrySymbol    = errors.New("no Activate symbol found in plugin")
-	ErrInvalidEntry     = errors.New("invalid plugin entry: Activate must be func(pluginsdk.PluginContext)")
 )
 
 // Loader 插件加载器
 type Loader struct {
 	taskHandlerRegistry *TaskHandlerRegistry
 	siteBrowserRegistry *SiteBrowserRegistry
+
+	// 子进程模式：跟踪活跃的插件进程
+	processes map[string]*PluginProcess // publicId -> process
+	mu        sync.RWMutex
 }
 
 // NewLoader 创建插件加载器
@@ -31,50 +33,52 @@ func NewLoader(
 	return &Loader{
 		taskHandlerRegistry: taskHandlerRegistry,
 		siteBrowserRegistry: siteBrowserRegistry,
+		processes:           make(map[string]*PluginProcess),
 	}
 }
 
-// LoadPlugin 加载插件动态库并触发其 Activate 函数完成扩展点注册
-// pluginPath: 插件 DLL 路径
-// pluginPublicId: 插件公开ID，用于 panic 回滚
-// ctx: 插件上下文，主程序提供给插件的完整 API
-func (l *Loader) LoadPlugin(pluginPath string, pluginPublicId string, ctx pluginsdk.PluginContext) (err error) {
-	// 加载插件动态库
-	p, err := plugin.Open(pluginPath)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrPluginLoadFailed, err)
+// LoadPluginProcess 以子进程模式加载插件
+// exePath: 插件可执行文件路径 (.exe)
+// pluginPublicId: 插件公开ID
+// deps: 创建 PluginProcess 所需的依赖（含 PluginContext 用于处理 ctx/* 回调）
+func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps PluginProcessDeps) error {
+	process := NewPluginProcess(deps)
+	if err := process.Start(exePath); err != nil {
+		return fmt.Errorf("%w: start plugin process %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
 
-	// 查找 Activate 入口符号
-	symbol, err := p.Lookup("Activate")
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrNoEntrySymbol, err)
+	// 发送 activate 通知
+	init := &pluginsdk.PluginContextInit{
+		PluginPublicID: deps.PluginInfo.PublicID,
+		RootPath:       deps.PluginInfo.RootPath,
+	}
+	// 获取 PluginData 用于初始化
+	data, err := deps.PluginCtx.GetPluginData()
+	if err == nil {
+		init.PluginData = data
 	}
 
-	// 类型断言为 func(pluginsdk.PluginContext)
-	activateFunc, ok := symbol.(func(pluginsdk.PluginContext))
-	if !ok {
-		return ErrInvalidEntry
+	if err := process.SendActivate(init); err != nil {
+		process.Stop()
+		return fmt.Errorf("%w: activate plugin %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
 
-	// 防止插件 panic 导致主程序崩溃
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("plugin Activate panicked: %v", r)
-			logger.Log.Errorf("Plugin %s Activate panicked, rolling back registered extensions", pluginPublicId)
-			l.UnloadPlugin(pluginPublicId)
-		}
-	}()
+	l.mu.Lock()
+	l.processes[pluginPublicId] = process
+	l.mu.Unlock()
 
-	// 触发插件初始化
-	activateFunc(ctx)
-
-	logger.Log.Infof("Plugin activated: %s", pluginPublicId)
 	return nil
 }
 
-// UnloadPlugin 卸载插件的所有扩展点
+// UnloadPlugin 卸载插件的所有扩展点并停止子进程
 func (l *Loader) UnloadPlugin(pluginPublicId string) error {
+	l.mu.Lock()
+	if proc, ok := l.processes[pluginPublicId]; ok {
+		proc.Stop()
+		delete(l.processes, pluginPublicId)
+	}
+	l.mu.Unlock()
+
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
 	// Slot 注销由 StaticResourceService + SlotRegistry 在外层处理

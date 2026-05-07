@@ -101,16 +101,6 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 
 // --- 扩展点注销 ---
 
-func (pc *pluginContext) RegisterSlot(id string, name string, description string, slotType pluginsdk.SlotType, content string, contentType pluginsdk.ContentType, title string, icon string, order int) error {
-	// Slot 注册已改为配置文件声明式，此方法保留以兼容 SDK 接口
-	return fmt.Errorf("slot registration is now config-driven, use plugin.json extensions.slots instead")
-}
-
-func (pc *pluginContext) UnregisterSlot(id string) error {
-	// Slot 注册已改为配置文件声明式，此方法保留以兼容 SDK 接口
-	return fmt.Errorf("slot registration is now config-driven, unregister is not supported")
-}
-
 func (pc *pluginContext) UnregisterSiteBrowser(id string) error {
 	return pc.siteBrowserRegistry.Unregister(pc.pluginInfo.PublicID, id)
 }

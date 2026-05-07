@@ -2,13 +2,15 @@ module github.com/library-squirrel
 
 go 1.26.1
 
+replace github.com/lvfeng-z/library-squirrel-plugin-sdk => ../library-squirrel-plugin-sdk
+
 require (
 	github.com/google/uuid v1.6.0
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/structs v1.0.0
 	github.com/knadh/koanf/v2 v2.3.4
-	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.2
+	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.3
 	github.com/spf13/viper v1.21.0
 	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 	github.com/stretchr/testify v1.11.1
@@ -35,8 +37,8 @@ require (
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.8.0 // indirect
-	github.com/go-git/go-git/v5 v5.18.0 // indirect
+	github.com/go-git/go-billy/v5 v5.9.0 // indirect
+	github.com/go-git/go-git/v5 v5.19.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
