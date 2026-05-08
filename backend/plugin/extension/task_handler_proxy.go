@@ -66,7 +66,7 @@ func (p *TaskHandlerProxy) Start(task *pluginsdk.Task) (io.ReadCloser, *pluginsd
 
 	reader := NewStreamReader(ch, func() {
 		p.process.streamMgr.UnregisterStream(streamID)
-	})
+	}, p.process.streamMgr.GetCloseError)
 	return reader, r.WorkResponse, nil
 }
 

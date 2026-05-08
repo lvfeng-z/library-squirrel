@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"go.uber.org/zap"
+
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
@@ -67,23 +69,46 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	l.processes[pluginPublicId] = process
 	l.mu.Unlock()
 
+	go l.watchPluginProcess(pluginPublicId, process)
+
 	return nil
 }
 
 // UnloadPlugin 卸载插件的所有扩展点并停止子进程
 func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	l.mu.Lock()
-	if proc, ok := l.processes[pluginPublicId]; ok {
-		proc.Stop()
+	proc, ok := l.processes[pluginPublicId]
+	if ok {
 		delete(l.processes, pluginPublicId)
 	}
 	l.mu.Unlock()
 
+	if ok {
+		proc.Stop()
+	}
+
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-	// Slot 注销由 StaticResourceService + SlotRegistry 在外层处理
 	logger.Log.Info("Plugin unloaded", "plugin", pluginPublicId)
 	return nil
+}
+
+// watchPluginProcess 监听插件进程退出并自动清理
+func (l *Loader) watchPluginProcess(pluginPublicId string, process *PluginProcess) {
+	<-process.Done()
+
+	l.mu.Lock()
+	_, stillInMap := l.processes[pluginPublicId]
+	if stillInMap {
+		delete(l.processes, pluginPublicId)
+	}
+	l.mu.Unlock()
+
+	if stillInMap {
+		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
+		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
+		logger.Log.Warn("Plugin process crashed, cleaned up", zap.String("plugin", pluginPublicId))
+	}
 }
 
 // GetTaskHandler 获取任务处理器

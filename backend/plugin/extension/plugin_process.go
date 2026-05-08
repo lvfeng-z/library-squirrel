@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -53,6 +54,7 @@ type PluginProcess struct {
 
 	done chan struct{} // dispatch loop 退出信号
 	once sync.Once
+	intentionalShutdown atomic.Bool
 }
 
 // PluginProcessDeps 创建 PluginProcess 所需的依赖
@@ -161,12 +163,12 @@ func (p *PluginProcess) SendShutdown() error {
 // Stop 停止插件子进程并清理资源
 func (p *PluginProcess) Stop() {
 	p.once.Do(func() {
+		p.intentionalShutdown.Store(true)
 		logger.Log.Infof("Stopping plugin subprocess: %s", p.publicId)
 
 		// 发送 shutdown 通知
 		_ = p.SendShutdown()
 
-		// 等待 5s
 		time.Sleep(100 * time.Millisecond)
 
 		p.kill()
@@ -182,6 +184,10 @@ func (p *PluginProcess) Done() <-chan struct{} {
 // 从 UDS 连接读取帧，根据类型分发到对应的处理器
 func (p *PluginProcess) dispatchLoop() {
 	defer func() {
+		if !p.intentionalShutdown.Load() {
+			p.streamMgr.SetCloseError(pluginsdk.ErrPluginCrashed)
+		}
+		p.rpcClient.Close()
 		p.streamMgr.CloseAll()
 		close(p.done)
 	}()
