@@ -198,7 +198,7 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, ErrInvalidManifest
 	}
 
-	logger.Log.Infof("Parsing plugin package: id=%s name=%s version=%s author=%s",
+	logger.Log.Infof("解析插件包: id=%s name=%s version=%s author=%s",
 		manifest.ID, manifest.Name, manifest.Version, manifest.Author)
 
 	// 验证必要字段
@@ -260,7 +260,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	if err := util.CreateDirIfNotExists(installPath); err != nil {
 		return nil, err
 	}
-	logger.Log.Infof("Extracting plugin package to: %s", installPath)
+	logger.Log.Infof("解压插件包到: %s", installPath)
 	if err := util.ExtractZip(installDTO.PackagePath, installPath); err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 		}
 	}
 
-	logger.Log.Infof("Plugin installed: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
+	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
 	return plugin, nil
 }
 
@@ -392,7 +392,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		return ErrPluginNotFound
 	}
 
-	logger.Log.Infof("Uninstalling plugin: %s", pluginPublicId)
+	logger.Log.Infof("正在卸载插件: %s", pluginPublicId)
 
 	// 停止运行时插件（子进程、注册中心等）
 	if s.onUnload != nil {
@@ -410,7 +410,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	}
 	pluginPath := filepath.Join(workDir, rootPath)
 	if err := util.RemoveDir(pluginPath); err != nil {
-		logger.Log.Warnf("Failed to remove plugin directory: %v", err)
+		logger.Log.Warnf("删除插件目录失败: %v", err)
 	}
 
 	// 设置为已卸载状态
@@ -419,7 +419,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		return err
 	}
 
-	logger.Log.Infof("Plugin uninstalled: %s", pluginPublicId)
+	logger.Log.Infof("插件已卸载: %s", pluginPublicId)
 	return nil
 }
 

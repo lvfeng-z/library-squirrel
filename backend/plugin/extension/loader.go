@@ -64,7 +64,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		process.Stop()
 		return fmt.Errorf("%w: activate plugin %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
-	logger.Log.Infof("Plugin subprocess activated: %s (pid=%d)", pluginPublicId, process.cmd.Process.Pid)
+	logger.Log.Infof("插件子进程已激活: %s (pid=%d)", pluginPublicId, process.cmd.Process.Pid)
 
 	l.mu.Lock()
 	l.processes[pluginPublicId] = process
@@ -90,7 +90,7 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-	logger.Log.Info("Plugin unloaded", "plugin", pluginPublicId)
+	logger.Log.Info("插件已卸载", "plugin", pluginPublicId)
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (l *Loader) watchPluginProcess(pluginPublicId string, process *PluginProces
 	if stillInMap {
 		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-		logger.Log.Warn("Plugin process crashed, cleaned up", zap.String("plugin", pluginPublicId))
+		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
 	}
 }
 

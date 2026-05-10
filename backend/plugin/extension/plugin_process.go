@@ -150,7 +150,7 @@ func (p *PluginProcess) Start(exePath string) error {
 	// 监控子进程退出
 	go p.watchProcess()
 
-	logger.Log.Infof("Plugin subprocess started: %s (pid=%d)", p.publicId, p.cmd.Process.Pid)
+	logger.Log.Infof("插件子进程已启动: %s (pid=%d)", p.publicId, p.cmd.Process.Pid)
 	return nil
 }
 
@@ -168,7 +168,7 @@ func (p *PluginProcess) SendShutdown() error {
 func (p *PluginProcess) Stop() {
 	p.once.Do(func() {
 		p.intentionalShutdown.Store(true)
-		logger.Log.Infof("Stopping plugin subprocess: %s", p.publicId)
+		logger.Log.Infof("正在停止插件子进程: %s", p.publicId)
 
 		// 发送 shutdown 通知
 		_ = p.SendShutdown()
@@ -200,7 +200,7 @@ func (p *PluginProcess) dispatchLoop() {
 		payload, frameType, err := p.codec.ReadFrame()
 		if err != nil {
 			if err != io.EOF && err != io.ErrUnexpectedEOF {
-				logger.Log.Errorf("Plugin %s frame read error: %v", p.publicId, err)
+				logger.Log.Errorf("插件 %s 帧读取错误: %v", p.publicId, err)
 			}
 			return
 		}
@@ -222,7 +222,7 @@ func (p *PluginProcess) handleJSONFrame(payload []byte) {
 		ID     *int64 `json:"id"`
 	}
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		logger.Log.Errorf("Plugin %s: failed to parse JSON frame: %v", p.publicId, err)
+		logger.Log.Errorf("插件 %s: JSON 帧解析失败: %v", p.publicId, err)
 		return
 	}
 
@@ -232,7 +232,7 @@ func (p *PluginProcess) handleJSONFrame(payload []byte) {
 	} else if raw.ID != nil {
 		// 响应：对应我们发送的 taskHandler/* 等请求
 		if err := p.rpcClient.HandleResponse(payload); err != nil {
-			logger.Log.Errorf("Plugin %s: handle response error: %v", p.publicId, err)
+			logger.Log.Errorf("插件 %s: 响应处理失败: %v", p.publicId, err)
 		}
 	}
 }
@@ -251,7 +251,7 @@ func (p *PluginProcess) handleRequest(payload []byte) {
 
 	handler, ok := p.handlers[req.Method]
 	if !ok {
-		p.sendErrorResponse(req.ID, -32601, fmt.Sprintf("method not found: %s", req.Method))
+		p.sendErrorResponse(req.ID, -32601, fmt.Sprintf("方法未找到: %s", req.Method))
 		return
 	}
 
@@ -273,7 +273,7 @@ func (p *PluginProcess) sendResultResponse(id int64, result any) {
 	}
 	data, _ := json.Marshal(resp)
 	if err := p.codec.WriteJSON(data); err != nil {
-		logger.Log.Errorf("Plugin %s: write response error: %v", p.publicId, err)
+		logger.Log.Errorf("插件 %s: 写入响应失败: %v", p.publicId, err)
 	}
 }
 
@@ -288,7 +288,7 @@ func (p *PluginProcess) sendErrorResponse(id int64, code int, message string) {
 	}
 	data, _ := json.Marshal(resp)
 	if err := p.codec.WriteJSON(data); err != nil {
-		logger.Log.Errorf("Plugin %s: write error response error: %v", p.publicId, err)
+		logger.Log.Errorf("插件 %s: 写入错误响应失败: %v", p.publicId, err)
 	}
 }
 
@@ -296,9 +296,9 @@ func (p *PluginProcess) sendErrorResponse(id int64, code int, message string) {
 func (p *PluginProcess) watchProcess() {
 	err := p.cmd.Wait()
 	if err != nil {
-		logger.Log.Warnf("Plugin %s process exited with error: %v", p.publicId, err)
+		logger.Log.Warnf("插件 %s 进程异常退出: %v", p.publicId, err)
 	} else {
-		logger.Log.Infof("Plugin %s process exited normally", p.publicId)
+		logger.Log.Infof("插件 %s 进程正常退出", p.publicId)
 	}
 
 	// 关闭连接以中断 dispatchLoop 的阻塞读

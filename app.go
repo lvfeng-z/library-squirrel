@@ -126,27 +126,27 @@ func NewApp() (*App, error) {
 	// 1. 加载配置
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
-		logger.Log.Errorf("Failed to load config: %v", err)
+		logger.Log.Errorf("加载配置失败: %v", err)
 		return nil, err
 	}
 	app.cfg = cfg
-	logger.Log.Infof("Config loaded")
+	logger.Log.Infof("配置已加载")
 
 	// 2. 初始化数据库
 	dbPath := filepath.Join(util.RootPath(), "database/database.db")
 	if err := database.Init(dbPath); err != nil {
-		logger.Log.Errorf("Failed to init database: %v", err)
+		logger.Log.Errorf("初始化数据库失败: %v", err)
 		return nil, err
 	}
 	app.db = database.GetDB()
-	logger.Log.Infof("Database initialized: %s", dbPath)
+	logger.Log.Infof("数据库已初始化: %s", dbPath)
 
 	// 自动迁移数据库表结构
 	if err := migration.AutoMigrate(app.db); err != nil {
-		logger.Log.Errorf("Failed to auto migrate database: %v", err)
+		logger.Log.Errorf("数据库迁移失败: %v", err)
 		return nil, err
 	}
-	logger.Log.Infof("Database migration completed")
+	logger.Log.Infof("数据库迁移完成")
 
 	// 3. 初始化扩展注册中心
 	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
@@ -192,7 +192,7 @@ func (app *App) loadInstalledPlugins() {
 	// 查询所有插件
 	plugins, err := app.PluginService.List(ctx, &database.QueryOption{})
 	if err != nil {
-		logger.Log.Errorf("Failed to query installed plugins: %v", err)
+		logger.Log.Errorf("查询已安装插件失败: %v", err)
 		return
 	}
 
@@ -218,26 +218,26 @@ func (app *App) loadInstalledPlugins() {
 
 		publicId := p.PublicID.String
 		pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
-		logger.Log.Infof("Loading plugin: %s (root=%s)", publicId, pluginRootDir)
+		logger.Log.Infof("正在加载插件: %s (root=%s)", publicId, pluginRootDir)
 
 		// 读取 plugin.json
 		manifestPath := filepath.Join(pluginRootDir, "plugin.json")
 		manifestBytes, err := os.ReadFile(manifestPath)
 		if err != nil {
-			logger.Log.Errorf("Failed to read plugin.json for %s: %v", publicId, err)
+			logger.Log.Errorf("读取 plugin.json 失败 %s: %v", publicId, err)
 			continue
 		}
 
 		// 解析 manifest
 		var manifest dto.PluginManifest
 		if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-			logger.Log.Errorf("Failed to parse plugin.json for %s: %v", publicId, err)
+			logger.Log.Errorf("解析 plugin.json 失败 %s: %v", publicId, err)
 			continue
 		}
 
 		ext := manifest.Extensions
 		if ext == nil {
-			logger.Log.Warnf("Plugin %s has no extensions, skipping", publicId)
+			logger.Log.Warnf("插件 %s 无扩展点，跳过", publicId)
 			continue
 		}
 
@@ -251,7 +251,7 @@ func (app *App) loadInstalledPlugins() {
 			version = p.Version.String
 		}
 		app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
-		logger.Log.Infof("Plugin %s: static resources registered (dirs=%v)", publicId, allowedDirs)
+		logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
 
 		// 声明式注册 Slot
 		for _, slot := range ext.Slots {
@@ -279,25 +279,25 @@ func (app *App) loadInstalledPlugins() {
 
 			extension := model.NewExtension(*slotConfig.ExtensionMetadata, slotConfig)
 			if err := app.SlotRegistry.Register(extension); err != nil {
-				logger.Log.Errorf("Failed to register slot %s/%s: %v", publicId, slot.ID, err)
+				logger.Log.Errorf("注册 Slot 失败 %s/%s: %v", publicId, slot.ID, err)
 			}
 		}
 
 		if len(ext.Slots) > 0 {
-			logger.Log.Infof("Plugin %s: registered %d slots", publicId, len(ext.Slots))
+			logger.Log.Infof("插件 %s: 已注册 %d 个 Slot", publicId, len(ext.Slots))
 		}
 
 		// 判断是否为纯 UI 插件（无运行时扩展点）
 		hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
 		if !hasRuntime {
 			pureUICount++
-			logger.Log.Infof("Plugin %s: pure-UI plugin, skipping subprocess", publicId)
+			logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
 			continue
 		}
 
 		// 非纯 UI 插件：以子进程模式加载运行时
 		if !p.EntryPath.Valid || p.EntryPath.String == "" {
-			logger.Log.Warnf("Plugin %s has runtime extensions but no entry path", publicId)
+			logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
 			continue
 		}
 
@@ -325,20 +325,20 @@ func (app *App) loadInstalledPlugins() {
 			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		})
 
-		logger.Log.Infof("Plugin %s: loading subprocess from %s", publicId, pluginPath)
+		logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
 		if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
 			PluginInfo:           pluginInfo,
 			PluginCtx:            pluginCtx,
 			TaskHandlerRegistry:  app.TaskHandlerRegistry,
 			SiteBrowserRegistry:  app.SiteBrowserRegistry,
 		}); err != nil {
-			logger.Log.Errorf("Failed to load plugin %s: %v", publicId, err)
+			logger.Log.Errorf("加载插件失败 %s: %v", publicId, err)
 			continue
 		}
 		runtimeLoaded++
 	}
 
-	logger.Log.Infof("Plugins loaded: %d runtime, %d pure-UI, %d total", runtimeLoaded, pureUICount, len(plugins))
+	logger.Log.Infof("插件加载完成: %d 个运行时, %d 个纯 UI, 共 %d 个", runtimeLoaded, pureUICount, len(plugins))
 }
 
 // resolveContentURLs 将 Slot Content 中的相对路径转换为完整的 resource:// URL
@@ -594,7 +594,7 @@ func (app *App) initHandlers() {
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
 func (app *App) onDomReady() {
-	logger.Log.Info("Window DOM is ready")
+	logger.Log.Info("窗口 DOM 已就绪")
 }
 
 // onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）
@@ -602,11 +602,11 @@ func (app *App) onDomReady() {
 func (app *App) onBeforeClose() bool {
 	// 检查任务队列是否空闲
 	if !app.TaskManagerService.IsIdle() {
-		logger.Log.Info("Tasks are running, window close cancelled")
+		logger.Log.Info("任务正在运行，取消窗口关闭")
 		// TODO: 显示确认对话框让用户选择是否强制关闭
 		// 在 Wails v3 中，可以通过 dialog.MessageBox 或前端对话框实现
 		return true // 阻止关闭，等待任务完成
 	}
-	logger.Log.Info("Window closing, all tasks idle")
+	logger.Log.Info("窗口关闭，所有任务已完成")
 	return false // 允许关闭
 }

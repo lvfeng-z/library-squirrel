@@ -38,7 +38,7 @@ func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdk.Task
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("TaskHandler registered",
+	logger.Log.Info("TaskHandler 已注册",
 		zap.String("key", key),
 		zap.String("name", extension.Metadata.Name))
 	return nil
@@ -71,7 +71,7 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 		}
 	}
 	if count > 0 {
-		logger.Log.Info("TaskHandler unregistered", zap.String("plugin", pluginPublicId), zap.Int("count", count))
+		logger.Log.Info("TaskHandler 已注销", zap.String("plugin", pluginPublicId), zap.Int("count", count))
 	}
 	return nil
 }

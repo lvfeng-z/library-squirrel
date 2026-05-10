@@ -40,7 +40,7 @@ func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, all
 		allowedDirs: allowedDirs,
 		version:     version,
 	}
-	logger.Log.Info("Plugin static resources registered",
+	logger.Log.Info("插件静态资源已注册",
 		zap.String("plugin", publicId),
 		zap.Strings("dirs", allowedDirs),
 	)
@@ -51,7 +51,7 @@ func (s *StaticResourceService) UnregisterPlugin(publicId string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.plugins, publicId)
-	logger.Log.Info("Plugin static resources unregistered", zap.String("plugin", publicId))
+	logger.Log.Info("插件静态资源已注销", zap.String("plugin", publicId))
 }
 
 // ServeHTTP 处理插件静态资源请求

@@ -44,7 +44,7 @@ func (r *SlotRegistry) Register(extension *model.Extension[*domain.SlotConfig]) 
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("Slot registered",
+	logger.Log.Info("Slot 已注册",
 		zap.String("key", key),
 		zap.String("slotType", string(extension.Instance.SlotType)))
 
@@ -93,7 +93,7 @@ func (r *SlotRegistry) UnregisterAll(pluginPublicId string) error {
 	// 推送批量注销事件
 	if r.pusher != nil && len(slots) > 0 {
 		r.pusher.PushBatchRegister(slots)
-		logger.Log.Info("Slots unregistered", zap.String("plugin", pluginPublicId), zap.Int("count", len(slots)))
+		logger.Log.Info("Slot 已批量注销", zap.String("plugin", pluginPublicId), zap.Int("count", len(slots)))
 	}
 
 	return nil

@@ -40,7 +40,7 @@ func registerHostHandlers(handlers map[string]pluginsdk.Handler, process *Plugin
 		if err := process.taskHandlerRegistry.Register(model.NewExtension(metadata, handler)); err != nil {
 			return nil, err
 		}
-		logger.Log.Info("TaskHandler registered (subprocess)",
+		logger.Log.Info("TaskHandler 已注册（子进程模式）",
 			zap.String("plugin", process.pluginInfo.PublicID), zap.String("id", p.ID))
 		return nil, nil
 	}
@@ -72,7 +72,7 @@ func registerHostHandlers(handlers map[string]pluginsdk.Handler, process *Plugin
 		if err := process.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
 			return nil, err
 		}
-		logger.Log.Info("SiteBrowser registered (subprocess)",
+		logger.Log.Info("SiteBrowser 已注册（子进程模式）",
 			zap.String("plugin", process.pluginInfo.PublicID), zap.String("id", p.ID))
 		return nil, nil
 	}
