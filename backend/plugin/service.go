@@ -15,7 +15,6 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
-	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
 )
@@ -76,6 +75,7 @@ type BackupProvider interface {
 type Service struct {
 	repo           Repository
 	backupProvider BackupProvider
+	onUnload       func(pluginPublicId string)
 }
 
 // NewService 创建插件服务
@@ -84,6 +84,12 @@ func NewService(repo Repository, backupProvider BackupProvider) *Service {
 		repo:           repo,
 		backupProvider: backupProvider,
 	}
+}
+
+// SetOnUnload 设置插件卸载时的运行时清理回调
+// 回调负责停止子进程、注销注册中心等运行时清理
+func (s *Service) SetOnUnload(fn func(pluginPublicId string)) {
+	s.onUnload = fn
 }
 
 // GetById 根据ID获取
@@ -108,6 +114,10 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 
 // Page 分页查询
 func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Plugin], query PluginQueryDTO) (*model.Page[entity2.Plugin], error) {
+	// 默认过滤已卸载的插件
+	if query.Uninstalled.IsEmpty() {
+		query.Uninstalled.Value = new(bool)
+	}
 	conv := querypkg.NewConverter(entity2.Plugin{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -188,6 +198,9 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, ErrInvalidManifest
 	}
 
+	logger.Log.Infof("Parsing plugin package: id=%s name=%s version=%s author=%s",
+		manifest.ID, manifest.Name, manifest.Version, manifest.Author)
+
 	// 验证必要字段
 	if manifest.ID == "" || manifest.Name == "" || manifest.Version == "" || manifest.Author == "" {
 		return nil, ErrInvalidManifest
@@ -247,6 +260,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	if err := util.CreateDirIfNotExists(installPath); err != nil {
 		return nil, err
 	}
+	logger.Log.Infof("Extracting plugin package to: %s", installPath)
 	if err := util.ExtractZip(installDTO.PackagePath, installPath); err != nil {
 		return nil, err
 	}
@@ -378,6 +392,13 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		return ErrPluginNotFound
 	}
 
+	logger.Log.Infof("Uninstalling plugin: %s", pluginPublicId)
+
+	// 停止运行时插件（子进程、注册中心等）
+	if s.onUnload != nil {
+		s.onUnload(pluginPublicId)
+	}
+
 	// 删除插件目录
 	workDir := s.getWorkDir()
 	if workDir == "" {
@@ -418,11 +439,7 @@ func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
 
 // getWorkDir 获取工作目录
 func (s *Service) getWorkDir() string {
-	cfg := config.Get()
-	if cfg != nil && cfg.App.DataPath != "" {
-		return cfg.App.DataPath
-	}
-	return "."
+	return util.RootPath()
 }
 
 // GetPluginRoot 获取插件根目录

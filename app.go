@@ -218,6 +218,7 @@ func (app *App) loadInstalledPlugins() {
 
 		publicId := p.PublicID.String
 		pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
+		logger.Log.Infof("Loading plugin: %s (root=%s)", publicId, pluginRootDir)
 
 		// 读取 plugin.json
 		manifestPath := filepath.Join(pluginRootDir, "plugin.json")
@@ -250,6 +251,7 @@ func (app *App) loadInstalledPlugins() {
 			version = p.Version.String
 		}
 		app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
+		logger.Log.Infof("Plugin %s: static resources registered (dirs=%v)", publicId, allowedDirs)
 
 		// 声明式注册 Slot
 		for _, slot := range ext.Slots {
@@ -281,10 +283,15 @@ func (app *App) loadInstalledPlugins() {
 			}
 		}
 
+		if len(ext.Slots) > 0 {
+			logger.Log.Infof("Plugin %s: registered %d slots", publicId, len(ext.Slots))
+		}
+
 		// 判断是否为纯 UI 插件（无运行时扩展点）
 		hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
 		if !hasRuntime {
 			pureUICount++
+			logger.Log.Infof("Plugin %s: pure-UI plugin, skipping subprocess", publicId)
 			continue
 		}
 
@@ -318,6 +325,7 @@ func (app *App) loadInstalledPlugins() {
 			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		})
 
+		logger.Log.Infof("Plugin %s: loading subprocess from %s", publicId, pluginPath)
 		if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
 			PluginInfo:           pluginInfo,
 			PluginCtx:            pluginCtx,
@@ -489,6 +497,11 @@ func (app *App) initAdvancedServices() error {
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
+	app.PluginService.SetOnUnload(func(pluginPublicId string) {
+		app.pluginLoader.UnloadPlugin(pluginPublicId)
+		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
+		app.SlotRegistry.UnregisterAll(pluginPublicId)
+	})
 
 	// pluginTaskUrlListener 服务
 	pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()

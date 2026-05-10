@@ -3,6 +3,7 @@ package extension
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 	"os"
@@ -84,11 +85,14 @@ func NewPluginProcess(deps PluginProcessDeps) *PluginProcess {
 // Start 启动插件子进程
 // exePath: 插件可执行文件路径 (.exe)
 func (p *PluginProcess) Start(exePath string) error {
-	rootPath := filepath.Dir(exePath)
-	socketDir := filepath.Join(rootPath, "sockets")
+	// 使用系统临时目录存放 socket 文件，避免 Windows 路径长度限制（~108字符）
+	socketDir := filepath.Join(os.TempDir(), "library-squirrel")
 	os.MkdirAll(socketDir, 0700)
 
-	p.socketPath = filepath.Join(socketDir, p.publicId+".sock")
+	// 使用短哈希作为文件名，避免 Windows AF_UNIX 路径长度限制（~108字符）
+	h := fnv.New32a()
+	h.Write([]byte(p.publicId))
+	p.socketPath = filepath.Join(socketDir, fmt.Sprintf("%08x.sock", h.Sum32()))
 
 	// 清理残留 socket 文件
 	os.Remove(p.socketPath)

@@ -4,8 +4,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	"go.uber.org/zap"
 )
 
 // TaskHandlerRegistry 任务处理器注册中心
@@ -36,6 +38,9 @@ func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdk.Task
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
+	logger.Log.Info("TaskHandler registered",
+		zap.String("key", key),
+		zap.String("name", extension.Metadata.Name))
 	return nil
 }
 
@@ -58,10 +63,15 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 	defer r.mu.Unlock()
 
 	prefix := pluginPublicId + "/"
+	count := 0
 	for key := range r.extensions {
 		if strings.HasPrefix(key, prefix) {
 			delete(r.extensions, key)
+			count++
 		}
+	}
+	if count > 0 {
+		logger.Log.Info("TaskHandler unregistered", zap.String("plugin", pluginPublicId), zap.Int("count", count))
 	}
 	return nil
 }

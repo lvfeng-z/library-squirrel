@@ -4,8 +4,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	"go.uber.org/zap"
 )
 
 // SiteBrowserRegistry 站点浏览器注册中心
@@ -31,6 +33,9 @@ func (r *SiteBrowserRegistry) Register(extension *model.Extension[pluginsdk.Site
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
+	logger.Log.Info("SiteBrowser registered",
+		zap.String("key", key),
+		zap.String("name", extension.Metadata.Name))
 	return nil
 }
 
@@ -53,10 +58,15 @@ func (r *SiteBrowserRegistry) UnregisterAll(pluginPublicId string) error {
 	defer r.mu.Unlock()
 
 	prefix := pluginPublicId + "/"
+	count := 0
 	for key := range r.extensions {
 		if strings.HasPrefix(key, prefix) {
 			delete(r.extensions, key)
+			count++
 		}
+	}
+	if count > 0 {
+		logger.Log.Info("SiteBrowser unregistered", zap.String("plugin", pluginPublicId), zap.Int("count", count))
 	}
 	return nil
 }

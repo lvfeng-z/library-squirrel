@@ -2,15 +2,13 @@ module github.com/library-squirrel
 
 go 1.26.1
 
-replace github.com/lvfeng-z/library-squirrel-plugin-sdk => ../library-squirrel-plugin-sdk
-
 require (
 	github.com/google/uuid v1.6.0
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/structs v1.0.0
 	github.com/knadh/koanf/v2 v2.3.4
-	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.3
+	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.3-alpha.1
 	github.com/spf13/viper v1.21.0
 	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 	github.com/stretchr/testify v1.11.1
@@ -76,8 +74,10 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/lvfeng-z/library-squirrel-plugin-sdk => ../library-squirrel-plugin-sdk

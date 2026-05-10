@@ -5,7 +5,9 @@ import (
 	"sync"
 
 	domain "github.com/library-squirrel/backend/base"
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
+	"go.uber.org/zap"
 )
 
 // SlotRegistry 插槽注册中心
@@ -42,6 +44,9 @@ func (r *SlotRegistry) Register(extension *model.Extension[*domain.SlotConfig]) 
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
+	logger.Log.Info("Slot registered",
+		zap.String("key", key),
+		zap.String("slotType", string(extension.Instance.SlotType)))
 
 	// 推送注册事件
 	if r.pusher != nil {
@@ -88,6 +93,7 @@ func (r *SlotRegistry) UnregisterAll(pluginPublicId string) error {
 	// 推送批量注销事件
 	if r.pusher != nil && len(slots) > 0 {
 		r.pusher.PushBatchRegister(slots)
+		logger.Log.Info("Slots unregistered", zap.String("plugin", pluginPublicId), zap.Int("count", len(slots)))
 	}
 
 	return nil

@@ -64,6 +64,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		process.Stop()
 		return fmt.Errorf("%w: activate plugin %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
+	logger.Log.Infof("Plugin subprocess activated: %s (pid=%d)", pluginPublicId, process.cmd.Process.Pid)
 
 	l.mu.Lock()
 	l.processes[pluginPublicId] = process

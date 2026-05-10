@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"go.uber.org/zap"
@@ -66,37 +67,65 @@ type PluginContextDeps struct {
 // --- Implementation ---
 
 type pluginContext struct {
-	*registrar
-	rootPath      string
-	pluginData    PluginDataProvider
-	secureStorage SecureStorageProvider
-	workSetQuery  WorkSetQueryProvider
-	siteSave      SiteSaveProvider
-	taskCreate    TaskCreateProvider
-	urlListener   UrlListenerRegistry
-	scopedLogger  *zap.SugaredLogger
+	pluginInfo           *PluginInfo
+	taskHandlerRegistry  *TaskHandlerRegistry
+	siteBrowserRegistry  *SiteBrowserRegistry
+	rootPath             string
+	pluginData           PluginDataProvider
+	secureStorage        SecureStorageProvider
+	workSetQuery         WorkSetQueryProvider
+	siteSave             SiteSaveProvider
+	taskCreate           TaskCreateProvider
+	urlListener          UrlListenerRegistry
+	scopedLogger         *zap.SugaredLogger
 }
 
 // NewPluginContext 创建插件上下文
 func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
-	reg := newRegistrar(deps.PluginInfo, deps.TaskHandlerRegistry, deps.SiteBrowserRegistry)
-
 	pluginName := deps.PluginInfo.Name
 	if pluginName == "" {
 		pluginName = deps.PluginInfo.PublicID
 	}
 
 	return &pluginContext{
-		registrar:     reg,
-		rootPath:      deps.RootPath,
-		pluginData:    deps.PluginData,
-		secureStorage: deps.SecureStorage,
-		workSetQuery:  deps.WorkSetQuery,
-		siteSave:      deps.SiteSave,
-		taskCreate:    deps.TaskCreate,
-		urlListener:   deps.UrlListener,
-		scopedLogger:  logger.Log.Named("Plugin[" + pluginName + "]"),
+		pluginInfo:          deps.PluginInfo,
+		taskHandlerRegistry: deps.TaskHandlerRegistry,
+		siteBrowserRegistry: deps.SiteBrowserRegistry,
+		rootPath:            deps.RootPath,
+		pluginData:          deps.PluginData,
+		secureStorage:       deps.SecureStorage,
+		workSetQuery:        deps.WorkSetQuery,
+		siteSave:            deps.SiteSave,
+		taskCreate:          deps.TaskCreate,
+		urlListener:         deps.UrlListener,
+		scopedLogger:        logger.Log.Named("Plugin[" + pluginName + "]"),
 	}
+}
+
+// --- 扩展点注册 ---
+
+func (pc *pluginContext) RegisterTaskHandler(id, name, description string, handler pluginsdk.TaskHandler) error {
+	metadata := model.ExtensionMetadata{
+		Type:           model.ExtensionTypeTaskHandler,
+		ID:             id,
+		PluginID:       pc.pluginInfo.ID,
+		PluginPublicID: pc.pluginInfo.PublicID,
+		Name:           name,
+		Description:    description,
+	}
+	return pc.taskHandlerRegistry.Register(model.NewExtension(metadata, handler))
+}
+
+func (pc *pluginContext) RegisterSiteBrowser(id, name, description string, browser pluginsdk.SiteBrowser) error {
+	metadata := model.ExtensionMetadata{
+		Type:           model.ExtensionTypeSiteBrowser,
+		ID:             id,
+		PluginID:       pc.pluginInfo.ID,
+		PluginPublicID: pc.pluginInfo.PublicID,
+		Name:           name,
+		Description:    description,
+	}
+	return pc.siteBrowserRegistry.Register(model.NewExtension(metadata, browser))
 }
 
 // --- 扩展点注销 ---
