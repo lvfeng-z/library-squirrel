@@ -207,51 +207,58 @@ func registerHostHandlers(handlers map[string]pluginsdk.Handler, process *Plugin
 	}
 
 	// --- 日志 ---
+	// 日志处理器：读取 loggerName 字段，使用对应的 Named 子 logger 输出
+	pc := process.pluginCtx.(*pluginContext)
+
 	handlers["ctx/infof"] = func(params json.RawMessage) (any, error) {
 		var p struct {
-			Template string `json:"template"`
-			Args     []any  `json:"args"`
+			Template   string `json:"template"`
+			Args       []any  `json:"args"`
+			LoggerName string `json:"loggerName,omitempty"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, nil
 		}
-		process.pluginCtx.Infof(p.Template, p.Args...)
+		pc.ResolveLogger(p.LoggerName).Infof(p.Template, p.Args...)
 		return nil, nil
 	}
 
 	handlers["ctx/debugf"] = func(params json.RawMessage) (any, error) {
 		var p struct {
-			Template string `json:"template"`
-			Args     []any  `json:"args"`
+			Template   string `json:"template"`
+			Args       []any  `json:"args"`
+			LoggerName string `json:"loggerName,omitempty"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, nil
 		}
-		process.pluginCtx.Debugf(p.Template, p.Args...)
+		pc.ResolveLogger(p.LoggerName).Debugf(p.Template, p.Args...)
 		return nil, nil
 	}
 
 	handlers["ctx/warnf"] = func(params json.RawMessage) (any, error) {
 		var p struct {
-			Template string `json:"template"`
-			Args     []any  `json:"args"`
+			Template   string `json:"template"`
+			Args       []any  `json:"args"`
+			LoggerName string `json:"loggerName,omitempty"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, nil
 		}
-		process.pluginCtx.Warnf(p.Template, p.Args...)
+		pc.ResolveLogger(p.LoggerName).Warnf(p.Template, p.Args...)
 		return nil, nil
 	}
 
 	handlers["ctx/errorf"] = func(params json.RawMessage) (any, error) {
 		var p struct {
-			Template string `json:"template"`
-			Args     []any  `json:"args"`
+			Template   string `json:"template"`
+			Args       []any  `json:"args"`
+			LoggerName string `json:"loggerName,omitempty"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, nil
 		}
-		process.pluginCtx.Errorf(p.Template, p.Args...)
+		pc.ResolveLogger(p.LoggerName).Errorf(p.Template, p.Args...)
 		return nil, nil
 	}
 }

@@ -78,6 +78,7 @@ type pluginContext struct {
 	taskCreate           TaskCreateProvider
 	urlListener          UrlListenerRegistry
 	scopedLogger         *zap.SugaredLogger
+	logger               pluginsdk.Logger
 }
 
 // NewPluginContext 创建插件上下文
@@ -86,6 +87,8 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 	if pluginName == "" {
 		pluginName = deps.PluginInfo.PublicID
 	}
+
+	sugar := logger.Log.Named("Plugin[" + pluginName + "]")
 
 	return &pluginContext{
 		pluginInfo:          deps.PluginInfo,
@@ -98,7 +101,8 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 		siteSave:            deps.SiteSave,
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
-		scopedLogger:        logger.Log.Named("Plugin[" + pluginName + "]"),
+		scopedLogger:        sugar,
+		logger:              newHostLogger(sugar),
 	}
 }
 
@@ -246,4 +250,35 @@ func (pc *pluginContext) Warnf(template string, args ...any) {
 
 func (pc *pluginContext) Errorf(template string, args ...any) {
 	pc.scopedLogger.Errorf(template, args...)
+}
+
+func (pc *pluginContext) GetLogger() pluginsdk.Logger {
+	return pc.logger
+}
+
+// ResolveLogger 根据 loggerName 返回对应的 zap logger
+// loggerName 为空时返回默认 scopedLogger，非空时返回 Named 子 logger
+func (pc *pluginContext) ResolveLogger(loggerName string) *zap.SugaredLogger {
+	if loggerName == "" {
+		return pc.scopedLogger
+	}
+	return pc.scopedLogger.Named(loggerName)
+}
+
+// hostLogger 主进程侧 Logger 实现，委托给 zap
+type hostLogger struct {
+	sugar *zap.SugaredLogger
+}
+
+func newHostLogger(sugar *zap.SugaredLogger) *hostLogger {
+	return &hostLogger{sugar: sugar}
+}
+
+func (l *hostLogger) Debugf(template string, args ...any) { l.sugar.Debugf(template, args...) }
+func (l *hostLogger) Infof(template string, args ...any)  { l.sugar.Infof(template, args...) }
+func (l *hostLogger) Warnf(template string, args ...any)  { l.sugar.Warnf(template, args...) }
+func (l *hostLogger) Errorf(template string, args ...any) { l.sugar.Errorf(template, args...) }
+
+func (l *hostLogger) Named(name string) pluginsdk.Logger {
+	return newHostLogger(l.sugar.Named(name))
 }
