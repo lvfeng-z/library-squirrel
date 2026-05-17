@@ -41,6 +41,8 @@ type Repository interface {
 	UpdateBindLocalAuthor(ctx context.Context, localAuthorId *int64, siteAuthorIds []int64) (int64, error)
 	// UpdateLastUseByIds 批量更新最后使用时间
 	UpdateLastUseByIds(ctx context.Context, ids []int64, lastUse int64) error
+	// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
+	GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity.SiteAuthor, error)
 }
 
 // LocalAuthorOperator 本地作者接口
@@ -333,6 +335,27 @@ func (s *Service) CreateAndBindSameNameLocalAuthor(ctx context.Context, siteAuth
 	}
 
 	return s.UpdateBindLocalAuthor(ctx, &localAuthorId, []int64{siteAuthor.ID})
+}
+
+// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
+func (s *Service) GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity.SiteAuthor, error) {
+	return s.repo.GetBySiteAndSiteAuthorID(ctx, siteId, siteAuthorId)
+}
+
+// SaveOrUpdateByCompositeKey 按 (siteId, siteAuthorId) 保存或更新站点作者，返回内部 DB ID
+func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, author *entity.SiteAuthor) (int64, error) {
+	existing, err := s.repo.GetBySiteAndSiteAuthorID(ctx, author.SiteID.Int64, author.SiteAuthorID.String)
+	if err == nil && existing != nil {
+		author.ID = existing.ID
+		if err := s.repo.Update(ctx, author); err != nil {
+			return 0, err
+		}
+		return existing.ID, nil
+	}
+	if err := s.repo.Save(ctx, author); err != nil {
+		return 0, err
+	}
+	return author.ID, nil
 }
 
 // 错误定义

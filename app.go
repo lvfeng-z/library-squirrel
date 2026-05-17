@@ -471,6 +471,9 @@ func (app *App) initBaseServices() {
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
 func (app *App) initAdvancedServices() error {
+	// workSet 仓储（提前创建，用于 workSetWriterAdapter）
+	workSetRepo := workSet.NewRepository(app.db)
+
 	// work 服务
 	workRepo := work.NewRepository(app.db)
 	app.WorkService = work.NewService(
@@ -484,10 +487,13 @@ func (app *App) initAdvancedServices() error {
 		app.ReWorkTagService,
 		reWorkWorkSet.NewRepository(app.db),
 		app.ResourceService,
+		app.SiteAuthorService,
+		app.SiteTagService,
+		&workSetWriterAdapter{repo: workSetRepo},
+		app.ReWorkAuthorService,
 	)
 
 	// workSet 服务
-	workSetRepo := workSet.NewRepository(app.db)
 	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSet.NewRepository(app.db), app.WorkService)
 
 	// search 服务
@@ -539,8 +545,8 @@ func (app *App) initAdvancedServices() error {
 		return extension2.NewTaskExecutor(app.pluginLoader), nil
 	}
 
-	// 创建 WorkSaver 和 ResourceSaver 适配器
-	workSaverAdapter := &workSaverAdapter{svc: app.WorkService}
+	// 创建 WorkInfoSaver 和 ResourceSaver 适配器
+	workInfoSaverAdapter := &workInfoSaverAdapter{svc: app.WorkService}
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
 
 	app.TaskManagerService = taskManager.NewManager(
@@ -549,23 +555,44 @@ func (app *App) initAdvancedServices() error {
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,
-		workSaverAdapter,
+		workInfoSaverAdapter,
 		resourceSaverAdapter,
 	)
 
 	return nil
 }
 
-// WorkSaverAdapter WorkSaver 接口适配器
-type workSaverAdapter struct {
+// workInfoSaverAdapter WorkInfoSaver 接口适配器
+type workInfoSaverAdapter struct {
 	svc *work.Service
 }
 
-func (a *workSaverAdapter) Save(ctx context.Context, work *entity2.Work) (int64, error) {
-	if err := a.svc.Save(ctx, work); err != nil {
+func (a *workInfoSaverAdapter) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *dto.WorkResponse) (int64, error) {
+	return a.svc.SaveWorkInfo(ctx, task, workResp)
+}
+
+// workSetWriterAdapter WorkSetWriter 接口适配器（打破 work ↔ workSet 循环依赖）
+type workSetWriterAdapter struct {
+	repo *workSet.WorkSetRepository
+}
+
+func (a *workSetWriterAdapter) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error) {
+	existing, err := a.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
+	if err == nil && existing != nil {
+		ws.ID = existing.ID
+		if err := a.repo.Update(ctx, ws); err != nil {
+			return 0, err
+		}
+		return existing.ID, nil
+	}
+	if err := a.repo.Save(ctx, ws); err != nil {
 		return 0, err
 	}
-	return work.GetID(), nil
+	return ws.ID, nil
+}
+
+func (a *workSetWriterAdapter) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error) {
+	return a.repo.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
 }
 
 // ResourceSaverAdapter ResourceSaver 接口适配器

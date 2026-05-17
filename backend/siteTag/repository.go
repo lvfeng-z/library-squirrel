@@ -30,6 +30,16 @@ func (r *SiteTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
+func (r *SiteTagRepository) GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error) {
+	var tag entity2.SiteTag
+	err := r.GORM().WithContext(ctx).Where("site_id = ? AND site_tag_id = ?", siteId, siteTagId).First(&tag).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}
+
 // ListByWorkId 查询作品的站点标签
 func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*entity2.SiteTag, error) {
 	query := `

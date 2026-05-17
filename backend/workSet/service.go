@@ -143,6 +143,22 @@ func (s *Service) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSet
 	return s.repo.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 }
 
+// SaveOrUpdateByCompositeKey 按 (siteId, siteWorkSetId) 保存或更新作品集，返回内部 DB ID
+func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error) {
+	existing, err := s.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
+	if err == nil && existing != nil {
+		ws.ID = existing.ID
+		if err := s.repo.Update(ctx, ws); err != nil {
+			return 0, err
+		}
+		return existing.ID, nil
+	}
+	if err := s.repo.Save(ctx, ws); err != nil {
+		return 0, err
+	}
+	return ws.ID, nil
+}
+
 // LinkWorkToWorkSet 链接作品到作品集
 func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64, isCover int) error {
 	rel := &entity2.ReWorkWorkSet{

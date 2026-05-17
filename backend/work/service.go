@@ -2,7 +2,11 @@ package work
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
@@ -54,14 +58,50 @@ type ResourceReader interface {
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.Resource, error)
 }
 
-// ReWorkTagDeleter 作品-标签关联删除接口
-type ReWorkTagDeleter interface {
+// ReWorkTagWriter 作品-标签关联写入接口
+type ReWorkTagWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatch 批量保存关联
+	SaveBatch(ctx context.Context, rels []*entity2.ReWorkTag) error
 }
 
-// ReWorkWorkSetDeleter 作品-作品集关联删除接口
-type ReWorkWorkSetDeleter interface {
+// ReWorkWorkSetWriter 作品-作品集关联写入接口
+type ReWorkWorkSetWriter interface {
+	// DeleteByWorkId 根据作品ID删除所有关联
+	DeleteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatch 批量保存关联
+	SaveBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
+}
+
+// SiteAuthorWriter 站点作者写入接口
+type SiteAuthorWriter interface {
+	// SaveOrUpdateByCompositeKey 按复合键保存或更新，返回内部 DB ID
+	SaveOrUpdateByCompositeKey(ctx context.Context, author *entity2.SiteAuthor) (int64, error)
+	// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
+	GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity2.SiteAuthor, error)
+}
+
+// SiteTagWriter 站点标签写入接口
+type SiteTagWriter interface {
+	// SaveOrUpdateByCompositeKey 按复合键保存或更新，返回内部 DB ID
+	SaveOrUpdateByCompositeKey(ctx context.Context, tag *entity2.SiteTag) (int64, error)
+	// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
+	GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error)
+}
+
+// WorkSetWriter 作品集写入接口
+type WorkSetWriter interface {
+	// SaveOrUpdateByCompositeKey 按复合键保存或更新，返回内部 DB ID
+	SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error)
+	// GetBySiteAndSiteWorkSetID 根据站点ID和站点作品集ID查询
+	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
+}
+
+// ReWorkAuthorWriter 作品-作者关联写入接口
+type ReWorkAuthorWriter interface {
+	// SaveBatch 批量保存关联
+	SaveBatch(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
 }
@@ -101,15 +141,21 @@ type Service struct {
 	repo Repository
 
 	// 外部模块依赖（通过构造函数注入）
-	localTagReader       LocalTagReader
-	localAuthorReader    LocalAuthorReader
-	siteTagReader        SiteTagReader
-	siteAuthorReader     SiteAuthorReader
-	siteReader           SiteReader
-	resourceReader       ResourceReader
-	reWorkTagDeleter     ReWorkTagDeleter
-	reWorkWorkSetDeleter ReWorkWorkSetDeleter
-	resourceDeleter      ResourceDeleter
+	localTagReader    LocalTagReader
+	localAuthorReader LocalAuthorReader
+	siteTagReader     SiteTagReader
+	siteAuthorReader  SiteAuthorReader
+	siteReader        SiteReader
+	resourceReader    ResourceReader
+	resourceDeleter   ResourceDeleter
+
+	// 写入接口（用于 SaveWorkInfo）
+	reWorkTagWriter     ReWorkTagWriter
+	reWorkWorkSetWriter ReWorkWorkSetWriter
+	siteAuthorWriter    SiteAuthorWriter
+	siteTagWriter       SiteTagWriter
+	workSetWriter       WorkSetWriter
+	reWorkAuthorWriter  ReWorkAuthorWriter
 }
 
 // NewService 创建作品服务
@@ -121,21 +167,29 @@ func NewService(
 	siteAuthorReader SiteAuthorReader,
 	siteReader SiteReader,
 	resourceReader ResourceReader,
-	reWorkTagDeleter ReWorkTagDeleter,
-	reWorkWorkSetDeleter ReWorkWorkSetDeleter,
+	reWorkTagWriter ReWorkTagWriter,
+	reWorkWorkSetWriter ReWorkWorkSetWriter,
 	resourceDeleter ResourceDeleter,
+	siteAuthorWriter SiteAuthorWriter,
+	siteTagWriter SiteTagWriter,
+	workSetWriter WorkSetWriter,
+	reWorkAuthorWriter ReWorkAuthorWriter,
 ) *Service {
 	return &Service{
-		repo:                 repo,
-		localTagReader:       localTagReader,
-		localAuthorReader:    localAuthorReader,
-		siteTagReader:        siteTagReader,
-		siteAuthorReader:     siteAuthorReader,
-		siteReader:           siteReader,
-		resourceReader:       resourceReader,
-		reWorkTagDeleter:     reWorkTagDeleter,
-		reWorkWorkSetDeleter: reWorkWorkSetDeleter,
-		resourceDeleter:      resourceDeleter,
+		repo:                repo,
+		localTagReader:      localTagReader,
+		localAuthorReader:   localAuthorReader,
+		siteTagReader:       siteTagReader,
+		siteAuthorReader:    siteAuthorReader,
+		siteReader:          siteReader,
+		resourceReader:      resourceReader,
+		resourceDeleter:     resourceDeleter,
+		reWorkTagWriter:     reWorkTagWriter,
+		reWorkWorkSetWriter: reWorkWorkSetWriter,
+		siteAuthorWriter:    siteAuthorWriter,
+		siteTagWriter:       siteTagWriter,
+		workSetWriter:       workSetWriter,
+		reWorkAuthorWriter:  reWorkAuthorWriter,
 	}
 }
 
@@ -180,12 +234,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // DeleteWorkAndSurroundingData 删除作品及其周围数据（级联删除）
 func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) error {
 	// 1. 删除作品关联的标签
-	if err := s.reWorkTagDeleter.DeleteByWorkId(ctx, id); err != nil {
+	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, id); err != nil {
 		return err
 	}
 
 	// 2. 删除作品关联的作品集关系
-	if err := s.reWorkWorkSetDeleter.DeleteByWorkId(ctx, id); err != nil {
+	if err := s.reWorkWorkSetWriter.DeleteByWorkId(ctx, id); err != nil {
 		return err
 	}
 
@@ -368,3 +422,295 @@ type WorkAuthorDTO struct {
 var (
 	ErrWorkIdRequired = &pkgerr.BusinessError{Code: 400, Message: "更新作品失败，id不能为空"}
 )
+
+// AuthorType 常量（与 reWorkTag.TagType 对齐）
+const (
+	AuthorTypeLocal = 1
+	AuthorTypeSite  = 2
+)
+
+// SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID
+func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *dto2.WorkResponse) (int64, error) {
+	work := workResp.Work
+
+	// 确保 SiteID 来自任务
+	if task.SiteID.Valid {
+		work.SiteID = task.SiteID
+	}
+
+	if !work.SiteID.Valid || work.SiteID.Int64 == 0 {
+		return 0, fmt.Errorf("保存作品信息失败，siteId 不能为空，taskId: %d", task.ID)
+	}
+	if !work.SiteWorkID.Valid || work.SiteWorkID.String == "" {
+		return 0, fmt.Errorf("保存作品信息失败，siteWorkId 不能为空，taskId: %d", task.ID)
+	}
+	siteId := work.SiteID.Int64
+
+	// === Phase 1: upsert 周边主数据 ===
+	siteAuthorDBIds, err := s.upsertSiteAuthors(ctx, workResp.SiteAuthors, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("upsert 站点作者失败: %w", err)
+	}
+
+	siteTagDBIds, err := s.upsertSiteTags(ctx, workResp.SiteTags, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("upsert 站点标签失败: %w", err)
+	}
+
+	workSetDBIds, err := s.upsertWorkSets(ctx, workResp.WorkSets, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("upsert 作品集失败: %w", err)
+	}
+
+	// LocalAuthors/LocalTags 暂时忽略
+	if len(workResp.LocalAuthors) > 0 {
+		logger.Log.Warnf("[WorkService] 插件返回了 %d 个本地作者，暂未支持保存", len(workResp.LocalAuthors))
+	}
+	if len(workResp.LocalTags) > 0 {
+		logger.Log.Warnf("[WorkService] 插件返回了 %d 个本地标签，暂未支持保存", len(workResp.LocalTags))
+	}
+
+	// === Phase 2: 回查内部 DB ID ===
+	siteAuthorDBIds, err = s.querySiteAuthorDBIds(ctx, workResp.SiteAuthors, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("回查站点作者 ID 失败: %w", err)
+	}
+
+	siteTagDBIds, err = s.querySiteTagDBIds(ctx, workResp.SiteTags, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("回查站点标签 ID 失败: %w", err)
+	}
+
+	workSetDBIds, err = s.queryWorkSetDBIds(ctx, workResp.WorkSets, siteId)
+	if err != nil {
+		return 0, fmt.Errorf("回查作品集 ID 失败: %w", err)
+	}
+
+	// === Phase 3: 保存 Work + 全量替换关联 ===
+	workId, err := s.saveOrUpdateWork(ctx, work)
+	if err != nil {
+		return 0, fmt.Errorf("保存作品失败: %w", err)
+	}
+
+	// 全量替换 work-author 关联
+	if err := s.reWorkAuthorWriter.DeleteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品作者关联失败: %w", err)
+	}
+	if len(siteAuthorDBIds) > 0 {
+		links := buildSiteAuthorLinks(workId, siteAuthorDBIds)
+		if err := s.reWorkAuthorWriter.SaveBatch(ctx, links); err != nil {
+			return 0, fmt.Errorf("保存作品作者关联失败: %w", err)
+		}
+	}
+
+	// 全量替换 work-tag 关联
+	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品标签关联失败: %w", err)
+	}
+	if len(siteTagDBIds) > 0 {
+		links := buildSiteTagLinks(workId, siteTagDBIds)
+		if err := s.reWorkTagWriter.SaveBatch(ctx, links); err != nil {
+			return 0, fmt.Errorf("保存作品标签关联失败: %w", err)
+		}
+	}
+
+	// 全量替换 work-workset 关联
+	if err := s.reWorkWorkSetWriter.DeleteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品作品集关联失败: %w", err)
+	}
+	if len(workSetDBIds) > 0 {
+		links := buildWorkSetLinks(workId, workSetDBIds)
+		if err := s.reWorkWorkSetWriter.SaveBatch(ctx, links); err != nil {
+			return 0, fmt.Errorf("保存作品作品集关联失败: %w", err)
+		}
+	}
+
+	return workId, nil
+}
+
+// upsertSiteAuthors 批量 upsert 站点作者，返回 DB ID 列表
+func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*dto2.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		entity := taskSiteAuthorDTOToEntity(d, siteId)
+		id, err := s.siteAuthorWriter.SaveOrUpdateByCompositeKey(ctx, entity)
+		if err != nil {
+			return nil, fmt.Errorf("upsert 站点作者 %s 失败: %w", d.SiteAuthorID, err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// upsertSiteTags 批量 upsert 站点标签
+func (s *Service) upsertSiteTags(ctx context.Context, dtos []*dto2.TaskSiteTagDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		entity := taskSiteTagDTOToEntity(d, siteId)
+		id, err := s.siteTagWriter.SaveOrUpdateByCompositeKey(ctx, entity)
+		if err != nil {
+			return nil, fmt.Errorf("upsert 站点标签 %s 失败: %w", d.SiteTagID, err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// upsertWorkSets 批量 upsert 作品集
+func (s *Service) upsertWorkSets(ctx context.Context, dtos []*dto2.TaskWorkSetDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		entity := taskWorkSetDTOToEntity(d, siteId)
+		id, err := s.workSetWriter.SaveOrUpdateByCompositeKey(ctx, entity)
+		if err != nil {
+			return nil, fmt.Errorf("upsert 作品集 %d 失败: %w", d.WorkSetID, err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// querySiteAuthorDBIds 回查站点作者内部 DB ID
+func (s *Service) querySiteAuthorDBIds(ctx context.Context, dtos []*dto2.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		record, err := s.siteAuthorWriter.GetBySiteAndSiteAuthorID(ctx, siteId, d.SiteAuthorID)
+		if err != nil {
+			return nil, fmt.Errorf("回查站点作者 %s 失败: %w", d.SiteAuthorID, err)
+		}
+		ids = append(ids, record.ID)
+	}
+	return ids, nil
+}
+
+// querySiteTagDBIds 回查站点标签内部 DB ID
+func (s *Service) querySiteTagDBIds(ctx context.Context, dtos []*dto2.TaskSiteTagDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		record, err := s.siteTagWriter.GetBySiteAndSiteTagID(ctx, siteId, d.SiteTagID)
+		if err != nil {
+			return nil, fmt.Errorf("回查站点标签 %s 失败: %w", d.SiteTagID, err)
+		}
+		ids = append(ids, record.ID)
+	}
+	return ids, nil
+}
+
+// queryWorkSetDBIds 回查作品集内部 DB ID
+func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*dto2.TaskWorkSetDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		siteWorkSetId := strconv.FormatInt(d.WorkSetID, 10)
+		record, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
+		if err != nil {
+			return nil, fmt.Errorf("回查作品集 %d 失败: %w", d.WorkSetID, err)
+		}
+		ids = append(ids, record.ID)
+	}
+	return ids, nil
+}
+
+// saveOrUpdateWork 按复合键保存或更新作品
+func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int64, error) {
+	existing, err := s.repo.GetBySiteAndSiteWorkID(ctx, work.SiteID.Int64, work.SiteWorkID.String)
+	if err == nil && existing != nil {
+		work.ID = existing.ID
+		if err := s.repo.Update(ctx, work); err != nil {
+			return 0, err
+		}
+		return existing.ID, nil
+	}
+	if err := s.repo.Save(ctx, work); err != nil {
+		return 0, err
+	}
+	return work.ID, nil
+}
+
+// ========== DTO 转换辅助函数 ==========
+
+func taskSiteAuthorDTOToEntity(d *dto2.TaskSiteAuthorDTO, siteId int64) *entity2.SiteAuthor {
+	return &entity2.SiteAuthor{
+		BaseEntity:    &model.BaseEntity{},
+		SiteID:        sql.NullInt64{Int64: siteId, Valid: true},
+		SiteAuthorID:  sql.NullString{String: d.SiteAuthorID, Valid: true},
+		AuthorName:    sql.NullString{String: d.AuthorName, Valid: true},
+	}
+}
+
+func taskSiteTagDTOToEntity(d *dto2.TaskSiteTagDTO, siteId int64) *entity2.SiteTag {
+	return &entity2.SiteTag{
+		BaseEntity:  &model.BaseEntity{},
+		SiteID:      sql.NullInt64{Int64: siteId, Valid: true},
+		SiteTagID:   sql.NullString{String: d.SiteTagID, Valid: true},
+		SiteTagName: sql.NullString{String: d.TagName, Valid: true},
+	}
+}
+
+func taskWorkSetDTOToEntity(d *dto2.TaskWorkSetDTO, siteId int64) *entity2.WorkSet {
+	return &entity2.WorkSet{
+		BaseEntity:         &model.BaseEntity{},
+		SiteID:             sql.NullInt64{Int64: siteId, Valid: true},
+		SiteWorkSetID:      sql.NullString{String: strconv.FormatInt(d.WorkSetID, 10), Valid: true},
+		SiteWorkSetName:    sql.NullString{String: d.WorkSetName, Valid: true},
+	}
+}
+
+// ========== 关联实体构建辅助函数 ==========
+
+func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWorkAuthor {
+	links := make([]*entity2.ReWorkAuthor, 0, len(siteAuthorIds))
+	for _, authorId := range siteAuthorIds {
+		links = append(links, &entity2.ReWorkAuthor{
+			BaseEntity:   &model.BaseEntity{},
+			AuthorType:   sql.NullInt64{Int64: AuthorTypeSite, Valid: true},
+			WorkID:       sql.NullInt64{Int64: workId, Valid: true},
+			SiteAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
+			AuthorRank:   sql.NullInt64{Int64: 0, Valid: true},
+		})
+	}
+	return links
+}
+
+func buildSiteTagLinks(workId int64, siteTagIds []int64) []*entity2.ReWorkTag {
+	links := make([]*entity2.ReWorkTag, 0, len(siteTagIds))
+	for _, tagId := range siteTagIds {
+		links = append(links, &entity2.ReWorkTag{
+			BaseEntity: &model.BaseEntity{},
+			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
+			TagType:    sql.NullInt64{Int64: 2, Valid: true}, // TagTypeSite
+			SiteTagID:  sql.NullInt64{Int64: tagId, Valid: true},
+		})
+	}
+	return links
+}
+
+func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSet {
+	links := make([]*entity2.ReWorkWorkSet, 0, len(workSetIds))
+	for i, wsId := range workSetIds {
+		links = append(links, &entity2.ReWorkWorkSet{
+			BaseEntity: &model.BaseEntity{},
+			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
+			WorkSetID:  sql.NullInt64{Int64: wsId, Valid: true},
+			SortOrder:  sql.NullInt64{Int64: int64(i), Valid: true},
+		})
+	}
+	return links
+}

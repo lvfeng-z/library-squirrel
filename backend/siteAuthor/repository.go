@@ -11,6 +11,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SiteAuthorRepository 站点作者仓储实现
@@ -213,6 +214,31 @@ func (r *SiteAuthorRepository) UpdateLastUseByIds(ctx context.Context, ids []int
 	return r.GORM().WithContext(ctx).Model(new(entity.SiteAuthor)).
 		Where("id IN ?", ids).
 		Update("last_use", lastUse).Error
+}
+
+// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
+func (r *SiteAuthorRepository) GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity.SiteAuthor, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.And(
+				clause.Eq{Column: "site_id", Value: siteId},
+				clause.Eq{Column: "site_author_id", Value: siteAuthorId},
+			),
+		},
+	}
+	return r.Get(ctx, opt)
+}
+
+// Get 使用 QueryOption 查询单条记录
+func (r *SiteAuthorRepository) Get(ctx context.Context, opt *database.QueryOption) (*entity.SiteAuthor, error) {
+	var author entity.SiteAuthor
+	db := r.db.WithContext(ctx).Model(new(entity.SiteAuthor))
+	db = applyQueryOption(db, opt)
+	err := db.First(&author).Error
+	if err != nil {
+		return nil, err
+	}
+	return &author, nil
 }
 
 // applyQueryOption 将 QueryOption 应用到 db 实例

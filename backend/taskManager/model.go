@@ -52,9 +52,9 @@ type TaskExecutor interface {
 	Resume(ctx context.Context, param *dto.TaskResParam) (*dto.WorkResponse, error)
 }
 
-// WorkSaver 工作保存接口
-type WorkSaver interface {
-	Save(ctx context.Context, work *entity.Work) (int64, error)
+// WorkInfoSaver 作品完整信息保存接口
+type WorkInfoSaver interface {
+	SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *dto.WorkResponse) (int64, error)
 }
 
 // ResourceSaver 资源保存接口
@@ -77,8 +77,8 @@ type ManagedTask struct {
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
 
-	// 工作保存器
-	workSaver WorkSaver
+	// 作品信息保存器
+	workInfoSaver WorkInfoSaver
 	// 资源保存器
 	resourceSaver ResourceSaver
 	// 工作目录提供者（实时读取，不缓存）
@@ -97,7 +97,7 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
 		taskId:          taskId,
@@ -107,7 +107,7 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		cancel:          cancel,
 		done:            make(chan struct{}),
 		pluginExec:      pluginExec,
-		workSaver:       workSaver,
+		workInfoSaver:   workInfoSaver,
 		resourceSaver:   resourceSaver,
 		workDirProvider: workDirProvider,
 		task:            task,
@@ -139,64 +139,64 @@ func (m *ManagedTask) run() {
 		return
 	}
 
-	// 2. 保存 Work 到数据库
-	workId, err := m.workSaver.Save(m.ctx, workResp.Work)
+	// 2. 保存作品完整信息（Work + 周边数据）
+	workId, err := m.workInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
 	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品失败: %v", m.taskId, err)
+		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
 		return
 	}
 	m.workId = workId
 
-		// 3. 获取资源读取器
-		reader, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
-			m.setState(TaskStateFailed)
-			return
-		}
-		defer reader.Close()
+	// 3. 获取资源读取器
+	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return
+	}
+	defer reader.Close()
 
-		// 4. 生成文件保存路径
-		localPath, relativePath, fileName := m.resolveLocalPath(startResp)
+	// 4. 生成文件保存路径
+	localPath, relativePath, fileName := m.resolveLocalPath(startResp)
 
-			// 4.1 确保资源目录存在
-			if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-				logger.Log.Errorf("[TaskManager] 任务 %d 创建资源目录失败: %v", m.taskId, err)
-				m.setState(TaskStateFailed)
-				return
-			}
+	// 4.1 确保资源目录存在
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 创建资源目录失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return
+	}
 
-		// 5. 保存 Resource 到数据库
-		resource := &entity.Resource{
-			BaseEntity:        &model.BaseEntity{},
-			WorkID:            workId,
-			TaskID:            m.task.GetID(),
-			FilePath:          sql.NullString{String: relativePath, Valid: true},
-			FileName:          sql.NullString{String: fileName, Valid: true},
-			FilenameExtension: sql.NullString{String: startResp.Resource.Format, Valid: true},
-			SuggestName:       sql.NullString{String: "", Valid: true},
-			ResourceSize:      sql.NullInt64{Int64: startResp.Resource.Size, Valid: true},
-			Workdir:           sql.NullString{String: m.workDirProvider.GetWorkDir(), Valid: true},
-			ResourceComplete:  startResp.Resource.Completeness,
-		}
-		resourceId, err := m.resourceSaver.Save(m.ctx, resource)
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
-			m.setState(TaskStateFailed)
-			return
-		}
+	// 5. 保存 Resource 到数据库
+	resource := &entity.Resource{
+		BaseEntity:        &model.BaseEntity{},
+		WorkID:            workId,
+		TaskID:            m.task.GetID(),
+		FilePath:          sql.NullString{String: relativePath, Valid: true},
+		FileName:          sql.NullString{String: fileName, Valid: true},
+		FilenameExtension: sql.NullString{String: startResp.Resource.Format, Valid: true},
+		SuggestName:       sql.NullString{String: "", Valid: true},
+		ResourceSize:      sql.NullInt64{Int64: startResp.Resource.Size, Valid: true},
+		Workdir:           sql.NullString{String: m.workDirProvider.GetWorkDir(), Valid: true},
+		ResourceComplete:  startResp.Resource.Completeness,
+	}
+	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return
+	}
 
-		// 6. 更新任务的 pendingResourceId
-		m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+	// 6. 更新任务的 pendingResourceId
+	m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
 
-		file, err := os.Create(localPath)
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
-			m.setState(TaskStateFailed)
-			return
-		}
-		defer file.Close()
+	file, err := os.Create(localPath)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
+		m.setState(TaskStateFailed)
+		return
+	}
+	defer file.Close()
 	// 使用带缓冲的 io.Copy 以支持进度报告
 	buf := make([]byte, 32*1024) // 32KB buffer
 	var totalWritten int64

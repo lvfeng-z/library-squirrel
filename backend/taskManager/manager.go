@@ -44,8 +44,8 @@ type Manager struct {
 	// Repository（任务数据库操作）
 	repo Repository
 
-	// 工作保存器
-	workSaver WorkSaver
+	// 作品信息保存器
+	workInfoSaver WorkInfoSaver
 	// 资源保存器
 	resourceSaver ResourceSaver
 
@@ -54,7 +54,7 @@ type Manager struct {
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workSaver WorkSaver, resourceSaver ResourceSaver) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
 	return &Manager{
 		taskMap:         make(map[int64]*ManagedTask),
 		parentMap:       make(map[int64]*ParentTask),
@@ -64,7 +64,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, repo Repositor
 		repo:            repo,
 		pusher:          pusher,
 		pluginExecFactory: pluginExecFactory,
-		workSaver:       workSaver,
+		workInfoSaver:   workInfoSaver,
 		resourceSaver:   resourceSaver,
 	}
 }
@@ -279,7 +279,7 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 	if task.Pid.Valid {
 		parentId = task.Pid.Int64
 	}
-	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workSaver, m.resourceSaver, m.workDirProvider)
+	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider)
 
 	// 设置状态变化回调
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {

@@ -58,6 +58,8 @@ type Repository interface {
 	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*entity2.SiteTag, error)
 	// UpdateBindLocalTag 绑定本地标签
 	UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (int64, error)
+	// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
+	GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
 	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO], error)
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
@@ -100,6 +102,27 @@ func (s *Service) UpdateById(ctx context.Context, tag *entity2.SiteTag) error {
 		return ErrTagIdRequired
 	}
 	return s.repo.Update(ctx, tag)
+}
+
+// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
+func (s *Service) GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error) {
+	return s.repo.GetBySiteAndSiteTagID(ctx, siteId, siteTagId)
+}
+
+// SaveOrUpdateByCompositeKey 按 (siteId, siteTagId) 保存或更新站点标签，返回内部 DB ID
+func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, tag *entity2.SiteTag) (int64, error) {
+	existing, err := s.repo.GetBySiteAndSiteTagID(ctx, tag.SiteID.Int64, tag.SiteTagID.String)
+	if err == nil && existing != nil {
+		tag.ID = existing.ID
+		if err := s.repo.Update(ctx, tag); err != nil {
+			return 0, err
+		}
+		return existing.ID, nil
+	}
+	if err := s.repo.Save(ctx, tag); err != nil {
+		return 0, err
+	}
+	return tag.ID, nil
 }
 
 // UpdateLastUse 批量更新最后使用时间
