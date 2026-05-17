@@ -279,6 +279,10 @@ async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] |
   }
   return arrayNotEmpty(scheduleList) ? scheduleList : undefined
 }
+// 从行数据中提取任务 ID（兼容 Wails 绑定格式和 DTO 格式）
+function getRowTaskId(row: any): number {
+  return Number(row?.taskProgress?.task?.id ?? row?.id ?? 0)
+}
 // 给行添加选择器，用于区分父任务和子任务
 function rowClassName(data: { row: unknown; rowIndex: number }) {
   const row = data.row as TaskTreeDTO
@@ -300,11 +304,11 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       refreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      taskApi.taskPauseTree(Number(row.id))
+      taskApi.taskPauseTree(getRowTaskId(row))
       refreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      taskApi.taskResumeTree(Number(row.id))
+      taskApi.taskResumeTree(getRowTaskId(row))
       refreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -312,10 +316,10 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       refreshTask()
       break
     case TaskOperationCodeEnum.CANCEL:
-      taskApi.taskStopTree(Number(row.id))
+      taskApi.taskStopTree(getRowTaskId(row))
       break
     case TaskOperationCodeEnum.DELETE:
-      deleteTask(Number(row.id))
+      deleteTask(getRowTaskId(row))
       break
     case TaskOperationCodeEnum.CONFIRM_REPLACE_RES:
       emits('openReplaceResConfirmDialog')
@@ -397,7 +401,7 @@ function handleScroll() {
 // 开始任务
 function startTask(row: TaskTreeDTO, retry: boolean) {
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  apiCall(Number(row.id)).catch((e: Error) => {
+  apiCall(getRowTaskId(row)).catch((e: Error) => {
     ElMessage.error(e.message)
   })
   row.status = TaskStatusEnum.WAITING

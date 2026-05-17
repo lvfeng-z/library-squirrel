@@ -3,8 +3,10 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -68,6 +70,10 @@ type ManagedTask struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 
+	// 任务完成信号
+	done     chan struct{}
+	doneOnce sync.Once
+
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
 
@@ -75,6 +81,8 @@ type ManagedTask struct {
 	workSaver WorkSaver
 	// 资源保存器
 	resourceSaver ResourceSaver
+	// 工作目录提供者（实时读取，不缓存）
+	workDirProvider WorkDirProvider
 
 	// 任务信息
 	task   *entity.Task
@@ -89,19 +97,21 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workSaver WorkSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
-		taskId:        taskId,
-		parentId:      parentId,
-		state:         atomic.Int32{},
-		ctx:           ctx,
-		cancel:        cancel,
-		pluginExec:    pluginExec,
-		workSaver:     workSaver,
-		resourceSaver: resourceSaver,
-		task:          task,
-		workId:        taskId,
+		taskId:          taskId,
+		parentId:        parentId,
+		state:           atomic.Int32{},
+		ctx:             ctx,
+		cancel:          cancel,
+		done:            make(chan struct{}),
+		pluginExec:      pluginExec,
+		workSaver:       workSaver,
+		resourceSaver:   resourceSaver,
+		workDirProvider: workDirProvider,
+		task:            task,
+		workId:          taskId,
 	}
 }
 
@@ -138,49 +148,55 @@ func (m *ManagedTask) run() {
 	}
 	m.workId = workId
 
-	// 3. 保存 Resource 到数据库
-	// 将 ResourceDTO 转换为 domain.Resource
-	resource := &entity.Resource{
-		BaseEntity:        &model.BaseEntity{},
-		WorkID:            workId,
-		TaskID:            m.task.GetID(),
-		FilePath:          sql.NullString{String: workResp.Resource.LocalPath, Valid: true},
-		FileName:          sql.NullString{String: "", Valid: true},
-		FilenameExtension: sql.NullString{String: workResp.Resource.Format, Valid: true},
-		SuggestName:       sql.NullString{String: "", Valid: true},
-		ResourceSize:      sql.NullInt64{Int64: workResp.Resource.Size, Valid: true},
-		Workdir:           sql.NullString{String: "", Valid: true},
-		ResourceComplete:  workResp.Resource.Completeness,
-	}
-	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
-		m.setState(TaskStateFailed)
-		return
-	}
+		// 3. 获取资源读取器
+		reader, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
+			m.setState(TaskStateFailed)
+			return
+		}
+		defer reader.Close()
 
-	// 4. 更新任务的 pendingResourceId
-	m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+		// 4. 生成文件保存路径
+		localPath, relativePath, fileName := m.resolveLocalPath(startResp)
 
-	// 5. 获取资源读取器并下载
-	reader, resp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
-		m.setState(TaskStateFailed)
-		return
-	}
-	defer reader.Close()
+			// 4.1 确保资源目录存在
+			if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+				logger.Log.Errorf("[TaskManager] 任务 %d 创建资源目录失败: %v", m.taskId, err)
+				m.setState(TaskStateFailed)
+				return
+			}
 
-	// 6. 创建文件并使用 io.Copy 写入（支持 context 取消）
-	localPath := workResp.Resource.LocalPath
-	file, err := os.Create(localPath)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
-		m.setState(TaskStateFailed)
-		return
-	}
-	defer file.Close()
+		// 5. 保存 Resource 到数据库
+		resource := &entity.Resource{
+			BaseEntity:        &model.BaseEntity{},
+			WorkID:            workId,
+			TaskID:            m.task.GetID(),
+			FilePath:          sql.NullString{String: relativePath, Valid: true},
+			FileName:          sql.NullString{String: fileName, Valid: true},
+			FilenameExtension: sql.NullString{String: startResp.Resource.Format, Valid: true},
+			SuggestName:       sql.NullString{String: "", Valid: true},
+			ResourceSize:      sql.NullInt64{Int64: startResp.Resource.Size, Valid: true},
+			Workdir:           sql.NullString{String: m.workDirProvider.GetWorkDir(), Valid: true},
+			ResourceComplete:  startResp.Resource.Completeness,
+		}
+		resourceId, err := m.resourceSaver.Save(m.ctx, resource)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
+			m.setState(TaskStateFailed)
+			return
+		}
 
+		// 6. 更新任务的 pendingResourceId
+		m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+
+		file, err := os.Create(localPath)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
+			m.setState(TaskStateFailed)
+			return
+		}
+		defer file.Close()
 	// 使用带缓冲的 io.Copy 以支持进度报告
 	buf := make([]byte, 32*1024) // 32KB buffer
 	var totalWritten int64
@@ -206,17 +222,22 @@ func (m *ManagedTask) run() {
 					return
 				}
 				// 报告进度
-				if workResp.Resource.Size > 0 && m.onProgress != nil {
-					progress := int(float64(totalWritten) / float64(workResp.Resource.Size) * 100)
+				if startResp.Resource.Size > 0 && m.onProgress != nil {
+					progress := int(float64(totalWritten) / float64(startResp.Resource.Size) * 100)
 					m.onProgress(m.taskId, progress)
 				}
 			}
 			if readErr != nil {
 				if readErr == io.EOF {
-					// 下载完成
 					reader.Close()
 					file.Sync()
-					m.resourceResp = resp
+					// 校验下载完整性
+					if startResp.Resource.Size > 0 && totalWritten < startResp.Resource.Size {
+						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, totalWritten, startResp.Resource.Size)
+						m.setState(TaskStateFailed)
+						return
+					}
+					m.resourceResp = startResp
 					m.setState(TaskStateFinished)
 					return
 				}
@@ -295,6 +316,14 @@ func (m *ManagedTask) setState(state TaskState) {
 	if old != state && m.onStateChange != nil {
 		m.onStateChange(m.taskId, old, state)
 	}
+	if state == TaskStateFinished || state == TaskStateFailed {
+		m.doneOnce.Do(func() { close(m.done) })
+	}
+}
+
+// Done 返回任务完成信号 channel，任务终态（Finished/Failed）时关闭
+func (m *ManagedTask) Done() <-chan struct{} {
+	return m.done
 }
 
 // GetState 获取当前状态
@@ -325,6 +354,32 @@ func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState 
 // SetOnProgress 设置进度回调
 func (m *ManagedTask) SetOnProgress(fn func(taskId int64, progress int)) {
 	m.onProgress = fn
+}
+
+// resolveLocalPath 根据资源信息生成本地文件保存路径
+// 返回值: absSavePath 绝对保存路径, relativePath 相对于 workdir/resource/ 的相对路径, fileName 文件名
+func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath, relativePath, fileName string) {
+	res := startResp.Resource
+	workDir := m.workDirProvider.GetWorkDir()
+
+	// 优先使用 RemotePath（插件提供的远程文件名）
+	fileName = res.RemotePath
+	if fileName == "" {
+		name := "task"
+		if m.task.TaskName.Valid {
+			name = m.task.TaskName.String
+		}
+		ext := res.Format
+		if ext != "" {
+			fileName = fmt.Sprintf("%s%s", name, ext)
+		} else {
+			fileName = name
+		}
+	}
+
+	relativePath = fileName
+	absSavePath = filepath.Join(workDir, "resource", fileName)
+	return
 }
 
 // ParentTask 父任务运行结构体

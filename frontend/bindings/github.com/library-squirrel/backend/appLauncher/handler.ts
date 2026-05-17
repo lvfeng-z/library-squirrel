@@ -37,6 +37,15 @@ export function OpenExternal(url: string): $CancellablePromise<model$0.ApiRespon
 }
 
 /**
+ * OpenImage 打开图片资源
+ */
+export function OpenImage(url: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3443443213, url).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * OpenPath 打开路径
  */
 export function OpenPath(filePath: string): $CancellablePromise<model$0.ApiResponse<any> | null> {

@@ -84,7 +84,7 @@ function getWorkSetName(): string {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="coverFilePath ? `resource://workdir/${coverFilePath}${srcParamStr}` : ''"
+      :src="coverFilePath ? `/resource/${coverFilePath}${srcParamStr}` : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

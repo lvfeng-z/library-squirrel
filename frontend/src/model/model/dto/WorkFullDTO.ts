@@ -7,8 +7,7 @@ import SiteTagFullDTO from './SiteTagFullDTO.ts'
 import WorkSet from '../entity/WorkSet.ts'
 import Resource from '../entity/Resource.ts'
 import lodash from 'lodash'
-import { notNullish } from '@renderer/utils/CommonUtil.ts'
-import { parsePropertyFromJson } from '@renderer/utils/ObjectUtil.ts'
+import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 /**
  * 作品
@@ -57,55 +56,45 @@ export default class WorkFullDTO extends Work {
   constructor(work?: Work) {
     super(work)
     if (notNullish(work)) {
-      parsePropertyFromJson(work, [
-        {
-          property: 'resource',
-          builder: (src) => new Resource(src)
-        },
-        {
-          property: 'inactiveResource',
-          builder: (raw: []) => raw.map((rawResource) => new Resource(rawResource))
-        },
-        {
-          property: 'site',
-          builder: (src) => new Site(src)
-        },
-        {
-          property: 'localAuthors',
-          builder: (raw: []) => raw.map((rawLocalAuthor) => new RankedLocalAuthor(rawLocalAuthor))
-        },
-        {
-          property: 'localTags',
-          builder: (raw: []) => raw.map((rawLocalTag) => new LocalTag(rawLocalTag))
-        },
-        {
-          property: 'siteAuthors',
-          builder: (raw: []) => raw.map((rawSiteAuthor) => new RankedSiteAuthor(rawSiteAuthor))
-        },
-        {
-          property: 'siteTags',
-          builder: (raw: []) => raw.map((rawSiteTag) => new SiteTagFullDTO(rawSiteTag))
-        },
-        {
-          property: 'workSets',
-          builder: (raw: []) => raw.map((rawWorkSet) => new WorkSet(rawWorkSet))
-        }
-      ])
-      lodash.assign(
-        this,
-        lodash.pick(work, [
-          'resource',
-          'inactiveResource',
-          'site',
-          'localAuthors',
-          'localTags',
-          'siteAuthors',
-          'siteTags',
-          'workSets',
-          'resourceStream',
-          'resourceSize'
-        ])
-      )
+      // 后端 WorkFullDTO 是嵌套结构 {work: {...}, resources: [...], localAuthors: [...], ...}
+      // 需要展开 work 子对象的字段，并正确映射 resources → resource
+      const nested = work as any
+      if (notNullish(nested.work)) {
+        lodash.assign(this, nested.work)
+      }
+      // resources → resource（取第一个活跃资源）
+      if (arrayNotEmpty(nested.resources)) {
+        const activeRes = nested.resources.find((r: any) => r.state === 1)
+        this.resource = activeRes ? new Resource(activeRes) : new Resource(nested.resources[0])
+      }
+      // inactiveResource
+      if (arrayNotEmpty(nested.resources)) {
+        this.inactiveResource = nested.resources
+          .filter((r: any) => r.state !== 1)
+          .map((r: any) => new Resource(r))
+      }
+      if (notNullish(nested.site)) {
+        this.site = new Site(nested.site)
+      }
+      if (arrayNotEmpty(nested.localAuthors)) {
+        this.localAuthors = nested.localAuthors
+          .filter(notNullish)
+          .map((raw: any) => new RankedLocalAuthor(raw))
+      }
+      if (arrayNotEmpty(nested.localTags)) {
+        this.localTags = nested.localTags.filter(notNullish).map((raw: any) => new LocalTag(raw))
+      }
+      if (arrayNotEmpty(nested.siteAuthors)) {
+        this.siteAuthors = nested.siteAuthors
+          .filter(notNullish)
+          .map((raw: any) => new RankedSiteAuthor(raw))
+      }
+      if (arrayNotEmpty(nested.siteTags)) {
+        this.siteTags = nested.siteTags.filter(notNullish).map((raw: any) => new SiteTagFullDTO(raw))
+      }
+      if (arrayNotEmpty(nested.workSets)) {
+        this.workSets = nested.workSets.filter(notNullish).map((raw: any) => new WorkSet(raw))
+      }
     }
   }
 }

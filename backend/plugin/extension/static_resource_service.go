@@ -139,7 +139,7 @@ func (s *StaticResourceService) isPathAllowed(relativePath string, allowedDirs [
 
 // ResolveURL 构建插件资源 URL（供主程序构建 SlotConfig 时使用）
 func (s *StaticResourceService) ResolveURL(publicId, version, relativePath string) string {
-	return "resource://plugin/" + publicId + "/" + version + "/" + relativePath
+	return "/plugin/" + publicId + "/" + version + "/" + relativePath
 }
 
 // HasPlugin 检查插件是否已注册

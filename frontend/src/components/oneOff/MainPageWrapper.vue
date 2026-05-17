@@ -145,7 +145,7 @@ async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
     if (ApiUtil.check(response)) {
       const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
       if (notNullish(resultPage)) {
-        resultPage.data = resultPage.data?.map((origin) => new WorkFullDTO(origin))
+        resultPage.data = resultPage.data?.filter(notNullish).map((origin) => new WorkFullDTO(origin))
       }
       return resultPage
     } else {

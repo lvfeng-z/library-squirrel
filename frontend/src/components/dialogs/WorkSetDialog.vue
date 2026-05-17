@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Ref, ref, watch, computed } from 'vue'
-import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
+import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import StaticHeightDialog from '@renderer/components/dialogs/StaticHeightDialog.vue'
 import WorkGridForWorkSet from '@renderer/components/common/WorkGridForWorkSet.vue'
@@ -234,7 +234,7 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
     if (isNullish(resultPage)) {
       return new Page<WorkCardItem>()
     }
-    resultPage.data = resultPage.data?.map((origin: WorkFullDTO) => new WorkFullDTO(origin))
+    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkFullDTO(origin))
     return resultPage as unknown as Page<WorkCardItem>
   }
   return new Page<WorkCardItem>()

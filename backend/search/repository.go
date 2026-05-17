@@ -210,7 +210,9 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	// 分页查询
 	offset := (page - 1) * pageSize
 	query := fmt.Sprintf(`
-		SELECT t1.*,
+		SELECT t1.id, t1.create_time, t1.update_time, t1.site_id, t1.site_work_id, t1.site_work_name,
+				t1.site_author_id, t1.site_work_description, t1.site_upload_time, t1.site_update_time,
+				t1.nick_name, t1.local_author_id, t1.last_view,
 			CASE WHEN t2.id IS NOT NULL THEN
 				JSON_OBJECT('id', t2.id, 'workId', t2.work_id, 'taskId', t2.task_id, 'state', t2.state, 'filePath', t2.file_path, 'fileName', t2.file_name,
 					'filenameExtension', t2.filename_extension, 'suggestName', t2.suggest_name, 'workdir', t2.workdir, 'resourceComplete', t2.resource_complete)

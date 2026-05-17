@@ -21,6 +21,11 @@ func (h *Handler) Open(ctx context.Context, app ExternalAppEnum, filePath string
 	return model.HandleVoid(h.svc.Open(app, filePath))
 }
 
+// OpenImage 打开图片资源
+func (h *Handler) OpenImage(ctx context.Context, url string) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.OpenImage(url))
+}
+
 // OpenPath 打开路径
 func (h *Handler) OpenPath(ctx context.Context, filePath string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.OpenPath(filePath))

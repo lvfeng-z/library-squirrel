@@ -331,7 +331,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       <el-image
         class="work-dialog-image"
         fit="contain"
-        :src="`resource://workdir/${currentWorkFullInfo.resource?.filePath}`"
+        :src="`/resource/${currentWorkFullInfo.resource?.filePath}`"
         @click="handlePictureClicked"
       >
         <template #error>

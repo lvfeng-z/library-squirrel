@@ -78,7 +78,7 @@ function handlePictureClicked() {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="`resource://workdir/${props.work.resource?.filePath}${srcParamStr}`"
+      :src="props.work.resource?.filePath ? `/resource/${props.work.resource.filePath}${srcParamStr}` : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

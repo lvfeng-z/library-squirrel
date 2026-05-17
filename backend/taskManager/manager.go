@@ -3,7 +3,6 @@ package taskManager
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -16,6 +15,11 @@ type Repository interface {
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) ([]*domain.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
+}
+
+// WorkDirProvider 工作目录提供者接口
+type WorkDirProvider interface {
+	GetWorkDir() string
 }
 
 // Manager 任务管理器
@@ -44,31 +48,38 @@ type Manager struct {
 	workSaver WorkSaver
 	// 资源保存器
 	resourceSaver ResourceSaver
+
+	// 工作目录提供者（实时读取，不缓存）
+	workDirProvider WorkDirProvider
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workSaver WorkSaver, resourceSaver ResourceSaver) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workSaver WorkSaver, resourceSaver ResourceSaver) *Manager {
 	return &Manager{
-		taskMap:           make(map[int64]*ManagedTask),
-		parentMap:         make(map[int64]*ParentTask),
-		maxParallel:       maxParallel,
-		semaphore:         make(chan struct{}, maxParallel),
-		repo:              repo,
-		pusher:            pusher,
+		taskMap:         make(map[int64]*ManagedTask),
+		parentMap:       make(map[int64]*ParentTask),
+		maxParallel:     maxParallel,
+		semaphore:       make(chan struct{}, maxParallel),
+		workDirProvider: workDirProvider,
+		repo:            repo,
+		pusher:          pusher,
 		pluginExecFactory: pluginExecFactory,
-		workSaver:         workSaver,
-		resourceSaver:     resourceSaver,
+		workSaver:       workSaver,
+		resourceSaver:   resourceSaver,
 	}
 }
 
 // StartTaskTree 启动任务树
 func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	// 1. 获取任务树
+	logger.Log.Infof("StartTaskTree: taskId=%d", taskId)
 	tasks, err := m.repo.ListTaskTree(ctx, []int64{taskId})
 	if err != nil {
+		logger.Log.Errorf("StartTaskTree: ListTaskTree 失败: %v", err)
 		return err
 	}
 
+	logger.Log.Infof("StartTaskTree: 查询到 %d 条任务记录", len(tasks))
 	if len(tasks) == 0 {
 		return ErrTaskTreeNotFound
 	}
@@ -78,6 +89,11 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	for _, t := range tasks {
 		if t.Pid.Valid && t.Pid.Int64 == taskId {
 			// 直接子任务
+			mt := m.newManagedTask(t)
+			parentTask.AddChild(mt)
+			m.addTask(mt)
+		} else if t.ID == taskId && (!t.IsCollection.Valid || t.IsCollection.Int64 == 0) {
+			// 单个任务（非集合），自身作为子任务执行
 			mt := m.newManagedTask(t)
 			parentTask.AddChild(mt)
 			m.addTask(mt)
@@ -116,14 +132,8 @@ func (m *Manager) startWithSemaphore(task *ManagedTask) {
 		// 启动任务
 		task.Start()
 
-		// 等待任务结束
-		for {
-			state := task.GetState()
-			if state == TaskStateFinished || state == TaskStateFailed {
-				break
-			}
-			time.Sleep(500 * time.Millisecond)
-		}
+		// 等待任务完成信号
+		<-task.Done()
 	}()
 }
 
@@ -269,7 +279,7 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 	if task.Pid.Valid {
 		parentId = task.Pid.Int64
 	}
-	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workSaver, m.resourceSaver)
+	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workSaver, m.resourceSaver, m.workDirProvider)
 
 	// 设置状态变化回调
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {

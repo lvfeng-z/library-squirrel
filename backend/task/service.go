@@ -10,6 +10,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	pkgerr "github.com/library-squirrel/backend/error"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
@@ -431,6 +432,7 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 	// 2. 按照排序尝试每个插件
 	for _, listener := range listeners {
 		if !listener.PublicID.Valid || listener.PublicID.String == "" {
+			logger.Log.Warnf("URL监听器缺少插件 PublicID，跳过 (contributionId=%s)", listener.ContributionID)
 			continue
 		}
 		pluginPublicId := listener.PublicID.String
@@ -438,12 +440,14 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		// 获取任务处理器
 		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ContributionID)
 		if err != nil {
+			logger.Log.Warnf("获取任务处理器失败 (plugin=%s, contributionId=%s): %v", pluginPublicId, listener.ContributionID, err)
 			continue
 		}
 
 		// 3. 调用插件的 create 方法
 		pluginResponses, err := taskHandler.Create(url)
 		if err != nil {
+			logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
 			continue
 		}
 
@@ -451,6 +455,7 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		if len(pluginResponses) > 0 {
 			count, err := s.handleCreateTaskArray(ctx, pluginResponses, url, listener)
 			if err != nil {
+				logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
 				continue
 			}
 			return &CreateTaskByURLResponse{

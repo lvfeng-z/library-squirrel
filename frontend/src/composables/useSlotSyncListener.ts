@@ -151,9 +151,9 @@ function unloadPluginStyles(pluginId: number): void {
 
 /**
  * 加载预编译的插件组件
- * 路径已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
- * @param jsUrl 编译后的 JS 文件 resource:// URL
- * @param cssUrl 编译后的 CSS 文件 resource:// URL（可选）
+ * 路径已经是完整的 URL（由后端 resolveContentURLs 生成）
+ * @param jsUrl 编译后的 JS 文件 URL
+ * @param cssUrl 编译后的 CSS 文件 URL（可选）
  * @param pluginPublicId 插件公开ID
  */
 async function loadCompiledComponent(jsUrl: string, cssUrl: string | undefined, pluginPublicId: string): Promise<DefineComponent> {
@@ -239,8 +239,8 @@ function createCodeComponent(code: string): Promise<DefineComponent> {
 
 /**
  * 创建 HTML 组件
- * htmlPath 已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
- * @param htmlPath HTML 文件 resource:// URL
+ * htmlPath 已经是完整的 URL（由后端 resolveContentURLs 生成）
+ * @param htmlPath HTML 文件 URL
  */
 async function createHtmlComponent(htmlPath: string): Promise<DefineComponent> {
   const response = await fetch(htmlPath)
@@ -255,13 +255,13 @@ async function createHtmlComponent(htmlPath: string): Promise<DefineComponent> {
 
 /**
  * 加载并编译 Vue 源码
- * vuePath 已经是完整的 resource:// URL（由后端 resolveContentURLs 生成）
- * @param vuePath Vue 文件 resource:// URL
+ * vuePath 已经是完整的 URL（由后端 resolveContentURLs 生成）
+ * @param vuePath Vue 文件 URL
  * @param pluginPublicId 插件公开ID
  */
 async function loadVueSourceComponent(vuePath: string, pluginPublicId: string): Promise<DefineComponent> {
   try {
-    // 阶段 1: 文件获取 - 通过 resource:// URL 获取 .vue 文件内容
+    // 阶段 1: 文件获取 - 通过 URL 获取 .vue 文件内容
     const response = await fetch(vuePath)
     if (!response.ok) {
       throw new Error(`加载Vue源码失败: HTTP ${response.status}`)

@@ -106,6 +106,8 @@ func (p *PluginProcess) Start(exePath string) error {
 
 	// 启动子进程
 	p.cmd = exec.Command(exePath, "--socket", p.socketPath)
+	// 传递完整环境变量，确保代理等配置传递给子进程
+	p.cmd.Env = os.Environ()
 	p.cmd.Stderr = os.Stderr // 插件日志输出到 stderr
 	if err := p.cmd.Start(); err != nil {
 		p.listener.Close()

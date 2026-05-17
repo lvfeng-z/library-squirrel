@@ -40,15 +40,15 @@ func (s *Service) SetWorkDir(workDir string) {
 	s.workDir = workDir
 }
 
-// OpenImage 使用微软照片打开图片
+// OpenImage 使用系统默认应用打开图片资源
+// url 为相对于 workdir/resource/ 的相对路径
 func (s *Service) OpenImage(url string) error {
 	if url == "" {
 		return ErrInvalidPath
 	}
 
-	// 拼接完整路径
-	fullPath := filepath.Join(s.workDir, url)
-	return s.openWithMicrosoftPhotos(fullPath)
+	fullPath := filepath.Join(s.workDir, "resource", url)
+	return s.OpenPath(fullPath)
 }
 
 // openWithMicrosoftPhotos 使用微软照片打开文件

@@ -83,6 +83,11 @@ func (s *Service) GetSettings() *Settings {
 	return &settings
 }
 
+// GetWorkDir 获取工作目录（实现 taskManager.WorkDirProvider 接口）
+func (s *Service) GetWorkDir() string {
+	return s.GetSettings().WorkDir
+}
+
 // SaveSettings 保存设置变更
 // changes 是设置变更列表，每项包含 path（如 "importSettings.maxParallelImport"）和 value
 func (s *Service) SaveSettings(changes []SettingChange) error {

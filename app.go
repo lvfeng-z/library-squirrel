@@ -18,6 +18,7 @@ import (
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"gorm.io/gorm"
 
+	"github.com/library-squirrel/backend/assetserver"
 	"github.com/library-squirrel/backend/appLauncher"
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/config"
@@ -91,6 +92,10 @@ type App struct {
 	// 静态资源服务
 	StaticResourceService *extension2.StaticResourceService
 
+	// HTTP 路由
+	AssetRouter      *assetserver.Router
+	HttpFileHandler *assetserver.ResourceHandler
+
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
@@ -156,6 +161,7 @@ func NewApp() (*App, error) {
 
 	// 3.5 初始化静态资源服务
 	app.StaticResourceService = extension2.NewStaticResourceService()
+	app.HttpFileHandler = assetserver.NewResourceHandler()
 
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
@@ -180,9 +186,13 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
 	app.SlotRegistry.SetPusher(pusher)
 }
 
-// CreateAssetHandler 创建组合前端与插件资源的 asset handler
+// CreateAssetHandler 创建路由多路复用器并注册所有路由
 func (app *App) CreateAssetHandler(frontendAssets fs.FS) http.Handler {
-	return extension2.NewPluginAwareAssetHandler(frontendAssets, app.StaticResourceService)
+	router := assetserver.NewRouter(frontendAssets)
+	router.Handle("/plugin/", app.StaticResourceService, 0)
+	router.Handle("/resource/", app.HttpFileHandler, 0)
+	app.AssetRouter = router
+	return router
 }
 
 // loadInstalledPlugins 加载所有已安装且需要启动时激活的插件
@@ -272,7 +282,7 @@ func (app *App) loadInstalledPlugins() {
 			slotConfig.ViewId = slot.ViewId
 			slotConfig.ContributionId = slot.ContributionId
 
-			// 将相对路径的 Icon 转换为 resource:// URL
+			// 将相对路径的 Icon 转换为 URL
 			if slot.Icon != "" {
 				slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
 			}
@@ -353,7 +363,7 @@ func resolveContentURLs(content json.RawMessage, contentType, publicId, version 
 		return content
 	}
 
-	prefix := "resource://plugin/" + publicId + "/" + version + "/"
+	prefix := "/plugin/" + publicId + "/" + version + "/"
 	for key, path := range c {
 		if path != "" {
 			c[key] = prefix + path
@@ -440,6 +450,9 @@ func (app *App) initBaseServices() {
 	// settings 服务
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
 	app.SettingsService = settings.NewService(settingsFilePath)
+
+	// 设置工作目录
+	app.HttpFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
 	// secureStorage 服务
 	secureStorageRepo := secureStorage.NewRepository(app.db)
@@ -532,6 +545,7 @@ func (app *App) initAdvancedServices() error {
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
+		app.SettingsService,
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,
