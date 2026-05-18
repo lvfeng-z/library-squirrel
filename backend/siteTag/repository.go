@@ -11,6 +11,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SiteTagRepository 站点标签仓储实现
@@ -28,6 +29,17 @@ func NewRepository(db *gorm.DB) *SiteTagRepository {
 // GORM 返回底层 GORM DB 实例
 func (r *SiteTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
+}
+
+// Upsert 原子插入或更新（基于 site_id + site_tag_id 唯一约束）
+func (r *SiteTagRepository) Upsert(ctx context.Context, tag *entity2.SiteTag) error {
+	return r.GORM().WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_tag_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"site_tag_name", "base_site_tag_id", "description",
+			"local_tag_id", "last_use", "update_time",
+		}),
+	}).Create(tag).Error
 }
 
 // GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询

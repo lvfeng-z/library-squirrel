@@ -552,6 +552,7 @@ func (app *App) initAdvancedServices() error {
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
 		app.SettingsService,
+		app.SettingsService,
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,

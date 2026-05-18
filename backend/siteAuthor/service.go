@@ -43,6 +43,8 @@ type Repository interface {
 	UpdateLastUseByIds(ctx context.Context, ids []int64, lastUse int64) error
 	// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
 	GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity.SiteAuthor, error)
+	// Upsert 原子插入或更新
+	Upsert(ctx context.Context, author *entity.SiteAuthor) error
 }
 
 // LocalAuthorOperator 本地作者接口
@@ -342,20 +344,20 @@ func (s *Service) GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, si
 	return s.repo.GetBySiteAndSiteAuthorID(ctx, siteId, siteAuthorId)
 }
 
-// SaveOrUpdateByCompositeKey 按 (siteId, siteAuthorId) 保存或更新站点作者，返回内部 DB ID
+// SaveOrUpdateByCompositeKey 按 (siteId, siteAuthorId) 原子保存或更新站点作者，返回内部 DB ID
 func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, author *entity.SiteAuthor) (int64, error) {
-	existing, err := s.repo.GetBySiteAndSiteAuthorID(ctx, author.SiteID.Int64, author.SiteAuthorID.String)
-	if err == nil && existing != nil {
-		author.ID = existing.ID
-		if err := s.repo.Update(ctx, author); err != nil {
-			return 0, err
-		}
-		return existing.ID, nil
-	}
-	if err := s.repo.Save(ctx, author); err != nil {
+	if err := s.repo.Upsert(ctx, author); err != nil {
 		return 0, err
 	}
-	return author.ID, nil
+	if author.ID > 0 {
+		return author.ID, nil
+	}
+	// OnConflict 更新场景下 ID 可能未回填，查询获取
+	existing, err := s.repo.GetBySiteAndSiteAuthorID(ctx, author.SiteID.Int64, author.SiteAuthorID.String)
+	if err != nil {
+		return 0, err
+	}
+	return existing.ID, nil
 }
 
 // 错误定义

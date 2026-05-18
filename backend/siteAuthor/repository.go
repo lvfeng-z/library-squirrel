@@ -36,6 +36,17 @@ func (r *SiteAuthorRepository) Save(ctx context.Context, author *entity.SiteAuth
 	return r.db.WithContext(ctx).Create(author).Error
 }
 
+// Upsert 原子插入或更新（基于 site_id + site_author_id 唯一约束）
+func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAuthor) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"author_name", "fixed_author_name", "site_author_name_before",
+			"introduce", "local_author_id", "last_use", "update_time",
+		}),
+	}).Create(author).Error
+}
+
 // SaveBatch 批量保存
 func (r *SiteAuthorRepository) SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) error {
 	return r.db.WithContext(ctx).Create(authors).Error

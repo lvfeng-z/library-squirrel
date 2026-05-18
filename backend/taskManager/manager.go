@@ -22,6 +22,11 @@ type WorkDirProvider interface {
 	GetWorkDir() string
 }
 
+// FileNameFormatProvider 文件名格式模板提供者接口
+type FileNameFormatProvider interface {
+	GetFileNameFormat() string
+}
+
 // Manager 任务管理器
 type Manager struct {
 	// 任务Map（所有运行中的任务）
@@ -51,21 +56,24 @@ type Manager struct {
 
 	// 工作目录提供者（实时读取，不缓存）
 	workDirProvider WorkDirProvider
+	// 文件名格式模板提供者（实时读取，不缓存）
+	fileNameFormatProvider FileNameFormatProvider
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
 	return &Manager{
-		taskMap:         make(map[int64]*ManagedTask),
-		parentMap:       make(map[int64]*ParentTask),
-		maxParallel:     maxParallel,
-		semaphore:       make(chan struct{}, maxParallel),
-		workDirProvider: workDirProvider,
-		repo:            repo,
-		pusher:          pusher,
-		pluginExecFactory: pluginExecFactory,
-		workInfoSaver:   workInfoSaver,
-		resourceSaver:   resourceSaver,
+		taskMap:                make(map[int64]*ManagedTask),
+		parentMap:              make(map[int64]*ParentTask),
+		maxParallel:            maxParallel,
+		semaphore:              make(chan struct{}, maxParallel),
+		workDirProvider:        workDirProvider,
+		fileNameFormatProvider: fileNameFormatProvider,
+		repo:                   repo,
+		pusher:                 pusher,
+		pluginExecFactory:      pluginExecFactory,
+		workInfoSaver:          workInfoSaver,
+		resourceSaver:          resourceSaver,
 	}
 }
 
@@ -279,7 +287,7 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 	if task.Pid.Valid {
 		parentId = task.Pid.Int64
 	}
-	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider)
+	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider)
 
 	// 设置状态变化回调
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {

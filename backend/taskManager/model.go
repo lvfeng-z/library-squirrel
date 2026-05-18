@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util/filename"
 )
 
 // TaskState 任务状态
@@ -83,6 +85,8 @@ type ManagedTask struct {
 	resourceSaver ResourceSaver
 	// 工作目录提供者（实时读取，不缓存）
 	workDirProvider WorkDirProvider
+	// 文件名格式模板提供者（实时读取，不缓存）
+	fileNameFormatProvider FileNameFormatProvider
 
 	// 任务信息
 	task   *entity.Task
@@ -97,21 +101,22 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
-		taskId:          taskId,
-		parentId:        parentId,
-		state:           atomic.Int32{},
-		ctx:             ctx,
-		cancel:          cancel,
-		done:            make(chan struct{}),
-		pluginExec:      pluginExec,
-		workInfoSaver:   workInfoSaver,
-		resourceSaver:   resourceSaver,
-		workDirProvider: workDirProvider,
-		task:            task,
-		workId:          taskId,
+		taskId:                taskId,
+		parentId:              parentId,
+		state:                 atomic.Int32{},
+		ctx:                   ctx,
+		cancel:                cancel,
+		done:                  make(chan struct{}),
+		pluginExec:            pluginExec,
+		workInfoSaver:         workInfoSaver,
+		resourceSaver:         resourceSaver,
+		workDirProvider:       workDirProvider,
+		fileNameFormatProvider: fileNameFormatProvider,
+		task:                  task,
+		workId:                taskId,
 	}
 }
 
@@ -157,7 +162,10 @@ func (m *ManagedTask) run() {
 	}
 	defer reader.Close()
 
-	// 4. 生成文件保存路径
+	// 4. 生成文件保存路径（将 CreateWorkInfo 的作品信息合并到 startResp）
+	startResp.Work = workResp.Work
+	startResp.SiteAuthors = workResp.SiteAuthors
+	startResp.LocalAuthors = workResp.LocalAuthors
 	localPath, relativePath, fileName := m.resolveLocalPath(startResp)
 
 	// 4.1 确保资源目录存在
@@ -356,29 +364,48 @@ func (m *ManagedTask) SetOnProgress(fn func(taskId int64, progress int)) {
 	m.onProgress = fn
 }
 
-// resolveLocalPath 根据资源信息生成本地文件保存路径
+// resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
 // 返回值: absSavePath 绝对保存路径, relativePath 相对于 workdir/resource/ 的相对路径, fileName 文件名
 func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath, relativePath, fileName string) {
 	res := startResp.Resource
 	workDir := m.workDirProvider.GetWorkDir()
+	tpl := m.fileNameFormatProvider.GetFileNameFormat()
 
-	// 优先使用 RemotePath（插件提供的远程文件名）
-	fileName = res.RemotePath
-	if fileName == "" {
-		name := "task"
-		if m.task.TaskName.Valid {
-			name = m.task.TaskName.String
+	// 模板为空时回退到简单逻辑（无作者目录）
+	if tpl == "" {
+		fileName = res.RemotePath
+		if fileName == "" {
+			name := "task"
+			if m.task.TaskName.Valid {
+				name = m.task.TaskName.String
+			}
+			ext := res.Format
+			if ext != "" {
+				fileName = fmt.Sprintf("%s%s", name, ext)
+			} else {
+				fileName = name
+			}
 		}
-		ext := res.Format
-		if ext != "" {
-			fileName = fmt.Sprintf("%s%s", name, ext)
-		} else {
-			fileName = name
-		}
+		relativePath = fileName
+		absSavePath = filepath.Join(workDir, "resource", fileName)
+		return
 	}
 
-	relativePath = fileName
-	absSavePath = filepath.Join(workDir, "resource", fileName)
+	// 模板模式：提取占位符数据 → 格式化 → 净化 → 拼接扩展名 → 按作者分目录
+	tokenData := filename.ExtractTokenData(startResp)
+	formatted := filename.FormatFileName(tpl, tokenData)
+	sanitizedFileName := filename.SanitizeFileName(formatted)
+
+	ext := res.Format
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	fileName = sanitizedFileName + ext
+
+	authorDir := filename.SanitizeFileName(tokenData.Author)
+
+	relativePath = filepath.Join(authorDir, fileName)
+	absSavePath = filepath.Join(workDir, "resource", authorDir, fileName)
 	return
 }
 

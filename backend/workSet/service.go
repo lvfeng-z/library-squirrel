@@ -36,6 +36,8 @@ type Repository interface {
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
 	// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
 	GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error)
+	// Upsert 原子插入或更新
+	Upsert(ctx context.Context, ws *entity2.WorkSet) error
 }
 
 // WorkReader 作品读取接口
@@ -143,20 +145,19 @@ func (s *Service) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSet
 	return s.repo.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 }
 
-// SaveOrUpdateByCompositeKey 按 (siteId, siteWorkSetId) 保存或更新作品集，返回内部 DB ID
+// SaveOrUpdateByCompositeKey 按 (siteId, siteWorkSetId) 原子保存或更新作品集，返回内部 DB ID
 func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error) {
-	existing, err := s.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
-	if err == nil && existing != nil {
-		ws.ID = existing.ID
-		if err := s.repo.Update(ctx, ws); err != nil {
-			return 0, err
-		}
-		return existing.ID, nil
-	}
-	if err := s.repo.Save(ctx, ws); err != nil {
+	if err := s.repo.Upsert(ctx, ws); err != nil {
 		return 0, err
 	}
-	return ws.ID, nil
+	if ws.ID > 0 {
+		return ws.ID, nil
+	}
+	existing, err := s.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
+	if err != nil {
+		return 0, err
+	}
+	return existing.ID, nil
 }
 
 // LinkWorkToWorkSet 链接作品到作品集

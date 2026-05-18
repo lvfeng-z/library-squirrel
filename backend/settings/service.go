@@ -88,6 +88,11 @@ func (s *Service) GetWorkDir() string {
 	return s.GetSettings().WorkDir
 }
 
+// GetFileNameFormat 获取文件名格式模板（实现 taskManager.FileNameFormatProvider 接口）
+func (s *Service) GetFileNameFormat() string {
+	return s.GetSettings().WorkSettings.FileNameFormat
+}
+
 // SaveSettings 保存设置变更
 // changes 是设置变更列表，每项包含 path（如 "importSettings.maxParallelImport"）和 value
 func (s *Service) SaveSettings(changes []SettingChange) error {

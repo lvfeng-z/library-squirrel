@@ -66,6 +66,8 @@ type Repository interface {
 	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
 	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem], error)
+	// Upsert 原子插入或更新
+	Upsert(ctx context.Context, tag *entity2.SiteTag) error
 }
 
 // Service 站点标签服务
@@ -109,20 +111,19 @@ func (s *Service) GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteT
 	return s.repo.GetBySiteAndSiteTagID(ctx, siteId, siteTagId)
 }
 
-// SaveOrUpdateByCompositeKey 按 (siteId, siteTagId) 保存或更新站点标签，返回内部 DB ID
+// SaveOrUpdateByCompositeKey 按 (siteId, siteTagId) 原子保存或更新站点标签，返回内部 DB ID
 func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, tag *entity2.SiteTag) (int64, error) {
-	existing, err := s.repo.GetBySiteAndSiteTagID(ctx, tag.SiteID.Int64, tag.SiteTagID.String)
-	if err == nil && existing != nil {
-		tag.ID = existing.ID
-		if err := s.repo.Update(ctx, tag); err != nil {
-			return 0, err
-		}
-		return existing.ID, nil
-	}
-	if err := s.repo.Save(ctx, tag); err != nil {
+	if err := s.repo.Upsert(ctx, tag); err != nil {
 		return 0, err
 	}
-	return tag.ID, nil
+	if tag.ID > 0 {
+		return tag.ID, nil
+	}
+	existing, err := s.repo.GetBySiteAndSiteTagID(ctx, tag.SiteID.Int64, tag.SiteTagID.String)
+	if err != nil {
+		return 0, err
+	}
+	return existing.ID, nil
 }
 
 // UpdateLastUse 批量更新最后使用时间

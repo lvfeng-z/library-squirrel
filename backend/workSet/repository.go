@@ -27,6 +27,17 @@ func (r *WorkSetRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// Upsert 原子插入或更新（基于 site_id + site_work_set_id 唯一约束）
+func (r *WorkSetRepository) Upsert(ctx context.Context, ws *domain.WorkSet) error {
+	return r.GORM().WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"site_work_set_name", "site_author_id", "site_work_set_description",
+			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
+		}),
+	}).Create(ws).Error
+}
+
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 func (r *WorkSetRepository) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error) {
 	opt := &database.QueryOption{
