@@ -9,7 +9,8 @@ import lodash from 'lodash'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TreeNode from '../../model/util/TreeNode'
 import { TableColumnCtx, TreeNode as ElTreeNode } from 'element-plus'
-import { getNode } from '@renderer/utils/TreeUtil.ts'
+import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
+import { getPropByPath, setPropByPath } from '@renderer/utils/ObjectUtil.ts'
 import DataTable from '@renderer/components/common/DataTable.vue'
 
 // props
@@ -97,7 +98,7 @@ const treeRefreshMap: Map<number, { treeNode: ElTreeNode; resolve: (data: unknow
 const wrappedLoad = isNullish(props.treeLoad)
   ? undefined
   : async (row: unknown, treeNode: ElTreeNode, resolve: (data: unknown[]) => void) => {
-      const rowId = Number(lodash.pick(row, props.dataKey))
+      const rowId = Number(getPropByPath(row as object, props.dataKey))
       if (!treeRefreshMap.has(rowId)) {
         treeRefreshMap.set(rowId, { treeNode: treeNode, resolve: resolve })
       }
@@ -127,7 +128,7 @@ async function doSearch() {
   if (notNullish(props.treeLoad) && notNullish(wrappedLoad)) {
     if (notNullish(data.value)) {
       data.value.forEach((row) => {
-        const treeInitItem = treeRefreshMap.get(row[props.dataKey])
+        const treeInitItem = treeRefreshMap.get(getPropByPath(row as object, props.dataKey))
         if (notNullish(treeInitItem)) {
           wrappedLoad(row, treeInitItem.treeNode, treeInitItem.resolve)
         }
@@ -163,7 +164,7 @@ async function refreshData(waitingUpdateIds: number[] | string[], updateChildren
 
   // 根级节点列入待刷新数组
   let waitingUpdateList: Data[]
-  waitingUpdateList = data.value.filter((data) => idsStr.includes(String(data[props.dataKey])))
+  waitingUpdateList = data.value.filter((row) => idsStr.includes(String(getPropByPath(row as object, props.dataKey))))
 
   // 根据treeData确认是否包含哪些下级数据
   if (props.treeData && updateChildren) {
@@ -188,30 +189,29 @@ async function refreshData(waitingUpdateIds: number[] | string[], updateChildren
   } else if (props.treeData) {
     // 只更waitingUpdateIds包含的下级数据
     // 根级节点id列表
-    const waitingUpdateRootIds = waitingUpdateList.map((waitingUpdate) => waitingUpdate[props.dataKey])
+    const waitingUpdateRootIds = waitingUpdateList.map((row) => getPropByPath(row as object, props.dataKey))
     // 叶子节点id列表
     const waitingUpdateChildIds = waitingUpdateIds.filter((id) => !waitingUpdateRootIds.includes(id))
 
     // 利用树形工具找到叶子节点，列入waitingUpdateList
-    const tempRoot = { id: undefined, pid: undefined, children: data.value as TreeNode[], isLeaf: false }
     for (const id of waitingUpdateChildIds) {
-      const child = getNode(tempRoot, id) as Data
+      const child = getNodeByPath(data.value, id, props.dataKey) as Data | undefined
       if (notNullish(child)) {
         waitingUpdateList.push(child)
       }
     }
   }
-  const originalIds = waitingUpdateList.map((data) => data[props.dataKey])
+  const originalIds = waitingUpdateList.map((row) => getPropByPath(row as object, props.dataKey))
 
   // 请求更新接口
   const newDataList = await props.updateLoad(originalIds)
   if (arrayNotEmpty(newDataList)) {
     // 更新updateParamName指定的属性
     for (const newData of newDataList) {
-      const waitingUpdate = waitingUpdateList.find((waitingUpdate) => newData[props.dataKey] === waitingUpdate[props.dataKey])
+      const waitingUpdate = waitingUpdateList.find((wu) => getPropByPath(newData, props.dataKey) == getPropByPath(wu as object, props.dataKey))
       if (notNullish(waitingUpdate)) {
         props.updateProperties.forEach((paramName) => {
-          waitingUpdate[paramName] = newData[paramName]
+          setPropByPath(waitingUpdate as object, paramName, getPropByPath(newData, paramName))
         })
       }
     }

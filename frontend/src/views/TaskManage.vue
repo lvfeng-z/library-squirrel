@@ -8,7 +8,7 @@ import { ElMessage, ElTag } from 'element-plus'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
-import { getNode } from '@renderer/utils/TreeUtil.ts'
+import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
@@ -250,7 +250,7 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
   }
 }
 // 更新进度的数据加载函数
-async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] | undefined> {
+async function updateLoad(ids: (number | string)[]): Promise<object[] | undefined> {
   const scheduleList: TaskScheduleDTO[] = []
   const notFoundList: number[] = []
   for (const id of ids) {
@@ -277,7 +277,16 @@ async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] |
       // 查询状态失败，静默处理
     }
   }
-  return arrayNotEmpty(scheduleList) ? scheduleList : undefined
+  if (arrayNotEmpty(scheduleList)) {
+    return scheduleList.map((schedule) => ({
+      taskProgress: {
+        task: { id: schedule.id, status: schedule.status },
+        total: schedule.total,
+        finished: schedule.finished
+      }
+    }))
+  }
+  return undefined
 }
 // 从行数据中提取任务 ID（兼容 Wails 绑定格式和 DTO 格式）
 function getRowTaskId(row: any): number {
@@ -285,15 +294,16 @@ function getRowTaskId(row: any): number {
 }
 // 给行添加选择器，用于区分父任务和子任务
 function rowClassName(data: { row: unknown; rowIndex: number }) {
-  const row = data.row as TaskTreeDTO
-  if (row.hasChildren || isNullish(row.pid) || row.pid === 0) {
+  const row = data.row as TaskProgressTreeDTO
+  const task = row.taskProgress?.task
+  if (row.hasChildren || isNullish(task?.pid) || task?.pid === 0) {
     return 'task-manage-search-table-parent-row'
   } else {
     return 'task-manage-search-table-child-row'
   }
 }
 // 处理操作栏按钮点击事件
-function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeEnum) {
+function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       dialogData.value = row
@@ -365,10 +375,8 @@ async function refreshTask() {
       // 获取可视区域及附近的行id
       const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
       // 利用树形工具找到所有id对应的数据，判断是否需要刷新
-      const tempRoot: any = new TaskProgressTreeDTO()
-      tempRoot.children = dataList.value
       return visibleRowsId.filter((id: number) => {
-        const taskProgressTree = getNode(tempRoot, id) as TaskProgressTreeDTO | undefined
+        const taskProgressTree = getNodeByPath(dataList.value, id, 'taskProgress.task.id')
         const task = taskProgressTree?.taskProgress?.task
         return (
           notNullish(task) &&
@@ -399,14 +407,20 @@ function handleScroll() {
   throttleRefreshTask()
 }
 // 开始任务
-function startTask(row: TaskTreeDTO, retry: boolean) {
+function startTask(row: TaskProgressTreeDTO, retry: boolean) {
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
   apiCall(getRowTaskId(row)).catch((e: Error) => {
     ElMessage.error(e.message)
   })
-  row.status = TaskStatusEnum.WAITING
-  if (row.isCollection && notNullish(row.children)) {
-    row.children.forEach((child) => (child.status = TaskStatusEnum.WAITING))
+  if (row.taskProgress?.task) {
+    row.taskProgress.task.status = TaskStatusEnum.WAITING
+  }
+  if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
+    row.children.forEach((child) => {
+      if (child.taskProgress?.task) {
+        child.taskProgress.task.status = TaskStatusEnum.WAITING
+      }
+    })
   }
 }
 // 删除任务
@@ -494,7 +508,7 @@ async function handleSourceUrlInput() {
         :thead="thead"
         :search="taskQueryParentPage"
         :update-load="updateLoad"
-        :update-properties="['status']"
+        :update-properties="['taskProgress.task.status', 'taskProgress.total', 'taskProgress.finished']"
         data-key="taskProgress.task.id"
         :row-class-name="rowClassName"
         :tree-lazy="true"

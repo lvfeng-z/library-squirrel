@@ -263,7 +263,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     </el-table-column>
     <el-table-column :hidden="true" :width="1">
       <template #default="scope">
-        <div :row-key="scope.row[dataKey]" class="row-key-col" style="width: 0; height: 0; position: absolute" />
+        <div :row-key="getPropByPath(scope.row, dataKey)" class="row-key-col" style="width: 0; height: 0; position: absolute" />
       </template>
     </el-table-column>
   </el-table>

@@ -79,19 +79,21 @@ const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
 // 任务状态
 const status: Ref<number | undefined | null> = computed(() => {
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
   let tempStatus: number | undefined | null
   if (props.row.hasChildren) {
-    tempStatus = parentTaskStore.getTask(props.row.id as number)?.status
+    tempStatus = parentTaskStore.getTask(taskId)?.status
   } else {
-    tempStatus = taskStore.getTask(props.row.id as number)?.status
+    tempStatus = taskStore.getTask(taskId)?.status
   }
-  return isNullish(tempStatus) ? props.row.status : tempStatus
+  return isNullish(tempStatus) ? (props.row.taskProgress?.task?.status ?? props.row.status) : tempStatus
 })
 // 进度（百分比）
 const schedule: Ref<number> = computed(() => {
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
   const tempStatus = props.row.hasChildren
-    ? parentTaskStore.getTask(props.row.id as number)
-    : taskStore.getTask(props.row.id as number)
+    ? parentTaskStore.getTask(taskId)
+    : taskStore.getTask(taskId)
   if (notNullish(tempStatus)) {
     const finished = tempStatus.finished
     const total = tempStatus.total
@@ -105,7 +107,8 @@ const schedule: Ref<number> = computed(() => {
 })
 // 进度（数据量）
 const scheduleByte: Ref<string> = computed(() => {
-  const tempStatus = taskStore.getTask(props.row.id as number)
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+  const tempStatus = taskStore.getTask(taskId)
   if (notNullish(tempStatus)) {
     const finishedBytes = tempStatus.finished
     let finished: string | undefined
@@ -128,7 +131,8 @@ const scheduleByte: Ref<string> = computed(() => {
 })
 const fractions: Ref<string> = computed(() => {
   if (props.row.hasChildren) {
-    const parentTask = parentTaskStore.getTask(props.row.id as number)
+    const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+    const parentTask = parentTaskStore.getTask(taskId)
     if (isNullish(parentTask?.total)) {
       return ''
     }
@@ -184,7 +188,7 @@ function formatBytes(bytes: number) {
         <el-button
           size="small"
           :icon="mapToButtonStatus().icon"
-          :loading="mapToButtonStatus().processing && !row.continuable && !row.isCollection"
+          :loading="mapToButtonStatus().processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.isCollection ?? row.isCollection)"
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>

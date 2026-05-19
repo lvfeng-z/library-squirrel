@@ -73,8 +73,8 @@ const taskStatusMapping: {
 }
 // 进度（百分比）
 const schedule: Ref<number> = computed(() => {
-  const finished = props.row.finished
-  const total = props.row.total
+  const finished = props.row.taskProgress?.finished ?? props.row.finished
+  const total = props.row.taskProgress?.total ?? props.row.total
   if (isNullish(finished) || isNullish(total) || total === 0) {
     return 0
   }
@@ -82,12 +82,12 @@ const schedule: Ref<number> = computed(() => {
 })
 // 进度（数据量）
 const scheduleByte: Ref<string> = computed(() => {
-  const finishedBytes = props.row.finished
+  const finishedBytes = props.row.taskProgress?.finished ?? props.row.finished
   let finished: string | undefined
   if (notNullish(finishedBytes)) {
     finished = formatBytes(finishedBytes)
   }
-  const totalBytes = props.row.total
+  const totalBytes = props.row.taskProgress?.total ?? props.row.total
   let total: string | undefined
   if (notNullish(totalBytes)) {
     total = formatBytes(totalBytes)
@@ -101,14 +101,15 @@ const scheduleByte: Ref<string> = computed(() => {
 
 // 方法
 // 任务状态映射为按钮状态
-function mapToButtonStatus(row: TaskTreeDTO): {
+function mapToButtonStatus(row: TaskProgressTreeDTO): {
   tooltip: string
   icon: string
   operation: TaskOperationCodeEnum
   processing: boolean
 } {
-  if (notNullish(row.status)) {
-    return taskStatusMapping[row.status]
+  const status = row.taskProgress?.task?.status ?? row.status
+  if (notNullish(status)) {
+    return taskStatusMapping[status]
   } else {
     return taskStatusMapping['0']
   }
@@ -134,19 +135,19 @@ function formatBytes(bytes: number) {
   <div>
     <el-button-group
       v-show="
-        (row.status !== TaskStatusEnum.PROCESSING && row.status !== TaskStatusEnum.WAITING && row.status !== TaskStatusEnum.PAUSE) ||
+        ((row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PROCESSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.WAITING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSE) ||
         row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
     >
-      <el-tooltip v-if="props.row.isCollection" :enterable="false" :show-after="650" :hide-after="0" content="详情">
+      <el-tooltip v-if="row.taskProgress?.task?.isCollection ?? row.isCollection" :enterable="false" :show-after="650" :hide-after="0" content="详情">
         <el-button size="small" icon="View" @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)" />
       </el-tooltip>
       <el-tooltip :content="mapToButtonStatus(row).tooltip" :enterable="false" :show-after="650" :hide-after="0">
         <el-button
           size="small"
           :icon="mapToButtonStatus(row).icon"
-          :loading="mapToButtonStatus(row).processing && !row.continuable && !row.isCollection"
+          :loading="mapToButtonStatus(row).processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.isCollection ?? row.isCollection)"
           @click="buttonClicked(row, mapToButtonStatus(row).operation)"
         ></el-button>
       </el-tooltip>
@@ -160,14 +161,14 @@ function formatBytes(bytes: number) {
     <transition name="task-operation-bar-el-progress-fade">
       <div
         v-if="
-          (row.status === TaskStatusEnum.PROCESSING || row.status === TaskStatusEnum.WAITING || row.status === TaskStatusEnum.PAUSE) &&
+          ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSE) &&
           row.hasChildren
         "
       >
         <el-progress style="width: 100%" :percentage="schedule" text-inside :stroke-width="15" striped striped-flow :duration="5">
           <template #default="{ percentage }">
             <span style="font-size: 14px">
-              {{ percentage + '% ' + row.finished + ' / ' + row.total }}
+              {{ percentage + '% ' + (row.taskProgress?.finished ?? row.finished) + ' / ' + (row.taskProgress?.total ?? row.total) }}
             </span>
           </template>
         </el-progress>
@@ -175,7 +176,7 @@ function formatBytes(bytes: number) {
     </transition>
     <el-progress
       v-show="
-        (row.status === TaskStatusEnum.PROCESSING || row.status === TaskStatusEnum.WAITING || row.status === TaskStatusEnum.PAUSE) &&
+        ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSE) &&
         !row.hasChildren
       "
       style="width: 100%"

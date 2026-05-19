@@ -1,4 +1,5 @@
 import { notNullish } from './CommonUtil.ts'
+import { getPropByPath } from './ObjectUtil.ts'
 import TreeNode from '../model/util/TreeNode.ts'
 
 /**
@@ -36,6 +37,31 @@ export function getNode<T extends TreeNode>(root: T, id: string | number): T | u
           return target
         }
       }
+    }
+  }
+  return undefined
+}
+
+/**
+ * 按照指定路径递归查询节点
+ * @param rows 节点列表
+ * @param id 目标 id
+ * @param idPath id 属性的路径（如 'taskProgress.task.id'），默认 'id'
+ */
+export function getNodeByPath<T extends object>(
+  rows: T[],
+  id: string | number,
+  idPath: string = 'id'
+): T | undefined {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const node = rows[i]
+    if (getPropByPath<string | number>(node, idPath) === id) {
+      return node
+    }
+    const children = getPropByPath<object[]>(node, 'children')
+    if (notNullish(children) && Array.isArray(children)) {
+      const found = getNodeByPath(children as T[], id, idPath)
+      if (found !== undefined) return found
     }
   }
   return undefined
