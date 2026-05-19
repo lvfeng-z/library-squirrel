@@ -428,10 +428,10 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower)"
         >
           <template #upperToolbarMain>
-            <el-input v-model="localTagExchangeUpperSearchParams.localTagName" placeholder="输入本地标签名称" clearable />
+            <el-input v-model="localTagExchangeUpperSearchParams.localTagName.value" placeholder="输入本地标签名称" clearable />
           </template>
           <template #lowerToolbarMain>
-            <el-input v-model="localTagExchangeLowerSearchParams.localTagName" placeholder="输入本地标签名称" clearable />
+            <el-input v-model="localTagExchangeLowerSearchParams.localTagName.value" placeholder="输入本地标签名称" clearable />
           </template>
           <template #upperTitle>
             <div class="work-dialog-tag-exchange-box-title">
@@ -461,11 +461,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <template #upperToolbarMain>
             <el-row class="work-dialog-search-bar">
               <el-col :span="18">
-                <el-input v-model="siteTagExchangeUpperSearchParams.siteTagName" placeholder="输入站点标签名称" clearable />
+                <el-input v-model="siteTagExchangeUpperSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
               </el-col>
               <el-col :span="6">
                 <auto-load-select
-                  v-model="siteTagExchangeUpperSearchParams.siteId"
+                  v-model="siteTagExchangeUpperSearchParams.siteId.value"
                   :load="siteQuerySelectItemPageBySiteName"
                   placeholder="选择站点"
                   remote
@@ -482,11 +482,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <template #lowerToolbarMain>
             <el-row class="work-dialog-search-bar">
               <el-col :span="18">
-                <el-input v-model="siteTagExchangeLowerSearchParams.siteTagName" placeholder="输入站点标签名称" clearable />
+                <el-input v-model="siteTagExchangeLowerSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
               </el-col>
               <el-col :span="6">
                 <auto-load-select
-                  v-model="siteTagExchangeLowerSearchParams.siteId"
+                  v-model="siteTagExchangeLowerSearchParams.siteId.value"
                   :load="siteQuerySelectItemPageBySiteName"
                   placeholder="选择站点"
                   remote

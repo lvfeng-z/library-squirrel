@@ -5,8 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/backend/work'
-import { WorkDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
-import type { WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/model/models'
+import { WorkDTO, type WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 
@@ -44,24 +43,9 @@ function toWorkVO(dto: WorkDTO): WorkVO {
   }
 }
 
-/**
- * 将 WorkFullDTO 转换为 WorkVO
- */
-function toWorkVOFromFullDTO(dto: WorkFullDTO): WorkVO {
-  return {
-    id: dto.id,
-    title: dto.siteWorkName ?? '',
-    siteId: dto.siteId,
-    siteWorkId: dto.siteWorkId ?? '',
-    coverUrl: '',
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
-  }
-}
-
 // ========== API 方法 ==========
 
-export async function workGetFullWorkInfoById(id: number): Promise<ApiResponse<WorkVO>> {
+export async function workGetFullWorkInfoById(id: number): Promise<ApiResponse<WorkFullDTO | null>> {
   const result = await WorkHandler.GetFullWorkInfoByIds([id])
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
@@ -70,7 +54,7 @@ export async function workGetFullWorkInfoById(id: number): Promise<ApiResponse<W
     return { success: false, msg: result.msg ?? '获取失败' }
   }
   const data = result.data
-  return { success: true, msg: result.msg ?? '', data: data && data.length > 0 ? toWorkVOFromFullDTO(data[0]) : undefined }
+  return { success: true, msg: result.msg ?? '', data: data && data.length > 0 ? data[0] : undefined }
 }
 
 export async function workQueryPage(query: {

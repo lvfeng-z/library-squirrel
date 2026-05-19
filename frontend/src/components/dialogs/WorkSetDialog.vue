@@ -106,7 +106,7 @@ async function handleDelete() {
     const response = await apis.reWorkWorkSetRemoveBatchFromWorkSet(workSetId, workIds)
 
     if (ApiUtil.check(response)) {
-      const deletedCount = ApiUtil.data<number>(response)
+      const deletedCount = workIds.length
       ElMessage({
         type: 'success',
         message: `成功从作品集中移除 ${deletedCount} 个作品`

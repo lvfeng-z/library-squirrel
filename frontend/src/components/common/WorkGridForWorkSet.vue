@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import WorkDialog from '../dialogs/WorkDialog.vue'
-import { computed, Ref, ref, watch } from 'vue'
+import {computed, Ref, ref, watch} from 'vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
-import { WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import {WorkFullDTO} from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
-import { reWorkWorkSetUpdateSortOrders } from '@renderer/apis/http/wrappers/reWorkWorkSet'
+import {reWorkWorkSetUpdateSortOrders} from '@renderer/apis/http/wrappers/reWorkWorkSet'
 
 // props
 const props = defineProps<{
@@ -81,8 +81,7 @@ function handleDragStart(payload: { work: WorkCardItem; data: unknown; event: Dr
 }
 
 function handleDragOver(payload: { work: WorkCardItem; event: DragEvent }) {
-  const index = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
-  dragOverIndex.value = index
+  dragOverIndex.value = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
 }
 
 async function handleDragEnd() {

@@ -80,6 +80,8 @@ type SiteBatchReader interface {
 type LocalAuthorBatchReader interface {
 	// ListReWorkAuthor 批量查询作品关联的本地作者，按 workId 分组
 	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto2.RankedLocalAuthor, error)
+	// ListByIds 根据ID列表批量查询
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.LocalAuthor, error)
 }
 
 // SiteAuthorBatchReader 站点作者批量读取接口
@@ -387,6 +389,41 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 		}
 	}
 
+	// Phase 6.5: 补充加载站点标签关联的本地标签
+	var extraLocalTagIds []int64
+	for _, st := range siteTagEntityMap {
+		if st.LocalTagID.Valid && st.LocalTagID.Int64 > 0 {
+			if _, exists := localTagEntityMap[st.LocalTagID.Int64]; !exists {
+				extraLocalTagIds = append(extraLocalTagIds, st.LocalTagID.Int64)
+			}
+		}
+	}
+	if len(extraLocalTagIds) > 0 {
+		extraLocalTags, _ := s.localTagBatchReader.ListByIds(ctx, extraLocalTagIds)
+		for _, lt := range extraLocalTags {
+			localTagEntityMap[lt.GetID()] = lt
+		}
+	}
+
+	// Phase 6.6: 批量查询站点作者关联的本地作者
+	var allLocalAuthorIds []int64
+	localAuthorIdSet := make(map[int64]bool)
+	for _, authors := range siteAuthorMap {
+		for _, ra := range authors {
+			if ra.LocalAuthorID > 0 && !localAuthorIdSet[ra.LocalAuthorID] {
+				localAuthorIdSet[ra.LocalAuthorID] = true
+				allLocalAuthorIds = append(allLocalAuthorIds, ra.LocalAuthorID)
+			}
+		}
+	}
+	localAuthorEntityMap := make(map[int64]*entity2.LocalAuthor)
+	if len(allLocalAuthorIds) > 0 {
+		localAuthorEntities, _ := s.localAuthorBatchReader.ListByIds(ctx, allLocalAuthorIds)
+		for _, la := range localAuthorEntities {
+			localAuthorEntityMap[la.GetID()] = la
+		}
+	}
+
 	// Phase 7: 批量查询站点
 	var siteIds []int64
 	siteIdSet := make(map[int64]bool)
@@ -432,7 +469,7 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 		if authors, ok := siteAuthorMap[id]; ok && len(authors) > 0 {
 			fullDTO.SiteAuthors = make([]*dto2.SiteAuthorFullDTO, 0, len(authors))
 			for _, ra := range authors {
-				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, &dto2.SiteAuthorFullDTO{
+				saDTO := &dto2.SiteAuthorFullDTO{
 					SiteAuthor: &dto2.SiteAuthorDTO{
 						ID:                   ra.ID,
 						CreateTime:           ra.CreateTime,
@@ -446,7 +483,18 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 						LocalAuthorID:        util.Int64PtrIfValid(ra.LocalAuthorID),
 						LastUse:              util.Int64PtrIfValid(ra.LastUse),
 					},
-				})
+				}
+				if ra.SiteID > 0 {
+					if site, ok := siteEntityMap[ra.SiteID]; ok {
+						saDTO.Site = dto2.NewSiteDTO(site)
+					}
+				}
+				if ra.LocalAuthorID > 0 {
+					if la, ok := localAuthorEntityMap[ra.LocalAuthorID]; ok {
+						saDTO.LocalAuthor = dto2.NewLocalAuthorDTO(la)
+					}
+				}
+				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, saDTO)
 			}
 		}
 
@@ -472,7 +520,18 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 			fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, 0, len(tagIds))
 			for _, tagId := range tagIds {
 				if tag, ok := siteTagEntityMap[tagId]; ok {
-					fullDTO.SiteTags = append(fullDTO.SiteTags, dto2.NewSiteTagFullDTO(tag))
+					stDTO := dto2.NewSiteTagFullDTO(tag)
+					if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
+						if site, ok := siteEntityMap[tag.SiteID.Int64]; ok {
+							stDTO.Site = dto2.NewSiteDTO(site)
+						}
+					}
+					if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
+						if localTag, ok := localTagEntityMap[tag.LocalTagID.Int64]; ok {
+							stDTO.LocalTag = dto2.NewLocalTagDTO(localTag)
+						}
+					}
+					fullDTO.SiteTags = append(fullDTO.SiteTags, stDTO)
 				}
 			}
 		}

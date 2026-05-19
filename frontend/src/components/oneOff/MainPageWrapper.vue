@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
+import { onBeforeUnmount, onMounted, Ref, ref } from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import {
   SelectItem,
