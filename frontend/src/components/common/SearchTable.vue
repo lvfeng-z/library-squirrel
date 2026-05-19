@@ -113,10 +113,15 @@ const wrappedLoad = isNullish(props.treeLoad)
 async function doSearch() {
   dataTableRef.value.clearSelection()
   const tempPage = lodash.cloneDeep(page.value)
+  if (!tempPage.pageSize || tempPage.pageSize <= 0) {
+    tempPage.pageSize = props.pageSizes[0]
+    page.value.pageSize = tempPage.pageSize
+  }
   const newPage: Page<Data> | undefined = await props.search(tempPage)
   if (notNullish(newPage)) {
     data.value = newPage.data as Data[]
     page.value.dataCount = newPage.dataCount
+    page.value.pageCount = newPage.pageCount
   }
   // 刷新子数据
   if (notNullish(props.treeLoad) && notNullish(wrappedLoad)) {

@@ -271,6 +271,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             :search="localAuthorQueryPageFn"
             :multi-select="false"
             :selectable="true"
+            :page-sizes="[10, 20, 50, 100, 1000]"
             @row-button-clicked="handleRowButtonClicked"
             @selection-change="handleLocalAuthorSelectionChange"
           >

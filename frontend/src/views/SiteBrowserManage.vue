@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
-import { computed, onMounted, ref, UnwrapRef } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import Page from '@renderer/model/util/Page.ts'
@@ -20,7 +20,7 @@ interface SiteBrowserItem {
 const siteBrowserList = ref<SiteBrowserItem[]>([])
 
 // 分页参数
-const page = Ref<Page<SiteBrowserItem>>(new Page<SiteBrowserItem>())
+const page = ref<Page<SiteBrowserItem>>(new Page<SiteBrowserItem>())
 
 // 插槽存储
 const slotStore = useSlotRegistryStore()
