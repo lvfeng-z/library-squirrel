@@ -62,14 +62,15 @@ function toWorkVOFromFullDTO(dto: WorkFullDTO): WorkVO {
 // ========== API 方法 ==========
 
 export async function workGetFullWorkInfoById(id: number): Promise<ApiResponse<WorkVO>> {
-  const result = await WorkHandler.GetFullWorkInfoById(id)
+  const result = await WorkHandler.GetFullWorkInfoByIds([id])
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
   }
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: result.data ? toWorkVOFromFullDTO(result.data) : undefined }
+  const data = result.data
+  return { success: true, msg: result.msg ?? '', data: data && data.length > 0 ? toWorkVOFromFullDTO(data[0]) : undefined }
 }
 
 export async function workQueryPage(query: {

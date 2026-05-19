@@ -205,3 +205,8 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
 	return s.repo.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
+
+// ListSiteAuthorsByWorkIds 批量查询作品的站点作者，按 workId 分组
+func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
+	return s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
+}

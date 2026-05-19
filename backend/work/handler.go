@@ -89,9 +89,9 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.WorkDTO], 
 	})
 }
 
-// GetFullWorkInfoById 获取完整作品信息
-func (h *Handler) GetFullWorkInfoById(ctx context.Context, id int64) *model.ApiResponse[*dto.WorkFullDTO] {
-	return model.HandleResult(h.svc.GetFullWorkInfoById(ctx, id))
+// GetFullWorkInfoByIds 批量获取完整作品信息
+func (h *Handler) GetFullWorkInfoByIds(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto.WorkFullDTO] {
+	return model.HandleResult(h.svc.GetFullWorkInfoByIds(ctx, ids))
 }
 
 // GetBySiteAndSiteWorkID 根据站点ID和站点作品ID获取作品

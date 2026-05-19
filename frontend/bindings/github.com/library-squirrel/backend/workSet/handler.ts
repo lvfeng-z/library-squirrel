@@ -85,7 +85,7 @@ export function LinkWorkToWorkSet(workId: number, workSetId: number): $Cancellab
 }
 
 /**
- * ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品
+ * ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
  */
 export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkSetWithWorksResultDTO | null)[]> | null> {
     return $Call.ByID(3476290543, workSetIds).then(($result: any) => {

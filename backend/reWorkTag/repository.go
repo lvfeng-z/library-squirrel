@@ -118,6 +118,52 @@ func (r *ReWorkTagRepository) CountByWorkId(ctx context.Context, workId int64) (
 	return count, err
 }
 
+// ListLocalTagIdsByWorkIds 批量查询多个作品关联的本地标签ID
+func (r *ReWorkTagRepository) ListLocalTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
+	type row struct {
+		WorkID    int64 `gorm:"column:work_id"`
+		LocalTagID int64 `gorm:"column:local_tag_id"`
+	}
+	var rows []row
+	err := r.BaseRepository.GORM().
+		WithContext(ctx).
+		Model(new(domain.ReWorkTag)).
+		Select("work_id, local_tag_id").
+		Where("work_id IN ? AND local_tag_id > 0", workIds).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64][]int64, len(workIds))
+	for _, r := range rows {
+		result[r.WorkID] = append(result[r.WorkID], r.LocalTagID)
+	}
+	return result, nil
+}
+
+// ListSiteTagIdsByWorkIds 批量查询多个作品关联的站点标签ID
+func (r *ReWorkTagRepository) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
+	type row struct {
+		WorkID   int64 `gorm:"column:work_id"`
+		SiteTagID int64 `gorm:"column:site_tag_id"`
+	}
+	var rows []row
+	err := r.BaseRepository.GORM().
+		WithContext(ctx).
+		Model(new(domain.ReWorkTag)).
+		Select("work_id, site_tag_id").
+		Where("work_id IN ? AND site_tag_id > 0", workIds).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64][]int64, len(workIds))
+	for _, r := range rows {
+		result[r.WorkID] = append(result[r.WorkID], r.SiteTagID)
+	}
+	return result, nil
+}
+
 // SaveBatch 批量保存
 func (r *ReWorkTagRepository) SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error {
 	if len(rels) == 0 {

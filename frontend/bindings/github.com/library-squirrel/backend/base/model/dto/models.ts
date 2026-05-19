@@ -1590,19 +1590,16 @@ export class WorkSetWithCoverDTO {
 }
 
 /**
- * WorkSetWithWorksResultDTO 作品集及其作品信息
+ * WorkSetWithWorksResultDTO 作品集及其作品信息（作品包含完整关联数据）
  */
 export class WorkSetWithWorksResultDTO {
     "workSet": WorkSetDTO | null;
-    "works": (WorkDTO | null)[];
+    "works"?: (WorkFullDTO | null)[];
 
     /** Creates a new WorkSetWithWorksResultDTO instance. */
     constructor($$source: Partial<WorkSetWithWorksResultDTO> = {}) {
         if (!("workSet" in $$source)) {
             this["workSet"] = null;
-        }
-        if (!("works" in $$source)) {
-            this["works"] = [];
         }
 
         Object.assign(this, $$source);
@@ -1613,7 +1610,7 @@ export class WorkSetWithWorksResultDTO {
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
         const $$createField0_0 = $$createType33;
-        const $$createField1_0 = $$createType34;
+        const $$createField1_0 = $$createType36;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1660,4 +1657,6 @@ const $$createType30 = $Create.Nullable($$createType29);
 const $$createType31 = $Create.Array($$createType30);
 const $$createType32 = WorkSetDTO.createFrom;
 const $$createType33 = $Create.Nullable($$createType32);
-const $$createType34 = $Create.Array($$createType20);
+const $$createType34 = WorkFullDTO.createFrom;
+const $$createType35 = $Create.Nullable($$createType34);
+const $$createType36 = $Create.Array($$createType35);

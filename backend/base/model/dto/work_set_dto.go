@@ -130,10 +130,10 @@ func ToWorkSetEntity(dto *WorkSetDTO) *entity2.WorkSet {
 	return entity
 }
 
-// WorkSetWithWorksResultDTO 作品集及其作品信息
+// WorkSetWithWorksResultDTO 作品集及其作品信息（作品包含完整关联数据）
 type WorkSetWithWorksResultDTO struct {
-	WorkSet *WorkSetDTO `json:"workSet"`
-	Works   []*WorkDTO  `json:"works"`
+	WorkSet *WorkSetDTO    `json:"workSet"`
+	Works   []*WorkFullDTO `json:"works,omitempty"`
 }
 
 // WorkSetWithCoverDTO 作品集及其封面作品信息

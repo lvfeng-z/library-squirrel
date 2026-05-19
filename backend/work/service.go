@@ -58,6 +58,50 @@ type ResourceReader interface {
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.Resource, error)
 }
 
+// LocalTagBatchReader 本地标签批量读取接口
+type LocalTagBatchReader interface {
+	// ListByIds 根据ID列表批量查询
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.LocalTag, error)
+}
+
+// SiteTagBatchReader 站点标签批量读取接口
+type SiteTagBatchReader interface {
+	// ListBySiteTagIds 根据站点标签ID列表批量查询
+	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*entity2.SiteTag, error)
+}
+
+// SiteBatchReader 站点批量读取接口
+type SiteBatchReader interface {
+	// ListByIds 根据ID列表批量查询
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Site, error)
+}
+
+// LocalAuthorBatchReader 本地作者批量读取接口
+type LocalAuthorBatchReader interface {
+	// ListReWorkAuthor 批量查询作品关联的本地作者，按 workId 分组
+	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto2.RankedLocalAuthor, error)
+}
+
+// SiteAuthorBatchReader 站点作者批量读取接口
+type SiteAuthorBatchReader interface {
+	// ListSiteAuthorsByWorkIds 批量查询作品关联的站点作者，按 workId 分组
+	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto2.RankedSiteAuthor, error)
+}
+
+// ResourceBatchReader 资源批量读取接口
+type ResourceBatchReader interface {
+	// ListByWorkIds 批量查询作品关联的资源，按 workId 分组
+	ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
+}
+
+// ReWorkTagBatchReader 作品-标签关联批量读取接口
+type ReWorkTagBatchReader interface {
+	// ListLocalTagIdsByWorkIds 批量查询作品关联的本地标签ID，按 workId 分组
+	ListLocalTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
+	// ListSiteTagIdsByWorkIds 批量查询作品关联的站点标签ID，按 workId 分组
+	ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
+}
+
 // ReWorkTagWriter 作品-标签关联写入接口
 type ReWorkTagWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
@@ -149,6 +193,15 @@ type Service struct {
 	resourceReader    ResourceReader
 	resourceDeleter   ResourceDeleter
 
+	// 批量读取接口（用于 GetFullWorkInfoByIds）
+	localTagBatchReader    LocalTagBatchReader
+	siteTagBatchReader     SiteTagBatchReader
+	siteBatchReader        SiteBatchReader
+	localAuthorBatchReader LocalAuthorBatchReader
+	siteAuthorBatchReader  SiteAuthorBatchReader
+	resourceBatchReader    ResourceBatchReader
+	reWorkTagBatchReader   ReWorkTagBatchReader
+
 	// 写入接口（用于 SaveWorkInfo）
 	reWorkTagWriter     ReWorkTagWriter
 	reWorkWorkSetWriter ReWorkWorkSetWriter
@@ -174,22 +227,36 @@ func NewService(
 	siteTagWriter SiteTagWriter,
 	workSetWriter WorkSetWriter,
 	reWorkAuthorWriter ReWorkAuthorWriter,
+	localTagBatchReader LocalTagBatchReader,
+	siteTagBatchReader SiteTagBatchReader,
+	siteBatchReader SiteBatchReader,
+	localAuthorBatchReader LocalAuthorBatchReader,
+	siteAuthorBatchReader SiteAuthorBatchReader,
+	resourceBatchReader ResourceBatchReader,
+	reWorkTagBatchReader ReWorkTagBatchReader,
 ) *Service {
 	return &Service{
-		repo:                repo,
-		localTagReader:      localTagReader,
-		localAuthorReader:   localAuthorReader,
-		siteTagReader:       siteTagReader,
-		siteAuthorReader:    siteAuthorReader,
-		siteReader:          siteReader,
-		resourceReader:      resourceReader,
-		resourceDeleter:     resourceDeleter,
-		reWorkTagWriter:     reWorkTagWriter,
-		reWorkWorkSetWriter: reWorkWorkSetWriter,
-		siteAuthorWriter:    siteAuthorWriter,
-		siteTagWriter:       siteTagWriter,
-		workSetWriter:       workSetWriter,
-		reWorkAuthorWriter:  reWorkAuthorWriter,
+		repo:                   repo,
+		localTagReader:         localTagReader,
+		localAuthorReader:      localAuthorReader,
+		siteTagReader:          siteTagReader,
+		siteAuthorReader:       siteAuthorReader,
+		siteReader:             siteReader,
+		resourceReader:         resourceReader,
+		resourceDeleter:        resourceDeleter,
+		localTagBatchReader:    localTagBatchReader,
+		siteTagBatchReader:     siteTagBatchReader,
+		siteBatchReader:        siteBatchReader,
+		localAuthorBatchReader: localAuthorBatchReader,
+		siteAuthorBatchReader:  siteAuthorBatchReader,
+		resourceBatchReader:    resourceBatchReader,
+		reWorkTagBatchReader:   reWorkTagBatchReader,
+		reWorkTagWriter:        reWorkTagWriter,
+		reWorkWorkSetWriter:    reWorkWorkSetWriter,
+		siteAuthorWriter:       siteAuthorWriter,
+		siteTagWriter:          siteTagWriter,
+		workSetWriter:          workSetWriter,
+		reWorkAuthorWriter:     reWorkAuthorWriter,
 	}
 }
 
@@ -267,34 +334,104 @@ func (s *Service) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, site
 	return s.repo.GetBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 }
 
-// GetFullWorkInfoById 获取作品完整信息
-func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.WorkFullDTO, error) {
-	// 获取作品基本信息
-	work, err := s.repo.GetById(ctx, id)
+// GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）
+func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error) {
+	if len(ids) == 0 {
+		return []*dto2.WorkFullDTO{}, nil
+	}
+
+	// Phase 1: 批量查询作品基础信息
+	works, err := s.repo.ListByIds(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
+	workMap := make(map[int64]*entity2.Work, len(works))
+	for _, w := range works {
+		workMap[w.GetID()] = w
+	}
 
-	// 构建 WorkFullDTO
-	fullDTO := dto2.NewWorkFullDTO(work)
+	// Phase 2: 批量查询本地作者（按 workId 分组）
+	localAuthorMap, _ := s.localAuthorBatchReader.ListReWorkAuthor(ctx, ids)
 
-	// 获取本地作者信息
-	if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
-		localAuthor, err := s.localAuthorReader.GetById(ctx, work.LocalAuthorID.Int64)
-		if err == nil && localAuthor != nil {
-			fullDTO.LocalAuthors = []*dto2.LocalAuthorDTO{dto2.NewLocalAuthorDTO(localAuthor)}
+	// Phase 3: 批量查询站点作者（按 workId 分组）
+	siteAuthorMap, _ := s.siteAuthorBatchReader.ListSiteAuthorsByWorkIds(ctx, ids)
+
+	// Phase 4: 批量查询资源（按 workId 分组）
+	resourceMap, _ := s.resourceBatchReader.ListByWorkIds(ctx, ids)
+
+	// Phase 5: 批量查询本地标签ID → 本地标签实体
+	localTagIdMap, _ := s.reWorkTagBatchReader.ListLocalTagIdsByWorkIds(ctx, ids)
+	var allLocalTagIds []int64
+	for _, tagIds := range localTagIdMap {
+		allLocalTagIds = append(allLocalTagIds, tagIds...)
+	}
+	localTagEntityMap := make(map[int64]*entity2.LocalTag)
+	if len(allLocalTagIds) > 0 {
+		localTagEntities, _ := s.localTagBatchReader.ListByIds(ctx, allLocalTagIds)
+		for _, t := range localTagEntities {
+			localTagEntityMap[t.GetID()] = t
 		}
 	}
 
-	// 获取站点作者信息
-	if work.SiteAuthorID.Valid && work.SiteAuthorID.String != "" {
-		rankedAuthors, err := s.siteAuthorReader.ListByWorkId(ctx, id)
-		if err == nil && len(rankedAuthors) > 0 {
-			fullDTO.SiteAuthors = make([]*dto2.SiteAuthorFullDTO, 0, len(rankedAuthors))
-			for _, ra := range rankedAuthors {
-				if ra == nil {
-					continue
-				}
+	// Phase 6: 批量查询站点标签ID → 站点标签实体
+	siteTagIdMap, _ := s.reWorkTagBatchReader.ListSiteTagIdsByWorkIds(ctx, ids)
+	var allSiteTagIds []int64
+	for _, tagIds := range siteTagIdMap {
+		allSiteTagIds = append(allSiteTagIds, tagIds...)
+	}
+	siteTagEntityMap := make(map[int64]*entity2.SiteTag)
+	if len(allSiteTagIds) > 0 {
+		siteTagEntities, _ := s.siteTagBatchReader.ListBySiteTagIds(ctx, allSiteTagIds)
+		for _, t := range siteTagEntities {
+			siteTagEntityMap[t.GetID()] = t
+		}
+	}
+
+	// Phase 7: 批量查询站点
+	var siteIds []int64
+	siteIdSet := make(map[int64]bool)
+	for _, w := range works {
+		if w.SiteID.Valid && w.SiteID.Int64 > 0 && !siteIdSet[w.SiteID.Int64] {
+			siteIdSet[w.SiteID.Int64] = true
+			siteIds = append(siteIds, w.SiteID.Int64)
+		}
+	}
+	siteEntityMap := make(map[int64]*entity2.Site)
+	if len(siteIds) > 0 {
+		siteEntities, _ := s.siteBatchReader.ListByIds(ctx, siteIds)
+		for _, site := range siteEntities {
+			siteEntityMap[site.GetID()] = site
+		}
+	}
+
+	// Phase 8: 组装结果
+	result := make([]*dto2.WorkFullDTO, 0, len(ids))
+	for _, id := range ids {
+		work, ok := workMap[id]
+		if !ok {
+			continue
+		}
+		fullDTO := dto2.NewWorkFullDTO(work)
+
+		// 本地作者
+		if authors, ok := localAuthorMap[id]; ok && len(authors) > 0 {
+			fullDTO.LocalAuthors = make([]*dto2.LocalAuthorDTO, 0, len(authors))
+			for _, a := range authors {
+				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &dto2.LocalAuthorDTO{
+					ID:         a.ID,
+					AuthorName: util.StringPtrIfValid(a.AuthorName),
+					Introduce:  util.StringPtrIfValid(a.Introduce),
+					LastUse:    util.Int64PtrIfValid(a.LastUse),
+					CreateTime: a.CreateTime,
+					UpdateTime: a.UpdateTime,
+				})
+			}
+		}
+
+		// 站点作者
+		if authors, ok := siteAuthorMap[id]; ok && len(authors) > 0 {
+			fullDTO.SiteAuthors = make([]*dto2.SiteAuthorFullDTO, 0, len(authors))
+			for _, ra := range authors {
 				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, &dto2.SiteAuthorFullDTO{
 					SiteAuthor: &dto2.SiteAuthorDTO{
 						ID:                   ra.ID,
@@ -312,44 +449,46 @@ func (s *Service) GetFullWorkInfoById(ctx context.Context, id int64) (*dto2.Work
 				})
 			}
 		}
-	}
 
-	// 获取站点信息
-	if work.SiteID.Valid && work.SiteID.Int64 > 0 {
-		site, err := s.siteReader.GetById(ctx, work.SiteID.Int64)
-		if err == nil && site != nil {
-			fullDTO.Site = dto2.NewSiteDTO(site)
+		// 站点
+		if work.SiteID.Valid && work.SiteID.Int64 > 0 {
+			if site, ok := siteEntityMap[work.SiteID.Int64]; ok {
+				fullDTO.Site = dto2.NewSiteDTO(site)
+			}
 		}
-	}
 
-	// 获取本地标签信息
-	localTags, err := s.localTagReader.ListByWorkId(ctx, id)
-	if err == nil && len(localTags) > 0 {
-		fullDTO.LocalTags = make([]*dto2.LocalTagDTO, len(localTags))
-		for i, tag := range localTags {
-			fullDTO.LocalTags[i] = dto2.NewLocalTagDTO(tag)
+		// 本地标签
+		if tagIds, ok := localTagIdMap[id]; ok && len(tagIds) > 0 {
+			fullDTO.LocalTags = make([]*dto2.LocalTagDTO, 0, len(tagIds))
+			for _, tagId := range tagIds {
+				if tag, ok := localTagEntityMap[tagId]; ok {
+					fullDTO.LocalTags = append(fullDTO.LocalTags, dto2.NewLocalTagDTO(tag))
+				}
+			}
 		}
-	}
 
-	// 获取站点标签信息
-	siteTags, err := s.siteTagReader.ListByWorkId(ctx, id)
-	if err == nil && len(siteTags) > 0 {
-		fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, len(siteTags))
-		for i, tag := range siteTags {
-			fullDTO.SiteTags[i] = dto2.NewSiteTagFullDTO(tag)
+		// 站点标签
+		if tagIds, ok := siteTagIdMap[id]; ok && len(tagIds) > 0 {
+			fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, 0, len(tagIds))
+			for _, tagId := range tagIds {
+				if tag, ok := siteTagEntityMap[tagId]; ok {
+					fullDTO.SiteTags = append(fullDTO.SiteTags, dto2.NewSiteTagFullDTO(tag))
+				}
+			}
 		}
-	}
 
-	// 获取资源信息
-	resources, err := s.resourceReader.ListByWorkId(ctx, id)
-	if err == nil && len(resources) > 0 {
-		fullDTO.Resources = make([]*dto2.ResourceDTO, len(resources))
-		for i, res := range resources {
-			fullDTO.Resources[i] = dto2.NewResourceDTO(res)
+		// 资源
+		if resources, ok := resourceMap[id]; ok && len(resources) > 0 {
+			fullDTO.Resources = make([]*dto2.ResourceDTO, len(resources))
+			for i, res := range resources {
+				fullDTO.Resources[i] = dto2.NewResourceDTO(res)
+			}
 		}
+
+		result = append(result, fullDTO)
 	}
 
-	return fullDTO, nil
+	return result, nil
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者

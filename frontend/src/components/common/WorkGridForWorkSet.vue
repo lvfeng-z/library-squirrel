@@ -2,7 +2,7 @@
 import WorkDialog from '../dialogs/WorkDialog.vue'
 import { computed, Ref, ref, watch } from 'vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
+import { WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { reWorkWorkSetUpdateSortOrders } from '@renderer/apis/http/wrappers/reWorkWorkSet'
 
@@ -10,7 +10,7 @@ import { reWorkWorkSetUpdateSortOrders } from '@renderer/apis/http/wrappers/reWo
 const props = defineProps<{
   workList: WorkFullDTO[]
   checkable?: boolean
-  checkedWorkIds?: number[] // 选中的作品id列表
+  checkedWorkIds?: number[]
 }>()
 
 // 事件
@@ -25,7 +25,7 @@ const currentWorkSetId = defineModel<number>('currentWorkSetId', { required: tru
 // workDialog开关
 const workDialogState: Ref<boolean> = ref(false)
 // 本地作品列表（用于拖拽排序）
-const localWorkList: Ref<WorkFullDTO[]> = ref([...props.workList])
+const localWorkList: Ref<WorkFullDTO[]> = ref([...props.workList] as WorkFullDTO[])
 // 监听 props.workList 变化，同步到本地
 watch(
   () => props.workList,
@@ -75,13 +75,13 @@ function handleCheckedChange(checkedIds: number[]) {
 
 // 拖拽排序相关方法
 function handleDragStart(payload: { work: WorkCardItem; data: unknown; event: DragEvent }) {
-  const index = localWorkList.value.findIndex((w) => w.id === payload.work.id)
+  const index = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
   draggedIndex.value = index
   console.log('[WorkGridForWorkSet] dragStart', { index, work: payload.work })
 }
 
 function handleDragOver(payload: { work: WorkCardItem; event: DragEvent }) {
-  const index = localWorkList.value.findIndex((w) => w.id === payload.work.id)
+  const index = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
   dragOverIndex.value = index
 }
 
@@ -105,7 +105,7 @@ async function handleDragEnd() {
     // 保存排序到数据库
     const workSetId = currentWorkSetId.value
     if (workSetId) {
-      const workIds = newList.map((work) => work.id).filter((id): id is number => id !== undefined)
+      const workIds = newList.map((work) => work.work?.id).filter((id): id is number => id !== undefined)
       try {
         await reWorkWorkSetUpdateSortOrders(workSetId, workIds)
         console.log('[WorkGridForWorkSet] sort order saved', { workSetId, workIds })

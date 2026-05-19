@@ -146,25 +146,13 @@ func (h *Handler) GetCoverWorkId(ctx context.Context, workSetId int64) *model.Ap
 	return model.HandleResult(h.svc.GetCoverWorkId(ctx, workSetId))
 }
 
-// ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品
+// ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
 func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*dto2.WorkSetWithWorksResultDTO] {
 	result, err := h.svc.ListWorkSetWithWorkByIds(ctx, workSetIds)
 	if err != nil {
 		return model.HandleError[[]*dto2.WorkSetWithWorksResultDTO](err)
 	}
-	// 转换为 ResultDTO
-	dtos := make([]*dto2.WorkSetWithWorksResultDTO, 0, len(result))
-	for _, ws := range result {
-		works := make([]*dto2.WorkDTO, 0, len(ws.Works))
-		for _, w := range ws.Works {
-			works = append(works, dto2.NewWorkDTO(w))
-		}
-		dtos = append(dtos, &dto2.WorkSetWithWorksResultDTO{
-			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
-			Works:   works,
-		})
-	}
-	return model.Success(dtos)
+	return model.Success(result)
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）

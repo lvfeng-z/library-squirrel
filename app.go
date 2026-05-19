@@ -491,11 +491,18 @@ func (app *App) initAdvancedServices() error {
 		app.SiteTagService,
 		&workSetWriterAdapter{repo: workSetRepo},
 		app.ReWorkAuthorService,
+		app.LocalTagService,
+		app.SiteTagService,
+		app.SiteService,
+		app.LocalAuthorService,
+		app.ReWorkAuthorService,
+		app.ResourceService,
+		app.ReWorkTagService,
 	)
 
 	// workSet 服务
 	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
-	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, app.WorkService)
+	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, app.WorkService, app.WorkService)
 
 	// search 服务
 	searchRepo := search.NewRepository(app.db)

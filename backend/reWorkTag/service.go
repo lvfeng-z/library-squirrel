@@ -29,6 +29,10 @@ type Repository interface {
 	GetByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) (*domain.ReWorkTag, error)
 	// CountByWorkId 统计作品关联的标签数量
 	CountByWorkId(ctx context.Context, workId int64) (int64, error)
+	// ListLocalTagIdsByWorkIds 批量查询作品关联的本地标签ID，按 workId 分组
+	ListLocalTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
+	// ListSiteTagIdsByWorkIds 批量查询作品关联的站点标签ID，按 workId 分组
+	ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
 }
 
 // Service 作品-标签关联服务
@@ -91,6 +95,16 @@ func (s *Service) GetByWorkAndTag(ctx context.Context, workId int64, tagType int
 // CountByWorkId 统计作品关联的标签数量
 func (s *Service) CountByWorkId(ctx context.Context, workId int64) (int64, error) {
 	return s.repo.CountByWorkId(ctx, workId)
+}
+
+// ListLocalTagIdsByWorkIds 批量查询作品关联的本地标签ID，按 workId 分组
+func (s *Service) ListLocalTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
+	return s.repo.ListLocalTagIdsByWorkIds(ctx, workIds)
+}
+
+// ListSiteTagIdsByWorkIds 批量查询作品关联的站点标签ID，按 workId 分组
+func (s *Service) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
+	return s.repo.ListSiteTagIdsByWorkIds(ctx, workIds)
 }
 
 // LinkTagToWork 链接标签到作品

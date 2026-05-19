@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
@@ -40,7 +41,13 @@ type Repository interface {
 	Upsert(ctx context.Context, ws *entity2.WorkSet) error
 }
 
-// WorkReader 作品读取接口
+// FullWorkReader 作品完整信息读取接口
+type FullWorkReader interface {
+	// GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）
+	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error)
+}
+
+// WorkReader 作品基础信息读取接口
 type WorkReader interface {
 	// ListByIds 根据ID列表批量查询
 	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error)
@@ -76,14 +83,16 @@ type ReWorkWorkSetRepository interface {
 type Service struct {
 	repo              Repository
 	reWorkWorkSetRepo ReWorkWorkSetRepository
+	fullWorkReader    FullWorkReader
 	workReader        WorkReader
 }
 
 // NewService 创建作品集服务
-func NewService(repo Repository, reWorkWorkSetRepo ReWorkWorkSetRepository, workReader WorkReader) *Service {
+func NewService(repo Repository, reWorkWorkSetRepo ReWorkWorkSetRepository, fullWorkReader FullWorkReader, workReader WorkReader) *Service {
 	return &Service{
 		repo:              repo,
 		reWorkWorkSetRepo: reWorkWorkSetRepo,
+		fullWorkReader:    fullWorkReader,
 		workReader:        workReader,
 	}
 }
@@ -246,16 +255,10 @@ func (s *Service) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, e
 	return s.reWorkWorkSetRepo.GetCoverWorkId(ctx, workSetId)
 }
 
-// WorkSetWithWorksDTO 作品集及其作品信息
-type WorkSetWithWorksDTO struct {
-	WorkSet *entity2.WorkSet `json:"workSet"`
-	Works   []*entity2.Work  `json:"works"`
-}
-
-// ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品信息
-func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*WorkSetWithWorksDTO, error) {
+// ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品完整信息
+func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*dto2.WorkSetWithWorksResultDTO, error) {
 	if len(workSetIds) == 0 {
-		return []*WorkSetWithWorksDTO{}, nil
+		return []*dto2.WorkSetWithWorksResultDTO{}, nil
 	}
 
 	// 查询作品集
@@ -268,24 +271,23 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	}
 
 	// 构建结果
-	result := make([]*WorkSetWithWorksDTO, 0, len(workSets))
+	result := make([]*dto2.WorkSetWithWorksResultDTO, 0, len(workSets))
 	for _, ws := range workSets {
-		dto := &WorkSetWithWorksDTO{
-			WorkSet: ws,
-			Works:   []*entity2.Work{},
+		dto := &dto2.WorkSetWithWorksResultDTO{
+			WorkSet: dto2.NewWorkSetDTO(ws),
 		}
 
-		// 获取作品集关联的作品
+		// 获取作品集关联的作品ID
 		workIds, err := s.reWorkWorkSetRepo.ListByWorkSetId(ctx, ws.GetID())
 		if err != nil {
 			return nil, err
 		}
 		if len(workIds) > 0 {
-			works, err := s.workReader.ListByIds(ctx, workIds)
+			fullWorks, err := s.fullWorkReader.GetFullWorkInfoByIds(ctx, workIds)
 			if err != nil {
 				return nil, err
 			}
-			dto.Works = works
+			dto.Works = fullWorks
 		}
 
 		result = append(result, dto)

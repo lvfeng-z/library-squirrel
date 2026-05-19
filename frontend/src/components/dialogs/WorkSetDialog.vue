@@ -5,7 +5,7 @@ import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import StaticHeightDialog from '@renderer/components/dialogs/StaticHeightDialog.vue'
 import WorkGridForWorkSet from '@renderer/components/common/WorkGridForWorkSet.vue'
 import WorkQueryView from '@renderer/components/common/WorkQueryView.vue'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem, WorkFullDTO, WorkSetWithWorksResultDTO, WorkSetDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
 import { Edit, Delete, Close, Plus, ArrowLeft, Picture } from '@element-plus/icons-vue'
@@ -15,9 +15,7 @@ import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
 import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
-import WorkSet from '@renderer/model/model/entity/WorkSet.ts'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
-import WorkSetWithWorkDTO from '@renderer/model/model/dto/WorkSetWithWorkDTO.ts'
+import CustomWorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { workSetListWorkSetWithWorkByIds, workSetQueryPageWithCover } from '@renderer/apis/http/wrappers/workSet'
@@ -51,9 +49,9 @@ const apis = {
   searchQuerySearchConditionPage
 }
 // 当前作品集
-const currentWorkSet = ref<WorkSet | undefined>(undefined)
-// 作品列表
-const workList: Ref<WorkFullDTO[]> = ref([])
+const currentWorkSet = ref<WorkSetDTO | null>(null)
+// 作品列表（bindings WorkFullDTO 嵌套结构）
+const workList: Ref<BindingsWorkFullDTO[]> = ref([])
 // 当前作品的索引
 const currentWorkIndex = ref(0)
 // 选择作品组件相关
@@ -75,10 +73,11 @@ async function loadWorkList() {
   const workSetId = currentWorkSetId.value
   const response = await apis.workSetListWorkSetWithWorkByIds([workSetId])
   if (ApiUtil.check(response)) {
-    const workSetList = ApiUtil.data<WorkSetWithWorkDTO[]>(response)
-    if (arrayNotEmpty(workSetList)) {
-      currentWorkSet.value = workSetList[0].workSet
-      workList.value = workSetList[0].workList.map((origin) => new WorkFullDTO(origin))
+    const workSetList = ApiUtil.data<(WorkSetWithWorksResultDTO | null)[]>(response)
+    if (arrayNotEmpty(workSetList) && notNullish(workSetList[0])) {
+      const result = workSetList[0]
+      currentWorkSet.value = result.workSet
+      workList.value = (result.works ?? []).filter(notNullish) as WorkFullDTO[]
       currentWorkIndex.value = 0
     }
   }
@@ -230,11 +229,11 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
   // 调用原始 API
   const response = await apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: page.pageSize, query: conditions })
   if (ApiUtil.check(response)) {
-    const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
+    const resultPage = ApiUtil.data<Page<CustomWorkFullDTO>>(response)
     if (isNullish(resultPage)) {
       return new Page<WorkCardItem>()
     }
-    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkFullDTO(origin))
+    resultPage.data = resultPage.data?.filter((origin): origin is CustomWorkFullDTO => notNullish(origin)).map((origin) => new CustomWorkFullDTO(origin))
     return resultPage as unknown as Page<WorkCardItem>
   }
   return new Page<WorkCardItem>()

@@ -6,7 +6,7 @@
 import type { ApiResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/backend/workSet'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
-import {WorkDTO, WorkSetDTO, WorkSetWithCoverResultDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
+import {WorkDTO, WorkSetDTO, WorkSetWithCoverDTO, WorkSetWithWorksResultDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 
 export interface WorkSetVO {
   id: number
@@ -68,7 +68,7 @@ function workToWorkSetVO(work: WorkDTO): WorkSetVO {
  */
 export async function workSetListWorkSetWithWorkByIds(
   workSetIds: number[]
-): Promise<ApiResponse<WorkSetWithWorksVO[]>> {
+): Promise<ApiResponse<(WorkSetWithWorksResultDTO | null)[]>> {
   const result = await WorkSetHandler.ListWorkSetWithWorkByIds(workSetIds)
   if (!result) {
     return { success: false, msg: '获取失败：接口返回为空' }
@@ -76,13 +76,13 @@ export async function workSetListWorkSetWithWorkByIds(
   if (!result.success) {
     return { success: false, msg: result.msg ?? '获取失败' }
   }
-  return { success: true, msg: result.msg ?? '', data: undefined }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
 /**
  * 分页查询作品集（带封面）
  */
-export async function workSetQueryPageWithCover(page: Page<WorkSetWithCoverResultDTO>, query: WorkSetQueryDTO): Promise<ApiResponse<Page<WorkSetWithCoverResultDTO>>> {
+export async function workSetQueryPageWithCover(page: Page<WorkSetWithCoverDTO>, query: WorkSetQueryDTO): Promise<ApiResponse<Page<WorkSetWithCoverDTO>>> {
   const result = await WorkSetHandler.QueryPageWithCover(page, query)
   if (!result) {
     return { success: false, msg: '查询失败：接口返回为空' }
