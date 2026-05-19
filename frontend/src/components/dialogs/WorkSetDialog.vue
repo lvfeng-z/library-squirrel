@@ -18,7 +18,7 @@ import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
 import CustomWorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
-import { workSetListWorkSetWithWorkByIds, workSetQueryPageWithCover } from '@renderer/apis/http/wrappers/workSet'
+import { workSetListWorkSetWithWorkByIds } from '@renderer/apis/http/wrappers/workSet'
 import { reWorkWorkSetLinkBatchToWorkSet, reWorkWorkSetRemoveBatchFromWorkSet, reWorkWorkSetSetCover } from '@renderer/apis/http/wrappers/reWorkWorkSet'
 import { searchQueryWorkPage, searchQuerySearchConditionPage } from '@renderer/apis/http/wrappers/search'
 
@@ -51,7 +51,7 @@ const apis = {
 // 当前作品集
 const currentWorkSet = ref<WorkSetDTO | null>(null)
 // 作品列表（bindings WorkFullDTO 嵌套结构）
-const workList: Ref<BindingsWorkFullDTO[]> = ref([])
+const workList: Ref<WorkFullDTO[]> = ref([])
 // 当前作品的索引
 const currentWorkIndex = ref(0)
 // 选择作品组件相关
@@ -187,7 +187,7 @@ async function loadSearchItemPage(page: IPage<SelectItem>, input?: string): Prom
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize })
+    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize }, query)
   } catch (e) {
     console.log(e)
     return page

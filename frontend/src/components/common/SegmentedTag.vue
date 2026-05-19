@@ -16,10 +16,10 @@ const props = withDefaults(
 )
 
 // 变量
-const subLabelsLength: Ref<UnwrapRef<number>> = computed(() => {
+const subLabelsLength: Ref<number> = computed(() => {
   return isNullish(props.item.subLabels) ? 0 : props.item.subLabels.length
 })
-const tagLabelWrapperMaxWidth: Ref<UnwrapRef<string>> = computed(() => {
+const tagLabelWrapperMaxWidth: Ref<string> = computed(() => {
   return props.closeable ? 'calc(100% - 18px)' : '100%'
 })
 const colorConfig = ref({

@@ -41,16 +41,16 @@ const workSetGridRef = ref()
 // 搜索条件工具栏组件的实例
 const searchConditionBar = ref()
 
-const selectedTagList: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // 主搜索栏选中列表
-const customTagList: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // 主搜索栏自定义标签列表
-const autoLoadInput: Ref<UnwrapRef<string | undefined>> = ref()
-const workList: Ref<UnwrapRef<WorkFullDTO[]>> = ref([]) // 需展示的作品列表
+const selectedTagList: Ref<SegmentedTagItem[]> = ref([]) // 主搜索栏选中列表
+const customTagList: Ref<SegmentedTagItem[]> = ref([]) // 主搜索栏自定义标签列表
+const autoLoadInput: Ref<string | undefined> = ref()
+const workList: Ref<WorkFullDTO[]> = ref([]) // 需展示的作品列表
 // 当前作品的索引
 const currentWorkIndex = ref(0)
 // 查询参数类型
-const searchConditionType: Ref<UnwrapRef<SearchType[]>> = ref([])
+const searchConditionType: Ref<SearchType[]> = ref([])
 // 作品分页
-const workPage: Ref<UnwrapRef<Page<WorkFullDTO>>> = ref(new Page<WorkFullDTO>())
+const workPage: Ref<Page<WorkFullDTO>> = ref(new Page<WorkFullDTO>())
 // 搜索栏折叠面板开关
 const searchBarPanelState: Ref<boolean> = ref(false)
 // 加载更多按钮开关
@@ -71,11 +71,11 @@ const resizeObserver = new ResizeObserver((entries) => {
 // 作品集视图开关
 const workSetView: Ref<boolean> = ref(false)
 // 需展示的作品集列表
-const workSetList: Ref<UnwrapRef<WorkSetWithCoverDTO[]>> = ref([])
+const workSetList: Ref<WorkSetWithCoverDTO[]> = ref([])
 // 当前作品集的索引
 const currentWorkSetIndex = ref(0)
 // 作品集分页
-const workSetPage: Ref<UnwrapRef<Page<WorkSetWithCoverDTO>>> = ref(new Page<WorkSetWithCoverDTO>())
+const workSetPage: Ref<Page<WorkSetWithCoverDTO>> = ref(new Page<WorkSetWithCoverDTO>())
 
 // onMounted
 onMounted(() => {
@@ -96,7 +96,7 @@ async function querySearchItemPage(page: IPage<any>, input?: string): Promise<IP
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize })
+    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize }, query)
   } catch (e) {
     console.log(e)
     return page

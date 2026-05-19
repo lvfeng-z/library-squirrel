@@ -18,7 +18,7 @@ const props = withDefaults(
 const emits = defineEmits(['searchButtonClicked'])
 
 // 变量
-const state: Ref<UnwrapRef<boolean>> = ref(false) // 开关状态
+const state: Ref<boolean> = ref(false) // 开关状态
 
 // 方法
 // 展开折叠面板

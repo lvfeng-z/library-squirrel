@@ -179,7 +179,7 @@ const siteTagThead: Ref<Thead<SiteTagLocalRelateDTO>[]> = ref([
   })
 ])
 // 站点标签SearchTable的分页
-const page: Ref<UnwrapRef<Page<SiteTagLocalRelateDTO>>> = ref(newPage<SiteTagLocalRelateDTO>())
+const page: Ref<Page<SiteTagLocalRelateDTO>> = ref(newPage<SiteTagLocalRelateDTO>())
 // 站点标签查询参数
 const siteTagQuery: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 // 站点标签弹窗的mode

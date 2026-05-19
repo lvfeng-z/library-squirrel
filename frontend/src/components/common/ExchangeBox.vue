@@ -32,17 +32,17 @@ defineExpose({
 
 // 变量
 const upperPage = new Page<SegmentedTagItem>() // upper的分页
-const upperData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // upper的数据
+const upperData: Ref<SegmentedTagItem[]> = ref([]) // upper的数据
 const lowerPage = new Page<SegmentedTagItem>() // lower的分页
-const lowerData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // lower的数据
+const lowerData: Ref<SegmentedTagItem[]> = ref([]) // lower的数据
 const upperTagBox = ref() // upperTagBox组件的实例
 const lowerTagBox = ref() // lowerTagBox组件的实例
 const upperBufferState: Ref<boolean> = ref(false) // upperBuffer的折叠面板开关
-const upperBufferData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // upperBuffer的数据
-const upperBufferId: Ref<UnwrapRef<Set<number | string>>> = ref(new Set<string>()) // upperBuffer的数据Id
+const upperBufferData: Ref<SegmentedTagItem[]> = ref([]) // upperBuffer的数据
+const upperBufferId: Ref<Set<number | string>> = ref(new Set<string>()) // upperBuffer的数据Id
 const lowerBufferState: Ref<boolean> = ref(false) // lowerBuffer的折叠面板开关
-const lowerBufferData: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([]) // lowerBuffer的数据
-const lowerBufferId: Ref<UnwrapRef<Set<number | string>>> = ref(new Set<string>()) // lowerBuffer的数据Id
+const lowerBufferData: Ref<SegmentedTagItem[]> = ref([]) // lowerBuffer的数据
+const lowerBufferId: Ref<Set<number | string>> = ref(new Set<string>()) // lowerBuffer的数据Id
 
 // 方法
 // 处理搜索按钮点击事件

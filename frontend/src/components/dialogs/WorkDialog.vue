@@ -88,9 +88,9 @@ const workSets: Ref<SegmentedTagItem[]> = ref([])
 // 本地标签编辑开关
 const drawerState: Ref<boolean> = ref(false)
 // 本地标签编辑开关
-const localTagEdit: Ref<UnwrapRef<boolean>> = ref(false)
+const localTagEdit: Ref<boolean> = ref(false)
 // 本地标签编辑开关
-const siteTagEdit: Ref<UnwrapRef<boolean>> = ref(false)
+const siteTagEdit: Ref<boolean> = ref(false)
 // 本地标签的查询参数
 const localTagExchangeUpperSearchParams: Ref<LocalTagQueryDTO> = ref(new LocalTagQueryDTO())
 // 本地标签的查询参数

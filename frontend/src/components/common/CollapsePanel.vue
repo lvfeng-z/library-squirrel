@@ -28,7 +28,7 @@ const props = withDefaults(
 )
 
 // model
-const state: Ref<UnwrapRef<boolean>> = defineModel<boolean>('state', { required: true }) // 开关状态
+const state: Ref<boolean> = defineModel<boolean>('state', { required: true }) // 开关状态
 
 // 变量
 const top: Ref<boolean> = computed(() => props.position === 'top')

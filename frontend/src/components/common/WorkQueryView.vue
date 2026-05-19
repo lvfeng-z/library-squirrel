@@ -65,17 +65,17 @@ const emits = defineEmits<{
 }>()
 
 // model
-const selectedTagList: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([])
-const customTagList: Ref<UnwrapRef<SegmentedTagItem[]>> = ref([])
-const autoLoadInput: Ref<UnwrapRef<string | undefined>> = ref(undefined)
+const selectedTagList: Ref<SegmentedTagItem[]> = ref([])
+const customTagList: Ref<SegmentedTagItem[]> = ref([])
+const autoLoadInput: Ref<string | undefined> = ref(undefined)
 // 查询参数类型
 const searchConditionType: Ref<SearchType[]> = defineModel<SearchType[]>('searchConditionType', { required: false, default: [] })
 
 // 变量
-const workList: Ref<UnwrapRef<WorkCardItem[]>> = ref([])
-const workPage: Ref<UnwrapRef<Page<WorkCardItem>>> = ref(new Page<WorkCardItem>())
-const loadMoreVisible: Ref<UnwrapRef<boolean>> = ref(false)
-const loading: Ref<UnwrapRef<boolean>> = ref(false)
+const workList: Ref<WorkCardItem[]> = ref([])
+const workPage: Ref<Page<WorkCardItem>> = ref(new Page<WorkCardItem>())
+const loadMoreVisible: Ref<boolean> = ref(false)
+const loading: Ref<boolean> = ref(false)
 const searchConditionBar = ref()
 const workSpace = ref()
 

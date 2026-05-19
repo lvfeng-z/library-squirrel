@@ -24,11 +24,11 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
-const imageFit: Ref<UnwrapRef<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'>> = ref('contain')
-// const caseWidth: Ref<UnwrapRef<string>> = computed(() => (props.maxWidth === undefined ? 'auto' : String(props.maxWidth) + 'px')) // 展示框宽度
-const caseHeight: Ref<UnwrapRef<string>> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px')) // 展示框高度
+const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
+// const caseWidth: Ref<string> = computed(() => (props.maxWidth === undefined ? 'auto' : String(props.maxWidth) + 'px')) // 展示框宽度
+const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px')) // 展示框高度
 // src的参数
-const srcParamStr: Ref<UnwrapRef<string>> = computed(() => {
+const srcParamStr: Ref<string> = computed(() => {
   const params: string[] = []
   if (notNullish(props.maxHeight)) {
     params.push(`visualHeight=${props.maxHeight}`)

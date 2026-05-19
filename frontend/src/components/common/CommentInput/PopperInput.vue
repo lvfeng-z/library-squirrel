@@ -42,8 +42,8 @@ const emits = defineEmits(['dataChanged'])
 
 // 变量
 const inputRef = ref<HTMLElement>()
-const config: Ref<UnwrapRef<CommonInputConfig>> = ref(lodash.cloneDeep(props.config))
-const disabled: Ref<UnwrapRef<boolean>> = ref(false)
+const config: Ref<CommonInputConfig> = ref(lodash.cloneDeep(props.config))
+const disabled: Ref<boolean> = ref(false)
 const selectList: Ref<SelectItem[]> = ref([])
 const dynamicComponent = computed(() => {
   if (!disabled.value || props.config.type === 'custom') {

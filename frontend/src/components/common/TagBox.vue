@@ -40,11 +40,11 @@ const container = ref()
 // 加载按钮的实例
 const loadMoreButton = ref()
 // loading开关
-const loading: Ref<UnwrapRef<boolean>> = ref(false)
+const loading: Ref<boolean> = ref(false)
 // 显示加载按钮
-const showLoadButton: Ref<UnwrapRef<boolean>> = ref(false)
+const showLoadButton: Ref<boolean> = ref(false)
 // 是否有下一页
-const hasNextPage: Ref<UnwrapRef<boolean>> = ref(false)
+const hasNextPage: Ref<boolean> = ref(false)
 
 // 方法
 // 处理DataScroll滚动事件

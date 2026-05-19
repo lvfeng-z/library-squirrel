@@ -89,7 +89,7 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
 // 插件的查询参数
 const pluginSearchParams: Ref<PluginQueryDTO> = ref<PluginQueryDTO>(new PluginQueryDTO())
 // 被选中的插件
-const pluginSelected: Ref<UnwrapRef<PluginDTO>> = ref(new PluginDTO())
+const pluginSelected: Ref<PluginDTO> = ref(new PluginDTO())
 // 对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 对话框的数据

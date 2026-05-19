@@ -20,7 +20,7 @@ interface SiteBrowserItem {
 const siteBrowserList = ref<SiteBrowserItem[]>([])
 
 // 分页参数
-const page = ref<UnwrapRef<Page<SiteBrowserItem>>>(new Page<SiteBrowserItem>())
+const page = Ref<Page<SiteBrowserItem>>(new Page<SiteBrowserItem>())
 
 // 插槽存储
 const slotStore = useSlotRegistryStore()

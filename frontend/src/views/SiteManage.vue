@@ -104,11 +104,11 @@ const siteThead: Ref<Thead<SiteDTO>[]> = ref([
 // 站点的查询参数
 const siteSearchParams: Ref<SiteQueryDTO> = ref(new SiteQueryDTO())
 // 站点弹窗的模式
-const siteDialogMode: Ref<UnwrapRef<DialogMode>> = ref(DialogMode.EDIT)
+const siteDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 站点对话框开关
 const siteDialogState: Ref<boolean> = ref(false)
 // 站点对话框的数据
-const siteDialogData: Ref<UnwrapRef<SiteDTO>> = ref(new SiteDTO())
+const siteDialogData: Ref<SiteDTO> = ref(new SiteDTO())
 // // 被选中的站点
 // const siteSelected: Ref<Site | undefined> = computed(() => {
 //   if (IsNullish(siteSearchTable.value)) {

@@ -46,8 +46,8 @@ const inputText = ref('')
 const checkboxSelected = ref([])
 const radioSelected = ref(null)
 const selectListSelected = ref([])
-const selectListItems: Ref<UnwrapRef<SelectItem[]>> = ref([])
-const filteredItems: Ref<UnwrapRef<SelectItem[]>> = ref([])
+const selectListItems: Ref<SelectItem[]> = ref([])
+const filteredItems: Ref<SelectItem[]> = ref([])
 
 // 查询主列表
 async function handleSearch() {
