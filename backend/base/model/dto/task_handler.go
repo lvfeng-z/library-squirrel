@@ -94,8 +94,8 @@ type TaskSiteTagDTO struct {
 
 // TaskWorkSetDTO 任务处理器作品集DTO
 type TaskWorkSetDTO struct {
-	WorkSetID   int64  `json:"workSetId"`   // 作品集ID
-	WorkSetName string `json:"workSetName"` // 作品集名称
+	SiteWorkSetID string `json:"siteWorkSetId"` // 站点作品集ID
+	WorkSetName   string `json:"workSetName"`   // 作品集名称
 }
 
 // TaskResourceDTO 任务处理器资源DTO

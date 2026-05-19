@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
@@ -770,7 +769,7 @@ func (s *Service) upsertWorkSets(ctx context.Context, dtos []*dto2.TaskWorkSetDT
 		entity := taskWorkSetDTOToEntity(d, siteId)
 		id, err := s.workSetWriter.SaveOrUpdateByCompositeKey(ctx, entity)
 		if err != nil {
-			return nil, fmt.Errorf("upsert 作品集 %d 失败: %w", d.WorkSetID, err)
+			return nil, fmt.Errorf("upsert 作品集 %s 失败: %w", d.SiteWorkSetID, err)
 		}
 		ids = append(ids, id)
 	}
@@ -816,10 +815,10 @@ func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*dto2.TaskWorkSe
 	}
 	ids := make([]int64, 0, len(dtos))
 	for _, d := range dtos {
-		siteWorkSetId := strconv.FormatInt(d.WorkSetID, 10)
+		siteWorkSetId := d.SiteWorkSetID
 		record, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
 		if err != nil {
-			return nil, fmt.Errorf("回查作品集 %d 失败: %w", d.WorkSetID, err)
+			return nil, fmt.Errorf("回查作品集 %s 失败: %w", d.SiteWorkSetID, err)
 		}
 		ids = append(ids, record.ID)
 	}
@@ -866,7 +865,7 @@ func taskWorkSetDTOToEntity(d *dto2.TaskWorkSetDTO, siteId int64) *entity2.WorkS
 	return &entity2.WorkSet{
 		BaseEntity:         &model.BaseEntity{},
 		SiteID:             sql.NullInt64{Int64: siteId, Valid: true},
-		SiteWorkSetID:      sql.NullString{String: strconv.FormatInt(d.WorkSetID, 10), Valid: true},
+		SiteWorkSetID:      sql.NullString{String: d.SiteWorkSetID, Valid: true},
 		SiteWorkSetName:    sql.NullString{String: d.WorkSetName, Valid: true},
 	}
 }

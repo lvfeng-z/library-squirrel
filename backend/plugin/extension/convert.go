@@ -344,7 +344,7 @@ func SDKWorkSetsToDTO(sets []*pluginsdk.TaskWorkSetDTO) []*dto.TaskWorkSetDTO {
 			continue
 		}
 		result[i] = &dto.TaskWorkSetDTO{
-			WorkSetID:   s.WorkSetID,
+			SiteWorkSetID: s.SiteWorkSetID,
 			WorkSetName: s.WorkSetName,
 		}
 	}
