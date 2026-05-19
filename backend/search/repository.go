@@ -334,8 +334,13 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	return results, total, nil
 }
 
-// buildWhereClause 根据搜索条件构建 WHERE 子句
+// buildWhereClause 根据搜索条件构建 WHERE 子句（别名 "t1"）
 func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}) {
+	return buildWhereClauseWithAlias(conditions, "t1")
+}
+
+// buildWhereClauseWithAlias 根据搜索条件构建 WHERE 子句（可配置表别名）
+func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string) (string, []interface{}) {
 	if len(conditions) == 0 {
 		return "", nil
 	}
@@ -354,70 +359,70 @@ func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
-						WHERE rwt.work_id = t1.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`))
+						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`, alias))
 				params = append(params, cond.Value, cond.Value)
 			} else {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
-						WHERE rwt.work_id = t1.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`))
+						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`, alias))
 				params = append(params, cond.Value, cond.Value)
 			}
 
 		case dto2.SearchTypeSiteTag:
 			if cond.Operator == dto2.OperatorNotEqual {
 				whereClauses = append(whereClauses,
-					"NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = t1.id AND rwt.site_tag_id = ?)")
+					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
 				params = append(params, cond.Value)
 			} else {
 				whereClauses = append(whereClauses,
-					"EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = t1.id AND rwt.site_tag_id = ?)")
+					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
 				params = append(params, cond.Value)
 			}
 
 		case dto2.SearchTypeLocalAuthor:
 			if cond.Operator == dto2.OperatorNotEqual {
 				whereClauses = append(whereClauses,
-					"NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = t1.id AND rwa.local_author_id = ?)")
+					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.local_author_id = ?)", alias))
 				params = append(params, cond.Value)
 			} else {
 				whereClauses = append(whereClauses,
-					"EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = t1.id AND rwa.local_author_id = ?)")
+					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.local_author_id = ?)", alias))
 				params = append(params, cond.Value)
 			}
 
 		case dto2.SearchTypeSiteAuthor:
 			if cond.Operator == dto2.OperatorNotEqual {
 				whereClauses = append(whereClauses,
-					"NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = t1.id AND rwa.site_author_id = ?)")
+					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.site_author_id = ?)", alias))
 				params = append(params, cond.Value)
 			} else {
 				whereClauses = append(whereClauses,
-					"EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = t1.id AND rwa.site_author_id = ?)")
+					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.site_author_id = ?)", alias))
 				params = append(params, cond.Value)
 			}
 
 		case dto2.SearchTypeWorksSiteName:
-			whereClauses = append(whereClauses, "t1.site_work_name LIKE ?")
+			whereClauses = append(whereClauses, fmt.Sprintf("%s.site_work_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
 		case dto2.SearchTypeWorksNickname:
-			whereClauses = append(whereClauses, "t1.nick_name LIKE ?")
+			whereClauses = append(whereClauses, fmt.Sprintf("%s.nick_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
 		case dto2.SearchTypeWorksUploadTime:
 			if cond.Operator == dto2.OperatorNotEqual {
-				whereClauses = append(whereClauses, "t1.site_upload_time <> ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time <> ?", alias))
 			} else {
-				whereClauses = append(whereClauses, "t1.site_upload_time = ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time = ?", alias))
 			}
 			params = append(params, cond.Value)
 
 		case dto2.SearchTypeWorksLastView:
 			if cond.Operator == dto2.OperatorNotEqual {
-				whereClauses = append(whereClauses, "t1.last_view <> ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view <> ?", alias))
 			} else {
-				whereClauses = append(whereClauses, "t1.last_view = ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view = ?", alias))
 			}
 			params = append(params, cond.Value)
 
@@ -430,23 +435,23 @@ func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}
 					params = append(params, ext)
 				}
 				if cond.Operator == dto2.OperatorNotEqual {
-					whereClauses = append(whereClauses, fmt.Sprintf("t1.filename_extension NOT IN (%s)", strings.Join(placeholders, ",")))
+					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension NOT IN (%s)", alias, strings.Join(placeholders, ",")))
 				} else {
-					whereClauses = append(whereClauses, fmt.Sprintf("t1.filename_extension IN (%s)", strings.Join(placeholders, ",")))
+					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension IN (%s)", alias, strings.Join(placeholders, ",")))
 				}
 			}
 
 		case dto2.SearchTypeSite:
 			if cond.Operator == dto2.OperatorNotEqual {
-				whereClauses = append(whereClauses, "t1.site_id <> ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id <> ?", alias))
 			} else {
-				whereClauses = append(whereClauses, "t1.site_id = ?")
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id = ?", alias))
 			}
 			params = append(params, cond.Value)
 
 		case dto2.SearchTypeWorkSet:
 			whereClauses = append(whereClauses,
-				"NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = t1.id AND rwws.work_set_id = ?)")
+				fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)", alias))
 			params = append(params, cond.Value)
 		}
 	}
@@ -478,60 +483,60 @@ func getMediaExts(value interface{}) []string {
 	return nil
 }
 
-// QueryWorkSetPage 查询作品集分页
-func (r *SearchRepository) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*dto2.SelectItem, int64, error) {
-	var conditions []string
+// QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询关联 work）
+func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error) {
+	var whereClause string
 	var params []interface{}
 
-	// 关键词条件
-	if keyword != "" {
-		conditions = append(conditions, "work_set.work_set_name LIKE ?")
-		params = append(params, "%"+keyword+"%")
-	}
-
-	// 站点条件
-	if siteId > 0 {
-		conditions = append(conditions, "work_set.site_id = ?")
-		params = append(params, siteId)
-	}
-
-	// 构建 WHERE 子句
-	whereClause := ""
 	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		workWhere, workParams := buildWhereClauseWithAlias(conditions, "w")
+		if workWhere != "" {
+			innerConditions := strings.TrimPrefix(workWhere, "WHERE ")
+			whereClause = fmt.Sprintf(
+				"WHERE EXISTS (SELECT 1 FROM work w INNER JOIN re_work_work_set rws ON w.id = rws.work_id WHERE rws.work_set_id = work_set.id AND %s)",
+				innerConditions,
+			)
+			params = workParams
+		}
 	}
 
 	// 计算总数
 	var total int64
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM work_set %s", whereClause)
-	err := r.db.WithContext(ctx).Raw(countQuery, params...).Scan(&total).Error
-	if err != nil {
+	if err := r.db.WithContext(ctx).Raw(countQuery, params...).Scan(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	query := fmt.Sprintf(`
-		SELECT work_set.id AS value, work_set.work_set_name AS label
-		FROM work_set
-		%s
-		ORDER BY work_set.update_time DESC
-		LIMIT %d OFFSET %d
-	`, whereClause, pageSize, offset)
-
-	rows, err := r.db.WithContext(ctx).Raw(query, params...).Rows()
+	querySQL := "SELECT work_set.id, work_set.create_time, work_set.update_time, " +
+		"work_set.site_id, work_set.site_work_set_id, work_set.site_work_set_name, " +
+		"work_set.site_author_id, work_set.site_work_set_description, " +
+		"work_set.site_upload_time, work_set.site_update_time, " +
+		"work_set.nick_name, work_set.last_view " +
+		"FROM work_set " +
+		whereClause + " " +
+		"ORDER BY work_set.update_time DESC " +
+		fmt.Sprintf("LIMIT %d OFFSET %d", pageSize, offset)
+	rows, err := r.db.WithContext(ctx).Raw(querySQL, params...).Rows()
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var results []*dto2.SelectItem
+	var results []*entity2.WorkSet
 	for rows.Next() {
-		var item dto2.SelectItem
-		if err := rows.Scan(&item.Value, &item.Label); err != nil {
+		ws := entity2.NewWorkSet()
+		if err := rows.Scan(
+			&ws.ID, &ws.CreateTime, &ws.UpdateTime,
+			&ws.SiteID, &ws.SiteWorkSetID, &ws.SiteWorkSetName,
+			&ws.SiteAuthorID, &ws.SiteWorkSetDescription,
+			&ws.SiteUploadTime, &ws.SiteUpdateTime,
+			&ws.NickName, &ws.LastView,
+		); err != nil {
 			return nil, 0, err
 		}
-		results = append(results, &item)
+		results = append(results, ws)
 	}
 
 	return results, total, nil

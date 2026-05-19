@@ -168,9 +168,9 @@ func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverResultDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverResultDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.WorkSetWithCoverResultDTO]{}
+		page = &model.Page[dto2.WorkSetWithCoverDTO]{}
 	}
 	workSetPage := &model.Page[WorkSetWithCoverDTO]{
 		PageNumber: page.PageNumber,
@@ -178,12 +178,12 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 	}
 	result, err := h.svc.QueryPageWithCover(ctx, workSetPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[dto2.WorkSetWithCoverResultDTO]](err)
+		return model.HandleError[*model.Page[dto2.WorkSetWithCoverDTO]](err)
 	}
 	// 转换为 ResultDTO
-	data := make([]*dto2.WorkSetWithCoverResultDTO, 0, len(result.Data))
+	data := make([]*dto2.WorkSetWithCoverDTO, 0, len(result.Data))
 	for _, ws := range result.Data {
-		dto := &dto2.WorkSetWithCoverResultDTO{
+		dto := &dto2.WorkSetWithCoverDTO{
 			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
 		}
 		if ws.CoverWork != nil {
@@ -191,7 +191,7 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[dto2.WorkSetWithCoverResultDTO]{
+	return model.Success(&model.Page[dto2.WorkSetWithCoverDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

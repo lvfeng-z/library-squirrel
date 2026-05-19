@@ -494,12 +494,16 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	// workSet 服务
-	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSet.NewRepository(app.db), app.WorkService)
+	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
+	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, app.WorkService)
 
 	// search 服务
 	searchRepo := search.NewRepository(app.db)
 	app.SearchService = search.NewService(
 		searchRepo,
+		reWorkWorkSetRepo,
+		app.WorkService,
+		app.ResourceService,
 		app.LocalTagService,
 		app.SiteTagService,
 		app.LocalAuthorService,

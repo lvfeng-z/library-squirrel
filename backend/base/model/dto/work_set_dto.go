@@ -136,8 +136,9 @@ type WorkSetWithWorksResultDTO struct {
 	Works   []*WorkDTO  `json:"works"`
 }
 
-// WorkSetWithCoverResultDTO 作品集及其封面作品信息
-type WorkSetWithCoverResultDTO struct {
-	WorkSet   *WorkSetDTO `json:"workSet"`
-	CoverWork *WorkDTO    `json:"coverWork,omitempty"`
+// WorkSetWithCoverDTO 作品集及其封面作品信息
+type WorkSetWithCoverDTO struct {
+	WorkSet       *WorkSetDTO  `json:"workSet"`
+	CoverWork     *WorkDTO     `json:"coverWork,omitempty"`
+	CoverResource *ResourceDTO `json:"coverResource,omitempty"`
 }

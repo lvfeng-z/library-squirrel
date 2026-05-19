@@ -27,9 +27,15 @@ func (h *Handler) QueryWorkPage(ctx context.Context, pageNumber, pageSize int, c
 	return model.HandleResult(h.svc.QueryWorkPage(ctx, pageNumber, pageSize, conditions))
 }
 
-// QueryWorkSetPage 查询作品集分页
-func (h *Handler) QueryWorkSetPage(ctx context.Context, pageNumber, pageSize int, keyword string, siteId int64) *model.ApiResponse[*model.Page[dto2.SelectItem]] {
-	return model.HandleResult(h.svc.QueryWorkSetPage(ctx, pageNumber, pageSize, keyword, siteId))
+// QueryWorkSetPage 查询作品集分页（通过搜索条件筛选）
+func (h *Handler) QueryWorkSetPage(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverDTO], conditions []*dto2.SearchCondition) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverDTO]] {
+	if page == nil {
+		page = &model.Page[dto2.WorkSetWithCoverDTO]{}
+	}
+	if conditions == nil {
+		conditions = []*dto2.SearchCondition{}
+	}
+	return model.HandleResult(h.svc.QueryWorkSetPage(ctx, page.PageNumber, page.PageSize, conditions))
 }
 
 // QuerySearchConditionPage 查询搜索条件分页
@@ -40,12 +46,4 @@ func (h *Handler) QuerySearchConditionPage(ctx context.Context, page, pageSize i
 // UpdateLastUsed 更新最后使用时间
 func (h *Handler) UpdateLastUsed(ctx context.Context, used map[dto2.SearchType][]int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.UpdateLastUsed(ctx, used))
-}
-
-// ========== DTO 定义 ==========
-
-// WorkSetQueryDTO 作品集查询条件
-type WorkSetQueryDTO struct {
-	Keyword string `json:"keyword"` // 关键词
-	SiteID  *int64 `json:"siteId"`  // 站点ID
 }

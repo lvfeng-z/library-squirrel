@@ -1552,14 +1552,15 @@ export class WorkSetDTO {
 }
 
 /**
- * WorkSetWithCoverResultDTO 作品集及其封面作品信息
+ * WorkSetWithCoverDTO 作品集及其封面作品信息
  */
-export class WorkSetWithCoverResultDTO {
+export class WorkSetWithCoverDTO {
     "workSet": WorkSetDTO | null;
     "coverWork"?: WorkDTO | null;
+    "coverResource"?: ResourceDTO | null;
 
-    /** Creates a new WorkSetWithCoverResultDTO instance. */
-    constructor($$source: Partial<WorkSetWithCoverResultDTO> = {}) {
+    /** Creates a new WorkSetWithCoverDTO instance. */
+    constructor($$source: Partial<WorkSetWithCoverDTO> = {}) {
         if (!("workSet" in $$source)) {
             this["workSet"] = null;
         }
@@ -1568,11 +1569,12 @@ export class WorkSetWithCoverResultDTO {
     }
 
     /**
-     * Creates a new WorkSetWithCoverResultDTO instance from a string or object.
+     * Creates a new WorkSetWithCoverDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): WorkSetWithCoverResultDTO {
+    static createFrom($$source: any = {}): WorkSetWithCoverDTO {
         const $$createField0_0 = $$createType33;
         const $$createField1_0 = $$createType20;
+        const $$createField2_0 = $$createType30;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1580,7 +1582,10 @@ export class WorkSetWithCoverResultDTO {
         if ("coverWork" in $$parsedSource) {
             $$parsedSource["coverWork"] = $$createField1_0($$parsedSource["coverWork"]);
         }
-        return new WorkSetWithCoverResultDTO($$parsedSource as Partial<WorkSetWithCoverResultDTO>);
+        if ("coverResource" in $$parsedSource) {
+            $$parsedSource["coverResource"] = $$createField2_0($$parsedSource["coverResource"]);
+        }
+        return new WorkSetWithCoverDTO($$parsedSource as Partial<WorkSetWithCoverDTO>);
     }
 }
 

@@ -2,14 +2,13 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, ResourceDTO, LocalAuthorDTO, SiteAuthorFullDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { OriginType } from '@renderer/constants/OriginType.ts'
-import Page from '@renderer/model/util/Page.ts'
-import lodash from 'lodash'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AuthorInfo from '@renderer/components/common/AuthorInfo.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
@@ -17,12 +16,10 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { Picture } from '@element-plus/icons-vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import AutoHeightDialog from '@renderer/components/dialogs/AutoHeightDialog.vue'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/localTag/models'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/siteTag/models'
-import LocalTag from '@renderer/model/model/entity/LocalTag.ts'
-import SiteTag from '@renderer/model/model/entity/SiteTag.ts'
-import SiteTagFullDTO from '@renderer/model/model/dto/SiteTagFullDTO.ts'
+import RankedLocalAuthor from '@renderer/model/model/domain/RankedLocalAuthor.ts'
+import RankedSiteAuthor from '@renderer/model/model/domain/RankedSiteAuthor.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi } from '@renderer/apis/http'
@@ -45,17 +42,6 @@ const emits = defineEmits(['openWorkSet'])
 
 // onBeforeMount
 onBeforeMount(async () => {
-  // nextTick(() => {
-  //   const baseDialogHeader =
-  //     baseDialog.value.$el.parentElement.querySelector('.el-dialog__header')?.clientHeight
-  //   const baseDialogFooter =
-  //     baseDialog.value.$el.parentElement.querySelector('.el-dialog__footer')?.clientHeight
-  //   heightForImage.value = isNullish(baseDialogHeader)
-  //     ? 0
-  //     : baseDialogHeader + isNullish(baseDialogFooter)
-  //       ? 0
-  //       : baseDialogFooter
-  // })
 })
 // onMounted
 onMounted(() => {
@@ -86,7 +72,13 @@ const localTagExchangeBox = ref()
 // siteTag的ExchangeBox组件的实例
 const siteTagExchangeBox = ref()
 // 作品信息
-const currentWorkFullInfo: Ref<WorkFullDTO> = computed(() => new WorkFullDTO(props.work[currentWorkIndex.value]))
+const currentWorkFullInfo: Ref<WorkFullDTO> = computed(() => {
+  const raw = props.work[currentWorkIndex.value]
+  if (!raw) return new WorkFullDTO()
+  // 确保嵌套结构初始化
+  if (!raw.work) raw.work = { id: 0, createTime: 0, updateTime: 0 } as any
+  return raw
+})
 // 本地标签
 const localTags: Ref<SegmentedTagItem[]> = ref([])
 // 本地标签
@@ -108,10 +100,42 @@ const siteTagExchangeUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 // 站点标签的查询参数
 const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 
+// ===== 辅助：从 resources 数组中获取活跃资源 =====
+function getActiveResource(info: WorkFullDTO): ResourceDTO | null | undefined {
+  if (!info.resources?.length) return undefined
+  return info.resources.find(r => r?.state === 1) ?? info.resources[0]
+}
+
+// ===== 辅助：将 BindingsLocalAuthorDTO 转换为 RankedLocalAuthor（适配 AuthorInfo 组件）=====
+function toRankedLocalAuthor(dto: LocalAuthorDTO | null): RankedLocalAuthor | null {
+  if (!dto) return null
+  const author = new RankedLocalAuthor()
+  author.id = dto.id
+  author.authorName = dto.authorName ?? undefined
+  author.introduce = dto.introduce ?? undefined
+  author.lastUse = dto.lastUse ?? undefined
+  author.authorRank = undefined
+  return author
+}
+
+// ===== 辅助：将 BindingsSiteAuthorFullDTO 转换为 RankedSiteAuthor（适配 AuthorInfo 组件）=====
+function toRankedSiteAuthor(dto: SiteAuthorFullDTO | null): RankedSiteAuthor | null {
+  if (!dto || !dto.siteAuthor) return null
+  const author = new RankedSiteAuthor()
+  author.id = dto.siteAuthor.id
+  author.authorName = dto.siteAuthor.authorName ?? undefined
+  author.introduce = dto.siteAuthor.introduce ?? undefined
+  author.localAuthorId = dto.siteAuthor.localAuthorId ?? undefined
+  author.authorRank = undefined
+  return author
+}
+
 // 方法
 // 查询作品信息
 async function getWorkInfo() {
-  const response = await apis.workGetFullWorkInfoById(currentWorkFullInfo.value.id)
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return
+  const response = await apis.workGetFullWorkInfoById(workId)
   if (ApiUtil.check(response)) {
     const temp = ApiUtil.data<WorkFullDTO>(response)
     if (notNullish(temp)) {
@@ -127,7 +151,7 @@ async function getWorkInfo() {
 // 刷新标签
 function refreshTags() {
   // 本地标签
-  const tempLocalTags = currentWorkFullInfo.value.localTags?.map(
+  const tempLocalTags = currentWorkFullInfo.value.localTags?.filter(notNullish).map(
     (localTag) =>
       new SegmentedTagItem({
         value: localTag.id as number,
@@ -137,11 +161,11 @@ function refreshTags() {
   )
   localTags.value = isNullish(tempLocalTags) ? [] : tempLocalTags
   // 站点标签
-  const tempSiteTags = currentWorkFullInfo.value.siteTags?.map(
+  const tempSiteTags = currentWorkFullInfo.value.siteTags?.filter(notNullish).map(
     (siteTag) =>
       new SegmentedTagItem({
-        value: siteTag.id as number,
-        label: siteTag.siteTagName as string,
+        value: (siteTag.siteTag?.id ?? 0) as number,
+        label: (siteTag.siteTag?.siteTagName ?? '') as string,
         subLabels: [(isBlank(siteTag.site?.siteName) ? '?' : siteTag.site?.siteName) as string],
         disabled: false
       })
@@ -150,15 +174,8 @@ function refreshTags() {
 }
 // 刷新作品集
 function refreshWorkSets() {
-  const tempWorkSets = currentWorkFullInfo.value.workSets?.map(
-    (workSet) =>
-      new SegmentedTagItem({
-        value: workSet.id as number,
-        label: workSet.siteWorkSetName as string,
-        disabled: false
-      })
-  )
-  workSets.value = isNullish(tempWorkSets) ? [] : tempWorkSets
+  // bindings WorkFullDTO 没有 workSets 字段，暂置空
+  workSets.value = []
 }
 // 刷新作品
 async function refreshWorkInfo() {
@@ -168,17 +185,18 @@ async function refreshWorkInfo() {
 }
 // 处理本地标签exchangeBox确认交换事件
 async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {
-  const workId = currentWorkFullInfo.value.id
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return
   if (isNullish(isUpper) ? true : isUpper) {
     const boundIds = upper.map((item) => item.value)
-    const boundResponse: ApiResponse = await apis.reWorkTagLink(type, boundIds, workId)
+    const boundResponse: ApiResponse = await apis.reWorkTagLink(workId, type, boundIds as number[])
     if (ApiUtil.check(boundResponse)) {
       ApiUtil.msg(boundResponse)
     }
   }
   if (isNullish(isUpper) ? true : !isUpper) {
     const unboundIds = lower.map((item) => item.value)
-    const unboundResponse: ApiResponse = await apis.reWorkTagUnlink(type, unboundIds, workId)
+    const unboundResponse: ApiResponse = await apis.reWorkTagUnlink(workId, type, unboundIds as number[])
     if (ApiUtil.check(unboundResponse)) {
       ApiUtil.msg(unboundResponse)
     }
@@ -192,34 +210,36 @@ async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], l
 }
 // 更新标签
 async function updateWorkTags(type: OriginType) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return
   if (OriginType.LOCAL === type) {
-    const response = await apis.localTagListByWorkId(currentWorkFullInfo.value.id)
+    const response = await apis.localTagListByWorkId(workId)
     if (ApiUtil.check(response)) {
-      currentWorkFullInfo.value.localTags = ApiUtil.data<LocalTag[]>(response)
+      currentWorkFullInfo.value.localTags = ApiUtil.data<LocalTagDTO[]>(response)
+        ?.filter(notNullish)
+        .map(lt => ({ id: lt.id, localTagName: lt.localTagName, baseLocalTagId: lt.baseLocalTagId, description: lt.description, lastUse: lt.lastUse, createTime: lt.createTime ?? 0, updateTime: lt.updateTime ?? 0 } as LocalTagDTO))
     }
   } else {
     const tempSiteTagPage = new Page<SiteTagFullDTO>()
-    const tempSiteTagQuery = new SiteTagQueryDTO()
     tempSiteTagPage.pageSize = 100
-    tempSiteTagQuery.workId = currentWorkFullInfo.value.id
-    tempSiteTagQuery.boundOnWorkId = true
-    const response = await apis.siteTagQueryPageByWorkId(currentWorkFullInfo.value.id, tempSiteTagPage, tempSiteTagQuery)
+    const tempSiteTagQuery = new SiteTagQueryDTO()
+    const response = await apis.siteTagQueryPageByWorkId(workId, tempSiteTagPage, tempSiteTagQuery)
     if (ApiUtil.check(response)) {
       const tempResultPage = ApiUtil.data<Page<SiteTagFullDTO>>(response)
-      currentWorkFullInfo.value.siteTags = isNullish(tempResultPage?.data) ? [] : tempResultPage.data
+      currentWorkFullInfo.value.siteTags = isNullish(tempResultPage?.data) ? [] : tempResultPage.data as unknown as (SiteTagFullDTO | null)[]
     }
   }
 }
 // 请求作品绑定的本地标签接口的函数
 async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return page
   const query = new LocalTagQueryDTO()
-  query.workId = currentWorkFullInfo.value.id
-  query.boundOnWorkId = bounded
-  const response = await apis.localTagQuerySelectItemPageByWorkId(currentWorkFullInfo.value.id, {
-    page: page.pageNumber,
-    pageSize: page.pageSize,
-    query: { workId: query.workId, boundOnWorkId: query.boundOnWorkId }
-  })
+  query.workId = { value: workId }
+  const bindingsPage = new Page<SelectItem>()
+  bindingsPage.pageNumber = page.pageNumber
+  bindingsPage.pageSize = page.pageSize
+  const response = await apis.localTagQuerySelectItemPageByWorkId(bindingsPage, query)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     return isNullish(newPage) ? page : newPage
@@ -229,11 +249,13 @@ async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean
 }
 // 请求作品绑定的站点标签接口的函数
 async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return page
   const query = new SiteTagQueryDTO()
-  query.workId = currentWorkFullInfo.value.id
-  query.boundOnWorkId = bounded
-  const tempPage = lodash.cloneDeep(page)
-  const response = await apis.siteTagQuerySelectItemPageByWorkId(currentWorkFullInfo.value.id, tempPage as Page<SelectItem>, query)
+  const bindingsPage = new Page<SelectItem>()
+  bindingsPage.pageNumber = page.pageNumber
+  bindingsPage.pageSize = page.pageSize
+  const response = await apis.siteTagQuerySelectItemPageByWorkId(workId, bindingsPage, query)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     return isNullish(newPage) ? page : newPage
@@ -243,8 +265,9 @@ async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean)
 }
 // 处理图片点击事件
 function handlePictureClicked() {
-  if (notNullish(currentWorkFullInfo.value.resource?.filePath)) {
-    appLauncherOpenImage(currentWorkFullInfo.value.resource.filePath)
+  const resource = getActiveResource(currentWorkFullInfo.value)
+  if (notNullish(resource?.filePath)) {
+    appLauncherOpenImage(resource!.filePath!)
   } else {
     ElMessage({
       type: 'error',
@@ -275,7 +298,7 @@ function handleDrawerOpen() {
 // 处理删除按钮点击事件
 function handleDeleteButtonClick() {
   ElMessageBox.confirm(
-    h('div', {}, [h('span', null, '是否删除作品？'), h('br'), h('span', null, `${currentWorkFullInfo.value.siteWorkName}`)]),
+    h('div', {}, [h('span', null, '是否删除作品？'), h('br'), h('span', null, `${currentWorkFullInfo.value.work?.siteWorkName}`)]),
     '确认删除',
     {
       confirmButtonText: '删除',
@@ -310,8 +333,9 @@ function handleKeydown(event: KeyboardEvent) {
 }
 // 删除作品
 async function deleteWork() {
-  if (notNullish(currentWorkFullInfo.value.id)) {
-    const response = await apis.workDeleteWorkAndSurroundingData(currentWorkFullInfo.value.id)
+  const workId = currentWorkFullInfo.value.work?.id
+  if (notNullish(workId)) {
+    const response = await apis.workDeleteWorkAndSurroundingData(workId!)
     ApiUtil.msg(response)
   }
 }
@@ -324,14 +348,14 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
   <auto-height-dialog v-model:state="state" :width="props.width" @open="refreshWorkInfo">
     <template #header>
       <span class="work-dialog-work-name">
-        {{ isBlank(currentWorkFullInfo.nickName) ? currentWorkFullInfo.siteWorkName : currentWorkFullInfo.nickName }}
+        {{ isBlank(currentWorkFullInfo.work?.nickName) ? currentWorkFullInfo.work?.siteWorkName : currentWorkFullInfo.work?.nickName }}
       </span>
     </template>
     <div class="work-dialog-container">
       <el-image
         class="work-dialog-image"
         fit="contain"
-        :src="`/resource/${currentWorkFullInfo.resource?.filePath}`"
+        :src="`/resource/${getActiveResource(currentWorkFullInfo)?.filePath}`"
         @click="handlePictureClicked"
       >
         <template #error>
@@ -345,13 +369,13 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <el-descriptions-item label="作者">
             <author-info
               id="author"
-              :local-authors="currentWorkFullInfo.localAuthors"
-              :site-authors="currentWorkFullInfo.siteAuthors"
+              :local-authors="currentWorkFullInfo.localAuthors?.filter(notNullish).map(toRankedLocalAuthor).filter(notNullish)"
+              :site-authors="currentWorkFullInfo.siteAuthors?.filter(notNullish).map(toRankedSiteAuthor).filter(notNullish)"
             />
           </el-descriptions-item>
           <el-descriptions-item>
             <div id="description">
-              {{ currentWorkFullInfo.siteWorkDescription }}
+              {{ currentWorkFullInfo.work?.siteWorkDescription }}
             </div>
           </el-descriptions-item>
           <el-descriptions-item>

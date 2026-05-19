@@ -152,6 +152,64 @@ func (r *ReWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId 
 	return workId, nil
 }
 
+// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（is_cover = 1）
+func (r *ReWorkWorkSetRepository) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
+	if len(workSetIds) == 0 {
+		return map[int64]int64{}, nil
+	}
+	type result struct {
+		WorkSetID int64
+		WorkID    int64
+	}
+	var results []result
+	err := r.BaseRepository.GORM().
+		WithContext(ctx).
+		Model(new(domain.ReWorkWorkSet)).
+		Where("is_cover = 1 AND work_set_id IN ?", workSetIds).
+		Select("work_set_id, work_id").
+		Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	coverMap := make(map[int64]int64, len(results))
+	for _, r := range results {
+		coverMap[r.WorkSetID] = r.WorkID
+	}
+	return coverMap, nil
+}
+
+// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
+func (r *ReWorkWorkSetRepository) ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
+	if len(workSetIds) == 0 {
+		return map[int64]int64{}, nil
+	}
+	type result struct {
+		WorkSetID int64
+		WorkID    int64
+	}
+	var results []result
+	subQuery := r.BaseRepository.GORM().
+		Model(new(domain.ReWorkWorkSet)).
+		Select("work_set_id, MIN(sort_order) as sort_order").
+		Where("work_set_id IN ?", workSetIds).
+		Group("work_set_id")
+	err := r.BaseRepository.GORM().
+		WithContext(ctx).
+		Table("re_work_work_set").
+		Where("work_set_id IN ?", workSetIds).
+		Where("(work_set_id, sort_order) IN (?)", subQuery).
+		Select("work_set_id, work_id").
+		Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	fallbackMap := make(map[int64]int64, len(results))
+	for _, r := range results {
+		fallbackMap[r.WorkSetID] = r.WorkID
+	}
+	return fallbackMap, nil
+}
+
 // getMapKeys 获取map的key列表
 func getMapKeys(m map[int64]int) []int64 {
 	keys := make([]int64, 0, len(m))

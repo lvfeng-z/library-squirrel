@@ -1,8 +1,8 @@
 import Resource from '../entity/Resource.ts'
 import RankedLocalAuthor from '../domain/RankedLocalAuthor.ts'
 import RankedSiteAuthor from '../domain/RankedSiteAuthor.ts'
-import WorkFullDTO from './WorkFullDTO.ts'
 import WorkSetWithWorkDTO from './WorkSetWithWorkDTO.ts'
+import { WorkFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, ResourceDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class WorkCardItem {
@@ -36,15 +36,7 @@ export default class WorkCardItem {
   siteAuthors: RankedSiteAuthor[] | undefined | null
 
   constructor(source: WorkFullDTO | WorkSetWithWorkDTO) {
-    if (source instanceof WorkFullDTO) {
-      this.id = source.id
-      this.siteItemName = source.siteWorkName
-      this.nickName = source.nickName
-      this.description = source.siteWorkDescription
-      this.resource = source.resource
-      this.localAuthors = source.localAuthors
-      this.siteAuthors = source.siteAuthors
-    } else {
+    if (source instanceof WorkSetWithWorkDTO) {
       this.id = source.workSet.id
       this.siteItemName = source.workSet.siteWorkSetName
       this.nickName = source.workSet.nickName
@@ -84,6 +76,50 @@ export default class WorkCardItem {
           })
         }
       })
+    } else {
+      // bindings WorkFullDTO：嵌套结构
+      this.id = source.work?.id
+      this.siteItemName = source.work?.siteWorkName
+      this.nickName = source.work?.nickName
+      this.description = source.work?.siteWorkDescription
+      this.resource = getActiveResource(source)
+      this.localAuthors = toRankedLocalAuthors(source.localAuthors?.filter(notNullish))
+      this.siteAuthors = toRankedSiteAuthors(source.siteAuthors?.filter(notNullish))
     }
   }
+}
+
+function getActiveResource(dto: WorkFullDTO): Resource | undefined {
+  if (!arrayNotEmpty(dto.resources)) return undefined
+  const active = dto.resources!.find(r => r?.state === 1) ?? dto.resources![0]
+  if (!active) return undefined
+  return new Resource(active as any)
+}
+
+function toRankedLocalAuthors(dtos: (LocalAuthorDTO | null)[] | undefined | null): RankedLocalAuthor[] | undefined {
+  if (!arrayNotEmpty(dtos)) return undefined
+  return dtos!.filter(notNullish).map(dto => {
+    const author = new RankedLocalAuthor()
+    author.id = dto.id
+    author.authorName = dto.authorName ?? undefined
+    author.introduce = dto.introduce ?? undefined
+    author.lastUse = dto.lastUse ?? undefined
+    author.authorRank = undefined
+    return author
+  })
+}
+
+function toRankedSiteAuthors(dtos: (SiteAuthorFullDTO | null)[] | undefined | null): RankedSiteAuthor[] | undefined {
+  if (!arrayNotEmpty(dtos)) return undefined
+  return dtos!.filter(notNullish).map(dto => {
+    const author = new RankedSiteAuthor()
+    if (dto.siteAuthor) {
+      author.id = dto.siteAuthor.id
+      author.authorName = dto.siteAuthor.authorName ?? undefined
+      author.introduce = dto.siteAuthor.introduce ?? undefined
+      author.localAuthorId = dto.siteAuthor.localAuthorId ?? undefined
+    }
+    author.authorRank = undefined
+    return author
+  })
 }

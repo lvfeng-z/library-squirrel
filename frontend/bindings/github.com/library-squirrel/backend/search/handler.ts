@@ -36,11 +36,11 @@ export function QueryWorkPage(pageNumber: number, pageSize: number, conditions: 
 }
 
 /**
- * QueryWorkSetPage 查询作品集分页
+ * QueryWorkSetPage 查询作品集分页（通过搜索条件筛选）
  */
-export function QueryWorkSetPage(pageNumber: number, pageSize: number, keyword: string, siteId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
-    return $Call.ByID(1462328131, pageNumber, pageSize, keyword, siteId).then(($result: any) => {
-        return $$createType4($result);
+export function QueryWorkSetPage(page: model$0.Page<dto$0.WorkSetWithCoverDTO> | null, conditions: (dto$0.SearchCondition | null)[]): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkSetWithCoverDTO> | null> | null> {
+    return $Call.ByID(1462328131, page, conditions).then(($result: any) => {
+        return $$createType14($result);
     });
 }
 
@@ -49,7 +49,7 @@ export function QueryWorkSetPage(pageNumber: number, pageSize: number, keyword: 
  */
 export function UpdateLastUsed(used: { [_ in dto$0.SearchType]?: number[] }): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2154720907, used).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType16($result);
     });
 }
 
@@ -64,5 +64,10 @@ const $$createType6 = model$0.Page.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType11 = $Create.Nullable($$createType10);
+const $$createType10 = dto$0.WorkSetWithCoverDTO.createFrom;
+const $$createType11 = model$0.Page.createFrom($$createType10);
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType16 = $Create.Nullable($$createType15);

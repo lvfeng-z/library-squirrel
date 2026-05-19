@@ -7,6 +7,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
+	entity2 "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // ========== 外部模块接口定义（由 search 模块定义自己需要的接口）==========
@@ -17,8 +18,24 @@ type Repository interface {
 	QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []dto2.SearchType) ([]*dto2.SelectItem, int64, error)
 	// QueryWorkPage 查询作品分页
 	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error)
-	// QueryWorkSetPage 查询作品集分页
-	QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) ([]*dto2.SelectItem, int64, error)
+	// QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询）
+	QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error)
+}
+
+// CoverResolver 批量封面解析接口
+type CoverResolver interface {
+	ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
+	ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
+}
+
+// WorkSetPageWorkReader 作品读取接口
+type WorkSetPageWorkReader interface {
+	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error)
+}
+
+// WorkSetPageResourceReader 资源读取接口
+type WorkSetPageResourceReader interface {
+	ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
 }
 
 // LocalTagUpdater 本地标签更新接口
@@ -47,6 +64,11 @@ type SiteAuthorUpdater interface {
 type Service struct {
 	repo Repository
 
+	// 作品集查询依赖
+	coverResolver  CoverResolver
+	workReader     WorkSetPageWorkReader
+	resourceReader WorkSetPageResourceReader
+
 	// 外部模块依赖（通过构造函数注入）
 	localTagUpdater    LocalTagUpdater
 	siteTagUpdater     SiteTagUpdater
@@ -57,13 +79,19 @@ type Service struct {
 // NewService 创建搜索服务
 func NewService(
 	repo Repository,
+	coverResolver CoverResolver,
+	workReader WorkSetPageWorkReader,
+	resourceReader WorkSetPageResourceReader,
 	localTagUpdater LocalTagUpdater,
 	siteTagUpdater SiteTagUpdater,
-	localAuthorUpdater LocalAuthorUpdater,
+	localAuthorUpdater LocalTagUpdater,
 	siteAuthorUpdater SiteAuthorUpdater,
 ) *Service {
 	return &Service{
 		repo:               repo,
+		coverResolver:      coverResolver,
+		workReader:         workReader,
+		resourceReader:     resourceReader,
 		localTagUpdater:    localTagUpdater,
 		siteTagUpdater:     siteTagUpdater,
 		localAuthorUpdater: localAuthorUpdater,
@@ -118,13 +146,110 @@ func extractUsedConditions(conditions []*dto2.SearchCondition) map[dto2.SearchTy
 	return used
 }
 
-// QueryWorkSetPage 查询作品集分页
-func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, keyword string, siteId int64) (*model.Page[dto2.SelectItem], error) {
-	items, total, err := s.repo.QueryWorkSetPage(ctx, page, pageSize, keyword, siteId)
-	if err != nil {
-		return nil, err
+// QueryWorkSetPage 查询作品集分页（通过搜索条件筛选关联的作品，返回带封面的作品集）
+func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) (*model.Page[dto2.WorkSetWithCoverDTO], error) {
+	if conditions == nil {
+		conditions = []*dto2.SearchCondition{}
 	}
-	return model.NewPage[dto2.SelectItem](items, total, page, pageSize), nil
+
+	// Phase 1: 查询作品集分页（EXISTS 子查询）
+	workSets, total, err := s.repo.QueryWorkSetPageByConditions(ctx, page, pageSize, conditions)
+	if err != nil {
+		return nil, fmt.Errorf("query work set page error: %w", err)
+	}
+
+	if len(workSets) == 0 {
+		return model.NewPage[dto2.WorkSetWithCoverDTO]([]*dto2.WorkSetWithCoverDTO{}, 0, page, pageSize), nil
+	}
+
+	// 收集作品集 ID
+	workSetIds := make([]int64, 0, len(workSets))
+	for _, ws := range workSets {
+		workSetIds = append(workSetIds, ws.GetID())
+	}
+
+	// Phase 2a: 批量查 is_cover=1 的封面
+	coverMap, err := s.coverResolver.ListCoverWorkIdsByWorkSetIds(ctx, workSetIds)
+	if err != nil {
+		return nil, fmt.Errorf("resolve covers pass 1 error: %w", err)
+	}
+
+	// Phase 2b: 对未找到封面的作品集，用 MIN(sort_order) 兜底
+	var uncoveredWorkSetIds []int64
+	for _, id := range workSetIds {
+		if _, ok := coverMap[id]; !ok {
+			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
+		}
+	}
+	if len(uncoveredWorkSetIds) > 0 {
+		fallbackMap, err := s.coverResolver.ListMinSortOrderWorkIdsByWorkSetIds(ctx, uncoveredWorkSetIds)
+		if err != nil {
+			return nil, fmt.Errorf("resolve covers pass 2 error: %w", err)
+		}
+		for k, v := range fallbackMap {
+			coverMap[k] = v
+		}
+	}
+
+	// Phase 3: 批量查封面作品
+	var coverWorkIds []int64
+	for _, workId := range coverMap {
+		coverWorkIds = append(coverWorkIds, workId)
+	}
+	worksMap := make(map[int64]*entity2.Work)
+	if len(coverWorkIds) > 0 {
+		works, err := s.workReader.ListByIds(ctx, coverWorkIds)
+		if err != nil {
+			return nil, fmt.Errorf("batch fetch cover works error: %w", err)
+		}
+		for _, w := range works {
+			worksMap[w.GetID()] = w
+		}
+	}
+
+	// Phase 4: 批量查封面资源
+	resourcesMap := make(map[int64][]*entity2.Resource)
+	if len(coverWorkIds) > 0 {
+		resourcesMap, err = s.resourceReader.ListByWorkIds(ctx, coverWorkIds)
+		if err != nil {
+			return nil, fmt.Errorf("batch fetch cover resources error: %w", err)
+		}
+	}
+
+	// Phase 5: 组装结果
+	results := make([]*dto2.WorkSetWithCoverDTO, 0, len(workSets))
+	for _, ws := range workSets {
+		item := &dto2.WorkSetWithCoverDTO{
+			WorkSet: dto2.NewWorkSetDTO(ws),
+		}
+		if coverWorkId, ok := coverMap[ws.GetID()]; ok {
+			if work, ok := worksMap[coverWorkId]; ok {
+				item.CoverWork = dto2.NewWorkDTO(work)
+				if resources, ok := resourcesMap[coverWorkId]; ok {
+					for _, res := range resources {
+						if res.State == 1 {
+							item.CoverResource = dto2.NewResourceDTO(res)
+							break
+						}
+					}
+					if item.CoverResource == nil && len(resources) > 0 {
+						item.CoverResource = dto2.NewResourceDTO(resources[0])
+					}
+				}
+			}
+		}
+		results = append(results, item)
+	}
+
+	// Phase 6: 异步更新 lastUse
+	used := extractUsedConditions(conditions)
+	if len(used) > 0 {
+		go func() {
+			_ = s.UpdateLastUsed(context.Background(), used)
+		}()
+	}
+
+	return model.NewPage[dto2.WorkSetWithCoverDTO](results, total, page, pageSize), nil
 }
 
 // UpdateLastUsed 更新搜索条件最后使用时间

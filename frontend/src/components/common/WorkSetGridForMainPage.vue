@@ -2,11 +2,11 @@
 import { Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import WorkSetGrid from '@renderer/components/common/WorkSetGrid.vue'
-import WorkSetCoverDTO from '@renderer/model/model/dto/WorkSetCoverDTO.ts'
+import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
 const props = defineProps<{
-  workSetList: WorkSetCoverDTO[]
+  workSetList: WorkSetWithCoverDTO[]
 }>()
 
 // model
@@ -19,10 +19,10 @@ const workSetDialogState: Ref<boolean> = ref(false)
 const currentWorkSetId: Ref<number> = ref(-1)
 
 // 方法
-function handleImageClicked(workSet: WorkSetCoverDTO) {
-  currentWorkSetIndex.value = props.workSetList.findIndex((ws) => ws.id === workSet.id)
-  if (workSet.id) {
-    currentWorkSetId.value = workSet.id
+function handleImageClicked(workSet: WorkSetWithCoverDTO) {
+  currentWorkSetIndex.value = props.workSetList.findIndex((ws) => ws.workSet?.id === workSet.workSet?.id)
+  if (workSet.workSet?.id) {
+    currentWorkSetId.value = workSet.workSet.id
     workSetDialogState.value = true
   }
 }

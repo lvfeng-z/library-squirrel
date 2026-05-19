@@ -3,12 +3,12 @@ import { computed, Ref, ref, UnwrapRef } from 'vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
-import WorkSetCoverDTO from '@renderer/model/model/dto/WorkSetCoverDTO.ts'
+import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 
 // props
 const props = defineProps<{
-  workSet: WorkSetCoverDTO
+  workSet: WorkSetWithCoverDTO
   checkable: boolean
   maxHeight?: number
   maxWidth?: number
@@ -68,7 +68,7 @@ function handlePictureClicked() {
 }
 // 获取作品集名称
 function getWorkSetName(): string {
-  return props.workSet.nickName || props.workSet.siteWorkSetName || '未命名作品集'
+  return props.workSet.workSet?.nickName || props.workSet.workSet?.siteWorkSetName || '未命名作品集'
 }
 </script>
 

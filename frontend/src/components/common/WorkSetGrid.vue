@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import WorkSetCard from './WorkSetCard.vue'
 import { ref, watch, nextTick } from 'vue'
-import WorkSetCoverDTO from '@renderer/model/model/dto/WorkSetCoverDTO.ts'
+import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
 const props = defineProps<{
-  workSetList: WorkSetCoverDTO[]
+  workSetList: WorkSetWithCoverDTO[]
   checkable: boolean
   checkedWorkSetIds?: number[] // 选中的作品集id列表
 }>()
@@ -23,8 +23,8 @@ const initCheckedStates = () => {
   isInitializing.value = true
   const states: Record<number, boolean> = {}
   props.workSetList.forEach((workSet) => {
-    if (workSet.id) {
-      states[workSet.id] = props.checkedWorkSetIds?.includes(workSet.id) || false
+    if (workSet.workSet?.id) {
+      states[workSet.workSet.id] = props.checkedWorkSetIds?.includes(workSet.workSet.id) || false
     }
   })
 
@@ -77,7 +77,7 @@ watch(
 )
 
 // 方法
-function handleImageClicked(workSetCoverDTO: WorkSetCoverDTO) {
+function handleImageClicked(workSetCoverDTO: WorkSetWithCoverDTO) {
   emits('imageClicked', workSetCoverDTO)
 }
 
@@ -88,16 +88,16 @@ function updateCheckedState(id: number, value: boolean) {
 
 <template>
   <div class="work-grid">
-    <template v-for="workSet in props.workSetList" :key="workSet.id ? workSet.id : Math.random()">
+    <template v-for="workSet in props.workSetList" :key="workSet.workSet?.id ?? Math.random()">
       <div class="work-grid-container">
         <work-set-card
-          :checked="workSet.id ? checkedStates[workSet.id] : false"
+          :checked="workSet.workSet?.id ? checkedStates[workSet.workSet.id] : false"
           class="work-grid-work-card"
           :work-set="workSet"
           :max-height="500"
           :max-width="500"
           :checkable="checkable"
-          @update:checked="(value) => workSet.id && updateCheckedState(workSet.id, value)"
+          @update:checked="(value) => workSet.workSet?.id && updateCheckedState(workSet.workSet.id, value)"
           @image-clicked="handleImageClicked(workSet)"
         />
       </div>

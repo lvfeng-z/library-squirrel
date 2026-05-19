@@ -32,6 +32,6 @@ export {
     WorkDTO,
     WorkFullDTO,
     WorkSetDTO,
-    WorkSetWithCoverResultDTO,
+    WorkSetWithCoverDTO,
     WorkSetWithWorksResultDTO
 } from "./models.js";

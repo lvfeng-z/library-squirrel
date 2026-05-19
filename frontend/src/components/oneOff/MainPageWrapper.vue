@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
-import Page from '@renderer/model/util/Page.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {
+  SelectItem,
+  WorkFullDTO as BindingsWorkFullDTO,
+  WorkSetWithCoverDTO
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
@@ -15,13 +18,12 @@ import lodash from 'lodash'
 import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
-import WorkSetCoverDTO from '@renderer/model/model/dto/WorkSetCoverDTO.ts'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
-import WorkQueryDTO from '@renderer/model/model/queryDTO/WorkQueryDTO.ts'
-import WorkSetQueryDTO from '@renderer/model/model/queryDTO/WorkSetQueryDTO.ts'
+import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@renderer/apis/http/wrappers/search'
+import {newPage} from "@renderer/utils/Pager.ts";
+import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 
 // 接口
 const apis = {
@@ -69,11 +71,11 @@ const resizeObserver = new ResizeObserver((entries) => {
 // 作品集视图开关
 const workSetView: Ref<boolean> = ref(false)
 // 需展示的作品集列表
-const workSetList: Ref<UnwrapRef<WorkSetCoverDTO[]>> = ref([])
+const workSetList: Ref<UnwrapRef<WorkSetWithCoverDTO[]>> = ref([])
 // 当前作品集的索引
 const currentWorkSetIndex = ref(0)
 // 作品集分页
-const workSetPage: Ref<UnwrapRef<Page<WorkSetCoverDTO>>> = ref(new Page<WorkSetCoverDTO>())
+const workSetPage: Ref<UnwrapRef<Page<WorkSetWithCoverDTO>>> = ref(new Page<WorkSetWithCoverDTO>())
 
 // onMounted
 onMounted(() => {
@@ -141,32 +143,49 @@ async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
     conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
   }
 
-  return apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: 16, query: conditions }).then((response: ApiResponse) => {
-    if (ApiUtil.check(response)) {
-      const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
-      if (notNullish(resultPage)) {
-        resultPage.data = resultPage.data?.filter(notNullish).map((origin) => new WorkFullDTO(origin))
-      }
-      return resultPage
-    } else {
-      return page
-    }
-  })
+  const response = await apis.searchQueryWorkPage(newPage<BindingsWorkFullDTO>({ pageNumber: page.pageNumber, pageSize: 16 }), conditions)
+  if (ApiUtil.check(response)) {
+    return response.data
+  } else {
+    throw new Error(response.msg)
+  }
 }
 
 // 请求作品集接口
-async function searchWorkSet(page: Page<WorkSetCoverDTO>): Promise<Page<WorkSetCoverDTO>> {
-  // 从输入框获取关键词
-  const keyword = isNotBlank(autoLoadInput.value) ? autoLoadInput.value : undefined
+async function searchWorkSet(page: Page<WorkSetWithCoverDTO>): Promise<Page<WorkSetWithCoverDTO>> {
+  // 处理搜索框的标签（与 searchWork 相同的条件构建逻辑）
+  const conditions: SearchCondition[] = selectedTagList.value
+    .map((searchCondition) => {
+      let operator: CrudOperator | undefined = undefined
+      if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
+        operator = CrudOperator.NOT_EQUAL
+      }
+      if (notNullish(searchCondition.extraData)) {
+        const extraData = searchCondition.extraData as { type: SearchType; id: number }
+        return new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator })
+      } else {
+        return undefined
+      }
+    })
+    .filter(notNullish)
+  if (arrayNotEmpty(customTagList.value)) {
+    customTagList.value.forEach((tag: SegmentedTagItem) =>
+      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
+    )
+  }
+  if (isNotBlank(autoLoadInput.value)) {
+    const workName = autoLoadInput.value
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE }))
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
+  }
 
-  return apis.searchQueryWorkSetPage({ pageNumber: page.pageNumber, pageSize: 16, keyword }).then((response: ApiResponse) => {
-    if (ApiUtil.check(response)) {
-      // WorkSetCoverDTO 没有继承 WorkSet，直接使用返回的数据即可
-      return ApiUtil.data<Page<WorkSetCoverDTO>>(response)
-    } else {
-      return page
-    }
-  })
+  try {
+    const result = await apis.searchQueryWorkSetPage(page, conditions)
+    return result.data
+  } catch (e) {
+    console.log(e)
+    return page
+  }
 }
 
 // 加载下一页作品
@@ -195,7 +214,7 @@ async function queryWorkPage(next: boolean) {
 async function queryWorkSetPage(next: boolean) {
   // 新查询重置查询条件
   if (!next) {
-    workSetPage.value = new Page<WorkSetCoverDTO>()
+    workSetPage.value = new Page<WorkSetWithCoverDTO>()
     workSetPage.value.pageSize = 12
     workSetList.value.length = 0
   }

@@ -3,7 +3,7 @@ import WorkDialog from '../dialogs/WorkDialog.vue'
 import { computed, Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
+import {WorkFullDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 
 // props
