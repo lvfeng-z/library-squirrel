@@ -133,7 +133,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 		Where("work_set_id = ?", workSetId).
 		Where("work_id IN ?", getMapKeys(sortOrders)).
 		Updates(map[string]interface{}{
-			"sort_order":  gorm.Expr("CASE work_id %s END", buildCaseExpression(sortOrders)),
+			"sort_order":  gorm.Expr(buildCaseExpression(sortOrders)),
 			"update_time": util.GetCurrentTimestamp(),
 		}).Error
 }

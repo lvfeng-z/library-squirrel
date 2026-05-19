@@ -41,19 +41,19 @@ task build:server && task run:server
 - **前端**: Vue 3 + Composition API (`<script setup lang="ts">`)、Element Plus、Pinia、Vue Router（hash 模式）、Vite 5
 - **IPC**: Wails Bind — Go handler 方法自动暴露给前端，TypeScript bindings 自动生成
 
-### 领域架构与规则
-各板块的架构说明和编码规则已拆分到独立文件，按 globs 自动加载：
-- **后端**: `.claude/rules/backend.md` — 模块模式、业务概念、Go 编码规则
-- **前端**: `.claude/rules/frontend.md` — 目录结构、TypeScript 编码规则
-- **数据库**: `.claude/rules/database.md` — SQLite/GORM 架构、Repository 规则
-- **插件**: `.claude/rules/plugin.md` — 插件系统架构
-
 ## 编码规则（全局）
 
 ### 通用
 
 - **注释**: 仅描述目的和约束，禁止使用变更描述类词语（"改为"、"重构"、"优化"）。
 - **日志**: 输出中文日志，出现专有名词时使用对应语言。
+
+### 领域架构与规则
+各板块的架构说明和编码规则已拆分到独立文件，按 globs 自动加载：
+- **后端**: `.claude/rules/backend.md` — 模块模式、业务概念、Go 编码规则
+- **前端**: `.claude/rules/frontend.md` — 目录结构、TypeScript 编码规则
+- **数据库**: `.claude/rules/database.md` — SQLite/GORM 架构、Repository 规则
+- **插件**: `.claude/rules/plugin.md` — 插件系统架构
 
 ### Git 提交
 - 中文，格式：`类型(范围): 描述`
