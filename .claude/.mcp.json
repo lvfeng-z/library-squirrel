@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "project-logs": {
+      "args": [
+        "/c",
+        "node",
+        "E:/code/lvfeng/mcp/log-mcp/index.js"
+      ],
+      "command": "cmd",
+      "env": {
+        "LOG_DIR": "E:/code/lvfeng/library-squirrel/log"
+      },
+      "type": "stdio"
+    },
+    "sqlite3-database-query": {
+      "args": [
+        "/c",
+        "node",
+        "E:/code/lvfeng/mcp/db-mcp/index.js"
+      ],
+      "command": "cmd",
+      "env": {
+        "DB_FILE": "E:/code/lvfeng/LibrarySquirrel/database/database.db"
+      },
+      "type": "stdio"
+    }
+  }
+}
