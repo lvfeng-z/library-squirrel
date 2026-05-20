@@ -1,28 +1,28 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, Ref, ref } from 'vue'
-import ApiUtil from '@renderer/utils/ApiUtil.ts'
+import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
   SelectItem,
   WorkFullDTO as BindingsWorkFullDTO,
   WorkSetWithCoverDTO
 } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
-import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
-import ApiResponse from '@renderer/model/util/ApiResponse.ts'
-import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
+import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
+import ApiResponse from '@renderer/model/util/ApiResponse.js'
+import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.js'
+import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.js'
 import CollapsePanel from '@renderer/components/common/CollapsePanel.vue'
-import IPage from '@renderer/model/util/IPage.ts'
+import IPage from '@renderer/model/util/IPage.js'
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
-import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
+import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.js'
 import lodash from 'lodash'
-import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
+import { CrudOperator } from '@renderer/constants/CrudOperator.js'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
-import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
-import { isNotBlank } from '@renderer/utils/StringUtil.ts'
-import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@renderer/apis/http/wrappers/search'
-import {newPage} from "@renderer/utils/Pager.ts";
+import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.js'
+import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.js'
+import { isNotBlank } from '@renderer/utils/StringUtil.js'
+import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
+import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 
 // 接口

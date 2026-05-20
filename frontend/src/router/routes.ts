@@ -9,7 +9,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: '',
         name: 'Home',
-        component: () => import('@renderer/components/oneOff/MainPageWrapper.vue'),
+        component: () => import('@renderer/views/MainPage.vue'),
         meta: {
           title: '主页',
           icon: 'HomeFilled',

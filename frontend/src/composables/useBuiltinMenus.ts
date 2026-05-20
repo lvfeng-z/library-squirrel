@@ -31,7 +31,7 @@ export function initBuiltinMenus() {
     {
       slotId: 'mainPage',
       name: '主页',
-      component: () => import('@renderer/components/oneOff/MainPageWrapper.vue'),
+      component: () => import('@renderer/views/MainPage.vue'),
       order: 0,
       isBuiltin: true
     },
