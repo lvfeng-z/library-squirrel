@@ -60,8 +60,8 @@ export async function siteTagQueryLocalRelateDTOPage(page: Page<SiteTagLocalRela
 }
 
 /** 根据作品ID查询选择项分页 */
-export async function siteTagQuerySelectItemPageByWorkId(workId: number, page: Page<SelectItem>, query: SiteTagQueryDTO): Promise<ApiResult<Page<SelectItem>>> {
-  return requireResponse(await SiteTagHandler.QuerySelectItemPageByWorkId(page, query, workId), '查询作品标签选择列表')
+export async function siteTagQuerySelectItemPageByWorkId(workId: number, page: Page<SelectItem>, query: SiteTagQueryDTO, boundOnWorkId: boolean | null): Promise<ApiResult<Page<SelectItem>>> {
+  return requireResponse(await SiteTagHandler.QuerySelectItemPageByWorkId(page, query, workId, boundOnWorkId), '查询作品标签选择列表')
 }
 
 /** 根据作品ID获取标签列表 */

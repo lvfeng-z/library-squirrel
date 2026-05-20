@@ -260,14 +260,17 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem], error) {
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error) {
 	var results []*dto2.SelectItem
 	var total int64
 
 	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
 
-	// 查询已绑定到该作品的
-	db = db.Where(" EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
+	if boundOnWorkId != nil && *boundOnWorkId {
+		db = db.Where(" EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
+	} else if boundOnWorkId != nil && !*boundOnWorkId {
+		db = db.Where(" NOT EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
+	}
 
 	// 应用查询条件
 	for _, cond := range opt.Conditions {

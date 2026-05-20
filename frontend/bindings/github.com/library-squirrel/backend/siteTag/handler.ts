@@ -105,8 +105,8 @@ export function QueryPageByWorkId(page: model$0.Page<dto$0.SiteTagFullDTO> | nul
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem> | null, query: $models.SiteTagQueryDTO, workId: number): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
-    return $Call.ByID(3913340083, page, query, workId).then(($result: any) => {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem> | null, query: $models.SiteTagQueryDTO, workId: number, boundOnWorkId: boolean | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
+    return $Call.ByID(3913340083, page, query, workId, boundOnWorkId).then(($result: any) => {
         return $$createType31($result);
     });
 }

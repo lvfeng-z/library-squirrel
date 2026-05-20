@@ -65,7 +65,7 @@ type Repository interface {
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
 	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto2.SelectItem], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, tag *entity2.SiteTag) error
 }
@@ -299,13 +299,13 @@ func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto2.SelectItem], query SiteTagQueryDTO, workId int64) (*model.Page[dto2.SelectItem], error) {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto2.SelectItem], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error) {
 	conv := querypkg.NewConverter(entity2.SiteTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.QuerySelectItemPageByWorkId(ctx, opt, workId)
+	return s.repo.QuerySelectItemPageByWorkId(ctx, opt, workId, boundOnWorkId)
 }
 
 // ListByWorkId 查询作品的站点标签
