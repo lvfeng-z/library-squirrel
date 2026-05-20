@@ -22,14 +22,15 @@ import (
 type TaskState int32
 
 const (
-	TaskStateCreated    TaskState = iota // 0: 已创建（未启动）
-	TaskStateWaiting                     // 1: 等待中（排队中）
-	TaskStateProcessing                  // 2: 处理中
-	TaskStatePausing                     // 3: 暂停中
-	TaskStatePaused                      // 4: 已暂停
-	TaskStateStopping                    // 5: 停止中
-	TaskStateFinished                    // 6: 已完成
-	TaskStateFailed                      // 7: 失败
+	TaskStateCreated         TaskState = iota // 0: 已创建（未启动）
+	TaskStateWaiting                          // 1: 等待中（排队中）
+	TaskStateProcessing                       // 2: 处理中
+	TaskStatePausing                          // 3: 暂停中
+	TaskStatePaused                           // 4: 已暂停
+	TaskStateStopping                         // 5: 停止中
+	TaskStateFinished                         // 6: 已完成
+	TaskStateFailed                           // 7: 失败
+	TaskStatePartlyFinished                   // 8: 部分完成（父任务专用）
 )
 
 // TaskExecutor 任务执行器接口
@@ -460,20 +461,22 @@ func (p *ParentTask) RemoveChild(taskId int64) {
 }
 
 // RefreshState 根据子任务状态刷新父任务状态
-func (p *ParentTask) RefreshState() {
+// 返回旧状态和新状态，供调用方判断是否需要持久化
+func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
 	children := p.GetChildren()
 	if len(children) == 0 {
-		return
+		return p.GetState(), p.GetState()
 	}
 
-	var allFinished, anyFailed, anyProcessing, anyPaused, anyWaiting bool
+	var finishedCount, failedCount int
+	var anyProcessing, anyWaiting, anyPaused bool
 	for _, child := range children {
 		switch child.GetState() {
 		case TaskStateFinished:
-			allFinished = true
+			finishedCount++
 		case TaskStateFailed:
-			anyFailed = true
-		case TaskStateProcessing:
+			failedCount++
+		case TaskStateProcessing, TaskStatePausing, TaskStateStopping:
 			anyProcessing = true
 		case TaskStatePaused:
 			anyPaused = true
@@ -482,22 +485,27 @@ func (p *ParentTask) RefreshState() {
 		}
 	}
 
-	var newState TaskState
-	if anyFailed {
-		newState = TaskStateFailed
-	} else if allFinished {
-		newState = TaskStateFinished
-	} else if anyPaused {
-		newState = TaskStatePaused
-	} else if anyProcessing {
+	total := len(children)
+
+	switch {
+	case anyProcessing:
 		newState = TaskStateProcessing
-	} else if anyWaiting {
+	case anyWaiting:
 		newState = TaskStateWaiting
-	} else {
+	case anyPaused:
+		newState = TaskStatePaused
+	case finishedCount == total:
+		newState = TaskStateFinished
+	case failedCount == total:
+		newState = TaskStateFailed
+	case finishedCount > 0 && finishedCount < total:
+		newState = TaskStatePartlyFinished
+	default:
 		newState = TaskStateCreated
 	}
 
-	p.state.Store(int32(newState))
+	oldState = TaskState(p.state.Swap(int32(newState)))
+	return
 }
 
 // GetState 获取父任务状态

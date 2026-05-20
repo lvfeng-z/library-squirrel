@@ -75,17 +75,34 @@ func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (i
 		),
 		failed AS (
 			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
+		),
+		processing AS (
+			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status IN (%d, %d)
+		),
+		paused AS (
+			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
 		)
 		UPDATE task SET status = (
 			CASE
+				WHEN (SELECT num FROM processing) > 0 THEN %d
+				WHEN (SELECT num FROM paused) > 0 THEN %d
 				WHEN (SELECT num FROM finished) = (SELECT num FROM total) THEN %d
 				WHEN (SELECT num FROM failed) = (SELECT num FROM total) THEN %d
 				WHEN (SELECT num FROM total) > (SELECT num FROM finished) AND (SELECT num FROM finished) > 0 THEN %d
 			END
 		)
 		WHERE id = %d`,
-		taskId, taskId, TaskStatusFinished, taskId, TaskStatusFailed,
-		TaskStatusFinished, TaskStatusFailed, TaskStatusPartlyFinished, taskId)
+		taskId,
+		taskId, TaskStatusFinished,
+		taskId, TaskStatusFailed,
+		taskId, TaskStatusProcessing, TaskStatusWaiting,
+		taskId, TaskStatusPause,
+		TaskStatusProcessing,
+		TaskStatusPause,
+		TaskStatusFinished,
+		TaskStatusFailed,
+		TaskStatusPartlyFinished,
+		taskId)
 
 	result := r.GORM().WithContext(ctx).Exec(statement)
 	if result.Error != nil {

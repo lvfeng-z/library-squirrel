@@ -300,11 +300,17 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 		// 推送状态到前端
 		m.pusher.PushStateChange(taskId, newState)
 
-		// 刷新父任务状态
+		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
-				parent.RefreshState()
-				m.pusher.PushStateChange(parent.taskId, parent.GetState())
+				oldParentState, newParentState := parent.RefreshState()
+				if oldParentState != newParentState {
+					parentDbStatus := m.taskStateToDbStatus(newParentState)
+					if _, err := m.repo.SetTaskTreeStatus(context.Background(), []int64{parent.taskId}, parentDbStatus); err != nil {
+						logger.Log.Errorf("[TaskManager] 更新父任务 %d 状态到数据库失败: %v", parent.taskId, err)
+					}
+				}
+				m.pusher.PushStateChange(parent.taskId, newParentState)
 			}
 		}
 	})
@@ -331,6 +337,8 @@ func (m *Manager) taskStateToDbStatus(state TaskState) task.TaskStatusEnum {
 		return task.TaskStatusFinished
 	case TaskStateFailed:
 		return task.TaskStatusFailed
+	case TaskStatePartlyFinished:
+		return task.TaskStatusPartlyFinished
 	default:
 		return task.TaskStatusCreated
 	}

@@ -389,15 +389,13 @@ func (s *Service) SaveWorkInfo(ctx context.Context, work *entity.Work, resources
 
 // RefreshParentStatus 根据子任务状态刷新父任务状态
 func (s *Service) RefreshParentStatus(ctx context.Context, taskId int64) error {
-	// 获取任务
 	task, err := s.repo.GetById(ctx, taskId)
 	if err != nil {
 		return err
 	}
 
-	// 如果是子任务，刷新父任务状态
 	if task.Pid.Valid && task.Pid.Int64 != 0 {
-		_, err := s.repo.SetTaskTreeStatus(ctx, []int64{task.Pid.Int64}, TaskStatusProcessing)
+		_, err := s.repo.RefreshTaskStatus(ctx, task.Pid.Int64)
 		return err
 	}
 
