@@ -383,12 +383,16 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 		case dto2.SearchTypeLocalAuthor:
 			if cond.Operator == dto2.OperatorNotEqual {
 				whereClauses = append(whereClauses,
-					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.local_author_id = ?)", alias))
-				params = append(params, cond.Value)
+					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_author rwa
+						LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
+						WHERE rwa.work_id = %s.id AND (rwa.local_author_id = ? OR sa.local_author_id = ?))`, alias))
+				params = append(params, cond.Value, cond.Value)
 			} else {
 				whereClauses = append(whereClauses,
-					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.local_author_id = ?)", alias))
-				params = append(params, cond.Value)
+					fmt.Sprintf(`EXISTS(SELECT 1 FROM re_work_author rwa
+						LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
+						WHERE rwa.work_id = %s.id AND (rwa.local_author_id = ? OR sa.local_author_id = ?))`, alias))
+				params = append(params, cond.Value, cond.Value)
 			}
 
 		case dto2.SearchTypeSiteAuthor:
