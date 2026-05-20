@@ -3,11 +3,9 @@ import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
 import { ref } from 'vue'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models.ts'
 import lodash from 'lodash'
-import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import TreeNode from '../../model/util/TreeNode'
+import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TableColumnCtx, TreeNode as ElTreeNode } from 'element-plus'
-import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
-import { getPropByPath, setPropByPath } from '@renderer/utils/ObjectUtil.ts'
+import { getPropByPath } from '@renderer/utils/ObjectUtil.ts'
 import SlotDataTable from '@renderer/components/common/SlotDataTable.vue'
 
 // props
@@ -24,8 +22,6 @@ const props = withDefaults(
     border?: boolean
     stripe?: boolean
     search: (page: Page<Data>) => Promise<Page<Data> | undefined>
-    updateLoad?: (ids: (number | string)[]) => Promise<object[] | undefined>
-    updateProperties?: string[]
     createButton?: boolean
     pageSizes?: number[]
     searchButtonDisabled?: boolean
@@ -61,7 +57,6 @@ const emits = defineEmits([
 // 暴露
 defineExpose({
   doSearch,
-  refreshData,
   clearData,
   getVisibleRows,
   getSelectionRows,
@@ -123,51 +118,6 @@ function handleScroll() {
 function handleSortChange(sortData: { column: TableColumnCtx; prop: string; order: never }) {
   sort.value = { prop: sortData.prop, order: sortData.order as 'ascending' | 'descending' | null }
   emits('sortChange', sortData)
-}
-async function refreshData(waitingUpdateIds: number[] | string[], updateChildren: boolean) {
-  if (isNullish(props.updateLoad) || arrayIsEmpty(props.updateProperties)) {
-    return
-  }
-  const idsStr: (number | string)[] = waitingUpdateIds.map((id: number | string) => (typeof id === 'number' ? String(id) : id))
-  let waitingUpdateList: Data[]
-  waitingUpdateList = data.value.filter((row) => idsStr.includes(String(getPropByPath(row as object, props.dataKey))))
-  if (props.treeData && updateChildren) {
-    let tiledWaitingUpdate: TreeNode[] = []
-    tiledWaitingUpdate = tiledWaitingUpdate.concat(waitingUpdateList as TreeNode[])
-    for (let index = 0; index < tiledWaitingUpdate.length; index++) {
-      if (
-        Object.prototype.hasOwnProperty.call(tiledWaitingUpdate[index], 'children') &&
-        notNullish(tiledWaitingUpdate[index].children)
-      ) {
-        const children = tiledWaitingUpdate[index].children
-        if (Array.isArray(children)) {
-          tiledWaitingUpdate.push(...(children as TreeNode[]))
-        }
-      }
-    }
-    waitingUpdateList = tiledWaitingUpdate as Data[]
-  } else if (props.treeData) {
-    const waitingUpdateRootIds = waitingUpdateList.map((row) => getPropByPath(row as object, props.dataKey))
-    const waitingUpdateChildIds = waitingUpdateIds.filter((id) => !waitingUpdateRootIds.includes(id))
-    for (const id of waitingUpdateChildIds) {
-      const child = getNodeByPath(data.value, id, props.dataKey) as Data | undefined
-      if (notNullish(child)) {
-        waitingUpdateList.push(child)
-      }
-    }
-  }
-  const originalIds = waitingUpdateList.map((row) => getPropByPath(row as object, props.dataKey))
-  const newDataList = await props.updateLoad(originalIds)
-  if (arrayNotEmpty(newDataList)) {
-    for (const newData of newDataList) {
-      const waitingUpdate = waitingUpdateList.find((wu) => getPropByPath(newData, props.dataKey) == getPropByPath(wu as object, props.dataKey))
-      if (notNullish(waitingUpdate)) {
-        props.updateProperties.forEach((paramName) => {
-          setPropByPath(waitingUpdate as object, paramName, getPropByPath(newData, paramName))
-        })
-      }
-    }
-  }
 }
 function clearData() {
   data.value.length = 0

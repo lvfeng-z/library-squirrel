@@ -46,21 +46,23 @@ export function getNode<T extends TreeNode>(root: T, id: string | number): T | u
  * 按照指定路径递归查询节点
  * @param rows 节点列表
  * @param id 目标 id
- * @param idPath id 属性的路径（如 'taskProgress.task.id'），默认 'id'
+ * @param idGetter
+ * @param childrenGetter
  */
-export function getNodeByPath<T extends object>(
+export function getNodeByPath<T extends any>(
   rows: T[],
   id: string | number,
-  idPath: string = 'id'
+  idGetter: (node: T) => number | string | undefined,
+  childrenGetter: (node: T) => T[] | undefined
 ): T | undefined {
   for (let i = rows.length - 1; i >= 0; i--) {
     const node = rows[i]
-    if (getPropByPath<string | number>(node, idPath) === id) {
+    if (idGetter(node) === id) {
       return node
     }
-    const children = getPropByPath<object[]>(node, 'children')
+    const children = childrenGetter(node)
     if (notNullish(children) && Array.isArray(children)) {
-      const found = getNodeByPath(children as T[], id, idPath)
+      const found = getNodeByPath(children as T[], id, idGetter, childrenGetter)
       if (found !== undefined) return found
     }
   }

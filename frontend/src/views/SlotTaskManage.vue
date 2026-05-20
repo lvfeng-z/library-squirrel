@@ -8,6 +8,7 @@ import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/ut
 import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
+import { setPropByPath } from '@renderer/utils/ObjectUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
@@ -165,45 +166,6 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
   }
 }
 
-async function updateLoad(ids: (number | string)[]): Promise<object[] | undefined> {
-  const scheduleList: TaskScheduleDTO[] = []
-  const notFoundList: number[] = []
-  for (const id of ids) {
-    let tempStatus = useParentTaskStore().getTask(Number(id))
-    if (notNullish(tempStatus)) {
-      scheduleList.push(tempStatus)
-      continue
-    }
-    tempStatus = useTaskStore().getTask(Number(id))
-    if (notNullish(tempStatus)) {
-      scheduleList.push(tempStatus)
-      continue
-    }
-    notFoundList.push(typeof id === 'string' ? Number(id) : id)
-  }
-  if (arrayNotEmpty(notFoundList)) {
-    try {
-      const response = await taskApi.taskListStatus(notFoundList)
-      const responseScheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
-      if (arrayNotEmpty(responseScheduleList)) {
-        scheduleList.push(...responseScheduleList)
-      }
-    } catch {
-      // 查询状态失败，静默处理
-    }
-  }
-  if (arrayNotEmpty(scheduleList)) {
-    return scheduleList.map((schedule) => ({
-      taskProgress: {
-        task: { id: schedule.id, status: schedule.status },
-        total: schedule.total,
-        finished: schedule.finished
-      }
-    }))
-  }
-  return undefined
-}
-
 function getRowTaskId(row: any): number {
   return Number(row?.taskProgress?.task?.id ?? row?.id ?? 0)
 }
@@ -285,33 +247,75 @@ function handleDownloadDialog(_event: PointerEvent, isLocal: boolean, newState?:
 async function refreshTask() {
   if (!refreshing) {
     refreshing = true
-    const getRefreshTasks = (): number[] => {
+    const getActiveTaskIds = (): number[] => {
       const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
       return visibleRowsId.filter((id: number) => {
-        const taskProgressTree = getNodeByPath(dataList.value, id, 'taskProgress.task.id')
+        const taskProgressTree = getNodeByPath(dataList.value, id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
         const task = taskProgressTree?.taskProgress?.task
         return (
           notNullish(task) &&
           (task.status === TaskStatusEnum.WAITING ||
-              task.status === TaskStatusEnum.PROCESSING ||
-              task.status === TaskStatusEnum.PAUSE ||
-            useParentTaskStore().hasTask(task.id) ||
-            useTaskStore().hasTask(task.id))
+            task.status === TaskStatusEnum.PROCESSING ||
+            task.status === TaskStatusEnum.PAUSE ||
+            parentTaskStore.hasTask(task.id) ||
+            taskStore.hasTask(task.id))
         )
       })
     }
 
-    let refreshTasks: number[] = getRefreshTasks()
+    let activeTaskIds = getActiveTaskIds()
 
-    while (refreshTasks.length > 0) {
-      await taskManageSearchTable.value.refreshData(refreshTasks, false)
+    while (activeTaskIds.length > 0) {
+      await refreshRows(activeTaskIds)
       await new Promise((resolve) => setTimeout(resolve, 500))
       if (isNullish(taskManageSearchTable.value)) {
         break
       }
-      refreshTasks = getRefreshTasks()
+      activeTaskIds = getActiveTaskIds()
     }
     refreshing = false
+  }
+}
+
+async function refreshRows(ids: number[]) {
+  const scheduleList: TaskScheduleDTO[] = []
+  const notFoundList: number[] = []
+  for (const id of ids) {
+    let tempStatus = parentTaskStore.getTask(id)
+    if (notNullish(tempStatus)) {
+      scheduleList.push(tempStatus)
+      continue
+    }
+    tempStatus = taskStore.getTask(id)
+    if (notNullish(tempStatus)) {
+      scheduleList.push(tempStatus)
+      continue
+    }
+    notFoundList.push(id)
+  }
+  if (arrayNotEmpty(notFoundList)) {
+    try {
+      const response = await taskApi.taskListStatus(notFoundList)
+      const responseScheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
+      if (arrayNotEmpty(responseScheduleList)) {
+        scheduleList.push(...responseScheduleList)
+      }
+    } catch {
+      // 查询状态失败，静默处理
+    }
+  }
+  if (arrayNotEmpty(scheduleList)) {
+    for (const schedule of scheduleList) {
+      if (isNullish(schedule.id)) continue
+      const row = getNodeByPath(dataList.value, schedule.id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
+      if (notNullish(row?.taskProgress)) {
+        if (notNullish(row.taskProgress.task)) {
+          row.taskProgress.task.status = isNullish(schedule.status) ? invalidStatus : schedule.status
+        }
+        row.taskProgress.total = schedule.total
+        row.taskProgress.finished = schedule.finished
+      }
+    }
   }
 }
 
@@ -328,7 +332,7 @@ function startTask(row: TaskProgressTreeDTO, retry: boolean) {
     row.taskProgress.task.status = TaskStatusEnum.WAITING
   }
   if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
-    row.children.forEach((child) => {
+    row.children.filter(notNullish).forEach((child) => {
       if (child.taskProgress?.task) {
         child.taskProgress.task.status = TaskStatusEnum.WAITING
       }
@@ -417,8 +421,6 @@ async function handleSourceUrlInput() {
         class="task-manage-search-table"
         :selectable="true"
         :search="taskQueryParentPage"
-        :update-load="updateLoad"
-        :update-properties="['taskProgress.task.status', 'taskProgress.total', 'taskProgress.finished']"
         data-key="taskProgress.task.id"
         :row-class-name="rowClassName"
         :tree-lazy="true"
@@ -480,7 +482,7 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column label="创建时间" width="152" show-overflow-tooltip sortable="custom" align="center">
+        <el-table-column label="创建时间" width="165" show-overflow-tooltip sortable="custom" align="center">
           <template #header>
             <el-tag>创建时间</el-tag>
           </template>

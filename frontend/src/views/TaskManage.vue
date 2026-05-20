@@ -376,7 +376,7 @@ async function refreshTask() {
       const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
       // 利用树形工具找到所有id对应的数据，判断是否需要刷新
       return visibleRowsId.filter((id: number) => {
-        const taskProgressTree = getNodeByPath(dataList.value, id, 'taskProgress.task.id')
+        const taskProgressTree = getNodeByPath(dataList.value, id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
         const task = taskProgressTree?.taskProgress?.task
         return (
           notNullish(task) &&
