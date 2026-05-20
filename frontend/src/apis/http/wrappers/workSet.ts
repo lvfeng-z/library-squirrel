@@ -230,3 +230,17 @@ export async function workSetSetCover(
   }
   return { success: result.success, msg: result.msg ?? '' }
 }
+
+/**
+ * 获取作品关联的作品集列表
+ */
+export async function workSetListByWorkId(workId: number): Promise<ApiResponse<(WorkSetDTO | null)[]>> {
+  const result = await WorkSetHandler.ListWorkSetsByWorkId(workId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is WorkSetDTO => item !== null) ?? undefined }
+}

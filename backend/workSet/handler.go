@@ -97,6 +97,19 @@ func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *mod
 	return model.Success(data)
 }
 
+// ListWorkSetsByWorkId 获取作品关联的作品集列表
+func (h *Handler) ListWorkSetsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto2.WorkSetDTO] {
+	result, err := h.svc.ListWorkSetsByWorkId(ctx, workId)
+	if err != nil {
+		return model.HandleError[[]*dto2.WorkSetDTO](err)
+	}
+	data := make([]*dto2.WorkSetDTO, 0, len(result))
+	for _, ws := range result {
+		data = append(data, dto2.NewWorkSetDTO(ws))
+	}
+	return model.Success(data)
+}
+
 // LinkWorkToWorkSet 关联作品到作品集
 func (h *Handler) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.LinkWorkToWorkSet(ctx, workId, workSetId, 0))

@@ -2,7 +2,7 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
-import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, ResourceDTO, LocalAuthorDTO, SiteAuthorFullDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, ResourceDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
@@ -22,7 +22,7 @@ import RankedLocalAuthor from '@renderer/model/model/domain/RankedLocalAuthor.ts
 import RankedSiteAuthor from '@renderer/model/model/domain/RankedSiteAuthor.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
-import { localTagApi, siteTagApi, workApi } from '@renderer/apis/http'
+import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 
@@ -63,7 +63,8 @@ const apis = {
   reWorkTagLink: reWorkTagApi.reWorkTagLink,
   reWorkTagUnlink: reWorkTagApi.reWorkTagUnlink,
   workDeleteWorkAndSurroundingData: workApi.workDeleteWorkAndSurroundingData,
-  workGetFullWorkInfoById: workApi.workGetFullWorkInfoById
+  workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
+  workSetListByWorkId: workSetApi.workSetListByWorkId
 }
 // 主要容器的实例
 const infosRef = ref()
@@ -173,15 +174,31 @@ function refreshTags() {
   siteTags.value = isNullish(tempSiteTags) ? [] : tempSiteTags
 }
 // 刷新作品集
-function refreshWorkSets() {
-  // bindings WorkFullDTO 没有 workSets 字段，暂置空
-  workSets.value = []
+async function refreshWorkSets() {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) {
+    workSets.value = []
+    return
+  }
+  const response = await apis.workSetListByWorkId(workId)
+  if (ApiUtil.check(response)) {
+    const data = ApiUtil.data<WorkSetDTO[]>(response)
+    const tempWorkSets = data?.filter(notNullish).map(
+      (ws) =>
+        new SegmentedTagItem({
+          value: ws.id as number,
+          label: ws.siteWorkSetName ?? '',
+          disabled: false
+        })
+    )
+    workSets.value = isNullish(tempWorkSets) ? [] : tempWorkSets
+  }
 }
 // 刷新作品
 async function refreshWorkInfo() {
   await getWorkInfo()
   refreshTags()
-  refreshWorkSets()
+  await refreshWorkSets()
 }
 // 处理本地标签exchangeBox确认交换事件
 async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {

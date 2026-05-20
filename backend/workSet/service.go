@@ -67,6 +67,8 @@ type ReWorkWorkSetRepository interface {
 	DeleteByWorkSetId(ctx context.Context, workSetId int64) error
 	// ListByWorkSetId 查询作品集关联的所有作品ID
 	ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error)
+	// ListByWorkId 查询作品关联的所有作品集ID
+	ListByWorkId(ctx context.Context, workId int64) ([]int64, error)
 	// GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
 	GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*entity2.ReWorkWorkSet, error)
 	// UpdateSortOrders 批量更新排序顺序
@@ -223,6 +225,26 @@ func (s *Service) GetWorksByWorkSetId(ctx context.Context, workSetId int64) ([]*
 		return []*entity2.Work{}, nil
 	}
 	return s.workReader.ListByIds(ctx, workIds)
+}
+
+// ListWorkSetsByWorkId 获取作品关联的作品集列表
+func (s *Service) ListWorkSetsByWorkId(ctx context.Context, workId int64) ([]*entity2.WorkSet, error) {
+	workSetIds, err := s.reWorkWorkSetRepo.ListByWorkId(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+	if len(workSetIds) == 0 {
+		return []*entity2.WorkSet{}, nil
+	}
+	result := make([]*entity2.WorkSet, 0, len(workSetIds))
+	for _, id := range workSetIds {
+		ws, err := s.repo.GetById(ctx, id)
+		if err != nil {
+			continue
+		}
+		result = append(result, ws)
+	}
+	return result, nil
 }
 
 // SetCoverWork 设置作品集的封面作品

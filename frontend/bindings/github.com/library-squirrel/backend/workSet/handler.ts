@@ -94,11 +94,20 @@ export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellableProm
 }
 
 /**
+ * ListWorkSetsByWorkId 获取作品关联的作品集列表
+ */
+export function ListWorkSetsByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkSetDTO | null)[]> | null> {
+    return $Call.ByID(732496129, workId).then(($result: any) => {
+        return $$createType20($result);
+    });
+}
+
+/**
  * QueryPage 分页查询
  */
 export function QueryPage(page: model$0.Page<dto$0.WorkSetDTO> | null, query: $models.WorkSetQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkSetDTO> | null> | null> {
     return $Call.ByID(1196822459, page, query).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType24($result);
     });
 }
 
@@ -107,7 +116,7 @@ export function QueryPage(page: model$0.Page<dto$0.WorkSetDTO> | null, query: $m
  */
 export function QueryPageWithCover(page: model$0.Page<dto$0.WorkSetWithCoverDTO> | null, query: $models.WorkSetQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkSetWithCoverDTO> | null> | null> {
     return $Call.ByID(454983370, page, query).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType29($result);
     });
 }
 
@@ -193,12 +202,15 @@ const $$createType14 = $Create.Nullable($$createType13);
 const $$createType15 = $Create.Array($$createType14);
 const $$createType16 = model$0.ApiResponse.createFrom($$createType15);
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = model$0.Page.createFrom($$createType2);
-const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = model$0.ApiResponse.createFrom($$createType19);
-const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = dto$0.WorkSetWithCoverDTO.createFrom;
-const $$createType23 = model$0.Page.createFrom($$createType22);
+const $$createType18 = $Create.Array($$createType3);
+const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
+const $$createType20 = $Create.Nullable($$createType19);
+const $$createType21 = model$0.Page.createFrom($$createType2);
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = model$0.ApiResponse.createFrom($$createType22);
 const $$createType24 = $Create.Nullable($$createType23);
-const $$createType25 = model$0.ApiResponse.createFrom($$createType24);
-const $$createType26 = $Create.Nullable($$createType25);
+const $$createType25 = dto$0.WorkSetWithCoverDTO.createFrom;
+const $$createType26 = model$0.Page.createFrom($$createType25);
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = model$0.ApiResponse.createFrom($$createType27);
+const $$createType29 = $Create.Nullable($$createType28);
