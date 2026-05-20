@@ -154,10 +154,7 @@ async function handleSetCover() {
   try {
     const workId = checkedWorkIds.value[0]
     const workSetId = currentWorkSetId.value
-    const response = await apis.reWorkWorkSetSetCover({
-      workSetId,
-      workId
-    })
+    const response = await apis.reWorkWorkSetSetCover(workSetId, workId)
 
     if (ApiUtil.check(response)) {
       ElMessage({
