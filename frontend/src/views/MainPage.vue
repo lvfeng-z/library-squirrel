@@ -192,7 +192,7 @@ async function searchWorkSet(page: Page<WorkSetWithCoverDTO>): Promise<Page<Work
 async function queryWorkPage(next: boolean) {
   // 新查询重置查询条件
   if (!next) {
-    workPage.value = new Page<WorkFullDTO>()
+    workPage.value = newPage<WorkFullDTO>()
     workPage.value.pageSize = 12
     workList.value.length = 0
   }
