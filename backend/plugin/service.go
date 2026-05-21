@@ -77,12 +77,19 @@ type WorkDirProvider interface {
 	GetWorkDir() string
 }
 
+// PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、Slot 和启动子进程
+type PluginActivator interface {
+	// Activate 激活已安装的插件
+	Activate(plugin *entity2.Plugin) error
+}
+
 // Service 插件服务
 type Service struct {
-	repo           Repository
-	backupProvider BackupProvider
+	repo            Repository
+	backupProvider  BackupProvider
 	workDirProvider WorkDirProvider
-	onUnload       func(pluginPublicId string)
+	activator       PluginActivator
+	onUnload        func(pluginPublicId string)
 }
 
 // NewService 创建插件服务
@@ -98,6 +105,11 @@ func NewService(repo Repository, backupProvider BackupProvider, workDirProvider 
 // 回调负责停止子进程、注销注册中心等运行时清理
 func (s *Service) SetOnUnload(fn func(pluginPublicId string)) {
 	s.onUnload = fn
+}
+
+// SetActivator 设置插件激活器
+func (s *Service) SetActivator(activator PluginActivator) {
+	s.activator = activator
 }
 
 // GetById 根据ID获取
@@ -299,6 +311,14 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	}
 
 	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
+
+	// 激活插件
+	if s.activator != nil {
+		if err := s.activator.Activate(plugin); err != nil {
+			logger.Log.Warnf("插件激活失败: %s, %v", installDTO.PublicID, err)
+		}
+	}
+
 	return plugin, nil
 }
 

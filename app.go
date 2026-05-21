@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -206,7 +207,6 @@ func (app *App) loadInstalledPlugins() {
 		return
 	}
 
-	rootPath := util.RootPath()
 	runtimeLoaded := 0
 	pureUICount := 0
 
@@ -216,139 +216,164 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
-		// 跳过没有 PublicID 的插件
-		if !p.PublicID.Valid || p.PublicID.String == "" {
+		if err := app.activatePlugin(p); err != nil {
 			continue
 		}
 
-		// 跳过没有 RootPath 的插件
-		if !p.RootPath.Valid || p.RootPath.String == "" {
-			continue
-		}
-
-		publicId := p.PublicID.String
-		pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
-		logger.Log.Infof("正在加载插件: %s (root=%s)", publicId, pluginRootDir)
-
-		// 读取 plugin.json
+		// 统计类型
+		pluginRootDir := filepath.Join(util.RootPath(), p.RootPath.String)
 		manifestPath := filepath.Join(pluginRootDir, "plugin.json")
-		manifestBytes, err := os.ReadFile(manifestPath)
-		if err != nil {
-			logger.Log.Errorf("读取 plugin.json 失败 %s: %v", publicId, err)
-			continue
-		}
-
-		// 解析 manifest
+		manifestBytes, _ := os.ReadFile(manifestPath)
 		var manifest dto.PluginManifest
-		if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-			logger.Log.Errorf("解析 plugin.json 失败 %s: %v", publicId, err)
-			continue
-		}
-
-		ext := manifest.Extensions
-		if ext == nil {
-			logger.Log.Warnf("插件 %s 无扩展点，跳过", publicId)
-			continue
-		}
-
-		// 注册静态资源
-		var allowedDirs []string
-		if ext.StaticResources != nil {
-			allowedDirs = ext.StaticResources.Directories
-		}
-		version := ""
-		if p.Version.Valid {
-			version = p.Version.String
-		}
-		app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
-		logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
-
-		// 声明式注册 Slot
-		for _, slot := range ext.Slots {
-			slotConfig := base.NewSlotConfig()
-			slotConfig.ExtensionMetadata.ID = slot.ID
-			slotConfig.ExtensionMetadata.PluginID = p.GetID()
-			slotConfig.ExtensionMetadata.PluginPublicID = publicId
-			slotConfig.ExtensionMetadata.Name = slot.Name
-			slotConfig.ExtensionMetadata.Description = slot.Description
-			slotConfig.SlotType = base.SlotType(slot.SlotType)
-			slotConfig.ContentType = base.ContentType(slot.ContentType)
-			slotConfig.Content = resolveContentURLs(slot.Content, slot.ContentType, publicId, version)
-			slotConfig.Title = slot.Title
-			slotConfig.Order = slot.Order
-			slotConfig.Position = slot.Position
-			slotConfig.Width = slot.Width
-			slotConfig.Height = slot.Height
-			slotConfig.ViewId = slot.ViewId
-			slotConfig.ContributionId = slot.ContributionId
-
-			// 将相对路径的 Icon 转换为 URL
-			if slot.Icon != "" {
-				slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
-			}
-
-			extension := model.NewExtension(*slotConfig.ExtensionMetadata, slotConfig)
-			if err := app.SlotRegistry.Register(extension); err != nil {
-				logger.Log.Errorf("注册 Slot 失败 %s/%s: %v", publicId, slot.ID, err)
+		_ = json.Unmarshal(manifestBytes, &manifest)
+		if manifest.Extensions != nil {
+			hasRuntime := len(manifest.Extensions.TaskHandlers) > 0 || len(manifest.Extensions.SiteBrowsers) > 0
+			if hasRuntime {
+				runtimeLoaded++
+			} else {
+				pureUICount++
 			}
 		}
-
-		if len(ext.Slots) > 0 {
-			logger.Log.Infof("插件 %s: 已注册 %d 个 Slot", publicId, len(ext.Slots))
-		}
-
-		// 判断是否为纯 UI 插件（无运行时扩展点）
-		hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
-		if !hasRuntime {
-			pureUICount++
-			logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
-			continue
-		}
-
-		// 非纯 UI 插件：以子进程模式加载运行时
-		if !p.EntryPath.Valid || p.EntryPath.String == "" {
-			logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
-			continue
-		}
-
-		pluginPath := filepath.Join(rootPath, p.EntryPath.String)
-		pluginInfo := &extension2.PluginInfo{
-			ID:        p.GetID(),
-			PublicID:  publicId,
-			Name:      p.Name.String,
-			Version:   p.Version.String,
-			Author:    p.Author.String,
-			EntryPath: p.EntryPath.String,
-			RootPath:  p.RootPath.String,
-		}
-
-		pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
-			PluginInfo:          pluginInfo,
-			RootPath:            rootPath,
-			TaskHandlerRegistry: app.TaskHandlerRegistry,
-			SiteBrowserRegistry: app.SiteBrowserRegistry,
-			PluginData:          app.PluginService,
-			SecureStorage:       app.SecureStorageService,
-			WorkSetQuery:        app.WorkSetService,
-			SiteSave:            app.SiteService,
-			TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
-			UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
-		})
-
-		logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
-		if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
-			PluginInfo:           pluginInfo,
-			PluginCtx:            pluginCtx,
-			TaskHandlerRegistry:  app.TaskHandlerRegistry,
-			SiteBrowserRegistry:  app.SiteBrowserRegistry,
-		}); err != nil {
-			logger.Log.Errorf("加载插件失败 %s: %v", publicId, err)
-			continue
-		}
-		runtimeLoaded++
 	}
 
 	logger.Log.Infof("插件加载完成: %d 个运行时, %d 个纯 UI, 共 %d 个", runtimeLoaded, pureUICount, len(plugins))
+}
+
+// Activate 实现 PluginActivator 接口，激活单个插件
+func (app *App) Activate(p *entity2.Plugin) error {
+	return app.activatePlugin(p)
+}
+
+// activatePlugin 激活单个插件：读取 manifest、注册静态资源、注册 Slot、启动运行时子进程
+func (app *App) activatePlugin(p *entity2.Plugin) error {
+	// 跳过没有 PublicID 的插件
+	if !p.PublicID.Valid || p.PublicID.String == "" {
+		return fmt.Errorf("插件缺少 PublicID")
+	}
+
+	// 跳过没有 RootPath 的插件
+	if !p.RootPath.Valid || p.RootPath.String == "" {
+		return fmt.Errorf("插件缺少 RootPath")
+	}
+
+	rootPath := util.RootPath()
+	publicId := p.PublicID.String
+	pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
+	logger.Log.Infof("正在激活插件: %s (root=%s)", publicId, pluginRootDir)
+
+	// 读取 plugin.json
+	manifestPath := filepath.Join(pluginRootDir, "plugin.json")
+	manifestBytes, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("读取 plugin.json 失败 %s: %w", publicId, err)
+	}
+
+	// 解析 manifest
+	var manifest dto.PluginManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return fmt.Errorf("解析 plugin.json 失败 %s: %w", publicId, err)
+	}
+
+	ext := manifest.Extensions
+	if ext == nil {
+		logger.Log.Warnf("插件 %s 无扩展点，跳过", publicId)
+		return nil
+	}
+
+	// 注册静态资源
+	var allowedDirs []string
+	if ext.StaticResources != nil {
+		allowedDirs = ext.StaticResources.Directories
+	}
+	version := ""
+	if p.Version.Valid {
+		version = p.Version.String
+	}
+	app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
+	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
+
+	// 声明式注册 Slot
+	for _, slot := range ext.Slots {
+		slotConfig := base.NewSlotConfig()
+		slotConfig.ExtensionMetadata.ID = slot.ID
+		slotConfig.ExtensionMetadata.PluginID = p.GetID()
+		slotConfig.ExtensionMetadata.PluginPublicID = publicId
+		slotConfig.ExtensionMetadata.Name = slot.Name
+		slotConfig.ExtensionMetadata.Description = slot.Description
+		slotConfig.SlotType = base.SlotType(slot.SlotType)
+		slotConfig.ContentType = base.ContentType(slot.ContentType)
+		slotConfig.Content = resolveContentURLs(slot.Content, slot.ContentType, publicId, version)
+		slotConfig.Title = slot.Title
+		slotConfig.Order = slot.Order
+		slotConfig.Position = slot.Position
+		slotConfig.Width = slot.Width
+		slotConfig.Height = slot.Height
+		slotConfig.ViewId = slot.ViewId
+		slotConfig.ContributionId = slot.ContributionId
+
+		// 将相对路径的 Icon 转换为 URL
+		if slot.Icon != "" {
+			slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
+		}
+
+		extension := model.NewExtension(*slotConfig.ExtensionMetadata, slotConfig)
+		if err := app.SlotRegistry.Register(extension); err != nil {
+			logger.Log.Errorf("注册 Slot 失败 %s/%s: %v", publicId, slot.ID, err)
+		}
+	}
+
+	if len(ext.Slots) > 0 {
+		logger.Log.Infof("插件 %s: 已注册 %d 个 Slot", publicId, len(ext.Slots))
+	}
+
+	// 判断是否为纯 UI 插件（无运行时扩展点）
+	hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
+	if !hasRuntime {
+		logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
+		return nil
+	}
+
+	// 非纯 UI 插件：以子进程模式加载运行时
+	if !p.EntryPath.Valid || p.EntryPath.String == "" {
+		logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
+		return nil
+	}
+
+	pluginPath := filepath.Join(rootPath, p.EntryPath.String)
+	pluginInfo := &extension2.PluginInfo{
+		ID:        p.GetID(),
+		PublicID:  publicId,
+		Name:      p.Name.String,
+		Version:   p.Version.String,
+		Author:    p.Author.String,
+		EntryPath: p.EntryPath.String,
+		RootPath:  p.RootPath.String,
+	}
+
+	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
+		PluginInfo:          pluginInfo,
+		RootPath:            rootPath,
+		TaskHandlerRegistry: app.TaskHandlerRegistry,
+		SiteBrowserRegistry: app.SiteBrowserRegistry,
+		PluginData:          app.PluginService,
+		SecureStorage:       app.SecureStorageService,
+		WorkSetQuery:        app.WorkSetService,
+		SiteSave:            app.SiteService,
+		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
+		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
+	})
+
+	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
+	if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
+		PluginInfo:           pluginInfo,
+		PluginCtx:            pluginCtx,
+		TaskHandlerRegistry:  app.TaskHandlerRegistry,
+		SiteBrowserRegistry:  app.SiteBrowserRegistry,
+	}); err != nil {
+		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
+	}
+
+	return nil
 }
 
 // resolveContentURLs 将 Slot Content 中的相对路径转换为完整的 resource:// URL
@@ -527,6 +552,7 @@ func (app *App) initAdvancedServices() error {
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
+	app.PluginService.SetActivator(app)
 	app.PluginService.SetOnUnload(func(pluginPublicId string) {
 		app.pluginLoader.UnloadPlugin(pluginPublicId)
 		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
