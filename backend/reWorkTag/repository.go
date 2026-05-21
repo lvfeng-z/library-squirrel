@@ -3,18 +3,13 @@ package reWorkTag
 import (
 	"context"
 
+	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-)
-
-// TagType 标签类型
-const (
-	TagTypeLocal = 1
-	TagTypeSite  = 2
 )
 
 // ReWorkTagRepository 作品-标签关联仓储实现
@@ -36,9 +31,9 @@ func (r *ReWorkTagRepository) DeleteByWorkAndTag(ctx context.Context, workId int
 		Where("work_id = ?", workId)
 
 	switch tagType {
-	case TagTypeLocal:
+	case constant.LOCAL:
 		query = query.Where("local_tag_id = ?", tagId)
-	case TagTypeSite:
+	case constant.SITE:
 		query = query.Where("site_tag_id = ?", tagId)
 	default:
 		return nil
@@ -92,9 +87,9 @@ func (r *ReWorkTagRepository) GetByWorkAndTag(ctx context.Context, workId int64,
 		Where("work_id = ?", workId)
 
 	switch tagType {
-	case TagTypeLocal:
+	case constant.LOCAL:
 		query = query.Where("local_tag_id = ?", tagId)
-	case TagTypeSite:
+	case constant.SITE:
 		query = query.Where("site_tag_id = ?", tagId)
 	default:
 		return nil, nil
@@ -121,7 +116,7 @@ func (r *ReWorkTagRepository) CountByWorkId(ctx context.Context, workId int64) (
 // ListLocalTagIdsByWorkIds 批量查询多个作品关联的本地标签ID
 func (r *ReWorkTagRepository) ListLocalTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
 	type row struct {
-		WorkID    int64 `gorm:"column:work_id"`
+		WorkID     int64 `gorm:"column:work_id"`
 		LocalTagID int64 `gorm:"column:local_tag_id"`
 	}
 	var rows []row
@@ -144,7 +139,7 @@ func (r *ReWorkTagRepository) ListLocalTagIdsByWorkIds(ctx context.Context, work
 // ListSiteTagIdsByWorkIds 批量查询多个作品关联的站点标签ID
 func (r *ReWorkTagRepository) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error) {
 	type row struct {
-		WorkID   int64 `gorm:"column:work_id"`
+		WorkID    int64 `gorm:"column:work_id"`
 		SiteTagID int64 `gorm:"column:site_tag_id"`
 	}
 	var rows []row

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 )
 
@@ -115,7 +116,7 @@ func (s *Service) LinkTagToWork(ctx context.Context, workId int64, tagType int, 
 		LocalTagID: sql.NullInt64{Int64: 0, Valid: true},
 		SiteTagID:  sql.NullInt64{Int64: 0, Valid: true},
 	}
-	if tagType == TagTypeLocal {
+	if tagType == constant.LOCAL {
 		rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
 	} else {
 		rel.SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
@@ -135,15 +136,15 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int
 	}
 	rels := make([]*domain.ReWorkTag, len(tagIds))
 	for i, tagId := range tagIds {
-		rels[i] = &domain.ReWorkTag{
-			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			TagType:    sql.NullInt64{Int64: int64(tagType), Valid: true},
-			LocalTagID: sql.NullInt64{Int64: 0, Valid: true},
-			SiteTagID:  sql.NullInt64{Int64: 0, Valid: true},
-		}
-		if tagType == TagTypeLocal {
+		temp := domain.NewReWorkTag()
+		temp.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+		temp.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
+		rels[i] = temp
+		if tagType == constant.LOCAL {
 			rels[i].LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
+			rels[i].SiteTagID = sql.NullInt64{Valid: false}
 		} else {
+			temp.LocalTagID = sql.NullInt64{Valid: false}
 			rels[i].SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
 		}
 	}
