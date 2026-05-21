@@ -63,8 +63,8 @@ export async function localTagListByWorkId(workId: number): Promise<ApiResult<(L
 }
 
 /** 根据作品ID分页查询选择项 */
-export async function localTagQuerySelectItemPageByWorkId(page: Page<SelectItem>, query: LocalTagQueryDTO): Promise<ApiResult<Page<SelectItem>>> {
-  return requireResponse(await LocalTagHandler.QuerySelectItemPageByWorkId(page, query), '查询作品标签选择列表')
+export async function localTagQuerySelectItemPageByWorkId(page: Page<SelectItem>, query: LocalTagQueryDTO, boundOnWorkId: boolean | null): Promise<ApiResult<Page<SelectItem>>> {
+  return requireResponse(await LocalTagHandler.QuerySelectItemPageByWorkId(page, query, boundOnWorkId), '查询作品标签选择列表')
 }
 
 /** 分页查询包含基础标签信息的本地标签 */

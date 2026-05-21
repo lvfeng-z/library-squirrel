@@ -256,7 +256,7 @@ async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean
   const bindingsPage = new Page<SelectItem>()
   bindingsPage.pageNumber = page.pageNumber
   bindingsPage.pageSize = page.pageSize
-  const response = await apis.localTagQuerySelectItemPageByWorkId(bindingsPage, query)
+  const response = await apis.localTagQuerySelectItemPageByWorkId(bindingsPage, query, bounded)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     return isNullish(newPage) ? page : newPage

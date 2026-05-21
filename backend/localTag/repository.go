@@ -175,23 +175,20 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *datab
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[entity.LocalTag], error) {
-	// 添加 JOIN 和条件
-	opt.Joins = []clause.Expression{clause.Join{Type: clause.InnerJoin, Table: clause.Table{Name: "re_work_tag"}, ON: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "local_tag.id = re_work_tag.local_tag_id"}}}}}
-	opt.Conditions = append(opt.Conditions, clause.Eq{Column: "re_work_tag.work_id", Value: workId})
-
-	rawPage, err := r.BaseRepository.Page(ctx, opt)
-	if err != nil {
-		return nil, err
+func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[entity.LocalTag], error) {
+	// 构建 EXISTS / NOT EXISTS 子查询
+	if boundOnWorkId != nil && *boundOnWorkId {
+		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []interface{}{workId}})
+	} else if boundOnWorkId != nil && !*boundOnWorkId {
+		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "NOT EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []interface{}{workId}})
 	}
 
-	// 转换类型参数（保持兼容性）
-	return model.NewPage[entity.LocalTag](rawPage.Data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return r.BaseRepository.Page(ctx, opt)
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem], error) {
-	pageResult, err := r.QueryPageByWorkId(ctx, opt, workId)
+func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error) {
+	pageResult, err := r.QueryPageByWorkId(ctx, opt, workId, boundOnWorkId)
 	if err != nil {
 		return nil, err
 	}

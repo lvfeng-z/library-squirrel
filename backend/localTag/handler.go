@@ -134,7 +134,7 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
 		page = &model.Page[dto.SelectItem]{}
 	}
@@ -142,7 +142,7 @@ func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
-	return model.HandleResult(h.svc.QuerySelectItemPageByWorkId(ctx, domainPage, query))
+	return model.HandleResult(h.svc.QuerySelectItemPageByWorkId(ctx, domainPage, query, boundOnWorkId))
 }
 
 // UpdateLastUse 更新最后使用时间

@@ -88,8 +88,8 @@ export function QuerySelectItemPage(reqPage: model$0.Page<dto$0.SelectItem> | nu
 /**
  * QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
  */
-export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem> | null, query: $models.LocalTagQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
-    return $Call.ByID(4234642337, page, query).then(($result: any) => {
+export function QuerySelectItemPageByWorkId(page: model$0.Page<dto$0.SelectItem> | null, query: $models.LocalTagQueryDTO, boundOnWorkId: boolean | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
+    return $Call.ByID(4234642337, page, query, boundOnWorkId).then(($result: any) => {
         return $$createType21($result);
     });
 }

@@ -214,8 +214,16 @@ func applyQueryOption(db *gorm.DB, opt *QueryOption) *gorm.DB {
 	}
 
 	// 2. Joins（叠加型）
-	for _, join := range opt.Joins {
-		db = db.Clauses(join)
+	if len(opt.Joins) > 0 {
+		var joins []clause.Join
+		for _, join := range opt.Joins {
+			if j, ok := join.(clause.Join); ok {
+				joins = append(joins, j)
+			}
+		}
+		if len(joins) > 0 {
+			db = db.Clauses(clause.From{Joins: joins})
+		}
 	}
 
 	// 3. Conditions（叠加型）

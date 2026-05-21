@@ -48,9 +48,9 @@ type Repository interface {
 	// QuerySelectItemPage 分页查询选择项
 	QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem], error)
 	// QueryPageByWorkId 根据作品ID分页查询
-	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag], error)
+	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[domain.LocalTag], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[dto.SelectItem], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error)
 	// QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
 	QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO], error)
 }
@@ -239,12 +239,12 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
-func (s *Service) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64) (*model.Page[domain.LocalTag], error) {
-	return s.repo.QueryPageByWorkId(ctx, opt, workId)
+func (s *Service) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[domain.LocalTag], error) {
+	return s.repo.QueryPageByWorkId(ctx, opt, workId, boundOnWorkId)
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO) (*model.Page[dto.SelectItem], error) {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error) {
 	if query.WorkId.Value == nil {
 		return nil, errors.New("workId is required")
 	}
@@ -254,7 +254,7 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 		Page:        page.PageNumber,
 		PageSize:    page.PageSize,
 	}
-	return s.repo.QuerySelectItemPageByWorkId(ctx, opt, workId)
+	return s.repo.QuerySelectItemPageByWorkId(ctx, opt, workId, boundOnWorkId)
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
