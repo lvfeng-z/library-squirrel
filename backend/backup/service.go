@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"time"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 )
@@ -13,6 +15,8 @@ import (
 const (
 	// SourceTypePlugin 插件备份
 	SourceTypePlugin = 1
+	// BackupRootDirName 备份根目录名
+	BackupRootDirName = "backup"
 )
 
 // Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
@@ -35,13 +39,45 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// CreateBackup 创建备份
+// CreateBackup 创建备份，将源文件复制到 workdir/backup/YYYY/MM/DD/ 下
 func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
+	if !util.FileExists(sourcePath) {
+		return nil, fmt.Errorf("创建备份失败，源文件不存在: %s", sourcePath)
+	}
+
+	// 按日期构建备份目录：backup/YYYY/MM/DD/
+	now := time.Now()
+	relativeDir := filepath.Join(
+		BackupRootDirName,
+		fmt.Sprintf("%04d", now.Year()),
+		fmt.Sprintf("%02d", now.Month()),
+		fmt.Sprintf("%02d", now.Day()),
+	)
+	absoluteDir := filepath.Join(workDir, relativeDir)
+	if err := util.CreateDirIfNotExists(absoluteDir); err != nil {
+		return nil, err
+	}
+
+	// 处理文件名冲突
+	finalFileName := fileName
+	finalAbsolutePath := filepath.Join(absoluteDir, finalFileName)
+	for util.FileExists(finalAbsolutePath) {
+		finalFileName = addSuffix(finalFileName, fmt.Sprintf("_%d", util.GetCurrentTimestamp()))
+		finalAbsolutePath = filepath.Join(absoluteDir, finalFileName)
+		logger.Log.Infof("文件已存在，尝试文件名: %s", finalFileName)
+	}
+
+	// 复制源文件到备份目录
+	if err := util.CopyFile(sourcePath, finalAbsolutePath); err != nil {
+		return nil, fmt.Errorf("创建备份失败，复制文件出错: %w", err)
+	}
+
+	// 保存备份记录，file_path 存储相对路径
 	backup := entity.NewBackup()
 	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
 	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
-	backup.FileName = sql.NullString{String: fileName, Valid: true}
-	backup.FilePath = sql.NullString{String: sourcePath, Valid: true}
+	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
+	backup.FilePath = sql.NullString{String: filepath.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
 	if err := s.repo.Save(ctx, backup); err != nil {
 		return nil, err
@@ -76,8 +112,9 @@ func (s *Service) GetBackupPath(backup *entity.Backup) string {
 	return filepath.Join(workdir, filePath)
 }
 
-// GenBackupFilePath 生成本次备份的文件路径
-func GenBackupFilePath(sourceType int, fileName string) string {
-	now := util.GetCurrentTimestamp()
-	return fmt.Sprintf("backup/%d/%d_%s", sourceType, now, fileName)
+// addSuffix 在文件名（不含扩展名）后添加后缀，保留扩展名
+func addSuffix(filename string, suffix string) string {
+	ext := filepath.Ext(filename)
+	name := filename[:len(filename)-len(ext)]
+	return name + suffix + ext
 }

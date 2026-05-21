@@ -71,18 +71,26 @@ type BackupProvider interface {
 	GetPluginBackup(ctx context.Context, sourceId int64) (*entity2.Backup, error)
 }
 
+// WorkDirProvider 工作目录提供者接口
+type WorkDirProvider interface {
+	// GetWorkDir 获取工作目录
+	GetWorkDir() string
+}
+
 // Service 插件服务
 type Service struct {
 	repo           Repository
 	backupProvider BackupProvider
+	workDirProvider WorkDirProvider
 	onUnload       func(pluginPublicId string)
 }
 
 // NewService 创建插件服务
-func NewService(repo Repository, backupProvider BackupProvider) *Service {
+func NewService(repo Repository, backupProvider BackupProvider, workDirProvider WorkDirProvider) *Service {
 	return &Service{
-		repo:           repo,
-		backupProvider: backupProvider,
+		repo:            repo,
+		backupProvider:  backupProvider,
+		workDirProvider: workDirProvider,
 	}
 }
 
@@ -240,21 +248,20 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 		uninstalledPlugin = existing
 	}
 
-	// 获取工作目录
+	// 创建备份（备份存储在用户数据目录）
 	workDir := s.getWorkDir()
 	if workDir == "" {
 		workDir = "."
 	}
-
-	// 创建备份
 	backup, err := s.backupProvider.CreatePluginBackup(ctx, 0, filepath.Base(installDTO.PackagePath), installDTO.PackagePath, workDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// 构建安装路径
+	// 构建安装路径（插件安装到应用根目录）
+	appRoot := s.getAppRoot()
 	pathRelative := filepath.Join(installDTO.PublicID, installDTO.Version)
-	installPath := filepath.Join(workDir, PluginPackageRoot, pathRelative)
+	installPath := filepath.Join(appRoot, PluginPackageRoot, pathRelative)
 
 	// 创建目录并解压
 	if err := util.CreateDirIfNotExists(installPath); err != nil {
@@ -400,15 +407,12 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	}
 
 	// 删除插件目录
-	workDir := s.getWorkDir()
-	if workDir == "" {
-		workDir = "."
-	}
+	appRoot := s.getAppRoot()
 	rootPath := ""
 	if plugin.RootPath.Valid {
 		rootPath = plugin.RootPath.String
 	}
-	pluginPath := filepath.Join(workDir, rootPath)
+	pluginPath := filepath.Join(appRoot, rootPath)
 	if err := util.RemoveDir(pluginPath); err != nil {
 		logger.Log.Warnf("删除插件目录失败: %v", err)
 	}
@@ -437,8 +441,18 @@ func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
 	return s.repo.Update(ctx, plugin)
 }
 
-// getWorkDir 获取工作目录
+// getWorkDir 获取用户数据目录，用于备份等用户数据存储
 func (s *Service) getWorkDir() string {
+	if s.workDirProvider != nil {
+		if wd := s.workDirProvider.GetWorkDir(); wd != "" {
+			return wd
+		}
+	}
+	return util.RootPath()
+}
+
+// getAppRoot 获取应用根目录，用于插件安装、卸载等程序文件操作
+func (s *Service) getAppRoot() string {
 	return util.RootPath()
 }
 

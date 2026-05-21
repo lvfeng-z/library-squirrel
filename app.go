@@ -526,7 +526,7 @@ func (app *App) initAdvancedServices() error {
 	// plugin 服务
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
-	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
+	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
 	app.PluginService.SetOnUnload(func(pluginPublicId string) {
 		app.pluginLoader.UnloadPlugin(pluginPublicId)
 		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
