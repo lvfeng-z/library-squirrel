@@ -420,7 +420,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           </el-descriptions-item>
         </el-descriptions>
       </el-scrollbar>
-      <el-anchor :container="infosRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30">
+      <el-anchor :container="infosRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30" @click="(e: MouseEvent) => e.preventDefault()">
         <el-anchor-link href="#author" title="作者" />
         <el-anchor-link href="#description" title="简介" />
         <el-anchor-link href="#localTag" title="本地标签" />

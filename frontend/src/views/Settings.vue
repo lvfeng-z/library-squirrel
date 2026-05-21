@@ -217,7 +217,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
     <template #default>
       <el-container class="settings-container">
         <el-main style="display: flex; flex-direction: row; padding: 0">
-          <el-anchor :container="containerRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30">
+          <el-anchor :container="containerRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30" @click="(e: MouseEvent) => e.preventDefault()">
             <el-anchor-link href="#basicSettings" title="基本设置" />
             <el-anchor-link href="#downloadSettings" title="下载" />
             <el-anchor-link href="#workSettings" title="作品" />
