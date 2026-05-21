@@ -120,6 +120,7 @@ func (r *BaseRepository[T]) Save(ctx context.Context, entity *T) error {
 		e.SetCreateTime(now)
 	}
 	e.SetUpdateTime(now)
+	*entity = e
 	return r.db.WithContext(ctx).Create(entity).Error
 }
 
@@ -135,6 +136,7 @@ func (r *BaseRepository[T]) SaveBatch(ctx context.Context, entities []*T) error 
 			e.SetCreateTime(now)
 		}
 		e.SetUpdateTime(now)
+		*entity = e
 	}
 	return r.db.WithContext(ctx).Create(entities).Error
 }
@@ -156,6 +158,7 @@ func (r *BaseRepository[T]) DeleteBatch(ctx context.Context, ids []int64) error 
 func (r *BaseRepository[T]) Update(ctx context.Context, entity *T) error {
 	e := *entity
 	e.SetUpdateTime(util.GetCurrentTimestamp())
+	*entity = e
 	return r.db.WithContext(ctx).Save(entity).Error
 }
 
@@ -168,6 +171,7 @@ func (r *BaseRepository[T]) UpdateBatch(ctx context.Context, entities []*T) erro
 	for _, entity := range entities {
 		e := *entity
 		e.SetUpdateTime(now)
+		*entity = e
 	}
 	return r.db.WithContext(ctx).Save(entities).Error
 }

@@ -260,16 +260,6 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 		uninstalledPlugin = existing
 	}
 
-	// 创建备份（备份存储在用户数据目录）
-	workDir := s.getWorkDir()
-	if workDir == "" {
-		workDir = "."
-	}
-	backup, err := s.backupProvider.CreatePluginBackup(ctx, 0, filepath.Base(installDTO.PackagePath), installDTO.PackagePath, workDir)
-	if err != nil {
-		return nil, err
-	}
-
 	// 构建安装路径（插件安装到应用根目录）
 	appRoot := s.getAppRoot()
 	pathRelative := filepath.Join(installDTO.PublicID, installDTO.Version)
@@ -292,7 +282,6 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
-	plugin.BackupID = sql.NullInt64{Int64: backup.ID, Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
 
 	if uninstalledPlugin != nil {
@@ -308,6 +297,20 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 		if err := s.repo.Save(ctx, plugin); err != nil {
 			return nil, err
 		}
+	}
+
+	// 创建备份（备份存储在workdir）
+	workDir := s.getWorkDir()
+	if workDir == "" {
+		workDir = "."
+	}
+	backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, filepath.Base(installDTO.PackagePath), installDTO.PackagePath, workDir)
+	if err != nil {
+		return nil, err
+	}
+	plugin.BackupID = sql.NullInt64{Int64: backup.ID, Valid: true}
+	if err := s.repo.Update(ctx, plugin); err != nil {
+		return nil, err
 	}
 
 	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
