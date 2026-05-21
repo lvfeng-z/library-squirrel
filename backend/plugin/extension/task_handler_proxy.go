@@ -1,148 +1,406 @@
 package extension
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"sync/atomic"
+	"sync"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	"github.com/lvfeng-z/library-squirrel-plugin-sdk/gen"
 )
 
-// TaskHandlerProxy 通过 JSON-RPC 代理到子进程的 TaskHandler
-// 实现 pluginsdk.TaskHandler 接口，由 taskHandlerAdapter 适配为 dto.TaskHandler
+// TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
 type TaskHandlerProxy struct {
-	process       *PluginProcess
+	loader         *Loader
+	pluginPublicId string
 	contributionId string
 }
 
-// Ensure TaskHandlerProxy implements pluginsdk.TaskHandler
 var _ pluginsdk.TaskHandler = (*TaskHandlerProxy)(nil)
 
-func (p *TaskHandlerProxy) Create(url string) ([]*pluginsdk.TaskCreateResponse, error) {
-	type params struct {
-		ContributionID string `json:"contributionId"`
-		URL            string `json:"url"`
+func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error) {
+	services, ok := p.loader.GetServices(p.pluginPublicId)
+	if !ok {
+		return nil, fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
-	var result []*pluginsdk.TaskCreateResponse
-	if err := p.process.rpcClient.Call("taskHandler/create",
-		params{ContributionID: p.contributionId, URL: url}, &result); err != nil {
+	return services.Task, nil
+}
+
+func (p *TaskHandlerProxy) Create(url string) ([]*pluginsdk.TaskCreateResponse, error) {
+	client, err := p.getTaskClient()
+	if err != nil {
 		return nil, err
+	}
+	resp, err := client.Create(context.Background(), &gen.CreateRequest{
+		Url:           url,
+		ContributionId: p.contributionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*pluginsdk.TaskCreateResponse, len(resp.Responses))
+	for i, r := range resp.Responses {
+		children := make([]*pluginsdk.TaskCreateChildResponse, len(r.Children))
+		for j, c := range r.Children {
+			children[j] = &pluginsdk.TaskCreateChildResponse{
+				TaskName:   c.TaskName,
+				SiteWorkID: c.SiteWorkId,
+				URL:        c.Url,
+				PluginData: c.PluginData,
+				SiteName:   c.SiteName,
+			}
+		}
+		result[i] = &pluginsdk.TaskCreateResponse{
+			PluginTaskID: r.PluginTaskId,
+			TaskName:     r.TaskName,
+			SiteWorkID:   r.SiteWorkId,
+			URL:          r.Url,
+			PluginData:   r.PluginData,
+			SiteName:     r.SiteName,
+			Children:     children,
+		}
 	}
 	return result, nil
 }
 
 func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdk.Task) (*pluginsdk.WorkResponse, error) {
-	type params struct {
-		ContributionID string         `json:"contributionId"`
-		Task           *pluginsdk.Task `json:"task"`
-	}
-	var result *pluginsdk.WorkResponse
-	if err := p.process.rpcClient.Call("taskHandler/createWorkInfo",
-		params{ContributionID: p.contributionId, Task: task}, &result); err != nil {
+	client, err := p.getTaskClient()
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	resp, err := client.CreateWorkInfo(context.Background(), &gen.CreateWorkInfoRequest{
+		Task:          taskToProto(task),
+		ContributionId: p.contributionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return protoToWorkResponse(resp), nil
 }
 
 func (p *TaskHandlerProxy) Start(task *pluginsdk.Task) (io.ReadCloser, *pluginsdk.WorkResponse, error) {
-	// 生成 streamID 并预先注册流通道，避免竞态
-	streamID := generateStreamID()
-	ch := p.process.streamMgr.RegisterStream(streamID)
-
-	type params struct {
-		ContributionID string         `json:"contributionId"`
-		Task           *pluginsdk.Task `json:"task"`
-		StreamID       string         `json:"streamId"`
+	client, err := p.getTaskClient()
+	if err != nil {
+		return nil, nil, err
 	}
-	type result struct {
-		WorkResponse *pluginsdk.WorkResponse `json:"workResponse"`
-	}
-	var r result
-	if err := p.process.rpcClient.Call("taskHandler/start",
-		params{ContributionID: p.contributionId, Task: task, StreamID: streamID}, &r); err != nil {
-		p.process.streamMgr.UnregisterStream(streamID)
+	stream, err := client.Start(context.Background(), &gen.StartRequest{
+		Task:          taskToProto(task),
+		ContributionId: p.contributionId,
+	})
+	if err != nil {
 		return nil, nil, err
 	}
 
-	reader := NewStreamReader(ch, func() {
-		p.process.streamMgr.UnregisterStream(streamID)
-	}, p.process.streamMgr.GetCloseError)
-	return reader, r.WorkResponse, nil
+	// 读取第一个 chunk 获取 WorkResponse
+	chunk, err := stream.Recv()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	wrProto := chunk.GetWorkResponse()
+	if wrProto == nil {
+		return nil, nil, fmt.Errorf("first chunk must contain WorkResponse")
+	}
+	workResp := protoToWorkResponse(wrProto)
+
+	reader := &grpcStreamReader{stream: stream}
+	return reader, workResp, nil
 }
 
 func (p *TaskHandlerProxy) Retry(task *pluginsdk.Task) (*pluginsdk.WorkResponse, error) {
-	type params struct {
-		ContributionID string         `json:"contributionId"`
-		Task           *pluginsdk.Task `json:"task"`
-	}
-	var result *pluginsdk.WorkResponse
-	if err := p.process.rpcClient.Call("taskHandler/retry",
-		params{ContributionID: p.contributionId, Task: task}, &result); err != nil {
+	client, err := p.getTaskClient()
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	resp, err := client.Retry(context.Background(), &gen.RetryRequest{
+		Task:          taskToProto(task),
+		ContributionId: p.contributionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return protoToWorkResponse(resp), nil
 }
 
 func (p *TaskHandlerProxy) Pause(param *pluginsdk.TaskResParam) error {
-	type params struct {
-		ContributionID string                `json:"contributionId"`
-		Param          *pluginsdk.TaskResParam `json:"param"`
+	client, err := p.getTaskClient()
+	if err != nil {
+		return err
 	}
-	return p.process.rpcClient.Call("taskHandler/pause",
-		params{ContributionID: p.contributionId, Param: param}, nil)
+	_, err = client.Pause(context.Background(), &gen.TaskResParamMessage{
+		Param:         taskResParamToProto(param),
+		ContributionId: p.contributionId,
+	})
+	return err
 }
 
 func (p *TaskHandlerProxy) Stop(param *pluginsdk.TaskResParam) error {
-	type params struct {
-		ContributionID string                `json:"contributionId"`
-		Param          *pluginsdk.TaskResParam `json:"param"`
+	client, err := p.getTaskClient()
+	if err != nil {
+		return err
 	}
-	return p.process.rpcClient.Call("taskHandler/stop",
-		params{ContributionID: p.contributionId, Param: param}, nil)
+	_, err = client.Stop(context.Background(), &gen.TaskResParamMessage{
+		Param:         taskResParamToProto(param),
+		ContributionId: p.contributionId,
+	})
+	return err
 }
 
 func (p *TaskHandlerProxy) Resume(param *pluginsdk.TaskResParam) (*pluginsdk.WorkResponse, error) {
-	type params struct {
-		ContributionID string                `json:"contributionId"`
-		Param          *pluginsdk.TaskResParam `json:"param"`
-	}
-	var result *pluginsdk.WorkResponse
-	if err := p.process.rpcClient.Call("taskHandler/resume",
-		params{ContributionID: p.contributionId, Param: param}, &result); err != nil {
+	client, err := p.getTaskClient()
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	stream, err := client.Resume(context.Background(), &gen.TaskResParamMessage{
+		Param:         taskResParamToProto(param),
+		ContributionId: p.contributionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Resume 流式返回，读取第一个 chunk 获取 WorkResponse
+	chunk, err := stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	wrProto := chunk.GetWorkResponse()
+	if wrProto != nil {
+		return protoToWorkResponse(wrProto), nil
+	}
+	// 无 WorkResponse 时返回 nil
+	return nil, nil
 }
 
-// SiteBrowserProxy 通过 JSON-RPC 代理到子进程的 SiteBrowser
+// SiteBrowserProxy 通过 gRPC 代理到子进程的 SiteBrowser
 type SiteBrowserProxy struct {
-	process       *PluginProcess
+	loader         *Loader
+	pluginPublicId string
 	contributionId string
 }
 
-// Ensure SiteBrowserProxy implements pluginsdk.SiteBrowser
 var _ pluginsdk.SiteBrowser = (*SiteBrowserProxy)(nil)
 
 func (p *SiteBrowserProxy) Open() error {
-	type params struct {
-		ContributionID string `json:"contributionId"`
+	services, ok := p.loader.GetServices(p.pluginPublicId)
+	if !ok {
+		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
-	return p.process.rpcClient.Call("siteBrowser/open",
-		params{ContributionID: p.contributionId}, nil)
+	_, err := services.Browser.Open(context.Background(), &gen.BrowserRequest{
+		ContributionId: p.contributionId,
+	})
+	return err
 }
 
 func (p *SiteBrowserProxy) Close() error {
-	type params struct {
-		ContributionID string `json:"contributionId"`
+	services, ok := p.loader.GetServices(p.pluginPublicId)
+	if !ok {
+		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
-	return p.process.rpcClient.Call("siteBrowser/close",
-		params{ContributionID: p.contributionId}, nil)
+	_, err := services.Browser.Close(context.Background(), &gen.BrowserRequest{
+		ContributionId: p.contributionId,
+	})
+	return err
 }
 
-// streamIDCounter 用于生成唯一的流 ID
-var streamIDCounter atomic.Int64
+// ========== Proto 转换函数（proxy 专用）==========
 
-func generateStreamID() string {
-	id := streamIDCounter.Add(1)
-	return fmt.Sprintf("stream-%d", id)
+func taskToProto(t *pluginsdk.Task) *gen.Task {
+	if t == nil {
+		return nil
+	}
+	return &gen.Task{
+		Id:                   t.ID,
+		CreateTime:           t.CreateTime,
+		UpdateTime:           t.UpdateTime,
+		IsCollection:         t.IsCollection,
+		Pid:                  t.Pid,
+		TaskName:             t.TaskName,
+		SiteId:               t.SiteID,
+		SiteWorkId:           t.SiteWorkID,
+		Url:                  t.URL,
+		Status:               int32(t.Status),
+		PendingResourceId:    t.PendingResourceID,
+		Continuable:          t.Continuable,
+		PluginPublicId:       t.PluginPublicID,
+		PluginContributionId: t.PluginContributionID,
+		PluginData:           t.PluginData,
+		ErrorMessage:         t.ErrorMessage,
+	}
+}
+
+func taskResParamToProto(p *pluginsdk.TaskResParam) *gen.TaskResParam {
+	if p == nil {
+		return nil
+	}
+	return &gen.TaskResParam{
+		Task:         taskToProto(p.Task),
+		ResourceId:   p.ResourceID,
+		ResourcePath: p.ResourcePath,
+	}
+}
+
+func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
+	if pb == nil {
+		return nil
+	}
+	resp := &pluginsdk.WorkResponse{}
+	if pb.Work != nil {
+		resp.Work = &pluginsdk.Work{
+			ID:                   pb.Work.Id,
+			CreateTime:           pb.Work.CreateTime,
+			UpdateTime:           pb.Work.UpdateTime,
+			SiteID:               pb.Work.SiteId,
+			SiteWorkID:           pb.Work.SiteWorkId,
+			SiteWorkName:         pb.Work.SiteWorkName,
+			SiteAuthorID:         pb.Work.SiteAuthorId,
+			SiteWorkDescription:  pb.Work.SiteWorkDescription,
+			SiteUploadTime:       pb.Work.SiteUploadTime,
+			SiteUpdateTime:       pb.Work.SiteUpdateTime,
+			NickName:             pb.Work.NickName,
+			LocalAuthorID:        pb.Work.LocalAuthorId,
+			LastView:             pb.Work.LastView,
+		}
+	}
+	if pb.Site != nil {
+		resp.Site = &pluginsdk.SiteDTO{
+			ID:              pb.Site.Id,
+			SiteName:        pb.Site.SiteName,
+			SiteDescription: pb.Site.SiteDescription,
+			Homepage:        pb.Site.Homepage,
+			CreateTime:      pb.Site.CreateTime,
+			UpdateTime:      pb.Site.UpdateTime,
+		}
+	}
+	for _, a := range pb.LocalAuthors {
+		resp.LocalAuthors = append(resp.LocalAuthors, &pluginsdk.LocalAuthorDTO{
+			ID:         a.Id,
+			AuthorName: a.AuthorName,
+			Introduce:  a.Introduce,
+			LastUse:    a.LastUse,
+			CreateTime: a.CreateTime,
+			UpdateTime: a.UpdateTime,
+		})
+	}
+	for _, t := range pb.LocalTags {
+		resp.LocalTags = append(resp.LocalTags, &pluginsdk.LocalTagDTO{
+			ID:             t.Id,
+			LocalTagName:   t.LocalTagName,
+			BaseLocalTagID: t.BaseLocalTagId,
+			Description:    t.Description,
+			LastUse:        t.LastUse,
+			CreateTime:     t.CreateTime,
+			UpdateTime:     t.UpdateTime,
+		})
+	}
+	for _, a := range pb.SiteAuthors {
+		resp.SiteAuthors = append(resp.SiteAuthors, &pluginsdk.TaskSiteAuthorDTO{
+			SiteAuthorID: a.SiteAuthorId,
+			AuthorName:   a.AuthorName,
+			URL:          a.Url,
+		})
+	}
+	for _, t := range pb.SiteTags {
+		resp.SiteTags = append(resp.SiteTags, &pluginsdk.TaskSiteTagDTO{
+			SiteTagID:   t.SiteTagId,
+			TagName:     t.TagName,
+			Description: t.Description,
+			URL:         t.Url,
+		})
+	}
+	for _, ws := range pb.WorkSets {
+		resp.WorkSets = append(resp.WorkSets, &pluginsdk.TaskWorkSetDTO{
+			SiteWorkSetID: ws.SiteWorkSetId,
+			WorkSetName:   ws.WorkSetName,
+		})
+	}
+	if pb.Resource != nil {
+		resp.Resource = &pluginsdk.TaskResourceDTO{
+			ResourceID:   pb.Resource.ResourceId,
+			URL:          pb.Resource.Url,
+			Type:         pb.Resource.Type,
+			Format:       pb.Resource.Format,
+			LocalPath:    pb.Resource.LocalPath,
+			RemotePath:   pb.Resource.RemotePath,
+			Size:         pb.Resource.Size,
+			Completeness: int(pb.Resource.Completeness),
+		}
+	}
+	return resp
+}
+
+// ========== gRPC Stream Reader ==========
+
+// grpcStreamReader 从 gRPC server streaming 读取 StreamChunk，实现 io.ReadCloser
+type grpcStreamReader struct {
+	stream gen.TaskHandlerService_StartClient
+	buf    []byte
+	bufOff int
+	closed bool
+	readMu sync.Mutex
+}
+
+func (r *grpcStreamReader) Read(p []byte) (int, error) {
+	r.readMu.Lock()
+	defer r.readMu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	// 缓冲区有剩余数据
+	if r.bufOff < len(r.buf) {
+		n := copy(p, r.buf[r.bufOff:])
+		r.bufOff += n
+		return n, nil
+	}
+
+	// 从 gRPC stream 读取下一个 chunk
+	for {
+		chunk, err := r.stream.Recv()
+		if err == io.EOF {
+			r.closed = true
+			return 0, io.EOF
+		}
+		if err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.Canceled {
+				r.closed = true
+				return 0, io.EOF
+			}
+			return 0, err
+		}
+
+		switch payload := chunk.Payload.(type) {
+		case *gen.StreamChunk_Data:
+			n := copy(p, payload.Data)
+			if n < len(payload.Data) {
+				r.buf = payload.Data
+				r.bufOff = n
+			}
+			return n, nil
+		case *gen.StreamChunk_Eof:
+			r.closed = true
+			return 0, io.EOF
+		case *gen.StreamChunk_Error:
+			r.closed = true
+			return 0, fmt.Errorf("plugin stream error: %s", payload.Error)
+		case *gen.StreamChunk_WorkResponse:
+			// Start 的首个 chunk（WorkResponse）在 Start() 中已处理，后续不应再出现
+			continue
+		}
+	}
+}
+
+func (r *grpcStreamReader) Close() error {
+	r.readMu.Lock()
+	defer r.readMu.Unlock()
+	r.closed = true
+	return nil
 }
