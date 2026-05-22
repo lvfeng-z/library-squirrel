@@ -8,10 +8,9 @@ import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/ut
 import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
-import { setPropByPath } from '@renderer/utils/ObjectUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
-import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
+import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActiveV1.vue'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import NotificationItem from '@renderer/model/util/NotificationItem.ts'
@@ -20,11 +19,9 @@ import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
-import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
 import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/backend/task/models'
-import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
-import Plugin from '@renderer/model/model/entity/Plugin.ts'
+import type { PluginWithContributionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import {newPage} from "@renderer/utils/Pager.ts";
@@ -47,13 +44,13 @@ const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 const sort: Ref<{ prop: string; order: 'ascending' | 'descending' | null }> = ref({ prop: '', order: null })
 let refreshing: boolean = false
 const throttleRefreshTask = throttle(() => refreshTask(), 500, { leading: true, trailing: true })
-const dialogData: Ref<TaskTreeDTO> = ref(new TaskTreeDTO())
+const dialogData: Ref<TaskProgressTreeDTO> = ref(new TaskProgressTreeDTO())
 const taskDialogState: Ref<boolean> = ref(false)
 const downloadDialogState: Ref<boolean> = ref(false)
 const downloadMode: Ref<boolean> = ref(true)
 const downloadInputPlaceholder: Ref<string> = ref('')
 const sourceUrl: Ref<string> = ref('')
-const supportedPluginListenerList: Ref<Plugin[]> = ref([])
+const supportedPluginListenerList: Ref<PluginWithContributionVO[]> = ref([])
 const supportStatus: Ref<string> = ref('')
 const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
@@ -180,33 +177,33 @@ function rowClassName(data: { row: unknown; rowIndex: number }) {
   }
 }
 
-function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
+async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       dialogData.value = row
       taskDialogState.value = true
       break
     case TaskOperationCodeEnum.START:
-      startTask(row, false)
-      refreshTask()
+      await startTask(row, false)
+      await refreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
       taskApi.taskPauseTree(getRowTaskId(row))
-      refreshTask()
+      await refreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
       taskApi.taskResumeTree(getRowTaskId(row))
-      refreshTask()
+      await refreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
-      startTask(row, true)
-      refreshTask()
+      await startTask(row, true)
+      await refreshTask()
       break
     case TaskOperationCodeEnum.CANCEL:
       taskApi.taskStopTree(getRowTaskId(row))
       break
     case TaskOperationCodeEnum.DELETE:
-      deleteTask(getRowTaskId(row))
+      await deleteTask(getRowTaskId(row))
       break
     case TaskOperationCodeEnum.CONFIRM_REPLACE_RES:
       emits('openReplaceResConfirmDialog')
@@ -278,17 +275,12 @@ async function refreshTask() {
 }
 
 async function refreshRows(ids: number[]) {
-  const scheduleList: TaskScheduleDTO[] = []
+  const scheduleMap = new Map<number, { status: number | null | undefined; total: number | null | undefined; finished: number | null | undefined }>()
   const notFoundList: number[] = []
   for (const id of ids) {
-    let tempStatus = parentTaskStore.getTask(id)
-    if (notNullish(tempStatus)) {
-      scheduleList.push(tempStatus)
-      continue
-    }
-    tempStatus = taskStore.getTask(id)
-    if (notNullish(tempStatus)) {
-      scheduleList.push(tempStatus)
+    const storeTask = parentTaskStore.getTask(id) ?? taskStore.getTask(id)
+    if (notNullish(storeTask)) {
+      scheduleMap.set(storeTask.id!, { status: storeTask.status, total: storeTask.total, finished: storeTask.finished })
       continue
     }
     notFoundList.push(id)
@@ -296,48 +288,52 @@ async function refreshRows(ids: number[]) {
   if (arrayNotEmpty(notFoundList)) {
     try {
       const response = await taskApi.taskListStatus(notFoundList)
-      const responseScheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
-      if (arrayNotEmpty(responseScheduleList)) {
-        scheduleList.push(...responseScheduleList)
+      if (arrayNotEmpty(response.data)) {
+        for (const schedule of response.data) {
+          const taskId = schedule.task?.id
+          if (notNullish(taskId)) {
+            scheduleMap.set(taskId, { status: schedule.task?.status, total: schedule.total, finished: schedule.finished })
+          }
+        }
       }
     } catch {
       // 查询状态失败，静默处理
     }
   }
-  if (arrayNotEmpty(scheduleList)) {
-    for (const schedule of scheduleList) {
-      if (isNullish(schedule.id)) continue
-      const row = getNodeByPath(dataList.value, schedule.id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
-      if (notNullish(row?.taskProgress)) {
-        if (notNullish(row.taskProgress.task)) {
-          row.taskProgress.task.status = isNullish(schedule.status) ? invalidStatus : schedule.status
-        }
-        row.taskProgress.total = schedule.total
-        row.taskProgress.finished = schedule.finished
+  scheduleMap.forEach(({ status, total, finished }, taskId) => {
+    const row = getNodeByPath(dataList.value, taskId, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
+    if (notNullish(row?.taskProgress)) {
+      if (notNullish(row.taskProgress.task)) {
+        row.taskProgress.task.status = isNullish(status) ? invalidStatus : status
       }
+      row.taskProgress.total = total
+      row.taskProgress.finished = finished
     }
-  }
+  })
 }
 
 function handleScroll() {
   throttleRefreshTask()
 }
 
-function startTask(row: TaskProgressTreeDTO, retry: boolean) {
+async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<boolean> {
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  apiCall(getRowTaskId(row)).catch((e: Error) => {
-    ElMessage.error(e.message)
-  })
-  if (row.taskProgress?.task) {
-    row.taskProgress.task.status = TaskStatusEnum.WAITING
+  try {
+    await apiCall(getRowTaskId(row))
+    return true
+  } catch (e) {
+    return false
   }
-  if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
-    row.children.filter(notNullish).forEach((child) => {
-      if (child.taskProgress?.task) {
-        child.taskProgress.task.status = TaskStatusEnum.WAITING
-      }
-    })
-  }
+  // if (row.taskProgress?.task) {
+  //   row.taskProgress.task.status = TaskStatusEnum.WAITING
+  // }
+  // if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
+  //   row.children.filter(notNullish).forEach((child) => {
+  //     if (child.taskProgress?.task) {
+  //       child.taskProgress.task.status = TaskStatusEnum.WAITING
+  //     }
+  //   })
+  // }
 }
 
 async function deleteTask(id: number) {
@@ -349,10 +345,10 @@ async function deleteTask(id: number) {
   }
 }
 
-async function getUrlMatchedPlugin(url: string): Promise<Plugin[]> {
+async function getUrlMatchedPlugin(url: string): Promise<PluginWithContributionVO[]> {
   try {
     const response = await pluginTaskUrlListenerApi.listListener(url)
-    return response.data as unknown as Plugin[]
+    return response.data ?? []
   } catch {
     return []
   }

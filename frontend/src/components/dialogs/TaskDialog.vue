@@ -1,27 +1,27 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
-import { computed, h, nextTick, Ref, ref, VNode } from 'vue'
+import {computed, h, nextTick, Ref, ref, toRaw, VNode} from 'vue'
 import SearchTable from '../common/SearchTable.vue'
 import { Thead } from '../../model/util/Thead'
 import { TaskStatusEnum } from '../../constants/TaskStatusEnum.ts'
 import { ElMessage, ElTag } from 'element-plus'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import { getNode } from '@renderer/utils/TreeUtil.ts'
-import { throttle } from 'lodash'
+import {getNode, getNodeByPath} from '@renderer/utils/TreeUtil.ts'
+import lodash, { throttle } from 'lodash'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
-import Page from '@renderer/model/util/Page.ts'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
-import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
+import { TaskProgressTreeDTO, TaskProgressDTO, TaskDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task/models'
-import Task from '@renderer/model/model/entity/Task.ts'
-import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
+import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { taskApi } from '@renderer/apis/http'
 import {QueryAttribute} from "@bindings/github.com/library-squirrel/backend/base/query";
+import {newPage} from "@renderer/utils/Pager.ts";
+import {useTaskStore} from "@renderer/store/UseTaskStore.ts";
+import {useParentTaskStore} from "@renderer/store/UseParentTaskStore.ts";
 
 // props
 const props = defineProps<{
@@ -30,7 +30,7 @@ const props = defineProps<{
 
 // model
 // 表单数据
-const formData: Ref<TaskTreeDTO> = defineModel('formData', { type: Object, required: true })
+const formData: Ref<TaskProgressTreeDTO> = defineModel('formData', { type: Object, required: true })
 // 弹窗开关
 const state = defineModel<boolean>('state', { required: true })
 
@@ -38,7 +38,7 @@ const state = defineModel<boolean>('state', { required: true })
 // childTaskSearchTable组件的实例
 const childTaskSearchTable = ref()
 // 下级任务
-const children: Ref<TaskTreeDTO[]> = ref([])
+const children: Ref<TaskProgressTreeDTO[]> = ref([])
 // 表头
 const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
   new Thead({
@@ -145,28 +145,32 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
 // 任务查询的参数
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 // 任务SearchTable的分页
-const page: Ref<Page<Task>> = ref(new Page<Task>())
+const page: Ref<Page<TaskProgressTreeDTO>> = ref(newPage<TaskProgressTreeDTO>())
 // 改变的行数据
 const changedRows: Ref<object[]> = ref([])
 // 是否正在刷新数据
 let refreshing: boolean = false
 // 防抖动refreshTask
 const throttleRefreshTask = throttle(() => refreshTask(), 500, { leading: true, trailing: true })
+const formTask = computed(() => formData.value.taskProgress?.task ?? new TaskDTO())
 // 是否为父任务
-const isParent = computed(() => notNullish(formData.value.isCollection) && Boolean(formData.value.isCollection))
-let parentCache: TaskTreeDTO | undefined = undefined
+const isParent = computed(() => notNullish(formTask.value.isCollection) && Boolean(formTask.value.isCollection))
+let parentCache: TaskProgressTreeDTO | undefined = undefined
+const taskStore = useTaskStore()
+const parentTaskStore = useParentTaskStore()
 
 // 方法
 // 分页查询子任务的函数
 async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<object> | undefined> {
   const query = new TaskQueryDTO()
-  const pid = formData.value.id
+  const pid = formTask.value.id
   if (isNullish(pid)) {
     return undefined
   }
   query.pid = new QueryAttribute({value: pid})
+  const tempPage = toRaw(page)
   try {
-    const response = await taskApi.taskQueryChildrenTaskPage(pid, page.pageNumber, page.pageSize, query as Record<string, unknown>)
+    const response = await taskApi.taskQueryChildrenTaskPage(tempPage, query)
     return response.data as unknown as Page<object>
   } catch (e: any) {
     ElMessage.error(e.message)
@@ -174,11 +178,10 @@ async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<objec
   }
 }
 // 更新进度的数据加载函数
-async function updateLoad(ids: (number | string)[]): Promise<TaskScheduleDTO[] | undefined> {
+async function updateLoad(ids: (number | string)[]): Promise<TaskProgressDTO[] | undefined> {
   try {
-    const response = await taskApi.taskListStatus(ids)
-    const scheduleList = response.data?.map((d: any) => new TaskScheduleDTO(d))
-    return arrayNotEmpty(scheduleList) ? scheduleList : undefined
+    const response = await taskApi.taskListStatus(ids as number[])
+    return arrayNotEmpty(response.data) ? response.data : undefined
   } catch {
     return undefined
   }
@@ -196,22 +199,23 @@ async function refreshTask() {
   if (!refreshing) {
     refreshing = true
     // 获取需要刷新的任务
-    const getRefreshTasks = (): number[] => {
-      // 获取可视区域及附近的行id
+    const getActiveTaskIds = (): number[] => {
       const visibleRowsId = childTaskSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
-      // 利用树形工具找到所有id对应的数据，判断是否需要刷新
-      const tempRoot = new TaskTreeDTO()
-      tempRoot.children = children.value
       return visibleRowsId.filter((id: number) => {
-        const task = getNode<TaskTreeDTO>(tempRoot, id)
+        const taskProgressTree = getNodeByPath(children.value, id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
+        const task = taskProgressTree?.taskProgress?.task
         return (
-          notNullish(task) &&
-          (task.status === TaskStatusEnum.WAITING || task.status === TaskStatusEnum.PROCESSING || task.status === TaskStatusEnum.PAUSE)
+            notNullish(task) &&
+            (task.status === TaskStatusEnum.WAITING ||
+                task.status === TaskStatusEnum.PROCESSING ||
+                task.status === TaskStatusEnum.PAUSE ||
+                parentTaskStore.hasTask(task.id) ||
+                taskStore.hasTask(task.id))
         )
       })
     }
 
-    let refreshTasks: number[] = getRefreshTasks()
+    let refreshTasks: number[] = getActiveTaskIds()
 
     while (refreshTasks.length > 0) {
       await childTaskSearchTable.value.refreshData(refreshTasks, false)
@@ -219,7 +223,7 @@ async function refreshTask() {
       if (isNullish(childTaskSearchTable.value)) {
         break
       }
-      refreshTasks = getRefreshTasks()
+      refreshTasks = getActiveTaskIds()
     }
     refreshing = false
   }
@@ -229,7 +233,8 @@ function handleScroll() {
   throttleRefreshTask()
 }
 // 处理操作栏按钮点击事件
-function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeEnum) {
+function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
+  const rowTaskId = row.taskProgress?.task?.id
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       parentCache = formData.value
@@ -241,11 +246,11 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      taskApi.taskPauseTree(row.id)
+      if (notNullish(rowTaskId)) taskApi.taskPauseTree(rowTaskId)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      taskApi.taskResumeTree(row.id)
+      if (notNullish(rowTaskId)) taskApi.taskResumeTree(rowTaskId)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -255,7 +260,7 @@ function handleOperationButtonClicked(row: TaskTreeDTO, code: TaskOperationCodeE
     case TaskOperationCodeEnum.CANCEL:
       break
     case TaskOperationCodeEnum.DELETE:
-      deleteTask(row.id as number)
+      if (notNullish(rowTaskId)) deleteTask(rowTaskId)
       break
     default:
       break
@@ -299,14 +304,22 @@ function getTaskStatusElTag(data: TaskStatusEnum): VNode {
   return h('div', { style: { display: 'flex', 'align-items': 'center', 'justify-content': 'center' } }, elTag)
 }
 // 开始任务
-function startTask(row: TaskTreeDTO, retry: boolean) {
+function startTask(row: TaskProgressTreeDTO, retry: boolean) {
+  const rowTaskId = row.taskProgress?.task?.id
+  if (isNullish(rowTaskId)) return
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  apiCall(row.id).catch((e: Error) => {
+  apiCall(rowTaskId).catch((e: Error) => {
     ElMessage.error(e.message)
   })
-  row.status = TaskStatusEnum.WAITING
-  if (row.isCollection && notNullish(row.children)) {
-    row.children.forEach((child) => (child.status = TaskStatusEnum.WAITING))
+  if (row.taskProgress?.task) {
+    row.taskProgress.task.status = TaskStatusEnum.WAITING
+  }
+  if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
+    row.children.filter(notNullish).forEach((child) => {
+      if (child.taskProgress?.task) {
+        child.taskProgress.task.status = TaskStatusEnum.WAITING
+      }
+    })
   }
 }
 // 删除任务
@@ -335,50 +348,50 @@ function toParent() {
         <el-row>
           <el-col>
             <el-form-item label="名称">
-              <el-input v-model="formData.taskName"></el-input>
+              <el-input v-model="formTask.taskName"></el-input>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col>
             <el-form-item label="来源">
-              <el-input v-model="formData.url"></el-input>
+              <el-input v-model="formTask.url"></el-input>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col :span="7">
             <el-form-item label="站点">
-              <el-input v-model="formData.siteId"></el-input>
+              <el-input v-model="formTask.siteId"></el-input>
             </el-form-item>
           </el-col>
           <el-col v-if="!isParent" :span="17">
             <el-form-item label="站点作品id">
-              <el-input v-model="formData.siteWorkId" />
+              <el-input v-model="formTask.siteWorkId" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col :span="3">
             <el-form-item label="状态">
-              <component :is="getTaskStatusElTag(formData.status as TaskStatusEnum)" />
+              <component :is="getTaskStatusElTag(formTask.status as TaskStatusEnum)" />
             </el-form-item>
           </el-col>
           <el-col :span="7">
             <el-form-item label="创建时间">
-              <el-date-picker v-model="formData.createTime" type="datetime"></el-date-picker>
+              <el-date-picker v-model="formTask.createTime" type="datetime"></el-date-picker>
             </el-form-item>
           </el-col>
           <el-col :span="7">
             <el-form-item label="修改时间">
-              <el-date-picker v-model="formData.updateTime" type="datetime"></el-date-picker>
+              <el-date-picker v-model="formTask.updateTime" type="datetime"></el-date-picker>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row v-if="isNotBlank(formData.errorMessage)">
+        <el-row v-if="isNotBlank(formTask.errorMessage)">
           <el-col>
             <el-form-item label="异常信息">
-              <el-input v-model="formData.errorMessage" type="textarea" autosize />
+              <el-input v-model="formTask.errorMessage" type="textarea" autosize />
             </el-form-item>
           </el-col>
         </el-row>
@@ -401,7 +414,7 @@ function toParent() {
         :changed-rows="changedRows"
         :custom-operation-button="true"
         :operation-width="163"
-        data-key="id"
+        data-key="taskProgress.task.id"
         @scroll="handleScroll"
       >
         <template #toolbarMain>
