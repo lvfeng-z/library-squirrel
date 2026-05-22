@@ -98,7 +98,7 @@ type ManagedTask struct {
 
 	// 回调函数
 	onStateChange func(taskId int64, oldState, newState TaskState)
-	onProgress    func(taskId int64, progress int) // 进度百分比
+	onProgress    func(taskId int64, total int64, finished int64)
 }
 
 // NewManagedTask 创建托管任务
@@ -231,9 +231,8 @@ func (m *ManagedTask) run() {
 					return
 				}
 				// 报告进度
-				if startResp.Resource.Size > 0 && m.onProgress != nil {
-					progress := int(float64(totalWritten) / float64(startResp.Resource.Size) * 100)
-					m.onProgress(m.taskId, progress)
+				if m.onProgress != nil {
+					m.onProgress(m.taskId, startResp.Resource.Size, totalWritten)
 				}
 			}
 			if readErr != nil {
@@ -361,7 +360,7 @@ func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState 
 }
 
 // SetOnProgress 设置进度回调
-func (m *ManagedTask) SetOnProgress(fn func(taskId int64, progress int)) {
+func (m *ManagedTask) SetOnProgress(fn func(taskId int64, total int64, finished int64)) {
 	m.onProgress = fn
 }
 
@@ -511,6 +510,17 @@ func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
 // GetState 获取父任务状态
 func (p *ParentTask) GetState() TaskState {
 	return TaskState(p.state.Load())
+}
+
+// AllChildrenTerminal 检查所有子任务是否都已进入终态
+func (p *ParentTask) AllChildrenTerminal() bool {
+	for _, child := range p.GetChildren() {
+		s := child.GetState()
+		if s != TaskStateFinished && s != TaskStateFailed {
+			return false
+		}
+	}
+	return true
 }
 
 // 任务管理错误定义

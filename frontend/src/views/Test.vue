@@ -1,147 +1,49 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
-import {getPropByPath} from "@renderer/utils/ObjectUtil.ts";
+import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
+import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 
-const treeData = ref([
-    {
-      p1: {
-        id: 1,
-        value: 1,
-        hasChildren: true
-      },
-      p2: {
-        value: 1.1
-      },
-      p3: {
-        children: [{
-          p1: {
-            id: 11,
-            value: 2
-          },
-          p2: {
-            value: 2.1
-          }
-        }]
-      },
-      hasChildren: true,
-      children: [{
-        p1: {
-          id: 11,
-          value: 2
-        },
-        p2: {
-          value: 2.1
-        }
-      }]
-    },
-    {
-      p1: {
-        id: 2,
-        value: 2,
-        hasChildren: true
-      },
-      p2: {
-        value: 2.1
-      },
-      p3: {
-        children: [{
-          p1: {
-            id: 22,
-            value: 2
-          },
-          p2: {
-            value: 2.1
-          }
-        }]
-      },
-      hasChildren: true,
-      children: [{
-        p1: {
-          id: 22,
-          value: 2
-        },
-        p2: {
-          value: 2.1
-        }
-      }]
-    },
-    {
-      p1: {
-        id: 3,
-        value: 3,
-        hasChildren: true
-      },
-      p2: {
-        value: 3.1
-      },
-      p3: {
-        children: [{
-          p1: {
-            id: 33,
-            value: 2
-          },
-          p2: {
-            value: 2.1
-          }
-        }]
-      },
-      hasChildren: true,
-      children: [{
-        p1: {
-          id: 33,
-          value: 2
-        },
-        p2: {
-          value: 2.1
-        }
-      }]
-    },
-    {
-      p1: {
-        id: 4,
-        value: 4,
-        hasChildren: true
-      },
-      p2: {
-        value: 4.1
-      },
-      p3: {
-        children: [{
-          p1: {
-            id: 44,
-            value: 2
-          },
-          p2: {
-            value: 2.1
-          }
-        }]
-      },
-      hasChildren: true,
-      children: [{
-        p1: {
-          id: 44,
-          value: 2
-        },
-        p2: {
-          value: 2.1
-        }
-      }]
-    }
-])
-const treeProps1 = ref({hasChildren: 'hasChildren', children: 'children'})
-const treeProps2 = ref({hasChildren: 'hasChildren', children: 'children'})
+const taskStore = useTaskStore()
+const parentTaskStore = useParentTaskStore()
+
+const taskEntries = computed(() => [...taskStore.tasks.entries()])
+const parentEntries = computed(() => [...parentTaskStore.parentTasks.entries()])
+
+const activeTab = ref('task')
 </script>
 
 <template>
   <base-subpage>
-    <el-table row-key="p1.id" :data="treeData" :tree-props="treeProps2">
-      <el-table-column>
-        <template #default="{ row }">
-          {{row}}
-        </template>
-      </el-table-column>
-    </el-table>
+    <el-tabs v-model="activeTab">
+      <el-tab-pane label="TaskStore" name="task">
+        <div style="margin-bottom: 8px; color: #888">共 {{ taskEntries.length }} 条</div>
+        <el-table :data="taskEntries" border size="small" style="width: 100%">
+          <el-table-column label="ID" prop="0" width="80" />
+          <el-table-column label="task" min-width="400">
+            <template #default="{ row }">
+              <pre style="margin: 0; white-space: pre-wrap; font-size: 12px">{{ JSON.stringify(row[1].task, null, 2) }}</pre>
+            </template>
+          </el-table-column>
+          <el-table-column label="notificationId" width="200">
+            <template #default="{ row }">
+              {{ row[1].notificationId ?? '-' }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane label="ParentTaskStore" name="parent">
+        <div style="margin-bottom: 8px; color: #888">共 {{ parentEntries.length }} 条</div>
+        <el-table :data="parentEntries" border size="small" style="width: 100%">
+          <el-table-column label="ID" prop="0" width="80" />
+          <el-table-column label="TaskProgressDTO" min-width="400">
+            <template #default="{ row }">
+              <pre style="margin: 0; white-space: pre-wrap; font-size: 12px">{{ JSON.stringify(row[1], null, 2) }}</pre>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
   </base-subpage>
 </template>
 

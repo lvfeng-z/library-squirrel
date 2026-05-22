@@ -1,150 +1,110 @@
 package taskManager
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"sync"
-	"time"
+	"github.com/library-squirrel/backend/base/logger"
 )
 
-// SSEvent SSE事件
-type SSEvent struct {
-	Type string // "state_change" | "progress" | "error"
-	Data interface{}
+// TaskProgressPusher 任务进度推送器接口
+type TaskProgressPusher interface {
+	PushStateChange(taskId int64, state TaskState)
+	PushParentStateChange(taskId int64, state TaskState)
+	PushProgress(taskId int64, total int64, finished int64)
+	PushError(taskId int64, err string)
+	PushTaskRemove(taskIds []int64)
+	PushParentTaskRemove(taskIds []int64)
 }
 
-// SSEProgressPusher SSE 进度推送器
-type SSEProgressPusher struct {
-	// 客户端连接Map
-	clients map[string]chan<- SSEvent
-	mu      sync.RWMutex
+// WailsEventEmitter Wails 事件发射器接口
+type WailsEventEmitter interface {
+	Emit(eventName string, data ...any) bool
 }
 
-// NewSSEProgressPusher 创建SSE推送器
-func NewSSEProgressPusher() *SSEProgressPusher {
-	return &SSEProgressPusher{
-		clients: make(map[string]chan<- SSEvent),
+// WailsTaskProgressPusher 基于 Wails Events 的任务进度推送器
+type WailsTaskProgressPusher struct {
+	emitter WailsEventEmitter
+}
+
+// NewWailsTaskProgressPusher 创建 Wails 任务进度推送器
+func NewWailsTaskProgressPusher(emitter WailsEventEmitter) *WailsTaskProgressPusher {
+	logger.Log.Info("[TaskPusher] 创建 WailsTaskProgressPusher")
+	return &WailsTaskProgressPusher{emitter: emitter}
+}
+
+// PushStateChange 推送任务状态变化到前端
+func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, state TaskState) {
+	dto := &taskStateDTO{
+		ID:     taskId,
+		Status: int(state),
 	}
+	data := []*taskStateDTO{dto}
+	ok := p.emitter.Emit("taskStatus-updateTask", data)
+	logger.Log.Infof("[TaskPusher] PushStateChange: taskId=%d, state=%d, emit=%v", taskId, state, ok)
 }
 
-// Register 注册客户端
-func (p *SSEProgressPusher) Register(clientId string) chan SSEvent {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	ch := make(chan SSEvent, 100) // 带缓冲channel
-	p.clients[clientId] = ch
-	return ch
-}
-
-// Unregister 取消注册
-func (p *SSEProgressPusher) Unregister(clientId string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.clients, clientId)
-}
-
-// PushStateChange 推送状态变化
-func (p *SSEProgressPusher) PushStateChange(taskId int64, state TaskState) {
-	event := SSEvent{
-		Type: "state_change",
-		Data: map[string]interface{}{
-			"taskId": taskId,
-			"state":  state,
-		},
+// PushProgress 推送下载进度到前端
+func (p *WailsTaskProgressPusher) PushProgress(taskId int64, total int64, finished int64) {
+	dto := &taskScheduleDTO{
+		ID:       taskId,
+		Total:    total,
+		Finished: finished,
 	}
-	p.broadcast(event)
+	data := []*taskScheduleDTO{dto}
+	ok := p.emitter.Emit("taskStatus-updateSchedule", data)
+	logger.Log.Infof("[TaskPusher] PushProgress: taskId=%d, total=%d, finished=%d, emit=%v", taskId, total, finished, ok)
 }
 
-// PushProgress 推送进度
-func (p *SSEProgressPusher) PushProgress(taskId int64, progress int) {
-	event := SSEvent{
-		Type: "progress",
-		Data: map[string]interface{}{
-			"taskId":   taskId,
-			"progress": progress,
-		},
-	}
-	p.broadcast(event)
+// PushError 推送错误到前端
+func (p *WailsTaskProgressPusher) PushError(taskId int64, err string) {
 }
 
-// PushError 推送错误
-func (p *SSEProgressPusher) PushError(taskId int64, err string) {
-	event := SSEvent{
-		Type: "error",
-		Data: map[string]interface{}{
-			"taskId": taskId,
-			"error":  err,
-		},
-	}
-	p.broadcast(event)
+// PushTaskRemove 通知前端移除任务
+func (p *WailsTaskProgressPusher) PushTaskRemove(taskIds []int64) {
+	ok := p.emitter.Emit("taskStatus-removeTask", taskIds)
+	logger.Log.Infof("[TaskPusher] PushTaskRemove: ids=%v, emit=%v", taskIds, ok)
 }
 
-// broadcast 向所有客户端广播事件
-func (p *SSEProgressPusher) broadcast(event SSEvent) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	for _, ch := range p.clients {
-		select {
-		case ch <- event:
-		default:
-			// channel 满了，跳过
-		}
-	}
+// PushParentTaskRemove 通知前端移除父任务
+func (p *WailsTaskProgressPusher) PushParentTaskRemove(taskIds []int64) {
+	ok := p.emitter.Emit("parentTaskStatus-removeParentTask", taskIds)
+	logger.Log.Infof("[TaskPusher] PushParentTaskRemove: ids=%v, emit=%v", taskIds, ok)
 }
 
-// SSEHandler SSE HTTP Handler
-// 用于处理前端的SSE连接请求
-func (p *SSEProgressPusher) SSEHandler(w http.ResponseWriter, r *http.Request) {
-	clientId := r.URL.Query().Get("clientId")
-	if clientId == "" {
-		http.Error(w, "clientId required", http.StatusBadRequest)
-		return
+// PushParentStateChange 推送父任务状态变化到前端
+func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, state TaskState) {
+	dto := &taskStateDTO{
+		ID:     taskId,
+		Status: int(state),
 	}
-
-	// 设置SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	// 注册客户端
-	ch := p.Register(clientId)
-	defer p.Unregister(clientId)
-
-	// 确保刷新
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "SSE not supported", http.StatusInternalServerError)
-		return
-	}
-
-	// 心跳 ticker
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	// 监听事件和心跳
-	for {
-		select {
-		case event, ok := <-ch:
-			if !ok {
-				return
-			}
-			data, _ := json.Marshal(event.Data)
-			fmt.Fprintf(w, "event: %s\n", event.Type)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
-
-		case <-ticker.C:
-			// 发送心跳
-			fmt.Fprintf(w, "event: heartbeat\n")
-			fmt.Fprintf(w, "data: {\"time\": %d}\n\n", time.Now().UnixMilli())
-			flusher.Flush()
-
-		case <-r.Context().Done():
-			return
-		}
-	}
+	data := []*taskStateDTO{dto}
+	ok := p.emitter.Emit("parentTaskStatus-updateParentTask", data)
+	logger.Log.Infof("[TaskPusher] PushParentStateChange: taskId=%d, state=%d, emit=%v", taskId, state, ok)
 }
+
+// taskStateDTO 任务状态推送 DTO
+type taskStateDTO struct {
+	ID     int64 `json:"id"`
+	Status int   `json:"status"`
+}
+
+// taskScheduleDTO 任务进度推送 DTO，对应前端 TaskScheduleDTO 的 flat 格式
+type taskScheduleDTO struct {
+	ID       int64 `json:"id"`
+	Total    int64 `json:"total"`
+	Finished int64 `json:"finished"`
+}
+
+// NoopProgressPusher 空推送器，用于测试或 emitter 未就绪时
+type NoopProgressPusher struct{}
+
+// NewNoopProgressPusher 创建空推送器
+func NewNoopProgressPusher() *NoopProgressPusher {
+	logger.Log.Warn("[TaskPusher] 创建 NoopProgressPusher（emitter 未就绪，事件将丢失）")
+	return &NoopProgressPusher{}
+}
+
+func (p *NoopProgressPusher) PushStateChange(int64, TaskState)      {}
+func (p *NoopProgressPusher) PushParentStateChange(int64, TaskState) {}
+func (p *NoopProgressPusher) PushProgress(int64, int64, int64)      {}
+func (p *NoopProgressPusher) PushError(int64, string)               {}
+func (p *NoopProgressPusher) PushTaskRemove([]int64)                {}
+func (p *NoopProgressPusher) PushParentTaskRemove([]int64)          {}

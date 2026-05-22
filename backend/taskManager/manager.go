@@ -15,6 +15,8 @@ type Repository interface {
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) ([]*domain.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
+	// SetStatus 设置指定任务的状态（不级联）
+	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
 }
 
 // WorkDirProvider 工作目录提供者接口
@@ -44,7 +46,7 @@ type Manager struct {
 	pluginExecFactory func(pluginPublicId string) (TaskExecutor, error)
 
 	// 进度推送器
-	pusher *SSEProgressPusher
+	pusher TaskProgressPusher
 
 	// Repository（任务数据库操作）
 	repo Repository
@@ -61,7 +63,7 @@ type Manager struct {
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher *SSEProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
 	return &Manager{
 		taskMap:                make(map[int64]*ManagedTask),
 		parentMap:              make(map[int64]*ParentTask),
@@ -130,18 +132,21 @@ func (m *Manager) startWithSemaphore(task *ManagedTask) {
 			}
 		}()
 
+		// 设置状态为等待
+		task.setState(TaskStateWaiting)
+
 		// 获取信号量
 		m.semaphore <- struct{}{}
 		defer func() { <-m.semaphore }()
-
-		// 设置状态为等待
-		task.setState(TaskStateWaiting)
 
 		// 启动任务
 		task.Start()
 
 		// 等待任务完成信号
 		<-task.Done()
+
+		// 清理已终态的子任务
+		m.cleanupFinishedTask(task)
 	}()
 }
 
@@ -239,8 +244,13 @@ func (m *Manager) GetTaskState(taskId int64) (TaskState, error) {
 }
 
 // GetPusher 获取进度推送器
-func (m *Manager) GetPusher() *SSEProgressPusher {
+func (m *Manager) GetPusher() TaskProgressPusher {
 	return m.pusher
+}
+
+// SetPusher 设置进度推送器（用于 emitter 延迟就绪时替换 Noop）
+func (m *Manager) SetPusher(pusher TaskProgressPusher) {
+	m.pusher = pusher
 }
 
 // IsIdle 检查任务管理器是否处于空闲状态（没有运行中的任务）
@@ -264,6 +274,30 @@ func (m *Manager) removeTask(taskId int64) {
 	delete(m.taskMap, taskId)
 }
 
+// cleanupFinishedTask 清理已终态的子任务，并检查父任务是否可清理
+func (m *Manager) cleanupFinishedTask(task *ManagedTask) {
+	// 从 taskMap 移除子任务
+	m.mu.Lock()
+	delete(m.taskMap, task.taskId)
+
+	// 检查父任务是否所有子任务已终态
+	if task.parentId != 0 {
+		parent, ok := m.parentMap[task.parentId]
+		if ok && parent.AllChildrenTerminal() {
+			delete(m.parentMap, task.parentId)
+			m.mu.Unlock()
+			m.pusher.PushParentTaskRemove([]int64{task.parentId})
+		} else {
+			m.mu.Unlock()
+		}
+	} else {
+		m.mu.Unlock()
+	}
+
+	// 通知前端移除子任务
+	m.pusher.PushTaskRemove([]int64{task.taskId})
+}
+
 func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -271,29 +305,29 @@ func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 	return managedTask, ok
 }
 
-func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
+func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	// 获取任务执行器
-	if !task.PluginPublicID.Valid {
+	if !t.PluginPublicID.Valid {
 		logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
 		return nil
 	}
-	pluginExec, err := m.pluginExecFactory(task.PluginPublicID.String)
+	pluginExec, err := m.pluginExecFactory(t.PluginPublicID.String)
 	if err != nil {
 		logger.Log.Errorf("获取任务执行器失败: %v", err)
 		return nil
 	}
 
 	parentId := int64(0)
-	if task.Pid.Valid {
-		parentId = task.Pid.Int64
+	if t.Pid.Valid {
+		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(task.GetID(), parentId, task, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider)
 
 	// 设置状态变化回调
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {
 		// 更新数据库
-		dbStatus := m.taskStateToDbStatus(newState)
-		if _, err := m.repo.SetTaskTreeStatus(context.Background(), []int64{taskId}, dbStatus); err != nil {
+		dbStatus := task.TaskStatusEnum(newState)
+		if err := m.repo.SetStatus(context.Background(), taskId, dbStatus); err != nil {
 			logger.Log.Errorf("[TaskManager] 更新任务 %d 状态到数据库失败: %v", taskId, err)
 		}
 
@@ -305,41 +339,21 @@ func (m *Manager) newManagedTask(task *domain.Task) *ManagedTask {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
 				oldParentState, newParentState := parent.RefreshState()
 				if oldParentState != newParentState {
-					parentDbStatus := m.taskStateToDbStatus(newParentState)
-					if _, err := m.repo.SetTaskTreeStatus(context.Background(), []int64{parent.taskId}, parentDbStatus); err != nil {
+					parentDbStatus := task.TaskStatusEnum(newParentState)
+					if err := m.repo.SetStatus(context.Background(), parent.taskId, parentDbStatus); err != nil {
 						logger.Log.Errorf("[TaskManager] 更新父任务 %d 状态到数据库失败: %v", parent.taskId, err)
 					}
 				}
-				m.pusher.PushStateChange(parent.taskId, newParentState)
+				m.pusher.PushParentStateChange(parent.taskId, newParentState)
 			}
 		}
 	})
 
+
+	// 设置进度回调
+	mt.SetOnProgress(func(taskId int64, total int64, finished int64) {
+		m.pusher.PushProgress(taskId, total, finished)
+	})
 	return mt
 }
 
-// taskStateToDbStatus 将 TaskState 转换为数据库 TaskStatusEnum
-func (m *Manager) taskStateToDbStatus(state TaskState) task.TaskStatusEnum {
-	switch state {
-	case TaskStateCreated:
-		return task.TaskStatusCreated
-	case TaskStateWaiting:
-		return task.TaskStatusWaiting
-	case TaskStateProcessing:
-		return task.TaskStatusProcessing
-	case TaskStatePausing:
-		return task.TaskStatusPause
-	case TaskStatePaused:
-		return task.TaskStatusPause
-	case TaskStateStopping:
-		return task.TaskStatusFailed
-	case TaskStateFinished:
-		return task.TaskStatusFinished
-	case TaskStateFailed:
-		return task.TaskStatusFailed
-	case TaskStatePartlyFinished:
-		return task.TaskStatusPartlyFinished
-	default:
-		return task.TaskStatusCreated
-	}
-}

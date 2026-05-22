@@ -40,17 +40,23 @@ const taskStatusMapping: {
     operation: TaskOperationCodeEnum.PAUSE,
     processing: true
   },
-  [TaskStatusEnum.WAITING_USER_INPUT]: {
-    tooltip: '等待用户操作',
-    icon: 'RefreshRight',
+  [TaskStatusEnum.PAUSING]: {
+    tooltip: '暂停中',
+    icon: 'Loading',
     operation: TaskOperationCodeEnum.PAUSE,
-    processing: false
+    processing: true
   },
-  [TaskStatusEnum.PAUSE]: {
+  [TaskStatusEnum.PAUSED]: {
     tooltip: '继续',
     icon: 'RefreshRight',
     operation: TaskOperationCodeEnum.RESUME,
     processing: false
+  },
+  [TaskStatusEnum.STOPPING]: {
+    tooltip: '停止中',
+    icon: 'Loading',
+    operation: TaskOperationCodeEnum.CANCEL,
+    processing: true
   },
   [TaskStatusEnum.FINISHED]: {
     tooltip: '再次下载',
@@ -135,7 +141,7 @@ function formatBytes(bytes: number) {
   <div>
     <el-button-group
       v-show="
-        ((row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PROCESSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.WAITING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSE) ||
+        ((row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PROCESSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.WAITING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSED && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.STOPPING) ||
         row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
@@ -161,7 +167,7 @@ function formatBytes(bytes: number) {
     <transition name="task-operation-bar-el-progress-fade">
       <div
         v-if="
-          ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSE) &&
+          ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSED || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.STOPPING) &&
           row.hasChildren
         "
       >
@@ -176,7 +182,7 @@ function formatBytes(bytes: number) {
     </transition>
     <el-progress
       v-show="
-        ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSE) &&
+        ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSED || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.STOPPING) &&
         !row.hasChildren
       "
       style="width: 100%"

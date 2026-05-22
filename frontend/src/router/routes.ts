@@ -94,16 +94,6 @@ export const routes: RouteRecordRaw[] = [
           order: 30
         }
       },
-      {
-        path: 'task',
-        name: 'TaskManage',
-        component: () => import('@renderer/views/TaskManage.vue'),
-        meta: {
-          title: '任务',
-          icon: 'List',
-          order: 40
-        }
-      },
       // 站点分组
       {
         path: 'site',

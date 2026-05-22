@@ -41,11 +41,23 @@ const taskStatusMapping: {
     operation: TaskOperationCodeEnum.PAUSE,
     processing: true
   },
-  [TaskStatusEnum.PAUSE]: {
+  [TaskStatusEnum.PAUSING]: {
+    tooltip: '暂停中',
+    icon: 'Loading',
+    operation: TaskOperationCodeEnum.PAUSE,
+    processing: true
+  },
+  [TaskStatusEnum.PAUSED]: {
     tooltip: '继续',
     icon: 'RefreshRight',
     operation: TaskOperationCodeEnum.RESUME,
     processing: false
+  },
+  [TaskStatusEnum.STOPPING]: {
+    tooltip: '停止中',
+    icon: 'Loading',
+    operation: TaskOperationCodeEnum.CANCEL,
+    processing: true
   },
   [TaskStatusEnum.FINISHED]: {
     tooltip: '再次下载',
@@ -65,12 +77,7 @@ const taskStatusMapping: {
     operation: TaskOperationCodeEnum.RETRY,
     processing: false
   },
-  [TaskStatusEnum.WAITING_USER_INPUT]: {
-    tooltip: '等待用户操作',
-    icon: 'QuestionFilled',
-    operation: TaskOperationCodeEnum.CONFIRM_REPLACE_RES,
-    processing: false
-  }
+
 }
 // 任务进度信息Store
 const taskStore = useTaskStore()
@@ -179,7 +186,7 @@ function formatBytes(bytes: number) {
   <div>
     <el-button-group
       v-show="
-        (status !== TaskStatusEnum.PROCESSING && status !== TaskStatusEnum.WAITING && status !== TaskStatusEnum.PAUSE) ||
+        (status !== TaskStatusEnum.PROCESSING && status !== TaskStatusEnum.WAITING && status !== TaskStatusEnum.PAUSED && status !== TaskStatusEnum.PAUSING && status !== TaskStatusEnum.STOPPING) ||
         row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
@@ -209,8 +216,9 @@ function formatBytes(bytes: number) {
           !(
             status === TaskStatusEnum.PROCESSING ||
             status === TaskStatusEnum.WAITING ||
-            status === TaskStatusEnum.PAUSE ||
-            status === TaskStatusEnum.WAITING_USER_INPUT
+            status === TaskStatusEnum.PAUSED ||
+            status === TaskStatusEnum.PAUSING ||
+            status === TaskStatusEnum.STOPPING
           ) || !row.hasChildren
       }"
     >
@@ -227,7 +235,7 @@ function formatBytes(bytes: number) {
     </div>
     <el-progress
       v-show="
-        (status === TaskStatusEnum.PROCESSING || status === TaskStatusEnum.WAITING || status === TaskStatusEnum.PAUSE) &&
+        (status === TaskStatusEnum.PROCESSING || status === TaskStatusEnum.WAITING || status === TaskStatusEnum.PAUSED || status === TaskStatusEnum.PAUSING || status === TaskStatusEnum.STOPPING) &&
         !row.hasChildren
       "
       style="width: 100%"

@@ -71,13 +71,6 @@ export function initBuiltinMenus() {
       isBuiltin: true
     },
     {
-      slotId: 'taskManage',
-      name: '任务',
-      component: () => import('@renderer/views/TaskManage.vue'),
-      order: 40,
-      isBuiltin: true
-    },
-    {
       slotId: 'slotTaskManage',
       name: '任务(Slot)',
       component: () => import('@renderer/views/SlotTaskManage.vue'),
@@ -198,14 +191,6 @@ export function initBuiltinMenus() {
       label: '收藏',
       order: 30,
       viewId: 'developing'
-    },
-    {
-      slotId: 'builtin-task',
-      index: 'task',
-      icon: markRaw(List),
-      label: '任务',
-      order: 40,
-      viewId: 'taskManage'
     },
     {
       slotId: 'builtin-slotTask',

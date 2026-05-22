@@ -100,6 +100,9 @@ type App struct {
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
+	// Wails 事件发射器（用于任务进度推送）
+	taskProgressEmitter taskManager.WailsEventEmitter
+
 	// Handlers（用于 Bind[] 参数）
 	LocalTagHandler              *localTag.Handler
 	LocalAuthorHandler           *localAuthor.Handler
@@ -181,10 +184,15 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
-// SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher
+// SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher 和 TaskProgressPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
 	pusher := extension2.NewWailsSlotPusher(emitter)
 	app.SlotRegistry.SetPusher(pusher)
+	app.taskProgressEmitter = emitter
+	// Manager 在 initAdvancedServices 中已创建（此时 emitter 尚未就绪），需要补设 pusher
+	if app.TaskManagerService != nil {
+		app.TaskManagerService.SetPusher(taskManager.NewWailsTaskProgressPusher(emitter))
+	}
 }
 
 // CreateAssetHandler 创建路由多路复用器并注册所有路由
@@ -577,7 +585,12 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	// taskManager 服务
-	taskManagerPusher := taskManager.NewSSEProgressPusher()
+	var taskManagerPusher taskManager.TaskProgressPusher
+	if app.taskProgressEmitter != nil {
+		taskManagerPusher = taskManager.NewWailsTaskProgressPusher(app.taskProgressEmitter)
+	} else {
+		taskManagerPusher = taskManager.NewNoopProgressPusher()
+	}
 	pluginExecFactory := func(pluginPublicId string) (taskManager.TaskExecutor, error) {
 		return extension2.NewTaskExecutor(app.pluginLoader), nil
 	}

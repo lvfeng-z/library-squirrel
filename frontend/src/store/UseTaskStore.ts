@@ -39,31 +39,34 @@ export const useTaskStore = defineStore('task', {
         if (isNullish(task.id)) {
           throw new Error('UseTaskStore: 更新任务失败，任务id为空')
         }
-        const taskStoreObj = this.tasks.get(task.id)
-        if (notNullish(taskStoreObj)) {
-          if (task.status !== taskStoreObj.task.status) {
-            // 任务状态变化为完成或失败，解决通知Store中该任务的Promise
-            if (notNullish(taskStoreObj.notificationId)) {
-              if (task.status === TaskStatusEnum.FINISHED) {
-                useNotificationStore().remove(taskStoreObj.notificationId, {
-                  type: 'success',
-                  msg: `任务【${taskStoreObj.task.taskName}】完成`
-                })
-              } else if (task.status === TaskStatusEnum.FAILED) {
-                useNotificationStore().remove(taskStoreObj.notificationId, {
-                  type: 'error',
-                  msg: `任务【${taskStoreObj.task.id}】失败`
-                })
-              }
+        let taskStoreObj = this.tasks.get(task.id)
+        // store 中不存在时自动添加
+        if (isNullish(taskStoreObj)) {
+          taskStoreObj = { task: new TaskProgressDTO(), notificationId: undefined }
+          this.tasks.set(task.id, taskStoreObj)
+        }
+        if (task.status !== taskStoreObj.task.status) {
+          // 任务状态变化为完成或失败，解决通知Store中该任务的Promise
+          if (notNullish(taskStoreObj.notificationId)) {
+            if (task.status === TaskStatusEnum.FINISHED) {
+              useNotificationStore().remove(taskStoreObj.notificationId, {
+                type: 'success',
+                msg: `任务【${taskStoreObj.task.taskName}】完成`
+              })
+            } else if (task.status === TaskStatusEnum.FAILED) {
+              useNotificationStore().remove(taskStoreObj.notificationId, {
+                type: 'error',
+                msg: `任务【${taskStoreObj.task.id}】失败`
+              })
             }
-            // 如果状态为进行中、等待中，就推送到通知Store中
-            if (
-              isNullish(taskStoreObj.notificationId) &&
-              (TaskStatusEnum.PROCESSING === task.status || TaskStatusEnum.WAITING === task.status)
-            ) {
-              const notificationItem = createNotificationItem(taskStoreObj.task)
-              taskStoreObj.notificationId = useNotificationStore().add(notificationItem)
-            }
+          }
+          // 如果状态为进行中、等待中，就推送到通知Store中
+          if (
+            isNullish(taskStoreObj.notificationId) &&
+            (TaskStatusEnum.PROCESSING === task.status || TaskStatusEnum.WAITING === task.status)
+          ) {
+            const notificationItem = createNotificationItem(taskStoreObj.task)
+            taskStoreObj.notificationId = useNotificationStore().add(notificationItem)
           }
           copyIgnoreUndefined(taskStoreObj.task, task)
         }
@@ -77,9 +80,15 @@ export const useTaskStore = defineStore('task', {
         }
         const task = this.getTask(scheduleDTO.id)
         if (notNullish(task)) {
-          task.status = scheduleDTO.status
-          task.total = scheduleDTO.total
-          task.finished = scheduleDTO.finished
+          if (notNullish(scheduleDTO.status)) {
+            task.status = scheduleDTO.status
+          }
+          if (notNullish(scheduleDTO.total)) {
+            task.total = scheduleDTO.total
+          }
+          if (notNullish(scheduleDTO.finished)) {
+            task.finished = scheduleDTO.finished
+          }
         }
       })
     },

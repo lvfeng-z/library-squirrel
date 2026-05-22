@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseSubpage from './BaseSubpage.vue'
-import { onMounted, Ref, ref } from 'vue'
+import { onMounted, onUnmounted, Ref, ref, watch } from 'vue'
 import SlotSearchTable from '../components/common/SlotSearchTable.vue'
 import DialogMode from '../model/util/DialogMode.ts'
 import { ElMessage, ElTag } from 'element-plus'
@@ -55,6 +55,51 @@ const supportStatus: Ref<string> = ref('')
 const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
 
+// 监听 store 变化，同步更新行数据中的 status
+const unwatchTaskStore = watch(
+  () => taskStore.tasks,
+  (tasks) => {
+    tasks.forEach((storeObj, taskId) => {
+      if (notNullish(storeObj.task?.status)) {
+        const row = findRowByTaskId(taskId)
+        if (notNullish(row?.taskProgress?.task) && row!.taskProgress!.task!.status !== storeObj.task.status) {
+          row!.taskProgress!.task!.status = storeObj.task.status
+        }
+      }
+    })
+  },
+  { deep: true }
+)
+
+const unwatchParentTaskStore = watch(
+  () => parentTaskStore.parentTasks,
+  (parentTasks) => {
+    parentTasks.forEach((storeTask, taskId) => {
+      if (notNullish(storeTask.status)) {
+        const row = findRowByTaskId(taskId)
+        if (notNullish(row?.taskProgress?.task) && row!.taskProgress!.task!.status !== storeTask.status) {
+          row!.taskProgress!.task!.status = storeTask.status
+        }
+      }
+    })
+  },
+  { deep: true }
+)
+
+onUnmounted(() => {
+  unwatchTaskStore()
+  unwatchParentTaskStore()
+})
+
+function findRowByTaskId(taskId: number): TaskProgressTreeDTO | undefined {
+  return getNodeByPath(
+    dataList.value,
+    taskId,
+    (task) => task.taskProgress?.task?.id,
+    (task) => task.children as TaskProgressTreeDTO[]
+  )
+}
+
 // 状态渲染辅助
 const invalidStatus = -1
 const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary' | 'danger'> = {
@@ -62,22 +107,24 @@ const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary
   [TaskStatusEnum.CREATED]: 'primary',
   [TaskStatusEnum.PROCESSING]: 'warning',
   [TaskStatusEnum.WAITING]: 'warning',
-  [TaskStatusEnum.PAUSE]: 'info',
+  [TaskStatusEnum.PAUSING]: 'warning',
+  [TaskStatusEnum.PAUSED]: 'info',
+  [TaskStatusEnum.STOPPING]: 'warning',
   [TaskStatusEnum.FINISHED]: 'success',
   [TaskStatusEnum.PARTLY_FINISHED]: 'success',
-  [TaskStatusEnum.FAILED]: 'danger',
-  [TaskStatusEnum.WAITING_USER_INPUT]: 'warning'
+  [TaskStatusEnum.FAILED]: 'danger'
 }
 const statusTextMap: Record<number, string> = {
   [invalidStatus]: '已创建',
   [TaskStatusEnum.CREATED]: '已创建',
   [TaskStatusEnum.PROCESSING]: '进行中',
   [TaskStatusEnum.WAITING]: '等待中',
-  [TaskStatusEnum.PAUSE]: '已暂停',
+  [TaskStatusEnum.PAUSING]: '暂停中',
+  [TaskStatusEnum.PAUSED]: '已暂停',
+  [TaskStatusEnum.STOPPING]: '停止中',
   [TaskStatusEnum.FINISHED]: '完成',
   [TaskStatusEnum.PARTLY_FINISHED]: '部分完成',
-  [TaskStatusEnum.FAILED]: '失败',
-  [TaskStatusEnum.WAITING_USER_INPUT]: '等待用户操作'
+  [TaskStatusEnum.FAILED]: '失败'
 }
 
 function formatDatetime(timestamp: number | null | undefined): string {
@@ -253,7 +300,9 @@ async function refreshTask() {
           notNullish(task) &&
           (task.status === TaskStatusEnum.WAITING ||
             task.status === TaskStatusEnum.PROCESSING ||
-            task.status === TaskStatusEnum.PAUSE ||
+            task.status === TaskStatusEnum.PAUSED ||
+            task.status === TaskStatusEnum.PAUSING ||
+            task.status === TaskStatusEnum.STOPPING ||
             parentTaskStore.hasTask(task.id) ||
             taskStore.hasTask(task.id))
         )
@@ -319,8 +368,8 @@ function handleScroll() {
 async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<boolean> {
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
   try {
-    await apiCall(getRowTaskId(row))
-    return true
+    const response = await apiCall(getRowTaskId(row))
+    return isNullish(response?.success) ? false : response.success
   } catch (e) {
     return false
   }
@@ -451,7 +500,7 @@ async function handleSourceUrlInput() {
                 <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
                 <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
                 <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>
-                <el-option :value="TaskStatusEnum.PAUSE" label="暂停"></el-option>
+                <el-option :value="TaskStatusEnum.PAUSED" label="暂停"></el-option>
                 <el-option :value="TaskStatusEnum.FINISHED" label="完成"></el-option>
                 <el-option :value="TaskStatusEnum.PARTLY_FINISHED" label="部分完成"></el-option>
                 <el-option :value="TaskStatusEnum.FAILED" label="失败"></el-option>

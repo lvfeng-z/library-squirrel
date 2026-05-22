@@ -1,10 +1,11 @@
 export enum TaskStatusEnum {
   CREATED = 0,
-  PROCESSING = 1,
-  WAITING = 2,
-  PAUSE = 3,
-  FINISHED = 4,
-  PARTLY_FINISHED = 5,
-  FAILED = 6,
-  WAITING_USER_INPUT = 7
+  WAITING = 1,
+  PROCESSING = 2,
+  PAUSING = 3,
+  PAUSED = 4,
+  STOPPING = 5,
+  FINISHED = 6,
+  FAILED = 7,
+  PARTLY_FINISHED = 8
 }

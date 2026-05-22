@@ -123,9 +123,17 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
           tagType = 'warning'
           tagText = '等待中'
           break
-        case TaskStatusEnum.PAUSE:
+        case TaskStatusEnum.PAUSING:
+          tagType = 'warning'
+          tagText = '暂停中'
+          break
+        case TaskStatusEnum.PAUSED:
           tagType = 'info'
           tagText = '已暂停'
+          break
+        case TaskStatusEnum.STOPPING:
+          tagType = 'warning'
+          tagText = '停止中'
           break
         case TaskStatusEnum.FINISHED:
           tagType = 'success'
@@ -138,10 +146,6 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
         case TaskStatusEnum.FAILED:
           tagType = 'danger'
           tagText = '失败'
-          break
-        case TaskStatusEnum.WAITING_USER_INPUT:
-          tagType = 'warning'
-          tagText = '等待用户操作'
           break
       }
       const elTag = h(ElTag, { type: tagType }, () => tagText)
@@ -382,7 +386,9 @@ async function refreshTask() {
           notNullish(task) &&
           (task.status === TaskStatusEnum.WAITING ||
               task.status === TaskStatusEnum.PROCESSING ||
-              task.status === TaskStatusEnum.PAUSE ||
+              task.status === TaskStatusEnum.PAUSED ||
+              task.status === TaskStatusEnum.PAUSING ||
+              task.status === TaskStatusEnum.STOPPING ||
             useParentTaskStore().hasTask(task.id) ||
             useTaskStore().hasTask(task.id))
         )
@@ -545,7 +551,7 @@ async function handleSourceUrlInput() {
                 <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
                 <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
                 <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>
-                <el-option :value="TaskStatusEnum.PAUSE" label="暂停"></el-option>
+                <el-option :value="TaskStatusEnum.PAUSED" label="暂停"></el-option>
                 <el-option :value="TaskStatusEnum.FINISHED" label="完成"></el-option>
                 <el-option :value="TaskStatusEnum.PARTLY_FINISHED" label="部分完成"></el-option>
                 <el-option :value="TaskStatusEnum.FAILED" label="失败"></el-option>

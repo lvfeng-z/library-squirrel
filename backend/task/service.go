@@ -29,18 +29,19 @@ var (
 	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
 )
 
-// TaskStatusEnum 任务状态枚举
+// TaskStatusEnum 任务状态枚举，与 taskManager.TaskState 保持一致
 type TaskStatusEnum int
 
 const (
-	TaskStatusCreated          TaskStatusEnum = 0
-	TaskStatusProcessing       TaskStatusEnum = 1
-	TaskStatusWaiting          TaskStatusEnum = 2
-	TaskStatusPause            TaskStatusEnum = 3
-	TaskStatusFinished         TaskStatusEnum = 4
-	TaskStatusPartlyFinished   TaskStatusEnum = 5
-	TaskStatusFailed           TaskStatusEnum = 6
-	TaskStatusWaitingUserInput TaskStatusEnum = 7
+	TaskStatusCreated        TaskStatusEnum = 0
+	TaskStatusWaiting        TaskStatusEnum = 1
+	TaskStatusProcessing     TaskStatusEnum = 2
+	TaskStatusPausing        TaskStatusEnum = 3
+	TaskStatusPaused         TaskStatusEnum = 4
+	TaskStatusStopping       TaskStatusEnum = 5
+	TaskStatusFinished       TaskStatusEnum = 6
+	TaskStatusFailed         TaskStatusEnum = 7
+	TaskStatusPartlyFinished TaskStatusEnum = 8
 )
 
 // Repository 任务仓储接口（由 service 定义需要的数据库操作方法）
@@ -69,6 +70,8 @@ type Repository interface {
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error)
+		// SetStatus 设置指定任务的状态（不级联）
+		SetStatus(ctx context.Context, taskId int64, status TaskStatusEnum) error
 	// ListStatus 查询状态列表
 	ListStatus(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// CreateTask 创建任务

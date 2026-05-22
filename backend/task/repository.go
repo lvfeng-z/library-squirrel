@@ -96,9 +96,9 @@ func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (i
 		taskId, TaskStatusFinished,
 		taskId, TaskStatusFailed,
 		taskId, TaskStatusProcessing, TaskStatusWaiting,
-		taskId, TaskStatusPause,
+		taskId, TaskStatusPaused,
 		TaskStatusProcessing,
-		TaskStatusPause,
+		TaskStatusPaused,
 		TaskStatusFinished,
 		TaskStatusFailed,
 		TaskStatusPartlyFinished,
@@ -164,6 +164,12 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 		return 0, result.Error
 	}
 	return result.RowsAffected, nil
+}
+
+// SetStatus 设置指定任务的状态（不级联）
+func (r *TaskRepository) SetStatus(ctx context.Context, taskId int64, status TaskStatusEnum) error {
+	result := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("id = ?", taskId).Update("status", status)
+	return result.Error
 }
 
 // ListTaskTree 获取任务树列表

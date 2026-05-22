@@ -30,10 +30,13 @@ export const useParentTaskStore = defineStore('parentTask', {
         if (isNullish(task.id)) {
           throw new Error('UseTaskStatusStore: 更新父任务失败，任务id为空')
         }
-        const oldTask = taskStatus.get(task.id)
-        if (notNullish(oldTask)) {
-          copyIgnoreUndefined(oldTask, task)
+        let oldTask = taskStatus.get(task.id)
+        // store 中不存在时自动添加
+        if (isNullish(oldTask)) {
+          oldTask = new TaskProgressDTO()
+          taskStatus.set(task.id, oldTask)
         }
+        copyIgnoreUndefined(oldTask, task)
       })
     },
     updateParentTaskSchedule(scheduleDTOList: TaskScheduleDTO[]): void {
@@ -45,9 +48,15 @@ export const useParentTaskStore = defineStore('parentTask', {
         }
         const task = taskStatus.get(scheduleDTO.id)
         if (notNullish(task)) {
-          task.status = scheduleDTO.status
-          task.total = scheduleDTO.total
-          task.finished = scheduleDTO.finished
+          if (notNullish(scheduleDTO.status)) {
+            task.status = scheduleDTO.status
+          }
+          if (notNullish(scheduleDTO.total)) {
+            task.total = scheduleDTO.total
+          }
+          if (notNullish(scheduleDTO.finished)) {
+            task.finished = scheduleDTO.finished
+          }
         }
       })
     },
