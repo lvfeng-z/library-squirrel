@@ -21,7 +21,6 @@ export function iniListener() {
   })
 
   Events.On('taskStatus-updateTask', (event: any) => {
-    console.log('[MainIpc] taskStatus-updateTask received:', JSON.stringify(event.data))
     const taskList = event.data as TaskProgressDTO[]
     useTaskStore().updateTask(taskList)
   })
