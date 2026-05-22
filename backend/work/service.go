@@ -849,6 +849,7 @@ func taskSiteAuthorDTOToEntity(d *dto2.TaskSiteAuthorDTO, siteId int64) *entity2
 		SiteID:        sql.NullInt64{Int64: siteId, Valid: true},
 		SiteAuthorID:  sql.NullString{String: d.SiteAuthorID, Valid: true},
 		AuthorName:    sql.NullString{String: d.AuthorName, Valid: true},
+		Introduce:     sql.NullString{String: d.Introduce, Valid: d.Introduce != ""},
 	}
 }
 
@@ -858,6 +859,7 @@ func taskSiteTagDTOToEntity(d *dto2.TaskSiteTagDTO, siteId int64) *entity2.SiteT
 		SiteID:      sql.NullInt64{Int64: siteId, Valid: true},
 		SiteTagID:   sql.NullString{String: d.SiteTagID, Valid: true},
 		SiteTagName: sql.NullString{String: d.TagName, Valid: true},
+		Description: sql.NullString{String: d.Description, Valid: d.Description != ""},
 	}
 }
 

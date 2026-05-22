@@ -81,6 +81,7 @@ type WorkResponse struct {
 type TaskSiteAuthorDTO struct {
 	SiteAuthorID string `json:"siteAuthorId"` // 站点作者ID
 	AuthorName   string `json:"authorName"`   // 作者名称
+	Introduce    string `json:"introduce"`    // 作者介绍
 	URL          string `json:"url"`          // 作者页面URL
 }
 
