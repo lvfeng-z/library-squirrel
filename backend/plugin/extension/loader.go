@@ -35,7 +35,6 @@ type pluginEntry struct {
 	client   *plugin.Client                // hashicorp/go-plugin 进程管理客户端
 	services *pluginsdk.GRPCPluginClient   // gRPC 服务客户端（Task、Browser、Lifecycle）
 	info     *PluginInfo                   // 插件基本信息
-	cmd      *exec.Cmd                     // 子进程命令，用于监控进程退出
 }
 
 // Loader 插件加载器，使用 hashicorp/go-plugin 管理插件子进程
@@ -155,14 +154,11 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		client:   client,
 		services: services,
 		info:     deps.PluginInfo,
-		cmd:      cmd,
 	}
 
 	l.mu.Lock()
 	l.processes[pluginPublicId] = entry
 	l.mu.Unlock()
-
-	go l.watchPluginProcess(pluginPublicId, entry)
 
 	return nil
 }
@@ -186,27 +182,6 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	return nil
 }
 
-// watchPluginProcess 监听插件进程退出并自动清理
-func (l *Loader) watchPluginProcess(pluginPublicId string, entry *pluginEntry) {
-	// 等待子进程退出
-	if entry.cmd.Process != nil {
-		entry.cmd.Process.Wait()
-	}
-
-	l.mu.Lock()
-	_, stillInMap := l.processes[pluginPublicId]
-	if stillInMap {
-		delete(l.processes, pluginPublicId)
-	}
-	l.mu.Unlock()
-
-	if stillInMap {
-		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
-		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
-	}
-}
-
 // GetTaskHandler 获取任务处理器
 func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (dto.TaskHandler, error) {
 	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)
@@ -219,12 +194,33 @@ func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (dto.Task
 // GetServices 获取插件的 gRPC 服务客户端（供 proxy 使用）
 func (l *Loader) GetServices(pluginPublicId string) (*pluginsdk.GRPCPluginClient, bool) {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
 	entry, ok := l.processes[pluginPublicId]
+	l.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
+	// 检测插件进程是否已崩溃
+	if entry.client.Exited() {
+		l.handlePluginCrash(pluginPublicId)
+		return nil, false
+	}
 	return entry.services, true
+}
+
+// handlePluginCrash 处理插件进程崩溃
+func (l *Loader) handlePluginCrash(pluginPublicId string) {
+	l.mu.Lock()
+	_, stillInMap := l.processes[pluginPublicId]
+	if stillInMap {
+		delete(l.processes, pluginPublicId)
+	}
+	l.mu.Unlock()
+
+	if stillInMap {
+		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
+		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
+		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
+	}
 }
 
 // PluginInfo 插件基本信息
