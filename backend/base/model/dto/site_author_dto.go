@@ -14,6 +14,7 @@ type SiteAuthorDTO struct {
 	FixedAuthorName      *string `json:"fixedAuthorName"`
 	SiteAuthorNameBefore *string `json:"siteAuthorNameBefore"`
 	Introduce            *string `json:"introduce"`
+	Homepage             *string `json:"homepage"`
 	LocalAuthorID        *int64  `json:"localAuthorId"`
 	LastUse              *int64  `json:"lastUse"`
 	CreateTime           int64   `json:"createTime"`
@@ -33,6 +34,7 @@ func NewSiteAuthorDTO(author *entity2.SiteAuthor) *SiteAuthorDTO {
 		FixedAuthorName:      util.NullStringToPointer(author.FixedAuthorName),
 		SiteAuthorNameBefore: util.NullStringToPointer(author.SiteAuthorNameBefore),
 		Introduce:            util.NullStringToPointer(author.Introduce),
+		Homepage:             util.NullStringToPointer(author.Homepage),
 		LocalAuthorID:        util.NullInt64ToPointer(author.LocalAuthorID),
 		LastUse:              util.NullInt64ToPointer(author.LastUse),
 		CreateTime:           author.GetCreateTime(),
@@ -144,6 +146,13 @@ func ToSiteAuthorEntity(dto *SiteAuthorDTO) *entity2.SiteAuthor {
 		entity.Introduce.Valid = false
 	}
 
+	if dto.Homepage != nil {
+		entity.Homepage.Valid = true
+		entity.Homepage.String = *dto.Homepage
+	} else {
+		entity.Homepage.Valid = false
+	}
+
 	if dto.LocalAuthorID != nil {
 		entity.LocalAuthorID.Valid = true
 		entity.LocalAuthorID.Int64 = *dto.LocalAuthorID
@@ -171,6 +180,7 @@ type RankedSiteAuthor struct {
 	FixedAuthorName      string `json:"fixedAuthorName"`
 	SiteAuthorNameBefore string `json:"siteAuthorNameBefore"`
 	Introduce            string `json:"introduce"`
+	Homepage             string `json:"homepage"`
 	LocalAuthorID        int64  `json:"localAuthorId"`
 	LastUse              int64  `json:"lastUse"`
 	CreateTime           int64  `json:"createTime"`

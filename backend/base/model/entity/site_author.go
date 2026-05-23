@@ -15,6 +15,7 @@ type SiteAuthor struct {
 	FixedAuthorName      sql.NullString `gorm:"column:fixed_author_name" json:"fixedAuthorName"`
 	SiteAuthorNameBefore sql.NullString `gorm:"column:site_author_name_before" json:"siteAuthorNameBefore"`
 	Introduce            sql.NullString `gorm:"column:introduce" json:"introduce"`
+	Homepage             sql.NullString `gorm:"column:homepage" json:"homepage"`
 	LocalAuthorID        sql.NullInt64  `gorm:"column:local_author_id" json:"localAuthorId"`
 	LastUse              sql.NullInt64  `gorm:"column:last_use" json:"lastUse"`
 }

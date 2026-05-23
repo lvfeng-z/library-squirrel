@@ -301,9 +301,11 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 	}
 	for _, a := range pb.SiteAuthors {
 		resp.SiteAuthors = append(resp.SiteAuthors, &pluginsdk.TaskSiteAuthorDTO{
-			SiteAuthorID: a.SiteAuthorId,
-			AuthorName:   a.AuthorName,
-			URL:          a.Url,
+			SiteAuthorID:    a.SiteAuthorId,
+			AuthorName:      a.AuthorName,
+			Homepage:        a.Homepage,
+			FixedAuthorName: a.FixedAuthorName,
+			Introduce:       a.Introduce,
 		})
 	}
 	for _, t := range pb.SiteTags {
@@ -311,7 +313,6 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 			SiteTagID:   t.SiteTagId,
 			TagName:     t.TagName,
 			Description: t.Description,
-			URL:         t.Url,
 		})
 	}
 	for _, ws := range pb.WorkSets {

@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -33,27 +34,45 @@ func (r *SiteAuthorRepository) GORM() *gorm.DB {
 
 // Save 保存
 func (r *SiteAuthorRepository) Save(ctx context.Context, author *entity.SiteAuthor) error {
+	now := util.GetCurrentTimestamp()
+	if author.GetID() == 0 {
+		author.SetCreateTime(now)
+	}
+	author.SetUpdateTime(now)
 	return r.db.WithContext(ctx).Create(author).Error
 }
 
 // Upsert 原子插入或更新（基于 site_id + site_author_id 唯一约束）
 func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAuthor) error {
+	now := util.GetCurrentTimestamp()
+	if author.GetID() == 0 {
+		author.SetCreateTime(now)
+	}
+	author.SetUpdateTime(now)
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"author_name", "fixed_author_name", "site_author_name_before",
-			"introduce", "local_author_id", "last_use", "update_time",
+			"introduce", "local_author_id", "last_use", "update_time", "homepage",
 		}),
 	}).Create(author).Error
 }
 
 // SaveBatch 批量保存
 func (r *SiteAuthorRepository) SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) error {
+	now := util.GetCurrentTimestamp()
+	for _, author := range authors {
+		if author.GetID() == 0 {
+			author.SetCreateTime(now)
+		}
+		author.SetUpdateTime(now)
+	}
 	return r.db.WithContext(ctx).Create(authors).Error
 }
 
 // Update 更新
 func (r *SiteAuthorRepository) Update(ctx context.Context, author *entity.SiteAuthor) error {
+	author.SetUpdateTime(util.GetCurrentTimestamp())
 	return r.db.WithContext(ctx).Save(author).Error
 }
 
@@ -206,8 +225,8 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 		args[i] = id
 	}
 
-	query := fmt.Sprintf(`UPDATE site_author SET local_author_id = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	args = append([]interface{}{localAuthorId}, args...)
+	query := fmt.Sprintf(`UPDATE site_author SET local_author_id = ?, update_time = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	args = append([]interface{}{localAuthorId, util.GetCurrentTimestamp()}, args...)
 
 	result := r.GORM().WithContext(ctx).Exec(query, args...)
 	if result.Error != nil {
@@ -224,7 +243,7 @@ func (r *SiteAuthorRepository) UpdateLastUseByIds(ctx context.Context, ids []int
 	}
 	return r.GORM().WithContext(ctx).Model(new(entity.SiteAuthor)).
 		Where("id IN ?", ids).
-		Update("last_use", lastUse).Error
+		Updates(map[string]interface{}{"last_use": lastUse, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询

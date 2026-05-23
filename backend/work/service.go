@@ -845,11 +845,13 @@ func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int
 
 func taskSiteAuthorDTOToEntity(d *dto2.TaskSiteAuthorDTO, siteId int64) *entity2.SiteAuthor {
 	return &entity2.SiteAuthor{
-		BaseEntity:    &model.BaseEntity{},
-		SiteID:        sql.NullInt64{Int64: siteId, Valid: true},
-		SiteAuthorID:  sql.NullString{String: d.SiteAuthorID, Valid: true},
-		AuthorName:    sql.NullString{String: d.AuthorName, Valid: true},
-		Introduce:     sql.NullString{String: d.Introduce, Valid: d.Introduce != ""},
+		BaseEntity:      &model.BaseEntity{},
+		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},
+		SiteAuthorID:    sql.NullString{String: d.SiteAuthorID, Valid: true},
+		AuthorName:      sql.NullString{String: d.AuthorName, Valid: true},
+		FixedAuthorName: sql.NullString{String: d.FixedAuthorName, Valid: d.FixedAuthorName != ""},
+		Introduce:       sql.NullString{String: d.Introduce, Valid: d.Introduce != ""},
+		Homepage:        sql.NullString{String: d.Homepage, Valid: d.Homepage != ""},
 	}
 }
 

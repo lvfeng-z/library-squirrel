@@ -307,9 +307,11 @@ func SDKSiteAuthorsToDTO(authors []*pluginsdk.TaskSiteAuthorDTO) []*dto.TaskSite
 			continue
 		}
 		result[i] = &dto.TaskSiteAuthorDTO{
-			SiteAuthorID: a.SiteAuthorID,
-			AuthorName:   a.AuthorName,
-			URL:          a.URL,
+			SiteAuthorID:    a.SiteAuthorID,
+			AuthorName:      a.AuthorName,
+			Homepage:        a.Homepage,
+			FixedAuthorName: a.FixedAuthorName,
+			Introduce:       a.Introduce,
 		}
 	}
 	return result
@@ -328,7 +330,6 @@ func SDKSiteTagsToDTO(tags []*pluginsdk.TaskSiteTagDTO) []*dto.TaskSiteTagDTO {
 			SiteTagID:   t.SiteTagID,
 			TagName:     t.TagName,
 			Description: t.Description,
-			URL:         t.URL,
 		}
 	}
 	return result

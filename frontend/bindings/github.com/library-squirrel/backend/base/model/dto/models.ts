@@ -430,6 +430,7 @@ export class RankedSiteAuthor {
     "fixedAuthorName": string;
     "siteAuthorNameBefore": string;
     "introduce": string;
+    "homepage": string;
     "localAuthorId": number;
     "lastUse": number;
     "createTime": number;
@@ -458,6 +459,9 @@ export class RankedSiteAuthor {
         }
         if (!("introduce" in $$source)) {
             this["introduce"] = "";
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = "";
         }
         if (!("localAuthorId" in $$source)) {
             this["localAuthorId"] = 0;
@@ -498,6 +502,7 @@ export class RankedSiteAuthorWithWorkId {
     "fixedAuthorName": string;
     "siteAuthorNameBefore": string;
     "introduce": string;
+    "homepage": string;
     "localAuthorId": number;
     "lastUse": number;
     "createTime": number;
@@ -527,6 +532,9 @@ export class RankedSiteAuthorWithWorkId {
         }
         if (!("introduce" in $$source)) {
             this["introduce"] = "";
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = "";
         }
         if (!("localAuthorId" in $$source)) {
             this["localAuthorId"] = 0;
@@ -808,6 +816,7 @@ export class SiteAuthorDTO {
     "fixedAuthorName": string | null;
     "siteAuthorNameBefore": string | null;
     "introduce": string | null;
+    "homepage": string | null;
     "localAuthorId": number | null;
     "lastUse": number | null;
     "createTime": number;
@@ -835,6 +844,9 @@ export class SiteAuthorDTO {
         }
         if (!("introduce" in $$source)) {
             this["introduce"] = null;
+        }
+        if (!("homepage" in $$source)) {
+            this["homepage"] = null;
         }
         if (!("localAuthorId" in $$source)) {
             this["localAuthorId"] = null;

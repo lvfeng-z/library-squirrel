@@ -79,10 +79,11 @@ type WorkResponse struct {
 
 // TaskSiteAuthorDTO 任务处理器站点作者DTO
 type TaskSiteAuthorDTO struct {
-	SiteAuthorID string `json:"siteAuthorId"` // 站点作者ID
-	AuthorName   string `json:"authorName"`   // 作者名称
-	Introduce    string `json:"introduce"`    // 作者介绍
-	URL          string `json:"url"`          // 作者页面URL
+	SiteAuthorID    string `json:"siteAuthorId"`    // 站点作者ID
+	AuthorName      string `json:"authorName"`      // 作者名称
+	FixedAuthorName string `json:"fixedAuthorName"` // 固定作者名
+	Introduce       string `json:"introduce"`       // 作者介绍
+	Homepage        string `json:"homepage"`        // 作者主页URL
 }
 
 // TaskSiteTagDTO 任务处理器站点标签DTO
@@ -90,7 +91,6 @@ type TaskSiteTagDTO struct {
 	SiteTagID   string `json:"siteTagId"`   // 站点标签ID
 	TagName     string `json:"tagName"`     // 标签名称
 	Description string `json:"description"` // 标签描述
-	URL         string `json:"url"`         // 标签页面URL
 }
 
 // TaskWorkSetDTO 任务处理器作品集DTO
