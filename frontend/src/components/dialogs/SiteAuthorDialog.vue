@@ -2,11 +2,12 @@
 import DialogMode from '../../model/util/DialogMode'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import {ElMessage} from 'element-plus'
+import {Link} from '@element-plus/icons-vue'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi} from '@renderer/apis/http'
+import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
 import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/backend/site/models"
@@ -87,6 +88,12 @@ async function handleSaveButtonClicked() {
     }
   }
 }
+
+async function handleOpenHomepage() {
+  if (notNullish(formData.value.siteAuthor?.homepage)) {
+    await appLauncherApi.appLauncherOpenExternal(formData.value.siteAuthor!.homepage!)
+  }
+}
 </script>
 
 <template>
@@ -163,6 +170,13 @@ async function handleSaveButtonClicked() {
           <el-form-item label="修改时间">
             <el-date-picker v-model="formData.siteAuthor!.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
           </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row v-if="notNullish(formData.siteAuthor?.homepage)">
+        <el-col>
+          <el-button type="primary" link @click="handleOpenHomepage">
+            <el-icon><Link /></el-icon> 访问主页
+          </el-button>
         </el-col>
       </el-row>
     </template>

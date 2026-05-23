@@ -23,3 +23,11 @@ export async function appLauncherOpen(path: string): Promise<ApiResponse<void>> 
   }
   return { success: result.success, msg: result.msg ?? '' }
 }
+
+export async function appLauncherOpenExternal(url: string): Promise<ApiResponse<void>> {
+  const result = await AppLauncherHandler.OpenExternal(url)
+  if (!result) {
+    return { success: false, msg: '打开失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
+}

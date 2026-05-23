@@ -8,11 +8,11 @@ import DataTableOperationResponse from '../model/util/DataTableOperationResponse
 import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import {isNullish} from '@renderer/utils/CommonUtil.ts'
+import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorQuerySelectItemPageByName, siteAuthorApi} from '@renderer/apis/http'
+import {localAuthorQuerySelectItemPageByName, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
 import {
   LocalAuthorDTO,
   SelectItem,
@@ -53,6 +53,7 @@ const operationButton: OperationItem<SiteAuthorLocalRelateDTO>[] = [
     code: 'create',
     rule: (row) => !row.hasSameNameLocalAuthor
   },
+  { label: '主页', icon: 'Link', code: 'homepage', rule: (row) => notNullish(row.siteAuthor?.homepage) },
   { label: '查看', icon: 'view', code: DialogMode.VIEW },
   { label: '编辑', icon: 'edit', code: DialogMode.EDIT },
   { label: '删除', icon: 'delete', code: 'delete' }
@@ -200,6 +201,9 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorL
     case 'save':
       saveRowEdit(op.data)
       break
+    case 'homepage':
+      await appLauncherApi.appLauncherOpenExternal(op.data.siteAuthor.homepage!)
+      break
     case DialogMode.VIEW:
       siteAuthorDialogMode.value = DialogMode.VIEW
       dialogData.value = op.data
@@ -283,7 +287,7 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
           :multi-select="true"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100, 1000]"
-          :operation-width="205"
+          :operation-width="260"
           @row-button-clicked="handleRowButtonClicked"
         >
           <template #toolbarMain>
