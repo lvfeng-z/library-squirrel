@@ -172,12 +172,12 @@ async function handleOpenHomepage() {
           </el-form-item>
         </el-col>
       </el-row>
-      <el-row v-if="notNullish(formData.siteAuthor?.homepage)">
-        <el-col>
-          <el-button type="primary" link @click="handleOpenHomepage">
-            <el-icon><Link /></el-icon> 访问主页
-          </el-button>
-        </el-col>
+    </template>
+    <template #afterForm>
+      <el-row v-if="notNullish(formData.siteAuthor?.homepage)" style="padding: 0 10px">
+        <el-button type="primary" link @click="handleOpenHomepage">
+          <el-icon><Link /></el-icon> 访问主页
+        </el-button>
       </el-row>
     </template>
   </form-dialog>
