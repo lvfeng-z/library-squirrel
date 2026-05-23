@@ -130,16 +130,18 @@ const recursiveNotify = async () => {
       )
     )
   }
+  const releaseSlot = () => {
+    positon[index] = true
+    if (notificationBuffer.length > 0) {
+      recursiveNotify()
+    }
+  }
   ElNotification({
     type: config.type,
     message: h('div', {}, children),
     duration: config.duration,
     offset: 80,
-    onClose: () => {
-      positon[index] = true
-      if (notificationBuffer.length > 0) {
-        recursiveNotify()
-      }
-    }
+    onClose: releaseSlot
   })
+  setTimeout(releaseSlot, config.duration + 1000)
 }

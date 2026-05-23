@@ -162,7 +162,10 @@ async function createTaskFromSource() {
       useNotificationStore().remove(notificationId, { type: 'error', msg: e.message })
     })
   downloadDialogState.value = false
+  // 移除url
   sourceUrl.value = ''
+  // 移除url支持情况文本
+  supportStatus.value = ''
 }
 
 async function taskQueryParentPage(page: Page<TaskProgressTreeDTO>): Promise<Page<TaskProgressTreeDTO>> {

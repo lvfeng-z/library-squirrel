@@ -6,8 +6,8 @@ import (
 
 // TaskProgressPusher 任务进度推送器接口
 type TaskProgressPusher interface {
-	PushStateChange(taskId int64, state TaskState)
-	PushParentStateChange(taskId int64, state TaskState)
+	PushStateChange(taskId int64, taskName string, state TaskState)
+	PushParentStateChange(taskId int64, taskName string, state TaskState)
 	PushProgress(taskId int64, total int64, finished int64)
 	PushError(taskId int64, err string)
 	PushTaskRemove(taskIds []int64)
@@ -31,10 +31,11 @@ func NewWailsTaskProgressPusher(emitter WailsEventEmitter) *WailsTaskProgressPus
 }
 
 // PushStateChange 推送任务状态变化到前端
-func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, state TaskState) {
+func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, taskName string, state TaskState) {
 	dto := &taskStateDTO{
-		ID:     taskId,
-		Status: int(state),
+		ID:       taskId,
+		TaskName: taskName,
+		Status:   int(state),
 	}
 	data := []*taskStateDTO{dto}
 	p.emitter.Emit("taskStatus-updateTask", data)
@@ -66,10 +67,11 @@ func (p *WailsTaskProgressPusher) PushParentTaskRemove(taskIds []int64) {
 }
 
 // PushParentStateChange 推送父任务状态变化到前端
-func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, state TaskState) {
+func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, taskName string, state TaskState) {
 	dto := &taskStateDTO{
-		ID:     taskId,
-		Status: int(state),
+		ID:       taskId,
+		TaskName: taskName,
+		Status:   int(state),
 	}
 	data := []*taskStateDTO{dto}
 	p.emitter.Emit("parentTaskStatus-updateParentTask", data)
@@ -77,8 +79,9 @@ func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, state Task
 
 // taskStateDTO 任务状态推送 DTO
 type taskStateDTO struct {
-	ID     int64 `json:"id"`
-	Status int   `json:"status"`
+	ID       int64  `json:"id"`
+	TaskName string `json:"taskName"`
+	Status   int    `json:"status"`
 }
 
 // taskScheduleDTO 任务进度推送 DTO，对应前端 TaskScheduleDTO 的 flat 格式
@@ -97,8 +100,8 @@ func NewNoopProgressPusher() *NoopProgressPusher {
 	return &NoopProgressPusher{}
 }
 
-func (p *NoopProgressPusher) PushStateChange(int64, TaskState)       {}
-func (p *NoopProgressPusher) PushParentStateChange(int64, TaskState) {}
+func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)       {}
+func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState) {}
 func (p *NoopProgressPusher) PushProgress(int64, int64, int64)       {}
 func (p *NoopProgressPusher) PushError(int64, string)                {}
 func (p *NoopProgressPusher) PushTaskRemove([]int64)                 {}

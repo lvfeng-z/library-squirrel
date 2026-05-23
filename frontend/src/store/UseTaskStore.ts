@@ -53,11 +53,19 @@ export const useTaskStore = defineStore('task', {
                 type: 'success',
                 msg: `任务【${taskStoreObj.task.taskName}】完成`
               })
+              taskStoreObj.notificationId = undefined
             } else if (task.status === TaskStatusEnum.FAILED) {
               useNotificationStore().remove(taskStoreObj.notificationId, {
                 type: 'error',
-                msg: `任务【${taskStoreObj.task.id}】失败`
+                msg: `任务【${taskStoreObj.task.taskName ?? taskStoreObj.task.id}】失败`
               })
+              taskStoreObj.notificationId = undefined
+            } else if (task.status === TaskStatusEnum.PARTLY_FINISHED) {
+              useNotificationStore().remove(taskStoreObj.notificationId, {
+                type: 'warning',
+                msg: `任务【${taskStoreObj.task.taskName ?? taskStoreObj.task.id}】部分完成`
+              })
+              taskStoreObj.notificationId = undefined
             }
           }
           // 如果状态为进行中、等待中，就推送到通知Store中
@@ -65,8 +73,10 @@ export const useTaskStore = defineStore('task', {
             isNullish(taskStoreObj.notificationId) &&
             (TaskStatusEnum.PROCESSING === task.status || TaskStatusEnum.WAITING === task.status)
           ) {
+            copyIgnoreUndefined(taskStoreObj.task, task)
             const notificationItem = createNotificationItem(taskStoreObj.task)
             taskStoreObj.notificationId = useNotificationStore().add(notificationItem)
+            return
           }
           copyIgnoreUndefined(taskStoreObj.task, task)
         }
@@ -94,8 +104,15 @@ export const useTaskStore = defineStore('task', {
     },
     removeTask(ids: number[]) {
       const taskStatus = this.tasks
+      const notificationStore = useNotificationStore()
       if (arrayNotEmpty(ids)) {
-        ids.forEach((id) => taskStatus.delete(id))
+        ids.forEach((id) => {
+          const taskStoreObj = taskStatus.get(id)
+          if (notNullish(taskStoreObj?.notificationId)) {
+            notificationStore.remove(taskStoreObj.notificationId)
+          }
+          taskStatus.delete(id)
+        })
       }
     }
   }

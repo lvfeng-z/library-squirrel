@@ -412,15 +412,17 @@ func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath
 // ParentTask 父任务运行结构体
 type ParentTask struct {
 	taskId   int64
+	taskName string
 	state    atomic.Int32
 	children map[int64]*ManagedTask
 	mu       sync.RWMutex
 }
 
 // NewParentTask 创建父任务
-func NewParentTask(taskId int64) *ParentTask {
+func NewParentTask(taskId int64, taskName string) *ParentTask {
 	return &ParentTask{
 		taskId:   taskId,
+		taskName: taskName,
 		state:    atomic.Int32{},
 		children: make(map[int64]*ManagedTask),
 	}

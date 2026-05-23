@@ -95,7 +95,14 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	}
 
 	// 2. 构建父子关系
-	parentTask := NewParentTask(taskId)
+	parentTaskName := ""
+	for _, t := range tasks {
+		if t.ID == taskId && t.TaskName.Valid {
+			parentTaskName = t.TaskName.String
+			break
+		}
+	}
+	parentTask := NewParentTask(taskId, parentTaskName)
 	for _, t := range tasks {
 		if t.Pid.Valid && t.Pid.Int64 == taskId {
 			// 直接子任务
@@ -324,6 +331,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider)
 
 	// 设置状态变化回调
+	taskName := t.TaskName.String
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {
 		// 更新数据库
 		dbStatus := task.TaskStatusEnum(newState)
@@ -332,7 +340,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		}
 
 		// 推送状态到前端
-		m.pusher.PushStateChange(taskId, newState)
+		m.pusher.PushStateChange(taskId, taskName, newState)
 
 		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
@@ -344,7 +352,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 						logger.Log.Errorf("[TaskManager] 更新父任务 %d 状态到数据库失败: %v", parent.taskId, err)
 					}
 				}
-				m.pusher.PushParentStateChange(parent.taskId, newParentState)
+				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 			}
 		}
 	})
