@@ -61,7 +61,9 @@ export const useNotificationStore = defineStore('notification', {
     ): void {
       this.notificationMap.delete(id)
       const index = this.notificationList.findIndex((notification) => notification.id === id)
-      this.notificationList.splice(index, 1)
+      if (index !== -1) {
+        this.notificationList.splice(index, 1)
+      }
       if (notNullish(notificationConfig)) {
         startNotify({
           msg: notificationConfig.msg,
@@ -101,6 +103,7 @@ const recursiveNotify = async () => {
     notificationBuffer.length = 0
   }
   if (config === undefined) {
+    positon[index] = true
     return
   }
   const children = [h('i', {}, config.msg)]
