@@ -35,6 +35,8 @@ type Manager struct {
 	taskMap map[int64]*ManagedTask
 	// 父任务Map
 	parentMap map[int64]*ParentTask
+	// 等待信号量的任务队列（FIFO）
+	waitingQueue []*ManagedTask
 	// 互斥锁
 	mu sync.RWMutex
 
@@ -67,6 +69,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 	return &Manager{
 		taskMap:                make(map[int64]*ManagedTask),
 		parentMap:              make(map[int64]*ParentTask),
+		waitingQueue:           make([]*ManagedTask, 0),
 		maxParallel:            maxParallel,
 		semaphore:              make(chan struct{}, maxParallel),
 		workDirProvider:        workDirProvider,
@@ -122,39 +125,71 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	m.parentMap[taskId] = parentTask
 	m.mu.Unlock()
 
-	// 3. 启动所有子任务（受信号量控制）
+	// 3. 尝试分发所有子任务（受信号量控制）
 	for _, child := range parentTask.GetChildren() {
-		m.startWithSemaphore(child)
+		m.tryDispatch(child)
 	}
 
 	return nil
 }
 
-// startWithSemaphore 使用信号量启动任务
-func (m *Manager) startWithSemaphore(task *ManagedTask) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Log.Errorf("[TaskManager] startWithSemaphore panic: %v", r)
-			}
-		}()
-
-		// 设置状态为等待
+// tryDispatch 尝试获取信号量并分发任务，无法获取时入等待队列
+func (m *Manager) tryDispatch(task *ManagedTask) {
+	select {
+	case m.semaphore <- struct{}{}:
+		go m.executeTask(task)
+	default:
+		m.mu.Lock()
+		m.waitingQueue = append(m.waitingQueue, task)
+		m.mu.Unlock()
 		task.setState(TaskStateWaiting)
+	}
+}
 
-		// 获取信号量
-		m.semaphore <- struct{}{}
-		defer func() { <-m.semaphore }()
-
-		// 启动任务
-		task.Start()
-
-		// 等待任务完成信号
-		<-task.Done()
-
-		// 清理已终态的子任务
-		m.cleanupFinishedTask(task)
+// executeTask 在独立协程中执行任务（已获取信号量）
+func (m *Manager) executeTask(task *ManagedTask) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("[TaskManager] executeTask panic: %v", r)
+		}
+		<-m.semaphore
+		m.dispatchFromQueue()
 	}()
+
+	task.run()
+	m.cleanupFinishedTask(task)
+}
+
+// dispatchFromQueue 从等待队列中分发任务到可用信号量槽位
+func (m *Manager) dispatchFromQueue() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for len(m.waitingQueue) > 0 {
+		select {
+		case m.semaphore <- struct{}{}:
+			task := m.waitingQueue[0]
+			m.waitingQueue[0] = nil
+			m.waitingQueue = m.waitingQueue[1:]
+			go m.executeTask(task)
+		default:
+			return
+		}
+	}
+}
+
+// removeFromQueue 从等待队列中移除指定任务
+func (m *Manager) removeFromQueue(taskId int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, t := range m.waitingQueue {
+		if t.taskId == taskId {
+			m.waitingQueue[i] = m.waitingQueue[len(m.waitingQueue)-1]
+			m.waitingQueue[len(m.waitingQueue)-1] = nil
+			m.waitingQueue = m.waitingQueue[:len(m.waitingQueue)-1]
+			return
+		}
+	}
 }
 
 // PauseTaskTree 暂停任务树
@@ -206,7 +241,13 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 	}
 
 	for _, child := range parent.GetChildren() {
-		child.Stop()
+		if child.GetState() == TaskStateWaiting {
+			m.removeFromQueue(child.taskId)
+			child.cancel()
+			child.setState(TaskStateFailed)
+		} else {
+			child.Stop()
+		}
 	}
 
 	return nil

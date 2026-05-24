@@ -121,11 +121,6 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 	}
 }
 
-// Start 启动任务（在独立协程中运行）
-func (m *ManagedTask) Start() {
-	go m.run()
-}
-
 // run 核心执行逻辑
 func (m *ManagedTask) run() {
 	defer func() {
