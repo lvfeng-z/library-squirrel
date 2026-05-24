@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/logger"
@@ -696,13 +697,20 @@ func (app *App) onDomReady() {
 // onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）
 // 返回 true 表示阻止关闭，false 表示允许关闭
 func (app *App) onBeforeClose() bool {
-	// 检查任务队列是否空闲
-	if !app.TaskManagerService.IsIdle() {
-		logger.Log.Info("任务正在运行，取消窗口关闭")
-		// TODO: 显示确认对话框让用户选择是否强制关闭
-		// 在 Wails v3 中，可以通过 dialog.MessageBox 或前端对话框实现
-		return true // 阻止关闭，等待任务完成
+	if app.TaskManagerService.IsIdle() {
+		return false
 	}
-	logger.Log.Info("窗口关闭，所有任务已完成")
-	return false // 允许关闭
+
+	if app.TaskManagerService.IsShuttingDown() {
+		return true // 正在关闭中，阻止重复触发
+	}
+
+	logger.Log.Info("任务正在运行，开始暂停任务...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := app.TaskManagerService.GracefulShutdown(ctx); err != nil {
+		logger.Log.Warnf("优雅关闭超时，强制退出: %v", err)
+	}
+	return false
 }

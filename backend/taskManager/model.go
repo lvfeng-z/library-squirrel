@@ -33,6 +33,16 @@ const (
 	TaskStatePartlyFinished                   // 8: 部分完成（父任务专用）
 )
 
+// isStableState 判断任务状态是否为稳定状态（需要持久化到数据库）
+func isStableState(state TaskState) bool {
+	switch state {
+	case TaskStatePaused, TaskStateFinished, TaskStateFailed, TaskStatePartlyFinished:
+		return true
+	default:
+		return false
+	}
+}
+
 // TaskExecutor 任务执行器接口
 // 由 TaskManager 定义，Plugin 模块实现
 type TaskExecutor interface {

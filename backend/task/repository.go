@@ -172,6 +172,28 @@ func (r *TaskRepository) SetStatus(ctx context.Context, taskId int64, status Tas
 	return result.Error
 }
 
+// BatchSetStatus 批量设置任务状态
+func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]TaskStatusEnum) error {
+	if len(statuses) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(statuses))
+	cases := ""
+	args := make([]any, 0, len(statuses)*2+len(statuses))
+	for id, status := range statuses {
+		ids = append(ids, id)
+		cases += "WHEN id = ? THEN ? "
+		args = append(args, id, status)
+	}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	sql := "UPDATE task SET status = CASE " + cases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+	return r.GORM().WithContext(ctx).Exec(sql, args...).Error
+}
+
 // ListTaskTree 获取任务树列表
 func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
 	if len(taskIds) == 0 {

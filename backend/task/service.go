@@ -84,6 +84,8 @@ type Repository interface {
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
 	DeleteTask(ctx context.Context, ids []int64) error
+	// BatchSetStatus 批量设置任务状态
+	BatchSetStatus(ctx context.Context, statuses map[int64]TaskStatusEnum) error
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder

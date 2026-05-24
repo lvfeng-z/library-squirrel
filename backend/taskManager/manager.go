@@ -3,6 +3,8 @@ package taskManager
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -17,6 +19,8 @@ type Repository interface {
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
 	// SetStatus 设置指定任务的状态（不级联）
 	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
+	// BatchSetStatus 批量设置任务状态
+	BatchSetStatus(ctx context.Context, statuses map[int64]task.TaskStatusEnum) error
 }
 
 // WorkDirProvider 工作目录提供者接口
@@ -39,6 +43,14 @@ type Manager struct {
 	waitingQueue []*ManagedTask
 	// 互斥锁
 	mu sync.RWMutex
+	// 优雅关闭标记
+	shuttingDown atomic.Bool
+	// 批量状态写入
+	pendingStatusUpdates map[int64]task.TaskStatusEnum
+	pendingMu            sync.Mutex
+	flushCh              chan struct{}
+	closeCh              chan struct{}
+	flushDone            chan struct{}
 
 	// 信号量（控制并发数）
 	semaphore   chan struct{}
@@ -66,12 +78,16 @@ type Manager struct {
 
 // NewManager 创建任务管理器
 func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
-	return &Manager{
+	m := &Manager{
 		taskMap:                make(map[int64]*ManagedTask),
 		parentMap:              make(map[int64]*ParentTask),
 		waitingQueue:           make([]*ManagedTask, 0),
 		maxParallel:            maxParallel,
 		semaphore:              make(chan struct{}, maxParallel),
+		pendingStatusUpdates:   make(map[int64]task.TaskStatusEnum),
+		flushCh:                make(chan struct{}, 1),
+		closeCh:                make(chan struct{}),
+		flushDone:              make(chan struct{}),
 		workDirProvider:        workDirProvider,
 		fileNameFormatProvider: fileNameFormatProvider,
 		repo:                   repo,
@@ -80,6 +96,8 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		workInfoSaver:          workInfoSaver,
 		resourceSaver:          resourceSaver,
 	}
+	go m.flushLoop()
+	return m
 }
 
 // StartTaskTree 启动任务树
@@ -308,6 +326,68 @@ func (m *Manager) IsIdle() bool {
 	return len(m.taskMap) == 0
 }
 
+// IsShuttingDown 检查是否正在优雅关闭
+func (m *Manager) IsShuttingDown() bool {
+	return m.shuttingDown.Load()
+}
+
+// GracefulShutdown 暂停所有瞬态任务并等待进入稳态
+func (m *Manager) GracefulShutdown(ctx context.Context) error {
+	if !m.shuttingDown.CompareAndSwap(false, true) {
+		return nil
+	}
+
+	// 清空等待队列
+	m.mu.Lock()
+	for _, t := range m.waitingQueue {
+		t.cancel()
+	}
+	m.waitingQueue = nil
+	tasks := make([]*ManagedTask, 0, len(m.taskMap))
+	for _, t := range m.taskMap {
+		tasks = append(tasks, t)
+	}
+	m.mu.Unlock()
+
+	// 暂停所有 Processing 任务
+	for _, t := range tasks {
+		if t.GetState() == TaskStateProcessing {
+			if err := t.Pause(); err != nil {
+				logger.Log.Warnf("[TaskManager] 优雅关闭：暂停任务 %d 失败: %v", t.taskId, err)
+			}
+		}
+	}
+
+	// 等待所有任务进入稳态
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		allStable := true
+		for _, t := range tasks {
+			if !isStableState(t.GetState()) {
+				allStable = false
+				break
+			}
+		}
+		if allStable {
+			// 等待瞬态回调完成
+			time.Sleep(50 * time.Millisecond)
+			// 触发最终刷盘
+			close(m.closeCh)
+			<-m.flushDone
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			// 超时，仍尝试最终刷盘
+			close(m.closeCh)
+			<-m.flushDone
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 // 辅助方法
 
 func (m *Manager) addTask(task *ManagedTask) {
@@ -374,10 +454,9 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	// 设置状态变化回调
 	taskName := t.TaskName.String
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {
-		// 更新数据库
-		dbStatus := task.TaskStatusEnum(newState)
-		if err := m.repo.SetStatus(context.Background(), taskId, dbStatus); err != nil {
-			logger.Log.Errorf("[TaskManager] 更新任务 %d 状态到数据库失败: %v", taskId, err)
+		// 仅稳定状态写入数据库，瞬态只更新内存和前端
+		if isStableState(newState) {
+			m.addToPending(taskId, task.TaskStatusEnum(newState))
 		}
 
 		// 推送状态到前端
@@ -387,11 +466,8 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		if mt.parentId != 0 {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
 				oldParentState, newParentState := parent.RefreshState()
-				if oldParentState != newParentState {
-					parentDbStatus := task.TaskStatusEnum(newParentState)
-					if err := m.repo.SetStatus(context.Background(), parent.taskId, parentDbStatus); err != nil {
-						logger.Log.Errorf("[TaskManager] 更新父任务 %d 状态到数据库失败: %v", parent.taskId, err)
-					}
+				if oldParentState != newParentState && isStableState(newParentState) {
+					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState))
 				}
 				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 			}
@@ -404,5 +480,50 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		m.pusher.PushProgress(taskId, total, finished)
 	})
 	return mt
+}
+
+// flushLoop 后台批量刷盘协程，空闲时阻塞在 channel 上零开销
+func (m *Manager) flushLoop() {
+	for {
+		select {
+		case <-m.closeCh:
+			m.doFlush()
+			close(m.flushDone)
+			return
+		case <-m.flushCh:
+		}
+
+		// 批量窗口：200ms 内的变更合并为一次写入
+		time.Sleep(200 * time.Millisecond)
+		m.doFlush()
+	}
+}
+
+// doFlush 将积攒的状态变更批量写入数据库
+func (m *Manager) doFlush() {
+	m.pendingMu.Lock()
+	if len(m.pendingStatusUpdates) == 0 {
+		m.pendingMu.Unlock()
+		return
+	}
+	pending := m.pendingStatusUpdates
+	m.pendingStatusUpdates = make(map[int64]task.TaskStatusEnum)
+	m.pendingMu.Unlock()
+
+	if err := m.repo.BatchSetStatus(context.Background(), pending); err != nil {
+		logger.Log.Errorf("[TaskManager] 批量写入任务状态失败: %v", err)
+	}
+}
+
+// addToPending 添加待刷盘的状态变更，非阻塞通知 flushLoop
+func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum) {
+	m.pendingMu.Lock()
+	m.pendingStatusUpdates[taskId] = status
+	m.pendingMu.Unlock()
+
+	select {
+	case m.flushCh <- struct{}{}:
+	default:
+	}
 }
 
