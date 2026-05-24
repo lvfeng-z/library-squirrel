@@ -17,6 +17,12 @@ type SecureStorage struct {
 	UpdateTime        int64          `gorm:"column:update_time" json:"updateTime"`
 }
 
+func NewSecureStorage() *SecureStorage {
+	return &SecureStorage{
+		BaseEntity: &model.BaseEntity{},
+	}
+}
+
 func (SecureStorage) TableName() string {
 	return "secure_storage"
 }

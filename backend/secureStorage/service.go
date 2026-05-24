@@ -75,13 +75,12 @@ func (s *Service) Set(ctx context.Context, storageKey string, plainValue string,
 		return existing.ID, nil
 	} else {
 		// 新增
-		entity := &domain.SecureStorage{
-			StorageKey:     sql.NullString{String: storageKey, Valid: true},
-			EncryptedValue: sql.NullString{String: encryptedValue, Valid: true},
-			Description:    sql.NullString{String: description, Valid: true},
-			CreateTime:     now,
-			UpdateTime:     now,
-		}
+		entity := domain.NewSecureStorage()
+		entity.StorageKey = sql.NullString{String: storageKey, Valid: true}
+		entity.EncryptedValue = sql.NullString{String: encryptedValue, Valid: true}
+		entity.Description = sql.NullString{String: description, Valid: true}
+		entity.CreateTime = now
+		entity.UpdateTime = now
 		if err := s.repo.Save(ctx, entity); err != nil {
 			return 0, err
 		}
@@ -155,13 +154,12 @@ func (s *Service) StoreAndGetKey(ctx context.Context, plainValue string, descrip
 	}
 
 	now := time.Now().UnixMilli()
-	entity := &domain.SecureStorage{
-		StorageKey:     sql.NullString{String: storageKey, Valid: true},
-		EncryptedValue: sql.NullString{String: encryptedValue, Valid: true},
-		Description:    sql.NullString{String: description, Valid: true},
-		CreateTime:     now,
-		UpdateTime:     now,
-	}
+	entity := domain.NewSecureStorage()
+	entity.StorageKey = sql.NullString{String: storageKey, Valid: true}
+	entity.EncryptedValue = sql.NullString{String: encryptedValue, Valid: true}
+	entity.Description = sql.NullString{String: description, Valid: true}
+	entity.CreateTime = now
+	entity.UpdateTime = now
 
 	if err := s.repo.Save(ctx, entity); err != nil {
 		return "", err

@@ -90,6 +90,9 @@ type App struct {
 	// 插件加载器
 	pluginLoader *extension2.Loader
 
+	// 主窗口原生句柄
+	mainHWND uintptr
+
 	// 静态资源服务
 	StaticResourceService *extension2.StaticResourceService
 
@@ -377,6 +380,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		PluginCtx:            pluginCtx,
 		TaskHandlerRegistry:  app.TaskHandlerRegistry,
 		SiteBrowserRegistry:  app.SiteBrowserRegistry,
+		MainHWND:             app.mainHWND,
 	}); err != nil {
 		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
 	}

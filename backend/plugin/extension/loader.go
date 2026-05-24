@@ -28,6 +28,7 @@ type PluginProcessDeps struct {
 	PluginCtx            pluginsdk.PluginContext
 	TaskHandlerRegistry  *TaskHandlerRegistry
 	SiteBrowserRegistry  *SiteBrowserRegistry
+	MainHWND             uintptr
 }
 
 // pluginEntry 存储单个插件的 hashicorp/go-plugin 客户端和 gRPC 服务客户端
@@ -141,7 +142,8 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		PluginPublicId: deps.PluginInfo.PublicID,
 		PluginData:     pluginData,
 		RootPath:       deps.PluginInfo.RootPath,
-		HostServiceId:  services.HostServiceId,
+		HostServiceId:    services.HostServiceId,
+		MainWindowHandle: uint64(deps.MainHWND),
 	})
 	if err != nil {
 		client.Kill()

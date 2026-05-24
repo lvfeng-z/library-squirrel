@@ -222,16 +222,8 @@ func (pc *pluginContext) GetPluginRoot(isRelative bool) string {
 	return filepath.Join(pc.rootPath, pc.pluginInfo.RootPath)
 }
 
-// --- 窗口管理 ---
-
-func (pc *pluginContext) GetMainWindow() pluginsdk.WindowHandle {
-	// TODO: 接入 Wails 窗口管理
-	return nil
-}
-
-func (pc *pluginContext) CreateWindow(options pluginsdk.WindowOptions) (pluginsdk.WindowHandle, error) {
-	// TODO: 接入 Wails 窗口管理
-	return nil, fmt.Errorf("window management not yet implemented for Wails")
+func (pc *pluginContext) GetMainWindowHandle() uintptr {
+	return 0
 }
 
 // --- 日志 ---

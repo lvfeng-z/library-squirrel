@@ -104,6 +104,11 @@ func main() {
 	// Set the Wails event emitter for slot pusher
 	app.SetEventEmitter(wailsApp.Event)
 
+	// Store the main window native handle for plugin activation
+	if nativeHandle := window.NativeWindow(); nativeHandle != nil {
+		app.mainHWND = uintptr(nativeHandle)
+	}
+
 	// Register window event callbacks
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(e *application.WindowEvent) {
 		app.onDomReady()
