@@ -202,6 +202,6 @@ if (ApiUtil.check(response)) {
 
 ## 相关项目文档
 
-- [../CLAUDE.md](../.claude/CLAUDE.md) - 项目级开发指南
+- [../CLAUDE.md](../CLAUDE.md) - 项目级开发指南
 - [../README.md](../README.md) - 项目基本说明
 - 代码中的注释和类型定义
