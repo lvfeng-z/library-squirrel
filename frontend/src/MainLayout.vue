@@ -6,6 +6,7 @@ import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
 import TaskQueueResourceReplaceConfirmDialog from '@renderer/components/dialogs/TaskQueueResourceReplaceConfirmDialog.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
+import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 
 const router = useRouter()
@@ -68,6 +69,7 @@ onMounted(() => {
       v-model:confirm-list="resourceReplaceConfirmList"
     />
     <ReplaceConfirmDialog />
+    <DialogSlotRenderer />
 
     <!-- Tour 向导 -->
     <el-tour

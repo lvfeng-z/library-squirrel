@@ -11,8 +11,8 @@ import (
 type TaskHandler interface {
 	// Create 创建任务
 	// url: 需解析的url
-	// 返回任务信息列表或错误
-	Create(url string) ([]*TaskCreateResponse, error)
+	// 返回 TaskCreateResult（批量或流式）或错误
+	Create(url string) (*TaskCreateResult, error)
 	// CreateWorkInfo 生成作品信息
 	// task: 需处理的任务
 	// 返回作品信息或错误
@@ -36,6 +36,38 @@ type TaskHandler interface {
 	// param: 恢复任务所需的参数
 	// 返回作品信息或错误
 	Resume(param *TaskResParam) (*WorkResponse, error)
+}
+
+// TaskCreateResult 插件 Create 方法的返回结果，支持批量或流式
+type TaskCreateResult struct {
+	array    []*TaskCreateResponse
+	stream   <-chan *TaskCreateResponse
+	isStream bool
+}
+
+// BatchResult 创建批量模式的结果
+func BatchResult(responses []*TaskCreateResponse) *TaskCreateResult {
+	return &TaskCreateResult{array: responses}
+}
+
+// StreamResult 创建流式模式的结果
+func StreamResult(ch <-chan *TaskCreateResponse) *TaskCreateResult {
+	return &TaskCreateResult{stream: ch, isStream: true}
+}
+
+// IsStream 是否为流式模式
+func (r *TaskCreateResult) IsStream() bool {
+	return r.isStream
+}
+
+// Array 获取批量结果（仅批量模式有效）
+func (r *TaskCreateResult) Array() []*TaskCreateResponse {
+	return r.array
+}
+
+// Stream 获取流式 channel（仅流式模式有效）
+func (r *TaskCreateResult) Stream() <-chan *TaskCreateResponse {
+	return r.stream
 }
 
 // TaskResParam 任务和资源参数

@@ -448,19 +448,35 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		}
 
 		// 3. 调用插件的 create 方法
-		pluginResponses, err := taskHandler.Create(url)
+		result, err := taskHandler.Create(url)
 		if err != nil {
 			logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
 			continue
 		}
 
 		// 4. 处理插件返回
-		if len(pluginResponses) > 0 {
-			count, err := s.handleCreateTaskArray(ctx, pluginResponses, url, listener)
-			if err != nil {
-				logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
+		var count int
+		if result.IsStream() {
+			streamCh, streamErr := s.handleCreateTaskStream(ctx, result.Stream(), listener, 100)
+			if streamErr != nil {
+				logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
 				continue
 			}
+			for range streamCh {
+				count++
+			}
+		} else {
+			responses := result.Array()
+			if len(responses) > 0 {
+				count, err = s.handleCreateTaskArray(ctx, responses, url, listener)
+				if err != nil {
+					logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
+					continue
+				}
+			}
+		}
+
+		if count > 0 {
 			return &CreateTaskByURLResponse{
 				Succeed:       true,
 				AddedQuantity: count,

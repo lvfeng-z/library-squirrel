@@ -74,6 +74,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		SiteSaveProvider:      &hostSiteSaveProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:    &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:   &hostUrlListenerRegistry{ctx: deps.PluginCtx},
+		FrontendEventProvider: &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
 		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
 		OnUnregisterSiteBrowser: callbacks.onUnregisterSiteBrowser,
@@ -292,7 +293,7 @@ type hostTaskCreateProvider struct {
 	ctx pluginsdk.PluginContext
 }
 
-func (p *hostTaskCreateProvider) CreateTask(_ context.Context, url string) (*pluginsdk.TaskCreateResult, error) {
+func (p *hostTaskCreateProvider) CreateTask(_ context.Context, url string) (*pluginsdk.CreateTaskResult, error) {
 	return p.ctx.CreateTask(url)
 }
 
@@ -306,4 +307,31 @@ func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, contrib
 
 func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context) error {
 	return p.ctx.UnregisterUrlListener()
+}
+
+type hostFrontendEventProvider struct {
+	ctx pluginsdk.PluginContext
+}
+
+func (p *hostFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {
+	return p.ctx.PublishToFrontend(topic, data)
+}
+
+func (p *hostFrontendEventProvider) SubscribeFrontend(topic string, pushCh func([]byte)) (func(), error) {
+	ch, err := p.ctx.SubscribeFrontend(topic)
+	if err != nil {
+		return nil, err
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for data := range ch {
+			pushCh(data)
+		}
+	}()
+	return func() { <-done }, nil
+}
+
+func (p *hostFrontendEventProvider) UnsubscribeFrontend(topic string) error {
+	return p.ctx.UnsubscribeFrontend(topic)
 }

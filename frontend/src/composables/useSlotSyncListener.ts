@@ -41,7 +41,7 @@ function convertToViewSlot(config: ViewSlotConfig): ViewSlot {
 function convertToEmbedSlot(config: EmbedSlotConfig): EmbedSlot {
   return {
     slotId: config.slotId,
-    position: config.position as 'topbar' | 'statusbar' | 'toolbar',
+    position: config.position as 'topbar' | 'statusbar' | 'toolbar' | 'dialog',
     component: () => loadPluginComponent(config.contentType, config.content, config.pluginPublicId),
     props: config.props,
     order: config.order ?? 100

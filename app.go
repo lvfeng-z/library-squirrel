@@ -16,12 +16,11 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
-
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
 	"gorm.io/gorm"
 
-	"github.com/library-squirrel/backend/assetserver"
 	"github.com/library-squirrel/backend/appLauncher"
+	"github.com/library-squirrel/backend/assetserver"
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
@@ -98,7 +97,7 @@ type App struct {
 	StaticResourceService *extension2.StaticResourceService
 
 	// HTTP 路由
-	AssetRouter      *assetserver.Router
+	AssetRouter     *assetserver.Router
 	HttpFileHandler *assetserver.ResourceHandler
 
 	// 任务URL监听器
@@ -373,15 +372,16 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		SiteSave:            app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
+		FrontendEvent:       &wailsFrontendEventProvider{emitter: app.taskProgressEmitter},
 	})
 
 	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
 	if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
-		PluginInfo:           pluginInfo,
-		PluginCtx:            pluginCtx,
-		TaskHandlerRegistry:  app.TaskHandlerRegistry,
-		SiteBrowserRegistry:  app.SiteBrowserRegistry,
-		MainHWND:             app.mainHWND,
+		PluginInfo:          pluginInfo,
+		PluginCtx:           pluginCtx,
+		TaskHandlerRegistry: app.TaskHandlerRegistry,
+		SiteBrowserRegistry: app.SiteBrowserRegistry,
+		MainHWND:            app.mainHWND,
 	}); err != nil {
 		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
 	}
@@ -414,16 +414,17 @@ func resolveContentURLs(content json.RawMessage, contentType, publicId, version 
 	}
 	return result
 }
+
 type taskCreateAdapter struct {
 	svc *task.Service
 }
 
-func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.TaskCreateResult, error) {
+func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.CreateTaskResult, error) {
 	resp, err := a.svc.CreateTaskByURL(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	return &pluginsdk.TaskCreateResult{
+	return &pluginsdk.CreateTaskResult{
 		Succeed:       resp.Succeed,
 		AddedQuantity: resp.AddedQuantity,
 		Msg:           resp.Msg,
@@ -447,6 +448,28 @@ func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, contribu
 
 func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string) {
 	a.svc.Unregister(pluginPublicId)
+}
+
+// wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信
+type wailsFrontendEventProvider struct {
+	emitter extension2.WailsEventEmitter
+}
+
+func (p *wailsFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {
+	if p.emitter != nil {
+		p.emitter.Emit(topic, data)
+	}
+	return nil
+}
+
+func (p *wailsFrontendEventProvider) SubscribeFrontend(topic string, pushCh func([]byte)) (func(), error) {
+	// JS→Go 方向的监听需要 Wails runtime.EventsOn，暂返回空 cancel
+	// 实际前端→插件通信将在此集成时完善
+	return func() {}, nil
+}
+
+func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {
+	return nil
 }
 
 // initBaseServices 初始化基础服务（无服务依赖）
@@ -614,9 +637,9 @@ func (app *App) initAdvancedServices() error {
 		pluginExecFactory,
 		workInfoSaverAdapter,
 		resourceSaverAdapter,
-		app.WorkService,                // 实现 WorkChecker 接口
-		app.ResourceService,            // 实现 ResourceReader 接口
-		resourceFileBackuperAdapter,    // 实现 ResourceFileBackuper 接口
+		app.WorkService,             // 实现 WorkChecker 接口
+		app.ResourceService,         // 实现 ResourceReader 接口
+		resourceFileBackuperAdapter, // 实现 ResourceFileBackuper 接口
 	)
 
 	return nil

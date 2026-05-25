@@ -41,7 +41,7 @@ type SiteSaveProvider interface {
 
 // TaskCreateProvider 任务创建
 type TaskCreateProvider interface {
-	CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.TaskCreateResult, error)
+	CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.CreateTaskResult, error)
 }
 
 // UrlListenerRegistry URL监听器注册
@@ -62,6 +62,7 @@ type PluginContextDeps struct {
 	SiteSave            SiteSaveProvider
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
+	FrontendEvent       pluginsdk.FrontendEventProvider
 }
 
 // --- Implementation ---
@@ -77,6 +78,7 @@ type pluginContext struct {
 	siteSave             SiteSaveProvider
 	taskCreate           TaskCreateProvider
 	urlListener          UrlListenerRegistry
+	frontendEvent        pluginsdk.FrontendEventProvider
 	scopedLogger         *zap.SugaredLogger
 	logger               pluginsdk.Logger
 }
@@ -101,6 +103,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 		siteSave:            deps.SiteSave,
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
+		frontendEvent:       deps.FrontendEvent,
 		scopedLogger:        sugar,
 		logger:              newHostLogger(sugar),
 	}
@@ -209,8 +212,38 @@ func (pc *pluginContext) UnregisterUrlListener() error {
 	return nil
 }
 
-func (pc *pluginContext) CreateTask(url string) (*pluginsdk.TaskCreateResult, error) {
+func (pc *pluginContext) CreateTask(url string) (*pluginsdk.CreateTaskResult, error) {
 	return pc.taskCreate.CreateTaskByURL(context.Background(), url)
+}
+
+func (pc *pluginContext) PublishToFrontend(topic string, data []byte) error {
+	if pc.frontendEvent == nil {
+		return fmt.Errorf("frontend event provider not configured")
+	}
+	return pc.frontendEvent.PublishToFrontend(topic, data)
+}
+
+func (pc *pluginContext) SubscribeFrontend(topic string) (<-chan []byte, error) {
+	if pc.frontendEvent == nil {
+		return nil, fmt.Errorf("frontend event provider not configured")
+	}
+	ch := make(chan []byte, 16)
+	cancel, err := pc.frontendEvent.SubscribeFrontend(topic, func(data []byte) {
+		ch <- data
+	})
+	if err != nil {
+		close(ch)
+		return nil, err
+	}
+	_ = cancel
+	return ch, nil
+}
+
+func (pc *pluginContext) UnsubscribeFrontend(topic string) error {
+	if pc.frontendEvent == nil {
+		return fmt.Errorf("frontend event provider not configured")
+	}
+	return pc.frontendEvent.UnsubscribeFrontend(topic)
 }
 
 // --- 路径 ---

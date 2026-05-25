@@ -417,12 +417,27 @@ type taskHandlerAdapter struct {
 	handler pluginsdk.TaskHandler
 }
 
-func (a *taskHandlerAdapter) Create(url string) ([]*dto.TaskCreateResponse, error) {
-	resp, err := a.handler.Create(url)
+func (a *taskHandlerAdapter) Create(url string) (*dto.TaskCreateResult, error) {
+	result, err := a.handler.Create(url)
 	if err != nil {
 		return nil, err
 	}
-	return SDKTaskCreateResponsesToDTO(resp), nil
+
+	if result.IsStream() {
+		// 流式模式：转换 channel 中的每个 response
+		sdkCh := result.Stream()
+		dtoCh := make(chan *dto.TaskCreateResponse, 16)
+		go func() {
+			defer close(dtoCh)
+			for resp := range sdkCh {
+				dtoCh <- SDKTaskCreateResponseToDTO(resp)
+			}
+		}()
+		return dto.StreamResult(dtoCh), nil
+	}
+
+	// 批量模式
+	return dto.BatchResult(SDKTaskCreateResponsesToDTO(result.Array())), nil
 }
 
 func (a *taskHandlerAdapter) CreateWorkInfo(task *entity.Task) (*dto.WorkResponse, error) {

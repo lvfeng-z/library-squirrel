@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -30,42 +31,62 @@ func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error)
 	return services.Task, nil
 }
 
-func (p *TaskHandlerProxy) Create(url string) ([]*pluginsdk.TaskCreateResponse, error) {
+func (p *TaskHandlerProxy) Create(url string) (*pluginsdk.TaskCreateResult, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.Create(context.Background(), &gen.CreateRequest{
-		Url:           url,
+	stream, err := client.Create(context.Background(), &gen.CreateRequest{
+		Url:            url,
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]*pluginsdk.TaskCreateResponse, len(resp.Responses))
-	for i, r := range resp.Responses {
-		children := make([]*pluginsdk.TaskCreateChildResponse, len(r.Children))
-		for j, c := range r.Children {
-			children[j] = &pluginsdk.TaskCreateChildResponse{
-				TaskName:   c.TaskName,
-				SiteWorkID: c.SiteWorkId,
-				URL:        c.Url,
-				PluginData: c.PluginData,
-				SiteName:   c.SiteName,
+	// 读取首条消息获取模式
+	chunk, err := stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	modeChunk := chunk.GetMode()
+	if modeChunk == nil {
+		return nil, fmt.Errorf("first CreateChunk must contain CreateMode")
+	}
+
+	if modeChunk.IsStream {
+		// 流式模式
+		ch := make(chan *pluginsdk.TaskCreateResponse, 16)
+		go func() {
+			defer close(ch)
+			for {
+				c, err := stream.Recv()
+				if err != nil {
+					return
+				}
+				taskProto := c.GetTask()
+				if taskProto != nil {
+					ch <- protoToTaskCreateResponse(taskProto)
+				}
 			}
+		}()
+		return pluginsdk.StreamResult(ch), nil
+	}
+
+	// 批量模式：收集所有 task
+	var responses []*pluginsdk.TaskCreateResponse
+	for {
+		taskProto := chunk.GetTask()
+		if taskProto != nil {
+			responses = append(responses, protoToTaskCreateResponse(taskProto))
 		}
-		result[i] = &pluginsdk.TaskCreateResponse{
-			PluginTaskID: r.PluginTaskId,
-			TaskName:     r.TaskName,
-			SiteWorkID:   r.SiteWorkId,
-			URL:          r.Url,
-			PluginData:   r.PluginData,
-			SiteName:     r.SiteName,
-			Children:     children,
+		chunk, err = stream.Recv()
+		if err != nil {
+			break
 		}
 	}
-	return result, nil
+	return pluginsdk.BatchResult(responses), nil
 }
 
 func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdk.Task) (*pluginsdk.WorkResponse, error) {
@@ -246,6 +267,28 @@ func taskResParamToProto(p *pluginsdk.TaskResParam) *gen.TaskResParam {
 	}
 }
 
+func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdk.TaskCreateResponse {
+	children := make([]*pluginsdk.TaskCreateChildResponse, len(r.Children))
+	for j, c := range r.Children {
+		children[j] = &pluginsdk.TaskCreateChildResponse{
+			TaskName:   c.TaskName,
+			SiteWorkID: c.SiteWorkId,
+			URL:        c.Url,
+			PluginData: c.PluginData,
+			SiteName:   c.SiteName,
+		}
+	}
+	return &pluginsdk.TaskCreateResponse{
+		PluginTaskID: r.PluginTaskId,
+		TaskName:     r.TaskName,
+		SiteWorkID:   r.SiteWorkId,
+		URL:          r.Url,
+		PluginData:   r.PluginData,
+		SiteName:     r.SiteName,
+		Children:     children,
+	}
+}
+
 func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 	if pb == nil {
 		return nil
@@ -340,7 +383,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 
 // grpcStreamReader 从 gRPC server streaming 读取 StreamChunk，实现 io.ReadCloser
 type grpcStreamReader struct {
-	stream gen.TaskHandlerService_StartClient
+	stream grpc.ServerStreamingClient[gen.StreamChunk]
 	buf    []byte
 	bufOff int
 	closed bool
