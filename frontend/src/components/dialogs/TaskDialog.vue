@@ -166,7 +166,7 @@ const parentTaskStore = useParentTaskStore()
 // 方法
 // 分页查询子任务的函数
 async function taskQueryChildrenTaskPage(page: Page<object>): Promise<Page<object> | undefined> {
-  const query = new TaskQueryDTO()
+  const query = toRaw(taskSearchParams.value)
   const pid = formTask.value.id
   if (isNullish(pid)) {
     return undefined
@@ -416,11 +416,10 @@ function toParent() {
         v-show="isParent"
         ref="childTaskSearchTable"
         v-model:page="page"
-        v-model:toolbar-params="taskSearchParams"
         v-model:data="children"
         class="task-dialog-search-table"
         :selectable="true"
-        :thead="thead as Thead<object>[]"
+        :thead="thead"
         :search="taskQueryChildrenTaskPage"
         :update-load="updateLoad"
         :update-properties="['schedule', 'status']"

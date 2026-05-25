@@ -15,6 +15,8 @@ import (
 const (
 	// SourceTypePlugin 插件备份
 	SourceTypePlugin = 1
+	// SourceTypeResource 资源备份
+	SourceTypeResource = 2
 	// BackupRootDirName 备份根目录名
 	BackupRootDirName = "backup"
 )

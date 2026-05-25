@@ -12,6 +12,7 @@ type TaskProgressPusher interface {
 	PushError(taskId int64, err string)
 	PushTaskRemove(taskIds []int64)
 	PushParentTaskRemove(taskIds []int64)
+	PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string)
 }
 
 // WailsEventEmitter Wails 事件发射器接口
@@ -91,6 +92,25 @@ type taskScheduleDTO struct {
 	Finished int64 `json:"finished"`
 }
 
+// duplicateDetectedDTO 作品重复检测推送 DTO
+type duplicateDetectedDTO struct {
+	TaskId           int64  `json:"taskId"`
+	TaskName         string `json:"taskName"`
+	ExistingWorkId   int64  `json:"existingWorkId"`
+	ExistingWorkName string `json:"existingWorkName"`
+}
+
+// PushDuplicateDetected 推送作品重复检测事件到前端
+func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string) {
+	dto := &duplicateDetectedDTO{
+		TaskId:           taskId,
+		TaskName:         taskName,
+		ExistingWorkId:   existingWorkId,
+		ExistingWorkName: existingWorkName,
+	}
+	p.emitter.Emit("taskStatus-duplicateDetected", dto)
+}
+
 // NoopProgressPusher 空推送器，用于测试或 emitter 未就绪时
 type NoopProgressPusher struct{}
 
@@ -106,3 +126,4 @@ func (p *NoopProgressPusher) PushProgress(int64, int64, int64)       {}
 func (p *NoopProgressPusher) PushError(int64, string)                {}
 func (p *NoopProgressPusher) PushTaskRemove([]int64)                 {}
 func (p *NoopProgressPusher) PushParentTaskRemove([]int64)           {}
+func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string) {}

@@ -10,6 +10,7 @@ import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
+
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
@@ -35,7 +36,7 @@ onMounted(() => {
 })
 
 // 事件
-const emits = defineEmits(['openReplaceResConfirmDialog'])
+
 
 // 变量
 // taskManageSearchTable的组件实例
@@ -147,6 +148,10 @@ const thead: Ref<Thead<TaskProgressTreeDTO>[]> = ref([
           tagType = 'danger'
           tagText = '失败'
           break
+        case TaskStatusEnum.WAITING_FOR_INPUT:
+          tagType = 'warning'
+          tagText = '等待确认'
+          break
       }
       const elTag = h(ElTag, { type: tagType }, () => tagText)
       return h('div', { style: { display: 'flex', 'align-items': 'center', 'justify-content': 'center' } }, elTag)
@@ -181,6 +186,7 @@ const sourceUrl: Ref<string> = ref('')
 const supportedPluginListenerList: Ref<Plugin[]> = ref([])
 // 支持状态
 const supportStatus: Ref<string> = ref('')
+
 
 // 方法
 // 根据url或文件路径创建任务
@@ -599,6 +605,7 @@ async function handleSourceUrlInput() {
       </el-tour>
     </template>
   </base-subpage>
+
 </template>
 
 <style scoped>

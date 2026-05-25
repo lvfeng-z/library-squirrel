@@ -77,6 +77,12 @@ const taskStatusMapping: {
     icon: 'RefreshRight',
     operation: TaskOperationCodeEnum.RETRY,
     processing: false
+  },
+  [TaskStatusEnum.WAITING_FOR_INPUT]: {
+    tooltip: '等待确认',
+    icon: 'Loading',
+    operation: TaskOperationCodeEnum.VIEW,
+    processing: true
   }
 }
 // 任务进度信息Store

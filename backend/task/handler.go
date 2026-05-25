@@ -207,3 +207,4 @@ func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiRespons
 func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
 	return model.HandleResult(h.svc.ListSchedule(ctx, ids))
 }
+

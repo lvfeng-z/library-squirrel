@@ -15,11 +15,20 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 
 /**
+ * ConfirmReplace 用户确认替换或跳过重复作品
+ */
+export function ConfirmReplace(taskId: number, action: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3797758913, taskId, action).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * GetTaskState 获取任务状态
  */
 export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1655799451, taskId).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -28,7 +37,7 @@ export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiRes
  */
 export function GetTaskTreeState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1455726591, taskId).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -37,7 +46,7 @@ export function GetTaskTreeState(taskId: number): $CancellablePromise<model$0.Ap
  */
 export function IsIdle(): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(3320329243).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -46,7 +55,7 @@ export function IsIdle(): $CancellablePromise<model$0.ApiResponse<boolean> | nul
  */
 export function PauseTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(849111740, taskId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType1($result);
     });
 }
 
@@ -55,7 +64,7 @@ export function PauseTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
  */
 export function ResumeTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3566110931, taskId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType1($result);
     });
 }
 
@@ -64,7 +73,7 @@ export function ResumeTaskTree(taskId: number): $CancellablePromise<model$0.ApiR
  */
 export function RetryTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3178840824, taskId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType1($result);
     });
 }
 
@@ -73,7 +82,7 @@ export function RetryTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
  */
 export function StartTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(369525346, taskId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType1($result);
     });
 }
 
@@ -82,7 +91,7 @@ export function StartTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
  */
 export function StopTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2406061956, taskId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType1($result);
     });
 }
 

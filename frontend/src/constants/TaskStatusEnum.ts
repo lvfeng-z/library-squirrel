@@ -7,5 +7,6 @@ export enum TaskStatusEnum {
   STOPPING = 5,
   FINISHED = 6,
   FAILED = 7,
-  PARTLY_FINISHED = 8
+  PARTLY_FINISHED = 8,
+  WAITING_FOR_INPUT = 9
 }

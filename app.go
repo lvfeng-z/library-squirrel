@@ -603,6 +603,7 @@ func (app *App) initAdvancedServices() error {
 	// 创建 WorkInfoSaver 和 ResourceSaver 适配器
 	workInfoSaverAdapter := &workInfoSaverAdapter{svc: app.WorkService}
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
+	resourceFileBackuperAdapter := &resourceFileBackuperAdapter{svc: app.BackupService}
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -613,6 +614,9 @@ func (app *App) initAdvancedServices() error {
 		pluginExecFactory,
 		workInfoSaverAdapter,
 		resourceSaverAdapter,
+		app.WorkService,                // 实现 WorkChecker 接口
+		app.ResourceService,            // 实现 ResourceReader 接口
+		resourceFileBackuperAdapter,    // 实现 ResourceFileBackuper 接口
 	)
 
 	return nil
@@ -661,6 +665,16 @@ func (a *resourceSaverAdapter) Save(ctx context.Context, resource *entity2.Resou
 		return 0, err
 	}
 	return resource.GetID(), nil
+}
+
+// resourceFileBackuperAdapter ResourceFileBackuper 接口适配器
+type resourceFileBackuperAdapter struct {
+	svc *backup.Service
+}
+
+func (a *resourceFileBackuperAdapter) BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error {
+	_, err := a.svc.CreateBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
+	return err
 }
 
 // initHandlers 初始化 Handlers（用于 Bind[] 参数暴露给前端）

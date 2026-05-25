@@ -63,7 +63,7 @@ export class TaskQueryDTO {
     /**
      * 任务状态
      */
-    "status": query$0.QueryAttribute<string>;
+    "status": query$0.QueryAttribute<number>;
 
     /**
      * 是否为合集（0=否，1=是）
@@ -146,7 +146,7 @@ export class TaskQueryDTO {
         const $$createField0_0 = $$createType0;
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType1;
+        const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType2;
         const $$createField5_0 = $$createType1;
         const $$createField6_0 = $$createType1;

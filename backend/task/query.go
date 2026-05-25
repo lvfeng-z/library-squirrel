@@ -8,7 +8,7 @@ type TaskQueryDTO struct {
 	Pid                  query.QueryAttribute[int64]  `json:"pid" query:"pid"`                                     // 父任务ID
 	SiteID               query.QueryAttribute[int64]  `json:"siteId" query:"site_id"`                              // 站点ID
 	SiteWorkID           query.QueryAttribute[string] `json:"siteWorkId" query:"site_work_id"`                     // 站点作品ID
-	Status               query.QueryAttribute[string] `json:"status" query:"status"`                               // 任务状态
+	Status               query.QueryAttribute[int64]  `json:"status" query:"status"`                               // 任务状态
 	IsCollection         query.QueryAttribute[bool]   `json:"isCollection" query:"is_collection"`                  // 是否为合集（0=否，1=是）
 	PluginPublicID       query.QueryAttribute[string] `json:"pluginPublicId" query:"plugin_public_id"`             // 插件公开ID
 	PluginContributionID query.QueryAttribute[string] `json:"pluginContributionId" query:"plugin_contribution_id"` // 插件贡献ID

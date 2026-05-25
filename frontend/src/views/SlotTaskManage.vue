@@ -9,6 +9,7 @@ import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
+
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActiveV1.vue'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
@@ -54,6 +55,7 @@ const supportedPluginListenerList: Ref<PluginWithContributionVO[]> = ref([])
 const supportStatus: Ref<string> = ref('')
 const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
+
 
 // 监听 store 变化，同步更新行数据中的 status
 const unwatchTaskStore = watch(
@@ -112,7 +114,8 @@ const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary
   [TaskStatusEnum.STOPPING]: 'warning',
   [TaskStatusEnum.FINISHED]: 'success',
   [TaskStatusEnum.PARTLY_FINISHED]: 'success',
-  [TaskStatusEnum.FAILED]: 'danger'
+  [TaskStatusEnum.FAILED]: 'danger',
+  [TaskStatusEnum.WAITING_FOR_INPUT]: 'warning'
 }
 const statusTextMap: Record<number, string> = {
   [invalidStatus]: '已创建',
@@ -124,7 +127,8 @@ const statusTextMap: Record<number, string> = {
   [TaskStatusEnum.STOPPING]: '停止中',
   [TaskStatusEnum.FINISHED]: '完成',
   [TaskStatusEnum.PARTLY_FINISHED]: '部分完成',
-  [TaskStatusEnum.FAILED]: '失败'
+  [TaskStatusEnum.FAILED]: '失败',
+  [TaskStatusEnum.WAITING_FOR_INPUT]: '等待确认'
 }
 
 function formatDatetime(timestamp: number | null | undefined): string {
@@ -606,6 +610,7 @@ async function handleSourceUrlInput() {
       </el-tour>
     </template>
   </base-subpage>
+
 </template>
 
 <style scoped>

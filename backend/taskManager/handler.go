@@ -64,3 +64,8 @@ func (h *Handler) IsIdle() *model.ApiResponse[bool] {
 	result := h.mgr.IsIdle()
 	return model.Success(result)
 }
+
+// ConfirmReplace 用户确认替换或跳过重复作品
+func (h *Handler) ConfirmReplace(ctx context.Context, taskId int64, action string) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.ConfirmReplace(taskId, action))
+}

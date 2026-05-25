@@ -11,6 +11,7 @@ import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import TaskProgressMapTreeDTO from '@renderer/model/model/dto/TaskProgressMapTreeDTO.ts'
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
+import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import { Events } from '@wailsio/runtime'
 
 export function iniListener() {
@@ -53,6 +54,12 @@ export function iniListener() {
   Events.On('parentTaskStatus-removeParentTask', (event: any) => {
     const ids = event.data as number[]
     useParentTaskStore().removeParentTask(ids)
+  })
+
+  // 作品重复检测 - Wails Events
+  Events.On('taskStatus-duplicateDetected', (event: any) => {
+    const data = event.data as { taskId: number; taskName: string; existingWorkId: number; existingWorkName: string }
+    useReplaceConfirmStore().add(data)
   })
 
   // 自定义确认弹窗 - Wails Events

@@ -98,3 +98,9 @@ export async function taskStopTree(taskId: number): Promise<ApiResult<void>> {
 export async function taskRetryTree(taskId: number): Promise<ApiResult<void>> {
   return requireResponse(await TaskManagerHandler.RetryTaskTree(taskId), '重试任务', false)
 }
+
+// ========== 作品替换确认 ==========
+
+export async function taskManagerConfirmReplace(taskId: number, action: string): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.ConfirmReplace(taskId, action), '确认替换', false)
+}

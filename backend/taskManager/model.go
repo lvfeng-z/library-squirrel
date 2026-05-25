@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -31,6 +32,15 @@ const (
 	TaskStateFinished                         // 6: 已完成
 	TaskStateFailed                           // 7: 失败
 	TaskStatePartlyFinished                   // 8: 部分完成（父任务专用）
+	TaskStateWaitingForInput                  // 9: 等待用户确认（瞬态，不持久化）
+)
+
+// runResult run() 方法的返回值类型
+type runResult int
+
+const (
+	runResultDone        runResult = iota // 正常完成（Finished/Failed）
+	runResultNeedConfirm                   // 检测到重复，需要用户确认
 )
 
 // isStableState 判断任务状态是否为稳定状态（需要持久化到数据库）
@@ -75,6 +85,21 @@ type ResourceSaver interface {
 	Save(ctx context.Context, resource *entity.Resource) (int64, error)
 }
 
+// WorkChecker 作品查重接口
+type WorkChecker interface {
+	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity.Work, error)
+}
+
+// ResourceReader 资源查询接口（查找已有作品的资源文件）
+type ResourceReader interface {
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
+}
+
+// ResourceFileBackuper 资源文件备份接口
+type ResourceFileBackuper interface {
+	BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error
+}
+
 // ManagedTask 任务运行控制结构体
 type ManagedTask struct {
 	taskId   int64
@@ -99,6 +124,19 @@ type ManagedTask struct {
 	// 文件名格式模板提供者（实时读取，不缓存）
 	fileNameFormatProvider FileNameFormatProvider
 
+	// 作品查重
+	workChecker WorkChecker
+	// 资源查询（查找已有作品的资源文件）
+	resourceReader ResourceReader
+	// 资源文件备份
+	resourceBackuper ResourceFileBackuper
+	// 进度推送器
+	pusher TaskProgressPusher
+	// 跳过重复检查（替换确认后的第二次 run）
+	skipDuplicateCheck bool
+	// 已有作品 ID（第一次 run 检测到重复时设置，第二次 run 时用于备份）
+	existingWorkId int64
+
 	// 任务信息
 	task   *entity.Task
 	workId int64
@@ -112,7 +150,7 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, resourceBackuper ResourceFileBackuper, pusher TaskProgressPusher) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
 		taskId:                taskId,
@@ -126,13 +164,17 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		resourceSaver:         resourceSaver,
 		workDirProvider:       workDirProvider,
 		fileNameFormatProvider: fileNameFormatProvider,
+		workChecker:           workChecker,
+		resourceReader:        resourceReader,
+		resourceBackuper:      resourceBackuper,
+		pusher:                pusher,
 		task:                  task,
 		workId:                taskId,
 	}
 }
 
 // run 核心执行逻辑
-func (m *ManagedTask) run() {
+func (m *ManagedTask) run() runResult {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d panic: %v", m.taskId, r)
@@ -142,12 +184,35 @@ func (m *ManagedTask) run() {
 
 	m.setState(TaskStateProcessing)
 
+	// 0. 检查作品是否已存在（仅首次执行时检查）
+	if !m.skipDuplicateCheck && m.workChecker != nil && m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
+		existing, err := m.workChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
+		if err == nil && existing != nil {
+			existingWorkName := ""
+			if existing.SiteWorkName.Valid {
+				existingWorkName = existing.SiteWorkName.String
+			}
+			m.existingWorkId = existing.GetID()
+			if m.pusher != nil {
+				m.pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, existing.GetID(), existingWorkName)
+			}
+			m.setState(TaskStateWaitingForInput)
+			return runResultNeedConfirm
+		}
+	}
+
+	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行）
+	if m.existingWorkId > 0 {
+		m.backupExistingResources(m.existingWorkId)
+		m.existingWorkId = 0
+	}
+
 	// 1. 调用 CreateWorkInfo 创建作品信息
 	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 
 	// 2. 保存作品完整信息（Work + 周边数据）
@@ -155,7 +220,7 @@ func (m *ManagedTask) run() {
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 	m.workId = workId
 
@@ -164,7 +229,7 @@ func (m *ManagedTask) run() {
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 	defer reader.Close()
 
@@ -178,7 +243,7 @@ func (m *ManagedTask) run() {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 创建资源目录失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 
 	// 5. 保存 Resource 到数据库
@@ -198,7 +263,7 @@ func (m *ManagedTask) run() {
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 
 	// 6. 更新任务的 pendingResourceId
@@ -208,7 +273,7 @@ func (m *ManagedTask) run() {
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
 		m.setState(TaskStateFailed)
-		return
+		return runResultDone
 	}
 	defer file.Close()
 	// 使用带缓冲的 io.Copy 以支持进度报告
@@ -221,7 +286,7 @@ func (m *ManagedTask) run() {
 			// Context 取消，停止下载
 			reader.Close()
 			m.setState(TaskStateFailed)
-			return
+			return runResultDone
 		default:
 			n, readErr := reader.Read(buf)
 			if n > 0 {
@@ -233,7 +298,7 @@ func (m *ManagedTask) run() {
 					logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
 					reader.Close()
 					m.setState(TaskStateFailed)
-					return
+					return runResultDone
 				}
 				// 报告进度
 				if m.onProgress != nil {
@@ -248,16 +313,16 @@ func (m *ManagedTask) run() {
 					if startResp.Resource.Size > 0 && totalWritten < startResp.Resource.Size {
 						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, totalWritten, startResp.Resource.Size)
 						m.setState(TaskStateFailed)
-						return
+						return runResultDone
 					}
 					m.resourceResp = startResp
 					m.setState(TaskStateFinished)
-					return
+					return runResultDone
 				}
 				logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
 				reader.Close()
 				m.setState(TaskStateFailed)
-				return
+				return runResultDone
 			}
 		}
 	}
@@ -367,6 +432,28 @@ func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState 
 // SetOnProgress 设置进度回调
 func (m *ManagedTask) SetOnProgress(fn func(taskId int64, total int64, finished int64)) {
 	m.onProgress = fn
+}
+
+// backupExistingResources 备份已有作品的资源文件
+func (m *ManagedTask) backupExistingResources(workId int64) {
+	if m.resourceReader == nil || m.resourceBackuper == nil {
+		return
+	}
+	resources, err := m.resourceReader.ListByWorkId(m.ctx, workId)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 查询已有作品资源失败（跳过备份）: %v", m.taskId, err)
+		return
+	}
+	workDir := m.workDirProvider.GetWorkDir()
+	for _, res := range resources {
+		if !res.FilePath.Valid || !res.FileName.Valid {
+			continue
+		}
+		absPath := filepath.Join(workDir, "resource", res.FilePath.String)
+		if err := m.resourceBackuper.BackupFile(m.ctx, backup.SourceTypeResource, res.GetID(), res.FileName.String, absPath, workDir); err != nil {
+			logger.Log.Warnf("[TaskManager] 任务 %d 备份资源文件失败 [%s]: %v", m.taskId, absPath, err)
+		}
+	}
 }
 
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
@@ -482,7 +569,7 @@ func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
 			finishedCount++
 		case TaskStateFailed:
 			failedCount++
-		case TaskStateProcessing, TaskStatePausing, TaskStateStopping:
+		case TaskStateProcessing, TaskStatePausing, TaskStateStopping, TaskStateWaitingForInput:
 			anyProcessing = true
 		case TaskStatePaused:
 			anyPaused = true
@@ -523,7 +610,7 @@ func (p *ParentTask) GetState() TaskState {
 func (p *ParentTask) AllChildrenTerminal() bool {
 	for _, child := range p.GetChildren() {
 		s := child.GetState()
-		if s != TaskStateFinished && s != TaskStateFailed {
+		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStateWaitingForInput {
 			return false
 		}
 	}

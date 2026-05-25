@@ -74,10 +74,20 @@ type Manager struct {
 	workDirProvider WorkDirProvider
 	// 文件名格式模板提供者（实时读取，不缓存）
 	fileNameFormatProvider FileNameFormatProvider
+
+	// 作品查重
+	workChecker WorkChecker
+	// 资源查询（查找已有作品的资源文件）
+	resourceReader ResourceReader
+	// 资源文件备份
+	resourceBackuper ResourceFileBackuper
+	// 等待用户确认的任务（WaitingForInput 状态，已释放信号量）
+	waitingForInputMap map[int64]*ManagedTask
+	waitingForInputMu  sync.Mutex
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, resourceBackuper ResourceFileBackuper) *Manager {
 	m := &Manager{
 		taskMap:                make(map[int64]*ManagedTask),
 		parentMap:              make(map[int64]*ParentTask),
@@ -95,6 +105,10 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		pluginExecFactory:      pluginExecFactory,
 		workInfoSaver:          workInfoSaver,
 		resourceSaver:          resourceSaver,
+		workChecker:            workChecker,
+		resourceReader:         resourceReader,
+		resourceBackuper:       resourceBackuper,
+		waitingForInputMap:     make(map[int64]*ManagedTask),
 	}
 	go m.flushLoop()
 	return m
@@ -174,7 +188,16 @@ func (m *Manager) executeTask(task *ManagedTask) {
 		m.dispatchFromQueue()
 	}()
 
-	task.run()
+	result := task.run()
+
+	if result == runResultNeedConfirm {
+		// 停放到等待队列，信号量由 defer 释放
+		m.waitingForInputMu.Lock()
+		m.waitingForInputMap[task.taskId] = task
+		m.waitingForInputMu.Unlock()
+		return
+	}
+
 	m.cleanupFinishedTask(task)
 }
 
@@ -326,6 +349,65 @@ func (m *Manager) IsIdle() bool {
 	return len(m.taskMap) == 0
 }
 
+// ConfirmReplace 用户确认替换或跳过
+func (m *Manager) ConfirmReplace(taskId int64, action string) error {
+	m.waitingForInputMu.Lock()
+	task, ok := m.waitingForInputMap[taskId]
+	if !ok {
+		m.waitingForInputMu.Unlock()
+		return ErrTaskTreeNotFound
+	}
+	delete(m.waitingForInputMap, taskId)
+	m.waitingForInputMu.Unlock()
+
+	if action == "skip" {
+		m.removeWaitingTask(task)
+		return nil
+	}
+
+	// action == "replace": 跳过重复检查，重新调度
+	task.skipDuplicateCheck = true
+	m.tryDispatch(task)
+	return nil
+}
+
+// removeWaitingTask 处理跳过任务的清理（从内存中移除，不写 DB）
+func (m *Manager) removeWaitingTask(task *ManagedTask) {
+	// 推送状态回到 DB 中的原始状态，让前端看到状态转换
+	originalState := TaskState(task.task.Status)
+	taskName := ""
+	if task.task.TaskName.Valid {
+		taskName = task.task.TaskName.String
+	}
+	m.pusher.PushStateChange(task.taskId, taskName, originalState)
+
+	m.mu.Lock()
+	delete(m.taskMap, task.taskId)
+
+	if task.parentId != 0 {
+		parent, ok := m.parentMap[task.parentId]
+		if ok {
+			parent.RemoveChild(task.taskId)
+			if parent.AllChildrenTerminal() {
+				delete(m.parentMap, task.parentId)
+				m.mu.Unlock()
+				m.pusher.PushParentTaskRemove([]int64{task.parentId})
+			} else {
+				_, newParentState := parent.RefreshState()
+				m.mu.Unlock()
+				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+			}
+		} else {
+			m.mu.Unlock()
+		}
+	} else {
+		m.mu.Unlock()
+	}
+
+	task.cancel()
+	m.pusher.PushTaskRemove([]int64{task.taskId})
+}
+
 // IsShuttingDown 检查是否正在优雅关闭
 func (m *Manager) IsShuttingDown() bool {
 	return m.shuttingDown.Load()
@@ -348,6 +430,16 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 		tasks = append(tasks, t)
 	}
 	m.mu.Unlock()
+
+	// 清理等待用户确认的任务（无运行协程，直接移除）
+	m.waitingForInputMu.Lock()
+	waitingIds := make([]int64, 0, len(m.waitingForInputMap))
+	for id, t := range m.waitingForInputMap {
+		waitingIds = append(waitingIds, id)
+		t.setState(TaskStateCreated)
+	}
+	m.waitingForInputMap = make(map[int64]*ManagedTask)
+	m.waitingForInputMu.Unlock()
 
 	// 暂停所有 Processing 任务
 	for _, t := range tasks {
@@ -449,7 +541,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.resourceBackuper, m.pusher)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
@@ -473,7 +565,6 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 			}
 		}
 	})
-
 
 	// 设置进度回调
 	mt.SetOnProgress(func(taskId int64, total int64, finished int64) {
@@ -526,4 +617,3 @@ func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum) {
 	default:
 	}
 }
-

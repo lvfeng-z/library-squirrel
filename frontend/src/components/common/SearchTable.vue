@@ -50,8 +50,6 @@ const props = withDefaults(
 const data = defineModel<Data[]>('data', { default: [], required: false })
 // 分页查询配置
 const page = defineModel<Page<Data>>('page', { required: true })
-// 工具栏查询参数
-const toolbarParams = defineModel<object>('toolbarParams', { default: {}, required: false })
 // 已编辑的行
 const changedRows = defineModel<Data[]>('changedRows', { default: [], required: false })
 // 排序配置
