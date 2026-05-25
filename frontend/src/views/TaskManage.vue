@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseSubpage from './BaseSubpage.vue'
-import { h, onMounted, Ref, ref, VNode } from 'vue'
+import {h, onMounted, Ref, ref, toRaw, VNode} from 'vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import { Thead } from '../model/util/Thead.ts'
 import DialogMode from '../model/util/DialogMode.ts'
@@ -512,7 +512,6 @@ async function handleSourceUrlInput() {
         ref="taskManageSearchTable"
         v-model:data="dataList"
         v-model:page="page"
-        v-model:toolbar-params="taskSearchParams"
         v-model:changed-rows="changedRows"
         v-model:sort="sort"
         class="task-manage-search-table"

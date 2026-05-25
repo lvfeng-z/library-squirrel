@@ -277,7 +277,6 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
         <search-table
           ref="siteAuthorSearchTable"
           v-model:page="page"
-          v-model:toolbar-params="siteAuthorQuery"
           v-model:changed-rows="changedRows"
           class="tag-manage-search-table"
           data-key="siteAuthor.id"

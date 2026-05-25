@@ -274,7 +274,6 @@ async function requestSiteTagSelectItemPage(
           <search-table
             ref="localTagSearchTable"
             v-model:page="page"
-            v-model:toolbar-params="localTagQuery"
             v-model:changed-rows="changedRows"
             class="tag-manage-left-search-table"
             data-key="localTag.id"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseSubpage from './BaseSubpage.vue'
-import { onMounted, onUnmounted, Ref, ref, watch } from 'vue'
+import {onMounted, onUnmounted, Ref, ref, toRaw, watch} from 'vue'
 import SlotSearchTable from '../components/common/SlotSearchTable.vue'
 import DialogMode from '../model/util/DialogMode.ts'
 import { ElMessage, ElTag } from 'element-plus'
@@ -173,7 +173,7 @@ async function createTaskFromSource() {
 }
 
 async function taskQueryParentPage(page: Page<TaskProgressTreeDTO>): Promise<Page<TaskProgressTreeDTO>> {
-  const query = new TaskQueryDTO()
+  const query = toRaw(taskSearchParams.value)
   if (sort.value.prop && sort.value.order) {
     const orderField = sort.value.prop as keyof TaskQueryDTO
     ;(query as any)[orderField] = {
@@ -468,7 +468,6 @@ async function handleSourceUrlInput() {
         ref="taskManageSearchTable"
         v-model:data="dataList"
         v-model:page="page"
-        v-model:toolbar-params="taskSearchParams"
         v-model:sort="sort"
         class="task-manage-search-table"
         :selectable="true"

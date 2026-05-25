@@ -209,7 +209,6 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         <search-table
           ref="pluginSearchTable"
           v-model:page="pluginPage"
-          v-model:toolbar-params="pluginSearchParams"
           class="plugin-manage-left-search-table"
           data-key="id"
           :operation-button="pluginOperationButton"

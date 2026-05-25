@@ -310,7 +310,6 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
         <search-table
           ref="siteTagSearchTable"
           v-model:page="page"
-          v-model:toolbar-params="siteTagQuery"
           v-model:changed-rows="changedRows"
           v-model:sort="sort"
           class="tag-manage-search-table"

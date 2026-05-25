@@ -191,7 +191,6 @@ function handleSiteDialogRequestSuccess() {
         <search-table
           ref="siteSearchTable"
           v-model:page="sitePage"
-          v-model:toolbar-params="siteSearchParams"
           v-model:changed-rows="siteChangedRows"
           class="site-manage-search-table"
           data-key="id"
