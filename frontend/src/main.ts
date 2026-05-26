@@ -18,6 +18,7 @@ import { iniListener } from '@renderer/MainIpcListener.ts'
 import { initBuiltinMenus } from './composables/useBuiltinMenus.ts'
 import { setRouterInstance } from './store/SlotRegistryStore.ts'
 import lodash from 'lodash'
+import * as apis from './apis/http'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -68,7 +69,7 @@ const pluginContext = {
   },
 
   // --- Custom Business Logic ---
-  custom: {}
+  custom: { apis }
 }
 
 // 插件的上下文暴露到 window
