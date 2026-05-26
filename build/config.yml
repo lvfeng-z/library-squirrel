@@ -41,6 +41,7 @@ dev_mode:
       - node_modules
       - frontend
       - bin
+      - plugin/package
     file:
       - .DS_Store
       - .gitignore
