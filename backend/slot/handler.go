@@ -1,7 +1,6 @@
 package slot
 
 import (
-	domain "github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/model"
 )
 
@@ -16,7 +15,11 @@ func NewHandler(svc *SlotSyncService) *Handler {
 }
 
 // GetAllSlots 获取所有插槽
-func (h *Handler) GetAllSlots() *model.ApiResponse[[]*domain.SlotConfig] {
-	result := h.svc.GetAllSlots()
+func (h *Handler) GetAllSlots() *model.ApiResponse[[]*SlotResponse] {
+	configs := h.svc.GetAllSlots()
+	result := make([]*SlotResponse, len(configs))
+	for i, cfg := range configs {
+		result[i] = SlotConfigToResponse(cfg)
+	}
 	return model.Success(result)
 }

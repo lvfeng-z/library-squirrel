@@ -38,25 +38,26 @@ const (
 
 // SlotConfig 插槽配置
 type SlotConfig struct {
-	*pkgmodel.ExtensionMetadata             // 嵌入元数据
-	SlotType                    SlotType    // 插槽类型
-	Content                     json.RawMessage // 插槽内容（JSON 结构，前端根据 ContentType 解析）
-	ContentType                 ContentType // 内容类型
-	Title                       string      // 插槽标题
-	Icon                        string      // 插槽图标
-	Order                       int         // 排序
-	// 扩展字段（声明式注册使用）
-	Position       string // panel: left-sidebar|right-sidebar|bottom; embed: topbar|toolbar|statusbar
-	Width          *int   // panel: 宽度
-	Height         *int   // panel: 高度
-	ViewId         string // menu: 关联的 view slot ID
-	ContributionId string // siteBrowserList: 关联的 siteBrowser contribution ID
+	Metadata       *pkgmodel.ExtensionMetadata // 组合元数据
+	SlotType       SlotType                    // 插槽类型
+	Content        json.RawMessage             // 插槽内容（JSON 结构，前端根据 ContentType 解析）
+	ContentType    ContentType                 // 内容类型
+	Title          string                      // 插槽标题
+	Icon           string                      // 插槽图标（解析后的完整 URL）
+	Order          int                         // 排序
+	Position       string                      // embed: topbar|toolbar|statusbar|dialog; panel: left-sidebar|right-sidebar|bottom
+	Width          *int                        // panel: 宽度
+	Height         *int                        // panel: 高度
+	ViewId         string                      // menu: 关联的 view slot ID
+	ContributionId string                      // siteBrowserList: 关联的 siteBrowser contribution ID
+	Props          json.RawMessage             // 传递给组件的额外属性
+	Children       []SlotConfig                // menu: 子菜单项
 }
 
 // NewSlotConfig 创建插槽配置
 func NewSlotConfig() *SlotConfig {
 	return &SlotConfig{
-		ExtensionMetadata: &pkgmodel.ExtensionMetadata{
+		Metadata: &pkgmodel.ExtensionMetadata{
 			Type: pkgmodel.ExtensionTypeSlot,
 		},
 	}

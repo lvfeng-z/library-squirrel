@@ -3,6 +3,5 @@
 
 export {
     ApiResponse,
-    ExtensionType,
     Page
 } from "./models.js";

@@ -17,6 +17,7 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/library-squirrel/backend/appLauncher"
@@ -105,6 +106,8 @@ type App struct {
 
 	// Wails 事件发射器（用于任务进度推送）
 	taskProgressEmitter taskManager.WailsEventEmitter
+		// 前端事件监听函数（用于插件 SubscribeFrontend）
+		frontendEventOn func(topic string, callback func(data any)) func()
 
 	// Handlers（用于 Bind[] 参数）
 	LocalTagHandler              *localTag.Handler
@@ -182,16 +185,22 @@ func NewApp() (*App, error) {
 	app.initHandlers()
 
 	// 7. 加载已安装的插件
-	app.loadInstalledPlugins()
+	// 插件加载延迟到 SetEventEmitter 之后，由 LoadPlugins 显式调用
 
 	return app, nil
 }
 
+
+// LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）
+func (app *App) LoadPlugins() {
+	app.loadInstalledPlugins()
+}
 // SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher 和 TaskProgressPusher
-func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter) {
+func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent func(topic string, callback func(data any)) func()) {
 	pusher := extension2.NewWailsSlotPusher(emitter)
 	app.SlotRegistry.SetPusher(pusher)
 	app.taskProgressEmitter = emitter
+	app.frontendEventOn = onEvent
 	// Manager 在 initAdvancedServices 中已创建（此时 emitter 尚未就绪），需要补设 pusher
 	if app.TaskManagerService != nil {
 		app.TaskManagerService.SetPusher(taskManager.NewWailsTaskProgressPusher(emitter))
@@ -306,11 +315,11 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	// 声明式注册 Slot
 	for _, slot := range ext.Slots {
 		slotConfig := base.NewSlotConfig()
-		slotConfig.ExtensionMetadata.ID = slot.ID
-		slotConfig.ExtensionMetadata.PluginID = p.GetID()
-		slotConfig.ExtensionMetadata.PluginPublicID = publicId
-		slotConfig.ExtensionMetadata.Name = slot.Name
-		slotConfig.ExtensionMetadata.Description = slot.Description
+		slotConfig.Metadata.ID = slot.ID
+		slotConfig.Metadata.PluginID = p.GetID()
+		slotConfig.Metadata.PluginPublicID = publicId
+		slotConfig.Metadata.Name = slot.Name
+		slotConfig.Metadata.Description = slot.Description
 		slotConfig.SlotType = base.SlotType(slot.SlotType)
 		slotConfig.ContentType = base.ContentType(slot.ContentType)
 		slotConfig.Content = resolveContentURLs(slot.Content, slot.ContentType, publicId, version)
@@ -321,13 +330,15 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		slotConfig.Height = slot.Height
 		slotConfig.ViewId = slot.ViewId
 		slotConfig.ContributionId = slot.ContributionId
+		slotConfig.Props = slot.Props
+		slotConfig.Children = convertSlotChildren(slot.Children, p.GetID(), publicId, version)
 
 		// 将相对路径的 Icon 转换为 URL
 		if slot.Icon != "" {
 			slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
 		}
 
-		extension := model.NewExtension(*slotConfig.ExtensionMetadata, slotConfig)
+		extension := model.NewExtension(*slotConfig.Metadata, slotConfig)
 		if err := app.SlotRegistry.Register(extension); err != nil {
 			logger.Log.Errorf("注册 Slot 失败 %s/%s: %v", publicId, slot.ID, err)
 		}
@@ -372,7 +383,10 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		SiteSave:            app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
-		FrontendEvent:       &wailsFrontendEventProvider{emitter: app.taskProgressEmitter},
+		FrontendEvent: &wailsFrontendEventProvider{
+			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
+			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
+		},
 	})
 
 	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
@@ -387,6 +401,44 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	}
 
 	return nil
+}
+
+// convertSlotChildren 递归转换子插槽声明为 SlotConfig
+func convertSlotChildren(children []dto.SlotDeclaration, pluginID int64, publicId, version string) []base.SlotConfig {
+	if len(children) == 0 {
+		return nil
+	}
+	result := make([]base.SlotConfig, len(children))
+	for i, child := range children {
+		result[i] = base.SlotConfig{
+			Metadata: &model.ExtensionMetadata{
+				Type:           model.ExtensionTypeSlot,
+				ID:             child.ID,
+				PluginID:       pluginID,
+				PluginPublicID: publicId,
+				Name:           child.Name,
+				Description:    child.Description,
+			},
+			SlotType:       base.SlotType(child.SlotType),
+			ContentType:    base.ContentType(child.ContentType),
+			Content:        resolveContentURLs(child.Content, child.ContentType, publicId, version),
+			Title:          child.Title,
+			Order:          child.Order,
+			Position:       child.Position,
+			Width:          child.Width,
+			Height:         child.Height,
+			ViewId:         child.ViewId,
+			ContributionId: child.ContributionId,
+			Props:          child.Props,
+		}
+		if child.Icon != "" {
+			// 使用 app 实例的 StaticResourceService 在包级别不可用，
+			// 子菜单 icon 保留相对路径或由前端处理
+			result[i].Icon = child.Icon
+		}
+		result[i].Children = convertSlotChildren(child.Children, pluginID, publicId, version)
+	}
+	return result
 }
 
 // resolveContentURLs 将 Slot Content 中的相对路径转换为完整的 resource:// URL
@@ -451,21 +503,45 @@ func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string) {
 }
 
 // wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信
+// 使用延迟获取避免初始化时序问题（插件加载早于 SetEventEmitter）
 type wailsFrontendEventProvider struct {
-	emitter extension2.WailsEventEmitter
+	emitterFunc  func() extension2.WailsEventEmitter
+	onEventFunc  func() func(topic string, callback func(data any)) func()
 }
 
 func (p *wailsFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {
-	if p.emitter != nil {
-		p.emitter.Emit(topic, data)
+	emitter := p.emitterFunc()
+	if emitter != nil {
+		logger.Log.Info("插件事件转发到前端", zap.String("topic", topic), zap.Int("dataLen", len(data)))
+		emitter.Emit(topic, data)
+	} else {
+		logger.Log.Warn("插件事件转发失败: emitter 为 nil", zap.String("topic", topic))
 	}
 	return nil
 }
 
 func (p *wailsFrontendEventProvider) SubscribeFrontend(topic string, pushCh func([]byte)) (func(), error) {
-	// JS→Go 方向的监听需要 Wails runtime.EventsOn，暂返回空 cancel
-	// 实际前端→插件通信将在此集成时完善
-	return func() {}, nil
+	onEvent := p.onEventFunc()
+	if onEvent == nil {
+		logger.Log.Warn("插件订阅前端事件失败: onEvent 为 nil", zap.String("topic", topic))
+		return func() {}, nil
+	}
+	cancel := onEvent(topic, func(data any) {
+		var bytes []byte
+		switch v := data.(type) {
+		case []byte:
+			bytes = v
+		case string:
+			bytes = []byte(v)
+		default:
+			bytes, _ = json.Marshal(v)
+		}
+		if bytes != nil {
+			pushCh(bytes)
+		}
+	})
+	logger.Log.Info("插件已订阅前端事件", zap.String("topic", topic))
+	return cancel, nil
 }
 
 func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {

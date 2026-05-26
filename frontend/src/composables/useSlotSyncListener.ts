@@ -5,45 +5,37 @@ import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent } from 'vue'
 import * as Vue from 'vue'
-import { AnySlotContent, SyncSlotConfig } from '@renderer/model/model/constant/SlotTypes.ts'
-import {
-  EmbedSlotConfig,
-  HtmlContent,
-  MenuSlotConfig,
-  PanelSlotConfig,
-  PrecompiledContent,
-  SiteBrowserListSlotConfig,
-  ViewSlotConfig,
-  VueSourceContent
-} from '@renderer/model/model/interface/SlotConfigs.ts'
+import type { SlotResponse } from '@bindings/github.com/library-squirrel/backend/slot/models'
+import { AnySlotContent } from '@renderer/model/model/constant/SlotTypes.ts'
+import type { HtmlContent, PrecompiledContent, VueSourceContent } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
-import { Events } from '@wailsio/runtime'
 import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/backend/slot'
+import * as WailsRuntime from '@wailsio/runtime'
 
 /**
  * 转换视图插槽配置
  */
-function convertToViewSlot(config: ViewSlotConfig): ViewSlot {
-  const componentLoader = () => loadPluginComponent(config.contentType, config.content, config.pluginPublicId)
+function convertToViewSlot(config: SlotResponse): ViewSlot {
+  const componentLoader = () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId)
   return {
     slotId: config.slotId,
     name: config.name,
     component: componentLoader,
     order: config.order ?? 100,
     isPlugin: true,
-    props: config.props
+    props: config.props as Record<string, unknown> | undefined
   }
 }
 
 /**
  * 转换嵌入插槽配置
  */
-function convertToEmbedSlot(config: EmbedSlotConfig): EmbedSlot {
+function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
   return {
     slotId: config.slotId,
     position: config.position as 'topbar' | 'statusbar' | 'toolbar' | 'dialog',
-    component: () => loadPluginComponent(config.contentType, config.content, config.pluginPublicId),
-    props: config.props,
+    component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
+    props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
   }
 }
@@ -51,14 +43,14 @@ function convertToEmbedSlot(config: EmbedSlotConfig): EmbedSlot {
 /**
  * 转换面板插槽配置
  */
-function convertToPanelSlot(config: PanelSlotConfig): PanelSlot {
+function convertToPanelSlot(config: SlotResponse): PanelSlot {
   return {
     slotId: config.slotId,
     position: config.position as 'left-sidebar' | 'right-sidebar' | 'bottom',
-    width: config.width,
-    height: config.height,
-    component: () => loadPluginComponent(config.contentType, config.content, config.pluginPublicId),
-    props: config.props,
+    width: config.width ?? undefined,
+    height: config.height ?? undefined,
+    component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
+    props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
   }
 }
@@ -66,9 +58,9 @@ function convertToPanelSlot(config: PanelSlotConfig): PanelSlot {
 /**
  * 转换菜单插槽配置
  */
-function convertToMenuSlot(config: MenuSlotConfig): MenuSlotItem {
+function convertToMenuSlot(config: SlotResponse): MenuSlotItem {
   // 递归转换子菜单
-  const convertChildren = (children?: MenuSlotConfig[]): MenuSlotItem[] | undefined => {
+  const convertChildren = (children?: SlotResponse[]): MenuSlotItem[] | undefined => {
     if (!children || children.length === 0) return undefined
     return children.map((child) => ({
       slotId: child.slotId,
@@ -95,7 +87,7 @@ function convertToMenuSlot(config: MenuSlotConfig): MenuSlotItem {
 /**
  * 转换站点浏览器列表插槽配置
  */
-function convertToSiteBrowserListSlot(config: SiteBrowserListSlotConfig): SiteBrowserListSlotItem {
+function convertToSiteBrowserListSlot(config: SlotResponse): SiteBrowserListSlotItem {
   return {
     slotId: config.slotId,
     pluginId: config.pluginId,
@@ -103,7 +95,7 @@ function convertToSiteBrowserListSlot(config: SiteBrowserListSlotConfig): SiteBr
     name: config.name,
     order: config.order ?? 100,
     contributionId: config.contributionId ?? '',
-    imagePath: config.imagePath ?? ''
+    icon: config.icon ?? ''
   }
 }
 
@@ -165,7 +157,7 @@ async function loadCompiledComponent(jsUrl: string, cssUrl: string | undefined, 
   // 动态导入 JS 文件获取组件
   try {
     const module = await import(/* @vite-ignore */ jsUrl)
-    return defineComponent(module.default(Vue) as Record<string, unknown>)
+    return defineComponent(module.default(Vue, WailsRuntime) as Record<string, unknown>)
   } catch (error) {
     console.error('加载编译后的组件失败:', error)
     throw new Error(`加载编译后的组件失败: ${error}`)
@@ -395,96 +387,25 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 
 /**
  * 初始化插槽同步监听器
- * 通过 Wails Events 监听 Go 后端的插槽注册/注销消息
  */
 export function initSlotSyncListener() {
   const store = useSlotRegistryStore()
 
-  // 处理插槽注册事件
-  Events.On('slot-register', (event: any) => {
-    try {
-      const config = event.data.data as SyncSlotConfig
-
-      if (config.type === 'view') {
-        store.registerViewSlot(convertToViewSlot(config))
-      } else if (config.type === 'menu') {
-        store.registerMenuSlot(convertToMenuSlot(config))
-      } else if (config.type === 'embed') {
-        store.registerEmbedSlot(convertToEmbedSlot(config))
-      } else if (config.type === 'panel') {
-        store.registerPanelSlot(convertToPanelSlot(config))
-
-        if (config.replaceViewId) {
-          store.replaceView(config.pluginPublicId, config.replaceViewId)
-        }
-      } else if (config.type === 'siteBrowserList') {
-        store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(config))
-      }
-    } catch (error) {
-      console.error('Failed to handle slot-register event:', error)
-    }
-  })
-
-  // 处理插槽注销事件
-  Events.On('slot-unregister', (event: any) => {
-    try {
-      const slotId = event.data.slotId as string
-      const pluginId = event.data.pluginId as number
-
-      if (pluginId) {
-        unloadPluginStyles(pluginId)
-      }
-
-      if (slotId) {
-        store.unregisterViewSlot(slotId)
-        store.unregisterMenuSlot(slotId)
-        store.unregisterEmbedSlot(slotId)
-        store.unregisterPanelSlot(slotId)
-        store.unregisterSiteBrowserSlot(slotId)
-      }
-    } catch (error) {
-      console.error('Failed to handle slot-unregister event:', error)
-    }
-  })
-
-  // 处理批量插槽注册事件
-  Events.On('slot-batch-register', (event: any) => {
-    try {
-      const configs = event.data.slots as SyncSlotConfig[]
-
-      configs.forEach((config) => {
-        if (config.type === 'view') {
-          store.registerViewSlot(convertToViewSlot(config))
-        } else if (config.type === 'menu') {
-          store.registerMenuSlot(convertToMenuSlot(config))
-        } else if (config.type === 'embed') {
-          store.registerEmbedSlot(convertToEmbedSlot(config))
-        } else if (config.type === 'panel') {
-          store.registerPanelSlot(convertToPanelSlot(config))
-        } else if (config.type === 'siteBrowserList') {
-          store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(config))
-        }
-      })
-    } catch (error) {
-      console.error('Failed to handle slot-batch-register event:', error)
-    }
-  })
-
-  // 初始同步：获取所有已注册的插槽（处理插件激活时渲染进程还未准备好的情况）
+  // 初始同步：获取所有已注册的插槽
   SlotHandler.GetAllSlots().then((resp) => {
     const slots = resp?.data ?? []
     slots.forEach((config: unknown) => {
-      const syncConfig = config as SyncSlotConfig
-      if (syncConfig.type === 'view') {
-        store.registerViewSlot(convertToViewSlot(syncConfig))
-      } else if (syncConfig.type === 'menu') {
-        store.registerMenuSlot(convertToMenuSlot(syncConfig))
-      } else if (syncConfig.type === 'embed') {
-        store.registerEmbedSlot(convertToEmbedSlot(syncConfig))
-      } else if (syncConfig.type === 'panel') {
-        store.registerPanelSlot(convertToPanelSlot(syncConfig))
-      } else if (syncConfig.type === 'siteBrowserList') {
-        store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(syncConfig))
+      const slot = config as SlotResponse
+      if (slot.type === 'view') {
+        store.registerViewSlot(convertToViewSlot(slot))
+      } else if (slot.type === 'menu') {
+        store.registerMenuSlot(convertToMenuSlot(slot))
+      } else if (slot.type === 'embed') {
+        store.registerEmbedSlot(convertToEmbedSlot(slot))
+      } else if (slot.type === 'panel') {
+        store.registerPanelSlot(convertToPanelSlot(slot))
+      } else if (slot.type === 'siteBrowserList') {
+        store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(slot))
       }
     })
   })

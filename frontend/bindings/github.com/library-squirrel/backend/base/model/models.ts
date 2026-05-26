@@ -54,31 +54,6 @@ export class ApiResponse<T> {
 }
 
 /**
- * ExtensionType 扩展点类型
- */
-export enum ExtensionType {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = "",
-
-    /**
-     * ExtensionTypeTaskHandler 任务处理器
-     */
-    ExtensionTypeTaskHandler = "taskHandler",
-
-    /**
-     * ExtensionTypeSiteBrowser 站点浏览器
-     */
-    ExtensionTypeSiteBrowser = "siteBrowser",
-
-    /**
-     * ExtensionTypeSlot 插槽
-     */
-    ExtensionTypeSlot = "slot",
-};
-
-/**
  * Page 分页响应（与渲染进程 IPage 保持一致）
  */
 export class Page<D> {

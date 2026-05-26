@@ -12,7 +12,7 @@ interface SiteBrowserItem {
   pluginPublicId: string
   contributionId: string
   name: string
-  imagePath: string
+  icon: string
   pluginId: number
 }
 
@@ -31,7 +31,7 @@ const siteBrowserSlots = computed(() => {
     pluginPublicId: slot.pluginPublicId,
     contributionId: slot.contributionId,
     name: slot.name,
-    imagePath: slot.imagePath,
+    icon: slot.icon,
     pluginId: slot.pluginId
   }))
 })
@@ -99,7 +99,7 @@ async function handleCardClick(item: SiteBrowserItem) {
               @click="handleCardClick(item)"
             >
               <div class="site-browser-card-image">
-                <el-image :src="item.imagePath.startsWith('/') ? item.imagePath : `/${item.imagePath}`" fit="cover" class="site-browser-image">
+                <el-image :src="item.icon?.startsWith('/') ? item.icon : `/${item.icon ?? ''}`" fit="cover" class="site-browser-image">
                   <template #error>
                     <div class="site-browser-image-error">
                       <el-icon><Picture /></el-icon>

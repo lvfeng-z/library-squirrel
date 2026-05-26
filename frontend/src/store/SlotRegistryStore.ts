@@ -26,7 +26,7 @@ export interface SiteBrowserListSlotItem {
   name: string
   order?: number
   contributionId: string
-  imagePath: string
+  icon: string
 }
 
 // Router 实例管理

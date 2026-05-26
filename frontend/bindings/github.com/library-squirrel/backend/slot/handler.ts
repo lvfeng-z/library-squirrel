@@ -12,22 +12,23 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as base$0 from "../base/models.js";
+import * as model$0 from "../base/model/models.js";
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as model$0 from "../base/model/models.js";
+import * as $models from "./models.js";
 
 /**
  * GetAllSlots 获取所有插槽
  */
-export function GetAllSlots(): $CancellablePromise<model$0.ApiResponse<(base$0.SlotConfig | null)[]> | null> {
+export function GetAllSlots(): $CancellablePromise<model$0.ApiResponse<($models.SlotResponse | null)[]> | null> {
     return $Call.ByID(4152767789).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = base$0.SlotConfig.createFrom;
+const $$createType0 = $models.SlotResponse.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = model$0.ApiResponse.createFrom($$createType2);

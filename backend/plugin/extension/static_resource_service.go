@@ -55,24 +55,25 @@ func (s *StaticResourceService) UnregisterPlugin(publicId string) {
 }
 
 // ServeHTTP 处理插件静态资源请求
-// URL 格式: /plugin/{publicId}/{version}/{relativePath}
+// URL 格式: /plugin/{author}/{id}/{version}/{relativePath}
+// publicId = author/id，在 URL 中展开为两段
 func (s *StaticResourceService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 解析路径: /plugin/{publicId}/{version}/{relativePath}
+	// 解析路径: /plugin/{author}/{id}/{version}/{relativePath}
 	path := strings.TrimPrefix(r.URL.Path, "/plugin/")
-	parts := strings.SplitN(path, "/", 3)
-	if len(parts) < 3 {
+	parts := strings.SplitN(path, "/", 4)
+	if len(parts) < 4 {
 		http.NotFound(w, r)
 		return
 	}
 
-	publicId := parts[0]
-	// parts[1] = version（用于缓存，不参与路径解析）
-	relativePath := parts[2]
+	publicId := parts[0] + "/" + parts[1]
+	// parts[2] = version（用于缓存，不参与文件路径解析）
+	relativePath := parts[3]
 
 	s.mu.RLock()
 	mapping, ok := s.plugins[publicId]

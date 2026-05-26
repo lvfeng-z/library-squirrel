@@ -102,9 +102,15 @@ func main() {
 	})
 
 	// Set the Wails event emitter for slot pusher
-	app.SetEventEmitter(wailsApp.Event)
+	// Set the Wails event emitter for slot pusher and frontend event listener
+	app.SetEventEmitter(wailsApp.Event, func(topic string, callback func(data any)) func() {
+		return wailsApp.Event.On(topic, func(event *application.CustomEvent) {
+			callback(event.Data)
+		})
+	})
 
-	// Store the main window native handle for plugin activation
+	// 加载已安装的插件（必须在 SetEventEmitter 之后）
+	app.LoadPlugins()
 	if nativeHandle := window.NativeWindow(); nativeHandle != nil {
 		app.mainHWND = uintptr(nativeHandle)
 	}
