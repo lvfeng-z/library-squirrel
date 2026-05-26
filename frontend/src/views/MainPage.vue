@@ -24,6 +24,7 @@ import { isNotBlank } from '@renderer/utils/StringUtil.js'
 import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
+import { Events } from '@wailsio/runtime'
 
 // 接口
 const apis = {
@@ -239,7 +240,7 @@ async function querySearchCondition() {
 
 // test
 function handleTest() {
-  // test placeholder
+  Events.Emit('plugin:local-import:classify:request', { level: 0, dirName: 'test-author' })
 }
 </script>
 
