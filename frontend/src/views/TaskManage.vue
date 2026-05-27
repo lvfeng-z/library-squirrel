@@ -348,12 +348,26 @@ function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperat
       break
   }
 }
-// 选择目录
-async function selectDir(openFile: boolean) {
+// 选择文件夹导入
+async function selectDirectory() {
   try {
-    const response = await fileSysUtilApi.fileSysUtilDirSelect(openFile, true)
-    const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] }
-    if (!dirSelectResult.canceled) {
+    const response = await fileSysUtilApi.fileSysUtilSelectDirectory('选择文件夹')
+    const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] } | undefined
+    if (dirSelectResult && !dirSelectResult.canceled) {
+      for (const dir of dirSelectResult.filePaths) {
+        sourceUrl.value = dir
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 选择文件导入
+async function selectFile() {
+  try {
+    const response = await fileSysUtilApi.fileSysUtilSelectFile('选择文件')
+    const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] } | undefined
+    if (dirSelectResult && !dirSelectResult.canceled) {
       for (const dir of dirSelectResult.filePaths) {
         sourceUrl.value = dir
       }
@@ -573,8 +587,8 @@ async function handleSourceUrlInput() {
       <task-dialog v-model:state="taskDialogState" v-model:form-data="dialogData" :mode="DialogMode.VIEW" width="90%" />
       <el-dialog v-model="downloadDialogState" width="80%">
         <div v-if="downloadMode" class="task-manage-download-dialog-local-button-container">
-          <el-button type="primary" icon="FolderOpened" @click="selectDir(false)">选择文件夹导入</el-button>
-          <el-button type="primary" icon="Document" @click="selectDir(true)">选择单个文件导入</el-button>
+          <el-button type="primary" icon="FolderOpened" @click="selectDirectory()">选择文件夹导入</el-button>
+          <el-button type="primary" icon="Document" @click="selectFile()">选择单个文件导入</el-button>
         </div>
         <el-input
           v-model="sourceUrl"

@@ -17,6 +17,7 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
 	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -188,6 +189,20 @@ func NewApp() (*App, error) {
 	// 插件加载延迟到 SetEventEmitter 之后，由 LoadPlugins 显式调用
 
 	return app, nil
+}
+
+// SetWailsApp 设置 Wails 应用实例（延迟注入，供需要 Dialog 等运行时能力的服务使用）
+func (app *App) SetWailsApp(wailsApp *application.App) {
+	if app.FileSysUtilService != nil {
+		app.FileSysUtilService.SetApp(wailsApp)
+	}
+}
+
+// SetMainWindow 设置主窗口实例（供模态对话框等服务使用）
+func (app *App) SetMainWindow(window application.Window) {
+	if app.FileSysUtilService != nil {
+		app.FileSysUtilService.SetWindow(window)
+	}
 }
 
 // LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）

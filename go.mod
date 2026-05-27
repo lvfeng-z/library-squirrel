@@ -11,7 +11,6 @@ require (
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.3-alpha.1
 	github.com/spf13/viper v1.21.0
-	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.74
 	go.uber.org/zap v1.28.0
@@ -25,7 +24,6 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/TheTitanrain/w32 v0.0.0-20200114052255-2654d97dbd3d // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect

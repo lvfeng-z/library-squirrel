@@ -109,6 +109,11 @@ func main() {
 		})
 	})
 
+	// 注入 Wails 应用实例（供 Dialog 等运行时能力使用）
+	app.SetWailsApp(wailsApp)
+	// 注入主窗口实例（供模态对话框使用）
+	app.SetMainWindow(window)
+
 	// 加载已安装的插件（必须在 SetEventEmitter 之后）
 	app.LoadPlugins()
 	if nativeHandle := window.NativeWindow(); nativeHandle != nil {

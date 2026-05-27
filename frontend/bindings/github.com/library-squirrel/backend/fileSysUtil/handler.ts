@@ -19,19 +19,10 @@ import * as model$0 from "../base/model/models.js";
 import * as $models from "./models.js";
 
 /**
- * DirSelect 打开目录/文件选择对话框
+ * OpenDialog 打开文件/目录选择对话框
  */
-export function DirSelect(openFile: boolean, isModal: boolean): $CancellablePromise<model$0.ApiResponse<$models.OpenDialogResult | null> | null> {
-    return $Call.ByID(1424378055, openFile, isModal).then(($result: any) => {
-        return $$createType3($result);
-    });
-}
-
-/**
- * DirSelectMultiple 打开多选目录/文件选择对话框
- */
-export function DirSelectMultiple(openFile: boolean, isModal: boolean): $CancellablePromise<model$0.ApiResponse<$models.OpenDialogResult | null> | null> {
-    return $Call.ByID(2192309283, openFile, isModal).then(($result: any) => {
+export function OpenDialog(options: $models.OpenDialogOptions | null): $CancellablePromise<model$0.ApiResponse<$models.OpenDialogResult | null> | null> {
+    return $Call.ByID(645505400, options).then(($result: any) => {
         return $$createType3($result);
     });
 }

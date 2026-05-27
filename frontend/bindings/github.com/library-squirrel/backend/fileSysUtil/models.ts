@@ -5,6 +5,58 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as application$0 from "../../../wailsapp/wails/v3/pkg/application/models.js";
+
+/**
+ * OpenDialogOptions 打开对话框选项
+ */
+export class OpenDialogOptions {
+    "title": string;
+    "defaultPath": string;
+    "canChooseFiles": boolean;
+    "canChooseDirs": boolean;
+    "multiSelect": boolean;
+    "filters": application$0.FileFilter[];
+
+    /** Creates a new OpenDialogOptions instance. */
+    constructor($$source: Partial<OpenDialogOptions> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("defaultPath" in $$source)) {
+            this["defaultPath"] = "";
+        }
+        if (!("canChooseFiles" in $$source)) {
+            this["canChooseFiles"] = false;
+        }
+        if (!("canChooseDirs" in $$source)) {
+            this["canChooseDirs"] = false;
+        }
+        if (!("multiSelect" in $$source)) {
+            this["multiSelect"] = false;
+        }
+        if (!("filters" in $$source)) {
+            this["filters"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpenDialogOptions instance from a string or object.
+     */
+    static createFrom($$source: any = {}): OpenDialogOptions {
+        const $$createField5_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("filters" in $$parsedSource) {
+            $$parsedSource["filters"] = $$createField5_0($$parsedSource["filters"]);
+        }
+        return new OpenDialogOptions($$parsedSource as Partial<OpenDialogOptions>);
+    }
+}
+
 /**
  * OpenDialogResult 打开对话框结果
  */
@@ -28,7 +80,7 @@ export class OpenDialogResult {
      * Creates a new OpenDialogResult instance from a string or object.
      */
     static createFrom($$source: any = {}): OpenDialogResult {
-        const $$createField1_0 = $$createType0;
+        const $$createField1_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("filePaths" in $$parsedSource) {
             $$parsedSource["filePaths"] = $$createField1_0($$parsedSource["filePaths"]);
@@ -38,4 +90,6 @@ export class OpenDialogResult {
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
+const $$createType0 = application$0.FileFilter.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $Create.Array($Create.Any);

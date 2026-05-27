@@ -166,7 +166,9 @@ async function unInstall(pluginPublicId: string) {
 }
 // 选择安装包
 async function selectPackage(): Promise<string | undefined> {
-  const response = await fileSysUtilApi.fileSysUtilDirSelect(true, true)
+  const response = await fileSysUtilApi.fileSysUtilSelectFile('选择插件安装包', undefined, [
+    { DisplayName: '插件包', Pattern: '*.zip' }
+  ])
   if (ApiUtil.check(response)) {
     const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
     if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {

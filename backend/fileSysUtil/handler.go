@@ -12,12 +12,7 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// DirSelect 打开目录/文件选择对话框
-func (h *Handler) DirSelect(openFile bool, isModal bool) *model.ApiResponse[*OpenDialogResult] {
-	return model.HandleResult(h.svc.DirSelect(openFile, isModal))
-}
-
-// DirSelectMultiple 打开多选目录/文件选择对话框
-func (h *Handler) DirSelectMultiple(openFile bool, isModal bool) *model.ApiResponse[*OpenDialogResult] {
-	return model.HandleResult(h.svc.DirSelectMultiple(openFile, isModal))
+// OpenDialog 打开文件/目录选择对话框
+func (h *Handler) OpenDialog(options *OpenDialogOptions) *model.ApiResponse[*OpenDialogResult] {
+	return model.HandleResult(h.svc.OpenDialog(options))
 }
