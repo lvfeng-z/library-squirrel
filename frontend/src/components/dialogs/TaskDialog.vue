@@ -158,7 +158,7 @@ let refreshing: boolean = false
 const throttleRefreshTask = throttle(() => refreshTask(), 500, { leading: true, trailing: true })
 const formTask = computed(() => formData.value.taskProgress?.task ?? new TaskDTO())
 // 是否为父任务
-const isParent = computed(() => notNullish(formTask.value.isCollection) && Boolean(formTask.value.isCollection))
+const isParent = computed(() => formTask.value.hasChild === true)
 let parentCache: TaskProgressTreeDTO | undefined = undefined
 const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
@@ -328,7 +328,7 @@ function startTask(row: TaskProgressTreeDTO, retry: boolean) {
   if (row.taskProgress?.task) {
     row.taskProgress.task.status = TaskStatusEnum.WAITING
   }
-  if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
+  if (row.taskProgress?.task?.hasChild && notNullish(row.children)) {
     row.children.filter(notNullish).forEach((child) => {
       if (child.taskProgress?.task) {
         child.taskProgress.task.status = TaskStatusEnum.WAITING

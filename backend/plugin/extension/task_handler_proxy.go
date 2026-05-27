@@ -240,7 +240,7 @@ func taskToProto(t *pluginsdk.Task) *gen.Task {
 		Id:                   t.ID,
 		CreateTime:           t.CreateTime,
 		UpdateTime:           t.UpdateTime,
-		IsCollection:         t.IsCollection,
+		HasChild:             t.HasChild,
 		Pid:                  t.Pid,
 		TaskName:             t.TaskName,
 		SiteId:               t.SiteID,

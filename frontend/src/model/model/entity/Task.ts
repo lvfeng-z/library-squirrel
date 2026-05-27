@@ -6,9 +6,9 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
  */
 export default class Task extends BaseEntity {
   /**
-   * 是否是父任务
+   * 是否有子任务
    */
-  isCollection: boolean | undefined | null
+  hasChild: boolean | undefined | null
 
   /**
    * 上级任务id
@@ -74,7 +74,7 @@ export default class Task extends BaseEntity {
     super(task)
     if (notNullish(task)) {
       this.id = task.id
-      this.isCollection = task.isCollection
+      this.hasChild = task.hasChild
       this.pid = task.pid
       this.taskName = task.taskName
       this.siteId = task.siteId

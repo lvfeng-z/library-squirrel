@@ -112,7 +112,7 @@ func (h *Handler) ListWorkSetsByWorkId(ctx context.Context, workId int64) *model
 
 // LinkWorkToWorkSet 关联作品到作品集
 func (h *Handler) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.LinkWorkToWorkSet(ctx, workId, workSetId, 0))
+	return model.HandleVoid(h.svc.LinkWorkToWorkSet(ctx, workId, workSetId, false))
 }
 
 // UnlinkWorkFromWorkSet 取消作品与作品集的关联

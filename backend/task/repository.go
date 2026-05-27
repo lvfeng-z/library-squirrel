@@ -34,7 +34,7 @@ func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.Page
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
 	// 查询是父任务的或者只有单个任务的
-	query = query.Where("is_collection = 1 OR pid IS NULL OR pid = 0")
+	query = query.Where("has_child = 1 OR pid IS NULL OR pid = 0")
 
 	for _, cond := range opt.Conditions {
 		if cond != nil {
@@ -124,10 +124,10 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 		includeStatusStr := intArrayToString(intStatusToArray(includeStatus[0]))
 		statement = fmt.Sprintf(`
 			WITH children AS (
-				SELECT id, is_collection FROM task WHERE id IN (%s) AND is_collection = 0
+				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
 			),
 			parent AS (
-				SELECT id, is_collection FROM task WHERE id IN (%s) AND is_collection = 1
+				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
 			)
 			UPDATE task SET status = %d WHERE id IN (
 				SELECT id FROM children WHERE status IN (%s)
@@ -142,10 +142,10 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 	} else {
 		statement = fmt.Sprintf(`
 			WITH children AS (
-				SELECT id, is_collection FROM task WHERE id IN (%s) AND is_collection = 0
+				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
 			),
 			parent AS (
-				SELECT id, is_collection FROM task WHERE id IN (%s) AND is_collection = 1
+				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
 			)
 			UPDATE task SET status = %d WHERE id IN (
 				SELECT id FROM children
@@ -207,10 +207,10 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 		statusStr := intArrayToString(intStatusToArray(includeStatus[0]))
 		statement = fmt.Sprintf(`
 			WITH children AS (
-				SELECT * FROM task WHERE id IN (%s) AND is_collection = 0 AND status IN (%s)
+				SELECT * FROM task WHERE id IN (%s) AND has_child = 0 AND status IN (%s)
 			),
 			parent AS (
-				SELECT * FROM task WHERE id IN (%s) AND is_collection = 1
+				SELECT * FROM task WHERE id IN (%s) AND has_child = 1
 			)
 			SELECT * FROM children
 			UNION
@@ -223,10 +223,10 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 	} else {
 		statement = fmt.Sprintf(`
 			WITH children AS (
-				SELECT * FROM task WHERE id IN (%s) AND is_collection = 0
+				SELECT * FROM task WHERE id IN (%s) AND has_child = 0
 			),
 			parent AS (
-				SELECT * FROM task WHERE id IN (%s) AND is_collection = 1
+				SELECT * FROM task WHERE id IN (%s) AND has_child = 1
 			)
 			SELECT * FROM children
 			UNION

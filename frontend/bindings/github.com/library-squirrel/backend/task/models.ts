@@ -66,9 +66,9 @@ export class TaskQueryDTO {
     "status": query$0.QueryAttribute<number>;
 
     /**
-     * 是否为合集（0=否，1=是）
+     * 是否有子任务
      */
-    "isCollection": query$0.QueryAttribute<boolean>;
+    "hasChild": query$0.QueryAttribute<boolean>;
 
     /**
      * 插件公开ID
@@ -114,8 +114,8 @@ export class TaskQueryDTO {
         if (!("status" in $$source)) {
             this["status"] = (new query$0.QueryAttribute());
         }
-        if (!("isCollection" in $$source)) {
-            this["isCollection"] = (new query$0.QueryAttribute());
+        if (!("hasChild" in $$source)) {
+            this["hasChild"] = (new query$0.QueryAttribute());
         }
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = (new query$0.QueryAttribute());
@@ -167,8 +167,8 @@ export class TaskQueryDTO {
         if ("status" in $$parsedSource) {
             $$parsedSource["status"] = $$createField3_0($$parsedSource["status"]);
         }
-        if ("isCollection" in $$parsedSource) {
-            $$parsedSource["isCollection"] = $$createField4_0($$parsedSource["isCollection"]);
+        if ("hasChild" in $$parsedSource) {
+            $$parsedSource["hasChild"] = $$createField4_0($$parsedSource["hasChild"]);
         }
         if ("pluginPublicId" in $$parsedSource) {
             $$parsedSource["pluginPublicId"] = $$createField5_0($$parsedSource["pluginPublicId"]);

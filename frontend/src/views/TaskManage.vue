@@ -427,7 +427,7 @@ function startTask(row: TaskProgressTreeDTO, retry: boolean) {
   if (row.taskProgress?.task) {
     row.taskProgress.task.status = TaskStatusEnum.WAITING
   }
-  if (row.taskProgress?.task?.isCollection && notNullish(row.children)) {
+  if (row.taskProgress?.task?.hasChild && notNullish(row.children)) {
     row.children.forEach((child) => {
       if (child.taskProgress?.task) {
         child.taskProgress.task.status = TaskStatusEnum.WAITING

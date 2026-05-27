@@ -144,7 +144,7 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 			mt := m.newManagedTask(t)
 			parentTask.AddChild(mt)
 			m.addTask(mt)
-		} else if t.ID == taskId && (!t.IsCollection.Valid || t.IsCollection.Int64 == 0) {
+		} else if t.ID == taskId && (!t.HasChild.Valid || !t.HasChild.Bool) {
 			// 单个任务（非集合），自身作为子任务执行
 			mt := m.newManagedTask(t)
 			parentTask.AddChild(mt)

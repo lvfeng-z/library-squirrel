@@ -66,7 +66,7 @@ export class CreateTaskRequest {
     "siteId": number;
     "siteWorkId": string;
     "url": string;
-    "isCollection": number;
+    "hasChild": boolean;
     "pluginPublicId": string;
     "pluginContributionId": string;
     "pluginData": string;
@@ -88,8 +88,8 @@ export class CreateTaskRequest {
         if (!("url" in $$source)) {
             this["url"] = "";
         }
-        if (!("isCollection" in $$source)) {
-            this["isCollection"] = 0;
+        if (!("hasChild" in $$source)) {
+            this["hasChild"] = false;
         }
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = "";
@@ -1154,7 +1154,7 @@ export class SiteTagLocalRelateDTO {
  */
 export class TaskDTO {
     "id": number;
-    "isCollection": number | null;
+    "hasChild": boolean | null;
     "pid": number | null;
     "taskName": string | null;
     "siteId": number | null;
@@ -1162,7 +1162,7 @@ export class TaskDTO {
     "url": string | null;
     "status": number;
     "pendingResourceId": number | null;
-    "continuable": number | null;
+    "continuable": boolean | null;
     "pluginPublicId": string | null;
     "pluginContributionId": string | null;
     "pluginData": string | null;
@@ -1175,8 +1175,8 @@ export class TaskDTO {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
-        if (!("isCollection" in $$source)) {
-            this["isCollection"] = null;
+        if (!("hasChild" in $$source)) {
+            this["hasChild"] = null;
         }
         if (!("pid" in $$source)) {
             this["pid"] = null;

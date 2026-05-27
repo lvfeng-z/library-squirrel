@@ -254,7 +254,7 @@ func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*
 		SiteID:               sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
 		SiteWorkID:           sql.NullString{String: req.SiteWorkID, Valid: true},
 		URL:                  sql.NullString{String: req.URL, Valid: true},
-		IsCollection:         sql.NullInt64{Int64: int64(req.IsCollection), Valid: true},
+		HasChild:             sql.NullBool{Bool: req.HasChild, Valid: true},
 		Status:               int(TaskStatusCreated),
 		PluginPublicID:       sql.NullString{String: req.PluginPublicID, Valid: true},
 		PluginContributionID: sql.NullString{String: req.PluginContributionID, Valid: true},
@@ -279,7 +279,7 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		return nil, err
 	}
 
-	// 分页查询父任务（is_collection=1 OR pid IS NULL OR pid=0）
+	// 分页查询父任务（has_child=1 OR pid IS NULL OR pid=0）
 	resultPage, err := s.repo.QueryParentPage(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -508,7 +508,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkID, Valid: true}
 		task.URL = sql.NullString{String: taskResp.URL, Valid: true}
 		task.Status = int(TaskStatusCreated)
-		task.IsCollection = sql.NullInt64{Int64: 0, Valid: true}
+		task.HasChild = sql.NullBool{Bool: false, Valid: true}
 		task.Pid = sql.NullInt64{Int64: pid, Valid: true}
 		task.PluginPublicID = listener.PublicID
 		task.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
@@ -577,7 +577,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		}, 0); err != nil {
 			continue
 		}
-		parentTask.IsCollection = sql.NullInt64{Int64: 1, Valid: true} // 集合任务
+		parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
 		if err := s.repo.CreateTask(ctx, parentTask); err != nil {
 			continue
 		}
@@ -661,7 +661,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 				parentTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
 				parentTask.URL = sql.NullString{String: taskResp.URL, Valid: true}
 				parentTask.Status = int(TaskStatusCreated)
-				parentTask.IsCollection = sql.NullInt64{Int64: 1, Valid: true}
+				parentTask.HasChild = sql.NullBool{Bool: true, Valid: true}
 				parentTask.PluginPublicID = listener.PublicID
 				parentTask.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
 
@@ -695,7 +695,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *d
 				childTask.SiteWorkID = sql.NullString{String: childResp.SiteWorkID, Valid: true}
 				childTask.URL = sql.NullString{String: childResp.URL, Valid: true}
 				childTask.Status = int(TaskStatusCreated)
-				childTask.IsCollection = sql.NullInt64{Int64: 0, Valid: true}
+				childTask.HasChild = sql.NullBool{Bool: false, Valid: true}
 				childTask.PluginPublicID = listener.PublicID
 				childTask.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
 

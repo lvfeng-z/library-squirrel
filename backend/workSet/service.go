@@ -74,7 +74,7 @@ type ReWorkWorkSetRepository interface {
 	// UpdateSortOrders 批量更新排序顺序
 	UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
 	// UpdateIsCover 更新封面标记
-	UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover int) error
+	UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error
 	// ClearOtherCovers 清除作品集的其他封面
 	ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error
 	// GetCoverWorkId 获取封面作品ID
@@ -172,11 +172,11 @@ func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.Wo
 }
 
 // LinkWorkToWorkSet 链接作品到作品集
-func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64, isCover int) error {
+func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64, isCover bool) error {
 	rel := &entity2.ReWorkWorkSet{
 		WorkID:    sql.NullInt64{Int64: workId, Valid: true},
 		WorkSetID: sql.NullInt64{Int64: workSetId, Valid: true},
-		IsCover:   sql.NullInt64{Int64: int64(isCover), Valid: true},
+		IsCover:   sql.NullBool{Bool: isCover, Valid: true},
 	}
 	return s.reWorkWorkSetRepo.Save(ctx, rel)
 }
@@ -196,7 +196,7 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 		rels[i] = &entity2.ReWorkWorkSet{
 			WorkID:    sql.NullInt64{Int64: workId, Valid: true},
 			WorkSetID: sql.NullInt64{Int64: workSetId, Valid: true},
-			IsCover:   sql.NullInt64{Int64: 0, Valid: true},
+			IsCover:   sql.NullBool{Bool: false, Valid: true},
 		}
 	}
 	return s.reWorkWorkSetRepo.SaveBatch(ctx, rels)
@@ -254,7 +254,7 @@ func (s *Service) SetCoverWork(ctx context.Context, workSetId, workId int64) err
 		return err
 	}
 	// 设置新封面
-	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, 1)
+	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, true)
 }
 
 // UpdateSortOrders 批量更新排序顺序
@@ -269,7 +269,7 @@ func (s *Service) UpdateSortOrders(ctx context.Context, workSetId int64, workIds
 
 // UnsetCover 取消封面设置
 func (s *Service) UnsetCover(ctx context.Context, workSetId, workId int64) error {
-	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, 0)
+	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, false)
 }
 
 // GetCoverWorkId 获取封面作品ID

@@ -200,7 +200,7 @@ function formatBytes(bytes: number) {
         <el-button
           size="small"
           :icon="mapToButtonStatus().icon"
-          :loading="mapToButtonStatus().processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.isCollection ?? row.isCollection)"
+          :loading="mapToButtonStatus().processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.hasChild ?? row.hasChild)"
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>

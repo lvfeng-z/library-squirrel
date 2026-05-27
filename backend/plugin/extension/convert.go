@@ -25,8 +25,8 @@ func EntityTaskToSDK(task *entity.Task) *pluginsdk.Task {
 		t.CreateTime = task.GetCreateTime()
 		t.UpdateTime = task.GetUpdateTime()
 	}
-	if task.IsCollection.Valid {
-		t.IsCollection = &task.IsCollection.Int64
+	if task.HasChild.Valid {
+		t.HasChild = &task.HasChild.Bool
 	}
 	if task.Pid.Valid {
 		t.Pid = &task.Pid.Int64
@@ -36,7 +36,7 @@ func EntityTaskToSDK(task *entity.Task) *pluginsdk.Task {
 	t.SiteWorkID = util.NullStringToPointer(task.SiteWorkID)
 	t.URL = util.NullStringToPointer(task.URL)
 	t.PendingResourceID = util.NullInt64ToPointer(task.PendingResourceID)
-	t.Continuable = util.NullInt64ToPointer(task.Continuable)
+	t.Continuable = util.NullBoolToPointer(task.Continuable)
 	t.PluginPublicID = util.NullStringToPointer(task.PluginPublicID)
 	t.PluginContributionID = util.NullStringToPointer(task.PluginContributionID)
 	t.PluginData = util.NullStringToPointer(task.PluginData)
@@ -154,8 +154,8 @@ func SDKTaskToEntity(t *pluginsdk.Task) *entity.Task {
 		e.SetUpdateTime(t.UpdateTime)
 	}
 	e.Status = t.Status
-	if t.IsCollection != nil {
-		e.IsCollection = sql.NullInt64{Int64: *t.IsCollection, Valid: true}
+	if t.HasChild != nil {
+		e.HasChild = sql.NullBool{Bool: *t.HasChild, Valid: true}
 	}
 	if t.Pid != nil {
 		e.Pid = sql.NullInt64{Int64: *t.Pid, Valid: true}
@@ -176,7 +176,7 @@ func SDKTaskToEntity(t *pluginsdk.Task) *entity.Task {
 		e.PendingResourceID = sql.NullInt64{Int64: *t.PendingResourceID, Valid: true}
 	}
 	if t.Continuable != nil {
-		e.Continuable = sql.NullInt64{Int64: *t.Continuable, Valid: true}
+		e.Continuable = sql.NullBool{Bool: *t.Continuable, Valid: true}
 	}
 	if t.PluginPublicID != nil {
 		e.PluginPublicID = sql.NullString{String: *t.PluginPublicID, Valid: true}

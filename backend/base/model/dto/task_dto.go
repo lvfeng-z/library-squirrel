@@ -8,7 +8,7 @@ import (
 // TaskDTO 任务数据传输对象（无 sql.Null* 版本）
 type TaskDTO struct {
 	ID                   int64   `json:"id"`
-	IsCollection         *int64  `json:"isCollection"`
+	HasChild             *bool   `json:"hasChild"`
 	Pid                  *int64  `json:"pid"`
 	TaskName             *string `json:"taskName"`
 	SiteID               *int64  `json:"siteId"`
@@ -16,7 +16,7 @@ type TaskDTO struct {
 	URL                  *string `json:"url"`
 	Status               int     `json:"status"`
 	PendingResourceID    *int64  `json:"pendingResourceId"`
-	Continuable          *int64  `json:"continuable"`
+	Continuable          *bool   `json:"continuable"`
 	PluginPublicID       *string `json:"pluginPublicId"`
 	PluginContributionID *string `json:"pluginContributionId"`
 	PluginData           *string `json:"pluginData"`
@@ -32,7 +32,7 @@ func NewTaskDTO(task *entity2.Task) *TaskDTO {
 	}
 	return &TaskDTO{
 		ID:                   task.GetID(),
-		IsCollection:         util.NullInt64ToPointer(task.IsCollection),
+		HasChild:             util.NullBoolToPointer(task.HasChild),
 		Pid:                  util.NullInt64ToPointer(task.Pid),
 		TaskName:             util.NullStringToPointer(task.TaskName),
 		SiteID:               util.NullInt64ToPointer(task.SiteID),
@@ -40,7 +40,7 @@ func NewTaskDTO(task *entity2.Task) *TaskDTO {
 		URL:                  util.NullStringToPointer(task.URL),
 		Status:               task.Status,
 		PendingResourceID:    util.NullInt64ToPointer(task.PendingResourceID),
-		Continuable:          util.NullInt64ToPointer(task.Continuable),
+		Continuable:          util.NullBoolToPointer(task.Continuable),
 		PluginPublicID:       util.NullStringToPointer(task.PluginPublicID),
 		PluginContributionID: util.NullStringToPointer(task.PluginContributionID),
 		PluginData:           util.NullStringToPointer(task.PluginData),
@@ -64,11 +64,11 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 	}
 
 	// 设置业务字段
-	if dto.IsCollection != nil {
-		entity.IsCollection.Valid = true
-		entity.IsCollection.Int64 = *dto.IsCollection
+	if dto.HasChild != nil {
+		entity.HasChild.Valid = true
+		entity.HasChild.Bool = *dto.HasChild
 	} else {
-		entity.IsCollection.Valid = false
+		entity.HasChild.Valid = false
 	}
 
 	if dto.Pid != nil {
@@ -117,7 +117,7 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 
 	if dto.Continuable != nil {
 		entity.Continuable.Valid = true
-		entity.Continuable.Int64 = *dto.Continuable
+		entity.Continuable.Bool = *dto.Continuable
 	} else {
 		entity.Continuable.Valid = false
 	}
@@ -195,7 +195,7 @@ func NewTaskProgressTreeDTO(taskDTO *TaskDTO) *TaskProgressTreeDTO {
 	if taskDTO == nil {
 		return nil
 	}
-	hasChildren := taskDTO.IsCollection != nil && *taskDTO.IsCollection == 1
+	hasChildren := taskDTO.HasChild != nil && *taskDTO.HasChild
 	return &TaskProgressTreeDTO{
 		TaskProgress: NewTaskProgressDTO(taskDTO),
 		Children:     make([]*TaskProgressTreeDTO, 0),
@@ -213,7 +213,7 @@ type CreateTaskRequest struct {
 	SiteID               int    `json:"siteId"`
 	SiteWorkID           string `json:"siteWorkId"`
 	URL                  string `json:"url"`
-	IsCollection         int    `json:"isCollection"`
+	HasChild             bool   `json:"hasChild"`
 	PluginPublicID       string `json:"pluginPublicId"`
 	PluginContributionID string `json:"pluginContributionId"`
 	PluginData           string `json:"pluginData"`

@@ -105,7 +105,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, w
 }
 
 // UpdateIsCover 更新封面标记
-func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover int) error {
+func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error {
 	return r.BaseRepository.GORM().
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
@@ -119,7 +119,7 @@ func (r *ReWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetI
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ? AND work_id != ?", workSetId, exceptWorkId).
-		Update("is_cover", 0).Error
+		Update("is_cover", false).Error
 }
 
 // UpdateSortOrders 批量更新排序顺序
