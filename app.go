@@ -232,7 +232,7 @@ func (app *App) loadInstalledPlugins() {
 
 	for _, p := range plugins {
 		// 跳过已卸载的插件
-		if p.Uninstalled.Valid && p.Uninstalled.Int64 == plugin.UninstalledTrue {
+		if p.Uninstalled.Valid && p.Uninstalled.Bool {
 			continue
 		}
 

@@ -19,7 +19,7 @@ type PluginDTO struct {
 	BackupID       *int64  `json:"backupId"`
 	SortNum        *int64  `json:"sortNum"`
 	PluginData     *string `json:"pluginData"`
-	Uninstalled    *int64  `json:"uninstalled"`
+	Uninstalled    *bool   `json:"uninstalled"`
 	ActivationType *string `json:"activationType"`
 	CreateTime     int64   `json:"createTime"`
 	UpdateTime     int64   `json:"updateTime"`
@@ -43,7 +43,7 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		BackupID:       util.NullInt64ToPointer(plugin.BackupID),
 		SortNum:        util.NullInt64ToPointer(plugin.SortNum),
 		PluginData:     util.NullStringToPointer(plugin.PluginData),
-		Uninstalled:    util.NullInt64ToPointer(plugin.Uninstalled),
+		Uninstalled:    util.NullBoolToPointer(plugin.Uninstalled),
 		ActivationType: util.NullStringToPointer(plugin.ActivationType),
 		CreateTime:     plugin.GetCreateTime(),
 		UpdateTime:     plugin.GetUpdateTime(),
@@ -143,7 +143,7 @@ func ToPluginEntity(dto *PluginDTO) *entity2.Plugin {
 
 	if dto.Uninstalled != nil {
 		entity.Uninstalled.Valid = true
-		entity.Uninstalled.Int64 = *dto.Uninstalled
+		entity.Uninstalled.Bool = *dto.Uninstalled
 	} else {
 		entity.Uninstalled.Valid = false
 	}

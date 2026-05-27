@@ -27,7 +27,7 @@ export class PluginWithContribution {
     "backupId": sql$0.NullInt64;
     "sortNum": sql$0.NullInt64;
     "pluginData": sql$0.NullString;
-    "uninstalled": sql$0.NullInt64;
+    "uninstalled": sql$0.NullBool;
     "activationType": sql$0.NullString;
 
     /**
@@ -85,7 +85,7 @@ export class PluginWithContribution {
             this["pluginData"] = (new sql$0.NullString());
         }
         if (!("uninstalled" in $$source)) {
-            this["uninstalled"] = (new sql$0.NullInt64());
+            this["uninstalled"] = (new sql$0.NullBool());
         }
         if (!("activationType" in $$source)) {
             this["activationType"] = (new sql$0.NullString());
@@ -115,7 +115,7 @@ export class PluginWithContribution {
         const $$createField11_0 = $$createType1;
         const $$createField12_0 = $$createType1;
         const $$createField13_0 = $$createType0;
-        const $$createField14_0 = $$createType1;
+        const $$createField14_0 = $$createType2;
         const $$createField15_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
@@ -164,3 +164,4 @@ export class PluginWithContribution {
 // Private type creation functions
 const $$createType0 = sql$0.NullString.createFrom;
 const $$createType1 = sql$0.NullInt64.createFrom;
+const $$createType2 = sql$0.NullBool.createFrom;

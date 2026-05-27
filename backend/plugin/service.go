@@ -24,10 +24,6 @@ const (
 	PluginRoot = "plugin"
 	// PluginPackageRoot 插件包目录
 	PluginPackageRoot = "plugin/package"
-	// UninstalledTrue 已卸载
-	UninstalledTrue = 1
-	// UninstalledFalse 未卸载
-	UninstalledFalse = 0
 )
 
 // 错误定义
@@ -254,7 +250,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 
 	var uninstalledPlugin *entity2.Plugin
 	if existing != nil {
-		if existing.Uninstalled.Valid && existing.Uninstalled.Int64 == UninstalledFalse {
+		if existing.Uninstalled.Valid && existing.Uninstalled.Bool {
 			return nil, ErrPluginAlreadyExists
 		}
 		uninstalledPlugin = existing
@@ -283,12 +279,13 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
+	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
 
 	if uninstalledPlugin != nil {
-		// 更新已卸载的插件
+		// 更新已卸载的插件，保留原始 CreateTime
 		plugin.ID = uninstalledPlugin.ID
+		plugin.SetCreateTime(uninstalledPlugin.GetCreateTime())
 		plugin.PluginData = uninstalledPlugin.PluginData
-		plugin.Uninstalled = sql.NullInt64{Int64: UninstalledFalse, Valid: true}
 		if err := s.repo.Update(ctx, plugin); err != nil {
 			return nil, err
 		}
@@ -441,7 +438,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	}
 
 	// 设置为已卸载状态
-	plugin.Uninstalled = sql.NullInt64{Int64: UninstalledTrue, Valid: true}
+	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
 	if err := s.repo.Update(ctx, plugin); err != nil {
 		return err
 	}
@@ -460,7 +457,7 @@ func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
 		return ErrPluginNotFound
 	}
 
-	plugin.Uninstalled = sql.NullInt64{Int64: UninstalledTrue, Valid: true}
+	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
 	return s.repo.Update(ctx, plugin)
 }
 

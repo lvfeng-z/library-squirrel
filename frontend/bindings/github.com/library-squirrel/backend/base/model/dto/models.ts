@@ -251,7 +251,7 @@ export class PluginDTO {
     "backupId": number | null;
     "sortNum": number | null;
     "pluginData": string | null;
-    "uninstalled": number | null;
+    "uninstalled": boolean | null;
     "activationType": string | null;
     "createTime": number;
     "updateTime": number;

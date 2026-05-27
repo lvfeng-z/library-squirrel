@@ -27,6 +27,14 @@ func NullInt64ToPointer(ns sql.NullInt64) *int64 {
 	return nil
 }
 
+// NullBoolToPointer 将 sql.NullBool 转换为 *bool
+func NullBoolToPointer(ns sql.NullBool) *bool {
+	if ns.Valid {
+		return &ns.Bool
+	}
+	return nil
+}
+
 // StringPtrIfValid 将 string 转换为 *string（非空时返回指针）
 func StringPtrIfValid(s string) *string {
 	if s != "" {
