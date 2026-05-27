@@ -353,10 +353,9 @@ async function selectDirectory() {
   try {
     const response = await fileSysUtilApi.fileSysUtilSelectDirectory('选择文件夹')
     const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] } | undefined
-    if (dirSelectResult && !dirSelectResult.canceled) {
-      for (const dir of dirSelectResult.filePaths) {
-        sourceUrl.value = dir
-      }
+    if (dirSelectResult && !dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {
+      sourceUrl.value = dirSelectResult.filePaths[0]
+      await handleSourceUrlInput()
     }
   } catch (e: any) {
     ElMessage.error(e.message)
@@ -367,10 +366,9 @@ async function selectFile() {
   try {
     const response = await fileSysUtilApi.fileSysUtilSelectFile('选择文件')
     const dirSelectResult = response.data as { canceled: boolean; filePaths: string[] } | undefined
-    if (dirSelectResult && !dirSelectResult.canceled) {
-      for (const dir of dirSelectResult.filePaths) {
-        sourceUrl.value = dir
-      }
+    if (dirSelectResult && !dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths)) {
+      sourceUrl.value = dirSelectResult.filePaths[0]
+      await handleSourceUrlInput()
     }
   } catch (e: any) {
     ElMessage.error(e.message)
