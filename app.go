@@ -381,6 +381,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		SecureStorage:       app.SecureStorageService,
 		WorkSetQuery:        app.WorkSetService,
 		SiteSave:            app.SiteService,
+		SiteQuery:           app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		FrontendEvent: &wailsFrontendEventProvider{

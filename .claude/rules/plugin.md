@@ -124,6 +124,27 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 - `SlotResponse`：`backend/slot/dto.go` — IPC 响应 DTO
 - 前端接口：`frontend/src/model/model/interface/SlotConfigs.ts` — 按类型做可辨识联合
 
+## 插件 SDK 能力边界
+
+插件通过 `PluginContext`（gRPC `HostService`）访问宿主能力，不限于扩展点注册。所有可用能力：
+
+| 类别 | SDK 方法 | 说明 |
+|------|----------|------|
+| 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
+| 数据写入 | `AddSite` | 向主库插入站点记录 |
+| 数据查询 | `GetWorkSetBySiteWorkSetId` | 按站点作品集 ID 查询是否已存在 |
+| 插件私有存储 | `GetPluginData` / `SetPluginData` | 每个插件独立的 KV 持久化 |
+| 加密存储 | `StoreEncryptedValue` / `GetDecryptedValue` / `RemoveEncryptedValue` | 凭证/密钥管理 |
+| 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
+| URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler |
+| 前端通信 | `PublishToFrontend` / `SubscribeFrontend` / `UnsubscribeFrontend` | 与前端双向 pub/sub |
+| 原生窗口 | `window.OpenWindow`（仅 Windows） | 创建 WebView2 弹窗，支持 JS 执行和导航拦截 |
+| 文件路径 | `GetPluginRoot` | 获取插件目录路径（相对或绝对） |
+| 窗口句柄 | `GetMainWindowHandle` | 获取主窗口 Win32 HWND |
+| 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | 写入主程序日志系统 |
+
+宿主端通过 `HostDeps`（`backend/plugin/extension/loader.go`）注入各 Provider 适配器，将插件 RPC 调用桥接到对应的 Service/Registry。
+
 ## 插件开发规范
 
 - **Slot 注册**：通过 `plugin.json` 的 `extensions.slots` 声明式注册，调用 `RegisterSlot()` 的这种方式已不再被支持

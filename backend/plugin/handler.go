@@ -58,6 +58,15 @@ func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installT
 	return model.Success(domain.NewPluginDTO(result))
 }
 
+// ReinstallFromPath 从指定路径重新安装插件
+func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, domain.InstallType(installType))
+	if err != nil {
+		return model.HandleError[*domain.PluginDTO](err)
+	}
+	return model.Success(domain.NewPluginDTO(result))
+}
+
 // Uninstall 卸载插件
 func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.Uninstall(ctx, pluginPublicId))

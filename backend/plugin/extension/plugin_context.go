@@ -39,6 +39,11 @@ type SiteSaveProvider interface {
 	Save(ctx context.Context, site *entity.Site) error
 }
 
+// SiteQueryProvider 站点查询
+type SiteQueryProvider interface {
+	GetByName(ctx context.Context, siteName string) (*entity.Site, error)
+}
+
 // TaskCreateProvider 任务创建
 type TaskCreateProvider interface {
 	CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.CreateTaskResult, error)
@@ -60,6 +65,7 @@ type PluginContextDeps struct {
 	SecureStorage       SecureStorageProvider
 	WorkSetQuery        WorkSetQueryProvider
 	SiteSave            SiteSaveProvider
+	SiteQuery           SiteQueryProvider
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
 	FrontendEvent       pluginsdk.FrontendEventProvider
@@ -76,6 +82,7 @@ type pluginContext struct {
 	secureStorage        SecureStorageProvider
 	workSetQuery         WorkSetQueryProvider
 	siteSave             SiteSaveProvider
+	siteQuery            SiteQueryProvider
 	taskCreate           TaskCreateProvider
 	urlListener          UrlListenerRegistry
 	frontendEvent        pluginsdk.FrontendEventProvider
@@ -101,6 +108,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 		secureStorage:       deps.SecureStorage,
 		workSetQuery:        deps.WorkSetQuery,
 		siteSave:            deps.SiteSave,
+		siteQuery:           deps.SiteQuery,
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
 		frontendEvent:       deps.FrontendEvent,
@@ -193,7 +201,12 @@ func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteNam
 func (pc *pluginContext) AddSite(sites []*pluginsdk.Site) error {
 	ctx := context.Background()
 	for _, site := range sites {
-		if err := pc.siteSave.Save(ctx, SDKSiteToEntity(site)); err != nil {
+		e := SDKSiteToEntity(site)
+		// 站点已存在则跳过
+		if existing, _ := pc.siteQuery.GetByName(ctx, e.SiteName.String); existing != nil {
+			continue
+		}
+		if err := pc.siteSave.Save(ctx, e); err != nil {
 			return fmt.Errorf("add site: %w", err)
 		}
 	}

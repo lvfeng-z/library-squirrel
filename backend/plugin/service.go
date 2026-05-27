@@ -374,8 +374,8 @@ func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, 
 		return nil, ErrPluginNotFound
 	}
 
-	// 卸载旧插件
-	if err := s.uninstall(ctx, pluginPublicId); err != nil {
+	// 停止旧插件运行时并删除旧文件（不修改数据库状态）
+	if err := s.deactivate(ctx, pluginPublicId); err != nil {
 		return nil, err
 	}
 
@@ -410,7 +410,12 @@ func (s *Service) Uninstall(ctx context.Context, pluginPublicId string) error {
 
 // uninstall 卸载插件核心逻辑
 func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
-	// 获取插件
+	// 停止运行时并删除文件
+	if err := s.deactivate(ctx, pluginPublicId); err != nil {
+		return err
+	}
+
+	// 获取插件记录并标记为已卸载
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
 		return err
@@ -419,7 +424,26 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		return ErrPluginNotFound
 	}
 
-	logger.Log.Infof("正在卸载插件: %s", pluginPublicId)
+	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
+	if err := s.repo.Update(ctx, plugin); err != nil {
+		return err
+	}
+
+	logger.Log.Infof("插件已卸载: %s", pluginPublicId)
+	return nil
+}
+
+// deactivate 停止插件运行时并删除插件文件，不修改数据库记录
+func (s *Service) deactivate(ctx context.Context, pluginPublicId string) error {
+	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
+	if err != nil {
+		return err
+	}
+	if plugin == nil {
+		return ErrPluginNotFound
+	}
+
+	logger.Log.Infof("正在停用插件: %s", pluginPublicId)
 
 	// 停止运行时插件（子进程、注册中心等）
 	if s.onUnload != nil {
@@ -437,13 +461,6 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		logger.Log.Warnf("删除插件目录失败: %v", err)
 	}
 
-	// 设置为已卸载状态
-	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
-	if err := s.repo.Update(ctx, plugin); err != nil {
-		return err
-	}
-
-	logger.Log.Infof("插件已卸载: %s", pluginPublicId)
 	return nil
 }
 

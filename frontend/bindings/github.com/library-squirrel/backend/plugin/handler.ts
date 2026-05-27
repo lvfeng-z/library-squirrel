@@ -85,6 +85,15 @@ export function Reinstall(pluginPublicId: string, installType: number): $Cancell
 }
 
 /**
+ * ReinstallFromPath 从指定路径重新安装插件
+ */
+export function ReinstallFromPath(pluginPublicId: string, packagePath: string, installType: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(1285597481, pluginPublicId, packagePath, installType).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
  * Save 保存插件
  */
 export function Save(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {

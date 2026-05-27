@@ -60,8 +60,8 @@ export async function pluginReinstall(publicId: string, installType?: number): P
 }
 
 /** 从路径重新安装插件 */
-export async function pluginReinstallFromPath(packagePath: string, installType?: number): Promise<ApiResult<PluginDTO>> {
-  return requireResponse(await PluginHandler.InstallFromPath(packagePath, installType ?? 0), '重新安装插件')
+export async function pluginReinstallFromPath(pluginPublicId: string, packagePath: string, installType?: number): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.ReinstallFromPath(pluginPublicId, packagePath, installType ?? 0), '重新安装插件')
 }
 
 /** 卸载插件 */

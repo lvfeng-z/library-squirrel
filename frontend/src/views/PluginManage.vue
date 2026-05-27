@@ -194,7 +194,7 @@ async function installFromPath(packagePath: string) {
 // 通过安装包路径重新安装插件
 async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   try {
-    const result = await pluginApi.pluginReinstallFromPath(packagePath)
+    const result = await pluginApi.pluginReinstallFromPath(publicPublicId, packagePath)
     ApiUtil.msg(result)
     pluginSearchTable.value.doSearch()
   } catch (e) {

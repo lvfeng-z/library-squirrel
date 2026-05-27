@@ -10,6 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	KeySeparator = "/"
+)
+
 // TaskHandlerRegistry 任务处理器注册中心
 type TaskHandlerRegistry struct {
 	mu         sync.RWMutex
@@ -25,7 +29,7 @@ func NewTaskHandlerRegistry() *TaskHandlerRegistry {
 
 // makeKey 生成存储键
 func makeKey(pluginPublicId, extensionId string) string {
-	return pluginPublicId + "/" + extensionId
+	return pluginPublicId + KeySeparator + extensionId
 }
 
 // Register 注册扩展点
@@ -62,7 +66,7 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	prefix := pluginPublicId + "/"
+	prefix := pluginPublicId + KeySeparator
 	count := 0
 	for key := range r.extensions {
 		if strings.HasPrefix(key, prefix) {
@@ -95,7 +99,7 @@ func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 	defer r.mu.RUnlock()
 
 	var result []*model.Extension[pluginsdk.TaskHandler]
-	prefix := pluginPublicId + "/"
+	prefix := pluginPublicId + KeySeparator
 	for _, ext := range r.extensions {
 		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
 			result = append(result, ext)
