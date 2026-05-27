@@ -1,11 +1,16 @@
 package config
 
 import (
+	"embed"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/viper"
 )
+
+//go:embed default_config.yaml
+var defaultConfigFS embed.FS
 
 // Config 应用配置（统一配置结构）
 type Config struct {
@@ -62,8 +67,8 @@ func Load(configPath string) (*Config, error) {
 
 	// 设置默认值
 	viper.SetDefault("server.port", 8080)
-	viper.SetDefault("server.mode", "debug")
-	viper.SetDefault("database.path", "data.db")
+	viper.SetDefault("server.mode", "release")
+	viper.SetDefault("database.path", "database/database.db")
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "console")
 	viper.SetDefault("app.host", "127.0.0.1")
@@ -82,10 +87,31 @@ func Load(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadFromDir 从指定目录加载配置
+// LoadFromDir 从指定目录加载配置，文件不存在时自动从嵌入的默认配置创建
 func LoadFromDir(dir string) (*Config, error) {
 	configFile := filepath.Join(dir, "config.yaml")
+
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		if createErr := createDefaultConfig(configFile); createErr != nil {
+			return nil, fmt.Errorf("创建默认配置失败: %w", createErr)
+		}
+	}
+
 	return Load(configFile)
+}
+
+// createDefaultConfig 从嵌入的默认配置文件创建配置文件
+func createDefaultConfig(configPath string) error {
+	data, err := defaultConfigFS.ReadFile("default_config.yaml")
+	if err != nil {
+		return fmt.Errorf("读取嵌入的默认配置失败: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("写入默认配置失败: %w", err)
+	}
+
+	return nil
 }
 
 // Get 获取全局配置

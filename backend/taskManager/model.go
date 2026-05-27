@@ -40,7 +40,7 @@ type runResult int
 
 const (
 	runResultDone        runResult = iota // 正常完成（Finished/Failed）
-	runResultNeedConfirm                   // 检测到重复，需要用户确认
+	runResultNeedConfirm                  // 检测到重复，需要用户确认
 )
 
 // isStableState 判断任务状态是否为稳定状态（需要持久化到数据库）
@@ -153,23 +153,23 @@ type ManagedTask struct {
 func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, resourceBackuper ResourceFileBackuper, pusher TaskProgressPusher) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
-		taskId:                taskId,
-		parentId:              parentId,
-		state:                 atomic.Int32{},
-		ctx:                   ctx,
-		cancel:                cancel,
-		done:                  make(chan struct{}),
-		pluginExec:            pluginExec,
-		workInfoSaver:         workInfoSaver,
-		resourceSaver:         resourceSaver,
-		workDirProvider:       workDirProvider,
+		taskId:                 taskId,
+		parentId:               parentId,
+		state:                  atomic.Int32{},
+		ctx:                    ctx,
+		cancel:                 cancel,
+		done:                   make(chan struct{}),
+		pluginExec:             pluginExec,
+		workInfoSaver:          workInfoSaver,
+		resourceSaver:          resourceSaver,
+		workDirProvider:        workDirProvider,
 		fileNameFormatProvider: fileNameFormatProvider,
-		workChecker:           workChecker,
-		resourceReader:        resourceReader,
-		resourceBackuper:      resourceBackuper,
-		pusher:                pusher,
-		task:                  task,
-		workId:                taskId,
+		workChecker:            workChecker,
+		resourceReader:         resourceReader,
+		resourceBackuper:       resourceBackuper,
+		pusher:                 pusher,
+		task:                   task,
+		workId:                 taskId,
 	}
 }
 
@@ -184,7 +184,17 @@ func (m *ManagedTask) run() runResult {
 
 	m.setState(TaskStateProcessing)
 
-	// 0. 检查作品是否已存在（仅首次执行时检查）
+	// 0. 检查 workdir 是否已配置
+	if m.workDirProvider.GetWorkDir() == "" {
+		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
+		if m.pusher != nil {
+			m.pusher.PushError(m.taskId, "未配置资源库目录，请先在设置中指定资源库保存位置")
+		}
+		m.setState(TaskStateFailed)
+		return runResultDone
+	}
+
+	// 0.0 检查作品是否已存在（仅首次执行时检查）
 	if !m.skipDuplicateCheck && m.workChecker != nil && m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
 		existing, err := m.workChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 		if err == nil && existing != nil {

@@ -106,8 +106,8 @@ type App struct {
 
 	// Wails 事件发射器（用于任务进度推送）
 	taskProgressEmitter taskManager.WailsEventEmitter
-		// 前端事件监听函数（用于插件 SubscribeFrontend）
-		frontendEventOn func(topic string, callback func(data any)) func()
+	// 前端事件监听函数（用于插件 SubscribeFrontend）
+	frontendEventOn func(topic string, callback func(data any)) func()
 
 	// Handlers（用于 Bind[] 参数）
 	LocalTagHandler              *localTag.Handler
@@ -139,7 +139,7 @@ func NewApp() (*App, error) {
 	app := &App{}
 
 	// 1. 加载配置
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.LoadFromDir(util.RootPath())
 	if err != nil {
 		logger.Log.Errorf("加载配置失败: %v", err)
 		return nil, err
@@ -190,11 +190,11 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
-
 // LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）
 func (app *App) LoadPlugins() {
 	app.loadInstalledPlugins()
 }
+
 // SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher 和 TaskProgressPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent func(topic string, callback func(data any)) func()) {
 	pusher := extension2.NewWailsSlotPusher(emitter)
@@ -505,8 +505,8 @@ func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string) {
 // wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信
 // 使用延迟获取避免初始化时序问题（插件加载早于 SetEventEmitter）
 type wailsFrontendEventProvider struct {
-	emitterFunc  func() extension2.WailsEventEmitter
-	onEventFunc  func() func(topic string, callback func(data any)) func()
+	emitterFunc func() extension2.WailsEventEmitter
+	onEventFunc func() func(topic string, callback func(data any)) func()
 }
 
 func (p *wailsFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {

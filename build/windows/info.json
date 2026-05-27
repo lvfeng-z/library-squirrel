@@ -4,12 +4,12 @@
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "A library-squirrel application",
-			"LegalCopyright": "© 2026, My Company",
-			"ProductName": "My Product",
-			"Comments": "This is a comment"
+			"ProductVersion": "0.0.1",
+			"CompanyName": "lvfeng",
+			"FileDescription": "基于标签的个人资源库管理工具",
+			"LegalCopyright": "© 2026, lvfeng",
+			"ProductName": "Library Squirrel",
+			"Comments": "Library Squirrel"
 		}
 	}
 }

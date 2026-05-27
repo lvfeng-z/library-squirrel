@@ -2,6 +2,8 @@ package database
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	pkglogger "github.com/library-squirrel/backend/base/logger"
@@ -16,6 +18,11 @@ var (
 
 // Init 初始化数据库连接（GORM + mattn/go-sqlite3）
 func Init(path string) error {
+	// 确保数据库文件所在目录存在
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create database directory: %w", err)
+	}
+
 	var err error
 	once.Do(func() {
 		// 打开 SQLite 连接（GORM 自动使用 mattn/go-sqlite3）
