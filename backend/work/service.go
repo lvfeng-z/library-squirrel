@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
@@ -659,14 +658,15 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 		return 0, fmt.Errorf("upsert 作品集失败: %w", err)
 	}
 
-	// LocalAuthors/LocalTags 暂时忽略
-	if len(workResp.LocalAuthors) > 0 {
-		logger.Log.Warnf("[WorkService] 插件返回了 %d 个本地作者，暂未支持保存", len(workResp.LocalAuthors))
-	}
-	if len(workResp.LocalTags) > 0 {
-		logger.Log.Warnf("[WorkService] 插件返回了 %d 个本地标签，暂未支持保存", len(workResp.LocalTags))
+	localAuthorDBIds, err := s.validateLocalAuthorIds(ctx, workResp.LocalAuthors)
+	if err != nil {
+		return 0, fmt.Errorf("验证本地作者失败: %w", err)
 	}
 
+	localTagDBIds, err := s.validateLocalTagIds(ctx, workResp.LocalTags)
+	if err != nil {
+		return 0, fmt.Errorf("验证本地标签失败: %w", err)
+	}
 	// === Phase 2: 回查内部 DB ID ===
 	siteAuthorDBIds, err = s.querySiteAuthorDBIds(ctx, workResp.SiteAuthors, siteId)
 	if err != nil {
@@ -683,30 +683,35 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 		return 0, fmt.Errorf("回查作品集 ID 失败: %w", err)
 	}
 
+	// TODO: 当前的全量替换策略会删除该作品的全部关联（包括用户在 UI 中手动添加的本地作者/标签关联），
+	//  然后仅用插件返回的数据重建。应在执行替换前提示用户确认是"替换"还是"合并"，
+	//  合并模式下保留非插件来源的关联，仅更新插件管理的 Site 类型关联。
 	// === Phase 3: 保存 Work + 全量替换关联 ===
 	workId, err := s.saveOrUpdateWork(ctx, work)
 	if err != nil {
 		return 0, fmt.Errorf("保存作品失败: %w", err)
 	}
 
-	// 全量替换 work-author 关联
+	// 全量替换 work-author 关联（Site + Local）
 	if err := s.reWorkAuthorWriter.DeleteByWorkId(ctx, workId); err != nil {
 		return 0, fmt.Errorf("删除作品作者关联失败: %w", err)
 	}
-	if len(siteAuthorDBIds) > 0 {
-		links := buildSiteAuthorLinks(workId, siteAuthorDBIds)
-		if err := s.reWorkAuthorWriter.SaveBatch(ctx, links); err != nil {
+	authorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
+	authorLinks = append(authorLinks, buildLocalAuthorLinks(workId, localAuthorDBIds)...)
+	if len(authorLinks) > 0 {
+		if err := s.reWorkAuthorWriter.SaveBatch(ctx, authorLinks); err != nil {
 			return 0, fmt.Errorf("保存作品作者关联失败: %w", err)
 		}
 	}
 
-	// 全量替换 work-tag 关联
+	// 全量替换 work-tag 关联（Site + Local）
 	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, workId); err != nil {
 		return 0, fmt.Errorf("删除作品标签关联失败: %w", err)
 	}
-	if len(siteTagDBIds) > 0 {
-		links := buildSiteTagLinks(workId, siteTagDBIds)
-		if err := s.reWorkTagWriter.SaveBatch(ctx, links); err != nil {
+	tagLinks := buildSiteTagLinks(workId, siteTagDBIds)
+	tagLinks = append(tagLinks, buildLocalTagLinks(workId, localTagDBIds)...)
+	if len(tagLinks) > 0 {
+		if err := s.reWorkTagWriter.SaveBatch(ctx, tagLinks); err != nil {
 			return 0, fmt.Errorf("保存作品标签关联失败: %w", err)
 		}
 	}
@@ -825,6 +830,66 @@ func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*dto2.TaskWorkSe
 	return ids, nil
 }
 
+// validateLocalAuthorIds 校验本地作者 ID 是否全部存在，返回有效的 DB ID 列表
+func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*dto2.LocalAuthorDTO) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		if d.ID <= 0 {
+			return nil, fmt.Errorf("本地作者 ID 无效: %d", d.ID)
+		}
+		ids = append(ids, d.ID)
+	}
+	results, err := s.localAuthorBatchReader.ListByIds(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("查询本地作者失败: %w", err)
+	}
+	if len(results) != len(ids) {
+		found := make(map[int64]struct{}, len(results))
+		for _, r := range results {
+			found[r.ID] = struct{}{}
+		}
+		for _, id := range ids {
+			if _, ok := found[id]; !ok {
+				return nil, fmt.Errorf("本地作者不存在: ID=%d", id)
+			}
+		}
+	}
+	return ids, nil
+}
+
+// validateLocalTagIds 校验本地标签 ID 是否全部存在，返回有效的 DB ID 列表
+func (s *Service) validateLocalTagIds(ctx context.Context, dtos []*dto2.LocalTagDTO) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(dtos))
+	for _, d := range dtos {
+		if d.ID <= 0 {
+			return nil, fmt.Errorf("本地标签 ID 无效: %d", d.ID)
+		}
+		ids = append(ids, d.ID)
+	}
+	results, err := s.localTagBatchReader.ListByIds(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("查询本地标签失败: %w", err)
+	}
+	if len(results) != len(ids) {
+		found := make(map[int64]struct{}, len(results))
+		for _, r := range results {
+			found[r.ID] = struct{}{}
+		}
+		for _, id := range ids {
+			if _, ok := found[id]; !ok {
+				return nil, fmt.Errorf("本地标签不存在: ID=%d", id)
+			}
+		}
+	}
+	return ids, nil
+}
+
 // saveOrUpdateWork 按复合键保存或更新作品
 func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int64, error) {
 	existing, err := s.repo.GetBySiteAndSiteWorkID(ctx, work.SiteID.Int64, work.SiteWorkID.String)
@@ -867,10 +932,10 @@ func taskSiteTagDTOToEntity(d *dto2.TaskSiteTagDTO, siteId int64) *entity2.SiteT
 
 func taskWorkSetDTOToEntity(d *dto2.TaskWorkSetDTO, siteId int64) *entity2.WorkSet {
 	return &entity2.WorkSet{
-		BaseEntity:         &model.BaseEntity{},
-		SiteID:             sql.NullInt64{Int64: siteId, Valid: true},
-		SiteWorkSetID:      sql.NullString{String: d.SiteWorkSetID, Valid: true},
-		SiteWorkSetName:    sql.NullString{String: d.WorkSetName, Valid: true},
+		BaseEntity:      &model.BaseEntity{},
+		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},
+		SiteWorkSetID:   sql.NullString{String: d.SiteWorkSetID, Valid: true},
+		SiteWorkSetName: sql.NullString{String: d.WorkSetName, Valid: true},
 	}
 }
 
@@ -898,6 +963,33 @@ func buildSiteTagLinks(workId int64, siteTagIds []int64) []*entity2.ReWorkTag {
 			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
 			TagType:    sql.NullInt64{Int64: 2, Valid: true}, // TagTypeSite
 			SiteTagID:  sql.NullInt64{Int64: tagId, Valid: true},
+		})
+	}
+	return links
+}
+
+func buildLocalAuthorLinks(workId int64, localAuthorIds []int64) []*entity2.ReWorkAuthor {
+	links := make([]*entity2.ReWorkAuthor, 0, len(localAuthorIds))
+	for _, authorId := range localAuthorIds {
+		links = append(links, &entity2.ReWorkAuthor{
+			BaseEntity:    &model.BaseEntity{},
+			AuthorType:    sql.NullInt64{Int64: AuthorTypeLocal, Valid: true},
+			WorkID:        sql.NullInt64{Int64: workId, Valid: true},
+			LocalAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
+			AuthorRank:    sql.NullInt64{Int64: 0, Valid: true},
+		})
+	}
+	return links
+}
+
+func buildLocalTagLinks(workId int64, localTagIds []int64) []*entity2.ReWorkTag {
+	links := make([]*entity2.ReWorkTag, 0, len(localTagIds))
+	for _, tagId := range localTagIds {
+		links = append(links, &entity2.ReWorkTag{
+			BaseEntity: &model.BaseEntity{},
+			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
+			TagType:    sql.NullInt64{Int64: 1, Valid: true}, // TagTypeLocal
+			LocalTagID: sql.NullInt64{Int64: tagId, Valid: true},
 		})
 	}
 	return links
