@@ -10,6 +10,7 @@ import { AnySlotContent } from '@renderer/model/model/constant/SlotTypes.ts'
 import type { HtmlContent, PrecompiledContent, VueSourceContent } from '@renderer/model/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
 import { Handler as SlotHandler } from '@bindings/github.com/library-squirrel/backend/slot'
+import { Events } from '@wailsio/runtime'
 import * as WailsRuntime from '@wailsio/runtime'
 
 /**
@@ -386,6 +387,40 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 }
 
 /**
+ * 根据类型注册 slot 到 store
+ */
+function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot: SlotResponse) {
+  if (slot.type === 'view') {
+    store.registerViewSlot(convertToViewSlot(slot))
+  } else if (slot.type === 'menu') {
+    store.registerMenuSlot(convertToMenuSlot(slot))
+  } else if (slot.type === 'embed') {
+    store.registerEmbedSlot(convertToEmbedSlot(slot))
+  } else if (slot.type === 'panel') {
+    store.registerPanelSlot(convertToPanelSlot(slot))
+  } else if (slot.type === 'siteBrowserList') {
+    store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(slot))
+  }
+}
+
+/**
+ * 根据 slotType 注销 slot
+ */
+function unregisterSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slotId: string, slotType: string) {
+  if (slotType === 'view') {
+    store.unregisterViewSlot(slotId)
+  } else if (slotType === 'menu') {
+    store.unregisterMenuSlot(slotId)
+  } else if (slotType === 'embed') {
+    store.unregisterEmbedSlot(slotId)
+  } else if (slotType === 'panel') {
+    store.unregisterPanelSlot(slotId)
+  } else if (slotType === 'siteBrowserList') {
+    store.unregisterSiteBrowserSlot(slotId)
+  }
+}
+
+/**
  * 初始化插槽同步监听器
  */
 export function initSlotSyncListener() {
@@ -395,18 +430,33 @@ export function initSlotSyncListener() {
   SlotHandler.GetAllSlots().then((resp) => {
     const slots = resp?.data ?? []
     slots.forEach((config: unknown) => {
-      const slot = config as SlotResponse
-      if (slot.type === 'view') {
-        store.registerViewSlot(convertToViewSlot(slot))
-      } else if (slot.type === 'menu') {
-        store.registerMenuSlot(convertToMenuSlot(slot))
-      } else if (slot.type === 'embed') {
-        store.registerEmbedSlot(convertToEmbedSlot(slot))
-      } else if (slot.type === 'panel') {
-        store.registerPanelSlot(convertToPanelSlot(slot))
-      } else if (slot.type === 'siteBrowserList') {
-        store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(slot))
-      }
+      registerSlotByType(store, config as SlotResponse)
     })
+  })
+
+  // 监听运行时 slot 注册事件
+  Events.On('slot-register', (event: unknown) => {
+    const data = (event as { data: { slotId: string; data: SlotResponse } }).data
+    if (data?.data) {
+      registerSlotByType(store, data.data)
+    }
+  })
+
+  // 监听运行时 slot 注销事件
+  Events.On('slot-unregister', (event: unknown) => {
+    const data = (event as { data: { slotId: string; slotType: string } }).data
+    if (data?.slotId && data?.slotType) {
+      unregisterSlotByType(store, data.slotId, data.slotType)
+    }
+  })
+
+  // 监听运行时 slot 批量注销事件
+  Events.On('slot-batch-register', (event: unknown) => {
+    const data = (event as { data: { slots: Array<{ slotId: string; slotType: string }> } }).data
+    if (data?.slots) {
+      data.slots.forEach((item) => {
+        unregisterSlotByType(store, item.slotId, item.slotType)
+      })
+    }
   })
 }

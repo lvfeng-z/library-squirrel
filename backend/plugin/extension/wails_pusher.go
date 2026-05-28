@@ -1,5 +1,7 @@
 package extension
 
+import "encoding/json"
+
 // SlotEventType 插槽事件类型
 type SlotEventType string
 
@@ -14,9 +16,9 @@ const (
 
 // SlotPusher 插槽事件推送器接口
 type SlotPusher interface {
-	PushRegister(slotID string, data interface{})
-	PushUnregister(slotID string, pluginID int64)
-	PushBatchRegister(slots []interface{})
+	PushRegister(slotID string, data SlotRegisterData)
+	PushUnregister(slotID string, pluginID int64, slotType string)
+	PushBatchUnregister(items []SlotUnregisterItem)
 }
 
 // WailsEventEmitter Wails 事件发射器接口
@@ -38,7 +40,7 @@ func NewWailsSlotPusher(emitter WailsEventEmitter) *WailsSlotPusher {
 }
 
 // PushRegister 推送注册事件到前端
-func (p *WailsSlotPusher) PushRegister(slotID string, data interface{}) {
+func (p *WailsSlotPusher) PushRegister(slotID string, data SlotRegisterData) {
 	event := SlotEventData{
 		Event:  string(SlotEventRegister),
 		SlotID: slotID,
@@ -48,20 +50,21 @@ func (p *WailsSlotPusher) PushRegister(slotID string, data interface{}) {
 }
 
 // PushUnregister 推送注销事件到前端
-func (p *WailsSlotPusher) PushUnregister(slotID string, pluginID int64) {
+func (p *WailsSlotPusher) PushUnregister(slotID string, pluginID int64, slotType string) {
 	event := SlotEventData{
 		Event:    string(SlotEventUnregister),
 		SlotID:   slotID,
 		PluginID: pluginID,
+		SlotType: slotType,
 	}
 	p.emitter.Emit("slot-unregister", event)
 }
 
-// PushBatchRegister 推送批量注册事件到前端
-func (p *WailsSlotPusher) PushBatchRegister(slots []interface{}) {
+// PushBatchUnregister 推送批量注销事件到前端
+func (p *WailsSlotPusher) PushBatchUnregister(items []SlotUnregisterItem) {
 	event := SlotEventData{
 		Event: string(SlotEventBatchRegister),
-		Slots: slots,
+		Slots: items,
 	}
 	p.emitter.Emit("slot-batch-register", event)
 }
@@ -71,6 +74,35 @@ type SlotEventData struct {
 	Event    string      `json:"event"`
 	SlotID   string      `json:"slotId,omitempty"`
 	PluginID int64       `json:"pluginId,omitempty"`
+	SlotType string      `json:"slotType,omitempty"`
 	Data     interface{} `json:"data,omitempty"`
 	Slots    interface{} `json:"slots,omitempty"`
+}
+
+// SlotUnregisterItem 批量注销项
+type SlotUnregisterItem struct {
+	SlotID   string `json:"slotId"`
+	SlotType string `json:"slotType"`
+}
+
+// SlotRegisterData 插槽注册事件数据，字段与前端 SlotResponse 一致
+type SlotRegisterData struct {
+	SlotID         string          `json:"slotId"`
+	PluginID       int64           `json:"pluginId"`
+	PluginPublicID string          `json:"pluginPublicId"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description,omitempty"`
+	Type           string          `json:"type"`
+	ContentType    string          `json:"contentType"`
+	Content        json.RawMessage `json:"content,omitempty"`
+	Position       string          `json:"position,omitempty"`
+	Width          *int            `json:"width,omitempty"`
+	Height         *int            `json:"height,omitempty"`
+	Order          int             `json:"order,omitempty"`
+	Title          string          `json:"title,omitempty"`
+	Icon           string          `json:"icon,omitempty"`
+	ViewId         string          `json:"viewId,omitempty"`
+	ContributionId string          `json:"contributionId,omitempty"`
+	Props          json.RawMessage `json:"props,omitempty"`
+	Children       []SlotRegisterData `json:"children,omitempty"`
 }

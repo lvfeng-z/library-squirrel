@@ -50,7 +50,7 @@ func (r *SlotRegistry) Register(extension *model.Extension[*domain.SlotConfig]) 
 
 	// 推送注册事件
 	if r.pusher != nil {
-		r.pusher.PushRegister(key, extension.Instance)
+		r.pusher.PushRegister(key, slotConfigToRegisterData(extension))
 	}
 
 	return nil
@@ -70,7 +70,7 @@ func (r *SlotRegistry) Unregister(pluginPublicId string, extensionId string) err
 
 	// 推送注销事件
 	if r.pusher != nil && ext != nil {
-		r.pusher.PushUnregister(key, ext.Metadata.PluginID)
+		r.pusher.PushUnregister(key, ext.Metadata.PluginID, string(ext.Instance.SlotType))
 	}
 
 	return nil
@@ -82,18 +82,21 @@ func (r *SlotRegistry) UnregisterAll(pluginPublicId string) error {
 	defer r.mu.Unlock()
 
 	prefix := pluginPublicId + "/"
-	var slots []interface{}
-	for key := range r.extensions {
+	var items []SlotUnregisterItem
+	for key, ext := range r.extensions {
 		if strings.HasPrefix(key, prefix) {
-			slots = append(slots, key)
+			items = append(items, SlotUnregisterItem{
+				SlotID:   key,
+				SlotType: string(ext.Instance.SlotType),
+			})
 			delete(r.extensions, key)
 		}
 	}
 
 	// 推送批量注销事件
-	if r.pusher != nil && len(slots) > 0 {
-		r.pusher.PushBatchRegister(slots)
-		logger.Log.Info("Slot 已批量注销", zap.String("plugin", pluginPublicId), zap.Int("count", len(slots)))
+	if r.pusher != nil && len(items) > 0 {
+		r.pusher.PushBatchUnregister(items)
+		logger.Log.Info("Slot 已批量注销", zap.String("plugin", pluginPublicId), zap.Int("count", len(items)))
 	}
 
 	return nil
@@ -148,4 +151,47 @@ func (r *SlotRegistry) GetSlotConfigs() []*domain.SlotConfig {
 		result = append(result, ext.Instance)
 	}
 	return result
+}
+
+// slotConfigToRegisterData 将 SlotConfig 转换为前端可识别的注册事件数据
+func slotConfigToRegisterData(ext *model.Extension[*domain.SlotConfig]) SlotRegisterData {
+	cfg := ext.Instance
+	meta := cfg.Metadata
+	data := SlotRegisterData{
+		Type:        string(cfg.SlotType),
+		ContentType: string(cfg.ContentType),
+		Content:     cfg.Content,
+		Position:    cfg.Position,
+		Width:       cfg.Width,
+		Height:      cfg.Height,
+		Order:       cfg.Order,
+		Title:       cfg.Title,
+		Icon:        cfg.Icon,
+		ViewId:      cfg.ViewId,
+		ContributionId: cfg.ContributionId,
+		Props:       cfg.Props,
+	}
+	if meta != nil {
+		data.SlotID = meta.ID
+		data.PluginID = meta.PluginID
+		data.PluginPublicID = meta.PluginPublicID
+		data.Name = meta.Name
+		data.Description = meta.Description
+	}
+	if len(cfg.Children) > 0 {
+		data.Children = make([]SlotRegisterData, len(cfg.Children))
+		for i := range cfg.Children {
+			child := cfg.Children[i]
+			var childMeta model.ExtensionMetadata
+			if child.Metadata != nil {
+				childMeta = *child.Metadata
+			}
+			childData := slotConfigToRegisterData(&model.Extension[*domain.SlotConfig]{
+				Metadata: childMeta,
+				Instance: &child,
+			})
+			data.Children[i] = childData
+		}
+	}
+	return data
 }
