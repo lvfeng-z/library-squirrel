@@ -141,4 +141,5 @@ type TaskResourceDTO struct {
 	RemotePath   string `json:"remotePath"`   // 远程路径
 	Size         int64  `json:"size"`         // 文件大小
 	Completeness int    `json:"completeness"` // 完整度
+	SuggestName  string `json:"suggestName"`  // 插件建议的文件名（不含路径，不含扩展名）
 }

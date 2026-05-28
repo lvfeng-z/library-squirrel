@@ -365,6 +365,7 @@ func SDKResourceToDTO(r *pluginsdk.TaskResourceDTO) *dto.TaskResourceDTO {
 		RemotePath:   r.RemotePath,
 		Size:         r.Size,
 		Completeness: r.Completeness,
+		SuggestName:  r.SuggestName,
 	}
 }
 

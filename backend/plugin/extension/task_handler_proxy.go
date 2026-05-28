@@ -374,6 +374,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 			RemotePath:   pb.Resource.RemotePath,
 			Size:         pb.Resource.Size,
 			Completeness: int(pb.Resource.Completeness),
+				SuggestName:  pb.Resource.SuggestName,
 		}
 	}
 	return resp

@@ -3,7 +3,6 @@ package taskManager
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -264,7 +263,7 @@ func (m *ManagedTask) run() runResult {
 		FilePath:          sql.NullString{String: relativePath, Valid: true},
 		FileName:          sql.NullString{String: fileName, Valid: true},
 		FilenameExtension: sql.NullString{String: startResp.Resource.Format, Valid: true},
-		SuggestName:       sql.NullString{String: "", Valid: true},
+		SuggestName:       sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""},
 		ResourceSize:      sql.NullInt64{Int64: startResp.Resource.Size, Valid: true},
 		Workdir:           sql.NullString{String: m.workDirProvider.GetWorkDir(), Valid: true},
 		ResourceComplete:  startResp.Resource.Completeness,
@@ -473,21 +472,9 @@ func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath
 	workDir := m.workDirProvider.GetWorkDir()
 	tpl := m.fileNameFormatProvider.GetFileNameFormat()
 
-	// 模板为空时回退到简单逻辑（无作者目录）
+	// 模板为空时使用插件建议的文件名
 	if tpl == "" {
-		fileName = res.RemotePath
-		if fileName == "" {
-			name := "task"
-			if m.task.TaskName.Valid {
-				name = m.task.TaskName.String
-			}
-			ext := res.Format
-			if ext != "" {
-				fileName = fmt.Sprintf("%s%s", name, ext)
-			} else {
-				fileName = name
-			}
-		}
+		fileName = m.buildSuggestedFileName(res)
 		relativePath = fileName
 		absSavePath = filepath.Join(workDir, "resource", fileName)
 		return
@@ -509,6 +496,31 @@ func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath
 	relativePath = filepath.Join(authorDir, fileName)
 	absSavePath = filepath.Join(workDir, "resource", authorDir, fileName)
 	return
+}
+
+// buildSuggestedFileName 根据插件建议文件名构建最终文件名（含扩展名）
+// 优先使用插件 SuggestName，仅保留纯文件名部分并进行清洗，扩展名由 Format 字段控制
+func (m *ManagedTask) buildSuggestedFileName(res *dto.TaskResourceDTO) string {
+	name := res.SuggestName
+	if name != "" {
+		// 只保留纯文件名，丢弃任何路径部分
+		name = filepath.Base(name)
+		name = filename.SanitizeFileName(name)
+	}
+	if name == "" {
+		name = res.RemotePath
+	}
+	if name == "" {
+		name = "task"
+		if m.task.TaskName.Valid {
+			name = m.task.TaskName.String
+		}
+	}
+	ext := res.Format
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return name + ext
 }
 
 // ParentTask 父任务运行结构体
