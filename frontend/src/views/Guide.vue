@@ -16,7 +16,7 @@ function startTour() {
   <base-subpage>
     <template #default>
       <div class="guide-container">
-        <el-anchor :container="containerRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30">
+        <el-anchor :container="containerRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30" @click="(e: MouseEvent) => e.preventDefault()">
           <el-anchor-link href="#summary" title="软件概述" />
           <el-anchor-link href="#site" title="站点" />
           <el-anchor-link href="#work" title="作品" />
