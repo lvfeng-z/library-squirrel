@@ -5,11 +5,15 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
+
 /**
  * PageResult 分页结果
  */
 export class PageResult {
-    "data": (SiteBrowserDTO | null)[];
+    "data": (dto$0.SiteBrowserDTO | null)[];
     "pageNumber": number;
     "pageSize": number;
     "total": number;
@@ -45,43 +49,7 @@ export class PageResult {
     }
 }
 
-/**
- * SiteBrowserDTO 站点浏览器DTO
- */
-export class SiteBrowserDTO {
-    "contributionId": string;
-    "pluginPublicId": string;
-    "name": string;
-    "pluginId": number;
-
-    /** Creates a new SiteBrowserDTO instance. */
-    constructor($$source: Partial<SiteBrowserDTO> = {}) {
-        if (!("contributionId" in $$source)) {
-            this["contributionId"] = "";
-        }
-        if (!("pluginPublicId" in $$source)) {
-            this["pluginPublicId"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("pluginId" in $$source)) {
-            this["pluginId"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteBrowserDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteBrowserDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteBrowserDTO($$parsedSource as Partial<SiteBrowserDTO>);
-    }
-}
-
 // Private type creation functions
-const $$createType0 = SiteBrowserDTO.createFrom;
+const $$createType0 = dto$0.SiteBrowserDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);

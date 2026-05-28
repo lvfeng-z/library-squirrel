@@ -7,6 +7,5 @@ export {
 };
 
 export {
-    PageResult,
-    SiteBrowserDTO
+    PageResult
 } from "./models.js";

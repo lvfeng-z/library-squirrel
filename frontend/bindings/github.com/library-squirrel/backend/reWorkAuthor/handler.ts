@@ -17,17 +17,13 @@ import * as model$0 from "../base/model/models.js";
 // @ts-ignore: Unused imports
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as $models from "./models.js";
-
 /**
  * ListByWorkId 获取单个作品的作者关联信息
  * @Summary 获取单个作品的作者关联信息
  * @Param workId path int true "作品ID"
  * @Success 200 {object} model.ApiResponse[*sdkdto.WorkAuthorDTO]
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<$models.WorkAuthorDTO | null> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkAuthorDTO | null> | null> {
     return $Call.ByID(3131814203, workId).then(($result: any) => {
         return $$createType3($result);
     });
@@ -39,7 +35,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
  * @Param workIds body []int64 true "作品ID列表"
  * @Success 200 {object} model.ApiResponse[[]*WorkAuthorsResultDTO]
  */
-export function ListByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.WorkAuthorsResultDTO | null)[]> | null> {
+export function ListByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkAuthorsResultDTO | null)[]> | null> {
     return $Call.ByID(608703576, workIds).then(($result: any) => {
         return $$createType8($result);
     });
@@ -94,11 +90,11 @@ export function ListSiteAuthorsByWorkId(workId: number): $CancellablePromise<mod
 }
 
 // Private type creation functions
-const $$createType0 = $models.WorkAuthorDTO.createFrom;
+const $$createType0 = dto$0.WorkAuthorDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.WorkAuthorsResultDTO.createFrom;
+const $$createType4 = dto$0.WorkAuthorsResultDTO.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = $Create.Array($$createType5);
 const $$createType7 = model$0.ApiResponse.createFrom($$createType6);

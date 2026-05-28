@@ -307,7 +307,7 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 
 	var uninstalledPlugin *entity2.Plugin
 	if existing != nil {
-		if existing.Uninstalled.Valid && existing.Uninstalled.Bool {
+		if existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
 			return nil, ErrPluginAlreadyExists
 		}
 		uninstalledPlugin = existing

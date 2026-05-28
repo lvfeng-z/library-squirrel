@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../base/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -21,7 +24,7 @@ import * as $models from "./models.js";
 /**
  * GetByID 根据ID获取站点浏览器
  */
-export function GetByID(pluginPublicId: string, contributionId: string): $CancellablePromise<model$0.ApiResponse<$models.SiteBrowserDTO | null> | null> {
+export function GetByID(pluginPublicId: string, contributionId: string): $CancellablePromise<model$0.ApiResponse<dto$0.SiteBrowserDTO | null> | null> {
     return $Call.ByID(908248202, pluginPublicId, contributionId).then(($result: any) => {
         return $$createType3($result);
     });
@@ -30,7 +33,7 @@ export function GetByID(pluginPublicId: string, contributionId: string): $Cancel
 /**
  * GetByPluginID 根据插件ID获取站点浏览器
  */
-export function GetByPluginID(pluginId: number): $CancellablePromise<model$0.ApiResponse<($models.SiteBrowserDTO | null)[]> | null> {
+export function GetByPluginID(pluginId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.SiteBrowserDTO | null)[]> | null> {
     return $Call.ByID(1002260721, pluginId).then(($result: any) => {
         return $$createType6($result);
     });
@@ -39,7 +42,7 @@ export function GetByPluginID(pluginId: number): $CancellablePromise<model$0.Api
 /**
  * List 获取所有站点浏览器
  */
-export function List(): $CancellablePromise<model$0.ApiResponse<($models.SiteBrowserDTO | null)[]> | null> {
+export function List(): $CancellablePromise<model$0.ApiResponse<(dto$0.SiteBrowserDTO | null)[]> | null> {
     return $Call.ByID(931532158).then(($result: any) => {
         return $$createType6($result);
     });
@@ -64,7 +67,7 @@ export function QueryPage(page: number, pageSize: number): $CancellablePromise<m
 }
 
 // Private type creation functions
-const $$createType0 = $models.SiteBrowserDTO.createFrom;
+const $$createType0 = dto$0.SiteBrowserDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
