@@ -17,7 +17,6 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -773,8 +772,7 @@ func (app *App) initAdvancedServices() error {
 		return extension2.NewTaskExecutor(app.pluginLoader), nil
 	}
 
-	// 创建 WorkInfoSaver 和 ResourceSaver 适配器
-	workInfoSaverAdapter := &workInfoSaverAdapter{svc: app.WorkService}
+	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
 	resourceFileBackuperAdapter := &resourceFileBackuperAdapter{svc: app.BackupService}
 
@@ -785,7 +783,7 @@ func (app *App) initAdvancedServices() error {
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,
-		workInfoSaverAdapter,
+		app.WorkService, // 实现 WorkInfoSaver 接口
 		resourceSaverAdapter,
 		app.WorkService,             // 实现 WorkChecker 接口
 		app.ResourceService,         // 实现 ResourceReader 接口
@@ -793,24 +791,6 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	return nil
-}
-
-// workInfoSaverAdapter WorkInfoSaver 接口适配器
-type workInfoSaverAdapter struct {
-	svc *work.Service
-}
-
-func (a *workInfoSaverAdapter) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
-	localWorkResp := &dto.WorkResponse{
-		Work:         dto.WorkDTOToEntity(workResp.Work),
-		LocalAuthors: workResp.LocalAuthors,
-		LocalTags:    workResp.LocalTags,
-		SiteAuthors:  workResp.SiteAuthors,
-		SiteTags:     workResp.SiteTags,
-		WorkSets:     workResp.WorkSets,
-		Resource:     workResp.Resource,
-	}
-	return a.svc.SaveWorkInfo(ctx, task, localWorkResp)
 }
 
 // workSetWriterAdapter WorkSetWriter 接口适配器（打破 work ↔ workSet 循环依赖）
