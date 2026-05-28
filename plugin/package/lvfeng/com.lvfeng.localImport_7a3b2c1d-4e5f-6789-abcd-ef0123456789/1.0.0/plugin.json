@@ -1,0 +1,29 @@
+{
+  "id": "com.lvfeng.localImport_7a3b2c1d-4e5f-6789-abcd-ef0123456789",
+  "name": "localImport",
+  "version": "1.0.0",
+  "author": "lvfeng",
+  "description": "从本地路径导入文件到资源库",
+  "entryFile": "local_import.exe",
+  "activation": {"type": 1},
+  "extensions": {
+    "taskHandlers": [{"id": "main"}],
+    "slots": [
+      {
+        "id": "classify-panel",
+        "name": "目录分类",
+        "description": "扫描时交互式目录分类面板",
+        "slotType": "embed",
+        "content": {
+          "contentType": "precompiled",
+          "source": {"js": "views/classify/classify-panel.js", "css": "views/classify/style.css"},
+          "position": "dialog",
+          "contributionId": "main"
+        }
+      }
+    ],
+    "staticResources": {
+      "directories": ["views/"]
+    }
+  }
+}

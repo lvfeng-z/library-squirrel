@@ -1,0 +1,28 @@
+{
+  "id": "com.lvfeng.pixivSuite_001594e7-dea2-5774-854f-7ac9950e04a0",
+  "name": "pixivSuite",
+  "version": "1.0.0",
+  "author": "lvfeng",
+  "description": "Library Squirrel的pixiv套件",
+  "extensions": {
+    "taskHandlers": [{"id": "main"}],
+    "siteBrowsers": [{"id": "main"}],
+    "slots": [
+      {
+        "id": "pixiv-site-browser-list",
+        "name": "Pixiv",
+        "description": "Pixiv 站点浏览器入口",
+        "slotType": "siteBrowserList",
+        "content": {
+          "icon": "assets/siteBrowserIcon.png",
+          "contributionId": "main"
+        }
+      }
+    ],
+    "staticResources": {
+      "directories": ["assets/"]
+    }
+  },
+  "activation": {"type": 1},
+  "entryFile": "pixiv_plugin.exe"
+}

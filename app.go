@@ -336,21 +336,12 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		slotConfig.Metadata.Name = slot.Name
 		slotConfig.Metadata.Description = slot.Description
 		slotConfig.SlotType = base.SlotType(slot.SlotType)
-		slotConfig.ContentType = base.ContentType(slot.ContentType)
-		slotConfig.Content = resolveContentURLs(slot.Content, slot.ContentType, publicId, version)
-		slotConfig.Title = slot.Title
 		slotConfig.Order = slot.Order
-		slotConfig.Position = slot.Position
-		slotConfig.Width = slot.Width
-		slotConfig.Height = slot.Height
-		slotConfig.ViewId = slot.ViewId
-		slotConfig.ContributionId = slot.ContributionId
-		slotConfig.Props = slot.Props
-		slotConfig.Children = convertSlotChildren(slot.Children, p.GetID(), publicId, version)
 
-		// 将相对路径的 Icon 转换为 URL
-		if slot.Icon != "" {
-			slotConfig.Icon = app.StaticResourceService.ResolveURL(publicId, version, slot.Icon)
+		// 按 slotType 解析 content
+		if err := parseSlotContent(slot, slotConfig, publicId, version); err != nil {
+			logger.Log.Errorf("解析 Slot content 失败 %s/%s: %v", publicId, slot.ID, err)
+			continue
 		}
 
 		extension := model.NewExtension(*slotConfig.Metadata, slotConfig)
@@ -419,6 +410,72 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	return nil
 }
 
+
+// parseSlotContent 按 slotType 解析 content 字段并填充 SlotConfig
+func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, version string) error {
+	if len(slot.Content) == 0 {
+		return nil
+	}
+
+	switch cfg.SlotType {
+	case base.SlotTypeEmbed:
+		var c dto.EmbedSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 embed content 失败: %w", err)
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Position = c.Position
+		cfg.ContributionId = c.ContributionId
+		cfg.Props = c.Props
+
+	case base.SlotTypePanel:
+		var c dto.PanelSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 panel content 失败: %w", err)
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Position = c.Position
+		cfg.Width = c.Width
+		cfg.Height = c.Height
+		cfg.Props = c.Props
+
+	case base.SlotTypeView:
+		var c dto.ViewSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 view content 失败: %w", err)
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Title = c.Title
+		cfg.Props = c.Props
+
+	case base.SlotTypeMenu:
+		var c dto.MenuSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 menu content 失败: %w", err)
+		}
+		cfg.ViewId = c.ViewId
+		cfg.Children = convertSlotChildren(c.Children, cfg.Metadata.PluginID, publicId, version)
+		if c.Icon != "" {
+			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
+		}
+
+	case base.SlotTypeSiteBrowserList:
+		var c dto.SiteBrowserListSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 siteBrowserList content 失败: %w", err)
+		}
+		cfg.ContributionId = c.ContributionId
+		if c.Icon != "" {
+			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
+		}
+	}
+
+	return nil
+}
+
 // convertSlotChildren 递归转换子插槽声明为 SlotConfig
 func convertSlotChildren(children []dto.SlotDeclaration, pluginID int64, publicId, version string) []base.SlotConfig {
 	if len(children) == 0 {
@@ -426,47 +483,33 @@ func convertSlotChildren(children []dto.SlotDeclaration, pluginID int64, publicI
 	}
 	result := make([]base.SlotConfig, len(children))
 	for i, child := range children {
-		result[i] = base.SlotConfig{
-			Metadata: &model.ExtensionMetadata{
-				Type:           model.ExtensionTypeSlot,
-				ID:             child.ID,
-				PluginID:       pluginID,
-				PluginPublicID: publicId,
-				Name:           child.Name,
-				Description:    child.Description,
-			},
-			SlotType:       base.SlotType(child.SlotType),
-			ContentType:    base.ContentType(child.ContentType),
-			Content:        resolveContentURLs(child.Content, child.ContentType, publicId, version),
-			Title:          child.Title,
-			Order:          child.Order,
-			Position:       child.Position,
-			Width:          child.Width,
-			Height:         child.Height,
-			ViewId:         child.ViewId,
-			ContributionId: child.ContributionId,
-			Props:          child.Props,
+		result[i].Metadata = &model.ExtensionMetadata{
+			Type:           model.ExtensionTypeSlot,
+			ID:             child.ID,
+			PluginID:       pluginID,
+			PluginPublicID: publicId,
+			Name:           child.Name,
+			Description:    child.Description,
 		}
-		if child.Icon != "" {
-			// 使用 app 实例的 StaticResourceService 在包级别不可用，
-			// 子菜单 icon 保留相对路径或由前端处理
-			result[i].Icon = child.Icon
+		result[i].SlotType = base.SlotType(child.SlotType)
+		result[i].Order = child.Order
+
+		if err := parseSlotContent(child, &result[i], publicId, version); err != nil {
+			logger.Log.Warnf("解析子 Slot content 失败 %s/%s: %v", publicId, child.ID, err)
 		}
-		result[i].Children = convertSlotChildren(child.Children, pluginID, publicId, version)
 	}
 	return result
 }
 
-// resolveContentURLs 将 Slot Content 中的相对路径转换为完整的 resource:// URL
-// 支持 vueSource、precompiled、html 类型，code 类型为行内代码无需转换
-func resolveContentURLs(content json.RawMessage, contentType, publicId, version string) json.RawMessage {
-	if len(content) == 0 || contentType == "code" {
-		return content
+// resolveSourceURLs 将组件源中的相对路径转换为完整 URL
+func resolveSourceURLs(source json.RawMessage, contentType, publicId, version string) json.RawMessage {
+	if len(source) == 0 || contentType == "code" {
+		return source
 	}
 
 	var c map[string]string
-	if err := json.Unmarshal(content, &c); err != nil {
-		return content
+	if err := json.Unmarshal(source, &c); err != nil {
+		return source
 	}
 
 	prefix := "/plugin/" + publicId + "/" + version + "/"
@@ -478,11 +521,18 @@ func resolveContentURLs(content json.RawMessage, contentType, publicId, version 
 
 	result, err := json.Marshal(c)
 	if err != nil {
-		return content
+		return source
 	}
 	return result
 }
 
+// resolveIconURL 将图标相对路径转换为完整 URL
+func resolveIconURL(iconPath, publicId, version string) string {
+	if iconPath == "" {
+		return ""
+	}
+	return "/plugin/" + publicId + "/" + version + "/" + iconPath
+}
 type taskCreateAdapter struct {
 	svc *task.Service
 }

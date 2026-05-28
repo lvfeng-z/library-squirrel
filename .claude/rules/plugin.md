@@ -44,30 +44,96 @@ globs:
 
 ### extensions.slots[] 声明
 
-每个 slot 声明对应 `backend/base/model/dto/plugin_types.go` 的 `SlotDeclaration` 结构：
+每个 slot 声明包含通用字段和按 slotType 区分的 `content` 配置：
+
+**通用字段：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | string | 是 | 插槽唯一标识（插件内唯一） |
+| `name` | string | 是 | 显示名称 |
+| `description` | string | 否 | 描述 |
+| `slotType` | string | 是 | `embed` \| `panel` \| `view` \| `menu` \| `siteBrowserList` |
+| `order` | number | 否 | 排序权重 |
+| `content` | object | 是 | 按 slotType 区分的专属配置（见下方） |
+
+### content 按 slotType 的格式
+
+**embed：** 嵌入组件到宿主页面指定位置
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | string | 插槽唯一标识（插件内唯一） |
-| `name` | string | 显示名称 |
-| `slotType` | string | `embed` \| `panel` \| `view` \| `menu` \| `siteBrowserList` |
 | `contentType` | string | `precompiled` \| `vueSource` \| `code` \| `html` |
-| `content` | object | 根据 contentType 不同而不同（见下方） |
-| `position` | string | embed: `topbar`\|`toolbar`\|`statusbar`\|`dialog`；panel: `left-sidebar`\|`right-sidebar`\|`bottom` |
-| `contributionId` | string | 关联的 TaskHandler ID（如 `"main"`） |
-| `props` | object | 传递给组件的额外属性 |
-| `children` | array | 嵌套子 slot（仅 menu 类型） |
+| `source` | object/string | 组件源（格式见 source 格式表） |
+| `position` | string | `topbar` \| `toolbar` \| `statusbar` \| `dialog` |
+| `contributionId` | string | 关联的 TaskHandler ID（可选） |
+| `props` | object | 传递给组件的额外属性（可选） |
 
-### content 字段格式
+```json
+{"contentType": "precompiled", "source": {"js": "views/panel.js", "css": "views/style.css"}, "position": "dialog", "contributionId": "main"}
+```
 
-| contentType | content 格式 |
-|-------------|-------------|
+**panel：** 侧边栏/底部面板
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `contentType` | string | 同 embed |
+| `source` | object/string | 同 embed |
+| `position` | string | `left-sidebar` \| `right-sidebar` \| `bottom` |
+| `width` | number | 面板宽度（可选） |
+| `height` | number | 面板高度（可选） |
+| `props` | object | 传递给组件的额外属性（可选） |
+
+```json
+{"contentType": "precompiled", "source": {"js": "views/detail.js", "css": "views/style.css"}, "position": "right-sidebar", "width": 400}
+```
+
+**view：** 独立路由页面
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `contentType` | string | 同 embed |
+| `source` | object/string | 同 embed |
+| `title` | string | 页面标题（可选） |
+| `props` | object | 传递给组件的额外属性（可选） |
+
+```json
+{"contentType": "precompiled", "source": {"js": "views/browser.js", "css": "views/style.css"}, "title": "浏览器"}
+```
+
+**menu：** 侧边栏菜单项，点击跳转到关联的 view
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `icon` | string | 图标相对路径（可选，自动解析为完整 URL） |
+| `viewId` | string | 点击后跳转到的 view slot ID |
+| `children` | array | 子菜单项（可选，递归 slot 声明） |
+
+```json
+{"icon": "assets/icon.png", "viewId": "browser-view"}
+```
+
+**siteBrowserList：** 站点浏览器入口卡片
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `icon` | string | 图标相对路径（自动解析为完整 URL） |
+| `contributionId` | string | 关联的 `siteBrowsers` 扩展点 ID |
+
+```json
+{"icon": "assets/icon.png", "contributionId": "main"}
+```
+
+### source 格式（contentType 对应）
+
+| contentType | source 格式 |
+|-------------|------------|
 | `precompiled` | `{"js": "path/to/file.js", "css": "path/to/style.css"}` |
 | `vueSource` | `{"entry": "path/to/Component.vue"}` |
 | `html` | `{"html": "path/to/file.html"}` |
-| `code` | 无需 content，代码直接在 props 中传递 |
+| `code` | JavaScript 代码字符串（行内 JS，通过 `new Function` 执行，不注入 Vue/WailsRuntime 依赖） |
 
-content 中的相对路径会自动解析为 `/plugin/{publicId}/{version}/...` 形式的完整 URL。
+source 中的相对路径会自动解析为 `/plugin/{publicId}/{version}/...` 形式的完整 URL。
 
 ## 预编译组件模式
 

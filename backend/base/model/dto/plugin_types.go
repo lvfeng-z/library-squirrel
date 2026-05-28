@@ -103,22 +103,52 @@ type SiteBrowserDeclaration struct {
 
 // SlotDeclaration 插槽声明（plugin.json 中每个 slot 条目）
 type SlotDeclaration struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Description    string            `json:"description,omitempty"`
-	SlotType       string            `json:"slotType"`
-	ContentType    string            `json:"contentType,omitempty"`
-	Content        json.RawMessage   `json:"content,omitempty"`
-	Title          string            `json:"title,omitempty"`
-	Icon           string            `json:"icon,omitempty"`
-	Order          int               `json:"order,omitempty"`
-	Position       string            `json:"position,omitempty"`
-	Width          *int              `json:"width,omitempty"`
-	Height         *int              `json:"height,omitempty"`
-	Props          json.RawMessage   `json:"props,omitempty"`
-	ViewId         string            `json:"viewId,omitempty"`
-	ContributionId string            `json:"contributionId,omitempty"`
-	Children       []SlotDeclaration `json:"children,omitempty"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	SlotType    string          `json:"slotType"`
+	Order       int             `json:"order,omitempty"`
+	Content     json.RawMessage `json:"content"`
+}
+
+// EmbedSlotContent embed 类型插槽配置
+type EmbedSlotContent struct {
+	ContentType    string          `json:"contentType"`
+	Source         json.RawMessage `json:"source"`
+	Position       string          `json:"position"`
+	ContributionId string          `json:"contributionId,omitempty"`
+	Props          json.RawMessage `json:"props,omitempty"`
+}
+
+// PanelSlotContent panel 类型插槽配置
+type PanelSlotContent struct {
+	ContentType string          `json:"contentType"`
+	Source      json.RawMessage `json:"source"`
+	Position    string          `json:"position"`
+	Width       *int            `json:"width,omitempty"`
+	Height      *int            `json:"height,omitempty"`
+	Props       json.RawMessage `json:"props,omitempty"`
+}
+
+// ViewSlotContent view 类型插槽配置
+type ViewSlotContent struct {
+	ContentType string          `json:"contentType"`
+	Source      json.RawMessage `json:"source"`
+	Title       string          `json:"title,omitempty"`
+	Props       json.RawMessage `json:"props,omitempty"`
+}
+
+// MenuSlotContent menu 类型插槽配置
+type MenuSlotContent struct {
+	Icon     string           `json:"icon,omitempty"`
+	ViewId   string           `json:"viewId,omitempty"`
+	Children []SlotDeclaration `json:"children,omitempty"`
+}
+
+// SiteBrowserListSlotContent siteBrowserList 类型插槽配置
+type SiteBrowserListSlotContent struct {
+	Icon           string `json:"icon,omitempty"`
+	ContributionId string `json:"contributionId"`
 }
 
 // StaticResourcesConfig 静态资源配置
