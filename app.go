@@ -43,7 +43,6 @@ import (
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteBrowser"
 	"github.com/library-squirrel/backend/siteTag"
-	"github.com/library-squirrel/backend/slot"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util"
@@ -78,7 +77,6 @@ type App struct {
 	PluginService        *plugin.Service
 	TaskService          *task.Service
 	TaskManagerService   *taskManager.Manager
-	SlotService          *slot.SlotSyncService
 	SiteBrowserService   *siteBrowser.Service
 
 	// 任务仓储（用于TaskManager）
@@ -128,7 +126,7 @@ type App struct {
 	PluginHandler                *plugin.Handler
 	TaskHandler                  *task.Handler
 	TaskManagerHandler           *taskManager.Handler
-	SlotHandler                  *slot.Handler
+	SlotHandler                  *extension2.SlotHandler
 	SiteBrowserHandler           *siteBrowser.Handler
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
@@ -720,8 +718,6 @@ func (app *App) initAdvancedServices() error {
 		app.SiteAuthorService,
 	)
 
-	// slot 服务
-	app.SlotService = slot.NewSlotSyncService(app.SlotRegistry)
 
 	// siteBrowser 服务
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
@@ -858,7 +854,7 @@ func (app *App) initHandlers() {
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
 	app.TaskHandler = task.NewHandler(app.TaskService)
 	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
-	app.SlotHandler = slot.NewHandler(app.SlotService)
+	app.SlotHandler = extension2.NewSlotHandler(app.SlotRegistry)
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)

@@ -1,20 +1,21 @@
-package slot
+package extension
 
 import (
 	"encoding/json"
 
 	domain "github.com/library-squirrel/backend/base"
+	"github.com/library-squirrel/backend/base/model"
 )
 
-// SlotResponse 插槽 IPC 响应 DTO，字段名与前端约定一致
+// SlotResponse 插槽 IPC 响应 DTO
 type SlotResponse struct {
 	SlotID         string          `json:"slotId"`
 	PluginID       int64           `json:"pluginId"`
 	PluginPublicID string          `json:"pluginPublicId"`
 	Name           string          `json:"name"`
 	Description    string          `json:"description,omitempty"`
-	Type           string          `json:"type"`                        // embed|panel|view|menu|siteBrowserList
-	ContentType    string          `json:"contentType"`                 // vueSource|precompiled|code|html
+	Type           string          `json:"type"`
+	ContentType    string          `json:"contentType"`
 	Content        json.RawMessage `json:"content,omitempty"`
 	Position       string          `json:"position,omitempty"`
 	Width          *int            `json:"width,omitempty"`
@@ -26,6 +27,26 @@ type SlotResponse struct {
 	ContributionId string          `json:"contributionId,omitempty"`
 	Props          json.RawMessage `json:"props,omitempty"`
 	Children       []SlotResponse  `json:"children,omitempty"`
+}
+
+// SlotHandler 插槽 Handler
+type SlotHandler struct {
+	registry *SlotRegistry
+}
+
+// NewSlotHandler 创建插槽 Handler
+func NewSlotHandler(registry *SlotRegistry) *SlotHandler {
+	return &SlotHandler{registry: registry}
+}
+
+// GetAllSlots 获取所有插槽
+func (h *SlotHandler) GetAllSlots() *model.ApiResponse[[]*SlotResponse] {
+	configs := h.registry.GetSlotConfigs()
+	result := make([]*SlotResponse, len(configs))
+	for i, cfg := range configs {
+		result[i] = SlotConfigToResponse(cfg)
+	}
+	return model.Success(result)
 }
 
 // SlotConfigToResponse 将领域模型转换为 IPC 响应 DTO

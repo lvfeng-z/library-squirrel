@@ -7,10 +7,10 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as json$0 from "../../../../encoding/json/models.js";
+import * as json$0 from "../../../../../encoding/json/models.js";
 
 /**
- * SlotResponse 插槽 IPC 响应 DTO，字段名与前端约定一致
+ * SlotResponse 插槽 IPC 响应 DTO
  */
 export class SlotResponse {
     "slotId": string;
@@ -18,15 +18,7 @@ export class SlotResponse {
     "pluginPublicId": string;
     "name": string;
     "description"?: string;
-
-    /**
-     * embed|panel|view|menu|siteBrowserList
-     */
     "type": string;
-
-    /**
-     * vueSource|precompiled|code|html
-     */
     "contentType": string;
     "content"?: json$0.RawMessage;
     "position"?: string;
