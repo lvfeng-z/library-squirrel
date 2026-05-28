@@ -6,42 +6,6 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * ResourceDTO 资源数据传输对象
- */
-export class ResourceDTO {
-    "id": number;
-    "workId": number;
-    "filePath": string | null;
-    "fileName": string | null;
-
-    /** Creates a new ResourceDTO instance. */
-    constructor($$source: Partial<ResourceDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("workId" in $$source)) {
-            this["workId"] = 0;
-        }
-        if (!("filePath" in $$source)) {
-            this["filePath"] = null;
-        }
-        if (!("fileName" in $$source)) {
-            this["fileName"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ResourceDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ResourceDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ResourceDTO($$parsedSource as Partial<ResourceDTO>);
-    }
-}
-
-/**
  * ResourceResultDTO 资源返回结果DTO（用于屏蔽sql.Null*类型）
  */
 export class ResourceResultDTO {

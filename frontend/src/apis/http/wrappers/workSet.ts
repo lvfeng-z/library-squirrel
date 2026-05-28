@@ -6,7 +6,11 @@
 import type { ApiResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/backend/workSet'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
-import {WorkDTO, WorkSetDTO, WorkSetWithCoverDTO, WorkSetWithWorksResultDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
+import {
+  WorkDTO,
+  WorkSetDTO, WorkSetWithCoverDTO,
+  WorkSetWithWorksResultDTO
+} from "@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto";
 
 export interface WorkSetVO {
   id: number

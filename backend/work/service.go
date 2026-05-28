@@ -12,6 +12,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // ========== 外部模块接口定义（由 work 模块定义自己需要的接口）==========
@@ -39,7 +40,7 @@ type SiteTagReader interface {
 // SiteAuthorReader 站点作者读取接口
 type SiteAuthorReader interface {
 	// ListByWorkId 查询作品关联的站点作者
-	ListByWorkId(ctx context.Context, workId int64) ([]*dto2.RankedSiteAuthor, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error)
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.SiteAuthor, error)
 }
@@ -77,7 +78,7 @@ type SiteBatchReader interface {
 // LocalAuthorBatchReader 本地作者批量读取接口
 type LocalAuthorBatchReader interface {
 	// ListReWorkAuthor 批量查询作品关联的本地作者，按 workId 分组
-	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto2.RankedLocalAuthor, error)
+	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error)
 	// ListByIds 根据ID列表批量查询
 	ListByIds(ctx context.Context, ids []int64) ([]*entity2.LocalAuthor, error)
 }
@@ -85,7 +86,7 @@ type LocalAuthorBatchReader interface {
 // SiteAuthorBatchReader 站点作者批量读取接口
 type SiteAuthorBatchReader interface {
 	// ListSiteAuthorsByWorkIds 批量查询作品关联的站点作者，按 workId 分组
-	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto2.RankedSiteAuthor, error)
+	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedSiteAuthor, error)
 }
 
 // ResourceBatchReader 资源批量读取接口
@@ -335,9 +336,9 @@ func (s *Service) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, site
 }
 
 // GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）
-func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error) {
+func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdkdto.WorkFullDTO, error) {
 	if len(ids) == 0 {
-		return []*dto2.WorkFullDTO{}, nil
+		return []*sdkdto.WorkFullDTO{}, nil
 	}
 
 	// Phase 1: 批量查询作品基础信息
@@ -440,7 +441,7 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 	}
 
 	// Phase 8: 组装结果
-	result := make([]*dto2.WorkFullDTO, 0, len(ids))
+	result := make([]*sdkdto.WorkFullDTO, 0, len(ids))
 	for _, id := range ids {
 		work, ok := workMap[id]
 		if !ok {
@@ -450,9 +451,9 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 本地作者
 		if authors, ok := localAuthorMap[id]; ok && len(authors) > 0 {
-			fullDTO.LocalAuthors = make([]*dto2.LocalAuthorDTO, 0, len(authors))
+			fullDTO.LocalAuthors = make([]*sdkdto.LocalAuthorDTO, 0, len(authors))
 			for _, a := range authors {
-				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &dto2.LocalAuthorDTO{
+				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &sdkdto.LocalAuthorDTO{
 					ID:         a.ID,
 					AuthorName: util.StringPtrIfValid(a.AuthorName),
 					Introduce:  util.StringPtrIfValid(a.Introduce),
@@ -465,10 +466,10 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 站点作者
 		if authors, ok := siteAuthorMap[id]; ok && len(authors) > 0 {
-			fullDTO.SiteAuthors = make([]*dto2.SiteAuthorFullDTO, 0, len(authors))
+			fullDTO.SiteAuthors = make([]*sdkdto.SiteAuthorFullDTO, 0, len(authors))
 			for _, ra := range authors {
-				saDTO := &dto2.SiteAuthorFullDTO{
-					SiteAuthor: &dto2.SiteAuthorDTO{
+				saDTO := &sdkdto.SiteAuthorFullDTO{
+					SiteAuthor: &sdkdto.SiteAuthorDTO{
 						ID:                   ra.ID,
 						CreateTime:           ra.CreateTime,
 						UpdateTime:           ra.UpdateTime,
@@ -505,7 +506,7 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 本地标签
 		if tagIds, ok := localTagIdMap[id]; ok && len(tagIds) > 0 {
-			fullDTO.LocalTags = make([]*dto2.LocalTagDTO, 0, len(tagIds))
+			fullDTO.LocalTags = make([]*sdkdto.LocalTagDTO, 0, len(tagIds))
 			for _, tagId := range tagIds {
 				if tag, ok := localTagEntityMap[tagId]; ok {
 					fullDTO.LocalTags = append(fullDTO.LocalTags, dto2.NewLocalTagDTO(tag))
@@ -515,7 +516,7 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 站点标签
 		if tagIds, ok := siteTagIdMap[id]; ok && len(tagIds) > 0 {
-			fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, 0, len(tagIds))
+			fullDTO.SiteTags = make([]*sdkdto.SiteTagFullDTO, 0, len(tagIds))
 			for _, tagId := range tagIds {
 				if tag, ok := siteTagEntityMap[tagId]; ok {
 					stDTO := dto2.NewSiteTagFullDTO(tag)
@@ -536,7 +537,7 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 资源
 		if resources, ok := resourceMap[id]; ok && len(resources) > 0 {
-			fullDTO.Resources = make([]*dto2.ResourceDTO, len(resources))
+			fullDTO.Resources = make([]*sdkdto.ResourceDTO, len(resources))
 			for i, res := range resources {
 				fullDTO.Resources[i] = dto2.NewResourceDTO(res)
 			}
@@ -549,9 +550,9 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
-func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto2.RankedLocalAuthor, error) {
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return []*dto2.RankedLocalAuthor{}, nil
+		return []*sdkdto.RankedLocalAuthor{}, nil
 	}
 	// 获取作品列表
 	works, err := s.repo.ListByIds(ctx, workIds)
@@ -560,7 +561,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	}
 
 	// 收集所有本地作者ID
-	authorMap := make(map[int64]*dto2.RankedLocalAuthor)
+	authorMap := make(map[int64]*sdkdto.RankedLocalAuthor)
 	for _, work := range works {
 		if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
 			localAuthorId := work.LocalAuthorID.Int64
@@ -579,7 +580,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 					if localAuthor.LastUse.Valid {
 						lastUse = localAuthor.LastUse.Int64
 					}
-					authorMap[localAuthorId] = &dto2.RankedLocalAuthor{
+					authorMap[localAuthorId] = &sdkdto.RankedLocalAuthor{
 						ID:         localAuthor.ID,
 						AuthorName: authorName,
 						Introduce:  introduce,
@@ -593,7 +594,7 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 	}
 
 	// 转换为列表
-	result := make([]*dto2.RankedLocalAuthor, 0, len(authorMap))
+	result := make([]*sdkdto.RankedLocalAuthor, 0, len(authorMap))
 	for _, author := range authorMap {
 		result = append(result, author)
 	}
@@ -610,8 +611,8 @@ func (s *Service) UpdateLastView(ctx context.Context, ids []int64) error {
 
 // WorkAuthorDTO 作品作者信息
 type WorkAuthorDTO struct {
-	LocalAuthor *dto2.RankedLocalAuthor `json:"localAuthor,omitempty"`
-	SiteAuthor  *dto2.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
+	LocalAuthor *sdkdto.RankedLocalAuthor `json:"localAuthor,omitempty"`
+	SiteAuthor  *sdkdto.RankedSiteAuthor  `json:"siteAuthor,omitempty"`
 }
 
 // ErrWorkIdRequired 错误定义
@@ -626,8 +627,8 @@ const (
 )
 
 // SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID
-func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *dto2.WorkResponse) (int64, error) {
-	work := workResp.Work
+func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+	work := dto2.ToWorkEntity(workResp.Work)
 
 	// 确保 SiteID 来自任务
 	if task.SiteID.Valid {
@@ -731,7 +732,7 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 }
 
 // upsertSiteAuthors 批量 upsert 站点作者，返回 DB ID 列表
-func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*dto2.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
+func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -748,7 +749,7 @@ func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*dto2.TaskSiteAu
 }
 
 // upsertSiteTags 批量 upsert 站点标签
-func (s *Service) upsertSiteTags(ctx context.Context, dtos []*dto2.TaskSiteTagDTO, siteId int64) ([]int64, error) {
+func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -765,7 +766,7 @@ func (s *Service) upsertSiteTags(ctx context.Context, dtos []*dto2.TaskSiteTagDT
 }
 
 // upsertWorkSets 批量 upsert 作品集
-func (s *Service) upsertWorkSets(ctx context.Context, dtos []*dto2.TaskWorkSetDTO, siteId int64) ([]int64, error) {
+func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -782,7 +783,7 @@ func (s *Service) upsertWorkSets(ctx context.Context, dtos []*dto2.TaskWorkSetDT
 }
 
 // querySiteAuthorDBIds 回查站点作者内部 DB ID
-func (s *Service) querySiteAuthorDBIds(ctx context.Context, dtos []*dto2.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
+func (s *Service) querySiteAuthorDBIds(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -798,7 +799,7 @@ func (s *Service) querySiteAuthorDBIds(ctx context.Context, dtos []*dto2.TaskSit
 }
 
 // querySiteTagDBIds 回查站点标签内部 DB ID
-func (s *Service) querySiteTagDBIds(ctx context.Context, dtos []*dto2.TaskSiteTagDTO, siteId int64) ([]int64, error) {
+func (s *Service) querySiteTagDBIds(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -814,7 +815,7 @@ func (s *Service) querySiteTagDBIds(ctx context.Context, dtos []*dto2.TaskSiteTa
 }
 
 // queryWorkSetDBIds 回查作品集内部 DB ID
-func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*dto2.TaskWorkSetDTO, siteId int64) ([]int64, error) {
+func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -831,7 +832,7 @@ func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*dto2.TaskWorkSe
 }
 
 // validateLocalAuthorIds 校验本地作者 ID 是否全部存在，返回有效的 DB ID 列表
-func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*dto2.LocalAuthorDTO) ([]int64, error) {
+func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*sdkdto.LocalAuthorDTO) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -861,7 +862,7 @@ func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*dto2.Local
 }
 
 // validateLocalTagIds 校验本地标签 ID 是否全部存在，返回有效的 DB ID 列表
-func (s *Service) validateLocalTagIds(ctx context.Context, dtos []*dto2.LocalTagDTO) ([]int64, error) {
+func (s *Service) validateLocalTagIds(ctx context.Context, dtos []*sdkdto.LocalTagDTO) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -908,7 +909,7 @@ func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int
 
 // ========== DTO 转换辅助函数 ==========
 
-func taskSiteAuthorDTOToEntity(d *dto2.TaskSiteAuthorDTO, siteId int64) *entity2.SiteAuthor {
+func taskSiteAuthorDTOToEntity(d *sdkdto.TaskSiteAuthorDTO, siteId int64) *entity2.SiteAuthor {
 	return &entity2.SiteAuthor{
 		BaseEntity:      &model.BaseEntity{},
 		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},
@@ -920,7 +921,7 @@ func taskSiteAuthorDTOToEntity(d *dto2.TaskSiteAuthorDTO, siteId int64) *entity2
 	}
 }
 
-func taskSiteTagDTOToEntity(d *dto2.TaskSiteTagDTO, siteId int64) *entity2.SiteTag {
+func taskSiteTagDTOToEntity(d *sdkdto.TaskSiteTagDTO, siteId int64) *entity2.SiteTag {
 	return &entity2.SiteTag{
 		BaseEntity:  &model.BaseEntity{},
 		SiteID:      sql.NullInt64{Int64: siteId, Valid: true},
@@ -930,7 +931,7 @@ func taskSiteTagDTOToEntity(d *dto2.TaskSiteTagDTO, siteId int64) *entity2.SiteT
 	}
 }
 
-func taskWorkSetDTOToEntity(d *dto2.TaskWorkSetDTO, siteId int64) *entity2.WorkSet {
+func taskWorkSetDTOToEntity(d *sdkdto.TaskWorkSetDTO, siteId int64) *entity2.WorkSet {
 	return &entity2.WorkSet{
 		BaseEntity:      &model.BaseEntity{},
 		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},

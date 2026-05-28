@@ -51,12 +51,12 @@ export class PluginQueryDTO {
     "publicId": query$0.QueryAttribute<string>;
 
     /**
-     * 插件名称（精确匹配）
+     * 插件名称
      */
     "name": query$0.QueryAttribute<string>;
 
     /**
-     * 作者（精确匹配）
+     * 作者
      */
     "author": query$0.QueryAttribute<string>;
 
@@ -74,16 +74,6 @@ export class PluginQueryDTO {
      * 是否已卸载（0=未卸载，1=已卸载）
      */
     "uninstalled": query$0.QueryAttribute<boolean>;
-
-    /**
-     * 插件名称（模糊匹配）
-     */
-    "nameStr": query$0.QueryAttribute<string>;
-
-    /**
-     * 作者（模糊匹配）
-     */
-    "authorStr": query$0.QueryAttribute<string>;
 
     /**
      * 创建时间（可用于排序）
@@ -115,12 +105,6 @@ export class PluginQueryDTO {
         if (!("uninstalled" in $$source)) {
             this["uninstalled"] = (new query$0.QueryAttribute());
         }
-        if (!("nameStr" in $$source)) {
-            this["nameStr"] = (new query$0.QueryAttribute());
-        }
-        if (!("authorStr" in $$source)) {
-            this["authorStr"] = (new query$0.QueryAttribute());
-        }
         if (!("createTime" in $$source)) {
             this["createTime"] = (new query$0.QueryAttribute());
         }
@@ -141,10 +125,8 @@ export class PluginQueryDTO {
         const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType0;
         const $$createField5_0 = $$createType1;
-        const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType0;
-        const $$createField8_0 = $$createType2;
-        const $$createField9_0 = $$createType2;
+        const $$createField6_0 = $$createType2;
+        const $$createField7_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField0_0($$parsedSource["publicId"]);
@@ -164,17 +146,11 @@ export class PluginQueryDTO {
         if ("uninstalled" in $$parsedSource) {
             $$parsedSource["uninstalled"] = $$createField5_0($$parsedSource["uninstalled"]);
         }
-        if ("nameStr" in $$parsedSource) {
-            $$parsedSource["nameStr"] = $$createField6_0($$parsedSource["nameStr"]);
-        }
-        if ("authorStr" in $$parsedSource) {
-            $$parsedSource["authorStr"] = $$createField7_0($$parsedSource["authorStr"]);
-        }
         if ("createTime" in $$parsedSource) {
-            $$parsedSource["createTime"] = $$createField8_0($$parsedSource["createTime"]);
+            $$parsedSource["createTime"] = $$createField6_0($$parsedSource["createTime"]);
         }
         if ("updateTime" in $$parsedSource) {
-            $$parsedSource["updateTime"] = $$createField9_0($$parsedSource["updateTime"]);
+            $$parsedSource["updateTime"] = $$createField7_0($$parsedSource["updateTime"]);
         }
         return new PluginQueryDTO($$parsedSource as Partial<PluginQueryDTO>);
     }

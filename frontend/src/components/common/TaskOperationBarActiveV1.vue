@@ -5,7 +5,7 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import { computed, Ref } from 'vue'
-import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
 
 // props
 const props = defineProps<{

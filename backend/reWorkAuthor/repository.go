@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
-
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"gorm.io/gorm"
 )
 
@@ -80,7 +79,7 @@ func (r *ReWorkAuthorRepository) DeleteBySiteAuthorId(ctx context.Context, siteA
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
-func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
+func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	query := `
 		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank
 		FROM local_author t1
@@ -88,7 +87,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 		WHERE t2.work_id = ?
 	`
 
-	var results []*dto.RankedLocalAuthor
+	var results []*sdkdto.RankedLocalAuthor
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -98,7 +97,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 }
 
 // ListSiteAuthorsByWorkId 查询作品关联的站点作者
-func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
+func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
@@ -108,7 +107,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, wo
 		WHERE t2.work_id = ?
 	`
 
-	var results []*dto.RankedSiteAuthor
+	var results []*sdkdto.RankedSiteAuthor
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -118,9 +117,9 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, wo
 }
 
 // ListLocalAuthorsByWorkIds 批量查询作品的本地作者
-func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
+func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*dto.RankedLocalAuthor), nil
+		return make(map[int64][]*sdkdto.RankedLocalAuthor), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -139,7 +138,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 
 	var results []*struct {
 		WorkID int64 `gorm:"column:work_id"`
-		dto.RankedLocalAuthor
+		sdkdto.RankedLocalAuthor
 	}
 
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
@@ -147,10 +146,10 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 		return nil, err
 	}
 
-	resultMap := make(map[int64][]*dto.RankedLocalAuthor)
+	resultMap := make(map[int64][]*sdkdto.RankedLocalAuthor)
 	for _, res := range results {
 		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*dto.RankedLocalAuthor, 0)
+			resultMap[res.WorkID] = make([]*sdkdto.RankedLocalAuthor, 0)
 		}
 		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedLocalAuthor))
 	}
@@ -159,9 +158,9 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 }
 
 // ListSiteAuthorsByWorkIds 批量查询作品的站点作者
-func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
+func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedSiteAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*dto.RankedSiteAuthor), nil
+		return make(map[int64][]*sdkdto.RankedSiteAuthor), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -182,7 +181,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 
 	var results []*struct {
 		WorkID int64 `gorm:"column:work_id"`
-		dto.RankedSiteAuthor
+		sdkdto.RankedSiteAuthor
 	}
 
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
@@ -190,10 +189,10 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 		return nil, err
 	}
 
-	resultMap := make(map[int64][]*dto.RankedSiteAuthor)
+	resultMap := make(map[int64][]*sdkdto.RankedSiteAuthor)
 	for _, res := range results {
 		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*dto.RankedSiteAuthor, 0)
+			resultMap[res.WorkID] = make([]*sdkdto.RankedSiteAuthor, 0)
 		}
 		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedSiteAuthor))
 	}
@@ -202,9 +201,9 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
-func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
+func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*dto.RankedLocalAuthorWithWorkId, 0), nil
+		return make([]*sdkdto.RankedLocalAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -221,7 +220,7 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*dto.RankedLocalAuthorWithWorkId
+	var results []*sdkdto.RankedLocalAuthorWithWorkId
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -231,9 +230,9 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
-func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
+func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*dto.RankedSiteAuthorWithWorkId, 0), nil
+		return make([]*sdkdto.RankedSiteAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -252,7 +251,7 @@ func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx con
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*dto.RankedSiteAuthorWithWorkId
+	var results []*sdkdto.RankedSiteAuthorWithWorkId
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err

@@ -6,10 +6,9 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
-
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -32,9 +31,9 @@ func (r *LocalAuthorRepository) GORM() *gorm.DB {
 }
 
 // ListReWorkAuthor 批量获取作品与作者的关联
-func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
+func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*dto.RankedLocalAuthor), nil
+		return make(map[int64][]*sdkdto.RankedLocalAuthor), nil
 	}
 
 	// 构建 IN 子句
@@ -54,7 +53,7 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 
 	var results []*struct {
 		WorkID int64 `gorm:"column:work_id"`
-		dto.RankedLocalAuthor
+		sdkdto.RankedLocalAuthor
 	}
 
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
@@ -63,10 +62,10 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 	}
 
 	// 转换为 map
-	resultMap := make(map[int64][]*dto.RankedLocalAuthor)
+	resultMap := make(map[int64][]*sdkdto.RankedLocalAuthor)
 	for _, res := range results {
 		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*dto.RankedLocalAuthor, 0)
+			resultMap[res.WorkID] = make([]*sdkdto.RankedLocalAuthor, 0)
 		}
 		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedLocalAuthor))
 	}
@@ -75,7 +74,7 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 }
 
 // ListByWorkId 查询作品的本地作者
-func (r *LocalAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
+func (r *LocalAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	query := `
 		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank
 		FROM local_author t1
@@ -83,7 +82,7 @@ func (r *LocalAuthorRepository) ListByWorkId(ctx context.Context, workId int64) 
 		WHERE t2.work_id = ?
 	`
 
-	var results []*dto.RankedLocalAuthor
+	var results []*sdkdto.RankedLocalAuthor
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -93,9 +92,9 @@ func (r *LocalAuthorRepository) ListByWorkId(ctx context.Context, workId int64) 
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
+func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*dto.RankedLocalAuthorWithWorkId, 0), nil
+		return make([]*sdkdto.RankedLocalAuthorWithWorkId, 0), nil
 	}
 
 	// 构建 IN 子句
@@ -113,7 +112,7 @@ func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*dto.RankedLocalAuthorWithWorkId
+	var results []*sdkdto.RankedLocalAuthorWithWorkId
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -123,8 +122,8 @@ func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 }
 
 // ListSelectItems 查询选择项列表
-func (r *LocalAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
-	var results []*dto.SelectItem
+func (r *LocalAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*sdkdto.SelectItem, error) {
+	var results []*sdkdto.SelectItem
 
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{where},
@@ -142,7 +141,7 @@ func (r *LocalAuthorRepository) ListSelectItems(ctx context.Context, where claus
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		results = append(results, &dto.SelectItem{
+		results = append(results, &sdkdto.SelectItem{
 			Value: author.ID,
 			Label: label,
 		})
@@ -152,8 +151,8 @@ func (r *LocalAuthorRepository) ListSelectItems(ctx context.Context, where claus
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *LocalAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error) {
-	var results []*dto.SelectItem
+func (r *LocalAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.SelectItem], error) {
+	var results []*sdkdto.SelectItem
 
 	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
@@ -167,11 +166,11 @@ func (r *LocalAuthorRepository) QuerySelectItemPage(ctx context.Context, opt *da
 		if author.AuthorName.Valid {
 			label = author.AuthorName.String
 		}
-		results = append(results, &dto.SelectItem{
+		results = append(results, &sdkdto.SelectItem{
 			Value: author.ID,
 			Label: label,
 		})
 	}
 
-	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[sdkdto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

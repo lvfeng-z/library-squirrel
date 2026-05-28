@@ -6,17 +6,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/library-squirrel/backend/base/model/dto"
-	"github.com/library-squirrel/backend/base/model/entity"
-	pkgerr "github.com/library-squirrel/backend/error"
-
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
+	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // 错误定义
@@ -89,9 +89,9 @@ type Repository interface {
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
-var taskProgressTreeBuilder = util.NewTreeBuilder[*dto.TaskProgressTreeDTO](
-	func(node *dto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
-	func(node *dto.TaskProgressTreeDTO) int64 {
+var taskProgressTreeBuilder = util.NewTreeBuilder[*sdkdto.TaskProgressTreeDTO](
+	func(node *sdkdto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
+	func(node *sdkdto.TaskProgressTreeDTO) int64 {
 		if node.TaskProgress.Task.Pid != nil {
 			return *node.TaskProgress.Task.Pid
 		}
@@ -100,16 +100,16 @@ var taskProgressTreeBuilder = util.NewTreeBuilder[*dto.TaskProgressTreeDTO](
 	0,
 )
 
-func setTaskProgressTreeChildren(node *dto.TaskProgressTreeDTO, children []*dto.TaskProgressTreeDTO) {
+func setTaskProgressTreeChildren(node *sdkdto.TaskProgressTreeDTO, children []*sdkdto.TaskProgressTreeDTO) {
 	node.Children = children
 }
 
 // buildTaskProgressTree 将任务实体列表构建为 TaskProgressTreeDTO 树形结构
-func buildTaskProgressTree(tasks []*entity.Task) []*dto.TaskProgressTreeDTO {
+func buildTaskProgressTree(tasks []*entity.Task) []*sdkdto.TaskProgressTreeDTO {
 	if len(tasks) == 0 {
 		return nil
 	}
-	dtos := make([]*dto.TaskProgressTreeDTO, len(tasks))
+	dtos := make([]*sdkdto.TaskProgressTreeDTO, len(tasks))
 	for i, task := range tasks {
 		dtos[i] = dto.NewTaskProgressTreeDTO(dto.NewTaskDTO(task))
 	}
@@ -132,7 +132,7 @@ type ResourceSaver interface {
 // 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
 type TaskHandlerProvider interface {
 	// GetTaskHandler 获取任务处理器
-	GetTaskHandler(pluginPublicId, contributionId string) (dto.TaskHandler, error)
+	GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error)
 }
 
 // Service 任务服务
@@ -228,12 +228,12 @@ func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 }
 
 // ListStatus 查询状态列表
-func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
+func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*sdkdto.TaskProgressDTO, error) {
 	tasks, err := s.repo.ListStatus(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*dto.TaskProgressDTO, len(tasks))
+	result := make([]*sdkdto.TaskProgressDTO, len(tasks))
 	for i, task := range tasks {
 		taskDTO := dto.NewTaskDTO(task)
 		progressDTO := dto.NewTaskProgressDTO(taskDTO)
@@ -246,7 +246,7 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgr
 }
 
 // CreateTask 创建任务
-func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*entity.Task, error) {
+func (s *Service) CreateTask(ctx context.Context, req *sdkdto.CreateTaskRequest) (*entity.Task, error) {
 	task := &entity.Task{
 		BaseEntity:           &model.BaseEntity{},
 		Pid:                  sql.NullInt64{Int64: req.Pid, Valid: true},
@@ -272,7 +272,7 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*dto.TreeDataPageDTO, error) {
+func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*sdkdto.TreeDataPageDTO, error) {
 	conv := querypkg.NewConverter(entity.Task{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
@@ -296,7 +296,7 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		treeName = resultPage.Data[0].TaskName.String
 	}
 
-	return &dto.TreeDataPageDTO{
+	return &sdkdto.TreeDataPageDTO{
 		TreeID:   treeID,
 		TreeName: treeName,
 		Total:    resultPage.DataCount,
@@ -321,10 +321,10 @@ func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[en
 
 // EnrichTaskProgressTreePage 将 Task 实体分页丰富为 TaskProgressTreeDTO 分页
 // 批量查询站点名称并注入，同时填充树形结构字段（hasChildren、children、isLeaf）
-func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity.Task]) (*model.Page[dto.TaskProgressTreeDTO], error) {
+func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity.Task]) (*model.Page[sdkdto.TaskProgressTreeDTO], error) {
 	tasks := rawPage.Data
 	if len(tasks) == 0 {
-		return model.NewPage[dto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+		return model.NewPage[sdkdto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 	}
 
 	// 1. 收集 siteIds（去重）
@@ -354,7 +354,7 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 	}
 
 	// 3. 转换并丰富
-	data := make([]*dto.TaskProgressTreeDTO, 0, len(tasks))
+	data := make([]*sdkdto.TaskProgressTreeDTO, 0, len(tasks))
 	for _, task := range tasks {
 		taskDTO := dto.NewTaskDTO(task)
 		treeDTO := dto.NewTaskProgressTreeDTO(taskDTO)
@@ -367,11 +367,11 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 		data = append(data, treeDTO)
 	}
 
-	return model.NewPage[dto.TaskProgressTreeDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[sdkdto.TaskProgressTreeDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // ListSchedule 查询任务进度列表
-func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
+func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*sdkdto.TaskProgressDTO, error) {
 	return s.ListStatus(ctx, ids)
 }
 
@@ -494,7 +494,7 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 }
 
 // handleCreateTaskArray 处理插件返回的任务数组
-func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*dto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithContribution) (int, error) {
+func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithContribution) (int, error) {
 	if len(pluginResponses) == 0 {
 		return 0, nil
 	}
@@ -503,7 +503,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 	siteCache := make(map[string]int) // siteName -> siteId 缓存
 
 	// 给任务赋值的函数
-	assignTask := func(task *entity.Task, taskResp *dto.TaskCreateResponse, pid int64) error {
+	assignTask := func(task *entity.Task, taskResp *sdkdto.TaskCreateResponse, pid int64) error {
 		task.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
 		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkID, Valid: true}
 		task.URL = sql.NullString{String: taskResp.URL, Valid: true}
@@ -550,7 +550,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 				BaseEntity: &model.BaseEntity{},
 			}
 			childResp := children[0]
-			if err := assignTask(task, &dto.TaskCreateResponse{
+			if err := assignTask(task, &sdkdto.TaskCreateResponse{
 				TaskName:   childResp.TaskName,
 				SiteWorkID: childResp.SiteWorkID,
 				URL:        childResp.URL,
@@ -570,7 +570,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		parentTask := &entity.Task{
 			BaseEntity: &model.BaseEntity{},
 		}
-		if err := assignTask(parentTask, &dto.TaskCreateResponse{
+		if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
 			TaskName: parentResp.TaskName,
 			URL:      parentResp.URL,
 			SiteName: parentResp.SiteName,
@@ -588,7 +588,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			childTask := &entity.Task{
 				BaseEntity: &model.BaseEntity{},
 			}
-			if err := assignTask(childTask, &dto.TaskCreateResponse{
+			if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
 				TaskName:   childResp.TaskName,
 				SiteWorkID: childResp.SiteWorkID,
 				URL:        childResp.URL,
@@ -617,7 +617,7 @@ type CreateTaskStreamChan struct {
 
 // handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）
 // 该方法会启动一个 goroutine 来读取任务流，并通过 channel 返回结果
-func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *dto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithContribution, batchSize int) (<-chan *CreateTaskStreamChan, error) {
+func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithContribution, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {

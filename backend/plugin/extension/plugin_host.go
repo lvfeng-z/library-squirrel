@@ -4,7 +4,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"go.uber.org/zap"
 )
 
@@ -46,7 +46,7 @@ func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, descri
 		Name:           name,
 		Description:    description,
 	}
-	var handler pluginsdk.TaskHandler = proxy
+	var handler pluginsdkdto.TaskHandler = proxy
 	if err := c.taskHandlerRegistry.Register(model.NewExtension(metadata, handler)); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (c *hostPluginCallbacks) onRegisterSiteBrowser(contributionId, name, descri
 		Name:           name,
 		Description:    description,
 	}
-	var browser pluginsdk.SiteBrowser = proxy
+	var browser pluginsdkdto.SiteBrowser = proxy
 	if err := c.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 	"gorm.io/gorm/clause"
 )
@@ -44,7 +45,7 @@ type Repository interface {
 // FullWorkReader 作品完整信息读取接口
 type FullWorkReader interface {
 	// GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）
-	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error)
+	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdkdto.WorkFullDTO, error)
 }
 
 // WorkReader 作品基础信息读取接口
@@ -278,9 +279,9 @@ func (s *Service) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, e
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品完整信息
-func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*dto2.WorkSetWithWorksResultDTO, error) {
+func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*sdkdto.WorkSetWithWorksResultDTO, error) {
 	if len(workSetIds) == 0 {
-		return []*dto2.WorkSetWithWorksResultDTO{}, nil
+		return []*sdkdto.WorkSetWithWorksResultDTO{}, nil
 	}
 
 	// 查询作品集
@@ -293,9 +294,9 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	}
 
 	// 构建结果
-	result := make([]*dto2.WorkSetWithWorksResultDTO, 0, len(workSets))
+	result := make([]*sdkdto.WorkSetWithWorksResultDTO, 0, len(workSets))
 	for _, ws := range workSets {
-		dto := &dto2.WorkSetWithWorksResultDTO{
+		dto := &sdkdto.WorkSetWithWorksResultDTO{
 			WorkSet: dto2.NewWorkSetDTO(ws),
 		}
 
@@ -325,7 +326,7 @@ type WorkSetWithCoverDTO struct {
 }
 
 // QueryPageWithCover 带封面的作品集分页查询
-func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkSetWithCoverDTO], query WorkSetQueryDTO) (*model.Page[WorkSetWithCoverDTO], error) {
+func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdto.WorkSetWithCoverDTO], query WorkSetQueryDTO) (*model.Page[sdkdto.WorkSetWithCoverDTO], error) {
 	conv := querypkg.NewConverter(entity2.WorkSet{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -338,14 +339,14 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 	}
 
 	if len(pageResult.Data) == 0 {
-		return model.NewPage[WorkSetWithCoverDTO]([]*WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
+		return model.NewPage[sdkdto.WorkSetWithCoverDTO]([]*sdkdto.WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
 	}
 
 	// 构建结果
-	result := make([]*WorkSetWithCoverDTO, 0, len(pageResult.Data))
+	result := make([]*sdkdto.WorkSetWithCoverDTO, 0, len(pageResult.Data))
 	for _, ws := range pageResult.Data {
-		dto := &WorkSetWithCoverDTO{
-			WorkSet:   ws,
+		dto := &sdkdto.WorkSetWithCoverDTO{
+			WorkSet:   dto2.NewWorkSetDTO(ws),
 			CoverWork: nil,
 		}
 
@@ -360,14 +361,14 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[WorkS
 				return nil, err
 			}
 			if len(works) > 0 {
-				dto.CoverWork = works[0]
+				dto.CoverWork = dto2.NewWorkDTO(works[0])
 			}
 		}
 
 		result = append(result, dto)
 	}
 
-	return model.NewPage[WorkSetWithCoverDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
+	return model.NewPage[sdkdto.WorkSetWithCoverDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
 }
 
 // ErrWorkSetIdRequired 错误定义

@@ -15,7 +15,7 @@ import type {
   WorkSetWithCoverDTO,
   SelectItem,
   SearchCondition as BindingSearchCondition
-} from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+} from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

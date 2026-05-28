@@ -6,7 +6,7 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * BackupDTO 备份数据传输对象（无 sql.Null* 版本）
+ * BackupDTO 备份数据传输对象
  */
 export class BackupDTO {
     "id": number;
@@ -114,7 +114,7 @@ export class CreateTaskRequest {
 }
 
 /**
- * LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）
+ * LocalAuthorDTO 本地作者
  */
 export class LocalAuthorDTO {
     "id": number;
@@ -158,7 +158,7 @@ export class LocalAuthorDTO {
 }
 
 /**
- * LocalTagDTO 本地标签数据传输对象（无 sql.Null* 版本）
+ * LocalTagDTO 本地标签
  */
 export class LocalTagDTO {
     "id": number;
@@ -206,7 +206,7 @@ export class LocalTagDTO {
 }
 
 /**
- * LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象（组合模式）
+ * LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象
  */
 export class LocalTagWithBaseTagDTO {
     "localTag"?: LocalTagDTO | null;
@@ -236,7 +236,7 @@ export class LocalTagWithBaseTagDTO {
 }
 
 /**
- * PluginDTO 插件数据传输对象（无 sql.Null* 版本）
+ * PluginDTO 插件
  */
 export class PluginDTO {
     "id": number;
@@ -604,7 +604,7 @@ export class RankedSiteAuthorWithWorkIdDTO {
 }
 
 /**
- * ResourceDTO 资源数据传输对象（无 sql.Null* 版本）
+ * ResourceDTO 资源数据传输对象
  */
 export class ResourceDTO {
     "id": number;
@@ -679,19 +679,8 @@ export class ResourceDTO {
  * SearchCondition 搜索条件
  */
 export class SearchCondition {
-    /**
-     * 查询参数类型
-     */
     "type": SearchType;
-
-    /**
-     * 查询参数值
-     */
     "value": any;
-
-    /**
-     * 操作符 (等于、大于、小于等)
-     */
     "operator"?: string;
 
     /** Creates a new SearchCondition instance. */
@@ -719,14 +708,7 @@ export class SearchCondition {
  * SearchConditionQuery 搜索条件分页查询请求
  */
 export class SearchConditionQuery {
-    /**
-     * 类型过滤
-     */
     "types"?: SearchType[];
-
-    /**
-     * 关键词
-     */
     "keyword"?: string;
 
     /** Creates a new SearchConditionQuery instance. */
@@ -806,7 +788,7 @@ export class SelectItem {
 }
 
 /**
- * SiteAuthorDTO 站点作者数据传输对象（无 sql.Null* 版本）
+ * SiteAuthorDTO 站点作者数据传输对象
  */
 export class SiteAuthorDTO {
     "id": number;
@@ -874,19 +856,11 @@ export class SiteAuthorDTO {
 }
 
 /**
- * SiteAuthorFullDTO 站点作者完整DTO（包含绑定的本地作者和来源站点信息）
+ * SiteAuthorFullDTO 站点作者完整DTO
  */
 export class SiteAuthorFullDTO {
     "siteAuthor"?: SiteAuthorDTO | null;
-
-    /**
-     * 关联的本地作者
-     */
     "localAuthor"?: LocalAuthorDTO | null;
-
-    /**
-     * 来源站点
-     */
     "site"?: SiteDTO | null;
 
     /** Creates a new SiteAuthorFullDTO instance. */
@@ -921,20 +895,8 @@ export class SiteAuthorFullDTO {
  */
 export class SiteAuthorLocalRelateDTO {
     "siteAuthor"?: SiteAuthorDTO | null;
-
-    /**
-     * 关联的本地作者
-     */
     "localAuthor"?: LocalAuthorDTO | null;
-
-    /**
-     * 来源站点
-     */
     "site"?: SiteDTO | null;
-
-    /**
-     * 是否有同名本地作者
-     */
     "hasSameNameLocalAuthor": boolean;
 
     /** Creates a new SiteAuthorLocalRelateDTO instance. */
@@ -968,7 +930,7 @@ export class SiteAuthorLocalRelateDTO {
 }
 
 /**
- * SiteDTO 站点数据传输对象（无 sql.Null* 版本）
+ * SiteDTO 站点信息
  */
 export class SiteDTO {
     "id": number;
@@ -1012,7 +974,7 @@ export class SiteDTO {
 }
 
 /**
- * SiteTagDTO 站点标签数据传输对象（无 sql.Null* 版本）
+ * SiteTagDTO 站点标签数据传输对象
  */
 export class SiteTagDTO {
     "id": number;
@@ -1072,15 +1034,11 @@ export class SiteTagDTO {
 }
 
 /**
- * SiteTagFullDTO 站点标签完整DTO（包含绑定的本地标签和来源站点信息）
+ * SiteTagFullDTO 站点标签完整DTO
  */
 export class SiteTagFullDTO {
     "siteTag"?: SiteTagDTO | null;
     "localTag"?: LocalTagDTO | null;
-
-    /**
-     * 来源站点
-     */
     "site"?: SiteDTO | null;
 
     /** Creates a new SiteTagFullDTO instance. */
@@ -1111,7 +1069,7 @@ export class SiteTagFullDTO {
 }
 
 /**
- * SiteTagLocalRelateDTO 站点标签与本地标签关联DTO（包含绑定的本地标签、来源站点信息和同名本地标签判断）
+ * SiteTagLocalRelateDTO 站点标签与本地标签关联DTO
  */
 export class SiteTagLocalRelateDTO {
     "siteTag"?: SiteTagDTO | null;
@@ -1150,7 +1108,7 @@ export class SiteTagLocalRelateDTO {
 }
 
 /**
- * TaskDTO 任务数据传输对象（无 sql.Null* 版本）
+ * TaskDTO 任务数据传输对象
  */
 export class TaskDTO {
     "id": number;
@@ -1234,24 +1192,17 @@ export class TaskDTO {
 }
 
 /**
- * TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称/进度百分比字段）
+ * TaskProgressDTO 任务进度DTO
  */
 export class TaskProgressDTO {
     "task"?: TaskDTO | null;
     "total"?: number | null;
     "finished"?: number | null;
     "siteName"?: string | null;
-
-    /**
-     * 任务进度百分比（100 表示完成）
-     */
-    "schedule": number | null;
+    "schedule"?: number | null;
 
     /** Creates a new TaskProgressDTO instance. */
     constructor($$source: Partial<TaskProgressDTO> = {}) {
-        if (!("schedule" in $$source)) {
-            this["schedule"] = null;
-        }
 
         Object.assign(this, $$source);
     }
@@ -1270,7 +1221,7 @@ export class TaskProgressDTO {
 }
 
 /**
- * TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
+ * TaskProgressTreeDTO 任务进度树DTO
  */
 export class TaskProgressTreeDTO {
     "taskProgress"?: TaskProgressDTO | null;
@@ -1342,7 +1293,7 @@ export class TreeDataPageDTO {
 }
 
 /**
- * WorkDTO 作品数据传输对象（无 sql.Null* 版本）
+ * WorkDTO 作品数据传输对象
  */
 export class WorkDTO {
     "id": number;
@@ -1417,39 +1368,12 @@ export class WorkDTO {
  * WorkFullDTO 作品完整信息DTO
  */
 export class WorkFullDTO {
-    /**
-     * 基础作品信息（组合 WorkDTO，避免嵌入实体）
-     */
     "work"?: WorkDTO | null;
-
-    /**
-     * 关联的本地作者列表
-     */
     "localAuthors"?: (LocalAuthorDTO | null)[];
-
-    /**
-     * 关联的站点作者列表
-     */
     "siteAuthors"?: (SiteAuthorFullDTO | null)[];
-
-    /**
-     * 关联的站点信息
-     */
     "site"?: SiteDTO | null;
-
-    /**
-     * 关联的本地标签列表
-     */
     "localTags"?: (LocalTagDTO | null)[];
-
-    /**
-     * 关联的站点标签列表
-     */
     "siteTags"?: (SiteTagFullDTO | null)[];
-
-    /**
-     * 关联的资源列表
-     */
     "resources"?: (ResourceDTO | null)[];
 
     /** Creates a new WorkFullDTO instance. */
@@ -1496,7 +1420,7 @@ export class WorkFullDTO {
 }
 
 /**
- * WorkSetDTO 作品集数据传输对象（无 sql.Null* 版本）
+ * WorkSetDTO 作品集数据传输对象
  */
 export class WorkSetDTO {
     "id": number;
@@ -1602,7 +1526,7 @@ export class WorkSetWithCoverDTO {
 }
 
 /**
- * WorkSetWithWorksResultDTO 作品集及其作品信息（作品包含完整关联数据）
+ * WorkSetWithWorksResultDTO 作品集及其作品信息
  */
 export class WorkSetWithWorksResultDTO {
     "workSet": WorkSetDTO | null;

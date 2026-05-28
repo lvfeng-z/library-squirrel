@@ -16,6 +16,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util/filename"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // TaskState 任务状态
@@ -56,27 +57,27 @@ func isStableState(state TaskState) bool {
 // 由 TaskManager 定义，Plugin 模块实现
 type TaskExecutor interface {
 	// CreateWorkInfo 创建作品信息
-	CreateWorkInfo(ctx context.Context, task *entity.Task) (*dto.WorkResponse, error)
+	CreateWorkInfo(ctx context.Context, task *entity.Task) (*sdkdto.WorkResponse, error)
 
 	// Start 开始任务
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *entity.Task, workId int64) (io.ReadCloser, *dto.WorkResponse, error)
+	Start(ctx context.Context, task *entity.Task, workId int64) (io.ReadCloser, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务
 	// 返回是否真正暂停成功（插件可能不支持暂停）
-	Pause(ctx context.Context, param *dto.TaskResParam) error
+	Pause(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Stop 停止任务
-	Stop(ctx context.Context, param *dto.TaskResParam) error
+	Stop(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Resume 恢复任务
-	Resume(ctx context.Context, param *dto.TaskResParam) (*dto.WorkResponse, error)
+	Resume(ctx context.Context, param *sdkdto.TaskResParam) (*sdkdto.WorkResponse, error)
 }
 
 // WorkInfoSaver 作品完整信息保存接口
 type WorkInfoSaver interface {
-	SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *dto.WorkResponse) (int64, error)
+	SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *sdkdto.WorkResponse) (int64, error)
 }
 
 // ResourceSaver 资源保存接口
@@ -141,7 +142,7 @@ type ManagedTask struct {
 	workId int64
 
 	// 资源响应（插件返回）
-	resourceResp *dto.WorkResponse
+	resourceResp *sdkdto.WorkResponse
 
 	// 回调函数
 	onStateChange func(taskId int64, oldState, newState TaskState)
@@ -345,8 +346,8 @@ func (m *ManagedTask) Pause() error {
 	m.setState(TaskStatePausing)
 
 	// 调用插件 Pause
-	param := &dto.TaskResParam{
-		Task:       m.task,
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
 	err := m.pluginExec.Pause(m.ctx, param)
@@ -366,8 +367,8 @@ func (m *ManagedTask) Resume() error {
 	}
 
 	// 调用插件 Resume
-	param := &dto.TaskResParam{
-		Task:       m.task,
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
 	resp, err := m.pluginExec.Resume(m.ctx, param)
@@ -386,8 +387,8 @@ func (m *ManagedTask) Stop() {
 	m.cancel() // 触发 context 取消
 
 	// 调用插件 Stop
-	param := &dto.TaskResParam{
-		Task:       m.task,
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
 	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
@@ -467,7 +468,7 @@ func (m *ManagedTask) backupExistingResources(workId int64) {
 
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
 // 返回值: absSavePath 绝对保存路径, relativePath 相对于 workdir/resource/ 的相对路径, fileName 文件名
-func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath, relativePath, fileName string) {
+func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSavePath, relativePath, fileName string) {
 	res := startResp.Resource
 	workDir := m.workDirProvider.GetWorkDir()
 	tpl := m.fileNameFormatProvider.GetFileNameFormat()
@@ -500,7 +501,7 @@ func (m *ManagedTask) resolveLocalPath(startResp *dto.WorkResponse) (absSavePath
 
 // buildSuggestedFileName 根据插件建议文件名构建最终文件名（含扩展名）
 // 优先使用插件 SuggestName，仅保留纯文件名部分并进行清洗，扩展名由 Format 字段控制
-func (m *ManagedTask) buildSuggestedFileName(res *dto.TaskResourceDTO) string {
+func (m *ManagedTask) buildSuggestedFileName(res *sdkdto.TaskResourceDTO) string {
 	name := res.SuggestName
 	if name != "" {
 		// 只保留纯文件名，丢弃任何路径部分

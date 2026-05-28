@@ -9,7 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"go.uber.org/zap"
 )
 
@@ -46,7 +46,7 @@ type SiteQueryProvider interface {
 
 // TaskCreateProvider 任务创建
 type TaskCreateProvider interface {
-	CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.CreateTaskResult, error)
+	CreateTaskByURL(ctx context.Context, url string) (*pluginsdkdto.CreateTaskResult, error)
 }
 
 // UrlListenerRegistry URL监听器注册
@@ -68,7 +68,7 @@ type PluginContextDeps struct {
 	SiteQuery           SiteQueryProvider
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
-	FrontendEvent       pluginsdk.FrontendEventProvider
+	FrontendEvent       pluginsdkdto.FrontendEventProvider
 }
 
 // --- Implementation ---
@@ -85,13 +85,13 @@ type pluginContext struct {
 	siteQuery            SiteQueryProvider
 	taskCreate           TaskCreateProvider
 	urlListener          UrlListenerRegistry
-	frontendEvent        pluginsdk.FrontendEventProvider
+	frontendEvent        pluginsdkdto.FrontendEventProvider
 	scopedLogger         *zap.SugaredLogger
-	logger               pluginsdk.Logger
+	logger               pluginsdkdto.Logger
 }
 
 // NewPluginContext 创建插件上下文
-func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
+func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 	pluginName := deps.PluginInfo.Name
 	if pluginName == "" {
 		pluginName = deps.PluginInfo.PublicID
@@ -119,7 +119,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdk.PluginContext {
 
 // --- 扩展点注册 ---
 
-func (pc *pluginContext) RegisterTaskHandler(id, name, description string, handler pluginsdk.TaskHandler) error {
+func (pc *pluginContext) RegisterTaskHandler(id, name, description string, handler pluginsdkdto.TaskHandler) error {
 	metadata := model.ExtensionMetadata{
 		Type:           model.ExtensionTypeTaskHandler,
 		ID:             id,
@@ -131,7 +131,7 @@ func (pc *pluginContext) RegisterTaskHandler(id, name, description string, handl
 	return pc.taskHandlerRegistry.Register(model.NewExtension(metadata, handler))
 }
 
-func (pc *pluginContext) RegisterSiteBrowser(id, name, description string, browser pluginsdk.SiteBrowser) error {
+func (pc *pluginContext) RegisterSiteBrowser(id, name, description string, browser pluginsdkdto.SiteBrowser) error {
 	metadata := model.ExtensionMetadata{
 		Type:           model.ExtensionTypeSiteBrowser,
 		ID:             id,
@@ -190,7 +190,7 @@ func (pc *pluginContext) RemoveEncryptedValue(storageKey string) error {
 
 // --- 业务查询 ---
 
-func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteName string) (*pluginsdk.WorkSet, error) {
+func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteName string) (*pluginsdkdto.WorkSetDTO, error) {
 	ws, err := pc.workSetQuery.GetBySiteWorkSetIdAndSiteName(context.Background(), siteWorkSetId, siteName)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (pc *pluginContext) GetWorkSetBySiteWorkSetId(siteWorkSetId string, siteNam
 	return EntityWorkSetToSDK(ws), nil
 }
 
-func (pc *pluginContext) AddSite(sites []*pluginsdk.Site) error {
+func (pc *pluginContext) AddSite(sites []*pluginsdkdto.SiteDTO) error {
 	ctx := context.Background()
 	for _, site := range sites {
 		e := SDKSiteToEntity(site)
@@ -225,7 +225,7 @@ func (pc *pluginContext) UnregisterUrlListener() error {
 	return nil
 }
 
-func (pc *pluginContext) CreateTask(url string) (*pluginsdk.CreateTaskResult, error) {
+func (pc *pluginContext) CreateTask(url string) (*pluginsdkdto.CreateTaskResult, error) {
 	return pc.taskCreate.CreateTaskByURL(context.Background(), url)
 }
 
@@ -290,7 +290,7 @@ func (pc *pluginContext) Errorf(template string, args ...any) {
 	pc.scopedLogger.Errorf(template, args...)
 }
 
-func (pc *pluginContext) GetLogger() pluginsdk.Logger {
+func (pc *pluginContext) GetLogger() pluginsdkdto.Logger {
 	return pc.logger
 }
 
@@ -317,6 +317,6 @@ func (l *hostLogger) Infof(template string, args ...any)  { l.sugar.Infof(templa
 func (l *hostLogger) Warnf(template string, args ...any)  { l.sugar.Warnf(template, args...) }
 func (l *hostLogger) Errorf(template string, args ...any) { l.sugar.Errorf(template, args...) }
 
-func (l *hostLogger) Named(name string) pluginsdk.Logger {
+func (l *hostLogger) Named(name string) pluginsdkdto.Logger {
 	return newHostLogger(l.sugar.Named(name))
 }

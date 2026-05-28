@@ -3,23 +3,10 @@ package reWorkAuthor
 import (
 	"context"
 
-	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
-
-// WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）
-type WorkAuthorDTO struct {
-	LocalAuthors []*dto.RankedLocalAuthor `json:"localAuthors,omitempty"`
-	SiteAuthors  []*dto.RankedSiteAuthor  `json:"siteAuthors,omitempty"`
-}
-
-// WorkAuthorsResultDTO 批量作品作者信息返回结果
-type WorkAuthorsResultDTO struct {
-	WorkId       int64                    `json:"workId"`
-	LocalAuthors []*dto.RankedLocalAuthor `json:"localAuthors,omitempty"`
-	SiteAuthors  []*dto.RankedSiteAuthor  `json:"siteAuthors,omitempty"`
-}
 
 // Repository 作品-作者关联仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
@@ -47,17 +34,17 @@ type Repository interface {
 	// ========== 批量查询作者信息 ==========
 
 	// ListLocalAuthorsByWorkId 查询作品关联的本地作者
-	ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error)
+	ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error)
 	// ListSiteAuthorsByWorkId 查询作品关联的站点作者
-	ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error)
+	ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error)
 	// ListLocalAuthorsByWorkIds 批量查询作品的本地作者
-	ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error)
+	ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error)
 	// ListSiteAuthorsByWorkIds 批量查询作品的站点作者
-	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error)
+	ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedSiteAuthor, error)
 	// ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
-	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error)
+	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error)
 	// ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
-	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error)
+	ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error)
 }
 
 // Service 作品-作者关联服务
@@ -127,8 +114,8 @@ func (s *Service) DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) 
 // ========== 查询操作 ==========
 
 // ListByWorkId 获取单个作品的作者关联信息
-func (s *Service) ListByWorkId(ctx context.Context, workId int64) (*WorkAuthorDTO, error) {
-	dto := &WorkAuthorDTO{}
+func (s *Service) ListByWorkId(ctx context.Context, workId int64) (*sdkdto.WorkAuthorDTO, error) {
+	dto := &sdkdto.WorkAuthorDTO{}
 
 	// 查询本地作者
 	localAuthors, err := s.repo.ListLocalAuthorsByWorkId(ctx, workId)
@@ -148,9 +135,9 @@ func (s *Service) ListByWorkId(ctx context.Context, workId int64) (*WorkAuthorDT
 }
 
 // ListByWorkIds 批量获取多个作品的作者关联信息
-func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*WorkAuthorsResultDTO, error) {
+func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.WorkAuthorsResultDTO, error) {
 	if len(workIds) == 0 {
-		return make([]*WorkAuthorsResultDTO, 0), nil
+		return make([]*sdkdto.WorkAuthorsResultDTO, 0), nil
 	}
 
 	// 批量查询本地作者
@@ -166,19 +153,19 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*WorkAu
 	}
 
 	// 组装结果
-	results := make([]*WorkAuthorsResultDTO, 0, len(workIds))
+	results := make([]*sdkdto.WorkAuthorsResultDTO, 0, len(workIds))
 	for _, workId := range workIds {
-		result := &WorkAuthorsResultDTO{
+		result := &sdkdto.WorkAuthorsResultDTO{
 			WorkId:       workId,
 			LocalAuthors: localAuthorMap[workId],
 			SiteAuthors:  siteAuthorMap[workId],
 		}
 		// 确保空切片而不是nil
 		if result.LocalAuthors == nil {
-			result.LocalAuthors = make([]*dto.RankedLocalAuthor, 0)
+			result.LocalAuthors = make([]*sdkdto.RankedLocalAuthor, 0)
 		}
 		if result.SiteAuthors == nil {
-			result.SiteAuthors = make([]*dto.RankedSiteAuthor, 0)
+			result.SiteAuthors = make([]*sdkdto.RankedSiteAuthor, 0)
 		}
 		results = append(results, result)
 	}
@@ -187,26 +174,26 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*WorkAu
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
-func (s *Service) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
+func (s *Service) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	return s.repo.ListLocalAuthorsByWorkId(ctx, workId)
 }
 
 // ListSiteAuthorsByWorkId 查询作品关联的站点作者
-func (s *Service) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
+func (s *Service) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
 	return s.repo.ListSiteAuthorsByWorkId(ctx, workId)
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
-func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error) {
 	return s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
-func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
+func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error) {
 	return s.repo.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
 
 // ListSiteAuthorsByWorkIds 批量查询作品的站点作者，按 workId 分组
-func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
+func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedSiteAuthor, error) {
 	return s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
 }

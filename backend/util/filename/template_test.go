@@ -1,12 +1,9 @@
 package filename
 
 import (
-	"database/sql"
 	"testing"
 
-	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // --- SanitizeFileName 测试 ---
@@ -81,7 +78,7 @@ func TestFormatFileName_AllTokens(t *testing.T) {
 	}
 
 	tpl := "[${author}]_[${siteWorkId}]_${siteWorkName}_${description}_${localAuthorName}_${siteAuthorName}_${siteAuthorId}_${uploadTimeYear}${uploadTimeMonth}${uploadTimeDay}_${downloadTimeYear}${downloadTimeMonth}${downloadTimeDay}"
-	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor_SiteAuthor_author123_20260518_20260518"
+	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor-SiteAuthor_author123_20260518_20260518"
 	result := FormatFileName(tpl, data)
 	if result != expected {
 		t.Errorf("FormatFileName() = %q, want %q", result, expected)
@@ -120,6 +117,7 @@ func TestFormatFileName_NilData(t *testing.T) {
 // --- ExtractTokenData 测试 ---
 
 func strPtr(s string) *string { return &s }
+func int64Ptr(v int64) *int64 { return &v }
 
 func TestExtractTokenData_NilResponse(t *testing.T) {
 	data := ExtractTokenData(nil)
@@ -132,16 +130,15 @@ func TestExtractTokenData_NilResponse(t *testing.T) {
 }
 
 func TestExtractTokenData_SiteAuthorOnly(t *testing.T) {
-	resp := &dto.WorkResponse{
-		Work: &entity2.Work{
-			BaseEntity:       &model.BaseEntity{},
-			SiteWorkID:       sql.NullString{String: "art123", Valid: true},
-			SiteWorkName:     sql.NullString{String: "Test Art", Valid: true},
-			SiteUploadTime:   sql.NullInt64{Int64: 1779542400000, Valid: true}, // 2026-05-21 00:00:00 UTC
-			SiteAuthorID:     sql.NullString{String: "author456", Valid: true},
-			SiteWorkDescription: sql.NullString{String: "desc", Valid: true},
+	resp := &sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{
+			SiteWorkID:          strPtr("art123"),
+			SiteWorkName:        strPtr("Test Art"),
+			SiteUploadTime:      int64Ptr(1779542400000), // 2026-05-21 00:00:00 UTC
+			SiteAuthorID:        strPtr("author456"),
+			SiteWorkDescription: strPtr("desc"),
 		},
-		SiteAuthors: []*dto.TaskSiteAuthorDTO{
+		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
 			{SiteAuthorID: "1", AuthorName: "PixivArtist"},
 		},
 	}
@@ -171,12 +168,12 @@ func TestExtractTokenData_SiteAuthorOnly(t *testing.T) {
 }
 
 func TestExtractTokenData_LocalAuthorPreferred(t *testing.T) {
-	resp := &dto.WorkResponse{
-		Work: &entity2.Work{BaseEntity: &model.BaseEntity{}},
-		LocalAuthors: []*dto.LocalAuthorDTO{
+	resp := &sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{},
+		LocalAuthors: []*sdkdto.LocalAuthorDTO{
 			{AuthorName: strPtr("LocalArtist")},
 		},
-		SiteAuthors: []*dto.TaskSiteAuthorDTO{
+		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
 			{AuthorName: "SiteArtist"},
 		},
 	}
@@ -188,8 +185,8 @@ func TestExtractTokenData_LocalAuthorPreferred(t *testing.T) {
 }
 
 func TestExtractTokenData_NoAuthors(t *testing.T) {
-	resp := &dto.WorkResponse{
-		Work: &entity2.Work{BaseEntity: &model.BaseEntity{}},
+	resp := &sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{},
 	}
 
 	data := ExtractTokenData(resp)
@@ -199,12 +196,12 @@ func TestExtractTokenData_NoAuthors(t *testing.T) {
 }
 
 func TestExtractTokenData_EmptyAuthorName(t *testing.T) {
-	resp := &dto.WorkResponse{
-		Work: &entity2.Work{BaseEntity: &model.BaseEntity{}},
-		LocalAuthors: []*dto.LocalAuthorDTO{
+	resp := &sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{},
+		LocalAuthors: []*sdkdto.LocalAuthorDTO{
 			{AuthorName: strPtr("")},
 		},
-		SiteAuthors: []*dto.TaskSiteAuthorDTO{
+		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
 			{AuthorName: ""},
 		},
 	}
@@ -216,8 +213,8 @@ func TestExtractTokenData_EmptyAuthorName(t *testing.T) {
 }
 
 func TestExtractTokenData_DownloadTime(t *testing.T) {
-	data := ExtractTokenData(&dto.WorkResponse{
-		Work: &entity2.Work{BaseEntity: &model.BaseEntity{}},
+	data := ExtractTokenData(&sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{},
 	})
 	if data.DownloadYear == "" {
 		t.Error("DownloadYear should not be empty")
@@ -230,13 +227,12 @@ func TestExtractTokenData_DownloadTime(t *testing.T) {
 // --- 集成测试：完整流程 ---
 
 func TestFullFlow_TemplateWithSanitize(t *testing.T) {
-	resp := &dto.WorkResponse{
-		Work: &entity2.Work{
-			BaseEntity:   &model.BaseEntity{},
-			SiteWorkID:   sql.NullString{String: "12345", Valid: true},
-			SiteWorkName: sql.NullString{String: "Test: Art*Work?", Valid: true},
+	resp := &sdkdto.WorkResponse{
+		Work: &sdkdto.WorkDTO{
+			SiteWorkID:   strPtr("12345"),
+			SiteWorkName: strPtr("Test: Art*Work?"),
 		},
-		SiteAuthors: []*dto.TaskSiteAuthorDTO{
+		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
 			{AuthorName: "Artist<Name>"},
 		},
 	}

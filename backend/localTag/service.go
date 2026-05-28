@@ -6,12 +6,12 @@ import (
 	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 	"gorm.io/gorm/clause"
 )
@@ -44,15 +44,15 @@ type Repository interface {
 	// ListByWorkId 查询作品关联的本地标签
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.LocalTag, error)
 	// ListSelectItems 查询选择项列表
-	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
+	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*sdkdto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[sdkdto.SelectItem], error)
 	// QueryPageByWorkId 根据作品ID分页查询
 	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[domain.LocalTag], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error)
 	// QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-	QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO], error)
+	QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.LocalTagWithBaseTagDTO], error)
 }
 
 // Service 本地标签服务
@@ -211,7 +211,7 @@ func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Loc
 }
 
 // ListSelectItems 查询选择项列表（基于 QueryDTO）
-func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*dto.SelectItem, error) {
+func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO) ([]*sdkdto.SelectItem, error) {
 	conv := querypkg.NewConverter(domain.LocalTag{})
 	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
@@ -229,7 +229,7 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalTagQueryDTO
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) (*model.Page[dto.SelectItem], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) (*model.Page[sdkdto.SelectItem], error) {
 	conv := querypkg.NewConverter(domain.LocalTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *Service) QueryPageByWorkId(ctx context.Context, opt *database.PageOptio
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error) {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[sdkdto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error) {
 	if query.WorkId.Value == nil {
 		return nil, errors.New("workId is required")
 	}
@@ -258,7 +258,7 @@ func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.P
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) (*model.Page[dto.LocalTagWithBaseTagDTO], error) {
+func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[sdkdto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) (*model.Page[sdkdto.LocalTagWithBaseTagDTO], error) {
 	conv := querypkg.NewConverter(domain.LocalTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, new("local_tag"))
 	if err != nil {

@@ -3,24 +3,15 @@ package dto
 import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// LocalAuthorDTO 本地作者数据传输对象（无 sql.Null* 版本）
-type LocalAuthorDTO struct {
-	ID         int64   `json:"id"`
-	AuthorName *string `json:"authorName"`
-	Introduce  *string `json:"introduce"`
-	LastUse    *int64  `json:"lastUse"`
-	CreateTime int64   `json:"createTime"`
-	UpdateTime int64   `json:"updateTime"`
-}
-
 // NewLocalAuthorDTO 从 entity.LocalAuthor 创建 LocalAuthorDTO
-func NewLocalAuthorDTO(author *entity.LocalAuthor) *LocalAuthorDTO {
+func NewLocalAuthorDTO(author *entity.LocalAuthor) *sdkdto.LocalAuthorDTO {
 	if author == nil {
 		return nil
 	}
-	return &LocalAuthorDTO{
+	return &sdkdto.LocalAuthorDTO{
 		ID:         author.GetID(),
 		AuthorName: util.NullStringToPointer(author.AuthorName),
 		Introduce:  util.NullStringToPointer(author.Introduce),
@@ -31,7 +22,7 @@ func NewLocalAuthorDTO(author *entity.LocalAuthor) *LocalAuthorDTO {
 }
 
 // ToLocalAuthorEntity 将 LocalAuthorDTO 转换为 LocalAuthor 实体
-func ToLocalAuthorEntity(dto *LocalAuthorDTO) *entity.LocalAuthor {
+func ToLocalAuthorEntity(dto *sdkdto.LocalAuthorDTO) *entity.LocalAuthor {
 	if dto == nil {
 		return nil
 	}

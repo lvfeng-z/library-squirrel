@@ -10,7 +10,7 @@ import CommonInputTreeSelect from '@renderer/components/common/CommentInput/Comm
 import CommonInputAutoLoadSelect from '@renderer/components/common/CommentInput/CommonInputAutoLoadSelect.vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { getNode } from '@renderer/utils/TreeUtil.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 // props
 const props = defineProps<{

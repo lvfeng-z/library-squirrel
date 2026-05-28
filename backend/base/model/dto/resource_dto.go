@@ -3,31 +3,15 @@ package dto
 import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// ResourceDTO 资源数据传输对象（无 sql.Null* 版本）
-type ResourceDTO struct {
-	ID                int64   `json:"id"`
-	WorkID            int64   `json:"workId"`
-	TaskID            int64   `json:"taskId"`
-	State             int     `json:"state"`
-	FilePath          *string `json:"filePath"`
-	FileName          *string `json:"fileName"`
-	FilenameExtension *string `json:"filenameExtension"`
-	SuggestName       *string `json:"suggestName"`
-	ResourceSize      *int64  `json:"resourceSize"`
-	Workdir           *string `json:"workdir"`
-	ResourceComplete  int     `json:"resourceComplete"`
-	CreateTime        int64   `json:"createTime"`
-	UpdateTime        int64   `json:"updateTime"`
-}
-
 // NewResourceDTO 从 entity.Resource 创建 ResourceDTO
-func NewResourceDTO(resource *entity.Resource) *ResourceDTO {
+func NewResourceDTO(resource *entity.Resource) *sdkdto.ResourceDTO {
 	if resource == nil {
 		return nil
 	}
-	return &ResourceDTO{
+	return &sdkdto.ResourceDTO{
 		ID:                resource.GetID(),
 		WorkID:            resource.WorkID,
 		TaskID:            resource.TaskID,
@@ -45,7 +29,7 @@ func NewResourceDTO(resource *entity.Resource) *ResourceDTO {
 }
 
 // ToResourceEntity 将 ResourceDTO 转换为 Resource 实体
-func ToResourceEntity(dto *ResourceDTO) *entity.Resource {
+func ToResourceEntity(dto *sdkdto.ResourceDTO) *entity.Resource {
 	if dto == nil {
 		return nil
 	}

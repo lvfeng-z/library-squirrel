@@ -9,6 +9,7 @@ import (
 
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 	"gorm.io/gorm"
 )
@@ -24,7 +25,7 @@ func NewRepository(db *gorm.DB) *SearchRepository {
 }
 
 // QuerySearchConditionPage 查询搜索条件分页
-func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []dto2.SearchType) ([]*dto2.SelectItem, int64, error) {
+func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []sdkdto.SearchType) ([]*sdkdto.SelectItem, int64, error) {
 	var statements []string
 	var countStatements []string
 	var params []interface{}
@@ -37,10 +38,10 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 	}
 
 	// 判断是否包含某种类型（或全部类型）
-	includeLocalTag := len(types) == 0 || containsType(types, dto2.SearchTypeLocalTag)
-	includeSiteTag := len(types) == 0 || containsType(types, dto2.SearchTypeSiteTag)
-	includeLocalAuthor := len(types) == 0 || containsType(types, dto2.SearchTypeLocalAuthor)
-	includeSiteAuthor := len(types) == 0 || containsType(types, dto2.SearchTypeSiteAuthor)
+	includeLocalTag := len(types) == 0 || containsType(types, sdkdto.SearchTypeLocalTag)
+	includeSiteTag := len(types) == 0 || containsType(types, sdkdto.SearchTypeSiteTag)
+	includeLocalAuthor := len(types) == 0 || containsType(types, sdkdto.SearchTypeLocalAuthor)
+	includeSiteAuthor := len(types) == 0 || containsType(types, sdkdto.SearchTypeSiteAuthor)
 
 	// 本地标签查询
 	if includeLocalTag {
@@ -113,7 +114,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 	}
 
 	if len(statements) == 0 {
-		return []*dto2.SelectItem{}, 0, nil
+		return []*sdkdto.SelectItem{}, 0, nil
 	}
 
 	// 构建联合查询 - 使用完整查询语句（不带括号），与旧主进程保持一致
@@ -137,9 +138,9 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 	}
 	defer rows.Close()
 
-	var results []*dto2.SelectItem
+	var results []*sdkdto.SelectItem
 	for rows.Next() {
-		var item dto2.SelectItem
+		var item sdkdto.SelectItem
 		var extraData sql.NullString
 
 		err := rows.Scan(&item.Value, &item.Label, &extraData)
@@ -160,10 +161,10 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 			if extraMap, ok := item.ExtraData.(map[string]interface{}); ok {
 				subLabels := []string{}
 				if typeVal, ok := extraMap["type"].(float64); ok {
-					switch dto2.SearchType(typeVal) {
-					case dto2.SearchTypeLocalTag:
+					switch sdkdto.SearchType(typeVal) {
+					case sdkdto.SearchTypeLocalTag:
 						subLabels = append(subLabels, "tag", "local")
-					case dto2.SearchTypeSiteTag:
+					case sdkdto.SearchTypeSiteTag:
 						subLabels = append(subLabels, "tag")
 						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
@@ -172,9 +173,9 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 								subLabels = append(subLabels, "?")
 							}
 						}
-					case dto2.SearchTypeLocalAuthor:
+					case sdkdto.SearchTypeLocalAuthor:
 						subLabels = append(subLabels, "author", "local")
-					case dto2.SearchTypeSiteAuthor:
+					case sdkdto.SearchTypeSiteAuthor:
 						subLabels = append(subLabels, "author")
 						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
@@ -196,7 +197,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 }
 
 // QueryWorkPage 查询作品分页
-func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error) {
+func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*sdkdto.SearchCondition) ([]*sdkdto.WorkFullDTO, int64, error) {
 	// 构建 WHERE 子句
 	whereClause, params := buildWhereClause(conditions)
 
@@ -262,7 +263,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	}
 	defer rows.Close()
 
-	var results []*dto2.WorkFullDTO
+	var results []*sdkdto.WorkFullDTO
 	for rows.Next() {
 		work := entity2.NewWork()
 		var resource, inactiveResource, localTags, siteTags, localAuthors, siteAuthors, workSets sql.NullString
@@ -280,7 +281,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 resource JSON
 		if resource.Valid && resource.String != "" {
-			var res dto2.ResourceDTO
+			var res sdkdto.ResourceDTO
 			if json.Unmarshal([]byte(resource.String), &res) == nil {
 				dto.Resources = append(dto.Resources, &res)
 			}
@@ -288,7 +289,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 inactiveResource JSON 数组
 		if inactiveResource.Valid && inactiveResource.String != "" {
-			var resList []dto2.ResourceDTO
+			var resList []sdkdto.ResourceDTO
 			if json.Unmarshal([]byte(inactiveResource.String), &resList) == nil {
 				for i := range resList {
 					dto.Resources = append(dto.Resources, &resList[i])
@@ -298,7 +299,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 localTags
 		if localTags.Valid && localTags.String != "" && localTags.String != "null" {
-			var tags []*dto2.LocalTagDTO
+			var tags []*sdkdto.LocalTagDTO
 			if json.Unmarshal([]byte(localTags.String), &tags) == nil {
 				dto.LocalTags = tags
 			}
@@ -306,7 +307,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 siteTags
 		if siteTags.Valid && siteTags.String != "" && siteTags.String != "null" {
-			var tags []*dto2.SiteTagFullDTO
+			var tags []*sdkdto.SiteTagFullDTO
 			if json.Unmarshal([]byte(siteTags.String), &tags) == nil {
 				dto.SiteTags = tags
 			}
@@ -314,7 +315,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 localAuthors
 		if localAuthors.Valid && localAuthors.String != "" && localAuthors.String != "null" {
-			var authors []*dto2.LocalAuthorDTO
+			var authors []*sdkdto.LocalAuthorDTO
 			if json.Unmarshal([]byte(localAuthors.String), &authors) == nil {
 				dto.LocalAuthors = authors
 			}
@@ -322,7 +323,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 siteAuthors
 		if siteAuthors.Valid && siteAuthors.String != "" && siteAuthors.String != "null" {
-			var authors []*dto2.SiteAuthorFullDTO
+			var authors []*sdkdto.SiteAuthorFullDTO
 			if json.Unmarshal([]byte(siteAuthors.String), &authors) == nil {
 				dto.SiteAuthors = authors
 			}
@@ -335,12 +336,12 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 }
 
 // buildWhereClause 根据搜索条件构建 WHERE 子句（别名 "t1"）
-func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}) {
+func buildWhereClause(conditions []*sdkdto.SearchCondition) (string, []interface{}) {
 	return buildWhereClauseWithAlias(conditions, "t1")
 }
 
 // buildWhereClauseWithAlias 根据搜索条件构建 WHERE 子句（可配置表别名）
-func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string) (string, []interface{}) {
+func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias string) (string, []interface{}) {
 	if len(conditions) == 0 {
 		return "", nil
 	}
@@ -354,8 +355,8 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 		}
 
 		switch cond.Type {
-		case dto2.SearchTypeLocalTag:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeLocalTag:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
@@ -369,8 +370,8 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 				params = append(params, cond.Value, cond.Value)
 			}
 
-		case dto2.SearchTypeSiteTag:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeSiteTag:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
 				params = append(params, cond.Value)
@@ -380,8 +381,8 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 				params = append(params, cond.Value)
 			}
 
-		case dto2.SearchTypeLocalAuthor:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeLocalAuthor:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_author rwa
 						LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
@@ -395,8 +396,8 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 				params = append(params, cond.Value, cond.Value)
 			}
 
-		case dto2.SearchTypeSiteAuthor:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeSiteAuthor:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.site_author_id = ?)", alias))
 				params = append(params, cond.Value)
@@ -406,31 +407,31 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 				params = append(params, cond.Value)
 			}
 
-		case dto2.SearchTypeWorksSiteName:
+		case sdkdto.SearchTypeWorksSiteName:
 			whereClauses = append(whereClauses, fmt.Sprintf("%s.site_work_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
-		case dto2.SearchTypeWorksNickname:
+		case sdkdto.SearchTypeWorksNickname:
 			whereClauses = append(whereClauses, fmt.Sprintf("%s.nick_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
-		case dto2.SearchTypeWorksUploadTime:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeWorksUploadTime:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case dto2.SearchTypeWorksLastView:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeWorksLastView:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case dto2.SearchTypeMediaType:
+		case sdkdto.SearchTypeMediaType:
 			exts := getMediaExts(cond.Value)
 			if len(exts) > 0 {
 				placeholders := make([]string, len(exts))
@@ -438,22 +439,22 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 					placeholders[i] = "?"
 					params = append(params, ext)
 				}
-				if cond.Operator == dto2.OperatorNotEqual {
+				if cond.Operator == sdkdto.OperatorNotEqual {
 					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension NOT IN (%s)", alias, strings.Join(placeholders, ",")))
 				} else {
 					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension IN (%s)", alias, strings.Join(placeholders, ",")))
 				}
 			}
 
-		case dto2.SearchTypeSite:
-			if cond.Operator == dto2.OperatorNotEqual {
+		case sdkdto.SearchTypeSite:
+			if cond.Operator == sdkdto.OperatorNotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case dto2.SearchTypeWorkSet:
+		case sdkdto.SearchTypeWorkSet:
 			whereClauses = append(whereClauses,
 				fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)", alias))
 			params = append(params, cond.Value)
@@ -474,21 +475,21 @@ func getMediaExts(value interface{}) []string {
 		return nil
 	}
 
-	switch dto2.MediaType(mediaType) {
-	case dto2.MediaTypePicture:
-		return dto2.MediaExtMapping[dto2.MediaTypePicture]
-	case dto2.MediaTypeVideo:
-		return dto2.MediaExtMapping[dto2.MediaTypeVideo]
-	case dto2.MediaTypeDocument:
-		return dto2.MediaExtMapping[dto2.MediaTypeDocument]
-	case dto2.MediaTypeAudio:
-		return dto2.MediaExtMapping[dto2.MediaTypeAudio]
+	switch sdkdto.MediaType(mediaType) {
+	case sdkdto.MediaTypePicture:
+		return sdkdto.MediaExtMapping[sdkdto.MediaTypePicture]
+	case sdkdto.MediaTypeVideo:
+		return sdkdto.MediaExtMapping[sdkdto.MediaTypeVideo]
+	case sdkdto.MediaTypeDocument:
+		return sdkdto.MediaExtMapping[sdkdto.MediaTypeDocument]
+	case sdkdto.MediaTypeAudio:
+		return sdkdto.MediaExtMapping[sdkdto.MediaTypeAudio]
 	}
 	return nil
 }
 
 // QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询关联 work）
-func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error) {
+func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*sdkdto.SearchCondition) ([]*entity2.WorkSet, int64, error) {
 	var whereClause string
 	var params []interface{}
 
@@ -547,7 +548,7 @@ func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, pag
 }
 
 // containsType 检查类型切片是否包含指定类型
-func containsType(types []dto2.SearchType, target dto2.SearchType) bool {
+func containsType(types []sdkdto.SearchType, target sdkdto.SearchType) bool {
 	for _, t := range types {
 		if t == target {
 			return true

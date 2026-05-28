@@ -6,6 +6,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Handler 本地作者 Handler
@@ -21,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作者
-func (h *Handler) Save(ctx context.Context, author *dto.LocalAuthorDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, author *sdkdto.LocalAuthorDTO) *model.ApiResponse[int64] {
 	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.Save(ctx, domainAuthor); err != nil {
@@ -36,7 +37,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作者
-func (h *Handler) Update(ctx context.Context, author *dto.LocalAuthorDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, author *sdkdto.LocalAuthorDTO) *model.ApiResponse[any] {
 	domainAuthor := dto.ToLocalAuthorEntity(author)
 
 	if err := h.svc.UpdateById(ctx, domainAuthor); err != nil {
@@ -48,18 +49,18 @@ func (h *Handler) Update(ctx context.Context, author *dto.LocalAuthorDTO) *model
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.LocalAuthorDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.LocalAuthorDTO] {
 	author, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.HandleError[*dto.LocalAuthorDTO](err)
+		return model.HandleError[*sdkdto.LocalAuthorDTO](err)
 	}
 	return model.Success(dto.NewLocalAuthorDTO(author))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAuthorDTO], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.LocalAuthorDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.LocalAuthorDTO], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[sdkdto.LocalAuthorDTO]] {
 	if page == nil {
-		page = &model.Page[dto.LocalAuthorDTO]{}
+		page = &model.Page[sdkdto.LocalAuthorDTO]{}
 	}
 	domainPage := &model.Page[entity.LocalAuthor]{
 		PageNumber: page.PageNumber,
@@ -67,14 +68,14 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAutho
 	}
 	result, err := h.svc.Page(ctx, domainPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[dto.LocalAuthorDTO]](err)
+		return model.HandleError[*model.Page[sdkdto.LocalAuthorDTO]](err)
 	}
 	// 转换为 DTO
-	data := make([]*dto.LocalAuthorDTO, 0, len(result.Data))
+	data := make([]*sdkdto.LocalAuthorDTO, 0, len(result.Data))
 	for _, author := range result.Data {
 		data = append(data, dto.NewLocalAuthorDTO(author))
 	}
-	return model.Success(&model.Page[dto.LocalAuthorDTO]{
+	return model.Success(&model.Page[sdkdto.LocalAuthorDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -85,7 +86,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAutho
 }
 
 // ListSelectItems 查询选择项列表
-func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[[]*dto.SelectItem] {
+func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[[]*sdkdto.SelectItem] {
 	if queryDTO == nil {
 		queryDTO = &LocalAuthorQueryDTO{}
 	}
@@ -93,11 +94,11 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[sdkdto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[dto.SelectItem]{}
+		page = &model.Page[sdkdto.SelectItem]{}
 	}
-	domainPage := &model.Page[dto.SelectItem]{
+	domainPage := &model.Page[sdkdto.SelectItem]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
@@ -105,7 +106,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // ListByWorkId 根据作品ID获取作者列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.RankedLocalAuthor] {
 	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 

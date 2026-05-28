@@ -5,8 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/library-squirrel/backend/base/model/dto"
-	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // TokenData 模板占位符对应的数据
@@ -35,7 +34,7 @@ type TokenData struct {
 const fallbackAuthor = "unknownAuthor"
 
 // ExtractTokenData 从 WorkResponse 提取所有模板占位符的值
-func ExtractTokenData(workResp *dto.WorkResponse) *TokenData {
+func ExtractTokenData(workResp *sdkdto.WorkResponse) *TokenData {
 	data := &TokenData{}
 
 	if workResp == nil {
@@ -47,8 +46,8 @@ func ExtractTokenData(workResp *dto.WorkResponse) *TokenData {
 	// 作者名称
 	data.LocalAuthorName = extractLocalAuthorName(workResp.LocalAuthors)
 	data.SiteAuthorName = extractSiteAuthorName(workResp.SiteAuthors)
-	data.SiteAuthorID = validString(workResp.Work, func(w *entity2.Work) string {
-		return w.SiteAuthorID.String
+	data.SiteAuthorID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
+		return ptrStr(w.SiteAuthorID)
 	})
 
 	// ${author}: 优先本地作者，其次站点作者
@@ -59,14 +58,14 @@ func ExtractTokenData(workResp *dto.WorkResponse) *TokenData {
 	}
 
 	// 作品字段
-	data.SiteWorkID = validString(workResp.Work, func(w *entity2.Work) string {
-		return w.SiteWorkID.String
+	data.SiteWorkID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
+		return ptrStr(w.SiteWorkID)
 	})
-	data.SiteWorkName = validString(workResp.Work, func(w *entity2.Work) string {
-		return w.SiteWorkName.String
+	data.SiteWorkName = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
+		return ptrStr(w.SiteWorkName)
 	})
-	data.Description = validString(workResp.Work, func(w *entity2.Work) string {
-		return w.SiteWorkDescription.String
+	data.Description = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
+		return ptrStr(w.SiteWorkDescription)
 	})
 
 	// 时间
@@ -115,7 +114,7 @@ func setDefaults(data *TokenData) {
 	data.SiteAuthorID = ""
 }
 
-func extractLocalAuthorName(authors []*dto.LocalAuthorDTO) string {
+func extractLocalAuthorName(authors []*sdkdto.LocalAuthorDTO) string {
 	for _, a := range authors {
 		if a.AuthorName != nil && *a.AuthorName != "" {
 			return *a.AuthorName
@@ -124,7 +123,7 @@ func extractLocalAuthorName(authors []*dto.LocalAuthorDTO) string {
 	return fallbackAuthor
 }
 
-func extractSiteAuthorName(authors []*dto.TaskSiteAuthorDTO) string {
+func extractSiteAuthorName(authors []*sdkdto.TaskSiteAuthorDTO) string {
 	for _, a := range authors {
 		if a.AuthorName != "" {
 			return a.AuthorName
@@ -133,20 +132,28 @@ func extractSiteAuthorName(authors []*dto.TaskSiteAuthorDTO) string {
 	return fallbackAuthor
 }
 
-// validString 安全读取 Work 的 sql.NullString 字段
-func validString(work *entity2.Work, getter func(*entity2.Work) string) string {
+// ptrStr 安全解引用 *string
+func ptrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// ptrStringValue 安全读取 WorkDTO 的指针字段
+func ptrStringValue(work *sdkdto.WorkDTO, getter func(*sdkdto.WorkDTO) string) string {
 	if work == nil {
 		return ""
 	}
 	return getter(work)
 }
 
-// fillUploadTime 从 Work.SiteUploadTime（Unix 毫秒时间戳）提取时间组件
-func fillUploadTime(data *TokenData, work *entity2.Work) {
-	if work == nil || !work.SiteUploadTime.Valid || work.SiteUploadTime.Int64 == 0 {
+// fillUploadTime 从 WorkDTO.SiteUploadTime（Unix 毫秒时间戳）提取时间组件
+func fillUploadTime(data *TokenData, work *sdkdto.WorkDTO) {
+	if work == nil || work.SiteUploadTime == nil || *work.SiteUploadTime == 0 {
 		return
 	}
-	t := time.UnixMilli(work.SiteUploadTime.Int64)
+	t := time.UnixMilli(*work.SiteUploadTime)
 	data.UploadYear = fmt.Sprintf("%04d", t.Year())
 	data.UploadMonth = fmt.Sprintf("%02d", t.Month())
 	data.UploadDay = fmt.Sprintf("%02d", t.Day())

@@ -3,7 +3,7 @@ package siteBrowser
 import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/plugin/extension"
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Service 站点浏览器服务
@@ -18,31 +18,18 @@ func NewService(registry *extension.SiteBrowserRegistry) *Service {
 	}
 }
 
-// SiteBrowserDTO 站点浏览器DTO
-type SiteBrowserDTO struct {
-	ContributionID string `json:"contributionId"`
-	PluginPublicID string `json:"pluginPublicId"`
-	Name           string `json:"name"`
-	PluginID       int64  `json:"pluginId"`
-}
-
 // PageResult 分页结果
 type PageResult struct {
-	Data       []*SiteBrowserDTO `json:"data"`
-	PageNumber int               `json:"pageNumber"`
-	PageSize   int               `json:"pageSize"`
-	Total      int               `json:"total"`
-}
-
-// GetID 获取完整ID
-func (d *SiteBrowserDTO) GetID() string {
-	return d.PluginPublicID + "-" + d.ContributionID
+	Data       []*sdkdto.SiteBrowserDTO `json:"data"`
+	PageNumber int                      `json:"pageNumber"`
+	PageSize   int                      `json:"pageSize"`
+	Total      int                      `json:"total"`
 }
 
 // List 获取所有站点浏览器
-func (s *Service) List() []*SiteBrowserDTO {
+func (s *Service) List() []*sdkdto.SiteBrowserDTO {
 	extensions := s.registry.List()
-	dtos := make([]*SiteBrowserDTO, 0, len(extensions))
+	dtos := make([]*sdkdto.SiteBrowserDTO, 0, len(extensions))
 	for _, ext := range extensions {
 		dtos = append(dtos, toDTO(ext))
 	}
@@ -58,7 +45,7 @@ func (s *Service) Page(page, pageSize int) *PageResult {
 	start := (page - 1) * pageSize
 	if start >= total {
 		return &PageResult{
-			Data:       []*SiteBrowserDTO{},
+			Data:       []*sdkdto.SiteBrowserDTO{},
 			PageNumber: page,
 			PageSize:   pageSize,
 			Total:      total,
@@ -71,7 +58,7 @@ func (s *Service) Page(page, pageSize int) *PageResult {
 	}
 
 	// 构建分页数据
-	dtos := make([]*SiteBrowserDTO, 0, end-start)
+	dtos := make([]*sdkdto.SiteBrowserDTO, 0, end-start)
 	for i := start; i < end; i++ {
 		dtos = append(dtos, toDTO(extensions[i]))
 	}
@@ -85,7 +72,7 @@ func (s *Service) Page(page, pageSize int) *PageResult {
 }
 
 // GetByID 根据ID获取站点浏览器
-func (s *Service) GetByID(pluginPublicId, contributionId string) (*SiteBrowserDTO, error) {
+func (s *Service) GetByID(pluginPublicId, contributionId string) (*sdkdto.SiteBrowserDTO, error) {
 	ext, err := s.registry.Get(pluginPublicId, contributionId)
 	if err != nil {
 		return nil, err
@@ -94,9 +81,9 @@ func (s *Service) GetByID(pluginPublicId, contributionId string) (*SiteBrowserDT
 }
 
 // GetByPluginID 根据插件ID获取站点浏览器
-func (s *Service) GetByPluginID(pluginId int64) []*SiteBrowserDTO {
+func (s *Service) GetByPluginID(pluginId int64) []*sdkdto.SiteBrowserDTO {
 	extensions := s.registry.List()
-	dtos := make([]*SiteBrowserDTO, 0)
+	dtos := make([]*sdkdto.SiteBrowserDTO, 0)
 	for _, ext := range extensions {
 		if ext.Metadata.PluginID == pluginId {
 			dtos = append(dtos, toDTO(ext))
@@ -115,8 +102,8 @@ func (s *Service) Open(pluginPublicId, contributionId string) error {
 }
 
 // toDTO 将扩展转换为DTO
-func toDTO(ext *model.Extension[pluginsdk.SiteBrowser]) *SiteBrowserDTO {
-	return &SiteBrowserDTO{
+func toDTO(ext *model.Extension[sdkdto.SiteBrowser]) *sdkdto.SiteBrowserDTO {
+	return &sdkdto.SiteBrowserDTO{
 		ContributionID: ext.Metadata.ID,
 		PluginPublicID: ext.Metadata.PluginPublicID,
 		Name:           ext.Metadata.Name,

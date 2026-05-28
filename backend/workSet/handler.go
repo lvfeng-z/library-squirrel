@@ -6,6 +6,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Handler 作品集 Handler
@@ -21,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存作品集
-func (h *Handler) Save(ctx context.Context, workSet *dto2.WorkSetDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, workSet *sdkdto.WorkSetDTO) *model.ApiResponse[int64] {
 	domainWorkSet := dto2.ToWorkSetEntity(workSet)
 
 	if err := h.svc.Save(ctx, domainWorkSet); err != nil {
@@ -36,7 +37,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新作品集
-func (h *Handler) Update(ctx context.Context, workSet *dto2.WorkSetDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, workSet *sdkdto.WorkSetDTO) *model.ApiResponse[any] {
 	domainWorkSet := dto2.ToWorkSetEntity(workSet)
 
 	if err := h.svc.Update(ctx, domainWorkSet); err != nil {
@@ -48,18 +49,18 @@ func (h *Handler) Update(ctx context.Context, workSet *dto2.WorkSetDTO) *model.A
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取作品集
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto2.WorkSetDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.WorkSetDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.HandleError[*dto2.WorkSetDTO](err)
+		return model.HandleError[*sdkdto.WorkSetDTO](err)
 	}
 	return model.Success(dto2.NewWorkSetDTO(result))
 }
 
 // QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetDTO]] {
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.WorkSetDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[sdkdto.WorkSetDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.WorkSetDTO]{}
+		page = &model.Page[sdkdto.WorkSetDTO]{}
 	}
 	entityPage := &model.Page[entity2.WorkSet]{
 		PageNumber: page.PageNumber,
@@ -67,14 +68,14 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDT
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[dto2.WorkSetDTO]](err)
+		return model.HandleError[*model.Page[sdkdto.WorkSetDTO]](err)
 	}
 	// 转换为 DTO
-	data := make([]*dto2.WorkSetDTO, 0, len(result.Data))
+	data := make([]*sdkdto.WorkSetDTO, 0, len(result.Data))
 	for _, workSet := range result.Data {
 		data = append(data, dto2.NewWorkSetDTO(workSet))
 	}
-	return model.Success(&model.Page[dto2.WorkSetDTO]{
+	return model.Success(&model.Page[sdkdto.WorkSetDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,
@@ -85,12 +86,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto2.WorkSetDT
 }
 
 // GetWorksByWorkSetId 获取作品集下的作品列表
-func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*dto2.WorkDTO] {
+func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *model.ApiResponse[[]*sdkdto.WorkDTO] {
 	result, err := h.svc.GetWorksByWorkSetId(ctx, workSetId)
 	if err != nil {
-		return model.HandleError[[]*dto2.WorkDTO](err)
+		return model.HandleError[[]*sdkdto.WorkDTO](err)
 	}
-	data := make([]*dto2.WorkDTO, 0, len(result))
+	data := make([]*sdkdto.WorkDTO, 0, len(result))
 	for _, work := range result {
 		data = append(data, dto2.NewWorkDTO(work))
 	}
@@ -98,12 +99,12 @@ func (h *Handler) GetWorksByWorkSetId(ctx context.Context, workSetId int64) *mod
 }
 
 // ListWorkSetsByWorkId 获取作品关联的作品集列表
-func (h *Handler) ListWorkSetsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto2.WorkSetDTO] {
+func (h *Handler) ListWorkSetsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.WorkSetDTO] {
 	result, err := h.svc.ListWorkSetsByWorkId(ctx, workId)
 	if err != nil {
-		return model.HandleError[[]*dto2.WorkSetDTO](err)
+		return model.HandleError[[]*sdkdto.WorkSetDTO](err)
 	}
-	data := make([]*dto2.WorkSetDTO, 0, len(result))
+	data := make([]*sdkdto.WorkSetDTO, 0, len(result))
 	for _, ws := range result {
 		data = append(data, dto2.NewWorkSetDTO(ws))
 	}
@@ -121,10 +122,10 @@ func (h *Handler) UnlinkWorkFromWorkSet(ctx context.Context, workId, workSetId i
 }
 
 // GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
-func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*dto2.WorkSetDTO] {
+func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*sdkdto.WorkSetDTO] {
 	result, err := h.svc.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 	if err != nil {
-		return model.HandleError[*dto2.WorkSetDTO](err)
+		return model.HandleError[*sdkdto.WorkSetDTO](err)
 	}
 	return model.Success(dto2.NewWorkSetDTO(result))
 }
@@ -160,39 +161,39 @@ func (h *Handler) GetCoverWorkId(ctx context.Context, workSetId int64) *model.Ap
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
-func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*dto2.WorkSetWithWorksResultDTO] {
+func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*sdkdto.WorkSetWithWorksResultDTO] {
 	result, err := h.svc.ListWorkSetWithWorkByIds(ctx, workSetIds)
 	if err != nil {
-		return model.HandleError[[]*dto2.WorkSetWithWorksResultDTO](err)
+		return model.HandleError[[]*sdkdto.WorkSetWithWorksResultDTO](err)
 	}
 	return model.Success(result)
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdto.WorkSetWithCoverDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[sdkdto.WorkSetWithCoverDTO]] {
 	if page == nil {
-		page = &model.Page[dto2.WorkSetWithCoverDTO]{}
+		page = &model.Page[sdkdto.WorkSetWithCoverDTO]{}
 	}
-	workSetPage := &model.Page[WorkSetWithCoverDTO]{
+	workSetPage := &model.Page[sdkdto.WorkSetWithCoverDTO]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
 	result, err := h.svc.QueryPageWithCover(ctx, workSetPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[dto2.WorkSetWithCoverDTO]](err)
+		return model.HandleError[*model.Page[sdkdto.WorkSetWithCoverDTO]](err)
 	}
 	// 转换为 ResultDTO
-	data := make([]*dto2.WorkSetWithCoverDTO, 0, len(result.Data))
+	data := make([]*sdkdto.WorkSetWithCoverDTO, 0, len(result.Data))
 	for _, ws := range result.Data {
-		dto := &dto2.WorkSetWithCoverDTO{
-			WorkSet: dto2.NewWorkSetDTO(ws.WorkSet),
+		dto := &sdkdto.WorkSetWithCoverDTO{
+			WorkSet: ws.WorkSet,
 		}
 		if ws.CoverWork != nil {
-			dto.CoverWork = dto2.NewWorkDTO(ws.CoverWork)
+			dto.CoverWork = ws.CoverWork
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[dto2.WorkSetWithCoverDTO]{
+	return model.Success(&model.Page[sdkdto.WorkSetWithCoverDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

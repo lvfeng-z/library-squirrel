@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import IPage from '@renderer/model/util/IPage.ts'
 import {Ref, ref} from 'vue'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
 import {arrayNotEmpty} from "@renderer/utils/CommonUtil.ts";
 import {newPage} from "@renderer/utils/Pager.ts";
 import lodash from "lodash";

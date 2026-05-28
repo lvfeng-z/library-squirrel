@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../base/model/dto/models.js";
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
 
 /**
  * WorkAuthorDTO 作品作者信息（包含本地作者和站点作者）

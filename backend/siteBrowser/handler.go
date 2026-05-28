@@ -1,6 +1,9 @@
 package siteBrowser
 
-import "github.com/library-squirrel/backend/base/model"
+import (
+	"github.com/library-squirrel/backend/base/model"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+)
 
 // Handler 站点浏览器 Handler
 type Handler struct {
@@ -13,7 +16,7 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // List 获取所有站点浏览器
-func (h *Handler) List() *model.ApiResponse[[]*SiteBrowserDTO] {
+func (h *Handler) List() *model.ApiResponse[[]*sdkdto.SiteBrowserDTO] {
 	result := h.svc.List()
 	return model.Success(result)
 }
@@ -25,12 +28,12 @@ func (h *Handler) QueryPage(page, pageSize int) *model.ApiResponse[*PageResult] 
 }
 
 // GetByID 根据ID获取站点浏览器
-func (h *Handler) GetByID(pluginPublicId string, contributionId string) *model.ApiResponse[*SiteBrowserDTO] {
+func (h *Handler) GetByID(pluginPublicId string, contributionId string) *model.ApiResponse[*sdkdto.SiteBrowserDTO] {
 	return model.HandleResult(h.svc.GetByID(pluginPublicId, contributionId))
 }
 
 // GetByPluginID 根据插件ID获取站点浏览器
-func (h *Handler) GetByPluginID(pluginId int64) *model.ApiResponse[[]*SiteBrowserDTO] {
+func (h *Handler) GetByPluginID(pluginId int64) *model.ApiResponse[[]*sdkdto.SiteBrowserDTO] {
 	result := h.svc.GetByPluginID(pluginId)
 	return model.Success(result)
 }

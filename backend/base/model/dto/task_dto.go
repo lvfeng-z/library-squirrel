@@ -3,34 +3,15 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// TaskDTO 任务数据传输对象（无 sql.Null* 版本）
-type TaskDTO struct {
-	ID                   int64   `json:"id"`
-	HasChild             *bool   `json:"hasChild"`
-	Pid                  *int64  `json:"pid"`
-	TaskName             *string `json:"taskName"`
-	SiteID               *int64  `json:"siteId"`
-	SiteWorkID           *string `json:"siteWorkId"`
-	URL                  *string `json:"url"`
-	Status               int     `json:"status"`
-	PendingResourceID    *int64  `json:"pendingResourceId"`
-	Continuable          *bool   `json:"continuable"`
-	PluginPublicID       *string `json:"pluginPublicId"`
-	PluginContributionID *string `json:"pluginContributionId"`
-	PluginData           *string `json:"pluginData"`
-	ErrorMessage         *string `json:"errorMessage"`
-	CreateTime           int64   `json:"createTime"`
-	UpdateTime           int64   `json:"updateTime"`
-}
-
 // NewTaskDTO 从 entity.Task 创建 TaskDTO
-func NewTaskDTO(task *entity2.Task) *TaskDTO {
+func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
 	if task == nil {
 		return nil
 	}
-	return &TaskDTO{
+	return &sdkdto.TaskDTO{
 		ID:                   task.GetID(),
 		HasChild:             util.NullBoolToPointer(task.HasChild),
 		Pid:                  util.NullInt64ToPointer(task.Pid),
@@ -51,7 +32,7 @@ func NewTaskDTO(task *entity2.Task) *TaskDTO {
 }
 
 // ToTaskEntity 将 TaskDTO 转换为 Task 实体
-func ToTaskEntity(dto *TaskDTO) *entity2.Task {
+func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 	if dto == nil {
 		return nil
 	}
@@ -165,40 +146,40 @@ func ToTaskEntity(dto *TaskDTO) *entity2.Task {
 
 // TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称/进度百分比字段）
 type TaskProgressDTO struct {
-	Task     *TaskDTO `json:"task,omitempty"`
-	Total    *int64   `json:"total,omitempty"`
-	Finished *int64   `json:"finished,omitempty"`
-	SiteName *string  `json:"siteName,omitempty"`
-	Schedule *int     `json:"schedule,"` // 任务进度百分比（100 表示完成）
+	Task     *sdkdto.TaskDTO `json:"task,omitempty"`
+	Total    *int64          `json:"total,omitempty"`
+	Finished *int64          `json:"finished,omitempty"`
+	SiteName *string         `json:"siteName,omitempty"`
+	Schedule *int            `json:"schedule,"` // 任务进度百分比（100 表示完成）
 }
 
 // NewTaskProgressDTO 从 TaskDTO 创建 TaskProgressDTO
-func NewTaskProgressDTO(taskDTO *TaskDTO) *TaskProgressDTO {
+func NewTaskProgressDTO(taskDTO *sdkdto.TaskDTO) *sdkdto.TaskProgressDTO {
 	if taskDTO == nil {
 		return nil
 	}
-	return &TaskProgressDTO{
+	return &sdkdto.TaskProgressDTO{
 		Task: taskDTO,
 	}
 }
 
 // TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
 type TaskProgressTreeDTO struct {
-	TaskProgress *TaskProgressDTO       `json:"taskProgress,omitempty"`
-	Children     []*TaskProgressTreeDTO `json:"children,omitempty"`
-	HasChildren  *bool                  `json:"hasChildren,omitempty"`
-	IsLeaf       *bool                  `json:"isLeaf,omitempty"`
+	TaskProgress *sdkdto.TaskProgressDTO       `json:"taskProgress,omitempty"`
+	Children     []*sdkdto.TaskProgressTreeDTO `json:"children,omitempty"`
+	HasChildren  *bool                         `json:"hasChildren,omitempty"`
+	IsLeaf       *bool                         `json:"isLeaf,omitempty"`
 }
 
 // NewTaskProgressTreeDTO 从 TaskDTO 创建 TaskProgressTreeDTO
-func NewTaskProgressTreeDTO(taskDTO *TaskDTO) *TaskProgressTreeDTO {
+func NewTaskProgressTreeDTO(taskDTO *sdkdto.TaskDTO) *sdkdto.TaskProgressTreeDTO {
 	if taskDTO == nil {
 		return nil
 	}
 	hasChildren := taskDTO.HasChild != nil && *taskDTO.HasChild
-	return &TaskProgressTreeDTO{
+	return &sdkdto.TaskProgressTreeDTO{
 		TaskProgress: NewTaskProgressDTO(taskDTO),
-		Children:     make([]*TaskProgressTreeDTO, 0),
+		Children:     make([]*sdkdto.TaskProgressTreeDTO, 0),
 		HasChildren:  &hasChildren,
 		IsLeaf:       new(!hasChildren),
 	}
@@ -221,8 +202,8 @@ type CreateTaskRequest struct {
 
 // TreeDataPageDTO 任务树数据分页DTO
 type TreeDataPageDTO struct {
-	TreeID   int64                  `json:"treeId"`
-	TreeName string                 `json:"treeName"`
-	Total    int64                  `json:"total"`
-	Tasks    []*TaskProgressTreeDTO `json:"tasks"`
+	TreeID   int64                         `json:"treeId"`
+	TreeName string                        `json:"treeName"`
+	Total    int64                         `json:"total"`
+	Tasks    []*sdkdto.TaskProgressTreeDTO `json:"tasks"`
 }

@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
-	"github.com/library-squirrel/backend/base/model/dto"
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-plugin-sdk/gen"
+	pluginsdktransport "github.com/lvfeng-z/library-squirrel-plugin-sdk/transport"
 )
 
 // 错误定义
@@ -25,19 +25,19 @@ var (
 
 // PluginProcessDeps 加载插件进程所需的依赖
 type PluginProcessDeps struct {
-	PluginInfo           *PluginInfo
-	PluginCtx            pluginsdk.PluginContext
-	TaskHandlerRegistry  *TaskHandlerRegistry
-	SiteBrowserRegistry  *SiteBrowserRegistry
-	MainHWND             uintptr
+	PluginInfo          *PluginInfo
+	PluginCtx           sdkdto.PluginContext
+	TaskHandlerRegistry *TaskHandlerRegistry
+	SiteBrowserRegistry *SiteBrowserRegistry
+	MainHWND            uintptr
 }
 
 // pluginEntry 存储单个插件的 hashicorp/go-plugin 客户端和 gRPC 服务客户端
 type pluginEntry struct {
-	client      *plugin.Client              // hashicorp/go-plugin 进程管理客户端
-	services    *pluginsdk.GRPCPluginClient // gRPC 服务客户端（Task、Browser、Lifecycle）
-	info        *PluginInfo                 // 插件基本信息
-	activatedAt time.Time                   // 进程激活时间
+	client      *plugin.Client                       // hashicorp/go-plugin 进程管理客户端
+	services    *pluginsdktransport.GRPCPluginClient // gRPC 服务客户端（Task、Browser、Lifecycle）
+	info        *PluginInfo                          // 插件基本信息
+	activatedAt time.Time                            // 进程激活时间
 }
 
 // Loader 插件加载器，使用 hashicorp/go-plugin 管理插件子进程
@@ -69,14 +69,14 @@ func NewLoader(
 func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps PluginProcessDeps) error {
 	// 构建 HostDeps，用于在 GRPCClient 中注册 HostService
 	callbacks := newHostPluginCallbacks(deps.PluginInfo, l, l.taskHandlerRegistry, l.siteBrowserRegistry)
-	hostDeps := &pluginsdk.HostDeps{
-		PluginDataProvider:    &hostPluginDataProvider{ctx: deps.PluginCtx},
-		SecureStorageProvider: &hostSecureStorageProvider{ctx: deps.PluginCtx},
-		WorkSetQueryProvider:  &hostWorkSetQueryProvider{ctx: deps.PluginCtx},
-		SiteSaveProvider:      &hostSiteSaveProvider{ctx: deps.PluginCtx},
-		TaskCreateProvider:    &hostTaskCreateProvider{ctx: deps.PluginCtx},
-		UrlListenerRegistry:   &hostUrlListenerRegistry{ctx: deps.PluginCtx},
-		FrontendEventProvider: &hostFrontendEventProvider{ctx: deps.PluginCtx},
+	hostDeps := &pluginsdktransport.HostDeps{
+		PluginDataProvider:      &hostPluginDataProvider{ctx: deps.PluginCtx},
+		SecureStorageProvider:   &hostSecureStorageProvider{ctx: deps.PluginCtx},
+		WorkSetQueryProvider:    &hostWorkSetQueryProvider{ctx: deps.PluginCtx},
+		SiteSaveProvider:        &hostSiteSaveProvider{ctx: deps.PluginCtx},
+		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
+		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
+		FrontendEventProvider:   &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
 		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
 		OnUnregisterSiteBrowser: callbacks.onUnregisterSiteBrowser,
@@ -100,7 +100,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	}
 
 	// 创建 LSPlugin 实例（主程序侧，注入 HostDeps）
-	lsPlugin := &pluginsdk.LSPlugin{
+	lsPlugin := &pluginsdktransport.LSPlugin{
 		HostDeps: hostDeps,
 	}
 
@@ -108,7 +108,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	cmd := exec.Command(exePath)
 	cmd.Env = os.Environ()
 	config := &plugin.ClientConfig{
-		HandshakeConfig: pluginsdk.Handshake,
+		HandshakeConfig: pluginsdktransport.Handshake,
 		Plugins: map[string]plugin.Plugin{
 			"library_squirrel": lsPlugin,
 		},
@@ -133,7 +133,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		return fmt.Errorf("%w: dispense plugin %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
 
-	services, ok := raw.(*pluginsdk.GRPCPluginClient)
+	services, ok := raw.(*pluginsdktransport.GRPCPluginClient)
 	if !ok {
 		client.Kill()
 		return fmt.Errorf("%w: unexpected plugin type for %s", ErrPluginLoadFailed, pluginPublicId)
@@ -142,9 +142,9 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	// 发送 Activate 请求
 	pluginData, _ := deps.PluginCtx.GetPluginData()
 	_, err = services.Lifecycle.Activate(context.Background(), &gen.ActivateRequest{
-		PluginPublicId: deps.PluginInfo.PublicID,
-		PluginData:     pluginData,
-		RootPath:       deps.PluginInfo.RootPath,
+		PluginPublicId:   deps.PluginInfo.PublicID,
+		PluginData:       pluginData,
+		RootPath:         deps.PluginInfo.RootPath,
 		HostServiceId:    services.HostServiceId,
 		MainWindowHandle: uint64(deps.MainHWND),
 	})
@@ -189,16 +189,29 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 }
 
 // GetTaskHandler 获取任务处理器
-func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (dto.TaskHandler, error) {
+func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
 	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)
 	if err != nil {
 		return nil, err
 	}
-	return &taskHandlerAdapter{handler: ext.Instance}, nil
+	return ext.Instance, nil
+}
+
+// GetSDKTaskHandler 获取 SDK 层 TaskHandler（直接使用 gRPC 代理，无适配器转换）
+func (l *Loader) GetSDKTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
+	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)
+	if err != nil {
+		return nil, err
+	}
+	return &TaskHandlerProxy{
+		loader:         l,
+		pluginPublicId: ext.Metadata.PluginPublicID,
+		contributionId: ext.Metadata.ID,
+	}, nil
 }
 
 // GetServices 获取插件的 gRPC 服务客户端（供 proxy 使用）
-func (l *Loader) GetServices(pluginPublicId string) (*pluginsdk.GRPCPluginClient, bool) {
+func (l *Loader) GetServices(pluginPublicId string) (*pluginsdktransport.GRPCPluginClient, bool) {
 	l.mu.RLock()
 	entry, ok := l.processes[pluginPublicId]
 	l.mu.RUnlock()
@@ -274,7 +287,7 @@ type PluginInfo struct {
 // 这些适配器将 PluginContext 的方法转换为 SDK HostDeps 的 context.Context 版本
 
 type hostPluginDataProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
 func (p *hostPluginDataProvider) GetPluginData(_ context.Context) (string, error) {
@@ -290,7 +303,7 @@ func (p *hostPluginDataProvider) GetPluginRoot(_ context.Context, isRelative boo
 }
 
 type hostSecureStorageProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
 func (p *hostSecureStorageProvider) StoreEncryptedValue(_ context.Context, plainValue, description string) (string, error) {
@@ -306,31 +319,31 @@ func (p *hostSecureStorageProvider) RemoveEncryptedValue(_ context.Context, stor
 }
 
 type hostWorkSetQueryProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
-func (p *hostWorkSetQueryProvider) GetWorkSetBySiteWorkSetId(_ context.Context, siteWorkSetId, siteName string) (*pluginsdk.WorkSet, error) {
+func (p *hostWorkSetQueryProvider) GetWorkSetBySiteWorkSetId(_ context.Context, siteWorkSetId, siteName string) (*sdkdto.WorkSetDTO, error) {
 	return p.ctx.GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName)
 }
 
 type hostSiteSaveProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
-func (p *hostSiteSaveProvider) AddSite(_ context.Context, sites []*pluginsdk.Site) error {
+func (p *hostSiteSaveProvider) AddSite(_ context.Context, sites []*sdkdto.SiteDTO) error {
 	return p.ctx.AddSite(sites)
 }
 
 type hostTaskCreateProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
-func (p *hostTaskCreateProvider) CreateTask(_ context.Context, url string) (*pluginsdk.CreateTaskResult, error) {
+func (p *hostTaskCreateProvider) CreateTask(_ context.Context, url string) (*sdkdto.CreateTaskResult, error) {
 	return p.ctx.CreateTask(url)
 }
 
 type hostUrlListenerRegistry struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
 func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, contributionId string, patterns []string) error {
@@ -342,7 +355,7 @@ func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context) error
 }
 
 type hostFrontendEventProvider struct {
-	ctx pluginsdk.PluginContext
+	ctx sdkdto.PluginContext
 }
 
 func (p *hostFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {

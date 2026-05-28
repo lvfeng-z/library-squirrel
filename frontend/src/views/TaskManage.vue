@@ -27,7 +27,7 @@ import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import Plugin from '@renderer/model/model/entity/Plugin.ts'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
-import {TaskProgressTreeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
+import {TaskProgressTreeDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto";
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted

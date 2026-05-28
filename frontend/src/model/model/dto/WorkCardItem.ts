@@ -2,7 +2,7 @@ import Resource from '../entity/Resource.ts'
 import RankedLocalAuthor from '../domain/RankedLocalAuthor.ts'
 import RankedSiteAuthor from '../domain/RankedSiteAuthor.ts'
 import WorkSetWithWorkDTO from './WorkSetWithWorkDTO.ts'
-import { WorkFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, ResourceDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { WorkFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, ResourceDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class WorkCardItem {

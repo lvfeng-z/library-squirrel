@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -149,7 +149,7 @@ func (r *SiteAuthorRepository) Page(ctx context.Context, opt *database.PageOptio
 }
 
 // ListByWorkId 查询作品的站点作者
-func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
+func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
@@ -159,7 +159,7 @@ func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) (
 		WHERE t2.work_id = ?
 	`
 
-	var results []*dto.RankedSiteAuthor
+	var results []*sdkdto.RankedSiteAuthor
 	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
@@ -182,9 +182,9 @@ func (r *SiteAuthorRepository) ListBySiteAuthorIds(ctx context.Context, siteAuth
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
-func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
+func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*dto.RankedSiteAuthorWithWorkId, 0), nil
+		return make([]*sdkdto.RankedSiteAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -203,7 +203,7 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*dto.RankedSiteAuthorWithWorkId
+	var results []*sdkdto.RankedSiteAuthorWithWorkId
 	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err

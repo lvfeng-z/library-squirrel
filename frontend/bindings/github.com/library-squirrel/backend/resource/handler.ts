@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../base/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -57,7 +60,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * Save 保存资源
  */
-export function Save(resource: $models.ResourceDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function Save(resource: dto$0.ResourceDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(3923956150, resource).then(($result: any) => {
         return $$createType10($result);
     });
@@ -66,7 +69,7 @@ export function Save(resource: $models.ResourceDTO | null): $CancellablePromise<
 /**
  * Update 更新资源
  */
-export function Update(resource: $models.ResourceDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
+export function Update(resource: dto$0.ResourceDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2969603770, resource).then(($result: any) => {
         return $$createType1($result);
     });

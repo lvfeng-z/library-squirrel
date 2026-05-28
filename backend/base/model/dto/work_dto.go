@@ -3,31 +3,15 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// WorkDTO 作品数据传输对象（无 sql.Null* 版本）
-type WorkDTO struct {
-	ID                  int64   `json:"id"`
-	SiteID              *int64  `json:"siteId"`
-	SiteWorkID          *string `json:"siteWorkId"`
-	SiteWorkName        *string `json:"siteWorkName"`
-	SiteAuthorID        *string `json:"siteAuthorId"`
-	SiteWorkDescription *string `json:"siteWorkDescription"`
-	SiteUploadTime      *int64  `json:"siteUploadTime"`
-	SiteUpdateTime      *int64  `json:"siteUpdateTime"`
-	NickName            *string `json:"nickName"`
-	LocalAuthorID       *int64  `json:"localAuthorId"`
-	LastView            *int64  `json:"lastView"`
-	CreateTime          int64   `json:"createTime"`
-	UpdateTime          int64   `json:"updateTime"`
-}
-
 // NewWorkDTO 从 entity.Work 创建 WorkDTO
-func NewWorkDTO(work *entity2.Work) *WorkDTO {
+func NewWorkDTO(work *entity2.Work) *sdkdto.WorkDTO {
 	if work == nil {
 		return nil
 	}
-	return &WorkDTO{
+	return &sdkdto.WorkDTO{
 		ID:                  work.GetID(),
 		SiteID:              util.NullInt64ToPointer(work.SiteID),
 		SiteWorkID:          util.NullStringToPointer(work.SiteWorkID),
@@ -47,36 +31,36 @@ func NewWorkDTO(work *entity2.Work) *WorkDTO {
 // WorkFullDTO 作品完整信息DTO
 type WorkFullDTO struct {
 	// 基础作品信息（组合 WorkDTO，避免嵌入实体）
-	Work *WorkDTO `json:"work,omitempty"`
+	Work *sdkdto.WorkDTO `json:"work,omitempty"`
 
 	// 关联的本地作者列表
-	LocalAuthors []*LocalAuthorDTO `json:"localAuthors,omitempty"`
+	LocalAuthors []*sdkdto.LocalAuthorDTO `json:"localAuthors,omitempty"`
 
 	// 关联的站点作者列表
-	SiteAuthors []*SiteAuthorFullDTO `json:"siteAuthors,omitempty"`
+	SiteAuthors []*sdkdto.SiteAuthorFullDTO `json:"siteAuthors,omitempty"`
 
 	// 关联的站点信息
-	Site *SiteDTO `json:"site,omitempty"`
+	Site *sdkdto.SiteDTO `json:"site,omitempty"`
 
 	// 关联的本地标签列表
-	LocalTags []*LocalTagDTO `json:"localTags,omitempty"`
+	LocalTags []*sdkdto.LocalTagDTO `json:"localTags,omitempty"`
 
 	// 关联的站点标签列表
-	SiteTags []*SiteTagFullDTO `json:"siteTags,omitempty"`
+	SiteTags []*sdkdto.SiteTagFullDTO `json:"siteTags,omitempty"`
 
 	// 关联的资源列表
-	Resources []*ResourceDTO `json:"resources,omitempty"`
+	Resources []*sdkdto.ResourceDTO `json:"resources,omitempty"`
 }
 
 // NewWorkFullDTO 创建WorkFullDTO
-func NewWorkFullDTO(work *entity2.Work) *WorkFullDTO {
-	return &WorkFullDTO{
+func NewWorkFullDTO(work *entity2.Work) *sdkdto.WorkFullDTO {
+	return &sdkdto.WorkFullDTO{
 		Work: NewWorkDTO(work),
 	}
 }
 
 // ToWorkEntity 将 WorkDTO 转换为 Work 实体
-func ToWorkEntity(dto *WorkDTO) *entity2.Work {
+func ToWorkEntity(dto *sdkdto.WorkDTO) *entity2.Work {
 	if dto == nil {
 		return nil
 	}

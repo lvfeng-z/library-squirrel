@@ -1,6 +1,8 @@
 package dto
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // InstallType 安装类型
 type InstallType int
@@ -29,28 +31,28 @@ type PluginActivation struct {
 
 // PluginManifest 插件清单（从 plugin.json 解析）
 type PluginManifest struct {
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Version     string             `json:"version"`
-	Author      string             `json:"author"`
-	Description string             `json:"description,omitempty"`
-	Extensions  *PluginExtensions  `json:"extensions"`
-	Activation  PluginActivation   `json:"activation"`
-	EntryFile   string             `json:"entryFile"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Author      string            `json:"author"`
+	Description string            `json:"description,omitempty"`
+	Extensions  *PluginExtensions `json:"extensions"`
+	Activation  PluginActivation  `json:"activation"`
+	EntryFile   string            `json:"entryFile"`
 }
 
 // PluginInstallDTO 插件安装数据传输对象
 type PluginInstallDTO struct {
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Version     string             `json:"version"`
-	Author      string             `json:"author"`
-	Description string             `json:"description,omitempty"`
-	Extensions  *PluginExtensions  `json:"extensions"`
-	Activation  PluginActivation   `json:"activation"`
-	EntryFile   string             `json:"entryFile"`
-	PackagePath string             `json:"packagePath,omitempty"`
-	PublicID    string             `json:"publicId,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Author      string            `json:"author"`
+	Description string            `json:"description,omitempty"`
+	Extensions  *PluginExtensions `json:"extensions"`
+	Activation  PluginActivation  `json:"activation"`
+	EntryFile   string            `json:"entryFile"`
+	PackagePath string            `json:"packagePath,omitempty"`
+	PublicID    string            `json:"publicId,omitempty"`
 }
 
 // GetPublicID 获取插件公开ID（格式：作者/名称）
@@ -140,8 +142,8 @@ type ViewSlotContent struct {
 
 // MenuSlotContent menu 类型插槽配置
 type MenuSlotContent struct {
-	Icon     string           `json:"icon,omitempty"`
-	ViewId   string           `json:"viewId,omitempty"`
+	Icon     string            `json:"icon,omitempty"`
+	ViewId   string            `json:"viewId,omitempty"`
 	Children []SlotDeclaration `json:"children,omitempty"`
 }
 

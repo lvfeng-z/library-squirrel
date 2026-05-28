@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../base/model/dto/models.js";
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
 
 /**
  * QuerySearchConditionPage 查询搜索条件分页

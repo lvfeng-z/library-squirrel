@@ -1,7 +1,7 @@
 // DataTable的表头
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { IPopperInputConfig, PopperInputConfig } from '@renderer/model/util/PopperInputConfig.ts'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem } from "@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 
 export class Thead<Data> extends PopperInputConfig implements IThead<Data> {
   key: string // 值的键名

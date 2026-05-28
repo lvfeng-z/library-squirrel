@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // TaskExecutorInterface 任务执行器接口
@@ -16,7 +16,7 @@ type TaskExecutorInterface interface {
 	// ctx: 上下文
 	// task: 任务信息
 	// 返回作品响应或错误
-	CreateWorkInfo(ctx context.Context, task *domain.Task) (*dto.WorkResponse, error)
+	CreateWorkInfo(ctx context.Context, task *domain.Task) (*sdkdto.WorkResponse, error)
 
 	// Start 开始任务
 	// ctx: 上下文，用于取消和超时控制
@@ -24,22 +24,22 @@ type TaskExecutorInterface interface {
 	// workId: 工作ID
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *dto.WorkResponse, error)
+	Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务
 	// ctx: 上下文
 	// param: 任务参数，包含任务和资源信息
 	// 返回错误（插件可能不支持暂停）
-	Pause(ctx context.Context, param *dto.TaskResParam) error
+	Pause(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Stop 停止任务
 	// ctx: 上下文
 	// param: 任务参数
-	Stop(ctx context.Context, param *dto.TaskResParam) error
+	Stop(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Resume 恢复任务
 	// ctx: 上下文
 	// param: 任务参数
 	// 返回作品响应或错误
-	Resume(ctx context.Context, param *dto.TaskResParam) (*dto.WorkResponse, error)
+	Resume(ctx context.Context, param *sdkdto.TaskResParam) (*sdkdto.WorkResponse, error)
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"go.uber.org/zap"
 )
 
@@ -17,13 +17,13 @@ const (
 // TaskHandlerRegistry 任务处理器注册中心
 type TaskHandlerRegistry struct {
 	mu         sync.RWMutex
-	extensions map[string]*model.Extension[pluginsdk.TaskHandler] // key: pluginPublicId/extensionId
+	extensions map[string]*model.Extension[pluginsdkdto.TaskHandler] // key: pluginPublicId/extensionId
 }
 
 // NewTaskHandlerRegistry 创建任务处理器注册中心
 func NewTaskHandlerRegistry() *TaskHandlerRegistry {
 	return &TaskHandlerRegistry{
-		extensions: make(map[string]*model.Extension[pluginsdk.TaskHandler]),
+		extensions: make(map[string]*model.Extension[pluginsdkdto.TaskHandler]),
 	}
 }
 
@@ -33,7 +33,7 @@ func makeKey(pluginPublicId, extensionId string) string {
 }
 
 // Register 注册扩展点
-func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdk.TaskHandler]) error {
+func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdkdto.TaskHandler]) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -81,7 +81,7 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 }
 
 // Get 获取扩展点
-func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdk.TaskHandler], error) {
+func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdkdto.TaskHandler], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -94,11 +94,11 @@ func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*m
 }
 
 // GetByPlugin 获取插件的所有扩展点
-func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdk.TaskHandler], error) {
+func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdkdto.TaskHandler], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []*model.Extension[pluginsdk.TaskHandler]
+	var result []*model.Extension[pluginsdkdto.TaskHandler]
 	for _, ext := range r.extensions {
 		if ext.Metadata.PluginPublicID == pluginPublicId {
 			result = append(result, ext)
@@ -108,11 +108,11 @@ func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 }
 
 // List 列出所有扩展点
-func (r *TaskHandlerRegistry) List() []*model.Extension[pluginsdk.TaskHandler] {
+func (r *TaskHandlerRegistry) List() []*model.Extension[pluginsdkdto.TaskHandler] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*model.Extension[pluginsdk.TaskHandler], 0, len(r.extensions))
+	result := make([]*model.Extension[pluginsdkdto.TaskHandler], 0, len(r.extensions))
 	for _, ext := range r.extensions {
 		result = append(result, ext)
 	}

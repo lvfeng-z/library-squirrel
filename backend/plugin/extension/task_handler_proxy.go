@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-plugin-sdk/gen"
 )
 
@@ -21,7 +21,7 @@ type TaskHandlerProxy struct {
 	contributionId string
 }
 
-var _ pluginsdk.TaskHandler = (*TaskHandlerProxy)(nil)
+var _ pluginsdkdto.TaskHandler = (*TaskHandlerProxy)(nil)
 
 func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error) {
 	services, ok := p.loader.GetServices(p.pluginPublicId)
@@ -31,7 +31,7 @@ func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error)
 	return services.Task, nil
 }
 
-func (p *TaskHandlerProxy) Create(url string) (*pluginsdk.TaskCreateResult, error) {
+func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdk.TaskCreateResult, erro
 
 	if modeChunk.IsStream {
 		// 流式模式
-		ch := make(chan *pluginsdk.TaskCreateResponse, 16)
+		ch := make(chan *pluginsdkdto.TaskCreateResponse, 16)
 		go func() {
 			defer close(ch)
 			for {
@@ -71,11 +71,11 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdk.TaskCreateResult, erro
 				}
 			}
 		}()
-		return pluginsdk.StreamResult(ch), nil
+		return pluginsdkdto.StreamResult(ch), nil
 	}
 
 	// 批量模式：收集所有 task
-	var responses []*pluginsdk.TaskCreateResponse
+	var responses []*pluginsdkdto.TaskCreateResponse
 	for {
 		taskProto := chunk.GetTask()
 		if taskProto != nil {
@@ -86,10 +86,10 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdk.TaskCreateResult, erro
 			break
 		}
 	}
-	return pluginsdk.BatchResult(responses), nil
+	return pluginsdkdto.BatchResult(responses), nil
 }
 
-func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdk.Task) (*pluginsdk.WorkResponse, error) {
+func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdk.Task) (*pluginsdk.Work
 	return protoToWorkResponse(resp), nil
 }
 
-func (p *TaskHandlerProxy) Start(task *pluginsdk.Task) (io.ReadCloser, *pluginsdk.WorkResponse, error) {
+func (p *TaskHandlerProxy) Start(task *pluginsdkdto.TaskDTO) (io.ReadCloser, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, nil, err
@@ -133,7 +133,7 @@ func (p *TaskHandlerProxy) Start(task *pluginsdk.Task) (io.ReadCloser, *pluginsd
 	return reader, workResp, nil
 }
 
-func (p *TaskHandlerProxy) Retry(task *pluginsdk.Task) (*pluginsdk.WorkResponse, error) {
+func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdk.Task) (*pluginsdk.WorkResponse,
 	return protoToWorkResponse(resp), nil
 }
 
-func (p *TaskHandlerProxy) Pause(param *pluginsdk.TaskResParam) error {
+func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (p *TaskHandlerProxy) Pause(param *pluginsdk.TaskResParam) error {
 	return err
 }
 
-func (p *TaskHandlerProxy) Stop(param *pluginsdk.TaskResParam) error {
+func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return err
@@ -172,7 +172,7 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdk.TaskResParam) error {
 	return err
 }
 
-func (p *TaskHandlerProxy) Resume(param *pluginsdk.TaskResParam) (*pluginsdk.WorkResponse, error) {
+func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (*pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
@@ -206,7 +206,7 @@ type SiteBrowserProxy struct {
 	contributionId string
 }
 
-var _ pluginsdk.SiteBrowser = (*SiteBrowserProxy)(nil)
+var _ pluginsdkdto.SiteBrowser = (*SiteBrowserProxy)(nil)
 
 func (p *SiteBrowserProxy) Open() error {
 	services, ok := p.loader.GetServices(p.pluginPublicId)
@@ -232,7 +232,7 @@ func (p *SiteBrowserProxy) Close() error {
 
 // ========== Proto 转换函数（proxy 专用）==========
 
-func taskToProto(t *pluginsdk.Task) *gen.Task {
+func taskToProto(t *pluginsdkdto.TaskDTO) *gen.Task {
 	if t == nil {
 		return nil
 	}
@@ -256,7 +256,7 @@ func taskToProto(t *pluginsdk.Task) *gen.Task {
 	}
 }
 
-func taskResParamToProto(p *pluginsdk.TaskResParam) *gen.TaskResParam {
+func taskResParamToProto(p *pluginsdkdto.TaskResParam) *gen.TaskResParam {
 	if p == nil {
 		return nil
 	}
@@ -267,10 +267,10 @@ func taskResParamToProto(p *pluginsdk.TaskResParam) *gen.TaskResParam {
 	}
 }
 
-func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdk.TaskCreateResponse {
-	children := make([]*pluginsdk.TaskCreateChildResponse, len(r.Children))
+func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCreateResponse {
+	children := make([]*pluginsdkdto.TaskCreateChildResponse, len(r.Children))
 	for j, c := range r.Children {
-		children[j] = &pluginsdk.TaskCreateChildResponse{
+		children[j] = &pluginsdkdto.TaskCreateChildResponse{
 			TaskName:   c.TaskName,
 			SiteWorkID: c.SiteWorkId,
 			URL:        c.Url,
@@ -278,7 +278,7 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdk.TaskCreateR
 			SiteName:   c.SiteName,
 		}
 	}
-	return &pluginsdk.TaskCreateResponse{
+	return &pluginsdkdto.TaskCreateResponse{
 		PluginTaskID: r.PluginTaskId,
 		TaskName:     r.TaskName,
 		SiteWorkID:   r.SiteWorkId,
@@ -289,13 +289,13 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdk.TaskCreateR
 	}
 }
 
-func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
+func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	if pb == nil {
 		return nil
 	}
-	resp := &pluginsdk.WorkResponse{}
+	resp := &pluginsdkdto.WorkResponse{}
 	if pb.Work != nil {
-		resp.Work = &pluginsdk.Work{
+		resp.Work = &pluginsdkdto.WorkDTO{
 			ID:                   pb.Work.Id,
 			CreateTime:           pb.Work.CreateTime,
 			UpdateTime:           pb.Work.UpdateTime,
@@ -312,7 +312,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 		}
 	}
 	if pb.Site != nil {
-		resp.Site = &pluginsdk.SiteDTO{
+		resp.Site = &pluginsdkdto.SiteDTO{
 			ID:              pb.Site.Id,
 			SiteName:        pb.Site.SiteName,
 			SiteDescription: pb.Site.SiteDescription,
@@ -322,7 +322,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 		}
 	}
 	for _, a := range pb.LocalAuthors {
-		resp.LocalAuthors = append(resp.LocalAuthors, &pluginsdk.LocalAuthorDTO{
+		resp.LocalAuthors = append(resp.LocalAuthors, &pluginsdkdto.LocalAuthorDTO{
 			ID:         a.Id,
 			AuthorName: a.AuthorName,
 			Introduce:  a.Introduce,
@@ -332,7 +332,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 		})
 	}
 	for _, t := range pb.LocalTags {
-		resp.LocalTags = append(resp.LocalTags, &pluginsdk.LocalTagDTO{
+		resp.LocalTags = append(resp.LocalTags, &pluginsdkdto.LocalTagDTO{
 			ID:             t.Id,
 			LocalTagName:   t.LocalTagName,
 			BaseLocalTagID: t.BaseLocalTagId,
@@ -343,7 +343,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 		})
 	}
 	for _, a := range pb.SiteAuthors {
-		resp.SiteAuthors = append(resp.SiteAuthors, &pluginsdk.TaskSiteAuthorDTO{
+		resp.SiteAuthors = append(resp.SiteAuthors, &pluginsdkdto.TaskSiteAuthorDTO{
 			SiteAuthorID:    a.SiteAuthorId,
 			AuthorName:      a.AuthorName,
 			Homepage:        a.Homepage,
@@ -352,20 +352,20 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdk.WorkResponse {
 		})
 	}
 	for _, t := range pb.SiteTags {
-		resp.SiteTags = append(resp.SiteTags, &pluginsdk.TaskSiteTagDTO{
+		resp.SiteTags = append(resp.SiteTags, &pluginsdkdto.TaskSiteTagDTO{
 			SiteTagID:   t.SiteTagId,
 			TagName:     t.TagName,
 			Description: t.Description,
 		})
 	}
 	for _, ws := range pb.WorkSets {
-		resp.WorkSets = append(resp.WorkSets, &pluginsdk.TaskWorkSetDTO{
+		resp.WorkSets = append(resp.WorkSets, &pluginsdkdto.TaskWorkSetDTO{
 			SiteWorkSetID: ws.SiteWorkSetId,
 			WorkSetName:   ws.WorkSetName,
 		})
 	}
 	if pb.Resource != nil {
-		resp.Resource = &pluginsdk.TaskResourceDTO{
+		resp.Resource = &pluginsdkdto.TaskResourceDTO{
 			ResourceID:   pb.Resource.ResourceId,
 			URL:          pb.Resource.Url,
 			Type:         pb.Resource.Type,

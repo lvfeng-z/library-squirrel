@@ -7,7 +7,7 @@ import {
   Handler as SiteHandler,
   SiteQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/site'
-import { SelectItem, SiteDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { SelectItem, SiteDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'

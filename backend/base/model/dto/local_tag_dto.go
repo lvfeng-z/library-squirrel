@@ -3,25 +3,15 @@ package dto
 import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// LocalTagDTO 本地标签数据传输对象（无 sql.Null* 版本）
-type LocalTagDTO struct {
-	ID             int64   `json:"id"`
-	LocalTagName   *string `json:"localTagName"`
-	BaseLocalTagID *int64  `json:"baseLocalTagId"`
-	Description    *string `json:"description"`
-	LastUse        *int64  `json:"lastUse"`
-	CreateTime     int64   `json:"createTime"`
-	UpdateTime     int64   `json:"updateTime"`
-}
-
 // NewLocalTagDTO 从 entity.LocalTag 创建 LocalTagDTO
-func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
+func NewLocalTagDTO(tag *entity.LocalTag) *sdkdto.LocalTagDTO {
 	if tag == nil {
 		return nil
 	}
-	return &LocalTagDTO{
+	return &sdkdto.LocalTagDTO{
 		ID:             tag.GetID(),
 		LocalTagName:   util.NullStringToPointer(tag.LocalTagName),
 		BaseLocalTagID: util.NullInt64ToPointer(tag.BaseLocalTagID),
@@ -33,7 +23,7 @@ func NewLocalTagDTO(tag *entity.LocalTag) *LocalTagDTO {
 }
 
 // ToLocalTagEntity 将 LocalTagDTO 转换为 LocalTag 实体
-func ToLocalTagEntity(dto *LocalTagDTO) *entity.LocalTag {
+func ToLocalTagEntity(dto *sdkdto.LocalTagDTO) *entity.LocalTag {
 	if dto == nil {
 		return nil
 	}
@@ -85,18 +75,12 @@ func ToLocalTagEntity(dto *LocalTagDTO) *entity.LocalTag {
 	return entity
 }
 
-// LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象（组合模式）
-type LocalTagWithBaseTagDTO struct {
-	LocalTag *LocalTagDTO `json:"localTag,omitempty"`
-	BaseTag  *LocalTagDTO `json:"baseTag,omitempty"`
-}
-
 // NewLocalTagWithBaseTagDTO 从 entity.LocalTag 创建 LocalTagWithBaseTagDTO
-func NewLocalTagWithBaseTagDTO(tag *entity.LocalTag, baseTag *entity.LocalTag) *LocalTagWithBaseTagDTO {
+func NewLocalTagWithBaseTagDTO(tag *entity.LocalTag, baseTag *entity.LocalTag) *sdkdto.LocalTagWithBaseTagDTO {
 	if tag == nil {
 		return nil
 	}
-	return &LocalTagWithBaseTagDTO{
+	return &sdkdto.LocalTagWithBaseTagDTO{
 		LocalTag: NewLocalTagDTO(tag),
 		BaseTag:  NewLocalTagDTO(baseTag),
 	}

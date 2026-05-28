@@ -3,30 +3,15 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// SiteAuthorDTO 站点作者数据传输对象（无 sql.Null* 版本）
-type SiteAuthorDTO struct {
-	ID                   int64   `json:"id"`
-	SiteID               *int64  `json:"siteId"`
-	SiteAuthorID         *string `json:"siteAuthorId"`
-	AuthorName           *string `json:"authorName"`
-	FixedAuthorName      *string `json:"fixedAuthorName"`
-	SiteAuthorNameBefore *string `json:"siteAuthorNameBefore"`
-	Introduce            *string `json:"introduce"`
-	Homepage             *string `json:"homepage"`
-	LocalAuthorID        *int64  `json:"localAuthorId"`
-	LastUse              *int64  `json:"lastUse"`
-	CreateTime           int64   `json:"createTime"`
-	UpdateTime           int64   `json:"updateTime"`
-}
-
 // NewSiteAuthorDTO 从 entity.SiteAuthor 创建 SiteAuthorDTO
-func NewSiteAuthorDTO(author *entity2.SiteAuthor) *SiteAuthorDTO {
+func NewSiteAuthorDTO(author *entity2.SiteAuthor) *sdkdto.SiteAuthorDTO {
 	if author == nil {
 		return nil
 	}
-	return &SiteAuthorDTO{
+	return &sdkdto.SiteAuthorDTO{
 		ID:                   author.GetID(),
 		SiteID:               util.NullInt64ToPointer(author.SiteID),
 		SiteAuthorID:         util.NullStringToPointer(author.SiteAuthorID),
@@ -52,46 +37,46 @@ type RankedSiteAuthorWithWorkIdDTO struct {
 
 // SiteAuthorFullDTO 站点作者完整DTO（包含绑定的本地作者和来源站点信息）
 type SiteAuthorFullDTO struct {
-	SiteAuthor *SiteAuthorDTO `json:"siteAuthor,omitempty"`
+	SiteAuthor *sdkdto.SiteAuthorDTO `json:"siteAuthor,omitempty"`
 	// 关联的本地作者
-	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
+	LocalAuthor *sdkdto.LocalAuthorDTO `json:"localAuthor,omitempty"`
 	// 来源站点
-	Site *SiteDTO `json:"site,omitempty"`
+	Site *sdkdto.SiteDTO `json:"site,omitempty"`
 }
 
 // NewSiteAuthorFullDTO 创建站点作者完整DTO
-func NewSiteAuthorFullDTO(siteAuthor *entity2.SiteAuthor) *SiteAuthorFullDTO {
+func NewSiteAuthorFullDTO(siteAuthor *entity2.SiteAuthor) *sdkdto.SiteAuthorFullDTO {
 	if siteAuthor == nil {
 		return nil
 	}
-	return &SiteAuthorFullDTO{
+	return &sdkdto.SiteAuthorFullDTO{
 		SiteAuthor: NewSiteAuthorDTO(siteAuthor),
 	}
 }
 
 // SiteAuthorLocalRelateDTO 站点作者与本地作者关联DTO
 type SiteAuthorLocalRelateDTO struct {
-	SiteAuthor *SiteAuthorDTO `json:"siteAuthor,omitempty"`
+	SiteAuthor *sdkdto.SiteAuthorDTO `json:"siteAuthor,omitempty"`
 	// 关联的本地作者
-	LocalAuthor *LocalAuthorDTO `json:"localAuthor,omitempty"`
+	LocalAuthor *sdkdto.LocalAuthorDTO `json:"localAuthor,omitempty"`
 	// 来源站点
-	Site *SiteDTO `json:"site,omitempty"`
+	Site *sdkdto.SiteDTO `json:"site,omitempty"`
 	// 是否有同名本地作者
 	HasSameNameLocalAuthor bool `json:"hasSameNameLocalAuthor"`
 }
 
 // NewSiteAuthorLocalRelateDTO 创建站点作者与本地作者关联DTO
-func NewSiteAuthorLocalRelateDTO(siteAuthor *entity2.SiteAuthor) *SiteAuthorLocalRelateDTO {
+func NewSiteAuthorLocalRelateDTO(siteAuthor *entity2.SiteAuthor) *sdkdto.SiteAuthorLocalRelateDTO {
 	if siteAuthor == nil {
 		return nil
 	}
-	return &SiteAuthorLocalRelateDTO{
+	return &sdkdto.SiteAuthorLocalRelateDTO{
 		SiteAuthor: NewSiteAuthorDTO(siteAuthor),
 	}
 }
 
 // ToSiteAuthorEntity 将 SiteAuthorDTO 转换为 SiteAuthor 实体
-func ToSiteAuthorEntity(dto *SiteAuthorDTO) *entity2.SiteAuthor {
+func ToSiteAuthorEntity(dto *sdkdto.SiteAuthorDTO) *entity2.SiteAuthor {
 	if dto == nil {
 		return nil
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Handler 作品-作者关联 Handler
@@ -22,8 +22,8 @@ func NewHandler(svc *Service) *Handler {
 // ListByWorkId 获取单个作品的作者关联信息
 // @Summary 获取单个作品的作者关联信息
 // @Param workId path int true "作品ID"
-// @Success 200 {object} model.ApiResponse[*WorkAuthorDTO]
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[*WorkAuthorDTO] {
+// @Success 200 {object} model.ApiResponse[*sdkdto.WorkAuthorDTO]
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[*sdkdto.WorkAuthorDTO] {
 	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 
@@ -31,7 +31,7 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 // @Summary 批量获取多个作品的作者关联信息
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*WorkAuthorsResultDTO]
-func (h *Handler) ListByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*WorkAuthorsResultDTO] {
+func (h *Handler) ListByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*sdkdto.WorkAuthorsResultDTO] {
 	return model.HandleResult(h.svc.ListByWorkIds(ctx, workIds))
 }
 
@@ -39,7 +39,7 @@ func (h *Handler) ListByWorkIds(ctx context.Context, workIds []int64) *model.Api
 // @Summary 查询作品关联的本地作者
 // @Param workId path int true "作品ID"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedLocalAuthor]
-func (h *Handler) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
+func (h *Handler) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.RankedLocalAuthor] {
 	return model.HandleResult(h.svc.ListLocalAuthorsByWorkId(ctx, workId))
 }
 
@@ -47,7 +47,7 @@ func (h *Handler) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) *m
 // @Summary 查询作品关联的站点作者
 // @Param workId path int true "作品ID"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedSiteAuthor]
-func (h *Handler) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedSiteAuthor] {
+func (h *Handler) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.RankedSiteAuthor] {
 	return model.HandleResult(h.svc.ListSiteAuthorsByWorkId(ctx, workId))
 }
 
@@ -55,7 +55,7 @@ func (h *Handler) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) *mo
 // @Summary 查询多个作品的本地作者列表（带作品ID）
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedLocalAuthorWithWorkId]
-func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedLocalAuthorWithWorkId] {
+func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*sdkdto.RankedLocalAuthorWithWorkId] {
 	return model.HandleResult(h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds))
 }
 
@@ -63,6 +63,6 @@ func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 // @Summary 查询多个作品的站点作者列表（带作品ID）
 // @Param workIds body []int64 true "作品ID列表"
 // @Success 200 {object} model.ApiResponse[[]*model.RankedSiteAuthorWithWorkId]
-func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedSiteAuthorWithWorkId] {
+func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*sdkdto.RankedSiteAuthorWithWorkId] {
 	return model.HandleResult(h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds))
 }

@@ -2,10 +2,11 @@ package resource
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Handler 资源 Handler
@@ -21,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存资源
-func (h *Handler) Save(ctx context.Context, resource *ResourceDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, resource *sdkdto.ResourceDTO) *model.ApiResponse[int64] {
 	domainResource := &domain.Resource{
 		BaseEntity: &model.BaseEntity{},
 		WorkID:     resource.WorkID,
@@ -47,7 +48,7 @@ func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] 
 }
 
 // Update 更新资源
-func (h *Handler) Update(ctx context.Context, resource *ResourceDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, resource *sdkdto.ResourceDTO) *model.ApiResponse[any] {
 	domainResource := &domain.Resource{
 		BaseEntity: &model.BaseEntity{},
 	}
@@ -71,24 +72,23 @@ func (h *Handler) Update(ctx context.Context, resource *ResourceDTO) *model.ApiR
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*ResourceResultDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.ResourceDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.HandleError[*ResourceResultDTO](err)
+		return model.HandleError[*sdkdto.ResourceDTO](err)
 	}
-	return model.Success(ToResourceResultDTO(result))
+	return model.Success(dto2.NewResourceDTO(result))
 }
 
 // ListByWorkId 根据作品ID获取资源列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*ResourceResultDTO] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.ResourceDTO] {
 	result, err := h.svc.ListByWorkId(ctx, workId)
 	if err != nil {
-		return model.HandleError[[]*ResourceResultDTO](err)
+		return model.HandleError[[]*sdkdto.ResourceDTO](err)
 	}
-	// 转换为 ResultDTO
-	resultDTOs := make([]*ResourceResultDTO, len(result))
+	resultDTOs := make([]*sdkdto.ResourceDTO, len(result))
 	for i, resource := range result {
-		resultDTOs[i] = ToResourceResultDTO(resource)
+		resultDTOs[i] = dto2.NewResourceDTO(resource)
 	}
 	return model.Success(resultDTOs)
 }
@@ -98,67 +98,10 @@ func (h *Handler) DeleteByWorkId(ctx context.Context, workId int64) *model.ApiRe
 	return model.HandleVoid(h.svc.DeleteByWorkId(ctx, workId))
 }
 
-// ========== DTO 定义 ==========
-
-// ResourceDTO 资源数据传输对象
+// ResourceDTO 资源数据传输对象（简化版，仅用于 Save/Update）
 type ResourceDTO struct {
 	ID       int64   `json:"id"`
 	WorkID   int64   `json:"workId"`
 	FilePath *string `json:"filePath"`
 	FileName *string `json:"fileName"`
-}
-
-// ResourceResultDTO 资源返回结果DTO（用于屏蔽sql.Null*类型）
-type ResourceResultDTO struct {
-	ID                int64   `json:"id"`
-	WorkID            int64   `json:"workId"`
-	TaskID            int64   `json:"taskId"`
-	State             int     `json:"state"`
-	FilePath          *string `json:"filePath"`
-	FileName          *string `json:"fileName"`
-	FilenameExtension *string `json:"filenameExtension"`
-	SuggestName       *string `json:"suggestName"`
-	ResourceSize      *int64  `json:"resourceSize"`
-	Workdir           *string `json:"workdir"`
-	ResourceComplete  int     `json:"resourceComplete"`
-	CreateTime        int64   `json:"createTime"`
-	UpdateTime        int64   `json:"updateTime"`
-}
-
-// ToResourceResultDTO 将 domain.Resource 转换为 ResourceResultDTO
-func ToResourceResultDTO(resource *domain.Resource) *ResourceResultDTO {
-	if resource == nil {
-		return nil
-	}
-	return &ResourceResultDTO{
-		ID:                resource.GetID(),
-		WorkID:            resource.WorkID,
-		TaskID:            resource.TaskID,
-		State:             resource.State,
-		FilePath:          nullStringToPointer(resource.FilePath),
-		FileName:          nullStringToPointer(resource.FileName),
-		FilenameExtension: nullStringToPointer(resource.FilenameExtension),
-		SuggestName:       nullStringToPointer(resource.SuggestName),
-		ResourceSize:      nullInt64ToPointer(resource.ResourceSize),
-		Workdir:           nullStringToPointer(resource.Workdir),
-		ResourceComplete:  resource.ResourceComplete,
-		CreateTime:        resource.GetCreateTime(),
-		UpdateTime:        resource.GetUpdateTime(),
-	}
-}
-
-// nullStringToPointer 将 sql.NullString 转换为 *string
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-// nullInt64ToPointer 将 sql.NullInt64 转换为 *int64
-func nullInt64ToPointer(ns sql.NullInt64) *int64 {
-	if ns.Valid {
-		return &ns.Int64
-	}
-	return nil
 }

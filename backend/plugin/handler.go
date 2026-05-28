@@ -6,6 +6,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
 // Handler 插件 Handler
@@ -21,7 +22,7 @@ func NewHandler(svc *Service) *Handler {
 // ========== 增删改操作 ==========
 
 // Save 保存插件
-func (h *Handler) Save(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[int64] {
+func (h *Handler) Save(ctx context.Context, plugin *sdkdto.PluginDTO) *model.ApiResponse[int64] {
 	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Save(ctx, domainPlugin); err != nil {
@@ -31,7 +32,7 @@ func (h *Handler) Save(ctx context.Context, plugin *domain.PluginDTO) *model.Api
 }
 
 // Update 更新插件
-func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[any] {
+func (h *Handler) Update(ctx context.Context, plugin *sdkdto.PluginDTO) *model.ApiResponse[any] {
 	domainPlugin := domain.ToPluginEntity(plugin)
 
 	if err := h.svc.Update(ctx, domainPlugin); err != nil {
@@ -41,28 +42,28 @@ func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.A
 }
 
 // InstallFromPath 从插件包路径安装插件
-func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
+func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*sdkdto.PluginDTO] {
 	result, err := h.svc.InstallFromPath(ctx, packagePath, domain.InstallType(installType))
 	if err != nil {
-		return model.HandleError[*domain.PluginDTO](err)
+		return model.HandleError[*sdkdto.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Reinstall 重新安装插件
-func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*domain.PluginDTO] {
+func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*sdkdto.PluginDTO] {
 	result, err := h.svc.Reinstall(ctx, pluginPublicId, domain.InstallType(installType))
 	if err != nil {
-		return model.HandleError[*domain.PluginDTO](err)
+		return model.HandleError[*sdkdto.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
 // ReinstallFromPath 从指定路径重新安装插件
-func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
+func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType int) *model.ApiResponse[*sdkdto.PluginDTO] {
 	result, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, domain.InstallType(installType))
 	if err != nil {
-		return model.HandleError[*domain.PluginDTO](err)
+		return model.HandleError[*sdkdto.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
@@ -80,27 +81,27 @@ func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.Api
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*domain.PluginDTO] {
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.PluginDTO] {
 	result, err := h.svc.GetById(ctx, id)
 	if err != nil {
-		return model.HandleError[*domain.PluginDTO](err)
+		return model.HandleError[*sdkdto.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
 // GetByPublicId 根据公开ID获取插件
-func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.ApiResponse[*domain.PluginDTO] {
+func (h *Handler) GetByPublicId(ctx context.Context, publicId string) *model.ApiResponse[*sdkdto.PluginDTO] {
 	result, err := h.svc.GetByPublicId(ctx, publicId)
 	if err != nil {
-		return model.HandleError[*domain.PluginDTO](err)
+		return model.HandleError[*sdkdto.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
 // Page 分页查询
-func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO], query PluginQueryDTO) *model.ApiResponse[*model.Page[domain.PluginDTO]] {
+func (h *Handler) Page(ctx context.Context, page *model.Page[sdkdto.PluginDTO], query PluginQueryDTO) *model.ApiResponse[*model.Page[sdkdto.PluginDTO]] {
 	if page == nil {
-		page = &model.Page[domain.PluginDTO]{}
+		page = &model.Page[sdkdto.PluginDTO]{}
 	}
 	entityPage := &model.Page[entity.Plugin]{
 		PageNumber: page.PageNumber,
@@ -108,14 +109,14 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[domain.PluginDTO], 
 	}
 	result, err := h.svc.Page(ctx, entityPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[domain.PluginDTO]](err)
+		return model.HandleError[*model.Page[sdkdto.PluginDTO]](err)
 	}
 	// 转换为 DTO
-	data := make([]*domain.PluginDTO, 0, len(result.Data))
+	data := make([]*sdkdto.PluginDTO, 0, len(result.Data))
 	for _, plugin := range result.Data {
 		data = append(data, domain.NewPluginDTO(plugin))
 	}
-	return model.Success(&model.Page[domain.PluginDTO]{
+	return model.Success(&model.Page[sdkdto.PluginDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

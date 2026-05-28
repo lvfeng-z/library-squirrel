@@ -6,13 +6,12 @@ import (
 	"fmt"
 
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
-
 	"gorm.io/gorm/clause"
 )
 
@@ -33,15 +32,15 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.LocalAuthor], error)
 	// ListReWorkAuthor 批量获取作品与作者的关联
-	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error)
+	ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error)
 	// ListByWorkId 查询作品的本地作者
-	ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error)
+	ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error)
 	// ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error)
+	ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error)
 	// ListSelectItems 查询选择项列表
-	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
+	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*sdkdto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.SelectItem], error)
 }
 
 // Service 本地作者服务
@@ -151,7 +150,7 @@ func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalAuthor]
 }
 
 // ListSelectItems 查询选择项列表
-func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*dto.SelectItem, error) {
+func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*sdkdto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
 	queryOpt, err := conv.ToQueryOption(queryDTO, nil)
 	if err != nil {
@@ -169,7 +168,7 @@ func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQuery
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], queryDTO LocalAuthorQueryDTO) (*model.Page[dto.SelectItem], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], queryDTO LocalAuthorQueryDTO) (*model.Page[sdkdto.SelectItem], error) {
 	conv := query.NewConverter(domain.LocalAuthor{})
 	opt, err := conv.ToPageOption(queryDTO, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -179,17 +178,17 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 }
 
 // ListReWorkAuthor 批量获取作品与作者的关联
-func (s *Service) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
+func (s *Service) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error) {
 	return s.repo.ListReWorkAuthor(ctx, workIds)
 }
 
 // ListByWorkId 查询作品的本地作者
-func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
+func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	return s.repo.ListByWorkId(ctx, workId)
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
-func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
+func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error) {
 	return s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
 }
 

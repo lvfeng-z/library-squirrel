@@ -1,7 +1,7 @@
 package util
 
 // TreeBuilder 通过函数式提取器支持任意类型的树操作。
-// T 应为指针类型（如 *TaskTreeDTO），不要求实体实现特定接口，
+// T 应为指针类型（如 *sdkdto.TaskTreeDTO），不要求实体实现特定接口，
 // 通过闭包提取 id/pid，实现对任意类型的零侵入适配。
 type TreeBuilder[T any] struct {
 	getID   func(T) int64

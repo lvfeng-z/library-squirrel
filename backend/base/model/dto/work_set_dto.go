@@ -3,30 +3,15 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
 
-// WorkSetDTO 作品集数据传输对象（无 sql.Null* 版本）
-type WorkSetDTO struct {
-	ID                     int64   `json:"id"`
-	SiteID                 *int64  `json:"siteId"`
-	SiteWorkSetID          *string `json:"siteWorkSetId"`
-	SiteWorkSetName        *string `json:"siteWorkSetName"`
-	SiteAuthorID           *string `json:"siteAuthorId"`
-	SiteWorkSetDescription *string `json:"siteWorkSetDescription"`
-	SiteUploadTime         *int64  `json:"siteUploadTime"`
-	SiteUpdateTime         *int64  `json:"siteUpdateTime"`
-	NickName               *string `json:"nickName"`
-	LastView               *int64  `json:"lastView"`
-	CreateTime             int64   `json:"createTime"`
-	UpdateTime             int64   `json:"updateTime"`
-}
-
 // NewWorkSetDTO 从 entity.WorkSet 创建 WorkSetDTO
-func NewWorkSetDTO(workSet *entity2.WorkSet) *WorkSetDTO {
+func NewWorkSetDTO(workSet *entity2.WorkSet) *sdkdto.WorkSetDTO {
 	if workSet == nil {
 		return nil
 	}
-	return &WorkSetDTO{
+	return &sdkdto.WorkSetDTO{
 		ID:                     workSet.GetID(),
 		SiteID:                 util.NullInt64ToPointer(workSet.SiteID),
 		SiteWorkSetID:          util.NullStringToPointer(workSet.SiteWorkSetID),
@@ -43,7 +28,7 @@ func NewWorkSetDTO(workSet *entity2.WorkSet) *WorkSetDTO {
 }
 
 // ToWorkSetEntity 将 WorkSetDTO 转换为 WorkSet 实体
-func ToWorkSetEntity(dto *WorkSetDTO) *entity2.WorkSet {
+func ToWorkSetEntity(dto *sdkdto.WorkSetDTO) *entity2.WorkSet {
 	if dto == nil {
 		return nil
 	}
@@ -132,13 +117,13 @@ func ToWorkSetEntity(dto *WorkSetDTO) *entity2.WorkSet {
 
 // WorkSetWithWorksResultDTO 作品集及其作品信息（作品包含完整关联数据）
 type WorkSetWithWorksResultDTO struct {
-	WorkSet *WorkSetDTO    `json:"workSet"`
-	Works   []*WorkFullDTO `json:"works,omitempty"`
+	WorkSet *sdkdto.WorkSetDTO    `json:"workSet"`
+	Works   []*sdkdto.WorkFullDTO `json:"works,omitempty"`
 }
 
 // WorkSetWithCoverDTO 作品集及其封面作品信息
 type WorkSetWithCoverDTO struct {
-	WorkSet       *WorkSetDTO  `json:"workSet"`
-	CoverWork     *WorkDTO     `json:"coverWork,omitempty"`
-	CoverResource *ResourceDTO `json:"coverResource,omitempty"`
+	WorkSet       *sdkdto.WorkSetDTO  `json:"workSet"`
+	CoverWork     *sdkdto.WorkDTO     `json:"coverWork,omitempty"`
+	CoverResource *sdkdto.ResourceDTO `json:"coverResource,omitempty"`
 }

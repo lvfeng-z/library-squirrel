@@ -16,7 +16,8 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
-	pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -410,7 +411,6 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	return nil
 }
 
-
 // parseSlotContent 按 slotType 解析 content 字段并填充 SlotConfig
 func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, version string) error {
 	if len(slot.Content) == 0 {
@@ -533,16 +533,17 @@ func resolveIconURL(iconPath, publicId, version string) string {
 	}
 	return "/plugin/" + publicId + "/" + version + "/" + iconPath
 }
+
 type taskCreateAdapter struct {
 	svc *task.Service
 }
 
-func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*pluginsdk.CreateTaskResult, error) {
+func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*pluginsdkdto.CreateTaskResult, error) {
 	resp, err := a.svc.CreateTaskByURL(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	return &pluginsdk.CreateTaskResult{
+	return &pluginsdkdto.CreateTaskResult{
 		Succeed:       resp.Succeed,
 		AddedQuantity: resp.AddedQuantity,
 		Msg:           resp.Msg,
@@ -726,27 +727,27 @@ func (app *App) initAdvancedServices() error {
 	// siteBrowser 服务
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
 
-		// pluginTaskUrlListener 服务
-		pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()
-		app.PluginTaskUrlListenerSvc = pluginTaskUrlListener.NewService(pluginTaskUrlListenerManager)
+	// pluginTaskUrlListener 服务
+	pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()
+	app.PluginTaskUrlListenerSvc = pluginTaskUrlListener.NewService(pluginTaskUrlListenerManager)
 
-		// plugin 服务
-		app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
-		pluginRepo := plugin.NewRepository(app.db)
-		app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
-		app.PluginService.SetActivator(app)
-		app.PluginService.SetOnUnload(func(pluginPublicId string) {
-			app.pluginLoader.UnloadPlugin(pluginPublicId)
-			app.StaticResourceService.UnregisterPlugin(pluginPublicId)
-			app.SlotRegistry.UnregisterAll(pluginPublicId)
-		})
-		app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
-		app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
-			taskHandlerRegistry: app.TaskHandlerRegistry,
-			siteBrowserRegistry: app.SiteBrowserRegistry,
-			slotRegistry:        app.SlotRegistry,
-		})
-		app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
+	// plugin 服务
+	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
+	pluginRepo := plugin.NewRepository(app.db)
+	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
+	app.PluginService.SetActivator(app)
+	app.PluginService.SetOnUnload(func(pluginPublicId string) {
+		app.pluginLoader.UnloadPlugin(pluginPublicId)
+		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
+		app.SlotRegistry.UnregisterAll(pluginPublicId)
+	})
+	app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
+	app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
+		taskHandlerRegistry: app.TaskHandlerRegistry,
+		siteBrowserRegistry: app.SiteBrowserRegistry,
+		slotRegistry:        app.SlotRegistry,
+	})
+	app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
 
 	// task 仓储和服务
 	app.taskRepo = task.NewRepository(app.db)
@@ -799,8 +800,17 @@ type workInfoSaverAdapter struct {
 	svc *work.Service
 }
 
-func (a *workInfoSaverAdapter) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *dto.WorkResponse) (int64, error) {
-	return a.svc.SaveWorkInfo(ctx, task, workResp)
+func (a *workInfoSaverAdapter) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+	localWorkResp := &dto.WorkResponse{
+		Work:         dto.WorkDTOToEntity(workResp.Work),
+		LocalAuthors: workResp.LocalAuthors,
+		LocalTags:    workResp.LocalTags,
+		SiteAuthors:  workResp.SiteAuthors,
+		SiteTags:     workResp.SiteTags,
+		WorkSets:     workResp.WorkSets,
+		Resource:     workResp.Resource,
+	}
+	return a.svc.SaveWorkInfo(ctx, task, localWorkResp)
 }
 
 // workSetWriterAdapter WorkSetWriter 接口适配器（打破 work ↔ workSet 循环依赖）

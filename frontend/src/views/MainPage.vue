@@ -5,7 +5,7 @@ import {
   SelectItem,
   WorkFullDTO as BindingsWorkFullDTO,
   WorkSetWithCoverDTO
-} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
 import ApiResponse from '@renderer/model/util/ApiResponse.js'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.js'
