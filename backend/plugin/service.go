@@ -86,6 +86,10 @@ type Service struct {
 	workDirProvider WorkDirProvider
 	activator       PluginActivator
 	onUnload        func(pluginPublicId string)
+
+	runtimeStatusProvider RuntimeStatusProvider
+	extensionListProvider ExtensionListProvider
+	urlListenerProvider   UrlListenerProvider
 }
 
 // NewService 创建插件服务
@@ -106,6 +110,59 @@ func (s *Service) SetOnUnload(fn func(pluginPublicId string)) {
 // SetActivator 设置插件激活器
 func (s *Service) SetActivator(activator PluginActivator) {
 	s.activator = activator
+}
+
+// RuntimeStatusProvider 运行时状态提供者接口
+type RuntimeStatusProvider interface {
+	GetPluginRuntimeStatus(pluginPublicId string) *RuntimeStatus
+}
+
+// RuntimeStatus 运行时状态（plugin 包内部类型，供 Provider 返回）
+type RuntimeStatus struct {
+	IsRunning   bool
+	PID         int
+	ActivatedAt int64 // Unix 毫秒
+}
+
+// ExtensionListProvider 扩展点列表提供者接口
+type ExtensionListProvider interface {
+	GetTaskHandlersByPlugin(pluginPublicId string) []ExtensionMeta
+	GetSiteBrowsersByPlugin(pluginPublicId string) []ExtensionMeta
+	GetSlotsByPlugin(pluginPublicId string) []SlotMeta
+}
+
+// UrlListenerProvider URL 监听规则提供者接口
+type UrlListenerProvider interface {
+	ListPatternsByPlugin(pluginPublicId string) []string
+}
+
+// ExtensionMeta 扩展点元数据
+type ExtensionMeta struct {
+	ID          string
+	Name        string
+	Description string
+}
+
+// SlotMeta 插槽元数据
+type SlotMeta struct {
+	ID       string
+	Name     string
+	SlotType string
+}
+
+// SetRuntimeStatusProvider 设置运行时状态提供者
+func (s *Service) SetRuntimeStatusProvider(provider RuntimeStatusProvider) {
+	s.runtimeStatusProvider = provider
+}
+
+// SetExtensionListProvider 设置扩展点列表提供者
+func (s *Service) SetExtensionListProvider(provider ExtensionListProvider) {
+	s.extensionListProvider = provider
+}
+
+// SetUrlListenerProvider 设置 URL 监听规则提供者
+func (s *Service) SetUrlListenerProvider(provider UrlListenerProvider) {
+	s.urlListenerProvider = provider
 }
 
 // GetById 根据ID获取
@@ -496,4 +553,52 @@ func (s *Service) getAppRoot() string {
 // GetPluginRoot 获取插件根目录
 func (s *Service) GetPluginRoot() string {
 	return PluginPackageRoot
+}
+
+// GetPluginStatus 获取插件状态
+func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*PluginStatusDTO, error) {
+	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
+	if err != nil {
+		return nil, err
+	}
+	if plugin == nil {
+		return nil, ErrPluginNotFound
+	}
+
+	status := &PluginStatusDTO{}
+
+	// 运行时状态
+	if s.runtimeStatusProvider != nil {
+		rt := s.runtimeStatusProvider.GetPluginRuntimeStatus(pluginPublicId)
+		status.IsRunning = rt.IsRunning
+		status.PID = rt.PID
+		if rt.ActivatedAt > 0 {
+			status.ActivatedAt = rt.ActivatedAt
+		}
+	}
+
+	// 扩展点列表
+	if s.extensionListProvider != nil {
+		for _, ext := range s.extensionListProvider.GetTaskHandlersByPlugin(pluginPublicId) {
+			status.TaskHandlers = append(status.TaskHandlers, ExtensionInfo{ID: ext.ID, Name: ext.Name, Description: ext.Description})
+		}
+		for _, ext := range s.extensionListProvider.GetSiteBrowsersByPlugin(pluginPublicId) {
+			status.SiteBrowsers = append(status.SiteBrowsers, ExtensionInfo{ID: ext.ID, Name: ext.Name, Description: ext.Description})
+		}
+		for _, slot := range s.extensionListProvider.GetSlotsByPlugin(pluginPublicId) {
+			status.Slots = append(status.Slots, SlotInfo{ID: slot.ID, Name: slot.Name, SlotType: slot.SlotType})
+		}
+	}
+
+	// 存储状态
+	if plugin.PluginData.Valid {
+		status.PluginDataSize = len(plugin.PluginData.String)
+	}
+
+	// URL 监听规则
+	if s.urlListenerProvider != nil {
+		status.UrlPatterns = s.urlListenerProvider.ListPatternsByPlugin(pluginPublicId)
+	}
+
+	return status, nil
 }

@@ -8,6 +8,7 @@ import {
   PluginQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/plugin'
 import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
@@ -67,4 +68,9 @@ export async function pluginReinstallFromPath(pluginPublicId: string, packagePat
 /** 卸载插件 */
 export async function pluginUnInstall(publicId: string): Promise<ApiResult<any>> {
   return requireResponse(await PluginHandler.Uninstall(publicId), '卸载插件', false)
+}
+
+/** 获取插件状态 */
+export async function pluginGetStatus(publicId: string): Promise<ApiResult<PluginStatusDTO>> {
+  return requireResponse(await PluginHandler.GetPluginStatus(publicId), '获取插件状态')
 }

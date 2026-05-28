@@ -1,27 +1,28 @@
 <script setup lang="ts">
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
-import { onMounted, ref, Ref, UnwrapRef } from 'vue'
+import PluginStatusPanel from '@renderer/components/plugin/PluginStatusPanel.vue'
+import {onMounted, ref, Ref} from 'vue'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
-import { Thead } from '@renderer/model/util/Thead.ts'
+import {Thead} from '@renderer/model/util/Thead.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import DataTableOperationResponse from '@renderer/model/util/DataTableOperationResponse.ts'
-import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {arrayNotEmpty} from '@renderer/utils/CommonUtil.ts'
+import {ElMessage, ElMessageBox} from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
-import { PluginQueryDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
-import { SortOrder } from '@bindings/github.com/library-squirrel/backend/base/query/models'
-import { isNotBlank } from '@renderer/utils/StringUtil.ts'
-import { fileSysUtilApi, pluginApi } from '@renderer/apis/http'
+import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plugin/models'
+import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import {isNotBlank} from '@renderer/utils/StringUtil.ts'
+import {fileSysUtilApi, pluginApi} from '@renderer/apis/http'
 import {PluginDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 
 // onMounted
 onMounted(() => {
   // 使用各字段的 Order 属性进行排序，通过 Priority 控制优先级
-  pluginQuery.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
-  pluginQuery.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
+  pluginSearchParams.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
+  pluginSearchParams.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   pluginSearchTable.value.doSearch()
 })
 
@@ -30,8 +31,6 @@ onMounted(() => {
 const pluginSearchTable = ref()
 // 插件分页参数
 const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
-// 插件查询参数
-const pluginQuery: Ref<PluginQueryDTO> = ref(new PluginQueryDTO())
 // 插件操作栏按钮
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
@@ -94,11 +93,16 @@ const pluginSelected: Ref<PluginDTO> = ref(new PluginDTO())
 const dialogState: Ref<boolean> = ref(false)
 // 对话框的数据
 const dialogData: Ref<PluginDTO> = ref(new PluginDTO())
+// 状态抽屉开关
+const drawerVisible: Ref<boolean> = ref(false)
+// 状态抽屉对应的插件 publicId
+const statusPublicId: Ref<string> = ref('')
 
 // 方法
 // 分页查询插件
 async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO>> {
-  const response = await pluginApi.pluginQueryPage(page, pluginQuery.value)
+  pluginSearchParams.value.name.operator = Operator.OpLike
+  const response = await pluginApi.pluginQueryPage(page, pluginSearchParams.value)
   return response.data
 }
 // 处理插件数据行按钮点击事件
@@ -122,6 +126,10 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
 async function handleSelectionChange(selections: PluginDTO[]) {
   if (selections.length > 0) {
     pluginSelected.value = selections[0]
+    statusPublicId.value = String(selections[0].publicId)
+    drawerVisible.value = true
+  } else {
+    drawerVisible.value = false
   }
 }
 // 重新安装前询问安装来源
@@ -225,13 +233,23 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         >
           <template #toolbarMain>
             <el-button type="primary" @click="handleInstallClicked"> 安装 </el-button>
-            <el-input v-model="pluginSearchParams.nonFieldKeyword" placeholder="输入名称" clearable />
+            <el-input v-model="pluginSearchParams.name.value" placeholder="输入名称" clearable />
           </template>
           <template #toolbarDropdown>
             <el-button></el-button>
           </template>
         </search-table>
       </div>
+
+      <el-drawer
+        v-model="drawerVisible"
+        title="插件状态"
+        direction="rtl"
+        size="450px"
+        :destroy-on-close="false"
+      >
+        <PluginStatusPanel v-if="isNotBlank(statusPublicId)" :public-id="statusPublicId" />
+      </el-drawer>
     </template>
     <template #dialog>
       <plugin-dialog v-model:form-data="dialogData" v-model:state="dialogState" :mode="DialogMode.VIEW" />

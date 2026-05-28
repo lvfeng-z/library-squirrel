@@ -111,3 +111,20 @@ func (m *Manager) Clear() {
 	defer m.mu.Unlock()
 	m.listeners = make(map[string][]*PluginWithContribution)
 }
+
+// ListPatternsByPlugin 获取指定插件注册的所有 URL 匹配模式
+func (m *Manager) ListPatternsByPlugin(pluginPublicId string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var patterns []string
+	for pattern, plugins := range m.listeners {
+		for _, p := range plugins {
+			if p.PublicID.Valid && p.PublicID.String == pluginPublicId {
+				patterns = append(patterns, pattern)
+				break
+			}
+		}
+	}
+	return patterns
+}

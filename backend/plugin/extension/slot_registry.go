@@ -118,9 +118,8 @@ func (r *SlotRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[*d
 	defer r.mu.RUnlock()
 
 	var result []*model.Extension[*domain.SlotConfig]
-	prefix := pluginPublicId + "/"
 	for _, ext := range r.extensions {
-		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
+		if ext.Metadata.PluginPublicID == pluginPublicId {
 			result = append(result, ext)
 		}
 	}

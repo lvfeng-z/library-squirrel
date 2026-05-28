@@ -726,20 +726,27 @@ func (app *App) initAdvancedServices() error {
 	// siteBrowser 服务
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
 
-	// plugin 服务
-	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
-	pluginRepo := plugin.NewRepository(app.db)
-	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
-	app.PluginService.SetActivator(app)
-	app.PluginService.SetOnUnload(func(pluginPublicId string) {
-		app.pluginLoader.UnloadPlugin(pluginPublicId)
-		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
-		app.SlotRegistry.UnregisterAll(pluginPublicId)
-	})
+		// pluginTaskUrlListener 服务
+		pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()
+		app.PluginTaskUrlListenerSvc = pluginTaskUrlListener.NewService(pluginTaskUrlListenerManager)
 
-	// pluginTaskUrlListener 服务
-	pluginTaskUrlListenerManager := pluginTaskUrlListener.NewManager()
-	app.PluginTaskUrlListenerSvc = pluginTaskUrlListener.NewService(pluginTaskUrlListenerManager)
+		// plugin 服务
+		app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
+		pluginRepo := plugin.NewRepository(app.db)
+		app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
+		app.PluginService.SetActivator(app)
+		app.PluginService.SetOnUnload(func(pluginPublicId string) {
+			app.pluginLoader.UnloadPlugin(pluginPublicId)
+			app.StaticResourceService.UnregisterPlugin(pluginPublicId)
+			app.SlotRegistry.UnregisterAll(pluginPublicId)
+		})
+		app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
+		app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
+			taskHandlerRegistry: app.TaskHandlerRegistry,
+			siteBrowserRegistry: app.SiteBrowserRegistry,
+			slotRegistry:        app.SlotRegistry,
+		})
+		app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
 
 	// task 仓储和服务
 	app.taskRepo = task.NewRepository(app.db)
@@ -892,4 +899,62 @@ func (app *App) onBeforeClose() bool {
 		logger.Log.Warnf("优雅关闭超时，强制退出: %v", err)
 	}
 	return false
+}
+
+// extensionListProviderAdapter 聚合三个 Registry 的扩展点查询能力
+type extensionListProviderAdapter struct {
+	taskHandlerRegistry *extension2.TaskHandlerRegistry
+	siteBrowserRegistry *extension2.SiteBrowserRegistry
+	slotRegistry        *extension2.SlotRegistry
+}
+
+func (a *extensionListProviderAdapter) GetTaskHandlersByPlugin(pluginPublicId string) []plugin.ExtensionMeta {
+	exts, _ := a.taskHandlerRegistry.GetByPlugin(pluginPublicId)
+	result := make([]plugin.ExtensionMeta, 0, len(exts))
+	for _, ext := range exts {
+		result = append(result, plugin.ExtensionMeta{ID: ext.Metadata.ID, Name: ext.Metadata.Name, Description: ext.Metadata.Description})
+	}
+	return result
+}
+
+func (a *extensionListProviderAdapter) GetSiteBrowsersByPlugin(pluginPublicId string) []plugin.ExtensionMeta {
+	exts, _ := a.siteBrowserRegistry.GetByPlugin(pluginPublicId)
+	result := make([]plugin.ExtensionMeta, 0, len(exts))
+	for _, ext := range exts {
+		result = append(result, plugin.ExtensionMeta{ID: ext.Metadata.ID, Name: ext.Metadata.Name, Description: ext.Metadata.Description})
+	}
+	return result
+}
+
+func (a *extensionListProviderAdapter) GetSlotsByPlugin(pluginPublicId string) []plugin.SlotMeta {
+	exts, _ := a.slotRegistry.GetByPlugin(pluginPublicId)
+	result := make([]plugin.SlotMeta, 0, len(exts))
+	for _, ext := range exts {
+		cfg := ext.Instance
+		result = append(result, plugin.SlotMeta{ID: cfg.Metadata.ID, Name: cfg.Metadata.Name, SlotType: string(cfg.SlotType)})
+	}
+	return result
+}
+
+// runtimeStatusAdapter 将 extension.RuntimeStatus 适配为 plugin.RuntimeStatus
+type runtimeStatusAdapter struct {
+	loader *extension2.Loader
+}
+
+func (a *runtimeStatusAdapter) GetPluginRuntimeStatus(pluginPublicId string) *plugin.RuntimeStatus {
+	rt := a.loader.GetPluginRuntimeStatus(pluginPublicId)
+	return &plugin.RuntimeStatus{
+		IsRunning:   rt.IsRunning,
+		PID:         rt.PID,
+		ActivatedAt: rt.ActivatedAt.UnixMilli(),
+	}
+}
+
+// urlListenerAdapter 将 Manager 适配为 plugin.UrlListenerProvider
+type pluginUrlListenerAdapter struct {
+	manager *pluginTaskUrlListener.Manager
+}
+
+func (a *pluginUrlListenerAdapter) ListPatternsByPlugin(pluginPublicId string) []string {
+	return a.manager.ListPatternsByPlugin(pluginPublicId)
 }

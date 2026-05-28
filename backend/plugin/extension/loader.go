@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/go-plugin"
 	"go.uber.org/zap"
@@ -33,9 +34,10 @@ type PluginProcessDeps struct {
 
 // pluginEntry 存储单个插件的 hashicorp/go-plugin 客户端和 gRPC 服务客户端
 type pluginEntry struct {
-	client   *plugin.Client                // hashicorp/go-plugin 进程管理客户端
-	services *pluginsdk.GRPCPluginClient   // gRPC 服务客户端（Task、Browser、Lifecycle）
-	info     *PluginInfo                   // 插件基本信息
+	client      *plugin.Client              // hashicorp/go-plugin 进程管理客户端
+	services    *pluginsdk.GRPCPluginClient // gRPC 服务客户端（Task、Browser、Lifecycle）
+	info        *PluginInfo                 // 插件基本信息
+	activatedAt time.Time                   // 进程激活时间
 }
 
 // Loader 插件加载器，使用 hashicorp/go-plugin 管理插件子进程
@@ -154,9 +156,10 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	logger.Log.Infof("插件子进程已激活: %s", pluginPublicId)
 
 	entry := &pluginEntry{
-		client:   client,
-		services: services,
-		info:     deps.PluginInfo,
+		client:      client,
+		services:    services,
+		info:        deps.PluginInfo,
+		activatedAt: time.Now(),
 	}
 
 	l.mu.Lock()
@@ -208,6 +211,35 @@ func (l *Loader) GetServices(pluginPublicId string) (*pluginsdk.GRPCPluginClient
 		return nil, false
 	}
 	return entry.services, true
+}
+
+// RuntimeStatus 插件运行时状态
+type RuntimeStatus struct {
+	IsRunning   bool
+	PID         int
+	ActivatedAt time.Time
+}
+
+// GetPluginRuntimeStatus 获取插件运行时状态
+func (l *Loader) GetPluginRuntimeStatus(pluginPublicId string) *RuntimeStatus {
+	l.mu.RLock()
+	entry, ok := l.processes[pluginPublicId]
+	l.mu.RUnlock()
+
+	if !ok {
+		return &RuntimeStatus{IsRunning: false}
+	}
+
+	pid := 0
+	if reattach := entry.client.ReattachConfig(); reattach != nil {
+		pid = reattach.Pid
+	}
+
+	return &RuntimeStatus{
+		IsRunning:   !entry.client.Exited(),
+		PID:         pid,
+		ActivatedAt: entry.activatedAt,
+	}
 }
 
 // handlePluginCrash 处理插件进程崩溃

@@ -99,9 +99,8 @@ func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 	defer r.mu.RUnlock()
 
 	var result []*model.Extension[pluginsdk.TaskHandler]
-	prefix := pluginPublicId + KeySeparator
 	for _, ext := range r.extensions {
-		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
+		if ext.Metadata.PluginPublicID == pluginPublicId {
 			result = append(result, ext)
 		}
 	}

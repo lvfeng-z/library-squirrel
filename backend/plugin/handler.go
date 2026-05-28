@@ -135,3 +135,12 @@ func (h *Handler) GetPluginRoot() *model.ApiResponse[string] {
 	result := h.svc.GetPluginRoot()
 	return model.Success(result)
 }
+
+// GetPluginStatus 获取插件状态
+func (h *Handler) GetPluginStatus(ctx context.Context, pluginPublicId string) *model.ApiResponse[*PluginStatusDTO] {
+	result, err := h.svc.GetPluginStatus(ctx, pluginPublicId)
+	if err != nil {
+		return model.HandleError[*PluginStatusDTO](err)
+	}
+	return model.Success(result)
+}

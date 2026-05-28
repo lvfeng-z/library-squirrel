@@ -7,5 +7,8 @@ export {
 };
 
 export {
-    PluginQueryDTO
+    ExtensionInfo,
+    PluginQueryDTO,
+    PluginStatusDTO,
+    SlotInfo
 } from "./models.js";

@@ -10,6 +10,38 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as query$0 from "../base/query/models.js";
 
 /**
+ * ExtensionInfo 扩展点信息
+ */
+export class ExtensionInfo {
+    "id": string;
+    "name": string;
+    "description": string;
+
+    /** Creates a new ExtensionInfo instance. */
+    constructor($$source: Partial<ExtensionInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExtensionInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExtensionInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExtensionInfo($$parsedSource as Partial<ExtensionInfo>);
+    }
+}
+
+/**
  * PluginQueryDTO 插件查询条件
  */
 export class PluginQueryDTO {
@@ -148,7 +180,132 @@ export class PluginQueryDTO {
     }
 }
 
+/**
+ * PluginStatusDTO 插件状态
+ */
+export class PluginStatusDTO {
+    /**
+     * 运行时状态
+     */
+    "isRunning": boolean;
+    "pid": number;
+
+    /**
+     * Unix 毫秒，0 表示未激活
+     */
+    "activatedAt": number;
+
+    /**
+     * 扩展点列表
+     */
+    "taskHandlers": ExtensionInfo[];
+    "siteBrowsers": ExtensionInfo[];
+    "slots": SlotInfo[];
+
+    /**
+     * 存储状态
+     * 字节数
+     */
+    "pluginDataSize": number;
+
+    /**
+     * URL 监听规则
+     */
+    "urlPatterns": string[];
+
+    /** Creates a new PluginStatusDTO instance. */
+    constructor($$source: Partial<PluginStatusDTO> = {}) {
+        if (!("isRunning" in $$source)) {
+            this["isRunning"] = false;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("activatedAt" in $$source)) {
+            this["activatedAt"] = 0;
+        }
+        if (!("taskHandlers" in $$source)) {
+            this["taskHandlers"] = [];
+        }
+        if (!("siteBrowsers" in $$source)) {
+            this["siteBrowsers"] = [];
+        }
+        if (!("slots" in $$source)) {
+            this["slots"] = [];
+        }
+        if (!("pluginDataSize" in $$source)) {
+            this["pluginDataSize"] = 0;
+        }
+        if (!("urlPatterns" in $$source)) {
+            this["urlPatterns"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginStatusDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginStatusDTO {
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType6;
+        const $$createField7_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("taskHandlers" in $$parsedSource) {
+            $$parsedSource["taskHandlers"] = $$createField3_0($$parsedSource["taskHandlers"]);
+        }
+        if ("siteBrowsers" in $$parsedSource) {
+            $$parsedSource["siteBrowsers"] = $$createField4_0($$parsedSource["siteBrowsers"]);
+        }
+        if ("slots" in $$parsedSource) {
+            $$parsedSource["slots"] = $$createField5_0($$parsedSource["slots"]);
+        }
+        if ("urlPatterns" in $$parsedSource) {
+            $$parsedSource["urlPatterns"] = $$createField7_0($$parsedSource["urlPatterns"]);
+        }
+        return new PluginStatusDTO($$parsedSource as Partial<PluginStatusDTO>);
+    }
+}
+
+/**
+ * SlotInfo 插槽信息
+ */
+export class SlotInfo {
+    "id": string;
+    "name": string;
+    "slotType": string;
+
+    /** Creates a new SlotInfo instance. */
+    constructor($$source: Partial<SlotInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("slotType" in $$source)) {
+            this["slotType"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SlotInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SlotInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SlotInfo($$parsedSource as Partial<SlotInfo>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType3 = ExtensionInfo.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = SlotInfo.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $Create.Array($Create.Any);

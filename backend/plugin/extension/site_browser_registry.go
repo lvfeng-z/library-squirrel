@@ -90,9 +90,8 @@ func (r *SiteBrowserRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 	defer r.mu.RUnlock()
 
 	var result []*model.Extension[pluginsdk.SiteBrowser]
-	prefix := pluginPublicId + "/"
 	for _, ext := range r.extensions {
-		if strings.HasPrefix(ext.Metadata.PluginPublicID, prefix) {
+		if ext.Metadata.PluginPublicID == pluginPublicId {
 			result = append(result, ext)
 		}
 	}
