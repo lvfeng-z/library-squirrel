@@ -666,7 +666,7 @@ func (app *App) initBaseServices() {
 	app.BackupService = backup.NewService(backupRepo)
 
 	// appLauncher 服务
-	app.AppLauncherService = appLauncher.NewService(rootPath)
+	app.AppLauncherService = appLauncher.NewService(app.SettingsService)
 
 	// fileSysUtil 服务
 	app.FileSysUtilService = fileSysUtil.NewService(rootPath)

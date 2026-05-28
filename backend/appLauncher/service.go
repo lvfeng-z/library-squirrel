@@ -23,21 +23,21 @@ var (
 	ErrOpenFailed  = errors.New("failed to open file")
 )
 
+// WorkDirProvider 工作目录提供者接口
+type WorkDirProvider interface {
+	GetWorkDir() string
+}
+
 // Service 应用启动服务
 type Service struct {
-	workDir string
+	workDirProvider WorkDirProvider
 }
 
 // NewService 创建应用启动服务
-func NewService(workDir string) *Service {
+func NewService(workDirProvider WorkDirProvider) *Service {
 	return &Service{
-		workDir: workDir,
+		workDirProvider: workDirProvider,
 	}
-}
-
-// SetWorkDir 设置工作目录
-func (s *Service) SetWorkDir(workDir string) {
-	s.workDir = workDir
 }
 
 // OpenImage 使用系统默认应用打开图片资源
@@ -47,7 +47,7 @@ func (s *Service) OpenImage(url string) error {
 		return ErrInvalidPath
 	}
 
-	fullPath := filepath.Join(s.workDir, "resource", url)
+	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), "resource", url)
 	return s.OpenPath(fullPath)
 }
 
