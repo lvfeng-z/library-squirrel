@@ -33,5 +33,7 @@ sites:
 
 # 插件配置（来自旧代码 iniConfig.yml）
 plugins:
-  - packagePath: initialization/pixivSuite.zip
+  - packagePath: resources/bundled-plugins/pixiv-plugin.zip
+    pathType: Relative
+  - packagePath: resources/bundled-plugins/local-plugin.zip
     pathType: Relative

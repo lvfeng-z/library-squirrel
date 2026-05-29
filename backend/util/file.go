@@ -8,6 +8,12 @@ import (
 	"path/filepath"
 )
 
+// 静态资源目录名
+const (
+	ResourcesDir      = "resources"
+	BundledPluginsDir = "bundled-plugins"
+)
+
 // RootPath 获取根目录
 func RootPath() string {
 	appEnv, ok := os.LookupEnv("APP_ENV")
@@ -166,4 +172,14 @@ func JoinPath(base string, paths ...string) string {
 		result = filepath.Join(result, p)
 	}
 	return result
+}
+
+// ResourcesPath 返回静态资源目录的绝对路径
+func ResourcesPath() string {
+	return filepath.Join(RootPath(), ResourcesDir)
+}
+
+// BundledPluginsPath 返回捆绑插件目录的绝对路径
+func BundledPluginsPath() string {
+	return filepath.Join(RootPath(), ResourcesDir, BundledPluginsDir)
 }

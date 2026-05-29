@@ -297,8 +297,47 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	return installDTO, nil
 }
 
-// install 安装插件核心逻辑
+// install 安装插件（包含激活）
 func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType) (*entity2.Plugin, error) {
+	plugin, err := s.installCore(ctx, installDTO)
+	if err != nil {
+		return nil, err
+	}
+
+	// 激活插件
+	if s.activator != nil {
+		if err := s.activator.Activate(plugin); err != nil {
+			logger.Log.Warnf("插件激活失败: %s, %v", installDTO.PublicID, err)
+		}
+	}
+
+	return plugin, nil
+}
+
+// InstallBundled 安装捆绑插件，已安装时静默跳过
+// 与 InstallFromPath 的区别：不调用 activator.Activate()，已安装时不报错
+func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*entity2.Plugin, error) {
+	// 加载插件包
+	installDTO, err := s.loadPluginPackage(packagePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查是否已安装且未卸载
+	existing, err := s.repo.GetByPublicId(ctx, installDTO.PublicID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
+		logger.Log.Infof("捆绑插件已安装，跳过: %s", installDTO.PublicID)
+		return nil, nil
+	}
+
+	return s.installCore(ctx, installDTO)
+}
+
+// installCore 安装插件核心逻辑（解压 + 写 DB + 备份），不含激活
+func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInstallDTO) (*entity2.Plugin, error) {
 	// 检查是否已安装
 	existing, err := s.repo.GetByPublicId(ctx, installDTO.PublicID)
 	if err != nil {
@@ -368,14 +407,6 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	}
 
 	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
-
-	// 激活插件
-	if s.activator != nil {
-		if err := s.activator.Activate(plugin); err != nil {
-			logger.Log.Warnf("插件激活失败: %s, %v", installDTO.PublicID, err)
-		}
-	}
-
 	return plugin, nil
 }
 

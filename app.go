@@ -208,6 +208,37 @@ func (app *App) LoadPlugins() {
 	app.loadInstalledPlugins()
 }
 
+// InstallBundledPlugins 安装配置中声明的捆绑插件
+func (app *App) InstallBundledPlugins() {
+	ctx := context.Background()
+	cfg := config.Get()
+	if len(cfg.Plugins) == 0 {
+		return
+	}
+
+	rootPath := util.RootPath()
+	for _, pc := range cfg.Plugins {
+		path := pc.PackagePath
+		if pc.PathType == "Relative" || pc.PathType == "" {
+			path = filepath.Join(rootPath, path)
+		}
+
+		if !util.FileExists(path) {
+			logger.Log.Warnf("捆绑插件包不存在: %s", path)
+			continue
+		}
+
+		plugin, err := app.PluginService.InstallBundled(ctx, path)
+		if err != nil {
+			logger.Log.Errorf("安装捆绑插件失败: %s, %v", path, err)
+			continue
+		}
+		if plugin != nil {
+			logger.Log.Infof("捆绑插件已安装: %s", plugin.PublicID.String)
+		}
+	}
+}
+
 // SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher 和 TaskProgressPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent func(topic string, callback func(data any)) func()) {
 	pusher := extension2.NewWailsSlotPusher(emitter)

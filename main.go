@@ -114,6 +114,8 @@ func main() {
 	// 注入主窗口实例（供模态对话框使用）
 	app.SetMainWindow(window)
 
+	// 安装捆绑插件（在 LoadPlugins 之前，仅写入 DB 不激活）
+	app.InstallBundledPlugins()
 	// 加载已安装的插件（必须在 SetEventEmitter 之后）
 	app.LoadPlugins()
 	if nativeHandle := window.NativeWindow(); nativeHandle != nil {
