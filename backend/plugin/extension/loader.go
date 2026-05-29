@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/go-plugin"
@@ -18,10 +19,13 @@ import (
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-plugin-sdk/transport"
 )
 
-// 错误定义
+// ErrPluginLoadFailed 错误定义
 var (
 	ErrPluginLoadFailed = errors.New("plugin load failed")
 )
+
+// CreateNoWindow Windows 子进程创建标志：不创建控制台窗口
+const CreateNoWindow = 0x08000000
 
 // PluginProcessDeps 加载插件进程所需的依赖
 type PluginProcessDeps struct {
@@ -107,6 +111,11 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	// 创建 hashicorp/go-plugin 客户端配置
 	cmd := exec.Command(exePath)
 	cmd.Env = os.Environ()
+	// Windows 下隐藏插件子进程的控制台窗口
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: CreateNoWindow,
+	}
 	config := &plugin.ClientConfig{
 		HandshakeConfig: pluginsdktransport.Handshake,
 		Plugins: map[string]plugin.Plugin{
