@@ -38,7 +38,7 @@ task build:server && task run:server
 ### 技术栈
 - **框架**: Wails v3（Go 后端 + Web 前端原生窗口）
 - **后端**: Go 1.26、GORM（SQLite WAL 模式）、Viper（配置）、Zap（日志）
-- **前端**: Vue 3 + Composition API (`<script setup lang="ts">`)、Element Plus、Pinia、Vue Router（hash 模式）、Vite 5
+- **前端**: Vue 3 + Composition API (`<script setup lang="ts">`)、Element Plus、Pinia、Vue Router（hash 模式）、Vite 8
 - **IPC**: Wails Bind — Go handler 方法自动暴露给前端，TypeScript bindings 自动生成
 
 ## 编码规则（全局）
@@ -74,4 +74,5 @@ task build:server && task run:server
 - `build/config.yml` — Wails 开发模式配置
 
 ## 交互规则
-- 当我意图制定计划时，请在完成计划制定后将其输出到项目根目录的[plan](doc/plan)目录下，并且询问我是否要执行计划还是要检查计划，而不是直接开始执行。
+- 当我意图制定计划时，请在完成计划制定后将其输出到项目根目录的[plan](doc/plan)目录下，并且询问我要执行计划还是要检查计划，而不是直接开始执行。
+- 当本次对项目的修改达到某个里程碑或完成时，请判断当前的修改是否导致项目的实际逻辑与你所理解的项目上下文（比如rule中的规则）出现了差异，如果有差异，则向我询问是否需要对文档进行同步。
