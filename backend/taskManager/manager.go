@@ -2,6 +2,7 @@ package taskManager
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,8 @@ type Repository interface {
 	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
 	// BatchSetStatus 批量设置任务状态
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.TaskStatusEnum) error
+	// UpdatePendingResourceID 更新任务的 pending_resource_id
+	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 }
 
 // WorkDirProvider 工作目录提供者接口
@@ -138,17 +141,18 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 		}
 	}
 	parentTask := NewParentTask(taskId, parentTaskName)
+	var pausedChildren []*ManagedTask
 	for _, t := range tasks {
+		var child *ManagedTask
 		if t.Pid.Valid && t.Pid.Int64 == taskId {
 			// 直接子任务
-			mt := m.newManagedTask(t)
-			parentTask.AddChild(mt)
-			m.addTask(mt)
+			child = m.buildOrReuseChild(t, &pausedChildren)
 		} else if t.ID == taskId && (!t.HasChild.Valid || !t.HasChild.Bool) {
 			// 单个任务（非集合），自身作为子任务执行
-			mt := m.newManagedTask(t)
-			parentTask.AddChild(mt)
-			m.addTask(mt)
+			child = m.buildOrReuseChild(t, &pausedChildren)
+		}
+		if child != nil {
+			parentTask.AddChild(child)
 		}
 	}
 
@@ -157,12 +161,57 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	m.parentMap[taskId] = parentTask
 	m.mu.Unlock()
 
-	// 3. 尝试分发所有子任务（受信号量控制）
+	// 3. 分发所有子任务（受信号量控制）
 	for _, child := range parentTask.GetChildren() {
 		m.tryDispatch(child)
 	}
 
+	// 4. 恢复之前暂停的子任务
+	for _, paused := range pausedChildren {
+		if err := paused.Resume(); err != nil {
+			logger.Log.Errorf("恢复暂停子任务 %d 失败: %v", paused.taskId, err)
+		}
+	}
+
 	return nil
+}
+
+// buildOrReuseChild 构建子任务 ManagedTask
+// 若该任务已存在于内存中且处于暂停状态则复用并恢复
+// 若仅存在于数据库中（Paused 稳态但内存已丢失），根据 pending_resource_id 决定续传或重新执行
+func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTask) *ManagedTask {
+	isPausedInDB := t.Status == int(TaskStatePaused)
+
+	// 场景一：内存中存在暂停状态的 ManagedTask，可直接复用并恢复
+	if isPausedInDB {
+		if existing, ok := m.getTask(t.GetID()); ok && existing.GetState() == TaskStatePaused {
+			logger.Log.Infof("StartTaskTree: 复用内存中已暂停的子任务 %d", t.GetID())
+			*pausedChildren = append(*pausedChildren, existing)
+			return existing
+		}
+
+		// 场景二：数据库中为 Paused 但内存已丢失（如应用重启）
+		if t.PendingResourceID.Valid {
+			// pending_resource_id 有效，创建跨重启续传的 ManagedTask
+			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
+			mt := m.newManagedTask(t)
+			if mt != nil {
+				mt.resumeFromDB = true
+				m.addTask(mt)
+			}
+			return mt
+		}
+
+		// 场景三：Paused 但无 pending_resource_id（setup 阶段暂停或旧数据），从头执行
+		logger.Log.Warnf("StartTaskTree: 子任务 %d 在数据库中为 Paused 状态但无 pending_resource_id，将从头部重新执行", t.GetID())
+	}
+
+	// 创建新实例
+	mt := m.newManagedTask(t)
+	if mt != nil {
+		m.addTask(mt)
+	}
+	return mt
 }
 
 // tryDispatch 尝试获取信号量并分发任务，无法获取时入等待队列
@@ -188,13 +237,24 @@ func (m *Manager) executeTask(task *ManagedTask) {
 		m.dispatchFromQueue()
 	}()
 
-	result := task.run()
+	var result runResult
+	if task.resumeFromDB {
+		result = task.resumeFromPersistedState()
+	} else {
+		result = task.run()
+	}
 
 	if result == runResultNeedConfirm {
 		// 停放到等待队列，信号量由 defer 释放
 		m.waitingForInputMu.Lock()
 		m.waitingForInputMap[task.taskId] = task
 		m.waitingForInputMu.Unlock()
+		return
+	}
+
+	if result == runResultPaused {
+		// Setup 阶段暂停：goroutine 退出，任务保留在 taskMap，信号量由 defer 释放
+		// Resume 时通过 tryRestart 回调重新调度（go m.executeTask(task)）
 		return
 	}
 
@@ -235,6 +295,7 @@ func (m *Manager) removeFromQueue(taskId int64) {
 
 // PauseTaskTree 暂停任务树
 func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
+	logger.Log.Infof("[TaskManager] 暂停任务树: taskId=%d", taskId)
 	m.mu.RLock()
 	parent, ok := m.parentMap[taskId]
 	m.mu.RUnlock()
@@ -245,7 +306,7 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 
 	for _, child := range parent.GetChildren() {
 		if err := child.Pause(); err != nil {
-			logger.Log.Errorf("暂停子任务 %d 失败: %v", child.taskId, err)
+			logger.Log.Errorf("[TaskManager] 暂停子任务 %d 失败: %v", child.taskId, err)
 		}
 	}
 
@@ -254,17 +315,21 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 
 // ResumeTaskTree 恢复任务树
 func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
+	logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d", taskId)
 	m.mu.RLock()
 	parent, ok := m.parentMap[taskId]
 	m.mu.RUnlock()
 
 	if !ok {
-		return ErrTaskTreeNotFound
+		// 任务树不在内存中（如应用重启后），通过 StartTaskTree 加载
+		// buildOrReuseChild 会根据 pending_resource_id 决定续传或重新执行
+		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 parentMap 中，调用 StartTaskTree 加载", taskId)
+		return m.StartTaskTree(ctx, taskId)
 	}
 
 	for _, child := range parent.GetChildren() {
 		if err := child.Resume(); err != nil {
-			logger.Log.Errorf("恢复子任务 %d 失败: %v", child.taskId, err)
+			logger.Log.Errorf("[TaskManager] 恢复子任务 %d 失败: %v", child.taskId, err)
 		}
 	}
 
@@ -273,6 +338,7 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
 
 // StopTaskTree 停止任务树
 func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
+	logger.Log.Infof("[TaskManager] 停止任务树: taskId=%d", taskId)
 	m.mu.RLock()
 	parent, ok := m.parentMap[taskId]
 	m.mu.RUnlock()
@@ -296,6 +362,7 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 
 // RetryTaskTree 重试任务树
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64) error {
+	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
 	// 重置任务状态为 Created
 	_, err := m.repo.SetTaskTreeStatus(ctx, []int64{taskId}, task.TaskStatusCreated, task.TaskStatusFailed)
 	if err != nil {
@@ -361,11 +428,13 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	m.waitingForInputMu.Unlock()
 
 	if action == "skip" {
+		logger.Log.Infof("[TaskManager] 跳过重复任务: taskId=%d", taskId)
 		m.removeWaitingTask(task)
 		return nil
 	}
 
 	// action == "replace": 跳过重复检查，重新调度
+	logger.Log.Infof("[TaskManager] 替换重复任务: taskId=%d", taskId)
 	task.skipDuplicateCheck = true
 	m.tryDispatch(task)
 	return nil
@@ -389,6 +458,7 @@ func (m *Manager) removeWaitingTask(task *ManagedTask) {
 		if ok {
 			parent.RemoveChild(task.taskId)
 			if parent.AllChildrenTerminal() {
+				logger.Log.Infof("[TaskManager] removeWaitingTask: 删除 parentMap[%d]（所有子任务终态）", task.parentId)
 				delete(m.parentMap, task.parentId)
 				m.mu.Unlock()
 				m.pusher.PushParentTaskRemove([]int64{task.parentId})
@@ -418,6 +488,7 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 	if !m.shuttingDown.CompareAndSwap(false, true) {
 		return nil
 	}
+	logger.Log.Info("[TaskManager] 开始优雅关闭")
 
 	// 清空等待队列
 	m.mu.Lock()
@@ -504,6 +575,7 @@ func (m *Manager) cleanupFinishedTask(task *ManagedTask) {
 	if task.parentId != 0 {
 		parent, ok := m.parentMap[task.parentId]
 		if ok && parent.AllChildrenTerminal() {
+			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", task.parentId)
 			delete(m.parentMap, task.parentId)
 			m.mu.Unlock()
 			m.pusher.PushParentTaskRemove([]int64{task.parentId})
@@ -570,6 +642,19 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	mt.SetOnProgress(func(taskId int64, total int64, finished int64) {
 		m.pusher.PushProgress(taskId, total, finished)
 	})
+
+	// 设置 setup 阶段暂停后恢复的重新调度回调
+	mt.tryRestart = func(task *ManagedTask) {
+		go m.executeTask(task)
+	}
+
+	// 设置 pending_resource_id 持久化回调
+	mt.onResourceIDUpdate = func(taskId int64, resourceID sql.NullInt64) {
+		if err := m.repo.UpdatePendingResourceID(context.Background(), taskId, resourceID); err != nil {
+			logger.Log.Errorf("[TaskManager] 持久化 pending_resource_id 失败: taskId=%d, err=%v", taskId, err)
+		}
+	}
+
 	return mt
 }
 

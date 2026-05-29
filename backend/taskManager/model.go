@@ -3,6 +3,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,7 +42,36 @@ type runResult int
 const (
 	runResultDone        runResult = iota // 正常完成（Finished/Failed）
 	runResultNeedConfirm                  // 检测到重复，需要用户确认
+	runResultPaused                      // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
+
+// taskStateName 任务状态名称映射
+func taskStateName(s TaskState) string {
+	switch s {
+	case TaskStateCreated:
+		return "Created"
+	case TaskStateWaiting:
+		return "Waiting"
+	case TaskStateProcessing:
+		return "Processing"
+	case TaskStatePausing:
+		return "Pausing"
+	case TaskStatePaused:
+		return "Paused"
+	case TaskStateStopping:
+		return "Stopping"
+	case TaskStateFinished:
+		return "Finished"
+	case TaskStateFailed:
+		return "Failed"
+	case TaskStatePartlyFinished:
+		return "PartlyFinished"
+	case TaskStateWaitingForInput:
+		return "WaitingForInput"
+	default:
+		return "Unknown"
+	}
+}
 
 // isStableState 判断任务状态是否为稳定状态（需要持久化到数据库）
 func isStableState(state TaskState) bool {
@@ -72,7 +102,7 @@ type TaskExecutor interface {
 	Stop(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Resume 恢复任务
-	Resume(ctx context.Context, param *sdkdto.TaskResParam) (*sdkdto.WorkResponse, error)
+	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
 }
 
 // WorkInfoSaver 作品完整信息保存接口
@@ -92,7 +122,10 @@ type WorkChecker interface {
 
 // ResourceReader 资源查询接口（查找已有作品的资源文件）
 type ResourceReader interface {
+	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
+	// GetById 根据 ID 获取资源
+	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
 // ResourceFileBackuper 资源文件备份接口
@@ -134,6 +167,8 @@ type ManagedTask struct {
 	pusher TaskProgressPusher
 	// 跳过重复检查（替换确认后的第二次 run）
 	skipDuplicateCheck bool
+	// 跨重启续传标记（从数据库恢复的暂停任务）
+	resumeFromDB bool
 	// 已有作品 ID（第一次 run 检测到重复时设置，第二次 run 时用于备份）
 	existingWorkId int64
 
@@ -144,9 +179,24 @@ type ManagedTask struct {
 	// 资源响应（插件返回）
 	resourceResp *sdkdto.WorkResponse
 
+	// 暂停/恢复协调通道
+	pauseCh   chan struct{} // Pause() 发信号，downloadLoop 消费
+	resumeCh  chan struct{} // Resume() 发信号，downloadLoop 消费
+	drainDone chan struct{} // downloadLoop drain 完成后通知 Pause()
+
+	// 下载状态（跨暂停/恢复周期存活）
+	currentReader io.ReadCloser // 当前数据流 reader
+	currentFile   *os.File      // 当前写入文件句柄
+	localPath     string        // 本地文件绝对路径
+	totalWritten  int64         // 已写入字节数
+
 	// 回调函数
-	onStateChange func(taskId int64, oldState, newState TaskState)
-	onProgress    func(taskId int64, total int64, finished int64)
+	onStateChange      func(taskId int64, oldState, newState TaskState)
+	onProgress         func(taskId int64, total int64, finished int64)
+	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
+
+	// setup 阶段暂停后恢复时，重新调度 run() 的回调（由 Manager 注入）
+	tryRestart func(task *ManagedTask)
 }
 
 // NewManagedTask 创建托管任务
@@ -170,6 +220,8 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		pusher:                 pusher,
 		task:                   task,
 		workId:                 taskId,
+		pauseCh:                make(chan struct{}, 1),
+		resumeCh:               make(chan struct{}, 1),
 	}
 }
 
@@ -189,6 +241,9 @@ func (m *ManagedTask) run() runResult {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
 		if m.pusher != nil {
 			m.pusher.PushError(m.taskId, "未配置资源库目录，请先在设置中指定资源库保存位置")
+		}
+		if m.abortedByPause() {
+			return runResultPaused
 		}
 		m.setState(TaskStateFailed)
 		return runResultDone
@@ -221,6 +276,9 @@ func (m *ManagedTask) run() runResult {
 	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
@@ -229,6 +287,9 @@ func (m *ManagedTask) run() runResult {
 	workId, err := m.workInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
@@ -238,20 +299,26 @@ func (m *ManagedTask) run() runResult {
 	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
-	defer reader.Close()
 
 	// 4. 生成文件保存路径（将 CreateWorkInfo 的作品信息合并到 startResp）
 	startResp.Work = workResp.Work
 	startResp.SiteAuthors = workResp.SiteAuthors
 	startResp.LocalAuthors = workResp.LocalAuthors
+	m.resourceResp = startResp
 	localPath, relativePath, fileName := m.resolveLocalPath(startResp)
 
 	// 4.1 确保资源目录存在
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 创建资源目录失败: %v", m.taskId, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
@@ -272,70 +339,238 @@ func (m *ManagedTask) run() runResult {
 	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
 
-	// 6. 更新任务的 pendingResourceId
+	// 6. 更新任务的 pendingResourceId 并持久化到数据库
 	m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+	if m.onResourceIDUpdate != nil {
+		m.onResourceIDUpdate(m.taskId, m.task.PendingResourceID)
+	}
 
+	// 7. 创建文件并进入下载循环
 	file, err := os.Create(localPath)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 创建文件失败 [%s]: %v", m.taskId, localPath, err)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setState(TaskStateFailed)
 		return runResultDone
 	}
-	defer file.Close()
-	// 使用带缓冲的 io.Copy 以支持进度报告
-	buf := make([]byte, 32*1024) // 32KB buffer
-	var totalWritten int64
+
+	// 保存下载状态到 ManagedTask 字段（downloadLoop 和 doResume 使用）
+	m.currentReader = reader
+	m.currentFile = file
+	m.localPath = localPath
+	m.totalWritten = 0
+
+	return m.downloadLoop()
+}
+
+// downloadLoop 可暂停/恢复的下载循环
+// 正常下载 → 收到 pauseCh 进入 drain → 等待 resumeCh → doResume 继续下载
+func (m *ManagedTask) downloadLoop() runResult {
+	buf := make([]byte, 32*1024)
+	defer func() {
+		m.currentReader.Close()
+		m.currentFile.Close()
+	}()
 
 	for {
 		select {
-		case <-m.ctx.Done():
-			// Context 取消，停止下载
-			reader.Close()
-			m.setState(TaskStateFailed)
-			return runResultDone
-		default:
-			n, readErr := reader.Read(buf)
-			if n > 0 {
-				written, writeErr := file.Write(buf[:n])
-				if written > 0 {
-					totalWritten += int64(written)
-				}
-				if writeErr != nil {
-					logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
-					reader.Close()
-					m.setState(TaskStateFailed)
-					return runResultDone
-				}
-				// 报告进度
-				if m.onProgress != nil {
-					m.onProgress(m.taskId, startResp.Resource.Size, totalWritten)
-				}
-			}
-			if readErr != nil {
-				if readErr == io.EOF {
-					reader.Close()
-					file.Sync()
-					// 校验下载完整性
-					if startResp.Resource.Size > 0 && totalWritten < startResp.Resource.Size {
-						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, totalWritten, startResp.Resource.Size)
-						m.setState(TaskStateFailed)
-						return runResultDone
-					}
-					m.resourceResp = startResp
-					m.setState(TaskStateFinished)
-					return runResultDone
-				}
-				logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
-				reader.Close()
+		case <-m.pauseCh:
+			// 收到暂停信号，drain 所有已发送数据直到上游关闭
+			m.drainReader(buf)
+			m.currentFile.Sync()
+			m.currentFile.Close()
+			close(m.drainDone)
+
+			m.setState(TaskStatePaused)
+
+			// 阻塞等待恢复或取消
+			select {
+			case <-m.resumeCh:
+				m.doResume()
+				continue
+			case <-m.ctx.Done():
 				m.setState(TaskStateFailed)
 				return runResultDone
 			}
+		case <-m.ctx.Done():
+			m.setState(TaskStateFailed)
+			return runResultDone
+		default:
+		}
+
+		n, readErr := m.currentReader.Read(buf)
+		if n > 0 {
+			written, writeErr := m.currentFile.Write(buf[:n])
+			if written > 0 {
+				m.totalWritten += int64(written)
+			}
+			if writeErr != nil {
+				logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
+				m.setState(TaskStateFailed)
+				return runResultDone
+			}
+			// 报告进度
+			if m.onProgress != nil {
+				m.onProgress(m.taskId, m.resourceResp.Resource.Size, m.totalWritten)
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				m.currentFile.Sync()
+				// 校验下载完整性
+				if m.resourceResp.Resource.Size > 0 && m.totalWritten < m.resourceResp.Resource.Size {
+					logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, m.totalWritten, m.resourceResp.Resource.Size)
+					m.setState(TaskStateFailed)
+					return runResultDone
+				}
+				// 下载完成，清除 pending_resource_id
+				m.clearPendingResourceID()
+				m.setState(TaskStateFinished)
+				return runResultDone
+			}
+			logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
+			m.setState(TaskStateFailed)
+			return runResultDone
 		}
 	}
+}
+
+// drainReader 排空 reader 中所有已发送数据并写入文件
+// 循环读取直到 reader 返回错误或 EOF（插件关闭上游时触发）
+func (m *ManagedTask) drainReader(buf []byte) {
+	for {
+		n, err := m.currentReader.Read(buf)
+		if n > 0 {
+			if written, writeErr := m.currentFile.Write(buf[:n]); writeErr == nil {
+				m.totalWritten += int64(written)
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// doResume 恢复下载
+// 调用插件 Resume（传递已下载字节数），以追加模式打开文件，继续下载
+func (m *ManagedTask) doResume() {
+	m.setState(TaskStateProcessing)
+
+	// 保障一：将已下载字节数传给插件
+	param := &sdkdto.TaskResParam{
+		Task:            dto.NewTaskDTO(m.task),
+		ResourceID:      m.resourceResp.Resource.ResourceID,
+		DownloadedBytes: m.totalWritten,
+	}
+	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Resume 失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return
+	}
+
+	if newResp != nil {
+		m.resourceResp = newResp
+	}
+
+	// 以追加模式重新打开文件
+	file, err := os.OpenFile(m.localPath, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return
+	}
+	m.currentFile = file
+
+	// 切换到新的 reader
+	if newReader != nil {
+		m.currentReader.Close()
+		m.currentReader = newReader
+	}
+}
+
+// resumeFromPersistedState 从数据库恢复的跨重启续传
+// 任务在之前的运行中已暂停，pending_resource_id 已持久化到数据库
+// 本方法跳过 CreateWorkInfo/SaveWorkInfo/Start 流程，直接调用插件 Resume 续传
+func (m *ManagedTask) resumeFromPersistedState() runResult {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d resumeFromPersistedState panic: %v", m.taskId, r)
+			m.setState(TaskStateFailed)
+		}
+	}()
+
+	m.setState(TaskStateProcessing)
+
+	// 1. 通过 pending_resource_id 加载 Resource 实体
+	if !m.task.PendingResourceID.Valid {
+		logger.Log.Warnf("[TaskManager] 任务 %d 无有效的 pending_resource_id，降级为完整重新执行", m.taskId)
+		return m.run()
+	}
+	resource, err := m.resourceReader.GetById(m.ctx, m.task.PendingResourceID.Int64)
+	if err != nil || resource == nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 加载 Resource(id=%d) 失败: %v，降级为完整重新执行", m.taskId, m.task.PendingResourceID.Int64, err)
+		return m.run()
+	}
+
+	// 2. 计算本地文件绝对路径和已下载字节数
+	workDir := m.workDirProvider.GetWorkDir()
+	if workDir == "" {
+		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
+		m.setState(TaskStateFailed)
+		return runResultDone
+	}
+	localPath := filepath.Join(workDir, "resource", resource.FilePath.String)
+	fileInfo, err := os.Stat(localPath)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 本地文件不存在 [%s]，降级为完整重新执行: %v", m.taskId, localPath, err)
+		return m.run()
+	}
+	downloadedBytes := fileInfo.Size()
+
+	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, localPath=%s, downloadedBytes=%d", m.taskId, resource.GetID(), localPath, downloadedBytes)
+
+	// 3. 调用插件 Resume
+	param := &sdkdto.TaskResParam{
+		Task:            dto.NewTaskDTO(m.task),
+		ResourceID:      m.task.PendingResourceID.Int64,
+		DownloadedBytes: downloadedBytes,
+	}
+	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
+		m.setState(TaskStateFailed)
+		return runResultDone
+	}
+
+	// 4. 设置运行状态
+	m.workId = resource.WorkID
+	if newResp != nil {
+		m.resourceResp = newResp
+	}
+	m.localPath = localPath
+	m.totalWritten = downloadedBytes
+
+	// 5. 以追加模式打开文件
+	file, err := os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败 [%s]: %v", m.taskId, localPath, err)
+		m.setState(TaskStateFailed)
+		return runResultDone
+	}
+	m.currentFile = file
+	m.currentReader = newReader
+
+	return m.downloadLoop()
 }
 
 // Pause 暂停任务
@@ -345,18 +580,31 @@ func (m *ManagedTask) Pause() error {
 	}
 	m.setState(TaskStatePausing)
 
-	// 调用插件 Pause
+	// 下载尚未开始的场景（setup 阶段），直接取消 context
+	if m.currentReader == nil {
+		m.cancel()
+		m.setState(TaskStatePaused)
+		return nil
+	}
+
+	// 准备 drain 完成信号
+	m.drainDone = make(chan struct{})
+
+	// ① 先通知 downloadLoop 进入 drain 模式
+	m.pauseCh <- struct{}{}
+
+	// ② 再通知插件暂停（插件关闭上游，导致 reader 返回 EOF，drain 完成）
 	param := &sdkdto.TaskResParam{
 		Task:       dto.NewTaskDTO(m.task),
 		ResourceID: m.resourceResp.Resource.ResourceID,
 	}
-	err := m.pluginExec.Pause(m.ctx, param)
-	if err != nil {
-		m.setState(TaskStateProcessing) // 暂停失败，恢复处理中
-		return err
+	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
 	}
 
-	m.setState(TaskStatePaused)
+	// ③ 等待 drain 完成
+	<-m.drainDone
+
 	return nil
 }
 
@@ -366,42 +614,62 @@ func (m *ManagedTask) Resume() error {
 		return ErrTaskNotPaused
 	}
 
-	// 调用插件 Resume
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.resourceResp.Resource.ResourceID,
-	}
-	resp, err := m.pluginExec.Resume(m.ctx, param)
-	if err != nil {
-		return err
+	// Setup 阶段暂停：context 已取消，goroutine 已退出，需要重建并重新调度
+	if m.ctx.Err() != nil {
+		if m.tryRestart == nil {
+			return fmt.Errorf("setup 阶段暂停后无法恢复：缺少重新调度回调")
+		}
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		m.pauseCh = make(chan struct{}, 1)
+		m.resumeCh = make(chan struct{}, 1)
+		m.setState(TaskStateProcessing)
+		m.tryRestart(m)
+		return nil
 	}
 
-	m.resourceResp = resp
-	m.setState(TaskStateProcessing)
+	// 下载阶段暂停：goroutine 存活，通知 downloadLoop 恢复（doResume 在 downloadLoop goroutine 中执行）
+	m.resumeCh <- struct{}{}
 	return nil
 }
 
 // Stop 停止任务
 func (m *ManagedTask) Stop() {
 	m.setState(TaskStateStopping)
-	m.cancel() // 触发 context 取消
+	m.cancel() // 触发 context 取消（中断 downloadLoop 或暂停等待）
 
-	// 调用插件 Stop
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.resourceResp.Resource.ResourceID,
-	}
-	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+	if m.resourceResp != nil {
+		param := &sdkdto.TaskResParam{
+			Task:       dto.NewTaskDTO(m.task),
+			ResourceID: m.resourceResp.Resource.ResourceID,
+		}
+		if err := m.pluginExec.Stop(m.ctx, param); err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+		}
 	}
 
 	m.setState(TaskStateFailed)
 }
 
+// clearPendingResourceID 清除任务的 pending_resource_id（下载完成时调用）
+func (m *ManagedTask) clearPendingResourceID() {
+	m.task.PendingResourceID = sql.NullInt64{Valid: false}
+	if m.onResourceIDUpdate != nil {
+		m.onResourceIDUpdate(m.taskId, m.task.PendingResourceID)
+	}
+}
+
 // setState 设置任务状态
 func (m *ManagedTask) setState(state TaskState) {
 	old := TaskState(m.state.Swap(int32(state)))
-	if old != state && m.onStateChange != nil {
+	if old == state {
+		return
+	}
+	taskName := ""
+	if m.task != nil && m.task.TaskName.Valid {
+		taskName = m.task.TaskName.String
+	}
+	logger.Log.Infof("[TaskManager] 任务状态变更 [%s](%d): %s → %s", taskName, m.taskId, taskStateName(old), taskStateName(state))
+	if m.onStateChange != nil {
 		m.onStateChange(m.taskId, old, state)
 	}
 	if state == TaskStateFinished || state == TaskStateFailed {
@@ -442,6 +710,17 @@ func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState 
 // SetOnProgress 设置进度回调
 func (m *ManagedTask) SetOnProgress(fn func(taskId int64, total int64, finished int64)) {
 	m.onProgress = fn
+}
+
+// abortedByPause 检查是否因暂停导致 context 被取消
+// Pause 在 setup 阶段（currentReader == nil）会直接取消 context
+// run() 的 setup 代码遇到此类情况应直接退出，不覆盖 Pause 已设置的 Paused 状态
+func (m *ManagedTask) abortedByPause() bool {
+	if m.ctx.Err() == nil {
+		return false
+	}
+	s := TaskState(m.state.Load())
+	return s == TaskStatePausing || s == TaskStatePaused
 }
 
 // backupExistingResources 备份已有作品的资源文件

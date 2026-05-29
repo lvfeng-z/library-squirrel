@@ -86,6 +86,8 @@ type Repository interface {
 	DeleteTask(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态
 	BatchSetStatus(ctx context.Context, statuses map[int64]TaskStatusEnum) error
+	// UpdatePendingResourceID 更新任务的 pending_resource_id
+	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
