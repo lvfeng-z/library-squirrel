@@ -197,6 +197,21 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	return nil
 }
 
+// UnloadAll 卸载所有已加载的插件，返回卸载的插件 ID 列表
+func (l *Loader) UnloadAll() []string {
+	l.mu.Lock()
+	ids := make([]string, 0, len(l.processes))
+	for id := range l.processes {
+		ids = append(ids, id)
+	}
+	l.mu.Unlock()
+
+	for _, id := range ids {
+		l.UnloadPlugin(id)
+	}
+	return ids
+}
+
 // GetTaskHandler 获取任务处理器
 func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
 	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)

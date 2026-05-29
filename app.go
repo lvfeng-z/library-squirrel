@@ -975,3 +975,26 @@ type pluginUrlListenerAdapter struct {
 func (a *pluginUrlListenerAdapter) ListPatternsByPlugin(pluginPublicId string) []string {
 	return a.manager.ListPatternsByPlugin(pluginPublicId)
 }
+
+// shutdownPlugins 关闭所有已加载的插件（停止子进程、注销扩展点和静态资源）
+func (app *App) shutdownPlugins() {
+	if app.pluginLoader == nil {
+		return
+	}
+
+	// UnloadAll 返回已卸载的插件 ID 列表，并已注销 TaskHandler/SiteBrowser
+	ids := app.pluginLoader.UnloadAll()
+
+	// 逐个清理静态资源和 Slot（复用卸载时的 onUnload 逻辑）
+	for _, id := range ids {
+		app.StaticResourceService.UnregisterPlugin(id)
+		app.SlotRegistry.UnregisterAll(id)
+	}
+
+	// 清理纯 UI 插件注册的 Slot（没有运行时进程的插件不在 Loader.processes 中）
+	if app.SlotRegistry != nil {
+		app.SlotRegistry.UnregisterAll("")
+	}
+
+	logger.Log.Infof("所有插件已关闭，共 %d 个运行时插件", len(ids))
+}

@@ -155,6 +155,9 @@ func main() {
 		logger.Log.Fatal(err)
 	}
 
+	// 关闭所有插件子进程
+	app.shutdownPlugins()
+
 	// 关闭数据库连接
 	err = database.Close()
 	if err != nil {
