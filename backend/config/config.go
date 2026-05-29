@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"os"
@@ -87,31 +88,35 @@ func Load(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadFromDir 从指定目录加载配置，文件不存在时自动从嵌入的默认配置创建
+// LoadFromDir 从指定目录加载配置
+// 加载策略：嵌入的 default_config.yaml 作为基础层，磁盘上的 config.yaml 作为覆盖层
+// 磁盘配置文件不存在时，仅使用嵌入的默认配置
 func LoadFromDir(dir string) (*Config, error) {
-	configFile := filepath.Join(dir, "config.yaml")
+	// 加载嵌入的默认配置作为基础层
+	viper.SetConfigType("yaml")
+	defaultData, err := defaultConfigFS.ReadFile("default_config.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("读取嵌入的默认配置失败: %w", err)
+	}
+	if err := viper.MergeConfig(bytes.NewReader(defaultData)); err != nil {
+		return nil, fmt.Errorf("解析默认配置失败: %w", err)
+	}
 
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		if createErr := createDefaultConfig(configFile); createErr != nil {
-			return nil, fmt.Errorf("创建默认配置失败: %w", createErr)
+	// 如果磁盘上存在 config.yaml，作为覆盖层合并
+	configFile := filepath.Join(dir, "config.yaml")
+	if _, err := os.Stat(configFile); err == nil {
+		viper.SetConfigFile(configFile)
+		if err := viper.MergeInConfig(); err != nil {
+			return nil, fmt.Errorf("合并磁盘配置失败: %w", err)
 		}
 	}
 
-	return Load(configFile)
-}
-
-// createDefaultConfig 从嵌入的默认配置文件创建配置文件
-func createDefaultConfig(configPath string) error {
-	data, err := defaultConfigFS.ReadFile("default_config.yaml")
-	if err != nil {
-		return fmt.Errorf("读取嵌入的默认配置失败: %w", err)
+	cfg = &Config{}
+	if err := viper.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("写入默认配置失败: %w", err)
-	}
-
-	return nil
+	return cfg, nil
 }
 
 // Get 获取全局配置

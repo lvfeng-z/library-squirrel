@@ -24,4 +24,9 @@ sites:
       pixiv是喜欢插画、对插画感兴趣的朋友们的交流平台。在这里，您可以投稿自己的插画作品，并与其他用户轻松展开交流。
       注册・使用免费。
 
-plugins: []
+# 捆绑插件（首次启动时自动安装）
+plugins:
+  - packagePath: resources/bundled-plugins/pixiv-plugin.zip
+    pathType: Relative
+  - packagePath: resources/bundled-plugins/local-plugin.zip
+    pathType: Relative

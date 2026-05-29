@@ -208,7 +208,7 @@ func (app *App) LoadPlugins() {
 	app.loadInstalledPlugins()
 }
 
-// InstallBundledPlugins 安装配置中声明的捆绑插件
+// InstallBundledPlugins 安装 config.yaml 中声明的捆绑插件
 func (app *App) InstallBundledPlugins() {
 	ctx := context.Background()
 	cfg := config.Get()
