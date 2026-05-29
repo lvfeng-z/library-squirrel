@@ -78,16 +78,16 @@ func (e *TaskExecutorImpl) Stop(ctx context.Context, param *sdkdto.TaskResParam)
 }
 
 // Resume 恢复任务
-func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResParam) (*sdkdto.WorkResponse, error) {
+func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error) {
 	if param == nil || param.Task == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	pluginPublicId, contributionId := pluginIdsFromSDKTask(param.Task)
 	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
 			zap.String("contributionId", contributionId), zap.Error(err))
-		return nil, err
+		return nil, nil, err
 	}
 	return handler.Resume(param)
 }

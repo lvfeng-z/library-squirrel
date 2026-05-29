@@ -172,31 +172,32 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	return err
 }
 
-func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (*pluginsdkdto.WorkResponse, error) {
+func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (io.ReadCloser, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	stream, err := client.Resume(context.Background(), &gen.TaskResParamMessage{
 		Param:         taskResParamToProto(param),
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Resume 流式返回，读取第一个 chunk 获取 WorkResponse
 	chunk, err := stream.Recv()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	wrProto := chunk.GetWorkResponse()
 	if wrProto != nil {
-		return protoToWorkResponse(wrProto), nil
+		reader := &grpcStreamReader{stream: stream}
+		return reader, protoToWorkResponse(wrProto), nil
 	}
-	// 无 WorkResponse 时返回 nil
-	return nil, nil
+	// 无 WorkResponse 时返回 nil reader
+	return nil, nil, nil
 }
 
 // SiteBrowserProxy 通过 gRPC 代理到子进程的 SiteBrowser
@@ -261,9 +262,10 @@ func taskResParamToProto(p *pluginsdkdto.TaskResParam) *gen.TaskResParam {
 		return nil
 	}
 	return &gen.TaskResParam{
-		Task:         taskToProto(p.Task),
-		ResourceId:   p.ResourceID,
-		ResourcePath: p.ResourcePath,
+		Task:            taskToProto(p.Task),
+		ResourceId:      p.ResourceID,
+		ResourcePath:    p.ResourcePath,
+		DownloadedBytes: p.DownloadedBytes,
 	}
 }
 

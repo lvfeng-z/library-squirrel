@@ -39,7 +39,8 @@ type TaskExecutorInterface interface {
 
 	// Resume 恢复任务
 	// ctx: 上下文
-	// param: 任务参数
-	// 返回作品响应或错误
-	Resume(ctx context.Context, param *sdkdto.TaskResParam) (*sdkdto.WorkResponse, error)
+	// param: 任务参数（param.DownloadedBytes 为已下载字节数）
+	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
+	// 调用方负责关闭返回的 ReadCloser
+	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
 }
