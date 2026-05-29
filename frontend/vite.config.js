@@ -13,4 +13,7 @@ export default defineConfig({
       "@apis": resolve("src/apis")
     },
   },
+  server: {
+    host: "127.0.0.1",
+  },
 });
