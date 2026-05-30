@@ -208,49 +208,69 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 		return nil, 0, err
 	}
 
-	// 分页查询
+	// 分页查询 — SQL 子查询产出的 JSON 结构与 WorkFullDTO 中各子 DTO 类型对齐，可直接 json.Unmarshal
 	offset := (page - 1) * pageSize
 	query := fmt.Sprintf(`
 		SELECT t1.id, t1.create_time, t1.update_time, t1.site_id, t1.site_work_id, t1.site_work_name,
 				t1.site_author_id, t1.site_work_description, t1.site_upload_time, t1.site_update_time,
 				t1.nick_name, t1.local_author_id, t1.last_view,
-			CASE WHEN t2.id IS NOT NULL THEN
-				JSON_OBJECT('id', t2.id, 'workId', t2.work_id, 'taskId', t2.task_id, 'state', t2.state, 'filePath', t2.file_path, 'fileName', t2.file_name,
-					'filenameExtension', t2.filename_extension, 'suggestName', t2.suggest_name, 'workdir', t2.workdir, 'resourceComplete', t2.resource_complete)
-			END AS resource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', rt1.id, 'workId', rt1.work_id, 'taskId', rt1.task_id, 'state', rt1.state, 'filePath', rt1.file_path, 'fileName', rt1.file_name, 'filenameExtension',
-				rt1.filename_extension, 'suggestName', rt1.suggest_name, 'workdir', rt1.workdir, 'resourceComplete', rt1.resource_complete))
-			FROM resource rt1
-			WHERE t1.id = rt1.work_id AND rt1.state = 0) AS inactiveResource,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', rt2.id, 'localTagName', rt2.local_tag_name, 'baseLocalTagId', rt2.base_local_tag_id, 'lastUse', rt2.last_use))
-			FROM re_work_tag rt1
-			INNER JOIN local_tag rt2 ON rt1.local_tag_id = rt2.id
-			WHERE t1.id = rt1.work_id) AS localTags,
+				'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
+				'enabled', IIF(r.enabled, json('true'), json('false')),
+				'filePath', r.file_path, 'fileName', r.file_name, 'filenameExtension', r.filename_extension,
+				'suggestName', r.suggest_name, 'resourceSize', r.resource_size, 'workdir', r.workdir,
+				'resourceComplete', r.resource_complete, 'createTime', r.create_time, 'updateTime', r.update_time))
+			FROM resource r WHERE t1.id = r.work_id) AS resources,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', rt2.id, 'siteId', rt2.site_id, 'siteTagId', rt2.site_tag_id, 'siteTagName', rt2.site_tag_name, 'baseSiteTagId', rt2.base_site_tag_id,
-				'description', rt2.description, 'localTagId', rt2.local_tag_id, 'lastUse', rt2.last_use))
-			FROM re_work_tag rt1
-			INNER JOIN site_tag rt2 ON rt1.site_tag_id = rt2.id
-			WHERE t1.id = rt1.work_id) AS siteTags,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', rt2.id, 'authorName', rt2.author_name, 'lastUse', rt2.last_use, 'authorRank', rt1.author_rank))
-			FROM re_work_author rt1
-			INNER JOIN local_author rt2 ON rt1.local_author_id = rt2.id
-			WHERE t1.id = rt1.work_id) AS localAuthors,
+				'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,
+				'description', lt.description, 'lastUse', lt.last_use,
+				'createTime', lt.create_time, 'updateTime', lt.update_time))
+			FROM re_work_tag rwt
+			INNER JOIN local_tag lt ON rwt.local_tag_id = lt.id
+			WHERE t1.id = rwt.work_id) AS localTags,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', rt2.id, 'siteId', rt2.site_id, 'siteAuthorId', rt2.site_author_id, 'authorName', rt2.author_name, 'siteAuthorNameBefore',
-				rt2.site_author_name_before, 'introduce', rt2.introduce, 'localAuthorId', rt2.local_author_id, 'lastUse', rt2.last_use, 'authorRank', rt1.author_rank))
-			FROM re_work_author rt1
-			INNER JOIN site_author rt2 ON rt1.site_author_id = rt2.id
-			WHERE t1.id = rt1.work_id) AS siteAuthors,
+				'siteTag', JSON_OBJECT(
+					'id', st.id, 'siteId', st.site_id, 'siteTagId', st.site_tag_id, 'siteTagName', st.site_tag_name,
+					'baseSiteTagId', st.base_site_tag_id, 'description', st.description, 'localTagId', st.local_tag_id,
+					'lastUse', st.last_use, 'createTime', st.create_time, 'updateTime', st.update_time),
+				'localTag', CASE WHEN lt.id IS NOT NULL THEN JSON_OBJECT(
+					'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,
+					'description', lt.description, 'lastUse', lt.last_use,
+					'createTime', lt.create_time, 'updateTime', lt.update_time)
+				END,
+				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
+					'id', s.id, 'siteName', s.site_name, 'siteDescription', s.site_description)
+				END))
+			FROM re_work_tag rwt
+			INNER JOIN site_tag st ON rwt.site_tag_id = st.id
+			LEFT JOIN local_tag lt ON st.local_tag_id = lt.id
+			LEFT JOIN site s ON st.site_id = s.id
+			WHERE t1.id = rwt.work_id) AS siteTags,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', rt2.id, 'siteId', rt2.site_id, 'siteWorkSetId', rt2.site_work_set_id, 'siteWorkSetName', rt2.site_work_set_name, 'siteAuthorId', rt2.site_author_id,
-				'siteUploadTime', rt2.site_upload_time, 'siteUpdateTime', rt2.site_update_time, 'nickName', rt2.nick_name, 'lastView', rt2.last_view))
-			FROM re_work_work_set rt1
-			INNER JOIN work_set rt2 ON rt1.work_set_id = rt2.id
-			WHERE t1.id = rt1.work_id) AS workSets
+				'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
+				'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time))
+			FROM re_work_author rwa
+			INNER JOIN local_author la ON rwa.local_author_id = la.id
+			WHERE t1.id = rwa.work_id) AS localAuthors,
+			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+				'siteAuthor', JSON_OBJECT(
+					'id', sa.id, 'siteId', sa.site_id, 'siteAuthorId', sa.site_author_id, 'authorName', sa.author_name,
+					'fixedAuthorName', sa.fixed_author_name, 'siteAuthorNameBefore', sa.site_author_name_before,
+					'introduce', sa.introduce, 'homepage', sa.homepage, 'localAuthorId', sa.local_author_id,
+					'lastUse', sa.last_use, 'createTime', sa.create_time, 'updateTime', sa.update_time),
+				'localAuthor', CASE WHEN la.id IS NOT NULL THEN JSON_OBJECT(
+					'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
+					'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time)
+				END,
+				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
+					'id', s.id, 'siteName', s.site_name, 'siteDescription', s.site_description)
+				END))
+			FROM re_work_author rwa
+			INNER JOIN site_author sa ON rwa.site_author_id = sa.id
+			LEFT JOIN local_author la ON sa.local_author_id = la.id
+			LEFT JOIN site s ON sa.site_id = s.id
+			WHERE t1.id = rwa.work_id) AS siteAuthors
 		FROM work t1
-		LEFT JOIN resource t2 ON t1.id = t2.work_id AND t2.state = 1
 		%s
 		GROUP BY t1.id
 		ORDER BY t1.update_time DESC
@@ -266,34 +286,24 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	var results []*sdkdto.WorkFullDTO
 	for rows.Next() {
 		work := entity2.NewWork()
-		var resource, inactiveResource, localTags, siteTags, localAuthors, siteAuthors, workSets sql.NullString
+		var resources, localTags, siteTags, localAuthors, siteAuthors sql.NullString
 
 		if err := rows.Scan(
 			&work.ID, &work.CreateTime, &work.UpdateTime, &work.SiteID, &work.SiteWorkID, &work.SiteWorkName,
 			&work.SiteAuthorID, &work.SiteWorkDescription, &work.SiteUploadTime, &work.SiteUpdateTime,
 			&work.NickName, &work.LocalAuthorID, &work.LastView,
-			&resource, &inactiveResource, &localTags, &siteTags, &localAuthors, &siteAuthors, &workSets,
+			&resources, &localTags, &siteTags, &localAuthors, &siteAuthors,
 		); err != nil {
 			return nil, 0, err
 		}
 
 		dto := dto2.NewWorkFullDTO(work)
 
-		// 解析 resource JSON
-		if resource.Valid && resource.String != "" {
-			var res sdkdto.ResourceDTO
-			if json.Unmarshal([]byte(resource.String), &res) == nil {
-				dto.Resources = append(dto.Resources, &res)
-			}
-		}
-
-		// 解析 inactiveResource JSON 数组
-		if inactiveResource.Valid && inactiveResource.String != "" {
-			var resList []sdkdto.ResourceDTO
-			if json.Unmarshal([]byte(inactiveResource.String), &resList) == nil {
-				for i := range resList {
-					dto.Resources = append(dto.Resources, &resList[i])
-				}
+		// 解析 resources
+		if resources.Valid && resources.String != "" && resources.String != "null" {
+			var resList []*sdkdto.ResourceDTO
+			if json.Unmarshal([]byte(resources.String), &resList) == nil {
+				dto.Resources = resList
 			}
 		}
 
