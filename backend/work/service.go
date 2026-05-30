@@ -858,6 +858,10 @@ func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*sdkdto.Loc
 			}
 		}
 	}
+
+	// 用数据库实体回填 DTO 中缺失的 AuthorName
+	enrichLocalAuthorDTOs(dtos, results)
+
 	return ids, nil
 }
 
@@ -888,6 +892,10 @@ func (s *Service) validateLocalTagIds(ctx context.Context, dtos []*sdkdto.LocalT
 			}
 		}
 	}
+
+	// 用数据库实体回填 DTO 中缺失的 LocalTagName
+	enrichLocalTagDTOs(dtos, results)
+
 	return ids, nil
 }
 
@@ -1007,4 +1015,42 @@ func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSe
 		})
 	}
 	return links
+}
+
+// enrichLocalAuthorDTOs 用数据库实体回填 DTO 中缺失的 AuthorName
+func enrichLocalAuthorDTOs(dtos []*sdkdto.LocalAuthorDTO, entities []*entity2.LocalAuthor) {
+	if len(dtos) == 0 || len(entities) == 0 {
+		return
+	}
+	entityMap := make(map[int64]*entity2.LocalAuthor, len(entities))
+	for _, e := range entities {
+		entityMap[e.GetID()] = e
+	}
+	for _, d := range dtos {
+		if d.AuthorName != nil && *d.AuthorName != "" {
+			continue
+		}
+		if e, ok := entityMap[d.ID]; ok && e.AuthorName.Valid {
+			d.AuthorName = &e.AuthorName.String
+		}
+	}
+}
+
+// enrichLocalTagDTOs 用数据库实体回填 DTO 中缺失的 LocalTagName
+func enrichLocalTagDTOs(dtos []*sdkdto.LocalTagDTO, entities []*entity2.LocalTag) {
+	if len(dtos) == 0 || len(entities) == 0 {
+		return
+	}
+	entityMap := make(map[int64]*entity2.LocalTag, len(entities))
+	for _, e := range entities {
+		entityMap[e.GetID()] = e
+	}
+	for _, d := range dtos {
+		if d.LocalTagName != nil && *d.LocalTagName != "" {
+			continue
+		}
+		if e, ok := entityMap[d.ID]; ok && e.LocalTagName.Valid {
+			d.LocalTagName = &e.LocalTagName.String
+		}
+	}
 }

@@ -322,6 +322,8 @@ func (m *ManagedTask) run() runResult {
 	startResp.Work = workResp.Work
 	startResp.SiteAuthors = workResp.SiteAuthors
 	startResp.LocalAuthors = workResp.LocalAuthors
+	startResp.SiteTags = workResp.SiteTags
+	startResp.LocalTags = workResp.LocalTags
 	m.resourceResp = startResp
 	localPath, relativePath, fileName := m.resolveLocalPath(startResp)
 
