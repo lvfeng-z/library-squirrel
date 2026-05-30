@@ -20,8 +20,8 @@ type Repository interface {
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
 	// SetStatus 设置指定任务的状态（不级联）
 	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
-	// BatchSetStatus 批量设置任务状态
-	BatchSetStatus(ctx context.Context, statuses map[int64]task.TaskStatusEnum) error
+	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
+	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// UpdatePendingResourceID 更新任务的 pending_resource_id
 	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 }
@@ -49,7 +49,7 @@ type Manager struct {
 	// 优雅关闭标记
 	shuttingDown atomic.Bool
 	// 批量状态写入
-	pendingStatusUpdates map[int64]task.TaskStatusEnum
+	pendingStatusUpdates map[int64]task.StatusUpdate
 	pendingMu            sync.Mutex
 	flushCh              chan struct{}
 	closeCh              chan struct{}
@@ -97,7 +97,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		waitingQueue:           make([]*ManagedTask, 0),
 		maxParallel:            maxParallel,
 		semaphore:              make(chan struct{}, maxParallel),
-		pendingStatusUpdates:   make(map[int64]task.TaskStatusEnum),
+		pendingStatusUpdates:   make(map[int64]task.StatusUpdate),
 		flushCh:                make(chan struct{}, 1),
 		closeCh:                make(chan struct{}),
 		flushDone:              make(chan struct{}),
@@ -351,7 +351,7 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 		if child.GetState() == TaskStateWaiting {
 			m.removeFromQueue(child.taskId)
 			child.cancel()
-			child.setState(TaskStateFailed)
+			child.setFailed("任务被用户停止")
 		} else {
 			child.Stop()
 		}
@@ -363,7 +363,7 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 // RetryTaskTree 重试任务树
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
-	// 重置任务状态为 Created
+	// 重置任务状态为 Created（同时清除 error_message）
 	_, err := m.repo.SetTaskTreeStatus(ctx, []int64{taskId}, task.TaskStatusCreated, task.TaskStatusFailed)
 	if err != nil {
 		return err
@@ -617,10 +617,10 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
-	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState) {
+	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string) {
 		// 仅稳定状态写入数据库，瞬态只更新内存和前端
 		if isStableState(newState) {
-			m.addToPending(taskId, task.TaskStatusEnum(newState))
+			m.addToPending(taskId, task.TaskStatusEnum(newState), errMsg)
 		}
 
 		// 推送状态到前端
@@ -631,7 +631,8 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
 				oldParentState, newParentState := parent.RefreshState()
 				if oldParentState != newParentState && isStableState(newParentState) {
-					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState))
+					// 父任务无错误信息，传空字符串（清除 error_message）
+					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 				}
 				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 			}
@@ -683,7 +684,7 @@ func (m *Manager) doFlush() {
 		return
 	}
 	pending := m.pendingStatusUpdates
-	m.pendingStatusUpdates = make(map[int64]task.TaskStatusEnum)
+	m.pendingStatusUpdates = make(map[int64]task.StatusUpdate)
 	m.pendingMu.Unlock()
 
 	if err := m.repo.BatchSetStatus(context.Background(), pending); err != nil {
@@ -692,9 +693,12 @@ func (m *Manager) doFlush() {
 }
 
 // addToPending 添加待刷盘的状态变更，非阻塞通知 flushLoop
-func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum) {
+func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg string) {
 	m.pendingMu.Lock()
-	m.pendingStatusUpdates[taskId] = status
+	m.pendingStatusUpdates[taskId] = task.StatusUpdate{
+		Status:       status,
+		ErrorMessage: sql.NullString{String: errMsg, Valid: errMsg != ""},
+	}
 	m.pendingMu.Unlock()
 
 	select {

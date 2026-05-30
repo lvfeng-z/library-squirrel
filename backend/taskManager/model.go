@@ -172,6 +172,9 @@ type ManagedTask struct {
 	// 已有作品 ID（第一次 run 检测到重复时设置，第二次 run 时用于备份）
 	existingWorkId int64
 
+	// 当前错误信息（仅 TaskStateFailed 时有效，通过 onStateChange 回调传递到 Manager）
+	errorMessage string
+
 	// 任务信息
 	task   *entity.Task
 	workId int64
@@ -191,7 +194,7 @@ type ManagedTask struct {
 	totalWritten  int64         // 已写入字节数
 
 	// 回调函数
-	onStateChange      func(taskId int64, oldState, newState TaskState)
+	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string)
 	onProgress         func(taskId int64, total int64, finished int64)
 	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
 
@@ -230,7 +233,7 @@ func (m *ManagedTask) run() runResult {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d panic: %v", m.taskId, r)
-			m.setState(TaskStateFailed)
+			m.setFailed(fmt.Sprintf("任务执行 panic: %v", r))
 		}
 	}()
 
@@ -245,7 +248,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed("未配置资源库目录，请先在设置中指定资源库保存位置")
 		return runResultDone
 	}
 
@@ -279,7 +282,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("创建作品信息失败: %v", err))
 		return runResultDone
 	}
 
@@ -290,7 +293,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("保存作品信息失败: %v", err))
 		return runResultDone
 	}
 	m.workId = workId
@@ -302,7 +305,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("获取资源读取器失败: %v", err))
 		return runResultDone
 	}
 
@@ -319,7 +322,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("创建资源目录失败: %v", err))
 		return runResultDone
 	}
 
@@ -342,7 +345,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("保存资源到数据库失败: %v", err))
 		return runResultDone
 	}
 
@@ -359,7 +362,7 @@ func (m *ManagedTask) run() runResult {
 		if m.abortedByPause() {
 			return runResultPaused
 		}
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("创建本地文件失败: %v", err))
 		return runResultDone
 	}
 
@@ -398,11 +401,11 @@ func (m *ManagedTask) downloadLoop() runResult {
 				m.doResume()
 				continue
 			case <-m.ctx.Done():
-				m.setState(TaskStateFailed)
+				m.setFailed("任务被取消")
 				return runResultDone
 			}
 		case <-m.ctx.Done():
-			m.setState(TaskStateFailed)
+			m.setFailed("任务被取消")
 			return runResultDone
 		default:
 		}
@@ -415,7 +418,7 @@ func (m *ManagedTask) downloadLoop() runResult {
 			}
 			if writeErr != nil {
 				logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
-				m.setState(TaskStateFailed)
+				m.setFailed(fmt.Sprintf("写入文件失败: %v", writeErr))
 				return runResultDone
 			}
 			// 报告进度
@@ -429,7 +432,7 @@ func (m *ManagedTask) downloadLoop() runResult {
 				// 校验下载完整性
 				if m.resourceResp.Resource.Size > 0 && m.totalWritten < m.resourceResp.Resource.Size {
 					logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, m.totalWritten, m.resourceResp.Resource.Size)
-					m.setState(TaskStateFailed)
+					m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
 					return runResultDone
 				}
 				// 下载完成，清除 pending_resource_id
@@ -438,7 +441,7 @@ func (m *ManagedTask) downloadLoop() runResult {
 				return runResultDone
 			}
 			logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
-			m.setState(TaskStateFailed)
+			m.setFailed(fmt.Sprintf("下载读取失败: %v", readErr))
 			return runResultDone
 		}
 	}
@@ -474,7 +477,7 @@ func (m *ManagedTask) doResume() {
 	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Resume 失败: %v", m.taskId, err)
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("恢复下载失败: %v", err))
 		return
 	}
 
@@ -486,7 +489,7 @@ func (m *ManagedTask) doResume() {
 	file, err := os.OpenFile(m.localPath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败: %v", m.taskId, err)
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("追加打开文件失败: %v", err))
 		return
 	}
 	m.currentFile = file
@@ -505,7 +508,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d resumeFromPersistedState panic: %v", m.taskId, r)
-			m.setState(TaskStateFailed)
+			m.setFailed(fmt.Sprintf("跨重启续传 panic: %v", r))
 		}
 	}()
 
@@ -526,7 +529,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	workDir := m.workDirProvider.GetWorkDir()
 	if workDir == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
-		m.setState(TaskStateFailed)
+		m.setFailed("未配置资源库目录，请先在设置中指定资源库保存位置")
 		return runResultDone
 	}
 	localPath := filepath.Join(workDir, "resource", resource.FilePath.String)
@@ -548,7 +551,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("跨重启续传失败: %v", err))
 		return runResultDone
 	}
 
@@ -564,7 +567,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	file, err := os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败 [%s]: %v", m.taskId, localPath, err)
-		m.setState(TaskStateFailed)
+		m.setFailed(fmt.Sprintf("跨重启续传追加打开文件失败: %v", err))
 		return runResultDone
 	}
 	m.currentFile = file
@@ -647,7 +650,7 @@ func (m *ManagedTask) Stop() {
 		}
 	}
 
-	m.setState(TaskStateFailed)
+	m.setFailed("任务被用户停止")
 }
 
 // clearPendingResourceID 清除任务的 pending_resource_id（下载完成时调用）
@@ -664,17 +667,27 @@ func (m *ManagedTask) setState(state TaskState) {
 	if old == state {
 		return
 	}
+	// 非 Failed 状态清除错误信息（重试后不应保留旧错误）
+	if state != TaskStateFailed {
+		m.errorMessage = ""
+	}
 	taskName := ""
 	if m.task != nil && m.task.TaskName.Valid {
 		taskName = m.task.TaskName.String
 	}
 	logger.Log.Infof("[TaskManager] 任务状态变更 [%s](%d): %s → %s", taskName, m.taskId, taskStateName(old), taskStateName(state))
 	if m.onStateChange != nil {
-		m.onStateChange(m.taskId, old, state)
+		m.onStateChange(m.taskId, old, state, m.errorMessage)
 	}
 	if state == TaskStateFinished || state == TaskStateFailed {
 		m.doneOnce.Do(func() { close(m.done) })
 	}
+}
+
+// setFailed 设置任务为失败状态，并记录错误信息
+func (m *ManagedTask) setFailed(errMsg string) {
+	m.errorMessage = errMsg
+	m.setState(TaskStateFailed)
 }
 
 // Done 返回任务完成信号 channel，任务终态（Finished/Failed）时关闭
@@ -703,7 +716,7 @@ func (m *ManagedTask) isStopped() bool {
 }
 
 // SetOnStateChange 设置状态变化回调
-func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState TaskState)) {
+func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState TaskState, errMsg string)) {
 	m.onStateChange = fn
 }
 

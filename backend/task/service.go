@@ -29,6 +29,12 @@ var (
 	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
 )
 
+// StatusUpdate 待持久化的状态变更（包含状态和错误信息）
+type StatusUpdate struct {
+	Status       TaskStatusEnum
+	ErrorMessage sql.NullString
+}
+
 // TaskStatusEnum 任务状态枚举，与 taskManager.TaskState 保持一致
 type TaskStatusEnum int
 
@@ -84,8 +90,8 @@ type Repository interface {
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
 	DeleteTask(ctx context.Context, ids []int64) error
-	// BatchSetStatus 批量设置任务状态
-	BatchSetStatus(ctx context.Context, statuses map[int64]TaskStatusEnum) error
+	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
+	BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error
 	// UpdatePendingResourceID 更新任务的 pending_resource_id
 	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 }

@@ -68,31 +68,31 @@ func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.Page
 // RefreshTaskStatus 刷新任务状态
 func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error) {
 	statement := fmt.Sprintf(`
-		WITH total AS (
-			SELECT COUNT(1) AS num FROM task WHERE pid = %d
-		),
-		finished AS (
-			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
-		),
-		failed AS (
-			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
-		),
-		processing AS (
-			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status IN (%d, %d)
-		),
-		paused AS (
-			SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
-		)
-		UPDATE task SET status = (
-			CASE
-				WHEN (SELECT num FROM processing) > 0 THEN %d
-				WHEN (SELECT num FROM paused) > 0 THEN %d
-				WHEN (SELECT num FROM finished) = (SELECT num FROM total) THEN %d
-				WHEN (SELECT num FROM failed) = (SELECT num FROM total) THEN %d
-				WHEN (SELECT num FROM total) > (SELECT num FROM finished) AND (SELECT num FROM finished) > 0 THEN %d
-			END
-		)
-		WHERE id = %d`,
+			WITH total AS (
+				SELECT COUNT(1) AS num FROM task WHERE pid = %d
+			),
+			finished AS (
+				SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
+			),
+			failed AS (
+				SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
+			),
+			processing AS (
+				SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status IN (%d, %d)
+			),
+			paused AS (
+				SELECT COUNT(1) AS num FROM task WHERE pid = %d AND status = %d
+			)
+			UPDATE task SET status = (
+				CASE
+					WHEN (SELECT num FROM processing) > 0 THEN %d
+					WHEN (SELECT num FROM paused) > 0 THEN %d
+					WHEN (SELECT num FROM finished) = (SELECT num FROM total) THEN %d
+					WHEN (SELECT num FROM failed) = (SELECT num FROM total) THEN %d
+					WHEN (SELECT num FROM total) > (SELECT num FROM finished) AND (SELECT num FROM finished) > 0 THEN %d
+				END
+			)
+			WHERE id = %d`,
 		taskId,
 		taskId, TaskStatusFinished,
 		taskId, TaskStatusFailed,
@@ -112,7 +112,7 @@ func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (i
 	return result.RowsAffected, nil
 }
 
-// SetTaskTreeStatus 设置任务树状态
+// SetTaskTreeStatus 设置任务树状态（同时清除 error_message）
 func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error) {
 	if len(taskIds) == 0 {
 		return 0, nil
@@ -124,39 +124,39 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 	if len(includeStatus) > 0 {
 		includeStatusStr := intArrayToString(intStatusToArray(includeStatus[0]))
 		statement = fmt.Sprintf(`
-			WITH children AS (
-				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
-			),
-			parent AS (
-				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
-			)
-			UPDATE task SET status = %d WHERE id IN (
-				SELECT id FROM children WHERE status IN (%s)
-				UNION
-				SELECT id FROM parent WHERE status IN (%s)
-				UNION
-				SELECT id FROM task WHERE id IN (SELECT pid FROM children) AND status IN (%s)
-				UNION
-				SELECT id FROM task WHERE pid IN (SELECT id FROM parent) AND status IN (%s)
-			)`,
+				WITH children AS (
+					SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
+				),
+				parent AS (
+					SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				UPDATE task SET status = %d, error_message = NULL WHERE id IN (
+					SELECT id FROM children WHERE status IN (%s)
+					UNION
+					SELECT id FROM parent WHERE status IN (%s)
+					UNION
+					SELECT id FROM task WHERE id IN (SELECT pid FROM children) AND status IN (%s)
+					UNION
+					SELECT id FROM task WHERE pid IN (SELECT id FROM parent) AND status IN (%s)
+				)`,
 			idsStr, idsStr, status, includeStatusStr, includeStatusStr, includeStatusStr, includeStatusStr)
 	} else {
 		statement = fmt.Sprintf(`
-			WITH children AS (
-				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
-			),
-			parent AS (
-				SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
-			)
-			UPDATE task SET status = %d WHERE id IN (
-				SELECT id FROM children
-				UNION
-				SELECT id FROM parent
-				UNION
-				SELECT id FROM task WHERE id IN (SELECT pid FROM children)
-				UNION
-				SELECT id FROM task WHERE pid IN (SELECT id FROM parent)
-			)`,
+				WITH children AS (
+					SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 0
+				),
+				parent AS (
+					SELECT id, has_child FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				UPDATE task SET status = %d, error_message = NULL WHERE id IN (
+					SELECT id FROM children
+					UNION
+					SELECT id FROM parent
+					UNION
+					SELECT id FROM task WHERE id IN (SELECT pid FROM children)
+					UNION
+					SELECT id FROM task WHERE pid IN (SELECT id FROM parent)
+				)`,
 			idsStr, idsStr, status)
 	}
 
@@ -179,26 +179,29 @@ func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int
 	return result.Error
 }
 
-// BatchSetStatus 批量设置任务状态
-func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]TaskStatusEnum) error {
+// BatchSetStatus 批量设置任务状态（同时更新 error_message）
+func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error {
 	if len(statuses) == 0 {
 		return nil
 	}
 
 	ids := make([]int64, 0, len(statuses))
-	cases := ""
-	args := make([]any, 0, len(statuses)*2+len(statuses))
-	for id, status := range statuses {
+	statusCases := ""
+	errMsgCases := ""
+	args := make([]any, 0, len(statuses)*4+len(statuses))
+	for id, update := range statuses {
 		ids = append(ids, id)
-		cases += "WHEN id = ? THEN ? "
-		args = append(args, id, status)
+		statusCases += "WHEN id = ? THEN ? "
+		errMsgCases += "WHEN id = ? THEN ? "
+		args = append(args, id, update.Status)
+		args = append(args, id, update.ErrorMessage)
 	}
 	for _, id := range ids {
 		args = append(args, id)
 	}
 
-	sql := "UPDATE task SET status = CASE " + cases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
-	return r.GORM().WithContext(ctx).Exec(sql, args...).Error
+	statement := "UPDATE task SET status = CASE " + statusCases + "END, error_message = CASE " + errMsgCases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+	return r.GORM().WithContext(ctx).Exec(statement, args...).Error
 }
 
 // ListTaskTree 获取任务树列表
@@ -213,35 +216,35 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 	if len(includeStatus) > 0 {
 		statusStr := intArrayToString(intStatusToArray(includeStatus[0]))
 		statement = fmt.Sprintf(`
-			WITH children AS (
-				SELECT * FROM task WHERE id IN (%s) AND has_child = 0 AND status IN (%s)
-			),
-			parent AS (
-				SELECT * FROM task WHERE id IN (%s) AND has_child = 1
-			)
-			SELECT * FROM children
-			UNION
-			SELECT * FROM parent
-			UNION
-			SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
-			UNION
-			SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent) AND t.status IN (%s)`,
+				WITH children AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 0 AND status IN (%s)
+				),
+				parent AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				SELECT * FROM children
+				UNION
+				SELECT * FROM parent
+				UNION
+				SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
+				UNION
+				SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent) AND t.status IN (%s)`,
 			idsStr, statusStr, idsStr, statusStr)
 	} else {
 		statement = fmt.Sprintf(`
-			WITH children AS (
-				SELECT * FROM task WHERE id IN (%s) AND has_child = 0
-			),
-			parent AS (
-				SELECT * FROM task WHERE id IN (%s) AND has_child = 1
-			)
-			SELECT * FROM children
-			UNION
-			SELECT * FROM parent
-			UNION
-			SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
-			UNION
-			SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent)`,
+				WITH children AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 0
+				),
+				parent AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				SELECT * FROM children
+				UNION
+				SELECT * FROM parent
+				UNION
+				SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
+				UNION
+				SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent)`,
 			idsStr, idsStr)
 	}
 
@@ -340,8 +343,8 @@ func (r *TaskRepository) listChildrenByParentsTask(ctx context.Context, pids []i
 
 	idsStr := int64ArrayToString(pids)
 	statement := fmt.Sprintf(`
-		SELECT * FROM task
-		WHERE pid IN (%s)`,
+			SELECT * FROM task
+			WHERE pid IN (%s)`,
 		idsStr)
 
 	var tasks []*domain.Task
