@@ -856,6 +856,10 @@ func (a *resourceSaverAdapter) Save(ctx context.Context, resource *entity2.Resou
 	return resource.GetID(), nil
 }
 
+func (a *resourceSaverAdapter) Update(ctx context.Context, resource *entity2.Resource) error {
+	return a.svc.Update(ctx, resource)
+}
+
 // resourceFileBackuperAdapter ResourceFileBackuper 接口适配器
 type resourceFileBackuperAdapter struct {
 	svc *backup.Service
@@ -863,6 +867,18 @@ type resourceFileBackuperAdapter struct {
 
 func (a *resourceFileBackuperAdapter) BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error {
 	_, err := a.svc.CreateBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
+	return err
+}
+
+func (a *resourceFileBackuperAdapter) GetBackup(ctx context.Context, sourceType int, sourceId int64) (*entity2.Backup, error) {
+	if sourceType == backup.SourceTypeResource {
+		return a.svc.GetResourceBackup(ctx, sourceId)
+	}
+	return nil, nil
+}
+
+func (a *resourceFileBackuperAdapter) MoveBackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error {
+	_, err := a.svc.MoveBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
 	return err
 }
 
