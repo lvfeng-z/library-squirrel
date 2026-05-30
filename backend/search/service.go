@@ -228,7 +228,7 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 				item.CoverWork = dto2.NewWorkDTO(work)
 				if resources, ok := resourcesMap[coverWorkId]; ok {
 					for _, res := range resources {
-						if res.State == 1 {
+						if res.Enabled {
 							item.CoverResource = dto2.NewResourceDTO(res)
 							break
 						}

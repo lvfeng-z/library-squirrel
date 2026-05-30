@@ -104,7 +104,7 @@ const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 // ===== 辅助：从 resources 数组中获取活跃资源 =====
 function getActiveResource(info: WorkFullDTO): ResourceDTO | null | undefined {
   if (!info.resources?.length) return undefined
-  return info.resources.find(r => r?.state === 1) ?? info.resources[0]
+  return info.resources.find(r => r?.enabled) ?? info.resources[0]
 }
 
 // ===== 辅助：将 BindingsLocalAuthorDTO 转换为 RankedLocalAuthor（适配 AuthorInfo 组件）=====

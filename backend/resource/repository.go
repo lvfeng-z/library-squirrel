@@ -31,6 +31,17 @@ func (r *ResourceRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 	return r.BaseRepository.List(ctx, opt)
 }
 
+// GetEnabledByWorkId 查询作品关联的启用资源
+func (r *ResourceRepository) GetEnabledByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Eq{Column: "work_id", Value: workId},
+			clause.Eq{Column: "enabled", Value: true},
+		},
+	}
+	return r.BaseRepository.List(ctx, opt)
+}
+
 // ListByWorkIds 批量查询多个作品关联的资源
 func (r *ResourceRepository) ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error) {
 	if len(workIds) == 0 {

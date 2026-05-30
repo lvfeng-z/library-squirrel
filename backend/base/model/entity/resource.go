@@ -11,7 +11,7 @@ type Resource struct {
 	*model.BaseEntity
 	WorkID            int64          `gorm:"column:work_id;index:idx_resource_work_id" json:"workId"`
 	TaskID            int64          `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"`
-	State             int            `gorm:"column:state" json:"state"`
+	Enabled           bool           `gorm:"column:enabled" json:"enabled"`
 	FilePath          sql.NullString `gorm:"column:file_path" json:"filePath"`
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
 	FilenameExtension sql.NullString `gorm:"column:filename_extension" json:"filenameExtension"`

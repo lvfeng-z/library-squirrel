@@ -610,7 +610,7 @@ export class ResourceDTO {
     "id": number;
     "workId": number;
     "taskId": number;
-    "state": number;
+    "enabled": boolean;
     "filePath": string | null;
     "fileName": string | null;
     "filenameExtension": string | null;
@@ -632,8 +632,8 @@ export class ResourceDTO {
         if (!("taskId" in $$source)) {
             this["taskId"] = 0;
         }
-        if (!("state" in $$source)) {
-            this["state"] = 0;
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
         }
         if (!("filePath" in $$source)) {
             this["filePath"] = null;

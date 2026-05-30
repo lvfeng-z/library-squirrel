@@ -15,7 +15,7 @@ func NewResourceDTO(resource *entity.Resource) *sdkdto.ResourceDTO {
 		ID:                resource.GetID(),
 		WorkID:            resource.WorkID,
 		TaskID:            resource.TaskID,
-		State:             resource.State,
+		Enabled:           resource.Enabled,
 		FilePath:          util.NullStringToPointer(resource.FilePath),
 		FileName:          util.NullStringToPointer(resource.FileName),
 		FilenameExtension: util.NullStringToPointer(resource.FilenameExtension),
@@ -44,7 +44,7 @@ func ToResourceEntity(dto *sdkdto.ResourceDTO) *entity.Resource {
 	// 设置业务字段
 	newResource.WorkID = dto.WorkID
 	newResource.TaskID = dto.TaskID
-	newResource.State = dto.State
+	newResource.Enabled = dto.Enabled
 	newResource.ResourceComplete = dto.ResourceComplete
 
 	if dto.FilePath != nil {

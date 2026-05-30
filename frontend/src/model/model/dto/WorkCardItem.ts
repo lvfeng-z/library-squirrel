@@ -91,7 +91,7 @@ export default class WorkCardItem {
 
 function getActiveResource(dto: WorkFullDTO): Resource | undefined {
   if (!arrayNotEmpty(dto.resources)) return undefined
-  const active = dto.resources!.find(r => r?.state === 1) ?? dto.resources![0]
+  const active = dto.resources!.find(r => r?.enabled) ?? dto.resources![0]
   if (!active) return undefined
   return new Resource(active as any)
 }

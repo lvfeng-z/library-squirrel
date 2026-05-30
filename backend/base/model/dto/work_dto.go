@@ -28,30 +28,6 @@ func NewWorkDTO(work *entity2.Work) *sdkdto.WorkDTO {
 	}
 }
 
-// WorkFullDTO 作品完整信息DTO
-type WorkFullDTO struct {
-	// 基础作品信息（组合 WorkDTO，避免嵌入实体）
-	Work *sdkdto.WorkDTO `json:"work,omitempty"`
-
-	// 关联的本地作者列表
-	LocalAuthors []*sdkdto.LocalAuthorDTO `json:"localAuthors,omitempty"`
-
-	// 关联的站点作者列表
-	SiteAuthors []*sdkdto.SiteAuthorFullDTO `json:"siteAuthors,omitempty"`
-
-	// 关联的站点信息
-	Site *sdkdto.SiteDTO `json:"site,omitempty"`
-
-	// 关联的本地标签列表
-	LocalTags []*sdkdto.LocalTagDTO `json:"localTags,omitempty"`
-
-	// 关联的站点标签列表
-	SiteTags []*sdkdto.SiteTagFullDTO `json:"siteTags,omitempty"`
-
-	// 关联的资源列表
-	Resources []*sdkdto.ResourceDTO `json:"resources,omitempty"`
-}
-
 // NewWorkFullDTO 创建WorkFullDTO
 func NewWorkFullDTO(work *entity2.Work) *sdkdto.WorkFullDTO {
 	return &sdkdto.WorkFullDTO{

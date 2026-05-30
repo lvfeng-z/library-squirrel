@@ -23,6 +23,8 @@ type Repository interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error)
+	// GetEnabledByWorkId 查询作品关联的启用资源
+	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error)
 	// ListByWorkIds 批量查询多个作品关联的资源
 	ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error)
 }
@@ -67,6 +69,11 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // ListByWorkId 查询作品关联的资源
 func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
 	return s.repo.ListByWorkId(ctx, workId)
+}
+
+// GetEnabledByWorkId 查询作品关联的启用资源
+func (s *Service) GetEnabledByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
+	return s.repo.GetEnabledByWorkId(ctx, workId)
 }
 
 // DeleteByWorkId 根据作品ID删除所有资源
