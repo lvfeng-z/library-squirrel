@@ -535,6 +535,7 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 		if allStable {
 			// 等待瞬态回调完成
 			time.Sleep(50 * time.Millisecond)
+
 			// 触发最终刷盘
 			close(m.closeCh)
 			<-m.flushDone

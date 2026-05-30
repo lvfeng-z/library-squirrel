@@ -16,6 +16,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/util/filename"
 	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
@@ -42,7 +43,7 @@ type runResult int
 const (
 	runResultDone        runResult = iota // 正常完成（Finished/Failed）
 	runResultNeedConfirm                  // 检测到重复，需要用户确认
-	runResultPaused                      // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
+	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
 // taskStateName 任务状态名称映射
@@ -113,6 +114,7 @@ type WorkInfoSaver interface {
 // ResourceSaver 资源保存接口
 type ResourceSaver interface {
 	Save(ctx context.Context, resource *entity.Resource) (int64, error)
+	Update(ctx context.Context, resource *entity.Resource) error
 }
 
 // WorkChecker 作品查重接口
@@ -124,13 +126,20 @@ type WorkChecker interface {
 type ResourceReader interface {
 	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
+	// GetEnabledByWorkId 查询作品关联的启用资源
+	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
 	// GetById 根据 ID 获取资源
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
 // ResourceFileBackuper 资源文件备份接口
 type ResourceFileBackuper interface {
+	// BackupFile 复制备份文件到备份目录（保留源文件）
 	BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error
+	// MoveBackupFile 移动备份文件到备份目录（不保留源文件，O(1)）
+	MoveBackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error
+	// GetBackup 查询已有的备份记录
+	GetBackup(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
 }
 
 // ManagedTask 任务运行控制结构体
@@ -331,6 +340,7 @@ func (m *ManagedTask) run() runResult {
 		BaseEntity:        &model.BaseEntity{},
 		WorkID:            workId,
 		TaskID:            m.task.GetID(),
+		Enabled:           true,
 		FilePath:          sql.NullString{String: relativePath, Valid: true},
 		FileName:          sql.NullString{String: fileName, Valid: true},
 		FilenameExtension: sql.NullString{String: startResp.Resource.Format, Valid: true},
@@ -736,14 +746,16 @@ func (m *ManagedTask) abortedByPause() bool {
 	return s == TaskStatePausing || s == TaskStatePaused
 }
 
-// backupExistingResources 备份已有作品的资源文件
+// backupExistingResources 备份已有作品的启用资源文件
+// 仅处理当前启用的 Resource（Enabled=true），备份后标记为未启用。
+// 使用移动备份（MoveBackupFile）：将源文件移动到备份目录，O(1) 完成且释放原路径。
 func (m *ManagedTask) backupExistingResources(workId int64) {
 	if m.resourceReader == nil || m.resourceBackuper == nil {
 		return
 	}
-	resources, err := m.resourceReader.ListByWorkId(m.ctx, workId)
+	resources, err := m.resourceReader.GetEnabledByWorkId(m.ctx, workId)
 	if err != nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 查询已有作品资源失败（跳过备份）: %v", m.taskId, err)
+		logger.Log.Warnf("[TaskManager] 任务 %d 查询已有作品启用资源失败（跳过备份）: %v", m.taskId, err)
 		return
 	}
 	workDir := m.workDirProvider.GetWorkDir()
@@ -752,10 +764,56 @@ func (m *ManagedTask) backupExistingResources(workId int64) {
 			continue
 		}
 		absPath := filepath.Join(workDir, "resource", res.FilePath.String)
-		if err := m.resourceBackuper.BackupFile(m.ctx, backup.SourceTypeResource, res.GetID(), res.FileName.String, absPath, workDir); err != nil {
-			logger.Log.Warnf("[TaskManager] 任务 %d 备份资源文件失败 [%s]: %v", m.taskId, absPath, err)
+		resourceId := res.GetID()
+		fileName := res.FileName.String
+
+		// 源文件不存在时跳过
+		if !util.FileExists(absPath) {
+			continue
 		}
+		if m.shouldSkipBackup(resourceId, absPath, workDir) {
+			// 已有有效备份，仅标记为未启用
+			m.disableResource(res)
+			continue
+		}
+
+		if err := m.resourceBackuper.MoveBackupFile(m.ctx, backup.SourceTypeResource, resourceId, fileName, absPath, workDir); err != nil {
+			logger.Log.Warnf("[TaskManager] 任务 %d 移动备份资源文件失败 [%s]: %v", m.taskId, absPath, err)
+			continue
+		}
+
+		// 备份成功，标记为未启用
+		m.disableResource(res)
 	}
+}
+
+// disableResource 将资源标记为未启用
+func (m *ManagedTask) disableResource(res *entity.Resource) {
+	res.Enabled = false
+	if err := m.resourceSaver.Update(m.ctx, res); err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 标记资源 %d 为未启用失败: %v", m.taskId, res.GetID(), err)
+	}
+}
+
+// shouldSkipBackup 检查资源是否已有有效备份（记录存在 + 备份文件存在 + 文件大小一致）
+func (m *ManagedTask) shouldSkipBackup(resourceId int64, sourcePath string, workDir string) bool {
+	existing, err := m.resourceBackuper.GetBackup(m.ctx, backup.SourceTypeResource, resourceId)
+	if err != nil || existing == nil || !existing.FilePath.Valid {
+		return false
+	}
+
+	backupAbsPath := filepath.Join(workDir, existing.FilePath.String)
+	if !util.FileExists(backupAbsPath) || !util.FileExists(sourcePath) {
+		return false
+	}
+
+	sourceSize, _ := util.GetFileSize(sourcePath)
+	backupSize, _ := util.GetFileSize(backupAbsPath)
+	if sourceSize > 0 && sourceSize == backupSize {
+		logger.Log.Infof("[TaskManager] 任务 %d 资源 %d 已有有效备份，跳过（源: %d 字节, 备份: %d 字节）", m.taskId, resourceId, sourceSize, backupSize)
+		return true
+	}
+	return false
 }
 
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
