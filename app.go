@@ -801,7 +801,8 @@ func (app *App) initAdvancedServices() error {
 
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
-	resourceFileBackuperAdapter := &resourceFileBackuperAdapter{svc: app.BackupService}
+	// 创建资源备份编排器
+	resourceBackupOrchestrator := backup.NewResourceBackupOrchestrator(app.ResourceService, app.BackupService)
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -814,7 +815,7 @@ func (app *App) initAdvancedServices() error {
 		resourceSaverAdapter,
 		app.WorkService,             // 实现 WorkChecker 接口
 		app.ResourceService,         // 实现 ResourceReader 接口
-		resourceFileBackuperAdapter, // 实现 ResourceFileBackuper 接口
+		resourceBackupOrchestrator,  // 实现 ResourceBackupOrchestrator 接口
 	)
 
 	return nil
@@ -860,27 +861,6 @@ func (a *resourceSaverAdapter) Update(ctx context.Context, resource *entity2.Res
 	return a.svc.Update(ctx, resource)
 }
 
-// resourceFileBackuperAdapter ResourceFileBackuper 接口适配器
-type resourceFileBackuperAdapter struct {
-	svc *backup.Service
-}
-
-func (a *resourceFileBackuperAdapter) BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error {
-	_, err := a.svc.CreateBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
-	return err
-}
-
-func (a *resourceFileBackuperAdapter) GetBackup(ctx context.Context, sourceType int, sourceId int64) (*entity2.Backup, error) {
-	if sourceType == backup.SourceTypeResource {
-		return a.svc.GetResourceBackup(ctx, sourceId)
-	}
-	return nil, nil
-}
-
-func (a *resourceFileBackuperAdapter) MoveBackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error {
-	_, err := a.svc.MoveBackup(ctx, sourceType, sourceId, fileName, sourcePath, workDir)
-	return err
-}
 
 // initHandlers 初始化 Handlers（用于 Bind[] 参数暴露给前端）
 func (app *App) initHandlers() {

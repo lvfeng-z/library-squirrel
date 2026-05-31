@@ -82,15 +82,15 @@ type Manager struct {
 	workChecker WorkChecker
 	// 资源查询（查找已有作品的资源文件）
 	resourceReader ResourceReader
-	// 资源文件备份
-	resourceBackuper ResourceFileBackuper
+	// 资源备份编排器
+	backupOrchestrator ResourceBackupOrchestrator
 	// 等待用户确认的任务（WaitingForInput 状态，已释放信号量）
 	waitingForInputMap map[int64]*ManagedTask
 	waitingForInputMu  sync.Mutex
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, resourceBackuper ResourceFileBackuper) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, backupOrchestrator ResourceBackupOrchestrator) *Manager {
 	m := &Manager{
 		taskMap:                make(map[int64]*ManagedTask),
 		parentMap:              make(map[int64]*ParentTask),
@@ -110,7 +110,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		resourceSaver:          resourceSaver,
 		workChecker:            workChecker,
 		resourceReader:         resourceReader,
-		resourceBackuper:       resourceBackuper,
+		backupOrchestrator:     backupOrchestrator,
 		waitingForInputMap:     make(map[int64]*ManagedTask),
 	}
 	go m.flushLoop()
@@ -614,7 +614,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.resourceBackuper, m.pusher)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.backupOrchestrator, m.pusher)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String

@@ -26,10 +26,16 @@ const (
 type Repository interface {
 	// Save 保存备份
 	Save(ctx context.Context, backup *entity.Backup) error
+	// Update 更新备份
+	Update(ctx context.Context, backup *entity.Backup) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceId 根据来源类型和来源ID获取
 	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
+	// GetBySourceTypeAndSourceIds 批量获取备份记录
+	GetBySourceTypeAndSourceIds(ctx context.Context, sourceType int, sourceIds []int64) ([]*entity.Backup, error)
+	// Delete 删除备份记录
+	Delete(ctx context.Context, id int64) error
 }
 
 // Service 备份服务
@@ -194,4 +200,57 @@ func addSuffix(filename string, suffix string) string {
 	ext := filepath.Ext(filename)
 	name := filename[:len(filename)-len(ext)]
 	return name + suffix + ext
+}
+
+// MoveBackupForResource 移动资源文件到备份目录，并记录原始路径信息用于后续还原
+func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string, originalFilePath string, originalFileName string, originalFilenameExtension string) (*entity.Backup, error) {
+	backup, err := s.MoveBackup(ctx, SourceTypeResource, sourceId, fileName, sourcePath, workDir)
+	if err != nil {
+		return nil, err
+	}
+	// 补充原始资源路径信息
+	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
+	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
+	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
+	if err := s.repo.Update(ctx, backup); err != nil {
+		return nil, fmt.Errorf("更新备份原始路径失败: %w", err)
+	}
+	return backup, nil
+}
+
+// RestoreFile 从备份路径还原文件到目标路径
+func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
+	if !util.FileExists(backupPath) {
+		return fmt.Errorf("还原失败，备份文件不存在: %s", backupPath)
+	}
+	// 确保目标目录存在
+	if err := util.CreateDirIfNotExists(filepath.Dir(targetPath)); err != nil {
+		return fmt.Errorf("还原失败，创建目标目录出错: %w", err)
+	}
+	// 目标文件已存在时（如新下载的部分文件），先删除
+	if util.FileExists(targetPath) {
+		if err := os.Remove(targetPath); err != nil {
+			return fmt.Errorf("还原失败，无法删除已存在的目标文件: %w", err)
+		}
+	}
+	// 移动文件（同文件系统 O(1)）
+	if err := os.Rename(backupPath, targetPath); err != nil {
+		// 跨文件系统回退为复制
+		logger.Log.Warnf("还原文件移动失败（回退为复制）: %v", err)
+		if copyErr := util.CopyFile(backupPath, targetPath); copyErr != nil {
+			return fmt.Errorf("还原失败，回退复制也失败: %w（原始移动错误: %v）", copyErr, err)
+		}
+		_ = os.Remove(backupPath)
+	}
+	return nil
+}
+
+// GetResourceBackups 批量获取资源备份记录
+func (s *Service) GetResourceBackups(ctx context.Context, resourceIds []int64) ([]*entity.Backup, error) {
+	return s.repo.GetBySourceTypeAndSourceIds(ctx, SourceTypeResource, resourceIds)
+}
+
+// Delete 删除备份记录
+func (s *Service) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
 }

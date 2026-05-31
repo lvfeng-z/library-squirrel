@@ -11,12 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/util/filename"
 	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 )
@@ -132,14 +130,13 @@ type ResourceReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
-// ResourceFileBackuper 资源文件备份接口
-type ResourceFileBackuper interface {
-	// BackupFile 复制备份文件到备份目录（保留源文件）
-	BackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error
-	// MoveBackupFile 移动备份文件到备份目录（不保留源文件，O(1)）
-	MoveBackupFile(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) error
-	// GetBackup 查询已有的备份记录
-	GetBackup(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
+// ResourceBackupOrchestrator 资源备份编排器接口
+// 封装资源备份/禁用/还原的完整生命周期，由 backup 包的 ResourceBackupOrchestrator 实现
+type ResourceBackupOrchestrator interface {
+	// BackupAndDisable 备份已有作品的启用资源并标记为未启用，返回已备份的资源 ID 列表
+	BackupAndDisable(ctx context.Context, workId int64, workDir string) []int64
+	// Restore 还原已备份的资源
+	Restore(ctx context.Context, resourceIds []int64, workDir string)
 }
 
 // ManagedTask 任务运行控制结构体
@@ -170,8 +167,10 @@ type ManagedTask struct {
 	workChecker WorkChecker
 	// 资源查询（查找已有作品的资源文件）
 	resourceReader ResourceReader
-	// 资源文件备份
-	resourceBackuper ResourceFileBackuper
+	// 资源备份编排器
+	backupOrchestrator ResourceBackupOrchestrator
+	// 已备份的资源 ID 列表（用于任务失败时还原）
+	backedUpResourceIds []int64
 	// 进度推送器
 	pusher TaskProgressPusher
 	// 跳过重复检查（替换确认后的第二次 run）
@@ -212,7 +211,7 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, resourceBackuper ResourceFileBackuper, pusher TaskProgressPusher) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, backupOrchestrator ResourceBackupOrchestrator, pusher TaskProgressPusher) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
 		taskId:                 taskId,
@@ -228,7 +227,7 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		fileNameFormatProvider: fileNameFormatProvider,
 		workChecker:            workChecker,
 		resourceReader:         resourceReader,
-		resourceBackuper:       resourceBackuper,
+		backupOrchestrator:     backupOrchestrator,
 		pusher:                 pusher,
 		task:                   task,
 		workId:                 taskId,
@@ -239,6 +238,16 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 
 // run 核心执行逻辑
 func (m *ManagedTask) run() runResult {
+	// 最先注册，最后执行：任务失败时还原已备份的资源
+	defer func() {
+		if m.GetState() == TaskStateFailed && len(m.backedUpResourceIds) > 0 {
+			workDir := m.workDirProvider.GetWorkDir()
+			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份资源", m.taskId, len(m.backedUpResourceIds))
+			m.backupOrchestrator.Restore(m.ctx, m.backedUpResourceIds, workDir)
+			m.backedUpResourceIds = nil
+		}
+	}()
+	// panic recovery：后注册，先执行
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d panic: %v", m.taskId, r)
@@ -280,7 +289,8 @@ func (m *ManagedTask) run() runResult {
 
 	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行）
 	if m.existingWorkId > 0 {
-		m.backupExistingResources(m.existingWorkId)
+		workDir := m.workDirProvider.GetWorkDir()
+		m.backedUpResourceIds = m.backupOrchestrator.BackupAndDisable(m.ctx, m.existingWorkId, workDir)
 		m.existingWorkId = 0
 	}
 
@@ -748,75 +758,6 @@ func (m *ManagedTask) abortedByPause() bool {
 	return s == TaskStatePausing || s == TaskStatePaused
 }
 
-// backupExistingResources 备份已有作品的启用资源文件
-// 仅处理当前启用的 Resource（Enabled=true），备份后标记为未启用。
-// 使用移动备份（MoveBackupFile）：将源文件移动到备份目录，O(1) 完成且释放原路径。
-func (m *ManagedTask) backupExistingResources(workId int64) {
-	if m.resourceReader == nil || m.resourceBackuper == nil {
-		return
-	}
-	resources, err := m.resourceReader.GetEnabledByWorkId(m.ctx, workId)
-	if err != nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 查询已有作品启用资源失败（跳过备份）: %v", m.taskId, err)
-		return
-	}
-	workDir := m.workDirProvider.GetWorkDir()
-	for _, res := range resources {
-		if !res.FilePath.Valid || !res.FileName.Valid {
-			continue
-		}
-		absPath := filepath.Join(workDir, "resource", res.FilePath.String)
-		resourceId := res.GetID()
-		fileName := res.FileName.String
-
-		// 源文件不存在时跳过
-		if !util.FileExists(absPath) {
-			continue
-		}
-		if m.shouldSkipBackup(resourceId, absPath, workDir) {
-			// 已有有效备份，仅标记为未启用
-			m.disableResource(res)
-			continue
-		}
-
-		if err := m.resourceBackuper.MoveBackupFile(m.ctx, backup.SourceTypeResource, resourceId, fileName, absPath, workDir); err != nil {
-			logger.Log.Warnf("[TaskManager] 任务 %d 移动备份资源文件失败 [%s]: %v", m.taskId, absPath, err)
-			continue
-		}
-
-		// 备份成功，标记为未启用
-		m.disableResource(res)
-	}
-}
-
-// disableResource 将资源标记为未启用
-func (m *ManagedTask) disableResource(res *entity.Resource) {
-	res.Enabled = false
-	if err := m.resourceSaver.Update(m.ctx, res); err != nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 标记资源 %d 为未启用失败: %v", m.taskId, res.GetID(), err)
-	}
-}
-
-// shouldSkipBackup 检查资源是否已有有效备份（记录存在 + 备份文件存在 + 文件大小一致）
-func (m *ManagedTask) shouldSkipBackup(resourceId int64, sourcePath string, workDir string) bool {
-	existing, err := m.resourceBackuper.GetBackup(m.ctx, backup.SourceTypeResource, resourceId)
-	if err != nil || existing == nil || !existing.FilePath.Valid {
-		return false
-	}
-
-	backupAbsPath := filepath.Join(workDir, existing.FilePath.String)
-	if !util.FileExists(backupAbsPath) || !util.FileExists(sourcePath) {
-		return false
-	}
-
-	sourceSize, _ := util.GetFileSize(sourcePath)
-	backupSize, _ := util.GetFileSize(backupAbsPath)
-	if sourceSize > 0 && sourceSize == backupSize {
-		logger.Log.Infof("[TaskManager] 任务 %d 资源 %d 已有有效备份，跳过（源: %d 字节, 备份: %d 字节）", m.taskId, resourceId, sourceSize, backupSize)
-		return true
-	}
-	return false
-}
 
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
 // 返回值: absSavePath 绝对保存路径, relativePath 相对于 workdir/resource/ 的相对路径, fileName 文件名

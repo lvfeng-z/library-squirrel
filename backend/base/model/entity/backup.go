@@ -14,6 +14,10 @@ type Backup struct {
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
 	FilePath          sql.NullString `gorm:"column:file_path" json:"filePath"`
 	Workdir           sql.NullString `gorm:"column:workdir" json:"workdir"`
+	// 资源备份时记录的原始路径信息，用于还原到原始位置
+	OriginalFilePath          sql.NullString `gorm:"column:original_file_path" json:"originalFilePath"`
+	OriginalFileName          sql.NullString `gorm:"column:original_file_name" json:"originalFileName"`
+	OriginalFilenameExtension sql.NullString `gorm:"column:original_filename_extension" json:"originalFilenameExtension"`
 }
 
 // NewBackup 创建备份
