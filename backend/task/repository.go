@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -210,9 +209,7 @@ func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]
 
 	statement := "UPDATE task SET status = CASE " + statusCases + "END, error_message = CASE " + errMsgCases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
 	result := r.GORM().WithContext(ctx).Exec(statement, args...)
-	if logger.Log != nil {
-		logger.Log.Infof("[TaskRepository] BatchSetStatus SQL: %s | RowsAffected: %d | Error: %v", statement, result.RowsAffected, result.Error)
-	}
+
 	return result.Error
 }
 
