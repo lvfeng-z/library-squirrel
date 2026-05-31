@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -84,7 +85,7 @@ function getWorkSetName(): string {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="coverFilePath ? `/resource/${coverFilePath}${srcParamStr}` : ''"
+      :src="coverFilePath ? buildResourceUrl(coverFilePath, srcParamStr) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

@@ -25,6 +25,7 @@ import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -372,7 +373,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       <el-image
         class="work-dialog-image"
         fit="contain"
-        :src="`/resource/${getActiveResource(currentWorkFullInfo)?.filePath}`"
+        :src="buildResourceUrl(getActiveResource(currentWorkFullInfo)?.filePath ?? '')"
         @click="handlePictureClicked"
       >
         <template #error>

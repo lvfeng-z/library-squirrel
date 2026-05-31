@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -78,7 +79,7 @@ function handlePictureClicked() {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="props.work.resource?.filePath ? `/resource/${props.work.resource.filePath}${srcParamStr}` : ''"
+      :src="props.work.resource?.filePath ? buildResourceUrl(props.work.resource.filePath, srcParamStr) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"
