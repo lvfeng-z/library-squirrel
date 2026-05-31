@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -189,19 +190,30 @@ func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]
 	statusCases := ""
 	errMsgCases := ""
 	args := make([]any, 0, len(statuses)*4+len(statuses))
-	for id, update := range statuses {
+	for id := range statuses {
 		ids = append(ids, id)
 		statusCases += "WHEN id = ? THEN ? "
 		errMsgCases += "WHEN id = ? THEN ? "
-		args = append(args, id, update.Status)
-		args = append(args, id, update.ErrorMessage)
 	}
+	// status CASE 参数
+	for _, id := range ids {
+		args = append(args, id, statuses[id].Status)
+	}
+	// error_message CASE 参数
+	for _, id := range ids {
+		args = append(args, id, statuses[id].ErrorMessage)
+	}
+	// IN 子句参数
 	for _, id := range ids {
 		args = append(args, id)
 	}
 
 	statement := "UPDATE task SET status = CASE " + statusCases + "END, error_message = CASE " + errMsgCases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
-	return r.GORM().WithContext(ctx).Exec(statement, args...).Error
+	result := r.GORM().WithContext(ctx).Exec(statement, args...)
+	if logger.Log != nil {
+		logger.Log.Infof("[TaskRepository] BatchSetStatus SQL: %s | RowsAffected: %d | Error: %v", statement, result.RowsAffected, result.Error)
+	}
+	return result.Error
 }
 
 // ListTaskTree 获取任务树列表

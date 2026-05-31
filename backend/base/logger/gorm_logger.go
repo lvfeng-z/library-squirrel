@@ -16,7 +16,7 @@ type GormLogger struct {
 // NewGormLogger 创建 GORM 日志适配器
 func NewGormLogger() *GormLogger {
 	return &GormLogger{
-		level: logger.Info, // 默认 Warn 级别：输出 Warn、Error 和慢查询
+		level: logger.Warn, // 默认 Warn 级别：输出 Warn、Error 和慢查询
 	}
 }
 

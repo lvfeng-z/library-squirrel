@@ -567,19 +567,25 @@ func (m *Manager) removeTask(taskId int64) {
 }
 
 // cleanupFinishedTask 清理已终态的子任务，并检查父任务是否可清理
-func (m *Manager) cleanupFinishedTask(task *ManagedTask) {
+func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 	// 从 taskMap 移除子任务
 	m.mu.Lock()
-	delete(m.taskMap, task.taskId)
+	delete(m.taskMap, mt.taskId)
 
 	// 检查父任务是否所有子任务已终态
-	if task.parentId != 0 {
-		parent, ok := m.parentMap[task.parentId]
+	if mt.parentId != 0 {
+		parent, ok := m.parentMap[mt.parentId]
 		if ok && parent.AllChildrenTerminal() {
-			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", task.parentId)
-			delete(m.parentMap, task.parentId)
+			// 确保父任务的最终状态被持久化到数据库
+			_, newParentState := parent.RefreshState()
+			logger.Log.Infof("[TaskManager] cleanupFinishedTask 兜底刷新父任务状态: parentId=%d, newState=%s", parent.taskId, taskStateName(newParentState))
+			if isStableState(newParentState) {
+				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
+			}
+			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
+			delete(m.parentMap, mt.parentId)
 			m.mu.Unlock()
-			m.pusher.PushParentTaskRemove([]int64{task.parentId})
+			m.pusher.PushParentTaskRemove([]int64{mt.parentId})
 		} else {
 			m.mu.Unlock()
 		}
@@ -588,7 +594,7 @@ func (m *Manager) cleanupFinishedTask(task *ManagedTask) {
 	}
 
 	// 通知前端移除子任务
-	m.pusher.PushTaskRemove([]int64{task.taskId})
+	m.pusher.PushTaskRemove([]int64{mt.taskId})
 }
 
 func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
@@ -631,6 +637,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		if mt.parentId != 0 {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
 				oldParentState, newParentState := parent.RefreshState()
+				logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState))
 				if oldParentState != newParentState && isStableState(newParentState) {
 					// 父任务无错误信息，传空字符串（清除 error_message）
 					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
@@ -688,6 +695,14 @@ func (m *Manager) doFlush() {
 	m.pendingStatusUpdates = make(map[int64]task.StatusUpdate)
 	m.pendingMu.Unlock()
 
+// 诊断日志：记录待刷盘的任务状态
+	for id, u := range pending {
+		errMsg := ""
+		if u.ErrorMessage.Valid {
+			errMsg = u.ErrorMessage.String
+		}
+		logger.Log.Infof("[TaskManager] doFlush: taskId=%d, status=%d, errMsg=%s", id, u.Status, errMsg)
+	}
 	if err := m.repo.BatchSetStatus(context.Background(), pending); err != nil {
 		logger.Log.Errorf("[TaskManager] 批量写入任务状态失败: %v", err)
 	}

@@ -926,7 +926,7 @@ func (p *ParentTask) GetState() TaskState {
 func (p *ParentTask) AllChildrenTerminal() bool {
 	for _, child := range p.GetChildren() {
 		s := child.GetState()
-		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStateWaitingForInput {
+		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStatePaused {
 			return false
 		}
 	}
