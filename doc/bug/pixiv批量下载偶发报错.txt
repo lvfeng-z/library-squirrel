@@ -1,0 +1,60 @@
+{"level":"INFO","time":"2026-05-31T15:03:17.520+0800","msg":"StartTaskTree: taskId=55"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"StartTaskTree: 查询到 6 条任务记录"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 任务状态变更 [無題[4]](59): Created → Waiting"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Created, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 任务状态变更 [無題[2]](57): Created → Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 任务状态变更 [無題[1]](56): Created → Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 任务状态变更 [無題[5]](60): Created → Waiting"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 任务状态变更 [無題[3]](58): Created → Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.526+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.527+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p0\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.527+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p1\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.530+0800","msg":"[GORM] 2.7278ms | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p2\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.530+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work_set` WHERE `site_id` = 1 AND `site_work_set_id` = \"144741978\" ORDER BY `work_set`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.531+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work_set` WHERE `site_id` = 1 AND `site_work_set_id` = \"144741978\" ORDER BY `work_set`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.532+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p2\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.549+0800","msg":"[GORM] 539.8µs | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p1\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.563+0800","msg":"[GORM] 32.9959ms | 0 rows | INSERT INTO `work_set` (`create_time`,`update_time`,`site_id`,`site_work_set_id`,`site_work_set_name`,`site_author_id`,`site_work_set_description`,`site_upload_time`,`site_update_time`,`nick_name`,`last_view`) VALUES (1780210997530,1780210997530,1,\"144741978\",\"無題\",NULL,NULL,NULL,NULL,NULL,NULL) RETURNING `id` | UNIQUE constraint failed: work_set.site_id, work_set.site_work_set_id"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.563+0800","msg":"[TaskManager] 任务 56 保存作品信息失败: upsert 作品集失败: upsert 作品集 144741978 失败: UNIQUE constraint failed: work_set.site_id, work_set.site_work_set_id"}
+{"level":"INFO","time":"2026-05-31T15:03:17.563+0800","msg":"[TaskManager] 任务状态变更 [無題[1]](56): Processing → Failed"}
+{"level":"INFO","time":"2026-05-31T15:03:17.563+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.563+0800","msg":"[TaskManager] 任务状态变更 [無題[4]](59): Waiting → Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:17.563+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.564+0800","msg":"[GORM] 504.3µs | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p3\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:17.565+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p3\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"INFO","time":"2026-05-31T15:03:17.764+0800","msg":"[TaskManager] doFlush: taskId=56, status=7, errMsg=保存作品信息失败: upsert 作品集失败: upsert 作品集 144741978 失败: UNIQUE constraint failed: work_set.site_id, work_set.site_work_set_id"}
+{"level":"INFO","time":"2026-05-31T15:03:17.764+0800","msg":"[TaskRepository] BatchSetStatus SQL: UPDATE task SET status = CASE WHEN id = ? THEN ? END, error_message = CASE WHEN id = ? THEN ? END WHERE id IN (?) | RowsAffected: 1 | Error: <nil>"}
+{"level":"INFO","time":"2026-05-31T15:03:18.702+0800","msg":"[TaskManager] 任务状态变更 [無題[2]](57): Processing → Finished"}
+{"level":"INFO","time":"2026-05-31T15:03:18.702+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:18.702+0800","msg":"[TaskManager] 任务状态变更 [無題[5]](60): Waiting → Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:18.702+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"ERROR","time":"2026-05-31T15:03:18.702+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p4\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:03:18.704+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p4\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"INFO","time":"2026-05-31T15:03:18.872+0800","msg":"[TaskManager] 任务状态变更 [無題[3]](58): Processing → Finished"}
+{"level":"INFO","time":"2026-05-31T15:03:18.872+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:18.902+0800","msg":"[TaskManager] doFlush: taskId=57, status=6, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:03:18.902+0800","msg":"[TaskManager] doFlush: taskId=58, status=6, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:03:18.902+0800","msg":"[TaskRepository] BatchSetStatus SQL: UPDATE task SET status = CASE WHEN id = ? THEN ? WHEN id = ? THEN ? END, error_message = CASE WHEN id = ? THEN ? WHEN id = ? THEN ? END WHERE id IN (?,?) | RowsAffected: 2 | Error: <nil>"}
+{"level":"INFO","time":"2026-05-31T15:03:19.920+0800","msg":"[TaskManager] 任务状态变更 [無題[5]](60): Processing → Finished"}
+{"level":"INFO","time":"2026-05-31T15:03:19.920+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=Processing"}
+{"level":"INFO","time":"2026-05-31T15:03:20.120+0800","msg":"[TaskManager] doFlush: taskId=60, status=6, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:03:20.120+0800","msg":"[TaskRepository] BatchSetStatus SQL: UPDATE task SET status = CASE WHEN id = ? THEN ? END, error_message = CASE WHEN id = ? THEN ? END WHERE id IN (?) | RowsAffected: 1 | Error: <nil>"}
+{"level":"INFO","time":"2026-05-31T15:03:21.086+0800","msg":"[TaskManager] 任务状态变更 [無題[4]](59): Processing → Finished"}
+{"level":"INFO","time":"2026-05-31T15:03:21.086+0800","msg":"[TaskManager] 父任务状态刷新: parentId=55, old=Processing, new=PartlyFinished"}
+{"level":"INFO","time":"2026-05-31T15:03:21.086+0800","msg":"[TaskManager] cleanupFinishedTask 兜底刷新父任务状态: parentId=55, newState=PartlyFinished"}
+{"level":"INFO","time":"2026-05-31T15:03:21.086+0800","msg":"[TaskManager] cleanupFinishedTask: 删除 parentMap[55]（所有子任务终态）"}
+{"level":"INFO","time":"2026-05-31T15:03:21.287+0800","msg":"[TaskManager] doFlush: taskId=59, status=6, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:03:21.287+0800","msg":"[TaskManager] doFlush: taskId=55, status=8, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:03:21.287+0800","msg":"[TaskRepository] BatchSetStatus SQL: UPDATE task SET status = CASE WHEN id = ? THEN ? WHEN id = ? THEN ? END, error_message = CASE WHEN id = ? THEN ? WHEN id = ? THEN ? END WHERE id IN (?,?) | RowsAffected: 2 | Error: <nil>"}
+{"level":"INFO","time":"2026-05-31T15:08:49.534+0800","msg":"[TaskManager] 重试任务树: taskId=56"}
+{"level":"INFO","time":"2026-05-31T15:08:49.537+0800","msg":"StartTaskTree: taskId=56"}
+{"level":"INFO","time":"2026-05-31T15:08:49.542+0800","msg":"StartTaskTree: 查询到 2 条任务记录"}
+{"level":"INFO","time":"2026-05-31T15:08:49.543+0800","msg":"[TaskManager] 任务状态变更 [無題[1]](56): Created → Processing"}
+{"level":"ERROR","time":"2026-05-31T15:08:49.544+0800","msg":"[GORM] 557.3µs | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p0\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"ERROR","time":"2026-05-31T15:08:49.546+0800","msg":"[GORM] 0s | 0 rows | SELECT * FROM `work` WHERE `site_id` = 1 AND `site_work_id` = \"144741978_p0\" ORDER BY `work`.`id` LIMIT 1 | record not found"}
+{"level":"INFO","time":"2026-05-31T15:08:50.473+0800","msg":"[TaskManager] 任务状态变更 [無題[1]](56): Processing → Finished"}
+{"level":"INFO","time":"2026-05-31T15:08:50.674+0800","msg":"[TaskManager] doFlush: taskId=56, status=6, errMsg="}
+{"level":"INFO","time":"2026-05-31T15:08:50.674+0800","msg":"[TaskRepository] BatchSetStatus SQL: UPDATE task SET status = CASE WHEN id = ? THEN ? END, error_message = CASE WHEN id = ? THEN ? END WHERE id IN (?) | RowsAffected: 1 | Error: <nil>"}

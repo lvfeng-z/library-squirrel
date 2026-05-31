@@ -441,31 +441,40 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 }
 
 // removeWaitingTask 处理跳过任务的清理（从内存中移除，不写 DB）
-func (m *Manager) removeWaitingTask(task *ManagedTask) {
+func (m *Manager) removeWaitingTask(mt *ManagedTask) {
 	// 推送状态回到 DB 中的原始状态，让前端看到状态转换
-	originalState := TaskState(task.task.Status)
+	originalState := TaskState(mt.task.Status)
 	taskName := ""
-	if task.task.TaskName.Valid {
-		taskName = task.task.TaskName.String
+	if mt.task.TaskName.Valid {
+		taskName = mt.task.TaskName.String
 	}
-	m.pusher.PushStateChange(task.taskId, taskName, originalState)
+	m.pusher.PushStateChange(mt.taskId, taskName, originalState)
 
 	m.mu.Lock()
-	delete(m.taskMap, task.taskId)
+	delete(m.taskMap, mt.taskId)
 
-	if task.parentId != 0 {
-		parent, ok := m.parentMap[task.parentId]
+	if mt.parentId != 0 {
+		parent, ok := m.parentMap[mt.parentId]
 		if ok {
-			parent.RemoveChild(task.taskId)
+			// 重置子任务原子状态为原始 DB 状态，使 RefreshState 正确计算父任务状态
+			mt.state.Store(int32(originalState))
+
+			// 在移除子任务前，先根据所有子任务（含被跳过的）计算并持久化父任务状态
+			_, newParentState := parent.RefreshState()
+			if isStableState(newParentState) {
+				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
+			}
+			m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+
+			// 移除子任务并清理父任务
+			parent.RemoveChild(mt.taskId)
 			if parent.AllChildrenTerminal() {
-				logger.Log.Infof("[TaskManager] removeWaitingTask: 删除 parentMap[%d]（所有子任务终态）", task.parentId)
-				delete(m.parentMap, task.parentId)
+				logger.Log.Infof("[TaskManager] removeWaitingTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
+				delete(m.parentMap, mt.parentId)
 				m.mu.Unlock()
-				m.pusher.PushParentTaskRemove([]int64{task.parentId})
+				m.pusher.PushParentTaskRemove([]int64{mt.parentId})
 			} else {
-				_, newParentState := parent.RefreshState()
 				m.mu.Unlock()
-				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 			}
 		} else {
 			m.mu.Unlock()
@@ -474,8 +483,8 @@ func (m *Manager) removeWaitingTask(task *ManagedTask) {
 		m.mu.Unlock()
 	}
 
-	task.cancel()
-	m.pusher.PushTaskRemove([]int64{task.taskId})
+	mt.cancel()
+	m.pusher.PushTaskRemove([]int64{mt.taskId})
 }
 
 // IsShuttingDown 检查是否正在优雅关闭
