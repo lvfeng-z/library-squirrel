@@ -730,6 +730,8 @@ func (app *App) initAdvancedServices() error {
 		app.ReWorkAuthorService,
 		app.ResourceService,
 		app.ReWorkTagService,
+		app.LocalTagService,
+		app.LocalAuthorService,
 	)
 
 	// workSet 服务

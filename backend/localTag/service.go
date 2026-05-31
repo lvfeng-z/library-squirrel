@@ -29,6 +29,8 @@ type Repository interface {
 	GetById(ctx context.Context, id int64) (*domain.LocalTag, error)
 	// GetByName 根据名称获取
 	GetByName(ctx context.Context, name string) (*domain.LocalTag, error)
+	// GetByNames 根据名称列表批量查询本地标签
+	GetByNames(ctx context.Context, names []string) ([]*domain.LocalTag, error)
 	// List 查询列表
 	List(ctx context.Context, opt *database.QueryOption) ([]*domain.LocalTag, error)
 	// Count 统计数量
@@ -152,6 +154,14 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.LocalTag, erro
 // GetByName 根据名称获取
 func (s *Service) GetByName(ctx context.Context, name string) (*domain.LocalTag, error) {
 	return s.repo.GetByName(ctx, name)
+}
+
+// GetByNames 根据名称列表批量查询本地标签
+func (s *Service) GetByNames(ctx context.Context, names []string) ([]*domain.LocalTag, error) {
+	if len(names) == 0 {
+		return make([]*domain.LocalTag, 0), nil
+	}
+	return s.repo.GetByNames(ctx, names)
 }
 
 // List 查询列表

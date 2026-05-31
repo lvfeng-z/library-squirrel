@@ -119,6 +119,22 @@ type ReWorkWorkSetWriter interface {
 	SaveBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 }
 
+// LocalTagFindOrCreator 本地标签查找或创建接口
+type LocalTagFindOrCreator interface {
+	// GetByNames 根据名称列表批量查询
+	GetByNames(ctx context.Context, names []string) ([]*entity2.LocalTag, error)
+	// Save 创建本地标签
+	Save(ctx context.Context, tag *entity2.LocalTag) error
+}
+
+// LocalAuthorFindOrCreator 本地作者查找或创建接口
+type LocalAuthorFindOrCreator interface {
+	// GetByNames 根据名称列表批量查询
+	GetByNames(ctx context.Context, names []string) ([]*entity2.LocalAuthor, error)
+	// Save 创建本地作者
+	Save(ctx context.Context, author *entity2.LocalAuthor) error
+}
+
 // SiteAuthorWriter 站点作者写入接口
 type SiteAuthorWriter interface {
 	// SaveOrUpdateByCompositeKey 按复合键保存或更新，返回内部 DB ID
@@ -204,12 +220,14 @@ type Service struct {
 	reWorkTagBatchReader   ReWorkTagBatchReader
 
 	// 写入接口（用于 SaveWorkInfo）
-	reWorkTagWriter     ReWorkTagWriter
-	reWorkWorkSetWriter ReWorkWorkSetWriter
-	siteAuthorWriter    SiteAuthorWriter
-	siteTagWriter       SiteTagWriter
-	workSetWriter       WorkSetWriter
-	reWorkAuthorWriter  ReWorkAuthorWriter
+	reWorkTagWriter        ReWorkTagWriter
+	reWorkWorkSetWriter    ReWorkWorkSetWriter
+	siteAuthorWriter       SiteAuthorWriter
+	siteTagWriter          SiteTagWriter
+	workSetWriter          WorkSetWriter
+	reWorkAuthorWriter     ReWorkAuthorWriter
+	localTagFindOrCreator  LocalTagFindOrCreator
+	localAuthorFindOrCreator LocalAuthorFindOrCreator
 }
 
 // NewService 创建作品服务
@@ -235,6 +253,8 @@ func NewService(
 	siteAuthorBatchReader SiteAuthorBatchReader,
 	resourceBatchReader ResourceBatchReader,
 	reWorkTagBatchReader ReWorkTagBatchReader,
+	localTagFindOrCreator LocalTagFindOrCreator,
+	localAuthorFindOrCreator LocalAuthorFindOrCreator,
 ) *Service {
 	return &Service{
 		repo:                   repo,
@@ -258,6 +278,8 @@ func NewService(
 		siteTagWriter:          siteTagWriter,
 		workSetWriter:          workSetWriter,
 		reWorkAuthorWriter:     reWorkAuthorWriter,
+		localTagFindOrCreator:    localTagFindOrCreator,
+		localAuthorFindOrCreator: localAuthorFindOrCreator,
 	}
 }
 
@@ -659,14 +681,14 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 		return 0, fmt.Errorf("upsert 作品集失败: %w", err)
 	}
 
-	localAuthorDBIds, err := s.validateLocalAuthorIds(ctx, workResp.LocalAuthors)
+	localAuthorDBIds, err := s.resolveLocalAuthors(ctx, workResp.LocalAuthors)
 	if err != nil {
-		return 0, fmt.Errorf("验证本地作者失败: %w", err)
+		return 0, fmt.Errorf("处理本地作者失败: %w", err)
 	}
 
-	localTagDBIds, err := s.validateLocalTagIds(ctx, workResp.LocalTags)
+	localTagDBIds, err := s.resolveLocalTags(ctx, workResp.LocalTags)
 	if err != nil {
-		return 0, fmt.Errorf("验证本地标签失败: %w", err)
+		return 0, fmt.Errorf("处理本地标签失败: %w", err)
 	}
 	// === Phase 2: 回查内部 DB ID ===
 	siteAuthorDBIds, err = s.querySiteAuthorDBIds(ctx, workResp.SiteAuthors, siteId)
@@ -831,71 +853,228 @@ func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*sdkdto.TaskWork
 	return ids, nil
 }
 
-// validateLocalAuthorIds 校验本地作者 ID 是否全部存在，返回有效的 DB ID 列表
-func (s *Service) validateLocalAuthorIds(ctx context.Context, dtos []*sdkdto.LocalAuthorDTO) ([]int64, error) {
+// resolveLocalAuthors 处理本地作者，返回 DB ID 列表
+// ID > 0 时校验存在性；ID == 0 时按名称 find-or-create
+func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalAuthorDTO) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(dtos))
+
+	// 按 ID 模式和名称模式分组
+	var idModeIds []int64
+	var nameModeDtos []*sdkdto.LocalAuthorDTO
 	for _, d := range dtos {
-		if d.ID <= 0 {
-			return nil, fmt.Errorf("本地作者 ID 无效: %d", d.ID)
+		if d.ID > 0 {
+			idModeIds = append(idModeIds, d.ID)
+		} else {
+			nameModeDtos = append(nameModeDtos, d)
 		}
-		ids = append(ids, d.ID)
 	}
-	results, err := s.localAuthorBatchReader.ListByIds(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("查询本地作者失败: %w", err)
-	}
-	if len(results) != len(ids) {
-		found := make(map[int64]struct{}, len(results))
-		for _, r := range results {
-			found[r.ID] = struct{}{}
+
+	// ID 模式：校验存在性
+	if len(idModeIds) > 0 {
+		results, err := s.localAuthorBatchReader.ListByIds(ctx, idModeIds)
+		if err != nil {
+			return nil, fmt.Errorf("查询本地作者失败: %w", err)
 		}
-		for _, id := range ids {
-			if _, ok := found[id]; !ok {
-				return nil, fmt.Errorf("本地作者不存在: ID=%d", id)
+		if len(results) != len(idModeIds) {
+			found := make(map[int64]struct{}, len(results))
+			for _, r := range results {
+				found[r.ID] = struct{}{}
+			}
+			for _, id := range idModeIds {
+				if _, ok := found[id]; !ok {
+					return nil, fmt.Errorf("本地作者不存在: ID=%d", id)
+				}
 			}
 		}
 	}
 
-	// 用数据库实体回填 DTO 中缺失的 AuthorName
-	enrichLocalAuthorDTOs(dtos, results)
+	// 名称模式：收集去重名称 → 批量查询 → 创建不存在的
+	nameModeIds := make([]int64, 0, len(nameModeDtos))
+	if len(nameModeDtos) > 0 {
+		// 校验名称有效性
+		names := make([]string, 0, len(nameModeDtos))
+		nameSet := make(map[string]struct{}, len(nameModeDtos))
+		for _, d := range nameModeDtos {
+			name := ""
+			if d.AuthorName != nil {
+				name = *d.AuthorName
+			}
+			if name == "" {
+				return nil, fmt.Errorf("本地作者 ID 为 0 时 AuthorName 不能为空")
+			}
+			if _, ok := nameSet[name]; !ok {
+				names = append(names, name)
+				nameSet[name] = struct{}{}
+			}
+		}
 
+		// 批量查询已有作者
+		existing, err := s.localAuthorFindOrCreator.GetByNames(ctx, names)
+		if err != nil {
+			return nil, fmt.Errorf("查询本地作者失败: %w", err)
+		}
+		existingMap := make(map[string]int64, len(existing))
+		for _, a := range existing {
+			if a.AuthorName.Valid {
+				existingMap[a.AuthorName.String] = a.ID
+			}
+		}
+
+		// 创建不存在的作者（已存在的不做任何修改）
+		for _, d := range nameModeDtos {
+			name := *d.AuthorName
+			if _, ok := existingMap[name]; ok {
+				continue
+			}
+			// 同名 DTO 可能出现多次，避免重复创建
+			if _, processed := nameSet[name]; !processed {
+				continue
+			}
+			delete(nameSet, name)
+
+			author := entity2.NewLocalAuthor()
+			author.AuthorName = sql.NullString{String: name, Valid: true}
+			if d.Introduce != nil && *d.Introduce != "" {
+				author.Introduce = sql.NullString{String: *d.Introduce, Valid: true}
+			}
+			if err := s.localAuthorFindOrCreator.Save(ctx, author); err != nil {
+				return nil, fmt.Errorf("创建本地作者失败: %w", err)
+			}
+			existingMap[name] = author.ID
+		}
+
+		// 按 DTO 顺序收集 ID
+		for _, d := range nameModeDtos {
+			if id, ok := existingMap[*d.AuthorName]; ok {
+				nameModeIds = append(nameModeIds, id)
+			}
+		}
+	}
+
+	// 按 DTO 原始顺序合并结果
+	ids := make([]int64, 0, len(dtos))
+	idIdx := 0
+	nameIdx := 0
+	for _, d := range dtos {
+		if d.ID > 0 {
+			ids = append(ids, idModeIds[idIdx])
+			idIdx++
+		} else {
+			ids = append(ids, nameModeIds[nameIdx])
+			nameIdx++
+		}
+	}
 	return ids, nil
 }
 
-// validateLocalTagIds 校验本地标签 ID 是否全部存在，返回有效的 DB ID 列表
-func (s *Service) validateLocalTagIds(ctx context.Context, dtos []*sdkdto.LocalTagDTO) ([]int64, error) {
+// resolveLocalTags 处理本地标签，返回 DB ID 列表
+// ID > 0 时校验存在性；ID == 0 时按名称 find-or-create
+func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagDTO) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(dtos))
+
+	// 按 ID 模式和名称模式分组
+	var idModeIds []int64
+	var nameModeDtos []*sdkdto.LocalTagDTO
 	for _, d := range dtos {
-		if d.ID <= 0 {
-			return nil, fmt.Errorf("本地标签 ID 无效: %d", d.ID)
+		if d.ID > 0 {
+			idModeIds = append(idModeIds, d.ID)
+		} else {
+			nameModeDtos = append(nameModeDtos, d)
 		}
-		ids = append(ids, d.ID)
 	}
-	results, err := s.localTagBatchReader.ListByIds(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("查询本地标签失败: %w", err)
-	}
-	if len(results) != len(ids) {
-		found := make(map[int64]struct{}, len(results))
-		for _, r := range results {
-			found[r.ID] = struct{}{}
+
+	// ID 模式：校验存在性
+	if len(idModeIds) > 0 {
+		results, err := s.localTagBatchReader.ListByIds(ctx, idModeIds)
+		if err != nil {
+			return nil, fmt.Errorf("查询本地标签失败: %w", err)
 		}
-		for _, id := range ids {
-			if _, ok := found[id]; !ok {
-				return nil, fmt.Errorf("本地标签不存在: ID=%d", id)
+		if len(results) != len(idModeIds) {
+			found := make(map[int64]struct{}, len(results))
+			for _, r := range results {
+				found[r.ID] = struct{}{}
+			}
+			for _, id := range idModeIds {
+				if _, ok := found[id]; !ok {
+					return nil, fmt.Errorf("本地标签不存在: ID=%d", id)
+				}
 			}
 		}
 	}
 
-	// 用数据库实体回填 DTO 中缺失的 LocalTagName
-	enrichLocalTagDTOs(dtos, results)
+	// 名称模式：收集去重名称 → 批量查询 → 创建不存在的
+	nameModeIds := make([]int64, 0, len(nameModeDtos))
+	if len(nameModeDtos) > 0 {
+		// 校验名称有效性
+		names := make([]string, 0, len(nameModeDtos))
+		nameSet := make(map[string]struct{}, len(nameModeDtos))
+		for _, d := range nameModeDtos {
+			name := ""
+			if d.LocalTagName != nil {
+				name = *d.LocalTagName
+			}
+			if name == "" {
+				return nil, fmt.Errorf("本地标签 ID 为 0 时 LocalTagName 不能为空")
+			}
+			if _, ok := nameSet[name]; !ok {
+				names = append(names, name)
+				nameSet[name] = struct{}{}
+			}
+		}
 
+		// 批量查询已有标签
+		existing, err := s.localTagFindOrCreator.GetByNames(ctx, names)
+		if err != nil {
+			return nil, fmt.Errorf("查询本地标签失败: %w", err)
+		}
+		existingMap := make(map[string]int64, len(existing))
+		for _, t := range existing {
+			if t.LocalTagName.Valid {
+				existingMap[t.LocalTagName.String] = t.ID
+			}
+		}
+
+		// 创建不存在的标签（已存在的不做任何修改）
+		now := util.GetCurrentTimestamp()
+		for _, name := range names {
+			if _, ok := existingMap[name]; ok {
+				continue
+			}
+			tag := entity2.NewLocalTag()
+			tag.LocalTagName = sql.NullString{String: name, Valid: true}
+			tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
+			tag.LastUse = sql.NullInt64{Int64: now, Valid: true}
+			if err := s.localTagFindOrCreator.Save(ctx, tag); err != nil {
+				return nil, fmt.Errorf("创建本地标签失败: %w", err)
+			}
+			existingMap[name] = tag.ID
+		}
+
+		// 按 DTO 顺序收集 ID
+		for _, d := range nameModeDtos {
+			if id, ok := existingMap[*d.LocalTagName]; ok {
+				nameModeIds = append(nameModeIds, id)
+			}
+		}
+	}
+
+	// 按 DTO 原始顺序合并结果
+	ids := make([]int64, 0, len(dtos))
+	idIdx := 0
+	nameIdx := 0
+	for _, d := range dtos {
+		if d.ID > 0 {
+			ids = append(ids, idModeIds[idIdx])
+			idIdx++
+		} else {
+			ids = append(ids, nameModeIds[nameIdx])
+			nameIdx++
+		}
+	}
 	return ids, nil
 }
 
@@ -1015,42 +1194,4 @@ func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSe
 		})
 	}
 	return links
-}
-
-// enrichLocalAuthorDTOs 用数据库实体回填 DTO 中缺失的 AuthorName
-func enrichLocalAuthorDTOs(dtos []*sdkdto.LocalAuthorDTO, entities []*entity2.LocalAuthor) {
-	if len(dtos) == 0 || len(entities) == 0 {
-		return
-	}
-	entityMap := make(map[int64]*entity2.LocalAuthor, len(entities))
-	for _, e := range entities {
-		entityMap[e.GetID()] = e
-	}
-	for _, d := range dtos {
-		if d.AuthorName != nil && *d.AuthorName != "" {
-			continue
-		}
-		if e, ok := entityMap[d.ID]; ok && e.AuthorName.Valid {
-			d.AuthorName = &e.AuthorName.String
-		}
-	}
-}
-
-// enrichLocalTagDTOs 用数据库实体回填 DTO 中缺失的 LocalTagName
-func enrichLocalTagDTOs(dtos []*sdkdto.LocalTagDTO, entities []*entity2.LocalTag) {
-	if len(dtos) == 0 || len(entities) == 0 {
-		return
-	}
-	entityMap := make(map[int64]*entity2.LocalTag, len(entities))
-	for _, e := range entities {
-		entityMap[e.GetID()] = e
-	}
-	for _, d := range dtos {
-		if d.LocalTagName != nil && *d.LocalTagName != "" {
-			continue
-		}
-		if e, ok := entityMap[d.ID]; ok && e.LocalTagName.Valid {
-			d.LocalTagName = &e.LocalTagName.String
-		}
-	}
 }

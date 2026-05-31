@@ -7,6 +7,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -43,6 +44,18 @@ func (r *LocalTagRepository) GetByName(ctx context.Context, name string) (*entit
 		return nil, err
 	}
 	return &tag, nil
+}
+
+// GetByNames 根据名称列表批量查询本地标签
+func (r *LocalTagRepository) GetByNames(ctx context.Context, names []string) ([]*entity.LocalTag, error) {
+	if len(names) == 0 {
+		return make([]*entity.LocalTag, 0), nil
+	}
+	var tags []*entity.LocalTag
+	err := r.GORM().WithContext(ctx).
+		Where(clause.IN{Column: "local_tag_name", Values: util.ToAnySlice(names)}).
+		Find(&tags).Error
+	return tags, err
 }
 
 // SelectTreeNode 递归查询子标签
