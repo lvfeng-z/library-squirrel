@@ -24,6 +24,15 @@ export function ConfirmReplace(taskId: number, action: string): $CancellableProm
 }
 
 /**
+ * ConfirmReplaceBatch 批量确认替换或跳过重复作品
+ */
+export function ConfirmReplaceBatch(taskIds: number[], action: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3271009447, taskIds, action).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * GetTaskState 获取任务状态
  */
 export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {

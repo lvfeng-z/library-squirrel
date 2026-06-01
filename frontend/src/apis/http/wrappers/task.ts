@@ -104,3 +104,7 @@ export async function taskRetryTree(taskId: number): Promise<ApiResult<void>> {
 export async function taskManagerConfirmReplace(taskId: number, action: string): Promise<ApiResult<void>> {
   return requireResponse(await TaskManagerHandler.ConfirmReplace(taskId, action), '确认替换', false)
 }
+
+export async function taskManagerConfirmReplaceBatch(taskIds: number[], action: string): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.ConfirmReplaceBatch(taskIds, action), '批量确认替换', false)
+}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { taskManagerConfirmReplace } from '@renderer/apis/http/wrappers/task'
+import { taskManagerConfirmReplace, taskManagerConfirmReplaceBatch } from '@renderer/apis/http/wrappers/task'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import type { DuplicateInfo } from '@renderer/store/UseReplaceConfirmStore'
 
@@ -31,32 +31,26 @@ async function handleSkip(item: DuplicateInfo) {
 }
 
 async function handleReplaceAll() {
-  const items = [...store.list]
-  for (const item of items) {
-    store.setLoading(item.taskId, true)
-  }
+  const taskIds = store.list.map((item) => item.taskId)
+  store.list.forEach((item) => store.setLoading(item.taskId, true))
   try {
-    for (const item of items) {
-      await taskManagerConfirmReplace(item.taskId, 'replace')
-      store.remove(item.taskId)
-    }
+    await taskManagerConfirmReplaceBatch(taskIds, 'replace')
+    store.clear()
   } catch (e: any) {
     ElMessage.error(e.message)
+    store.list.forEach((item) => store.setLoading(item.taskId, false))
   }
 }
 
 async function handleSkipAll() {
-  const items = [...store.list]
-  for (const item of items) {
-    store.setLoading(item.taskId, true)
-  }
+  const taskIds = store.list.map((item) => item.taskId)
+  store.list.forEach((item) => store.setLoading(item.taskId, true))
   try {
-    for (const item of items) {
-      await taskManagerConfirmReplace(item.taskId, 'skip')
-      store.remove(item.taskId)
-    }
+    await taskManagerConfirmReplaceBatch(taskIds, 'skip')
+    store.clear()
   } catch (e: any) {
     ElMessage.error(e.message)
+    store.list.forEach((item) => store.setLoading(item.taskId, false))
   }
 }
 </script>

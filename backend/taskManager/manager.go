@@ -440,6 +440,36 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	return nil
 }
 
+// ConfirmReplaceBatch 批量确认替换或跳过重复作品
+// 未在等待确认Map中的任务ID会被静默跳过（尽力而为）
+// 加锁提取任务后立即返回，调度工作异步执行
+func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
+	m.waitingForInputMu.Lock()
+	tasks := make([]*ManagedTask, 0, len(taskIds))
+	for _, id := range taskIds {
+		if task, ok := m.waitingForInputMap[id]; ok {
+			delete(m.waitingForInputMap, id)
+			tasks = append(tasks, task)
+		}
+	}
+	m.waitingForInputMu.Unlock()
+
+	go func() {
+		if action == "skip" {
+			logger.Log.Infof("[TaskManager] 批量跳过重复任务: count=%d", len(tasks))
+			for _, task := range tasks {
+				m.removeWaitingTask(task)
+			}
+		} else {
+			logger.Log.Infof("[TaskManager] 批量替换重复任务: count=%d", len(tasks))
+			for _, task := range tasks {
+				task.skipDuplicateCheck = true
+				m.tryDispatch(task)
+			}
+		}
+	}()
+}
+
 // removeWaitingTask 处理跳过任务的清理（从内存中移除，不写 DB）
 func (m *Manager) removeWaitingTask(mt *ManagedTask) {
 	// 推送状态回到 DB 中的原始状态，让前端看到状态转换

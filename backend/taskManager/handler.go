@@ -69,3 +69,9 @@ func (h *Handler) IsIdle() *model.ApiResponse[bool] {
 func (h *Handler) ConfirmReplace(ctx context.Context, taskId int64, action string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.mgr.ConfirmReplace(taskId, action))
 }
+
+// ConfirmReplaceBatch 批量确认替换或跳过重复作品
+func (h *Handler) ConfirmReplaceBatch(ctx context.Context, taskIds []int64, action string) *model.ApiResponse[any] {
+	h.mgr.ConfirmReplaceBatch(taskIds, action)
+	return model.Success[any](nil)
+}
