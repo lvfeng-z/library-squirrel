@@ -1,6 +1,8 @@
 package taskManager
 
 import (
+	"time"
+
 	"github.com/library-squirrel/backend/base/logger"
 )
 
@@ -31,6 +33,16 @@ func NewWailsTaskProgressPusher(emitter WailsEventEmitter) *WailsTaskProgressPus
 	return &WailsTaskProgressPusher{emitter: emitter}
 }
 
+// emit 记录耗时的 Emit 包装
+func (p *WailsTaskProgressPusher) emit(eventName string, data any) {
+	start := time.Now()
+	p.emitter.Emit(eventName, data)
+	elapsed := time.Since(start)
+	if elapsed >= 10*time.Millisecond {
+		logger.Log.Warnf("[TaskPusher] Emit 慢: event=%s, elapsed=%v", eventName, elapsed)
+	}
+}
+
 // PushStateChange 推送任务状态变化到前端
 func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, taskName string, state TaskState) {
 	dto := &taskStateDTO{
@@ -39,7 +51,7 @@ func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, taskName string,
 		Status:   int(state),
 	}
 	data := []*taskStateDTO{dto}
-	p.emitter.Emit("taskStatus-updateTask", data)
+	p.emit("taskStatus-updateTask", data)
 }
 
 // PushProgress 推送下载进度到前端
@@ -50,7 +62,7 @@ func (p *WailsTaskProgressPusher) PushProgress(taskId int64, total int64, finish
 		Finished: finished,
 	}
 	data := []*taskScheduleDTO{dto}
-	p.emitter.Emit("taskStatus-updateSchedule", data)
+	p.emit("taskStatus-updateSchedule", data)
 }
 
 // PushError 推送错误到前端
@@ -59,12 +71,12 @@ func (p *WailsTaskProgressPusher) PushError(taskId int64, err string) {
 
 // PushTaskRemove 通知前端移除任务
 func (p *WailsTaskProgressPusher) PushTaskRemove(taskIds []int64) {
-	p.emitter.Emit("taskStatus-removeTask", taskIds)
+	p.emit("taskStatus-removeTask", taskIds)
 }
 
 // PushParentTaskRemove 通知前端移除父任务
 func (p *WailsTaskProgressPusher) PushParentTaskRemove(taskIds []int64) {
-	p.emitter.Emit("parentTaskStatus-removeParentTask", taskIds)
+	p.emit("parentTaskStatus-removeParentTask", taskIds)
 }
 
 // PushParentStateChange 推送父任务状态变化到前端
@@ -75,7 +87,7 @@ func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, taskName s
 		Status:   int(state),
 	}
 	data := []*taskStateDTO{dto}
-	p.emitter.Emit("parentTaskStatus-updateParentTask", data)
+	p.emit("parentTaskStatus-updateParentTask", data)
 }
 
 // taskStateDTO 任务状态推送 DTO
@@ -108,7 +120,7 @@ func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName s
 		ExistingWorkId:   existingWorkId,
 		ExistingWorkName: existingWorkName,
 	}
-	p.emitter.Emit("taskStatus-duplicateDetected", dto)
+	p.emit("taskStatus-duplicateDetected", dto)
 }
 
 // NoopProgressPusher 空推送器，用于测试或 emitter 未就绪时
@@ -122,8 +134,8 @@ func NewNoopProgressPusher() *NoopProgressPusher {
 
 func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)       {}
 func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState) {}
-func (p *NoopProgressPusher) PushProgress(int64, int64, int64)       {}
-func (p *NoopProgressPusher) PushError(int64, string)                {}
-func (p *NoopProgressPusher) PushTaskRemove([]int64)                 {}
-func (p *NoopProgressPusher) PushParentTaskRemove([]int64)           {}
+func (p *NoopProgressPusher) PushProgress(int64, int64, int64)              {}
+func (p *NoopProgressPusher) PushError(int64, string)                       {}
+func (p *NoopProgressPusher) PushTaskRemove([]int64)                        {}
+func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                  {}
 func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string) {}

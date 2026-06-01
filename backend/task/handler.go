@@ -2,7 +2,9 @@ package task
 
 import (
 	"context"
+	"time"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
@@ -123,6 +125,11 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO
 
 // QueryParentPage 分页查询父任务（返回带站点名称的 TaskProgressTreeDTO）
 func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[sdkdto.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[sdkdto.TaskProgressTreeDTO]] {
+	start := time.Now()
+	logger.Log.Infof("[IPC] QueryParentPage 开始: pid=%d", query.Pid)
+	defer func() {
+		logger.Log.Infof("[IPC] QueryParentPage 完成: elapsed=%v", time.Since(start))
+	}()
 	if page == nil {
 		page = &model.Page[sdkdto.TaskProgressTreeDTO]{}
 	}
@@ -143,6 +150,11 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[sdkdto.T
 
 // QueryChildrenTaskPage 查询子任务分页（返回带站点名称的 TaskProgressTreeDTO）
 func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[sdkdto.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[sdkdto.TaskProgressTreeDTO]] {
+	start := time.Now()
+	logger.Log.Infof("[IPC] QueryChildrenTaskPage 开始: pid=%d", query.Pid)
+	defer func() {
+		logger.Log.Infof("[IPC] QueryChildrenTaskPage 完成: elapsed=%v", time.Since(start))
+	}()
 	if page == nil {
 		page = &model.Page[sdkdto.TaskProgressTreeDTO]{}
 	}
