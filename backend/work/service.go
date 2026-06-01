@@ -871,15 +871,17 @@ func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalA
 		}
 	}
 
-	// ID 模式：校验存在性
+	// ID 模式：校验存在性并回填缺失的 AuthorName
+	var idModeResults []*entity2.LocalAuthor
 	if len(idModeIds) > 0 {
-		results, err := s.localAuthorBatchReader.ListByIds(ctx, idModeIds)
+		var err error
+		idModeResults, err = s.localAuthorBatchReader.ListByIds(ctx, idModeIds)
 		if err != nil {
 			return nil, fmt.Errorf("查询本地作者失败: %w", err)
 		}
-		if len(results) != len(idModeIds) {
-			found := make(map[int64]struct{}, len(results))
-			for _, r := range results {
+		if len(idModeResults) != len(idModeIds) {
+			found := make(map[int64]struct{}, len(idModeResults))
+			for _, r := range idModeResults {
 				found[r.ID] = struct{}{}
 			}
 			for _, id := range idModeIds {
@@ -888,6 +890,8 @@ func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalA
 				}
 			}
 		}
+		// 回填 DTO 中缺失的 AuthorName（插件可能只传了 ID）
+		enrichLocalAuthorDTOs(dtos, idModeResults)
 	}
 
 	// 名称模式：收集去重名称 → 批量查询 → 创建不存在的
@@ -987,15 +991,17 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 		}
 	}
 
-	// ID 模式：校验存在性
+	// ID 模式：校验存在性并回填缺失的 LocalTagName
+	var idModeResults []*entity2.LocalTag
 	if len(idModeIds) > 0 {
-		results, err := s.localTagBatchReader.ListByIds(ctx, idModeIds)
+		var err error
+		idModeResults, err = s.localTagBatchReader.ListByIds(ctx, idModeIds)
 		if err != nil {
 			return nil, fmt.Errorf("查询本地标签失败: %w", err)
 		}
-		if len(results) != len(idModeIds) {
-			found := make(map[int64]struct{}, len(results))
-			for _, r := range results {
+		if len(idModeResults) != len(idModeIds) {
+			found := make(map[int64]struct{}, len(idModeResults))
+			for _, r := range idModeResults {
 				found[r.ID] = struct{}{}
 			}
 			for _, id := range idModeIds {
@@ -1004,6 +1010,8 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 				}
 			}
 		}
+		// 回填 DTO 中缺失的 LocalTagName（插件可能只传了 ID）
+		enrichLocalTagDTOs(dtos, idModeResults)
 	}
 
 	// 名称模式：收集去重名称 → 批量查询 → 创建不存在的
@@ -1194,4 +1202,48 @@ func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSe
 		})
 	}
 	return links
+}
+
+// enrichLocalAuthorDTOs 用数据库实体回填 DTO 中缺失的 AuthorName
+func enrichLocalAuthorDTOs(dtos []*sdkdto.LocalAuthorDTO, entities []*entity2.LocalAuthor) {
+	if len(dtos) == 0 || len(entities) == 0 {
+		return
+	}
+	entityMap := make(map[int64]*entity2.LocalAuthor, len(entities))
+	for _, e := range entities {
+		entityMap[e.GetID()] = e
+	}
+	for _, d := range dtos {
+		if d.ID <= 0 {
+			continue
+		}
+		if d.AuthorName != nil && *d.AuthorName != "" {
+			continue
+		}
+		if e, ok := entityMap[d.ID]; ok && e.AuthorName.Valid {
+			d.AuthorName = &e.AuthorName.String
+		}
+	}
+}
+
+// enrichLocalTagDTOs 用数据库实体回填 DTO 中缺失的 LocalTagName
+func enrichLocalTagDTOs(dtos []*sdkdto.LocalTagDTO, entities []*entity2.LocalTag) {
+	if len(dtos) == 0 || len(entities) == 0 {
+		return
+	}
+	entityMap := make(map[int64]*entity2.LocalTag, len(entities))
+	for _, e := range entities {
+		entityMap[e.GetID()] = e
+	}
+	for _, d := range dtos {
+		if d.ID <= 0 {
+			continue
+		}
+		if d.LocalTagName != nil && *d.LocalTagName != "" {
+			continue
+		}
+		if e, ok := entityMap[d.ID]; ok && e.LocalTagName.Valid {
+			d.LocalTagName = &e.LocalTagName.String
+		}
+	}
 }
