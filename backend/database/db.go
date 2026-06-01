@@ -42,8 +42,8 @@ func Init(path string) error {
 		}
 
 		// 设置连接池参数
-		sqlDB.SetMaxOpenConns(5)  // SQLite 单文件数据库，少量连接即可，过多连接加剧写锁竞争
-		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetMaxOpenConns(1)  // SQLite 单文件数据库仅支持单写者，MaxOpenConns=1 让 Go 连接池做排队
+		sqlDB.SetMaxIdleConns(1)
 	})
 	return err
 }
