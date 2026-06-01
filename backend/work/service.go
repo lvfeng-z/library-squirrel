@@ -213,6 +213,8 @@ type Repository interface {
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity2.Work, error)
+	// ListBySiteAndSiteWorkIDs 批量根据站点和站点作品ID查询
+	ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*entity2.Work, error)
 	// ListByIds 根据ID列表批量查询
 	ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error)
 	// UpdateLastViewBatch 批量更新最后查看时间
@@ -382,6 +384,11 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.Work], quer
 // GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 func (s *Service) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity2.Work, error) {
 	return s.repo.GetBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+}
+
+// ListBySiteAndSiteWorkIDs 批量根据站点和站点作品ID查询
+func (s *Service) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*entity2.Work, error) {
+	return s.repo.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
 }
 
 // GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）

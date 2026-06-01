@@ -62,6 +62,24 @@ func (r *WorkRepository) UpdateLastViewBatch(ctx context.Context, ids []int64, l
 		Update("last_view", lastView).Error
 }
 
+// ListBySiteAndSiteWorkIDs 批量根据站点和站点作品ID查询
+// siteIds[i] 与 siteWorkIds[i] 一一对应
+func (r *WorkRepository) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*domain.Work, error) {
+	if len(siteIds) == 0 {
+		return []*domain.Work{}, nil
+	}
+	conds := make([]clause.Expression, len(siteIds))
+	for i := range siteIds {
+		conds[i] = clause.And(
+			clause.Eq{Column: "site_id", Value: siteIds[i]},
+			clause.Eq{Column: "site_work_id", Value: siteWorkIds[i]},
+		)
+	}
+	return r.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.Or(conds...)},
+	})
+}
+
 // toInterfaceSlice converts int64 slice to interface{} slice
 func toInterfaceSlice(ids []int64) []interface{} {
 	result := make([]interface{}, len(ids))

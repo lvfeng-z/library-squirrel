@@ -3,6 +3,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -163,12 +164,15 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 	m.parentMap[taskId] = parentTask
 	m.mu.Unlock()
 
-	// 3. 分发所有子任务（受信号量控制）
-	for _, child := range parentTask.GetChildren() {
+	// 3. 批量预检重复（在信号量派发前完成，弹窗一次性展示）
+	toDispatch := m.batchCheckDuplicates(ctx, parentTask.GetChildren())
+
+	// 4. 分发非重复子任务（受信号量控制）
+	for _, child := range toDispatch {
 		m.tryDispatch(child)
 	}
 
-	// 4. 恢复之前暂停的子任务
+	// 5. 恢复之前暂停的子任务
 	for _, paused := range pausedChildren {
 		if err := paused.Resume(); err != nil {
 			logger.Log.Errorf("恢复暂停子任务 %d 失败: %v", paused.taskId, err)
@@ -214,6 +218,97 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTa
 		m.addTask(mt)
 	}
 	return mt
+}
+
+// batchCheckDuplicates 在任务派发前批量检查重复
+// 将重复任务直接放入等待确认队列（不消耗信号量），非重复任务标记 skipDuplicateCheck 并返回以供派发
+func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedTask) []*ManagedTask {
+	var toCheck []*ManagedTask
+	for _, child := range children {
+		// 跳过跨重启续传任务（直接走 resumeFromPersistedState）
+		if child.resumeFromDB {
+			continue
+		}
+		// 跳过内存中已暂停的任务（通过 Resume 恢复）
+		if child.GetState() == TaskStatePaused {
+			continue
+		}
+		// 不具备查重条件，标记跳过 run() 中的重复检测
+		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
+			child.skipDuplicateCheck = true
+			continue
+		}
+		toCheck = append(toCheck, child)
+	}
+
+	if len(toCheck) == 0 || m.workChecker == nil {
+		// 无需查重或未配置查重器，所有可预检任务标记跳过
+		for _, child := range children {
+			if !child.resumeFromDB && child.GetState() != TaskStatePaused {
+				child.skipDuplicateCheck = true
+			}
+		}
+		return children
+	}
+
+	// 收集查询参数，一次批量查询
+	siteIds := make([]int64, len(toCheck))
+	siteWorkIds := make([]string, len(toCheck))
+	for i, child := range toCheck {
+		siteIds[i] = child.task.SiteID.Int64
+		siteWorkIds[i] = child.task.SiteWorkID.String
+	}
+
+	existingWorks, err := m.workChecker.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 批量查重失败: %v，降级为 run() 逐个检查", err)
+		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底
+		return children
+	}
+
+	// 构建查重结果映射
+	existingMap := make(map[string]*domain.Work, len(existingWorks))
+	for _, w := range existingWorks {
+		key := fmt.Sprintf("%d:%s", w.SiteID.Int64, w.SiteWorkID.String)
+		existingMap[key] = w
+	}
+
+	var toDispatch []*ManagedTask
+	for _, child := range children {
+		// 跨重启续传或已暂停的任务，直接派发
+		if child.resumeFromDB || child.GetState() == TaskStatePaused {
+			toDispatch = append(toDispatch, child)
+			continue
+		}
+
+		// 不具备查重条件的任务
+		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
+			toDispatch = append(toDispatch, child)
+			continue
+		}
+
+		key := fmt.Sprintf("%d:%s", child.task.SiteID.Int64, child.task.SiteWorkID.String)
+		if existing, found := existingMap[key]; found {
+			// 重复命中：放入等待确认队列，不参与信号量派发
+			existingWorkName := ""
+			if existing.SiteWorkName.Valid {
+				existingWorkName = existing.SiteWorkName.String
+			}
+			child.existingWorkId = existing.GetID()
+			child.setState(TaskStateWaitingForInput)
+			m.pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName)
+
+			m.waitingForInputMu.Lock()
+			m.waitingForInputMap[child.taskId] = child
+			m.waitingForInputMu.Unlock()
+		} else {
+			// 非重复：标记跳过 run() 中的重复检测
+			child.skipDuplicateCheck = true
+			toDispatch = append(toDispatch, child)
+		}
+	}
+
+	return toDispatch
 }
 
 // tryDispatch 尝试获取信号量并分发任务，无法获取时入等待队列

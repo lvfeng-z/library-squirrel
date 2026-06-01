@@ -32,25 +32,21 @@ async function handleSkip(item: DuplicateInfo) {
 
 async function handleReplaceAll() {
   const taskIds = store.list.map((item) => item.taskId)
-  store.list.forEach((item) => store.setLoading(item.taskId, true))
+  store.clear()
   try {
     await taskManagerConfirmReplaceBatch(taskIds, 'replace')
-    store.clear()
   } catch (e: any) {
     ElMessage.error(e.message)
-    store.list.forEach((item) => store.setLoading(item.taskId, false))
   }
 }
 
 async function handleSkipAll() {
   const taskIds = store.list.map((item) => item.taskId)
-  store.list.forEach((item) => store.setLoading(item.taskId, true))
+  store.clear()
   try {
     await taskManagerConfirmReplaceBatch(taskIds, 'skip')
-    store.clear()
   } catch (e: any) {
     ElMessage.error(e.message)
-    store.list.forEach((item) => store.setLoading(item.taskId, false))
   }
 }
 </script>

@@ -118,6 +118,8 @@ type ResourceSaver interface {
 // WorkChecker 作品查重接口
 type WorkChecker interface {
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity.Work, error)
+	// 批量查重：siteIds[i] 与 siteWorkIds[i] 一一对应
+	ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*entity.Work, error)
 }
 
 // ResourceReader 资源查询接口（查找已有作品的资源文件）
