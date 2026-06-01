@@ -52,6 +52,7 @@ type Manager struct {
 	// 批量状态写入
 	pendingStatusUpdates     map[int64]task.StatusUpdate
 	pendingResourceIDUpdates map[int64]sql.NullInt64
+	pendingProgressUpdates   map[int64]*taskScheduleDTO
 	pendingMu                sync.Mutex
 	flushCh                  chan struct{}
 	closeCh                  chan struct{}
@@ -101,6 +102,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		semaphore:              make(chan struct{}, maxParallel),
 		pendingStatusUpdates:     make(map[int64]task.StatusUpdate),
 		pendingResourceIDUpdates: make(map[int64]sql.NullInt64),
+		pendingProgressUpdates:   make(map[int64]*taskScheduleDTO),
 		flushCh:                make(chan struct{}, 1),
 		closeCh:                make(chan struct{}),
 		flushDone:              make(chan struct{}),
@@ -811,9 +813,15 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		}
 	})
 
-	// 设置进度回调
+	// 设置进度回调（写入待合并 map，由 flushLoop 批量推送）
 	mt.SetOnProgress(func(taskId int64, total int64, finished int64) {
-		m.pusher.PushProgress(taskId, total, finished)
+		m.pendingMu.Lock()
+		m.pendingProgressUpdates[taskId] = &taskScheduleDTO{ID: taskId, Total: total, Finished: finished}
+		m.pendingMu.Unlock()
+		select {
+		case m.flushCh <- struct{}{}:
+		default:
+		}
 	})
 
 	// 设置 setup 阶段暂停后恢复的重新调度回调
@@ -855,7 +863,7 @@ func (m *Manager) flushLoop() {
 // doFlush 将积攒的状态变更和 pendingResourceID 批量写入数据库
 func (m *Manager) doFlush() {
 	m.pendingMu.Lock()
-	if len(m.pendingStatusUpdates) == 0 && len(m.pendingResourceIDUpdates) == 0 {
+	if len(m.pendingStatusUpdates) == 0 && len(m.pendingResourceIDUpdates) == 0 && len(m.pendingProgressUpdates) == 0 {
 		m.pendingMu.Unlock()
 		return
 	}
@@ -863,6 +871,8 @@ func (m *Manager) doFlush() {
 	m.pendingStatusUpdates = make(map[int64]task.StatusUpdate)
 	pendingResourceIDs := m.pendingResourceIDUpdates
 	m.pendingResourceIDUpdates = make(map[int64]sql.NullInt64)
+	pendingProgress := m.pendingProgressUpdates
+	m.pendingProgressUpdates = make(map[int64]*taskScheduleDTO)
 	m.pendingMu.Unlock()
 
 	// 批量写入任务状态
@@ -884,6 +894,15 @@ func (m *Manager) doFlush() {
 		if err := m.repo.BatchUpdatePendingResourceID(context.Background(), pendingResourceIDs); err != nil {
 			logger.Log.Errorf("[TaskManager] 批量写入 pending_resource_id 失败: %v", err)
 		}
+	}
+
+	// 批量推送下载进度到前端
+	if len(pendingProgress) > 0 {
+		batch := make([]*taskScheduleDTO, 0, len(pendingProgress))
+		for _, dto := range pendingProgress {
+			batch = append(batch, dto)
+		}
+		m.pusher.PushProgressBatch(batch)
 	}
 }
 

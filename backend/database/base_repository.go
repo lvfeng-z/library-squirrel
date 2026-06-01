@@ -323,7 +323,7 @@ func (r *BaseRepository[T]) GORM() *gorm.DB {
 
 // Transaction 执行事务
 func (r *BaseRepository[T]) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	return withTransactionLog(r.getDb(ctx).WithContext(ctx), fn)
+	return r.getDb(ctx).WithContext(ctx).Transaction(fn)
 }
 
 // ExecRawSQL 执行原生 SQL（仅用于复杂查询）

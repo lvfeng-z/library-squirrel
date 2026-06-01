@@ -1,8 +1,6 @@
 package taskManager
 
 import (
-	"time"
-
 	"github.com/library-squirrel/backend/base/logger"
 )
 
@@ -11,6 +9,7 @@ type TaskProgressPusher interface {
 	PushStateChange(taskId int64, taskName string, state TaskState)
 	PushParentStateChange(taskId int64, taskName string, state TaskState)
 	PushProgress(taskId int64, total int64, finished int64)
+	PushProgressBatch(batch []*taskScheduleDTO)
 	PushError(taskId int64, err string)
 	PushTaskRemove(taskIds []int64)
 	PushParentTaskRemove(taskIds []int64)
@@ -33,14 +32,9 @@ func NewWailsTaskProgressPusher(emitter WailsEventEmitter) *WailsTaskProgressPus
 	return &WailsTaskProgressPusher{emitter: emitter}
 }
 
-// emit 记录耗时的 Emit 包装
+// emit 推送事件到前端
 func (p *WailsTaskProgressPusher) emit(eventName string, data any) {
-	start := time.Now()
 	p.emitter.Emit(eventName, data)
-	elapsed := time.Since(start)
-	if elapsed >= 10*time.Millisecond {
-		logger.Log.Warnf("[TaskPusher] Emit 慢: event=%s, elapsed=%v", eventName, elapsed)
-	}
 }
 
 // PushStateChange 推送任务状态变化到前端
@@ -63,6 +57,14 @@ func (p *WailsTaskProgressPusher) PushProgress(taskId int64, total int64, finish
 	}
 	data := []*taskScheduleDTO{dto}
 	p.emit("taskStatus-updateSchedule", data)
+}
+
+// PushProgressBatch 批量推送下载进度到前端（合并多次进度更新为一次 Emit）
+func (p *WailsTaskProgressPusher) PushProgressBatch(batch []*taskScheduleDTO) {
+	if len(batch) == 0 {
+		return
+	}
+	p.emit("taskStatus-updateSchedule", batch)
 }
 
 // PushError 推送错误到前端
@@ -135,6 +137,7 @@ func NewNoopProgressPusher() *NoopProgressPusher {
 func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)       {}
 func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState) {}
 func (p *NoopProgressPusher) PushProgress(int64, int64, int64)              {}
+func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)          {}
 func (p *NoopProgressPusher) PushError(int64, string)                       {}
 func (p *NoopProgressPusher) PushTaskRemove([]int64)                        {}
 func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                  {}
