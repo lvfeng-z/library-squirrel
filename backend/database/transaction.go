@@ -2,6 +2,10 @@ package database
 
 import (
 	"context"
+	"runtime"
+	"time"
+
+	pkglogger "github.com/library-squirrel/backend/base/logger"
 	"gorm.io/gorm"
 )
 
@@ -10,12 +14,12 @@ type TxFunc func(tx *gorm.DB) error
 
 // WithTransaction 执行事务
 func WithTransaction(db *gorm.DB, fn TxFunc) error {
-	return db.Transaction(fn)
+	return withTransactionLog(db, fn)
 }
 
 // WithTransactionContext 带context的事务执行
 func WithTransactionContext(ctx context.Context, db *gorm.DB, fn TxFunc) error {
-	return db.WithContext(ctx).Transaction(fn)
+	return withTransactionLog(db.WithContext(ctx), fn)
 }
 
 // Transaction 事务封装
@@ -30,20 +34,30 @@ func NewTransaction(db *gorm.DB) *Transaction {
 
 // Exec 执行事务
 func (t *Transaction) Exec(ctx context.Context, fn TxFunc) error {
-	return t.db.WithContext(ctx).Transaction(fn)
+	return withTransactionLog(t.db.WithContext(ctx), fn)
 }
 
-// Savepoint 创建保存点
-func (t *Transaction) Savepoint(ctx context.Context, name string) error {
-	return t.db.WithContext(ctx).Exec("SAVEPOINT " + name).Error
+// withTransactionLog 包装事务执行，记录开始/结束日志和耗时
+func withTransactionLog(db *gorm.DB, fn TxFunc) error {
+	// 跳过 getStackTrace → withTransactionLog → WithTransaction(等) → 实际调用方
+	caller := getCaller(3)
+	pkglogger.Log.Infof("[DB] 事务开始: caller=%s", caller)
+	start := time.Now()
+	err := db.Transaction(fn)
+	elapsed := time.Since(start)
+	if err != nil {
+		pkglogger.Log.Errorf("[DB] 事务失败: caller=%s, elapsed=%v, err=%v", caller, elapsed, err)
+	} else {
+		pkglogger.Log.Infof("[DB] 事务完成: caller=%s, elapsed=%v", caller, elapsed)
+	}
+	return err
 }
 
-// RollbackToSavepoint 回滚到保存点
-func (t *Transaction) RollbackToSavepoint(ctx context.Context, name string) error {
-	return t.db.WithContext(ctx).Exec("ROLLBACK TO SAVEPOINT " + name).Error
-}
-
-// ReleaseSavepoint 释放保存点
-func (t *Transaction) ReleaseSavepoint(ctx context.Context, name string) error {
-	return t.db.WithContext(ctx).Exec("RELEASE SAVEPOINT " + name).Error
+// getCaller 获取调用方函数名，skip 为栈帧偏移
+func getCaller(skip int) string {
+	pc, _, _, ok := runtime.Caller(skip)
+	if !ok {
+		return "unknown"
+	}
+	return runtime.FuncForPC(pc).Name()
 }
