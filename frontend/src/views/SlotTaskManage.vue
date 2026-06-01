@@ -32,9 +32,6 @@ onMounted(() => {
   taskManageSearchTable.value.doSearch()
 })
 
-// 事件
-const emits = defineEmits(['openReplaceResConfirmDialog'])
-
 // 变量
 const taskManageSearchTable = ref()
 const localImportButton = ref()
@@ -258,9 +255,6 @@ async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: Task
       break
     case TaskOperationCodeEnum.DELETE:
       await deleteTask(getRowTaskId(row))
-      break
-    case TaskOperationCodeEnum.CONFIRM_REPLACE_RES:
-      emits('openReplaceResConfirmDialog')
       break
     default:
       break

@@ -456,7 +456,6 @@ function toParent() {
                 <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>
                 <el-option :value="TaskStatusEnum.PAUSED" label="暂停"></el-option>
                 <el-option :value="TaskStatusEnum.FINISHED" label="完成"></el-option>
-                <el-option :value="TaskStatusEnum.PARTLY_FINISHED" label="部分完成"></el-option>
                 <el-option :value="TaskStatusEnum.FAILED" label="失败"></el-option>
               </el-select>
             </el-col>

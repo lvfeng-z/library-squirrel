@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
-import TaskQueueResourceReplaceConfirmDialog from '@renderer/components/dialogs/TaskQueueResourceReplaceConfirmDialog.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
@@ -12,8 +11,6 @@ import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 const router = useRouter()
 const route = useRoute()
 const notificationListState = ref(false)
-const resourceReplaceConfirmState = ref(false)
-const resourceReplaceConfirmList = ref<{ taskId: number; msg: string }[]>([])
 
 // 根据当前路由路径判断是否显示关闭按钮（非主页时显示）
 const showCloseButton = computed(() => {
@@ -25,17 +22,6 @@ async function handleCloseCurrentView() {
     await router.push('/')
   }
 }
-
-// 监听 IPC
-onMounted(() => {
-  // window.electron.ipcRenderer.on(
-  //   'task-queue-resource-replace-confirm',
-  //   (_event: electron.IpcRendererEvent, config: { taskId: number; msg: string }) => {
-  //     resourceReplaceConfirmState.value = true
-  //     resourceReplaceConfirmList.value.push(config)
-  //   }
-  // )
-})
 </script>
 
 <template>
@@ -64,10 +50,6 @@ onMounted(() => {
 
     <!-- 弹窗组件 -->
     <notification-list class="main-background-task z-layer-3" :state="notificationListState" />
-    <task-queue-resource-replace-confirm-dialog
-      v-model:state="resourceReplaceConfirmState"
-      v-model:confirm-list="resourceReplaceConfirmList"
-    />
     <ReplaceConfirmDialog />
     <DialogSlotRenderer />
 

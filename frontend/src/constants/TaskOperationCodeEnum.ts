@@ -5,6 +5,5 @@ export enum TaskOperationCodeEnum {
   RESUME,
   RETRY,
   CANCEL,
-  DELETE,
-  CONFIRM_REPLACE_RES
+  DELETE
 }

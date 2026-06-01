@@ -341,9 +341,6 @@ function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperat
     case TaskOperationCodeEnum.DELETE:
       deleteTask(getRowTaskId(row))
       break
-    case TaskOperationCodeEnum.CONFIRM_REPLACE_RES:
-      emits('openReplaceResConfirmDialog')
-      break
     default:
       break
   }
