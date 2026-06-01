@@ -820,6 +820,9 @@ func (app *App) initAdvancedServices() error {
 		resourceBackupOrchestrator,  // 实现 ResourceBackupOrchestrator 接口
 	)
 
+	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
+	app.TaskService.SetMemoryProvider(app.TaskManagerService)
+
 	return nil
 }
 

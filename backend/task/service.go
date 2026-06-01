@@ -17,6 +17,7 @@ import (
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	"gorm.io/gorm/clause"
 )
 
 // 错误定义
@@ -49,6 +50,25 @@ const (
 	TaskStatusFailed         TaskStatusEnum = 7
 	TaskStatusPartlyFinished TaskStatusEnum = 8
 )
+
+// MemoryStateProvider 内存任务状态提供者接口
+// 由 taskManager.Manager 实现，用于查询时综合内存中的实时状态
+type MemoryStateProvider interface {
+	// GetTaskStates 获取所有内存中任务的当前状态快照
+	// 返回 map[taskId]status，包含父任务和子任务
+	GetTaskStates() map[int64]int
+}
+
+// isTransientStatus 判断状态是否为瞬态（不会出现在数据库中）
+func isTransientStatus(status int) bool {
+	switch TaskStatusEnum(status) {
+	case TaskStatusCreated, TaskStatusWaiting, TaskStatusProcessing,
+		TaskStatusPausing, TaskStatusStopping:
+		return true
+	default:
+		return false
+	}
+}
 
 // Repository 任务仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
@@ -151,6 +171,7 @@ type Service struct {
 	taskHandlerGetter TaskHandlerProvider
 	urlListener       *pluginTaskUrlListener.Service
 	siteSvc           *site.Service
+	memoryProvider    MemoryStateProvider
 }
 
 // NewService 创建任务服务
@@ -162,6 +183,97 @@ func NewService(repo Repository, workSaver WorkSaver, resourceSaver ResourceSave
 		taskHandlerGetter: taskHandlerGetter,
 		urlListener:       urlListener,
 		siteSvc:           siteSvc,
+	}
+}
+
+// SetMemoryProvider 设置内存任务状态提供者（延迟注入，解决初始化顺序问题）
+func (s *Service) SetMemoryProvider(provider MemoryStateProvider) {
+	s.memoryProvider = provider
+}
+
+// buildPageOptionWithMemory 构建 PageOption，综合内存中的任务状态调整查询条件
+// 瞬态状态：从内存收集匹配 ID → 清除 Status 条件 → 添加 id IN (匹配IDs)
+// 稳态状态：从内存收集不匹配 ID → 保留 Status 条件 → 追加 id NOT IN (不匹配IDs)
+func (s *Service) buildPageOptionWithMemory(query TaskQueryDTO, page, pageSize int) (*database.PageOption, error) {
+	// 无状态过滤或无内存提供者：标准转换
+	if query.Status.Value == nil || s.memoryProvider == nil {
+		conv := querypkg.NewConverter(entity.Task{})
+		return conv.ToPageOption(query, page, pageSize, nil)
+	}
+
+	targetStatus := int(*query.Status.Value)
+	states := s.memoryProvider.GetTaskStates()
+
+	if isTransientStatus(targetStatus) {
+		// 瞬态：收集内存中匹配的 ID
+		var matchingIDs []int64
+		for id, state := range states {
+			if state == targetStatus {
+				matchingIDs = append(matchingIDs, id)
+			}
+		}
+
+		// 清除 Status 条件（DB 中不存在瞬态）
+		query.Status.Value = nil
+
+		conv := querypkg.NewConverter(entity.Task{})
+		opt, err := conv.ToPageOption(query, page, pageSize, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(matchingIDs) > 0 {
+			vals := make([]interface{}, len(matchingIDs))
+			for i, id := range matchingIDs {
+				vals[i] = id
+			}
+			opt.Conditions = append(opt.Conditions, clause.IN{
+				Column: clause.Column{Name: "id"},
+				Values: vals,
+			})
+		} else {
+			// 无匹配任务，返回永假条件
+			opt.Conditions = append(opt.Conditions, clause.Eq{
+				Column: clause.Column{Name: "id"}, Value: int64(-1),
+			})
+		}
+		return opt, nil
+	}
+
+	// 稳态：收集内存中状态不同的 ID（需排除，防止 DB 旧状态干扰）
+	var excludeIDs []interface{}
+	for id, state := range states {
+		if state != targetStatus {
+			excludeIDs = append(excludeIDs, id)
+		}
+	}
+
+	conv := querypkg.NewConverter(entity.Task{})
+	opt, err := conv.ToPageOption(query, page, pageSize, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(excludeIDs) > 0 {
+		opt.Conditions = append(opt.Conditions, clause.Not(clause.IN{
+			Column: clause.Column{Name: "id"},
+			Values: excludeIDs,
+		}))
+	}
+	return opt, nil
+}
+
+// overlayMemoryStates 用内存中的实时状态覆写查询结果中的状态
+// 使首次加载即显示正确状态，而非等待推送更新
+func (s *Service) overlayMemoryStates(tasks []*entity.Task) {
+	if s.memoryProvider == nil || len(tasks) == 0 {
+		return
+	}
+	states := s.memoryProvider.GetTaskStates()
+	for _, task := range tasks {
+		if state, ok := states[task.GetID()]; ok {
+			task.Status = state
+		}
 	}
 }
 
@@ -202,22 +314,30 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 
 // Page 分页查询
 func (s *Service) Page(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
-	conv := querypkg.NewConverter(entity.Task{})
-	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
+	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.Page(ctx, opt)
+	result, err := s.repo.Page(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	s.overlayMemoryStates(result.Data)
+	return result, nil
 }
 
 // QueryParentPage 分页查询父任务
 func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
-	conv := querypkg.NewConverter(entity.Task{})
-	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
+	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.QueryParentPage(ctx, opt)
+	result, err := s.repo.QueryParentPage(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	s.overlayMemoryStates(result.Data)
+	return result, nil
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -319,12 +439,16 @@ func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity.Ta
 
 // QueryChildrenTaskPage 查询子任务分页
 func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
-	conv := querypkg.NewConverter(entity.Task{})
-	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
+	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.QueryChildrenTaskPage(ctx, opt)
+	result, err := s.repo.QueryChildrenTaskPage(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	s.overlayMemoryStates(result.Data)
+	return result, nil
 }
 
 // EnrichTaskProgressTreePage 将 Task 实体分页丰富为 TaskProgressTreeDTO 分页

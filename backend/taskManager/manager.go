@@ -613,6 +613,34 @@ func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 	return managedTask, ok
 }
 
+// GetTaskStates 获取所有内存中任务的当前状态快照
+// 实现 task.MemoryStateProvider 接口
+func (m *Manager) GetTaskStates() map[int64]int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	states := make(map[int64]int)
+
+	// 子任务状态
+	for id, mt := range m.taskMap {
+		states[id] = int(mt.GetState())
+	}
+
+	// 父任务状态
+	for id, pt := range m.parentMap {
+		states[id] = int(pt.GetState())
+	}
+
+	// 等待确认的任务
+	m.waitingForInputMu.Lock()
+	for id, mt := range m.waitingForInputMap {
+		states[id] = int(mt.GetState())
+	}
+	m.waitingForInputMu.Unlock()
+
+	return states
+}
+
 func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	// 获取任务执行器
 	if !t.PluginPublicID.Valid {
