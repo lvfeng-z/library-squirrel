@@ -80,7 +80,7 @@ type App struct {
 	SiteBrowserService   *siteBrowser.Service
 
 	// 任务仓储（用于TaskManager）
-	taskRepo task.Repository
+	taskRepo *task.TaskRepository
 
 	// 扩展注册中心
 	TaskHandlerRegistry *extension2.TaskHandlerRegistry
@@ -710,6 +710,7 @@ func (app *App) initAdvancedServices() error {
 	workRepo := work.NewRepository(app.db)
 	app.WorkService = work.NewService(
 		workRepo,
+		&dbTransactorAdapter{db: app.db},
 		app.LocalTagService,
 		app.LocalAuthorService,
 		app.SiteTagService,
@@ -831,6 +832,18 @@ type workSetWriterAdapter struct {
 	repo *workSet.WorkSetRepository
 }
 
+// dbTransactorAdapter 数据库事务执行器适配器
+type dbTransactorAdapter struct {
+	db *gorm.DB
+}
+
+func (a *dbTransactorAdapter) ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return database.WithTransactionContext(ctx, a.db, func(tx *gorm.DB) error {
+		txCtx := context.WithValue(ctx, database.TxKey, tx)
+		return fn(txCtx)
+	})
+}
+
 func (a *workSetWriterAdapter) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error) {
 	existing, err := a.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
 	if err == nil && existing != nil {
@@ -848,6 +861,14 @@ func (a *workSetWriterAdapter) SaveOrUpdateByCompositeKey(ctx context.Context, w
 
 func (a *workSetWriterAdapter) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error) {
 	return a.repo.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
+}
+
+func (a *workSetWriterAdapter) BatchUpsert(ctx context.Context, workSets []*entity2.WorkSet) error {
+	return a.repo.BatchUpsert(ctx, workSets)
+}
+
+func (a *workSetWriterAdapter) ListBySiteAndSiteWorkSetIDs(ctx context.Context, siteId int64, siteWorkSetIds []string) ([]*entity2.WorkSet, error) {
+	return a.repo.ListBySiteAndSiteWorkSetIDs(ctx, siteId, siteWorkSetIds)
 }
 
 // ResourceSaverAdapter ResourceSaver 接口适配器

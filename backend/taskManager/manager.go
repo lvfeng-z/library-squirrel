@@ -22,8 +22,8 @@ type Repository interface {
 	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
-	// UpdatePendingResourceID 更新任务的 pending_resource_id
-	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
+	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id
+	BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error
 }
 
 // WorkDirProvider 工作目录提供者接口
@@ -49,11 +49,12 @@ type Manager struct {
 	// 优雅关闭标记
 	shuttingDown atomic.Bool
 	// 批量状态写入
-	pendingStatusUpdates map[int64]task.StatusUpdate
-	pendingMu            sync.Mutex
-	flushCh              chan struct{}
-	closeCh              chan struct{}
-	flushDone            chan struct{}
+	pendingStatusUpdates     map[int64]task.StatusUpdate
+	pendingResourceIDUpdates map[int64]sql.NullInt64
+	pendingMu                sync.Mutex
+	flushCh                  chan struct{}
+	closeCh                  chan struct{}
+	flushDone                chan struct{}
 
 	// 信号量（控制并发数）
 	semaphore   chan struct{}
@@ -97,7 +98,8 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		waitingQueue:           make([]*ManagedTask, 0),
 		maxParallel:            maxParallel,
 		semaphore:              make(chan struct{}, maxParallel),
-		pendingStatusUpdates:   make(map[int64]task.StatusUpdate),
+		pendingStatusUpdates:     make(map[int64]task.StatusUpdate),
+		pendingResourceIDUpdates: make(map[int64]sql.NullInt64),
 		flushCh:                make(chan struct{}, 1),
 		closeCh:                make(chan struct{}),
 		flushDone:              make(chan struct{}),
@@ -726,8 +728,12 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 	// 设置 pending_resource_id 持久化回调
 	mt.onResourceIDUpdate = func(taskId int64, resourceID sql.NullInt64) {
-		if err := m.repo.UpdatePendingResourceID(context.Background(), taskId, resourceID); err != nil {
-			logger.Log.Errorf("[TaskManager] 持久化 pending_resource_id 失败: taskId=%d, err=%v", taskId, err)
+		m.pendingMu.Lock()
+		m.pendingResourceIDUpdates[taskId] = resourceID
+		m.pendingMu.Unlock()
+		select {
+		case m.flushCh <- struct{}{}:
+		default:
 		}
 	}
 
@@ -751,27 +757,38 @@ func (m *Manager) flushLoop() {
 	}
 }
 
-// doFlush 将积攒的状态变更批量写入数据库
+// doFlush 将积攒的状态变更和 pendingResourceID 批量写入数据库
 func (m *Manager) doFlush() {
 	m.pendingMu.Lock()
-	if len(m.pendingStatusUpdates) == 0 {
+	if len(m.pendingStatusUpdates) == 0 && len(m.pendingResourceIDUpdates) == 0 {
 		m.pendingMu.Unlock()
 		return
 	}
-	pending := m.pendingStatusUpdates
+	pendingStatus := m.pendingStatusUpdates
 	m.pendingStatusUpdates = make(map[int64]task.StatusUpdate)
+	pendingResourceIDs := m.pendingResourceIDUpdates
+	m.pendingResourceIDUpdates = make(map[int64]sql.NullInt64)
 	m.pendingMu.Unlock()
 
-// 诊断日志：记录待刷盘的任务状态
-	for id, u := range pending {
-		errMsg := ""
-		if u.ErrorMessage.Valid {
-			errMsg = u.ErrorMessage.String
+	// 批量写入任务状态
+	if len(pendingStatus) > 0 {
+		for id, u := range pendingStatus {
+			errMsg := ""
+			if u.ErrorMessage.Valid {
+				errMsg = u.ErrorMessage.String
+			}
+			logger.Log.Infof("[TaskManager] doFlush: taskId=%d, status=%d, errMsg=%s", id, u.Status, errMsg)
 		}
-		logger.Log.Infof("[TaskManager] doFlush: taskId=%d, status=%d, errMsg=%s", id, u.Status, errMsg)
+		if err := m.repo.BatchSetStatus(context.Background(), pendingStatus); err != nil {
+			logger.Log.Errorf("[TaskManager] 批量写入任务状态失败: %v", err)
+		}
 	}
-	if err := m.repo.BatchSetStatus(context.Background(), pending); err != nil {
-		logger.Log.Errorf("[TaskManager] 批量写入任务状态失败: %v", err)
+
+	// 批量写入 pending_resource_id
+	if len(pendingResourceIDs) > 0 {
+		if err := m.repo.BatchUpdatePendingResourceID(context.Background(), pendingResourceIDs); err != nil {
+			logger.Log.Errorf("[TaskManager] 批量写入 pending_resource_id 失败: %v", err)
+		}
 	}
 }
 

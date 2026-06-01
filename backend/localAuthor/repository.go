@@ -30,6 +30,11 @@ func (r *LocalAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *LocalAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // ListReWorkAuthor 批量获取作品与作者的关联
 func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
@@ -56,7 +61,7 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 		sdkdto.RankedLocalAuthor
 	}
 
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +88,7 @@ func (r *LocalAuthorRepository) ListByWorkId(ctx context.Context, workId int64) 
 	`
 
 	var results []*sdkdto.RankedLocalAuthor
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +118,7 @@ func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 	`, strings.Join(placeholders, ","))
 
 	var results []*sdkdto.RankedLocalAuthorWithWorkId
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}

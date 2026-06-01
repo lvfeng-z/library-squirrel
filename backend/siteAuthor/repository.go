@@ -32,6 +32,44 @@ func (r *SiteAuthorRepository) GORM() *gorm.DB {
 	return r.db
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *SiteAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.db)
+}
+
+// BatchUpsert 批量插入或更新（基于 site_id + site_author_id 唯一约束）
+func (r *SiteAuthorRepository) BatchUpsert(ctx context.Context, authors []*entity.SiteAuthor) error {
+	if len(authors) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, a := range authors {
+		if a.GetID() == 0 {
+			a.SetCreateTime(now)
+		}
+		a.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"author_name", "fixed_author_name", "site_author_name_before",
+			"introduce", "local_author_id", "last_use", "update_time", "homepage",
+		}),
+	}).Create(authors).Error
+}
+
+// ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
+func (r *SiteAuthorRepository) ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error) {
+	if len(siteAuthorIds) == 0 {
+		return nil, nil
+	}
+	var result []*entity.SiteAuthor
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Where("site_id = ? AND site_author_id IN ?", siteId, siteAuthorIds).
+		Find(&result).Error
+	return result, err
+}
+
 // Save 保存
 func (r *SiteAuthorRepository) Save(ctx context.Context, author *entity.SiteAuthor) error {
 	now := util.GetCurrentTimestamp()
@@ -39,7 +77,7 @@ func (r *SiteAuthorRepository) Save(ctx context.Context, author *entity.SiteAuth
 		author.SetCreateTime(now)
 	}
 	author.SetUpdateTime(now)
-	return r.db.WithContext(ctx).Create(author).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Create(author).Error
 }
 
 // Upsert 原子插入或更新（基于 site_id + site_author_id 唯一约束）
@@ -49,7 +87,7 @@ func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAu
 		author.SetCreateTime(now)
 	}
 	author.SetUpdateTime(now)
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"author_name", "fixed_author_name", "site_author_name_before",
@@ -67,19 +105,19 @@ func (r *SiteAuthorRepository) SaveBatch(ctx context.Context, authors []*entity.
 		}
 		author.SetUpdateTime(now)
 	}
-	return r.db.WithContext(ctx).Create(authors).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Create(authors).Error
 }
 
 // Update 更新
 func (r *SiteAuthorRepository) Update(ctx context.Context, author *entity.SiteAuthor) error {
 	author.SetUpdateTime(util.GetCurrentTimestamp())
-	return r.db.WithContext(ctx).Save(author).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Save(author).Error
 }
 
 // GetById 根据ID获取
 func (r *SiteAuthorRepository) GetById(ctx context.Context, id int64) (*entity.SiteAuthor, error) {
 	var author entity.SiteAuthor
-	err := r.db.WithContext(ctx).First(&author, id).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).First(&author, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +127,7 @@ func (r *SiteAuthorRepository) GetById(ctx context.Context, id int64) (*entity.S
 // List 查询列表
 func (r *SiteAuthorRepository) List(ctx context.Context, opt *database.QueryOption) ([]*entity.SiteAuthor, error) {
 	var authors []*entity.SiteAuthor
-	db := r.db.WithContext(ctx).Model(new(entity.SiteAuthor))
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor))
 	db = applyQueryOption(db, opt)
 	err := db.Find(&authors).Error
 	if err != nil {
@@ -101,7 +139,7 @@ func (r *SiteAuthorRepository) List(ctx context.Context, opt *database.QueryOpti
 // Count 统计数量
 func (r *SiteAuthorRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
 	var count int64
-	db := r.db.WithContext(ctx).Model(new(entity.SiteAuthor))
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor))
 	db = applyQueryOption(db, opt)
 	err := db.Count(&count).Error
 	return count, err
@@ -109,7 +147,7 @@ func (r *SiteAuthorRepository) Count(ctx context.Context, opt *database.QueryOpt
 
 // Delete 删除
 func (r *SiteAuthorRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Delete(new(entity.SiteAuthor), id).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Delete(new(entity.SiteAuthor), id).Error
 }
 
 // Page 分页查询
@@ -160,7 +198,7 @@ func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) (
 	`
 
 	var results []*sdkdto.RankedSiteAuthor
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +212,7 @@ func (r *SiteAuthorRepository) ListBySiteAuthorIds(ctx context.Context, siteAuth
 		return make([]*entity.SiteAuthor, 0), nil
 	}
 	var results []*entity.SiteAuthor
-	err := r.GORM().WithContext(ctx).Where("id IN ?", siteAuthorIds).Find(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Where("id IN ?", siteAuthorIds).Find(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +242,7 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 	`, strings.Join(placeholders, ","))
 
 	var results []*sdkdto.RankedSiteAuthorWithWorkId
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +266,7 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 	query := fmt.Sprintf(`UPDATE site_author SET local_author_id = ?, update_time = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
 	args = append([]interface{}{localAuthorId, util.GetCurrentTimestamp()}, args...)
 
-	result := r.GORM().WithContext(ctx).Exec(query, args...)
+	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(query, args...)
 	if result.Error != nil {
 		return 0, result.Error
 	}
@@ -241,7 +279,7 @@ func (r *SiteAuthorRepository) UpdateLastUseByIds(ctx context.Context, ids []int
 	if len(ids) == 0 {
 		return nil
 	}
-	return r.GORM().WithContext(ctx).Model(new(entity.SiteAuthor)).
+	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor)).
 		Where("id IN ?", ids).
 		Updates(map[string]interface{}{"last_use": lastUse, "update_time": util.GetCurrentTimestamp()}).Error
 }
@@ -262,7 +300,7 @@ func (r *SiteAuthorRepository) GetBySiteAndSiteAuthorID(ctx context.Context, sit
 // Get 使用 QueryOption 查询单条记录
 func (r *SiteAuthorRepository) Get(ctx context.Context, opt *database.QueryOption) (*entity.SiteAuthor, error) {
 	var author entity.SiteAuthor
-	db := r.db.WithContext(ctx).Model(new(entity.SiteAuthor))
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor))
 	db = applyQueryOption(db, opt)
 	err := db.First(&author).Error
 	if err != nil {

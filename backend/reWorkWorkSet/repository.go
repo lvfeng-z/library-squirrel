@@ -24,9 +24,14 @@ func NewRepository(db *gorm.DB) *ReWorkWorkSetRepository {
 	}
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *ReWorkWorkSetRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // DeleteByWorkAndWorkSet 根据作品ID和作品集ID删除
 func (r *ReWorkWorkSetRepository) DeleteByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
 		Delete(new(domain.ReWorkWorkSet)).Error
@@ -34,7 +39,7 @@ func (r *ReWorkWorkSetRepository) DeleteByWorkAndWorkSet(ctx context.Context, wo
 
 // DeleteByWorkSetId 根据作品集ID删除所有关联
 func (r *ReWorkWorkSetRepository) DeleteByWorkSetId(ctx context.Context, workSetId int64) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("work_set_id = ?", workSetId).
 		Delete(new(domain.ReWorkWorkSet)).Error
@@ -42,7 +47,7 @@ func (r *ReWorkWorkSetRepository) DeleteByWorkSetId(ctx context.Context, workSet
 
 // DeleteByWorkId 根据作品ID删除所有关联
 func (r *ReWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("work_id = ?", workId).
 		Delete(new(domain.ReWorkWorkSet)).Error
@@ -51,7 +56,7 @@ func (r *ReWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int
 // ListByWorkSetId 查询作品集关联的所有作品ID
 func (r *ReWorkWorkSetRepository) ListByWorkSetId(ctx context.Context, workSetId int64) ([]int64, error) {
 	var workIds []int64
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ?", workSetId).
@@ -63,7 +68,7 @@ func (r *ReWorkWorkSetRepository) ListByWorkSetId(ctx context.Context, workSetId
 // ListByWorkId 查询作品关联的所有作品集ID
 func (r *ReWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64) ([]int64, error) {
 	var workSetIds []int64
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_id = ?", workId).
@@ -74,7 +79,7 @@ func (r *ReWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64
 // GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
 func (r *ReWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error) {
 	var result domain.ReWorkWorkSet
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
 		First(&result).Error
@@ -87,7 +92,7 @@ func (r *ReWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workI
 // CountByWorkSetId 统计作品集关联的作品数量
 func (r *ReWorkWorkSetRepository) CountByWorkSetId(ctx context.Context, workSetId int64) (int64, error) {
 	var count int64
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ?", workSetId).
@@ -97,7 +102,7 @@ func (r *ReWorkWorkSetRepository) CountByWorkSetId(ctx context.Context, workSetI
 
 // UpdateSortOrder 更新排序顺序
 func (r *ReWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, workSetId int64, sortOrder int) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
@@ -106,7 +111,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, w
 
 // UpdateIsCover 更新封面标记
 func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
@@ -115,7 +120,7 @@ func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, wor
 
 // ClearOtherCovers 清除作品集的其他封面
 func (r *ReWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ? AND work_id != ?", workSetId, exceptWorkId).
@@ -127,7 +132,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 	if len(sortOrders) == 0 {
 		return nil
 	}
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ?", workSetId).
@@ -141,7 +146,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 // GetCoverWorkId 获取封面作品ID
 func (r *ReWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
 	var workId int64
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ? AND is_cover = 1", workSetId).
@@ -162,7 +167,7 @@ func (r *ReWorkWorkSetRepository) ListCoverWorkIdsByWorkSetIds(ctx context.Conte
 		WorkID    int64
 	}
 	var results []result
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Where("is_cover = 1 AND work_set_id IN ?", workSetIds).
@@ -188,12 +193,12 @@ func (r *ReWorkWorkSetRepository) ListMinSortOrderWorkIdsByWorkSetIds(ctx contex
 		WorkID    int64
 	}
 	var results []result
-	subQuery := r.BaseRepository.GORM().
+	subQuery := r.dbFromCtx(ctx).
 		Model(new(domain.ReWorkWorkSet)).
 		Select("work_set_id, MIN(sort_order) as sort_order").
 		Where("work_set_id IN ?", workSetIds).
 		Group("work_set_id")
-	err := r.BaseRepository.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Table("re_work_work_set").
 		Where("work_set_id IN ?", workSetIds).
@@ -240,7 +245,7 @@ func (r *ReWorkWorkSetRepository) SaveBatch(ctx context.Context, reWorkWorkSets 
 		}
 		rel.SetUpdateTime(now)
 	}
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Create(reWorkWorkSets).Error
 }

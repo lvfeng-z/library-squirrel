@@ -125,6 +125,8 @@ type LocalTagFindOrCreator interface {
 	GetByNames(ctx context.Context, names []string) ([]*entity2.LocalTag, error)
 	// Save 创建本地标签
 	Save(ctx context.Context, tag *entity2.LocalTag) error
+	// SaveBatch 批量创建本地标签
+	SaveBatch(ctx context.Context, tags []*entity2.LocalTag) error
 }
 
 // LocalAuthorFindOrCreator 本地作者查找或创建接口
@@ -133,6 +135,8 @@ type LocalAuthorFindOrCreator interface {
 	GetByNames(ctx context.Context, names []string) ([]*entity2.LocalAuthor, error)
 	// Save 创建本地作者
 	Save(ctx context.Context, author *entity2.LocalAuthor) error
+	// SaveBatch 批量创建本地作者
+	SaveBatch(ctx context.Context, authors []*entity2.LocalAuthor) error
 }
 
 // SiteAuthorWriter 站点作者写入接口
@@ -141,6 +145,10 @@ type SiteAuthorWriter interface {
 	SaveOrUpdateByCompositeKey(ctx context.Context, author *entity2.SiteAuthor) (int64, error)
 	// GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询
 	GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity2.SiteAuthor, error)
+	// BatchUpsert 批量插入或更新（基于 site_id + site_author_id 唯一约束）
+	BatchUpsert(ctx context.Context, authors []*entity2.SiteAuthor) error
+	// ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
+	ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity2.SiteAuthor, error)
 }
 
 // SiteTagWriter 站点标签写入接口
@@ -149,6 +157,10 @@ type SiteTagWriter interface {
 	SaveOrUpdateByCompositeKey(ctx context.Context, tag *entity2.SiteTag) (int64, error)
 	// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
 	GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error)
+	// BatchUpsert 批量插入或更新（基于 site_id + site_tag_id 唯一约束）
+	BatchUpsert(ctx context.Context, tags []*entity2.SiteTag) error
+	// ListBySiteAndSiteTagIDs 根据站点ID和站点标签ID列表批量查询
+	ListBySiteAndSiteTagIDs(ctx context.Context, siteId int64, siteTagIds []string) ([]*entity2.SiteTag, error)
 }
 
 // WorkSetWriter 作品集写入接口
@@ -157,6 +169,16 @@ type WorkSetWriter interface {
 	SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error)
 	// GetBySiteAndSiteWorkSetID 根据站点ID和站点作品集ID查询
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
+	// BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id 唯一约束）
+	BatchUpsert(ctx context.Context, workSets []*entity2.WorkSet) error
+	// ListBySiteAndSiteWorkSetIDs 根据站点ID和站点作品集ID列表批量查询
+	ListBySiteAndSiteWorkSetIDs(ctx context.Context, siteId int64, siteWorkSetIds []string) ([]*entity2.WorkSet, error)
+}
+
+// Transactor 数据库事务执行器
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 // ReWorkAuthorWriter 作品-作者关联写入接口
@@ -201,6 +223,9 @@ type Repository interface {
 type Service struct {
 	repo Repository
 
+	// 事务执行器
+	transactor Transactor
+
 	// 外部模块依赖（通过构造函数注入）
 	localTagReader    LocalTagReader
 	localAuthorReader LocalAuthorReader
@@ -233,6 +258,7 @@ type Service struct {
 // NewService 创建作品服务
 func NewService(
 	repo Repository,
+	transactor Transactor,
 	localTagReader LocalTagReader,
 	localAuthorReader LocalAuthorReader,
 	siteTagReader SiteTagReader,
@@ -258,6 +284,7 @@ func NewService(
 ) *Service {
 	return &Service{
 		repo:                   repo,
+		transactor:             transactor,
 		localTagReader:         localTagReader,
 		localAuthorReader:      localAuthorReader,
 		siteTagReader:          siteTagReader,
@@ -650,6 +677,17 @@ const (
 
 // SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID
 func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+	var workId int64
+	err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		workId, err = s.saveWorkInfoInTx(txCtx, task, workResp)
+		return err
+	})
+	return workId, err
+}
+
+// saveWorkInfoInTx 事务内执行 SaveWorkInfo 的核心逻辑
+func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
 	work := dto2.ToWorkEntity(workResp.Work)
 
 	// 确保 SiteID 来自任务
@@ -690,22 +728,6 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 	if err != nil {
 		return 0, fmt.Errorf("处理本地标签失败: %w", err)
 	}
-	// === Phase 2: 回查内部 DB ID ===
-	siteAuthorDBIds, err = s.querySiteAuthorDBIds(ctx, workResp.SiteAuthors, siteId)
-	if err != nil {
-		return 0, fmt.Errorf("回查站点作者 ID 失败: %w", err)
-	}
-
-	siteTagDBIds, err = s.querySiteTagDBIds(ctx, workResp.SiteTags, siteId)
-	if err != nil {
-		return 0, fmt.Errorf("回查站点标签 ID 失败: %w", err)
-	}
-
-	workSetDBIds, err = s.queryWorkSetDBIds(ctx, workResp.WorkSets, siteId)
-	if err != nil {
-		return 0, fmt.Errorf("回查作品集 ID 失败: %w", err)
-	}
-
 	// TODO: 当前的全量替换策略会删除该作品的全部关联（包括用户在 UI 中手动添加的本地作者/标签关联），
 	//  然后仅用插件返回的数据重建。应在执行替换前提示用户确认是"替换"还是"合并"，
 	//  合并模式下保留非插件来源的关联，仅更新插件管理的 Site 类型关联。
@@ -753,102 +775,125 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 	return workId, nil
 }
 
-// upsertSiteAuthors 批量 upsert 站点作者，返回 DB ID 列表
+// upsertSiteAuthors 批量 upsert 站点作者，返回 DB ID 列表（与 dtos 顺序一致）
 func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		entity := taskSiteAuthorDTOToEntity(d, siteId)
-		id, err := s.siteAuthorWriter.SaveOrUpdateByCompositeKey(ctx, entity)
-		if err != nil {
-			return nil, fmt.Errorf("upsert 站点作者 %s 失败: %w", d.SiteAuthorID, err)
+
+	// 批量 DTO → 实体
+	entities := make([]*entity2.SiteAuthor, len(dtos))
+	siteAuthorIds := make([]string, len(dtos))
+	for i, d := range dtos {
+		entities[i] = taskSiteAuthorDTOToEntity(d, siteId)
+		siteAuthorIds[i] = d.SiteAuthorID
+	}
+
+	// 一次批量 upsert
+	if err := s.siteAuthorWriter.BatchUpsert(ctx, entities); err != nil {
+		return nil, fmt.Errorf("批量 upsert 站点作者失败: %w", err)
+	}
+
+	// 一次批量回查获取 DB ID
+	existing, err := s.siteAuthorWriter.ListBySiteAndSiteAuthorIDs(ctx, siteId, siteAuthorIds)
+	if err != nil {
+		return nil, fmt.Errorf("批量回查站点作者失败: %w", err)
+	}
+
+	// 构建按 siteAuthorId → DB ID 的 map
+	idMap := make(map[string]int64, len(existing))
+	for _, sa := range existing {
+		if sa.SiteAuthorID.Valid {
+			idMap[sa.SiteAuthorID.String] = sa.ID
 		}
-		ids = append(ids, id)
+	}
+
+	// 按 DTO 原始顺序输出
+	ids := make([]int64, len(dtos))
+	for i, d := range dtos {
+		ids[i] = idMap[d.SiteAuthorID]
 	}
 	return ids, nil
 }
 
-// upsertSiteTags 批量 upsert 站点标签
+// upsertSiteTags 批量 upsert 站点标签，返回 DB ID 列表（与 dtos 顺序一致）
 func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		entity := taskSiteTagDTOToEntity(d, siteId)
-		id, err := s.siteTagWriter.SaveOrUpdateByCompositeKey(ctx, entity)
-		if err != nil {
-			return nil, fmt.Errorf("upsert 站点标签 %s 失败: %w", d.SiteTagID, err)
+
+	// 批量 DTO → 实体
+	entities := make([]*entity2.SiteTag, len(dtos))
+	siteTagIds := make([]string, len(dtos))
+	for i, d := range dtos {
+		entities[i] = taskSiteTagDTOToEntity(d, siteId)
+		siteTagIds[i] = d.SiteTagID
+	}
+
+	// 一次批量 upsert
+	if err := s.siteTagWriter.BatchUpsert(ctx, entities); err != nil {
+		return nil, fmt.Errorf("批量 upsert 站点标签失败: %w", err)
+	}
+
+	// 一次批量回查获取 DB ID
+	existing, err := s.siteTagWriter.ListBySiteAndSiteTagIDs(ctx, siteId, siteTagIds)
+	if err != nil {
+		return nil, fmt.Errorf("批量回查站点标签失败: %w", err)
+	}
+
+	// 构建按 siteTagId → DB ID 的 map
+	idMap := make(map[string]int64, len(existing))
+	for _, st := range existing {
+		if st.SiteTagID.Valid {
+			idMap[st.SiteTagID.String] = st.ID
 		}
-		ids = append(ids, id)
+	}
+
+	// 按 DTO 原始顺序输出
+	ids := make([]int64, len(dtos))
+	for i, d := range dtos {
+		ids[i] = idMap[d.SiteTagID]
 	}
 	return ids, nil
 }
 
-// upsertWorkSets 批量 upsert 作品集
+// upsertWorkSets 批量 upsert 作品集，返回 DB ID 列表（与 dtos 顺序一致）
 func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		entity := taskWorkSetDTOToEntity(d, siteId)
-		id, err := s.workSetWriter.SaveOrUpdateByCompositeKey(ctx, entity)
-		if err != nil {
-			return nil, fmt.Errorf("upsert 作品集 %s 失败: %w", d.SiteWorkSetID, err)
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
-}
 
-// querySiteAuthorDBIds 回查站点作者内部 DB ID
-func (s *Service) querySiteAuthorDBIds(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
-	if len(dtos) == 0 {
-		return nil, nil
+	// 批量 DTO → 实体
+	entities := make([]*entity2.WorkSet, len(dtos))
+	siteWorkSetIds := make([]string, len(dtos))
+	for i, d := range dtos {
+		entities[i] = taskWorkSetDTOToEntity(d, siteId)
+		siteWorkSetIds[i] = d.SiteWorkSetID
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		record, err := s.siteAuthorWriter.GetBySiteAndSiteAuthorID(ctx, siteId, d.SiteAuthorID)
-		if err != nil {
-			return nil, fmt.Errorf("回查站点作者 %s 失败: %w", d.SiteAuthorID, err)
-		}
-		ids = append(ids, record.ID)
-	}
-	return ids, nil
-}
 
-// querySiteTagDBIds 回查站点标签内部 DB ID
-func (s *Service) querySiteTagDBIds(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
-	if len(dtos) == 0 {
-		return nil, nil
+	// 一次批量 upsert
+	if err := s.workSetWriter.BatchUpsert(ctx, entities); err != nil {
+		return nil, fmt.Errorf("批量 upsert 作品集失败: %w", err)
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		record, err := s.siteTagWriter.GetBySiteAndSiteTagID(ctx, siteId, d.SiteTagID)
-		if err != nil {
-			return nil, fmt.Errorf("回查站点标签 %s 失败: %w", d.SiteTagID, err)
-		}
-		ids = append(ids, record.ID)
-	}
-	return ids, nil
-}
 
-// queryWorkSetDBIds 回查作品集内部 DB ID
-func (s *Service) queryWorkSetDBIds(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
-	if len(dtos) == 0 {
-		return nil, nil
+	// 一次批量回查获取 DB ID
+	existing, err := s.workSetWriter.ListBySiteAndSiteWorkSetIDs(ctx, siteId, siteWorkSetIds)
+	if err != nil {
+		return nil, fmt.Errorf("批量回查作品集失败: %w", err)
 	}
-	ids := make([]int64, 0, len(dtos))
-	for _, d := range dtos {
-		siteWorkSetId := d.SiteWorkSetID
-		record, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
-		if err != nil {
-			return nil, fmt.Errorf("回查作品集 %s 失败: %w", d.SiteWorkSetID, err)
+
+	// 构建按 siteWorkSetId → DB ID 的 map
+	idMap := make(map[string]int64, len(existing))
+	for _, ws := range existing {
+		if ws.SiteWorkSetID.Valid {
+			idMap[ws.SiteWorkSetID.String] = ws.ID
 		}
-		ids = append(ids, record.ID)
+	}
+
+	// 按 DTO 原始顺序输出
+	ids := make([]int64, len(dtos))
+	for i, d := range dtos {
+		ids[i] = idMap[d.SiteWorkSetID]
 	}
 	return ids, nil
 }
@@ -927,26 +972,33 @@ func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalA
 		}
 
 		// 创建不存在的作者（已存在的不做任何修改）
+		var newAuthors []*entity2.LocalAuthor
+		newAuthorNames := make(map[string]*entity2.LocalAuthor)
 		for _, d := range nameModeDtos {
 			name := *d.AuthorName
 			if _, ok := existingMap[name]; ok {
 				continue
 			}
 			// 同名 DTO 可能出现多次，避免重复创建
-			if _, processed := nameSet[name]; !processed {
+			if _, dup := newAuthorNames[name]; dup {
 				continue
 			}
-			delete(nameSet, name)
 
 			author := entity2.NewLocalAuthor()
 			author.AuthorName = sql.NullString{String: name, Valid: true}
 			if d.Introduce != nil && *d.Introduce != "" {
 				author.Introduce = sql.NullString{String: *d.Introduce, Valid: true}
 			}
-			if err := s.localAuthorFindOrCreator.Save(ctx, author); err != nil {
-				return nil, fmt.Errorf("创建本地作者失败: %w", err)
+			newAuthors = append(newAuthors, author)
+			newAuthorNames[name] = author
+		}
+		if len(newAuthors) > 0 {
+			if err := s.localAuthorFindOrCreator.SaveBatch(ctx, newAuthors); err != nil {
+				return nil, fmt.Errorf("批量创建本地作者失败: %w", err)
 			}
-			existingMap[name] = author.ID
+			for name, author := range newAuthorNames {
+				existingMap[name] = author.ID
+			}
 		}
 
 		// 按 DTO 顺序收集 ID
@@ -1048,18 +1100,29 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 
 		// 创建不存在的标签（已存在的不做任何修改）
 		now := util.GetCurrentTimestamp()
+		var newTags []*entity2.LocalTag
+		newTagNames := make(map[string]*entity2.LocalTag)
 		for _, name := range names {
 			if _, ok := existingMap[name]; ok {
+				continue
+			}
+			if _, dup := newTagNames[name]; dup {
 				continue
 			}
 			tag := entity2.NewLocalTag()
 			tag.LocalTagName = sql.NullString{String: name, Valid: true}
 			tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
 			tag.LastUse = sql.NullInt64{Int64: now, Valid: true}
-			if err := s.localTagFindOrCreator.Save(ctx, tag); err != nil {
-				return nil, fmt.Errorf("创建本地标签失败: %w", err)
+			newTags = append(newTags, tag)
+			newTagNames[name] = tag
+		}
+		if len(newTags) > 0 {
+			if err := s.localTagFindOrCreator.SaveBatch(ctx, newTags); err != nil {
+				return nil, fmt.Errorf("批量创建本地标签失败: %w", err)
 			}
-			existingMap[name] = tag.ID
+			for name, tag := range newTagNames {
+				existingMap[name] = tag.ID
+			}
 		}
 
 		// 按 DTO 顺序收集 ID

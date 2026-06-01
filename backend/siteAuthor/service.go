@@ -46,6 +46,10 @@ type Repository interface {
 	GetBySiteAndSiteAuthorID(ctx context.Context, siteId int64, siteAuthorId string) (*entity.SiteAuthor, error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, author *entity.SiteAuthor) error
+	// BatchUpsert 批量插入或更新
+	BatchUpsert(ctx context.Context, authors []*entity.SiteAuthor) error
+	// ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
+	ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error)
 }
 
 // LocalAuthorOperator 本地作者接口
@@ -359,6 +363,16 @@ func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, author *entity
 		return 0, err
 	}
 	return existing.ID, nil
+}
+
+// BatchUpsert 批量插入或更新站点作者
+func (s *Service) BatchUpsert(ctx context.Context, authors []*entity.SiteAuthor) error {
+	return s.repo.BatchUpsert(ctx, authors)
+}
+
+// ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
+func (s *Service) ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error) {
+	return s.repo.ListBySiteAndSiteAuthorIDs(ctx, siteId, siteAuthorIds)
 }
 
 // 错误定义

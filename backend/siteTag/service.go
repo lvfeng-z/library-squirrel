@@ -69,6 +69,10 @@ type Repository interface {
 	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, tag *entity2.SiteTag) error
+	// BatchUpsert 批量插入或更新
+	BatchUpsert(ctx context.Context, tags []*entity2.SiteTag) error
+	// ListBySiteAndSiteTagIDs 根据站点ID和站点标签ID列表批量查询
+	ListBySiteAndSiteTagIDs(ctx context.Context, siteId int64, siteTagIds []string) ([]*entity2.SiteTag, error)
 }
 
 // Service 站点标签服务
@@ -125,6 +129,16 @@ func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, tag *entity2.S
 		return 0, err
 	}
 	return existing.ID, nil
+}
+
+// BatchUpsert 批量插入或更新站点标签
+func (s *Service) BatchUpsert(ctx context.Context, tags []*entity2.SiteTag) error {
+	return s.repo.BatchUpsert(ctx, tags)
+}
+
+// ListBySiteAndSiteTagIDs 根据站点ID和站点标签ID列表批量查询
+func (s *Service) ListBySiteAndSiteTagIDs(ctx context.Context, siteId int64, siteTagIds []string) ([]*entity2.SiteTag, error) {
+	return s.repo.ListBySiteAndSiteTagIDs(ctx, siteId, siteTagIds)
 }
 
 // UpdateLastUse 批量更新最后使用时间

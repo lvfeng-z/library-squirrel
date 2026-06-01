@@ -26,7 +26,7 @@ func Init(path string) error {
 	var err error
 	once.Do(func() {
 		// 打开 SQLite 连接（GORM 自动使用 mattn/go-sqlite3）
-		gormDB, err = gorm.Open(sqlite.Open(path+"?_journal_mode=WAL&_synchronous=NORMAL"), &gorm.Config{
+		gormDB, err = gorm.Open(sqlite.Open(path+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000"), &gorm.Config{
 			Logger: pkglogger.NewGormLogger(), // GORM SQL 日志输出到 zap
 		})
 		if err != nil {
@@ -42,7 +42,7 @@ func Init(path string) error {
 		}
 
 		// 设置连接池参数
-		sqlDB.SetMaxOpenConns(100) // GORM 建议的最大连接数
+		sqlDB.SetMaxOpenConns(5)  // SQLite 单文件数据库，少量连接即可，过多连接加剧写锁竞争
 		sqlDB.SetMaxIdleConns(5)
 	})
 	return err

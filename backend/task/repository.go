@@ -179,6 +179,31 @@ func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int
 	return result.Error
 }
 
+// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id（CASE WHEN 模式）
+func (r *TaskRepository) BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(updates))
+	cases := ""
+	args := make([]any, 0, len(updates)*2+len(updates))
+	for id := range updates {
+		ids = append(ids, id)
+		cases += "WHEN id = ? THEN ? "
+	}
+	for _, id := range ids {
+		args = append(args, id, updates[id])
+	}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	statement := "UPDATE task SET pending_resource_id = CASE " + cases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+	result := r.GORM().WithContext(ctx).Exec(statement, args...)
+	return result.Error
+}
+
 // BatchSetStatus 批量设置任务状态（同时更新 error_message）
 func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error {
 	if len(statuses) == 0 {

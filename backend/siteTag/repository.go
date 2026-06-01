@@ -10,6 +10,7 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -32,9 +33,47 @@ func (r *SiteTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *SiteTagRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
+// BatchUpsert 批量插入或更新（基于 site_id + site_tag_id 唯一约束）
+func (r *SiteTagRepository) BatchUpsert(ctx context.Context, tags []*entity2.SiteTag) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, t := range tags {
+		if t.GetID() == 0 {
+			t.SetCreateTime(now)
+		}
+		t.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_tag_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"site_tag_name", "base_site_tag_id", "description",
+			"local_tag_id", "last_use", "update_time",
+		}),
+	}).Create(tags).Error
+}
+
+// ListBySiteAndSiteTagIDs 根据站点ID和站点标签ID列表批量查询
+func (r *SiteTagRepository) ListBySiteAndSiteTagIDs(ctx context.Context, siteId int64, siteTagIds []string) ([]*entity2.SiteTag, error) {
+	if len(siteTagIds) == 0 {
+		return nil, nil
+	}
+	var result []*entity2.SiteTag
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Where("site_id = ? AND site_tag_id IN ?", siteId, siteTagIds).
+		Find(&result).Error
+	return result, err
+}
+
 // Upsert 原子插入或更新（基于 site_id + site_tag_id 唯一约束）
 func (r *SiteTagRepository) Upsert(ctx context.Context, tag *entity2.SiteTag) error {
-	return r.GORM().WithContext(ctx).Clauses(clause.OnConflict{
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_tag_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_tag_name", "base_site_tag_id", "description",
@@ -46,7 +85,7 @@ func (r *SiteTagRepository) Upsert(ctx context.Context, tag *entity2.SiteTag) er
 // GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
 func (r *SiteTagRepository) GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error) {
 	var tag entity2.SiteTag
-	err := r.GORM().WithContext(ctx).Where("site_id = ? AND site_tag_id = ?", siteId, siteTagId).First(&tag).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Where("site_id = ? AND site_tag_id = ?", siteId, siteTagId).First(&tag).Error
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +102,7 @@ func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*
 	`
 
 	var results []*entity2.SiteTag
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +126,7 @@ func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []i
 	query := fmt.Sprintf(`SELECT * FROM site_tag WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
 	var results []*entity2.SiteTag
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +150,7 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 	query := fmt.Sprintf(`UPDATE site_tag SET local_tag_id = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
 	args = append([]interface{}{localTagId}, args...)
 
-	result := r.GORM().WithContext(ctx).Exec(query, args...)
+	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(query, args...)
 	if result.Error != nil {
 		return 0, result.Error
 	}
@@ -124,7 +163,7 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database
 	var results []*sdkdto.SiteTagFullDTO
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
 
 	// 构建 EXISTS 子查询
 	if boundOnWorkId != nil && *boundOnWorkId {
@@ -168,7 +207,7 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
 			var localTag entity2.LocalTag
-			if err := r.GORM().WithContext(ctx).First(&localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			if err := r.dbFromCtx(ctx).WithContext(ctx).First(&localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 			dto.LocalTag = dto2.NewLocalTagDTO(&localTag)
@@ -176,7 +215,7 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
 			var site entity2.Site
-			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			if err := r.dbFromCtx(ctx).WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 			dto.Site = dto2.NewSiteDTO(&site)
@@ -192,7 +231,7 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 	var results []*sdkdto.SiteTagLocalRelateDTO
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
 
 	// 构建基础查询
 	if boundOnWorkId != nil && *boundOnWorkId {
@@ -236,7 +275,7 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 		// 查询关联的本地标签
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
 			localTag := entity2.NewLocalTag()
-			if err := r.GORM().WithContext(ctx).First(localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			if err := r.dbFromCtx(ctx).WithContext(ctx).First(localTag, tag.LocalTagID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 			dto.LocalTag = dto2.NewLocalTagDTO(localTag)
@@ -244,14 +283,14 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 		// 查询关联的站点
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
 			var site entity2.Site
-			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
+			if err := r.dbFromCtx(ctx).WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err != nil && err != gorm.ErrRecordNotFound {
 				return nil, err
 			}
 			dto.Site = dto2.NewSiteDTO(&site)
 		}
 		// 检查是否有同名本地标签
 		var count int64
-		r.GORM().WithContext(ctx).Model(&entity2.LocalTag{}).Where("local_tag_name = ?", tag.SiteTagName).Count(&count)
+		r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.LocalTag{}).Where("local_tag_name = ?", tag.SiteTagName).Count(&count)
 		dto.HasSameNameLocalTag = count > 0
 
 		results = append(results, dto)
@@ -265,7 +304,7 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt
 	var results []*sdkdto.SelectItem
 	var total int64
 
-	db := r.GORM().WithContext(ctx).Model(&entity2.SiteTag{})
+	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
 
 	if boundOnWorkId != nil && *boundOnWorkId {
 		db = db.Where(" EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND site_tag_id = site_tag.id)", workId)
@@ -315,7 +354,7 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt
 		// 查询站点名称作为副标题
 		if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
 			var site entity2.Site
-			if err := r.GORM().WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err == nil {
+			if err := r.dbFromCtx(ctx).WithContext(ctx).First(&site, tag.SiteID.Int64).Error; err == nil {
 				subLabel := "?"
 				if site.SiteName.Valid {
 					subLabel = site.SiteName.String

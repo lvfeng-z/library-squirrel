@@ -30,10 +30,15 @@ func (r *LocalTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *LocalTagRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // GetByName 根据名称获取
 func (r *LocalTagRepository) GetByName(ctx context.Context, name string) (*entity.LocalTag, error) {
 	var tag entity.LocalTag
-	err := r.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("local_tag_name = ?", name).
 		First(&tag).Error
@@ -52,7 +57,7 @@ func (r *LocalTagRepository) GetByNames(ctx context.Context, names []string) ([]
 		return make([]*entity.LocalTag, 0), nil
 	}
 	var tags []*entity.LocalTag
-	err := r.GORM().WithContext(ctx).
+	err := r.dbFromCtx(ctx).WithContext(ctx).
 		Where(clause.IN{Column: "local_tag_name", Values: util.ToAnySlice(names)}).
 		Find(&tags).Error
 	return tags, err
@@ -81,7 +86,7 @@ func (r *LocalTagRepository) SelectTreeNode(ctx context.Context, rootId int64, d
 	`
 
 	var tags []*entity.LocalTag
-	err := r.GORM().WithContext(ctx).Raw(query, rootId, depth).Scan(&tags).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, rootId, depth).Scan(&tags).Error
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +110,7 @@ func (r *LocalTagRepository) SelectParentNode(ctx context.Context, nodeId int64)
 	`
 
 	var tags []*entity.LocalTag
-	err := r.GORM().WithContext(ctx).Raw(query, nodeId).Scan(&tags).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, nodeId).Scan(&tags).Error
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +127,7 @@ func (r *LocalTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 	`
 
 	var tags []*entity.LocalTag
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&tags).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&tags).Error
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +245,7 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 	}
 	var total int64
 
-	db := r.GORM().WithContext(ctx).
+	db := r.dbFromCtx(ctx).WithContext(ctx).
 		Model(&entity.LocalTag{}).
 		Select("local_tag.*, base_tag.id as base_tag__id, base_tag.local_tag_name as base_tag__local_tag_name, base_tag.base_local_tag_id as base_tag__base_local_tag_id, base_tag.description as base_tag__description, base_tag.last_use as base_tag__last_use, base_tag.create_time as base_tag__create_time, base_tag.update_time as base_tag__update_time").
 		Joins("LEFT JOIN local_tag base_tag ON local_tag.base_local_tag_id = base_tag.id")

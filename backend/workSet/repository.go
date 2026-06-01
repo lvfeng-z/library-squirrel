@@ -5,6 +5,7 @@ import (
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,9 +28,47 @@ func (r *WorkSetRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *WorkSetRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
+// BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id 唯一约束）
+func (r *WorkSetRepository) BatchUpsert(ctx context.Context, workSets []*domain.WorkSet) error {
+	if len(workSets) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, ws := range workSets {
+		if ws.GetID() == 0 {
+			ws.SetCreateTime(now)
+		}
+		ws.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"site_work_set_name", "site_author_id", "site_work_set_description",
+			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
+		}),
+	}).Create(workSets).Error
+}
+
+// ListBySiteAndSiteWorkSetIDs 根据站点ID和站点作品集ID列表批量查询
+func (r *WorkSetRepository) ListBySiteAndSiteWorkSetIDs(ctx context.Context, siteId int64, siteWorkSetIds []string) ([]*domain.WorkSet, error) {
+	if len(siteWorkSetIds) == 0 {
+		return nil, nil
+	}
+	var result []*domain.WorkSet
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Where("site_id = ? AND site_work_set_id IN ?", siteId, siteWorkSetIds).
+		Find(&result).Error
+	return result, err
+}
+
 // Upsert 原子插入或更新（基于 site_id + site_work_set_id 唯一约束）
 func (r *WorkSetRepository) Upsert(ctx context.Context, ws *domain.WorkSet) error {
-	return r.GORM().WithContext(ctx).Clauses(clause.OnConflict{
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_work_set_name", "site_author_id", "site_work_set_description",
@@ -55,7 +94,7 @@ func (r *WorkSetRepository) GetBySiteAndSiteWorkSetID(ctx context.Context, siteI
 // 注意：需要通过 site 表进行 JOIN 查询
 func (r *WorkSetRepository) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*domain.WorkSet, error) {
 	var result *domain.WorkSet
-	err := r.GORM().
+	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Joins("INNER JOIN site ON work_set.site_id = site.id").
 		Where("work_set.site_work_set_id = ? AND site.name = ?", siteWorkSetId, siteName).

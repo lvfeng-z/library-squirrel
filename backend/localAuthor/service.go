@@ -19,6 +19,8 @@ import (
 type Repository interface {
 	// Save 保存
 	Save(ctx context.Context, author *domain.LocalAuthor) error
+	// SaveBatch 批量保存
+	SaveBatch(ctx context.Context, authors []*domain.LocalAuthor) error
 	// Update 更新
 	Update(ctx context.Context, author *domain.LocalAuthor) error
 	// GetById 根据ID获取
@@ -58,6 +60,11 @@ func NewService(repo Repository) *Service {
 // Save 保存作者
 func (s *Service) Save(ctx context.Context, author *domain.LocalAuthor) error {
 	return s.repo.Save(ctx, author)
+}
+
+// SaveBatch 批量保存本地作者
+func (s *Service) SaveBatch(ctx context.Context, authors []*domain.LocalAuthor) error {
+	return s.repo.SaveBatch(ctx, authors)
 }
 
 // UpdateById 更新作者

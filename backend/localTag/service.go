@@ -23,6 +23,8 @@ const RootLocalTagID = 0
 type Repository interface {
 	// Save 保存
 	Save(ctx context.Context, tag *domain.LocalTag) error
+	// SaveBatch 批量保存
+	SaveBatch(ctx context.Context, tags []*domain.LocalTag) error
 	// Update 更新
 	Update(ctx context.Context, tag *domain.LocalTag) error
 	// GetById 根据ID获取
@@ -79,6 +81,16 @@ func (s *Service) Save(ctx context.Context, tag *domain.LocalTag) error {
 		return err
 	}
 	return nil
+}
+
+// SaveBatch 批量保存本地标签
+func (s *Service) SaveBatch(ctx context.Context, tags []*domain.LocalTag) error {
+	for _, tag := range tags {
+		if !tag.BaseLocalTagID.Valid || tag.BaseLocalTagID.Int64 == 0 {
+			tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
+		}
+	}
+	return s.repo.SaveBatch(ctx, tags)
 }
 
 // UpdateById 更新本地标签

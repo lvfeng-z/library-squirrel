@@ -28,6 +28,11 @@ func (r *ReWorkAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *ReWorkAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // Save 保存
 func (r *ReWorkAuthorRepository) Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
 	return r.BaseRepository.Save(ctx, reWorkAuthor)
@@ -65,17 +70,17 @@ func (r *ReWorkAuthorRepository) Count(ctx context.Context, opt *database.QueryO
 
 // DeleteByWorkId 根据作品ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
-	return r.GORM().WithContext(ctx).Where("work_id = ?", workId).Delete(&domain.ReWorkAuthor{}).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ?", workId).Delete(&domain.ReWorkAuthor{}).Error
 }
 
 // DeleteByLocalAuthorId 根据本地作者ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error {
-	return r.GORM().WithContext(ctx).Where("local_author_id = ?", localAuthorId).Delete(&domain.ReWorkAuthor{}).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Where("local_author_id = ?", localAuthorId).Delete(&domain.ReWorkAuthor{}).Error
 }
 
 // DeleteBySiteAuthorId 根据站点作者ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error {
-	return r.GORM().WithContext(ctx).Where("site_author_id = ?", siteAuthorId).Delete(&domain.ReWorkAuthor{}).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Where("site_author_id = ?", siteAuthorId).Delete(&domain.ReWorkAuthor{}).Error
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
@@ -88,7 +93,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 	`
 
 	var results []*sdkdto.RankedLocalAuthor
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +113,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, wo
 	`
 
 	var results []*sdkdto.RankedSiteAuthor
-	err := r.GORM().WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +146,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 		sdkdto.RankedLocalAuthor
 	}
 
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +189,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 		sdkdto.RankedSiteAuthor
 	}
 
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +226,7 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 	`, strings.Join(placeholders, ","))
 
 	var results []*sdkdto.RankedLocalAuthorWithWorkId
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +257,7 @@ func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx con
 	`, strings.Join(placeholders, ","))
 
 	var results []*sdkdto.RankedSiteAuthorWithWorkId
-	err := r.GORM().WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
 	if err != nil {
 		return nil, err
 	}
