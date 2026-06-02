@@ -651,11 +651,13 @@ func (m *Manager) removeWaitingTask(mt *ManagedTask) {
 			mt.state.Store(int32(originalState))
 
 			// 在移除子任务前，先根据所有子任务（含被跳过的）计算并持久化父任务状态
+			parent.refreshMu.Lock()
 			_, newParentState := parent.RefreshState()
 			if isStableState(newParentState) {
 				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 			}
 			m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+			parent.refreshMu.Unlock()
 
 			// 移除子任务并清理父任务
 			parent.RemoveChild(mt.taskId)
@@ -777,11 +779,13 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 		parent, ok := m.parentMap[mt.parentId]
 		if ok && parent.AllChildrenTerminal() {
 			// 确保父任务的最终状态被持久化到数据库
+			parent.refreshMu.Lock()
 			_, newParentState := parent.RefreshState()
 			logger.Log.Infof("[TaskManager] cleanupFinishedTask 兜底刷新父任务状态: parentId=%d, newState=%s", parent.taskId, taskStateName(newParentState))
 			if isStableState(newParentState) {
 				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 			}
+			parent.refreshMu.Unlock()
 			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
 			delete(m.parentMap, mt.parentId)
 			m.mu.Unlock()
@@ -864,6 +868,9 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
 			if parent, ok := m.parentMap[mt.parentId]; ok {
+				// 加锁保证 RefreshState（读子任务 + Swap）和推送之间的原子性，
+				// 防止并发 goroutine 的过时状态覆盖正确状态
+				parent.refreshMu.Lock()
 				oldParentState, newParentState := parent.RefreshState()
 				logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState))
 				if oldParentState != newParentState && isStableState(newParentState) {
@@ -871,6 +878,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 				}
 				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+				parent.refreshMu.Unlock()
 			}
 		}
 	})

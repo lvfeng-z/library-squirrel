@@ -760,7 +760,6 @@ func (m *ManagedTask) abortedByPause() bool {
 	return s == TaskStatePausing || s == TaskStatePaused
 }
 
-
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
 // 返回值: absSavePath 绝对保存路径, relativePath 相对于 workdir/resource/ 的相对路径, fileName 文件名
 func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSavePath, relativePath, fileName string) {
@@ -821,11 +820,12 @@ func (m *ManagedTask) buildSuggestedFileName(res *sdkdto.TaskResourceDTO) string
 
 // ParentTask 父任务运行结构体
 type ParentTask struct {
-	taskId   int64
-	taskName string
-	state    atomic.Int32
-	children map[int64]*ManagedTask
-	mu       sync.RWMutex
+	taskId    int64
+	taskName  string
+	state     atomic.Int32
+	refreshMu sync.Mutex // 保护 RefreshState 的读取和写入原子性，防止并发 goroutine 推送过时状态
+	children  map[int64]*ManagedTask
+	mu        sync.RWMutex
 }
 
 // NewParentTask 创建父任务
