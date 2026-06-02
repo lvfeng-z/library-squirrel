@@ -8,9 +8,19 @@ import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 
+/** 最近移除的任务 ID 缓存有效期（毫秒） */
+const RECENTLY_REMOVED_TTL = 2000
+
 export const useTaskStore = defineStore('task', {
-  state: (): { tasks: Map<number, TaskStoreObj> } => {
-    return { tasks: new Map<number, TaskStoreObj>() }
+  state: (): {
+    tasks: Map<number, TaskStoreObj>
+    /** 最近被 removeTask 移除的任务 ID，防止过时的 updateTask 事件重新创建幽灵条目 */
+    recentlyRemovedIds: Set<number>
+  } => {
+    return {
+      tasks: new Map<number, TaskStoreObj>(),
+      recentlyRemovedIds: new Set<number>()
+    }
   },
   actions: {
     getTask(taskId: number): TaskProgressDTO | undefined {
@@ -40,8 +50,11 @@ export const useTaskStore = defineStore('task', {
           throw new Error('UseTaskStore: 更新任务失败，任务id为空')
         }
         let taskStoreObj = this.tasks.get(task.id)
-        // store 中不存在时自动添加
+        // store 中不存在时，若该 ID 最近被移除过则跳过自动创建，防止幽灵条目
         if (isNullish(taskStoreObj)) {
+          if (this.recentlyRemovedIds.has(task.id)) {
+            return
+          }
           taskStoreObj = { task: new TaskProgressDTO(), notificationId: undefined }
           this.tasks.set(task.id, taskStoreObj)
         }
@@ -112,6 +125,9 @@ export const useTaskStore = defineStore('task', {
             notificationStore.remove(taskStoreObj.notificationId)
           }
           taskStatus.delete(id)
+          // 记录到最近移除集合，防止并发事件重新创建幽灵条目
+          this.recentlyRemovedIds.add(id)
+          setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
         })
       }
     }

@@ -662,10 +662,22 @@ func (m *Manager) removeWaitingTask(mt *ManagedTask) {
 			// 移除子任务并清理父任务
 			parent.RemoveChild(mt.taskId)
 			if parent.AllChildrenTerminal() {
+				// 收集仍在 taskMap 中的子任务（暂停中的任务），一并清理
+				var childRemoveIds []int64
+				for _, child := range parent.GetChildren() {
+					if _, exists := m.taskMap[child.taskId]; exists {
+						childRemoveIds = append(childRemoveIds, child.taskId)
+						delete(m.taskMap, child.taskId)
+					}
+				}
+
 				logger.Log.Infof("[TaskManager] removeWaitingTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
 				delete(m.parentMap, mt.parentId)
 				m.mu.Unlock()
 				m.pusher.PushParentTaskRemove([]int64{mt.parentId})
+				if len(childRemoveIds) > 0 {
+					m.pusher.PushTaskRemove(childRemoveIds)
+				}
 			} else {
 				m.mu.Unlock()
 			}
@@ -770,6 +782,9 @@ func (m *Manager) removeTask(taskId int64) {
 
 // cleanupFinishedTask 清理已终态的子任务，并检查父任务是否可清理
 func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
+	// 收集需要从前端 Store 移除的任务 ID（包含当前任务）
+	removeIds := []int64{mt.taskId}
+
 	// 从 taskMap 移除子任务
 	m.mu.Lock()
 	delete(m.taskMap, mt.taskId)
@@ -786,6 +801,15 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 			}
 			parent.refreshMu.Unlock()
+
+			// 收集仍在 taskMap 中的子任务（暂停中的任务），一并清理
+			for _, child := range parent.GetChildren() {
+				if _, exists := m.taskMap[child.taskId]; exists {
+					removeIds = append(removeIds, child.taskId)
+					delete(m.taskMap, child.taskId)
+				}
+			}
+
 			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
 			delete(m.parentMap, mt.parentId)
 			m.mu.Unlock()
@@ -797,8 +821,8 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 		m.mu.Unlock()
 	}
 
-	// 通知前端移除子任务
-	m.pusher.PushTaskRemove([]int64{mt.taskId})
+	// 通知前端批量移除子任务
+	m.pusher.PushTaskRemove(removeIds)
 }
 
 func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
@@ -867,17 +891,27 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
-			if parent, ok := m.parentMap[mt.parentId]; ok {
+			// 加读锁读取 parentMap，防止与 cleanupFinishedTask 的 delete 并发读写
+			m.mu.RLock()
+			parent, ok := m.parentMap[mt.parentId]
+			m.mu.RUnlock()
+			if ok {
 				// 加锁保证 RefreshState（读子任务 + Swap）和推送之间的原子性，
 				// 防止并发 goroutine 的过时状态覆盖正确状态
 				parent.refreshMu.Lock()
-				oldParentState, newParentState := parent.RefreshState()
-				logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState))
-				if oldParentState != newParentState && isStableState(newParentState) {
-					// 父任务无错误信息，传空字符串（清除 error_message）
-					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
+				// 二次检查：在等待 refreshMu 期间，父任务可能已被其他 goroutine 的 cleanupFinishedTask 清理
+				m.mu.RLock()
+				_, stillExists := m.parentMap[mt.parentId]
+				m.mu.RUnlock()
+				if stillExists {
+					oldParentState, newParentState := parent.RefreshState()
+					logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState))
+					if oldParentState != newParentState && isStableState(newParentState) {
+						// 父任务无错误信息，传空字符串（清除 error_message）
+						m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
+					}
+					m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 				}
-				m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
 				parent.refreshMu.Unlock()
 			}
 		}
