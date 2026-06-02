@@ -95,28 +95,28 @@ type Manager struct {
 // NewManager 创建任务管理器
 func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, backupOrchestrator ResourceBackupOrchestrator) *Manager {
 	m := &Manager{
-		taskMap:                make(map[int64]*ManagedTask),
-		parentMap:              make(map[int64]*ParentTask),
-		waitingQueue:           make([]*ManagedTask, 0),
-		maxParallel:            maxParallel,
-		semaphore:              make(chan struct{}, maxParallel),
+		taskMap:                  make(map[int64]*ManagedTask),
+		parentMap:                make(map[int64]*ParentTask),
+		waitingQueue:             make([]*ManagedTask, 0),
+		maxParallel:              maxParallel,
+		semaphore:                make(chan struct{}, maxParallel),
 		pendingStatusUpdates:     make(map[int64]task.StatusUpdate),
 		pendingResourceIDUpdates: make(map[int64]sql.NullInt64),
 		pendingProgressUpdates:   make(map[int64]*taskScheduleDTO),
-		flushCh:                make(chan struct{}, 1),
-		closeCh:                make(chan struct{}),
-		flushDone:              make(chan struct{}),
-		workDirProvider:        workDirProvider,
-		fileNameFormatProvider: fileNameFormatProvider,
-		repo:                   repo,
-		pusher:                 pusher,
-		pluginExecFactory:      pluginExecFactory,
-		workInfoSaver:          workInfoSaver,
-		resourceSaver:          resourceSaver,
-		workChecker:            workChecker,
-		resourceReader:         resourceReader,
-		backupOrchestrator:     backupOrchestrator,
-		waitingForInputMap:     make(map[int64]*ManagedTask),
+		flushCh:                  make(chan struct{}, 1),
+		closeCh:                  make(chan struct{}),
+		flushDone:                make(chan struct{}),
+		workDirProvider:          workDirProvider,
+		fileNameFormatProvider:   fileNameFormatProvider,
+		repo:                     repo,
+		pusher:                   pusher,
+		pluginExecFactory:        pluginExecFactory,
+		workInfoSaver:            workInfoSaver,
+		resourceSaver:            resourceSaver,
+		workChecker:              workChecker,
+		resourceReader:           resourceReader,
+		backupOrchestrator:       backupOrchestrator,
+		waitingForInputMap:       make(map[int64]*ManagedTask),
 	}
 	go m.flushLoop()
 	return m
@@ -404,6 +404,12 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 	}
 
 	for _, child := range parent.GetChildren() {
+		if child.GetState() == TaskStateWaiting {
+			// 排队中的任务未实际执行，暂停时不修改数据库状态（保留原始状态供跳过时回退）
+			m.removeFromQueue(child.taskId)
+			child.setStateWithPersist(TaskStatePaused, false)
+			continue
+		}
 		if err := child.Pause(); err != nil {
 			logger.Log.Errorf("[TaskManager] 暂停子任务 %d 失败: %v", child.taskId, err)
 		}
@@ -790,9 +796,9 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
-	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string) {
-		// 仅稳定状态写入数据库，瞬态只更新内存和前端
-		if isStableState(newState) {
+	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string, persist bool) {
+		// 仅稳定状态且需要持久化时写入数据库
+		if persist && isStableState(newState) {
 			m.addToPending(taskId, task.TaskStatusEnum(newState), errMsg)
 		}
 
@@ -860,7 +866,7 @@ func (m *Manager) flushLoop() {
 	}
 }
 
-// doFlush 将积攒的状态变更和 pendingResourceID 批量写入数据库
+// doFlush 将积攒的状态变更和 pendingResourceID 批量写入数据库，以及积攒进度变化推送到前端
 func (m *Manager) doFlush() {
 	m.pendingMu.Lock()
 	if len(m.pendingStatusUpdates) == 0 && len(m.pendingResourceIDUpdates) == 0 && len(m.pendingProgressUpdates) == 0 {

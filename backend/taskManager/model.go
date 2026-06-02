@@ -204,7 +204,7 @@ type ManagedTask struct {
 	totalWritten  int64         // 已写入字节数
 
 	// 回调函数
-	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string)
+	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string, persist bool)
 	onProgress         func(taskId int64, total int64, finished int64)
 	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
 
@@ -685,8 +685,14 @@ func (m *ManagedTask) clearPendingResourceID() {
 	}
 }
 
-// setState 设置任务状态
+// setState 设置任务状态，触发 onStateChange 回调（含持久化）
 func (m *ManagedTask) setState(state TaskState) {
+	m.setStateWithPersist(state, true)
+}
+
+// setStateWithPersist 设置任务状态，控制是否触发持久化
+// skipPersist=true 时仅更新内存状态、推送前端和刷新父任务，不写入数据库
+func (m *ManagedTask) setStateWithPersist(state TaskState, persist bool) {
 	old := TaskState(m.state.Swap(int32(state)))
 	if old == state {
 		return
@@ -701,7 +707,7 @@ func (m *ManagedTask) setState(state TaskState) {
 	}
 	logger.Log.Infof("[TaskManager] 任务状态变更 [%s](%d): %s → %s", taskName, m.taskId, taskStateName(old), taskStateName(state))
 	if m.onStateChange != nil {
-		m.onStateChange(m.taskId, old, state, m.errorMessage)
+		m.onStateChange(m.taskId, old, state, m.errorMessage, persist)
 	}
 	if state == TaskStateFinished || state == TaskStateFailed {
 		m.doneOnce.Do(func() { close(m.done) })
@@ -740,7 +746,7 @@ func (m *ManagedTask) isStopped() bool {
 }
 
 // SetOnStateChange 设置状态变化回调
-func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState TaskState, errMsg string)) {
+func (m *ManagedTask) SetOnStateChange(fn func(taskId int64, oldState, newState TaskState, errMsg string, persist bool)) {
 	m.onStateChange = fn
 }
 
