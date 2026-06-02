@@ -539,22 +539,31 @@ async function handleSourceUrlInput() {
             {{ row.taskProgress?.siteName ?? '-' }}
           </template>
         </el-table-column>
-        <!-- 创建时间 -->
-        <el-table-column label="创建时间" width="165" show-overflow-tooltip sortable="custom" align="center">
+        <!-- 是否可接续 -->
+        <el-table-column label="是否可接续" width="80" show-overflow-tooltip sortable="custom" align="center">
           <template #header>
-            <el-tag>创建时间</el-tag>
+            <el-tag>是否可接续</el-tag>
           </template>
           <template #default="{ row }">
-            {{ formatDatetime(row.taskProgress?.task?.createTime) }}
+            {{ row.taskProgress?.task?.continuable ?? '-' }}
           </template>
         </el-table-column>
-        <!-- URL -->
-        <el-table-column label="url" width="380" show-overflow-tooltip sortable="custom" align="center">
+        <!-- 错误信息 -->
+        <el-table-column label="错误信息" width="380" show-overflow-tooltip sortable="custom" align="center">
           <template #header>
-            <el-tag>url</el-tag>
+            <el-tag>错误信息</el-tag>
           </template>
           <template #default="{ row }">
-            {{ row.taskProgress?.task?.url ?? '-' }}
+            {{ row.taskProgress?.task?.errorMessage ?? '-' }}
+          </template>
+        </el-table-column>
+        <!-- 操作列 -->
+        <el-table-column fixed="right" :width="163" align="center">
+          <template #header>
+            <el-tag type="warning">操作</el-tag>
+          </template>
+          <template #default="{ row }">
+            <task-operation-bar-active :row="row" :button-clicked="handleOperationButtonClicked" />
           </template>
         </el-table-column>
         <!-- 状态 -->
@@ -570,13 +579,13 @@ async function handleSourceUrlInput() {
             </div>
           </template>
         </el-table-column>
-        <!-- 操作列 -->
-        <el-table-column fixed="right" :width="163" align="center">
+        <!-- 修改时间 -->
+        <el-table-column fixed="right" label="修改时间" width="165" show-overflow-tooltip sortable="custom" align="center">
           <template #header>
-            <el-tag type="warning">操作</el-tag>
+            <el-tag>修改时间</el-tag>
           </template>
           <template #default="{ row }">
-            <task-operation-bar-active :row="row" :button-clicked="handleOperationButtonClicked" />
+            {{ formatDatetime(row.taskProgress?.task?.updateTime) }}
           </template>
         </el-table-column>
       </slot-search-table>
