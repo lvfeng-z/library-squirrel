@@ -124,15 +124,21 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 
 // StartTaskTree 启动任务树
 func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
+	return m.loadAndStartTaskTree(ctx, taskId, false)
+}
+
+// loadAndStartTaskTree 从数据库加载任务树并启动
+// skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务，仅 Resume 使用
+func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTerminal bool) error {
 	// 1. 获取任务树
-	logger.Log.Infof("StartTaskTree: taskId=%d", taskId)
+	logger.Log.Infof("loadAndStartTaskTree: taskId=%d", taskId)
 	tasks, err := m.repo.ListTaskTree(ctx, []int64{taskId})
 	if err != nil {
-		logger.Log.Errorf("StartTaskTree: ListTaskTree 失败: %v", err)
+		logger.Log.Errorf("loadAndStartTaskTree: ListTaskTree 失败: %v", err)
 		return err
 	}
 
-	logger.Log.Infof("StartTaskTree: 查询到 %d 条任务记录", len(tasks))
+	logger.Log.Infof("loadAndStartTaskTree: 查询到 %d 条任务记录", len(tasks))
 	if len(tasks) == 0 {
 		return ErrTaskTreeNotFound
 	}
@@ -151,14 +157,26 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 		var child *ManagedTask
 		if t.Pid.Valid && t.Pid.Int64 == taskId {
 			// 直接子任务
-			child = m.buildOrReuseChild(t, &pausedChildren)
+			child = m.buildOrReuseChild(t, &pausedChildren, skipTerminal)
 		} else if t.ID == taskId && (!t.HasChild.Valid || !t.HasChild.Bool) {
 			// 单个任务（非集合），自身作为子任务执行
-			child = m.buildOrReuseChild(t, &pausedChildren)
+			child = m.buildOrReuseChild(t, &pausedChildren, skipTerminal)
 		}
 		if child != nil {
 			parentTask.AddChild(child)
 		}
+	}
+
+	// 检查是否有需要处理的子任务（仅 skipTerminal=true 时可能出现所有子任务已终态的情况）
+	if len(parentTask.GetChildren()) == 0 && len(pausedChildren) == 0 {
+		// 所有子任务已终态，从 DB 数据计算父任务最终状态
+		finalState := m.computeParentFinalState(tasks, taskId)
+		if isStableState(finalState) {
+			m.addToPending(taskId, task.TaskStatusEnum(finalState), "")
+		}
+		m.pusher.PushParentStateChange(taskId, parentTaskName, finalState)
+		m.pusher.PushParentTaskRemove([]int64{taskId})
+		return nil
 	}
 
 	// 保存父任务
@@ -187,8 +205,16 @@ func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
 // buildOrReuseChild 构建子任务 ManagedTask
 // 若该任务已存在于内存中且处于暂停状态则复用并恢复
 // 若仅存在于数据库中（Paused 稳态但内存已丢失），根据 pending_resource_id 决定续传或重新执行
-func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTask) *ManagedTask {
-	isPausedInDB := t.Status == int(TaskStatePaused)
+// skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务
+func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTask, skipTerminal bool) *ManagedTask {
+	dbState := TaskState(t.Status)
+
+	// 跳过已终态的子任务（仅 Resume 场景需要）
+	if skipTerminal && (dbState == TaskStateFinished || dbState == TaskStateFailed || dbState == TaskStatePartlyFinished) {
+		return nil
+	}
+
+	isPausedInDB := dbState == TaskStatePaused
 
 	// 场景一：内存中存在暂停状态的 ManagedTask，可直接复用并恢复
 	if isPausedInDB {
@@ -220,6 +246,39 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTa
 		m.addTask(mt)
 	}
 	return mt
+}
+
+// computeParentFinalState 从 DB 任务记录计算父任务的最终状态
+// 当所有子任务都已终态时调用，无需创建 ManagedTask 即可确定父任务状态
+func (m *Manager) computeParentFinalState(tasks []*domain.Task, parentId int64) TaskState {
+	var finished, failed int
+	total := 0
+	for _, t := range tasks {
+		if t.Pid.Valid && t.Pid.Int64 == parentId {
+			total++
+			switch TaskState(t.Status) {
+			case TaskStateFinished:
+				finished++
+			case TaskStateFailed:
+				failed++
+			default:
+				panic("unhandled default case")
+			}
+		}
+	}
+	if total == 0 {
+		return TaskStateFinished
+	}
+	switch {
+	case finished == total:
+		return TaskStateFinished
+	case failed == total:
+		return TaskStateFailed
+	case finished > 0:
+		return TaskStatePartlyFinished
+	default:
+		return TaskStateFailed
+	}
 }
 
 // batchCheckDuplicates 在任务派发前批量检查重复
@@ -277,9 +336,13 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 
 	var toDispatch []*ManagedTask
 	for _, child := range children {
-		// 跨重启续传或已暂停的任务，直接派发
-		if child.resumeFromDB || child.GetState() == TaskStatePaused {
+		// 跨重启续传的任务直接派发（需要信号量）
+		// 内存中已暂停的任务通过 step 5 的 Resume 恢复，不需要信号量派发
+		if child.resumeFromDB {
 			toDispatch = append(toDispatch, child)
+			continue
+		}
+		if child.GetState() == TaskStatePaused {
 			continue
 		}
 
@@ -405,9 +468,9 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 
 	for _, child := range parent.GetChildren() {
 		if child.GetState() == TaskStateWaiting {
-			// 排队中的任务未实际执行，暂停时不修改数据库状态（保留原始状态供跳过时回退）
+			// 排队中的任务无 goroutine 运行，直接从队列移除并标记为暂停
 			m.removeFromQueue(child.taskId)
-			child.setStateWithPersist(TaskStatePaused, false)
+			child.setState(TaskStatePaused)
 			continue
 		}
 		if err := child.Pause(); err != nil {
@@ -426,10 +489,9 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
 	m.mu.RUnlock()
 
 	if !ok {
-		// 任务树不在内存中（如应用重启后），通过 StartTaskTree 加载
-		// buildOrReuseChild 会根据 pending_resource_id 决定续传或重新执行
-		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 parentMap 中，调用 StartTaskTree 加载", taskId)
-		return m.StartTaskTree(ctx, taskId)
+		// 任务树不在内存中（如应用重启后），从数据库加载并跳过已终态子任务
+		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 parentMap 中，从数据库加载", taskId)
+		return m.loadAndStartTaskTree(ctx, taskId, true)
 	}
 
 	for _, child := range parent.GetChildren() {
@@ -468,14 +530,8 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 // RetryTaskTree 重试任务树
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
-	// 重置任务状态为 Created（同时清除 error_message）
-	_, err := m.repo.SetTaskTreeStatus(ctx, []int64{taskId}, task.TaskStatusCreated, task.TaskStatusFailed)
-	if err != nil {
-		return err
-	}
-
-	// 重新启动任务树
-	return m.StartTaskTree(ctx, taskId)
+	// 不重置 DB 状态，Finished/Failed/Created 子任务均会重新执行
+	return m.loadAndStartTaskTree(ctx, taskId, false)
 }
 
 // GetTaskTreeState 获取任务树状态
@@ -796,9 +852,9 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
-	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string, persist bool) {
-		// 仅稳定状态且需要持久化时写入数据库
-		if persist && isStableState(newState) {
+	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string) {
+		// 仅稳定状态写入数据库，瞬态只更新内存和前端
+		if isStableState(newState) {
 			m.addToPending(taskId, task.TaskStatusEnum(newState), errMsg)
 		}
 
