@@ -10,6 +10,7 @@ type TaskProgressPusher interface {
 	PushParentStateChange(taskId int64, taskName string, state TaskState)
 	PushProgress(taskId int64, total int64, finished int64)
 	PushProgressBatch(batch []*taskScheduleDTO)
+	PushParentProgress(taskId int64, total int64, finished int64)
 	PushError(taskId int64, err string)
 	PushTaskRemove(taskIds []int64)
 	PushParentTaskRemove(taskIds []int64)
@@ -92,6 +93,17 @@ func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, taskName s
 	p.emit("parentTaskStatus-updateParentTask", data)
 }
 
+// PushParentProgress 推送父任务进度（已完成子任务数/总子任务数）到前端
+func (p *WailsTaskProgressPusher) PushParentProgress(taskId int64, total int64, finished int64) {
+	dto := &taskScheduleDTO{
+		ID:       taskId,
+		Total:    total,
+		Finished: finished,
+	}
+	data := []*taskScheduleDTO{dto}
+	p.emit("parentTaskStatus-updateSchedule", data)
+}
+
 // taskStateDTO 任务状态推送 DTO
 type taskStateDTO struct {
 	ID       int64  `json:"id"`
@@ -138,6 +150,7 @@ func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)       {}
 func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState) {}
 func (p *NoopProgressPusher) PushProgress(int64, int64, int64)              {}
 func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)          {}
+func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)        {}
 func (p *NoopProgressPusher) PushError(int64, string)                       {}
 func (p *NoopProgressPusher) PushTaskRemove([]int64)                        {}
 func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                  {}

@@ -634,11 +634,12 @@ func (m *Manager) removeWaitingTask(mt *ManagedTask) {
 
 			// 在移除子任务前，先根据所有子任务（含被跳过的）计算并持久化父任务状态
 			parent.refreshMu.Lock()
-			_, newParentState := parent.RefreshState()
+			_, newParentState, finishedCount, total := parent.RefreshState()
 			if isStableState(newParentState) {
 				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 			}
 			m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+			m.pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
 			parent.refreshMu.Unlock()
 
 			// 移除子任务并清理父任务
@@ -777,8 +778,7 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 		if ok && parent.AllChildrenTerminal() {
 			// 确保父任务的最终状态被持久化到数据库
 			parent.refreshMu.Lock()
-			_, newParentState := parent.RefreshState()
-			logger.Log.Infof("[TaskManager] cleanupFinishedTask 兜底刷新父任务状态: parentId=%d, newState=%s", parent.taskId, taskStateName(newParentState))
+			_, newParentState, _, _ := parent.RefreshState()
 			if isStableState(newParentState) {
 				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 			}
@@ -886,13 +886,14 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 				_, stillExists := m.parentMap[mt.parentId]
 				m.mu.RUnlock()
 				if stillExists {
-					oldParentState, newParentState := parent.RefreshState()
-					logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState))
+					oldParentState, newParentState, finishedCount, total := parent.RefreshState()
+					logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s, finished=%d/%d", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState), finishedCount, total)
 					if oldParentState != newParentState && isStableState(newParentState) {
 						// 父任务无错误信息，传空字符串（清除 error_message）
 						m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 					}
 					m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+					m.pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
 				}
 				parent.refreshMu.Unlock()
 			}

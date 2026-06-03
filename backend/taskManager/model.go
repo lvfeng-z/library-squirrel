@@ -835,19 +835,19 @@ func (p *ParentTask) RemoveChild(taskId int64) {
 }
 
 // RefreshState 根据子任务状态刷新父任务状态
-// 返回旧状态和新状态，供调用方判断是否需要持久化
-func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
+// 返回旧状态、新状态、已完成子任务数和子任务总数，供调用方判断是否需要持久化和推送进度
+func (p *ParentTask) RefreshState() (oldState, newState TaskState, finishedCount, total int) {
 	children := p.GetChildren()
 	if len(children) == 0 {
-		return p.GetState(), p.GetState()
+		return p.GetState(), p.GetState(), 0, 0
 	}
 
-	var finishedCount, failedCount int
+	var fc, failedCount int
 	var anyProcessing, anyWaiting, anyPaused bool
 	for _, child := range children {
 		switch child.GetState() {
 		case TaskStateFinished:
-			finishedCount++
+			fc++
 		case TaskStateFailed:
 			failedCount++
 		case TaskStateProcessing, TaskStatePausing, TaskStateStopping, TaskStateWaitingForInput:
@@ -859,7 +859,7 @@ func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
 		}
 	}
 
-	total := len(children)
+	t := len(children)
 
 	switch {
 	case anyProcessing:
@@ -868,18 +868,18 @@ func (p *ParentTask) RefreshState() (oldState, newState TaskState) {
 		newState = TaskStateWaiting
 	case anyPaused:
 		newState = TaskStatePaused
-	case finishedCount == total:
+	case fc == t:
 		newState = TaskStateFinished
-	case failedCount == total:
+	case failedCount == t:
 		newState = TaskStateFailed
-	case finishedCount > 0 && finishedCount < total:
+	case fc > 0 && fc < t:
 		newState = TaskStatePartlyFinished
 	default:
 		newState = TaskStateCreated
 	}
 
 	oldState = TaskState(p.state.Swap(int32(newState)))
-	return
+	return oldState, newState, fc, t
 }
 
 // GetState 获取父任务状态
