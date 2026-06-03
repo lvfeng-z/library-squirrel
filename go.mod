@@ -8,11 +8,11 @@ require (
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/structs v1.0.0
-	github.com/knadh/koanf/v2 v2.3.4
+	github.com/knadh/koanf/v2 v2.3.5
 	github.com/lvfeng-z/library-squirrel-plugin-sdk v0.0.3-alpha.1
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/wailsapp/wails/v3 v3.0.0-alpha.96
+	github.com/wailsapp/wails/v3 v3.0.0-alpha.97
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.52.0
 	google.golang.org/grpc v1.81.1
