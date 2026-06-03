@@ -453,6 +453,16 @@ func (m *ManagedTask) downloadLoop() runResult {
 				m.setState(TaskStateFinished)
 				return runResultDone
 			}
+			// 暂停导致的读取失败：drain 已缓冲数据，走暂停流程
+			// download 阶段不取消 context，直接检查状态
+			s := m.GetState()
+			if s == TaskStatePausing || s == TaskStatePaused {
+				m.drainReader(buf)
+				m.currentFile.Sync()
+				close(m.drainDone)
+				m.setState(TaskStatePaused)
+				return runResultPaused
+			}
 			logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
 			m.setFailed(fmt.Sprintf("下载读取失败: %v", readErr))
 			return runResultDone
