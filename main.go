@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"net/http"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -75,6 +76,17 @@ func main() {
 		},
 		Assets: application.AssetOptions{
 			Handler: app.CreateAssetHandler(assets),
+			// 拦截 /wails/custom.js，避免 @wailsio/runtime 的 loadOptionalScript 产生 404 控制台报错
+			Middleware: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/wails/custom.js" {
+						w.Header().Set("Content-Type", "application/javascript")
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+					next.ServeHTTP(w, r)
+				})
+			},
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
