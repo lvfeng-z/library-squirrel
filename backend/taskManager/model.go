@@ -253,6 +253,7 @@ func (m *ManagedTask) run() runResult {
 	}()
 
 	m.setState(TaskStateProcessing)
+	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
 
 	// 0. 检查 workdir 是否已配置
 	if m.workDirProvider.GetWorkDir() == "" {
@@ -407,9 +408,11 @@ func (m *ManagedTask) downloadLoop() runResult {
 		select {
 		case <-m.pauseCh:
 			// 收到暂停信号，drain 所有已发送数据直到上游关闭
+		logger.Log.Infof("[TaskManager] downloadLoop 收到暂停信号: taskId=%d, totalWritten=%d", m.taskId, m.totalWritten)
 			m.drainReader(buf)
 			m.currentFile.Sync()
 			close(m.drainDone)
+		logger.Log.Infof("[TaskManager] downloadLoop drain 完成: taskId=%d, totalWritten=%d", m.taskId, m.totalWritten)
 
 			m.setState(TaskStatePaused)
 			// 暂停后直接退出 goroutine，释放信号量，恢复时统一重新调度
@@ -545,6 +548,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	// 5. 根据插件响应的 Continuable 决定续传策略
 	continuable := newResp != nil && newResp.Resource != nil &&
 		newResp.Resource.Continuable != nil && *newResp.Resource.Continuable
+		logger.Log.Infof("[TaskManager] resumeFromPersistedState Continuable 判定: taskId=%d, newResp=%v, continuable=%v, downloadedBytes=%d", m.taskId, newResp != nil, continuable, downloadedBytes)
 
 	var file *os.File
 	if continuable {
@@ -581,10 +585,14 @@ func (m *ManagedTask) Pause() error {
 
 	// 下载尚未开始的场景（setup 阶段），直接取消 context
 	if m.currentReader == nil {
+		logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 setup 阶段暂停，直接取消", m.taskId)
 		m.cancel()
 		m.setState(TaskStatePaused)
 		return nil
 	}
+
+	logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 download 阶段暂停, PendingResourceID={Valid:%v, Int64:%d}, totalWritten=%d",
+		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.totalWritten)
 
 	// 准备 drain 完成信号
 	m.drainDone = make(chan struct{})
@@ -619,6 +627,8 @@ func (m *ManagedTask) prepareForResume() {
 	// 有 PendingResourceID 走 resumeFromPersistedState（内部根据插件响应 Continuable 决定续传/重新下载）
 	// 无 PendingResourceID 走 run()（从头执行）
 	m.resumeFromDB = m.task.PendingResourceID.Valid
+	logger.Log.Infof("[TaskManager] prepareForResume: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, resumeFromDB=%v",
+		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.resumeFromDB)
 }
 
 

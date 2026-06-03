@@ -377,6 +377,7 @@ func (m *Manager) executeTask(task *ManagedTask) {
 
 	var result runResult
 	if task.resumeFromDB {
+		logger.Log.Infof("[TaskManager] executeTask: taskId=%d, resumeFromDB=%v", task.taskId, task.resumeFromDB)
 		result = task.resumeFromPersistedState()
 	} else {
 		result = task.run()
