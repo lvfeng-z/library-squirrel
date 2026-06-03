@@ -152,15 +152,14 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 		}
 	}
 	parentTask := NewParentTask(taskId, parentTaskName)
-	var pausedChildren []*ManagedTask
 	for _, t := range tasks {
 		var child *ManagedTask
 		if t.Pid.Valid && t.Pid.Int64 == taskId {
 			// 直接子任务
-			child = m.buildOrReuseChild(t, &pausedChildren, skipTerminal)
+			child = m.buildOrReuseChild(t, skipTerminal)
 		} else if t.ID == taskId && (!t.HasChild.Valid || !t.HasChild.Bool) {
 			// 单个任务（非集合），自身作为子任务执行
-			child = m.buildOrReuseChild(t, &pausedChildren, skipTerminal)
+			child = m.buildOrReuseChild(t, skipTerminal)
 		}
 		if child != nil {
 			parentTask.AddChild(child)
@@ -168,7 +167,7 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 	}
 
 	// 检查是否有需要处理的子任务（仅 skipTerminal=true 时可能出现所有子任务已终态的情况）
-	if len(parentTask.GetChildren()) == 0 && len(pausedChildren) == 0 {
+	if len(parentTask.GetChildren()) == 0 {
 		// 所有子任务已终态，从 DB 数据计算父任务最终状态
 		finalState := m.computeParentFinalState(tasks, taskId)
 		if isStableState(finalState) {
@@ -192,21 +191,13 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 		m.tryDispatch(child)
 	}
 
-	// 5. 恢复之前暂停的子任务
-	for _, paused := range pausedChildren {
-		if err := paused.Resume(); err != nil {
-			logger.Log.Errorf("恢复暂停子任务 %d 失败: %v", paused.taskId, err)
-		}
-	}
-
 	return nil
 }
 
 // buildOrReuseChild 构建子任务 ManagedTask
-// 若该任务已存在于内存中且处于暂停状态则复用并恢复
-// 若仅存在于数据库中（Paused 稳态但内存已丢失），根据 pending_resource_id 决定续传或重新执行
+// 若任务在数据库中为 Paused 状态（应用重启后内存已丢失），根据 pending_resource_id 决定续传或重新执行
 // skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务
-func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTask, skipTerminal bool) *ManagedTask {
+func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedTask {
 	dbState := TaskState(t.Status)
 
 	// 跳过已终态的子任务（仅 Resume 场景需要）
@@ -216,15 +207,8 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, pausedChildren *[]*ManagedTa
 
 	isPausedInDB := dbState == TaskStatePaused
 
-	// 场景一：内存中存在暂停状态的 ManagedTask，可直接复用并恢复
 	if isPausedInDB {
-		if existing, ok := m.getTask(t.GetID()); ok && existing.GetState() == TaskStatePaused {
-			logger.Log.Infof("StartTaskTree: 复用内存中已暂停的子任务 %d", t.GetID())
-			*pausedChildren = append(*pausedChildren, existing)
-			return existing
-		}
-
-		// 场景二：数据库中为 Paused 但内存已丢失（如应用重启）
+		// 数据库中为 Paused 但内存已丢失（如应用重启）
 		if t.PendingResourceID.Valid {
 			// pending_resource_id 有效，创建跨重启续传的 ManagedTask
 			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
@@ -290,10 +274,6 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		if child.resumeFromDB {
 			continue
 		}
-		// 跳过内存中已暂停的任务（通过 Resume 恢复）
-		if child.GetState() == TaskStatePaused {
-			continue
-		}
 		// 不具备查重条件，标记跳过 run() 中的重复检测
 		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
 			child.skipDuplicateCheck = true
@@ -305,7 +285,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	if len(toCheck) == 0 || m.workChecker == nil {
 		// 无需查重或未配置查重器，所有可预检任务标记跳过
 		for _, child := range children {
-			if !child.resumeFromDB && child.GetState() != TaskStatePaused {
+			if !child.resumeFromDB {
 				child.skipDuplicateCheck = true
 			}
 		}
@@ -337,12 +317,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	var toDispatch []*ManagedTask
 	for _, child := range children {
 		// 跨重启续传的任务直接派发（需要信号量）
-		// 内存中已暂停的任务通过 step 5 的 Resume 恢复，不需要信号量派发
 		if child.resumeFromDB {
 			toDispatch = append(toDispatch, child)
-			continue
-		}
-		if child.GetState() == TaskStatePaused {
 			continue
 		}
 
@@ -415,8 +391,8 @@ func (m *Manager) executeTask(task *ManagedTask) {
 	}
 
 	if result == runResultPaused {
-		// Setup 阶段暂停：goroutine 退出，任务保留在 taskMap，信号量由 defer 释放
-		// Resume 时通过 tryRestart 回调重新调度（go m.executeTask(task)）
+		// 暂停（setup 或 download 阶段）：goroutine 退出，任务保留在 taskMap，信号量由 defer 释放
+		// ResumeTaskTree 通过 prepareForResume + tryDispatch 重新调度
 		return
 	}
 
@@ -495,9 +471,11 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
 	}
 
 	for _, child := range parent.GetChildren() {
-		if err := child.Resume(); err != nil {
-			logger.Log.Errorf("[TaskManager] 恢复子任务 %d 失败: %v", child.taskId, err)
+		if child.GetState() != TaskStatePaused {
+			continue
 		}
+		child.prepareForResume()
+		m.tryDispatch(child)
 	}
 
 	return nil
@@ -515,7 +493,11 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 	}
 
 	for _, child := range parent.GetChildren() {
-		if child.GetState() == TaskStateWaiting {
+		state := child.GetState()
+		if state == TaskStatePaused {
+			// 暂停任务无 goroutine，直接标记为失败
+			child.setFailed("任务被用户停止")
+		} else if state == TaskStateWaiting {
 			m.removeFromQueue(child.taskId)
 			child.cancel()
 			child.setFailed("任务被用户停止")
@@ -927,11 +909,6 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		default:
 		}
 	})
-
-	// 设置 setup 阶段暂停后恢复的重新调度回调
-	mt.tryRestart = func(task *ManagedTask) {
-		go m.executeTask(task)
-	}
 
 	// 设置 pending_resource_id 持久化回调
 	mt.onResourceIDUpdate = func(taskId int64, resourceID sql.NullInt64) {

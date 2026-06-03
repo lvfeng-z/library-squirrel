@@ -194,7 +194,6 @@ type ManagedTask struct {
 
 	// 暂停/恢复协调通道
 	pauseCh   chan struct{} // Pause() 发信号，downloadLoop 消费
-	resumeCh  chan struct{} // Resume() 发信号，downloadLoop 消费
 	drainDone chan struct{} // downloadLoop drain 完成后通知 Pause()
 
 	// 下载状态（跨暂停/恢复周期存活）
@@ -207,9 +206,6 @@ type ManagedTask struct {
 	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string)
 	onProgress         func(taskId int64, total int64, finished int64)
 	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
-
-	// setup 阶段暂停后恢复时，重新调度 run() 的回调（由 Manager 注入）
-	tryRestart func(task *ManagedTask)
 }
 
 // NewManagedTask 创建托管任务
@@ -234,7 +230,6 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		task:                   task,
 		workId:                 taskId,
 		pauseCh:                make(chan struct{}, 1),
-		resumeCh:               make(chan struct{}, 1),
 	}
 }
 
@@ -390,7 +385,7 @@ func (m *ManagedTask) run() runResult {
 		return runResultDone
 	}
 
-	// 保存下载状态到 ManagedTask 字段（downloadLoop 和 doResume 使用）
+	// 保存下载状态到 ManagedTask 字段（downloadLoop 和 resumeFromPersistedState 使用）
 	m.currentReader = reader
 	m.currentFile = file
 	m.localPath = localPath
@@ -399,8 +394,8 @@ func (m *ManagedTask) run() runResult {
 	return m.downloadLoop()
 }
 
-// downloadLoop 可暂停/恢复的下载循环
-// 正常下载 → 收到 pauseCh 进入 drain → 等待 resumeCh → doResume 继续下载
+// downloadLoop 可暂停的下载循环
+// 正常下载 → 收到 pauseCh 进入 drain → 返回 runResultPaused 退出 goroutine
 func (m *ManagedTask) downloadLoop() runResult {
 	buf := make([]byte, 32*1024)
 	defer func() {
@@ -414,20 +409,11 @@ func (m *ManagedTask) downloadLoop() runResult {
 			// 收到暂停信号，drain 所有已发送数据直到上游关闭
 			m.drainReader(buf)
 			m.currentFile.Sync()
-			m.currentFile.Close()
 			close(m.drainDone)
 
 			m.setState(TaskStatePaused)
-
-			// 阻塞等待恢复或取消
-			select {
-			case <-m.resumeCh:
-				m.doResume()
-				continue
-			case <-m.ctx.Done():
-				m.setFailed("任务被取消")
-				return runResultDone
-			}
+			// 暂停后直接退出 goroutine，释放信号量，恢复时统一重新调度
+			return runResultPaused
 		case <-m.ctx.Done():
 			m.setFailed("任务被取消")
 			return runResultDone
@@ -487,43 +473,6 @@ func (m *ManagedTask) drainReader(buf []byte) {
 	}
 }
 
-// doResume 恢复下载
-// 调用插件 Resume（传递已下载字节数），以追加模式打开文件，继续下载
-func (m *ManagedTask) doResume() {
-	m.setState(TaskStateProcessing)
-
-	// 保障一：将已下载字节数传给插件
-	param := &sdkdto.TaskResParam{
-		Task:            dto.NewTaskDTO(m.task),
-		ResourceID:      m.resourceResp.Resource.ResourceID,
-		DownloadedBytes: m.totalWritten,
-	}
-	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Resume 失败: %v", m.taskId, err)
-		m.setFailed(fmt.Sprintf("恢复下载失败: %v", err))
-		return
-	}
-
-	if newResp != nil {
-		m.resourceResp = newResp
-	}
-
-	// 以追加模式重新打开文件
-	file, err := os.OpenFile(m.localPath, os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败: %v", m.taskId, err)
-		m.setFailed(fmt.Sprintf("追加打开文件失败: %v", err))
-		return
-	}
-	m.currentFile = file
-
-	// 切换到新的 reader
-	if newReader != nil {
-		m.currentReader.Close()
-		m.currentReader = newReader
-	}
-}
 
 // resumeFromPersistedState 从数据库恢复的跨重启续传
 // 任务在之前的运行中已暂停，pending_resource_id 已持久化到数据库
@@ -581,18 +530,41 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	// 4. 设置运行状态
 	m.workId = resource.WorkID
-	if newResp != nil {
-		m.resourceResp = newResp
-	}
 	m.localPath = localPath
-	m.totalWritten = downloadedBytes
 
-	// 5. 以追加模式打开文件
-	file, err := os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败 [%s]: %v", m.taskId, localPath, err)
-		m.setFailed(fmt.Sprintf("跨重启续传追加打开文件失败: %v", err))
-		return runResultDone
+	// 4.1 初始化 resourceResp（应用重启后 resourceResp 为 nil，从数据库 Resource 实体恢复 Size/Format）
+	if m.resourceResp == nil || m.resourceResp.Resource == nil {
+		m.resourceResp = &sdkdto.WorkResponse{
+			Resource: &sdkdto.TaskResourceDTO{
+				Size:   resource.ResourceSize.Int64,
+				Format: resource.FilenameExtension.String,
+			},
+		}
+	}
+
+	// 5. 根据插件响应的 Continuable 决定续传策略
+	continuable := newResp != nil && newResp.Resource != nil &&
+		newResp.Resource.Continuable != nil && *newResp.Resource.Continuable
+
+	var file *os.File
+	if continuable {
+		// 可续传：以追加模式打开文件，从已下载位置继续
+		m.totalWritten = downloadedBytes
+		file, err = os.OpenFile(localPath, os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 追加打开文件失败 [%s]: %v", m.taskId, localPath, err)
+			m.setFailed(fmt.Sprintf("续传追加打开文件失败: %v", err))
+			return runResultDone
+		}
+	} else {
+		// 不可续传：截断文件从头开始下载
+		m.totalWritten = 0
+		file, err = os.OpenFile(localPath, os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 截断打开文件失败 [%s]: %v", m.taskId, localPath, err)
+			m.setFailed(fmt.Sprintf("续传截断打开文件失败: %v", err))
+			return runResultDone
+		}
 	}
 	m.currentFile = file
 	m.currentReader = newReader
@@ -635,29 +607,20 @@ func (m *ManagedTask) Pause() error {
 	return nil
 }
 
-// Resume 恢复任务
-func (m *ManagedTask) Resume() error {
-	if m.state.Load() != int32(TaskStatePaused) {
-		return ErrTaskNotPaused
-	}
-
-	// Setup 阶段暂停：context 已取消，goroutine 已退出，需要重建并重新调度
-	if m.ctx.Err() != nil {
-		if m.tryRestart == nil {
-			return fmt.Errorf("setup 阶段暂停后无法恢复：缺少重新调度回调")
-		}
-		m.ctx, m.cancel = context.WithCancel(context.Background())
-		m.pauseCh = make(chan struct{}, 1)
-		m.resumeCh = make(chan struct{}, 1)
-		m.setState(TaskStateProcessing)
-		m.tryRestart(m)
-		return nil
-	}
-
-	// 下载阶段暂停：goroutine 存活，通知 downloadLoop 恢复（doResume 在 downloadLoop goroutine 中执行）
-	m.resumeCh <- struct{}{}
-	return nil
+// prepareForResume 重置任务的运行时状态，准备重新调度
+// 由 ResumeTaskTree 在 tryDispatch 前调用
+func (m *ManagedTask) prepareForResume() {
+	m.cancel()
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	m.pauseCh = make(chan struct{}, 1)
+	m.currentReader = nil
+	m.currentFile = nil
+	m.totalWritten = 0
+	// 有 PendingResourceID 走 resumeFromPersistedState（内部根据插件响应 Continuable 决定续传/重新下载）
+	// 无 PendingResourceID 走 run()（从头执行）
+	m.resumeFromDB = m.task.PendingResourceID.Valid
 }
+
 
 // Stop 停止任务
 func (m *ManagedTask) Stop() {
@@ -928,7 +891,7 @@ func (p *ParentTask) GetState() TaskState {
 func (p *ParentTask) AllChildrenTerminal() bool {
 	for _, child := range p.GetChildren() {
 		s := child.GetState()
-		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStatePaused {
+		if s != TaskStateFinished && s != TaskStateFailed {
 			return false
 		}
 	}

@@ -377,6 +377,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			Size:         pb.Resource.Size,
 			Completeness: int(pb.Resource.Completeness),
 				SuggestName:  pb.Resource.SuggestName,
+			Continuable:  pb.Resource.Continuable,
 		}
 	}
 	return resp
