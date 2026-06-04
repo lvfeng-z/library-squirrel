@@ -73,6 +73,7 @@ func main() {
 			application.NewService(app.ReWorkAuthorHandler),
 			application.NewService(app.ReWorkTagHandler),
 			application.NewService(app.PluginTaskUrlListenerHandler),
+			application.NewService(app.PersistentStoreHandler),
 		},
 		Assets: application.AssetOptions{
 			Handler: app.CreateAssetHandler(assets),

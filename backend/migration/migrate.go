@@ -23,6 +23,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Plugin{},
 		&entity2.Task{},
 		&entity2.Resource{},
+		entity2.NewPersistentStore(),
 
 		// 关联表（有外键依赖）
 		&entity2.ReWorkAuthor{},

@@ -7,6 +7,7 @@ export {
     LocalAuthorDTO,
     LocalTagDTO,
     LocalTagWithBaseTagDTO,
+    PersistentStoreDTO,
     PluginDTO,
     RankedLocalAuthor,
     RankedLocalAuthorWithWorkId,

@@ -73,7 +73,29 @@
   - 作品 W 包含 ST 标签
   - 搜索包含 LT 的作品时，作品 W 也会被搜索到
 
-### 6. 插件系统 (Plugin System)
+### 6. 文件持久存储 (PersistentStore)
+
+- **定义**：拥有独立数据库表的文件存取基础设施模块
+- **核心职责**：
+  - 对外提供统一的文件存取接口：存入文件 → 返回记录 ID，按 ID/路径获取记录
+  - 保证数据库记录与磁盘文件的**严格一致**：记录在则文件在，记录删则文件删
+  - 不依赖任何业务模块，是纯粹的文件存取基础设施
+- **与 Resource 的区别**：
+  - Resource 依赖 Work（`work_id`），PersistentStore 无业务外键
+  - 其他模块通过存储 `persistent_store_id` 引用 PersistentStore 中的文件
+  - 未来 Resource 的文件管理将逐步委托给 PersistentStore（三阶段迁移）
+- **子目录管理**：所有子目录必须显式声明注册，`Store` 时校验路径前缀，避免目录混乱
+- **已注册子目录**：`resource`（迁移过渡用）、`thumbnail`（视频缩略图）、`avatar/local`（本地作者头像）、`avatar/site`（站点作者头像）
+- **存储路径**：`{workDir}/store/{relPath}`，`relPath` 由调用方指定
+- **HTTP 访问**：`/store/{relativePath}` 路由，前端使用 `buildStoreUrl()` 构建 URL
+- **管理模块**：`backend/persistentStore/`
+- **HTTP 服务**：`backend/assetserver/store_handler.go`
+- **一致性保障**：
+  - `Service.Delete()` 先删磁盘文件再删数据库记录
+  - 所有文件操作必须通过 PersistentStore，禁止直接操作 `{workDir}/store/`
+  - 可通过 `Exists()` 检查记录与文件是否同时存在
+
+### 7. 插件系统 (Plugin System)
 
 - **目的**：扩展对不同站点的作品下载支持
 - **架构位置**：`plugin/package/`
@@ -102,6 +124,9 @@
 本地标签(LocalTag) n:n 站点标签(SiteTag)
 
 插件(Plugin) 1:1 站点(Site)
+
+文件持久存储(PersistentStore) — 独立基础设施，无业务外键
+其他实体 → 存储 persistent_store_id 引用 PersistentStore 中的文件
 ```
 
 ## 业务流程详解
@@ -164,6 +189,7 @@
 - `backend/localTag/` - 本地标签管理
 - `backend/siteTag/` - 站点标签管理
 - `backend/plugin/` - 插件管理
+- `backend/persistentStore/` - 文件持久存储（独立文件存取基础设施）
 
 ## 关键数据流转
 
@@ -184,7 +210,13 @@
 ### 资源访问流
 
 ```
-前端请求 → resource://协议 → 文件系统访问 → 图片处理(sharp) → 返回资源
+前端请求 → /resource/{path} → ResourceHandler → 文件系统访问 → 返回资源
+```
+
+### PersistentStore 文件访问流
+
+```
+前端请求 → /store/{path} → StoreFileHandler → {workDir}/store/{path} → 返回文件
 ```
 
 ## 典型业务用例
@@ -247,6 +279,12 @@
 | 前端DTO | `frontend/src/model/` |
 
 ## 更新记录
+
+### 2026-06-04
+- [新增] 文件持久存储 (PersistentStore) 业务概念（第7节，原第6节插件系统序号后移）
+- [新增] PersistentStore 文件访问流
+- [修改] 数据模型关系图增加 PersistentStore 说明
+- [修改] 核心模块列表增加 `backend/persistentStore/`
 
 ### 2026-05-05
 - [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

@@ -236,6 +236,54 @@ export class LocalTagWithBaseTagDTO {
 }
 
 /**
+ * PersistentStoreDTO 文件持久存储数据传输对象
+ */
+export class PersistentStoreDTO {
+    "id": number;
+    "filePath": string | null;
+    "fileName": string | null;
+    "filenameExtension": string | null;
+    "fileSize": number | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new PersistentStoreDTO instance. */
+    constructor($$source: Partial<PersistentStoreDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = null;
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = null;
+        }
+        if (!("filenameExtension" in $$source)) {
+            this["filenameExtension"] = null;
+        }
+        if (!("fileSize" in $$source)) {
+            this["fileSize"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PersistentStoreDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PersistentStoreDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PersistentStoreDTO($$parsedSource as Partial<PersistentStoreDTO>);
+    }
+}
+
+/**
  * PluginDTO 插件
  */
 export class PluginDTO {

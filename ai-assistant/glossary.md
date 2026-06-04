@@ -24,6 +24,29 @@
 - **领域角色**：作品的物理文件表示
 - **存储方式**：本地文件系统，通过`resource://`协议访问
 
+### 文件持久存储 (PersistentStore)
+
+- **英文**：PersistentStore
+- **定义**：拥有独立数据库表的文件存取模块，负责所有需要长期存储的文件的记录管理与磁盘文件管理
+- **领域角色**：纯粹的文件存取基础设施，保证数据库记录与磁盘文件的严格一致性
+- **核心职责**：存入文件 → 返回记录 ID；按 ID/路径获取记录；删除记录时同步删除磁盘文件
+- **与 Resource 的区别**：Resource 依赖 Work（`work_id`），PersistentStore 不依赖任何业务模块；其他模块通过存储 `persistent_store_id` 引用文件
+- **存储根目录**：`{workDir}/store/`
+- **访问协议**：`/store/` HTTP 路由（前端使用 `buildStoreUrl()` 构建请求 URL）
+- **子目录管理**：所有子目录必须显式声明（如 `resource`、`thumbnail`、`avatar/local`、`avatar/site`），`Store` 时校验路径前缀
+- **管理模块**：`backend/persistentStore/`
+- **HTTP 服务**：`backend/assetserver/store_handler.go`
+
+### 存储子目录 (Store Directory)
+
+- **英文**：Store Directory (StoreDir)
+- **定义**：PersistentStore 中已注册的存储子目录，路径相对于 `{workDir}/store/`
+- **领域角色**：约束文件存储路径，避免目录混乱
+- **已注册子目录**：`resource`（作品资源迁移过渡用）、`thumbnail`（视频缩略图）、`avatar/local`（本地作者头像）、`avatar/site`（站点作者头像）
+- **多级支持**：子目录可以是多级的（如 `avatar/local`），调用方可在此基础上创建动态子目录
+- **校验规则**：路径必须以某个已注册子目录为前缀（精确匹配或后接 `/`）
+- **相关文件**：`backend/persistentStore/dir.go`
+
 ### 任务 (Task)
 
 - **英文**：Task
@@ -365,6 +388,9 @@
 ---
 
 ## 更新记录
+
+### 2026-06-04
+- [新增] 文件持久存储 (PersistentStore)、存储子目录 (StoreDir) 术语
 
 ### 2026-05-06
 - [新增] 声明式 Slot 注册、纯 UI 插件、静态资源服务、组合 Asset Handler、ContentType 术语

@@ -30,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/plugin"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/reWorkAuthor"
@@ -78,6 +79,7 @@ type App struct {
 	TaskService          *task.Service
 	TaskManagerService   *taskManager.Manager
 	SiteBrowserService   *siteBrowser.Service
+	PersistentStoreService *persistentStore.Service
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -99,6 +101,7 @@ type App struct {
 	// HTTP 路由
 	AssetRouter     *assetserver.Router
 	HttpFileHandler *assetserver.ResourceHandler
+	StoreFileHandler *assetserver.StoreFileHandler
 
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
@@ -131,6 +134,7 @@ type App struct {
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
+	PersistentStoreHandler       *persistentStore.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -171,6 +175,7 @@ func NewApp() (*App, error) {
 	// 3.5 初始化静态资源服务
 	app.StaticResourceService = extension2.NewStaticResourceService()
 	app.HttpFileHandler = assetserver.NewResourceHandler()
+	app.StoreFileHandler = assetserver.NewStoreFileHandler()
 
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
@@ -256,6 +261,7 @@ func (app *App) CreateAssetHandler(frontendAssets fs.FS) http.Handler {
 	router := assetserver.NewRouter(frontendAssets)
 	router.Handle("/plugin/", app.StaticResourceService, 0)
 	router.Handle("/resource/", app.HttpFileHandler, 0)
+	router.Handle("/store/", app.StoreFileHandler, 0)
 	app.AssetRouter = router
 	return router
 }
@@ -671,6 +677,10 @@ func (app *App) initBaseServices() {
 	resourceRepo := resource.NewRepository(app.db)
 	app.ResourceService = resource.NewService(resourceRepo)
 
+	// persistentStore 服务
+	psRepo := persistentStore.NewRepository(app.db)
+	app.PersistentStoreService = persistentStore.NewService(psRepo)
+
 	// reWorkAuthor 服务
 	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
 	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
@@ -685,6 +695,7 @@ func (app *App) initBaseServices() {
 
 	// 设置工作目录
 	app.HttpFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
+	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
 	// secureStorage 服务
 	secureStorageRepo := secureStorage.NewRepository(app.db)
@@ -912,6 +923,7 @@ func (app *App) initHandlers() {
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
+	app.PersistentStoreHandler = persistentStore.NewHandler(app.PersistentStoreService)
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
