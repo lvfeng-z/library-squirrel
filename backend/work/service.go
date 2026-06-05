@@ -95,6 +95,12 @@ type ResourceBatchReader interface {
 	ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
 }
 
+// StoreBatchReader PersistentStore 批量读取接口
+type StoreBatchReader interface {
+	// GetByIds 根据 ID 列表批量查询
+	GetByIds(ctx context.Context, ids []int64) ([]*entity2.PersistentStore, error)
+}
+
 // ReWorkTagBatchReader 作品-标签关联批量读取接口
 type ReWorkTagBatchReader interface {
 	// ListLocalTagIdsByWorkIds 批量查询作品关联的本地标签ID，按 workId 分组
@@ -193,6 +199,15 @@ type ReWorkAuthorWriter interface {
 type ResourceDeleter interface {
 	// DeleteByWorkId 根据作品ID删除所有资源
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// ListByWorkId 查询作品关联的资源
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.Resource, error)
+}
+
+// StoreDeleter PersistentStore 删除接口
+type StoreDeleter interface {
+	// Delete 删除记录及对应文件
+	// backup: 是否对已完成文件进行移动备份
+	Delete(ctx context.Context, id int64, backup bool) (int64, error)
 }
 
 // Repository 作品仓储接口（由 service 定义需要的数据库操作方法）
@@ -236,6 +251,7 @@ type Service struct {
 	siteReader        SiteReader
 	resourceReader    ResourceReader
 	resourceDeleter   ResourceDeleter
+	storeDeleter      StoreDeleter
 
 	// 批量读取接口（用于 GetFullWorkInfoByIds）
 	localTagBatchReader    LocalTagBatchReader
@@ -244,16 +260,17 @@ type Service struct {
 	localAuthorBatchReader LocalAuthorBatchReader
 	siteAuthorBatchReader  SiteAuthorBatchReader
 	resourceBatchReader    ResourceBatchReader
+	storeBatchReader       StoreBatchReader
 	reWorkTagBatchReader   ReWorkTagBatchReader
 
 	// 写入接口（用于 SaveWorkInfo）
-	reWorkTagWriter        ReWorkTagWriter
-	reWorkWorkSetWriter    ReWorkWorkSetWriter
-	siteAuthorWriter       SiteAuthorWriter
-	siteTagWriter          SiteTagWriter
-	workSetWriter          WorkSetWriter
-	reWorkAuthorWriter     ReWorkAuthorWriter
-	localTagFindOrCreator  LocalTagFindOrCreator
+	reWorkTagWriter          ReWorkTagWriter
+	reWorkWorkSetWriter      ReWorkWorkSetWriter
+	siteAuthorWriter         SiteAuthorWriter
+	siteTagWriter            SiteTagWriter
+	workSetWriter            WorkSetWriter
+	reWorkAuthorWriter       ReWorkAuthorWriter
+	localTagFindOrCreator    LocalTagFindOrCreator
 	localAuthorFindOrCreator LocalAuthorFindOrCreator
 }
 
@@ -280,35 +297,39 @@ func NewService(
 	localAuthorBatchReader LocalAuthorBatchReader,
 	siteAuthorBatchReader SiteAuthorBatchReader,
 	resourceBatchReader ResourceBatchReader,
+	storeBatchReader StoreBatchReader,
 	reWorkTagBatchReader ReWorkTagBatchReader,
 	localTagFindOrCreator LocalTagFindOrCreator,
 	localAuthorFindOrCreator LocalAuthorFindOrCreator,
+	storeDeleter StoreDeleter,
 ) *Service {
 	return &Service{
-		repo:                   repo,
-		transactor:             transactor,
-		localTagReader:         localTagReader,
-		localAuthorReader:      localAuthorReader,
-		siteTagReader:          siteTagReader,
-		siteAuthorReader:       siteAuthorReader,
-		siteReader:             siteReader,
-		resourceReader:         resourceReader,
-		resourceDeleter:        resourceDeleter,
-		localTagBatchReader:    localTagBatchReader,
-		siteTagBatchReader:     siteTagBatchReader,
-		siteBatchReader:        siteBatchReader,
-		localAuthorBatchReader: localAuthorBatchReader,
-		siteAuthorBatchReader:  siteAuthorBatchReader,
-		resourceBatchReader:    resourceBatchReader,
-		reWorkTagBatchReader:   reWorkTagBatchReader,
-		reWorkTagWriter:        reWorkTagWriter,
-		reWorkWorkSetWriter:    reWorkWorkSetWriter,
-		siteAuthorWriter:       siteAuthorWriter,
-		siteTagWriter:          siteTagWriter,
-		workSetWriter:          workSetWriter,
-		reWorkAuthorWriter:     reWorkAuthorWriter,
+		repo:                     repo,
+		transactor:               transactor,
+		localTagReader:           localTagReader,
+		localAuthorReader:        localAuthorReader,
+		siteTagReader:            siteTagReader,
+		siteAuthorReader:         siteAuthorReader,
+		siteReader:               siteReader,
+		resourceReader:           resourceReader,
+		resourceDeleter:          resourceDeleter,
+		localTagBatchReader:      localTagBatchReader,
+		siteTagBatchReader:       siteTagBatchReader,
+		siteBatchReader:          siteBatchReader,
+		localAuthorBatchReader:   localAuthorBatchReader,
+		siteAuthorBatchReader:    siteAuthorBatchReader,
+		resourceBatchReader:      resourceBatchReader,
+		reWorkTagBatchReader:     reWorkTagBatchReader,
+		reWorkTagWriter:          reWorkTagWriter,
+		reWorkWorkSetWriter:      reWorkWorkSetWriter,
+		siteAuthorWriter:         siteAuthorWriter,
+		siteTagWriter:            siteTagWriter,
+		workSetWriter:            workSetWriter,
+		reWorkAuthorWriter:       reWorkAuthorWriter,
 		localTagFindOrCreator:    localTagFindOrCreator,
 		localAuthorFindOrCreator: localAuthorFindOrCreator,
+		storeBatchReader:         storeBatchReader,
+		storeDeleter:             storeDeleter,
 	}
 }
 
@@ -362,12 +383,27 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 		return err
 	}
 
-	// 3. 删除作品关联的资源
+	// 3. 删除关联的 PersistentStore 记录及磁盘文件
+	if s.storeDeleter != nil {
+		resources, err := s.resourceDeleter.ListByWorkId(ctx, id)
+		if err == nil {
+			for _, res := range resources {
+				if res.WorkStoreID.Valid {
+					_, _ = s.storeDeleter.Delete(ctx, res.WorkStoreID.Int64, false)
+				}
+				if res.ThumbnailStoreID.Valid {
+					_, _ = s.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, false)
+				}
+			}
+		}
+	}
+
+	// 4. 删除作品关联的资源
 	if err := s.resourceDeleter.DeleteByWorkId(ctx, id); err != nil {
 		return err
 	}
 
-	// 4. 删除作品本身
+	// 5. 删除作品本身
 	return s.repo.Delete(ctx, id)
 }
 
@@ -415,6 +451,29 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 
 	// Phase 4: 批量查询资源（按 workId 分组）
 	resourceMap, _ := s.resourceBatchReader.ListByWorkIds(ctx, ids)
+
+	// Phase 4.5: 批量查询 PersistentStore 记录
+	var allStoreIds []int64
+	storeIdSet := make(map[int64]bool)
+	for _, resources := range resourceMap {
+		for _, res := range resources {
+			if res.WorkStoreID.Valid && res.WorkStoreID.Int64 > 0 && !storeIdSet[res.WorkStoreID.Int64] {
+				storeIdSet[res.WorkStoreID.Int64] = true
+				allStoreIds = append(allStoreIds, res.WorkStoreID.Int64)
+			}
+			if res.ThumbnailStoreID.Valid && res.ThumbnailStoreID.Int64 > 0 && !storeIdSet[res.ThumbnailStoreID.Int64] {
+				storeIdSet[res.ThumbnailStoreID.Int64] = true
+				allStoreIds = append(allStoreIds, res.ThumbnailStoreID.Int64)
+			}
+		}
+	}
+	storeMap := make(map[int64]*entity2.PersistentStore)
+	if len(allStoreIds) > 0 {
+		stores, _ := s.storeBatchReader.GetByIds(ctx, allStoreIds)
+		for _, st := range stores {
+			storeMap[st.GetID()] = st
+		}
+	}
 
 	// Phase 5: 批量查询本地标签ID → 本地标签实体
 	localTagIdMap, _ := s.reWorkTagBatchReader.ListLocalTagIdsByWorkIds(ctx, ids)
@@ -593,10 +652,15 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 
 		// 资源
 		if resources, ok := resourceMap[id]; ok && len(resources) > 0 {
-			fullDTO.Resources = make([]*sdkdto.ResourceDTO, len(resources))
-			for i, res := range resources {
-				fullDTO.Resources[i] = dto2.NewResourceDTO(res)
+			res := resources[0]
+			var workStore, thumbnailStore *entity2.PersistentStore
+			if res.WorkStoreID.Valid {
+				workStore = storeMap[res.WorkStoreID.Int64]
 			}
+			if res.ThumbnailStoreID.Valid {
+				thumbnailStore = storeMap[res.ThumbnailStoreID.Int64]
+			}
+			fullDTO.Resource = dto2.NewResourceFullDTO(res, workStore, thumbnailStore)
 		}
 
 		result = append(result, fullDTO)

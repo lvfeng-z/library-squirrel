@@ -368,16 +368,11 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	if pb.Resource != nil {
 		resp.Resource = &pluginsdkdto.TaskResourceDTO{
-			ResourceID:   pb.Resource.ResourceId,
-			URL:          pb.Resource.Url,
-			Type:         pb.Resource.Type,
-			Format:       pb.Resource.Format,
-			LocalPath:    pb.Resource.LocalPath,
-			RemotePath:   pb.Resource.RemotePath,
-			Size:         pb.Resource.Size,
-			Completeness: int(pb.Resource.Completeness),
-				SuggestName:  pb.Resource.SuggestName,
-			Continuable:  pb.Resource.Continuable,
+			Type:        pb.Resource.Type,
+			Format:      pb.Resource.Format,
+			Size:        pb.Resource.Size,
+			SuggestName: pb.Resource.SuggestName,
+			Continuable: pb.Resource.Continuable,
 		}
 	}
 	return resp

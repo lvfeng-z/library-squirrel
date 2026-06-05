@@ -125,5 +125,5 @@ type WorkSetWithWorksResultDTO struct {
 type WorkSetWithCoverDTO struct {
 	WorkSet       *sdkdto.WorkSetDTO  `json:"workSet"`
 	CoverWork     *sdkdto.WorkDTO     `json:"coverWork,omitempty"`
-	CoverResource *sdkdto.ResourceDTO `json:"coverResource,omitempty"`
+	CoverResource *sdkdto.ResourceFullDTO `json:"coverResource,omitempty"`
 }

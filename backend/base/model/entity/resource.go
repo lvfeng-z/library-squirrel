@@ -9,16 +9,13 @@ import (
 // Resource 资源
 type Resource struct {
 	*model.BaseEntity
-	WorkID            int64          `gorm:"column:work_id;index:idx_resource_work_id" json:"workId"`
-	TaskID            int64          `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"`
-	Enabled           bool           `gorm:"column:enabled" json:"enabled"`
-	FilePath          sql.NullString `gorm:"column:file_path" json:"filePath"`
-	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
-	FilenameExtension sql.NullString `gorm:"column:filename_extension" json:"filenameExtension"`
-	SuggestName       sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
-	ResourceSize      sql.NullInt64  `gorm:"column:resource_size" json:"resourceSize"`
-	Workdir           sql.NullString `gorm:"column:workdir" json:"workdir"`
-	ResourceComplete  int            `gorm:"column:resource_complete" json:"resourceComplete"`
+	WorkID           int64          `gorm:"column:work_id;index:idx_resource_work_id" json:"workId"`
+	TaskID           int64          `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"`
+	Enabled          bool           `gorm:"column:enabled" json:"enabled"`
+	SuggestName      sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
+	ResourceComplete int            `gorm:"column:resource_complete" json:"resourceComplete"`
+	WorkStoreID      sql.NullInt64  `gorm:"column:work_store_id;index" json:"workStoreId"`     // 作品资源文件
+	ThumbnailStoreID sql.NullInt64  `gorm:"column:thumbnail_store_id" json:"thumbnailStoreId"` // 封面/缩略图
 }
 
 func (Resource) TableName() string {

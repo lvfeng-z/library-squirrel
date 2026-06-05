@@ -6,13 +6,20 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 )
 
+const (
+	// StoreStatusIncomplete 未完成
+	StoreStatusIncomplete = 0
+	// StoreStatusComplete 已完成
+	StoreStatusComplete = 1
+)
+
 // PersistentStore 文件持久存储记录
 type PersistentStore struct {
 	*model.BaseEntity
 	FilePath          sql.NullString `gorm:"column:file_path;uniqueIndex" json:"filePath"`
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
 	FilenameExtension sql.NullString `gorm:"column:filename_extension" json:"filenameExtension"`
-	FileSize          sql.NullInt64  `gorm:"column:file_size" json:"fileSize"`
+	Status            int            `gorm:"column:status;default:0" json:"status"` // 0=未完成，1=完成
 }
 
 func (PersistentStore) TableName() string {

@@ -15,6 +15,7 @@ export {
     RankedSiteAuthorWithWorkId,
     RankedSiteAuthorWithWorkIdDTO,
     ResourceDTO,
+    ResourceFullDTO,
     SearchCondition,
     SearchConditionQuery,
     SearchType,

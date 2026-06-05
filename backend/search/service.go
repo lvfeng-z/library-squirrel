@@ -39,6 +39,11 @@ type WorkSetPageResourceReader interface {
 	ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
 }
 
+// StoreBatchReader PersistentStore 批量读取接口
+type StoreBatchReader interface {
+	GetByIds(ctx context.Context, ids []int64) ([]*entity2.PersistentStore, error)
+}
+
 // LocalTagUpdater 本地标签更新接口
 type LocalTagUpdater interface {
 	UpdateLastUse(ctx context.Context, ids []int64) error
@@ -66,9 +71,10 @@ type Service struct {
 	repo Repository
 
 	// 作品集查询依赖
-	coverResolver  CoverResolver
-	workReader     WorkSetPageWorkReader
-	resourceReader WorkSetPageResourceReader
+	coverResolver   CoverResolver
+	workReader      WorkSetPageWorkReader
+	resourceReader  WorkSetPageResourceReader
+	storeBatchReader StoreBatchReader
 
 	// 外部模块依赖（通过构造函数注入）
 	localTagUpdater    LocalTagUpdater
@@ -83,18 +89,20 @@ func NewService(
 	coverResolver CoverResolver,
 	workReader WorkSetPageWorkReader,
 	resourceReader WorkSetPageResourceReader,
+	storeBatchReader StoreBatchReader,
 	localTagUpdater LocalTagUpdater,
 	siteTagUpdater SiteTagUpdater,
 	localAuthorUpdater LocalTagUpdater,
 	siteAuthorUpdater SiteAuthorUpdater,
 ) *Service {
 	return &Service{
-		repo:               repo,
-		coverResolver:      coverResolver,
-		workReader:         workReader,
-		resourceReader:     resourceReader,
-		localTagUpdater:    localTagUpdater,
-		siteTagUpdater:     siteTagUpdater,
+		repo:              repo,
+		coverResolver:     coverResolver,
+		workReader:        workReader,
+		resourceReader:    resourceReader,
+		storeBatchReader:  storeBatchReader,
+		localTagUpdater:   localTagUpdater,
+		siteTagUpdater:    siteTagUpdater,
 		localAuthorUpdater: localAuthorUpdater,
 		siteAuthorUpdater:  siteAuthorUpdater,
 	}
@@ -217,6 +225,28 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		}
 	}
 
+	// Phase 4.5: 批量查 PersistentStore 记录
+	var allStoreIds []int64
+	storeIdSet := make(map[int64]bool)
+	for _, resources := range resourcesMap {
+		for _, res := range resources {
+			if res.WorkStoreID.Valid && res.WorkStoreID.Int64 > 0 && !storeIdSet[res.WorkStoreID.Int64] {
+				storeIdSet[res.WorkStoreID.Int64] = true
+				allStoreIds = append(allStoreIds, res.WorkStoreID.Int64)
+			}
+		}
+	}
+	storeMap := make(map[int64]*entity2.PersistentStore)
+	if len(allStoreIds) > 0 {
+		stores, err := s.storeBatchReader.GetByIds(ctx, allStoreIds)
+		if err != nil {
+			return nil, fmt.Errorf("batch fetch persistent stores error: %w", err)
+		}
+		for _, st := range stores {
+			storeMap[st.GetID()] = st
+		}
+	}
+
 	// Phase 5: 组装结果
 	results := make([]*sdkdto.WorkSetWithCoverDTO, 0, len(workSets))
 	for _, ws := range workSets {
@@ -229,12 +259,21 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 				if resources, ok := resourcesMap[coverWorkId]; ok {
 					for _, res := range resources {
 						if res.Enabled {
-							item.CoverResource = dto2.NewResourceDTO(res)
+							var workStore *entity2.PersistentStore
+							if res.WorkStoreID.Valid {
+								workStore = storeMap[res.WorkStoreID.Int64]
+							}
+							item.CoverResource = dto2.NewResourceFullDTO(res, workStore, nil)
 							break
 						}
 					}
 					if item.CoverResource == nil && len(resources) > 0 {
-						item.CoverResource = dto2.NewResourceDTO(resources[0])
+						res := resources[0]
+						var workStore *entity2.PersistentStore
+						if res.WorkStoreID.Valid {
+							workStore = storeMap[res.WorkStoreID.Int64]
+						}
+						item.CoverResource = dto2.NewResourceFullDTO(res, workStore, nil)
 					}
 				}
 			}

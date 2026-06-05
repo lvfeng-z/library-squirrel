@@ -1,5 +1,13 @@
 # Resource 接入 PersistentStore 重构计划
 
+> **实施状态**：阶段一和阶段二已于 2026-06-05 完成实施，阶段三（清理废弃字段）待后续执行。
+>
+> **实施偏差**（相对于原计划的差异）：
+> 1. taskManager 新增了 `StoreReader` 接口（计划中仅定义了 `StoreStreamer`），用于 resume 时查询 PersistentStore 记录和获取绝对路径
+> 2. work.Service 新增了调用方定义的 `StoreBatchReader` 和 `StoreDeleter` 接口（计划中仅笼统描述"通过接口注入"）
+> 3. backup 模块暂未完全改造为通过 PersistentStore 操作文件，当前对有 WorkStoreID 的资源仅做禁用（跳过文件移动）
+> 4. 前端 `WorkCardItem` 兼容新旧数据格式（`resources` 数组 vs `resource` 单对象），待 bindings 重新生成后清理
+
 ## 现状分析
 
 ### Resource 模块当前职责
@@ -29,7 +37,21 @@ Resource 模块本身（service/repository）**不操作磁盘文件**。文件 
 
 ## 重构目标
 
-将 Resource 的文件元数据和文件操作职责委托给 PersistentStore，使 Resource 实体仅保留业务字段。
+将 Resource 的文件元数据和文件操作职责委托给 PersistentStore，使 Resource 实体仅保留业务字段。所有文件 I/O 统一通过 PersistentStore 执行。
+
+### 核心设计决策
+
+| # | 决策点 | 结论 |
+|---|--------|------|
+| 1 | Store 写入方式 | **StoreStream 返回 StoreWriter**：单个方法创建 DB 记录（未完成）+ 文件 + 返回 `StoreWriter`。调用方通过 StoreWriter 写入，完成后调用 `writer.Complete()` 自动标记已完成，失败时调用 `writer.Abort()` 自动清理 |
+| 2 | 双写策略 | **不双写**。文件仅由 PersistentStore 写入，Resource 旧文件元数据字段不再写入 |
+| 3 | 前端获取文件路径 | SDK 新增 `ResourceFullDTO`（含 `workStore`/`thumbnailStore`），`WorkFullDTO.Resources` 从 `[]*ResourceDTO` 改为 `*ResourceFullDTO` |
+| 4 | backup 改造时机 | **阶段一同步改造**，backup 直接通过 PersistentStore 操作文件 |
+| 5 | SDK TaskResourceDTO | 精简为仅保留 `Size`、`Type`、`Format`、`SuggestName`、`Continuable`，移除 `URL`/`LocalPath`/`RemotePath`/`Completeness`/`ResourceID` |
+| 6 | PersistentStore 职责 | StoreWriter 封装完整的文件+DB 生命周期：创建、写入、完成确认、失败清理。调用方不直接操作文件句柄，不调用独立的 ConfirmStore/RemoveIncomplete |
+| 7 | PersistentStore.FileSize | **移除**。该字段仅有写入侧（Store 时写入），无读取侧业务逻辑。文件大小由 Resource.ResourceSize 承担 |
+| 8 | PersistentStore 状态 | 新增 `Status` 字段（0=未完成，1=完成）。HTTP 文件服务对未完成记录返回 404 |
+| 9 | 旧数据兼容 | **不考虑旧数据兼容**，不需要迁移工具 |
 
 ### 目标实体
 
@@ -42,433 +64,521 @@ type Resource struct {
     Enabled           bool           `gorm:"column:enabled" json:"enabled"`
     SuggestName       sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
     ResourceComplete  int            `gorm:"column:resource_complete" json:"resourceComplete"`
-    StoreID           sql.NullInt64  `gorm:"column:store_id;index" json:"storeId"`          // 新增：指向 persistent_store.id
+    WorkStoreID       sql.NullInt64  `gorm:"column:work_store_id;index" json:"workStoreId"`           // 作品资源文件
+    ThumbnailStoreID  sql.NullInt64  `gorm:"column:thumbnail_store_id" json:"thumbnailStoreId"`       // 封面/缩略图
+    // file_path、file_name、filename_extension、resource_size、workdir 废弃不再使用
 }
 ```
 
-`file_path`、`file_name`、`filename_extension`、`resource_size`、`workdir` 五个字段逐步废弃。
+```go
+// PersistentStore（重构后）
+type PersistentStore struct {
+    *model.BaseEntity
+    FilePath          sql.NullString `gorm:"column:file_path;uniqueIndex" json:"filePath"`
+    FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
+    FilenameExtension sql.NullString `gorm:"column:filename_extension" json:"filenameExtension"`
+    Status            int            `gorm:"column:status;default:0" json:"status"`          // 新增：0=未完成，1=完成
+    // FileSize 已移除
+}
+```
 
 ## 阶段策略
 
-采用**渐进式接入**，分三个阶段，每个阶段独立可发布：
+采用**渐进式接入**，分三个阶段，每个阶段独立可发布。不考虑旧数据兼容，不提供迁移工具。
 
 ---
 
-## 阶段一：新增 `store_id` 字段（双写模式）
+## 阶段一：Resource 接入 PersistentStore
 
-**目标**：Resource 新增 `store_id` 字段，新下载的资源同时写入 PersistentStore，旧数据不受影响。
+**目标**：Resource 新增 `work_store_id`/`thumbnail_store_id` 字段，新下载的资源通过 PersistentStore.StoreStream 写入文件，backup 改为通过 PersistentStore 操作，前端通过 ResourceFullDTO 展示。
 
-### 1.1 Entity 变更
+### 1.1 PersistentStore 实体变更
 
-`backend/base/model/entity/resource.go`：
-- 新增 `StoreID sql.NullInt64` 字段，`gorm:"column:store_id;index"`
-- 保留所有旧文件元数据字段（不删除）
+`backend/base/model/entity/persistent_store.go`：
+- 新增 `Status int` 字段，`gorm:"column:status;default:0"`，常量定义：`StoreStatusIncomplete = 0`、`StoreStatusComplete = 1`
+- 移除 `FileSize sql.NullInt64` 字段
 
-### 1.2 DTO 变更
+### 1.2 PersistentStore Service 新增方法
 
-- SDK `ResourceDTO` 新增 `StoreID *int64` 字段
-- `NewResourceDTO()` / `ToResourceEntity()` 同步更新
-
-### 1.3 Resource Service 新增方法
+#### StoreWriter 接口
 
 ```go
-// GetByStoreId 根据 store_id 获取资源
-GetByStoreId(ctx context.Context, storeId int64) (*entity.Resource, error)
+// StoreWriter 封装文件句柄和 DB 记录，实现完整的写入生命周期管理
+//
+// 生命周期：
+//   写入中 → Write() + Sync()
+//   暂停   → Close()          关闭文件句柄，保留未完成 DB 记录
+//   成功   → Complete()       同步+关闭+更新 DB 为已完成
+//   失败   → Abort()          关闭+删除文件+删除 DB 记录
+type StoreWriter interface {
+    io.Writer
+    Sync() error    // 同步文件到磁盘
+    Close() error   // 关闭文件句柄（暂停），DB 记录保持未完成
+    Complete() error // 完成写入：同步+关闭+更新 DB 状态为已完成
+    Abort() error   // 放弃写入：关闭+删除文件+删除 DB 记录
+}
 ```
 
-### 1.4 taskManager 修改（核心）
+PersistentStore 包内实现 `storeWriter` 结构体，封装 `*os.File`、`storeId` 和 Service 引用。
+
+#### StoreStream
+
+```go
+// StoreStream 创建 DB 记录（未完成）+ 目录 + 文件，返回 storeId 和 StoreWriter
+// 单个方法完成全部初始化，调用方通过 StoreWriter 写入数据
+// relPath: 相对于 {workDir}/store/ 的路径
+// fileName: 原始文件名
+func (s *Service) StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer StoreWriter, err error)
+```
+
+内部实现：
+- 校验 relPath
+- 创建 PersistentStore 记录（Status=未完成，FilePath=relPath，FileName=fileName，FilenameExtension=提取扩展名）
+- 确保目录存在（os.MkdirAll）
+- 创建文件（os.Create）
+- 返回 storeId 和封装了 `*os.File` 的 StoreWriter
+
+#### ResumeStream
+
+```go
+// ResumeStream 恢复存储，以 append 模式打开未完成文件，返回 StoreWriter
+// storeId: StoreStream 返回的未完成记录 ID
+func (s *Service) ResumeStream(ctx context.Context, storeId int64) (writer StoreWriter, err error)
+```
+
+内部实现：
+- 根据 storeId 查询记录，确认 Status=未完成
+- 获取绝对路径（GetAbsPath）
+- 以 append 模式打开文件（O_WRONLY|O_APPEND）
+- 返回 StoreWriter
+
+#### StoreWriter.Complete 实现
+
+- `file.Sync()` + `file.Close()`
+- 更新 DB 记录 Status 为已完成
+
+#### StoreWriter.Close 实现
+
+- `file.Sync()` + `file.Close()`
+- DB 记录保持不变（Status=未完成），供 ResumeStream 恢复
+
+#### StoreWriter.Abort 实现
+
+- `file.Close()`
+- 删除磁盘文件
+- 删除 DB 记录
+
+### 1.3 PersistentStore HTTP Handler 调整
+
+`backend/assetserver/store_handler.go`：
+- GetById 或根据路径查询时，检查 `Status`，仅 `StoreStatusComplete` 的记录返回文件
+- 未完成状态返回 404
+
+### 1.4 PersistentStore DTO 变更
+
+`backend/base/model/dto/persistent_store_dto.go`：
+- 移除 `FileSize` 字段
+- 新增 `Status int` 字段
+
+SDK `dto/persistent_store_dto.go` 同步更新。
+
+### 1.5 Resource 实体变更
+
+`backend/base/model/entity/resource.go`：
+- 新增 `WorkStoreID sql.NullInt64` 字段，`gorm:"column:work_store_id;index"`
+- 新增 `ThumbnailStoreID sql.NullInt64` 字段，`gorm:"column:thumbnail_store_id"`
+
+### 1.6 SDK TaskResourceDTO 精简
+
+`sdk/dto/handler_dto.go` 中的 `TaskResourceDTO`：
+
+```go
+// TaskResourceDTO 任务处理器资源 DTO（精简后）
+type TaskResourceDTO struct {
+    Size         int64  `json:"size"`         // 远程文件大小
+    Type         string `json:"type"`         // 资源类型
+    Format       string `json:"format"`       // 文件格式/扩展名（如 "jpg"、"mp4"）
+    SuggestName  string `json:"suggestName"`  // 插件建议文件名
+    Continuable  *bool  `json:"continuable"`  // 是否支持续传
+}
+```
+
+移除的字段：`ResourceID`、`URL`、`LocalPath`、`RemotePath`、`Completeness`。
+`Format` 保留，`resolveLocalPath()` 中用于拼接文件扩展名。
+
+### 1.7 SDK 新增 ResourceFullDTO
+
+`sdk/dto/resource_dto.go`：
+
+```go
+// ResourceFullDTO 资源完整 DTO（包含作品资源和封面的 PersistentStore 信息）
+type ResourceFullDTO struct {
+    ID               int64              `json:"id"`
+    WorkID           int64              `json:"workId"`
+    TaskID           int64              `json:"taskId"`
+    Enabled          bool               `json:"enabled"`
+    SuggestName      *string            `json:"suggestName"`
+    ResourceComplete int                `json:"resourceComplete"`
+    WorkStoreID      *int64             `json:"workStoreId"`
+    ThumbnailStoreID *int64             `json:"thumbnailStoreId"`
+    WorkStore        *PersistentStoreDTO `json:"workStore,omitempty"`        // 作品资源文件
+    ThumbnailStore   *PersistentStoreDTO `json:"thumbnailStore,omitempty"`   // 封面/缩略图
+    CreateTime       int64              `json:"createTime"`
+    UpdateTime       int64              `json:"updateTime"`
+}
+```
+
+SDK `dto/work_dto.go` 的 `WorkFullDTO`：
+- `Resources []*ResourceDTO` 改为 `Resource *ResourceFullDTO`（单对象，不再是数组）
+
+### 1.8 内部 ResourceDTO 转换调整
+
+`backend/base/model/dto/resource_dto.go`：
+- 新增 `NewResourceFullDTO(resource *entity.Resource, workStore, thumbnailStore *entity.PersistentStore) *sdkdto.ResourceFullDTO`
+- 旧的 `NewResourceDTO()` 保留用于插件侧等不需要 store 信息的场景
+
+### 1.9 taskManager 修改（核心）
 
 `backend/taskManager/model.go`：
 
-**当前流程**：
-1. `resolveLocalPath()` 计算路径 → `{workDir}/resource/{author}/{filename}`
-2. 写文件到该路径
-3. 创建 `Resource` 实体（含 file_path 等）
-4. `resourceSaver.Save()` 保存
+#### 新增接口定义（在 taskManager 包内）
 
-**新流程**：
-1. `resolveLocalPath()` 计算路径 → `resource/{author}/{filename}`（相对于 store 根目录）
-2. 文件写入 `{workDir}/store/resource/{author}/{filename}`（通过 PersistentStore.Service.Store）
-3. 创建 `Resource` 实体，设置 `StoreID` 指向返回的 persistent_store.id
-4. 同时保留旧字段写入（双写），兼容旧读取路径
-5. `resourceSaver.Save()` 保存
+```go
+// StoreStreamer 创建存储记录并返回 StoreWriter
+type StoreStreamer interface {
+    StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer persistentStore.StoreWriter, err error)
+    ResumeStream(ctx context.Context, storeId int64) (writer persistentStore.StoreWriter, err error)
+}
+```
 
-**taskManager 需要的依赖注入**：
-- 新增对 `persistentStore.Service` 的依赖
-- 通过接口注入，定义在 `taskManager` 包内
+注意：`ConfirmStore` 和 `RemoveIncomplete` 不再需要，完成确认和失败清理由 StoreWriter.Complete/Abort 处理。
 
-### 1.5 ResourceHandler（HTTP）兼容
+#### ManagedTask 新增字段
 
-`backend/assetserver/resource_handler.go` 保持不变。
+```go
+type ManagedTask struct {
+    // ... 现有字段 ...
+    storeStreamer StoreStreamer
+    workStoreId   int64           // StoreStream 返回的作品资源 store ID
+    storeWriter   StoreWriter     // 当前写入的 StoreWriter（替代 currentFile）
+}
+```
 
-当 `Resource.StoreID` 有效时，前端可通过 `buildStoreUrl()` 访问文件；当 `StoreID` 为空时，仍走旧的 `/resource/` 路由。前端可优先使用 `StoreID`，回退到旧路径。
+`currentFile *os.File` 被 `storeWriter StoreWriter` 替代。不再需要 `storeCleaner`，失败清理由 `storeWriter.Abort()` 处理。
 
-### 1.6 前端 DTO 变更
+#### run() 新流程（步骤 4-7 重写）
 
-`WorkFullDTO` 中的 `Resources` 自动包含 `storeId` 字段。前端显示资源时：
-- 如果 `storeId` 存在 → 使用 `buildStoreUrl(store.FilePath)` 构建 URL
-- 否则 → 使用 `buildResourceUrl(resource.filePath)` 构建 URL
+```
+当前流程：
+  4. resolveLocalPath() → absPath={workDir}/resource/{author}/{file}, relPath={author}/{file}
+  5. 构建 Resource{FilePath: relPath, ...} → resourceSaver.Save()
+  6. 更新 task.PendingResourceID
+  7. os.Create(localPath) → downloadLoop()
 
-### 1.7 恢复下载兼容
+新流程：
+  4. resolveLocalPath() → relPath=resource/{author}/{file}（相对于 store 根目录）
+  4.1 storeStreamer.StoreStream(ctx, relPath, fileName) → (workStoreId, storeWriter)
+  5. 构建 Resource{WorkStoreID: 0（暂空）, ResourceSize: startResp.Resource.Size, ...} → resourceSaver.Save()
+     注意：不再写入 FilePath/FileName/FilenameExtension/Workdir
+  6. 更新 task.PendingResourceID
+  7. downloadLoop()  → 使用 storeWriter 替代 os.Create 创建的 *os.File
+```
 
-`taskManager/model.go` 恢复下载时：
-- 如果 `Resource.StoreID` 有效 → 从 PersistentStore 获取文件路径
-- 否则 → 使用旧的 `resource.FilePath`（向后兼容）
+注意：Resource 先保存（获取 resourceId），WorkStoreID 在 StoreStream 后立即设置（DB 记录已创建）。
+
+#### downloadLoop() 修改
+
+downloadLoop 结构与当前基本一致，核心变化是 `*os.File` 替换为 `StoreWriter`：
+
+```go
+func (m *ManagedTask) downloadLoop() runResult {
+    buf := make([]byte, 32*1024)
+    defer m.currentReader.Close()
+    // 注意：不 defer storeWriter.Close/Abort，由各分支显式处理
+
+    for {
+        select {
+        case <-m.pauseCh:
+            m.storeWriter.Sync()
+            m.storeWriter.Close()      // 关闭文件句柄，DB 记录保持未完成
+            return runResultPaused
+
+        case <-m.ctx.Done():
+            m.storeWriter.Abort()       // 清理文件和 DB 记录
+            return m.fail(...)
+
+        default:
+            n, readErr := m.currentReader.Read(buf)
+            if n > 0 {
+                if _, writeErr := m.storeWriter.Write(buf[:n]); writeErr != nil {
+                    m.storeWriter.Abort()
+                    return m.fail(writeErr)
+                }
+                m.totalWritten += int64(n)
+                m.onProgress(m.totalWritten, ...)
+            }
+            if readErr == io.EOF {
+                m.storeWriter.Complete() // 同步+关闭+更新 DB 为已完成
+                m.clearPendingResourceID()
+                m.setState(TaskStateFinished)
+                return runResultDone
+            }
+            if readErr != nil {
+                // 处理暂停中的读取错误...
+            }
+        }
+    }
+}
+```
+
+与当前 downloadLoop 的差异对照：
+
+| 变化点 | 当前 | 新方案 |
+|--------|------|--------|
+| 文件创建 | `os.Create(localPath)` | `storeStreamer.StoreStream()` |
+| 文件写入 | `m.currentFile.Write(buf)` | `m.storeWriter.Write(buf)` |
+| 文件同步 | `m.currentFile.Sync()` | `m.storeWriter.Sync()` |
+| 暂停关闭 | `m.currentFile.Close()` | `m.storeWriter.Close()` |
+| 完成确认 | 无 | `m.storeWriter.Complete()` |
+| 失败清理 | 无 | `m.storeWriter.Abort()` |
+
+#### 暂停流程
+
+```
+用户点击暂停
+  → state = Pausing
+  → downloadLoop 检测到 pauseCh
+    → storeWriter.Sync()              // PersistentStore 的 StoreWriter 处理
+    → return runResultPaused
+```
+
+与当前暂停流程完全一致，仅将 `currentFile.Sync()` 替换为 `storeWriter.Sync()`。
+
+#### 恢复流程
+
+```
+用户点击恢复
+  → resumeFromPersistedState()
+  → resource = GetById(pendingResourceID)
+  → store = GetById(resource.WorkStoreID)          // 获取未完成记录
+  → 已写入字节数 = os.Stat(GetAbsPath(store)).Size()
+  → pluginExec.Resume(downloadedBytes)              // 获取续传 reader
+  → storeStreamer.ResumeStream(ctx, storeId)        // 获取 append 模式 StoreWriter
+  → downloadLoop()
+```
+
+#### resolveLocalPath() 修改
+
+```go
+// 无模板模式
+relativePath = filepath.Join("resource", fileName)
+absSavePath = ""  // 不再使用，文件由 StoreStream 内部创建
+
+// 模板模式
+relativePath = filepath.Join("resource", authorDir, fileName)
+absSavePath = ""  // 同上
+```
+
+返回值 `absSavePath` 不再使用，仅 `relativePath` 和 `fileName` 有效。
+
+#### resumeFromPersistedState() 修改
+
+```
+当前：localPath = filepath.Join(workDir, "resource", resource.FilePath.String)
+改为：通过 WorkStoreID 查询 PersistentStore 记录 → GetAbsPath 获取文件路径 → os.Stat 获取已下载字节数
+      然后调用 pluginExec.Resume(downloadedBytes) 获取续传 reader
+      最后调用 ResumeStream(ctx, storeId) 获取 append 模式 StoreWriter
+```
+
+由于不考虑旧数据兼容，resume 逻辑可简化为**必须通过 WorkStoreID 获取路径**，如果 WorkStoreID 无效则视为异常。
+
+#### Format 字段
+
+`resolveLocalPath()` 使用 `res.Format` 拼接文件扩展名，`Format` 已保留在 `TaskResourceDTO` 中，无需替代方案。
+
+### 1.10 依赖注入链更新
+
+**Manager 新增字段**：
+```go
+type Manager struct {
+    // ... 现有字段 ...
+    storeStreamer StoreStreamer
+}
+```
+
+**NewManager 新增参数**：
+```go
+func NewManager(
+    // ... 现有参数 ...
+    storeStreamer StoreStreamer,  // → PersistentStoreService
+) *Manager
+```
+
+**app.go 组装更新**：
+```go
+app.TaskManagerService = taskManager.NewManager(
+    // ... 现有参数 ...
+    app.PersistentStoreService,    // StoreStreamer
+)
+```
+
+注意：不再需要 StoreCleaner 参数，失败清理由 StoreWriter.Abort() 内部处理。
+
+### 1.11 backup 模块改造
+
+`backend/backup/resource_orchestrator.go`：
+
+#### BackupAndDisable 新流程
+
+```
+当前：查询资源 → 移动文件到备份目录 → 清空 Resource 文件字段 → 禁用资源 → 保存备份记录
+改为：查询资源 → 通过 WorkStoreID/ThumbnailStoreID 获取 PersistentStore 记录
+     → 移动文件到备份目录
+     → 调用 PersistentStore.Delete(workStoreId) 和 PersistentStore.Delete(thumbnailStoreId) 清理 DB 记录
+     → 清空 Resource.WorkStoreID 和 Resource.ThumbnailStoreID（不改变 Enabled 状态）
+     → 保存备份记录（记录 store 信息以便恢复）
+```
+
+注意：不再将 Resource 置为禁用，仅清空 store_id 字段。备份记录需要存储 PersistentStore 的信息（relPath、fileName、filenameExtension），以便恢复时重新注册。Backup 实体可能需要新增字段来存储这些信息。
+
+#### Restore 新流程
+
+```
+当前：查询备份记录 → 移动文件回原路径 → 恢复 Resource 文件字段 → 启用资源
+改为：查询备份记录 → 移动作品资源文件到 store 目录
+     → 调用 PersistentStore.StoreFromFile 注册文件 → 获取新 workStoreId
+     → 如有封面，同样移动封面文件 → 获取新 thumbnailStoreId
+     → 更新 Resource.WorkStoreID 和 ThumbnailStoreID（Resource 保持原 Enabled 状态不变）
+```
+
+#### backup 依赖注入更新
+
+`ResourceBackupOrchestrator` 需要新增对 `persistentStore.Service` 的依赖。
+
+### 1.12 search 模块 SQL 改造
+
+`backend/search/repository.go` 的 `QueryWorkPage`：
+
+resources 子查询新增 LEFT JOIN persistent_store 两次（workStore 和 thumbnailStore），构建 ResourceFullDTO：
+
+```sql
+(SELECT JSON_OBJECT(
+    'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
+    'enabled', IIF(r.enabled, json('true'), json('false')),
+    'suggestName', r.suggest_name, 'resourceComplete', r.resource_complete,
+    'workStoreId', r.work_store_id, 'thumbnailStoreId', r.thumbnail_store_id,
+    'workStore', CASE WHEN ws.id IS NOT NULL THEN JSON_OBJECT(
+        'id', ws.id, 'filePath', ws.file_path, 'fileName', ws.file_name,
+        'filenameExtension', ws.filename_extension, 'status', ws.status,
+        'createTime', ws.create_time, 'updateTime', ws.update_time)
+    END,
+    'thumbnailStore', CASE WHEN ts.id IS NOT NULL THEN JSON_OBJECT(
+        'id', ts.id, 'filePath', ts.file_path, 'fileName', ts.file_name,
+        'filenameExtension', ts.filename_extension, 'status', ts.status,
+        'createTime', ts.create_time, 'updateTime', ts.update_time)
+    END,
+    'createTime', r.create_time, 'updateTime', r.update_time)
+FROM resource r
+LEFT JOIN persistent_store ws ON r.work_store_id = ws.id
+LEFT JOIN persistent_store ts ON r.thumbnail_store_id = ts.id
+WHERE t1.id = r.work_id) AS resource
+```
+
+注意：从 `JSON_GROUP_ARRAY` 改为 `JSON_OBJECT`（单资源），WorkFullDTO.Resource 从数组变为单对象。
+
+### 1.13 work.Service DTO 组装改造
+
+`backend/work/service.go` 的 `GetFullWorkInfoByIds`：
+
+Phase 4（批量查询资源）需要扩展：
+- 查询 Resource 实体后，收集所有有效的 WorkStoreID 和 ThumbnailStoreID
+- 批量查询 PersistentStore 记录，构建 map
+- 调用 `NewResourceFullDTO(resource, workStore, thumbnailStore)` 组装
+- `fullDTO.Resources = []*ResourceDTO{...}` 改为 `fullDTO.Resource = resourceFullDTO`
+
+work.Service 需要新增对 `persistentStore.Service` 的依赖（通过接口注入）。
+
+### 1.14 前端变更
+
+- `WorkFullDTO.Resources` 从 `Resource[]` 改为单个 `ResourceFullDTO`（含 `workStore`/`thumbnailStore`）
+- `WorkFullDTO.ts` 构造函数中不再需要从 resources 数组中筛选活跃资源的逻辑
+- 资源展示组件（WorkCard、WorkSetCard、WorkDialog）：
+  - 图片/文件展示使用 `resource.workStore?.filePath` + `buildStoreUrl()`
+  - 封面/缩略图使用 `resource.thumbnailStore?.filePath` + `buildStoreUrl()`
+- `buildResourceUrl()` 保留但逐步废弃
 
 ### 修改文件清单
 
 | 文件 | 变更 |
 |------|------|
-| `backend/base/model/entity/resource.go` | 新增 `StoreID` 字段 |
-| SDK `dto/resource_dto.go` | 新增 `StoreID` 字段 |
-| `backend/base/model/dto/resource_dto.go` | 转换函数同步更新 |
-| `backend/persistentStore/service.go` | 新增 `StoreFromReader(ctx, relPath, fileName, reader) (int64, error)`（支持 io.Reader + 返回写入字节数） |
-| `backend/taskManager/model.go` | 下载流程改用 PersistentStore 写入，双写旧字段 |
-| `backend/taskManager/interfaces.go` | 新增 PersistentStore 接口定义 |
-| `app.go` | taskManager 初始化时注入 PersistentStoreService |
-| 前端资源展示组件 | 优先使用 storeId 构建 URL |
+| `backend/base/model/entity/persistent_store.go` | 新增 `Status` 字段，移除 `FileSize` |
+| `backend/base/model/entity/resource.go` | 新增 `WorkStoreID`、`ThumbnailStoreID` 字段 |
+| `backend/persistentStore/service.go` | 新增 `StoreStream`、`ResumeStream` 方法和 `StoreWriter` 接口（含 Complete/Close/Abort） |
+| `backend/persistentStore/dto.go` | 同步 Status/FileSize 变更 |
+| `backend/assetserver/store_handler.go` | 未完成记录返回 404 |
+| SDK `dto/persistent_store_dto.go` | 同步 Status/FileSize 变更 |
+| SDK `dto/handler_dto.go` | 精简 `TaskResourceDTO`（移除 URL/LocalPath/RemotePath/Completeness/ResourceID，保留 Format） |
+| SDK `dto/resource_dto.go` | 新增 `ResourceFullDTO`（workStore/thumbnailStore） |
+| SDK `dto/work_dto.go` | `WorkFullDTO.Resources` 改为 `Resource *ResourceFullDTO` |
+| `backend/base/model/dto/resource_dto.go` | 新增 `NewResourceFullDTO` |
+| `backend/base/model/dto/persistent_store_dto.go` | 同步 Status/FileSize 变更 |
+| `backend/taskManager/model.go` | 核心改造：run/downloadLoop/resume/resolveLocalPath，`*os.File` 替换为 `StoreWriter` |
+| `backend/taskManager/manager.go` | NewManager 新增 StoreStreamer 依赖参数 |
+| `app.go` | taskManager 和 backup 初始化时注入 PersistentStoreService |
+| `backend/backup/resource_orchestrator.go` | 改为通过 PersistentStore 操作文件 |
+| `backend/work/service.go` | GetFullWorkInfoByIds 组装 ResourceFullDTO |
+| `backend/search/repository.go` | SQL LEFT JOIN persistent_store |
+| `frontend/src/model/model/dto/ResourceFullDTO.ts` | 新增 ResourceFullDTO 类型 |
+| `frontend/src/components/common/WorkCard.vue` | 使用 workStore.filePath + buildStoreUrl |
+| `frontend/src/components/common/WorkSetCard.vue` | 同上 |
+| `frontend/src/components/dialogs/WorkDialog.vue` | 同上 |
+| `frontend/src/model/model/dto/WorkFullDTO.ts` | resources 数组逻辑改为单 ResourceFullDTO |
 
 ---
 
-## 阶段二：文件操作统一委托 PersistentStore
+## 阶段二：级联删除接入 PersistentStore
 
-**目标**：所有 Resource 相关的文件操作（备份、恢复、删除）通过 PersistentStore 执行。
+**目标**：删除作品时通过 PersistentStore 清理磁盘文件。
 
-### 2.1 backup 模块改造
-
-`backend/backup/resource_orchestrator.go`：
-- 备份：调用 `PersistentStore.Delete(storeId)` 删除文件和记录，由 backup 模块自行管理备份文件的复制
-- 恢复：调用 `PersistentStore.Store(relPath, fileName, reader)` 重新存入文件，更新 `Resource.StoreID`
-
-### 2.2 work 级联删除改造
+### 2.1 work 级联删除改造
 
 `backend/work/service.go`：
-- 删除作品时，查询关联 Resource 的 `StoreID`
-- 批量调用 `PersistentStore.Delete(storeId)` 清理文件
+- `DeleteWorkAndSurroundingData` 中，删除 Resource 记录前：
+  - 查询关联 Resource 的 `WorkStoreID` 和 `ThumbnailStoreID`
+  - 批量调用 `PersistentStore.Delete()` 清理文件和 DB 记录（包括 workStore 和 thumbnailStore）
 - 再删除 Resource DB 记录
-
-### 2.3 taskManager 恢复下载改造
-
-- 恢复时完全依赖 `StoreID` 获取文件信息，不再读取旧文件字段
 
 ---
 
-## 阶段三：废弃旧字段
+## 阶段三：清理废弃字段
 
-**目标**：移除 Resource 实体中的旧文件元数据字段。
+**目标**：移除 Resource 实体中的旧文件元数据字段，移除旧 HTTP handler。
 
-### 3.1 前置条件
-
-- 阶段一、二已稳定运行
-- 提供数据迁移工具：扫描所有 Resource，为缺少 `StoreID` 的记录在 PersistentStore 中注册文件，回填 `StoreID`
-
-### 3.2 清理工作
+### 3.1 清理工作
 
 - 移除 `Resource` 的 `file_path`、`file_name`、`filename_extension`、`resource_size`、`workdir` 字段
 - 移除 `assetserver/resource_handler.go`（统一使用 `/store/` 路由）
 - 移除前端 `buildResourceUrl()`，统一使用 `buildStoreUrl()`
-- 更新所有 Resource DTO 转换
+- 清理 SDK `ResourceDTO` 中对应的废弃字段
+- 清理所有 DTO 转换函数中的旧字段映射
 
 ---
 
 ## 风险与注意事项
 
-1. **双写期间数据一致性**：阶段一中 file_path 和 store_id 指向不同位置，需确保两条路径都可访问
-2. **大文件处理**：PersistentStore.Store 使用 io.Reader，taskManager 的下载流本身就是 Reader，无需额外内存开销
-3. **恢复下载**：阶段一中需要同时兼容两种路径模式，逻辑复杂度增加
-4. **备份/恢复流程**：阶段二需要重新设计备份策略，当前是文件移动，改为通过 PersistentStore 删除+重存
-5. **旧数据迁移**：阶段三需要提供迁移工具，扫描旧 Resource 文件注册到 PersistentStore
+1. **暂停期间的状态**：暂停时文件可能不完整，PersistentStore 记录保持未完成状态，不可清理。ResumeStream 通过 storeId 查找未完成记录并 append 模式打开文件
+2. **大文件处理**：StoreWriter 封装 *os.File，调用方使用 32KB 缓冲区分片写入，无额外内存开销
+3. **backup 原子性**：backup 先移动文件再调用 PersistentStore.Delete，如果 Delete 失败，文件已移走但 DB 记录仍在，需要日志告警
+4. **search SQL 性能**：LEFT JOIN persistent_store 增加查询复杂度，需关注大数据量下的性能表现
+5. **SDK 插件兼容**：TaskResourceDTO 精简后移除了 URL/LocalPath/RemotePath/Completeness/ResourceID，需同步更新所有插件的 Start/Resume 返回值
+6. **封面（thumbnailStore）机制**：Resource 实体新增 `thumbnail_store_id` 字段，但封面数据的来源和传递机制（插件提供）不在本计划中定义，留到后续计划（如 video-thumbnail-plan）实现。本次仅预留字段
+7. **StoreWriter.Complete 失败**：文件已完整写入但 DB 状态更新失败时，文件存在但记录为未完成。需要后续修复机制
+8. **StoreWriter.Abort 失败**：删除文件或 DB 记录失败时可能留下孤儿文件或记录，需要日志告警和后续修复机制
 
 ## 建议
 
 **推荐从阶段一开始实施**，理由：
-- 改动范围可控，核心变更集中在 taskManager 的下载流程
-- 不影响现有功能和旧数据
-- 为后续阶段奠定基础
-
-阶段二、三可视实际需要决定是否继续推进。
-
----
-
-## 新会话实现上下文
-
-以下信息供新会话理解现有代码模式，无需重新探索。
-
-### 关键代码位置
-
-| 文件 | 说明 |
-|------|------|
-| `backend/taskManager/model.go` | **阶段一核心修改文件**，936 行。包含 ManagedTask、run()、downloadLoop()、resolveLocalPath()、resumeFromPersistedState() |
-| `backend/taskManager/manager.go` | Manager 编排器，NewManager() 构造函数签名定义了所有依赖注入 |
-| `backend/backup/resource_orchestrator.go` | **阶段二核心修改文件**，215 行。BackupAndDisable / Restore 流程 |
-| `backend/work/service.go` | work.Service 的接口定义（ResourceReader / ResourceBatchReader / ResourceDeleter 等） |
-| `app.go`（项目根目录） | 依赖注入组装，taskManager 初始化在 `initAdvancedServices()` |
-
-### taskManager 接口定义（model.go:87-142）
-
-taskManager 包内定义了以下接口，由外部服务实现后注入：
-
-```go
-// ResourceSaver（model.go:113）— 由 resourceSaverAdapter 实现
-type ResourceSaver interface {
-    Save(ctx context.Context, resource *entity.Resource) (int64, error)
-    Update(ctx context.Context, resource *entity.Resource) error
-}
-
-// ResourceReader（model.go:126）— 由 ResourceService 直接实现
-type ResourceReader interface {
-    ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
-    GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
-    GetById(ctx context.Context, id int64) (*entity.Resource, error)
-}
-
-// ResourceBackupOrchestrator（model.go:137）— 由 backup.ResourceBackupOrchestrator 实现
-type ResourceBackupOrchestrator interface {
-    BackupAndDisable(ctx context.Context, workId int64, workDir string) []int64
-    Restore(ctx context.Context, resourceIds []int64, workDir string)
-}
-
-// WorkDirProvider（manager.go:31）— 由 SettingsService 实现
-type WorkDirProvider interface {
-    GetWorkDir() string
-}
-
-// FileNameFormatProvider（manager.go:36）— 由 SettingsService 实现
-type FileNameFormatProvider interface {
-    GetFileNameFormat() string
-}
-```
-
-### taskManager 依赖注入链
-
-**NewManager 签名**（manager.go:96）：
-```go
-func NewManager(
-    maxParallel int,
-    workDirProvider WorkDirProvider,        // → SettingsService
-    fileNameFormatProvider FileNameFormatProvider, // → SettingsService
-    repo Repository,                         // → task.TaskRepository
-    pusher TaskProgressPusher,               // → WailsTaskProgressPusher / NoopProgressPusher
-    pluginExecFactory func(string) (TaskExecutor, error), // → extension.NewTaskExecutor
-    workInfoSaver WorkInfoSaver,             // → WorkService
-    resourceSaver ResourceSaver,             // → resourceSaverAdapter（包装 ResourceService）
-    workChecker WorkChecker,                 // → WorkService
-    resourceReader ResourceReader,           // → ResourceService
-    backupOrchestrator ResourceBackupOrchestrator, // → backup.ResourceBackupOrchestrator
-) *Manager
-```
-
-**app.go 组装**（`initAdvancedServices()`，约 815-833 行）：
-```go
-resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
-resourceBackupOrchestrator := backup.NewResourceBackupOrchestrator(app.ResourceService, app.BackupService)
-
-app.TaskManagerService = taskManager.NewManager(
-    app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
-    app.SettingsService,              // WorkDirProvider + FileNameFormatProvider
-    app.SettingsService,
-    app.taskRepo,
-    taskManagerPusher,
-    pluginExecFactory,
-    app.WorkService,                   // WorkInfoSaver
-    resourceSaverAdapter,              // ResourceSaver（包装 ResourceService）
-    app.WorkService,                   // WorkChecker
-    app.ResourceService,              // ResourceReader
-    resourceBackupOrchestrator,        // ResourceBackupOrchestrator
-)
-```
-
-**阶段一需新增**：在 NewManager 参数中添加 `persistentStore.Service`（通过新接口 `StoreWriter` 注入），并在 app.go 传入 `app.PersistentStoreService`。
-
-### run() 核心流程（model.go:237-396）
-
-```
-run()
-  ├─ 0. 检查 workdir 是否已配置
-  ├─ 0.0 检查作品是否已存在（重复检测）
-  ├─ 0.1 替换确认后备份已有资源文件
-  │     └─ backupOrchestrator.BackupAndDisable(ctx, existingWorkId, workDir)
-  ├─ 1. pluginExec.CreateWorkInfo(ctx, task) → WorkResponse
-  ├─ 2. workInfoSaver.SaveWorkInfo(ctx, task, workResp) → workId
-  ├─ 3. pluginExec.Start(ctx, task, workId) → (reader, StartResponse, error)
-  ├─ 4. resolveLocalPath(startResp) → (absPath, relativePath, fileName)
-  │     └─ 返回:
-  │         absSavePath = filepath.Join(workDir, "resource", authorDir, fileName)
-  │         relativePath = filepath.Join(authorDir, fileName)
-  │         fileName = 文件名（含扩展名）
-  ├─ 4.1 os.MkdirAll(filepath.Dir(localPath), 0755)
-  ├─ 5. 创建 Resource 实体并保存 ★核心修改点★
-  │     └─ 当前: 直接构建 entity.Resource{FilePath: relativePath, ...}
-  │        调用 resourceSaver.Save(ctx, resource) → resourceId
-  ├─ 6. 更新 task.PendingResourceID
-  ├─ 7. os.Create(localPath) → file
-  └─ downloadLoop()
-```
-
-**阶段一修改点（步骤 4-7）**：
-- 步骤 4：`resolveLocalPath()` 的 `absSavePath` 改为指向 `{workDir}/store/resource/...`
-- 步骤 5：先通过 PersistentStore.Store 写入文件获取 storeId，再创建 Resource 并设置 StoreID
-- 步骤 7：**不再手动 os.Create**，由 PersistentStore.Store 内部处理文件创建和写入
-
-**关键问题**：当前 downloadLoop 需要持有 `*os.File` 进行流式写入，但 PersistentStore.Store 接受 `io.Reader`。需要新增一个 Store 方法支持返回文件路径但不写入内容（延迟写入），或者改为在 downloadLoop 完成后一次性 Store。推荐方案：
-
-```
-方案 A（推荐）: 新增 PersistentStore.Service.ReserveStore(ctx, relPath, fileName) (storeId int64, absPath string, error)
-  - 仅创建 DB 记录 + 确保目录存在，返回绝对路径供 taskManager 创建文件
-  - downloadLoop 正常使用 os.Create + Write
-  - 下载完成后调用 PersistentStore.Service.ConfirmStore(ctx, storeId, fileSize) 更新 fileSize
-
-方案 B: 在 downloadLoop 完成后调用 PersistentStore.StoreFromFile
-  - 需要先下载到临时路径，再 StoreFromFile 移入
-  - 多一次文件复制，不推荐
-```
-
-### resumeFromPersistedState() 流程（model.go:493-587）
-
-```
-resumeFromPersistedState()
-  ├─ 1. 通过 pending_resource_id 加载 Resource 实体
-  │     └─ resourceReader.GetById(ctx, task.PendingResourceID)
-  ├─ 2. 计算本地文件绝对路径
-  │     └─ 当前: localPath = filepath.Join(workDir, "resource", resource.FilePath.String)
-  │     阶段一兼容: 如果 resource.StoreID 有效 → 使用 PersistentStore 路径
-  │                 否则 → 使用旧路径
-  ├─ 3. os.Stat(localPath) → downloadedBytes
-  ├─ 4. 构建 TaskResParam 调用 pluginExec.Resume()
-  └─ 5. 根据 Continuable 标志选择追加/截断模式打开文件 → downloadLoop()
-```
-
-**阶段一修改点**：
-- 步骤 2 需要兼容 StoreID：如果 StoreID 有效，从 PersistentStore 获取绝对路径
-
-### resolveLocalPath() 实现（model.go:748-777）
-
-```go
-func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSavePath, relativePath, fileName string) {
-    // 模板为空时使用插件建议的文件名
-    if tpl == "" {
-        fileName = m.buildSuggestedFileName(res)
-        relativePath = fileName
-        absSavePath = filepath.Join(workDir, "resource", fileName)  // ★ 修改为 "store", "resource" ★
-        return
-    }
-    // 模板模式
-    relativePath = filepath.Join(authorDir, fileName)
-    absSavePath = filepath.Join(workDir, "resource", authorDir, fileName)  // ★ 同上 ★
-    return
-}
-```
-
-**阶段一修改**：将 `filepath.Join(workDir, "resource", ...)` 改为 `filepath.Join(workDir, "store", "resource", ...)`。对应的 relativePath 需加 `"resource/"` 前缀以匹配 PersistentStore 的 `resource` 已注册子目录。
-
-### backup 模块关键流程
-
-**BackupAndDisable**（resource_orchestrator.go:57-104）：
-- 查询 workId 的启用资源
-- 遍历资源：检查文件存在 → 移动到备份目录 → 禁用资源（清空 FilePath/FileName/FilenameExtension）
-- 记录原始路径到 Backup 实体的 `original_file_path` / `original_file_name` / `original_filename_extension`
-
-**Restore**（resource_orchestrator.go:109-146）：
-- 查询备份记录
-- 移动备份文件回原始路径（`{workDir}/resource/{originalFilePath}`）
-- 重新启用资源，恢复 FilePath/FileName/FilenameExtension
-
-**阶段一兼容**：backup 模块暂不改。备份的资源如果有 StoreID，备份后 StoreID 仍指向 PersistentStore 中已删除的记录。阶段二统一处理。
-
-### resourceSaverAdapter（app.go:890-897）
-
-```go
-type resourceSaverAdapter struct {
-    svc *resource.Service
-}
-
-func (a *resourceSaverAdapter) Save(ctx context.Context, resource *entity.Resource) (int64, error) {
-    if err := a.svc.Save(ctx, resource); err != nil {
-        return 0, err
-    }
-    return resource.GetID(), nil
-}
-
-func (a *resourceSaverAdapter) Update(ctx context.Context, resource *entity.Resource) error {
-    return a.svc.Update(ctx, resource)
-}
-```
-
-这个适配器将 ResourceService 适配为 taskManager 的 ResourceSaver 接口。阶段一不需要修改此适配器，Resource 实体的 Save/Update 逻辑不变。
-
-### ManagedTask 构造函数（model.go:212-234）
-
-```go
-func NewManagedTask(
-    taskId, parentId int64,
-    task *entity.Task,
-    pluginExec TaskExecutor,
-    workInfoSaver WorkInfoSaver,
-    resourceSaver ResourceSaver,
-    workDirProvider WorkDirProvider,
-    fileNameFormatProvider FileNameFormatProvider,
-    workChecker WorkChecker,
-    resourceReader ResourceReader,
-    backupOrchestrator ResourceBackupOrchestrator,
-    pusher TaskProgressPusher,
-) *ManagedTask
-```
-
-**阶段一需新增参数**：添加 `storeWriter StoreWriter` 接口参数。
-
-### Manager.newManagedTask 工厂（manager.go:846-927）
-
-```go
-func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
-    // ...
-    mt := NewManagedTask(t.GetID(), parentId, t, pluginExec,
-        m.workInfoSaver, m.resourceSaver, m.workDirProvider,
-        m.fileNameFormatProvider, m.workChecker, m.resourceReader,
-        m.backupOrchestrator, m.pusher)
-    // ...设置回调...
-    return mt
-}
-```
-
-Manager 持有所有依赖接口的字段，通过 newManagedTask 传递给每个 ManagedTask。新增 StoreWriter 需要在 Manager 结构体和 NewManager 构造函数中同步添加。
-
-### PersistentStore 已有接口
-
-```go
-// backend/persistentStore/service.go
-type Service interface {
-    Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error)
-    StoreFromFile(ctx context.Context, relPath string, fileName string, srcAbsPath string) (int64, error)
-    GetById(ctx context.Context, id int64) (*entity.PersistentStore, error)
-    GetByFilePath(ctx context.Context, filePath string) (*entity.PersistentStore, error)
-    Delete(ctx context.Context, id int64) error
-    DeleteByFilePath(ctx context.Context, filePath string) error
-    Exists(ctx context.Context, id int64) bool
-}
-
-// 已注册子目录包含 "resource"，所以资源路径 "resource/{author}/{file}" 可通过校验
-// GetAbsPath(store) 获取记录对应文件的绝对路径
-// ResolveStorePath(relPath) 解析相对路径为绝对路径（静态方法）
-```
-
-### work.Service 中与 Resource 相关的接口
-
-```go
-// ResourceReader（work/service.go:55）— 读取作品关联资源
-type ResourceReader interface {
-    ListByWorkId(ctx context.Context, workId int64) ([]*entity2.Resource, error)
-}
-
-// ResourceBatchReader（work/service.go:93）— 批量读取
-type ResourceBatchReader interface {
-    ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
-}
-
-// ResourceDeleter（work/service.go:193）— 级联删除
-type ResourceDeleter interface {
-    DeleteByWorkId(ctx context.Context, workId int64) error
-}
-```
-
-work.Service 在构造时接收这三个接口的实现。阶段二需要在 `DeleteWorkAndSurroundingData` 中增加 PersistentStore 文件清理逻辑。
-
+- 一次到位地完成核心改造（下载、backup、前端展示），不留中间态
+- 不考虑旧数据兼容，逻辑简单清晰
+- downloadLoop 结构不变，仅替换底层文件操作，改动风险可控
+- 阶段二、三改动较小，可快速跟进

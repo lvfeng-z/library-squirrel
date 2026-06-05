@@ -1,8 +1,12 @@
-import Resource from '../entity/Resource.ts'
 import RankedLocalAuthor from '../domain/RankedLocalAuthor.ts'
 import RankedSiteAuthor from '../domain/RankedSiteAuthor.ts'
 import WorkSetWithWorkDTO from './WorkSetWithWorkDTO.ts'
-import { WorkFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, ResourceDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
+import {
+  WorkFullDTO,
+  LocalAuthorDTO,
+  SiteAuthorFullDTO,
+  ResourceFullDTO
+} from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class WorkCardItem {
@@ -23,9 +27,9 @@ export default class WorkCardItem {
    */
   description: string | undefined | null
   /**
-   * 资源
+   * 资源（filePath 可能来自旧的 resource 表或新的 workStore）
    */
-  resource: Resource | undefined | null
+  resource: ResourceFullDTO | undefined | null
   /**
    * 本地作者列表
    */
@@ -48,7 +52,7 @@ export default class WorkCardItem {
       source.workList.forEach((workFullInfo) => {
         if (arrayNotEmpty(workFullInfo.localAuthors)) {
           workFullInfo.localAuthors.forEach((localAuthor) => {
-            if (notNullish(localAuthor.id)) {
+            if (notNullish(localAuthor?.id)) {
               if (!seenIds.has(localAuthor.id)) {
                 seenIds.add(localAuthor.id)
                 if (notNullish(this.localAuthors)) {
@@ -65,9 +69,10 @@ export default class WorkCardItem {
       source.workList.forEach((workFullInfo) => {
         if (arrayNotEmpty(workFullInfo.siteAuthors)) {
           workFullInfo.siteAuthors.forEach((siteAuthor) => {
-            if (notNullish(siteAuthor.id)) {
-              if (!seenIds.has(siteAuthor.id)) {
-                seenIds.add(siteAuthor.id)
+            const tempId = siteAuthor?.siteAuthor?.id
+            if (notNullish(tempId)) {
+              if (!seenIds.has(tempId)) {
+                seenIds.add(tempId)
                 if (notNullish(this.siteAuthors)) {
                   this.siteAuthors.push(siteAuthor)
                 }
@@ -76,24 +81,17 @@ export default class WorkCardItem {
           })
         }
       })
-    } else {
+    } else if (source instanceof WorkFullDTO) {
       // bindings WorkFullDTO：嵌套结构
       this.id = source.work?.id
       this.siteItemName = source.work?.siteWorkName
       this.nickName = source.work?.nickName
       this.description = source.work?.siteWorkDescription
-      this.resource = getActiveResource(source)
+      this.resource = source.resource
       this.localAuthors = toRankedLocalAuthors(source.localAuthors?.filter(notNullish))
       this.siteAuthors = toRankedSiteAuthors(source.siteAuthors?.filter(notNullish))
     }
   }
-}
-
-function getActiveResource(dto: WorkFullDTO): Resource | undefined {
-  if (!arrayNotEmpty(dto.resources)) return undefined
-  const active = dto.resources!.find(r => r?.enabled) ?? dto.resources![0]
-  if (!active) return undefined
-  return new Resource(active as any)
 }
 
 function toRankedLocalAuthors(dtos: (LocalAuthorDTO | null)[] | undefined | null): RankedLocalAuthor[] | undefined {

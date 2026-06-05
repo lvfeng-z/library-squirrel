@@ -18,6 +18,8 @@ const (
 	SourceTypePlugin = 1
 	// SourceTypeResource 资源备份
 	SourceTypeResource = 2
+	// SourceTypePersistentStore PersistentStore 备份
+	SourceTypePersistentStore = 3
 	// BackupRootDirName 备份根目录名
 	BackupRootDirName = "backup"
 )
@@ -216,6 +218,30 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, fil
 		return nil, fmt.Errorf("更新备份原始路径失败: %w", err)
 	}
 	return backup, nil
+}
+
+// MoveToBackup 将文件移动到备份目录并创建备份记录，供 PersistentStore 删除时调用
+// sourceId: PersistentStore 记录 ID
+// fileName: 文件名
+// absFilePath: 源文件绝对路径
+// originalFilePath: PersistentStore 中的相对路径（用于还原时确定目标位置）
+// originalFileName: 原始文件名
+// originalFilenameExtension: 原始扩展名
+// 返回备份记录 ID
+func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, fileName string, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
+	workDir := util.RootPath()
+	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, fileName, absFilePath, workDir)
+	if err != nil {
+		return 0, err
+	}
+	// 记录 PersistentStore 的原始路径信息，用于还原
+	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
+	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
+	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
+	if err := s.repo.Update(ctx, backup); err != nil {
+		return 0, fmt.Errorf("更新备份原始路径失败: %w", err)
+	}
+	return backup.GetID(), nil
 }
 
 // RestoreFile 从备份路径还原文件到目标路径

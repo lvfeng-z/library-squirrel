@@ -18,34 +18,9 @@ export default class Resource extends BaseEntity {
   state: number | undefined | null
 
   /**
-   * 文件路径
-   */
-  filePath: string | undefined | null
-
-  /**
-   * 文件名
-   */
-  fileName: string | undefined | null
-
-  /**
-   * 扩展名
-   */
-  filenameExtension: string | undefined | null
-
-  /**
    * 建议名称
    */
   suggestedName: string | undefined | null
-
-  /**
-   * 资源大小，单位：字节（Byte）
-   */
-  resourceSize: number | undefined | null
-
-  /**
-   * 工作目录
-   */
-  workdir: string | undefined | null
 
   /**
    * 资源是否保存完成
@@ -63,11 +38,7 @@ export default class Resource extends BaseEntity {
       this.workId = resource.workId
       this.taskId = resource.taskId
       this.state = resource.state
-      this.filePath = resource.filePath
-      this.fileName = resource.fileName
-      this.filenameExtension = resource.filenameExtension
       this.suggestedName = resource.suggestedName
-      this.workdir = resource.workdir
       this.resourceComplete = resource.resourceComplete
       this.importMethod = resource.importMethod
     }

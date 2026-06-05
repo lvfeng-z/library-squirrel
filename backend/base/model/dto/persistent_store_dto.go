@@ -16,7 +16,7 @@ func NewPersistentStoreDTO(store *entity.PersistentStore) *sdkdto.PersistentStor
 		FilePath:          util.NullStringToPointer(store.FilePath),
 		FileName:          util.NullStringToPointer(store.FileName),
 		FilenameExtension: util.NullStringToPointer(store.FilenameExtension),
-		FileSize:          util.NullInt64ToPointer(store.FileSize),
+		Status:            store.Status,
 		CreateTime:        store.GetCreateTime(),
 		UpdateTime:        store.GetUpdateTime(),
 	}
@@ -49,10 +49,7 @@ func ToPersistentStoreEntity(dto *sdkdto.PersistentStoreDTO) *entity.PersistentS
 		store.FilenameExtension.String = *dto.FilenameExtension
 	}
 
-	if dto.FileSize != nil {
-		store.FileSize.Valid = true
-		store.FileSize.Int64 = *dto.FileSize
-	}
+	store.Status = dto.Status
 
 	if dto.CreateTime != 0 {
 		store.SetCreateTime(dto.CreateTime)

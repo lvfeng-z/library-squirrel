@@ -1,6 +1,7 @@
 package assetserver
 
 import (
+	"context"
 	"mime"
 	"net/http"
 	"os"
@@ -12,17 +13,31 @@ import (
 	"go.uber.org/zap"
 )
 
+// StoreStatusChecker 检查存储记录的状态
+type StoreStatusChecker interface {
+	// IsCompleteByPath 根据相对路径检查记录是否已完成
+	IsCompleteByPath(ctx context.Context, relPath string) bool
+}
+
 // StoreFileHandler 从工作目录的 store 子目录提供文件服务的 HTTP Handler
 // URL 格式: /store/{relativePath}?params...
 // 文件存储路径: {workDir}/store/{relativePath}
 type StoreFileHandler struct {
-	mu      sync.RWMutex
-	workDir string
+	mu             sync.RWMutex
+	workDir        string
+	statusChecker  StoreStatusChecker
 }
 
 // NewStoreFileHandler 创建存储文件处理器
-func NewStoreFileHandler() *StoreFileHandler {
-	return &StoreFileHandler{}
+func NewStoreFileHandler(statusChecker StoreStatusChecker) *StoreFileHandler {
+	return &StoreFileHandler{
+		statusChecker: statusChecker,
+	}
+}
+
+// SetStatusChecker 设置状态检查器
+func (h *StoreFileHandler) SetStatusChecker(checker StoreStatusChecker) {
+	h.statusChecker = checker
 }
 
 // SetWorkDir 设置工作目录
@@ -59,6 +74,12 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	cleanedPath := filepath.Clean(relativePath)
 	if strings.Contains(cleanedPath, "..") {
+		http.NotFound(w, r)
+		return
+	}
+
+	// 检查 PersistentStore 记录状态，未完成记录返回 404
+	if h.statusChecker != nil && !h.statusChecker.IsCompleteByPath(r.Context(), cleanedPath) {
 		http.NotFound(w, r)
 		return
 	}

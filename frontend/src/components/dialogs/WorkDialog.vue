@@ -2,7 +2,7 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
-import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, ResourceDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
@@ -25,7 +25,7 @@ import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
-import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
+import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -102,10 +102,9 @@ const siteTagExchangeUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 // 站点标签的查询参数
 const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 
-// ===== 辅助：从 resources 数组中获取活跃资源 =====
-function getActiveResource(info: WorkFullDTO): ResourceDTO | null | undefined {
-  if (!info.resources?.length) return undefined
-  return info.resources.find(r => r?.enabled) ?? info.resources[0]
+// ===== 辅助：获取活跃资源的文件路径 =====
+function getResourceFilePath(info: WorkFullDTO): string {
+  return info.resource?.workStore?.filePath ?? ''
 }
 
 // ===== 辅助：将 BindingsLocalAuthorDTO 转换为 RankedLocalAuthor（适配 AuthorInfo 组件）=====
@@ -283,9 +282,9 @@ async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean)
 }
 // 处理图片点击事件
 function handlePictureClicked() {
-  const resource = getActiveResource(currentWorkFullInfo.value)
-  if (notNullish(resource?.filePath)) {
-    appLauncherOpenImage(resource!.filePath!)
+  const filePath = getResourceFilePath(currentWorkFullInfo.value)
+  if (notNullish(filePath)) {
+    appLauncherOpenImage(filePath)
   } else {
     ElMessage({
       type: 'error',
@@ -373,7 +372,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       <el-image
         class="work-dialog-image"
         fit="contain"
-        :src="buildResourceUrl(getActiveResource(currentWorkFullInfo)?.filePath ?? '')"
+        :src="buildStoreUrl(getResourceFilePath(currentWorkFullInfo))"
         @click="handlePictureClicked"
       >
         <template #error>

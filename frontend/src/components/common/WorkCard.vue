@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import WorkInfo from './WorkInfo.vue'
 import AuthorInfo from './AuthorInfo.vue'
-import { computed, Ref, ref, UnwrapRef } from 'vue'
+import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
-import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
+import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -25,9 +25,11 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
+const imagePath: Ref<string | null | undefined> = computed(() => {
+  return props.work.resource?.workStore?.filePath
+})
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
-// const caseWidth: Ref<string> = computed(() => (props.maxWidth === undefined ? 'auto' : String(props.maxWidth) + 'px')) // 展示框宽度
-const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px')) // 展示框高度
+const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
 // src的参数
 const srcParamStr: Ref<string> = computed(() => {
   const params: string[] = []
@@ -42,22 +44,18 @@ const srcParamStr: Ref<string> = computed(() => {
 let clickTimeout
 
 // 方法
-// 判断el-image使用什么模式
 function handleElImageFit() {
-  // console.log('imageHeight', event.target.naturalHeight)
-  // console.log('imageWidth', event.target.naturalWidth)
   imageFit.value = 'contain'
 }
-// 处理图片被点击
 function handleImageClicked() {
   clearTimeout(clickTimeout)
   clickTimeout = setTimeout(() => emit('imageClicked', props.work), 300)
 }
-// 处理图片双击事件
 function handlePictureClicked() {
   clearTimeout(clickTimeout)
-  if (notNullish(props.work.resource?.filePath)) {
-    appLauncherOpenImage(props.work.resource.filePath)
+  const filePath = props.work.resource?.workStore?.filePath
+  if (notNullish(filePath)) {
+    appLauncherOpenImage(filePath)
   } else {
     ElMessage({
       type: 'error',
@@ -79,7 +77,7 @@ function handlePictureClicked() {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="props.work.resource?.filePath ? buildResourceUrl(props.work.resource.filePath, srcParamStr) : ''"
+      :src="imagePath ? buildStoreUrl(imagePath, srcParamStr) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"
@@ -104,9 +102,8 @@ function handlePictureClicked() {
 .work-card {
   display: flex;
   flex-direction: column;
-  position: relative; /* 添加相对定位使绝对定位元素相对于此容器 */
+  position: relative;
 }
-
 .work-card-image {
   width: auto;
   margin-top: auto;
@@ -115,7 +112,6 @@ function handlePictureClicked() {
   max-height: calc(v-bind(caseHeight) - 100px);
   border-radius: 10px;
 }
-
 .work-card-error {
   display: flex;
   flex-direction: column;
@@ -124,12 +120,10 @@ function handlePictureClicked() {
   height: 200px;
   width: 100%;
 }
-
 .work-card-error-icon {
   color: var(--el-text-color-secondary);
   scale: 2;
 }
-
 .work-card-info {
   width: calc(100% - 10px);
   display: flex;
@@ -144,15 +138,13 @@ function handlePictureClicked() {
   padding-left: 4px;
   transition: background-color 0.3s;
 }
-
 .work-card-info:hover {
   background-color: var(--el-fill-color);
 }
-
 .work-card-checkmark-container {
   position: absolute;
-  top: 8px; /* 调整位置 */
-  right: 8px; /* 调整位置 */
+  top: 8px;
+  right: 8px;
 }
 .work-card-checkmark {
   width: 20px;
@@ -166,19 +158,16 @@ function handlePictureClicked() {
   cursor: pointer;
   pointer-events: visibleFill;
   transition: all 0.2s;
-  position: static; /* 移除绝对定位，使用父容器定位 */
+  position: static;
 }
-
 .work-card-checkmark:hover {
   border-color: var(--el-color-primary);
 }
-
 .work-card-icon-checked {
   color: var(--el-color-primary);
   font-size: 15px;
   transition: 0.3s;
 }
-
 .work-card-icon-checked:hover {
   scale: 1.2;
 }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, Ref, ref } from 'vue'
+import {onBeforeUnmount, onMounted, Ref, ref, toRaw} from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
   SelectItem,
-  WorkFullDTO as BindingsWorkFullDTO,
+  WorkFullDTO,
   WorkSetWithCoverDTO
 } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
@@ -19,7 +19,6 @@ import { CrudOperator } from '@renderer/constants/CrudOperator.js'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.js'
-import WorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.js'
 import { isNotBlank } from '@renderer/utils/StringUtil.js'
 import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
@@ -51,7 +50,7 @@ const currentWorkIndex = ref(0)
 // 查询参数类型
 const searchConditionType: Ref<SearchType[]> = ref([])
 // 作品分页
-const workPage: Ref<Page<WorkFullDTO>> = ref(new Page<WorkFullDTO>())
+const workPage: Ref<Page<WorkFullDTO>> = ref(newPage<WorkFullDTO>())
 // 搜索栏折叠面板开关
 const searchBarPanelState: Ref<boolean> = ref(false)
 // 加载更多按钮开关
@@ -144,7 +143,7 @@ async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
     conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
   }
 
-  const response = await apis.searchQueryWorkPage(newPage<BindingsWorkFullDTO>({ pageNumber: page.pageNumber, pageSize: 16 }), conditions)
+  const response = await apis.searchQueryWorkPage(newPage<WorkFullDTO>({ pageNumber: page.pageNumber, pageSize: 16 }), conditions)
   if (ApiUtil.check(response)) {
     return response.data
   } else {
@@ -198,8 +197,8 @@ async function queryWorkPage(next: boolean) {
     workList.value.length = 0
   }
   //查询
-  const tempPage = lodash.cloneDeep(workPage.value)
-  tempPage.data = undefined
+  const tempPage = toRaw(workPage.value)
+  tempPage.data = []
   const nextPage = await searchWork(tempPage)
 
   // 没有新数据时，不再增加页码
@@ -220,8 +219,8 @@ async function queryWorkSetPage(next: boolean) {
     workSetList.value.length = 0
   }
   // 查询
-  const tempPage = lodash.cloneDeep(workSetPage.value)
-  tempPage.data = undefined
+  const tempPage = toRaw(workSetPage.value)
+  tempPage.data = []
   const nextPage = await searchWorkSet(tempPage)
 
   // 没有新数据时，不再增加页码

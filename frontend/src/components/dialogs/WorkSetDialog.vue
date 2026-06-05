@@ -15,7 +15,6 @@ import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
 import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
-import CustomWorkFullDTO from '@renderer/model/model/dto/WorkFullDTO.ts'
 import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.ts'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { workSetListWorkSetWithWorkByIds } from '@renderer/apis/http/wrappers/workSet'
@@ -226,11 +225,11 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
   // 调用原始 API
   const response = await apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: page.pageSize, query: conditions })
   if (ApiUtil.check(response)) {
-    const resultPage = ApiUtil.data<Page<CustomWorkFullDTO>>(response)
+    const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
     if (isNullish(resultPage)) {
       return new Page<WorkCardItem>()
     }
-    resultPage.data = resultPage.data?.filter((origin): origin is CustomWorkFullDTO => notNullish(origin)).map((origin) => new CustomWorkFullDTO(origin))
+    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkFullDTO(origin))
     return resultPage as unknown as Page<WorkCardItem>
   }
   return new Page<WorkCardItem>()

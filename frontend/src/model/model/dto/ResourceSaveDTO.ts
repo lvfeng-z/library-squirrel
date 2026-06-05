@@ -17,7 +17,7 @@ export default class ResourceSaveDTO extends Resource {
   constructor(resource?: Resource) {
     super(resource)
     if (notNullish(resource)) {
-      lodash.assign(this, lodash.pick(resource, ['fullSavePath', 'resourceStream', 'resourceSize']))
+      lodash.assign(this, lodash.pick(resource, ['fullSavePath', 'resourceStream']))
     }
   }
 }

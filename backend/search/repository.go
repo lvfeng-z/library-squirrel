@@ -214,13 +214,27 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 		SELECT t1.id, t1.create_time, t1.update_time, t1.site_id, t1.site_work_id, t1.site_work_name,
 				t1.site_author_id, t1.site_work_description, t1.site_upload_time, t1.site_update_time,
 				t1.nick_name, t1.local_author_id, t1.last_view,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+			(SELECT JSON_OBJECT(
 				'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
 				'enabled', IIF(r.enabled, json('true'), json('false')),
-				'filePath', r.file_path, 'fileName', r.file_name, 'filenameExtension', r.filename_extension,
-				'suggestName', r.suggest_name, 'resourceSize', r.resource_size, 'workdir', r.workdir,
-				'resourceComplete', r.resource_complete, 'createTime', r.create_time, 'updateTime', r.update_time))
-			FROM resource r WHERE t1.id = r.work_id) AS resources,
+				'suggestName', r.suggest_name, 'resourceComplete', r.resource_complete,
+				'workStoreId', r.work_store_id, 'thumbnailStoreId', r.thumbnail_store_id,
+				'workStore', CASE WHEN ws.id IS NOT NULL THEN JSON_OBJECT(
+					'id', ws.id, 'filePath', ws.file_path, 'fileName', ws.file_name,
+					'filenameExtension', ws.filename_extension, 'status', ws.status,
+					'createTime', ws.create_time, 'updateTime', ws.update_time)
+				END,
+				'thumbnailStore', CASE WHEN ts.id IS NOT NULL THEN JSON_OBJECT(
+					'id', ts.id, 'filePath', ts.file_path, 'fileName', ts.file_name,
+					'filenameExtension', ts.filename_extension, 'status', ts.status,
+					'createTime', ts.create_time, 'updateTime', ts.update_time)
+				END,
+				'createTime', r.create_time, 'updateTime', r.update_time)
+			FROM resource r
+			LEFT JOIN persistent_store ws ON r.work_store_id = ws.id
+			LEFT JOIN persistent_store ts ON r.thumbnail_store_id = ts.id
+			WHERE t1.id = r.work_id AND r.enabled = 1
+			LIMIT 1) AS resource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
 				'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,
 				'description', lt.description, 'lastUse', lt.last_use,
@@ -286,26 +300,26 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	var results []*sdkdto.WorkFullDTO
 	for rows.Next() {
 		work := entity2.NewWork()
-		var resources, localTags, siteTags, localAuthors, siteAuthors sql.NullString
+		var resource, localTags, siteTags, localAuthors, siteAuthors sql.NullString
 
 		if err := rows.Scan(
 			&work.ID, &work.CreateTime, &work.UpdateTime, &work.SiteID, &work.SiteWorkID, &work.SiteWorkName,
 			&work.SiteAuthorID, &work.SiteWorkDescription, &work.SiteUploadTime, &work.SiteUpdateTime,
 			&work.NickName, &work.LocalAuthorID, &work.LastView,
-			&resources, &localTags, &siteTags, &localAuthors, &siteAuthors,
+			&resource, &localTags, &siteTags, &localAuthors, &siteAuthors,
 		); err != nil {
 			return nil, 0, err
 		}
 
 		dto := dto2.NewWorkFullDTO(work)
 
-		// 解析 resources
-		if resources.Valid && resources.String != "" && resources.String != "null" {
-			var resList []*sdkdto.ResourceDTO
-			if json.Unmarshal([]byte(resources.String), &resList) == nil {
-				dto.Resources = resList
+			// 解析 resource
+			if resource.Valid && resource.String != "" && resource.String != "null" {
+				var resFull *sdkdto.ResourceFullDTO
+				if json.Unmarshal([]byte(resource.String), &resFull) == nil {
+					dto.Resource = resFull
+				}
 			}
-		}
 
 		// 解析 localTags
 		if localTags.Valid && localTags.String != "" && localTags.String != "null" {

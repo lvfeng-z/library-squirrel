@@ -27,14 +27,6 @@ func (h *Handler) Save(ctx context.Context, resource *sdkdto.ResourceDTO) *model
 		BaseEntity: &model.BaseEntity{},
 		WorkID:     resource.WorkID,
 	}
-	if resource.FilePath != nil {
-		domainResource.FilePath.Valid = true
-		domainResource.FilePath.String = *resource.FilePath
-	}
-	if resource.FileName != nil {
-		domainResource.FileName.Valid = true
-		domainResource.FileName.String = *resource.FileName
-	}
 
 	if err := h.svc.Save(ctx, domainResource); err != nil {
 		return model.HandleError[int64](err)
@@ -54,14 +46,6 @@ func (h *Handler) Update(ctx context.Context, resource *sdkdto.ResourceDTO) *mod
 	}
 	domainResource.SetID(resource.ID)
 	domainResource.WorkID = resource.WorkID
-	if resource.FilePath != nil {
-		domainResource.FilePath.Valid = true
-		domainResource.FilePath.String = *resource.FilePath
-	}
-	if resource.FileName != nil {
-		domainResource.FileName.Valid = true
-		domainResource.FileName.String = *resource.FileName
-	}
 
 	if err := h.svc.Update(ctx, domainResource); err != nil {
 		return model.HandleError[any](err)
@@ -96,12 +80,4 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 // DeleteByWorkId 根据作品ID删除资源
 func (h *Handler) DeleteByWorkId(ctx context.Context, workId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.DeleteByWorkId(ctx, workId))
-}
-
-// ResourceDTO 资源数据传输对象（简化版，仅用于 Save/Update）
-type ResourceDTO struct {
-	ID       int64   `json:"id"`
-	WorkID   int64   `json:"workId"`
-	FilePath *string `json:"filePath"`
-	FileName *string `json:"fileName"`
 }

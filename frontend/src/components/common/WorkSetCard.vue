@@ -5,7 +5,7 @@ import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
-import { buildResourceUrl } from '@renderer/utils/UrlUtil.ts'
+import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 
 // props
 const props = defineProps<{
@@ -25,7 +25,7 @@ const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref(
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
 // 封面资源路径，如果无效则为空字符串，让el-image触发error插槽显示默认图片
 const coverFilePath: Ref<string> = computed(() => {
-  const filePath = props.workSet.coverResource?.filePath
+  const filePath = props.workSet.coverResource?.workStore?.filePath
   return filePath ?? ''
 })
 // src的参数
@@ -58,8 +58,8 @@ function handleImageClicked() {
 // 处理图片双击事件
 function handlePictureClicked() {
   clearTimeout(clickTimeout)
-  if (notNullish(props.workSet.coverResource?.filePath)) {
-    appLauncherOpenImage(props.workSet.coverResource.filePath)
+  if (notNullish(props.workSet.coverResource?.workStore?.filePath)) {
+    appLauncherOpenImage(props.workSet.coverResource.workStore!.filePath!)
   } else {
     ElMessage({
       type: 'error',
@@ -85,7 +85,7 @@ function getWorkSetName(): string {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="coverFilePath ? buildResourceUrl(coverFilePath, srcParamStr) : ''"
+      :src="coverFilePath ? buildStoreUrl(coverFilePath, srcParamStr) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

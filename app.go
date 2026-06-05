@@ -100,7 +100,6 @@ type App struct {
 
 	// HTTP 路由
 	AssetRouter     *assetserver.Router
-	HttpFileHandler *assetserver.ResourceHandler
 	StoreFileHandler *assetserver.StoreFileHandler
 
 	// 任务URL监听器
@@ -134,7 +133,6 @@ type App struct {
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
-	PersistentStoreHandler       *persistentStore.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -174,8 +172,7 @@ func NewApp() (*App, error) {
 
 	// 3.5 初始化静态资源服务
 	app.StaticResourceService = extension2.NewStaticResourceService()
-	app.HttpFileHandler = assetserver.NewResourceHandler()
-	app.StoreFileHandler = assetserver.NewStoreFileHandler()
+	app.StoreFileHandler = assetserver.NewStoreFileHandler(nil) // statusChecker 在 initBaseServices 后设置
 
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
@@ -260,7 +257,6 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 func (app *App) CreateAssetHandler(frontendAssets fs.FS) http.Handler {
 	router := assetserver.NewRouter(frontendAssets)
 	router.Handle("/plugin/", app.StaticResourceService, 0)
-	router.Handle("/resource/", app.HttpFileHandler, 0)
 	router.Handle("/store/", app.StoreFileHandler, 0)
 	app.AssetRouter = router
 	return router
@@ -677,9 +673,14 @@ func (app *App) initBaseServices() {
 	resourceRepo := resource.NewRepository(app.db)
 	app.ResourceService = resource.NewService(resourceRepo)
 
+
+		// backup 服务
+		backupRepo := backup.NewRepository(app.db)
+		app.BackupService = backup.NewService(backupRepo)
 	// persistentStore 服务
 	psRepo := persistentStore.NewRepository(app.db)
-	app.PersistentStoreService = persistentStore.NewService(psRepo)
+	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService)
+	app.StoreFileHandler.SetStatusChecker(app.PersistentStoreService)
 
 	// reWorkAuthor 服务
 	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
@@ -694,16 +695,11 @@ func (app *App) initBaseServices() {
 	app.SettingsService = settings.NewService(settingsFilePath)
 
 	// 设置工作目录
-	app.HttpFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
-	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
+		app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
 	// secureStorage 服务
 	secureStorageRepo := secureStorage.NewRepository(app.db)
 	app.SecureStorageService = secureStorage.NewService(secureStorageRepo)
-
-	// backup 服务
-	backupRepo := backup.NewRepository(app.db)
-	app.BackupService = backup.NewService(backupRepo)
 
 	// appLauncher 服务
 	app.AppLauncherService = appLauncher.NewService(app.SettingsService)
@@ -741,9 +737,11 @@ func (app *App) initAdvancedServices() error {
 		app.LocalAuthorService,
 		app.ReWorkAuthorService,
 		app.ResourceService,
+		app.PersistentStoreService,
 		app.ReWorkTagService,
 		app.LocalTagService,
 		app.LocalAuthorService,
+		app.PersistentStoreService,
 	)
 
 	// workSet 服务
@@ -757,6 +755,7 @@ func (app *App) initAdvancedServices() error {
 		reWorkWorkSetRepo,
 		app.WorkService,
 		app.ResourceService,
+		app.PersistentStoreService, // StoreBatchReader
 		app.LocalTagService,
 		app.SiteTagService,
 		app.LocalAuthorService,
@@ -816,7 +815,7 @@ func (app *App) initAdvancedServices() error {
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
 	// 创建资源备份编排器
-	resourceBackupOrchestrator := backup.NewResourceBackupOrchestrator(app.ResourceService, app.BackupService)
+	resourceBackupOrchestrator := backup.NewResourceBackupOrchestrator(app.ResourceService)
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -830,6 +829,8 @@ func (app *App) initAdvancedServices() error {
 		app.WorkService,             // 实现 WorkChecker 接口
 		app.ResourceService,         // 实现 ResourceReader 接口
 		resourceBackupOrchestrator,  // 实现 ResourceBackupOrchestrator 接口
+		app.PersistentStoreService,  // 实现 StoreStreamer 接口
+		app.PersistentStoreService,  // 实现 StoreReader 接口
 	)
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
@@ -923,8 +924,7 @@ func (app *App) initHandlers() {
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
-	app.PersistentStoreHandler = persistentStore.NewHandler(app.PersistentStoreService)
-}
+	}
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
 func (app *App) onDomReady() {
