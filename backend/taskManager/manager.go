@@ -86,7 +86,8 @@ type Manager struct {
 	// 资源查询（查找已有作品的资源文件）
 	resourceReader ResourceReader
 	// 资源备份编排器
-	backupOrchestrator ResourceBackupOrchestrator
+	storeBackupOrchestrator StoreBackupOrchestrator
+	resourceUpdater         ResourceUpdater
 	// 存储流创建器（PersistentStore.StoreStream/ResumeStream）
 	storeStreamer StoreStreamer
 	// 存储记录读取器（PersistentStore.GetById/GetAbsPath）
@@ -97,7 +98,7 @@ type Manager struct {
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, backupOrchestrator ResourceBackupOrchestrator, storeStreamer StoreStreamer, storeReader StoreReader) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, storeStreamer StoreStreamer, storeReader StoreReader) *Manager {
 	m := &Manager{
 		taskMap:                  make(map[int64]*ManagedTask),
 		parentMap:                make(map[int64]*ParentTask),
@@ -119,7 +120,8 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		resourceSaver:            resourceSaver,
 		workChecker:              workChecker,
 		resourceReader:           resourceReader,
-		backupOrchestrator:       backupOrchestrator,
+		storeBackupOrchestrator: storeBackupOrchestrator,
+		resourceUpdater:         resourceUpdater,
 		storeStreamer:            storeStreamer,
 		storeReader:              storeReader,
 		waitingForInputMap:       make(map[int64]*ManagedTask),
@@ -150,21 +152,38 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 	}
 
 	// 2. 构建父子关系
-	parentTaskName := ""
+	// 确定实际的父任务：叶子任务使用其真实父任务（Pid），否则使用 taskId 自身
+	var rootTask *domain.Task
 	for _, t := range tasks {
-		if t.ID == taskId && t.TaskName.Valid {
-			parentTaskName = t.TaskName.String
+		if t.ID == taskId {
+			rootTask = t
 			break
 		}
 	}
-	parentTask := NewParentTask(taskId, parentTaskName)
+
+	isLeaf := rootTask != nil && rootTask.Pid.Valid && rootTask.Pid.Int64 > 0 &&
+		(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+
+	actualParentId := taskId
+	parentTaskName := ""
+	if isLeaf {
+		actualParentId = rootTask.Pid.Int64
+		// 从查询结果中获取真实父任务的名称
+		for _, t := range tasks {
+			if t.ID == actualParentId && t.TaskName.Valid {
+				parentTaskName = t.TaskName.String
+				break
+			}
+		}
+	} else if rootTask != nil && rootTask.TaskName.Valid {
+		parentTaskName = rootTask.TaskName.String
+	}
+
+	parentTask := NewParentTask(actualParentId, parentTaskName)
 	for _, t := range tasks {
 		var child *ManagedTask
-		if t.Pid.Valid && t.Pid.Int64 == taskId {
+		if t.Pid.Valid && t.Pid.Int64 == actualParentId {
 			// 直接子任务
-			child = m.buildOrReuseChild(t, skipTerminal)
-		} else if t.ID == taskId && (!t.HasChild.Valid || !t.HasChild.Bool) {
-			// 单个任务（非集合），自身作为子任务执行
 			child = m.buildOrReuseChild(t, skipTerminal)
 		}
 		if child != nil {
@@ -175,18 +194,18 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 	// 检查是否有需要处理的子任务（仅 skipTerminal=true 时可能出现所有子任务已终态的情况）
 	if len(parentTask.GetChildren()) == 0 {
 		// 所有子任务已终态，从 DB 数据计算父任务最终状态
-		finalState := m.computeParentFinalState(tasks, taskId)
+		finalState := m.computeParentFinalState(tasks, actualParentId)
 		if isStableState(finalState) {
-			m.addToPending(taskId, task.TaskStatusEnum(finalState), "")
+			m.addToPending(actualParentId, task.TaskStatusEnum(finalState), "")
 		}
-		m.pusher.PushParentStateChange(taskId, parentTaskName, finalState)
-		m.pusher.PushParentTaskRemove([]int64{taskId})
+		m.pusher.PushParentStateChange(actualParentId, parentTaskName, finalState)
+		m.pusher.PushParentTaskRemove([]int64{actualParentId})
 		return nil
 	}
 
 	// 保存父任务
 	m.mu.Lock()
-	m.parentMap[taskId] = parentTask
+	m.parentMap[actualParentId] = parentTask
 	m.mu.Unlock()
 
 	// 3. 批量预检重复（在信号量派发前完成，弹窗一次性展示）
@@ -865,7 +884,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.backupOrchestrator, m.pusher, m.storeStreamer, m.storeReader)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.storeBackupOrchestrator, m.resourceUpdater, m.pusher, m.storeStreamer, m.storeReader)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
