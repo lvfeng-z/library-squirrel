@@ -149,13 +149,12 @@ func (w *storeWriter) Abort() error {
 type FileMover interface {
 	// MoveToBackup 将文件移动到备份目录并创建备份记录
 	// sourceId: PersistentStore 记录 ID
-	// fileName: 文件名
 	// absFilePath: 源文件绝对路径
 	// originalFilePath: PersistentStore 中的相对路径（用于还原）
 	// originalFileName: 原始文件名
 	// originalFilenameExtension: 原始扩展名
 	// 返回备份记录 ID
-	MoveToBackup(ctx context.Context, sourceId int64, fileName string, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
+	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
 // Service 文件存取服务
@@ -434,16 +433,15 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 
 		// 2. 对已完成的文件进行移动备份（可选）
 		if backup && record.Status == domain.StoreStatusComplete && s.fileMover != nil {
-			fileName := ""
+			originalFileName := ""
 			if record.FileName.Valid {
-				fileName = record.FileName.String
+				originalFileName = record.FileName.String
 			}
-			originalFileName := fileName
 			originalFilenameExtension := ""
 			if record.FilenameExtension.Valid {
 				originalFilenameExtension = record.FilenameExtension.String
 			}
-			backupId, err = s.fileMover.MoveToBackup(ctx, id, fileName, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+			backupId, err = s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
 			if err != nil {
 				logger.Log.Warn("备份文件失败，降级为直接删除", zap.String("path", absPath), zap.Error(err))
 				_ = os.Remove(absPath)

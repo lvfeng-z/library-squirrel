@@ -20,8 +20,8 @@ import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models
 /**
  * Create 创建备份
  */
-export function Create(sourceType: number, sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<dto$0.BackupDTO | null> | null> {
-    return $Call.ByID(3800164609, sourceType, sourceId, fileName, sourcePath, workDir).then(($result: any) => {
+export function Create(sourceType: number, sourceId: number, sourcePath: string): $CancellablePromise<model$0.ApiResponse<dto$0.BackupDTO | null> | null> {
+    return $Call.ByID(3800164609, sourceType, sourceId, sourcePath).then(($result: any) => {
         return $$createType3($result);
     });
 }
@@ -29,8 +29,8 @@ export function Create(sourceType: number, sourceId: number, fileName: string, s
 /**
  * CreatePluginBackup 创建插件备份
  */
-export function CreatePluginBackup(sourceId: number, fileName: string, sourcePath: string, workDir: string): $CancellablePromise<model$0.ApiResponse<dto$0.BackupDTO | null> | null> {
-    return $Call.ByID(234106224, sourceId, fileName, sourcePath, workDir).then(($result: any) => {
+export function CreatePluginBackup(sourceId: number, sourcePath: string): $CancellablePromise<model$0.ApiResponse<dto$0.BackupDTO | null> | null> {
+    return $Call.ByID(234106224, sourceId, sourcePath).then(($result: any) => {
         return $$createType3($result);
     });
 }

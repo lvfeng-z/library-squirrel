@@ -62,15 +62,9 @@ type Repository interface {
 // BackupProvider 备份提供者接口（由 plugin service 定义需要的备份能力）
 type BackupProvider interface {
 	// CreatePluginBackup 创建插件备份
-	CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*entity2.Backup, error)
+	CreatePluginBackup(ctx context.Context, sourceId int64, sourcePath string) (*entity2.Backup, error)
 	// GetPluginBackup 获取插件备份
 	GetPluginBackup(ctx context.Context, sourceId int64) (*entity2.Backup, error)
-}
-
-// WorkDirProvider 工作目录提供者接口
-type WorkDirProvider interface {
-	// GetWorkDir 获取工作目录
-	GetWorkDir() string
 }
 
 // PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、Slot 和启动子进程
@@ -83,7 +77,6 @@ type PluginActivator interface {
 type Service struct {
 	repo            Repository
 	backupProvider  BackupProvider
-	workDirProvider WorkDirProvider
 	activator       PluginActivator
 	onUnload        func(pluginPublicId string)
 
@@ -93,11 +86,10 @@ type Service struct {
 }
 
 // NewService 创建插件服务
-func NewService(repo Repository, backupProvider BackupProvider, workDirProvider WorkDirProvider) *Service {
+func NewService(repo Repository, backupProvider BackupProvider) *Service {
 	return &Service{
-		repo:            repo,
-		backupProvider:  backupProvider,
-		workDirProvider: workDirProvider,
+		repo:           repo,
+		backupProvider: backupProvider,
 	}
 }
 
@@ -392,12 +384,8 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		}
 	}
 
-	// 创建备份（备份存储在workdir）
-	workDir := s.getWorkDir()
-	if workDir == "" {
-		workDir = "."
-	}
-	backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, filepath.Base(installDTO.PackagePath), installDTO.PackagePath, workDir)
+		// 创建备份
+		backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, installDTO.PackagePath)
 	if err != nil {
 		return nil, err
 	}
@@ -564,16 +552,6 @@ func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
 
 	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
 	return s.repo.Update(ctx, plugin)
-}
-
-// getWorkDir 获取用户数据目录，用于备份等用户数据存储
-func (s *Service) getWorkDir() string {
-	if s.workDirProvider != nil {
-		if wd := s.workDirProvider.GetWorkDir(); wd != "" {
-			return wd
-		}
-	}
-	return util.RootPath()
 }
 
 // getAppRoot 获取应用根目录，用于插件安装、卸载等程序文件操作

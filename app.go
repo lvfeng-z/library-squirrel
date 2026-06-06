@@ -676,7 +676,9 @@ func (app *App) initBaseServices() {
 
 		// backup 服务
 		backupRepo := backup.NewRepository(app.db)
-		app.BackupService = backup.NewService(backupRepo)
+		app.BackupService = backup.NewService(backupRepo, func() string {
+			return app.SettingsService.GetWorkDir()
+		})
 	// persistentStore 服务
 	psRepo := persistentStore.NewRepository(app.db)
 	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService, func() string {
@@ -775,7 +777,7 @@ func (app *App) initAdvancedServices() error {
 	// plugin 服务
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
-	app.PluginService = plugin.NewService(pluginRepo, app.BackupService, app.SettingsService)
+	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 	app.PluginService.SetActivator(app)
 	app.PluginService.SetOnUnload(func(pluginPublicId string) {
 		app.pluginLoader.UnloadPlugin(pluginPublicId)

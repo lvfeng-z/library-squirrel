@@ -42,19 +42,28 @@ type Repository interface {
 
 // Service 备份服务
 type Service struct {
-	repo Repository
+	repo          Repository
+	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
 // NewService 创建备份服务
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, workDirGetter func() string) *Service {
+	return &Service{repo: repo, workDirGetter: workDirGetter}
+}
+
+// getWorkDir 获取当前 workDir（每次从设置管理器读取最新值）
+func (s *Service) getWorkDir() string {
+	return s.workDirGetter()
 }
 
 // CreateBackup 创建备份，将源文件复制到 workdir/backup/YYYY/MM/DD/ 下
-func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
+func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, sourcePath string) (*entity.Backup, error) {
 	if !util.FileExists(sourcePath) {
 		return nil, fmt.Errorf("创建备份失败，源文件不存在: %s", sourcePath)
 	}
+
+	workDir := s.getWorkDir()
+	fileName := filepath.Base(sourcePath)
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
 	now := time.Now()
@@ -106,10 +115,13 @@ func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int
 
 // MoveBackup 移动备份，将源文件移动到 workdir/backup/YYYY/MM/DD/ 下（O(1) 同文件系统）
 // 当调用方不需要保留源文件时使用，比 CreateBackup（复制）更高效
-func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
+func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64, sourcePath string) (*entity.Backup, error) {
 	if !util.FileExists(sourcePath) {
 		return nil, fmt.Errorf("移动备份失败，源文件不存在: %s", sourcePath)
 	}
+
+	workDir := s.getWorkDir()
+	fileName := filepath.Base(sourcePath)
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
 	now := time.Now()
@@ -166,8 +178,8 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 }
 
 // CreatePluginBackup 创建插件备份
-func (s *Service) CreatePluginBackup(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string) (*entity.Backup, error) {
-	return s.CreateBackup(ctx, SourceTypePlugin, sourceId, fileName, sourcePath, workDir)
+func (s *Service) CreatePluginBackup(ctx context.Context, sourceId int64, sourcePath string) (*entity.Backup, error) {
+	return s.CreateBackup(ctx, SourceTypePlugin, sourceId, sourcePath)
 }
 
 // GetById 根据ID获取备份
@@ -205,8 +217,8 @@ func addSuffix(filename string, suffix string) string {
 }
 
 // MoveBackupForResource 移动资源文件到备份目录，并记录原始路径信息用于后续还原
-func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, fileName string, sourcePath string, workDir string, originalFilePath string, originalFileName string, originalFilenameExtension string) (*entity.Backup, error) {
-	backup, err := s.MoveBackup(ctx, SourceTypeResource, sourceId, fileName, sourcePath, workDir)
+func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sourcePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (*entity.Backup, error) {
+	backup, err := s.MoveBackup(ctx, SourceTypeResource, sourceId, sourcePath)
 	if err != nil {
 		return nil, err
 	}
@@ -222,15 +234,13 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, fil
 
 // MoveToBackup 将文件移动到备份目录并创建备份记录，供 PersistentStore 删除时调用
 // sourceId: PersistentStore 记录 ID
-// fileName: 文件名
 // absFilePath: 源文件绝对路径
 // originalFilePath: PersistentStore 中的相对路径（用于还原时确定目标位置）
 // originalFileName: 原始文件名
 // originalFilenameExtension: 原始扩展名
 // 返回备份记录 ID
-func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, fileName string, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
-	workDir := util.RootPath()
-	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, fileName, absFilePath, workDir)
+func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
+	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, absFilePath)
 	if err != nil {
 		return 0, err
 	}
