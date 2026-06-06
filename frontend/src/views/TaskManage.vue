@@ -302,6 +302,11 @@ async function updateLoad(ids: (number | string)[]): Promise<object[] | undefine
 function getRowTaskId(row: any): number {
   return Number(row?.taskProgress?.task?.id ?? row?.id ?? 0)
 }
+// 判断行是否为叶子任务
+function isLeafTask(row: TaskProgressTreeDTO): boolean {
+  const task = row.taskProgress?.task
+  return !(row.hasChildren || isNullish(task?.pid) || task!.pid! === 0)
+}
 // 给行添加选择器，用于区分父任务和子任务
 function rowClassName(data: { row: unknown; rowIndex: number }) {
   const row = data.row as TaskProgressTreeDTO
@@ -324,11 +329,11 @@ function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperat
       refreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      taskApi.taskPauseTree(getRowTaskId(row))
+      taskApi.taskPauseTree(getRowTaskId(row), isLeafTask(row))
       refreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      taskApi.taskResumeTree(getRowTaskId(row))
+      taskApi.taskResumeTree(getRowTaskId(row), isLeafTask(row))
       refreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -336,7 +341,7 @@ function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperat
       refreshTask()
       break
     case TaskOperationCodeEnum.CANCEL:
-      taskApi.taskStopTree(getRowTaskId(row))
+      taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
       break
     case TaskOperationCodeEnum.DELETE:
       deleteTask(getRowTaskId(row))
@@ -430,7 +435,7 @@ function handleScroll() {
 // 开始任务
 function startTask(row: TaskProgressTreeDTO, retry: boolean) {
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  apiCall(getRowTaskId(row)).catch((e: Error) => {
+  apiCall(getRowTaskId(row), isLeafTask(row)).catch((e: Error) => {
     ElMessage.error(e.message)
   })
   if (row.taskProgress?.task) {

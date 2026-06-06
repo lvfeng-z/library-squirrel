@@ -131,7 +131,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 }
 
 // StartTaskTree 启动任务树
-func (m *Manager) StartTaskTree(ctx context.Context, taskId int64) error {
+func (m *Manager) StartTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	return m.loadAndStartTaskTree(ctx, taskId, false)
 }
 
@@ -458,10 +458,14 @@ func (m *Manager) removeFromQueue(taskId int64) {
 }
 
 // PauseTaskTree 暂停任务树
-func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
+func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 暂停任务树: taskId=%d", taskId)
+	parentKey, ok := m.resolveParentKey(taskId, isLeaf)
+	if !ok {
+		return ErrTaskTreeNotFound
+	}
 	m.mu.RLock()
-	parent, ok := m.parentMap[taskId]
+	parent, ok := m.parentMap[parentKey]
 	m.mu.RUnlock()
 
 	if !ok {
@@ -484,10 +488,16 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64) error {
 }
 
 // ResumeTaskTree 恢复任务树
-func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
+func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d", taskId)
+	parentKey, ok := m.resolveParentKey(taskId, isLeaf)
+	if !ok {
+		// taskMap 中无此叶子任务，尝试从数据库加载
+		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 taskMap 中，从数据库加载", taskId)
+		return m.loadAndStartTaskTree(ctx, taskId, true)
+	}
 	m.mu.RLock()
-	parent, ok := m.parentMap[taskId]
+	parent, ok := m.parentMap[parentKey]
 	m.mu.RUnlock()
 
 	if !ok {
@@ -508,10 +518,14 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64) error {
 }
 
 // StopTaskTree 停止任务树
-func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
+func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 停止任务树: taskId=%d", taskId)
+	parentKey, ok := m.resolveParentKey(taskId, isLeaf)
+	if !ok {
+		return ErrTaskTreeNotFound
+	}
 	m.mu.RLock()
-	parent, ok := m.parentMap[taskId]
+	parent, ok := m.parentMap[parentKey]
 	m.mu.RUnlock()
 
 	if !ok {
@@ -536,16 +550,20 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64) error {
 }
 
 // RetryTaskTree 重试任务树
-func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64) error {
+func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
 	// 不重置 DB 状态，Finished/Failed/Created 子任务均会重新执行
 	return m.loadAndStartTaskTree(ctx, taskId, false)
 }
 
 // GetTaskTreeState 获取任务树状态
-func (m *Manager) GetTaskTreeState(taskId int64) (TaskState, error) {
+func (m *Manager) GetTaskTreeState(taskId int64, isLeaf bool) (TaskState, error) {
+	parentKey, ok := m.resolveParentKey(taskId, isLeaf)
+	if !ok {
+		return TaskStateCreated, ErrTaskTreeNotFound
+	}
 	m.mu.RLock()
-	parent, ok := m.parentMap[taskId]
+	parent, ok := m.parentMap[parentKey]
 	m.mu.RUnlock()
 
 	if !ok {
@@ -838,6 +856,24 @@ func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 	defer m.mu.RUnlock()
 	managedTask, ok := m.taskMap[taskId]
 	return managedTask, ok
+}
+
+// resolveParentKey 根据 isLeaf 标志解析 parentMap 的实际查找键
+// 非叶子任务直接使用 taskId；叶子任务通过 taskMap 反查 parentId
+func (m *Manager) resolveParentKey(taskId int64, isLeaf bool) (int64, bool) {
+	if !isLeaf {
+		return taskId, true
+	}
+	m.mu.RLock()
+	mt, ok := m.taskMap[taskId]
+	m.mu.RUnlock()
+	if !ok {
+		return 0, false
+	}
+	if mt.parentId == 0 {
+		return taskId, true
+	}
+	return mt.parentId, true
 }
 
 // GetTaskStates 获取所有内存中任务的当前状态快照

@@ -238,9 +238,15 @@ async function refreshTask() {
 function handleScroll() {
   throttleRefreshTask()
 }
+// 判断行是否为叶子任务
+function isLeafTask(row: TaskProgressTreeDTO): boolean {
+  const task = row.taskProgress?.task
+  return !(row.hasChildren || isNullish(task?.pid) || task!.pid! === 0)
+}
 // 处理操作栏按钮点击事件
 function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
   const rowTaskId = row.taskProgress?.task?.id
+  const leaf = isLeafTask(row)
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       parentCache = formData.value
@@ -252,11 +258,11 @@ function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperat
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      if (notNullish(rowTaskId)) taskApi.taskPauseTree(rowTaskId)
+      if (notNullish(rowTaskId)) taskApi.taskPauseTree(rowTaskId, leaf)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RESUME:
-      if (notNullish(rowTaskId)) taskApi.taskResumeTree(rowTaskId)
+      if (notNullish(rowTaskId)) taskApi.taskResumeTree(rowTaskId, leaf)
       throttleRefreshTask()
       break
     case TaskOperationCodeEnum.RETRY:
@@ -322,7 +328,7 @@ function startTask(row: TaskProgressTreeDTO, retry: boolean) {
   const rowTaskId = row.taskProgress?.task?.id
   if (isNullish(rowTaskId)) return
   const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  apiCall(rowTaskId).catch((e: Error) => {
+  apiCall(rowTaskId, isLeafTask(row)).catch((e: Error) => {
     ElMessage.error(e.message)
   })
   if (row.taskProgress?.task) {

@@ -44,8 +44,8 @@ export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiRes
 /**
  * GetTaskTreeState 获取任务树状态
  */
-export function GetTaskTreeState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
-    return $Call.ByID(1455726591, taskId).then(($result: any) => {
+export function GetTaskTreeState(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(1455726591, taskId, isLeaf).then(($result: any) => {
         return $$createType3($result);
     });
 }
@@ -62,8 +62,8 @@ export function IsIdle(): $CancellablePromise<model$0.ApiResponse<boolean> | nul
 /**
  * PauseTaskTree 暂停任务树
  */
-export function PauseTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(849111740, taskId).then(($result: any) => {
+export function PauseTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(849111740, taskId, isLeaf).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -71,8 +71,8 @@ export function PauseTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
 /**
  * ResumeTaskTree 恢复任务树
  */
-export function ResumeTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3566110931, taskId).then(($result: any) => {
+export function ResumeTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3566110931, taskId, isLeaf).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -80,8 +80,8 @@ export function ResumeTaskTree(taskId: number): $CancellablePromise<model$0.ApiR
 /**
  * RetryTaskTree 重试任务树
  */
-export function RetryTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3178840824, taskId).then(($result: any) => {
+export function RetryTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3178840824, taskId, isLeaf).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -89,8 +89,8 @@ export function RetryTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
 /**
  * StartTaskTree 启动任务树
  */
-export function StartTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(369525346, taskId).then(($result: any) => {
+export function StartTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(369525346, taskId, isLeaf).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -98,8 +98,8 @@ export function StartTaskTree(taskId: number): $CancellablePromise<model$0.ApiRe
 /**
  * StopTaskTree 停止任务树
  */
-export function StopTaskTree(taskId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2406061956, taskId).then(($result: any) => {
+export function StopTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2406061956, taskId, isLeaf).then(($result: any) => {
         return $$createType1($result);
     });
 }
