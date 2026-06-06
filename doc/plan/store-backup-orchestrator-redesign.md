@@ -1,26 +1,65 @@
-# StoreBackupOrchestrator 重构：一站式备份与还原
+# 任务替换流程：PersistentStore 备份还原重构
 
-> 本计划是对 `doc/plan/taskmanager-store-backup-integration.md` 的修正方案，
-> 解决其严重问题 1（查询不匹配）和严重问题 2（StoreFromFile 截断），
-> 并为 Resource 未来扩展更多 Store 字段（如 SubtitleStore）打下基础。
+> 前置计划：`doc/plan/persistentstore-backup-integration.md`（PersistentStore 接入 Backup 模块）
+>
+> 本计划在前置计划的基础上，将 taskManager 的替换流程从"禁用/启用 Resource"改为"备份/还原 PersistentStore"，
+> 并为 Resource 未来扩展更多 Store 字段打下基础。
 
-## 问题回顾
+## 现状分析
 
-原计划的 `RestoreStores` 通过 `GetResourceBackups(resourceIds)` 查询备份记录。
-但实际备份由 `PersistentStore.Delete → MoveToBackup` 创建，记录的 `SourceType=3 (PersistentStore)`、`SourceID=storeId`，
-与查询条件 `SourceType=2 (Resource)`、`SourceID=resourceId` **完全不匹配**，导致还原永远返回空。
+### 当前 taskManager 替换流程
 
-## 设计目标
+```
+任务检测到作品已存在 → 用户确认替换
+  → BackupAndDisable(workId)       // 禁用 Resource（Enabled=false），不处理 PersistentStore 文件
+  → 创建新 Resource → 下载新资源到新 PersistentStore
+  → 失败时 Restore(resourceIds)    // 重新启用旧 Resource（Enabled=true）
+```
 
-1. **彻底消除查询不匹配**：不依赖数据库间接查询，备份方直接返回结构化清单
-2. **一站式覆盖**：一次调用备份 Resource 关联的所有 Store（WorkStore、ThumbnailStore 及未来新增字段）
-3. **可扩展的 Store 字段**：Resource 未来会扩展更多 Store 字段（如 SubtitleStore），StoreType 枚举可增量添加
-4. **顺带解决 StoreFromFile 截断问题**（严重问题 2）：还原时文件已在 store 目录，应直接注册 DB 记录
+**问题**：
+1. 旧的 PersistentStore 文件未被备份，替换后旧文件丢失无法还原
+2. 创建新 Resource 是不必要的——Resource 的业务字段不变，变的是底层文件
+
+### 目标替换流程
+
+**核心设计**：Resource 不随替换而禁用或新建，被替换的对象是 PersistentStore。Resource 沿用原有记录，仅更新 Store 字段。
+
+```
+任务检测到作品已存在 → 用户确认替换
+  → BackupAllStores(workId)        // 备份 PersistentStore 文件 + 删除 PersistentStore 记录
+    （Resource 保持 Enabled=true，Store 字段暂指向已删除的 store）
+  → 下载新资源到新 PersistentStore → 更新 Resource.WorkStoreID 指向新 store
+  → 失败时 RestoreAllStores(备份清单)：
+      → 从备份移动文件回 store 目录 → 注册 PersistentStore DB 记录
+      → 更新 Resource.WorkStoreID 指向还原的 store
+```
+
+对比当前流程的变更：
+
+| 环节 | 当前 | 目标 |
+|------|------|------|
+| 旧资源处理 | 禁用 Resource | 备份 PersistentStore 文件 + 删除 PersistentStore 记录 |
+| 新资源创建 | 创建新 Resource | 沿用旧 Resource，仅更新 WorkStoreID |
+| 失败还原 | 重新启用旧 Resource | 从备份还原 PersistentStore + 更新 WorkStoreID |
+| Resource 状态 | Enabled 变为 false → true | 始终保持 Enabled=true |
+
+## 前置计划实施内容
+
+前置计划 `persistentstore-backup-integration.md` 需要完成的变更：
+
+1. 移除 `persistentStore/handler.go`
+2. PersistentStore.Service 新增 `FileMover` 依赖，`Delete(ctx, id, backup bool) (backupId, error)`
+3. backup.Service 新增 `MoveToBackup` 方法
+4. work.Service `StoreDeleter` 接口签名更新
+5. app.go 依赖注入调整
+
+以下所有内容均**假设前置计划已完成**。
 
 ## 核心设计：备份清单（Backup Manifest）
 
-不再通过数据库查询关联备份。`BackupAllStores` 返回结构化清单，调用方持有清单，
-还原时直接传入——数据流是**直通的**，不存在间接查询。
+替换场景中，Resource 可能关联多个 Store（WorkStore、ThumbnailStore 等）。
+备份时由编排器遍历 Resource 的所有 Store 字段，生成结构化清单返回给调用方；
+还原时调用方直接传入清单，按 BackupID 定位备份——数据流是**直通的**，不依赖数据库间接查询。
 
 ### 数据结构
 
@@ -64,20 +103,11 @@ type StoreBackupOrchestrator interface {
 }
 ```
 
-对比原计划的接口变更：
-
-| 维度 | 原计划 | 本方案 |
-|------|--------|--------|
-| 返回值 | `[]int64`（resource IDs） | `[]*StoreBackupItem`（结构化清单） |
-| 还原入参 | `resourceIds`（需间接查询数据库） | `[]*StoreBackupItem`（直接持有备份 ID） |
-| 覆盖范围 | 仅 WorkStore | WorkStore + ThumbnailStore + 可扩展 |
-| StoreType | 无 | 枚举，标识 Resource 的哪个字段 |
-
 ## 实现设计
 
-### 实现文件
+### 1. StoreBackupOrchestrator 实现
 
-`backend/backup/store_backup_orchestrator.go`（新文件，替代原 `resource_orchestrator.go`）
+**`backend/backup/store_backup_orchestrator.go`**（新文件，替代原 `resource_orchestrator.go`）
 
 #### 依赖接口
 
@@ -111,11 +141,6 @@ type BackupReader interface {
     Delete(ctx context.Context, id int64) error
 }
 ```
-
-与原计划对比：
-- **删除** `StoreCreator`（`StoreFromFile`）→ 替换为 `StoreRegistrar`（`RegisterExistingStore`），解决截断问题
-- **删除** `BackupRestorer.GetResourceBackups` → 替换为 `BackupReader.GetById`（按 backup ID 直接查）
-- 新增 `StoreType` 使还原时知道更新 Resource 的哪个字段
 
 #### 构造函数
 
@@ -168,11 +193,11 @@ func NewStoreBackupOrchestrator(
    → Resource 的对应字段在步骤 5 中会被新值覆盖（或保持 null）
 ```
 
-**关键改进**：步骤 2e 使用 `RegisterExistingStore` 而非 `StoreFromFile`。
+**关键设计**：步骤 2e 使用 `RegisterExistingStore` 而非 `StoreFromFile`。
 文件已由 RestoreFile 移动到 store 目录中的正确位置，只需创建 DB 记录指向它。
 `StoreFromFile` 会以 `os.Open` 打开同一文件、再由 `os.Create` 截断，导致内容丢失。
 
-### PersistentStore.Service 新增方法
+### 2. PersistentStore.Service 新增方法
 
 `backend/persistentStore/service.go` 新增：
 
@@ -191,38 +216,106 @@ func (s *Service) RegisterExistingStore(ctx context.Context, relPath string, fil
 4. 创建 PersistentStore 记录（Status = Complete）
 5. 返回记录 ID
 
-### ManagedTask 变更
+### 3. taskManager/model.go 变更
 
-`backend/taskManager/model.go`：
+#### 接口与数据类型
+
+新增 `StoreType`、`StoreBackupItem`（见上方"数据结构"节）。
+
+当前接口替换：
+```go
+// 旧
+type ResourceBackupOrchestrator interface {
+    BackupAndDisable(ctx context.Context, workId int64) []int64
+    Restore(ctx context.Context, resourceIds []int64)
+}
+
+// 新
+type StoreBackupOrchestrator interface {
+    BackupAllStores(ctx context.Context, workId int64) []*StoreBackupItem
+    RestoreAllStores(ctx context.Context, items []*StoreBackupItem)
+}
+```
+
+#### 新增 ResourceUpdater 接口
+
+替换场景的步骤 5 中需要更新已有 Resource（而非创建新 Resource），
+因此 taskManager 需要新增此接口：
+
+```go
+// ResourceUpdater Resource 更新接口（用于替换场景更新已有 Resource 的 Store 字段）
+type ResourceUpdater interface {
+    Update(ctx context.Context, resource *entity.Resource) error
+}
+```
+
+#### ManagedTask 字段变更
 
 ```go
 // 旧
-backupOrchestrator     ResourceBackupOrchestrator
-backedUpResourceIds []int64
+backupOrchestrator     ResourceBackupOrchestrator   // 资源备份编排器
+backedUpResourceIds []int64                         // 已备份的资源 ID 列表（用于任务失败时还原）
 
 // 新
-storeBackupOrchestrator  StoreBackupOrchestrator
-storeBackupItems       []*StoreBackupItem
+storeBackupOrchestrator  StoreBackupOrchestrator    // 资源存储备份编排器
+storeBackupItems       []*StoreBackupItem           // 备份清单（用于任务失败时还原）
 ```
 
-### taskManager/model.go run() 流程变更
+`NewManagedTask` 构造函数参数和赋值同步更新。
+
+#### run() 流程变更
 
 **步骤 0.1**（替换确认后的备份）：
+
 ```go
+// 旧：
+m.backedUpResourceIds = m.backupOrchestrator.BackupAndDisable(m.ctx, m.existingWorkId)
+
+// 新：
 m.storeBackupItems = m.storeBackupOrchestrator.BackupAllStores(m.ctx, m.existingWorkId)
 ```
 
-**defer 失败还原**：
+**步骤 5**（保存 Resource）：
+
+当前逻辑是创建新 Resource：
 ```go
+resource := entity.NewResource()
+resource.WorkID = workId
+resource.TaskID = m.task.GetID()
+resource.Enabled = true
+resource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
+resourceId, err := m.resourceSaver.Save(m.ctx, resource)
+```
+
+改为查询已有 Resource 并更新 WorkStoreID：
+```go
+// 查询该作品已有的启用资源（替换场景下应只有一条）
+resources, err := m.resourceReader.GetEnabledByWorkId(m.ctx, workId)
+if err != nil || len(resources) == 0 { ... }
+existingResource := resources[0]
+existingResource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
+existingResource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: ...}
+existingResource.ResourceComplete = 0
+err = m.resourceUpdater.Update(m.ctx, existingResource)
+```
+
+ThumbnailStoreID 在替换后由插件决定是否重新下载。
+
+**defer 失败还原**：
+
+```go
+// 旧：
+if m.backedUpResourceIds != nil {
+    m.backupOrchestrator.Restore(m.ctx, m.backedUpResourceIds)
+}
+
+// 新：
 if m.storeBackupItems != nil {
     m.storeBackupOrchestrator.RestoreAllStores(m.ctx, m.storeBackupItems)
 }
 ```
 
-**步骤 5**（保存 Resource）不变：仍为查询已有 Resource 并更新 WorkStoreID。
-ThumbnailStoreID 在替换后由插件决定是否重新下载（与原计划一致）。
-
-### app.go 依赖注入
+### 4. app.go 依赖注入
 
 ```go
 storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
@@ -234,11 +327,13 @@ storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
 )
 ```
 
-初始化顺序不变：
+初始化顺序：
 1. `BackupService`
 2. `PersistentStoreService`（注入 BackupService 作为 FileMover）
 3. `StoreBackupOrchestrator`（注入各 Service）
 4. `TaskManager`（注入 StoreBackupOrchestrator）
+
+`NewManagedTask` 传参中 `backupOrchestrator` 替换为 `storeBackupOrchestrator`。
 
 ## 可扩展性分析
 
@@ -256,22 +351,13 @@ storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
 若未来 Work 需要关联多条 Resource（如视频+缩略图各一条），
 `GetEnabledByWorkId` 已返回切片，BackupAllStores 遍历逻辑无需修改即可天然支持多条资源。
 
-## 原计划中已解决的问题
-
-| 原问题 | 解决方式 |
-|--------|----------|
-| 严重问题 1：查询不匹配 | 不再查询，由清单直通 BackupID |
-| 严重问题 2：StoreFromFile 截断 | 改用 RegisterExistingStore |
-| 中等问题 3：backupStoreMap 生命周期 | 删除局部 map，清单作为返回值传递 |
-| 中等问题 4：ThumbnailStoreID 悬空 | 清单中 BackupID=0 标识不可还原，显式跳过 |
-
 ## 调整文件清单
 
 | 文件 | 变更 |
 |------|------|
 | `backend/backup/resource_orchestrator.go` | 删除（被新文件替代） |
 | `backend/backup/store_backup_orchestrator.go` | **新增**：StoreBackupOrchestrator 实现 |
-| `backend/taskManager/model.go` | 新增 StoreType/StoreBackupItem、接口重命名、ManagedTask 字段变更 |
+| `backend/taskManager/model.go` | 新增 StoreType/StoreBackupItem、接口替换为 StoreBackupOrchestrator、新增 ResourceUpdater、ManagedTask 字段变更、run() 步骤 5 改为更新而非创建 |
 | `backend/persistentStore/service.go` | 新增 `RegisterExistingStore` 方法 |
 | `app.go` | NewStoreBackupOrchestrator 注入 + NewManagedTask 传参更新 |
 

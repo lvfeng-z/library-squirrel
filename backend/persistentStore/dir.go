@@ -2,6 +2,7 @@ package persistentStore
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -23,9 +24,11 @@ var registeredDirs = []StoreDir{
 
 // validatePath 校验路径是否以已注册子目录开头
 // relPath: 如 "resource/author/video.mp4"、"avatar/local/123.jpg"
+// 内部统一转换为正斜杠比较，兼容 Windows 下 filepath.Join 产出的反斜杠路径
 func validatePath(relPath string) error {
+	normalized := filepath.ToSlash(relPath)
 	for _, dir := range registeredDirs {
-		if relPath == dir.Path || strings.HasPrefix(relPath, dir.Path+"/") {
+		if normalized == dir.Path || strings.HasPrefix(normalized, dir.Path+"/") {
 			return nil
 		}
 	}

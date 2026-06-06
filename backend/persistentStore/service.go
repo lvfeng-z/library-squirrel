@@ -57,10 +57,11 @@ type StoreWriter interface {
 
 // storeWriter StoreWriter 的内部实现
 type storeWriter struct {
-	file    *os.File
-	storeId int64
-	repo    Repository
-	closed  bool
+	file          *os.File
+	storeId       int64
+	repo          Repository
+	closed        bool
+	workDirGetter func() string // 每次调用获取最新的 workDir
 }
 
 func (w *storeWriter) Write(p []byte) (n int, err error) {
@@ -130,8 +131,7 @@ func (w *storeWriter) Abort() error {
 
 	// 删除磁盘文件
 	if record.FilePath.Valid {
-		workDir := util.RootPath()
-		absPath := filepath.Join(workDir, "store", record.FilePath.String)
+		absPath := filepath.Join(w.workDirGetter(), "store", record.FilePath.String)
 		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 			logger.Log.Warn("Abort 时删除文件失败", zap.String("path", absPath), zap.Error(err))
 		}
@@ -160,16 +160,23 @@ type FileMover interface {
 
 // Service 文件存取服务
 type Service struct {
-	repo      Repository
-	fileMover FileMover // 可选依赖，nil 时不备份
+	repo          Repository
+	fileMover     FileMover   // 可选依赖，nil 时不备份
+	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
 // NewService 创建文件存取服务
-func NewService(repo Repository, fileMover FileMover) *Service {
+func NewService(repo Repository, fileMover FileMover, workDirGetter func() string) *Service {
 	return &Service{
-		repo:      repo,
-		fileMover: fileMover,
+		repo:          repo,
+		fileMover:     fileMover,
+		workDirGetter: workDirGetter,
 	}
+}
+
+// getWorkDir 获取当前 workDir（每次从设置管理器读取最新值）
+func (s *Service) getWorkDir() string {
+	return s.workDirGetter()
 }
 
 // StoreStream 创建 DB 记录（未完成）+ 目录 + 文件，返回 storeId 和 StoreWriter
@@ -181,7 +188,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		return 0, nil, err
 	}
 
-	workDir := util.RootPath()
+	workDir := s.getWorkDir()
 	storeDir := filepath.Join(workDir, "store")
 	absPath := filepath.Join(storeDir, relPath)
 
@@ -227,7 +234,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 			os.Remove(absPath)
 			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
 		}
-		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo}
+		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter}
 		return existing.GetID(), sw, nil
 	}
 
@@ -247,7 +254,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		return 0, nil, fmt.Errorf("保存记录失败: %w", err)
 	}
 
-	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo}
+	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter}
 	return store.GetID(), sw, nil
 }
 
@@ -278,7 +285,7 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64) (StoreWriter,
 		return nil, fmt.Errorf("打开文件失败: %w", err)
 	}
 
-	return &storeWriter{file: file, storeId: storeId, repo: s.repo}, nil
+	return &storeWriter{file: file, storeId: storeId, repo: s.repo, workDirGetter: s.workDirGetter}, nil
 }
 
 // Store 存入文件
@@ -292,7 +299,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 		return 0, err
 	}
 
-	workDir := util.RootPath()
+	workDir := s.getWorkDir()
 	storeDir := filepath.Join(workDir, "store")
 	absPath := filepath.Join(storeDir, relPath)
 
@@ -408,7 +415,6 @@ func (s *Service) GetByFilePath(ctx context.Context, filePath string) (*domain.P
 	return s.repo.GetByFilePath(ctx, filePath)
 }
 
-// Delete 删除记录及对应文件（严格一致）
 // Delete 删除记录及对应文件
 // backup: 是否对已完成文件进行移动备份，返回备份记录 ID（0 表示未备份）
 func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, error) {
@@ -423,7 +429,7 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 
 	var backupId int64
 	if record.FilePath.Valid {
-		workDir := util.RootPath()
+		workDir := s.getWorkDir()
 		absPath := filepath.Join(workDir, "store", record.FilePath.String)
 
 		// 2. 对已完成的文件进行移动备份（可选）
@@ -456,6 +462,71 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 	return backupId, nil
 }
 
+// StoreFromExternal 将外部文件导入到 store 目录并创建 DB 记录
+// PersistentStore 全权负责文件移动和 DB 记录的创建
+// srcAbsPath: 外部源文件绝对路径（移动后源文件消失）
+// relPath: 目标相对路径（相对于 {workDir}/store/）
+// fileName: 原始文件名
+func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error) {
+	// 1. 校验 relPath
+	if err := validatePath(relPath); err != nil {
+		return 0, err
+	}
+
+	// 2. 确认源文件存在
+	if _, err := os.Stat(srcAbsPath); err != nil {
+		return 0, fmt.Errorf("源文件不存在: %s: %w", srcAbsPath, err)
+	}
+
+	workDir := s.getWorkDir()
+	storeDir := filepath.Join(workDir, "store")
+	targetAbsPath := filepath.Join(storeDir, relPath)
+
+	// 3. 确保目标目录存在
+	if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0755); err != nil {
+		return 0, fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	// 4. 目标路径已有文件时先删除
+	if _, err := os.Stat(targetAbsPath); err == nil {
+		if err := os.Remove(targetAbsPath); err != nil {
+			return 0, fmt.Errorf("删除已有文件失败: %w", err)
+		}
+	}
+
+	// 5. 移动源文件到 store 目录（同文件系统 O(1)）
+	if err := os.Rename(srcAbsPath, targetAbsPath); err != nil {
+		// 跨文件系统时回退为复制
+		logger.Log.Warn("移动文件失败（回退为复制）", zap.String("src", srcAbsPath), zap.String("dst", targetAbsPath), zap.Error(err))
+		if copyErr := util.CopyFile(srcAbsPath, targetAbsPath); copyErr != nil {
+			return 0, fmt.Errorf("移动文件失败，回退复制也失败: %w（原始移动错误: %v）", copyErr, err)
+		}
+		_ = os.Remove(srcAbsPath)
+	}
+
+	// 6. 提取扩展名
+	ext := filepath.Ext(fileName)
+	if ext == "" {
+		ext = filepath.Ext(relPath)
+	}
+
+	// 7. 创建 PersistentStore 记录（已完成状态）
+	store := domain.NewPersistentStore()
+	store.FilePath.Valid = true
+	store.FilePath.String = relPath
+	store.FileName.Valid = true
+	store.FileName.String = fileName
+	store.FilenameExtension.Valid = true
+	store.FilenameExtension.String = ext
+	store.Status = domain.StoreStatusComplete
+
+	if err := s.repo.Save(ctx, store); err != nil {
+		return 0, fmt.Errorf("注册 PersistentStore 记录失败: %w", err)
+	}
+
+	return store.GetID(), nil
+}
+
 // DeleteByFilePath 根据路径删除记录及文件
 func (s *Service) DeleteByFilePath(ctx context.Context, filePath string, backup bool) (int64, error) {
 	record, err := s.repo.GetByFilePath(ctx, filePath)
@@ -467,6 +538,7 @@ func (s *Service) DeleteByFilePath(ctx context.Context, filePath string, backup 
 	}
 	return s.Delete(ctx, record.GetID(), backup)
 }
+
 // Exists 检查文件是否存在（记录存在且磁盘文件存在）
 func (s *Service) Exists(ctx context.Context, id int64) bool {
 	record, err := s.repo.GetById(ctx, id)
@@ -476,7 +548,7 @@ func (s *Service) Exists(ctx context.Context, id int64) bool {
 	if !record.FilePath.Valid {
 		return false
 	}
-	workDir := util.RootPath()
+	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, "store", record.FilePath.String)
 	_, err = os.Stat(absPath)
 	return err == nil
@@ -487,7 +559,7 @@ func (s *Service) GetAbsPath(store *domain.PersistentStore) string {
 	if store == nil || !store.FilePath.Valid {
 		return ""
 	}
-	workDir := util.RootPath()
+	workDir := s.getWorkDir()
 	return filepath.Join(workDir, "store", store.FilePath.String)
 }
 
@@ -503,10 +575,10 @@ func (s *Service) IsCompleteByPath(ctx context.Context, relPath string) bool {
 
 // ResolveStorePath 解析存储相对路径为绝对路径
 // relPath: 相对于 {workDir}/store/ 的路径
-func ResolveStorePath(relPath string) string {
+func (s *Service) ResolveStorePath(relPath string) string {
 	if strings.TrimSpace(relPath) == "" {
 		return ""
 	}
-	workDir := util.RootPath()
+	workDir := s.getWorkDir()
 	return filepath.Join(workDir, "store", relPath)
 }

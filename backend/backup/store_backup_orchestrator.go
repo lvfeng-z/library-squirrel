@@ -3,16 +3,14 @@ package backup
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/util"
 
 	"go.uber.org/zap"
 )
 
-// ResourceProvider 资源查询接口（由 resource.Service 实现）
+// StoreResourceProvider 资源查询接口（由 resource.Service 实现）
 type StoreResourceProvider interface {
 	// GetEnabledByWorkId 查询作品关联的启用资源
 	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
@@ -25,9 +23,9 @@ type StoreDeleter interface {
 	Delete(ctx context.Context, id int64, backup bool) (int64, error)
 }
 
-// StoreRegistrar Store 注册接口（为已在 store 目录中的文件创建 DB 记录，由 persistentStore.Service 实现）
-type StoreRegistrar interface {
-	RegisterExistingStore(ctx context.Context, relPath string, fileName string) (int64, error)
+// StoreImporter Store 导入接口（将外部文件导入到 store 目录并创建 DB 记录，由 persistentStore.Service 实现）
+type StoreImporter interface {
+	StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error)
 }
 
 // ResourceUpdater Resource 更新接口（由 resource.Service 实现）
@@ -35,11 +33,10 @@ type ResourceUpdater interface {
 	Update(ctx context.Context, resource *entity.Resource) error
 }
 
-// BackupReader 备份查询与文件操作接口（由 backup.Service 实现）
+// BackupReader 备份查询接口（由 backup.Service 实现）
 type BackupReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	GetBackupPath(backup *entity.Backup) string
-	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -69,7 +66,7 @@ type StoreBackupItem struct {
 type StoreBackupOrchestratorImpl struct {
 	resourceProvider StoreResourceProvider
 	storeDeleter     StoreDeleter
-	storeRegistrar   StoreRegistrar
+	storeImporter    StoreImporter
 	resourceUpdater  ResourceUpdater
 	backupReader     BackupReader
 }
@@ -78,14 +75,14 @@ type StoreBackupOrchestratorImpl struct {
 func NewStoreBackupOrchestrator(
 	resourceProvider StoreResourceProvider,
 	storeDeleter StoreDeleter,
-	storeRegistrar StoreRegistrar,
+	storeImporter StoreImporter,
 	resourceUpdater ResourceUpdater,
 	backupReader BackupReader,
 ) *StoreBackupOrchestratorImpl {
 	return &StoreBackupOrchestratorImpl{
 		resourceProvider: resourceProvider,
 		storeDeleter:     storeDeleter,
-		storeRegistrar:   storeRegistrar,
+		storeImporter:    storeImporter,
 		resourceUpdater:  resourceUpdater,
 		backupReader:     backupReader,
 	}
@@ -157,7 +154,7 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 			continue
 		}
 
-		// 2. 从 Backup 记录还原原始路径信息
+		// 2. 从 Backup 记录获取原始路径信息
 		originalFilePath := ""
 		if backupEntity.OriginalFilePath.Valid {
 			originalFilePath = backupEntity.OriginalFilePath.String
@@ -172,25 +169,17 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 			continue
 		}
 
-		// 3. 计算还原目标绝对路径：{workDir}/store/{OriginalFilePath}
-		workDir := util.RootPath()
-		targetAbsPath := filepath.Join(workDir, "store", originalFilePath)
+		// 3. 获取备份文件绝对路径
 		backupAbsPath := o.backupReader.GetBackupPath(backupEntity)
 
-		// 4. 从备份移动文件到 store 目录
-		if err := o.backupReader.RestoreFile(ctx, backupAbsPath, targetAbsPath); err != nil {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 还原文件失败: %v", zap.Error(err))
-			continue
-		}
-
-		// 5. 注册 PersistentStore DB 记录（文件已在正确位置）
-		newStoreId, err := o.storeRegistrar.RegisterExistingStore(ctx, originalFilePath, originalFileName)
+		// 4. 通过 PersistentStore 将备份文件导入到 store 目录（文件移动 + DB 记录由 PersistentStore 全权负责）
+		newStoreId, err := o.storeImporter.StoreFromExternal(ctx, backupAbsPath, originalFilePath, originalFileName)
 		if err != nil {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 注册 Store 记录失败: %v", zap.Error(err))
+			logger.Log.Warnf("[StoreBackupOrchestrator] 导入 Store 失败: %v", zap.Error(err))
 			continue
 		}
 
-		// 6. 获取 Resource 并更新对应 Store 字段
+		// 5. 获取 Resource 并更新对应 Store 字段
 		resource, err := o.resourceProvider.GetById(ctx, item.ResourceID)
 		if err != nil || resource == nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 查询 Resource(id=%d) 失败，跳过更新", item.ResourceID)
@@ -209,7 +198,7 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 			continue
 		}
 
-		// 7. 清理备份记录
+		// 6. 清理备份记录
 		if err := o.backupReader.Delete(ctx, item.BackupID); err != nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 删除备份记录 %d 失败: %v", item.BackupID, err)
 		}

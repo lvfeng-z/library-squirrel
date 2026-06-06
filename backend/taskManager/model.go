@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
@@ -132,13 +133,24 @@ type ResourceReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
-// ResourceBackupOrchestrator 资源备份编排器接口
-// 封装资源备份/禁用/还原的完整生命周期，由 backup 包的 ResourceBackupOrchestrator 实现
-type ResourceBackupOrchestrator interface {
-	// BackupAndDisable 备份已有作品的启用资源并标记为未启用，返回已备份的资源 ID 列表
-	BackupAndDisable(ctx context.Context, workId int64) []int64
-	// Restore 重新启用已禁用的资源
-	Restore(ctx context.Context, resourceIds []int64)
+// StoreBackupItem 单个 Store 的备份条目（由 backup 包定义具体实现，此处仅引用类型）
+type StoreBackupItem = backup.StoreBackupItem
+
+// StoreBackupOrchestrator 资源存储备份编排器接口
+// 封装替换场景下作品 Resource 全部 PersistentStore 的一站式备份和还原
+// 当前业务中一个 Work 恰好对应一条 Resource，接口以 workId 为入参
+type StoreBackupOrchestrator interface {
+	// BackupAllStores 备份作品 Resource 的全部 Store，返回备份清单
+	// Resource 的每个 Store 字段（WorkStoreID、ThumbnailStoreID 等）都会产生一条 StoreBackupItem
+	BackupAllStores(ctx context.Context, workId int64) []*StoreBackupItem
+	// RestoreAllStores 从备份清单还原所有 Store 并更新对应 Resource
+	// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过（对应 Resource 字段保持 null）
+	RestoreAllStores(ctx context.Context, items []*StoreBackupItem)
+}
+
+// ResourceUpdater Resource 更新接口（用于替换场景更新已有 Resource 的 Store 字段）
+type ResourceUpdater interface {
+	Update(ctx context.Context, resource *entity.Resource) error
 }
 
 // StoreStreamer 创建存储记录并返回 StoreWriter
@@ -181,10 +193,13 @@ type ManagedTask struct {
 	workChecker WorkChecker
 	// 资源查询（查找已有作品的资源文件）
 	resourceReader ResourceReader
-	// 资源备份编排器
-	backupOrchestrator ResourceBackupOrchestrator
-	// 已备份的资源 ID 列表（用于任务失败时还原）
-	backedUpResourceIds []int64
+	// 资源存储备份编排器
+	storeBackupOrchestrator StoreBackupOrchestrator
+	// 备份清单（用于任务失败时还原）
+	storeBackupItems []*StoreBackupItem
+	isReplace          bool
+	// Resource 更新（替换场景更新已有 Resource 的 Store 字段）
+	resourceUpdater ResourceUpdater
 	// 进度推送器
 	pusher TaskProgressPusher
 	// 跳过重复检查（替换确认后的第二次 run）
@@ -225,40 +240,41 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, backupOrchestrator ResourceBackupOrchestrator, pusher TaskProgressPusher, storeStreamer StoreStreamer, storeReader StoreReader) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, pusher TaskProgressPusher, storeStreamer StoreStreamer, storeReader StoreReader) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
-		taskId:                 taskId,
-		parentId:               parentId,
-		state:                  atomic.Int32{},
-		ctx:                    ctx,
-		cancel:                 cancel,
-		done:                   make(chan struct{}),
-		pluginExec:             pluginExec,
-		workInfoSaver:          workInfoSaver,
-		resourceSaver:          resourceSaver,
-		workDirProvider:        workDirProvider,
-		fileNameFormatProvider: fileNameFormatProvider,
-		workChecker:            workChecker,
-		resourceReader:         resourceReader,
-		backupOrchestrator:     backupOrchestrator,
-		pusher:                 pusher,
-		storeStreamer:          storeStreamer,
-		storeReader:            storeReader,
-		task:                   task,
-		workId:                 taskId,
-		pauseCh:                make(chan struct{}, 1),
+		taskId:                  taskId,
+		parentId:                parentId,
+		state:                   atomic.Int32{},
+		ctx:                     ctx,
+		cancel:                  cancel,
+		done:                    make(chan struct{}),
+		pluginExec:              pluginExec,
+		workInfoSaver:           workInfoSaver,
+		resourceSaver:           resourceSaver,
+		workDirProvider:         workDirProvider,
+		fileNameFormatProvider:  fileNameFormatProvider,
+		workChecker:             workChecker,
+		resourceReader:          resourceReader,
+		storeBackupOrchestrator: storeBackupOrchestrator,
+		resourceUpdater:         resourceUpdater,
+		pusher:                  pusher,
+		storeStreamer:           storeStreamer,
+		storeReader:             storeReader,
+		task:                    task,
+		workId:                  taskId,
+		pauseCh:                 make(chan struct{}, 1),
 	}
 }
 
 // run 核心执行逻辑
 func (m *ManagedTask) run() runResult {
-	// 最先注册，最后执行：任务失败时还原已备份的资源
+	// 最先注册，最后执行：任务失败时还原已备份的 Store
 	defer func() {
-		if m.GetState() == TaskStateFailed && len(m.backedUpResourceIds) > 0 {
-			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份资源", m.taskId, len(m.backedUpResourceIds))
-			m.backupOrchestrator.Restore(m.ctx, m.backedUpResourceIds)
-			m.backedUpResourceIds = nil
+		if m.GetState() == TaskStateFailed && len(m.storeBackupItems) > 0 {
+			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份 Store", m.taskId, len(m.storeBackupItems))
+			m.storeBackupOrchestrator.RestoreAllStores(m.ctx, m.storeBackupItems)
+			m.storeBackupItems = nil
 		}
 	}()
 	// panic recovery：后注册，先执行
@@ -304,7 +320,8 @@ func (m *ManagedTask) run() runResult {
 
 	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行）
 	if m.existingWorkId > 0 {
-		m.backedUpResourceIds = m.backupOrchestrator.BackupAndDisable(m.ctx, m.existingWorkId)
+		m.isReplace = true
+			m.storeBackupItems = m.storeBackupOrchestrator.BackupAllStores(m.ctx, m.existingWorkId)
 		m.existingWorkId = 0
 	}
 
@@ -363,23 +380,82 @@ func (m *ManagedTask) run() runResult {
 	}
 
 	// 5. 保存 Resource 到数据库
-	resource := entity.NewResource()
-	resource.WorkID = workId
-	resource.TaskID = m.task.GetID()
-	resource.Enabled = true
-	resource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
-	resource.ResourceComplete = 0 // 下载未完成
-	resource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
-
-	resourceId, err := m.resourceSaver.Save(m.ctx, resource)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
-		writer.Abort()
-		if m.abortedByPause() {
-			return runResultPaused
+	// 替换场景：查询已有 Resource 并更新 WorkStoreID；非替换场景：创建新 Resource
+	var resourceId int64
+	if m.isReplace {
+		// 替换场景：查询已有 Resource 并更新
+		// 优先从备份清单获取 ResourceID（有 Store 被备份的情况）
+		// 备份清单为空时（旧数据无 Store），通过 workId 查询已有 Resource
+		var existingResource *entity.Resource
+		for _, item := range m.storeBackupItems {
+			if item.StoreType == backup.StoreTypeWork {
+				existingResource, err = m.resourceReader.GetById(m.ctx, item.ResourceID)
+				if err != nil || existingResource == nil {
+					logger.Log.Errorf("[TaskManager] 任务 %d 查询已有 Resource(id=%d) 失败: %v", m.taskId, item.ResourceID, err)
+					writer.Abort()
+					if m.abortedByPause() {
+						return runResultPaused
+					}
+					m.setFailed(fmt.Sprintf("查询已有 Resource 失败: %v", err))
+					return runResultDone
+				}
+				break
+			}
 		}
-		m.setFailed(fmt.Sprintf("保存资源到数据库失败: %v", err))
-		return runResultDone
+		if existingResource == nil {
+			// 备份清单中无 WorkStore 条目，通过 workId 查询已有 Resource
+			resources, queryErr := m.resourceReader.GetEnabledByWorkId(m.ctx, workId)
+			if queryErr != nil {
+				logger.Log.Errorf("[TaskManager] 任务 %d 查询作品 %d 资源失败: %v", m.taskId, workId, queryErr)
+				writer.Abort()
+				if m.abortedByPause() {
+					return runResultPaused
+				}
+				m.setFailed(fmt.Sprintf("查询已有 Resource 失败: %v", queryErr))
+				return runResultDone
+			}
+			if len(resources) > 0 {
+				existingResource = resources[0]
+			}
+			// len(resources) == 0：上一次执行创建了 Work 但未创建 Resource，降级为新建
+		}
+		if existingResource != nil {
+			// 更新已有 Resource
+			existingResource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
+			existingResource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
+			existingResource.ResourceComplete = 0 // 下载未完成
+			if err := m.resourceUpdater.Update(m.ctx, existingResource); err != nil {
+				logger.Log.Errorf("[TaskManager] 任务 %d 更新 Resource 失败: %v", m.taskId, err)
+				writer.Abort()
+				if m.abortedByPause() {
+					return runResultPaused
+				}
+				m.setFailed(fmt.Sprintf("更新 Resource 失败: %v", err))
+				return runResultDone
+			}
+			resourceId = existingResource.GetID()
+		}
+	}
+	if resourceId == 0 {
+		// 非替换场景：创建新 Resource
+		resource := entity.NewResource()
+		resource.WorkID = workId
+		resource.TaskID = m.task.GetID()
+		resource.Enabled = true
+		resource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
+		resource.ResourceComplete = 0 // 下载未完成
+		resource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
+
+		resourceId, err = m.resourceSaver.Save(m.ctx, resource)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 保存资源失败: %v", m.taskId, err)
+			writer.Abort()
+			if m.abortedByPause() {
+				return runResultPaused
+			}
+			m.setFailed(fmt.Sprintf("保存资源到数据库失败: %v", err))
+			return runResultDone
+		}
 	}
 
 	// 6. 更新任务的 pendingResourceId 并持久化到数据库

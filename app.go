@@ -679,7 +679,9 @@ func (app *App) initBaseServices() {
 		app.BackupService = backup.NewService(backupRepo)
 	// persistentStore 服务
 	psRepo := persistentStore.NewRepository(app.db)
-	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService)
+	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService, func() string {
+			return app.SettingsService.GetWorkDir()
+		})
 	app.StoreFileHandler.SetStatusChecker(app.PersistentStoreService)
 
 	// reWorkAuthor 服务
@@ -814,8 +816,14 @@ func (app *App) initAdvancedServices() error {
 
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
-	// 创建资源备份编排器
-	resourceBackupOrchestrator := backup.NewResourceBackupOrchestrator(app.ResourceService)
+	// 创建资源存储备份编排器
+	storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
+		app.ResourceService,        // StoreResourceProvider + ResourceUpdater
+		app.PersistentStoreService, // StoreDeleter
+		app.PersistentStoreService, // StoreRegistrar
+		app.ResourceService,        // ResourceUpdater
+		app.BackupService,          // BackupReader
+	)
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -824,11 +832,12 @@ func (app *App) initAdvancedServices() error {
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,
-		app.WorkService, // 实现 WorkInfoSaver 接口
+		app.WorkService,             // 实现 WorkInfoSaver 接口
 		resourceSaverAdapter,
 		app.WorkService,             // 实现 WorkChecker 接口
 		app.ResourceService,         // 实现 ResourceReader 接口
-		resourceBackupOrchestrator,  // 实现 ResourceBackupOrchestrator 接口
+		storeBackupOrchestrator,     // 实现 StoreBackupOrchestrator 接口
+		app.ResourceService,         // 实现 ResourceUpdater 接口
 		app.PersistentStoreService,  // 实现 StoreStreamer 接口
 		app.PersistentStoreService,  // 实现 StoreReader 接口
 	)
