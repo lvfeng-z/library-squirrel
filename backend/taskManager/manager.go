@@ -616,7 +616,9 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 
 	if action == "skip" {
 		logger.Log.Infof("[TaskManager] 跳过重复任务: taskId=%d", taskId)
-		m.removeWaitingTask(task)
+		task.setState(TaskState(task.task.Status))
+		m.cleanupFinishedTask(task)
+		task.cancel()
 		return nil
 	}
 
@@ -645,7 +647,9 @@ func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
 		if action == "skip" {
 			logger.Log.Infof("[TaskManager] 批量跳过重复任务: count=%d", len(tasks))
 			for _, task := range tasks {
-				m.removeWaitingTask(task)
+				task.setState(TaskState(task.task.Status))
+				m.cleanupFinishedTask(task)
+				task.cancel()
 			}
 		} else {
 			logger.Log.Infof("[TaskManager] 批量替换重复任务: count=%d", len(tasks))
@@ -655,68 +659,6 @@ func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
 			}
 		}
 	}()
-}
-
-// removeWaitingTask 处理跳过任务的清理（从内存中移除，不写 DB）
-func (m *Manager) removeWaitingTask(mt *ManagedTask) {
-	// 推送状态回到 DB 中的原始状态，让前端看到状态转换
-	originalState := TaskState(mt.task.Status)
-	taskName := ""
-	if mt.task.TaskName.Valid {
-		taskName = mt.task.TaskName.String
-	}
-	m.pusher.PushStateChange(mt.taskId, taskName, originalState)
-
-	m.mu.Lock()
-	delete(m.taskMap, mt.taskId)
-
-	if mt.parentId != 0 {
-		parent, ok := m.parentMap[mt.parentId]
-		if ok {
-			// 重置子任务原子状态为原始 DB 状态，使 RefreshState 正确计算父任务状态
-			mt.state.Store(int32(originalState))
-
-			// 在移除子任务前，先根据所有子任务（含被跳过的）计算并持久化父任务状态
-			parent.refreshMu.Lock()
-			_, newParentState, finishedCount, total := parent.RefreshState()
-			if isStableState(newParentState) {
-				m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
-			}
-			m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
-			m.pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
-			parent.refreshMu.Unlock()
-
-			// 移除子任务并清理父任务
-			parent.RemoveChild(mt.taskId)
-			if parent.AllChildrenTerminal() {
-				// 收集仍在 taskMap 中的子任务（暂停中的任务），一并清理
-				var childRemoveIds []int64
-				for _, child := range parent.GetChildren() {
-					if _, exists := m.taskMap[child.taskId]; exists {
-						childRemoveIds = append(childRemoveIds, child.taskId)
-						delete(m.taskMap, child.taskId)
-					}
-				}
-
-				logger.Log.Infof("[TaskManager] removeWaitingTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
-				delete(m.parentMap, mt.parentId)
-				m.mu.Unlock()
-				m.pusher.PushParentTaskRemove([]int64{mt.parentId})
-				if len(childRemoveIds) > 0 {
-					m.pusher.PushTaskRemove(childRemoveIds)
-				}
-			} else {
-				m.mu.Unlock()
-			}
-		} else {
-			m.mu.Unlock()
-		}
-	} else {
-		m.mu.Unlock()
-	}
-
-	mt.cancel()
-	m.pusher.PushTaskRemove([]int64{mt.taskId})
 }
 
 // IsShuttingDown 检查是否正在优雅关闭

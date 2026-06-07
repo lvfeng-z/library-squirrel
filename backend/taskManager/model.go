@@ -952,13 +952,6 @@ func (p *ParentTask) GetChild(taskId int64) (*ManagedTask, bool) {
 	return child, ok
 }
 
-// RemoveChild 移除子任务
-func (p *ParentTask) RemoveChild(taskId int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.children, taskId)
-}
-
 // RefreshState 根据子任务状态刷新父任务状态
 // 返回旧状态、新状态、已完成子任务数和子任务总数，供调用方判断是否需要持久化和推送进度
 func (p *ParentTask) RefreshState() (oldState, newState TaskState, finishedCount, total int) {
@@ -1013,10 +1006,11 @@ func (p *ParentTask) GetState() TaskState {
 }
 
 // AllChildrenTerminal 检查所有子任务是否都已进入终态
+// 包含 Created 状态：任务被跳过时回退到 Created，此时任务已无需继续执行，应视为终态
 func (p *ParentTask) AllChildrenTerminal() bool {
 	for _, child := range p.GetChildren() {
 		s := child.GetState()
-		if s != TaskStateFinished && s != TaskStateFailed {
+		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStateCreated {
 			return false
 		}
 	}
