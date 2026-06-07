@@ -6,16 +6,21 @@ import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 
 /** 最近移除的父任务 ID 缓存有效期（毫秒） */
 const RECENTLY_REMOVED_TTL = 2000
+/** removeParentTask 延迟移除的等待时间（毫秒），确保 Vue watcher 有时间将 store 中的终态同步到行数据 */
+const REMOVE_DELAY = 300
 
 export const useParentTaskStore = defineStore('parentTask', {
   state: (): {
     parentTasks: Map<number, TaskProgressDTO>
     /** 最近被 removeParentTask 移除的任务 ID，防止过时的 updateParentTask 事件重新创建幽灵条目 */
     recentlyRemovedIds: Set<number>
+    /** 延迟移除的定时器，key 为任务 ID，收到该 ID 的 setParentTask 时取消定时器以防止误删 */
+    pendingRemoveTimers: Map<number, ReturnType<typeof setTimeout>>
   } => {
     return {
       parentTasks: new Map<number, TaskProgressDTO>(),
-      recentlyRemovedIds: new Set<number>()
+      recentlyRemovedIds: new Set<number>(),
+      pendingRemoveTimers: new Map<number, ReturnType<typeof setTimeout>>()
     }
   },
   actions: {
@@ -31,6 +36,8 @@ export const useParentTaskStore = defineStore('parentTask', {
         if (isNullish(task.id)) {
           throw new Error('UseTaskStatusStore: 赋值父任务失败，任务id为空')
         }
+        // 取消待执行的延迟移除，防止误删重新创建的任务
+        this.cancelPendingRemove(task.id)
         taskStatus.set(task.id, task)
       })
     },
@@ -40,6 +47,8 @@ export const useParentTaskStore = defineStore('parentTask', {
         if (isNullish(task.id)) {
           throw new Error('UseTaskStatusStore: 更新父任务失败，任务id为空')
         }
+        // 取消待执行的延迟移除，防止误删重新创建的任务
+        this.cancelPendingRemove(task.id)
         let oldTask = taskStatus.get(task.id)
         // store 中不存在时，若该 ID 最近被移除过则跳过自动创建，防止幽灵条目
         if (isNullish(oldTask)) {
@@ -74,14 +83,28 @@ export const useParentTaskStore = defineStore('parentTask', {
       })
     },
     removeParentTask(ids: number[]) {
-      const taskStatus = this.parentTasks
       if (arrayNotEmpty(ids)) {
         ids.forEach((id) => {
-          taskStatus.delete(id)
-          // 记录到最近移除集合，防止并发事件重新创建幽灵条目
-          this.recentlyRemovedIds.add(id)
-          setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
+          // 若已有待执行的延迟移除，先清除（避免重复定时器）
+          this.cancelPendingRemove(id)
+          // 不立即删除，而是设置延迟定时器，让 Vue watcher 有时间将 store 中的终态同步到行数据
+          const timer = setTimeout(() => {
+            this.pendingRemoveTimers.delete(id)
+            this.parentTasks.delete(id)
+            // 记录到最近移除集合，防止并发事件重新创建幽灵条目
+            this.recentlyRemovedIds.add(id)
+            setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
+          }, REMOVE_DELAY)
+          this.pendingRemoveTimers.set(id, timer)
         })
+      }
+    },
+    /** 取消指定任务的延迟移除定时器 */
+    cancelPendingRemove(taskId: number) {
+      const timer = this.pendingRemoveTimers.get(taskId)
+      if (notNullish(timer)) {
+        clearTimeout(timer)
+        this.pendingRemoveTimers.delete(taskId)
       }
     }
   }

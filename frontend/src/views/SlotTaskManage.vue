@@ -5,7 +5,6 @@ import SlotSearchTable from '../components/common/SlotSearchTable.vue'
 import DialogMode from '../model/util/DialogMode.ts'
 import { ElMessage, ElTag } from 'element-plus'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import { throttle } from 'lodash'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
@@ -40,8 +39,6 @@ const dataList: Ref<TaskProgressTreeDTO[]> = ref([])
 const page: Ref<Page<TaskProgressTreeDTO>> = ref(newPage<TaskProgressTreeDTO>())
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
 const sort: Ref<{ prop: string; order: 'ascending' | 'descending' | null }> = ref({ prop: '', order: null })
-let refreshing: boolean = false
-const throttleRefreshTask = throttle(() => refreshTask(), 500, { leading: true, trailing: true })
 const dialogData: Ref<TaskProgressTreeDTO> = ref(new TaskProgressTreeDTO())
 const taskDialogState: Ref<boolean> = ref(false)
 const downloadDialogState: Ref<boolean> = ref(false)
@@ -54,15 +51,21 @@ const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
 
 
-// 监听 store 变化，同步更新行数据中的 status
+// 监听 store 变化，同步更新行数据中的 status / total / finished
 const unwatchTaskStore = watch(
   () => taskStore.tasks,
   (tasks) => {
     tasks.forEach((storeObj, taskId) => {
-      if (notNullish(storeObj.task?.status)) {
-        const row = findRowByTaskId(taskId)
-        if (notNullish(row?.taskProgress?.task) && row!.taskProgress!.task!.status !== storeObj.task.status) {
+      const row = findRowByTaskId(taskId)
+      if (notNullish(row?.taskProgress) && notNullish(storeObj.task)) {
+        if (notNullish(storeObj.task.status) && row!.taskProgress!.task?.status !== storeObj.task.status) {
           row!.taskProgress!.task!.status = storeObj.task.status
+        }
+        if (notNullish(storeObj.task.total)) {
+          row!.taskProgress!.total = storeObj.task.total
+        }
+        if (notNullish(storeObj.task.finished)) {
+          row!.taskProgress!.finished = storeObj.task.finished
         }
       }
     })
@@ -74,10 +77,16 @@ const unwatchParentTaskStore = watch(
   () => parentTaskStore.parentTasks,
   (parentTasks) => {
     parentTasks.forEach((storeTask, taskId) => {
-      if (notNullish(storeTask.status)) {
-        const row = findRowByTaskId(taskId)
-        if (notNullish(row?.taskProgress?.task) && row!.taskProgress!.task!.status !== storeTask.status) {
+      const row = findRowByTaskId(taskId)
+      if (notNullish(row?.taskProgress)) {
+        if (notNullish(storeTask.status) && row!.taskProgress!.task?.status !== storeTask.status) {
           row!.taskProgress!.task!.status = storeTask.status
+        }
+        if (notNullish(storeTask.total)) {
+          row!.taskProgress!.total = storeTask.total
+        }
+        if (notNullish(storeTask.finished)) {
+          row!.taskProgress!.finished = storeTask.finished
         }
       }
     })
@@ -242,19 +251,15 @@ async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: Task
       break
     case TaskOperationCodeEnum.START:
       await startTask(row, false)
-      await refreshTask()
       break
     case TaskOperationCodeEnum.PAUSE:
-      taskApi.taskPauseTree(getRowTaskId(row), isLeafTask(row))
-      await refreshTask()
+      await taskApi.taskPauseTree(getRowTaskId(row), isLeafTask(row))
       break
     case TaskOperationCodeEnum.RESUME:
-      taskApi.taskResumeTree(getRowTaskId(row), isLeafTask(row))
-      await refreshTask()
+      await taskApi.taskResumeTree(getRowTaskId(row), isLeafTask(row))
       break
     case TaskOperationCodeEnum.RETRY:
       await startTask(row, true)
-      await refreshTask()
       break
     case TaskOperationCodeEnum.CANCEL:
       taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
@@ -306,83 +311,6 @@ function handleDownloadDialog(_event: PointerEvent, isLocal: boolean, newState?:
   } else {
     downloadDialogState.value = !downloadDialogState.value
   }
-}
-
-async function refreshTask() {
-  if (!refreshing) {
-    refreshing = true
-    const getActiveTaskIds = (): number[] => {
-      const visibleRowsId = taskManageSearchTable.value.getVisibleRows(200, 200).map((id: string) => Number(id))
-      return visibleRowsId.filter((id: number) => {
-        const taskProgressTree = getNodeByPath(dataList.value, id, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
-        const task = taskProgressTree?.taskProgress?.task
-        return (
-          notNullish(task) &&
-          (task.status === TaskStatusEnum.WAITING ||
-            task.status === TaskStatusEnum.PROCESSING ||
-            task.status === TaskStatusEnum.PAUSED ||
-            task.status === TaskStatusEnum.PAUSING ||
-            task.status === TaskStatusEnum.STOPPING ||
-            parentTaskStore.hasTask(task.id) ||
-            taskStore.hasTask(task.id))
-        )
-      })
-    }
-
-    let activeTaskIds = getActiveTaskIds()
-
-    while (activeTaskIds.length > 0) {
-      await refreshRows(activeTaskIds)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      if (isNullish(taskManageSearchTable.value)) {
-        break
-      }
-      activeTaskIds = getActiveTaskIds()
-    }
-    refreshing = false
-  }
-}
-
-async function refreshRows(ids: number[]) {
-  const scheduleMap = new Map<number, { status: number | null | undefined; total: number | null | undefined; finished: number | null | undefined }>()
-  const notFoundList: number[] = []
-  for (const id of ids) {
-    const storeTask = parentTaskStore.getTask(id) ?? taskStore.getTask(id)
-    if (notNullish(storeTask)) {
-      scheduleMap.set(storeTask.id!, { status: storeTask.status, total: storeTask.total, finished: storeTask.finished })
-      continue
-    }
-    notFoundList.push(id)
-  }
-  if (arrayNotEmpty(notFoundList)) {
-    try {
-      const response = await taskApi.taskListStatus(notFoundList)
-      if (arrayNotEmpty(response.data)) {
-        for (const schedule of response.data) {
-          const taskId = schedule.task?.id
-          if (notNullish(taskId)) {
-            scheduleMap.set(taskId, { status: schedule.task?.status, total: schedule.total, finished: schedule.finished })
-          }
-        }
-      }
-    } catch {
-      // 查询状态失败，静默处理
-    }
-  }
-  scheduleMap.forEach(({ status, total, finished }, taskId) => {
-    const row = getNodeByPath(dataList.value, taskId, (task) => task.taskProgress?.task?.id, (task) => (task.children as TaskProgressTreeDTO[]))
-    if (notNullish(row?.taskProgress)) {
-      if (notNullish(row.taskProgress.task)) {
-        row.taskProgress.task.status = isNullish(status) ? invalidStatus : status
-      }
-      row.taskProgress.total = total
-      row.taskProgress.finished = finished
-    }
-  })
-}
-
-function handleScroll() {
-  throttleRefreshTask()
 }
 
 async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<boolean> {
@@ -492,7 +420,6 @@ async function handleSourceUrlInput() {
         :multi-select="true"
         :page-sizes="[10, 20, 30, 50, 100]"
         :tree-data="true"
-        @scroll="handleScroll"
         @sort-change="taskManageSearchTable.doSearch()"
       >
         <template #toolbarMain>
