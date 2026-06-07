@@ -229,6 +229,10 @@ type ManagedTask struct {
 	workStoreId   int64                       // StoreStream 返回的作品资源 store ID
 	totalWritten  int64                       // 已写入字节数
 
+	// atomic 进度快照字段，供 BuildSnapshot 并发安全读取
+	progressTotal    atomic.Int64 // 资源总大小
+	progressFinished atomic.Int64 // 已下载字节数
+
 	// StoreStreamer 和 StoreReader（通过依赖注入）
 	storeStreamer StoreStreamer
 	storeReader   StoreReader

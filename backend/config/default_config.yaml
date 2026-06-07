@@ -16,6 +16,9 @@ app:
   resourcePath: ./resources
   dataPath: ./data
 
+task:
+  useSnapshotMode: true
+
 sites:
   - name: local
     description: 此电脑

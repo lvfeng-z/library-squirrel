@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as model$0 from "../base/model/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * ConfirmReplace 用户确认替换或跳过重复作品
  */
@@ -33,11 +37,20 @@ export function ConfirmReplaceBatch(taskIds: number[], action: string): $Cancell
 }
 
 /**
+ * GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
+ */
+export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$models.taskSnapshotDTO | null> | null> {
+    return $Call.ByID(1922063002).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
  * GetTaskState 获取任务状态
  */
 export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1655799451, taskId).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType7($result);
     });
 }
 
@@ -46,7 +59,7 @@ export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiRes
  */
 export function GetTaskTreeState(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1455726591, taskId, isLeaf).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType7($result);
     });
 }
 
@@ -55,7 +68,7 @@ export function GetTaskTreeState(taskId: number, isLeaf: boolean): $CancellableP
  */
 export function IsIdle(): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(3320329243).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType9($result);
     });
 }
 
@@ -107,7 +120,11 @@ export function StopTaskTree(taskId: number, isLeaf: boolean): $CancellablePromi
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType2 = $models.taskSnapshotDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType9 = $Create.Nullable($$createType8);

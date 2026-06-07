@@ -19,6 +19,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Log      LogConfig      `mapstructure:"log"`
 	App      AppConfig      `mapstructure:"app"`
+	Task     TaskConfig     `mapstructure:"task"`
 	Sites    []SiteConfig   `mapstructure:"sites"`
 	Plugins  []PluginConfig `mapstructure:"plugins"`
 }
@@ -59,6 +60,11 @@ type PluginConfig struct {
 	PathType    string `mapstructure:"pathType"`    // 路径类型 (Relative, Absolute)
 }
 
+// TaskConfig 任务相关配置
+type TaskConfig struct {
+	UseSnapshotMode bool `mapstructure:"useSnapshotMode"` // 是否使用快照模式推送任务状态（默认 true）
+}
+
 var cfg *Config
 
 // Load 加载配置
@@ -75,6 +81,7 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("app.host", "127.0.0.1")
 	viper.SetDefault("app.resourcePath", "./resources")
 	viper.SetDefault("app.dataPath", "./data")
+	viper.SetDefault("task.useSnapshotMode", true)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)

@@ -13,27 +13,45 @@ import TaskProgressMapTreeDTO from '@renderer/model/model/dto/TaskProgressMapTre
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import { Events } from '@wailsio/runtime'
+import { taskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
 export function iniListener() {
-  // 任务队列 - 使用 Wails Events
+  // 子任务事件（统一 topic，同 topic FIFO 保证事件顺序）
+  Events.On('task-events', (event: any) => {
+    const { type, data } = event.data as { type: string; data: any }
+    switch (type) {
+      case 'updateTask':
+        useTaskStore().updateTask(data as TaskProgressDTO[])
+        break
+      case 'updateSchedule':
+        useTaskStore().updateTaskSchedule((data as any[]).map((d: any) => new TaskScheduleDTO(d)))
+        break
+      case 'removeTask':
+        useTaskStore().removeTask(data as number[])
+        break
+    }
+  })
+
+  // 父任务事件（统一 topic，同 topic FIFO 保证事件顺序）
+  Events.On('parent-events', (event: any) => {
+    const { type, data } = event.data as { type: string; data: any }
+    switch (type) {
+      case 'updateParentTask':
+        useParentTaskStore().updateParentTask(data as TaskProgressMapTreeDTO[])
+        break
+      case 'updateParentSchedule':
+        useParentTaskStore().updateParentTaskSchedule((data as any[]).map((d: any) => new TaskScheduleDTO(d)))
+        break
+      case 'removeParentTask':
+        useParentTaskStore().removeParentTask(data as number[])
+        break
+    }
+  })
+
+  // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）
   Events.On('taskStatus-setTask', (event: any) => {
     const taskList = event.data as TaskProgressDTO[]
     useTaskStore().setTask(taskList)
-  })
-
-  Events.On('taskStatus-updateTask', (event: any) => {
-    const taskList = event.data as TaskProgressDTO[]
-    useTaskStore().updateTask(taskList)
-  })
-
-  Events.On('taskStatus-updateSchedule', (event: any) => {
-    const scheduleDTOList = (event.data as any[]).map((d: any) => new TaskScheduleDTO(d))
-    useTaskStore().updateTaskSchedule(scheduleDTOList)
-  })
-
-  Events.On('taskStatus-removeTask', (event: any) => {
-    const ids = event.data as number[]
-    useTaskStore().removeTask(ids)
   })
 
   Events.On('parentTaskStatus-setParentTask', (event: any) => {
@@ -41,19 +59,11 @@ export function iniListener() {
     useParentTaskStore().setParentTask(taskList)
   })
 
-  Events.On('parentTaskStatus-updateParentTask', (event: any) => {
-    const taskList = event.data as TaskProgressMapTreeDTO[]
-    useParentTaskStore().updateParentTask(taskList)
-  })
-
-  Events.On('parentTaskStatus-updateSchedule', (event: any) => {
-    const taskList = (event.data as any[]).map((d: any) => new TaskScheduleDTO(d))
-    useParentTaskStore().updateParentTaskSchedule(taskList)
-  })
-
-  Events.On('parentTaskStatus-removeParentTask', (event: any) => {
-    const ids = event.data as number[]
-    useParentTaskStore().removeParentTask(ids)
+  // 任务状态快照（快照模式：后端防抖推送实时快照 + 移除缓冲区，消除 Wails Emit 乱序问题）
+  Events.On('task-snapshot', (event: any) => {
+    const snapshot = taskSnapshotDTO.createFrom(event.data)
+    useTaskStore().loadSnapshot(snapshot.tasks, snapshot.removedTasks)
+    useParentTaskStore().loadSnapshot(snapshot.parentTasks, snapshot.removedParentTasks)
   })
 
   // 作品重复检测 - Wails Events

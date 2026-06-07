@@ -75,3 +75,9 @@ func (h *Handler) ConfirmReplaceBatch(ctx context.Context, taskIds []int64, acti
 	h.mgr.ConfirmReplaceBatch(taskIds, action)
 	return model.Success[any](nil)
 }
+
+// GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
+func (h *Handler) GetTaskSnapshot() *model.ApiResponse[*taskSnapshotDTO] {
+	snapshot := h.mgr.GetTaskSnapshot()
+	return model.Success(snapshot)
+}

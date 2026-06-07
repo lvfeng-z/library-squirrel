@@ -249,7 +249,13 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 	app.frontendEventOn = onEvent
 	// Manager 在 initAdvancedServices 中已创建（此时 emitter 尚未就绪），需要补设 pusher
 	if app.TaskManagerService != nil {
-		app.TaskManagerService.SetPusher(taskManager.NewWailsTaskProgressPusher(emitter))
+		var pusher taskManager.TaskProgressPusher
+		if app.cfg.Task.UseSnapshotMode {
+			pusher = taskManager.NewSnapshotPusher(emitter, app.TaskManagerService, 50)
+		} else {
+			pusher = taskManager.NewWailsTaskProgressPusher(emitter)
+		}
+		app.TaskManagerService.SetPusher(pusher)
 	}
 }
 

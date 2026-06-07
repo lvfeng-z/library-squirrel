@@ -67,6 +67,8 @@ type Manager struct {
 
 	// 进度推送器
 	pusher TaskProgressPusher
+	// 快照推送器引用（仅在快照模式下非 nil，供 GetTaskSnapshot 使用）
+	snapshotPusher *SnapshotPusher
 
 	// Repository（任务数据库操作）
 	repo Repository
@@ -120,8 +122,8 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		resourceSaver:            resourceSaver,
 		workChecker:              workChecker,
 		resourceReader:           resourceReader,
-		storeBackupOrchestrator: storeBackupOrchestrator,
-		resourceUpdater:         resourceUpdater,
+		storeBackupOrchestrator:  storeBackupOrchestrator,
+		resourceUpdater:          resourceUpdater,
 		storeStreamer:            storeStreamer,
 		storeReader:              storeReader,
 		waitingForInputMap:       make(map[int64]*ManagedTask),
@@ -594,6 +596,20 @@ func (m *Manager) GetPusher() TaskProgressPusher {
 // SetPusher 设置进度推送器（用于 emitter 延迟就绪时替换 Noop）
 func (m *Manager) SetPusher(pusher TaskProgressPusher) {
 	m.pusher = pusher
+	// 若为快照推送器，保存引用以供 GetTaskSnapshot 使用
+	if sp, ok := pusher.(*SnapshotPusher); ok {
+		m.snapshotPusher = sp
+	} else {
+		m.snapshotPusher = nil
+	}
+}
+
+// GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
+func (m *Manager) GetTaskSnapshot() *taskSnapshotDTO {
+	if m.snapshotPusher != nil {
+		m.snapshotPusher.EmitSnapshot()
+	}
+	return m.BuildSnapshot()
 }
 
 // IsIdle 检查任务管理器是否处于空闲状态（没有运行中的任务）
@@ -846,6 +862,56 @@ func (m *Manager) GetTaskStates() map[int64]int {
 	return states
 }
 
+// BuildSnapshot 构建当前所有活跃任务的完整状态快照（基于 taskMap/parentMap 实时状态）
+// 实现 SnapshotDataProvider 接口
+func (m *Manager) BuildSnapshot() *taskSnapshotDTO {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	snapshot := &taskSnapshotDTO{
+		Tasks:       make([]*taskSnapshotItem, 0, len(m.taskMap)+len(m.waitingForInputMap)),
+		ParentTasks: make([]*taskSnapshotItem, 0, len(m.parentMap)),
+	}
+
+	// 收集子任务快照（从 atomic 字段读取进度，并发安全）
+	for _, mt := range m.taskMap {
+		snapshot.Tasks = append(snapshot.Tasks, &taskSnapshotItem{
+			ID:       mt.taskId,
+			TaskName: mt.task.TaskName.String,
+			Status:   int(mt.GetState()),
+			Total:    mt.progressTotal.Load(),
+			Finished: mt.progressFinished.Load(),
+		})
+	}
+
+	// 收集父任务快照
+	for _, pt := range m.parentMap {
+		pt.refreshMu.Lock()
+		_, state, finished, total := pt.RefreshState()
+		pt.refreshMu.Unlock()
+		snapshot.ParentTasks = append(snapshot.ParentTasks, &taskSnapshotItem{
+			ID:       pt.taskId,
+			TaskName: pt.taskName,
+			Status:   int(state),
+			Total:    int64(total),
+			Finished: int64(finished),
+		})
+	}
+
+	// 收集等待确认的任务（无进度数据）
+	m.waitingForInputMu.Lock()
+	for _, mt := range m.waitingForInputMap {
+		snapshot.Tasks = append(snapshot.Tasks, &taskSnapshotItem{
+			ID:       mt.taskId,
+			TaskName: mt.task.TaskName.String,
+			Status:   int(mt.GetState()),
+		})
+	}
+	m.waitingForInputMu.Unlock()
+
+	return snapshot
+}
+
 func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	// 获取任务执行器
 	if !t.PluginPublicID.Valid {
@@ -904,8 +970,12 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		}
 	})
 
-	// 设置进度回调（写入待合并 map，由 flushLoop 批量推送）
+	// 设置进度回调（写入待合并 map，由 flushLoop 批量推送；同时更新 atomic 字段供快照使用）
 	mt.SetOnProgress(func(taskId int64, total int64, finished int64) {
+		// 同步更新 atomic 进度字段（快照模式使用）
+		mt.progressTotal.Store(total)
+		mt.progressFinished.Store(finished)
+
 		m.pendingMu.Lock()
 		m.pendingProgressUpdates[taskId] = &taskScheduleDTO{ID: taskId, Total: total, Finished: finished}
 		m.pendingMu.Unlock()

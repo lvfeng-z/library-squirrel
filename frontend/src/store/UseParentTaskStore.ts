@@ -3,6 +3,7 @@ import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil
 import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
+import { taskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
 /** 最近移除的父任务 ID 缓存有效期（毫秒） */
 const RECENTLY_REMOVED_TTL = 2000
@@ -59,6 +60,7 @@ export const useParentTaskStore = defineStore('parentTask', {
           taskStatus.set(task.id, oldTask)
         }
         copyIgnoreUndefined(oldTask, task)
+        console.log('update P task', task.id, oldTask.status)
       })
     },
     updateParentTaskSchedule(scheduleDTOList: TaskScheduleDTO[]): void {
@@ -87,10 +89,12 @@ export const useParentTaskStore = defineStore('parentTask', {
         ids.forEach((id) => {
           // 若已有待执行的延迟移除，先清除（避免重复定时器）
           this.cancelPendingRemove(id)
+          console.log('setTimer P task', id)
           // 不立即删除，而是设置延迟定时器，让 Vue watcher 有时间将 store 中的终态同步到行数据
           const timer = setTimeout(() => {
             this.pendingRemoveTimers.delete(id)
             this.parentTasks.delete(id)
+            console.log('remove P task', id)
             // 记录到最近移除集合，防止并发事件重新创建幽灵条目
             this.recentlyRemovedIds.add(id)
             setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
@@ -106,6 +110,48 @@ export const useParentTaskStore = defineStore('parentTask', {
         clearTimeout(timer)
         this.pendingRemoveTimers.delete(taskId)
       }
+    },
+    /**
+     * 从快照加载父任务状态（快照模式使用）。
+     * 1. 用实时快照全量替换 store
+     * 2. 用移除缓冲区补充被移除任务的终态信息
+     * 3. 为缓冲区中的任务设置延迟移除定时器
+     */
+    loadSnapshot(liveItems: (taskSnapshotItem | null)[], removedItems: (taskSnapshotItem | null)[]): void {
+      // 1. 全量替换
+      this.pendingRemoveTimers.forEach((timer) => clearTimeout(timer))
+      this.pendingRemoveTimers.clear()
+      this.parentTasks.clear()
+
+      // 写入实时快照
+      liveItems.filter(notNullish).forEach((item) => {
+        const taskDTO = new TaskProgressDTO()
+        taskDTO.id = item.id
+        taskDTO.taskName = item.taskName
+        taskDTO.status = item.status
+        taskDTO.total = item.total
+        taskDTO.finished = item.finished
+        this.parentTasks.set(item.id, taskDTO)
+      })
+
+      // 2. 补充移除缓冲区
+      removedItems.filter(notNullish).forEach((item) => {
+        const taskDTO = new TaskProgressDTO()
+        taskDTO.id = item.id
+        taskDTO.taskName = item.taskName
+        taskDTO.status = item.status
+        taskDTO.total = item.total
+        taskDTO.finished = item.finished
+        this.parentTasks.set(item.id, taskDTO)
+        const timer = setTimeout(() => {
+          this.pendingRemoveTimers.delete(item.id)
+          console.log('remove P task', item.id)
+          this.parentTasks.delete(item.id)
+          this.recentlyRemovedIds.add(item.id)
+          setTimeout(() => this.recentlyRemovedIds.delete(item.id), RECENTLY_REMOVED_TTL)
+        }, REMOVE_DELAY)
+        this.pendingRemoveTimers.set(item.id, timer)
+      })
     }
   }
 })

@@ -16,6 +16,10 @@ app:
   resourcePath: ./resources
   dataPath: ./data
 
+# 任务配置
+task:
+  useSnapshotMode: true
+
 # 站点配置（来自旧代码 iniConfig.yml）
 sites:
   - name: local
