@@ -22,3 +22,6 @@ build/darwin/Assets.car
 
 # 捆绑插件安装包（体积大，不提交）
 resources/bundled-plugins/*.zip
+
+# mcp
+/mcp/**/node_modules

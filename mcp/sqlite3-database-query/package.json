@@ -1,0 +1,13 @@
+{
+  "name": "db-mcp",
+  "version": "1.0.0",
+  "description": "数据库MCP服务 - SQLite只读查询",
+  "main": "index.js",
+  "author": "lvfeng",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.8.0",
+    "zod": "^4.3.6"
+  }
+}

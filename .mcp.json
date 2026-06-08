@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sqlite3-database-query": {
+      "args": [
+        "/c",
+        "node",
+        "./mcp/sqlite3-database-query/index.js"
+      ],
+      "command": "cmd",
+      "type": "stdio"
+    }
+  }
+}
