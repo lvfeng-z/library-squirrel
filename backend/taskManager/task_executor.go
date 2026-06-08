@@ -21,10 +21,9 @@ type TaskExecutorInterface interface {
 	// Start 开始任务
 	// ctx: 上下文，用于取消和超时控制
 	// task: 任务信息
-	// workId: 工作ID
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *sdkdto.WorkResponse, error)
+	Start(ctx context.Context, task *domain.Task) (io.ReadCloser, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务
 	// ctx: 上下文

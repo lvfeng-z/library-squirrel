@@ -36,7 +36,7 @@ func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task
 }
 
 // Start 开始任务
-func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, workId int64) (io.ReadCloser, *sdkdto.WorkResponse, error) {
+func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task) (io.ReadCloser, *sdkdto.WorkResponse, error) {
 	pluginPublicId, contributionId := pluginIdsFromEntityTask(task)
 	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
 	if err != nil {
