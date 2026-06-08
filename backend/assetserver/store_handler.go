@@ -19,9 +19,9 @@ type StoreStatusChecker interface {
 	IsCompleteByPath(ctx context.Context, relPath string) bool
 }
 
-// StoreFileHandler 从工作目录的 store 子目录提供文件服务的 HTTP Handler
+// StoreFileHandler 从工作目录提供文件服务的 HTTP Handler
 // URL 格式: /store/{relativePath}?params...
-// 文件存储路径: {workDir}/store/{relativePath}
+// 文件存储路径: {workDir}/{relativePath}
 type StoreFileHandler struct {
 	mu             sync.RWMutex
 	workDir        string
@@ -50,7 +50,7 @@ func (h *StoreFileHandler) SetWorkDir(dir string) {
 
 // ServeHTTP 处理存储文件请求
 // URL 格式: /store/{relativePath}
-// relativePath 是相对于 workdir/store/ 的相对路径
+// relativePath 是相对于 workdir 的相对路径
 func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -84,10 +84,9 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storeDir := filepath.Join(workDir, "store")
-	absPath := filepath.Join(storeDir, cleanedPath)
+	absPath := filepath.Join(workDir, cleanedPath)
 
-	if !strings.HasPrefix(filepath.Clean(absPath), filepath.Clean(storeDir)) {
+	if !strings.HasPrefix(filepath.Clean(absPath), filepath.Clean(workDir)) {
 		http.NotFound(w, r)
 		return
 	}

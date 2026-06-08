@@ -93,7 +93,7 @@ type TaskExecutor interface {
 	// Start 开始任务
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *entity.Task, workId int64) (io.ReadCloser, *sdkdto.WorkResponse, error)
+	Start(ctx context.Context, task *entity.Task) (io.ReadCloser, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务
 	// 返回是否真正暂停成功（插件可能不支持暂停）
@@ -366,7 +366,7 @@ func (m *ManagedTask) run() runResult {
 	m.workId = workId
 
 	// 3. 获取资源读取器
-	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.workId)
+	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 		if m.abortedByPause() {
@@ -875,7 +875,7 @@ func (m *ManagedTask) abortedByPause() bool {
 }
 
 // resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
-// 返回值: absSavePath 不再使用（空字符串）, relativePath 相对于 store 根目录的路径, fileName 文件名
+// 返回值: absSavePath 不再使用（空字符串）, relativePath 相对于 workDir 的路径, fileName 文件名
 func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSavePath, relativePath, fileName string) {
 	res := startResp.Resource
 	tpl := m.fileNameFormatProvider.GetFileNameFormat()
@@ -883,7 +883,7 @@ func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSaveP
 	// 模板为空时使用插件建议的文件名
 	if tpl == "" {
 		fileName = m.buildSuggestedFileName(res)
-		relativePath = filepath.Join("resource", fileName)
+		relativePath = filepath.Join("store", "resource", fileName)
 		return
 	}
 
@@ -900,7 +900,7 @@ func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (absSaveP
 
 	authorDir := filename.SanitizeFileName(tokenData.Author)
 
-	relativePath = filepath.Join("resource", authorDir, fileName)
+	relativePath = filepath.Join("store", "resource", authorDir, fileName)
 	return
 }
 
@@ -1095,14 +1095,14 @@ func (m *ManagedTask) saveThumbnail() {
 }
 
 // buildThumbnailRelPath 构建缩略图相对路径
-// 去除 WorkStore FilePath 中的资源子目录前缀（如 "resource/"），
-// 将缩略图直接放在 "thumbnail/作者/" 下，避免 "thumbnail/resource/作者/" 的冗余层级。
+// 去除 WorkStore FilePath 中的 "store/resource/" 前缀，
+// 将缩略图直接放在 "store/thumbnail/作者/" 下，避免 "store/thumbnail/resource/作者/" 的冗余层级。
 func buildThumbnailRelPath(resourceRelPath string, thumbFormat string) string {
-	// 去除 "resource/" 前缀
-	relPath := strings.TrimPrefix(resourceRelPath, "resource")
+	// 去除 "store/resource/" 前缀
+	relPath := strings.TrimPrefix(resourceRelPath, "store/resource")
 	ext := filepath.Ext(relPath)
 	base := strings.TrimSuffix(relPath, ext)
-	return "thumbnail/" + base + "_thumbnail." + thumbFormat
+	return "store/thumbnail/" + base + "_thumbnail." + thumbFormat
 }
 
 // buildThumbnailFileName 构建缩略图文件名

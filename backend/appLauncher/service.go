@@ -41,13 +41,13 @@ func NewService(workDirProvider WorkDirProvider) *Service {
 }
 
 // OpenImage 使用系统默认应用打开图片资源
-// url 为相对于 workdir/resource/ 的相对路径
-func (s *Service) OpenImage(url string) error {
-	if url == "" {
+// filePath 为相对于资源库根目录（workdir）的相对路径
+func (s *Service) OpenImage(filePath string) error {
+	if filePath == "" {
 		return ErrInvalidPath
 	}
 
-	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), "resource", url)
+	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), filePath)
 	return s.OpenPath(fullPath)
 }
 

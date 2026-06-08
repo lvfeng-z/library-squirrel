@@ -102,7 +102,29 @@ const siteTagExchangeUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 // 站点标签的查询参数
 const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 
-// ===== 辅助：获取活跃资源的文件路径 =====
+// ===== 可显示的图片扩展名 =====
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
+
+function isDisplayableImage(extension: string | null | undefined): boolean {
+  if (!extension) return false
+  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
+}
+
+// ===== 图片显示路径（优先缩略图，仅图片类型回退 workStore）=====
+const imagePath = computed(() => {
+  const resource = currentWorkFullInfo.value.resource
+  // 1. 优先使用缩略图
+  if (resource?.thumbnailStore?.filePath) {
+    return resource.thumbnailStore.filePath
+  }
+  // 2. 无缩略图时，仅对图片类型的资源返回路径；非图片类型返回空，阻止 el-image 加载
+  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+    return resource.workStore.filePath
+  }
+  return ''
+})
+
+// ===== 辅助：获取资源的原始文件路径（用于外部打开）=====
 function getResourceFilePath(info: WorkFullDTO): string {
   return info.resource?.workStore?.filePath ?? ''
 }
@@ -372,7 +394,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       <el-image
         class="work-dialog-image"
         fit="contain"
-        :src="buildStoreUrl(getResourceFilePath(currentWorkFullInfo))"
+        :src="imagePath ? buildStoreUrl(imagePath) : ''"
         @click="handlePictureClicked"
       >
         <template #error>
