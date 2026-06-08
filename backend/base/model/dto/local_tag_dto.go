@@ -3,7 +3,7 @@ package dto
 import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // NewLocalTagDTO 从 entity.LocalTag 创建 LocalTagDTO

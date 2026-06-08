@@ -9,7 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
-	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 )
 
@@ -74,20 +74,20 @@ type PluginContextDeps struct {
 // --- Implementation ---
 
 type pluginContext struct {
-	pluginInfo           *PluginInfo
-	taskHandlerRegistry  *TaskHandlerRegistry
-	siteBrowserRegistry  *SiteBrowserRegistry
-	rootPath             string
-	pluginData           PluginDataProvider
-	secureStorage        SecureStorageProvider
-	workSetQuery         WorkSetQueryProvider
-	siteSave             SiteSaveProvider
-	siteQuery            SiteQueryProvider
-	taskCreate           TaskCreateProvider
-	urlListener          UrlListenerRegistry
-	frontendEvent        pluginsdkdto.FrontendEventProvider
-	scopedLogger         *zap.SugaredLogger
-	logger               pluginsdkdto.Logger
+	pluginInfo          *PluginInfo
+	taskHandlerRegistry *TaskHandlerRegistry
+	siteBrowserRegistry *SiteBrowserRegistry
+	rootPath            string
+	pluginData          PluginDataProvider
+	secureStorage       SecureStorageProvider
+	workSetQuery        WorkSetQueryProvider
+	siteSave            SiteSaveProvider
+	siteQuery           SiteQueryProvider
+	taskCreate          TaskCreateProvider
+	urlListener         UrlListenerRegistry
+	frontendEvent       pluginsdkdto.FrontendEventProvider
+	scopedLogger        *zap.SugaredLogger
+	logger              pluginsdkdto.Logger
 }
 
 // NewPluginContext 创建插件上下文

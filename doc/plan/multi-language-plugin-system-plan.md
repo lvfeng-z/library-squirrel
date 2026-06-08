@@ -400,11 +400,11 @@ message LogRequest {
 
 ### 四、Go SDK 重构
 
-当前的 `library-squirrel-plugin-sdk` 从零依赖的自定义 RPC 框架重构为基于 hashicorp/go-plugin + gRPC 的标准插件框架。
+当前的 `library-squirrel-sdk` 从零依赖的自定义 RPC 框架重构为基于 hashicorp/go-plugin + gRPC 的标准插件框架。
 
 **新目录结构**：
 ```
-library-squirrel-plugin-sdk/
+library-squirrel-sdk/
 ├── go.mod
 ├── proto/
 │   └── plugin.proto              # protobuf 定义

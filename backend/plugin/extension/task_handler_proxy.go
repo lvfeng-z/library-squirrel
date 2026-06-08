@@ -6,12 +6,12 @@ import (
 	"io"
 	"sync"
 
+	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
-	"github.com/lvfeng-z/library-squirrel-plugin-sdk/gen"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
@@ -95,7 +95,7 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsd
 		return nil, err
 	}
 	resp, err := client.CreateWorkInfo(context.Background(), &gen.CreateWorkInfoRequest{
-		Task:          taskToProto(task),
+		Task:           taskToProto(task),
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
@@ -110,7 +110,7 @@ func (p *TaskHandlerProxy) Start(task *pluginsdkdto.TaskDTO) (io.ReadCloser, *pl
 		return nil, nil, err
 	}
 	stream, err := client.Start(context.Background(), &gen.StartRequest{
-		Task:          taskToProto(task),
+		Task:           taskToProto(task),
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.Work
 		return nil, err
 	}
 	resp, err := client.Retry(context.Background(), &gen.RetryRequest{
-		Task:          taskToProto(task),
+		Task:           taskToProto(task),
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 		return err
 	}
 	_, err = client.Pause(context.Background(), &gen.TaskResParamMessage{
-		Param:         taskResParamToProto(param),
+		Param:          taskResParamToProto(param),
 		ContributionId: p.contributionId,
 	})
 	return err
@@ -166,7 +166,7 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 		return err
 	}
 	_, err = client.Stop(context.Background(), &gen.TaskResParamMessage{
-		Param:         taskResParamToProto(param),
+		Param:          taskResParamToProto(param),
 		ContributionId: p.contributionId,
 	})
 	return err
@@ -178,7 +178,7 @@ func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (io.ReadClos
 		return nil, nil, err
 	}
 	stream, err := client.Resume(context.Background(), &gen.TaskResParamMessage{
-		Param:         taskResParamToProto(param),
+		Param:          taskResParamToProto(param),
 		ContributionId: p.contributionId,
 	})
 	if err != nil {
@@ -318,19 +318,19 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	resp := &pluginsdkdto.WorkResponse{}
 	if pb.Work != nil {
 		resp.Work = &pluginsdkdto.WorkDTO{
-			ID:                   pb.Work.Id,
-			CreateTime:           pb.Work.CreateTime,
-			UpdateTime:           pb.Work.UpdateTime,
-			SiteID:               pb.Work.SiteId,
-			SiteWorkID:           pb.Work.SiteWorkId,
-			SiteWorkName:         pb.Work.SiteWorkName,
-			SiteAuthorID:         pb.Work.SiteAuthorId,
-			SiteWorkDescription:  pb.Work.SiteWorkDescription,
-			SiteUploadTime:       pb.Work.SiteUploadTime,
-			SiteUpdateTime:       pb.Work.SiteUpdateTime,
-			NickName:             pb.Work.NickName,
-			LocalAuthorID:        pb.Work.LocalAuthorId,
-			LastView:             pb.Work.LastView,
+			ID:                  pb.Work.Id,
+			CreateTime:          pb.Work.CreateTime,
+			UpdateTime:          pb.Work.UpdateTime,
+			SiteID:              pb.Work.SiteId,
+			SiteWorkID:          pb.Work.SiteWorkId,
+			SiteWorkName:        pb.Work.SiteWorkName,
+			SiteAuthorID:        pb.Work.SiteAuthorId,
+			SiteWorkDescription: pb.Work.SiteWorkDescription,
+			SiteUploadTime:      pb.Work.SiteUploadTime,
+			SiteUpdateTime:      pb.Work.SiteUpdateTime,
+			NickName:            pb.Work.NickName,
+			LocalAuthorID:       pb.Work.LocalAuthorId,
+			LastView:            pb.Work.LastView,
 		}
 	}
 	if pb.Site != nil {

@@ -4,17 +4,17 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 
-	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 )
 
 // hostPluginCallbacks 提供 HostDeps 注册回调的实现
 // 在 loader.go 中通过 HostDeps.OnRegisterTaskHandler 等字段注入
 type hostPluginCallbacks struct {
-	pluginInfo           *PluginInfo
-	loader               *Loader
-	taskHandlerRegistry  *TaskHandlerRegistry
-	siteBrowserRegistry  *SiteBrowserRegistry
+	pluginInfo          *PluginInfo
+	loader              *Loader
+	taskHandlerRegistry *TaskHandlerRegistry
+	siteBrowserRegistry *SiteBrowserRegistry
 }
 
 func newHostPluginCallbacks(
@@ -24,16 +24,16 @@ func newHostPluginCallbacks(
 	siteBrowserRegistry *SiteBrowserRegistry,
 ) *hostPluginCallbacks {
 	return &hostPluginCallbacks{
-		pluginInfo:           pluginInfo,
+		pluginInfo:          pluginInfo,
 		loader:              loader,
-		taskHandlerRegistry:  taskHandlerRegistry,
-		siteBrowserRegistry:  siteBrowserRegistry,
+		taskHandlerRegistry: taskHandlerRegistry,
+		siteBrowserRegistry: siteBrowserRegistry,
 	}
 }
 
 func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, description string) error {
 	proxy := &TaskHandlerProxy{
-		loader:        c.loader,
+		loader:         c.loader,
 		pluginPublicId: c.pluginInfo.PublicID,
 		contributionId: contributionId,
 	}
@@ -57,7 +57,7 @@ func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, descri
 
 func (c *hostPluginCallbacks) onRegisterSiteBrowser(contributionId, name, description string) error {
 	proxy := &SiteBrowserProxy{
-		loader:        c.loader,
+		loader:         c.loader,
 		pluginPublicId: c.pluginInfo.PublicID,
 		contributionId: contributionId,
 	}

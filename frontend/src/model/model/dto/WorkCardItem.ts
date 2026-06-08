@@ -6,7 +6,7 @@ import {
   LocalAuthorDTO,
   SiteAuthorFullDTO,
   ResourceFullDTO
-} from '@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto'
+} from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class WorkCardItem {

@@ -13,7 +13,7 @@ import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
 import { SiteQueryDTO } from '@bindings/github.com/library-squirrel/backend/site/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import { siteApi } from '@renderer/apis/http'
-import {SiteDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import {SiteDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 
 // onMounted

@@ -15,7 +15,7 @@ globs:
 - 插件位于 `plugin/`，由 `app.go` 的 `loadInstalledPlugins()` 加载
 - **两种类型**：运行时插件（Go DLL 子进程）和纯 UI 插件（仅 `plugin.json`）
 - **三个扩展点**：TaskHandler、SiteBrowser（运行时）、Slot（通过 `plugin.json` 声明式）
-- **插件 SDK**：`github.com/lvfeng-z/library-squirrel-plugin-sdk`（本地 replace 指令）
+- **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
 - **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{ver}/...`
 
 ## 初始化时序

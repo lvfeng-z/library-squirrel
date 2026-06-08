@@ -18,7 +18,7 @@ import {
   SelectItem,
   SiteAuthorDTO,
   SiteAuthorLocalRelateDTO, SiteDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";

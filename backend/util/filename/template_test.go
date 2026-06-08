@@ -3,7 +3,7 @@ package filename
 import (
 	"testing"
 
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // --- SanitizeFileName 测试 ---

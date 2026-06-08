@@ -8,7 +8,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // ========== 外部模块接口定义（由 search 模块定义自己需要的接口）==========
@@ -71,9 +71,9 @@ type Service struct {
 	repo Repository
 
 	// 作品集查询依赖
-	coverResolver   CoverResolver
-	workReader      WorkSetPageWorkReader
-	resourceReader  WorkSetPageResourceReader
+	coverResolver    CoverResolver
+	workReader       WorkSetPageWorkReader
+	resourceReader   WorkSetPageResourceReader
 	storeBatchReader StoreBatchReader
 
 	// 外部模块依赖（通过构造函数注入）
@@ -96,13 +96,13 @@ func NewService(
 	siteAuthorUpdater SiteAuthorUpdater,
 ) *Service {
 	return &Service{
-		repo:              repo,
-		coverResolver:     coverResolver,
-		workReader:        workReader,
-		resourceReader:    resourceReader,
-		storeBatchReader:  storeBatchReader,
-		localTagUpdater:   localTagUpdater,
-		siteTagUpdater:    siteTagUpdater,
+		repo:               repo,
+		coverResolver:      coverResolver,
+		workReader:         workReader,
+		resourceReader:     resourceReader,
+		storeBatchReader:   storeBatchReader,
+		localTagUpdater:    localTagUpdater,
+		siteTagUpdater:     siteTagUpdater,
 		localAuthorUpdater: localAuthorUpdater,
 		siteAuthorUpdater:  siteAuthorUpdater,
 	}

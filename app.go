@@ -16,7 +16,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
-	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -59,26 +59,26 @@ type App struct {
 	db *gorm.DB
 
 	// 业务服务
-	LocalTagService      *localTag.Service
-	LocalAuthorService   *localAuthor.Service
-	SiteTagService       *siteTag.Service
-	SiteAuthorService    *siteAuthor.Service
-	SiteService          *site.Service
-	ResourceService      *resource.Service
-	ReWorkAuthorService  *reWorkAuthor.Service
-	ReWorkTagService     *reWorkTag.Service
-	WorkService          *work.Service
-	WorkSetService       *workSet.Service
-	SearchService        *search.Service
-	SettingsService      *settings.Service
-	SecureStorageService *secureStorage.Service
-	BackupService        *backup.Service
-	AppLauncherService   *appLauncher.Service
-	FileSysUtilService   *fileSysUtil.Service
-	PluginService        *plugin.Service
-	TaskService          *task.Service
-	TaskManagerService   *taskManager.Manager
-	SiteBrowserService   *siteBrowser.Service
+	LocalTagService        *localTag.Service
+	LocalAuthorService     *localAuthor.Service
+	SiteTagService         *siteTag.Service
+	SiteAuthorService      *siteAuthor.Service
+	SiteService            *site.Service
+	ResourceService        *resource.Service
+	ReWorkAuthorService    *reWorkAuthor.Service
+	ReWorkTagService       *reWorkTag.Service
+	WorkService            *work.Service
+	WorkSetService         *workSet.Service
+	SearchService          *search.Service
+	SettingsService        *settings.Service
+	SecureStorageService   *secureStorage.Service
+	BackupService          *backup.Service
+	AppLauncherService     *appLauncher.Service
+	FileSysUtilService     *fileSysUtil.Service
+	PluginService          *plugin.Service
+	TaskService            *task.Service
+	TaskManagerService     *taskManager.Manager
+	SiteBrowserService     *siteBrowser.Service
 	PersistentStoreService *persistentStore.Service
 
 	// 任务仓储（用于TaskManager）
@@ -99,7 +99,7 @@ type App struct {
 	StaticResourceService *extension2.StaticResourceService
 
 	// HTTP 路由
-	AssetRouter     *assetserver.Router
+	AssetRouter      *assetserver.Router
 	StoreFileHandler *assetserver.StoreFileHandler
 
 	// 任务URL监听器
@@ -679,17 +679,16 @@ func (app *App) initBaseServices() {
 	resourceRepo := resource.NewRepository(app.db)
 	app.ResourceService = resource.NewService(resourceRepo)
 
-
-		// backup 服务
-		backupRepo := backup.NewRepository(app.db)
-		app.BackupService = backup.NewService(backupRepo, func() string {
-			return app.SettingsService.GetWorkDir()
-		})
+	// backup 服务
+	backupRepo := backup.NewRepository(app.db)
+	app.BackupService = backup.NewService(backupRepo, func() string {
+		return app.SettingsService.GetWorkDir()
+	})
 	// persistentStore 服务
 	psRepo := persistentStore.NewRepository(app.db)
 	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService, func() string {
-			return app.SettingsService.GetWorkDir()
-		})
+		return app.SettingsService.GetWorkDir()
+	})
 	app.StoreFileHandler.SetStatusChecker(app.PersistentStoreService)
 
 	// reWorkAuthor 服务
@@ -705,7 +704,7 @@ func (app *App) initBaseServices() {
 	app.SettingsService = settings.NewService(settingsFilePath)
 
 	// 设置工作目录
-		app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
+	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
 	// secureStorage 服务
 	secureStorageRepo := secureStorage.NewRepository(app.db)
@@ -771,7 +770,6 @@ func (app *App) initAdvancedServices() error {
 		app.LocalAuthorService,
 		app.SiteAuthorService,
 	)
-
 
 	// siteBrowser 服务
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)
@@ -840,15 +838,15 @@ func (app *App) initAdvancedServices() error {
 		app.taskRepo,
 		taskManagerPusher,
 		pluginExecFactory,
-		app.WorkService,             // 实现 WorkInfoSaver 接口
+		app.WorkService, // 实现 WorkInfoSaver 接口
 		resourceSaverAdapter,
-		app.WorkService,             // 实现 WorkChecker 接口
-		app.ResourceService,         // 实现 ResourceReader 接口
-		storeBackupOrchestrator,     // 实现 StoreBackupOrchestrator 接口
-		app.ResourceService,         // 实现 ResourceUpdater 接口
-		app.PersistentStoreService,  // 实现 StoreStreamer 接口
-		app.PersistentStoreService,  // 实现 StoreReader 接口
-		app.PersistentStoreService,  // 实现 ThumbnailStoreWriter 接口
+		app.WorkService,            // 实现 WorkChecker 接口
+		app.ResourceService,        // 实现 ResourceReader 接口
+		storeBackupOrchestrator,    // 实现 StoreBackupOrchestrator 接口
+		app.ResourceService,        // 实现 ResourceUpdater 接口
+		app.PersistentStoreService, // 实现 StoreStreamer 接口
+		app.PersistentStoreService, // 实现 StoreReader 接口
+		app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
 	)
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
@@ -917,7 +915,6 @@ func (a *resourceSaverAdapter) Update(ctx context.Context, resource *entity2.Res
 	return a.svc.Update(ctx, resource)
 }
 
-
 // initHandlers 初始化 Handlers（用于 Bind[] 参数暴露给前端）
 func (app *App) initHandlers() {
 	app.LocalTagHandler = localTag.NewHandler(app.LocalTagService)
@@ -942,7 +939,7 @@ func (app *App) initHandlers() {
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
-	}
+}
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
 func (app *App) onDomReady() {

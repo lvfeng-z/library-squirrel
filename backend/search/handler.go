@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/backend/base/model"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // Handler 搜索 Handler

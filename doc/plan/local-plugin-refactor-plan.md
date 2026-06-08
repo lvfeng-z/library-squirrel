@@ -63,7 +63,7 @@ library-squirrel-plugin-local/
 
 ```
 library-squirrel-plugin-local (Go)
-  └── github.com/lvfeng-z/library-squirrel-plugin-sdk (本地 replace)
+  └── github.com/lvfeng-z/library-squirrel-sdk (本地 replace)
 ```
 
 ### 技术要点
@@ -274,7 +274,7 @@ func (h *LocalTaskHandler) Resume(param *pluginsdk.TaskResParam) (*pluginsdk.Wor
 ### Phase 1: 项目骨架与基础设施
 
 1. **初始化 Go 模块**
-   - 创建 `go.mod`，依赖 `library-squirrel-plugin-sdk`
+   - 创建 `go.mod`，依赖 `library-squirrel-sdk`
    - 配置 `replace` 指令指向本地 SDK
 
 2. **实现 main.go — 子进程入口**

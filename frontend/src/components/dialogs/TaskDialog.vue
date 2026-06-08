@@ -13,7 +13,7 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { TaskProgressTreeDTO, TaskProgressDTO, TaskDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
+import { TaskProgressTreeDTO, TaskProgressDTO, TaskDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'

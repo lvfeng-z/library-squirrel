@@ -9,7 +9,7 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
 import IPage from '@renderer/model/util/IPage.ts'
-import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import {SelectItem, SiteAuthorDTO, SiteAuthorLocalRelateDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/backend/site/models"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 

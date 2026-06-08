@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../../../lvfeng-z/library-squirrel-plugin-sdk/dto/models.js";
+import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 
 /**
  * PageResult 分页结果

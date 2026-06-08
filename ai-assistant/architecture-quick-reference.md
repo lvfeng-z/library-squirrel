@@ -149,7 +149,7 @@ export const routes = [
 - 插件为 Go 共享库（`.dll`/`.so`）或纯 UI 配置，存储在 `plugin/package/{publicId}/{version}/`
 - **两种模式**：运行时插件（需 DLL + `entryFile`）、纯 UI 插件（仅 `plugin.json` 声明 slots）
 - 入口函数：`func Activate(ctx pluginsdk.PluginContext)`，运行时插件通过 PluginContext 注册 TaskHandler/SiteBrowser
-- PluginContext 接口定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk` 中，主程序和插件共同依赖
+- PluginContext 接口定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-sdk` 中，主程序和插件共同依赖
 - 三个扩展点：TaskHandler（运行时注册）、SiteBrowser（运行时注册）、Slot（**声明式注册**，通过 `plugin.json`）
 - 三个注册中心：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`（线程安全）
 - **静态资源服务**：`StaticResourceService` 提供 `resource://plugin/{id}/{ver}/...` URL 访问插件文件
@@ -163,7 +163,7 @@ export const routes = [
 ### 2026-05-06
 - [重构] 插件静态资源模块：声明式 Slot 注册、StaticResourceService、PluginAwareAssetHandler
 - [修改] 模块路径从 `github.com/library-squirrel/wails` 调整为 `github.com/library-squirrel`
-- [修改] 引入 SDK 第三方库 `github.com/lvfeng-z/library-squirrel-plugin-sdk`，PluginContext 等接口迁移至 SDK
+- [修改] 引入 SDK 第三方库 `github.com/lvfeng-z/library-squirrel-sdk`，PluginContext 等接口迁移至 SDK
 
 ### 2026-05-05
 - [修改] 目录结构调整：`internal/` → `backend/`，`pkg/` → `backend/base/`

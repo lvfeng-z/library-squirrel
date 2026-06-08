@@ -3,7 +3,7 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // NewWorkSetDTO 从 entity.WorkSet 创建 WorkSetDTO
@@ -123,7 +123,7 @@ type WorkSetWithWorksResultDTO struct {
 
 // WorkSetWithCoverDTO 作品集及其封面作品信息
 type WorkSetWithCoverDTO struct {
-	WorkSet       *sdkdto.WorkSetDTO  `json:"workSet"`
-	CoverWork     *sdkdto.WorkDTO     `json:"coverWork,omitempty"`
+	WorkSet       *sdkdto.WorkSetDTO      `json:"workSet"`
+	CoverWork     *sdkdto.WorkDTO         `json:"coverWork,omitempty"`
 	CoverResource *sdkdto.ResourceFullDTO `json:"coverResource,omitempty"`
 }

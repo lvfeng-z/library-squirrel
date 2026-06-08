@@ -7,7 +7,7 @@
 **LibrarySquirrel** 是一个基于 Wails 3 的桌面应用，用于创建和维护基于标签的个人资源库。它从远程站点（如 pixiv）下载资源到本地库，并提供基于标签的搜索。后端：Go，前端：Vue 3 + TypeScript，通信：Wails IPC bindings。
 
 ## 项目背景
-本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-plugin-sdk)，此外存在两个插件[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)和[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)，以上仓库的开发环境都位于本项目的同级目录下。
+本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-sdk)，此外存在两个插件[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)和[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)，以上仓库的开发环境都位于本项目的同级目录下。
 
 ## 构建与开发命令
 

@@ -157,7 +157,7 @@ UDS 连接上所有数据使用长度前缀帧格式，全双工双向复用：
 
 ## 文件变更
 
-### plugin-sdk 库（`library-squirrel-plugin-sdk`）
+### plugin-sdk 库（`library-squirrel-sdk`）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
@@ -194,7 +194,7 @@ UDS 连接上所有数据使用长度前缀帧格式，全双工双向复用：
 ## 实施阶段
 
 ### Phase 0: SDK 接口清理（前置）
-0. 发布 `library-squirrel-plugin-sdk` 新版本：
+0. 发布 `library-squirrel-sdk` 新版本：
    - 从 `PluginContext` 接口移除 `RegisterSlot` / `UnregisterSlot`，或标记为 deprecated
    - 移除 `SlotType` / `ContentType` 类型定义（已改为配置驱动）
    - 主项目 `plugin_context.go` 中对应的 stub 方法可一并移除

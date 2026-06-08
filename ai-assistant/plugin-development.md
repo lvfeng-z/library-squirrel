@@ -11,7 +11,7 @@
 | **运行时插件** | 需要 `entryFile` | 需要 | 含 TaskHandler 或 SiteBrowser 的完整插件 |
 | **纯 UI 插件** | 不需要 | 不需要 | 仅提供 Slot 扩展（图标、菜单项、静态页面等） |
 
-插件接口（`PluginContext`、`TaskHandler`、`SiteBrowser`、`SlotType`、`ContentType` 等）定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk` 中，主程序和插件共同依赖此 SDK。
+插件接口（`PluginContext`、`TaskHandler`、`SiteBrowser`、`SlotType`、`ContentType` 等）定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-sdk` 中，主程序和插件共同依赖此 SDK。
 
 ### 注册方式
 
@@ -110,7 +110,7 @@ plugin/package/
 package main
 
 import (
-    pluginsdk "github.com/lvfeng-z/library-squirrel-plugin-sdk"
+    pluginsdk "github.com/lvfeng-z/library-squirrel-sdk"
 )
 
 // Activate 插件入口函数，主程序加载 DLL 后调用
@@ -369,7 +369,7 @@ InstallFromPath(zipPath)
 | `backend/base/slot.go` | SlotConfig、SlotType、ContentType 枚举 |
 | `backend/base/model/extension.go` | Extension[T] 泛型包装、ExtensionMetadata |
 | `app.go` | 启动引导、loadInstalledPlugins（声明式 Slot 注册 + resolveContentURLs）、适配器 |
-| **SDK 库** `github.com/lvfeng-z/library-squirrel-plugin-sdk` | 插件接口定义（PluginContext、TaskHandler、SiteBrowser、SlotType、ContentType 等） |
+| **SDK 库** `github.com/lvfeng-z/library-squirrel-sdk` | 插件接口定义（PluginContext、TaskHandler、SiteBrowser、SlotType、ContentType 等） |
 
 ## 最佳实践
 
@@ -400,7 +400,7 @@ InstallFromPath(zipPath)
 - [新增] 前端 `html` 类型支持：`createHtmlComponent` 通过 `fetch` + Vue `template` 渲染
 
 ### 2026-05-06（SDK 迁移）
-- [重构] 插件接口迁移至独立 SDK 库 `github.com/lvfeng-z/library-squirrel-plugin-sdk`
+- [重构] 插件接口迁移至独立 SDK 库 `github.com/lvfeng-z/library-squirrel-sdk`
 - [修改] PluginContext、TaskHandler、SiteBrowser 接口改为 SDK 定义
 - [修改] 模块路径从 `github.com/library-squirrel/wails` 调整为 `github.com/library-squirrel`
 - [新增] `convert.go`：SDK 类型与 entity/DTO 类型之间的转换函数 + `taskHandlerAdapter` 适配器

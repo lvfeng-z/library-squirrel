@@ -408,8 +408,8 @@ HTTP: 统一使用 /store/ 路由，/resource/ 可废弃或重定向
 ### 项目路径
 
 - 主项目：`E:\code\lvfeng\library-squirrel`
-- SDK（go.mod replace 指向）：`E:\code\lvfeng\library-squirrel-plugin-sdk`（同级目录）
-- SDK DTO 文件：`library-squirrel-plugin-sdk/dto/resource_dto.go`（PersistentStoreDTO 同目录新建）
+- SDK（go.mod replace 指向）：`E:\code\lvfeng\library-squirrel-sdk`（同级目录）
+- SDK DTO 文件：`library-squirrel-sdk/dto/resource_dto.go`（PersistentStoreDTO 同目录新建）
 
 ### 现有模块的代码模式
 

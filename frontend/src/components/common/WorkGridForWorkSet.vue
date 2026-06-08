@@ -2,7 +2,7 @@
 import WorkDialog from '../dialogs/WorkDialog.vue'
 import {computed, Ref, ref, watch} from 'vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
-import {WorkFullDTO} from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
+import {WorkFullDTO} from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import {reWorkWorkSetUpdateSortOrders} from '@renderer/apis/http/wrappers/reWorkWorkSet'
 

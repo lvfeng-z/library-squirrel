@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { Ref, ref, UnwrapRef } from 'vue'
-import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 
 const props = defineProps<{
   multiSelect: boolean

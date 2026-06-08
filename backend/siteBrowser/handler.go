@@ -2,7 +2,7 @@ package siteBrowser
 
 import (
 	"github.com/library-squirrel/backend/base/model"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // Handler 站点浏览器 Handler

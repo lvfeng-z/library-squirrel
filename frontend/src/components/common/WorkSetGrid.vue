@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import WorkSetCard from './WorkSetCard.vue'
 import { ref, watch, nextTick } from 'vue'
-import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
+import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 
 // props
 const props = defineProps<{

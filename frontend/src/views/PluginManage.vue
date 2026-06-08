@@ -15,7 +15,7 @@ import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plug
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isNotBlank} from '@renderer/utils/StringUtil.ts'
 import {fileSysUtilApi, pluginApi} from '@renderer/apis/http'
-import {PluginDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import {PluginDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 
 // onMounted

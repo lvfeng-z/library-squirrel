@@ -9,7 +9,7 @@ import (
 
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm"
 )
@@ -313,13 +313,13 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		dto := dto2.NewWorkFullDTO(work)
 
-			// 解析 resource
-			if resource.Valid && resource.String != "" && resource.String != "null" {
-				var resFull *sdkdto.ResourceFullDTO
-				if json.Unmarshal([]byte(resource.String), &resFull) == nil {
-					dto.Resource = resFull
-				}
+		// 解析 resource
+		if resource.Valid && resource.String != "" && resource.String != "null" {
+			var resFull *sdkdto.ResourceFullDTO
+			if json.Unmarshal([]byte(resource.String), &resFull) == nil {
+				dto.Resource = resFull
 			}
+		}
 
 		// 解析 localTags
 		if localTags.Valid && localTags.String != "" && localTags.String != "null" {

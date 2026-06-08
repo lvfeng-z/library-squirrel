@@ -23,7 +23,7 @@ import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/backend/task/m
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import type { PluginWithContributionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
-import {TaskProgressTreeDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto";
+import {TaskProgressTreeDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto";
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // onMounted

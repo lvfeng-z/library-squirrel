@@ -4,7 +4,7 @@ import ApiUtil from '@renderer/utils/ApiUtil'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import { localAuthorApi } from '@renderer/apis/http'
-import {LocalAuthorDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import {LocalAuthorDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {ElMessage} from 'element-plus'
 
 // props

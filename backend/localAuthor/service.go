@@ -6,12 +6,12 @@ import (
 	"fmt"
 
 	"github.com/library-squirrel/backend/base/model"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"gorm.io/gorm/clause"
 )
 

@@ -12,7 +12,7 @@ import {
   LocalTagWithBaseTagDTO,
   SelectItem,
   SiteTagFullDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import IPage from '@renderer/model/util/IPage.ts'

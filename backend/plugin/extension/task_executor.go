@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/taskManager"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // TaskExecutorImpl 任务执行器实现

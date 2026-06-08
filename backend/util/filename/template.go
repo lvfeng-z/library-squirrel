@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // TokenData 模板占位符对应的数据

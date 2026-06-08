@@ -10,7 +10,7 @@ import {
   WorkDTO,
   WorkSetDTO, WorkSetWithCoverDTO,
   WorkSetWithWorksResultDTO
-} from "@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto";
+} from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto";
 
 export interface WorkSetVO {
   id: number

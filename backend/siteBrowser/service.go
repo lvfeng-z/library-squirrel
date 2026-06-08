@@ -3,7 +3,7 @@ package siteBrowser
 import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/plugin/extension"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // Service 站点浏览器服务

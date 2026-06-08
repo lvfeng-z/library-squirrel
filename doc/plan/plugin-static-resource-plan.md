@@ -290,7 +290,7 @@ export interface HtmlContent {
 **`frontend/src/store/SlotRegistryStore.ts`**
 - `SiteBrowserListSlotItem.imagePath` 改为存储完整 URL
 
-## Plugin SDK 变更 (`library-squirrel-plugin-sdk`)
+## Plugin SDK 变更 (`library-squirrel-sdk`)
 
 - 从 `PluginContext` 接口移除 `RegisterSlot` / `UnregisterSlot`
 - 移除 `SlotType` / `ContentType` 类型定义（已改为配置驱动）
@@ -325,7 +325,7 @@ export interface HtmlContent {
 - **验证**：插件 Vue 组件通过 resource:// URL 正常加载渲染
 
 ### Phase 5：SDK 与清理
-17. 更新 `library-squirrel-plugin-sdk`：移除 slot 相关接口和类型
+17. 更新 `library-squirrel-sdk`：移除 slot 相关接口和类型
 18. 删除 `ContentTypeComponent` 相关代码
 19. 运行 `wails3 generate bindings -ts` 重新生成绑定
 20. 更新 `ai-assistant/` 文档

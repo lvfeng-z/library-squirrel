@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-plugin"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
-	sdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
-	"github.com/lvfeng-z/library-squirrel-plugin-sdk/gen"
-	pluginsdktransport "github.com/lvfeng-z/library-squirrel-plugin-sdk/transport"
+	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
 // ErrPluginLoadFailed 错误定义

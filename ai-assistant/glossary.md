@@ -121,7 +121,7 @@
 - **定义**：主程序提供给插件的完整 API，每个插件拥有独立实例。接口定义在 SDK 库中
 - **领域角色**：插件访问主程序能力的唯一入口
 - **能力**：扩展点注册/注销、数据持久化、加密存储、业务查询、任务管理、日志
-- **接口来源**：`github.com/lvfeng-z/library-squirrel-plugin-sdk`（SDK）
+- **接口来源**：`github.com/lvfeng-z/library-squirrel-sdk`（SDK）
 - **实现**：`backend/plugin/extension/plugin_context.go`
 
 ### 注册器 (Registrar)
@@ -146,13 +146,13 @@
 - **定义**：插件可贡献的三类功能：TaskHandler、SiteBrowser、Slot
 - **领域角色**：插件与主程序的功能契约
 - **注册中心**：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`
-- **相关文件**：`backend/plugin/extension/`、`github.com/lvfeng-z/library-squirrel-plugin-sdk`
+- **相关文件**：`backend/plugin/extension/`、`github.com/lvfeng-z/library-squirrel-sdk`
 
 ### 插件 SDK (Plugin SDK)
 
 - **英文**：Plugin SDK
 - **定义**：独立第三方 Go 库，定义主程序与插件之间的共享接口和类型
-- **模块路径**：`github.com/lvfeng-z/library-squirrel-plugin-sdk`
+- **模块路径**：`github.com/lvfeng-z/library-squirrel-sdk`
 - **包含内容**：PluginContext、TaskHandler、SiteBrowser 接口；SlotType/ContentType 枚举；Task/Work/WorkSet/Site 等效实体类型（使用指针替代 sql.Null*）；各类 DTO
 - **领域角色**：主程序和插件共同依赖的接口契约，实现开发环境隔离
 

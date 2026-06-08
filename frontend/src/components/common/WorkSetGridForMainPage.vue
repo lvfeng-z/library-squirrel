@@ -2,7 +2,7 @@
 import { Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import WorkSetGrid from '@renderer/components/common/WorkSetGrid.vue'
-import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto'
+import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 
 // props
 const props = defineProps<{

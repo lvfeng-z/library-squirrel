@@ -7,7 +7,7 @@ import {
   Handler as SiteTagHandler,
   SiteTagQueryDTO
 } from "@bindings/github.com/library-squirrel/backend/siteTag"
-import { LocalTagDTO, SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+import { LocalTagDTO, SelectItem, SiteTagDTO, SiteTagFullDTO, SiteTagLocalRelateDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { CommonInputConfig } from '@renderer/model/util/CommonInputConfig.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
-import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-plugin-sdk/dto"
+import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import { assertNotNullish } from '@renderer/utils/AssertUtil'
 

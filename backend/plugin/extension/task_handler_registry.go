@@ -6,7 +6,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
-	pluginsdkdto "github.com/lvfeng-z/library-squirrel-plugin-sdk/dto"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 )
 

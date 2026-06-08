@@ -36,7 +36,7 @@ Proto 中 `TaskResourceDTO` 现有 10 个字段，清理规则：
 
 保留 4 个有效字段并重编号：
 
-**文件**: `library-squirrel-plugin-sdk/proto/plugin.proto`
+**文件**: `library-squirrel-sdk/proto/plugin.proto`
 
 ```protobuf
 // 任务资源信息（清理后）
@@ -48,7 +48,7 @@ message TaskResourceDTO {
 }
 ```
 
-**文件**: `library-squirrel-plugin-sdk/dto/handler_dto.go`
+**文件**: `library-squirrel-sdk/dto/handler_dto.go`
 
 Go DTO 同步移除 `Type` 字段：
 
@@ -61,7 +61,7 @@ type TaskResourceDTO struct {
 }
 ```
 
-**文件**: `library-squirrel-plugin-sdk/transport/plugin_server.go`
+**文件**: `library-squirrel-sdk/transport/plugin_server.go`
 
 `workResponseToProto` 同步移除 `Type` 映射：
 
@@ -93,7 +93,7 @@ if pb.Resource != nil {
 
 ### 新增 GetThumbnail RPC
 
-**文件**: `library-squirrel-plugin-sdk/proto/plugin.proto`
+**文件**: `library-squirrel-sdk/proto/plugin.proto`
 
 ```protobuf
 // 缩略图请求
@@ -123,7 +123,7 @@ service TaskHandlerService {
 
 ### 新增 DTO
 
-**文件**: `library-squirrel-plugin-sdk/dto/handler_dto.go`
+**文件**: `library-squirrel-sdk/dto/handler_dto.go`
 
 ```go
 // ThumbnailResponse 缩略图响应
@@ -135,7 +135,7 @@ type ThumbnailResponse struct {
 
 ### TaskHandler 接口新增方法
 
-**文件**: `library-squirrel-plugin-sdk/dto/task_handler.go`
+**文件**: `library-squirrel-sdk/dto/task_handler.go`
 
 ```go
 type TaskHandler interface {
@@ -150,7 +150,7 @@ type TaskHandler interface {
 
 ### SDK 传输层实现
 
-**文件**: `library-squirrel-plugin-sdk/transport/plugin_server.go`
+**文件**: `library-squirrel-sdk/transport/plugin_server.go`
 
 在 `taskHandlerServer` 结构体上实现 `GetThumbnail` RPC：
 
