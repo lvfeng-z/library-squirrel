@@ -94,13 +94,15 @@ type Manager struct {
 	storeStreamer StoreStreamer
 	// 存储记录读取器（PersistentStore.GetById/GetAbsPath）
 	storeReader StoreReader
+	// 缩略图存储
+	thumbnailStoreWriter ThumbnailStoreWriter
 	// 等待用户确认的任务（WaitingForInput 状态，已释放信号量）
 	waitingForInputMap map[int64]*ManagedTask
 	waitingForInputMu  sync.Mutex
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, storeStreamer StoreStreamer, storeReader StoreReader) *Manager {
+func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, storeStreamer StoreStreamer, storeReader StoreReader, thumbnailStoreWriter ThumbnailStoreWriter) *Manager {
 	m := &Manager{
 		taskMap:                  make(map[int64]*ManagedTask),
 		parentMap:                make(map[int64]*ParentTask),
@@ -126,6 +128,7 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		resourceUpdater:          resourceUpdater,
 		storeStreamer:            storeStreamer,
 		storeReader:              storeReader,
+		thumbnailStoreWriter:     thumbnailStoreWriter,
 		waitingForInputMap:       make(map[int64]*ManagedTask),
 	}
 	go m.flushLoop()
@@ -928,7 +931,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.storeBackupOrchestrator, m.resourceUpdater, m.pusher, m.storeStreamer, m.storeReader)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.storeBackupOrchestrator, m.resourceUpdater, m.pusher, m.storeStreamer, m.storeReader, m.thumbnailStoreWriter)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String

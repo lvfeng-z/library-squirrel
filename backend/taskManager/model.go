@@ -1,6 +1,7 @@
 package taskManager
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -103,6 +104,9 @@ type TaskExecutor interface {
 
 	// Resume 恢复任务
 	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
+
+	// GetThumbnail 获取缩略图
+	GetThumbnail(ctx context.Context, task *entity.Task) (*sdkdto.ThumbnailResponse, error)
 }
 
 // WorkInfoSaver 作品完整信息保存接口
@@ -165,6 +169,11 @@ type StoreReader interface {
 	GetAbsPath(store *entity.PersistentStore) string
 }
 
+// ThumbnailStoreWriter 缩略图存储接口，接受 io.Reader 一步完成存入
+type ThumbnailStoreWriter interface {
+	Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error)
+}
+
 // ManagedTask 任务运行控制结构体
 type ManagedTask struct {
 	taskId   int64
@@ -197,7 +206,7 @@ type ManagedTask struct {
 	storeBackupOrchestrator StoreBackupOrchestrator
 	// 备份清单（用于任务失败时还原）
 	storeBackupItems []*StoreBackupItem
-	isReplace          bool
+	isReplace        bool
 	// Resource 更新（替换场景更新已有 Resource 的 Store 字段）
 	resourceUpdater ResourceUpdater
 	// 进度推送器
@@ -236,6 +245,8 @@ type ManagedTask struct {
 	// StoreStreamer 和 StoreReader（通过依赖注入）
 	storeStreamer StoreStreamer
 	storeReader   StoreReader
+	// 缩略图存储
+	thumbnailStoreWriter ThumbnailStoreWriter
 
 	// 回调函数
 	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string)
@@ -244,7 +255,7 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, pusher TaskProgressPusher, storeStreamer StoreStreamer, storeReader StoreReader) *ManagedTask {
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, pusher TaskProgressPusher, storeStreamer StoreStreamer, storeReader StoreReader, thumbnailStoreWriter ThumbnailStoreWriter) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ManagedTask{
 		taskId:                  taskId,
@@ -265,6 +276,7 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		pusher:                  pusher,
 		storeStreamer:           storeStreamer,
 		storeReader:             storeReader,
+		thumbnailStoreWriter:    thumbnailStoreWriter,
 		task:                    task,
 		workId:                  taskId,
 		pauseCh:                 make(chan struct{}, 1),
@@ -325,7 +337,7 @@ func (m *ManagedTask) run() runResult {
 	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行）
 	if m.existingWorkId > 0 {
 		m.isReplace = true
-			m.storeBackupItems = m.storeBackupOrchestrator.BackupAllStores(m.ctx, m.existingWorkId)
+		m.storeBackupItems = m.storeBackupOrchestrator.BackupAllStores(m.ctx, m.existingWorkId)
 		m.existingWorkId = 0
 	}
 
@@ -426,6 +438,7 @@ func (m *ManagedTask) run() runResult {
 		if existingResource != nil {
 			// 更新已有 Resource
 			existingResource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
+			existingResource.ThumbnailStoreID = sql.NullInt64{Valid: false} // 清除旧缩略图，由 saveThumbnail 重新生成
 			existingResource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
 			existingResource.ResourceComplete = 0 // 下载未完成
 			if err := m.resourceUpdater.Update(m.ctx, existingResource); err != nil {
@@ -536,7 +549,9 @@ func (m *ManagedTask) downloadLoop() runResult {
 					m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
 					return runResultDone
 				}
-				// 下载完成，清除 pending_resource_id
+				// 下载完成，向插件请求缩略图并保存（在清除 PendingResourceID 之前，saveThumbnail 需要读取 Resource 实体）
+				m.saveThumbnail()
+				// 清除 pending_resource_id
 				m.clearPendingResourceID()
 				m.setState(TaskStateFinished)
 				return runResultDone
@@ -1019,6 +1034,82 @@ func (p *ParentTask) AllChildrenTerminal() bool {
 		}
 	}
 	return true
+}
+
+// saveThumbnail 向插件请求缩略图并保存
+func (m *ManagedTask) saveThumbnail() {
+	// 前置检查：无插件数据时跳过
+	if !m.task.PluginData.Valid || m.task.PluginData.String == "" {
+		return
+	}
+
+	// 获取当前 Resource 实体
+	resource, err := m.resourceReader.GetById(m.ctx, m.task.PendingResourceID.Int64)
+	if err != nil || resource == nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图生成跳过: 获取 Resource 失败: %v", m.taskId, err)
+		return
+	}
+	// 已有缩略图时跳过
+	if resource.ThumbnailStoreID.Valid {
+		return
+	}
+
+	// 调用插件获取缩略图
+	thumbResp, err := m.pluginExec.GetThumbnail(m.ctx, m.task)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图获取失败: %v", m.taskId, err)
+		return
+	}
+	if thumbResp == nil || len(thumbResp.Data) == 0 {
+		return
+	}
+
+	// 确定格式
+	thumbFormat := thumbResp.Format
+	if thumbFormat == "" {
+		thumbFormat = "jpg"
+	}
+
+	// 获取资源文件信息，构建缩略图相对路径和文件名
+	store, err := m.storeReader.GetById(m.ctx, m.workStoreId)
+	if err != nil || store == nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图生成跳过: 获取 store 记录失败: %v", m.taskId, err)
+		return
+	}
+	thumbRelPath := buildThumbnailRelPath(store.FilePath.String, thumbFormat)
+	thumbFileName := buildThumbnailFileName(store.FileName.String, thumbFormat)
+
+	// 通过 Store 一步完成写入
+	storeID, err := m.thumbnailStoreWriter.Store(
+		m.ctx, thumbRelPath, thumbFileName, bytes.NewReader(thumbResp.Data),
+	)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图存储失败: %v", m.taskId, err)
+		return
+	}
+
+	// 更新 Resource 记录
+	resource.ThumbnailStoreID = sql.NullInt64{Int64: storeID, Valid: true}
+	m.resourceUpdater.Update(m.ctx, resource)
+}
+
+// buildThumbnailRelPath 构建缩略图相对路径
+// 去除 WorkStore FilePath 中的资源子目录前缀（如 "resource/"），
+// 将缩略图直接放在 "thumbnail/作者/" 下，避免 "thumbnail/resource/作者/" 的冗余层级。
+func buildThumbnailRelPath(resourceRelPath string, thumbFormat string) string {
+	// 去除 "resource/" 前缀
+	relPath := strings.TrimPrefix(resourceRelPath, "resource")
+	ext := filepath.Ext(relPath)
+	base := strings.TrimSuffix(relPath, ext)
+	return "thumbnail/" + base + "_thumbnail." + thumbFormat
+}
+
+// buildThumbnailFileName 构建缩略图文件名
+// "video.mp4", "jpg" → "video_thumbnail.jpg"
+func buildThumbnailFileName(resourceFileName string, thumbFormat string) string {
+	ext := filepath.Ext(resourceFileName)
+	base := strings.TrimSuffix(resourceFileName, ext)
+	return base + "_thumbnail." + thumbFormat
 }
 
 // 任务管理错误定义

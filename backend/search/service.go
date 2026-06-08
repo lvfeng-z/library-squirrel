@@ -225,7 +225,7 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		}
 	}
 
-	// Phase 4.5: 批量查 PersistentStore 记录
+	// Phase 4.5: 批量查 PersistentStore 记录（WorkStore + ThumbnailStore）
 	var allStoreIds []int64
 	storeIdSet := make(map[int64]bool)
 	for _, resources := range resourcesMap {
@@ -233,6 +233,10 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 			if res.WorkStoreID.Valid && res.WorkStoreID.Int64 > 0 && !storeIdSet[res.WorkStoreID.Int64] {
 				storeIdSet[res.WorkStoreID.Int64] = true
 				allStoreIds = append(allStoreIds, res.WorkStoreID.Int64)
+			}
+			if res.ThumbnailStoreID.Valid && res.ThumbnailStoreID.Int64 > 0 && !storeIdSet[res.ThumbnailStoreID.Int64] {
+				storeIdSet[res.ThumbnailStoreID.Int64] = true
+				allStoreIds = append(allStoreIds, res.ThumbnailStoreID.Int64)
 			}
 		}
 	}
@@ -263,7 +267,11 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 							if res.WorkStoreID.Valid {
 								workStore = storeMap[res.WorkStoreID.Int64]
 							}
-							item.CoverResource = dto2.NewResourceFullDTO(res, workStore, nil)
+							var thumbStore *entity2.PersistentStore
+							if res.ThumbnailStoreID.Valid {
+								thumbStore = storeMap[res.ThumbnailStoreID.Int64]
+							}
+							item.CoverResource = dto2.NewResourceFullDTO(res, workStore, thumbStore)
 							break
 						}
 					}
@@ -273,7 +281,11 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 						if res.WorkStoreID.Valid {
 							workStore = storeMap[res.WorkStoreID.Int64]
 						}
-						item.CoverResource = dto2.NewResourceFullDTO(res, workStore, nil)
+						var thumbStore *entity2.PersistentStore
+						if res.ThumbnailStoreID.Valid {
+							thumbStore = storeMap[res.ThumbnailStoreID.Int64]
+						}
+						item.CoverResource = dto2.NewResourceFullDTO(res, workStore, thumbStore)
 					}
 				}
 			}

@@ -25,8 +25,24 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
-const imagePath: Ref<string | null | undefined> = computed(() => {
-  return props.work.resource?.workStore?.filePath
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
+
+function isDisplayableImage(extension: string | null | undefined): boolean {
+  if (!extension) return false
+  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
+}
+
+const imagePath: Ref<string> = computed(() => {
+  const resource = props.work.resource
+  // 1. 优先使用缩略图
+  if (resource?.thumbnailStore?.filePath) {
+    return resource.thumbnailStore.filePath
+  }
+  // 2. 无缩略图时，仅对图片类型的资源返回路径；非图片类型返回空，阻止 el-image 加载
+  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+    return resource.workStore.filePath
+  }
+  return ''
 })
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))

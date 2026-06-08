@@ -92,6 +92,22 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResPara
 	return handler.Resume(param)
 }
 
+// GetThumbnail 获取缩略图
+func (e *TaskExecutorImpl) GetThumbnail(ctx context.Context, task *domain.Task) (*sdkdto.ThumbnailResponse, error) {
+	pluginPublicId, contributionId := pluginIdsFromEntityTask(task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	if err != nil {
+		logger.Log.Warn("GetThumbnail 获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
+			zap.String("contributionId", contributionId), zap.Error(err))
+		return nil, err
+	}
+	taskData := ""
+	if task.PluginData.Valid {
+		taskData = task.PluginData.String
+	}
+	return handler.GetThumbnail(taskData)
+}
+
 // getSDKTaskHandler 从注册中心获取 SDK TaskHandler（直接使用 gRPC 代理）
 func (e *TaskExecutorImpl) getSDKTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
 	return e.loader.GetSDKTaskHandler(pluginPublicId, contributionId)

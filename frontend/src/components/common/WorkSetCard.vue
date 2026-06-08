@@ -21,12 +21,27 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
+
+function isDisplayableImage(extension: string | null | undefined): boolean {
+  if (!extension) return false
+  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
+}
+
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
-// 封面资源路径，如果无效则为空字符串，让el-image触发error插槽显示默认图片
+// 封面资源路径：优先缩略图，仅图片类型才用 workStore，否则返回空触发 error 插槽
 const coverFilePath: Ref<string> = computed(() => {
-  const filePath = props.workSet.coverResource?.workStore?.filePath
-  return filePath ?? ''
+  const resource = props.workSet.coverResource
+  // 1. 优先使用缩略图
+  if (resource?.thumbnailStore?.filePath) {
+    return resource.thumbnailStore.filePath
+  }
+  // 2. 无缩略图时，仅对图片类型返回路径
+  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+    return resource.workStore.filePath
+  }
+  return ''
 })
 // src的参数
 const srcParamStr: Ref<string> = computed(() => {

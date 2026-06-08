@@ -200,6 +200,26 @@ func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (io.ReadClos
 	return nil, nil, nil
 }
 
+func (p *TaskHandlerProxy) GetThumbnail(taskData string) (*pluginsdkdto.ThumbnailResponse, error) {
+	client, err := p.getTaskClient()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.GetThumbnail(context.Background(), &gen.GetThumbnailRequest{
+		TaskData: taskData,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.Data) == 0 {
+		return nil, nil
+	}
+	return &pluginsdkdto.ThumbnailResponse{
+		Data:   resp.Data,
+		Format: resp.Format,
+	}, nil
+}
+
 // SiteBrowserProxy 通过 gRPC 代理到子进程的 SiteBrowser
 type SiteBrowserProxy struct {
 	loader         *Loader
@@ -368,7 +388,6 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	if pb.Resource != nil {
 		resp.Resource = &pluginsdkdto.TaskResourceDTO{
-			Type:        pb.Resource.Type,
 			Format:      pb.Resource.Format,
 			Size:        pb.Resource.Size,
 			SuggestName: pb.Resource.SuggestName,

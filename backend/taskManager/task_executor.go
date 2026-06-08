@@ -43,4 +43,7 @@ type TaskExecutorInterface interface {
 	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
 	// 调用方负责关闭返回的 ReadCloser
 	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
+
+	// GetThumbnail 获取缩略图
+	GetThumbnail(ctx context.Context, task *domain.Task) (*sdkdto.ThumbnailResponse, error)
 }

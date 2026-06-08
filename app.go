@@ -848,6 +848,7 @@ func (app *App) initAdvancedServices() error {
 		app.ResourceService,         // 实现 ResourceUpdater 接口
 		app.PersistentStoreService,  // 实现 StoreStreamer 接口
 		app.PersistentStoreService,  // 实现 StoreReader 接口
+		app.PersistentStoreService,  // 实现 ThumbnailStoreWriter 接口
 	)
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
