@@ -113,15 +113,15 @@ func (o *StoreBackupOrchestratorImpl) BackupAllStores(ctx context.Context, workI
 			})
 		}
 
-		// ThumbnailStoreID — 缩略图，不备份直接删除
+		// ThumbnailStoreID — 缩略图，备份后删除
 		if res.ThumbnailStoreID.Valid {
-			_, err := o.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, false)
+			backupId, err := o.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, true)
 			if err != nil {
-				logger.Log.Warnf("[StoreBackupOrchestrator] 删除 ThumbnailStore(id=%d) 失败: %v", res.ThumbnailStoreID.Int64, err)
+				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 ThumbnailStore(id=%d) 失败: %v", res.ThumbnailStoreID.Int64, err)
 			}
 			items = append(items, &StoreBackupItem{
 				ResourceID: res.GetID(),
-				BackupID:   0,
+				BackupID:   backupId,
 				StoreType:  StoreTypeThumbnail,
 			})
 		}
@@ -172,6 +172,7 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 		// 3. 获取备份文件绝对路径
 		backupAbsPath := o.backupReader.GetBackupPath(backupEntity)
 
+		// TODO 此处依赖PersistentStore是否合理
 		// 4. 通过 PersistentStore 将备份文件导入到 store 目录（文件移动 + DB 记录由 PersistentStore 全权负责）
 		newStoreId, err := o.storeImporter.StoreFromExternal(ctx, backupAbsPath, originalFilePath, originalFileName)
 		if err != nil {
