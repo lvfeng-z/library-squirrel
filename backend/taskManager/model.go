@@ -286,10 +286,11 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 // run 核心执行逻辑
 func (m *ManagedTask) run() runResult {
 	// 最先注册，最后执行：任务失败时还原已备份的 Store
+	// 使用 context.Background() 而非 m.ctx，确保任务被停止（context 已取消）后还原操作仍能正常执行
 	defer func() {
 		if m.GetState() == TaskStateFailed && len(m.storeBackupItems) > 0 {
 			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份 Store", m.taskId, len(m.storeBackupItems))
-			m.storeBackupOrchestrator.RestoreAllStores(m.ctx, m.storeBackupItems)
+			m.storeBackupOrchestrator.RestoreAllStores(context.Background(), m.storeBackupItems)
 			m.storeBackupItems = nil
 		}
 	}()
