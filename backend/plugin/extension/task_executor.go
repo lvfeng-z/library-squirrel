@@ -15,12 +15,12 @@ import (
 // TaskExecutorImpl 任务执行器实现
 // 实现 taskManager.TaskExecutorInterface 接口
 type TaskExecutorImpl struct {
-	loader *Loader
+	registry *TaskHandlerRegistry
 }
 
 // NewTaskExecutor 创建任务执行器
-func NewTaskExecutor(loader *Loader) *TaskExecutorImpl {
-	return &TaskExecutorImpl{loader: loader}
+func NewTaskExecutor(registry *TaskHandlerRegistry) *TaskExecutorImpl {
+	return &TaskExecutorImpl{registry: registry}
 }
 
 // CreateWorkInfo 创建作品信息
@@ -108,9 +108,9 @@ func (e *TaskExecutorImpl) GetThumbnail(ctx context.Context, task *domain.Task) 
 	return handler.GetThumbnail(taskData)
 }
 
-// getSDKTaskHandler 从注册中心获取 SDK TaskHandler（直接使用 gRPC 代理）
+// getSDKTaskHandler 从注册中心获取 TaskHandler
 func (e *TaskExecutorImpl) getSDKTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
-	return e.loader.GetSDKTaskHandler(pluginPublicId, contributionId)
+	return e.registry.GetTaskHandler(pluginPublicId, contributionId)
 }
 
 // pluginIdsFromEntityTask 从 entity.Task 提取插件ID

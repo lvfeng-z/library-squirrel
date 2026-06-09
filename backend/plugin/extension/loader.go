@@ -44,6 +44,13 @@ type pluginEntry struct {
 	activatedAt time.Time                            // 进程激活时间
 }
 
+// ServiceAccessor 插件 gRPC 服务访问器
+// 由 Loader 实现，供 proxy 类型获取 gRPC 客户端
+type ServiceAccessor interface {
+	// GetServices 获取插件的 gRPC 服务客户端（含崩溃检测）
+	GetServices(pluginPublicId string) (*pluginsdktransport.GRPCPluginClient, bool)
+}
+
 // Loader 插件加载器，使用 hashicorp/go-plugin 管理插件子进程
 type Loader struct {
 	taskHandlerRegistry *TaskHandlerRegistry
@@ -210,28 +217,6 @@ func (l *Loader) UnloadAll() []string {
 		l.UnloadPlugin(id)
 	}
 	return ids
-}
-
-// GetTaskHandler 获取任务处理器
-func (l *Loader) GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
-	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)
-	if err != nil {
-		return nil, err
-	}
-	return ext.Instance, nil
-}
-
-// GetSDKTaskHandler 获取 SDK 层 TaskHandler（直接使用 gRPC 代理，无适配器转换）
-func (l *Loader) GetSDKTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
-	ext, err := l.taskHandlerRegistry.Get(pluginPublicId, contributionId)
-	if err != nil {
-		return nil, err
-	}
-	return &TaskHandlerProxy{
-		loader:         l,
-		pluginPublicId: ext.Metadata.PluginPublicID,
-		contributionId: ext.Metadata.ID,
-	}, nil
 }
 
 // GetServices 获取插件的 gRPC 服务客户端（供 proxy 使用）

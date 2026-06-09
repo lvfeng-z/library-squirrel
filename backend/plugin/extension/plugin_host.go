@@ -11,31 +11,31 @@ import (
 // hostPluginCallbacks 提供 HostDeps 注册回调的实现
 // 在 loader.go 中通过 HostDeps.OnRegisterTaskHandler 等字段注入
 type hostPluginCallbacks struct {
-	pluginInfo          *PluginInfo
-	loader              *Loader
-	taskHandlerRegistry *TaskHandlerRegistry
-	siteBrowserRegistry *SiteBrowserRegistry
+	pluginInfo           *PluginInfo
+	serviceAccessor      ServiceAccessor
+	taskHandlerRegistry  *TaskHandlerRegistry
+	siteBrowserRegistry  *SiteBrowserRegistry
 }
 
 func newHostPluginCallbacks(
 	pluginInfo *PluginInfo,
-	loader *Loader,
+	serviceAccessor ServiceAccessor,
 	taskHandlerRegistry *TaskHandlerRegistry,
 	siteBrowserRegistry *SiteBrowserRegistry,
 ) *hostPluginCallbacks {
 	return &hostPluginCallbacks{
-		pluginInfo:          pluginInfo,
-		loader:              loader,
-		taskHandlerRegistry: taskHandlerRegistry,
-		siteBrowserRegistry: siteBrowserRegistry,
+		pluginInfo:           pluginInfo,
+		serviceAccessor:      serviceAccessor,
+		taskHandlerRegistry:  taskHandlerRegistry,
+		siteBrowserRegistry:  siteBrowserRegistry,
 	}
 }
 
 func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, description string) error {
 	proxy := &TaskHandlerProxy{
-		loader:         c.loader,
-		pluginPublicId: c.pluginInfo.PublicID,
-		contributionId: contributionId,
+		serviceAccessor: c.serviceAccessor,
+		pluginPublicId:  c.pluginInfo.PublicID,
+		contributionId:  contributionId,
 	}
 
 	metadata := model.ExtensionMetadata{
@@ -57,9 +57,9 @@ func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, descri
 
 func (c *hostPluginCallbacks) onRegisterSiteBrowser(contributionId, name, description string) error {
 	proxy := &SiteBrowserProxy{
-		loader:         c.loader,
-		pluginPublicId: c.pluginInfo.PublicID,
-		contributionId: contributionId,
+		serviceAccessor: c.serviceAccessor,
+		pluginPublicId:  c.pluginInfo.PublicID,
+		contributionId:  contributionId,
 	}
 
 	metadata := model.ExtensionMetadata{

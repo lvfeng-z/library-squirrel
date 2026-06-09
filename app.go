@@ -799,12 +799,12 @@ func (app *App) initAdvancedServices() error {
 	// task 仓储和服务
 	app.taskRepo = task.NewRepository(app.db)
 
-	// task 服务（依赖 pluginLoader 作为 TaskHandlerProvider）
+	// task 服务（依赖 TaskHandlerRegistry 作为 TaskHandlerProvider）
 	app.TaskService = task.NewService(
 		app.taskRepo,
 		app.WorkService,
 		app.ResourceService,
-		app.pluginLoader, // 实现 TaskHandlerProvider 接口
+		app.TaskHandlerRegistry, // 直接满足 TaskHandlerProvider 接口
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
 	)
@@ -817,7 +817,7 @@ func (app *App) initAdvancedServices() error {
 		taskManagerPusher = taskManager.NewNoopProgressPusher()
 	}
 	pluginExecFactory := func(pluginPublicId string) (taskManager.TaskExecutor, error) {
-		return extension2.NewTaskExecutor(app.pluginLoader), nil
+		return extension2.NewTaskExecutor(app.TaskHandlerRegistry), nil
 	}
 
 	// 创建 ResourceSaver 适配器

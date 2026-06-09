@@ -93,6 +93,16 @@ func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*m
 	return ext, nil
 }
 
+// GetTaskHandler 获取任务处理器实例（便捷方法）
+// 返回注册的 TaskHandler 实例，满足 task.TaskHandlerProvider 接口
+func (r *TaskHandlerRegistry) GetTaskHandler(pluginPublicId, contributionId string) (pluginsdkdto.TaskHandler, error) {
+	ext, err := r.Get(pluginPublicId, contributionId)
+	if err != nil {
+		return nil, err
+	}
+	return ext.Instance, nil
+}
+
 // GetByPlugin 获取插件的所有扩展点
 func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdkdto.TaskHandler], error) {
 	r.mu.RLock()

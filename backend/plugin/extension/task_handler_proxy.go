@@ -16,15 +16,15 @@ import (
 
 // TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
 type TaskHandlerProxy struct {
-	loader         *Loader
-	pluginPublicId string
-	contributionId string
+	serviceAccessor ServiceAccessor
+	pluginPublicId  string
+	contributionId  string
 }
 
 var _ pluginsdkdto.TaskHandler = (*TaskHandlerProxy)(nil)
 
 func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error) {
-	services, ok := p.loader.GetServices(p.pluginPublicId)
+	services, ok := p.serviceAccessor.GetServices(p.pluginPublicId)
 	if !ok {
 		return nil, fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
@@ -222,15 +222,15 @@ func (p *TaskHandlerProxy) GetThumbnail(taskData string) (*pluginsdkdto.Thumbnai
 
 // SiteBrowserProxy 通过 gRPC 代理到子进程的 SiteBrowser
 type SiteBrowserProxy struct {
-	loader         *Loader
-	pluginPublicId string
-	contributionId string
+	serviceAccessor ServiceAccessor
+	pluginPublicId  string
+	contributionId  string
 }
 
 var _ pluginsdkdto.SiteBrowser = (*SiteBrowserProxy)(nil)
 
 func (p *SiteBrowserProxy) Open() error {
-	services, ok := p.loader.GetServices(p.pluginPublicId)
+	services, ok := p.serviceAccessor.GetServices(p.pluginPublicId)
 	if !ok {
 		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
@@ -241,7 +241,7 @@ func (p *SiteBrowserProxy) Open() error {
 }
 
 func (p *SiteBrowserProxy) Close() error {
-	services, ok := p.loader.GetServices(p.pluginPublicId)
+	services, ok := p.serviceAccessor.GetServices(p.pluginPublicId)
 	if !ok {
 		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
