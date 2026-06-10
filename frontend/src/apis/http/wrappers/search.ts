@@ -13,25 +13,18 @@ import type {
   WorkFullDTO,
   WorkSetWithCoverDTO,
   SelectItem,
-  SearchCondition as BindingSearchCondition
+  SearchCondition,
+  SearchConditionQuery
 } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
-
-// ========== 类型定义 ==========
-
-export interface SearchCondition {
-  type: number
-  value: unknown
-  operator?: string
-}
 
 // ========== API 方法 ==========
 
 /** 查询搜索条件分页 */
 export async function searchQuerySearchConditionPage(
   page: Page<SelectItem>,
-  query: object | null
+  query: SearchConditionQuery | null
 ): Promise<ApiResult<Page<SelectItem>>> {
   return requireResponse(
     await SearchHandler.QuerySearchConditionPage(page.pageNumber, page.pageSize, query),
@@ -44,13 +37,13 @@ export async function searchQueryWorkPage(
   page: Page<WorkFullDTO>,
   conditions: SearchCondition[]
 ): Promise<ApiResult<Page<WorkFullDTO>>> {
-  const bindingConditions: BindingSearchCondition[] = conditions.map(c => ({
+  const searchConditions: SearchCondition[] = conditions.map(c => ({
     type: c.type as any,
     value: c.value,
     operator: c.operator as any
   }))
   return requireResponse(
-    await SearchHandler.QueryWorkPage(page.pageNumber, page.pageSize, bindingConditions),
+    await SearchHandler.QueryWorkPage(page.pageNumber, page.pageSize, searchConditions),
     '查询作品'
   )
 }
@@ -60,13 +53,13 @@ export async function searchQueryWorkSetPage(
   page: Page<WorkSetWithCoverDTO>,
   conditions: SearchCondition[]
 ): Promise<ApiResult<Page<WorkSetWithCoverDTO>>> {
-  const bindingConditions: BindingSearchCondition[] = conditions.map(c => ({
+  const searchConditions: SearchCondition[] = conditions.map(c => ({
     type: c.type as any,
     value: c.value,
     operator: c.operator as any
   }))
   return requireResponse(
-    await SearchHandler.QueryWorkSetPage(page, bindingConditions),
+    await SearchHandler.QueryWorkSetPage(page, searchConditions),
     '查询作品集'
   )
 }

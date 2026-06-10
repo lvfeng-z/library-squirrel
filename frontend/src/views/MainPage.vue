@@ -4,7 +4,8 @@ import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
   SelectItem,
   WorkFullDTO,
-  WorkSetWithCoverDTO
+  WorkSetWithCoverDTO,
+  SearchConditionQuery
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
 import ApiResponse from '@renderer/model/util/ApiResponse.js'
@@ -18,7 +19,6 @@ import lodash from 'lodash'
 import { CrudOperator } from '@renderer/constants/CrudOperator.js'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
-import SearchConditionQueryDTO from '@renderer/model/dto/SearchConditionQueryDTO'
 import { isNotBlank } from '@renderer/utils/StringUtil.js'
 import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
@@ -91,8 +91,8 @@ onBeforeUnmount(() => {
 // 方法
 // 查询标签选择列表
 async function querySearchItemPage(page: IPage<any>, input?: string): Promise<IPage<any>> {
-  const query = new SearchConditionQueryDTO()
-  query.nonFieldKeyword = input
+  const query = new SearchConditionQuery()
+  query.keyword = input ?? undefined
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {

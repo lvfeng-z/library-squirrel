@@ -5,7 +5,7 @@ import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import StaticHeightDialog from '@renderer/components/dialogs/StaticHeightDialog.vue'
 import WorkGridForWorkSet from '@renderer/components/common/WorkGridForWorkSet.vue'
 import WorkQueryView from '@renderer/components/common/WorkQueryView.vue'
-import { SelectItem, WorkFullDTO, WorkSetWithWorksResultDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import { SelectItem, WorkFullDTO, WorkSetWithWorksResultDTO, WorkSetDTO, SearchConditionQuery } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
 import { Edit, Delete, Close, Plus, ArrowLeft, Picture } from '@element-plus/icons-vue'
@@ -14,7 +14,6 @@ import lodash from 'lodash'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
-import SearchConditionQueryDTO from '@renderer/model/dto/SearchConditionQueryDTO.js'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { workSetListWorkSetWithWorkByIds } from '@renderer/apis/http/wrappers/workSet'
 import { reWorkWorkSetLinkBatchToWorkSet, reWorkWorkSetRemoveBatchFromWorkSet, reWorkWorkSetSetCover } from '@renderer/apis/http/wrappers/reWorkWorkSet'
@@ -178,8 +177,8 @@ async function handleSetCover() {
 
 // 加载搜索条件选项
 async function loadSearchItemPage(page: IPage<SelectItem>, input?: string): Promise<IPage<SelectItem>> {
-  const query = new SearchConditionQueryDTO()
-  query.nonFieldKeyword = input
+  const query = new SearchConditionQuery()
+  query.keyword = input ?? undefined
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {
