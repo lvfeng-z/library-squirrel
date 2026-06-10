@@ -146,7 +146,7 @@ func extractUsedConditions(conditions []*sdkdto.SearchCondition) map[sdkdto.Sear
 			continue
 		}
 		switch cond.Type {
-		case sdkdto.SearchTypeLocalTag, sdkdto.SearchTypeSiteTag, sdkdto.SearchTypeLocalAuthor, sdkdto.SearchTypeSiteAuthor:
+		case sdkdto.LocalTag, sdkdto.SiteTag, sdkdto.LocalAuthor, sdkdto.SiteAuthor:
 			if id, ok := cond.Value.(float64); ok {
 				used[cond.Type] = append(used[cond.Type], int64(id))
 			}
@@ -311,7 +311,7 @@ func (s *Service) UpdateLastUsed(ctx context.Context, used map[sdkdto.SearchType
 	var mu sync.Mutex
 
 	// 更新本地标签
-	if ids, ok := used[sdkdto.SearchTypeLocalTag]; ok && len(ids) > 0 {
+	if ids, ok := used[sdkdto.LocalTag]; ok && len(ids) > 0 {
 		wg.Add(1)
 		go func(tagIds []int64) {
 			defer wg.Done()
@@ -324,7 +324,7 @@ func (s *Service) UpdateLastUsed(ctx context.Context, used map[sdkdto.SearchType
 	}
 
 	// 更新站点标签
-	if ids, ok := used[sdkdto.SearchTypeSiteTag]; ok && len(ids) > 0 {
+	if ids, ok := used[sdkdto.SiteTag]; ok && len(ids) > 0 {
 		wg.Add(1)
 		go func(tagIds []int64) {
 			defer wg.Done()
@@ -337,7 +337,7 @@ func (s *Service) UpdateLastUsed(ctx context.Context, used map[sdkdto.SearchType
 	}
 
 	// 更新本地作者
-	if ids, ok := used[sdkdto.SearchTypeLocalAuthor]; ok && len(ids) > 0 {
+	if ids, ok := used[sdkdto.LocalAuthor]; ok && len(ids) > 0 {
 		wg.Add(1)
 		go func(authorIds []int64) {
 			defer wg.Done()
@@ -350,7 +350,7 @@ func (s *Service) UpdateLastUsed(ctx context.Context, used map[sdkdto.SearchType
 	}
 
 	// 更新站点作者
-	if ids, ok := used[sdkdto.SearchTypeSiteAuthor]; ok && len(ids) > 0 {
+	if ids, ok := used[sdkdto.SiteAuthor]; ok && len(ids) > 0 {
 		wg.Add(1)
 		go func(authorIds []int64) {
 			defer wg.Done()

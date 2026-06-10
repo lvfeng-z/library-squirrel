@@ -36,6 +36,7 @@ export {
     WorkAuthorsResultDTO,
     WorkDTO,
     WorkFullDTO,
+    WorkSearchOperator,
     WorkSetDTO,
     WorkSetWithCoverDTO,
     WorkSetWithWorksResultDTO

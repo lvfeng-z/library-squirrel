@@ -23,6 +23,7 @@ import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {newPage} from "@renderer/utils/Pager.ts";
+import {isBlank} from "@renderer/utils/StringUtil.ts";
 
 // onMounted
 onMounted(() => {
@@ -202,7 +203,12 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorL
       saveRowEdit(op.data)
       break
     case 'homepage':
-      await appLauncherApi.appLauncherOpenExternal(op.data.siteAuthor.homepage!)
+      const homepage = op.data.siteAuthor?.homepage
+      if (isBlank(homepage)) {
+        ElMessage.error('无法打开作者主页，作者信息缺少主页信息')
+        break
+      }
+      await appLauncherApi.appLauncherOpenExternal(homepage)
       break
     case DialogMode.VIEW:
       siteAuthorDialogMode.value = DialogMode.VIEW

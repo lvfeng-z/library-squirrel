@@ -3,7 +3,7 @@ import BaseSubpage from './BaseSubpage.vue'
 import { nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import lodash from 'lodash'
-import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
+import {SettingChange, Settings} from "@bindings/github.com/library-squirrel/backend/settings";
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -101,36 +101,46 @@ async function loadSettings() {
     })
   }
 }
-// 保存或重置设置
-async function saveOrReset(fun: (arg?: unknown) => Promise<ApiResponse>) {
-  if (notNullish(settings.value)) {
-    const changed = getChangedProperties(settings.value, oldSettings)
-    const response = await fun(changed)
-    if (ApiUtil.check(response)) {
-      const succeed = ApiUtil.data<boolean>(response)
-      if (succeed) {
-        ElMessage({
-          message: '修改成功',
-          type: 'success'
-        })
-      } else {
-        ElMessage({
-          message: '修改失败',
-          type: 'error'
-        })
-      }
-    }
-  }
-}
 // 保存设置
 async function saveSettings() {
-  return saveOrReset(apis.settingsSaveSettings).then(() => loadSettings())
+  const changed = getChangedProperties(settings.value, oldSettings)
+  const response = await apis.settingsSaveSettings(changed)
+  await loadSettings()
+  if (ApiUtil.check(response)) {
+    const succeed = ApiUtil.data<boolean>(response)
+    if (succeed) {
+      ElMessage({
+        message: '修改成功',
+        type: 'success'
+      })
+    } else {
+      ElMessage({
+        message: '修改失败',
+        type: 'error'
+      })
+    }
+  }
 }
 // 所有设置重置为默认
 async function resetSettings() {
   const confirm = await askBeforeReset()
   if (confirm) {
-    return saveOrReset(apis.settingsResetSettings).then(() => loadSettings())
+    const response = await apis.settingsResetSettings()
+    await loadSettings()
+    if (ApiUtil.check(response)) {
+      const succeed = ApiUtil.data<boolean>(response)
+      if (succeed) {
+        ElMessage({
+          message: '重置成功',
+          type: 'success'
+        })
+      } else {
+        ElMessage({
+          message: '重置失败',
+          type: 'error'
+        })
+      }
+    }
   }
 }
 // 递归获取已更改的设置

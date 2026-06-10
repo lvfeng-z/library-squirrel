@@ -2,28 +2,27 @@
 import {onBeforeUnmount, onMounted, Ref, ref, toRaw} from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
+  SearchCondition,
+  SearchConditionQuery, SearchType,
   SelectItem,
-  WorkFullDTO,
-  WorkSetWithCoverDTO,
-  SearchConditionQuery
+  WorkFullDTO, WorkSearchOperator,
+  WorkSetWithCoverDTO
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
 import ApiResponse from '@renderer/model/util/ApiResponse.js'
-import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.js'
-import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.js'
+import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.js'
+import {setSearchTagColor} from '@renderer/utils/SearchTagColorUtil.js'
 import CollapsePanel from '@renderer/components/common/CollapsePanel.vue'
 import IPage from '@renderer/model/util/IPage.js'
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
-import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.js'
 import lodash from 'lodash'
-import { CrudOperator } from '@renderer/constants/CrudOperator.js'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
-import { isNotBlank } from '@renderer/utils/StringUtil.js'
-import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
+import {isNotBlank} from '@renderer/utils/StringUtil.js'
+import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
-import { Events } from '@wailsio/runtime'
+import {Events} from '@wailsio/runtime'
 
 // 接口
 const apis = {
@@ -96,7 +95,7 @@ async function querySearchItemPage(page: IPage<any>, input?: string): Promise<IP
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize }, query)
+    response = await apis.searchQuerySearchConditionPage(newPage<SelectItem>({ pageNumber: page.pageNumber, pageSize: page.pageSize }), query)
   } catch (e) {
     console.log(e)
     return page
@@ -119,9 +118,9 @@ async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
   // 处理搜索框的标签
   const conditions: SearchCondition[] = selectedTagList.value
     .map((searchCondition) => {
-      let operator: CrudOperator | undefined = undefined
+      let operator: WorkSearchOperator | undefined = undefined
       if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
-        operator = CrudOperator.NOT_EQUAL
+        operator = WorkSearchOperator.NotEqual
       }
       if (notNullish(searchCondition.extraData)) {
         const extraData = searchCondition.extraData as { type: SearchType; id: number }
@@ -133,14 +132,14 @@ async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
     .filter(notNullish)
   if (arrayNotEmpty(customTagList.value)) {
     customTagList.value.forEach((tag: SegmentedTagItem) =>
-      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
+      conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: tag.value, operator: WorkSearchOperator.Like }))
     )
   }
   // 处理搜索框输入的文本
   if (isNotBlank(autoLoadInput.value)) {
     const workName = autoLoadInput.value
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE }))
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: workName, operator: WorkSearchOperator.Like }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksNickname, value: workName, operator: WorkSearchOperator.Like }))
   }
 
   const response = await apis.searchQueryWorkPage(newPage<WorkFullDTO>({ pageNumber: page.pageNumber, pageSize: 16 }), conditions)
@@ -156,9 +155,9 @@ async function searchWorkSet(page: Page<WorkSetWithCoverDTO>): Promise<Page<Work
   // 处理搜索框的标签（与 searchWork 相同的条件构建逻辑）
   const conditions: SearchCondition[] = selectedTagList.value
     .map((searchCondition) => {
-      let operator: CrudOperator | undefined = undefined
+      let operator: WorkSearchOperator | undefined = undefined
       if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
-        operator = CrudOperator.NOT_EQUAL
+        operator = WorkSearchOperator.NotEqual
       }
       if (notNullish(searchCondition.extraData)) {
         const extraData = searchCondition.extraData as { type: SearchType; id: number }
@@ -170,13 +169,13 @@ async function searchWorkSet(page: Page<WorkSetWithCoverDTO>): Promise<Page<Work
     .filter(notNullish)
   if (arrayNotEmpty(customTagList.value)) {
     customTagList.value.forEach((tag: SegmentedTagItem) =>
-      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
+      conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: tag.value, operator: WorkSearchOperator.Like }))
     )
   }
   if (isNotBlank(autoLoadInput.value)) {
     const workName = autoLoadInput.value
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE }))
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: workName, operator: WorkSearchOperator.Like }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksNickname, value: workName, operator: WorkSearchOperator.Like }))
   }
 
   try {
@@ -206,7 +205,7 @@ async function queryWorkPage(next: boolean) {
     workPage.value.pageNumber++
     workPage.value.pageCount = nextPage.pageCount
     workPage.value.dataCount = nextPage.dataCount
-    workList.value.push(...nextPage.data)
+    workList.value.push(...nextPage.data.filter(notNullish))
   }
 }
 
@@ -228,7 +227,7 @@ async function queryWorkSetPage(next: boolean) {
     workSetPage.value.pageNumber++
     workSetPage.value.pageCount = nextPage.pageCount
     workSetPage.value.dataCount = nextPage.dataCount
-    workSetList.value.push(...nextPage.data)
+    workSetList.value.push(...nextPage.data.filter(notNullish))
   }
 }
 
@@ -279,28 +278,28 @@ function handleTest() {
               class="main-page-auto-load-tag-select-tag-type-checkbox-group"
               @change="querySearchCondition"
             >
-              <el-checkbox :value="SearchType.LOCAL_TAG">
+              <el-checkbox :value="SearchType.LocalTag">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-local-tag"
                 >
                   本地标签
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.SITE_TAG">
+              <el-checkbox :value="SearchType.SiteTag">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-site-tag"
                 >
                   站点标签
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.LOCAL_AUTHOR">
+              <el-checkbox :value="SearchType.LocalAuthor">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-local-author"
                 >
                   本地作者
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.SITE_AUTHOR">
+              <el-checkbox :value="SearchType.SiteAuthor">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-site-author"
                 >

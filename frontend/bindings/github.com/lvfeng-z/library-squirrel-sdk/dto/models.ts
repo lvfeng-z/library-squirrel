@@ -791,7 +791,7 @@ export class ResourceFullDTO {
 export class SearchCondition {
     "type": SearchType;
     "value": any;
-    "operator"?: string;
+    "operator"?: WorkSearchOperator;
 
     /** Creates a new SearchCondition instance. */
     constructor($$source: Partial<SearchCondition> = {}) {
@@ -849,17 +849,17 @@ export enum SearchType {
      */
     $zero = 0,
 
-    SearchTypeLocalTag = 1,
-    SearchTypeSiteTag = 2,
-    SearchTypeLocalAuthor = 3,
-    SearchTypeSiteAuthor = 4,
-    SearchTypeWorksSiteName = 5,
-    SearchTypeWorksNickname = 6,
-    SearchTypeWorksUploadTime = 7,
-    SearchTypeWorksLastView = 8,
-    SearchTypeMediaType = 9,
-    SearchTypeSite = 10,
-    SearchTypeWorkSet = 11,
+    LocalTag = 1,
+    SiteTag = 2,
+    LocalAuthor = 3,
+    SiteAuthor = 4,
+    WorksSiteName = 5,
+    WorksNickname = 6,
+    WorksUploadTime = 7,
+    WorksLastView = 8,
+    Media = 9,
+    Site = 10,
+    WorkSet = 11,
 };
 
 /**
@@ -1632,6 +1632,27 @@ export class WorkFullDTO {
         return new WorkFullDTO($$parsedSource as Partial<WorkFullDTO>);
     }
 }
+
+/**
+ * WorkSearchOperator 作品搜索操作符
+ */
+export enum WorkSearchOperator {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * 操作符常量
+     */
+    Equal = "\u003D",
+    NotEqual = "!\u003D",
+    GreaterThan = "\u003E",
+    LessThan = "\u003C",
+    GreaterOrEqual = "\u003E\u003D",
+    LessOrEqual = "\u003C\u003D",
+    Like = "LIKE",
+};
 
 /**
  * WorkSetDTO 作品集数据传输对象

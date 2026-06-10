@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
 import { ref } from 'vue'
-import { Discount, Link, List, TakeawayBox, User } from '@element-plus/icons-vue'
+import {Discount, Link, List, Memo, TakeawayBox, User} from '@element-plus/icons-vue'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 
 // 变量

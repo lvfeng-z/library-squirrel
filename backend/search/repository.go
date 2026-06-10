@@ -38,10 +38,10 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 	}
 
 	// 判断是否包含某种类型（或全部类型）
-	includeLocalTag := len(types) == 0 || containsType(types, sdkdto.SearchTypeLocalTag)
-	includeSiteTag := len(types) == 0 || containsType(types, sdkdto.SearchTypeSiteTag)
-	includeLocalAuthor := len(types) == 0 || containsType(types, sdkdto.SearchTypeLocalAuthor)
-	includeSiteAuthor := len(types) == 0 || containsType(types, sdkdto.SearchTypeSiteAuthor)
+	includeLocalTag := len(types) == 0 || containsType(types, sdkdto.LocalTag)
+	includeSiteTag := len(types) == 0 || containsType(types, sdkdto.SiteTag)
+	includeLocalAuthor := len(types) == 0 || containsType(types, sdkdto.LocalAuthor)
+	includeSiteAuthor := len(types) == 0 || containsType(types, sdkdto.SiteAuthor)
 
 	// 本地标签查询
 	if includeLocalTag {
@@ -162,9 +162,9 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 				subLabels := []string{}
 				if typeVal, ok := extraMap["type"].(float64); ok {
 					switch sdkdto.SearchType(typeVal) {
-					case sdkdto.SearchTypeLocalTag:
+					case sdkdto.LocalTag:
 						subLabels = append(subLabels, "tag", "local")
-					case sdkdto.SearchTypeSiteTag:
+					case sdkdto.SiteTag:
 						subLabels = append(subLabels, "tag")
 						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
@@ -173,9 +173,9 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 								subLabels = append(subLabels, "?")
 							}
 						}
-					case sdkdto.SearchTypeLocalAuthor:
+					case sdkdto.LocalAuthor:
 						subLabels = append(subLabels, "author", "local")
-					case sdkdto.SearchTypeSiteAuthor:
+					case sdkdto.SiteAuthor:
 						subLabels = append(subLabels, "author")
 						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
@@ -379,8 +379,8 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 		}
 
 		switch cond.Type {
-		case sdkdto.SearchTypeLocalTag:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.LocalTag:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
@@ -394,8 +394,8 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 				params = append(params, cond.Value, cond.Value)
 			}
 
-		case sdkdto.SearchTypeSiteTag:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.SiteTag:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
 				params = append(params, cond.Value)
@@ -405,8 +405,8 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 				params = append(params, cond.Value)
 			}
 
-		case sdkdto.SearchTypeLocalAuthor:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.LocalAuthor:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_author rwa
 						LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
@@ -420,8 +420,8 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 				params = append(params, cond.Value, cond.Value)
 			}
 
-		case sdkdto.SearchTypeSiteAuthor:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.SiteAuthor:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_author rwa WHERE rwa.work_id = %s.id AND rwa.site_author_id = ?)", alias))
 				params = append(params, cond.Value)
@@ -431,31 +431,31 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 				params = append(params, cond.Value)
 			}
 
-		case sdkdto.SearchTypeWorksSiteName:
+		case sdkdto.WorksSiteName:
 			whereClauses = append(whereClauses, fmt.Sprintf("%s.site_work_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
-		case sdkdto.SearchTypeWorksNickname:
+		case sdkdto.WorksNickname:
 			whereClauses = append(whereClauses, fmt.Sprintf("%s.nick_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
-		case sdkdto.SearchTypeWorksUploadTime:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.WorksUploadTime:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case sdkdto.SearchTypeWorksLastView:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.WorksLastView:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case sdkdto.SearchTypeMediaType:
+		case sdkdto.Media:
 			exts := getMediaExts(cond.Value)
 			if len(exts) > 0 {
 				placeholders := make([]string, len(exts))
@@ -463,22 +463,22 @@ func buildWhereClauseWithAlias(conditions []*sdkdto.SearchCondition, alias strin
 					placeholders[i] = "?"
 					params = append(params, ext)
 				}
-				if cond.Operator == sdkdto.OperatorNotEqual {
+				if cond.Operator == sdkdto.NotEqual {
 					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension NOT IN (%s)", alias, strings.Join(placeholders, ",")))
 				} else {
 					whereClauses = append(whereClauses, fmt.Sprintf("%s.filename_extension IN (%s)", alias, strings.Join(placeholders, ",")))
 				}
 			}
 
-		case sdkdto.SearchTypeSite:
-			if cond.Operator == sdkdto.OperatorNotEqual {
+		case sdkdto.Site:
+			if cond.Operator == sdkdto.NotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id <> ?", alias))
 			} else {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_id = ?", alias))
 			}
 			params = append(params, cond.Value)
 
-		case sdkdto.SearchTypeWorkSet:
+		case sdkdto.WorkSet:
 			whereClauses = append(whereClauses,
 				fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)", alias))
 			params = append(params, cond.Value)

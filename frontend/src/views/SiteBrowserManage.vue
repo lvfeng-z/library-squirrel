@@ -6,6 +6,7 @@ import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import Page from '@renderer/model/util/Page.ts'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore.ts'
 import { siteBrowserQueryPage, siteBrowserOpen } from '@renderer/apis/http/wrappers/siteBrowser'
+import {notNullish} from "@renderer/utils/CommonUtil.ts";
 
 // 站点浏览器数据接口
 interface SiteBrowserItem {
@@ -66,7 +67,7 @@ async function querySiteBrowserList() {
   if (ApiUtil.check(response)) {
     const resultPage = ApiUtil.data<Page<SiteBrowserItem>>(response)
     if (resultPage?.data) {
-      siteBrowserList.value = resultPage.data
+      siteBrowserList.value = resultPage.data.filter(notNullish)
     }
   } else {
     ApiUtil.msg(response)
