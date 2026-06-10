@@ -1,11 +1,8 @@
-import RankedLocalAuthor from './RankedLocalAuthor.ts'
-import RankedSiteAuthor from './RankedSiteAuthor.ts'
-import WorkSetWithWorkDTO from './WorkSetWithWorkDTO.ts'
 import {
   WorkFullDTO,
   LocalAuthorDTO,
   SiteAuthorFullDTO,
-  ResourceFullDTO
+  ResourceFullDTO, RankedLocalAuthor, RankedSiteAuthor, WorkSetWithWorksResultDTO
 } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
@@ -39,18 +36,18 @@ export default class WorkCardItem {
    */
   siteAuthors: RankedSiteAuthor[] | undefined | null
 
-  constructor(source: WorkFullDTO | WorkSetWithWorkDTO) {
-    if (source instanceof WorkSetWithWorkDTO) {
-      this.id = source.workSet.id
-      this.siteItemName = source.workSet.siteWorkSetName
-      this.nickName = source.workSet.nickName
-      this.description = source.workSet.siteWorkSetDescription
-      this.resource = source.workList[0].resource
+  constructor(source: WorkFullDTO | WorkSetWithWorksResultDTO) {
+    if (source instanceof WorkSetWithWorksResultDTO) {
+      this.id = source.workSet?.id
+      this.siteItemName = source.workSet?.siteWorkSetName
+      this.nickName = source.workSet?.nickName
+      this.description = source.workSet?.siteWorkSetDescription
+      this.resource = arrayNotEmpty(source.works) ? source.works[0]?.resource : null
       const seenIds = new Set()
       this.localAuthors = []
       // 从作品中提取本地作者并去重
-      source.workList.forEach((workFullInfo) => {
-        if (arrayNotEmpty(workFullInfo.localAuthors)) {
+      source.works?.forEach((workFullInfo) => {
+        if (arrayNotEmpty(workFullInfo?.localAuthors)) {
           workFullInfo.localAuthors.forEach((localAuthor) => {
             if (notNullish(localAuthor?.id)) {
               if (!seenIds.has(localAuthor.id)) {
@@ -66,8 +63,8 @@ export default class WorkCardItem {
       // 从作品中提取站点作者并去重
       this.siteAuthors = []
       seenIds.clear()
-      source.workList.forEach((workFullInfo) => {
-        if (arrayNotEmpty(workFullInfo.siteAuthors)) {
+      source.works?.forEach((workFullInfo) => {
+        if (arrayNotEmpty(workFullInfo?.siteAuthors)) {
           workFullInfo.siteAuthors.forEach((siteAuthor) => {
             const tempId = siteAuthor?.siteAuthor?.id
             if (notNullish(tempId)) {
@@ -94,30 +91,30 @@ export default class WorkCardItem {
   }
 }
 
-function toRankedLocalAuthors(dtos: (LocalAuthorDTO | null)[] | undefined | null): RankedLocalAuthor[] | undefined {
-  if (!arrayNotEmpty(dtos)) return undefined
-  return dtos!.filter(notNullish).map(dto => {
+function toRankedLocalAuthors(dtoList: (LocalAuthorDTO | null)[] | undefined | null): RankedLocalAuthor[] | undefined {
+  if (!arrayNotEmpty(dtoList)) return undefined
+  return dtoList!.filter(notNullish).map(dto => {
     const author = new RankedLocalAuthor()
     author.id = dto.id
-    author.authorName = dto.authorName ?? undefined
-    author.introduce = dto.introduce ?? undefined
-    author.lastUse = dto.lastUse ?? undefined
-    author.authorRank = undefined
+    author.authorName = dto.authorName ?? ''
+    author.introduce = dto.introduce ?? ''
+    author.lastUse = dto.lastUse ?? -1
+    author.authorRank = -1
     return author
   })
 }
 
-function toRankedSiteAuthors(dtos: (SiteAuthorFullDTO | null)[] | undefined | null): RankedSiteAuthor[] | undefined {
-  if (!arrayNotEmpty(dtos)) return undefined
-  return dtos!.filter(notNullish).map(dto => {
+function toRankedSiteAuthors(dtoList: (SiteAuthorFullDTO | null)[] | undefined | null): RankedSiteAuthor[] | undefined {
+  if (!arrayNotEmpty(dtoList)) return undefined
+  return dtoList!.filter(notNullish).map(dto => {
     const author = new RankedSiteAuthor()
     if (dto.siteAuthor) {
       author.id = dto.siteAuthor.id
-      author.authorName = dto.siteAuthor.authorName ?? undefined
-      author.introduce = dto.siteAuthor.introduce ?? undefined
-      author.localAuthorId = dto.siteAuthor.localAuthorId ?? undefined
+      author.authorName = dto.siteAuthor.authorName ?? ''
+      author.introduce = dto.siteAuthor.introduce ?? ''
+      author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
     }
-    author.authorRank = undefined
+    author.authorRank = -1
     return author
   })
 }

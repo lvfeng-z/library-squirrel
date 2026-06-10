@@ -2,7 +2,10 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
-import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {
+  SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO,
+  RankedLocalAuthor, RankedSiteAuthor
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
@@ -18,8 +21,6 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import AutoHeightDialog from '@renderer/components/dialogs/AutoHeightDialog.vue'
 import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/localTag/models'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/siteTag/models'
-import RankedLocalAuthor from '@renderer/model/model/dto/RankedLocalAuthor.js'
-import RankedSiteAuthor from '@renderer/model/model/dto/RankedSiteAuthor.js'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
@@ -134,10 +135,10 @@ function toRankedLocalAuthor(dto: LocalAuthorDTO | null): RankedLocalAuthor | nu
   if (!dto) return null
   const author = new RankedLocalAuthor()
   author.id = dto.id
-  author.authorName = dto.authorName ?? undefined
-  author.introduce = dto.introduce ?? undefined
-  author.lastUse = dto.lastUse ?? undefined
-  author.authorRank = undefined
+  author.authorName = dto.authorName ?? ''
+  author.introduce = dto.introduce ?? ''
+  author.lastUse = dto.lastUse ?? -1
+  author.authorRank = -1
   return author
 }
 
@@ -146,10 +147,10 @@ function toRankedSiteAuthor(dto: SiteAuthorFullDTO | null): RankedSiteAuthor | n
   if (!dto || !dto.siteAuthor) return null
   const author = new RankedSiteAuthor()
   author.id = dto.siteAuthor.id
-  author.authorName = dto.siteAuthor.authorName ?? undefined
-  author.introduce = dto.siteAuthor.introduce ?? undefined
-  author.localAuthorId = dto.siteAuthor.localAuthorId ?? undefined
-  author.authorRank = undefined
+  author.authorName = dto.siteAuthor.authorName ?? ''
+  author.introduce = dto.siteAuthor.introduce ?? ''
+  author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
+  author.authorRank = -1
   return author
 }
 
