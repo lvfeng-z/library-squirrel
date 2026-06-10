@@ -4,7 +4,7 @@ import { computed, Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
 import {WorkFullDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto";
-import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
+import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 
 // props
 const props = defineProps<{

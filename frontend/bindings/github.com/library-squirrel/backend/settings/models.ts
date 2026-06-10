@@ -90,7 +90,6 @@ export class SettingChange {
  */
 export class Settings {
     "initialized": boolean;
-    "programVersion": string;
     "workdir": string;
     "workSettings": WorkSettings;
     "importSettings": ImportSettings;
@@ -101,9 +100,6 @@ export class Settings {
     constructor($$source: Partial<Settings> = {}) {
         if (!("initialized" in $$source)) {
             this["initialized"] = false;
-        }
-        if (!("programVersion" in $$source)) {
-            this["programVersion"] = "";
         }
         if (!("workdir" in $$source)) {
             this["workdir"] = "";
@@ -128,22 +124,22 @@ export class Settings {
      * Creates a new Settings instance from a string or object.
      */
     static createFrom($$source: any = {}): Settings {
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType2;
-        const $$createField6_0 = $$createType3;
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
-            $$parsedSource["workSettings"] = $$createField3_0($$parsedSource["workSettings"]);
+            $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
         }
         if ("importSettings" in $$parsedSource) {
-            $$parsedSource["importSettings"] = $$createField4_0($$parsedSource["importSettings"]);
+            $$parsedSource["importSettings"] = $$createField3_0($$parsedSource["importSettings"]);
         }
         if ("pluginSettings" in $$parsedSource) {
-            $$parsedSource["pluginSettings"] = $$createField5_0($$parsedSource["pluginSettings"]);
+            $$parsedSource["pluginSettings"] = $$createField4_0($$parsedSource["pluginSettings"]);
         }
         if ("tour" in $$parsedSource) {
-            $$parsedSource["tour"] = $$createField6_0($$parsedSource["tour"]);
+            $$parsedSource["tour"] = $$createField5_0($$parsedSource["tour"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }

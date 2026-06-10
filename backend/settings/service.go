@@ -23,9 +23,8 @@ type Service struct {
 // defaultSettings 返回默认配置
 func defaultSettings() *Settings {
 	return &Settings{
-		Initialized:    false,
-		ProgramVersion: "",
-		WorkDir:        "",
+		Initialized: false,
+		WorkDir:     "",
 		WorkSettings: WorkSettings{
 			FileNameFormat: "[${author}]_[${siteWorkId}]_${siteWorkName}",
 		},

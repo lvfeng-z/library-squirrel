@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { Settings } from '@renderer/model/model/base/Settings.ts'
+import {type SettingChange, Settings} from "@bindings/github.com/library-squirrel/backend/settings";
 import mitt, { Emitter } from 'mitt'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { settingsGetSettings, settingsSaveSettings } from '@renderer/apis/http/wrappers/settings'
@@ -14,7 +14,10 @@ export const useTourStatesStore = defineStore('tourStates', {
         throw new Error('获取设置失败')
       }
     }
-    return { tourStates: new TourStates(getSettings, settingsSaveSettings) }
+    return { tourStates: new TourStates(getSettings, async (changes: SettingChange[]) => {
+        await settingsSaveSettings(changes)
+      })
+    }
   }
 })
 
@@ -47,9 +50,9 @@ export class TourStates {
   }>
 
   settingGetter: () => Promise<Settings>
-  settingSetter: () => Promise<void>
+  settingSetter: (changes: SettingChange[]) => Promise<void>
 
-  constructor(settingGetter: () => Promise<Settings>, settingSetter: () => Promise<void>) {
+  constructor(settingGetter: () => Promise<Settings>, settingSetter: (changes: SettingChange[]) => Promise<void>) {
     this.guideMenuTour = false
     this.workdirTour = false
     this.taskMenuTour = false

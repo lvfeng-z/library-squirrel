@@ -10,7 +10,7 @@ import lodash from 'lodash'
 import {notNullish, arrayNotEmpty, isNullish} from '@renderer/utils/CommonUtil.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
-import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
+import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 
 // props
 const props = withDefaults(

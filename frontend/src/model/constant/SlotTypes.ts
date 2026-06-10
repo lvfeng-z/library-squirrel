@@ -7,7 +7,7 @@ import {
   SiteBrowserListSlotConfig,
   ViewSlotConfig,
   VueSourceContent
-} from '@renderer/model/model/interface/SlotConfigs.ts'
+} from '@renderer/model/interface/SlotConfigs.ts'
 
 /** 插槽内容类型 */
 export type SlotContentType = 'vueSource' | 'precompiled' | 'code' | 'html'

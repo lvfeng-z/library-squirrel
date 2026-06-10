@@ -5,7 +5,7 @@ import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
-import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
+import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 

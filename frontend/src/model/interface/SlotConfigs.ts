@@ -1,4 +1,4 @@
-import { AnySlotContent, SlotContentType } from '@renderer/model/model/constant/SlotTypes.ts'
+import { AnySlotContent, SlotContentType } from '@renderer/model/constant/SlotTypes.ts'
 
 /** 插槽基础配置 */
 export interface BaseSlotConfig {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
+import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { TaskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 import { TaskProgressDTO, TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'

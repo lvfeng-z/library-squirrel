@@ -1,12 +1,11 @@
-import { Id } from './BaseEntity.ts'
-import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models.ts'
 import { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
 
 export default class BaseQueryDTO {
     /**
      * 主键
      */
-    id?: Id | Id[] | null | undefined
+    id?: number | null | undefined
 
     /**
      * 创建时间

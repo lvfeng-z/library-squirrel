@@ -1,12 +1,11 @@
 {
   "initialized": false,
-  "programVersion": "",
   "workdir": "D:\\LS",
   "workSettings": {
     "fileNameFormat": "[${author}]_[${siteWorkId}]_${siteWorkName}"
   },
   "importSettings": {
-    "maxParallelImport": 3,
+    "maxParallelImport": 4,
     "updateWorkInfoWhenImport": true
   },
   "pluginSettings": {

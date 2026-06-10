@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import WorkCard from './WorkCard.vue'
 import { ref, watch, nextTick } from 'vue'
-import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
+import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 
 // props
 const props = defineProps<{

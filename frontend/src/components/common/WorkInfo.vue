@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, Ref } from 'vue'
-import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
+import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 // props
 const props = withDefaults(

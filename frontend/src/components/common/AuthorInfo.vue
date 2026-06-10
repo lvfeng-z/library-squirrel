@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil'
-import RankAuthor from '@renderer/model/model/interface/RankAuthor.ts'
+import RankAuthor from '@renderer/model/interface/RankAuthor.ts'
 import {RankedLocalAuthor, RankedSiteAuthor} from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto";
 
 // props

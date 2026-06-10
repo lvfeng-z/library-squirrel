@@ -3,7 +3,6 @@ package settings
 // Settings 应用设置
 type Settings struct {
 	Initialized    bool           `json:"initialized" koanf:"initialized"`
-	ProgramVersion string         `json:"programVersion" koanf:"programVersion"`
 	WorkDir        string         `json:"workdir" koanf:"workdir"`
 	WorkSettings   WorkSettings   `json:"workSettings" koanf:"workSettings"`
 	ImportSettings ImportSettings `json:"importSettings" koanf:"importSettings"`
@@ -37,9 +36,8 @@ type TourSettings struct {
 // NewSettings 创建默认设置
 func NewSettings() *Settings {
 	return &Settings{
-		Initialized:    false,
-		ProgramVersion: "",
-		WorkDir:        "",
+		Initialized: false,
+		WorkDir:     "",
 		WorkSettings: WorkSettings{
 			FileNameFormat: "[${author}]_[${siteWorkId}]_${siteWorkName}",
 		},

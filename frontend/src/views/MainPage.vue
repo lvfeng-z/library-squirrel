@@ -18,7 +18,7 @@ import lodash from 'lodash'
 import { CrudOperator } from '@renderer/constants/CrudOperator.js'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
-import SearchConditionQueryDTO from '@renderer/model/model/queryDTO/SearchConditionQueryDTO.js'
+import SearchConditionQueryDTO from '@renderer/model/dto/SearchConditionQueryDTO'
 import { isNotBlank } from '@renderer/utils/StringUtil.js'
 import { searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage } from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
