@@ -169,6 +169,26 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 	isLeaf := rootTask != nil && rootTask.Pid.Valid && rootTask.Pid.Int64 > 0 &&
 		(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
 
+	// 独立单任务：无父无子（pid=0, hasChild=false），直接作为子任务执行
+	isStandalone := rootTask != nil &&
+		(!rootTask.Pid.Valid || rootTask.Pid.Int64 == 0) &&
+		(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+
+	if isStandalone {
+		child := m.buildOrReuseChild(rootTask, skipTerminal)
+		if child == nil {
+			// 已终态，直接持久化当前状态
+			finalState := TaskState(rootTask.Status)
+			if isStableState(finalState) {
+				m.addToPending(taskId, task.TaskStatusEnum(finalState), "")
+			}
+			return nil
+		}
+		// 不加入 parentMap，独立任务没有父任务
+		m.tryDispatch(child)
+		return nil
+	}
+
 	actualParentId := taskId
 	parentTaskName := ""
 	if isLeaf {
@@ -567,15 +587,23 @@ func (m *Manager) GetTaskTreeState(taskId int64, isLeaf bool) (TaskState, error)
 	if !ok {
 		return TaskStateCreated, ErrTaskTreeNotFound
 	}
-	m.mu.RLock()
-	parent, ok := m.parentMap[parentKey]
-	m.mu.RUnlock()
 
-	if !ok {
-		return TaskStateCreated, ErrTaskTreeNotFound
+	// 优先查 parentMap（父任务场景）
+	m.mu.RLock()
+	parent, inParent := m.parentMap[parentKey]
+	m.mu.RUnlock()
+	if inParent {
+		return parent.GetState(), nil
 	}
 
-	return parent.GetState(), nil
+	// 回退查 taskMap（独立单任务场景）
+	m.mu.RLock()
+	mt, inTask := m.taskMap[parentKey]
+	m.mu.RUnlock()
+	if !inTask {
+		return TaskStateCreated, ErrTaskTreeNotFound
+	}
+	return mt.GetState(), nil
 }
 
 // GetTaskState 获取任务状态
@@ -820,11 +848,19 @@ func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
 }
 
 // resolveParentKey 根据 isLeaf 标志解析 parentMap 的实际查找键
-// 非叶子任务直接使用 taskId；叶子任务通过 taskMap 反查 parentId
+// 父任务直接使用 taskId；叶子任务和独立单任务通过 taskMap 反查 parentId
 func (m *Manager) resolveParentKey(taskId int64, isLeaf bool) (int64, bool) {
 	if !isLeaf {
-		return taskId, true
+		// 非叶子：检查是否在 parentMap 中（真正的父任务）
+		m.mu.RLock()
+		_, inParent := m.parentMap[taskId]
+		m.mu.RUnlock()
+		if inParent {
+			return taskId, true
+		}
+		// 不在 parentMap：可能是独立单任务，当作叶子处理（查 taskMap）
 	}
+	// 叶子 / 独立任务：从 taskMap 获取 parentId
 	m.mu.RLock()
 	mt, ok := m.taskMap[taskId]
 	m.mu.RUnlock()
