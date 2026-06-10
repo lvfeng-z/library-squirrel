@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil'
-import RankedSiteAuthor from '@renderer/model/model/domain/RankedSiteAuthor.ts'
-import RankedLocalAuthor from '@renderer/model/model/domain/RankedLocalAuthor.ts'
+import RankedSiteAuthor from '@renderer/model/model/dto/RankedSiteAuthor.js'
+import RankedLocalAuthor from '@renderer/model/model/dto/RankedLocalAuthor.js'
 import RankAuthor from '@renderer/model/model/interface/RankAuthor.ts'
 
 // props

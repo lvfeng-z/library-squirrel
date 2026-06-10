@@ -1,5 +1,5 @@
-import RankedLocalAuthor from '../domain/RankedLocalAuthor.ts'
-import RankedSiteAuthor from '../domain/RankedSiteAuthor.ts'
+import RankedLocalAuthor from './RankedLocalAuthor.ts'
+import RankedSiteAuthor from './RankedSiteAuthor.ts'
 import WorkSetWithWorkDTO from './WorkSetWithWorkDTO.ts'
 import {
   WorkFullDTO,

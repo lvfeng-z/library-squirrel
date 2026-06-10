@@ -7,7 +7,7 @@ import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'
 import lodash from 'lodash'
-import { notNullish, arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
+import {notNullish, arrayNotEmpty, isNullish} from '@renderer/utils/CommonUtil.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
 import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
@@ -342,7 +342,7 @@ defineExpose({
       <el-scrollbar>
         <work-grid
           :work-list="workList"
-          :checkable="checkable"
+          :checkable="isNullish(checkable) ? false : checkable"
           :checked-work-ids="checkedWorkIds"
           class="work-query-view-work-grid"
           @image-clicked="handleWorkClicked"
