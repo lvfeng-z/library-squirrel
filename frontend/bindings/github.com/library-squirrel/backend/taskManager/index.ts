@@ -5,3 +5,8 @@ import * as Handler from "./handler.js";
 export {
     Handler
 };
+
+export {
+    TaskSnapshotDTO,
+    TaskSnapshotItem
+} from "./models.js";

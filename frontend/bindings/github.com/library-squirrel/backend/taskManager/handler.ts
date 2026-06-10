@@ -39,7 +39,7 @@ export function ConfirmReplaceBatch(taskIds: number[], action: string): $Cancell
 /**
  * GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
  */
-export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$models.taskSnapshotDTO | null> | null> {
+export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$models.TaskSnapshotDTO | null> | null> {
     return $Call.ByID(1922063002).then(($result: any) => {
         return $$createType5($result);
     });
@@ -120,7 +120,7 @@ export function StopTaskTree(taskId: number, isLeaf: boolean): $CancellablePromi
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.taskSnapshotDTO.createFrom;
+const $$createType2 = $models.TaskSnapshotDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

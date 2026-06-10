@@ -608,7 +608,7 @@ func (m *Manager) SetPusher(pusher TaskProgressPusher) {
 }
 
 // GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
-func (m *Manager) GetTaskSnapshot() *taskSnapshotDTO {
+func (m *Manager) GetTaskSnapshot() *TaskSnapshotDTO {
 	if m.snapshotPusher != nil {
 		m.snapshotPusher.EmitSnapshot()
 	}
@@ -867,18 +867,18 @@ func (m *Manager) GetTaskStates() map[int64]int {
 
 // BuildSnapshot 构建当前所有活跃任务的完整状态快照（基于 taskMap/parentMap 实时状态）
 // 实现 SnapshotDataProvider 接口
-func (m *Manager) BuildSnapshot() *taskSnapshotDTO {
+func (m *Manager) BuildSnapshot() *TaskSnapshotDTO {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	snapshot := &taskSnapshotDTO{
-		Tasks:       make([]*taskSnapshotItem, 0, len(m.taskMap)+len(m.waitingForInputMap)),
-		ParentTasks: make([]*taskSnapshotItem, 0, len(m.parentMap)),
+	snapshot := &TaskSnapshotDTO{
+		Tasks:       make([]*TaskSnapshotItem, 0, len(m.taskMap)+len(m.waitingForInputMap)),
+		ParentTasks: make([]*TaskSnapshotItem, 0, len(m.parentMap)),
 	}
 
 	// 收集子任务快照（从 atomic 字段读取进度，并发安全）
 	for _, mt := range m.taskMap {
-		snapshot.Tasks = append(snapshot.Tasks, &taskSnapshotItem{
+		snapshot.Tasks = append(snapshot.Tasks, &TaskSnapshotItem{
 			ID:       mt.taskId,
 			TaskName: mt.task.TaskName.String,
 			Status:   int(mt.GetState()),
@@ -892,7 +892,7 @@ func (m *Manager) BuildSnapshot() *taskSnapshotDTO {
 		pt.refreshMu.Lock()
 		_, state, finished, total := pt.RefreshState()
 		pt.refreshMu.Unlock()
-		snapshot.ParentTasks = append(snapshot.ParentTasks, &taskSnapshotItem{
+		snapshot.ParentTasks = append(snapshot.ParentTasks, &TaskSnapshotItem{
 			ID:       pt.taskId,
 			TaskName: pt.taskName,
 			Status:   int(state),
@@ -904,7 +904,7 @@ func (m *Manager) BuildSnapshot() *taskSnapshotDTO {
 	// 收集等待确认的任务（无进度数据）
 	m.waitingForInputMu.Lock()
 	for _, mt := range m.waitingForInputMap {
-		snapshot.Tasks = append(snapshot.Tasks, &taskSnapshotItem{
+		snapshot.Tasks = append(snapshot.Tasks, &TaskSnapshotItem{
 			ID:       mt.taskId,
 			TaskName: mt.task.TaskName.String,
 			Status:   int(mt.GetState()),

@@ -160,26 +160,26 @@ func NewNoopProgressPusher() *NoopProgressPusher {
 	return &NoopProgressPusher{}
 }
 
-func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)       {}
-func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState) {}
-func (p *NoopProgressPusher) PushProgress(int64, int64, int64)              {}
-func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)          {}
-func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)        {}
-func (p *NoopProgressPusher) PushError(int64, string)                       {}
-func (p *NoopProgressPusher) PushTaskRemove([]int64)                        {}
-func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                  {}
+func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)           {}
+func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState)     {}
+func (p *NoopProgressPusher) PushProgress(int64, int64, int64)                   {}
+func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)               {}
+func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)             {}
+func (p *NoopProgressPusher) PushError(int64, string)                            {}
+func (p *NoopProgressPusher) PushTaskRemove([]int64)                             {}
+func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                       {}
 func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string) {}
 
-// taskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
-type taskSnapshotDTO struct {
-	Tasks               []*taskSnapshotItem `json:"tasks"`
-	ParentTasks         []*taskSnapshotItem `json:"parentTasks"`
-	RemovedTasks        []*taskSnapshotItem `json:"removedTasks"`
-	RemovedParentTasks  []*taskSnapshotItem `json:"removedParentTasks"`
+// TaskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
+type TaskSnapshotDTO struct {
+	Tasks              []*TaskSnapshotItem `json:"tasks"`
+	ParentTasks        []*TaskSnapshotItem `json:"parentTasks"`
+	RemovedTasks       []*TaskSnapshotItem `json:"removedTasks"`
+	RemovedParentTasks []*TaskSnapshotItem `json:"removedParentTasks"`
 }
 
-// taskSnapshotItem 快照中的单个任务条目
-type taskSnapshotItem struct {
+// TaskSnapshotItem 快照中的单个任务条目
+type TaskSnapshotItem struct {
 	ID       int64  `json:"id"`
 	TaskName string `json:"taskName"`
 	Status   int    `json:"status"`
@@ -189,7 +189,7 @@ type taskSnapshotItem struct {
 
 // SnapshotDataProvider 快照数据提供者接口，由 Manager 实现
 type SnapshotDataProvider interface {
-	BuildSnapshot() *taskSnapshotDTO
+	BuildSnapshot() *TaskSnapshotDTO
 }
 
 // SnapshotPusher 快照推送器，收集变更后防抖推送完整状态快照
@@ -204,11 +204,11 @@ type SnapshotPusher struct {
 	timer      *time.Timer
 	dirty      bool
 	// 移除缓冲区：被移除任务的最新状态（带终态信息）
-	removedTaskItems   []*taskSnapshotItem
-	removedParentItems []*taskSnapshotItem
+	removedTaskItems   []*TaskSnapshotItem
+	removedParentItems []*TaskSnapshotItem
 	// 状态记录：用于在 PushTaskRemove 时查找最后状态并转入缓冲区
-	taskStates   map[int64]*taskSnapshotItem
-	parentStates map[int64]*taskSnapshotItem
+	taskStates   map[int64]*TaskSnapshotItem
+	parentStates map[int64]*TaskSnapshotItem
 }
 
 // NewSnapshotPusher 创建快照推送器
@@ -218,8 +218,8 @@ func NewSnapshotPusher(emitter WailsEventEmitter, provider SnapshotDataProvider,
 		provider:     provider,
 		emitter:      emitter,
 		debounceMs:   debounceMs,
-		taskStates:   make(map[int64]*taskSnapshotItem),
-		parentStates: make(map[int64]*taskSnapshotItem),
+		taskStates:   make(map[int64]*TaskSnapshotItem),
+		parentStates: make(map[int64]*TaskSnapshotItem),
 	}
 }
 
@@ -248,8 +248,8 @@ func (s *SnapshotPusher) flush() {
 	s.removedTaskItems = nil
 	s.removedParentItems = nil
 	// 清空状态记录
-	s.taskStates = make(map[int64]*taskSnapshotItem)
-	s.parentStates = make(map[int64]*taskSnapshotItem)
+	s.taskStates = make(map[int64]*TaskSnapshotItem)
+	s.parentStates = make(map[int64]*TaskSnapshotItem)
 	s.mu.Unlock()
 
 	// 获取 Manager 实时快照（基于 taskMap/parentMap）
@@ -274,11 +274,11 @@ func (s *SnapshotPusher) EmitSnapshot() {
 }
 
 // updateTaskState 更新子任务状态记录（不存在则创建）
-func (s *SnapshotPusher) updateTaskState(taskId int64, updateFunc func(item *taskSnapshotItem)) {
+func (s *SnapshotPusher) updateTaskState(taskId int64, updateFunc func(item *TaskSnapshotItem)) {
 	s.mu.Lock()
 	item, ok := s.taskStates[taskId]
 	if !ok {
-		item = &taskSnapshotItem{ID: taskId}
+		item = &TaskSnapshotItem{ID: taskId}
 		s.taskStates[taskId] = item
 	}
 	updateFunc(item)
@@ -286,11 +286,11 @@ func (s *SnapshotPusher) updateTaskState(taskId int64, updateFunc func(item *tas
 }
 
 // updateParentState 更新父任务状态记录（不存在则创建）
-func (s *SnapshotPusher) updateParentState(taskId int64, updateFunc func(item *taskSnapshotItem)) {
+func (s *SnapshotPusher) updateParentState(taskId int64, updateFunc func(item *TaskSnapshotItem)) {
 	s.mu.Lock()
 	item, ok := s.parentStates[taskId]
 	if !ok {
-		item = &taskSnapshotItem{ID: taskId}
+		item = &TaskSnapshotItem{ID: taskId}
 		s.parentStates[taskId] = item
 	}
 	updateFunc(item)
@@ -298,7 +298,7 @@ func (s *SnapshotPusher) updateParentState(taskId int64, updateFunc func(item *t
 }
 
 // updateExistingTaskState 仅更新已存在的子任务状态（进度更新不应创建新条目）
-func (s *SnapshotPusher) updateExistingTaskState(taskId int64, updateFunc func(item *taskSnapshotItem)) {
+func (s *SnapshotPusher) updateExistingTaskState(taskId int64, updateFunc func(item *TaskSnapshotItem)) {
 	s.mu.Lock()
 	if item, ok := s.taskStates[taskId]; ok {
 		updateFunc(item)
@@ -307,7 +307,7 @@ func (s *SnapshotPusher) updateExistingTaskState(taskId int64, updateFunc func(i
 }
 
 // updateExistingParentState 仅更新已存在的父任务状态
-func (s *SnapshotPusher) updateExistingParentState(taskId int64, updateFunc func(item *taskSnapshotItem)) {
+func (s *SnapshotPusher) updateExistingParentState(taskId int64, updateFunc func(item *TaskSnapshotItem)) {
 	s.mu.Lock()
 	if item, ok := s.parentStates[taskId]; ok {
 		updateFunc(item)
@@ -316,7 +316,7 @@ func (s *SnapshotPusher) updateExistingParentState(taskId int64, updateFunc func
 }
 
 func (s *SnapshotPusher) PushStateChange(taskId int64, taskName string, state TaskState) {
-	s.updateTaskState(taskId, func(item *taskSnapshotItem) {
+	s.updateTaskState(taskId, func(item *TaskSnapshotItem) {
 		item.TaskName = taskName
 		item.Status = int(state)
 	})
@@ -324,7 +324,7 @@ func (s *SnapshotPusher) PushStateChange(taskId int64, taskName string, state Ta
 }
 
 func (s *SnapshotPusher) PushParentStateChange(taskId int64, taskName string, state TaskState) {
-	s.updateParentState(taskId, func(item *taskSnapshotItem) {
+	s.updateParentState(taskId, func(item *TaskSnapshotItem) {
 		item.TaskName = taskName
 		item.Status = int(state)
 	})
@@ -332,7 +332,7 @@ func (s *SnapshotPusher) PushParentStateChange(taskId int64, taskName string, st
 }
 
 func (s *SnapshotPusher) PushProgress(taskId int64, total int64, finished int64) {
-	s.updateExistingTaskState(taskId, func(item *taskSnapshotItem) {
+	s.updateExistingTaskState(taskId, func(item *TaskSnapshotItem) {
 		item.Total = total
 		item.Finished = finished
 	})
@@ -341,7 +341,7 @@ func (s *SnapshotPusher) PushProgress(taskId int64, total int64, finished int64)
 
 func (s *SnapshotPusher) PushProgressBatch(batch []*taskScheduleDTO) {
 	for _, dto := range batch {
-		s.updateExistingTaskState(dto.ID, func(item *taskSnapshotItem) {
+		s.updateExistingTaskState(dto.ID, func(item *TaskSnapshotItem) {
 			item.Total = dto.Total
 			item.Finished = dto.Finished
 		})
@@ -350,7 +350,7 @@ func (s *SnapshotPusher) PushProgressBatch(batch []*taskScheduleDTO) {
 }
 
 func (s *SnapshotPusher) PushParentProgress(taskId int64, total int64, finished int64) {
-	s.updateExistingParentState(taskId, func(item *taskSnapshotItem) {
+	s.updateExistingParentState(taskId, func(item *TaskSnapshotItem) {
 		item.Total = total
 		item.Finished = finished
 	})

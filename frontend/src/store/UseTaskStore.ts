@@ -4,15 +4,50 @@ import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import NotificationItem from '@renderer/model/util/NotificationItem.ts'
 import { h } from 'vue'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
-import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
-import { taskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
+import { TaskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
+import { TaskProgressDTO, TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 
 /** 最近移除的任务 ID 缓存有效期（毫秒） */
 const RECENTLY_REMOVED_TTL = 2000
 /** removeTask 延迟移除的等待时间（毫秒），确保 Vue watcher 有时间将 store 中的终态同步到行数据 */
 const REMOVE_DELAY = 300
+
+/**
+ * 从 taskSnapshotItem 构造 binding TaskProgressDTO
+ */
+function buildTaskProgressDTO(item: { id: number; taskName: string; status: number; total: number; finished: number }): TaskProgressDTO {
+  const taskDTO = new TaskProgressDTO()
+  taskDTO.task = new TaskDTO()
+  taskDTO.task.id = item.id
+  taskDTO.task.taskName = item.taskName
+  taskDTO.task.status = item.status
+  taskDTO.total = item.total
+  taskDTO.finished = item.finished
+  return taskDTO
+}
+
+/**
+ * 创建初始化了 task 字段的空 TaskProgressDTO
+ */
+function createEmptyTaskProgressDTO(): TaskProgressDTO {
+  const dto = new TaskProgressDTO()
+  dto.task = new TaskDTO()
+  return dto
+}
+
+/**
+ * 将 IPC 事件中的 taskStateDTO（{id, taskName, status}）适配为 binding TaskProgressDTO
+ */
+function adaptStateEvent(data: any): TaskProgressDTO {
+  const dto = new TaskProgressDTO()
+  dto.task = new TaskDTO()
+  dto.task.id = data.id
+  dto.task.taskName = data.taskName
+  dto.task.status = data.status
+  return dto
+}
 
 export const useTaskStore = defineStore('task', {
   state: (): {
@@ -32,62 +67,66 @@ export const useTaskStore = defineStore('task', {
     getTask(taskId: number): TaskProgressDTO | undefined {
       return this.tasks.get(taskId)?.task
     },
-    setTask(taskList: TaskProgressDTO[]): void {
+    setTask(taskList: any[]): void {
       const taskStatus: Map<number, TaskStoreObj> = this.tasks
-      taskList.forEach((task) => {
-        if (isNullish(task.id)) {
+      taskList.forEach((raw) => {
+        const task = adaptStateEvent(raw)
+        if (isNullish(task.task?.id)) {
           throw new Error('UseTaskStore: 赋值任务失败，任务id为空')
         }
+        const id = task.task.id
         // 取消待执行的延迟移除，防止误删重新创建的任务
-        this.cancelPendingRemove(task.id)
+        this.cancelPendingRemove(id)
         let notificationId: string | undefined
         // 只有进行中、等待中两种状态才推送到通知Store中
-        if (TaskStatusEnum.PROCESSING === task.status || TaskStatusEnum.WAITING === task.status) {
+        if (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status) {
           const notificationItem = createNotificationItem(task)
           notificationId = useNotificationStore().add(notificationItem)
         }
-        taskStatus.set(task.id, { task, notificationId })
+        taskStatus.set(id, { task, notificationId })
       })
     },
     hasTask(taskId: number): boolean {
       return this.tasks.has(taskId)
     },
-    updateTask(taskList: TaskProgressDTO[]): void {
-      taskList.forEach((task) => {
-        if (isNullish(task.id)) {
+    updateTask(taskList: any[]): void {
+      taskList.forEach((raw) => {
+        const task = adaptStateEvent(raw)
+        if (isNullish(task.task?.id)) {
           throw new Error('UseTaskStore: 更新任务失败，任务id为空')
         }
+        const id = task.task.id
         // 取消待执行的延迟移除，防止误删重新创建的任务
-        this.cancelPendingRemove(task.id)
-        let taskStoreObj = this.tasks.get(task.id)
+        this.cancelPendingRemove(id)
+        let taskStoreObj = this.tasks.get(id)
         // store 中不存在时，若该 ID 最近被移除过则跳过自动创建，防止幽灵条目
         if (isNullish(taskStoreObj)) {
-          if (this.recentlyRemovedIds.has(task.id)) {
+          if (this.recentlyRemovedIds.has(id)) {
             return
           }
-          taskStoreObj = { task: new TaskProgressDTO(), notificationId: undefined }
-          this.tasks.set(task.id, taskStoreObj)
+          taskStoreObj = { task: createEmptyTaskProgressDTO(), notificationId: undefined }
+          this.tasks.set(id, taskStoreObj)
         }
-        console.log('update task', task.id, taskStoreObj.task.status)
-        if (task.status !== taskStoreObj.task.status) {
+        console.log('update task', id, taskStoreObj.task.task?.status)
+        if (task.task.status !== taskStoreObj.task.task?.status) {
           // 任务状态变化为完成或失败，解决通知Store中该任务的Promise
           if (notNullish(taskStoreObj.notificationId)) {
-            if (task.status === TaskStatusEnum.FINISHED) {
+            if (task.task.status === TaskStatusEnum.FINISHED) {
               useNotificationStore().remove(taskStoreObj.notificationId, {
                 type: 'success',
-                msg: `任务【${taskStoreObj.task.taskName}】完成`
+                msg: `任务【${taskStoreObj.task.task?.taskName}】完成`
               })
               taskStoreObj.notificationId = undefined
-            } else if (task.status === TaskStatusEnum.FAILED) {
+            } else if (task.task.status === TaskStatusEnum.FAILED) {
               useNotificationStore().remove(taskStoreObj.notificationId, {
                 type: 'error',
-                msg: `任务【${taskStoreObj.task.taskName ?? taskStoreObj.task.id}】失败`
+                msg: `任务【${taskStoreObj.task.task?.taskName ?? taskStoreObj.task.task?.id}】失败`
               })
               taskStoreObj.notificationId = undefined
-            } else if (task.status === TaskStatusEnum.PARTLY_FINISHED) {
+            } else if (task.task.status === TaskStatusEnum.PARTLY_FINISHED) {
               useNotificationStore().remove(taskStoreObj.notificationId, {
                 type: 'warning',
-                msg: `任务【${taskStoreObj.task.taskName ?? taskStoreObj.task.id}】部分完成`
+                msg: `任务【${taskStoreObj.task.task?.taskName ?? taskStoreObj.task.task?.id}】部分完成`
               })
               taskStoreObj.notificationId = undefined
             }
@@ -95,7 +134,7 @@ export const useTaskStore = defineStore('task', {
           // 如果状态为进行中、等待中，就推送到通知Store中
           if (
             isNullish(taskStoreObj.notificationId) &&
-            (TaskStatusEnum.PROCESSING === task.status || TaskStatusEnum.WAITING === task.status)
+            (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status)
           ) {
             copyIgnoreUndefined(taskStoreObj.task, task)
             const notificationItem = createNotificationItem(taskStoreObj.task)
@@ -114,9 +153,6 @@ export const useTaskStore = defineStore('task', {
         }
         const task = this.getTask(scheduleDTO.id)
         if (notNullish(task)) {
-          if (notNullish(scheduleDTO.status)) {
-            task.status = scheduleDTO.status
-          }
           if (notNullish(scheduleDTO.total)) {
             task.total = scheduleDTO.total
           }
@@ -163,7 +199,7 @@ export const useTaskStore = defineStore('task', {
      * 2. 用移除缓冲区补充被移除任务的终态信息
      * 3. 为缓冲区中的任务设置延迟移除定时器
      */
-    loadSnapshot(liveItems: (taskSnapshotItem | null)[], removedItems: (taskSnapshotItem | null)[]): void {
+    loadSnapshot(liveItems: (TaskSnapshotItem | null)[], removedItems: (TaskSnapshotItem | null)[]): void {
       // 1. 全量替换：清除所有旧数据和定时器
       this.pendingRemoveTimers.forEach((timer) => clearTimeout(timer))
       this.pendingRemoveTimers.clear()
@@ -176,14 +212,9 @@ export const useTaskStore = defineStore('task', {
 
       // 写入实时快照
       liveItems.filter(notNullish).forEach((item) => {
-        const taskDTO = new TaskProgressDTO()
-        taskDTO.id = item.id
-        taskDTO.taskName = item.taskName
-        taskDTO.status = item.status
-        taskDTO.total = item.total
-        taskDTO.finished = item.finished
+        const taskDTO = buildTaskProgressDTO(item)
         let notificationId: string | undefined
-        if (taskDTO.status === TaskStatusEnum.PROCESSING || taskDTO.status === TaskStatusEnum.WAITING) {
+        if (taskDTO.task?.status === TaskStatusEnum.PROCESSING || taskDTO.task?.status === TaskStatusEnum.WAITING) {
           const notificationItem = createNotificationItem(taskDTO)
           notificationId = useNotificationStore().add(notificationItem)
         }
@@ -192,12 +223,7 @@ export const useTaskStore = defineStore('task', {
 
       // 2. 补充移除缓冲区：写入终态 + 设置延迟移除定时器
       removedItems.filter(notNullish).forEach((item) => {
-        const taskDTO = new TaskProgressDTO()
-        taskDTO.id = item.id
-        taskDTO.taskName = item.taskName
-        taskDTO.status = item.status
-        taskDTO.total = item.total
-        taskDTO.finished = item.finished
+        const taskDTO = buildTaskProgressDTO(item)
         this.tasks.set(item.id, { task: taskDTO, notificationId: undefined })
         // 延迟移除
         const timer = setTimeout(() => {
@@ -226,7 +252,7 @@ export type TaskStoreObj = {
 
 function createNotificationItem(task: TaskProgressDTO): NotificationItem {
   const notificationItem = new NotificationItem()
-  notificationItem.title = `任务【${task.taskName}】`
+  notificationItem.title = `任务【${task.task?.taskName}】`
   notificationItem.render = () => h('div', {}, '下载中')
   return notificationItem
 }

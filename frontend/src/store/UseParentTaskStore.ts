@@ -1,14 +1,40 @@
 import { defineStore } from 'pinia'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import TaskProgressDTO from '@renderer/model/model/dto/TaskProgressDTO.ts'
 import TaskScheduleDTO from '@renderer/model/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
-import { taskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
+import { TaskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
+import { TaskProgressDTO, TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 
 /** 最近移除的父任务 ID 缓存有效期（毫秒） */
 const RECENTLY_REMOVED_TTL = 2000
 /** removeParentTask 延迟移除的等待时间（毫秒），确保 Vue watcher 有时间将 store 中的终态同步到行数据 */
 const REMOVE_DELAY = 300
+
+/**
+ * 从 taskSnapshotItem 构造 binding TaskProgressDTO
+ */
+function buildTaskProgressDTO(item: { id: number; taskName: string; status: number; total: number; finished: number }): TaskProgressDTO {
+  const taskDTO = new TaskProgressDTO()
+  taskDTO.task = new TaskDTO()
+  taskDTO.task.id = item.id
+  taskDTO.task.taskName = item.taskName
+  taskDTO.task.status = item.status
+  taskDTO.total = item.total
+  taskDTO.finished = item.finished
+  return taskDTO
+}
+
+/**
+ * 将 IPC 事件中的 taskStateDTO（{id, taskName, status}）适配为 binding TaskProgressDTO
+ */
+function adaptStateEvent(data: any): TaskProgressDTO {
+  const dto = new TaskProgressDTO()
+  dto.task = new TaskDTO()
+  dto.task.id = data.id
+  dto.task.taskName = data.taskName
+  dto.task.status = data.status
+  return dto
+}
 
 export const useParentTaskStore = defineStore('parentTask', {
   state: (): {
@@ -31,36 +57,40 @@ export const useParentTaskStore = defineStore('parentTask', {
     hasTask(taskId: number): boolean {
       return this.parentTasks.has(taskId)
     },
-    setParentTask(taskList: TaskProgressDTO[]): void {
+    setParentTask(taskList: any[]): void {
       const taskStatus = this.parentTasks
-      taskList.forEach((task) => {
-        if (isNullish(task.id)) {
+      taskList.forEach((raw) => {
+        const task = adaptStateEvent(raw)
+        if (isNullish(task.task?.id)) {
           throw new Error('UseTaskStatusStore: 赋值父任务失败，任务id为空')
         }
         // 取消待执行的延迟移除，防止误删重新创建的任务
-        this.cancelPendingRemove(task.id)
-        taskStatus.set(task.id, task)
+        this.cancelPendingRemove(task.task.id)
+        taskStatus.set(task.task.id, task)
       })
     },
-    updateParentTask(taskList: TaskProgressDTO[]): void {
+    updateParentTask(taskList: any[]): void {
       const taskStatus = this.parentTasks
-      taskList.forEach((task) => {
-        if (isNullish(task.id)) {
+      taskList.forEach((raw) => {
+        const task = adaptStateEvent(raw)
+        if (isNullish(task.task?.id)) {
           throw new Error('UseTaskStatusStore: 更新父任务失败，任务id为空')
         }
+        const id = task.task.id
         // 取消待执行的延迟移除，防止误删重新创建的任务
-        this.cancelPendingRemove(task.id)
-        let oldTask = taskStatus.get(task.id)
+        this.cancelPendingRemove(id)
+        let oldTask = taskStatus.get(id)
         // store 中不存在时，若该 ID 最近被移除过则跳过自动创建，防止幽灵条目
         if (isNullish(oldTask)) {
-          if (this.recentlyRemovedIds.has(task.id)) {
+          if (this.recentlyRemovedIds.has(id)) {
             return
           }
           oldTask = new TaskProgressDTO()
-          taskStatus.set(task.id, oldTask)
+          oldTask.task = new TaskDTO()
+          taskStatus.set(id, oldTask)
         }
         copyIgnoreUndefined(oldTask, task)
-        console.log('update P task', task.id, oldTask.status)
+        console.log('update P task', id, oldTask.task?.status)
       })
     },
     updateParentTaskSchedule(scheduleDTOList: TaskScheduleDTO[]): void {
@@ -72,9 +102,6 @@ export const useParentTaskStore = defineStore('parentTask', {
         }
         const task = taskStatus.get(scheduleDTO.id)
         if (notNullish(task)) {
-          if (notNullish(scheduleDTO.status)) {
-            task.status = scheduleDTO.status
-          }
           if (notNullish(scheduleDTO.total)) {
             task.total = scheduleDTO.total
           }
@@ -117,7 +144,7 @@ export const useParentTaskStore = defineStore('parentTask', {
      * 2. 用移除缓冲区补充被移除任务的终态信息
      * 3. 为缓冲区中的任务设置延迟移除定时器
      */
-    loadSnapshot(liveItems: (taskSnapshotItem | null)[], removedItems: (taskSnapshotItem | null)[]): void {
+    loadSnapshot(liveItems: (TaskSnapshotItem | null)[], removedItems: (TaskSnapshotItem | null)[]): void {
       // 1. 全量替换
       this.pendingRemoveTimers.forEach((timer) => clearTimeout(timer))
       this.pendingRemoveTimers.clear()
@@ -125,23 +152,13 @@ export const useParentTaskStore = defineStore('parentTask', {
 
       // 写入实时快照
       liveItems.filter(notNullish).forEach((item) => {
-        const taskDTO = new TaskProgressDTO()
-        taskDTO.id = item.id
-        taskDTO.taskName = item.taskName
-        taskDTO.status = item.status
-        taskDTO.total = item.total
-        taskDTO.finished = item.finished
+        const taskDTO = buildTaskProgressDTO(item)
         this.parentTasks.set(item.id, taskDTO)
       })
 
       // 2. 补充移除缓冲区
       removedItems.filter(notNullish).forEach((item) => {
-        const taskDTO = new TaskProgressDTO()
-        taskDTO.id = item.id
-        taskDTO.taskName = item.taskName
-        taskDTO.status = item.status
-        taskDTO.total = item.total
-        taskDTO.finished = item.finished
+        const taskDTO = buildTaskProgressDTO(item)
         this.parentTasks.set(item.id, taskDTO)
         const timer = setTimeout(() => {
           this.pendingRemoveTimers.delete(item.id)

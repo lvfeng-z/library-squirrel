@@ -6,16 +6,16 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * taskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
+ * TaskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
  */
-export class taskSnapshotDTO {
-    "tasks": (taskSnapshotItem | null)[];
-    "parentTasks": (taskSnapshotItem | null)[];
-    "removedTasks": (taskSnapshotItem | null)[];
-    "removedParentTasks": (taskSnapshotItem | null)[];
+export class TaskSnapshotDTO {
+    "tasks": (TaskSnapshotItem | null)[];
+    "parentTasks": (TaskSnapshotItem | null)[];
+    "removedTasks": (TaskSnapshotItem | null)[];
+    "removedParentTasks": (TaskSnapshotItem | null)[];
 
-    /** Creates a new taskSnapshotDTO instance. */
-    constructor($$source: Partial<taskSnapshotDTO> = {}) {
+    /** Creates a new TaskSnapshotDTO instance. */
+    constructor($$source: Partial<TaskSnapshotDTO> = {}) {
         if (!("tasks" in $$source)) {
             this["tasks"] = [];
         }
@@ -33,9 +33,9 @@ export class taskSnapshotDTO {
     }
 
     /**
-     * Creates a new taskSnapshotDTO instance from a string or object.
+     * Creates a new TaskSnapshotDTO instance from a string or object.
      */
-    static createFrom($$source: any = {}): taskSnapshotDTO {
+    static createFrom($$source: any = {}): TaskSnapshotDTO {
         const $$createField0_0 = $$createType2;
         const $$createField1_0 = $$createType2;
         const $$createField2_0 = $$createType2;
@@ -53,22 +53,22 @@ export class taskSnapshotDTO {
         if ("removedParentTasks" in $$parsedSource) {
             $$parsedSource["removedParentTasks"] = $$createField3_0($$parsedSource["removedParentTasks"]);
         }
-        return new taskSnapshotDTO($$parsedSource as Partial<taskSnapshotDTO>);
+        return new TaskSnapshotDTO($$parsedSource as Partial<TaskSnapshotDTO>);
     }
 }
 
 /**
- * taskSnapshotItem 快照中的单个任务条目
+ * TaskSnapshotItem 快照中的单个任务条目
  */
-export class taskSnapshotItem {
+export class TaskSnapshotItem {
     "id": number;
     "taskName": string;
     "status": number;
     "total": number;
     "finished": number;
 
-    /** Creates a new taskSnapshotItem instance. */
-    constructor($$source: Partial<taskSnapshotItem> = {}) {
+    /** Creates a new TaskSnapshotItem instance. */
+    constructor($$source: Partial<TaskSnapshotItem> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -89,15 +89,15 @@ export class taskSnapshotItem {
     }
 
     /**
-     * Creates a new taskSnapshotItem instance from a string or object.
+     * Creates a new TaskSnapshotItem instance from a string or object.
      */
-    static createFrom($$source: any = {}): taskSnapshotItem {
+    static createFrom($$source: any = {}): TaskSnapshotItem {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new taskSnapshotItem($$parsedSource as Partial<taskSnapshotItem>);
+        return new TaskSnapshotItem($$parsedSource as Partial<TaskSnapshotItem>);
     }
 }
 
 // Private type creation functions
-const $$createType0 = taskSnapshotItem.createFrom;
+const $$createType0 = TaskSnapshotItem.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);

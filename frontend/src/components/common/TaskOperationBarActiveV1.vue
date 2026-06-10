@@ -94,9 +94,9 @@ const status: Ref<number | undefined | null> = computed(() => {
   if (isNullish(taskId)) return props.row.taskProgress?.task?.status
   let tempStatus: number | undefined | null
   if (props.row.hasChildren) {
-    tempStatus = parentTaskStore.getTask(taskId)?.status
+    tempStatus = parentTaskStore.getTask(taskId)?.task?.status
   } else {
-    tempStatus = taskStore.getTask(taskId)?.status
+    tempStatus = taskStore.getTask(taskId)?.task?.status
   }
   return isNullish(tempStatus) ? props.row.taskProgress?.task?.status : tempStatus
 })

@@ -58,8 +58,8 @@ const unwatchTaskStore = watch(
     tasks.forEach((storeObj, taskId) => {
       const row = findRowByTaskId(taskId)
       if (notNullish(row?.taskProgress) && notNullish(storeObj.task)) {
-        if (notNullish(storeObj.task.status) && row!.taskProgress!.task?.status !== storeObj.task.status) {
-          row!.taskProgress!.task!.status = storeObj.task.status
+        if (notNullish(storeObj.task.task?.status) && row!.taskProgress!.task?.status !== storeObj.task.task.status) {
+          row!.taskProgress!.task!.status = storeObj.task.task.status
         }
         if (notNullish(storeObj.task.total)) {
           row!.taskProgress!.total = storeObj.task.total
@@ -79,8 +79,8 @@ const unwatchParentTaskStore = watch(
     parentTasks.forEach((storeTask, taskId) => {
       const row = findRowByTaskId(taskId)
       if (notNullish(row?.taskProgress)) {
-        if (notNullish(storeTask.status) && row!.taskProgress!.task?.status !== storeTask.status) {
-          row!.taskProgress!.task!.status = storeTask.status
+        if (notNullish(storeTask.task?.status) && row!.taskProgress!.task?.status !== storeTask.task.status) {
+          row!.taskProgress!.task!.status = storeTask.task.status
         }
         if (notNullish(storeTask.total)) {
           row!.taskProgress!.total = storeTask.total
@@ -148,7 +148,7 @@ function getStatus(row: TaskProgressTreeDTO): number {
   const taskId = row.taskProgress?.task?.id
   const rowStatus = row.taskProgress?.task?.status
   if (isNullish(taskId)) return rowStatus ?? invalidStatus
-  const storeStatus = (row.hasChildren ? parentTaskStore : taskStore).getTask(taskId)?.status
+  const storeStatus = (row.hasChildren ? parentTaskStore : taskStore).getTask(taskId)?.task?.status
   return storeStatus ?? rowStatus ?? invalidStatus
 }
 
