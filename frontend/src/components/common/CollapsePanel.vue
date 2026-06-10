@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, Ref, UnwrapRef, watch } from 'vue'
+import { computed, ref, Ref, watch } from 'vue'
 
 // props
 const props = withDefaults(
@@ -56,7 +56,10 @@ watch(state, (newValue: boolean) => {
 </script>
 
 <template>
-  <div v-click-out-side="handleClickOutSide" class="collapse-panel">
+  <div
+    v-click-out-side="handleClickOutSide"
+    class="collapse-panel"
+  >
     <div
       :class="{
         'collapse-panel-main': true,

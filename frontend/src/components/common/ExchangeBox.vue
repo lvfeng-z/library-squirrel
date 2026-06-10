@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
-import { Ref, ref, UnwrapRef } from 'vue'
+import { Ref, ref } from 'vue'
 import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import TagBox from './TagBox.vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
@@ -17,10 +17,6 @@ const props = defineProps<{
   searchButtonDisabled: boolean
   tagsGap?: string
 }>()
-
-// model
-const upperSearchParams = defineModel<object>('upperSearchParams', { required: false, default: {} }) // upper搜索栏参数
-const lowerSearchParams = defineModel<object>('lowerSearchParams', { required: false, default: {} }) // lower搜索栏参数
 
 // 事件
 const emits = defineEmits(['upperConfirm', 'lowerConfirm', 'allConfirm'])
@@ -201,21 +197,41 @@ function handleBufferToggle() {
         <slot name="upperTitle" />
       </div>
       <div class="exchange-box-all-op">
-        <el-tooltip placement="right" :enterable="false">
+        <el-tooltip
+          placement="right"
+          :enterable="false"
+        >
           <template #default>
-            <div class="exchange-box-all-confirm" @click="handleExchangeConfirm()">
-              <el-icon class="exchange-box-all-confirm-icon"><Check /></el-icon>
+            <div
+              class="exchange-box-all-confirm"
+              @click="handleExchangeConfirm()"
+            >
+              <el-icon class="exchange-box-all-confirm-icon">
+                <Check />
+              </el-icon>
             </div>
           </template>
-          <template #content>全部确认</template>
+          <template #content>
+            全部确认
+          </template>
         </el-tooltip>
-        <el-tooltip placement="right" :enterable="false">
+        <el-tooltip
+          placement="right"
+          :enterable="false"
+        >
           <template #default>
-            <div class="exchange-box-all-clear" @click="handleClearButtonClicked()">
-              <el-icon class="exchange-box-all-clear-icon"><Close /></el-icon>
+            <div
+              class="exchange-box-all-clear"
+              @click="handleClearButtonClicked()"
+            >
+              <el-icon class="exchange-box-all-clear-icon">
+                <Close />
+              </el-icon>
             </div>
           </template>
-          <template #content>全部清空</template>
+          <template #content>
+            全部清空
+          </template>
         </el-tooltip>
       </div>
       <div class="exchange-box-lower-title">
@@ -225,7 +241,10 @@ function handleBufferToggle() {
     <div class="exchange-box-main">
       <div class="exchange-box-upper-container">
         <div class="exchange-box-upper-toolbar z-layer-1">
-          <search-toolbar :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(true)">
+          <search-toolbar
+            :search-button-disabled="searchButtonDisabled"
+            @search-button-clicked="doSearch(true)"
+          >
             <template #main>
               <slot name="upperToolbarMain" />
             </template>
@@ -253,11 +272,21 @@ function handleBufferToggle() {
             position="left"
             border-radios="10px"
           >
-            <div class="exchange-box-upper-op-button-upper" @click="handleExchangeConfirm(true)">
-              <el-icon class="exchange-box-upper-op-button-upper-icon"><Check /></el-icon>
+            <div
+              class="exchange-box-upper-op-button-upper"
+              @click="handleExchangeConfirm(true)"
+            >
+              <el-icon class="exchange-box-upper-op-button-upper-icon">
+                <Check />
+              </el-icon>
             </div>
-            <div class="exchange-box-upper-op-button-lower" @click="handleClearButtonClicked(true)">
-              <el-icon class="exchange-box-upper-op-button-lower-icon"><Close /></el-icon>
+            <div
+              class="exchange-box-upper-op-button-lower"
+              @click="handleClearButtonClicked(true)"
+            >
+              <el-icon class="exchange-box-upper-op-button-lower-icon">
+                <Close />
+              </el-icon>
             </div>
           </collapse-panel>
           <collapse-panel
@@ -295,11 +324,21 @@ function handleBufferToggle() {
             position="left"
             border-radios="10px"
           >
-            <div class="exchange-box-lower-op-button-upper" @click="handleExchangeConfirm(false)">
-              <el-icon class="exchange-box-lower-op-button-upper-icon"><Check /></el-icon>
+            <div
+              class="exchange-box-lower-op-button-upper"
+              @click="handleExchangeConfirm(false)"
+            >
+              <el-icon class="exchange-box-lower-op-button-upper-icon">
+                <Check />
+              </el-icon>
             </div>
-            <div class="exchange-box-lower-op-button-lower" @click="handleClearButtonClicked(false)">
-              <el-icon class="exchange-box-lower-op-button-lower-icon"><Close /></el-icon>
+            <div
+              class="exchange-box-lower-op-button-lower"
+              @click="handleClearButtonClicked(false)"
+            >
+              <el-icon class="exchange-box-lower-op-button-lower-icon">
+                <Close />
+              </el-icon>
             </div>
           </collapse-panel>
           <collapse-panel
@@ -317,7 +356,11 @@ function handleBufferToggle() {
           </collapse-panel>
         </div>
         <div class="exchange-box-lower-toolbar z-layer-1">
-          <search-toolbar :reverse="true" :search-button-disabled="searchButtonDisabled" @search-button-clicked="doSearch(false)">
+          <search-toolbar
+            :reverse="true"
+            :search-button-disabled="searchButtonDisabled"
+            @search-button-clicked="doSearch(false)"
+          >
             <template #main>
               <slot name="lowerToolbarMain" />
             </template>

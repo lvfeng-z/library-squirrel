@@ -5,11 +5,11 @@ import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
-import { ref, UnwrapRef, Ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'
 import lodash from 'lodash'
 import { notNullish, arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
-import { CrudOperator } from '@renderer/constants/CrudOperator.ts'
+import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 
 // props
@@ -147,9 +147,9 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
 
   // 处理选中的标签
   selectedTagList.value.forEach((searchCondition) => {
-    let operator: CrudOperator | undefined = undefined
+    let operator: Operator | undefined = undefined
     if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
-      operator = CrudOperator.NOT_EQUAL
+      operator = Operator.OpNe
     }
     if (notNullish(searchCondition.extraData)) {
       const extraData = searchCondition.extraData as { type: SearchType; id: number }
@@ -160,15 +160,15 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
   // 处理自定义标签
   if (arrayNotEmpty(customTagList.value)) {
     customTagList.value.forEach((tag) => {
-      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: CrudOperator.LIKE }))
+      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: Operator.OpLike }))
     })
   }
 
   // 处理搜索框输入的文本
   if (notNullish(autoLoadInput.value) && autoLoadInput.value.trim()) {
     const workName = autoLoadInput.value.trim()
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: CrudOperator.LIKE }))
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: CrudOperator.LIKE }))
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: Operator.OpLike }))
+    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: Operator.OpLike }))
   }
 
   return conditions
@@ -325,11 +325,20 @@ defineExpose({
           </template>
         </auto-load-tag-select>
       </div>
-      <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
+      <el-button
+        type="primary"
+        :loading="loading"
+        @click="search"
+      >
+        搜索
+      </el-button>
     </div>
 
     <!-- 作品展示区域 -->
-    <div ref="workSpace" class="work-query-view-work-space">
+    <div
+      ref="workSpace"
+      class="work-query-view-work-space"
+    >
       <el-scrollbar>
         <work-grid
           :work-list="workList"

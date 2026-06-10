@@ -46,18 +46,32 @@ function handleCancelButtonClicked() {
     <template #header>
       <slot name="header" />
     </template>
-    <el-form v-model="formData" class="form-dialog-form" :disabled="formDisabled">
+    <el-form
+      v-model="formData"
+      class="form-dialog-form"
+      :disabled="formDisabled"
+    >
       <slot name="form" />
     </el-form>
     <slot name="afterForm" />
     <template #footer>
       <slot name="footer">
         <el-row>
-          <el-col v-show="saveButtonState" :span="3">
-            <el-button type="primary" @click="handleSaveButtonClicked">保存</el-button>
+          <el-col
+            v-show="saveButtonState"
+            :span="3"
+          >
+            <el-button
+              type="primary"
+              @click="handleSaveButtonClicked"
+            >
+              保存
+            </el-button>
           </el-col>
           <el-col :span="3">
-            <el-button @click="handleCancelButtonClicked">取消</el-button>
+            <el-button @click="handleCancelButtonClicked">
+              取消
+            </el-button>
           </el-col>
         </el-row>
       </slot>

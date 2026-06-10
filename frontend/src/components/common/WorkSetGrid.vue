@@ -88,7 +88,10 @@ function updateCheckedState(id: number, value: boolean) {
 
 <template>
   <div class="work-grid">
-    <template v-for="workSet in props.workSetList" :key="workSet.workSet?.id ?? Math.random()">
+    <template
+      v-for="workSet in props.workSetList"
+      :key="workSet.workSet?.id ?? Math.random()"
+    >
       <div class="work-grid-container">
         <work-set-card
           :checked="workSet.workSet?.id ? checkedStates[workSet.workSet.id] : false"

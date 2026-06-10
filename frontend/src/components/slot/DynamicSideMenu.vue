@@ -81,22 +81,39 @@ function handleMenuClick(item: MenuItem) {
     background-color="black"
   >
     <template #default>
-      <div v-if="menuItems.length === 0">菜单为空</div>
-      <template v-for="item in menuItems" :key="item.slotId">
+      <div v-if="menuItems.length === 0">
+        菜单为空
+      </div>
+      <template
+        v-for="item in menuItems"
+        :key="item.slotId"
+      >
         <!-- 分组菜单（有子菜单） -->
-        <el-sub-menu v-if="item.children.length > 0" :index="item.index">
+        <el-sub-menu
+          v-if="item.children.length > 0"
+          :index="item.index"
+        >
           <template #title>
             <el-icon><component :is="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </template>
-          <el-menu-item v-for="child in item.children" :key="child.index" :index="child.index" @click="handleMenuClick(child)">
+          <el-menu-item
+            v-for="child in item.children"
+            :key="child.index"
+            :index="child.index"
+            @click="handleMenuClick(child)"
+          >
             <el-icon><component :is="child.icon" /></el-icon>
             <span>{{ child.label }}</span>
           </el-menu-item>
         </el-sub-menu>
 
         <!-- 单个菜单项 -->
-        <el-menu-item v-else :index="item.index" @click="handleMenuClick(item)">
+        <el-menu-item
+          v-else
+          :index="item.index"
+          @click="handleMenuClick(item)"
+        >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </el-menu-item>

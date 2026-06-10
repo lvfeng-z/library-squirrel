@@ -6,8 +6,8 @@ import { Thead } from '../../model/util/Thead'
 import { TaskStatusEnum } from '../../constants/TaskStatusEnum.ts'
 import { ElMessage, ElTag } from 'element-plus'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import {getNode, getNodeByPath} from '@renderer/utils/TreeUtil.ts'
-import lodash, { throttle } from 'lodash'
+import {getNodeByPath} from '@renderer/utils/TreeUtil.ts'
+import { throttle } from 'lodash'
 import TaskOperationBarActive from '@renderer/components/common/TaskOperationBarActive.vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
@@ -359,33 +359,48 @@ function toParent() {
 </script>
 
 <template>
-  <form-dialog v-model:form-data="formData" v-model:state="state" :mode="props.mode" @open="handleOpen">
+  <form-dialog
+    v-model:form-data="formData"
+    v-model:state="state"
+    :mode="props.mode"
+    @open="handleOpen"
+  >
     <template #header>
-      <el-button v-show="!isParent" icon="ArrowLeftBold" type="primary" @click="toParent">查看任务集</el-button>
+      <el-button
+        v-show="!isParent"
+        icon="ArrowLeftBold"
+        type="primary"
+        @click="toParent"
+      >
+        查看任务集
+      </el-button>
     </template>
     <template #form>
       <div>
         <el-row>
           <el-col>
             <el-form-item label="名称">
-              <el-input v-model="formTask.taskName"></el-input>
+              <el-input v-model="formTask.taskName" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col>
             <el-form-item label="来源">
-              <el-input v-model="formTask.url"></el-input>
+              <el-input v-model="formTask.url" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col :span="7">
             <el-form-item label="站点">
-              <el-input v-model="formTask.siteId"></el-input>
+              <el-input v-model="formTask.siteId" />
             </el-form-item>
           </el-col>
-          <el-col v-if="!isParent" :span="17">
+          <el-col
+            v-if="!isParent"
+            :span="17"
+          >
             <el-form-item label="站点作品id">
               <el-input v-model="formTask.siteWorkId" />
             </el-form-item>
@@ -399,19 +414,29 @@ function toParent() {
           </el-col>
           <el-col :span="7">
             <el-form-item label="创建时间">
-              <el-date-picker v-model="formTask.createTime" type="datetime"></el-date-picker>
+              <el-date-picker
+                v-model="formTask.createTime"
+                type="datetime"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="7">
             <el-form-item label="修改时间">
-              <el-date-picker v-model="formTask.updateTime" type="datetime"></el-date-picker>
+              <el-date-picker
+                v-model="formTask.updateTime"
+                type="datetime"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row v-if="isNotBlank(formTask.errorMessage)">
           <el-col>
             <el-form-item label="异常信息">
-              <el-input v-model="formTask.errorMessage" type="textarea" autosize />
+              <el-input
+                v-model="formTask.errorMessage"
+                type="textarea"
+                autosize
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -439,7 +464,11 @@ function toParent() {
         <template #toolbarMain>
           <el-row class="task-dialog-search-bar">
             <el-col :span="14">
-              <el-input v-model="taskSearchParams.taskName.value" placeholder="输入任务名称" clearable />
+              <el-input
+                v-model="taskSearchParams.taskName.value"
+                placeholder="输入任务名称"
+                clearable
+              />
             </el-col>
             <el-col :span="6">
               <auto-load-select
@@ -451,24 +480,54 @@ function toParent() {
                 clearable
               >
                 <template #default="{ list }">
-                  <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                  <el-option
+                    v-for="item in list"
+                    :key="item.value"
+                    :value="item.value"
+                    :label="item.label"
+                  />
                 </template>
               </auto-load-select>
             </el-col>
             <el-col :span="4">
-              <el-select v-model="taskSearchParams.status.value" placeholder="选择状态" clearable>
-                <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
-                <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
-                <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>
-                <el-option :value="TaskStatusEnum.PAUSED" label="暂停"></el-option>
-                <el-option :value="TaskStatusEnum.FINISHED" label="完成"></el-option>
-                <el-option :value="TaskStatusEnum.FAILED" label="失败"></el-option>
+              <el-select
+                v-model="taskSearchParams.status.value"
+                placeholder="选择状态"
+                clearable
+              >
+                <el-option
+                  :value="TaskStatusEnum.CREATED"
+                  label="已创建"
+                />
+                <el-option
+                  :value="TaskStatusEnum.WAITING"
+                  label="等待中"
+                />
+                <el-option
+                  :value="TaskStatusEnum.PROCESSING"
+                  label="进行中"
+                />
+                <el-option
+                  :value="TaskStatusEnum.PAUSED"
+                  label="暂停"
+                />
+                <el-option
+                  :value="TaskStatusEnum.FINISHED"
+                  label="完成"
+                />
+                <el-option
+                  :value="TaskStatusEnum.FAILED"
+                  label="失败"
+                />
               </el-select>
             </el-col>
           </el-row>
         </template>
         <template #customOperations="{ row }">
-          <task-operation-bar-active :row="row" :button-clicked="handleOperationButtonClicked" />
+          <task-operation-bar-active
+            :row="row"
+            :button-clicked="handleOperationButtonClicked"
+          />
         </template>
       </search-table>
     </template>

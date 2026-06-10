@@ -275,8 +275,18 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             @selection-change="handleLocalAuthorSelectionChange"
           >
             <template #toolbarMain>
-              <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
-              <el-input v-model="localAuthorQuery.authorName.value" placeholder="输入作者名称" clearable @clear="() => localAuthorQuery.authorName.value = null" />
+              <el-button
+                type="primary"
+                @click="handleCreateButtonClicked"
+              >
+                新增
+              </el-button>
+              <el-input
+                v-model="localAuthorQuery.authorName.value"
+                placeholder="输入作者名称"
+                clearable
+                @clear="() => localAuthorQuery.authorName.value = null"
+              />
             </template>
           </search-table>
         </div>
@@ -296,7 +306,12 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             <template #upperToolbarMain>
               <el-row class="local-author-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxUpperSearchParams.authorName.value" placeholder="输入站点作者名称" clearable @clear="() => exchangeBoxUpperSearchParams.authorName.value = null" />
+                  <el-input
+                    v-model="exchangeBoxUpperSearchParams.authorName.value"
+                    placeholder="输入站点作者名称"
+                    clearable
+                    @clear="() => exchangeBoxUpperSearchParams.authorName.value = null"
+                  />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
@@ -308,7 +323,12 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
                     clearable
                   >
                     <template #default="{ list }">
-                      <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
                     </template>
                   </auto-load-select>
                 </el-col>
@@ -317,7 +337,12 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             <template #lowerToolbarMain>
               <el-row class="local-author-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxLowerSearchParams.authorName.value" placeholder="输入站点作者名称" clearable @clear="() => exchangeBoxLowerSearchParams.authorName.value = null" />
+                  <el-input
+                    v-model="exchangeBoxLowerSearchParams.authorName.value"
+                    placeholder="输入站点作者名称"
+                    clearable
+                    @clear="() => exchangeBoxLowerSearchParams.authorName.value = null"
+                  />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
@@ -329,7 +354,12 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
                     clearable
                   >
                     <template #default="{ list }">
-                      <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
                     </template>
                   </auto-load-select>
                 </el-col>

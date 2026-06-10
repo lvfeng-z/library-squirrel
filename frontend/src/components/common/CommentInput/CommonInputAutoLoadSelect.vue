@@ -57,8 +57,18 @@ defineExpose({ focus })
     @change="handleChange"
   >
     <template #default>
-      <el-option v-if="notNullish(cacheData)" :hidden="true" :value="cacheData.value" :label="cacheData.label" />
-      <el-option v-for="item in selectList" :key="item.value" :value="item.value" :label="item.label" />
+      <el-option
+        v-if="notNullish(cacheData)"
+        :hidden="true"
+        :value="cacheData.value"
+        :label="cacheData.label"
+      />
+      <el-option
+        v-for="item in selectList"
+        :key="item.value"
+        :value="item.value"
+        :label="item.label"
+      />
     </template>
   </auto-load-select>
 </template>

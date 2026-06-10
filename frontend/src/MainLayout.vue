@@ -39,8 +39,15 @@ async function handleCloseCurrentView() {
     </div>
 
     <el-container>
-      <el-aside class="main-page-sidebar z-layer-4" width="auto">
-        <dynamic-side-menu class="aside-side-menu" width="160px" fold-width="64px" />
+      <el-aside
+        class="main-page-sidebar z-layer-4"
+        width="auto"
+      >
+        <dynamic-side-menu
+          class="aside-side-menu"
+          width="160px"
+          fold-width="64px"
+        />
       </el-aside>
 
       <el-main style="padding: 0">
@@ -49,7 +56,10 @@ async function handleCloseCurrentView() {
     </el-container>
 
     <!-- 弹窗组件 -->
-    <notification-list class="main-background-task z-layer-3" :state="notificationListState" />
+    <notification-list
+      class="main-background-task z-layer-3"
+      :state="notificationListState"
+    />
     <ReplaceConfirmDialog />
     <DialogSlotRenderer />
 
@@ -60,14 +70,21 @@ async function handleCloseCurrentView() {
       :mask="false"
       @finish="useTourStatesStore().tourStates.getCallback('guideMenuTour')"
     >
-      <el-tour-step title="向导" description="后续可以点击这里进入向导页面" placement="right"></el-tour-step>
+      <el-tour-step
+        title="向导"
+        description="后续可以点击这里进入向导页面"
+        placement="right"
+      />
     </el-tour>
     <el-tour
       v-model="useTourStatesStore().tourStates.taskMenuTour"
       :scroll-into-view-options="true"
       @finish="useTourStatesStore().tourStates.getCallback('taskMenuTour')"
     >
-      <el-tour-step title="任务向导" description="点击这里进入任务页面"></el-tour-step>
+      <el-tour-step
+        title="任务向导"
+        description="点击这里进入任务页面"
+      />
     </el-tour>
   </div>
 </template>

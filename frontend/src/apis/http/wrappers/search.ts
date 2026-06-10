@@ -7,8 +7,7 @@ import {
   Handler as SearchHandler
 } from '@bindings/github.com/library-squirrel/backend/search'
 import {
-  Page,
-  type ApiResponse as WailsApiResponse
+  Page
 } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type {
   WorkFullDTO,

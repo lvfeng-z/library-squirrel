@@ -64,7 +64,10 @@ defineExpose({ focus })
     :remote-method="(input: string) => queryPage(true, input)"
     remote
   >
-    <slot name="default" :list="selectList" />
+    <slot
+      name="default"
+      :list="selectList"
+    />
   </el-select>
 </template>
 

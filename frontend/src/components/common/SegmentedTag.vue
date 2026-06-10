@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { Close } from '@element-plus/icons-vue'
-import { computed, ref, Ref, UnwrapRef } from 'vue'
+import { computed, ref, Ref } from 'vue'
 import { arrayIsEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
 
 // props
@@ -54,7 +54,10 @@ function handleCloseButtonClicked() {
 </script>
 
 <template>
-  <div class="segmented-tag" @click="handleClicked">
+  <div
+    class="segmented-tag"
+    @click="handleClicked"
+  >
     <div class="segmented-tag-label-wrapper">
       <div
         :class="{
@@ -72,10 +75,12 @@ function handleCloseButtonClicked() {
             'segmented-tag-main-text-checked': !item.disabled,
             'segmented-tag-main-text-unchecked': item.disabled
           }"
-          >{{ props.item.label }}</span
-        >
+        >{{ props.item.label }}</span>
       </div>
-      <template v-for="(subLabel, index) of props.item.subLabels" :key="index">
+      <template
+        v-for="(subLabel, index) of props.item.subLabels"
+        :key="index"
+      >
         <div
           :class="{
             'segmented-tag-sub-label': true,
@@ -106,7 +111,12 @@ function handleCloseButtonClicked() {
       }"
       @click="handleCloseButtonClicked"
     >
-      <el-icon class="segmented-tag-sub-close" color="rgb(166.2, 168.6, 173.4, 75%)"><Close /></el-icon>
+      <el-icon
+        class="segmented-tag-sub-close"
+        color="rgb(166.2, 168.6, 173.4, 75%)"
+      >
+        <Close />
+      </el-icon>
     </div>
   </div>
 </template>

@@ -26,7 +26,11 @@ const emits = defineEmits(['change'])
 defineExpose({ focus })
 </script>
 <template>
-  <el-radio-group v-if="props.config.type === 'radio'" ref="input" @change="() => emits('change')"></el-radio-group>
+  <el-radio-group
+    v-if="props.config.type === 'radio'"
+    ref="input"
+    @change="() => emits('change')"
+  />
 </template>
 
 <style scoped></style>

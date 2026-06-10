@@ -216,18 +216,52 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
     <template #default>
       <el-container class="settings-container">
         <el-main style="display: flex; flex-direction: row; padding: 0">
-          <el-anchor :container="containerRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30" @click="(e: MouseEvent) => e.preventDefault()">
-            <el-anchor-link href="#basicSettings" title="基本设置" />
-            <el-anchor-link href="#downloadSettings" title="下载" />
-            <el-anchor-link href="#workSettings" title="作品" />
-            <el-anchor-link href="#pluginSettings" title="插件" />
-            <el-anchor-link href="#otherSettings" title="其他" />
+          <el-anchor
+            :container="containerRef?.parentElement?.parentElement"
+            direction="vertical"
+            type="default"
+            :offset="30"
+            @click="(e: MouseEvent) => e.preventDefault()"
+          >
+            <el-anchor-link
+              href="#basicSettings"
+              title="基本设置"
+            />
+            <el-anchor-link
+              href="#downloadSettings"
+              title="下载"
+            />
+            <el-anchor-link
+              href="#workSettings"
+              title="作品"
+            />
+            <el-anchor-link
+              href="#pluginSettings"
+              title="插件"
+            />
+            <el-anchor-link
+              href="#otherSettings"
+              title="其他"
+            />
           </el-anchor>
           <el-scrollbar class="settings-scrollbar">
-            <div ref="containerRef" class="settings-scrollbar-container">
+            <div
+              ref="containerRef"
+              class="settings-scrollbar-container"
+            >
               <div id="basicSettings">
-                <el-text class="mx-1" size="large">基本设置</el-text>
-                <el-divider content-position="left" border-style="dotted"><el-text>工作目录</el-text></el-divider>
+                <el-text
+                  class="mx-1"
+                  size="large"
+                >
+                  基本设置
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>工作目录</el-text>
+                </el-divider>
                 <el-tooltip
                   placement="top"
                   effect="customized"
@@ -235,28 +269,51 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 >
                   <el-row>
                     <el-col :span="22">
-                      <el-input ref="workdirInput" v-model="settings.workdir"></el-input>
+                      <el-input
+                        ref="workdirInput"
+                        v-model="settings.workdir"
+                      />
                     </el-col>
                     <el-col :span="1">
-                      <el-button icon="FolderOpened" @click="selectDir"></el-button>
+                      <el-button
+                        icon="FolderOpened"
+                        @click="selectDir"
+                      />
                     </el-col>
                     <el-col :span="1">
-                      <el-button type="danger" icon="RefreshLeft" @click="settings.workdir = oldSettings.workdir"></el-button>
+                      <el-button
+                        type="danger"
+                        icon="RefreshLeft"
+                        @click="settings.workdir = oldSettings.workdir"
+                      />
                     </el-col>
                   </el-row>
                 </el-tooltip>
                 <el-divider />
               </div>
               <div id="downloadSettings">
-                <el-text class="mx-1" size="large">下载</el-text>
-                <el-divider content-position="left" border-style="dotted"><el-text>并行下载数</el-text></el-divider>
+                <el-text
+                  class="mx-1"
+                  size="large"
+                >
+                  下载
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>并行下载数</el-text>
+                </el-divider>
                 <el-input-number
                   v-model="settings.importSettings.maxParallelImport"
                   :max="20"
                   :min="1"
                   controls-position="right"
-                ></el-input-number>
-                <el-divider content-position="left" border-style="dotted">
+                />
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
                   <el-text>重新下载时是否更新作品信息</el-text>
                   <el-switch
                     v-model="settings.importSettings.updateWorkInfoWhenImport"
@@ -265,12 +322,19 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     size="large"
                     active-text="是"
                     inactive-text="否"
-                  ></el-switch
-                ></el-divider>
+                  />
+                </el-divider>
               </div>
               <div id="workSettings">
-                <el-text size="large">作品</el-text>
-                <el-divider content-position="left" border-style="dotted"><el-text>作品的文件命名格式</el-text></el-divider>
+                <el-text size="large">
+                  作品
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>作品的文件命名格式</el-text>
+                </el-divider>
                 <el-row class="work-settings-file-name-format-button">
                   <el-button @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, false)">
                     {{ ResFileNameFormatEnum.AUTHOR.name }}
@@ -294,16 +358,28 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     {{ ResFileNameFormatEnum.DESCRIPTION.name }}
                   </el-button>
                   <el-tooltip :show-after="850">
-                    <template #content>查看更多选项</template>
-                    <el-button @click="workSettingsFileNameFormatDialogState = true">...</el-button>
+                    <template #content>
+                      查看更多选项
+                    </template>
+                    <el-button @click="workSettingsFileNameFormatDialogState = true">
+                      ...
+                    </el-button>
                   </el-tooltip>
                 </el-row>
-                <el-input ref="workSettingsFileNameFormatInput" v-model="settings.workSettings.fileNameFormat"></el-input>
+                <el-input
+                  ref="workSettingsFileNameFormatInput"
+                  v-model="settings.workSettings.fileNameFormat"
+                />
                 <el-divider />
               </div>
               <div id="pluginSettings">
-                <el-text size="large">插件</el-text>
-                <el-divider content-position="left" border-style="dotted">
+                <el-text size="large">
+                  插件
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
                   <el-text>运行时编译</el-text>
                   <el-switch
                     v-model="settings.pluginSettings.allowUnsafeEval"
@@ -312,20 +388,40 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     size="large"
                     active-text="开"
                     inactive-text="关"
-                  ></el-switch
-                ></el-divider>
-                <el-tooltip placement="top" effect="customized">
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
                   <template #content>
-                    开启此选项可以解决某些插件页面无法正常显示的问题。<br />这会降低应用的安全性，建议仅在遇到页面加载异常时临时开启。
+                    开启此选项可以解决某些插件页面无法正常显示的问题。<br>这会降低应用的安全性，建议仅在遇到页面加载异常时临时开启。
                   </template>
-                  <el-text type="info" size="small">什么是运行时编译？</el-text>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    什么是运行时编译？
+                  </el-text>
                 </el-tooltip>
                 <el-divider />
               </div>
               <div id="otherSettings">
-                <el-text class="mx-1" size="large">其他</el-text>
-                <el-divider content-position="left" border-style="dotted"><el-text>向导</el-text></el-divider>
-                <el-button @click="() => (settings.tour.firstTimeTourPassed = false)">重置向导</el-button>
+                <el-text
+                  class="mx-1"
+                  size="large"
+                >
+                  其他
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>向导</el-text>
+                </el-divider>
+                <el-button @click="() => (settings.tour.firstTimeTourPassed = false)">
+                  重置向导
+                </el-button>
                 <el-divider />
               </div>
             </div>
@@ -334,8 +430,18 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
         <el-footer height="32px">
           <el-row>
             <el-col :span="6">
-              <el-button type="primary" @click="saveSettings">保存</el-button>
-              <el-button type="danger" @click="resetSettings">默认设置</el-button>
+              <el-button
+                type="primary"
+                @click="saveSettings"
+              >
+                保存
+              </el-button>
+              <el-button
+                type="danger"
+                @click="resetSettings"
+              >
+                默认设置
+              </el-button>
             </el-col>
           </el-row>
         </el-footer>
@@ -345,13 +451,24 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
         :scroll-into-view-options="true"
         @finish="useTourStatesStore().tourStates.getCallback('workdirTour')"
       >
-        <el-tour-step :target="workdirInput?.$el" title="工作目录" description="在这里设置工作目录"></el-tour-step>
+        <el-tour-step
+          :target="workdirInput?.$el"
+          title="工作目录"
+          description="在这里设置工作目录"
+        />
       </el-tour>
     </template>
     <template #dialog>
-      <el-dialog v-model="workSettingsFileNameFormatDialogState" center align-center>
+      <el-dialog
+        v-model="workSettingsFileNameFormatDialogState"
+        center
+        align-center
+      >
         <el-scrollbar class="settings-work-settings-file-name-format-dialog">
-          <el-button class="work-settings-file-name-format-button" @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, true)">
+          <el-button
+            class="work-settings-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, true)"
+          >
             {{ ResFileNameFormatEnum.AUTHOR.name }}
           </el-button>
           <el-button
@@ -384,7 +501,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
           >
             {{ ResFileNameFormatEnum.SITE_WORK_ID.name }}
           </el-button>
-          <el-button class="work-settings-file-name-format-button" @click="insertFormatToken(ResFileNameFormatEnum.DESCRIPTION, true)">
+          <el-button
+            class="work-settings-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.DESCRIPTION, true)"
+          >
             {{ ResFileNameFormatEnum.DESCRIPTION.name }}
           </el-button>
           <el-button
@@ -465,7 +585,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               v-model="settings.workSettings.fileNameFormat"
               autosize
               type="textarea"
-            ></el-input>
+            />
           </div>
         </el-scrollbar>
       </el-dialog>

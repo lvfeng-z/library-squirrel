@@ -61,7 +61,11 @@ async function handleSkipAll() {
     :show-close="false"
   >
     <div class="replace-confirm-list">
-      <div v-for="(item, index) in store.list" :key="item.taskId" class="replace-confirm-item">
+      <div
+        v-for="(item, index) in store.list"
+        :key="item.taskId"
+        class="replace-confirm-item"
+      >
         <div class="replace-confirm-item-content">
           <span class="replace-confirm-item-index">{{ index + 1 }}</span>
           <div class="replace-confirm-item-info">
@@ -89,8 +93,15 @@ async function handleSkipAll() {
       </div>
     </div>
     <template #footer>
-      <el-button type="danger" @click="handleReplaceAll">全部替换</el-button>
-      <el-button @click="handleSkipAll">全部跳过</el-button>
+      <el-button
+        type="danger"
+        @click="handleReplaceAll"
+      >
+        全部替换
+      </el-button>
+      <el-button @click="handleSkipAll">
+        全部跳过
+      </el-button>
     </template>
   </el-dialog>
 </template>

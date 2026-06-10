@@ -115,16 +115,37 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     @selection-change="handleSelectionChange"
     @sort-change="handleSortChange"
   >
-    <el-table-column v-if="props.selectable && props.multiSelect" :fixed="true" type="selection" width="35" :reserve-selection="props.multiSelect" />
-    <el-table-column v-if="props.selectable && !props.multiSelect" :fixed="true" width="35">
+    <el-table-column
+      v-if="props.selectable && props.multiSelect"
+      :fixed="true"
+      type="selection"
+      width="35"
+      :reserve-selection="props.multiSelect"
+    />
+    <el-table-column
+      v-if="props.selectable && !props.multiSelect"
+      :fixed="true"
+      width="35"
+    >
       <template #default="{ row }">
-        <el-radio v-model="currentSelectKey" :value="getPropByPath(row, dataKey)" @click="handleSelectionChange([row])" />
+        <el-radio
+          v-model="currentSelectKey"
+          :value="getPropByPath(row, dataKey)"
+          @click="handleSelectionChange([row])"
+        />
       </template>
     </el-table-column>
     <slot />
-    <el-table-column :hidden="true" :width="1">
+    <el-table-column
+      :hidden="true"
+      :width="1"
+    >
       <template #default="scope">
-        <div :row-key="getPropByPath(scope.row, dataKey)" class="row-key-col" style="width: 0; height: 0; position: absolute" />
+        <div
+          :row-key="getPropByPath(scope.row, dataKey)"
+          class="row-key-col"
+          style="width: 0; height: 0; position: absolute"
+        />
       </template>
     </el-table-column>
   </el-table>

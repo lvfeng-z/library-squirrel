@@ -31,13 +31,25 @@ const currentPage: Ref<NotificationItem[]> = computed(() => {
   >
     <div class="notification-list-container">
       <el-scrollbar class="notification-list-container-scrollbar">
-        <template v-for="item in currentPage" :key="item.title">
+        <template
+          v-for="item in currentPage"
+          :key="item.title"
+        >
           <div class="notification-list-item">
-            <span class="notification-list-item-title" :title="item.title">{{ item.title }}</span>
-            <span v-if="isNotBlank(item.description)" class="notification-list-item-description">
+            <span
+              class="notification-list-item-title"
+              :title="item.title"
+            >{{ item.title }}</span>
+            <span
+              v-if="isNotBlank(item.description)"
+              class="notification-list-item-description"
+            >
               {{ item.description }}
             </span>
-            <component :is="item.render()" v-if="notNullish(item.render)"></component>
+            <component
+              :is="item.render()"
+              v-if="notNullish(item.render)"
+            />
           </div>
         </template>
       </el-scrollbar>

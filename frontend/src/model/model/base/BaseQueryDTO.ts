@@ -1,5 +1,5 @@
 import { Id } from './BaseEntity.ts'
-import { Operator } from '@renderer/model/util/Operator.ts'
+import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import { QuerySortOption } from '@renderer/model/util/QuerySortOption.ts'
 
 export default class BaseQueryDTO {

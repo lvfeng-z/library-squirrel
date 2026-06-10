@@ -40,8 +40,14 @@ const createSlotRenderer = (slot: EmbedSlot) => {
 
 <template>
   <div class="embed-slot-container">
-    <template v-for="slot in slots" :key="slot.slotId">
-      <component :is="createSlotRenderer(slot)" v-bind="slot.props" />
+    <template
+      v-for="slot in slots"
+      :key="slot.slotId"
+    >
+      <component
+        :is="createSlotRenderer(slot)"
+        v-bind="slot.props"
+      />
     </template>
   </div>
 </template>

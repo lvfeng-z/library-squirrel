@@ -5,13 +5,12 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import { computed, Ref } from 'vue'
-import TaskProgressTreeDTO from '@renderer/model/model/dto/TaskProgressTreeDTO.ts'
-import TaskTreeDTO from '@renderer/model/model/dto/TaskTreeDTO.ts'
+import {TaskProgressTreeDTO} from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto";
 
 // props
 const props = defineProps<{
   row: TaskProgressTreeDTO
-  buttonClicked: (row: TaskTreeDTO, code: TaskOperationCodeEnum) => void
+  buttonClicked: (row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) => void
 }>()
 
 // 变量
@@ -91,18 +90,18 @@ const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
 // 任务状态
 const status: Ref<number | undefined | null> = computed(() => {
-  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.taskProgress?.task?.id) as number
   let tempStatus: number | undefined | null
   if (props.row.hasChildren) {
     tempStatus = parentTaskStore.getTask(taskId)?.status
   } else {
     tempStatus = taskStore.getTask(taskId)?.status
   }
-  return isNullish(tempStatus) ? (props.row.taskProgress?.task?.status ?? props.row.status) : tempStatus
+  return isNullish(tempStatus) ? (props.row.taskProgress?.task?.status ?? props.row.taskProgress?.task?.status) : tempStatus
 })
 // 进度（百分比）
 const schedule: Ref<number> = computed(() => {
-  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.taskProgress?.task?.id) as number
   const tempStatus = props.row.hasChildren
     ? parentTaskStore.getTask(taskId)
     : taskStore.getTask(taskId)
@@ -119,7 +118,7 @@ const schedule: Ref<number> = computed(() => {
 })
 // 进度（数据量）
 const scheduleByte: Ref<string> = computed(() => {
-  const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+  const taskId = (props.row.taskProgress?.task?.id ?? props.row.taskProgress?.task?.id) as number
   const tempStatus = taskStore.getTask(taskId)
   if (notNullish(tempStatus)) {
     const finishedBytes = tempStatus.finished
@@ -143,7 +142,7 @@ const scheduleByte: Ref<string> = computed(() => {
 })
 const fractions: Ref<string> = computed(() => {
   if (props.row.hasChildren) {
-    const taskId = (props.row.taskProgress?.task?.id ?? props.row.id) as number
+    const taskId = (props.row.taskProgress?.task?.id ?? props.row.taskProgress?.task?.id) as number
     const parentTask = parentTaskStore.getTask(taskId)
     if (isNullish(parentTask?.total)) {
       return ''
@@ -153,6 +152,7 @@ const fractions: Ref<string> = computed(() => {
     return ''
   }
 })
+
 // 方法
 // 任务状态映射为按钮状态
 function mapToButtonStatus(): {
@@ -189,26 +189,57 @@ function formatBytes(bytes: number) {
     <el-button-group
       v-show="
         (status !== TaskStatusEnum.PROCESSING && status !== TaskStatusEnum.WAITING && status !== TaskStatusEnum.PAUSED && status !== TaskStatusEnum.PAUSING && status !== TaskStatusEnum.STOPPING) ||
-        row.hasChildren
+          row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
     >
-      <el-tooltip :enterable="false" :show-after="650" :hide-after="0" content="详情">
-        <el-button size="small" icon="View" @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)" />
+      <el-tooltip
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+        content="详情"
+      >
+        <el-button
+          size="small"
+          icon="View"
+          @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)"
+        />
       </el-tooltip>
-      <el-tooltip :content="mapToButtonStatus().tooltip" :enterable="false" :show-after="650" :hide-after="0">
+      <el-tooltip
+        :content="mapToButtonStatus().tooltip"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
         <el-button
           size="small"
           :icon="mapToButtonStatus().icon"
-          :loading="mapToButtonStatus().processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.hasChild ?? row.hasChild)"
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>
-      <el-tooltip content="取消" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="CircleClose" @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)" />
+      <el-tooltip
+        content="取消"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="CircleClose"
+          @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)"
+        />
       </el-tooltip>
-      <el-tooltip content="删除" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="Delete" @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)" />
+      <el-tooltip
+        content="删除"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="Delete"
+          @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)"
+        />
       </el-tooltip>
     </el-button-group>
     <div
@@ -224,7 +255,12 @@ function formatBytes(bytes: number) {
           ) || !row.hasChildren
       }"
     >
-      <el-progress style="width: 100%" :percentage="schedule" text-inside :stroke-width="15">
+      <el-progress
+        style="width: 100%"
+        :percentage="schedule"
+        text-inside
+        :stroke-width="15"
+      >
         <template #default="{ percentage }">
           <span style="font-size: 14px; width: 100px">
             {{ percentage + '% ' }}
@@ -238,7 +274,7 @@ function formatBytes(bytes: number) {
     <el-progress
       v-show="
         (status === TaskStatusEnum.PROCESSING || status === TaskStatusEnum.WAITING || status === TaskStatusEnum.PAUSED || status === TaskStatusEnum.PAUSING || status === TaskStatusEnum.STOPPING) &&
-        !row.hasChildren
+          !row.hasChildren
       "
       style="width: 100%"
       :percentage="schedule"

@@ -83,9 +83,18 @@ function handlePictureClicked() {
 
 <template>
   <div class="work-card">
-    <div v-show="checkable" class="work-card-checkmark-container z-layer-1">
-      <div class="work-card-checkmark" @click.stop="checked = !checked">
-        <el-icon v-if="checked && checkable" class="work-card-icon-checked">
+    <div
+      v-show="checkable"
+      class="work-card-checkmark-container z-layer-1"
+    >
+      <div
+        class="work-card-checkmark"
+        @click.stop="checked = !checked"
+      >
+        <el-icon
+          v-if="checked && checkable"
+          class="work-card-icon-checked"
+        >
           <Check />
         </el-icon>
       </div>
@@ -100,11 +109,17 @@ function handlePictureClicked() {
     >
       <template #error>
         <div class="work-card-error">
-          <el-icon class="work-card-error-icon"><Picture /></el-icon>
+          <el-icon class="work-card-error-icon">
+            <Picture />
+          </el-icon>
         </div>
       </template>
     </el-image>
-    <work-info class="work-card-info" :work="work" :width="workInfoPopperWidth" />
+    <work-info
+      class="work-card-info"
+      :work="work"
+      :width="workInfoPopperWidth"
+    />
     <author-info
       class="work-card-info"
       :local-authors="props.work.localAuthors"

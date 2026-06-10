@@ -34,9 +34,15 @@ const cursorParam: Ref<string> = ref(props.useHandCursor ? 'pointer' : 'default'
 
 <template>
   <div class="author-info-container">
-    <el-popover :trigger="popoverTrigger" :width="width" popper-class="author-info-popper">
+    <el-popover
+      :trigger="popoverTrigger"
+      :width="width"
+      popper-class="author-info-popper"
+    >
       <template #reference>
-        <el-text class="work-info-text">{{ getWorkNameForDisplay() }}</el-text>
+        <el-text class="work-info-text">
+          {{ getWorkNameForDisplay() }}
+        </el-text>
       </template>
       <template #default>
         <div class="work-info-description">

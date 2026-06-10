@@ -55,7 +55,11 @@ async function unInstall(pluginPublicId: string | undefined | null) {
 </script>
 
 <template>
-  <form-dialog v-model:form-data="formData" v-model:state="state" :mode="props.mode">
+  <form-dialog
+    v-model:form-data="formData"
+    v-model:state="state"
+    :mode="props.mode"
+  >
     <template #header>
       <span style="font-size: 20px">站点</span>
     </template>
@@ -63,33 +67,51 @@ async function unInstall(pluginPublicId: string | undefined | null) {
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.name"></el-input>
+            <el-input v-model="formData.name" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="描述">
-            <el-input v-model="formData.description" type="textarea" autosize></el-input>
+            <el-input
+              v-model="formData.description"
+              type="textarea"
+              autosize
+            />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="更新日志">
-            <el-input v-model="formData.changelog" type="textarea" autosize></el-input>
+            <el-input
+              v-model="formData.changelog"
+              type="textarea"
+              autosize
+            />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.createTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.updateTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -97,13 +119,25 @@ async function unInstall(pluginPublicId: string | undefined | null) {
     <template #footer>
       <el-row>
         <el-col :span="3">
-          <el-button type="primary" @click="reInstall(formData.publicId)">修复</el-button>
+          <el-button
+            type="primary"
+            @click="reInstall(formData.publicId)"
+          >
+            修复
+          </el-button>
         </el-col>
         <el-col :span="3">
-          <el-button type="danger" @click="unInstall(formData.publicId)">卸载</el-button>
+          <el-button
+            type="danger"
+            @click="unInstall(formData.publicId)"
+          >
+            卸载
+          </el-button>
         </el-col>
         <el-col :span="3">
-          <el-button @click="state = false">取消</el-button>
+          <el-button @click="state = false">
+            取消
+          </el-button>
         </el-col>
       </el-row>
     </template>

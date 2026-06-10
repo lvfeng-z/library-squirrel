@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, Ref, ref, UnwrapRef} from 'vue'
+import {onMounted, Ref, ref} from 'vue'
 import BaseSubpage from './BaseSubpage.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import SiteTagDialog from '../components/dialogs/SiteTagDialog.vue'
@@ -325,10 +325,20 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
           @sort-change="siteTagSearchTable.doSearch()"
         >
           <template #toolbarMain>
-            <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
+            <el-button
+              type="primary"
+              @click="handleCreateButtonClicked"
+            >
+              新增
+            </el-button>
             <el-row class="site-tag-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteTagQuery.siteTagName.value" placeholder="输入标签名称" clearable @clear="() => siteTagQuery.siteTagName.value = null" />
+                <el-input
+                  v-model="siteTagQuery.siteTagName.value"
+                  placeholder="输入标签名称"
+                  clearable
+                  @clear="() => siteTagQuery.siteTagName.value = null"
+                />
               </el-col>
               <el-col :span="4">
                 <auto-load-select
@@ -340,7 +350,12 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
                   clearable
                 >
                   <template #default="{ list }">
-                    <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                    <el-option
+                      v-for="item in list"
+                      :key="item.value"
+                      :value="item.value"
+                      :label="item.label"
+                    />
                   </template>
                 </auto-load-select>
               </el-col>

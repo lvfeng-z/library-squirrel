@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, UnwrapRef } from 'vue'
+import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import { SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
@@ -384,7 +384,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
 }
 </script>
 <template>
-  <auto-height-dialog v-model:state="state" :width="props.width" @open="refreshWorkInfo">
+  <auto-height-dialog
+    v-model:state="state"
+    :width="props.width"
+    @open="refreshWorkInfo"
+  >
     <template #header>
       <span class="work-dialog-work-name">
         {{ isBlank(currentWorkFullInfo.work?.nickName) ? currentWorkFullInfo.work?.siteWorkName : currentWorkFullInfo.work?.nickName }}
@@ -399,12 +403,19 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       >
         <template #error>
           <div class="work-dialog-image-error">
-            <el-icon class="work-dialog-image-error-icon"><Picture /></el-icon>
+            <el-icon class="work-dialog-image-error-icon">
+              <Picture />
+            </el-icon>
           </div>
         </template>
       </el-image>
       <el-scrollbar class="work-dialog-scrollbar">
-        <el-descriptions ref="infosRef" class="work-dialog-info" direction="horizontal" :column="1">
+        <el-descriptions
+          ref="infosRef"
+          class="work-dialog-info"
+          direction="horizontal"
+          :column="1"
+        >
           <el-descriptions-item label="作者">
             <author-info
               id="author"
@@ -420,36 +431,77 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <el-descriptions-item>
             <template #label>
               <span>本地标签 </span>
-              <el-button @click="openDrawer(true)"> 编辑 </el-button>
+              <el-button @click="openDrawer(true)">
+                编辑
+              </el-button>
             </template>
-            <tag-box id="localTag" v-model:data="localTags" />
+            <tag-box
+              id="localTag"
+              v-model:data="localTags"
+            />
           </el-descriptions-item>
           <el-descriptions-item>
             <template #label>
               <span>站点标签 </span>
-              <el-button @click="openDrawer(false)"> 编辑 </el-button>
+              <el-button @click="openDrawer(false)">
+                编辑
+              </el-button>
             </template>
-            <tag-box id="siteTag" v-model:data="siteTags" />
+            <tag-box
+              id="siteTag"
+              v-model:data="siteTags"
+            />
           </el-descriptions-item>
           <el-descriptions-item>
             <template #label>
               <span>作品集 </span>
             </template>
-            <tag-box id="workSet" v-model:data="workSets" @tag-clicked="handleWorkSetClicked" />
+            <tag-box
+              id="workSet"
+              v-model:data="workSets"
+              @tag-clicked="handleWorkSetClicked"
+            />
           </el-descriptions-item>
           <el-descriptions-item label="站点">
             <span id="site">{{ currentWorkFullInfo.site?.siteName }}</span>
           </el-descriptions-item>
         </el-descriptions>
       </el-scrollbar>
-      <el-anchor :container="infosRef?.parentElement?.parentElement" direction="vertical" type="default" :offset="30" @click="(e: MouseEvent) => e.preventDefault()">
-        <el-anchor-link href="#author" title="作者" />
-        <el-anchor-link href="#description" title="简介" />
-        <el-anchor-link href="#localTag" title="本地标签" />
-        <el-anchor-link href="#siteTag" title="站点标签" />
-        <el-anchor-link href="#site" title="站点" />
+      <el-anchor
+        :container="infosRef?.parentElement?.parentElement"
+        direction="vertical"
+        type="default"
+        :offset="30"
+        @click="(e: MouseEvent) => e.preventDefault()"
+      >
+        <el-anchor-link
+          href="#author"
+          title="作者"
+        />
+        <el-anchor-link
+          href="#description"
+          title="简介"
+        />
+        <el-anchor-link
+          href="#localTag"
+          title="本地标签"
+        />
+        <el-anchor-link
+          href="#siteTag"
+          title="站点标签"
+        />
+        <el-anchor-link
+          href="#site"
+          title="站点"
+        />
       </el-anchor>
-      <el-drawer v-model="drawerState" size="45%" :with-header="false" :open-delay="1" @open="handleDrawerOpen">
+      <el-drawer
+        v-model="drawerState"
+        size="45%"
+        :with-header="false"
+        :open-delay="1"
+        @open="handleDrawerOpen"
+      >
         <exchange-box
           v-if="localTagEdit"
           ref="localTagExchangeBox"
@@ -467,10 +519,18 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower)"
         >
           <template #upperToolbarMain>
-            <el-input v-model="localTagExchangeUpperSearchParams.localTagName.value" placeholder="输入本地标签名称" clearable />
+            <el-input
+              v-model="localTagExchangeUpperSearchParams.localTagName.value"
+              placeholder="输入本地标签名称"
+              clearable
+            />
           </template>
           <template #lowerToolbarMain>
-            <el-input v-model="localTagExchangeLowerSearchParams.localTagName.value" placeholder="输入本地标签名称" clearable />
+            <el-input
+              v-model="localTagExchangeLowerSearchParams.localTagName.value"
+              placeholder="输入本地标签名称"
+              clearable
+            />
           </template>
           <template #upperTitle>
             <div class="work-dialog-tag-exchange-box-title">
@@ -500,7 +560,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <template #upperToolbarMain>
             <el-row class="work-dialog-search-bar">
               <el-col :span="18">
-                <el-input v-model="siteTagExchangeUpperSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
+                <el-input
+                  v-model="siteTagExchangeUpperSearchParams.siteTagName.value"
+                  placeholder="输入站点标签名称"
+                  clearable
+                />
               </el-col>
               <el-col :span="6">
                 <auto-load-select
@@ -512,7 +576,12 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
                   clearable
                 >
                   <template #default="{ list }">
-                    <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                    <el-option
+                      v-for="item in list"
+                      :key="item.value"
+                      :value="item.value"
+                      :label="item.label"
+                    />
                   </template>
                 </auto-load-select>
               </el-col>
@@ -521,7 +590,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <template #lowerToolbarMain>
             <el-row class="work-dialog-search-bar">
               <el-col :span="18">
-                <el-input v-model="siteTagExchangeLowerSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
+                <el-input
+                  v-model="siteTagExchangeLowerSearchParams.siteTagName.value"
+                  placeholder="输入站点标签名称"
+                  clearable
+                />
               </el-col>
               <el-col :span="6">
                 <auto-load-select
@@ -533,7 +606,12 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
                   clearable
                 >
                   <template #default="{ list }">
-                    <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                    <el-option
+                      v-for="item in list"
+                      :key="item.value"
+                      :value="item.value"
+                      :label="item.label"
+                    />
                   </template>
                 </auto-load-select>
               </el-col>
@@ -554,16 +632,44 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
     </div>
     <template #footer>
       <div class="work-dialog-footer-buttons">
-        <el-button type="danger" icon="delete" @click="handleDeleteButtonClick">删除</el-button>
-        <el-button-group class="work-dialog-footer-buttons-group" size="large">
-          <el-button icon="back" @click="setCurrentWork(currentWorkIndex - 1)" />
-          <el-button icon="right" @click="setCurrentWork(currentWorkIndex + 1)" />
+        <el-button
+          type="danger"
+          icon="delete"
+          @click="handleDeleteButtonClick"
+        >
+          删除
+        </el-button>
+        <el-button-group
+          class="work-dialog-footer-buttons-group"
+          size="large"
+        >
+          <el-button
+            icon="back"
+            @click="setCurrentWork(currentWorkIndex - 1)"
+          />
+          <el-button
+            icon="right"
+            @click="setCurrentWork(currentWorkIndex + 1)"
+          />
         </el-button-group>
-        <el-dropdown title="作品集" placement="top-end">
-          <el-button type="primary" icon="Files">作品集</el-button>
+        <el-dropdown
+          title="作品集"
+          placement="top-end"
+        >
+          <el-button
+            type="primary"
+            icon="Files"
+          >
+            作品集
+          </el-button>
           <template #dropdown>
-            <template v-for="workSet in workSets" :key="workSet.value">
-              <el-dropdown-item @click="handleWorkSetClicked(workSet)">{{ workSet.label }}</el-dropdown-item>
+            <template
+              v-for="workSet in workSets"
+              :key="workSet.value"
+            >
+              <el-dropdown-item @click="handleWorkSetClicked(workSet)">
+                {{ workSet.label }}
+              </el-dropdown-item>
             </template>
           </template>
         </el-dropdown>

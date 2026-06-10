@@ -71,8 +71,11 @@ async function triggerVScrollableUpdate() {
       right: props.textAlign === 'right'
     }"
   >
-    <label ref="scrollTextBoxLabelRef" class="scrollable-check">
-      <slot></slot>
+    <label
+      ref="scrollTextBoxLabelRef"
+      class="scrollable-check"
+    >
+      <slot />
     </label>
   </div>
 </template>

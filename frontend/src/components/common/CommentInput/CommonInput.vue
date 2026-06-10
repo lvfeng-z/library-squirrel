@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CommonInputConfig } from '../../../model/util/CommonInputConfig.ts'
-import { computed, nextTick, onBeforeMount, ref, Ref, UnwrapRef } from 'vue'
+import { computed, nextTick, onBeforeMount, ref, Ref } from 'vue'
 import TreeSelectNode from '../../../model/util/TreeSelectNode.ts'
 import CommonInputText from '@renderer/components/common/CommentInput/CommonInputText.vue'
 import lodash from 'lodash'
@@ -151,7 +151,10 @@ function handleDataChange(newData) {
 </script>
 
 <template>
-  <div class="common-input" @dblclick="handleDblclick">
+  <div
+    class="common-input"
+    @dblclick="handleDblclick"
+  >
     <span v-if="disabled && props.config.type !== 'custom'">{{ spanText }}</span>
     <component
       :is="dynamicComponent"

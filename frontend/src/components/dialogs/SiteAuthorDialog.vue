@@ -97,26 +97,35 @@ async function handleOpenHomepage() {
 </script>
 
 <template>
-  <form-dialog v-model:form-data="formData" v-model:state="state" :mode="props.mode" @save-button-clicked="handleSaveButtonClicked">
+  <form-dialog
+    v-model:form-data="formData"
+    v-model:state="state"
+    :mode="props.mode"
+    @save-button-clicked="handleSaveButtonClicked"
+  >
     <template #form>
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.siteAuthor!.authorName"></el-input>
+            <el-input v-model="formData.siteAuthor!.authorName" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="固定名称">
-            <el-input v-model="formData.siteAuthor!.fixedAuthorName"></el-input>
+            <el-input v-model="formData.siteAuthor!.fixedAuthorName" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="介绍">
-            <el-input v-model="formData.siteAuthor!.introduce" type="textarea" autosize></el-input>
+            <el-input
+              v-model="formData.siteAuthor!.introduce"
+              type="textarea"
+              autosize
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -136,8 +145,13 @@ async function handleOpenHomepage() {
                   :hidden="true"
                   :value="formData.localAuthor!.id"
                   :label="formData.localAuthor!.authorName"
-                ></el-option>
-                <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                />
+                <el-option
+                  v-for="item in list"
+                  :key="item.value"
+                  :value="item.value"
+                  :label="item.label"
+                />
               </template>
             </auto-load-select>
           </el-form-item>
@@ -146,15 +160,26 @@ async function handleOpenHomepage() {
       <el-row>
         <el-col>
           <el-form-item label="站点">
-            <auto-load-select v-model="formData.siteAuthor!.siteId" :load="siteQuerySelectItemPageAdapter" remote filterable clearable>
+            <auto-load-select
+              v-model="formData.siteAuthor!.siteId"
+              :load="siteQuerySelectItemPageAdapter"
+              remote
+              filterable
+              clearable
+            >
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.site)"
                   :hidden="true"
                   :value="formData.site!.id"
                   :label="formData.site!.siteName"
-                ></el-option>
-                <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                />
+                <el-option
+                  v-for="item in list"
+                  :key="item.value"
+                  :value="item.value"
+                  :label="item.label"
+                />
               </template>
             </auto-load-select>
           </el-form-item>
@@ -163,19 +188,36 @@ async function handleOpenHomepage() {
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.siteAuthor!.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.siteAuthor!.createTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.siteAuthor!.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.siteAuthor!.updateTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
       </el-row>
     </template>
     <template #afterForm>
-      <el-row v-if="notNullish(formData.siteAuthor?.homepage)" style="padding: 0 10px">
-        <el-button type="primary" link @click="handleOpenHomepage">
+      <el-row
+        v-if="notNullish(formData.siteAuthor?.homepage)"
+        style="padding: 0 10px"
+      >
+        <el-button
+          type="primary"
+          link
+          @click="handleOpenHomepage"
+        >
           <el-icon><Link /></el-icon> 访问主页
         </el-button>
       </el-row>

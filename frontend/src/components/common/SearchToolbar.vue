@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ref, ref, UnwrapRef } from 'vue'
+import { Ref, ref } from 'vue'
 import CollapsePanel from '@renderer/components/common/CollapsePanel.vue'
 
 // props
@@ -39,10 +39,17 @@ function expandCollapsePanel(event) {
     <div class="search-toolbar-main">
       <slot name="main" />
       <el-dropdown class="search-toolbar-search-button">
-        <el-button :disabled="props.searchButtonDisabled" @click="emits('searchButtonClicked')"> 搜索 </el-button>
+        <el-button
+          :disabled="props.searchButtonDisabled"
+          @click="emits('searchButtonClicked')"
+        >
+          搜索
+        </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="expandCollapsePanel">更多选项</el-dropdown-item>
+            <el-dropdown-item @click="expandCollapsePanel">
+              更多选项
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

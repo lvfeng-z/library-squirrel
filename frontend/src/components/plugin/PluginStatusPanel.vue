@@ -46,16 +46,30 @@ function formatSize(bytes: number | undefined): string {
 </script>
 
 <template>
-  <div v-loading="loading" class="plugin-status-panel">
+  <div
+    v-loading="loading"
+    class="plugin-status-panel"
+  >
     <template v-if="status">
       <!-- 运行时状态 -->
-      <el-descriptions title="运行时状态" :column="1" border size="small">
+      <el-descriptions
+        title="运行时状态"
+        :column="1"
+        border
+        size="small"
+      >
         <el-descriptions-item label="状态">
-          <el-tag :type="status.isRunning ? 'success' : 'info'" size="small">
+          <el-tag
+            :type="status.isRunning ? 'success' : 'info'"
+            size="small"
+          >
             {{ status.isRunning ? '在线' : '离线' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item v-if="status.pid" label="PID">
+        <el-descriptions-item
+          v-if="status.pid"
+          label="PID"
+        >
           {{ status.pid }}
         </el-descriptions-item>
         <el-descriptions-item label="激活时间">
@@ -64,49 +78,97 @@ function formatSize(bytes: number | undefined): string {
       </el-descriptions>
 
       <!-- 扩展点列表 -->
-      <el-descriptions title="扩展点" :column="1" border size="small">
+      <el-descriptions
+        title="扩展点"
+        :column="1"
+        border
+        size="small"
+      >
         <el-descriptions-item label="TaskHandler">
           <template v-if="status.taskHandlers && status.taskHandlers.length > 0">
-            <el-tag v-for="th in status.taskHandlers" :key="th.id" size="small" class="status-tag">
+            <el-tag
+              v-for="th in status.taskHandlers"
+              :key="th.id"
+              size="small"
+              class="status-tag"
+            >
               {{ th.name || th.id }}
             </el-tag>
           </template>
-          <span v-else class="text-muted">无</span>
+          <span
+            v-else
+            class="text-muted"
+          >无</span>
         </el-descriptions-item>
         <el-descriptions-item label="SiteBrowser">
           <template v-if="status.siteBrowsers && status.siteBrowsers.length > 0">
-            <el-tag v-for="sb in status.siteBrowsers" :key="sb.id" size="small" type="success" class="status-tag">
+            <el-tag
+              v-for="sb in status.siteBrowsers"
+              :key="sb.id"
+              size="small"
+              type="success"
+              class="status-tag"
+            >
               {{ sb.name || sb.id }}
             </el-tag>
           </template>
-          <span v-else class="text-muted">无</span>
+          <span
+            v-else
+            class="text-muted"
+          >无</span>
         </el-descriptions-item>
         <el-descriptions-item label="Slot">
           <template v-if="status.slots && status.slots.length > 0">
-            <el-tag v-for="s in status.slots" :key="s.id" size="small" type="warning" class="status-tag">
+            <el-tag
+              v-for="s in status.slots"
+              :key="s.id"
+              size="small"
+              type="warning"
+              class="status-tag"
+            >
               {{ s.name || s.id }} ({{ s.slotType }})
             </el-tag>
           </template>
-          <span v-else class="text-muted">无</span>
+          <span
+            v-else
+            class="text-muted"
+          >无</span>
         </el-descriptions-item>
       </el-descriptions>
 
       <!-- 存储状态 -->
-      <el-descriptions title="存储状态" :column="1" border size="small">
+      <el-descriptions
+        title="存储状态"
+        :column="1"
+        border
+        size="small"
+      >
         <el-descriptions-item label="PluginData">
           {{ formatSize(status.pluginDataSize) }}
         </el-descriptions-item>
       </el-descriptions>
 
       <!-- URL 监听规则 -->
-      <el-descriptions title="URL 监听规则" :column="1" border size="small">
+      <el-descriptions
+        title="URL 监听规则"
+        :column="1"
+        border
+        size="small"
+      >
         <el-descriptions-item label="匹配模式">
           <template v-if="status.urlPatterns && status.urlPatterns.length > 0">
-            <div v-for="pattern in status.urlPatterns" :key="pattern" class="url-pattern">
+            <div
+              v-for="pattern in status.urlPatterns"
+              :key="pattern"
+              class="url-pattern"
+            >
               <code>{{ pattern }}</code>
             </div>
           </template>
-          <span v-else class="text-muted">无</span>
+          <span
+            v-else
+            class="text-muted"
+          >无</span>
         </el-descriptions-item>
       </el-descriptions>
     </template>

@@ -28,6 +28,7 @@ const props = withDefaults(
     treeData?: boolean //是否为树形数据
     treeLazy?: boolean // 树形数据是否懒加载
     treeLoad?: (row: Data) => Promise<Data[]> // 懒加载处理函数
+    rowChildrenGetter?: (row: Data) => Data[] // 获取树形数据子列表的getter
     border?: boolean // 是否带有纵向边框
     stripe?: boolean // 是否开启斑马纹
     search: (page: Page<Data>) => Promise<Page<Data> | undefined> // 查询函数
@@ -88,14 +89,14 @@ const dataTableRef = ref() // DataTable的的组件实例
 const layout = ref('sizes, prev, pager, next') // 分页栏组件
 const pagerCount = ref(5) // 显示的分页按钮个数
 // 保存树形数据的子数据resolve方法的map，用于在除首次加载之外的时机刷新子数据
-const treeRefreshMap: Map<number, { treeNode: ElTreeNode; resolve: (data: unknown[]) => void }> = new Map<
+const treeRefreshMap: Map<number | string, { treeNode: ElTreeNode; resolve: (data: unknown[]) => void }> = new Map<
   number,
   { treeNode: ElTreeNode; resolve: (data: unknown[]) => void }
 >()
 // 把向treeRefreshMap写入数据和props.load封装在一起的函数
 const wrappedLoad = isNullish(props.treeLoad)
   ? undefined
-  : async (row: unknown, treeNode: ElTreeNode, resolve: (data: unknown[]) => void) => {
+  : async (row: Data, treeNode: ElTreeNode, resolve: (data: unknown[]) => void) => {
       const rowId = Number(getPropByPath(row as object, props.dataKey))
       if (!treeRefreshMap.has(rowId)) {
         treeRefreshMap.set(rowId, { treeNode: treeNode, resolve: resolve })
@@ -126,9 +127,12 @@ async function doSearch() {
   if (notNullish(props.treeLoad) && notNullish(wrappedLoad)) {
     if (notNullish(data.value)) {
       data.value.forEach((row) => {
-        const treeInitItem = treeRefreshMap.get(getPropByPath(row as object, props.dataKey))
-        if (notNullish(treeInitItem)) {
-          wrappedLoad(row, treeInitItem.treeNode, treeInitItem.resolve)
+        const key = getPropByPath(row, props.dataKey)
+        if (typeof key === 'string' || typeof key === 'number') {
+          const treeInitItem = treeRefreshMap.get(key)
+          if (notNullish(treeInitItem)) {
+            wrappedLoad(row, treeInitItem.treeNode, treeInitItem.resolve)
+          }
         }
       })
     }
@@ -192,14 +196,21 @@ async function refreshData(waitingUpdateIds: number[] | string[], updateChildren
     const waitingUpdateChildIds = waitingUpdateIds.filter((id) => !waitingUpdateRootIds.includes(id))
 
     // 利用树形工具找到叶子节点，列入waitingUpdateList
-    for (const id of waitingUpdateChildIds) {
-      const child = getNodeByPath(data.value, id, props.dataKey) as Data | undefined
-      if (notNullish(child)) {
-        waitingUpdateList.push(child)
+    if (notNullish(props.rowChildrenGetter)) {
+      for (const id of waitingUpdateChildIds) {
+        const child = getNodeByPath(
+            data.value,
+            id,
+            (node) => node[props.dataKey],
+            props.rowChildrenGetter
+        )
+        if (notNullish(child)) {
+          waitingUpdateList.push(child)
+        }
       }
     }
   }
-  const originalIds = waitingUpdateList.map((row) => getPropByPath(row as object, props.dataKey))
+  const originalIds = waitingUpdateList.map((row) => getPropByPath(row, props.dataKey)) as []
 
   // 请求更新接口
   const newDataList = await props.updateLoad(originalIds)
@@ -287,7 +298,10 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
         @sort-change="handleSortChange"
       >
         <template #customOperations="{ row }">
-          <slot name="customOperations" :row="row" />
+          <slot
+            name="customOperations"
+            :row="row"
+          />
         </template>
       </data-table>
       <div class="search-table-data-pagination-scroll-wrapper">

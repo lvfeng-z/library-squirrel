@@ -30,8 +30,16 @@ function handleImageClicked(workSet: WorkSetWithCoverDTO) {
 
 <template>
   <div>
-    <work-set-grid :work-set-list="props.workSetList" :checkable="false" @image-clicked="handleImageClicked"></work-set-grid>
-    <work-set-dialog v-model:state="workSetDialogState" v-model:current-work-set-id="currentWorkSetId" width="90%" />
+    <work-set-grid
+      :work-set-list="props.workSetList"
+      :checkable="false"
+      @image-clicked="handleImageClicked"
+    />
+    <work-set-dialog
+      v-model:state="workSetDialogState"
+      v-model:current-work-set-id="currentWorkSetId"
+      width="90%"
+    />
   </div>
 </template>
 

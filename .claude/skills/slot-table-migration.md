@@ -74,13 +74,13 @@ SlotSearchTable → SlotDataTable — 通过默认插槽由使用者自行定义
 
 ### Models 对照
 
-| Model | SearchTable | SlotSearchTable |
-|-------|-------------|-----------------|
-| `data` | ✅ | ✅ |
-| `page` | ✅ | ✅ |
-| `toolbarParams` | ✅ | ✅ |
+| Model | SearchTable | SlotSearchTable    |
+|-------|-------------|--------------------|
+| `data` | ✅ | ✅                  |
+| `page` | ✅ | ✅                  |
+| `toolbarParams` | ✅ | ❌ 已移除（调用者自行管理查询参数） |
 | `changedRows` | ✅ | ❌ 已移除（调用者自行管理编辑状态） |
-| `sort` | ✅ | ✅ |
+| `sort` | ✅ | ✅                  |
 
 ## 迁移步骤
 

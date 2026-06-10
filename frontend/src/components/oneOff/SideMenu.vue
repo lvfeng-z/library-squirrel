@@ -56,31 +56,58 @@ function handleClickOutSide() {
 </script>
 
 <template>
-  <div v-click-out-side="handleClickOutSide" class="side-menu-container">
+  <div
+    v-click-out-side="handleClickOutSide"
+    class="side-menu-container"
+  >
     <div class="side-menu-main">
       <div class="side-menu-collapse-button">
-        <el-icon class="side-menu-collapse-button-collapse" @click="collapse">
+        <el-icon
+          class="side-menu-collapse-button-collapse"
+          @click="collapse"
+        >
           <Expand v-if="folded" />
           <Fold v-if="!folded" />
         </el-icon>
-        <el-tooltip placement="right" :show-after="650" :auto-close="2150">
+        <el-tooltip
+          placement="right"
+          :show-after="650"
+          :auto-close="2150"
+        >
           <template #default>
-            <el-icon v-show="!folded" class="side-menu-collapse-button-lock" @click="lock">
+            <el-icon
+              v-show="!folded"
+              class="side-menu-collapse-button-lock"
+              @click="lock"
+            >
               <Lock v-show="locked" />
               <Unlock v-show="!locked" />
             </el-icon>
           </template>
-          <template #content> {{ locked ? '解锁侧边栏' : '锁定侧边栏' }} </template>
+          <template #content>
+            {{ locked ? '解锁侧边栏' : '锁定侧边栏' }}
+          </template>
         </el-tooltip>
       </div>
       <el-scrollbar class="side-menu-scrollbar">
-        <el-menu :default-openeds="props.defaultActive" class="side-menu-main-menu" :collapse="folded">
-          <slot name="default"></slot>
+        <el-menu
+          :default-openeds="props.defaultActive"
+          class="side-menu-main-menu"
+          :collapse="folded"
+        >
+          <slot name="default" />
         </el-menu>
       </el-scrollbar>
-      <div class="side-menu-hide-button" @click="hidden = !hidden">
-        <el-icon v-show="!hidden"><ArrowLeftBold /></el-icon>
-        <el-icon v-show="hidden"><ArrowRightBold /></el-icon>
+      <div
+        class="side-menu-hide-button"
+        @click="hidden = !hidden"
+      >
+        <el-icon v-show="!hidden">
+          <ArrowLeftBold />
+        </el-icon>
+        <el-icon v-show="hidden">
+          <ArrowRightBold />
+        </el-icon>
       </div>
     </div>
   </div>

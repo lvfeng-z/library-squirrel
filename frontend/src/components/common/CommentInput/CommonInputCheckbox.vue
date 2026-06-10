@@ -26,7 +26,11 @@ const emits = defineEmits(['change'])
 defineExpose({ focus })
 </script>
 <template>
-  <el-checkbox-group v-if="props.config.type === 'checkbox'" ref="input" @change="() => emits('change')"></el-checkbox-group>
+  <el-checkbox-group
+    v-if="props.config.type === 'checkbox'"
+    ref="input"
+    @change="() => emits('change')"
+  />
 </template>
 
 <style scoped></style>

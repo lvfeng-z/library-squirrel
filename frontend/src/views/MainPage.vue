@@ -246,9 +246,18 @@ function handleTest() {
 <template>
   <div class="main-page">
     <div class="main-page-topbar z-layer-3">
-      <el-radio-group v-model="workSetView" class="topbar-items">
-        <el-radio-button label="作品" :value="false" />
-        <el-radio-button label="作品集" :value="true" />
+      <el-radio-group
+        v-model="workSetView"
+        class="topbar-items"
+      >
+        <el-radio-button
+          label="作品"
+          :value="false"
+        />
+        <el-radio-button
+          label="作品集"
+          :value="true"
+        />
       </el-radio-group>
       <div class="main-page-searchbar topbar-items">
         <auto-load-tag-select
@@ -301,20 +310,46 @@ function handleTest() {
             </el-checkbox-group>
           </template>
         </auto-load-tag-select>
-        <collapse-panel v-model:state="searchBarPanelState" class="z-layer-3" border-radios="10px">
+        <collapse-panel
+          v-model:state="searchBarPanelState"
+          class="z-layer-3"
+          border-radios="10px"
+        >
           <div style="padding: 5px; background-color: var(--el-fill-color-blank)">
             <!--TODO在这里实现一个更灵活的组合查询条件的组件，比如拖拽组成AND或OR组合-->
-            <el-button @click="handleTest"> test </el-button>
+            <el-button @click="handleTest">
+              test
+            </el-button>
           </div>
         </collapse-panel>
       </div>
-      <el-button v-if="!workSetView" type="danger" class="topbar-items" @click="queryWorkPage(false)">搜索</el-button>
-      <el-button v-if="workSetView" type="danger" class="topbar-items" @click="queryWorkSetPage(false)">搜索</el-button>
+      <el-button
+        v-if="!workSetView"
+        type="danger"
+        class="topbar-items"
+        @click="queryWorkPage(false)"
+      >
+        搜索
+      </el-button>
+      <el-button
+        v-if="workSetView"
+        type="danger"
+        class="topbar-items"
+        @click="queryWorkSetPage(false)"
+      >
+        搜索
+      </el-button>
     </div>
-    <div ref="workSpace" class="main-page-work-space">
+    <div
+      ref="workSpace"
+      class="main-page-work-space"
+    >
       <div class="view-wrapper">
         <!-- 作品视图 -->
-        <div class="view-container" :class="{ 'view-slide-left': workSetView }">
+        <div
+          class="view-container"
+          :class="{ 'view-slide-left': workSetView }"
+        >
           <el-scrollbar v-el-scrollbar-bottomed="() => queryWorkPage(true)">
             <work-grid-for-main-page
               ref="workGridRef"
@@ -336,7 +371,10 @@ function handleTest() {
           </span>
         </div>
         <!-- 作品集视图 -->
-        <div class="view-container" :class="{ 'view-slide-right': !workSetView }">
+        <div
+          class="view-container"
+          :class="{ 'view-slide-right': !workSetView }"
+        >
           <el-scrollbar v-el-scrollbar-bottomed="() => queryWorkSetPage(true)">
             <work-set-grid-for-main-page
               ref="workSetGridRef"

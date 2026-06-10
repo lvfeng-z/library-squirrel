@@ -32,7 +32,7 @@ defineExpose({ focus })
     :placeholder="props.config.placeholder"
     clearable
     @change="() => emits('change')"
-  ></el-input-number>
+  />
 </template>
 
 <style scoped></style>

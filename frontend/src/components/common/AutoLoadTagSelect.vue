@@ -248,8 +248,14 @@ watch(input, () => {
             @click="inputElement.focus()"
           >
             <template #head>
-              <template v-for="customItem in customData" :key="customItem.value">
-                <segmented-tag :item="customItem" @close="handelCustomTagClosed(customItem)" />
+              <template
+                v-for="customItem in customData"
+                :key="customItem.value"
+              >
+                <segmented-tag
+                  :item="customItem"
+                  @close="handelCustomTagClosed(customItem)"
+                />
               </template>
             </template>
             <template #tail>
@@ -259,13 +265,21 @@ watch(input, () => {
                 class="auto-load-tag-select-input"
                 :onkeydown="handleKeyPress"
                 @input="newSearch"
-              />
-              <span ref="hiddenSpan" style="visibility: hidden">{{ input }}</span>
+              >
+              <span
+                ref="hiddenSpan"
+                style="visibility: hidden"
+              >{{ input }}</span>
             </template>
           </tag-box>
           <div class="auto-load-tag-close-wrapper">
-            <button class="auto-load-tag-close" @click="clear">
-              <el-icon color="rgb(166.2, 168.6, 173.4, 75%)"><Close /></el-icon>
+            <button
+              class="auto-load-tag-close"
+              @click="clear"
+            >
+              <el-icon color="rgb(166.2, 168.6, 173.4, 75%)">
+                <Close />
+              </el-icon>
             </button>
           </div>
         </div>

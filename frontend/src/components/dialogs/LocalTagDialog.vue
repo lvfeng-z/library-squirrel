@@ -54,27 +54,43 @@ async function handleSaveButtonClicked() {
 </script>
 
 <template>
-  <form-dialog v-model:form-data="formData" v-model:state="state" :mode="props.mode" @save-button-clicked="handleSaveButtonClicked">
+  <form-dialog
+    v-model:form-data="formData"
+    v-model:state="state"
+    :mode="props.mode"
+    @save-button-clicked="handleSaveButtonClicked"
+  >
     <template #form>
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.localTag!.localTagName"></el-input>
+            <el-input v-model="formData.localTag!.localTagName" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="基础标签">
-            <auto-load-select v-model="formData.localTag!.baseLocalTagId" :load="localTagQuerySelectItemPageByName" remote filterable clearable>
+            <auto-load-select
+              v-model="formData.localTag!.baseLocalTagId"
+              :load="localTagQuerySelectItemPageByName"
+              remote
+              filterable
+              clearable
+            >
               <template #default="{ list }">
                 <el-option
                   v-if="notNullish(formData.baseTag)"
                   :hidden="true"
                   :value="formData.baseTag.id"
                   :label="formData.baseTag.localTagName"
-                ></el-option>
-                <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                />
+                <el-option
+                  v-for="item in list"
+                  :key="item.value"
+                  :value="item.value"
+                  :label="item.label"
+                />
               </template>
             </auto-load-select>
           </el-form-item>
@@ -83,12 +99,22 @@ async function handleSaveButtonClicked() {
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.localTag!.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.localTag!.createTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.localTag!.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.localTag!.updateTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
       </el-row>

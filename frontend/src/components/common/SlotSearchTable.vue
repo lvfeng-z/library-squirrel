@@ -37,7 +37,6 @@ const props = withDefaults(
 // model
 const data = defineModel<Data[]>('data', { default: [], required: false })
 const page = defineModel<Page<Data>>('page', { required: true })
-const toolbarParams = defineModel<object>('toolbarParams', { default: {}, required: false })
 const sort = defineModel<{ prop: string; order: 'ascending' | 'descending' | null }>('sort', {
   default: { prop: '', order: null },
   required: false

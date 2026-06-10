@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
-import { nextTick, Ref, ref, UnwrapRef, watch } from 'vue'
+import { nextTick, Ref, ref, watch } from 'vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import IPage from '@renderer/model/util/IPage.ts'
@@ -163,8 +163,15 @@ defineExpose({ scrollbar, newSearch })
 
 <template>
   <div class="tag-box-wrapper">
-    <el-scrollbar ref="scrollbar" v-loading="loading" @scroll="handleDataScroll">
-      <div ref="container" class="tag-box-item-container">
+    <el-scrollbar
+      ref="scrollbar"
+      v-loading="loading"
+      @scroll="handleDataScroll"
+    >
+      <div
+        ref="container"
+        class="tag-box-item-container"
+      >
         <slot name="head" />
         <segmented-tag
           v-for="item in data"

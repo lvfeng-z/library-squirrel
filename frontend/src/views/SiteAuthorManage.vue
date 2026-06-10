@@ -290,10 +290,20 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
           @row-button-clicked="handleRowButtonClicked"
         >
           <template #toolbarMain>
-            <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
+            <el-button
+              type="primary"
+              @click="handleCreateButtonClicked"
+            >
+              新增
+            </el-button>
             <el-row class="site-author-manage-search-bar">
               <el-col :span="20">
-                <el-input v-model="siteAuthorQuery.authorName.value" placeholder="输入作者名称" clearable @clear="() => siteAuthorQuery.authorName.value = null" />
+                <el-input
+                  v-model="siteAuthorQuery.authorName.value"
+                  placeholder="输入作者名称"
+                  clearable
+                  @clear="() => siteAuthorQuery.authorName.value = null"
+                />
               </el-col>
               <el-col :span="4">
                 <auto-load-select
@@ -305,7 +315,12 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
                   clearable
                 >
                   <template #default="{ list }">
-                    <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                    <el-option
+                      v-for="item in list"
+                      :key="item.value"
+                      :value="item.value"
+                      :label="item.label"
+                    />
                   </template>
                 </auto-load-select>
               </el-col>

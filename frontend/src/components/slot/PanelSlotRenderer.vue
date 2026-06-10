@@ -61,10 +61,22 @@ function getSlotStyle(slot: PanelSlot): Record<string, string> {
 </script>
 
 <template>
-  <div class="panel-slot-container" :class="`panel-slot-${position}`">
-    <template v-for="slot in slots" :key="slot.slotId">
-      <div class="panel-slot-item" :style="getSlotStyle(slot)">
-        <component :is="createSlotRenderer(slot)" v-bind="slot.props" />
+  <div
+    class="panel-slot-container"
+    :class="`panel-slot-${position}`"
+  >
+    <template
+      v-for="slot in slots"
+      :key="slot.slotId"
+    >
+      <div
+        class="panel-slot-item"
+        :style="getSlotStyle(slot)"
+      >
+        <component
+          :is="createSlotRenderer(slot)"
+          v-bind="slot.props"
+        />
       </div>
     </template>
   </div>

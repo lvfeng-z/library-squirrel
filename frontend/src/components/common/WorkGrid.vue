@@ -139,7 +139,10 @@ function handleDragOver(event: DragEvent, work: WorkCardItem) {
 
 <template>
   <div class="work-grid">
-    <template v-for="work in props.workList" :key="work.id ? work.id : Math.random()">
+    <template
+      v-for="work in props.workList"
+      :key="work.id ? work.id : Math.random()"
+    >
       <div
         class="work-grid-container"
         :draggable="draggable && !!work.id"

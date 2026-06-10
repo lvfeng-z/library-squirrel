@@ -287,10 +287,20 @@ async function requestSiteTagSelectItemPage(
             @selection-change="handleLocalTagSelectionChange"
           >
             <template #toolbarMain>
-              <el-button type="primary" @click="handleCreateButtonClicked">新增</el-button>
+              <el-button
+                type="primary"
+                @click="handleCreateButtonClicked"
+              >
+                新增
+              </el-button>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="16">
-                  <el-input v-model="localTagQuery.localTagName.value" placeholder="输入标签名称" clearable @clear="() => localTagQuery.localTagName.value = null" />
+                  <el-input
+                    v-model="localTagQuery.localTagName.value"
+                    placeholder="输入标签名称"
+                    clearable
+                    @clear="() => localTagQuery.localTagName.value = null"
+                  />
                 </el-col>
                 <el-col :span="8">
                   <auto-load-select
@@ -302,7 +312,12 @@ async function requestSiteTagSelectItemPage(
                     clearable
                   >
                     <template #default="{ list }">
-                      <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
                     </template>
                   </auto-load-select>
                 </el-col>
@@ -326,7 +341,11 @@ async function requestSiteTagSelectItemPage(
             <template #upperToolbarMain>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxUpperSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
+                  <el-input
+                    v-model="exchangeBoxUpperSearchParams.siteTagName.value"
+                    placeholder="输入站点标签名称"
+                    clearable
+                  />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
@@ -338,7 +357,12 @@ async function requestSiteTagSelectItemPage(
                     clearable
                   >
                     <template #default="{ list }">
-                      <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
                     </template>
                   </auto-load-select>
                 </el-col>
@@ -347,7 +371,11 @@ async function requestSiteTagSelectItemPage(
             <template #lowerToolbarMain>
               <el-row class="local-tag-manage-search-bar">
                 <el-col :span="18">
-                  <el-input v-model="exchangeBoxLowerSearchParams.siteTagName.value" placeholder="输入站点标签名称" clearable />
+                  <el-input
+                    v-model="exchangeBoxLowerSearchParams.siteTagName.value"
+                    placeholder="输入站点标签名称"
+                    clearable
+                  />
                 </el-col>
                 <el-col :span="6">
                   <auto-load-select
@@ -359,7 +387,12 @@ async function requestSiteTagSelectItemPage(
                     clearable
                   >
                     <template #default="{ list }">
-                      <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
                     </template>
                   </auto-load-select>
                 </el-col>

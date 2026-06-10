@@ -26,7 +26,11 @@ const emits = defineEmits(['change'])
 defineExpose({ focus })
 </script>
 <template>
-  <el-switch v-if="props.config.type === 'switch'" ref="input" @change="() => emits('change')"></el-switch>
+  <el-switch
+    v-if="props.config.type === 'switch'"
+    ref="input"
+    @change="() => emits('change')"
+  />
 </template>
 
 <style scoped></style>

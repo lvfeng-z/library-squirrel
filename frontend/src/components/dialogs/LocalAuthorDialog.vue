@@ -51,31 +51,50 @@ async function handleSaveButtonClicked() {
 </script>
 
 <template>
-  <form-dialog v-model:form-data="formData" v-model:state="state" :mode="props.mode" @save-button-clicked="handleSaveButtonClicked">
+  <form-dialog
+    v-model:form-data="formData"
+    v-model:state="state"
+    :mode="props.mode"
+    @save-button-clicked="handleSaveButtonClicked"
+  >
     <template #form>
       <el-row>
         <el-col>
           <el-form-item label="名称">
-            <el-input v-model="formData.authorName"></el-input>
+            <el-input v-model="formData.authorName" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
           <el-form-item label="介绍">
-            <el-input v-model="formData.introduce" type="textarea" autosize></el-input>
+            <el-input
+              v-model="formData.introduce"
+              type="textarea"
+              autosize
+            />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col :span="12">
           <el-form-item label="创建时间">
-            <el-date-picker v-model="formData.createTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.createTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="修改时间">
-            <el-date-picker v-model="formData.updateTime" type="datetime" value-format="x" disabled></el-date-picker>
+            <el-date-picker
+              v-model="formData.updateTime"
+              type="datetime"
+              value-format="x"
+              disabled
+            />
           </el-form-item>
         </el-col>
       </el-row>

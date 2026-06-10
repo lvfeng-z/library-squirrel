@@ -54,7 +54,10 @@ function handleChangeState() {
       <template #header>
         <slot name="header" />
       </template>
-      <div ref="containerRef" class="static-height-dialog-container">
+      <div
+        ref="containerRef"
+        class="static-height-dialog-container"
+      >
         <slot />
       </div>
       <template #footer>

@@ -55,7 +55,10 @@ function handleChangeState() {
       <template #header>
         <slot name="header" />
       </template>
-      <el-scrollbar ref="scrollbarRef" class="auto-height-dialog-scrollbar">
+      <el-scrollbar
+        ref="scrollbarRef"
+        class="auto-height-dialog-scrollbar"
+      >
         <slot />
       </el-scrollbar>
       <template #footer>

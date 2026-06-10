@@ -38,7 +38,12 @@ defineExpose({ focus })
     clearable
     @change="() => emits('change')"
   >
-    <el-option v-for="item in props.config.selectList" :key="item.value" :value="item.value" :label="item.label" />
+    <el-option
+      v-for="item in props.config.selectList"
+      :key="item.value"
+      :value="item.value"
+      :label="item.label"
+    />
   </el-select>
 </template>
 

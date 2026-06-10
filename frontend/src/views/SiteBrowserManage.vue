@@ -99,7 +99,11 @@ async function handleCardClick(item: SiteBrowserItem) {
               @click="handleCardClick(item)"
             >
               <div class="site-browser-card-image">
-                <el-image :src="item.icon?.startsWith('/') ? item.icon : `/${item.icon ?? ''}`" fit="cover" class="site-browser-image">
+                <el-image
+                  :src="item.icon?.startsWith('/') ? item.icon : `/${item.icon ?? ''}`"
+                  fit="cover"
+                  class="site-browser-image"
+                >
                   <template #error>
                     <div class="site-browser-image-error">
                       <el-icon><Picture /></el-icon>
@@ -107,7 +111,9 @@ async function handleCardClick(item: SiteBrowserItem) {
                   </template>
                 </el-image>
               </div>
-              <div class="site-browser-card-name">{{ item.name }}</div>
+              <div class="site-browser-card-name">
+                {{ item.name }}
+              </div>
             </div>
           </div>
         </el-scrollbar>

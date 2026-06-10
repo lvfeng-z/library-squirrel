@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
-import { onMounted, ref, Ref, UnwrapRef } from 'vue'
+import { onMounted, ref, Ref } from 'vue'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
 import { Thead } from '@renderer/model/util/Thead.ts'
@@ -204,8 +204,18 @@ function handleSiteDialogRequestSuccess() {
           @row-button-clicked="handleSiteRowButtonClicked"
         >
           <template #toolbarMain>
-            <el-button type="primary" @click="handleSiteCreateButtonClicked">新增</el-button>
-            <el-input v-model="siteSearchParams.siteName.value" placeholder="输入站点名称" clearable @clear="() => siteSearchParams.siteName.value = null" />
+            <el-button
+              type="primary"
+              @click="handleSiteCreateButtonClicked"
+            >
+              新增
+            </el-button>
+            <el-input
+              v-model="siteSearchParams.siteName.value"
+              placeholder="输入站点名称"
+              clearable
+              @clear="() => siteSearchParams.siteName.value = null"
+            />
           </template>
         </search-table>
       </div>

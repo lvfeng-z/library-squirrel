@@ -20,6 +20,7 @@ import WorkCardItem from '@renderer/model/model/dto/WorkCardItem.ts'
 import { workSetListWorkSetWithWorkByIds } from '@renderer/apis/http/wrappers/workSet'
 import { reWorkWorkSetLinkBatchToWorkSet, reWorkWorkSetRemoveBatchFromWorkSet, reWorkWorkSetSetCover } from '@renderer/apis/http/wrappers/reWorkWorkSet'
 import { searchQueryWorkPage, searchQuerySearchConditionPage } from '@renderer/apis/http/wrappers/search'
+import {Operator} from "@bindings/github.com/library-squirrel/backend/base/query";
 
 // props
 const props = defineProps<{
@@ -218,7 +219,7 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
     new SearchCondition({
       type: SearchType.WORK_SET,
       value: currentWorkSetId.value,
-      operator: CrudOperator.NOT_EQUAL
+      operator: Operator.NOT_EQUAL
     })
   )
 
@@ -318,26 +319,50 @@ watch(isCheckable, (newValue) => {
 </script>
 
 <template>
-  <static-height-dialog v-model:state="state" :width="props.width" :before-close="beforeDialogClose">
+  <static-height-dialog
+    v-model:state="state"
+    :width="props.width"
+    :before-close="beforeDialogClose"
+  >
     <template #header>
-      <div v-if="viewMode === 'manage'" class="work-set-header">
+      <div
+        v-if="viewMode === 'manage'"
+        class="work-set-header"
+      >
         <span>{{ currentWorkSet?.siteWorkSetName }}</span>
         <div v-if="!isCheckable">
-          <el-button type="primary" :plain="true" @click="isCheckable = true">
+          <el-button
+            type="primary"
+            :plain="true"
+            @click="isCheckable = true"
+          >
             <el-icon><Edit /></el-icon>
             管理
           </el-button>
         </div>
-        <div v-else class="work-set-header-actions">
-          <el-button type="primary" @click="handleAdd">
+        <div
+          v-else
+          class="work-set-header-actions"
+        >
+          <el-button
+            type="primary"
+            @click="handleAdd"
+          >
             <el-icon><Plus /></el-icon>
             添加
           </el-button>
-          <el-button type="danger" @click="handleDelete">
+          <el-button
+            type="danger"
+            @click="handleDelete"
+          >
             <el-icon><Delete /></el-icon>
             移除
           </el-button>
-          <el-button type="success" :disabled="checkedWorkIds.length !== 1" @click="handleSetCover">
+          <el-button
+            type="success"
+            :disabled="checkedWorkIds.length !== 1"
+            @click="handleSetCover"
+          >
             <el-icon><Picture /></el-icon>
             设为封面
           </el-button>
@@ -347,7 +372,10 @@ watch(isCheckable, (newValue) => {
           </el-button>
         </div>
       </div>
-      <div v-else class="work-set-header">
+      <div
+        v-else
+        class="work-set-header"
+      >
         <div class="work-set-header-back">
           <el-button @click="handleSelectCancel">
             <el-icon><ArrowLeft /></el-icon>
@@ -355,7 +383,11 @@ watch(isCheckable, (newValue) => {
           <span>从作品库添加作品</span>
         </div>
         <div class="work-set-header-actions">
-          <el-button type="primary" :disabled="selectedWorkIdsForAdd.length === 0" @click="handleSelectConfirm">
+          <el-button
+            type="primary"
+            :disabled="selectedWorkIdsForAdd.length === 0"
+            @click="handleSelectConfirm"
+          >
             <el-icon><Plus /></el-icon>
             确定添加
           </el-button>
@@ -396,8 +428,7 @@ watch(isCheckable, (newValue) => {
           tag-select-max-height="200px"
           tag-select-min-height="36px"
           @checked-change="handleSelectWorkCheckedChange"
-        >
-        </work-query-view>
+        />
       </div>
     </div>
   </static-height-dialog>

@@ -39,7 +39,11 @@ async function openWorkSetDialog(workSetId: number) {
 
 <template>
   <div>
-    <work-grid :work-list="workCardItemList" :checkable="false" @image-clicked="handleImageClicked"></work-grid>
+    <work-grid
+      :work-list="workCardItemList"
+      :checkable="false"
+      @image-clicked="handleImageClicked"
+    />
     <work-dialog
       v-model:state="workDialogState"
       v-model:current-work-index="currentWorkIndex"
@@ -47,7 +51,11 @@ async function openWorkSetDialog(workSetId: number) {
       width="90%"
       @open-work-set="openWorkSetDialog"
     />
-    <work-set-dialog v-model:state="workSetDialogState" v-model:current-work-set-id="currentWorkSetId" width="90%" />
+    <work-set-dialog
+      v-model:state="workSetDialogState"
+      v-model:current-work-set-id="currentWorkSetId"
+      width="90%"
+    />
   </div>
 </template>
 

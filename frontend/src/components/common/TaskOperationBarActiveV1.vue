@@ -192,14 +192,28 @@ function formatBytes(bytes: number) {
     <el-button-group
       v-show="
         (status !== TaskStatusEnum.PROCESSING && status !== TaskStatusEnum.WAITING && status !== TaskStatusEnum.PAUSED && status !== TaskStatusEnum.PAUSING && status !== TaskStatusEnum.STOPPING) ||
-        row.hasChildren
+          row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
     >
-      <el-tooltip :enterable="false" :show-after="650" :hide-after="0" content="详情">
-        <el-button size="small" icon="View" @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)" />
+      <el-tooltip
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+        content="详情"
+      >
+        <el-button
+          size="small"
+          icon="View"
+          @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)"
+        />
       </el-tooltip>
-      <el-tooltip :content="mapToButtonStatus().tooltip" :enterable="false" :show-after="650" :hide-after="0">
+      <el-tooltip
+        :content="mapToButtonStatus().tooltip"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
         <el-button
           size="small"
           :icon="mapToButtonStatus().icon"
@@ -207,11 +221,29 @@ function formatBytes(bytes: number) {
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>
-      <el-tooltip content="取消" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="CircleClose" @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)" />
+      <el-tooltip
+        content="取消"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="CircleClose"
+          @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)"
+        />
       </el-tooltip>
-      <el-tooltip content="删除" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="Delete" @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)" />
+      <el-tooltip
+        content="删除"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="Delete"
+          @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)"
+        />
       </el-tooltip>
     </el-button-group>
     <div
@@ -227,7 +259,12 @@ function formatBytes(bytes: number) {
           ) || !row.hasChildren
       }"
     >
-      <el-progress style="width: 100%" :percentage="schedule" text-inside :stroke-width="15">
+      <el-progress
+        style="width: 100%"
+        :percentage="schedule"
+        text-inside
+        :stroke-width="15"
+      >
         <template #default="{ percentage }">
           <span style="font-size: 14px; width: 100px">
             {{ percentage + '% ' }}
@@ -241,7 +278,7 @@ function formatBytes(bytes: number) {
     <el-progress
       v-show="
         (status === TaskStatusEnum.PROCESSING || status === TaskStatusEnum.WAITING || status === TaskStatusEnum.PAUSED || status === TaskStatusEnum.PAUSING || status === TaskStatusEnum.STOPPING) &&
-        !row.hasChildren
+          !row.hasChildren
       "
       style="width: 100%"
       :percentage="schedule"

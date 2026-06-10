@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, Ref, ref, UnwrapRef } from 'vue'
+import { computed, Ref, ref } from 'vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
@@ -90,9 +90,18 @@ function getWorkSetName(): string {
 
 <template>
   <div class="work-card">
-    <div v-show="checkable" class="work-card-checkmark-container z-layer-1">
-      <div class="work-card-checkmark" @click.stop="checked = !checked">
-        <el-icon v-if="checked && checkable" class="work-card-icon-checked">
+    <div
+      v-show="checkable"
+      class="work-card-checkmark-container z-layer-1"
+    >
+      <div
+        class="work-card-checkmark"
+        @click.stop="checked = !checked"
+      >
+        <el-icon
+          v-if="checked && checkable"
+          class="work-card-icon-checked"
+        >
           <Check />
         </el-icon>
       </div>
@@ -107,7 +116,9 @@ function getWorkSetName(): string {
     >
       <template #error>
         <div class="work-card-error">
-          <el-icon class="work-card-error-icon"><Picture /></el-icon>
+          <el-icon class="work-card-error-icon">
+            <Picture />
+          </el-icon>
         </div>
       </template>
     </el-image>

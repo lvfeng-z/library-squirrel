@@ -185,10 +185,24 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
     @selection-change="handleSelectionChange"
     @sort-change="handleSortChange"
   >
-    <el-table-column v-if="props.selectable && props.multiSelect" :fixed="true" type="selection" width="35" :reserve-selection="props.multiSelect" />
-    <el-table-column v-if="props.selectable && !props.multiSelect" :fixed="true" width="35">
+    <el-table-column
+      v-if="props.selectable && props.multiSelect"
+      :fixed="true"
+      type="selection"
+      width="35"
+      :reserve-selection="props.multiSelect"
+    />
+    <el-table-column
+      v-if="props.selectable && !props.multiSelect"
+      :fixed="true"
+      width="35"
+    >
       <template #default="{ row }">
-        <el-radio v-model="currentSelectKey" :value="getPropByPath(row, dataKey)" @click="handleSelectionChange([row])" />
+        <el-radio
+          v-model="currentSelectKey"
+          :value="getPropByPath(row, dataKey)"
+          @click="handleSelectionChange([row])"
+        />
       </template>
     </el-table-column>
     <template v-for="(item, index) in props.thead">
@@ -208,15 +222,18 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
         >
           <template #header>
             <div :style="{ textAlign: item.headerAlign }">
-              <el-tag size="default" :type="item.headerTagType">
+              <el-tag
+                size="default"
+                :type="item.headerTagType"
+              >
                 {{ item.title }}
               </el-tag>
             </div>
           </template>
           <template #default="scope">
             <component
-              class="data-table-data-cell"
               :is="item.editMethod === 'popper' ? PopperInput : CommonInput"
+              class="data-table-data-cell"
               :data="getPropByPath(scope.row, item.key)"
               :config="item"
               :cache-data="item.getCacheData(scope.row)"
@@ -237,7 +254,12 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
       :min-width="104"
     >
       <template #header>
-        <el-tag size="default" type="warning">{{ '操作' }}</el-tag>
+        <el-tag
+          size="default"
+          type="warning"
+        >
+          {{ '操作' }}
+        </el-tag>
       </template>
       <template #default="{ row }">
         <el-dropdown v-if="!customOperationButton">
@@ -250,20 +272,37 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <template v-for="item in getOperateDropDownButton(row)" :key="item.code">
-                <el-dropdown-item :icon="item.icon" @click="handleRowButtonClicked({ row: row, operationItem: item })">
+              <template
+                v-for="item in getOperateDropDownButton(row)"
+                :key="item.code"
+              >
+                <el-dropdown-item
+                  :icon="item.icon"
+                  @click="handleRowButtonClicked({ row: row, operationItem: item })"
+                >
                   {{ item.label }}
                 </el-dropdown-item>
               </template>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <slot v-if="customOperationButton" name="customOperations" :row="row" />
+        <slot
+          v-if="customOperationButton"
+          name="customOperations"
+          :row="row"
+        />
       </template>
     </el-table-column>
-    <el-table-column :hidden="true" :width="1">
+    <el-table-column
+      :hidden="true"
+      :width="1"
+    >
       <template #default="scope">
-        <div :row-key="getPropByPath(scope.row, dataKey)" class="row-key-col" style="width: 0; height: 0; position: absolute" />
+        <div
+          :row-key="getPropByPath(scope.row, dataKey)"
+          class="row-key-col"
+          style="width: 0; height: 0; position: absolute"
+        />
       </template>
     </el-table-column>
   </el-table>

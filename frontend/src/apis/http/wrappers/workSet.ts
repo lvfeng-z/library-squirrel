@@ -20,23 +20,6 @@ export interface WorkSetVO {
   updateTime: number
 }
 
-export interface WorkSetWithWorksVO {
-  workSet: WorkSetVO
-  works: WorkSetVO[]
-}
-
-export interface WorkSetWithCoverVO {
-  workSet: WorkSetVO
-  coverWork?: WorkSetVO
-}
-
-export interface PageResult {
-  items: WorkSetVO[]
-  total: number
-  page: number
-  pageSize: number
-}
-
 // ========== 工具函数 ==========
 
 /**
@@ -49,19 +32,6 @@ function toWorkSetVO(dto: WorkSetDTO): WorkSetVO {
     coverId: 0,
     createTime: dto.createTime,
     updateTime: dto.updateTime
-  }
-}
-
-/**
- * 将 Work 转换为 WorkSetVO
- */
-function workToWorkSetVO(work: WorkDTO): WorkSetVO {
-  return {
-    id: work.id,
-    name: work.siteWorkName?.toString() ?? '',
-    coverId: 0,
-    createTime: work.createTime,
-    updateTime: work.updateTime
   }
 }
 

@@ -148,36 +148,77 @@ function formatBytes(bytes: number) {
     <el-button-group
       v-show="
         ((row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PROCESSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.WAITING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSED && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.PAUSING && (row.taskProgress?.task?.status ?? row.status) !== TaskStatusEnum.STOPPING) ||
-        row.hasChildren
+          row.hasChildren
       "
       style="margin-left: auto; margin-right: auto; flex-shrink: 0"
     >
-      <el-tooltip v-if="row.taskProgress?.task?.hasChild ?? row.hasChild" :enterable="false" :show-after="650" :hide-after="0" content="详情">
-        <el-button size="small" icon="View" @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)" />
+      <el-tooltip
+        v-if="row.taskProgress?.task?.hasChild ?? row.hasChild"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+        content="详情"
+      >
+        <el-button
+          size="small"
+          icon="View"
+          @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)"
+        />
       </el-tooltip>
-      <el-tooltip :content="mapToButtonStatus(row).tooltip" :enterable="false" :show-after="650" :hide-after="0">
+      <el-tooltip
+        :content="mapToButtonStatus(row).tooltip"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
         <el-button
           size="small"
           :icon="mapToButtonStatus(row).icon"
           :loading="mapToButtonStatus(row).processing && !(row.taskProgress?.task?.continuable ?? row.continuable) && !(row.taskProgress?.task?.hasChild ?? row.hasChild)"
           @click="buttonClicked(row, mapToButtonStatus(row).operation)"
-        ></el-button>
+        />
       </el-tooltip>
-      <el-tooltip content="取消" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="CircleClose" @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)" />
+      <el-tooltip
+        content="取消"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="CircleClose"
+          @click="buttonClicked(row, TaskOperationCodeEnum.CANCEL)"
+        />
       </el-tooltip>
-      <el-tooltip content="删除" :enterable="false" :show-after="650" :hide-after="0">
-        <el-button size="small" icon="Delete" @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)" />
+      <el-tooltip
+        content="删除"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="Delete"
+          @click="buttonClicked(row, TaskOperationCodeEnum.DELETE)"
+        />
       </el-tooltip>
     </el-button-group>
     <transition name="task-operation-bar-el-progress-fade">
       <div
         v-if="
           ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSED || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.STOPPING) &&
-          row.hasChildren
+            row.hasChildren
         "
       >
-        <el-progress style="width: 100%" :percentage="schedule" text-inside :stroke-width="15" striped striped-flow :duration="5">
+        <el-progress
+          style="width: 100%"
+          :percentage="schedule"
+          text-inside
+          :stroke-width="15"
+          striped
+          striped-flow
+          :duration="5"
+        >
           <template #default="{ percentage }">
             <span style="font-size: 14px">
               {{ percentage + '% ' + (row.taskProgress?.finished ?? row.finished) + ' / ' + (row.taskProgress?.total ?? row.total) }}
@@ -189,7 +230,7 @@ function formatBytes(bytes: number) {
     <el-progress
       v-show="
         ((row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PROCESSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.WAITING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSED || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.PAUSING || (row.taskProgress?.task?.status ?? row.status) === TaskStatusEnum.STOPPING) &&
-        !row.hasChildren
+          !row.hasChildren
       "
       style="width: 100%"
       :percentage="schedule"

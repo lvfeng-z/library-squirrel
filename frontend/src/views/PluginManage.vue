@@ -232,11 +232,20 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           @selection-change="handleSelectionChange"
         >
           <template #toolbarMain>
-            <el-button type="primary" @click="handleInstallClicked"> 安装 </el-button>
-            <el-input v-model="pluginSearchParams.name.value" placeholder="输入名称" clearable />
+            <el-button
+              type="primary"
+              @click="handleInstallClicked"
+            >
+              安装
+            </el-button>
+            <el-input
+              v-model="pluginSearchParams.name.value"
+              placeholder="输入名称"
+              clearable
+            />
           </template>
           <template #toolbarDropdown>
-            <el-button></el-button>
+            <el-button />
           </template>
         </search-table>
       </div>
@@ -248,11 +257,18 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         size="450px"
         :destroy-on-close="false"
       >
-        <PluginStatusPanel v-if="isNotBlank(statusPublicId)" :public-id="statusPublicId" />
+        <PluginStatusPanel
+          v-if="isNotBlank(statusPublicId)"
+          :public-id="statusPublicId"
+        />
       </el-drawer>
     </template>
     <template #dialog>
-      <plugin-dialog v-model:form-data="dialogData" v-model:state="dialogState" :mode="DialogMode.VIEW" />
+      <plugin-dialog
+        v-model:form-data="dialogData"
+        v-model:state="dialogState"
+        :mode="DialogMode.VIEW"
+      />
     </template>
   </base-subpage>
 </template>

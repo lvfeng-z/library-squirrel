@@ -319,6 +319,7 @@ async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<bool
     const response = await apiCall(getRowTaskId(row), isLeafTask(row))
     return isNullish(response?.success) ? false : response.success
   } catch (e) {
+    console.log('启动任务失败', e)
     return false
   }
   // if (row.taskProgress?.task) {
@@ -425,7 +426,11 @@ async function handleSourceUrlInput() {
         <template #toolbarMain>
           <el-row class="task-manage-search-bar">
             <el-col :span="14">
-              <el-input v-model="taskSearchParams.taskName.value" placeholder="输入任务名称" clearable />
+              <el-input
+                v-model="taskSearchParams.taskName.value"
+                placeholder="输入任务名称"
+                clearable
+              />
             </el-col>
             <el-col :span="6">
               <auto-load-select
@@ -437,25 +442,61 @@ async function handleSourceUrlInput() {
                 clearable
               >
                 <template #default="{ list }">
-                  <el-option v-for="item in list" :key="item.value" :value="item.value" :label="item.label" />
+                  <el-option
+                    v-for="item in list"
+                    :key="item.value"
+                    :value="item.value"
+                    :label="item.label"
+                  />
                 </template>
               </auto-load-select>
             </el-col>
             <el-col :span="4">
-              <el-select v-model="taskSearchParams.status.value" placeholder="选择状态" clearable>
-                <el-option :value="TaskStatusEnum.CREATED" label="已创建"></el-option>
-                <el-option :value="TaskStatusEnum.WAITING" label="等待中"></el-option>
-                <el-option :value="TaskStatusEnum.PROCESSING" label="进行中"></el-option>
-                <el-option :value="TaskStatusEnum.PAUSED" label="暂停"></el-option>
-                <el-option :value="TaskStatusEnum.FINISHED" label="完成"></el-option>
-                <el-option :value="TaskStatusEnum.PARTLY_FINISHED" label="部分完成"></el-option>
-                <el-option :value="TaskStatusEnum.FAILED" label="失败"></el-option>
+              <el-select
+                v-model="taskSearchParams.status.value"
+                placeholder="选择状态"
+                clearable
+              >
+                <el-option
+                  :value="TaskStatusEnum.CREATED"
+                  label="已创建"
+                />
+                <el-option
+                  :value="TaskStatusEnum.WAITING"
+                  label="等待中"
+                />
+                <el-option
+                  :value="TaskStatusEnum.PROCESSING"
+                  label="进行中"
+                />
+                <el-option
+                  :value="TaskStatusEnum.PAUSED"
+                  label="暂停"
+                />
+                <el-option
+                  :value="TaskStatusEnum.FINISHED"
+                  label="完成"
+                />
+                <el-option
+                  :value="TaskStatusEnum.PARTLY_FINISHED"
+                  label="部分完成"
+                />
+                <el-option
+                  :value="TaskStatusEnum.FAILED"
+                  label="失败"
+                />
               </el-select>
             </el-col>
           </el-row>
         </template>
         <!-- 名称 -->
-        <el-table-column label="名称" min-width="380" show-overflow-tooltip sortable="custom" align="left">
+        <el-table-column
+          label="名称"
+          min-width="380"
+          show-overflow-tooltip
+          sortable="custom"
+          align="left"
+        >
           <template #header>
             <el-tag>名称</el-tag>
           </template>
@@ -464,7 +505,11 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 站点 -->
-        <el-table-column label="站点" width="100" align="center">
+        <el-table-column
+          label="站点"
+          width="100"
+          align="center"
+        >
           <template #header>
             <el-tag>站点</el-tag>
           </template>
@@ -473,7 +518,13 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 是否可接续 -->
-        <el-table-column label="是否可接续" width="80" show-overflow-tooltip sortable="custom" align="center">
+        <el-table-column
+          label="是否可接续"
+          width="80"
+          show-overflow-tooltip
+          sortable="custom"
+          align="center"
+        >
           <template #header>
             <el-tag>是否可接续</el-tag>
           </template>
@@ -482,7 +533,13 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 错误信息 -->
-        <el-table-column label="错误信息" width="380" show-overflow-tooltip sortable="custom" align="center">
+        <el-table-column
+          label="错误信息"
+          width="380"
+          show-overflow-tooltip
+          sortable="custom"
+          align="center"
+        >
           <template #header>
             <el-tag>错误信息</el-tag>
           </template>
@@ -491,16 +548,31 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 操作列 -->
-        <el-table-column fixed="right" :width="163" align="center">
+        <el-table-column
+          fixed="right"
+          :width="163"
+          align="center"
+        >
           <template #header>
-            <el-tag type="warning">操作</el-tag>
+            <el-tag type="warning">
+              操作
+            </el-tag>
           </template>
           <template #default="{ row }">
-            <task-operation-bar-active :row="row" :button-clicked="handleOperationButtonClicked" />
+            <task-operation-bar-active
+              :row="row"
+              :button-clicked="handleOperationButtonClicked"
+            />
           </template>
         </el-table-column>
         <!-- 状态 -->
-        <el-table-column label="状态" width="110" fixed="right" sortable="custom" align="center">
+        <el-table-column
+          label="状态"
+          width="110"
+          fixed="right"
+          sortable="custom"
+          align="center"
+        >
           <template #header>
             <el-tag>状态</el-tag>
           </template>
@@ -513,7 +585,14 @@ async function handleSourceUrlInput() {
           </template>
         </el-table-column>
         <!-- 修改时间 -->
-        <el-table-column fixed="right" label="修改时间" width="165" show-overflow-tooltip sortable="custom" align="center">
+        <el-table-column
+          fixed="right"
+          label="修改时间"
+          width="165"
+          show-overflow-tooltip
+          sortable="custom"
+          align="center"
+        >
           <template #header>
             <el-tag>修改时间</el-tag>
           </template>
@@ -524,11 +603,34 @@ async function handleSourceUrlInput() {
       </slot-search-table>
     </div>
     <template #dialog>
-      <task-dialog v-model:state="taskDialogState" v-model:form-data="dialogData" :mode="DialogMode.VIEW" width="90%" />
-      <el-dialog v-model="downloadDialogState" width="80%">
-        <div v-if="downloadMode" class="task-manage-download-dialog-local-button-container">
-          <el-button type="primary" icon="FolderOpened" @click="selectDirectory()">选择文件夹导入</el-button>
-          <el-button type="primary" icon="Document" @click="selectFile()">选择单个文件导入</el-button>
+      <task-dialog
+        v-model:state="taskDialogState"
+        v-model:form-data="dialogData"
+        :mode="DialogMode.VIEW"
+        width="90%"
+      />
+      <el-dialog
+        v-model="downloadDialogState"
+        width="80%"
+      >
+        <div
+          v-if="downloadMode"
+          class="task-manage-download-dialog-local-button-container"
+        >
+          <el-button
+            type="primary"
+            icon="FolderOpened"
+            @click="selectDirectory()"
+          >
+            选择文件夹导入
+          </el-button>
+          <el-button
+            type="primary"
+            icon="Document"
+            @click="selectFile()"
+          >
+            选择单个文件导入
+          </el-button>
         </div>
         <el-input
           v-model="sourceUrl"
@@ -540,17 +642,31 @@ async function handleSourceUrlInput() {
         <span class="task-manage-download-dialog-supported-tips"> {{ supportStatus }} </span>
         <template #footer>
           <el-tooltip :disabled="arrayNotEmpty(supportedPluginListenerList)">
-            <el-button type="primary" :disabled="arrayIsEmpty(supportedPluginListenerList)" @click="createTaskFromSource">
+            <el-button
+              type="primary"
+              :disabled="arrayIsEmpty(supportedPluginListenerList)"
+              @click="createTaskFromSource"
+            >
               创建任务
             </el-button>
-            <template #content> 当前输入的url不受支持 </template>
+            <template #content>
+              当前输入的url不受支持
+            </template>
           </el-tooltip>
-          <el-button @click="downloadDialogState = false">取消</el-button>
+          <el-button @click="downloadDialogState = false">
+            取消
+          </el-button>
         </template>
       </el-dialog>
-      <el-tour v-model="useTourStatesStore().tourStates.taskTour" @finish="useTourStatesStore().tourStates.getCallback('taskTour')">
+      <el-tour
+        v-model="useTourStatesStore().tourStates.taskTour"
+        @finish="useTourStatesStore().tourStates.getCallback('taskTour')"
+      >
         <el-tour-step description="这里可以创建和开始任务" />
-        <el-tour-step :target="localImportButton.$el" description="在这里从本地创建任务，可以选择目录或单个文件" />
+        <el-tour-step
+          :target="localImportButton.$el"
+          description="在这里从本地创建任务，可以选择目录或单个文件"
+        />
         <el-tour-step
           :target="siteDownloadButton.$el"
           description="在这里输入url从站点创建任务，只能使用受支持的url（可以通过安装插件扩展受支持的url）"
@@ -558,7 +674,6 @@ async function handleSourceUrlInput() {
       </el-tour>
     </template>
   </base-subpage>
-
 </template>
 
 <style scoped>

@@ -50,14 +50,29 @@ const activeComponent = computed<Component | null>(() => {
 <template>
   <div class="view-slot-container">
     <!-- 可选的标题栏 -->
-    <div v-if="props.showHeader && activeView" class="view-slot-header">
+    <div
+      v-if="props.showHeader && activeView"
+      class="view-slot-header"
+    >
       <span class="view-slot-title">{{ activeView.name }}</span>
     </div>
     <div class="view-slot-content">
-      <component :is="activeComponent" v-if="activeComponent && activeView" v-bind="activeView.props" />
-      <div v-else class="view-slot-empty">
+      <component
+        :is="activeComponent"
+        v-if="activeComponent && activeView"
+        v-bind="activeView.props"
+      />
+      <div
+        v-else
+        class="view-slot-empty"
+      >
         <el-empty description="请选择一个视图">
-          <el-button type="primary" @click="router.push('/')">返回主页</el-button>
+          <el-button
+            type="primary"
+            @click="router.push('/')"
+          >
+            返回主页
+          </el-button>
         </el-empty>
       </div>
     </div>
