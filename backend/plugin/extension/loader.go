@@ -212,6 +212,7 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	l.mu.Unlock()
 
 	if ok {
+		l.gracefulShutdown(entry)
 		entry.client.Kill()
 	}
 
@@ -240,6 +241,22 @@ func (l *Loader) UnloadAll() []string {
 	}
 
 	return ids
+}
+
+const shutdownTimeout = 5 * time.Second
+
+// gracefulShutdown 通知插件进程执行清理逻辑，超时后放弃等待（由后续 client.Kill() 强制终止）
+func (l *Loader) gracefulShutdown(entry *pluginEntry) {
+	if entry.client.Exited() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	_, err := entry.services.Lifecycle.Shutdown(ctx, &gen.Empty{})
+	if err != nil {
+		logger.Log.Warnf("插件优雅关闭失败（将强制终止）: %v", err)
+	}
 }
 
 // GetServices 获取插件的 gRPC 服务客户端（供 proxy 使用）
