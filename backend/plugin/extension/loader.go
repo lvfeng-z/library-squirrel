@@ -59,6 +59,9 @@ type Loader struct {
 	// 子进程模式：跟踪活跃的插件进程
 	processes map[string]*pluginEntry // publicId -> entry
 	mu        sync.RWMutex
+
+	// 进程分组：Job Object 管理子进程（主进程退出时自动终止）
+	processGroup *ProcessGroup
 }
 
 // NewLoader 创建插件加载器
@@ -66,10 +69,17 @@ func NewLoader(
 	taskHandlerRegistry *TaskHandlerRegistry,
 	siteBrowserRegistry *SiteBrowserRegistry,
 ) *Loader {
+	// 初始化 Job Object（Windows 下主进程退出时自动终止子进程，其他平台为空操作）
+	pg, err := NewProcessGroup()
+	if err != nil {
+		logger.Log.Warnf("创建进程分组失败（不影响功能）: %v", err)
+	}
+
 	return &Loader{
 		taskHandlerRegistry: taskHandlerRegistry,
 		siteBrowserRegistry: siteBrowserRegistry,
 		processes:           make(map[string]*pluginEntry),
+		processGroup:        pg,
 	}
 }
 
@@ -140,6 +150,13 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	if err != nil {
 		client.Kill()
 		return fmt.Errorf("%w: connect plugin %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
+	}
+
+	// 将插件子进程加入 Job Object（主进程退出时自动终止）
+	if l.processGroup != nil && cmd.Process != nil {
+		if err := l.processGroup.Assign(cmd.Process.Pid); err != nil {
+			logger.Log.Warnf("将插件进程 %s (pid=%d) 加入 Job Object 失败: %v", pluginPublicId, cmd.Process.Pid, err)
+		}
 	}
 
 	// 通过 Dispense 获取插件服务接口
@@ -216,6 +233,12 @@ func (l *Loader) UnloadAll() []string {
 	for _, id := range ids {
 		l.UnloadPlugin(id)
 	}
+
+	// 关闭 Job Object（设置了 KILL_ON_JOB_CLOSE，残留子进程会被自动终止）
+	if l.processGroup != nil {
+		l.processGroup.Close()
+	}
+
 	return ids
 }
 
