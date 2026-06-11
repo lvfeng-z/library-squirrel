@@ -99,7 +99,7 @@ func main() {
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
 	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Library squirrel",
+		Title:            "Library Squirrel",
 		Width:            1280,
 		Height:           720,
 		MinWidth:         800,
