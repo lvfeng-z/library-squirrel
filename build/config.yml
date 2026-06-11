@@ -8,9 +8,9 @@ info:
   companyName: "lvfeng" # The name of the company
   productName: "Library Squirrel" # The name of the application
   productIdentifier: "com.lvfeng.library-squirrel" # The unique product identifier
-  description: "基于标签的个人资源库管理工具" # The application description
+  description: "Library Squirrel" # The application description
   copyright: "© 2026, lvfeng" # Copyright text
-  comments: "Library Squirrel" # Comments
+  comments: "基于标签的个人资源库管理工具" # Comments
   version: "0.0.1" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension

@@ -10,6 +10,17 @@ build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 
 # wails3 update build-assets 自动生成（源: build/config.yml）
+build/darwin/Info.dev.plist
+build/darwin/Info.plist
+build/linux/desktop
+build/linux/nfpm/nfpm.yaml
+build/ios/Assets.xcassets
+build/ios/build.sh
+build/ios/entitlements.plist
+build/ios/Info.dev.plist
+build/ios/Info.plist
+build/ios/LaunchScreen.storyboard
+build/ios/project.pbxproj
 build/windows/info.json
 build/windows/wails.exe.manifest
 build/windows/nsis/wails_tools.nsh
