@@ -48,6 +48,9 @@ func main() {
 		logger.Log.Warnf("日志配置重初始化失败，使用默认配置: %v", err)
 	}
 
+	// 启动横幅（作为两次运行之间的边界标识）
+	logger.Log.Info("[———————————————— Library Squirrel  开始启动🚀 ————————————————]")
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -182,4 +185,7 @@ func main() {
 		logger.Log.Fatal(err)
 		return
 	}
+
+	// 关闭完成标记（如果进程异常退出，此行不会出现在日志中）
+	logger.Log.Info("[———————————————— Library Squirrel  已关闭🪂 ————————————————]")
 }

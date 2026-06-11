@@ -943,7 +943,7 @@ func (app *App) initHandlers() {
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
 func (app *App) onDomReady() {
-	logger.Log.Info("窗口 DOM 已就绪")
+	logger.Log.Info("[———————————————— Library Squirrel  已启动🛰️ ————————————————]")
 }
 
 // onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）
