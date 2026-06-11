@@ -37,8 +37,12 @@ type DatabaseConfig struct {
 
 // LogConfig 日志配置
 type LogConfig struct {
-	Level  string `mapstructure:"level"`  // 日志级别 (debug, info, warn, error)
-	Format string `mapstructure:"format"` // 日志格式 (json, console)
+	Level      string `mapstructure:"level"`      // 日志级别 (debug, info, warn, error)
+	Format     string `mapstructure:"format"`     // 控制台日志格式 (json, console)
+	MaxSize    int    `mapstructure:"maxSize"`    // 单个日志文件最大尺寸（MB），超过后轮转
+	MaxBackups int    `mapstructure:"maxBackups"` // 保留的旧日志文件最大数量
+	MaxAge     int    `mapstructure:"maxAge"`     // 保留旧日志文件的最大天数
+	Compress   bool   `mapstructure:"compress"`   // 是否压缩轮转的旧日志文件
 }
 
 // AppConfig 应用配置

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -40,6 +41,11 @@ func main() {
 	app, err := NewApp()
 	if err != nil {
 		logger.Log.Fatalf("Failed to create app: %v", err)
+	}
+
+	// 用用户配置重建日志（应用轮转、级别等设置）
+	if err := logger.Reinit(config.Get().Log); err != nil {
+		logger.Log.Warnf("日志配置重初始化失败，使用默认配置: %v", err)
 	}
 
 	// Create a new Wails application by providing the necessary options.

@@ -44,11 +44,73 @@ task build:server && task run:server
 - **前端**: Vue 3 + Composition API (`<script setup lang="ts">`)、Element Plus、Pinia、Vue Router（hash 模式）、Vite 8
 - **IPC**: Wails Bind — Go handler 方法自动暴露给前端，TypeScript bindings 自动生成
 
+## 目录结构
+
+```
+项目根目录（= RootPath，开发环境为工作目录，生产环境为可执行文件所在目录）
+├── main.go / app.go          — 程序入口与 Wails 应用主文件
+├── config.yaml               — 应用配置文件（覆盖嵌入的 default_config.yaml）
+├── backend/                  — Go 后端（32 个业务模块 + 基础设施模块）
+│   ├── base/                 — 公共基础：logger、model（entity/dto）、工具
+│   ├── config/               — 配置加载（嵌入 default_config.yaml 作为默认层）
+│   ├── database/             — 数据库初始化、BaseRepository、事务工具
+│   ├── migration/            — GORM 自动迁移入口
+│   ├── plugin/               — 插件加载器、扩展点注册中心
+│   └── {module}/             — 各业务模块（一般分为三层：handler → service → repository）
+├── frontend/                 — Vue 3 前端
+│   ├── bindings/             — 自动生成的 Wails TypeScript bindings（禁止手动编辑）
+│   └── src/
+│       ├── apis/http/wrappers/ — 封装 Wails bindings 的 API wrapper
+│       ├── components/       — 通用组件（DataTable、WorkCard、TagBox）与对话框
+│       ├── model/            — TypeScript 类型定义
+│       ├── store/            — Pinia Store（主要用于前端全局动态信息存储）
+│       ├── views/            — 页面组件（15 个视图）
+│       └── composables/      — 组合式函数
+├── database/                 — SQLite 数据库文件（database.db）
+├── log/                      — 日志文件（server.log，lumberjack 自动轮转）
+├── resources/                — 资源文件
+│   └── bundled-plugins/      — 捆绑插件 ZIP 包（首次启动自动安装）
+├── build/                    — 构建配置（多平台：windows/darwin/linux/ios/android）
+├── plugin/                   — 插件运行时目录
+└── doc/                      — 项目文档与开发计划
+```
+
+## 编译与构建
+
+- **构建工具**: Task（Taskfile.yml）+ Wails 3 CLI
+- **Windows 编译**: 因 CGO 兼容性问题，直接 `go build` 可能失败，使用 `task build`（内部调用 wails3 build）或 `CGO_ENABLED=0 go build`
+- **编译产物**: 输出到 `bin/` 目录
+- **多平台**: build/ 下各平台子目录有独立的 Taskfile，通过 `task windows:build` 等调用
+
+## 数据库
+
+- **引擎**: SQLite（WAL 模式），通过 GORM 操作
+- **文件位置**: `{RootPath}/database/database.db`
+- **迁移**: `backend/migration/migrate.go` 集中注册所有实体，应用启动时自动迁移
+- **访问层**: `BaseRepository[T]` 提供泛型 CRUD + 分页，各模块仅定义接口和特殊查询
+
+## 日志
+
+- **库**: Zap（SugaredLogger）+ Lumberjack（轮转）
+- **初始化**: 两阶段 — `logger.Init()` 用默认配置启动 → 配置加载后 `logger.Reinit()` 应用用户配置
+- **输出**: 文件（`{RootPath}/log/server.log`，JSON 格式）+ 控制台（Console 格式）
+- **级别**: 文件级别由 `config.yaml` 的 `log.level` 控制（默认 info），控制台始终 debug
+- **轮转**: 单文件 2.5MB 触发轮转，保留 3 个备份，30 天过期，默认不压缩
+- **使用**: 全局 `logger.Log.xxx()`，无需导入具体实现
+
+## 配置
+
+- **加载策略**: 两层合并 — 嵌入的 `backend/config/default_config.yaml`（基础层）+ 磁盘 `config.yaml`（覆盖层）
+- **根目录 config.yaml**: 开发环境配置（服务器、数据库、站点、插件、日志）
+- **config/settings.json**: 运行时用户设置（通过 SettingsHandler 读写）
+- **build/config.yml**: Wails 开发模式配置（端口、前端开发服务器等）
+- **默认值**: 通过 viper SetDefault + default_config.yaml 双重保障
+
 ## 编码规则（全局）
 
 ### 通用
 
-- **注释**: 使用中文注释，出现专有名词时使用对应语言，仅描述目的和约束，禁止使用变更描述类词语（"改为"、"重构"、"优化"）。
+- **注释**: 使用中文注释，出现专有名词时使用对应语言，仅描述当前状态，禁止对变更进行描述（典型场景为：原逻辑为A，用户要求将逻辑改为B，注释写“从A改为B”）。
 - **日志**: 输出中文日志，出现专有名词时使用对应语言。
 
 ### 领域架构与规则
@@ -70,12 +132,6 @@ task build:server && task run:server
 4. 在 `frontend/src/apis/http/wrappers/` 中创建 wrapper
 5. 按需创建页面/对话框组件
 
-## 配置
-
-- `config.yaml` — 应用配置（服务器、数据库、站点、插件）
-- `config/settings.json` — 运行时用户设置
-- `build/config.yml` — Wails 开发模式配置
-
 ## 交互规则
 - 当我意图制定计划或方案时，直接用 Write 工具将计划文件写到 `doc/plan/` 目录下，然后停下来询问我要执行计划还是要检查计划，不要直接开始执行。
-- 当本次对项目的修改达到某个里程碑或完成时，请判断当前的修改是否导致项目的实际逻辑与你所理解的项目上下文（比如rule中的规则）出现了差异，如果有差异，则向我询问是否需要对文档进行同步。
+- 当本次对项目的修改达到某个里程碑或完成时，请判断当前的修改是否导致项目的实际逻辑与你所理解的项目上下文（比如本文档或rule中的规则）出现了差异，如果有差异，则向我询问是否需要对文档进行同步。

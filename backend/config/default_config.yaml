@@ -10,6 +10,10 @@ database:
 log:
   level: info
   format: console
+  maxSize: 2.5
+  maxBackups: 3
+  maxAge: 30
+  compress: false
 
 app:
   host: 127.0.0.1
