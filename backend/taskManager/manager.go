@@ -73,36 +73,15 @@ type Manager struct {
 	// Repository（任务数据库操作）
 	repo Repository
 
-	// 作品信息保存器
-	workInfoSaver WorkInfoSaver
-	// 资源保存器
-	resourceSaver ResourceSaver
-
-	// 工作目录提供者（实时读取，不缓存）
-	workDirProvider WorkDirProvider
-	// 文件名格式模板提供者（实时读取，不缓存）
-	fileNameFormatProvider FileNameFormatProvider
-
-	// 作品查重
-	workChecker WorkChecker
-	// 资源查询（查找已有作品的资源文件）
-	resourceReader ResourceReader
-	// 资源备份编排器
-	storeBackupOrchestrator StoreBackupOrchestrator
-	resourceUpdater         ResourceUpdater
-	// 存储流创建器（PersistentStore.StoreStream/ResumeStream）
-	storeStreamer StoreStreamer
-	// 存储记录读取器（PersistentStore.GetById/GetAbsPath）
-	storeReader StoreReader
-	// 缩略图存储
-	thumbnailStoreWriter ThumbnailStoreWriter
+	// 共享依赖（透传给 ManagedTask）
+	deps *TaskDeps
 	// 等待用户确认的任务（WaitingForInput 状态，已释放信号量）
 	waitingForInputMap map[int64]*ManagedTask
 	waitingForInputMu  sync.Mutex
 }
 
 // NewManager 创建任务管理器
-func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormatProvider FileNameFormatProvider, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), workInfoSaver WorkInfoSaver, resourceSaver ResourceSaver, workChecker WorkChecker, resourceReader ResourceReader, storeBackupOrchestrator StoreBackupOrchestrator, resourceUpdater ResourceUpdater, storeStreamer StoreStreamer, storeReader StoreReader, thumbnailStoreWriter ThumbnailStoreWriter) *Manager {
+func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), deps *TaskDeps) *Manager {
 	m := &Manager{
 		taskMap:                  make(map[int64]*ManagedTask),
 		parentMap:                make(map[int64]*ParentTask),
@@ -115,20 +94,10 @@ func NewManager(maxParallel int, workDirProvider WorkDirProvider, fileNameFormat
 		flushCh:                  make(chan struct{}, 1),
 		closeCh:                  make(chan struct{}),
 		flushDone:                make(chan struct{}),
-		workDirProvider:          workDirProvider,
-		fileNameFormatProvider:   fileNameFormatProvider,
 		repo:                     repo,
 		pusher:                   pusher,
 		pluginExecFactory:        pluginExecFactory,
-		workInfoSaver:            workInfoSaver,
-		resourceSaver:            resourceSaver,
-		workChecker:              workChecker,
-		resourceReader:           resourceReader,
-		storeBackupOrchestrator:  storeBackupOrchestrator,
-		resourceUpdater:          resourceUpdater,
-		storeStreamer:            storeStreamer,
-		storeReader:              storeReader,
-		thumbnailStoreWriter:     thumbnailStoreWriter,
+		deps:                     deps,
 		waitingForInputMap:       make(map[int64]*ManagedTask),
 	}
 	go m.flushLoop()
@@ -223,8 +192,8 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 		if isStableState(finalState) {
 			m.addToPending(actualParentId, task.TaskStatusEnum(finalState), "")
 		}
-		m.pusher.PushParentStateChange(actualParentId, parentTaskName, finalState)
-		m.pusher.PushParentTaskRemove([]int64{actualParentId})
+		m.deps.Pusher.PushParentStateChange(actualParentId, parentTaskName, finalState)
+		m.deps.Pusher.PushParentTaskRemove([]int64{actualParentId})
 		return nil
 	}
 
@@ -332,7 +301,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		toCheck = append(toCheck, child)
 	}
 
-	if len(toCheck) == 0 || m.workChecker == nil {
+	if len(toCheck) == 0 || m.deps.WorkChecker == nil {
 		// 无需查重或未配置查重器，所有可预检任务标记跳过
 		for _, child := range children {
 			if !child.resumeFromDB {
@@ -350,7 +319,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		siteWorkIds[i] = child.task.SiteWorkID.String
 	}
 
-	existingWorks, err := m.workChecker.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
+	existingWorks, err := m.deps.WorkChecker.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 批量查重失败: %v，降级为 run() 逐个检查", err)
 		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底
@@ -387,7 +356,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 			}
 			child.existingWorkId = existing.GetID()
 			child.setState(TaskStateWaitingForInput)
-			m.pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName)
+			m.deps.Pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName)
 
 			m.waitingForInputMu.Lock()
 			m.waitingForInputMap[child.taskId] = child
@@ -424,6 +393,15 @@ func (m *Manager) executeTask(task *ManagedTask) {
 		<-m.semaphore
 		m.dispatchFromQueue()
 	}()
+
+	// 检查任务是否在 goroutine 启动前已被暂停/停止
+	// PauseTaskTree/StopTaskTree 对 Paused/Waiting 状态的任务调用 cancel()
+	// 如果 goroutine 启动时 context 已取消，直接退出（状态已由调用方设置）
+	select {
+	case <-task.ctx.Done():
+		return
+	default:
+	}
 
 	var result runResult
 	if task.resumeFromDB {
@@ -497,15 +475,35 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) 
 		return ErrTaskTreeNotFound
 	}
 
-	for _, child := range parent.GetChildren() {
-		if child.GetState() == TaskStateWaiting {
-			// 排队中的任务无 goroutine 运行，直接从队列移除并标记为暂停
+	children := parent.GetChildren()
+
+	// 第一阶段：处理非阻塞任务（Waiting/Paused），先清空等待队列
+	// 必须在第二阶段（阻塞的 Pause()）之前完成，否则 goroutine 退出时
+	// dispatchFromQueue 会从队列取出尚未遍历到的 Waiting 任务并启动
+	for _, child := range children {
+		state := child.GetState()
+		switch state {
+		case TaskStateWaiting:
+			// 排队中的任务：移出队列、设为暂停、取消 context
 			m.removeFromQueue(child.taskId)
 			child.setState(TaskStatePaused)
-			continue
+			child.cancel()
+		case TaskStatePaused:
+			// 已暂停但可能已派发 goroutine（prepareForResume 后的状态窗口）
+			// cancel 使 goroutine 启动时通过 ctx.Done 检查直接退出
+			// 对真正 Paused 的任务（无 goroutine），cancel 无副作用
+			child.cancel()
 		}
-		if err := child.Pause(); err != nil {
-			logger.Log.Errorf("[TaskManager] 暂停子任务 %d 失败: %v", child.taskId, err)
+	}
+
+	// 第二阶段：处理阻塞任务（Processing/Pausing），此时等待队列已清空
+	// dispatchFromQueue 不会再取出新任务
+	for _, child := range children {
+		state := child.GetState()
+		if state == TaskStateProcessing || state == TaskStatePausing {
+			if err := child.Pause(); err != nil {
+				logger.Log.Errorf("[TaskManager] 暂停子任务 %d 失败: %v", child.taskId, err)
+			}
 		}
 	}
 
@@ -560,7 +558,8 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 	for _, child := range parent.GetChildren() {
 		state := child.GetState()
 		if state == TaskStatePaused {
-			// 暂停任务无 goroutine，直接标记为失败
+			// 暂停任务可能已派发 goroutine 但未启动，cancel 确保其退出
+			child.cancel()
 			child.setFailed("任务被用户停止")
 		} else if state == TaskStateWaiting {
 			m.removeFromQueue(child.taskId)
@@ -588,18 +587,15 @@ func (m *Manager) GetTaskTreeState(taskId int64, isLeaf bool) (TaskState, error)
 		return TaskStateCreated, ErrTaskTreeNotFound
 	}
 
-	// 优先查 parentMap（父任务场景）
+	// 优先查 parentMap（父任务场景），回退查 taskMap（独立单任务场景）
 	m.mu.RLock()
 	parent, inParent := m.parentMap[parentKey]
+	mt, inTask := m.taskMap[parentKey]
 	m.mu.RUnlock()
 	if inParent {
 		return parent.GetState(), nil
 	}
 
-	// 回退查 taskMap（独立单任务场景）
-	m.mu.RLock()
-	mt, inTask := m.taskMap[parentKey]
-	m.mu.RUnlock()
 	if !inTask {
 		return TaskStateCreated, ErrTaskTreeNotFound
 	}
@@ -621,12 +617,12 @@ func (m *Manager) GetTaskState(taskId int64) (TaskState, error) {
 
 // GetPusher 获取进度推送器
 func (m *Manager) GetPusher() TaskProgressPusher {
-	return m.pusher
+	return m.deps.Pusher
 }
 
 // SetPusher 设置进度推送器（用于 emitter 延迟就绪时替换 Noop）
 func (m *Manager) SetPusher(pusher TaskProgressPusher) {
-	m.pusher = pusher
+	m.deps.Pusher = pusher
 	// 若为快照推送器，保存引用以供 GetTaskSnapshot 使用
 	if sp, ok := pusher.(*SnapshotPusher); ok {
 		m.snapshotPusher = sp
@@ -751,9 +747,17 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 		}
 	}
 
+
 	// 等待所有任务进入稳态
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+
+	// 保证最终刷盘
+	defer func() {
+		close(m.closeCh)
+		<-m.flushDone
+	}()
+
 	for {
 		allStable := true
 		for _, t := range tasks {
@@ -765,17 +769,10 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 		if allStable {
 			// 等待瞬态回调完成
 			time.Sleep(50 * time.Millisecond)
-
-			// 触发最终刷盘
-			close(m.closeCh)
-			<-m.flushDone
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			// 超时，仍尝试最终刷盘
-			close(m.closeCh)
-			<-m.flushDone
 			return ctx.Err()
 		case <-ticker.C:
 		}
@@ -828,7 +825,7 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 			logger.Log.Infof("[TaskManager] cleanupFinishedTask: 删除 parentMap[%d]（所有子任务终态）", mt.parentId)
 			delete(m.parentMap, mt.parentId)
 			m.mu.Unlock()
-			m.pusher.PushParentTaskRemove([]int64{mt.parentId})
+			m.deps.Pusher.PushParentTaskRemove([]int64{mt.parentId})
 		} else {
 			m.mu.Unlock()
 		}
@@ -837,7 +834,7 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 	}
 
 	// 通知前端批量移除子任务
-	m.pusher.PushTaskRemove(removeIds)
+	m.deps.Pusher.PushTaskRemove(removeIds)
 }
 
 func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
@@ -967,7 +964,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.workInfoSaver, m.resourceSaver, m.workDirProvider, m.fileNameFormatProvider, m.workChecker, m.resourceReader, m.storeBackupOrchestrator, m.resourceUpdater, m.pusher, m.storeStreamer, m.storeReader, m.thumbnailStoreWriter)
+	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.deps)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
@@ -978,7 +975,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		}
 
 		// 推送状态到前端
-		m.pusher.PushStateChange(taskId, taskName, newState)
+		m.deps.Pusher.PushStateChange(taskId, taskName, newState)
 
 		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
@@ -1001,8 +998,8 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 						// 父任务无错误信息，传空字符串（清除 error_message）
 						m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 					}
-					m.pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
-					m.pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
+					m.deps.Pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+					m.deps.Pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
 				}
 				parent.refreshMu.Unlock()
 			}
@@ -1097,7 +1094,7 @@ func (m *Manager) doFlush() {
 		for _, dto := range pendingProgress {
 			batch = append(batch, dto)
 		}
-		m.pusher.PushProgressBatch(batch)
+		m.deps.Pusher.PushProgressBatch(batch)
 	}
 }
 
