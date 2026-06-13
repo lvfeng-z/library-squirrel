@@ -339,7 +339,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 localAuthors
 		if localAuthors.Valid && localAuthors.String != "" && localAuthors.String != "null" {
-			var authors []*sdkdto.LocalAuthorDTO
+			var authors []*sdkdto.RankedLocalAuthor
 			if json.Unmarshal([]byte(localAuthors.String), &authors) == nil {
 				dto.LocalAuthors = authors
 			}
@@ -347,7 +347,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 
 		// 解析 siteAuthors
 		if siteAuthors.Valid && siteAuthors.String != "" && siteAuthors.String != "null" {
-			var authors []*sdkdto.SiteAuthorFullDTO
+			var authors []*sdkdto.RankedSiteAuthor
 			if json.Unmarshal([]byte(siteAuthors.String), &authors) == nil {
 				dto.SiteAuthors = authors
 			}

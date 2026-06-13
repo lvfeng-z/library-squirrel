@@ -3,8 +3,7 @@ import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, 
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import {
-  SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, LocalAuthorDTO, SiteAuthorFullDTO, WorkSetDTO,
-  RankedLocalAuthor, RankedSiteAuthor
+  SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, WorkSetDTO
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
@@ -128,31 +127,6 @@ const imagePath = computed(() => {
 // ===== 辅助：获取资源的原始文件路径（用于外部打开）=====
 function getResourceFilePath(info: WorkFullDTO): string {
   return info.resource?.workStore?.filePath ?? ''
-}
-
-// TODO 作者转Ranked只是临时做法，应该从源头解决类型不匹配的问题
-// ===== 辅助：将 BindingsLocalAuthorDTO 转换为 RankedLocalAuthor（适配 AuthorInfo 组件）=====
-function toRankedLocalAuthor(dto: LocalAuthorDTO | null): RankedLocalAuthor | null {
-  if (!dto) return null
-  const author = new RankedLocalAuthor()
-  author.author.id = dto.id
-  author.author.authorName = dto.authorName ?? ''
-  author.author.introduce = dto.introduce ?? ''
-  author.author.lastUse = dto.lastUse ?? -1
-  author.sortOrder = -1
-  return author
-}
-
-// ===== 辅助：将 BindingsSiteAuthorFullDTO 转换为 RankedSiteAuthor（适配 AuthorInfo 组件）=====
-function toRankedSiteAuthor(dto: SiteAuthorFullDTO | null): RankedSiteAuthor | null {
-  if (!dto || !dto.siteAuthor) return null
-  const author = new RankedSiteAuthor()
-  author.author.id = dto.siteAuthor.id
-  author.author.authorName = dto.siteAuthor.authorName ?? ''
-  author.author.introduce = dto.siteAuthor.introduce ?? ''
-  author.author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
-  author.sortOrder = -1
-  return author
 }
 
 // 方法
@@ -421,8 +395,8 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           <el-descriptions-item label="作者">
             <author-info
               id="author"
-              :local-authors="currentWorkFullInfo.localAuthors?.filter(notNullish).map(toRankedLocalAuthor).filter(notNullish)"
-              :site-authors="currentWorkFullInfo.siteAuthors?.filter(notNullish).map(toRankedSiteAuthor).filter(notNullish)"
+              :local-authors="currentWorkFullInfo.localAuthors?.filter(notNullish)"
+              :site-authors="currentWorkFullInfo.siteAuthors?.filter(notNullish)"
             />
           </el-descriptions-item>
           <el-descriptions-item>

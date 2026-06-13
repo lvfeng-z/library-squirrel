@@ -20,7 +20,6 @@ export {
     SearchType,
     SelectItem,
     SiteAuthorDTO,
-    SiteAuthorFullDTO,
     SiteAuthorLocalRelateDTO,
     SiteBrowserDTO,
     SiteDTO,

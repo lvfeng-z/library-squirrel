@@ -834,41 +834,6 @@ export class SiteAuthorDTO {
 }
 
 /**
- * SiteAuthorFullDTO 站点作者完整DTO
- */
-export class SiteAuthorFullDTO {
-    "siteAuthor"?: SiteAuthorDTO | null;
-    "localAuthor"?: LocalAuthorDTO | null;
-    "site"?: SiteDTO | null;
-
-    /** Creates a new SiteAuthorFullDTO instance. */
-    constructor($$source: Partial<SiteAuthorFullDTO> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteAuthorFullDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteAuthorFullDTO {
-        const $$createField0_0 = $$createType8;
-        const $$createField1_0 = $$createType9;
-        const $$createField2_0 = $$createType11;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("siteAuthor" in $$parsedSource) {
-            $$parsedSource["siteAuthor"] = $$createField0_0($$parsedSource["siteAuthor"]);
-        }
-        if ("localAuthor" in $$parsedSource) {
-            $$parsedSource["localAuthor"] = $$createField1_0($$parsedSource["localAuthor"]);
-        }
-        if ("site" in $$parsedSource) {
-            $$parsedSource["site"] = $$createField2_0($$parsedSource["site"]);
-        }
-        return new SiteAuthorFullDTO($$parsedSource as Partial<SiteAuthorFullDTO>);
-    }
-}
-
-/**
  * SiteAuthorLocalRelateDTO 站点作者与本地作者关联DTO
  */
 export class SiteAuthorLocalRelateDTO {
@@ -1447,8 +1412,8 @@ export class WorkDTO {
  */
 export class WorkFullDTO {
     "work"?: WorkDTO | null;
-    "localAuthors"?: (LocalAuthorDTO | null)[];
-    "siteAuthors"?: (SiteAuthorFullDTO | null)[];
+    "localAuthors"?: (RankedLocalAuthor | null)[];
+    "siteAuthors"?: (RankedSiteAuthor | null)[];
     "site"?: SiteDTO | null;
     "localTags"?: (LocalTagDTO | null)[];
     "siteTags"?: (SiteTagFullDTO | null)[];
@@ -1469,12 +1434,12 @@ export class WorkFullDTO {
      */
     static createFrom($$source: any = {}): WorkFullDTO {
         const $$createField0_0 = $$createType28;
-        const $$createField1_0 = $$createType29;
-        const $$createField2_0 = $$createType32;
+        const $$createField1_0 = $$createType23;
+        const $$createField2_0 = $$createType26;
         const $$createField3_0 = $$createType11;
-        const $$createField4_0 = $$createType33;
-        const $$createField5_0 = $$createType36;
-        const $$createField6_0 = $$createType38;
+        const $$createField4_0 = $$createType29;
+        const $$createField5_0 = $$createType32;
+        const $$createField6_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("work" in $$parsedSource) {
             $$parsedSource["work"] = $$createField0_0($$parsedSource["work"]);
@@ -1611,9 +1576,9 @@ export class WorkSetWithCoverDTO {
      * Creates a new WorkSetWithCoverDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithCoverDTO {
-        const $$createField0_0 = $$createType40;
+        const $$createField0_0 = $$createType36;
         const $$createField1_0 = $$createType28;
-        const $$createField2_0 = $$createType38;
+        const $$createField2_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1648,8 +1613,8 @@ export class WorkSetWithWorksResultDTO {
      * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType40;
-        const $$createField1_0 = $$createType43;
+        const $$createField0_0 = $$createType36;
+        const $$createField1_0 = $$createType39;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -1691,18 +1656,14 @@ const $$createType25 = $Create.Nullable($$createType24);
 const $$createType26 = $Create.Array($$createType25);
 const $$createType27 = WorkDTO.createFrom;
 const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = $Create.Array($$createType9);
-const $$createType30 = SiteAuthorFullDTO.createFrom;
+const $$createType29 = $Create.Array($$createType1);
+const $$createType30 = SiteTagFullDTO.createFrom;
 const $$createType31 = $Create.Nullable($$createType30);
 const $$createType32 = $Create.Array($$createType31);
-const $$createType33 = $Create.Array($$createType1);
-const $$createType34 = SiteTagFullDTO.createFrom;
-const $$createType35 = $Create.Nullable($$createType34);
-const $$createType36 = $Create.Array($$createType35);
-const $$createType37 = ResourceFullDTO.createFrom;
+const $$createType33 = ResourceFullDTO.createFrom;
+const $$createType34 = $Create.Nullable($$createType33);
+const $$createType35 = WorkSetDTO.createFrom;
+const $$createType36 = $Create.Nullable($$createType35);
+const $$createType37 = WorkFullDTO.createFrom;
 const $$createType38 = $Create.Nullable($$createType37);
-const $$createType39 = WorkSetDTO.createFrom;
-const $$createType40 = $Create.Nullable($$createType39);
-const $$createType41 = WorkFullDTO.createFrom;
-const $$createType42 = $Create.Nullable($$createType41);
-const $$createType43 = $Create.Array($$createType42);
+const $$createType39 = $Create.Array($$createType38);

@@ -530,25 +530,6 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 		}
 	}
 
-	// Phase 6.6: 批量查询站点作者关联的本地作者
-	var allLocalAuthorIds []int64
-	localAuthorIdSet := make(map[int64]bool)
-	for _, authors := range siteAuthorMap {
-		for _, ra := range authors {
-			if *ra.Author.LocalAuthorID > 0 && !localAuthorIdSet[*ra.Author.LocalAuthorID] {
-				localAuthorIdSet[*ra.Author.LocalAuthorID] = true
-				allLocalAuthorIds = append(allLocalAuthorIds, *ra.Author.LocalAuthorID)
-			}
-		}
-	}
-	localAuthorEntityMap := make(map[int64]*entity2.LocalAuthor)
-	if len(allLocalAuthorIds) > 0 {
-		localAuthorEntities, _ := s.localAuthorBatchReader.ListByIds(ctx, allLocalAuthorIds)
-		for _, la := range localAuthorEntities {
-			localAuthorEntityMap[la.GetID()] = la
-		}
-	}
-
 	// Phase 7: 批量查询站点
 	var siteIds []int64
 	siteIdSet := make(map[int64]bool)
@@ -577,31 +558,13 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 
 		// 本地作者
 		if authors, ok := localAuthorMap[id]; ok && len(authors) > 0 {
-			fullDTO.LocalAuthors = make([]*sdkdto.LocalAuthorDTO, 0, len(authors))
-			for _, a := range authors {
-				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &a.Author)
-			}
+			fullDTO.LocalAuthors = authors
 		}
 
 		// 站点作者
 		if authors, ok := siteAuthorMap[id]; ok && len(authors) > 0 {
-				for _, ra := range authors {
-					saDTO := &sdkdto.SiteAuthorFullDTO{
-						SiteAuthor: &ra.Author,
-					}
-					if ra.Author.SiteID != nil && *ra.Author.SiteID > 0 {
-						if site, ok := siteEntityMap[*ra.Author.SiteID]; ok {
-							saDTO.Site = dto2.NewSiteDTO(site)
-						}
-					}
-					if ra.Author.LocalAuthorID != nil && *ra.Author.LocalAuthorID > 0 {
-						if la, ok := localAuthorEntityMap[*ra.Author.LocalAuthorID]; ok {
-							saDTO.LocalAuthor = dto2.NewLocalAuthorDTO(la)
-						}
-					}
-					fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, saDTO)
-				}
-}
+			fullDTO.SiteAuthors = authors
+		}
 
 		// 站点
 		if work.SiteID.Valid && work.SiteID.Int64 > 0 {
