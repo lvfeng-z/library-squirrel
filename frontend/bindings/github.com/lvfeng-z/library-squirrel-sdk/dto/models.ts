@@ -372,39 +372,23 @@ export class PluginDTO {
 }
 
 /**
- * RankedLocalAuthor 带排名的本地作者
+ * RankedLocalAuthor 带排序的本地作者
  */
 export class RankedLocalAuthor {
-    "id": number;
-    "authorName": string;
-    "introduce": string;
-    "lastUse": number;
-    "createTime": number;
-    "updateTime": number;
-    "authorRank": number;
+    "author": LocalAuthorDTO;
+    "roleName": string;
+    "sortOrder": number;
 
     /** Creates a new RankedLocalAuthor instance. */
     constructor($$source: Partial<RankedLocalAuthor> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
+        if (!("author" in $$source)) {
+            this["author"] = (new LocalAuthorDTO());
         }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = "";
+        if (!("roleName" in $$source)) {
+            this["roleName"] = "";
         }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = "";
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = 0;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("authorRank" in $$source)) {
-            this["authorRank"] = 0;
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -414,7 +398,11 @@ export class RankedLocalAuthor {
      * Creates a new RankedLocalAuthor instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedLocalAuthor {
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
+        }
         return new RankedLocalAuthor($$parsedSource as Partial<RankedLocalAuthor>);
     }
 }
@@ -423,37 +411,21 @@ export class RankedLocalAuthor {
  * RankedLocalAuthorWithWorkId 带作品ID的本地作者
  */
 export class RankedLocalAuthorWithWorkId {
-    "id": number;
-    "authorName": string;
-    "introduce": string;
-    "lastUse": number;
-    "createTime": number;
-    "updateTime": number;
-    "authorRank": number;
+    "author": LocalAuthorDTO;
+    "roleName": string;
+    "sortOrder": number;
     "workId": number;
 
     /** Creates a new RankedLocalAuthorWithWorkId instance. */
     constructor($$source: Partial<RankedLocalAuthorWithWorkId> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
+        if (!("author" in $$source)) {
+            this["author"] = (new LocalAuthorDTO());
         }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = "";
+        if (!("roleName" in $$source)) {
+            this["roleName"] = "";
         }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = "";
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = 0;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("authorRank" in $$source)) {
-            this["authorRank"] = 0;
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
         if (!("workId" in $$source)) {
             this["workId"] = 0;
@@ -466,69 +438,33 @@ export class RankedLocalAuthorWithWorkId {
      * Creates a new RankedLocalAuthorWithWorkId instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedLocalAuthorWithWorkId {
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
+        }
         return new RankedLocalAuthorWithWorkId($$parsedSource as Partial<RankedLocalAuthorWithWorkId>);
     }
 }
 
 /**
- * RankedSiteAuthor 带排名的站点作者
+ * RankedSiteAuthor 带排序的站点作者
  */
 export class RankedSiteAuthor {
-    "id": number;
-    "siteId": number;
-    "siteAuthorId": string;
-    "authorName": string;
-    "fixedAuthorName": string;
-    "siteAuthorNameBefore": string;
-    "introduce": string;
-    "homepage": string;
-    "localAuthorId": number;
-    "lastUse": number;
-    "createTime": number;
-    "updateTime": number;
-    "authorRank": number;
+    "author": SiteAuthorDTO;
+    "roleName": string;
+    "sortOrder": number;
 
     /** Creates a new RankedSiteAuthor instance. */
     constructor($$source: Partial<RankedSiteAuthor> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
+        if (!("author" in $$source)) {
+            this["author"] = (new SiteAuthorDTO());
         }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = 0;
+        if (!("roleName" in $$source)) {
+            this["roleName"] = "";
         }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = "";
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = "";
-        }
-        if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = "";
-        }
-        if (!("siteAuthorNameBefore" in $$source)) {
-            this["siteAuthorNameBefore"] = "";
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = "";
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = "";
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = 0;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = 0;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("authorRank" in $$source)) {
-            this["authorRank"] = 0;
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -538,7 +474,11 @@ export class RankedSiteAuthor {
      * Creates a new RankedSiteAuthor instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedSiteAuthor {
+        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
+        }
         return new RankedSiteAuthor($$parsedSource as Partial<RankedSiteAuthor>);
     }
 }
@@ -547,61 +487,21 @@ export class RankedSiteAuthor {
  * RankedSiteAuthorWithWorkId 带作品ID的站点作者
  */
 export class RankedSiteAuthorWithWorkId {
-    "id": number;
-    "siteId": number;
-    "siteAuthorId": string;
-    "authorName": string;
-    "fixedAuthorName": string;
-    "siteAuthorNameBefore": string;
-    "introduce": string;
-    "homepage": string;
-    "localAuthorId": number;
-    "lastUse": number;
-    "createTime": number;
-    "updateTime": number;
-    "authorRank": number;
+    "author": SiteAuthorDTO;
+    "roleName": string;
+    "sortOrder": number;
     "workId": number;
 
     /** Creates a new RankedSiteAuthorWithWorkId instance. */
     constructor($$source: Partial<RankedSiteAuthorWithWorkId> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
+        if (!("author" in $$source)) {
+            this["author"] = (new SiteAuthorDTO());
         }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = 0;
+        if (!("roleName" in $$source)) {
+            this["roleName"] = "";
         }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = "";
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = "";
-        }
-        if (!("fixedAuthorName" in $$source)) {
-            this["fixedAuthorName"] = "";
-        }
-        if (!("siteAuthorNameBefore" in $$source)) {
-            this["siteAuthorNameBefore"] = "";
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = "";
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = "";
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = 0;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = 0;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-        if (!("authorRank" in $$source)) {
-            this["authorRank"] = 0;
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
         if (!("workId" in $$source)) {
             this["workId"] = 0;
@@ -614,44 +514,12 @@ export class RankedSiteAuthorWithWorkId {
      * Creates a new RankedSiteAuthorWithWorkId instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedSiteAuthorWithWorkId {
+        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
+        }
         return new RankedSiteAuthorWithWorkId($$parsedSource as Partial<RankedSiteAuthorWithWorkId>);
-    }
-}
-
-/**
- * RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
- */
-export class RankedSiteAuthorWithWorkIdDTO {
-    "workId": number;
-    "siteAuthorId": string | null;
-    "authorName": string | null;
-    "rank": number;
-
-    /** Creates a new RankedSiteAuthorWithWorkIdDTO instance. */
-    constructor($$source: Partial<RankedSiteAuthorWithWorkIdDTO> = {}) {
-        if (!("workId" in $$source)) {
-            this["workId"] = 0;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("rank" in $$source)) {
-            this["rank"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RankedSiteAuthorWithWorkIdDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RankedSiteAuthorWithWorkIdDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new RankedSiteAuthorWithWorkIdDTO($$parsedSource as Partial<RankedSiteAuthorWithWorkIdDTO>);
     }
 }
 
@@ -772,8 +640,8 @@ export class ResourceFullDTO {
      * Creates a new ResourceFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceFullDTO {
-        const $$createField8_0 = $$createType3;
-        const $$createField9_0 = $$createType3;
+        const $$createField8_0 = $$createType5;
+        const $$createField9_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workStore" in $$parsedSource) {
             $$parsedSource["workStore"] = $$createField8_0($$parsedSource["workStore"]);
@@ -831,7 +699,7 @@ export class SearchConditionQuery {
      * Creates a new SearchConditionQuery instance from a string or object.
      */
     static createFrom($$source: any = {}): SearchConditionQuery {
-        const $$createField0_0 = $$createType4;
+        const $$createField0_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("types" in $$parsedSource) {
             $$parsedSource["types"] = $$createField0_0($$parsedSource["types"]);
@@ -888,7 +756,7 @@ export class SelectItem {
      * Creates a new SelectItem instance from a string or object.
      */
     static createFrom($$source: any = {}): SelectItem {
-        const $$createField3_0 = $$createType5;
+        const $$createField3_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("subLabels" in $$parsedSource) {
             $$parsedSource["subLabels"] = $$createField3_0($$parsedSource["subLabels"]);
@@ -983,7 +851,7 @@ export class SiteAuthorFullDTO {
      * Creates a new SiteAuthorFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorFullDTO {
-        const $$createField0_0 = $$createType7;
+        const $$createField0_0 = $$createType8;
         const $$createField1_0 = $$createType9;
         const $$createField2_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -1022,7 +890,7 @@ export class SiteAuthorLocalRelateDTO {
      * Creates a new SiteAuthorLocalRelateDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorLocalRelateDTO {
-        const $$createField0_0 = $$createType7;
+        const $$createField0_0 = $$createType8;
         const $$createField1_0 = $$createType9;
         const $$createField2_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -1796,14 +1664,14 @@ export class WorkSetWithWorksResultDTO {
 // Private type creation functions
 const $$createType0 = LocalTagDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = PersistentStoreDTO.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($Create.Any);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = SiteAuthorDTO.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = LocalAuthorDTO.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
+const $$createType2 = LocalAuthorDTO.createFrom;
+const $$createType3 = SiteAuthorDTO.createFrom;
+const $$createType4 = PersistentStoreDTO.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = $Create.Nullable($$createType3);
+const $$createType9 = $Create.Nullable($$createType2);
 const $$createType10 = SiteDTO.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = SiteTagDTO.createFrom;

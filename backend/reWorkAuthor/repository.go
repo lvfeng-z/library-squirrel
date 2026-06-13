@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -86,18 +87,23 @@ func (r *ReWorkAuthorRepository) DeleteBySiteAuthorId(ctx context.Context, siteA
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
 func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	query := `
-		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank
+		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time,
+		       t2.role_name, t2.sort_order
 		FROM local_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.local_author_id
 		WHERE t2.work_id = ?
 	`
 
-	var results []*sdkdto.RankedLocalAuthor
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	var rows []*dto.LocalAuthorRankScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedLocalAuthor, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedLocalAuthor())
+	}
 	return results, nil
 }
 
@@ -105,19 +111,23 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
-		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
-		       t1.create_time, t1.update_time, t2.author_rank
+		       t1.site_author_name_before, t1.introduce, t1.homepage, t1.local_author_id, t1.last_use,
+		       t1.create_time, t1.update_time, t2.role_name, t2.sort_order
 		FROM site_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.site_author_id
 		WHERE t2.work_id = ?
 	`
 
-	var results []*sdkdto.RankedSiteAuthor
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	var rows []*dto.SiteAuthorRankScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedSiteAuthor, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedSiteAuthor())
+	}
 	return results, nil
 }
 
@@ -135,28 +145,29 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 	}
 
 	query := fmt.Sprintf(`
-		SELECT t2.work_id, t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank
+		SELECT t2.work_id, t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time,
+		       t2.role_name, t2.sort_order
 		FROM local_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.local_author_id
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*struct {
-		WorkID int64 `gorm:"column:work_id"`
-		sdkdto.RankedLocalAuthor
+	var rows []*struct {
+		WorkId int64 `gorm:"column:work_id"`
+		dto.LocalAuthorRankScanRow
 	}
 
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
 	resultMap := make(map[int64][]*sdkdto.RankedLocalAuthor)
-	for _, res := range results {
-		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*sdkdto.RankedLocalAuthor, 0)
+	for _, row := range rows {
+		if _, ok := resultMap[row.WorkId]; !ok {
+			resultMap[row.WorkId] = make([]*sdkdto.RankedLocalAuthor, 0)
 		}
-		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedLocalAuthor))
+		resultMap[row.WorkId] = append(resultMap[row.WorkId], row.ToRankedLocalAuthor())
 	}
 
 	return resultMap, nil
@@ -177,29 +188,29 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 
 	query := fmt.Sprintf(`
 		SELECT t2.work_id, t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
-		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
-		       t1.create_time, t1.update_time, t2.author_rank
+		       t1.site_author_name_before, t1.introduce, t1.homepage, t1.local_author_id, t1.last_use,
+		       t1.create_time, t1.update_time, t2.role_name, t2.sort_order
 		FROM site_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.site_author_id
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*struct {
-		WorkID int64 `gorm:"column:work_id"`
-		sdkdto.RankedSiteAuthor
+	var rows []*struct {
+		WorkId int64 `gorm:"column:work_id"`
+		dto.SiteAuthorRankScanRow
 	}
 
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
 	resultMap := make(map[int64][]*sdkdto.RankedSiteAuthor)
-	for _, res := range results {
-		if _, ok := resultMap[res.WorkID]; !ok {
-			resultMap[res.WorkID] = make([]*sdkdto.RankedSiteAuthor, 0)
+	for _, row := range rows {
+		if _, ok := resultMap[row.WorkId]; !ok {
+			resultMap[row.WorkId] = make([]*sdkdto.RankedSiteAuthor, 0)
 		}
-		resultMap[res.WorkID] = append(resultMap[res.WorkID], new(res.RankedSiteAuthor))
+		resultMap[row.WorkId] = append(resultMap[row.WorkId], row.ToRankedSiteAuthor())
 	}
 
 	return resultMap, nil
@@ -219,18 +230,23 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 	}
 
 	query := fmt.Sprintf(`
-		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time, t2.author_rank, t2.work_id
+		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time,
+		       t2.role_name, t2.sort_order, t2.work_id
 		FROM local_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.local_author_id
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*sdkdto.RankedLocalAuthorWithWorkId
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	var rows []*dto.LocalAuthorRankWithWorkIdScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedLocalAuthorWithWorkId, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedLocalAuthorWithWorkId())
+	}
 	return results, nil
 }
 
@@ -249,18 +265,22 @@ func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx con
 
 	query := fmt.Sprintf(`
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
-		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
-		       t1.create_time, t1.update_time, t2.author_rank, t2.work_id
+		       t1.site_author_name_before, t1.introduce, t1.homepage, t1.local_author_id, t1.last_use,
+		       t1.create_time, t1.update_time, t2.role_name, t2.sort_order, t2.work_id
 		FROM site_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.site_author_id
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*sdkdto.RankedSiteAuthorWithWorkId
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	var rows []*dto.SiteAuthorRankWithWorkIdScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedSiteAuthorWithWorkId, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedSiteAuthorWithWorkId())
+	}
 	return results, nil
 }

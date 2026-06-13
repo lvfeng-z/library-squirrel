@@ -6,7 +6,6 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
@@ -133,25 +132,6 @@ func (h *Handler) ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64
 	data := make([]*sdkdto.SiteAuthorDTO, 0, len(result))
 	for _, author := range result {
 		data = append(data, dto.NewSiteAuthorDTO(author))
-	}
-	return model.Success(data)
-}
-
-// ListRankedSiteAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的站点作者
-func (h *Handler) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*sdkdto.RankedSiteAuthorWithWorkIdDTO] {
-	result, err := h.svc.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
-	if err != nil {
-		return model.HandleError[[]*sdkdto.RankedSiteAuthorWithWorkIdDTO](err)
-	}
-	// 转换为 DTO
-	data := make([]*sdkdto.RankedSiteAuthorWithWorkIdDTO, 0, len(result))
-	for _, author := range result {
-		data = append(data, &sdkdto.RankedSiteAuthorWithWorkIdDTO{
-			WorkId:       author.WorkId,
-			SiteAuthorID: util.StringPtrIfValid(author.SiteAuthorID),
-			AuthorName:   util.StringPtrIfValid(author.AuthorName),
-			Rank:         author.AuthorRank,
-		})
 	}
 	return model.Success(data)
 }

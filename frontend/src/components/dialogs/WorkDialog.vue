@@ -130,15 +130,16 @@ function getResourceFilePath(info: WorkFullDTO): string {
   return info.resource?.workStore?.filePath ?? ''
 }
 
+// TODO 作者转Ranked只是临时做法，应该从源头解决类型不匹配的问题
 // ===== 辅助：将 BindingsLocalAuthorDTO 转换为 RankedLocalAuthor（适配 AuthorInfo 组件）=====
 function toRankedLocalAuthor(dto: LocalAuthorDTO | null): RankedLocalAuthor | null {
   if (!dto) return null
   const author = new RankedLocalAuthor()
-  author.id = dto.id
-  author.authorName = dto.authorName ?? ''
-  author.introduce = dto.introduce ?? ''
-  author.lastUse = dto.lastUse ?? -1
-  author.authorRank = -1
+  author.author.id = dto.id
+  author.author.authorName = dto.authorName ?? ''
+  author.author.introduce = dto.introduce ?? ''
+  author.author.lastUse = dto.lastUse ?? -1
+  author.sortOrder = -1
   return author
 }
 
@@ -146,11 +147,11 @@ function toRankedLocalAuthor(dto: LocalAuthorDTO | null): RankedLocalAuthor | nu
 function toRankedSiteAuthor(dto: SiteAuthorFullDTO | null): RankedSiteAuthor | null {
   if (!dto || !dto.siteAuthor) return null
   const author = new RankedSiteAuthor()
-  author.id = dto.siteAuthor.id
-  author.authorName = dto.siteAuthor.authorName ?? ''
-  author.introduce = dto.siteAuthor.introduce ?? ''
-  author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
-  author.authorRank = -1
+  author.author.id = dto.siteAuthor.id
+  author.author.authorName = dto.siteAuthor.authorName ?? ''
+  author.author.introduce = dto.siteAuthor.introduce ?? ''
+  author.author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
+  author.sortOrder = -1
   return author
 }
 

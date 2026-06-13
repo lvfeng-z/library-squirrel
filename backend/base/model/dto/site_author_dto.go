@@ -27,14 +27,6 @@ func NewSiteAuthorDTO(author *entity2.SiteAuthor) *sdkdto.SiteAuthorDTO {
 	}
 }
 
-// RankedSiteAuthorWithWorkIdDTO 带作品ID的排名站点作者DTO
-type RankedSiteAuthorWithWorkIdDTO struct {
-	WorkId       int64   `json:"workId"`
-	SiteAuthorID *string `json:"siteAuthorId"`
-	AuthorName   *string `json:"authorName"`
-	Rank         int     `json:"rank"`
-}
-
 // SiteAuthorFullDTO 站点作者完整DTO（包含绑定的本地作者和来源站点信息）
 type SiteAuthorFullDTO struct {
 	SiteAuthor *sdkdto.SiteAuthorDTO `json:"siteAuthor,omitempty"`
@@ -154,17 +146,4 @@ func ToSiteAuthorEntity(dto *sdkdto.SiteAuthorDTO) *entity2.SiteAuthor {
 	}
 
 	return entity
-}
-
-// RankedSiteAuthor 带排名的站点作者
-type RankedSiteAuthor struct {
-	Author     sdkdto.SiteAuthorDTO `json:"author"`
-	AuthorRank int                  `json:"authorRank"`
-}
-
-// RankedSiteAuthorWithWorkId 带作品ID的站点作者
-type RankedSiteAuthorWithWorkId struct {
-	Author     sdkdto.SiteAuthorDTO `json:"author"`
-	AuthorRank int                  `json:"authorRank"`
-	WorkId     int64                `json:"workId"`
 }

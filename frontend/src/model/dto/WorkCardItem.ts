@@ -99,7 +99,7 @@ function toRankedLocalAuthors(dtoList: (LocalAuthorDTO | null)[] | undefined | n
     author.authorName = dto.authorName ?? ''
     author.introduce = dto.introduce ?? ''
     author.lastUse = dto.lastUse ?? -1
-    author.authorRank = -1
+    author.sortOrder = -1
     return author
   })
 }
@@ -114,7 +114,7 @@ function toRankedSiteAuthors(dtoList: (SiteAuthorFullDTO | null)[] | undefined |
       author.introduce = dto.siteAuthor.introduce ?? ''
       author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
     }
-    author.authorRank = -1
+    author.sortOrder = -1
     return author
   })
 }

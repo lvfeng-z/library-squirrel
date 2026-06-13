@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
@@ -191,18 +192,22 @@ func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) (
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
-		       t1.create_time, t1.update_time, t2.author_rank
+		       t1.create_time, t1.update_time, t2.role_name, t2.sort_order
 		FROM site_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.site_author_id
 		WHERE t2.work_id = ?
 	`
 
-	var results []*sdkdto.RankedSiteAuthor
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&results).Error
+	var rows []*dto.SiteAuthorRankScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, workId).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedSiteAuthor, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedSiteAuthor())
+	}
 	return results, nil
 }
 
@@ -235,18 +240,22 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 	query := fmt.Sprintf(`
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
-		       t1.create_time, t1.update_time, t2.author_rank, t2.work_id
+		       t1.create_time, t1.update_time, t2.role_name, t2.sort_order, t2.work_id
 		FROM site_author t1
 		INNER JOIN re_work_author t2 ON t1.id = t2.site_author_id
 		WHERE t2.work_id IN (%s)
 	`, strings.Join(placeholders, ","))
 
-	var results []*sdkdto.RankedSiteAuthorWithWorkId
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&results).Error
+	var rows []*dto.SiteAuthorRankWithWorkIdScanRow
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
+	results := make([]*sdkdto.RankedSiteAuthorWithWorkId, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, row.ToRankedSiteAuthorWithWorkId())
+	}
 	return results, nil
 }
 

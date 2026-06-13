@@ -535,9 +535,9 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 	localAuthorIdSet := make(map[int64]bool)
 	for _, authors := range siteAuthorMap {
 		for _, ra := range authors {
-			if ra.LocalAuthorID > 0 && !localAuthorIdSet[ra.LocalAuthorID] {
-				localAuthorIdSet[ra.LocalAuthorID] = true
-				allLocalAuthorIds = append(allLocalAuthorIds, ra.LocalAuthorID)
+			if *ra.Author.LocalAuthorID > 0 && !localAuthorIdSet[*ra.Author.LocalAuthorID] {
+				localAuthorIdSet[*ra.Author.LocalAuthorID] = true
+				allLocalAuthorIds = append(allLocalAuthorIds, *ra.Author.LocalAuthorID)
 			}
 		}
 	}
@@ -579,49 +579,29 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 		if authors, ok := localAuthorMap[id]; ok && len(authors) > 0 {
 			fullDTO.LocalAuthors = make([]*sdkdto.LocalAuthorDTO, 0, len(authors))
 			for _, a := range authors {
-				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &sdkdto.LocalAuthorDTO{
-					ID:         a.ID,
-					AuthorName: util.StringPtrIfValid(a.AuthorName),
-					Introduce:  util.StringPtrIfValid(a.Introduce),
-					LastUse:    util.Int64PtrIfValid(a.LastUse),
-					CreateTime: a.CreateTime,
-					UpdateTime: a.UpdateTime,
-				})
+				fullDTO.LocalAuthors = append(fullDTO.LocalAuthors, &a.Author)
 			}
 		}
 
 		// 站点作者
 		if authors, ok := siteAuthorMap[id]; ok && len(authors) > 0 {
-			fullDTO.SiteAuthors = make([]*sdkdto.SiteAuthorFullDTO, 0, len(authors))
-			for _, ra := range authors {
-				saDTO := &sdkdto.SiteAuthorFullDTO{
-					SiteAuthor: &sdkdto.SiteAuthorDTO{
-						ID:                   ra.ID,
-						CreateTime:           ra.CreateTime,
-						UpdateTime:           ra.UpdateTime,
-						SiteID:               util.Int64PtrIfValid(ra.SiteID),
-						SiteAuthorID:         util.StringPtrIfValid(ra.SiteAuthorID),
-						AuthorName:           util.StringPtrIfValid(ra.AuthorName),
-						FixedAuthorName:      util.StringPtrIfValid(ra.FixedAuthorName),
-						SiteAuthorNameBefore: util.StringPtrIfValid(ra.SiteAuthorNameBefore),
-						Introduce:            util.StringPtrIfValid(ra.Introduce),
-						LocalAuthorID:        util.Int64PtrIfValid(ra.LocalAuthorID),
-						LastUse:              util.Int64PtrIfValid(ra.LastUse),
-					},
-				}
-				if ra.SiteID > 0 {
-					if site, ok := siteEntityMap[ra.SiteID]; ok {
-						saDTO.Site = dto2.NewSiteDTO(site)
+				for _, ra := range authors {
+					saDTO := &sdkdto.SiteAuthorFullDTO{
+						SiteAuthor: &ra.Author,
 					}
-				}
-				if ra.LocalAuthorID > 0 {
-					if la, ok := localAuthorEntityMap[ra.LocalAuthorID]; ok {
-						saDTO.LocalAuthor = dto2.NewLocalAuthorDTO(la)
+					if ra.Author.SiteID != nil && *ra.Author.SiteID > 0 {
+						if site, ok := siteEntityMap[*ra.Author.SiteID]; ok {
+							saDTO.Site = dto2.NewSiteDTO(site)
+						}
 					}
+					if ra.Author.LocalAuthorID != nil && *ra.Author.LocalAuthorID > 0 {
+						if la, ok := localAuthorEntityMap[*ra.Author.LocalAuthorID]; ok {
+							saDTO.LocalAuthor = dto2.NewLocalAuthorDTO(la)
+						}
+					}
+					fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, saDTO)
 				}
-				fullDTO.SiteAuthors = append(fullDTO.SiteAuthors, saDTO)
-			}
-		}
+}
 
 		// 站点
 		if work.SiteID.Valid && work.SiteID.Int64 > 0 {
@@ -699,25 +679,8 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 			if _, exists := authorMap[localAuthorId]; !exists {
 				localAuthor, err := s.localAuthorReader.GetById(ctx, localAuthorId)
 				if err == nil && localAuthor != nil {
-					authorName := ""
-					if localAuthor.AuthorName.Valid {
-						authorName = localAuthor.AuthorName.String
-					}
-					introduce := ""
-					if localAuthor.Introduce.Valid {
-						introduce = localAuthor.Introduce.String
-					}
-					lastUse := int64(0)
-					if localAuthor.LastUse.Valid {
-						lastUse = localAuthor.LastUse.Int64
-					}
 					authorMap[localAuthorId] = &sdkdto.RankedLocalAuthor{
-						ID:         localAuthor.ID,
-						AuthorName: authorName,
-						Introduce:  introduce,
-						LastUse:    lastUse,
-						CreateTime: localAuthor.CreateTime,
-						UpdateTime: localAuthor.UpdateTime,
+						Author: *dto2.NewLocalAuthorDTO(localAuthor),
 					}
 				}
 			}
@@ -1284,13 +1247,13 @@ func taskWorkSetDTOToEntity(d *sdkdto.TaskWorkSetDTO, siteId int64) *entity2.Wor
 
 func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWorkAuthor {
 	links := make([]*entity2.ReWorkAuthor, 0, len(siteAuthorIds))
-	for _, authorId := range siteAuthorIds {
+	for i, authorId := range siteAuthorIds {
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:   &model.BaseEntity{},
 			AuthorType:   sql.NullInt64{Int64: AuthorTypeSite, Valid: true},
 			WorkID:       sql.NullInt64{Int64: workId, Valid: true},
 			SiteAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
-			AuthorRank:   sql.NullInt64{Int64: 0, Valid: true},
+			SortOrder:    sql.NullInt64{Int64: int64(i), Valid: true},
 		})
 	}
 	return links
@@ -1311,13 +1274,13 @@ func buildSiteTagLinks(workId int64, siteTagIds []int64) []*entity2.ReWorkTag {
 
 func buildLocalAuthorLinks(workId int64, localAuthorIds []int64) []*entity2.ReWorkAuthor {
 	links := make([]*entity2.ReWorkAuthor, 0, len(localAuthorIds))
-	for _, authorId := range localAuthorIds {
+	for i, authorId := range localAuthorIds {
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:    &model.BaseEntity{},
 			AuthorType:    sql.NullInt64{Int64: AuthorTypeLocal, Valid: true},
 			WorkID:        sql.NullInt64{Int64: workId, Valid: true},
 			LocalAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
-			AuthorRank:    sql.NullInt64{Int64: 0, Valid: true},
+			SortOrder:     sql.NullInt64{Int64: int64(i), Valid: true},
 		})
 	}
 	return links

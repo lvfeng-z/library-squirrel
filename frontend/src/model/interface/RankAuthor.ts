@@ -1,9 +1,12 @@
 import BaseAuthor from './BaseAuthor.ts'
-import { AuthorRank } from '../constant/AuthorRank.ts'
 
 export default interface RankAuthor extends BaseAuthor {
   /**
-   * 作者级别
+   * 作者角色（自由文本，如：画师、作曲、剪辑等）
    */
-  authorRank: AuthorRank | undefined | null
+  roleName?: string | null
+  /**
+   * 排序权重
+   */
+  sortOrder?: number | null
 }

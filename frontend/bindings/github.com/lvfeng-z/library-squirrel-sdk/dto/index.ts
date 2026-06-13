@@ -13,7 +13,6 @@ export {
     RankedLocalAuthorWithWorkId,
     RankedSiteAuthor,
     RankedSiteAuthorWithWorkId,
-    RankedSiteAuthorWithWorkIdDTO,
     ResourceDTO,
     ResourceFullDTO,
     SearchCondition,
