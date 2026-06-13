@@ -23,8 +23,9 @@
 - 重构 `DeleteWorkAndSurroundingData` 方法，使用 `s.transactor.ExecInTransaction` 包裹以下操作：
   1. 删除 reWorkTag 关联
   2. 删除 reWorkWorkSet 关联
-  3. 删除 Resource
-  4. 删除 Work
+  3. 删除 reWorkAuthor 关联（当前遗漏，需补充）
+  4. 删除 Resource
+  5. 删除 Work
 - 事务成功后，执行 PersistentStore 的磁盘文件删除（不在事务内）
 - 事务回滚时，文件保留不删除
 
@@ -75,82 +76,150 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 }
 ```
 
-**注意**：当前 `DeleteWorkAndSurroundingData` 未删除 `reWorkAuthor` 关联，这是一个遗漏，需一并补充。
-
 ---
 
-## P0-2: Resource Save + PendingResourceID 更新添加事务
+## P0-2: StoreStream(DB 记录) + Resource Save + PendingResourceID 更新添加事务
 
 ### 问题
 
-`taskManager/model.go` 中步骤 5（保存 Resource）和步骤 6（更新 PendingResourceID）是两个独立的 DB 操作。如果 Resource 保存成功但 PendingResourceID 更新失败，会产生孤儿 Resource。
+`taskManager/model.go` 中步骤 4-6 逐步执行，无事务保护：
+- 步骤 4：StoreStream 创建文件 + PersistentStore DB 记录
+- 步骤 5：保存 Resource（关联 workId → storeId）
+- 步骤 6：更新 Task.pending_resource_id
+
+如果步骤 5 或 6 失败，会产生孤儿 DB 记录（PersistentStore、Resource）。
 
 ### 方案
 
-引入一个新的接口 `TransactionAwareStoreSetup`，将 Resource 保存和 PendingResourceID 更新合并到同一个事务中。StoreStream（涉及文件 I/O）不纳入事务。
+将 **StoreStream 的 DB 记录创建 + Resource Save + PendingResourceID 更新** 合并到一个事务中。文件操作保持在事务外，事务失败时显式清理文件。
+
+#### 关键约束
+
+`storeWriter.Abort()` 内部通过 DB 查询获取文件路径再删除文件（`storeWriter.Abort()` → `repo.GetById()` → `os.Remove()`）。如果事务回滚，DB 记录不存在，Abort() 会静默跳过文件删除，导致孤儿文件。
+
+因此需要：
+1. 文件操作在事务外（创建文件）
+2. DB 操作在事务内（PersistentStore 记录 + Resource + PendingResourceID）
+3. 事务失败时通过 `writer.Close()` 关闭文件句柄 + 显式删除文件（不依赖 Abort）
 
 #### 修改文件
 
-**1. `backend/taskManager/model.go`**
+**1. `backend/persistentStore/service.go`**
 
-- 新增接口定义：
+新增 `CleanupFile` 公共方法，供事务失败时显式清理磁盘文件：
 
 ```go
-// TransactionAwareTransactor 事务执行器接口（用于步骤 5-6 的事务包裹）
-type TransactionAwareTransactor interface {
+// CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
+func (s *Service) CleanupFile(relPath string) {
+    absPath := filepath.Join(s.getWorkDir(), relPath)
+    if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
+        logger.Log.Warn("清理文件失败", zap.String("path", absPath), zap.Error(err))
+    }
+}
+```
+
+**2. `backend/taskManager/model.go`**
+
+新增接口和字段：
+
+```go
+// Transactor 事务执行器接口
+type Transactor interface {
     ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
-```
 
-- 在 `ManagedTask` 结构体中新增字段 `transactor TransactionAwareTransactor`
-- 在 `NewManagedTask` 构造函数中接收该依赖
-- 修改 `run()` 方法步骤 5-6 的代码，用事务包裹：
-
-```go
-// 步骤 4: StoreStream（不纳入事务）
-storeId, writer, err := m.storeStreamer.StoreStream(m.ctx, relativePath, fileName)
-// ...
-
-// 步骤 5-6: 在事务内保存 Resource + 更新 PendingResourceID
-var resourceId int64
-err = m.transactor.ExecInTransaction(m.ctx, func(txCtx context.Context) error {
-    // 保存 Resource（替换场景更新 / 新建场景创建）
-    var saveErr error
-    resourceId, saveErr = m.saveResourceInTx(txCtx, storeId, ...)
-    if saveErr != nil {
-        return saveErr
-    }
-    // 更新 PendingResourceID
-    m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
-    return m.pendingResourceUpdater.UpdatePendingResourceID(txCtx, m.taskId, m.task.PendingResourceID)
-})
-if err != nil {
-    writer.Abort()
-    // 错误处理...
-}
-```
-
-- 新增 `saveResourceInTx` 私有方法，将当前步骤 5 中的替换/新建逻辑抽取出来，接收 `txCtx` 参数
-- 新增接口 `PendingResourceUpdater`：
-
-```go
 // PendingResourceUpdater 任务 pending_resource_id 更新接口
 type PendingResourceUpdater interface {
     UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 }
+
+// StoreFileCleaner 事务失败时清理磁盘文件
+type StoreFileCleaner interface {
+    CleanupFile(relPath string)
+}
 ```
 
-**2. `backend/taskManager/manager.go`**（TaskManager 构造 ManagedTask 的地方）
+- `ManagedTask` 新增字段：`transactor Transactor`、`pendingResourceUpdater PendingResourceUpdater`
+- `StoreStreamer` 接口新增方法：无需修改（StoreStream 本身已支持事务 context，因为底层 repository 通过 `DBFromContext` 自动获取事务 DB）
+- `NewManagedTask` 构造函数新增参数
+- 修改 `run()` 方法，将步骤 4-6 重构为事务内操作：
 
-- 在 `NewManagedTask` 调用时传入 `transactor` 实例（复用 `work.Service` 使用的同一个 `dbTransactorAdapter`）
+```go
+// 步骤 4: 解析文件保存路径
+_, relativePath, fileName := m.resolveLocalPath(startResp)
 
-**3. `app.go`**
+// 步骤 4-6: 事务 2（DB 操作原子化，文件操作在事务外）
+var writer persistentStore.StoreWriter
+var storeId int64
+var resourceId int64
 
-- 将 `dbTransactorAdapter` 实例也传递给 `TaskManager` 的构建链
+err = m.transactor.ExecInTransaction(m.ctx, func(txCtx context.Context) error {
+    // 4. StoreStream：创建文件（事务外行为） + 创建/更新 PersistentStore DB 记录（事务内）
+    var txErr error
+    storeId, writer, txErr = m.storeStreamer.StoreStream(txCtx, relativePath, fileName)
+    if txErr != nil {
+        return txErr
+    }
 
-#### 替换场景的 ResourceUpdater
+    // 5. 保存/更新 Resource
+    resourceId, txErr = m.saveResource(txCtx, workId, storeId, startResp)
+    if txErr != nil {
+        return txErr
+    }
 
-当前替换场景使用 `m.resourceUpdater.Update(ctx, existingResource)` 更新已有 Resource。此操作也应接收 `txCtx` 以参与事务。需要确认 `ResourceUpdater` 的底层 repository 是否支持 context 事务传递（通过 BaseRepository 的 `getDb(ctx)` 自动支持）。
+    // 6. 更新 pending_resource_id
+    m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+    return m.pendingResourceUpdater.UpdatePendingResourceID(txCtx, m.taskId, m.task.PendingResourceID)
+})
+if err != nil {
+    // 事务回滚：DB 记录已全部回滚，需显式清理文件
+    if writer != nil {
+        writer.Close()  // 仅关闭文件句柄，不使用 Abort()（DB 记录已不存在）
+    }
+    m.storeFileCleaner.CleanupFile(relativePath)  // 删除磁盘文件
+    if m.abortedByPause() {
+        return runResultPaused
+    }
+    m.setFailed(fmt.Sprintf("创建资源失败: %v", err))
+    return runResultDone
+}
+```
+
+- 新增 `saveResource` 私有方法：将当前步骤 5 中的替换/新建 Resource 逻辑抽取为独立方法，接收 `txCtx` 参数。底层 `ResourceSaver`/`ResourceUpdater` 通过 BaseRepository 的 `getDb(ctx)` 自动参与事务。
+- 新增 `storeFileCleaner StoreFileCleaner` 字段，指向 `persistentStore.Service` 实例
+
+**3. `backend/taskManager/manager.go`**
+
+- 在构建 `ManagedTask` 时传入 `transactor`、`pendingResourceUpdater`、`storeFileCleaner` 参数
+
+**4. `app.go`**
+
+- 将 `dbTransactorAdapter` 传递给 `TaskManager` 构建链
+- 将 `task.Repository` 的 `UpdatePendingResourceID` 方法包装为 `PendingResourceUpdater` 接口
+- 将 `persistentStore.Service` 作为 `StoreFileCleaner` 传入
+
+#### StoreStream 事务兼容性分析
+
+`StoreStream` 底层的 repository 方法：
+- `s.repo.GetByFilePath(ctx, relPath)` — 通过 BaseRepository，自动参与事务 ✅
+- `s.repo.Update(ctx, existing)` — 通过 BaseRepository，自动参与事务 ✅
+- `s.repo.Save(ctx, store)` — 通过 BaseRepository，自动参与事务 ✅
+
+传入 `txCtx` 后，所有 DB 操作自动在事务内执行，无需修改 `StoreStream` 本身的代码。
+
+#### 事务失败时的文件清理保障
+
+| 场景 | DB 状态 | 文件状态 | 清理机制 |
+|------|---------|---------|---------|
+| StoreStream 文件创建失败 | 无记录 | 无文件 | 无需清理 |
+| StoreStream DB 失败 | 事务回滚 | 文件存在，StoreStream 内部已清理 | StoreStream 自身 `file.Close() + os.Remove()` |
+| Resource Save 失败 | 事务回滚 | 文件存在 | `writer.Close()` + `CleanupFile()` |
+| PendingResourceID 失败 | 事务回滚 | 文件存在 | `writer.Close()` + `CleanupFile()` |
+| 进程崩溃 | 取决于时机 | 取决于时机 | 孤儿文件可通过定期扫描清理（DB 层面无孤儿记录） |
+
+#### `resumeFromPersistedState` 路径分析
+
+`resumeFromPersistedState` 中调用 `StoreStream`（不可续传场景）后直接进入 `downloadLoop`，不涉及 Resource 创建或 PendingResourceID 更新（这些在首次 `run()` 中已完成）。因此无需事务保护。
 
 ---
 
@@ -226,7 +295,7 @@ func (r *TaskRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 ## 实施顺序
 
 1. **P0-1**: `DeleteWorkAndSurroundingData` 事务化
-2. **P0-2**: Resource Save + PendingResourceID 事务化
+2. **P0-2**: StoreStream(DB 记录) + Resource Save + PendingResourceID 事务化
 3. **P1**: 任务创建事务化
 4. 每步完成后运行 `go test ./...` 确认无回归
 5. 手动验证：创建任务 → 下载 → 删除作品的完整流程

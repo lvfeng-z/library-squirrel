@@ -802,9 +802,8 @@ func (app *App) initAdvancedServices() error {
 	// task 服务（依赖 TaskHandlerRegistry 作为 TaskHandlerProvider）
 	app.TaskService = task.NewService(
 		app.taskRepo,
-		app.WorkService,
-		app.ResourceService,
-		app.TaskHandlerRegistry, // 直接满足 TaskHandlerProvider 接口
+		&dbTransactorAdapter{db: app.db}, // Transactor
+		app.TaskHandlerRegistry,          // 直接满足 TaskHandlerProvider 接口
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
 	)
@@ -832,22 +831,28 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	app.TaskManagerService = taskManager.NewManager(
-		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
-		app.SettingsService,
-		app.SettingsService,
-		app.taskRepo,
-		taskManagerPusher,
-		pluginExecFactory,
-		app.WorkService, // 实现 WorkInfoSaver 接口
-		resourceSaverAdapter,
-		app.WorkService,            // 实现 WorkChecker 接口
-		app.ResourceService,        // 实现 ResourceReader 接口
-		storeBackupOrchestrator,    // 实现 StoreBackupOrchestrator 接口
-		app.ResourceService,        // 实现 ResourceUpdater 接口
-		app.PersistentStoreService, // 实现 StoreStreamer 接口
-		app.PersistentStoreService, // 实现 StoreReader 接口
-		app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
-	)
+			app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
+			app.taskRepo,
+			taskManagerPusher,
+			pluginExecFactory,
+			&taskManager.TaskDeps{
+				WorkInfoSaver:           app.WorkService,            // 实现 WorkInfoSaver 接口
+				ResourceSaver:           resourceSaverAdapter,
+				WorkDirProvider:         app.SettingsService,
+				FileNameFormatProvider:  app.SettingsService,
+				WorkChecker:             app.WorkService,            // 实现 WorkChecker 接口
+				ResourceReader:          app.ResourceService,        // 实现 ResourceReader 接口
+				StoreBackupOrchestrator: storeBackupOrchestrator,
+				ResourceUpdater:         resourceSaverAdapter,        // 实现 ResourceUpdater 接口
+				Pusher:                  taskManagerPusher,
+				StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
+				StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
+				ThumbnailStoreWriter:    app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
+				Transactor:              &dbTransactorAdapter{db: app.db},
+				PendingResourceUpdater:  app.taskRepo,                // 实现 PendingResourceUpdater 接口
+				StoreFileCleaner:        app.PersistentStoreService,  // 实现 StoreFileCleaner 接口
+			},
+		)
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)

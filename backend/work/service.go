@@ -372,39 +372,50 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // DeleteWorkAndSurroundingData 删除作品及其周围数据（级联删除）
+// DB 操作在事务内原子执行，磁盘文件删除在事务成功后尽力而为
 func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) error {
-	// 1. 删除作品关联的标签
-	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, id); err != nil {
+	// 事务前：收集需要删除的 Store ID（文件删除必须在事务后）
+	var storeIds []int64
+	resources, err := s.resourceDeleter.ListByWorkId(ctx, id)
+	if err != nil {
 		return err
 	}
-
-	// 2. 删除作品关联的作品集关系
-	if err := s.reWorkWorkSetWriter.DeleteByWorkId(ctx, id); err != nil {
-		return err
-	}
-
-	// 3. 删除关联的 PersistentStore 记录及磁盘文件
-	if s.storeDeleter != nil {
-		resources, err := s.resourceDeleter.ListByWorkId(ctx, id)
-		if err == nil {
-			for _, res := range resources {
-				if res.WorkStoreID.Valid {
-					_, _ = s.storeDeleter.Delete(ctx, res.WorkStoreID.Int64, false)
-				}
-				if res.ThumbnailStoreID.Valid {
-					_, _ = s.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, false)
-				}
-			}
+	for _, res := range resources {
+		if res.WorkStoreID.Valid {
+			storeIds = append(storeIds, res.WorkStoreID.Int64)
+		}
+		if res.ThumbnailStoreID.Valid {
+			storeIds = append(storeIds, res.ThumbnailStoreID.Int64)
 		}
 	}
 
-	// 4. 删除作品关联的资源
-	if err := s.resourceDeleter.DeleteByWorkId(ctx, id); err != nil {
+	// 事务内：删除所有 DB 关联 + Resource + Work
+	err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.reWorkTagWriter.DeleteByWorkId(txCtx, id); err != nil {
+			return err
+		}
+		if err := s.reWorkWorkSetWriter.DeleteByWorkId(txCtx, id); err != nil {
+			return err
+		}
+		if err := s.reWorkAuthorWriter.DeleteByWorkId(txCtx, id); err != nil {
+			return err
+		}
+		if err := s.resourceDeleter.DeleteByWorkId(txCtx, id); err != nil {
+			return err
+		}
+		return s.repo.Delete(txCtx, id)
+	})
+	if err != nil {
 		return err
 	}
 
-	// 5. 删除作品本身
-	return s.repo.Delete(ctx, id)
+	// 事务后：删除磁盘文件（尽力而为，失败不影响业务）
+	if s.storeDeleter != nil {
+		for _, storeId := range storeIds {
+			s.storeDeleter.Delete(ctx, storeId, false)
+		}
+	}
+	return nil
 }
 
 // Page 分页查询

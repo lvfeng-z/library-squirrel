@@ -178,6 +178,14 @@ func (s *Service) getWorkDir() string {
 	return s.workDirGetter()
 }
 
+// CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
+func (s *Service) CleanupFile(relPath string) {
+	absPath := filepath.Join(s.getWorkDir(), relPath)
+	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
+		logger.Log.Warn("清理文件失败", zap.String("path", absPath), zap.Error(err))
+	}
+}
+
 // StoreStream 创建 DB 记录（未完成）+ 目录 + 文件，返回 storeId 和 StoreWriter
 // relPath: 相对于 {workDir} 的路径
 // fileName: 原始文件名

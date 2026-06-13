@@ -30,6 +30,11 @@ func (r *TaskRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 从 context 获取事务 DB，无事务时返回默认 DB
+func (r *TaskRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // QueryParentPage 分页查询父任务
 func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
@@ -175,7 +180,7 @@ func (r *TaskRepository) SetStatus(ctx context.Context, taskId int64, status Tas
 
 // UpdatePendingResourceID 更新任务的 pending_resource_id
 func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error {
-	result := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("id = ?", taskId).Update("pending_resource_id", resourceID)
+	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&domain.Task{}).Where("id = ?", taskId).Update("pending_resource_id", resourceID)
 	return result.Error
 }
 

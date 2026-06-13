@@ -144,17 +144,7 @@ func buildTaskProgressTree(tasks []*entity.Task) []*sdkdto.TaskProgressTreeDTO {
 	return taskProgressTreeBuilder.BuildTree(dtos, setTaskProgressTreeChildren)
 }
 
-// WorkSaver 作品保存接口
-type WorkSaver interface {
-	// Save 保存作品
-	Save(ctx context.Context, work *entity.Work) error
-}
 
-// ResourceSaver 资源保存接口
-type ResourceSaver interface {
-	// Save 保存资源
-	Save(ctx context.Context, resource *entity.Resource) error
-}
 
 // TaskHandlerProvider 任务处理器提供者接口
 // 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
@@ -163,11 +153,15 @@ type TaskHandlerProvider interface {
 	GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error)
 }
 
+// Transactor 事务执行器接口
+type Transactor interface {
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 // Service 任务服务
 type Service struct {
 	repo              Repository
-	workSaver         WorkSaver
-	resourceSaver     ResourceSaver
+	transactor        Transactor
 	taskHandlerGetter TaskHandlerProvider
 	urlListener       *pluginTaskUrlListener.Service
 	siteSvc           *site.Service
@@ -175,11 +169,10 @@ type Service struct {
 }
 
 // NewService 创建任务服务
-func NewService(repo Repository, workSaver WorkSaver, resourceSaver ResourceSaver, taskHandlerGetter TaskHandlerProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service) *Service {
+func NewService(repo Repository, transactor Transactor, taskHandlerGetter TaskHandlerProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service) *Service {
 	return &Service{
 		repo:              repo,
-		workSaver:         workSaver,
-		resourceSaver:     resourceSaver,
+		transactor:        transactor,
 		taskHandlerGetter: taskHandlerGetter,
 		urlListener:       urlListener,
 		siteSvc:           siteSvc,
@@ -507,37 +500,6 @@ func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*sdkdto.Task
 	return s.ListStatus(ctx, ids)
 }
 
-// SaveWorkInfo 保存作品信息
-func (s *Service) SaveWorkInfo(ctx context.Context, work *entity.Work, resources []*entity.Resource) error {
-	// 保存作品信息
-	if err := s.workSaver.Save(ctx, work); err != nil {
-		return err
-	}
-
-	// 保存资源信息
-	for _, resource := range resources {
-		if err := s.resourceSaver.Save(ctx, resource); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// RefreshParentStatus 根据子任务状态刷新父任务状态
-func (s *Service) RefreshParentStatus(ctx context.Context, taskId int64) error {
-	task, err := s.repo.GetById(ctx, taskId)
-	if err != nil {
-		return err
-	}
-
-	if task.Pid.Valid && task.Pid.Int64 != 0 {
-		_, err := s.repo.RefreshTaskStatus(ctx, task.Pid.Int64)
-		return err
-	}
-
-	return nil
-}
 
 // CreateTaskByURLRequest 根据URL创建任务的请求
 type CreateTaskByURLRequest struct {
@@ -698,42 +660,49 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			continue
 		}
 
-		// 多个子任务：先创建父任务
-		parentTask := &entity.Task{
-			BaseEntity: &model.BaseEntity{},
-		}
-		if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
-			TaskName: parentResp.TaskName,
-			URL:      parentResp.URL,
-			SiteName: parentResp.SiteName,
-		}, 0); err != nil {
-			continue
-		}
-		parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
-		if err := s.repo.CreateTask(ctx, parentTask); err != nil {
-			continue
-		}
-		parentId := parentTask.GetID()
-
-		// 创建子任务
-		for _, childResp := range children {
-			childTask := &entity.Task{
+			// 多个子任务：事务内创建父任务 + 全部子任务
+			parentTask := &entity.Task{
 				BaseEntity: &model.BaseEntity{},
 			}
-			if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
-				TaskName:   childResp.TaskName,
-				SiteWorkID: childResp.SiteWorkID,
-				URL:        childResp.URL,
-				SiteName:   childResp.SiteName,
-				PluginData: childResp.PluginData,
-			}, parentId); err != nil {
+			if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
+				TaskName: parentResp.TaskName,
+				URL:      parentResp.URL,
+				SiteName: parentResp.SiteName,
+			}, 0); err != nil {
 				continue
 			}
-			if err := s.repo.CreateTask(ctx, childTask); err != nil {
+			parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
+
+			err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+				if err := s.repo.CreateTask(txCtx, parentTask); err != nil {
+					return err
+				}
+				parentId := parentTask.GetID()
+
+				for _, childResp := range children {
+					childTask := &entity.Task{
+						BaseEntity: &model.BaseEntity{},
+					}
+					if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
+						TaskName:   childResp.TaskName,
+						SiteWorkID: childResp.SiteWorkID,
+						URL:        childResp.URL,
+						SiteName:   childResp.SiteName,
+						PluginData: childResp.PluginData,
+					}, parentId); err != nil {
+						return err
+					}
+					if err := s.repo.CreateTask(txCtx, childTask); err != nil {
+						return err
+					}
+					childrenCount++
+				}
+				return nil
+			})
+			if err != nil {
+				logger.Log.Errorf("[Task] 创建任务组失败: %v", err)
 				continue
 			}
-			childrenCount++
-		}
 	}
 
 	return childrenCount, nil
