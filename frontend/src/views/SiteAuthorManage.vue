@@ -194,6 +194,7 @@ async function handleCreateButtonClicked() {
 }
 // 处理站点作者数据行按钮点击事件
 async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorLocalRelateDTO>) {
+  const homepage = op.data.siteAuthor?.homepage
   switch (op.code) {
     case 'create':
       await creatSameNameLocalAuthorAndBind(op.data)
@@ -203,7 +204,6 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorL
       saveRowEdit(op.data)
       break
     case 'homepage':
-      const homepage = op.data.siteAuthor?.homepage
       if (isBlank(homepage)) {
         ElMessage.error('无法打开作者主页，作者信息缺少主页信息')
         break

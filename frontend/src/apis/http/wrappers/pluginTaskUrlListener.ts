@@ -36,7 +36,7 @@ export async function listListener(url: string): Promise<ApiResult<PluginWithCon
       name: item.name?.String ?? '',
       version: item.version?.String ?? '',
       author: item.author?.String ?? '',
-      enable: item.uninstalled?.Int64 === 0,
+      enable: item.uninstalled?.Bool,
       createTime: item.createTime,
       updateTime: item.updateTime,
       contributeKey: item.ContributeKey,

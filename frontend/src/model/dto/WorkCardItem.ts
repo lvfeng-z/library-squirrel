@@ -95,10 +95,10 @@ function toRankedLocalAuthors(dtoList: (LocalAuthorDTO | null)[] | undefined | n
   if (!arrayNotEmpty(dtoList)) return undefined
   return dtoList!.filter(notNullish).map(dto => {
     const author = new RankedLocalAuthor()
-    author.id = dto.id
-    author.authorName = dto.authorName ?? ''
-    author.introduce = dto.introduce ?? ''
-    author.lastUse = dto.lastUse ?? -1
+    author.author.id = dto.id
+    author.author.authorName = dto.authorName ?? ''
+    author.author.introduce = dto.introduce ?? ''
+    author.author.lastUse = dto.lastUse ?? -1
     author.sortOrder = -1
     return author
   })
@@ -109,10 +109,10 @@ function toRankedSiteAuthors(dtoList: (SiteAuthorFullDTO | null)[] | undefined |
   return dtoList!.filter(notNullish).map(dto => {
     const author = new RankedSiteAuthor()
     if (dto.siteAuthor) {
-      author.id = dto.siteAuthor.id
-      author.authorName = dto.siteAuthor.authorName ?? ''
-      author.introduce = dto.siteAuthor.introduce ?? ''
-      author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
+      author.author.id = dto.siteAuthor.id
+      author.author.authorName = dto.siteAuthor.authorName ?? ''
+      author.author.introduce = dto.siteAuthor.introduce ?? ''
+      author.author.localAuthorId = dto.siteAuthor.localAuthorId ?? -1
     }
     author.sortOrder = -1
     return author

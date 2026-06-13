@@ -3,11 +3,10 @@ import BaseSubpage from './BaseSubpage.vue'
 import { nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import lodash from 'lodash'
-import {SettingChange, Settings} from "@bindings/github.com/library-squirrel/backend/settings";
+import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
 import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'

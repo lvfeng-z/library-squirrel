@@ -4,7 +4,10 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as FileSysUtilHandler } from '@bindings/github.com/library-squirrel/backend/fileSysUtil'
+import {
+  Handler as FileSysUtilHandler,
+  OpenDialogOptions
+} from '@bindings/github.com/library-squirrel/backend/fileSysUtil'
 import type { OpenDialogResult as BindingOpenDialogResult } from '@bindings/github.com/library-squirrel/backend/fileSysUtil/models'
 import { FileFilter } from '@bindings/github.com/wailsapp/wails/v3/pkg/application/models'
 
@@ -16,18 +19,6 @@ import { FileFilter } from '@bindings/github.com/wailsapp/wails/v3/pkg/applicati
 export interface OpenDialogResult {
   canceled: boolean
   filePaths: string[]
-}
-
-/**
- * 打开对话框选项
- */
-export interface OpenDialogOptions {
-  title: string
-  defaultPath: string
-  canChooseFiles: boolean
-  canChooseDirs: boolean
-  multiSelect: boolean
-  filters: Partial<FileFilter>[]
 }
 
 // ========== 工具函数 ==========
@@ -78,7 +69,7 @@ export async function fileSysUtilSelectDirectory(title?: string, defaultPath?: s
 /**
  * 选择文件
  */
-export async function fileSysUtilSelectFile(title?: string, defaultPath?: string, filters?: Partial<FileFilter>[]): Promise<ApiResponse<OpenDialogResult>> {
+export async function fileSysUtilSelectFile(title?: string, defaultPath?: string, filters?: FileFilter[]): Promise<ApiResponse<OpenDialogResult>> {
   return fileSysUtilOpenDialog({
     title: title ?? '选择文件',
     defaultPath: defaultPath ?? '',
