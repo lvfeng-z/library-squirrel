@@ -36,6 +36,7 @@ func main() {
 		panic("Failed to init logger: " + err.Error())
 	}
 	defer logger.Sync()
+	logger.Log.Info("[———————————————— Library Squirrel  初始化⛽ ————————————————]")
 
 	// Create App instance
 	app, err := NewApp()

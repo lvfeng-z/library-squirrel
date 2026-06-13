@@ -63,6 +63,18 @@
   - 代码质量工具和日期处理规则
   - 新增功能开发流程和常见注意事项
 
+### 6. [task-execution-flow.md](./task-execution-flow.md) - 任务执行流程
+
+- **用途**：理解任务从创建到完成的完整生命周期
+- **适合场景**：修改任务执行逻辑、排查任务问题、理解事务和补偿机制时
+- **包含内容**：
+  - 任务状态模型（10 个状态、转换图、稳定/瞬态分类）
+  - 完整任务生命周期（创建、启动、执行、暂停/恢复、停止、重试、清理）
+  - 事务边界（SaveWorkInfo、StoreStream+Resource、任务创建）
+  - 补偿机制（备份还原、事务失败文件清理）
+  - 崩溃恢复（PendingResourceID 机制）
+  - 插件交互（TaskExecutor 接口、StoreWriter 生命周期）
+
 ### 7. [module-migration-guide.md](./module-migration-guide.md) - 模块迁移修复指南
 
 - **用途**：模块从 Electron 架构修复到 Wails 架构的统一模式参考
