@@ -25,7 +25,7 @@
 | `resolveParentKey` | `manager.go:824` | `isLeaf=false` → 查 `parentMap` → 找不到 |
 | `GetTaskTreeState` | `manager.go:565` | 依赖 `resolveParentKey`，同样失败 |
 | `PauseTaskTree` / `ResumeTaskTree` / `StopTaskTree` | `manager.go` | 依赖 `resolveParentKey`，同样失败 |
-| 前端 `isLeafTask` | `SlotTaskManage.vue:231` | `pid=0` → 返回 `false` |
+| 前端 `isLeafTask` | `TaskManage.vue:231` | `pid=0` → 返回 `false` |
 
 ## 修复方案
 

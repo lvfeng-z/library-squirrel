@@ -100,7 +100,7 @@ async function innerLoad(page: IPage<SegmentedTagItem>): Promise<IPage<Segmented
   const tempPage = lodash.cloneDeep(page)
   return props.load(tempPage, input.value).then((apiRespPage) => {
     const result = new Page(apiRespPage).transform<SegmentedTagItem>()
-    result.data = apiRespPage.data?.map((selectItem) => {
+    result.data = apiRespPage.data?.filter(notNullish).map((selectItem) => {
       const checked = optionalCheckedIdBuffer.has(String(selectItem.value))
       if (checked) {
         const result = new SegmentedTagItem({ disabled: true, ...selectItem })
@@ -262,6 +262,7 @@ watch(input, () => {
               <input
                 ref="inputElement"
                 v-model="input"
+                name="auto-load-tag-select-common-input"
                 class="auto-load-tag-select-input"
                 :onkeydown="handleKeyPress"
                 @input="newSearch"

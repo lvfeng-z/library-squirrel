@@ -121,7 +121,6 @@ export const useParentTaskStore = defineStore('parentTask', {
           const timer = setTimeout(() => {
             this.pendingRemoveTimers.delete(id)
             this.parentTasks.delete(id)
-            console.log('remove P task', id)
             // 记录到最近移除集合，防止并发事件重新创建幽灵条目
             this.recentlyRemovedIds.add(id)
             setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
@@ -162,7 +161,6 @@ export const useParentTaskStore = defineStore('parentTask', {
         this.parentTasks.set(item.id, taskDTO)
         const timer = setTimeout(() => {
           this.pendingRemoveTimers.delete(item.id)
-          console.log('remove P task', item.id)
           this.parentTasks.delete(item.id)
           this.recentlyRemovedIds.add(item.id)
           setTimeout(() => this.recentlyRemovedIds.delete(item.id), RECENTLY_REMOVED_TTL)

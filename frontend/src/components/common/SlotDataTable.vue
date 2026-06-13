@@ -13,7 +13,7 @@ const props = withDefaults(
     rowClassName?: (data: { row: unknown; rowIndex: number }) => string
     treeData?: boolean
     treeLazy?: boolean
-    treeLoad?: (row: unknown, treeNode: TreeNode, resolve: (data: unknown[]) => void) => void
+    treeLoad?: (row: Data, treeNode: TreeNode, resolve: (data: unknown[]) => void) => void
     border?: boolean
     stripe?: boolean
   }>(),

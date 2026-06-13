@@ -1,24 +1,36 @@
 <script setup lang="ts">
-import { Ref, ref, watch, computed } from 'vue'
-import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
+import {computed, ref, Ref, watch} from 'vue'
+import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import StaticHeightDialog from '@renderer/components/dialogs/StaticHeightDialog.vue'
 import WorkGridForWorkSet from '@renderer/components/common/WorkGridForWorkSet.vue'
 import WorkQueryView from '@renderer/components/common/WorkQueryView.vue'
-import { SelectItem, WorkFullDTO, WorkSetWithWorksResultDTO, WorkSetDTO, SearchConditionQuery } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {
+  SearchCondition,
+  SearchConditionQuery,
+  SearchType,
+  SelectItem,
+  WorkFullDTO,
+  WorkSearchOperator,
+  WorkSetDTO,
+  WorkSetWithWorksResultDTO
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
-import { Edit, Delete, Close, Plus, ArrowLeft, Picture } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {ArrowLeft, Close, Delete, Edit, Picture, Plus} from '@element-plus/icons-vue'
+import {ElMessage, ElMessageBox} from 'element-plus'
 import lodash from 'lodash'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
-import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
-import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.ts'
+import {setSearchTagColor} from '@renderer/utils/SearchTagColorUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
-import { workSetListWorkSetWithWorkByIds } from '@renderer/apis/http/wrappers/workSet'
-import { reWorkWorkSetLinkBatchToWorkSet, reWorkWorkSetRemoveBatchFromWorkSet, reWorkWorkSetSetCover } from '@renderer/apis/http/wrappers/reWorkWorkSet'
-import { searchQueryWorkPage, searchQuerySearchConditionPage } from '@renderer/apis/http/wrappers/search'
-import {Operator} from "@bindings/github.com/library-squirrel/backend/base/query";
+import {workSetListWorkSetWithWorkByIds} from '@renderer/apis/http/wrappers/workSet'
+import {
+  reWorkWorkSetLinkBatchToWorkSet,
+  reWorkWorkSetRemoveBatchFromWorkSet,
+  reWorkWorkSetSetCover
+} from '@renderer/apis/http/wrappers/reWorkWorkSet'
+import {searchQuerySearchConditionPage, searchQueryWorkPage} from '@renderer/apis/http/wrappers/search'
+import {newPage} from "@renderer/utils/Pager.ts";
 
 // props
 const props = defineProps<{
@@ -182,7 +194,7 @@ async function loadSearchItemPage(page: IPage<SelectItem>, input?: string): Prom
   query.types = lodash.cloneDeep(searchConditionType.value)
   let response: ApiResponse
   try {
-    response = await apis.searchQuerySearchConditionPage({ pageNumber: page.pageNumber, pageSize: page.pageSize }, query)
+    response = await apis.searchQuerySearchConditionPage(newPage({ pageNumber: page.pageNumber, pageSize: page.pageSize }), query)
   } catch (e) {
     console.log(e)
     return page
@@ -215,14 +227,17 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
   // 使用 WORK_SET 类型的 SearchCondition 排除当前作品集的作品
   conditions.push(
     new SearchCondition({
-      type: SearchType.WORK_SET,
+      type: SearchType.WorkSet,
       value: currentWorkSetId.value,
-      operator: Operator.NOT_EQUAL
+      operator: WorkSearchOperator.NotEqual
     })
   )
 
   // 调用原始 API
-  const response = await apis.searchQueryWorkPage({ pageNumber: page.pageNumber, pageSize: page.pageSize, query: conditions })
+  const response = await apis.searchQueryWorkPage(
+      newPage<WorkFullDTO>({ pageNumber: page.pageNumber, pageSize: page.pageSize, pageCount: page.pageCount }),
+      conditions
+  )
   if (ApiUtil.check(response)) {
     const resultPage = ApiUtil.data<Page<WorkFullDTO>>(response)
     if (isNullish(resultPage)) {

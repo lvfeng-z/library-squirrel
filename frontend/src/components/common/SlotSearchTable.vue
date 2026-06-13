@@ -72,7 +72,7 @@ const treeRefreshMap: Map<number, { treeNode: ElTreeNode; resolve: (data: unknow
 >()
 const wrappedLoad = isNullish(props.treeLoad)
   ? undefined
-  : async (row: unknown, treeNode: ElTreeNode, resolve: (data: unknown[]) => void) => {
+  : async (row: Data, treeNode: ElTreeNode, resolve: (data: unknown[]) => void) => {
       const rowId = Number(getPropByPath(row as object, props.dataKey))
       if (!treeRefreshMap.has(rowId)) {
         treeRefreshMap.set(rowId, { treeNode: treeNode, resolve: resolve })
@@ -97,10 +97,12 @@ async function doSearch() {
     page.value.dataCount = newPage.dataCount
     page.value.pageCount = newPage.pageCount
   }
+  // 搜索后重新建立 dataList.value[i].children 与 el-table 内部子节点之间的引用关联
   if (notNullish(props.treeLoad) && notNullish(wrappedLoad)) {
     if (notNullish(data.value)) {
       data.value.forEach((row) => {
-        const treeInitItem = treeRefreshMap.get(getPropByPath(row as object, props.dataKey))
+        const taskId = getPropByPath(row as object, props.dataKey) as number
+        const treeInitItem = treeRefreshMap.get(taskId)
         if (notNullish(treeInitItem)) {
           wrappedLoad(row, treeInitItem.treeNode, treeInitItem.resolve)
         }

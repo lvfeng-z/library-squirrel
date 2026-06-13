@@ -47,7 +47,7 @@ taskSnapshotItem (bindings)       ← 快照模式使用
 
 **Binding 类型**使用组合：`TaskProgressDTO.task: TaskDTO`，需要嵌套访问（`row.task?.id`、`row.task?.status`）。
 
-**关键发现**：TaskDialog.vue、SlotTaskManage.vue、TaskOperationBarActive.vue 等组件**已经在使用 binding 的组合格式**（`row.taskProgress?.task?.id`），说明页面层的迁移实际已经完成。残留的自定义类型主要在 **Store 层和 IPC 监听层**。
+**关键发现**：TaskDialog.vue、TaskManage.vue、TaskOperationBarActive.vue 等组件**已经在使用 binding 的组合格式**（`row.taskProgress?.task?.id`），说明页面层的迁移实际已经完成。残留的自定义类型主要在 **Store 层和 IPC 监听层**。
 
 ## 为什么保留 `TaskScheduleDTO`
 

@@ -111,7 +111,7 @@ function findRowByTaskId(taskId: number): TaskProgressTreeDTO | undefined {
 // 状态渲染辅助
 const invalidStatus = -1
 const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary' | 'danger'> = {
-  [invalidStatus]: 'primary',
+  [invalidStatus]: 'danger',
   [TaskStatusEnum.CREATED]: 'primary',
   [TaskStatusEnum.PROCESSING]: 'warning',
   [TaskStatusEnum.WAITING]: 'warning',
@@ -124,7 +124,7 @@ const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary
   [TaskStatusEnum.WAITING_FOR_INPUT]: 'warning'
 }
 const statusTextMap: Record<number, string> = {
-  [invalidStatus]: '已创建',
+  [invalidStatus]: '?',
   [TaskStatusEnum.CREATED]: '已创建',
   [TaskStatusEnum.PROCESSING]: '进行中',
   [TaskStatusEnum.WAITING]: '等待中',

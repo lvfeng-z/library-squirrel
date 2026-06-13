@@ -95,7 +95,7 @@ async function nextPage(newSearch: boolean) {
         if (nextPage.pageNumber <= nextPage.pageCount) {
           hasNextPage.value = nextPage.pageNumber !== nextPage.pageCount
           if (arrayNotEmpty(nextPage.data)) {
-            data.value.push(...nextPage.data)
+            data.value.push(...nextPage.data.filter(notNullish))
           } else {
             refreshLoadButton()
           }

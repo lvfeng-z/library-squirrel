@@ -2,14 +2,17 @@
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
 import WorkGrid from '@renderer/components/common/WorkGrid.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
-import { SelectItem } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {
+  SearchCondition,
+  SearchType,
+  SelectItem,
+  WorkSearchOperator
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'
 import lodash from 'lodash'
 import {notNullish, arrayNotEmpty, isNullish} from '@renderer/utils/CommonUtil.ts'
-import { SearchCondition, SearchType } from '@renderer/model/util/SearchCondition.ts'
-import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 
 // props
@@ -43,7 +46,7 @@ const props = withDefaults(
     autoSearchOnInputChange?: boolean
   }>(),
   {
-    searchTypes: () => [SearchType.LOCAL_TAG, SearchType.SITE_TAG, SearchType.LOCAL_AUTHOR, SearchType.SITE_AUTHOR],
+    searchTypes: () => [SearchType.LocalTag, SearchType.SiteTag, SearchType.LocalAuthor, SearchType.SiteAuthor],
     workPageSize: 16,
     tagSelectPageSize: 40,
     tagSelectMaxHeight: '300px',
@@ -147,11 +150,11 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
 
   // 处理选中的标签
   selectedTagList.value.forEach((searchCondition) => {
-    let operator: Operator | undefined = undefined
+    let operator: WorkSearchOperator | undefined = undefined
     if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
-      operator = Operator.OpNe
+      operator = WorkSearchOperator.NotEqual
     }
-    if (notNullish(searchCondition.extraData)) {
+    if (notNullish(searchCondition.extraData) && notNullish(operator)) {
       const extraData = searchCondition.extraData as { type: SearchType; id: number }
       conditions.push(new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator }))
     }
@@ -160,15 +163,15 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
   // 处理自定义标签
   if (arrayNotEmpty(customTagList.value)) {
     customTagList.value.forEach((tag) => {
-      conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: tag.value, operator: Operator.OpLike }))
+      conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: tag.value, operator: WorkSearchOperator.Like }))
     })
   }
 
   // 处理搜索框输入的文本
   if (notNullish(autoLoadInput.value) && autoLoadInput.value.trim()) {
     const workName = autoLoadInput.value.trim()
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_SITE_NAME, value: workName, operator: Operator.OpLike }))
-    conditions.push(new SearchCondition({ type: SearchType.WORKS_NICKNAME, value: workName, operator: Operator.OpLike }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksSiteName, value: workName, operator: WorkSearchOperator.Like }))
+    conditions.push(new SearchCondition({ type: SearchType.WorksNickname, value: workName, operator: WorkSearchOperator.Like }))
   }
 
   return conditions
@@ -195,7 +198,7 @@ async function queryWork(reset: boolean = true): Promise<void> {
 
     // 构建查询参数
     const tempPage = lodash.cloneDeep(workPage.value)
-    tempPage.data = undefined
+    tempPage.data = []
     const nextPage = await doFetchWorkPage(tempPage)
 
     // 没有新数据时，不再增加页码
@@ -203,7 +206,7 @@ async function queryWork(reset: boolean = true): Promise<void> {
       workPage.value.pageNumber++
       workPage.value.pageCount = nextPage.pageCount
       workPage.value.dataCount = nextPage.dataCount
-      workList.value.push(...nextPage.data)
+      workList.value.push(...nextPage.data.filter(notNullish))
     }
   } finally {
     loading.value = false
@@ -293,28 +296,28 @@ defineExpose({
               class="main-page-auto-load-tag-select-tag-type-checkbox-group"
               @change="querySearchCondition"
             >
-              <el-checkbox :value="SearchType.LOCAL_TAG">
+              <el-checkbox :value="SearchType.LocalTag">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-local-tag"
                 >
                   本地标签
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.SITE_TAG">
+              <el-checkbox :value="SearchType.SiteTag">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-site-tag"
                 >
                   站点标签
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.LOCAL_AUTHOR">
+              <el-checkbox :value="SearchType.LocalAuthor">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-local-author"
                 >
                   本地作者
                 </span>
               </el-checkbox>
-              <el-checkbox :value="SearchType.SITE_AUTHOR">
+              <el-checkbox :value="SearchType.SiteAuthor">
                 <span
                   class="main-page-auto-load-tag-select-tag-type-checkbox main-page-auto-load-tag-select-tag-type-checkbox-site-author"
                 >

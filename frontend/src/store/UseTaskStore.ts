@@ -175,7 +175,6 @@ export const useTaskStore = defineStore('task', {
             if (notNullish(taskStoreObj?.notificationId)) {
               useNotificationStore().remove(taskStoreObj.notificationId)
             }
-            console.log('remove task', id)
             this.tasks.delete(id)
             // 记录到最近移除集合，防止并发事件重新创建幽灵条目
             this.recentlyRemovedIds.add(id)
@@ -228,7 +227,6 @@ export const useTaskStore = defineStore('task', {
         // 延迟移除
         const timer = setTimeout(() => {
           this.pendingRemoveTimers.delete(item.id)
-          console.log('remove task', item.id)
           this.tasks.delete(item.id)
           this.recentlyRemovedIds.add(item.id)
           setTimeout(() => this.recentlyRemovedIds.delete(item.id), RECENTLY_REMOVED_TTL)
