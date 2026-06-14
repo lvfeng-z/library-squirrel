@@ -319,7 +319,11 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		siteWorkIds[i] = child.task.SiteWorkID.String
 	}
 
-	existingWorks, err := m.deps.WorkChecker.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
+	// 包裹超时 context，避免查重查询异常卡死时独占唯一 DB 连接拖垮全局
+	// 超时后走 err 分支降级为 run() 逐个查重
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	existingWorks, err := m.deps.WorkChecker.ListBySiteAndSiteWorkIDs(checkCtx, siteIds, siteWorkIds)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 批量查重失败: %v，降级为 run() 逐个检查", err)
 		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底

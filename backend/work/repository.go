@@ -62,22 +62,39 @@ func (r *WorkRepository) UpdateLastViewBatch(ctx context.Context, ids []int64, l
 		Update("last_view", lastView).Error
 }
 
+// batchSizeOfSiteWorkQuery 批量查重每批的 (site_id, site_work_id) 对数量上限
+// 控制单条 SQL 的 OR 子句数与绑定参数数，避免 SQLite 规划器对超大 OR 查询的组合爆炸
+const batchSizeOfSiteWorkQuery = 200
+
 // ListBySiteAndSiteWorkIDs 批量根据站点和站点作品ID查询
 // siteIds[i] 与 siteWorkIds[i] 一一对应
+// 按 batchSizeOfSiteWorkQuery 分批查询并合并结果，避免单条超大 OR 查询导致 SQLite 规划器卡死
 func (r *WorkRepository) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*domain.Work, error) {
 	if len(siteIds) == 0 {
 		return []*domain.Work{}, nil
 	}
-	conds := make([]clause.Expression, len(siteIds))
-	for i := range siteIds {
-		conds[i] = clause.And(
-			clause.Eq{Column: "site_id", Value: siteIds[i]},
-			clause.Eq{Column: "site_work_id", Value: siteWorkIds[i]},
-		)
+	var all []*domain.Work
+	for start := 0; start < len(siteIds); start += batchSizeOfSiteWorkQuery {
+		end := start + batchSizeOfSiteWorkQuery
+		if end > len(siteIds) {
+			end = len(siteIds)
+		}
+		conds := make([]clause.Expression, 0, end-start)
+		for i := start; i < end; i++ {
+			conds = append(conds, clause.And(
+				clause.Eq{Column: "site_id", Value: siteIds[i]},
+				clause.Eq{Column: "site_work_id", Value: siteWorkIds[i]},
+			))
+		}
+		batch, err := r.List(ctx, &database.QueryOption{
+			Conditions: []clause.Expression{clause.Or(conds...)},
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
 	}
-	return r.List(ctx, &database.QueryOption{
-		Conditions: []clause.Expression{clause.Or(conds...)},
-	})
+	return all, nil
 }
 
 // toInterfaceSlice converts int64 slice to interface{} slice
