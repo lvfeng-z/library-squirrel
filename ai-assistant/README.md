@@ -85,6 +85,18 @@
   - 已完成模块记录与待修复模块清单
   - 修复验证要点
 
+### 8. [tour-feature.md](./tour-feature.md) - 向导功能规格
+
+- **用途**：理解向导（Tour）功能的架构、数据模型、运行时序和扩展规范
+- **适合场景**：新增向导、修改向导引擎、排查跨页面引导或元素高亮问题时
+- **包含内容**：
+  - 声明式向导框架设计（声明式定义 + 集中渲染 + 就绪协议）
+  - 数据模型（TourDefinition / TourStep / TourStepData / TourContext）
+  - 跨页面引擎时序（resolveStep、目标元素等待、就绪信号）
+  - el-tour 适配要点与踩坑记录（footer 全局隐藏、description 渲染）
+  - 持久化（Settings.tour.completed）与页面接入规范
+  - 新增向导的扩展流程
+
 ## 如何使用这些文档
 
 ### 对于新任务分析
