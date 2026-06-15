@@ -44,7 +44,6 @@ function handleSkip() {
 <template>
   <el-tour
     v-model="visible"
-    :show-indicators="false"
     :mask="true"
     :scroll-into-view-options="true"
   >
@@ -52,9 +51,9 @@ function handleSkip() {
       :key="stepKey"
       :target="targetEl"
       :title="activeStep?.title"
-      :description="activeStep?.description"
       :placement="activeStep?.placement"
     >
+      <span class="tour-overlay-desc">{{ activeStep?.description }}</span>
       <div class="tour-overlay-actions">
         <el-button
           size="small"
@@ -84,6 +83,11 @@ function handleSkip() {
 </template>
 
 <style scoped>
+.tour-overlay-desc {
+  display: block;
+  line-height: 1.5;
+}
+
 .tour-overlay-actions {
   display: flex;
   justify-content: space-between;
@@ -94,5 +98,17 @@ function handleSkip() {
 .tour-overlay-actions-right {
   display: flex;
   gap: 8px;
+}
+</style>
+
+<!--
+  el-tour 内容通过 Teleport 渲染到 body，脱离本组件 DOM 树，
+  scoped 的 :deep() 无法穿透到 Teleport 目标，故用全局样式隐藏其内置 footer
+  （进度点 + 上一步/Finish 按钮），改由 el-tour-step 默认插槽内的自绘按钮接管。
+  本项目仅 TourOverlay 一处使用 el-tour，全局隐藏无副作用。
+-->
+<style>
+.el-tour__footer {
+  display: none;
 }
 </style>
