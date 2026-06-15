@@ -17,6 +17,8 @@ import elScrollbarBottomed from './directives/elScrollbarBottomed.ts'
 import { iniListener } from '@renderer/MainIpcListener.ts'
 import { initBuiltinMenus } from './composables/useBuiltinMenus.ts'
 import { setRouterInstance } from './store/SlotRegistryStore.ts'
+import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
+import { registerBuiltinTours } from '@renderer/tour/definitions'
 import lodash from 'lodash'
 import * as apis from './apis/http'
 
@@ -81,5 +83,10 @@ app.mount('#app')
 
 // 初始化内置菜单（在 pinia store 初始化之后）
 initBuiltinMenus()
+
+// 注册内置向导并加载已完成状态
+const tourCenterStore = useTourCenterStore()
+registerBuiltinTours((def) => tourCenterStore.registerTour(def))
+void tourCenterStore.loadCompleted()
 
 iniListener()

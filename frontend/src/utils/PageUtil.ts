@@ -1,7 +1,8 @@
 import { getCurrentInstance } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
-import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
+import { PageEnum } from '@renderer/model/constant/PageEnum.ts'
+import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 
 /**
  * 获取 router 实例
@@ -16,34 +17,39 @@ function getRouter() {
   return (window as any).__vueRouter__
 }
 
+// PageEnum 到路由 name（viewId）的映射
+const PAGE_ROUTE_NAME_MAP: Record<PageEnum, string> = {
+  [PageEnum.MainPage]: 'mainPage',
+  [PageEnum.SubPage]: '',
+  [PageEnum.LocalTagManage]: 'localTagManage',
+  [PageEnum.SiteTagManage]: 'siteTagManage',
+  [PageEnum.LocalAuthorManage]: 'localAuthorManage',
+  [PageEnum.SiteAuthorManage]: 'siteAuthorManage',
+  [PageEnum.PluginManage]: 'pluginManage',
+  [PageEnum.SiteManage]: 'siteManage',
+  [PageEnum.TaskManage]: 'taskManage',
+  [PageEnum.Settings]: 'settings',
+  [PageEnum.Guide]: 'guide',
+  [PageEnum.Developing]: 'developing',
+  [PageEnum.Test]: 'test'
+}
+
 /**
- * 导航到指定路径
+ * 按 PageEnum 跳转到对应路由
  */
-export async function gotoPath(path: string) {
+export async function gotoPage(page: PageEnum) {
+  const routeName = PAGE_ROUTE_NAME_MAP[page]
   const router = getRouter()
-  if (router) {
-    await router.push(path)
+  if (router && routeName) {
+    await router.push({ name: routeName })
   }
 }
 
 export function askGotoPage(config: GotoPageConfig) {
   ElMessageBox.alert(config.content, config.title, config.options).then(async () => {
-    await gotoPath(config.path)
+    await gotoPage(config.page)
   })
-  switch (config.path) {
-    case '/settings':
-      if (config.extraData as boolean) {
-        useTourStatesStore().tourStates.startWorkdirTour()
-      }
+  if (config.page === PageEnum.Settings && (config.extraData as boolean)) {
+    void useTourCenterStore().start('first-time')
   }
-}
-
-/**
- * 获取当前路由路径
- */
-export function getCurrentPath(): string | null {
-  const router = getRouter()
-  if (!router) return null
-
-  return router.currentRoute.value.path
 }

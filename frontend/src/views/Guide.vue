@@ -1,74 +1,19 @@
 <script setup lang="ts">
 import BaseSubpage from '@renderer/views/BaseSubpage.vue'
-import { ref } from 'vue'
-import {Discount, Link, List, Memo, TakeawayBox, User} from '@element-plus/icons-vue'
-import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
-
-// 变量
-// 主要容器的实例
-const containerRef = ref()
-
-function startTour() {
-  useTourStatesStore().tourStates.startTaskTour()
-}
+import {Discount, Link, List, Memo, Star, TakeawayBox, User} from '@element-plus/icons-vue'
+import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
 </script>
 <template>
   <base-subpage>
     <template #default>
       <div class="guide-container">
-        <el-anchor
-          :container="containerRef?.parentElement?.parentElement"
-          direction="vertical"
-          type="default"
-          :offset="30"
-          @click="(e: MouseEvent) => e.preventDefault()"
-        >
-          <el-anchor-link
-            href="#summary"
-            title="软件概述"
-          />
-          <el-anchor-link
-            href="#site"
-            title="站点"
-          />
-          <el-anchor-link
-            href="#work"
-            title="作品"
-          />
-          <el-anchor-link
-            href="#task"
-            title="任务"
-          />
-          <el-anchor-link
-            href="#localAuthor"
-            title="本地作者"
-          />
-          <el-anchor-link
-            href="#siteAuthor"
-            title="站点作者"
-          />
-          <el-anchor-link
-            href="#localTag"
-            title="本地标签"
-          />
-          <el-anchor-link
-            href="#siteTag"
-            title="站点标签"
-          />
-          <el-anchor-link
-            href="#collection"
-            title="收藏"
-          />
-          <el-anchor-link
-            href="#plugin"
-            title="插件"
-          />
-        </el-anchor>
-        <el-scrollbar class="guide-scrollbar">
-          <div
-            ref="containerRef"
-            class="guide-scrollbar-container"
-          >
+        <!-- 左：向导控制中心 -->
+        <div class="guide-center">
+          <TourCenterPanel />
+        </div>
+        <!-- 右：功能说明 -->
+        <el-scrollbar class="guide-docs">
+          <div class="guide-docs-content">
             <div id="summary">
               <span class="guide-tabs-label">
                 <el-icon class="guide-tabs-label-icon-normal"><Memo /></el-icon>
@@ -78,6 +23,7 @@ function startTour() {
                 <p class="guide-text-indent">
                   LibrarySquirrel是一款用于在个人电脑中创建并维护一个基于标签进行检索的资源库的软件，从远程站点下载资源到本地资源库中，并提供标签式的检索服务是这个软件的主要功能。
                   <br>
+                  如果还不熟悉各项功能，可在左侧「向导中心」启动引导向导，跟随提示逐步操作。
                 </p>
               </div>
               <el-divider />
@@ -116,13 +62,6 @@ function startTour() {
                   任务用于创建作品，要创建任务，可在任务页面输入受支持的url（默认支持本地文件路径和pixiv作品的url）进行创建。在创建任务之后，点击开始任务，
                   等待任务完成后，作品就保存到资源库中了。
                 </p>
-                <el-button
-                  class="guide-container-tabs-tour-button"
-                  type="primary"
-                  @click="startTour"
-                >
-                  打开向导
-                </el-button>
               </div>
               <el-divider />
             </div>
@@ -214,58 +153,68 @@ function startTour() {
 
 <style scoped>
 .guide-container {
-  border-radius: 6px;
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
   padding: 5px;
   margin: 5px;
+  gap: 10px;
 }
-.guide-scrollbar {
-  margin-left: 30px;
-  flex-grow: 1;
+
+.guide-center {
+  width: 340px;
+  flex-shrink: 0;
 }
-.guide-scrollbar-container {
+
+.guide-docs {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-docs-content {
   margin-right: 10px;
 }
+
 .guide-container-tabs-content {
   display: flex;
   flex-direction: column;
   background: #f4f4f4;
   border-radius: 6px;
   width: calc(100% - 20px);
-  height: calc(100% - 20px);
   padding: 5px;
   margin: 5px;
 }
-.guide-container-tabs-tour-button {
-  margin: auto;
-}
+
 .guide-tabs-label {
   display: flex;
   align-items: center;
 }
+
 .guide-tabs-label-icon-normal {
   border-radius: 50% / 50%;
   background-color: rgb(224, 229, 237);
   padding: 2px;
 }
+
 .guide-tabs-label-icon-local {
   border-radius: 50% / 50%;
-  background-color: rgb(245, 108, 108, 70%);
+  background-color: rgba(245, 108, 108, 0.7);
   color: white;
   padding: 2px;
 }
+
 .guide-tabs-label-icon-site {
   border-radius: 50% / 50%;
-  background-color: rgb(64, 158, 255, 65%);
+  background-color: rgba(64, 158, 255, 0.65);
   color: white;
   padding: 2px;
 }
+
 .guide-tabs-label-text {
   border-radius: 5px;
   padding-left: 2px;
 }
+
 .guide-text-indent {
   text-indent: 2em;
 }

@@ -146,23 +146,15 @@ export class Settings {
 }
 
 /**
- * TourSettings 新手引导设置
+ * TourSettings 向导完成状态，按向导 ID 记录是否已完成
  */
 export class TourSettings {
-    "firstTimeTourPassed": boolean;
-    "workdirTour": boolean;
-    "taskTour": boolean;
+    "completed": { [_ in string]?: boolean };
 
     /** Creates a new TourSettings instance. */
     constructor($$source: Partial<TourSettings> = {}) {
-        if (!("firstTimeTourPassed" in $$source)) {
-            this["firstTimeTourPassed"] = false;
-        }
-        if (!("workdirTour" in $$source)) {
-            this["workdirTour"] = false;
-        }
-        if (!("taskTour" in $$source)) {
-            this["taskTour"] = false;
+        if (!("completed" in $$source)) {
+            this["completed"] = {};
         }
 
         Object.assign(this, $$source);
@@ -172,7 +164,11 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
+        const $$createField0_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("completed" in $$parsedSource) {
+            $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
+        }
         return new TourSettings($$parsedSource as Partial<TourSettings>);
     }
 }
@@ -206,3 +202,4 @@ const $$createType0 = WorkSettings.createFrom;
 const $$createType1 = ImportSettings.createFrom;
 const $$createType2 = PluginSettings.createFrom;
 const $$createType3 = TourSettings.createFrom;
+const $$createType4 = $Create.Map($Create.Any, $Create.Any);

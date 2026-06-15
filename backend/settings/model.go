@@ -26,11 +26,9 @@ type PluginSettings struct {
 	AllowUnsafeEval bool `json:"allowUnsafeEval" koanf:"allowUnsafeEval"`
 }
 
-// TourSettings 新手引导设置
+// TourSettings 向导完成状态，按向导 ID 记录是否已完成
 type TourSettings struct {
-	FirstTimeTourPassed bool `json:"firstTimeTourPassed" koanf:"firstTimeTourPassed"`
-	WorkdirTour         bool `json:"workdirTour" koanf:"workdirTour"`
-	TaskTour            bool `json:"taskTour" koanf:"taskTour"`
+	Completed map[string]bool `json:"completed" koanf:"completed"`
 }
 
 // NewSettings 创建默认设置
@@ -49,9 +47,7 @@ func NewSettings() *Settings {
 			AllowUnsafeEval: false,
 		},
 		Tour: TourSettings{
-			FirstTimeTourPassed: false,
-			WorkdirTour:         false,
-			TaskTour:            false,
+			Completed: map[string]bool{},
 		},
 	}
 }

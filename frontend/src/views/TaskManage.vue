@@ -17,7 +17,7 @@ import NotificationItem from '@renderer/model/util/NotificationItem.ts'
 import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
+import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/backend/task/models'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
@@ -35,6 +35,10 @@ onMounted(() => {
 const taskManageSearchTable = ref()
 const localImportButton = ref()
 const siteDownloadButton = ref()
+// 向导目标注册
+const { register: registerTourTarget } = useTourTargets()
+registerTourTarget('taskManage.localImportButton', localImportButton)
+registerTourTarget('taskManage.siteDownloadButton', siteDownloadButton)
 const dataList: Ref<TaskProgressTreeDTO[]> = ref([])
 const page: Ref<Page<TaskProgressTreeDTO>> = ref(newPage<TaskProgressTreeDTO>())
 const taskSearchParams: Ref<TaskQueryDTO> = ref(new TaskQueryDTO())
@@ -658,20 +662,6 @@ async function handleSourceUrlInput() {
           </el-button>
         </template>
       </el-dialog>
-      <el-tour
-        v-model="useTourStatesStore().tourStates.taskTour"
-        @finish="useTourStatesStore().tourStates.getCallback('taskTour')"
-      >
-        <el-tour-step description="这里可以创建和开始任务" />
-        <el-tour-step
-          :target="localImportButton.$el"
-          description="在这里从本地创建任务，可以选择目录或单个文件"
-        />
-        <el-tour-step
-          :target="siteDownloadButton.$el"
-          description="在这里输入url从站点创建任务，只能使用受支持的url（可以通过安装插件扩展受支持的url）"
-        />
-      </el-tour>
     </template>
   </base-subpage>
 </template>

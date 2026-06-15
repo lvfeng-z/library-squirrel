@@ -8,7 +8,8 @@ import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
-import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
+import { useTourTargets } from '@renderer/composables/useTourTargets'
+import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
 import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'
 import {emptySettings} from "@renderer/model/util/Settings.js";
 
@@ -26,6 +27,9 @@ const apis = {
 } // 接口
 // 工作目录输入组件实例
 const workdirInput = ref()
+// 向导目标注册
+const { register: registerTourTarget } = useTourTargets()
+registerTourTarget('settings.workdirInput', workdirInput)
 // 主要容器的实例
 const containerRef = ref()
 // 作品文件名称命名格式输入组件实例
@@ -429,7 +433,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 >
                   <el-text>向导</el-text>
                 </el-divider>
-                <el-button @click="() => (settings.tour.firstTimeTourPassed = false)">
+                <el-button @click="useTourCenterStore().resetAllCompleted()">
                   重置向导
                 </el-button>
                 <el-divider />
@@ -456,17 +460,6 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
           </el-row>
         </el-footer>
       </el-container>
-      <el-tour
-        v-model="useTourStatesStore().tourStates.workdirTour"
-        :scroll-into-view-options="true"
-        @finish="useTourStatesStore().tourStates.getCallback('workdirTour')"
-      >
-        <el-tour-step
-          :target="workdirInput?.$el"
-          title="工作目录"
-          description="在这里设置工作目录"
-        />
-      </el-tour>
     </template>
     <template #dialog>
       <el-dialog

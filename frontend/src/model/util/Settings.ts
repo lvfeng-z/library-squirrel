@@ -14,8 +14,6 @@ export const emptySettings: Settings = {
     allowUnsafeEval: false
   },
   tour: {
-    firstTimeTourPassed: false,
-    workdirTour: false,
-    taskTour: false
+    completed: {}
   }
 }

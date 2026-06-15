@@ -14,8 +14,12 @@ frontend/src/
     common/           — 通用组件（DataTable、SearchTable、WorkCard、WorkGrid、TagBox）
     dialogs/          — 对话框组件
     slot/             — 插件插槽渲染器
-  store/              — Pinia 状态（SlotRegistry、Notification、Task 等）
+    tour/             — 向导组件（TourOverlay、TourCenterPanel）
+  composables/        — 组合式函数（useTourTargets、useTourReady、useBuiltinMenus 等）
+  store/              — Pinia 状态（SlotRegistry、Notification、Task、TourCenter 等）
+  tour/               — 向导定义集中文件（definitions.ts）
   apis/http/wrappers/ — 按模块封装 Wails bindings 的 API wrapper
+  model/tour/         — 向导类型定义（TourDefinition.ts）
   model/model/        — 与 Go DTO/实体对应的 TypeScript 类型（已存在于"frontend/bindings/" 中的类型需逐步废弃并迁移到 "frontend/bindings/"）
 frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手动编辑）
 ```
@@ -57,3 +61,4 @@ frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手�
 - **ID_TYPE_NUMBER** (P2): ID 统一使用 `number`，从 `SelectItem.value`（string）取出时 `Number()` 转换。
 - **方法命名**: 禁止与 prop 同名遮蔽。使用前缀：`handleXxx`、`doXxx`、`buildXxx`、`loadXxx`、`checkXxx`。
 - **日期时间**: 统一使用 Unix 时间戳（毫秒），前端进行本地化格式转换。
+- **TOUR_FRAMEWORK** (P1): 向导统一由 `useTourCenterStore` 控制，向导定义集中在 `frontend/src/tour/definitions.ts`，渲染统一由 `TourOverlay`（挂载于 `MainLayout`）完成。禁止在各页面内自行编写 `el-tour`。需被高亮的元素通过 `useTourTargets().register(key, ref)` 注册，`targetKey` 命名约定为 `{viewId}.{element}`（如 `settings.workdirInput`）。跨页面或需定位数据的步骤携带 `TourStepData`，目标页面通过 `useTourReady(onLocate)` 据 `ctx.data` 定位后报告就绪，引擎收到就绪信号后才显示该步气泡。

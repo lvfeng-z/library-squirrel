@@ -6,7 +6,7 @@ import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
-import { useTourStatesStore } from '@renderer/store/UseTourStatesStore.ts'
+import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -63,29 +63,8 @@ async function handleCloseCurrentView() {
     <ReplaceConfirmDialog />
     <DialogSlotRenderer />
 
-    <!-- Tour 向导 -->
-    <el-tour
-      v-model="useTourStatesStore().tourStates.guideMenuTour"
-      :scroll-into-view-options="true"
-      :mask="false"
-      @finish="useTourStatesStore().tourStates.getCallback('guideMenuTour')"
-    >
-      <el-tour-step
-        title="向导"
-        description="后续可以点击这里进入向导页面"
-        placement="right"
-      />
-    </el-tour>
-    <el-tour
-      v-model="useTourStatesStore().tourStates.taskMenuTour"
-      :scroll-into-view-options="true"
-      @finish="useTourStatesStore().tourStates.getCallback('taskMenuTour')"
-    >
-      <el-tour-step
-        title="任务向导"
-        description="点击这里进入任务页面"
-      />
-    </el-tour>
+    <!-- 向导覆盖层（新向导系统） -->
+    <TourOverlay />
   </div>
 </template>
 

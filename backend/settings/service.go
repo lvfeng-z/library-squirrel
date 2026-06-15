@@ -36,9 +36,7 @@ func defaultSettings() *Settings {
 			AllowUnsafeEval: false,
 		},
 		Tour: TourSettings{
-			FirstTimeTourPassed: false,
-			WorkdirTour:         false,
-			TaskTour:            false,
+			Completed: map[string]bool{},
 		},
 	}
 }
