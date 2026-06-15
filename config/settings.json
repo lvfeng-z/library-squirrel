@@ -12,8 +12,8 @@
     "allowUnsafeEval": false
   },
   "tour": {
-    "firstTimeTourPassed": false,
-    "workdirTour": false,
-    "taskTour": false
+    "completed": {
+      "first-time": true
+    }
   }
 }

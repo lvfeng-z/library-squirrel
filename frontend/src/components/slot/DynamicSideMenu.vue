@@ -64,6 +64,26 @@ const menuItems: Ref<MenuItem[]> = computed(() => {
 
 const activeIndex = computed(() => route.path)
 
+// 当前路由对应的菜单项 index（按 viewId 匹配），用于高亮当前页
+// el-menu 仅在点击时内部更新高亮，程序化跳转（如向导）需通过 default-active 响应式驱动
+const activeMenuIndex = computed(() => {
+  const viewId = route.name as string | undefined
+  if (!viewId) return undefined
+  return findMenuIndexByViewId(menuItems.value, viewId)
+})
+
+// 递归查找 viewId 对应的菜单项 index
+function findMenuIndexByViewId(items: MenuItem[], viewId: string): string | undefined {
+  for (const item of items) {
+    if (item.viewId === viewId) return item.index
+    if (item.children?.length) {
+      const matched = findMenuIndexByViewId(item.children, viewId)
+      if (matched) return matched
+    }
+  }
+  return undefined
+}
+
 // 处理菜单点击
 function handleMenuClick(item: MenuItem) {
   if (item.viewId) {
@@ -78,6 +98,7 @@ function handleMenuClick(item: MenuItem) {
     :width="props.width || '160px'"
     :fold-width="props.foldWidth || '64px'"
     :default-active="[activeIndex]"
+    :active-index="activeMenuIndex"
     background-color="black"
   >
     <template #default>

@@ -7,6 +7,7 @@ const props = defineProps<{
   width: string
   foldWidth: string
   defaultActive: string[]
+  activeIndex?: string
   backgroundColor?: string
 }>()
 
@@ -92,6 +93,7 @@ function handleClickOutSide() {
       <el-scrollbar class="side-menu-scrollbar">
         <el-menu
           :default-openeds="props.defaultActive"
+          :default-active="props.activeIndex"
           class="side-menu-main-menu"
           :collapse="folded"
         >
