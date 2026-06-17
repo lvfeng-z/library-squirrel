@@ -170,6 +170,24 @@ function mapToButtonStatus(): {
     return taskStatusMapping['0']
   }
 }
+// 是否为终态（完成/部分完成/失败）：仅终态下才提供板块单独执行
+function isTerminalState(): boolean {
+  return (
+    status.value === TaskStatusEnum.FINISHED ||
+    status.value === TaskStatusEnum.PARTLY_FINISHED ||
+    status.value === TaskStatusEnum.FAILED
+  )
+}
+// 板块单独执行下拉项（板块 A 作品信息 / 板块 B 资源文件 / 板块 C 封面）
+const sectionDropdownItems: { label: string; icon: string; code: TaskOperationCodeEnum }[] = [
+  { label: '作品信息', icon: 'Document', code: TaskOperationCodeEnum.REWORK_INFO },
+  { label: '资源文件', icon: 'Download', code: TaskOperationCodeEnum.REWORK_RESOURCE },
+  { label: '封面', icon: 'Picture', code: TaskOperationCodeEnum.REWORK_THUMBNAIL }
+]
+// 下拉项命令处理：直接回调父组件，由其分发到对应板块执行
+function handleSectionCommand(code: TaskOperationCodeEnum) {
+  props.buttonClicked(props.row, code)
+}
 // 字节数转换为可读的数据量数值
 function formatBytes(bytes: number) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'] // 单位数组
@@ -221,6 +239,30 @@ function formatBytes(bytes: number) {
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>
+      <!-- 板块单独执行入口（仅终态）：拆分按钮的 ▼ 触发器，主按钮复用上方执行按钮 -->
+      <el-dropdown
+        v-if="isTerminalState()"
+        trigger="click"
+        @command="handleSectionCommand"
+      >
+        <el-button
+          size="small"
+          icon="ArrowDown"
+          class="task-operation-bar-section-trigger"
+        />
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item
+              v-for="item in sectionDropdownItems"
+              :key="item.code"
+              :icon="item.icon"
+              :command="item.code"
+            >
+              {{ item.label }}
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-tooltip
         content="取消"
         :enterable="false"
@@ -301,5 +343,14 @@ function formatBytes(bytes: number) {
 .task-operation-bar-parent-progress-disappear {
   transition-delay: 1.4s;
   height: 0;
+}
+/* 板块下拉触发器：收窄宽度，贴合拆分按钮 caret 风格 */
+.task-operation-bar-section-trigger {
+  padding-left: 7px;
+  padding-right: 7px;
+}
+/* 让下拉包裹在按钮组中与相邻按钮无缝衔接（EP 仅对组内 .el-dropdown 左侧圆角做了处理） */
+:deep(.el-dropdown) {
+  margin-right: -1px;
 }
 </style>

@@ -94,6 +94,15 @@ export function ListTaskTree(taskIds: number[], ...includeStatus: number[]): $Ca
 }
 
 /**
+ * ListTasksBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表（供前端选择板块执行的任务）
+ */
+export function ListTasksBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.ApiResponse<(dto$0.TaskDTO | null)[]> | null> {
+    return $Call.ByID(2245452522, siteId, siteWorkId).then(($result: any) => {
+        return $$createType14($result);
+    });
+}
+
+/**
  * QueryChildrenTaskPage 查询子任务分页（返回带站点名称的 TaskProgressTreeDTO）
  */
 export function QueryChildrenTaskPage(page: model$0.Page<dto$0.TaskProgressTreeDTO> | null, query: $models.TaskQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.TaskProgressTreeDTO> | null> | null> {

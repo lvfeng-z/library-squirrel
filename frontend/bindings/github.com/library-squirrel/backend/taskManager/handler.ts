@@ -82,6 +82,33 @@ export function PauseTaskTree(taskId: number, isLeaf: boolean): $CancellableProm
 }
 
 /**
+ * RedownloadResource 板块 B：重新下载资源文件（任务由前端选定）
+ */
+export function RedownloadResource(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2651598060, taskIds).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * RedownloadThumbnail 板块 C：重新下载封面（任务由前端选定）
+ */
+export function RedownloadThumbnail(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(707448004, taskIds).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * RedownloadWorkInfo 板块 A：重新下载作品信息（任务由前端经 ListTasksBySiteAndSiteWorkID 选定）
+ */
+export function RedownloadWorkInfo(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2645773365, taskIds).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * ResumeTaskTree 恢复任务树
  */
 export function ResumeTaskTree(taskId: number, isLeaf: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {

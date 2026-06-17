@@ -106,88 +106,157 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, plu
 
 // StartTaskTree 启动任务树
 func (m *Manager) StartTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	return m.loadAndStartTaskTree(ctx, taskId, false)
+	return m.startTaskTrees(ctx, []int64{taskId}, runModeFull)
 }
 
-// loadAndStartTaskTree 从数据库加载任务树并启动
+// startTaskTrees 开始执行多个任务树（开始/重试入口）
+// mode 指定执行板块（Full/ResourceOnly/WorkInfo/Thumbnail）
+func (m *Manager) startTaskTrees(ctx context.Context, taskIds []int64, mode runMode) error {
+	return m.loadAndStartTaskTrees(ctx, taskIds, false, mode)
+}
+
+// resumeTaskTrees 恢复执行多个任务树（恢复入口，固定 Full 模式）
+// 所有任务执行的唯二入口之一，skipTerminal 跳过已终态子任务
+func (m *Manager) resumeTaskTrees(ctx context.Context, taskIds []int64) error {
+	return m.loadAndStartTaskTrees(ctx, taskIds, true, runModeFull)
+}
+
+// loadAndStartTaskTrees 从数据库加载多个任务树并启动
 // skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务，仅 Resume 使用
-func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTerminal bool) error {
-	// 1. 获取任务树
-	logger.Log.Infof("loadAndStartTaskTree: taskId=%d", taskId)
-	tasks, err := m.repo.ListTaskTree(ctx, []int64{taskId})
+// mode 指定执行板块；多根：一次 ListTaskTree 查询 + 一次批量查重，按 DB 真实父子关系构建内存树
+func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, skipTerminal bool, mode runMode) error {
+	if len(taskIds) == 0 {
+		return nil
+	}
+	logger.Log.Infof("loadAndStartTaskTrees: taskIds=%v, skipTerminal=%v", taskIds, skipTerminal)
+
+	// 1. 共享一次 ListTaskTree 查询
+	tasks, err := m.repo.ListTaskTree(ctx, taskIds)
 	if err != nil {
-		logger.Log.Errorf("loadAndStartTaskTree: ListTaskTree 失败: %v", err)
+		logger.Log.Errorf("loadAndStartTaskTrees: ListTaskTree 失败: %v", err)
 		return err
 	}
-
-	logger.Log.Infof("loadAndStartTaskTree: 查询到 %d 条任务记录", len(tasks))
+	logger.Log.Infof("loadAndStartTaskTrees: 查询到 %d 条任务记录", len(tasks))
 	if len(tasks) == 0 {
 		return ErrTaskTreeNotFound
 	}
 
-	// 2. 构建父子关系
-	// 确定实际的父任务：叶子任务使用其真实父任务（Pid），否则使用 taskId 自身
-	var rootTask *domain.Task
+	taskById := make(map[int64]*domain.Task, len(tasks))
 	for _, t := range tasks {
-		if t.ID == taskId {
-			rootTask = t
-			break
-		}
+		taskById[t.ID] = t
 	}
 
-	isLeaf := rootTask != nil && rootTask.Pid.Valid && rootTask.Pid.Int64 > 0 &&
-		(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+	// 2. 重复执行保护：快照运行中的 taskId / parentId，避免同一任务重复启动
+	m.mu.RLock()
+	runningTasks := make(map[int64]struct{}, len(m.taskMap))
+	for id := range m.taskMap {
+		runningTasks[id] = struct{}{}
+	}
+	runningParents := make(map[int64]struct{}, len(m.parentMap))
+	for id := range m.parentMap {
+		runningParents[id] = struct{}{}
+	}
+	m.mu.RUnlock()
 
-	// 独立单任务：无父无子（pid=0, hasChild=false），直接作为子任务执行
-	isStandalone := rootTask != nil &&
-		(!rootTask.Pid.Valid || rootTask.Pid.Int64 == 0) &&
-		(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+	// 3. 确定处理单元并去重：独立任务为自身 taskId，叶子/父任务为其 actualParentId
+	// 同父多叶子归一为同一单元，跳过已运行的单元
+	processedUnits := make(map[int64]struct{})
+	var standaloneChildren []*ManagedTask
+	var parentUnits []int64
 
-	if isStandalone {
-		child := m.buildOrReuseChild(rootTask, skipTerminal)
-		if child == nil {
-			// 已终态，直接持久化当前状态
-			finalState := TaskState(rootTask.Status)
-			if isStableState(finalState) {
-				m.addToPending(taskId, task.TaskStatusEnum(finalState), "")
+	for _, taskId := range taskIds {
+		rootTask := taskById[taskId]
+		if rootTask == nil {
+			continue
+		}
+
+		isStandalone := (!rootTask.Pid.Valid || rootTask.Pid.Int64 == 0) &&
+			(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+
+		var unitId int64
+		if isStandalone {
+			unitId = taskId
+		} else {
+			isLeaf := rootTask.Pid.Valid && rootTask.Pid.Int64 > 0 &&
+				(!rootTask.HasChild.Valid || !rootTask.HasChild.Bool)
+			if isLeaf {
+				unitId = rootTask.Pid.Int64
+			} else {
+				unitId = taskId // 父任务（has_child=1）
 			}
-			return nil
 		}
-		// 不加入 parentMap，独立任务没有父任务
-		m.tryDispatch(child)
-		return nil
+
+		// 重复执行保护
+		if isStandalone {
+			if _, running := runningTasks[unitId]; running {
+				logger.Log.Infof("loadAndStartTaskTrees: 任务 %d 已在运行，跳过", unitId)
+				continue
+			}
+		} else {
+			if _, running := runningParents[unitId]; running {
+				logger.Log.Infof("loadAndStartTaskTrees: 父任务 %d 已在运行，跳过", unitId)
+				continue
+			}
+		}
+		// 同单元去重
+		if _, processed := processedUnits[unitId]; processed {
+			continue
+		}
+		processedUnits[unitId] = struct{}{}
+
+		if isStandalone {
+			child := m.buildOrReuseChild(rootTask, skipTerminal, mode)
+			if child == nil {
+				// 已终态，直接持久化当前状态
+				finalState := TaskState(rootTask.Status)
+				if isStableState(finalState) {
+					m.addToPending(unitId, task.TaskStatusEnum(finalState), "")
+				}
+				continue
+			}
+			standaloneChildren = append(standaloneChildren, child)
+		} else {
+			parentUnits = append(parentUnits, unitId)
+		}
 	}
 
-	actualParentId := taskId
+	// 4. 处理各父任务单元，收集需调度的子任务
+	allToCheck := make([]*ManagedTask, 0, len(standaloneChildren)+len(parentUnits)*4)
+	allToCheck = append(allToCheck, standaloneChildren...)
+	for _, parentId := range parentUnits {
+		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, mode)...)
+	}
+
+	// 5. 共享一次批量预检重复 + 分发（受信号量控制）
+	if len(allToCheck) > 0 {
+		toDispatch := m.batchCheckDuplicates(ctx, allToCheck)
+		for _, child := range toDispatch {
+			m.tryDispatch(child)
+		}
+	}
+
+	return nil
+}
+
+// processParentUnit 处理一个父任务单元：构建 ParentTask 并收集其直接子任务
+// 返回需参与批量查重与调度的子任务；所有子任务已终态时计算父任务最终状态并推送移除，返回 nil
+func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool, mode runMode) []*ManagedTask {
 	parentTaskName := ""
-	if isLeaf {
-		actualParentId = rootTask.Pid.Int64
-		// 从查询结果中获取真实父任务的名称
-		for _, t := range tasks {
-			if t.ID == actualParentId && t.TaskName.Valid {
-				parentTaskName = t.TaskName.String
-				break
-			}
-		}
-	} else if rootTask != nil && rootTask.TaskName.Valid {
-		parentTaskName = rootTask.TaskName.String
+	if parentEntity := taskById[actualParentId]; parentEntity != nil && parentEntity.TaskName.Valid {
+		parentTaskName = parentEntity.TaskName.String
 	}
 
 	parentTask := NewParentTask(actualParentId, parentTaskName)
 	for _, t := range tasks {
-		var child *ManagedTask
 		if t.Pid.Valid && t.Pid.Int64 == actualParentId {
-			// 直接子任务
-			child = m.buildOrReuseChild(t, skipTerminal)
-		}
-		if child != nil {
-			parentTask.AddChild(child)
+			if child := m.buildOrReuseChild(t, skipTerminal, mode); child != nil {
+				parentTask.AddChild(child)
+			}
 		}
 	}
 
-	// 检查是否有需要处理的子任务（仅 skipTerminal=true 时可能出现所有子任务已终态的情况）
+	// 所有子任务已终态（仅 skipTerminal=true 时可能出现）
 	if len(parentTask.GetChildren()) == 0 {
-		// 所有子任务已终态，从 DB 数据计算父任务最终状态
 		finalState := m.computeParentFinalState(tasks, actualParentId)
 		if isStableState(finalState) {
 			m.addToPending(actualParentId, task.TaskStatusEnum(finalState), "")
@@ -197,26 +266,18 @@ func (m *Manager) loadAndStartTaskTree(ctx context.Context, taskId int64, skipTe
 		return nil
 	}
 
-	// 保存父任务
+	// 注册父任务
 	m.mu.Lock()
 	m.parentMap[actualParentId] = parentTask
 	m.mu.Unlock()
 
-	// 3. 批量预检重复（在信号量派发前完成，弹窗一次性展示）
-	toDispatch := m.batchCheckDuplicates(ctx, parentTask.GetChildren())
-
-	// 4. 分发非重复子任务（受信号量控制）
-	for _, child := range toDispatch {
-		m.tryDispatch(child)
-	}
-
-	return nil
+	return parentTask.GetChildren()
 }
 
 // buildOrReuseChild 构建子任务 ManagedTask
 // 若任务在数据库中为 Paused 状态（应用重启后内存已丢失），根据 pending_resource_id 决定续传或重新执行
 // skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务
-func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedTask {
+func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool, mode runMode) *ManagedTask {
 	dbState := TaskState(t.Status)
 
 	// 跳过已终态的子任务（仅 Resume 场景需要）
@@ -231,7 +292,7 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedT
 		if t.PendingResourceID.Valid {
 			// pending_resource_id 有效，创建跨重启续传的 ManagedTask
 			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
-			mt := m.newManagedTask(t)
+			mt := m.newManagedTask(t, mode)
 			if mt != nil {
 				mt.resumeFromDB = true
 				m.addTask(mt)
@@ -244,7 +305,7 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedT
 	}
 
 	// 创建新实例
-	mt := m.newManagedTask(t)
+	mt := m.newManagedTask(t, mode)
 	if mt != nil {
 		m.addTask(mt)
 	}
@@ -521,7 +582,7 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool)
 	if !ok {
 		// taskMap 中无此叶子任务，尝试从数据库加载
 		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 taskMap 中，从数据库加载", taskId)
-		return m.loadAndStartTaskTree(ctx, taskId, true)
+		return m.resumeTaskTrees(ctx, []int64{taskId})
 	}
 	m.mu.RLock()
 	parent, ok := m.parentMap[parentKey]
@@ -530,7 +591,7 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool)
 	if !ok {
 		// 任务树不在内存中（如应用重启后），从数据库加载并跳过已终态子任务
 		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在 parentMap 中，从数据库加载", taskId)
-		return m.loadAndStartTaskTree(ctx, taskId, true)
+		return m.resumeTaskTrees(ctx, []int64{taskId})
 	}
 
 	for _, child := range parent.GetChildren() {
@@ -581,7 +642,7 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
 	// 不重置 DB 状态，Finished/Failed/Created 子任务均会重新执行
-	return m.loadAndStartTaskTree(ctx, taskId, false)
+	return m.startTaskTrees(ctx, []int64{taskId}, runModeFull)
 }
 
 // GetTaskTreeState 获取任务树状态
@@ -952,7 +1013,7 @@ func (m *Manager) BuildSnapshot() *TaskSnapshotDTO {
 	return snapshot
 }
 
-func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
+func (m *Manager) newManagedTask(t *domain.Task, mode runMode) *ManagedTask {
 	// 获取任务执行器
 	if !t.PluginPublicID.Valid {
 		logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
@@ -969,12 +1030,14 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		parentId = t.Pid.Int64
 	}
 	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.deps)
+	mt.runMode = mode
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
 	mt.SetOnStateChange(func(taskId int64, oldState, newState TaskState, errMsg string) {
 		// 仅稳定状态写入数据库，瞬态只更新内存和前端
-		if isStableState(newState) {
+		// A/C 非终态板块不产生任务终态，跳过持久化
+		if isStableState(newState) && !mt.isNonTerminalMode() {
 			m.addToPending(taskId, task.TaskStatusEnum(newState), errMsg)
 		}
 

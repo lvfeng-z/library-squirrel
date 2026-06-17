@@ -92,6 +92,21 @@ func NewStoreBackupOrchestrator(
 // Resource 的每个 Store 字段（WorkStoreID、ThumbnailStoreID 等）都会产生一条 StoreBackupItem
 // Resource 记录不变（不禁用，保持 Enabled=true）
 func (o *StoreBackupOrchestratorImpl) BackupAllStores(ctx context.Context, workId int64) []*StoreBackupItem {
+	return o.BackupStores(ctx, workId, StoreTypeWork, StoreTypeThumbnail)
+}
+
+// BackupStores 备份作品 Resource 指定类型的 Store，返回备份清单
+// 仅备份传入 types 命中的 Store 字段，用于板块隔离（如仅备份资源文件、不触及缩略图）
+// Resource 记录不变（不禁用，保持 Enabled=true）
+func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId int64, types ...StoreType) []*StoreBackupItem {
+	if len(types) == 0 {
+		return nil
+	}
+	typeSet := make(map[StoreType]struct{}, len(types))
+	for _, t := range types {
+		typeSet[t] = struct{}{}
+	}
+
 	resources, err := o.resourceProvider.GetEnabledByWorkId(ctx, workId)
 	if err != nil {
 		logger.Log.Warnf("[StoreBackupOrchestrator] 查询作品 %d 启用资源失败（跳过备份）: %v", workId, err)
@@ -100,8 +115,8 @@ func (o *StoreBackupOrchestratorImpl) BackupAllStores(ctx context.Context, workI
 
 	var items []*StoreBackupItem
 	for _, res := range resources {
-		// WorkStoreID — 作品主资源，备份
-		if res.WorkStoreID.Valid {
+		// WorkStoreID — 作品主资源
+		if _, ok := typeSet[StoreTypeWork]; ok && res.WorkStoreID.Valid {
 			backupId, err := o.storeDeleter.Delete(ctx, res.WorkStoreID.Int64, true)
 			if err != nil {
 				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 WorkStore(id=%d) 失败: %v", res.WorkStoreID.Int64, err)
@@ -113,8 +128,8 @@ func (o *StoreBackupOrchestratorImpl) BackupAllStores(ctx context.Context, workI
 			})
 		}
 
-		// ThumbnailStoreID — 缩略图，备份后删除
-		if res.ThumbnailStoreID.Valid {
+		// ThumbnailStoreID — 缩略图
+		if _, ok := typeSet[StoreTypeThumbnail]; ok && res.ThumbnailStoreID.Valid {
 			backupId, err := o.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, true)
 			if err != nil {
 				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 ThumbnailStore(id=%d) 失败: %v", res.ThumbnailStoreID.Int64, err)

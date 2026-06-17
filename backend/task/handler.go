@@ -175,6 +175,19 @@ func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiRes
 	return model.Success(resultDTOs)
 }
 
+// ListTasksBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表（供前端选择板块执行的任务）
+func (h *Handler) ListTasksBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) *model.ApiResponse[[]*sdkdto.TaskDTO] {
+	result, err := h.svc.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+	if err != nil {
+		return model.HandleError[[]*sdkdto.TaskDTO](err)
+	}
+	resultDTOs := make([]*sdkdto.TaskDTO, len(result))
+	for i, task := range result {
+		resultDTOs[i] = dto2.NewTaskDTO(task)
+	}
+	return model.Success(resultDTOs)
+}
+
 // QueryTreeDataPage 查询任务树数据分页
 func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*sdkdto.TreeDataPageDTO] {
 	return model.HandleResult(h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query))

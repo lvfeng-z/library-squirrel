@@ -265,6 +265,15 @@ async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: Task
     case TaskOperationCodeEnum.RETRY:
       await startTask(row, true)
       break
+    case TaskOperationCodeEnum.REWORK_INFO:
+      await redownloadSection(row, taskApi.taskRedownloadWorkInfo, '作品信息')
+      break
+    case TaskOperationCodeEnum.REWORK_RESOURCE:
+      await redownloadSection(row, taskApi.taskRedownloadResource, '资源文件')
+      break
+    case TaskOperationCodeEnum.REWORK_THUMBNAIL:
+      await redownloadSection(row, taskApi.taskRedownloadThumbnail, '封面')
+      break
     case TaskOperationCodeEnum.CANCEL:
       taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
       break
@@ -336,6 +345,19 @@ async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<bool
   //     }
   //   })
   // }
+}
+
+// 板块单独执行：以当前行 taskId 发起对应板块的重新下载（A 作品信息 / B 资源 / C 封面）
+async function redownloadSection(
+  row: TaskProgressTreeDTO,
+  apiCall: (taskIds: number[]) => Promise<{ success: boolean }>,
+  sectionName: string
+): Promise<void> {
+  try {
+    await apiCall([getRowTaskId(row)])
+  } catch (e: any) {
+    ElMessage.error(`重新下载${sectionName}失败：${e.message}`)
+  }
 }
 
 async function deleteTask(id: number) {
@@ -554,7 +576,7 @@ async function handleSourceUrlInput() {
         <!-- 操作列 -->
         <el-table-column
           fixed="right"
-          :width="163"
+          :width="188"
           align="center"
         >
           <template #header>

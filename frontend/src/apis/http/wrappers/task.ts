@@ -99,6 +99,23 @@ export async function taskRetryTree(taskId: number, isLeaf: boolean): Promise<Ap
   return requireResponse(await TaskManagerHandler.RetryTaskTree(taskId, isLeaf), '重试任务', false)
 }
 
+// ========== 作品板块单独执行 ==========
+
+// 板块 A：重新下载作品信息
+export async function taskRedownloadWorkInfo(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.RedownloadWorkInfo(taskIds), '重新下载作品信息', false)
+}
+
+// 板块 B：重新下载资源文件
+export async function taskRedownloadResource(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.RedownloadResource(taskIds), '重新下载资源文件', false)
+}
+
+// 板块 C：重新下载封面
+export async function taskRedownloadThumbnail(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.RedownloadThumbnail(taskIds), '重新下载封面', false)
+}
+
 // ========== 作品替换确认 ==========
 
 export async function taskManagerConfirmReplace(taskId: number, action: string): Promise<ApiResult<void>> {

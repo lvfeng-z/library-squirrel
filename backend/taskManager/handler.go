@@ -81,3 +81,18 @@ func (h *Handler) GetTaskSnapshot() *model.ApiResponse[*TaskSnapshotDTO] {
 	snapshot := h.mgr.GetTaskSnapshot()
 	return model.Success(snapshot)
 }
+
+// RedownloadWorkInfo 板块 A：重新下载作品信息（任务由前端经 ListTasksBySiteAndSiteWorkID 选定）
+func (h *Handler) RedownloadWorkInfo(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.startTaskTrees(ctx, taskIds, runModeWorkInfo))
+}
+
+// RedownloadThumbnail 板块 C：重新下载封面（任务由前端选定）
+func (h *Handler) RedownloadThumbnail(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.startTaskTrees(ctx, taskIds, runModeThumbnail))
+}
+
+// RedownloadResource 板块 B：重新下载资源文件（任务由前端选定）
+func (h *Handler) RedownloadResource(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.startTaskTrees(ctx, taskIds, runModeResourceOnly))
+}

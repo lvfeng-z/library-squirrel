@@ -324,6 +324,19 @@ func (r *TaskRepository) ListChildrenTask(ctx context.Context, pid int64) ([]*do
 	return tasks, nil
 }
 
+// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表（按创建时间倒序）
+func (r *TaskRepository) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error) {
+	var tasks []*domain.Task
+	err := r.GORM().WithContext(ctx).
+		Where("site_id = ? AND site_work_id = ?", siteId, siteWorkId).
+		Order("create_time DESC").
+		Find(&tasks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 // QueryChildrenTaskPage 查询子任务分页
 func (r *TaskRepository) QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})

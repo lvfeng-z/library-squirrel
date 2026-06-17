@@ -114,6 +114,8 @@ type Repository interface {
 	BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error
 	// UpdatePendingResourceID 更新任务的 pending_resource_id
 	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
+	// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表
+	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*entity.Task, error)
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
@@ -428,6 +430,11 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 // ListChildrenTask 查询子任务列表
 func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity.Task, error) {
 	return s.repo.ListChildrenTask(ctx, pid)
+}
+
+// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表
+func (s *Service) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*entity.Task, error) {
+	return s.repo.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 }
 
 // QueryChildrenTaskPage 查询子任务分页
