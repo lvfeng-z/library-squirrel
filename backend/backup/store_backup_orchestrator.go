@@ -88,13 +88,6 @@ func NewStoreBackupOrchestrator(
 	}
 }
 
-// BackupAllStores 备份作品 Resource 的全部 Store，返回备份清单
-// Resource 的每个 Store 字段（WorkStoreID、ThumbnailStoreID 等）都会产生一条 StoreBackupItem
-// Resource 记录不变（不禁用，保持 Enabled=true）
-func (o *StoreBackupOrchestratorImpl) BackupAllStores(ctx context.Context, workId int64) []*StoreBackupItem {
-	return o.BackupStores(ctx, workId, StoreTypeWork, StoreTypeThumbnail)
-}
-
 // BackupStores 备份作品 Resource 指定类型的 Store，返回备份清单
 // 仅备份传入 types 命中的 Store 字段，用于板块隔离（如仅备份资源文件、不触及缩略图）
 // Resource 记录不变（不禁用，保持 Enabled=true）

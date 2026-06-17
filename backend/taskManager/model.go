@@ -47,15 +47,48 @@ const (
 	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
-// runMode 任务执行模式
-type runMode int
+// runMode 板块执行选择（结构体承载所选板块集合）
+type runMode struct {
+	workInfo  bool // 板块 A：作品信息
+	resource  bool // 板块 B：资源文件
+	thumbnail bool // 板块 C：封面
+}
 
+// runModeFull 全部三板块（完整下载）
+var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
+
+func (m runMode) hasWorkInfo() bool  { return m.workInfo }
+func (m runMode) hasResource() bool  { return m.resource }
+func (m runMode) hasThumbnail() bool { return m.thumbnail }
+
+// isFull 是否选中全部三板块（等价完整下载）
+func (m runMode) isFull() bool { return m.workInfo && m.resource && m.thumbnail }
+
+// 板块代码（IPC 契约，顺序码）：前端 Redownload(sections) 传入
 const (
-	runModeFull         runMode = iota // 完整下载（作品信息 + 资源 + 封面）
-	runModeResourceOnly                // 仅资源文件（板块 B）
-	runModeWorkInfo                    // 仅作品信息（板块 A）
-	runModeThumbnail                   // 仅封面（板块 C）
+	sectionCodeWorkInfo  = 1 // 板块 A
+	sectionCodeResource  = 2 // 板块 B
+	sectionCodeThumbnail = 3 // 板块 C
 )
+
+// parseSections 将板块代码数组解析为 runMode；空数组兜底为全集（前端恒下发非空，此处防御）
+func parseSections(codes []int) runMode {
+	mode := runMode{}
+	for _, c := range codes {
+		switch c {
+		case sectionCodeWorkInfo:
+			mode.workInfo = true
+		case sectionCodeResource:
+			mode.resource = true
+		case sectionCodeThumbnail:
+			mode.thumbnail = true
+		}
+	}
+	if !mode.workInfo && !mode.resource && !mode.thumbnail {
+		return runModeFull
+	}
+	return mode
+}
 
 // taskStateName 任务状态名称映射
 func taskStateName(s TaskState) string {
@@ -152,13 +185,10 @@ type ResourceReader interface {
 type StoreBackupItem = backup.StoreBackupItem
 
 // StoreBackupOrchestrator 资源存储备份编排器接口
-// 封装替换场景下作品 Resource 全部 PersistentStore 的一站式备份和还原
+// 封装替换场景下作品 Resource 指定类型 PersistentStore 的备份和还原（板块隔离：按需只备份单一类型）
 // 当前业务中一个 Work 恰好对应一条 Resource，接口以 workId 为入参
 type StoreBackupOrchestrator interface {
-	// BackupAllStores 备份作品 Resource 的全部 Store，返回备份清单
-	// Resource 的每个 Store 字段（WorkStoreID、ThumbnailStoreID 等）都会产生一条 StoreBackupItem
-	BackupAllStores(ctx context.Context, workId int64) []*StoreBackupItem
-	// BackupStores 备份作品 Resource 指定类型的 Store，用于板块隔离
+	// BackupStores 备份作品 Resource 指定类型的 Store，返回备份清单
 	BackupStores(ctx context.Context, workId int64, types ...backup.StoreType) []*StoreBackupItem
 	// RestoreAllStores 从备份清单还原所有 Store 并更新对应 Resource
 	// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过（对应 Resource 字段保持 null）
@@ -323,18 +353,13 @@ func (m *ManagedTask) run() runResult {
 		}
 	}
 	m.setState(TaskStateProcessing)
-	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode=%d, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
+	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={A:%v,B:%v,C:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.hasResource(), m.runMode.hasThumbnail(), m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
 
-	switch m.runMode {
-	case runModeWorkInfo:
-		return m.runWorkInfoSection()
-	case runModeThumbnail:
-		return m.runThumbnailSection()
-	case runModeResourceOnly:
-		return m.runResourceOnlySection()
-	default:
+	// 全集走现有完整流程（含查重）；真子集走板块组合
+	if m.runMode.isFull() {
 		return m.runFullSection()
 	}
+	return m.runSectionCombo()
 }
 
 // runFullSection 完整下载：查重 + 作品信息 + 资源 + 封面（板块全流程）
@@ -369,10 +394,10 @@ func (m *ManagedTask) runFullSection() runResult {
 		}
 	}
 
-	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行）
+	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行；缩略图备份归 doSaveThumbnail，此处仅 Work，见 §7.4）
 	if m.existingWorkId > 0 {
 		m.isReplace = true
-		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupAllStores(m.ctx, m.existingWorkId)
+		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.existingWorkId, backup.StoreTypeWork)
 		m.existingWorkId = 0
 	}
 
@@ -420,107 +445,109 @@ func (m *ManagedTask) runFullSection() runResult {
 	return m.startDownload(reader, startResp)
 }
 
-// runResourceOnlySection 板块 B：仅重新下载资源文件（保留旧缩略图）
-func (m *ManagedTask) runResourceOnlySection() runResult {
-	// 检查 workdir 是否已配置
-	if m.deps.WorkDirProvider.GetWorkDir() == "" {
+// runSectionCombo 板块组合执行（真子集）：严格按 runMode 所选板块，A→B→C 顺序执行，末尾统一终态化
+// 含 B 时走查重（ConfirmReplace 两段式，与 runFullSection 一致）并产生终态；无 B 为非终态（保持执行前状态、不持久化）
+func (m *ManagedTask) runSectionCombo() runResult {
+	// workdir 检查（B/C 需要，置于查重前避免无效确认）
+	if (m.runMode.hasResource() || m.runMode.hasThumbnail()) && m.deps.WorkDirProvider.GetWorkDir() == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
-		if m.deps.Pusher != nil {
-			m.deps.Pusher.PushError(m.taskId, "未配置资源库目录，请先在设置中指定资源库保存位置")
-		}
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed("未配置资源库目录，请先在设置中指定资源库保存位置")
-		return runResultDone
+		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
-	// 由任务记录的 (site_id, site_work_id) 定位 workId（跳过 SaveWorkInfo）
-	workId, err := m.resolveWorkIdByTask()
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
+	// 含 B：查重（fallback；主路径在 Manager.batchCheckDuplicates）
+	if m.runMode.hasResource() && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
+		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
+		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
+		if err == nil && existing != nil {
+			m.existingWorkId = existing.GetID()
+			existingWorkName := ""
+			if existing.SiteWorkName.Valid {
+				existingWorkName = existing.SiteWorkName.String
+			}
+			if m.deps.Pusher != nil {
+				m.deps.Pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, existing.GetID(), existingWorkName)
+			}
+			m.setState(TaskStateWaitingForInput)
+			return runResultNeedConfirm
 		}
-		m.setFailed(fmt.Sprintf("定位作品失败: %v", err))
-		return runResultDone
-	}
-	m.workId = workId
-
-	// 替换备份：板块隔离，仅备份资源文件、不触及缩略图
-	m.isReplace = true
-	m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, workId, backup.StoreTypeWork)
-
-	// 获取资源读取器
-	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed(fmt.Sprintf("获取资源读取器失败: %v", err))
-		return runResultDone
 	}
 
-	return m.startDownload(reader, startResp)
-}
-
-// runWorkInfoSection 板块 A：仅重新下载作品信息（非终态）
-func (m *ManagedTask) runWorkInfoSection() runResult {
-	// 创建作品信息
-	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
+	// workId 定位 + B 备份
+	if m.runMode.hasResource() {
+		// B：查重命中（existingWorkId>0，确认后重入或 batchCheckDuplicates 设置）
+		if m.existingWorkId > 0 {
+			m.isReplace = true
+			m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.existingWorkId, backup.StoreTypeWork)
+			m.workId = m.existingWorkId
+			m.existingWorkId = 0
+		} else if !m.runMode.hasWorkInfo() {
+			// B-only 但查重未命中作品（重执行前提是作品已存在，正常不发生）
+			logger.Log.Errorf("[TaskManager] 任务 %d 资源重执行未定位到作品", m.taskId)
+			return m.comboFail("未找到任务对应的作品，无法重新下载资源")
 		}
-		m.finishNonTerminalSection(fmt.Sprintf("创建作品信息失败: %v", err))
-		return runResultDone
+		// A+B 且查重未命中：A 的 SaveWorkInfo 会提供 workId
+	} else if !m.runMode.hasWorkInfo() {
+		// 无 B 无 A（C-only）：由任务记录定位已有作品
+		workId, err := m.resolveWorkIdByTask()
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
+			return m.comboFail(fmt.Sprintf("定位作品失败: %v", err))
+		}
+		m.workId = workId
 	}
 
-	// 保存作品完整信息（Work + 周边数据）
-	workId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
+	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId）
+	if m.runMode.hasWorkInfo() {
+		workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
+			return m.comboFail(fmt.Sprintf("创建作品信息失败: %v", err))
 		}
-		m.finishNonTerminalSection(fmt.Sprintf("保存作品信息失败: %v", err))
-		return runResultDone
+		workId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
+			return m.comboFail(fmt.Sprintf("保存作品信息失败: %v", err))
+		}
+		m.workId = workId
 	}
-	m.workId = workId
 
-	// A/C 非终态：保持执行前状态、不持久化
+	// 板块 B：资源文件（终态；downloadLoop 完成时若 hasThumbnail 顺带生成缩略图）
+	if m.runMode.hasResource() {
+		reader, startResp, err := m.pluginExec.Start(m.ctx, m.task)
+		if err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
+			return m.comboFail(fmt.Sprintf("获取资源读取器失败: %v", err))
+		}
+		return m.startDownload(reader, startResp)
+	}
+
+	// 板块 C：封面（无 B 时；doSaveThumbnail(force=true) 内部"备份→生成→失败还原"）
+	if m.runMode.hasThumbnail() {
+		if thumbErr := m.saveThumbnailByWorkId(m.ctx, m.workId, true); thumbErr != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 缩略图保存失败: %v", m.taskId, thumbErr)
+			return m.comboFail(fmt.Sprintf("缩略图保存失败: %v", thumbErr))
+		}
+	}
+
+	// 无 B：非终态成功，保持执行前状态、不持久化
 	m.finishNonTerminalSection("")
 	return runResultDone
 }
 
-// runThumbnailSection 板块 C：仅重新下载封面（非终态）
-func (m *ManagedTask) runThumbnailSection() runResult {
-	// 由任务记录的 (site_id, site_work_id) 定位 workId
-	workId, err := m.resolveWorkIdByTask()
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.finishNonTerminalSection(fmt.Sprintf("定位作品失败: %v", err))
-		return runResultDone
+// comboFail 组合执行失败处理
+// 暂停则返回 Paused；含 B 为终态失败（PushError + setFailed + run() defer 还原备份），无 B 为非终态（finishNonTerminalSection 内部 PushError + 恢复执行前状态）
+func (m *ManagedTask) comboFail(errMsg string) runResult {
+	if m.abortedByPause() {
+		return runResultPaused
 	}
-	m.workId = workId
-
-	// 保存缩略图（强制覆盖）
-	if thumbErr := m.saveThumbnailByWorkId(m.ctx, workId, true); thumbErr != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 缩略图保存失败: %v", m.taskId, thumbErr)
-		if m.abortedByPause() {
-			return runResultPaused
+	if m.runMode.hasResource() {
+		if m.deps.Pusher != nil {
+			m.deps.Pusher.PushError(m.taskId, errMsg)
 		}
-		m.finishNonTerminalSection(fmt.Sprintf("缩略图保存失败: %v", thumbErr))
-		return runResultDone
+		m.setFailed(errMsg)
+	} else {
+		m.finishNonTerminalSection(errMsg)
 	}
-
-	// A/C 非终态：保持执行前状态、不持久化
-	m.finishNonTerminalSection("")
 	return runResultDone
 }
 
@@ -592,9 +619,9 @@ func (m *ManagedTask) resolveWorkIdByTask() (int64, error) {
 	return work.GetID(), nil
 }
 
-// isNonTerminalMode 是否为非终态板块（A/C）：执行不产生任务终态、不持久化任务状态
+// isNonTerminalMode 是否为非终态板块组合（无 B）：执行不产生任务终态、不持久化任务状态
 func (m *ManagedTask) isNonTerminalMode() bool {
-	return m.runMode == runModeWorkInfo || m.runMode == runModeThumbnail
+	return !m.runMode.hasResource()
 }
 
 // finishNonTerminalSection 结束 A/C 非终态板块：恢复执行前状态（任务的 DB status），不持久化
@@ -643,12 +670,8 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, storeId in
 			// len(resources) == 0：上一次执行创建了 Work 但未创建 Resource，降级为新建
 		}
 		if existingResource != nil {
-			// 更新已有 Resource
+			// 更新已有 Resource（缩略图不清除：由 doSaveThumbnail(force=true) 自管备份与覆盖，见 §7.4）
 			existingResource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
-			// 板块隔离：仅 Full 清除旧缩略图（由 saveThumbnail 重新生成）；ResourceOnly 保留旧缩略图
-			if m.runMode == runModeFull {
-				existingResource.ThumbnailStoreID = sql.NullInt64{Valid: false}
-			}
 			existingResource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
 			existingResource.ResourceComplete = 0 // 下载未完成
 			if err := m.deps.ResourceUpdater.Update(ctx, existingResource); err != nil {
@@ -735,8 +758,8 @@ func (m *ManagedTask) downloadLoop() runResult {
 						m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
 						return runResultDone
 					}
-					// 板块隔离：仅 Full 下载完成后生成缩略图；ResourceOnly 保留旧缩略图
-					if m.runMode == runModeFull {
+					// 含缩略图板块时下载完成后生成缩略图（force=true：备份旧缩略图→生成新→失败还原，见 §7.4）
+					if m.runMode.hasThumbnail() {
 						m.saveThumbnail()
 					}
 					// 清除 pending_resource_id
@@ -1217,9 +1240,9 @@ func (p *ParentTask) AllChildrenTerminal() bool {
 	return true
 }
 
-// saveThumbnail 下载完成后生成缩略图（仅 Full 模式调用，已有则跳过）
+// saveThumbnail 下载完成后生成缩略图（含缩略图板块时调用，force=true：备份旧缩略图→生成新→失败还原）
 func (m *ManagedTask) saveThumbnail() {
-	if err := m.saveThumbnailByWorkId(m.ctx, m.workId, false); err != nil {
+	if err := m.saveThumbnailByWorkId(m.ctx, m.workId, true); err != nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图生成失败: %v", m.taskId, err)
 	}
 }

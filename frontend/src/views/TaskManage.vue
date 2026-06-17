@@ -247,7 +247,7 @@ function rowClassName(data: { row: unknown; rowIndex: number }) {
   }
 }
 
-async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) {
+async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, sections?: number[]) {
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       dialogData.value = row
@@ -265,14 +265,8 @@ async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: Task
     case TaskOperationCodeEnum.RETRY:
       await startTask(row, true)
       break
-    case TaskOperationCodeEnum.REWORK_INFO:
-      await redownloadSection(row, taskApi.taskRedownloadWorkInfo, '作品信息')
-      break
-    case TaskOperationCodeEnum.REWORK_RESOURCE:
-      await redownloadSection(row, taskApi.taskRedownloadResource, '资源文件')
-      break
-    case TaskOperationCodeEnum.REWORK_THUMBNAIL:
-      await redownloadSection(row, taskApi.taskRedownloadThumbnail, '封面')
+    case TaskOperationCodeEnum.REDOWNLOAD:
+      await redownloadSections(row, sections ?? [])
       break
     case TaskOperationCodeEnum.CANCEL:
       taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
@@ -348,15 +342,11 @@ async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<bool
 }
 
 // 板块单独执行：以当前行 taskId 发起对应板块的重新下载（A 作品信息 / B 资源 / C 封面）
-async function redownloadSection(
-  row: TaskProgressTreeDTO,
-  apiCall: (taskIds: number[]) => Promise<{ success: boolean }>,
-  sectionName: string
-): Promise<void> {
+async function redownloadSections(row: TaskProgressTreeDTO, sections: number[]): Promise<void> {
   try {
-    await apiCall([getRowTaskId(row)])
+    await taskApi.taskRedownload([getRowTaskId(row)], sections)
   } catch (e: any) {
-    ElMessage.error(`重新下载${sectionName}失败：${e.message}`)
+    ElMessage.error(`重新下载板块失败：${e.message}`)
   }
 }
 
@@ -576,7 +566,7 @@ async function handleSourceUrlInput() {
         <!-- 操作列 -->
         <el-table-column
           fixed="right"
-          :width="188"
+          :width="163"
           align="center"
         >
           <template #header>

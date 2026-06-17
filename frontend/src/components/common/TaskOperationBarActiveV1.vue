@@ -2,15 +2,16 @@
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
+import { ALL_SECTIONS, SectionCode } from '@renderer/constants/sectionCode.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
-import { computed, Ref } from 'vue'
+import { computed, reactive, Ref, ref } from 'vue'
 import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 
 // props
 const props = defineProps<{
   row: TaskProgressTreeDTO
-  buttonClicked: (row: TaskProgressTreeDTO, code: TaskOperationCodeEnum) => void
+  buttonClicked: (row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, sections?: number[]) => void
 }>()
 
 // 变量
@@ -178,15 +179,21 @@ function isTerminalState(): boolean {
     status.value === TaskStatusEnum.FAILED
   )
 }
-// 板块单独执行下拉项（板块 A 作品信息 / 板块 B 资源文件 / 板块 C 封面）
-const sectionDropdownItems: { label: string; icon: string; code: TaskOperationCodeEnum }[] = [
-  { label: '作品信息', icon: 'Document', code: TaskOperationCodeEnum.REWORK_INFO },
-  { label: '资源文件', icon: 'Download', code: TaskOperationCodeEnum.REWORK_RESOURCE },
-  { label: '封面', icon: 'Picture', code: TaskOperationCodeEnum.REWORK_THUMBNAIL }
-]
-// 下拉项命令处理：直接回调父组件，由其分发到对应板块执行
-function handleSectionCommand(code: TaskOperationCodeEnum) {
-  props.buttonClicked(props.row, code)
+// 板块勾选状态（终态 popover 多选，每次打开默认全不选 = 全集）
+const sectionSelected = reactive({ workInfo: false, resource: false, thumbnail: false })
+// 板块弹出层可见性
+const sectionPopoverVisible: Ref<boolean> = ref(false)
+// 执行板块重执行：收集勾选项，不勾选则下发全集；执行后重置勾选
+function handleExecuteSections() {
+  sectionPopoverVisible.value = false
+  const sections: number[] = []
+  if (sectionSelected.workInfo) sections.push(SectionCode.WORK_INFO)
+  if (sectionSelected.resource) sections.push(SectionCode.RESOURCE)
+  if (sectionSelected.thumbnail) sections.push(SectionCode.THUMBNAIL)
+  sectionSelected.workInfo = false
+  sectionSelected.resource = false
+  sectionSelected.thumbnail = false
+  props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, sections.length > 0 ? sections : ALL_SECTIONS)
 }
 // 字节数转换为可读的数据量数值
 function formatBytes(bytes: number) {
@@ -226,7 +233,9 @@ function formatBytes(bytes: number) {
           @click="buttonClicked(row, TaskOperationCodeEnum.VIEW)"
         />
       </el-tooltip>
+      <!-- 非终态：执行按钮直接执行（开始/继续/暂停） -->
       <el-tooltip
+        v-if="!isTerminalState()"
         :content="mapToButtonStatus().tooltip"
         :enterable="false"
         :show-after="650"
@@ -239,30 +248,41 @@ function formatBytes(bytes: number) {
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>
-      <!-- 板块单独执行入口（仅终态）：拆分按钮的 ▼ 触发器，主按钮复用上方执行按钮 -->
-      <el-dropdown
-        v-if="isTerminalState()"
+      <!-- 终态：执行按钮作为 popover 触发器，多选板块重执行 -->
+      <el-popover
+        v-else
+        v-model:visible="sectionPopoverVisible"
         trigger="click"
-        @command="handleSectionCommand"
+        placement="bottom"
+        :width="160"
+        popper-class="task-operation-bar-section-popover"
       >
-        <el-button
-          size="small"
-          icon="ArrowDown"
-          class="task-operation-bar-section-trigger"
-        />
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="item in sectionDropdownItems"
-              :key="item.code"
-              :icon="item.icon"
-              :command="item.code"
-            >
-              {{ item.label }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
+        <template #reference>
+          <el-button
+            size="small"
+            icon="Download"
+          />
         </template>
-      </el-dropdown>
+        <div class="task-operation-bar-section-list">
+          <el-checkbox v-model="sectionSelected.workInfo">
+            作品信息
+          </el-checkbox>
+          <el-checkbox v-model="sectionSelected.resource">
+            资源文件
+          </el-checkbox>
+          <el-checkbox v-model="sectionSelected.thumbnail">
+            封面
+          </el-checkbox>
+          <el-button
+            size="small"
+            type="primary"
+            class="task-operation-bar-section-execute"
+            @click="handleExecuteSections"
+          >
+            执行
+          </el-button>
+        </div>
+      </el-popover>
       <el-tooltip
         content="取消"
         :enterable="false"
@@ -344,13 +364,13 @@ function formatBytes(bytes: number) {
   transition-delay: 1.4s;
   height: 0;
 }
-/* 板块下拉触发器：收窄宽度，贴合拆分按钮 caret 风格 */
-.task-operation-bar-section-trigger {
-  padding-left: 7px;
-  padding-right: 7px;
+/* 板块弹出层：纵向排列的勾选项 + 执行按钮 */
+.task-operation-bar-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-/* 让下拉包裹在按钮组中与相邻按钮无缝衔接（EP 仅对组内 .el-dropdown 左侧圆角做了处理） */
-:deep(.el-dropdown) {
-  margin-right: -1px;
+.task-operation-bar-section-execute {
+  margin-top: 4px;
 }
 </style>

@@ -354,6 +354,11 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		if child.resumeFromDB {
 			continue
 		}
+		// 无 B 的板块组合不查重（A/C 不覆盖资源文件，无需"作品已存在"提醒）
+		if !child.runMode.hasResource() {
+			child.skipDuplicateCheck = true
+			continue
+		}
 		// 不具备查重条件，标记跳过 run() 中的重复检测
 		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
 			child.skipDuplicateCheck = true
@@ -402,6 +407,12 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	for _, child := range children {
 		// 跨重启续传的任务直接派发（需要信号量）
 		if child.resumeFromDB {
+			toDispatch = append(toDispatch, child)
+			continue
+		}
+
+		// 无 B 的板块组合：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
+		if !child.runMode.hasResource() {
 			toDispatch = append(toDispatch, child)
 			continue
 		}

@@ -6,8 +6,6 @@ export enum TaskOperationCodeEnum {
   RETRY,
   CANCEL,
   DELETE,
-  // 板块单独执行（仅终态可用）
-  REWORK_INFO,
-  REWORK_RESOURCE,
-  REWORK_THUMBNAIL
+  // 板块重执行（多选，仅终态可用；携带 sections 板块代码数组）
+  REDOWNLOAD
 }
