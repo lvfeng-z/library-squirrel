@@ -5,7 +5,7 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import { ALL_SECTIONS, SectionCode } from '@renderer/constants/sectionCode.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
-import { computed, reactive, Ref, ref } from 'vue'
+import {computed, Ref, ref, toRaw} from 'vue'
 import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 
 // props
@@ -180,20 +180,38 @@ function isTerminalState(): boolean {
   )
 }
 // 板块勾选状态（终态 popover 多选，每次打开默认全不选 = 全集）
-const sectionSelected = reactive({ workInfo: false, resource: false, thumbnail: false })
+const sectionSelected: Ref<number[]> = ref([])
+// 板块多选提示文本
+const sectionTooltips: Ref<string> = computed(() => {
+  if (sectionSelected.value.length === 0) {
+    return '可选择部分执行'
+  } else if (sectionSelected.value.length === 3) {
+    return '全部执行'
+  }
+  const sectionText: string[] = []
+  for (const section of sectionSelected.value) {
+    switch (section) {
+      case SectionCode.WORK_INFO:
+        sectionText.push('作品信息')
+        break
+      case SectionCode.RESOURCE:
+        sectionText.push('资源')
+        break
+      case SectionCode.THUMBNAIL:
+        sectionText.push('缩略图')
+        break
+    }
+  }
+  return '仅执行 ' + sectionText.join('、')
+})
 // 板块弹出层可见性
 const sectionPopoverVisible: Ref<boolean> = ref(false)
 // 执行板块重执行：收集勾选项，不勾选则下发全集；执行后重置勾选
 function handleExecuteSections() {
   sectionPopoverVisible.value = false
-  const sections: number[] = []
-  if (sectionSelected.workInfo) sections.push(SectionCode.WORK_INFO)
-  if (sectionSelected.resource) sections.push(SectionCode.RESOURCE)
-  if (sectionSelected.thumbnail) sections.push(SectionCode.THUMBNAIL)
-  sectionSelected.workInfo = false
-  sectionSelected.resource = false
-  sectionSelected.thumbnail = false
-  props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, sections.length > 0 ? sections : ALL_SECTIONS)
+  const temp = toRaw(sectionSelected.value)
+  props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, temp.length > 0 ? temp : ALL_SECTIONS)
+  sectionSelected.value = []
 }
 // 字节数转换为可读的数据量数值
 function formatBytes(bytes: number) {
@@ -264,23 +282,30 @@ function formatBytes(bytes: number) {
           />
         </template>
         <div class="task-operation-bar-section-list">
-          <el-checkbox v-model="sectionSelected.workInfo">
-            作品信息
-          </el-checkbox>
-          <el-checkbox v-model="sectionSelected.resource">
-            资源文件
-          </el-checkbox>
-          <el-checkbox v-model="sectionSelected.thumbnail">
-            封面
-          </el-checkbox>
           <el-button
-            size="small"
-            type="primary"
-            class="task-operation-bar-section-execute"
-            @click="handleExecuteSections"
+              size="small"
+              type="primary"
+              class="task-operation-bar-section-execute"
+              @click="handleExecuteSections"
           >
-            执行
+            执行任务
           </el-button>
+          <el-tooltip trigger="hover" placement="left">
+            <template #content>
+              {{ sectionTooltips }}
+            </template>
+            <el-checkbox-group v-model="sectionSelected">
+              <el-checkbox :value="SectionCode.WORK_INFO">
+                作品信息
+              </el-checkbox>
+              <el-checkbox :value="SectionCode.RESOURCE">
+                资源
+              </el-checkbox>
+              <el-checkbox :value="SectionCode.THUMBNAIL">
+                缩略图
+              </el-checkbox>
+            </el-checkbox-group>
+          </el-tooltip>
         </div>
       </el-popover>
       <el-tooltip
