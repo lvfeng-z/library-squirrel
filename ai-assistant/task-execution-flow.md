@@ -6,12 +6,12 @@
 
 | 组件 | 文件路径 |
 |------|---------|
-| 任务状态、ManagedTask、run()（runMode 分流）、downloadLoop、板块方法 | `backend/taskManager/model.go` |
-| Manager（多根调度、信号量、flush、onStateChange） | `backend/taskManager/manager.go` |
-| Handler（Start/Retry/Resume、板块 Redownload*） | `backend/taskManager/handler.go` |
+| 任务状态、ManagedTask、run()（按 isFull 路由 runFullSection/runSectionCombo）、downloadLoop、板块组合执行、parseSections | `backend/taskManager/model.go` |
+| Manager（多根调度、信号量、flush、onStateChange、batchCheckDuplicates） | `backend/taskManager/manager.go` |
+| Handler（Start/Retry/Resume、Redownload 板块重执行） | `backend/taskManager/handler.go` |
 | Task Service（创建、重试） | `backend/task/service.go` |
 | Task Repository（DB 操作、关联任务查询） | `backend/task/repository.go` |
-| 备份还原（BackupAllStores / BackupStores 板块隔离） | `backend/backup/store_backup_orchestrator.go` |
+| 备份还原（BackupStores 按类型板块隔离） | `backend/backup/store_backup_orchestrator.go` |
 | 事务基础设施 | `backend/database/transaction.go`、`backend/database/tx_context.go` |
 | PersistentStore 操作 | `backend/persistentStore/service.go` |
 | 插件交互桥接 | `backend/plugin/extension/task_executor.go` |
@@ -131,7 +131,7 @@ CreateTaskByURL(ctx, url)
 Handler.StartTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.RetryTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.ResumeTaskTree(taskId, isLeaf) → resumeTaskTrees([taskId])           // 固定 runModeFull, skipTerminal=true
-板块 Redownload*(taskIds)               → startTaskTrees(taskIds, runModeXxx)
+板块 Redownload(taskIds, sections)    → startTaskTrees(taskIds, parseSections(sections))  // sections 为板块代码 A=1/B=2/C=3
 ```
 
 `loadAndStartTaskTrees(taskIds, skipTerminal, mode)` 接受任意多个 taskId（子任务或父任务），一次构建完整任务树：
@@ -152,7 +152,8 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
   → processParentUnit(...)                        // 父单元：建 ParentTask + 收集直接子任务
       - 所有子任务已终态（仅 skipTerminal 时）→ 计算父最终状态 + PushTaskRemove
   → batchCheckDuplicates(allToCheck)              // 多根共享一次批量查重
-      - 查询 workChecker.ListBySiteAndSiteWorkIDs
+      - 无 B（!hasResource）的板块组合直接标记 skipDuplicateCheck 并派发（A/C 不覆盖资源，无需"作品已存在"提醒）
+      - 查询 workChecker.ListBySiteAndSiteWorkIDs（仅含 B 的组合参与）
       - 重复 → WaitingForInput + 前端推送 DuplicateDetected
       - 不重复 → skipDuplicateCheck=true
   → tryDispatch(child)                            // 受信号量调度（逐个）
@@ -160,7 +161,7 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
       - 信号量已满 → 加入 waitingQueue + Waiting 状态
 ```
 
-**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode` 在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 据此分流（见阶段 3、板块单独执行章节）。
+**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode`（板块选择结构体 `{workInfo,resource,thumbnail}`）在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 按 `isFull` 分流到 `runFullSection`（完整流程，含查重）或 `runSectionCombo`（板块组合，见[板块重执行](#板块重执行多选组合)章节）。
 
 ### 阶段 3：任务执行
 
@@ -177,18 +178,16 @@ func (m *Manager) executeTask(task *ManagedTask) {
 
 #### 3A 全新执行 — run()
 
-`run()` 是核心执行入口，按 `ManagedTask.runMode` 分流到不同板块（Full 完整下载 / ResourceOnly 板块 B / WorkInfo 板块 A / Thumbnail 板块 C，详见[板块单独执行](#板块单独执行)章节）：
+`run()` 是核心执行入口，按 `ManagedTask.runMode`（板块选择结构体）的 `isFull()` 分流：全集走 `runFullSection`（完整下载，含查重），真子集走 `runSectionCombo`（板块组合，详见[板块重执行](#板块重执行多选组合)章节）：
 
 ```go
 func (m *ManagedTask) run() runResult {
     // defer 栈：① 失败还原备份（最先注册最后执行）② panic recovery
     // ctx 检查 + setState(Processing)
-    switch m.runMode {
-    case runModeWorkInfo:     return m.runWorkInfoSection()      // 板块 A
-    case runModeThumbnail:    return m.runThumbnailSection()     // 板块 C
-    case runModeResourceOnly: return m.runResourceOnlySection()  // 板块 B
-    default:                  return m.runFullSection()          // 完整下载
+    if m.runMode.isFull() {
+        return m.runFullSection()    // 完整下载（信息+资源+封面），含查重
     }
+    return m.runSectionCombo()       // 板块组合：A→B→C 顺序执行所选板块
 }
 ```
 
@@ -205,13 +204,13 @@ func (m *ManagedTask) run() runResult {
 |:---:|------|---------|:---:|
 | 0 | 检查 workdir 是否已配置 | 无 | - |
 | 0.0 | 重复检测（`workChecker.GetBySiteAndSiteWorkID`） | SELECT | - |
-| 0.1 | 替换场景备份（`BackupAllStores`） | SELECT + DELETE/备份 per store | - |
+| 0.1 | 替换场景备份（`BackupStores(StoreTypeWork)`，仅备份资源；缩略图备份归 `doSaveThumbnail(force=true)`） | SELECT + DELETE/备份 per store | - |
 | 1 | `pluginExec.CreateWorkInfo`（插件 RPC） | 无 | - |
 | 2 | `workInfoSaver.SaveWorkInfo` | 批量 INSERT（Work、作者、标签等） | **事务 1** |
 | 3 | `pluginExec.Start`（插件 RPC，返回数据流） | 无 | - |
 | — | `startDownload(reader, startResp)`：解析路径 + 事务 2 + downloadLoop | 见下 | **事务 2** |
 
-**startDownload（Full 与 ResourceOnly 共享）**：解析保存路径（`resolveLocalPath`）→ 事务 2（StoreStream + saveResource + UpdatePendingResourceID）→ `downloadLoop()`。板块 B 的隔离行为（保留旧缩略图）由 `runMode` 在 `saveResource` 与 `downloadLoop` 内控制，详见板块单独执行章节。
+**startDownload（Full 与板块组合的 B 共享）**：解析保存路径（`resolveLocalPath`）→ 事务 2（StoreStream + saveResource + UpdatePendingResourceID）→ `downloadLoop()`。`saveResource` 替换分支**不清 `ThumbnailStoreID`**；`downloadLoop` 完成时按 `runMode.hasThumbnail()` 决定是否以 `force=true` 重新生成缩略图（备份旧缩略图→生成新→失败还原），详见[板块重执行](#板块重执行多选组合)章节。
 
 **事务 2 详解**（`startDownload` 内）：
 
@@ -237,7 +236,7 @@ transactor.ExecInTransaction(context.Background(), func(txCtx) {
 
 | 场景 | 条件 | 行为 |
 |------|------|------|
-| 替换 | `isReplace=true` | 查询已有 Resource，更新 `WorkStoreID` 和 `ResourceComplete=0` |
+| 替换 | `isReplace=true` | 查询已有 Resource，更新 `WorkStoreID` 和 `ResourceComplete=0`（**不清 `ThumbnailStoreID`**，缩略图由 `doSaveThumbnail(force=true)` 自管） |
 | 新建 | 首次执行 | 创建新 Resource（`WorkID`、`TaskID`、`WorkStoreID`、`ResourceComplete=0`） |
 
 #### 3B 断点续传 — resumeFromPersistedState()
@@ -282,7 +281,7 @@ downloadLoop:
           if EOF:
               writer.Complete()      // 同步 + 关闭 + DB 状态=完成
               校验下载完整性
-              saveThumbnail()        // 获取并保存缩略图
+              if hasThumbnail(): saveThumbnail(force=true)  // 备份旧缩略图→生成新→失败还原
               clearPendingResourceID()  // 清除崩溃恢复标记
               setState(Finished)
               return runResultDone
@@ -407,15 +406,16 @@ BaseRepository.getDb(ctx)
 
 ### 备份还原（StoreBackupOrchestrator）
 
-**触发时机**：替换场景（步骤 0.1），用户确认替换后在第二次 `run()` 中执行。
+**触发时机**：替换场景（步骤 0.1 等价位置），用户确认替换后在第二次 `run()` 中执行。
 
-`BackupAllStores(ctx, workId)` 是 `BackupStores(ctx, workId, StoreTypeWork, StoreTypeThumbnail)` 的包装（备份 Work + Thumbnail 全部 Store）。板块隔离场景按需只备份单一类型：
+统一用 `BackupStores(ctx, workId, types...)` 按类型备份（板块隔离：各板块只备份/操作自身 Store）：
 
 | 调用方 | 备份范围 | 说明 |
 |--------|---------|------|
-| Full 替换（`BackupAllStores`） | Work + Thumbnail | 完整重下，两者都备份 |
-| 板块 B（`BackupStores(StoreTypeWork)`） | 仅 Work | 资源重下不动缩略图 |
-| 板块 C（`BackupStores(StoreTypeThumbnail)`） | 仅 Thumbnail | 封面重下不动资源 |
+| Full / 含 B 的组合 替换 | `BackupStores(StoreTypeWork)` 仅 Work | 资源重下不动缩略图 |
+| 含 C（缩略图重新生成时） | `BackupStores(StoreTypeThumbnail)` 仅 Thumbnail | 由 `doSaveThumbnail(force=true)` 内部触发，生成新缩略图失败时 defer 还原 |
+
+> 历史 `BackupAllStores`（Work+Thumbnail 一次性全量）已删除：拆为 B 只备份 Work、缩略图延后到 `doSaveThumbnail(force=true)` 自管，各板块彻底隔离。
 
 **BackupStores 流程**：
 
@@ -442,7 +442,7 @@ RestoreAllStores(ctx, items)                     // 使用 context.Background()
       4. 删除 Backup DB 记录
 ```
 
-还原有两处触发：`run()` 的 defer（任务最终 Failed 时还原全部备份项）、`doSaveThumbnail(force=true)` 的 defer（板块 C 新缩略图未保存成功时还原旧缩略图）。
+还原有两处触发：`run()` 的 defer（含 B 的组合终态 Failed 时还原 Work 备份项）、`doSaveThumbnail(force=true)` 的 defer（缩略图重新生成失败时还原旧缩略图）。两者各管自身 Store 的备份项。
 
 **降级处理**：如果备份过程中某个 Store 备份失败，`BackupID` 为 0。还原时跳过此类条目，该 Store 文件永久丢失，Resource 对应字段保持 null。
 
@@ -513,47 +513,70 @@ doFlush():
 
 ---
 
-## 板块单独执行
+## 板块重执行（多选组合）
 
-对已下载的作品，支持单独重新执行某个板块（板块 A 作品信息 / 板块 B 资源文件 / 板块 C 封面）。板块执行与普通任务执行**等价**——同样走唯二入口 `startTaskTrees`、新建 `ManagedTask` 实例，只是携带不同的 `runMode`。
+对已下载的作品，支持**多选**重新执行若干板块（板块 A 作品信息 / 板块 B 资源文件 / 板块 C 封面）：前端勾选要执行的板块（不勾选视为全集），后端严格按所选板块组合执行。重执行与普通任务执行**等价**——同样走唯二入口 `startTaskTrees`、新建 `ManagedTask` 实例，只是 `runMode` 携带所选板块集合。
 
-### runMode 模式
-
-| runMode | 板块 | 入口方法 | 终态性 | 持久化 |
-|:---:|------|---------|:---:|:---:|
-| `runModeFull` | 完整下载（信息+资源+封面） | `runFullSection` | 终态 | 是 |
-| `runModeResourceOnly` | B 资源文件 | `runResourceOnlySection` | 终态 | 是 |
-| `runModeWorkInfo` | A 作品信息 | `runWorkInfoSection` | 非终态 | 否 |
-| `runModeThumbnail` | C 封面 | `runThumbnailSection` | 非终态 | 否 |
-
-板块 Handler 直接接收前端选定的 `taskIds`，内部调 `startTaskTrees`：
+### runMode：板块选择结构体
 
 ```go
-func (h *Handler) RedownloadWorkInfo(ctx, taskIds []int64)  → startTaskTrees(ctx, taskIds, runModeWorkInfo)
-func (h *Handler) RedownloadResource(ctx, taskIds []int64)  → startTaskTrees(ctx, taskIds, runModeResourceOnly)
-func (h *Handler) RedownloadThumbnail(ctx, taskIds []int64) → startTaskTrees(ctx, taskIds, runModeThumbnail)
+type runMode struct {
+    workInfo  bool // 板块 A
+    resource  bool // 板块 B
+    thumbnail bool // 板块 C
+}
+var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
 ```
 
-任务定位：板块执行所需数据（`PluginPublicID`/`PluginContributionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。前端选定任务的方式：任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
+`run()` 按 `isFull()` 分流：全集 → `runFullSection`（完整流程，含查重）；真子集 → `runSectionCombo`（A→B→C 顺序执行所选板块，末尾统一终态化）。
 
-### A/C 非终态语义
+前端 `Redownload(taskIds, sections)` 收板块代码数组（A=1/B=2/C=3，不勾选时下发全集 `[1,2,3]`），后端 `parseSections` 映射为 `runMode`：
 
-板块 A、C 是**非终态操作**：执行不改变任务的终态、不持久化任务状态，仅短暂进入 Processing 后回到执行前状态。
+```go
+func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTaskTrees(ctx, taskIds, parseSections(sections))
+```
 
-- `isNonTerminalMode()`：`runMode == WorkInfo || Thumbnail`。
-- `finishNonTerminalSection(errMsg)`：成功（空 errMsg）回到执行前状态（`setState(TaskState(m.task.Status))`）；失败记录错误 + 推送通知，同样回到执行前状态。**不调用 `setFailed`**，不污染源任务。
-- `onStateChange` 持久化闸门：稳定态写入由 `isStableState(newState) && !mt.isNonTerminalMode()` 双重判断，A/C runMode 一律跳过 `addToPending`（但仍推送前端状态变化，让前端可见 Processing）。
-- 前端表现：板块执行期间任务卡片短暂可见（Processing），结束（成功/失败）后由 `cleanupFinishedTask` 走标准移除流程（A/C 作根 parentId=0 → 从 `taskMap` 移除 + `PushTaskRemove`）。
+任务定位：重执行所需数据（`PluginPublicID`/`PluginContributionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
+
+### runSectionCombo 执行流程
+
+严格按 `runMode` 所选板块，A→B→C 顺序执行：
+
+1. **workdir 检查**（B/C 需要，置于查重前避免无效确认）。
+2. **含 B → 查重**（`runSectionCombo` 内 fallback；主路径在 `batchCheckDuplicates`）：作品已存在 → `PushDuplicateDetected` + `WaitingForInput` + `runResultNeedConfirm`，确认后第二次 run 走备份+执行。**无 B 不查重**（A/C 不覆盖资源，无需"作品已存在"提醒）。
+3. **workId 定位 + B 备份**：含 B 则 `BackupStores(StoreTypeWork)` 备份旧资源（`existingWorkId` 由查重设置）；无 B 无 A（C-only）则 `resolveWorkIdByTask` 定位。
+4. **板块 A**（`hasWorkInfo`）：`CreateWorkInfo` + `SaveWorkInfo`（提供 workId）。
+5. **板块 B**（`hasResource`，终态）：`Start` → `startDownload` → `downloadLoop`（完成 `setState(Finished)`；`hasThumbnail` 时以 `force=true` 顺带生成缩略图）。
+6. **板块 C**（`hasThumbnail` 且无 B）：`saveThumbnailByWorkId(force=true)`。
+7. **无 B → 非终态成功**：`finishNonTerminalSection("")` 回到执行前状态。
+
+失败由 `comboFail(errMsg)` 统一处理：含 B → `setFailed`（终态，`run()` defer 还原 Work 备份）；无 B → `finishNonTerminalSection`（非终态，恢复执行前状态）。
+
+### 终态性规则：由是否含 B 决定
+
+| 组合 | 终态性 | 持久化 | 查重 |
+|------|:---:|:---:|:---:|
+| 含 B（B / A+B / B+C / 全集） | 终态（Finished/Failed） | 是 | 是（ConfirmReplace） |
+| 无 B（A / C / A+C） | 非终态（保持执行前状态） | 否 | 否 |
+
+- `isNonTerminalMode()` = `!hasResource()`。
+- `finishNonTerminalSection(errMsg)`：成功（空 errMsg）回到执行前状态（`setState(TaskState(m.task.Status))`）；失败记录错误 + 推送通知，同样回到执行前状态，**不调用 `setFailed`**、不污染源任务。
+- `onStateChange` 持久化闸门：`isStableState(newState) && !mt.isNonTerminalMode()`，无 B 的组合一律跳过 `addToPending`（仍推送前端状态变化）。
+- 前端表现：重执行期间任务卡片短暂可见（Processing），结束（成功/失败）后由 `cleanupFinishedTask` 走标准移除流程（作根 parentId=0 → 从 `taskMap` 移除 + `PushTaskRemove`）。
+
+> 注：A 为纯本地操作（`CreateWorkInfo`+`SaveWorkInfo`），执行极快（毫秒级），Processing 窗口可能短于一帧渲染，前端不一定可见闪烁——属正常现象，作品信息已实际更新。
 
 ### 板块隔离（各板块只备份/操作自身 Store）
 
 | 板块 | 备份范围 | 行为 |
 |:---:|---------|------|
 | A 作品信息 | 无 | 不动文件 |
-| B 资源文件 | 仅 `StoreTypeWork` | `BackupStores(workId, StoreTypeWork)`；`saveResource` 替换分支**不清 `ThumbnailStoreID`**（仅 Full 清）；`downloadLoop` 完成分支**跳过 `saveThumbnail`**（仅 Full 生成） |
-| C 封面 | 仅 `StoreTypeThumbnail` | `doSaveThumbnail(force=true)` 先 `BackupStores(workId, StoreTypeThumbnail)` 备份旧缩略图，下载新缩略图失败时 defer 还原 |
+| B 资源文件 | 仅 `StoreTypeWork` | `BackupStores(workId, StoreTypeWork)`；`saveResource` 替换分支**不清 `ThumbnailStoreID`** |
+| C 封面 | 仅 `StoreTypeThumbnail` | `doSaveThumbnail(force=true)` 内部 `BackupStores(workId, StoreTypeThumbnail)` 备份旧缩略图，生成失败 defer 还原 |
 
-`saveThumbnail` 已从耦合 `PendingResourceID` 的下载流程中解耦，改为 `workId` 基：`saveThumbnail()`（Full 完成分支，force=false）→ `saveThumbnailByWorkId(ctx, workId, force)` → `doSaveThumbnail(ctx, resource, force)`。板块 C 调用 `saveThumbnailByWorkId(ctx, workId, true)` 强制覆盖。
+含 B 的组合在 `downloadLoop` 完成时若同时选 C（`hasThumbnail`），以 `force=true` 生成新缩略图（备份旧→生成新→失败还原），并入 B 的完成路径（B 终态后无法再单独跑 C）。该 `force=true` + 不清空 `ThumbnailStoreID` 的设计修复了原 force=false + 清空导致缩略图生成失败时封面丢失的问题。
+
+`saveThumbnail` 已从耦合 `PendingResourceID` 的下载流程解耦，改为 `workId` 基：`saveThumbnail()`（`downloadLoop` 完成分支，`force=true`）→ `saveThumbnailByWorkId(ctx, workId, force)` → `doSaveThumbnail(ctx, resource, force)`。板块 C 直接调 `saveThumbnailByWorkId(ctx, workId, true)`。
 
 ---
 
@@ -600,6 +623,13 @@ ManagedTask.pluginExec.Xxx()
 ---
 
 ## 更新记录
+
+### 2026-06-18
+- [修改] 板块重执行由单板块单选改为**多选组合执行**：`runMode` 单枚举 → 板块选择结构体 `{workInfo,resource,thumbnail}`；`run()` 按 `isFull` 分流 `runFullSection`/`runSectionCombo`（A→B→C）；三 `Redownload*` Handler 收敛为 `Redownload(taskIds, sections)`（顺序码 A=1/B=2/C=3，`parseSections` 映射）
+- [修改] 查重改为按 B 触发：`batchCheckDuplicates` 与 `runSectionCombo` 均对 `!hasResource`（无 B）跳过查重；含 B 走 ConfirmReplace
+- [修改] 终态性规则改为由是否含 B 决定（`isNonTerminalMode = !hasResource`）；新增 `comboFail` 统一终态化
+- [修改] 备份改为板块隔离：删除 `BackupAllStores`；B 始终 `BackupStores(StoreTypeWork)`，缩略图备份统一归 `doSaveThumbnail(force=true)`（`saveResource` 不清 `ThumbnailStoreID`、`downloadLoop` 以 force=true 生成）；修复缩略图生成失败丢失封面问题
+- [修改] 「板块单独执行」章节重写为「板块重执行（多选组合）」
 
 ### 2026-06-17
 - [修改] 任务启动/重试/恢复/崩溃恢复入口由单根 `loadAndStartTaskTree` 统一改为多根 `loadAndStartTaskTrees`（唯二入口 `startTaskTrees`/`resumeTaskTrees`，多根共享一次 ListTaskTree + 一次批量查重 + 重复执行保护）
