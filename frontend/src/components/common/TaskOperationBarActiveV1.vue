@@ -26,7 +26,7 @@ const taskStatusMapping: {
 } = {
   [TaskStatusEnum.CREATED]: {
     tooltip: '开始',
-    icon: 'VideoPlay',
+    icon: 'Download',
     operation: TaskOperationCodeEnum.START,
     processing: false
   },
@@ -270,7 +270,7 @@ function formatBytes(bytes: number) {
       <el-popover
         v-else
         v-model:visible="sectionPopoverVisible"
-        trigger="click"
+        trigger="hover"
         placement="bottom"
         :width="160"
         popper-class="task-operation-bar-section-popover"
@@ -279,17 +279,10 @@ function formatBytes(bytes: number) {
           <el-button
             size="small"
             icon="Download"
+            @click="handleExecuteSections"
           />
         </template>
         <div class="task-operation-bar-section-list">
-          <el-button
-              size="small"
-              type="primary"
-              class="task-operation-bar-section-execute"
-              @click="handleExecuteSections"
-          >
-            执行任务
-          </el-button>
           <el-tooltip trigger="hover" placement="left">
             <template #content>
               {{ sectionTooltips }}
