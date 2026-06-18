@@ -61,9 +61,6 @@ func (m runMode) hasWorkInfo() bool  { return m.workInfo }
 func (m runMode) hasResource() bool  { return m.resource }
 func (m runMode) hasThumbnail() bool { return m.thumbnail }
 
-// isFull 是否选中全部三板块（等价完整下载）
-func (m runMode) isFull() bool { return m.workInfo && m.resource && m.thumbnail }
-
 // 板块代码（IPC 契约，顺序码）：前端 Redownload(sections) 传入
 const (
 	sectionCodeWorkInfo  = 1 // 板块 A
@@ -355,98 +352,12 @@ func (m *ManagedTask) run() runResult {
 	m.setState(TaskStateProcessing)
 	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={A:%v,B:%v,C:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.hasResource(), m.runMode.hasThumbnail(), m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
 
-	// 全集走现有完整流程（含查重）；真子集走板块组合
-	if m.runMode.isFull() {
-		return m.runFullSection()
-	}
+	// 统一走板块组合执行（全集等价完整下载含查重；真子集按所选板块）
 	return m.runSectionCombo()
 }
 
-// runFullSection 完整下载：查重 + 作品信息 + 资源 + 封面（板块全流程）
-func (m *ManagedTask) runFullSection() runResult {
-	// 0. 检查 workdir 是否已配置
-	if m.deps.WorkDirProvider.GetWorkDir() == "" {
-		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
-		if m.deps.Pusher != nil {
-			m.deps.Pusher.PushError(m.taskId, "未配置资源库目录，请先在设置中指定资源库保存位置")
-		}
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed("未配置资源库目录，请先在设置中指定资源库保存位置")
-		return runResultDone
-	}
-
-	// 0.0 检查作品是否已存在（仅首次执行时检查）
-	if !m.skipDuplicateCheck && m.deps.WorkChecker != nil && m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
-		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
-		if err == nil && existing != nil {
-			existingWorkName := ""
-			if existing.SiteWorkName.Valid {
-				existingWorkName = existing.SiteWorkName.String
-			}
-			m.existingWorkId = existing.GetID()
-			if m.deps.Pusher != nil {
-				m.deps.Pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, existing.GetID(), existingWorkName)
-			}
-			m.setState(TaskStateWaitingForInput)
-			return runResultNeedConfirm
-		}
-	}
-
-	// 0.1 替换确认后备份已有资源文件（第二次 run 时执行；缩略图备份归 doSaveThumbnail，此处仅 Work，见 §7.4）
-	if m.existingWorkId > 0 {
-		m.isReplace = true
-		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.existingWorkId, backup.StoreTypeWork)
-		m.existingWorkId = 0
-	}
-
-	// 1. 调用 CreateWorkInfo 创建作品信息
-	workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed(fmt.Sprintf("创建作品信息失败: %v", err))
-		return runResultDone
-	}
-
-	// 2. 保存作品完整信息（Work + 周边数据）
-	workId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed(fmt.Sprintf("保存作品信息失败: %v", err))
-		return runResultDone
-	}
-	m.workId = workId
-
-	// 3. 获取资源读取器
-	reader, startResp, err := m.pluginExec.Start(m.ctx, m.task)
-	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
-		if m.abortedByPause() {
-			return runResultPaused
-		}
-		m.setFailed(fmt.Sprintf("获取资源读取器失败: %v", err))
-		return runResultDone
-	}
-
-	// 将 CreateWorkInfo 的作品信息合并到 startResp（供文件名模板使用）
-	startResp.Work = workResp.Work
-	startResp.SiteAuthors = workResp.SiteAuthors
-	startResp.LocalAuthors = workResp.LocalAuthors
-	startResp.SiteTags = workResp.SiteTags
-	startResp.LocalTags = workResp.LocalTags
-
-	return m.startDownload(reader, startResp)
-}
-
-// runSectionCombo 板块组合执行（真子集）：严格按 runMode 所选板块，A→B→C 顺序执行，末尾统一终态化
-// 含 B 时走查重（ConfirmReplace 两段式，与 runFullSection 一致）并产生终态；无 B 为非终态（保持执行前状态、不持久化）
+// runSectionCombo 板块组合执行：严格按 runMode 所选板块，A→B→C 顺序执行，末尾统一终态化
+// 含 B（含全集）时走查重（ConfirmReplace 两段式）并产生终态；无 B 为非终态（保持执行前状态、不持久化）
 func (m *ManagedTask) runSectionCombo() runResult {
 	// workdir 检查（B/C 需要，置于查重前避免无效确认）
 	if (m.runMode.hasResource() || m.runMode.hasThumbnail()) && m.deps.WorkDirProvider.GetWorkDir() == "" {
@@ -496,9 +407,11 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		m.workId = workId
 	}
 
-	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId）
+	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
+	var workResp *sdkdto.WorkResponse
 	if m.runMode.hasWorkInfo() {
-		workResp, err := m.pluginExec.CreateWorkInfo(m.ctx, m.task)
+		var err error
+		workResp, err = m.pluginExec.CreateWorkInfo(m.ctx, m.task)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("创建作品信息失败: %v", err))
@@ -517,6 +430,14 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("获取资源读取器失败: %v", err))
+		}
+		// 合并 A 的作品信息到 startResp（供文件名模板 resolveLocalPath 使用；A 未执行则 workResp 为 nil）
+		if workResp != nil {
+			startResp.Work = workResp.Work
+			startResp.SiteAuthors = workResp.SiteAuthors
+			startResp.LocalAuthors = workResp.LocalAuthors
+			startResp.SiteTags = workResp.SiteTags
+			startResp.LocalTags = workResp.LocalTags
 		}
 		return m.startDownload(reader, startResp)
 	}

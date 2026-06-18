@@ -6,7 +6,7 @@
 
 | 组件 | 文件路径 |
 |------|---------|
-| 任务状态、ManagedTask、run()（按 isFull 路由 runFullSection/runSectionCombo）、downloadLoop、板块组合执行、parseSections | `backend/taskManager/model.go` |
+| 任务状态、ManagedTask、run()（统一 runSectionCombo）、downloadLoop、板块组合执行、parseSections | `backend/taskManager/model.go` |
 | Manager（多根调度、信号量、flush、onStateChange、batchCheckDuplicates） | `backend/taskManager/manager.go` |
 | Handler（Start/Retry/Resume、Redownload 板块重执行） | `backend/taskManager/handler.go` |
 | Task Service（创建、重试） | `backend/task/service.go` |
@@ -161,7 +161,7 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
       - 信号量已满 → 加入 waitingQueue + Waiting 状态
 ```
 
-**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode`（板块选择结构体 `{workInfo,resource,thumbnail}`）在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 按 `isFull` 分流到 `runFullSection`（完整流程，含查重）或 `runSectionCombo`（板块组合，见[板块重执行](#板块重执行多选组合)章节）。
+**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode`（板块选择结构体 `{workInfo,resource,thumbnail}`）在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 统一调 `runSectionCombo`（全集等价完整下载含查重，真子集按所选板块，见[板块重执行](#板块重执行多选组合)章节）。
 
 ### 阶段 3：任务执行
 
@@ -178,16 +178,13 @@ func (m *Manager) executeTask(task *ManagedTask) {
 
 #### 3A 全新执行 — run()
 
-`run()` 是核心执行入口，按 `ManagedTask.runMode`（板块选择结构体）的 `isFull()` 分流：全集走 `runFullSection`（完整下载，含查重），真子集走 `runSectionCombo`（板块组合，详见[板块重执行](#板块重执行多选组合)章节）：
+`run()` 是核心执行入口，统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块执行（详见[板块重执行](#板块重执行多选组合)章节）：
 
 ```go
 func (m *ManagedTask) run() runResult {
     // defer 栈：① 失败还原备份（最先注册最后执行）② panic recovery
     // ctx 检查 + setState(Processing)
-    if m.runMode.isFull() {
-        return m.runFullSection()    // 完整下载（信息+资源+封面），含查重
-    }
-    return m.runSectionCombo()       // 板块组合：A→B→C 顺序执行所选板块
+    return m.runSectionCombo()   // 全集=完整下载含查重；真子集按所选板块 A→B→C
 }
 ```
 
@@ -198,7 +195,7 @@ func (m *ManagedTask) run() runResult {
 | 1（最先执行） | `recover()` | panic 恢复，调用 `setFailed()` |
 | 2（最后执行） | 备份还原检查 | 如果最终状态为 `Failed` 且有备份项，调用 `RestoreAllStores`。使用 `context.Background()` 确保任务取消后仍能执行 |
 
-**runFullSection 逐步执行流程**（完整下载 = 作品信息 + 资源 + 封面全流程）：
+**完整下载（全集）逐步流程**（`runSectionCombo` 含 B 时 = 作品信息 + 资源 + 封面全流程）：
 
 | 步骤 | 操作 | DB 操作 | 事务 |
 |:---:|------|---------|:---:|
@@ -528,7 +525,7 @@ type runMode struct {
 var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
 ```
 
-`run()` 按 `isFull()` 分流：全集 → `runFullSection`（完整流程，含查重）；真子集 → `runSectionCombo`（A→B→C 顺序执行所选板块，末尾统一终态化）。
+`run()` 统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块 A→B→C 顺序执行、末尾统一终态化。
 
 前端 `Redownload(taskIds, sections)` 收板块代码数组（A=1/B=2/C=3，不勾选时下发全集 `[1,2,3]`），后端 `parseSections` 映射为 `runMode`：
 
@@ -545,8 +542,8 @@ func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTask
 1. **workdir 检查**（B/C 需要，置于查重前避免无效确认）。
 2. **含 B → 查重**（`runSectionCombo` 内 fallback；主路径在 `batchCheckDuplicates`）：作品已存在 → `PushDuplicateDetected` + `WaitingForInput` + `runResultNeedConfirm`，确认后第二次 run 走备份+执行。**无 B 不查重**（A/C 不覆盖资源，无需"作品已存在"提醒）。
 3. **workId 定位 + B 备份**：含 B 则 `BackupStores(StoreTypeWork)` 备份旧资源（`existingWorkId` 由查重设置）；无 B 无 A（C-only）则 `resolveWorkIdByTask` 定位。
-4. **板块 A**（`hasWorkInfo`）：`CreateWorkInfo` + `SaveWorkInfo`（提供 workId）。
-5. **板块 B**（`hasResource`，终态）：`Start` → `startDownload` → `downloadLoop`（完成 `setState(Finished)`；`hasThumbnail` 时以 `force=true` 顺带生成缩略图）。
+4. **板块 A**（`hasWorkInfo`）：`CreateWorkInfo` + `SaveWorkInfo`（提供 workId，并捕获 `workResp` 供 B 的文件名模板）。
+5. **板块 B**（`hasResource`，终态）：`Start` →（若 A 执行过，合并 `workResp` 作品信息到 `startResp` 供文件名模板）→ `startDownload` → `downloadLoop`（完成 `setState(Finished)`；`hasThumbnail` 时以 `force=true` 顺带生成缩略图）。
 6. **板块 C**（`hasThumbnail` 且无 B）：`saveThumbnailByWorkId(force=true)`。
 7. **无 B → 非终态成功**：`finishNonTerminalSection("")` 回到执行前状态。
 
@@ -630,6 +627,7 @@ ManagedTask.pluginExec.Xxx()
 - [修改] 终态性规则改为由是否含 B 决定（`isNonTerminalMode = !hasResource`）；新增 `comboFail` 统一终态化
 - [修改] 备份改为板块隔离：删除 `BackupAllStores`；B 始终 `BackupStores(StoreTypeWork)`，缩略图备份统一归 `doSaveThumbnail(force=true)`（`saveResource` 不清 `ThumbnailStoreID`、`downloadLoop` 以 force=true 生成）；修复缩略图生成失败丢失封面问题
 - [修改] 「板块单独执行」章节重写为「板块重执行（多选组合）」
+- [修改] 删除 `runFullSection`，`run()` 统一调 `runSectionCombo`（全集/真子集同路径）；`workResp→startResp` 合并（文件名模板）补入 runSectionCombo 的 B 步，修复 A+B 子集资源文件名/路径缺作者的问题；移除无用的 `isFull()`
 
 ### 2026-06-17
 - [修改] 任务启动/重试/恢复/崩溃恢复入口由单根 `loadAndStartTaskTree` 统一改为多根 `loadAndStartTaskTrees`（唯二入口 `startTaskTrees`/`resumeTaskTrees`，多根共享一次 ListTaskTree + 一次批量查重 + 重复执行保护）
