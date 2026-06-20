@@ -13,6 +13,10 @@ export const emptySettings: Settings = {
   pluginSettings: {
     allowUnsafeEval: false
   },
+  recycleBin: {
+    autoCleanupEnabled: true,
+    retentionDays: 30
+  },
   tour: {
     completed: {}
   }

@@ -388,7 +388,4 @@ function formatBytes(bytes: number) {
   flex-direction: column;
   gap: 6px;
 }
-.task-operation-bar-section-execute {
-  margin-top: 4px;
-}
 </style>

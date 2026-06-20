@@ -1,5 +1,5 @@
 import { useSlotRegistryStore, setRouterInstance, getRouterInstance } from '@renderer/store/SlotRegistryStore'
-import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate } from '@element-plus/icons-vue'
+import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 import type { Router } from 'vue-router'
 import { ViewSlot } from '@renderer/model/slot'
@@ -68,6 +68,13 @@ export function initBuiltinMenus() {
       name: '收藏',
       component: () => import('@renderer/views/Developing.vue'),
       order: 30,
+      isBuiltin: true
+    },
+    {
+      slotId: 'recycleBin',
+      name: '回收站',
+      component: () => import('@renderer/views/RecycleBin.vue'),
+      order: 35,
       isBuiltin: true
     },
     {
@@ -191,6 +198,14 @@ export function initBuiltinMenus() {
       label: '收藏',
       order: 30,
       viewId: 'developing'
+    },
+    {
+      slotId: 'builtin-recycleBin',
+      index: 'recycleBin',
+      icon: markRaw(Delete),
+      label: '回收站',
+      order: 35,
+      viewId: 'recycleBin'
     },
     {
       slotId: 'builtin-slotTask',

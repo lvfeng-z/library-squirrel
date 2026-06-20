@@ -254,6 +254,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               title="插件"
             />
             <el-anchor-link
+              href="#recycleBinSettings"
+              title="回收站"
+            />
+            <el-anchor-link
               href="#otherSettings"
               title="其他"
             />
@@ -416,6 +420,51 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     size="small"
                   >
                     什么是运行时编译？
+                  </el-text>
+                </el-tooltip>
+                <el-divider />
+              </div>
+              <div id="recycleBinSettings">
+                <el-text size="large">
+                  回收站
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>自动清理</el-text>
+                  <el-switch
+                    v-model="settings.recycleBin.autoCleanupEnabled"
+                    class="recycle-bin-settings-auto-cleanup-switch"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                  />
+                </el-divider>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>保留天数</el-text>
+                  <el-input-number
+                    v-model="settings.recycleBin.retentionDays"
+                    :min="1"
+                    controls-position="right"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    回收站中的作品超过保留天数后将自动彻底删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    自动清理规则
                   </el-text>
                 </el-tooltip>
                 <el-divider />

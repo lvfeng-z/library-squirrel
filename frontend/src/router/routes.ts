@@ -94,6 +94,16 @@ export const routes: RouteRecordRaw[] = [
           order: 30
         }
       },
+      {
+        path: 'recycle-bin',
+        name: 'RecycleBin',
+        component: () => import('@renderer/views/RecycleBin.vue'),
+        meta: {
+          title: '回收站',
+          icon: 'Delete',
+          order: 35
+        }
+      },
       // 站点分组
       {
         path: 'site',

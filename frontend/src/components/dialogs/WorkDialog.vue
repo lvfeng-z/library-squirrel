@@ -63,7 +63,7 @@ const apis = {
   siteTagQuerySelectItemPageByWorkId: siteTagApi.siteTagQuerySelectItemPageByWorkId,
   reWorkTagLink: reWorkTagApi.reWorkTagLink,
   reWorkTagUnlink: reWorkTagApi.reWorkTagUnlink,
-  workDeleteWorkAndSurroundingData: workApi.workDeleteWorkAndSurroundingData,
+  workSoftDelete: workApi.workSoftDelete,
   workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
   workSetListByWorkId: workSetApi.workSetListByWorkId
 }
@@ -350,7 +350,7 @@ function handleKeydown(event: KeyboardEvent) {
 async function deleteWork() {
   const workId = currentWorkFullInfo.value.work?.id
   if (notNullish(workId)) {
-    const response = await apis.workDeleteWorkAndSurroundingData(workId!)
+    const response = await apis.workSoftDelete(workId!)
     ApiUtil.msg(response)
   }
 }

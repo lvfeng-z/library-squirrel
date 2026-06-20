@@ -80,8 +80,8 @@ export async function workQueryPage(query: {
   return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
-export async function workDeleteWorkAndSurroundingData(id: number): Promise<ApiResponse<boolean>> {
-  const result = await WorkHandler.DeleteWorkAndSurroundingData(id)
+export async function workSoftDelete(id: number): Promise<ApiResponse<boolean>> {
+  const result = await WorkHandler.SoftDelete(id)
   if (!result) {
     return { success: false, msg: '删除失败：接口返回为空' }
   }
