@@ -3,6 +3,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,8 @@ type Repository interface {
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id
 	BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error
+	// ListBySiteAndSiteWorkID 按 (site_id, site_work_id) 反查关联任务记录（用于作品删除时停止运行中任务）
+	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error)
 }
 
 // WorkDirProvider 工作目录提供者接口
@@ -649,6 +652,29 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 	return nil
 }
 
+// StopRunningBySiteWork 停止指定作品关联的运行中任务实例（不删 task 记录）
+// 反查 (site_id, site_work_id) 关联任务，转发到 StopTaskTree 复用现有停止逻辑；
+// 非运行中的关联任务（不在 taskMap/parentMap）由 StopTaskTree 返回 ErrTaskTreeNotFound，忽略
+func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteWorkId string) error {
+	tasks, err := m.repo.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+	if err != nil {
+		return fmt.Errorf("查询作品关联任务失败: %w", err)
+	}
+	for _, t := range tasks {
+		// has_child=true 为父任务（isLeaf=false），否则叶子/独立任务（isLeaf=true）
+		isLeaf := true
+		if t.HasChild.Valid && t.HasChild.Bool {
+			isLeaf = false
+		}
+		if err := m.StopTaskTree(ctx, t.GetID(), isLeaf); err != nil {
+			if !errors.Is(err, ErrTaskTreeNotFound) {
+				logger.Log.Warnf("停止任务 %d 失败: %v", t.GetID(), err)
+			}
+		}
+	}
+	return nil
+}
+
 // RetryTaskTree 重试任务树
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
@@ -822,7 +848,6 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 			}
 		}
 	}
-
 
 	// 等待所有任务进入稳态
 	ticker := time.NewTicker(100 * time.Millisecond)

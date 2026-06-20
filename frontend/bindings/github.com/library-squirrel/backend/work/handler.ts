@@ -31,15 +31,6 @@ export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any>
 }
 
 /**
- * DeleteWorkAndSurroundingData 删除作品及周边数据
- */
-export function DeleteWorkAndSurroundingData(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(1826329099, id).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * GetById 根据ID获取作品
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkDTO | null> | null> {
@@ -90,6 +81,15 @@ export function QueryPage(page: model$0.Page<dto$0.WorkDTO> | null, query: $mode
 export function Save(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2065165505, work).then(($result: any) => {
         return $$createType21($result);
+    });
+}
+
+/**
+ * SoftDelete 逻辑删除作品（移入回收站，可经回收站复原）
+ */
+export function SoftDelete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2303847439, id).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 

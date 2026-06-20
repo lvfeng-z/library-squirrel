@@ -46,9 +46,9 @@ func (h *Handler) Update(ctx context.Context, work *sdkdto.WorkDTO) *model.ApiRe
 	return model.Success[any](nil)
 }
 
-// DeleteWorkAndSurroundingData 删除作品及周边数据
-func (h *Handler) DeleteWorkAndSurroundingData(ctx context.Context, id int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.DeleteWorkAndSurroundingData(ctx, id))
+// SoftDelete 逻辑删除作品（移入回收站，可经回收站复原）
+func (h *Handler) SoftDelete(ctx context.Context, id int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.SoftDeleteWork(ctx, id))
 }
 
 // ========== 查询操作 ==========

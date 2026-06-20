@@ -64,9 +64,14 @@ func toInterfaceSlice(ids []int64) []interface{} {
 	return result
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *ResourceRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // DeleteByWorkId 根据作品ID删除所有资源
 func (r *ResourceRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
-	return r.BaseRepository.GORM().
+	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("work_id = ?", workId).
 		Delete(new(domain.Resource)).Error

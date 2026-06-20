@@ -2,12 +2,13 @@ package settings
 
 // Settings 应用设置
 type Settings struct {
-	Initialized    bool           `json:"initialized" koanf:"initialized"`
-	WorkDir        string         `json:"workdir" koanf:"workdir"`
-	WorkSettings   WorkSettings   `json:"workSettings" koanf:"workSettings"`
-	ImportSettings ImportSettings `json:"importSettings" koanf:"importSettings"`
-	PluginSettings PluginSettings `json:"pluginSettings" koanf:"pluginSettings"`
-	Tour           TourSettings   `json:"tour" koanf:"tour"`
+	Initialized        bool               `json:"initialized" koanf:"initialized"`
+	WorkDir            string             `json:"workdir" koanf:"workdir"`
+	WorkSettings       WorkSettings       `json:"workSettings" koanf:"workSettings"`
+	ImportSettings     ImportSettings     `json:"importSettings" koanf:"importSettings"`
+	PluginSettings     PluginSettings     `json:"pluginSettings" koanf:"pluginSettings"`
+	Tour               TourSettings       `json:"tour" koanf:"tour"`
+	RecycleBinSettings RecycleBinSettings `json:"recycleBin" koanf:"recycleBin"`
 }
 
 // WorkSettings 作品相关设置
@@ -31,6 +32,12 @@ type TourSettings struct {
 	Completed map[string]bool `json:"completed" koanf:"completed"`
 }
 
+// RecycleBinSettings 回收站设置
+type RecycleBinSettings struct {
+	AutoCleanupEnabled bool `json:"autoCleanupEnabled" koanf:"autoCleanupEnabled"` // 是否启用自动清理
+	RetentionDays      int  `json:"retentionDays" koanf:"retentionDays"`           // 回收站保留天数，超过后自动清理
+}
+
 // NewSettings 创建默认设置
 func NewSettings() *Settings {
 	return &Settings{
@@ -48,6 +55,10 @@ func NewSettings() *Settings {
 		},
 		Tour: TourSettings{
 			Completed: map[string]bool{},
+		},
+		RecycleBinSettings: RecycleBinSettings{
+			AutoCleanupEnabled: true,
+			RetentionDays:      30,
 		},
 	}
 }

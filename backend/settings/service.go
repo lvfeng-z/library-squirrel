@@ -38,6 +38,10 @@ func defaultSettings() *Settings {
 		Tour: TourSettings{
 			Completed: map[string]bool{},
 		},
+		RecycleBinSettings: RecycleBinSettings{
+			AutoCleanupEnabled: true,
+			RetentionDays:      30,
+		},
 	}
 }
 
@@ -88,6 +92,12 @@ func (s *Service) GetWorkDir() string {
 // GetFileNameFormat 获取文件名格式模板（实现 taskManager.FileNameFormatProvider 接口）
 func (s *Service) GetFileNameFormat() string {
 	return s.GetSettings().WorkSettings.FileNameFormat
+}
+
+// GetRecycleBinSettings 获取回收站自动清理设置（实现 recycleBin.RecycleBinSettingsProvider 接口）
+func (s *Service) GetRecycleBinSettings() (bool, int) {
+	r := s.GetSettings().RecycleBinSettings
+	return r.AutoCleanupEnabled, r.RetentionDays
 }
 
 // SaveSettings 保存设置变更

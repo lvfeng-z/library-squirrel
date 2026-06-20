@@ -7,11 +7,5 @@ export {
 };
 
 export {
-    ImportSettings,
-    PluginSettings,
-    RecycleBinSettings,
-    SettingChange,
-    Settings,
-    TourSettings,
-    WorkSettings
+    RecycleItemDTO
 } from "./models.js";

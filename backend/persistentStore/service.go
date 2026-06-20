@@ -160,7 +160,7 @@ type FileMover interface {
 // Service 文件存取服务
 type Service struct {
 	repo          Repository
-	fileMover     FileMover   // 可选依赖，nil 时不备份
+	fileMover     FileMover     // 可选依赖，nil 时不备份
 	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
@@ -464,6 +464,12 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 		return backupId, err
 	}
 	return backupId, nil
+}
+
+// DeleteRecord 仅删除 PersistentStore 数据库记录，不触动磁盘文件
+// 用于逻辑删除场景：文件已由调用方移入 backup，此处只清理 DB 记录
+func (s *Service) DeleteRecord(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
 }
 
 // StoreFromExternal 将外部文件导入到 store 目录并创建 DB 记录

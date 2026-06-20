@@ -33,6 +33,16 @@ func (r *WorkSetRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())
 }
 
+// ListByIds 根据 ID 列表批量查询作品集（复原时引用校验用）
+func (r *WorkSetRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.WorkSet, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var items []*domain.WorkSet
+	err := r.dbFromCtx(ctx).WithContext(ctx).Where("id IN ?", ids).Find(&items).Error
+	return items, err
+}
+
 // BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id 唯一约束）
 func (r *WorkSetRepository) BatchUpsert(ctx context.Context, workSets []*domain.WorkSet) error {
 	if len(workSets) == 0 {

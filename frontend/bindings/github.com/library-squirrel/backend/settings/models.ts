@@ -58,6 +58,41 @@ export class PluginSettings {
 }
 
 /**
+ * RecycleBinSettings 回收站设置
+ */
+export class RecycleBinSettings {
+    /**
+     * 是否启用自动清理
+     */
+    "autoCleanupEnabled": boolean;
+
+    /**
+     * 回收站保留天数，超过后自动清理
+     */
+    "retentionDays": number;
+
+    /** Creates a new RecycleBinSettings instance. */
+    constructor($$source: Partial<RecycleBinSettings> = {}) {
+        if (!("autoCleanupEnabled" in $$source)) {
+            this["autoCleanupEnabled"] = false;
+        }
+        if (!("retentionDays" in $$source)) {
+            this["retentionDays"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleBinSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleBinSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleBinSettings($$parsedSource as Partial<RecycleBinSettings>);
+    }
+}
+
+/**
  * SettingChange 设置变更项
  */
 export class SettingChange {
@@ -95,6 +130,7 @@ export class Settings {
     "importSettings": ImportSettings;
     "pluginSettings": PluginSettings;
     "tour": TourSettings;
+    "recycleBin": RecycleBinSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -116,6 +152,9 @@ export class Settings {
         if (!("tour" in $$source)) {
             this["tour"] = (new TourSettings());
         }
+        if (!("recycleBin" in $$source)) {
+            this["recycleBin"] = (new RecycleBinSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -128,6 +167,7 @@ export class Settings {
         const $$createField3_0 = $$createType1;
         const $$createField4_0 = $$createType2;
         const $$createField5_0 = $$createType3;
+        const $$createField6_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -140,6 +180,9 @@ export class Settings {
         }
         if ("tour" in $$parsedSource) {
             $$parsedSource["tour"] = $$createField5_0($$parsedSource["tour"]);
+        }
+        if ("recycleBin" in $$parsedSource) {
+            $$parsedSource["recycleBin"] = $$createField6_0($$parsedSource["recycleBin"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -164,7 +207,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType4;
+        const $$createField0_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -202,4 +245,5 @@ const $$createType0 = WorkSettings.createFrom;
 const $$createType1 = ImportSettings.createFrom;
 const $$createType2 = PluginSettings.createFrom;
 const $$createType3 = TourSettings.createFrom;
-const $$createType4 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = RecycleBinSettings.createFrom;
+const $$createType5 = $Create.Map($Create.Any, $Create.Any);

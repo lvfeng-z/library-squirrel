@@ -36,6 +36,7 @@ import (
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkTag"
 	"github.com/library-squirrel/backend/reWorkWorkSet"
+	"github.com/library-squirrel/backend/recycleBin"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/search"
 	"github.com/library-squirrel/backend/secureStorage"
@@ -80,6 +81,7 @@ type App struct {
 	TaskManagerService     *taskManager.Manager
 	SiteBrowserService     *siteBrowser.Service
 	PersistentStoreService *persistentStore.Service
+	RecycleBinService      *recycleBin.Service
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -133,6 +135,7 @@ type App struct {
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
+	RecycleBinHandler            *recycleBin.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -719,8 +722,12 @@ func (app *App) initBaseServices() {
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
 func (app *App) initAdvancedServices() error {
-	// workSet 仓储（提前创建，用于 workSetWriterAdapter）
+	// workSet 仓储（提前创建，用于 workSetWriterAdapter + 复原引用校验）
 	workSetRepo := workSet.NewRepository(app.db)
+	// reWorkWorkSet 仓储（提前创建，复用给 work 的 Writer/Reader 与 workSet/search）
+	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
+	// recycleBin 仓储（提前创建，work 逻辑删除写入快照用；service 在 work 之后创建以注入 WorkRestorer）
+	recycleBinRepo := recycleBin.NewRepository(app.db)
 
 	// work 服务
 	workRepo := work.NewRepository(app.db)
@@ -734,7 +741,7 @@ func (app *App) initAdvancedServices() error {
 		app.SiteService,
 		app.ResourceService,
 		app.ReWorkTagService,
-		reWorkWorkSet.NewRepository(app.db),
+		reWorkWorkSetRepo,
 		app.ResourceService,
 		app.SiteAuthorService,
 		app.SiteTagService,
@@ -751,10 +758,33 @@ func (app *App) initAdvancedServices() error {
 		app.LocalTagService,
 		app.LocalAuthorService,
 		app.PersistentStoreService,
+		app.ReWorkTagService,
+		app.ReWorkAuthorService,
+		reWorkWorkSetRepo,
+		app.PersistentStoreService,
+		recycleBinRepo,
+		app.BackupService,
+		app.PersistentStoreService,
+		nil,
+		func() string { return app.SettingsService.GetWorkDir() },
+		app.ResourceService,
+		app.SiteAuthorService,
+		workSetRepo,
 	)
 
+	// recycleBin 服务（work 之后创建，注入 WorkRestorer=app.WorkService）
+	app.RecycleBinService = recycleBin.NewService(
+		recycleBinRepo,
+		app.WorkService,
+		app.BackupService,
+		app.PersistentStoreService,
+		&dbTransactorAdapter{db: app.db},
+		app.SettingsService,
+	)
+	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
+	app.RecycleBinService.StartCleanup()
+
 	// workSet 服务
-	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
 	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, app.WorkService, app.WorkService)
 
 	// search 服务
@@ -831,31 +861,34 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	app.TaskManagerService = taskManager.NewManager(
-			app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
-			app.taskRepo,
-			taskManagerPusher,
-			pluginExecFactory,
-			&taskManager.TaskDeps{
-				WorkInfoSaver:           app.WorkService,            // 实现 WorkInfoSaver 接口
-				ResourceSaver:           resourceSaverAdapter,
-				WorkDirProvider:         app.SettingsService,
-				FileNameFormatProvider:  app.SettingsService,
-				WorkChecker:             app.WorkService,            // 实现 WorkChecker 接口
-				ResourceReader:          app.ResourceService,        // 实现 ResourceReader 接口
-				StoreBackupOrchestrator: storeBackupOrchestrator,
-				ResourceUpdater:         resourceSaverAdapter,        // 实现 ResourceUpdater 接口
-				Pusher:                  taskManagerPusher,
-				StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
-				StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
-				ThumbnailStoreWriter:    app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
-				Transactor:              &dbTransactorAdapter{db: app.db},
-				PendingResourceUpdater:  app.taskRepo,                // 实现 PendingResourceUpdater 接口
-				StoreFileCleaner:        app.PersistentStoreService,  // 实现 StoreFileCleaner 接口
-			},
-		)
+		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
+		app.taskRepo,
+		taskManagerPusher,
+		pluginExecFactory,
+		&taskManager.TaskDeps{
+			WorkInfoSaver:           app.WorkService, // 实现 WorkInfoSaver 接口
+			ResourceSaver:           resourceSaverAdapter,
+			WorkDirProvider:         app.SettingsService,
+			FileNameFormatProvider:  app.SettingsService,
+			WorkChecker:             app.WorkService,     // 实现 WorkChecker 接口
+			ResourceReader:          app.ResourceService, // 实现 ResourceReader 接口
+			StoreBackupOrchestrator: storeBackupOrchestrator,
+			ResourceUpdater:         resourceSaverAdapter, // 实现 ResourceUpdater 接口
+			Pusher:                  taskManagerPusher,
+			StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
+			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
+			ThumbnailStoreWriter:    app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
+			Transactor:              &dbTransactorAdapter{db: app.db},
+			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
+			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口
+		},
+	)
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
+
+	// 将 TaskManager 注入到 work 作为运行中任务停止器（打破 work ↔ TaskManager 循环依赖）
+	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
 
 	return nil
 }
@@ -944,6 +977,7 @@ func (app *App) initHandlers() {
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
+	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
@@ -1032,6 +1066,11 @@ func (a *pluginUrlListenerAdapter) ListPatternsByPlugin(pluginPublicId string) [
 
 // shutdownPlugins 关闭所有已加载的插件（停止子进程、注销扩展点和静态资源）
 func (app *App) shutdownPlugins() {
+	// 停止回收站 TTL 自动清理 goroutine（在 database.Close 前停止，避免操作已关闭的 DB）
+	if app.RecycleBinService != nil {
+		app.RecycleBinService.Stop()
+	}
+
 	if app.pluginLoader == nil {
 		return
 	}

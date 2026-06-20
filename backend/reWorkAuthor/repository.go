@@ -10,6 +10,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ReWorkAuthorRepository 作品-作者关联仓储实现
@@ -82,6 +83,14 @@ func (r *ReWorkAuthorRepository) DeleteByLocalAuthorId(ctx context.Context, loca
 // DeleteBySiteAuthorId 根据站点作者ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Where("site_author_id = ?", siteAuthorId).Delete(&domain.ReWorkAuthor{}).Error
+}
+
+// ListRelationsByWorkId 查询作品关联的所有作者关联记录（原始实体，含 role_name/sort_order）
+func (r *ReWorkAuthorRepository) ListRelationsByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkAuthor, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{clause.Eq{Column: "work_id", Value: workId}},
+	}
+	return r.BaseRepository.List(ctx, opt)
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者

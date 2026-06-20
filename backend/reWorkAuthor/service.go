@@ -30,6 +30,8 @@ type Repository interface {
 	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
 	// DeleteBySiteAuthorId 根据站点作者ID删除所有关联
 	DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error
+	// ListRelationsByWorkId 查询作品关联的所有作者关联记录（原始实体，含 role_name/sort_order）
+	ListRelationsByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkAuthor, error)
 
 	// ========== 批量查询作者信息 ==========
 
@@ -109,6 +111,11 @@ func (s *Service) DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64
 // DeleteBySiteAuthorId 根据站点作者ID删除所有关联
 func (s *Service) DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error {
 	return s.repo.DeleteBySiteAuthorId(ctx, siteAuthorId)
+}
+
+// ListRelationsByWorkId 查询作品关联的所有作者关联记录（原始实体）
+func (s *Service) ListRelationsByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkAuthor, error) {
+	return s.repo.ListRelationsByWorkId(ctx, workId)
 }
 
 // ========== 查询操作 ==========

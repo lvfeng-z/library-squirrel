@@ -76,6 +76,16 @@ func (r *ReWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64
 	return workSetIds, err
 }
 
+// ListRelationsByWorkId 查询作品关联的所有作品集关联记录（原始实体，含 is_cover/sort_order）
+func (r *ReWorkWorkSetRepository) ListRelationsByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkWorkSet, error) {
+	var items []*domain.ReWorkWorkSet
+	err := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("work_id = ?", workId).
+		Find(&items).Error
+	return items, err
+}
+
 // GetByWorkAndWorkSet 根据作品ID和作品集ID获取关联
 func (r *ReWorkWorkSetRepository) GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*domain.ReWorkWorkSet, error) {
 	var result domain.ReWorkWorkSet
