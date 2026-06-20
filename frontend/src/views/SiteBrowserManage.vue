@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import { computed, onMounted, ref } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
@@ -88,7 +88,7 @@ async function handleCardClick(item: SiteBrowserItem) {
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="site-browser-manage-container">
         <el-scrollbar>
@@ -120,12 +120,12 @@ async function handleCardClick(item: SiteBrowserItem) {
         </el-scrollbar>
       </div>
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
 .site-browser-manage-container {
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: 100%;
   height: 100%;

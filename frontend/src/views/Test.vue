@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 
@@ -14,7 +14,7 @@ const activeTab = ref('task')
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <el-tabs v-model="activeTab">
       <el-tab-pane
         label="TaskStore"
@@ -81,7 +81,7 @@ const activeTab = ref('task')
         </el-table>
       </el-tab-pane>
     </el-tabs>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>

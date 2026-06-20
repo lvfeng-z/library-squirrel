@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import { HotWater } from '@element-plus/icons-vue'
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <el-empty
       style="height: 100%; background-color: #fafafa"
       description=" "
@@ -14,7 +14,7 @@ import { HotWater } from '@element-plus/icons-vue'
       </el-icon>
       开发中...
     </el-empty>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped></style>

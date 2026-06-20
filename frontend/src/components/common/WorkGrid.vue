@@ -180,7 +180,7 @@ function handleDragOver(event: DragEvent, work: WorkCardItem) {
   margin: 5px 0 0 0;
   padding: 4px;
   border-radius: 10px;
-  background-color: rgb(166.2, 168.6, 173.4, 10%);
+  background-color: #ffffff;
   transition-duration: 0.3s;
 }
 .work-grid-container:hover {

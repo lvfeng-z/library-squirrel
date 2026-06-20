@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onMounted, Ref, ref} from 'vue'
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import SiteTagDialog from '../components/dialogs/SiteTagDialog.vue'
 import lodash from 'lodash'
@@ -304,15 +304,15 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
-      <div class="tag-manage-container">
+      <div class="local-tag-manage-container">
         <search-table
           ref="siteTagSearchTable"
           v-model:page="page"
           v-model:changed-rows="changedRows"
           v-model:sort="sort"
-          class="tag-manage-search-table"
+          class="local-tag-manage-search-table"
           data-key="siteTag.id"
           :operation-button="operationButton"
           :thead="siteTagThead"
@@ -331,7 +331,7 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
             >
               新增
             </el-button>
-            <el-row class="site-tag-manage-search-bar">
+            <el-row class="site-local-tag-manage-search-bar">
               <el-col :span="20">
                 <el-input
                   v-model="siteTagQuery.siteTagName.value"
@@ -372,12 +372,12 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
         @request-success="refreshTable"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style>
-.tag-manage-container {
-  background: #f4f4f4;
+.local-tag-manage-container {
+  background: #ffffff;
   border-radius: 6px;
   display: flex;
   width: calc(100% - 20px);
@@ -388,11 +388,11 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
   justify-content: center;
   align-items: center;
 }
-.tag-manage-search-table {
+.local-tag-manage-search-table {
   height: 100%;
   width: 100%;
 }
-.site-tag-manage-search-bar {
+.site-local-tag-manage-search-bar {
   flex-grow: 1;
 }
 </style>

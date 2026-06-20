@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import { onBeforeMount, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { recycleBinApi } from '@renderer/apis/http'
@@ -92,7 +92,7 @@ async function purge(item: RecycleItemDTO) {
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <el-table :data="items" v-loading="loading" style="width: 100%">
         <el-table-column label="作品名" prop="workName" show-overflow-tooltip />
@@ -116,5 +116,5 @@ async function purge(item: RecycleItemDTO) {
         @current-change="handlePageChange"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>

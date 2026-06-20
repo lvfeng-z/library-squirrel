@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
 import PluginStatusPanel from '@renderer/components/plugin/PluginStatusPanel.vue'
 import {onMounted, ref, Ref} from 'vue'
@@ -213,7 +213,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
 }
 </script>
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="plugin-manage-container">
         <search-table
@@ -270,7 +270,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         :mode="DialogMode.VIEW"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
@@ -279,7 +279,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: calc(100% - 20px);
   height: calc(100% - 20px);

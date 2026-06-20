@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {nextTick, onMounted, Ref, ref} from 'vue'
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalAuthorDialog from '../components/dialogs/LocalAuthorDialog.vue'
@@ -255,7 +255,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="local-author-manage-container">
         <div class="local-author-manage-left">
@@ -387,7 +387,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
         @request-success="refreshTable"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style>
@@ -396,7 +396,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: calc(100% - 20px);
   height: calc(100% - 20px);

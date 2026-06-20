@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onMounted, Ref, ref} from 'vue'
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ApiUtil from '../utils/ApiUtil.ts'
 import {ElMessage} from 'element-plus'
@@ -277,7 +277,7 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="tag-manage-container">
         <search-table
@@ -343,12 +343,12 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
         @request-success="refreshTable"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style>
 .tag-manage-container {
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   display: flex;
   width: calc(100% - 20px);

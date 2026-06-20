@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import {Discount, Link, List, Memo, Star, TakeawayBox, User} from '@element-plus/icons-vue'
 import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
 </script>
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="guide-container">
         <!-- 左：向导控制中心 -->
@@ -148,11 +148,13 @@ import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
         </el-scrollbar>
       </div>
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
 .guide-container {
+  background: #ffffff;
+  border-radius: 6px;
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);

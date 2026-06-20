@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import { nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import lodash from 'lodash'
@@ -226,7 +226,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <el-container class="settings-container">
         <el-main style="display: flex; flex-direction: row; padding: 0">
@@ -642,11 +642,12 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
         </el-scrollbar>
       </el-dialog>
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
 .settings-container {
+  background: #ffffff;
   border-radius: 6px;
   display: flex;
   width: calc(100% - 20px);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onMounted, Ref, ref} from 'vue'
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
@@ -267,15 +267,15 @@ async function requestSiteTagSelectItemPage(
 </script>
 
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
-      <div class="tag-manage-container">
-        <div class="tag-manage-left">
+      <div class="local-tag-manage-container">
+        <div class="local-tag-manage-left">
           <search-table
             ref="localTagSearchTable"
             v-model:page="page"
             v-model:changed-rows="changedRows"
-            class="tag-manage-left-search-table"
+            class="local-tag-manage-left-search-table"
             data-key="localTag.id"
             :operation-button="operationButton"
             :thead="localTagThead"
@@ -325,7 +325,7 @@ async function requestSiteTagSelectItemPage(
             </template>
           </search-table>
         </div>
-        <div class="tag-manage-right">
+        <div class="local-tag-manage-right">
           <exchange-box
             ref="siteTagExchangeBox"
             v-model:upper-search-params="exchangeBoxUpperSearchParams"
@@ -420,16 +420,16 @@ async function requestSiteTagSelectItemPage(
         @request-success="refreshTable"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style>
-.tag-manage-container {
+.local-tag-manage-container {
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
@@ -437,16 +437,16 @@ async function requestSiteTagSelectItemPage(
   margin: 5px;
 }
 
-.tag-manage-left {
+.local-tag-manage-left {
   width: calc(50% - 5px);
   height: 100%;
   margin-right: 5px;
 }
-.tag-manage-left-search-table {
+.local-tag-manage-left-search-table {
   height: 100%;
   width: 100%;
 }
-.tag-manage-right {
+.local-tag-manage-right {
   width: calc(50% - 5px);
   height: 100%;
   margin-left: 5px;

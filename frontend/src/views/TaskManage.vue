@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from './BaseSubpage.vue'
+import BaseView from './BaseView.vue'
 import {onMounted, onUnmounted, Ref, ref, toRaw, watch} from 'vue'
 import SlotSearchTable from '../components/common/SlotSearchTable.vue'
 import DialogMode from '../model/util/DialogMode.ts'
@@ -395,33 +395,33 @@ async function handleSourceUrlInput() {
 </script>
 
 <template>
-  <base-subpage>
-    <div class="task-manage-local-import-button-row">
-      <div class="task-manage-local-import-button-col">
-        <el-button
-          ref="localImportButton"
-          size="large"
-          type="danger"
-          icon="Monitor"
-          @click="(event: PointerEvent) => handleDownloadDialog(event, true)"
-        >
-          从本地导入
-        </el-button>
-      </div>
-      <div class="task-manage-site-import-button-col">
-        <el-button
-          ref="siteDownloadButton"
-          v-model="downloadDialogState"
-          size="large"
-          type="primary"
-          icon="Link"
-          @click="(event: PointerEvent) => handleDownloadDialog(event, false)"
-        >
-          从站点下载
-        </el-button>
-      </div>
-    </div>
+  <base-view>
     <div class="task-manage-search-table-wrapper">
+      <div class="task-manage-local-import-button-row">
+        <div class="task-manage-local-import-button-col">
+          <el-button
+              ref="localImportButton"
+              size="large"
+              type="danger"
+              icon="Monitor"
+              @click="(event: PointerEvent) => handleDownloadDialog(event, true)"
+          >
+            从本地导入
+          </el-button>
+        </div>
+        <div class="task-manage-site-import-button-col">
+          <el-button
+              ref="siteDownloadButton"
+              v-model="downloadDialogState"
+              size="large"
+              type="primary"
+              icon="Link"
+              @click="(event: PointerEvent) => handleDownloadDialog(event, false)"
+          >
+            从站点下载
+          </el-button>
+        </div>
+      </div>
       <slot-search-table
         ref="taskManageSearchTable"
         v-model:data="dataList"
@@ -675,7 +675,7 @@ async function handleSourceUrlInput() {
         </template>
       </el-dialog>
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
@@ -692,15 +692,15 @@ async function handleSourceUrlInput() {
   margin: auto;
 }
 .task-manage-search-table-wrapper {
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: calc(100% - 20px);
-  height: calc(100% - 20px - 50px);
+  height: calc(100% - 20px);
   padding: 5px;
   margin: 5px;
 }
 .task-manage-search-table {
-  height: 100%;
+  height: calc(100% - 50px);
   width: 100%;
 }
 :deep(.el-table .task-manage-search-table-parent-row) {

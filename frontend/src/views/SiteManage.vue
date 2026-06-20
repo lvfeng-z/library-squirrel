@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BaseSubpage from '@renderer/views/BaseSubpage.vue'
+import BaseView from '@renderer/views/BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
 import { onMounted, ref, Ref } from 'vue'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
@@ -185,7 +185,7 @@ function handleSiteDialogRequestSuccess() {
 }
 </script>
 <template>
-  <base-subpage>
+  <base-view>
     <template #default>
       <div class="site-manage-container">
         <search-table
@@ -228,7 +228,7 @@ function handleSiteDialogRequestSuccess() {
         @request-success="handleSiteDialogRequestSuccess"
       />
     </template>
-  </base-subpage>
+  </base-view>
 </template>
 
 <style scoped>
@@ -237,7 +237,7 @@ function handleSiteDialogRequestSuccess() {
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #f4f4f4;
+  background: #ffffff;
   border-radius: 6px;
   width: calc(100% - 20px);
   height: calc(100% - 20px);

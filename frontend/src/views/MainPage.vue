@@ -406,6 +406,7 @@ function handleTest() {
   width: calc(100% - 3px);
   margin-left: 3px;
   margin-top: 3px;
+  background: #e6e6e6;
 }
 
 .main-page-topbar {
