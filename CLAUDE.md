@@ -124,6 +124,15 @@ task build:server && task run:server
 - 中文，格式：`类型(范围): 描述`
 - 类型：`feat`、`fix`、`docs`、`style`、`refactor`、`test`、`chore`、`build`
 
+## 模块文档
+
+核心复杂模块与命名不直观模块在其目录下维护 `README.md`，描述当前职责、对外接口、依赖关系与关键设计，供快速定位（不读代码即知"是否来对地方"）。简单 CRUD 模块（<300 行且职责单一）无需写。
+
+- **模板**：`doc/module-spec-template.md`（结构骨架、填写要点、维护机制）
+- **范围**：只写"是什么 / 提供什么 / 依赖谁"，不重复编码规则（`.claude/rules/`）与变更历史（`doc/plan/`）
+- **维护**：修改模块行为时同步更新其 `README.md`
+- 已覆盖：`taskManager`、`task`、`work`、`resource`、`plugin`、`backup`、`persistentStore`、`reWorkAuthor`、`reWorkTag`、`recycleBin`
+
 ## 添加新功能
 
 1. 创建 `backend/{module}/handler.go`、`service.go`、`repository.go`
@@ -131,6 +140,7 @@ task build:server && task run:server
 3. 运行 `wails3 generate bindings -ts` 生成前端 bindings
 4. 在 `frontend/src/apis/http/wrappers/` 中创建 wrapper
 5. 按需创建页面/对话框组件
+6. 新增核心复杂模块时，按 `doc/module-spec-template.md` 创建该模块 `README.md`
 
 ## 交互规则
 - 当用户意图制定计划或方案时，直接用 Write 工具将计划文件写到 `doc/plan/` 目录下，然后停下来询问用户要执行计划还是要检查计划，不要直接开始执行。
