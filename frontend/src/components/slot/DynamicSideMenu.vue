@@ -102,9 +102,6 @@ function handleMenuClick(item: MenuItem) {
     background-color="black"
   >
     <template #default>
-      <div v-if="menuItems.length === 0">
-        菜单为空
-      </div>
       <template
         v-for="item in menuItems"
         :key="item.slotId"

@@ -31,7 +31,7 @@ export function initBuiltinMenus() {
     {
       slotId: 'mainPage',
       name: '主页',
-      component: () => import('@renderer/views/MainPage.vue'),
+      component: () => import('@renderer/views/MainView.vue'),
       order: 0,
       isBuiltin: true
     },
@@ -71,15 +71,8 @@ export function initBuiltinMenus() {
       isBuiltin: true
     },
     {
-      slotId: 'recycleBin',
-      name: '回收站',
-      component: () => import('@renderer/views/RecycleBin.vue'),
-      order: 35,
-      isBuiltin: true
-    },
-    {
       slotId: 'taskManage',
-      name: '任务(Slot)',
+      name: '任务',
       component: () => import('@renderer/views/TaskManage.vue'),
       order: 41,
       isBuiltin: true
@@ -120,10 +113,17 @@ export function initBuiltinMenus() {
       isBuiltin: true
     },
     {
+      slotId: 'recycleBin',
+      name: '回收站',
+      component: () => import('@renderer/views/RecycleBin.vue'),
+      order: 90,
+      isBuiltin: true
+    },
+    {
       slotId: 'test',
       name: '测试按钮',
       component: () => import('@renderer/views/Test.vue'),
-      order: 90,
+      order: 100,
       isBuiltin: true
     }
   ]
@@ -200,14 +200,6 @@ export function initBuiltinMenus() {
       viewId: 'developing'
     },
     {
-      slotId: 'builtin-recycleBin',
-      index: 'recycleBin',
-      icon: markRaw(Delete),
-      label: '回收站',
-      order: 35,
-      viewId: 'recycleBin'
-    },
-    {
       slotId: 'builtin-slotTask',
       index: 'slotTask',
       icon: markRaw(List),
@@ -265,11 +257,19 @@ export function initBuiltinMenus() {
       viewId: 'guide'
     },
     {
+      slotId: 'builtin-recycleBin',
+      index: 'recycleBin',
+      icon: markRaw(Delete),
+      label: '回收站',
+      order: 90,
+      viewId: 'recycleBin'
+    },
+    {
       slotId: 'builtin-test',
       index: 'test',
       icon: markRaw(Coordinate),
       label: '测试按钮',
-      order: 90,
+      order: 100,
       viewId: 'test'
     }
   ])

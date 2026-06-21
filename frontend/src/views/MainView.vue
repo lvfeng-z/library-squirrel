@@ -402,11 +402,10 @@ function handleTest() {
 .main-page {
   display: flex;
   flex-direction: column;
-  height: calc(100% - 3px);
-  width: calc(100% - 3px);
-  margin-left: 3px;
-  margin-top: 3px;
-  background: #e6e6e6;
+  height: calc(100% - 12px);
+  width: calc(100% - 12px);
+  padding: 6px;
+  background-color: #e6e6e6;
 }
 
 .main-page-topbar {
@@ -429,11 +428,15 @@ function handleTest() {
   display: flex;
   flex-direction: column;
   height: calc(100% - 33px);
-  margin-right: 8px;
+  margin-top: 3px;
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 6px;
+  background-color: #ffffff;
 }
 
 .main-page-work-grid {
-  margin-right: 19px;
+  margin-right: 10px;
 }
 
 .work-grid-load-more {

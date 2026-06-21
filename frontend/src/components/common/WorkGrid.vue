@@ -177,7 +177,6 @@ function handleDragOver(event: DragEvent, work: WorkCardItem) {
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  margin: 5px 0 0 0;
   padding: 4px;
   border-radius: 10px;
   background-color: #ffffff;
