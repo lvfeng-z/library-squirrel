@@ -43,21 +43,6 @@ const coverFilePath: Ref<string> = computed(() => {
   }
   return ''
 })
-// src的参数
-const srcParamStr: Ref<string> = computed(() => {
-  // 如果没有封面路径，返回空，不添加参数
-  if (!coverFilePath.value) {
-    return ''
-  }
-  const params: string[] = []
-  if (notNullish(props.maxHeight)) {
-    params.push(`visualHeight=${props.maxHeight}`)
-  }
-  if (notNullish(props.maxWidth)) {
-    params.push(`visualWidth=${props.maxWidth}`)
-  }
-  return params.length > 0 ? '?' + params.join('&') : ''
-})
 let clickTimeout
 
 // 方法
@@ -109,7 +94,7 @@ function getWorkSetName(): string {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="coverFilePath ? buildStoreUrl(coverFilePath, srcParamStr) : ''"
+      :src="coverFilePath ? buildStoreUrl(coverFilePath) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

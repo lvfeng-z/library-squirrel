@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
-import WorkSetGrid from '@renderer/components/common/WorkSetGrid.vue'
+import CardGrid from '@renderer/components/common/CardGrid.vue'
+import WorkSetCard from '@renderer/components/common/WorkSetCard.vue'
+import { getWorkSetCardDimension } from '@renderer/utils/ImageDimension.ts'
 import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 
 // props
@@ -30,11 +32,23 @@ function handleImageClicked(workSet: WorkSetWithCoverDTO) {
 
 <template>
   <div>
-    <work-set-grid
-      :work-set-list="props.workSetList"
+    <card-grid
+      :items="props.workSetList"
       :checkable="false"
-      @image-clicked="handleImageClicked"
-    />
+      :get-id="(workSet: WorkSetWithCoverDTO) => workSet.workSet?.id"
+      :get-dimension="getWorkSetCardDimension"
+    >
+      <template #card="{ item, checked }">
+        <work-set-card
+          :checked="checked"
+          :work-set="item"
+          :max-height="500"
+          :max-width="500"
+          :checkable="false"
+          @image-clicked="handleImageClicked"
+        />
+      </template>
+    </card-grid>
     <work-set-dialog
       v-model:state="workSetDialogState"
       v-model:current-work-set-id="currentWorkSetId"

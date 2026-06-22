@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
-import WorkGrid from '@renderer/components/common/WorkGrid.vue'
+import CardGrid from '@renderer/components/common/CardGrid.vue'
+import WorkCard from '@renderer/components/common/WorkCard.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import {
   SearchCondition,
@@ -14,6 +15,7 @@ import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'
 import lodash from 'lodash'
 import {notNullish, arrayNotEmpty, isNullish} from '@renderer/utils/CommonUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
+import { getWorkCardDimension } from '@renderer/utils/ImageDimension.ts'
 
 // props
 const props = withDefaults(
@@ -343,14 +345,29 @@ defineExpose({
       class="work-query-view-work-space"
     >
       <el-scrollbar>
-        <work-grid
-          :work-list="workList"
+        <card-grid
+          :items="workList"
           :checkable="isNullish(checkable) ? false : checkable"
-          :checked-work-ids="checkedWorkIds"
+          :checked-ids="checkedWorkIds"
+          :get-id="(work: WorkCardItem) => work.id"
+          :get-dimension="getWorkCardDimension"
           class="work-query-view-work-grid"
-          @image-clicked="handleWorkClicked"
           @checked-change="handleCheckedChange"
-        />
+        >
+          <template #card="{ item, checked, onUpdateChecked }">
+            <work-card
+              :checked="checked"
+              :work="item"
+              :max-height="500"
+              :max-width="500"
+              :checkable="isNullish(checkable) ? false : checkable"
+              work-info-popper-width="380px"
+              author-info-popper-width="380px"
+              @update:checked="onUpdateChecked"
+              @image-clicked="handleWorkClicked"
+            />
+          </template>
+        </card-grid>
       </el-scrollbar>
       <!-- 加载更多按钮 -->
       <div

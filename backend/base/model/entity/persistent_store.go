@@ -20,6 +20,8 @@ type PersistentStore struct {
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
 	FilenameExtension sql.NullString `gorm:"column:filename_extension" json:"filenameExtension"`
 	Status            int            `gorm:"column:status;default:0" json:"status"` // 0=未完成，1=完成
+	Width             int            `gorm:"column:width;default:0" json:"width"`   // 图片宽度（像素），非图片为 0
+	Height            int            `gorm:"column:height;default:0" json:"height"` // 图片高度（像素），非图片为 0
 }
 
 func (PersistentStore) TableName() string {

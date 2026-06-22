@@ -2,7 +2,7 @@
 import WorkInfo from './WorkInfo.vue'
 import AuthorInfo from './AuthorInfo.vue'
 import { computed, Ref, ref } from 'vue'
-import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
+import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
@@ -46,17 +46,6 @@ const imagePath: Ref<string> = computed(() => {
 })
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
-// src的参数
-const srcParamStr: Ref<string> = computed(() => {
-  const params: string[] = []
-  if (notNullish(props.maxHeight)) {
-    params.push(`visualHeight=${props.maxHeight}`)
-  }
-  if (notNullish(props.maxWidth)) {
-    params.push(`visualWidth=${props.maxWidth}`)
-  }
-  return arrayNotEmpty(params) ? '?' + params.join('&') : ''
-})
 let clickTimeout
 
 // 方法
@@ -102,7 +91,7 @@ function handlePictureClicked() {
     <el-image
       :fit="imageFit"
       class="work-card-image"
-      :src="imagePath ? buildStoreUrl(imagePath, srcParamStr) : ''"
+      :src="imagePath ? buildStoreUrl(imagePath) : ''"
       @load="handleElImageFit"
       @click="handleImageClicked"
       @dblclick="handlePictureClicked"

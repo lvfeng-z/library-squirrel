@@ -106,6 +106,8 @@ func (w *storeWriter) Complete() error {
 		return fmt.Errorf("记录不存在: storeId=%d", w.storeId)
 	}
 	record.Status = domain.StoreStatusComplete
+	// 提取图片宽高（若为图片），与状态更新合并为同一次 Update
+	fillImageDimensions(record, w.workDirGetter())
 	if err := w.repo.Update(context.Background(), record); err != nil {
 		return fmt.Errorf("更新记录状态失败: %w", err)
 	}
@@ -143,6 +145,25 @@ func (w *storeWriter) Abort() error {
 		return err
 	}
 	return nil
+}
+
+// fillImageDimensions 若记录为图片，读取文件头部解码填入 Width/Height。
+// 解码失败时仅记日志、留 0，不阻断入库主流程。
+func fillImageDimensions(store *domain.PersistentStore, workDir string) {
+	if store == nil || !store.FilenameExtension.Valid || !store.FilePath.Valid {
+		return
+	}
+	if !util.IsImageExt(store.FilenameExtension.String) {
+		return
+	}
+	absPath := filepath.Join(workDir, store.FilePath.String)
+	width, height, err := util.DecodeImageDimensions(absPath)
+	if err != nil {
+		logger.Log.Warn("提取图片宽高失败，留空", zap.String("path", absPath), zap.Error(err))
+		return
+	}
+	store.Width = width
+	store.Height = height
 }
 
 // FileMover 文件移动备份接口（由 persistentStore 定义，backup.Service 实现）
@@ -352,6 +373,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 		existing.FilenameExtension.Valid = true
 		existing.FilenameExtension.String = ext
 		existing.Status = domain.StoreStatusComplete
+		fillImageDimensions(existing, workDir)
 		if err := s.repo.Update(ctx, existing); err != nil {
 			return 0, fmt.Errorf("更新记录失败: %w", err)
 		}
@@ -367,6 +389,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
 	store.Status = domain.StoreStatusComplete
+	fillImageDimensions(store, workDir)
 
 	if err := s.repo.Save(ctx, store); err != nil {
 		// 记录创建失败时清理文件
@@ -528,6 +551,7 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
 	store.Status = domain.StoreStatusComplete
+	fillImageDimensions(store, workDir)
 
 	if err := s.repo.Save(ctx, store); err != nil {
 		return 0, fmt.Errorf("注册 PersistentStore 记录失败: %w", err)

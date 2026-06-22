@@ -248,6 +248,16 @@ export class PersistentStoreDTO {
      * 0=未完成，1=完成
      */
     "status": number;
+
+    /**
+     * 图片宽度（像素），非图片为 0
+     */
+    "width": number;
+
+    /**
+     * 图片高度（像素），非图片为 0
+     */
+    "height": number;
     "createTime": number;
     "updateTime": number;
 
@@ -267,6 +277,12 @@ export class PersistentStoreDTO {
         }
         if (!("status" in $$source)) {
             this["status"] = 0;
+        }
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;

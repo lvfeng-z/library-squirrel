@@ -17,6 +17,8 @@ func NewPersistentStoreDTO(store *entity.PersistentStore) *sdkdto.PersistentStor
 		FileName:          util.NullStringToPointer(store.FileName),
 		FilenameExtension: util.NullStringToPointer(store.FilenameExtension),
 		Status:            store.Status,
+		Width:             store.Width,
+		Height:            store.Height,
 		CreateTime:        store.GetCreateTime(),
 		UpdateTime:        store.GetUpdateTime(),
 	}
@@ -50,6 +52,8 @@ func ToPersistentStoreEntity(dto *sdkdto.PersistentStoreDTO) *entity.PersistentS
 	}
 
 	store.Status = dto.Status
+	store.Width = dto.Width
+	store.Height = dto.Height
 
 	if dto.CreateTime != 0 {
 		store.SetCreateTime(dto.CreateTime)

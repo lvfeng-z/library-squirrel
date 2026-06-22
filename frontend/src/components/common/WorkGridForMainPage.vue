@@ -2,9 +2,11 @@
 import WorkDialog from '../dialogs/WorkDialog.vue'
 import { computed, Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
-import WorkGrid from '@renderer/components/common/WorkGrid.vue'
+import CardGrid from '@renderer/components/common/CardGrid.vue'
+import WorkCard from '@renderer/components/common/WorkCard.vue'
 import {WorkFullDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto";
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
+import { getWorkCardDimension } from '@renderer/utils/ImageDimension.ts'
 
 // props
 const props = defineProps<{
@@ -39,11 +41,25 @@ async function openWorkSetDialog(workSetId: number) {
 
 <template>
   <div>
-    <work-grid
-      :work-list="workCardItemList"
+    <card-grid
+      :items="workCardItemList"
       :checkable="false"
-      @image-clicked="handleImageClicked"
-    />
+      :get-id="(work: WorkCardItem) => work.id"
+      :get-dimension="getWorkCardDimension"
+    >
+      <template #card="{ item, checked }">
+        <work-card
+          :checked="checked"
+          :work="item"
+          :max-height="500"
+          :max-width="500"
+          :checkable="false"
+          work-info-popper-width="380px"
+          author-info-popper-width="380px"
+          @image-clicked="handleImageClicked"
+        />
+      </template>
+    </card-grid>
     <work-dialog
       v-model:state="workDialogState"
       v-model:current-work-index="currentWorkIndex"

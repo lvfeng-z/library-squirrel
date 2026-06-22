@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import WorkDialog from '../dialogs/WorkDialog.vue'
 import {computed, Ref, ref, watch} from 'vue'
-import WorkGrid from '@renderer/components/common/WorkGrid.vue'
+import CardGrid from '@renderer/components/common/CardGrid.vue'
+import WorkCard from '@renderer/components/common/WorkCard.vue'
 import {WorkFullDTO} from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
+import { getWorkCardDimension } from '@renderer/utils/ImageDimension.ts'
 import {reWorkWorkSetUpdateSortOrders} from '@renderer/apis/http/wrappers/reWorkWorkSet'
 
 // props
@@ -74,14 +76,14 @@ function handleCheckedChange(checkedIds: number[]) {
 }
 
 // 拖拽排序相关方法
-function handleDragStart(payload: { work: WorkCardItem; data: unknown; event: DragEvent }) {
-  const index = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
+function handleDragStart(payload: { item: WorkCardItem; data: unknown; event: DragEvent }) {
+  const index = localWorkList.value.findIndex((w) => w.work?.id === payload.item.id)
   draggedIndex.value = index
-  console.log('[WorkGridForWorkSet] dragStart', { index, work: payload.work })
+  console.log('[WorkGridForWorkSet] dragStart', { index, work: payload.item })
 }
 
-function handleDragOver(payload: { work: WorkCardItem; event: DragEvent }) {
-  dragOverIndex.value = localWorkList.value.findIndex((w) => w.work?.id === payload.work.id)
+function handleDragOver(payload: { item: WorkCardItem; event: DragEvent }) {
+  dragOverIndex.value = localWorkList.value.findIndex((w) => w.work?.id === payload.item.id)
 }
 
 async function handleDragEnd() {
@@ -125,17 +127,32 @@ function resetDragState() {
 
 <template>
   <div>
-    <work-grid
-      :work-list="workCardItemList"
+    <card-grid
+      :items="workCardItemList"
       :checkable="props.checkable ?? false"
-      :checked-work-ids="props.checkedWorkIds"
-      draggable
-      @image-clicked="handleImageClicked"
+      :checked-ids="props.checkedWorkIds"
+      :draggable="true"
+      :get-id="(work: WorkCardItem) => work.id"
+      :get-dimension="getWorkCardDimension"
       @checked-change="handleCheckedChange"
       @drag-start="handleDragStart"
       @drag-end="handleDragEnd"
       @drag-over="handleDragOver"
-    />
+    >
+      <template #card="{ item, checked, onUpdateChecked }">
+        <work-card
+          :checked="checked"
+          :work="item"
+          :max-height="500"
+          :max-width="500"
+          :checkable="props.checkable ?? false"
+          work-info-popper-width="380px"
+          author-info-popper-width="380px"
+          @update:checked="onUpdateChecked"
+          @image-clicked="handleImageClicked"
+        />
+      </template>
+    </card-grid>
     <work-dialog
       v-model:state="workDialogState"
       v-model:current-work-index="currentWorkIndex"
