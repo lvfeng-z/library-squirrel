@@ -37,6 +37,8 @@ globs:
 | `backup` | `file_path` | workDir | 备份文件路径 | `backup/2026/06/08/文件.mp4` |
 | `backup` | `original_file_path` | workDir | 同 `persistent_store.file_path`，用于还原时确定目标位置 | `store/resource/作者/文件.mp4` |
 
+> 注：`persistent_store` 另有 `width`/`height` 字段（`int`，图像像素宽高，非图片资源为 0），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。
+
 ### 路径解析约定
 
 - **绝对路径解析**：`filepath.Join(rootDir, relativePath)`，禁止额外拼接中间目录（如 `"store"`）

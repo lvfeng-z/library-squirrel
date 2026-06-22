@@ -38,3 +38,4 @@
 
 - **临时文件 + Complete 登记**：流式写入先落到临时文件，`Complete` 后才创建 DB 记录并正式命名，避免半成品文件污染。
 - **路径强校验**：`validatePath` 拒绝未注册子目录，统一正斜杠比较以兼容 Windows。
+- **图像宽高提取**：`Complete`/`Store`/`StoreFromExternal` 落盘后，若是图片（`util.IsImageExt`）则用 `image.DecodeConfig` 读头部解码填入 `Width`/`Height`（供前端瀑布流精准布局）。解码失败仅记日志、留 0，不阻断入库。
