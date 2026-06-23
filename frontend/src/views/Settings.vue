@@ -284,6 +284,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-text
                   class="mx-1"
                   size="large"
+                  tag="b"
                 >
                   基本设置
                 </el-text>
@@ -326,6 +327,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-text
                   class="mx-1"
                   size="large"
+                  tag="b"
                 >
                   外观
                 </el-text>
@@ -365,6 +367,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-text
                   class="mx-1"
                   size="large"
+                  tag="b"
                 >
                   下载
                 </el-text>
@@ -373,21 +376,23 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   border-style="dotted"
                 >
                   <el-text>并行下载数</el-text>
+                  <el-input-number
+                      v-model="settings.importSettings.maxParallelImport"
+                      :max="20"
+                      :min="1"
+                      controls-position="right"
+                      class="settings-element-in-divider"
+                  />
                 </el-divider>
-                <el-input-number
-                  v-model="settings.importSettings.maxParallelImport"
-                  :max="20"
-                  :min="1"
-                  controls-position="right"
-                />
                 <el-divider
                   content-position="left"
                   border-style="dotted"
+                  class="settings-consecutive-divider"
                 >
                   <el-text>重新下载时是否更新作品信息</el-text>
                   <el-switch
                     v-model="settings.importSettings.updateWorkInfoWhenImport"
-                    class="work-settings-update-work-info-when-import-switch"
+                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="是"
@@ -396,7 +401,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 </el-divider>
               </div>
               <div id="workSettings">
-                <el-text size="large">
+                <el-text size="large" tag="b">
                   作品
                 </el-text>
                 <el-divider
@@ -443,7 +448,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-divider />
               </div>
               <div id="pluginSettings">
-                <el-text size="large">
+                <el-text size="large" tag="b">
                   插件
                 </el-text>
                 <el-divider
@@ -453,7 +458,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   <el-text>运行时编译</el-text>
                   <el-switch
                     v-model="settings.pluginSettings.allowUnsafeEval"
-                    class="plugin-settings-allow-unsafe-eval-switch"
+                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="开"
@@ -477,7 +482,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-divider />
               </div>
               <div id="recycleBinSettings">
-                <el-text size="large">
+                <el-text size="large" tag="b">
                   回收站
                 </el-text>
                 <el-divider
@@ -487,7 +492,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   <el-text>自动清理</el-text>
                   <el-switch
                     v-model="settings.recycleBin.autoCleanupEnabled"
-                    class="recycle-bin-settings-auto-cleanup-switch"
+                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="开"
@@ -497,13 +502,14 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-divider
                   content-position="left"
                   border-style="dotted"
-                  class="recycle-bin-settings-auto-cleanup-retention-days"
+                  class="settings-consecutive-divider"
                 >
                   <el-text>保留天数</el-text>
                   <el-input-number
                     v-model="settings.recycleBin.retentionDays"
                     :min="1"
                     controls-position="right"
+                    class="settings-element-in-divider"
                   />
                 </el-divider>
                 <el-tooltip
@@ -526,6 +532,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-text
                   class="mx-1"
                   size="large"
+                  tag="b"
                 >
                   其他
                 </el-text>
@@ -703,8 +710,8 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   background: var(--app-bg-surface);
   border-radius: var(--app-radius);
   display: flex;
-  width: calc(100% - 20px);
-  height: calc(100% - 20px);
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
   padding: 5px;
   margin: 5px;
 }
@@ -763,17 +770,11 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 .settings-work-settings-file-name-format-dialog > :deep(.el-scrollbar__wrap) {
   max-height: 65vh;
 }
-.work-settings-update-work-info-when-import-switch {
-  margin-left: 20px;
-}
-.plugin-settings-allow-unsafe-eval-switch {
-  margin-left: 20px;
-}
-.recycle-bin-settings-auto-cleanup-switch {
-  margin-left: 20px;
-}
-.recycle-bin-settings-auto-cleanup-retention-days {
+.settings-consecutive-divider {
   margin-top: 40px
+}
+.settings-element-in-divider {
+  margin-left: 20px;
 }
 .work-settings-file-name-format-button {
   margin-bottom: 10px;
