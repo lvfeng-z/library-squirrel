@@ -29,6 +29,25 @@ export const builtinTours: TourDefinition[] = [
       },
     ],
   },
+  {
+    id: 'local-tag-intro',
+    name: '本地标签介绍',
+    description: '认识本地标签页面',
+    steps: [
+      {
+        target: { route: 'localTagManage', targetKey: 'localTagManage.localTagTable' },
+        title: '本地标签列表',
+        description: '这里是本地标签列表，库中所有本地标签都在此统一管理，可新增、编辑、删除标签',
+        placement: 'right',
+      },
+      {
+        target: { route: 'localTagManage', targetKey: 'localTagManage.siteTagExchange' },
+        title: '站点标签绑定',
+        description: '选中左侧本地标签后，在此管理绑定到它的站点标签，可在「已绑定」与「未绑定」之间转移，建立本地标签与站点标签的关联',
+        placement: 'left',
+      },
+    ],
+  },
   // 「定位指定标签」向导示例：演示跳转并定位到某条数据，
   // 需在 LocalTagManage 页接入 useTourTargets('localTagManage.table') 与 useTourReady 后启用。
   // {

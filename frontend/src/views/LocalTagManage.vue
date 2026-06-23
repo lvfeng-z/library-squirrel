@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onMounted, Ref, ref} from 'vue'
 import BaseView from './BaseView.vue'
+import {useTourTargets} from '@renderer/composables/useTourTargets'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalTagDialog from '../components/dialogs/LocalTagDialog.vue'
@@ -50,8 +51,13 @@ const apis = {
 }
 // localTagSearchTable的组件实例
 const localTagSearchTable = ref()
+// 向导目标注册：本地标签列表（聚焦左侧本地标签列表区域）
+const {register: registerTourTarget} = useTourTargets()
+registerTourTarget('localTagManage.localTagTable', localTagSearchTable)
 // siteTagExchangeBox的组件实例
 const siteTagExchangeBox = ref()
+// 向导目标注册：站点标签操作区（聚焦右侧站点标签绑定区域）
+registerTourTarget('localTagManage.siteTagExchange', siteTagExchangeBox)
 // 被改变的数据行
 const changedRows: Ref<LocalTagWithBaseTagDTO[]> = ref([])
 // 被选中的本地标签
