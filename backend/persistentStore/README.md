@@ -24,7 +24,7 @@
 
 ## 核心概念
 
-- **StoreWriter**：流式写入句柄，支持 `Complete`（完成落盘）/ `Abort`（中止清理）/ `Sync`。下载大文件时先写临时文件，Complete 后才登记为正式记录。
+- **StoreWriter**：流式写入句柄，支持 `Complete`（将记录状态置为已完成）/ `Abort`（中止清理：删文件 + 删记录）/ `Sync`。流式写入直接落到最终路径，DB 记录在写入开始时即创建并标记为未完成（`Incomplete`），`Complete` 后才置为已完成（`Complete`）。
 - **已注册子目录**（`dir.go`）：路径必须以下列前缀开头——
   `store/resource`（作品资源）、`store/thumbnail`（视频缩略图）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
 - **路径基准**：所有相对路径基于 workDir，禁止 `../`、`./` 或绝对路径。
@@ -36,6 +36,6 @@
 
 ## 关键设计
 
-- **临时文件 + Complete 登记**：流式写入先落到临时文件，`Complete` 后才创建 DB 记录并正式命名，避免半成品文件污染。
+- **直接落最终路径 + status 占位**：流式写入直接落到最终路径（不经过临时文件），DB 记录以 `status=Incomplete` 起步，`Complete` 时才置为 `Complete`。未完成文件不靠临时后缀隔离，而是由读取层 `StoreFileHandler`（`backend/assetserver/store_handler.go`）依据 `status` 校验——未完成记录的 `/store/` 请求直接返回 404，从而避免半成品被读取。
 - **路径强校验**：`validatePath` 拒绝未注册子目录，统一正斜杠比较以兼容 Windows。
 - **图像宽高提取**：`Complete`/`Store`/`StoreFromExternal` 落盘后，若是图片（`util.IsImageExt`）则用 `image.DecodeConfig` 读头部解码填入 `Width`/`Height`（供前端瀑布流精准布局）。解码失败仅记日志、留 0，不阻断入库。
