@@ -6,7 +6,7 @@ import { HotWater } from '@element-plus/icons-vue'
 <template>
   <base-view>
     <el-empty
-      style="height: 100%; background-color: #fafafa"
+      style="height: 100%; background-color: var(--app-bg-page)"
       description=" "
     >
       <el-icon size="large">

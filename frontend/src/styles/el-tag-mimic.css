@@ -1,8 +1,8 @@
 .el-tag-mimic {
-  color: #3f9dfd;
-  border-radius: 3.5px;
-  border: 0.5px solid #d7eafd;
-  background-color: #eaf3fd;
+  color: var(--app-tag-blue-text);
+  border-radius: var(--app-radius-sm);
+  border: 0.5px solid var(--app-tag-blue-bg);
+  background-color: var(--app-tag-blue-bg);
   background-clip: padding-box;
   font-size: 12px;
 }

@@ -93,8 +93,8 @@ function handleStop() {
 .tour-center-panel {
   display: flex;
   flex-direction: column;
-  background: #f4f4f4;
-  border-radius: 6px;
+  background: var(--app-bg-surface-variant);
+  border-radius: var(--app-radius);
   padding: 10px;
   height: 100%;
   box-sizing: border-box;
@@ -127,8 +127,8 @@ function handleStop() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   padding: 10px;
   margin-bottom: 8px;
 }

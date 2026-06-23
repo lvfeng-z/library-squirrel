@@ -6,6 +6,33 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AppearanceSettings 外观设置
+ */
+export class AppearanceSettings {
+    /**
+     * 当前主题 id
+     */
+    "theme": string;
+
+    /** Creates a new AppearanceSettings instance. */
+    constructor($$source: Partial<AppearanceSettings> = {}) {
+        if (!("theme" in $$source)) {
+            this["theme"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppearanceSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AppearanceSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AppearanceSettings($$parsedSource as Partial<AppearanceSettings>);
+    }
+}
+
+/**
  * ImportSettings 导入相关设置
  */
 export class ImportSettings {
@@ -131,6 +158,7 @@ export class Settings {
     "pluginSettings": PluginSettings;
     "tour": TourSettings;
     "recycleBin": RecycleBinSettings;
+    "appearance": AppearanceSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -155,6 +183,9 @@ export class Settings {
         if (!("recycleBin" in $$source)) {
             this["recycleBin"] = (new RecycleBinSettings());
         }
+        if (!("appearance" in $$source)) {
+            this["appearance"] = (new AppearanceSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -168,6 +199,7 @@ export class Settings {
         const $$createField4_0 = $$createType2;
         const $$createField5_0 = $$createType3;
         const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -183,6 +215,9 @@ export class Settings {
         }
         if ("recycleBin" in $$parsedSource) {
             $$parsedSource["recycleBin"] = $$createField6_0($$parsedSource["recycleBin"]);
+        }
+        if ("appearance" in $$parsedSource) {
+            $$parsedSource["appearance"] = $$createField7_0($$parsedSource["appearance"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -207,7 +242,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType5;
+        const $$createField0_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -246,4 +281,5 @@ const $$createType1 = ImportSettings.createFrom;
 const $$createType2 = PluginSettings.createFrom;
 const $$createType3 = TourSettings.createFrom;
 const $$createType4 = RecycleBinSettings.createFrom;
-const $$createType5 = $Create.Map($Create.Any, $Create.Any);
+const $$createType5 = AppearanceSettings.createFrom;
+const $$createType6 = $Create.Map($Create.Any, $Create.Any);

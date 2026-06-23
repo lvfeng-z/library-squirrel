@@ -74,15 +74,15 @@ async function handleCloseCurrentView() {
   flex-direction: row;
   width: 100%;
   height: 100%;
-  background-color: #fafafa;
-  --side-menu-background-color: #ebf0f5;
+  background-color: var(--app-bg-page);
+  --side-menu-background-color: var(--app-bg-sidebar);
 }
 
 .close-subpage-button {
   display: flex;
   justify-content: end;
   align-items: end;
-  background-color: var(--el-color-danger);
+  background-color: var(--app-color-danger);
   cursor: pointer;
   position: absolute;
   left: -65px;
@@ -97,7 +97,7 @@ async function handleCloseCurrentView() {
 .close-subpage-button:hover {
   left: -55px;
   top: -55px;
-  background-color: var(--el-color-danger-light-3);
+  background-color: var(--app-color-danger-light-3);
 }
 
 .close-subpage-button-hide {

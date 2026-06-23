@@ -19,5 +19,8 @@ export const emptySettings: Settings = {
   },
   tour: {
     completed: {}
+  },
+  appearance: {
+    theme: 'default-light'
   }
 }

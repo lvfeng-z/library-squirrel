@@ -1,0 +1,20 @@
+/* 樱花粉浅色主题
+   覆盖主色与背景基调；文字、边框、状态色沿用 tokens.css 的 :root 默认值。
+   --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
+html[data-theme="sakura-light"] {
+  --app-color-primary: #ec6d8e;
+  --app-color-primary-light-1: #ee7c99;
+  --app-color-primary-light-2: #f08aa5;
+  --app-color-primary-light-3: #f299b0;
+  --app-color-primary-light-4: #f4a7bb;
+  --app-color-primary-light-5: #f6b6c7;
+  --app-color-primary-light-6: #f7c5d2;
+  --app-color-primary-light-7: #f9d3dd;
+  --app-color-primary-light-8: #fbe2e8;
+  --app-color-primary-light-9: #fdf0f4;
+  --app-color-primary-dark-2: #bd5772;
+
+  --app-bg-page: #f5e6ea;
+  --app-bg-surface-variant: #f9eff1;
+  --app-bg-sidebar: #ecd3dc;
+}

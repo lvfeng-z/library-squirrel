@@ -1,0 +1,20 @@
+/* 海洋蓝浅色主题
+   覆盖主色与背景基调；文字、边框、状态色沿用 tokens.css 的 :root 默认值。
+   --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
+html[data-theme="ocean-light"] {
+  --app-color-primary: #1ab7c7;
+  --app-color-primary-light-1: #31becd;
+  --app-color-primary-light-2: #48c5d2;
+  --app-color-primary-light-3: #5fcdd8;
+  --app-color-primary-light-4: #76d4dd;
+  --app-color-primary-light-5: #8ddbe3;
+  --app-color-primary-light-6: #a3e2e9;
+  --app-color-primary-light-7: #bae9ee;
+  --app-color-primary-light-8: #d1f1f4;
+  --app-color-primary-light-9: #e8f8f9;
+  --app-color-primary-dark-2: #15929f;
+
+  --app-bg-page: #e2f0f2;
+  --app-bg-surface-variant: #edf6f7;
+  --app-bg-sidebar: #cde5e8;
+}

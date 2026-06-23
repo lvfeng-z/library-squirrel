@@ -675,18 +675,18 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
 }
 .work-dialog-image:hover {
   background-color: rgb(166.2, 168.6, 173.4, 10%);
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(var(--app-shadow-card));
 }
 .work-dialog-image-error {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background-color: var(--el-fill-color-dark);
+  background-color: var(--app-fill-color-dark);
   width: 200px;
 }
 .work-dialog-image-error-icon {
-  color: var(--el-text-color-secondary);
+  color: var(--app-text-secondary);
   scale: 2;
 }
 .work-dialog-info {
@@ -700,13 +700,13 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
   width: 100%;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--el-border-color);
-  border-radius: 5px;
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-radius);
 }
 .work-dialog-tag-exchange-box-title-text {
   text-align: center;
   writing-mode: vertical-lr;
-  color: var(--el-text-color-regular);
+  color: var(--app-text-regular);
 }
 .work-dialog-search-bar {
   flex-grow: 1;

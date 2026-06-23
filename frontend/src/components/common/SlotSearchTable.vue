@@ -207,9 +207,9 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
 .search-table-toolbar {
   height: 32px;
   width: 100%;
-  background-color: var(--el-fill-color-blank);
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
+  background-color: var(--app-bg-surface);
+  border-top-left-radius: var(--app-radius);
+  border-top-right-radius: var(--app-radius);
 }
 .search-table-data {
   display: flex;
@@ -235,7 +235,7 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: #fdfdfd;
+  background-color: var(--app-bg-surface);
   border-bottom-left-radius: 6px;
   border-bottom-right-radius: 6px;
 }

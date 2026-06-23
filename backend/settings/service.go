@@ -42,6 +42,9 @@ func defaultSettings() *Settings {
 			AutoCleanupEnabled: true,
 			RetentionDays:      30,
 		},
+		Appearance: AppearanceSettings{
+			Theme: "default-light",
+		},
 	}
 }
 

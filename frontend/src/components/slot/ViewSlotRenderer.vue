@@ -28,7 +28,7 @@ const ErrorComponent: Component = {
   render() {
     return h(
       'div',
-      { style: 'display: flex; align-items: center; justify-content: center; height: 100%; color: var(--el-color-danger);' },
+      { style: 'display: flex; align-items: center; justify-content: center; height: 100%; color: var(--app-color-danger);' },
       [h('span', {}, '加载失败')]
     )
   }
@@ -91,7 +91,7 @@ const activeComponent = computed<Component | null>(() => {
   display: flex;
   align-items: center;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  border-bottom: 1px solid var(--app-border-color);
 }
 
 .view-slot-title {

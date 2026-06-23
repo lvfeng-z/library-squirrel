@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    AppearanceSettings,
     ImportSettings,
     PluginSettings,
     RecycleBinSettings,

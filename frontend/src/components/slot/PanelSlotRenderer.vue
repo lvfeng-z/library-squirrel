@@ -29,7 +29,7 @@ const ErrorComponent: Component = {
       'div',
       {
         style:
-          'display: flex; align-items: center; justify-content: center; height: 100%; color: var(--el-color-danger); font-size: 12px;'
+          'display: flex; align-items: center; justify-content: center; height: 100%; color: var(--app-color-danger); font-size: 12px;'
       },
       [h('span', {}, '加载失败')]
     )
@@ -90,17 +90,17 @@ function getSlotStyle(slot: PanelSlot): Record<string, string> {
 
 .panel-slot-left-sidebar {
   flex-direction: column;
-  border-right: 1px solid var(--el-border-color);
+  border-right: 1px solid var(--app-border-color);
 }
 
 .panel-slot-right-sidebar {
   flex-direction: column;
-  border-left: 1px solid var(--el-border-color);
+  border-left: 1px solid var(--app-border-color);
 }
 
 .panel-slot-bottom {
   flex-direction: row;
-  border-top: 1px solid var(--el-border-color);
+  border-top: 1px solid var(--app-border-color);
 }
 
 .panel-slot-item {

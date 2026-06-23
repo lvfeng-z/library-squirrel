@@ -279,8 +279,8 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   width: calc(100% - 20px);
   height: calc(100% - 20px);
   padding: 5px;

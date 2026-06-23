@@ -11,6 +11,7 @@ import './styles/rounded-borders.css'
 import './styles/scroll-text-left.css'
 import './styles/scroll-text-center.css'
 import './styles/z-axis-layers.css'
+import './styles/theme/index.css'
 import clickOutSide from './directives/clickOutSide.ts'
 import elSelectBottomed from './directives/elSelectBottomed.ts'
 import elScrollbarBottomed from './directives/elScrollbarBottomed.ts'
@@ -18,6 +19,7 @@ import { iniListener } from '@renderer/MainIpcListener.ts'
 import { initBuiltinMenus } from './composables/useBuiltinMenus.ts'
 import { setRouterInstance } from './store/SlotRegistryStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
+import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { registerBuiltinTours } from '@renderer/tour/definitions'
 import lodash from 'lodash'
 import * as apis from './apis/http'
@@ -70,6 +72,11 @@ const pluginContext = {
     lodash: lodash
   },
 
+  // --- 主题（供插件读取当前主题 id，延迟读取避免初始化顺序问题） ---
+  theme: {
+    getCurrent: () => useThemeStore().currentThemeId
+  },
+
   // --- Custom Business Logic ---
   custom: { apis }
 }
@@ -88,5 +95,9 @@ initBuiltinMenus()
 const tourCenterStore = useTourCenterStore()
 registerBuiltinTours((def) => tourCenterStore.registerTour(def))
 void tourCenterStore.loadCompleted()
+
+// 应用持久化的主题（首屏由 tokens.css 的 :root fallback 兜底，避免闪烁）
+const themeStore = useThemeStore()
+void themeStore.load()
 
 iniListener()

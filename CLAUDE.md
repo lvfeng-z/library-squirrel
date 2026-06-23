@@ -102,7 +102,7 @@ task build:server && task run:server
 
 - **加载策略**: 两层合并 — 嵌入的 `backend/config/default_config.yaml`（基础层）+ 磁盘 `config.yaml`（覆盖层）
 - **根目录 config.yaml**: 开发环境配置（服务器、数据库、站点、插件、日志）
-- **config/settings.json**: 运行时用户设置（通过 SettingsHandler 读写）
+- **config/settings.json**: 运行时用户设置（通过 SettingsHandler 读写），含工作目录、下载/作品/插件/回收站设置、向导完成状态、外观主题（`appearance.theme`，由前端 `useThemeStore` 管理）等
 - **build/config.yml**: Wails 开发模式配置（端口、前端开发服务器等）
 - **默认值**: 通过 viper SetDefault + default_config.yaml 双重保障
 

@@ -122,7 +122,7 @@ async function handleSkipAll() {
 }
 
 .replace-confirm-item + .replace-confirm-item {
-  border-top: 1px solid var(--el-border-color-lighter);
+  border-top: 1px solid var(--app-border-color-lighter);
 }
 
 .replace-confirm-item-content {
@@ -142,8 +142,8 @@ async function handleSkipAll() {
   width: 28px;
   height: 28px;
   margin-right: 10px;
-  background-color: var(--el-fill-color-dark);
-  border-radius: 4px;
+  background-color: var(--app-fill-color-dark);
+  border-radius: var(--app-radius-sm);
   flex-shrink: 0;
 }
 
@@ -162,7 +162,7 @@ async function handleSkipAll() {
 
 .replace-confirm-item-existing {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--app-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

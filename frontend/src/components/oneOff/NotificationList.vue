@@ -82,8 +82,8 @@ const currentPage: Ref<NotificationItem[]> = computed(() => {
   flex-direction: column;
   margin: 5px;
   max-height: 160px;
-  border-radius: 10px;
-  background-color: var(--el-fill-color);
+  border-radius: var(--app-radius-lg);
+  background-color: var(--app-fill-color);
   padding: 5px;
 }
 .notification-list-item-title {
@@ -94,7 +94,7 @@ const currentPage: Ref<NotificationItem[]> = computed(() => {
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--el-text-color-primary);
+  color: var(--app-text-primary);
   font-size: var(--el-font-size-medium);
 }
 .notification-list-item-description {
@@ -105,7 +105,7 @@ const currentPage: Ref<NotificationItem[]> = computed(() => {
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--el-text-color-regular);
+  color: var(--app-text-regular);
   font-size: var(--el-font-size-small);
 }
 .notification-list-pagination-wrapper {

@@ -314,7 +314,7 @@ function handleTest() {
           class="z-layer-3"
           border-radios="10px"
         >
-          <div style="padding: 5px; background-color: var(--el-fill-color-blank)">
+          <div style="padding: 5px; background-color: var(--app-bg-surface)">
             <!--TODO在这里实现一个更灵活的组合查询条件的组件，比如拖拽组成AND或OR组合-->
             <el-button @click="handleTest">
               test
@@ -405,7 +405,7 @@ function handleTest() {
   height: calc(100% - 12px);
   width: calc(100% - 12px);
   padding: 6px;
-  background-color: #e6e6e6;
+  background-color: var(--app-bg-page);
 }
 
 .main-page-topbar {
@@ -429,10 +429,10 @@ function handleTest() {
   flex-direction: column;
   height: calc(100% - 33px);
   margin-top: 3px;
-  border-radius: 6px;
+  border-radius: var(--app-radius);
   overflow: hidden;
   padding: 6px;
-  background-color: #ffffff;
+  background-color: var(--app-bg-surface);
 }
 
 .main-page-work-grid {
@@ -448,16 +448,16 @@ function handleTest() {
     padding 0.3s ease,
     background-color 0.3s ease;
   overflow: hidden;
-  color: var(--el-color-info);
+  color: var(--app-color-info);
   font-weight: bold;
-  border-radius: 5px;
-  background-color: var(--el-color-info-light-9);
+  border-radius: var(--app-radius);
+  background-color: var(--app-color-info-light-9);
   text-align: center;
   cursor: pointer;
 }
 
 .work-grid-load-more:hover {
-  background-color: var(--el-color-info-light-7);
+  background-color: var(--app-color-info-light-7);
 }
 
 .work-grid-show-load-more {
@@ -481,23 +481,23 @@ function handleTest() {
 }
 
 .main-page-auto-load-tag-select-tag-type-checkbox-local-tag {
-  background-color: rgb(133.4, 206.2, 97.4, 30%);
-  color: rgb(78.1, 141.8, 46.6, 75%);
+  background-color: var(--app-tag-green-bg);
+  color: var(--app-tag-green-text);
 }
 
 .main-page-auto-load-tag-select-tag-type-checkbox-site-tag {
-  background-color: rgb(64, 158, 255, 25%);
-  color: rgb(64, 158, 255, 85%);
+  background-color: var(--app-tag-blue-bg);
+  color: var(--app-tag-blue-text);
 }
 
 .main-page-auto-load-tag-select-tag-type-checkbox-local-author {
-  background-color: rgb(245, 108, 108, 25%);
-  color: rgb(245, 108, 108, 75%);
+  background-color: var(--app-tag-red-bg);
+  color: var(--app-tag-red-text);
 }
 
 .main-page-auto-load-tag-select-tag-type-checkbox-site-author {
-  background-color: rgb(164, 158, 255, 25%);
-  color: rgb(164, 158, 255, 95%);
+  background-color: var(--app-tag-purple-bg);
+  color: var(--app-tag-purple-text);
 }
 
 /* 视图容器 - 使用相对定位作为参考 */

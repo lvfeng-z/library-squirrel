@@ -477,7 +477,7 @@ watch(isCheckable, (newValue) => {
   top: 0;
   height: 100%;
   width: 100%;
-  background-color: var(--el-bg-color);
+  background-color: var(--app-bg-surface);
   display: flex;
   flex-direction: column;
   padding-right: 3px;

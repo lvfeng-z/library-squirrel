@@ -153,8 +153,8 @@ import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
 
 <style scoped>
 .guide-container {
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
@@ -180,8 +180,8 @@ import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
 .guide-container-tabs-content {
   display: flex;
   flex-direction: column;
-  background: #f4f4f4;
-  border-radius: 6px;
+  background: var(--app-bg-surface-variant);
+  border-radius: var(--app-radius);
   width: calc(100% - 20px);
   padding: 5px;
   margin: 5px;
@@ -213,7 +213,7 @@ import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
 }
 
 .guide-tabs-label-text {
-  border-radius: 5px;
+  border-radius: var(--app-radius);
   padding-left: 2px;
 }
 

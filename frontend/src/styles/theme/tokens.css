@@ -1,0 +1,118 @@
+/* 主题语义令牌（--app-*）
+   作为全局 fallback：data-theme 未写入或未命中时，使用此处的默认浅色值；
+   同时作为「默认浅色」主题（default-light）的令牌来源——该主题不重复定义 --app-*，
+   其它主题在各自 theme-*.css 中覆盖对应令牌。
+   业务样式统一使用 --app-*，禁止直接使用 Element Plus 内置变量（--el-*）。 */
+:root {
+  /* ===== 主题色（基准 #409eff，派生档位按 Element Plus 算法：light-N = 白色占 N×10%、dark-2 = 黑色占 20%） ===== */
+  --app-color-primary: #409eff;
+  --app-color-primary-light-1: #53a8ff;
+  --app-color-primary-light-2: #66b1ff;
+  --app-color-primary-light-3: #79bbff;
+  --app-color-primary-light-4: #8cc5ff;
+  --app-color-primary-light-5: #a0cfff;
+  --app-color-primary-light-6: #b3d8ff;
+  --app-color-primary-light-7: #c6e2ff;
+  --app-color-primary-light-8: #d9ecff;
+  --app-color-primary-light-9: #ecf5ff;
+  --app-color-primary-dark-2: #337ecc;
+
+  /* ===== 状态色：success ===== */
+  --app-color-success: #67c23a;
+  --app-color-success-light-1: #76c84e;
+  --app-color-success-light-2: #85ce61;
+  --app-color-success-light-3: #95d475;
+  --app-color-success-light-4: #a4da89;
+  --app-color-success-light-5: #b3e19d;
+  --app-color-success-light-6: #c2e7b0;
+  --app-color-success-light-7: #d1edc4;
+  --app-color-success-light-8: #e1f3d8;
+  --app-color-success-light-9: #f0f9eb;
+  --app-color-success-dark-2: #529b2e;
+
+  /* ===== 状态色：warning ===== */
+  --app-color-warning: #e6a23c;
+  --app-color-warning-light-1: #e9ab50;
+  --app-color-warning-light-2: #ebb563;
+  --app-color-warning-light-3: #eebe77;
+  --app-color-warning-light-4: #f0c78a;
+  --app-color-warning-light-5: #f3d19e;
+  --app-color-warning-light-6: #f5dab1;
+  --app-color-warning-light-7: #f8e3c5;
+  --app-color-warning-light-8: #faecd8;
+  --app-color-warning-light-9: #fdf6ec;
+  --app-color-warning-dark-2: #b88230;
+
+  /* ===== 状态色：danger ===== */
+  --app-color-danger: #f56c6c;
+  --app-color-danger-light-1: #f67b7b;
+  --app-color-danger-light-2: #f78989;
+  --app-color-danger-light-3: #f89898;
+  --app-color-danger-light-4: #f9a7a7;
+  --app-color-danger-light-5: #fab6b6;
+  --app-color-danger-light-6: #fbc4c4;
+  --app-color-danger-light-7: #fcd3d3;
+  --app-color-danger-light-8: #fde2e2;
+  --app-color-danger-light-9: #fef0f0;
+  --app-color-danger-dark-2: #c45656;
+
+  /* ===== 状态色：info ===== */
+  --app-color-info: #909399;
+  --app-color-info-light-1: #9b9ea3;
+  --app-color-info-light-2: #a6a9ad;
+  --app-color-info-light-3: #b1b3b8;
+  --app-color-info-light-4: #bcbec2;
+  --app-color-info-light-5: #c8c9cc;
+  --app-color-info-light-6: #d3d4d6;
+  --app-color-info-light-7: #dedfe0;
+  --app-color-info-light-8: #e9e9eb;
+  --app-color-info-light-9: #f4f4f5;
+  --app-color-info-dark-2: #73767a;
+
+  /* ===== 背景 ===== */
+  --app-bg-page: #eaeef4;
+  --app-bg-surface: #ffffff;
+  --app-bg-surface-variant: #f1f4f8;
+  --app-bg-sidebar: #d9e2ef;
+
+  /* ===== 文字 ===== */
+  --app-text-primary: #303133;
+  --app-text-regular: #606266;
+  --app-text-secondary: #909399;
+  --app-text-placeholder: #a8abb2;
+
+  /* ===== 边框 ===== */
+  --app-border-color: #dcdfe6;
+  --app-border-color-light: #e4e7ed;
+  --app-border-color-lighter: #ebeef5;
+  --app-border-color-extra-light: #f2f6fc;
+  --app-border-color-darker: #cdd0d6;
+
+  /* ===== 填充 ===== */
+  --app-fill-color: #f0f2f5;
+  --app-fill-color-light: #f5f7fa;
+  --app-fill-color-lighter: #fafafa;
+  --app-fill-color-dark: #e6e8eb;
+
+  /* ===== 分类标签（彩色 tag） ===== */
+  --app-tag-blue-bg: rgba(64, 158, 255, 0.18);
+  --app-tag-blue-text: #409eff;
+  --app-tag-green-bg: rgba(103, 194, 58, 0.18);
+  --app-tag-green-text: #67c23a;
+  --app-tag-red-bg: rgba(245, 108, 108, 0.18);
+  --app-tag-red-text: #f56c6c;
+  --app-tag-purple-bg: rgba(144, 147, 153, 0.18);
+  --app-tag-purple-text: #909399;
+  --app-tag-orange-bg: rgba(230, 162, 60, 0.18);
+  --app-tag-orange-text: #e6a23c;
+
+  /* ===== 圆角 ===== */
+  --app-radius-sm: 4px;
+  --app-radius: 6px;
+  --app-radius-lg: 10px;
+
+  /* ===== 阴影 ===== */
+  --app-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --app-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --app-shadow-card: 0 0 10px rgba(0, 0, 0, 0.1);
+}

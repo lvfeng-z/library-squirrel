@@ -1,0 +1,20 @@
+/* 森林绿浅色主题（备选）
+   覆盖主色为深绿；文字、边框、状态色、背景沿用 tokens.css 的 :root 默认值。
+   --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
+html[data-theme="forest-light"] {
+  --app-color-primary: #007038;
+  --app-color-primary-light-1: #1a7e4c;
+  --app-color-primary-light-2: #338d60;
+  --app-color-primary-light-3: #4d9b74;
+  --app-color-primary-light-4: #66a988;
+  --app-color-primary-light-5: #80b89c;
+  --app-color-primary-light-6: #99c6af;
+  --app-color-primary-light-7: #b3d4c3;
+  --app-color-primary-light-8: #cce2d7;
+  --app-color-primary-light-9: #e6f1eb;
+  --app-color-primary-dark-2: #005a2d;
+
+  --app-bg-page: #e8efe5;
+  --app-bg-surface-variant: #f0f4ee;
+  --app-bg-sidebar: #d4e2d0;
+}

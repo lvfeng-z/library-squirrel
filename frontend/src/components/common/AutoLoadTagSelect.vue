@@ -196,9 +196,9 @@ function handleKeyPress(event: KeyboardEvent) {
       new SegmentedTagItem({
         value: input.value,
         label: input.value,
-        mainBackGround: 'rgb(230, 162, 60, 30%)',
+        mainBackGround: 'var(--app-tag-orange-bg)',
         mainBackGroundHover: 'rgb(230, 162, 60, 15%)',
-        mainTextColor: 'rgb(230, 162, 60, 85%)'
+        mainTextColor: 'var(--app-tag-orange-text)'
       })
     )
     input.value = ''
@@ -319,9 +319,9 @@ watch(input, () => {
   display: flex;
   width: 100%;
   min-height: v-bind(minHeight);
-  background-color: var(--el-fill-color-blank);
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  background-color: var(--app-bg-surface);
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-radius-sm);
   box-sizing: border-box;
 }
 .auto-load-tag-select-selected {

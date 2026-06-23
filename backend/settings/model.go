@@ -9,6 +9,7 @@ type Settings struct {
 	PluginSettings     PluginSettings     `json:"pluginSettings" koanf:"pluginSettings"`
 	Tour               TourSettings       `json:"tour" koanf:"tour"`
 	RecycleBinSettings RecycleBinSettings `json:"recycleBin" koanf:"recycleBin"`
+	Appearance         AppearanceSettings `json:"appearance" koanf:"appearance"`
 }
 
 // WorkSettings 作品相关设置
@@ -38,6 +39,11 @@ type RecycleBinSettings struct {
 	RetentionDays      int  `json:"retentionDays" koanf:"retentionDays"`           // 回收站保留天数，超过后自动清理
 }
 
+// AppearanceSettings 外观设置
+type AppearanceSettings struct {
+	Theme string `json:"theme" koanf:"theme"` // 当前主题 id
+}
+
 // NewSettings 创建默认设置
 func NewSettings() *Settings {
 	return &Settings{
@@ -59,6 +65,9 @@ func NewSettings() *Settings {
 		RecycleBinSettings: RecycleBinSettings{
 			AutoCleanupEnabled: true,
 			RetentionDays:      30,
+		},
+		Appearance: AppearanceSettings{
+			Theme: "default-light",
 		},
 	}
 }

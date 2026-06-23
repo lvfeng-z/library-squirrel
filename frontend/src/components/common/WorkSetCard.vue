@@ -126,7 +126,7 @@ function getWorkSetName(): string {
   margin-bottom: auto;
   cursor: pointer;
   max-height: calc(v-bind(caseHeight) - 100px);
-  border-radius: 10px;
+  border-radius: var(--app-radius-lg);
 }
 
 .work-card-error {
@@ -139,7 +139,7 @@ function getWorkSetName(): string {
 }
 
 .work-card-error-icon {
-  color: var(--el-text-color-secondary);
+  color: var(--app-text-secondary);
   scale: 2;
 }
 
@@ -150,7 +150,7 @@ function getWorkSetName(): string {
   text-overflow: ellipsis;
   word-wrap: break-word;
   white-space: nowrap;
-  border-radius: 5px;
+  border-radius: var(--app-radius);
   margin-left: 3px;
   margin-right: 3px;
   margin-top: 3px;
@@ -159,7 +159,7 @@ function getWorkSetName(): string {
 }
 
 .work-card-info:hover {
-  background-color: var(--el-fill-color);
+  background-color: var(--app-fill-color);
 }
 
 .work-card-checkmark-container {
@@ -170,9 +170,9 @@ function getWorkSetName(): string {
 .work-card-checkmark {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--el-color-primary-light-3);
-  border-radius: 6px;
-  background-color: #fff;
+  border: 2px solid var(--app-color-primary-light-3);
+  border-radius: var(--app-radius);
+  background-color: var(--app-bg-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -183,11 +183,11 @@ function getWorkSetName(): string {
 }
 
 .work-card-checkmark:hover {
-  border-color: var(--el-color-primary);
+  border-color: var(--app-color-primary);
 }
 
 .work-card-icon-checked {
-  color: var(--el-color-primary);
+  color: var(--app-color-primary);
   font-size: 15px;
   transition: 0.3s;
 }

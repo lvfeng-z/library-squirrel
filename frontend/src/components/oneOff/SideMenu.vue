@@ -126,7 +126,7 @@ function handleClickOutSide() {
   width: v-bind(mainWidth);
   overflow: visible;
   background-color: var(--side-menu-background-color, white);
-  border-right: solid 1px var(--el-border-color);
+  border-right: solid 1px var(--app-border-color);
   transition: width 0.3s ease;
 }
 .side-menu-collapse-button {
@@ -141,11 +141,11 @@ function handleClickOutSide() {
   height: 48px;
   width: 48px;
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: var(--app-radius);
   transition: background-color 0.2s;
 }
 .side-menu-collapse-button-collapse:hover {
-  background-color: var(--el-color-primary-light-9);
+  background-color: var(--app-color-primary-light-9);
 }
 .side-menu-collapse-button-lock {
   grid-area: 1 / 1;
@@ -155,15 +155,15 @@ function handleClickOutSide() {
   height: 36px;
   width: 36px;
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: var(--app-radius);
   transition: background-color 0.2s;
 }
 .side-menu-collapse-button-lock:hover {
-  background-color: var(--el-color-primary-light-9);
+  background-color: var(--app-color-primary-light-9);
 }
 .side-menu-scrollbar {
-  border-top: solid 1px var(--el-border-color);
-  border-bottom: solid 1px var(--el-border-color);
+  border-top: solid 1px var(--app-border-color);
+  border-bottom: solid 1px var(--app-border-color);
   height: calc(100% - 56px - 56px - 1px - 1px);
 }
 .side-menu-main-menu {
@@ -188,6 +188,6 @@ function handleClickOutSide() {
 .side-menu-hide-button:hover {
   background-color: rgb(197.7, 225.9, 255, 80%);
   transition: background-color 0.3s;
-  border-radius: 5px;
+  border-radius: var(--app-radius);
 }
 </style>

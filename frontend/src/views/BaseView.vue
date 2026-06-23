@@ -16,7 +16,7 @@
   display: flex;
   width: 100%;
   height: 100%;
-  background: #e6e6e6;
+  background: var(--app-bg-page);
   justify-content: center;
   align-items: center;
 }

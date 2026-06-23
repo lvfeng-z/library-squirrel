@@ -411,18 +411,18 @@ function handleBufferToggle() {
   align-items: center;
   justify-content: center;
   height: 50%;
-  color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-8);
+  color: var(--app-color-primary);
+  background-color: var(--app-color-primary-light-8);
   box-sizing: border-box;
-  border: 1px solid var(--el-color-primary-light-5);
+  border: 1px solid var(--app-color-primary-light-5);
   border-bottom: none;
-  border-top-left-radius: 5px;
-  border-top-right-radius: 5px;
+  border-top-left-radius: var(--app-radius);
+  border-top-right-radius: var(--app-radius);
   cursor: pointer;
   transition: 0.3s;
 }
 .exchange-box-all-confirm:hover {
-  background-color: var(--el-color-primary-light-9);
+  background-color: var(--app-color-primary-light-9);
 }
 .exchange-box-all-confirm-icon {
   transition: 0.3s;
@@ -435,13 +435,13 @@ function handleBufferToggle() {
   align-items: center;
   justify-content: center;
   height: 50%;
-  color: var(--el-color-danger);
-  background-color: var(--el-color-danger-light-8);
+  color: var(--app-color-info);
+  background-color: var(--app-color-info-light-9);
   box-sizing: border-box;
-  border: 1px solid var(--el-color-danger-light-5);
+  border: 1px solid var(--app-color-info-light-7);
   border-top: none;
-  border-bottom-left-radius: 5px;
-  border-bottom-right-radius: 5px;
+  border-bottom-left-radius: var(--app-radius);
+  border-bottom-right-radius: var(--app-radius);
   cursor: pointer;
   transition: 0.3s;
 }
@@ -452,14 +452,14 @@ function handleBufferToggle() {
   scale: 1.5;
 }
 .exchange-box-all-clear:hover {
-  background-color: var(--el-color-danger-light-9);
+  background-color: var(--app-color-info-light-8);
 }
 .exchange-box-upper-container {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 50%;
-  border-bottom: dotted 1px var(--el-border-color-darker);
+  border-bottom: dotted 1px var(--app-border-color-darker);
 }
 .exchange-box-upper-main {
   display: flex;
@@ -470,14 +470,14 @@ function handleBufferToggle() {
 .exchange-box-upper-toolbar {
   width: 100%;
   height: 32px;
-  background-color: var(--el-fill-color-blank);
-  border-top-left-radius: 4px;
+  background-color: var(--app-bg-surface);
+  border-top-left-radius: var(--app-radius-sm);
 }
 .exchange-box-upper-tag-box {
   order: 2;
   width: 100%;
   height: 100%;
-  background-color: #ffffff;
+  background-color: var(--app-bg-surface);
 }
 .exchange-box-upper-op-button-group {
   height: 100px;
@@ -492,11 +492,11 @@ function handleBufferToggle() {
   width: 20px;
   transition: 0.5s;
   cursor: pointer;
-  color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-8);
+  color: var(--app-color-primary);
+  background-color: var(--app-color-primary-light-8);
 }
 .exchange-box-upper-op-button-upper:hover {
-  background-color: var(--el-color-primary-light-9);
+  background-color: var(--app-color-primary-light-9);
 }
 .exchange-box-upper-op-button-upper-icon {
   transition: 0.3s;
@@ -512,11 +512,11 @@ function handleBufferToggle() {
   width: 20px;
   transition: 0.5s;
   cursor: pointer;
-  color: var(--el-color-danger);
-  background-color: var(--el-color-danger-light-8);
+  color: var(--app-color-info);
+  background-color: var(--app-color-info-light-9);
 }
 .exchange-box-upper-op-button-lower:hover {
-  background-color: var(--el-color-danger-light-9);
+  background-color: var(--app-color-info-light-8);
 }
 .exchange-box-upper-op-button-lower-icon {
   transition: 0.3s;
@@ -529,7 +529,7 @@ function handleBufferToggle() {
 }
 .exchange-box-middle-buffer-upper {
   height: 100%;
-  background-color: #ffffff;
+  background-color: var(--app-bg-surface);
   box-sizing: border-box;
 }
 .exchange-box-middle-buffer-lower-panel {
@@ -537,7 +537,7 @@ function handleBufferToggle() {
 }
 .exchange-box-middle-buffer-lower {
   height: 100%;
-  background-color: #fbfbfb;
+  background-color: var(--app-bg-surface);
   box-sizing: border-box;
 }
 .exchange-box-lower-container {
@@ -545,7 +545,7 @@ function handleBufferToggle() {
   flex-direction: column;
   width: 100%;
   height: 50%;
-  border-top: dotted 1px var(--el-border-color-darker);
+  border-top: dotted 1px var(--app-border-color-darker);
 }
 .exchange-box-lower-main {
   display: flex;
@@ -555,14 +555,14 @@ function handleBufferToggle() {
 .exchange-box-lower-toolbar {
   width: 100%;
   height: 32px;
-  background-color: var(--el-fill-color-blank);
-  border-bottom-left-radius: 4px;
+  background-color: var(--app-bg-surface);
+  border-bottom-left-radius: var(--app-radius-sm);
 }
 .exchange-box-lower-tag-box {
   order: 2;
   width: 100%;
   height: 100%;
-  background-color: #fbfbfb;
+  background-color: var(--app-bg-surface);
 }
 .exchange-box-lower-op-button-group {
   height: 100px;
@@ -577,11 +577,11 @@ function handleBufferToggle() {
   width: 20px;
   transition: 0.5s;
   cursor: pointer;
-  color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-8);
+  color: var(--app-color-primary);
+  background-color: var(--app-color-primary-light-8);
 }
 .exchange-box-lower-op-button-upper:hover {
-  background-color: var(--el-color-primary-light-9);
+  background-color: var(--app-color-primary-light-9);
 }
 .exchange-box-lower-op-button-upper-icon {
   transition: 0.3s;
@@ -597,11 +597,11 @@ function handleBufferToggle() {
   width: 20px;
   transition: 0.5s;
   cursor: pointer;
-  color: var(--el-color-danger);
-  background-color: var(--el-color-danger-light-8);
+  color: var(--app-color-info);
+  background-color: var(--app-color-info-light-9);
 }
 .exchange-box-lower-op-button-lower:hover {
-  background-color: var(--el-color-danger-light-9);
+  background-color: var(--app-color-info-light-8);
 }
 .exchange-box-lower-op-button-lower-icon {
   transition: 0.3s;

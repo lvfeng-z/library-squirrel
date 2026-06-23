@@ -1,6 +1,6 @@
 .rounded-borders {
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-radius-sm);
   box-sizing: border-box;
-  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+  box-shadow: 0 0 0 1px var(--app-border-color) inset;
 }

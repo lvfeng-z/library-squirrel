@@ -16,8 +16,11 @@ frontend/src/
     slot/             — 插件插槽渲染器
     tour/             — 向导组件（TourOverlay、TourCenterPanel）
   composables/        — 组合式函数（useTourTargets、useTourReady、useBuiltinMenus 等）
-  store/              — Pinia 状态（SlotRegistry、Notification、Task、TourCenter 等）
+  store/              — Pinia 状态（SlotRegistry、Notification、Task、TourCenter、Theme 等）
+  theme/              — 主题元信息清单（themes.ts：主题 id/名称/预览色板）
   tour/               — 向导定义集中文件（definitions.ts）
+  styles/             — 全局样式（z-axis-layers、rounded-borders、scroll-text 等）
+  styles/theme/       — 主题令牌体系（tokens.css 令牌定义、ep-bridge.css EP 桥接、theme-*.css 各主题配色）
   apis/http/wrappers/ — 按模块封装 Wails bindings 的 API wrapper
   utils/              — 通用工具函数（UrlUtil、CommonUtil、ImageDimension 等）
   model/tour/         — 向导类型定义（TourDefinition.ts）
@@ -62,4 +65,5 @@ frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手�
 - **ID_TYPE_NUMBER** (P2): ID 统一使用 `number`，从 `SelectItem.value`（string）取出时 `Number()` 转换。
 - **方法命名**: 禁止与 prop 同名遮蔽。使用前缀：`handleXxx`、`doXxx`、`buildXxx`、`loadXxx`、`checkXxx`。
 - **日期时间**: 统一使用 Unix 时间戳（毫秒），前端进行本地化格式转换。
+- **THEME_TOKEN_USAGE** (P1): 样式统一使用 `--app-*` 主题令牌（清单见 `frontend/src/styles/theme/tokens.css`：颜色/背景/文字/边框/填充/标签/圆角/阴影），禁止硬编码颜色值、禁止直接使用 Element Plus 的 `var(--el-*)`（`--el-font-size-*` 等非颜色变量除外）。主题切换由 `<html data-theme="<id>">` + `useThemeStore`（`frontend/src/store/UseThemeStore.ts`）控制，业务代码通过令牌自动跟随，无需感知当前主题。插件样式契约见 `doc/plugin-theme-tokens.md`。
 - **TOUR_FRAMEWORK** (P1): 向导统一由 `useTourCenterStore` 控制，向导定义集中在 `frontend/src/tour/definitions.ts`，渲染统一由 `TourOverlay`（挂载于 `MainLayout`）完成。禁止在各页面内自行编写 `el-tour`。需被高亮的元素通过 `useTourTargets().register(key, ref)` 注册，`targetKey` 命名约定为 `{viewId}.{element}`（如 `settings.workdirInput`）。跨页面或需定位数据的步骤携带 `TourStepData`，目标页面通过 `useTourReady(onLocate)` 据 `ctx.data` 定位后报告就绪，引擎收到就绪信号后才显示该步气泡。

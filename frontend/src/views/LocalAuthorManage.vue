@@ -396,8 +396,8 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   width: calc(100% - 20px);
   height: calc(100% - 20px);
   padding: 5px;
@@ -423,14 +423,14 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
   width: 100%;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--el-border-color);
-  border-radius: 5px;
-  background-color: var(--el-fill-color-blank);
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-radius);
+  background-color: var(--app-bg-surface);
 }
 .local-author-manage-site-author-title-text {
   text-align: center;
   writing-mode: vertical-lr;
-  color: var(--el-text-color-regular);
+  color: var(--app-text-regular);
 }
 .local-author-manage-search-bar {
   flex-grow: 1;

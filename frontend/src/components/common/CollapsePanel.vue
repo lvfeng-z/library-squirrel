@@ -140,7 +140,7 @@ watch(state, (newValue: boolean) => {
 .collapse-panel-main {
   position: absolute;
   display: flex;
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.1));
+  filter: drop-shadow(var(--app-shadow-card));
 }
 .collapse-panel-main-top {
   width: 100%;

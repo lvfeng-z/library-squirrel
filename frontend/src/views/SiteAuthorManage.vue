@@ -348,8 +348,8 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
 
 <style>
 .tag-manage-container {
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);

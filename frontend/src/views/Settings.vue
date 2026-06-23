@@ -12,6 +12,8 @@ import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
 import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'
 import {emptySettings} from "@renderer/model/util/Settings.js";
+import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
+import type { ThemeId } from '@renderer/theme/themes'
 
 // onBeforeMount
 onBeforeMount(() => {
@@ -39,6 +41,11 @@ const workSettingsFileNameFormatDialogInput = ref()
 // 设置
 const settings: Ref<Settings> = ref(emptySettings)
 let oldSettings: Settings = emptySettings // 原设置
+// 主题（即时生效，独立于设置的保存流程，切换时由 store 自行持久化）
+const themeStore = useThemeStore()
+async function handleSelectTheme(id: ThemeId) {
+  await themeStore.setTheme(id)
+}
 // 作品文件名称命名格式对话框开关
 const workSettingsFileNameFormatDialogState: Ref<boolean> = ref(false)
 // 路由实例
@@ -130,6 +137,8 @@ async function resetSettings() {
   if (confirm) {
     const response = await apis.settingsResetSettings()
     await loadSettings()
+    // 设置重置后同步主题状态（appearance.theme 回到默认）
+    await themeStore.load()
     if (ApiUtil.check(response)) {
       const succeed = ApiUtil.data<boolean>(response)
       if (succeed) {
@@ -242,6 +251,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               title="基本设置"
             />
             <el-anchor-link
+              href="#appearanceSettings"
+              title="外观"
+            />
+            <el-anchor-link
               href="#downloadSettings"
               title="下载"
             />
@@ -307,6 +320,45 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-col>
                   </el-row>
                 </el-tooltip>
+                <el-divider />
+              </div>
+              <div id="appearanceSettings">
+                <el-text
+                  class="mx-1"
+                  size="large"
+                >
+                  外观
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>主题</el-text>
+                </el-divider>
+                <div class="appearance-theme-list">
+                  <div
+                    v-for="theme in themeStore.themeList"
+                    :key="theme.id"
+                    :class="['appearance-theme-card', { 'appearance-theme-card-active': theme.id === themeStore.currentThemeId }]"
+                    @click="handleSelectTheme(theme.id)"
+                  >
+                    <div
+                      class="appearance-theme-swatch"
+                      :style="{ backgroundColor: theme.swatch.bg }"
+                    >
+                      <div
+                        class="appearance-theme-swatch-surface"
+                        :style="{ backgroundColor: theme.swatch.surface }"
+                      >
+                        <div
+                          class="appearance-theme-swatch-primary"
+                          :style="{ backgroundColor: theme.swatch.primary }"
+                        />
+                      </div>
+                    </div>
+                    <el-text>{{ theme.name }}</el-text>
+                  </div>
+                </div>
                 <el-divider />
               </div>
               <div id="downloadSettings">
@@ -445,6 +497,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-divider
                   content-position="left"
                   border-style="dotted"
+                  class="recycle-bin-settings-auto-cleanup-retention-days"
                 >
                   <el-text>保留天数</el-text>
                   <el-input-number
@@ -647,8 +700,8 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 
 <style scoped>
 .settings-container {
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
@@ -662,6 +715,51 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 .settings-scrollbar-container {
   margin-right: 10px;
 }
+.appearance-theme-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.appearance-theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 2px solid var(--app-border-color-light);
+  border-radius: var(--app-radius);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.appearance-theme-card:hover {
+  border-color: var(--app-color-primary-light-5);
+}
+.appearance-theme-card-active {
+  border-color: var(--app-color-primary);
+}
+.appearance-theme-swatch {
+  width: 96px;
+  height: 56px;
+  border-radius: var(--app-radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.appearance-theme-swatch-surface {
+  width: 64px;
+  height: 36px;
+  border-radius: var(--app-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--app-shadow-sm);
+}
+.appearance-theme-swatch-primary {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
 .settings-work-settings-file-name-format-dialog > :deep(.el-scrollbar__wrap) {
   max-height: 65vh;
 }
@@ -670,6 +768,12 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 }
 .plugin-settings-allow-unsafe-eval-switch {
   margin-left: 20px;
+}
+.recycle-bin-settings-auto-cleanup-switch {
+  margin-left: 20px;
+}
+.recycle-bin-settings-auto-cleanup-retention-days {
+  margin-top: 40px
 }
 .work-settings-file-name-format-button {
   margin-bottom: 10px;
@@ -680,10 +784,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 </style>
 <style>
 .el-popper.is-customized {
-  background: var(--el-color-warning-light-7);
+  background: var(--app-color-warning-light-7);
 }
 
 .el-popper.is-customized .el-popper__arrow::before {
-  background: var(--el-color-warning-light-7);
+  background: var(--app-color-warning-light-7);
 }
 </style>

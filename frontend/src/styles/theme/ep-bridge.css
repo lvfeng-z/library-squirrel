@@ -1,0 +1,118 @@
+/* Element Plus 适配桥接
+   用 --app-* 语义令牌驱动 Element Plus 的 --el-* 变量，使 EP 组件跟随主题。
+   桥接关系对所有主题一致，故定义在全局 :root 一次（--app-* 随主题切换而变，--el-* 自动跟随）。
+   仅桥接颜色类变量；EP 组件的圆角、阴影、遮罩保持 EP 默认，避免破坏组件内部逻辑。
+   error 为 EP 2.x 新增别名，与 danger 等价，复用 danger 派生档位。 */
+:root {
+  /* ===== 主题色 ===== */
+  --el-color-primary: var(--app-color-primary);
+  --el-color-primary-light-1: var(--app-color-primary-light-1);
+  --el-color-primary-light-2: var(--app-color-primary-light-2);
+  --el-color-primary-light-3: var(--app-color-primary-light-3);
+  --el-color-primary-light-4: var(--app-color-primary-light-4);
+  --el-color-primary-light-5: var(--app-color-primary-light-5);
+  --el-color-primary-light-6: var(--app-color-primary-light-6);
+  --el-color-primary-light-7: var(--app-color-primary-light-7);
+  --el-color-primary-light-8: var(--app-color-primary-light-8);
+  --el-color-primary-light-9: var(--app-color-primary-light-9);
+  --el-color-primary-dark-2: var(--app-color-primary-dark-2);
+
+  /* ===== 状态色：success ===== */
+  --el-color-success: var(--app-color-success);
+  --el-color-success-light-1: var(--app-color-success-light-1);
+  --el-color-success-light-2: var(--app-color-success-light-2);
+  --el-color-success-light-3: var(--app-color-success-light-3);
+  --el-color-success-light-4: var(--app-color-success-light-4);
+  --el-color-success-light-5: var(--app-color-success-light-5);
+  --el-color-success-light-6: var(--app-color-success-light-6);
+  --el-color-success-light-7: var(--app-color-success-light-7);
+  --el-color-success-light-8: var(--app-color-success-light-8);
+  --el-color-success-light-9: var(--app-color-success-light-9);
+  --el-color-success-dark-2: var(--app-color-success-dark-2);
+
+  /* ===== 状态色：warning ===== */
+  --el-color-warning: var(--app-color-warning);
+  --el-color-warning-light-1: var(--app-color-warning-light-1);
+  --el-color-warning-light-2: var(--app-color-warning-light-2);
+  --el-color-warning-light-3: var(--app-color-warning-light-3);
+  --el-color-warning-light-4: var(--app-color-warning-light-4);
+  --el-color-warning-light-5: var(--app-color-warning-light-5);
+  --el-color-warning-light-6: var(--app-color-warning-light-6);
+  --el-color-warning-light-7: var(--app-color-warning-light-7);
+  --el-color-warning-light-8: var(--app-color-warning-light-8);
+  --el-color-warning-light-9: var(--app-color-warning-light-9);
+  --el-color-warning-dark-2: var(--app-color-warning-dark-2);
+
+  /* ===== 状态色：danger ===== */
+  --el-color-danger: var(--app-color-danger);
+  --el-color-danger-light-1: var(--app-color-danger-light-1);
+  --el-color-danger-light-2: var(--app-color-danger-light-2);
+  --el-color-danger-light-3: var(--app-color-danger-light-3);
+  --el-color-danger-light-4: var(--app-color-danger-light-4);
+  --el-color-danger-light-5: var(--app-color-danger-light-5);
+  --el-color-danger-light-6: var(--app-color-danger-light-6);
+  --el-color-danger-light-7: var(--app-color-danger-light-7);
+  --el-color-danger-light-8: var(--app-color-danger-light-8);
+  --el-color-danger-light-9: var(--app-color-danger-light-9);
+  --el-color-danger-dark-2: var(--app-color-danger-dark-2);
+
+  /* ===== 状态色：error（EP 2.x 别名，等价于 danger） ===== */
+  --el-color-error: var(--app-color-danger);
+  --el-color-error-light-1: var(--app-color-danger-light-1);
+  --el-color-error-light-2: var(--app-color-danger-light-2);
+  --el-color-error-light-3: var(--app-color-danger-light-3);
+  --el-color-error-light-4: var(--app-color-danger-light-4);
+  --el-color-error-light-5: var(--app-color-danger-light-5);
+  --el-color-error-light-6: var(--app-color-danger-light-6);
+  --el-color-error-light-7: var(--app-color-danger-light-7);
+  --el-color-error-light-8: var(--app-color-danger-light-8);
+  --el-color-error-light-9: var(--app-color-danger-light-9);
+  --el-color-error-dark-2: var(--app-color-danger-dark-2);
+
+  /* ===== 状态色：info ===== */
+  --el-color-info: var(--app-color-info);
+  --el-color-info-light-1: var(--app-color-info-light-1);
+  --el-color-info-light-2: var(--app-color-info-light-2);
+  --el-color-info-light-3: var(--app-color-info-light-3);
+  --el-color-info-light-4: var(--app-color-info-light-4);
+  --el-color-info-light-5: var(--app-color-info-light-5);
+  --el-color-info-light-6: var(--app-color-info-light-6);
+  --el-color-info-light-7: var(--app-color-info-light-7);
+  --el-color-info-light-8: var(--app-color-info-light-8);
+  --el-color-info-light-9: var(--app-color-info-light-9);
+  --el-color-info-dark-2: var(--app-color-info-dark-2);
+
+  /* ===== 背景 ===== */
+  --el-bg-color: var(--app-bg-surface);
+  --el-bg-color-page: var(--app-bg-page);
+  --el-bg-color-overlay: var(--app-bg-surface);
+
+  /* ===== 文字 ===== */
+  --el-text-color-primary: var(--app-text-primary);
+  --el-text-color-regular: var(--app-text-regular);
+  --el-text-color-secondary: var(--app-text-secondary);
+  --el-text-color-placeholder: var(--app-text-placeholder);
+  --el-text-color-disabled: var(--app-text-placeholder);
+
+  /* ===== 边框 ===== */
+  --el-border-color: var(--app-border-color);
+  --el-border-color-light: var(--app-border-color-light);
+  --el-border-color-lighter: var(--app-border-color-lighter);
+  --el-border-color-extra-light: var(--app-border-color-extra-light);
+  --el-border-color-dark: var(--app-border-color-darker);
+  --el-border-color-darker: var(--app-border-color-darker);
+  --el-border-color-disabled: var(--app-border-color-darker);
+
+  /* ===== 填充 ===== */
+  --el-fill-color: var(--app-fill-color);
+  --el-fill-color-light: var(--app-fill-color-light);
+  --el-fill-color-lighter: var(--app-fill-color-lighter);
+  --el-fill-color-blank: var(--app-bg-surface);
+  --el-fill-color-dark: var(--app-fill-color-dark);
+  --el-fill-color-disabled: var(--app-fill-color);
+
+  /* ===== 禁用态 ===== */
+  --el-disabled-bg-color: var(--app-fill-color);
+  --el-disabled-text-color: var(--app-text-placeholder);
+  --el-disabled-border-color: var(--app-border-color-darker);
+}

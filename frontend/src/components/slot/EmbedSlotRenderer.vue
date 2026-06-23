@@ -22,7 +22,7 @@ const LoadingComponent: Component = {
 // 加载失败组件
 const ErrorComponent: Component = {
   render() {
-    return h('span', { style: 'color: var(--el-color-danger); font-size: 12px;' }, '加载失败')
+    return h('span', { style: 'color: var(--app-color-danger); font-size: 12px;' }, '加载失败')
   }
 }
 

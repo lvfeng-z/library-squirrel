@@ -403,14 +403,14 @@ onUnmounted(() => {
   box-sizing: border-box;
   overflow: hidden;
   padding: 4px;
-  border-radius: 10px;
-  background-color: #ffffff;
+  border-radius: var(--app-radius-lg);
+  background-color: var(--app-bg-surface);
   visibility: hidden;
   /* 仅过渡背景与滤镜，不过渡 transform（避免首次/全量重排时卡片从原点飞散） */
   transition: background-color 0.3s ease, filter 0.3s ease;
 }
 .card-grid-container:hover {
   background-color: rgb(166.2, 168.6, 173.4, 30%);
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(var(--app-shadow-card));
 }
 </style>

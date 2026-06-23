@@ -23,9 +23,9 @@ const tagLabelWrapperMaxWidth: Ref<string> = computed(() => {
   return props.closeable ? 'calc(100% - 18px)' : '100%'
 })
 const colorConfig = ref({
-  mainBackground: isNullish(props.item.mainBackGround) ? 'rgb(133.4, 206.2, 97.4, 30%)' : props.item.mainBackGround,
+  mainBackground: isNullish(props.item.mainBackGround) ? 'var(--app-tag-green-bg)' : props.item.mainBackGround,
   mainBackgroundHover: isNullish(props.item.mainBackGroundHover) ? 'rgb(133.4, 206.2, 97.4, 15%)' : props.item.mainBackGroundHover,
-  mainTextColor: isNullish(props.item.mainTextColor) ? 'rgb(78.1, 141.8, 46.6, 75%)' : props.item.mainTextColor,
+  mainTextColor: isNullish(props.item.mainTextColor) ? 'var(--app-tag-green-text)' : props.item.mainTextColor,
   sub1BackGround: isNullish(props.item.sub1BackGround) ? 'rgb(166.2, 168.6, 173.4, 20%)' : props.item.sub1BackGround,
   sub1BackGroundHover: isNullish(props.item.sub1BackGroundHover) ? 'rgb(166.2, 168.6, 173.4, 10%)' : props.item.sub1BackGroundHover,
   sub1TextColor: isNullish(props.item.sub1TextColor) ? 'rgb(166.2, 168.6, 173.4, 100%)' : props.item.sub1TextColor,
@@ -127,7 +127,7 @@ function handleCloseButtonClicked() {
   display: flex;
   flex-direction: row;
   justify-content: space-between; /* 在一行时左右对齐，换行时每个标签独占一行 */
-  border-radius: 10px;
+  border-radius: var(--app-radius-lg);
   max-width: 100%;
   cursor: pointer; /* 鼠标悬停时显示为手型指针 */
   overflow: hidden;

@@ -415,20 +415,20 @@ defineExpose({
   border-radius: 15px;
 }
 .main-page-auto-load-tag-select-tag-type-checkbox-local-tag {
-  background-color: rgb(133.4, 206.2, 97.4, 30%);
-  color: rgb(78.1, 141.8, 46.6, 75%);
+  background-color: var(--app-tag-green-bg);
+  color: var(--app-tag-green-text);
 }
 .main-page-auto-load-tag-select-tag-type-checkbox-site-tag {
-  background-color: rgb(64, 158, 255, 25%);
-  color: rgb(64, 158, 255, 85%);
+  background-color: var(--app-tag-blue-bg);
+  color: var(--app-tag-blue-text);
 }
 .main-page-auto-load-tag-select-tag-type-checkbox-local-author {
-  background-color: rgb(245, 108, 108, 25%);
-  color: rgb(245, 108, 108, 75%);
+  background-color: var(--app-tag-red-bg);
+  color: var(--app-tag-red-text);
 }
 .main-page-auto-load-tag-select-tag-type-checkbox-site-author {
-  background-color: rgb(164, 158, 255, 25%);
-  color: rgb(164, 158, 255, 95%);
+  background-color: var(--app-tag-purple-bg);
+  color: var(--app-tag-purple-text);
 }
 
 .work-query-view-work-space {
@@ -449,10 +449,10 @@ defineExpose({
   width: 100%;
   height: 26px;
   padding: 5px 0;
-  color: var(--el-color-info);
+  color: var(--app-color-info);
   font-weight: bold;
-  border-radius: 5px;
-  background-color: var(--el-color-info-light-9);
+  border-radius: var(--app-radius);
+  background-color: var(--app-color-info-light-9);
   text-align: center;
   cursor: pointer;
   transition:
@@ -463,7 +463,7 @@ defineExpose({
 }
 
 .work-query-view-load-more:hover {
-  background-color: var(--el-color-info-light-7);
+  background-color: var(--app-color-info-light-7);
 }
 
 .work-query-view-load-more-visible {

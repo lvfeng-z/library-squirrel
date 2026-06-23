@@ -125,8 +125,8 @@ async function handleCardClick(item: SiteBrowserItem) {
 
 <style scoped>
 .site-browser-manage-container {
-  background: #ffffff;
-  border-radius: 6px;
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   width: 100%;
   height: 100%;
   padding: 5px;
@@ -146,26 +146,26 @@ async function handleCardClick(item: SiteBrowserItem) {
   display: flex;
   flex-direction: column;
   background: white;
-  border-radius: 8px;
+  border-radius: var(--app-radius-lg);
   cursor: pointer;
   transition:
     transform 0.2s,
     box-shadow 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--app-shadow-sm);
   box-sizing: border-box;
 }
 
 .site-browser-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--app-shadow);
 }
 
 .site-browser-card-image {
   width: 100%;
   aspect-ratio: 1;
-  background: var(--el-fill-color-light);
+  background: var(--app-fill-color-light);
   overflow: hidden;
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--app-radius-lg) var(--app-radius-lg) 0 0;
 }
 
 .site-browser-image {
@@ -179,7 +179,7 @@ async function handleCardClick(item: SiteBrowserItem) {
   align-items: center;
   width: 100%;
   height: 100%;
-  color: var(--el-text-color-secondary);
+  color: var(--app-text-secondary);
   font-size: 48px;
 }
 
@@ -187,7 +187,7 @@ async function handleCardClick(item: SiteBrowserItem) {
   padding: 12px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--el-text-color-primary);
+  color: var(--app-text-primary);
   text-align: center;
   line-height: 1.4;
   display: -webkit-box;
