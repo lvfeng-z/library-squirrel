@@ -48,6 +48,7 @@ import (
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util"
+	"github.com/library-squirrel/backend/window"
 	"github.com/library-squirrel/backend/work"
 	"github.com/library-squirrel/backend/workSet"
 )
@@ -96,6 +97,8 @@ type App struct {
 
 	// 主窗口原生句柄
 	mainHWND uintptr
+	// 主窗口实例（用于实时获取原生句柄，标题栏等能力使用）
+	mainWindow *application.WebviewWindow
 
 	// 静态资源服务
 	StaticResourceService *extension2.StaticResourceService
@@ -136,6 +139,7 @@ type App struct {
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
+	WindowHandler                *window.Handler
 }
 
 // NewApp 创建Wails应用实例
@@ -978,6 +982,16 @@ func (app *App) initHandlers() {
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
+	// 主窗口句柄实时获取（构造时窗口尚未创建，运行时通过 mainWindow 实时读取原生句柄）
+	app.WindowHandler = window.NewHandler(window.NewService(func() uintptr {
+		if app.mainWindow == nil {
+			return 0
+		}
+		if handle := app.mainWindow.NativeWindow(); handle != nil {
+			return uintptr(handle)
+		}
+		return 0
+	}))
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）

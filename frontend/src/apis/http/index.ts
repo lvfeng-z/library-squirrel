@@ -32,5 +32,6 @@ export * as fileSysUtilApi from './wrappers/fileSysUtil'
 export * as appLauncherApi from './wrappers/appLauncher'
 export * as siteBrowserApi from './wrappers/siteBrowser'
 export * as pluginTaskUrlListenerApi from './wrappers/pluginTaskUrlListener'
+export * as windowApi from './wrappers/window'
 
 // 注意：client.ts, proxy.ts, routes.ts 已不再需要，不再导出

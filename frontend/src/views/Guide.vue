@@ -17,7 +17,7 @@ import TourCenterPanel from '@renderer/components/tour/TourCenterPanel.vue'
             <div id="summary">
               <span class="guide-tabs-label">
                 <el-icon class="guide-tabs-label-icon-normal"><Memo /></el-icon>
-                <span class="guide-tabs-label-text">软件概述</span>
+                <span class="guide-tabs-label-text">概述</span>
               </span>
               <div class="guide-container-tabs-content">
                 <p class="guide-text-indent">

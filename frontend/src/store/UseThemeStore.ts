@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { settingsGetSettings, settingsSaveSettings } from '@renderer/apis/http/wrappers/settings'
+import { windowSetTitleBarColor } from '@renderer/apis/http/wrappers/window'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import type { SettingChange } from '@bindings/github.com/library-squirrel/backend/settings/models'
 import { DEFAULT_THEME_ID, THEMES, type ThemeId, type ThemeMeta } from '@renderer/theme/themes'
@@ -7,6 +8,15 @@ import { DEFAULT_THEME_ID, THEMES, type ThemeId, type ThemeMeta } from '@rendere
 /** 将主题 id 写入 <html data-theme>，触发 CSS 级联切换 */
 function applyTheme(id: ThemeId): void {
   document.documentElement.setAttribute('data-theme', id)
+}
+
+/** 同步主窗口标题栏颜色（仅 Windows 11 生效，失败不影响主题切换） */
+async function applyTitleBar(theme: ThemeMeta): Promise<void> {
+  try {
+    await windowSetTitleBarColor(theme.titleBar.bg, theme.titleBar.text)
+  } catch {
+    // 非 Windows 11 平台或句柄未就绪时静默失败
+  }
 }
 
 /** 校验主题 id 是否在已启用清单中 */
@@ -43,6 +53,7 @@ export const useThemeStore = defineStore('theme', {
         }
       }
       applyTheme(this.currentThemeId)
+      void applyTitleBar(this.currentTheme)
       this.initialized = true
     },
     /** 切换主题：写入 DOM 并持久化 */
@@ -52,6 +63,7 @@ export const useThemeStore = defineStore('theme', {
       }
       this.currentThemeId = id
       applyTheme(id)
+      void applyTitleBar(this.currentTheme)
       const changes: SettingChange[] = [{ path: 'appearance.theme', value: id }]
       await settingsSaveSettings(changes)
     },

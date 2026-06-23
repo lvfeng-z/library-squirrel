@@ -17,6 +17,11 @@ export interface ThemeMeta {
     bg: string
     surface: string
   }
+  /** 标题栏配色（Windows 原生标题栏，随主题同步；仅 Windows 11 生效） */
+  titleBar: {
+    bg: string
+    text: string
+  }
 }
 
 /** 默认主题 id（未配置或配置无效时使用） */
@@ -28,20 +33,24 @@ export const THEMES: ThemeMeta[] = [
     id: 'default-light',
     name: '默认浅色',
     swatch: { primary: '#409eff', bg: '#fafafa', surface: '#ffffff' },
+    titleBar: { bg: '#eaeef4', text: '#303133' },
   },
   {
     id: 'forest-light',
     name: '森林绿',
     swatch: { primary: '#007038', bg: '#fafafa', surface: '#ffffff' },
+    titleBar: { bg: '#e8efe5', text: '#303133' },
   },
   {
     id: 'ocean-light',
     name: '海洋蓝',
     swatch: { primary: '#1ab7c7', bg: '#f4fbfc', surface: '#ffffff' },
+    titleBar: { bg: '#e2f0f2', text: '#303133' },
   },
   {
     id: 'sakura-light',
     name: '樱花粉',
     swatch: { primary: '#ec6d8e', bg: '#fdf6f8', surface: '#ffffff' },
+    titleBar: { bg: '#f5e6ea', text: '#303133' },
   },
 ]

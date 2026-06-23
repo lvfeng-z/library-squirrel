@@ -84,6 +84,7 @@ func main() {
 			application.NewService(app.ReWorkTagHandler),
 			application.NewService(app.PluginTaskUrlListenerHandler),
 			application.NewService(app.RecycleBinHandler),
+			application.NewService(app.WindowHandler),
 		},
 		Assets: application.AssetOptions{
 			Handler: app.CreateAssetHandler(assets),
@@ -136,6 +137,7 @@ func main() {
 	app.SetWailsApp(wailsApp)
 	// 注入主窗口实例（供模态对话框使用）
 	app.SetMainWindow(window)
+	app.mainWindow = window
 
 	// 安装捆绑插件（在 LoadPlugins 之前，仅写入 DB 不激活）
 	app.InstallBundledPlugins()
