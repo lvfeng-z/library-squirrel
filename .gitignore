@@ -36,3 +36,7 @@ resources/bundled-plugins/*.zip
 
 # mcp
 /mcp/**/node_modules
+
+# 配置
+config.yaml
+config/settings.json
