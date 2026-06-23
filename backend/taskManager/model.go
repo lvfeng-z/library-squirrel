@@ -668,15 +668,16 @@ func (m *ManagedTask) downloadLoop() runResult {
 		}
 			if readErr != nil {
 				if readErr == io.EOF {
+					// 校验下载完整性：不完整则 Abort 清理（删文件 + 删记录），避免半截文件被标记为已完成
+					if m.resourceResp.Resource.Size > 0 && m.totalWritten < m.resourceResp.Resource.Size {
+						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, m.totalWritten, m.resourceResp.Resource.Size)
+						m.storeWriter.Abort()
+						m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
+						return runResultDone
+					}
 					if err := m.storeWriter.Complete(); err != nil {
 						logger.Log.Errorf("[TaskManager] 任务 %d Complete 失败: %v", m.taskId, err)
 						m.setFailed(fmt.Sprintf("完成存储失败: %v", err))
-						return runResultDone
-					}
-					// 校验下载完整性
-					if m.resourceResp.Resource.Size > 0 && m.totalWritten < m.resourceResp.Resource.Size {
-						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, m.totalWritten, m.resourceResp.Resource.Size)
-						m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
 						return runResultDone
 					}
 					// 含缩略图板块时下载完成后生成缩略图（force=true：备份旧缩略图→生成新→失败还原，见 §7.4）
@@ -779,9 +780,22 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	absPath := m.deps.StoreReader.GetAbsPath(store)
 	fileInfo, err := os.Stat(absPath)
 	if err != nil {
+		// 本地文件不存在（不论 store 状态）：资源不可用，降级完整重新执行
 		logger.Log.Warnf("[TaskManager] 任务 %d 本地文件不存在 [%s]，降级为完整重新执行: %v", m.taskId, absPath, err)
 		return m.run()
 	}
+
+	// store 已完成且文件存在：资源已就位，直接完成任务。
+	// 主程序依据资源实际状态（文件存在 + store 完成）判定任务终态，不因 task 持有 PendingResourceID 而误判需要续传
+	if store.Status == entity.StoreStatusComplete {
+		logger.Log.Infof("[TaskManager] 任务 %d 续传发现 store(id=%d) 已完成且文件存在，直接完成任务", m.taskId, store.GetID())
+		m.workId = resource.WorkID
+		m.workStoreId = store.GetID()
+		m.clearPendingResourceID()
+		m.setState(TaskStateFinished)
+		return runResultDone
+	}
+
 	downloadedBytes := fileInfo.Size()
 
 	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, storeId=%d, downloadedBytes=%d", m.taskId, resource.GetID(), store.GetID(), downloadedBytes)
@@ -962,9 +976,14 @@ func (m *ManagedTask) setState(state TaskState) {
 }
 
 // setFailed 设置任务为失败状态，并记录错误信息
+// 终态清空 pending_resource_id：失败的任务不再续传，避免残留的 pending_resource_id
+// 在 work/resource 被外部操作（删除/还原）后指向失效的 resource/store
 func (m *ManagedTask) setFailed(errMsg string) {
 	m.errorMessage = errMsg
 	m.setState(TaskStateFailed)
+	if m.task.PendingResourceID.Valid {
+		m.clearPendingResourceID()
+	}
 }
 
 // Done 返回任务完成信号 channel，任务终态（Finished/Failed）时关闭

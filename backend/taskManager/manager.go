@@ -636,6 +636,10 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 
 	for _, child := range parent.GetChildren() {
 		state := child.GetState()
+		// 跳过已终态子任务：不对已完成的任务重复停止，避免 finished 计数倒退与重复清理
+		if state == TaskStateFinished || state == TaskStateFailed || state == TaskStatePartlyFinished {
+			continue
+		}
 		if state == TaskStatePaused {
 			// 暂停任务可能已派发 goroutine 但未启动，cancel 确保其退出
 			child.cancel()
@@ -649,6 +653,11 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 		}
 	}
 
+	// 主动清理任务树：停止后父任务进入终态，从 parentMap/taskMap 移除并通知前端。
+	// 不依赖子任务 goroutine 退出时 cleanupFinishedTask 的时序——已 Finished/Paused/Waiting 的
+	// 子任务无运行 goroutine 不会触发 cleanupFinishedTask，会导致 parentMap 残留、重启时误判"已在运行"
+	m.cleanupStoppedTree(parentKey, parent)
+
 	return nil
 }
 
@@ -660,18 +669,35 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 	if err != nil {
 		return fmt.Errorf("查询作品关联任务失败: %w", err)
 	}
+	taskIds := make([]int64, 0, len(tasks))
 	for _, t := range tasks {
+		taskId := t.GetID()
+		taskIds = append(taskIds, taskId)
 		// has_child=true 为父任务（isLeaf=false），否则叶子/独立任务（isLeaf=true）
 		isLeaf := true
 		if t.HasChild.Valid && t.HasChild.Bool {
 			isLeaf = false
 		}
-		if err := m.StopTaskTree(ctx, t.GetID(), isLeaf); err != nil {
+		if err := m.StopTaskTree(ctx, taskId, isLeaf); err != nil {
 			if !errors.Is(err, ErrTaskTreeNotFound) {
-				logger.Log.Warnf("停止任务 %d 失败: %v", t.GetID(), err)
+				logger.Log.Warnf("停止任务 %d 失败: %v", taskId, err)
 			}
 		}
 	}
+
+	// 清空所有关联任务（含仅存于 DB 的 Paused 任务）的 pending_resource_id：
+	// work 的 resource/store 即将被删除，残留的 pending_resource_id 会指向失效的 resource/store，
+	// 导致后续恢复时误续传。StopTaskTree 只停内存中的运行实例，DB 中的任务须在此显式清理
+	if len(taskIds) > 0 {
+		updates := make(map[int64]sql.NullInt64, len(taskIds))
+		for _, id := range taskIds {
+			updates[id] = sql.NullInt64{Valid: false}
+		}
+		if err := m.repo.BatchUpdatePendingResourceID(ctx, updates); err != nil {
+			logger.Log.Warnf("清理作品关联任务 pending_resource_id 失败: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -936,6 +962,40 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 
 	// 通知前端批量移除子任务
 	m.deps.Pusher.PushTaskRemove(removeIds)
+}
+
+// cleanupStoppedTree 停止任务树后主动清理内存：移除 parentMap 及仍在 taskMap 的子任务，持久化父任务终态。
+// 停止后已 Finished/Paused/Waiting 的子任务无运行 goroutine 不会触发 cleanupFinishedTask，须由停止流程主动清理，
+// 否则 parentMap 残留会导致重启时 loadAndStartTaskTrees 误判"已在运行"而跳过。
+// 对后续退出的 Processing 子任务 goroutine 幂等：其 cleanupFinishedTask 发现 parent 已不在 parentMap 时仅清理自身。
+func (m *Manager) cleanupStoppedTree(parentId int64, parent *ParentTask) {
+	m.mu.Lock()
+
+	// 持久化父任务最终状态（停止后通常为 Failed 或 PartlyFinished）
+	parent.refreshMu.Lock()
+	_, newParentState, _, _ := parent.RefreshState()
+	if isStableState(newParentState) {
+		m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
+	}
+	parent.refreshMu.Unlock()
+
+	// 收集并移除仍在 taskMap 的子任务（Paused/Waiting 等无 goroutine 清理的残留）
+	removeIds := make([]int64, 0, len(parent.GetChildren()))
+	for _, child := range parent.GetChildren() {
+		if _, exists := m.taskMap[child.taskId]; exists {
+			removeIds = append(removeIds, child.taskId)
+			delete(m.taskMap, child.taskId)
+		}
+	}
+
+	delete(m.parentMap, parentId)
+	logger.Log.Infof("[TaskManager] cleanupStoppedTree: 删除 parentMap[%d]（任务树已停止）", parentId)
+	m.mu.Unlock()
+
+	if len(removeIds) > 0 {
+		m.deps.Pusher.PushTaskRemove(removeIds)
+	}
+	m.deps.Pusher.PushParentTaskRemove([]int64{parentId})
 }
 
 func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
