@@ -26,6 +26,8 @@ globs:
 2. `SetEventEmitter(emitter, onEvent)` — 设置 Wails 事件发射器和前端事件监听函数
 3. `LoadPlugins()` — 加载并激活插件（此时事件通道已就绪）
 
+> `LoadPlugins()` 须在主窗口 native handle 就绪后调用（当前在 `WindowRuntimeReady` 回调内执行）。激活插件时需随 `Activate` 传递主窗口 HWND（`mainHWND`），供插件 `OpenWindow` 作为 owner 置顶显示；而窗口 native handle 在 `application.Run()` 事件循环启动后才创建，故 `LoadPlugins` 延迟到窗口就绪后。`InstallBundledPlugins()`（仅写 DB）不受此约束，仍在 Run 前。
+
 `wailsFrontendEventProvider` 使用闭包（`emitterFunc`/`onEventFunc`）延迟读取，避免初始化顺序问题。禁止在 `SetEventEmitter` 之前调用 `LoadPlugins()`。
 
 ## plugin.json 结构
@@ -135,6 +137,30 @@ globs:
 
 source 中的相对路径会自动解析为 `/plugin/{publicId}/{version}/...` 形式的完整 URL。
 
+### extensions.settings[] 声明
+
+插件可通过 `extensions.settings` 声明用户可配置项，主程序据此在插件管理页渲染设置表单；用户编辑后存入 `plugin_storage`，插件用 `GetValue(key)` 读取。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | string | 是 | 设置项键（插件内唯一） |
+| `type` | string | 是 | `string` \| `integer` \| `boolean` \| `select` |
+| `title` | string | 是 | 显示标题 |
+| `description` | string | 否 | 描述 |
+| `default` | string | 否 | 默认值（值统一以 string 存储） |
+| `encrypted` | bool | 否 | 是否加密存储（敏感项，渲染为密码框，保存走 `SetValueEncrypted`） |
+| `group` | string | 否 | 分组名（同组用分隔标题展示） |
+| `order` | number | 否 | 组内排序 |
+| `options` | array | 否 | `select` 的选项：`[{label, value}]` |
+| `min` / `max` | number | 否 | `integer` 的范围 |
+
+```json
+"settings": [
+  {"key": "downloadQuality", "type": "select", "title": "下载质量", "group": "下载", "default": "original",
+   "options": [{"label":"原图","value":"original"},{"label":"压缩","value":"compressed"}]}
+]
+```
+
 ## 预编译组件模式
 
 ### 构建流程
@@ -199,8 +225,7 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
 | 数据写入 | `AddSite` | 向主库插入站点记录 |
 | 数据查询 | `GetWorkSetBySiteWorkSetId` | 按站点作品集 ID 查询是否已存在 |
-| 插件私有存储 | `GetPluginData` / `SetPluginData` | 每个插件独立的 KV 持久化 |
-| 加密存储 | `StoreEncryptedValue` / `GetDecryptedValue` / `RemoveEncryptedValue` | 凭证/密钥管理 |
+| 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
 | URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler |
 | 前端通信 | `PublishToFrontend` / `SubscribeFrontend` / `UnsubscribeFrontend` | 与前端双向 pub/sub |

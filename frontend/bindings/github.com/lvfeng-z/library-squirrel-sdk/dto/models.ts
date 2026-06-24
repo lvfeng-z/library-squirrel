@@ -318,7 +318,6 @@ export class PluginDTO {
     "rootPath": string | null;
     "backupId": number | null;
     "sortNum": number | null;
-    "pluginData": string | null;
     "uninstalled": boolean | null;
     "activationType": string | null;
     "createTime": number;
@@ -358,9 +357,6 @@ export class PluginDTO {
         }
         if (!("sortNum" in $$source)) {
             this["sortNum"] = null;
-        }
-        if (!("pluginData" in $$source)) {
-            this["pluginData"] = null;
         }
         if (!("uninstalled" in $$source)) {
             this["uninstalled"] = null;

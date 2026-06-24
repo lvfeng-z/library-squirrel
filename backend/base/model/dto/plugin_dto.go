@@ -23,7 +23,6 @@ func NewPluginDTO(plugin *entity2.Plugin) *sdkdto.PluginDTO {
 		RootPath:       util.NullStringToPointer(plugin.RootPath),
 		BackupID:       util.NullInt64ToPointer(plugin.BackupID),
 		SortNum:        util.NullInt64ToPointer(plugin.SortNum),
-		PluginData:     util.NullStringToPointer(plugin.PluginData),
 		Uninstalled:    util.NullBoolToPointer(plugin.Uninstalled),
 		ActivationType: util.NullStringToPointer(plugin.ActivationType),
 		CreateTime:     plugin.GetCreateTime(),
@@ -113,13 +112,6 @@ func ToPluginEntity(dto *sdkdto.PluginDTO) *entity2.Plugin {
 		entity.SortNum.Int64 = *dto.SortNum
 	} else {
 		entity.SortNum.Valid = false
-	}
-
-	if dto.PluginData != nil {
-		entity.PluginData.Valid = true
-		entity.PluginData.String = *dto.PluginData
-	} else {
-		entity.PluginData.Valid = false
 	}
 
 	if dto.Uninstalled != nil {

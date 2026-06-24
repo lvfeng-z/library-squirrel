@@ -39,7 +39,6 @@ import (
 	"github.com/library-squirrel/backend/recycleBin"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/search"
-	"github.com/library-squirrel/backend/secureStorage"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/siteAuthor"
@@ -73,11 +72,12 @@ type App struct {
 	WorkSetService         *workSet.Service
 	SearchService          *search.Service
 	SettingsService        *settings.Service
-	SecureStorageService   *secureStorage.Service
 	BackupService          *backup.Service
 	AppLauncherService     *appLauncher.Service
 	FileSysUtilService     *fileSysUtil.Service
 	PluginService          *plugin.Service
+	PluginStorageService   *plugin.PluginStorageService
+	PluginSettingService   *plugin.PluginSettingService
 	TaskService            *task.Service
 	TaskManagerService     *taskManager.Manager
 	SiteBrowserService     *siteBrowser.Service
@@ -126,11 +126,11 @@ type App struct {
 	WorkSetHandler               *workSet.Handler
 	SearchHandler                *search.Handler
 	SettingsHandler              *settings.Handler
-	SecureStorageHandler         *secureStorage.Handler
 	BackupHandler                *backup.Handler
 	AppLauncherHandler           *appLauncher.Handler
 	FileSysUtilHandler           *fileSysUtil.Handler
 	PluginHandler                *plugin.Handler
+	PluginSettingHandler         *plugin.SettingHandler
 	TaskHandler                  *task.Handler
 	TaskManagerHandler           *taskManager.Handler
 	SlotHandler                  *extension2.SlotHandler
@@ -427,8 +427,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		RootPath:            rootPath,
 		TaskHandlerRegistry: app.TaskHandlerRegistry,
 		SiteBrowserRegistry: app.SiteBrowserRegistry,
-		PluginData:          app.PluginService,
-		SecureStorage:       app.SecureStorageService,
+		Storage:             app.PluginStorageService,
 		WorkSetQuery:        app.WorkSetService,
 		SiteSave:            app.SiteService,
 		SiteQuery:           app.SiteService,
@@ -713,10 +712,6 @@ func (app *App) initBaseServices() {
 	// 设置工作目录
 	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
-	// secureStorage 服务
-	secureStorageRepo := secureStorage.NewRepository(app.db)
-	app.SecureStorageService = secureStorage.NewService(secureStorageRepo)
-
 	// appLauncher 服务
 	app.AppLauncherService = appLauncher.NewService(app.SettingsService)
 
@@ -816,6 +811,8 @@ func (app *App) initAdvancedServices() error {
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
+	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
+	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath())
 	app.PluginService.SetActivator(app)
 	app.PluginService.SetOnUnload(func(pluginPublicId string) {
 		app.pluginLoader.UnloadPlugin(pluginPublicId)
@@ -969,11 +966,11 @@ func (app *App) initHandlers() {
 	app.WorkSetHandler = workSet.NewHandler(app.WorkSetService)
 	app.SearchHandler = search.NewHandler(app.SearchService)
 	app.SettingsHandler = settings.NewHandler(app.SettingsService)
-	app.SecureStorageHandler = secureStorage.NewHandler(app.SecureStorageService)
 	app.BackupHandler = backup.NewHandler(app.BackupService)
 	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
 	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
+	app.PluginSettingHandler = plugin.NewSettingHandler(app.PluginSettingService)
 	app.TaskHandler = task.NewHandler(app.TaskService)
 	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
 	app.SlotHandler = extension2.NewSlotHandler(app.SlotRegistry)

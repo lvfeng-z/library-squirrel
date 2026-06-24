@@ -26,7 +26,6 @@ export class PluginWithContribution {
     "rootPath": sql$0.NullString;
     "backupId": sql$0.NullInt64;
     "sortNum": sql$0.NullInt64;
-    "pluginData": sql$0.NullString;
     "uninstalled": sql$0.NullBool;
     "activationType": sql$0.NullString;
 
@@ -81,9 +80,6 @@ export class PluginWithContribution {
         if (!("sortNum" in $$source)) {
             this["sortNum"] = (new sql$0.NullInt64());
         }
-        if (!("pluginData" in $$source)) {
-            this["pluginData"] = (new sql$0.NullString());
-        }
         if (!("uninstalled" in $$source)) {
             this["uninstalled"] = (new sql$0.NullBool());
         }
@@ -114,9 +110,8 @@ export class PluginWithContribution {
         const $$createField10_0 = $$createType0;
         const $$createField11_0 = $$createType1;
         const $$createField12_0 = $$createType1;
-        const $$createField13_0 = $$createType0;
-        const $$createField14_0 = $$createType2;
-        const $$createField15_0 = $$createType0;
+        const $$createField13_0 = $$createType2;
+        const $$createField14_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -148,14 +143,11 @@ export class PluginWithContribution {
         if ("sortNum" in $$parsedSource) {
             $$parsedSource["sortNum"] = $$createField12_0($$parsedSource["sortNum"]);
         }
-        if ("pluginData" in $$parsedSource) {
-            $$parsedSource["pluginData"] = $$createField13_0($$parsedSource["pluginData"]);
-        }
         if ("uninstalled" in $$parsedSource) {
-            $$parsedSource["uninstalled"] = $$createField14_0($$parsedSource["uninstalled"]);
+            $$parsedSource["uninstalled"] = $$createField13_0($$parsedSource["uninstalled"]);
         }
         if ("activationType" in $$parsedSource) {
-            $$parsedSource["activationType"] = $$createField15_0($$parsedSource["activationType"]);
+            $$parsedSource["activationType"] = $$createField14_0($$parsedSource["activationType"]);
         }
         return new PluginWithContribution($$parsedSource as Partial<PluginWithContribution>);
     }

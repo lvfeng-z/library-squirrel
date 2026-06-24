@@ -19,7 +19,6 @@ type Plugin struct {
 	RootPath          sql.NullString `gorm:"column:root_path" json:"rootPath"`
 	BackupID          sql.NullInt64  `gorm:"column:backup_id" json:"backupId"`
 	SortNum           sql.NullInt64  `gorm:"column:sort_num" json:"sortNum"`
-	PluginData        sql.NullString `gorm:"column:plugin_data" json:"pluginData"`
 	Uninstalled       sql.NullBool   `gorm:"column:uninstalled" json:"uninstalled"`
 	ActivationType    sql.NullString `gorm:"column:activation_type" json:"activationType"`
 }

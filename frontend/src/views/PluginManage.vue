@@ -11,6 +11,7 @@ import DataTableOperationResponse from '@renderer/model/util/DataTableOperationR
 import {arrayNotEmpty} from '@renderer/utils/CommonUtil.ts'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
+import PluginSettingDialog from '@renderer/components/dialogs/PluginSettingDialog.vue'
 import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isNotBlank} from '@renderer/utils/StringUtil.ts'
@@ -34,6 +35,7 @@ const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
 // 插件操作栏按钮
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
+  { label: '设置', icon: 'Setting', code: 'settings' },
   { label: '修复', icon: 'Refresh', code: 'reinstall' },
   { label: '卸载', icon: 'delete', code: 'uninstall' }
 ]
@@ -97,6 +99,10 @@ const dialogData: Ref<PluginDTO> = ref(new PluginDTO())
 const drawerVisible: Ref<boolean> = ref(false)
 // 状态抽屉对应的插件 publicId
 const statusPublicId: Ref<string> = ref('')
+// 设置对话框开关
+const settingDialogState: Ref<boolean> = ref(false)
+// 设置对话框对应的插件 publicId
+const settingPublicId: Ref<string> = ref('')
 
 // 方法
 // 分页查询插件
@@ -111,6 +117,10 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
     case DialogMode.VIEW:
       dialogData.value = op.data
       dialogState.value = true
+      break
+    case 'settings':
+      settingPublicId.value = String(op.data.publicId)
+      settingDialogState.value = true
       break
     case 'reinstall':
       beforeReInstall(String(op.data.publicId))
@@ -227,7 +237,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           :multi-select="false"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"
-          :operation-width="150"
+          :operation-width="220"
           @row-button-clicked="handleRowButtonClicked"
           @selection-change="handleSelectionChange"
         >
@@ -268,6 +278,11 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         v-model:form-data="dialogData"
         v-model:state="dialogState"
         :mode="DialogMode.VIEW"
+      />
+      <plugin-setting-dialog
+        v-if="isNotBlank(settingPublicId)"
+        v-model:state="settingDialogState"
+        :public-id="settingPublicId"
       />
     </template>
   </base-view>

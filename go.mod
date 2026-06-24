@@ -3,7 +3,6 @@ module github.com/library-squirrel
 go 1.26.1
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1

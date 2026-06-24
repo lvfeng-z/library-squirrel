@@ -71,11 +71,11 @@ func main() {
 			application.NewService(app.WorkSetHandler),
 			application.NewService(app.SearchHandler),
 			application.NewService(app.SettingsHandler),
-			application.NewService(app.SecureStorageHandler),
 			application.NewService(app.BackupHandler),
 			application.NewService(app.AppLauncherHandler),
 			application.NewService(app.FileSysUtilHandler),
 			application.NewService(app.PluginHandler),
+			application.NewService(app.PluginSettingHandler),
 			application.NewService(app.TaskHandler),
 			application.NewService(app.TaskManagerHandler),
 			application.NewService(app.SlotHandler),
@@ -139,16 +139,17 @@ func main() {
 	app.SetMainWindow(window)
 	app.mainWindow = window
 
-	// 安装捆绑插件（在 LoadPlugins 之前，仅写入 DB 不激活）
+	// 安装捆绑插件（仅写入 DB 不激活，不依赖窗口）
 	app.InstallBundledPlugins()
-	// 加载已安装的插件（必须在 SetEventEmitter 之后）
-	app.LoadPlugins()
-	if nativeHandle := window.NativeWindow(); nativeHandle != nil {
-		app.mainHWND = uintptr(nativeHandle)
-	}
 
 	// Register window event callbacks
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(e *application.WindowEvent) {
+		// 窗口就绪后：native handle 已创建，设置 mainHWND 并加载插件
+		// 激活插件时随 Activate 传递 mainHWND，供插件 OpenWindow 作为 owner，使弹窗能置顶主窗口
+		if nativeHandle := window.NativeWindow(); nativeHandle != nil {
+			app.mainHWND = uintptr(nativeHandle)
+		}
+		app.LoadPlugins()
 		app.onDomReady()
 	})
 

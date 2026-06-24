@@ -373,7 +373,6 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		// 更新已卸载的插件，保留原始 CreateTime
 		plugin.ID = uninstalledPlugin.ID
 		plugin.SetCreateTime(uninstalledPlugin.GetCreateTime())
-		plugin.PluginData = uninstalledPlugin.PluginData
 		if err := s.repo.Update(ctx, plugin); err != nil {
 			return nil, err
 		}
@@ -597,11 +596,6 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 		for _, slot := range s.extensionListProvider.GetSlotsByPlugin(pluginPublicId) {
 			status.Slots = append(status.Slots, SlotInfo{ID: slot.ID, Name: slot.Name, SlotType: slot.SlotType})
 		}
-	}
-
-	// 存储状态
-	if plugin.PluginData.Valid {
-		status.PluginDataSize = len(plugin.PluginData.String)
 	}
 
 	// URL 监听规则

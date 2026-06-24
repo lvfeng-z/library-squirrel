@@ -2,7 +2,6 @@ package extension
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"path/filepath"
 
@@ -16,17 +15,14 @@ import (
 // --- Provider Interfaces ---
 // 由 extension 包定义，各 internal 服务包实现
 
-// PluginDataProvider 插件数据持久化
-type PluginDataProvider interface {
-	GetByPublicId(ctx context.Context, publicId string) (*entity.Plugin, error)
-	Update(ctx context.Context, plugin *entity.Plugin) error
-}
-
-// SecureStorageProvider 加密存储
-type SecureStorageProvider interface {
-	StoreAndGetKey(ctx context.Context, plainValue string, description string) (string, error)
-	GetValueByKey(ctx context.Context, storageKey string) (string, error)
-	Remove(ctx context.Context, storageKey string) (int64, error)
+// PluginStorageService 插件自存信息服务（由 plugin 包实现）
+// 统一 KV 存储：明文项直接读写，加密项 Value 存密文
+type PluginStorageService interface {
+	GetValue(ctx context.Context, pluginID int64, key string) (string, error)
+	SetValue(ctx context.Context, pluginID int64, key, value string) error
+	SetValueEncrypted(ctx context.Context, pluginID int64, key, value string) error
+	DeleteValue(ctx context.Context, pluginID int64, key string) error
+	GetAllValues(ctx context.Context, pluginID int64) (map[string]string, error)
 }
 
 // WorkSetQueryProvider 作品集查询
@@ -61,8 +57,7 @@ type PluginContextDeps struct {
 	RootPath            string
 	TaskHandlerRegistry *TaskHandlerRegistry
 	SiteBrowserRegistry *SiteBrowserRegistry
-	PluginData          PluginDataProvider
-	SecureStorage       SecureStorageProvider
+	Storage             PluginStorageService
 	WorkSetQuery        WorkSetQueryProvider
 	SiteSave            SiteSaveProvider
 	SiteQuery           SiteQueryProvider
@@ -78,8 +73,7 @@ type pluginContext struct {
 	taskHandlerRegistry *TaskHandlerRegistry
 	siteBrowserRegistry *SiteBrowserRegistry
 	rootPath            string
-	pluginData          PluginDataProvider
-	secureStorage       SecureStorageProvider
+	storage             PluginStorageService
 	workSetQuery        WorkSetQueryProvider
 	siteSave            SiteSaveProvider
 	siteQuery           SiteQueryProvider
@@ -104,8 +98,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 		taskHandlerRegistry: deps.TaskHandlerRegistry,
 		siteBrowserRegistry: deps.SiteBrowserRegistry,
 		rootPath:            deps.RootPath,
-		pluginData:          deps.PluginData,
-		secureStorage:       deps.SecureStorage,
+		storage:             deps.Storage,
 		workSetQuery:        deps.WorkSetQuery,
 		siteSave:            deps.SiteSave,
 		siteQuery:           deps.SiteQuery,
@@ -149,43 +142,26 @@ func (pc *pluginContext) UnregisterSiteBrowser(id string) error {
 	return pc.siteBrowserRegistry.Unregister(pc.pluginInfo.PublicID, id)
 }
 
-// --- 插件数据持久化 ---
+// --- 插件自存信息（统一 KV）---
 
-func (pc *pluginContext) GetPluginData() (string, error) {
-	ctx := context.Background()
-	p, err := pc.pluginData.GetByPublicId(ctx, pc.pluginInfo.PublicID)
-	if err != nil {
-		return "", fmt.Errorf("get plugin data: %w", err)
-	}
-	if p.PluginData.Valid {
-		return p.PluginData.String, nil
-	}
-	return "", nil
+func (pc *pluginContext) GetValue(key string) (string, error) {
+	return pc.storage.GetValue(context.Background(), pc.pluginInfo.ID, key)
 }
 
-func (pc *pluginContext) SetPluginData(data string) error {
-	ctx := context.Background()
-	p, err := pc.pluginData.GetByPublicId(ctx, pc.pluginInfo.PublicID)
-	if err != nil {
-		return fmt.Errorf("set plugin data: %w", err)
-	}
-	p.PluginData = sql.NullString{String: data, Valid: true}
-	return pc.pluginData.Update(ctx, p)
+func (pc *pluginContext) SetValue(key string, value string) error {
+	return pc.storage.SetValue(context.Background(), pc.pluginInfo.ID, key, value)
 }
 
-// --- 加密存储 ---
-
-func (pc *pluginContext) StoreEncryptedValue(plainValue string, description string) (string, error) {
-	return pc.secureStorage.StoreAndGetKey(context.Background(), plainValue, description)
+func (pc *pluginContext) SetValueEncrypted(key string, value string) error {
+	return pc.storage.SetValueEncrypted(context.Background(), pc.pluginInfo.ID, key, value)
 }
 
-func (pc *pluginContext) GetDecryptedValue(storageKey string) (string, error) {
-	return pc.secureStorage.GetValueByKey(context.Background(), storageKey)
+func (pc *pluginContext) DeleteValue(key string) error {
+	return pc.storage.DeleteValue(context.Background(), pc.pluginInfo.ID, key)
 }
 
-func (pc *pluginContext) RemoveEncryptedValue(storageKey string) error {
-	_, err := pc.secureStorage.Remove(context.Background(), storageKey)
-	return err
+func (pc *pluginContext) GetAllValues() (map[string]string, error) {
+	return pc.storage.GetAllValues(context.Background(), pc.pluginInfo.ID)
 }
 
 // --- 业务查询 ---

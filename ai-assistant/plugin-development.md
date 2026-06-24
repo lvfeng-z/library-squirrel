@@ -152,14 +152,12 @@ type PluginContext interface {
     UnregisterSlot(id string) error          // 已废弃，返回错误
     UnregisterSiteBrowser(id string) error
 
-    // 插件数据持久化
-    GetPluginData() (string, error)
-    SetPluginData(data string) error
-
-    // 加密存储
-    StoreEncryptedValue(plainValue, description string) (string, error)
-    GetDecryptedValue(storageKey string) (string, error)
-    RemoveEncryptedValue(storageKey string) error
+    // 插件自存信息（统一 KV，取代旧的 GetPluginData/SetPluginData 与加密存储）
+    GetValue(key string) (string, error)
+    SetValue(key, value string) error
+    SetValueEncrypted(key, value string) error
+    DeleteValue(key string) error
+    GetAllValues() (map[string]string, error)
 
     // 业务查询（返回 SDK 等效类型）
     GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName string) (*WorkSet, error)
@@ -191,14 +189,13 @@ type PluginContext interface {
 
 PluginContext 的服务依赖通过 Provider 接口注入，由 `extension` 包定义，各 `backend` 服务实现：
 
-| Provider               | 方法                                            | 实现方                      |
-| ---------------------- | ----------------------------------------------- | --------------------------- |
-| `PluginDataProvider`   | `GetByPublicId`, `Update`                       | `plugin.Service`            |
-| `SecureStorageProvider`| `StoreAndGetKey`, `GetValueByKey`, `Remove`     | `secureStorage.Service`     |
-| `WorkSetQueryProvider` | `GetBySiteWorkSetIdAndSiteName`                 | `workSet.Service`           |
-| `SiteSaveProvider`     | `Save`                                          | `site.Service`              |
-| `TaskCreateProvider`   | `CreateTaskByURL`                               | `taskCreateAdapter`（适配） |
-| `UrlListenerRegistry`  | `RegisterUrlListener`, `UnregisterUrlListener`  | `urlListenerAdapter`（适配）|
+| Provider                 | 方法                                                                   | 实现方                        |
+| ------------------------ | ---------------------------------------------------------------------- | ----------------------------- |
+| `PluginStorageService`   | `GetValue`, `SetValue`, `SetValueEncrypted`, `DeleteValue`, `GetAllValues` | `plugin.PluginStorageService` |
+| `WorkSetQueryProvider`   | `GetBySiteWorkSetIdAndSiteName`                                        | `workSet.Service`             |
+| `SiteSaveProvider`       | `Save`                                                                 | `site.Service`                |
+| `TaskCreateProvider`     | `CreateTaskByURL`                                                      | `taskCreateAdapter`（适配）   |
+| `UrlListenerRegistry`    | `RegisterUrlListener`, `UnregisterUrlListener`                         | `urlListenerAdapter`（适配）  |
 
 ## 扩展点
 
@@ -379,8 +376,7 @@ InstallFromPath(zipPath)
 4. **错误处理**：所有异步操作都需处理 error
 5. **资源清理**：插件 Activate 中的 panic 会自动回滚已注册的扩展点
 6. **日志记录**：使用 PluginContext 的 `Infof`/`Errorf` 等方法（自动带插件名前缀）
-7. **敏感数据**：使用 `StoreEncryptedValue` / `GetDecryptedValue` 存取
-8. **插件数据**：使用 `GetPluginData` / `SetPluginData` 持久化插件状态
+7. **插件自存信息**：明文用 `SetValue` / `GetValue`，敏感数据用 `SetValueEncrypted`（自动加解密），声明用户可配置项用 `extensions.settings`
 
 ## 更新记录
 

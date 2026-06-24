@@ -137,7 +137,7 @@
 - **英文**：Provider Interface
 - **定义**：PluginContext 的服务依赖接口，由 `extension` 包定义，各 `backend` 服务实现
 - **领域角色**：实现依赖倒置，隔离 PluginContext 与内部服务
-- **接口列表**：`PluginDataProvider`、`SecureStorageProvider`、`WorkSetQueryProvider`、`SiteSaveProvider`、`TaskCreateProvider`、`UrlListenerRegistry`
+- **接口列表**：`PluginStorageService`、`WorkSetQueryProvider`、`SiteSaveProvider`、`TaskCreateProvider`、`UrlListenerRegistry`
 - **相关文件**：`backend/plugin/extension/plugin_context.go`
 
 ### 扩展点 (Extension Point)

@@ -91,8 +91,8 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	// 构建 HostDeps，用于在 GRPCClient 中注册 HostService
 	callbacks := newHostPluginCallbacks(deps.PluginInfo, l, l.taskHandlerRegistry, l.siteBrowserRegistry)
 	hostDeps := &pluginsdktransport.HostDeps{
-		PluginDataProvider:      &hostPluginDataProvider{ctx: deps.PluginCtx},
-		SecureStorageProvider:   &hostSecureStorageProvider{ctx: deps.PluginCtx},
+		StorageProvider:         &hostStorageProvider{ctx: deps.PluginCtx},
+		PluginRootProvider:      &hostPluginRootProvider{ctx: deps.PluginCtx},
 		WorkSetQueryProvider:    &hostWorkSetQueryProvider{ctx: deps.PluginCtx},
 		SiteSaveProvider:        &hostSiteSaveProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
@@ -172,11 +172,9 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		return fmt.Errorf("%w: unexpected plugin type for %s", ErrPluginLoadFailed, pluginPublicId)
 	}
 
-	// 发送 Activate 请求
-	pluginData, _ := deps.PluginCtx.GetPluginData()
+	// 发送 Activate 请求（插件自存信息已由统一 KV 取代，不再传递插件级 plugin_data）
 	_, err = services.Lifecycle.Activate(context.Background(), &gen.ActivateRequest{
 		PluginPublicId:   deps.PluginInfo.PublicID,
-		PluginData:       pluginData,
 		RootPath:         deps.PluginInfo.RootPath,
 		HostServiceId:    services.HostServiceId,
 		MainWindowHandle: uint64(deps.MainHWND),
@@ -335,36 +333,36 @@ type PluginInfo struct {
 // 将主程序侧的 PluginContext 适配为 SDK HostDeps 接口
 // 这些适配器将 PluginContext 的方法转换为 SDK HostDeps 的 context.Context 版本
 
-type hostPluginDataProvider struct {
+type hostStorageProvider struct {
 	ctx sdkdto.PluginContext
 }
 
-func (p *hostPluginDataProvider) GetPluginData(_ context.Context) (string, error) {
-	return p.ctx.GetPluginData()
+func (p *hostStorageProvider) GetValue(_ context.Context, key string) (string, error) {
+	return p.ctx.GetValue(key)
 }
 
-func (p *hostPluginDataProvider) SetPluginData(_ context.Context, data string) error {
-	return p.ctx.SetPluginData(data)
+func (p *hostStorageProvider) SetValue(_ context.Context, key, value string) error {
+	return p.ctx.SetValue(key, value)
 }
 
-func (p *hostPluginDataProvider) GetPluginRoot(_ context.Context, isRelative bool) string {
+func (p *hostStorageProvider) SetValueEncrypted(_ context.Context, key, value string) error {
+	return p.ctx.SetValueEncrypted(key, value)
+}
+
+func (p *hostStorageProvider) DeleteValue(_ context.Context, key string) error {
+	return p.ctx.DeleteValue(key)
+}
+
+func (p *hostStorageProvider) GetAllValues(_ context.Context) (map[string]string, error) {
+	return p.ctx.GetAllValues()
+}
+
+type hostPluginRootProvider struct {
+	ctx sdkdto.PluginContext
+}
+
+func (p *hostPluginRootProvider) GetPluginRoot(_ context.Context, isRelative bool) string {
 	return p.ctx.GetPluginRoot(isRelative)
-}
-
-type hostSecureStorageProvider struct {
-	ctx sdkdto.PluginContext
-}
-
-func (p *hostSecureStorageProvider) StoreEncryptedValue(_ context.Context, plainValue, description string) (string, error) {
-	return p.ctx.StoreEncryptedValue(plainValue, description)
-}
-
-func (p *hostSecureStorageProvider) GetDecryptedValue(_ context.Context, storageKey string) (string, error) {
-	return p.ctx.GetDecryptedValue(storageKey)
-}
-
-func (p *hostSecureStorageProvider) RemoveEncryptedValue(_ context.Context, storageKey string) error {
-	return p.ctx.RemoveEncryptedValue(storageKey)
 }
 
 type hostWorkSetQueryProvider struct {

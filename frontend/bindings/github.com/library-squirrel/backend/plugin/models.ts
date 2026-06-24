@@ -7,6 +7,9 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dto$0 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as query$0 from "../base/query/models.js";
 
 /**
@@ -179,12 +182,6 @@ export class PluginStatusDTO {
     "slots": SlotInfo[];
 
     /**
-     * 存储状态
-     * 字节数
-     */
-    "pluginDataSize": number;
-
-    /**
      * URL 监听规则
      */
     "urlPatterns": string[];
@@ -209,9 +206,6 @@ export class PluginStatusDTO {
         if (!("slots" in $$source)) {
             this["slots"] = [];
         }
-        if (!("pluginDataSize" in $$source)) {
-            this["pluginDataSize"] = 0;
-        }
         if (!("urlPatterns" in $$source)) {
             this["urlPatterns"] = [];
         }
@@ -226,7 +220,7 @@ export class PluginStatusDTO {
         const $$createField3_0 = $$createType4;
         const $$createField4_0 = $$createType4;
         const $$createField5_0 = $$createType6;
-        const $$createField7_0 = $$createType7;
+        const $$createField6_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("taskHandlers" in $$parsedSource) {
             $$parsedSource["taskHandlers"] = $$createField3_0($$parsedSource["taskHandlers"]);
@@ -238,9 +232,59 @@ export class PluginStatusDTO {
             $$parsedSource["slots"] = $$createField5_0($$parsedSource["slots"]);
         }
         if ("urlPatterns" in $$parsedSource) {
-            $$parsedSource["urlPatterns"] = $$createField7_0($$parsedSource["urlPatterns"]);
+            $$parsedSource["urlPatterns"] = $$createField6_0($$parsedSource["urlPatterns"]);
         }
         return new PluginStatusDTO($$parsedSource as Partial<PluginStatusDTO>);
+    }
+}
+
+/**
+ * SettingItem 设置项（声明 + 当前值），返回给前端渲染表单
+ */
+export class SettingItem {
+    "key": string;
+    "type": string;
+    "title": string;
+    "description"?: string;
+    "encrypted": boolean;
+    "group"?: string;
+    "order"?: number;
+    "options"?: dto$0.SettingOption[];
+    "min"?: number | null;
+    "max"?: number | null;
+    "value": string;
+
+    /** Creates a new SettingItem instance. */
+    constructor($$source: Partial<SettingItem> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("encrypted" in $$source)) {
+            this["encrypted"] = false;
+        }
+        if (!("value" in $$source)) {
+            this["value"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SettingItem instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SettingItem {
+        const $$createField7_0 = $$createType9;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField7_0($$parsedSource["options"]);
+        }
+        return new SettingItem($$parsedSource as Partial<SettingItem>);
     }
 }
 
@@ -285,3 +329,5 @@ const $$createType4 = $Create.Array($$createType3);
 const $$createType5 = SlotInfo.createFrom;
 const $$createType6 = $Create.Array($$createType5);
 const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = dto$0.SettingOption.createFrom;
+const $$createType9 = $Create.Array($$createType8);

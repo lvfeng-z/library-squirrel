@@ -12,9 +12,6 @@ type PluginStatusDTO struct {
 	SiteBrowsers []ExtensionInfo `json:"siteBrowsers"`
 	Slots        []SlotInfo      `json:"slots"`
 
-	// 存储状态
-	PluginDataSize int `json:"pluginDataSize"` // 字节数
-
 	// URL 监听规则
 	UrlPatterns []string `json:"urlPatterns"`
 }

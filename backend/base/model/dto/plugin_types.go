@@ -87,6 +87,28 @@ type PluginExtensions struct {
 	SiteBrowsers    []SiteBrowserDeclaration `json:"siteBrowsers,omitempty"`
 	Slots           []SlotDeclaration        `json:"slots,omitempty"`
 	StaticResources *StaticResourcesConfig   `json:"staticResources,omitempty"`
+	Settings        []SettingDeclaration     `json:"settings,omitempty"`
+}
+
+// SettingDeclaration 用户设置项声明（plugin.json extensions.settings）
+type SettingDeclaration struct {
+	Key         string          `json:"key"`
+	Type        string          `json:"type"` // string | integer | boolean | select
+	Title       string          `json:"title"`
+	Description string          `json:"description,omitempty"`
+	Default     string          `json:"default,omitempty"`
+	Encrypted   bool            `json:"encrypted,omitempty"`
+	Group       string          `json:"group,omitempty"`
+	Order       int             `json:"order,omitempty"`
+	Options     []SettingOption `json:"options,omitempty"`
+	Min         *int            `json:"min,omitempty"`
+	Max         *int            `json:"max,omitempty"`
+}
+
+// SettingOption select 类型的选项
+type SettingOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // TaskHandlerDeclaration 任务处理器声明
