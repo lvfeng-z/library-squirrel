@@ -154,6 +154,12 @@ tasks:
 
   run:
     cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
+
+  run:debug:
+    summary: Runs the built Windows executable under the Delve debugger
+    cmds:
+      - wails3 build DEV=true
       - 'dlv --listen=:2345 --headless=true --api-version=2 --accept-multiclient exec {{.BIN_DIR}}/{{.APP_NAME}}.exe'
 
   sign:

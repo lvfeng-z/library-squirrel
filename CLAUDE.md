@@ -12,14 +12,17 @@
 ## 构建与开发命令
 
 ```bash
-# 开发（热重载）
+# 开发（前端热重载，直接运行程序）
 task dev                           # 或: wails3 dev -config ./build/config.yml
 
 # 构建
 task build                         # 或: wails3 build
 
-# 运行编译产物
+# 运行编译产物（直接运行，无调试器）
 task run
+
+# 调试运行（Delve 调试器，监听 :2345）
+task run:debug
 
 # 仅前端
 cd frontend && yarn build          # 生产构建

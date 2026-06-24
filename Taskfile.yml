@@ -29,6 +29,11 @@ tasks:
     cmds:
       - task: "{{OS}}:run"
 
+  run:debug:
+    summary: Runs the built application under the Delve debugger
+    cmds:
+      - task: "{{OS}}:run:debug"
+
   dev:
     summary: Runs the application in development mode
     cmds:
