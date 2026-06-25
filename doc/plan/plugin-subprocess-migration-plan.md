@@ -222,7 +222,7 @@ UDS 连接上所有数据使用长度前缀帧格式，全双工双向复用：
 ### Phase 4: 清理
 15. 移除 `plugin.Open()` 代码路径（`loader.go` 中的旧 `LoadPlugin` 方法）
 16. 更新构建脚本（.dll → .exe）
-17. 更新 `ai-assistant/` 文档
+17. 更新 `doc/ai-assistant/` 文档
 
 ## 验证方式
 

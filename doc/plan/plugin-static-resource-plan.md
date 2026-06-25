@@ -328,7 +328,7 @@ export interface HtmlContent {
 17. 更新 `library-squirrel-sdk`：移除 slot 相关接口和类型
 18. 删除 `ContentTypeComponent` 相关代码
 19. 运行 `wails3 generate bindings -ts` 重新生成绑定
-20. 更新 `ai-assistant/` 文档
+20. 更新 `doc/ai-assistant/` 文档
 
 ## 验证方式
 

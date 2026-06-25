@@ -4,7 +4,7 @@
 
 siteAuthor 模块在修复 localAuthor 时已被部分修改（依赖注入、nullable localAuthorId、N+1 消除于 QueryBoundOrUnboundToLocalAuthorPage），但模块自身的完整功能链尚未修复。
 
-参考：`ai-assistant/module-migration-guide.md`
+参考：`doc/ai-assistant/module-migration-guide.md`
 
 ---
 
