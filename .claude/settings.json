@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "../library-squirrel-sdk",
+      "../library-squirrel-plugin-local",
+      "../library-squirrel-plugin-pixiv",
+      "../LibrarySquirrel"
+    ]
+  }
+}
