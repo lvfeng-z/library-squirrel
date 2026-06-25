@@ -149,6 +149,10 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
       const slot = this.viewSlots.get(id)
       // 如果是插件视图且 router 可用，自动移除路由
       if (slot?.isPlugin && routerInstance) {
+        // 如果当前在被删的路由，导航到首页强制清除已渲染页面
+        if (routerInstance.currentRoute.value.name === id) {
+          routerInstance.push('/')
+        }
         routerInstance.removeRoute(id)
       }
 
@@ -204,16 +208,19 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
       const slot = this.replaceViewSlots.get(slotId)
       if (slot && routerInstance) {
         const original = this.originalRouteComponents.get(slot.target)
-        const existing = routerInstance.getRoutes().find((r) => r.name === slot.target)
-        if (original && existing) {
-          routerInstance.addRoute({
+        if (original) {
+          // 恢复为 MainLayout children（与注册时一致，保留侧边菜单布局）
+          routerInstance.addRoute('MainLayout', {
             name: slot.target,
-            path: existing.path,
-            component: original,
-            meta: existing.meta
+            path: slot.target,
+            component: original
           })
         }
         this.originalRouteComponents.delete(slot.target)
+        // 如果当前在被替换的路由，导航到首页强制刷新（清除插件组件缓存）
+        if (routerInstance.currentRoute.value.name === slot.target) {
+          routerInstance.push('/')
+        }
       }
       this.replaceViewSlots.delete(slotId)
     },

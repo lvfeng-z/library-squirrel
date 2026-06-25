@@ -470,6 +470,13 @@ export function initSlotSyncListener() {
       data.slots.forEach((item) => {
         unregisterSlotByType(store, item.slotId, item.slotType)
       })
+      // 如果含 view/replaceView（影响路由/页面渲染），强制刷新清除已渲染页面与模块缓存
+      const affectsRoutes = data.slots.some(
+        (item) => item.slotType === 'view' || item.slotType === 'replaceView'
+      )
+      if (affectsRoutes) {
+        window.location.reload()
+      }
     }
   })
 }
