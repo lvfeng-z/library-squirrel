@@ -1,6 +1,8 @@
 package migration
 
 import (
+	"fmt"
+
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 
 	"gorm.io/gorm"
@@ -8,6 +10,16 @@ import (
 
 // AutoMigrate 执行数据库自动迁移
 func AutoMigrate(db *gorm.DB) error {
+	// 命名迁移：task.plugin_contribution_id → plugin_extension_id（contribution→extension 命名统一）
+	// 须在 AutoMigrate 前执行，否则 AutoMigrate 会先新建 plugin_extension_id 列导致 RenameColumn 冲突
+	if db.Migrator().HasColumn(&entity2.Task{}, "plugin_contribution_id") {
+		if !db.Migrator().HasColumn(&entity2.Task{}, "plugin_extension_id") {
+			if err := db.Migrator().RenameColumn(&entity2.Task{}, "plugin_contribution_id", "plugin_extension_id"); err != nil {
+				return fmt.Errorf("迁移 task.plugin_contribution_id → plugin_extension_id 失败: %w", err)
+			}
+		}
+	}
+
 	// 定义所有需要迁移的模型（按依赖顺序排列）
 	models := []interface{}{
 		// 基础表（无外键依赖）

@@ -23,7 +23,7 @@ func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
 		PendingResourceID:    util.NullInt64ToPointer(task.PendingResourceID),
 		Continuable:          util.NullBoolToPointer(task.Continuable),
 		PluginPublicID:       util.NullStringToPointer(task.PluginPublicID),
-		PluginContributionID: util.NullStringToPointer(task.PluginContributionID),
+		PluginExtensionID: util.NullStringToPointer(task.PluginExtensionID),
 		PluginData:           util.NullStringToPointer(task.PluginData),
 		ErrorMessage:         util.NullStringToPointer(task.ErrorMessage),
 		CreateTime:           task.GetCreateTime(),
@@ -110,11 +110,11 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.PluginPublicID.Valid = false
 	}
 
-	if dto.PluginContributionID != nil {
-		entity.PluginContributionID.Valid = true
-		entity.PluginContributionID.String = *dto.PluginContributionID
+	if dto.PluginExtensionID != nil {
+		entity.PluginExtensionID.Valid = true
+		entity.PluginExtensionID.String = *dto.PluginExtensionID
 	} else {
-		entity.PluginContributionID.Valid = false
+		entity.PluginExtensionID.Valid = false
 	}
 
 	if dto.PluginData != nil {
@@ -196,7 +196,7 @@ type CreateTaskRequest struct {
 	URL                  string `json:"url"`
 	HasChild             bool   `json:"hasChild"`
 	PluginPublicID       string `json:"pluginPublicId"`
-	PluginContributionID string `json:"pluginContributionId"`
+	PluginExtensionID string `json:"pluginExtensionId"`
 	PluginData           string `json:"pluginData"`
 }
 

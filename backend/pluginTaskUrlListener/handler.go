@@ -17,7 +17,7 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // ListListener 根据URL获取监听此链接的插件列表
-func (h *Handler) ListListener(ctx context.Context, url string) *model.ApiResponse[[]*PluginWithContribution] {
+func (h *Handler) ListListener(ctx context.Context, url string) *model.ApiResponse[[]*PluginWithExtension] {
 	result := h.svc.ListListener(url)
 	return model.Success(result)
 }

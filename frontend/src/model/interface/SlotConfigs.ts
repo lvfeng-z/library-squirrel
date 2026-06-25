@@ -77,7 +77,7 @@ export interface SiteBrowserListSlotConfig extends BaseSlotConfig {
   /** 插槽类型 */
   type: 'siteBrowserList'
   /** 贡献点id（站点浏览器在插件内的唯一标识） */
-  contributionId: string
+  extensionId: string
   /** 图标路径（后端已解析为完整 URL） */
   icon: string
 }

@@ -7,7 +7,7 @@ import { Handler as PluginTaskUrlListenerHandler } from '@bindings/github.com/li
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 
-export interface PluginWithContributionVO {
+export interface PluginWithExtensionVO {
   id: number
   publicId: string
   name: string
@@ -16,14 +16,14 @@ export interface PluginWithContributionVO {
   enable: boolean
   createTime: number
   updateTime: number
-  contributeKey: string
-  contributionID: string
+  extensionKey: string
+  extensionID: string
 }
 
 // ========== API 方法 ==========
 
 /** 根据URL获取监听此链接的插件列表 */
-export async function listListener(url: string): Promise<ApiResult<PluginWithContributionVO[]>> {
+export async function listListener(url: string): Promise<ApiResult<PluginWithExtensionVO[]>> {
   const result = requireResponse(
     await PluginTaskUrlListenerHandler.ListListener(url),
     '查询插件监听'
@@ -39,9 +39,9 @@ export async function listListener(url: string): Promise<ApiResult<PluginWithCon
       enable: item.uninstalled?.Bool,
       createTime: item.createTime,
       updateTime: item.updateTime,
-      contributeKey: item.ContributeKey,
-      contributionID: item.ContributionID
-    } as PluginWithContributionVO
-  }).filter((item): item is PluginWithContributionVO => item !== null) ?? []
+      extensionKey: item.ExtensionKey,
+      extensionID: item.ExtensionID
+    } as PluginWithExtensionVO
+  }).filter((item): item is PluginWithExtensionVO => item !== null) ?? []
   return { success: true as const, msg: result.msg, data }
 }

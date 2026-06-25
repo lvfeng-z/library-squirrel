@@ -410,12 +410,12 @@ type hostUrlListenerRegistry struct {
 	ctx sdkdto.PluginContext
 }
 
-func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, contributionId string, patterns []string) error {
-	return p.ctx.RegisterUrlListener(contributionId, patterns)
+func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, extensionId string, patterns []string) error {
+	return p.ctx.RegisterUrlListener(extensionId, patterns)
 }
 
-func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context, contributionId string) error {
-	return p.ctx.UnregisterUrlListener(contributionId)
+func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context, extensionId string) error {
+	return p.ctx.UnregisterUrlListener(extensionId)
 }
 
 type hostFrontendEventProvider struct {

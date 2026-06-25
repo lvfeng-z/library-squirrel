@@ -11,7 +11,7 @@ import {notNullish} from "@renderer/utils/CommonUtil.ts";
 // 站点浏览器数据接口
 interface SiteBrowserItem {
   pluginPublicId: string
-  contributionId: string
+  extensionId: string
   name: string
   icon: string
   pluginId: number
@@ -30,7 +30,7 @@ const slotStore = useSlotRegistryStore()
 const siteBrowserSlots = computed(() => {
   return slotStore.allSiteBrowserSlots.map((slot) => ({
     pluginPublicId: slot.pluginPublicId,
-    contributionId: slot.contributionId,
+    extensionId: slot.extensionId,
     name: slot.name,
     icon: slot.icon,
     pluginId: slot.pluginId
@@ -42,18 +42,18 @@ const mergedSiteBrowserList = computed(() => {
   const apiList = siteBrowserList.value
   const slotList = siteBrowserSlots.value
 
-  // 使用 Map 去重，基于 pluginPublicId + contributionId 作为 key
+  // 使用 Map 去重，基于 pluginPublicId + extensionId 作为 key
   const mergedMap = new Map<string, SiteBrowserItem>()
 
   // 先添加 API 数据
   for (const item of apiList) {
-    const key = `${item.pluginPublicId}-${item.contributionId}`
+    const key = `${item.pluginPublicId}-${item.extensionId}`
     mergedMap.set(key, item)
   }
 
   // 再添加插槽数据（插槽数据优先级更高，可覆盖）
   for (const item of slotList) {
-    const key = `${item.pluginPublicId}-${item.contributionId}`
+    const key = `${item.pluginPublicId}-${item.extensionId}`
     mergedMap.set(key, item)
   }
 
@@ -80,7 +80,7 @@ onMounted(() => {
 
 // 处理卡片点击事件 - 打开站点浏览器
 async function handleCardClick(item: SiteBrowserItem) {
-  const response = await siteBrowserOpen(item.pluginPublicId, item.contributionId)
+  const response = await siteBrowserOpen(item.pluginPublicId, item.extensionId)
   if (!ApiUtil.check(response)) {
     ApiUtil.msg(response)
   }
@@ -95,7 +95,7 @@ async function handleCardClick(item: SiteBrowserItem) {
           <div class="site-browser-grid">
             <div
               v-for="item in mergedSiteBrowserList"
-              :key="item.pluginPublicId + item.contributionId"
+              :key="item.pluginPublicId + item.extensionId"
               class="site-browser-card"
               @click="handleCardClick(item)"
             >

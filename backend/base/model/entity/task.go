@@ -19,7 +19,7 @@ type Task struct {
 	PendingResourceID    sql.NullInt64  `gorm:"column:pending_resource_id" json:"pendingResourceId"`
 	Continuable          sql.NullBool   `gorm:"column:continuable" json:"continuable"`
 	PluginPublicID       sql.NullString `gorm:"column:plugin_public_id" json:"pluginPublicId"`
-	PluginContributionID sql.NullString `gorm:"column:plugin_contribution_id" json:"pluginContributionId"`
+	PluginExtensionID sql.NullString `gorm:"column:plugin_extension_id" json:"pluginExtensionId"`
 	PluginData           sql.NullString `gorm:"column:plugin_data" json:"pluginData"`
 	ErrorMessage         sql.NullString `gorm:"column:error_message" json:"errorMessage"`
 }

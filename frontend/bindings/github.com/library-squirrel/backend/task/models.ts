@@ -78,7 +78,7 @@ export class TaskQueryDTO {
     /**
      * 插件贡献ID
      */
-    "pluginContributionId": query$0.QueryAttribute<string>;
+    "pluginExtensionId": query$0.QueryAttribute<string>;
 
     /**
      * 是否可继续（0=否，1=是）
@@ -120,8 +120,8 @@ export class TaskQueryDTO {
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = (new query$0.QueryAttribute());
         }
-        if (!("pluginContributionId" in $$source)) {
-            this["pluginContributionId"] = (new query$0.QueryAttribute());
+        if (!("pluginExtensionId" in $$source)) {
+            this["pluginExtensionId"] = (new query$0.QueryAttribute());
         }
         if (!("continuable" in $$source)) {
             this["continuable"] = (new query$0.QueryAttribute());
@@ -173,8 +173,8 @@ export class TaskQueryDTO {
         if ("pluginPublicId" in $$parsedSource) {
             $$parsedSource["pluginPublicId"] = $$createField5_0($$parsedSource["pluginPublicId"]);
         }
-        if ("pluginContributionId" in $$parsedSource) {
-            $$parsedSource["pluginContributionId"] = $$createField6_0($$parsedSource["pluginContributionId"]);
+        if ("pluginExtensionId" in $$parsedSource) {
+            $$parsedSource["pluginExtensionId"] = $$createField6_0($$parsedSource["pluginExtensionId"]);
         }
         if ("continuable" in $$parsedSource) {
             $$parsedSource["continuable"] = $$createField7_0($$parsedSource["continuable"]);

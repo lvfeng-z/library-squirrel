@@ -140,7 +140,7 @@ type EmbedSlotContent struct {
 	ContentType    string          `json:"contentType"`
 	Source         json.RawMessage `json:"source"`
 	Position       string          `json:"position"`
-	ContributionId string          `json:"contributionId,omitempty"`
+	ExtensionId string          `json:"extensionId,omitempty"`
 	Props          json.RawMessage `json:"props,omitempty"`
 }
 
@@ -172,7 +172,7 @@ type MenuSlotContent struct {
 // SiteBrowserListSlotContent siteBrowserList 类型插槽配置
 type SiteBrowserListSlotContent struct {
 	Icon           string `json:"icon,omitempty"`
-	ContributionId string `json:"contributionId"`
+	ExtensionId string `json:"extensionId"`
 }
 
 // StaticResourcesConfig 静态资源配置

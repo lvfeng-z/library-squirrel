@@ -7,5 +7,5 @@ export {
 };
 
 export {
-    PluginWithContribution
+    PluginWithExtension
 } from "./models.js";

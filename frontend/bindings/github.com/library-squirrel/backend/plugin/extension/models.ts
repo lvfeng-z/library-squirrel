@@ -28,7 +28,7 @@ export class SlotResponse {
     "title"?: string;
     "icon"?: string;
     "viewId"?: string;
-    "contributionId"?: string;
+    "extensionId"?: string;
     "props"?: json$0.RawMessage;
     "children"?: SlotResponse[];
 

@@ -9,7 +9,7 @@ import type { SiteBrowserDTO as BindingSiteBrowserDTO } from '@bindings/github.c
 
 export interface SiteBrowserDTO {
   pluginPublicId: string
-  contributionId: string
+  extensionId: string
   name: string
   pluginId: number
 }
@@ -30,7 +30,7 @@ function toSiteBrowserDTO(dto: BindingSiteBrowserDTO | null): SiteBrowserDTO | n
   if (!dto) return null
   return {
     pluginPublicId: dto.pluginPublicId ?? '',
-    contributionId: dto.contributionId ?? '',
+    extensionId: dto.extensionId ?? '',
     name: dto.name ?? '',
     pluginId: dto.pluginId ?? 0
   }
@@ -64,8 +64,8 @@ export async function siteBrowserQueryPage(query: {
   }
 }
 
-export async function siteBrowserOpen(pluginPublicId: string, contributionId: string): Promise<ApiResponse<void>> {
-  const result = await SiteBrowserHandler.Open(pluginPublicId, contributionId)
+export async function siteBrowserOpen(pluginPublicId: string, extensionId: string): Promise<ApiResponse<void>> {
+  const result = await SiteBrowserHandler.Open(pluginPublicId, extensionId)
   if (!result) {
     return { success: false, msg: '打开失败：接口返回为空' }
   }

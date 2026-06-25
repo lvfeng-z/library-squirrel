@@ -31,16 +31,16 @@ func newHostPluginCallbacks(
 	}
 }
 
-func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, description string) error {
+func (c *hostPluginCallbacks) onRegisterTaskHandler(extensionId, name, description string) error {
 	proxy := &TaskHandlerProxy{
 		serviceAccessor: c.serviceAccessor,
 		pluginPublicId:  c.pluginInfo.PublicID,
-		contributionId:  contributionId,
+		extensionId:  extensionId,
 	}
 
 	metadata := model.ExtensionMetadata{
 		Type:           model.ExtensionTypeTaskHandler,
-		ID:             contributionId,
+		ID:             extensionId,
 		PluginID:       c.pluginInfo.ID,
 		PluginPublicID: c.pluginInfo.PublicID,
 		Name:           name,
@@ -51,20 +51,20 @@ func (c *hostPluginCallbacks) onRegisterTaskHandler(contributionId, name, descri
 		return err
 	}
 	logger.Log.Info("TaskHandler 已注册",
-		zap.String("plugin", c.pluginInfo.PublicID), zap.String("id", contributionId))
+		zap.String("plugin", c.pluginInfo.PublicID), zap.String("id", extensionId))
 	return nil
 }
 
-func (c *hostPluginCallbacks) onRegisterSiteBrowser(contributionId, name, description string) error {
+func (c *hostPluginCallbacks) onRegisterSiteBrowser(extensionId, name, description string) error {
 	proxy := &SiteBrowserProxy{
 		serviceAccessor: c.serviceAccessor,
 		pluginPublicId:  c.pluginInfo.PublicID,
-		contributionId:  contributionId,
+		extensionId:  extensionId,
 	}
 
 	metadata := model.ExtensionMetadata{
 		Type:           model.ExtensionTypeSiteBrowser,
-		ID:             contributionId,
+		ID:             extensionId,
 		PluginID:       c.pluginInfo.ID,
 		PluginPublicID: c.pluginInfo.PublicID,
 		Name:           name,
@@ -75,10 +75,10 @@ func (c *hostPluginCallbacks) onRegisterSiteBrowser(contributionId, name, descri
 		return err
 	}
 	logger.Log.Info("SiteBrowser 已注册",
-		zap.String("plugin", c.pluginInfo.PublicID), zap.String("id", contributionId))
+		zap.String("plugin", c.pluginInfo.PublicID), zap.String("id", extensionId))
 	return nil
 }
 
-func (c *hostPluginCallbacks) onUnregisterSiteBrowser(contributionId string) error {
-	return c.siteBrowserRegistry.Unregister(c.pluginInfo.PublicID, contributionId)
+func (c *hostPluginCallbacks) onUnregisterSiteBrowser(extensionId string) error {
+	return c.siteBrowserRegistry.Unregister(c.pluginInfo.PublicID, extensionId)
 }

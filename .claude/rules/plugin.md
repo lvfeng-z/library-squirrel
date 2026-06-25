@@ -68,11 +68,11 @@ globs:
 | `contentType` | string | `precompiled` \| `vueSource` \| `code` \| `html` |
 | `source` | object/string | 组件源（格式见 source 格式表） |
 | `position` | string | `topbar` \| `toolbar` \| `statusbar` \| `dialog` |
-| `contributionId` | string | 关联的 TaskHandler ID（可选） |
+| `extensionId` | string | 关联的 TaskHandler ID（可选） |
 | `props` | object | 传递给组件的额外属性（可选） |
 
 ```json
-{"contentType": "precompiled", "source": {"js": "views/panel.js", "css": "views/style.css"}, "position": "dialog", "contributionId": "main"}
+{"contentType": "precompiled", "source": {"js": "views/panel.js", "css": "views/style.css"}, "position": "dialog", "extensionId": "main"}
 ```
 
 **panel：** 侧边栏/底部面板
@@ -120,10 +120,10 @@ globs:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `icon` | string | 图标相对路径（自动解析为完整 URL） |
-| `contributionId` | string | 关联的 `siteBrowsers` 扩展点 ID |
+| `extensionId` | string | 关联的 `siteBrowsers` 扩展点 ID |
 
 ```json
-{"icon": "assets/icon.png", "contributionId": "main"}
+{"icon": "assets/icon.png", "extensionId": "main"}
 ```
 
 ### source 格式（contentType 对应）
@@ -227,7 +227,7 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 | 数据查询 | `GetWorkSetBySiteWorkSetId` | 按站点作品集 ID 查询是否已存在 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
-| URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener(contributionId)` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler；`UnregisterUrlListener` 按 contributionId 精细注销（空则清该插件全部，用于卸载） |
+| URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener(extensionId)` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler；`UnregisterUrlListener` 按 extensionId 精细注销（空则清该插件全部，用于卸载） |
 | 前端通信 | `PublishToFrontend` / `SubscribeFrontend` / `UnsubscribeFrontend` | 与前端双向 pub/sub |
 | 原生窗口 | `window.OpenWindow`（仅 Windows） | 创建 WebView2 弹窗，支持 JS 执行和导航拦截 |
 | 文件路径 | `GetPluginRoot` | 获取插件目录路径（相对或绝对） |

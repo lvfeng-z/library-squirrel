@@ -13,16 +13,16 @@ func NewService(manager *Manager) *Service {
 }
 
 // ListListener 根据URL获取监听此链接的插件列表
-func (s *Service) ListListener(url string) []*PluginWithContribution {
+func (s *Service) ListListener(url string) []*PluginWithExtension {
 	return s.manager.ListListener(url)
 }
 
 // Register 注册插件的URL监听器
-func (s *Service) Register(plugin *PluginWithContribution, patterns []string) {
+func (s *Service) Register(plugin *PluginWithExtension, patterns []string) {
 	s.manager.Register(plugin, patterns)
 }
 
-// Unregister 取消注册插件的监听器（contributionId 空则清该插件全部，非空则只清该 contributionId）
-func (s *Service) Unregister(pluginPublicId string, contributionId string) {
-	s.manager.Unregister(pluginPublicId, contributionId)
+// Unregister 取消注册插件的监听器（extensionId 空则清该插件全部，非空则只清该 extensionId）
+func (s *Service) Unregister(pluginPublicId string, extensionId string) {
+	s.manager.Unregister(pluginPublicId, extensionId)
 }

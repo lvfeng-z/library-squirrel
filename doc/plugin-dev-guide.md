@@ -124,11 +124,11 @@ type MyTaskHandler struct{}
 
 | slotType | content 字段 | 说明 |
 |---|---|---|
-| `embed` | `{contentType, source, position, contributionId?, props?}` | 嵌入组件，position: `topbar`/`toolbar`/`statusbar`/`dialog` |
+| `embed` | `{contentType, source, position, extensionId?, props?}` | 嵌入组件，position: `topbar`/`toolbar`/`statusbar`/`dialog` |
 | `panel` | `{contentType, source, position, width?, height?, props?}` | 侧边/底部面板，position: `left-sidebar`/`right-sidebar`/`bottom` |
 | `view` | `{contentType, source, title?, props?}` | 独立路由页面 |
 | `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归） |
-| `siteBrowserList` | `{icon?, contributionId}` | 站点浏览器入口卡片（contributionId 必须等于某 siteBrowsers 的 id） |
+| `siteBrowserList` | `{icon?, extensionId}` | 站点浏览器入口卡片（extensionId 必须等于某 siteBrowsers 的 id） |
 
 **contentType 与 source 格式：**
 
@@ -211,8 +211,8 @@ func main() {
 | | `GetAllValues` | `() (map[string]string, error)` |
 | 业务查询 | `GetWorkSetBySiteWorkSetId` | `(siteWorkSetId, siteName string) (*WorkSetDTO, error)` |
 | | `AddSite` | `(sites []*SiteDTO) error` |
-| 任务 | `RegisterUrlListener` | `(contributionId string, patterns []string) error` |
-| | `UnregisterUrlListener` | `(contributionId string) error`（空则清该插件全部监听） |
+| 任务 | `RegisterUrlListener` | `(extensionId string, patterns []string) error` |
+| | `UnregisterUrlListener` | `(extensionId string) error`（空则清该插件全部监听） |
 | | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
@@ -254,7 +254,7 @@ type SiteBrowser interface {
 }
 ```
 
-> SiteBrowser（运行时注册，业务功能）与 `siteBrowserList` Slot（声明式，UI 入口卡片）**是两个东西，必须同时存在**：Slot 提供点击入口，SiteBrowser 提供打开/关闭逻辑。Slot 的 `contributionId` 指向 SiteBrowser 的 `id`。
+> SiteBrowser（运行时注册，业务功能）与 `siteBrowserList` Slot（声明式，UI 入口卡片）**是两个东西，必须同时存在**：Slot 提供点击入口，SiteBrowser 提供打开/关闭逻辑。Slot 的 `extensionId` 指向 SiteBrowser 的 `id`。
 
 ### 6.3 Slot（声明式）
 

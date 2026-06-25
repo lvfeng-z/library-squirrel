@@ -21,7 +21,7 @@ import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import {TaskQueryDTO} from '@bindings/github.com/library-squirrel/backend/task/models'
 import {QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
-import type { PluginWithContributionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
+import type { PluginWithExtensionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {TaskProgressTreeDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto";
 import {newPage} from "@renderer/utils/Pager.ts";
@@ -49,7 +49,7 @@ const downloadDialogState: Ref<boolean> = ref(false)
 const downloadMode: Ref<boolean> = ref(true)
 const downloadInputPlaceholder: Ref<string> = ref('')
 const sourceUrl: Ref<string> = ref('')
-const supportedPluginListenerList: Ref<PluginWithContributionVO[]> = ref([])
+const supportedPluginListenerList: Ref<PluginWithExtensionVO[]> = ref([])
 const supportStatus: Ref<string> = ref('')
 const taskStore = useTaskStore()
 const parentTaskStore = useParentTaskStore()
@@ -359,7 +359,7 @@ async function deleteTask(id: number) {
   }
 }
 
-async function getUrlMatchedPlugin(url: string): Promise<PluginWithContributionVO[]> {
+async function getUrlMatchedPlugin(url: string): Promise<PluginWithExtensionVO[]> {
   try {
     const response = await pluginTaskUrlListenerApi.listListener(url)
     return response.data ?? []

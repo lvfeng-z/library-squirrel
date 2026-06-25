@@ -24,7 +24,7 @@ type SlotResponse struct {
 	Title          string          `json:"title,omitempty"`
 	Icon           string          `json:"icon,omitempty"`
 	ViewId         string          `json:"viewId,omitempty"`
-	ContributionId string          `json:"contributionId,omitempty"`
+	ExtensionId string          `json:"extensionId,omitempty"`
 	Props          json.RawMessage `json:"props,omitempty"`
 	Children       []SlotResponse  `json:"children,omitempty"`
 }
@@ -70,7 +70,7 @@ func SlotConfigToResponse(cfg *domain.SlotConfig) *SlotResponse {
 		Title:          cfg.Title,
 		Icon:           cfg.Icon,
 		ViewId:         cfg.ViewId,
-		ContributionId: cfg.ContributionId,
+		ExtensionId: cfg.ExtensionId,
 		Props:          cfg.Props,
 	}
 	if len(cfg.Children) > 0 {

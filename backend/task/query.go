@@ -11,7 +11,7 @@ type TaskQueryDTO struct {
 	Status               query.QueryAttribute[int64]  `json:"status" query:"status"`                               // 任务状态
 	HasChild             query.QueryAttribute[bool]   `json:"hasChild" query:"has_child"`                          // 是否有子任务
 	PluginPublicID       query.QueryAttribute[string] `json:"pluginPublicId" query:"plugin_public_id"`             // 插件公开ID
-	PluginContributionID query.QueryAttribute[string] `json:"pluginContributionId" query:"plugin_contribution_id"` // 插件贡献ID
+	PluginExtensionID query.QueryAttribute[string] `json:"pluginExtensionId" query:"plugin_extension_id"` // 插件贡献ID
 	Continuable          query.QueryAttribute[bool]   `json:"continuable" query:"continuable"`                     // 是否可继续（0=否，1=是）
 	TaskName             query.QueryAttribute[string] `json:"taskName" query:"task_name"`                          // 任务名称（模糊匹配）
 	CreateTime           query.QueryAttribute[int64]  `json:"createTime" query:"create_time"`                      // 创建时间（可用于排序）

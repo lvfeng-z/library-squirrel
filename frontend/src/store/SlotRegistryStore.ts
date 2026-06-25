@@ -25,7 +25,7 @@ export interface SiteBrowserListSlotItem {
   pluginPublicId: string
   name: string
   order?: number
-  contributionId: string
+  extensionId: string
   icon: string
 }
 

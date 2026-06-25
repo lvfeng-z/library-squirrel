@@ -533,7 +533,7 @@ var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
 func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTaskTrees(ctx, taskIds, parseSections(sections))
 ```
 
-任务定位：重执行所需数据（`PluginPublicID`/`PluginContributionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
+任务定位：重执行所需数据（`PluginPublicID`/`PluginExtensionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
 
 ### runSectionCombo 执行流程
 
@@ -595,7 +595,7 @@ func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTask
 ```
 ManagedTask.pluginExec.Xxx()
   → TaskExecutorImpl (backend/plugin/extension/task_executor.go)
-    → registry.GetTaskHandler(pluginPublicId, contributionId)
+    → registry.GetTaskHandler(pluginPublicId, extensionId)
     → sdkTaskHandler.Xxx(sdkTask)      // 跨进程 RPC
 ```
 

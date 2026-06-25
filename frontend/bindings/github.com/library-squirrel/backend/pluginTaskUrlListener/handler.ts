@@ -21,14 +21,14 @@ import * as $models from "./models.js";
 /**
  * ListListener 根据URL获取监听此链接的插件列表
  */
-export function ListListener(url: string): $CancellablePromise<model$0.ApiResponse<($models.PluginWithContribution | null)[]> | null> {
+export function ListListener(url: string): $CancellablePromise<model$0.ApiResponse<($models.PluginWithExtension | null)[]> | null> {
     return $Call.ByID(902603268, url).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.PluginWithContribution.createFrom;
+const $$createType0 = $models.PluginWithExtension.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = model$0.ApiResponse.createFrom($$createType2);

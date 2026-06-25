@@ -68,7 +68,7 @@ export class CreateTaskRequest {
     "url": string;
     "hasChild": boolean;
     "pluginPublicId": string;
-    "pluginContributionId": string;
+    "pluginExtensionId": string;
     "pluginData": string;
 
     /** Creates a new CreateTaskRequest instance. */
@@ -94,8 +94,8 @@ export class CreateTaskRequest {
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = "";
         }
-        if (!("pluginContributionId" in $$source)) {
-            this["pluginContributionId"] = "";
+        if (!("pluginExtensionId" in $$source)) {
+            this["pluginExtensionId"] = "";
         }
         if (!("pluginData" in $$source)) {
             this["pluginData"] = "";
@@ -888,15 +888,15 @@ export class SiteAuthorLocalRelateDTO {
  * SiteBrowserDTO 站点浏览器信息
  */
 export class SiteBrowserDTO {
-    "contributionId": string;
+    "extensionId": string;
     "pluginPublicId": string;
     "name": string;
     "pluginId": number;
 
     /** Creates a new SiteBrowserDTO instance. */
     constructor($$source: Partial<SiteBrowserDTO> = {}) {
-        if (!("contributionId" in $$source)) {
-            this["contributionId"] = "";
+        if (!("extensionId" in $$source)) {
+            this["extensionId"] = "";
         }
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = "";
@@ -1113,7 +1113,7 @@ export class TaskDTO {
     "pendingResourceId": number | null;
     "continuable": boolean | null;
     "pluginPublicId": string | null;
-    "pluginContributionId": string | null;
+    "pluginExtensionId": string | null;
     "pluginData": string | null;
     "errorMessage": string | null;
     "createTime": number;
@@ -1154,8 +1154,8 @@ export class TaskDTO {
         if (!("pluginPublicId" in $$source)) {
             this["pluginPublicId"] = null;
         }
-        if (!("pluginContributionId" in $$source)) {
-            this["pluginContributionId"] = null;
+        if (!("pluginExtensionId" in $$source)) {
+            this["pluginExtensionId"] = null;
         }
         if (!("pluginData" in $$source)) {
             this["pluginData"] = null;

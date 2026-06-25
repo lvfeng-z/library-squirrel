@@ -95,7 +95,7 @@ function convertToSiteBrowserListSlot(config: SlotResponse): SiteBrowserListSlot
     pluginPublicId: config.pluginPublicId ?? '',
     name: config.name,
     order: config.order ?? 100,
-    contributionId: config.contributionId ?? '',
+    extensionId: config.extensionId ?? '',
     icon: config.icon ?? ''
   }
 }

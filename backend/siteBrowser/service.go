@@ -72,8 +72,8 @@ func (s *Service) Page(page, pageSize int) *PageResult {
 }
 
 // GetByID 根据ID获取站点浏览器
-func (s *Service) GetByID(pluginPublicId, contributionId string) (*sdkdto.SiteBrowserDTO, error) {
-	ext, err := s.registry.Get(pluginPublicId, contributionId)
+func (s *Service) GetByID(pluginPublicId, extensionId string) (*sdkdto.SiteBrowserDTO, error) {
+	ext, err := s.registry.Get(pluginPublicId, extensionId)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +93,8 @@ func (s *Service) GetByPluginID(pluginId int64) []*sdkdto.SiteBrowserDTO {
 }
 
 // Open 打开站点浏览器
-func (s *Service) Open(pluginPublicId, contributionId string) error {
-	ext, err := s.registry.Get(pluginPublicId, contributionId)
+func (s *Service) Open(pluginPublicId, extensionId string) error {
+	ext, err := s.registry.Get(pluginPublicId, extensionId)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (s *Service) Open(pluginPublicId, contributionId string) error {
 // toDTO 将扩展转换为DTO
 func toDTO(ext *model.Extension[sdkdto.SiteBrowser]) *sdkdto.SiteBrowserDTO {
 	return &sdkdto.SiteBrowserDTO{
-		ContributionID: ext.Metadata.ID,
+		ExtensionID: ext.Metadata.ID,
 		PluginPublicID: ext.Metadata.PluginPublicID,
 		Name:           ext.Metadata.Name,
 		PluginID:       ext.Metadata.PluginID,

@@ -14,32 +14,32 @@ type PluginTaskUrlListener struct {
 	Pattern        string // 监听表达式（正则表达式字符串）
 }
 
-// PluginWithContribution 带贡献点的插件
-type PluginWithContribution struct {
+// PluginWithExtension 带贡献点的插件
+type PluginWithExtension struct {
 	*domain.Plugin
-	ContributeKey  string // 贡献点类型
-	ContributionID string // 贡献点ID
+	ExtensionKey  string // 贡献点类型
+	ExtensionID string // 贡献点ID
 }
 
 // Manager 插件任务URL监听器管理器
 type Manager struct {
 	mu        sync.RWMutex
-	listeners map[string][]*PluginWithContribution // key: 正则表达式字符串, value: 插件列表
+	listeners map[string][]*PluginWithExtension // key: 正则表达式字符串, value: 插件列表
 }
 
 // NewManager 创建管理器
 func NewManager() *Manager {
 	return &Manager{
-		listeners: make(map[string][]*PluginWithContribution),
+		listeners: make(map[string][]*PluginWithExtension),
 	}
 }
 
 // ListListener 根据URL获取监听此链接的插件列表
-func (m *Manager) ListListener(url string) []*PluginWithContribution {
+func (m *Manager) ListListener(url string) []*PluginWithExtension {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var result []*PluginWithContribution
+	var result []*PluginWithExtension
 	for pattern, plugins := range m.listeners {
 		regex, err := regexp.Compile(pattern)
 		if err != nil {
@@ -53,7 +53,7 @@ func (m *Manager) ListListener(url string) []*PluginWithContribution {
 }
 
 // Register 注册插件的URL监听器
-func (m *Manager) Register(plugin *PluginWithContribution, patterns []string) {
+func (m *Manager) Register(plugin *PluginWithExtension, patterns []string) {
 	if plugin == nil || len(patterns) == 0 {
 		return
 	}
@@ -67,7 +67,7 @@ func (m *Manager) Register(plugin *PluginWithContribution, patterns []string) {
 		}
 		plugins, exists := m.listeners[pattern]
 		if !exists {
-			plugins = make([]*PluginWithContribution, 0)
+			plugins = make([]*PluginWithExtension, 0)
 			m.listeners[pattern] = plugins
 		}
 		// 检查是否已存在
@@ -85,17 +85,17 @@ func (m *Manager) Register(plugin *PluginWithContribution, patterns []string) {
 }
 
 // Unregister 取消注册插件的监听器
-// contributionId 为空：清该插件的所有监听（卸载/崩溃场景）
-// contributionId 非空：只清该插件下指定 contributionId 的监听（精细注销场景）
-func (m *Manager) Unregister(pluginPublicId string, contributionId string) {
+// extensionId 为空：清该插件的所有监听（卸载/崩溃场景）
+// extensionId 非空：只清该插件下指定 extensionId 的监听（精细注销场景）
+func (m *Manager) Unregister(pluginPublicId string, extensionId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for pattern, plugins := range m.listeners {
-		filtered := make([]*PluginWithContribution, 0)
+		filtered := make([]*PluginWithExtension, 0)
 		for _, p := range plugins {
 			remove := p.PublicID.Valid && p.PublicID.String == pluginPublicId &&
-				(contributionId == "" || p.ContributionID == contributionId)
+				(extensionId == "" || p.ExtensionID == extensionId)
 			if !remove {
 				filtered = append(filtered, p)
 			}
@@ -112,7 +112,7 @@ func (m *Manager) Unregister(pluginPublicId string, contributionId string) {
 func (m *Manager) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.listeners = make(map[string][]*PluginWithContribution)
+	m.listeners = make(map[string][]*PluginWithExtension)
 }
 
 // ListPatternsByPlugin 获取指定插件注册的所有 URL 匹配模式

@@ -24,8 +24,8 @@ import * as $models from "./models.js";
 /**
  * GetByID 根据ID获取站点浏览器
  */
-export function GetByID(pluginPublicId: string, contributionId: string): $CancellablePromise<model$0.ApiResponse<dto$0.SiteBrowserDTO | null> | null> {
-    return $Call.ByID(908248202, pluginPublicId, contributionId).then(($result: any) => {
+export function GetByID(pluginPublicId: string, extensionId: string): $CancellablePromise<model$0.ApiResponse<dto$0.SiteBrowserDTO | null> | null> {
+    return $Call.ByID(908248202, pluginPublicId, extensionId).then(($result: any) => {
         return $$createType3($result);
     });
 }
@@ -51,8 +51,8 @@ export function List(): $CancellablePromise<model$0.ApiResponse<(dto$0.SiteBrows
 /**
  * Open 打开站点浏览器
  */
-export function Open(pluginPublicId: string, contributionId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3393200362, pluginPublicId, contributionId).then(($result: any) => {
+export function Open(pluginPublicId: string, extensionId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3393200362, pluginPublicId, extensionId).then(($result: any) => {
         return $$createType8($result);
     });
 }

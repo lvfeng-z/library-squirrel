@@ -468,7 +468,7 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Position = c.Position
-		cfg.ContributionId = c.ContributionId
+		cfg.ExtensionId = c.ExtensionId
 		cfg.Props = c.Props
 
 	case base.SlotTypePanel:
@@ -509,7 +509,7 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		if err := json.Unmarshal(slot.Content, &c); err != nil {
 			return fmt.Errorf("解析 siteBrowserList content 失败: %w", err)
 		}
-		cfg.ContributionId = c.ContributionId
+		cfg.ExtensionId = c.ExtensionId
 		if c.Icon != "" {
 			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
 		}
@@ -598,17 +598,17 @@ type urlListenerAdapter struct {
 	pluginEntity *entity2.Plugin
 }
 
-func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, contributionId string, patterns []string) {
-	pwc := &pluginTaskUrlListener.PluginWithContribution{
+func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, extensionId string, patterns []string) {
+	pwc := &pluginTaskUrlListener.PluginWithExtension{
 		Plugin:         a.pluginEntity,
-		ContributeKey:  "taskHandler",
-		ContributionID: contributionId,
+		ExtensionKey:  "taskHandler",
+		ExtensionID: extensionId,
 	}
 	a.svc.Register(pwc, patterns)
 }
 
-func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string, contributionId string) {
-	a.svc.Unregister(pluginPublicId, contributionId)
+func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string, extensionId string) {
+	a.svc.Unregister(pluginPublicId, extensionId)
 }
 
 // wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信

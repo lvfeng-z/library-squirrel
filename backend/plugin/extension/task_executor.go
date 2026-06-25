@@ -25,11 +25,11 @@ func NewTaskExecutor(registry *TaskHandlerRegistry) *TaskExecutorImpl {
 
 // CreateWorkInfo 创建作品信息
 func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task) (*sdkdto.WorkResponse, error) {
-	pluginPublicId, contributionId := pluginIdsFromEntityTask(task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, err
 	}
 	return handler.CreateWorkInfo(EntityTaskToSDK(task))
@@ -37,11 +37,11 @@ func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task
 
 // Start 开始任务
 func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task) (io.ReadCloser, *sdkdto.WorkResponse, error) {
-	pluginPublicId, contributionId := pluginIdsFromEntityTask(task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
 	return handler.Start(EntityTaskToSDK(task))
@@ -52,11 +52,11 @@ func (e *TaskExecutorImpl) Pause(ctx context.Context, param *sdkdto.TaskResParam
 	if param == nil || param.Task == nil {
 		return nil
 	}
-	pluginPublicId, contributionId := pluginIdsFromSDKTask(param.Task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return err
 	}
 	return handler.Pause(param)
@@ -67,11 +67,11 @@ func (e *TaskExecutorImpl) Stop(ctx context.Context, param *sdkdto.TaskResParam)
 	if param == nil || param.Task == nil {
 		return nil
 	}
-	pluginPublicId, contributionId := pluginIdsFromSDKTask(param.Task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return err
 	}
 	return handler.Stop(param)
@@ -82,11 +82,11 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResPara
 	if param == nil || param.Task == nil {
 		return nil, nil, nil
 	}
-	pluginPublicId, contributionId := pluginIdsFromSDKTask(param.Task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
 	return handler.Resume(param)
@@ -94,11 +94,11 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResPara
 
 // GetThumbnail 获取缩略图
 func (e *TaskExecutorImpl) GetThumbnail(ctx context.Context, task *domain.Task) (*sdkdto.ThumbnailResponse, error) {
-	pluginPublicId, contributionId := pluginIdsFromEntityTask(task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, contributionId)
+	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
+	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Warn("GetThumbnail 获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("contributionId", contributionId), zap.Error(err))
+			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, err
 	}
 	taskData := ""
@@ -109,28 +109,28 @@ func (e *TaskExecutorImpl) GetThumbnail(ctx context.Context, task *domain.Task) 
 }
 
 // getSDKTaskHandler 从注册中心获取 TaskHandler
-func (e *TaskExecutorImpl) getSDKTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error) {
-	return e.registry.GetTaskHandler(pluginPublicId, contributionId)
+func (e *TaskExecutorImpl) getSDKTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error) {
+	return e.registry.GetTaskHandler(pluginPublicId, extensionId)
 }
 
 // pluginIdsFromEntityTask 从 entity.Task 提取插件ID
-func pluginIdsFromEntityTask(task *domain.Task) (pluginPublicId, contributionId string) {
+func pluginIdsFromEntityTask(task *domain.Task) (pluginPublicId, extensionId string) {
 	if task.PluginPublicID.Valid {
 		pluginPublicId = task.PluginPublicID.String
 	}
-	if task.PluginContributionID.Valid {
-		contributionId = task.PluginContributionID.String
+	if task.PluginExtensionID.Valid {
+		extensionId = task.PluginExtensionID.String
 	}
 	return
 }
 
 // pluginIdsFromSDKTask 从 sdkdto.TaskDTO 提取插件ID
-func pluginIdsFromSDKTask(task *sdkdto.TaskDTO) (pluginPublicId, contributionId string) {
+func pluginIdsFromSDKTask(task *sdkdto.TaskDTO) (pluginPublicId, extensionId string) {
 	if task.PluginPublicID != nil {
 		pluginPublicId = *task.PluginPublicID
 	}
-	if task.PluginContributionID != nil {
-		contributionId = *task.PluginContributionID
+	if task.PluginExtensionID != nil {
+		extensionId = *task.PluginExtensionID
 	}
 	return
 }

@@ -34,7 +34,7 @@ func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
 	t.PendingResourceID = util.NullInt64ToPointer(task.PendingResourceID)
 	t.Continuable = util.NullBoolToPointer(task.Continuable)
 	t.PluginPublicID = util.NullStringToPointer(task.PluginPublicID)
-	t.PluginContributionID = util.NullStringToPointer(task.PluginContributionID)
+	t.PluginExtensionID = util.NullStringToPointer(task.PluginExtensionID)
 	t.PluginData = util.NullStringToPointer(task.PluginData)
 	t.ErrorMessage = util.NullStringToPointer(task.ErrorMessage)
 	return t

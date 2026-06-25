@@ -10,9 +10,9 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as sql$0 from "../../../../database/sql/models.js";
 
 /**
- * PluginWithContribution 带贡献点的插件
+ * PluginWithExtension 带贡献点的插件
  */
-export class PluginWithContribution {
+export class PluginWithExtension {
     "id": number;
     "createTime": number;
     "updateTime": number;
@@ -32,15 +32,15 @@ export class PluginWithContribution {
     /**
      * 贡献点类型
      */
-    "ContributeKey": string;
+    "ExtensionKey": string;
 
     /**
      * 贡献点ID
      */
-    "ContributionID": string;
+    "ExtensionID": string;
 
-    /** Creates a new PluginWithContribution instance. */
-    constructor($$source: Partial<PluginWithContribution> = {}) {
+    /** Creates a new PluginWithExtension instance. */
+    constructor($$source: Partial<PluginWithExtension> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
         }
@@ -86,20 +86,20 @@ export class PluginWithContribution {
         if (!("activationType" in $$source)) {
             this["activationType"] = (new sql$0.NullString());
         }
-        if (!("ContributeKey" in $$source)) {
-            this["ContributeKey"] = "";
+        if (!("ExtensionKey" in $$source)) {
+            this["ExtensionKey"] = "";
         }
-        if (!("ContributionID" in $$source)) {
-            this["ContributionID"] = "";
+        if (!("ExtensionID" in $$source)) {
+            this["ExtensionID"] = "";
         }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new PluginWithContribution instance from a string or object.
+     * Creates a new PluginWithExtension instance from a string or object.
      */
-    static createFrom($$source: any = {}): PluginWithContribution {
+    static createFrom($$source: any = {}): PluginWithExtension {
         const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType0;
         const $$createField5_0 = $$createType0;
@@ -149,7 +149,7 @@ export class PluginWithContribution {
         if ("activationType" in $$parsedSource) {
             $$parsedSource["activationType"] = $$createField14_0($$parsedSource["activationType"]);
         }
-        return new PluginWithContribution($$parsedSource as Partial<PluginWithContribution>);
+        return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }
 }
 

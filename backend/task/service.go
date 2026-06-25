@@ -152,7 +152,7 @@ func buildTaskProgressTree(tasks []*entity.Task) []*sdkdto.TaskProgressTreeDTO {
 // 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
 type TaskHandlerProvider interface {
 	// GetTaskHandler 获取任务处理器
-	GetTaskHandler(pluginPublicId, contributionId string) (sdkdto.TaskHandler, error)
+	GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error)
 }
 
 // Transactor 事务执行器接口
@@ -380,7 +380,7 @@ func (s *Service) CreateTask(ctx context.Context, req *sdkdto.CreateTaskRequest)
 		HasChild:             sql.NullBool{Bool: req.HasChild, Valid: true},
 		Status:               int(TaskStatusCreated),
 		PluginPublicID:       sql.NullString{String: req.PluginPublicID, Valid: true},
-		PluginContributionID: sql.NullString{String: req.PluginContributionID, Valid: true},
+		PluginExtensionID: sql.NullString{String: req.PluginExtensionID, Valid: true},
 		PluginData:           sql.NullString{String: req.PluginData, Valid: true},
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
@@ -536,15 +536,15 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 	// 2. 按照排序尝试每个插件
 	for _, listener := range listeners {
 		if !listener.PublicID.Valid || listener.PublicID.String == "" {
-			logger.Log.Warnf("URL监听器缺少插件 PublicID，跳过 (contributionId=%s)", listener.ContributionID)
+			logger.Log.Warnf("URL监听器缺少插件 PublicID，跳过 (extensionId=%s)", listener.ExtensionID)
 			continue
 		}
 		pluginPublicId := listener.PublicID.String
 
 		// 获取任务处理器
-		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ContributionID)
+		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ExtensionID)
 		if err != nil {
-			logger.Log.Warnf("获取任务处理器失败 (plugin=%s, contributionId=%s): %v", pluginPublicId, listener.ContributionID, err)
+			logger.Log.Warnf("获取任务处理器失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, listener.ExtensionID, err)
 			continue
 		}
 
@@ -595,7 +595,7 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 }
 
 // handleCreateTaskArray 处理插件返回的任务数组
-func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithContribution) (int, error) {
+func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithExtension) (int, error) {
 	if len(pluginResponses) == 0 {
 		return 0, nil
 	}
@@ -612,7 +612,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		task.HasChild = sql.NullBool{Bool: false, Valid: true}
 		task.Pid = sql.NullInt64{Int64: pid, Valid: true}
 		task.PluginPublicID = listener.PublicID
-		task.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
+		task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
 		// 根据站点名称获取站点id
 		if taskResp.SiteName == "" {
@@ -725,7 +725,7 @@ type CreateTaskStreamChan struct {
 
 // handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）
 // 该方法会启动一个 goroutine 来读取任务流，并通过 channel 返回结果
-func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithContribution, batchSize int) (<-chan *CreateTaskStreamChan, error) {
+func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
@@ -771,7 +771,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				parentTask.Status = int(TaskStatusCreated)
 				parentTask.HasChild = sql.NullBool{Bool: true, Valid: true}
 				parentTask.PluginPublicID = listener.PublicID
-				parentTask.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
+				parentTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
 				// 获取站点id
 				if taskResp.SiteName != "" {
@@ -805,7 +805,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				childTask.Status = int(TaskStatusCreated)
 				childTask.HasChild = sql.NullBool{Bool: false, Valid: true}
 				childTask.PluginPublicID = listener.PublicID
-				childTask.PluginContributionID = sql.NullString{String: listener.ContributionID, Valid: true}
+				childTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
 				// 获取站点id
 				if childResp.SiteName != "" {

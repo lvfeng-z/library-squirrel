@@ -18,7 +18,7 @@ import (
 type TaskHandlerProxy struct {
 	serviceAccessor ServiceAccessor
 	pluginPublicId  string
-	contributionId  string
+	extensionId  string
 }
 
 var _ pluginsdkdto.TaskHandler = (*TaskHandlerProxy)(nil)
@@ -38,7 +38,7 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 	}
 	stream, err := client.Create(context.Background(), &gen.CreateRequest{
 		Url:            url,
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsd
 	}
 	resp, err := client.CreateWorkInfo(context.Background(), &gen.CreateWorkInfoRequest{
 		Task:           taskToProto(task),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (p *TaskHandlerProxy) Start(task *pluginsdkdto.TaskDTO) (io.ReadCloser, *pl
 	}
 	stream, err := client.Start(context.Background(), &gen.StartRequest{
 		Task:           taskToProto(task),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -140,7 +140,7 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.Work
 	}
 	resp, err := client.Retry(context.Background(), &gen.RetryRequest{
 		Task:           taskToProto(task),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	}
 	_, err = client.Pause(context.Background(), &gen.TaskResParamMessage{
 		Param:          taskResParamToProto(param),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	return err
 }
@@ -167,7 +167,7 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	}
 	_, err = client.Stop(context.Background(), &gen.TaskResParamMessage{
 		Param:          taskResParamToProto(param),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	return err
 }
@@ -179,7 +179,7 @@ func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResParam) (io.ReadClos
 	}
 	stream, err := client.Resume(context.Background(), &gen.TaskResParamMessage{
 		Param:          taskResParamToProto(param),
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -224,7 +224,7 @@ func (p *TaskHandlerProxy) GetThumbnail(taskData string) (*pluginsdkdto.Thumbnai
 type SiteBrowserProxy struct {
 	serviceAccessor ServiceAccessor
 	pluginPublicId  string
-	contributionId  string
+	extensionId  string
 }
 
 var _ pluginsdkdto.SiteBrowser = (*SiteBrowserProxy)(nil)
@@ -235,7 +235,7 @@ func (p *SiteBrowserProxy) Open() error {
 		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
 	_, err := services.Browser.Open(context.Background(), &gen.BrowserRequest{
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	return err
 }
@@ -246,7 +246,7 @@ func (p *SiteBrowserProxy) Close() error {
 		return fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
 	_, err := services.Browser.Close(context.Background(), &gen.BrowserRequest{
-		ContributionId: p.contributionId,
+		ExtensionId: p.extensionId,
 	})
 	return err
 }
@@ -271,7 +271,7 @@ func taskToProto(t *pluginsdkdto.TaskDTO) *gen.Task {
 		PendingResourceId:    t.PendingResourceID,
 		Continuable:          t.Continuable,
 		PluginPublicId:       t.PluginPublicID,
-		PluginContributionId: t.PluginContributionID,
+		PluginExtensionId: t.PluginExtensionID,
 		PluginData:           t.PluginData,
 		ErrorMessage:         t.ErrorMessage,
 	}

@@ -49,7 +49,7 @@ type SlotConfig struct {
 	Width          *int                        // panel: 宽度
 	Height         *int                        // panel: 高度
 	ViewId         string                      // menu: 关联的 view slot ID
-	ContributionId string                      // siteBrowserList: 关联的 siteBrowser contribution ID
+	ExtensionId string                      // siteBrowserList: 关联的 siteBrowser extension ID
 	Props          json.RawMessage             // 传递给组件的额外属性
 	Children       []SlotConfig                // menu: 子菜单项
 }

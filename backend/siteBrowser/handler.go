@@ -28,8 +28,8 @@ func (h *Handler) QueryPage(page, pageSize int) *model.ApiResponse[*PageResult] 
 }
 
 // GetByID 根据ID获取站点浏览器
-func (h *Handler) GetByID(pluginPublicId string, contributionId string) *model.ApiResponse[*sdkdto.SiteBrowserDTO] {
-	return model.HandleResult(h.svc.GetByID(pluginPublicId, contributionId))
+func (h *Handler) GetByID(pluginPublicId string, extensionId string) *model.ApiResponse[*sdkdto.SiteBrowserDTO] {
+	return model.HandleResult(h.svc.GetByID(pluginPublicId, extensionId))
 }
 
 // GetByPluginID 根据插件ID获取站点浏览器
@@ -39,6 +39,6 @@ func (h *Handler) GetByPluginID(pluginId int64) *model.ApiResponse[[]*sdkdto.Sit
 }
 
 // Open 打开站点浏览器
-func (h *Handler) Open(pluginPublicId string, contributionId string) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.Open(pluginPublicId, contributionId))
+func (h *Handler) Open(pluginPublicId string, extensionId string) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.Open(pluginPublicId, extensionId))
 }
