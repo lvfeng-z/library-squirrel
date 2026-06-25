@@ -6,7 +6,7 @@
 
 ## 文档结构
 
-### 1. [business-logic.md](./business-logic.md) - 完整业务逻辑文档
+### 1. [business-logic.md](business-logic.md) - 完整业务逻辑文档
 
 - **用途**：全面理解项目的业务模型、数据流和架构
 - **适合场景**：需要深度理解项目整体架构时
@@ -18,7 +18,7 @@
   - 架构组件详细说明
   - 典型业务用例
 
-### 2. [architecture-quick-reference.md](./architecture-quick-reference.md) - 架构速查
+### 2. [architecture-quick-reference.md](architecture-quick-reference.md) - 架构速查
 
 - **用途**：快速查找核心概念和技术要点
 - **适合场景**：开发任务中需要快速参考时
@@ -28,7 +28,7 @@
   - 技术架构要点
   - 开发模式和常见场景
 
-### 3. [glossary.md](./glossary.md) - 术语表
+### 3. [glossary.md](glossary.md) - 术语表
 
 - **用途**：统一理解项目中的领域特定术语
 - **适合场景**：遇到不熟悉的术语时参考
@@ -39,7 +39,7 @@
   - 架构和开发约定术语
 
 
-### 4. [plugin-development.md](./plugin-development.md) - 插件系统开发指南
+### 4. [plugin-development.md](plugin-development.md) - 插件系统开发指南
 
 - **用途**：理解插件系统的架构和开发方法
 - **适合场景**：开发或扩展插件功能时
@@ -52,7 +52,7 @@
   - 主程序端管理器
   - IPC 通信和扩展方法
 
-### 5. [code-rules.md](./code-rules.md) - 代码规则与约定
+### 5. [code-rules.md](code-rules.md) - 代码规则与约定
 
 - **用途**：查看项目的代码编写规范、命名约定和开发规范
 - **适合场景**：编写新代码、重构或评审代码时参考
@@ -63,7 +63,7 @@
   - 代码质量工具和日期处理规则
   - 新增功能开发流程和常见注意事项
 
-### 6. [task-execution-flow.md](./task-execution-flow.md) - 任务执行流程
+### 6. [task-execution-flow.md](task-execution-flow.md) - 任务执行流程
 
 - **用途**：理解任务从创建到完成的完整生命周期
 - **适合场景**：修改任务执行逻辑、排查任务问题、理解事务和补偿机制时
@@ -75,7 +75,7 @@
   - 崩溃恢复（PendingResourceID 机制）
   - 插件交互（TaskExecutor 接口、StoreWriter 生命周期）
 
-### 7. [module-migration-guide.md](./module-migration-guide.md) - 模块迁移修复指南
+### 7. [module-migration-guide.md](module-migration-guide.md) - 模块迁移修复指南
 
 - **用途**：模块从 Electron 架构修复到 Wails 架构的统一模式参考
 - **适合场景**：修复尚未完成迁移的业务模块时参考
@@ -85,7 +85,7 @@
   - 已完成模块记录与待修复模块清单
   - 修复验证要点
 
-### 8. [tour-feature.md](./tour-feature.md) - 向导功能规格
+### 8. [tour-feature.md](tour-feature.md) - 向导功能规格
 
 - **用途**：理解向导（Tour）功能的架构、数据模型、运行时序和扩展规范
 - **适合场景**：新增向导、修改向导引擎、排查跨页面引导或元素高亮问题时
@@ -226,6 +226,6 @@ if (ApiUtil.check(response)) {
 
 ## 相关项目文档
 
-- [../CLAUDE.md](../CLAUDE.md) - 项目级开发指南
-- [../README.md](../README.md) - 项目基本说明
+- [../../CLAUDE.md](../../CLAUDE.md) - 项目级开发指南
+- [../../README.md](../../README.md) - 项目基本说明
 - 代码中的注释和类型定义

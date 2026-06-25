@@ -920,7 +920,7 @@ type Resource struct {
 - **插件结构**: 每个插件是独立包，包含 `plugin.json` 清单文件
 - **两种模式**: 运行时插件（Go DLL + `entryFile`）、纯 UI 插件（仅 `plugin.json` 声明 slots）
 - **Slot 注册**: 通过 `plugin.json` 的 `extensions.slots` 声明式注册，禁止在运行时调用 `RegisterSlot()`
-- **静态资源**: 在 `extensions.staticResources.directories` 声明可访问目录，通过 `resource://plugin/...` URL 访问
+- **静态资源**: 在 `extensions.staticResources.directories` 声明可访问目录，通过 `http://wails.localhost:{port}/plugin/{author}/{id}/{version}/...` URL 访问
 - **入口函数**: 运行时插件导出 `func Activate(ctx pluginsdk.PluginContext)`
 
 ## 代码质量工具
@@ -950,7 +950,7 @@ type Resource struct {
 
 ## 资源文件管理
 
-- **本地文件协议**: 使用自定义 `resource://` 协议访问本地文件
+- **本地文件协议**: 作品文件通过 `/store/{encoded}` HTTP 路由访问（StoreFileHandler）；插件静态资源通过 `/plugin/...`（旧 `resource://` 协议已废弃）
 - **图像处理**: 支持通过 sharp 进行图像尺寸调整
 - **文件路径**: 使用绝对路径，避免相对路径歧义
 

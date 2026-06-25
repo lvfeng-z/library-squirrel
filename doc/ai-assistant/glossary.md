@@ -22,7 +22,7 @@
 - **英文**：Resource
 - **定义**：作品的具体文件内容（图片、视频文件等）
 - **领域角色**：作品的物理文件表示
-- **存储方式**：本地文件系统，通过`resource://`协议访问
+- **存储方式**：本地文件系统，通过 `/store/{encoded}` HTTP 路由访问（StoreFileHandler）
 
 ### 文件持久存储 (PersistentStore)
 
@@ -174,7 +174,7 @@
 ### 静态资源服务 (Static Resource Service)
 
 - **英文**：Static Resource Service
-- **定义**：线程安全的插件静态资源 HTTP 服务，提供 `resource://plugin/{id}/{ver}/...` URL 访问
+- **定义**：线程安全的插件静态资源 HTTP 服务，提供 `http://wails.localhost:{port}/plugin/{author}/{id}/{version}/...` URL 访问
 - **领域角色**：插件 Vue/JS/CSS/HTML/图片等文件的安全分发
 - **安全机制**：路径遍历防护、目录白名单校验、ETag 缓存
 - **相关文件**：`backend/plugin/extension/static_resource_service.go`
@@ -183,7 +183,7 @@
 
 - **英文**：Plugin-Aware Asset Handler
 - **定义**：组合前端嵌入式资源（embed.FS）与插件静态资源的 HTTP handler
-- **领域角色**：Wails asset handler 的扩展，使插件资源通过同一 `resource://` 协议访问
+- **领域角色**：Wails asset handler 的扩展，使插件资源通过同一 HTTP 路由（`/plugin/` 前缀）访问
 - **路由规则**：`/plugin/` 前缀 → StaticResourceService，其余 → 前端 embed.FS
 - **相关文件**：`backend/plugin/extension/asset_handler.go`
 
@@ -226,9 +226,9 @@
 ### 自定义协议 (Custom Protocol)
 
 - **英文**：Custom Protocol
-- **定义**：`resource://`协议，用于访问本地资源文件
-- **领域角色**：安全的本地文件访问机制
-- **实现**：在`src/main/index.ts`中注册和处理
+- **定义**：（已废弃）旧 Electron 架构的 `resource://` 协议
+- **领域角色**：当前 Wails 架构下，文件访问走 HTTP 路由（`/plugin/` 插件静态资源、`/store/` 作品文件）
+- **实现**：旧 Electron `src/main/index.ts`，Wails 下不适用
 
 ### 任务队列 (Task Queue)
 

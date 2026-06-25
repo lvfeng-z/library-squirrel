@@ -105,7 +105,7 @@
   - `backend/plugin/service.go` - 插件安装/卸载
   - `backend/pluginTaskUrlListener/` - 任务URL监听
 - **注册方式**：TaskHandler/SiteBrowser 通过 DLL 运行时注册，Slot 通过 `plugin.json` 声明式注册
-- **静态资源**：通过 `resource://plugin/{id}/{ver}/...` URL 访问插件文件
+- **静态资源**：通过 `http://wails.localhost:{port}/plugin/{author}/{id}/{version}/...` URL 访问插件文件
 - **扩展性**：每个插件是独立包，包含作者、名称和版本元数据
 
 ## 数据模型关系

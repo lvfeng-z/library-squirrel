@@ -131,7 +131,7 @@ globs:
 | contentType | source 格式 |
 |-------------|------------|
 | `precompiled` | `{"js": "path/to/file.js", "css": "path/to/style.css"}` |
-| `vueSource` | `{"entry": "path/to/Component.vue"}` |
+| `vueSource` | `{"vue": "path/to/Component.vue", "js": "path/to/file.js", "css": "path/to/style.css"}`（`js`/`css` 为可选预编译缓存，存在则跳过运行时编译） |
 | `html` | `{"html": "path/to/file.html"}` |
 | `code` | JavaScript 代码字符串（行内 JS，通过 `new Function` 执行，不注入 Vue/WailsRuntime 依赖） |
 

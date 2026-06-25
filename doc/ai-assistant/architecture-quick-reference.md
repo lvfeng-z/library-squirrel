@@ -152,7 +152,7 @@ export const routes = [
 - PluginContext 接口定义在独立的 SDK 库 `github.com/lvfeng-z/library-squirrel-sdk` 中，主程序和插件共同依赖
 - 三个扩展点：TaskHandler（运行时注册）、SiteBrowser（运行时注册）、Slot（**声明式注册**，通过 `plugin.json`）
 - 三个注册中心：`TaskHandlerRegistry`、`SiteBrowserRegistry`、`SlotRegistry`（线程安全）
-- **静态资源服务**：`StaticResourceService` 提供 `resource://plugin/{id}/{ver}/...` URL 访问插件文件
+- **静态资源服务**：`StaticResourceService` 提供 `http://wails.localhost:{port}/plugin/{author}/{id}/{version}/...` URL 访问插件文件
 - **组合 Asset Handler**：`PluginAwareAssetHandler` 路由 `/plugin/` 到静态资源服务，其余到前端 embed.FS
 - 启动引导：`app.go` 的 `loadInstalledPlugins()` 读取 `plugin.json` → 注册静态资源 → 声明式注册 Slot → 按需加载 DLL
 - Slot 同步：通过 Wails Events 推送到前端
