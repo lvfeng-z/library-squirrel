@@ -1,6 +1,6 @@
 import type { MenuSlotItem, SiteBrowserListSlotItem } from '@renderer/store/SlotRegistryStore'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
-import type { EmbedSlot, PanelSlot, ViewSlot } from '@renderer/model/slot'
+import type { EmbedSlot, DialogSlot, ReplaceViewSlot, ViewSlot } from '@renderer/model/slot'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent } from 'vue'
@@ -34,7 +34,7 @@ function convertToViewSlot(config: SlotResponse): ViewSlot {
 function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
   return {
     slotId: config.slotId,
-    position: config.position as 'topbar' | 'statusbar' | 'toolbar' | 'dialog',
+    position: config.position,  // 主程序具名插槽位标识
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
@@ -42,17 +42,26 @@ function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
 }
 
 /**
- * 转换面板插槽配置
+ * 转换弹窗插槽配置
  */
-function convertToPanelSlot(config: SlotResponse): PanelSlot {
+function convertToDialogSlot(config: SlotResponse): DialogSlot {
   return {
     slotId: config.slotId,
-    position: config.position as 'left-sidebar' | 'right-sidebar' | 'bottom',
-    width: config.width ?? undefined,
-    height: config.height ?? undefined,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
+  }
+}
+
+/**
+ * 转换替换视图插槽配置
+ */
+function convertToReplaceViewSlot(config: SlotResponse): ReplaceViewSlot {
+  return {
+    slotId: config.slotId,
+    target: config.position,  // target 存储在 position 字段（后端统一用 Position）
+    component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
+    props: config.props as Record<string, unknown> | undefined
   }
 }
 
@@ -392,12 +401,14 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot: SlotResponse) {
   if (slot.type === 'view') {
     store.registerViewSlot(convertToViewSlot(slot))
+  } else if (slot.type === 'replaceView') {
+    store.registerReplaceViewSlot(convertToReplaceViewSlot(slot))
   } else if (slot.type === 'menu') {
     store.registerMenuSlot(convertToMenuSlot(slot))
   } else if (slot.type === 'embed') {
     store.registerEmbedSlot(convertToEmbedSlot(slot))
-  } else if (slot.type === 'panel') {
-    store.registerPanelSlot(convertToPanelSlot(slot))
+  } else if (slot.type === 'dialog') {
+    store.registerDialogSlot(convertToDialogSlot(slot))
   } else if (slot.type === 'siteBrowserList') {
     store.registerSiteBrowserSlot(convertToSiteBrowserListSlot(slot))
   }
@@ -409,12 +420,14 @@ function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot
 function unregisterSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slotId: string, slotType: string) {
   if (slotType === 'view') {
     store.unregisterViewSlot(slotId)
+  } else if (slotType === 'replaceView') {
+    store.unregisterReplaceViewSlot(slotId)
   } else if (slotType === 'menu') {
     store.unregisterMenuSlot(slotId)
   } else if (slotType === 'embed') {
     store.unregisterEmbedSlot(slotId)
-  } else if (slotType === 'panel') {
-    store.unregisterPanelSlot(slotId)
+  } else if (slotType === 'dialog') {
+    store.unregisterDialogSlot(slotId)
   } else if (slotType === 'siteBrowserList') {
     store.unregisterSiteBrowserSlot(slotId)
   }

@@ -1,8 +1,7 @@
 import { DefineComponent } from 'vue'
 
-export interface EmbedSlot {
+export interface DialogSlot {
   slotId: string
-  position: string // 主程序具名插槽位标识（如 "work.toolbar"）
   component: () => Promise<DefineComponent>
   props?: Record<string, unknown>
   order?: number

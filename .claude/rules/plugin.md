@@ -61,42 +61,49 @@ globs:
 
 ### content 按 slotType 的格式
 
-**embed：** 嵌入组件到宿主页面指定位置
+**embed：** 嵌入组件到主程序的具名插槽位
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `contentType` | string | `precompiled` \| `vueSource` \| `code` \| `html` |
 | `source` | object/string | 组件源（格式见 source 格式表） |
-| `position` | string | `topbar` \| `toolbar` \| `statusbar` \| `dialog` |
-| `extensionId` | string | 关联的 TaskHandler ID（可选） |
+| `position` | string | 主程序定义的具名插槽位标识（如 `work.toolbar`） |
 | `props` | object | 传递给组件的额外属性（可选） |
 
 ```json
-{"contentType": "precompiled", "source": {"js": "views/panel.js", "css": "views/style.css"}, "position": "dialog", "extensionId": "main"}
+{"contentType": "precompiled", "source": {"js": "views/btn.js", "css": "views/btn.css"}, "position": "work.toolbar"}
 ```
 
-**panel：** 侧边栏/底部面板
+> 主程序在 Vue 模板中用 `<EmbedSlotRenderer position="work.toolbar">默认内容</EmbedSlotRenderer>` 暴露插槽位。有插件声明该位则渲染插件组件，无则渲染默认内容。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `contentType` | string | 同 embed |
-| `source` | object/string | 同 embed |
-| `position` | string | `left-sidebar` \| `right-sidebar` \| `bottom` |
-| `width` | number | 面板宽度（可选） |
-| `height` | number | 面板高度（可选） |
-| `props` | object | 传递给组件的额外属性（可选） |
-
-```json
-{"contentType": "precompiled", "source": {"js": "views/detail.js", "css": "views/style.css"}, "position": "right-sidebar", "width": 400}
-```
-
-**view：** 独立路由页面
+**view：** 新增独立路由页面
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `contentType` | string | 同 embed |
 | `source` | object/string | 同 embed |
 | `title` | string | 页面标题（可选） |
+| `props` | object | 传递给组件的额外属性（可选） |
+
+**replaceView：** 替换主程序已有页面（覆盖路由 component）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `contentType` | string | 同 embed |
+| `source` | object/string | 同 embed |
+| `target` | string | 主程序路由 name（覆盖目标，见路由清单） |
+| `props` | object | 传递给组件的额外属性（可选） |
+
+```json
+{"contentType": "precompiled", "source": {"js": "views/work.js", "css": "views/work.css"}, "target": "work-manage"}
+```
+
+**dialog：** 弹窗（模态层）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `contentType` | string | 同 embed |
+| `source` | object/string | 同 embed |
 | `props` | object | 传递给组件的额外属性（可选） |
 
 ```json

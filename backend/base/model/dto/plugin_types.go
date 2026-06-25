@@ -135,30 +135,34 @@ type SlotDeclaration struct {
 	Content     json.RawMessage `json:"content"`
 }
 
-// EmbedSlotContent embed 类型插槽配置
+// EmbedSlotContent embed 类型插槽配置（position 为主程序具名插槽位标识）
 type EmbedSlotContent struct {
-	ContentType    string          `json:"contentType"`
-	Source         json.RawMessage `json:"source"`
-	Position       string          `json:"position"`
-	ExtensionId string          `json:"extensionId,omitempty"`
-	Props          json.RawMessage `json:"props,omitempty"`
-}
-
-// PanelSlotContent panel 类型插槽配置
-type PanelSlotContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Position    string          `json:"position"`
-	Width       *int            `json:"width,omitempty"`
-	Height      *int            `json:"height,omitempty"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 
-// ViewSlotContent view 类型插槽配置
+// ReplaceViewSlotContent replaceView 类型插槽配置（target 为主程序路由 name）
+type ReplaceViewSlotContent struct {
+	ContentType string          `json:"contentType"`
+	Source      json.RawMessage `json:"source"`
+	Target      string          `json:"target"`
+	Props       json.RawMessage `json:"props,omitempty"`
+}
+
+// ViewSlotContent view 类型插槽配置（新增页面）
 type ViewSlotContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Title       string          `json:"title,omitempty"`
+	Props       json.RawMessage `json:"props,omitempty"`
+}
+
+// DialogSlotContent dialog 类型插槽配置（弹窗层）
+type DialogSlotContent struct {
+	ContentType string          `json:"contentType"`
+	Source      json.RawMessage `json:"source"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 

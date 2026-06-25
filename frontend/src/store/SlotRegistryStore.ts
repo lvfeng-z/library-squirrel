@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ViewSlot, EmbedSlot, PanelSlot } from '@renderer/model/slot'
+import type { ViewSlot, EmbedSlot, DialogSlot, ReplaceViewSlot } from '@renderer/model/slot'
 import type { RouteRecordRaw } from 'vue-router'
 import type { Router } from 'vue-router'
 
@@ -51,12 +51,13 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
   state: () => ({
     viewSlots: new Map<string, ViewSlot>(),
     embedSlots: new Map<string, EmbedSlot>(),
-    panelSlots: new Map<string, PanelSlot>(),
+    dialogSlots: new Map<string, DialogSlot>(),
+    replaceViewSlots: new Map<string, ReplaceViewSlot>(),
     menuSlots: new Map<string, MenuSlotItem>(),
     siteBrowserSlots: new Map<string, SiteBrowserListSlotItem>(),
     activeViewId: ref<string | null>(null),
-    // 视图替换状态
-    replacedViewId: ref<string | null>(null)
+    // replaceView 覆盖前的原始路由 component（用于卸载恢复）
+    originalRouteComponents: new Map<string, RouteRecordRaw['component']>()
   }),
 
   getters: {
@@ -72,14 +73,14 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     embedSlotsByPosition:
       (state) =>
       (position: string): EmbedSlot[] => {
-        return Array.from(state.embedSlots.values()).filter((slot) => slot.position === position)
+        return Array.from(state.embedSlots.values())
+          .filter((slot) => slot.position === position)
+          .sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
       },
 
-    panelSlotsByPosition:
-      (state) =>
-      (position: string): PanelSlot[] => {
-        return Array.from(state.panelSlots.values()).filter((slot) => slot.position === position)
-      },
+    allDialogSlots: (state): DialogSlot[] => {
+      return Array.from(state.dialogSlots.values()).sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+    },
 
     // 获取所有菜单项（已排序）
     allMenuSlots: (state): MenuSlotItem[] => {
@@ -158,7 +159,6 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     },
 
     // 注册嵌入插槽
-    // 注册嵌入插槽
     registerEmbedSlot(slot: EmbedSlot) {
       this.embedSlots.set(slot.slotId, slot)
     },
@@ -168,14 +168,54 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
       this.embedSlots.delete(id)
     },
 
-    // 注册面板插槽
-    registerPanelSlot(slot: PanelSlot) {
-      this.panelSlots.set(slot.slotId, slot)
+    // 注册弹窗插槽
+    registerDialogSlot(slot: DialogSlot) {
+      this.dialogSlots.set(slot.slotId, slot)
     },
 
-    // 取消注册面板插槽
-    unregisterPanelSlot(id: string) {
-      this.panelSlots.delete(id)
+    // 取消注册弹窗插槽
+    unregisterDialogSlot(id: string) {
+      this.dialogSlots.delete(id)
+    },
+
+    // 注册替换视图插槽（覆盖主程序已有路由）
+    registerReplaceViewSlot(slot: ReplaceViewSlot) {
+      this.replaceViewSlots.set(slot.slotId, slot)
+      if (routerInstance) {
+        const existing = routerInstance.getRoutes().find((r) => r.name === slot.target)
+        // 记录原始 component（仅在首次覆盖时记录）
+        if (!this.originalRouteComponents.has(slot.target)) {
+          if (existing?.components?.default) {
+            this.originalRouteComponents.set(slot.target, existing.components.default)
+          }
+        }
+        // 覆盖路由 component（Vue Router 4 同 name 覆盖）
+        routerInstance.addRoute({
+          name: slot.target,
+          path: existing?.path ?? `/${slot.target}`,
+          component: slot.component,
+          meta: { ...(existing?.meta as Record<string, unknown>), isPlugin: true, replaced: true }
+        })
+      }
+    },
+
+    // 取消注册替换视图插槽（恢复主程序原组件）
+    unregisterReplaceViewSlot(slotId: string) {
+      const slot = this.replaceViewSlots.get(slotId)
+      if (slot && routerInstance) {
+        const original = this.originalRouteComponents.get(slot.target)
+        const existing = routerInstance.getRoutes().find((r) => r.name === slot.target)
+        if (original && existing) {
+          routerInstance.addRoute({
+            name: slot.target,
+            path: existing.path,
+            component: original,
+            meta: existing.meta
+          })
+        }
+        this.originalRouteComponents.delete(slot.target)
+      }
+      this.replaceViewSlots.delete(slotId)
     },
 
     // 切换视图
@@ -191,22 +231,6 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     // 清除当前视图
     clearActiveView() {
       this.activeViewId = null
-    },
-
-    // 替换视图 (面板插槽替换主程序页面)
-    replaceView(panelSlotId: string, originalViewId: string) {
-      // 记录被替换的视图ID
-      this.replacedViewId = originalViewId
-      // 切换到面板对应的视图
-      this.switchView(panelSlotId)
-    },
-
-    // 恢复被替换的视图
-    restoreView() {
-      if (this.replacedViewId) {
-        this.switchView(this.replacedViewId)
-        this.replacedViewId = null
-      }
     },
 
     // 注册菜单插槽
@@ -247,11 +271,12 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     reset() {
       this.viewSlots.clear()
       this.embedSlots.clear()
-      this.panelSlots.clear()
+      this.dialogSlots.clear()
+      this.replaceViewSlots.clear()
       this.menuSlots.clear()
       this.siteBrowserSlots.clear()
       this.activeViewId = null
-      this.replacedViewId = null
+      this.originalRouteComponents.clear()
     }
   }
 })

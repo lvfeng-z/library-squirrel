@@ -2,7 +2,6 @@ import {
   EmbedSlotConfig,
   HtmlContent,
   MenuSlotConfig,
-  PanelSlotConfig,
   PrecompiledContent,
   SiteBrowserListSlotConfig,
   ViewSlotConfig,
@@ -21,9 +20,9 @@ export type AnySlotContent = PrecompiledContent | VueSourceContent | HtmlContent
 /**
  * 插槽配置联合类型 - 使用可辨识联合实现类型安全
  */
-export type SyncSlotConfig = MenuSlotConfig | SiteBrowserListSlotConfig | ViewSlotConfig | EmbedSlotConfig | PanelSlotConfig
+export type SyncSlotConfig = MenuSlotConfig | SiteBrowserListSlotConfig | ViewSlotConfig | EmbedSlotConfig
 
 /**
  * 所有插槽配置的联合类型
  */
-export type SlotConfig = EmbedSlotConfig | PanelSlotConfig | ViewSlotConfig | MenuSlotConfig | SiteBrowserListSlotConfig
+export type SlotConfig = EmbedSlotConfig | ViewSlotConfig | MenuSlotConfig | SiteBrowserListSlotConfig

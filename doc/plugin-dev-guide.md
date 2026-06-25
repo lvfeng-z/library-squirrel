@@ -124,9 +124,10 @@ type MyTaskHandler struct{}
 
 | slotType | content 字段 | 说明 |
 |---|---|---|
-| `embed` | `{contentType, source, position, extensionId?, props?}` | 嵌入组件，position: `topbar`/`toolbar`/`statusbar`/`dialog` |
-| `panel` | `{contentType, source, position, width?, height?, props?}` | 侧边/底部面板，position: `left-sidebar`/`right-sidebar`/`bottom` |
-| `view` | `{contentType, source, title?, props?}` | 独立路由页面 |
+| `embed` | `{contentType, source, position, props?}` | 插入主程序具名插槽位（position = 插槽位标识，主程序定义） |
+| `view` | `{contentType, source, title?, props?}` | 新增独立路由页面 |
+| `replaceView` | `{contentType, source, target, props?}` | 替换主程序已有页面（target = 路由 name） |
+| `dialog` | `{contentType, source, props?}` | 弹窗（模态层） |
 | `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归） |
 | `siteBrowserList` | `{icon?, extensionId}` | 站点浏览器入口卡片（extensionId 必须等于某 siteBrowsers 的 id） |
 

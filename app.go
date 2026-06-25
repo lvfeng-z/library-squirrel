@@ -468,19 +468,6 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Position = c.Position
-		cfg.ExtensionId = c.ExtensionId
-		cfg.Props = c.Props
-
-	case base.SlotTypePanel:
-		var c dto.PanelSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
-			return fmt.Errorf("解析 panel content 失败: %w", err)
-		}
-		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
-		cfg.Position = c.Position
-		cfg.Width = c.Width
-		cfg.Height = c.Height
 		cfg.Props = c.Props
 
 	case base.SlotTypeView:
@@ -513,6 +500,25 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		if c.Icon != "" {
 			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
 		}
+
+	case base.SlotTypeReplaceView:
+		var c dto.ReplaceViewSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 replaceView content 失败: %w", err)
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Position = c.Target
+		cfg.Props = c.Props
+
+	case base.SlotTypeDialog:
+		var c dto.DialogSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 dialog content 失败: %w", err)
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Props = c.Props
 	}
 
 	return nil

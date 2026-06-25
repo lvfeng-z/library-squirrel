@@ -28,26 +28,6 @@ export interface EmbedSlotConfig extends BaseSlotConfig {
   props?: Record<string, unknown>
 }
 
-/** 面板插槽配置 (对应 PanelSlot) */
-export interface PanelSlotConfig extends BaseSlotConfig {
-  /** 插槽类型 */
-  type: 'panel'
-  /** 位置 */
-  position: 'left-sidebar' | 'right-sidebar' | 'bottom'
-  /** 面板宽度 (仅 sidebar 生效) */
-  width?: number
-  /** 面板高度 (仅 bottom 生效) */
-  height?: number
-  /** 内容类型 */
-  contentType: SlotContentType
-  /** 内容: 根据 contentType 类型确定 */
-  content: AnySlotContent
-  /** 传递给组件的额外属性 */
-  props?: Record<string, unknown>
-  /** 替换的主程序视图ID (可选) */
-  replaceViewId?: string
-}
-
 /** 视图插槽配置 (对应 ViewSlot) */
 export interface ViewSlotConfig extends BaseSlotConfig {
   /** 插槽类型 */

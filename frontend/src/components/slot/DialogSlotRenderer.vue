@@ -2,11 +2,11 @@
 import { computed, defineAsyncComponent, h, type Component } from 'vue'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import { Loading } from '@element-plus/icons-vue'
-import type { EmbedSlot } from '@renderer/model/slot'
+import type { DialogSlot } from '@renderer/model/slot'
 
 const store = useSlotRegistryStore()
 
-const slots = computed(() => store.embedSlotsByPosition('dialog'))
+const slots = computed(() => store.allDialogSlots)
 
 const LoadingComponent: Component = {
   render() {
@@ -20,7 +20,7 @@ const ErrorComponent: Component = {
   }
 }
 
-const createSlotRenderer = (slot: EmbedSlot) => {
+const createSlotRenderer = (slot: DialogSlot) => {
   return defineAsyncComponent({
     loader: () => slot.component(),
     loadingComponent: LoadingComponent,

@@ -10,16 +10,18 @@ import (
 type SlotType string
 
 const (
-	// SlotTypeEmbed 嵌入插槽
+	// SlotTypeEmbed 嵌入插槽（插入主程序具名插槽位，position 为插槽位标识）
 	SlotTypeEmbed SlotType = "embed"
-	// SlotTypePanel 面板插槽
-	SlotTypePanel SlotType = "panel"
-	// SlotTypeView 视图插槽
+	// SlotTypeView 视图插槽（新增页面）
 	SlotTypeView SlotType = "view"
+	// SlotTypeReplaceView 替换视图插槽（覆盖主程序已有路由）
+	SlotTypeReplaceView SlotType = "replaceView"
 	// SlotTypeMenu 菜单插槽
 	SlotTypeMenu SlotType = "menu"
 	// SlotTypeSiteBrowserList 站点浏览器列表插槽
 	SlotTypeSiteBrowserList SlotType = "siteBrowserList"
+	// SlotTypeDialog 弹窗插槽（模态层）
+	SlotTypeDialog SlotType = "dialog"
 )
 
 // ContentType 插槽内容类型
@@ -45,9 +47,9 @@ type SlotConfig struct {
 	Title          string                      // 插槽标题
 	Icon           string                      // 插槽图标（解析后的完整 URL）
 	Order          int                         // 排序
-	Position       string                      // embed: topbar|toolbar|statusbar|dialog; panel: left-sidebar|right-sidebar|bottom
-	Width          *int                        // panel: 宽度
-	Height         *int                        // panel: 高度
+	Position       string                      // embed: 主程序具名插槽位标识（如 work.toolbar）
+	Width          *int                        // 已废弃（原 panel 宽度，panel slotType 已移除）
+	Height         *int                        // 已废弃（原 panel 高度，panel slotType 已移除）
 	ViewId         string                      // menu: 关联的 view slot ID
 	ExtensionId string                      // siteBrowserList: 关联的 siteBrowser extension ID
 	Props          json.RawMessage             // 传递给组件的额外属性

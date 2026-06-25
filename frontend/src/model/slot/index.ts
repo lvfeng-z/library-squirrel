@@ -1,3 +1,4 @@
 export * from './ViewSlot'
 export * from './EmbedSlot'
-export * from './PanelSlot'
+export * from './DialogSlot'
+export * from './ReplaceViewSlot'
