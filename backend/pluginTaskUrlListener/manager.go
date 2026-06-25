@@ -84,16 +84,19 @@ func (m *Manager) Register(plugin *PluginWithContribution, patterns []string) {
 	}
 }
 
-// Unregister 取消注册插件的所有监听器
-func (m *Manager) Unregister(pluginPublicId string) {
+// Unregister 取消注册插件的监听器
+// contributionId 为空：清该插件的所有监听（卸载/崩溃场景）
+// contributionId 非空：只清该插件下指定 contributionId 的监听（精细注销场景）
+func (m *Manager) Unregister(pluginPublicId string, contributionId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for pattern, plugins := range m.listeners {
-		// 过滤掉指定插件
 		filtered := make([]*PluginWithContribution, 0)
 		for _, p := range plugins {
-			if !p.PublicID.Valid || p.PublicID.String != pluginPublicId {
+			remove := p.PublicID.Valid && p.PublicID.String == pluginPublicId &&
+				(contributionId == "" || p.ContributionID == contributionId)
+			if !remove {
 				filtered = append(filtered, p)
 			}
 		}

@@ -48,7 +48,7 @@ type TaskCreateProvider interface {
 // UrlListenerRegistry URL监听器注册
 type UrlListenerRegistry interface {
 	RegisterUrlListener(pluginPublicId string, contributionId string, patterns []string)
-	UnregisterUrlListener(pluginPublicId string)
+	UnregisterUrlListener(pluginPublicId string, contributionId string)
 }
 
 // PluginContextDeps PluginContext 的依赖项
@@ -196,8 +196,8 @@ func (pc *pluginContext) RegisterUrlListener(contributionId string, patterns []s
 	return nil
 }
 
-func (pc *pluginContext) UnregisterUrlListener() error {
-	pc.urlListener.UnregisterUrlListener(pc.pluginInfo.PublicID)
+func (pc *pluginContext) UnregisterUrlListener(contributionId string) error {
+	pc.urlListener.UnregisterUrlListener(pc.pluginInfo.PublicID, contributionId)
 	return nil
 }
 

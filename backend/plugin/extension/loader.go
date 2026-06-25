@@ -56,6 +56,9 @@ type Loader struct {
 	taskHandlerRegistry *TaskHandlerRegistry
 	siteBrowserRegistry *SiteBrowserRegistry
 
+	// URL 监听清理回调（插件卸载/崩溃时调用，清理该插件的 URL 监听）
+	urlListenerCleaner func(pluginPublicId string)
+
 	// 子进程模式：跟踪活跃的插件进程
 	processes map[string]*pluginEntry // publicId -> entry
 	mu        sync.RWMutex
@@ -80,6 +83,18 @@ func NewLoader(
 		siteBrowserRegistry: siteBrowserRegistry,
 		processes:           make(map[string]*pluginEntry),
 		processGroup:        pg,
+	}
+}
+
+// SetUrlListenerCleaner 设置 URL 监听清理回调（插件卸载/崩溃时由 Loader 调用，清理该插件的 URL 监听）
+func (l *Loader) SetUrlListenerCleaner(fn func(pluginPublicId string)) {
+	l.urlListenerCleaner = fn
+}
+
+// unregisterUrlListener 清理插件 URL 监听（回调未设置时跳过）
+func (l *Loader) unregisterUrlListener(pluginPublicId string) {
+	if l.urlListenerCleaner != nil {
+		l.urlListenerCleaner(pluginPublicId)
 	}
 }
 
@@ -216,6 +231,7 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 	l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
+	l.unregisterUrlListener(pluginPublicId)
 	logger.Log.Info("插件已卸载", "plugin", pluginPublicId)
 	return nil
 }
@@ -314,6 +330,7 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 	if stillInMap {
 		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
+		l.unregisterUrlListener(pluginPublicId)
 		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
 	}
 }
@@ -397,8 +414,8 @@ func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, contrib
 	return p.ctx.RegisterUrlListener(contributionId, patterns)
 }
 
-func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context) error {
-	return p.ctx.UnregisterUrlListener()
+func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context, contributionId string) error {
+	return p.ctx.UnregisterUrlListener(contributionId)
 }
 
 type hostFrontendEventProvider struct {

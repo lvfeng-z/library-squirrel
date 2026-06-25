@@ -212,7 +212,7 @@ func main() {
 | 业务查询 | `GetWorkSetBySiteWorkSetId` | `(siteWorkSetId, siteName string) (*WorkSetDTO, error)` |
 | | `AddSite` | `(sites []*SiteDTO) error` |
 | 任务 | `RegisterUrlListener` | `(contributionId string, patterns []string) error` |
-| | `UnregisterUrlListener` | `() error` |
+| | `UnregisterUrlListener` | `(contributionId string) error`（空则清该插件全部监听） |
 | | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |

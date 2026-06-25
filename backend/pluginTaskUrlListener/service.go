@@ -22,7 +22,7 @@ func (s *Service) Register(plugin *PluginWithContribution, patterns []string) {
 	s.manager.Register(plugin, patterns)
 }
 
-// Unregister 取消注册插件的所有监听器
-func (s *Service) Unregister(pluginPublicId string) {
-	s.manager.Unregister(pluginPublicId)
+// Unregister 取消注册插件的监听器（contributionId 空则清该插件全部，非空则只清该 contributionId）
+func (s *Service) Unregister(pluginPublicId string, contributionId string) {
+	s.manager.Unregister(pluginPublicId, contributionId)
 }

@@ -607,8 +607,8 @@ func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, contribu
 	a.svc.Register(pwc, patterns)
 }
 
-func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string) {
-	a.svc.Unregister(pluginPublicId)
+func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string, contributionId string) {
+	a.svc.Unregister(pluginPublicId, contributionId)
 }
 
 // wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信
@@ -809,6 +809,9 @@ func (app *App) initAdvancedServices() error {
 
 	// plugin 服务
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
+	app.pluginLoader.SetUrlListenerCleaner(func(pluginPublicId string) {
+		app.PluginTaskUrlListenerSvc.Unregister(pluginPublicId, "")
+	})
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
