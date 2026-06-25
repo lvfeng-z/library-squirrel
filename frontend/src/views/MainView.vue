@@ -23,6 +23,7 @@ import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetP
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
+import EmbedSlotRenderer from '@renderer/components/slot/EmbedSlotRenderer.vue'
 
 // 接口
 const apis = {
@@ -319,6 +320,10 @@ function handleTest() {
             <el-button @click="handleTest">
               test
             </el-button>
+            <!--测试 embed 插槽位：有插件声明 position="test.embed" 则渲染插件组件，否则显示默认内容-->
+            <EmbedSlotRenderer position="test.embed">
+              <span style="color: var(--app-text-secondary); font-size: 12px;">[embed 插槽位 test.embed：无插件插入]</span>
+            </EmbedSlotRenderer>
           </div>
         </collapse-panel>
       </div>

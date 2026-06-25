@@ -189,12 +189,12 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
             this.originalRouteComponents.set(slot.target, existing.components.default)
           }
         }
-        // 覆盖路由 component（Vue Router 4 同 name 覆盖）
-        routerInstance.addRoute({
+        // 覆盖路由 component（作为 MainLayout children，保留侧边菜单布局）
+        routerInstance.addRoute('MainLayout', {
           name: slot.target,
-          path: existing?.path ?? `/${slot.target}`,
+          path: slot.target,
           component: slot.component,
-          meta: { ...(existing?.meta as Record<string, unknown>), isPlugin: true, replaced: true }
+          meta: { ...(existing?.meta || {}), isPlugin: true, replaced: true }
         })
       }
     },

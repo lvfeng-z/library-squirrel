@@ -5,7 +5,7 @@ import { Loading } from '@element-plus/icons-vue'
 import type { EmbedSlot } from '@renderer/model/slot'
 
 const props = defineProps<{
-  position: 'topbar' | 'statusbar' | 'toolbar' | 'dialog'
+  position: string
 }>()
 
 const store = useSlotRegistryStore()

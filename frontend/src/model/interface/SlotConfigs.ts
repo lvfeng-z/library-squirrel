@@ -19,7 +19,7 @@ export interface EmbedSlotConfig extends BaseSlotConfig {
   /** 插槽类型 */
   type: 'embed'
   /** 位置 */
-  position: 'topbar' | 'statusbar' | 'toolbar' | 'dialog'
+  position: string // 主程序具名插槽位标识（如 "work.toolbar"）
   /** 内容类型 */
   contentType: SlotContentType
   /** 内容: 根据 contentType 类型确定 */
