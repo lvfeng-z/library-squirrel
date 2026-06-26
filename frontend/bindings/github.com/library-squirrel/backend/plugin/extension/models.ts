@@ -22,8 +22,7 @@ export class SlotResponse {
     "contentType": string;
     "content"?: json$0.RawMessage;
     "position"?: string;
-    "width"?: number | null;
-    "height"?: number | null;
+    "target"?: string;
     "order"?: number;
     "title"?: string;
     "icon"?: string;
@@ -60,10 +59,10 @@ export class SlotResponse {
      * Creates a new SlotResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): SlotResponse {
-        const $$createField17_0 = $$createType1;
+        const $$createField16_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
-            $$parsedSource["children"] = $$createField17_0($$parsedSource["children"]);
+            $$parsedSource["children"] = $$createField16_0($$parsedSource["children"]);
         }
         return new SlotResponse($$parsedSource as Partial<SlotResponse>);
     }

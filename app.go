@@ -508,7 +508,7 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
-		cfg.Position = c.Target
+		cfg.Target = c.Target
 		cfg.Props = c.Props
 
 	case base.SlotTypeDialog:

@@ -88,7 +88,7 @@ window['__PLUGIN_CTX__'] = pluginContext
 
 app.mount('#app')
 
-// 初始化内置菜单（在 pinia store 初始化之后）
+// 初始化内置菜单（在 app.mount 之后，确保 Pinia store active；注册路由后 replace 重新匹配当前 URL）
 initBuiltinMenus()
 
 // 注册内置向导并加载已完成状态

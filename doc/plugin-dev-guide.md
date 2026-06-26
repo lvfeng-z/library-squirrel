@@ -13,15 +13,20 @@ Library Squirrel 通过插件扩展支持的站点（pixiv、本地导入等）�
 | 模式 | 入口文件 | 子进程 | 适用 |
 |---|---|---|---|
 | **运行时插件** | 需要 `entryFile` | 需要 | 含 TaskHandler（下载任务）或 SiteBrowser（站点浏览）的插件 |
-| **纯 UI 插件** | 不需要 | 不需要 | 仅提供 Slot 扩展（菜单、视图、面板、入口卡片等） |
+| **纯 UI 插件** | 不需要 | 不需要 | 仅提供 Slot 扩展（菜单、视图、弹窗、嵌入组件、入口卡片等） |
 
-### 三个扩展点
+### 扩展点
 
 | 扩展点 | 注册方式 | 说明 |
 |---|---|---|
 | TaskHandler | 运行时（代码注册） | 处理资源下载任务生命周期 |
 | SiteBrowser | 运行时（代码注册） | 打开/关闭站点浏览器 |
-| Slot | **声明式**（`plugin.json`） | UI 扩展（菜单、视图、面板、嵌入组件、入口卡片） |
+| Slot: `view` | **声明式**（`plugin.json`） | 新增独立路由页面 |
+| Slot: `replaceView` | **声明式** | 替换主程序已有页面（覆盖路由 component） |
+| Slot: `embed` | **声明式** | 插入主程序具名插槽位 |
+| Slot: `dialog` | **声明式** | 弹窗（模态层） |
+| Slot: `menu` | **声明式** | 菜单项（跳转关联 view） |
+| Slot: `siteBrowserList` | **声明式** | 站点浏览器入口卡片 |
 
 ### 插件依赖 SDK
 
@@ -114,7 +119,7 @@ type MyTaskHandler struct{}
   "id": "my-view",
   "name": "我的视图",
   "description": "可选描述",
-  "slotType": "view",          // embed | panel | view | menu | siteBrowserList
+  "slotType": "view",          // embed | view | replaceView | dialog | menu | siteBrowserList
   "order": 100,
   "content": { /* 按 slotType，见下 */ }
 }
@@ -259,7 +264,7 @@ type SiteBrowser interface {
 
 ### 6.3 Slot（声明式）
 
-通过 `plugin.json` 的 `extensions.slots` 声明，主程序启动时自动注册到前端。5 种 slotType × 4 种 contentType 的组合见第三节。
+通过 `plugin.json` 的 `extensions.slots` 声明，主程序启动时自动注册到前端。6 种 slotType × 4 种 contentType 的组合见第三节。
 
 **组件加载**（主程序前端 `useSlotSyncListener`）：
 - `precompiled`：动态 `import(js)` → 调用工厂函数 `module.default(Vue, WailsRuntime)` 注入依赖。
@@ -330,6 +335,29 @@ for data := range ch {
 
 > **注意**：插件阻塞等待前端响应时，务必设置超时（避免永久阻塞）。长期订阅建议配合 `UnsubscribeFrontend` 释放资源。
 
+## 8.1 插件前端组件调用主程序后端
+
+插件通过 Slot（view/embed/dialog/replaceView）加载的前端组件运行在主程序渲染进程内，可通过 `window.__PLUGIN_CTX__.custom.apis` 直接调用主程序后端接口（Wails IPC）。
+
+```ts
+// 在插件前端组件内（precompiled JS 工厂函数）
+onMounted(function() {
+  var apis = window.__PLUGIN_CTX__ && window.__PLUGIN_CTX__.custom && window.__PLUGIN_CTX__.custom.apis
+  if (!apis) return
+  // 调用主程序后端——查询插件列表
+  apis.pluginApi.pluginQueryPage({ page: 1, pageSize: 10, total: 0 }, {})
+    .then(function(result) {
+      // result.data.data = 插件列表（Page<T>.data）
+    })
+})
+```
+
+**可用 API**（共 21 个模块）：`localTagApi`、`localAuthorApi`、`siteTagApi`、`siteAuthorApi`、`siteApi`、`workApi`、`workSetApi`、`searchApi`、`taskApi`、`recycleBinApi`、`pluginApi`、`pluginSettingApi`、`settingsApi`、`fileSysUtilApi`、`appLauncherApi`、`siteBrowserApi`、`pluginTaskUrlListenerApi`、`windowApi` 等。
+
+**还可用**：`window.__PLUGIN_CTX__.vue`（Vue 实例）、`window.__PLUGIN_CTX__.globals.$message/$notify/$confirm`（Element Plus 全局方法）、`window.__PLUGIN_CTX__.globals.$router/$store`（路由与 Pinia）、`window.__PLUGIN_CTX__.theme.getCurrent()`（当前主题 id）。
+
+> 分页响应结构：`ApiResult<Page<T>>` → `result.data.data`（数据列表），`result.data.dataCount`（总数）。
+
 ## 九、原生窗口（OpenWindow，仅 Windows）
 
 打开 WebView2 弹窗，常用于 OAuth 登录等需要浏览器交互的场景。
@@ -395,6 +423,12 @@ http://wails.localhost:{backend-port}/plugin/{author}/{id}/{version}/{relativePa
 3. **打包 dist**：复制 `plugin.json`、可执行文件、`views/`、`assets/` 等到 `dist/`。
 4. **压缩**：`Compress-Archive dist/* -DestinationPath dist/{name}.zip`。
 
+> **PowerShell 注意**：`Compress-Archive` 的进度条在某些 PowerShell 版本触发 `IndexOutOfRangeException` bug。可在压缩前设 `$ProgressPreference = 'SilentlyContinue'` 抑制进度输出。
+
+### build.ps1 必须复制所有资源目录
+
+`plugin.json` 的 `staticResources.directories` 声明的目录（如 `views/`、`assets/`）必须被 `build.ps1` 复制到 `dist/`。**漏复制会导致安装后前端组件 404**。
+
 ### dist 目录结构
 
 ```
@@ -417,17 +451,28 @@ dist/
 - **单版本**：同一 `publicId` 不支持多版本共存，DB 只保留一条记录。
 - **升级**：通过「修复」（`Reinstall` 从备份恢复）或「选择安装包修复」（`ReinstallFromPath` 指定新 ZIP），会先卸载旧版（删目录）再重装。
 
-## 十二、完整示例
+## 十二、卸载行为
+
+卸载插件时，主程序执行：
+1. 停止插件子进程（`Shutdown` RPC → 超时强杀）。
+2. 清理扩展点：TaskHandler/SiteBrowser/UrlListener/Slot 全部注销。
+3. 清理静态资源注册。
+4. **前端刷新**：如果插件含 `view`/`replaceView` slot，前端执行 `window.location.reload()` 重新加载（清除已渲染的插件组件与模块缓存，保持当前页面 URL）。
+5. 插件前端组件的 CSS 通过 `link[data-plugin-id]` 标签管理，可在 `useSlotSyncListener` 的 `unloadPluginStyles` 中清理。
+
+> reload 后主程序内置路由（`routes.ts` 静态定义）能直接匹配当前 URL，无需等待动态注册。
+
+## 十三、完整示例
 
 参考真实插件：
-- **pixiv 插件**（`library-squirrel-plugin-pixiv`）：运行时插件，含 TaskHandler + SiteBrowser + OAuth 登录（OpenWindow）+ 统一自存信息（token 加密存储）+ siteBrowserList Slot。
-- **local-import 插件**（`library-squirrel-plugin-local`）：含前端通信（`PublishToFrontend`/`SubscribeFrontend`）+ 预编译 Vue 组件 Slot。
+- **pixiv 插件**（`library-squirrel-plugin-pixiv`）：运行时插件，含 TaskHandler + SiteBrowser + OAuth 登录（OpenWindow）+ 统一自存信息（token 加密存储）+ siteBrowserList Slot + 测试用 view/replaceView/embed/dialog/menu slot + 前端调用主程序后端（`window.__PLUGIN_CTX__`）。
+- **local-import 插件**（`library-squirrel-plugin-local`）：含前端通信（`PublishToFrontend`/`SubscribeFrontend`）+ 预编译 Vue 组件 dialog Slot。
 
-## 十三、最佳实践与陷阱
+## 十四、最佳实践与陷阱
 
 1. **Activate 用标准签名**：`WithActivate(func(ctx))`，需要依赖注入时用闭包捕获，不要改签名。
 2. **优先声明式 Slot**：UI 扩展用 `plugin.json` 声明，无需子进程（纯 UI 插件）。
-3. **静态资源目录要声明**：`staticResources.directories` 必须包含所有前端要访问的目录，否则 404。
+3. **静态资源目录要声明 + build.ps1 要复制**：`staticResources.directories` 必须包含所有前端要访问的目录，且 `build.ps1` 必须复制到 `dist/`，否则安装后 404。
 4. **路径用相对的**：`plugin.json` 中 `icon`、`source` 路径用相对插件根目录的相对路径，后端自动转完整 URL。
 5. **敏感数据用 SetValueEncrypted**：token、密钥等用加密存储，读取透明解密。
 6. **前端通信加超时**：阻塞等待前端响应必须设超时，避免永久阻塞。
@@ -435,3 +480,6 @@ dist/
 8. **预编译组件禁用 `import as`**：需要别名直接修改变量名。
 9. **vueSource 的 source 是 `{vue, js?, css?}`**：不是 `{entry}`；`js/css` 是可选预编译缓存。
 10. **错误处理**：所有 API 返回 error，务必处理并用 `ctx.Errorf` 记录日志。
+11. **插件前端调主程序后端**：用 `window.__PLUGIN_CTX__.custom.apis`，不要硬编码 Wails method ID。
+12. **replaceView 的 target 要匹配路由 name**：主程序路由 name 在 `routes.ts` 静态定义（如 `taskManage`、`settings`），插件 target 必须与之完全一致。
+13. **embed 需主程序暴露插槽位**：插件声明 embed slot 的 `position` 必须对应主程序某处 `<EmbedSlotRenderer position="xxx">` 才会渲染。

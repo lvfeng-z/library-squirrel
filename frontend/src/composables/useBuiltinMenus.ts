@@ -1,135 +1,13 @@
-import { useSlotRegistryStore, setRouterInstance, getRouterInstance } from '@renderer/store/SlotRegistryStore'
+import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
-import type { Router } from 'vue-router'
-import { ViewSlot } from '@renderer/model/slot'
-
-/**
- * 设置 Router 实例
- * 在应用启动时调用
- */
-export function initRouterInstance(router: Router) {
-  setRouterInstance(router)
-}
-
-/**
- * 获取 Router 实例
- */
-export function useRouterInstance(): Router | null {
-  return getRouterInstance()
-}
 
 /**
  * 初始化内置菜单项
- * 在应用启动时调用
+ * 在应用启动时调用（路由已在 routes.ts 静态定义，此处只注册菜单）
  */
 export function initBuiltinMenus() {
   const store = useSlotRegistryStore()
-
-  // 注册内置视图（主页和所有子页面）
-  const builtinViews: ViewSlot[] = [
-    {
-      slotId: 'mainPage',
-      name: '主页',
-      component: () => import('@renderer/views/MainView.vue'),
-      order: 0,
-      isBuiltin: true
-    },
-    {
-      slotId: 'localTagManage',
-      name: '本地标签',
-      component: () => import('@renderer/views/LocalTagManage.vue'),
-      order: 10,
-      isBuiltin: true
-    },
-    {
-      slotId: 'siteTagManage',
-      name: '站点标签',
-      component: () => import('@renderer/views/SiteTagManage.vue'),
-      order: 11,
-      isBuiltin: true
-    },
-    {
-      slotId: 'localAuthorManage',
-      name: '本地作者',
-      component: () => import('@renderer/views/LocalAuthorManage.vue'),
-      order: 20,
-      isBuiltin: true
-    },
-    {
-      slotId: 'siteAuthorManage',
-      name: '站点作者',
-      component: () => import('@renderer/views/SiteAuthorManage.vue'),
-      order: 21,
-      isBuiltin: true
-    },
-    {
-      slotId: 'developing',
-      name: '收藏',
-      component: () => import('@renderer/views/Developing.vue'),
-      order: 30,
-      isBuiltin: true
-    },
-    {
-      slotId: 'taskManage',
-      name: '任务',
-      component: () => import('@renderer/views/TaskManage.vue'),
-      order: 41,
-      isBuiltin: true
-    },
-    {
-      slotId: 'siteManage',
-      name: '站点管理',
-      component: () => import('@renderer/views/SiteManage.vue'),
-      order: 50,
-      isBuiltin: true
-    },
-    {
-      slotId: 'siteBrowserManage',
-      name: '站点浏览',
-      component: () => import('@renderer/views/SiteBrowserManage.vue'),
-      order: 51,
-      isBuiltin: true
-    },
-    {
-      slotId: 'pluginManage',
-      name: '插件',
-      component: () => import('@renderer/views/PluginManage.vue'),
-      order: 60,
-      isBuiltin: true
-    },
-    {
-      slotId: 'settings',
-      name: '设置',
-      component: () => import('@renderer/views/Settings.vue'),
-      order: 70,
-      isBuiltin: true
-    },
-    {
-      slotId: 'guide',
-      name: '向导',
-      component: () => import('@renderer/views/Guide.vue'),
-      order: 80,
-      isBuiltin: true
-    },
-    {
-      slotId: 'recycleBin',
-      name: '回收站',
-      component: () => import('@renderer/views/RecycleBin.vue'),
-      order: 90,
-      isBuiltin: true
-    },
-    {
-      slotId: 'test',
-      name: '测试按钮',
-      component: () => import('@renderer/views/Test.vue'),
-      order: 100,
-      isBuiltin: true
-    }
-  ]
-
-  // 注册视图（使用 registerViewSlotWithRoute 确保路由被添加）
-  builtinViews.forEach((view) => store.registerViewSlotWithRoute(view))
 
   // 批量注册内置菜单（icon 使用 markRaw 避免 reactive 警告）
   store.registerMenuSlots([

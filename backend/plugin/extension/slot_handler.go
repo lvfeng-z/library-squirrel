@@ -18,8 +18,7 @@ type SlotResponse struct {
 	ContentType    string          `json:"contentType"`
 	Content        json.RawMessage `json:"content,omitempty"`
 	Position       string          `json:"position,omitempty"`
-	Width          *int            `json:"width,omitempty"`
-	Height         *int            `json:"height,omitempty"`
+	Target         string          `json:"target,omitempty"`
 	Order          int             `json:"order,omitempty"`
 	Title          string          `json:"title,omitempty"`
 	Icon           string          `json:"icon,omitempty"`
@@ -64,8 +63,7 @@ func SlotConfigToResponse(cfg *domain.SlotConfig) *SlotResponse {
 		ContentType:    string(cfg.ContentType),
 		Content:        cfg.Content,
 		Position:       cfg.Position,
-		Width:          cfg.Width,
-		Height:         cfg.Height,
+		Target:         cfg.Target,
 		Order:          cfg.Order,
 		Title:          cfg.Title,
 		Icon:           cfg.Icon,

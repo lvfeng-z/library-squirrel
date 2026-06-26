@@ -13,8 +13,8 @@ globs:
 
 ## 插件系统概述
 - 插件位于 `plugin/`，由 `app.go` 的 `loadInstalledPlugins()` 加载
-- **两种类型**：运行时插件（Go DLL 子进程）和纯 UI 插件（仅 `plugin.json`）
-- **三个扩展点**：TaskHandler、SiteBrowser（运行时）、Slot（通过 `plugin.json` 声明式）
+- **两种类型**：运行时插件（Go 子进程）和纯 UI 插件（仅 `plugin.json`）
+- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；view/replaceView/embed/dialog/menu/siteBrowserList（通过 `plugin.json` 声明式 Slot）
 - **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
 - **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{ver}/...`
 
@@ -55,7 +55,7 @@ globs:
 | `id` | string | 是 | 插槽唯一标识（插件内唯一） |
 | `name` | string | 是 | 显示名称 |
 | `description` | string | 否 | 描述 |
-| `slotType` | string | 是 | `embed` \| `panel` \| `view` \| `menu` \| `siteBrowserList` |
+| `slotType` | string | 是 | `embed` \| `view` \| `replaceView` \| `dialog` \| `menu` \| `siteBrowserList` |
 | `order` | number | 否 | 排序权重 |
 | `content` | object | 是 | 按 slotType 区分的专属配置（见下方） |
 
@@ -220,8 +220,9 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 
 - `SlotDeclaration`：`backend/base/model/dto/plugin_types.go` — plugin.json 直接映射
 - `SlotConfig`：`backend/base/slot.go` — 运行时模型，SlotType/ContentType 为枚举常量
-- `SlotResponse`：`backend/slot/dto.go` — IPC 响应 DTO
-- 前端接口：`frontend/src/model/model/interface/SlotConfigs.ts` — 按类型做可辨识联合
+- `SlotResponse`：`backend/plugin/extension/slot_handler.go` — IPC 响应 DTO
+- 前端接口：`frontend/src/model/interface/SlotConfigs.ts` — 按类型做可辨识联合
+- 前端 Slot 类型：`frontend/src/model/slot/` — ViewSlot/EmbedSlot/DialogSlot/ReplaceViewSlot
 
 ## 插件 SDK 能力边界
 

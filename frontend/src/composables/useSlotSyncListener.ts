@@ -12,6 +12,7 @@ import { DefineComponent } from 'vue'
 import { SlotHandler } from '@bindings/github.com/library-squirrel/backend/plugin/extension'
 import { Events } from '@wailsio/runtime'
 import * as WailsRuntime from '@wailsio/runtime'
+import {isBlank} from "@renderer/utils/StringUtil.ts";
 
 /**
  * 转换视图插槽配置
@@ -32,6 +33,9 @@ function convertToViewSlot(config: SlotResponse): ViewSlot {
  * 转换嵌入插槽配置
  */
 function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
+  if (isBlank(config.position)) {
+    throw new Error('转换嵌入插槽配置失败，position不能为空')
+  }
   return {
     slotId: config.slotId,
     position: config.position,  // 主程序具名插槽位标识
@@ -57,9 +61,12 @@ function convertToDialogSlot(config: SlotResponse): DialogSlot {
  * 转换替换视图插槽配置
  */
 function convertToReplaceViewSlot(config: SlotResponse): ReplaceViewSlot {
+  if (isBlank(config.target)) {
+    throw new Error('转换替换视图插槽配置失败，target不能为空')
+  }
   return {
     slotId: config.slotId,
-    target: config.position,  // target 存储在 position 字段（后端统一用 Position）
+    target: config.target,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined
   }
@@ -470,7 +477,9 @@ export function initSlotSyncListener() {
       data.slots.forEach((item) => {
         unregisterSlotByType(store, item.slotId, item.slotType)
       })
-      // 如果含 view/replaceView（影响路由/页面渲染），强制刷新清除已渲染页面与模块缓存
+
+      // 含 view/replaceView 时刷新清除已渲染页面与模块缓存（保持当前 URL）
+      // useBuiltinMenus 注册路由后会 replace 重新匹配，避免 reload 后路由未注册灰屏
       const affectsRoutes = data.slots.some(
         (item) => item.slotType === 'view' || item.slotType === 'replaceView'
       )

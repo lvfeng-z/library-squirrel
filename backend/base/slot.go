@@ -44,12 +44,11 @@ type SlotConfig struct {
 	SlotType       SlotType                    // 插槽类型
 	Content        json.RawMessage             // 插槽内容（JSON 结构，前端根据 ContentType 解析）
 	ContentType    ContentType                 // 内容类型
-	Title          string                      // 插槽标题
+	Title          string                      // view: 插槽标题
 	Icon           string                      // 插槽图标（解析后的完整 URL）
 	Order          int                         // 排序
 	Position       string                      // embed: 主程序具名插槽位标识（如 work.toolbar）
-	Width          *int                        // 已废弃（原 panel 宽度，panel slotType 已移除）
-	Height         *int                        // 已废弃（原 panel 高度，panel slotType 已移除）
+	Target         string                      // replaceView: 主程序路由 name（覆盖目标）
 	ViewId         string                      // menu: 关联的 view slot ID
 	ExtensionId string                      // siteBrowserList: 关联的 siteBrowser extension ID
 	Props          json.RawMessage             // 传递给组件的额外属性
