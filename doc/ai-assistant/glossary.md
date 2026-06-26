@@ -7,7 +7,7 @@
 - **英文**：Site
 - **定义**：远程作品源，如bilibili、pixiv等外部内容平台
 - **领域角色**：插件、作品、作者、标签的容器和上下文
-- **相关文件**：`Site.ts`（实体），`SiteService.ts`（服务）
+- **相关文件**：`backend/site/`（站点模块）
 
 ### 作品 (Work)
 
@@ -15,7 +15,7 @@
 - **定义**：图片、视频、音频、文本等资源与其相关信息的集合
 - **领域角色**：系统的核心数据实体，所有功能的中心
 - **关键属性**：标题、描述、来源站点、创建时间等
-- **相关文件**：`Work.ts`（实体），`WorkService.ts`（服务）
+- **相关文件**：`backend/work/`（作品模块）
 
 ### 资源 (Resource)
 
@@ -53,7 +53,7 @@
 - **定义**：作品创建的完整执行流程
 - **领域角色**：协调插件执行和作品保存的工作单元
 - **状态**：等待、执行中、完成、失败等
-- **相关文件**：`TaskService.ts`，`taskQueue.ts`
+- **相关文件**：`backend/task/`（任务模块）、`backend/taskManager/`（执行引擎）
 
 ## 作者相关术语
 
@@ -63,7 +63,7 @@
 - **定义**：来自远程站点的原始作者信息
 - **领域角色**：直接对应站点上的真实作者账号
 - **属性**：站点作者ID、作者名、介绍等
-- **相关文件**：`SiteAuthor.ts`，`SiteAuthorService.ts`
+- **相关文件**：`backend/siteAuthor/`（站点作者模块）
 
 ### 本地作者 (Local Author)
 
@@ -71,7 +71,7 @@
 - **定义**：本地创建的作者，用于统一作者在不同站点的身份
 - **领域角色**：跨站点作者统一检索的桥梁
 - **业务价值**：实现"一次搜索，全站结果"
-- **相关文件**：`LocalAuthor.ts`，`LocalAuthorService.ts`
+- **相关文件**：`backend/localAuthor/`（本地作者模块）
 
 ### 作者关联 (Author Association)
 
@@ -88,7 +88,7 @@
 - **定义**：来自站点的原始标签
 - **领域角色**：作品的原始分类标记
 - **属性**：标签名、使用频率等
-- **相关文件**：`SiteTag.ts`，`SiteTagService.ts`
+- **相关文件**：`backend/siteTag/`（站点标签模块）
 
 ### 本地标签 (Local Tag)
 
@@ -96,7 +96,7 @@
 - **定义**：本地创建的标签，用于统一具有相同含义的站点标签
 - **领域角色**：跨站点标签统一检索的桥梁
 - **业务价值**：语义统一的标签管理
-- **相关文件**：`LocalTag.ts`，`LocalTagService.ts`
+- **相关文件**：`backend/localTag/`（本地标签模块）
 
 ### 标签关联 (Tag Association)
 
@@ -219,37 +219,39 @@
 ### IPC通信 (IPC Communication)
 
 - **英文**：Inter-Process Communication
-- **定义**：主进程与渲染进程间的通信机制
-- **模式**：`ipcRenderer.invoke('service-method', args)`
-- **相关文件**：`MainProcessApi.ts`，`preload/index.ts`
+- **定义**：后端（Go）与前端（Vue）之间的通信机制
+- **模式**：Wails Bind —— Go Handler 方法自动暴露给前端，前端经自动生成的 bindings（`frontend/bindings/`）调用，Wrapper 层封装于 `frontend/src/apis/http/wrappers/`
+- **相关文件**：`backend/{module}/handler.go`、`frontend/bindings/`、`frontend/src/apis/http/`
 
-### 自定义协议 (Custom Protocol)
+### 文件访问路由 (File Access Route)
 
-- **英文**：Custom Protocol
-- **定义**：（已废弃）旧 Electron 架构的 `resource://` 协议
-- **领域角色**：当前 Wails 架构下，文件访问走 HTTP 路由（`/plugin/` 插件静态资源、`/store/` 作品文件）
-- **实现**：旧 Electron `src/main/index.ts`，Wails 下不适用
+- **英文**：File Access Route
+- **定义**：Wails 架构下，资源文件经 HTTP 路由访问（非旧 Electron 的 `resource://` 协议，该协议已废弃）
+- **作品文件**：`/store/{encoded}` 路由 → `StoreFileHandler`（`backend/assetserver/`）解析为 `{workDir}` 下的文件；前端用 `buildStoreUrl()` 构建 URL
+- **插件静态资源**：`/plugin/{id}/{ver}/...` 路由 → 插件静态资源服务
 
 ### 任务队列 (Task Queue)
 
 - **英文**：Task Queue
 - **定义**：管理任务执行顺序和并发的系统
 - **领域角色**：协调任务执行，防止资源冲突
-- **相关文件**：`taskQueue.ts`
+- **相关文件**：`backend/taskManager/`（多根调度、信号量、批量查重、flush 批量持久化）
 
-### DAO模式 (Data Access Object)
+### Repository 模式 (Repository Pattern)
 
-- **英文**：Data Access Object
-- **定义**：数据访问对象模式，封装数据库操作
+- **英文**：Repository Pattern
+- **定义**：数据访问逻辑的抽象，封装数据库操作，将业务逻辑与数据存储分离
 - **领域角色**：业务逻辑与数据存储的隔离层
-- **基类**：`BaseDao.ts`提供通用CRUD操作
+- **Go 实现**：各模块 `backend/{module}/repository.go` 定义接口与实现；泛型 `BaseRepository[T]`（`backend/database/`）提供通用 CRUD + 分页，模块仅在无法表达时编写自定义逻辑
+- **规范**：Service 只依赖接口，禁止直接导入 `backend/database`；事务经 `database.WithTransactionContext()` 参与，Repository 通过 `DBFromContext` 自动加入事务
 
 ### 统一响应格式 (Unified Response Format)
 
 - **英文**：Unified Response Format
-- **定义**：所有IPC响应的标准格式
-- **组成**：`{ success: boolean, data?: any, message?: string }`
-- **工具**：`ApiUtil.response()` / `ApiUtil.error()`
+- **定义**：所有 IPC 响应的标准格式
+- **组成**：`{ success: boolean, msg: string, data: T }`
+- **后端**：`model.Success(data)` / `model.Error(msg)`（`backend/base/model/api_response.go`，泛型 `ApiResponse[T]`）
+- **前端**：Wrapper 经 `requireResponse<T>()`（`frontend/src/apis/http/types.ts`）校验并转为 `data` 保证非空的 `ApiResult<T>`；调用方用 `ApiUtil.check/data/msg`（`frontend/src/utils/ApiUtil.ts`）读取
 
 ## 业务流程术语
 
@@ -284,54 +286,53 @@
 ### DTO (Data Transfer Object)
 
 - **英文**：Data Transfer Object
-- **定义**：数据传输对象，用于进程间或层间数据传递
+- **定义**：数据传输对象，用于层间/进程间数据传递
 - **示例**：`WorkSaveDTO`、`PluginWorkResponseDTO`
-- **位置**：`src/main/model/dto/`
+- **位置**：`backend/base/model/dto/`
 
 ### QueryDTO (Query Data Transfer Object)
 
 - **英文**：Query Data Transfer Object
-- **定义**：查询参数数据传输对象，用于封装分页、排序、筛选等查询条件
+- **定义**：查询参数数据传输对象，封装分页、排序、筛选等查询条件
 - **示例**：`WorkQueryDTO`、`SiteQueryDTO`、`LocalAuthorQueryDTO`
 - **位置**：`backend/{module}/query.go`
 
 ### Entity (实体)
 
 - **英文**：Entity
-- **定义**：对应数据库表的领域实体
-- **示例**：`Work`、`Site`、`Author`
-- **位置**：`src/main/model/entity/`
+- **定义**：对应数据库表的领域实体，统一嵌入 `BaseEntity`（ID/CreateTime/UpdateTime）
+- **示例**：`Work`、`Site`、`LocalAuthor`
+- **位置**：`backend/base/model/entity/`
 
 ### Domain Object (领域对象)
 
 - **英文**：Domain Object
-- **定义**：业务领域中的核心概念对象
+- **定义**：业务领域中的核心概念对象，多为运行期组装的内存结构
 - **示例**：`RankedSiteAuthor`、`WorkWithWorkSetId`
-- **位置**：`src/main/model/domain/`
+- **位置**：分散于各业务模块内部（如 `backend/reWorkAuthor/`、`backend/search/`），无独立 domain 目录
 
 ## 开发约定术语
 
-### 服务方法命名约定 (Service Method Naming Convention)
+### IPC 方法命名约定 (IPC Method Naming)
 
-- **英文**：Service Method Naming Convention
-- **定义**：IPC方法命名的统一规则
-- **主进程**：`'serviceName-methodName'`
-- **预加载**：`serviceNameMethodName`
-- **示例**：`'work-save'` ↔ `workSave()`
+- **英文**：IPC Method Naming
+- **定义**：Wails Bind 自动生成前端调用方法名的规则
+- **规则**：`{ServiceName}{MethodName}`（驼峰拼接），前端经 bindings 调用，如 `WorkService.GetById` → `workServiceGetById`
+- **生成**：修改 Go Handler 后执行 `wails3 generate bindings -ts` 重新生成 `frontend/bindings/`
 
 ### 路径别名 (Path Alias)
 
 - **英文**：Path Alias
-- **定义**：TypeScript中定义的路径简写
-- **渲染进程**：`@renderer/*` → `src/renderer/src/*`
-- **配置**：`tsconfig.web.json`
+- **定义**：TypeScript 中定义的路径简写
+- **配置**：`frontend/tsconfig.json` 与 `frontend/vite.config.js`
+- **可用别名**：`@renderer/*` → `frontend/src/*`、`@bindings/*` → `frontend/bindings/*`、`@apis/*` → `frontend/src/apis/*`
 
-### SAVEPOINT事务 (SAVEPOINT Transaction)
+### 事务 (Transaction)
 
-- **英文**：SAVEPOINT Transaction
-- **定义**：使用SAVEPOINT而非BEGIN/COMMIT的事务机制
-- **优势**：支持嵌套事务
-- **实现**：`DatabaseClient.transaction()`
+- **英文**：Transaction
+- **定义**：基于 context 注入的事务机制，支持嵌套
+- **优势**：Repository 经 `database.DBFromContext(ctx)` 自动获取事务 DB，无需感知事务存在
+- **实现**：`database.WithTransactionContext()`（`backend/database/`）
 
 ## Go 主进程重构术语
 
@@ -340,8 +341,7 @@
 - **英文**：Repository Pattern
 - **定义**：数据访问逻辑的抽象，将业务逻辑与数据存储分离
 - **Go 实现**：
-  - 接口定义在 `backend/{module}/repository.go`
-  - 实现代码在 `backend/{module}/repository_impl.go`
+  - 接口与实现均在 `backend/{module}/repository.go`（无单独 `repository_impl.go`）
   - Service 只依赖接口，不直接访问数据库
 - **优势**：解耦、可测试、消除循环依赖
 
@@ -355,15 +355,16 @@
 ### 包内聚合 (Package-Level Aggregation)
 
 - **英文**：Package-Level Aggregation
-- **定义**：将相关的接口、实现、实体放在同一包内
-- **结构**：
+- **定义**：将相关的接口、实现放在同一业务模块包内
+- **结构**（以某业务模块为例）：
   ```
-  backend/author/
-  ├── model.go             # 领域实体
-  ├── repository.go        # 接口定义
-  ├── repository_impl.go   # 实现
-  └── service.go           # 业务逻辑
+  backend/{module}/
+  ├── handler.go           # Wails Bind 方法（暴露给前端）
+  ├── service.go           # 业务逻辑
+  ├── repository.go        # 数据访问接口 + 实现
+  └── query.go             # 查询 DTO
   ```
+- **实体位置**：领域实体集中在 `backend/base/model/entity/`（嵌入 `BaseEntity`），不在各模块内
 
 ### context.Context
 
@@ -382,12 +383,16 @@
 
 - **英文**：Leaf Node
 - **定义**：在依赖图中不依赖其他业务模块的模块
-- **示例**：`relations` 模块被 `work` 依赖，但不依赖其他业务模块
+- **示例**：底层基础模块（如 `site`、`localTag`）被上层模块依赖，自身不依赖其他业务模块
 - **优势**：不会形成循环依赖，可以安全地被多个模块引用
 
 ---
 
 ## 更新记录
+
+### 2026-06-25
+- [重构] 系统架构/数据模型/开发约定术语：清除 Electron/Node 遗留（ipcRenderer、preload、BaseDao、src/main、src/renderer、src/shared、SAVEPOINT、ApiUtil.response 等），对齐 Wails/Go 现状（Wails Bind、BaseRepository、ApiResponse{msg}、@renderer/@bindings/@apis 别名、WithTransactionContext）
+- [修改] 各实体术语的"相关文件"由虚构 `.ts` 改为后端模块目录；Repository 包内聚合/叶子节点示例修正
 
 ### 2026-06-04
 - [新增] 文件持久存储 (PersistentStore)、存储子目录 (StoreDir) 术语

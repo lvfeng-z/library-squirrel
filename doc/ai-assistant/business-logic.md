@@ -19,7 +19,7 @@
 - **定义**：图片、视频、音频、文本等资源与其相关信息的集合
 - **核心地位**：所有功能的中心数据实体
 - **数据模型**：
-  - 实体：`backend/work/model.go`
+  - 实体：`backend/base/model/entity/work.go`
   - 服务：`backend/work/service.go`
   - Repository：`backend/work/repository.go`
 - **关联关系**：多对多关联资源、作者、标签、任务
@@ -209,8 +209,10 @@
 
 ### 资源访问流
 
+作品资源文件经 PersistentStore 管理，通过 `/store/{encoded}` HTTP 路由访问（与下方 PersistentStore 文件访问流一致）：
+
 ```
-前端请求 → /resource/{path} → ResourceHandler → 文件系统访问 → 返回资源
+前端请求 → /store/{encoded} → StoreFileHandler → {workDir}/store/{path} → 返回文件
 ```
 
 ### PersistentStore 文件访问流
@@ -249,7 +251,7 @@
 1. **IPC通信**：Wails Bind 自动生成前端 API，执行 `wails3 generate bindings -ts` 更新
 2. **响应格式**：Go 端使用 `model.Success(data)` / `model.Error(msg)`
 3. **事务处理**：使用 `database.WithTransaction()` 而非手动 BEGIN/COMMIT
-4. **路径别名**：前端使用 `@renderer/*` 和 `@shared/*` 路径别名
+4. **路径别名**：前端使用 `@renderer/*`、`@bindings/*`、`@apis/*` 路径别名（均指向 `frontend/` 内）
 5. **日期处理**：所有 datetime 字段使用 Unix 时间戳（毫秒）
 
 ## 项目文件位置速查
@@ -279,6 +281,11 @@
 | 前端DTO | `frontend/src/model/` |
 
 ## 更新记录
+
+### 2026-06-25
+- [修正] Work 实体路径 `backend/work/model.go` → `backend/base/model/entity/work.go`
+- [修正] 资源访问流：`/resource/{path}` + ResourceHandler（旧）→ `/store/{encoded}` + StoreFileHandler
+- [修正] 前端路径别名移除不存在的 `@shared/*`，对齐 `@renderer/@bindings/@apis`
 
 ### 2026-06-04
 - [新增] 文件持久存储 (PersistentStore) 业务概念（第7节，原第6节插件系统序号后移）

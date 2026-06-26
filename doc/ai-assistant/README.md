@@ -52,18 +52,7 @@
   - 主程序端管理器
   - IPC 通信和扩展方法
 
-### 5. [code-rules.md](code-rules.md) - 代码规则与约定
-
-- **用途**：查看项目的代码编写规范、命名约定和开发规范
-- **适合场景**：编写新代码、重构或评审代码时参考
-- **包含内容**：
-  - 文件命名规范和目录结构约定
-  - TypeScript、Vue组件和命名约定
-  - IPC通信、数据库操作和插件开发规范
-  - 代码质量工具和日期处理规则
-  - 新增功能开发流程和常见注意事项
-
-### 6. [task-execution-flow.md](task-execution-flow.md) - 任务执行流程
+### 5. [task-execution-flow.md](task-execution-flow.md) - 任务执行流程
 
 - **用途**：理解任务从创建到完成的完整生命周期
 - **适合场景**：修改任务执行逻辑、排查任务问题、理解事务和补偿机制时
@@ -75,7 +64,7 @@
   - 崩溃恢复（PendingResourceID 机制）
   - 插件交互（TaskExecutor 接口、StoreWriter 生命周期）
 
-### 7. [module-migration-guide.md](module-migration-guide.md) - 模块迁移修复指南
+### 6. [module-migration-guide.md](module-migration-guide.md) - 模块迁移修复指南
 
 - **用途**：模块从 Electron 架构修复到 Wails 架构的统一模式参考
 - **适合场景**：修复尚未完成迁移的业务模块时参考
@@ -85,7 +74,7 @@
   - 已完成模块记录与待修复模块清单
   - 修复验证要点
 
-### 8. [tour-feature.md](tour-feature.md) - 向导功能规格
+### 7. [tour-feature.md](tour-feature.md) - 向导功能规格
 
 - **用途**：理解向导（Tour）功能的架构、数据模型、运行时序和扩展规范
 - **适合场景**：新增向导、修改向导引擎、排查跨页面引导或元素高亮问题时
@@ -109,12 +98,12 @@
 
 1. **定位相关概念**：使用`glossary.md`确定涉及的术语
 2. **理解业务逻辑**：参考`business-logic.md`相关章节
-3. **检查常见陷阱**：参考`common-pitfalls.md`避免重复已知错误
+3. **查阅模块说明**：参考核心复杂模块目录下的 `README.md`
 
 ### 对于新功能开发
 
 1. **检查架构约束**：`architecture-quick-reference.md`中的技术要点
-2. **遵循代码规范**：`code-rules.md`中的编码规则和约定
+2. **遵循代码规范**：`.claude/rules/` 中按领域拆分的编码规则（backend/frontend/database/plugin）
 
 ## 关键架构要点（快速记忆）
 
@@ -133,22 +122,22 @@
 **核心规范**：
 - Repository 模式：数据访问通过接口隔离
 - 消除循环依赖：使用依赖倒置原则
-- 包内聚合：model, repository, service 在同一模块内
-- 详细规范见 [go-repository.md](./go-repository.md)
+- 包内聚合：handler、service、repository 在同一模块内（实体集中在 `backend/base/model/entity`）
+- 详细规范见 [.claude/rules/backend.md](../../.claude/rules/backend.md)
 
 ### Vue Router 前端路由
 
 - 使用 `createWebHashHistory()` 实现 hash 路由
-- 路由配置在 `src/renderer/src/router/` 目录
+- 路由配置在 `frontend/src/router/` 目录
 - 路由定义在 `routes.ts`，实例在 `index.ts`
-- App.vue 简化为只包含 `<router-view>`
+- `App.vue` 挂载 `<router-view>`，`MainLayout.vue` 为根路由布局
 
 ### 插件化架构
 
-- 插件在`plugin/package/`目录
-- 每个插件是独立包
-- 预置：本地导入 + pixiv插件
-- BasePlugin 接口简化为只包含 `pluginId: number`
+- 插件运行时位于 `plugin/package/` 目录（`{publicId}/{version}/`）
+- 运行时插件为 Go 子进程，导出 `Activate(PluginContext)`；纯 UI 插件仅 `plugin.json` 声明 Slot
+- 预置：本地导入 + pixiv 插件（`resources/bundled-plugins/` 首启自动安装）
+- PluginContext 接口定义在 SDK 库 `github.com/lvfeng-z/library-squirrel-sdk`
 
 ### Wails IPC通信模式
 
@@ -158,16 +147,17 @@
 
 ### 数据库设计
 
-- Database 类 + BaseDao 基类（继承自 CoreDao）
-- SAVEPOINT 事务（支持嵌套）
-- 表结构在 YAML 配置中定义
+- SQLite（WAL 模式），经 GORM 操作，文件位于 `{RootPath}/database/database.db`
+- 泛型 `BaseRepository[T]` 提供通用 CRUD + 分页
+- 表结构经 GORM 自动迁移（`backend/migration/migrate.go`）
+- 事务经 `database.WithTransaction()` 支持，基于 context 注入可嵌套
 
-### 共享代码架构
+### 类型与工具代码
 
-- **src/shared/** 目录包含主进程和渲染进程共用的代码
-- **src/shared/model/** - 实体类、DTO、枚举、常量（所有进程共用）
-- **src/shared/util/** - 工具函数（StringUtil, TreeUtil, AssertUtil等）
-- **路径别名**: `@shared/*` → `src/shared/*`
+- **后端共享模型**：`backend/base/model/`（entity/、dto/、query/、constant/）
+- **前端类型**：`frontend/src/model/`（dto/interface/slot/tour/util/constant），与后端 DTO 对应的类型逐步迁移至 `frontend/bindings/`
+- **前端工具函数**：`frontend/src/utils/`（ApiUtil、UrlUtil、CommonUtil 等）
+- **路径别名**：`@renderer/*` → `frontend/src/*`、`@bindings/*` → `frontend/bindings/*`、`@apis/*` → `frontend/src/apis/*`
 
 ## 项目文件定位指南
 
@@ -205,14 +195,11 @@ err := database.WithTransaction(db, func(tx *gorm.DB) error {
 
 ### 响应处理
 
+Go Handler 返回 `*ApiResponse[T]{ success, msg, data }`（`model.Success` / `model.Error`）。前端 Wrapper 经 `requireResponse` 校验并转为 `data` 非空的 `ApiResult<T>`：
+
 ```typescript
-const response = await window.api.someMethod(args)
-if (ApiUtil.check(response)) {
-  const data = ApiUtil.data(response)
-  // 处理成功
-} else {
-  // 处理错误 - Go 端返回 BusinessError
-}
+const data = (await someApi.someMethod(args)).data  // requireResponse 已在 Wrapper 内完成 null/错误校验
+// 失败时 requireResponse 抛 Error，调用方 try/catch + ElMessage.error 提示
 ```
 
 ## 更新和维护
@@ -221,7 +208,6 @@ if (ApiUtil.check(response)) {
 
 - 添加新的核心业务概念时更新`glossary.md`
 - 架构重大变更时更新`architecture-quick-reference.md`
-- 代码规范变更时更新`code-rules.md`
 - 发现新的常见错误时更新文档
 
 ## 相关项目文档

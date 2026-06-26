@@ -61,7 +61,7 @@ frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手�
 - **PAGE_TYPE_UNIFICATION** (P1): 使用 Wails binding 的 `Page<T>`（`@bindings/...`），`copyPage<T>()`/`newPage<T>()` 转换/创建。禁止自定义 Page 模型。
 - **QUERY_ATTRIBUTE_VALUE_BINDING** (P1): `QueryAttribute` 通过 `.value` 读写实际值，`v-model` 绑定 `xxx.value`，`@clear` 重置为 `null`，模糊搜索设置 `operator: Operator.OpLike`。
 - **COMPOSITION_DTO_NESTED_PATH** (P1): 后端组合 DTO 后，DataTable thead 的 key 使用点号嵌套路径访问子 DTO 字段（如 `taskProgress.task.taskName`）。
-- **DIALOG_USE_BINDING_DTO** (P1): Dialog `formData` 使用 Wails 绑定层 DTO 类型。组合 DTO 初始化时预创建嵌套对象，模板直接绑定，禁止使用 `computed` 中间层。
+- **BINDING_TYPE_REUSE** (P1): 已有 Wails 生成的 bindings 时，禁止创建或使用与其等价的自定义类型。前后端数据契约类型统一从 `frontend/bindings/`（`@bindings/...`）引用，禁止在 `model/model/`、组件内重复定义同义的 DTO/实体；`model/model/` 中等价的历史类型需逐步迁移至 bindings，不得新增。
 - **ID_TYPE_NUMBER** (P2): ID 统一使用 `number`，从 `SelectItem.value`（string）取出时 `Number()` 转换。
 - **方法命名**: 禁止与 prop 同名遮蔽。使用前缀：`handleXxx`、`doXxx`、`buildXxx`、`loadXxx`、`checkXxx`。
 - **日期时间**: 统一使用 Unix 时间戳（毫秒），前端进行本地化格式转换。

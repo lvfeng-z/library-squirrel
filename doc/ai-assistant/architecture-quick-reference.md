@@ -39,54 +39,50 @@ URL输入 → 任务创建 → 插件执行 → 获取作品信息 → 保存作
 
 - **框架**：Vue 3 + Composition API + Element Plus
 - **路由系统**：Vue Router (hash 模式，使用 `createWebHashHistory()`)
-- **路由配置**：`src/renderer/src/router/` 目录
+- **路由配置**：`frontend/src/router/` 目录
   - `index.ts` - Router 实例配置
   - `routes.ts` - 路由定义
 - **状态管理**：Pinia stores (`Use*Store.ts`)
-- **组件模式**：`<script setup lang="ts">` + Props后缀
-- **路径别名**：
-  - `@renderer/*` → `src/renderer/src/*`
-  - `@shared/*` → `src/shared/*`
+- **组件模式**：`<script setup lang="ts">` + Props 后缀
+- **路径别名**（`frontend/tsconfig.json` + `frontend/vite.config.js`）：
+  - `@renderer/*` → `frontend/src/*`
+  - `@bindings/*` → `frontend/bindings/*`
+  - `@apis/*` → `frontend/src/apis/*`
 
 ### 后端架构 (Go)
 
 - **IPC模式**：Wails Bind（`window.api.method(args)`）
 - **API注册**：`backend/{module}/handler.go` 中的 Handler 方法
-- **数据库**：GORM + Repository模式
+- **数据库**：GORM + Repository 模式（`BaseRepository[T]` 通用 CRUD + 分页）
+- **迁移**：GORM 自动迁移（`backend/migration/migrate.go`）
 - **响应格式**：`model.Success(data)` / `model.Error(msg)`
-- **路径别名**：`@shared/*` → `src/shared/*`（前后端共用代码）
 
 ### 核心目录
 
 ```
 library-squirrel/
 ├── backend/                  # 后端 (Go)
-│   ├── {module}/             # 业务模块（以 localTag 为例）
+│   ├── {module}/             # 业务模块（如 work、localTag）
 │   │   ├── handler.go        # Handler（Wails Bind）
 │   │   ├── service.go        # 业务逻辑
-│   │   ├── repository.go     # 数据访问接口
-│   │   ├── repository_impl.go # 数据访问实现
-│   │   └── model.go          # 领域实体
-│   │   └── query.go          # 查询DTO
-│   ├── database/             # 数据库基础设施
-│   │   ├── db.go             # 数据库连接
-│   │   ├── transaction.go    # 事务封装
-│   │   └── resources/        # SQL 迁移文件
-│   ├── model/                # 后端领域模型
-│   └── base/model            # 共享模型
-│       └── entity/           # 实体 子目录
-│       └── dto/              # DTO 子目录
+│   │   ├── repository.go     # 数据访问接口 + 实现
+│   │   └── query.go          # 查询 DTO
+│   ├── base/model/           # 共享模型（entity/、dto/、query/）
+│   ├── database/             # 数据库基础设施（连接、BaseRepository、事务）
+│   ├── migration/            # GORM 自动迁移入口
+│   └── plugin/               # 插件加载器、扩展点注册中心
 ├── frontend/src/             # 前端 (Vue 3)
 │   ├── router/               # Vue Router 配置
 │   ├── views/                # 视图组件
 │   ├── components/           # Vue 组件
 │   ├── store/                # Pinia 状态管理
-│   ├── model/                # 前端 DTO/类型定义
-│   │   └── util/             # 工具类型
+│   ├── model/                # 前端类型（dto/interface/slot/tour/util/constant）
 │   ├── utils/                # 前端工具函数
-│   └── apis/                 # API 包装器
-├── plugin/                    # 插件目录
-└── wails.json               # Wails 配置
+│   └── apis/http/            # Wrapper 封装 Wails bindings
+├── frontend/bindings/        # 自动生成的 Wails TS bindings（禁止手改）
+├── plugin/package/           # 插件运行时目录（{publicId}/{version}/）
+├── config.yaml               # 应用配置
+└── build/config.yml          # Wails 开发模式配置
 
 ## 开发模式
 
@@ -95,7 +91,7 @@ library-squirrel/
 1. `backend/{module}/handler.go` 创建 Handler（Wails Bind 方法）
 2. `backend/{module}/service.go` 实现业务逻辑
 3. `backend/{module}/repository.go` 实现数据访问
-4. 在 `wails.go` 中将 Handler 注入到 App 结构体
+4. 在 `app.go` 中将 Handler 注入到 App 结构体
 5. 执行 `wails3 generate bindings -ts` 生成前端 TypeScript 绑定
 6. 前端通过 `window.api.handlerMethod(args)` 调用
 
@@ -125,20 +121,24 @@ await router.push('/settings')
 await router.push({ name: 'Settings' })
 ```
 
-路由配置示例（`routes.ts`）:
+路由配置示例（`frontend/src/router/routes.ts`）:
 
 ```typescript
-export const routes = [
+import type { RouteRecordRaw } from 'vue-router'
+
+export const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: () => import('@renderer/src/views/MainLayout.vue'),
+    name: 'MainLayout',
+    component: () => import('@renderer/MainLayout.vue'),
     children: [
       {
         path: '',
         name: 'Home',
-        component: () => import('@renderer/components/main/MainPageWrapper.vue'),
+        component: () => import('@renderer/views/MainView.vue'),
         meta: { title: '主页', icon: 'HomeFilled', order: 0 }
       }
+      // 其他内置路由由 initBuiltinMenus 注册
     ]
   }
 ]
@@ -159,6 +159,11 @@ export const routes = [
 - 内容类型（ContentType）：`vueSource`、`precompiled`、`code`、`html`
 
 ## 更新记录
+
+### 2026-06-25
+- [修正] 前端路径别名：移除不存在的 `@shared/*`、`src/renderer/`、`src/shared/`，对齐实际 `@renderer/@bindings/@apis`（均指向 `frontend/`）
+- [修正] 核心目录树：移除虚构的 `repository_impl.go`/`model.go`/`backend/model/`/`database/resources/`(SQL 迁移)/`wails.json`；补 `frontend/bindings/`、`backend/migration/`、`plugin/package/`
+- [修正] Handler 注册位置 `wails.go` → `app.go`；路由示例对齐真实 `routes.ts`
 
 ### 2026-05-06
 - [重构] 插件静态资源模块：声明式 Slot 注册、StaticResourceService、PluginAwareAssetHandler
