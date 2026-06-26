@@ -1,6 +1,10 @@
 {
   "permissions": {
     "defaultMode": "acceptEdits",
+    "allow": [
+      "mcp__sqlite3-database-query__sqlite3-database-query",
+      "Bash(protoc *)"
+    ],
     "additionalDirectories": [
       "../library-squirrel-sdk",
       "../library-squirrel-plugin-local",
