@@ -247,7 +247,7 @@ function rowClassName(data: { row: unknown; rowIndex: number }) {
   }
 }
 
-async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, sections?: number[]) {
+async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, storeRoles?: string[], includeWorkInfo?: boolean) {
   switch (code) {
     case TaskOperationCodeEnum.VIEW:
       dialogData.value = row
@@ -266,7 +266,7 @@ async function handleOperationButtonClicked(row: TaskProgressTreeDTO, code: Task
       await startTask(row, true)
       break
     case TaskOperationCodeEnum.REDOWNLOAD:
-      await redownloadSections(row, sections ?? [])
+      await redownloadSections(row, storeRoles ?? [], includeWorkInfo ?? false)
       break
     case TaskOperationCodeEnum.CANCEL:
       taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
@@ -341,10 +341,10 @@ async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<bool
   // }
 }
 
-// 板块单独执行：以当前行 taskId 发起对应板块的重新下载（A 作品信息 / B 资源 / C 封面）
-async function redownloadSections(row: TaskProgressTreeDTO, sections: number[]): Promise<void> {
+// 板块单独执行:以当前行 taskId 发起对应板块的重新下载(资源 storeRoles + 可选作品元数据)
+async function redownloadSections(row: TaskProgressTreeDTO, storeRoles: string[], includeWorkInfo: boolean): Promise<void> {
   try {
-    await taskApi.taskRedownload([getRowTaskId(row)], sections)
+    await taskApi.taskRedownload([getRowTaskId(row)], storeRoles, includeWorkInfo)
   } catch (e: any) {
     ElMessage.error(`重新下载板块失败：${e.message}`)
   }

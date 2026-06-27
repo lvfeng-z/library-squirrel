@@ -2,7 +2,7 @@
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
-import { ALL_SECTIONS, SectionCode } from '@renderer/constants/sectionCode.ts'
+import { ALL_STORE_ROLES, StoreRole } from '@renderer/constants/sectionCode.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import {computed, Ref, ref, toRaw} from 'vue'
@@ -11,7 +11,7 @@ import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squi
 // props
 const props = defineProps<{
   row: TaskProgressTreeDTO
-  buttonClicked: (row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, sections?: number[]) => void
+  buttonClicked: (row: TaskProgressTreeDTO, code: TaskOperationCodeEnum, storeRoles?: string[], includeWorkInfo?: boolean) => void
 }>()
 
 // 变量
@@ -179,39 +179,42 @@ function isTerminalState(): boolean {
     status.value === TaskStatusEnum.FAILED
   )
 }
-// 板块勾选状态（终态 popover 多选，每次打开默认全不选 = 全集）
-const sectionSelected: Ref<number[]> = ref([])
+// 资源板块勾选(store_type 集合);作品元数据板块独立勾选。每次打开默认全不选 = 全集
+const storeRolesSelected: Ref<string[]> = ref([])
+const workInfoSelected: Ref<boolean> = ref(false)
 // 板块多选提示文本
 const sectionTooltips: Ref<string> = computed(() => {
-  if (sectionSelected.value.length === 0) {
+  if (storeRolesSelected.value.length === 0 && !workInfoSelected.value) {
     return '可选择部分执行'
-  } else if (sectionSelected.value.length === 3) {
-    return '全部执行'
   }
   const sectionText: string[] = []
-  for (const section of sectionSelected.value) {
-    switch (section) {
-      case SectionCode.WORK_INFO:
-        sectionText.push('作品信息')
-        break
-      case SectionCode.RESOURCE:
-        sectionText.push('资源')
-        break
-      case SectionCode.THUMBNAIL:
-        sectionText.push('缩略图')
-        break
+  if (workInfoSelected.value) {
+    sectionText.push('作品信息')
+  }
+  for (const role of storeRolesSelected.value) {
+    if (role === StoreRole.MAIN) {
+      sectionText.push('资源')
+    } else if (role === StoreRole.THUMBNAIL) {
+      sectionText.push('缩略图')
     }
   }
   return '仅执行 ' + sectionText.join('、')
 })
 // 板块弹出层可见性
 const sectionPopoverVisible: Ref<boolean> = ref(false)
-// 执行板块重执行：收集勾选项，不勾选则下发全集；执行后重置勾选
+// 执行板块重执行:收集勾选项,都不勾选则下发全集;执行后重置勾选
 function handleExecuteSections() {
   sectionPopoverVisible.value = false
-  const temp = toRaw(sectionSelected.value)
-  props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, temp.length > 0 ? temp : ALL_SECTIONS)
-  sectionSelected.value = []
+  const roles = toRaw(storeRolesSelected.value)
+  const includeWorkInfo = workInfoSelected.value
+  // 都不勾选 = 全集(全部资源 + 作品元数据)
+  if (roles.length === 0 && !includeWorkInfo) {
+    props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, [...ALL_STORE_ROLES], true)
+  } else {
+    props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, roles, includeWorkInfo)
+  }
+  storeRolesSelected.value = []
+  workInfoSelected.value = false
 }
 // 字节数转换为可读的数据量数值
 function formatBytes(bytes: number) {
@@ -287,17 +290,17 @@ function formatBytes(bytes: number) {
             <template #content>
               {{ sectionTooltips }}
             </template>
-            <el-checkbox-group v-model="sectionSelected">
-              <el-checkbox :value="SectionCode.WORK_INFO">
-                作品信息
-              </el-checkbox>
-              <el-checkbox :value="SectionCode.RESOURCE">
+            <el-checkbox-group v-model="storeRolesSelected">
+              <el-checkbox :value="StoreRole.MAIN">
                 资源
               </el-checkbox>
-              <el-checkbox :value="SectionCode.THUMBNAIL">
+              <el-checkbox :value="StoreRole.THUMBNAIL">
                 缩略图
               </el-checkbox>
             </el-checkbox-group>
+            <el-checkbox v-model="workInfoSelected" style="margin-top: 4px">
+              作品信息
+            </el-checkbox>
           </el-tooltip>
         </div>
       </el-popover>

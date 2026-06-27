@@ -184,6 +184,19 @@ func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int
 	return result.Error
 }
 
+// UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)
+func (r *TaskRepository) UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error {
+	if len(taskIds) == 0 {
+		return nil
+	}
+	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&domain.Task{}).Where("id IN ?", taskIds).
+		Updates(map[string]any{
+			"store_roles":       storeRoles,
+			"include_work_info": includeWorkInfo,
+		})
+	return result.Error
+}
+
 // BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id（CASE WHEN 模式）
 func (r *TaskRepository) BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error {
 	if len(updates) == 0 {

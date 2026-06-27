@@ -869,6 +869,8 @@ func (app *App) initAdvancedServices() error {
 		app.ResourceService,        // ResourceUpdater
 		app.BackupService,          // BackupReader
 	)
+	// resource_store 仓储(多轨续传/mountResourceStores 使用)
+	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -877,6 +879,7 @@ func (app *App) initAdvancedServices() error {
 		pluginExecFactory,
 		&taskManager.TaskDeps{
 			WorkInfoSaver:           app.WorkService, // 实现 WorkInfoSaver 接口
+			WorkMetaLoader:          app.WorkService, // 实现 WorkMetaLoader 接口(资源板块单独重下时取命名元数据)
 			ResourceSaver:           resourceSaverAdapter,
 			WorkDirProvider:         app.SettingsService,
 			FileNameFormatProvider:  app.SettingsService,
@@ -887,7 +890,8 @@ func (app *App) initAdvancedServices() error {
 			Pusher:                  taskManagerPusher,
 			StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
 			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
-			ThumbnailStoreWriter:    app.PersistentStoreService, // 实现 ThumbnailStoreWriter 接口
+			ResourceStoreReader:     resourceStoreRepo,           // 实现 ResourceStoreReader 接口
+			ResourceStoreWriter:     resourceStoreRepo,           // 实现 ResourceStoreWriter 接口
 			Transactor:              &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口

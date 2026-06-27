@@ -1,12 +1,11 @@
-// 板块代码（与后端 taskManager.parseSections 契约一致：A=1/B=2/C=3）
-export const SectionCode = {
-  // 板块 A：作品信息
-  WORK_INFO: 1,
-  // 板块 B：资源文件
-  RESOURCE: 2,
-  // 板块 C：封面
-  THUMBNAIL: 3
+// 资源 store_type(与后端 entity.StoreType* 常量一致)
+export const StoreRole = {
+  MAIN: 'main', // 主资源
+  THUMBNAIL: 'thumbnail', // 缩略图/封面
+  VIDEO_TRACK: 'videoTrack', // 视频轨(预留,多轨阶段启用)
+  AUDIO_TRACK: 'audioTrack', // 音频轨(预留,多轨阶段启用)
+  MERGED: 'merged' // 合并产物(预留,合并动作产出)
 } as const
 
-// 全部板块代码（用户不勾选任何板块时下发，等价完整重执行）
-export const ALL_SECTIONS: number[] = [SectionCode.WORK_INFO, SectionCode.RESOURCE, SectionCode.THUMBNAIL]
+// 全集资源角色(用户不勾选任何资源板块时下发,等价完整资源重执行)
+export const ALL_STORE_ROLES: string[] = [StoreRole.MAIN, StoreRole.THUMBNAIL]

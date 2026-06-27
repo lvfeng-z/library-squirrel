@@ -2,7 +2,6 @@ package taskManager
 
 import (
 	"context"
-	"io"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -21,28 +20,26 @@ type TaskExecutorInterface interface {
 	// Start 开始任务
 	// ctx: 上下文，用于取消和超时控制
 	// task: 任务信息
-	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
-	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *domain.Task) (io.ReadCloser, *sdkdto.WorkResponse, error)
+	// storeRoles: 本次执行所选 store_type 子集(空=全量),插件据此选择性产出
+	// 返回 StoreSpec 流集合(含 downloaded 与 derived)、WorkResponse 或错误
+	// 调用方负责关闭各 StoreSpec.ReadCloser
+	Start(ctx context.Context, task *domain.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 
-	// Pause 暂停任务
+	// Pause 暂停任务（任务级，广播到全部 stream）
 	// ctx: 上下文
 	// param: 任务参数，包含任务和资源信息
 	// 返回错误（插件可能不支持暂停）
 	Pause(ctx context.Context, param *sdkdto.TaskResParam) error
 
-	// Stop 停止任务
+	// Stop 停止任务（任务级）
 	// ctx: 上下文
 	// param: 任务参数
 	Stop(ctx context.Context, param *sdkdto.TaskResParam) error
 
 	// Resume 恢复任务
 	// ctx: 上下文
-	// param: 任务参数（param.DownloadedBytes 为已下载字节数）
-	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
-	// 调用方负责关闭返回的 ReadCloser
-	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
-
-	// GetThumbnail 获取缩略图
-	GetThumbnail(ctx context.Context, task *domain.Task) (*sdkdto.ThumbnailResponse, error)
+	// param: 续传参数（StreamOffsets 为各 downloaded 轨已写入字节数）
+	// 返回 StoreSpec 流集合、WorkResponse 或错误
+	// 调用方负责关闭各 StoreSpec.ReadCloser
+	Resume(ctx context.Context, param *sdkdto.TaskResumeParam) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 }

@@ -1,13 +1,13 @@
 package taskManager
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,44 +47,57 @@ const (
 	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
-// runMode 板块执行选择（结构体承载所选板块集合）
+// runMode 板块执行选择:workInfo 为作品元数据独立板块,storeRoles 为所选资源 store_type 集合
 type runMode struct {
-	workInfo  bool // 板块 A：作品信息
-	resource  bool // 板块 B：资源文件
-	thumbnail bool // 板块 C：封面
+	workInfo   bool     // 作品元数据板块
+	storeRoles []string // 资源板块:所选 store_type 子集(main/thumbnail/videoTrack/...)
 }
 
-// runModeFull 全部三板块（完整下载）
-var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
+// allStoreRoles 全集资源角色;随资源类型扩展追加
+var allStoreRoles = []string{
+	entity.StoreTypeMain,
+	entity.StoreTypeThumbnail,
+}
 
-func (m runMode) hasWorkInfo() bool  { return m.workInfo }
-func (m runMode) hasResource() bool  { return m.resource }
-func (m runMode) hasThumbnail() bool { return m.thumbnail }
+// runModeFull 全量执行(全部元数据 + 全部资源角色)
+var runModeFull = runMode{workInfo: true, storeRoles: allStoreRoles}
 
-// 板块代码（IPC 契约，顺序码）：前端 Redownload(sections) 传入
-const (
-	sectionCodeWorkInfo  = 1 // 板块 A
-	sectionCodeResource  = 2 // 板块 B
-	sectionCodeThumbnail = 3 // 板块 C
-)
+func (m runMode) hasWorkInfo() bool { return m.workInfo }
 
-// parseSections 将板块代码数组解析为 runMode；空数组兜底为全集（前端恒下发非空，此处防御）
-func parseSections(codes []int) runMode {
-	mode := runMode{}
-	for _, c := range codes {
-		switch c {
-		case sectionCodeWorkInfo:
-			mode.workInfo = true
-		case sectionCodeResource:
-			mode.resource = true
-		case sectionCodeThumbnail:
-			mode.thumbnail = true
-		}
-	}
-	if !mode.workInfo && !mode.resource && !mode.thumbnail {
+// hasStore 是否选择了指定 store_type
+func (m runMode) hasStore(storeType string) bool {
+	return slices.Contains(m.storeRoles, storeType)
+}
+
+// hasAnyStore 是否选择了任意资源板块(决定是否产生任务终态)
+func (m runMode) hasAnyStore() bool { return len(m.storeRoles) > 0 }
+
+// runModeFromTask 从 task 持久化字段派生 runMode
+// StoreRoles 未设置(NULL)= 首次执行,返回全量;已设置(Redownload)= 按字段还原
+func runModeFromTask(t *entity.Task) runMode {
+	if !t.StoreRoles.Valid {
 		return runModeFull
 	}
-	return mode
+	return runMode{
+		workInfo:   t.IncludeWorkInfo,
+		storeRoles: parseStoreRoles(t.StoreRoles),
+	}
+}
+
+// parseStoreRoles 解析逗号分隔的 store_type 字符串为切片
+func parseStoreRoles(s sql.NullString) []string {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	parts := strings.Split(s.String, ",")
+	roles := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			roles = append(roles, p)
+		}
+	}
+	return roles
 }
 
 // taskStateName 任务状态名称映射
@@ -131,28 +144,29 @@ type TaskExecutor interface {
 	// CreateWorkInfo 创建作品信息
 	CreateWorkInfo(ctx context.Context, task *entity.Task) (*sdkdto.WorkResponse, error)
 
-	// Start 开始任务
-	// 返回资源读取器（io.ReadCloser）、WorkResponse 或错误
-	// 调用方负责关闭返回的 ReadCloser
-	Start(ctx context.Context, task *entity.Task) (io.ReadCloser, *sdkdto.WorkResponse, error)
+	// Start 开始任务,按 storeRoles 选择性返回 StoreSpec 流集合(含 downloaded 与 derived)、WorkResponse 或错误
+	// 调用方负责关闭各 StoreSpec.ReadCloser
+	Start(ctx context.Context, task *entity.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 
-	// Pause 暂停任务
-	// 返回是否真正暂停成功（插件可能不支持暂停）
+	// Pause 暂停任务（任务级，广播到全部 stream）
 	Pause(ctx context.Context, param *sdkdto.TaskResParam) error
 
-	// Stop 停止任务
+	// Stop 停止任务（任务级）
 	Stop(ctx context.Context, param *sdkdto.TaskResParam) error
 
-	// Resume 恢复任务
-	Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error)
-
-	// GetThumbnail 获取缩略图
-	GetThumbnail(ctx context.Context, task *entity.Task) (*sdkdto.ThumbnailResponse, error)
+	// Resume 恢复任务:按 StreamOffsets 续传,返回新的 StoreSpec 流集合
+	Resume(ctx context.Context, param *sdkdto.TaskResumeParam) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 }
 
 // WorkInfoSaver 作品完整信息保存接口
 type WorkInfoSaver interface {
 	SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *sdkdto.WorkResponse) (int64, error)
+}
+
+// WorkMetaLoader 已有作品命名元数据加载接口
+// 资源板块单独重下(未跑作品元数据板块)时,从已有作品获取文件名模板所需元数据(作者等),与板块选择解耦
+type WorkMetaLoader interface {
+	LoadWorkMeta(ctx context.Context, workId int64) (*sdkdto.WorkResponse, error)
 }
 
 // ResourceSaver 资源保存接口
@@ -219,15 +233,22 @@ type StoreReader interface {
 	GetAbsPath(store *entity.PersistentStore) string
 }
 
-// ThumbnailStoreWriter 缩略图存储接口，接受 io.Reader 一步完成存入
-type ThumbnailStoreWriter interface {
-	Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error)
+// ResourceStoreReader resource_store 关联查询接口(多轨续传按 role 遍历 store)
+type ResourceStoreReader interface {
+	ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error)
+}
+
+// ResourceStoreWriter resource_store 关联写入接口(saveResource 多 store 挂载)
+type ResourceStoreWriter interface {
+	SaveBatch(ctx context.Context, stores []*entity.ResourceStore) error
+	DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error
 }
 
 // TaskDeps ManagedTask 的共享依赖集合
 // 将 NewManager 和 NewManagedTask 的大量参数收敛为一个结构体，新增依赖只需改此处
 type TaskDeps struct {
 	WorkInfoSaver           WorkInfoSaver
+	WorkMetaLoader          WorkMetaLoader
 	ResourceSaver           ResourceSaver
 	WorkDirProvider         WorkDirProvider
 	FileNameFormatProvider  FileNameFormatProvider
@@ -238,10 +259,77 @@ type TaskDeps struct {
 	Pusher                  TaskProgressPusher
 	StoreStreamer           StoreStreamer
 	StoreReader             StoreReader
-	ThumbnailStoreWriter    ThumbnailStoreWriter
+	ResourceStoreReader     ResourceStoreReader
+	ResourceStoreWriter     ResourceStoreWriter
 	Transactor              Transactor
 	PendingResourceUpdater  PendingResourceUpdater
 	StoreFileCleaner        StoreFileCleaner
+}
+
+// ==== 多流控制器 ====
+
+// streamState 单条流的执行状态
+type streamState int32
+
+const (
+	streamDownloading streamState = iota
+	streamCompleted
+	streamPaused
+	streamFailed
+	streamCanceled
+)
+
+// streamResultKind 单条流 copyLoop 的结果分类
+type streamResultKind int
+
+const (
+	resultOK streamResultKind = iota // 完成
+	resultPaused
+	resultCanceled
+	resultFailed
+)
+
+// streamResult 单条流 copyLoop 的结果
+type streamResult struct {
+	kind   streamResultKind
+	errMsg string
+}
+
+// streamController 管理单个 store 的传输(downloaded/derived 通用:reader→store 拷贝)
+type streamController struct {
+	role        string                        // store_type(main/thumbnail/videoTrack/...)
+	generation  string                        // downloaded | derived
+	format      string                        // 文件扩展名
+	size        int64                         // 远程大小;-1 未知
+	suggestName string                        // 插件建议文件名
+	continuable bool                          // 是否支持续传(derived 恒为 false)
+
+	reader      io.ReadCloser                  // 资源数据流(由调用方关闭)
+	storeWriter persistentStore.StoreWriter    // 当前写入的 StoreWriter
+	storeId     int64                          // PersistentStore 记录 ID
+	relPath     string                         // StoreStream 的相对路径(事务回滚/清理用)
+	written     int64                          // 已写入字节数(mu 保护)
+	state       atomic.Int32                   // streamState
+	mu          sync.Mutex                     // 保护 written 与 drain 期间的 reader/storeWriter 访问
+}
+
+// newStreamController 构建单流控制器
+func newStreamController(spec *sdkdto.StoreSpec, storeId int64, writer persistentStore.StoreWriter, relPath string) *streamController {
+	sc := &streamController{
+		role:        spec.Role,
+		generation:  spec.Generation,
+		format:      spec.Format,
+		size:        spec.Size,
+		suggestName: spec.SuggestName,
+		storeWriter: writer,
+		storeId:     storeId,
+		relPath:     relPath,
+		reader:      spec.ReadCloser,
+	}
+	if spec.Continuable != nil {
+		sc.continuable = *spec.Continuable
+	}
+	return sc
 }
 
 // ManagedTask 任务运行控制结构体
@@ -282,17 +370,15 @@ type ManagedTask struct {
 	task   *entity.Task
 	workId int64
 
-	// 资源响应（插件返回）
-	resourceResp *sdkdto.WorkResponse
+	// 作品信息响应(Start/Resume 返回;供文件名模板 token data;不再承载资源细节)
+	workResp *sdkdto.WorkResponse
 
-	// 暂停/恢复协调通道
-	pauseCh   chan struct{} // Pause() 发信号，downloadLoop 消费
+	// 多流控制器集合(按本次所选 storeRoles 过滤后的 spec 构建)
+	streams []*streamController
 
-	// 下载状态（跨暂停/恢复周期存活）
-	currentReader io.ReadCloser               // 当前数据流 reader
-	storeWriter   persistentStore.StoreWriter // 当前写入的 StoreWriter
-	workStoreId   int64                       // StoreStream 返回的作品资源 store ID
-	totalWritten  int64                       // 已写入字节数
+	// 暂停/恢复协调通道(close 广播到全部 stream goroutine;prepareForResume 重建)
+	pauseCh  chan struct{}
+	pauseMu  sync.Mutex
 
 	// atomic 进度快照字段，供 BuildSnapshot 并发安全读取
 	progressTotal    atomic.Int64 // 资源总大小
@@ -319,7 +405,7 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		deps:       deps,
 		task:       task,
 		workId:     taskId,
-		pauseCh:    make(chan struct{}, 1),
+		pauseCh:    make(chan struct{}),
 	}
 }
 
@@ -350,23 +436,23 @@ func (m *ManagedTask) run() runResult {
 		}
 	}
 	m.setState(TaskStateProcessing)
-	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={A:%v,B:%v,C:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.hasResource(), m.runMode.hasThumbnail(), m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
+	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, stores:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeRoles, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
 
 	// 统一走板块组合执行（全集等价完整下载含查重；真子集按所选板块）
 	return m.runSectionCombo()
 }
 
-// runSectionCombo 板块组合执行：严格按 runMode 所选板块，A→B→C 顺序执行，末尾统一终态化
-// 含 B（含全集）时走查重（ConfirmReplace 两段式）并产生终态；无 B 为非终态（保持执行前状态、不持久化）
+// runSectionCombo 板块组合执行:严格按 runMode 所选板块执行
+// 含任一资源板块(含全集)时走查重(ConfirmReplace 两段式)并产生终态;仅 workInfo 为非终态(保持执行前状态、不持久化)
 func (m *ManagedTask) runSectionCombo() runResult {
-	// workdir 检查（B/C 需要，置于查重前避免无效确认）
-	if (m.runMode.hasResource() || m.runMode.hasThumbnail()) && m.deps.WorkDirProvider.GetWorkDir() == "" {
+	// workdir 检查（资源板块需要，置于查重前避免无效确认）
+	if m.runMode.hasAnyStore() && m.deps.WorkDirProvider.GetWorkDir() == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
-	// 含 B：查重（fallback；主路径在 Manager.batchCheckDuplicates）
-	if m.runMode.hasResource() && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
+	// 含 main：查重（fallback；主路径在 Manager.batchCheckDuplicates）
+	if m.runMode.hasStore(entity.StoreTypeMain) && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
 		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 		if err == nil && existing != nil {
@@ -383,28 +469,35 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		}
 	}
 
-	// workId 定位 + B 备份
-	if m.runMode.hasResource() {
-		// B：查重命中（existingWorkId>0，确认后重入或 batchCheckDuplicates 设置）
+	// workId 定位 + 替换判定
+	// 任何资源板块(main/thumbnail/...)在已有作品上重执行都视为替换,需备份旧 store;不限于 main
+	if m.runMode.hasStore(entity.StoreTypeMain) {
+		// 查重命中(existingWorkId>0，确认后重入或 batchCheckDuplicates 设置)
 		if m.existingWorkId > 0 {
-			m.isReplace = true
-			m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.existingWorkId, backup.StoreTypeWork)
 			m.workId = m.existingWorkId
 			m.existingWorkId = 0
+			m.isReplace = true
 		} else if !m.runMode.hasWorkInfo() {
-			// B-only 但查重未命中作品（重执行前提是作品已存在，正常不发生）
+			// 含 main 的重执行必须定位到已有作品(否则无处挂载主资源)
 			logger.Log.Errorf("[TaskManager] 任务 %d 资源重执行未定位到作品", m.taskId)
 			return m.comboFail("未找到任务对应的作品，无法重新下载资源")
 		}
-		// A+B 且查重未命中：A 的 SaveWorkInfo 会提供 workId
-	} else if !m.runMode.hasWorkInfo() {
-		// 无 B 无 A（C-only）：由任务记录定位已有作品
+		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
+	} else if !m.runMode.hasWorkInfo() && m.runMode.hasAnyStore() {
+		// 非 main 资源板块(纯缩略图等):由任务记录定位已有作品,标记为替换
 		workId, err := m.resolveWorkIdByTask()
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("定位作品失败: %v", err))
 		}
 		m.workId = workId
+		m.isReplace = true
+	}
+
+	// 替换场景:备份所选板块对应的旧 store。
+	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就备份(备份→生成→失败还原,统一替换语义)。
+	if m.isReplace && m.runMode.hasAnyStore() {
+		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.workId, toBackupStoreTypes(m.runMode.storeRoles)...)
 	}
 
 	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
@@ -416,52 +509,47 @@ func (m *ManagedTask) runSectionCombo() runResult {
 			logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("创建作品信息失败: %v", err))
 		}
-		workId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
+		savedWorkId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("保存作品信息失败: %v", err))
 		}
-		m.workId = workId
+		m.workId = savedWorkId
 	}
 
-	// 板块 B：资源文件（终态；downloadLoop 完成时若 hasThumbnail 顺带生成缩略图）
-	if m.runMode.hasResource() {
-		reader, startResp, err := m.pluginExec.Start(m.ctx, m.task)
+	// 资源板块:有任意 store 时,Start 按所选 storeRoles 选择性产出
+	if m.runMode.hasAnyStore() {
+		specs, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.runMode.storeRoles)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
-			return m.comboFail(fmt.Sprintf("获取资源读取器失败: %v", err))
+			return m.comboFail(fmt.Sprintf("获取资源流集合失败: %v", err))
 		}
-		// 合并 A 的作品信息到 startResp（供文件名模板 resolveLocalPath 使用；A 未执行则 workResp 为 nil）
-		if workResp != nil {
-			startResp.Work = workResp.Work
-			startResp.SiteAuthors = workResp.SiteAuthors
-			startResp.LocalAuthors = workResp.LocalAuthors
-			startResp.SiteTags = workResp.SiteTags
-			startResp.LocalTags = workResp.LocalTags
+		// 合并作品元数据到 startResp(供文件名模板 resolveMainPath 使用):
+		// 本次跑了作品元数据板块(A)则用其结果;否则(资源板块单独重下)从已有作品加载命名元数据
+		m.mergeWorkMetaForNaming(startResp, workResp)
+		selected := m.filterSpecsByRoles(specs)
+		// 防御性排空未选资源角色的 reader:正常情况下插件已按 storeRoles 只产出所选 role(selected==specs,无操作);
+		// 若插件多产出了未选 role,其 io.Pipe 无消费者会永久阻塞 demux(多流复用一条 gRPC stream),此处兜底排空
+		m.drainUnselectedReaders(specs, selected)
+		if len(selected) == 0 {
+			logger.Log.Errorf("[TaskManager] 任务 %d 插件未产出所选资源角色: %v", m.taskId, m.runMode.storeRoles)
+			return m.comboFail("插件未产出所选资源类型")
 		}
-		return m.startDownload(reader, startResp)
+		return m.startDownload(selected, startResp)
 	}
 
-	// 板块 C：封面（无 B 时；doSaveThumbnail(force=true) 内部"备份→生成→失败还原"）
-	if m.runMode.hasThumbnail() {
-		if thumbErr := m.saveThumbnailByWorkId(m.ctx, m.workId, true); thumbErr != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d 缩略图保存失败: %v", m.taskId, thumbErr)
-			return m.comboFail(fmt.Sprintf("缩略图保存失败: %v", thumbErr))
-		}
-	}
-
-	// 无 B：非终态成功，保持执行前状态、不持久化
+	// 无资源板块(纯 workInfo):非终态成功,保持执行前状态、不持久化
 	m.finishNonTerminalSection("")
 	return runResultDone
 }
 
 // comboFail 组合执行失败处理
-// 暂停则返回 Paused；含 B 为终态失败（PushError + setFailed + run() defer 还原备份），无 B 为非终态（finishNonTerminalSection 内部 PushError + 恢复执行前状态）
+// 暂停则返回 Paused；含资源板块为终态失败（PushError + setFailed + run() defer 还原备份），无资源板块为非终态（finishNonTerminalSection 内部 PushError + 恢复执行前状态）
 func (m *ManagedTask) comboFail(errMsg string) runResult {
 	if m.abortedByPause() {
 		return runResultPaused
 	}
-	if m.runMode.hasResource() {
+	if m.runMode.hasAnyStore() {
 		if m.deps.Pusher != nil {
 			m.deps.Pusher.PushError(m.taskId, errMsg)
 		}
@@ -472,28 +560,39 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 	return runResultDone
 }
 
-// startDownload 解析保存路径、创建资源记录并进入下载循环
-// Full 与 ResourceOnly 共享此流程，B 板块隔离（saveResource 保留缩略图、downloadLoop 跳过缩略图）由 runMode 控制
-func (m *ManagedTask) startDownload(reader io.ReadCloser, startResp *sdkdto.WorkResponse) runResult {
-	m.resourceResp = startResp
-	relativePath, fileName := m.resolveLocalPath(startResp)
+// startDownload 为每个 spec 建存储、挂 resource_store、进入多流下载循环
+func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) runResult {
+	m.workResp = workResp
 
-	// 事务 2：StoreStream(DB记录) + Resource Save + PendingResourceID 更新
-	var writer persistentStore.StoreWriter
-	var storeId int64
-	var resourceId int64
+	// 解析主资源路径(供主轨与缩略图派生路径)
+	mainSpec := findSpec(specs, entity.StoreTypeMain)
+	if mainSpec == nil {
+		// 无主轨(如纯缩略图重下):以首个 spec 占位解析主路径
+		if len(specs) > 0 {
+			mainSpec = specs[0]
+		}
+	}
+	var mainRelPath, mainFileName string
+	if mainSpec != nil {
+		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, workResp)
+	}
 
+	// 事务:为每个 spec 建 StoreStream + 挂 resource_store + Resource Save + PendingResourceID 更新
+	streams := make([]*streamController, 0, len(specs))
 	txErr := m.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
-		// StoreStream：创建文件 + PersistentStore DB 记录（DB 参与事务）
-		var storeErr error
-		storeId, writer, storeErr = m.deps.StoreStreamer.StoreStream(txCtx, relativePath, fileName)
-		if storeErr != nil {
-			return storeErr
+		mounts := make([]pendingMount, 0, len(specs))
+		for _, spec := range specs {
+			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName)
+			storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
+			if storeErr != nil {
+				return storeErr
+			}
+			streams = append(streams, newStreamController(spec, storeId, writer, relPath))
+			mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
 		}
 
-		// 保存 Resource（替换场景更新 / 新建场景创建）
-		var resourceErr error
-		resourceId, resourceErr = m.saveResource(txCtx, m.workId, storeId, startResp)
+		// 保存 Resource(替换场景更新 / 新建场景创建) + 挂 resource_store
+		resourceId, resourceErr := m.saveResource(txCtx, m.workId, mounts)
 		if resourceErr != nil {
 			return resourceErr
 		}
@@ -503,11 +602,14 @@ func (m *ManagedTask) startDownload(reader io.ReadCloser, startResp *sdkdto.Work
 		return m.deps.PendingResourceUpdater.UpdatePendingResourceID(txCtx, m.taskId, m.task.PendingResourceID)
 	})
 	if txErr != nil {
-		// 事务回滚：DB 记录已全部回滚，需显式清理文件
-		if writer != nil {
-			writer.Close()
+		// 事务回滚：DB 记录已全部回滚，需显式关闭句柄并清理文件
+		for _, s := range streams {
+			if s.storeWriter != nil {
+				s.storeWriter.Close()
+			}
+			m.deps.StoreFileCleaner.CleanupFile(s.relPath)
 		}
-		m.deps.StoreFileCleaner.CleanupFile(relativePath)
+		streams = nil
 		logger.Log.Errorf("[TaskManager] 任务 %d 创建资源事务失败: %v", m.taskId, txErr)
 		if m.abortedByPause() {
 			return runResultPaused
@@ -516,12 +618,23 @@ func (m *ManagedTask) startDownload(reader io.ReadCloser, startResp *sdkdto.Work
 		return runResultDone
 	}
 
-	// 保存下载状态并进入下载循环
-	m.currentReader = reader
-	m.storeWriter = writer
-	m.workStoreId = storeId
-	m.totalWritten = 0
+	// setup 阶段暂停在事务窗口内命中:Pause 此时 len(streams)==0 走 cancel 路径,
+	// 事务用 context.Background 不受影响仍提交;此处清理已建句柄并返回暂停,避免带着已取消的 ctx 进入 downloadLoop
+	if m.abortedByPause() {
+		for _, s := range streams {
+			if s.storeWriter != nil {
+				s.storeWriter.Sync()
+				s.storeWriter.Close()
+			}
+			if s.reader != nil {
+				s.reader.Close()
+			}
+		}
+		m.streams = nil
+		return runResultPaused
+	}
 
+	m.streams = streams
 	return m.downloadLoop()
 }
 
@@ -540,12 +653,12 @@ func (m *ManagedTask) resolveWorkIdByTask() (int64, error) {
 	return work.GetID(), nil
 }
 
-// isNonTerminalMode 是否为非终态板块组合（无 B）：执行不产生任务终态、不持久化任务状态
+// isNonTerminalMode 是否为非终态板块组合（无资源板块）：执行不产生任务终态、不持久化任务状态
 func (m *ManagedTask) isNonTerminalMode() bool {
-	return !m.runMode.hasResource()
+	return !m.runMode.hasAnyStore()
 }
 
-// finishNonTerminalSection 结束 A/C 非终态板块：恢复执行前状态（任务的 DB status），不持久化
+// finishNonTerminalSection 结束 A 非终态板块：恢复执行前状态（任务的 DB status），不持久化
 // errMsg 非空表示失败，推送失败通知；空表示成功
 func (m *ManagedTask) finishNonTerminalSection(errMsg string) {
 	if errMsg != "" {
@@ -558,59 +671,39 @@ func (m *ManagedTask) finishNonTerminalSection(errMsg string) {
 	m.setState(TaskState(m.task.Status))
 }
 
-// saveResource 保存 Resource（事务内调用）
-// 替换场景：查询已有 Resource 并更新 WorkStoreID
-// 新建场景：创建新 Resource
-func (m *ManagedTask) saveResource(ctx context.Context, workId int64, storeId int64, startResp *sdkdto.WorkResponse) (int64, error) {
+// pendingMount saveResource 挂载单个 store 的中间结构
+type pendingMount struct {
+	role       string
+	generation string
+	storeId    int64
+}
+
+// saveResource 保存 Resource(事务内调用)并挂 resource_store 行
+// 替换场景:查询已有 Resource 并更新;新建场景:创建新 Resource
+// 双写:既回填旧列(WorkStoreID/ThumbnailStoreID,供未迁移的 backup/recycleBin/work/search 消费),也写 resource_store 行(新模型,供多轨续传与阶段6)
+func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []pendingMount) (int64, error) {
 	var resourceId int64
 
 	if m.isReplace {
-		// 替换场景：查询已有 Resource 并更新
-		// 优先从备份清单获取 ResourceID（有 Store 被备份的情况）
-		// 备份清单为空时（旧数据无 Store），通过 workId 查询已有 Resource
-		var existingResource *entity.Resource
-		for _, item := range m.storeBackupItems {
-			if item.StoreType == backup.StoreTypeWork {
-				existing, err := m.deps.ResourceReader.GetById(ctx, item.ResourceID)
-				if err != nil || existing == nil {
-					return 0, fmt.Errorf("查询已有 Resource(id=%d) 失败: %w", item.ResourceID, err)
-				}
-				existingResource = existing
-				break
-			}
-		}
-		if existingResource == nil {
-			// 备份清单中无 WorkStore 条目，通过 workId 查询已有 Resource
-			resources, queryErr := m.deps.ResourceReader.GetEnabledByWorkId(ctx, workId)
-			if queryErr != nil {
-				return 0, fmt.Errorf("查询作品 %d 资源失败: %w", workId, queryErr)
-			}
-			if len(resources) > 0 {
-				existingResource = resources[0]
-			}
-			// len(resources) == 0：上一次执行创建了 Work 但未创建 Resource，降级为新建
-		}
-		if existingResource != nil {
-			// 更新已有 Resource（缩略图不清除：由 doSaveThumbnail(force=true) 自管备份与覆盖，见 §7.4）
-			existingResource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
-			existingResource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
-			existingResource.ResourceComplete = 0 // 下载未完成
-			if err := m.deps.ResourceUpdater.Update(ctx, existingResource); err != nil {
+		existing := m.findReplaceResource(ctx, workId)
+		if existing != nil {
+			applyMountsToResource(existing, mounts)
+			existing.ResourceComplete = 0
+			if err := m.deps.ResourceUpdater.Update(ctx, existing); err != nil {
 				return 0, fmt.Errorf("更新 Resource 失败: %w", err)
 			}
-			resourceId = existingResource.GetID()
+			resourceId = existing.GetID()
 		}
 	}
 
 	if resourceId == 0 {
-		// 非替换场景：创建新 Resource
+		// 非替换场景或替换未定位到已有 Resource:创建新 Resource
 		resource := entity.NewResource()
 		resource.WorkID = workId
 		resource.TaskID = m.task.GetID()
 		resource.Enabled = true
-		resource.SuggestName = sql.NullString{String: startResp.Resource.SuggestName, Valid: startResp.Resource.SuggestName != ""}
+		applyMountsToResource(resource, mounts)
 		resource.ResourceComplete = 0 // 下载未完成
-		resource.WorkStoreID = sql.NullInt64{Int64: storeId, Valid: true}
 
 		var err error
 		resourceId, err = m.deps.ResourceSaver.Save(ctx, resource)
@@ -619,118 +712,257 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, storeId in
 		}
 	}
 
+	// 挂 resource_store 行(新模型):先清同 role 旧行,再插入本次产出
+	if err := m.mountResourceStores(ctx, resourceId, mounts); err != nil {
+		return 0, fmt.Errorf("挂载 resource_store 失败: %w", err)
+	}
+
 	return resourceId, nil
 }
 
-// downloadLoop 可暂停的下载循环
-// 正常下载 → 收到 pauseCh 进入 drain → 返回 runResultPaused 退出 goroutine
-func (m *ManagedTask) downloadLoop() runResult {
-	buf := make([]byte, 32*1024)
-	defer func() {
-		m.currentReader.Close()
-	}()
-	downloadStart := time.Now()
-	totalSize := int64(0)
-	if m.resourceResp != nil && m.resourceResp.Resource != nil {
-		totalSize = m.resourceResp.Resource.Size
+// findReplaceResource 替换场景定位已有 Resource(优先备份清单,回退 workId 查询)
+func (m *ManagedTask) findReplaceResource(ctx context.Context, workId int64) *entity.Resource {
+	for _, item := range m.storeBackupItems {
+		if item.StoreType == backup.StoreTypeWork {
+			existing, err := m.deps.ResourceReader.GetById(ctx, item.ResourceID)
+			if err != nil || existing == nil {
+				logger.Log.Warnf("[TaskManager] 查询已有 Resource(id=%d) 失败: %v", item.ResourceID, err)
+				continue
+			}
+			return existing
+		}
 	}
+	resources, queryErr := m.deps.ResourceReader.GetEnabledByWorkId(ctx, workId)
+	if queryErr != nil {
+		logger.Log.Warnf("[TaskManager] 查询作品 %d 资源失败: %v", workId, queryErr)
+		return nil
+	}
+	if len(resources) > 0 {
+		return resources[0]
+	}
+	return nil
+}
 
+// applyMountsToResource 回填 Resource 旧列(main→WorkStoreID,thumbnail→ThumbnailStoreID),向后兼容未迁移消费端
+func applyMountsToResource(r *entity.Resource, mounts []pendingMount) {
+	for _, mt := range mounts {
+		switch mt.role {
+		case entity.StoreTypeMain:
+			r.WorkStoreID = sql.NullInt64{Int64: mt.storeId, Valid: true}
+		case entity.StoreTypeThumbnail:
+			r.ThumbnailStoreID = sql.NullInt64{Int64: mt.storeId, Valid: true}
+		}
+	}
+}
+
+// mountResourceStores 写入 resource_store 行(替换本次产出 role 的旧关联后再插入)
+func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64, mounts []pendingMount) error {
+	if m.deps.ResourceStoreWriter == nil {
+		return nil
+	}
+	roles := uniqueRoles(mounts)
+	if err := m.deps.ResourceStoreWriter.DeleteByResourceIdAndTypes(ctx, resourceId, roles); err != nil {
+		return err
+	}
+	if len(mounts) == 0 {
+		return nil
+	}
+	stores := make([]*entity.ResourceStore, 0, len(mounts))
+	for i, mt := range mounts {
+		s := entity.NewResourceStore()
+		s.ResourceID = resourceId
+		s.StoreType = mt.role
+		s.Generation = mt.generation
+		s.StoreID = mt.storeId
+		s.OrderIdx = i
+		stores = append(stores, s)
+	}
+	return m.deps.ResourceStoreWriter.SaveBatch(ctx, stores)
+}
+
+// downloadLoop 多流并发下载循环:每条 spec 一个 goroutine 跑 read→write→累计
+// 全部 completed → Finished;任一 failed → Failed(保留已完成轨的 store);暂停 → Paused;取消 → Stop 已处理
+func (m *ManagedTask) downloadLoop() runResult {
+	// 关闭 reader(各 spec reader 由本方法负责)
+	defer m.closeStreamReaders()
+
+	downloadStart := time.Now()
+	totalSize := m.totalStreamSize()
+
+	var wg sync.WaitGroup
+	var failedMsg atomic.Value // string
+	var hasFailed atomic.Bool
+	var hasCanceled atomic.Bool
+
+	for _, s := range m.streams {
+		wg.Add(1)
+		go func(s *streamController) {
+			defer wg.Done()
+			res := s.copyLoop(m)
+			switch res.kind {
+			case resultOK:
+				// 正常完成
+			case resultPaused:
+				// 由 downloadLoop 统一判定
+			case resultCanceled:
+				hasCanceled.Store(true)
+			case resultFailed:
+				hasFailed.Store(true)
+				if res.errMsg != "" {
+					failedMsg.Store(res.errMsg)
+				}
+			}
+		}(s)
+	}
+	wg.Wait()
+
+	logger.Log.Infof("[TaskManager] downloadLoop 结束: taskId=%d, totalSize=%d, elapsed=%v", m.taskId, totalSize, time.Since(downloadStart))
+
+	// 暂停优先(stream 任一进入 paused 即任务级暂停)
+	if m.anyStreamPaused() {
+		m.setState(TaskStatePaused)
+		return runResultPaused
+	}
+	if hasCanceled.Load() {
+		// Stop 已 setFailed,直接结束
+		return runResultDone
+	}
+	if hasFailed.Load() {
+		msg := "下载失败"
+		if v := failedMsg.Load(); v != nil {
+			if s, ok := v.(string); ok && s != "" {
+				msg = s
+			}
+		}
+		m.setFailed(msg)
+		return runResultDone
+	}
+	// 全部完成
+	m.clearPendingResourceID()
+	m.setState(TaskStateFinished)
+	return runResultDone
+}
+
+// copyLoop 单流读取循环:read→write→累计,响应暂停/取消/EOF
+func (s *streamController) copyLoop(m *ManagedTask) streamResult {
+	buf := make([]byte, 32*1024)
 	for {
 		select {
-		case <-m.pauseCh:
-			// 收到暂停信号，drain 所有已发送数据直到上游关闭
-			logger.Log.Infof("[TaskManager] downloadLoop 收到暂停信号: taskId=%d, totalWritten=%d/%d, elapsed=%v", m.taskId, m.totalWritten, totalSize, time.Since(downloadStart))
-			m.drainAndPause(buf)
-			return runResultPaused
+		case <-m.pauseSignal():
+			return s.handlePause(buf)
 		case <-m.ctx.Done():
-			m.storeWriter.Abort() // 清理文件和 DB 记录
-			m.setFailed("任务被取消")
-			return runResultDone
+			s.abort()
+			s.state.Store(int32(streamCanceled))
+			return streamResult{kind: resultCanceled}
 		default:
 		}
 
-		n, readErr := m.currentReader.Read(buf)
+		n, readErr := s.reader.Read(buf)
 		if n > 0 {
-			written, writeErr := m.storeWriter.Write(buf[:n])
+			written, writeErr := s.storeWriter.Write(buf[:n])
 			if written > 0 {
-				m.totalWritten += int64(written)
+				s.mu.Lock()
+				s.written += int64(written)
+				s.mu.Unlock()
 			}
 			if writeErr != nil {
-				logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败: %v", m.taskId, writeErr)
-				m.storeWriter.Abort()
-				m.setFailed(fmt.Sprintf("写入文件失败: %v", writeErr))
-				return runResultDone
+				logger.Log.Errorf("[TaskManager] 任务 %d 写入文件失败(role=%s): %v", m.taskId, s.role, writeErr)
+				s.abort()
+				s.state.Store(int32(streamFailed))
+				return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("写入文件失败: %v", writeErr)}
 			}
-			// 报告进度
-			if m.onProgress != nil {
-				m.onProgress(m.taskId, m.resourceResp.Resource.Size, m.totalWritten)
-			}
+			m.reportProgress()
 		}
-			if readErr != nil {
-				if readErr == io.EOF {
-					// 校验下载完整性：不完整则 Abort 清理（删文件 + 删记录），避免半截文件被标记为已完成
-					if m.resourceResp.Resource.Size > 0 && m.totalWritten < m.resourceResp.Resource.Size {
-						logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整: 已下载 %d / 预期 %d", m.taskId, m.totalWritten, m.resourceResp.Resource.Size)
-						m.storeWriter.Abort()
-						m.setFailed(fmt.Sprintf("下载不完整: 已下载 %d / 预期 %d", m.totalWritten, m.resourceResp.Resource.Size))
-						return runResultDone
-					}
-					if err := m.storeWriter.Complete(); err != nil {
-						logger.Log.Errorf("[TaskManager] 任务 %d Complete 失败: %v", m.taskId, err)
-						m.setFailed(fmt.Sprintf("完成存储失败: %v", err))
-						return runResultDone
-					}
-					// 含缩略图板块时下载完成后生成缩略图（force=true：备份旧缩略图→生成新→失败还原，见 §7.4）
-					if m.runMode.hasThumbnail() {
-						m.saveThumbnail()
-					}
-					// 清除 pending_resource_id
-					m.clearPendingResourceID()
-					m.setState(TaskStateFinished)
-					logger.Log.Infof("[TaskManager] downloadLoop 正常完成: taskId=%d, totalWritten=%d/%d, elapsed=%v", m.taskId, m.totalWritten, totalSize, time.Since(downloadStart))
-					return runResultDone
-				}
-				// 非 EOF 读取错误：可能是暂停导致或真正的读取失败
-				s := m.GetState()
-				if s == TaskStatePausing || s == TaskStatePaused {
-					m.drainAndPause(buf)
-					return runResultPaused
-				}
-				logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败: %v", m.taskId, readErr)
-				m.storeWriter.Abort()
-				m.setFailed(fmt.Sprintf("下载读取失败: %v", readErr))
-				return runResultDone
+		if readErr != nil {
+			if readErr == io.EOF {
+				return s.handleEOF(m)
 			}
+			// 非 EOF 读取错误:可能是暂停/停止导致或真正的读取失败
+			if m.isPausing() {
+				return s.handlePause(buf)
+			}
+			if m.isStopping() {
+				s.abort()
+				s.state.Store(int32(streamCanceled))
+				return streamResult{kind: resultCanceled}
+			}
+			logger.Log.Errorf("[TaskManager] 任务 %d 下载读取失败(role=%s): %v", m.taskId, s.role, readErr)
+			s.abort()
+			s.state.Store(int32(streamFailed))
+			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("下载读取失败: %v", readErr)}
 		}
 	}
+}
 
-	// drainReader 排空 reader 中所有已发送数据并写入文件
-	// 循环读取直到 reader 返回错误或 EOF（插件关闭上游时触发）
-	func (m *ManagedTask) drainReader(buf []byte) {
-		for {
-			n, err := m.currentReader.Read(buf)
-			if n > 0 {
-				if written, writeErr := m.storeWriter.Write(buf[:n]); writeErr == nil {
-					m.totalWritten += int64(written)
-				}
-			}
-			if err != nil {
-				return
+// handleEOF 处理 reader EOF:暂停/停止导致的 EOF 走对应路径,否则校验完整性并完成
+func (s *streamController) handleEOF(m *ManagedTask) streamResult {
+	// 暂停导致上游关闭产生的 EOF:drain 后置 paused
+	if m.isPausing() {
+		return s.handlePause(nil)
+	}
+	// 停止导致上游关闭产生的 EOF:不完成 store,置 canceled(Stop 已 abort + setFailed)
+	if m.isStopping() {
+		s.abort()
+		s.state.Store(int32(streamCanceled))
+		return streamResult{kind: resultCanceled}
+	}
+	// 完整性校验:downloaded 轨已写量不足视为不完整
+	s.mu.Lock()
+	written := s.written
+	s.mu.Unlock()
+	if s.generation == entity.GenerationDownloaded && s.size > 0 && written < s.size {
+		logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整(role=%s): 已下载 %d / 预期 %d", m.taskId, s.role, written, s.size)
+		s.abort()
+		s.state.Store(int32(streamFailed))
+		return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载不完整: 已下载 %d / 预期 %d", s.role, written, s.size)}
+	}
+	if err := s.storeWriter.Complete(); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Complete 失败(role=%s): %v", m.taskId, s.role, err)
+		s.state.Store(int32(streamFailed))
+		return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("完成存储失败: %v", err)}
+	}
+	s.state.Store(int32(streamCompleted))
+	return streamResult{kind: resultOK}
+}
+
+// handlePause 排空缓冲区、同步并关闭写入器、置 paused
+func (s *streamController) handlePause(buf []byte) streamResult {
+	if buf != nil {
+		s.drain(buf)
+	}
+	s.storeWriter.Sync()
+	s.storeWriter.Close()
+	s.state.Store(int32(streamPaused))
+	return streamResult{kind: resultPaused}
+}
+
+// drain 排空 reader 中所有已发送数据并写入文件,直到 reader 返回错误或 EOF
+func (s *streamController) drain(buf []byte) {
+	for {
+		n, err := s.reader.Read(buf)
+		if n > 0 {
+			if written, writeErr := s.storeWriter.Write(buf[:n]); writeErr == nil && written > 0 {
+				s.mu.Lock()
+				s.written += int64(written)
+				s.mu.Unlock()
 			}
 		}
+		if err != nil {
+			return
+		}
 	}
+}
 
-	// drainAndPause 排空缓冲区、同步并关闭写入器、设置暂停状态
-	func (m *ManagedTask) drainAndPause(buf []byte) {
-		m.drainReader(buf)
-		m.storeWriter.Sync()
-		m.storeWriter.Close()
-		m.setState(TaskStatePaused)
+// abort 放弃写入:关闭句柄 + 删除文件 + 删 DB 记录
+func (s *streamController) abort() {
+	if s.storeWriter != nil {
+		s.storeWriter.Abort()
 	}
+}
 
-// resumeFromPersistedState 从数据库恢复的跨重启续传
-// 任务在之前的运行中已暂停，pending_resource_id 已持久化到数据库
-// 本方法跳过 CreateWorkInfo/SaveWorkInfo/Start 流程，直接调用插件 Resume 续传
+// resumeFromPersistedState 从数据库恢复的跨重启续传(多轨)
+// 任务在之前的运行中已暂停,pending_resource_id 已持久化。本方法跳过 CreateWorkInfo/SaveWorkInfo/Start,
+// 按 resource_store 各轨 PersistentStore 状态计算续传偏移,调用插件 Resume 取新流集合,续接/重建 store 后进入下载循环
 func (m *ManagedTask) resumeFromPersistedState() runResult {
 	defer func() {
 		if r := recover(); r != nil {
@@ -758,12 +990,6 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		return m.run()
 	}
 
-	// 2. 通过 WorkStoreID 获取 PersistentStore 记录，计算已下载字节数
-	if !resource.WorkStoreID.Valid {
-		logger.Log.Warnf("[TaskManager] 任务 %d Resource 无有效的 WorkStoreID，降级为完整重新执行", m.taskId)
-		return m.run()
-	}
-
 	workDir := m.deps.WorkDirProvider.GetWorkDir()
 	if workDir == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
@@ -771,105 +997,131 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		return runResultDone
 	}
 
-	store, err := m.deps.StoreReader.GetById(m.ctx, resource.WorkStoreID.Int64)
-	if err != nil || store == nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d PersistentStore(id=%d) 不存在，降级为完整重新执行", m.taskId, resource.WorkStoreID.Int64)
+	// 2. 读 resource_store 各轨 store 关联
+	if m.deps.ResourceStoreReader == nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 未配置 ResourceStoreReader，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
-
-	absPath := m.deps.StoreReader.GetAbsPath(store)
-	fileInfo, err := os.Stat(absPath)
+	storeRows, err := m.deps.ResourceStoreReader.ListByResourceId(m.ctx, resource.GetID())
 	if err != nil {
-		// 本地文件不存在（不论 store 状态）：资源不可用，降级完整重新执行
-		logger.Log.Warnf("[TaskManager] 任务 %d 本地文件不存在 [%s]，降级为完整重新执行: %v", m.taskId, absPath, err)
+		logger.Log.Warnf("[TaskManager] 任务 %d 查询 resource_store 失败: %v，降级为完整重新执行", m.taskId, err)
+		return m.run()
+	}
+	if len(storeRows) == 0 {
+		logger.Log.Warnf("[TaskManager] 任务 %d Resource 无 resource_store 关联，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
 
-	// store 已完成且文件存在：资源已就位，直接完成任务。
-	// 主程序依据资源实际状态（文件存在 + store 完成）判定任务终态，不因 task 持有 PendingResourceID 而误判需要续传
-	if store.Status == entity.StoreStatusComplete {
-		logger.Log.Infof("[TaskManager] 任务 %d 续传发现 store(id=%d) 已完成且文件存在，直接完成任务", m.taskId, store.GetID())
-		m.workId = resource.WorkID
-		m.workStoreId = store.GetID()
-		m.clearPendingResourceID()
-		m.setState(TaskStateFinished)
-		return runResultDone
+	m.workId = resource.WorkID
+
+	// 3. 计算各 downloaded 轨续传偏移(已完成且文件存在则跳过;文件不存在则 offset=0 整轨重下)
+	streamOffsets := map[string]int64{}
+	completedRoles := map[string]struct{}{}
+	for _, row := range storeRows {
+		if row.Generation != entity.GenerationDownloaded {
+			continue
+		}
+		store, storeErr := m.deps.StoreReader.GetById(m.ctx, row.StoreID)
+		if storeErr != nil || store == nil {
+			continue
+		}
+		absPath := m.deps.StoreReader.GetAbsPath(store)
+		info, statErr := os.Stat(absPath)
+		if store.Status == entity.StoreStatusComplete && statErr == nil {
+			// 该轨已完成:不进入 Resume(插件不再产出)
+			completedRoles[row.StoreType] = struct{}{}
+			continue
+		}
+		if statErr != nil {
+			streamOffsets[row.StoreType] = 0 // 文件缺失:整轨重下
+		} else {
+			streamOffsets[row.StoreType] = info.Size()
+		}
 	}
 
-	downloadedBytes := fileInfo.Size()
+	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v", m.taskId, resource.GetID(), streamOffsets, completedRoles)
 
-	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, storeId=%d, downloadedBytes=%d", m.taskId, resource.GetID(), store.GetID(), downloadedBytes)
-
-	// 3. 调用插件 Resume
-	param := &sdkdto.TaskResParam{
-		Task:            dto.NewTaskDTO(m.task),
-		ResourceID:      m.task.PendingResourceID.Int64,
-		DownloadedBytes: downloadedBytes,
+	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded 轨,derived 整轨重产)
+	param := &sdkdto.TaskResumeParam{
+		Task:          dto.NewTaskDTO(m.task),
+		StreamOffsets: streamOffsets,
 	}
-	newReader, newResp, err := m.pluginExec.Resume(m.ctx, param)
+	specs, newResp, err := m.pluginExec.Resume(m.ctx, param)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
 		m.setFailed(fmt.Sprintf("跨重启续传失败: %v", err))
 		return runResultDone
 	}
-
-	// 4. 设置运行状态
-	m.workId = resource.WorkID
-	m.workStoreId = store.GetID()
-
-	// 4.1 初始化 resourceResp（应用重启后 resourceResp 为 nil，从数据库 Resource 实体恢复 Size/Format）
-	if m.resourceResp == nil || m.resourceResp.Resource == nil {
-		m.resourceResp = &sdkdto.WorkResponse{
-			Resource: &sdkdto.TaskResourceDTO{
-				Size:   downloadedBytes,
-				Format: store.FilenameExtension.String,
-			},
-		}
+	if newResp != nil {
+		m.workResp = newResp
+	}
+	if len(specs) == 0 {
+		// 无未完成轨道需续传:任务直接完成
+		m.clearPendingResourceID()
+		m.setState(TaskStateFinished)
+		return runResultDone
 	}
 
-	// 5. 根据插件响应的 Continuable 决定续传策略
-	continuable := newResp != nil && newResp.Resource != nil &&
-		newResp.Resource.Continuable != nil && *newResp.Resource.Continuable
-	logger.Log.Infof("[TaskManager] resumeFromPersistedState Continuable 判定: taskId=%d, newResp=%v, continuable=%v, downloadedBytes=%d", m.taskId, newResp != nil, continuable, downloadedBytes)
-
-	if continuable {
-		// 可续传：通过 ResumeStream 以 append 模式打开文件
-		m.totalWritten = downloadedBytes
-		resumeWriter, err := m.deps.StoreStreamer.ResumeStream(m.ctx, store.GetID())
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d ResumeStream 失败: %v", m.taskId, err)
-			m.setFailed(fmt.Sprintf("续传打开存储失败: %v", err))
-			return runResultDone
-		}
-		m.storeWriter = resumeWriter
-	} else {
-		// 不可续传：通过 StoreStream 重新创建（覆盖旧记录）
-		// 先 Abort 旧的未完成记录
-		// 注意：这里不能直接 Abort 旧记录因为 ResumeStream 可能失败，但 StoreStream 会处理已有 relPath 的情况
-		m.totalWritten = 0
-		relPath := ""
-		fileName := ""
-		if store.FilePath.Valid {
-			relPath = store.FilePath.String
-		}
-		if store.FileName.Valid {
-			fileName = store.FileName.String
-		}
-		newStoreId, newWriter, err := m.deps.StoreStreamer.StoreStream(m.ctx, relPath, fileName)
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d StoreStream 失败: %v", m.taskId, err)
-			m.setFailed(fmt.Sprintf("续传重新创建存储失败: %v", err))
-			return runResultDone
-		}
-		m.workStoreId = newStoreId
-		m.storeWriter = newWriter
+	// 5. 为每个返回的 spec 续接(continuable downloaded)或重建 store,构建 streamController
+	mainSpec := findSpec(specs, entity.StoreTypeMain)
+	if mainSpec == nil && len(specs) > 0 {
+		mainSpec = specs[0]
 	}
-	m.currentReader = newReader
+	var mainRelPath, mainFileName string
+	if mainSpec != nil {
+		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, newResp)
+	}
 
+	streams := make([]*streamController, 0, len(specs))
+	txErr := m.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
+		mounts := make([]pendingMount, 0, len(specs))
+		for _, spec := range specs {
+			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName)
+			existingRow := findStoreRow(storeRows, spec.Role)
+			// continuable 的 downloaded 轨且有正偏移:用已有 storeId + ResumeStream 续传(append)
+			if spec.Generation == entity.GenerationDownloaded && existingRow != nil && streamOffsets[spec.Role] > 0 {
+				writer, resumeErr := m.deps.StoreStreamer.ResumeStream(txCtx, existingRow.StoreID)
+				if resumeErr != nil {
+					return resumeErr
+				}
+				sc := newStreamController(spec, existingRow.StoreID, writer, relPath)
+				sc.written = streamOffsets[spec.Role]
+				streams = append(streams, sc)
+				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: existingRow.StoreID})
+			} else {
+				// derived 或 offset=0 的 downloaded:StoreStream 重建
+				storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
+				if storeErr != nil {
+					return storeErr
+				}
+				streams = append(streams, newStreamController(spec, storeId, writer, relPath))
+				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
+			}
+		}
+		// 更新 resource_store(替换本次产出 role 的关联)
+		return m.mountResourceStores(txCtx, resource.GetID(), mounts)
+	})
+	if txErr != nil {
+		for _, s := range streams {
+			if s.storeWriter != nil {
+				s.storeWriter.Close()
+			}
+			m.deps.StoreFileCleaner.CleanupFile(s.relPath)
+		}
+		streams = nil
+		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启续传事务失败: %v", m.taskId, txErr)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
+		m.setFailed(fmt.Sprintf("跨重启续传创建存储失败: %v", txErr))
+		return runResultDone
+	}
+
+	m.streams = streams
 	return m.downloadLoop()
 }
 
-// Pause 暂停任务
+// Pause 暂停任务(任务级,广播到全部活跃 stream)
 func (m *ManagedTask) Pause() error {
 	if m.state.Load() != int32(TaskStateProcessing) {
 		return ErrTaskNotProcessing
@@ -877,20 +1129,20 @@ func (m *ManagedTask) Pause() error {
 	m.setState(TaskStatePausing)
 
 	// 下载尚未开始的场景（setup 阶段），直接取消 context
-	if m.currentReader == nil {
+	if len(m.streams) == 0 {
 		logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 setup 阶段暂停，直接取消", m.taskId)
 		m.cancel()
 		m.setState(TaskStatePaused)
 		return nil
 	}
 
-	logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 download 阶段暂停, PendingResourceID={Valid:%v, Int64:%d}, totalWritten=%d",
-		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.totalWritten)
+	logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 download 阶段暂停, PendingResourceID={Valid:%v, Int64:%d}",
+		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64)
 
-	// ① 先通知 downloadLoop 进入 drain 模式
-	m.pauseCh <- struct{}{}
+	// ① 广播暂停信号(close 让全部 stream goroutine 进入 drain)
+	m.closePauseCh()
 
-	// ② 再通知插件暂停（插件关闭上游，导致 reader 返回 EOF，drain 完成）
+	// ② 通知插件暂停(插件关闭上游 → reader EOF → stream drain 完成)
 	param := &sdkdto.TaskResParam{
 		Task:       dto.NewTaskDTO(m.task),
 		ResourceID: m.task.PendingResourceID.Int64,
@@ -898,10 +1150,6 @@ func (m *ManagedTask) Pause() error {
 	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
 	}
-
-		//    - 正常暂停：drainAndPause → Paused
-		//    - 下载完成：EOF → Finished（数据已全部写入）
-		//    两种情况都使任务进入稳定状态，不会阻塞 PauseTaskTree
 
 	return nil
 }
@@ -911,34 +1159,34 @@ func (m *ManagedTask) Pause() error {
 func (m *ManagedTask) prepareForResume() {
 	m.cancel()
 	m.ctx, m.cancel = context.WithCancel(context.Background())
-	m.pauseCh = make(chan struct{}, 1)
-	m.currentReader = nil
-	m.storeWriter = nil
-	m.totalWritten = 0
-	// 有 PendingResourceID 走 resumeFromPersistedState（内部根据插件响应 Continuable 决定续传/重新下载）
+	// 关闭旧 reader + 重建暂停通道
+	m.closeStreamReaders()
+	m.streams = nil
+	m.pauseMu.Lock()
+	m.pauseCh = make(chan struct{})
+	m.pauseMu.Unlock()
+	// 有 PendingResourceID 走 resumeFromPersistedState（内部按各轨 store 状态续传/重产）
 	// 无 PendingResourceID 走 run()（从头执行）
 	m.resumeFromDB = m.task.PendingResourceID.Valid
 	logger.Log.Infof("[TaskManager] prepareForResume: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, resumeFromDB=%v",
 		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.resumeFromDB)
 }
 
-// Stop 停止任务
+// Stop 停止任务(任务级,广播取消全部 stream)
 func (m *ManagedTask) Stop() {
 	m.setState(TaskStateStopping)
-	m.cancel() // 触发 context 取消（中断 downloadLoop 或暂停等待）
+	m.cancel() // 触发 context 取消（中断各 stream 的 downloadLoop）
 
-	if m.storeWriter != nil {
-		m.storeWriter.Abort()
+	for _, s := range m.streams {
+		s.abort()
 	}
 
-	if m.resourceResp != nil {
-		param := &sdkdto.TaskResParam{
-			Task:       dto.NewTaskDTO(m.task),
-			ResourceID: m.task.PendingResourceID.Int64,
-		}
-		if err := m.pluginExec.Stop(m.ctx, param); err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
-		}
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
+		ResourceID: m.task.PendingResourceID.Int64,
+	}
+	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
 	}
 
 	m.setFailed("任务被用户停止")
@@ -1007,38 +1255,254 @@ func (m *ManagedTask) SetOnProgress(fn func(taskId int64, total int64, finished 
 }
 
 // abortedByPause 检查是否因暂停导致 context 被取消
-// Pause 在 setup 阶段（currentReader == nil）会直接取消 context
+// Pause 在 setup 阶段（streams 为空）会直接取消 context
 // run() 的 setup 代码遇到此类情况应直接退出，不覆盖 Pause 已设置的 Paused 状态
 func (m *ManagedTask) abortedByPause() bool {
 	if m.ctx.Err() == nil {
 		return false
 	}
-	s := TaskState(m.state.Load())
-	return s == TaskStatePausing || s == TaskStatePaused
+	s := m.state.Load()
+	return s == int32(TaskStatePausing) || s == int32(TaskStatePaused)
 }
 
-// resolveLocalPath 根据资源信息和文件名模板生成本地文件保存路径
+// isPausing 任务是否处于暂停中/已暂停(setup 阶段暂停靠 ctx 取消,download 阶段靠状态判定)
+func (m *ManagedTask) isPausing() bool {
+	s := m.state.Load()
+	return s == int32(TaskStatePausing) || s == int32(TaskStatePaused)
+}
+
+// isStopping 任务是否处于停止中(Stop 已发起,阻塞在 Read 的 stream 收到 EOF 时据此避免误完成)
+func (m *ManagedTask) isStopping() bool {
+	return m.state.Load() == int32(TaskStateStopping)
+}
+
+// pauseSignal 返回暂停广播通道(关闭即广播)
+func (m *ManagedTask) pauseSignal() <-chan struct{} {
+	m.pauseMu.Lock()
+	defer m.pauseMu.Unlock()
+	return m.pauseCh
+}
+
+// closePauseCh 关闭暂停通道(广播到全部 stream goroutine),幂等
+func (m *ManagedTask) closePauseCh() {
+	m.pauseMu.Lock()
+	defer m.pauseMu.Unlock()
+	select {
+	case <-m.pauseCh:
+		// 已关闭
+	default:
+		close(m.pauseCh)
+	}
+}
+
+// closeStreamReaders 关闭全部 stream 的 reader
+func (m *ManagedTask) closeStreamReaders() {
+	for _, s := range m.streams {
+		if s.reader != nil {
+			s.reader.Close()
+		}
+	}
+}
+
+// anyStreamPaused 是否有任意 stream 进入 paused 状态
+func (m *ManagedTask) anyStreamPaused() bool {
+	for _, s := range m.streams {
+		if streamState(s.state.Load()) == streamPaused {
+			return true
+		}
+	}
+	return false
+}
+
+// totalStreamSize 全部 stream 的远程大小之和(进度总量)
+func (m *ManagedTask) totalStreamSize() int64 {
+	var total int64
+	for _, s := range m.streams {
+		if s.size > 0 {
+			total += s.size
+		}
+	}
+	return total
+}
+
+// reportProgress 汇总全部 stream 进度并推送
+func (m *ManagedTask) reportProgress() {
+	if m.onProgress == nil {
+		return
+	}
+	var total, finished int64
+	for _, s := range m.streams {
+		if s.size > 0 {
+			total += s.size
+		}
+		s.mu.Lock()
+		finished += s.written
+		s.mu.Unlock()
+	}
+	m.onProgress(m.taskId, total, finished)
+}
+
+// filterSpecsByRoles 按 runMode.storeRoles 过滤 spec(空集合=全量)
+func (m *ManagedTask) filterSpecsByRoles(specs []*sdkdto.StoreSpec) []*sdkdto.StoreSpec {
+	if len(m.runMode.storeRoles) == 0 {
+		out := make([]*sdkdto.StoreSpec, len(specs))
+		copy(out, specs)
+		return out
+	}
+	roleSet := make(map[string]struct{}, len(m.runMode.storeRoles))
+	for _, r := range m.runMode.storeRoles {
+		roleSet[r] = struct{}{}
+	}
+	var out []*sdkdto.StoreSpec
+	for _, s := range specs {
+		if s == nil {
+			continue
+		}
+		if _, ok := roleSet[s.Role]; ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// drainUnselectedReaders 排空 all 中未被 selected 选中的 spec reader(读到 EOF 后关闭)
+// 用于过滤后丢弃的 role:多流 gRPC demux 会向其 io.Pipe 写数据,无人消费会永久阻塞 demux
+func (m *ManagedTask) drainUnselectedReaders(all, selected []*sdkdto.StoreSpec) {
+	if len(all) == len(selected) {
+		return
+	}
+	selectedSet := make(map[*sdkdto.StoreSpec]struct{}, len(selected))
+	for _, s := range selected {
+		selectedSet[s] = struct{}{}
+	}
+	for _, sp := range all {
+		if sp == nil || sp.ReadCloser == nil {
+			continue
+		}
+		if _, ok := selectedSet[sp]; ok {
+			continue
+		}
+		reader := sp.ReadCloser
+		go func() {
+			_, _ = io.Copy(io.Discard, reader)
+			_ = reader.Close()
+		}()
+	}
+}
+
+// findSpec 在 spec 集合中查找指定 role
+func findSpec(specs []*sdkdto.StoreSpec, role string) *sdkdto.StoreSpec {
+	for _, s := range specs {
+		if s != nil && s.Role == role {
+			return s
+		}
+	}
+	return nil
+}
+
+// findStoreRow 在 resource_store 行中查找指定 role
+func findStoreRow(rows []*entity.ResourceStore, role string) *entity.ResourceStore {
+	for _, r := range rows {
+		if r != nil && r.StoreType == role {
+			return r
+		}
+	}
+	return nil
+}
+
+// uniqueRoles 提取 mounts 中去重后的 role 列表
+func uniqueRoles(mounts []pendingMount) []string {
+	seen := make(map[string]struct{}, len(mounts))
+	roles := make([]string, 0, len(mounts))
+	for _, mt := range mounts {
+		if _, ok := seen[mt.role]; ok {
+			continue
+		}
+		seen[mt.role] = struct{}{}
+		roles = append(roles, mt.role)
+	}
+	return roles
+}
+
+// toBackupStoreTypes 将 store_type 字符串映射为 backup.StoreType(未映射类型如 videoTrack 暂不备份,待阶段6扩展)
+func toBackupStoreTypes(roles []string) []backup.StoreType {
+	seen := make(map[backup.StoreType]struct{})
+	var out []backup.StoreType
+	for _, r := range roles {
+		var t backup.StoreType
+		switch r {
+		case entity.StoreTypeMain:
+			t = backup.StoreTypeWork
+		case entity.StoreTypeThumbnail:
+			t = backup.StoreTypeThumbnail
+		default:
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	return out
+}
+
+// mergeWorkInfo 将 from(作品信息板块 A 的响应)合并到 to(Start/Resume 的响应),供文件名模板使用
+func mergeWorkInfo(to, from *sdkdto.WorkResponse) {
+	if to == nil || from == nil {
+		return
+	}
+	if from.Work != nil {
+		to.Work = from.Work
+	}
+	to.SiteAuthors = from.SiteAuthors
+	to.LocalAuthors = from.LocalAuthors
+	to.SiteTags = from.SiteTags
+	to.LocalTags = from.LocalTags
+}
+
+// mergeWorkMetaForNaming 把作品命名元数据合并到 Start/Resume 的响应,供文件名模板使用。
+// 本次执行跑了作品元数据板块(A)则用其结果;否则(资源板块单独重下)从已有作品加载命名元数据(作者等),
+// 避免 ${author} 等占位符因元数据缺失回落到 unknownAuthor。
+func (m *ManagedTask) mergeWorkMetaForNaming(startResp, workResp *sdkdto.WorkResponse) {
+	if startResp == nil {
+		return
+	}
+	if workResp != nil {
+		mergeWorkInfo(startResp, workResp)
+		return
+	}
+	if m.workId <= 0 || m.deps.WorkMetaLoader == nil {
+		return
+	}
+	meta, err := m.deps.WorkMetaLoader.LoadWorkMeta(m.ctx, m.workId)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 加载已有作品 %d 命名元数据失败: %v", m.taskId, m.workId, err)
+		return
+	}
+	if meta != nil {
+		mergeWorkInfo(startResp, meta)
+	}
+}
+
+// resolveMainPath 根据资源信息和文件名模板生成主资源(或主下载轨)的本地保存路径
 // 返回 relativePath（相对于 workDir）和 fileName
-func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (relativePath, fileName string) {
-	res := startResp.Resource
+func (m *ManagedTask) resolveMainPath(spec *sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) (relativePath, fileName string) {
 	tpl := m.deps.FileNameFormatProvider.GetFileNameFormat()
 
 	// 模板为空时使用插件建议的文件名
 	if tpl == "" {
-		fileName = m.buildSuggestedFileName(res)
+		fileName = m.buildSuggestedFileName(spec)
 		relativePath = filepath.Join("store", "resource", fileName)
 		return
 	}
 
 	// 模板模式：提取占位符数据 → 格式化 → 净化 → 拼接扩展名 → 按作者分目录
-	tokenData := filename.ExtractTokenData(startResp)
+	tokenData := filename.ExtractTokenData(workResp)
 	formatted := filename.FormatFileName(tpl, tokenData)
 	sanitizedFileName := filename.SanitizeFileName(formatted)
 
-	ext := res.Format
-	if ext != "" && !strings.HasPrefix(ext, ".") {
-		ext = "." + ext
-	}
+	ext := normalizeExt(spec.Format)
 	fileName = sanitizedFileName + ext
 
 	authorDir := filename.SanitizeFileName(tokenData.Author)
@@ -1047,10 +1511,29 @@ func (m *ManagedTask) resolveLocalPath(startResp *sdkdto.WorkResponse) (relative
 	return
 }
 
+// resolveStorePath 按 role 解析各 store 路径:thumbnail 派生自主路径,其余(含 main/未来轨道)用主路径逻辑
+func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string) (relativePath, fileName string) {
+	if spec.Role == entity.StoreTypeThumbnail {
+		relativePath = buildThumbnailRelPath(mainRelPath, spec.Format)
+		fileName = buildThumbnailFileName(mainFileName, spec.Format)
+		return
+	}
+	return m.resolveMainPath(spec, m.workResp)
+}
+
+// normalizeExt 规范化扩展名(确保以 "." 开头)
+func normalizeExt(format string) string {
+	ext := format
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return ext
+}
+
 // buildSuggestedFileName 根据插件建议文件名构建最终文件名（含扩展名）
 // 优先使用插件 SuggestName，仅保留纯文件名部分并进行清洗，扩展名由 Format 字段控制
-func (m *ManagedTask) buildSuggestedFileName(res *sdkdto.TaskResourceDTO) string {
-	name := res.SuggestName
+func (m *ManagedTask) buildSuggestedFileName(spec *sdkdto.StoreSpec) string {
+	name := spec.SuggestName
 	if name != "" {
 		// 只保留纯文件名，丢弃任何路径部分
 		name = filepath.Base(name)
@@ -1062,11 +1545,7 @@ func (m *ManagedTask) buildSuggestedFileName(res *sdkdto.TaskResourceDTO) string
 			name = m.task.TaskName.String
 		}
 	}
-	ext := res.Format
-	if ext != "" && !strings.HasPrefix(ext, ".") {
-		ext = "." + ext
-	}
-	return name + ext
+	return name + normalizeExt(spec.Format)
 }
 
 // ParentTask 父任务运行结构体
@@ -1178,100 +1657,6 @@ func (p *ParentTask) AllChildrenTerminal() bool {
 		}
 	}
 	return true
-}
-
-// saveThumbnail 下载完成后生成缩略图（含缩略图板块时调用，force=true：备份旧缩略图→生成新→失败还原）
-func (m *ManagedTask) saveThumbnail() {
-	if err := m.saveThumbnailByWorkId(m.ctx, m.workId, true); err != nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 缩略图生成失败: %v", m.taskId, err)
-	}
-}
-
-// saveThumbnailByWorkId 按 workId 查 Resource 并保存缩略图
-// force=false：已有缩略图则跳过；force=true：强制覆盖（板块 C）
-func (m *ManagedTask) saveThumbnailByWorkId(ctx context.Context, workId int64, force bool) error {
-	// 前置检查：无插件数据时跳过
-	if !m.task.PluginData.Valid || m.task.PluginData.String == "" {
-		return nil
-	}
-
-	resources, err := m.deps.ResourceReader.GetEnabledByWorkId(ctx, workId)
-	if err != nil {
-		return fmt.Errorf("获取 Resource 失败: %w", err)
-	}
-	if len(resources) == 0 {
-		return nil
-	}
-	resource := resources[0]
-	if resource.WorkStoreID.Valid {
-		m.workStoreId = resource.WorkStoreID.Int64
-	}
-	return m.doSaveThumbnail(ctx, resource, force)
-}
-
-// doSaveThumbnail 获取并保存缩略图，更新 Resource.ThumbnailStoreID
-// force=false：已有缩略图则跳过；force=true：备份旧缩略图后覆盖，失败还原（板块 C）
-func (m *ManagedTask) doSaveThumbnail(ctx context.Context, resource *entity.Resource, force bool) error {
-	// 已有缩略图：force=false 跳过；force=true 备份后覆盖
-	var backupItems []*StoreBackupItem
-	if resource.ThumbnailStoreID.Valid {
-		if !force {
-			return nil
-		}
-		workId := m.workId
-		if workId == 0 {
-			workId = resource.WorkID
-		}
-		backupItems = m.deps.StoreBackupOrchestrator.BackupStores(ctx, workId, backup.StoreTypeThumbnail)
-	}
-
-	// 备份后若未成功保存新缩略图，还原旧缩略图（板块 C 失败兜底）
-	success := false
-	defer func() {
-		if !success && len(backupItems) > 0 {
-			m.deps.StoreBackupOrchestrator.RestoreAllStores(context.Background(), backupItems)
-		}
-	}()
-
-	// 调用插件获取缩略图
-	thumbResp, err := m.pluginExec.GetThumbnail(ctx, m.task)
-	if err != nil {
-		return fmt.Errorf("缩略图获取失败: %w", err)
-	}
-	if thumbResp == nil || len(thumbResp.Data) == 0 {
-		return nil
-	}
-
-	// 确定格式
-	thumbFormat := thumbResp.Format
-	if thumbFormat == "" {
-		thumbFormat = "jpg"
-	}
-
-	// 获取资源文件信息，构建缩略图相对路径和文件名
-	store, err := m.deps.StoreReader.GetById(ctx, m.workStoreId)
-	if err != nil {
-		return fmt.Errorf("获取 store 记录失败: %w", err)
-	}
-	if store == nil {
-		return fmt.Errorf("store 记录不存在: storeId=%d", m.workStoreId)
-	}
-	thumbRelPath := buildThumbnailRelPath(store.FilePath.String, thumbFormat)
-	thumbFileName := buildThumbnailFileName(store.FileName.String, thumbFormat)
-
-	// 通过 Store 一步完成写入
-	storeID, err := m.deps.ThumbnailStoreWriter.Store(ctx, thumbRelPath, thumbFileName, bytes.NewReader(thumbResp.Data))
-	if err != nil {
-		return fmt.Errorf("缩略图存储失败: %w", err)
-	}
-
-	// 更新 Resource 记录
-	resource.ThumbnailStoreID = sql.NullInt64{Int64: storeID, Valid: true}
-	if err := m.deps.ResourceUpdater.Update(ctx, resource); err != nil {
-		return fmt.Errorf("更新 Resource 缩略图引用失败: %w", err)
-	}
-	success = true
-	return nil
 }
 
 // buildThumbnailRelPath 构建缩略图相对路径

@@ -2,7 +2,6 @@ package extension
 
 import (
 	"context"
-	"io"
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -35,8 +34,8 @@ func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task
 	return handler.CreateWorkInfo(EntityTaskToSDK(task))
 }
 
-// Start 开始任务
-func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task) (io.ReadCloser, *sdkdto.WorkResponse, error) {
+// Start 开始任务,按 storeRoles 选择性返回 StoreSpec 流集合(含下载型 downloaded 与派生型 derived)与作品信息
+func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
 	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
 	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
@@ -44,7 +43,7 @@ func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task) (io.Rea
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
-	return handler.Start(EntityTaskToSDK(task))
+	return handler.Start(EntityTaskToSDK(task), storeRoles)
 }
 
 // Pause 暂停任务
@@ -77,8 +76,8 @@ func (e *TaskExecutorImpl) Stop(ctx context.Context, param *sdkdto.TaskResParam)
 	return handler.Stop(param)
 }
 
-// Resume 恢复任务
-func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResParam) (io.ReadCloser, *sdkdto.WorkResponse, error) {
+// Resume 恢复任务:按 TaskResumeParam.StreamOffsets 续传,返回新的 StoreSpec 流集合
+func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResumeParam) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
 	if param == nil || param.Task == nil {
 		return nil, nil, nil
 	}
@@ -90,22 +89,6 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResPara
 		return nil, nil, err
 	}
 	return handler.Resume(param)
-}
-
-// GetThumbnail 获取缩略图
-func (e *TaskExecutorImpl) GetThumbnail(ctx context.Context, task *domain.Task) (*sdkdto.ThumbnailResponse, error) {
-	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
-	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
-	if err != nil {
-		logger.Log.Warn("GetThumbnail 获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
-		return nil, err
-	}
-	taskData := ""
-	if task.PluginData.Valid {
-		taskData = task.PluginData.String
-	}
-	return handler.GetThumbnail(taskData)
 }
 
 // getSDKTaskHandler 从注册中心获取 TaskHandler

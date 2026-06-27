@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,8 @@ type Repository interface {
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id
 	BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error
+	// UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)
+	UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error
 	// ListBySiteAndSiteWorkID 按 (site_id, site_work_id) 反查关联任务记录（用于作品删除时停止运行中任务）
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error)
 }
@@ -107,27 +110,36 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, plu
 	return m
 }
 
-// StartTaskTree 启动任务树
+// StartTaskTree 启动任务树(全量执行)
 func (m *Manager) StartTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	return m.startTaskTrees(ctx, []int64{taskId}, runModeFull)
+	mode := runModeFull
+	return m.startTaskTrees(ctx, []int64{taskId}, &mode)
 }
 
-// startTaskTrees 开始执行多个任务树（开始/重试入口）
-// mode 指定执行板块（Full/ResourceOnly/WorkInfo/Thumbnail）
-func (m *Manager) startTaskTrees(ctx context.Context, taskIds []int64, mode runMode) error {
-	return m.loadAndStartTaskTrees(ctx, taskIds, false, mode)
+// startTaskTrees 开始执行多个任务树(开始/重试入口)
+// recordMode 非 nil(开始)时把执行模式记录到任务树全部成员;nil(重试)时保留各任务已记录的模式
+func (m *Manager) startTaskTrees(ctx context.Context, taskIds []int64, recordMode *runMode) error {
+	return m.loadAndStartTaskTrees(ctx, taskIds, false, recordMode)
 }
 
-// resumeTaskTrees 恢复执行多个任务树（恢复入口，固定 Full 模式）
-// 所有任务执行的唯二入口之一，skipTerminal 跳过已终态子任务
+// Redownload 板块重执行:把所选板块记录到任务树全部成员(父+子)后启动
+// 记录到全部成员保证每个子任务都持有该模式(供执行派生与单独续传读取),而非仅父任务持有
+func (m *Manager) Redownload(ctx context.Context, taskIds []int64, storeRoles []string, includeWorkInfo bool) error {
+	mode := runMode{workInfo: includeWorkInfo, storeRoles: storeRoles}
+	return m.loadAndStartTaskTrees(ctx, taskIds, false, &mode)
+}
+
+// resumeTaskTrees 恢复执行多个任务树（恢复入口）
+// 所有任务执行的唯二入口之一，skipTerminal 跳过已终态子任务;按各任务已记录的执行模式恢复(不重新记录)
 func (m *Manager) resumeTaskTrees(ctx context.Context, taskIds []int64) error {
-	return m.loadAndStartTaskTrees(ctx, taskIds, true, runModeFull)
+	return m.loadAndStartTaskTrees(ctx, taskIds, true, nil)
 }
 
 // loadAndStartTaskTrees 从数据库加载多个任务树并启动
 // skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务，仅 Resume 使用
-// mode 指定执行板块；多根：一次 ListTaskTree 查询 + 一次批量查重，按 DB 真实父子关系构建内存树
-func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, skipTerminal bool, mode runMode) error {
+// recordMode 非 nil(开始/重下)时把执行模式记录到任务树全部成员,使各任务 runModeFromTask 派生一致并支持单独续传
+// 多根：一次 ListTaskTree 查询 + 一次批量查重，按 DB 真实父子关系构建内存树
+func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, skipTerminal bool, recordMode *runMode) error {
 	if len(taskIds) == 0 {
 		return nil
 	}
@@ -142,6 +154,23 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	logger.Log.Infof("loadAndStartTaskTrees: 查询到 %d 条任务记录", len(tasks))
 	if len(tasks) == 0 {
 		return ErrTaskTreeNotFound
+	}
+
+	// recordMode 非 nil(开始/重下):把执行模式记录到任务树全部成员(父+子)。
+	// 每个任务都持有自己的模式,供 runModeFromTask 派生执行,以及用户单独续传某子任务时读取。
+	// 全量模式以显式集合(非 NULL)记录,保留真实执行模式信息。
+	if recordMode != nil {
+		storeRolesVal := sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
+		ids := make([]int64, 0, len(tasks))
+		for _, t := range tasks {
+			t.StoreRoles = storeRolesVal
+			t.IncludeWorkInfo = recordMode.workInfo
+			ids = append(ids, t.ID)
+		}
+		if err := m.repo.UpdateRedownloadSections(ctx, ids, storeRolesVal, recordMode.workInfo); err != nil {
+			logger.Log.Errorf("loadAndStartTaskTrees: 记录执行模式失败: %v", err)
+			// 不阻断:runMode 已按内存记录值派生
+		}
 	}
 
 	taskById := make(map[int64]*domain.Task, len(tasks))
@@ -208,7 +237,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		processedUnits[unitId] = struct{}{}
 
 		if isStandalone {
-			child := m.buildOrReuseChild(rootTask, skipTerminal, mode)
+			child := m.buildOrReuseChild(rootTask, skipTerminal)
 			if child == nil {
 				// 已终态，直接持久化当前状态
 				finalState := TaskState(rootTask.Status)
@@ -227,7 +256,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	allToCheck := make([]*ManagedTask, 0, len(standaloneChildren)+len(parentUnits)*4)
 	allToCheck = append(allToCheck, standaloneChildren...)
 	for _, parentId := range parentUnits {
-		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, mode)...)
+		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal)...)
 	}
 
 	// 5. 共享一次批量预检重复 + 分发（受信号量控制）
@@ -243,7 +272,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 
 // processParentUnit 处理一个父任务单元：构建 ParentTask 并收集其直接子任务
 // 返回需参与批量查重与调度的子任务；所有子任务已终态时计算父任务最终状态并推送移除，返回 nil
-func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool, mode runMode) []*ManagedTask {
+func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool) []*ManagedTask {
 	parentTaskName := ""
 	if parentEntity := taskById[actualParentId]; parentEntity != nil && parentEntity.TaskName.Valid {
 		parentTaskName = parentEntity.TaskName.String
@@ -252,7 +281,7 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 	parentTask := NewParentTask(actualParentId, parentTaskName)
 	for _, t := range tasks {
 		if t.Pid.Valid && t.Pid.Int64 == actualParentId {
-			if child := m.buildOrReuseChild(t, skipTerminal, mode); child != nil {
+			if child := m.buildOrReuseChild(t, skipTerminal); child != nil {
 				parentTask.AddChild(child)
 			}
 		}
@@ -280,7 +309,7 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 // buildOrReuseChild 构建子任务 ManagedTask
 // 若任务在数据库中为 Paused 状态（应用重启后内存已丢失），根据 pending_resource_id 决定续传或重新执行
 // skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务
-func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool, mode runMode) *ManagedTask {
+func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedTask {
 	dbState := TaskState(t.Status)
 
 	// 跳过已终态的子任务（仅 Resume 场景需要）
@@ -295,7 +324,7 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool, mode runM
 		if t.PendingResourceID.Valid {
 			// pending_resource_id 有效，创建跨重启续传的 ManagedTask
 			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
-			mt := m.newManagedTask(t, mode)
+			mt := m.newManagedTask(t)
 			if mt != nil {
 				mt.resumeFromDB = true
 				m.addTask(mt)
@@ -308,7 +337,7 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool, mode runM
 	}
 
 	// 创建新实例
-	mt := m.newManagedTask(t, mode)
+	mt := m.newManagedTask(t)
 	if mt != nil {
 		m.addTask(mt)
 	}
@@ -357,8 +386,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		if child.resumeFromDB {
 			continue
 		}
-		// 无 B 的板块组合不查重（A/C 不覆盖资源文件，无需"作品已存在"提醒）
-		if !child.runMode.hasResource() {
+		// 不含主资源的板块组合不查重（不覆盖资源文件，无需"作品已存在"提醒）
+		if !child.runMode.hasStore(domain.StoreTypeMain) {
 			child.skipDuplicateCheck = true
 			continue
 		}
@@ -414,8 +443,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 			continue
 		}
 
-		// 无 B 的板块组合：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
-		if !child.runMode.hasResource() {
+		// 不含主资源的板块组合：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
+		if !child.runMode.hasStore(domain.StoreTypeMain) {
 			toDispatch = append(toDispatch, child)
 			continue
 		}
@@ -701,11 +730,11 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 	return nil
 }
 
-// RetryTaskTree 重试任务树
+// RetryTaskTree 重试任务树(保留各任务已记录的执行模式:重试=按原模式再来一次)
 func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
 	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
 	// 不重置 DB 状态，Finished/Failed/Created 子任务均会重新执行
-	return m.startTaskTrees(ctx, []int64{taskId}, runModeFull)
+	return m.startTaskTrees(ctx, []int64{taskId}, nil)
 }
 
 // GetTaskTreeState 获取任务树状态
@@ -1109,7 +1138,7 @@ func (m *Manager) BuildSnapshot() *TaskSnapshotDTO {
 	return snapshot
 }
 
-func (m *Manager) newManagedTask(t *domain.Task, mode runMode) *ManagedTask {
+func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 	// 获取任务执行器
 	if !t.PluginPublicID.Valid {
 		logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
@@ -1126,7 +1155,7 @@ func (m *Manager) newManagedTask(t *domain.Task, mode runMode) *ManagedTask {
 		parentId = t.Pid.Int64
 	}
 	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.deps)
-	mt.runMode = mode
+	mt.runMode = runModeFromTask(t)
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String
@@ -1270,8 +1299,22 @@ func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg 
 	}
 	m.pendingMu.Unlock()
 
+	// 终态(Finished/Failed/PartlyFinished,不含 Paused)清空执行模式持久化。
+	// StoreRoles/IncludeWorkInfo 仅为"在途"任务(暂停→跨重启续传)服务;任务完成后保留无意义,
+	// 且会泄漏到下次执行(如 Redownload 子集残留导致后续全量开始时该任务仍跑子集)。
+	if isClearableTerminal(TaskState(status)) {
+		if err := m.repo.UpdateRedownloadSections(context.Background(), []int64{taskId}, sql.NullString{}, false); err != nil {
+			logger.Log.Warnf("[TaskManager] 清空任务 %d 终态执行模式失败: %v", taskId, err)
+		}
+	}
+
 	select {
 	case m.flushCh <- struct{}{}:
 	default:
 	}
+}
+
+// isClearableTerminal 是否为应清空执行模式的终态(Finished/Failed/PartlyFinished);Paused 保留以支持续传
+func isClearableTerminal(s TaskState) bool {
+	return s == TaskStateFinished || s == TaskStateFailed || s == TaskStatePartlyFinished
 }

@@ -82,7 +82,7 @@ func (h *Handler) GetTaskSnapshot() *model.ApiResponse[*TaskSnapshotDTO] {
 	return model.Success(snapshot)
 }
 
-// Redownload 板块重执行入口（多选）：sections 为板块代码数组（A=1/B=2/C=3），空数组视为全集
-func (h *Handler) Redownload(ctx context.Context, taskIds []int64, sections []int) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.startTaskTrees(ctx, taskIds, parseSections(sections)))
+// Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
+func (h *Handler) Redownload(ctx context.Context, taskIds []int64, storeRoles []string, includeWorkInfo bool) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.Redownload(ctx, taskIds, storeRoles, includeWorkInfo))
 }

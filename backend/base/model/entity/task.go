@@ -22,6 +22,8 @@ type Task struct {
 	PluginExtensionID sql.NullString `gorm:"column:plugin_extension_id" json:"pluginExtensionId"`
 	PluginData           sql.NullString `gorm:"column:plugin_data" json:"pluginData"`
 	ErrorMessage         sql.NullString `gorm:"column:error_message" json:"errorMessage"`
+	StoreRoles           sql.NullString `gorm:"column:store_roles" json:"storeRoles"`             // 本次执行所选 store_type 集合(逗号分隔);空/全集表示全量
+	IncludeWorkInfo      bool           `gorm:"column:include_work_info" json:"includeWorkInfo"` // 是否执行作品元数据板块
 }
 
 // NewTask 创建任务

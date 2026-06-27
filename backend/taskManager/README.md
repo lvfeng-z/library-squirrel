@@ -16,7 +16,7 @@
 | `PauseTaskTree` / `ResumeTaskTree` | 暂停 / 恢复任务树 |
 | `StopTaskTree` | 停止任务树 |
 | `RetryTaskTree` | 重试任务树 |
-| `Redownload(taskIds, sections)` | 板块重执行（多选组合：A=1/B=2/C=3，空数组视为全集） |
+| `Redownload(taskIds, storeRoles, includeWorkInfo)` | 板块重执行（资源 store_type 集合 + 是否含作品元数据；空资源集 + 不含元数据 = 全集） |
 | `GetTaskState(taskId)` | 查询单任务状态（综合内存 + 数据库） |
 | `GetTaskTreeState(taskId, isLeaf)` | 查询任务树聚合状态 |
 | `GetTaskSnapshot()` | 获取所有活跃任务的完整状态快照 |
@@ -27,7 +27,7 @@
 
 - **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
-- **板块执行模式**（runMode）：`Full` / `ResourceOnly` / `WorkInfo` / `Thumbnail`，支持按板块单独重执行。
+- **板块执行模式**（runMode）：`{workInfo, storeRoles}`——`workInfo` 为作品元数据独立板块，`storeRoles` 为所选资源 store_type 子集（main/thumbnail/...）。mode 不再由调用方传参，而从 task 实体的 `StoreRoles`/`IncludeWorkInfo` 字段派生（`runModeFromTask`），故暂停 / 跨重启恢复时保持原板块选择，不退化为全量。`Redownload` 入口负责写入这两个字段后启动。
 - **进度推送器**（TaskProgressPusher）：两种实现——Wails 事件直推、快照模式（SnapshotPusher）。
 - **批量状态写入**：状态 / 进度先攒在内存，由 `flushLoop` 定时批量刷库，避免逐条写入。
 
@@ -39,5 +39,5 @@
 ## 关键设计
 
 - **内存 + 数据库双轨状态**：运行态以内存为准（`GetTaskSnapshot` / `IsIdle`），查询态综合两者（`GetTaskState`）。
-- **唯二执行入口**：`startTaskTrees`（开始 / 重试 / 板块重执行）与 `resumeTaskTrees`（恢复），其余操作均收敛到这两个入口。
+- **唯二执行入口**：`startTaskTrees`（开始 / 重试 / 板块重执行）与 `resumeTaskTrees`（恢复），其余操作均收敛到这两个入口。`Redownload` 先持久化板块选择到 task 再调 `startTaskTrees`。
 - **依赖全部接口注入**：插件执行器、仓储、进度推送器均通过构造函数注入，`Manager` 不直接持有具体 Service。

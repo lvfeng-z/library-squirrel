@@ -82,10 +82,10 @@ export function PauseTaskTree(taskId: number, isLeaf: boolean): $CancellableProm
 }
 
 /**
- * Redownload 板块重执行入口（多选）：sections 为板块代码数组（A=1/B=2/C=3），空数组视为全集
+ * Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
  */
-export function Redownload(taskIds: number[], sections: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(1628478088, taskIds, sections).then(($result: any) => {
+export function Redownload(taskIds: number[], storeRoles: string[], includeWorkInfo: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1628478088, taskIds, storeRoles, includeWorkInfo).then(($result: any) => {
         return $$createType1($result);
     });
 }

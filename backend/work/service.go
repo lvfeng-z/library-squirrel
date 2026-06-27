@@ -1153,6 +1153,43 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 	return result, nil
 }
 
+// LoadWorkMeta 加载作品的命名元数据(Work + 作者),构造为 WorkResponse 供文件名模板使用。
+// 用于资源板块单独重下(未跑作品元数据板块)时从已有作品获取命名所需元数据,与板块选择解耦。
+func (s *Service) LoadWorkMeta(ctx context.Context, workId int64) (*sdkdto.WorkResponse, error) {
+	fulls, err := s.GetFullWorkInfoByIds(ctx, []int64{workId})
+	if err != nil {
+		return nil, err
+	}
+	if len(fulls) == 0 {
+		return nil, nil
+	}
+	f := fulls[0]
+	resp := &sdkdto.WorkResponse{Work: f.Work}
+	for _, la := range f.LocalAuthors {
+		a := la.Author
+		resp.LocalAuthors = append(resp.LocalAuthors, &a)
+	}
+	for _, sa := range f.SiteAuthors {
+		a := sa.Author
+		resp.SiteAuthors = append(resp.SiteAuthors, &sdkdto.TaskSiteAuthorDTO{
+			SiteAuthorID:    ptrStrValue(a.SiteAuthorID),
+			AuthorName:      ptrStrValue(a.AuthorName),
+			FixedAuthorName: ptrStrValue(a.FixedAuthorName),
+			Introduce:       ptrStrValue(a.Introduce),
+			Homepage:        ptrStrValue(a.Homepage),
+		})
+	}
+	return resp, nil
+}
+
+// ptrStrValue 安全解引用 *string,空指针返回空串
+func ptrStrValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
 func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {

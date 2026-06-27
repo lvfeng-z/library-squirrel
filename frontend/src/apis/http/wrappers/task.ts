@@ -101,9 +101,9 @@ export async function taskRetryTree(taskId: number, isLeaf: boolean): Promise<Ap
 
 // ========== 作品板块重执行（多选） ==========
 
-// sections 为板块代码数组（A=1/B=2/C=3），空数组视为全集
-export async function taskRedownload(taskIds: number[], sections: number[]): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.Redownload(taskIds, sections), '重新下载板块', false)
+// storeRoles 为所选资源 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
+export async function taskRedownload(taskIds: number[], storeRoles: string[], includeWorkInfo: boolean): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.Redownload(taskIds, storeRoles, includeWorkInfo), '重新下载板块', false)
 }
 
 // ========== 作品替换确认 ==========
