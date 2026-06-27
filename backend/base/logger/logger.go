@@ -3,6 +3,7 @@ package logger
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,12 @@ import (
 	"github.com/library-squirrel/backend/util"
 )
 
-var Log *zap.SugaredLogger
+var (
+	Log *zap.SugaredLogger
+	// logWriter 持有当前 lumberjack 实例，Reinit 重建前关闭以释放 server.log 句柄，
+	// 避免旧实例句柄持续占用文件导致轮转 rename 失败
+	logWriter io.Closer
+)
 
 // Init 使用默认配置初始化 Logger（main() 最先调用，确保 logger.Log 可用）
 func Init() error {
@@ -25,6 +31,12 @@ func Init() error {
 // Reinit 使用用户配置重建 Logger（配置加载后调用，替换全局 logger.Log）
 func Reinit(cfg config.LogConfig) error {
 	Sync()
+	// 关闭旧 lumberjack 实例，释放其持有的 server.log 文件句柄，
+	// 否则旧句柄会持续占用文件，导致新实例轮转时 rename 失败
+	if logWriter != nil {
+		_ = logWriter.Close()
+		logWriter = nil
+	}
 	return initWithConfig(cfg)
 }
 
@@ -56,6 +68,7 @@ func initWithConfig(cfg config.LogConfig) error {
 		MaxAge:     cfg.MaxAge,
 		Compress:   cfg.Compress,
 	}
+	logWriter = writer
 
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
