@@ -10,7 +10,7 @@ database:
 log:
   level: info
   format: console
-  maxSize: 2.5
+  maxSize: 2
   maxBackups: 3
   maxAge: 30
   compress: false
