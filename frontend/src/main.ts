@@ -23,6 +23,13 @@ import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { registerBuiltinTours } from '@renderer/tour/definitions'
 import lodash from 'lodash'
 import * as apis from './apis/http'
+import { setupConsoleForward } from '@renderer/utils/ConsoleForward.ts'
+
+// 开发环境：劫持 console 全级别 + 未处理异常，转发到后端 frontend.log
+// 生产构建 import.meta.env.DEV 为 false，不启用（frontend.log 惰性创建，生产无此文件）
+if (import.meta.env.DEV) {
+  setupConsoleForward()
+}
 
 const app = createApp(App)
 const pinia = createPinia()
