@@ -290,17 +290,19 @@ function formatBytes(bytes: number) {
             <template #content>
               {{ sectionTooltips }}
             </template>
-            <el-checkbox-group v-model="storeRolesSelected">
-              <el-checkbox :value="StoreRole.MAIN">
-                资源
+            <div class="task-operation-bar-section-tooltip-trigger">
+              <el-checkbox-group v-model="storeRolesSelected">
+                <el-checkbox :value="StoreRole.MAIN">
+                  资源
+                </el-checkbox>
+                <el-checkbox :value="StoreRole.THUMBNAIL">
+                  缩略图
+                </el-checkbox>
+              </el-checkbox-group>
+              <el-checkbox v-model="workInfoSelected" style="margin-top: 4px">
+                作品信息
               </el-checkbox>
-              <el-checkbox :value="StoreRole.THUMBNAIL">
-                缩略图
-              </el-checkbox>
-            </el-checkbox-group>
-            <el-checkbox v-model="workInfoSelected" style="margin-top: 4px">
-              作品信息
-            </el-checkbox>
+            </div>
           </el-tooltip>
         </div>
       </el-popover>
@@ -390,5 +392,11 @@ function formatBytes(bytes: number) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+/* tooltip 触发器需为单一子元素，内部仍保持纵向排列 */
+.task-operation-bar-section-tooltip-trigger {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>
