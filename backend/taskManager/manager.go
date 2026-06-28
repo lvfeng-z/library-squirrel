@@ -494,11 +494,22 @@ func (m *Manager) tryDispatch(task *ManagedTask) {
 
 // executeTask 在独立协程中执行任务（已获取信号量）
 func (m *Manager) executeTask(task *ManagedTask) {
+	// 登记 goroutine 生命周期信号,供下次 prepareForResume 等待本 goroutine 退出
+	exited := make(chan struct{})
+	task.runMu.Lock()
+	task.runExited = exited
+	task.runMu.Unlock()
+
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] executeTask panic: %v", r)
 		}
 		<-m.semaphore
+		// 关闭生命周期信号,唤醒可能正在等待的 prepareForResume
+		task.runMu.Lock()
+		close(exited)
+		task.runExited = nil
+		task.runMu.Unlock()
 		m.dispatchFromQueue()
 	}()
 
@@ -638,7 +649,8 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool)
 	}
 
 	for _, child := range parent.GetChildren() {
-		if child.GetState() != TaskStatePaused {
+		state := child.GetState()
+		if state != TaskStatePaused && state != TaskStatePausing {
 			continue
 		}
 		child.prepareForResume()
@@ -1171,30 +1183,25 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 
 		// 刷新并持久化父任务状态
 		if mt.parentId != 0 {
-			// 加读锁读取 parentMap，防止与 cleanupFinishedTask 的 delete 并发读写
+			// 持 m.mu(RLock) 跨 refreshMu,统一锁顺序为 m.mu → refreshMu(与 cleanupFinishedTask/cleanupStoppedTree/BuildSnapshot 一致)。
+			// 旧实现先释放 m.mu 再 refreshMu.Lock→m.mu.RLock,与 cleanupFinishedTask(m.mu.Lock→refreshMu.Lock) 形成锁顺序死锁:
+			// 并发完成时 cleanupFinishedTask 阻塞 → executeTask 不退出 → 信号量槽泄漏 → 并行度逐渐下降到 1。
+			// 持 RLock 期间 cleanupFinishedTask 无法删 parentMap(需 m.mu Lock),故 ok 判定稳定,无需二次检查。
 			m.mu.RLock()
 			parent, ok := m.parentMap[mt.parentId]
-			m.mu.RUnlock()
 			if ok {
-				// 加锁保证 RefreshState（读子任务 + Swap）和推送之间的原子性，
-				// 防止并发 goroutine 的过时状态覆盖正确状态
 				parent.refreshMu.Lock()
-				// 二次检查：在等待 refreshMu 期间，父任务可能已被其他 goroutine 的 cleanupFinishedTask 清理
-				m.mu.RLock()
-				_, stillExists := m.parentMap[mt.parentId]
-				m.mu.RUnlock()
-				if stillExists {
-					oldParentState, newParentState, finishedCount, total := parent.RefreshState()
-					logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s, finished=%d/%d", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState), finishedCount, total)
-					if oldParentState != newParentState && isStableState(newParentState) {
-						// 父任务无错误信息，传空字符串（清除 error_message）
-						m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
-					}
-					m.deps.Pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
-					m.deps.Pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
+				oldParentState, newParentState, finishedCount, total := parent.RefreshState()
+				logger.Log.Infof("[TaskManager] 父任务状态刷新: parentId=%d, old=%s, new=%s, finished=%d/%d", parent.taskId, taskStateName(oldParentState), taskStateName(newParentState), finishedCount, total)
+				if oldParentState != newParentState && isStableState(newParentState) {
+					// 父任务无错误信息，传空字符串（清除 error_message）
+					m.addToPending(parent.taskId, task.TaskStatusEnum(newParentState), "")
 				}
+				m.deps.Pusher.PushParentStateChange(parent.taskId, parent.taskName, newParentState)
+				m.deps.Pusher.PushParentProgress(parent.taskId, int64(total), int64(finishedCount))
 				parent.refreshMu.Unlock()
 			}
+			m.mu.RUnlock()
 		}
 	})
 

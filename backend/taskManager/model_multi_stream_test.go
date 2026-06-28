@@ -642,3 +642,34 @@ func TestDrainUnselectedReaders_NoDeadlock(t *testing.T) {
 // 防止编译器误报未使用(atomic 在 newTestManagedTask 间接用,这里显式引用以稳定导入)
 var _ = atomic.Int32{}
 var _ = sync.Mutex{}
+
+// TestPrepareForResume_WaitsForGoroutineExit 回归:prepareForResume 必须等待旧 executeTask goroutine
+// 退出后才改写共享状态,否则频繁启停下旧 goroutine 与新 goroutine 竞争 streams/ctx → 并行度下降/状态错乱
+func TestPrepareForResume_WaitsForGoroutineExit(t *testing.T) {
+	m := newTestManagedTask()
+	// 模拟一个仍在运行的旧 goroutine:runExited 为开通道
+	running := make(chan struct{})
+	m.runExited = running
+
+	proceeded := make(chan struct{})
+	go func() {
+		m.prepareForResume()
+		close(proceeded)
+	}()
+
+	// 旧 goroutine 未退出时,prepareForResume 应阻塞
+	select {
+	case <-proceeded:
+		t.Fatal("prepareForResume 不应在旧 goroutine 退出前返回")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// 旧 goroutine 退出
+	close(running)
+
+	select {
+	case <-proceeded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("旧 goroutine 退出后 prepareForResume 应及时返回")
+	}
+}

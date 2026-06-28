@@ -107,7 +107,6 @@ export const useTaskStore = defineStore('task', {
           taskStoreObj = { task: createEmptyTaskProgressDTO(), notificationId: undefined }
           this.tasks.set(id, taskStoreObj)
         }
-        console.log('update task', id, taskStoreObj.task.task?.status)
         if (task.task.status !== taskStoreObj.task.task?.status) {
           // 任务状态变化为完成或失败，解决通知Store中该任务的Promise
           if (notNullish(taskStoreObj.notificationId)) {
@@ -167,7 +166,6 @@ export const useTaskStore = defineStore('task', {
         ids.forEach((id) => {
           // 若已有待执行的延迟移除，先清除（避免重复定时器）
           this.cancelPendingRemove(id)
-          console.log('setTimer task', id)
           // 不立即删除，而是设置延迟定时器，让 Vue watcher 有时间将 store 中的终态同步到行数据
           const timer = setTimeout(() => {
             this.pendingRemoveTimers.delete(id)

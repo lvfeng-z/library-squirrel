@@ -344,6 +344,11 @@ type ManagedTask struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
+	// executeTask goroutine 生命周期信号:goroutine 启动时创建(开),退出时关闭。
+	// prepareForResume 据此等待旧 goroutine 退出后再改写共享状态(ctx/streams/pauseCh),避免竞态。
+	runExited chan struct{}
+	runMu     sync.Mutex
+
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
 
@@ -824,7 +829,11 @@ func (m *ManagedTask) downloadLoop() runResult {
 		return runResultPaused
 	}
 	if hasCanceled.Load() {
-		// Stop 已 setFailed,直接结束
+		// setup 阶段 pause 取消了 ctx(Pause len(streams)==0 → cancel):视为暂停,不 cleanup
+		// 否则是 Stop 取消(已 setFailed)
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		return runResultDone
 	}
 	if hasFailed.Load() {
@@ -1014,34 +1023,42 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	m.workId = resource.WorkID
 
-	// 3. 计算各 downloaded 轨续传偏移(已完成且文件存在则跳过;文件不存在则 offset=0 整轨重下)
+	// 3. 计算各 downloaded 轨续传偏移 + 收集未完成 derived 轨(整轨重产)
+	// 已完成(状态 Complete 且文件存在)的轨道跳过;downloaded 未完成按文件大小算偏移;derived 未完成收集到 incompleteDerivedRoles
 	streamOffsets := map[string]int64{}
 	completedRoles := map[string]struct{}{}
+	var incompleteDerivedRoles []string
 	for _, row := range storeRows {
-		if row.Generation != entity.GenerationDownloaded {
-			continue
-		}
 		store, storeErr := m.deps.StoreReader.GetById(m.ctx, row.StoreID)
 		if storeErr != nil || store == nil {
+			// store 记录丢失:downloaded 整轨重下(offset=0),derived 整轨重产
+			if row.Generation == entity.GenerationDerived {
+				incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
+			} else {
+				streamOffsets[row.StoreType] = 0
+			}
 			continue
 		}
 		absPath := m.deps.StoreReader.GetAbsPath(store)
 		info, statErr := os.Stat(absPath)
 		if store.Status == entity.StoreStatusComplete && statErr == nil {
-			// 该轨已完成:不进入 Resume(插件不再产出)
+			// 该轨已完成:不进入 Resume/重产
 			completedRoles[row.StoreType] = struct{}{}
 			continue
 		}
-		if statErr != nil {
+		// 未完成:downloaded 按偏移续传;derived 整轨重产
+		if row.Generation == entity.GenerationDerived {
+			incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
+		} else if statErr != nil {
 			streamOffsets[row.StoreType] = 0 // 文件缺失:整轨重下
 		} else {
 			streamOffsets[row.StoreType] = info.Size()
 		}
 	}
 
-	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v", m.taskId, resource.GetID(), streamOffsets, completedRoles)
+	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v, regenDerived=%v", m.taskId, resource.GetID(), streamOffsets, completedRoles, incompleteDerivedRoles)
 
-	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded 轨,derived 整轨重产)
+	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded 轨)
 	param := &sdkdto.TaskResumeParam{
 		Task:          dto.NewTaskDTO(m.task),
 		StreamOffsets: streamOffsets,
@@ -1052,11 +1069,27 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		m.setFailed(fmt.Sprintf("跨重启续传失败: %v", err))
 		return runResultDone
 	}
-	if newResp != nil {
-		m.workResp = newResp
+	if newResp == nil {
+		newResp = &sdkdto.WorkResponse{}
 	}
+	// 缺陷2: resume 也加载作品命名元数据(与 runSectionCombo 一致),避免重建路径落 unknownAuthor
+	m.mergeWorkMetaForNaming(newResp, nil)
+	m.workResp = newResp
+
+	// 缺陷3: 未完成的 derived 轨由 Start 重新生成(Resume 只续传 downloaded;derived 一次性产物未完成须整轨重产)
+	if len(incompleteDerivedRoles) > 0 {
+		derivedSpecs, _, startErr := m.pluginExec.Start(m.ctx, m.task, incompleteDerivedRoles)
+		if startErr != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 重产 derived 轨 %v 失败: %v", m.taskId, incompleteDerivedRoles, startErr)
+			m.setFailed(fmt.Sprintf("重产资源失败: %v", startErr))
+			return runResultDone
+		}
+		specs = append(specs, derivedSpecs...)
+	}
+
 	if len(specs) == 0 {
-		// 无未完成轨道需续传:任务直接完成
+		// 无未完成轨道需续传/重产:任务直接完成
+		logger.Log.Infof("[TaskManager][dispatch] taskId=%d resumeFromPersistedState 无未完成轨道,直接 Finished(streamOffsets=%v regenDerived=%v)", m.taskId, streamOffsets, incompleteDerivedRoles)
 		m.clearPendingResourceID()
 		m.setState(TaskStateFinished)
 		return runResultDone
@@ -1098,8 +1131,14 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
 			}
 		}
-		// 更新 resource_store(替换本次产出 role 的关联)
-		return m.mountResourceStores(txCtx, resource.GetID(), mounts)
+		// 更新 resource_store(新模型,替换本次产出 role 的关联)
+		if err := m.mountResourceStores(txCtx, resource.GetID(), mounts); err != nil {
+			return err
+		}
+		// 缺陷1: 同步回填 Resource 旧列(WorkStoreID/ThumbnailStoreID),保持双写一致。
+		// 阶段6 前前端/backup/recycleBin 仍读旧列;不回填会导致 resume 重建后旧列指向被遗弃的旧 store → 前端看到 0 字节
+		applyMountsToResource(resource, mounts)
+		return m.deps.ResourceUpdater.Update(txCtx, resource)
 	})
 	if txErr != nil {
 		for _, s := range streams {
@@ -1157,6 +1196,20 @@ func (m *ManagedTask) Pause() error {
 // prepareForResume 重置任务的运行时状态，准备重新调度
 // 由 ResumeTaskTree 在 tryDispatch 前调用
 func (m *ManagedTask) prepareForResume() {
+	// 等待上一次 executeTask goroutine 退出,避免与旧 goroutine 竞争共享状态(ctx/streams/pauseCh)。
+	// 频繁启停下若不等待,旧 goroutine 的 downloadLoop defer(closeStreamReaders)可能破坏新 goroutine 的 streams,
+	// 或旧 goroutine 卡住持有信号量槽 → 并行度下降。
+	m.runMu.Lock()
+	exited := m.runExited
+	m.runMu.Unlock()
+	if exited != nil {
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+			logger.Log.Warnf("[TaskManager] 任务 %d prepareForResume 等待旧 goroutine 退出超时(可能卡住,继续 resume)", m.taskId)
+		}
+	}
+
 	m.cancel()
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	// 关闭旧 reader + 重建暂停通道

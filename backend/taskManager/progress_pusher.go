@@ -223,13 +223,14 @@ func NewSnapshotPusher(emitter WailsEventEmitter, provider SnapshotDataProvider,
 	}
 }
 
-// markDirty 标记脏数据并重置防抖定时器
+// markDirty 标记脏数据。若定时器未运行则启动固定延迟定时器;若已在运行则不重置
+// (窗口内全部变更合并到定时器到点时的最终快照,保证延迟有上限)。
 func (s *SnapshotPusher) markDirty() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.dirty = true
 	if s.timer != nil {
-		s.timer.Stop()
+		return // 定时器已在运行,不重置;本次变更合并到当前窗口
 	}
 	s.timer = time.AfterFunc(time.Duration(s.debounceMs)*time.Millisecond, s.flush)
 }
@@ -242,6 +243,7 @@ func (s *SnapshotPusher) flush() {
 		return
 	}
 	s.dirty = false
+	s.timer = nil // 清除定时器引用,允许下次 markDirty 开启新窗口
 	// 取出移除缓冲区
 	removedTasks := s.removedTaskItems
 	removedParents := s.removedParentItems
@@ -320,6 +322,7 @@ func (s *SnapshotPusher) PushStateChange(taskId int64, taskName string, state Ta
 		item.TaskName = taskName
 		item.Status = int(state)
 	})
+	// 所有状态变更走 markDirty(固定延迟窗口,不重置),窗口内变更合并到最终快照
 	s.markDirty()
 }
 
