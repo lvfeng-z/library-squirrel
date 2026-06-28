@@ -19,7 +19,6 @@ const BUFFER_LIMIT = 20
 const FLUSH_INTERVAL = 200
 
 let buffer: FrontendLogEntry[] = []
-let timer: ReturnType<typeof setInterval> | null = null
 
 // 序列化单个参数：对象尝试 JSON.stringify，循环引用/失败兜底为 String
 function serializeArg(arg: unknown): string {
@@ -44,11 +43,8 @@ function append(level: LogLevel, args: unknown[]) {
   if (buffer.length >= BUFFER_LIMIT) flush()
 }
 
+// flush 仅清空缓冲并上报；定时器由 setupConsoleForward 持续运行，不在此清除
 function flush() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
   if (buffer.length === 0) return
   const batch = buffer
   buffer = []
@@ -82,7 +78,8 @@ export function setupConsoleForward() {
   console.debug = wrap('debug', original.debug)
   console.trace = wrap('debug', original.trace)
 
-  timer = setInterval(flush, FLUSH_INTERVAL)
+  // 定时 flush 持续运行，保证小量日志也能定期落盘（页面卸载时定时器随之回收）
+  setInterval(flush, FLUSH_INTERVAL)
 
   // DevTools 的 Uncaught
   window.addEventListener('error', (e) => {
