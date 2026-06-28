@@ -27,6 +27,7 @@ import (
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/fileSysUtil"
+	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/migration"
@@ -75,6 +76,7 @@ type App struct {
 	BackupService          *backup.Service
 	AppLauncherService     *appLauncher.Service
 	FileSysUtilService     *fileSysUtil.Service
+	FrontendLogService     *frontendLog.Service
 	PluginService          *plugin.Service
 	PluginStorageService   *plugin.PluginStorageService
 	PluginSettingService   *plugin.PluginSettingService
@@ -129,6 +131,7 @@ type App struct {
 	BackupHandler                *backup.Handler
 	AppLauncherHandler           *appLauncher.Handler
 	FileSysUtilHandler           *fileSysUtil.Handler
+	FrontendLogHandler           *frontendLog.Handler
 	PluginHandler                *plugin.Handler
 	PluginSettingHandler         *plugin.SettingHandler
 	TaskHandler                  *task.Handler
@@ -723,6 +726,9 @@ func (app *App) initBaseServices() {
 
 	// fileSysUtil 服务
 	app.FileSysUtilService = fileSysUtil.NewService(rootPath)
+
+	// frontendLog 服务
+	app.FrontendLogService = frontendLog.NewService()
 }
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
@@ -982,6 +988,7 @@ func (app *App) initHandlers() {
 	app.BackupHandler = backup.NewHandler(app.BackupService)
 	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
 	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
+	app.FrontendLogHandler = frontendLog.NewHandler(app.FrontendLogService)
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
 	app.PluginSettingHandler = plugin.NewSettingHandler(app.PluginSettingService)
 	app.TaskHandler = task.NewHandler(app.TaskService)

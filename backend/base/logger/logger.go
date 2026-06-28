@@ -18,9 +18,13 @@ import (
 
 var (
 	Log *zap.SugaredLogger
+	// FrontendLog 前端转发日志（仅写入 log/frontend.log），与业务日志物理隔离
+	FrontendLog *zap.SugaredLogger
 	// logWriter 持有当前 lumberjack 实例，Reinit 重建前关闭以释放 server.log 句柄，
 	// 避免旧实例句柄持续占用文件导致轮转 rename 失败
 	logWriter io.Closer
+	// frontendLogWriter 持有 frontend.log 的 lumberjack 实例，管理方式同 logWriter
+	frontendLogWriter io.Closer
 )
 
 // Init 使用默认配置初始化 Logger（main() 最先调用，确保 logger.Log 可用）
@@ -37,6 +41,10 @@ func Reinit(cfg config.LogConfig) error {
 		_ = logWriter.Close()
 		logWriter = nil
 	}
+	if frontendLogWriter != nil {
+		_ = frontendLogWriter.Close()
+		frontendLogWriter = nil
+	}
 	return initWithConfig(cfg)
 }
 
@@ -44,6 +52,9 @@ func Reinit(cfg config.LogConfig) error {
 func Sync() {
 	if Log != nil {
 		_ = Log.Sync()
+	}
+	if FrontendLog != nil {
+		_ = FrontendLog.Sync()
 	}
 }
 
@@ -96,6 +107,23 @@ func initWithConfig(cfg config.LogConfig) error {
 
 	logger := zap.New(zapcore.NewTee(fileCore, consoleCore))
 	Log = logger.Sugar()
+
+	// frontend.log：独立 lumberjack（惰性创建文件：无写入则不产生文件，故生产无此文件），
+	// 仅写文件不回控制台，DebugLevel 全量落盘，不受 log.level 过滤
+	feWriter := &lumberjack.Logger{
+		Filename:   filepath.Join(logDir, "frontend.log"),
+		MaxSize:    cfg.MaxSize,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAge,
+		Compress:   cfg.Compress,
+	}
+	frontendLogWriter = feWriter
+	feCore := zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderConfig),
+		zapcore.AddSync(feWriter),
+		zapcore.DebugLevel,
+	)
+	FrontendLog = zap.New(feCore).Sugar()
 
 	return nil
 }

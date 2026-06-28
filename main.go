@@ -74,6 +74,7 @@ func main() {
 			application.NewService(app.BackupHandler),
 			application.NewService(app.AppLauncherHandler),
 			application.NewService(app.FileSysUtilHandler),
+			application.NewService(app.FrontendLogHandler),
 			application.NewService(app.PluginHandler),
 			application.NewService(app.PluginSettingHandler),
 			application.NewService(app.TaskHandler),
