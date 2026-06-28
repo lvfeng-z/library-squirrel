@@ -246,7 +246,8 @@ func recvSpecsAndDemux(stream grpc.ServerStreamingClient[gen.StreamChunk]) ([]*p
 			Format:      meta.GetFormat(),
 			Size:        meta.GetSize(),
 			SuggestName: meta.GetSuggestName(),
-			Continuable: meta.Continuable, // *bool(oneof optional)
+			Continuable: meta.Continuable,               // *bool(oneof optional)
+			ResumeWriteOffset: meta.ResumeWriteOffset,     // *int64(oneof optional)
 		})
 	}
 

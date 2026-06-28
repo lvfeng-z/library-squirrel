@@ -209,7 +209,7 @@ type StoreBackupOrchestrator interface {
 // StoreStreamer 创建存储记录并返回 StoreWriter
 type StoreStreamer interface {
 	StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer persistentStore.StoreWriter, err error)
-	ResumeStream(ctx context.Context, storeId int64) (writer persistentStore.StoreWriter, err error)
+	ResumeStream(ctx context.Context, storeId int64, offset int64) (writer persistentStore.StoreWriter, err error)
 }
 
 // StoreFileCleaner 事务失败时清理磁盘文件
@@ -1111,14 +1111,19 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		for _, spec := range specs {
 			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName)
 			existingRow := findStoreRow(storeRows, spec.Role)
-			// continuable 的 downloaded 轨且有正偏移:用已有 storeId + ResumeStream 续传(append)
+			// continuable 的 downloaded 轨且有正偏移:用已有 storeId + ResumeStream 续传
+			// 写入偏移:插件指定(spec.ResumeWriteOffset)优先,否则用主程序 stat 的 streamOffsets
 			if spec.Generation == entity.GenerationDownloaded && existingRow != nil && streamOffsets[spec.Role] > 0 {
-				writer, resumeErr := m.deps.StoreStreamer.ResumeStream(txCtx, existingRow.StoreID)
+				writeOffset := streamOffsets[spec.Role]
+				if spec.ResumeWriteOffset != nil {
+					writeOffset = *spec.ResumeWriteOffset
+				}
+				writer, resumeErr := m.deps.StoreStreamer.ResumeStream(txCtx, existingRow.StoreID, writeOffset)
 				if resumeErr != nil {
 					return resumeErr
 				}
 				sc := newStreamController(spec, existingRow.StoreID, writer, relPath)
-				sc.written = streamOffsets[spec.Role]
+				sc.written = writeOffset
 				streams = append(streams, sc)
 				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: existingRow.StoreID})
 			} else {

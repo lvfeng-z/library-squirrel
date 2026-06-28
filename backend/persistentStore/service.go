@@ -285,9 +285,10 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 	return store.GetID(), sw, nil
 }
 
-// ResumeStream 恢复存储，以 append 模式打开未完成文件，返回 StoreWriter
+// ResumeStream 恢复存储:Truncate(offset) + O_WRONLY 打开文件,从 offset 位置写入。
+// offset 为续写起始偏移;文件会被截断到 offset(丢弃 offset 之后的多余数据),消除 TOCTOU 竞态。
 // storeId: StoreStream 返回的未完成记录 ID
-func (s *Service) ResumeStream(ctx context.Context, storeId int64) (StoreWriter, error) {
+func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64) (StoreWriter, error) {
 	// 1. 查询记录，确认状态为未完成
 	record, err := s.repo.GetById(ctx, storeId)
 	if err != nil {
@@ -306,10 +307,19 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64) (StoreWriter,
 		return nil, fmt.Errorf("记录文件路径为空: storeId=%d", storeId)
 	}
 
-	// 3. 以 append 模式打开文件
-	file, err := os.OpenFile(absPath, os.O_WRONLY|os.O_APPEND, 0644)
+	// 3. O_WRONLY 打开(不用 O_APPEND),Truncate 到 offset 后 Seek 到 offset 写入。
+	// Truncate 消除 os.Stat 与文件打开之间的 TOCTOU:即使文件在 stat 后变大,多余部分被截断。
+	file, err := os.OpenFile(absPath, os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("打开文件失败: %w", err)
+	}
+	if err := file.Truncate(offset); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("截断文件到偏移 %d 失败: %w", offset, err)
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("定位到偏移 %d 失败: %w", offset, err)
 	}
 
 	return &storeWriter{file: file, storeId: storeId, repo: s.repo, workDirGetter: s.workDirGetter}, nil
