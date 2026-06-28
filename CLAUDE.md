@@ -97,6 +97,7 @@ task build:server && task run:server
 - **库**: Zap（SugaredLogger）+ Lumberjack（轮转）
 - **初始化**: 两阶段 — `logger.Init()` 用默认配置启动 → 配置加载后 `logger.Reinit()` 应用用户配置
 - **输出**: 文件（`{RootPath}/log/server.log`，JSON 格式）+ 控制台（Console 格式）
+- **前端日志**: `{RootPath}/log/frontend.log`（仅 dev）。前端 `console.*` 全级别 + 未捕获异常（`window.onerror`/`unhandledrejection`）经 `frontendLog` handler 批量转发，由独立 `logger.FrontendLog` 实例（DebugLevel 全量落盘、仅写文件、不回控制台）写入；生产构建前端不启用（`import.meta.env.DEV` 为 false），且文件惰性创建（无写入则不产生），故生产环境无此文件。
 - **级别**: 文件级别由 `config.yaml` 的 `log.level` 控制（默认 info），控制台始终 debug
 - **轮转**: 单文件 2.5MB 触发轮转，保留 3 个备份，30 天过期，默认不压缩
 - **使用**: 全局 `logger.Log.xxx()`，无需导入具体实现
