@@ -683,26 +683,26 @@ type pendingMount struct {
 	storeId    int64
 }
 
-// saveResource 保存 Resource(事务内调用)并挂 resource_store 行
-// 替换场景:查询已有 Resource 并更新;新建场景:创建新 Resource
+// saveResource 保存 Resource(事务内调用)并挂 resource_store 行。
+// 始终按 workId 查找已有 Resource:找到则更新(避免频繁启停 setup 阶段暂停后恢复导致重复创建),
+// 未找到则创建新 Resource。isReplace 标志仅用于 runSectionCombo 的备份决策,不影响此处。
 // 双写:既回填旧列(WorkStoreID/ThumbnailStoreID,供未迁移的 backup/recycleBin/work/search 消费),也写 resource_store 行(新模型,供多轨续传与阶段6)
 func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []pendingMount) (int64, error) {
 	var resourceId int64
 
-	if m.isReplace {
-		existing := m.findReplaceResource(ctx, workId)
-		if existing != nil {
-			applyMountsToResource(existing, mounts)
-			existing.ResourceComplete = 0
-			if err := m.deps.ResourceUpdater.Update(ctx, existing); err != nil {
-				return 0, fmt.Errorf("更新 Resource 失败: %w", err)
-			}
-			resourceId = existing.GetID()
+	// 始终查找已有 Resource(不依赖 isReplace),防止重复创建
+	existing := m.findReplaceResource(ctx, workId)
+	if existing != nil {
+		applyMountsToResource(existing, mounts)
+		existing.ResourceComplete = 0
+		if err := m.deps.ResourceUpdater.Update(ctx, existing); err != nil {
+			return 0, fmt.Errorf("更新 Resource 失败: %w", err)
 		}
+		resourceId = existing.GetID()
 	}
 
 	if resourceId == 0 {
-		// 非替换场景或替换未定位到已有 Resource:创建新 Resource
+		// 无已有 Resource:创建新 Resource
 		resource := entity.NewResource()
 		resource.WorkID = workId
 		resource.TaskID = m.task.GetID()
@@ -860,8 +860,16 @@ func (s *streamController) copyLoop(m *ManagedTask) streamResult {
 		case <-m.pauseSignal():
 			return s.handlePause(buf)
 		case <-m.ctx.Done():
-			s.abort()
-			s.state.Store(int32(streamCanceled))
+			// setup 阶段 pause 取消 ctx:保留文件(Sync+Close),不 Abort(删文件会导致进度倒退)
+			// 仅 Stop 取消 ctx 时才 Abort 删文件
+			if m.isStopping() {
+				s.abort()
+				s.state.Store(int32(streamCanceled))
+			} else {
+				s.storeWriter.Sync()
+				s.storeWriter.Close()
+				s.state.Store(int32(streamPaused))
+			}
 			return streamResult{kind: resultCanceled}
 		default:
 		}

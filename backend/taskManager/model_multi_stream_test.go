@@ -369,23 +369,51 @@ func TestCopyLoop_ReadError(t *testing.T) {
 
 func TestCopyLoop_Cancel(t *testing.T) {
 	m := newTestManagedTask()
+	// 模拟 Stop:ctx 取消时 isStopping()=true → Abort(删文件)
+	m.state.Store(int32(TaskStateStopping))
 	w := &fakeStoreWriter{}
-	// reader 耗尽 data 后阻塞,直到 ctx 取消;真实场景由插件关上游使 reader EOF
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
 	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(m) }()
 
-	<-cr.blockedCh // 等待 reader 阻塞(耗尽 data)
-	m.cancel()     // 触发 ctx.Done
+	<-cr.blockedCh
+	m.cancel()
 
 	res := <-done
 	if res.kind != resultCanceled {
 		t.Fatalf("期望 resultCanceled, 实际 %v", res.kind)
 	}
 	if !w.aborted {
-		t.Fatalf("取消期望 writer.Aborted")
+		t.Fatalf("Stop 取消期望 writer.Aborted")
+	}
+}
+
+// TestCopyLoop_PauseCancelPreservesFile 回归:setup 阶段 pause 取消 ctx 时,
+// copyLoop 应 Sync+Close 保留文件(不 Abort),否则下次 resume offset=0 → 进度倒退
+func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
+	m := newTestManagedTask()
+	// pause 取消 ctx:state=Processing(非 Stopping) → 应保留文件
+	w := &fakeStoreWriter{}
+	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
+	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
+
+	done := make(chan streamResult, 1)
+	go func() { done <- s.copyLoop(m) }()
+
+	<-cr.blockedCh
+	m.cancel()
+
+	res := <-done
+	if res.kind != resultCanceled {
+		t.Fatalf("期望 resultCanceled, 实际 %v", res.kind)
+	}
+	if w.aborted {
+		t.Fatalf("pause 取消不应 Abort(应保留文件防进度倒退)")
+	}
+	if !w.closed {
+		t.Fatalf("pause 取消应 Sync+Close 保留文件")
 	}
 }
 
