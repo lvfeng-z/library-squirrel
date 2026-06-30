@@ -224,6 +224,14 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 - 前端接口：`frontend/src/model/interface/SlotConfigs.ts` — 按类型做可辨识联合
 - 前端 Slot 类型：`frontend/src/model/slot/` — ViewSlot/EmbedSlot/DialogSlot/ReplaceViewSlot
 
+## 插件故障隔离（前端）
+
+主程序对插件注入的前端内容做故障隔离，确保插件的数据/组件错误不传播到主程序（不白屏）。**对插件透明，声明方式不变。**
+
+- **组件边界 `PluginBoundary`（`frontend/src/components/common/PluginBoundary.vue`）**：插件**组件**（embed/dialog/view/replaceView）渲染抛错时，由 `onErrorCaptured` 捕获并 `return false` 阻断冒泡，仅将出错子树降级为 fallback（「插件渲染失败 [重试]」），主程序与其他插件继续运行。采用 **component-prop 模式**（边界自身 `<component :is>` 渲染子组件），**禁止用 `<slot/>` 模式**（slot 内容 parent 归属提供方，`onErrorCaptured` 不触发，详见 `doc/plan/fix-plugin-menu-icon-crash.md` 第六节）。
+- **数据边界 `AppIcon`（`frontend/src/components/common/AppIcon.vue`）**：主程序用插件**数据**渲染时（如菜单图标），字符串图标走 `<el-image>` + `#error` 兜底，避免脏字符串喂给 `<component :is>` 触发 `createElement` 异常。
+- **全局兜底**：`main.ts` 的 `app.config.errorHandler` 仅记录日志，无法恢复渲染，作为最后防线。
+
 ## 插件 SDK 能力边界
 
 插件通过 `PluginContext`（gRPC `HostService`）访问宿主能力，不限于扩展点注册。所有可用能力：

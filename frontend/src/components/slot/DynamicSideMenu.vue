@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, Ref } from 'vue'
+import { computed, Ref, type Component } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import SideMenu from '@renderer/components/oneOff/SideMenu.vue'
+import AppIcon from '@renderer/components/common/AppIcon.vue'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import type { MenuSlotItem } from '@renderer/store/SlotRegistryStore'
 
@@ -19,7 +20,8 @@ interface MenuItem {
   index: string
   name: string
   label: string
-  icon: unknown
+  // 内置菜单为 Element Plus 图标组件对象，插件菜单为图片 URL 字符串
+  icon: Component | string
   order: number
   isGroup: boolean
   children: MenuItem[]
@@ -112,7 +114,7 @@ function handleMenuClick(item: MenuItem) {
           :index="item.index"
         >
           <template #title>
-            <el-icon><component :is="item.icon" /></el-icon>
+            <el-icon><AppIcon :icon="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </template>
           <el-menu-item
@@ -121,7 +123,7 @@ function handleMenuClick(item: MenuItem) {
             :index="child.index"
             @click="handleMenuClick(child)"
           >
-            <el-icon><component :is="child.icon" /></el-icon>
+            <el-icon><AppIcon :icon="child.icon" /></el-icon>
             <span>{{ child.label }}</span>
           </el-menu-item>
         </el-sub-menu>
@@ -132,7 +134,7 @@ function handleMenuClick(item: MenuItem) {
           :index="item.index"
           @click="handleMenuClick(item)"
         >
-          <el-icon><component :is="item.icon" /></el-icon>
+          <el-icon><AppIcon :icon="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </el-menu-item>
       </template>

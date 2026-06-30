@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { Component } from 'vue'
 import type { ViewSlot, EmbedSlot, DialogSlot, ReplaceViewSlot } from '@renderer/model/slot'
 import type { RouteRecordRaw } from 'vue-router'
 import type { Router } from 'vue-router'
@@ -8,7 +9,8 @@ import type { Router } from 'vue-router'
 export interface MenuSlotItem {
   slotId: string
   index: string
-  icon?: unknown
+  // 内置菜单为 Element Plus 图标组件对象，插件菜单为图片 URL 字符串
+  icon?: Component | string
   label: string
   order?: number
   children?: MenuSlotItem[]

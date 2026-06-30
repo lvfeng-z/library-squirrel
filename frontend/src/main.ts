@@ -49,6 +49,13 @@ app.directive('elScrollbarBottomed', elScrollbarBottomed)
 app.config.globalProperties.$router = router
 window['__vueRouter__'] = router
 
+// 全局兜底：捕获未被 PluginBoundary 等局部错误边界拦截的渲染错误，
+// 记录日志并阻止其冒泡为未处理异常导致整页白屏（插件故障隔离的最后防线）
+app.config.errorHandler = (err, _instance, info) => {
+  const e = err as Error | undefined
+  console.error('[GlobalErrorHandler] 未捕获的渲染错误', { info, msg: e?.message, stack: e?.stack })
+}
+
 // 设置 router 实例到 store（在 router 初始化后）
 setRouterInstance(router)
 

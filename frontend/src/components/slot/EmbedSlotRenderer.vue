@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, h, type Component } from 'vue'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import { Loading } from '@element-plus/icons-vue'
+import PluginBoundary from '@renderer/components/common/PluginBoundary.vue'
 import type { EmbedSlot } from '@renderer/model/slot'
 
 const props = defineProps<{
@@ -40,15 +41,13 @@ const createSlotRenderer = (slot: EmbedSlot) => {
 
 <template>
   <div class="embed-slot-container">
-    <template
+    <plugin-boundary
       v-for="slot in slots"
       :key="slot.slotId"
-    >
-      <component
-        :is="createSlotRenderer(slot)"
-        v-bind="slot.props"
-      />
-    </template>
+      :name="slot.slotId"
+      :component="createSlotRenderer(slot)"
+      :component-props="slot.props"
+    />
   </div>
 </template>
 

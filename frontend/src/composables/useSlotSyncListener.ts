@@ -3,7 +3,7 @@ import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import type { EmbedSlot, DialogSlot, ReplaceViewSlot, ViewSlot } from '@renderer/model/slot'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
-import { compile, defineComponent } from 'vue'
+import { compile, defineComponent, h } from 'vue'
 import * as Vue from 'vue'
 import type { SlotResponse } from '@bindings/github.com/library-squirrel/backend/plugin/extension/models'
 import { AnySlotContent } from '@renderer/model/constant/SlotTypes.ts'
@@ -13,6 +13,26 @@ import { SlotHandler } from '@bindings/github.com/library-squirrel/backend/plugi
 import { Events } from '@wailsio/runtime'
 import * as WailsRuntime from '@wailsio/runtime'
 import {isBlank} from "@renderer/utils/StringUtil.ts";
+import PluginBoundary from '@renderer/components/common/PluginBoundary.vue'
+
+/**
+ * 用 PluginBoundary 包裹插件视图组件，隔离其渲染错误
+ * 返回新的 loader：解析出的组件渲染时外层套一层错误边界，
+ * 插件视图 render 抛错只降级该视图，不波及主程序
+ */
+function wrapWithBoundary(loader: () => Promise<DefineComponent>, name: string): () => Promise<DefineComponent> {
+  return async () => {
+    const child = await loader()
+    return defineComponent({
+      name: 'PluginViewBoundary',
+      setup() {
+        // 通过 component prop 让 PluginBoundary 直接挂载子组件，
+        // 边界即其 parent，onErrorCaptured 稳定生效
+        return () => h(PluginBoundary, { name, component: child })
+      }
+    }) as DefineComponent
+  }
+}
 
 /**
  * 转换视图插槽配置
@@ -22,7 +42,7 @@ function convertToViewSlot(config: SlotResponse): ViewSlot {
   return {
     slotId: config.slotId,
     name: config.name,
-    component: componentLoader,
+    component: wrapWithBoundary(componentLoader, config.name),
     order: config.order ?? 100,
     isPlugin: true,
     props: config.props as Record<string, unknown> | undefined
@@ -67,7 +87,7 @@ function convertToReplaceViewSlot(config: SlotResponse): ReplaceViewSlot {
   return {
     slotId: config.slotId,
     target: config.target,
-    component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
+    component: wrapWithBoundary(() => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId), config.name),
     props: config.props as Record<string, unknown> | undefined
   }
 }
