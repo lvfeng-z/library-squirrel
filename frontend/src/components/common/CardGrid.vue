@@ -141,6 +141,10 @@ let itemResizeObserver: ResizeObserver | null = null
 let lastContainerWidth = 0
 let containerResizeTimer: ReturnType<typeof setTimeout> | null = null
 let layoutScheduled = false
+// 卡片高度变化的待重排索引集合（rAF 批次内合并，避免每帧逐条重排）
+const dirtyIndices = new Set<number>()
+// 卡片高度变化的重排调度句柄（rAF 合并到下一帧，切断 item→container 跨 observer 同帧反馈）
+let itemResizeRaf: ReturnType<typeof requestAnimationFrame> | null = null
 
 function getColumnWidth(): number {
   if (!containerRef.value) {
@@ -317,6 +321,9 @@ function setupContainerObserver() {
 }
 
 // 卡片高度变化（图片 load / 文本换行）→ 同列后续重排
+// 注意：回调内不得同步修改被 containerResizeObserver 观察的容器高度，否则 item→container
+// 跨 observer 会形成同帧反馈环触发 ResizeObserver loop。故先收集脏索引，用 rAF 合并到下一帧执行
+// （rAF 保证落至下一帧；nextTick 为 microtask 仍可能落在本帧渲染周期内，无法切断反馈）
 function setupItemObserver() {
   itemResizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
@@ -324,7 +331,14 @@ function setupItemObserver() {
       const index = Number(el.dataset.index)
       const newHeight = el.offsetHeight
       if (itemLastHeights[index] !== undefined && Math.abs(newHeight - itemLastHeights[index]) > 1) {
-        relayoutColumnFrom(index)
+        dirtyIndices.add(index)
+        if (itemResizeRaf === null) {
+          itemResizeRaf = requestAnimationFrame(() => {
+            itemResizeRaf = null
+            dirtyIndices.forEach((idx) => relayoutColumnFrom(idx))
+            dirtyIndices.clear()
+          })
+        }
       }
     }
   })
@@ -358,6 +372,10 @@ onUnmounted(() => {
   itemResizeObserver?.disconnect()
   if (containerResizeTimer) {
     clearTimeout(containerResizeTimer)
+  }
+  if (itemResizeRaf !== null) {
+    cancelAnimationFrame(itemResizeRaf)
+    itemResizeRaf = null
   }
 })
 </script>
