@@ -44,7 +44,7 @@ export interface ViewSlotConfig extends BaseSlotConfig {
 export interface MenuSlotConfig extends BaseSlotConfig {
   /** 插槽类型 */
   type: 'menu'
-  /** 图标 (Element Plus 图标名) */
+  /** 图标：图片相对路径（如 assets/icon.png），后端 resolveIconURL 已解析为 /plugin/... 完整 URL；省略则不渲染。不支持 Element Plus 图标名 */
   icon?: string
   /** 关联的视图ID (点击菜单时打开的视图) */
   viewId?: string
