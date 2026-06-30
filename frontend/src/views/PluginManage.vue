@@ -34,8 +34,8 @@ const pluginSearchTable = ref()
 const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
 // 插件操作栏按钮
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
-  { label: '查看', icon: 'View', code: DialogMode.VIEW },
   { label: '设置', icon: 'Setting', code: 'settings' },
+  { label: '查看', icon: 'View', code: DialogMode.VIEW },
   { label: '修复', icon: 'Refresh', code: 'reinstall' },
   { label: '卸载', icon: 'delete', code: 'uninstall' }
 ]
