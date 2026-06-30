@@ -43,18 +43,47 @@ type WorkSetSnapshot struct {
 	SortOrder sql.NullInt64 `json:"sortOrder"`
 }
 
+// StoreBackupRef 单个 store 的备份引用(v1 快照格式)
+type StoreBackupRef struct {
+	StoreType string `json:"storeType"`  // main/thumbnail/videoTrack/...
+	BackupID  int64  `json:"backupId"`   // Backup 记录 ID(0=删除时无文件)
+}
+
 // ResourceSnapshot 资源快照（业务字段 + Backup 记录 ID 映射）
+// v0(旧): WorkStoreBackupID/ThumbnailStoreBackupID 两固定字段
+// v1(新): StoreBackups 多轨集合
+// 两种格式都保留 JSON tag,通过 SnapshotStoreBackups 适配器统一访问
 type ResourceSnapshot struct {
-	TaskID                 int64          `json:"taskId"`
-	Enabled                bool           `json:"enabled"`
-	SuggestName            sql.NullString `json:"suggestName"`
-	ResourceComplete       int            `json:"resourceComplete"`
-	WorkStoreBackupID      int64          `json:"workStoreBackupId"`      // 主资源 Backup 记录 ID（0 = 删除时无主资源文件）
-	ThumbnailStoreBackupID int64          `json:"thumbnailStoreBackupId"` // 缩略图 Backup 记录 ID（0 = 无缩略图）
+	TaskID           int64            `json:"taskId"`
+	Enabled          bool             `json:"enabled"`
+	SuggestName      sql.NullString   `json:"suggestName"`
+	ResourceComplete int              `json:"resourceComplete"`
+	StoreBackups     []StoreBackupRef `json:"storeBackups,omitempty"`        // v1: 多轨备份引用
+	WorkStoreBackupID      int64      `json:"workStoreBackupId,omitempty"`   // v0 兼容: 主资源 Backup ID
+	ThumbnailStoreBackupID int64      `json:"thumbnailStoreBackupId,omitempty"` // v0 兼容: 缩略图 Backup ID
+}
+
+// SnapshotStoreBackups 从 ResourceSnapshot 提取统一的 StoreBackupRef 列表。
+// v1(StoreBackups 非空)直接返回;v0(旧两字段)映射为 main/thumbnail 两条。
+func SnapshotStoreBackups(rs *ResourceSnapshot) []StoreBackupRef {
+	if rs == nil {
+		return nil
+	}
+	if len(rs.StoreBackups) > 0 {
+		return rs.StoreBackups
+	}
+	// v0 兼容:从旧两字段映射
+	var refs []StoreBackupRef
+	if rs.WorkStoreBackupID != 0 {
+		refs = append(refs, StoreBackupRef{StoreType: "main", BackupID: rs.WorkStoreBackupID})
+	}
+	if rs.ThumbnailStoreBackupID != 0 {
+		refs = append(refs, StoreBackupRef{StoreType: "thumbnail", BackupID: rs.ThumbnailStoreBackupID})
+	}
+	return refs
 }
 
 // WorkRecycleSnapshot 作品回收站完整快照
-// 保存"无法从 Backup 表还原"的全部关联元数据；资源文件级信息由 Backup 记录承载
 type WorkRecycleSnapshot struct {
 	Work      WorkSnapshot       `json:"work"`
 	Authors   []AuthorSnapshot   `json:"authors"`

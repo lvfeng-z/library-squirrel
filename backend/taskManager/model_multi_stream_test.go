@@ -6,8 +6,7 @@ package taskManager
 //
 // A. 纯逻辑(无状态机):
 //   - filterSpecsByRoles: 全量 / 子集 / 无命中
-//   - uniqueRoles / toBackupStoreTypes / findSpec / findStoreRow / normalizeExt
-//   - applyMountsToResource: main/thumbnail/未知 role 回填旧列
+//   - uniqueRoles / findSpec / findStoreRow / normalizeExt
 //   - mergeWorkInfo
 //   - buildThumbnailRelPath / buildThumbnailFileName
 //
@@ -202,30 +201,6 @@ func TestFilterSpecsByRoles(t *testing.T) {
 	m = &ManagedTask{runMode: runMode{storeRoles: []string{"unknown"}}}
 	if got := m.filterSpecsByRoles(specs); len(got) != 0 {
 		t.Fatalf("无命中期望 0, 实际 %d", len(got))
-	}
-}
-
-func TestApplyMountsToResource(t *testing.T) {
-	r := entity.NewResource()
-	applyMountsToResource(r, []pendingMount{
-		{role: entity.StoreTypeMain, storeId: 100},
-		{role: entity.StoreTypeThumbnail, storeId: 200},
-		{role: entity.StoreTypeVideoTrack, storeId: 300}, // 未知 role 不回填旧列
-	})
-	if !r.WorkStoreID.Valid || r.WorkStoreID.Int64 != 100 {
-		t.Fatalf("WorkStoreID 期望 100, 实际 %+v", r.WorkStoreID)
-	}
-	if !r.ThumbnailStoreID.Valid || r.ThumbnailStoreID.Int64 != 200 {
-		t.Fatalf("ThumbnailStoreID 期望 200, 实际 %+v", r.ThumbnailStoreID)
-	}
-}
-
-func TestToBackupStoreTypes(t *testing.T) {
-	roles := []string{entity.StoreTypeMain, entity.StoreTypeThumbnail, entity.StoreTypeVideoTrack, entity.StoreTypeMain}
-	got := toBackupStoreTypes(roles)
-	// main/thumbnail 映射,videoTrack 暂不备份,main 去重
-	if len(got) != 2 {
-		t.Fatalf("期望 2 个 backup 类型(去重), 实际 %d (%+v)", len(got), got)
 	}
 }
 

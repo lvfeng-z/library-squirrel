@@ -60,23 +60,46 @@ func ToResourceEntity(dto *sdkdto.ResourceDTO) *entity.Resource {
 	return newResource
 }
 
-// NewResourceFullDTO 从 entity.Resource 和关联的 PersistentStore 实体创建 ResourceFullDTO
-func NewResourceFullDTO(resource *entity.Resource, workStore, thumbnailStore *entity.PersistentStore) *sdkdto.ResourceFullDTO {
+// NewResourceFullDTO 从 entity.Resource + resource_store 关联行 + PersistentStore 实体创建 ResourceFullDTO。
+// resourceStores 为该 Resource 的全部 resource_store 关联行;
+// storeMap 为 storeId → PersistentStore 的查找映射(由调用方批量查询构建,避免 N+1)。
+// Stores 为全量多轨数据(主数据源);WorkStore/ThumbnailStore 为从 Stores 按 storeType 派生的便捷访问器。
+func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.ResourceStore, storeMap map[int64]*entity.PersistentStore) *sdkdto.ResourceFullDTO {
 	if resource == nil {
 		return nil
 	}
-	return &sdkdto.ResourceFullDTO{
+	dto := &sdkdto.ResourceFullDTO{
 		ID:               resource.GetID(),
 		WorkID:           resource.WorkID,
 		TaskID:           resource.TaskID,
 		Enabled:          resource.Enabled,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
 		ResourceComplete: resource.ResourceComplete,
-		WorkStoreID:      util.NullInt64ToPointer(resource.WorkStoreID),
-		ThumbnailStoreID: util.NullInt64ToPointer(resource.ThumbnailStoreID),
-		WorkStore:        NewPersistentStoreDTO(workStore),
-		ThumbnailStore:   NewPersistentStoreDTO(thumbnailStore),
 		CreateTime:       resource.GetCreateTime(),
 		UpdateTime:       resource.GetUpdateTime(),
 	}
+
+	// 遍历 resource_store 行构 Stores,同时派生便捷访问器
+	for _, rs := range resourceStores {
+		if rs == nil {
+			continue
+		}
+		store := storeMap[rs.StoreID]
+		storeDTO := &sdkdto.ResourceStoreDTO{
+			StoreType:  rs.StoreType,
+			Generation: rs.Generation,
+			Store:      NewPersistentStoreDTO(store),
+		}
+		dto.Stores = append(dto.Stores, *storeDTO)
+
+		// 派生便捷访问器
+		switch rs.StoreType {
+		case entity.StoreTypeMain:
+			dto.WorkStore = storeDTO.Store
+		case entity.StoreTypeThumbnail:
+			dto.ThumbnailStore = storeDTO.Store
+		}
+	}
+
+	return dto
 }

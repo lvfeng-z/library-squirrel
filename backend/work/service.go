@@ -98,6 +98,11 @@ type ResourceBatchReader interface {
 	ListByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*entity2.Resource, error)
 }
 
+// ResourceStoreBatchReader resource_store 批量读取接口(按 resourceId 分组)
+type ResourceStoreBatchReader interface {
+	ListStoresByResourceIds(ctx context.Context, resourceIds []int64) (map[int64][]*entity2.ResourceStore, error)
+}
+
 // StoreBatchReader PersistentStore 批量读取接口
 type StoreBatchReader interface {
 	// GetByIds 根据 ID 列表批量查询
@@ -268,6 +273,11 @@ type ResourceSaver interface {
 	Save(ctx context.Context, resource *entity2.Resource) error
 }
 
+// ResourceStoreSaver resource_store 行保存接口(复原时重建关联)
+type ResourceStoreSaver interface {
+	SaveBatch(ctx context.Context, stores []*entity2.ResourceStore) error
+}
+
 // SiteAuthorByIdsReader 站点作者按 ID 批量查询接口（复原时引用校验）
 type SiteAuthorByIdsReader interface {
 	// ListBySiteAuthorIds 根据站点作者 ID 列表批量查询
@@ -324,14 +334,15 @@ type Service struct {
 	storeDeleter      StoreDeleter
 
 	// 批量读取接口（用于 GetFullWorkInfoByIds）
-	localTagBatchReader    LocalTagBatchReader
-	siteTagBatchReader     SiteTagBatchReader
-	siteBatchReader        SiteBatchReader
-	localAuthorBatchReader LocalAuthorBatchReader
-	siteAuthorBatchReader  SiteAuthorBatchReader
-	resourceBatchReader    ResourceBatchReader
-	storeBatchReader       StoreBatchReader
-	reWorkTagBatchReader   ReWorkTagBatchReader
+	localTagBatchReader     LocalTagBatchReader
+	siteTagBatchReader      SiteTagBatchReader
+	siteBatchReader         SiteBatchReader
+	localAuthorBatchReader  LocalAuthorBatchReader
+	siteAuthorBatchReader   SiteAuthorBatchReader
+	resourceBatchReader     ResourceBatchReader
+	resourceStoreBatchReader ResourceStoreBatchReader
+	storeBatchReader        StoreBatchReader
+	reWorkTagBatchReader    ReWorkTagBatchReader
 
 	// 写入接口（用于 SaveWorkInfo）
 	reWorkTagWriter          ReWorkTagWriter
@@ -358,6 +369,7 @@ type Service struct {
 
 	// 复原（RestoreWorkFromSnapshot）所需接口
 	resourceSaver         ResourceSaver
+	resourceStoreSaver    ResourceStoreSaver
 	siteAuthorByIdsReader SiteAuthorByIdsReader
 	workSetByIdsReader    WorkSetByIdsReader
 }
@@ -385,6 +397,7 @@ func NewService(
 	localAuthorBatchReader LocalAuthorBatchReader,
 	siteAuthorBatchReader SiteAuthorBatchReader,
 	resourceBatchReader ResourceBatchReader,
+	resourceStoreBatchReader ResourceStoreBatchReader,
 	storeBatchReader StoreBatchReader,
 	reWorkTagBatchReader ReWorkTagBatchReader,
 	localTagFindOrCreator LocalTagFindOrCreator,
@@ -400,6 +413,7 @@ func NewService(
 	runningTaskStopper RunningTaskStopper,
 	workDirGetter func() string,
 	resourceSaver ResourceSaver,
+	resourceStoreSaver ResourceStoreSaver,
 	siteAuthorByIdsReader SiteAuthorByIdsReader,
 	workSetByIdsReader WorkSetByIdsReader,
 ) *Service {
@@ -419,6 +433,7 @@ func NewService(
 		localAuthorBatchReader:   localAuthorBatchReader,
 		siteAuthorBatchReader:    siteAuthorBatchReader,
 		resourceBatchReader:      resourceBatchReader,
+		resourceStoreBatchReader: resourceStoreBatchReader,
 		reWorkTagBatchReader:     reWorkTagBatchReader,
 		reWorkTagWriter:          reWorkTagWriter,
 		reWorkWorkSetWriter:      reWorkWorkSetWriter,
@@ -440,6 +455,7 @@ func NewService(
 		runningTaskStopper:       runningTaskStopper,
 		workDirGetter:            workDirGetter,
 		resourceSaver:            resourceSaver,
+		resourceStoreSaver:       resourceStoreSaver,
 		siteAuthorByIdsReader:    siteAuthorByIdsReader,
 		workSetByIdsReader:       workSetByIdsReader,
 	}
@@ -493,18 +509,24 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // DeleteWorkAndSurroundingData 删除作品及其周围数据（级联删除）
 // DB 操作在事务内原子执行，磁盘文件删除在事务成功后尽力而为
 func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) error {
-	// 事务前：收集需要删除的 Store ID（文件删除必须在事务后）
+	// 事务前：收集需要删除的 Store ID（从 resource_store 收集,不读旧列;文件删除必须在事务后）
 	var storeIds []int64
 	resources, err := s.resourceDeleter.ListByWorkId(ctx, id)
 	if err != nil {
 		return err
 	}
+	resourceIds := make([]int64, 0, len(resources))
 	for _, res := range resources {
-		if res.WorkStoreID.Valid {
-			storeIds = append(storeIds, res.WorkStoreID.Int64)
-		}
-		if res.ThumbnailStoreID.Valid {
-			storeIds = append(storeIds, res.ThumbnailStoreID.Int64)
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	if len(resourceIds) > 0 {
+		rsStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, resourceIds)
+		for _, rsList := range rsStoreMap {
+			for _, rs := range rsList {
+				if rs.StoreID > 0 {
+					storeIds = append(storeIds, rs.StoreID)
+				}
+			}
 		}
 	}
 
@@ -575,8 +597,15 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 		return fmt.Errorf("查询作品作品集关联失败: %w", err)
 	}
 
-	// 3. [事务外] 资源文件备份 + 构建 resource 快照
+	// 3. [事务外] 资源文件备份 + 构建 resource 快照(从 resource_store 收集 store,不读旧列)
 	workDir := s.workDirGetter()
+	// 批量查询 resource_store
+	resourceIds := make([]int64, 0, len(resources))
+	for _, res := range resources {
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	rsStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, resourceIds)
+
 	resourceSnapshots := make([]recycleBin.ResourceSnapshot, 0, len(resources))
 	type storeBackupRef struct {
 		storeId  int64
@@ -590,21 +619,17 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 			SuggestName:      res.SuggestName,
 			ResourceComplete: res.ResourceComplete,
 		}
-		if res.WorkStoreID.Valid {
-			backupId, err := s.backupStore(ctx, res.WorkStoreID.Int64, workDir)
+		// 遍历 resource_store 行备份(v1 快照格式)
+		for _, rsRow := range rsStoreMap[res.GetID()] {
+			backupId, err := s.backupStore(ctx, rsRow.StoreID, workDir)
 			if err != nil {
 				return err
 			}
-			rs.WorkStoreBackupID = backupId
-			storeBackups = append(storeBackups, storeBackupRef{storeId: res.WorkStoreID.Int64, backupId: backupId})
-		}
-		if res.ThumbnailStoreID.Valid {
-			backupId, err := s.backupStore(ctx, res.ThumbnailStoreID.Int64, workDir)
-			if err != nil {
-				return err
-			}
-			rs.ThumbnailStoreBackupID = backupId
-			storeBackups = append(storeBackups, storeBackupRef{storeId: res.ThumbnailStoreID.Int64, backupId: backupId})
+			rs.StoreBackups = append(rs.StoreBackups, recycleBin.StoreBackupRef{
+				StoreType: rsRow.StoreType,
+				BackupID:  backupId,
+			})
+			storeBackups = append(storeBackups, storeBackupRef{storeId: rsRow.StoreID, backupId: backupId})
 		}
 		resourceSnapshots = append(resourceSnapshots, rs)
 	}
@@ -771,7 +796,7 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 	}
 	workId := work.GetID()
 
-	// 3. 重建 resource（store_id 用 backup 映射）
+	// 3. 重建 resource + resource_store（store_id 用 backup 映射,不写旧列）
 	for _, rs := range snapshot.Resources {
 		resource := entity2.NewResource()
 		resource.WorkID = workId
@@ -779,18 +804,30 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		resource.Enabled = rs.Enabled
 		resource.SuggestName = rs.SuggestName
 		resource.ResourceComplete = rs.ResourceComplete
-		if rs.WorkStoreBackupID > 0 {
-			if newStoreId, ok := storeIdByBackupId[rs.WorkStoreBackupID]; ok && newStoreId > 0 {
-				resource.WorkStoreID = sql.NullInt64{Int64: newStoreId, Valid: true}
-			}
-		}
-		if rs.ThumbnailStoreBackupID > 0 {
-			if newStoreId, ok := storeIdByBackupId[rs.ThumbnailStoreBackupID]; ok && newStoreId > 0 {
-				resource.ThumbnailStoreID = sql.NullInt64{Int64: newStoreId, Valid: true}
-			}
-		}
 		if err := s.resourceSaver.Save(ctx, resource); err != nil {
 			return workId, fmt.Errorf("重建资源记录失败: %w", err)
+		}
+		// 从快照还原 resource_store 行(v0/v1 兼容)
+		var rsStores []*entity2.ResourceStore
+		for _, sb := range recycleBin.SnapshotStoreBackups(&rs) {
+			if sb.BackupID <= 0 {
+				continue
+			}
+			newStoreId, ok := storeIdByBackupId[sb.BackupID]
+			if !ok || newStoreId <= 0 {
+				continue
+			}
+			rsRow := entity2.NewResourceStore()
+			rsRow.ResourceID = resource.GetID()
+			rsRow.StoreType = sb.StoreType
+			rsRow.Generation = entity2.GenerationDownloaded // 还原的 store 默认 downloaded
+			rsRow.StoreID = newStoreId
+			rsStores = append(rsStores, rsRow)
+		}
+		if len(rsStores) > 0 {
+			if err := s.resourceStoreSaver.SaveBatch(ctx, rsStores); err != nil {
+				return workId, fmt.Errorf("重建 resource_store 失败: %w", err)
+			}
 		}
 	}
 
@@ -993,18 +1030,21 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 	// Phase 4: 批量查询资源（按 workId 分组）
 	resourceMap, _ := s.resourceBatchReader.ListByWorkIds(ctx, ids)
 
-	// Phase 4.5: 批量查询 PersistentStore 记录
-	var allStoreIds []int64
-	storeIdSet := make(map[int64]bool)
+	// Phase 4.5: 批量查询 resource_store 行 + PersistentStore 记录(从 resource_store 收集 storeId,不读旧列)
+	var allResourceIds []int64
 	for _, resources := range resourceMap {
 		for _, res := range resources {
-			if res.WorkStoreID.Valid && res.WorkStoreID.Int64 > 0 && !storeIdSet[res.WorkStoreID.Int64] {
-				storeIdSet[res.WorkStoreID.Int64] = true
-				allStoreIds = append(allStoreIds, res.WorkStoreID.Int64)
-			}
-			if res.ThumbnailStoreID.Valid && res.ThumbnailStoreID.Int64 > 0 && !storeIdSet[res.ThumbnailStoreID.Int64] {
-				storeIdSet[res.ThumbnailStoreID.Int64] = true
-				allStoreIds = append(allStoreIds, res.ThumbnailStoreID.Int64)
+			allResourceIds = append(allResourceIds, res.GetID())
+		}
+	}
+	resourceStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, allResourceIds)
+	var allStoreIds []int64
+	storeIdSet := make(map[int64]bool)
+	for _, rsList := range resourceStoreMap {
+		for _, rs := range rsList {
+			if rs.StoreID > 0 && !storeIdSet[rs.StoreID] {
+				storeIdSet[rs.StoreID] = true
+				allStoreIds = append(allStoreIds, rs.StoreID)
 			}
 		}
 	}
@@ -1134,17 +1174,11 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdk
 			}
 		}
 
-		// 资源
+		// 资源(从 resource_store 组装,不读旧列)
 		if resources, ok := resourceMap[id]; ok && len(resources) > 0 {
 			res := resources[0]
-			var workStore, thumbnailStore *entity2.PersistentStore
-			if res.WorkStoreID.Valid {
-				workStore = storeMap[res.WorkStoreID.Int64]
-			}
-			if res.ThumbnailStoreID.Valid {
-				thumbnailStore = storeMap[res.ThumbnailStoreID.Int64]
-			}
-			fullDTO.Resource = dto2.NewResourceFullDTO(res, workStore, thumbnailStore)
+			rsList := resourceStoreMap[res.GetID()]
+			fullDTO.Resource = dto2.NewResourceFullDTO(res, rsList, storeMap)
 		}
 
 		result = append(result, fullDTO)

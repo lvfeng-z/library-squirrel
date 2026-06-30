@@ -66,6 +66,11 @@ type SiteAuthorUpdater interface {
 
 // ========== Service ==========
 
+// ResourceStoreBatchReader resource_store 批量读取接口(按 resourceId 分组)
+type ResourceStoreBatchReader interface {
+	ListStoresByResourceIds(ctx context.Context, resourceIds []int64) (map[int64][]*entity2.ResourceStore, error)
+}
+
 // Service 搜索服务
 type Service struct {
 	repo Repository
@@ -75,6 +80,7 @@ type Service struct {
 	workReader       WorkSetPageWorkReader
 	resourceReader   WorkSetPageResourceReader
 	storeBatchReader StoreBatchReader
+	resourceStoreBatchReader ResourceStoreBatchReader
 
 	// 外部模块依赖（通过构造函数注入）
 	localTagUpdater    LocalTagUpdater
@@ -90,6 +96,7 @@ func NewService(
 	workReader WorkSetPageWorkReader,
 	resourceReader WorkSetPageResourceReader,
 	storeBatchReader StoreBatchReader,
+	resourceStoreBatchReader ResourceStoreBatchReader,
 	localTagUpdater LocalTagUpdater,
 	siteTagUpdater SiteTagUpdater,
 	localAuthorUpdater LocalTagUpdater,
@@ -100,7 +107,8 @@ func NewService(
 		coverResolver:      coverResolver,
 		workReader:         workReader,
 		resourceReader:     resourceReader,
-		storeBatchReader:   storeBatchReader,
+		storeBatchReader:     storeBatchReader,
+		resourceStoreBatchReader: resourceStoreBatchReader,
 		localTagUpdater:    localTagUpdater,
 		siteTagUpdater:     siteTagUpdater,
 		localAuthorUpdater: localAuthorUpdater,
@@ -225,18 +233,24 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		}
 	}
 
-	// Phase 4.5: 批量查 PersistentStore 记录（WorkStore + ThumbnailStore）
-	var allStoreIds []int64
-	storeIdSet := make(map[int64]bool)
+	// Phase 4.5: 批量查 resource_store + PersistentStore(从 resource_store 收集 storeId,不读旧列)
+	var allResourceIds []int64
 	for _, resources := range resourcesMap {
 		for _, res := range resources {
-			if res.WorkStoreID.Valid && res.WorkStoreID.Int64 > 0 && !storeIdSet[res.WorkStoreID.Int64] {
-				storeIdSet[res.WorkStoreID.Int64] = true
-				allStoreIds = append(allStoreIds, res.WorkStoreID.Int64)
-			}
-			if res.ThumbnailStoreID.Valid && res.ThumbnailStoreID.Int64 > 0 && !storeIdSet[res.ThumbnailStoreID.Int64] {
-				storeIdSet[res.ThumbnailStoreID.Int64] = true
-				allStoreIds = append(allStoreIds, res.ThumbnailStoreID.Int64)
+			allResourceIds = append(allResourceIds, res.GetID())
+		}
+	}
+	resourceStoreMap, err := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, allResourceIds)
+	if err != nil {
+		return nil, fmt.Errorf("batch fetch resource_stores error: %w", err)
+	}
+	var allStoreIds []int64
+	storeIdSet := make(map[int64]bool)
+	for _, rsList := range resourceStoreMap {
+		for _, rs := range rsList {
+			if rs.StoreID > 0 && !storeIdSet[rs.StoreID] {
+				storeIdSet[rs.StoreID] = true
+				allStoreIds = append(allStoreIds, rs.StoreID)
 			}
 		}
 	}
@@ -263,29 +277,15 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 				if resources, ok := resourcesMap[coverWorkId]; ok {
 					for _, res := range resources {
 						if res.Enabled {
-							var workStore *entity2.PersistentStore
-							if res.WorkStoreID.Valid {
-								workStore = storeMap[res.WorkStoreID.Int64]
-							}
-							var thumbStore *entity2.PersistentStore
-							if res.ThumbnailStoreID.Valid {
-								thumbStore = storeMap[res.ThumbnailStoreID.Int64]
-							}
-							item.CoverResource = dto2.NewResourceFullDTO(res, workStore, thumbStore)
+							rsList := resourceStoreMap[res.GetID()]
+							item.CoverResource = dto2.NewResourceFullDTO(res, rsList, storeMap)
 							break
 						}
 					}
 					if item.CoverResource == nil && len(resources) > 0 {
 						res := resources[0]
-						var workStore *entity2.PersistentStore
-						if res.WorkStoreID.Valid {
-							workStore = storeMap[res.WorkStoreID.Int64]
-						}
-						var thumbStore *entity2.PersistentStore
-						if res.ThumbnailStoreID.Valid {
-							thumbStore = storeMap[res.ThumbnailStoreID.Int64]
-						}
-						item.CoverResource = dto2.NewResourceFullDTO(res, workStore, thumbStore)
+						rsList := resourceStoreMap[res.GetID()]
+						item.CoverResource = dto2.NewResourceFullDTO(res, rsList, storeMap)
 					}
 				}
 			}

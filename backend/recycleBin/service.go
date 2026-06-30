@@ -146,24 +146,19 @@ func (s *Service) RestoreWork(ctx context.Context, recycleItemId int64, overwrit
 	}
 
 	// 3. [事务外] 文件还原：逐 backup 还原文件 + 建新 persistent_store，得 backupId→newStoreId 映射
+	// 走 SnapshotStoreBackups 适配器(v0/v1 兼容)
 	storeIdByBackupId := make(map[int64]int64)
-	for _, rs := range snapshot.Resources {
-		if rs.WorkStoreBackupID > 0 {
-			newStoreId, err := s.restoreStore(ctx, rs.WorkStoreBackupID)
+	for i := range snapshot.Resources {
+		for _, sb := range SnapshotStoreBackups(&snapshot.Resources[i]) {
+			if sb.BackupID <= 0 {
+				continue
+			}
+			newStoreId, err := s.restoreStore(ctx, sb.BackupID)
 			if err != nil {
 				return 0, err
 			}
 			if newStoreId > 0 {
-				storeIdByBackupId[rs.WorkStoreBackupID] = newStoreId
-			}
-		}
-		if rs.ThumbnailStoreBackupID > 0 {
-			newStoreId, err := s.restoreStore(ctx, rs.ThumbnailStoreBackupID)
-			if err != nil {
-				return 0, err
-			}
-			if newStoreId > 0 {
-				storeIdByBackupId[rs.ThumbnailStoreBackupID] = newStoreId
+				storeIdByBackupId[sb.BackupID] = newStoreId
 			}
 		}
 	}
@@ -232,15 +227,13 @@ func (s *Service) Purge(ctx context.Context, recycleItemId int64) error {
 		return err
 	}
 
-	// 2. [事务外] 删 backup 磁盘文件 + 记录
-	for _, rs := range snapshot.Resources {
-		if rs.WorkStoreBackupID > 0 {
-			if err := s.purgeBackup(ctx, rs.WorkStoreBackupID); err != nil {
-				return err
+	// 2. [事务外] 删 backup 磁盘文件 + 记录(走适配器,v0/v1 兼容)
+	for i := range snapshot.Resources {
+		for _, sb := range SnapshotStoreBackups(&snapshot.Resources[i]) {
+			if sb.BackupID <= 0 {
+				continue
 			}
-		}
-		if rs.ThumbnailStoreBackupID > 0 {
-			if err := s.purgeBackup(ctx, rs.ThumbnailStoreBackupID); err != nil {
+			if err := s.purgeBackup(ctx, sb.BackupID); err != nil {
 				return err
 			}
 		}

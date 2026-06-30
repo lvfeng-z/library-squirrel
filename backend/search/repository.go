@@ -218,21 +218,31 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 				'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
 				'enabled', IIF(r.enabled, json('true'), json('false')),
 				'suggestName', r.suggest_name, 'resourceComplete', r.resource_complete,
-				'workStoreId', r.work_store_id, 'thumbnailStoreId', r.thumbnail_store_id,
-				'workStore', CASE WHEN ws.id IS NOT NULL THEN JSON_OBJECT(
-					'id', ws.id, 'filePath', ws.file_path, 'fileName', ws.file_name,
-					'filenameExtension', ws.filename_extension, 'status', ws.status,
-					'createTime', ws.create_time, 'updateTime', ws.update_time)
-				END,
-				'thumbnailStore', CASE WHEN ts.id IS NOT NULL THEN JSON_OBJECT(
-					'id', ts.id, 'filePath', ts.file_path, 'fileName', ts.file_name,
-					'filenameExtension', ts.filename_extension, 'status', ts.status,
-					'createTime', ts.create_time, 'updateTime', ts.update_time)
-				END,
+				'stores', (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+					'storeType', rs.store_type, 'generation', rs.generation,
+					'store', JSON_OBJECT(
+						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
+						'filenameExtension', ps.filename_extension, 'status', ps.status,
+						'createTime', ps.create_time, 'updateTime', ps.update_time)))
+					FROM resource_store rs
+					LEFT JOIN persistent_store ps ON rs.store_id = ps.id
+					WHERE rs.resource_id = r.id),
+				'workStore', (SELECT JSON_OBJECT(
+						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
+						'filenameExtension', ps.filename_extension, 'status', ps.status,
+						'createTime', ps.create_time, 'updateTime', ps.update_time)
+					FROM resource_store rs
+					INNER JOIN persistent_store ps ON rs.store_id = ps.id
+					WHERE rs.resource_id = r.id AND rs.store_type = 'main' LIMIT 1),
+				'thumbnailStore', (SELECT JSON_OBJECT(
+						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
+						'filenameExtension', ps.filename_extension, 'status', ps.status,
+						'createTime', ps.create_time, 'updateTime', ps.update_time)
+					FROM resource_store rs
+					INNER JOIN persistent_store ps ON rs.store_id = ps.id
+					WHERE rs.resource_id = r.id AND rs.store_type = 'thumbnail' LIMIT 1),
 				'createTime', r.create_time, 'updateTime', r.update_time)
 			FROM resource r
-			LEFT JOIN persistent_store ws ON r.work_store_id = ws.id
-			LEFT JOIN persistent_store ts ON r.thumbnail_store_id = ts.id
 			WHERE t1.id = r.work_id AND r.enabled = 1
 			LIMIT 1) AS resource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(

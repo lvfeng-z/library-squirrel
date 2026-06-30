@@ -692,7 +692,8 @@ func (app *App) initBaseServices() {
 
 	// resource 服务
 	resourceRepo := resource.NewRepository(app.db)
-	app.ResourceService = resource.NewService(resourceRepo)
+	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
+	app.ResourceService = resource.NewService(resourceRepo, resourceStoreRepo)
 
 	// backup 服务
 	backupRepo := backup.NewRepository(app.db)
@@ -742,6 +743,7 @@ func (app *App) initAdvancedServices() error {
 
 	// work 服务
 	workRepo := work.NewRepository(app.db)
+	workResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 	app.WorkService = work.NewService(
 		workRepo,
 		&dbTransactorAdapter{db: app.db},
@@ -764,6 +766,7 @@ func (app *App) initAdvancedServices() error {
 		app.LocalAuthorService,
 		app.ReWorkAuthorService,
 		app.ResourceService,
+		app.ResourceService, // ResourceStoreBatchReader(ListStoresByResourceIds)
 		app.PersistentStoreService,
 		app.ReWorkTagService,
 		app.LocalTagService,
@@ -779,6 +782,7 @@ func (app *App) initAdvancedServices() error {
 		nil,
 		func() string { return app.SettingsService.GetWorkDir() },
 		app.ResourceService,
+		workResourceStoreRepo, // ResourceStoreSaver(SaveBatch)
 		app.SiteAuthorService,
 		workSetRepo,
 	)
@@ -806,6 +810,7 @@ func (app *App) initAdvancedServices() error {
 		app.WorkService,
 		app.ResourceService,
 		app.PersistentStoreService, // StoreBatchReader
+		app.ResourceService,       // ResourceStoreBatchReader
 		app.LocalTagService,
 		app.SiteTagService,
 		app.LocalAuthorService,
@@ -868,15 +873,16 @@ func (app *App) initAdvancedServices() error {
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
 	// 创建资源存储备份编排器
+	backupResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 	storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
-		app.ResourceService,        // StoreResourceProvider + ResourceUpdater
+		app.ResourceService,         // StoreResourceProvider
+		backupResourceStoreRepo,    // StoreResourceStoreReader(resource_store 批量查询)
 		app.PersistentStoreService, // StoreDeleter
-		app.PersistentStoreService, // StoreRegistrar
-		app.ResourceService,        // ResourceUpdater
+		app.PersistentStoreService, // StoreImporter
 		app.BackupService,          // BackupReader
 	)
-	// resource_store 仓储(多轨续传/mountResourceStores 使用)
-	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
+	// resource_store 仓储(taskManager 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
+	taskMgrResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
@@ -896,8 +902,8 @@ func (app *App) initAdvancedServices() error {
 			Pusher:                  taskManagerPusher,
 			StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
 			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
-			ResourceStoreReader:     resourceStoreRepo,           // 实现 ResourceStoreReader 接口
-			ResourceStoreWriter:     resourceStoreRepo,           // 实现 ResourceStoreWriter 接口
+			ResourceStoreReader:     taskMgrResourceStoreRepo,    // 实现 ResourceStoreReader 接口
+			ResourceStoreWriter:     taskMgrResourceStoreRepo,    // 实现 ResourceStoreWriter 接口
 			Transactor:              &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口

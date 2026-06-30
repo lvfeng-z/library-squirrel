@@ -31,13 +31,15 @@ type Repository interface {
 
 // Service 资源服务
 type Service struct {
-	repo Repository
+	repo              Repository
+	resourceStoreRepo *ResourceStoreRepository
 }
 
 // NewService 创建资源服务
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, resourceStoreRepo *ResourceStoreRepository) *Service {
 	return &Service{
-		repo: repo,
+		repo:              repo,
+		resourceStoreRepo: resourceStoreRepo,
 	}
 }
 
@@ -90,6 +92,22 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) (map[int64
 	result := make(map[int64][]*domain.Resource)
 	for _, r := range resources {
 		result[r.WorkID] = append(result[r.WorkID], r)
+	}
+	return result, nil
+}
+
+// ListStoresByResourceIds 批量查询多个 Resource 关联的 resource_store 行(按 resourceId 分组,避免 N+1)
+func (s *Service) ListStoresByResourceIds(ctx context.Context, resourceIds []int64) (map[int64][]*domain.ResourceStore, error) {
+	if len(resourceIds) == 0 {
+		return make(map[int64][]*domain.ResourceStore), nil
+	}
+	stores, err := s.resourceStoreRepo.ListByResourceIds(ctx, resourceIds)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64][]*domain.ResourceStore)
+	for _, rs := range stores {
+		result[rs.ResourceID] = append(result[rs.ResourceID], rs)
 	}
 	return result, nil
 }

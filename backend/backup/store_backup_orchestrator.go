@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
@@ -16,6 +15,11 @@ type StoreResourceProvider interface {
 	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
 	// GetById 根据 ID 获取资源
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
+}
+
+// StoreResourceStoreReader resource_store 查询接口(按 resourceId 查关联 store)
+type StoreResourceStoreReader interface {
+	ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error)
 }
 
 // StoreDeleter Store 删除接口（支持备份，由 persistentStore.Service 实现）
@@ -40,63 +44,50 @@ type BackupReader interface {
 	Delete(ctx context.Context, id int64) error
 }
 
-// StoreType 标识 Resource 上不同类型的 Store 字段
-// 扩展方式：在 Resource 新增 Store 字段时，在此追加常量
-type StoreType int
-
-const (
-	// StoreTypeWork 作品主资源（WorkStoreID）
-	StoreTypeWork StoreType = iota + 1
-	// StoreTypeThumbnail 封面/缩略图（ThumbnailStoreID）
-	StoreTypeThumbnail
-)
-
 // StoreBackupItem 单个 Store 的备份条目
 type StoreBackupItem struct {
 	// ResourceID 所属 Resource ID
 	ResourceID int64
 	// BackupID Backup 记录 ID（0 = 未备份，直接删除了）
 	BackupID int64
-	// StoreType Store 字段类型
-	StoreType StoreType
+	// StoreType store_type 字符串(main/thumbnail/videoTrack/...)
+	StoreType string
+	// Generation 生成方式(downloaded/derived)
+	Generation string
 }
 
 // StoreBackupOrchestratorImpl 资源存储备份编排器
 // 封装替换场景下作品 Resource 全部 PersistentStore 的一站式备份和还原
 type StoreBackupOrchestratorImpl struct {
 	resourceProvider StoreResourceProvider
+	resourceStoreReader StoreResourceStoreReader
 	storeDeleter     StoreDeleter
 	storeImporter    StoreImporter
-	resourceUpdater  ResourceUpdater
 	backupReader     BackupReader
 }
 
 // NewStoreBackupOrchestrator 创建资源存储备份编排器
 func NewStoreBackupOrchestrator(
 	resourceProvider StoreResourceProvider,
+	resourceStoreReader StoreResourceStoreReader,
 	storeDeleter StoreDeleter,
 	storeImporter StoreImporter,
-	resourceUpdater ResourceUpdater,
 	backupReader BackupReader,
 ) *StoreBackupOrchestratorImpl {
 	return &StoreBackupOrchestratorImpl{
-		resourceProvider: resourceProvider,
-		storeDeleter:     storeDeleter,
-		storeImporter:    storeImporter,
-		resourceUpdater:  resourceUpdater,
-		backupReader:     backupReader,
+		resourceProvider:   resourceProvider,
+		resourceStoreReader: resourceStoreReader,
+		storeDeleter:       storeDeleter,
+		storeImporter:      storeImporter,
+		backupReader:       backupReader,
 	}
 }
 
-// BackupStores 备份作品 Resource 指定类型的 Store，返回备份清单
-// 仅备份传入 types 命中的 Store 字段，用于板块隔离（如仅备份资源文件、不触及缩略图）
-// Resource 记录不变（不禁用，保持 Enabled=true）
-func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId int64, types ...StoreType) []*StoreBackupItem {
-	if len(types) == 0 {
-		return nil
-	}
-	typeSet := make(map[StoreType]struct{}, len(types))
-	for _, t := range types {
+// BackupStores 备份作品 Resource 指定 store_type 的 Store，返回备份清单
+// storeTypes 为 store_type 字符串集合(main/thumbnail/...);空=备份全部
+func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId int64, storeTypes ...string) []*StoreBackupItem {
+	typeSet := make(map[string]struct{}, len(storeTypes))
+	for _, t := range storeTypes {
 		typeSet[t] = struct{}{}
 	}
 
@@ -108,29 +99,28 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 
 	var items []*StoreBackupItem
 	for _, res := range resources {
-		// WorkStoreID — 作品主资源
-		if _, ok := typeSet[StoreTypeWork]; ok && res.WorkStoreID.Valid {
-			backupId, err := o.storeDeleter.Delete(ctx, res.WorkStoreID.Int64, true)
-			if err != nil {
-				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 WorkStore(id=%d) 失败: %v", res.WorkStoreID.Int64, err)
-			}
-			items = append(items, &StoreBackupItem{
-				ResourceID: res.GetID(),
-				BackupID:   backupId,
-				StoreType:  StoreTypeWork,
-			})
+		// 从 resource_store 查关联的 store 行(不再读旧列)
+		storeRows, err := o.resourceStoreReader.ListByResourceId(ctx, res.GetID())
+		if err != nil {
+			logger.Log.Warnf("[StoreBackupOrchestrator] 查询 resource_store(resourceId=%d) 失败: %v", res.GetID(), err)
+			continue
 		}
-
-		// ThumbnailStoreID — 缩略图
-		if _, ok := typeSet[StoreTypeThumbnail]; ok && res.ThumbnailStoreID.Valid {
-			backupId, err := o.storeDeleter.Delete(ctx, res.ThumbnailStoreID.Int64, true)
+		for _, rs := range storeRows {
+			// 按 storeTypes 过滤(空=全部)
+			if len(typeSet) > 0 {
+				if _, ok := typeSet[rs.StoreType]; !ok {
+					continue
+				}
+			}
+			backupId, err := o.storeDeleter.Delete(ctx, rs.StoreID, true)
 			if err != nil {
-				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 ThumbnailStore(id=%d) 失败: %v", res.ThumbnailStoreID.Int64, err)
+				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 Store(id=%d, type=%s) 失败: %v", rs.StoreID, rs.StoreType, err)
 			}
 			items = append(items, &StoreBackupItem{
 				ResourceID: res.GetID(),
 				BackupID:   backupId,
-				StoreType:  StoreTypeThumbnail,
+				StoreType:  rs.StoreType,
+				Generation: rs.Generation,
 			})
 		}
 	}
@@ -139,8 +129,8 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 	return items
 }
 
-// RestoreAllStores 从备份清单还原所有 Store 并更新对应 Resource
-// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过（对应 Resource 字段保持 null）
+// RestoreAllStores 从备份清单还原所有 Store
+// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过
 func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, items []*StoreBackupItem) {
 	if len(items) == 0 {
 		return
@@ -150,7 +140,6 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 	restoredCount := 0
 
 	for _, item := range items {
-		// BackupID == 0 的条目无需还原（被直接删除的 Store）
 		if item.BackupID <= 0 {
 			continue
 		}
@@ -180,37 +169,20 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 		// 3. 获取备份文件绝对路径
 		backupAbsPath := o.backupReader.GetBackupPath(backupEntity)
 
-		// TODO 此处依赖PersistentStore是否合理
-		// 4. 通过 PersistentStore 将备份文件导入到 store 目录（文件移动 + DB 记录由 PersistentStore 全权负责）
+		// 4. 通过 PersistentStore 将备份文件导入到 store 目录
 		newStoreId, err := o.storeImporter.StoreFromExternal(ctx, backupAbsPath, originalFilePath, originalFileName)
 		if err != nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 导入 Store 失败: %v", zap.Error(err))
 			continue
 		}
 
-		// 5. 获取 Resource 并更新对应 Store 字段
-		resource, err := o.resourceProvider.GetById(ctx, item.ResourceID)
-		if err != nil || resource == nil {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 查询 Resource(id=%d) 失败，跳过更新", item.ResourceID)
-			continue
-		}
-
-		switch item.StoreType {
-		case StoreTypeWork:
-			resource.WorkStoreID = sql.NullInt64{Int64: newStoreId, Valid: true}
-		case StoreTypeThumbnail:
-			resource.ThumbnailStoreID = sql.NullInt64{Int64: newStoreId, Valid: true}
-		}
-
-		if err := o.resourceUpdater.Update(ctx, resource); err != nil {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 更新 Resource(id=%d) 失败: %v", item.ResourceID, err)
-			continue
-		}
-
-		// 6. 清理备份记录
+		// 5. 清理备份记录(不再回填旧列;resource_store 由调用方在 saveResource/mountResourceStores 中重建)
 		if err := o.backupReader.Delete(ctx, item.BackupID); err != nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 删除备份记录 %d 失败: %v", item.BackupID, err)
 		}
+
+		// 记录还原的新 storeId 供调用方使用(item.BackupID 复用为 newStoreId,但语义改变不安全,仅记日志)
+		logger.Log.Infof("[StoreBackupOrchestrator] Store 已还原: type=%s, newStoreId=%d", item.StoreType, newStoreId)
 
 		restoredCount++
 	}

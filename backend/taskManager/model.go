@@ -196,13 +196,11 @@ type ResourceReader interface {
 type StoreBackupItem = backup.StoreBackupItem
 
 // StoreBackupOrchestrator 资源存储备份编排器接口
-// 封装替换场景下作品 Resource 指定类型 PersistentStore 的备份和还原（板块隔离：按需只备份单一类型）
-// 当前业务中一个 Work 恰好对应一条 Resource，接口以 workId 为入参
+// 封装替换场景下作品 Resource 指定 store_type 的备份和还原（板块隔离：按需只备份指定类型）
 type StoreBackupOrchestrator interface {
-	// BackupStores 备份作品 Resource 指定类型的 Store，返回备份清单
-	BackupStores(ctx context.Context, workId int64, types ...backup.StoreType) []*StoreBackupItem
-	// RestoreAllStores 从备份清单还原所有 Store 并更新对应 Resource
-	// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过（对应 Resource 字段保持 null）
+	// BackupStores 备份作品 Resource 指定 store_type 的 Store，返回备份清单
+	BackupStores(ctx context.Context, workId int64, storeTypes ...string) []*StoreBackupItem
+	// RestoreAllStores 从备份清单还原所有 Store
 	RestoreAllStores(ctx context.Context, items []*StoreBackupItem)
 }
 
@@ -502,7 +500,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	// 替换场景:备份所选板块对应的旧 store。
 	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就备份(备份→生成→失败还原,统一替换语义)。
 	if m.isReplace && m.runMode.hasAnyStore() {
-		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.workId, toBackupStoreTypes(m.runMode.storeRoles)...)
+		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.workId, m.runMode.storeRoles...)
 	}
 
 	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
@@ -684,16 +682,16 @@ type pendingMount struct {
 }
 
 // saveResource 保存 Resource(事务内调用)并挂 resource_store 行。
+// saveResource 保存 Resource(事务内调用)并挂 resource_store 行。
 // 始终按 workId 查找已有 Resource:找到则更新(避免频繁启停 setup 阶段暂停后恢复导致重复创建),
 // 未找到则创建新 Resource。isReplace 标志仅用于 runSectionCombo 的备份决策,不影响此处。
-// 双写:既回填旧列(WorkStoreID/ThumbnailStoreID,供未迁移的 backup/recycleBin/work/search 消费),也写 resource_store 行(新模型,供多轨续传与阶段6)
+// store 关联只写 resource_store 行(阶段6 已完成消费方迁移,旧固定列已废弃)。
 func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []pendingMount) (int64, error) {
 	var resourceId int64
 
 	// 始终查找已有 Resource(不依赖 isReplace),防止重复创建
 	existing := m.findReplaceResource(ctx, workId)
 	if existing != nil {
-		applyMountsToResource(existing, mounts)
 		existing.ResourceComplete = 0
 		if err := m.deps.ResourceUpdater.Update(ctx, existing); err != nil {
 			return 0, fmt.Errorf("更新 Resource 失败: %w", err)
@@ -707,7 +705,6 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		resource.WorkID = workId
 		resource.TaskID = m.task.GetID()
 		resource.Enabled = true
-		applyMountsToResource(resource, mounts)
 		resource.ResourceComplete = 0 // 下载未完成
 
 		var err error
@@ -725,15 +722,14 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 	return resourceId, nil
 }
 
-// findReplaceResource 替换场景定位已有 Resource(优先备份清单,回退 workId 查询)
+// findReplaceResource 替换场景定位已有 Resource(优先备份清单第一个条目,回退 workId 查询)
 func (m *ManagedTask) findReplaceResource(ctx context.Context, workId int64) *entity.Resource {
-	for _, item := range m.storeBackupItems {
-		if item.StoreType == backup.StoreTypeWork {
-			existing, err := m.deps.ResourceReader.GetById(ctx, item.ResourceID)
-			if err != nil || existing == nil {
-				logger.Log.Warnf("[TaskManager] 查询已有 Resource(id=%d) 失败: %v", item.ResourceID, err)
-				continue
-			}
+	if len(m.storeBackupItems) > 0 {
+		item := m.storeBackupItems[0]
+		existing, err := m.deps.ResourceReader.GetById(ctx, item.ResourceID)
+		if err != nil || existing == nil {
+			logger.Log.Warnf("[TaskManager] 查询已有 Resource(id=%d) 失败: %v", item.ResourceID, err)
+		} else {
 			return existing
 		}
 	}
@@ -746,18 +742,6 @@ func (m *ManagedTask) findReplaceResource(ctx context.Context, workId int64) *en
 		return resources[0]
 	}
 	return nil
-}
-
-// applyMountsToResource 回填 Resource 旧列(main→WorkStoreID,thumbnail→ThumbnailStoreID),向后兼容未迁移消费端
-func applyMountsToResource(r *entity.Resource, mounts []pendingMount) {
-	for _, mt := range mounts {
-		switch mt.role {
-		case entity.StoreTypeMain:
-			r.WorkStoreID = sql.NullInt64{Int64: mt.storeId, Valid: true}
-		case entity.StoreTypeThumbnail:
-			r.ThumbnailStoreID = sql.NullInt64{Int64: mt.storeId, Valid: true}
-		}
-	}
 }
 
 // mountResourceStores 写入 resource_store 行(替换本次产出 role 的旧关联后再插入)
@@ -1144,14 +1128,11 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
 			}
 		}
-		// 更新 resource_store(新模型,替换本次产出 role 的关联)
+		// 更新 resource_store(替换本次产出 role 的关联)
 		if err := m.mountResourceStores(txCtx, resource.GetID(), mounts); err != nil {
 			return err
 		}
-		// 缺陷1: 同步回填 Resource 旧列(WorkStoreID/ThumbnailStoreID),保持双写一致。
-		// 阶段6 前前端/backup/recycleBin 仍读旧列;不回填会导致 resume 重建后旧列指向被遗弃的旧 store → 前端看到 0 字节
-		applyMountsToResource(resource, mounts)
-		return m.deps.ResourceUpdater.Update(txCtx, resource)
+		return nil
 	})
 	if txErr != nil {
 		for _, s := range streams {
@@ -1488,29 +1469,6 @@ func uniqueRoles(mounts []pendingMount) []string {
 		roles = append(roles, mt.role)
 	}
 	return roles
-}
-
-// toBackupStoreTypes 将 store_type 字符串映射为 backup.StoreType(未映射类型如 videoTrack 暂不备份,待阶段6扩展)
-func toBackupStoreTypes(roles []string) []backup.StoreType {
-	seen := make(map[backup.StoreType]struct{})
-	var out []backup.StoreType
-	for _, r := range roles {
-		var t backup.StoreType
-		switch r {
-		case entity.StoreTypeMain:
-			t = backup.StoreTypeWork
-		case entity.StoreTypeThumbnail:
-			t = backup.StoreTypeThumbnail
-		default:
-			continue
-		}
-		if _, ok := seen[t]; ok {
-			continue
-		}
-		seen[t] = struct{}{}
-		out = append(out, t)
-	}
-	return out
 }
 
 // mergeWorkInfo 将 from(作品信息板块 A 的响应)合并到 to(Start/Resume 的响应),供文件名模板使用
