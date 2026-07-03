@@ -684,6 +684,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
   align-items: center;
   background-color: var(--app-fill-color-dark);
   width: 200px;
+  height: 100%
 }
 .work-dialog-image-error-icon {
   color: var(--app-text-secondary);
