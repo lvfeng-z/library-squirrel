@@ -39,5 +39,6 @@
 ## 关键设计
 
 - **内存 + 数据库双轨状态**：运行态以内存为准（`GetTaskSnapshot` / `IsIdle`），查询态综合两者（`GetTaskState`）。
-- **唯二执行入口**：`startTaskTrees`（开始 / 重试 / 板块重执行）与 `resumeTaskTrees`（恢复），其余操作均收敛到这两个入口。`Redownload` 先持久化板块选择到 task 再调 `startTaskTrees`。
+- **一任务一 goroutine dispatch 不变量**：任意时刻每个任务至多存在一条 `executeTask` goroutine。两层守卫：创建层 `claimTask`/`claimParent`（`m.mu` 下 insert-or-get）保证同一 taskId 只有一个 `ManagedTask`/`ParentTask` 对象（取代快照式判重，消除 TOCTOU）；派发层 `dispatch` 用 `dispatchState`（`dsIdle`/`dsQueued`/`dsRunning`）CAS-claim 保证同一对象只派发一条 goroutine（输者幂等 no-op）；`pendingResume` 标志兜住内存内 Resume 在 pause-exit 窗口的丢失唤醒（executeTask 循环顶消费并 `prepareForResume` 重置）。`removeFromQueue`/`releaseSlotAndIdle` 负责把 `queued`/`running` 回退到 `idle`。
+- **唯二执行入口**：`startTaskTrees`（开始 / 重试 / 板块重执行）与 `resumeTaskTrees`（恢复）从 DB 加载任务树并派发；`ResumeTaskTree`（内存内恢复）与 `ConfirmReplace` 直接走 `dispatch`。所有派发统一经 `dispatch` 单一漏斗（含 CAS 不变量）。`Redownload` 先持久化板块选择到 task 再调 `startTaskTrees`。
 - **依赖全部接口注入**：插件执行器、仓储、进度推送器均通过构造函数注入，`Manager` 不直接持有具体 Service。

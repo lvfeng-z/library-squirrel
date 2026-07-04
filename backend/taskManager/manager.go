@@ -178,17 +178,8 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		taskById[t.ID] = t
 	}
 
-	// 2. 重复执行保护：快照运行中的 taskId / parentId，避免同一任务重复启动
-	m.mu.RLock()
-	runningTasks := make(map[int64]struct{}, len(m.taskMap))
-	for id := range m.taskMap {
-		runningTasks[id] = struct{}{}
-	}
-	runningParents := make(map[int64]struct{}, len(m.parentMap))
-	for id := range m.parentMap {
-		runningParents[id] = struct{}{}
-	}
-	m.mu.RUnlock()
+	// 2. 重复执行保护改由创建层 claimTask/claimParent 原子保证(取代快照,消除 TOCTOU);
+	//    循环内仅做实时 isUnitLoaded 检查以跳过已加载单元,避免重复查重工作。
 
 	// 3. 确定处理单元并去重：独立任务为自身 taskId，叶子/父任务为其 actualParentId
 	// 同父多叶子归一为同一单元，跳过已运行的单元
@@ -218,17 +209,10 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 			}
 		}
 
-		// 重复执行保护
-		if isStandalone {
-			if _, running := runningTasks[unitId]; running {
-				logger.Log.Infof("loadAndStartTaskTrees: 任务 %d 已在运行，跳过", unitId)
-				continue
-			}
-		} else {
-			if _, running := runningParents[unitId]; running {
-				logger.Log.Infof("loadAndStartTaskTrees: 父任务 %d 已在运行，跳过", unitId)
-				continue
-			}
+		// 重复执行保护:实时检查(创建层 claim 保证并发安全,此处仅优化:跳过已加载单元避免重复查重)
+		if m.isUnitLoaded(unitId, isStandalone) {
+			logger.Log.Infof("loadAndStartTaskTrees: 单元 %d 已在运行，跳过", unitId)
+			continue
 		}
 		// 同单元去重
 		if _, processed := processedUnits[unitId]; processed {
@@ -237,7 +221,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		processedUnits[unitId] = struct{}{}
 
 		if isStandalone {
-			child := m.buildOrReuseChild(rootTask, skipTerminal)
+			child, _ := m.buildOrReuseChild(rootTask, skipTerminal)
 			if child == nil {
 				// 已终态，直接持久化当前状态
 				finalState := TaskState(rootTask.Status)
@@ -263,25 +247,31 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	if len(allToCheck) > 0 {
 		toDispatch := m.batchCheckDuplicates(ctx, allToCheck)
 		for _, child := range toDispatch {
-			m.tryDispatch(child)
+			m.dispatch(child)
 		}
 	}
 
 	return nil
 }
 
-// processParentUnit 处理一个父任务单元：构建 ParentTask 并收集其直接子任务
-// 返回需参与批量查重与调度的子任务；所有子任务已终态时计算父任务最终状态并推送移除，返回 nil
+// processParentUnit 处理一个父任务单元:创建层 claim 父任务后构建其直接子任务。
+// 返回需参与批量查重与调度的子任务;并发开始同一父任务时输者(claim 失败)直接返回 nil;
+// 所有子任务已终态时计算父任务最终状态、回退 claim、推送移除,返回 nil。
 func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool) []*ManagedTask {
 	parentTaskName := ""
 	if parentEntity := taskById[actualParentId]; parentEntity != nil && parentEntity.TaskName.Valid {
 		parentTaskName = parentEntity.TaskName.String
 	}
 
-	parentTask := NewParentTask(actualParentId, parentTaskName)
+	// 创建层 claim:赢家构建子任务,输者返回 nil(由赢家负责)
+	parentTask, created := m.claimParent(actualParentId, parentTaskName)
+	if !created {
+		return nil
+	}
+
 	for _, t := range tasks {
 		if t.Pid.Valid && t.Pid.Int64 == actualParentId {
-			if child := m.buildOrReuseChild(t, skipTerminal); child != nil {
+			if child, _ := m.buildOrReuseChild(t, skipTerminal); child != nil {
 				parentTask.AddChild(child)
 			}
 		}
@@ -293,55 +283,45 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		if isStableState(finalState) {
 			m.addToPending(actualParentId, task.TaskStatusEnum(finalState), "")
 		}
+		// claim 了但立即终态:回退 claim,避免 parentMap 残留导致重启误判"已在运行"
+		m.mu.Lock()
+		delete(m.parentMap, actualParentId)
+		m.mu.Unlock()
 		m.deps.Pusher.PushParentStateChange(actualParentId, parentTaskName, finalState)
 		m.deps.Pusher.PushParentTaskRemove([]int64{actualParentId})
 		return nil
 	}
 
-	// 注册父任务
-	m.mu.Lock()
-	m.parentMap[actualParentId] = parentTask
-	m.mu.Unlock()
-
 	return parentTask.GetChildren()
 }
 
-// buildOrReuseChild 构建子任务 ManagedTask
-// 若任务在数据库中为 Paused 状态（应用重启后内存已丢失），根据 pending_resource_id 决定续传或重新执行
-// skipTerminal 为 true 时跳过已终态（Finished/Failed/PartlyFinished）的子任务
-func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) *ManagedTask {
+// buildOrReuseChild 构建子任务 ManagedTask(创建层 claim 保证对象唯一)。
+// 若任务在数据库中为 Paused 状态(应用重启后内存已丢失),根据 pending_resource_id 决定续传或重新执行。
+// skipTerminal 为 true 时跳过已终态(Finished/Failed/PartlyFinished)的子任务。
+// 返回的第二个 bool 表示是否为本次创建(输者复用赢家对象时为 false)。
+func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) (*ManagedTask, bool) {
 	dbState := TaskState(t.Status)
 
 	// 跳过已终态的子任务（仅 Resume 场景需要）
 	if skipTerminal && (dbState == TaskStateFinished || dbState == TaskStateFailed || dbState == TaskStatePartlyFinished) {
-		return nil
+		return nil, false
 	}
 
-	isPausedInDB := dbState == TaskStatePaused
-
-	if isPausedInDB {
-		// 数据库中为 Paused 但内存已丢失（如应用重启）
-		if t.PendingResourceID.Valid {
-			// pending_resource_id 有效，创建跨重启续传的 ManagedTask
+	mt, created := m.claimTask(t)
+	if mt == nil {
+		return nil, false
+	}
+	// 仅赢家设置跨重启续传标记;输者复用赢家的对象,其 resumeFromDB 已由赢家设定
+	if created {
+		if dbState == TaskStatePaused && t.PendingResourceID.Valid {
 			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
-			mt := m.newManagedTask(t)
-			if mt != nil {
-				mt.resumeFromDB = true
-				m.addTask(mt)
-			}
-			return mt
+			mt.resumeFromDB = true
+		} else if dbState == TaskStatePaused {
+			// Paused 但无 pending_resource_id（setup 阶段暂停或旧数据），从头执行
+			logger.Log.Warnf("StartTaskTree: 子任务 %d 在数据库中为 Paused 状态但无 pending_resource_id，将从头部重新执行", t.GetID())
 		}
-
-		// 场景三：Paused 但无 pending_resource_id（setup 阶段暂停或旧数据），从头执行
-		logger.Log.Warnf("StartTaskTree: 子任务 %d 在数据库中为 Paused 状态但无 pending_resource_id，将从头部重新执行", t.GetID())
 	}
-
-	// 创建新实例
-	mt := m.newManagedTask(t)
-	if mt != nil {
-		m.addTask(mt)
-	}
-	return mt
+	return mt, created
 }
 
 // computeParentFinalState 从 DB 任务记录计算父任务的最终状态
@@ -479,10 +459,23 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	return toDispatch
 }
 
-// tryDispatch 尝试获取信号量并分发任务，无法获取时入等待队列
-func (m *Manager) tryDispatch(task *ManagedTask) {
+// dispatch 是所有任务进入执行的唯一入口:CAS-claim dispatchState(idle→queued),
+// 输者(已 dispatched)返回 false(幂等)。赢者走 runFromQueued 取槽位或入队。
+// 开始/确认/从 DB 恢复/内存内 Resume 均调用此函数;Resume 在调用前置 pendingResume=true,
+// 无论本函数返回真假,Resume 意图都由 pendingResume 在 executeTask 循环顶/退出契约兑现。
+func (m *Manager) dispatch(task *ManagedTask) bool {
+	if !task.dispatchState.CompareAndSwap(int32(dsIdle), int32(dsQueued)) {
+		return false
+	}
+	m.runFromQueued(task)
+	return true
+}
+
+// runFromQueued 任务已 claim(dsQueued):取信号量槽位并启动 executeTask,取不到则入 waitingQueue
+func (m *Manager) runFromQueued(task *ManagedTask) {
 	select {
 	case m.semaphore <- struct{}{}:
+		task.dispatchState.Store(int32(dsRunning))
 		go m.executeTask(task)
 	default:
 		m.mu.Lock()
@@ -492,59 +485,110 @@ func (m *Manager) tryDispatch(task *ManagedTask) {
 	}
 }
 
-// executeTask 在独立协程中执行任务（已获取信号量）
+// executeTask 在独立协程中执行任务(入口已获取信号量、dispatchState=dsRunning)。
+// 不变量:任意时刻每任务至多一条 executeTask goroutine(由 dispatch CAS + 创建层 claim 保证)。
+// 退出契约:释放槽位后,若运行期间收到 Resume(pendingResume)且任务仍可恢复,则同 goroutine 内重取槽位续跑
+// (槽位被并发取走时入队由 dispatchFromQueue 后续调度);否则 dispatchState 置 idle。
 func (m *Manager) executeTask(task *ManagedTask) {
-	// 登记 goroutine 生命周期信号,供下次 prepareForResume 等待本 goroutine 退出
-	exited := make(chan struct{})
-	task.runMu.Lock()
-	task.runExited = exited
-	task.runMu.Unlock()
-
+	slotHeld := true // 入口已持槽位
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Log.Errorf("[TaskManager] executeTask panic: %v", r)
+			logger.Log.Errorf("[TaskManager] executeTask panic: taskId=%d: %v", task.taskId, r)
+			// run() 自身 recovery 已处理时为幂等;否则兜底置失败
+			task.setFailed(fmt.Sprintf("executeTask panic: %v", r))
 		}
-		<-m.semaphore
-		// 关闭生命周期信号,唤醒可能正在等待的 prepareForResume
-		task.runMu.Lock()
-		close(exited)
-		task.runExited = nil
-		task.runMu.Unlock()
-		m.dispatchFromQueue()
+		if slotHeld {
+			<-m.semaphore
+		}
 	}()
 
-	// 检查任务是否在 goroutine 启动前已被暂停/停止
-	// PauseTaskTree/StopTaskTree 对 Paused/Waiting 状态的任务调用 cancel()
-	// 如果 goroutine 启动时 context 已取消，直接退出（状态已由调用方设置）
-	select {
-	case <-task.ctx.Done():
-		return
-	default:
+	// runOnce 包裹任务主体,用 liveGoroutines 断言"至多一条 goroutine 在跑任务逻辑"
+	runOnce := func() runResult {
+		task.liveGoroutines.Add(1)
+		defer task.liveGoroutines.Add(-1)
+		if task.resumeFromDB {
+			logger.Log.Infof("[TaskManager] executeTask: taskId=%d, resumeFromDB=%v", task.taskId, task.resumeFromDB)
+			return task.resumeFromPersistedState()
+		}
+		return task.run()
 	}
 
-	var result runResult
-	if task.resumeFromDB {
-		logger.Log.Infof("[TaskManager] executeTask: taskId=%d, resumeFromDB=%v", task.taskId, task.resumeFromDB)
-		result = task.resumeFromPersistedState()
-	} else {
-		result = task.run()
-	}
+	for {
+		// 若本次派发是恢复(pendingResume 由 ResumeTaskTree 或退出契约重派发置位):先重置可变状态再跑。
+		// 必须在 ctx.Done 检查之前:Paused 任务的旧 ctx 已取消,需先重建 ctx 才能进入 run。
+		if task.pendingResume.Swap(false) {
+			task.prepareForResume()
+		}
 
-	if result == runResultNeedConfirm {
-		// 停放到等待队列，信号量由 defer 释放
-		m.waitingForInputMu.Lock()
-		m.waitingForInputMap[task.taskId] = task
-		m.waitingForInputMu.Unlock()
-		return
-	}
+		// 启动前/续跑前已被取消(Pause/Stop 对 Paused/Waiting 调 cancel):释放槽位置 idle 退出
+		select {
+		case <-task.ctx.Done():
+			slotHeld = false
+			m.releaseSlotAndIdle(task)
+			m.dispatchFromQueue()
+			return
+		default:
+		}
 
-	if result == runResultPaused {
-		// 暂停（setup 或 download 阶段）：goroutine 退出，任务保留在 taskMap，信号量由 defer 释放
-		// ResumeTaskTree 通过 prepareForResume + tryDispatch 重新调度
-		return
-	}
+		result := runOnce()
 
-	m.cleanupFinishedTask(task)
+		switch result {
+		case runResultNeedConfirm:
+			// 查重命中:停放确认队列,释放槽位 idle,退出
+			slotHeld = false
+			m.releaseSlotAndIdle(task)
+			m.waitingForInputMu.Lock()
+			m.waitingForInputMap[task.taskId] = task
+			m.waitingForInputMu.Unlock()
+			m.dispatchFromQueue()
+			return
+
+		case runResultPaused:
+			// 暂停(setup/download 阶段):释放槽位,检查运行期间是否收到 Resume
+			<-m.semaphore
+			slotHeld = false
+			m.mu.Lock()
+			if task.pendingResume.Load() && (task.GetState() == TaskStatePaused || task.GetState() == TaskStatePausing) {
+				// 有 Resume 待处理:重派发。pendingResume 不在此消费,由续跑循环顶 Swap+prepareForResume 消费
+				select {
+				case m.semaphore <- struct{}{}:
+					// 同 goroutine 重取槽位续跑,不变量保持
+					slotHeld = true
+					task.dispatchState.Store(int32(dsRunning))
+					m.mu.Unlock()
+					continue
+				default:
+					// 槽位被并发取走:入队,由 dispatchFromQueue 后续调度(新 goroutine,循环顶消费 pendingResume)
+					task.dispatchState.Store(int32(dsQueued))
+					m.waitingQueue = append(m.waitingQueue, task)
+					m.mu.Unlock()
+					task.setState(TaskStateWaiting)
+					m.dispatchFromQueue()
+					return
+				}
+			}
+			task.pendingResume.Store(false) // 无待处理 Resume,清掉避免残留
+			task.dispatchState.Store(int32(dsIdle))
+			m.mu.Unlock()
+			m.dispatchFromQueue()
+			return
+
+		default: // runResultDone:终态(Finished/Failed)
+			slotHeld = false
+			m.releaseSlotAndIdle(task)
+			m.dispatchFromQueue()
+			m.cleanupFinishedTask(task)
+			return
+		}
+	}
+}
+
+// releaseSlotAndIdle 释放信号量槽位并把 dispatchState 置回 idle(已持 m.mu 之外调用)
+func (m *Manager) releaseSlotAndIdle(task *ManagedTask) {
+	<-m.semaphore
+	m.mu.Lock()
+	task.dispatchState.Store(int32(dsIdle))
+	m.mu.Unlock()
 }
 
 // dispatchFromQueue 从等待队列中分发任务到可用信号量槽位
@@ -558,6 +602,7 @@ func (m *Manager) dispatchFromQueue() {
 			task := m.waitingQueue[0]
 			m.waitingQueue[0] = nil
 			m.waitingQueue = m.waitingQueue[1:]
+			task.dispatchState.Store(int32(dsRunning)) // queued → running
 			go m.executeTask(task)
 		default:
 			return
@@ -565,18 +610,19 @@ func (m *Manager) dispatchFromQueue() {
 	}
 }
 
-// removeFromQueue 从等待队列中移除指定任务
+// removeFromQueue 从等待队列中移除指定任务(清除全部匹配条目,并把 dispatchState 置回 idle)
 func (m *Manager) removeFromQueue(taskId int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i, t := range m.waitingQueue {
+	kept := make([]*ManagedTask, 0, len(m.waitingQueue))
+	for _, t := range m.waitingQueue {
 		if t.taskId == taskId {
-			m.waitingQueue[i] = m.waitingQueue[len(m.waitingQueue)-1]
-			m.waitingQueue[len(m.waitingQueue)-1] = nil
-			m.waitingQueue = m.waitingQueue[:len(m.waitingQueue)-1]
-			return
+			t.dispatchState.Store(int32(dsIdle)) // queued → idle
+			continue
 		}
+		kept = append(kept, t)
 	}
+	m.waitingQueue = kept
 }
 
 // PauseTaskTree 暂停任务树
@@ -596,6 +642,12 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) 
 
 	children := parent.GetChildren()
 
+	// 暂停是最新用户意图,作废所有子任务的待恢复标志:避免滞后的 goroutine(如卡在不可取消的插件 Read)
+	// 退出时按陈旧 pendingResume 重派发,从而违背用户已暂停的意图。
+	for _, child := range children {
+		child.pendingResume.Store(false)
+	}
+
 	// 第一阶段：处理非阻塞任务（Waiting/Paused），先清空等待队列
 	// 必须在第二阶段（阻塞的 Pause()）之前完成，否则 goroutine 退出时
 	// dispatchFromQueue 会从队列取出尚未遍历到的 Waiting 任务并启动
@@ -605,6 +657,15 @@ func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) 
 		case TaskStateWaiting:
 			// 排队中的任务：移出队列、设为暂停、取消 context
 			m.removeFromQueue(child.taskId)
+			child.setState(TaskStatePaused)
+			child.cancel()
+		case TaskStateWaitingForInput:
+			// 查重命中等待用户确认：从确认队列移除、设为暂停、取消 context
+			// WaitingForInput 已释放信号量、无 goroutine；转 Paused 以对齐暂停语义，
+			// 避免 ConfirmReplace 绕过暂停继续执行（恢复后重新查重再次进入确认）
+			m.waitingForInputMu.Lock()
+			delete(m.waitingForInputMap, child.taskId)
+			m.waitingForInputMu.Unlock()
 			child.setState(TaskStatePaused)
 			child.cancel()
 		case TaskStatePaused:
@@ -653,8 +714,10 @@ func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool)
 		if state != TaskStatePaused && state != TaskStatePausing {
 			continue
 		}
-		child.prepareForResume()
-		m.tryDispatch(child)
+		// 标记待恢复 + 派发。dispatch 赢则 executeTask 循环顶 Swap 消费标志并 prepareForResume 重置;
+		// dispatch 输(任务仍在跑/在队)则标志保留,运行中 goroutine 退出契约据此重派发。
+		child.pendingResume.Store(true)
+		m.dispatch(child)
 	}
 
 	return nil
@@ -673,6 +736,11 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 
 	if !ok {
 		return ErrTaskTreeNotFound
+	}
+
+	// 停止是终态意图,作废所有子任务的待恢复标志,避免滞后的 goroutine 退出时按陈旧 pendingResume 重派发
+	for _, child := range parent.GetChildren() {
+		child.pendingResume.Store(false)
 	}
 
 	for _, child := range parent.GetChildren() {
@@ -837,7 +905,7 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	// action == "replace": 跳过重复检查，重新调度
 	logger.Log.Infof("[TaskManager] 替换重复任务: taskId=%d", taskId)
 	task.skipDuplicateCheck = true
-	m.tryDispatch(task)
+	m.dispatch(task)
 	return nil
 }
 
@@ -867,7 +935,7 @@ func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
 			logger.Log.Infof("[TaskManager] 批量替换重复任务: count=%d", len(tasks))
 			for _, task := range tasks {
 				task.skipDuplicateCheck = true
-				m.tryDispatch(task)
+				m.dispatch(task)
 			}
 		}
 	}()
@@ -949,10 +1017,54 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 
 // 辅助方法
 
-func (m *Manager) addTask(task *ManagedTask) {
+// claimTask 原子 insert-or-get 子任务(创建层守卫):同一 taskId 在 taskMap 中只存在一个 ManagedTask。
+// 并发开始同一任务时,赢家创建+注册,输者复用赢家的对象(其本轮 newManagedTask 产物被丢弃)。
+// newManagedTask 在锁外执行(避免持 m.mu 跑 pluginExecFactory),用 double-check 保证唯一插入。
+func (m *Manager) claimTask(t *domain.Task) (mt *ManagedTask, created bool) {
+	m.mu.Lock()
+	if existing, ok := m.taskMap[t.GetID()]; ok {
+		m.mu.Unlock()
+		return existing, false
+	}
+	m.mu.Unlock()
+
+	nm := m.newManagedTask(t)
+	if nm == nil {
+		return nil, false
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.taskMap[task.taskId] = task
+	if existing, ok := m.taskMap[t.GetID()]; ok {
+		return existing, false // 输者复用赢家
+	}
+	m.taskMap[nm.taskId] = nm
+	return nm, true
+}
+
+// claimParent 原子 insert-or-get 父任务(创建层守卫):NewParentTask 仅结构初始化,可在锁内完成
+func (m *Manager) claimParent(id int64, name string) (*ParentTask, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if existing, ok := m.parentMap[id]; ok {
+		return existing, false
+	}
+	p := NewParentTask(id, name)
+	m.parentMap[id] = p
+	return p, true
+}
+
+// isUnitLoaded 实时检查单元是否已加载(独立任务查 taskMap,父任务查 parentMap)。
+// 仅作 loadAndStartTaskTrees 的快路径优化;并发安全最终由 claimTask/claimParent 保证。
+func (m *Manager) isUnitLoaded(unitId int64, isStandalone bool) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if isStandalone {
+		_, ok := m.taskMap[unitId]
+		return ok
+	}
+	_, ok := m.parentMap[unitId]
+	return ok
 }
 
 func (m *Manager) removeTask(taskId int64) {

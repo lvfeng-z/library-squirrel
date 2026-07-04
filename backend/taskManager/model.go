@@ -47,6 +47,15 @@ const (
 	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
+// dispatchState 描述任务在 dispatch 生命周期中的位置(不变量:一任务至多一条 executeTask goroutine)
+type dispatchState int32
+
+const (
+	dsIdle    dispatchState = iota // 无 goroutine,可被 claim
+	dsQueued                       // 已 claim,等信号量槽位(在 waitingQueue)
+	dsRunning                      // executeTask goroutine 存活(持信号量)
+)
+
 // runMode 板块执行选择:workInfo 为作品元数据独立板块,storeRoles 为所选资源 store_type 集合
 type runMode struct {
 	workInfo   bool     // 作品元数据板块
@@ -200,8 +209,8 @@ type StoreBackupItem = backup.StoreBackupItem
 type StoreBackupOrchestrator interface {
 	// BackupStores 备份作品 Resource 指定 store_type 的 Store，返回备份清单
 	BackupStores(ctx context.Context, workId int64, storeTypes ...string) []*StoreBackupItem
-	// RestoreAllStores 从备份清单还原所有 Store
-	RestoreAllStores(ctx context.Context, items []*StoreBackupItem)
+	// RestoreAllStores 从备份清单还原所有 Store，返回 (restored, skipped)
+	RestoreAllStores(ctx context.Context, items []*StoreBackupItem) (restored, skipped int)
 }
 
 // StoreStreamer 创建存储记录并返回 StoreWriter
@@ -306,8 +315,9 @@ type streamController struct {
 	storeWriter persistentStore.StoreWriter    // 当前写入的 StoreWriter
 	storeId     int64                          // PersistentStore 记录 ID
 	relPath     string                         // StoreStream 的相对路径(事务回滚/清理用)
-	written     int64                          // 已写入字节数(mu 保护)
-	state       atomic.Int32                   // streamState
+	written       int64                        // 已写入字节数(mu 保护)
+	initialOffset int64                        // 续传初始偏移(恢复时 = writeOffset;新建轨为 0),进度分母补全完整大小
+	state         atomic.Int32                 // streamState
 	mu          sync.Mutex                     // 保护 written 与 drain 期间的 reader/storeWriter 访问
 }
 
@@ -342,10 +352,12 @@ type ManagedTask struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
-	// executeTask goroutine 生命周期信号:goroutine 启动时创建(开),退出时关闭。
-	// prepareForResume 据此等待旧 goroutine 退出后再改写共享状态(ctx/streams/pauseCh),避免竞态。
-	runExited chan struct{}
-	runMu     sync.Mutex
+	// dispatch 生命周期状态(dsIdle/dsQueued/dsRunning),CAS-claim 保证一任务至多一条 executeTask goroutine
+	dispatchState atomic.Int32
+	// 内存内 Resume 命中"已在跑(dispatch claim 输)"时置位;executeTask 退出契约据此决定是否重派发,防丢失唤醒
+	pendingResume atomic.Bool
+	// 不变量断言:executeTask 入口 +1、defer -1,任意时刻应 ≤ 1(供测试断言)
+	liveGoroutines atomic.Int32
 
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
@@ -419,7 +431,10 @@ func (m *ManagedTask) run() runResult {
 	defer func() {
 		if m.GetState() == TaskStateFailed && len(m.storeBackupItems) > 0 {
 			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份 Store", m.taskId, len(m.storeBackupItems))
-			m.deps.StoreBackupOrchestrator.RestoreAllStores(context.Background(), m.storeBackupItems)
+			_, skipped := m.deps.StoreBackupOrchestrator.RestoreAllStores(context.Background(), m.storeBackupItems)
+			if skipped > 0 {
+				logger.Log.Warnf("[TaskManager] 任务 %d 有 %d 个旧资源因备份缺失无法还原", m.taskId, skipped)
+			}
 			m.storeBackupItems = nil
 		}
 	}()
@@ -907,15 +922,25 @@ func (s *streamController) handleEOF(m *ManagedTask) streamResult {
 		s.state.Store(int32(streamCanceled))
 		return streamResult{kind: resultCanceled}
 	}
-	// 完整性校验:downloaded 轨已写量不足视为不完整
+	// 完整性校验:downloaded 轨
 	s.mu.Lock()
 	written := s.written
 	s.mu.Unlock()
-	if s.generation == entity.GenerationDownloaded && s.size > 0 && written < s.size {
-		logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整(role=%s): 已下载 %d / 预期 %d", m.taskId, s.role, written, s.size)
-		s.abort()
-		s.state.Store(int32(streamFailed))
-		return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载不完整: 已下载 %d / 预期 %d", s.role, written, s.size)}
+	if s.generation == entity.GenerationDownloaded {
+		switch {
+		case s.size > 0 && written < s.size:
+			// 已知预期大小且未下完
+			logger.Log.Errorf("[TaskManager] 任务 %d 下载不完整(role=%s): 已下载 %d / 预期 %d", m.taskId, s.role, written, s.size)
+			s.abort()
+			s.state.Store(int32(streamFailed))
+			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载不完整: 已下载 %d / 预期 %d", s.role, written, s.size)}
+		case written == 0:
+			// 预期大小未知(spec.Size<=0)但一字节未写:空产物,判定不完整
+			logger.Log.Errorf("[TaskManager] 任务 %d 下载为空(role=%s): written=0", m.taskId, s.role)
+			s.abort()
+			s.state.Store(int32(streamFailed))
+			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载为空(written=0)", s.role)}
+		}
 	}
 	if err := s.storeWriter.Complete(); err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Complete 失败(role=%s): %v", m.taskId, s.role, err)
@@ -1114,8 +1139,11 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 				if resumeErr != nil {
 					return resumeErr
 				}
+				logger.Log.Infof("[ResumeMount] taskId=%d role=%s mode=ResumeStream storeId=%d writeOffset=%d streamOffset=%d",
+					m.taskId, spec.Role, existingRow.StoreID, writeOffset, streamOffsets[spec.Role])
 				sc := newStreamController(spec, existingRow.StoreID, writer, relPath)
 				sc.written = writeOffset
+				sc.initialOffset = writeOffset
 				streams = append(streams, sc)
 				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: existingRow.StoreID})
 			} else {
@@ -1124,6 +1152,8 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 				if storeErr != nil {
 					return storeErr
 				}
+				logger.Log.Infof("[ResumeMount] taskId=%d role=%s mode=StoreStream storeId=%d writeOffset=0 streamOffset=%d",
+					m.taskId, spec.Role, storeId, streamOffsets[spec.Role])
 				streams = append(streams, newStreamController(spec, storeId, writer, relPath))
 				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
 			}
@@ -1161,9 +1191,17 @@ func (m *ManagedTask) Pause() error {
 	}
 	m.setState(TaskStatePausing)
 
-	// 下载尚未开始的场景（setup 阶段），直接取消 context
+	// 下载尚未开始的场景（setup 阶段）：通知插件暂停后取消 context
 	if len(m.streams) == 0 {
 		logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 setup 阶段暂停，直接取消", m.taskId)
+		// 通知插件暂停（与 download 阶段一致），由插件自行处置 Start 已建立的上游资源
+		param := &sdkdto.TaskResParam{
+			Task:       dto.NewTaskDTO(m.task),
+			ResourceID: m.task.PendingResourceID.Int64,
+		}
+		if err := m.pluginExec.Pause(m.ctx, param); err != nil {
+			logger.Log.Warnf("[TaskManager] 任务 %d setup 阶段插件 Pause 失败: %v", m.taskId, err)
+		}
 		m.cancel()
 		m.setState(TaskStatePaused)
 		return nil
@@ -1187,23 +1225,10 @@ func (m *ManagedTask) Pause() error {
 	return nil
 }
 
-// prepareForResume 重置任务的运行时状态，准备重新调度
-// 由 ResumeTaskTree 在 tryDispatch 前调用
+// prepareForResume 重置任务的运行时可变状态,准备重新调度。
+// 仅在 executeTask 退出契约的"重派发"分支调用——此时由 dispatch 不变量保证无并发 goroutine 访问这些字段,
+// 故无需等待旧 goroutine(旧机制 runExited/5 秒超时已随 dispatch 状态机移除)。
 func (m *ManagedTask) prepareForResume() {
-	// 等待上一次 executeTask goroutine 退出,避免与旧 goroutine 竞争共享状态(ctx/streams/pauseCh)。
-	// 频繁启停下若不等待,旧 goroutine 的 downloadLoop defer(closeStreamReaders)可能破坏新 goroutine 的 streams,
-	// 或旧 goroutine 卡住持有信号量槽 → 并行度下降。
-	m.runMu.Lock()
-	exited := m.runExited
-	m.runMu.Unlock()
-	if exited != nil {
-		select {
-		case <-exited:
-		case <-time.After(5 * time.Second):
-			logger.Log.Warnf("[TaskManager] 任务 %d prepareForResume 等待旧 goroutine 退出超时(可能卡住,继续 resume)", m.taskId)
-		}
-	}
-
 	m.cancel()
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	// 关闭旧 reader + 重建暂停通道
@@ -1380,7 +1405,7 @@ func (m *ManagedTask) reportProgress() {
 	var total, finished int64
 	for _, s := range m.streams {
 		if s.size > 0 {
-			total += s.size
+			total += s.size + s.initialOffset // 完整大小 = 剩余(spec.Size) + 续传初始偏移
 		}
 		s.mu.Lock()
 		finished += s.written

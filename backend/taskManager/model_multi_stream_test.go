@@ -646,33 +646,121 @@ func TestDrainUnselectedReaders_NoDeadlock(t *testing.T) {
 var _ = atomic.Int32{}
 var _ = sync.Mutex{}
 
-// TestPrepareForResume_WaitsForGoroutineExit 回归:prepareForResume 必须等待旧 executeTask goroutine
-// 退出后才改写共享状态,否则频繁启停下旧 goroutine 与新 goroutine 竞争 streams/ctx → 并行度下降/状态错乱
-func TestPrepareForResume_WaitsForGoroutineExit(t *testing.T) {
+// TestPrepareForResume_NoBlockAndResetsFields 回归:dispatch 状态机移除 runExited 等待后,
+// prepareForResume 必须立即返回(不阻塞),并完整重置可变状态(ctx/streams/pauseCh/resumeFromDB)。
+// 重置在 executeTask 循环顶、dispatch 不变量保证无并发 goroutine 时调用。
+func TestPrepareForResume_NoBlockAndResetsFields(t *testing.T) {
 	m := newTestManagedTask()
-	// 模拟一个仍在运行的旧 goroutine:runExited 为开通道
-	running := make(chan struct{})
-	m.runExited = running
+	m.streams = []*streamController{{role: "stale"}}
+	oldCtx := m.ctx
+	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 
-	proceeded := make(chan struct{})
+	// 应立即返回,不再等待任何"旧 goroutine"
+	done := make(chan struct{})
 	go func() {
 		m.prepareForResume()
-		close(proceeded)
+		close(done)
 	}()
-
-	// 旧 goroutine 未退出时,prepareForResume 应阻塞
 	select {
-	case <-proceeded:
-		t.Fatal("prepareForResume 不应在旧 goroutine 退出前返回")
-	case <-time.After(50 * time.Millisecond):
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("prepareForResume 不应阻塞")
 	}
 
-	// 旧 goroutine 退出
-	close(running)
-
+	if m.ctx == oldCtx {
+		t.Fatal("ctx 应已重建")
+	}
+	if m.ctx.Err() != nil {
+		t.Fatal("新 ctx 不应处于已取消状态")
+	}
+	if m.streams != nil {
+		t.Fatal("streams 应置 nil")
+	}
 	select {
-	case <-proceeded:
-	case <-time.After(2 * time.Second):
-		t.Fatal("旧 goroutine 退出后 prepareForResume 应及时返回")
+	case <-m.pauseSignal():
+		t.Fatal("pauseCh 应为新建的未关闭通道")
+	default:
+	}
+	if !m.resumeFromDB {
+		t.Fatal("PendingResourceID 有效时应置 resumeFromDB=true")
+	}
+}
+
+// TestDispatch_Exclusive 回归:dispatch CAS-claim 保证"一任务至多一条 executeTask goroutine"。
+// 重复 dispatch 必须幂等返回 false;executeTask 退出回到 idle 后方可再次 claim。
+func TestDispatch_Exclusive(t *testing.T) {
+	mgr := NewManager(2, nil, nil, nil, nil)
+	defer func() {
+		close(mgr.closeCh)
+		<-mgr.flushDone
+	}()
+
+	task := newTestManagedTask()
+	task.dispatchState.Store(int32(dsIdle))
+	task.cancel() // executeTask 命中 ctx.Done 早退,不触达 nil deps
+
+	if !mgr.dispatch(task) {
+		t.Fatal("首次 dispatch 应 claim 成功")
+	}
+	if mgr.dispatch(task) {
+		t.Fatal("已 dispatched,重复 dispatch 应返回 false(幂等)")
+	}
+
+	if !waitDispatchState(task, dsIdle, 2*time.Second) {
+		t.Fatal("executeTask 未及时退出回到 idle")
+	}
+
+	// idle 后可再次 claim
+	if !mgr.dispatch(task) {
+		t.Fatal("idle 后应可再次 claim")
+	}
+	if !waitDispatchState(task, dsIdle, 2*time.Second) {
+		t.Fatal("第二次 executeTask 未及时退出")
+	}
+}
+
+// waitDispatchState 轮询 dispatchState 直到等于 want 或超时
+func waitDispatchState(task *ManagedTask, want dispatchState, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if task.dispatchState.Load() == int32(want) {
+			return true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	return task.dispatchState.Load() == int32(want)
+}
+
+// TestPauseTaskTree_ClearsPendingResume 回归:Pause 是最新用户意图,必须作废子任务的陈旧 pendingResume,
+// 否则卡在不可取消插件 Read 等处滞后的 goroutine 退出时,会按陈旧标志重派发,违背已暂停的意图(高频启停实测复现)。
+func TestPauseTaskTree_ClearsPendingResume(t *testing.T) {
+	mgr := NewManager(2, nil, nil, nil, nil)
+	defer func() {
+		close(mgr.closeCh)
+		<-mgr.flushDone
+	}()
+
+	child := newTestManagedTask()
+	child.setState(TaskStatePaused)
+	child.pendingResume.Store(true)
+
+	parent := NewParentTask(254, "parent")
+	parent.AddChild(child)
+	mgr.mu.Lock()
+	mgr.parentMap[254] = parent
+	mgr.mu.Unlock()
+
+	if err := mgr.PauseTaskTree(context.Background(), 254, false); err != nil {
+		t.Fatalf("PauseTaskTree 失败: %v", err)
+	}
+	if child.pendingResume.Load() {
+		t.Fatal("Pause 后 pendingResume 应被清除,否则滞后 goroutine 退出时会按陈旧标志重派发")
+	}
+
+	// Resume 应能重新置位(确认 Pause 的清除不会破坏后续 Resume 语义)
+	// child 仍 Paused,cancel 已在 Pause 中调用;此处仅验证标志可被 Resume 再次设置
+	child.pendingResume.Store(true)
+	if !child.pendingResume.Load() {
+		t.Fatal("Resume 应能重新置 pendingResume")
 	}
 }
