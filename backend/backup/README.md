@@ -25,7 +25,7 @@
 - **sourceType**：备份来源类型（作品资源 / 插件数据等）。
 - **StoreBackupOrchestrator**：封装作品 Resource 全部 PersistentStore 的一站式备份与还原。
   - `BackupStores(workId, types...)`：按 StoreType 板块隔离备份（如仅资源文件、不触及缩略图）。
-  - `RestoreAllStores(items)`：从备份清单还原，BackupID==0 的条目跳过（保持 null）。
+  - `RestoreAllStores(items) (restored, skipped)`：从备份清单还原；`BackupID<=0`（备份未成功）的条目计入 `skipped` 并告警，避免静默丢失，调用方据 `skipped` 上报。
 - **StoreType**：标识 Resource 上不同类型的 Store 字段（资源、缩略图等），新增字段时追加常量。
 
 ## 依赖关系

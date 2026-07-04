@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -103,22 +101,34 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsd
 	return protoToWorkResponse(resp), nil
 }
 
-// Start 开始任务:按 storeRoles 选择性产出,读取 WorkResponse(可选)+ Specs(声明所选轨道元数据),
-// 为每个 role 建 io.Pipe,后台 goroutine 按 role 分发 data/eof/error,立即返回 StoreSpec 集合
+// Start 开始任务:bidi 流,首帧 StartRequest,之后主程序按需 PullRequest 拉取。
+// reader.Read 由主程序 copyLoop 驱动,reader 不领先主程序落盘
 func (p *TaskHandlerProxy) Start(task *pluginsdkdto.TaskDTO, storeRoles []string) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	stream, err := client.Start(context.Background(), &gen.StartRequest{
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := client.Start(ctx)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	if err := stream.Send(&gen.StartFrame{Frame: &gen.StartFrame_Start{Start: &gen.StartRequest{
 		Task:        taskToProto(task),
 		ExtensionId: p.extensionId,
 		StoreRoles:  storeRoles,
-	})
-	if err != nil {
+	}}}); err != nil {
+		cancel()
 		return nil, nil, err
 	}
-	return recvSpecsAndDemux(stream)
+	return recvSpecsAndPull(
+		func(role string, maxBytes int) error {
+			return stream.Send(&gen.StartFrame{Frame: &gen.StartFrame_Pull{Pull: &gen.PullRequest{Role: role, MaxBytes: int32(maxBytes)}}})
+		},
+		stream.Recv,
+		cancel,
+	)
 }
 
 func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
@@ -160,20 +170,32 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	return err
 }
 
-// Resume 恢复任务:按 TaskResumeParam.StreamOffsets 续传,返回新的 StoreSpec 集合
+// Resume 恢复任务:bidi 流,首帧 TaskResumeParamMessage,之后按需 PullRequest
 func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResumeParam) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	stream, err := client.Resume(context.Background(), &gen.TaskResumeParamMessage{
-		Param:       taskResumeParamToProto(param),
-		ExtensionId: p.extensionId,
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := client.Resume(ctx)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
-	return recvSpecsAndDemux(stream)
+	if err := stream.Send(&gen.ResumeFrame{Frame: &gen.ResumeFrame_Resume{Resume: &gen.TaskResumeParamMessage{
+		Param:       taskResumeParamToProto(param),
+		ExtensionId: p.extensionId,
+	}}}); err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return recvSpecsAndPull(
+		func(role string, maxBytes int) error {
+			return stream.Send(&gen.ResumeFrame{Frame: &gen.ResumeFrame_Pull{Pull: &gen.PullRequest{Role: role, MaxBytes: int32(maxBytes)}}})
+		},
+		stream.Recv,
+		cancel,
+	)
 }
 
 // SiteBrowserProxy 通过 gRPC 代理到子进程的 SiteBrowser
@@ -207,17 +229,21 @@ func (p *SiteBrowserProxy) Close() error {
 	return err
 }
 
-// ========== 多流解复用 ==========
+// ========== 多流按需拉取(pull)==========
 
-// recvSpecsAndDemux 读取 Start/Resume 流:先收 WorkResponse(可选)+ Specs(声明全部 role 元数据),
-// 随后为每个 role 建 io.Pipe,后台 goroutine 持续 Recv 并按 role 分发 data/eof/error。
-// 立即返回 []*StoreSpec(每个含 pipe reader + 元数据);调用方读 reader 时后台持续喂数据。
-func recvSpecsAndDemux(stream grpc.ServerStreamingClient[gen.StreamChunk]) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
+// recvSpecsAndPull 接收 WorkResponse(可选)+ Specs 声明,为每个 role 建 pullReadCloser(共享 bidi stream)。
+// 主程序按需 Read 驱动插件 reader.Read,reader 不领先主程序落盘
+func recvSpecsAndPull(
+	sendPull func(role string, maxBytes int) error,
+	recvChunk func() (*gen.StreamChunk, error),
+	cancel context.CancelFunc,
+) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	var workResp *pluginsdkdto.WorkResponse
 	var metas []*gen.StoreSpecMeta
 	for {
-		chunk, err := stream.Recv()
+		chunk, err := recvChunk()
 		if err != nil {
+			cancel()
 			return nil, nil, err
 		}
 		switch payload := chunk.Payload.(type) {
@@ -227,6 +253,7 @@ func recvSpecsAndDemux(stream grpc.ServerStreamingClient[gen.StreamChunk]) ([]*p
 		case *gen.StreamChunk_Specs:
 			metas = payload.Specs.GetItems()
 		default:
+			cancel()
 			return nil, nil, fmt.Errorf("期望 WorkResponse/Specs 块,收到 %T", chunk.Payload)
 		}
 		if metas != nil {
@@ -234,91 +261,85 @@ func recvSpecsAndDemux(stream grpc.ServerStreamingClient[gen.StreamChunk]) ([]*p
 		}
 	}
 
-	pipes := make(map[string]*io.PipeWriter, len(metas))
+	session := &pullSession{
+		sendPull:  sendPull,
+		recvChunk: recvChunk,
+		cancel:    cancel,
+		refCount:  len(metas),
+	}
 	specs := make([]*pluginsdkdto.StoreSpec, 0, len(metas))
 	for _, meta := range metas {
-		pr, pw := io.Pipe()
-		pipes[meta.GetRole()] = pw
 		specs = append(specs, &pluginsdkdto.StoreSpec{
-			Role:        meta.GetRole(),
-			Generation:  meta.GetGeneration(),
-			ReadCloser:  pr,
-			Format:      meta.GetFormat(),
-			Size:        meta.GetSize(),
-			SuggestName: meta.GetSuggestName(),
-			Continuable: meta.Continuable,               // *bool(oneof optional)
-			ResumeWriteOffset: meta.ResumeWriteOffset,     // *int64(oneof optional)
+			Role:             meta.GetRole(),
+			Generation:       meta.GetGeneration(),
+			ReadCloser:       &pullReadCloser{session: session, role: meta.GetRole()},
+			Format:           meta.GetFormat(),
+			Size:             meta.GetSize(),
+			SuggestName:      meta.GetSuggestName(),
+			Continuable:      meta.Continuable,
+			ResumeWriteOffset: meta.ResumeWriteOffset,
 		})
 	}
-
-	go demuxStream(stream, pipes)
 	return specs, workResp, nil
 }
 
-// demuxStream 后台解复用 gRPC 流:按 role 把 data 写入对应 pipe,eof/error 关闭对应 pipe
-// data 写入在消费方停止读取(reader 关闭)时返回 ErrClosedPipe,标记该 role 已废后续丢弃
-func demuxStream(stream grpc.ServerStreamingClient[gen.StreamChunk], pipes map[string]*io.PipeWriter) {
-	closed := make(map[string]struct{})
-	for {
-		chunk, err := stream.Recv()
-		if err != nil {
-			closeAllPipes(pipes, closed, normalizeStreamErr(err))
-			return
+// pullSession 共享一条 bidi stream 的多 role pull 会话
+type pullSession struct {
+	sendPull  func(role string, maxBytes int) error
+	recvChunk func() (*gen.StreamChunk, error)
+	cancel    context.CancelFunc
+	mu        sync.Mutex // 串行化 Send(Pull)+Recv 配对,保证请求/响应配对
+	refCount  int        // 剩余未 Close 的 role
+	closed    bool
+}
+
+// pullReadCloser 单 role 的按需读取:Read 一次 = 发一次 PullRequest + 收一次响应
+type pullReadCloser struct {
+	session *pullSession
+	role    string
+	eof     bool
+}
+
+func (r *pullReadCloser) Read(p []byte) (int, error) {
+	if r.eof {
+		return 0, io.EOF
+	}
+	r.session.mu.Lock()
+	defer r.session.mu.Unlock()
+
+	if err := r.session.sendPull(r.role, len(p)); err != nil {
+		return 0, err
+	}
+	chunk, err := r.session.recvChunk()
+	if err != nil {
+		return 0, err
+	}
+	switch payload := chunk.Payload.(type) {
+	case *gen.StreamChunk_Data:
+		if chunk.GetRole() != r.role {
+			return 0, fmt.Errorf("pull 响应 role 不匹配: 期望 %s, 收到 %s", r.role, chunk.GetRole())
 		}
-		role := chunk.GetRole()
-		if _, ok := closed[role]; ok {
-			continue
-		}
-		switch payload := chunk.Payload.(type) {
-		case *gen.StreamChunk_Data:
-			pw, ok := pipes[role]
-			if !ok {
-				continue
-			}
-			if _, werr := pw.Write(payload.Data); werr != nil {
-				// 消费方已关闭 reader,标记已废,后续数据丢弃
-				closed[role] = struct{}{}
-			}
-		case *gen.StreamChunk_Eof:
-			if pw, ok := pipes[role]; ok {
-				pw.Close()
-				closed[role] = struct{}{}
-			}
-		case *gen.StreamChunk_Error:
-			if pw, ok := pipes[role]; ok {
-				pw.CloseWithError(fmt.Errorf("插件流错误: %s", payload.Error))
-				closed[role] = struct{}{}
-			}
-		case *gen.StreamChunk_Specs, *gen.StreamChunk_WorkResponse:
-			// Specs/WorkResponse 已在 recvSpecsAndDemux 处理,忽略重复
-		}
+		return copy(p, payload.Data), nil
+	case *gen.StreamChunk_Eof:
+		r.eof = true
+		return 0, io.EOF
+	case *gen.StreamChunk_Error:
+		return 0, fmt.Errorf("插件流错误: %s", payload.Error)
+	default:
+		return 0, fmt.Errorf("意外的 pull 响应: %T", chunk.Payload)
 	}
 }
 
-// normalizeStreamErr 流结束或被取消时视作正常关闭(nil);其余错误原样返回
-func normalizeStreamErr(err error) error {
-	if err == nil || err == io.EOF {
-		return nil
+func (r *pullReadCloser) Close() error {
+	r.eof = true
+	r.session.mu.Lock()
+	defer r.session.mu.Unlock()
+	r.session.refCount--
+	if r.session.refCount <= 0 && !r.session.closed {
+		r.session.closed = true
+		r.session.cancel() // 全部 role 关闭,cancel context 关闭 bidi stream
 	}
-	if st, ok := status.FromError(err); ok && st.Code() == codes.Canceled {
-		return nil
-	}
-	return err
-}
-
-// closeAllPipes 关闭所有未关闭的 pipe;err 非空时以错误关闭(传播给消费方 reader)
-func closeAllPipes(pipes map[string]*io.PipeWriter, closed map[string]struct{}, err error) {
-	for role, pw := range pipes {
-		if _, ok := closed[role]; ok {
-			continue
-		}
-		if err != nil {
-			pw.CloseWithError(err)
-		} else {
-			pw.Close()
-		}
-		closed[role] = struct{}{}
-	}
+	return nil
 }
 
 // ========== Proto 转换函数（proxy 专用）==========

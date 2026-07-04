@@ -130,17 +130,19 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 }
 
 // RestoreAllStores 从备份清单还原所有 Store
-// 仅还原 BackupID > 0 的条目；BackupID == 0 的条目跳过
-func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, items []*StoreBackupItem) {
+// 仅还原 BackupID > 0 的条目；BackupID<=0（备份未成功）计入 skipped 并告警
+// 返回 restored（成功还原数）与 skipped（因备份缺失跳过的数），供调用方上报
+func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, items []*StoreBackupItem) (restored, skipped int) {
 	if len(items) == 0 {
-		return
+		return 0, 0
 	}
 
 	logger.Log.Infof("[StoreBackupOrchestrator] 开始还原 %d 个 Store 条目", len(items))
-	restoredCount := 0
 
 	for _, item := range items {
 		if item.BackupID <= 0 {
+			skipped++
+			logger.Log.Warnf("[StoreBackupOrchestrator] 跳过还原: type=%s, BackupID=%d（备份未成功，旧资源可能已丢失）", item.StoreType, item.BackupID)
 			continue
 		}
 
@@ -184,8 +186,9 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 		// 记录还原的新 storeId 供调用方使用(item.BackupID 复用为 newStoreId,但语义改变不安全,仅记日志)
 		logger.Log.Infof("[StoreBackupOrchestrator] Store 已还原: type=%s, newStoreId=%d", item.StoreType, newStoreId)
 
-		restoredCount++
+		restored++
 	}
 
-	logger.Log.Infof("[StoreBackupOrchestrator] 还原完成: %d/%d 个 Store 已还原", restoredCount, len(items))
+	logger.Log.Infof("[StoreBackupOrchestrator] 还原完成: restored=%d, skipped=%d, total=%d", restored, skipped, len(items))
+	return restored, skipped
 }
