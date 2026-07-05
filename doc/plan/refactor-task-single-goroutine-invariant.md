@@ -189,17 +189,21 @@ stress 回归已验证:原"四条纪律"中 1/2/3 随不变量消失,仅 4 仍�
 - **原纪律 1(executeTask 终态守卫)**:已被不变量吸收,**不需要**。dispatch 谓词已跳过终态(`ResumeTaskTree` 仅 dispatch `Paused`/`Pausing`、`buildOrReuseChild` 的 `skipTerminal`);CAS 保证无滞后 goroutine 把 Finished 拉回 Processing。
 - **原纪律 2(树级互斥)**:已被 per-task `dispatchState` CAS 完全吸收,**不需要**。
 - **原纪律 3(中间态不响应 Resume)**:被 `pendingResume` 的"退出后恢复"语义取代且**更优**(忽略会丢失用户在 pause-exit 窗口的 Resume 意图)。**不实现**。
-- **原纪律 4(已完成 role 过滤)**:**仍需要,独立实现**,详见下。
+- **原纪律 4(已完成 role 过滤)**:**主程序侧过滤方案有误,已回退(2026-07-05)**;正确方案改由插件侧处理,详见下。
 
-### 纪律 4:已完成 role 不进入 Resume(416 Failed)
+### 纪律 4:已完成 role 不进入 Resume(416)— 过滤方案已回退,改由插件侧处理
 
-**现象**:某子任务资源已下载完整,却在某次恢复时 Resume 失败(`416 Range Not Satisfiable`),被置 `Failed`。
+**原 416 现象**:某子任务资源已下载完整,却在恢复时 Resume 失败(`416 Range Not Satisfiable`),被置 `Failed`。
 
-**根因**:`persistent_store` 实体**无 size 字段**(只有 `Status` 0/1 + 图片宽高);`resumeFromPersistedState`(model.go:1037–1063)只按 `store.Status == StoreStatusComplete && statErr == nil` 排除 role。若某 role 磁盘文件已写满但 `Status` 仍 `Incomplete`(写满字节的 goroutine 未走到 `storeWriter.Complete()`,或竞态下状态未对齐),会按 `info.Size()` 放入 `streamOffsets`,插件以 `Range@满` 请求 → 服务端必然 416。
+**主程序侧过滤方案(已回退)**:曾在 `resumeFromPersistedState` 加 `filterCompletedRoles`,在 Resume 返回后剔除 `streamOffsets[role] >= spec.Size` 的 role。**实测造成资源损坏已回退**:pixiv 插件 `Resume` 返回的 `spec.Size` 是 Range 请求的 Content-Length(**剩余可下载字节**),并非资源完整大小(`Start` 时才是完整大小,语义不一致)。过滤器 `offset >= 剩余字节` 在 `offset >= 总量/2` 时即误触发,把**未下完的半成品标记为 Finished** → 文件截断损坏(实测任务 264 offset=863445/总量 1032816、265 offset=1490944/总量 1904544 均被误判完成)。教训:`spec.Size` 语义未经核实即作为完成判据。
 
-**修复方案**(后置过滤——`spec.Size` 在 Resume 返回前不可得):在插件 `Resume` 返回 specs 之后、mount 之前,过滤掉满足 `streamOffsets[role] > 0 && streamOffsets[role] >= spec.Size`(`spec.Size > 0`)的 spec,视为已完成,从 specs 中剔除(并入 `completedRoles`)。过滤后 specs 为空则走已有的"无未完成轨道 → Finished"分支(model.go:1096)。插件侧可补充:Resume 收到 `offset >= 完整 size` 的 role 返回空 spec。
+**正确方案(待实现,插件侧)**:由插件在 `Resume` 内判定——若某 role 的 `offset >= 资源完整 size`(插件做 Range Probe 时已知完整大小),则该 role **不产出 spec**(或产出标记为已完成的空 spec),主程序据返回 specs 中无该 role 视其为已完成。完整大小权威在插件侧(HTTP Content-Length / HEAD),主程序不再推断。原 416 失败路径也应在插件内转译为"该 role 已完成"而非任务失败。
+
+**附带观察到另一问题(本次日志,与过滤器无关,待单独排查)**:`resumeFromPersistedState` 在任务 ctx 已取消时仍继续执行(context.Background 事务),`mergeWorkMetaForNaming` 的 `LoadWorkMeta(m.ctx)` 失败回落 unknownAuthor,导致多任务文件名模板跌落到同一兜底路径、`StoreStream` 按 relPath 去重命中同一 storeId(实测 263/266 共用 storeId=31)。属"resume 不响应 ctx 取消"的衍生,见 `task-manager-followup-improvements.md` ②。
 
 ### 其他延后(独立计划)
+
+> 已细化为独立计划 `doc/plan/task-manager-followup-improvements.md`,含每项的现状/根因/方案/改动点/验证/风险与建议顺序,在新会话中接手。
 
 - **插件 gRPC 同步耦合**:`executeTask` 持信号量全程同步调插件 `Start`/`Resume`;`Pause()`/`Stop()` 状态转换中同步调插件 → 插件卡住会钉死信号量槽、状态切换延迟。建议给插件调用加 context 超时,并考虑并行化(实测"启停后状态切换延迟"主要源于此 + 信号量排队)。
 - **插件 reader 不响应 ctx 取消**:`copyLoop` 阻塞在 `reader.Read` 时不响应任务 ctx 取消(实测任务 257 卡 4.4s),SDK/插件侧需让 reader 在 Recv 循环中响应 ctx。

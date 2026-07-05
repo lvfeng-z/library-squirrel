@@ -304,21 +304,21 @@ type streamResult struct {
 
 // streamController 管理单个 store 的传输(downloaded/derived 通用:reader→store 拷贝)
 type streamController struct {
-	role        string                        // store_type(main/thumbnail/videoTrack/...)
-	generation  string                        // downloaded | derived
-	format      string                        // 文件扩展名
-	size        int64                         // 远程大小;-1 未知
-	suggestName string                        // 插件建议文件名
-	continuable bool                          // 是否支持续传(derived 恒为 false)
+	role        string // store_type(main/thumbnail/videoTrack/...)
+	generation  string // downloaded | derived
+	format      string // 文件扩展名
+	size        int64  // 远程大小;-1 未知
+	suggestName string // 插件建议文件名
+	continuable bool   // 是否支持续传(derived 恒为 false)
 
-	reader      io.ReadCloser                  // 资源数据流(由调用方关闭)
-	storeWriter persistentStore.StoreWriter    // 当前写入的 StoreWriter
-	storeId     int64                          // PersistentStore 记录 ID
-	relPath     string                         // StoreStream 的相对路径(事务回滚/清理用)
-	written       int64                        // 已写入字节数(mu 保护)
-	initialOffset int64                        // 续传初始偏移(恢复时 = writeOffset;新建轨为 0),进度分母补全完整大小
-	state         atomic.Int32                 // streamState
-	mu          sync.Mutex                     // 保护 written 与 drain 期间的 reader/storeWriter 访问
+	reader        io.ReadCloser               // 资源数据流(由调用方关闭)
+	storeWriter   persistentStore.StoreWriter // 当前写入的 StoreWriter
+	storeId       int64                       // PersistentStore 记录 ID
+	relPath       string                      // StoreStream 的相对路径(事务回滚/清理用)
+	written       int64                       // 已写入字节数(mu 保护)
+	initialOffset int64                       // 续传初始偏移(恢复时 = writeOffset;新建轨为 0),进度分母补全完整大小
+	state         atomic.Int32                // streamState
+	mu            sync.Mutex                  // 保护 written 与 drain 期间的 reader/storeWriter 访问
 }
 
 // newStreamController 构建单流控制器
@@ -392,13 +392,12 @@ type ManagedTask struct {
 	streams []*streamController
 
 	// 暂停/恢复协调通道(close 广播到全部 stream goroutine;prepareForResume 重建)
-	pauseCh  chan struct{}
-	pauseMu  sync.Mutex
+	pauseCh chan struct{}
+	pauseMu sync.Mutex
 
 	// atomic 进度快照字段，供 BuildSnapshot 并发安全读取
 	progressTotal    atomic.Int64 // 资源总大小
 	progressFinished atomic.Int64 // 已下载字节数
-
 
 	// 回调函数
 	onStateChange      func(taskId int64, oldState, newState TaskState, errMsg string)
@@ -1225,9 +1224,9 @@ func (m *ManagedTask) Pause() error {
 	return nil
 }
 
-// prepareForResume 重置任务的运行时可变状态,准备重新调度。
-// 仅在 executeTask 退出契约的"重派发"分支调用——此时由 dispatch 不变量保证无并发 goroutine 访问这些字段,
-// 故无需等待旧 goroutine(旧机制 runExited/5 秒超时已随 dispatch 状态机移除)。
+// prepareForResume 重置任务的运行时可变状态(cancel + 重建 ctx、关闭旧 reader、streams=nil、
+// 重建 pauseCh、按 PendingResourceID 设 resumeFromDB),供 executeTask 重新派发前调用。
+// dispatch 不变量保证此刻无并发 goroutine 访问这些字段。
 func (m *ManagedTask) prepareForResume() {
 	m.cancel()
 	m.ctx, m.cancel = context.WithCancel(context.Background())
