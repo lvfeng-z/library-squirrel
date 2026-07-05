@@ -182,17 +182,30 @@ executeTask(task):
 - 删除 `TestPrepareForResume_WaitsForGoroutineExit`(649–678):新设计**显式不等待**。替换为新回归:`executeTask` 运行期间置 `pendingResume=true` 并使任务进入 Paused,验证 goroutine 退出后自动重新 dispatch,且全程**至多一条 goroutine**(goroutine 计数器断言)。
 - 新增"开始路径对象唯一性"回归:并发两次 `StartTaskTree(同一 taskId)`,断言 `taskMap`/`parentMap` 中该任务只有一份对象、全程至多一条 goroutine。
 
-## 不在本次范围
+## 后续(独立待办)
 
-以下均**显式延后**,本计划不触及。其中前四项是原"四条纪律",它们的去留取决于不变量成立后是否还有残留现象,应**在本次重构落地、stress 回归通过后单独观察**再决定是否需要:
+stress 回归已验证:原"四条纪律"中 1/2/3 随不变量消失,仅 4 仍需要(与并发无关)。处置结论:
 
-- **纪律 1**(executeTask 终态守卫):不变量成立后无滞后 goroutine,大概率不需要。
-- **纪律 2**(树级互斥):被 per-task CAS 完全吸收,不需要。
-- **纪律 3**(中间态不响应 Resume):`pendingResume` 对 Pausing 任务给出"退出后恢复"的语义,比"直接忽略"更不丢用户意图;原纪律大概率不需要,甚至与之冲突(忽略会丢 Resume)。待观察。
-- **纪律 4**(已完成 role 过滤,`resumeFromPersistedState` 内):独立的数据正确性问题(store.Status 与磁盘不一致 → 416),与并发无关。**大概率仍需要**,但单独评估、单独实现,不混入本次。
-- **插件 gRPC 同步耦合**(`executeTask` 持信号量调插件、`Pause()` 状态转换中调插件 → 卡住钉死槽位):独立计划,建议给插件调用加 context 超时。
-- **终态批量落盘**(终态走 200ms flush):独立计划,建议终态状态写即时落盘。
-- **per-task actor 全重构**:本计划的 CAS+pendingResume 是"轻量 actor",保证不变量而不重写执行模型。若后续发现 CAS 路径仍有边界问题,可升级为常驻 goroutine + command channel(真 actor),届时 `dispatchState` 退化为 actor 的 `started` 标志。
+- **原纪律 1(executeTask 终态守卫)**:已被不变量吸收,**不需要**。dispatch 谓词已跳过终态(`ResumeTaskTree` 仅 dispatch `Paused`/`Pausing`、`buildOrReuseChild` 的 `skipTerminal`);CAS 保证无滞后 goroutine 把 Finished 拉回 Processing。
+- **原纪律 2(树级互斥)**:已被 per-task `dispatchState` CAS 完全吸收,**不需要**。
+- **原纪律 3(中间态不响应 Resume)**:被 `pendingResume` 的"退出后恢复"语义取代且**更优**(忽略会丢失用户在 pause-exit 窗口的 Resume 意图)。**不实现**。
+- **原纪律 4(已完成 role 过滤)**:**仍需要,独立实现**,详见下。
+
+### 纪律 4:已完成 role 不进入 Resume(416 Failed)
+
+**现象**:某子任务资源已下载完整,却在某次恢复时 Resume 失败(`416 Range Not Satisfiable`),被置 `Failed`。
+
+**根因**:`persistent_store` 实体**无 size 字段**(只有 `Status` 0/1 + 图片宽高);`resumeFromPersistedState`(model.go:1037–1063)只按 `store.Status == StoreStatusComplete && statErr == nil` 排除 role。若某 role 磁盘文件已写满但 `Status` 仍 `Incomplete`(写满字节的 goroutine 未走到 `storeWriter.Complete()`,或竞态下状态未对齐),会按 `info.Size()` 放入 `streamOffsets`,插件以 `Range@满` 请求 → 服务端必然 416。
+
+**修复方案**(后置过滤——`spec.Size` 在 Resume 返回前不可得):在插件 `Resume` 返回 specs 之后、mount 之前,过滤掉满足 `streamOffsets[role] > 0 && streamOffsets[role] >= spec.Size`(`spec.Size > 0`)的 spec,视为已完成,从 specs 中剔除(并入 `completedRoles`)。过滤后 specs 为空则走已有的"无未完成轨道 → Finished"分支(model.go:1096)。插件侧可补充:Resume 收到 `offset >= 完整 size` 的 role 返回空 spec。
+
+### 其他延后(独立计划)
+
+- **插件 gRPC 同步耦合**:`executeTask` 持信号量全程同步调插件 `Start`/`Resume`;`Pause()`/`Stop()` 状态转换中同步调插件 → 插件卡住会钉死信号量槽、状态切换延迟。建议给插件调用加 context 超时,并考虑并行化(实测"启停后状态切换延迟"主要源于此 + 信号量排队)。
+- **插件 reader 不响应 ctx 取消**:`copyLoop` 阻塞在 `reader.Read` 时不响应任务 ctx 取消(实测任务 257 卡 4.4s),SDK/插件侧需让 reader 在 Recv 循环中响应 ctx。
+- **终态批量落盘**:终态仍走 200ms flush,建议终态状态写即时落盘。
+- **per-task actor 全重构**:若 CAS 路径后续发现边界问题,可升级为常驻 goroutine + command channel(真 actor),届时 `dispatchState` 退化为 `started` 标志。
+
 
 ## 验证
 
@@ -208,17 +221,6 @@ executeTask(task):
 ### 不变量断言(建议)
 
 - `ManagedTask` 增加 `atomic.Int32 liveGoroutines`,executeTask 入口 `+1`、defer `-1`;stress 测试任意时刻断言 `≤ 1`。
-
-## 重构后的观察清单(决定纪律去留)
-
-落地 + stress 回归通过后,针对原四个问题现象复查:
-
-1. 父任务终态延迟 / Finished 被拉回 Processing —— 应随不变量消失。若残留 → 重新评估纪律 1。
-2. Paused 子任务自动完成 —— 应随不变量消失(无滞后 goroutine 把它拉回)。
-3. 状态切换延迟 + 文件锁 —— 应随不变量消失(无并发 downloadLoop)。
-4. 已完成 role 续传 416 —— **预期仍存在**(与并发无关)→ 此时单独做纪律 4。
-
-观察结果决定 `fix-task-tree-concurrent-pause-resume.md` 的处置:若 1/2/3 消失,该文档缩减为只剩纪律 4(或并入本计划后续),其余删掉。
 
 ## 风险
 
@@ -238,6 +240,6 @@ executeTask(task):
 
 ## 关联
 
-- 现状校验与"四条纪律"(待观察后处置):`doc/plan/fix-task-tree-concurrent-pause-resume.md`
+- 原"四条纪律"文档(`fix-task-tree-concurrent-pause-resume.md`)已并入本计划"后续"节并废弃:1/2/3 被不变量吸收/取代,纪律 4 见"后续"。
 - 资源损坏修复(已完成):`doc/plan/fix-task-resume-data-corruption.md`
-- 用户原始思路:`doc/todo.md#L30`(中间态不响应,可能被 pendingResume 取代)
+- 用户原始思路:`doc/todo.md#L30`(中间态不响应,已被 `pendingResume` 的"退出后恢复"取代)
