@@ -47,15 +47,6 @@ const (
 	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
-// dispatchState 描述任务在 dispatch 生命周期中的位置(不变量:一任务至多一条 executeTask goroutine)
-type dispatchState int32
-
-const (
-	dsIdle    dispatchState = iota // 无 goroutine,可被 claim
-	dsQueued                       // 已 claim,等信号量槽位(在 waitingQueue)
-	dsRunning                      // executeTask goroutine 存活(持信号量)
-)
-
 // runMode 板块执行选择:workInfo 为作品元数据独立板块,storeRoles 为所选资源 store_type 集合
 type runMode struct {
 	workInfo   bool     // 作品元数据板块
@@ -352,12 +343,16 @@ type ManagedTask struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
-	// dispatch 生命周期状态(dsIdle/dsQueued/dsRunning),CAS-claim 保证一任务至多一条 executeTask goroutine
-	dispatchState atomic.Int32
-	// 内存内 Resume 命中"已在跑(dispatch claim 输)"时置位;executeTask 退出契约据此决定是否重派发,防丢失唤醒
-	pendingResume atomic.Bool
-	// 不变量断言:executeTask 入口 +1、defer -1,任意时刻应 ≤ 1(供测试断言)
-	liveGoroutines atomic.Int32
+	// actor 通信与生命周期:一条常驻 goroutine 串行处理命令,任务级可变状态只在其内修改
+	cmdCh        chan taskCmd    // 命令通道(外部→actor,postCmd 非阻塞投递)
+	actorDone    chan struct{}   // actor goroutine 退出信号(终态关闭)
+	actorStarted atomic.Bool     // actor 是否已启动(创建时置 true,取代 dispatchState 三态)
+	manager      *Manager        // back-reference:actor 入队/清理需访问 Manager
+	semaphore    chan struct{}   // Manager 信号量(取/释槽位)
+	slotHeld     bool            // 当前是否持信号量槽位(仅 actor goroutine 访问)
+	runCtx       context.Context // 当前 start/resume 命令的子 ctx(中断在途长任务)
+	runCancel    context.CancelFunc
+	pendingCmds  []taskCmd // 长任务执行期间 watcher 累积的命令(主循环稍后处理)
 
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
@@ -391,10 +386,6 @@ type ManagedTask struct {
 	// 多流控制器集合(按本次所选 storeRoles 过滤后的 spec 构建)
 	streams []*streamController
 
-	// 暂停/恢复协调通道(close 广播到全部 stream goroutine;prepareForResume 重建)
-	pauseCh chan struct{}
-	pauseMu sync.Mutex
-
 	// atomic 进度快照字段，供 BuildSnapshot 并发安全读取
 	progressTotal    atomic.Int64 // 资源总大小
 	progressFinished atomic.Int64 // 已下载字节数
@@ -405,22 +396,312 @@ type ManagedTask struct {
 	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
 }
 
-// NewManagedTask 创建托管任务
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, deps *TaskDeps) *ManagedTask {
+// NewManagedTask 创建托管任务并启动 actor goroutine(一生一灭,任务级可变状态只在其内修改)
+func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, deps *TaskDeps, manager *Manager, semaphore chan struct{}) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ManagedTask{
+	m := &ManagedTask{
 		taskId:     taskId,
 		parentId:   parentId,
 		state:      atomic.Int32{},
 		ctx:        ctx,
 		cancel:     cancel,
 		done:       make(chan struct{}),
+		cmdCh:      make(chan taskCmd, 8),
+		actorDone:  make(chan struct{}),
+		manager:    manager,
+		semaphore:  semaphore,
 		pluginExec: pluginExec,
 		deps:       deps,
 		task:       task,
 		workId:     taskId,
-		pauseCh:    make(chan struct{}),
 	}
+	m.actorStarted.Store(true)
+	go m.actorLoop()
+	return m
+}
+
+// ==== per-task actor:命令通道 + 主循环 ====
+
+// cmdKind actor 命令种类
+type cmdKind int
+
+const (
+	cmdStart          cmdKind = iota // 初始执行 / Retry / Redownload
+	cmdResume                        // 从 Paused/Pausing 恢复(含跨重启续传)
+	cmdPause                         // 暂停(仅 Processing/Pausing/Paused 有效)
+	cmdStop                          // 停止(终态 Failed)
+	cmdConfirmReplace                // WaitingForInput 确认后(skip=true 跳过 / skipDup=true 替换)
+)
+
+// taskCmd actor 命令
+type taskCmd struct {
+	kind    cmdKind
+	skipDup bool       // cmdConfirmReplace: 替换时跳过查重
+	skip    bool       // cmdConfirmReplace: 跳过该任务
+	ack     chan error // 可选应答(Pause/Stop 等待 actor 处理;nil=fire-and-forget)
+}
+
+// postCmd 非阻塞投递命令到 actor。绝不阻塞投递方(投递路径不持 Manager.mu,防死锁)。
+func (m *ManagedTask) postCmd(cmd taskCmd) {
+	select {
+	case m.cmdCh <- cmd:
+	default:
+		logger.Log.Warnf("[TaskManager] 任务 %d cmdCh 满,丢弃命令 %d", m.taskId, cmd.kind)
+	}
+}
+
+// actorLoop actor 主循环:串行处理命令,任务级可变状态只在此 goroutine 内修改。
+// 对象创建时启动,终态(或主 ctx 取消)退出;退出前启动 cmdCh drain 防投递方阻塞。
+func (m *ManagedTask) actorLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("[TaskManager] actor panic taskId=%d: %v", m.taskId, r)
+			m.setFailed(fmt.Sprintf("actor panic: %v", r))
+		}
+		// 启动 drain 防止 actor 退出后投递方阻塞在 cmdCh
+		go func() {
+			for range m.cmdCh {
+			}
+		}()
+		close(m.actorDone)
+	}()
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case cmd, ok := <-m.cmdCh:
+			if !ok {
+				return
+			}
+			switch cmd.kind {
+			case cmdStart, cmdResume, cmdConfirmReplace:
+				m.handleRunCmd(cmd)
+			case cmdPause:
+				m.handlePauseCmd(cmd)
+			case cmdStop:
+				m.handleStopCmd(cmd)
+			}
+			if isTerminalState(m.GetState()) {
+				return
+			}
+		}
+	}
+}
+
+// isTerminalState 是否终态(Finished/Failed/PartlyFinished)
+func isTerminalState(s TaskState) bool {
+	return s == TaskStateFinished || s == TaskStateFailed || s == TaskStatePartlyFinished
+}
+
+// handleRunCmd 处理 start/resume/confirmReplace:取槽位 → 派生 runCtx → watcher 监听中断命令 → 执行长任务 → 处理 result + pendingCmds
+func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
+	// cmdConfirmReplace skip:不取槽位,直接清理 + cancel actor 主 ctx(actorLoop 退出)
+	if cmd.kind == cmdConfirmReplace && cmd.skip {
+		m.setState(TaskState(m.task.Status))
+		m.manager.cleanupFinishedTask(m)
+		m.cancel()
+		return
+	}
+
+	// cmdConfirmReplace replace:在取槽位前设 skipDuplicateCheck。
+	// 若取不到槽位 enqueueSelf,后续被 dispatchFromQueue 以 cmdResume 唤醒时 skipDuplicateCheck 仍生效,
+	// run() 跳过查重,避免"批量替换确认后,等待槽位的任务被唤醒时再次弹窗"。
+	if cmd.kind == cmdConfirmReplace {
+		m.skipDuplicateCheck = cmd.skipDup
+	}
+
+	// 取信号量槽位(首次进入);取到则出队,取不到入 waitingQueue 等唤醒
+	if !m.slotHeld {
+		select {
+		case m.semaphore <- struct{}{}:
+			m.slotHeld = true
+			m.dequeueSelf()
+		default:
+			m.enqueueSelf()
+			return
+		}
+	}
+
+	// cmdResume 重置执行期可变状态(cmdConfirmReplace 的 skipDuplicateCheck 已在取槽位前设置)
+	if cmd.kind == cmdResume {
+		m.prepareForResume()
+	}
+
+	// 派生 runCtx(每条 run 命令新建,中断在途长任务用)
+	m.runCtx, m.runCancel = context.WithCancel(m.ctx)
+	stopWatcher := make(chan struct{})
+	go m.cmdWatcher(stopWatcher)
+
+	// 执行长任务(阻塞在此,可被 watcher 的 runCancel 中断)
+	result := m.runOnce()
+
+	close(stopWatcher)
+	if m.runCancel != nil {
+		m.runCancel()
+		m.runCancel = nil
+	}
+
+	// 处理 result + 释放槽位
+	switch result {
+	case runResultDone: // 终态 Finished/Failed
+		m.slotHeld = false
+		<-m.semaphore
+		m.manager.dispatchFromQueue()
+		m.manager.cleanupFinishedTask(m)
+	case runResultNeedConfirm: // 查重命中,等确认
+		m.slotHeld = false
+		<-m.semaphore
+		m.manager.dispatchFromQueue()
+		m.manager.enqueueWaitingForInput(m)
+	case runResultPaused: // 暂停
+		m.slotHeld = false
+		<-m.semaphore
+		m.manager.dispatchFromQueue()
+	}
+
+	// 处理 watcher 累积的命令(按序)
+	pending := m.pendingCmds
+	m.pendingCmds = nil
+	for _, c := range pending {
+		switch c.kind {
+		case cmdStart, cmdResume, cmdConfirmReplace:
+			m.handleRunCmd(c)
+		case cmdPause:
+			m.handlePauseCmd(c)
+		case cmdStop:
+			m.handleStopCmd(c)
+		}
+		if isTerminalState(m.GetState()) {
+			return
+		}
+	}
+}
+
+// runOnce 执行单次任务主体(run 或跨重启续传)
+func (m *ManagedTask) runOnce() runResult {
+	if m.resumeFromDB {
+		logger.Log.Infof("[TaskManager] executeTask: taskId=%d, resumeFromDB=%v", m.taskId, m.resumeFromDB)
+		return m.resumeFromPersistedState()
+	}
+	return m.run()
+}
+
+// cmdWatcher 长任务执行期间监听 cmdCh:pause/stop 立即 runCancel 中断在途长任务,所有命令暂存 pendingCmds 由主循环稍后处理
+func (m *ManagedTask) cmdWatcher(stop <-chan struct{}) {
+	for {
+		select {
+		case c := <-m.cmdCh:
+			if c.kind == cmdPause || c.kind == cmdStop {
+				if m.runCancel != nil {
+					m.runCancel()
+				}
+				m.pendingCmds = append(m.pendingCmds, c)
+				return
+			}
+			m.pendingCmds = append(m.pendingCmds, c)
+		case <-stop:
+			return
+		}
+	}
+}
+
+// enqueueSelf 取不到信号量槽位时入 Manager.waitingQueue(按 taskId 去重)并置 Waiting
+func (m *ManagedTask) enqueueSelf() {
+	m.manager.mu.Lock()
+	for _, t := range m.manager.waitingQueue {
+		if t.taskId == m.taskId {
+			m.manager.mu.Unlock()
+			return // 已在队
+		}
+	}
+	m.manager.waitingQueue = append(m.manager.waitingQueue, m)
+	m.manager.mu.Unlock()
+	m.setState(TaskStateWaiting)
+}
+
+// dequeueSelf 取到信号量槽位后从 Manager.waitingQueue 移除自己(若在内)
+func (m *ManagedTask) dequeueSelf() {
+	m.manager.mu.Lock()
+	kept := make([]*ManagedTask, 0, len(m.manager.waitingQueue))
+	for _, t := range m.manager.waitingQueue {
+		if t.taskId != m.taskId {
+			kept = append(kept, t)
+		}
+	}
+	m.manager.waitingQueue = kept
+	m.manager.mu.Unlock()
+}
+
+// handlePauseCmd 处理 pause 命令:非终态任务 → Paused(命令队列保证 PauseTaskTree 的 pause 覆盖陈旧 resume)。
+// Processing 状态额外中断在途长任务(runCancel,watcher 在长任务期间已触发时此处幂等);其余状态仅通知插件 + 落 Paused。
+func (m *ManagedTask) handlePauseCmd(cmd taskCmd) {
+	s := m.GetState()
+	if isTerminalState(s) {
+		if cmd.ack != nil {
+			cmd.ack <- ErrTaskNotProcessing
+		}
+		return
+	}
+	if s == TaskStateProcessing {
+		m.setState(TaskStatePausing)
+		if m.runCancel != nil {
+			m.runCancel()
+		}
+	}
+	// 通知插件暂停(有上游时关上游 HTTP 保留 validBytes 供 Resume Range 续传;无上游时插件幂等处理)
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
+		ResourceID: m.task.PendingResourceID.Int64,
+	}
+	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
+	}
+	m.setState(TaskStatePaused)
+	if cmd.ack != nil {
+		cmd.ack <- nil
+	}
+}
+
+// handleStopCmd 处理 stop 命令:终态 Failed
+func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
+	if isTerminalState(m.GetState()) {
+		if cmd.ack != nil {
+			cmd.ack <- nil
+		}
+		return
+	}
+	m.setState(TaskStateStopping)
+	if m.runCancel != nil {
+		m.runCancel()
+	}
+	for _, s := range m.streams {
+		s.abort()
+	}
+	param := &sdkdto.TaskResParam{
+		Task:       dto.NewTaskDTO(m.task),
+		ResourceID: m.task.PendingResourceID.Int64,
+	}
+	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
+		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+	}
+	m.setFailed("任务被用户停止")
+	if cmd.ack != nil {
+		cmd.ack <- nil
+	}
+}
+
+// Pause 暂停任务(投递 cmdPause + 等 actor 处理;仅 Processing 时返回 nil,否则 ErrTaskNotProcessing)
+func (m *ManagedTask) Pause() error {
+	ack := make(chan error, 1)
+	m.postCmd(taskCmd{kind: cmdPause, ack: ack})
+	return <-ack
+}
+
+// Stop 停止任务(投递 cmdStop + 等 actor 处理)
+func (m *ManagedTask) Stop() {
+	ack := make(chan error, 1)
+	m.postCmd(taskCmd{kind: cmdStop, ack: ack})
+	<-ack
 }
 
 // run 核心执行逻辑入口，按 runMode 分流到对应板块
@@ -447,10 +728,10 @@ func (m *ManagedTask) run() runResult {
 
 	// 防止 goroutine 覆盖已被 Pause() 设置的暂停状态
 	// 场景：executeTask 的 ctx.Done 检查通过后、本行执行前，Pause() 刚好 cancel + setPaused
-	if m.ctx.Err() != nil {
-		if s := TaskState(m.state.Load()); s == TaskStatePausing || s == TaskStatePaused {
-			return runResultPaused
-		}
+	if m.runCtx.Err() != nil {
+		// runCtx 取消(Pause/Stop 经 watcher runCancel):视为中断,不进执行。
+		// 不依赖 state——watcher 是独立 goroutine,只 runCancel + 暂存命令,setState 由后续 handlePauseCmd/handleStopCmd 处理。
+		return runResultPaused
 	}
 	m.setState(TaskStateProcessing)
 	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, stores:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeRoles, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
@@ -471,7 +752,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	// 含 main：查重（fallback；主路径在 Manager.batchCheckDuplicates）
 	if m.runMode.hasStore(entity.StoreTypeMain) && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
-		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
+		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.runCtx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 		if err == nil && existing != nil {
 			m.existingWorkId = existing.GetID()
 			existingWorkName := ""
@@ -514,19 +795,19 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	// 替换场景:备份所选板块对应的旧 store。
 	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就备份(备份→生成→失败还原,统一替换语义)。
 	if m.isReplace && m.runMode.hasAnyStore() {
-		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.ctx, m.workId, m.runMode.storeRoles...)
+		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.runCtx, m.workId, m.runMode.storeRoles...)
 	}
 
 	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
 	var workResp *sdkdto.WorkResponse
 	if m.runMode.hasWorkInfo() {
 		var err error
-		workResp, err = m.pluginExec.CreateWorkInfo(m.ctx, m.task)
+		workResp, err = m.pluginExec.CreateWorkInfo(m.runCtx, m.task)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("创建作品信息失败: %v", err))
 		}
-		savedWorkId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.ctx, m.task, workResp)
+		savedWorkId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.runCtx, m.task, workResp)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("保存作品信息失败: %v", err))
@@ -536,7 +817,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 
 	// 资源板块:有任意 store 时,Start 按所选 storeRoles 选择性产出
 	if m.runMode.hasAnyStore() {
-		specs, startResp, err := m.pluginExec.Start(m.ctx, m.task, m.runMode.storeRoles)
+		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.runMode.storeRoles)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("获取资源流集合失败: %v", err))
@@ -660,7 +941,7 @@ func (m *ManagedTask) resolveWorkIdByTask() (int64, error) {
 	if m.deps.WorkChecker == nil || !m.task.SiteID.Valid || !m.task.SiteWorkID.Valid || m.task.SiteWorkID.String == "" {
 		return 0, fmt.Errorf("任务缺少 site_id/site_work_id，无法定位作品")
 	}
-	work, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.ctx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
+	work, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.runCtx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 	if err != nil {
 		return 0, fmt.Errorf("查询作品失败: %w", err)
 	}
@@ -855,20 +1136,11 @@ func (s *streamController) copyLoop(m *ManagedTask) streamResult {
 	buf := make([]byte, 32*1024)
 	for {
 		select {
-		case <-m.pauseSignal():
+		case <-m.runCtx.Done():
+			// runCtx 取消(Pause/Stop 经 watcher runCancel 中断在途 reader):统一保留文件。
+			// 此刻 state 尚未由 handlePauseCmd/handleStopCmd 设置(它们在长任务返回后处理);
+			// Stop 的文件删除由后续 handleStopCmd 的 streams abort 处理。
 			return s.handlePause(buf)
-		case <-m.ctx.Done():
-			// setup 阶段 pause 取消 ctx:保留文件(Sync+Close),不 Abort(删文件会导致进度倒退)
-			// 仅 Stop 取消 ctx 时才 Abort 删文件
-			if m.isStopping() {
-				s.abort()
-				s.state.Store(int32(streamCanceled))
-			} else {
-				s.storeWriter.Sync()
-				s.storeWriter.Close()
-				s.state.Store(int32(streamPaused))
-			}
-			return streamResult{kind: resultCanceled}
 		default:
 		}
 
@@ -892,7 +1164,11 @@ func (s *streamController) copyLoop(m *ManagedTask) streamResult {
 			if readErr == io.EOF {
 				return s.handleEOF(m)
 			}
-			// 非 EOF 读取错误:可能是暂停/停止导致或真正的读取失败
+			// runCtx 取消导致的读取错误(gRPC stream cancel):视为中断,保留文件,不 Failed
+			if m.runCtx.Err() != nil {
+				return s.handlePause(buf)
+			}
+			// 非 EOF 非 runCtx 取消:真正的读取失败
 			if m.isPausing() {
 				return s.handlePause(buf)
 			}
@@ -911,6 +1187,10 @@ func (s *streamController) copyLoop(m *ManagedTask) streamResult {
 
 // handleEOF 处理 reader EOF:暂停/停止导致的 EOF 走对应路径,否则校验完整性并完成
 func (s *streamController) handleEOF(m *ManagedTask) streamResult {
+	// runCtx 取消(Pause/Stop 经 watcher)导致上游关闭产生 EOF:视为中断,保留文件
+	if m.runCtx.Err() != nil {
+		return s.handlePause(nil)
+	}
 	// 暂停导致上游关闭产生的 EOF:drain 后置 paused
 	if m.isPausing() {
 		return s.handlePause(nil)
@@ -997,10 +1277,10 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	}()
 
 	// 同 run() 的防护
-	if m.ctx.Err() != nil {
-		if s := TaskState(m.state.Load()); s == TaskStatePausing || s == TaskStatePaused {
-			return runResultPaused
-		}
+	if m.runCtx.Err() != nil {
+		// runCtx 取消(Pause/Stop 经 watcher runCancel):视为中断,不进执行。
+		// 不依赖 state——watcher 是独立 goroutine,只 runCancel + 暂存命令,setState 由后续 handlePauseCmd/handleStopCmd 处理。
+		return runResultPaused
 	}
 	m.setState(TaskStateProcessing)
 
@@ -1009,7 +1289,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		logger.Log.Warnf("[TaskManager] 任务 %d 无有效的 pending_resource_id，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
-	resource, err := m.deps.ResourceReader.GetById(m.ctx, m.task.PendingResourceID.Int64)
+	resource, err := m.deps.ResourceReader.GetById(m.runCtx, m.task.PendingResourceID.Int64)
 	if err != nil || resource == nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 加载 Resource(id=%d) 失败: %v，降级为完整重新执行", m.taskId, m.task.PendingResourceID.Int64, err)
 		return m.run()
@@ -1027,7 +1307,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		logger.Log.Warnf("[TaskManager] 任务 %d 未配置 ResourceStoreReader，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
-	storeRows, err := m.deps.ResourceStoreReader.ListByResourceId(m.ctx, resource.GetID())
+	storeRows, err := m.deps.ResourceStoreReader.ListByResourceId(m.runCtx, resource.GetID())
 	if err != nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 查询 resource_store 失败: %v，降级为完整重新执行", m.taskId, err)
 		return m.run()
@@ -1045,7 +1325,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	completedRoles := map[string]struct{}{}
 	var incompleteDerivedRoles []string
 	for _, row := range storeRows {
-		store, storeErr := m.deps.StoreReader.GetById(m.ctx, row.StoreID)
+		store, storeErr := m.deps.StoreReader.GetById(m.runCtx, row.StoreID)
 		if storeErr != nil || store == nil {
 			// store 记录丢失:downloaded 整轨重下(offset=0),derived 整轨重产
 			if row.Generation == entity.GenerationDerived {
@@ -1079,9 +1359,13 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		Task:          dto.NewTaskDTO(m.task),
 		StreamOffsets: streamOffsets,
 	}
-	specs, newResp, err := m.pluginExec.Resume(m.ctx, param)
+	specs, newResp, err := m.pluginExec.Resume(m.runCtx, param)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
+		// Pause 在 Resume 进行中取消 ctx(stream ctx 继承任务 ctx):视为暂停,不置失败
+		if m.abortedByPause() {
+			return runResultPaused
+		}
 		m.setFailed(fmt.Sprintf("跨重启续传失败: %v", err))
 		return runResultDone
 	}
@@ -1094,9 +1378,13 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	// 缺陷3: 未完成的 derived 轨由 Start 重新生成(Resume 只续传 downloaded;derived 一次性产物未完成须整轨重产)
 	if len(incompleteDerivedRoles) > 0 {
-		derivedSpecs, _, startErr := m.pluginExec.Start(m.ctx, m.task, incompleteDerivedRoles)
+		derivedSpecs, _, startErr := m.pluginExec.Start(m.runCtx, m.task, incompleteDerivedRoles)
 		if startErr != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 重产 derived 轨 %v 失败: %v", m.taskId, incompleteDerivedRoles, startErr)
+			// Pause 在 derived 重产进行中取消 ctx:视为暂停,不置失败
+			if m.abortedByPause() {
+				return runResultPaused
+			}
 			m.setFailed(fmt.Sprintf("重产资源失败: %v", startErr))
 			return runResultDone
 		}
@@ -1183,84 +1471,17 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	return m.downloadLoop()
 }
 
-// Pause 暂停任务(任务级,广播到全部活跃 stream)
-func (m *ManagedTask) Pause() error {
-	if m.state.Load() != int32(TaskStateProcessing) {
-		return ErrTaskNotProcessing
-	}
-	m.setState(TaskStatePausing)
-
-	// 下载尚未开始的场景（setup 阶段）：通知插件暂停后取消 context
-	if len(m.streams) == 0 {
-		logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 setup 阶段暂停，直接取消", m.taskId)
-		// 通知插件暂停（与 download 阶段一致），由插件自行处置 Start 已建立的上游资源
-		param := &sdkdto.TaskResParam{
-			Task:       dto.NewTaskDTO(m.task),
-			ResourceID: m.task.PendingResourceID.Int64,
-		}
-		if err := m.pluginExec.Pause(m.ctx, param); err != nil {
-			logger.Log.Warnf("[TaskManager] 任务 %d setup 阶段插件 Pause 失败: %v", m.taskId, err)
-		}
-		m.cancel()
-		m.setState(TaskStatePaused)
-		return nil
-	}
-
-	logger.Log.Infof("[TaskManager] Pause: taskId=%d 在 download 阶段暂停, PendingResourceID={Valid:%v, Int64:%d}",
-		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64)
-
-	// ① 广播暂停信号(close 让全部 stream goroutine 进入 drain)
-	m.closePauseCh()
-
-	// ② 通知插件暂停(插件关闭上游 → reader EOF → stream drain 完成)
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.task.PendingResourceID.Int64,
-	}
-	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
-	}
-
-	return nil
-}
-
-// prepareForResume 重置任务的运行时可变状态(cancel + 重建 ctx、关闭旧 reader、streams=nil、
-// 重建 pauseCh、按 PendingResourceID 设 resumeFromDB),供 executeTask 重新派发前调用。
-// dispatch 不变量保证此刻无并发 goroutine 访问这些字段。
+// prepareForResume 重置任务的运行时可变状态(关闭旧 reader、streams=nil、按 PendingResourceID 设 resumeFromDB)。
+// actor 模型下 m.ctx 是 actor 主 ctx(一生一灭,不重建),runCtx 由 handleRunCmd 派生;此处只重置执行期可变字段。
+// 仅 actor goroutine 在处理 cmdResume 时调用,无并发访问。
 func (m *ManagedTask) prepareForResume() {
-	m.cancel()
-	m.ctx, m.cancel = context.WithCancel(context.Background())
-	// 关闭旧 reader + 重建暂停通道
 	m.closeStreamReaders()
 	m.streams = nil
-	m.pauseMu.Lock()
-	m.pauseCh = make(chan struct{})
-	m.pauseMu.Unlock()
 	// 有 PendingResourceID 走 resumeFromPersistedState（内部按各轨 store 状态续传/重产）
 	// 无 PendingResourceID 走 run()（从头执行）
 	m.resumeFromDB = m.task.PendingResourceID.Valid
 	logger.Log.Infof("[TaskManager] prepareForResume: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, resumeFromDB=%v",
 		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.resumeFromDB)
-}
-
-// Stop 停止任务(任务级,广播取消全部 stream)
-func (m *ManagedTask) Stop() {
-	m.setState(TaskStateStopping)
-	m.cancel() // 触发 context 取消（中断各 stream 的 downloadLoop）
-
-	for _, s := range m.streams {
-		s.abort()
-	}
-
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.task.PendingResourceID.Int64,
-	}
-	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
-	}
-
-	m.setFailed("任务被用户停止")
 }
 
 // clearPendingResourceID 清除任务的 pending_resource_id（下载完成时调用）
@@ -1329,11 +1550,9 @@ func (m *ManagedTask) SetOnProgress(fn func(taskId int64, total int64, finished 
 // Pause 在 setup 阶段（streams 为空）会直接取消 context
 // run() 的 setup 代码遇到此类情况应直接退出，不覆盖 Pause 已设置的 Paused 状态
 func (m *ManagedTask) abortedByPause() bool {
-	if m.ctx.Err() == nil {
-		return false
-	}
-	s := m.state.Load()
-	return s == int32(TaskStatePausing) || s == int32(TaskStatePaused)
+	// runCtx 取消即视为中断(Pause/Stop 经 watcher runCancel);不依赖 state——
+	// watcher 收到 pause/stop 时只 runCancel + 暂存命令,setState 由后续 handlePauseCmd/handleStopCmd 处理。
+	return m.runCtx.Err() != nil
 }
 
 // isPausing 任务是否处于暂停中/已暂停(setup 阶段暂停靠 ctx 取消,download 阶段靠状态判定)
@@ -1345,25 +1564,6 @@ func (m *ManagedTask) isPausing() bool {
 // isStopping 任务是否处于停止中(Stop 已发起,阻塞在 Read 的 stream 收到 EOF 时据此避免误完成)
 func (m *ManagedTask) isStopping() bool {
 	return m.state.Load() == int32(TaskStateStopping)
-}
-
-// pauseSignal 返回暂停广播通道(关闭即广播)
-func (m *ManagedTask) pauseSignal() <-chan struct{} {
-	m.pauseMu.Lock()
-	defer m.pauseMu.Unlock()
-	return m.pauseCh
-}
-
-// closePauseCh 关闭暂停通道(广播到全部 stream goroutine),幂等
-func (m *ManagedTask) closePauseCh() {
-	m.pauseMu.Lock()
-	defer m.pauseMu.Unlock()
-	select {
-	case <-m.pauseCh:
-		// 已关闭
-	default:
-		close(m.pauseCh)
-	}
 }
 
 // closeStreamReaders 关闭全部 stream 的 reader
@@ -1404,7 +1604,7 @@ func (m *ManagedTask) reportProgress() {
 	var total, finished int64
 	for _, s := range m.streams {
 		if s.size > 0 {
-			total += s.size + s.initialOffset // 完整大小 = 剩余(spec.Size) + 续传初始偏移
+			total += s.size // spec.Size 为完整大小(retry_reader 206 据 Content-Range 还原)
 		}
 		s.mu.Lock()
 		finished += s.written
@@ -1523,7 +1723,7 @@ func (m *ManagedTask) mergeWorkMetaForNaming(startResp, workResp *sdkdto.WorkRes
 	if m.workId <= 0 || m.deps.WorkMetaLoader == nil {
 		return
 	}
-	meta, err := m.deps.WorkMetaLoader.LoadWorkMeta(m.ctx, m.workId)
+	meta, err := m.deps.WorkMetaLoader.LoadWorkMeta(m.runCtx, m.workId)
 	if err != nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 加载已有作品 %d 命名元数据失败: %v", m.taskId, m.workId, err)
 		return

@@ -90,32 +90,6 @@ type errorReadCloser struct {
 func (r *errorReadCloser) Read(p []byte) (int, error) { return 0, r.err }
 func (r *errorReadCloser) Close() error               { r.closed++; return nil }
 
-// pausableReader 先返回 data,耗尽后阻塞直到 pauseCh 关闭再返回 EOF(模拟插件暂停关闭上游)
-type pausableReader struct {
-	data      []byte
-	off       int
-	pauseCh   chan struct{}
-	blockedCh chan struct{} // reader 耗尽阻塞时关闭,供测试同步
-	closed    int
-}
-
-func (r *pausableReader) Read(p []byte) (int, error) {
-	select {
-	case <-r.pauseCh:
-		return 0, io.EOF
-	default:
-	}
-	if r.off >= len(r.data) {
-		close(r.blockedCh)
-		<-r.pauseCh // 阻塞等待暂停信号
-		return 0, io.EOF
-	}
-	n := copy(p, r.data[r.off:])
-	r.off += n
-	return n, nil
-}
-func (r *pausableReader) Close() error { r.closed++; return nil }
-
 // ctxAwareReader 返回 data 后阻塞,直到 ctx 取消再返回 (0,nil),让 copyLoop 回到 select 捕获 ctx.Done
 // (真实场景中 Stop 取消 ctx 后由插件关闭上游使 reader EOF;此处直接绑定 ctx 以便测试取消分支)
 type ctxAwareReader struct {
@@ -127,10 +101,16 @@ type ctxAwareReader struct {
 }
 
 func (r *ctxAwareReader) Read(p []byte) (int, error) {
+	// ctx 已取消:直接返回错误(避免 drain 等再次调用时进入下方 close(blockedCh) 分支重复 close)
+	select {
+	case <-r.ctx.Done():
+		return 0, r.ctx.Err()
+	default:
+	}
 	if r.off >= len(r.data) {
 		close(r.blockedCh)
 		<-r.ctx.Done()
-		return 0, nil // 不报错,交给 copyLoop 的 select 处理 ctx.Done
+		return 0, r.ctx.Err()
 	}
 	n := copy(p, r.data[r.off:])
 	r.off += n
@@ -143,16 +123,19 @@ func nopLogger() {
 	logger.Log = zap.NewNop().Sugar()
 }
 
-// newTestManagedTask 构造最小可测 ManagedTask(ctx/pauseCh/state/done/task)
+// newTestManagedTask 构造最小可测 ManagedTask(ctx/pauseCh/cmdCh/state/done/task),不启动 actor(供 copyLoop/downloadLoop 单元测试)
 func newTestManagedTask() *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedTask{
-		taskId: 1,
-		ctx:    ctx,
-		cancel: cancel,
-		pauseCh: make(chan struct{}),
-		done:   make(chan struct{}),
-		task:   entity.NewTask(),
+		taskId:    1,
+		ctx:       ctx,
+		cancel:    cancel,
+		runCtx:    ctx, // copyLoop 单元测试用 runCtx(正式环境由 handleRunCmd 派生)
+		runCancel: cancel,
+		cmdCh:     make(chan taskCmd, 8),
+		actorDone: make(chan struct{}),
+		done:      make(chan struct{}),
+		task:      entity.NewTask(),
 	}
 	m.state.Store(int32(TaskStateProcessing))
 	return m
@@ -344,8 +327,8 @@ func TestCopyLoop_ReadError(t *testing.T) {
 
 func TestCopyLoop_Cancel(t *testing.T) {
 	m := newTestManagedTask()
-	// 模拟 Stop:ctx 取消时 isStopping()=true → Abort(删文件)
-	m.state.Store(int32(TaskStateStopping))
+	// A 阶段:runCtx 取消(Pause/Stop 经 watcher)统一走 handlePause 保留文件。
+	// Stop 的文件删除由 handleStopCmd 的 streams abort 处理(actor 内),copyLoop 不再 abort。
 	w := &fakeStoreWriter{}
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
 	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
@@ -357,19 +340,22 @@ func TestCopyLoop_Cancel(t *testing.T) {
 	m.cancel()
 
 	res := <-done
-	if res.kind != resultCanceled {
-		t.Fatalf("期望 resultCanceled, 实际 %v", res.kind)
+	if res.kind != resultPaused {
+		t.Fatalf("期望 resultPaused(runCtx 取消统一保留文件), 实际 %v", res.kind)
 	}
-	if !w.aborted {
-		t.Fatalf("Stop 取消期望 writer.Aborted")
+	if w.aborted {
+		t.Fatalf("runCtx 取消不应 Abort(Stop 的删除由 handleStopCmd 处理)")
+	}
+	if !w.closed {
+		t.Fatalf("runCtx 取消应 Sync+Close 保留文件")
 	}
 }
 
-// TestCopyLoop_PauseCancelPreservesFile 回归:setup 阶段 pause 取消 ctx 时,
-// copyLoop 应 Sync+Close 保留文件(不 Abort),否则下次 resume offset=0 → 进度倒退
+// TestCopyLoop_PauseCancelPreservesFile 回归:runCtx 取消时 copyLoop 应 Sync+Close 保留文件(不 Abort),
+// 否则下次 resume offset=0 → 进度倒退
 func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 	m := newTestManagedTask()
-	// pause 取消 ctx:state=Processing(非 Stopping) → 应保留文件
+	// runCtx 取消(经 watcher):应保留文件
 	w := &fakeStoreWriter{}
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
 	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
@@ -381,14 +367,14 @@ func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 	m.cancel()
 
 	res := <-done
-	if res.kind != resultCanceled {
-		t.Fatalf("期望 resultCanceled, 实际 %v", res.kind)
+	if res.kind != resultPaused {
+		t.Fatalf("期望 resultPaused, 实际 %v", res.kind)
 	}
 	if w.aborted {
-		t.Fatalf("pause 取消不应 Abort(应保留文件防进度倒退)")
+		t.Fatalf("runCtx 取消不应 Abort(应保留文件防进度倒退)")
 	}
 	if !w.closed {
-		t.Fatalf("pause 取消应 Sync+Close 保留文件")
+		t.Fatalf("runCtx 取消应 Sync+Close 保留文件")
 	}
 }
 
@@ -542,27 +528,24 @@ func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 	m.onResourceIDUpdate = func(_ int64, _ sql.NullInt64) {}
 
-	// 两轨都用 pausableReader:耗尽后阻塞,关闭 pauseCh 后返回 EOF → 暂停
-	pr1 := &pausableReader{data: bytes.Repeat([]byte("a"), 10), pauseCh: make(chan struct{}), blockedCh: make(chan struct{})}
-	pr2 := &pausableReader{data: bytes.Repeat([]byte("b"), 10), pauseCh: make(chan struct{}), blockedCh: make(chan struct{})}
+	// 两轨都用 ctxAwareReader:耗尽 data 后阻塞,runCtx 取消后返回错误 → copyLoop 走 runCtx.Done/handlePause
+	cr1 := &ctxAwareReader{data: bytes.Repeat([]byte("a"), 10), ctx: m.runCtx, blockedCh: make(chan struct{})}
+	cr2 := &ctxAwareReader{data: bytes.Repeat([]byte("b"), 10), ctx: m.runCtx, blockedCh: make(chan struct{})}
 	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
 	m.streams = []*streamController{
-		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, pr1, w1), // size 100 > 10 → 若不暂停会判不完整
-		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, pr2, w2),
+		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr1, w1), // size 100 > 10 → 若不暂停会判不完整
+		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, cr2, w2),
 	}
 
 	done := make(chan runResult, 1)
 	go func() { done <- m.downloadLoop() }()
 
-	// 等待两轨 reader 都阻塞(已耗尽 data,等待暂停信号)
-	<-pr1.blockedCh
-	<-pr2.blockedCh
+	// 等待两轨 reader 都阻塞(已耗尽 data,等待 runCtx 取消)
+	<-cr1.blockedCh
+	<-cr2.blockedCh
 
-	// 模拟 Pause():置 Pausing + 关闭 pauseCh 广播 + 各 reader 的 pauseCh
-	m.state.Store(int32(TaskStatePausing))
-	close(m.pauseCh)
-	close(pr1.pauseCh)
-	close(pr2.pauseCh)
+	// 模拟 watcher runCancel:cancel runCtx → copyLoop 走 runCtx.Done → handlePause(保留文件)
+	m.cancel()
 
 	res := <-done
 	if res != runResultPaused {
@@ -646,16 +629,14 @@ func TestDrainUnselectedReaders_NoDeadlock(t *testing.T) {
 var _ = atomic.Int32{}
 var _ = sync.Mutex{}
 
-// TestPrepareForResume_NoBlockAndResetsFields 回归:dispatch 状态机移除 runExited 等待后,
-// prepareForResume 必须立即返回(不阻塞),并完整重置可变状态(ctx/streams/pauseCh/resumeFromDB)。
-// 重置在 executeTask 循环顶、dispatch 不变量保证无并发 goroutine 时调用。
+// TestPrepareForResume_NoBlockAndResetsFields 回归:prepareForResume 必须立即返回(不阻塞),并完整重置执行期可变状态(streams/resumeFromDB)。
+// actor 模型下 m.ctx 是 actor 主 ctx(一生一灭,不重建),runCtx 由 handleRunCmd 派生;此处只验证执行期可变字段重置。
 func TestPrepareForResume_NoBlockAndResetsFields(t *testing.T) {
 	m := newTestManagedTask()
 	m.streams = []*streamController{{role: "stale"}}
-	oldCtx := m.ctx
 	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 
-	// 应立即返回,不再等待任何"旧 goroutine"
+	// 应立即返回,不阻塞
 	done := make(chan struct{})
 	go func() {
 		m.prepareForResume()
@@ -667,27 +648,16 @@ func TestPrepareForResume_NoBlockAndResetsFields(t *testing.T) {
 		t.Fatal("prepareForResume 不应阻塞")
 	}
 
-	if m.ctx == oldCtx {
-		t.Fatal("ctx 应已重建")
-	}
-	if m.ctx.Err() != nil {
-		t.Fatal("新 ctx 不应处于已取消状态")
-	}
 	if m.streams != nil {
 		t.Fatal("streams 应置 nil")
-	}
-	select {
-	case <-m.pauseSignal():
-		t.Fatal("pauseCh 应为新建的未关闭通道")
-	default:
 	}
 	if !m.resumeFromDB {
 		t.Fatal("PendingResourceID 有效时应置 resumeFromDB=true")
 	}
 }
 
-// TestDispatch_Exclusive 回归:dispatch CAS-claim 保证"一任务至多一条 executeTask goroutine"。
-// 重复 dispatch 必须幂等返回 false;executeTask 退出回到 idle 后方可再次 claim。
+// TestDispatch_Exclusive 回归:dispatch 的 actorStarted CAS 保证"一任务一 actor"。
+// 首次 dispatch 成功(actorStarted false→true + 投 cmdStart);重复 dispatch 幂等返回 false。
 func TestDispatch_Exclusive(t *testing.T) {
 	mgr := NewManager(2, nil, nil, nil, nil)
 	defer func() {
@@ -696,44 +666,19 @@ func TestDispatch_Exclusive(t *testing.T) {
 	}()
 
 	task := newTestManagedTask()
-	task.dispatchState.Store(int32(dsIdle))
-	task.cancel() // executeTask 命中 ctx.Done 早退,不触达 nil deps
+	// 不启动 actor:本测试只验证 actorStarted CAS 幂等,不实际消费 cmdCh
 
 	if !mgr.dispatch(task) {
 		t.Fatal("首次 dispatch 应 claim 成功")
 	}
 	if mgr.dispatch(task) {
-		t.Fatal("已 dispatched,重复 dispatch 应返回 false(幂等)")
-	}
-
-	if !waitDispatchState(task, dsIdle, 2*time.Second) {
-		t.Fatal("executeTask 未及时退出回到 idle")
-	}
-
-	// idle 后可再次 claim
-	if !mgr.dispatch(task) {
-		t.Fatal("idle 后应可再次 claim")
-	}
-	if !waitDispatchState(task, dsIdle, 2*time.Second) {
-		t.Fatal("第二次 executeTask 未及时退出")
+		t.Fatal("已 dispatched(actorStarted=true 且非 Paused/Pausing),重复 dispatch 应返回 false(幂等)")
 	}
 }
 
-// waitDispatchState 轮询 dispatchState 直到等于 want 或超时
-func waitDispatchState(task *ManagedTask, want dispatchState, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if task.dispatchState.Load() == int32(want) {
-			return true
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	return task.dispatchState.Load() == int32(want)
-}
-
-// TestPauseTaskTree_ClearsPendingResume 回归:Pause 是最新用户意图,必须作废子任务的陈旧 pendingResume,
-// 否则卡在不可取消插件 Read 等处滞后的 goroutine 退出时,会按陈旧标志重派发,违背已暂停的意图(高频启停实测复现)。
-func TestPauseTaskTree_ClearsPendingResume(t *testing.T) {
+// TestPauseTaskTree_PostsCmdPause 回归:PauseTaskTree 对非终态子任务投 cmdPause(actor 命令队列保证 pause 覆盖陈旧 resume)。
+// actor 模型下不再用 pendingResume 标志;本测试验证 cmdPause 被投递到子任务 cmdCh。
+func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 	mgr := NewManager(2, nil, nil, nil, nil)
 	defer func() {
 		close(mgr.closeCh)
@@ -742,7 +687,6 @@ func TestPauseTaskTree_ClearsPendingResume(t *testing.T) {
 
 	child := newTestManagedTask()
 	child.setState(TaskStatePaused)
-	child.pendingResume.Store(true)
 
 	parent := NewParentTask(254, "parent")
 	parent.AddChild(child)
@@ -753,14 +697,14 @@ func TestPauseTaskTree_ClearsPendingResume(t *testing.T) {
 	if err := mgr.PauseTaskTree(context.Background(), 254, false); err != nil {
 		t.Fatalf("PauseTaskTree 失败: %v", err)
 	}
-	if child.pendingResume.Load() {
-		t.Fatal("Pause 后 pendingResume 应被清除,否则滞后 goroutine 退出时会按陈旧标志重派发")
-	}
 
-	// Resume 应能重新置位(确认 Pause 的清除不会破坏后续 Resume 语义)
-	// child 仍 Paused,cancel 已在 Pause 中调用;此处仅验证标志可被 Resume 再次设置
-	child.pendingResume.Store(true)
-	if !child.pendingResume.Load() {
-		t.Fatal("Resume 应能重新置 pendingResume")
+	// cmdPause 应被投递到 child.cmdCh(不启动 actor,直接读 channel)
+	select {
+	case cmd := <-child.cmdCh:
+		if cmd.kind != cmdPause {
+			t.Fatalf("期望 cmdPause, 实际 %d", cmd.kind)
+		}
+	default:
+		t.Fatal("PauseTaskTree 应投递 cmdPause 到子任务")
 	}
 }

@@ -103,13 +103,15 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsd
 
 // Start 开始任务:bidi 流,首帧 StartRequest,之后主程序按需 PullRequest 拉取。
 // reader.Read 由主程序 copyLoop 驱动,reader 不领先主程序落盘
-func (p *TaskHandlerProxy) Start(task *pluginsdkdto.TaskDTO, storeRoles []string) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
+func (p *TaskHandlerProxy) Start(ctx context.Context, task *pluginsdkdto.TaskDTO, storeRoles []string) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := client.Start(ctx)
+	// stream ctx 继承任务 ctx:任务取消时经 gRPC stream 传播到插件,
+	// 既中断主程序 pullReadCloser.Read 的 Recv 阻塞,又触发插件 serveSpecsPull 的 ctx Done(从而 Close reader)
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream, err := client.Start(streamCtx)
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -171,13 +173,14 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 }
 
 // Resume 恢复任务:bidi 流,首帧 TaskResumeParamMessage,之后按需 PullRequest
-func (p *TaskHandlerProxy) Resume(param *pluginsdkdto.TaskResumeParam) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
+func (p *TaskHandlerProxy) Resume(ctx context.Context, param *pluginsdkdto.TaskResumeParam) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := client.Resume(ctx)
+	// stream ctx 继承任务 ctx,语义同 Start
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream, err := client.Resume(streamCtx)
 	if err != nil {
 		cancel()
 		return nil, nil, err

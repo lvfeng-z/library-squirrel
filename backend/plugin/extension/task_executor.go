@@ -43,7 +43,7 @@ func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, storeRo
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
-	return handler.Start(EntityTaskToSDK(task), storeRoles)
+	return handler.Start(ctx, EntityTaskToSDK(task), storeRoles)
 }
 
 // Pause 暂停任务
@@ -88,7 +88,7 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResumeP
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
-	return handler.Resume(param)
+	return handler.Resume(ctx, param)
 }
 
 // getSDKTaskHandler 从注册中心获取 TaskHandler
