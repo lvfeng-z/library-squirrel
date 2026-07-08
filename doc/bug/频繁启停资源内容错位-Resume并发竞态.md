@@ -12,7 +12,7 @@ pixiv 父任务(254,7 个子任务)高频暂停/恢复后,部分下载完成的�
 
 ## 根因:Resume 路径一复用 reader,与旧 serveSpecsPull 残留 goroutine 并发
 
-`[serveSpecsPull] ctx 取消...` 诊断日志排除了 serveSpecsPull 自身 select 的丢包窗口(均走"Close 中断"分支,非"丢包窗口命中")。真凶是**跨 Pause→Resume 边界的 reader 并发访问**。
+`[serveSpecsPull] ctx 取消...` 诊断日志排除了 serveSpecsPull 自身 select 的丢包窗口(均走"Close 中断"分支,非"丢包窗口命中")。即便丢包窗口触发,也符合 Pause 的数据持久化边界(在途 chunk 允许丢失,Resume 从磁盘 stat 重下兜底)——它不是缺陷,详见 `doc/plugin-dev-guide.md`「Pause 的数据持久化边界」。真凶是**跨 Pause→Resume 边界的 reader 并发访问**。
 
 ### 字段撕裂铁证
 

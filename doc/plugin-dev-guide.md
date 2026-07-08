@@ -230,26 +230,75 @@ func main() {
 
 ## 六、扩展点
 
-### 6.1 TaskHandler（运行时）
+### 6.1 TaskHandler(运行时)
 
-处理资源下载任务完整生命周期，实现 8 个方法：
+处理资源下载任务完整生命周期,实现 7 个方法:
 
 ```go
 type TaskHandler interface {
     Create(url string) (*TaskCreateResult, error)
     CreateWorkInfo(task *TaskDTO) (*WorkResponse, error)
-    Start(task *TaskDTO) (io.ReadCloser, *WorkResponse, error)
+    Start(ctx context.Context, task *TaskDTO, storeRoles []string) ([]*StoreSpec, *WorkResponse, error)
     Retry(task *TaskDTO) (*WorkResponse, error)
     Pause(param *TaskResParam) error
     Stop(param *TaskResParam) error
-    Resume(param *TaskResParam) (io.ReadCloser, *WorkResponse, error)
-    GetThumbnail(taskData string) (*ThumbnailResponse, error)
+    Resume(ctx context.Context, param *TaskResumeParam) ([]*StoreSpec, *WorkResponse, error)
 }
 ```
 
-- `Create`：解析 URL，返回任务信息。返回值必须用 `sdkdto.BatchResult([]*TaskCreateResponse)` 或 `sdkdto.StreamResult(<-chan *TaskCreateResponse)` 构造（支持批量/流式）。
-- `Start`/`Resume`：返回数据流（`io.ReadCloser`），调用方负责 `Close`。
-- `GetThumbnail`：返回 `nil, nil` 表示不提供缩略图。
+- `Create`:解析 URL,返回任务信息。返回值用 `sdkdto.BatchResult(...)` 或 `sdkdto.StreamResult(...)` 构造(批量/流式)。
+- `CreateWorkInfo`:抓取作品元数据(标题/作者/标签等)。
+- `Start`:首次或重下执行。`storeRoles` 为本次所选 store_type 子集(空=全量),据此选择性产出,避免生成被丢弃的 store。返回 StoreSpec 集合 + WorkResponse。
+- `Retry`:重下执行(通常委托 Start)。
+- `Pause`/`Stop`:任务级控制。应关闭 reader 上游连接(HTTP body / 文件句柄),使在途读取尽快返回。
+- `Resume`:按 StreamOffsets 续传未完成 downloaded 轨;derived 轨未完成时由主程序另行调 Start 整轨重产。
+
+#### StoreSpec(资源产出声明)
+
+```go
+type StoreSpec struct {
+    Role        string        // store_type: main | thumbnail | videoTrack | ...
+    Generation  string        // downloaded(流式可续传) | derived(一次性派生)
+    ReadCloser  io.ReadCloser // 资源数据流,调用方负责 Close
+    Format      string        // 文件扩展名
+    Size        int64         // 完整资源大小;-1 未知
+    SuggestName string        // 插件建议文件名
+    Continuable *bool         // 是否支持续传(derived 恒为 false)
+    ResumeWriteOffset *int64  // 续传写入偏移(仅 Resume);nil=信任主程序磁盘 stat
+}
+```
+
+- `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
+- `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
+
+#### ctx 与 reader 契约(重要)
+
+`Start`/`Resume` 的 `ctx` 是 gRPC stream context。任务暂停/停止时主程序取消该 ctx,经 gRPC stream 传播到插件,SDK 的 serveSpecsPull 据此 `Close` reader 中断在途读取。插件 reader 必须满足:
+
+1. **`reader.Close()` 可中断阻塞中的 `Read`**。`*http.Response.Body`、`*os.File` 等合规 reader 天然满足;自定义 reader 需保证。
+2. **reader 不要跨 RPC 复用**。每次 Start/Resume 新建 reader,不要缓存上次的 reader 在下次 Resume 复用。pull 模型下旧 serveSpecsPull goroutine 的退出与主程序命令切换不同步,跨 RPC 复用 reader 会让旧 goroutine 与新 Read 并发访问同一 reader,导致数据错位。
+3. **`Size` 必须是完整资源大小**(非 Range 续传剩余字节数)。HTTP 206 的 `Content-Length` 是剩余字节数,需解析 `Content-Range: bytes start-end/total` 取 `total`,或用 `offset + Content-Length` 还原;误填剩余字节会使主程序完整性校验失效。
+4. **ctx 取消后立即停止发送**。Pause/Stop 取消 ctx 后,插件不再发送 chunk(不论 reader 缓冲区是否还有数据);在途未发送的 chunk 不保证持久化,可丢弃。
+
+#### Pause 的数据持久化边界
+
+ctx 取消切断了 pull 请求-响应链路两端(插件 send 与主程序 recv),在途 chunk 丢失是**符合契约的行为**——主程序已明确暂停、关闭下游,插件理应停止发送。数据边界界定:
+
+- **已持久化**:主程序 copyLoop 已 `storeWriter.Write` 的字节,等于磁盘文件大小(`os.Stat`)。Resume 从此继续。
+- **未持久化(在途,允许丢失)**:copyLoop 已 `sendPull` 但未完成 `recvChunk` 的 chunk;插件 `reader.Read` 已完成但未成功送达主程序的 chunk(单个 ≤32K)。
+
+主程序以**磁盘 stat 为权威**,不依赖插件在途状态。这是秒级暂停(reader 响应 ctx)的合理代价:以"在途 chunk 可能丢失"换取快速中断,完整性由 Resume 从磁盘 stat 重下兜底,最终文件正确。
+
+#### Resume 续传要点
+
+- 主程序通过 `TaskResumeParam.StreamOffsets`(role → 该轨已落盘字节数,来自磁盘 stat)传入续传起点。
+- downloaded 轨:据此 offset 发 Range 请求(或本地文件 Seek)从 offset 续读。
+- derived 轨:不进 StreamOffsets,未完成时主程序另行 Start 整轨重产,Resume 无需产出 derived。
+- 续传权威是磁盘已落盘字节数(StreamOffsets),不是 reader 内部计数——以 StreamOffsets 为准对齐。
+
+#### 缩略图
+
+缩略图作为 `Generation=derived` 的 StoreSpec 在 Start 里产出,而非单独接口。从作品元数据/URL 取缩略图字节包装返回;无则不产出该轨(非致命)。
 
 ### 6.2 SiteBrowser（运行时）
 

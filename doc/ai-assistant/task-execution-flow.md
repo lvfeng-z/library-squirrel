@@ -157,190 +157,195 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
       - 重复 → WaitingForInput + 前端推送 DuplicateDetected
       - 不重复 → skipDuplicateCheck=true
   → tryDispatch(child)                            // 受信号量调度（逐个）
-      - 成功获取信号量 → go executeTask(child)
-      - 信号量已满 → 加入 waitingQueue + Waiting 状态
+      - dispatch(child):actorStarted CAS + postCmd(cmdStart / cmdResume)
+      - 槽位在 handleRunCmd 内取(失败 → enqueueSelf Waiting)
 ```
 
-**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode`（板块选择结构体 `{workInfo,resource,thumbnail}`）在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 统一调 `runSectionCombo`（全集等价完整下载含查重，真子集按所选板块，见[板块重执行](#板块重执行多选组合)章节）。
+**多根设计要点**：跨父批量执行时，所有根共享一次 `ListTaskTree` 与一次 `batchCheckDuplicates`；内存任务树严格按 DB 真实父子关系构建，无统一 N/M 跨父聚合（各父任务独立刷新状态）。`runMode`（板块选择结构体 `{workInfo, storeRoles}`）在 `buildOrReuseChild` / `newManagedTask` 阶段注入到每个 `ManagedTask`，`run()` 统一调 `runSectionCombo`（全集等价完整下载含查重，真子集按所选板块，见[板块重执行](#板块重执行多选组合)章节）。
 
 ### 阶段 3：任务执行
 
-`Manager.executeTask` 在独立 goroutine 中运行：
+per-task actor 模型:每个 `ManagedTask` 创建时启动一条常驻 `actorLoop` goroutine(一生一灭),任务级可变状态只在其内修改。命令经 `cmdCh` 串行投递(`postCmd`,非阻塞),`actorLoop` 按 kind 分发;终态时退出并 drain `cmdCh`。
 
 ```go
-func (m *Manager) executeTask(task *ManagedTask) {
-    defer: recover panic, 释放信号量, dispatchFromQueue
-
-    if task.resumeFromDB → task.resumeFromPersistedState()
-    else                → task.run()
-}
+actorLoop:
+  for cmd := range cmdCh:
+    cmdStart|cmdResume|cmdConfirmReplace → handleRunCmd(cmd)
+    cmdPause                             → handlePauseCmd(cmd)
+    cmdStop                              → handleStopCmd(cmd)
+    终态 → return(defer 关闭 actorDone + drain cmdCh)
 ```
+
+`handleRunCmd` 是长任务执行核心:取信号量槽位 → `cmdResume` 时 `prepareForResume` → 派生 `runCtx` + 启动 `cmdWatcher` → `runOnce()` 阻塞执行 → 关 watcher + 处理 `pendingCmds` + 释放槽位。
+
+```go
+handleRunCmd(cmd):
+  取槽位(失败 → enqueueSelf Waiting)
+  cmdResume → prepareForResume()(关旧 reader、streams=nil、resumeFromDB=PendingResourceID.Valid)
+  runCtx, runCancel = context.WithCancel(m.ctx)   // 每条 run 命令新建,中断在途长任务
+  go cmdWatcher(stop)                              // 监听 cmdCh:pause/stop 立即 runCancel + 暂存 pendingCmds
+  result = runOnce()                               // resumeFromDB → resumeFromPersistedState;否则 run()
+  close(stop); runCancel()
+  按 result 释放槽位 + dispatchFromQueue;处理 pendingCmds(命令队列时序保证 pause 覆盖陈旧 resume)
+```
+
+`cmdWatcher` 是中断核心:长任务执行期间收到 pause/stop **立即 `runCancel`**(经 stream ctx 继承传播,中断在途 copyLoop 的 reader.Read),命令暂存 `pendingCmds` 由主循环稍后处理。`runOnce` 据 `resumeFromDB` 选 `resumeFromPersistedState`(跨重启续传)或 `run`(全新/板块执行)。
 
 #### 3A 全新执行 — run()
 
-`run()` 是核心执行入口，统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块执行（详见[板块重执行](#板块重执行多选组合)章节）：
+`run()` 调 `runSectionCombo`:全集等价完整下载(含查重),真子集按所选板块执行(详见[板块重执行](#板块重执行多选组合)章节)。
 
-```go
-func (m *ManagedTask) run() runResult {
-    // defer 栈：① 失败还原备份（最先注册最后执行）② panic recovery
-    // ctx 检查 + setState(Processing)
-    return m.runSectionCombo()   // 全集=完整下载含查重；真子集按所选板块 A→B→C
-}
-```
-
-**defer 栈**（LIFO，后注册先执行）：
+**defer 栈**(LIFO,后注册先执行):
 
 | 顺序 | defer | 作用 |
 |:---:|-------|------|
-| 1（最先执行） | `recover()` | panic 恢复，调用 `setFailed()` |
-| 2（最后执行） | 备份还原检查 | 如果最终状态为 `Failed` 且有备份项，调用 `RestoreAllStores`。使用 `context.Background()` 确保任务取消后仍能执行 |
+| 1(最先执行) | `recover()` | panic 恢复,调用 `setFailed()` |
+| 2(最后执行) | 备份还原检查 | 最终状态为 `Failed` 且有备份项时调 `RestoreAllStores`。用 `context.Background()` 确保任务取消后仍能执行 |
 
-**完整下载（全集）逐步流程**（`runSectionCombo` 含 B 时 = 作品信息 + 资源 + 封面全流程）：
+**含 B(资源板块)的逐步流程**(`runSectionCombo`):
 
 | 步骤 | 操作 | DB 操作 | 事务 |
 |:---:|------|---------|:---:|
-| 0 | 检查 workdir 是否已配置 | 无 | - |
-| 0.0 | 重复检测（`workChecker.GetBySiteAndSiteWorkID`） | SELECT | - |
-| 0.1 | 替换场景备份（`BackupStores(StoreTypeWork)`，仅备份资源；缩略图备份归 `doSaveThumbnail(force=true)`） | SELECT + DELETE/备份 per store | - |
-| 1 | `pluginExec.CreateWorkInfo`（插件 RPC） | 无 | - |
-| 2 | `workInfoSaver.SaveWorkInfo` | 批量 INSERT（Work、作者、标签等） | **事务 1** |
-| 3 | `pluginExec.Start`（插件 RPC，返回数据流） | 无 | - |
-| — | `startDownload(reader, startResp)`：解析路径 + 事务 2 + downloadLoop | 见下 | **事务 2** |
+| 0 | 检查 workdir 已配置 | 无 | - |
+| 0.0 | 重复检测(`workChecker.GetBySiteAndSiteWorkID`) | SELECT | - |
+| 0.1 | 替换场景备份(`BackupStores`,板块隔离) | SELECT + 备份 per store | - |
+| 1 | `pluginExec.CreateWorkInfo`(插件 RPC) | 无 | - |
+| 2 | `workInfoSaver.SaveWorkInfo` | 批量 INSERT | **事务 1** |
+| 3 | `pluginExec.Start(ctx, task, storeRoles)`(返回 `[]*StoreSpec` 多流) | 无 | - |
+| — | `startDownload(specs, workResp)`:解析路径 + 事务 2 + downloadLoop | 见下 | **事务 2** |
 
-**startDownload（Full 与板块组合的 B 共享）**：解析保存路径（`resolveLocalPath`）→ 事务 2（StoreStream + saveResource + UpdatePendingResourceID）→ `downloadLoop()`。`saveResource` 替换分支**不清 `ThumbnailStoreID`**；`downloadLoop` 完成时按 `runMode.hasThumbnail()` 决定是否以 `force=true` 重新生成缩略图（备份旧缩略图→生成新→失败还原），详见[板块重执行](#板块重执行多选组合)章节。
+**startDownload(多流)**:解析保存路径 → 事务 2(为每个 spec `StoreStream` + `mountResourceStores` 写 resource_store 行 + `saveResource` + `UpdatePendingResourceID`)→ `downloadLoop()`。
 
-**事务 2 详解**（`startDownload` 内）：
+**事务 2 详解**(`startDownload` 内):
 
 ```
 transactor.ExecInTransaction(context.Background(), func(txCtx) {
-    // StoreStream：创建文件 + PersistentStore DB 记录
-    storeId, writer = storeStreamer.StoreStream(txCtx, relPath, fileName)
-
-    // saveResource：替换场景更新 / 新建场景创建 Resource
-    resourceId = saveResource(txCtx, workId, storeId, startResp)
-
-    // 更新 pending_resource_id（崩溃恢复标记）
+    for each spec:
+        storeId, writer = storeStreamer.StoreStream(txCtx, relPath, fileName)   // 每轨建 store
+        streams = append(streams, newStreamController(spec, storeId, writer, relPath))
+        mounts = append(mounts, {role, generation, storeId})
+    resourceId = saveResource(txCtx, workId, mounts)   // 替换更新/新建 Resource + mountResourceStores 写 resource_store
     task.PendingResourceID = {Int64: resourceId, Valid: true}
     pendingResourceUpdater.UpdatePendingResourceID(txCtx, taskId, ...)
 })
 ```
 
-- 传入 `context.Background()` 而非 `m.ctx`，确保任务取消不会中断事务提交
-- StoreStream 的文件创建发生在事务外行为（磁盘 I/O），但 DB 记录参与事务
-- **事务失败**时：DB 自动回滚，磁盘文件通过 `writer.Close()` + `storeFileCleaner.CleanupFile()` 显式清理
+- 传入 `context.Background()`,任务取消不中断事务提交
+- store 关联只写 `resource_store` 表(role/generation/storeId/orderIdx),不再用 Resource 的固定列(WorkStoreID/ThumbnailStoreID 已废弃,改为多轨 resource_store)
+- **事务失败**:DB 回滚 + 显式 `writer.Close()` + `CleanupFile` 清理磁盘
 
-**saveResource 的两种场景**：
-
-| 场景 | 条件 | 行为 |
-|------|------|------|
-| 替换 | `isReplace=true` | 查询已有 Resource，更新 `WorkStoreID` 和 `ResourceComplete=0`（**不清 `ThumbnailStoreID`**，缩略图由 `doSaveThumbnail(force=true)` 自管） |
-| 新建 | 首次执行 | 创建新 Resource（`WorkID`、`TaskID`、`WorkStoreID`、`ResourceComplete=0`） |
+**saveResource 两种场景**:替换(查已有 Resource 更新 `ResourceComplete=0`)、新建(创建 Resource)。均经 `mountResourceStores` 写 resource_store 行(先删同 role 旧行再插)。
 
 #### 3B 断点续传 — resumeFromPersistedState()
 
-应用重启后，`loadAndStartTaskTrees`（经 `buildOrReuseChild`）发现 DB 中 `Paused` 且 `PendingResourceID` 有效的任务，设置 `resumeFromDB=true`。
+进程内 Pause→Resume 与跨重启均走此路(`pending_resource_id` 已持久化)。`loadAndStartTaskTrees`(经 `buildOrReuseChild`)发现 DB 中 `Paused` 且 `PendingResourceID` 有效的任务,设 `resumeFromDB=true`,`runOnce` 据此进入 `resumeFromPersistedState`。
 
 ```
 resumeFromPersistedState()
-  → 加载 Resource（resourceReader.GetById）
-  → 加载 PersistentStore（storeReader.GetById）
-  → 检查本地文件存在（os.Stat）
-  → 任一步失败 → 降级为完整 run()
-  → pluginExec.Resume（传入已下载字节数）
-  → 检查插件响应：
-      Continuable=true  → ResumeStream（追加模式打开文件）
-      Continuable=false → StoreStream（从头创建新文件）
+  → runCtx 检查(取消则 runResultPaused)
+  → 加载 Resource(pending_resource_id)→ 失败降级 run()
+  → 读 resource_store 各轨关联
+  → 逐轨计算续传偏移:
+      store.Status==Complete 且文件存在 → completedRoles(跳过)
+      downloaded 未完成 → streamOffsets[role] = os.Stat(文件大小)
+      derived 未完成    → incompleteDerivedRoles(整轨重产)
+  → pluginExec.Resume(ctx, {StreamOffsets})         // 续传未完成 downloaded 轨
+  → 未完成 derived 轨 → pluginExec.Start(ctx, task, incompleteDerivedRoles) 整轨重产
+  → 事务:continuable downloaded 轨 → ResumeStream(Truncate offset);其余 → StoreStream 重建
   → downloadLoop()
 ```
 
-#### downloadLoop 详解
+续传权威是**磁盘 stat**(`streamOffsets`),不是 reader 内部计数;插件 Resume 据此发 Range 请求。`ResumeStream` 用 `Truncate(offset) + Seek(offset)` 消除 stat 与文件打开间的 TOCTOU。
+
+#### downloadLoop 详解(多流并发)
+
+每条 stream 一个 goroutine 跑 `copyLoop`,`wg.Wait` 后按结果判定(暂停优先 → 取消 → 失败 → 完成):
 
 ```
 downloadLoop:
-  defer: close(reader)
-  for {
-      select {
-      case <-pauseCh:    // 暂停信号
-          drainReader(buf)          // 排空缓冲区数据
-          writer.Sync() + Close()   // 关闭文件句柄（DB 记录保留未完成状态）
-          close(drainDone)
-          setState(Paused)
-          return runResultPaused
+  defer: closeStreamReaders(关闭各 spec reader)
+  for each stream s: go s.copyLoop(m)     // 并发
+  wg.Wait()
+  anyStreamPaused → setState(Paused) + runResultPaused
+  hasCanceled     → abortedByPause ? runResultPaused : runResultDone
+  hasFailed       → setFailed(msg) + runResultDone
+  全部完成        → clearPendingResourceID + setState(Finished) + runResultDone
 
-      case <-ctx.Done():  // 取消/停止
-          writer.Abort()            // 删除文件 + DB 记录
-          setFailed("任务被取消")
-          return runResultDone
-
-      default:
-          n = reader.Read(buf)
-          writer.Write(buf)
-          if EOF:
-              writer.Complete()      // 同步 + 关闭 + DB 状态=完成
-              校验下载完整性
-              if hasThumbnail(): saveThumbnail(force=true)  // 备份旧缩略图→生成新→失败还原
-              clearPendingResourceID()  // 清除崩溃恢复标记
-              setState(Finished)
-              return runResultDone
-          if error:
-              if Pausing/Paused → drain + close → Paused
-              else → Abort + setFailed → Failed
-  }
+copyLoop(s):   // 单流 read→write→累计
+  for:
+    select runCtx.Done → handlePause(buf)     // watcher runCancel 中断在途 reader
+    n, err = reader.Read(buf[32K])             // pull 模型:驱动插件 serveSpecsPull
+    if n>0: storeWriter.Write; written += n; reportProgress
+    if err==EOF → handleEOF(校验 written vs size、Complete、streamCompleted)
+    if err && runCtx.Err()!=nil → handlePause
+    ...失败/暂停分支
 ```
 
-**暂停 drain 机制**：暂停时调用 `pluginExec.Pause()` 关闭上游，`downloadLoop` 读取剩余缓冲区数据并写入文件，确保不丢数据。Writer 执行 `Sync()` + `Close()`（不调用 `Complete`），DB 记录保持 `Incomplete` 状态，`PendingResourceID` 保持有效。
+**中断传播**:Pause/Stop 经 `cmdWatcher` → `runCancel` → `runCtx.Done`;pull stream ctx 继承任务 ctx(项一),取消经 gRPC 传播中断插件 `serveSpecsPull` 的 reader.Read(Close reader)。copyLoop 收到 Read 错误 + `runCtx.Err()` → `handlePause`(drain + Sync + Close,保留文件)。
+
+**handleEOF 完整性校验**:`s.size > 0 && written < s.size` → Failed(下载不完整);`written == 0` → Failed(空产物)。校验依赖 `spec.Size` 为完整资源大小(206 续传需插件解析 Content-Range 还原,非剩余字节数)。
+
+**暂停机制**:Pause 命令经 `cmdWatcher` 触发 `runCancel`,copyLoop 的 `runCtx.Done` 分支调 `handlePause`(drain 排空 + `Sync` + `Close`,不调 Complete),DB 记录保持 `Incomplete`,`PendingResourceID` 保持有效。
 
 ### 阶段 4：暂停与恢复
 
-**暂停流程**：
+Pause/Resume 经 actor 命令通道投递,时序由 `cmdCh` 串行化 + `cmdWatcher` 保证。
+
+**暂停流程**:
 
 ```
 Manager.PauseTaskTree(taskId)
-  → 遍历子任务：
-      Waiting → 移出队列，直接 Paused
-      其他    → child.Pause()
+  → 取 children 快照(RLock 下拷贝,释放锁再投递,投递路径不持 Manager.mu)
+  → 按状态 postCmd:
+      Waiting → 移出队列 + Paused
+      Processing/Pausing → postCmd(cmdPause, ack)   // 带 ack 等待 actor 处理
+      其他 → 跳过
 
-ManagedTask.Pause():
-  → 前置条件：当前状态为 Processing
-  → setState(Pausing)
-  → Setup 阶段（currentReader == nil）：取消 context，直接 Paused
-  → Download 阶段：
-      1. 创建 drainDone channel
-      2. 发送 pauseCh 信号 → downloadLoop 开始 drain
-      3. pluginExec.Pause() → 关闭插件上游
-      4. 等待 <-drainDone → downloadLoop 完成排空 + 关闭 writer
-      5. goroutine 退出，信号量释放
+handlePauseCmd(cmd):
+  → 非终态 → setState(Paused)
+  → Processing:runCancel(幂等,watcher 已触发则无副作用)+ pluginExec.Pause()(关闭上游 reader 加速 serveSpecsPull 退出)
+  → ack ← nil(对外阻塞契约)
 ```
 
-**恢复流程**：
+> Processing 任务的在途 copyLoop 由 `cmdWatcher` 收到 cmdPause 时已 `runCancel`(经 runCtx.Done → copyLoop handlePause),`handlePauseCmd` 在长任务返回后处理(命令暂存于 pendingCmds)。
+
+**恢复流程**:
 
 ```
 Manager.ResumeTaskTree(taskId, isLeaf)
   → resumeTaskTrees([taskId]) → loadAndStartTaskTrees([taskId], skipTerminal=true, runModeFull)
-  → 任务在内存中：prepareForResume() + tryDispatch()
-  → 任务不在内存（跨重启）：从 DB 重新加载（buildOrReuseChild 按 PendingResourceID 决定续传/重跑）
+  → 内存中任务:postCmd(cmdResume)(fire-and-forget)
+  → 不在内存(跨重启):buildOrReuseChild 重建 → dispatch → postCmd(cmdResume 或 cmdStart)
 
-ManagedTask.prepareForResume():
-  → 取消旧 context，创建新 context
-  → 重置 pauseCh、currentReader、storeWriter、totalWritten
-  → resumeFromDB = task.PendingResourceID.Valid
+handleRunCmd(cmdResume):
+  → prepareForResume()(关旧 reader、streams=nil、resumeFromDB=PendingResourceID.Valid)
+  → ...派生 runCtx + cmdWatcher + runOnce(resumeFromDB → resumeFromPersistedState)
 ```
+
+`prepareForResume` 只重置执行期可变字段(actor 主 ctx `m.ctx` 一生一灭不重建,`runCtx` 由 `handleRunCmd` 派生)。
+
+**Pause 的数据持久化边界**:ctx 取消切断了 pull 请求-响应链路两端(插件 send 与主程序 recv),在途 chunk 丢失是**符合契约的行为**——主程序已明确暂停、关闭下游,插件理应停止发送。边界界定:
+- **已持久化**:copyLoop 已 `storeWriter.Write` 的字节(= `os.Stat` 文件大小),Resume 从此继续。
+- **未持久化(在途,允许丢失)**:copyLoop 已 `sendPull` 但未完成 `recvChunk` 的 chunk;插件 `reader.Read` 已完成但未送达主程序的 chunk(单个 ≤32K)。
+
+主程序以磁盘 stat 为权威,不依赖插件在途状态。这是秒级暂停(reader 响应 ctx,项一)的合理代价:以"在途 chunk 可能丢失"换取快速中断,完整性由 Resume 重下兜底。详见 `doc/plugin-dev-guide.md`「Pause 的数据持久化边界」。
 
 ### 阶段 5：停止
 
 ```
 Manager.StopTaskTree(taskId)
-  → 遍历子任务：
-      Paused  → 直接 setFailed
-      Waiting → 移出队列 + 取消 context + setFailed
-      Running → child.Stop()
+  → 取 children 快照
+  → 按状态 postCmd:
+      Waiting → 移出队列 + setFailed
+      Processing/Pausing → postCmd(cmdStop, ack)
+      Paused → 直接 setFailed
+      其他 → 跳过
 
-ManagedTask.Stop():
-  → setState(Stopping)
-  → 取消 context（中断 downloadLoop）
-  → storeWriter.Abort()（清理文件 + DB 记录）
-  → pluginExec.Stop()
-  → setFailed("任务被用户停止")
+handleStopCmd(cmd):
+  → setState(Stopping) → runCancel(中断在途 copyLoop)
+  → streams abort(storeWriter.Abort 清理文件 + DB 记录)
+  → pluginExec.Stop() → setFailed("任务被用户停止")
+  → ack ← nil
 ```
 
 ### 阶段 6：重试
@@ -355,7 +360,7 @@ Manager.RetryTaskTree(taskId, isLeaf)
 ### 阶段 7：完成与清理
 
 ```
-Manager.cleanupFinishedTask(mt)  // executeTask defer 调用
+Manager.cleanupFinishedTask(mt)  // handleRunCmd 处理 runResultDone 时调用
   → 从 taskMap 移除任务
   → 如果有父任务：
       检查所有兄弟任务是否终态
@@ -435,7 +440,7 @@ RestoreAllStores(ctx, items)                     // 使用 context.Background()
   → 对每个可恢复条目：
       1. 获取 Backup 记录 → 读取 OriginalFilePath、OriginalFileName
       2. storeImporter.StoreFromExternal → 移动备份文件回原路径 + 创建新 PersistentStore 记录
-      3. 更新 Resource 的 WorkStoreID/ThumbnailStoreID → 指向新 store ID
+      3. 更新 resource_store 关联(同 role 指向新 store ID)
       4. 删除 Backup DB 记录
 ```
 
@@ -518,12 +523,13 @@ doFlush():
 
 ```go
 type runMode struct {
-    workInfo  bool // 板块 A
-    resource  bool // 板块 B
-    thumbnail bool // 板块 C
+    workInfo   bool     // 板块 A(作品信息)
+    storeRoles []string // 板块 B(资源):所选 store_type 子集(main/thumbnail/videoTrack/...),空=全量
 }
-var runModeFull = runMode{workInfo: true, resource: true, thumbnail: true}
+var runModeFull = runMode{workInfo: true, storeRoles: allStoreRoles}
 ```
+
+runMode 由 `workInfo`(板块 A)与 `storeRoles`(板块 B 资源,多角色)组成。缩略图作为 `storeRoles` 中的 `thumbnail` 角色由 derived StoreSpec 产出,不再单列板块 C。
 
 `run()` 统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块 A→B→C 顺序执行、末尾统一终态化。
 
@@ -568,10 +574,10 @@ func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTask
 | 板块 | 备份范围 | 行为 |
 |:---:|---------|------|
 | A 作品信息 | 无 | 不动文件 |
-| B 资源文件 | 仅 `StoreTypeWork` | `BackupStores(workId, StoreTypeWork)`；`saveResource` 替换分支**不清 `ThumbnailStoreID`** |
+| B 资源文件 | 仅 main role | `BackupStores(workId, main)`；`saveResource` 替换分支只重建所选 role 的 resource_store 行,不动其他 role |
 | C 封面 | 仅 `StoreTypeThumbnail` | `doSaveThumbnail(force=true)` 内部 `BackupStores(workId, StoreTypeThumbnail)` 备份旧缩略图，生成失败 defer 还原 |
 
-含 B 的组合在 `downloadLoop` 完成时若同时选 C（`hasThumbnail`），以 `force=true` 生成新缩略图（备份旧→生成新→失败还原），并入 B 的完成路径（B 终态后无法再单独跑 C）。该 `force=true` + 不清空 `ThumbnailStoreID` 的设计修复了原 force=false + 清空导致缩略图生成失败时封面丢失的问题。
+含 B 的组合在 `downloadLoop` 完成时若同时选 C（`hasThumbnail`），以 `force=true` 生成新缩略图（备份旧→生成新→失败还原），并入 B 的完成路径（B 终态后无法再单独跑 C）。缩略图作为独立 role 的 resource_store 行，与 main role 互不影响，修复了原固定列模型下缩略图生成失败导致封面丢失的问题。
 
 `saveThumbnail` 已从耦合 `PendingResourceID` 的下载流程解耦，改为 `workId` 基：`saveThumbnail()`（`downloadLoop` 完成分支，`force=true`）→ `saveThumbnailByWorkId(ctx, workId, force)` → `doSaveThumbnail(ctx, resource, force)`。板块 C 直接调 `saveThumbnailByWorkId(ctx, workId, true)`。
 
@@ -584,11 +590,12 @@ func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTask
 | 方法 | 调用时机 | 说明 |
 |------|---------|------|
 | `CreateWorkInfo(ctx, task)` | 步骤 1 | 插件解析 URL 返回作品元数据 |
-| `Start(ctx, task)` | 步骤 3 | 插件开始下载，返回 `io.ReadCloser` 数据流 |
-| `Pause(ctx, param)` | 暂停时 | 通知插件关闭上游 |
+| `Start(ctx, task, storeRoles)` | 步骤 3 | 插件开始下载,返回 `[]*StoreSpec` 多流(含 downloaded 与 derived) |
+| `Pause(ctx, param)` | 暂停时 | 通知插件关闭上游 reader(HTTP body / 文件句柄) |
 | `Stop(ctx, param)` | 停止时 | 通知插件终止 |
-| `Resume(ctx, param)` | 断点续传 | 传入已下载字节数，插件决定是否续传 |
-| `GetThumbnail(ctx, task)` | 下载完成后 | 获取缩略图 |
+| `Resume(ctx, param)` | 断点续传 | 传入 `StreamOffsets`(role→已落盘字节数),插件据此发 Range 续传 |
+
+> 缩略图作为 `Generation=derived` 的 StoreSpec 在 Start 里产出,无单独 `GetThumbnail` 接口。reader 需响应 ctx:`Close()` 可中断阻塞中的 `Read`(SDK serveSpecsPull 靠此在任务取消时退出)。
 
 ### RPC 调用链
 
@@ -620,6 +627,15 @@ ManagedTask.pluginExec.Xxx()
 ---
 
 ## 更新记录
+
+### 2026-07-08
+- [修改] 阶段 3-5 重写为 per-task actor 模型(项三):`Manager.executeTask`/`go executeTask` 删除,改为每任务常驻 `actorLoop` + `cmdCh` 串行命令;`handleRunCmd`(取槽位→prepareForResume→runCtx→cmdWatcher→runOnce);`cmdWatcher` 收 pause/stop 立即 `runCancel` 中断在途长任务
+- [修改] downloadLoop 改为多流并发(每 stream 一个 copyLoop goroutine),中断统一经 `runCtx.Done`(stream ctx 继承任务 ctx,项一),废弃旧 `pauseCh`/`drainDone`
+- [修改] 资源关联由 Resource 固定列(WorkStoreID/ThumbnailStoreID)改为多轨 `resource_store` 表;`startDownload(specs, workResp)` 为每轨建 StoreStream + `mountResourceStores`
+- [修改] 缩略图由 `GetThumbnail` 接口改为 `Generation=derived` 的 StoreSpec 在 Start 产出;`TaskExecutor` 删除 GetThumbnail
+- [修改] runMode `{workInfo,resource,thumbnail}` → `{workInfo, storeRoles []string}`(板块 B 多角色)
+- [修改] Resume 续传:`resumeFromPersistedState` 用磁盘 stat 算 `streamOffsets`;`ResumeStream` 改 `Truncate(offset)+Seek(offset)`;未完成 derived 轨由主程序另调 Start 整轨重产
+- [修改] 插件交互表更新:Start 返回 `[]*StoreSpec` 多流;reader 契约(Close 中断 Read、响应 ctx)
 
 ### 2026-06-18
 - [修改] 板块重执行由单板块单选改为**多选组合执行**：`runMode` 单枚举 → 板块选择结构体 `{workInfo,resource,thumbnail}`；`run()` 按 `isFull` 分流 `runFullSection`/`runSectionCombo`（A→B→C）；三 `Redownload*` Handler 收敛为 `Redownload(taskIds, sections)`（顺序码 A=1/B=2/C=3，`parseSections` 映射）
