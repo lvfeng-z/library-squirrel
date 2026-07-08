@@ -278,16 +278,17 @@ type StoreSpec struct {
 1. **`reader.Close()` 可中断阻塞中的 `Read`**。`*http.Response.Body`、`*os.File` 等合规 reader 天然满足;自定义 reader 需保证。
 2. **reader 不要跨 RPC 复用**。每次 Start/Resume 新建 reader,不要缓存上次的 reader 在下次 Resume 复用。pull 模型下旧 serveSpecsPull goroutine 的退出与主程序命令切换不同步,跨 RPC 复用 reader 会让旧 goroutine 与新 Read 并发访问同一 reader,导致数据错位。
 3. **`Size` 必须是完整资源大小**(非 Range 续传剩余字节数)。HTTP 206 的 `Content-Length` 是剩余字节数,需解析 `Content-Range: bytes start-end/total` 取 `total`,或用 `offset + Content-Length` 还原;误填剩余字节会使主程序完整性校验失效。
-4. **ctx 取消后立即停止发送**。Pause/Stop 取消 ctx 后,插件不再发送 chunk(不论 reader 缓冲区是否还有数据);在途未发送的 chunk 不保证持久化,可丢弃。
+4. **ctx 取消后立即停止发送**。Stop 立即取消 ctx;Pause 在 setup 阶段立即取消 ctx(无在途 chunk),在 downloadLoop 阶段走优雅暂停(不取消 ctx,在途数据由主程序排空落盘),仅 drain 超时(2s)兜底时才取消 ctx。ctx 取消后插件不再发送 chunk,在途未发送的 chunk 不保证持久化,可丢弃(仅 setup/停止/兜底场景)。
 
 #### Pause 的数据持久化边界
 
-ctx 取消切断了 pull 请求-响应链路两端(插件 send 与主程序 recv),在途 chunk 丢失是**符合契约的行为**——主程序已明确暂停、关闭下游,插件理应停止发送。数据边界界定:
+暂停按阶段分流:**setup 阶段(未进 downloadLoop)无在途 chunk,主程序立即取消 ctx 中断插件 RPC(快速、无损)**;**downloadLoop 阶段走优雅暂停**,不取消 ctx,置 `softPause` 标志,copyLoop 完成当前在途往返(已发起的 PullRequest 的数据照常 recv + 落盘)后退出,不再发起新 PullRequest。downloadLoop 阶段数据边界界定:
 
 - **已持久化**:主程序 copyLoop 已 `storeWriter.Write` 的字节,等于磁盘文件大小(`os.Stat`)。Resume 从此继续。
-- **未持久化(在途,允许丢失)**:copyLoop 已 `sendPull` 但未完成 `recvChunk` 的 chunk;插件 `reader.Read` 已完成但未成功送达主程序的 chunk(单个 ≤32K)。
+- **常态排空(在途落盘)**:优雅暂停时已发起的 PullRequest 的数据,由 copyLoop 完成 recv + Write 落盘,磁盘 stat 天然对齐中断点,Resume 无重复下载。
+- **异常超时丢失(仅兜底)**:`drainTimer`(2s)到期强制取消 ctx 时,在途未完成的 chunk 丢失(单个 ≤32K),退化为有损立即暂停,完整性由 Resume 从磁盘 stat 重下兜底,最终文件正确。
 
-主程序以**磁盘 stat 为权威**,不依赖插件在途状态。这是秒级暂停(reader 响应 ctx)的合理代价:以"在途 chunk 可能丢失"换取快速中断,完整性由 Resume 从磁盘 stat 重下兜底,最终文件正确。
+主程序以**磁盘 stat 为权威**,不依赖插件在途状态。setup 快速中断 + downloadLoop 常态无损(在途排空,stat 对齐)+ 异常兜底(2s 封顶有损),兼顾各阶段即时性与对齐。插件 Resume 逻辑不变(从 StreamOffsets 读 stat → 计算偏移 → 新建 reader)。
 
 #### Resume 续传要点
 

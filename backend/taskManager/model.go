@@ -352,7 +352,10 @@ type ManagedTask struct {
 	slotHeld     bool            // 当前是否持信号量槽位(仅 actor goroutine 访问)
 	runCtx       context.Context // 当前 start/resume 命令的子 ctx(中断在途长任务)
 	runCancel    context.CancelFunc
-	pendingCmds  []taskCmd // 长任务执行期间 watcher 累积的命令(主循环稍后处理)
+	inDownload   atomic.Bool // 是否已进入 downloadLoop:cmdWatcher 据此区分暂停阶段(downloadLoop 走 softPause 排空在途,setup 走立即 runCancel)
+	softPause    atomic.Bool // 软暂停标志:downloadLoop 阶段 cmdWatcher 置位,copyLoop 完成当前在途读取并落盘后据此退出,使磁盘 stat 对齐真实中断点
+	drainTimer   *time.Timer // drain 超时兜底定时器:在途数据迟迟不落盘(插件卡死/网络黑洞)时强制 runCancel,退化为有损立即暂停
+	pendingCmds  []taskCmd   // 长任务执行期间 watcher 累积的命令(主循环稍后处理)
 
 	// 任务执行器（通过接口调用）
 	pluginExec TaskExecutor
@@ -527,6 +530,13 @@ func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 		m.prepareForResume()
 	}
 
+	// 重置优雅暂停状态:cmdStart/cmdConfirmReplace 不经 prepareForResume,在此统一重置覆盖所有 run 命令
+	m.softPause.Store(false)
+	m.inDownload.Store(false)
+	if m.drainTimer != nil {
+		m.drainTimer.Stop()
+		m.drainTimer = nil
+	}
 	// 派生 runCtx(每条 run 命令新建,中断在途长任务用)
 	m.runCtx, m.runCancel = context.WithCancel(m.ctx)
 	stopWatcher := make(chan struct{})
@@ -536,7 +546,13 @@ func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 	result := m.runOnce()
 
 	close(stopWatcher)
+	if m.drainTimer != nil {
+		// drain 正常完成则停定时器;已触发(超时)则 Stop 返回 false,无副作用
+		m.drainTimer.Stop()
+		m.drainTimer = nil
+	}
 	if m.runCancel != nil {
+		// 此时无在途(drain 已完成或超时已强制取消),取消 stream 作清理
 		m.runCancel()
 		m.runCancel = nil
 	}
@@ -586,12 +602,38 @@ func (m *ManagedTask) runOnce() runResult {
 	return m.run()
 }
 
-// cmdWatcher 长任务执行期间监听 cmdCh:pause/stop 立即 runCancel 中断在途长任务,所有命令暂存 pendingCmds 由主循环稍后处理
+// drainTimeout 优雅暂停的 drain 超时阈值:暂停后等待在途数据落盘的最长时间,超时则强制取消 runCtx,退化为有损立即暂停。
+// 单个 chunk 往返(主程序发起读取 → 插件返回数据 → 主程序落盘)通常 <1s,2s 足够覆盖常态往返,且暂停延迟用户无感。
+const drainTimeout = 2 * time.Second
+
+// cmdWatcher 长任务执行期间监听 cmdCh:暂停走优雅暂停(置 softPause + 启动 drainTimer,不立即取消,在途数据照常落盘);
+// 停止仍立即 runCancel(放弃语义,无需保留在途);所有命令暂存 pendingCmds 由主循环稍后处理
 func (m *ManagedTask) cmdWatcher(stop <-chan struct{}) {
 	for {
 		select {
 		case c := <-m.cmdCh:
-			if c.kind == cmdPause || c.kind == cmdStop {
+			if c.kind == cmdPause {
+				if m.inDownload.Load() {
+					// downloadLoop 阶段:优雅暂停——不取消 runCtx,通知 copyLoop 完成当前在途往返(读取→落盘)后退出
+					m.softPause.Store(true)
+					// drain 超时兜底:在途迟迟不落盘则强制取消,退化为有损立即暂停
+					m.drainTimer = time.AfterFunc(drainTimeout, func() {
+						if m.softPause.Load() && m.runCancel != nil {
+							logger.Log.Warnf("[TaskManager] 任务 %d drain 超时,强制取消(退化为有损立即暂停)", m.taskId)
+							m.runCancel()
+						}
+					})
+				} else {
+					// setup 阶段:无在途 chunk 需排空,立即取消 runCtx 中断插件 RPC(快速暂停)
+					if m.runCancel != nil {
+						m.runCancel()
+					}
+				}
+				m.pendingCmds = append(m.pendingCmds, c)
+				return
+			}
+			if c.kind == cmdStop {
+				// 停止是放弃,立即取消(不走 drain)
 				if m.runCancel != nil {
 					m.runCancel()
 				}
@@ -1067,6 +1109,9 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 // downloadLoop 多流并发下载循环:每条 spec 一个 goroutine 跑 read→write→累计
 // 全部 completed → Finished;任一 failed → Failed(保留已完成轨的 store);暂停 → Paused;取消 → Stop 已处理
 func (m *ManagedTask) downloadLoop() runResult {
+	// 标记进入下载阶段:cmdWatcher 据此让 cmdPause 走 softPause 排空在途(setup 阶段则立即 runCancel)
+	m.inDownload.Store(true)
+	defer m.inDownload.Store(false)
 	// 关闭 reader(各 spec reader 由本方法负责)
 	defer m.closeStreamReaders()
 
@@ -1159,6 +1204,12 @@ func (s *streamController) copyLoop(m *ManagedTask) streamResult {
 				return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("写入文件失败: %v", writeErr)}
 			}
 			m.reportProgress()
+		}
+		// 优雅暂停:本轮 Read 的数据已落盘,退出收尾。传 nil 跳过 handlePause 的 drain——
+		// pull 模型下 drain 会再 Read(即发起新 PullRequest)拉取新数据,违背"暂停只阻止新数据发起"。
+		// runCtx.Err()==nil 守卫区分正常退出与超时兜底:兜底已 runCancel 时由下方 readErr 分支走有损路径
+		if m.softPause.Load() && m.runCtx.Err() == nil {
+			return s.handlePause(nil)
 		}
 		if readErr != nil {
 			if readErr == io.EOF {
@@ -1475,6 +1526,12 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 // actor 模型下 m.ctx 是 actor 主 ctx(一生一灭,不重建),runCtx 由 handleRunCmd 派生;此处只重置执行期可变字段。
 // 仅 actor goroutine 在处理 cmdResume 时调用,无并发访问。
 func (m *ManagedTask) prepareForResume() {
+	// 清除上一轮暂停标志(防御性:handleRunCmd 派生 runCtx 前已统一重置,此处显式表达 resume 重置语义)
+	m.softPause.Store(false)
+	if m.drainTimer != nil {
+		m.drainTimer.Stop()
+		m.drainTimer = nil
+	}
 	m.closeStreamReaders()
 	m.streams = nil
 	// 有 PendingResourceID 走 resumeFromPersistedState（内部按各轨 store 状态续传/重产）

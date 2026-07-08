@@ -118,6 +118,31 @@ func (r *ctxAwareReader) Read(p []byte) (int, error) {
 }
 func (r *ctxAwareReader) Close() error { r.closed++; return nil }
 
+// gatedReader 第一次 Read 阻塞等 first 关闭后才返回数据,精确控制 copyLoop 在途往返时序:
+// 主测试在 close(first) 前置 softPause,确保 copyLoop Write 落盘后命中 softPause 分支。
+// 第二次 Read(若发生,意味着 softPause 未生效)直接返回 EOF,使失败路径显式可断言。
+type gatedReader struct {
+	data   []byte
+	off    int
+	first  chan struct{}
+	readN  int
+	closed int
+}
+
+func (r *gatedReader) Read(p []byte) (int, error) {
+	r.readN++
+	if r.readN == 1 {
+		<-r.first
+	}
+	if r.off >= len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.off:])
+	r.off += n
+	return n, nil
+}
+func (r *gatedReader) Close() error { r.closed++; return nil }
+
 // nopLogger 把 logger.Log 设为 no-op,使 setState 的日志调用在测试中安全
 func nopLogger() {
 	logger.Log = zap.NewNop().Sugar()
@@ -528,36 +553,45 @@ func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 	m.onResourceIDUpdate = func(_ int64, _ sql.NullInt64) {}
 
-	// 两轨都用 ctxAwareReader:耗尽 data 后阻塞,runCtx 取消后返回错误 → copyLoop 走 runCtx.Done/handlePause
-	cr1 := &ctxAwareReader{data: bytes.Repeat([]byte("a"), 10), ctx: m.runCtx, blockedCh: make(chan struct{})}
-	cr2 := &ctxAwareReader{data: bytes.Repeat([]byte("b"), 10), ctx: m.runCtx, blockedCh: make(chan struct{})}
+	// 两轨用 gatedReader:第一次 Read 阻塞等 first,精确卡 softPause 时序
+	gr1 := &gatedReader{data: bytes.Repeat([]byte("a"), 10), first: make(chan struct{})}
+	gr2 := &gatedReader{data: bytes.Repeat([]byte("b"), 10), first: make(chan struct{})}
 	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
 	m.streams = []*streamController{
-		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr1, w1), // size 100 > 10 → 若不暂停会判不完整
-		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, cr2, w2),
+		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, gr1, w1),
+		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, gr2, w2),
 	}
 
 	done := make(chan runResult, 1)
 	go func() { done <- m.downloadLoop() }()
 
-	// 等待两轨 reader 都阻塞(已耗尽 data,等待 runCtx 取消)
-	<-cr1.blockedCh
-	<-cr2.blockedCh
+	// 模拟 cmdWatcher 收到 cmdPause:置 softPause(不取消 runCtx),再许可两轨在途 Read 返回
+	m.softPause.Store(true)
+	close(gr1.first)
+	close(gr2.first)
 
-	// 模拟 watcher runCancel:cancel runCtx → copyLoop 走 runCtx.Done → handlePause(保留文件)
-	m.cancel()
-
-	res := <-done
-	if res != runResultPaused {
-		t.Fatalf("期望 runResultPaused, 实际 %v", res)
+	select {
+	case res := <-done:
+		if res != runResultPaused {
+			t.Fatalf("期望 runResultPaused, 实际 %v", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("downloadLoop 未退出(softPause 路径未生效)")
 	}
 	if m.GetState() != TaskStatePaused {
 		t.Fatalf("期望 Paused, 实际 %s", taskStateName(m.GetState()))
 	}
-	// 两轨均 Sync+Close(暂停保留,非 Complete/Abort)
+	// 优雅暂停不取消 runCtx(与立即切断路径的区别)
+	if m.runCtx.Err() != nil {
+		t.Fatalf("优雅暂停不应取消 runCtx")
+	}
+	// 两轨在途数据落盘 + Sync+Close(非 Complete/Abort)
 	for i, w := range []*fakeStoreWriter{w1, w2} {
 		if !w.closed || w.completed || w.aborted {
-			t.Fatalf("轨 %d 应为暂停态(closed 非完成/中止): closed=%v completed=%v aborted=%v", i, w.closed, w.completed, w.aborted)
+			t.Fatalf("轨 %d 应为暂停态: closed=%v completed=%v aborted=%v", i, w.closed, w.completed, w.aborted)
+		}
+		if w.buf.Len() != 10 {
+			t.Fatalf("轨 %d 期望在途 10 字节落盘, 实际 %d", i, w.buf.Len())
 		}
 	}
 }
@@ -706,5 +740,149 @@ func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 		}
 	default:
 		t.Fatal("PauseTaskTree 应投递 cmdPause 到子任务")
+	}
+}
+
+// ==== 优雅暂停(softPause + drain 超时兜底)====
+
+// TestCopyLoop_SoftPause_DrainsInflight 验证优雅暂停核心:本轮 Read 的在途数据先落盘,
+// copyLoop 随后退出,且不再 Read(不发起新 PullRequest 拉取新数据)。
+func TestCopyLoop_SoftPause_DrainsInflight(t *testing.T) {
+	m := newTestManagedTask()
+	w := &fakeStoreWriter{}
+	// 在途数据 50 字节;size=100 → 若 softPause 未生效会继续读到 EOF 判不完整 Failed
+	gr := &gatedReader{data: bytes.Repeat([]byte("x"), 50), first: make(chan struct{})}
+	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, gr, w)
+
+	done := make(chan streamResult, 1)
+	go func() { done <- s.copyLoop(m) }()
+
+	// 置 softPause(模拟 cmdWatcher 收到 cmdPause),再许可在途 Read 返回。
+	// Store 在 close 前,经 channel happens-before 传播到 copyLoop 的 softPause.Load
+	m.softPause.Store(true)
+	close(gr.first)
+
+	select {
+	case res := <-done:
+		if res.kind != resultPaused {
+			t.Fatalf("期望 resultPaused(在途落盘后退出), 实际 %v (msg=%s)", res.kind, res.errMsg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("copyLoop 未退出(softPause 路径未生效)")
+	}
+	if w.buf.Len() != 50 {
+		t.Fatalf("期望在途 50 字节落盘, 实际 %d", w.buf.Len())
+	}
+	if w.aborted {
+		t.Fatalf("softPause 不应 Abort")
+	}
+	if !w.closed {
+		t.Fatalf("softPause 应 Sync+Close")
+	}
+	// 仅 Read 一次:在途往返已落盘即退出,未发起新 PullRequest
+	if gr.readN != 1 {
+		t.Fatalf("期望仅 Read 1 次(在途), 实际 %d(发了新 PullRequest)", gr.readN)
+	}
+}
+
+// TestCmdWatcher_PauseStageAware 验证 cmdWatcher 对 cmdPause 的阶段感知分流:
+// downloadLoop 阶段(inDownload=true)走优雅暂停(softPause+drainTimer,不取消 runCtx);
+// setup 阶段(inDownload=false)立即 runCancel(无在途 chunk,快速中断)。cmdStop 不论阶段都立即取消。
+func TestCmdWatcher_PauseStageAware(t *testing.T) {
+	// downloadLoop 阶段:cmdPause 走优雅暂停——置 softPause + drainTimer,不取消 runCtx
+	m := newTestManagedTask()
+	m.inDownload.Store(true) // 模拟已进入 downloadLoop
+	stop := make(chan struct{})
+	go m.cmdWatcher(stop)
+
+	m.cmdCh <- taskCmd{kind: cmdPause}
+	time.Sleep(50 * time.Millisecond) // 等 watcher 处理命令
+
+	if !m.softPause.Load() {
+		t.Fatal("downloadLoop 阶段 cmdPause 应置 softPause=true")
+	}
+	if m.runCtx.Err() != nil {
+		t.Fatal("downloadLoop 阶段 cmdPause(优雅暂停)不应立即取消 runCtx")
+	}
+	if m.drainTimer == nil {
+		t.Fatal("downloadLoop 阶段 cmdPause 应启动 drainTimer")
+	}
+	m.drainTimer.Stop() // 防 2s 后触发干扰后续断言
+	close(stop)
+
+	// setup 阶段:cmdPause 立即 runCancel(无在途 chunk,快速中断)
+	m2 := newTestManagedTask() // inDownload 保持 false(setup)
+	stop2 := make(chan struct{})
+	go m2.cmdWatcher(stop2)
+	m2.cmdCh <- taskCmd{kind: cmdPause}
+	time.Sleep(50 * time.Millisecond)
+	if m2.runCtx.Err() == nil {
+		t.Fatal("setup 阶段 cmdPause 应立即取消 runCtx(快速中断)")
+	}
+	if m2.softPause.Load() {
+		t.Fatal("setup 阶段 cmdPause 不应置 softPause(走 runCancel,非 drain)")
+	}
+	close(stop2)
+
+	// cmdStop:不论阶段都立即取消 runCtx(watcher 随前述 return,用新 task)
+	m3 := newTestManagedTask()
+	m3.inDownload.Store(true) // 即使 downloadLoop 阶段,cmdStop 也立即取消
+	stop3 := make(chan struct{})
+	go m3.cmdWatcher(stop3)
+	m3.cmdCh <- taskCmd{kind: cmdStop}
+	time.Sleep(50 * time.Millisecond)
+	if m3.runCtx.Err() == nil {
+		t.Fatal("cmdStop 应立即取消 runCtx(不论阶段)")
+	}
+	close(stop3)
+}
+
+// TestDrainTimeout_ForceCancel 验证 drain 超时兜底:在途 Read 阻塞不完成时,强制 runCancel(等价 drainTimer 到期)
+// 使 copyLoop 走 runCtx 取消的有损路径退出。真实定时器为标准库 time.AfterFunc(2s),此处手动触发以避免测试等待。
+func TestDrainTimeout_ForceCancel(t *testing.T) {
+	m := newTestManagedTask()
+	w := &fakeStoreWriter{}
+	// data 为空:第一次 Read 即阻塞等 runCtx,模拟插件卡死/在途不完成
+	cr := &ctxAwareReader{ctx: m.runCtx, blockedCh: make(chan struct{})}
+	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
+
+	m.softPause.Store(true) // 优雅暂停已发起,转入 drain 等待
+
+	done := make(chan streamResult, 1)
+	go func() { done <- s.copyLoop(m) }()
+
+	<-cr.blockedCh // copyLoop 阻塞在在途 Read
+
+	// 模拟 drainTimer 到期:强制取消 runCtx
+	m.runCancel()
+
+	select {
+	case res := <-done:
+		// runCtx 取消 → Read 返回 error → 有损路径 handlePause(保留文件)
+		if res.kind != resultPaused {
+			t.Fatalf("期望 resultPaused(超时兜底有损路径), 实际 %v", res.kind)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("copyLoop 未退出(drain 超时兜底未生效)")
+	}
+	if !w.closed {
+		t.Fatal("兜底路径应 Sync+Close 保留文件")
+	}
+}
+
+// TestPrepareForResume_ResetsSoftPause 验证 prepareForResume 清除上一轮暂停标志,
+// 防 Resume 后 copyLoop 误命中 softPause 立即退出。
+func TestPrepareForResume_ResetsSoftPause(t *testing.T) {
+	m := newTestManagedTask()
+	m.softPause.Store(true)
+	m.drainTimer = time.AfterFunc(time.Hour, func() {})
+
+	m.prepareForResume()
+
+	if m.softPause.Load() {
+		t.Fatal("prepareForResume 应重置 softPause=false")
+	}
+	if m.drainTimer != nil {
+		t.Fatal("prepareForResume 应清空 drainTimer")
 	}
 }

@@ -182,14 +182,15 @@ actorLoop:
 handleRunCmd(cmd):
   取槽位(失败 → enqueueSelf Waiting)
   cmdResume → prepareForResume()(关旧 reader、streams=nil、resumeFromDB=PendingResourceID.Valid)
+  softPause=false; inDownload=false; 清 drainTimer // 每条 run 命令重置优雅暂停状态
   runCtx, runCancel = context.WithCancel(m.ctx)   // 每条 run 命令新建,中断在途长任务
-  go cmdWatcher(stop)                              // 监听 cmdCh:pause/stop 立即 runCancel + 暂存 pendingCmds
+  go cmdWatcher(stop)                              // 监听 cmdCh:pause 走优雅暂停,stop 立即 runCancel
   result = runOnce()                               // resumeFromDB → resumeFromPersistedState;否则 run()
-  close(stop); runCancel()
+  close(stop); 停 drainTimer; runCancel()         // drain 完成或超时已强制取消,此时无在途
   按 result 释放槽位 + dispatchFromQueue;处理 pendingCmds(命令队列时序保证 pause 覆盖陈旧 resume)
 ```
 
-`cmdWatcher` 是中断核心:长任务执行期间收到 pause/stop **立即 `runCancel`**(经 stream ctx 继承传播,中断在途 copyLoop 的 reader.Read),命令暂存 `pendingCmds` 由主循环稍后处理。`runOnce` 据 `resumeFromDB` 选 `resumeFromPersistedState`(跨重启续传)或 `run`(全新/板块执行)。
+`cmdWatcher` 是中断核心,按命令种类 + 阶段分流:**`cmdPause` 在 downloadLoop 阶段(`inDownload=true`)走优雅暂停**——置 `softPause=true` + 启动 `drainTimer`(2s 兜底),不立即 `runCancel`,在途数据照常落盘;**`cmdPause` 在 setup 阶段(`inDownload=false`)立即 `runCancel`**(无在途 chunk,快速中断插件 RPC);**`cmdStop` 不论阶段都立即 `runCancel`**(放弃语义)。命令暂存 `pendingCmds` 由主循环稍后处理。`runOnce` 据 `resumeFromDB` 选 `resumeFromPersistedState`(跨重启续传)或 `run`(全新/板块执行)。
 
 #### 3A 全新执行 — run()
 
@@ -263,6 +264,7 @@ resumeFromPersistedState()
 
 ```
 downloadLoop:
+  inDownload=true(defer false)            // 标记下载阶段:cmdWatcher 据此让 cmdPause 走 softPause
   defer: closeStreamReaders(关闭各 spec reader)
   for each stream s: go s.copyLoop(m)     // 并发
   wg.Wait()
@@ -273,19 +275,23 @@ downloadLoop:
 
 copyLoop(s):   // 单流 read→write→累计
   for:
-    select runCtx.Done → handlePause(buf)     // watcher runCancel 中断在途 reader
+    select runCtx.Done → handlePause(buf)     // 超时兜底/外部取消 runCancel 中断在途 reader
     n, err = reader.Read(buf[32K])             // pull 模型:驱动插件 serveSpecsPull
     if n>0: storeWriter.Write; written += n; reportProgress
+    if softPause && runCtx.Err()==nil → handlePause(nil)  // 优雅暂停:在途已落盘,不发新 Pull
     if err==EOF → handleEOF(校验 written vs size、Complete、streamCompleted)
     if err && runCtx.Err()!=nil → handlePause
     ...失败/暂停分支
 ```
 
-**中断传播**:Pause/Stop 经 `cmdWatcher` → `runCancel` → `runCtx.Done`;pull stream ctx 继承任务 ctx(项一),取消经 gRPC 传播中断插件 `serveSpecsPull` 的 reader.Read(Close reader)。copyLoop 收到 Read 错误 + `runCtx.Err()` → `handlePause`(drain + Sync + Close,保留文件)。
+**中断传播(按阶段分流)**:
+- **downloadLoop 优雅暂停(常态)**:`cmdPause`(`inDownload=true`)→ `softPause=true` + `drainTimer`,**不取消 runCtx**。copyLoop 完成当前在途往返(`reader.Read` 返回 + `storeWriter.Write` 落盘)后检测 `softPause`,调 `handlePause(nil)` 退出——传 nil 跳过 drain(pull 模型下 drain 会再 Read 即发起新 PullRequest 拉新数据,违背"暂停只阻止新数据发起")。此刻磁盘 stat = 真实中断点,Resume 无重复下载。
+- **setup 立即中断**:`cmdPause`(`inDownload=false`)→ 立即 `runCancel`;setup 的插件 RPC(CreateWorkInfo/Start/Resume 用 `m.runCtx`)被 gRPC stream 取消,`abortedByPause()` 命中 → `runResultPaused`。setup 阶段无在途 chunk,立即切断无损且快速(避免 setup RPC 网络建连期间不响应暂停)。
+- **超时兜底/停止(异常)**:`drainTimer`(2s)到期或 `cmdStop` → `runCancel` → `runCtx.Done`;pull stream ctx 继承任务 ctx(项一),取消经 gRPC 传播中断插件 `serveSpecsPull` 的 reader.Read(Close reader)。copyLoop 收到 Read 错误 + `runCtx.Err()` → `handlePause`(drain + Sync + Close,保留文件),退化为有损立即暂停。
 
 **handleEOF 完整性校验**:`s.size > 0 && written < s.size` → Failed(下载不完整);`written == 0` → Failed(空产物)。校验依赖 `spec.Size` 为完整资源大小(206 续传需插件解析 Content-Range 还原,非剩余字节数)。
 
-**暂停机制**:Pause 命令经 `cmdWatcher` 触发 `runCancel`,copyLoop 的 `runCtx.Done` 分支调 `handlePause`(drain 排空 + `Sync` + `Close`,不调 Complete),DB 记录保持 `Incomplete`,`PendingResourceID` 保持有效。
+**暂停机制**:setup 阶段 `runCancel` 立即中断;downloadLoop 常态经 `softPause` 让 copyLoop 在在途落盘后 `handlePause(nil)`(`Sync` + `Close`,不调 Complete,不发新 Pull),异常(超时/停止)经 `runCancel` 让 copyLoop 走 `runCtx.Done` 的 `handlePause`(drain + Sync + Close)。各路径 DB 记录均保持 `Incomplete`,`PendingResourceID` 保持有效。
 
 ### 阶段 4：暂停与恢复
 
@@ -303,11 +309,11 @@ Manager.PauseTaskTree(taskId)
 
 handlePauseCmd(cmd):
   → 非终态 → setState(Paused)
-  → Processing:runCancel(幂等,watcher 已触发则无副作用)+ pluginExec.Pause()(关闭上游 reader 加速 serveSpecsPull 退出)
+  → Processing:runCancel(幂等,handleRunCmd 长任务返回后已 runCancel)+ pluginExec.Pause()(drain 已完成,通知插件关 reader 是清理性质)
   → ack ← nil(对外阻塞契约)
 ```
 
-> Processing 任务的在途 copyLoop 由 `cmdWatcher` 收到 cmdPause 时已 `runCancel`(经 runCtx.Done → copyLoop handlePause),`handlePauseCmd` 在长任务返回后处理(命令暂存于 pendingCmds)。
+> Processing 任务的暂停由 `cmdWatcher` 收到 cmdPause 时按阶段处理:setup(`inDownload=false`)立即 `runCancel` 中断 RPC;downloadLoop 置 `softPause`(在途落盘后退出)或 `drainTimer` 触发 `runCancel`(超时兜底)。`handlePauseCmd` 在长任务返回后处理(命令暂存于 pendingCmds),此时 runCancel 幂等、pluginExec.Pause 为清理性质。
 
 **恢复流程**:
 
@@ -324,11 +330,12 @@ handleRunCmd(cmdResume):
 
 `prepareForResume` 只重置执行期可变字段(actor 主 ctx `m.ctx` 一生一灭不重建,`runCtx` 由 `handleRunCmd` 派生)。
 
-**Pause 的数据持久化边界**:ctx 取消切断了 pull 请求-响应链路两端(插件 send 与主程序 recv),在途 chunk 丢失是**符合契约的行为**——主程序已明确暂停、关闭下游,插件理应停止发送。边界界定:
+**Pause 的数据持久化边界**:暂停按阶段分流——**setup 阶段(`inDownload=false`)无在途 chunk,立即 `runCancel` 中断插件 RPC(快速、无损)**;**downloadLoop 阶段(`inDownload=true`)走优雅暂停**,置 `softPause` 让 copyLoop 完成当前在途往返(已发起的 PullRequest 的数据照常 recv + 落盘)后再退出,不再发起新 PullRequest,磁盘 stat 天然对齐真实中断点,Resume 无重复下载。downloadLoop 阶段边界界定:
 - **已持久化**:copyLoop 已 `storeWriter.Write` 的字节(= `os.Stat` 文件大小),Resume 从此继续。
-- **未持久化(在途,允许丢失)**:copyLoop 已 `sendPull` 但未完成 `recvChunk` 的 chunk;插件 `reader.Read` 已完成但未送达主程序的 chunk(单个 ≤32K)。
+- **常态排空(在途落盘)**:优雅暂停时已发起的 PullRequest 的数据,由 copyLoop 完成 recv + Write 落盘,stat 含这部分。
+- **异常超时丢失(仅兜底)**:`drainTimer`(2s)到期强制 `runCancel` 时,在途未完成的 chunk 丢失(单个 ≤32K),退化为有损立即暂停,完整性由 Resume 从 stat 重下兜底。
 
-主程序以磁盘 stat 为权威,不依赖插件在途状态。这是秒级暂停(reader 响应 ctx,项一)的合理代价:以"在途 chunk 可能丢失"换取快速中断,完整性由 Resume 重下兜底。详见 `doc/plugin-dev-guide.md`「Pause 的数据持久化边界」。
+主程序以磁盘 stat 为权威,不依赖插件在途状态。setup 快速中断 + downloadLoop 常态无损(在途排空)+ 异常兜底(2s 封顶有损),兼顾各阶段即时性与对齐。详见 `doc/plugin-dev-guide.md`「Pause 的数据持久化边界」。
 
 ### 阶段 5：停止
 
