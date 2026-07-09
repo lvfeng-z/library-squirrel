@@ -9,6 +9,7 @@ import (
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	pluginsdkliveness "github.com/lvfeng-z/library-squirrel-sdk/liveness"
 )
 
 // TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
@@ -91,7 +92,9 @@ func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsd
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.CreateWorkInfo(context.Background(), &gen.CreateWorkInfoRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	resp, err := client.CreateWorkInfo(ctx, &gen.CreateWorkInfoRequest{
 		Task:        taskToProto(task),
 		ExtensionId: p.extensionId,
 	})
@@ -138,7 +141,9 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.Work
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.Retry(context.Background(), &gen.RetryRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	resp, err := client.Retry(ctx, &gen.RetryRequest{
 		Task:        taskToProto(task),
 		ExtensionId: p.extensionId,
 	})
@@ -153,7 +158,9 @@ func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	if err != nil {
 		return err
 	}
-	_, err = client.Pause(context.Background(), &gen.TaskResParamMessage{
+	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	_, err = client.Pause(ctx, &gen.TaskResParamMessage{
 		Param:       taskResParamToProto(param),
 		ExtensionId: p.extensionId,
 	})
@@ -165,7 +172,9 @@ func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	if err != nil {
 		return err
 	}
-	_, err = client.Stop(context.Background(), &gen.TaskResParamMessage{
+	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	_, err = client.Stop(ctx, &gen.TaskResParamMessage{
 		Param:       taskResParamToProto(param),
 		ExtensionId: p.extensionId,
 	})

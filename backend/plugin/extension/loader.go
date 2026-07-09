@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
+	pluginsdkliveness "github.com/lvfeng-z/library-squirrel-sdk/liveness"
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -155,6 +156,8 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		},
 		Cmd:              cmd,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		// keepalive dial options:client 主动探测插件进程存活,进程崩溃或网络中断时及时判定连接死
+		GRPCDialOptions: pluginsdkliveness.ClientDialOptions(),
 	}
 
 	// 启动插件子进程
