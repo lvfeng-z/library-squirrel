@@ -29,7 +29,7 @@
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
 - **板块执行模式**（runMode）：`{workInfo, storeRoles}`——`workInfo` 为作品元数据独立板块，`storeRoles` 为所选资源 store_type 子集（main/thumbnail/...）。mode 不再由调用方传参，而从 task 实体的 `StoreRoles`/`IncludeWorkInfo` 字段派生（`runModeFromTask`），故暂停 / 跨重启恢复时保持原板块选择，不退化为全量。`Redownload` 入口负责写入这两个字段后启动。
 - **进度推送器**（TaskProgressPusher）：两种实现——Wails 事件直推、快照模式（SnapshotPusher）。
-- **批量状态写入**：状态 / 进度先攒在内存，由 `flushLoop` 定时批量刷库，避免逐条写入。
+- **状态落盘**：终态（Finished/Failed/PartlyFinished）即时同步写库，进程崩溃也不丢失；非终态（Paused）状态、进度、pending_resource_id 仍攒在内存，由 `flushLoop` 每 200ms 批量刷库，避免高频写放大。终态即时写与 `doFlush` 的批量 status 写都在 `pendingMu` 临界区内，互斥执行，杜绝批量通道的过时快照回写覆盖终态。
 
 ## 依赖关系
 

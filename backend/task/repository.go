@@ -172,12 +172,6 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 	return result.RowsAffected, nil
 }
 
-// SetStatus 设置指定任务的状态（不级联）
-func (r *TaskRepository) SetStatus(ctx context.Context, taskId int64, status TaskStatusEnum) error {
-	result := r.GORM().WithContext(ctx).Model(&domain.Task{}).Where("id = ?", taskId).Update("status", status)
-	return result.Error
-}
-
 // UpdatePendingResourceID 更新任务的 pending_resource_id
 func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error {
 	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&domain.Task{}).Where("id = ?", taskId).Update("pending_resource_id", resourceID)

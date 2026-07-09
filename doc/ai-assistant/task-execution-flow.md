@@ -496,12 +496,17 @@ App 启动
 
 ---
 
-## 异步持久化（flush 机制）
+## 状态持久化（终态即时 + 非终态批量）
 
-`Manager.flushLoop` 作为后台 goroutine 运行，批量写入 DB 减少磁盘 I/O。
+状态落盘由 `addToPending` 按状态分两条路径：
+
+- **终态即时写**（Finished/Failed/PartlyFinished）：`addToPending` 同步调用 `repo.BatchSetStatus`（单条 map，含 error_message）即时落盘，不进批量通道——进程崩溃也不丢失终态。终态同时同步清空执行模式（`UpdateRedownloadSections`）。
+- **非终态批量写**（Paused、进度、pending_resource_id）：攒在内存 pending maps，由 `flushLoop` 后台批量刷库减少磁盘 I/O。
+
+并发正确性：终态即时写与 `doFlush` 的批量 status 写都在 `pendingMu` 临界区内执行，互斥——避免 doFlush 用取出的过时快照（如 Processing/Paused）回写覆盖刚即时写入的终态。即时写还从批量通道删除该任务残留的非终态快照。
 
 ```
-flushLoop:
+flushLoop:                              // 后台 goroutine，非终态批量通道
   for {
       select:
       case <-closeCh:  doFlush() + close(flushDone) + return
@@ -512,8 +517,8 @@ flushLoop:
   }
 
 doFlush():
-  1. 交换 pending maps（加锁）
-  2. repo.BatchSetStatus(statusMap)                    // SQL CASE WHEN 批量更新状态 + 错误信息
+  1. pendingMu 锁内:交换 status/resource/progress maps + repo.BatchSetStatus(statusMap)   // status 写与终态即时写互斥
+  2. 释放 pendingMu
   3. repo.BatchUpdatePendingResourceID(resourceMap)    // SQL CASE WHEN 批量更新 pending_resource_id
   4. pusher.PushProgressBatch(progressBatch)           // 批量推送进度到前端
 ```

@@ -21,8 +21,6 @@ type Repository interface {
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) ([]*domain.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
-	// SetStatus 设置指定任务的状态（不级联）
-	SetStatus(ctx context.Context, taskId int64, status task.TaskStatusEnum) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id
@@ -1203,13 +1201,8 @@ func (m *Manager) doFlush() {
 	}
 	pendingStatus := m.pendingStatusUpdates
 	m.pendingStatusUpdates = make(map[int64]task.StatusUpdate)
-	pendingResourceIDs := m.pendingResourceIDUpdates
-	m.pendingResourceIDUpdates = make(map[int64]sql.NullInt64)
-	pendingProgress := m.pendingProgressUpdates
-	m.pendingProgressUpdates = make(map[int64]*taskScheduleDTO)
-	m.pendingMu.Unlock()
-
-	// 批量写入任务状态
+	// 状态写库在 pendingMu 内完成,与 addToPending 终态即时写互斥:
+	// 终态即时写已把该任务从批量通道移除并即时落盘,此处取出的快照不含终态,回写不会覆盖终态
 	if len(pendingStatus) > 0 {
 		for id, u := range pendingStatus {
 			errMsg := ""
@@ -1222,6 +1215,11 @@ func (m *Manager) doFlush() {
 			logger.Log.Errorf("[TaskManager] 批量写入任务状态失败: %v", err)
 		}
 	}
+	pendingResourceIDs := m.pendingResourceIDUpdates
+	m.pendingResourceIDUpdates = make(map[int64]sql.NullInt64)
+	pendingProgress := m.pendingProgressUpdates
+	m.pendingProgressUpdates = make(map[int64]*taskScheduleDTO)
+	m.pendingMu.Unlock()
 
 	// 批量写入 pending_resource_id
 	if len(pendingResourceIDs) > 0 {
@@ -1240,23 +1238,36 @@ func (m *Manager) doFlush() {
 	}
 }
 
-// addToPending 添加待刷盘的状态变更，非阻塞通知 flushLoop
+// addToPending 添加状态变更:终态即时落盘,非终态进批量通道由 flushLoop 合并刷库
 func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg string) {
+	if isClearableTerminal(TaskState(status)) {
+		// 终态即时落盘:同步写库,不进批量通道,进程崩溃也不丢失终态
+		m.pendingMu.Lock()
+		// 该任务可能在终态前已把 Paused 等非终态写进批量通道;终态即时写后,
+		// 残留的非终态快照会被随后的 doFlush 回写覆盖终态,故先从批量通道移除
+		delete(m.pendingStatusUpdates, taskId)
+		if err := m.repo.BatchSetStatus(context.Background(), map[int64]task.StatusUpdate{
+			taskId: {Status: status, ErrorMessage: sql.NullString{String: errMsg, Valid: errMsg != ""}},
+		}); err != nil {
+			logger.Log.Errorf("[TaskManager] 即时写入任务 %d 终态 %d 失败: %v", taskId, status, err)
+		}
+		m.pendingMu.Unlock()
+
+		// 终态清空执行模式持久化。StoreRoles/IncludeWorkInfo 仅为在途任务(暂停→跨重启续传)服务,
+		// 任务完成后保留无意义,且会泄漏到下次执行(如 Redownload 子集残留导致后续全量开始时该任务仍跑子集)
+		if err := m.repo.UpdateRedownloadSections(context.Background(), []int64{taskId}, sql.NullString{}, false); err != nil {
+			logger.Log.Warnf("[TaskManager] 清空任务 %d 终态执行模式失败: %v", taskId, err)
+		}
+		return
+	}
+
+	// 非终态(Paused):进批量通道,由 flushLoop 合并刷库
 	m.pendingMu.Lock()
 	m.pendingStatusUpdates[taskId] = task.StatusUpdate{
 		Status:       status,
 		ErrorMessage: sql.NullString{String: errMsg, Valid: errMsg != ""},
 	}
 	m.pendingMu.Unlock()
-
-	// 终态(Finished/Failed/PartlyFinished,不含 Paused)清空执行模式持久化。
-	// StoreRoles/IncludeWorkInfo 仅为"在途"任务(暂停→跨重启续传)服务;任务完成后保留无意义,
-	// 且会泄漏到下次执行(如 Redownload 子集残留导致后续全量开始时该任务仍跑子集)。
-	if isClearableTerminal(TaskState(status)) {
-		if err := m.repo.UpdateRedownloadSections(context.Background(), []int64{taskId}, sql.NullString{}, false); err != nil {
-			logger.Log.Warnf("[TaskManager] 清空任务 %d 终态执行模式失败: %v", taskId, err)
-		}
-	}
 
 	select {
 	case m.flushCh <- struct{}{}:

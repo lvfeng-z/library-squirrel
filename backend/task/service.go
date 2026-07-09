@@ -96,8 +96,6 @@ type Repository interface {
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity.Task, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error)
-	// SetStatus 设置指定任务的状态（不级联）
-	SetStatus(ctx context.Context, taskId int64, status TaskStatusEnum) error
 	// ListStatus 查询状态列表
 	ListStatus(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// CreateTask 创建任务
