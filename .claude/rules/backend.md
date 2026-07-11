@@ -56,6 +56,7 @@ query.go            — 查询 DTO
 - **ELIMINATE_N_PLUS_1_QUERY** (P0): 收集 ID → 批量查询 → 构建 map → 组装 DTO。禁止在循环中查询。
 - **SERVICE_DEPENDENCY_VIA_INTERFACE** (P0): Service 依赖由**调用方定义**的接口，由**提供方实现**。禁止持有具体 `*OtherService`。通过构造函数注入。
 - **BASE_REPOSITORY_REUSE** (P0): 复用 `BaseRepository` 方法。仅当 `BaseRepository` 无法表达时才编写自定义 repository 逻辑。
+- **MODULE_BOUNDARY_PURITY** (P0): 能力包（如 `merge`）只提供领域无关的纯能力，输入输出用基础类型（文件路径等），禁止感知/耦合业务实体（store/resource 等）与领域规范（落盘路径、`store_type` 枚举）。接受领域实体、决定落盘位置、挂载 store 关联等业务编排归对应业务模块（resource/persistentStore）。例：`merge` 包只做文件合并（`MergeRemux(ctx, videoPath, audioPath, outPath)`）；取 resource 的 store、落盘到 `store/resource/...`、挂 `resource_store`(merged) 等归 resource/persistentStore。
 - **ENTITY_USE_NEW_FACTORY** (P1): 使用 `entity.NewXxx()` 工厂方法，禁止 `&entity.Xxx{}`。
 - **DTO_USE_TO_ENTITY** (P1): 使用 `ToXxxEntity()` 转换函数，禁止手动逐字段映射。
 - **BATCH_UPDATE_OPTIMIZATION** (P1): 批量更新使用单条 SQL，禁止循环逐条 UPDATE。

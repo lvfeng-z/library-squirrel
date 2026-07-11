@@ -61,6 +61,33 @@ export class ImportSettings {
 }
 
 /**
+ * MergeSettings 合并相关设置
+ */
+export class MergeSettings {
+    /**
+     * 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=产物作 main 删原轨道
+     */
+    "strategy": string;
+
+    /** Creates a new MergeSettings instance. */
+    constructor($$source: Partial<MergeSettings> = {}) {
+        if (!("strategy" in $$source)) {
+            this["strategy"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MergeSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MergeSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MergeSettings($$parsedSource as Partial<MergeSettings>);
+    }
+}
+
+/**
  * PluginSettings 插件相关设置
  */
 export class PluginSettings {
@@ -159,6 +186,7 @@ export class Settings {
     "tour": TourSettings;
     "recycleBin": RecycleBinSettings;
     "appearance": AppearanceSettings;
+    "mergeSettings": MergeSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -186,6 +214,9 @@ export class Settings {
         if (!("appearance" in $$source)) {
             this["appearance"] = (new AppearanceSettings());
         }
+        if (!("mergeSettings" in $$source)) {
+            this["mergeSettings"] = (new MergeSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -200,6 +231,7 @@ export class Settings {
         const $$createField5_0 = $$createType3;
         const $$createField6_0 = $$createType4;
         const $$createField7_0 = $$createType5;
+        const $$createField8_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -218,6 +250,9 @@ export class Settings {
         }
         if ("appearance" in $$parsedSource) {
             $$parsedSource["appearance"] = $$createField7_0($$parsedSource["appearance"]);
+        }
+        if ("mergeSettings" in $$parsedSource) {
+            $$parsedSource["mergeSettings"] = $$createField8_0($$parsedSource["mergeSettings"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -242,7 +277,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType6;
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -282,4 +317,5 @@ const $$createType2 = PluginSettings.createFrom;
 const $$createType3 = TourSettings.createFrom;
 const $$createType4 = RecycleBinSettings.createFrom;
 const $$createType5 = AppearanceSettings.createFrom;
-const $$createType6 = $Create.Map($Create.Any, $Create.Any);
+const $$createType6 = MergeSettings.createFrom;
+const $$createType7 = $Create.Map($Create.Any, $Create.Any);

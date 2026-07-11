@@ -8,6 +8,7 @@ import { Picture } from '@element-plus/icons-vue'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
+import { getResourceOpenPath } from '@renderer/utils/ResourceUtil.ts'
 
 // props
 const props = defineProps<{
@@ -58,8 +59,8 @@ function handleImageClicked() {
 }
 function handlePictureClicked() {
   clearTimeout(clickTimeout)
-  const filePath = props.work.resource?.workStore?.filePath
-  if (notNullish(filePath)) {
+  const filePath = getResourceOpenPath(props.work.resource)
+  if (notNullish(filePath) && filePath !== '') {
     appLauncherOpenImage(filePath)
   } else {
     ElMessage({

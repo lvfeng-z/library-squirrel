@@ -30,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
+	"github.com/library-squirrel/backend/merge"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/plugin"
@@ -67,6 +68,7 @@ type App struct {
 	SiteAuthorService      *siteAuthor.Service
 	SiteService            *site.Service
 	ResourceService        *resource.Service
+	MergeService           *resource.MergeService
 	ReWorkAuthorService    *reWorkAuthor.Service
 	ReWorkTagService       *reWorkTag.Service
 	WorkService            *work.Service
@@ -910,6 +912,22 @@ func (app *App) initAdvancedServices() error {
 		},
 	)
 
+	// merge 合并服务（音视频合并编排；ffmpeg 缺失时 merger=nil，合并调用返回 ErrMergeUnavailable）
+	mergeResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
+	var mergeMerger resource.Merger
+	if m, ferr := merge.NewFFmpegMuxer(); ferr == nil {
+		mergeMerger = m
+	} else {
+		logger.Log.Warnf("ffmpeg 未安装，音视频合并功能不可用: %v", ferr)
+	}
+	app.MergeService = resource.NewMergeService(
+		mergeResourceStoreRepo,
+		mergeMerger,
+		app.PersistentStoreService,
+		app.SettingsService,
+		&dbTransactorAdapter{db: app.db},
+	)
+
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
 
@@ -986,7 +1004,7 @@ func (app *App) initHandlers() {
 	app.SiteTagHandler = siteTag.NewHandler(app.SiteTagService)
 	app.SiteAuthorHandler = siteAuthor.NewHandler(app.SiteAuthorService)
 	app.SiteHandler = site.NewHandler(app.SiteService)
-	app.ResourceHandler = resource.NewHandler(app.ResourceService)
+	app.ResourceHandler = resource.NewHandler(app.ResourceService, app.MergeService)
 	app.WorkHandler = work.NewHandler(app.WorkService)
 	app.WorkSetHandler = workSet.NewHandler(app.WorkSetService)
 	app.SearchHandler = search.NewHandler(app.SearchService)

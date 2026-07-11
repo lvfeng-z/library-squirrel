@@ -10,6 +10,7 @@ type Settings struct {
 	Tour               TourSettings       `json:"tour" koanf:"tour"`
 	RecycleBinSettings RecycleBinSettings `json:"recycleBin" koanf:"recycleBin"`
 	Appearance         AppearanceSettings `json:"appearance" koanf:"appearance"`
+	MergeSettings      MergeSettings      `json:"mergeSettings" koanf:"mergeSettings"`
 }
 
 // WorkSettings 作品相关设置
@@ -44,6 +45,17 @@ type AppearanceSettings struct {
 	Theme string `json:"theme" koanf:"theme"` // 当前主题 id
 }
 
+// MergeSettings 合并相关设置
+type MergeSettings struct {
+	Strategy string `json:"strategy" koanf:"strategy"` // 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=产物作 main 删原轨道
+}
+
+// 合并策略取值
+const (
+	MergeStrategyKeep      = "keep"      // 新建 merged store，保留原 videoTrack/audioTrack
+	MergeStrategyOverwrite = "overwrite" // 合并产物作 main 挂载，删除原轨道 store 及文件
+)
+
 // NewSettings 创建默认设置
 func NewSettings() *Settings {
 	return &Settings{
@@ -68,6 +80,9 @@ func NewSettings() *Settings {
 		},
 		Appearance: AppearanceSettings{
 			Theme: "default-light",
+		},
+		MergeSettings: MergeSettings{
+			Strategy: MergeStrategyKeep,
 		},
 	}
 }

@@ -12,6 +12,7 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
+	"github.com/library-squirrel/backend/util/filename"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm/clause"
@@ -624,4 +625,17 @@ func (s *Service) ResolveStorePath(relPath string) string {
 	}
 	workDir := s.getWorkDir()
 	return filepath.Join(workDir, relPath)
+}
+
+// BuildVariantPath 从源 store 相对路径生成变体路径：保留目录与扩展名，文件名追加 suffix 后净化。
+// 用于在已有 store 旁派生新 store 的相对路径（如合并产物在源视频轨旁加 _merged）。
+// 纯路径变换，不落盘、不查库；空源路径返回空串。
+func (s *Service) BuildVariantPath(sourceRelPath, suffix string) string {
+	if strings.TrimSpace(sourceRelPath) == "" {
+		return ""
+	}
+	ext := filepath.Ext(sourceRelPath)
+	base := strings.TrimSuffix(filepath.Base(sourceRelPath), ext)
+	// filepath.Join 在 Windows 产生反斜杠；store 路径以正斜杠入库（跨平台规范），统一转为正斜杠
+	return filepath.ToSlash(filepath.Join(filepath.Dir(sourceRelPath), filename.SanitizeFileName(base+suffix)+ext))
 }

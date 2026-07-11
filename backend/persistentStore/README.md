@@ -21,6 +21,7 @@
 | `GetById` / `GetByIds` / `GetByFilePath` | 查询 |
 | `Exists` / `IsCompleteByPath` | 存在性 / 完整性校验 |
 | `ResolveStorePath` / `GetAbsPath` | 路径解析（relPath → 绝对路径） |
+| `BuildVariantPath(sourceRelPath, suffix)` | 路径变换：从源 store relPath 派生变体路径（同目录 + 文件名追加 suffix + 保扩展 + 净化，正斜杠入库），供合并在已有 store 旁派生产物路径 |
 
 ## 核心概念
 

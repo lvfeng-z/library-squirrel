@@ -45,6 +45,9 @@ func defaultSettings() *Settings {
 		Appearance: AppearanceSettings{
 			Theme: "default-light",
 		},
+		MergeSettings: MergeSettings{
+			Strategy: MergeStrategyKeep,
+		},
 	}
 }
 
@@ -101,6 +104,11 @@ func (s *Service) GetFileNameFormat() string {
 func (s *Service) GetRecycleBinSettings() (bool, int) {
 	r := s.GetSettings().RecycleBinSettings
 	return r.AutoCleanupEnabled, r.RetentionDays
+}
+
+// GetMergeStrategy 获取合并产物挂载策略（实现 resource.MergeSettingsReader 接口）
+func (s *Service) GetMergeStrategy() string {
+	return s.GetSettings().MergeSettings.Strategy
 }
 
 // SaveSettings 保存设置变更

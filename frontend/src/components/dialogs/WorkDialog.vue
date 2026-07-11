@@ -25,7 +25,9 @@ import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { resourceMerge } from '@renderer/apis/http/wrappers/resource'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
+import { getResourceOpenPath, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
 
 // props
 const props = defineProps<{
@@ -124,9 +126,30 @@ const imagePath = computed(() => {
   return ''
 })
 
-// ===== 辅助：获取资源的原始文件路径（用于外部打开）=====
+// ===== 辅助：获取资源的原始文件路径（优先合并产物，次主资源）=====
 function getResourceFilePath(info: WorkFullDTO): string {
-  return info.resource?.workStore?.filePath ?? ''
+  return getResourceOpenPath(info.resource)
+}
+
+// ===== 音视频合并 =====
+// 当前资源是否可合并（含视频轨+音频轨）
+const mergeable: Ref<boolean> = computed(() => isResourceMergeable(currentWorkFullInfo.value.resource))
+// 合并进行中
+const merging: Ref<boolean> = ref(false)
+// 合并当前资源音视频轨，成功后刷新作品信息
+async function handleMergeButtonClick() {
+  const resourceId = currentWorkFullInfo.value.resource?.id
+  if (!resourceId) return
+  merging.value = true
+  try {
+    await resourceMerge(resourceId)
+    ElMessage.success('合并完成')
+    await getWorkInfo()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '合并失败')
+  } finally {
+    merging.value = false
+  }
 }
 
 // 方法
@@ -614,6 +637,15 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           @click="handleDeleteButtonClick"
         >
           删除
+        </el-button>
+        <el-button
+          v-if="mergeable"
+          type="primary"
+          icon="MagicStick"
+          :loading="merging"
+          @click="handleMergeButtonClick"
+        >
+          合并
         </el-button>
         <el-button-group
           class="work-dialog-footer-buttons-group"

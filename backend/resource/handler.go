@@ -11,12 +11,22 @@ import (
 
 // Handler 资源 Handler
 type Handler struct {
-	svc *Service
+	svc      *Service
+	mergeSvc *MergeService
 }
 
 // NewHandler 创建资源 Handler
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, mergeSvc *MergeService) *Handler {
+	return &Handler{svc: svc, mergeSvc: mergeSvc}
+}
+
+// MergeResource 合并指定 Resource 的音视频轨，产出可播放的单文件。
+func (h *Handler) MergeResource(ctx context.Context, resourceId int64) *model.ApiResponse[*MergeResult] {
+	result, err := h.mergeSvc.MergeResource(ctx, resourceId)
+	if err != nil {
+		return model.HandleError[*MergeResult](err)
+	}
+	return model.Success(result)
 }
 
 // ========== 增删改操作 ==========

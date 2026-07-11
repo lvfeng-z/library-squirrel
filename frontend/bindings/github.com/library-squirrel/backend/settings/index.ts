@@ -9,6 +9,7 @@ export {
 export {
     AppearanceSettings,
     ImportSettings,
+    MergeSettings,
     PluginSettings,
     RecycleBinSettings,
     SettingChange,
