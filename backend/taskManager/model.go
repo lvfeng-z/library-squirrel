@@ -353,7 +353,7 @@ type ManagedTask struct {
 	// actor 通信与生命周期:一条常驻 goroutine 串行处理命令,任务级可变状态只在其内修改
 	cmdCh        chan taskCmd    // 命令通道(外部→actor,postCmd 非阻塞投递)
 	actorDone    chan struct{}   // actor goroutine 退出信号(终态关闭)
-	actorStarted atomic.Bool     // actor 是否已启动(创建时置 true,取代 dispatchState 三态)
+	actorStarted atomic.Bool     // 是否已首次 dispatch:dispatch 的 CAS(false→true) 守卫,保证一任务只投一次 cmdStart,重复调用幂等返回 false(取代 dispatchState 三态)
 	manager      *Manager        // back-reference:actor 入队/清理需访问 Manager
 	semaphore    chan struct{}   // Manager 信号量(取/释槽位)
 	slotHeld     bool            // 当前是否持信号量槽位(仅 actor goroutine 访问)
@@ -427,7 +427,8 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		task:       task,
 		workId:     taskId,
 	}
-	m.actorStarted.Store(true)
+	// actorStarted 保持零值 false:它是 dispatch 的 CAS(false→true) 首派守卫,首次 dispatch 据此投 cmdStart。
+	// 创建期赋 true 会使守卫永远失败、cmdStart 不投递,新任务卡在 Created 永不执行。
 	go m.actorLoop()
 	return m
 }

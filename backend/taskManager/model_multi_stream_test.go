@@ -710,6 +710,28 @@ func TestDispatch_Exclusive(t *testing.T) {
 	}
 }
 
+// TestNewManagedTask_ActorStartedZero 回归:NewManagedTask 不得对 actorStarted 赋值。
+// actorStarted 是 dispatch 的 CAS(false→true) 首派守卫(初值须为 false);创建期 Store(true)
+// 会使守卫永远失败、cmdStart 不投递,未命中查重的新任务卡死在 Created 永不执行。
+// 本测试经 NewManagedTask 构造(生产路径),区别于 newTestManagedTask 的字面量构造——
+// 后者绕过 NewManagedTask,无法捕获创建期的错误赋值(正是此前 bug 的潜伏原因)。
+func TestNewManagedTask_ActorStartedZero(t *testing.T) {
+	mgr := NewManager(2, nil, nil, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	task := entity.NewTask()
+	task.PluginPublicID = sql.NullString{String: "test-plugin", Valid: true}
+	task.TaskName = sql.NullString{String: "t", Valid: true}
+
+	mt := NewManagedTask(1, 0, task, nil, nil, mgr, make(chan struct{}, 1))
+	mt.cancel()
+	<-mt.actorDone
+
+	if mt.actorStarted.Load() {
+		t.Fatal("NewManagedTask 后 actorStarted 必须为 false(零值):它是 dispatch 的 CAS 首派守卫,创建期赋 true 会令新任务永不启动")
+	}
+}
+
 // TestPauseTaskTree_PostsCmdPause 回归:PauseTaskTree 对非终态子任务投 cmdPause(actor 命令队列保证 pause 覆盖陈旧 resume)。
 // actor 模型下不再用 pendingResume 标志;本测试验证 cmdPause 被投递到子任务 cmdCh。
 func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
