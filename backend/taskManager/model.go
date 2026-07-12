@@ -351,6 +351,7 @@ type ManagedTask struct {
 	doneOnce sync.Once
 
 	// actor 通信与生命周期:一条常驻 goroutine 串行处理命令,任务级可变状态只在其内修改
+	// (reader 等跨 RPC 对象的访问除外,详见 actorLoop 注释)
 	cmdCh        chan taskCmd    // 命令通道(外部→actor,postCmd 非阻塞投递)
 	actorDone    chan struct{}   // actor goroutine 退出信号(终态关闭)
 	actorStarted atomic.Bool     // 是否已首次 dispatch:dispatch 的 CAS(false→true) 守卫,保证一任务只投一次 cmdStart,重复调用幂等返回 false(取代 dispatchState 三态)
@@ -465,6 +466,9 @@ func (m *ManagedTask) postCmd(cmd taskCmd) {
 
 // actorLoop actor 主循环:串行处理命令,任务级可变状态只在此 goroutine 内修改。
 // 对象创建时启动,终态(或主 ctx 取消)退出;退出前启动 cmdCh drain 防投递方阻塞。
+// 作用域:串行覆盖限主程序调度层(命令按序、状态机一致、槽位独占);不覆盖插件 transport 层
+// 的 serveSpecsPull goroutine(per-RPC,受 gRPC stream 控制)。reader 等跨 RPC 对象的访问
+// 串行性由每次 Start/Resume 新建 reader 结构性保证,不依赖此 actor(见 plugin-dev-guide.md「ctx 与 reader 契约」)。
 func (m *ManagedTask) actorLoop() {
 	defer func() {
 		if r := recover(); r != nil {
