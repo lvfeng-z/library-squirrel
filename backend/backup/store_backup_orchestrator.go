@@ -54,6 +54,9 @@ type StoreBackupItem struct {
 	StoreType string
 	// Generation 生成方式(downloaded/derived)
 	Generation string
+	// NewStoreID 还原后新建的 PersistentStore ID（0=未还原/还原失败）
+	// 由 RestoreAllStores 回填，供调用方据此重挂 resource_store；backup 自身不感知 resource_store
+	NewStoreID int64
 }
 
 // StoreBackupOrchestratorImpl 资源存储备份编排器
@@ -177,13 +180,13 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 			logger.Log.Warnf("[StoreBackupOrchestrator] 导入 Store 失败: %v", zap.Error(err))
 			continue
 		}
+		item.NewStoreID = newStoreId
 
-		// 5. 清理备份记录(不再回填旧列;resource_store 由调用方在 saveResource/mountResourceStores 中重建)
+		// 5. 清理备份记录(resource_store 由调用方在还原后据 NewStoreID 重挂；backup 不感知)
 		if err := o.backupReader.Delete(ctx, item.BackupID); err != nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 删除备份记录 %d 失败: %v", item.BackupID, err)
 		}
 
-		// 记录还原的新 storeId 供调用方使用(item.BackupID 复用为 newStoreId,但语义改变不安全,仅记日志)
 		logger.Log.Infof("[StoreBackupOrchestrator] Store 已还原: type=%s, newStoreId=%d", item.StoreType, newStoreId)
 
 		restored++

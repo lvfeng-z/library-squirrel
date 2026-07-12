@@ -215,6 +215,12 @@ type StoreFileCleaner interface {
 	CleanupFile(relPath string)
 }
 
+// StoreDeleter 删除 PersistentStore 记录及磁盘文件（由 persistentStore.Service 实现）
+// 失败还原前清理本次新建 store 时使用，backup=false 表示直接删除不产生备份
+type StoreDeleter interface {
+	Delete(ctx context.Context, id int64, backup bool) (int64, error)
+}
+
 // Transactor 事务执行器接口
 type Transactor interface {
 	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
@@ -262,6 +268,7 @@ type TaskDeps struct {
 	Transactor              Transactor
 	PendingResourceUpdater  PendingResourceUpdater
 	StoreFileCleaner        StoreFileCleaner
+	StoreDeleter            StoreDeleter
 }
 
 // ==== 多流控制器 ====
@@ -382,6 +389,8 @@ type ManagedTask struct {
 	// 任务信息
 	task   *entity.Task
 	workId int64
+	// 本次执行 saveResource 产出的 Resource ID（替换场景失败后，还原旧 store 完重挂 resource_store 用）
+	currentResourceId int64
 
 	// 作品信息响应(Start/Resume 返回;供文件名模板 token data;不再承载资源细节)
 	workResp *sdkdto.WorkResponse
@@ -753,7 +762,12 @@ func (m *ManagedTask) run() runResult {
 	defer func() {
 		if m.GetState() == TaskStateFailed && len(m.storeBackupItems) > 0 {
 			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份 Store", m.taskId, len(m.storeBackupItems))
+			// 先清理本次 startDownload 新建的 store：回滚本次下载产物到备份点，
+			// 释放其占用的 file_path，否则还原旧 store 时 INSERT 会触发 UNIQUE 冲突
+			m.cleanupCreatedStores(context.Background())
 			_, skipped := m.deps.StoreBackupOrchestrator.RestoreAllStores(context.Background(), m.storeBackupItems)
+			// 还原后重挂 resource_store 到还原的 store（RestoreAllStores 仅还原文件、不感知 resource_store）
+			m.remountRestoredStores(context.Background())
 			if skipped > 0 {
 				logger.Log.Warnf("[TaskManager] 任务 %d 有 %d 个旧资源因备份缺失无法还原", m.taskId, skipped)
 			}
@@ -936,6 +950,7 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		if resourceErr != nil {
 			return resourceErr
 		}
+		m.currentResourceId = resourceId
 
 		// 同步更新 pending_resource_id（事务内直接写 DB）
 		m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
@@ -1104,6 +1119,50 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 		stores = append(stores, s)
 	}
 	return m.deps.ResourceStoreWriter.SaveBatch(ctx, stores)
+}
+
+// cleanupCreatedStores 清理本次 startDownload 新建的 PersistentStore（记录 + 磁盘文件）
+// 替换场景任务失败、还原旧 store 前调用：释放本次新建 store 占用的 file_path，
+// 否则 RestoreAllStores 还原旧 store 时 INSERT 会触发 UNIQUE 冲突。
+// 仅事务提交成功后 m.streams 有值时生效；事务回滚时 m.streams 已为 nil。
+func (m *ManagedTask) cleanupCreatedStores(ctx context.Context) {
+	if len(m.streams) == 0 {
+		return
+	}
+	// 先关闭所有 storeWriter 释放文件句柄（Windows 下文件锁会阻碍删除）
+	for _, s := range m.streams {
+		if s.storeWriter != nil {
+			s.storeWriter.Close()
+		}
+	}
+	for _, s := range m.streams {
+		if _, err := m.deps.StoreDeleter.Delete(ctx, s.storeId, false); err != nil {
+			logger.Log.Warnf("[TaskManager] 清理本次新建 store(id=%d, type=%s) 失败: %v", s.storeId, s.role, err)
+		}
+	}
+	m.streams = nil
+}
+
+// remountRestoredStores 还原旧 store 后，将 resource_store 重挂到还原的 store
+// RestoreAllStores 已在 storeBackupItems 各项回填 NewStoreID；据此重建 resource_store 关联，
+// 否则 resource_store 仍指向已清理的本次新建 store（断裂孤儿）。
+// 复用 mountResourceStores 语义（先删同 role 旧关联再插），resourceId 取本次 saveResource 的产物。
+func (m *ManagedTask) remountRestoredStores(ctx context.Context) {
+	if m.currentResourceId == 0 || len(m.storeBackupItems) == 0 {
+		return
+	}
+	mounts := make([]pendingMount, 0, len(m.storeBackupItems))
+	for _, item := range m.storeBackupItems {
+		if item.NewStoreID > 0 {
+			mounts = append(mounts, pendingMount{role: item.StoreType, generation: item.Generation, storeId: item.NewStoreID})
+		}
+	}
+	if len(mounts) == 0 {
+		return
+	}
+	if err := m.mountResourceStores(ctx, m.currentResourceId, mounts); err != nil {
+		logger.Log.Warnf("[TaskManager] 还原后重挂 resource_store 失败: %v", err)
+	}
 }
 
 // downloadLoop 多流并发下载循环:每条 spec 一个 goroutine 跑 read→write→累计

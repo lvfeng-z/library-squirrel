@@ -2,6 +2,7 @@ package persistentStore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/library-squirrel/backend/util/filename"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -460,6 +462,10 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 	// 1. 根据 ID 查询记录
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
+		// 记录不存在视为已删除：返回 nil 而非错误，使备份调用方判定“无需备份”而非“备份失败”
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	if record == nil {
@@ -530,7 +536,11 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 		return 0, fmt.Errorf("创建目录失败: %w", err)
 	}
 
-	// 4. 目标路径已有文件时先删除
+	// 4. 清理目标路径旧 store：先删同 file_path 的既有记录(含其磁盘文件)，再兜底删残留磁盘文件
+	//    避免导入路径被既有 store 占用时 INSERT 触发 file_path UNIQUE 冲突
+	if _, err := s.DeleteByFilePath(ctx, relPath, false); err != nil {
+		return 0, fmt.Errorf("清理目标路径旧 store 记录失败: %w", err)
+	}
 	if _, err := os.Stat(targetAbsPath); err == nil {
 		if err := os.Remove(targetAbsPath); err != nil {
 			return 0, fmt.Errorf("删除已有文件失败: %w", err)

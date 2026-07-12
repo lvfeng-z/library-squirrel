@@ -15,8 +15,8 @@
 | 方法 | 作用 |
 | --- | --- |
 | `StoreStream` / `ResumeStream` | 流式写入（支持断点续传，StoreWriter） |
-| `Store` / `StoreFromFile` / `StoreFromExternal` | 从 Reader / 本地文件 / 外部文件写入 |
-| `Delete(id, backup)` | 删除记录与文件（backup=true 联动备份） |
+| `Store` / `StoreFromFile` / `StoreFromExternal` | 从 Reader / 本地文件 / 外部文件写入；`StoreFromExternal` 导入前先清同 `file_path` 旧记录（避免 UNIQUE 冲突） |
+| `Delete(id, backup)` | 删除记录与文件（backup=true 联动备份）；记录不存在视为已删除，返回 `(0,nil)` 而非错误 |
 | `DeleteByFilePath` / `DeleteRecord` | 按路径删除 / 仅删记录 |
 | `GetById` / `GetByIds` / `GetByFilePath` | 查询 |
 | `Exists` / `IsCompleteByPath` | 存在性 / 完整性校验 |

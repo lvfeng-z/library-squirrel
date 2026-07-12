@@ -909,6 +909,7 @@ func (app *App) initAdvancedServices() error {
 			Transactor:              &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口
+			StoreDeleter:            app.PersistentStoreService, // 实现 StoreDeleter 接口
 		},
 	)
 
