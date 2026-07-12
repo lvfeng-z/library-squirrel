@@ -63,6 +63,8 @@ query.go            — 查询 DTO
 - **NULLABLE_PARAM_USE_POINTER** (P1): 可空参数使用 `*int64`/`*string`（null = 清除关联）。
 - **REMOVE_REDUNDANT_QUERY_FIELDS** (P2): QueryDTO 中禁止为同一列定义多个语义重复的字段（如精确+模糊），保留一个字段通过 `QueryAttribute.operator` 控制匹配方式。
 - **DEAD_CODE_CLEANUP** (P2): 重构后确认无调用方的旧方法直接删除，禁止保留"以防万一"的代码。
+- **FIELD_RENAME_GUARD_AUDIT** (P1): 重命名或复用字段承担新职责时，必须审计该字段的**所有读写点**——基于初值的守卫（CAS 首派、状态机初态、零值可用契约）不得被新增赋值破坏。字段命名须反映其唯一真实职责；一个字段禁止同时承担“对象生命周期标志”与“派发/状态守卫”两个初值要求互斥的职责。例：`dispatchState`(三态,零值即初态) 迁移为 `actorStarted`(单 bool) 时，`dispatch` 的 `CAS(false→true)` 守卫依赖初值 false，创建期对其 `Store(true)` 会令守卫恒失败、新任务永不启动。
+- **CONSTRUCTOR_TEST_VIA_FACTORY** (P1): 验证受生产构造函数（`NewXxx`）初始化影响的行为时，测试必须经生产构造函数构造对象，禁止用绕过其初始化的字面量（`&Xxx{}`）来测试该行为；字面量构造仅用于无依赖的纯逻辑测试。否则生产构造中的错误初值对测试不可见（测试恒绿反而掩盖 bug）。
 - **错误处理**：`var ErrXxx = errors.New(...)`，使用 `errors.Is()` 判断。
 - **所有公开方法以** `context.Context` 作为第一个参数，禁止在 `context.WithValue` 中存储业务数据。
 - **Service 层禁止直接导入** `backend/database`，仅 Repository 层可导入。
