@@ -49,18 +49,13 @@ const (
 
 // runMode 板块执行选择:workInfo 为作品元数据独立板块,storeRoles 为所选资源 store_type 集合
 type runMode struct {
-	workInfo   bool     // 作品元数据板块
-	storeRoles []string // 资源板块:所选 store_type 子集(main/thumbnail/videoTrack/...)
+	workInfo    bool     // 作品元数据板块
+	storeRoles  []string // 资源板块:所选 store_type 子集(main/thumbnail/videoTrack/...);空可能为"默认插件下全量"或"仅作品信息",由 fetchStores 区分
+	fetchStores bool     // 本次是否拉取资源:仅作品信息=false(跳过 Start);首跑/重下资源=true。空 universe 的默认插件首跑亦为 true(Start 传空→插件下全量)
 }
 
-// allStoreRoles 全集资源角色;随资源类型扩展追加
-var allStoreRoles = []string{
-	entity.StoreTypeMain,
-	entity.StoreTypeThumbnail,
-}
-
-// runModeFull 全量执行(全部元数据 + 全部资源角色)
-var runModeFull = runMode{workInfo: true, storeRoles: allStoreRoles}
+// runModeFull 首跑执行模式:含作品元数据板块;资源板块留空(由 runModeFromTask 据 universe 派生,空=插件自决全量)
+var runModeFull = runMode{workInfo: true}
 
 func (m runMode) hasWorkInfo() bool { return m.workInfo }
 
@@ -73,15 +68,15 @@ func (m runMode) hasStore(storeType string) bool {
 func (m runMode) hasAnyStore() bool { return len(m.storeRoles) > 0 }
 
 // runModeFromTask 从 task 持久化字段派生 runMode
-// StoreRoles 未设置(NULL)= 首次执行,返回全量;已设置(Redownload)= 按字段还原
+// StoreRoles NULL(Start/首次执行,含默认插件)→拉取资源,storeRoles 取 universe(空 universe→Start 传空,插件下全量)
+// StoreRoles Valid(Redownload 已记录)→空 selection=仅作品信息(不拉资源),非空=所选子集(拉资源)
+// workInfo 统一取 IncludeWorkInfo 字段(首跑由 StartTaskTree 记录为 true)
 func runModeFromTask(t *entity.Task) runMode {
 	if !t.StoreRoles.Valid {
-		return runModeFull
+		return runMode{workInfo: t.IncludeWorkInfo, storeRoles: parseStoreRoles(t.InvolvedRoles), fetchStores: true}
 	}
-	return runMode{
-		workInfo:   t.IncludeWorkInfo,
-		storeRoles: parseStoreRoles(t.StoreRoles),
-	}
+	sel := parseStoreRoles(t.StoreRoles)
+	return runMode{workInfo: t.IncludeWorkInfo, storeRoles: sel, fetchStores: len(sel) > 0}
 }
 
 // parseStoreRoles 解析逗号分隔的 store_type 字符串为切片
@@ -805,7 +800,7 @@ func (m *ManagedTask) run() runResult {
 // 含任一资源板块(含全集)时走查重(ConfirmReplace 两段式)并产生终态;仅 workInfo 为非终态(保持执行前状态、不持久化)
 func (m *ManagedTask) runSectionCombo() runResult {
 	// workdir 检查（资源板块需要，置于查重前避免无效确认）
-	if m.runMode.hasAnyStore() && m.deps.WorkDirProvider.GetWorkDir() == "" {
+	if m.runMode.fetchStores && m.deps.WorkDirProvider.GetWorkDir() == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
@@ -876,8 +871,8 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		m.workId = savedWorkId
 	}
 
-	// 资源板块:有任意 store 时,Start 按所选 storeRoles 选择性产出
-	if m.runMode.hasAnyStore() {
+	// 资源板块:fetchStores 时 Start 按所选 storeRoles 选择性产出(空 storeRoles=默认插件下全量)
+	if m.runMode.fetchStores {
 		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.runMode.storeRoles)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
@@ -908,7 +903,7 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 	if m.abortedByPause() {
 		return runResultPaused
 	}
-	if m.runMode.hasAnyStore() {
+	if m.runMode.fetchStores {
 		if m.deps.Pusher != nil {
 			m.deps.Pusher.PushError(m.taskId, errMsg)
 		}
@@ -1015,7 +1010,7 @@ func (m *ManagedTask) resolveWorkIdByTask() (int64, error) {
 
 // isNonTerminalMode 是否为非终态板块组合（无资源板块）：执行不产生任务终态、不持久化任务状态
 func (m *ManagedTask) isNonTerminalMode() bool {
-	return !m.runMode.hasAnyStore()
+	return !m.runMode.fetchStores
 }
 
 // finishNonTerminalSection 结束 A 非终态板块：恢复执行前状态（任务的 DB status），不持久化

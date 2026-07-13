@@ -282,13 +282,13 @@ func recvSpecsAndPull(
 	specs := make([]*pluginsdkdto.StoreSpec, 0, len(metas))
 	for _, meta := range metas {
 		specs = append(specs, &pluginsdkdto.StoreSpec{
-			Role:             meta.GetRole(),
-			Generation:       meta.GetGeneration(),
-			ReadCloser:       &pullReadCloser{session: session, role: meta.GetRole()},
-			Format:           meta.GetFormat(),
-			Size:             meta.GetSize(),
-			SuggestName:      meta.GetSuggestName(),
-			Continuable:      meta.Continuable,
+			Role:              meta.GetRole(),
+			Generation:        meta.GetGeneration(),
+			ReadCloser:        &pullReadCloser{session: session, role: meta.GetRole()},
+			Format:            meta.GetFormat(),
+			Size:              meta.GetSize(),
+			SuggestName:       meta.GetSuggestName(),
+			Continuable:       meta.Continuable,
 			ResumeWriteOffset: meta.ResumeWriteOffset,
 		})
 	}
@@ -406,21 +406,23 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 	children := make([]*pluginsdkdto.TaskCreateChildResponse, len(r.Children))
 	for j, c := range r.Children {
 		children[j] = &pluginsdkdto.TaskCreateChildResponse{
-			TaskName:   c.TaskName,
-			SiteWorkID: c.SiteWorkId,
-			URL:        c.Url,
-			PluginData: c.PluginData,
-			SiteName:   c.SiteName,
+			TaskName:      c.TaskName,
+			SiteWorkID:    c.SiteWorkId,
+			URL:           c.Url,
+			PluginData:    c.PluginData,
+			SiteName:      c.SiteName,
+			InvolvedRoles: c.InvolvedRoles,
 		}
 	}
 	return &pluginsdkdto.TaskCreateResponse{
-		PluginTaskID: r.PluginTaskId,
-		TaskName:     r.TaskName,
-		SiteWorkID:   r.SiteWorkId,
-		URL:          r.Url,
-		PluginData:   r.PluginData,
-		SiteName:     r.SiteName,
-		Children:     children,
+		PluginTaskID:  r.PluginTaskId,
+		TaskName:      r.TaskName,
+		SiteWorkID:    r.SiteWorkId,
+		URL:           r.Url,
+		PluginData:    r.PluginData,
+		SiteName:      r.SiteName,
+		InvolvedRoles: r.InvolvedRoles,
+		Children:      children,
 	}
 }
 

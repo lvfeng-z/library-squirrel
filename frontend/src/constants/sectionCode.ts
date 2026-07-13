@@ -7,5 +7,20 @@ export const StoreRole = {
   MERGED: 'merged' // 合并产物(预留,合并动作产出)
 } as const
 
-// 全集资源角色(用户不勾选任何资源板块时下发,等价完整资源重执行)
-export const ALL_STORE_ROLES: string[] = [StoreRole.MAIN, StoreRole.THUMBNAIL]
+// 兜底资源角色集(task 未声明 involvedRoles 时展示的可选全集;用户不勾选任何板块时下发等价全量重执行)
+export const ALL_STORE_ROLES: string[] = [
+  StoreRole.MAIN,
+  StoreRole.THUMBNAIL,
+  StoreRole.VIDEO_TRACK,
+  StoreRole.AUDIO_TRACK,
+  StoreRole.MERGED
+]
+
+// 资源板块中文标签(操作栏勾选项展示)
+export const StoreRoleLabels: Record<string, string> = {
+  [StoreRole.MAIN]: '资源',
+  [StoreRole.THUMBNAIL]: '缩略图',
+  [StoreRole.VIDEO_TRACK]: '视频轨',
+  [StoreRole.AUDIO_TRACK]: '音频轨',
+  [StoreRole.MERGED]: '合并'
+}

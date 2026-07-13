@@ -246,12 +246,22 @@ type TaskHandler interface {
 }
 ```
 
-- `Create`:解析 URL,返回任务信息。返回值用 `sdkdto.BatchResult(...)` 或 `sdkdto.StreamResult(...)` 构造(批量/流式)。
+- `Create`:解析 URL,返回任务信息。返回值用 `sdkdto.BatchResult(...)` 或 `sdkdto.StreamResult(...)` 构造(批量/流式)。可在响应中声明 `InvolvedRoles`(任务涉及的 store_type 集合,见下「创建期声明涉及板块」)。
 - `CreateWorkInfo`:抓取作品元数据(标题/作者/标签等)。
 - `Start`:首次或重下执行。`storeRoles` 为本次所选 store_type 子集(空=全量),据此选择性产出,避免生成被丢弃的 store。返回 StoreSpec 集合 + WorkResponse。
 - `Retry`:重下执行(通常委托 Start)。
 - `Pause`/`Stop`:任务级控制。应关闭 reader 上游连接(HTTP body / 文件句柄),使在途读取尽快返回。
 - `Resume`:按 StreamOffsets 续传未完成 downloaded 轨;derived 轨未完成时由主程序另行调 Start 整轨重产。
+
+#### 创建期声明涉及板块(InvolvedRoles)
+
+`Create` 返回的 `TaskCreateResponse`(及子任务 `TaskCreateChildResponse`)可声明本任务涉及的 store_type 集合 `InvolvedRoles`(universe),供主程序与前端按任务感知:
+
+- **声明 = hint,Start 产出 = truth**:`InvolvedRoles` 用于前端重执行 UI 只展示该任务涉及的板块、以及主程序首跑默认请求集;主程序挂载以插件 `Start` 实际产出的 StoreSpec 为准,**不据 universe 拒绝超出声明的 spec**(创建期声明不全时仍健壮)。
+- **空/nil = 未确定(default)**:创建期信息不足以判定时留空,执行期插件按全量(空 storeRoles)自决产出;前端对 default 任务展示兜底集。
+- **声明时机**:能据 URL 即定则定(如纯图片站点恒为 `[main]`,可省去无意义的缩略图派生请求);需深度元数据才能定则留空走 default。
+
+例:纯图片站点 `Create` 声明 `InvolvedRoles=[main]` → 首跑 Start 请求集仅 `[main]`,不触发缩略图派生轨;重执行 UI 仅显示「资源」一项。
 
 #### StoreSpec(资源产出声明)
 

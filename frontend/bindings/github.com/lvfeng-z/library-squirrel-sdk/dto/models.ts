@@ -1163,6 +1163,11 @@ export class TaskDTO {
     "pluginExtensionId": string | null;
     "pluginData": string | null;
     "errorMessage": string | null;
+
+    /**
+     * 任务涉及的 store_type 集合(创建期声明,universe);nil=未确定;用于前端按任务自选展示
+     */
+    "involvedRoles": string[];
     "createTime": number;
     "updateTime": number;
 
@@ -1210,6 +1215,9 @@ export class TaskDTO {
         if (!("errorMessage" in $$source)) {
             this["errorMessage"] = null;
         }
+        if (!("involvedRoles" in $$source)) {
+            this["involvedRoles"] = [];
+        }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;
         }
@@ -1224,7 +1232,11 @@ export class TaskDTO {
      * Creates a new TaskDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskDTO {
+        const $$createField14_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("involvedRoles" in $$parsedSource) {
+            $$parsedSource["involvedRoles"] = $$createField14_0($$parsedSource["involvedRoles"]);
+        }
         return new TaskDTO($$parsedSource as Partial<TaskDTO>);
     }
 }

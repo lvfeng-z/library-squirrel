@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
@@ -143,8 +144,6 @@ func buildTaskProgressTree(tasks []*entity.Task) []*sdkdto.TaskProgressTreeDTO {
 	}
 	return taskProgressTreeBuilder.BuildTree(dtos, setTaskProgressTreeChildren)
 }
-
-
 
 // TaskHandlerProvider 任务处理器提供者接口
 // 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
@@ -369,17 +368,17 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*sdkdto.TaskPr
 // CreateTask 创建任务
 func (s *Service) CreateTask(ctx context.Context, req *sdkdto.CreateTaskRequest) (*entity.Task, error) {
 	task := &entity.Task{
-		BaseEntity:           &model.BaseEntity{},
-		Pid:                  sql.NullInt64{Int64: req.Pid, Valid: true},
-		TaskName:             sql.NullString{String: req.TaskName, Valid: true},
-		SiteID:               sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
-		SiteWorkID:           sql.NullString{String: req.SiteWorkID, Valid: true},
-		URL:                  sql.NullString{String: req.URL, Valid: true},
-		HasChild:             sql.NullBool{Bool: req.HasChild, Valid: true},
-		Status:               int(TaskStatusCreated),
-		PluginPublicID:       sql.NullString{String: req.PluginPublicID, Valid: true},
+		BaseEntity:        &model.BaseEntity{},
+		Pid:               sql.NullInt64{Int64: req.Pid, Valid: true},
+		TaskName:          sql.NullString{String: req.TaskName, Valid: true},
+		SiteID:            sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
+		SiteWorkID:        sql.NullString{String: req.SiteWorkID, Valid: true},
+		URL:               sql.NullString{String: req.URL, Valid: true},
+		HasChild:          sql.NullBool{Bool: req.HasChild, Valid: true},
+		Status:            int(TaskStatusCreated),
+		PluginPublicID:    sql.NullString{String: req.PluginPublicID, Valid: true},
 		PluginExtensionID: sql.NullString{String: req.PluginExtensionID, Valid: true},
-		PluginData:           sql.NullString{String: req.PluginData, Valid: true},
+		PluginData:        sql.NullString{String: req.PluginData, Valid: true},
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, err
@@ -504,7 +503,6 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*sdkdto.TaskProgressDTO, error) {
 	return s.ListStatus(ctx, ids)
 }
-
 
 // CreateTaskByURLRequest 根据URL创建任务的请求
 type CreateTaskByURLRequest struct {
@@ -633,6 +631,11 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			task.PluginData = sql.NullString{String: taskResp.PluginData, Valid: true}
 		}
 
+		// involvedRoles:创建期声明的涉及板块(universe),逗号join;空=NULL(未确定/默认)
+		if len(taskResp.InvolvedRoles) > 0 {
+			task.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
+		}
+
 		return nil
 	}
 
@@ -650,11 +653,12 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			}
 			childResp := children[0]
 			if err := assignTask(task, &sdkdto.TaskCreateResponse{
-				TaskName:   childResp.TaskName,
-				SiteWorkID: childResp.SiteWorkID,
-				URL:        childResp.URL,
-				SiteName:   childResp.SiteName,
-				PluginData: childResp.PluginData,
+				TaskName:      childResp.TaskName,
+				SiteWorkID:    childResp.SiteWorkID,
+				URL:           childResp.URL,
+				SiteName:      childResp.SiteName,
+				PluginData:    childResp.PluginData,
+				InvolvedRoles: childResp.InvolvedRoles,
 			}, 0); err != nil {
 				continue
 			}
@@ -665,49 +669,51 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			continue
 		}
 
-			// 多个子任务：事务内创建父任务 + 全部子任务
-			parentTask := &entity.Task{
-				BaseEntity: &model.BaseEntity{},
-			}
-			if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
-				TaskName: parentResp.TaskName,
-				URL:      parentResp.URL,
-				SiteName: parentResp.SiteName,
-			}, 0); err != nil {
-				continue
-			}
-			parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
+		// 多个子任务：事务内创建父任务 + 全部子任务
+		parentTask := &entity.Task{
+			BaseEntity: &model.BaseEntity{},
+		}
+		if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
+			TaskName:      parentResp.TaskName,
+			URL:           parentResp.URL,
+			SiteName:      parentResp.SiteName,
+			InvolvedRoles: parentResp.InvolvedRoles,
+		}, 0); err != nil {
+			continue
+		}
+		parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
 
-			err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-				if err := s.repo.CreateTask(txCtx, parentTask); err != nil {
+		err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+			if err := s.repo.CreateTask(txCtx, parentTask); err != nil {
+				return err
+			}
+			parentId := parentTask.GetID()
+
+			for _, childResp := range children {
+				childTask := &entity.Task{
+					BaseEntity: &model.BaseEntity{},
+				}
+				if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
+					TaskName:      childResp.TaskName,
+					SiteWorkID:    childResp.SiteWorkID,
+					URL:           childResp.URL,
+					SiteName:      childResp.SiteName,
+					PluginData:    childResp.PluginData,
+					InvolvedRoles: childResp.InvolvedRoles,
+				}, parentId); err != nil {
 					return err
 				}
-				parentId := parentTask.GetID()
-
-				for _, childResp := range children {
-					childTask := &entity.Task{
-						BaseEntity: &model.BaseEntity{},
-					}
-					if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
-						TaskName:   childResp.TaskName,
-						SiteWorkID: childResp.SiteWorkID,
-						URL:        childResp.URL,
-						SiteName:   childResp.SiteName,
-						PluginData: childResp.PluginData,
-					}, parentId); err != nil {
-						return err
-					}
-					if err := s.repo.CreateTask(txCtx, childTask); err != nil {
-						return err
-					}
-					childrenCount++
+				if err := s.repo.CreateTask(txCtx, childTask); err != nil {
+					return err
 				}
-				return nil
-			})
-			if err != nil {
-				logger.Log.Errorf("[Task] 创建任务组失败: %v", err)
-				continue
+				childrenCount++
 			}
+			return nil
+		})
+		if err != nil {
+			logger.Log.Errorf("[Task] 创建任务组失败: %v", err)
+			continue
+		}
 	}
 
 	return childrenCount, nil
@@ -783,6 +789,11 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 					parentTask.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
 				}
 
+				// involvedRoles:创建期声明的涉及板块(universe)
+				if len(taskResp.InvolvedRoles) > 0 {
+					parentTask.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
+				}
+
 				if err := s.repo.CreateTask(ctx, parentTask); err != nil {
 					outChan <- &CreateTaskStreamChan{Error: err}
 					parentTask = nil
@@ -820,6 +831,11 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				// 处理 pluginData
 				if childResp.PluginData != "" {
 					childTask.PluginData = sql.NullString{String: childResp.PluginData, Valid: true}
+				}
+
+				// involvedRoles:创建期声明的涉及板块(universe)
+				if len(childResp.InvolvedRoles) > 0 {
+					childTask.InvolvedRoles = sql.NullString{String: strings.Join(childResp.InvolvedRoles, ","), Valid: true}
 				}
 
 				batch = append(batch, childTask)

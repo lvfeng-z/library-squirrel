@@ -156,9 +156,16 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 
 	// recordMode 非 nil(开始/重下):把执行模式记录到任务树全部成员(父+子)。
 	// 每个任务都持有自己的模式,供 runModeFromTask 派生执行,以及用户单独续传某子任务时读取。
-	// 全量模式以显式集合(非 NULL)记录,保留真实执行模式信息。
+	// 开始(StartTaskTree)记录空 selection(派生时回退 universe)+workInfo=true;重下(Redownload)记录用户所选子集。
 	if recordMode != nil {
-		storeRolesVal := sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
+		// Start(runModeFull,storeRoles=nil)→重置 StoreRoles 为 NULL,执行期由 universe 派生(支持默认插件下全量)
+		// Redownload(storeRoles 非 nil,可空)→记录所选;空=仅作品信息(不拉资源)
+		var storeRolesVal sql.NullString
+		if recordMode.storeRoles == nil {
+			storeRolesVal = sql.NullString{Valid: false}
+		} else {
+			storeRolesVal = sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
+		}
 		ids := make([]int64, 0, len(tasks))
 		for _, t := range tasks {
 			t.StoreRoles = storeRolesVal

@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"strings"
+
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -11,23 +13,33 @@ func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
 	if task == nil {
 		return nil
 	}
+	// involvedRoles:创建期声明的涉及板块(universe),逗号分隔→切片;NULL/空=nil(前端走兜底集)
+	var involvedRoles []string
+	if task.InvolvedRoles.Valid && task.InvolvedRoles.String != "" {
+		for _, p := range strings.Split(task.InvolvedRoles.String, ",") {
+			if r := strings.TrimSpace(p); r != "" {
+				involvedRoles = append(involvedRoles, r)
+			}
+		}
+	}
 	return &sdkdto.TaskDTO{
-		ID:                   task.GetID(),
-		HasChild:             util.NullBoolToPointer(task.HasChild),
-		Pid:                  util.NullInt64ToPointer(task.Pid),
-		TaskName:             util.NullStringToPointer(task.TaskName),
-		SiteID:               util.NullInt64ToPointer(task.SiteID),
-		SiteWorkID:           util.NullStringToPointer(task.SiteWorkID),
-		URL:                  util.NullStringToPointer(task.URL),
-		Status:               task.Status,
-		PendingResourceID:    util.NullInt64ToPointer(task.PendingResourceID),
-		Continuable:          util.NullBoolToPointer(task.Continuable),
-		PluginPublicID:       util.NullStringToPointer(task.PluginPublicID),
+		ID:                task.GetID(),
+		HasChild:          util.NullBoolToPointer(task.HasChild),
+		Pid:               util.NullInt64ToPointer(task.Pid),
+		TaskName:          util.NullStringToPointer(task.TaskName),
+		SiteID:            util.NullInt64ToPointer(task.SiteID),
+		SiteWorkID:        util.NullStringToPointer(task.SiteWorkID),
+		URL:               util.NullStringToPointer(task.URL),
+		Status:            task.Status,
+		PendingResourceID: util.NullInt64ToPointer(task.PendingResourceID),
+		Continuable:       util.NullBoolToPointer(task.Continuable),
+		PluginPublicID:    util.NullStringToPointer(task.PluginPublicID),
 		PluginExtensionID: util.NullStringToPointer(task.PluginExtensionID),
-		PluginData:           util.NullStringToPointer(task.PluginData),
-		ErrorMessage:         util.NullStringToPointer(task.ErrorMessage),
-		CreateTime:           task.GetCreateTime(),
-		UpdateTime:           task.GetUpdateTime(),
+		PluginData:        util.NullStringToPointer(task.PluginData),
+		ErrorMessage:      util.NullStringToPointer(task.ErrorMessage),
+		InvolvedRoles:     involvedRoles,
+		CreateTime:        task.GetCreateTime(),
+		UpdateTime:        task.GetUpdateTime(),
 	}
 }
 
@@ -131,6 +143,12 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.ErrorMessage.Valid = false
 	}
 
+	// involvedRoles:DTO 切片→逗号分隔;空=不设置(保持 NULL=未确定)
+	if len(dto.InvolvedRoles) > 0 {
+		entity.InvolvedRoles.Valid = true
+		entity.InvolvedRoles.String = strings.Join(dto.InvolvedRoles, ",")
+	}
+
 	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）
 	if dto.CreateTime != 0 {
 		entity.SetCreateTime(dto.CreateTime)
@@ -189,15 +207,15 @@ func NewTaskProgressTreeDTO(taskDTO *sdkdto.TaskDTO) *sdkdto.TaskProgressTreeDTO
 
 // CreateTaskRequest 创建任务请求
 type CreateTaskRequest struct {
-	Pid                  int64  `json:"pid"`
-	TaskName             string `json:"taskName"`
-	SiteID               int    `json:"siteId"`
-	SiteWorkID           string `json:"siteWorkId"`
-	URL                  string `json:"url"`
-	HasChild             bool   `json:"hasChild"`
-	PluginPublicID       string `json:"pluginPublicId"`
+	Pid               int64  `json:"pid"`
+	TaskName          string `json:"taskName"`
+	SiteID            int    `json:"siteId"`
+	SiteWorkID        string `json:"siteWorkId"`
+	URL               string `json:"url"`
+	HasChild          bool   `json:"hasChild"`
+	PluginPublicID    string `json:"pluginPublicId"`
 	PluginExtensionID string `json:"pluginExtensionId"`
-	PluginData           string `json:"pluginData"`
+	PluginData        string `json:"pluginData"`
 }
 
 // TreeDataPageDTO 任务树数据分页DTO

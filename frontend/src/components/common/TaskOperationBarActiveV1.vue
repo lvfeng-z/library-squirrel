@@ -2,7 +2,7 @@
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
-import { ALL_STORE_ROLES, StoreRole } from '@renderer/constants/sectionCode.ts'
+import { ALL_STORE_ROLES, StoreRoleLabels } from '@renderer/constants/sectionCode.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import {computed, Ref, ref, toRaw} from 'vue'
@@ -182,6 +182,11 @@ function isTerminalState(): boolean {
 // 资源板块勾选(store_type 集合);作品元数据板块独立勾选。每次打开默认全不选 = 全集
 const storeRolesSelected: Ref<string[]> = ref([])
 const workInfoSelected: Ref<boolean> = ref(false)
+// 本任务可执行的资源板块:声明期 universe(involvedRoles)优先,未声明走兜底集
+const availableStoreRoles: Ref<string[]> = computed(() => {
+  const involved = props.row.taskProgress?.task?.involvedRoles
+  return notNullish(involved) && involved.length > 0 ? involved : ALL_STORE_ROLES
+})
 // 板块多选提示文本
 const sectionTooltips: Ref<string> = computed(() => {
   if (storeRolesSelected.value.length === 0 && !workInfoSelected.value) {
@@ -192,10 +197,9 @@ const sectionTooltips: Ref<string> = computed(() => {
     sectionText.push('作品信息')
   }
   for (const role of storeRolesSelected.value) {
-    if (role === StoreRole.MAIN) {
-      sectionText.push('资源')
-    } else if (role === StoreRole.THUMBNAIL) {
-      sectionText.push('缩略图')
+    const label = StoreRoleLabels[role]
+    if (label) {
+      sectionText.push(label)
     }
   }
   return '仅执行 ' + sectionText.join('、')
@@ -207,9 +211,9 @@ function handleExecuteSections() {
   sectionPopoverVisible.value = false
   const roles = toRaw(storeRolesSelected.value)
   const includeWorkInfo = workInfoSelected.value
-  // 都不勾选 = 全集(全部资源 + 作品元数据)
+  // 都不勾选 = 该任务可执行全集(声明 universe 或兜底集)+ 作品元数据
   if (roles.length === 0 && !includeWorkInfo) {
-    props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, [...ALL_STORE_ROLES], true)
+    props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, [...availableStoreRoles.value], true)
   } else {
     props.buttonClicked(props.row, TaskOperationCodeEnum.REDOWNLOAD, roles, includeWorkInfo)
   }
@@ -292,11 +296,12 @@ function formatBytes(bytes: number) {
             </template>
             <div class="task-operation-bar-section-tooltip-trigger">
               <el-checkbox-group v-model="storeRolesSelected">
-                <el-checkbox :value="StoreRole.MAIN">
-                  资源
-                </el-checkbox>
-                <el-checkbox :value="StoreRole.THUMBNAIL">
-                  缩略图
+                <el-checkbox
+                  v-for="role in availableStoreRoles"
+                  :key="role"
+                  :value="role"
+                >
+                  {{ StoreRoleLabels[role] }}
                 </el-checkbox>
               </el-checkbox-group>
               <el-checkbox v-model="workInfoSelected" style="margin-top: 4px">
