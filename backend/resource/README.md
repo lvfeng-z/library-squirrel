@@ -34,7 +34,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 音视频合并的业务编排层。设计详见 `doc/plan/merge-business.md`。
 
 - **流程**：取 resource 的 videoTrack/audioTrack store → 调 `merge.FFmpegMuxer.MergeRemux` → 落产物 PersistentStore(merged)（路径由 `persistentStore.BuildVariantPath` 从源视频轨 FilePath 推导）→ 事务挂 `resource_store`(merged)。
-- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 merged 保留原轨道）/ `overwrite`（产物作 main、删原轨道 store+文件）。
+- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 merged 保留原轨道）/ `overwrite`（新建 merged、删原轨道 store+文件）。
 - **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
 - **事务**：挂 resource_store 走 dbTransactorAdapter（tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；挂载失败补偿删产物 store。
 

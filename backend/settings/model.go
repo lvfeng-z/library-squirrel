@@ -47,13 +47,13 @@ type AppearanceSettings struct {
 
 // MergeSettings 合并相关设置
 type MergeSettings struct {
-	Strategy string `json:"strategy" koanf:"strategy"` // 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=产物作 main 删原轨道
+	Strategy string `json:"strategy" koanf:"strategy"` // 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=新建 merged 删原轨道
 }
 
 // 合并策略取值
 const (
 	MergeStrategyKeep      = "keep"      // 新建 merged store，保留原 videoTrack/audioTrack
-	MergeStrategyOverwrite = "overwrite" // 合并产物作 main 挂载，删除原轨道 store 及文件
+	MergeStrategyOverwrite = "overwrite" // 新建 merged store，删除原轨道 store 及文件
 )
 
 // NewSettings 创建默认设置

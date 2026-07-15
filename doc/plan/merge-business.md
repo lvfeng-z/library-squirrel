@@ -24,7 +24,7 @@ K（合并动作）的业务编排层。ffmpeg 封装已提供 `merge.FFmpegMuxe
 
 ### 3.1 mergeStrategy 设置项（归 resource）
 
-`mergeStrategy`（select）：`keep`（默认，新建 merged store、保留原轨道）/ `overwrite`（产物作 main、删原轨道 store 及文件）。挂 Settings 新分组 `MergeSettings`（`Strategy` 默认 `"keep"`）。resource 编排读它决定挂载策略。两处默认值同步（`backend/settings/model.go` 的 `NewSettings()`/`defaultSettings()`）。
+`mergeStrategy`（select）：`keep`（默认，新建 merged store、保留原轨道）/ `overwrite`（新建 merged store、删原轨道 store 及文件）。挂 Settings 新分组 `MergeSettings`（`Strategy` 默认 `"keep"`）。resource 编排读它决定挂载策略。两处默认值同步（`backend/settings/model.go` 的 `NewSettings()`/`defaultSettings()`）。
 
 ### 3.2 产物落盘（归 persistentStore）
 
