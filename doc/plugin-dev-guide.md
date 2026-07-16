@@ -280,6 +280,9 @@ type StoreSpec struct {
 
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
+- **`Format` 前导点约定(易错,主程序两套路径逻辑不一致,须分别遵守)**:
+  - **downloaded 轨**(main/videoTrack/audioTrack 等):`Format` **带前导点**(如 `.mp4`、`.m4a`、`.jpg`、`.png`)。主程序 `resolveMainPath` 直接 `文件名 + Format` 拼接。
+  - **derived 缩略图**(thumbnail):`Format` **不带前导点**(如 `jpg`、`png`)。主程序 `buildThumbnailRelPath`/`buildThumbnailFileName` 自拼 `_thumbnail.` + Format(自己加 dot);若带点会产出 `_thumbnail..jpg`,既命名错误又会因 `..` 子串触发静态服务路径穿越拦截 → 前端 404。
 
 #### ctx 与 reader 契约(重要)
 
@@ -309,7 +312,7 @@ type StoreSpec struct {
 
 #### 缩略图
 
-缩略图作为 `Generation=derived` 的 StoreSpec 在 Start 里产出,而非单独接口。从作品元数据/URL 取缩略图字节包装返回;无则不产出该轨(非致命)。
+缩略图作为 `Generation=derived` 的 StoreSpec 在 Start 里产出,而非单独接口。从作品元数据/URL 取缩略图字节包装返回;无则不产出该轨(非致命)。**`Format` 不带前导点**(如 `jpg`),主程序构建缩略图路径时自加 dot(见上 StoreSpec 的 Format 前导点约定)。
 
 ### 6.2 SiteBrowser（运行时）
 
