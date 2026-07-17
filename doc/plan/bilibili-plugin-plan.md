@@ -81,23 +81,25 @@ library-squirrel-plugin-bilibili/   (module: github.com/lvfeng/library-squirrel-
 
 ### Create(url) → *TaskCreateResult
 1. `urlparser` 解析 → 类型 + ID(b23.tv 短链先 HEAD 跟随重定向)。
-2. **video**:view + playurl 取标题/简介/封面/UP主/标签/分P;每分 P 的 PluginData 存该 P 的 `cid`、目标画质的**视频流 URL**与**音频流 URL**、缩略图 URL。多 P → 父任务(作品集 bvid)+ 每分 P 子任务。
+2. **video**:view 取标题/简介/封面/UP主/标签/分P。**Create 不调 playurl、不存流 URL**——只存该 P 的 `avid`/`cid`(稳定标识)+缩略图 URL;流 URL 由 Start/Resume 下载时重取(见下「DASH 流 URL 时效」)。多 P → 父任务(作品集 bvid)+ 每分 P 子任务。
 3. **dynamic/article**:取图片 URL 列表,父任务 + 每图一个子任务(单流)。
 4. **声明 `InvolvedRoles`**(创建期 universe,决定任务涉及哪些资源板块,前端据此展示可选板块):
-   - video:`[StoreRoleVideoTrack, StoreRoleAudioTrack]`(缩略图作 derived 轨,需时再加 `StoreRoleThumbnail`)。
+   - video:`[StoreRoleVideoTrack, StoreRoleAudioTrack, StoreRoleThumbnail]`(封面作 derived 缩略图轨)。
    - dynamic/article:`[StoreRoleMain]`(沿用 pixiv)。
+
+> **DASH 流 URL 时效(重要契约)**:bilibili DASH 流 URL(playurl 返回)带**签名时效**(约小时级,过期返 403),且可能与请求 IP 绑定。故 **Create 不存储 URL**;每次 **Start/Resume 用 `avid+cid+当前画质/编码` 重取 playurl** 拿最新流(同 IP 取同 IP 下)。pixiv 的 pximg URL 不过期故无需此机制——bilibili 特有。
 
 ### Start(ctx, task, storeRoles) → ([]*StoreSpec, *WorkResponse, error)(多轨核心)
 > `storeRoles` 由平台按 `InvolvedRoles` 派生(首次全量)或 Redownload 时显式选择;空集表示全量。逐轨用 `wantsRole(storeRoles, role)` 判定是否产出。
-- **video**:按 storeRoles 条件产出两条 `StoreSpec`(generation=downloaded):
-  - `{Role: StoreRoleVideoTrack, ReadCloser: NewRetryReadCloser(视频流URL), Generation: "downloaded", Format, Size, Continuable: ptr(true)}`
-  - `{Role: StoreRoleAudioTrack, ReadCloser: NewRetryReadCloser(音频流URL), Generation: "downloaded", Format, Size, Continuable: ptr(true)}`
+- **video**:先用 `avid+cid+当前画质/编码` 重取 playurl DASH(见上「DASH 流 URL 时效」),再按 storeRoles 条件产出两条 `StoreSpec`(generation=downloaded):
+  - `{Role: StoreRoleVideoTrack, ReadCloser: NewRetryReadCloser(视频流URL), Generation: "downloaded", Format:".mp4", Size, Continuable: ptr(true)}`
+  - `{Role: StoreRoleAudioTrack, ReadCloser: NewRetryReadCloser(音频流URL), Generation: "downloaded", Format:".m4a", Size, Continuable: ptr(true)}`
   - 第二返回值 `*WorkResponse`:标题/UP主/标签/封面缩略图(跨轨共享,返回一次)。
 - **dynamic/article**:单元素 `[]*StoreSpec`(`{Role: StoreRoleMain, Generation: "downloaded", ...}`)。
-- **缩略图(无独立方法)**:封面作为 `{Role: StoreRoleThumbnail, Generation: "derived", ReadCloser: io.NopCloser(bytes), Continuable: ptr(false)}` 一次性派生轨并入流集合(可选,取决于是否声明该 role)。
+- **缩略图(无独立方法)**:封面作为 `{Role: StoreRoleThumbnail, Generation: "derived", ReadCloser: io.NopCloser(bytes), Format:"jpg", Continuable: ptr(false)}` 一次性派生轨并入流集合(由 `wantsRole(storeRoles, thumbnail)` 决定)。**`Format` 不带前导点**(`jpg`)——主程序 `buildThumbnailRelPath` 自拼 `_thumbnail.`+format,带点会产出 `_thumbnail..jpg` 触发 404(见 plugin-dev-guide.md Format 前导点契约)。
 
 ### Resume(ctx, param) → ([]*StoreSpec, *WorkResponse, error)
-- 遍历 `param.StreamOffsets`(`map[string]int64`,role → 该轨已写入字节数,仅未完成的 downloaded 轨出现):为每个未完成 role new 一个 reader、`SetValidBytes(offset)` 从偏移续传、返回对应 role 的 `StoreSpec`;已完成轨不出现在 map 中(平台跳过)。
+- 先用 `avid+cid+当前画质/编码` 重取 playurl 取最新流 URL(同 Start,见「DASH 流 URL 时效」),再遍历 `param.StreamOffsets`(`map[string]int64`,role → 该轨已写入字节数,仅未完成的 downloaded 轨出现):为每个未完成 role new 一个 reader、`SetValidBytes(offset)` 从偏移续传、返回对应 role 的 `StoreSpec`;已完成轨不出现在 map 中(平台跳过)。
 - derived 轨未完成则整轨重产。
 
 ### Pause / Stop(param) —— 任务级,广播到该任务全部 reader
