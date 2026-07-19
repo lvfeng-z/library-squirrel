@@ -242,21 +242,21 @@ library-squirrel-plugin-bilibili/   (module: github.com/lvfeng/library-squirrel-
 - **已修**：`resumeVideo`/`resumeImage` 改为 `_, size, err := reader.GetHeaders()` 并在 spec 补 `Size: size`。
 - **测法**：下载视频→暂停→恢复，进度条总量应正常。
 
-### ① 作者介绍（sign/introduce）缺失（待实施）
-- **现状**：
-  - 视频：`buildSiteAuthors`（`bilibili_task_handler.go`）调 `GetUserInfo`（`bilibiliapi/user.go`，`/x/space/wbi/acc/info` WBI 签名）→ **返 -403 风控**（space 接口限制更严，与 nav -101 同类）→ 回退基本字段（name+homepage），无 sign。
-  - 图文/专栏：`createImage`（`bilibili_task_handler.go`）的 `SiteAuthors` 仅 name+homepage，**未取 sign**。
-- **数据源候选**：
-  - `acc/info`：含 sign，但 -403 风控。修风控需更全指纹（buvid_fp/w_webid 等，投机，同 -101/-352 类；当前 buvid3 不充分）。
-  - opus 页 `module_author`：图文/专栏的 opus 页 `__INITIAL_STATE__.detail.modules[MODULE_TYPE_AUTHOR].module_author` **可能有 sign 字段**（待确认——之前 dump 在 avatar/layers 截断，未看到 sign）。视频非 opus 页形态，不适用。
-  - 视频 view 响应 `data.owner`：仅 mid/name/face，**无 sign**。
-- **方案建议**：图文/专栏先确认并取 opus `module_author.sign`（扩 `parseOpusState`/`OpusInitialState`）；视频 acc/info -403 需攻坚风控（buvid_fp）或暂接受缺失（非致命，已兜底 name）。
-- **关键代码**：`bilibiliapi/user.go`（GetUserInfo）、`bilibili_task_handler.go`（buildSiteAuthors、createImage 的 SiteAuthors）、`bilibiliapi/dynamic.go`（parseOpusState 的 MODULE_TYPE_AUTHOR 目前只取 mid/name）、`model.SiteAuthorEntry.Introduce`（字段已存在）。
+### ① 作者介绍（sign）——整体暂接受，攻坚延后分支 R
+- **三路均无法取到 sign**（2026-07-20 诊断坐实）：
+  - 视频：`/x/space/wbi/acc/info` 登录态下返 -403，诊断排除法坐实根因=缺 `w_webid`（cookie 6 项够/登录/dm_img_* 发出/body=`{"code":-403,"message":"访问权限不足","ttl":1}` 普通 -403 无 voucher）。
+  - 图文/专栏：dump opus/cv 页 `MODULE_TYPE_AUTHOR.module_author` 完整 JSON，字段=`type/avatar/mid/face/face_nft/name/label/jump_url`——**结构上不含 `sign`**。dynamic API module_author 同样不含。
+- **结论**：所有轻量数据源都不含 sign，唯一来源 acc/info 被 -403 风控挡住。①作者介绍整体暂接受（兜底 name+homepage，非致命），并入延后分支 R（待 w_webid 攻坚让 acc/info 过 -403，届时视频+图文+专栏统一走 acc/info 取 sign）。
+- **已撤回**（DEAD_CODE_CLEANUP，2026-07-20）：dm_img_* 参数（证伪）、opus module_author Sign 字段 + authorSign 透传链路（数据源无 sign）、相关诊断日志。代码恢复到只取 mid/name。
+- **dm_img_* 证伪过程**：曾据 [A Salty Blog（2024-01，针对 arc/search）](https://im.salty.fish/index.php/archives/revengr-bilibili-352.html) 加 dm_img_*，实测仍 -403；[Nemo2011/bilibili-api 现代代码](https://github.com/Nemo2011/bilibili-api) 显示 acc/info 用 `w_webid`。
+- **w_webid 获取链路受阻**：Nemo2011 `user_render_data.py` 源码 GitHub 全路读不到；curl 空间页（无 cookie）不含。获取方式未明（候选：登录态空间页 HTML dump / render_data / ExClimbWuzhi）。
+- **关键代码**：`bilibili_task_handler.go`（buildSiteAuthors 视频兜底 name、createImage 图文/专栏用基本字段）、`bilibiliapi/user.go`（GetUserInfo，-403 时调用方兜底）。
 
-### ② 标签介绍（abstract/description）缺失（待实施，方案明确）
-- **现状**：视频 `buildSiteTags`（`bilibili_task_handler.go`）调 `GetTags`（`bilibiliapi/video.go`，`/x/tag/archive/tags`）→ 只取 tag_id+tag_name，**无描述**；`model.SiteTagEntry.Description` 未填。
-- **数据源**：`/x/tag/info?tag_id=X`（bilibili-API-collect）返回标签详情含 `data.news.archive_audience`/`data.description` 等，取描述字段。
-- **方案**：`GetTags` 拿到 tag 列表后，逐个调 `/x/tag/info` 取描述填入 `SiteTagEntry.Description`（或合并到一次结构）。注意控制调用频次（每标签一次）。
-- **关键代码**：`bilibiliapi/video.go`（GetTags）、`bilibili_task_handler.go`（buildSiteTags，目前只设 TagName）、`bilibiliapi/urls.go`（加 `TagInfoURL = BaseAPI+"/x/tag/info"`）、`model.SiteTagEntry.Description`（字段已存在）。
-- **注**：图文/专栏（createImage）目前不取标签，本次范围仅视频。
+### ② 标签介绍（content）已实现，数据源内容稀缺（多数标签无简介）
+- **根因**：`GetTags`（`video.go`）调 `/x/tag/archive/tags` 只取 tag_id+tag_name、无简介；`buildSiteTags` 未填 `Description`。
+- **已实现（2026-07-18，编译+vet 通过）**：`models.go`（TagBrief/TagInfoResponse）、`urls.go`（TagInfoURL）、`video.go`（GetTags 返回 []TagBrief + GetTagAbstract 调 /x/tag/info）、`handler buildSiteTags`（循环填 Description）。
+- **字段名修正（2026-07-19）**：`/x/tag/info` 实际返回 `content`/`short_content`（非 abstract/description），已修正 `TagInfoResponse` + `GetTagAbstract`。
+- **数据源内容稀缺（2026-07-20 curl 坐实）**：**大多数标签 content/short_content 为空**——如"莱万汀"（22404 次使用）content 空。bilibili 标签是分类标记（非百科），多数无文字简介。实现正确（tagName 取到、字段名对），只有部分标签有 content 会显示。
+- **范围**：仅视频；图文/专栏不取标签。
+- **关键代码**：`bilibiliapi/models.go`（TagBrief/TagInfoResponse）、`bilibiliapi/urls.go`（TagInfoURL）、`bilibiliapi/video.go`（GetTags/GetTagAbstract）、`bilibili_task_handler.go`（buildSiteTags）。
 
