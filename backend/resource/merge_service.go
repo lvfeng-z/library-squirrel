@@ -25,6 +25,10 @@ var (
 	ErrAudioTrackNotFound = errors.New("该资源缺少音频轨，无法合并")
 )
 
+// mergeTempFilePrefix 合并产物临时文件前缀：MergeResource 在 os.TempDir() 下以此前缀创建临时产物，
+// 启动清理据此识别并删除崩溃残留（进程在 os.Remove 前退出时的未清理文件）。
+const mergeTempFilePrefix = "ls-merge-"
+
 // MergeResult 合并产物信息
 type MergeResult struct {
 	// MergedStoreID 合并产物的 PersistentStore ID
@@ -85,6 +89,14 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 		return nil, ErrMergeUnavailable
 	}
 
+	// 去重守卫：已存在 merged 产物则幂等返回，避免 keep 模式重复合并累积孤儿 resource_store(merged) 关联。
+	// 历史已累积的多行 merged 不在此清理（属数据修复范畴）；若需强制重合并，未来按需加 force 参数。
+	if existing, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeMerged); err == nil {
+		return &MergeResult{MergedStoreID: existing.StoreID}, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("查询已合并产物失败: %w", err)
+	}
+
 	// 取 videoTrack/audioTrack store（缺轨返回明确中文错误）
 	videoRS, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeVideoTrack)
 	if err != nil {
@@ -118,7 +130,7 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 	if videoExt == "" {
 		videoExt = ".mp4"
 	}
-	tmpOut := filepath.Join(os.TempDir(), fmt.Sprintf("ls-merge-%d-%d%s", resourceId, time.Now().UnixNano(), videoExt))
+	tmpOut := filepath.Join(os.TempDir(), fmt.Sprintf(mergeTempFilePrefix+"%d-%d%s", resourceId, time.Now().UnixNano(), videoExt))
 
 	// 合并（muxer 自处理超时/失败/产物残留）
 	if err := s.merger.MergeRemux(ctx, videoAbs, audioAbs, tmpOut); err != nil {
@@ -141,7 +153,8 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 		rs := domain.NewResourceStore()
 		rs.ResourceID = resourceId
 		rs.StoreType = domain.StoreTypeMerged
-		rs.Generation = domain.GenerationDownloaded
+		// merged 是一次性派生产物（非流式下载），语义为 derived（不可续传），非 downloaded。
+		rs.Generation = domain.GenerationDerived
 		rs.StoreID = mergedPsId
 		return s.resourceStoreRepo.Save(txCtx, rs)
 	}); err != nil {
@@ -174,4 +187,24 @@ func buildMergedFileName(srcFileName, ext string) string {
 		base = "merged"
 	}
 	return base + "_merged" + ext
+}
+
+// CleanupResidualTempFiles 清理合并产物临时文件残留（os.TempDir() 下 mergeTempFilePrefix 前缀文件）。
+// 残留场景：MergeResource 创建临时产物后、os.Remove 之前进程崩溃（ffmpeg 执行中或落盘期间被杀）。
+// 应用启动时调用，幂等——无残留时无副作用；单个删除失败不中断整体清理（残留可能被占用，下次启动再清）。
+func (s *MergeService) CleanupResidualTempFiles(ctx context.Context) error {
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return fmt.Errorf("读取临时目录失败: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(entry.Name(), mergeTempFilePrefix) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(os.TempDir(), entry.Name()))
+	}
+	return nil
 }

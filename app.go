@@ -929,6 +929,11 @@ func (app *App) initAdvancedServices() error {
 		&dbTransactorAdapter{db: app.db},
 	)
 
+	// 启动清理：合并产物临时文件残留（ls-merge-*，进程崩溃未 os.Remove 时残留）
+	if err := app.MergeService.CleanupResidualTempFiles(context.Background()); err != nil {
+		logger.Log.Warnf("清理合并产物临时残留失败: %v", err)
+	}
+
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
 
