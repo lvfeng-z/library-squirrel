@@ -36,6 +36,14 @@ go get github.com/lvfeng-z/library-squirrel-sdk
 
 插件接口（`PluginContext`、`TaskHandler`、`SiteBrowser`、`WindowOptions` 等）定义在 SDK 的 `dto` 包。
 
+**本地协同开发 SDK**：若需同时改 SDK（跨仓库），在插件 `go.mod` 加 replace 指令指向本地 SDK 源码：
+
+```
+replace github.com/lvfeng-z/library-squirrel-sdk => ../library-squirrel-sdk
+```
+
+发布前确认 replace 不打包进正式版本（build.ps1 打包时注意），确保用正式 SDK 版本。
+
 ## 二、快速开始
 
 最小运行时插件（含一个 TaskHandler）：
@@ -104,7 +112,7 @@ type MyTaskHandler struct{}
 | `siteBrowsers` | `[{id, name?, description?}]` | 三选一 | SiteBrowser 声明（运行时注册） |
 | `slots` | `[SlotDeclaration]` | 三选一 | UI 插槽（声明式注册，见 6.3） |
 | `staticResources` | `{directories: string[]}` | 否 | 允许前端访问的资源目录白名单 |
-| `settings` | `[SettingDeclaration]` | 否 | 用户可配置项（见 7.2） |
+| `settings` | `[SettingDeclaration]` | 否 | 用户可配置项（见 8.2） |
 
 **校验规则**（安装时）：
 - `id/name/version/author` 必填。
@@ -170,7 +178,7 @@ type MyTaskHandler struct{}
 ]
 ```
 
-声明后，主程序在**插件管理页**自动渲染设置表单，用户编辑后存入插件自存信息；插件用 `ctx.GetValue(key)` 读取（见 7.2）。
+声明后，主程序在**插件管理页**自动渲染设置表单，用户编辑后存入插件自存信息；插件用 `ctx.GetValue(key)` 读取（见 8.2）。
 
 ## 四、插件入口
 
@@ -314,6 +322,25 @@ type StoreSpec struct {
 
 缩略图作为 `Generation=derived` 的 StoreSpec 在 Start 里产出,而非单独接口。从作品元数据/URL 取缩略图字节包装返回;无则不产出该轨(非致命)。**`Format` 不带前导点**(如 `jpg`),主程序构建缩略图路径时自加 dot(见上 StoreSpec 的 Format 前导点约定)。
 
+#### CreateWorkInfo 与作品元数据落库
+
+`Create` 产出的作品元数据**不直接入库**,而是先序列化进 `TaskCreateResponse.PluginData`(字符串),由主程序存入 task 记录;后续主程序调用 `CreateWorkInfo(task)` 反序列化 `PluginData` 并构建 `WorkResponse` 返回——**这是元数据落库的唯一入口**。数据流:
+
+```
+Create → PluginData(含 SiteAuthors/SiteTags/UnifiedWorkInfo)序列化
+       → 主程序存 task.PluginData
+CreateWorkInfo(task) → 反序列化 task.PluginData
+                     → 构建 WorkResponse(TaskSiteAuthorDTO/TaskSiteTagDTO)
+                     → 主程序写 work/author/tag 表
+```
+
+关键 DTO 字段(**留空则该字段不入库/不前端展示**):
+
+- `TaskSiteAuthorDTO`:`SiteAuthorID`、`AuthorName`、`Introduce`(作者简介/签名)、`Homepage`、`Rank`(等级等)、`FixedAuthorName` 等。
+- `TaskSiteTagDTO`:`SiteTagID`、`TagName`、`Description`(标签简介)。
+
+**兜底原则**:作者/标签的富信息(简介/等级)获取失败时(站点风控、字段不存在等),回退基本字段(name + homepage),标记为非致命——`CreateWorkInfo` 不应因富信息缺失而整体失败。站点返回的字段名/结构务必先 curl 确认(见第十五节),勿盲猜字段名。
+
 ### 6.2 SiteBrowser（运行时）
 
 ```go
@@ -337,11 +364,76 @@ type SiteBrowser interface {
 
 **预编译组件构建**：插件前端用 Vite + `componentFactoryPlugin` 构建为工厂函数（替换 `vue`/`@wailsio/runtime` import 为注入变量，`export default` 转 `return`）。**禁止 `import { X as Y }` 的 `as` 语法**（工厂插件不兼容，需别名时直接修改变量名）。
 
-## 七、插件自存信息
+## 七、站点交互：HTTP 客户端、代理、风控与登录态
+
+爬虫型插件（下载/抓取外部站点资源）的核心挑战在于与站点的博弈——代理环境、风控拦截、登录态。本节给出经实践验证的模式。
+
+### 7.1 HTTP 客户端与代理
+
+用户常处于 VPN/代理环境，插件 HTTP 客户端必须正确决策代理：
+
+- **代理决策顺序**：插件显式设置（用户在 `settings` 填 `proxyUrl`）> 系统代理 > 环境变量（`HTTP_PROXY`/`HTTPS_PROXY`）。
+- **Windows 系统代理要走注册表**：`http.ProxyFromEnvironment` 只读环境变量、不读 Windows 系统代理（注册表 `ProxyServer`），导致"规则模式 VPN"（设系统代理、不设 env）下插件直连被限速/拦截。需自行读注册表补全。
+- **连接复用（keep-alive）opt-in 而非默认**：某些代理（尤其 HTTP 隧道）对 keep-alive 连接发送 `Unsolicited response`，导致复用连接读到脏数据。建议 API/下载路径的 `http.Transport` 默认 `DisableKeepAlives=true`，仅在确认代理健康时显式开启连接池（配 `IdleConnTimeout`/`ResponseHeaderTimeout` 降低取到陈旧连接的概率）。
+- **下载路径与 API 路径用不同 Transport**：API 路径（短请求、风控敏感）禁用 keep-alive；下载路径（大文件、重连代价高）可开启连接复用（opt-in）。
+
+### 7.2 站点风控识别与应对
+
+站点对程序化请求做风控，常见返回码（以 bilibili 为例，其他站点类似）：
+
+| 现象 | 典型码 | 含义 | 应对 |
+|---|---|---|---|
+| 未登录 | `-101` / HTTP 401 | 账号未登录 | 走登录流程（见 7.3） |
+| 风控校验失败 | `-352` | 指纹/行为风控 | 补浏览器指纹 cookie（buvid3/buvid4 等） |
+| 访问权限不足 | `-403` | 高级风控（缺关键指纹参数） | 攻坚（如 acc/info 缺 `w_webid`）或暂接受兜底 |
+| 请求过快 | `412` / `-799` | 频控 | 降频 + 退避重试 |
+
+**应对原则**：
+1. **两段解析响应**：先解通用外壳 `{code, message}`，`code != 0` 直接返回干净错误（避免错误响应体结构差异引发迷惑性 parse 失败）；`code == 0` 再解全包到业务结构。
+2. **非致命回退**：元数据富信息（作者简介、标签描述等）获取失败时回退基本字段（name + id + homepage），不影响主流程下载。
+3. **勿盲信过时资料**：站点风控持续升级，社区逆向方案（博客/issue）可能过时（bilibili 曾从 `dm_img_*` 参数升级到 `w_webid`）。先 curl 实测当前响应（见第十五节），再定方案。
+
+### 7.3 登录态管理
+
+许多站点资源（高清/个人信息）需登录态。登录方式按站点：
+
+- **OAuth**（如 pixiv）：`OpenWindow` 打开授权页 → 拦截 callback URL（见第十节）。
+- **扫码登录**（如 bilibili）：调站点 QR generate 接口取二维码 → `OpenWindow` 用 `data:URL` Navigate 显示二维码（**不要用 `ExecuteScript(document.write)`，有 UAF 风险，见第十节**）→ 轮询 QR poll 接口，成功时响应 `Set-Cookie` 携带登录态。
+
+**登录态持久化**（跨重启）：
+
+```go
+// 登录成功后：导出 cookie 加密存储
+cookies := client.ExportLoginCookies()       // []*http.Cookie
+data, _ := json.Marshal(cookies)
+ctx.SetValueEncrypted("login_cookies", string(data))
+
+// 启动期恢复
+raw, _ := ctx.GetValue("login_cookies")
+var cookies []*http.Cookie
+json.Unmarshal([]byte(raw), &cookies)
+client.ImportCookies(cookies)
+```
+
+`http.Client` 用 `CookieJar` 自动管理 cookie（登录响应的 `Set-Cookie` 自动捕获，后续请求自动带）。敏感 cookie（SESSDATA 等）务必用 `SetValueEncrypted` 加密存储。
+
+**未登录引导模式**（推荐）：`Create` 检测未登录时，异步弹登录窗 + 返回"请扫码后重试"错误，主程序提示用户；用户登录后重新 Create。避免阻塞主线程等登录。
+
+```go
+func (h *Handler) Create(url string) (*sdkdto.TaskCreateResult, error) {
+    if !h.loggedIn() {
+        h.autoLoginAsync()   // 异步弹登录窗（CAS 去重，避免重复弹）
+        return nil, errors.New("未登录，请完成登录后重试（登录窗口已弹出）")
+    }
+    // ... 正常 Create
+}
+```
+
+## 八、插件自存信息
 
 统一 KV 存储（`plugin_storage` 单表），明文与加密共存。**取代旧的 `plugin_data` 与加密存储**。
 
-### 7.1 存取 API
+### 8.1 存取 API
 
 ```go
 // 明文
@@ -359,13 +451,13 @@ all, _ := ctx.GetAllValues()                // map[key]明文值（加密项已�
 
 读取（`GetValue`/`GetAllValues`）对加密项**透明解密**，统一返回明文。插件只在**写入**时分 `SetValue`/`SetValueEncrypted`。
 
-### 7.2 用户设置（settings）
+### 8.2 用户设置（settings）
 
 在 `plugin.json` 声明 `extensions.settings` 后：
 - 主程序在插件管理页渲染表单（按 `type` 分发控件、按 `group` 分组），用户编辑后由主程序按声明的 `encrypted` 路由 `SetValue`/`SetValueEncrypted` 存入。
 - 插件用 `ctx.GetValue(key)` 读取用户配置值（统一为 string，integer 等类型自行转换）。
 
-## 八、前端通信
+## 九、前端通信
 
 插件与前端通过 **Wails Events** 双向通信（经主程序 gRPC 桥接）。
 
@@ -398,7 +490,7 @@ for data := range ch {
 
 > **注意**：插件阻塞等待前端响应时，务必设置超时（避免永久阻塞）。长期订阅建议配合 `UnsubscribeFrontend` 释放资源。
 
-## 8.1 插件前端组件调用主程序后端
+### 9.1 插件前端组件调用主程序后端
 
 插件通过 Slot（view/embed/dialog/replaceView）加载的前端组件运行在主程序渲染进程内，可通过 `window.__PLUGIN_CTX__.custom.apis` 直接调用主程序后端接口（Wails IPC）。
 
@@ -421,7 +513,7 @@ onMounted(function() {
 
 > 分页响应结构：`ApiResult<Page<T>>` → `result.data.data`（数据列表），`result.data.dataCount`（总数）。
 
-## 九、原生窗口（OpenWindow，仅 Windows）
+## 十、原生窗口（OpenWindow，仅 Windows）
 
 打开 WebView2 弹窗，常用于 OAuth 登录等需要浏览器交互的场景。
 
@@ -449,9 +541,11 @@ win.Close()
 
 **WindowHandle 方法**：`Close()`、`SetTitle(title)`、`WaitForNavigation(urlPrefix, timeoutMs)`、`ExecuteScript(js)`、`Done() <-chan struct{}`。
 
+> **`ExecuteScript` UAF 风险**：`ExecuteScript` 通过 COM 异步回调执行 JS，handler 经 `unsafe.Pointer` 传递，存在生命周期 UAF（use-after-free）风险——可能触发插件子进程堆损坏（Windows 下 `0xc0000374`）。需要往窗口注入内容的场景（如 `document.write` 显示二维码/HTML），改用 **`data:URL` + 重新 Navigate** 规避（把内容编码为 `data:text/html;base64,...` 作为窗口 URL，或初始 `URL` 直接用 data URL）。仅做导航拦截（`WaitForNavigation`）不触发此问题。
+
 > `ctx.GetMainWindowHandle()` 返回主窗口 HWND（由主程序在 Activate 时注入），作为 `ownerHWND` 让弹窗置顶主窗口。**仅 Windows 支持**，其他平台返回错误。
 
-## 十、静态资源
+## 十一、静态资源
 
 ### URL 规约
 
@@ -475,7 +569,7 @@ http://wails.localhost:{backend-port}/plugin/{author}/{id}/{version}/{relativePa
 
 静态资源带 `ETag` + `Cache-Control: public, max-age=31536000, immutable`（基于版本号），版本升级自动失效。
 
-## 十一、打包与发布
+## 十二、打包与发布
 
 ### build.ps1 步骤
 
@@ -514,7 +608,7 @@ dist/
 - **单版本**：同一 `publicId` 不支持多版本共存，DB 只保留一条记录。
 - **升级**：通过「修复」（`Reinstall` 从备份恢复）或「选择安装包修复」（`ReinstallFromPath` 指定新 ZIP），会先卸载旧版（删目录）再重装。
 
-## 十二、卸载行为
+## 十三、卸载行为
 
 卸载插件时，主程序执行：
 1. 停止插件子进程（`Shutdown` RPC → 超时强杀）。
@@ -525,13 +619,58 @@ dist/
 
 > reload 后主程序内置路由（`routes.ts` 静态定义）能直接匹配当前 URL，无需等待动态注册。
 
-## 十三、完整示例
+## 十四、完整示例
 
 参考真实插件：
 - **pixiv 插件**（`library-squirrel-plugin-pixiv`）：运行时插件，含 TaskHandler + SiteBrowser + OAuth 登录（OpenWindow）+ 统一自存信息（token 加密存储）+ siteBrowserList Slot + 测试用 view/replaceView/embed/dialog/menu slot + 前端调用主程序后端（`window.__PLUGIN_CTX__`）。
 - **local-import 插件**（`library-squirrel-plugin-local`）：含前端通信（`PublishToFrontend`/`SubscribeFrontend`）+ 预编译 Vue 组件 dialog Slot。
 
-## 十四、最佳实践与陷阱
+## 十五、调试与诊断
+
+插件是独立子进程，调试不同于普通 Go 程序。本节给出经实践验证的诊断方法。
+
+### 15.1 日志查看
+
+- **插件业务日志**：写入主程序 `log/server.log`，前缀 `Plugin[插件名].模块`（如 `Plugin[bilibiliSuite].BilibiliAPI`）。插件用 `ctx.Infof/Warnf/Errorf` 写入。
+- **子进程崩溃**：插件 panic 输出在主日志，前缀 `plugin.插件文件名.exe:`（如 `plugin.bilibili_plugin.exe: panic: ...`）——子进程崩溃先找这个前缀。
+- **前端日志**（仅 dev）：`log/frontend.log`，含插件前端组件的 `console.*` 与未捕获异常。
+- **SDK/框架日志**：`[DEBUG] plugin.插件文件名.exe:` 前缀（如 RetryReader 建连、gRPC 握手），主日志 DEBUG 级别可见。
+
+### 15.2 第三方 API/页面数据源验证（写代码前必做）
+
+**不要盲猜站点 API/页面的字段名与结构**——先 curl 实测确认。常见踩坑：假设字段名 `abstract`/`description` 实际是 `content`/`short_content`；假设对象含某字段实际不含（如用户信息对象无 `sign`，sign 在别处或根本不返回）。
+
+```bash
+# API：带 UA/Referer/cookie 模拟插件请求
+curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ..." \
+  -e "https://目标站点/" "https://api.xxx.com/endpoint?param=1" | head -c 1000
+
+# 页面：确认 __INITIAL_STATE__ / 关键字段是否存在
+curl -sL -A "Mozilla/5.0 ..." "https://www.xxx.com/page/123" | grep -oE "字段名|__INITIAL_STATE__"
+```
+
+验证要点：响应字段名、字段是否真有值（数据源可能"字段存在但内容稀缺"——如标签简介多数为空，非 bug，兜底处理）、风控码（-101/-352/-403 等）。
+
+### 15.3 诊断日志技巧
+
+定位风控/字段问题时，在请求处打印请求参数 + 响应 body 片段：
+
+```go
+c.logger.Infof("请求诊断: params=%v cookie项数=%d", params, len(jar.Cookies(u)))
+// 业务错误统一附 body 片段（截断避免刷屏）
+return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, truncate(body, 300))
+```
+
+诊断完成后移除诊断日志或降级为 `Debugf`，避免污染生产日志。
+
+### 15.4 常见陷阱
+
+- **Go regexp repeat 上限 1000**：`regexp.MustCompile("x.{0,1500}")` 启动期 panic（`invalid repeat count`），插件子进程直接退出，主程序看到"插件启动失败 exit status 2"。改用 `.*?` 非贪婪匹配到边界标记，或 `{0,1000}` 以内。
+- **页面 JSON 嵌套提取**：`__INITIAL_STATE__` 里的对象常多层嵌套（如 `module_author.avatar.fallback_layers.layers[]`），正则 `"x":\{.*?\}` 会停在第一个内嵌 `}`——应匹配到下一个字段边界（如 `"x":.*?module_collection`）而非 `}`。
+- **插件改动需重装才生效**：插件是子进程 + ZIP 分发，改代码后必须 `build.ps1` 重新打包 + 主程序重装（"修复"或重装 ZIP），仅 `go build` 不重装不会生效。
+- **子进程 panic 未必有清晰上报**：插件 init 期 panic（如包级 `regexp.MustCompile` 失败）子进程直接退出，主程序日志的 `plugin.xxx.exe: panic` 行是定位关键。
+
+## 十六、最佳实践与陷阱
 
 1. **Activate 用标准签名**：`WithActivate(func(ctx))`，需要依赖注入时用闭包捕获，不要改签名。
 2. **优先声明式 Slot**：UI 扩展用 `plugin.json` 声明，无需子进程（纯 UI 插件）。
@@ -546,3 +685,8 @@ dist/
 11. **插件前端调主程序后端**：用 `window.__PLUGIN_CTX__.custom.apis`，不要硬编码 Wails method ID。
 12. **replaceView 的 target 要匹配路由 name**：主程序路由 name 在 `routes.ts` 静态定义（如 `taskManage`、`settings`），插件 target 必须与之完全一致。
 13. **embed 需主程序暴露插槽位**：插件声明 embed slot 的 `position` 必须对应主程序某处 `<EmbedSlotRenderer position="xxx">` 才会渲染。
+14. **站点数据源先 curl 验证**：写代码取站点 API/页面前，先 curl 确认响应结构与字段名（见第十五节），勿盲猜字段——字段名常与文档/社区资料不符，且数据源可能内容稀缺（字段在但值空，兜底处理）。
+15. **风控失败非致命回退**：作者/标签富信息（简介/等级）被站点风控挡住时，回退基本字段（name + homepage），不因富信息缺失让 `CreateWorkInfo` 整体失败（见 7.2、第六节 CreateWorkInfo 落库）。
+16. **登录态加密持久化 + 未登录引导**：cookie/credential 用 `SetValueEncrypted` 加密存储跨重启；`Create` 检测未登录时异步弹登录窗 + 返回"登录后重试"，不阻塞主线程（见 7.3）。
+17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
+18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
