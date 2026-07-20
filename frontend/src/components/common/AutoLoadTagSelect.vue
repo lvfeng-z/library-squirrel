@@ -197,7 +197,7 @@ function handleKeyPress(event: KeyboardEvent) {
         value: input.value,
         label: input.value,
         mainBackGround: 'var(--app-tag-orange-bg)',
-        mainBackGroundHover: 'rgb(230, 162, 60, 15%)',
+        mainBackGroundHover: 'color-mix(in srgb, var(--app-tag-orange-text) 15%, transparent)',
         mainTextColor: 'var(--app-tag-orange-text)'
       })
     )
@@ -278,7 +278,7 @@ watch(input, () => {
               class="auto-load-tag-close"
               @click="clear"
             >
-              <el-icon color="rgb(166.2, 168.6, 173.4, 75%)">
+              <el-icon color="var(--app-tag-neutral-text)">
                 <Close />
               </el-icon>
             </button>
@@ -334,7 +334,7 @@ watch(input, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgb(166.2, 168.6, 173.4, 5%);
+  background-color: var(--app-tag-neutral-bg-hover);
 }
 .auto-load-tag-close {
   display: flex;
@@ -349,7 +349,7 @@ watch(input, () => {
   /* 圆角半径设置为50%以形成圆形 */
   border-radius: 50%;
 
-  background-color: rgb(166.2, 168.6, 173.4, 30%);
+  background-color: var(--app-tag-neutral-bg-strong);
   border: none; /* 无边框 */
   cursor: pointer; /* 鼠标悬停时显示为手型指针 */
 
@@ -358,7 +358,7 @@ watch(input, () => {
 .auto-load-tag-close:hover {
   width: 24px;
   height: 24px;
-  background-color: rgb(166.2, 168.6, 173.4, 45%);
+  background-color: color-mix(in srgb, var(--app-tag-neutral-text) 45%, transparent);
   transition-duration: 0.2s;
 }
 .auto-load-tag-select-input {
@@ -366,7 +366,7 @@ watch(input, () => {
   appearance: none;
   background-color: transparent;
   border: none;
-  color: rgb(166.2, 168.6, 173.4);
+  color: var(--app-tag-neutral-text);
   font-family: inherit;
   font-size: inherit;
   height: 24px;

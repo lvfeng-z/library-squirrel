@@ -18,9 +18,9 @@
 | `--app-color-primary` | 主色 |
 | `--app-color-primary-light-1` ~ `--app-color-primary-light-9` | 主色浅色档（hover / 浅底） |
 | `--app-color-primary-dark-2` | 主色深色档（active） |
-| `--app-color-{success,warning,danger,info}` 及各自 `-light-N` / `-dark-2` | 状态色及派生档位 |
+| `--app-color-{success,warning,danger,info}` 及各自 `-light-N` / `-dark-2` | 状态色及派生档位（随主题整体变化） |
 
-> 状态色（success/warning/danger/info）跨主题保持一致；仅主色 primary 随主题变化。
+> 主色 primary 与状态色 success/warning/danger/info 均随主题变化；每套主题覆盖各自档位。
 
 ### 背景 / 文字 / 边框 / 填充
 | 令牌 | 语义 |
@@ -38,6 +38,19 @@
 |---|---|
 | `--app-tag-{blue,green,red,purple,orange}-bg` | 标签背景（半透明，叠于 surface） |
 | `--app-tag-{blue,green,red,purple,orange}-text` | 标签文字 |
+| `--app-tag-neutral-bg` / `-bg-hover` / `-bg-strong` / `-text` | 中性标签（跟随 info 色族，用于无状态/未选中/分段灰） |
+
+### 状态语义别名（状态展示优先使用）
+> 状态展示（任务状态、来源类型、开关、资源状态）优先用语义别名而非直接用色族。每个别名含 `-bg`/`-text`/`-border`，随主题变化。命名 `--app-status-{类目}-{语义}`，类目 `task`/`source`/`toggle`/`resource`。
+
+| 令牌前缀 | 语义 | 默认色族 |
+|---|---|---|
+| `--app-status-task-{created,processing,waiting,pausing,paused,stopping,completed,partly-finished,failed,waiting-input}` | 任务状态 | processing=primary、completed=success、failed=danger、waiting/paused=info、其余过渡态=warning |
+| `--app-status-source-{local,site}` | 来源类型（作者/标签） | local=tag-red、site=tag-blue |
+| `--app-status-toggle-{enabled,disabled}` | 开关/运行态 | enabled=success、disabled=info |
+| `--app-status-resource-{downloaded,missing,damaged}` | 资源/作品状态 | downloaded=success、missing=warning、damaged=danger |
+
+主程序内部渲染状态用 `StatusTag` 组件（传 `status` key）；插件可直接用上述令牌。新增状态：在 `tokens.css` 补齐 `--app-status-{key}-{bg,text,border}` 三档即可。
 
 ### 圆角与阴影
 | 令牌 | 值 |

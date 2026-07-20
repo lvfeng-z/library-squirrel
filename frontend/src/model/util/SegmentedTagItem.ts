@@ -3,6 +3,8 @@ import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class SegmentedTagItem extends SelectItem {
   disabled: boolean
+  /** 状态别名 key（如 source-local/source-site）。设置后 main 段颜色由 --app-status-{status}-* 令牌驱动，优先级高于下方显式色字段 */
+  status?: string
   mainBackGround?: string
   mainBackGroundHover?: string
   mainTextColor?: string
@@ -16,6 +18,7 @@ export default class SegmentedTagItem extends SelectItem {
   constructor(item: Partial<SelectItem> & CSegmentedTagItem) {
     super(item)
     this.disabled = isNullish(item.disabled) ? false : item.disabled
+    this.status = item.status
     this.mainBackGround = item.mainBackGround
     this.mainBackGroundHover = item.mainBackGroundHover
     this.mainTextColor = item.mainTextColor
@@ -30,6 +33,7 @@ export default class SegmentedTagItem extends SelectItem {
 
 interface CSegmentedTagItem {
   disabled?: boolean
+  status?: string
   mainBackGround?: string
   mainBackGroundHover?: string
   mainTextColor?: string

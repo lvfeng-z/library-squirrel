@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { Close } from '@element-plus/icons-vue'
-import { computed, ref, Ref } from 'vue'
+import { computed, type Ref } from 'vue'
 import { arrayIsEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
 
 // props
@@ -22,16 +22,21 @@ const subLabelsLength: Ref<number> = computed(() => {
 const tagLabelWrapperMaxWidth: Ref<string> = computed(() => {
   return props.closeable ? 'calc(100% - 18px)' : '100%'
 })
-const colorConfig = ref({
-  mainBackground: isNullish(props.item.mainBackGround) ? 'var(--app-tag-green-bg)' : props.item.mainBackGround,
-  mainBackgroundHover: isNullish(props.item.mainBackGroundHover) ? 'rgb(133.4, 206.2, 97.4, 15%)' : props.item.mainBackGroundHover,
-  mainTextColor: isNullish(props.item.mainTextColor) ? 'var(--app-tag-green-text)' : props.item.mainTextColor,
-  sub1BackGround: isNullish(props.item.sub1BackGround) ? 'rgb(166.2, 168.6, 173.4, 20%)' : props.item.sub1BackGround,
-  sub1BackGroundHover: isNullish(props.item.sub1BackGroundHover) ? 'rgb(166.2, 168.6, 173.4, 10%)' : props.item.sub1BackGroundHover,
-  sub1TextColor: isNullish(props.item.sub1TextColor) ? 'rgb(166.2, 168.6, 173.4, 100%)' : props.item.sub1TextColor,
-  sub2BackGround: isNullish(props.item.sub2BackGround) ? 'rgb(166.2, 168.6, 173.4, 30%)' : props.item.sub2BackGround,
-  sub2BackGroundHover: isNullish(props.item.sub2BackGroundHover) ? 'rgb(166.2, 168.6, 173.4, 10%)' : props.item.sub2BackGroundHover,
-  sub2TextColor: isNullish(props.item.sub2TextColor) ? 'rgb(166.2, 168.6, 173.4, 100%)' : props.item.sub2TextColor
+// main 段：item.status 优先（由 --app-status-{status}-* 令牌驱动），其次显式传入色，最后 neutral 默认；
+// sub 段统一走 neutral 令牌。用 computed 保证 colorResolver 后置 status 也能响应。
+const colorConfig = computed(() => {
+  const status = props.item.status
+  return {
+    mainBackground: status ? `var(--app-status-${status}-bg)` : (props.item.mainBackGround ?? 'var(--app-tag-neutral-bg)'),
+    mainBackgroundHover: status ? `var(--app-status-${status}-border)` : (props.item.mainBackGroundHover ?? 'var(--app-tag-neutral-bg-hover)'),
+    mainTextColor: status ? `var(--app-status-${status}-text)` : (props.item.mainTextColor ?? 'var(--app-tag-neutral-text)'),
+    sub1BackGround: props.item.sub1BackGround ?? 'var(--app-tag-neutral-bg)',
+    sub1BackGroundHover: props.item.sub1BackGroundHover ?? 'var(--app-tag-neutral-bg-hover)',
+    sub1TextColor: props.item.sub1TextColor ?? 'var(--app-tag-neutral-text)',
+    sub2BackGround: props.item.sub2BackGround ?? 'var(--app-tag-neutral-bg-strong)',
+    sub2BackGroundHover: props.item.sub2BackGroundHover ?? 'var(--app-tag-neutral-bg-hover)',
+    sub2TextColor: props.item.sub2TextColor ?? 'var(--app-tag-neutral-text)'
+  }
 })
 
 // 事件
@@ -113,7 +118,7 @@ function handleCloseButtonClicked() {
     >
       <el-icon
         class="segmented-tag-sub-close"
-        color="rgb(166.2, 168.6, 173.4, 75%)"
+        color="var(--app-tag-neutral-text)"
       >
         <Close />
       </el-icon>
@@ -151,10 +156,10 @@ function handleCloseButtonClicked() {
   background-color: v-bind('colorConfig.mainBackgroundHover');
 }
 .segmented-tag-main-label-unchecked {
-  background-color: rgb(166.2, 168.6, 173.4, 30%);
+  background-color: var(--app-tag-neutral-bg-strong);
 }
 .segmented-tag-main-label-unchecked:hover {
-  background-color: rgb(166.2, 168.6, 173.4, 10%);
+  background-color: var(--app-tag-neutral-bg-hover);
 }
 .segmented-tag-main-text {
   max-width: 100%;
@@ -167,7 +172,7 @@ function handleCloseButtonClicked() {
   color: v-bind('colorConfig.mainTextColor');
 }
 .segmented-tag-main-text-unchecked {
-  color: rgb(166.2, 168.6, 173.4, 100%);
+  color: var(--app-tag-neutral-text);
 }
 .segmented-tag-sub-label {
   display: flex;

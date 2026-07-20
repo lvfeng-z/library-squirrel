@@ -17,4 +17,54 @@ html[data-theme="forest-light"] {
   --app-bg-page: #e8efe5;
   --app-bg-surface-variant: #f0f4ee;
   --app-bg-sidebar: #d4e2d0;
+
+  /* ===== 状态色族：覆盖 success/warning/danger/info 档位，
+     使任务/开关/资源等所有 --app-status-* 别名与残留 el-tag 跟随森林主题 ===== */
+  --app-color-success: #5fa83a;
+  --app-color-success-light-1: #6fb14e;
+  --app-color-success-light-2: #7fb961;
+  --app-color-success-light-3: #8fc275;
+  --app-color-success-light-4: #9fcb89;
+  --app-color-success-light-5: #afd49d;
+  --app-color-success-light-6: #bfdcb0;
+  --app-color-success-light-7: #cfe5c4;
+  --app-color-success-light-8: #dfeed8;
+  --app-color-success-light-9: #eff6eb;
+  --app-color-success-dark-2: #4c862e;
+
+  --app-color-warning: #d9902f;
+  --app-color-warning-light-1: #dd9b44;
+  --app-color-warning-light-2: #e1a659;
+  --app-color-warning-light-3: #e4b16d;
+  --app-color-warning-light-4: #e8bc82;
+  --app-color-warning-light-5: #ecc897;
+  --app-color-warning-light-6: #f0d3ac;
+  --app-color-warning-light-7: #f4dec1;
+  --app-color-warning-light-8: #f7e9d5;
+  --app-color-warning-light-9: #fbf4ea;
+  --app-color-warning-dark-2: #ae7326;
+
+  --app-color-danger: #c95050;
+  --app-color-danger-light-1: #ce6262;
+  --app-color-danger-light-2: #d47373;
+  --app-color-danger-light-3: #d98585;
+  --app-color-danger-light-4: #df9696;
+  --app-color-danger-light-5: #e4a8a8;
+  --app-color-danger-light-6: #e9b9b9;
+  --app-color-danger-light-7: #efcbcb;
+  --app-color-danger-light-8: #f4dcdc;
+  --app-color-danger-light-9: #faeeee;
+  --app-color-danger-dark-2: #a14040;
+
+  --app-color-info: #8a929a;
+  --app-color-info-light-1: #969da4;
+  --app-color-info-light-2: #a1a8ae;
+  --app-color-info-light-3: #adb3b8;
+  --app-color-info-light-4: #b9bec2;
+  --app-color-info-light-5: #c5c9cd;
+  --app-color-info-light-6: #d0d3d7;
+  --app-color-info-light-7: #dcdee1;
+  --app-color-info-light-8: #e8e9eb;
+  --app-color-info-light-9: #f3f4f5;
+  --app-color-info-dark-2: #6e757b;
 }

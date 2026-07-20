@@ -21,7 +21,7 @@ import {ArrowLeft, Close, Delete, Edit, Picture, Plus} from '@element-plus/icons
 import {ElMessage, ElMessageBox} from 'element-plus'
 import lodash from 'lodash'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
-import {setSearchTagColor} from '@renderer/utils/SearchTagColorUtil.ts'
+import {setSearchTagStatus} from '@renderer/utils/SearchTagColorUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import {workSetListWorkSetWithWorkByIds} from '@renderer/apis/http/wrappers/workSet'
 import {
@@ -432,7 +432,7 @@ watch(isCheckable, (newValue) => {
           v-model:search-condition-type="searchConditionType"
           :load-search-item-page="loadSearchItemPage"
           :fetch-work-page="fetchWorkPageForAdd"
-          :color-resolver="setSearchTagColor"
+          :color-resolver="setSearchTagStatus"
           :checkable="true"
           :checked-work-ids="selectedWorkIdsForAdd"
           :auto-search-on-input-change="false"

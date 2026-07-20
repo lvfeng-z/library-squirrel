@@ -17,4 +17,54 @@ html[data-theme="sakura-light"] {
   --app-bg-page: #f5e6ea;
   --app-bg-surface-variant: #f9eff1;
   --app-bg-sidebar: #ecd3dc;
+
+  /* ===== 状态色族：覆盖 success/warning/danger/info 档位，
+     使任务/开关/资源等所有 --app-status-* 别名与残留 el-tag 跟随樱花主题 ===== */
+  --app-color-success: #88c43f;
+  --app-color-success-light-1: #94ca52;
+  --app-color-success-light-2: #a0d065;
+  --app-color-success-light-3: #acd679;
+  --app-color-success-light-4: #b8dc8c;
+  --app-color-success-light-5: #c4e29f;
+  --app-color-success-light-6: #cfe7b2;
+  --app-color-success-light-7: #dbedc5;
+  --app-color-success-light-8: #e7f3d9;
+  --app-color-success-light-9: #f3f9ec;
+  --app-color-success-dark-2: #6d9d32;
+
+  --app-color-warning: #e8a83c;
+  --app-color-warning-light-1: #eab150;
+  --app-color-warning-light-2: #edb963;
+  --app-color-warning-light-3: #efc277;
+  --app-color-warning-light-4: #f1cb8a;
+  --app-color-warning-light-5: #f4d49e;
+  --app-color-warning-light-6: #f6dcb1;
+  --app-color-warning-light-7: #f8e5c5;
+  --app-color-warning-light-8: #faeed8;
+  --app-color-warning-light-9: #fdf6ec;
+  --app-color-warning-dark-2: #ba8630;
+
+  --app-color-danger: #e8637a;
+  --app-color-danger-light-1: #ea7387;
+  --app-color-danger-light-2: #ed8295;
+  --app-color-danger-light-3: #ef92a2;
+  --app-color-danger-light-4: #f1a1af;
+  --app-color-danger-light-5: #f4b1bd;
+  --app-color-danger-light-6: #f6c1ca;
+  --app-color-danger-light-7: #f8d0d7;
+  --app-color-danger-light-8: #fae0e4;
+  --app-color-danger-light-9: #fdeff2;
+  --app-color-danger-dark-2: #ba4f62;
+
+  --app-color-info: #9a9296;
+  --app-color-info-light-1: #a49da1;
+  --app-color-info-light-2: #aea8ab;
+  --app-color-info-light-3: #b8b3b6;
+  --app-color-info-light-4: #c2bec0;
+  --app-color-info-light-5: #cdc9cb;
+  --app-color-info-light-6: #d7d3d5;
+  --app-color-info-light-7: #e1dee0;
+  --app-color-info-light-8: #ebe9ea;
+  --app-color-info-light-9: #f5f4f5;
+  --app-color-info-dark-2: #7b7578;
 }

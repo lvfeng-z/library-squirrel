@@ -17,4 +17,54 @@ html[data-theme="ocean-light"] {
   --app-bg-page: #e2f0f2;
   --app-bg-surface-variant: #edf6f7;
   --app-bg-sidebar: #cde5e8;
+
+  /* ===== 状态色族：覆盖 success/warning/danger/info 档位，
+     使任务/开关/资源等所有 --app-status-* 别名与残留 el-tag 跟随海洋主题 ===== */
+  --app-color-success: #3eb58e;
+  --app-color-success-light-1: #51bc99;
+  --app-color-success-light-2: #65c4a5;
+  --app-color-success-light-3: #78cbb0;
+  --app-color-success-light-4: #8bd3bb;
+  --app-color-success-light-5: #9fdac7;
+  --app-color-success-light-6: #b2e1d2;
+  --app-color-success-light-7: #c5e9dd;
+  --app-color-success-light-8: #d8f0e8;
+  --app-color-success-light-9: #ecf8f4;
+  --app-color-success-dark-2: #329172;
+
+  --app-color-warning: #e0a02e;
+  --app-color-warning-light-1: #e3aa43;
+  --app-color-warning-light-2: #e6b358;
+  --app-color-warning-light-3: #e9bd6d;
+  --app-color-warning-light-4: #ecc682;
+  --app-color-warning-light-5: #f0d097;
+  --app-color-warning-light-6: #f3d9ab;
+  --app-color-warning-light-7: #f6e3c0;
+  --app-color-warning-light-8: #f9ecd5;
+  --app-color-warning-light-9: #fcf6ea;
+  --app-color-warning-dark-2: #b38025;
+
+  --app-color-danger: #ec6464;
+  --app-color-danger-light-1: #ee7474;
+  --app-color-danger-light-2: #f08383;
+  --app-color-danger-light-3: #f29393;
+  --app-color-danger-light-4: #f4a2a2;
+  --app-color-danger-light-5: #f6b2b2;
+  --app-color-danger-light-6: #f7c1c1;
+  --app-color-danger-light-7: #f9d1d1;
+  --app-color-danger-light-8: #fbe0e0;
+  --app-color-danger-light-9: #fdf0f0;
+  --app-color-danger-dark-2: #bd5050;
+
+  --app-color-info: #78909c;
+  --app-color-info-light-1: #869ba6;
+  --app-color-info-light-2: #93a6b0;
+  --app-color-info-light-3: #a1b1ba;
+  --app-color-info-light-4: #aebcc4;
+  --app-color-info-light-5: #bcc8ce;
+  --app-color-info-light-6: #c9d3d7;
+  --app-color-info-light-7: #d7dee1;
+  --app-color-info-light-8: #e4e9eb;
+  --app-color-info-light-9: #f2f4f5;
+  --app-color-info-dark-2: #60737d;
 }

@@ -6,6 +6,8 @@ import DialogMode from '../model/util/DialogMode.ts'
 import { ElMessage, ElTag } from 'element-plus'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TaskStatusEnum } from '../constants/TaskStatusEnum.ts'
+import { taskStatusToKey } from '../constants/StatusRegistry'
+import StatusTag from '../components/common/StatusTag.vue'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
 
@@ -114,32 +116,6 @@ function findRowByTaskId(taskId: number): TaskProgressTreeDTO | undefined {
 
 // 状态渲染辅助
 const invalidStatus = -1
-const statusTagTypeMap: Record<number, 'success' | 'warning' | 'info' | 'primary' | 'danger'> = {
-  [invalidStatus]: 'danger',
-  [TaskStatusEnum.CREATED]: 'primary',
-  [TaskStatusEnum.PROCESSING]: 'warning',
-  [TaskStatusEnum.WAITING]: 'warning',
-  [TaskStatusEnum.PAUSING]: 'warning',
-  [TaskStatusEnum.PAUSED]: 'info',
-  [TaskStatusEnum.STOPPING]: 'warning',
-  [TaskStatusEnum.FINISHED]: 'success',
-  [TaskStatusEnum.PARTLY_FINISHED]: 'success',
-  [TaskStatusEnum.FAILED]: 'danger',
-  [TaskStatusEnum.WAITING_FOR_INPUT]: 'warning'
-}
-const statusTextMap: Record<number, string> = {
-  [invalidStatus]: '?',
-  [TaskStatusEnum.CREATED]: '已创建',
-  [TaskStatusEnum.PROCESSING]: '进行中',
-  [TaskStatusEnum.WAITING]: '等待中',
-  [TaskStatusEnum.PAUSING]: '暂停中',
-  [TaskStatusEnum.PAUSED]: '已暂停',
-  [TaskStatusEnum.STOPPING]: '停止中',
-  [TaskStatusEnum.FINISHED]: '完成',
-  [TaskStatusEnum.PARTLY_FINISHED]: '部分完成',
-  [TaskStatusEnum.FAILED]: '失败',
-  [TaskStatusEnum.WAITING_FOR_INPUT]: '等待确认'
-}
 
 function formatDatetime(timestamp: number | null | undefined): string {
   if (!timestamp) return '-'
@@ -154,6 +130,11 @@ function getStatus(row: TaskProgressTreeDTO): number {
   if (isNullish(taskId)) return rowStatus ?? invalidStatus
   const storeStatus = (row.hasChildren ? parentTaskStore : taskStore).getTask(taskId)?.task?.status
   return storeStatus ?? rowStatus ?? invalidStatus
+}
+
+// 取状态别名 key（颜色与文案均由 StatusRegistry + 主题令牌驱动）
+function getStatusKey(row: TaskProgressTreeDTO): string {
+  return taskStatusToKey(getStatus(row))
 }
 
 // 方法
@@ -594,9 +575,7 @@ async function handleSourceUrlInput() {
           </template>
           <template #default="{ row }">
             <div style="display: flex; align-items: center; justify-content: center">
-              <el-tag :type="statusTagTypeMap[getStatus(row)] ?? 'info'">
-                {{ statusTextMap[getStatus(row)] ?? '未知' }}
-              </el-tag>
+              <StatusTag :status="getStatusKey(row)" />
             </div>
           </template>
         </el-table-column>

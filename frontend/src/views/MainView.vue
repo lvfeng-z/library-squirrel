@@ -11,7 +11,7 @@ import {
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.js'
 import ApiResponse from '@renderer/model/util/ApiResponse.js'
 import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.js'
-import {setSearchTagColor} from '@renderer/utils/SearchTagColorUtil.js'
+import {setSearchTagStatus} from '@renderer/utils/SearchTagColorUtil.js'
 import CollapsePanel from '@renderer/components/common/CollapsePanel.vue'
 import IPage from '@renderer/model/util/IPage.js'
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
@@ -268,7 +268,7 @@ function handleTest() {
           class="main-page-auto-load-tag-select"
           :load="querySearchItemPage"
           :page-size="40"
-          :color-resolver="setSearchTagColor"
+          :color-resolver="setSearchTagStatus"
           tags-gap="10px"
           max-height="300px"
           min-height="33px"

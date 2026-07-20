@@ -105,6 +105,86 @@
   --app-tag-purple-text: #909399;
   --app-tag-orange-bg: rgba(230, 162, 60, 0.18);
   --app-tag-orange-text: #e6a23c;
+  --app-tag-neutral-bg: color-mix(in srgb, var(--app-color-info) 18%, transparent);
+  --app-tag-neutral-bg-hover: color-mix(in srgb, var(--app-color-info) 10%, transparent);
+  --app-tag-neutral-bg-strong: color-mix(in srgb, var(--app-color-info) 30%, transparent);
+  --app-tag-neutral-text: var(--app-color-info);
+
+  /* ===== 状态语义别名（Layer 1）
+     每个状态含 -bg/-text/-border 三分量，默认引用上方色族（色族系）或分类标签（tag 系）。
+     业务与 StatusTag 只用 --app-status-*；主题通过覆盖色族即可让所有引用它的状态整体跟随，
+     亦可在此处之上个别覆盖某个别名实现精调。命名规范：--app-status-{类目}-{语义}-{分量}。 ===== */
+  /* —— 任务状态（task-*）—— 进行中用 primary（蓝）、等待中用 info（灰）以区分活跃与排队态 —— */
+  --app-status-task-created-bg: var(--app-color-info-light-9);
+  --app-status-task-created-text: var(--app-color-info);
+  --app-status-task-created-border: var(--app-color-info-light-8);
+
+  --app-status-task-processing-bg: var(--app-color-primary-light-9);
+  --app-status-task-processing-text: var(--app-color-primary);
+  --app-status-task-processing-border: var(--app-color-primary-light-8);
+
+  --app-status-task-waiting-bg: var(--app-color-info-light-9);
+  --app-status-task-waiting-text: var(--app-color-info);
+  --app-status-task-waiting-border: var(--app-color-info-light-8);
+
+  --app-status-task-pausing-bg: var(--app-color-warning-light-9);
+  --app-status-task-pausing-text: var(--app-color-warning);
+  --app-status-task-pausing-border: var(--app-color-warning-light-8);
+
+  --app-status-task-paused-bg: var(--app-color-info-light-9);
+  --app-status-task-paused-text: var(--app-color-info);
+  --app-status-task-paused-border: var(--app-color-info-light-8);
+
+  --app-status-task-stopping-bg: var(--app-color-warning-light-9);
+  --app-status-task-stopping-text: var(--app-color-warning);
+  --app-status-task-stopping-border: var(--app-color-warning-light-8);
+
+  --app-status-task-completed-bg: var(--app-color-success-light-9);
+  --app-status-task-completed-text: var(--app-color-success);
+  --app-status-task-completed-border: var(--app-color-success-light-8);
+
+  --app-status-task-partly-finished-bg: var(--app-color-warning-light-9);
+  --app-status-task-partly-finished-text: var(--app-color-warning);
+  --app-status-task-partly-finished-border: var(--app-color-warning-light-8);
+
+  --app-status-task-failed-bg: var(--app-color-danger-light-9);
+  --app-status-task-failed-text: var(--app-color-danger);
+  --app-status-task-failed-border: var(--app-color-danger-light-8);
+
+  --app-status-task-waiting-input-bg: var(--app-color-warning-light-9);
+  --app-status-task-waiting-input-text: var(--app-color-warning);
+  --app-status-task-waiting-input-border: var(--app-color-warning-light-8);
+
+  /* —— 来源类型（source-*）：作者/标签的 local/site，沿用半透明 tag 风格 —— */
+  --app-status-source-local-bg: var(--app-tag-red-bg);
+  --app-status-source-local-text: var(--app-tag-red-text);
+  --app-status-source-local-border: transparent;
+
+  --app-status-source-site-bg: var(--app-tag-blue-bg);
+  --app-status-source-site-text: var(--app-tag-blue-text);
+  --app-status-source-site-border: transparent;
+
+  /* —— 开关/运行态（toggle-*）—— */
+  --app-status-toggle-enabled-bg: var(--app-color-success-light-9);
+  --app-status-toggle-enabled-text: var(--app-color-success);
+  --app-status-toggle-enabled-border: var(--app-color-success-light-8);
+
+  --app-status-toggle-disabled-bg: var(--app-color-info-light-9);
+  --app-status-toggle-disabled-text: var(--app-color-info);
+  --app-status-toggle-disabled-border: var(--app-color-info-light-8);
+
+  /* —— 资源/作品状态（resource-*）—— */
+  --app-status-resource-downloaded-bg: var(--app-color-success-light-9);
+  --app-status-resource-downloaded-text: var(--app-color-success);
+  --app-status-resource-downloaded-border: var(--app-color-success-light-8);
+
+  --app-status-resource-missing-bg: var(--app-color-warning-light-9);
+  --app-status-resource-missing-text: var(--app-color-warning);
+  --app-status-resource-missing-border: var(--app-color-warning-light-8);
+
+  --app-status-resource-damaged-bg: var(--app-color-danger-light-9);
+  --app-status-resource-damaged-text: var(--app-color-danger);
+  --app-status-resource-damaged-border: var(--app-color-danger-light-8);
 
   /* ===== 圆角 ===== */
   --app-radius-sm: 4px;
