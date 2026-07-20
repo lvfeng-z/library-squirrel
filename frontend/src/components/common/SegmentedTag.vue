@@ -9,9 +9,12 @@ const props = withDefaults(
   defineProps<{
     item: SegmentedTagItem
     closeable?: boolean
+    /** 视觉方案：outlined=外围描边+浅主色/透明全局交替分节（默认）；block=各段独立色块分节 */
+    variant?: 'block' | 'outlined'
   }>(),
   {
-    closeable: true
+    closeable: true,
+    variant: 'outlined'
   }
 )
 
@@ -22,21 +25,80 @@ const subLabelsLength: Ref<number> = computed(() => {
 const tagLabelWrapperMaxWidth: Ref<string> = computed(() => {
   return props.closeable ? 'calc(100% - 18px)' : '100%'
 })
-// main 段：item.status 优先（由 --app-status-{status}-* 令牌驱动），其次显式传入色，最后 neutral 默认；
-// sub 段统一走 neutral 令牌。用 computed 保证 colorResolver 后置 status 也能响应。
+// main 段代表色优先级：status 令牌 > 调用方显式色字段 > variant 默认色。
+// block：main 走 neutral、sub 走 neutral/neutral-strong 色块分节，各段独立配色。
+// outlined：整体色族统一跟随 main 段——非空白段(sub2)复用 main 底色、透明段(sub1)透明底，
+//           所有文字、close 图标与外围描边均取 main 文字色，形成单色族描边交替。
+//           用 computed 保证 colorResolver 后置 status 也能响应。
 const colorConfig = computed(() => {
   const status = props.item.status
+  const outlined = props.variant === 'outlined'
+
+  // main 段代表色：status 令牌 > 调用方显式色 > variant 默认（block=neutral，outlined=主色族）
+  const mainBgDefault = outlined ? 'var(--app-color-primary-light-9)' : 'var(--app-tag-neutral-bg)'
+  const mainBgHoverDefault = outlined ? 'var(--app-color-primary-light-8)' : 'var(--app-tag-neutral-bg-hover)'
+  const mainTextDefault = outlined ? 'var(--app-color-primary)' : 'var(--app-tag-neutral-text)'
+  const mainBackground = status ? `var(--app-status-${status}-bg)` : (props.item.mainBackGround ?? mainBgDefault)
+  const mainBackgroundHover = status ? `var(--app-status-${status}-border)` : (props.item.mainBackGroundHover ?? mainBgHoverDefault)
+  const mainTextColor = status ? `var(--app-status-${status}-text)` : (props.item.mainTextColor ?? mainTextDefault)
+
+  if (outlined) {
+    if (props.item.disabled) {
+      // outlined 禁用态：整体褪为 neutral 灰，保留透明/浅灰交替结构（sub2 浅灰、sub1 透明）。
+      // main 段实际由 .segmented-tag-main-label-unchecked 类控制（同为 neutral-bg-strong + neutral-text），
+      // 此处覆盖 sub 段、外围边框（取自 mainTextColor）与 close 图标，使整个标签统一褪色。
+      return {
+        mainBackground: 'var(--app-tag-neutral-bg-strong)',
+        mainBackgroundHover: 'var(--app-tag-neutral-bg-hover)',
+        mainTextColor: 'var(--app-tag-neutral-text)',
+        sub1BackGround: 'transparent',
+        sub1BackGroundHover: 'var(--app-tag-neutral-bg)',
+        sub1TextColor: 'var(--app-tag-neutral-text)',
+        sub2BackGround: 'var(--app-tag-neutral-bg)',
+        sub2BackGroundHover: 'var(--app-tag-neutral-bg-hover)',
+        sub2TextColor: 'var(--app-tag-neutral-text)',
+        closeIconColor: 'var(--app-tag-neutral-text)'
+      }
+    }
+    // sub 段派生自 main 色族：sub2(非空白)复用 main 底色，sub1(透明)透明底但 hover 显现 main 底、文字同族。
+    // sub1/sub2 显式色字段在此模式下被忽略，以保证整体单色族；close 图标亦取 main 文字色。
+    return {
+      mainBackground,
+      mainBackgroundHover,
+      mainTextColor,
+      sub1BackGround: 'transparent',
+      sub1BackGroundHover: mainBackground,
+      sub1TextColor: mainTextColor,
+      sub2BackGround: mainBackground,
+      sub2BackGroundHover: mainBackgroundHover,
+      sub2TextColor: mainTextColor,
+      closeIconColor: mainTextColor
+    }
+  }
+
+  // block：各段独立配色（main 走 status/显式/neutral，sub 走 neutral 体系，close 图标 neutral）
   return {
-    mainBackground: status ? `var(--app-status-${status}-bg)` : (props.item.mainBackGround ?? 'var(--app-tag-neutral-bg)'),
-    mainBackgroundHover: status ? `var(--app-status-${status}-border)` : (props.item.mainBackGroundHover ?? 'var(--app-tag-neutral-bg-hover)'),
-    mainTextColor: status ? `var(--app-status-${status}-text)` : (props.item.mainTextColor ?? 'var(--app-tag-neutral-text)'),
+    mainBackground,
+    mainBackgroundHover,
+    mainTextColor,
     sub1BackGround: props.item.sub1BackGround ?? 'var(--app-tag-neutral-bg)',
     sub1BackGroundHover: props.item.sub1BackGroundHover ?? 'var(--app-tag-neutral-bg-hover)',
     sub1TextColor: props.item.sub1TextColor ?? 'var(--app-tag-neutral-text)',
     sub2BackGround: props.item.sub2BackGround ?? 'var(--app-tag-neutral-bg-strong)',
     sub2BackGroundHover: props.item.sub2BackGroundHover ?? 'var(--app-tag-neutral-bg-hover)',
-    sub2TextColor: props.item.sub2TextColor ?? 'var(--app-tag-neutral-text)'
+    sub2TextColor: props.item.sub2TextColor ?? 'var(--app-tag-neutral-text)',
+    closeIconColor: 'var(--app-tag-neutral-text)'
   }
+})
+
+// close 段全局序号 = subLabels.length + 1。outlined 的交替基准与 block 相反，
+// 故 close 挂载的 sub1/sub2 class 需随 variant 反转，确保与左邻 sub 颜色相异、维持全局交替。
+const closeSegmentClass = computed(() => {
+  const lengthEven = subLabelsLength.value % 2 === 0
+  if (props.variant === 'outlined') {
+    return { sub1: lengthEven, sub2: !lengthEven }
+  }
+  return { sub1: !lengthEven, sub2: lengthEven }
 })
 
 // 事件
@@ -60,7 +122,10 @@ function handleCloseButtonClicked() {
 
 <template>
   <div
-    class="segmented-tag"
+    :class="{
+      'segmented-tag': true,
+      'segmented-tag--outlined': props.variant === 'outlined'
+    }"
     @click="handleClicked"
   >
     <div class="segmented-tag-label-wrapper">
@@ -111,14 +176,14 @@ function handleCloseButtonClicked() {
       v-if="closeable"
       :class="{
         'segmented-tag-sub-close-wrapper': true,
-        'segmented-tag-sub-2-label': subLabelsLength % 2 === 0,
-        'segmented-tag-sub-1-label': !(subLabelsLength % 2 === 0)
+        'segmented-tag-sub-1-label': closeSegmentClass.sub1,
+        'segmented-tag-sub-2-label': closeSegmentClass.sub2
       }"
       @click="handleCloseButtonClicked"
     >
       <el-icon
         class="segmented-tag-sub-close"
-        color="var(--app-tag-neutral-text)"
+        :color="colorConfig.closeIconColor"
       >
         <Close />
       </el-icon>
@@ -136,6 +201,12 @@ function handleCloseButtonClicked() {
   max-width: 100%;
   cursor: pointer; /* 鼠标悬停时显示为手型指针 */
   overflow: hidden;
+}
+.segmented-tag--outlined {
+  /* outlined 方案：外围描边作为容器标识，内部各段按浅主色/透明全局交替分节。
+     边框色跟随 main 段文字色（status 令牌 > 调用方显式色 > 主色），使标签整体色调统一 */
+  border: 1px solid v-bind('colorConfig.mainTextColor');
+  box-sizing: border-box; /* 边框计入尺寸，避免与 block 模式标签高度错位 */
 }
 .segmented-tag-label-wrapper {
   display: flex;
