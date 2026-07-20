@@ -65,7 +65,7 @@ export class ImportSettings {
  */
 export class MergeSettings {
     /**
-     * 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=产物作 main 删原轨道
+     * 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=新建 merged 删原轨道
      */
     "strategy": string;
 
