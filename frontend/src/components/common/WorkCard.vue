@@ -65,7 +65,7 @@ function handlePictureClicked() {
   } else {
     ElMessage({
       type: 'error',
-      message: '无法打开图片，获取资源路径失败'
+      message: '无法打开，获取资源路径失败'
     })
   }
 }
