@@ -53,6 +53,19 @@ bilibili 专栏（cv）等是**图文紧密结合**的富文档：大段格式�
 4. **图引用解析**：`.md` 内图引用如何映射到图 store 的 `/store/` URL（按文件名约定？需主程序 resolve）？
 5. **范围**：仅 bilibili 专栏，还是设计成通用"富文档资源"能力（其他站点/插件可用）？
 
+## 六·补 与 taskManager 执行面的关系（不加深耦合·2026-07-20 评估）
+
+**结论**：本功能实现**不加深** taskManager 执行面/控制面耦合，`.md` 复用既有的 derived 通用路径，执行面零改动。
+
+**理由**（推荐方案 A：`.md` derived + 内嵌图 downloaded）：
+- **`.md`（derived）**：插件 `TaskHandler.Start` 返回 `{Role:main/article, Generation:derived, ReadCloser:io.NopCloser(mdBytes)}`，走 `streamController` 的 **downloaded/derived 通用** reader→writer 拷贝路径（`backend/taskManager/model.go:298`）。缩略图（thumbnail）已是 `derived + NopCloser` 的现有案例（`model_multi_stream_test.go` 测试覆盖），`.md` 与之同款。
+- **内嵌图（downloaded）**：走标准下载流（`StoreSpec` 带 ReadCloser 流），与现有图片下载完全一致。
+- **执行面改动**：零。只在数据模型层新增一个 `store_type` 常量（复用 `main` 或新增 `article`，开放枚举不改表）。
+
+**衍生认知**（已同步到 `doc/plan/longops-task-integration-plan.md` §三）：`NopCloser` 是 derived store 的**标准产出方式**（非"伪装/撞墙"），StoreSpec 的 ReadCloser 契约既已包容派生文件产出。真正撞该契约的是纯计算/API 型操作（翻译/AI/查重，无文件产出），与本功能无关。
+
+→ 本功能不触发 longops 阶段2（执行面剥离），可安心实现。
+
 ## 七、恢复定位（新会话续作所需——先读此节）
 
 ### 上游谱系与本任务位置
