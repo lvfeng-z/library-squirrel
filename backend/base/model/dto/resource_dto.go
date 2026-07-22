@@ -17,6 +17,7 @@ func NewResourceDTO(resource *entity.Resource) *sdkdto.ResourceDTO {
 		TaskID:           resource.TaskID,
 		Enabled:          resource.Enabled,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
+		ResourceType:     resource.ResourceType,
 		ResourceComplete: resource.ResourceComplete,
 		CreateTime:       resource.GetCreateTime(),
 		UpdateTime:       resource.GetUpdateTime(),
@@ -63,7 +64,8 @@ func ToResourceEntity(dto *sdkdto.ResourceDTO) *entity.Resource {
 // NewResourceFullDTO 从 entity.Resource + resource_store 关联行 + PersistentStore 实体创建 ResourceFullDTO。
 // resourceStores 为该 Resource 的全部 resource_store 关联行;
 // storeMap 为 storeId → PersistentStore 的查找映射(由调用方批量查询构建,避免 N+1)。
-// Stores 为全量多轨数据(主数据源);WorkStore/ThumbnailStore 为从 Stores 按 storeType 派生的便捷访问器。
+// Stores 为全量多轨数据(主数据源);ThumbnailStore 从 Stores 按 storeType=thumbnail 派生;
+// WorkStore 由 ResolvePrimaryStore 按资源类型的 PrimaryRoles 优先级链派生(未知/历史 resource_type 安全降级)。
 func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.ResourceStore, storeMap map[int64]*entity.PersistentStore) *sdkdto.ResourceFullDTO {
 	if resource == nil {
 		return nil
@@ -74,12 +76,13 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 		TaskID:           resource.TaskID,
 		Enabled:          resource.Enabled,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
+		ResourceType:     resource.ResourceType,
 		ResourceComplete: resource.ResourceComplete,
 		CreateTime:       resource.GetCreateTime(),
 		UpdateTime:       resource.GetUpdateTime(),
 	}
 
-	// 遍历 resource_store 行构 Stores,同时派生便捷访问器
+	// 遍历 resource_store 行构 Stores,同时派生 ThumbnailStore
 	for _, rs := range resourceStores {
 		if rs == nil {
 			continue
@@ -92,12 +95,16 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 		}
 		dto.Stores = append(dto.Stores, *storeDTO)
 
-		// 派生便捷访问器
-		switch rs.StoreType {
-		case entity.StoreTypeMain:
-			dto.WorkStore = storeDTO.Store
-		case entity.StoreTypeThumbnail:
+		if rs.StoreType == entity.StoreTypeThumbnail {
 			dto.ThumbnailStore = storeDTO.Store
+		}
+	}
+
+	// WorkStore 按资源类型规约的 PrimaryRoles 优先级链派生展示主体;
+	// 未知/历史 resource_type(LookupResourceTypeSpec 返回 nil)由 ResolvePrimaryStore 安全降级
+	if primaryRS := entity.ResolvePrimaryStore(resourceStores, entity.LookupResourceTypeSpec(resource.ResourceType)); primaryRS != nil {
+		if ps := storeMap[primaryRS.StoreID]; ps != nil {
+			dto.WorkStore = NewPersistentStoreDTO(ps)
 		}
 	}
 

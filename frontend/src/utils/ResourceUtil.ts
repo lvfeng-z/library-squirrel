@@ -1,8 +1,17 @@
 import type { ResourceFullDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
 
-const STORE_TYPE_VIDEO_TRACK = 'videoTrack'
-const STORE_TYPE_AUDIO_TRACK = 'audioTrack'
-const STORE_TYPE_MERGED = 'merged'
+// 展示类型嗅探扩展名(仅 resource_type 未声明/unknown 时降级用)
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
+const DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.rtf']
+
+function getFileExtension(filePath?: string): string {
+  if (!filePath) return ''
+  const idx = filePath.lastIndexOf('.')
+  if (idx < 0) return ''
+  return filePath.slice(idx).toLowerCase()
+}
 
 /**
  * 资源是否可合并：同时具备视频轨与音频轨。
@@ -13,23 +22,33 @@ export function isResourceMergeable(resource: ResourceFullDTO | null | undefined
   let hasVideo = false
   let hasAudio = false
   for (const rs of stores) {
-    if (rs.storeType === STORE_TYPE_VIDEO_TRACK) hasVideo = true
-    else if (rs.storeType === STORE_TYPE_AUDIO_TRACK) hasAudio = true
+    if (rs.storeType === StoreRole.VIDEO_TRACK) hasVideo = true
+    else if (rs.storeType === StoreRole.AUDIO_TRACK) hasAudio = true
   }
   return hasVideo && hasAudio
 }
 
 /**
- * 资源外部打开路径：优先合并产物，其次主资源。
+ * 资源展示类型：优先 resource.resourceType；未声明/unknown 时按 workStore 扩展名嗅探降级。
+ */
+export function getResourcePreviewType(resource: ResourceFullDTO | null | undefined): string {
+  const declared = resource?.resourceType
+  if (declared && declared !== ResourceType.UNKNOWN) {
+    return declared
+  }
+  const ext = getFileExtension(resource?.workStore?.filePath)
+  if (ext) {
+    if (IMAGE_EXTENSIONS.includes(ext)) return ResourceType.IMAGE
+    if (VIDEO_EXTENSIONS.includes(ext)) return ResourceType.VIDEO
+    if (ext === '.md') return ResourceType.ARTICLE
+    if (DOCUMENT_EXTENSIONS.includes(ext)) return ResourceType.DOCUMENT
+  }
+  return ResourceType.UNKNOWN
+}
+
+/**
+ * 资源外部打开路径：纯消费后端派生的 workStore（ResolvePrimaryStore 已按 PrimaryRoles 选定展示主体）。
  */
 export function getResourceOpenPath(resource: ResourceFullDTO | null | undefined): string {
-  const stores = resource?.stores
-  if (stores) {
-    for (const rs of stores) {
-      if (rs.storeType === STORE_TYPE_MERGED && rs.store?.filePath) {
-        return rs.store.filePath
-      }
-    }
-  }
   return resource?.workStore?.filePath ?? ''
 }

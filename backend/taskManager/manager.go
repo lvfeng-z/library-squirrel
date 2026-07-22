@@ -368,7 +368,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 			continue
 		}
 		// 不含主资源的板块组合不查重（不覆盖资源文件，无需"作品已存在"提醒）
-		if !child.runMode.hasStore(domain.StoreTypeMain) {
+		if !child.runMode.hasStore(domain.StoreTypeImage) {
 			child.skipDuplicateCheck = true
 			continue
 		}
@@ -425,7 +425,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		}
 
 		// 不含主资源的板块组合：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
-		if !child.runMode.hasStore(domain.StoreTypeMain) {
+		if !child.runMode.hasStore(domain.StoreTypeImage) {
 			toDispatch = append(toDispatch, child)
 			continue
 		}

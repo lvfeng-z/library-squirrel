@@ -412,6 +412,7 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 			PluginData:    c.PluginData,
 			SiteName:      c.SiteName,
 			InvolvedRoles: c.InvolvedRoles,
+			ResourceType:  c.ResourceType,
 		}
 	}
 	return &pluginsdkdto.TaskCreateResponse{
@@ -422,6 +423,7 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 		PluginData:    r.PluginData,
 		SiteName:      r.SiteName,
 		InvolvedRoles: r.InvolvedRoles,
+		ResourceType:  r.ResourceType,
 		Children:      children,
 	}
 }

@@ -185,7 +185,7 @@ func mkSpec(role, generation string, size int64, r io.ReadCloser) *sdkdto.StoreS
 
 func TestFilterSpecsByRoles(t *testing.T) {
 	specs := []*sdkdto.StoreSpec{
-		mkSpec(entity.StoreTypeMain, entity.GenerationDownloaded, 10, nil),
+		mkSpec(entity.StoreTypeImage, entity.GenerationDownloaded, 10, nil),
 		mkSpec(entity.StoreTypeThumbnail, entity.GenerationDerived, 1, nil),
 		mkSpec(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 20, nil),
 	}
@@ -201,7 +201,7 @@ func TestFilterSpecsByRoles(t *testing.T) {
 		t.Fatalf("子集过滤期望仅 thumbnail, 实际 %+v", got)
 	}
 	// 多选子集
-	m = &ManagedTask{runMode: runMode{storeRoles: []string{entity.StoreTypeMain, entity.StoreTypeVideoTrack}}}
+	m = &ManagedTask{runMode: runMode{storeRoles: []string{entity.StoreTypeImage, entity.StoreTypeVideoTrack}}}
 	if got := m.filterSpecsByRoles(specs); len(got) != 2 {
 		t.Fatalf("多选过滤期望 2, 实际 %d", len(got))
 	}
@@ -238,7 +238,7 @@ func TestRunModeFromTask(t *testing.T) {
 	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= 全量
 	t1 := entity.NewTask()
 	mode := runModeFromTask(t1)
-	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeMain) || !mode.hasStore(entity.StoreTypeThumbnail) {
+	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
 		t.Fatalf("NULL StoreRoles 期望全量, 实际 %+v", mode)
 	}
 
@@ -247,16 +247,16 @@ func TestRunModeFromTask(t *testing.T) {
 	t2.StoreRoles = sql.NullString{String: entity.StoreTypeThumbnail, Valid: true}
 	t2.IncludeWorkInfo = false
 	mode = runModeFromTask(t2)
-	if mode.hasStore(entity.StoreTypeMain) || !mode.hasStore(entity.StoreTypeThumbnail) {
+	if mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
 		t.Fatalf("thumbnail 子集期望仅缩略图, 实际 %+v", mode)
 	}
 
 	// StoreRoles="main,thumbnail" + includeWorkInfo=true = 全量显式
 	t3 := entity.NewTask()
-	t3.StoreRoles = sql.NullString{String: entity.StoreTypeMain + "," + entity.StoreTypeThumbnail, Valid: true}
+	t3.StoreRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
 	t3.IncludeWorkInfo = true
 	mode = runModeFromTask(t3)
-	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeMain) || !mode.hasStore(entity.StoreTypeThumbnail) {
+	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
 		t.Fatalf("显式全量期望 main+thumbnail+workInfo, 实际 %+v", mode)
 	}
 }
@@ -287,7 +287,7 @@ func TestCopyLoop_DownloadedComplete(t *testing.T) {
 	data := bytes.Repeat([]byte("a"), 100)
 	m := newTestManagedTask()
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, int64(len(data)), io.NopCloser(bytes.NewReader(data)), w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, int64(len(data)), io.NopCloser(bytes.NewReader(data)), w)
 
 	res := s.copyLoop(m)
 	if res.kind != resultOK {
@@ -322,7 +322,7 @@ func TestCopyLoop_DownloadedIncomplete(t *testing.T) {
 	data := bytes.Repeat([]byte("b"), 30)
 	m := newTestManagedTask()
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, io.NopCloser(bytes.NewReader(data)), w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, io.NopCloser(bytes.NewReader(data)), w)
 
 	res := s.copyLoop(m)
 	if res.kind != resultFailed {
@@ -336,7 +336,7 @@ func TestCopyLoop_DownloadedIncomplete(t *testing.T) {
 func TestCopyLoop_ReadError(t *testing.T) {
 	m := newTestManagedTask()
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, &errorReadCloser{err: errors.New("net boom")}, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, &errorReadCloser{err: errors.New("net boom")}, w)
 
 	res := s.copyLoop(m)
 	if res.kind != resultFailed {
@@ -356,7 +356,7 @@ func TestCopyLoop_Cancel(t *testing.T) {
 	// Stop 的文件删除由 handleStopCmd 的 streams abort 处理(actor 内),copyLoop 不再 abort。
 	w := &fakeStoreWriter{}
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(m) }()
@@ -383,7 +383,7 @@ func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 	// runCtx 取消(经 watcher):应保留文件
 	w := &fakeStoreWriter{}
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: m.ctx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(m) }()
@@ -409,7 +409,7 @@ func TestHandleEOF_Pausing(t *testing.T) {
 	m := newTestManagedTask()
 	m.state.Store(int32(TaskStatePausing))
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
 
 	res := s.handleEOF(m)
 	if res.kind != resultPaused {
@@ -427,7 +427,7 @@ func TestHandleEOF_Stopping(t *testing.T) {
 	m := newTestManagedTask()
 	m.state.Store(int32(TaskStateStopping))
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
 
 	res := s.handleEOF(m)
 	if res.kind != resultCanceled {
@@ -441,7 +441,7 @@ func TestHandleEOF_Stopping(t *testing.T) {
 func TestHandleEOF_Complete(t *testing.T) {
 	m := newTestManagedTask()
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 10, nil, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, nil, w)
 	s.written = 10 // 已写满
 
 	res := s.handleEOF(m)
@@ -456,7 +456,7 @@ func TestHandleEOF_Complete(t *testing.T) {
 func TestHandleEOF_Incomplete(t *testing.T) {
 	m := newTestManagedTask()
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, nil, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil, w)
 	s.written = 30 // 不足
 
 	res := s.handleEOF(m)
@@ -470,7 +470,7 @@ func TestHandleEOF_Incomplete(t *testing.T) {
 
 func TestHandlePause(t *testing.T) {
 	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte{})), w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte{})), w)
 
 	res := s.handlePause(nil)
 	if res.kind != resultPaused {
@@ -500,7 +500,7 @@ func TestDownloadLoop_AllComplete(t *testing.T) {
 	data := bytes.Repeat([]byte("a"), 50)
 	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
 	m.streams = []*streamController{
-		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(data)), w1),
+		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(data)), w1),
 		newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 0, io.NopCloser(bytes.NewReader([]byte("thumb"))), w2),
 	}
 
@@ -527,7 +527,7 @@ func TestDownloadLoop_OneFails(t *testing.T) {
 
 	wMain, wFail := &fakeStoreWriter{}, &fakeStoreWriter{}
 	m.streams = []*streamController{
-		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 50))), wMain),
+		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 50))), wMain),
 		newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 0, &errorReadCloser{err: errors.New("thumb gen failed")}, wFail),
 	}
 
@@ -558,7 +558,7 @@ func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	gr2 := &gatedReader{data: bytes.Repeat([]byte("b"), 10), first: make(chan struct{})}
 	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
 	m.streams = []*streamController{
-		newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, gr1, w1),
+		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr1, w1),
 		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, gr2, w2),
 	}
 
@@ -601,7 +601,7 @@ func TestProgressAggregation(t *testing.T) {
 	var total, finished int64
 	m.onProgress = func(_ int64, tt, f int64) { total, finished = tt, f }
 
-	s1 := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, nil, &fakeStoreWriter{})
+	s1 := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil, &fakeStoreWriter{})
 	s2 := newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 5, nil, &fakeStoreWriter{})
 	s1.written = 60
 	s2.written = 5
@@ -624,7 +624,7 @@ func TestDrainUnselectedReaders_NoDeadlock(t *testing.T) {
 	mainPr, mainPw := io.Pipe()
 	thumbPr, thumbPw := io.Pipe()
 	all := []*sdkdto.StoreSpec{
-		{Role: entity.StoreTypeMain, ReadCloser: mainPr},
+		{Role: entity.StoreTypeImage, ReadCloser: mainPr},
 		{Role: entity.StoreTypeThumbnail, ReadCloser: thumbPr},
 	}
 	selected := []*sdkdto.StoreSpec{all[0]} // 仅选 main,thumbnail 未选
@@ -774,7 +774,7 @@ func TestCopyLoop_SoftPause_DrainsInflight(t *testing.T) {
 	w := &fakeStoreWriter{}
 	// 在途数据 50 字节;size=100 → 若 softPause 未生效会继续读到 EOF 判不完整 Failed
 	gr := &gatedReader{data: bytes.Repeat([]byte("x"), 50), first: make(chan struct{})}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, gr, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr, w)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(m) }()
@@ -866,7 +866,7 @@ func TestDrainTimeout_ForceCancel(t *testing.T) {
 	w := &fakeStoreWriter{}
 	// data 为空:第一次 Read 即阻塞等 runCtx,模拟插件卡死/在途不完成
 	cr := &ctxAwareReader{ctx: m.runCtx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeMain, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
 
 	m.softPause.Store(true) // 优雅暂停已发起,转入 drain 等待
 

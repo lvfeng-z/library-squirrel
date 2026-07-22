@@ -43,12 +43,7 @@ func NewService(workDirProvider WorkDirProvider) *Service {
 // OpenImage 使用系统默认应用打开图片资源
 // filePath 为相对于资源库根目录（workdir）的相对路径
 func (s *Service) OpenImage(filePath string) error {
-	if filePath == "" {
-		return ErrInvalidPath
-	}
-
-	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), filePath)
-	return s.OpenPath(fullPath)
+	return s.OpenPath(filePath)
 }
 
 // openWithMicrosoftPhotos 使用微软照片打开文件
@@ -93,19 +88,21 @@ func (s *Service) openWithPotPlayer(filePath string) error {
 }
 
 // OpenPath 使用系统默认应用打开文件
+// filePath 为相对于资源库根目录（workdir）的相对路径
 func (s *Service) OpenPath(filePath string) error {
 	if filePath == "" {
 		return ErrInvalidPath
 	}
+	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), filePath)
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", filePath)
+		cmd = exec.Command("cmd", "/c", "start", "", fullPath)
 	case "darwin":
-		cmd = exec.Command("open", filePath)
+		cmd = exec.Command("open", fullPath)
 	case "linux":
-		cmd = exec.Command("xdg-open", filePath)
+		cmd = exec.Command("xdg-open", fullPath)
 	default:
 		return ErrOpenFailed
 	}

@@ -6,9 +6,10 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
-import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
-import { getResourceOpenPath } from '@renderer/utils/ResourceUtil.ts'
+import { getResourceOpenPath, getResourcePreviewType } from '@renderer/utils/ResourceUtil.ts'
+import { ResourceType } from '@renderer/constants/sectionCode.ts'
 
 // props
 const props = defineProps<{
@@ -26,25 +27,20 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
-
-function isDisplayableImage(extension: string | null | undefined): boolean {
-  if (!extension) return false
-  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
-}
-
 const imagePath: Ref<string> = computed(() => {
   const resource = props.work.resource
   // 1. 优先使用缩略图
   if (resource?.thumbnailStore?.filePath) {
     return resource.thumbnailStore.filePath
   }
-  // 2. 无缩略图时，仅对图片类型的资源返回路径；非图片类型返回空，阻止 el-image 加载
-  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+  // 2. 无缩略图时，仅图片类型资源在 el-image 渲染；非图片类型返回空走 error/占位
+  if (resource?.workStore?.filePath && getResourcePreviewType(resource) === ResourceType.IMAGE) {
     return resource.workStore.filePath
   }
   return ''
 })
+// 资源不完整(ResourceComplete=2)卡片角标提示;0(未校验)/1(完整)不显示,不阻断打开
+const isResourceIncomplete: Ref<boolean> = computed(() => props.work.resource?.resourceComplete === 2)
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
 let clickTimeout
@@ -57,11 +53,16 @@ function handleImageClicked() {
   clearTimeout(clickTimeout)
   clickTimeout = setTimeout(() => emit('imageClicked', props.work), 300)
 }
-function handlePictureClicked() {
+async function handlePictureClicked() {
   clearTimeout(clickTimeout)
   const filePath = getResourceOpenPath(props.work.resource)
   if (notNullish(filePath) && filePath !== '') {
-    appLauncherOpenImage(filePath)
+    // 图片用应用内图片查看；其他类型(视频/文档/article)用系统默认应用打开
+    if (getResourcePreviewType(props.work.resource) === ResourceType.IMAGE) {
+      await appLauncherOpenImage(filePath)
+    } else {
+      await appLauncherOpen(filePath)
+    }
   } else {
     ElMessage({
       type: 'error',
@@ -89,6 +90,13 @@ function handlePictureClicked() {
         </el-icon>
       </div>
     </div>
+    <el-tag
+      v-if="isResourceIncomplete"
+      type="warning"
+      size="small"
+      effect="dark"
+      :style="{ position: 'absolute', top: '4px', left: '4px', zIndex: 2 }"
+    >不完整</el-tag>
     <el-image
       :fit="imageFit"
       class="work-card-image"

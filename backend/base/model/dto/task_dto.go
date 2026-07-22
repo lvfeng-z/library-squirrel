@@ -38,6 +38,7 @@ func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
 		PluginData:        util.NullStringToPointer(task.PluginData),
 		ErrorMessage:      util.NullStringToPointer(task.ErrorMessage),
 		InvolvedRoles:     involvedRoles,
+		ResourceType:      task.ResourceType.String, // NULL/未声明=零值 ""
 		CreateTime:        task.GetCreateTime(),
 		UpdateTime:        task.GetUpdateTime(),
 	}
@@ -147,6 +148,12 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 	if len(dto.InvolvedRoles) > 0 {
 		entity.InvolvedRoles.Valid = true
 		entity.InvolvedRoles.String = strings.Join(dto.InvolvedRoles, ",")
+	}
+
+	// resourceType:非空=声明(预定义值);空=不设置(保持 NULL=未声明)
+	if dto.ResourceType != "" {
+		entity.ResourceType.Valid = true
+		entity.ResourceType.String = dto.ResourceType
 	}
 
 	// 设置时间字段（如果DTO中有值则使用，否则让Repository自动处理）

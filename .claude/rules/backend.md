@@ -47,8 +47,11 @@ query.go            — 查询 DTO
 
 - **Site（站点）**: 远程来源（pixiv 等）
 - **Work（作品）**: 核心实体 — 资源集合 + 元数据
+- **Resource（资源）**: Work 下的可展示单元，带 `ResourceType`（image/video/article/document/unknown）
+- **ResourceType（资源类型）**: 封闭枚举，决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）
+- **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/merged（封闭枚举）
 - **本地标签/作者 ↔ 站点标签/作者**: 通过关联实现跨站点统一搜索
-- **Task（任务）**: 作品创建流程（URL → 插件 → 保存）
+- **Task（任务）**: 作品创建流程（URL → 插件 → 保存），插件 Create 声明 ResourceType
 
 ## Go 后端编码规则
 
@@ -68,6 +71,7 @@ query.go            — 查询 DTO
 - **错误处理**：`var ErrXxx = errors.New(...)`，使用 `errors.Is()` 判断。
 - **所有公开方法以** `context.Context` 作为第一个参数，禁止在 `context.WithValue` 中存储业务数据。
 - **Service 层禁止直接导入** `backend/database`，仅 Repository 层可导入。
+- **RESOURCE_TYPE_STRICT** (P0): 资源类型与 store_type 严格识别——插件 Create 必须声明有效 `ResourceType`（`entity.ResourceType*` 之一，unknown 合法），`StoreSpec.Role` 必须 ∈ 6 预定义 `entity.StoreType*`；空/未知值在写入路径抛错（`entity.ValidateResourceType`/`ValidateStoreType`），不推断、不兜底。展示主体由后端 `ResolvePrimaryStore`（按 PrimaryRoles）派生，前端纯消费。规约见 `doc/resource-type-spec.md`。
 
 ## 禁止的做法
 

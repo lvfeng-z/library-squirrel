@@ -636,6 +636,11 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			task.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
 		}
 
+		// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
+		if taskResp.ResourceType != "" {
+			task.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
+		}
+
 		return nil
 	}
 
@@ -659,6 +664,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 				SiteName:      childResp.SiteName,
 				PluginData:    childResp.PluginData,
 				InvolvedRoles: childResp.InvolvedRoles,
+				ResourceType:  childResp.ResourceType,
 			}, 0); err != nil {
 				continue
 			}
@@ -678,6 +684,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			URL:           parentResp.URL,
 			SiteName:      parentResp.SiteName,
 			InvolvedRoles: parentResp.InvolvedRoles,
+			ResourceType:  parentResp.ResourceType,
 		}, 0); err != nil {
 			continue
 		}
@@ -700,6 +707,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 					SiteName:      childResp.SiteName,
 					PluginData:    childResp.PluginData,
 					InvolvedRoles: childResp.InvolvedRoles,
+					ResourceType:  childResp.ResourceType,
 				}, parentId); err != nil {
 					return err
 				}
@@ -794,6 +802,11 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 					parentTask.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
 				}
 
+				// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
+				if taskResp.ResourceType != "" {
+					parentTask.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
+				}
+
 				if err := s.repo.CreateTask(ctx, parentTask); err != nil {
 					outChan <- &CreateTaskStreamChan{Error: err}
 					parentTask = nil
@@ -836,6 +849,11 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				// involvedRoles:创建期声明的涉及板块(universe)
 				if len(childResp.InvolvedRoles) > 0 {
 					childTask.InvolvedRoles = sql.NullString{String: strings.Join(childResp.InvolvedRoles, ","), Valid: true}
+				}
+
+				// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
+				if childResp.ResourceType != "" {
+					childTask.ResourceType = sql.NullString{String: childResp.ResourceType, Valid: true}
 				}
 
 				batch = append(batch, childTask)

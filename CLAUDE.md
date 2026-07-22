@@ -129,6 +129,9 @@ task build:server && task run:server
 - **数据库**: `.claude/rules/database.md` — SQLite/GORM 架构、Repository 规则
 - **插件**: `.claude/rules/plugin.md` — 插件系统架构
 
+**规约文档**（跨模块领域规约，非单模块 README）：
+- `doc/resource-type-spec.md` — 资源类型规约体系（ResourceType 封闭枚举 image/video/article/document/unknown + store_type 6 角色 + 严格识别 + 完整性三态）；插件声明契约见 `doc/plugin-dev-guide.md`。
+
 ### Git 提交
 - 中文，格式：`类型(范围): 描述`
 - 类型：`feat`、`fix`、`docs`、`style`、`refactor`、`test`、`chore`、`build`
@@ -153,6 +156,7 @@ task build:server && task run:server
 
 ## 交互规则
 - 当用户意图制定计划或方案时，直接用 Write 工具将计划文件写到 `doc/plan/` 目录下，然后停下来询问用户要执行计划还是要检查计划，不要直接开始执行。
+- 写入 `doc/plan/` 的计划/设计文档，首段必须为「审查摘要」（关键声明带 `file:line` 锚点 / 待决策 / 自曝风险三清单），详见 `doc/plan/_CONVENTIONS.md`；凡"已核验/已就位/零改动"类论断无锚点视为未核验。
 - 当本次对项目的修改达到某个里程碑或完成时，请判断当前的修改是否导致项目的实际逻辑与你所理解的项目上下文（比如本文档或rule中的规则）出现了差异，如果有差异，则向用户询问是否需要对文档进行同步。
 - 当用户描述现象而又没提供日志时，尝试从开发环境的日志文件[log](log)中获取相关日志
 - 执行 Bash 命令时，工作目录默认为项目根，禁止添加 `cd <项目根>` 前缀；需要切换目录时使用绝对路径，避免 `cd` 与输出重定向（`2>&1`、`2>/dev/null`、`>` 等）出现在同一复合命令中触发安全检查。

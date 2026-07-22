@@ -24,10 +24,11 @@ import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
-import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { resourceMerge } from '@renderer/apis/http/wrappers/resource'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
-import { getResourceOpenPath, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
+import { getResourceOpenPath, getResourcePreviewType, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
+import { ResourceType } from '@renderer/constants/sectionCode.ts'
 
 // props
 const props = defineProps<{
@@ -104,14 +105,6 @@ const siteTagExchangeUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 // 站点标签的查询参数
 const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 
-// ===== 可显示的图片扩展名 =====
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
-
-function isDisplayableImage(extension: string | null | undefined): boolean {
-  if (!extension) return false
-  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
-}
-
 // ===== 图片显示路径（优先缩略图，仅图片类型回退 workStore）=====
 const imagePath = computed(() => {
   const resource = currentWorkFullInfo.value.resource
@@ -119,8 +112,8 @@ const imagePath = computed(() => {
   if (resource?.thumbnailStore?.filePath) {
     return resource.thumbnailStore.filePath
   }
-  // 2. 无缩略图时，仅对图片类型的资源返回路径；非图片类型返回空，阻止 el-image 加载
-  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+  // 2. 无缩略图时，仅图片类型资源在 el-image 渲染；非图片类型返回空走 error/占位
+  if (resource?.workStore?.filePath && getResourcePreviewType(resource) === ResourceType.IMAGE) {
     return resource.workStore.filePath
   }
   return ''
@@ -302,10 +295,15 @@ async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean)
   }
 }
 // 处理图片点击事件
-function handlePictureClicked() {
+async function handlePictureClicked() {
   const filePath = getResourceFilePath(currentWorkFullInfo.value)
   if (notNullish(filePath)) {
-    appLauncherOpenImage(filePath)
+    // 图片用应用内图片查看；其他类型(视频/文档/article)用系统默认应用打开
+    if (getResourcePreviewType(currentWorkFullInfo.value.resource) === ResourceType.IMAGE) {
+      await appLauncherOpenImage(filePath)
+    } else {
+      await appLauncherOpen(filePath)
+    }
   } else {
     ElMessage({
       type: 'error',

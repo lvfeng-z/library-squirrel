@@ -15,6 +15,7 @@ type Resource struct {
 	Enabled          bool           `gorm:"column:enabled" json:"enabled"`
 	SuggestName      sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
 	ResourceComplete int            `gorm:"column:resource_complete" json:"resourceComplete"`
+	ResourceType     string         `gorm:"column:resource_type;not null" json:"resourceType"`
 }
 
 func (Resource) TableName() string {

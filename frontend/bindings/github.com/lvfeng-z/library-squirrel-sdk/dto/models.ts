@@ -544,6 +544,7 @@ export class ResourceDTO {
     "taskId": number;
     "enabled": boolean;
     "suggestName": string | null;
+    "resourceType": string;
     "resourceComplete": number;
     "createTime": number;
     "updateTime": number;
@@ -564,6 +565,9 @@ export class ResourceDTO {
         }
         if (!("suggestName" in $$source)) {
             this["suggestName"] = null;
+        }
+        if (!("resourceType" in $$source)) {
+            this["resourceType"] = "";
         }
         if (!("resourceComplete" in $$source)) {
             this["resourceComplete"] = 0;
@@ -590,7 +594,8 @@ export class ResourceDTO {
 /**
  * ResourceFullDTO 资源完整 DTO
  * Stores 为 resource_store 关联表全部 store(多轨模型,主数据源);
- * WorkStore/ThumbnailStore 为从 Stores 按 storeType 派生的便捷访问器(供前端取主文件/缩略图路径,减少改动面)
+ * WorkStore 为展示主体,由后端按资源类型的 PrimaryRoles 优先级链派生(ResolvePrimaryStore),前端纯消费;
+ * ThumbnailStore 为从 Stores 按 storeType=thumbnail 派生的便捷访问器。
  */
 export class ResourceFullDTO {
     "id": number;
@@ -598,21 +603,10 @@ export class ResourceFullDTO {
     "taskId": number;
     "enabled": boolean;
     "suggestName": string | null;
+    "resourceType": string;
     "resourceComplete": number;
-
-    /**
-     * 全部 store(resource_store 关联)
-     */
     "stores"?: ResourceStoreDTO[];
-
-    /**
-     * 便捷访问器:storeType=main
-     */
     "workStore"?: PersistentStoreDTO | null;
-
-    /**
-     * 便捷访问器:storeType=thumbnail
-     */
     "thumbnailStore"?: PersistentStoreDTO | null;
     "createTime": number;
     "updateTime": number;
@@ -634,6 +628,9 @@ export class ResourceFullDTO {
         if (!("suggestName" in $$source)) {
             this["suggestName"] = null;
         }
+        if (!("resourceType" in $$source)) {
+            this["resourceType"] = "";
+        }
         if (!("resourceComplete" in $$source)) {
             this["resourceComplete"] = 0;
         }
@@ -651,18 +648,18 @@ export class ResourceFullDTO {
      * Creates a new ResourceFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceFullDTO {
-        const $$createField6_0 = $$createType5;
-        const $$createField7_0 = $$createType7;
+        const $$createField7_0 = $$createType5;
         const $$createField8_0 = $$createType7;
+        const $$createField9_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stores" in $$parsedSource) {
-            $$parsedSource["stores"] = $$createField6_0($$parsedSource["stores"]);
+            $$parsedSource["stores"] = $$createField7_0($$parsedSource["stores"]);
         }
         if ("workStore" in $$parsedSource) {
-            $$parsedSource["workStore"] = $$createField7_0($$parsedSource["workStore"]);
+            $$parsedSource["workStore"] = $$createField8_0($$parsedSource["workStore"]);
         }
         if ("thumbnailStore" in $$parsedSource) {
-            $$parsedSource["thumbnailStore"] = $$createField8_0($$parsedSource["thumbnailStore"]);
+            $$parsedSource["thumbnailStore"] = $$createField9_0($$parsedSource["thumbnailStore"]);
         }
         return new ResourceFullDTO($$parsedSource as Partial<ResourceFullDTO>);
     }
@@ -673,7 +670,7 @@ export class ResourceFullDTO {
  */
 export class ResourceStoreDTO {
     /**
-     * main | thumbnail | videoTrack | audioTrack | merged
+     * image | document | thumbnail | videoTrack | audioTrack | merged
      */
     "storeType": string;
 
@@ -1168,6 +1165,11 @@ export class TaskDTO {
      * 任务涉及的 store_type 集合(创建期声明,universe);nil=未确定;用于前端按任务自选展示
      */
     "involvedRoles": string[];
+
+    /**
+     * 任务产生的 resource 的资源类型(预定义值);空=未声明
+     */
+    "resourceType": string;
     "createTime": number;
     "updateTime": number;
 
@@ -1217,6 +1219,9 @@ export class TaskDTO {
         }
         if (!("involvedRoles" in $$source)) {
             this["involvedRoles"] = [];
+        }
+        if (!("resourceType" in $$source)) {
+            this["resourceType"] = "";
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;

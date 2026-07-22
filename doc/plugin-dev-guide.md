@@ -267,15 +267,25 @@ type TaskHandler interface {
 
 - **声明 = hint,Start 产出 = truth**:`InvolvedRoles` 用于前端重执行 UI 只展示该任务涉及的板块、以及主程序首跑默认请求集;主程序挂载以插件 `Start` 实际产出的 StoreSpec 为准,**不据 universe 拒绝超出声明的 spec**(创建期声明不全时仍健壮)。
 - **空/nil = 未确定(default)**:创建期信息不足以判定时留空,执行期插件按全量(空 storeRoles)自决产出;前端对 default 任务展示兜底集。
-- **声明时机**:能据 URL 即定则定(如纯图片站点恒为 `[main]`,可省去无意义的缩略图派生请求);需深度元数据才能定则留空走 default。
+- **声明时机**:能据 URL 即定则定(如纯图片站点恒为 `[image]`,可省去无意义的缩略图派生请求);需深度元数据才能定则留空走 default。
 
-例:纯图片站点 `Create` 声明 `InvolvedRoles=[main]` → 首跑 Start 请求集仅 `[main]`,不触发缩略图派生轨;重执行 UI 仅显示「资源」一项。
+例:纯图片站点 `Create` 声明 `InvolvedRoles=[image]` → 首跑 Start 请求集仅 `[image]`,不触发缩略图派生轨;重执行 UI 仅显示「图片」一项。
+
+#### 声明资源类型(ResourceType,必填)
+
+`TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段**必须声明**预定义值之一(`sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Unknown`)。主程序**严格识别,不推断、不兜底**:
+
+- `ResourceType` 空 / 非预定义值 → 写入路径抛错(任务创建/执行失败)
+- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`merged` 六角色 → 抛错
+- `unknown` 是合法显式值(插件确实无法分类时声明),不报错
+
+资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。
 
 #### StoreSpec(资源产出声明)
 
 ```go
 type StoreSpec struct {
-    Role        string        // store_type: main | thumbnail | videoTrack | ...
+    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | merged
     Generation  string        // downloaded(流式可续传) | derived(一次性派生)
     ReadCloser  io.ReadCloser // 资源数据流,调用方负责 Close
     Format      string        // 文件扩展名
@@ -289,7 +299,7 @@ type StoreSpec struct {
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
 - **`Format` 前导点约定(易错,主程序两套路径逻辑不一致,须分别遵守)**:
-  - **downloaded 轨**(main/videoTrack/audioTrack 等):`Format` **带前导点**(如 `.mp4`、`.m4a`、`.jpg`、`.png`)。主程序 `resolveMainPath` 直接 `文件名 + Format` 拼接。
+  - **downloaded 轨**(image/videoTrack/audioTrack 等):`Format` **带前导点**(如 `.mp4`、`.m4a`、`.jpg`、`.png`)。主程序 `resolveMainPath` 直接 `文件名 + Format` 拼接。
   - **derived 缩略图**(thumbnail):`Format` **不带前导点**(如 `jpg`、`png`)。主程序 `buildThumbnailRelPath`/`buildThumbnailFileName` 自拼 `_thumbnail.` + Format(自己加 dot);若带点会产出 `_thumbnail..jpg`,既命名错误又会因 `..` 子串触发静态服务路径穿越拦截 → 前端 404。
 
 #### ctx 与 reader 契约(重要)

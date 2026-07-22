@@ -4,7 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
-import { Handler as AppLauncherHandler, ExternalAppEnum } from '@bindings/github.com/library-squirrel/backend/appLauncher'
+import { Handler as AppLauncherHandler } from '@bindings/github.com/library-squirrel/backend/appLauncher'
 
 export async function appLauncherOpenImage(filePath: string): Promise<ApiResponse<void>> {
   // 使用 OpenImage 打开图片资源（filePath 为相对路径）
@@ -16,8 +16,8 @@ export async function appLauncherOpenImage(filePath: string): Promise<ApiRespons
 }
 
 export async function appLauncherOpen(path: string): Promise<ApiResponse<void>> {
-  // ExternalAppEnum.$zero = 0 表示使用系统默认应用
-  const result = await AppLauncherHandler.Open(ExternalAppEnum.$zero, path)
+  // 系统默认应用打开(OpenPath:Windows cmd /c start / macOS open / Linux xdg-open)
+  const result = await AppLauncherHandler.OpenPath(path)
   if (!result) {
     return { success: false, msg: '打开失败：接口返回为空' }
   }

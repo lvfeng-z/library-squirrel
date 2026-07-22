@@ -4,10 +4,11 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 )
 
-// ==== StoreType 常量(开放枚举)====
-// 标识 resource_store 的业务角色;新增资源类型时在此追加常量,不改表结构。
+// ==== StoreType 常量(封闭枚举)====
+// 标识 resource_store 的业务角色;资源类型规约体系(ResourceTypeSpec)据此组合表达结构。
 const (
-	StoreTypeMain       = "main"       // 主资源
+	StoreTypeImage      = "image"      // 图片(image 资源主体;article 内嵌图多例)
+	StoreTypeDocument   = "document"   // 文档文件(article 正文 .md;document 原文件 .pdf/.docx)
 	StoreTypeThumbnail  = "thumbnail"  // 缩略图/封面
 	StoreTypeVideoTrack = "videoTrack" // 视频轨
 	StoreTypeAudioTrack = "audioTrack" // 音频轨

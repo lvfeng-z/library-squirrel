@@ -4,8 +4,10 @@ import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
-import { appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
+import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
+import { getResourceOpenPath, getResourcePreviewType } from '@renderer/utils/ResourceUtil.ts'
+import { ResourceType } from '@renderer/constants/sectionCode.ts'
 
 // props
 const props = defineProps<{
@@ -21,13 +23,6 @@ const checked = defineModel<boolean>('checked', { required: false, default: fals
 const emit = defineEmits(['imageClicked'])
 
 // 变量
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
-
-function isDisplayableImage(extension: string | null | undefined): boolean {
-  if (!extension) return false
-  return IMAGE_EXTENSIONS.has(extension.toLowerCase())
-}
-
 const imageFit: Ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'> = ref('contain')
 const caseHeight: Ref<string> = computed(() => (props.maxHeight === undefined ? 'auto' : String(props.maxHeight) + 'px'))
 // 封面资源路径：优先缩略图，仅图片类型才用 workStore，否则返回空触发 error 插槽
@@ -37,8 +32,8 @@ const coverFilePath: Ref<string> = computed(() => {
   if (resource?.thumbnailStore?.filePath) {
     return resource.thumbnailStore.filePath
   }
-  // 2. 无缩略图时，仅对图片类型返回路径
-  if (resource?.workStore?.filePath && isDisplayableImage(resource.workStore.filenameExtension)) {
+  // 2. 无缩略图时，仅图片类型返回路径
+  if (resource?.workStore?.filePath && getResourcePreviewType(resource) === ResourceType.IMAGE) {
     return resource.workStore.filePath
   }
   return ''
@@ -56,10 +51,16 @@ function handleImageClicked() {
   clickTimeout = setTimeout(() => emit('imageClicked', props.workSet), 300)
 }
 // 处理图片双击事件
-function handlePictureClicked() {
+async function handlePictureClicked() {
   clearTimeout(clickTimeout)
-  if (notNullish(props.workSet.coverResource?.workStore?.filePath)) {
-    appLauncherOpenImage(props.workSet.coverResource.workStore!.filePath!)
+  const filePath = getResourceOpenPath(props.workSet.coverResource)
+  if (notNullish(filePath) && filePath !== '') {
+    // 图片用应用内图片查看；其他类型用系统默认应用打开
+    if (getResourcePreviewType(props.workSet.coverResource) === ResourceType.IMAGE) {
+      await appLauncherOpenImage(filePath)
+    } else {
+      await appLauncherOpen(filePath)
+    }
   } else {
     ElMessage({
       type: 'error',

@@ -52,4 +52,5 @@ globs:
 - **BATCH_UPDATE_OPTIMIZATION** (P1): 批量更新使用单条 SQL，禁止循环逐条 UPDATE。
 - **ENTITY_USE_NEW_FACTORY** (P1): 使用 `entity.NewXxx()` 工厂方法，禁止 `&entity.Xxx{}`。
 - **NULLABLE_PARAM_USE_POINTER** (P1): 可空参数使用 `*int64`/`*string`（null = 清除关联）。
+- **RESOURCE_TYPE_STRICT** (P0): `resource.resource_type` NOT NULL；写入路径严格识别（空/未知 ResourceType 与 store_type 抛错，`entity.ValidateResourceType`/`ValidateStoreType`），不迁移历史数据（用户上线前手动处理）。规约见 `doc/resource-type-spec.md`。
 - Service 层禁止直接导入 `backend/database`，仅 Repository 层可导入。

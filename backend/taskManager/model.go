@@ -805,8 +805,8 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
-	// 含 main：查重（fallback；主路径在 Manager.batchCheckDuplicates）
-	if m.runMode.hasStore(entity.StoreTypeMain) && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
+	// 含主资源：查重（fallback；主路径在 Manager.batchCheckDuplicates）
+	if m.runMode.hasStore(entity.StoreTypeImage) && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
 		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.runCtx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 		if err == nil && existing != nil {
@@ -824,21 +824,21 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	}
 
 	// workId 定位 + 替换判定
-	// 任何资源板块(main/thumbnail/...)在已有作品上重执行都视为替换,需备份旧 store;不限于 main
-	if m.runMode.hasStore(entity.StoreTypeMain) {
+	// 任何资源板块(image/thumbnail/...)在已有作品上重执行都视为替换,需备份旧 store;不限于主资源
+	if m.runMode.hasStore(entity.StoreTypeImage) {
 		// 查重命中(existingWorkId>0，确认后重入或 batchCheckDuplicates 设置)
 		if m.existingWorkId > 0 {
 			m.workId = m.existingWorkId
 			m.existingWorkId = 0
 			m.isReplace = true
 		} else if !m.runMode.hasWorkInfo() {
-			// 含 main 的重执行必须定位到已有作品(否则无处挂载主资源)
+			// 含主资源的重执行必须定位到已有作品(否则无处挂载主资源)
 			logger.Log.Errorf("[TaskManager] 任务 %d 资源重执行未定位到作品", m.taskId)
 			return m.comboFail("未找到任务对应的作品，无法重新下载资源")
 		}
 		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
 	} else if !m.runMode.hasWorkInfo() && m.runMode.hasAnyStore() {
-		// 非 main 资源板块(纯缩略图等):由任务记录定位已有作品,标记为替换
+		// 非主资源(纯缩略图等)板块:由任务记录定位已有作品,标记为替换
 		workId, err := m.resolveWorkIdByTask()
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
@@ -919,7 +919,7 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 	m.workResp = workResp
 
 	// 解析主资源路径(供主轨与缩略图派生路径)
-	mainSpec := findSpec(specs, entity.StoreTypeMain)
+	mainSpec := findSpec(specs, entity.StoreTypeImage)
 	if mainSpec == nil {
 		// 无主轨(如纯缩略图重下):以首个 spec 占位解析主路径
 		if len(specs) > 0 {
@@ -1057,7 +1057,8 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		resource.WorkID = workId
 		resource.TaskID = m.task.GetID()
 		resource.Enabled = true
-		resource.ResourceComplete = 0 // 下载未完成
+		resource.ResourceComplete = 0                      // 下载未完成
+		resource.ResourceType = m.task.ResourceType.String // 创建期声明的资源类型;NULL/未声明=空串
 
 		var err error
 		resourceId, err = m.deps.ResourceSaver.Save(ctx, resource)
@@ -1072,6 +1073,47 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 	}
 
 	return resourceId, nil
+}
+
+// markResourceComplete 计算资源完整度并持久化(下载完成时调用)。
+// 三态(决策4):0=未校验(未知/未声明 resource_type 或 reader 缺失,不校验)、1=完整(结构校验通过)、
+// 2=不完整(缺角色或超量,前端徽标提示但不阻断打开)。
+// 读路径不抛错;查询异常降级为保持未校验,不阻断任务完成。
+func (m *ManagedTask) markResourceComplete(ctx context.Context, resourceId int64) {
+	if resourceId == 0 {
+		return
+	}
+	resource, err := m.deps.ResourceReader.GetById(ctx, resourceId)
+	if err != nil || resource == nil {
+		logger.Log.Warnf("[TaskManager] 计算资源完整度失败: resourceId=%d err=%v", resourceId, err)
+		return
+	}
+	complete := 0 // 默认未校验
+	if entity.LookupResourceTypeSpec(resource.ResourceType) != nil && m.deps.ResourceStoreReader != nil {
+		storeRows, sErr := m.deps.ResourceStoreReader.ListByResourceId(ctx, resourceId)
+		if sErr != nil {
+			logger.Log.Warnf("[TaskManager] 查询 resource_store 计数失败: resourceId=%d err=%v", resourceId, sErr)
+		} else {
+			counts := make(map[string]int, len(storeRows))
+			for _, s := range storeRows {
+				counts[s.StoreType]++
+			}
+			missing, excess := entity.ValidateResourceStructure(resource.ResourceType, counts)
+			if len(missing) == 0 && len(excess) == 0 {
+				complete = 1
+			} else {
+				complete = 2
+				logger.Log.Infof("[TaskManager] 资源结构不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
+			}
+		}
+	}
+	if resource.ResourceComplete == complete {
+		return // 值未变,跳过写库
+	}
+	resource.ResourceComplete = complete
+	if err := m.deps.ResourceUpdater.Update(ctx, resource); err != nil {
+		logger.Log.Warnf("[TaskManager] 更新 ResourceComplete 失败: resourceId=%d err=%v", resourceId, err)
+	}
 }
 
 // findReplaceResource 替换场景定位已有 Resource(优先备份清单第一个条目,回退 workId 查询)
@@ -1229,7 +1271,8 @@ func (m *ManagedTask) downloadLoop() runResult {
 		m.setFailed(msg)
 		return runResultDone
 	}
-	// 全部完成
+	// 全部完成:先计算并持久化资源完整度(此刻所有 store 已 Complete),再清 pending + 转 Finished
+	m.markResourceComplete(m.runCtx, m.currentResourceId)
 	m.clearPendingResourceID()
 	m.setState(TaskStateFinished)
 	return runResultDone
@@ -1504,13 +1547,14 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	if len(specs) == 0 {
 		// 无未完成轨道需续传/重产:任务直接完成
 		logger.Log.Infof("[TaskManager][dispatch] taskId=%d resumeFromPersistedState 无未完成轨道,直接 Finished(streamOffsets=%v regenDerived=%v)", m.taskId, streamOffsets, incompleteDerivedRoles)
+		m.markResourceComplete(m.runCtx, resource.GetID())
 		m.clearPendingResourceID()
 		m.setState(TaskStateFinished)
 		return runResultDone
 	}
 
 	// 5. 为每个返回的 spec 续接(continuable downloaded)或重建 store,构建 streamController
-	mainSpec := findSpec(specs, entity.StoreTypeMain)
+	mainSpec := findSpec(specs, entity.StoreTypeImage)
 	if mainSpec == nil && len(specs) > 0 {
 		mainSpec = specs[0]
 	}
