@@ -329,7 +329,7 @@ function handleTest() {
       </div>
       <el-button
         v-if="!workSetView"
-        type="danger"
+        type="primary"
         class="topbar-items"
         @click="queryWorkPage(false)"
       >
@@ -337,7 +337,7 @@ function handleTest() {
       </el-button>
       <el-button
         v-if="workSetView"
-        type="danger"
+        type="primary"
         class="topbar-items"
         @click="queryWorkSetPage(false)"
       >

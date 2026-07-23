@@ -366,6 +366,7 @@ watch(isCheckable, (newValue) => {
           </el-button>
           <el-button
             type="danger"
+            class="tone-fail"
             @click="handleDelete"
           >
             <el-icon><Delete /></el-icon>

@@ -77,6 +77,7 @@ async function handleSkipAll() {
           <el-button
             size="small"
             type="danger"
+            class="tone-fail"
             :loading="store.isLoading(item.taskId)"
             @click="handleReplace(item)"
           >
@@ -95,6 +96,7 @@ async function handleSkipAll() {
     <template #footer>
       <el-button
         type="danger"
+        class="tone-fail"
         @click="handleReplaceAll"
       >
         全部替换

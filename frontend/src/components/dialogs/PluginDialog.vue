@@ -129,6 +129,7 @@ async function unInstall(pluginPublicId: string | undefined | null) {
         <el-col :span="3">
           <el-button
             type="danger"
+            class="tone-fail"
             @click="unInstall(formData.publicId)"
           >
             卸载

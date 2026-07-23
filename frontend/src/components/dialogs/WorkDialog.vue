@@ -631,6 +631,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       <div class="work-dialog-footer-buttons">
         <el-button
           type="danger"
+          class="tone-fail"
           icon="delete"
           @click="handleDeleteButtonClick"
         >

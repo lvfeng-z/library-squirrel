@@ -1,0 +1,14 @@
+/* 语义 tone 色按钮
+   把 el-button 的 EP 组件色族档位重定向到状态语义 tone 色板，使按钮色源与 StatusTag 同源、
+   逐主题随 tone 调色变化。借 el-button 各 type 的实心结构（红底白字 + hover/active/disabled 档位），
+   仅替换色源变量，不重写按钮内部交互态样式。 */
+
+/* 破坏性按钮（type="danger"）→ fail tone（--app-status-fail-*，与失败/损坏状态同源）。
+   fail-text 作实心底色，light/dark 档位按 EP 算法（白/黑占 N×10%）由 fail-text 派生。 */
+.el-button.tone-fail {
+  --el-color-danger: var(--app-status-fail-text);
+  --el-color-danger-light-3: color-mix(in srgb, var(--app-status-fail-text) 70%, white);
+  --el-color-danger-light-5: color-mix(in srgb, var(--app-status-fail-text) 50%, white);
+  --el-color-danger-light-7: color-mix(in srgb, var(--app-status-fail-text) 30%, white);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--app-status-fail-text) 80%, black);
+}

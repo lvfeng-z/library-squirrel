@@ -79,9 +79,9 @@ html[data-theme="forest-light"] {
   --app-status-done-bg: color-mix(in srgb, #0d9488 18%, white);
   --app-status-done-border: color-mix(in srgb, #0d9488 26%, white);
 
-  --app-status-fail-text: #f56c6c;
-  --app-status-fail-bg: color-mix(in srgb, #f56c6c 18%, white);
-  --app-status-fail-border: color-mix(in srgb, #f56c6c 26%, white);
+  --app-status-fail-text: #b53a3a;           /* 失败·暗红（融入森林沉郁基调，比 default #f56c6c 加深，驱动破坏性按钮/失败状态）*/
+  --app-status-fail-bg: color-mix(in srgb, #b53a3a 18%, white);
+  --app-status-fail-border: color-mix(in srgb, #b53a3a 26%, white);
 
   --app-status-warn-text: #e6a23c;
   --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);

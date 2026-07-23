@@ -79,9 +79,9 @@ html[data-theme="ocean-light"] {
   --app-status-done-bg: color-mix(in srgb, #67c23a 18%, white);
   --app-status-done-border: color-mix(in srgb, #67c23a 26%, white);
 
-  --app-status-fail-text: #f56c6c;
-  --app-status-fail-bg: color-mix(in srgb, #f56c6c 18%, white);
-  --app-status-fail-border: color-mix(in srgb, #f56c6c 26%, white);
+  --app-status-fail-text: #e84848;           /* 失败·鲜明红（清冷青主题中保持危险警示醒目，驱动破坏性按钮/失败状态）*/
+  --app-status-fail-bg: color-mix(in srgb, #e84848 18%, white);
+  --app-status-fail-border: color-mix(in srgb, #e84848 26%, white);
 
   --app-status-warn-text: #e6a23c;
   --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);

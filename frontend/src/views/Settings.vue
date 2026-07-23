@@ -315,6 +315,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     <el-col :span="1">
                       <el-button
                         type="danger"
+                        class="tone-fail"
                         icon="RefreshLeft"
                         @click="settings.workdir = oldSettings.workdir"
                       />
@@ -561,6 +562,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               </el-button>
               <el-button
                 type="danger"
+                class="tone-fail"
                 @click="resetSettings"
               >
                 默认设置
