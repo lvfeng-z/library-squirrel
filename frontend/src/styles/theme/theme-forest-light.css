@@ -1,5 +1,5 @@
 /* 森林绿浅色主题（备选）
-   覆盖主色为深绿；文字、边框、状态色、背景沿用 tokens.css 的 :root 默认值。
+   覆盖主色为深绿；文字、边框、背景沿用 tokens.css 的 :root 默认值，状态语义槽位由本文件独立覆盖（见下，初值暂同 default）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="forest-light"] {
   --app-color-primary: #007038;
@@ -18,8 +18,8 @@ html[data-theme="forest-light"] {
   --app-bg-surface-variant: #f0f4ee;
   --app-bg-sidebar: #d4e2d0;
 
-  /* ===== 状态色族：覆盖 success/warning/danger/info 档位，
-     使任务/开关/资源等所有 --app-status-* 别名与残留 el-tag 跟随森林主题 ===== */
+  /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
+     与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */
   --app-color-success: #5fa83a;
   --app-color-success-light-1: #6fb14e;
   --app-color-success-light-2: #7fb961;
@@ -67,4 +67,31 @@ html[data-theme="forest-light"] {
   --app-color-info-light-8: #e8e9eb;
   --app-color-info-light-9: #f3f4f5;
   --app-color-info-dark-2: #6e757b;
+
+  /* ===== 状态语义槽位（驱动所有 --app-status-{类目}-* 别名）：初值暂同 default（tokens.css :root 的 EP 经典色），
+     待逐主题调色时各自独立填色、不引用 :root。
+     调色提示：本主题 primary 为绿(#007038)，done 槽不可再用绿；done 搬离后须避免与 warn(橙)、active(橙)挤入同一暖域。 ===== */
+  --app-status-active-text: #f97316;
+  --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
+  --app-status-active-border: color-mix(in srgb, #f97316 26%, white);
+
+  --app-status-done-text: #0d9488;           /* 完成·青绿（往绿拉开 pending，hue≈173°，注意与 primary 翠绿的间距）*/
+  --app-status-done-bg: color-mix(in srgb, #0d9488 18%, white);
+  --app-status-done-border: color-mix(in srgb, #0d9488 26%, white);
+
+  --app-status-fail-text: #f56c6c;
+  --app-status-fail-bg: color-mix(in srgb, #f56c6c 18%, white);
+  --app-status-fail-border: color-mix(in srgb, #f56c6c 26%, white);
+
+  --app-status-warn-text: #e6a23c;
+  --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);
+  --app-status-warn-border: color-mix(in srgb, #e6a23c 26%, white);
+
+  --app-status-pending-text: #409eff;
+  --app-status-pending-bg: color-mix(in srgb, #409eff 18%, white);
+  --app-status-pending-border: color-mix(in srgb, #409eff 26%, white);
+
+  --app-status-idle-text: #909399;
+  --app-status-idle-bg: color-mix(in srgb, #909399 18%, white);
+  --app-status-idle-border: color-mix(in srgb, #909399 26%, white);
 }

@@ -383,7 +383,7 @@ async function handleSourceUrlInput() {
           <el-button
               ref="localImportButton"
               size="large"
-              type="danger"
+              type="primary"
               icon="Monitor"
               @click="(event: PointerEvent) => handleDownloadDialog(event, true)"
           >
@@ -393,6 +393,7 @@ async function handleSourceUrlInput() {
         <div class="task-manage-site-import-button-col">
           <el-button
               ref="siteDownloadButton"
+              class="source-site-button"
               v-model="downloadDialogState"
               size="large"
               type="primary"
@@ -669,6 +670,21 @@ async function handleSourceUrlInput() {
 }
 .task-manage-site-import-button-col {
   margin: auto;
+}
+/* 从站点下载按钮：走"浅底深字"（区别于本地导入按钮的 primary 深底白字）——
+   底用 source-site-bg（淡主题色）、字用 source-site-text（primary 深字），体现站点来源"较浅"。
+   本地导入按钮用 type="primary" 即天然等于 source-local（深底白字）。
+   经 EP 按钮 CSS 变量覆盖各态，hover/active 底色逐级加深、字色保持深色。 */
+.source-site-button {
+  --el-button-bg-color: var(--app-status-source-site-bg);
+  --el-button-border-color: var(--app-status-source-site-border);
+  --el-button-text-color: var(--app-status-source-site-text);
+  --el-button-hover-bg-color: color-mix(in srgb, var(--app-color-primary) 16%, white);
+  --el-button-hover-border-color: color-mix(in srgb, var(--app-color-primary) 22%, white);
+  --el-button-hover-text-color: var(--app-status-source-site-text);
+  --el-button-active-bg-color: color-mix(in srgb, var(--app-color-primary) 22%, white);
+  --el-button-active-border-color: color-mix(in srgb, var(--app-color-primary) 28%, white);
+  --el-button-active-text-color: var(--app-status-source-site-text);
 }
 .task-manage-search-table-wrapper {
   background: var(--app-bg-surface);

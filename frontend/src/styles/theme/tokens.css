@@ -110,81 +110,113 @@
   --app-tag-neutral-bg-strong: color-mix(in srgb, var(--app-color-info) 30%, transparent);
   --app-tag-neutral-text: var(--app-color-info);
 
+  /* ===== 状态语义 tone 色板（default 主题默认值，参考 Element Plus 经典状态色）
+     每个 tone 的 text 取 EP 验证过的经典色（绿 success/橙 warning/红 danger/灰 info/蓝 primary），
+     bg/border 由 text 与白色按 EP 算法派生（color-mix 18%/26%）。
+     本块给出 default 主题（默认浅色）的状态基色；forest/ocean/sakura 在各自 theme-*.css 独立覆盖这些 tone 的值，
+     主题填色时自行保证槽位色相两两分散、避免与主色撞色。所有 --app-status-* 别名引用本层 tone。
+     状态槽位独立于 --app-color-{success,warning,...} EP 组件色族（后者经 ep-bridge 驱动 el-button/el-tag，两条轨道互不引用）。 ===== */
+  --app-status-active-text: #f97316;         /* 进行中·橙 */
+  --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
+  --app-status-active-border: color-mix(in srgb, #f97316 26%, white);
+
+  --app-status-done-text: #67c23a;           /* 完成·绿（EP success）*/
+  --app-status-done-bg: color-mix(in srgb, #67c23a 18%, white);
+  --app-status-done-border: color-mix(in srgb, #67c23a 26%, white);
+
+  --app-status-fail-text: #f56c6c;           /* 失败·红（EP danger）*/
+  --app-status-fail-bg: color-mix(in srgb, #f56c6c 18%, white);
+  --app-status-fail-border: color-mix(in srgb, #f56c6c 26%, white);
+
+  --app-status-warn-text: #e6a23c;           /* 警示·橙（EP warning）*/
+  --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);
+  --app-status-warn-border: color-mix(in srgb, #e6a23c 26%, white);
+
+  --app-status-pending-text: #409eff;        /* 待激活·蓝（EP primary）*/
+  --app-status-pending-bg: color-mix(in srgb, #409eff 18%, white);
+  --app-status-pending-border: color-mix(in srgb, #409eff 26%, white);
+
+  --app-status-idle-text: #909399;           /* 空闲·灰（EP info）*/
+  --app-status-idle-bg: color-mix(in srgb, #909399 18%, white);
+  --app-status-idle-border: color-mix(in srgb, #909399 26%, white);
+
+  /* source 类目专属色（StatusTag 按 source-local/source-site 拼名消费，无别名层）。
+     local 与 site 都跟随主题主色（var(--app-color-primary)）：local 用标准浓度（鲜明，自有数据用品牌色）、
+     site 用较浅浓度（淡雅），靠"深 vs 浅"区分。任务管理站点按钮据此走"浅底深字"。 */
+  --app-status-source-local-text: var(--app-color-primary);
+  --app-status-source-local-bg: color-mix(in srgb, var(--app-color-primary) 18%, white);
+  --app-status-source-local-border: color-mix(in srgb, var(--app-color-primary) 26%, white);
+
+  --app-status-source-site-text: var(--app-color-primary);              /* 站点来源·较浅主题色（跟随各主题 primary；text 做字色，bg/border 浓度低于 source-local 表"较浅"）*/
+  --app-status-source-site-bg: color-mix(in srgb, var(--app-color-primary) 10%, white);
+  --app-status-source-site-border: color-mix(in srgb, var(--app-color-primary) 16%, white);
+
   /* ===== 状态语义别名（Layer 1）
-     每个状态含 -bg/-text/-border 三分量，默认引用上方色族（色族系）或分类标签（tag 系）。
-     业务与 StatusTag 只用 --app-status-*；主题通过覆盖色族即可让所有引用它的状态整体跟随，
-     亦可在此处之上个别覆盖某个别名实现精调。命名规范：--app-status-{类目}-{语义}-{分量}。 ===== */
-  /* —— 任务状态（task-*）—— 进行中用 primary（蓝）、等待中用 info（灰）以区分活跃与排队态 —— */
-  --app-status-task-created-bg: var(--app-color-info-light-9);
-  --app-status-task-created-text: var(--app-color-info);
-  --app-status-task-created-border: var(--app-color-info-light-8);
+     每个状态含 -bg/-text/-border 三分量，引用上方 tone 色板。
+     业务与 StatusTag 只用 --app-status-*；主题在各自 theme-*.css 覆盖 tone 的值，状态色即随主题整体变化。
+     命名规范：--app-status-{类目}-{语义}-{分量}。source 类目无别名层，直接消费上方专属 tone。 ===== */
+  /* —— 任务状态（task-*）：created=洋红、processing=橙、waiting/paused=灰、pausing/stopping/部分完成/等待确认=黄、completed=绿、failed=红 —— */
+  --app-status-task-created-bg: var(--app-status-pending-bg);
+  --app-status-task-created-text: var(--app-status-pending-text);
+  --app-status-task-created-border: var(--app-status-pending-border);
 
-  --app-status-task-processing-bg: var(--app-color-primary-light-9);
-  --app-status-task-processing-text: var(--app-color-primary);
-  --app-status-task-processing-border: var(--app-color-primary-light-8);
+  --app-status-task-processing-bg: var(--app-status-active-bg);
+  --app-status-task-processing-text: var(--app-status-active-text);
+  --app-status-task-processing-border: var(--app-status-active-border);
 
-  --app-status-task-waiting-bg: var(--app-color-info-light-9);
-  --app-status-task-waiting-text: var(--app-color-info);
-  --app-status-task-waiting-border: var(--app-color-info-light-8);
+  --app-status-task-waiting-bg: var(--app-status-idle-bg);
+  --app-status-task-waiting-text: var(--app-status-idle-text);
+  --app-status-task-waiting-border: var(--app-status-idle-border);
 
-  --app-status-task-pausing-bg: var(--app-color-warning-light-9);
-  --app-status-task-pausing-text: var(--app-color-warning);
-  --app-status-task-pausing-border: var(--app-color-warning-light-8);
+  --app-status-task-pausing-bg: var(--app-status-warn-bg);
+  --app-status-task-pausing-text: var(--app-status-warn-text);
+  --app-status-task-pausing-border: var(--app-status-warn-border);
 
-  --app-status-task-paused-bg: var(--app-color-info-light-9);
-  --app-status-task-paused-text: var(--app-color-info);
-  --app-status-task-paused-border: var(--app-color-info-light-8);
+  --app-status-task-paused-bg: var(--app-status-idle-bg);
+  --app-status-task-paused-text: var(--app-status-idle-text);
+  --app-status-task-paused-border: var(--app-status-idle-border);
 
-  --app-status-task-stopping-bg: var(--app-color-warning-light-9);
-  --app-status-task-stopping-text: var(--app-color-warning);
-  --app-status-task-stopping-border: var(--app-color-warning-light-8);
+  --app-status-task-stopping-bg: var(--app-status-warn-bg);
+  --app-status-task-stopping-text: var(--app-status-warn-text);
+  --app-status-task-stopping-border: var(--app-status-warn-border);
 
-  --app-status-task-completed-bg: var(--app-color-success-light-9);
-  --app-status-task-completed-text: var(--app-color-success);
-  --app-status-task-completed-border: var(--app-color-success-light-8);
+  --app-status-task-completed-bg: var(--app-status-done-bg);
+  --app-status-task-completed-text: var(--app-status-done-text);
+  --app-status-task-completed-border: var(--app-status-done-border);
 
-  --app-status-task-partly-finished-bg: var(--app-color-warning-light-9);
-  --app-status-task-partly-finished-text: var(--app-color-warning);
-  --app-status-task-partly-finished-border: var(--app-color-warning-light-8);
+  --app-status-task-partly-finished-bg: var(--app-status-warn-bg);
+  --app-status-task-partly-finished-text: var(--app-status-warn-text);
+  --app-status-task-partly-finished-border: var(--app-status-warn-border);
 
-  --app-status-task-failed-bg: var(--app-color-danger-light-9);
-  --app-status-task-failed-text: var(--app-color-danger);
-  --app-status-task-failed-border: var(--app-color-danger-light-8);
+  --app-status-task-failed-bg: var(--app-status-fail-bg);
+  --app-status-task-failed-text: var(--app-status-fail-text);
+  --app-status-task-failed-border: var(--app-status-fail-border);
 
-  --app-status-task-waiting-input-bg: var(--app-color-warning-light-9);
-  --app-status-task-waiting-input-text: var(--app-color-warning);
-  --app-status-task-waiting-input-border: var(--app-color-warning-light-8);
+  --app-status-task-waiting-input-bg: var(--app-status-warn-bg);
+  --app-status-task-waiting-input-text: var(--app-status-warn-text);
+  --app-status-task-waiting-input-border: var(--app-status-warn-border);
 
-  /* —— 来源类型（source-*）：作者/标签的 local/site，沿用半透明 tag 风格 —— */
-  --app-status-source-local-bg: var(--app-tag-red-bg);
-  --app-status-source-local-text: var(--app-tag-red-text);
-  --app-status-source-local-border: transparent;
+  /* —— 开关/运行态（toggle-*）：enabled=绿、disabled=灰 —— */
+  --app-status-toggle-enabled-bg: var(--app-status-done-bg);
+  --app-status-toggle-enabled-text: var(--app-status-done-text);
+  --app-status-toggle-enabled-border: var(--app-status-done-border);
 
-  --app-status-source-site-bg: var(--app-tag-blue-bg);
-  --app-status-source-site-text: var(--app-tag-blue-text);
-  --app-status-source-site-border: transparent;
+  --app-status-toggle-disabled-bg: var(--app-status-idle-bg);
+  --app-status-toggle-disabled-text: var(--app-status-idle-text);
+  --app-status-toggle-disabled-border: var(--app-status-idle-border);
 
-  /* —— 开关/运行态（toggle-*）—— */
-  --app-status-toggle-enabled-bg: var(--app-color-success-light-9);
-  --app-status-toggle-enabled-text: var(--app-color-success);
-  --app-status-toggle-enabled-border: var(--app-color-success-light-8);
+  /* —— 资源/作品状态（resource-*）：downloaded=绿、missing=黄、damaged=红 —— */
+  --app-status-resource-downloaded-bg: var(--app-status-done-bg);
+  --app-status-resource-downloaded-text: var(--app-status-done-text);
+  --app-status-resource-downloaded-border: var(--app-status-done-border);
 
-  --app-status-toggle-disabled-bg: var(--app-color-info-light-9);
-  --app-status-toggle-disabled-text: var(--app-color-info);
-  --app-status-toggle-disabled-border: var(--app-color-info-light-8);
+  --app-status-resource-missing-bg: var(--app-status-warn-bg);
+  --app-status-resource-missing-text: var(--app-status-warn-text);
+  --app-status-resource-missing-border: var(--app-status-warn-border);
 
-  /* —— 资源/作品状态（resource-*）—— */
-  --app-status-resource-downloaded-bg: var(--app-color-success-light-9);
-  --app-status-resource-downloaded-text: var(--app-color-success);
-  --app-status-resource-downloaded-border: var(--app-color-success-light-8);
-
-  --app-status-resource-missing-bg: var(--app-color-warning-light-9);
-  --app-status-resource-missing-text: var(--app-color-warning);
-  --app-status-resource-missing-border: var(--app-color-warning-light-8);
-
-  --app-status-resource-damaged-bg: var(--app-color-danger-light-9);
-  --app-status-resource-damaged-text: var(--app-color-danger);
-  --app-status-resource-damaged-border: var(--app-color-danger-light-8);
+  --app-status-resource-damaged-bg: var(--app-status-fail-bg);
+  --app-status-resource-damaged-text: var(--app-status-fail-text);
+  --app-status-resource-damaged-border: var(--app-status-fail-border);
 
   /* ===== 圆角 ===== */
   --app-radius-sm: 4px;

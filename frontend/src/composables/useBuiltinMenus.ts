@@ -1,5 +1,5 @@
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
-import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete } from '@element-plus/icons-vue'
+import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete, Brush } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 
 /**
@@ -149,6 +149,14 @@ export function initBuiltinMenus() {
       label: '测试按钮',
       order: 100,
       viewId: 'test'
+    },
+    {
+      slotId: 'builtin-statusPalette',
+      index: 'statusPalette',
+      icon: markRaw(Brush),
+      label: '状态色板',
+      order: 101,
+      viewId: 'statusPalette'
     }
   ])
 }

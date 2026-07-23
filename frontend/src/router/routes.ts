@@ -89,6 +89,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'test',
         component: () => import('@renderer/views/Test.vue'),
         meta: { title: '测试按钮', order: 100 }
+      },
+      {
+        path: 'statusPalette',
+        name: 'statusPalette',
+        component: () => import('@renderer/views/StatusPalette.vue'),
+        meta: { title: '状态色板', order: 101 }
       }
     ]
   }

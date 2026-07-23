@@ -1,6 +1,6 @@
 /* 默认浅色主题
    --app-* 令牌复用 tokens.css 的 :root 默认值，此文件不重复定义。
-   Element Plus 适配桥接（--el-* ← --app-*）在阶段 1 追加。 */
+   Element Plus 适配桥接（--el-* ← --app-*）由 ep-bridge.css 在全局 :root 统一处理，
+   各主题共享同一桥接，故此文件无需定义任何令牌。 */
 html[data-theme="default-light"] {
-  /* 阶段 1 在此追加 --el-* ← --app-* 适配桥接 */
 }

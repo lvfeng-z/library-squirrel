@@ -1,5 +1,5 @@
 /* 樱花粉浅色主题
-   覆盖主色与背景基调；文字、边框、状态色沿用 tokens.css 的 :root 默认值。
+   覆盖主色与背景基调；文字、边框沿用 tokens.css 的 :root 默认值，状态语义槽位由本文件独立覆盖（见下，初值暂同 default）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="sakura-light"] {
   --app-color-primary: #ec6d8e;
@@ -18,8 +18,8 @@ html[data-theme="sakura-light"] {
   --app-bg-surface-variant: #f9eff1;
   --app-bg-sidebar: #ecd3dc;
 
-  /* ===== 状态色族：覆盖 success/warning/danger/info 档位，
-     使任务/开关/资源等所有 --app-status-* 别名与残留 el-tag 跟随樱花主题 ===== */
+  /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
+     与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */
   --app-color-success: #88c43f;
   --app-color-success-light-1: #94ca52;
   --app-color-success-light-2: #a0d065;
@@ -67,4 +67,31 @@ html[data-theme="sakura-light"] {
   --app-color-info-light-8: #ebe9ea;
   --app-color-info-light-9: #f5f4f5;
   --app-color-info-dark-2: #7b7578;
+
+  /* ===== 状态语义槽位（驱动所有 --app-status-{类目}-* 别名）：初值暂同 default（tokens.css :root 的 EP 经典色），
+     待逐主题调色时各自独立填色、不引用 :root。
+     调色提示：本主题 primary 为粉(#ec6d8e)，fail(红)与之同红粉域——搬 fail 伤通用语义、调 primary 偏紫或接受邻近，需单独裁决。 ===== */
+  --app-status-active-text: #f97316;
+  --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
+  --app-status-active-border: color-mix(in srgb, #f97316 26%, white);
+
+  --app-status-done-text: #67c23a;
+  --app-status-done-bg: color-mix(in srgb, #67c23a 18%, white);
+  --app-status-done-border: color-mix(in srgb, #67c23a 26%, white);
+
+  --app-status-fail-text: #dc2626;           /* 失败·深红（保留"红=危险"语义，加深明度拉开 primary 樱花粉）*/
+  --app-status-fail-bg: color-mix(in srgb, #dc2626 18%, white);
+  --app-status-fail-border: color-mix(in srgb, #dc2626 26%, white);
+
+  --app-status-warn-text: #e6a23c;
+  --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);
+  --app-status-warn-border: color-mix(in srgb, #e6a23c 26%, white);
+
+  --app-status-pending-text: #409eff;
+  --app-status-pending-bg: color-mix(in srgb, #409eff 18%, white);
+  --app-status-pending-border: color-mix(in srgb, #409eff 26%, white);
+
+  --app-status-idle-text: #909399;
+  --app-status-idle-bg: color-mix(in srgb, #909399 18%, white);
+  --app-status-idle-border: color-mix(in srgb, #909399 26%, white);
 }
