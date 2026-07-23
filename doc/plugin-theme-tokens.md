@@ -41,16 +41,16 @@
 | `--app-tag-neutral-bg` / `-bg-hover` / `-bg-strong` / `-text` | 中性标签（跟随 info 色族，用于无状态/未选中/分段灰） |
 
 ### 状态语义别名（状态展示优先使用）
-> 状态展示（任务状态、来源类型、开关、资源状态）优先用语义别名而非直接用色族。每个别名含 `-bg`/`-text`/`-border`，随主题变化。命名 `--app-status-{类目}-{语义}`，类目 `task`/`source`/`toggle`/`resource`。
+> 状态展示（任务状态、来源类型、开关、资源状态）优先用语义别名。别名引用**语义 tone 色板**——`:root` 给出 default 主题默认色（text 取 Element Plus 经典色），bg/border 由 `color-mix` 派生，各主题在 `theme-*.css` 独立覆盖这些 tone 的值，**状态色随主题变化**。状态槽位独立于 `--app-color-*` EP 组件色族（两条轨道），主题填色时自行保证槽位色相分散。命名 `--app-status-{类目}-{语义}`，类目 `task`/`source`/`toggle`/`resource`。
 
-| 令牌前缀 | 语义 | 默认色族 |
+| 令牌前缀 | 语义 | 对应 tone（default 主题 text 色，随主题变化） |
 |---|---|---|
-| `--app-status-task-{created,processing,waiting,pausing,paused,stopping,completed,partly-finished,failed,waiting-input}` | 任务状态 | processing=primary、completed=success、failed=danger、waiting/paused=info、其余过渡态=warning |
-| `--app-status-source-{local,site}` | 来源类型（作者/标签） | local=tag-red、site=tag-blue |
-| `--app-status-toggle-{enabled,disabled}` | 开关/运行态 | enabled=success、disabled=info |
-| `--app-status-resource-{downloaded,missing,damaged}` | 资源/作品状态 | downloaded=success、missing=warning、damaged=danger |
+| `--app-status-task-{created,processing,waiting,pausing,paused,stopping,completed,partly-finished,failed,waiting-input}` | 任务状态 | created=pending(蓝)、processing=active(橙)、completed=done(绿)、failed=fail(红)、waiting/paused=idle(灰)、其余过渡态=warn(橙) |
+| `--app-status-source-{local,site}` | 来源类型（作者/标签） | local=跟随主题主色(var(--app-color-primary))、site=固定紫#8b5cf6 |
+| `--app-status-toggle-{enabled,disabled}` | 开关/运行态 | enabled=done(绿)、disabled=idle(灰) |
+| `--app-status-resource-{downloaded,missing,damaged}` | 资源/作品状态 | downloaded=done(绿)、missing=warn(橙)、damaged=fail(红) |
 
-主程序内部渲染状态用 `StatusTag` 组件（传 `status` key）；插件可直接用上述令牌。新增状态：在 `tokens.css` 补齐 `--app-status-{key}-{bg,text,border}` 三档即可。
+主程序内部渲染状态用 `StatusTag` 组件（传 `status` key）；插件可直接用上述令牌。新增状态：复用现有 tone 只需加别名引用；需新色相则先加 tone 三分量（text hex + `color-mix` bg/border），详见 `tokens.css` 与 `.claude/rules/frontend.md` STATUS_TOKEN_USAGE。
 
 ### 圆角与阴影
 | 令牌 | 值 |

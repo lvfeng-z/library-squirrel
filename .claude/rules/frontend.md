@@ -9,7 +9,7 @@ globs:
 ## 前端目录结构
 ```
 frontend/src/
-  views/              — 页面组件（15 个视图）
+  views/              — 页面组件（16 个，含 BaseView 外壳）
   components/
     common/           — 通用组件（DataTable、SearchTable、WorkCard、CardGrid、TagBox）
     dialogs/          — 对话框组件
@@ -66,5 +66,5 @@ frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手�
 - **方法命名**: 禁止与 prop 同名遮蔽。使用前缀：`handleXxx`、`doXxx`、`buildXxx`、`loadXxx`、`checkXxx`。
 - **日期时间**: 统一使用 Unix 时间戳（毫秒），前端进行本地化格式转换。
 - **THEME_TOKEN_USAGE** (P1): 样式统一使用 `--app-*` 主题令牌（清单见 `frontend/src/styles/theme/tokens.css`：颜色/背景/文字/边框/填充/标签/圆角/阴影），禁止硬编码颜色值、禁止直接使用 Element Plus 的 `var(--el-*)`（`--el-font-size-*` 等非颜色变量除外）。主题切换由 `<html data-theme="<id>">` + `useThemeStore`（`frontend/src/store/UseThemeStore.ts`）控制，业务代码通过令牌自动跟随，无需感知当前主题。插件样式契约见 `doc/plugin-theme-tokens.md`。
-- **STATUS_TOKEN_USAGE** (P1): 状态展示（任务/来源/开关/资源等广义状态）的颜色统一用状态语义别名令牌 `--app-status-{类目}-{语义}-{bg|text|border}`（清单见 `tokens.css` 与 `doc/plugin-theme-tokens.md`），类目 `task`/`source`/`toggle`/`resource`；渲染用 `StatusTag`（`frontend/src/components/common/StatusTag.vue`，传 `status` key），状态 key 与文案集中登记在 `frontend/src/constants/StatusRegistry.ts`。禁止用硬编码 rgb 或 EP `el-tag` type 表达业务状态（EP `el-tag` 仅限 success/warning 等纯色族二值场景，且需主题已覆盖对应色族）。新增状态须先在 `tokens.css` 补齐三档令牌并在 `StatusRegistry.ts` 登记。
+- **STATUS_TOKEN_USAGE** (P1): 状态展示（任务/来源/开关/资源等广义状态）的颜色用**语义 tone 色板**：`tokens.css` 定义 8 个 tone（`active`/`done`/`fail`/`warn`/`pending`/`idle` + `source-local`/`source-site` 专属），每个 tone 含 text/bg/border 三分量（bg/border 由 text 与白色 `color-mix` 派生）；`:root` 给出 default 主题默认色（text 沿用 Element Plus 经典色，如 done=#67c23a 绿、fail=#f56c6c 红），forest/ocean/sakura 在各自 `theme-*.css` 独立覆盖这些 tone 的值——**状态色随主题变化**。状态槽位独立于 `--app-color-{success,warning,...}` EP 组件色族（后者经 ep-bridge 驱动 el-button/el-tag，两条轨道互不引用），主题填色时自行保证槽位色相两两分散、避免与主色撞色。`source-local` 例外：跟随 `--app-color-primary`（本地数据用品牌色标识），`source-site` 固定紫。状态别名 `--app-status-{类目}-{语义}-{bg|text|border}` 引用对应 tone（如 `task-completed`→`done`、`task-processing`→`active`），类目 `task`/`source`/`toggle`/`resource`。渲染用 `StatusTag`（`frontend/src/components/common/StatusTag.vue`，传 `status` key），状态 key 与文案集中登记在 `frontend/src/constants/StatusRegistry.ts`。禁止用硬编码 rgb 或 EP `el-tag` type 表达业务状态（EP `el-tag` 仅限 success/warning 等纯色族二值场景）。新增状态：复用现有 tone 只需在 `tokens.css` 加别名引用并在 `StatusRegistry.ts` 登记；需新色相则先在 `tokens.css` :root 加 tone 三分量（text hex + `color-mix` bg/border，作为 default 默认色）并让各 `theme-*.css` 跟随覆盖。状态色板可在「状态色板」测试页（路由 `#/statusPalette`）一屏查看校准；调色操作详见 `doc/status-color-tuning.md`。
 - **TOUR_FRAMEWORK** (P1): 向导统一由 `useTourCenterStore` 控制，向导定义集中在 `frontend/src/tour/definitions.ts`，渲染统一由 `TourOverlay`（挂载于 `MainLayout`）完成。禁止在各页面内自行编写 `el-tour`。需被高亮的元素通过 `useTourTargets().register(key, ref)` 注册，`targetKey` 命名约定为 `{viewId}.{element}`（如 `settings.workdirInput`）。跨页面或需定位数据的步骤携带 `TourStepData`，目标页面通过 `useTourReady(onLocate)` 据 `ctx.data` 定位后报告就绪，引擎收到就绪信号后才显示该步气泡。
