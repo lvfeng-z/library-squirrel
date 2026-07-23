@@ -20,7 +20,7 @@
 |---|---|---|---|
 | `active` | `#f97316` | 橙 | 进行中（task-processing） |
 | `done` | `#67c23a` | 绿 | 完成（task-completed、toggle-enabled、resource-downloaded） |
-| `fail` | `#f56c6c` | 红 | 失败（task-failed、resource-damaged） |
+| `fail` | `#f56c6c` | 红 | 失败（task-failed、resource-damaged）+ 破坏性按钮（el-button `tone-fail`） |
 | `warn` | `#e6a23c` | 橙黄 | 警示/过渡（pausing/stopping/partly-finished/waiting-input、resource-missing） |
 | `pending` | `#409eff` | 蓝 | 待激活（task-created） |
 | `idle` | `#909399` | 灰 | 空闲（task-waiting/paused、toggle-disabled） |
@@ -41,6 +41,7 @@
 --app-status-done-border: color-mix(in srgb, #d4a017 26%, white);
 ```
 > 改 default 主题则改 `tokens.css` :root 对应三行。
+> 注：`fail` tone 除驱动失败/损坏状态标签（StatusTag）外，还驱动破坏性操作按钮（`el-button type="danger"` + `tone-fail` class，见 `frontend/src/styles/tone-button.css`）——调 fail 色会同时影响二者。
 
 ### 调底色/边框浓淡（不改颜色）
 改 color-mix 百分比：
