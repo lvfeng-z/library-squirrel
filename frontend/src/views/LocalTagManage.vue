@@ -98,7 +98,6 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     hide: false,
     width: 150,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true,
     remote: true,
@@ -130,7 +129,6 @@ const localTagThead: Ref<Thead<LocalTagWithBaseTagDTO>[]> = ref([
     hide: false,
     width: 200,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   })

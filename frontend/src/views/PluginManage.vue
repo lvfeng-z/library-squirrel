@@ -58,7 +58,6 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     title: '作者',
     hide: false,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   }),
@@ -70,7 +69,6 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     hide: false,
     width: 100,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   }),
@@ -82,7 +80,6 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     hide: false,
     width: 180,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   })

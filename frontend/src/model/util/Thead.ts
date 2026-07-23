@@ -10,7 +10,6 @@ export class Thead<Data> extends PopperInputConfig implements IThead<Data> {
   width?: number // 数据列宽度
   minWidth?: number // 数据列最小宽度
   headerAlign?: 'center' | 'left' | 'right' // 标题停靠位置
-  headerTagType?: 'warning' | 'info' | 'success' | 'primary' | 'danger' // 标题使用的el-tag样式
   dataAlign?: 'center' | 'left' | 'right' // 数据停靠位置
   fixed?: 'left' | 'right' | boolean // 是否固定列
   sortable?: boolean | 'custom'
@@ -29,7 +28,6 @@ export class Thead<Data> extends PopperInputConfig implements IThead<Data> {
     this.width = thead.width
     this.minWidth = thead.minWidth
     this.headerAlign = thead.headerAlign
-    this.headerTagType = thead.headerTagType
     this.dataAlign = thead.dataAlign
     this.fixed = isNullish(thead.fixed) ? false : thead.fixed
     this.sortable = isNullish(thead.sortable) ? false : thead.sortable
@@ -49,7 +47,6 @@ export interface IThead<Data> extends IPopperInputConfig {
   width?: number // 数据列宽度
   minWidth?: number // 数据列最小宽度
   headerAlign?: 'center' | 'left' | 'right' // 标题停靠位置
-  headerTagType?: 'warning' | 'info' | 'success' | 'primary' | 'danger' // 标题使用的el-tag样式
   dataAlign?: 'center' | 'left' | 'right' // 数据停靠位置
   fixed?: 'left' | 'right' | boolean // 是否固定列
   sortable?: boolean | 'custom'

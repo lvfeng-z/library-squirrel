@@ -222,10 +222,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
         >
           <template #header>
             <div :style="{ textAlign: item.headerAlign }">
-              <el-tag
-                size="default"
-                :type="item.headerTagType"
-              >
+              <el-tag size="default">
                 {{ item.title }}
               </el-tag>
             </div>
@@ -254,10 +251,7 @@ function getVisibleRows(offsetTop?: number, offsetBottom?: number) {
       :min-width="104"
     >
       <template #header>
-        <el-tag
-          size="default"
-          type="warning"
-        >
+        <el-tag size="default">
           {{ '操作' }}
         </el-tag>
       </template>

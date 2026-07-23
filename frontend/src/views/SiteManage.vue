@@ -70,7 +70,6 @@ const siteThead: Ref<Thead<SiteDTO>[]> = ref([
     title: '描述',
     hide: false,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   }),
@@ -83,7 +82,6 @@ const siteThead: Ref<Thead<SiteDTO>[]> = ref([
     hide: false,
     width: 200,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   }),
@@ -96,7 +94,6 @@ const siteThead: Ref<Thead<SiteDTO>[]> = ref([
     hide: false,
     width: 200,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   })

@@ -98,7 +98,6 @@ const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
     hide: false,
     width: 200,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   }),
@@ -110,7 +109,6 @@ const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
     hide: false,
     width: 200,
     headerAlign: 'center',
-    headerTagType: 'success',
     dataAlign: 'center',
     showOverflowTooltip: true
   })
