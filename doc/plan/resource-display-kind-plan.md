@@ -170,6 +170,16 @@
 | 7.2 | pixiv/local 插件 go.mod 升级 SDK + 重测 | 插件编译通过 |
 | 7.3 | **主程序 + SDK + 所有插件同步上线**（决策12 原子发布，否则老插件被抛错拒绝） | 全链路通、无兼容窗口 |
 
+> **Phase 7 实施纪要（2026-07-23，层A 运行时接入 + 层B-0 bilibili 声明）**：
+> - **缝隙2 收口（1.6/1.7 严格校验运行时接入）**：`ValidateResourceType`/`ValidateStoreType` 此前仅 entity 单测调用、运行时零接入（缝隙2）。本次落地：
+>   - **1.6 `saveResource` 新建分支**（`taskManager/model.go:1061`）：写入前 `ValidateResourceType(m.task.ResourceType.String)`，空→`ErrResourceTypeEmpty`、非预定义→`ErrResourceTypeInvalid`。替换分支（existing resource）不动 ResourceType（plan §118 by design，保留原值不校验）。
+>   - **1.7 `mountResourceStores` 循环**（`taskManager/model.go:1154`）：每 mount `ValidateStoreType(mt.role)`，非六预定义角色→`ErrStoreTypeInvalid`。该函数亦被 `remountRestoredStores`（还原路径）调用——极老备份（v0 含 `main`）还原会抛错，属决策3「不兼容历史、用户重建」范畴；Phase 0 后新备份无 main，不受影响。
+> - **层B-0 bilibili 声明 ResourceType**（`library-squirrel-plugin-bilibili/bilibili_task_handler.go`，Phase 5.1 收口）：`createVideo` parent+child→`ResourceTypeVideo`；`createImage` 按 contentType 分叉 parent+child——dynamic→`ResourceTypeImage`、article→`ResourceTypeArticle`。
+> - **专栏 article 占位决策**（用户 2026-07-23 拍板）：bilibili 专栏(cv)当前实现=取内嵌图（与 dynamic 共用 createImage 取图逻辑），未提取正文 markdown。声明 `article`（图文紧密结合文档语义）但只产 image store → 结构校验 `ResourceComplete=2`（不完整徽标）；展示主体 `ResolvePrimaryStore` 按 article.PrimaryRoles=[document] 找不到 document → fall through 降级链取 image store（非 nil，展示内嵌图，不崩）。专栏富文本化（正文 .md 提取）属 R 本体工作，届时补 document store 后结构转完整。
+> - **层B SDK 发版 tag 推迟**：开发期本地 go.mod replace，插件直接用最新 SDK，无需正式 tag；tag 推迟到正式对外发布。pixiv/local Phase 5 已声明 image，无需改。
+> - **验收**：四端 `go build` 全 EXIT 0（主程序 `CGO_ENABLED=0`——Windows cgo.exe 工具链问题致默认 build 失败，非代码问题，CLAUDE.md 已述）；entity 校验函数单测全过；taskManager `*_test.go` 不覆盖 saveResource/mountResourceStores/ResourceType 路径（接入零回归）；pre-existing 失败 `TestRunModeFromTask`（plan §73）与本次无关。
+> - **Phase 8 运行时实测待用户**：代码+编译+单测完成；运行时验证（task dev 跑 pixiv/bilibili 任务确认现役插件不回归 + 违规声明被拒）需用户启动 app 实测。
+
 ### Phase 8 · 验证
 
 - 现有 video/image 任务不回归（展示、外部打开、合并、板块勾选）。

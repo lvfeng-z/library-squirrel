@@ -1058,7 +1058,12 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		resource.TaskID = m.task.GetID()
 		resource.Enabled = true
 		resource.ResourceComplete = 0                      // 下载未完成
-		resource.ResourceType = m.task.ResourceType.String // 创建期声明的资源类型;NULL/未声明=空串
+		// 创建期声明的资源类型;严格识别——空值或非预定义值在写入前抛错,不兜底
+		resourceType := m.task.ResourceType.String
+		if err := entity.ValidateResourceType(resourceType); err != nil {
+			return 0, fmt.Errorf("资源类型声明无效: %w", err)
+		}
+		resource.ResourceType = resourceType
 
 		var err error
 		resourceId, err = m.deps.ResourceSaver.Save(ctx, resource)
@@ -1152,6 +1157,10 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 	}
 	stores := make([]*entity.ResourceStore, 0, len(mounts))
 	for i, mt := range mounts {
+		// 严格识别 store_type:非六预定义角色抛错,不兜底
+		if err := entity.ValidateStoreType(mt.role); err != nil {
+			return fmt.Errorf("store_type 非法(%s): %w", mt.role, err)
+		}
 		s := entity.NewResourceStore()
 		s.ResourceID = resourceId
 		s.StoreType = mt.role
