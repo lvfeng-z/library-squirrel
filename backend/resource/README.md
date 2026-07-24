@@ -26,7 +26,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 ## 核心概念
 
 - **Resource 实体字段**：`WorkID` / `TaskID`（所属作品 / 产生它的任务）、`Enabled`（启用状态）、`ResourceComplete`（完整度）、`SuggestName`（建议文件名）。Resource 不直接持有 store 外键。
-- **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`OrderIdx`。
+- **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`StoreSeq`（同 role 内 store 序号，路径消歧与续传身份化用）。
 - **StoreType 开放枚举**（`entity/resource_store.go`）：`main`（主资源）、`thumbnail`（缩略图）、`videoTrack`（视频轨）、`audioTrack`（音频轨）、`merged`（合并产物）。新增类型只加常量、不改表结构；backup/restore/软删按 store 集合遍历，对新类型透明（merged 自动被覆盖，零改）。
 
 ## 合并编排（MergeService）

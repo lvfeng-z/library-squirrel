@@ -396,9 +396,20 @@ func taskResumeParamToProto(p *pluginsdkdto.TaskResumeParam) *gen.TaskResumePara
 	if p == nil {
 		return nil
 	}
+	offsets := make([]*gen.StoreResumeOffset, 0, len(p.StreamOffsets))
+	for _, o := range p.StreamOffsets {
+		if o == nil {
+			continue
+		}
+		offsets = append(offsets, &gen.StoreResumeOffset{
+			Role:     o.Role,
+			StoreSeq: o.StoreSeq,
+			Offset:   o.Offset,
+		})
+	}
 	return &gen.TaskResumeParam{
 		Task:          taskToProto(p.Task),
-		StreamOffsets: p.StreamOffsets,
+		StreamOffsets: offsets,
 	}
 }
 

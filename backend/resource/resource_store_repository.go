@@ -22,7 +22,7 @@ func NewResourceStoreRepository(db *gorm.DB) *ResourceStoreRepository {
 	}
 }
 
-// ListByResourceId 查询 Resource 关联的全部 store(按 order_idx 排序)
+// ListByResourceId 查询 Resource 关联的全部 store(按 store_seq 排序)
 func (r *ResourceStoreRepository) ListByResourceId(ctx context.Context, resourceId int64) ([]*domain.ResourceStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
@@ -30,7 +30,7 @@ func (r *ResourceStoreRepository) ListByResourceId(ctx context.Context, resource
 		},
 		OrderBy: []clause.Expression{
 			clause.OrderBy{Columns: []clause.OrderByColumn{
-				{Column: clause.Column{Name: "order_idx"}},
+				{Column: clause.Column{Name: "store_seq"}},
 			}},
 		},
 	}

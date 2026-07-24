@@ -30,7 +30,7 @@ type ResourceStore struct {
 	StoreType  string `gorm:"column:store_type" json:"storeType"`
 	Generation string `gorm:"column:generation" json:"generation"`
 	StoreID    int64  `gorm:"column:store_id;index:idx_resource_store_store_id" json:"storeId"`
-	OrderIdx   int    `gorm:"column:order_idx" json:"orderIdx"`
+	StoreSeq   int    `gorm:"column:store_seq" json:"storeSeq"`
 }
 
 // TableName 指定表名

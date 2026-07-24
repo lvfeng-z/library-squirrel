@@ -232,7 +232,7 @@ transactor.ExecInTransaction(context.Background(), func(txCtx) {
 ```
 
 - 传入 `context.Background()`,任务取消不中断事务提交
-- store 关联只写 `resource_store` 表(role/generation/storeId/orderIdx),不再用 Resource 的固定列(WorkStoreID/ThumbnailStoreID 已废弃,改为多轨 resource_store)
+- store 关联只写 `resource_store` 表(role/generation/storeId/storeSeq),不再用 Resource 的固定列(WorkStoreID/ThumbnailStoreID 已废弃,改为多轨 resource_store)
 - **事务失败**:DB 回滚 + 显式 `writer.Close()` + `CleanupFile` 清理磁盘
 
 **saveResource 两种场景**:替换(查已有 Resource 更新 `ResourceComplete=0`)、新建(创建 Resource)。均经 `mountResourceStores` 写 resource_store 行(先删同 role 旧行再插)。

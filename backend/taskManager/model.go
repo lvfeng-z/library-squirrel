@@ -918,25 +918,27 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) runResult {
 	m.workResp = workResp
 
-	// 解析主资源路径(供主轨与缩略图派生路径)
-	mainSpec := findSpec(specs, entity.StoreTypeImage)
-	if mainSpec == nil {
-		// 无主轨(如纯缩略图重下):以首个 spec 占位解析主路径
-		if len(specs) > 0 {
-			mainSpec = specs[0]
-		}
+	// 解析主资源路径(供主轨与缩略图派生路径);主体按资源类型 PrimaryRoles 选取(D2-A)
+	mainSpec := findMainSpec(specs, m.task.ResourceType.String)
+	if mainSpec == nil && len(specs) > 0 {
+		// 无主体(未知/未声明类型):以首个 spec 占位解析主路径
+		mainSpec = specs[0]
 	}
 	var mainRelPath, mainFileName string
 	if mainSpec != nil {
 		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, workResp)
 	}
+	roleCounts := countSpecRoles(specs)
+	roleCounters := make(map[string]int, len(roleCounts))
 
 	// 事务:为每个 spec 建 StoreStream + 挂 resource_store + Resource Save + PendingResourceID 更新
 	streams := make([]*streamController, 0, len(specs))
 	txErr := m.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
 		mounts := make([]pendingMount, 0, len(specs))
 		for _, spec := range specs {
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName)
+			sameRoleSeq := roleCounters[spec.Role]
+			roleCounters[spec.Role]++
+			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
 			storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
 			if storeErr != nil {
 				return storeErr
@@ -1156,7 +1158,8 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 		return nil
 	}
 	stores := make([]*entity.ResourceStore, 0, len(mounts))
-	for i, mt := range mounts {
+	roleSeq := make(map[string]int, len(mounts)) // 同 role 内序号:store 稳定身份(与 resume 身份匹配、文件名消歧统一)
+	for _, mt := range mounts {
 		// 严格识别 store_type:非六预定义角色抛错,不兜底
 		if err := entity.ValidateStoreType(mt.role); err != nil {
 			return fmt.Errorf("store_type 非法(%s): %w", mt.role, err)
@@ -1166,7 +1169,8 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 		s.StoreType = mt.role
 		s.Generation = mt.generation
 		s.StoreID = mt.storeId
-		s.OrderIdx = i
+		s.StoreSeq = roleSeq[mt.role]
+		roleSeq[mt.role]++
 		stores = append(stores, s)
 	}
 	return m.deps.ResourceStoreWriter.SaveBatch(ctx, stores)
@@ -1483,40 +1487,43 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	// 3. 计算各 downloaded 轨续传偏移 + 收集未完成 derived 轨(整轨重产)
 	// 已完成(状态 Complete 且文件存在)的轨道跳过;downloaded 未完成按文件大小算偏移;derived 未完成收集到 incompleteDerivedRoles
-	streamOffsets := map[string]int64{}
-	completedRoles := map[string]struct{}{}
+	streamOffsets := make([]*sdkdto.StoreResumeOffset, 0, len(storeRows))
+	completedSet := make(map[storeIdentity]struct{}, len(storeRows))
 	var incompleteDerivedRoles []string
 	for _, row := range storeRows {
+		ident := storeIdentity{role: row.StoreType, seq: row.StoreSeq}
 		store, storeErr := m.deps.StoreReader.GetById(m.runCtx, row.StoreID)
 		if storeErr != nil || store == nil {
 			// store 记录丢失:downloaded 整轨重下(offset=0),derived 整轨重产
 			if row.Generation == entity.GenerationDerived {
 				incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
 			} else {
-				streamOffsets[row.StoreType] = 0
+				streamOffsets = append(streamOffsets, &sdkdto.StoreResumeOffset{Role: row.StoreType, StoreSeq: int32(row.StoreSeq), Offset: 0})
 			}
 			continue
 		}
 		absPath := m.deps.StoreReader.GetAbsPath(store)
 		info, statErr := os.Stat(absPath)
 		if store.Status == entity.StoreStatusComplete && statErr == nil {
-			// 该轨已完成:不进入 Resume/重产
-			completedRoles[row.StoreType] = struct{}{}
+			// 该 store 已完成:按身份记录,不进入 Resume/重产(同 role 多 store 各自独立判定)
+			completedSet[ident] = struct{}{}
 			continue
 		}
-		// 未完成:downloaded 按偏移续传;derived 整轨重产
+		// 未完成:downloaded 按偏移续传,derived 整轨重产
 		if row.Generation == entity.GenerationDerived {
 			incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
-		} else if statErr != nil {
-			streamOffsets[row.StoreType] = 0 // 文件缺失:整轨重下
 		} else {
-			streamOffsets[row.StoreType] = info.Size()
+			var offset int64
+			if statErr == nil {
+				offset = info.Size()
+			}
+			streamOffsets = append(streamOffsets, &sdkdto.StoreResumeOffset{Role: row.StoreType, StoreSeq: int32(row.StoreSeq), Offset: offset})
 		}
 	}
 
-	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v, regenDerived=%v", m.taskId, resource.GetID(), streamOffsets, completedRoles, incompleteDerivedRoles)
+	logger.Log.Infof("[TaskManager] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v, regenDerived=%v", m.taskId, resource.GetID(), streamOffsets, completedSet, incompleteDerivedRoles)
 
-	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded 轨)
+	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded store,身份化 role+store_seq)
 	param := &sdkdto.TaskResumeParam{
 		Task:          dto.NewTaskDTO(m.task),
 		StreamOffsets: streamOffsets,
@@ -1563,7 +1570,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	}
 
 	// 5. 为每个返回的 spec 续接(continuable downloaded)或重建 store,构建 streamController
-	mainSpec := findSpec(specs, entity.StoreTypeImage)
+	mainSpec := findMainSpec(specs, m.task.ResourceType.String)
 	if mainSpec == nil && len(specs) > 0 {
 		mainSpec = specs[0]
 	}
@@ -1571,17 +1578,24 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	if mainSpec != nil {
 		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, newResp)
 	}
+	roleCounts := countSpecRoles(specs)
+	roleCounters := make(map[string]int, len(roleCounts))
 
 	streams := make([]*streamController, 0, len(specs))
 	txErr := m.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
-		mounts := make([]pendingMount, 0, len(specs))
+		// 未完成 store 的续传/重建:按 spec 处理,记录 (role,seq)→storeId 供全量重挂组装
+		storeIdByIdentity := make(map[storeIdentity]int64, len(specs))
 		for _, spec := range specs {
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName)
-			existingRow := findStoreRow(storeRows, spec.Role)
-			// continuable 的 downloaded 轨且有正偏移:用已有 storeId + ResumeStream 续传
-			// 写入偏移:插件指定(spec.ResumeWriteOffset)优先,否则用主程序 stat 的 streamOffsets
-			if spec.Generation == entity.GenerationDownloaded && existingRow != nil && streamOffsets[spec.Role] > 0 {
-				writeOffset := streamOffsets[spec.Role]
+			sameRoleSeq := roleCounters[spec.Role]
+			roleCounters[spec.Role]++
+			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
+			// 身份匹配:同 role 内按 store_seq(sameRoleSeq)精确定位已有行(替代 role 首匹配,支持 N-同 role)
+			existingRow := findStoreRowByIdentity(storeRows, spec.Role, sameRoleSeq)
+			offset, hasOffset := findResumeOffset(streamOffsets, spec.Role, sameRoleSeq)
+			// continuable 的 downloaded store 且有正偏移:用已有 storeId + ResumeStream 续传
+			// 写入偏移:插件指定(spec.ResumeWriteOffset)优先,否则用主程序 stat 的 offset
+			if spec.Generation == entity.GenerationDownloaded && existingRow != nil && hasOffset && offset > 0 {
+				writeOffset := offset
 				if spec.ResumeWriteOffset != nil {
 					writeOffset = *spec.ResumeWriteOffset
 				}
@@ -1589,26 +1603,35 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 				if resumeErr != nil {
 					return resumeErr
 				}
-				logger.Log.Infof("[ResumeMount] taskId=%d role=%s mode=ResumeStream storeId=%d writeOffset=%d streamOffset=%d",
-					m.taskId, spec.Role, existingRow.StoreID, writeOffset, streamOffsets[spec.Role])
+				logger.Log.Infof("[ResumeMount] taskId=%d role=%s seq=%d mode=ResumeStream storeId=%d writeOffset=%d streamOffset=%d",
+					m.taskId, spec.Role, sameRoleSeq, existingRow.StoreID, writeOffset, offset)
 				sc := newStreamController(spec, existingRow.StoreID, writer, relPath)
 				sc.written = writeOffset
 				sc.initialOffset = writeOffset
 				streams = append(streams, sc)
-				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: existingRow.StoreID})
+				storeIdByIdentity[storeIdentity{spec.Role, sameRoleSeq}] = existingRow.StoreID
 			} else {
 				// derived 或 offset=0 的 downloaded:StoreStream 重建
 				storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
 				if storeErr != nil {
 					return storeErr
 				}
-				logger.Log.Infof("[ResumeMount] taskId=%d role=%s mode=StoreStream storeId=%d writeOffset=0 streamOffset=%d",
-					m.taskId, spec.Role, storeId, streamOffsets[spec.Role])
+				logger.Log.Infof("[ResumeMount] taskId=%d role=%s seq=%d mode=StoreStream storeId=%d writeOffset=0 streamOffset=%d",
+					m.taskId, spec.Role, sameRoleSeq, storeId, offset)
 				streams = append(streams, newStreamController(spec, storeId, writer, relPath))
-				mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
+				storeIdByIdentity[storeIdentity{spec.Role, sameRoleSeq}] = storeId
 			}
 		}
-		// 更新 resource_store(替换本次产出 role 的关联)
+		// 全量重挂:按 storeRows 顺序(保持 store_seq 稳定)组装已完成 + 本次续传/重建的 store。
+		// 已完成用原 storeId(不重下),未完成用 storeIdByIdentity;避免 mountResourceStores 批删丢已完成同 role 关联。
+		mounts := make([]pendingMount, 0, len(storeRows))
+		for _, row := range storeRows {
+			storeId := row.StoreID
+			if newId, ok := storeIdByIdentity[storeIdentity{row.StoreType, row.StoreSeq}]; ok {
+				storeId = newId
+			}
+			mounts = append(mounts, pendingMount{role: row.StoreType, generation: row.Generation, storeId: storeId})
+		}
 		if err := m.mountResourceStores(txCtx, resource.GetID(), mounts); err != nil {
 			return err
 		}
@@ -1840,14 +1863,54 @@ func findSpec(specs []*sdkdto.StoreSpec, role string) *sdkdto.StoreSpec {
 	return nil
 }
 
-// findStoreRow 在 resource_store 行中查找指定 role
-func findStoreRow(rows []*entity.ResourceStore, role string) *entity.ResourceStore {
+// findMainSpec 按 task 资源类型的展示主体优先级链(PrimaryRoles)取首个实际存在的 spec。
+// resourceType 未注册/unknown/PrimaryRoles 皆未命中时返回 nil,由调用方回退 specs[0]。
+func findMainSpec(specs []*sdkdto.StoreSpec, resourceType string) *sdkdto.StoreSpec {
+	if typeSpec := entity.LookupResourceTypeSpec(resourceType); typeSpec != nil {
+		for _, primary := range typeSpec.PrimaryRoles {
+			if s := findSpec(specs, primary); s != nil {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+// countSpecRoles 统计 specs 中每个 role 的出现次数(同 role 多 store 时触发文件名消歧)
+func countSpecRoles(specs []*sdkdto.StoreSpec) map[string]int {
+	counts := make(map[string]int, len(specs))
+	for _, s := range specs {
+		if s != nil {
+			counts[s.Role]++
+		}
+	}
+	return counts
+}
+
+// storeIdentity resource_store 行的身份键:同 role 内 store_seq 唯一定位一个 store(N-同 role 多 store 支持)
+type storeIdentity struct {
+	role string
+	seq  int
+}
+
+// findStoreRowByIdentity 按 (role, store_seq) 身份在 resource_store 行中精确匹配(替代 role 首匹配,避免同 role 歧义)
+func findStoreRowByIdentity(rows []*entity.ResourceStore, role string, storeSeq int) *entity.ResourceStore {
 	for _, r := range rows {
-		if r != nil && r.StoreType == role {
+		if r != nil && r.StoreType == role && r.StoreSeq == storeSeq {
 			return r
 		}
 	}
 	return nil
+}
+
+// findResumeOffset 在续传偏移列表中按 (role, store_seq) 查找;未命中返回 found=false
+func findResumeOffset(offsets []*sdkdto.StoreResumeOffset, role string, storeSeq int) (offset int64, found bool) {
+	for _, o := range offsets {
+		if o != nil && o.Role == role && int(o.StoreSeq) == storeSeq {
+			return o.Offset, true
+		}
+	}
+	return 0, false
 }
 
 // uniqueRoles 提取 mounts 中去重后的 role 列表
@@ -1928,14 +1991,20 @@ func (m *ManagedTask) resolveMainPath(spec *sdkdto.StoreSpec, workResp *sdkdto.W
 	return
 }
 
-// resolveStorePath 按 role 解析各 store 路径:thumbnail 派生自主路径,其余(含 main/未来轨道)用主路径逻辑
-func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string) (relativePath, fileName string) {
+// resolveStorePath 按 role 解析各 store 路径:thumbnail 派生自主路径,其余用主路径逻辑。
+// 同 role 多 store(needsSuffix)时追加同 role 内序号后缀(sameRoleSeq,扩展名前)消歧,避免落盘覆盖。
+func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string, sameRoleSeq int, needsSuffix bool) (relativePath, fileName string) {
 	if spec.Role == entity.StoreTypeThumbnail {
 		relativePath = buildThumbnailRelPath(mainRelPath, spec.Format)
 		fileName = buildThumbnailFileName(mainFileName, spec.Format)
 		return
 	}
-	return m.resolveMainPath(spec, m.workResp)
+	relativePath, fileName = m.resolveMainPath(spec, m.workResp)
+	if needsSuffix {
+		ext := normalizeExt(spec.Format)
+		fileName = fmt.Sprintf("%s_%03d%s", strings.TrimSuffix(fileName, ext), sameRoleSeq, ext)
+	}
+	return
 }
 
 // normalizeExt 规范化扩展名(确保以 "." 开头)
