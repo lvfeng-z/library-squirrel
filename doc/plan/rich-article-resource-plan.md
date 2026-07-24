@@ -18,18 +18,18 @@
 - **C7. cv 现状=每图独立 Resource（单流 main），方案 A 要 1 Resource 挂 N store，是结构性重构** — 证据：`library-squirrel-plugin-bilibili/bilibili_task_handler.go:159-223`(`createImage` 每图一子任务一 main)
 - **C8. 新增 store_type 需三处常量同步** — 证据：`resource_store.go:9-15` + `library-squirrel-sdk/dto/handler_dto.go:9-18` + `frontend/src/constants/sectionCode.ts:1-26`
 
-**待决策（需用户拍板）**：
-- **D1. 存储格式**：A(Markdown，推荐) / B(自包含 HTML) / C(结构化 JSON) — 是否阻塞实施：是
-- **D2. `store_type`/资源类型**：**已升级（2026-07-21）为 kind=article**（走乙方案，依赖前置 K「资源类型规约体系」`doc/plan/resource-display-kind-design.md`）；article 作为 K 的预定义资源类型（main 必含 .md + 图可含）。原"复用 main 嗅探 vs 新增 store_type"二选一作废 — 是否阻塞：是（等 K 落地）
-- **D3. 可编辑性**：`.md` 是否要求库内可编辑（影响是否纯 derived） — 是否阻塞：否
-- **D4. 图引用命名约定**：`.md` 内 `![](?)` 用序号 basename（如 `001.jpg`）映射到图 store — 是否阻塞：否
-- **D5. 范围**：仅 bilibili 专栏，还是设计成通用"图文交织"能力（倾向通用） — 是否阻塞：否
+**已决策（2026-07-24 全部拍板）**：
+- **D1. 存储格式**：✅ **定为 A（Markdown）**。正文存 `.md`，图用 `![](序号basename)` 引用、自定义渲染器解析 basename→store URL（见 D4）；可读/可移植/可 sanitize/生态好。B(HTML)/C(JSON) 否决（体积/可编辑性无关/XSS 面/无生态，见 §七）。
+- **D2. `store_type`/资源类型**：✅ **已落地**（K done）。`backend/base/model/entity/resource_type.go:98-111` `articleResourceTypeSpec`：Roles=`document`(1~1)+`image`(0~N)+`thumbnail`(0~1)，PrimaryRole=`document`，标准 document=`.md`(derived)、image=`.jpg/.png/.webp`(downloaded)。原 kind→ResourceType。
+- **D3. 可编辑性**：✅ **不允许库内编辑**。`.md` 纯 derived 只读展示（与 spec `document=derived` 一致），前端无需编辑器。
+- **D4. 图引用命名约定**：✅ **暂定序号 basename**（`001.jpg`/`002.png`，.md 引用名=图 store 落盘名）；渲染器覆盖 md image 规则，basename→`buildStoreUrl(store.filePath)`（复用 `UrlUtil.ts:5`）。**正式命名规约延后**——1:1→1:N 演进遗留的 store 落盘命名设计空缺（见 TREE 节点 N）；R 暂用本约定推进，N 落地后可能回更。
+- **D5. 范围**：✅ **通用“图文交织”能力**。抽象成 `getResourcePreviewKind` 分发，不绑 bilibili。
 
 **自曝风险（作者没把握 / 可能错的地方）**：
-- **R1. cv 内嵌图节点形态未实测确认** — 阶段 0 第一步需 dump 一篇富专栏的 `MODULE_TYPE_CONTENT` 看图片 paragraph 结构（之前 dump 在 MODULE_TYPE_AUTHOR 截断，未见 CONTENT 图节点）。`.md` 提取的文本/图穿插顺序依赖此结构。
+- **R1. cv 内嵌图节点形态** — ✅ **已实测确认（2026-07-24，`cv48146678`）**：`MODULE_TYPE_CONTENT.paragraphs[]` 按 `para_type` 分文本段(1)/图片段(2)逐段交错，图段 `pic.pics[]` 带 `url/width/height/size`（详见 §六）。附带发现：cv 页 302 跳 opus；匿名访问三态不稳（空壳/超时/全量），真实实现需 SESSDATA + buvid。`.md` 提取的图文穿插顺序 = paragraphs 数组顺序，已落实。
 - **R2. `createImage` 重构同时服务 cv 与 dynamic（图文动态），须保证 dynamic 现有"每图独立"行为不回归**。
-- **R3. markdown 渲染的 XSS 防护** — 文本节点取自站点（`word.words`/`rich.text`），md 渲染器须配 sanitize；图 URL 由 store 解析（相对可控）。
-- **R4. bilibili 插件目录（`E:/code/lvfeng/library-squirrel-plugin-bilibili`）不在本会话 additional working directories 列表** — 实施阶段需确保该目录可访问/已纳入开发环境。
+- **R3. markdown 渲染的 XSS 防护** — ✅ **方案已定（2026-07-24）**：markdown-it `html:false` 转义裸 HTML + DOMPurify 深度防御（ALLOWED_TAGS/ATTR 收紧、`a.href` 限 http/https）；文本取自站点必过 sanitize，图 URL 由 store 解析（可控）。
+- **R4. bilibili 插件目录访问** — ✅ 已验证（2026-07-24 实测 `E:/code/lvfeng/library-squirrel-plugin-bilibili` 读写 + `go test` 均正常，仅 gopls 提示未纳入 workspace，不影响编译运行）。
 
 ---
 
@@ -107,15 +107,17 @@
 
 > 视频任务的多 StoreSpec 产出（`createVideo` 的 videoTrack+audioTrack+thumbnail）是现成的"1 任务多 store"参考实现。
 
-## 六、源结构（bilibili cv，阶段 0 待确认）
+## 六、源结构（bilibili cv，阶段 0 已实测确认 · 2026-07-24 `cv48146678`）
 
-专栏正文在 opus 页 `__INITIAL_STATE__.detail.modules[MODULE_TYPE_CONTENT].module_content.paragraphs[]`：
-- 文本段：`para_type` + `text.nodes[]`（`word.words`/`rich.text`）—— 已能解析（图文动态复用，`parseOpusState`）。
-- **内嵌图段**：`paragraphs[]` 中应有图片节点（`para_type` 区分图文）——**结构待用一篇"图多 + 正文长"的真实专栏确认**（R1，之前 cv dump 在 MODULE_TYPE_AUTHOR 截断，未看到 CONTENT 的图片节点）。
+专栏 cv 页会 **302 重定向到 opus 页**（`cv48146678` → `opus/1194849825756020768`）；正文在 opus 页 `__INITIAL_STATE__.detail.modules[MODULE_TYPE_CONTENT].module_content.paragraphs[]`，**每段 `para_type` 二值、按阅读顺序逐段交错**：
 
-> 阶段 0 第一步：取一篇富专栏，复用插件 `getRaw(页面)` + `initialStateRe`（`article.go:10`）抓 `__INITIAL_STATE__`，dump `MODULE_TYPE_CONTENT`，确认内嵌图节点形态（预计类似 `module_top.display.album.pics` 或 paragraph 内 `pic` 字段）。
+- **文本段 `para_type=1`**：`text.nodes[]`，节点 `type=TEXT_NODE_TYPE_WORD` 取 `word.words`（另有 `TEXT_NODE_TYPE_RICH` 取 `rich.text`，现有 `parseOpusState` 已建模）；`pic=null`。
+- **图片段 `para_type=2`**：`pic.pics[]`，每张带 `url/width/height/size`（一段可多图）；`text=null`。
+- 段对象另有 `heading/list/blockquote/code/line/link_card/format` 等富文本块字段——**本次 dump 的漫画汉化专栏全为 null**（22 文本段 + 58 图片段，仅 WORD 节点）。**核心图文穿插机制已确认**；heading/list/code 等富文本块未在本文触发，提取设计仍须为它们留位（按需映射 md 的 `#`/`-`/` ``` `/`>`），后续可再 dump 一篇技术类专栏补证。
 
-标题在 `MODULE_TYPE_TITLE.module_title.text`；相册图在 `MODULE_TYPE_TOP.module_top.display.album.pics[].url`；作者在 `MODULE_TYPE_AUTHOR`/`basic.uid`。
+> 封面在 `MODULE_TYPE_TOP.module_top.display.album.pics[].url`（https）；内嵌图在 CONTENT 图段（本次为 `http://i0.hdslb.com/...`，下载时须升级 https 或跟随重定向）。标题在 `MODULE_TYPE_TITLE.module_title.text`；作者在 `MODULE_TYPE_AUTHOR`/`basic.uid`。
+>
+> **访问稳定性（实测）**：匿名访问三态不稳——同一请求时而返回 opus 全量态（68KB，含 `__INITIAL_STATE__`）、时而返回 read 页 SPA 空壳（3.3KB，无 state）、时而拖连接超时。须带 buvid + 长超时重试，**真实实现大概率需 SESSDATA 登录态保证稳定**（见 R1 解除备注）。dump 工具：`library-squirrel-plugin-bilibili/internal/bilibiliapi/article_dump_test.go`（`DUMP_CV=cv... [DUMP_SESSDATA=...] go test`）。
 
 ## 七、设计选项（类型 1 的存储格式，需拍板 → D1）
 
@@ -156,23 +158,23 @@
 工作面三块：**插件侧**（bilibili cv 提取 + 资源模型重构）+ **前端侧**（md 渲染 + 公共分发）+ **常量同步**（三处 store_type）。后端阶段作废。
 
 ### 阶段 0 · 调研（选型拍板前后均可做）
-1. **确认 cv 内嵌图节点**（R1）：dump 一篇富专栏的 `MODULE_TYPE_CONTENT`，确认图片 paragraph/node 形态，定文本/图穿插顺序。
-2. **前端 md 渲染器选型 + sanitize 方案**（R3）：评估 markdown-it / marked / md-editor-v3 等，配 sanitize-html 防 XSS（文本节点取自站点）。
+1. ~~**确认 cv 内嵌图节点**（R1）~~ — ✅ 已确认（2026-07-24 `cv48146678`，见 §六）：paragraphs 按 `para_type` 1=文本段/2=图片段交错，图段 `pic.pics[]` 带 url/宽高；附带发现 cv→opus 302、匿名不稳。
+2. ~~**前端 md 渲染器选型 + sanitize 方案**（R3）~~ — ✅ 已选（2026-07-24）：**markdown-it@14 + dompurify@3**（见阶段 2 蓝图）。否决 md-editor-v3（CodeMirror 编辑器，D3 不可编辑→大材小用）、sanitize-html（含 postcss 偏重，客户端用 DOMPurify）；marked（0 依赖）备选。
 3. **用户拍板 D1-D5**（默认 A + 新增 article + 序号 basename + 通用）。
 
 ### 阶段 1 · 插件提取（bilibili）
-1. 扩展 `parseOpusState`：输出正文 markdown（文本段 + `![](序号basename)` 图占位）与图 URL 列表。
+1. ~~扩展 `parseOpusState`~~ — ✅ done(2026-07-24):改返回 `opusParseResult`(Markdown+InlineImages+TopPics+Description+Author);cv48146678 实测 40 段(11文本+29图)→ 29 内嵌图 basename 001-029 按序、图文穿插正确。加 `extFromURL` 取扩展名;dump 测试验证。
 2. **重构 `createImage` 的 article 分支**（§五）：从"每图独立 Resource"改为"1 Resource 挂 `.md`(derived) + N 图(downloaded)"，`Start` 产出多 StoreSpec；**保证 dynamic 分支不回归**（R2）。
 3. 图命名约定（D4）：序号 basename（如 `001.jpg`），`.md` 按此引用。
-4. 定 `store_type = article`（D2），三处常量同步（C8）。
-5. `.md` StoreSpec：`{Role:article, Generation:derived, Format:".md", ReadCloser:io.NopCloser(mdBytes)}`（§九）。
+4. ResourceType=`article`（D2 已落地）；正文 store Role=`document`(.md)、图 store Role=`image`(.jpg/.png/.webp)、缩略图 `thumbnail`（见 `resource_type.go:98-111`）——**复用既有 store_type，无需新增常量**（C8 不触发）。
+5. `.md` StoreSpec：`{Role:document, Generation:derived, Format:".md", ReadCloser:io.NopCloser(mdBytes)}`（§九；C5：document 路径 Format 带 `.md`）。
 
 ### 阶段 2 · 前端渲染
-1. 新装 md 渲染库 + sanitize。
+1. 新装 **markdown-it@14 + dompurify@3**（`frontend/package.json` 当前零 md 依赖）。封装薄 Vue 组件 `MarkdownView.vue`：`md.render(src, env)` → `DOMPurify.sanitize` → `v-html`。
 2. 抽 `getResourcePreviewKind(resource)` 公共分发到 `ResourceUtil.ts`（§四）。
 3. 三处入口（`WorkCard`/`WorkDialog`/`WorkSetCard`）按 kind 分支：md → md 渲染器，image → 现状，video → 占位。
-4. md 内 `![](basename)` → 经 Resource.stores 的 filePath + `buildStoreUrl`（`UrlUtil.ts:5`）解析为图 URL。
-5. sanitize 文本节点。
+4. **图绑定（D4 核心）**：渲染前从 `Resource.stores`（image 角色）建 `imageMap: {basename → buildStoreUrl(filePath)}`（`UrlUtil.ts:5`）；覆盖 markdown-it `renderer.rules.image`，把 token.src(basename) 经 imageMap 重写为 `/store/...` URL，未命中则原样降级。
+5. **sanitize（R3）**：markdown-it `html:false` 已转义裸 HTML；输出再过 `DOMPurify.sanitize(html, {ALLOWED_TAGS:[p,br,strong,em,h1-6,ul,ol,li,blockquote,code,pre,a,img,hr], ALLOWED_ATTR:{img:[src,alt,width,height],a:[href]}})`，`a.href` 限 http/https 防 `javascript:`。文本取自站点（word.words）必过。
 
 ### 阶段 3 · 集成验证
 1. 粘一篇富专栏 → 建任务 → 下载 `.md` + 图 → 前端渲染为完整图文文章。
