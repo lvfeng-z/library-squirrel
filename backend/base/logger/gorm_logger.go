@@ -2,9 +2,11 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
@@ -59,7 +61,15 @@ func (l *GormLogger) Trace(_ context.Context, begin time.Time, fc func() (sql st
 
 	switch {
 	case err != nil:
-		Log.Errorf("[GORM] %s | %d rows | %s | %s", elapsed, rows, sql, err)
+		// ErrRecordNotFound 是业务常态(查重未命中、GetById 不存在等),降级 Info 不刷 ERROR
+		// (Warn 级别下 Info 不输出,即静默;真错误仍走 Error)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if l.level >= logger.Info {
+				Log.Infof("[GORM] %s | %d rows | %s | %s", elapsed, rows, sql, err)
+			}
+		} else {
+			Log.Errorf("[GORM] %s | %d rows | %s | %s", elapsed, rows, sql, err)
+		}
 	case elapsed > 200*time.Millisecond:
 		Log.Warnf("[GORM] slow sql >= 200ms | %s | %d rows | %s", elapsed, rows, sql)
 	case l.level >= logger.Info:
