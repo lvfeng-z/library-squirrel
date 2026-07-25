@@ -729,7 +729,10 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 func (s *Service) backupStore(ctx context.Context, storeId int64, workDir string) (int64, error) {
 	store, err := s.storeReader.GetById(ctx, storeId)
 	if err != nil {
-		return 0, fmt.Errorf("查询资源文件记录失败: %w", err)
+		// store 记录查询失败(含脏数据 record not found:上游失败留下指向已删 store 的 resource_store 关联):
+		// 不阻断,返回 BackupID=0 由调用方跳过(删作品/替换不应因脏 store 失败)
+		logger.Log.Warnf("备份查询 storeId=%d 失败,跳过: %v", storeId, err)
+		return 0, nil
 	}
 	if store == nil || !store.FilePath.Valid {
 		return 0, nil

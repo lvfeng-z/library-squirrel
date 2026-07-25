@@ -127,3 +127,31 @@ resume 时不再"仅挂未完成 spec"，改为**重挂全量 store**：已完�
 - **R5（store_seq 顺序稳定）**：taskManager 须按 spec 顺序赋 store_seq（已如此），插件 Resume 产 spec 顺序须与 Start 一致（article InlineImages 稳定，满足）。
 - **不回退数据模型结构**：M 只改名 + SDK 改型，不加表/列（除改名）、不迁历史数据。
 - **与 R 阶段1 的接合**：M Phase 3 的 bilibili `resumeArticle` 与 R 任务 1c（`TaskPluginData + startImage/resumeImage article 多 store`）是同一份代码；M 完成前 R 阶段1（1b/1c）阻塞。
+
+## 六、实施后遗漏（R 阶段3 实测发现，2026-07-25）
+
+M 标记完成时 N-同 role 多 store 只实测了"文件名生成/路径消歧"和"resume 身份化"的代码逻辑，**没实测真实 N-同 role 端到端落盘/下载**（video 多轨是不同 role，pixiv/local 单 image）。R 阶段3 用 bilibili 专栏（article：1 document + 29 image 同 role）首次实战，暴露两个 M 没覆盖的缺陷，均已修：
+
+### 遗漏①：`resolveStorePath` needsSuffix 漏改 relPath（主程序 model.go）
+
+**现象**：29 image 落盘到同一文件 `[作者]_[cv]_作品名.png`，Windows 文件锁冲突 → 各只下 ~150KB → Failed。
+
+**根因**：`resolveStorePath` 的 `needsSuffix` 分支只给 `fileName` 加 `_%03d(store_seq)` 后缀，漏改 `relPath`；而 `StoreStream`（`persistentStore/service.go:223`）用 `relPath`（`absPath = workDir + relPath`）创建文件，`fileName` 仅取扩展名。同 role 多 store 的 `relPath` 末段都没加后缀 → 同一文件。
+
+**修复**：needsSuffix 分支用新 fileName 重建 relPath：`relativePath = filepath.Join(filepath.Dir(relativePath), fileName)`。
+
+**教训**：M 的 Phase 1 路径消歧只验了"fileName 生成正确"（单测对比），没验"StoreStream 实际用 relPath 创建文件"这层——文件名生成 vs 实际落盘的链路断点。
+
+### 遗漏②：SDK `serveSpecsPull` 同 role 多 spec 覆盖（SDK transport/plugin_server.go）
+
+**现象**：修复①后落盘不冲突，但 29 image 各下 ~150KB（高度一致）后 EOF → "下载不完整"。
+
+**根因**：SDK `serveSpecsPull` 用 `readers[sp.Role] = sp.ReadCloser`（role 作 key），article 的 29 个 image 同 role="image" → `readers["image"]` 被覆盖 29 次只留 1 个 reader。主程序 29 个 image streamController 都发 `PullRequest(role="image")`，serveSpecsPull 全部路由到最后那 1 个 reader → 29 个消费者分享 1 张图的数据（各得 ~5MB/29 ≈ 150KB），该 reader EOF 后 SDK 把 EOF 分发给全部 29 个 pullReadCloser。
+
+**修复**：`PullRequest.role` 编码 `role#specIndex`（`EncodePullRole`/`DecodePullRole`，不动 proto/gen），`serveSpecsPull` readers 改 slice 按 specIndex 定位。覆盖 Start + Resume（共用 serveSpecsPull）。
+
+**教训**：M 改了主程序 taskManager（N-同 role 多 store 路径 + resume 身份化）+ SDK resume（StreamOffsets structured store_seq），但**漏了 SDK Start 的 pull 层**——`serveSpecsPull` 仍按 role 索引 reader。M 的 R3 审计只扫了主程序 taskManager 的隐性 role 假设，没扫 SDK transport 的 readers 容器。
+
+### 共性
+
+两个遗漏都是"N-同 role 多 store 首次真实端到端实战才暴露"的缺陷——M 完成时缺少一个 N≥3 的同 role 端到端集成测试（只单测 + video 不同 role）。**后续涉及 N-同 role 的改动都应补此类集成测试**。

@@ -2003,6 +2003,9 @@ func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, main
 	if needsSuffix {
 		ext := normalizeExt(spec.Format)
 		fileName = fmt.Sprintf("%s_%03d%s", strings.TrimSuffix(fileName, ext), sameRoleSeq, ext)
+		// StoreStream 据 relPath 创建文件(不用 fileName,fileName 仅用于取扩展名);relPath 末段须与消歧后
+		// fileName 一致,否则同 role 多 store 落盘到同一 relPath → 文件互相覆盖/Windows 文件锁冲突
+		relativePath = filepath.Join(filepath.Dir(relativePath), fileName)
 	}
 	return
 }

@@ -107,6 +107,8 @@
 
 > 视频任务的多 StoreSpec 产出（`createVideo` 的 videoTrack+audioTrack+thumbnail）是现成的"1 任务多 store"参考实现。
 
+**N image reader 的活跃管理（article 衍生）**：article 的 N 个内嵌图在 `Start` 各产一条 downloaded reader，须全部注册到插件 `activeReaders` 供 Pause/Stop/Shutdown 广播。但 `activeReaders` 内层原以 role 为键（video 不同 role 不冲突），N 个同 role(image) reader 会互相覆盖——须改用 `role#seq` 复合键（`storeKey` 辅助函数，seq=store_seq=InlineImages 下标）；Pause/Stop 遍历内层 map 全部 reader 的逻辑不变。此为插件执行面适配（详见 §八），与 taskManager 按 (role,store_seq) 身份化呼应。
+
 ## 六、源结构（bilibili cv，阶段 0 已实测确认 · 2026-07-24 `cv48146678`）
 
 专栏 cv 页会 **302 重定向到 opus 页**（`cv48146678` → `opus/1194849825756020768`）；正文在 opus 页 `__INITIAL_STATE__.detail.modules[MODULE_TYPE_CONTENT].module_content.paragraphs[]`，**每段 `para_type` 二值、按阅读顺序逐段交错**：
@@ -133,12 +135,14 @@
 
 ## 八、与 taskManager 执行面的关系（不加深耦合）
 
-**结论**（C3）：本功能实现**不加深** taskManager 执行面/控制面耦合，`.md` 复用既有的 derived 通用路径，执行面零改动。
+**结论**（C3）：本功能实现**不加深** taskManager 执行面/控制面耦合，`.md` 复用既有的 derived 通用路径，R 阶段1/2 执行面零改动。**M 节点已完成 taskManager N-同 role 多 store 路径消歧 + resume 按 (role,store_seq) 身份化 + SDK `StreamOffsets` structured（见 `doc/plan/taskmanager-multi-same-role-store-plan.md`，2026-07-25 四端发布 + video 实测无回归），R 直接复用，不再改后端执行面**。
 
 **理由**（方案 A：`.md` derived + 内嵌图 downloaded）：
 - **`.md`（derived）**：插件 `TaskHandler.Start` 返回 `{Role:main/article, Generation:derived, Format:".md", ReadCloser:io.NopCloser(mdBytes)}`，走 `streamController` 的 downloaded/derived 通用 reader→writer 拷贝路径（`taskManager/model.go:298`）。缩略图已是 `derived + NopCloser` 的现有案例，`.md` 与之同款。
 - **内嵌图（downloaded）**：走标准下载流（`StoreSpec` 带 ReadCloser 流），与现有图片下载完全一致。
-- **执行面改动**：零。只在数据模型层新增一个 `store_type` 常量（复用 `main` 或新增 `article`，开放枚举不改表）。
+- **taskManager 执行面改动**：零。taskManager 已由 M 节点铺好 N-同 role 多 store 路径消歧 + resume 按 (role,store_seq) 身份化，R 直接复用。
+
+**插件侧 reader 管理（非 taskManager）**：article 的 N 个同 role(image) downloaded reader 须全部注册到插件 `activeReaders`（taskID→map[storeKey]reader）供 Pause/Stop/Shutdown 广播。原内层以 role 为键（video 不同 role 不冲突），N 个同 role reader 会互相覆盖，故改用 `role#seq` 复合键（`storeKey`，seq=store_seq=InlineImages 下标），Pause/Stop 遍历全部 reader 的逻辑不变。此为插件执行面适配，不改 taskManager。
 
 **衍生认知**：`NopCloser` 是 derived store 的**标准产出方式**（非"伪装/撞墙"），StoreSpec 的 ReadCloser 契约既已包容派生文件产出。本功能不触发 longops 执行面剥离，可安心实现。
 
@@ -164,21 +168,35 @@
 
 ### 阶段 1 · 插件提取（bilibili）
 1. ~~扩展 `parseOpusState`~~ — ✅ done(2026-07-24):改返回 `opusParseResult`(Markdown+InlineImages+TopPics+Description+Author);cv48146678 实测 40 段(11文本+29图)→ 29 内嵌图 basename 001-029 按序、图文穿插正确。加 `extFromURL` 取扩展名;dump 测试验证。
-2. **重构 `createImage` 的 article 分支**（§五）：从"每图独立 Resource"改为"1 Resource 挂 `.md`(derived) + N 图(downloaded)"，`Start` 产出多 StoreSpec；**保证 dynamic 分支不回归**（R2）。
-3. 图命名约定（D4）：序号 basename（如 `001.jpg`），`.md` 按此引用。
-4. ResourceType=`article`（D2 已落地）；正文 store Role=`document`(.md)、图 store Role=`image`(.jpg/.png/.webp)、缩略图 `thumbnail`（见 `resource_type.go:98-111`）——**复用既有 store_type，无需新增常量**（C8 不触发）。
-5. `.md` StoreSpec：`{Role:document, Generation:derived, Format:".md", ReadCloser:io.NopCloser(mdBytes)}`（§九；C5：document 路径 Format 带 `.md`）。
+2. ~~重构 `createImage` 的 article 分支~~ — ✅ done(2026-07-25):`createImage` 拆为分发层 + `createDynamic`(原每图一子任务逻辑,R2 不变) + `createArticle`(单任务无 children:1 篇专栏=1 Resource,PluginData 存 Markdown+InlineImages+TopPics[0]→ThumbnailURL,InvolvedRoles=[document,image,thumbnail]);`GetArticleImages`→`GetArticleDetail` 返回完整 `*OpusParseResult`(原只返回 TopPics,丢弃正文);N image reader 的 `activeReaders` 内层 key 改 `role#seq`(见 §五/§八)。
+3. ~~图命名约定（D4）~~ — ⚠ **由 M D3-B 取代**(2026-07-25):M 决定同 role 多 store 落盘名=模板+`_%03d(store_seq)`,**不复用 SuggestName**(模板模式忽略);`.md` 的 `001.jpg` 退化为位置占位,前端按第 k 个 `![]()` → 第 k 个 image store(R 阶段2 位置绑定),非 basename 匹配。step2 实现遵循此决策(image store 不设 SuggestName)。
+4. ~~ResourceType=`article` 声明~~ — ✅ done(随 step2):`createArticle` 声明 ResourceType=article + InvolvedRoles=[document,image,thumbnail];正文 Role=document(.md)、图 Role=image(.jpg/.png/.webp)、缩略图 thumbnail(见 `resource_type.go:98-111`)——复用既有 store_type,无需新增常量(C8 不触发)。
+5. ~~`.md` StoreSpec~~ — ✅ done(2026-07-25,在 `startArticle`):`{Role:document, Generation:derived, Format:".md", ReadCloser:io.NopCloser(mdBytes), Continuable:false}`,document 路径 Format 带 `.md`(§九/C5)。
+6. ~~`resumeArticle`~~ — ✅ done(2026-07-25):遍历 `param.StreamOffsets`,`store_seq`→`InlineImages[seq]` 取图 URL,产 image StoreSpec 带 `ResumeWriteOffset`(磁盘偏移);越界保护(seq≥len 报错);`.md`(derived) 不处理——主程序 Start([document]) 整轨重产(`model.go:1548-1560`);store_seq 顺序=InlineImages 下标(与 Start 一致,M R5)。
 
 ### 阶段 2 · 前端渲染
-1. 新装 **markdown-it@14 + dompurify@3**（`frontend/package.json` 当前零 md 依赖）。封装薄 Vue 组件 `MarkdownView.vue`：`md.render(src, env)` → `DOMPurify.sanitize` → `v-html`。
-2. 抽 `getResourcePreviewKind(resource)` 公共分发到 `ResourceUtil.ts`（§四）。
-3. 三处入口（`WorkCard`/`WorkDialog`/`WorkSetCard`）按 kind 分支：md → md 渲染器，image → 现状，video → 占位。
-4. **图绑定（D4 核心）**：渲染前从 `Resource.stores`（image 角色）建 `imageMap: {basename → buildStoreUrl(filePath)}`（`UrlUtil.ts:5`）；覆盖 markdown-it `renderer.rules.image`，把 token.src(basename) 经 imageMap 重写为 `/store/...` URL，未命中则原样降级。
-5. **sanitize（R3）**：markdown-it `html:false` 已转义裸 HTML；输出再过 `DOMPurify.sanitize(html, {ALLOWED_TAGS:[p,br,strong,em,h1-6,ul,ol,li,blockquote,code,pre,a,img,hr], ALLOWED_ATTR:{img:[src,alt,width,height],a:[href]}})`，`a.href` 限 http/https 防 `javascript:`。文本取自站点（word.words）必过。
+1. ~~新装 markdown-it + dompurify + 封装 MarkdownView.vue~~ — ✅ done(2026-07-25):装 markdown-it@14.3.0 + dompurify@3.4.12(均自带 TS 类型);`frontend/src/components/common/MarkdownView.vue`:`md.render(src, env)` → `DOMPurify.sanitize` → `v-html`。
+2. ~~抽 getResourcePreviewKind 公共分发~~ — ✅ done(简化,2026-07-25):`ResourceUtil.getResourcePreviewType` 已返回 ResourceType(含 ARTICLE),WorkDialog `previewKind` computed 直接据此判断('article'|'image'),不另抽 getResourcePreviewKind(无额外价值)。
+3. ~~三处入口按 kind 分支~~ — ✅ done(2026-07-25,设计调整):**WorkDialog**(详情弹窗)加 article 分支(el-image 区 v-if:article→MarkdownView 渲染正文+内嵌图,否则现状 el-image);**WorkCard/WorkSetCard**(卡片)现状兼容——article 经 thumbnailStore 显示封面(article spec 含 thumbnail),卡片不渲染正文(点击弹窗才看),无需改。
+4. ~~图绑定~~ — ✅ done(2026-07-25,**位置绑定,M D3-B 取代 basename 匹配**):MarkdownView 覆盖 markdown-it `renderer.rules.image`,用 env 传 imageStores + 计数器,第 k 个 image token → 第 k 个 image store(stores[] filter image,数组顺序=store_seq 升序)→ `buildStoreUrl(filePath)`;原 plan 的 imageMap{basename→url} 作废(basename 退化为占位)。
+5. ~~sanitize~~ — ✅ done(2026-07-25):markdown-it `html:false` 转义裸 HTML + DOMPurify.sanitize(ALLOWED_TAGS/ATTR 收紧白名单;DOMPurify 默认已禁 javascript: URI)。文本取自站点必过。
 
-### 阶段 3 · 集成验证
-1. 粘一篇富专栏 → 建任务 → 下载 `.md` + 图 → 前端渲染为完整图文文章。
-2. 验证 dynamic（图文动态）行为不回归（R2）。
+### 阶段 3 · 集成验证（2026-07-25 完成）
+
+实测 cv48146678 / 多个 opus / resume，首轮暴露一系列"N-同 role 多 store 首次端到端实战"缺陷（M 完成时缺此类集成测试），逐一修复后全场景通过。修复链（bilibili 插件为主，主程序/SDK 各一）：
+
+1. ~~cv 下载+渲染~~ ✅（任务46）：cv48146678 → 1 document.md + 29 image，前端渲染正文+图。
+2. ~~opus 路由~~ ✅：`urlparser` 把 `opus/` 归 ContentDynamic（走 createDynamic 取 pics=0 失败）→ 改 opus→ContentArticle + 加 `GetOpusDetail` + `createArticle` 据 url 分派 cv/opus。
+3. ~~createArticle 任务结构~~ ✅：`handleCreateTaskArray` 跳过无 children 的 parent → createArticle 返回 parent+1 child（主程序单 child 分支创建 child 为 article 任务）。
+4. ~~activeReaders 同 role 多 reader~~ ✅：内层 key 从 role 改 `role#seq`（N image reader 不再互相覆盖）。
+5. ~~needsSuffix relPath（M 遗漏①）~~ ✅：`resolveStorePath` needsSuffix 只改 fileName 漏改 relPath（StoreStream 用 relPath 创建文件）→ 同步重建 relPath（见 M plan §六）。
+6. ~~SDK serveSpecsPull 同 role 覆盖（M 遗漏②）~~ ✅：`readers[role]` 覆盖只留 1 reader → 改 `role#specIndex` 编码 + readers slice 按 specIndex 定位（见 M plan §六）。
+7. ~~parseOpusState 标题 fallback~~ ✅：动态类 opus MODULE_TYPE_TITLE 空 → 正文首行 → 作者兜底。
+8. ~~parseOpusState 图集 fallback~~ ✅：图在 TOP 相册（非 CONTENT 图段）时 InlineImages 空 → TOP 图转 InlineImages + Markdown 末尾追加引用；cv（CONTENT 有图）不触发。
+
+辅助修复：`backupStore` 容错（解脏数据删作品阻塞）、`RetryReader` 提前 EOF 重试（防御，本次未触发但保留）、`CreateTaskByURL` 诊断日志。
+
+验证：cv（任务46）/ opus 图文（任务50/56）/ opus 图在 TOP（任务57）/ resume 多次暂停恢复（任务48）全通过。R2 `/dynamic/` 回归降级代码审查（bilibili 现网动态都 opus，`/dynamic/` 入口不存在，改动对 createDynamic 非侵入）。
 
 ## 十一、验收标准
 
@@ -219,9 +237,11 @@
 - SDK `dto/handler_dto.go:68-77`（`StoreSpec`）
 - `doc/plugin-dev-guide.md:274-323`（StoreSpec 字段速查 + Format 前导点契约 + 缩略图约定）
 
-### taskManager 执行面（零改动）
-- `backend/taskManager/model.go:298`（`streamController` downloaded/derived 通用）
-- `backend/taskManager/model.go:1852-1895`（`resolveMainPath`/`resolveStorePath`/`normalizeExt`，Format 处理）
+### taskManager 执行面（R 零改动;M 已完成多 store + resume 身份化基建）
+- R 不改 taskManager:M 节点(`doc/plan/taskmanager-multi-same-role-store-plan.md`)已完成 N-同 role 多 store 路径消歧(`resolveStorePath` 同 role 加 `_%03d` 后缀) + resume 按 (role,store_seq) 身份化(`findStoreRowByIdentity`/`findResumeOffset` + 全量重挂) + SDK `StreamOffsets` structured。R 阶段1 仅插件侧产多 StoreSpec(image N 个同 role)+ `resumeArticle`,taskManager 自动处理。
+- `backend/taskManager/model.go`(`streamController` downloaded/derived 通用、`resolveStorePath`/`resolveMainPath`/`normalizeExt` Format 处理、`findStoreRowByIdentity`/`findResumeOffset` 身份匹配)
+- `backend/base/model/entity/resource_type.go`(`articleResourceTypeSpec`:document 1~1 + image 0~N(Max=0 不限) + thumbnail 0~1;PrimaryRoles=[document])
+- **StoreSeq 语义**:同 role 内 0-based 序号(M 决策);article 的 image store_seq = InlineImages 文档顺序,前端 .md 位置绑定(R 阶段2)据此
 
 ## 延后分支（类型 2：现成文档文件的多格式查看器）
 

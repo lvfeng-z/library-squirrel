@@ -13,6 +13,7 @@ import IPage from '@renderer/model/util/IPage.ts'
 import { OriginType } from '@renderer/constants/OriginType.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AuthorInfo from '@renderer/components/common/AuthorInfo.vue'
+import MarkdownView from '@renderer/components/common/MarkdownView.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { Picture } from '@element-plus/icons-vue'
@@ -28,7 +29,7 @@ import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrapp
 import { resourceMerge } from '@renderer/apis/http/wrappers/resource'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 import { getResourceOpenPath, getResourcePreviewType, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
-import { ResourceType } from '@renderer/constants/sectionCode.ts'
+import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
 
 // props
 const props = defineProps<{
@@ -118,6 +119,40 @@ const imagePath = computed(() => {
   }
   return ''
 })
+
+// ===== article（图文紧密结合文档）正文渲染 =====
+// 展示形态:image/video/unknown 走 el-image;article 走 MarkdownView 渲染正文 + 内嵌图
+const previewKind: Ref<'article' | 'image'> = computed(() => {
+  return getResourcePreviewType(currentWorkFullInfo.value.resource) === ResourceType.ARTICLE
+    ? 'article'
+    : 'image'
+})
+// article 正文 .md 文本(异步 fetch document store)
+const articleMarkdown: Ref<string> = ref('')
+// article 内嵌图引用:stores[] filter(image),数组顺序=store_seq 升序(后端 ORDER BY store_seq),位置绑定依据
+const articleImageStores = computed(() => {
+  const stores = currentWorkFullInfo.value.resource?.stores ?? []
+  return stores
+    .filter(s => s.storeType === StoreRole.IMAGE)
+    .map(s => ({ filePath: s.store?.filePath ?? '' }))
+})
+// 加载 article 正文:fetch document store 的 .md 文本(失败降级空正文,图绑定仍可用)
+async function loadArticleMarkdown() {
+  articleMarkdown.value = ''
+  if (previewKind.value !== 'article') return
+  const stores = currentWorkFullInfo.value.resource?.stores ?? []
+  const docStore = stores.find(s => s.storeType === StoreRole.DOCUMENT)
+  const filePath = docStore?.store?.filePath
+  if (!filePath) return
+  try {
+    const resp = await fetch(buildStoreUrl(filePath))
+    if (resp.ok) {
+      articleMarkdown.value = await resp.text()
+    }
+  } catch {
+    // .md 加载失败,降级空正文
+  }
+}
 
 // ===== 辅助：获取资源的原始文件路径（优先合并产物，次主资源）=====
 function getResourceFilePath(info: WorkFullDTO): string {
@@ -213,6 +248,7 @@ async function refreshWorkInfo() {
   await getWorkInfo()
   refreshTags()
   await refreshWorkSets()
+  await loadArticleMarkdown()
 }
 // 处理本地标签exchangeBox确认交换事件
 async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {
@@ -392,7 +428,14 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
       </span>
     </template>
     <div class="work-dialog-container">
+      <markdown-view
+        v-if="previewKind === 'article'"
+        class="work-dialog-image work-dialog-markdown"
+        :markdown="articleMarkdown"
+        :image-stores="articleImageStores"
+      />
       <el-image
+        v-else
         class="work-dialog-image"
         fit="contain"
         :src="imagePath ? buildStoreUrl(imagePath) : ''"
@@ -703,6 +746,11 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
   margin-right: 10px;
   cursor: pointer;
   transition-duration: 0.3s;
+}
+.work-dialog-markdown {
+  overflow-y: auto;
+  padding: 0 10px;
+  cursor: default;
 }
 .work-dialog-image:hover {
   background-color: rgb(166.2, 168.6, 173.4, 10%);

@@ -521,7 +521,9 @@ type CreateTaskByURLResponse struct {
 func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskByURLResponse, error) {
 	// 1. 查询监听此url的插件
 	listeners := s.urlListener.ListListener(url)
+	logger.Log.Infof("[CreateTaskByURL] url=%s 匹配监听器 %d 个", url, len(listeners))
 	if len(listeners) == 0 {
+		logger.Log.Warnf("[CreateTaskByURL] 无监听器匹配(插件未注册该 URL 类型 或 插件未激活): %s", url)
 		return &CreateTaskByURLResponse{
 			Succeed:       false,
 			AddedQuantity: 0,

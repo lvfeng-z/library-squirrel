@@ -10,6 +10,7 @@ import (
 
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	pluginsdkliveness "github.com/lvfeng-z/library-squirrel-sdk/liveness"
+	transport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
 // TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
@@ -280,11 +281,11 @@ func recvSpecsAndPull(
 		refCount:  len(metas),
 	}
 	specs := make([]*pluginsdkdto.StoreSpec, 0, len(metas))
-	for _, meta := range metas {
+	for i, meta := range metas {
 		specs = append(specs, &pluginsdkdto.StoreSpec{
 			Role:              meta.GetRole(),
 			Generation:        meta.GetGeneration(),
-			ReadCloser:        &pullReadCloser{session: session, role: meta.GetRole()},
+			ReadCloser:        &pullReadCloser{session: session, role: transport.EncodePullRole(meta.GetRole(), i)},
 			Format:            meta.GetFormat(),
 			Size:              meta.GetSize(),
 			SuggestName:       meta.GetSuggestName(),
