@@ -323,7 +323,7 @@ type StoreSpec struct {
 
 #### Resume 续传要点
 
-- 主程序通过 `TaskResumeParam.StreamOffsets`(role → 该轨已落盘字节数,来自磁盘 stat)传入续传起点。
+- 主程序通过 `TaskResumeParam.StreamOffsets` 传入续传起点:`[]*StoreResumeOffset{ role, store_seq, offset }`(身份化——同 role 多 store 按 store_seq 各自独立;offset 为磁盘 stat 已落盘字节数)。单例场景可用便捷方法 `param.OffsetForRole(role)` 取首个命中;N-同 role 多 store(如 article 内嵌图)须插件自行遍历按 store_seq 精确匹配。
 - downloaded 轨:据此 offset 发 Range 请求(或本地文件 Seek)从 offset 续读。
 - derived 轨:不进 StreamOffsets,未完成时主程序另行 Start 整轨重产,Resume 无需产出 derived。
 - 续传权威是磁盘已落盘字节数(StreamOffsets),不是 reader 内部计数——以 StreamOffsets 为准对齐。
