@@ -1,6 +1,20 @@
 # 多 store/多资源落盘命名规约（任务 N）
 
-> **审查摘要**（2026-07-26 修订 v2，经 plan-reviewer 对抗式审查后补全）
+> **⚠️ v3 决策修订（2026-07-26）—— D1 回到位置绑定（A 方案），前置命名全部废弃**
+>
+> **修订理由**：重新审视前置命名（`host.ResolveStorePath`）的需求来源——它为 bilibili article 的 `.md` 正文引用内嵌图物理 basename（`![001.jpg](001.jpg)`）而设计。但"元数据内容依赖资源文件命名"本身是耦合设计，不合理：`.md` 是内容（document store），不应依赖图片（image store）的物理文件名。**问题在 bilibili 插件，不在主程序架构**。主程序不该为让这个错误耦合工作而引入前置命名整套架构（RPC + sameRoleCount + 改命名规则 + 跨仓库改动）。
+>
+> **正确机制（已实现）**：`.md` 占位是逻辑符号，渲染层做逻辑→物理映射——位置绑定（A 方案）。前端 `MarkdownView.vue` 的 `renderer.rules.image` 第 k 个 image token → 第 k 个 image store（按 store_seq 升序）。R 阶段3 已实测通过。
+>
+> **Phase 1**：命名函数去方法化（commit `3155626`）经回退（commit `10bcd75`）撤销——代码回到 `33ba595` 位置绑定状态（编译通过）。历史保留（`3155626` + revert 可追溯）。
+>
+> **废弃**：v2 的前置命名规约设计（§5.1-5.8）+ Phase 2-4 实施（SDK RPC + 主程序 HostDeps 反查）+ D1/D3-D7 决策（均关联前置命名）。以下 v2 内容保留供推导追溯，**不再执行**。
+>
+> **N 剩余治理（延后，暂不做）**：位置绑定不变量守卫、D2 模板空兜底、占位符语义、命名规约文档。
+
+---
+
+> **审查摘要**（v2 历史内容，前置命名相关已由 v3 废弃，保留供推导追溯）
 > - **核心机制**：前置命名 + 确定性命名函数。命名规则归主程序（`resolveStorePath` 实现不外移），通过 SDK `host.ResolveStorePath(role, seq, format)` 暴露给插件在生成期调用；两端各自调用同一确定性函数、结果必然一致，**无 RPC 往返协调**。一致性靠三同源保证：规则同源（主程序独占实现）+ 作品元数据同源（主程序 Create 时单点持有，插件不传）+ seq 同源（插件产出顺序 = spec 数组顺序 = store_seq）。
 > - **关键不变量**：`store_seq`（同 role 内 0-based 序号）在 DB 字段（`mountResourceStores` `model.go:1148-1177`）+ 文件名后缀（`resolveStorePath` `model.go:1996-2011`）+ resume 身份键（`model.go:1896-1914`）+ `.md` 引用 四处统一。
 > - **决策已定**：D1 前置命名/确定性函数；D2 settings 强制非空 + DB 主键派生兜底；D3 规约文档 + 架构落地（Phase 1-4 核心原子发布、5-8 配套）。**v2 补 sub-决策**：D4 缩略图纯派生（§5.6）、D5 `${downloadTime*}` 剥离（§5.5）、D6 `.md` 占位生成延后到 Start 期（§5.7）、D7 回滚与多插件发布策略（§六末）。
