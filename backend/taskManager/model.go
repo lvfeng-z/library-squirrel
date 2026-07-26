@@ -924,9 +924,10 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		// 无主体(未知/未声明类型):以首个 spec 占位解析主路径
 		mainSpec = specs[0]
 	}
+	nctx := m.namingCtxFromTask(workResp)
 	var mainRelPath, mainFileName string
 	if mainSpec != nil {
-		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, workResp)
+		mainRelPath, mainFileName = resolveMainPath(mainSpec, nctx)
 	}
 	roleCounts := countSpecRoles(specs)
 	roleCounters := make(map[string]int, len(roleCounts))
@@ -938,7 +939,7 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		for _, spec := range specs {
 			sameRoleSeq := roleCounters[spec.Role]
 			roleCounters[spec.Role]++
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
+			relPath, fileName := resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1, nctx)
 			storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
 			if storeErr != nil {
 				return storeErr
@@ -1574,9 +1575,10 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	if mainSpec == nil && len(specs) > 0 {
 		mainSpec = specs[0]
 	}
+	nctx := m.namingCtxFromTask(newResp)
 	var mainRelPath, mainFileName string
 	if mainSpec != nil {
-		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, newResp)
+		mainRelPath, mainFileName = resolveMainPath(mainSpec, nctx)
 	}
 	roleCounts := countSpecRoles(specs)
 	roleCounters := make(map[string]int, len(roleCounts))
@@ -1588,7 +1590,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		for _, spec := range specs {
 			sameRoleSeq := roleCounters[spec.Role]
 			roleCounters[spec.Role]++
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
+			relPath, fileName := resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1, nctx)
 			// 身份匹配:同 role 内按 store_seq(sameRoleSeq)精确定位已有行(替代 role 首匹配,支持 N-同 role)
 			existingRow := findStoreRowByIdentity(storeRows, spec.Role, sameRoleSeq)
 			offset, hasOffset := findResumeOffset(streamOffsets, spec.Role, sameRoleSeq)
@@ -1965,20 +1967,29 @@ func (m *ManagedTask) mergeWorkMetaForNaming(startResp, workResp *sdkdto.WorkRes
 	}
 }
 
+// namingContext 打包纯命名函数所需的外部输入,解耦自 ManagedTask 状态。
+// 命名逻辑作为包级纯函数,任意调用方(落盘/resume/未来 SDK HostService)从自身状态组装 nctx 复用,
+// 命名规则本身不持有 ManagedTask 引用,同输入恒同输出。
+type namingContext struct {
+	WorkResp       *sdkdto.WorkResponse // 作品元数据(author/siteWorkId/siteWorkName 等)
+	FileNameFormat string               // 文件名模板(来自 settings)
+	TaskName       string               // 任务名(模板空且无 SuggestName 时兜底,空表示无效)
+}
+
 // resolveMainPath 根据资源信息和文件名模板生成主资源(或主下载轨)的本地保存路径
-// 返回 relativePath（相对于 workDir）和 fileName
-func (m *ManagedTask) resolveMainPath(spec *sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) (relativePath, fileName string) {
-	tpl := m.deps.FileNameFormatProvider.GetFileNameFormat()
+// 返回 relativePath（相对于 workDir）和 fileName。纯函数,同输入恒同输出。
+func resolveMainPath(spec *sdkdto.StoreSpec, nctx namingContext) (relativePath, fileName string) {
+	tpl := nctx.FileNameFormat
 
 	// 模板为空时使用插件建议的文件名
 	if tpl == "" {
-		fileName = m.buildSuggestedFileName(spec)
+		fileName = buildSuggestedFileName(spec, nctx.TaskName)
 		relativePath = filepath.Join("store", "resource", fileName)
 		return
 	}
 
 	// 模板模式：提取占位符数据 → 格式化 → 净化 → 拼接扩展名 → 按作者分目录
-	tokenData := filename.ExtractTokenData(workResp)
+	tokenData := filename.ExtractTokenData(nctx.WorkResp)
 	formatted := filename.FormatFileName(tpl, tokenData)
 	sanitizedFileName := filename.SanitizeFileName(formatted)
 
@@ -1993,13 +2004,14 @@ func (m *ManagedTask) resolveMainPath(spec *sdkdto.StoreSpec, workResp *sdkdto.W
 
 // resolveStorePath 按 role 解析各 store 路径:thumbnail 派生自主路径,其余用主路径逻辑。
 // 同 role 多 store(needsSuffix)时追加同 role 内序号后缀(sameRoleSeq,扩展名前)消歧,避免落盘覆盖。
-func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string, sameRoleSeq int, needsSuffix bool) (relativePath, fileName string) {
+// 纯函数:缩略图派生消费 mainRelPath(主资源逻辑路径,未落盘亦可,纯字符串变换)。
+func resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string, sameRoleSeq int, needsSuffix bool, nctx namingContext) (relativePath, fileName string) {
 	if spec.Role == entity.StoreTypeThumbnail {
 		relativePath = buildThumbnailRelPath(mainRelPath, spec.Format)
 		fileName = buildThumbnailFileName(mainFileName, spec.Format)
 		return
 	}
-	relativePath, fileName = m.resolveMainPath(spec, m.workResp)
+	relativePath, fileName = resolveMainPath(spec, nctx)
 	if needsSuffix {
 		ext := normalizeExt(spec.Format)
 		fileName = fmt.Sprintf("%s_%03d%s", strings.TrimSuffix(fileName, ext), sameRoleSeq, ext)
@@ -2021,7 +2033,7 @@ func normalizeExt(format string) string {
 
 // buildSuggestedFileName 根据插件建议文件名构建最终文件名（含扩展名）
 // 优先使用插件 SuggestName，仅保留纯文件名部分并进行清洗，扩展名由 Format 字段控制
-func (m *ManagedTask) buildSuggestedFileName(spec *sdkdto.StoreSpec) string {
+func buildSuggestedFileName(spec *sdkdto.StoreSpec, taskName string) string {
 	name := spec.SuggestName
 	if name != "" {
 		// 只保留纯文件名，丢弃任何路径部分
@@ -2030,11 +2042,25 @@ func (m *ManagedTask) buildSuggestedFileName(spec *sdkdto.StoreSpec) string {
 	}
 	if name == "" {
 		name = "task"
-		if m.task.TaskName.Valid {
-			name = m.task.TaskName.String
+		if taskName != "" {
+			name = taskName
 		}
 	}
 	return name + normalizeExt(spec.Format)
+}
+
+// namingCtxFromTask 从 ManagedTask 状态组装命名上下文,桥接 m 状态与包级纯命名函数。
+// 落盘/resume 调用方据此获取 nctx 后调 resolveMainPath/resolveStorePath。
+func (m *ManagedTask) namingCtxFromTask(workResp *sdkdto.WorkResponse) namingContext {
+	taskName := ""
+	if m.task.TaskName.Valid {
+		taskName = m.task.TaskName.String
+	}
+	return namingContext{
+		WorkResp:       workResp,
+		FileNameFormat: m.deps.FileNameFormatProvider.GetFileNameFormat(),
+		TaskName:       taskName,
+	}
 }
 
 // ParentTask 父任务运行结构体

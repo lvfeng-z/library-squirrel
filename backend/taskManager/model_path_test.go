@@ -105,13 +105,14 @@ func TestResolveStorePath_SameRoleDisambiguation(t *testing.T) {
 	}
 
 	roleCounts := countSpecRoles(specs)
+	nctx := m.namingCtxFromTask(m.workResp)
 	counters := map[string]int{}
 	seen := make(map[string]string, len(specs))
 	var imageNames []string
 	for _, spec := range specs {
 		seq := counters[spec.Role]
 		counters[spec.Role]++
-		_, fileName := m.resolveStorePath(spec, "", "", seq, roleCounts[spec.Role] > 1)
+		_, fileName := resolveStorePath(spec, "", "", seq, roleCounts[spec.Role] > 1, nctx)
 		if other, dup := seen[fileName]; dup {
 			t.Fatalf("文件名重复: %s (role=%s 与 %s)", fileName, spec.Role, other)
 		}
@@ -160,12 +161,13 @@ func TestResolveStorePath_SingleRoleNoSuffix(t *testing.T) {
 		{Role: entity.StoreTypeThumbnail, Format: "jpg"},
 	}
 	roleCounts := countSpecRoles(specs)
+	nctx := m.namingCtxFromTask(m.workResp)
 	counters := map[string]int{}
 	mainRelPath, mainFileName := "store/resource/author2/[author2]_[456]_single.png", "[author2]_[456]_single.png"
 	for _, spec := range specs {
 		seq := counters[spec.Role]
 		counters[spec.Role]++
-		_, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, seq, roleCounts[spec.Role] > 1)
+		_, fileName := resolveStorePath(spec, mainRelPath, mainFileName, seq, roleCounts[spec.Role] > 1, nctx)
 		if spec.Role == entity.StoreTypeImage && fileName != "[author2]_[456]_single.png" {
 			t.Fatalf("单例 image 不应有后缀, 实际 %s", fileName)
 		}
