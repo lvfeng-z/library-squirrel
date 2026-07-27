@@ -6,9 +6,8 @@ package taskManager
 //
 // A. 纯逻辑(无状态机):
 //   - filterSpecsByRoles: 全量 / 子集 / 无命中
-//   - uniqueRoles / findSpec / findStoreRow / normalizeExt
+//   - uniqueRoles / findStoreRow / normalizeExt
 //   - mergeWorkInfo
-//   - buildThumbnailRelPath / buildThumbnailFileName
 //
 // B. 单流 streamController(无 setState,不触发 logger):
 //   - copyLoop: downloaded 完成 / derived 完成 / downloaded 不完整(EOF 提前) / 读取错误 / ctx 取消
@@ -224,22 +223,17 @@ func TestNormalizeExt(t *testing.T) {
 	}
 }
 
-func TestBuildThumbnailRelPath(t *testing.T) {
-	got := buildThumbnailRelPath("store/resource/作者/video.mp4", "jpg")
-	want := "store/thumbnail/作者/video_thumbnail.jpg"
-	if got != want {
-		t.Fatalf("期望 %s, 实际 %s", want, got)
-	}
-}
-
 // TestRunModeFromTask 锁定板块派生契约(StartTaskTree 重置 StoreRoles=NULL 依赖此返回全量)
 // 回归:上一次 Redownload 持久化的子集 StoreRoles 不应泄漏到后续全量执行
 func TestRunModeFromTask(t *testing.T) {
-	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= 全量
+	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= 全量:fetchStores=true + storeRoles 取 universe(InvolvedRoles)
+	// 回归:Redownload 持久化的子集 StoreRoles 不应泄漏(StartTaskTree 重置为 NULL → runModeFromTask 回退 universe)
 	t1 := entity.NewTask()
+	t1.IncludeWorkInfo = true // StartTaskTree 记录 workInfo=true
+	t1.InvolvedRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
 	mode := runModeFromTask(t1)
-	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
-		t.Fatalf("NULL StoreRoles 期望全量, 实际 %+v", mode)
+	if !mode.hasWorkInfo() || !mode.fetchStores || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
+		t.Fatalf("NULL StoreRoles 期望全量(workInfo+fetchStores+universe roles), 实际 %+v", mode)
 	}
 
 	// StoreRoles="thumbnail"(Redownload 子集)= 仅缩略图

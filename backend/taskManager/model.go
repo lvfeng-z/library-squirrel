@@ -918,18 +918,11 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) runResult {
 	m.workResp = workResp
 
-	// 解析主资源路径(供主轨与缩略图派生路径);主体按资源类型 PrimaryRoles 选取(D2-A)
-	mainSpec := findMainSpec(specs, m.task.ResourceType.String)
-	if mainSpec == nil && len(specs) > 0 {
-		// 无主体(未知/未声明类型):以首个 spec 占位解析主路径
-		mainSpec = specs[0]
-	}
-	var mainRelPath, mainFileName string
-	if mainSpec != nil {
-		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, workResp)
-	}
-	roleCounts := countSpecRoles(specs)
-	roleCounters := make(map[string]int, len(roleCounts))
+	// 解析 bas 基准名与目录(所有 store 文件名共用;bas 由模板+作品元数据生成,不依赖具体 spec)
+	baseRelPath, bas := m.resolveBaseName(workResp)
+	roleCounters := make(map[string]int, len(specs))
+	// 多 store 判定(资源级):资源 store 总数>1 则全部带 role+seq;单 store 用 <bas>.<ext>
+	multiStore := len(specs) > 1
 
 	// 事务:为每个 spec 建 StoreStream + 挂 resource_store + Resource Save + PendingResourceID 更新
 	streams := make([]*streamController, 0, len(specs))
@@ -938,7 +931,7 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		for _, spec := range specs {
 			sameRoleSeq := roleCounters[spec.Role]
 			roleCounters[spec.Role]++
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
+			relPath, fileName := m.resolveStorePath(spec, baseRelPath, bas, sameRoleSeq, multiStore)
 			storeId, writer, storeErr := m.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
 			if storeErr != nil {
 				return storeErr
@@ -1570,25 +1563,22 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	}
 
 	// 5. 为每个返回的 spec 续接(continuable downloaded)或重建 store,构建 streamController
-	mainSpec := findMainSpec(specs, m.task.ResourceType.String)
-	if mainSpec == nil && len(specs) > 0 {
-		mainSpec = specs[0]
-	}
-	var mainRelPath, mainFileName string
-	if mainSpec != nil {
-		mainRelPath, mainFileName = m.resolveMainPath(mainSpec, newResp)
-	}
-	roleCounts := countSpecRoles(specs)
-	roleCounters := make(map[string]int, len(roleCounts))
+	// 解析 bas 基准名与目录(与 startDownload 一致)
+	baseRelPath, bas := m.resolveBaseName(newResp)
+	// 多 store 判定基于资源全局 store 总数:resume 的 specs 是未完成子集(已完成 store 不在其中),
+	// 不能用 len(specs)——否则部分完成时判定翻转→文件名漂移→续传/重建到错误路径
+	multiStore := len(storeRows) > 1
+	// 解析每个 spec 的全局 store_seq(specs 是未完成子集,同 role 部分完成时 specs 内重计会与全局 store_seq
+	// 错位 → findStoreRowByIdentity 匹配已完成行 → 续传覆盖;须按 streamOffsets/storeRows 取全局 seq)
+	specSeq := resumeSpecSeq(specs, streamOffsets, storeRows, completedSet)
 
 	streams := make([]*streamController, 0, len(specs))
 	txErr := m.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
 		// 未完成 store 的续传/重建:按 spec 处理,记录 (role,seq)→storeId 供全量重挂组装
 		storeIdByIdentity := make(map[storeIdentity]int64, len(specs))
 		for _, spec := range specs {
-			sameRoleSeq := roleCounters[spec.Role]
-			roleCounters[spec.Role]++
-			relPath, fileName := m.resolveStorePath(spec, mainRelPath, mainFileName, sameRoleSeq, roleCounts[spec.Role] > 1)
+			sameRoleSeq := specSeq[spec]
+			relPath, fileName := m.resolveStorePath(spec, baseRelPath, bas, sameRoleSeq, multiStore)
 			// 身份匹配:同 role 内按 store_seq(sameRoleSeq)精确定位已有行(替代 role 首匹配,支持 N-同 role)
 			existingRow := findStoreRowByIdentity(storeRows, spec.Role, sameRoleSeq)
 			offset, hasOffset := findResumeOffset(streamOffsets, spec.Role, sameRoleSeq)
@@ -1853,40 +1843,6 @@ func (m *ManagedTask) drainUnselectedReaders(all, selected []*sdkdto.StoreSpec) 
 	}
 }
 
-// findSpec 在 spec 集合中查找指定 role
-func findSpec(specs []*sdkdto.StoreSpec, role string) *sdkdto.StoreSpec {
-	for _, s := range specs {
-		if s != nil && s.Role == role {
-			return s
-		}
-	}
-	return nil
-}
-
-// findMainSpec 按 task 资源类型的展示主体优先级链(PrimaryRoles)取首个实际存在的 spec。
-// resourceType 未注册/unknown/PrimaryRoles 皆未命中时返回 nil,由调用方回退 specs[0]。
-func findMainSpec(specs []*sdkdto.StoreSpec, resourceType string) *sdkdto.StoreSpec {
-	if typeSpec := entity.LookupResourceTypeSpec(resourceType); typeSpec != nil {
-		for _, primary := range typeSpec.PrimaryRoles {
-			if s := findSpec(specs, primary); s != nil {
-				return s
-			}
-		}
-	}
-	return nil
-}
-
-// countSpecRoles 统计 specs 中每个 role 的出现次数(同 role 多 store 时触发文件名消歧)
-func countSpecRoles(specs []*sdkdto.StoreSpec) map[string]int {
-	counts := make(map[string]int, len(specs))
-	for _, s := range specs {
-		if s != nil {
-			counts[s.Role]++
-		}
-	}
-	return counts
-}
-
 // storeIdentity resource_store 行的身份键:同 role 内 store_seq 唯一定位一个 store(N-同 role 多 store 支持)
 type storeIdentity struct {
 	role string
@@ -1911,6 +1867,46 @@ func findResumeOffset(offsets []*sdkdto.StoreResumeOffset, role string, storeSeq
 		}
 	}
 	return 0, false
+}
+
+// resumeSpecSeq 解析 resume 返回的每个 spec 对应的全局 store_seq。
+// specs 是未完成子集(已完成 store 不在其中),若按 specs 内 roleCounters 重计 seq,同 role 部分完成时会与
+// 全局 store_seq 错位 → findStoreRowByIdentity/findResumeOffset 匹配到已完成行 → 续传覆盖已完成 store。
+// 配对:downloaded specs 按 Resume 返回顺序与 streamOffsets 配对(streamOffsets 由主程序按 storeRows 未完成
+// downloaded 顺序构造,携带全局 StoreSeq);derived specs 按 role 从 storeRows 未完成 derived 行查(同 role 单例)。
+// 依赖插件 Resume/Start 按传入顺序返回 specs 的契约
+func resumeSpecSeq(specs []*sdkdto.StoreSpec, streamOffsets []*sdkdto.StoreResumeOffset, storeRows []*entity.ResourceStore, completed map[storeIdentity]struct{}) map[*sdkdto.StoreSpec]int {
+	out := make(map[*sdkdto.StoreSpec]int, len(specs))
+	dlIdx := 0
+	derivedSeq := make(map[string]int)
+	for _, spec := range specs {
+		if spec == nil {
+			continue
+		}
+		if spec.Generation == entity.GenerationDownloaded {
+			if dlIdx < len(streamOffsets) {
+				out[spec] = int(streamOffsets[dlIdx].StoreSeq)
+				dlIdx++
+			}
+			continue
+		}
+		if seq, ok := derivedSeq[spec.Role]; ok {
+			out[spec] = seq
+			continue
+		}
+		for _, row := range storeRows {
+			if row == nil || row.StoreType != spec.Role || row.Generation != entity.GenerationDerived {
+				continue
+			}
+			if _, complete := completed[storeIdentity{row.StoreType, row.StoreSeq}]; complete {
+				continue
+			}
+			derivedSeq[spec.Role] = row.StoreSeq
+			out[spec] = row.StoreSeq
+			break
+		}
+	}
+	return out
 }
 
 // uniqueRoles 提取 mounts 中去重后的 role 列表
@@ -1965,48 +1961,39 @@ func (m *ManagedTask) mergeWorkMetaForNaming(startResp, workResp *sdkdto.WorkRes
 	}
 }
 
-// resolveMainPath 根据资源信息和文件名模板生成主资源(或主下载轨)的本地保存路径
-// 返回 relativePath（相对于 workDir）和 fileName
-func (m *ManagedTask) resolveMainPath(spec *sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) (relativePath, fileName string) {
+// resolveBaseName 算 bas(基准名,不含 ext)与目录相对路径(store/resource/<作者>)。
+// bas = FileNameFormat 模板经占位符替换+净化生成(D2 方案 B 保证模板非空);不依赖具体 spec,
+// 模板仅消费作品元数据。多 store 文件名的 role/seq/desc 段由 resolveStorePath 按 spec 拼接
+func (m *ManagedTask) resolveBaseName(workResp *sdkdto.WorkResponse) (relativePath, bas string) {
 	tpl := m.deps.FileNameFormatProvider.GetFileNameFormat()
-
-	// 模板为空时使用插件建议的文件名
-	if tpl == "" {
-		fileName = m.buildSuggestedFileName(spec)
-		relativePath = filepath.Join("store", "resource", fileName)
-		return
-	}
-
-	// 模板模式：提取占位符数据 → 格式化 → 净化 → 拼接扩展名 → 按作者分目录
 	tokenData := filename.ExtractTokenData(workResp)
 	formatted := filename.FormatFileName(tpl, tokenData)
-	sanitizedFileName := filename.SanitizeFileName(formatted)
-
-	ext := normalizeExt(spec.Format)
-	fileName = sanitizedFileName + ext
-
+	bas = filename.SanitizeFileName(formatted)
 	authorDir := filename.SanitizeFileName(tokenData.Author)
-
-	relativePath = filepath.Join("store", "resource", authorDir, fileName)
+	relativePath = filepath.Join("store", "resource", authorDir)
 	return
 }
 
-// resolveStorePath 按 role 解析各 store 路径:thumbnail 派生自主路径,其余用主路径逻辑。
-// 同 role 多 store(needsSuffix)时追加同 role 内序号后缀(sameRoleSeq,扩展名前)消歧,避免落盘覆盖。
-func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, mainRelPath, mainFileName string, sameRoleSeq int, needsSuffix bool) (relativePath, fileName string) {
-	if spec.Role == entity.StoreTypeThumbnail {
-		relativePath = buildThumbnailRelPath(mainRelPath, spec.Format)
-		fileName = buildThumbnailFileName(mainFileName, spec.Format)
-		return
+// resolveStorePath 按资源级判定拼 store 文件名与路径(thumbnail 普通 role,无特例):
+//   - 单 store 资源(multiStore=false):<bas>.<ext>
+//   - 多 store 资源(multiStore=true):<bas>_<role>_<seq>[_<描述>].<ext>
+//
+// seq 为同 role 内 0-based 序号(= store_seq,resume 身份键);描述取自 spec.Description,净化后为空则省略。
+// StoreStream 据 relPath 创建文件,relPath 末段须与 fileName 一致,否则多 store 落盘同一 relPath 互相覆盖
+func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, baseRelPath, bas string, sameRoleSeq int, multiStore bool) (relativePath, fileName string) {
+	ext := normalizeExt(spec.Format)
+	if !multiStore {
+		fileName = bas + ext
+	} else {
+		name := fmt.Sprintf("%s_%s_%03d", bas, spec.Role, sameRoleSeq)
+		if spec.Description != "" {
+			if desc := filename.SanitizeFileName(spec.Description); desc != "" {
+				name += "_" + desc
+			}
+		}
+		fileName = name + ext
 	}
-	relativePath, fileName = m.resolveMainPath(spec, m.workResp)
-	if needsSuffix {
-		ext := normalizeExt(spec.Format)
-		fileName = fmt.Sprintf("%s_%03d%s", strings.TrimSuffix(fileName, ext), sameRoleSeq, ext)
-		// StoreStream 据 relPath 创建文件(不用 fileName,fileName 仅用于取扩展名);relPath 末段须与消歧后
-		// fileName 一致,否则同 role 多 store 落盘到同一 relPath → 文件互相覆盖/Windows 文件锁冲突
-		relativePath = filepath.Join(filepath.Dir(relativePath), fileName)
-	}
+	relativePath = filepath.Join(baseRelPath, fileName)
 	return
 }
 
@@ -2017,24 +2004,6 @@ func normalizeExt(format string) string {
 		ext = "." + ext
 	}
 	return ext
-}
-
-// buildSuggestedFileName 根据插件建议文件名构建最终文件名（含扩展名）
-// 优先使用插件 SuggestName，仅保留纯文件名部分并进行清洗，扩展名由 Format 字段控制
-func (m *ManagedTask) buildSuggestedFileName(spec *sdkdto.StoreSpec) string {
-	name := spec.SuggestName
-	if name != "" {
-		// 只保留纯文件名，丢弃任何路径部分
-		name = filepath.Base(name)
-		name = filename.SanitizeFileName(name)
-	}
-	if name == "" {
-		name = "task"
-		if m.task.TaskName.Valid {
-			name = m.task.TaskName.String
-		}
-	}
-	return name + normalizeExt(spec.Format)
 }
 
 // ParentTask 父任务运行结构体
@@ -2146,27 +2115,6 @@ func (p *ParentTask) AllChildrenTerminal() bool {
 		}
 	}
 	return true
-}
-
-// buildThumbnailRelPath 构建缩略图相对路径
-// 去除 WorkStore FilePath 中的 "store/resource/" 前缀，
-// 将缩略图直接放在 "store/thumbnail/作者/" 下，避免 "store/thumbnail/resource/作者/" 的冗余层级。
-func buildThumbnailRelPath(resourceRelPath string, thumbFormat string) string {
-	// 统一为正斜杠，兼容 Windows 下 filepath.Join 产出的反斜杠路径
-	relPath := filepath.ToSlash(resourceRelPath)
-	// 去除 "store/resource/" 前缀（含尾斜杠，避免残留前导斜杠）
-	relPath = strings.TrimPrefix(relPath, "store/resource/")
-	ext := filepath.Ext(relPath)
-	base := strings.TrimSuffix(relPath, ext)
-	return "store/thumbnail/" + base + "_thumbnail." + thumbFormat
-}
-
-// buildThumbnailFileName 构建缩略图文件名
-// "video.mp4", "jpg" → "video_thumbnail.jpg"
-func buildThumbnailFileName(resourceFileName string, thumbFormat string) string {
-	ext := filepath.Ext(resourceFileName)
-	base := strings.TrimSuffix(resourceFileName, ext)
-	return base + "_thumbnail." + thumbFormat
 }
 
 // 任务管理错误定义

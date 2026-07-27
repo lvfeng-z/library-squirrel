@@ -18,6 +18,10 @@ type WorkSettings struct {
 	FileNameFormat string `json:"fileNameFormat" koanf:"fileNameFormat"`
 }
 
+// DefaultFileNameFormat 默认文件名模板(用户未配置或清空时回退)。
+// D2 方案 B:GetFileNameFormat 空时回退此值,根治模板空→落盘名退化为 task.ext→StoreStream 删旧建新无声覆盖
+const DefaultFileNameFormat = "[${author}]_[${siteWorkId}]_${siteWorkName}"
+
 // ImportSettings 导入相关设置
 type ImportSettings struct {
 	MaxParallelImport        int  `json:"maxParallelImport" koanf:"maxParallelImport"`
@@ -62,7 +66,7 @@ func NewSettings() *Settings {
 		Initialized: false,
 		WorkDir:     "",
 		WorkSettings: WorkSettings{
-			FileNameFormat: "[${author}]_[${siteWorkId}]_${siteWorkName}",
+			FileNameFormat: DefaultFileNameFormat,
 		},
 		ImportSettings: ImportSettings{
 			MaxParallelImport:        3,

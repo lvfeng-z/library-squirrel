@@ -298,9 +298,7 @@ type StoreSpec struct {
 
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
-- **`Format` 前导点约定(易错,主程序两套路径逻辑不一致,须分别遵守)**:
-  - **downloaded 轨**(image/videoTrack/audioTrack 等):`Format` **带前导点**(如 `.mp4`、`.m4a`、`.jpg`、`.png`)。主程序 `resolveMainPath` 直接 `文件名 + Format` 拼接。
-  - **derived 缩略图**(thumbnail):`Format` **不带前导点**(如 `jpg`、`png`)。主程序 `buildThumbnailRelPath`/`buildThumbnailFileName` 自拼 `_thumbnail.` + Format(自己加 dot);若带点会产出 `_thumbnail..jpg`,既命名错误又会因 `..` 子串触发静态服务路径穿越拦截 → 前端 404。
+- **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(单 store `<bas>.<ext>` / 多 store `<bas>_<role>_<seq>[_<描述>].<ext>`,thumbnail 普通 role 无特例)详见 `doc/store-naming-convention.md`。
 
 #### ctx 与 reader 契约(重要)
 

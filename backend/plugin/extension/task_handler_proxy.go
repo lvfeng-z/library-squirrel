@@ -289,6 +289,7 @@ func recvSpecsAndPull(
 			Format:            meta.GetFormat(),
 			Size:              meta.GetSize(),
 			SuggestName:       meta.GetSuggestName(),
+			Description:       meta.GetDescription(),
 			Continuable:       meta.Continuable,
 			ResumeWriteOffset: meta.ResumeWriteOffset,
 		})
