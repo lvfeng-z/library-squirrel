@@ -984,6 +984,9 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		return runResultPaused
 	}
 
+	// 时序不变量:downloadLoop 须在上方 startDownload 事务提交后执行。插件 pull chunk 时可能经
+	// GetStoreRelPath 查询 resource_store 路径(如 document 引用兄弟 image 文件名),该查询走独立
+	// DB 连接,仅事务提交后 resource_store 行与任务 PendingResourceID 才对其可见。事务回滚/暂停路径上方已提前 return。
 	m.streams = streams
 	return m.downloadLoop()
 }
@@ -1643,6 +1646,9 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		return runResultDone
 	}
 
+	// 时序不变量:downloadLoop 须在上方 resume 落盘事务提交后执行。插件 pull chunk 时可能经
+	// GetStoreRelPath 查询 resource_store 路径(如 document 引用兄弟 image 文件名),该查询走独立
+	// DB 连接,仅事务提交后 resource_store 行与任务 PendingResourceID 才对其可见。事务回滚/暂停路径上方已提前 return。
 	m.streams = streams
 	return m.downloadLoop()
 }
@@ -1785,9 +1791,12 @@ func (m *ManagedTask) reportProgress() {
 	}
 	var total, finished int64
 	for _, s := range m.streams {
-		if s.size > 0 {
-			total += s.size // spec.Size 为完整大小(retry_reader 206 据 Content-Range 还原)
+		// size<=0 的轨(如 document lazy 产物,生成前大小未知)不参与进度核算:
+		// 既不计入 total 也不计入 finished,避免 finished 超 total 导致进度 >100%
+		if s.size <= 0 {
+			continue
 		}
+		total += s.size // spec.Size 为完整大小(retry_reader 206 据 Content-Range 还原)
 		s.mu.Lock()
 		finished += s.written
 		s.mu.Unlock()

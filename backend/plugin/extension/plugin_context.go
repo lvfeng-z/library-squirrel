@@ -45,6 +45,12 @@ type TaskCreateProvider interface {
 	CreateTaskByURL(ctx context.Context, url string) (*pluginsdkdto.CreateTaskResult, error)
 }
 
+// StorePathQueryProvider 资源 store 路径查询:据 task+role+store_seq 查真实落盘路径(workDir 相对)。
+// 供插件在资源路径可知后(如 document lazy 生成)按真实文件名引用兄弟文件。
+type StorePathQueryProvider interface {
+	GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error)
+}
+
 // UrlListenerRegistry URL监听器注册
 type UrlListenerRegistry interface {
 	RegisterUrlListener(pluginPublicId string, extensionId string, patterns []string)
@@ -63,6 +69,7 @@ type PluginContextDeps struct {
 	SiteQuery           SiteQueryProvider
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
+	StorePath           StorePathQueryProvider
 	FrontendEvent       pluginsdkdto.FrontendEventProvider
 }
 
@@ -79,6 +86,7 @@ type pluginContext struct {
 	siteQuery           SiteQueryProvider
 	taskCreate          TaskCreateProvider
 	urlListener         UrlListenerRegistry
+	storePath           StorePathQueryProvider
 	frontendEvent       pluginsdkdto.FrontendEventProvider
 	scopedLogger        *zap.SugaredLogger
 	logger              pluginsdkdto.Logger
@@ -104,6 +112,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 		siteQuery:           deps.SiteQuery,
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
+		storePath:           deps.StorePath,
 		frontendEvent:       deps.FrontendEvent,
 		scopedLogger:        sugar,
 		logger:              newHostLogger(sugar),
@@ -242,6 +251,13 @@ func (pc *pluginContext) GetPluginRoot(isRelative bool) string {
 		return pc.pluginInfo.RootPath
 	}
 	return filepath.Join(pc.rootPath, pc.pluginInfo.RootPath)
+}
+
+// GetStoreRelPath 查询当前任务资源中指定 store 的真实落盘路径(workDir 相对)。
+// 插件 Start 时资源尚未创建(PendingResourceID 不可用),故用 taskId;主程序在 downloadLoop
+// 查询时事务已提交,PendingResourceID 已就位(provider 据 taskId 反查任务记录定位资源)。
+func (pc *pluginContext) GetStoreRelPath(taskId int64, role string, storeSeq int) (string, error) {
+	return pc.storePath.GetStoreRelPath(context.Background(), taskId, role, storeSeq)
 }
 
 func (pc *pluginContext) GetMainWindowHandle() uintptr {

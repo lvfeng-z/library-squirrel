@@ -241,6 +241,7 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
 | 数据写入 | `AddSite` | 向主库插入站点记录 |
 | 数据查询 | `GetWorkSetBySiteWorkSetId` | 按站点作品集 ID 查询是否已存在 |
+| 数据查询 | `GetStoreRelPath(taskId, role, storeSeq)` | 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建（`PendingResourceID` 未置位），故按 `taskId` 查、主程序映射到当前 `PendingResourceID`。供插件在路径可知后（如 document lazy 生成）按真实文件名引用兄弟文件 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
 | URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener(extensionId)` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler；`UnregisterUrlListener` 按 extensionId 精细注销（空则清该插件全部，用于卸载） |

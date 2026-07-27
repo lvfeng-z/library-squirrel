@@ -437,6 +437,11 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		SiteSave:            app.SiteService,
 		SiteQuery:           app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
+		StorePath: &storePathQueryAdapter{
+			taskSvc:       app.TaskService,
+			storeRepo:     resource.NewResourceStoreRepository(app.db),
+			persistentSvc: app.PersistentStoreService,
+		},
 		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		FrontendEvent: &wailsFrontendEventProvider{
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
@@ -601,6 +606,44 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 		AddedQuantity: resp.AddedQuantity,
 		Msg:           resp.Msg,
 	}, nil
+}
+
+// storePathQueryAdapter 实现 extension2.StorePathQueryProvider:据 task+role+seq 查资源 store 真实落盘路径。
+// 链路:taskId → 任务 PendingResourceID → resource_store(role+store_seq) → store_id → persistent_store.file_path(workDir 相对)。
+// 时序前提:downloadLoop(此处被插件 lazy 生成调用)在 startDownload/resume 事务提交之后,故 PendingResourceID 与 resource_store 已落盘可见。
+type storePathQueryAdapter struct {
+	taskSvc       *task.Service
+	storeRepo     *resource.ResourceStoreRepository
+	persistentSvc *persistentStore.Service
+}
+
+func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
+	t, err := a.taskSvc.GetById(ctx, taskId)
+	if err != nil {
+		return "", fmt.Errorf("查询任务 %d 失败: %w", taskId, err)
+	}
+	if !t.PendingResourceID.Valid {
+		return "", fmt.Errorf("任务 %d 无 PendingResourceID(资源未创建)", taskId)
+	}
+	resourceId := t.PendingResourceID.Int64
+	stores, err := a.storeRepo.ListByResourceId(ctx, resourceId)
+	if err != nil {
+		return "", fmt.Errorf("查询资源 %d 的 store 列表失败: %w", resourceId, err)
+	}
+	for _, s := range stores {
+		if s.StoreType != role || s.StoreSeq != storeSeq {
+			continue
+		}
+		ps, err := a.persistentSvc.GetById(ctx, s.StoreID)
+		if err != nil {
+			return "", fmt.Errorf("查询 store %d 失败: %w", s.StoreID, err)
+		}
+		if !ps.FilePath.Valid {
+			return "", fmt.Errorf("store %d 无 file_path", s.StoreID)
+		}
+		return ps.FilePath.String, nil
+	}
+	return "", fmt.Errorf("资源 %d 无 (role=%s, store_seq=%d) 的 store", resourceId, role, storeSeq)
 }
 
 // urlListenerAdapter 适配 PluginTaskUrlListener.Service 到 UrlListenerRegistry 接口

@@ -113,6 +113,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		SiteSaveProvider:        &hostSiteSaveProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
+		StorePathQueryProvider:  &hostStorePathProvider{ctx: deps.PluginCtx},
 		FrontendEventProvider:   &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
 		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
@@ -383,6 +384,14 @@ type hostPluginRootProvider struct {
 
 func (p *hostPluginRootProvider) GetPluginRoot(_ context.Context, isRelative bool) string {
 	return p.ctx.GetPluginRoot(isRelative)
+}
+
+type hostStorePathProvider struct {
+	ctx sdkdto.PluginContext
+}
+
+func (p *hostStorePathProvider) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
+	return p.ctx.GetStoreRelPath(taskId, role, storeSeq)
 }
 
 type hostWorkSetQueryProvider struct {
