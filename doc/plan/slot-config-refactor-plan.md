@@ -1,5 +1,7 @@
 # Slot 配置格式重构计划
 
+> 状态：已实施完成（plugin.json 两层结构已落地：通用属性第一层 + content 第二层）；字段名于 2026-07-28 正名（slotType→kind、slots→frontendExtensions、panel 已删、contributionId→extensionId，见 `doc/plan/插件扩展点slot泛化改名方案.md`），本文档保留作字段归属设计记录
+
 ## 目标
 
 将 `extensions.slots[]` 的扁平结构重构为两层：
