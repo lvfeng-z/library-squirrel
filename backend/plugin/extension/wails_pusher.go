@@ -1,22 +1,22 @@
 package extension
 
-// SlotEventType 插槽事件类型
-type SlotEventType string
+// FrontendExtensionEventType 前端扩展事件类型
+type FrontendExtensionEventType string
 
 const (
-	// SlotEventRegister 插槽注册
-	SlotEventRegister SlotEventType = "slot-register"
-	// SlotEventUnregister 插槽注销
-	SlotEventUnregister SlotEventType = "slot-unregister"
-	// SlotEventBatchRegister 批量注册
-	SlotEventBatchRegister SlotEventType = "slot-batch-register"
+	// FrontendExtensionEventRegister 前端扩展注册
+	FrontendExtensionEventRegister FrontendExtensionEventType = "frontend-extension-register"
+	// FrontendExtensionEventUnregister 前端扩展注销
+	FrontendExtensionEventUnregister FrontendExtensionEventType = "frontend-extension-unregister"
+	// FrontendExtensionEventBatchUnregister 批量注销
+	FrontendExtensionEventBatchUnregister FrontendExtensionEventType = "frontend-extension-batch-unregister"
 )
 
-// SlotPusher 插槽事件推送器接口
-type SlotPusher interface {
-	PushRegister(slotID string, data SlotResponse)
-	PushUnregister(slotID string, pluginID int64, slotType string)
-	PushBatchUnregister(items []SlotUnregisterItem)
+// FrontendExtensionPusher 前端扩展事件推送器接口
+type FrontendExtensionPusher interface {
+	PushRegister(id string, data FrontendExtensionResponse)
+	PushUnregister(id string, pluginID int64, kind string)
+	PushBatchUnregister(items []FrontendExtensionUnregisterItem)
 }
 
 // WailsEventEmitter Wails 事件发射器接口
@@ -24,61 +24,61 @@ type WailsEventEmitter interface {
 	Emit(eventName string, data ...any) bool
 }
 
-// WailsSlotPusher Wails 插槽事件推送器
+// WailsFrontendExtensionPusher Wails 前端扩展事件推送器
 // 使用 Wails Events 替代 HTTP SSE
-type WailsSlotPusher struct {
+type WailsFrontendExtensionPusher struct {
 	emitter WailsEventEmitter
 }
 
-// NewWailsSlotPusher 创建 Wails 插槽推送器
-func NewWailsSlotPusher(emitter WailsEventEmitter) *WailsSlotPusher {
-	return &WailsSlotPusher{
+// NewWailsFrontendExtensionPusher 创建 Wails 前端扩展推送器
+func NewWailsFrontendExtensionPusher(emitter WailsEventEmitter) *WailsFrontendExtensionPusher {
+	return &WailsFrontendExtensionPusher{
 		emitter: emitter,
 	}
 }
 
 // PushRegister 推送注册事件到前端
-func (p *WailsSlotPusher) PushRegister(slotID string, data SlotResponse) {
-	event := SlotEventData{
-		Event:  string(SlotEventRegister),
-		SlotID: slotID,
-		Data:   data,
+func (p *WailsFrontendExtensionPusher) PushRegister(id string, data FrontendExtensionResponse) {
+	event := FrontendExtensionEventData{
+		Event: string(FrontendExtensionEventRegister),
+		ID:    id,
+		Data:  data,
 	}
-	p.emitter.Emit("slot-register", event)
+	p.emitter.Emit("frontend-extension-register", event)
 }
 
 // PushUnregister 推送注销事件到前端
-func (p *WailsSlotPusher) PushUnregister(slotID string, pluginID int64, slotType string) {
-	event := SlotEventData{
-		Event:    string(SlotEventUnregister),
-		SlotID:   slotID,
+func (p *WailsFrontendExtensionPusher) PushUnregister(id string, pluginID int64, kind string) {
+	event := FrontendExtensionEventData{
+		Event:    string(FrontendExtensionEventUnregister),
+		ID:       id,
 		PluginID: pluginID,
-		SlotType: slotType,
+		Kind:     kind,
 	}
-	p.emitter.Emit("slot-unregister", event)
+	p.emitter.Emit("frontend-extension-unregister", event)
 }
 
 // PushBatchUnregister 推送批量注销事件到前端
-func (p *WailsSlotPusher) PushBatchUnregister(items []SlotUnregisterItem) {
-	event := SlotEventData{
-		Event: string(SlotEventBatchRegister),
-		Slots: items,
+func (p *WailsFrontendExtensionPusher) PushBatchUnregister(items []FrontendExtensionUnregisterItem) {
+	event := FrontendExtensionEventData{
+		Event: string(FrontendExtensionEventBatchUnregister),
+		Items: items,
 	}
-	p.emitter.Emit("slot-batch-register", event)
+	p.emitter.Emit("frontend-extension-batch-unregister", event)
 }
 
-// SlotEventData 插槽事件数据
-type SlotEventData struct {
+// FrontendExtensionEventData 前端扩展事件数据
+type FrontendExtensionEventData struct {
 	Event    string      `json:"event"`
-	SlotID   string      `json:"slotId,omitempty"`
+	ID       string      `json:"frontendExtensionId,omitempty"`
 	PluginID int64       `json:"pluginId,omitempty"`
-	SlotType string      `json:"slotType,omitempty"`
+	Kind     string      `json:"kind,omitempty"`
 	Data     interface{} `json:"data,omitempty"`
-	Slots    interface{} `json:"slots,omitempty"`
+	Items    interface{} `json:"items,omitempty"`
 }
 
-// SlotUnregisterItem 批量注销项
-type SlotUnregisterItem struct {
-	SlotID   string `json:"slotId"`
-	SlotType string `json:"slotType"`
+// FrontendExtensionUnregisterItem 批量注销项
+type FrontendExtensionUnregisterItem struct {
+	ID   string `json:"frontendExtensionId"`
+	Kind string `json:"kind"`
 }

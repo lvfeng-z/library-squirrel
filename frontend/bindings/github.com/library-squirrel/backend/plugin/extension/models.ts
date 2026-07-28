@@ -10,10 +10,10 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as json$0 from "../../../../../encoding/json/models.js";
 
 /**
- * SlotResponse 插槽 IPC 响应 DTO
+ * FrontendExtensionResponse 前端扩展 IPC 响应 DTO（Type 字段值=Kind 字符串，前端按 slot.type 分流消费，保留字段名避免前端无谓改动）
  */
-export class SlotResponse {
-    "slotId": string;
+export class FrontendExtensionResponse {
+    "frontendExtensionId": string;
     "pluginId": number;
     "pluginPublicId": string;
     "name": string;
@@ -30,12 +30,12 @@ export class SlotResponse {
     "extensionId"?: string;
     "resourceType"?: string;
     "props"?: json$0.RawMessage;
-    "children"?: SlotResponse[];
+    "children"?: FrontendExtensionResponse[];
 
-    /** Creates a new SlotResponse instance. */
-    constructor($$source: Partial<SlotResponse> = {}) {
-        if (!("slotId" in $$source)) {
-            this["slotId"] = "";
+    /** Creates a new FrontendExtensionResponse instance. */
+    constructor($$source: Partial<FrontendExtensionResponse> = {}) {
+        if (!("frontendExtensionId" in $$source)) {
+            this["frontendExtensionId"] = "";
         }
         if (!("pluginId" in $$source)) {
             this["pluginId"] = 0;
@@ -57,18 +57,18 @@ export class SlotResponse {
     }
 
     /**
-     * Creates a new SlotResponse instance from a string or object.
+     * Creates a new FrontendExtensionResponse instance from a string or object.
      */
-    static createFrom($$source: any = {}): SlotResponse {
+    static createFrom($$source: any = {}): FrontendExtensionResponse {
         const $$createField17_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField17_0($$parsedSource["children"]);
         }
-        return new SlotResponse($$parsedSource as Partial<SlotResponse>);
+        return new FrontendExtensionResponse($$parsedSource as Partial<FrontendExtensionResponse>);
     }
 }
 
 // Private type creation functions
-const $$createType0 = SlotResponse.createFrom;
+const $$createType0 = FrontendExtensionResponse.createFrom;
 const $$createType1 = $Create.Array($$createType0);

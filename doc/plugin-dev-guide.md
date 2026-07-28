@@ -110,32 +110,32 @@ type MyTaskHandler struct{}
 |---|---|---|---|
 | `taskHandlers` | `[{id, name?, description?}]` | 三选一 | TaskHandler 声明（运行时注册） |
 | `siteBrowsers` | `[{id, name?, description?}]` | 三选一 | SiteBrowser 声明（运行时注册） |
-| `slots` | `[SlotDeclaration]` | 三选一 | UI 插槽（声明式注册，见 6.3） |
+| `frontendExtensions` | `[FrontendExtensionDeclaration]` | 三选一 | UI 前端扩展（声明式注册，见 6.3） |
 | `staticResources` | `{directories: string[]}` | 否 | 允许前端访问的资源目录白名单 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项（见 8.2） |
 
 **校验规则**（安装时）：
 - `id/name/version/author` 必填。
-- `extensions` 必须存在，且 `taskHandlers/siteBrowsers/slots` 至少一个非空。
+- `extensions` 必须存在，且 `taskHandlers/siteBrowsers/frontendExtensions` 至少一个非空。
 - `entryFile` 仅在含运行时扩展点（taskHandlers 或 siteBrowsers）时必填；纯 UI 插件可省略。
-- 枚举值（slotType/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
+- 枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
-### Slot 声明
+### 前端扩展声明
 
 ```jsonc
 {
   "id": "my-view",
   "name": "我的视图",
   "description": "可选描述",
-  "slotType": "view",          // embed | view | replaceView | dialog | menu | siteBrowserList（Slot）| resourceViewer（Handler）
+  "kind": "view",          // embed | view | replaceView | dialog | menu | siteBrowserList（Slot）| resourceViewer（Handler）
   "order": 100,
-  "content": { /* 按 slotType，见下 */ }
+  "content": { /* 按 kind，见下 */ }
 }
 ```
 
-**content 按 slotType：**
+**content 按 kind：**
 
-| slotType | content 字段 | 说明 |
+| kind | content 字段 | 说明 |
 |---|---|---|
 | `embed` | `{contentType, source, position, props?}` | 插入主程序具名插槽位（position = 插槽位标识，主程序定义） |
 | `view` | `{contentType, source, title?, props?}` | 新增独立路由页面 |
@@ -361,9 +361,9 @@ type SiteBrowser interface {
 
 > SiteBrowser（运行时注册，业务功能）与 `siteBrowserList` Slot（声明式，UI 入口卡片）**是两个东西，必须同时存在**：Slot 提供点击入口，SiteBrowser 提供打开/关闭逻辑。Slot 的 `extensionId` 指向 SiteBrowser 的 `id`。
 
-### 6.3 Slot（声明式）
+### 6.3 前端扩展（声明式）
 
-通过 `plugin.json` 的 `extensions.slots` 声明，主程序启动时自动注册到前端。6 种 slotType × 4 种 contentType 的组合见第三节。
+通过 `plugin.json` 的 `extensions.frontendExtensions` 声明，主程序启动时自动注册到前端。6 种 kind × 4 种 contentType 的组合见第三节。
 
 **组件加载**（主程序前端 `useSlotSyncListener`）：
 - `precompiled`：动态 `import(js)` → 调用工厂函数 `module.default(Vue, WailsRuntime)` 注入依赖。

@@ -8,9 +8,9 @@ type PluginStatusDTO struct {
 	ActivatedAt int64 `json:"activatedAt"` // Unix 毫秒，0 表示未激活
 
 	// 扩展点列表
-	TaskHandlers []ExtensionInfo `json:"taskHandlers"`
-	SiteBrowsers []ExtensionInfo `json:"siteBrowsers"`
-	Slots        []SlotInfo      `json:"slots"`
+	TaskHandlers       []ExtensionInfo        `json:"taskHandlers"`
+	SiteBrowsers       []ExtensionInfo        `json:"siteBrowsers"`
+	FrontendExtensions []FrontendExtensionInfo `json:"frontendExtensions"`
 
 	// URL 监听规则
 	UrlPatterns []string `json:"urlPatterns"`
@@ -23,9 +23,9 @@ type ExtensionInfo struct {
 	Description string `json:"description"`
 }
 
-// SlotInfo 插槽信息
-type SlotInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	SlotType string `json:"slotType"`
+// FrontendExtensionInfo 前端扩展信息
+type FrontendExtensionInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
 }

@@ -79,7 +79,7 @@ func main() {
 			application.NewService(app.PluginSettingHandler),
 			application.NewService(app.TaskHandler),
 			application.NewService(app.TaskManagerHandler),
-			application.NewService(app.SlotHandler),
+			application.NewService(app.FrontendExtensionHandler),
 			application.NewService(app.SiteBrowserHandler),
 			application.NewService(app.ReWorkAuthorHandler),
 			application.NewService(app.ReWorkTagHandler),
@@ -126,8 +126,7 @@ func main() {
 		},
 	})
 
-	// Set the Wails event emitter for slot pusher
-	// Set the Wails event emitter for slot pusher and frontend event listener
+	// Set the Wails event emitter for frontend extension pusher and frontend event listener
 	app.SetEventEmitter(wailsApp.Event, func(topic string, callback func(data any)) func() {
 		return wailsApp.Event.On(topic, func(event *application.CustomEvent) {
 			callback(event.Data)

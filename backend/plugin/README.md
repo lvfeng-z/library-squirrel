@@ -2,12 +2,12 @@
 
 ## 一句话职责
 
-插件**生命周期管理**与**自存信息**：从 ZIP 包安装、激活、卸载、重装插件，维护插件记录与运行状态；并通过 `plugin_storage`（统一 KV）提供插件自存信息与用户设置（`extensions.settings`）的存取。插件系统的架构（扩展点、SDK、Slot 通信、初始化时序）详见 `.claude/rules/plugin.md`，本文件只描述模块职责与对外接口。
+插件**生命周期管理**与**自存信息**：从 ZIP 包安装、激活、卸载、重装插件，维护插件记录与运行状态；并通过 `plugin_storage`（统一 KV）提供插件自存信息与用户设置（`extensions.settings`）的存取。插件系统的架构（扩展点、SDK、前端扩展通信、初始化时序）详见 `.claude/rules/plugin.md`，本文件只描述模块职责与对外接口。
 
 ## 边界
 
-- 与 **plugin/extension**：本模块（`backend/plugin`）管插件记录与生命周期入口；`extension/` 子包管运行时扩展点加载（TaskHandler / SiteBrowser / Slot 的注册与桥接）。
-- 与 **plugin.md rules**：rules 讲"插件系统怎么设计"（协议、时序、Slot 数据流），本文件讲"这个 Go 模块提供什么"。
+- 与 **plugin/extension**：本模块（`backend/plugin`）管插件记录与生命周期入口；`extension/` 子包管运行时扩展点加载（TaskHandler / SiteBrowser / 前端扩展的注册与桥接）。
+- 与 **plugin.md rules**：rules 讲"插件系统怎么设计"（协议、时序、前端扩展数据流），本文件讲"这个 Go 模块提供什么"。
 
 ## 对外接口（Handler）
 

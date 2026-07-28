@@ -138,7 +138,7 @@ func (s *StaticResourceService) isPathAllowed(relativePath string, allowedDirs [
 	return false
 }
 
-// ResolveURL 构建插件资源 URL（供主程序构建 SlotConfig 时使用）
+// ResolveURL 构建插件资源 URL（供主程序构建 FrontendExtensionConfig 时使用）
 func (s *StaticResourceService) ResolveURL(publicId, version, relativePath string) string {
 	return "/plugin/" + publicId + "/" + version + "/" + relativePath
 }

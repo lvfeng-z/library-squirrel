@@ -85,7 +85,7 @@ func NewPluginManifest() *PluginManifest {
 type PluginExtensions struct {
 	TaskHandlers    []TaskHandlerDeclaration `json:"taskHandlers,omitempty"`
 	SiteBrowsers    []SiteBrowserDeclaration `json:"siteBrowsers,omitempty"`
-	Slots           []SlotDeclaration        `json:"slots,omitempty"`
+	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
 	StaticResources *StaticResourcesConfig   `json:"staticResources,omitempty"`
 	Settings        []SettingDeclaration     `json:"settings,omitempty"`
 }
@@ -125,62 +125,62 @@ type SiteBrowserDeclaration struct {
 	Description string `json:"description,omitempty"`
 }
 
-// SlotDeclaration 插槽声明（plugin.json 中每个 slot 条目）
-type SlotDeclaration struct {
+// FrontendExtensionDeclaration 前端扩展声明（plugin.json 中每个 frontendExtension 条目）
+type FrontendExtensionDeclaration struct {
 	ID          string          `json:"id"`
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
-	SlotType    string          `json:"slotType"`
+	Kind        string          `json:"kind"`
 	Order       int             `json:"order,omitempty"`
 	Content     json.RawMessage `json:"content"`
 }
 
-// EmbedSlotContent embed 类型插槽配置（position 为主程序具名插槽位标识）
-type EmbedSlotContent struct {
+// EmbedContent embed 类型前端扩展配置（position 为主程序具名插槽位标识）
+type EmbedContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Position    string          `json:"position"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 
-// ReplaceViewSlotContent replaceView 类型插槽配置（target 为主程序路由 name）
-type ReplaceViewSlotContent struct {
+// ReplaceViewContent replaceView 类型前端扩展配置（target 为主程序路由 name）
+type ReplaceViewContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Target      string          `json:"target"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 
-// ViewSlotContent view 类型插槽配置（新增页面）
-type ViewSlotContent struct {
+// ViewContent view 类型前端扩展配置（新增页面）
+type ViewContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Title       string          `json:"title,omitempty"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 
-// DialogSlotContent dialog 类型插槽配置（弹窗层）
-type DialogSlotContent struct {
+// DialogContent dialog 类型前端扩展配置（弹窗层）
+type DialogContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 
-// MenuSlotContent menu 类型插槽配置
-type MenuSlotContent struct {
-	Icon     string            `json:"icon,omitempty"`
-	ViewId   string            `json:"viewId,omitempty"`
-	Children []SlotDeclaration `json:"children,omitempty"`
+// MenuContent menu 类型前端扩展配置
+type MenuContent struct {
+	Icon     string                          `json:"icon,omitempty"`
+	ViewId   string                          `json:"viewId,omitempty"`
+	Children []FrontendExtensionDeclaration  `json:"children,omitempty"`
 }
 
-// SiteBrowserListSlotContent siteBrowserList 类型插槽配置
-type SiteBrowserListSlotContent struct {
+// SiteBrowserListContent siteBrowserList 类型前端扩展配置
+type SiteBrowserListContent struct {
 	Icon           string `json:"icon,omitempty"`
 	ExtensionId string `json:"extensionId"`
 }
 
-// ResourceViewerSlotContent resourceViewer 类型插槽配置（resourceType 为资源类型查找键，前端按此匹配 resource.resourceType）
-type ResourceViewerSlotContent struct {
+// ResourceViewerContent resourceViewer 类型前端扩展配置（被动响应型；resourceType 为资源类型查找键，前端按此匹配 resource.resourceType）
+type ResourceViewerContent struct {
 	ContentType  string          `json:"contentType"`
 	Source       json.RawMessage `json:"source"`
 	ResourceType string          `json:"resourceType"`

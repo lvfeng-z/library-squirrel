@@ -67,7 +67,7 @@ type BackupProvider interface {
 	GetPluginBackup(ctx context.Context, sourceId int64) (*entity2.Backup, error)
 }
 
-// PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、Slot 和启动子进程
+// PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、前端扩展和启动子进程
 type PluginActivator interface {
 	// Activate 激活已安装的插件
 	Activate(plugin *entity2.Plugin) error
@@ -120,7 +120,7 @@ type RuntimeStatus struct {
 type ExtensionListProvider interface {
 	GetTaskHandlersByPlugin(pluginPublicId string) []ExtensionMeta
 	GetSiteBrowsersByPlugin(pluginPublicId string) []ExtensionMeta
-	GetSlotsByPlugin(pluginPublicId string) []SlotMeta
+	GetFrontendExtensionsByPlugin(pluginPublicId string) []FrontendExtensionMeta
 }
 
 // UrlListenerProvider URL 监听规则提供者接口
@@ -135,11 +135,11 @@ type ExtensionMeta struct {
 	Description string
 }
 
-// SlotMeta 插槽元数据
-type SlotMeta struct {
-	ID       string
-	Name     string
-	SlotType string
+// FrontendExtensionMeta 前端扩展元数据
+type FrontendExtensionMeta struct {
+	ID   string
+	Name string
+	Kind string
 }
 
 // SetRuntimeStatusProvider 设置运行时状态提供者
@@ -274,7 +274,7 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, ErrInvalidManifest
 	}
 	ext := manifest.Extensions
-	hasExtensions := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0 || len(ext.Slots) > 0
+	hasExtensions := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0 || len(ext.FrontendExtensions) > 0
 	if !hasExtensions {
 		return nil, ErrInvalidManifest
 	}
@@ -593,8 +593,8 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 		for _, ext := range s.extensionListProvider.GetSiteBrowsersByPlugin(pluginPublicId) {
 			status.SiteBrowsers = append(status.SiteBrowsers, ExtensionInfo{ID: ext.ID, Name: ext.Name, Description: ext.Description})
 		}
-		for _, slot := range s.extensionListProvider.GetSlotsByPlugin(pluginPublicId) {
-			status.Slots = append(status.Slots, SlotInfo{ID: slot.ID, Name: slot.Name, SlotType: slot.SlotType})
+		for _, item := range s.extensionListProvider.GetFrontendExtensionsByPlugin(pluginPublicId) {
+			status.FrontendExtensions = append(status.FrontendExtensions, FrontendExtensionInfo{ID: item.ID, Name: item.Name, Kind: item.Kind})
 		}
 	}
 

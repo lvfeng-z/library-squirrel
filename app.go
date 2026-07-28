@@ -94,7 +94,7 @@ type App struct {
 	// 扩展注册中心
 	TaskHandlerRegistry *extension2.TaskHandlerRegistry
 	SiteBrowserRegistry *extension2.SiteBrowserRegistry
-	SlotRegistry        *extension2.SlotRegistry
+	FrontendExtensionRegistry *extension2.FrontendExtensionRegistry
 
 	// 插件加载器
 	pluginLoader *extension2.Loader
@@ -138,7 +138,7 @@ type App struct {
 	PluginSettingHandler         *plugin.SettingHandler
 	TaskHandler                  *task.Handler
 	TaskManagerHandler           *taskManager.Handler
-	SlotHandler                  *extension2.SlotHandler
+	FrontendExtensionHandler      *extension2.FrontendExtensionHandler
 	SiteBrowserHandler           *siteBrowser.Handler
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
@@ -179,8 +179,8 @@ func NewApp() (*App, error) {
 	// 3. 初始化扩展注册中心
 	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
 	app.SiteBrowserRegistry = extension2.NewSiteBrowserRegistry()
-	app.SlotRegistry = extension2.NewSlotRegistry()
-	// SlotPusher 会在 SetEventEmitter 中创建并接入 SlotRegistry
+	app.FrontendExtensionRegistry = extension2.NewFrontendExtensionRegistry()
+	// FrontendExtensionPusher 会在 SetEventEmitter 中创建并接入 FrontendExtensionRegistry
 
 	// 3.5 初始化静态资源服务
 	app.StaticResourceService = extension2.NewStaticResourceService()
@@ -253,10 +253,10 @@ func (app *App) InstallBundledPlugins() {
 	}
 }
 
-// SetEventEmitter 设置 Wails 事件发射器并创建 SlotPusher 和 TaskProgressPusher
+// SetEventEmitter 设置 Wails 事件发射器并创建 FrontendExtensionPusher 和 TaskProgressPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent func(topic string, callback func(data any)) func()) {
-	pusher := extension2.NewWailsSlotPusher(emitter)
-	app.SlotRegistry.SetPusher(pusher)
+	pusher := extension2.NewWailsFrontendExtensionPusher(emitter)
+	app.FrontendExtensionRegistry.SetPusher(pusher)
 	app.taskProgressEmitter = emitter
 	app.frontendEventOn = onEvent
 	// Manager 在 initAdvancedServices 中已创建（此时 emitter 尚未就绪），需要补设 pusher
@@ -328,7 +328,7 @@ func (app *App) Activate(p *entity2.Plugin) error {
 	return app.activatePlugin(p)
 }
 
-// activatePlugin 激活单个插件：读取 manifest、注册静态资源、注册 Slot、启动运行时子进程
+// activatePlugin 激活单个插件：读取 manifest、注册静态资源、注册前端扩展、启动运行时子进程
 func (app *App) activatePlugin(p *entity2.Plugin) error {
 	// 跳过没有 PublicID 的插件
 	if !p.PublicID.Valid || p.PublicID.String == "" {
@@ -376,31 +376,31 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
 	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
 
-	// 声明式注册 Slot
-	for _, slot := range ext.Slots {
-		slotConfig := base.NewSlotConfig()
-		slotConfig.Metadata.ID = slot.ID
-		slotConfig.Metadata.PluginID = p.GetID()
-		slotConfig.Metadata.PluginPublicID = publicId
-		slotConfig.Metadata.Name = slot.Name
-		slotConfig.Metadata.Description = slot.Description
-		slotConfig.SlotType = base.SlotType(slot.SlotType)
-		slotConfig.Order = slot.Order
+	// 声明式注册前端扩展
+	for _, fe := range ext.FrontendExtensions {
+		feConfig := base.NewFrontendExtensionConfig()
+		feConfig.Metadata.ID = fe.ID
+		feConfig.Metadata.PluginID = p.GetID()
+		feConfig.Metadata.PluginPublicID = publicId
+		feConfig.Metadata.Name = fe.Name
+		feConfig.Metadata.Description = fe.Description
+		feConfig.Kind = base.FrontendExtensionKind(fe.Kind)
+		feConfig.Order = fe.Order
 
-		// 按 slotType 解析 content
-		if err := parseSlotContent(slot, slotConfig, publicId, version); err != nil {
-			logger.Log.Errorf("解析 Slot content 失败 %s/%s: %v", publicId, slot.ID, err)
+		// 按 kind 解析 content
+		if err := parseFrontendExtensionContent(fe, feConfig, publicId, version); err != nil {
+			logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
 			continue
 		}
 
-		extension := model.NewExtension(*slotConfig.Metadata, slotConfig)
-		if err := app.SlotRegistry.Register(extension); err != nil {
-			logger.Log.Errorf("注册 Slot 失败 %s/%s: %v", publicId, slot.ID, err)
+		extension := model.NewExtension(*feConfig.Metadata, feConfig)
+		if err := app.FrontendExtensionRegistry.Register(extension); err != nil {
+			logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)
 		}
 	}
 
-	if len(ext.Slots) > 0 {
-		logger.Log.Infof("插件 %s: 已注册 %d 个 Slot", publicId, len(ext.Slots))
+	if len(ext.FrontendExtensions) > 0 {
+		logger.Log.Infof("插件 %s: 已注册 %d 个前端扩展", publicId, len(ext.FrontendExtensions))
 	}
 
 	// 判断是否为纯 UI 插件（无运行时扩展点）
@@ -463,26 +463,29 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	return nil
 }
 
-// parseSlotContent 按 slotType 解析 content 字段并填充 SlotConfig
-func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, version string) error {
-	if len(slot.Content) == 0 {
+// parseFrontendExtensionContent 按 kind 解析 content 字段并填充 FrontendExtensionConfig（决策6：各类定位键非空校验统一在后端）
+func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *base.FrontendExtensionConfig, publicId, version string) error {
+	if len(fe.Content) == 0 {
 		return nil
 	}
 
-	switch cfg.SlotType {
-	case base.SlotTypeEmbed:
-		var c dto.EmbedSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	switch cfg.Kind {
+	case base.FrontendExtensionKindEmbed:
+		var c dto.EmbedContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 embed content 失败: %w", err)
+		}
+		if c.Position == "" {
+			return fmt.Errorf("embed 前端扩展 position 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Position = c.Position
 		cfg.Props = c.Props
 
-	case base.SlotTypeView:
-		var c dto.ViewSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindView:
+		var c dto.ViewContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 view content 失败: %w", err)
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
@@ -490,54 +493,64 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		cfg.Title = c.Title
 		cfg.Props = c.Props
 
-	case base.SlotTypeMenu:
-		var c dto.MenuSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindMenu:
+		var c dto.MenuContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 menu content 失败: %w", err)
 		}
+		// menu 须为叶子项（viewId 跳转）或父项（children 展开）之一，两者皆空为无效声明
+		if c.ViewId == "" && len(c.Children) == 0 {
+			return fmt.Errorf("menu 前端扩展须提供 viewId（叶子项）或 children（父项）")
+		}
 		cfg.ViewId = c.ViewId
-		cfg.Children = convertSlotChildren(c.Children, cfg.Metadata.PluginID, publicId, version)
+		cfg.Children = convertFrontendExtensionChildren(c.Children, cfg.Metadata.PluginID, publicId, version)
 		if c.Icon != "" {
 			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
 		}
 
-	case base.SlotTypeSiteBrowserList:
-		var c dto.SiteBrowserListSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindSiteBrowserList:
+		var c dto.SiteBrowserListContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 siteBrowserList content 失败: %w", err)
+		}
+		if c.ExtensionId == "" {
+			return fmt.Errorf("siteBrowserList 前端扩展 extensionId 不能为空")
 		}
 		cfg.ExtensionId = c.ExtensionId
 		if c.Icon != "" {
 			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
 		}
 
-	case base.SlotTypeReplaceView:
-		var c dto.ReplaceViewSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindReplaceView:
+		var c dto.ReplaceViewContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 replaceView content 失败: %w", err)
+		}
+		if c.Target == "" {
+			return fmt.Errorf("replaceView 前端扩展 target 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Target = c.Target
 		cfg.Props = c.Props
 
-	case base.SlotTypeDialog:
-		var c dto.DialogSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindDialog:
+		var c dto.DialogContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 dialog content 失败: %w", err)
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Props = c.Props
 
-	case base.SlotTypeResourceViewer:
-		var c dto.ResourceViewerSlotContent
-		if err := json.Unmarshal(slot.Content, &c); err != nil {
+	case base.FrontendExtensionKindResourceViewer:
+		var c dto.ResourceViewerContent
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
 			return fmt.Errorf("解析 resourceViewer content 失败: %w", err)
 		}
 		// resourceType 必填：前端按 resourceType 路由渲染器，空值无法命中
 		if c.ResourceType == "" {
-			return fmt.Errorf("resourceViewer 插槽 resourceType 不能为空")
+			return fmt.Errorf("resourceViewer 前端扩展 resourceType 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
@@ -548,26 +561,26 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 	return nil
 }
 
-// convertSlotChildren 递归转换子插槽声明为 SlotConfig
-func convertSlotChildren(children []dto.SlotDeclaration, pluginID int64, publicId, version string) []base.SlotConfig {
+// convertFrontendExtensionChildren 递归转换子前端扩展声明为 FrontendExtensionConfig
+func convertFrontendExtensionChildren(children []dto.FrontendExtensionDeclaration, pluginID int64, publicId, version string) []base.FrontendExtensionConfig {
 	if len(children) == 0 {
 		return nil
 	}
-	result := make([]base.SlotConfig, len(children))
+	result := make([]base.FrontendExtensionConfig, len(children))
 	for i, child := range children {
 		result[i].Metadata = &model.ExtensionMetadata{
-			Type:           model.ExtensionTypeSlot,
+			Type:           model.ExtensionTypeFrontendExtension,
 			ID:             child.ID,
 			PluginID:       pluginID,
 			PluginPublicID: publicId,
 			Name:           child.Name,
 			Description:    child.Description,
 		}
-		result[i].SlotType = base.SlotType(child.SlotType)
+		result[i].Kind = base.FrontendExtensionKind(child.Kind)
 		result[i].Order = child.Order
 
-		if err := parseSlotContent(child, &result[i], publicId, version); err != nil {
-			logger.Log.Warnf("解析子 Slot content 失败 %s/%s: %v", publicId, child.ID, err)
+		if err := parseFrontendExtensionContent(child, &result[i], publicId, version); err != nil {
+			logger.Log.Warnf("解析子前端扩展 content 失败 %s/%s: %v", publicId, child.ID, err)
 		}
 	}
 	return result
@@ -896,13 +909,13 @@ func (app *App) initAdvancedServices() error {
 	app.PluginService.SetOnUnload(func(pluginPublicId string) {
 		app.pluginLoader.UnloadPlugin(pluginPublicId)
 		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
-		app.SlotRegistry.UnregisterAll(pluginPublicId)
+		app.FrontendExtensionRegistry.UnregisterAll(pluginPublicId)
 	})
 	app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
 	app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
-		taskHandlerRegistry: app.TaskHandlerRegistry,
-		siteBrowserRegistry: app.SiteBrowserRegistry,
-		slotRegistry:        app.SlotRegistry,
+		taskHandlerRegistry:       app.TaskHandlerRegistry,
+		siteBrowserRegistry:       app.SiteBrowserRegistry,
+		frontendExtensionRegistry: app.FrontendExtensionRegistry,
 	})
 	app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
 
@@ -1080,7 +1093,7 @@ func (app *App) initHandlers() {
 	app.PluginSettingHandler = plugin.NewSettingHandler(app.PluginSettingService)
 	app.TaskHandler = task.NewHandler(app.TaskService)
 	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
-	app.SlotHandler = extension2.NewSlotHandler(app.SlotRegistry)
+	app.FrontendExtensionHandler = extension2.NewFrontendExtensionHandler(app.FrontendExtensionRegistry)
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
@@ -1126,9 +1139,9 @@ func (app *App) onBeforeClose() bool {
 
 // extensionListProviderAdapter 聚合三个 Registry 的扩展点查询能力
 type extensionListProviderAdapter struct {
-	taskHandlerRegistry *extension2.TaskHandlerRegistry
-	siteBrowserRegistry *extension2.SiteBrowserRegistry
-	slotRegistry        *extension2.SlotRegistry
+	taskHandlerRegistry       *extension2.TaskHandlerRegistry
+	siteBrowserRegistry       *extension2.SiteBrowserRegistry
+	frontendExtensionRegistry *extension2.FrontendExtensionRegistry
 }
 
 func (a *extensionListProviderAdapter) GetTaskHandlersByPlugin(pluginPublicId string) []plugin.ExtensionMeta {
@@ -1149,12 +1162,12 @@ func (a *extensionListProviderAdapter) GetSiteBrowsersByPlugin(pluginPublicId st
 	return result
 }
 
-func (a *extensionListProviderAdapter) GetSlotsByPlugin(pluginPublicId string) []plugin.SlotMeta {
-	exts, _ := a.slotRegistry.GetByPlugin(pluginPublicId)
-	result := make([]plugin.SlotMeta, 0, len(exts))
+func (a *extensionListProviderAdapter) GetFrontendExtensionsByPlugin(pluginPublicId string) []plugin.FrontendExtensionMeta {
+	exts, _ := a.frontendExtensionRegistry.GetByPlugin(pluginPublicId)
+	result := make([]plugin.FrontendExtensionMeta, 0, len(exts))
 	for _, ext := range exts {
 		cfg := ext.Instance
-		result = append(result, plugin.SlotMeta{ID: cfg.Metadata.ID, Name: cfg.Metadata.Name, SlotType: string(cfg.SlotType)})
+		result = append(result, plugin.FrontendExtensionMeta{ID: cfg.Metadata.ID, Name: cfg.Metadata.Name, Kind: string(cfg.Kind)})
 	}
 	return result
 }
@@ -1196,15 +1209,15 @@ func (app *App) shutdownPlugins() {
 	// UnloadAll 返回已卸载的插件 ID 列表，并已注销 TaskHandler/SiteBrowser
 	ids := app.pluginLoader.UnloadAll()
 
-	// 逐个清理静态资源和 Slot（复用卸载时的 onUnload 逻辑）
+	// 逐个清理静态资源和前端扩展（复用卸载时的 onUnload 逻辑）
 	for _, id := range ids {
 		app.StaticResourceService.UnregisterPlugin(id)
-		app.SlotRegistry.UnregisterAll(id)
+		app.FrontendExtensionRegistry.UnregisterAll(id)
 	}
 
-	// 清理纯 UI 插件注册的 Slot（没有运行时进程的插件不在 Loader.processes 中）
-	if app.SlotRegistry != nil {
-		app.SlotRegistry.UnregisterAll("")
+	// 清理纯 UI 插件注册的前端扩展（没有运行时进程的插件不在 Loader.processes 中）
+	if app.FrontendExtensionRegistry != nil {
+		app.FrontendExtensionRegistry.UnregisterAll("")
 	}
 
 	logger.Log.Infof("所有插件已关闭，共 %d 个运行时插件", len(ids))

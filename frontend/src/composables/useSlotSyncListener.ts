@@ -7,11 +7,11 @@ import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent, h } from 'vue'
 import * as Vue from 'vue'
-import type { SlotResponse } from '@bindings/github.com/library-squirrel/backend/plugin/extension/models'
+import type { FrontendExtensionResponse } from '@bindings/github.com/library-squirrel/backend/plugin/extension/models'
 import { AnySlotContent } from '@renderer/model/constant/SlotTypes.ts'
 import type { HtmlContent, PrecompiledContent, VueSourceContent } from '@renderer/model/interface/SlotConfigs.ts'
 import { DefineComponent } from 'vue'
-import { SlotHandler } from '@bindings/github.com/library-squirrel/backend/plugin/extension'
+import { FrontendExtensionHandler } from '@bindings/github.com/library-squirrel/backend/plugin/extension'
 import { Events } from '@wailsio/runtime'
 import * as WailsRuntime from '@wailsio/runtime'
 import {isBlank} from "@renderer/utils/StringUtil.ts";
@@ -39,10 +39,10 @@ function wrapWithBoundary(loader: () => Promise<DefineComponent>, name: string):
 /**
  * 转换视图插槽配置
  */
-function convertToViewSlot(config: SlotResponse): ViewSlot {
+function convertToViewSlot(config: FrontendExtensionResponse): ViewSlot {
   const componentLoader = () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId)
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     name: config.name,
     component: wrapWithBoundary(componentLoader, config.name),
     order: config.order ?? 100,
@@ -54,12 +54,12 @@ function convertToViewSlot(config: SlotResponse): ViewSlot {
 /**
  * 转换嵌入插槽配置
  */
-function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
+function convertToEmbedSlot(config: FrontendExtensionResponse): EmbedSlot {
   if (isBlank(config.position)) {
     throw new Error('转换嵌入插槽配置失败，position不能为空')
   }
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     position: config.position,  // 主程序具名插槽位标识
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
@@ -70,12 +70,12 @@ function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
 /**
  * 转换资源渲染器配置（被动响应型扩展，与 slot 正交）
  */
-function convertToResourceViewerHandler(config: SlotResponse): ResourceViewerHandler {
+function convertToResourceViewerHandler(config: FrontendExtensionResponse): ResourceViewerHandler {
   if (isBlank(config.resourceType)) {
     throw new Error('转换资源渲染器配置失败，resourceType 不能为空')
   }
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     resourceType: config.resourceType,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
@@ -86,9 +86,9 @@ function convertToResourceViewerHandler(config: SlotResponse): ResourceViewerHan
 /**
  * 转换弹窗插槽配置
  */
-function convertToDialogSlot(config: SlotResponse): DialogSlot {
+function convertToDialogSlot(config: FrontendExtensionResponse): DialogSlot {
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
@@ -98,12 +98,12 @@ function convertToDialogSlot(config: SlotResponse): DialogSlot {
 /**
  * 转换替换视图插槽配置
  */
-function convertToReplaceViewSlot(config: SlotResponse): ReplaceViewSlot {
+function convertToReplaceViewSlot(config: FrontendExtensionResponse): ReplaceViewSlot {
   if (isBlank(config.target)) {
     throw new Error('转换替换视图插槽配置失败，target不能为空')
   }
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     target: config.target,
     component: wrapWithBoundary(() => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId), config.name),
     props: config.props as Record<string, unknown> | undefined
@@ -113,12 +113,12 @@ function convertToReplaceViewSlot(config: SlotResponse): ReplaceViewSlot {
 /**
  * 转换菜单插槽配置
  */
-function convertToMenuSlot(config: SlotResponse): MenuSlotItem {
+function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
   // 递归转换子菜单
-  const convertChildren = (children?: SlotResponse[]): MenuSlotItem[] | undefined => {
+  const convertChildren = (children?: FrontendExtensionResponse[]): MenuSlotItem[] | undefined => {
     if (!children || children.length === 0) return undefined
     return children.map((child) => ({
-      slotId: child.slotId,
+      slotId: child.frontendExtensionId,
       index: child.pluginPublicId,
       label: child.name,
       icon: child.icon,
@@ -129,7 +129,7 @@ function convertToMenuSlot(config: SlotResponse): MenuSlotItem {
   }
 
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     index: config.pluginPublicId,
     label: config.name,
     icon: config.icon,
@@ -142,9 +142,9 @@ function convertToMenuSlot(config: SlotResponse): MenuSlotItem {
 /**
  * 转换站点浏览器列表插槽配置
  */
-function convertToSiteBrowserListSlot(config: SlotResponse): SiteBrowserListSlotItem {
+function convertToSiteBrowserListSlot(config: FrontendExtensionResponse): SiteBrowserListSlotItem {
   return {
-    slotId: config.slotId,
+    slotId: config.frontendExtensionId,
     pluginId: config.pluginId,
     pluginPublicId: config.pluginPublicId ?? '',
     name: config.name,
@@ -443,7 +443,7 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 /**
  * 根据类型注册 slot 到 store
  */
-function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot: SlotResponse) {
+function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot: FrontendExtensionResponse) {
   // 被动响应型扩展，路由到独立 HandlerRegistry（不进 SlotRegistryStore）
   if (slot.type === 'resourceViewer') {
     useHandlerRegistryStore().registerResourceViewerHandler(convertToResourceViewerHandler(slot))
@@ -493,42 +493,42 @@ function unregisterSlotByType(store: ReturnType<typeof useSlotRegistryStore>, sl
 export function initSlotSyncListener() {
   const store = useSlotRegistryStore()
 
-  // 初始同步：获取所有已注册的插槽
-  SlotHandler.GetAllSlots().then((resp) => {
-    const slots = resp?.data ?? []
-    slots.forEach((config: unknown) => {
-      registerSlotByType(store, config as SlotResponse)
+  // 初始同步：获取所有已注册的前端扩展
+  FrontendExtensionHandler.GetAllFrontendExtensions().then((resp) => {
+    const extensions = resp?.data ?? []
+    extensions.forEach((config: unknown) => {
+      registerSlotByType(store, config as FrontendExtensionResponse)
     })
   })
 
-  // 监听运行时 slot 注册事件
-  Events.On('slot-register', (event: unknown) => {
-    const data = (event as { data: { slotId: string; data: SlotResponse } }).data
+  // 监听运行时前端扩展注册事件
+  Events.On('frontend-extension-register', (event: unknown) => {
+    const data = (event as { data: { frontendExtensionId: string; data: FrontendExtensionResponse } }).data
     if (data?.data) {
       registerSlotByType(store, data.data)
     }
   })
 
-  // 监听运行时 slot 注销事件
-  Events.On('slot-unregister', (event: unknown) => {
-    const data = (event as { data: { slotId: string; slotType: string } }).data
-    if (data?.slotId && data?.slotType) {
-      unregisterSlotByType(store, data.slotId, data.slotType)
+  // 监听运行时前端扩展注销事件
+  Events.On('frontend-extension-unregister', (event: unknown) => {
+    const data = (event as { data: { frontendExtensionId: string; kind: string } }).data
+    if (data?.frontendExtensionId && data?.kind) {
+      unregisterSlotByType(store, data.frontendExtensionId, data.kind)
     }
   })
 
-  // 监听运行时 slot 批量注销事件
-  Events.On('slot-batch-register', (event: unknown) => {
-    const data = (event as { data: { slots: Array<{ slotId: string; slotType: string }> } }).data
-    if (data?.slots) {
-      data.slots.forEach((item) => {
-        unregisterSlotByType(store, item.slotId, item.slotType)
+  // 监听运行时前端扩展批量注销事件
+  Events.On('frontend-extension-batch-unregister', (event: unknown) => {
+    const data = (event as { data: { items: Array<{ frontendExtensionId: string; kind: string }> } }).data
+    if (data?.items) {
+      data.items.forEach((item) => {
+        unregisterSlotByType(store, item.frontendExtensionId, item.kind)
       })
 
       // 含 view/replaceView 时刷新清除已渲染页面与模块缓存（保持当前 URL）
       // useBuiltinMenus 注册路由后会 replace 重新匹配，避免 reload 后路由未注册灰屏
-      const affectsRoutes = data.slots.some(
-        (item) => item.slotType === 'view' || item.slotType === 'replaceView'
+      const affectsRoutes = data.items.some(
+        (item) => item.kind === 'view' || item.kind === 'replaceView'
       )
       if (affectsRoutes) {
         window.location.reload()

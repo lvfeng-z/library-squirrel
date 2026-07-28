@@ -10,8 +10,8 @@ export {
 
 export {
     ExtensionInfo,
+    FrontendExtensionInfo,
     PluginQueryDTO,
     PluginStatusDTO,
-    SettingItem,
-    SlotInfo
+    SettingItem
 } from "./models.js";

@@ -14,7 +14,7 @@ globs:
 ## 插件系统概述
 - 插件位于 `plugin/`，由 `app.go` 的 `loadInstalledPlugins()` 加载
 - **两种类型**：运行时插件（Go 子进程）和纯 UI 插件（仅 `plugin.json`）
-- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式扩展点（`plugin.json`）分两类——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
+- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式前端扩展（`plugin.json` 的 `extensions.frontendExtensions`）后端 7 种 kind 平级（embed/view/replaceView/dialog/menu/siteBrowserList/resourceViewer），前端按消费契约二分——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
 - **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
 - **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{ver}/...`
 
@@ -44,22 +44,22 @@ globs:
 }
 ```
 
-### extensions.slots[] 声明
+### extensions.frontendExtensions[] 声明
 
-每个 slot 声明包含通用字段和按 slotType 区分的 `content` 配置：
+每个前端扩展声明包含通用字段和按 kind 区分的 `content` 配置：
 
 **通用字段：**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | string | 是 | 插槽唯一标识（插件内唯一） |
+| `id` | string | 是 | 前端扩展唯一标识（插件内唯一） |
 | `name` | string | 是 | 显示名称 |
 | `description` | string | 否 | 描述 |
-| `slotType` | string | 是 | `embed` \| `view` \| `replaceView` \| `dialog` \| `menu` \| `siteBrowserList`（Slot 主动注入型） \| `resourceViewer`（Handler 被动响应型） |
+| `kind` | string | 是 | `embed` \| `view` \| `replaceView` \| `dialog` \| `menu` \| `siteBrowserList`（Slot 主动注入型） \| `resourceViewer`（Handler 被动响应型） |
 | `order` | number | 否 | 排序权重 |
-| `content` | object | 是 | 按 slotType 区分的专属配置（见下方） |
+| `content` | object | 是 | 按 kind 区分的专属配置（见下方） |
 
-### content 按 slotType 的格式
+### content 按 kind 的格式
 
 **embed：** 嵌入组件到主程序的具名插槽位
 
@@ -227,17 +227,19 @@ CSS 通过 `<link>` 标签注入 DOM。工厂函数确保插件组件使用主�
 - 数据格式：JSON 序列化的 `[]byte`
 - 插件端使用阻塞 channel 等待响应（如 `pendingCh`），需设置超时防止永久阻塞
 
-## Slot 数据流
+## 前端扩展数据流
 
 ```
-plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → SlotResponse(IPC DTO) → TypeScript 接口(前端)
+plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionConfig(领域模型) → FrontendExtensionResponse(IPC DTO) → TypeScript 接口(前端)
 ```
 
-- `SlotDeclaration`：`backend/base/model/dto/plugin_types.go` — plugin.json 直接映射
-- `SlotConfig`：`backend/base/slot.go` — 运行时模型，SlotType/ContentType 为枚举常量
-- `SlotResponse`：`backend/plugin/extension/slot_handler.go` — IPC 响应 DTO
+- `FrontendExtensionDeclaration`：`backend/base/model/dto/plugin_types.go` — plugin.json 直接映射（json `kind` / 顶层 `frontendExtensions`）
+- `FrontendExtensionConfig`：`backend/base/frontend_extension.go` — 运行时模型，`Kind`（`FrontendExtensionKind` 7 种平级）/`ContentType` 为枚举常量
+- `FrontendExtensionResponse`：`backend/plugin/extension/handler.go` — IPC 响应 DTO（json `frontendExtensionId`）
 - 前端接口：`frontend/src/model/interface/SlotConfigs.ts` — 按类型做可辨识联合
 - 前端 Slot 类型：`frontend/src/model/slot/` — ViewSlot/EmbedSlot/DialogSlot/ReplaceViewSlot
+
+> 后端 7 种 kind 平级（`FrontendExtensionKind`），不区分 Slot/Handler；slot/handler 二分是**前端消费契约**——`SlotRegistryStore`（主动注入型 6 种）与 `HandlerRegistryStore`（被动响应型 resourceViewer）分桶消费，故前端 slot/handler 词汇在前端侧保留。
 
 ## 插件故障隔离（前端）
 
@@ -270,7 +272,7 @@ plugin.json → SlotDeclaration(解析 DTO) → SlotConfig(领域模型) → Slo
 
 ## 插件开发规范
 
-- **Slot 注册**：通过 `plugin.json` 的 `extensions.slots` 声明式注册，调用 `RegisterSlot()` 的这种方式已不再被支持
+- **前端扩展注册**：通过 `plugin.json` 的 `extensions.frontendExtensions` 声明式注册（`kind` 区分类型），调用 `RegisterSlot()` 的这种方式已不再被支持
 - **静态资源**：在 `extensions.staticResources.directories` 声明可访问目录
 - **入口函数**：运行时插件导出 `func Activate(ctx pluginsdk.PluginContext)`
 - **PRECOMPILED_OVER_VUESOURCE** (P0): 新组件优先使用 `precompiled` contentType，`vueSource` 需要运行时 SFC 编译开销更大

@@ -45,6 +45,38 @@ export class ExtensionInfo {
 }
 
 /**
+ * FrontendExtensionInfo 前端扩展信息
+ */
+export class FrontendExtensionInfo {
+    "id": string;
+    "name": string;
+    "kind": string;
+
+    /** Creates a new FrontendExtensionInfo instance. */
+    constructor($$source: Partial<FrontendExtensionInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FrontendExtensionInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FrontendExtensionInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FrontendExtensionInfo($$parsedSource as Partial<FrontendExtensionInfo>);
+    }
+}
+
+/**
  * PluginQueryDTO 插件查询条件
  */
 export class PluginQueryDTO {
@@ -179,7 +211,7 @@ export class PluginStatusDTO {
      */
     "taskHandlers": ExtensionInfo[];
     "siteBrowsers": ExtensionInfo[];
-    "slots": SlotInfo[];
+    "frontendExtensions": FrontendExtensionInfo[];
 
     /**
      * URL 监听规则
@@ -203,8 +235,8 @@ export class PluginStatusDTO {
         if (!("siteBrowsers" in $$source)) {
             this["siteBrowsers"] = [];
         }
-        if (!("slots" in $$source)) {
-            this["slots"] = [];
+        if (!("frontendExtensions" in $$source)) {
+            this["frontendExtensions"] = [];
         }
         if (!("urlPatterns" in $$source)) {
             this["urlPatterns"] = [];
@@ -228,8 +260,8 @@ export class PluginStatusDTO {
         if ("siteBrowsers" in $$parsedSource) {
             $$parsedSource["siteBrowsers"] = $$createField4_0($$parsedSource["siteBrowsers"]);
         }
-        if ("slots" in $$parsedSource) {
-            $$parsedSource["slots"] = $$createField5_0($$parsedSource["slots"]);
+        if ("frontendExtensions" in $$parsedSource) {
+            $$parsedSource["frontendExtensions"] = $$createField5_0($$parsedSource["frontendExtensions"]);
         }
         if ("urlPatterns" in $$parsedSource) {
             $$parsedSource["urlPatterns"] = $$createField6_0($$parsedSource["urlPatterns"]);
@@ -288,45 +320,13 @@ export class SettingItem {
     }
 }
 
-/**
- * SlotInfo 插槽信息
- */
-export class SlotInfo {
-    "id": string;
-    "name": string;
-    "slotType": string;
-
-    /** Creates a new SlotInfo instance. */
-    constructor($$source: Partial<SlotInfo> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("slotType" in $$source)) {
-            this["slotType"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SlotInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SlotInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SlotInfo($$parsedSource as Partial<SlotInfo>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
 const $$createType3 = ExtensionInfo.createFrom;
 const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = SlotInfo.createFrom;
+const $$createType5 = FrontendExtensionInfo.createFrom;
 const $$createType6 = $Create.Array($$createType5);
 const $$createType7 = $Create.Array($Create.Any);
 const $$createType8 = dto$0.SettingOption.createFrom;
