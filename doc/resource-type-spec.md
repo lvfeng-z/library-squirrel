@@ -104,7 +104,7 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 | **插件开发** | 看本文档，声明 ResourceType + 产出对应 Roles 的 store（详见 `doc/plugin-dev-guide.md`） |
 | **主程序·完整性** | `ValidateResourceStructure` 结构校验写 ResourceComplete |
 | **主程序·展示主体** | `ResolvePrimaryStore` 按 PrimaryRoles 派生 `workStore`（DTO 便捷访问器） |
-| **前端·渲染** | 按 ResourceType 选渲染器：image→el-image / video→video / article→markdown / document→外部打开 |
+| **前端·渲染** | ResourceViewer 按 ResourceType 分发：先查 HandlerRegistry（插件渲染器命中则覆盖内置），否则内置渲染器（image→el-image / video→`<video>` 内联播放 / article→markdown / document·unknown→占位+外部打开） |
 | **前端·外部打开** | 按 ResourceType 选 `OpenImage`（图片应用内查看）/ 系统默认 `Open`（视频/文档） |
 | **前端·板块勾选** | 按 store_type（StoreRole）勾选，与 ResourceType 分发正交 |
 

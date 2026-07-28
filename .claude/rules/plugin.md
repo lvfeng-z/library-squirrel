@@ -14,7 +14,7 @@ globs:
 ## 插件系统概述
 - 插件位于 `plugin/`，由 `app.go` 的 `loadInstalledPlugins()` 加载
 - **两种类型**：运行时插件（Go 子进程）和纯 UI 插件（仅 `plugin.json`）
-- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；view/replaceView/embed/dialog/menu/siteBrowserList（通过 `plugin.json` 声明式 Slot）
+- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式扩展点（`plugin.json`）分两类——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
 - **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
 - **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{ver}/...`
 
@@ -55,7 +55,7 @@ globs:
 | `id` | string | 是 | 插槽唯一标识（插件内唯一） |
 | `name` | string | 是 | 显示名称 |
 | `description` | string | 否 | 描述 |
-| `slotType` | string | 是 | `embed` \| `view` \| `replaceView` \| `dialog` \| `menu` \| `siteBrowserList` |
+| `slotType` | string | 是 | `embed` \| `view` \| `replaceView` \| `dialog` \| `menu` \| `siteBrowserList`（Slot 主动注入型） \| `resourceViewer`（Handler 被动响应型） |
 | `order` | number | 否 | 排序权重 |
 | `content` | object | 是 | 按 slotType 区分的专属配置（见下方） |
 
@@ -132,6 +132,21 @@ globs:
 ```json
 {"icon": "assets/icon.png", "extensionId": "main"}
 ```
+
+**resourceViewer：** 资源渲染器（被动响应型 Handler；主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `contentType` | string | 同 embed |
+| `source` | object/string | 同 embed |
+| `resourceType` | string | 资源类型查找键（前端按 `resource.resourceType` 匹配，必填） |
+| `props` | object | 传递给组件的额外属性（可选） |
+
+```json
+{"contentType": "precompiled", "source": {"js": "views/article-viewer.js", "css": "views/article-viewer.css"}, "resourceType": "article"}
+```
+
+> 渲染器组件接收 `{resource: ResourceFullDTO, work: WorkFullDTO}` props（运行时注入，非静态 props）。同 resourceType 多插件声明取 order 最小者。仅覆盖现有 5 种 ResourceType；插件自定义类型需后端 T3（未落地）。
 
 ### source 格式（contentType 对应）
 

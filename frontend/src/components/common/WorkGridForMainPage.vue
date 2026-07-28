@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import WorkDialog from '../dialogs/WorkDialog.vue'
+import WorkDetailDialog from '../dialogs/WorkDetailDialog.vue'
 import { computed, Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import CardGrid from '@renderer/components/common/CardGrid.vue'
@@ -60,7 +60,7 @@ async function openWorkSetDialog(workSetId: number) {
         />
       </template>
     </card-grid>
-    <work-dialog
+    <work-detail-dialog
       v-model:state="workDialogState"
       v-model:current-work-index="currentWorkIndex"
       :work="props.workList"

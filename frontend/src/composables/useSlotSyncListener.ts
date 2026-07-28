@@ -1,6 +1,8 @@
 import type { MenuSlotItem, SiteBrowserListSlotItem } from '@renderer/store/SlotRegistryStore'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
+import { useHandlerRegistryStore } from '@renderer/store/HandlerRegistryStore'
 import type { EmbedSlot, DialogSlot, ReplaceViewSlot, ViewSlot } from '@renderer/model/slot'
+import type { ResourceViewerHandler } from '@renderer/model/handler/ResourceViewerHandler'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent, h } from 'vue'
@@ -59,6 +61,22 @@ function convertToEmbedSlot(config: SlotResponse): EmbedSlot {
   return {
     slotId: config.slotId,
     position: config.position,  // 主程序具名插槽位标识
+    component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
+    props: config.props as Record<string, unknown> | undefined,
+    order: config.order ?? 100
+  }
+}
+
+/**
+ * 转换资源渲染器配置（被动响应型扩展，与 slot 正交）
+ */
+function convertToResourceViewerHandler(config: SlotResponse): ResourceViewerHandler {
+  if (isBlank(config.resourceType)) {
+    throw new Error('转换资源渲染器配置失败，resourceType 不能为空')
+  }
+  return {
+    slotId: config.slotId,
+    resourceType: config.resourceType,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
@@ -426,6 +444,11 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
  * 根据类型注册 slot 到 store
  */
 function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot: SlotResponse) {
+  // 被动响应型扩展，路由到独立 HandlerRegistry（不进 SlotRegistryStore）
+  if (slot.type === 'resourceViewer') {
+    useHandlerRegistryStore().registerResourceViewerHandler(convertToResourceViewerHandler(slot))
+    return
+  }
   if (slot.type === 'view') {
     store.registerViewSlot(convertToViewSlot(slot))
   } else if (slot.type === 'replaceView') {
@@ -445,6 +468,10 @@ function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot
  * 根据 slotType 注销 slot
  */
 function unregisterSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slotId: string, slotType: string) {
+  if (slotType === 'resourceViewer') {
+    useHandlerRegistryStore().unregisterResourceViewerHandler(slotId)
+    return
+  }
   if (slotType === 'view') {
     store.unregisterViewSlot(slotId)
   } else if (slotType === 'replaceView') {

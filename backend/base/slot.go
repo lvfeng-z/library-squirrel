@@ -22,6 +22,8 @@ const (
 	SlotTypeSiteBrowserList SlotType = "siteBrowserList"
 	// SlotTypeDialog 弹窗插槽（模态层）
 	SlotTypeDialog SlotType = "dialog"
+	// SlotTypeResourceViewer 资源渲染器插槽（被动响应型：插件为某 resourceType 提供自定义渲染器，主程序渲染该类型资源时按 resourceType 查找命中）
+	SlotTypeResourceViewer SlotType = "resourceViewer"
 )
 
 // ContentType 插槽内容类型
@@ -51,6 +53,7 @@ type SlotConfig struct {
 	Target         string                      // replaceView: 主程序路由 name（覆盖目标）
 	ViewId         string                      // menu: 关联的 view slot ID
 	ExtensionId string                      // siteBrowserList: 关联的 siteBrowser extension ID
+	ResourceType string                      // resourceViewer: 资源类型查找键（前端按此匹配 resource.resource_type）
 	Props          json.RawMessage             // 传递给组件的额外属性
 	Children       []SlotConfig                // menu: 子菜单项
 }

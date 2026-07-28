@@ -127,7 +127,7 @@ type MyTaskHandler struct{}
   "id": "my-view",
   "name": "我的视图",
   "description": "可选描述",
-  "slotType": "view",          // embed | view | replaceView | dialog | menu | siteBrowserList
+  "slotType": "view",          // embed | view | replaceView | dialog | menu | siteBrowserList（Slot）| resourceViewer（Handler）
   "order": 100,
   "content": { /* 按 slotType，见下 */ }
 }
@@ -143,6 +143,7 @@ type MyTaskHandler struct{}
 | `dialog` | `{contentType, source, props?}` | 弹窗（模态层） |
 | `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归） |
 | `siteBrowserList` | `{icon?, extensionId}` | 站点浏览器入口卡片（extensionId 必须等于某 siteBrowsers 的 id） |
+| `resourceViewer` | `{contentType, source, resourceType, props?}` | 资源渲染器（Handler 被动响应型；resourceType = 资源类型查找键，渲染器接收 `{resource, work}` props） |
 
 **contentType 与 source 格式：**
 

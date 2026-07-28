@@ -529,6 +529,20 @@ func parseSlotContent(slot dto.SlotDeclaration, cfg *base.SlotConfig, publicId, 
 		cfg.ContentType = base.ContentType(c.ContentType)
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
 		cfg.Props = c.Props
+
+	case base.SlotTypeResourceViewer:
+		var c dto.ResourceViewerSlotContent
+		if err := json.Unmarshal(slot.Content, &c); err != nil {
+			return fmt.Errorf("解析 resourceViewer content 失败: %w", err)
+		}
+		// resourceType 必填：前端按 resourceType 路由渲染器，空值无法命中
+		if c.ResourceType == "" {
+			return fmt.Errorf("resourceViewer 插槽 resourceType 不能为空")
+		}
+		cfg.ContentType = base.ContentType(c.ContentType)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.ResourceType = c.ResourceType
+		cfg.Props = c.Props
 	}
 
 	return nil

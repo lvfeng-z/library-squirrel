@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import WorkDialog from '../dialogs/WorkDialog.vue'
+import WorkDetailDialog from '../dialogs/WorkDetailDialog.vue'
 import {computed, Ref, ref, watch} from 'vue'
 import CardGrid from '@renderer/components/common/CardGrid.vue'
 import WorkCard from '@renderer/components/common/WorkCard.vue'
@@ -153,7 +153,7 @@ function resetDragState() {
         />
       </template>
     </card-grid>
-    <work-dialog
+    <work-detail-dialog
       v-model:state="workDialogState"
       v-model:current-work-index="currentWorkIndex"
       :work="props.workList"

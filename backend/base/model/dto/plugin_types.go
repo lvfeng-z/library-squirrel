@@ -179,6 +179,14 @@ type SiteBrowserListSlotContent struct {
 	ExtensionId string `json:"extensionId"`
 }
 
+// ResourceViewerSlotContent resourceViewer 类型插槽配置（resourceType 为资源类型查找键，前端按此匹配 resource.resourceType）
+type ResourceViewerSlotContent struct {
+	ContentType  string          `json:"contentType"`
+	Source       json.RawMessage `json:"source"`
+	ResourceType string          `json:"resourceType"`
+	Props        json.RawMessage `json:"props,omitempty"`
+}
+
 // StaticResourcesConfig 静态资源配置
 type StaticResourcesConfig struct {
 	Directories []string `json:"directories"`
