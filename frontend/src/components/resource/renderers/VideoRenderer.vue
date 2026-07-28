@@ -4,7 +4,7 @@ import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com//lvfeng-z/lib
 import { StoreRole } from '@renderer/constants/sectionCode.ts'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 
-// 视频渲染器：内联播放，优先 merged（音视频已合并），否则 videoTrack（未合并的视频轨）
+// 视频渲染器：内联播放，优先 videoMain(可播放主体:封装原文件或合并产物)，降级 videoTrack(分离流未合并,无声)
 const props = defineProps<{
   resource: ResourceFullDTO
   work: WorkFullDTO
@@ -12,9 +12,9 @@ const props = defineProps<{
 
 const videoSource = computed(() => {
   const stores = props.resource?.stores ?? []
-  const merged = stores.find((s) => s.storeType === StoreRole.MERGED)
+  const videoMain = stores.find((s) => s.storeType === StoreRole.VIDEO_MAIN)
   const track = stores.find((s) => s.storeType === StoreRole.VIDEO_TRACK)
-  const filePath = merged?.store?.filePath || track?.store?.filePath
+  const filePath = videoMain?.store?.filePath || track?.store?.filePath
   return filePath ? buildStoreUrl(filePath) : ''
 })
 </script>

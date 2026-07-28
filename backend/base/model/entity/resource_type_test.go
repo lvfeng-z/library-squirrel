@@ -48,21 +48,35 @@ func TestValidateResourceStructure(t *testing.T) {
 		wantExcess []string
 	}{
 		{
-			name:   "video 完整(videoTrack+audioTrack)",
+			// 本地封装视频形态:单一可播放主体 videoMain(downloaded)
+			name:   "video 本地封装完整(仅 videoMain)",
 			rt:     ResourceTypeVideo,
-			counts: map[string]int{StoreTypeVideoTrack: 1, StoreTypeAudioTrack: 1},
+			counts: map[string]int{StoreTypeVideoMain: 1},
 		},
 		{
-			name:     "video 缺 audioTrack",
+			// 远程分离流形态:videoTrack+audioTrack 原料 + videoMain(derived 合并产物)
+			name:   "video 分离流完整(videoTrack+audioTrack+videoMain)",
+			rt:     ResourceTypeVideo,
+			counts: map[string]int{StoreTypeVideoTrack: 1, StoreTypeAudioTrack: 1, StoreTypeVideoMain: 1},
+		},
+		{
+			// 分离流未合并:缺可播放主体 videoMain(前端提示用户合并)
+			name:     "video 分离流未合并缺 videoMain",
 			rt:       ResourceTypeVideo,
-			counts:   map[string]int{StoreTypeVideoTrack: 1},
-			wantMiss: []string{StoreTypeAudioTrack},
+			counts:   map[string]int{StoreTypeVideoTrack: 1, StoreTypeAudioTrack: 1},
+			wantMiss: []string{StoreTypeVideoMain},
 		},
 		{
-			name:       "video merged 超量(2>Max1)",
+			// audioTrack 可选:缺 audioTrack 不再报缺失(分离流原料可缺其一)
+			name:   "video 缺 audioTrack 不报缺失(原料可选)",
+			rt:     ResourceTypeVideo,
+			counts: map[string]int{StoreTypeVideoTrack: 1, StoreTypeVideoMain: 1},
+		},
+		{
+			name:       "video videoMain 超量(2>Max1)",
 			rt:         ResourceTypeVideo,
-			counts:     map[string]int{StoreTypeVideoTrack: 1, StoreTypeAudioTrack: 1, StoreTypeMerged: 2},
-			wantExcess: []string{StoreTypeMerged},
+			counts:     map[string]int{StoreTypeVideoMain: 2},
+			wantExcess: []string{StoreTypeVideoMain},
 		},
 		{
 			name:   "image 完整(image+thumbnail)",
@@ -75,9 +89,9 @@ func TestValidateResourceStructure(t *testing.T) {
 			counts: map[string]int{StoreTypeDocument: 1, StoreTypeImage: 10},
 		},
 		{
-			name:   "article 缺正文 document",
-			rt:     ResourceTypeArticle,
-			counts: map[string]int{StoreTypeImage: 3},
+			name:     "article 缺正文 document",
+			rt:       ResourceTypeArticle,
+			counts:   map[string]int{StoreTypeImage: 3},
 			wantMiss: []string{StoreTypeDocument},
 		},
 		{
@@ -105,23 +119,23 @@ func TestValidateResourceStructure(t *testing.T) {
 }
 
 func TestResolvePrimaryStore(t *testing.T) {
-	// video 有 merged → merged
+	// video 有 videoMain → videoMain
 	videoSpec := LookupResourceTypeSpec(ResourceTypeVideo)
 	got := ResolvePrimaryStore([]*ResourceStore{
 		mkStore(StoreTypeVideoTrack, 1),
 		mkStore(StoreTypeAudioTrack, 2),
-		mkStore(StoreTypeMerged, 3),
+		mkStore(StoreTypeVideoMain, 3),
 	}, videoSpec)
-	if got == nil || got.StoreType != StoreTypeMerged {
-		t.Fatalf("video 有 merged 期望取 merged, 实际 %+v", got)
+	if got == nil || got.StoreType != StoreTypeVideoMain {
+		t.Fatalf("video 有 videoMain 期望取 videoMain, 实际 %+v", got)
 	}
-	// video 无 merged → videoTrack
+	// video 无 videoMain(分离流未合并)→ 降级 videoTrack(无声播放,决策3 暂保留)
 	got = ResolvePrimaryStore([]*ResourceStore{
 		mkStore(StoreTypeVideoTrack, 1),
 		mkStore(StoreTypeAudioTrack, 2),
 	}, videoSpec)
 	if got == nil || got.StoreType != StoreTypeVideoTrack {
-		t.Fatalf("video 无 merged 期望取 videoTrack, 实际 %+v", got)
+		t.Fatalf("video 无 videoMain 降级期望取 videoTrack, 实际 %+v", got)
 	}
 	// image → image
 	imageSpec := LookupResourceTypeSpec(ResourceTypeImage)
@@ -141,14 +155,14 @@ func TestResolvePrimaryStore(t *testing.T) {
 	if got == nil || got.StoreType != StoreTypeImage {
 		t.Fatalf("nil spec 降级期望取 image, 实际 %+v", got)
 	}
-	// nil spec 有 merged(历史 video)→ 降级 merged 优先(完整可播放,优于无音频的 videoTrack)
+	// nil spec 有 videoMain(历史 video)→ 降级 videoMain 优先(完整可播放,优于无音频的 videoTrack)
 	got = ResolvePrimaryStore([]*ResourceStore{
 		mkStore(StoreTypeVideoTrack, 1),
 		mkStore(StoreTypeAudioTrack, 2),
-		mkStore(StoreTypeMerged, 3),
+		mkStore(StoreTypeVideoMain, 3),
 	}, nil)
-	if got == nil || got.StoreType != StoreTypeMerged {
-		t.Fatalf("nil spec 有 merged 降级期望取 merged, 实际 %+v", got)
+	if got == nil || got.StoreType != StoreTypeVideoMain {
+		t.Fatalf("nil spec 有 videoMain 降级期望取 videoMain, 实际 %+v", got)
 	}
 	// nil spec 无 image → 降级取首个非 thumbnail
 	got = ResolvePrimaryStore([]*ResourceStore{
@@ -194,13 +208,13 @@ func TestValidateResourceType(t *testing.T) {
 }
 
 func TestValidateStoreType(t *testing.T) {
-	valid := []string{StoreTypeImage, StoreTypeDocument, StoreTypeThumbnail, StoreTypeVideoTrack, StoreTypeAudioTrack, StoreTypeMerged}
+	valid := []string{StoreTypeImage, StoreTypeDocument, StoreTypeThumbnail, StoreTypeVideoTrack, StoreTypeAudioTrack, StoreTypeVideoMain}
 	for _, st := range valid {
 		if err := ValidateStoreType(st); err != nil {
 			t.Fatalf("ValidateStoreType(%q) 期望 nil, 实际 %v", st, err)
 		}
 	}
-	for _, st := range []string{"", "main", "bogus"} {
+	for _, st := range []string{"", "main", "bogus", "merged"} {
 		if err := ValidateStoreType(st); err != ErrStoreTypeInvalid {
 			t.Fatalf("ValidateStoreType(%q) 期望 ErrStoreTypeInvalid, 实际 %v", st, err)
 		}

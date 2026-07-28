@@ -277,7 +277,7 @@ type TaskHandler interface {
 `TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段**必须声明**预定义值之一(`sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Unknown`)。主程序**严格识别,不推断、不兜底**:
 
 - `ResourceType` 空 / 非预定义值 → 写入路径抛错(任务创建/执行失败)
-- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`merged` 六角色 → 抛错
+- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain` 六角色 → 抛错
 - `unknown` 是合法显式值(插件确实无法分类时声明),不报错
 
 资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。
@@ -286,7 +286,7 @@ type TaskHandler interface {
 
 ```go
 type StoreSpec struct {
-    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | merged
+    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | videoMain
     Generation  string        // downloaded(流式可续传) | derived(一次性派生)
     ReadCloser  io.ReadCloser // 资源数据流,调用方负责 Close
     Format      string        // 文件扩展名

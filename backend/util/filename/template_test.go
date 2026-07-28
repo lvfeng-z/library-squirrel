@@ -78,7 +78,7 @@ func TestFormatFileName_AllTokens(t *testing.T) {
 	}
 
 	tpl := "[${author}]_[${siteWorkId}]_${siteWorkName}_${description}_${localAuthorName}_${siteAuthorName}_${siteAuthorId}_${uploadTimeYear}${uploadTimeMonth}${uploadTimeDay}_${downloadTimeYear}${downloadTimeMonth}${downloadTimeDay}"
-	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor-SiteAuthor_author123_20260518_20260518"
+	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor_SiteAuthor_author123_20260518_20260518"
 	result := FormatFileName(tpl, data)
 	if result != expected {
 		t.Errorf("FormatFileName() = %q, want %q", result, expected)

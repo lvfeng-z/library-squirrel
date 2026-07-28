@@ -58,8 +58,11 @@ func (a QueryAttribute[T]) GetOrder() SortOrder {
 	return *a.Order
 }
 
-// GetPriority 获取排序优先级
+// GetPriority 获取排序优先级(未设置返回 0;HasOrder 路径下 Priority 常为 nil,须 nil 安全)
 func (a QueryAttribute[T]) GetPriority() int {
+	if a.Priority == nil {
+		return 0
+	}
 	return *a.Priority
 }
 

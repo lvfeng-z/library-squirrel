@@ -670,7 +670,7 @@ export class ResourceFullDTO {
  */
 export class ResourceStoreDTO {
     /**
-     * image | document | thumbnail | videoTrack | audioTrack | merged
+     * image | document | thumbnail | videoTrack | audioTrack | videoMain
      */
     "storeType": string;
 

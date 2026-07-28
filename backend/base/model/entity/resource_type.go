@@ -8,7 +8,7 @@ import (
 // 插件创建资源时必须声明其一;主程序不推断、不兜底,空/未知值在写入路径抛错。
 const (
 	ResourceTypeImage    = "image"    // 图片资源(单图/多图每子资源)
-	ResourceTypeVideo    = "video"    // 视频资源(视频轨+音频轨,可合并)
+	ResourceTypeVideo    = "video"    // 视频资源(可播放主体 videoMain 必含;分离流另含 videoTrack+audioTrack 原料)
 	ResourceTypeArticle  = "article"  // 图文紧密结合文档(正文 markdown + 内嵌图)
 	ResourceTypeDocument = "document" // 现成文档原文件(pdf/docx/...)
 	ResourceTypeUnknown  = "unknown"  // 合法显式值:插件确实无法分类时声明
@@ -33,7 +33,7 @@ type StoreRoleSpec struct {
 type StoreStandard struct {
 	Description string   // 角色用途说明
 	Formats     []string // 期望文件扩展名(描述性,非强制)
-	Generation  string   // downloaded(下载) | derived(派生)
+	Generation  string   // 该角色 store 的典型 generation(downloaded/derived),仅描述性参考;store 实例的实际 generation 由产出方决定、以 resource_store.generation 为准——可跨多种 generation 的角色(如 videoMain)此字段留空
 }
 
 // ResourceTypeSpec 资源类型规约:该类型资源的结构角色组合(含基数)、
@@ -62,7 +62,7 @@ var validStoreTypes = map[string]struct{}{
 	StoreTypeThumbnail:  {},
 	StoreTypeVideoTrack: {},
 	StoreTypeAudioTrack: {},
-	StoreTypeMerged:     {},
+	StoreTypeVideoMain:  {},
 }
 
 var imageResourceTypeSpec = ResourceTypeSpec{
@@ -81,17 +81,19 @@ var imageResourceTypeSpec = ResourceTypeSpec{
 var videoResourceTypeSpec = ResourceTypeSpec{
 	ResourceType: ResourceTypeVideo,
 	Roles: []StoreRoleSpec{
-		{StoreType: StoreTypeVideoTrack, Min: 1, Max: 1},
-		{StoreType: StoreTypeAudioTrack, Min: 1, Max: 1},
+		// videoMain 为可播放主体(必含):封装原文件(downloaded,本地导入)或分离流合并产物(derived,MergeService 合成)
+		{StoreType: StoreTypeVideoMain, Min: 1, Max: 1},
+		// videoTrack/audioTrack 为分离流原料(可选):仅远程分离流场景产出,本地封装视频无需拆轨
+		{StoreType: StoreTypeVideoTrack, Min: 0, Max: 1},
+		{StoreType: StoreTypeAudioTrack, Min: 0, Max: 1},
 		{StoreType: StoreTypeThumbnail, Min: 0, Max: 1},
-		{StoreType: StoreTypeMerged, Min: 0, Max: 1},
 	},
-	PrimaryRoles: []string{StoreTypeMerged, StoreTypeVideoTrack},
+	PrimaryRoles: []string{StoreTypeVideoMain},
 	StoreStandards: map[string]StoreStandard{
-		StoreTypeVideoTrack: {Description: "视频流", Formats: []string{".mp4"}, Generation: GenerationDownloaded},
-		StoreTypeAudioTrack: {Description: "音频流", Formats: []string{".m4a", ".mp3", ".aac"}, Generation: GenerationDownloaded},
+		StoreTypeVideoMain:  {Description: "可播放视频主体(封装原文件 downloaded 或合并产物 derived)", Formats: []string{".mp4"}, Generation: ""}, // generation 不固定:封装原文件 downloaded、分离流合并产物 derived,以产出方声明为准
+		StoreTypeVideoTrack: {Description: "分离流视频原料(无音频)", Formats: []string{".mp4"}, Generation: GenerationDownloaded},
+		StoreTypeAudioTrack: {Description: "分离流音频原料", Formats: []string{".m4a", ".mp3", ".aac"}, Generation: GenerationDownloaded},
 		StoreTypeThumbnail:  {Description: "封面/缩略图", Formats: []string{".jpg", ".png", ".webp"}, Generation: GenerationDerived},
-		StoreTypeMerged:     {Description: "视频+音频合并产物", Formats: []string{".mp4"}, Generation: GenerationDerived},
 	},
 }
 
@@ -161,9 +163,23 @@ func ValidateResourceStructure(resourceType string, storeTypeCounts map[string]i
 	return missing, excess
 }
 
+// ComputeResourceComplete 按 ResourceType 规约校验 store 计数,返回完整度三态 + 缺失/超量角色。
+// 三态:0=未校验(resourceType 未注册/空)、1=完整(每角色数量 ∈ [Min,Max])、2=不完整。
+// 纯函数无 IO;供下载完成(任务流程)与合并后重算(MergeService)共用,保证两路径判定一致。
+func ComputeResourceComplete(resourceType string, storeTypeCounts map[string]int) (complete int, missing, excess []string) {
+	if LookupResourceTypeSpec(resourceType) == nil {
+		return 0, nil, nil
+	}
+	missing, excess = ValidateResourceStructure(resourceType, storeTypeCounts)
+	if len(missing) == 0 && len(excess) == 0 {
+		return 1, nil, nil
+	}
+	return 2, missing, excess
+}
+
 // ResolvePrimaryStore 按 spec.PrimaryRoles 优先级链取第一个实际存在的 store 作为展示主体。
 // spec 为 nil 或 PrimaryRoles 为空(unknown/未注册 resource_type)时安全降级:
-// merged(完整可播放/查看)→ image(图片主体)→ 首个非 thumbnail,保证历史/未知资源展示不回归。
+// videoMain(完整可播放)→ image(图片主体)→ 首个非 thumbnail,保证历史/未知资源展示不回归。
 // 读路径专用,不抛错。
 func ResolvePrimaryStore(stores []*ResourceStore, spec *ResourceTypeSpec) *ResourceStore {
 	if spec != nil {
@@ -176,7 +192,7 @@ func ResolvePrimaryStore(stores []*ResourceStore, spec *ResourceTypeSpec) *Resou
 		}
 	}
 	for _, s := range stores {
-		if s != nil && s.StoreType == StoreTypeMerged {
+		if s != nil && s.StoreType == StoreTypeVideoMain {
 			return s
 		}
 	}

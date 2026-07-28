@@ -29,7 +29,7 @@
 所有插件 store 统一进 `store/resource/<作者>/<文件名>`(扁平,无子目录)。
 
 - thumbnail 普通 role,不再独立 `store/thumbnail/` 目录(前端按 `filePath` 取,路径透明)
-- **merged**(主程序派生)维持 `<bas>_merged.<ext>`(`BuildVariantPath`),不纳入 bas 规约
+- **videoMain**(合并产物,主程序派生)维持 `<bas>_merged.<ext>`(`BuildVariantPath`),不纳入 bas 规约
 
 ## 判定口径:资源级(不基于 per-role)
 

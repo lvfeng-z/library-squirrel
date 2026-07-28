@@ -29,7 +29,9 @@ ResourceTypeSpec { Roles[](结构角色+基数), PrimaryRoles[](展示优先级)
 | `thumbnail` | 封面/缩略图（各类型通用） | derived |
 | `videoTrack` | 视频轨（video 组成） | downloaded |
 | `audioTrack` | 音频轨（video 组成） | downloaded |
-| `merged` | 合并产物（video 派生，单例） | derived |
+| `videoMain` | 视频可播放主体（封装原文件 / 合并产物，单例） | downloaded 或 derived |
+
+> **generation 是 store 实例属性，非 role 属性**：上表"generation 典型"列仅描述性参考。每个 store 行的实际 generation 由**产出方**决定（插件 `StoreSpec.Generation` / `MergeService` / 还原），以 `resource_store.generation` 列为准，**不从 store_type 推断**。同一 store_type 可跨 generation——`videoMain` 可由本地导入产出（downloaded，封装原文件）或由分离流合并产出（derived，MergeService 合成）。generation 决定执行流程：downloaded 走流式 copy + 断点续传 + size 完整性校验；derived 走一次性 + 完成即完整 + 失败整轨重产。
 
 ## 三、预定义资源类型（5 种）
 
@@ -44,10 +46,10 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 
 ### video — 视频资源
 
-- **Roles**：`videoTrack(1~1)`、`audioTrack(1~1)`、`thumbnail(0~1)`、`merged(0~1)`
-- **PrimaryRoles**：`[merged, videoTrack]`（有合并产物优先 merged，否则 videoTrack）
-- **文件标准**：videoTrack=视频流(`.mp4`，downloaded)；audioTrack=音频流(`.m4a`/`.mp3`/`.aac`，downloaded)；merged=合并产物(`.mp4`，derived)；thumbnail=封面(derived)
-- **典型**：bilibili 视频
+- **Roles**：`videoMain(1~1)`、`videoTrack(0~1)`、`audioTrack(0~1)`、`thumbnail(0~1)`
+- **PrimaryRoles**：`[videoMain]`（唯一可播放主体）
+- **文件标准**：videoMain=可播放主体(`.mp4`，封装原文件 downloaded / 合并产物 derived)；videoTrack=分离流视频原料(`.mp4`，downloaded)；audioTrack=分离流音频原料(`.m4a`/`.mp3`/`.aac`，downloaded)；thumbnail=封面(derived)
+- **典型**：本地封装视频（仅 videoMain）；bilibili 分离流（videoTrack+audioTrack，合并后增 videoMain）
 
 ### article — 图文紧密结合文档
 

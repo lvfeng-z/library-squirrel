@@ -73,7 +73,11 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cleanedPath := filepath.Clean(relativePath)
-	if strings.Contains(cleanedPath, "..") {
+	// 拒绝路径穿越:cleanedPath 不得以 ".." 路径组件开头(中间的 "/../" 已被 filepath.Clean 解析上溯)。
+	// 勿用 strings.Contains(cleanedPath, "..")——会误伤合法文件名里含 ".." 子串的字符
+	// (如 bilibili 标题 "..._thumbnail_000.jpg" 的省略号 "..." 被误判穿越返回 404)。
+	// 纵深防御:下方 absPath HasPrefix(workDir) 是权威防穿越校验。
+	if cleanedPath == ".." || strings.HasPrefix(cleanedPath, ".."+string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}

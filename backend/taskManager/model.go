@@ -1101,11 +1101,9 @@ func (m *ManagedTask) markResourceComplete(ctx context.Context, resourceId int64
 			for _, s := range storeRows {
 				counts[s.StoreType]++
 			}
-			missing, excess := entity.ValidateResourceStructure(resource.ResourceType, counts)
-			if len(missing) == 0 && len(excess) == 0 {
-				complete = 1
-			} else {
-				complete = 2
+			c, missing, excess := entity.ComputeResourceComplete(resource.ResourceType, counts)
+			complete = c
+			if c == 2 {
 				logger.Log.Infof("[TaskManager] 资源结构不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
 			}
 		}
@@ -2002,7 +2000,9 @@ func (m *ManagedTask) resolveStorePath(spec *sdkdto.StoreSpec, baseRelPath, bas 
 		}
 		fileName = name + ext
 	}
-	relativePath = filepath.Join(baseRelPath, fileName)
+	// filepath.ToSlash 统一正斜杠入库(跨平台规范,与 persistentStore.BuildVariantPath 一致;
+	// 避免 Windows 下 filepath.Join 产生反斜杠致 DB 路径分隔符不一致)
+	relativePath = filepath.ToSlash(filepath.Join(baseRelPath, fileName))
 	return
 }
 

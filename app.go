@@ -985,6 +985,7 @@ func (app *App) initAdvancedServices() error {
 
 	// merge 合并服务（音视频合并编排；ffmpeg 缺失时 merger=nil，合并调用返回 ErrMergeUnavailable）
 	mergeResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
+	mergeResourceRepo := resource.NewRepository(app.db)
 	var mergeMerger resource.Merger
 	if m, ferr := merge.NewFFmpegMuxer(); ferr == nil {
 		mergeMerger = m
@@ -993,6 +994,7 @@ func (app *App) initAdvancedServices() error {
 	}
 	app.MergeService = resource.NewMergeService(
 		mergeResourceStoreRepo,
+		mergeResourceRepo,
 		mergeMerger,
 		app.PersistentStoreService,
 		app.SettingsService,

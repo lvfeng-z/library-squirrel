@@ -16,7 +16,7 @@
 | 渲染器 | ResourceType | 行为 |
 |---|---|---|
 | ImageRenderer | image | el-image 展示原图（workStore）；双模式切换（全部展示 contain / 较短边占满 fill）；点击 `appLauncherOpenImage` |
-| VideoRenderer | video | `<video controls>` 内联播放，优先 merged（合并产物）否则 videoTrack |
+| VideoRenderer | video | `<video controls>` 内联播放，优先 videoMain（可播放主体）否则 videoTrack |
 | ArticleRenderer | article | MarkdownView 渲染正文 .md（document store fetch）+ 内嵌图（image stores 按 store_seq 顺序位置绑定） |
 | DocumentRenderer | document | 无内联查看器，文件名占位 + 外部打开按钮（`appLauncherOpen`） |
 | UnknownRenderer | unknown | 嗅探后仍无法分类的兜底，占位 + 外部打开 |

@@ -49,7 +49,7 @@ query.go            — 查询 DTO
 - **Work（作品）**: 核心实体 — 资源集合 + 元数据
 - **Resource（资源）**: Work 下的可展示单元，带 `ResourceType`（image/video/article/document/unknown）
 - **ResourceType（资源类型）**: 封闭枚举，决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）
-- **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/merged（封闭枚举）
+- **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/videoMain（封闭枚举；videoMain 为视频可播放主体，封装原文件或合并产物）
 - **本地标签/作者 ↔ 站点标签/作者**: 通过关联实现跨站点统一搜索
 - **Task（任务）**: 作品创建流程（URL → 插件 → 保存），插件 Create 声明 ResourceType
 
@@ -59,7 +59,7 @@ query.go            — 查询 DTO
 - **ELIMINATE_N_PLUS_1_QUERY** (P0): 收集 ID → 批量查询 → 构建 map → 组装 DTO。禁止在循环中查询。
 - **SERVICE_DEPENDENCY_VIA_INTERFACE** (P0): Service 依赖由**调用方定义**的接口，由**提供方实现**。禁止持有具体 `*OtherService`。通过构造函数注入。
 - **BASE_REPOSITORY_REUSE** (P0): 复用 `BaseRepository` 方法。仅当 `BaseRepository` 无法表达时才编写自定义 repository 逻辑。
-- **MODULE_BOUNDARY_PURITY** (P0): 能力包（如 `merge`）只提供领域无关的纯能力，输入输出用基础类型（文件路径等），禁止感知/耦合业务实体（store/resource 等）与领域规范（落盘路径、`store_type` 枚举）。接受领域实体、决定落盘位置、挂载 store 关联等业务编排归对应业务模块（resource/persistentStore）。例：`merge` 包只做文件合并（`MergeRemux(ctx, videoPath, audioPath, outPath)`）；取 resource 的 store、落盘到 `store/resource/...`、挂 `resource_store`(merged) 等归 resource/persistentStore。
+- **MODULE_BOUNDARY_PURITY** (P0): 能力包（如 `merge`）只提供领域无关的纯能力，输入输出用基础类型（文件路径等），禁止感知/耦合业务实体（store/resource 等）与领域规范（落盘路径、`store_type` 枚举）。接受领域实体、决定落盘位置、挂载 store 关联等业务编排归对应业务模块（resource/persistentStore）。例：`merge` 包只做文件合并（`MergeRemux(ctx, videoPath, audioPath, outPath)`）；取 resource 的 store、落盘到 `store/resource/...`、挂 `resource_store`(videoMain) 等归 resource/persistentStore。
 - **ENTITY_USE_NEW_FACTORY** (P1): 使用 `entity.NewXxx()` 工厂方法，禁止 `&entity.Xxx{}`。
 - **DTO_USE_TO_ENTITY** (P1): 使用 `ToXxxEntity()` 转换函数，禁止手动逐字段映射。
 - **BATCH_UPDATE_OPTIMIZATION** (P1): 批量更新使用单条 SQL，禁止循环逐条 UPDATE。

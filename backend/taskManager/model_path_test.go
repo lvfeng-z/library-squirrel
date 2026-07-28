@@ -51,7 +51,7 @@ func TestResolveStorePath_SingleStoreNoSuffix(t *testing.T) {
 	if fileName != "[author2]_[456]_single.png" {
 		t.Fatalf("单 store 文件名期望 [author2]_[456]_single.png 实际 %s", fileName)
 	}
-	wantRel := filepath.Join("store", "resource", "author2", "[author2]_[456]_single.png")
+	wantRel := filepath.ToSlash(filepath.Join("store", "resource", "author2", "[author2]_[456]_single.png"))
 	if relPath != wantRel {
 		t.Fatalf("单 store 路径期望 %s 实际 %s", wantRel, relPath)
 	}
