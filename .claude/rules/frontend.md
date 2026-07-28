@@ -13,10 +13,11 @@ frontend/src/
   components/
     common/           — 通用组件（DataTable、SearchTable、WorkCard、CardGrid、TagBox）
     dialogs/          — 对话框组件
+    resource/         — 作品资源渲染（ResourceViewer 分发 + 内置渲染器 image/video/article/document/unknown）
     slot/             — 插件插槽渲染器
     tour/             — 向导组件（TourOverlay、TourCenterPanel）
   composables/        — 组合式函数（useTourTargets、useTourReady、useBuiltinMenus 等）
-  store/              — Pinia 状态（SlotRegistry、Notification、Task、TourCenter、Theme 等）
+  store/              — Pinia 状态（SlotRegistry 主动注入型扩展、HandlerRegistry 被动响应型扩展、Notification、Task、TourCenter、Theme 等）
   theme/              — 主题元信息清单（themes.ts：主题 id/名称/预览色板）
   tour/               — 向导定义集中文件（definitions.ts）
   styles/             — 全局样式（z-axis-layers、rounded-borders、scroll-text 等）
@@ -24,6 +25,7 @@ frontend/src/
   apis/http/wrappers/ — 按模块封装 Wails bindings 的 API wrapper
   utils/              — 通用工具函数（UrlUtil、CommonUtil、ImageDimension 等）
   model/tour/         — 向导类型定义（TourDefinition.ts）
+  model/handler/      — 被动响应型扩展（Handler）类型（如 ResourceViewerHandler）
   model/model/        — 与 Go DTO/实体对应的 TypeScript 类型（已存在于"frontend/bindings/" 中的类型需逐步废弃并迁移到 "frontend/bindings/"）
 frontend/bindings/    — 自动生成的 Wails TypeScript bindings（禁止手动编辑）
 ```
