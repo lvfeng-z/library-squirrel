@@ -1,6 +1,6 @@
 # 插件 slotType 重构方案
 
-> 状态：待确认后执行
+> 状态：已实施完成（7 种 kind 体系已落地）；类型名于 2026-07-28 正名为 FrontendExtensionKind（见 `doc/plan/插件扩展点slot泛化改名方案.md`），本文档保留作体系设计记录
 > 日期：2026-06-25
 > 涉及：主程序（后端 + 前端）、SDK、pixiv/local、文档
 
