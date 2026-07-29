@@ -344,7 +344,7 @@ defineExpose({
       ref="workSpace"
       class="work-query-view-work-space"
     >
-      <el-scrollbar>
+      <el-scrollbar v-el-scrollbar-bottomed="() => queryWork(false)">
         <card-grid
           :items="workList"
           :checkable="isNullish(checkable) ? false : checkable"
