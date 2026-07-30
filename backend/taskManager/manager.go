@@ -3,7 +3,6 @@ package taskManager
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -108,10 +107,10 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, plu
 	return m
 }
 
-// StartTaskTree 启动任务树(全量执行)
-func (m *Manager) StartTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
+// StartTaskTrees 批量启动任务(全量执行)
+func (m *Manager) StartTaskTrees(ctx context.Context, taskIds []int64) error {
 	mode := runModeFull
-	return m.startTaskTrees(ctx, []int64{taskId}, &mode)
+	return m.startTaskTrees(ctx, taskIds, &mode)
 }
 
 // startTaskTrees 开始执行多个任务树(开始/重试入口)
@@ -189,6 +188,8 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	// 3. 确定处理单元并去重：独立任务为自身 taskId，叶子/父任务为其 actualParentId
 	// 同父多叶子归一为同一单元，跳过已运行的单元
 	processedUnits := make(map[int64]struct{})
+	// parentUnitId → 需 dispatch 的叶子集合(unitLeaf 触发;nil/空=整树 Start,dispatch 全部子任务)
+	leafIdsPerParent := make(map[int64]map[int64]struct{})
 	var standaloneChildren []*ManagedTask
 	var parentUnits []int64
 
@@ -213,6 +214,13 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		if m.isUnitLoaded(unitId, kind == unitStandalone) {
 			logger.Log.Infof("loadAndStartTaskTrees: 单元 %d 已在运行，跳过", unitId)
 			continue
+		}
+		// unitLeaf 先累积到所属父单元的叶子集合(在 processedUnits 去重前,保证同父多叶子都记录)
+		if kind == unitLeaf {
+			if leafIdsPerParent[unitId] == nil {
+				leafIdsPerParent[unitId] = make(map[int64]struct{})
+			}
+			leafIdsPerParent[unitId][taskId] = struct{}{}
 		}
 		// 同单元去重
 		if _, processed := processedUnits[unitId]; processed {
@@ -241,7 +249,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	allToCheck := make([]*ManagedTask, 0, len(standaloneChildren)+len(parentUnits)*4)
 	allToCheck = append(allToCheck, standaloneChildren...)
 	for _, parentId := range parentUnits {
-		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal)...)
+		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, leafIdsPerParent[parentId])...)
 	}
 
 	// 5. 共享一次批量预检重复 + 分发（受信号量控制）
@@ -255,10 +263,11 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	return nil
 }
 
-// processParentUnit 处理一个父任务单元:创建层 claim 父任务后构建其直接子任务。
-// 返回需参与批量查重与调度的子任务;并发开始同一父任务时输者(claim 失败)直接返回 nil;
+// processParentUnit 处理一个父任务单元:创建层 claim 父任务后构建其直接子任务（整树加载到 children 供聚合）。
+// leafSet 非空时仅返回集合内的子任务(单独 Start 选中叶子:整树加载但只 dispatch 这些叶子,其余兄弟 Created 不 dispatch);
+// leafSet 为 nil 时返回全部子任务(整树 Start)。并发开始同一父任务时输者(claim 失败)直接返回 nil;
 // 所有子任务已终态时计算父任务最终状态、回退 claim、推送移除,返回 nil。
-func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool) []*ManagedTask {
+func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool, leafSet map[int64]struct{}) []*ManagedTask {
 	parentTaskName := ""
 	if parentEntity := taskById[actualParentId]; parentEntity != nil && parentEntity.TaskName.Valid {
 		parentTaskName = parentEntity.TaskName.String
@@ -293,6 +302,16 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		return nil
 	}
 
+	// leafSet 非空:整树已加载到 children(供聚合/完成判定),仅 dispatch 集合内的叶子
+	if len(leafSet) > 0 {
+		toDispatch := make([]*ManagedTask, 0, len(leafSet))
+		for _, c := range parentTask.GetChildren() {
+			if _, ok := leafSet[c.taskId]; ok {
+				toDispatch = append(toDispatch, c)
+			}
+		}
+		return toDispatch
+	}
 	return parentTask.GetChildren()
 }
 
@@ -508,95 +527,147 @@ func (m *Manager) removeFromQueue(taskId int64) {
 	m.waitingQueue = kept
 }
 
-// PauseTaskTree 暂停任务树
-func (m *Manager) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	logger.Log.Infof("[TaskManager] 暂停任务树: taskId=%d", taskId)
-	targets, _, ok := m.resolveTargets(taskId)
-	if !ok {
-		return ErrTaskTreeNotFound
+// PauseTaskTrees 批量暂停任务:对每个 taskId 的目标(父→整树、叶子→自身、独立→自身)投 cmdPause。
+// 整树加载但未 dispatch 的 Created 兄弟不响应(守卫);!ok(不在内存)静默跳过。
+func (m *Manager) PauseTaskTrees(ctx context.Context, taskIds []int64) error {
+	if len(taskIds) == 0 {
+		return nil
 	}
-
-	// 取 targets 快照(resolveTargets 已释放 m.mu);投递 cmdPause 不持任何 Manager 锁,防死锁。
-	// actor 命令队列保证:即使任务已被投 cmdResume,pause 排在其后最终生效(Paused)。
-	for _, child := range targets {
-		if isTerminalState(child.GetState()) {
+	logger.Log.Infof("[TaskManager] 批量暂停任务: taskIds=%v", taskIds)
+	// seen 去重:同一 child 可能被多个 taskId 的 resolveTargets 解析出(如父+其子),避免重复投命令
+	seen := make(map[int64]struct{})
+	for _, taskId := range taskIds {
+		targets, _, ok := m.resolveTargets(taskId)
+		if !ok {
 			continue
 		}
-		// Waiting:先出队,避免 dispatchFromQueue 再投 cmdResume(命令队列仍保证 pause 覆盖,出队减少干扰)
-		if child.GetState() == TaskStateWaiting {
-			m.removeFromQueue(child.taskId)
+		// 取 targets 快照(resolveTargets 已释放 m.mu);投递 cmdPause 不持任何 Manager 锁,防死锁。
+		// actor 命令队列保证:即使任务已被投 cmdResume,pause 排在其后最终生效(Paused)。
+		for _, child := range targets {
+			if _, dup := seen[child.taskId]; dup {
+				continue
+			}
+			seen[child.taskId] = struct{}{}
+			// 守卫:未首次 dispatch 的 Created 兄弟(整树加载驻留 children 但未启动)不响应控制命令
+			if !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
+				continue
+			}
+			if isTerminalState(child.GetState()) {
+				continue
+			}
+			// Waiting:先出队,避免 dispatchFromQueue 再投 cmdResume(命令队列仍保证 pause 覆盖,出队减少干扰)
+			if child.GetState() == TaskStateWaiting {
+				m.removeFromQueue(child.taskId)
+			}
+			// WaitingForInput:从确认 map 移除,避免 ConfirmReplace 再投 cmdConfirmReplace
+			if child.GetState() == TaskStateWaitingForInput {
+				m.waitingForInputMu.Lock()
+				delete(m.waitingForInputMap, child.taskId)
+				m.waitingForInputMu.Unlock()
+			}
+			child.postCmd(taskCmd{kind: cmdPause})
 		}
-		// WaitingForInput:从确认 map 移除,避免 ConfirmReplace 再投 cmdConfirmReplace
-		if child.GetState() == TaskStateWaitingForInput {
-			m.waitingForInputMu.Lock()
-			delete(m.waitingForInputMap, child.taskId)
-			m.waitingForInputMu.Unlock()
-		}
-		child.postCmd(taskCmd{kind: cmdPause})
 	}
 	return nil
 }
 
-// ResumeTaskTree 恢复任务树:对 Paused/Pausing 子任务投 cmdResume,actor 处理(prepareForResume + 取槽位 + run/resumeFromPersistedState)。
-func (m *Manager) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d", taskId)
-	targets, _, ok := m.resolveTargets(taskId)
-	if !ok {
-		// 任务不在内存中（如应用重启后），从数据库加载并跳过已终态子任务
-		logger.Log.Infof("[TaskManager] 恢复任务树: taskId=%d 不在内存中，从数据库加载", taskId)
-		return m.resumeTaskTrees(ctx, []int64{taskId})
+// ResumeTaskTrees 批量恢复任务:内存命中(Paused/Pausing)投 cmdResume;不在内存的收集后走 resumeTaskTrees(DB 加载)。
+// 整树加载但未 dispatch 的 Created 兄弟不响应(守卫);DB 路径错误静默(尽力恢复)。
+func (m *Manager) ResumeTaskTrees(ctx context.Context, taskIds []int64) error {
+	if len(taskIds) == 0 {
+		return nil
 	}
-
-	for _, child := range targets {
-		state := child.GetState()
-		if state != TaskStatePaused && state != TaskStatePausing {
+	logger.Log.Infof("[TaskManager] 批量恢复任务: taskIds=%v", taskIds)
+	seen := make(map[int64]struct{})
+	var dbIds []int64
+	for _, taskId := range taskIds {
+		targets, _, ok := m.resolveTargets(taskId)
+		if !ok {
+			// 任务不在内存中（如应用重启后），收集走 DB 加载
+			dbIds = append(dbIds, taskId)
 			continue
 		}
-		// 投 cmdResume:actor 命令队列记忆,不丢失唤醒。无需 pendingResume 标志。
-		child.postCmd(taskCmd{kind: cmdResume})
+		for _, child := range targets {
+			if _, dup := seen[child.taskId]; dup {
+				continue
+			}
+			seen[child.taskId] = struct{}{}
+			// 守卫:未首次 dispatch 的 Created 兄弟不响应控制命令
+			if !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
+				continue
+			}
+			state := child.GetState()
+			if state != TaskStatePaused && state != TaskStatePausing {
+				continue
+			}
+			// 投 cmdResume:actor 命令队列记忆,不丢失唤醒。无需 pendingResume 标志。
+			child.postCmd(taskCmd{kind: cmdResume})
+		}
 	}
-
+	if len(dbIds) > 0 {
+		logger.Log.Infof("[TaskManager] 恢复任务: %v 不在内存中，从数据库加载", dbIds)
+		_ = m.resumeTaskTrees(ctx, dbIds)
+	}
 	return nil
 }
 
-// StopTaskTree 停止任务树:并行投 cmdStop(带 ack) 给所有非终态子任务,等全部 setFailed 后 cleanup。
-func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	logger.Log.Infof("[TaskManager] 停止任务树: taskId=%d", taskId)
-	targets, parent, ok := m.resolveTargets(taskId)
-	if !ok {
-		return ErrTaskTreeNotFound
+// StopTaskTrees 批量停止任务:对每个 taskId 的目标并行投 cmdStop(带 ack),wg.Wait 后对去重 parent 调 cleanup。
+// 整树加载但未 dispatch 的 Created 兄弟不响应(守卫);!ok 静默跳过;独立任务(parent==nil)由 actor 终态自清理。
+func (m *Manager) StopTaskTrees(ctx context.Context, taskIds []int64) error {
+	if len(taskIds) == 0 {
+		return nil
 	}
-
+	logger.Log.Infof("[TaskManager] 批量停止任务: taskIds=%v", taskIds)
+	seen := make(map[int64]struct{})
+	seenParents := make(map[int64]*ParentTask)
 	// 并行投 cmdStop(各 actor 独立处理,setFailed 终态);wg.Wait 等全部完成再 cleanup
 	var wg sync.WaitGroup
-	for _, child := range targets {
-		state := child.GetState()
-		// 跳过已终态子任务：不对已完成的任务重复停止，避免 finished 计数倒退与重复清理
-		if state == TaskStateFinished || state == TaskStateFailed || state == TaskStatePartlyFinished {
+	for _, taskId := range taskIds {
+		targets, parent, ok := m.resolveTargets(taskId)
+		if !ok {
 			continue
 		}
-		if state == TaskStateWaiting {
-			m.removeFromQueue(child.taskId)
+		if parent != nil {
+			// 同父多 taskId 只 cleanup 一次
+			seenParents[parent.taskId] = parent
 		}
-		if state == TaskStateWaitingForInput {
-			m.waitingForInputMu.Lock()
-			delete(m.waitingForInputMap, child.taskId)
-			m.waitingForInputMu.Unlock()
+		for _, child := range targets {
+			if _, dup := seen[child.taskId]; dup {
+				continue
+			}
+			seen[child.taskId] = struct{}{}
+			// 守卫:未首次 dispatch 的 Created 兄弟不响应控制命令
+			if !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
+				continue
+			}
+			state := child.GetState()
+			// 跳过已终态子任务：不对已完成的任务重复停止，避免 finished 计数倒退与重复清理
+			if state == TaskStateFinished || state == TaskStateFailed || state == TaskStatePartlyFinished {
+				continue
+			}
+			if state == TaskStateWaiting {
+				m.removeFromQueue(child.taskId)
+			}
+			if state == TaskStateWaitingForInput {
+				m.waitingForInputMu.Lock()
+				delete(m.waitingForInputMap, child.taskId)
+				m.waitingForInputMu.Unlock()
+			}
+			wg.Add(1)
+			go func(c *ManagedTask) {
+				defer wg.Done()
+				ack := make(chan error, 1)
+				c.postCmd(taskCmd{kind: cmdStop, ack: ack})
+				<-ack
+			}(child)
 		}
-		wg.Add(1)
-		go func(c *ManagedTask) {
-			defer wg.Done()
-			ack := make(chan error, 1)
-			c.postCmd(taskCmd{kind: cmdStop, ack: ack})
-			<-ack
-		}(child)
 	}
 	wg.Wait()
 
-	if parent != nil {
-		// 父任务树:主动清理 parentMap + 残留子任务。不依赖子任务 actor 退出时 cleanupFinishedTask 的
-		// 时序——已 Finished/Paused/Waiting 的子任务无运行 goroutine 不会触发 cleanupFinishedTask,
-		// 会导致 parentMap 残留、重启时误判"已在运行"
+	// 父任务树:主动清理 parentMap + 残留子任务。不依赖子任务 actor 退出时 cleanupFinishedTask 的
+	// 时序——已 Finished/Paused/Waiting 的子任务无运行 goroutine 不会触发 cleanupFinishedTask,
+	// 会导致 parentMap 残留、重启时误判"已在运行"
+	for _, parent := range seenParents {
 		m.cleanupStoppedTree(parent.taskId, parent)
 	}
 	// 独立任务(parent==nil):各 actor 终态退出时由 cleanupFinishedTask 自清理(taskMap 移除+前端通知),
@@ -606,8 +677,7 @@ func (m *Manager) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) e
 }
 
 // StopRunningBySiteWork 停止指定作品关联的运行中任务实例（不删 task 记录）
-// 反查 (site_id, site_work_id) 关联任务，转发到 StopTaskTree 复用现有停止逻辑；
-// 非运行中的关联任务（不在 taskMap/parentMap）由 StopTaskTree 返回 ErrTaskTreeNotFound，忽略
+// 反查 (site_id, site_work_id) 关联任务，批量转发到 StopTaskTrees；非运行中的（不在 taskMap/parentMap）静默忽略
 func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteWorkId string) error {
 	tasks, err := m.repo.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 	if err != nil {
@@ -615,23 +685,15 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 	}
 	taskIds := make([]int64, 0, len(tasks))
 	for _, t := range tasks {
-		taskId := t.GetID()
-		taskIds = append(taskIds, taskId)
-		// has_child=true 为父任务（isLeaf=false），否则叶子/独立任务（isLeaf=true）
-		isLeaf := true
-		if t.HasChild.Valid && t.HasChild.Bool {
-			isLeaf = false
-		}
-		if err := m.StopTaskTree(ctx, taskId, isLeaf); err != nil {
-			if !errors.Is(err, ErrTaskTreeNotFound) {
-				logger.Log.Warnf("停止任务 %d 失败: %v", taskId, err)
-			}
-		}
+		taskIds = append(taskIds, t.GetID())
+	}
+	if len(taskIds) > 0 {
+		_ = m.StopTaskTrees(ctx, taskIds)
 	}
 
 	// 清空所有关联任务（含仅存于 DB 的 Paused 任务）的 pending_resource_id：
 	// work 的 resource/store 即将被删除，残留的 pending_resource_id 会指向失效的 resource/store，
-	// 导致后续恢复时误续传。StopTaskTree 只停内存中的运行实例，DB 中的任务须在此显式清理
+	// 导致后续恢复时误续传。StopTaskTrees 只停内存中的运行实例，DB 中的任务须在此显式清理
 	if len(taskIds) > 0 {
 		updates := make(map[int64]sql.NullInt64, len(taskIds))
 		for _, id := range taskIds {
@@ -645,15 +707,15 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 	return nil
 }
 
-// RetryTaskTree 重试任务树(保留各任务已记录的执行模式:重试=按原模式再来一次)
-func (m *Manager) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) error {
-	logger.Log.Infof("[TaskManager] 重试任务树: taskId=%d", taskId)
+// RetryTaskTrees 批量重试任务(保留各任务已记录的执行模式:重试=按原模式再来一次)
+func (m *Manager) RetryTaskTrees(ctx context.Context, taskIds []int64) error {
+	logger.Log.Infof("[TaskManager] 批量重试任务: taskIds=%v", taskIds)
 	// 不重置 DB 状态，Finished/Failed/Created 子任务均会重新执行
-	return m.startTaskTrees(ctx, []int64{taskId}, nil)
+	return m.startTaskTrees(ctx, taskIds, nil)
 }
 
-// GetTaskTreeState 获取任务树状态
-func (m *Manager) GetTaskTreeState(taskId int64, isLeaf bool) (TaskState, error) {
+// GetTaskTreeState 获取任务状态:父任务返回聚合状态、叶子/独立任务返回自身状态
+func (m *Manager) GetTaskTreeState(taskId int64) (TaskState, error) {
 	targets, parent, ok := m.resolveTargets(taskId)
 	if !ok {
 		return TaskStateCreated, ErrTaskTreeNotFound
@@ -662,7 +724,7 @@ func (m *Manager) GetTaskTreeState(taskId int64, isLeaf bool) (TaskState, error)
 		// 父任务树:返回聚合的父任务状态
 		return parent.GetState(), nil
 	}
-	// 独立任务:返回自身状态
+	// 叶子/独立任务:返回自身状态
 	return targets[0].GetState(), nil
 }
 
@@ -776,6 +838,8 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 	waitingIds := make([]int64, 0, len(m.waitingForInputMap))
 	for id, t := range m.waitingForInputMap {
 		waitingIds = append(waitingIds, id)
+		// 关闭时未确认的任务视为本次跳过(skipped),回退 Created 使父聚合判定一致
+		t.skipped = true
 		t.setState(TaskStateCreated)
 	}
 	m.waitingForInputMap = make(map[int64]*ManagedTask)
@@ -944,6 +1008,10 @@ func (m *Manager) cleanupStoppedTree(parentId int64, parent *ParentTask) {
 		if _, exists := m.taskMap[child.taskId]; exists {
 			removeIds = append(removeIds, child.taskId)
 			delete(m.taskMap, child.taskId)
+			// 未首次 dispatch 的兄弟 actor 空转阻塞 cmdCh,须 cancel 退出避免 goroutine 泄漏
+			if !child.actorStarted.Load() {
+				child.cancel()
+			}
 		}
 	}
 
@@ -986,14 +1054,14 @@ func classifyTaskUnit(t *domain.Task) taskUnitKind {
 	return unitStandalone
 }
 
-// resolveTargets 解析控制操作(Pause/Stop/Resume)的目标子任务集合,兼容父任务树与独立任务。
-// 返回目标切片、所属父任务(独立任务为 nil)、是否命中。父任务/叶子返回其父树的全部子任务
-// (暂停/停止任一叶子即操作整棵树);独立任务返回自身。单次 RLock 读取,返回的对象指针在锁外
-// 迭代安全(对象自身线程安全:GetState/postCmd 各有同步)。isLeaf 形参不再使用——目标据内存状态派生。
+// resolveTargets 解析控制操作(Pause/Stop/Resume)的目标子任务集合。
+// 返回目标切片、所属父任务(独立任务与叶子为 nil)、是否命中。父任务返回其全部子任务(整树操作);
+// 叶子返回自身(操作叶子只作用于该叶子,不扩散兄弟);独立任务返回自身。单次 RLock 读取,返回的对象指针
+// 在锁外迭代安全(对象自身线程安全:GetState/postCmd 各有同步)。目标范围据内存状态派生,无需 isLeaf。
 func (m *Manager) resolveTargets(taskId int64) (targets []*ManagedTask, parent *ParentTask, ok bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	// 父任务本身:返回其全部子任务
+	// 父任务本身:返回其全部子任务(整树操作)
 	if p, hit := m.parentMap[taskId]; hit {
 		return p.GetChildren(), p, true
 	}
@@ -1002,14 +1070,8 @@ func (m *Manager) resolveTargets(taskId int64) (targets []*ManagedTask, parent *
 	if !hit {
 		return nil, nil, false
 	}
-	if mt.parentId == 0 {
-		return []*ManagedTask{mt}, nil, true // 独立任务:无父,目标为自身
-	}
-	// 叶子:返回其父树的全部子任务
-	if p, hit := m.parentMap[mt.parentId]; hit {
-		return p.GetChildren(), p, true
-	}
-	return nil, nil, false
+	// 叶子(parentId>0)与独立任务(parentId==0)均返回自身;parent=nil 使 Stop 不触发整树 cleanup
+	return []*ManagedTask{mt}, nil, true
 }
 
 // GetTaskStates 获取所有内存中任务的当前状态快照

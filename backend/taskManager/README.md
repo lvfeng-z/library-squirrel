@@ -12,16 +12,25 @@
 
 | 方法 | 作用 |
 | --- | --- |
-| `StartTaskTree(taskId, isLeaf)` | 启动任务树（isLeaf=true 时仅启动叶子节点） |
-| `PauseTaskTree` / `ResumeTaskTree` | 暂停 / 恢复任务树 |
-| `StopTaskTree` | 停止任务树 |
-| `RetryTaskTree` | 重试任务树 |
+| `StartTaskTrees(taskIds)` | 批量启动任务（全量执行） |
+| `PauseTaskTrees` / `ResumeTaskTrees` | 批量暂停 / 恢复任务 |
+| `StopTaskTrees` | 批量停止任务 |
+| `RetryTaskTrees` | 批量重试任务（保留各任务已记录的执行模式） |
 | `Redownload(taskIds, storeRoles, includeWorkInfo)` | 板块重执行（资源 store_type 集合 + 是否含作品元数据；空资源集 + 不含元数据 = 全集） |
 | `GetTaskState(taskId)` | 查询单任务状态（综合内存 + 数据库） |
-| `GetTaskTreeState(taskId, isLeaf)` | 查询任务树聚合状态 |
+| `GetTaskTreeState(taskId)` | 查询任务状态：父任务返回聚合状态、叶子/独立任务返回自身状态 |
 | `GetTaskSnapshot()` | 获取所有活跃任务的完整状态快照 |
 | `IsIdle()` | 是否空闲（无运行中任务） |
 | `ConfirmReplace` / `ConfirmReplaceBatch` | 用户确认重复作品的替换 / 跳过 |
+
+## 控制语义
+
+- **操作范围按对象类型**：操作**父任务**→作用于整棵树（全部子任务）；操作**叶子/独立任务**→仅作用于自身，不扩散兄弟。前端单行操作传 `[id]`、批量操作传多 id，统一走批量接口。
+- **整树加载**：任务运行时整棵树加载到内存（`ParentTask.children` 含全部子任务，含未启动的兄弟），供父状态聚合与完成判定，避免「整树/非整树」分支。
+- **单独 Start 叶子**：`processParentUnit` 的 `leafSet` 参数控制——整树仍加载到 children，但只 dispatch 被请求的叶子，其余兄弟保持 Created 未 dispatch。
+- **未启动兄弟守卫**：Pause/Stop/Resume 对 `!actorStarted && Created` 的兄弟（整树加载驻留但未 dispatch）跳过不投命令（避免误推 Paused/Failed）；`cleanupStoppedTree` 对这些兄弟 `cancel()` 退出 actor 防泄漏。
+- **跳过解耦**：用户在 `ConfirmReplace` 选跳过的子任务置 `skipped` 标志（内存态、不持久化、仅本次 Start/Retry 执行有效，Resume 不读），`AllChildrenTerminal` 据此视为终态让父正常清理——不再把 Created 当终态（避免误伤未启动兄弟）。崩溃重启当作未跳过重新执行。
+- **静默跳过**：Pause/Stop/Resume 对不在内存的 taskId（`!ok`）静默跳过 return nil（控制操作幂等）。
 
 ## 核心概念
 
@@ -40,6 +49,6 @@
 
 - **内存 + 数据库双轨状态**：运行态以内存为准（`GetTaskSnapshot` / `IsIdle`），查询态综合两者（`GetTaskState`）。
 - **per-task actor 模型**：每个 `ManagedTask` 持一条常驻 goroutine(`actorLoop`) + 命令通道(`cmdCh`),任务级可变状态只在 actor goroutine 内修改。外部操作(`Pause`/`Resume`/`Stop`/`ConfirmReplace`/`dispatch`)退化为向 `cmdCh` 非阻塞投递命令(`postCmd`,投递路径不持 `m.mu` 防死锁),actor 串行处理(`handleRunCmd`/`handlePauseCmd`/`handleStopCmd`)。命令队列天然记忆(无丢失唤醒)且保证时序——pause 排在 resume 之后最终生效,从结构上消除滞后 goroutine 按陈旧标志重派发。创建层 `claimTask`/`claimParent`(`m.mu` 下 insert-or-get)保证同一 taskId 只有一个对象;`actorStarted` CAS 保证一任务一 actor。长任务(downloadLoop)执行期间 `cmdWatcher` 并发监听 `cmdCh`,收到 pause/stop 立即 `runCancel` 中断在途(经项一的 reader 响应 ctx 传到 copyLoop);`runCtx.Done` 统一中断 copyLoop(B 阶段已删 `pauseCh` 双轨)。
-- **执行入口与信号量**:`startTaskTrees`(开始/重试/板块重执行)与 `resumeTaskTrees`(恢复)从 DB 加载任务树后调 `dispatch`;`ResumeTaskTree`(内存内恢复)与 `ConfirmReplace` 直接 `postCmd`。`dispatch` 是首启入口(`actorStarted` CAS + 投 `cmdStart`/`cmdResume`)。信号量槽位获取移入 actor 内部(`handleRunCmd` 中 `select semaphore`,取不到则 `enqueueSelf` 入 `waitingQueue`);槽位释放后 `dispatchFromQueue` 向队首投 `cmdResume` 唤醒。`PauseTaskTree`/`StopTaskTree` 对子任务并行投命令(各 actor 独立处理,Stop 带 ack 等待终态后 `cleanupStoppedTree`)。`Redownload` 先持久化板块选择到 task 再调 `startTaskTrees`。
+- **执行入口与信号量**:`startTaskTrees`(开始/重试/板块重执行)与 `resumeTaskTrees`(恢复)从 DB 加载任务树后调 `dispatch`;`ResumeTaskTrees`(批量恢复:内存命中直接 postCmd,未命中收集走 `resumeTaskTrees` 从 DB 加载)与 `ConfirmReplace` 直接 `postCmd`。`dispatch` 是首启入口(`actorStarted` CAS + 投 `cmdStart`/`cmdResume`)。信号量槽位获取移入 actor 内部(`handleRunCmd` 中 `select semaphore`,取不到则 `enqueueSelf` 入 `waitingQueue`);槽位释放后 `dispatchFromQueue` 向队首投 `cmdResume` 唤醒。`PauseTaskTrees`/`StopTaskTrees` 批量循环 `resolveTargets` 后对目标并行投命令(各 actor 独立处理,Stop 带 ack 等待终态后对去重 parent `cleanupStoppedTree`)。`Redownload` 先持久化板块选择到 task 再调 `startTaskTrees`。
 - **依赖全部接口注入**：插件执行器、仓储、进度推送器均通过构造函数注入，`Manager` 不直接持有具体 Service。
 - **store 处理范围限定在插件本次声明的板块**：任务执行（首次下载/重试/Redownload/重启续传）全程只动插件 Start/Resume 返回的 StoreSpec 对应板块——挂载删旧走 `DeleteByResourceIdAndTypes(store_type IN 本次 specs 的 role)`（`mountResourceStores`）、板块选择走 `filterSpecsByRoles`（按 storeRoles 过滤插件 specs）、重启续传 `resumeFromPersistedState` 读全集但已 Complete 者进 `completedRoles` 跳过。`videoMain`（分离流场景由用户「合并」操作挂载、不来自插件 specs 时）对任务流程透明：不被删/覆盖/失效，重下源轨道后旧 videoMain 去留由用户决定；本地导入插件可直接声明 videoMain（来自插件 specs，任务正常处理）。勿新增"重下/重置时清空该 Resource 全部 store"之类逻辑。

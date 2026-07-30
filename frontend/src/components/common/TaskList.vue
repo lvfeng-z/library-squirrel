@@ -5,18 +5,17 @@ import TaskOperationBarActive from './TaskOperationBarActiveV1.vue'
 import AutoLoadSelect from './AutoLoadSelect.vue'
 import { onUnmounted, Ref, ref, toRaw, watch } from 'vue'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
-import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import { taskStatusToKey } from '@renderer/constants/StatusRegistry'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
-import { taskApi, siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
+import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
+import { useTaskOperations } from '@renderer/composables/useTaskOperations'
 import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task/models'
 import { SortOrder } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
-import { ElMessage } from 'element-plus'
 import lodash from 'lodash'
 
 // props
@@ -47,6 +46,7 @@ const page = defineModel<Page<TaskProgressTreeDTO>>('page', { required: true })
 // 事件：仅「查看」操作上抛调用方（主页打开 TaskDialog、dialog 下钻到子任务）
 const emits = defineEmits<{
   (e: 'view', row: TaskProgressTreeDTO): void
+  (e: 'selectionChange', rows: TaskProgressTreeDTO[]): void
 }>()
 
 // 暴露：供调用方在打开/下钻/删除后触发重新查询
@@ -110,14 +110,6 @@ function getStatus(row: TaskProgressTreeDTO): number {
 function getStatusKey(row: TaskProgressTreeDTO): string {
   return taskStatusToKey(getStatus(row))
 }
-function getRowTaskId(row: TaskProgressTreeDTO): number {
-  return Number(row?.taskProgress?.task?.id ?? 0)
-}
-// 是否叶子任务（无子任务且 pid 非空非 0）
-function isLeafTask(row: TaskProgressTreeDTO): boolean {
-  const task = row.taskProgress?.task
-  return !(row.hasChildren || isNullish(task?.pid) || task!.pid! === 0)
-}
 // 行样式：父任务加粗、子任务首列缩进
 function rowClassName(rowData: { row: unknown; rowIndex: number }) {
   const row = rowData.row as TaskProgressTreeDTO
@@ -127,70 +119,12 @@ function rowClassName(rowData: { row: unknown; rowIndex: number }) {
   }
   return 'task-list-child-row'
 }
-// 启动或重试任务
-async function startTask(row: TaskProgressTreeDTO, retry: boolean): Promise<boolean> {
-  const apiCall = retry ? taskApi.taskRetryTree : taskApi.taskStartTree
-  try {
-    const response = await apiCall(getRowTaskId(row), isLeafTask(row))
-    return isNullish(response?.success) ? false : response.success
-  } catch (e) {
-    console.log('启动任务失败', e)
-    return false
-  }
-}
-// 终态板块单独重执行
-async function redownloadSections(row: TaskProgressTreeDTO, storeRoles: string[], includeWorkInfo: boolean): Promise<void> {
-  try {
-    await taskApi.taskRedownload([getRowTaskId(row)], storeRoles, includeWorkInfo)
-  } catch (e: any) {
-    ElMessage.error(`重新下载板块失败：${e.message}`)
-  }
-}
-// 删除任务后重新查询
-async function deleteTask(id: number) {
-  try {
-    await taskApi.taskDelete(id)
-    await doSearch()
-  } catch (e: any) {
-    ElMessage.error(e.message)
-  }
-}
-// 操作栏分发：「查看」上抛，其余调用对应接口
-async function handleOperationButtonClicked(
-  row: TaskProgressTreeDTO,
-  code: TaskOperationCodeEnum,
-  storeRoles?: string[],
-  includeWorkInfo?: boolean
-) {
-  switch (code) {
-    case TaskOperationCodeEnum.VIEW:
-      emits('view', row)
-      break
-    case TaskOperationCodeEnum.START:
-      await startTask(row, false)
-      break
-    case TaskOperationCodeEnum.PAUSE:
-      await taskApi.taskPauseTree(getRowTaskId(row), isLeafTask(row))
-      break
-    case TaskOperationCodeEnum.RESUME:
-      await taskApi.taskResumeTree(getRowTaskId(row), isLeafTask(row))
-      break
-    case TaskOperationCodeEnum.RETRY:
-      await startTask(row, true)
-      break
-    case TaskOperationCodeEnum.REDOWNLOAD:
-      await redownloadSections(row, storeRoles ?? [], includeWorkInfo ?? false)
-      break
-    case TaskOperationCodeEnum.CANCEL:
-      taskApi.taskStopTree(getRowTaskId(row), isLeafTask(row))
-      break
-    case TaskOperationCodeEnum.DELETE:
-      await deleteTask(getRowTaskId(row))
-      break
-    default:
-      break
-  }
-}
+// 操作栏分发：「查看」上抛调用方，删除后刷新列表（其余操作由 useTaskOperations 处理）
+const { buildOperationHandler } = useTaskOperations()
+const handleOperationButtonClicked = buildOperationHandler({
+  onView: (row: TaskProgressTreeDTO) => emits('view', row),
+  onDeleted: () => doSearch()
+})
 
 // 监听子任务 store：把实时 status/total/finished 同步到当前数据树对应行
 const unwatchTaskStore = watch(
@@ -259,6 +193,7 @@ onUnmounted(() => {
     :tree-data="treeData"
     :page-sizes="pageSizes"
     @sort-change="doSearch"
+    @selection-change="(rows: TaskProgressTreeDTO[]) => emits('selectionChange', rows)"
   >
     <template #toolbarMain>
       <el-row class="task-list-search-bar">

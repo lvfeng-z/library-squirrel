@@ -53,8 +53,8 @@ export async function taskUpdate(task: TaskDTO): Promise<ApiResult<void>> {
   return requireResponse(await TaskHandler.Update(task), '更新任务', false)
 }
 
-export async function taskDelete(taskId: number): Promise<ApiResult<void>> {
-  return requireResponse(await TaskHandler.DeleteTask([taskId]), '删除任务', false)
+export async function taskDelete(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskHandler.DeleteTask(taskIds), '删除任务', false)
 }
 
 export async function taskRefreshStatus(id: number): Promise<ApiResult<number>> {
@@ -79,24 +79,24 @@ export async function taskCreateByUrl(url: string): Promise<ApiResult<CreateTask
 
 // ========== TaskManager 操作 ==========
 
-export async function taskStartTree(taskId: number, isLeaf: boolean): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.StartTaskTree(taskId, isLeaf), '启动任务', false)
+export async function taskStartTrees(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.StartTaskTrees(taskIds), '启动任务', false)
 }
 
-export async function taskPauseTree(taskId: number, isLeaf: boolean): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.PauseTaskTree(taskId, isLeaf), '暂停任务', false)
+export async function taskPauseTrees(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.PauseTaskTrees(taskIds), '暂停任务', false)
 }
 
-export async function taskResumeTree(taskId: number, isLeaf: boolean): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.ResumeTaskTree(taskId, isLeaf), '恢复任务', false)
+export async function taskResumeTrees(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.ResumeTaskTrees(taskIds), '恢复任务', false)
 }
 
-export async function taskStopTree(taskId: number, isLeaf: boolean): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.StopTaskTree(taskId, isLeaf), '停止任务', false)
+export async function taskStopTrees(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.StopTaskTrees(taskIds), '停止任务', false)
 }
 
-export async function taskRetryTree(taskId: number, isLeaf: boolean): Promise<ApiResult<void>> {
-  return requireResponse(await TaskManagerHandler.RetryTaskTree(taskId, isLeaf), '重试任务', false)
+export async function taskRetryTrees(taskIds: number[]): Promise<ApiResult<void>> {
+  return requireResponse(await TaskManagerHandler.RetryTaskTrees(taskIds), '重试任务', false)
 }
 
 // ========== 作品板块重执行（多选） ==========

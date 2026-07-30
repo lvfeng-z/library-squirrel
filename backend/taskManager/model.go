@@ -374,6 +374,8 @@ type ManagedTask struct {
 	isReplace        bool
 	// 跳过重复检查（替换确认后的第二次 run）
 	skipDuplicateCheck bool
+	// 用户在 ConfirmReplace 选择跳过：本会话视为终态参与父聚合（AllChildrenTerminal），不持久化、崩溃重启当作未跳过；仅对本次 Start/Retry 执行有效，Resume 不读
+	skipped bool
 	// 跨重启续传标记（从数据库恢复的暂停任务）
 	resumeFromDB bool
 	// 已有作品 ID（第一次 run 检测到重复时设置，第二次 run 时用于备份）
@@ -509,6 +511,8 @@ func isTerminalState(s TaskState) bool {
 func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 	// cmdConfirmReplace skip:不取槽位,直接清理 + cancel actor 主 ctx(actorLoop 退出)
 	if cmd.kind == cmdConfirmReplace && cmd.skip {
+		// 先置 skipped(供随后 cleanupFinishedTask→AllChildrenTerminal 视为终态),再回执行前状态与清理
+		m.skipped = true
 		m.setState(TaskState(m.task.Status))
 		m.manager.cleanupFinishedTask(m)
 		m.cancel()
@@ -2114,14 +2118,16 @@ func (p *ParentTask) GetState() TaskState {
 	return TaskState(p.state.Load())
 }
 
-// AllChildrenTerminal 检查所有子任务是否都已进入终态
-// 包含 Created 状态：任务被跳过时回退到 Created，此时任务已无需继续执行，应视为终态
+// AllChildrenTerminal 检查所有子任务是否都已进入终态（含显式跳过）
+// 终态 = Finished/Failed/PartlyFinished（isTerminalState）或被用户跳过（skipped 标志）。
+// 不再把 Created 当终态：未启动的 Created 兄弟需保留父任务运行态，跳过改由 skipped 显式表达。
 func (p *ParentTask) AllChildrenTerminal() bool {
 	for _, child := range p.GetChildren() {
 		s := child.GetState()
-		if s != TaskStateFinished && s != TaskStateFailed && s != TaskStateCreated {
-			return false
+		if isTerminalState(s) || child.skipped {
+			continue
 		}
+		return false
 	}
 	return true
 }

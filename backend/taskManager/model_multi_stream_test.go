@@ -744,8 +744,8 @@ func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 	mgr.parentMap[254] = parent
 	mgr.mu.Unlock()
 
-	if err := mgr.PauseTaskTree(context.Background(), 254, false); err != nil {
-		t.Fatalf("PauseTaskTree 失败: %v", err)
+	if err := mgr.PauseTaskTrees(context.Background(), []int64{254}); err != nil {
+		t.Fatalf("PauseTaskTrees 失败: %v", err)
 	}
 
 	// cmdPause 应被投递到 child.cmdCh(不启动 actor,直接读 channel)

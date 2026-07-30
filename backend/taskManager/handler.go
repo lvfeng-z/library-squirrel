@@ -16,34 +16,34 @@ func NewHandler(mgr *Manager) *Handler {
 	return &Handler{mgr: mgr}
 }
 
-// StartTaskTree 启动任务树
-func (h *Handler) StartTaskTree(ctx context.Context, taskId int64, isLeaf bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.StartTaskTree(ctx, taskId, isLeaf))
+// StartTaskTrees 批量启动任务
+func (h *Handler) StartTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.StartTaskTrees(ctx, taskIds))
 }
 
-// PauseTaskTree 暂停任务树
-func (h *Handler) PauseTaskTree(ctx context.Context, taskId int64, isLeaf bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.PauseTaskTree(ctx, taskId, isLeaf))
+// PauseTaskTrees 批量暂停任务
+func (h *Handler) PauseTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.PauseTaskTrees(ctx, taskIds))
 }
 
-// ResumeTaskTree 恢复任务树
-func (h *Handler) ResumeTaskTree(ctx context.Context, taskId int64, isLeaf bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.ResumeTaskTree(ctx, taskId, isLeaf))
+// ResumeTaskTrees 批量恢复任务
+func (h *Handler) ResumeTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.ResumeTaskTrees(ctx, taskIds))
 }
 
-// StopTaskTree 停止任务树
-func (h *Handler) StopTaskTree(ctx context.Context, taskId int64, isLeaf bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.StopTaskTree(ctx, taskId, isLeaf))
+// StopTaskTrees 批量停止任务
+func (h *Handler) StopTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.StopTaskTrees(ctx, taskIds))
 }
 
-// RetryTaskTree 重试任务树
-func (h *Handler) RetryTaskTree(ctx context.Context, taskId int64, isLeaf bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.RetryTaskTree(ctx, taskId, isLeaf))
+// RetryTaskTrees 批量重试任务
+func (h *Handler) RetryTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.mgr.RetryTaskTrees(ctx, taskIds))
 }
 
-// GetTaskTreeState 获取任务树状态
-func (h *Handler) GetTaskTreeState(taskId int64, isLeaf bool) *model.ApiResponse[int] {
-	state, err := h.mgr.GetTaskTreeState(taskId, isLeaf)
+// GetTaskTreeState 获取任务状态:父任务返回聚合状态、叶子/独立返回自身状态
+func (h *Handler) GetTaskTreeState(taskId int64) *model.ApiResponse[int] {
+	state, err := h.mgr.GetTaskTreeState(taskId)
 	if err != nil {
 		return model.HandleError[int](err)
 	}
