@@ -28,6 +28,7 @@
 - **操作范围按对象类型**：操作**父任务**→作用于整棵树（全部子任务）；操作**叶子/独立任务**→仅作用于自身，不扩散兄弟。前端单行操作传 `[id]`、批量操作传多 id，统一走批量接口。
 - **整树加载**：任务运行时整棵树加载到内存（`ParentTask.children` 含全部子任务，含未启动的兄弟），供父状态聚合与完成判定，避免「整树/非整树」分支。
 - **单独 Start 叶子**：`processParentUnit` 的 `leafSet` 参数控制——整树仍加载到 children，但只 dispatch 被请求的叶子，其余兄弟保持 Created 未 dispatch。
+- **运行中父单元重纳终态子任务**：父任务运行中对终态（Finished/Failed）子任务发起开始/重试/恢复时，`processParentUnit` 检测到父单元已 claim（`claimParent` 输者），复用已有父单元、经 `reinjectLeaves` 把终态子任务重建（旧对象 actor 已退出）并重新 dispatch，而非静默跳过；执行模式记录（recordMode）只写实际纳入调度的任务，不波及运行中兄弟。非终态子任务不纳入——Paused 的恢复走 `ResumeTaskTrees`→`resolveTargets` 内存路径，本不经此。
 - **未启动兄弟守卫**：Pause/Stop/Resume 对 `!actorStarted && Created` 的兄弟（整树加载驻留但未 dispatch）跳过不投命令（避免误推 Paused/Failed）；`cleanupStoppedTree` 对这些兄弟 `cancel()` 退出 actor 防泄漏。
 - **跳过解耦**：用户在 `ConfirmReplace` 选跳过的子任务置 `skipped` 标志（内存态、不持久化、仅本次 Start/Retry 执行有效，Resume 不读），`AllChildrenTerminal` 据此视为终态让父正常清理——不再把 Created 当终态（避免误伤未启动兄弟）。崩溃重启当作未跳过重新执行。
 - **静默跳过**：Pause/Stop/Resume 对不在内存的 taskId（`!ok`）静默跳过 return nil（控制操作幂等）。

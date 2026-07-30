@@ -153,27 +153,23 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		return ErrTaskTreeNotFound
 	}
 
-	// recordMode 非 nil(开始/重下):把执行模式记录到任务树全部成员(父+子)。
-	// 每个任务都持有自己的模式,供 runModeFromTask 派生执行,以及用户单独续传某子任务时读取。
+	// recordMode 非 nil(开始/重下):为各任务设置执行模式内存字段,供 runModeFromTask 派生执行。
 	// 开始(StartTaskTree)记录空 selection(派生时回退 universe)+workInfo=true;重下(Redownload)记录用户所选子集。
+	// 持久化推迟到确定调度范围后按"实际纳入调度的任务"写入(决策1·B):整树 Start 写全部子任务,
+	// 运行中父单元重纳(reinject)只写请求的终态叶子,不波及未被纳入的运行中兄弟。
+	var modeStoreRoles sql.NullString
 	if recordMode != nil {
 		// Start(runModeFull,storeRoles=nil)→重置 StoreRoles 为 NULL,执行期由 universe 派生(支持默认插件下全量)
 		// Redownload(storeRoles 非 nil,可空)→记录所选;空=仅作品信息(不拉资源)
-		var storeRolesVal sql.NullString
 		if recordMode.storeRoles == nil {
-			storeRolesVal = sql.NullString{Valid: false}
+			modeStoreRoles = sql.NullString{Valid: false}
 		} else {
-			storeRolesVal = sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
+			modeStoreRoles = sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
 		}
-		ids := make([]int64, 0, len(tasks))
+		// 内存字段对全部 tasks 设置:被构建的任务据此派生 runMode,未被构建的任务(如 reinject 跳过的兄弟)不被读取、无害
 		for _, t := range tasks {
-			t.StoreRoles = storeRolesVal
+			t.StoreRoles = modeStoreRoles
 			t.IncludeWorkInfo = recordMode.workInfo
-			ids = append(ids, t.ID)
-		}
-		if err := m.repo.UpdateRedownloadSections(ctx, ids, storeRolesVal, recordMode.workInfo); err != nil {
-			logger.Log.Errorf("loadAndStartTaskTrees: 记录执行模式失败: %v", err)
-			// 不阻断:runMode 已按内存记录值派生
 		}
 	}
 
@@ -210,17 +206,20 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 			unitId = taskId
 		}
 
-		// 重复执行保护:实时检查(创建层 claim 保证并发安全,此处仅优化:跳过已加载单元避免重复查重)
-		if m.isUnitLoaded(unitId, kind == unitStandalone) {
-			logger.Log.Infof("loadAndStartTaskTrees: 单元 %d 已在运行，跳过", unitId)
-			continue
-		}
-		// unitLeaf 先累积到所属父单元的叶子集合(在 processedUnits 去重前,保证同父多叶子都记录)
+		// unitLeaf 先累积到所属父单元的叶子集合(须在单元去重与 loaded 跳过之前,保证同父多叶子都记录、
+		// 且父已 loaded 时仍累积,供 processParentUnit 重新纳入)
 		if kind == unitLeaf {
 			if leafIdsPerParent[unitId] == nil {
 				leafIdsPerParent[unitId] = make(map[int64]struct{})
 			}
 			leafIdsPerParent[unitId][taskId] = struct{}{}
+		}
+		// 重复执行保护:独立/父单元已 loaded 则跳过整树重复加载;unitLeaf 不跳过——
+		// 其父已 loaded 时由 processParentUnit 的 !created 分支重新纳入终态叶子(运行中父单元重纳)。
+		// 创建层 claimTask/claimParent 保证并发安全,此处 isUnitLoaded 仅作快路径优化。
+		if kind != unitLeaf && m.isUnitLoaded(unitId, kind == unitStandalone) {
+			logger.Log.Infof("loadAndStartTaskTrees: 单元 %d 已在运行，跳过", unitId)
+			continue
 		}
 		// 同单元去重
 		if _, processed := processedUnits[unitId]; processed {
@@ -252,7 +251,21 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, leafIdsPerParent[parentId])...)
 	}
 
-	// 5. 共享一次批量预检重复 + 分发（受信号量控制）
+	// 5. recordMode 持久化:按实际纳入调度的任务范围写入(决策1·B)。整树 Start 时 allToCheck 含全部子任务;
+	// 运行中父单元重纳(reinject)时 allToCheck 仅含请求的终态叶子,不波及未被纳入的运行中兄弟。
+	// allToCheck 含等待确认(WaitingForInput)的任务,其模式亦需持久化。
+	if recordMode != nil && len(allToCheck) > 0 {
+		ids := make([]int64, 0, len(allToCheck))
+		for _, child := range allToCheck {
+			ids = append(ids, child.taskId)
+		}
+		if err := m.repo.UpdateRedownloadSections(ctx, ids, modeStoreRoles, recordMode.workInfo); err != nil {
+			logger.Log.Errorf("loadAndStartTaskTrees: 记录执行模式失败: %v", err)
+			// 不阻断:runMode 已按内存记录值派生
+		}
+	}
+
+	// 6. 共享一次批量预检重复 + 分发（受信号量控制）
 	if len(allToCheck) > 0 {
 		toDispatch := m.batchCheckDuplicates(ctx, allToCheck)
 		for _, child := range toDispatch {
@@ -273,10 +286,14 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		parentTaskName = parentEntity.TaskName.String
 	}
 
-	// 创建层 claim:赢家构建子任务,输者返回 nil(由赢家负责)
+	// 创建层 claim:赢家构建子任务;输者(父单元已在运行)复用 parentTask,把请求的终态叶子重新纳入
 	parentTask, created := m.claimParent(actualParentId, parentTaskName)
 	if !created {
-		return nil
+		// 父单元已在运行:整树 Start(leafSet 空)不重复加载;单独请求叶子(leafSet 非空)重纳终态叶子
+		if len(leafSet) == 0 {
+			return nil
+		}
+		return m.reinjectLeaves(parentTask, taskById, leafSet)
 	}
 
 	for _, t := range tasks {
@@ -313,6 +330,34 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		return toDispatch
 	}
 	return parentTask.GetChildren()
+}
+
+// reinjectLeaves 把请求的终态叶子重新纳入已运行的父单元(claimParent 输者路径)。
+// 仅纳入终态子任务(Finished/Failed,已从 taskMap 清理、actor 已退出):buildOrReuseChild 重建新对象,
+// AddChild 覆盖 children 中的旧终态对象,返回者统一交 batchCheckDuplicates + dispatch 重跑。
+// 非终态子任务(Paused/Processing/Waiting 等,仍在 taskMap)一律跳过:
+//  1. Paused 的恢复由 ResumeTaskTrees 经 resolveTargets 内存路径直接投 cmdResume,不经本路径;
+//  2. 把它们送入 batchCheckDuplicates 会因自身作品命中→误置 WaitingForInput,破坏运行中任务;
+//  3. 对 Processing/Waiting "开始"属幂等/语义模糊,跳过最安全。
+func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.Task, leafSet map[int64]struct{}) []*ManagedTask {
+	out := make([]*ManagedTask, 0, len(leafSet))
+	for leafId := range leafSet {
+		t := taskById[leafId]
+		if t == nil {
+			continue
+		}
+		if !isTerminalState(TaskState(t.Status)) {
+			continue // 非终态不纳入,理由见方法注释
+		}
+		// 终态已从 taskMap 清理→claimTask 重建新对象;skipTerminal=false 表示用户显式请求、不跳过
+		child, _ := m.buildOrReuseChild(t, false)
+		if child == nil {
+			continue
+		}
+		parent.AddChild(child) // 覆盖 children 中的旧终态对象(其 actor 已退出、无在途命令)
+		out = append(out, child)
+	}
+	return out
 }
 
 // buildOrReuseChild 构建子任务 ManagedTask(创建层 claim 保证对象唯一)。
