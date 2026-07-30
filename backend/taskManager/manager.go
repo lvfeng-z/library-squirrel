@@ -982,12 +982,6 @@ func (m *Manager) isUnitLoaded(unitId int64, isStandalone bool) bool {
 	return ok
 }
 
-func (m *Manager) removeTask(taskId int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.taskMap, taskId)
-}
-
 // cleanupFinishedTask 清理已终态的子任务，并检查父任务是否可清理
 func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 	// 收集需要从前端 Store 移除的任务 ID（包含当前任务）
@@ -1068,13 +1062,6 @@ func (m *Manager) cleanupStoppedTree(parentId int64, parent *ParentTask) {
 		m.deps.Pusher.PushTaskRemove(removeIds)
 	}
 	m.deps.Pusher.PushParentTaskRemove([]int64{parentId})
-}
-
-func (m *Manager) getTask(taskId int64) (*ManagedTask, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	managedTask, ok := m.taskMap[taskId]
-	return managedTask, ok
 }
 
 // taskUnitKind 任务单元类型:Start 加载层与控制操作(Pause/Stop/Resume)共用的分类语义
