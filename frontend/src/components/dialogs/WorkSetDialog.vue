@@ -2,9 +2,14 @@
 import {computed, ref, Ref, watch} from 'vue'
 import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
+import {isBlank} from '@renderer/utils/StringUtil.ts'
 import StaticHeightDialog from '@renderer/components/dialogs/StaticHeightDialog.vue'
 import WorkGridForWorkSet from '@renderer/components/common/WorkGridForWorkSet.vue'
 import WorkQueryView from '@renderer/components/common/WorkQueryView.vue'
+import WorkSetSelectPanel from '@renderer/components/common/WorkSetSelectPanel.vue'
+import TagBox from '@renderer/components/common/TagBox.vue'
+import AuthorInfo from '@renderer/components/common/AuthorInfo.vue'
+import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import {
   SearchCondition,
   SearchConditionQuery,
@@ -13,23 +18,26 @@ import {
   WorkFullDTO,
   WorkSearchOperator,
   WorkSetDTO,
-  WorkSetWithWorksResultDTO
+  WorkSetWithCoverDTO,
+  WorkSetWithWorksResultDTO,
+  RankedLocalAuthor,
+  RankedSiteAuthor
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
-import {ArrowLeft, Close, Delete, Edit, Picture, Plus} from '@element-plus/icons-vue'
+import {ArrowLeft, Close, Delete, Document, Download, Edit, Picture, Plus} from '@element-plus/icons-vue'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import lodash from 'lodash'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import {setSearchTagStatus} from '@renderer/utils/SearchTagColorUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
-import {workSetListWorkSetWithWorkByIds} from '@renderer/apis/http/wrappers/workSet'
+import {workSetListChildWorkSets, workSetListWorkSetWithWorkByIds, workSetAddChildWorkSet, workSetRemoveChildWorkSet, workSetMergeWorkSetInto, workSetUpdate} from '@renderer/apis/http/wrappers/workSet'
 import {
   reWorkWorkSetLinkBatchToWorkSet,
   reWorkWorkSetRemoveBatchFromWorkSet,
   reWorkWorkSetSetCover
 } from '@renderer/apis/http/wrappers/reWorkWorkSet'
-import {searchQuerySearchConditionPage, searchQueryWorkPage} from '@renderer/apis/http/wrappers/search'
+import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@renderer/apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // props
@@ -43,8 +51,8 @@ const state = defineModel<boolean>('state', { required: true })
 const currentWorkSetId = defineModel<number>('currentWorkSetId', { required: true })
 
 // 变量
-// 视图状态: 'manage' 管理模式, 'select' 选择作品模式
-const viewMode = ref<'manage' | 'select'>('manage')
+// 视图状态: 'manage' 管理模式, 'select' 选择作品模式, 'selectWorkSet' 选择子作品集模式
+const viewMode = ref<'manage' | 'select' | 'selectWorkSet'>('manage')
 // 是否启用选择模式
 const isCheckable = ref(false)
 // 选中的作品id列表
@@ -52,11 +60,17 @@ const checkedWorkIds = ref<number[]>([])
 // 接口
 const apis = {
   workSetListWorkSetWithWorkByIds,
+  workSetListChildWorkSets,
+  workSetAddChildWorkSet,
+  workSetRemoveChildWorkSet,
+  workSetMergeWorkSetInto,
+  workSetUpdate,
   reWorkWorkSetLinkBatchToWorkSet,
   reWorkWorkSetRemoveBatchFromWorkSet,
   reWorkWorkSetSetCover,
   searchQueryWorkPage,
-  searchQuerySearchConditionPage
+  searchQuerySearchConditionPage,
+  searchQueryWorkSetPage
 }
 // 当前作品集
 const currentWorkSet = ref<WorkSetDTO | null>(null)
@@ -71,9 +85,122 @@ const selectedWorkIdsForAdd = ref<number[]>([])
 const workQueryViewRef = ref()
 // 添加作品页面使用的搜索项类型
 const searchConditionType = ref<SearchType[]>()
+// 子作品集列表（当前作品集的直接子集，manage 模式展示）
+const childWorkSets = ref<WorkSetDTO[]>([])
+// 选择子作品集模式下勾选的作品集 id（要新增为子集）
+const selectedChildWorkSetIds = ref<number[]>([])
+// 物理纳入模式下勾选的源作品集 id
+const selectedMergeSourceIds = ref<number[]>([])
+// 当前作品集选择面板的用途：'addChild' 添加子集 / 'mergeSource' 物理纳入源
+const selectPurpose = ref<'addChild' | 'mergeSource'>('addChild')
+// 已是子集的作品集 id 集合（选择面板排除已加入 + 排除自身，防重复纳入）
+const existingChildWorkSetIds = ref<Set<number>>(new Set())
+// WorkSetSelectPanel 组件的 ref
+const workSetSelectPanelRef = ref()
+
+// 元数据 drawer 开关
+const workSetDrawerState = ref(false)
+// drawer 内编辑态：名称（nickName）与本地描述（description）
+const editNickName = ref('')
+const editDescription = ref('')
 
 // 计算属性：选择作品面板是否显示
 const isSelectPanelVisible = computed(() => viewMode.value === 'select')
+// 计算属性：选择子作品集面板是否显示（添加子集 / 物理纳入源共用）
+const isSelectWorkSetPanelVisible = computed(() => viewMode.value === 'selectWorkSet')
+// 计算属性：当前选择面板激活的选中 id 列表（按用途路由）
+const activeSelectedWorkSetIds = computed(() =>
+  selectPurpose.value === 'addChild' ? selectedChildWorkSetIds.value : selectedMergeSourceIds.value
+)
+// 计算属性：当前选择面板的确认按钮是否可用
+const isSelectWorkSetConfirmDisabled = computed(() => activeSelectedWorkSetIds.value.length === 0)
+
+// 元数据 drawer：所属站点（按 site.id 去重）
+const aggregatedSites = computed<SegmentedTagItem[]>(() => {
+  const seen = new Set<number>()
+  const items: SegmentedTagItem[] = []
+  for (const w of workList.value) {
+    const site = w.site
+    if (isNullish(site) || isNullish(site.id)) continue
+    if (seen.has(site.id)) continue
+    seen.add(site.id)
+    items.push(
+      new SegmentedTagItem({
+        value: site.id,
+        label: site.siteName ?? '?',
+        disabled: false
+      })
+    )
+  }
+  return items
+})
+
+// 元数据 drawer：作者聚合（localAuthors + siteAuthors 各按 id 去重，AuthorInfo 内部再做本地/站点代表去重）
+const aggregatedLocalAuthors = computed<RankedLocalAuthor[]>(() => {
+  const seen = new Set<number>()
+  const items: RankedLocalAuthor[] = []
+  for (const w of workList.value) {
+    for (const la of w.localAuthors ?? []) {
+      if (isNullish(la) || isNullish(la.author.id) || seen.has(la.author.id)) continue
+      seen.add(la.author.id)
+      items.push(la)
+    }
+  }
+  return items
+})
+const aggregatedSiteAuthors = computed<RankedSiteAuthor[]>(() => {
+  const seen = new Set<number>()
+  const items: RankedSiteAuthor[] = []
+  for (const w of workList.value) {
+    for (const sa of w.siteAuthors ?? []) {
+      if (isNullish(sa) || isNullish(sa.author.id) || seen.has(sa.author.id)) continue
+      seen.add(sa.author.id)
+      items.push(sa)
+    }
+  }
+  return items
+})
+
+// 元数据 drawer：本地标签（按 localTag.id 去重）
+const aggregatedLocalTags = computed<SegmentedTagItem[]>(() => {
+  const seen = new Set<number>()
+  const items: SegmentedTagItem[] = []
+  for (const w of workList.value) {
+    for (const lt of w.localTags ?? []) {
+      if (isNullish(lt) || isNullish(lt.id) || seen.has(lt.id)) continue
+      seen.add(lt.id)
+      items.push(
+        new SegmentedTagItem({
+          value: lt.id,
+          label: lt.localTagName ?? '?',
+          disabled: false
+        })
+      )
+    }
+  }
+  return items
+})
+
+// 元数据 drawer：站点标签（按 siteTag.id 去重，不读 siteTag.localTag 交叉）
+const aggregatedSiteTags = computed<SegmentedTagItem[]>(() => {
+  const seen = new Set<number>()
+  const items: SegmentedTagItem[] = []
+  for (const w of workList.value) {
+    for (const st of w.siteTags ?? []) {
+      if (isNullish(st) || isNullish(st.siteTag?.id) || seen.has(st.siteTag.id)) continue
+      seen.add(st.siteTag.id)
+      items.push(
+        new SegmentedTagItem({
+          value: st.siteTag.id,
+          label: st.siteTag.siteTagName ?? '?',
+          subLabels: [isBlank(st.site?.siteName) ? '?' : (st.site.siteName ?? '?')],
+          disabled: false
+        })
+      )
+    }
+  }
+  return items
+})
 
 // 方法
 async function loadWorkList() {
@@ -90,6 +217,21 @@ async function loadWorkList() {
       workList.value = (result.works ?? []).filter(notNullish) as WorkFullDTO[]
       currentWorkIndex.value = 0
     }
+  }
+  // 并行加载直接子作品集（层级管理展示用）
+  loadChildWorkSets()
+}
+
+// 加载当前作品集的直接子作品集
+async function loadChildWorkSets() {
+  if (isNullish(currentWorkSetId.value)) {
+    return
+  }
+  const response = await apis.workSetListChildWorkSets(currentWorkSetId.value)
+  if (ApiUtil.check(response)) {
+    const list = ApiUtil.data<(WorkSetDTO | null)[]>(response)
+    childWorkSets.value = (list ?? []).filter(notNullish) as WorkSetDTO[]
+    existingChildWorkSetIds.value = new Set(childWorkSets.value.map((ws) => ws.id))
   }
 }
 
@@ -243,7 +385,9 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
     if (isNullish(resultPage)) {
       return new Page<WorkCardItem>()
     }
-    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkFullDTO(origin))
+    // 后端返回 WorkFullDTO（id/nickName 嵌套在 .work 下），CardGrid/WorkInfo 期望 WorkCardItem（顶层字段），
+    // 需经 WorkCardItem 适配层转换，否则 getId 取不到 id（勾选失效）、WorkInfo 取不到 nickName（显示"?"）
+    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkCardItem(new WorkFullDTO(origin)))
     return resultPage as unknown as Page<WorkCardItem>
   }
   return new Page<WorkCardItem>()
@@ -253,6 +397,164 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
 function handleSelectCancel() {
   viewMode.value = 'manage'
   isSelectingWork.value = false
+}
+
+// 点击「添加子作品集」按钮，切换到选择子作品集模式（用途：addChild）
+function handleAddChildWorkSet() {
+  selectPurpose.value = 'addChild'
+  viewMode.value = 'selectWorkSet'
+  selectedChildWorkSetIds.value = []
+  workSetSelectPanelRef.value?.clearKeyword()
+  workSetSelectPanelRef.value?.queryWorkSets()
+}
+
+// 点击「物理纳入」按钮，切换到选择源作品集模式（用途：mergeSource）
+function handleMergeWorkSet() {
+  selectPurpose.value = 'mergeSource'
+  viewMode.value = 'selectWorkSet'
+  selectedMergeSourceIds.value = []
+  workSetSelectPanelRef.value?.clearKeyword()
+  workSetSelectPanelRef.value?.queryWorkSets()
+}
+
+// 选择子作品集面板的查询函数（排除自身；按用途排除已加入子集）
+async function fetchWorkSetPageForAdd(page: Page<WorkSetWithCoverDTO>, keyword?: string): Promise<Page<WorkSetWithCoverDTO>> {
+  const response = await apis.searchQueryWorkSetPage(
+    newPage<WorkSetWithCoverDTO>({ pageNumber: page.pageNumber, pageSize: page.pageSize, pageCount: page.pageCount }),
+    []
+  )
+  if (ApiUtil.check(response)) {
+    const resultPage = ApiUtil.data<Page<WorkSetWithCoverDTO>>(response)
+    if (isNullish(resultPage)) {
+      return new Page<WorkSetWithCoverDTO>()
+    }
+    // 前端过滤：排除自身、按用途排除已加入子集、按 keyword 名称过滤
+    const selfId = currentWorkSetId.value
+    resultPage.data = (resultPage.data ?? []).filter(notNullish).filter((ws) => {
+      const id = ws.workSet?.id
+      if (isNullish(id) || id === selfId) return false
+      // 添加子集模式排除已是子集（避免重复纳入）；物理纳入模式不排除（允许纳入已关联的作品集）
+      if (selectPurpose.value === 'addChild' && existingChildWorkSetIds.value.has(id)) return false
+      if (notNullish(keyword) && keyword.trim()) {
+        const name = (ws.workSet?.nickName ?? ws.workSet?.siteWorkSetName ?? '').toLowerCase()
+        if (!name.includes(keyword.trim().toLowerCase())) return false
+      }
+      return true
+    })
+    return resultPage
+  }
+  return new Page<WorkSetWithCoverDTO>()
+}
+
+// 选择子作品集面板选中变化（按用途路由到对应选中列表）
+function handleSelectWorkSetCheckedChange(ids: number[]) {
+  if (selectPurpose.value === 'addChild') {
+    selectedChildWorkSetIds.value = ids
+  } else {
+    selectedMergeSourceIds.value = ids
+  }
+}
+
+// 选择子作品集面板确定：按用途分流
+async function handleSelectWorkSetConfirm() {
+  if (selectPurpose.value === 'addChild') {
+    await doAddChildWorkSets()
+  } else {
+    await doMergeWorkSets()
+  }
+}
+
+// 执行添加子作品集（逐个建立父子关系，后端事务内防环路）
+async function doAddChildWorkSets() {
+  if (selectedChildWorkSetIds.value.length === 0) {
+    ElMessage({ type: 'warning', message: '请先选择要添加的子作品集' })
+    return
+  }
+  const parentId = currentWorkSetId.value
+  let successCount = 0
+  let cycleDetected = false
+  for (const childId of [...selectedChildWorkSetIds.value]) {
+    const response = await apis.workSetAddChildWorkSet(parentId, childId)
+    if (ApiUtil.check(response)) {
+      successCount++
+    } else {
+      // 环路错误（后端 ErrWorkSetCycleDetected 文案）单独提示，不中断后续
+      if ((response.msg ?? '').includes('环路')) {
+        cycleDetected = true
+      }
+    }
+  }
+  if (successCount > 0) {
+    ElMessage({ type: 'success', message: `成功添加 ${successCount} 个子作品集` })
+  }
+  if (cycleDetected) {
+    ElMessage({ type: 'warning', message: '部分作品集会形成环路，已跳过' })
+  }
+  await loadChildWorkSets()
+  await loadWorkList()
+  viewMode.value = 'manage'
+  selectedChildWorkSetIds.value = []
+}
+
+// 执行物理纳入（复制源及作品集的后代作品到当前作品集，静态快照、不可撤回）
+async function doMergeWorkSets() {
+  if (selectedMergeSourceIds.value.length === 0) {
+    ElMessage({ type: 'warning', message: '请先选择要导入的源作品集' })
+    return
+  }
+  const sources = [...selectedMergeSourceIds.value]
+  // 二次确认：物理纳入是静态快照，不记录来源、不可撤回
+  try {
+    await ElMessageBox.confirm(
+      `将把选中的 ${sources.length} 个作品集（及其子作品集）的作品复制到当前作品集。\n这是一份静态快照：之后源作品集变化不会同步，且无法一键撤回。确认导入？`,
+      '确认导入',
+      {
+        confirmButtonText: '确认导入',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch (error) {
+    // 用户取消
+    return
+  }
+  let successCount = 0
+  for (const sourceId of sources) {
+    const response = await apis.workSetMergeWorkSetInto(sourceId, currentWorkSetId.value)
+    if (ApiUtil.check(response)) {
+      successCount++
+    } else {
+      ElMessage({ type: 'error', message: `导入失败: ${response.msg || '未知错误'}` })
+    }
+  }
+  if (successCount > 0) {
+    ElMessage({ type: 'success', message: `成功导入 ${successCount} 个作品集的作品` })
+  }
+  await loadWorkList()
+  viewMode.value = 'manage'
+  selectedMergeSourceIds.value = []
+}
+
+// 移除子作品集（解除父子关系）
+async function handleRemoveChildWorkSet(childId: number) {
+  try {
+    await ElMessageBox.confirm('确定解除该子作品集关系吗？', '确认解除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    const response = await apis.workSetRemoveChildWorkSet(currentWorkSetId.value, childId)
+    if (ApiUtil.check(response)) {
+      ElMessage({ type: 'success', message: '已解除子作品集关系' })
+      await loadChildWorkSets()
+      await loadWorkList()
+    } else {
+      ElMessage({ type: 'error', message: `解除失败: ${response.msg || '未知错误'}` })
+    }
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage({ type: 'error', message: `解除失败: ${error}` })
+  }
 }
 
 // 点击选择面板的确定按钮
@@ -272,7 +574,8 @@ async function handleSelectConfirm() {
     )
 
     if (ApiUtil.check(response)) {
-      const addedCount = ApiUtil.data<number>(response)
+      // 后端 LinkBatchToWorkSet 为 void 语义（data=null），添加数量取本地选中数
+      const addedCount = selectedWorkIdsForAdd.value.length
       ElMessage({
         type: 'success',
         message: `成功添加 ${addedCount} 个作品到作品集`
@@ -312,7 +615,37 @@ function beforeDialogClose(done: (shouldCancel?: boolean) => void) {
   viewMode.value = 'manage'
   isCheckable.value = false
   checkedWorkIds.value = []
+  workSetDrawerState.value = false
   done()
+}
+
+// 打开元数据 drawer：用当前作品集的 nickName/description 初始化编辑态
+function openWorkSetDrawer() {
+  editNickName.value = currentWorkSet.value?.nickName ?? ''
+  editDescription.value = currentWorkSet.value?.description ?? ''
+  workSetDrawerState.value = true
+}
+
+// 保存作品集元数据（名称 + 本地描述），成功后重新加载作品列表
+async function handleSaveWorkSetMeta() {
+  if (isNullish(currentWorkSet.value)) return
+  const id = currentWorkSet.value.id
+  try {
+    const response = await apis.workSetUpdate({
+      id,
+      nickName: editNickName.value,
+      description: editDescription.value
+    })
+    if (ApiUtil.check(response)) {
+      ElMessage({ type: 'success', message: '保存成功' })
+      workSetDrawerState.value = false
+      await loadWorkList()
+    } else {
+      ElMessage({ type: 'error', message: `保存失败: ${response.msg || '未知错误'}` })
+    }
+  } catch (error) {
+    ElMessage({ type: 'error', message: `保存失败: ${error}` })
+  }
 }
 
 // watch
@@ -342,8 +675,16 @@ watch(isCheckable, (newValue) => {
         v-if="viewMode === 'manage'"
         class="work-set-header"
       >
-        <span>{{ currentWorkSet?.siteWorkSetName }}</span>
+        <span>{{ isBlank(currentWorkSet?.nickName) ? currentWorkSet?.siteWorkSetName : currentWorkSet?.nickName }}</span>
         <div v-if="!isCheckable">
+          <el-button
+            type="primary"
+            :plain="true"
+            @click="openWorkSetDrawer"
+          >
+            <el-icon><Document /></el-icon>
+            详情
+          </el-button>
           <el-button
             type="primary"
             :plain="true"
@@ -362,7 +703,7 @@ watch(isCheckable, (newValue) => {
             @click="handleAdd"
           >
             <el-icon><Plus /></el-icon>
-            添加
+            添加作品
           </el-button>
           <el-button
             type="danger"
@@ -380,6 +721,20 @@ watch(isCheckable, (newValue) => {
             <el-icon><Picture /></el-icon>
             设为封面
           </el-button>
+          <el-button
+              type="primary"
+              @click="handleAddChildWorkSet"
+          >
+            <el-icon><Plus /></el-icon>
+            添加子集
+          </el-button>
+          <el-button
+              type="primary"
+              @click="handleMergeWorkSet"
+          >
+            <el-icon><Download /></el-icon>
+            导入
+          </el-button>
           <el-button @click="isCheckable = false">
             <el-icon><Close /></el-icon>
             取消
@@ -387,7 +742,7 @@ watch(isCheckable, (newValue) => {
         </div>
       </div>
       <div
-        v-else
+        v-else-if="viewMode === 'select'"
         class="work-set-header"
       >
         <div class="work-set-header-back">
@@ -411,10 +766,35 @@ watch(isCheckable, (newValue) => {
           </el-button>
         </div>
       </div>
+      <div
+        v-else
+        class="work-set-header"
+      >
+        <div class="work-set-header-back">
+          <el-button @click="handleSelectCancel">
+            <el-icon><ArrowLeft /></el-icon>
+          </el-button>
+          <span>{{ selectPurpose === 'addChild' ? '添加子作品集' : '导入作品集' }}</span>
+        </div>
+        <div class="work-set-header-actions">
+          <el-button
+            type="primary"
+            :disabled="isSelectWorkSetConfirmDisabled"
+            @click="handleSelectWorkSetConfirm"
+          >
+            <el-icon><Plus /></el-icon>
+            {{ selectPurpose === 'addChild' ? '确定添加' : '确定导入' }}
+          </el-button>
+          <el-button @click="handleSelectCancel">
+            <el-icon><Close /></el-icon>
+            取消
+          </el-button>
+        </div>
+      </div>
     </template>
 
     <div class="work-set-dialog-main-container">
-      <div :class="{ 'work-set-main-left': true, 'main-left-visible': !isSelectPanelVisible }">
+      <div :class="{ 'work-set-main-left': true, 'main-left-visible': !isSelectPanelVisible && !isSelectWorkSetPanelVisible }">
         <el-scrollbar>
           <work-grid-for-work-set
             v-model:current-work-set-id="currentWorkSetId"
@@ -444,7 +824,88 @@ watch(isCheckable, (newValue) => {
           @checked-change="handleSelectWorkCheckedChange"
         />
       </div>
+
+      <!-- 选择子作品集面板（仿选择作品面板，滑入覆盖） -->
+      <div :class="{ 'work-set-select-panel': true, 'z-layer-2': true, 'select-panel-visible': isSelectWorkSetPanelVisible }">
+        <work-set-select-panel
+          ref="workSetSelectPanelRef"
+          :fetch-work-set-page="fetchWorkSetPageForAdd"
+          :checkable="true"
+          :checked-work-set-ids="activeSelectedWorkSetIds"
+          @checked-change="handleSelectWorkSetCheckedChange"
+        />
+      </div>
     </div>
+
+    <!-- 元数据 drawer：作品集完整元数据展示与编辑（名称/本地描述可编辑，其余只读聚合；子集 chips 迁入） -->
+    <el-drawer
+      v-model="workSetDrawerState"
+      size="40%"
+      :with-header="false"
+    >
+      <el-scrollbar class="work-set-drawer-scrollbar">
+        <el-descriptions
+          direction="horizontal"
+          :column="1"
+          border
+        >
+          <el-descriptions-item label="名称">
+            <el-input v-model="editNickName" placeholder="请输入作品集名称" />
+          </el-descriptions-item>
+          <el-descriptions-item label="本地描述">
+            <el-input
+              v-model="editDescription"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入本地描述（与站点简介分离，重新抓取不会被覆盖）"
+            />
+          </el-descriptions-item>
+          <el-descriptions-item label="站点简介">
+            <span>{{ isBlank(currentWorkSet?.siteWorkSetDescription) ? '无' : currentWorkSet?.siteWorkSetDescription }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="所属站点">
+            <tag-box :data="aggregatedSites" />
+          </el-descriptions-item>
+          <el-descriptions-item label="作者">
+            <author-info
+              :local-authors="aggregatedLocalAuthors"
+              :site-authors="aggregatedSiteAuthors"
+            />
+          </el-descriptions-item>
+          <el-descriptions-item label="本地标签">
+            <tag-box :data="aggregatedLocalTags" />
+          </el-descriptions-item>
+          <el-descriptions-item label="站点标签">
+            <tag-box :data="aggregatedSiteTags" />
+          </el-descriptions-item>
+          <el-descriptions-item label="子作品集">
+            <div
+              v-if="childWorkSets.length > 0"
+              class="work-set-drawer-children"
+            >
+              <el-tag
+                v-for="cws in childWorkSets"
+                :key="cws.id"
+                class="work-set-drawer-child-chip"
+                closable
+                @close="handleRemoveChildWorkSet(cws.id)"
+              >
+                {{ cws.nickName ?? cws.siteWorkSetName ?? '未命名' }}
+              </el-tag>
+            </div>
+            <span v-else class="work-set-drawer-empty">无</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <div class="work-set-drawer-footer">
+          <el-button
+            type="primary"
+            @click="handleSaveWorkSetMeta"
+          >
+            保存
+          </el-button>
+        </div>
+      </el-scrollbar>
+    </el-drawer>
   </static-height-dialog>
 </template>
 
@@ -505,5 +966,26 @@ watch(isCheckable, (newValue) => {
 .work-set-header-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 元数据 drawer */
+.work-set-drawer-scrollbar {
+  height: 100%;
+}
+.work-set-drawer-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.work-set-drawer-child-chip {
+  max-width: 200px;
+}
+.work-set-drawer-empty {
+  color: var(--app-text-secondary);
+}
+.work-set-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 12px;
 }
 </style>

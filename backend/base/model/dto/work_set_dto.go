@@ -21,6 +21,7 @@ func NewWorkSetDTO(workSet *entity2.WorkSet) *sdkdto.WorkSetDTO {
 		SiteUploadTime:         util.NullInt64ToPointer(workSet.SiteUploadTime),
 		SiteUpdateTime:         util.NullInt64ToPointer(workSet.SiteUpdateTime),
 		NickName:               util.NullStringToPointer(workSet.NickName),
+		Description:            util.NullStringToPointer(workSet.Description),
 		LastView:               util.NullInt64ToPointer(workSet.LastView),
 		CreateTime:             workSet.GetCreateTime(),
 		UpdateTime:             workSet.GetUpdateTime(),
@@ -95,6 +96,13 @@ func ToWorkSetEntity(dto *sdkdto.WorkSetDTO) *entity2.WorkSet {
 		entity.NickName.String = *dto.NickName
 	} else {
 		entity.NickName.Valid = false
+	}
+
+	if dto.Description != nil {
+		entity.Description.Valid = true
+		entity.Description.String = *dto.Description
+	} else {
+		entity.Description.Valid = false
 	}
 
 	if dto.LastView != nil {

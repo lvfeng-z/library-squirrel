@@ -36,6 +36,7 @@ import (
 	"github.com/library-squirrel/backend/plugin"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/reWorkAuthor"
+	"github.com/library-squirrel/backend/reWorkSetWorkSet"
 	"github.com/library-squirrel/backend/reWorkTag"
 	"github.com/library-squirrel/backend/reWorkWorkSet"
 	"github.com/library-squirrel/backend/recycleBin"
@@ -810,6 +811,8 @@ func (app *App) initAdvancedServices() error {
 	workSetRepo := workSet.NewRepository(app.db)
 	// reWorkWorkSet 仓储（提前创建，复用给 work 的 Writer/Reader 与 workSet/search）
 	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
+	// reWorkSetWorkSet 仓储（作品集间父子关联，workSet 传递包含原语 CollectDescendantWorkIDs 用）
+	reWorkSetWorkSetRepo := reWorkSetWorkSet.NewRepository(app.db)
 	// recycleBin 仓储（提前创建，work 逻辑删除写入快照用；service 在 work 之后创建以注入 WorkRestorer）
 	recycleBinRepo := recycleBin.NewRepository(app.db)
 
@@ -872,7 +875,7 @@ func (app *App) initAdvancedServices() error {
 	app.RecycleBinService.StartCleanup()
 
 	// workSet 服务
-	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, app.WorkService, app.WorkService)
+	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, reWorkSetWorkSetRepo, &dbTransactorAdapter{db: app.db}, app.WorkService, app.WorkService)
 
 	// search 服务
 	searchRepo := search.NewRepository(app.db)

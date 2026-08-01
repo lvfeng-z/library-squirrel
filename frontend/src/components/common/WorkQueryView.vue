@@ -156,7 +156,8 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
     if (notNullish(searchCondition.disabled) && searchCondition.disabled) {
       operator = WorkSearchOperator.NotEqual
     }
-    if (notNullish(searchCondition.extraData) && notNullish(operator)) {
+    // operator 为 undefined 表示"包含"语义（后端 NotEqual 判否即走 EXISTS 包含分支），不可作为跳过条件
+    if (notNullish(searchCondition.extraData)) {
       const extraData = searchCondition.extraData as { type: SearchType; id: number }
       conditions.push(new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator }))
     }

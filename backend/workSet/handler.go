@@ -140,6 +140,34 @@ func (h *Handler) RemoveBatchFromWorkSet(ctx context.Context, workSetId int64, w
 	return model.HandleVoid(h.svc.RemoveBatchFromWorkSet(ctx, workSetId, workIds))
 }
 
+// AddChildWorkSet 建立作品集父子关系（parent 将 child 纳为子集），事务内防环路
+func (h *Handler) AddChildWorkSet(ctx context.Context, parentWorkSetId, childWorkSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.AddChildWorkSet(ctx, parentWorkSetId, childWorkSetId))
+}
+
+// RemoveChildWorkSet 解除作品集父子关系
+func (h *Handler) RemoveChildWorkSet(ctx context.Context, parentWorkSetId, childWorkSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.RemoveChildWorkSet(ctx, parentWorkSetId, childWorkSetId))
+}
+
+// ListChildWorkSets 查询作品集的直接子作品集列表（层级管理用）
+func (h *Handler) ListChildWorkSets(ctx context.Context, parentWorkSetId int64) *model.ApiResponse[[]*sdkdto.WorkSetDTO] {
+	result, err := h.svc.ListChildWorkSets(ctx, parentWorkSetId)
+	if err != nil {
+		return model.HandleError[[]*sdkdto.WorkSetDTO](err)
+	}
+	data := make([]*sdkdto.WorkSetDTO, 0, len(result))
+	for _, ws := range result {
+		data = append(data, dto2.NewWorkSetDTO(ws))
+	}
+	return model.Success(data)
+}
+
+// MergeWorkSetInto 物理纳入：把源作品集及其后代的作品复制到目标作品集（静态快照，源不变、不可撤回）
+func (h *Handler) MergeWorkSetInto(ctx context.Context, sourceWorkSetId, targetWorkSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.MergeWorkSetInto(ctx, sourceWorkSetId, targetWorkSetId))
+}
+
 // UpdateSortOrders 批量更新排序顺序
 func (h *Handler) UpdateSortOrders(ctx context.Context, workSetId int64, workIds []int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.UpdateSortOrders(ctx, workSetId, workIds))

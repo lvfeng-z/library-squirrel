@@ -890,13 +890,12 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		if !ws.WorkSetID.Valid || !existingWorkSetIds[ws.WorkSetID.Int64] {
 			continue
 		}
-		workSetLinks = append(workSetLinks, &entity2.ReWorkWorkSet{
-			BaseEntity: &model.BaseEntity{},
-			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			WorkSetID:  ws.WorkSetID,
-			IsCover:    ws.IsCover,
-			SortOrder:  ws.SortOrder,
-		})
+		rel := entity2.NewReWorkWorkSet()
+		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+		rel.WorkSetID = ws.WorkSetID
+		rel.IsCover = ws.IsCover
+		rel.SortOrder = ws.SortOrder
+		workSetLinks = append(workSetLinks, rel)
 	}
 	if len(workSetLinks) > 0 {
 		if err := s.reWorkWorkSetWriter.SaveBatch(ctx, workSetLinks); err != nil {
@@ -1870,12 +1869,11 @@ func buildLocalTagLinks(workId int64, localTagIds []int64) []*entity2.ReWorkTag 
 func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSet {
 	links := make([]*entity2.ReWorkWorkSet, 0, len(workSetIds))
 	for i, wsId := range workSetIds {
-		links = append(links, &entity2.ReWorkWorkSet{
-			BaseEntity: &model.BaseEntity{},
-			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			WorkSetID:  sql.NullInt64{Int64: wsId, Valid: true},
-			SortOrder:  sql.NullInt64{Int64: int64(i), Valid: true},
-		})
+		rel := entity2.NewReWorkWorkSet()
+		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+		rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
+		rel.SortOrder = sql.NullInt64{Int64: int64(i), Valid: true}
+		links = append(links, rel)
 	}
 	return links
 }

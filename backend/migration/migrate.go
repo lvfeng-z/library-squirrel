@@ -52,6 +52,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.ReWorkAuthor{},
 		&entity2.ReWorkTag{},
 		&entity2.ReWorkWorkSet{},
+		entity2.NewReWorkSetWorkSet(),
 		&entity2.RePoiTarget{},
 
 		// 回收站(作品逻辑删除快照,独立表)

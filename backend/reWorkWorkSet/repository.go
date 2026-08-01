@@ -2,6 +2,7 @@ package reWorkWorkSet
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ReWorkWorkSetRepository 作品-作品集关联仓储实现
@@ -74,6 +76,20 @@ func (r *ReWorkWorkSetRepository) ListByWorkId(ctx context.Context, workId int64
 		Where("work_id = ?", workId).
 		Pluck("work_set_id", &workSetIds).Error
 	return workSetIds, err
+}
+
+// ListWorkIdsByWorkSetIds 批量查询多个作品集关联的去重作品ID（传递包含原语用，消除 N+1）
+func (r *ReWorkWorkSetRepository) ListWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) ([]int64, error) {
+	if len(workSetIds) == 0 {
+		return []int64{}, nil
+	}
+	var workIds []int64
+	err := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.ReWorkWorkSet)).
+		Where("work_set_id IN ?", workSetIds).
+		Pluck("DISTINCT work_id", &workIds).Error
+	return workIds, err
 }
 
 // ListRelationsByWorkId 查询作品关联的所有作品集关联记录（原始实体，含 is_cover/sort_order）
@@ -258,4 +274,41 @@ func (r *ReWorkWorkSetRepository) SaveBatch(ctx context.Context, reWorkWorkSets 
 	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Create(reWorkWorkSets).Error
+}
+
+// SaveBatchOnConflict 批量保存，遇 (work_id, work_set_id) 唯一冲突跳过该行（OnConflict DoNothing）
+// 物理纳入复制用：单条重复不拒绝整批（决策7）；is_cover 由调用方置 false 回避 set_cover 唯一索引
+func (r *ReWorkWorkSetRepository) SaveBatchOnConflict(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {
+	if len(reWorkWorkSets) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, rel := range reWorkWorkSets {
+		if rel.GetID() == 0 {
+			rel.SetCreateTime(now)
+		}
+		rel.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(reWorkWorkSets).Error
+}
+
+// MaxSortOrderByWorkSetId 查询作品集下最大的 sort_order（无作品返回 0），物理纳入续排起点用
+func (r *ReWorkWorkSetRepository) MaxSortOrderByWorkSetId(ctx context.Context, workSetId int64) (int64, error) {
+	var maxSort sql.NullInt64
+	row := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.ReWorkWorkSet)).
+		Where("work_set_id = ?", workSetId).
+		Select("MAX(sort_order)").
+		Row()
+	if err := row.Scan(&maxSort); err != nil {
+		return 0, err
+	}
+	if maxSort.Valid {
+		return maxSort.Int64, nil
+	}
+	return 0, nil
 }

@@ -17,6 +17,7 @@ type WorkSet struct {
 	SiteUploadTime         sql.NullInt64  `gorm:"column:site_upload_time" json:"siteUploadTime"`
 	SiteUpdateTime         sql.NullInt64  `gorm:"column:site_update_time" json:"siteUpdateTime"`
 	NickName               sql.NullString `gorm:"column:nick_name" json:"nickName"`
+	Description            sql.NullString `gorm:"column:description" json:"description"`
 	LastView               sql.NullInt64  `gorm:"column:last_view" json:"lastView"`
 }
 

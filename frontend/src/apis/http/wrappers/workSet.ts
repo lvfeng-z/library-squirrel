@@ -4,6 +4,7 @@
  */
 
 import type { ApiResponse } from '../types'
+import { requireResponse } from '../types'
 import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com/library-squirrel/backend/workSet'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import {
@@ -108,18 +109,20 @@ export async function workSetSave(workSet: {
 
 export async function workSetUpdate(workSet: {
   id: number
-  name?: string
-  coverId?: number
-}): Promise<ApiResponse<WorkSetVO>> {
+  nickName?: string
+  description?: string
+}): Promise<ApiResponse<null>> {
+  // BaseRepository.Update 实为 Save 全字段覆盖：必须先读回完整 DTO、合并用户编辑字段后整体提交，
+  // 否则只传 {id, nickName} 会把其余字段清空为 NULL。
+  const readBack = await WorkSetHandler.GetById(workSet.id)
+  const existed = requireResponse(readBack, '读取作品集当前数据').data
   const dto = new WorkSetDTO({
+    ...existed,
     id: workSet.id,
-    siteWorkSetName: workSet.name ?? null
+    nickName: workSet.nickName ?? existed.nickName ?? null,
+    description: workSet.description ?? existed.description ?? null
   })
-  const result = await WorkSetHandler.Update(dto)
-  if (!result) {
-    return { success: false, msg: '更新失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
+  return requireResponse(await WorkSetHandler.Update(dto), '更新作品集', false)
 }
 
 export async function workSetDelete(id: number): Promise<ApiResponse<null>> {
@@ -217,4 +220,71 @@ export async function workSetListByWorkId(workId: number): Promise<ApiResponse<(
     return { success: false, msg: result.msg ?? '获取失败' }
   }
   return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is WorkSetDTO => item !== null) ?? undefined }
+}
+
+/**
+ * 建立作品集父子关系（parent 将 child 纳为子集），后端事务内防环路
+ */
+export async function workSetAddChildWorkSet(
+  parentWorkSetId: number,
+  childWorkSetId: number
+): Promise<ApiResponse<any>> {
+  const result = await WorkSetHandler.AddChildWorkSet(parentWorkSetId, childWorkSetId)
+  if (!result) {
+    return { success: false, msg: '建立父子关系失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '建立父子关系失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
+}
+
+/**
+ * 解除作品集父子关系
+ */
+export async function workSetRemoveChildWorkSet(
+  parentWorkSetId: number,
+  childWorkSetId: number
+): Promise<ApiResponse<any>> {
+  const result = await WorkSetHandler.RemoveChildWorkSet(parentWorkSetId, childWorkSetId)
+  if (!result) {
+    return { success: false, msg: '解除父子关系失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '解除父子关系失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
+}
+
+/**
+ * 查询作品集的直接子作品集列表（层级管理展示用）
+ */
+export async function workSetListChildWorkSets(
+  parentWorkSetId: number
+): Promise<ApiResponse<(WorkSetDTO | null)[]>> {
+  const result = await WorkSetHandler.ListChildWorkSets(parentWorkSetId)
+  if (!result) {
+    return { success: false, msg: '获取子作品集失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取子作品集失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data?.filter((item): item is WorkSetDTO => item !== null) ?? undefined }
+}
+
+/**
+ * 物理纳入：把源作品集及其后代的作品复制到目标作品集（静态快照，源不变、不可撤回）
+ */
+export async function workSetMergeWorkSetInto(
+  sourceWorkSetId: number,
+  targetWorkSetId: number
+): Promise<ApiResponse<any>> {
+  const result = await WorkSetHandler.MergeWorkSetInto(sourceWorkSetId, targetWorkSetId)
+  if (!result) {
+    return { success: false, msg: '物理纳入失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '物理纳入失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data }
 }

@@ -22,6 +22,15 @@ import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AddChildWorkSet 建立作品集父子关系（parent 将 child 纳为子集），事务内防环路
+ */
+export function AddChildWorkSet(parentWorkSetId: number, childWorkSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2818351626, parentWorkSetId, childWorkSetId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * Delete 删除作品集
  */
 export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
@@ -85,11 +94,20 @@ export function LinkWorkToWorkSet(workId: number, workSetId: number): $Cancellab
 }
 
 /**
+ * ListChildWorkSets 查询作品集的直接子作品集列表（层级管理用）
+ */
+export function ListChildWorkSets(parentWorkSetId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkSetDTO | null)[]> | null> {
+    return $Call.ByID(3505604018, parentWorkSetId).then(($result: any) => {
+        return $$createType15($result);
+    });
+}
+
+/**
  * ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
  */
 export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkSetWithWorksResultDTO | null)[]> | null> {
     return $Call.ByID(3476290543, workSetIds).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType20($result);
     });
 }
 
@@ -98,7 +116,16 @@ export function ListWorkSetWithWorkByIds(workSetIds: number[]): $CancellableProm
  */
 export function ListWorkSetsByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkSetDTO | null)[]> | null> {
     return $Call.ByID(732496129, workId).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType15($result);
+    });
+}
+
+/**
+ * MergeWorkSetInto 物理纳入：把源作品集及其后代的作品复制到目标作品集（静态快照，源不变、不可撤回）
+ */
+export function MergeWorkSetInto(sourceWorkSetId: number, targetWorkSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1031975993, sourceWorkSetId, targetWorkSetId).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 
@@ -125,6 +152,15 @@ export function QueryPageWithCover(page: model$0.Page<dto$0.WorkSetWithCoverDTO>
  */
 export function RemoveBatchFromWorkSet(workSetId: number, workIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1044444007, workSetId, workIds).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * RemoveChildWorkSet 解除作品集父子关系
+ */
+export function RemoveChildWorkSet(parentWorkSetId: number, childWorkSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(396926861, parentWorkSetId, childWorkSetId).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -197,12 +233,12 @@ const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = dto$0.WorkSetWithWorksResultDTO.createFrom;
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = model$0.ApiResponse.createFrom($$createType15);
+const $$createType13 = $Create.Array($$createType3);
+const $$createType14 = model$0.ApiResponse.createFrom($$createType13);
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = dto$0.WorkSetWithWorksResultDTO.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = $Create.Array($$createType3);
+const $$createType18 = $Create.Array($$createType17);
 const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
 const $$createType20 = $Create.Nullable($$createType19);
 const $$createType21 = model$0.Page.createFrom($$createType2);

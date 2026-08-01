@@ -1576,6 +1576,7 @@ export class WorkSetDTO {
     "siteUploadTime": number | null;
     "siteUpdateTime": number | null;
     "nickName": string | null;
+    "description": string | null;
     "lastView": number | null;
     "createTime": number;
     "updateTime": number;
@@ -1608,6 +1609,9 @@ export class WorkSetDTO {
         }
         if (!("nickName" in $$source)) {
             this["nickName"] = null;
+        }
+        if (!("description" in $$source)) {
+            this["description"] = null;
         }
         if (!("lastView" in $$source)) {
             this["lastView"] = null;
