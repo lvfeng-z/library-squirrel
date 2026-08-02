@@ -15,6 +15,11 @@ globs:
 ## 数据库
 - SQLite via GORM，数据库文件位于 `database/database.db`
 - `BaseRepository[T]` 提供泛型 CRUD + 分页，通过 `QueryOption`/`PageOption`
+- **写方法语义（命名与 GORM finisher 对齐）**：
+  - `Create` / `CreateBatch` → GORM `Create`（INSERT，新建）
+  - `Save` → GORM `Save`（UPSERT 全字段含零值，完整替换已存在记录或清空字段时用）
+  - `Updates` → GORM `Updates`（部分更新，仅写非零字段，编辑表单/更新状态时用）
+  - ⚠️ `Updates` 跳过零值字段——若字段的 Go 零值（int 0/bool false/string ""）是合法业务取值，须用 `sql.Null*` 类型（靠 `Valid` 区分"未设置"与"零值"），否则零值无法落盘
 - **事务**：`database.WithTransaction(db, func(tx *gorm.DB) error { ... })`
 - 实体通过 GORM 自动迁移，入口在 `backend/migration/migrate.go`
 - 所有实体嵌入 `BaseEntity`（ID、CreateTime、UpdateTime）
@@ -39,7 +44,7 @@ globs:
 
 > 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。`store/thumbnail/` 仅历史已落盘文件保留(路径校验白名单不删),新文件不再写入。
 
-> 注：`persistent_store` 另有 `width`/`height` 字段（`int`，图像像素宽高，非图片资源为 0），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。
+> 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`status`（落盘状态 0=未完成/1=完成）同为 `sql.NullInt64`（0 是合法值，须能被 Updates 写入）。
 
 ### 路径解析约定
 

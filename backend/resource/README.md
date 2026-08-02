@@ -25,7 +25,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 ## 核心概念
 
-- **Resource 实体字段**：`WorkID` / `TaskID`（所属作品 / 产生它的任务）、`Enabled`（启用状态）、`ResourceComplete`（完整度）、`SuggestName`（建议文件名）。Resource 不直接持有 store 外键。
+- **Resource 实体字段**：`WorkID` / `TaskID`（所属作品 / 产生它的任务）、`ResourceComplete`（完整度三态：0=未校验/1=完整/2=不完整，`sql.NullInt64`）、`SuggestName`（建议文件名）。Resource 不直接持有 store 外键。
 - **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`StoreSeq`（同 role 内 store 序号，路径消歧与续传身份化用）。
 - **StoreType 开放枚举**（`entity/resource_store.go`）：`main`（主资源）、`thumbnail`（缩略图）、`videoTrack`（视频轨）、`audioTrack`（音频轨）、`videoMain`（视频可播放主体：本地封装原文件或分离流合并产物）。新增类型只加常量、不改表结构；backup/restore/软删按 store 集合遍历，对新类型透明（videoMain 自动被覆盖，零改）。
 
@@ -45,5 +45,6 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 ## 关键设计
 
-- **替换场景不禁用 Resource**：StoreBackupOrchestrator 备份 / 还原 store 时，Resource 记录保持 Enabled=true 不变，仅切换其 store 引用。
 - **合并的模块边界**：merge 包输入输出均为文件路径，不感知 store/resource；产物路径生成（`store/resource/...`）归 persistentStore（BuildVariantPath），本模块只做编排。
+
+> 历史 `Enabled` 字段已移除（无激活/禁用 UI，恒为 true，过滤冗余）；`GetEnabledByWorkId` 已删，改用 `ListByWorkId`。
