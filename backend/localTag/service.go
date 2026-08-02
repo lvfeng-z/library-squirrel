@@ -146,10 +146,9 @@ func (s *Service) UpdateById(ctx context.Context, tag *domain.LocalTag) error {
 func (s *Service) UpdateLastUse(ctx context.Context, ids []int64) error {
 	now := util.GetCurrentTimestamp()
 	for _, id := range ids {
-		tag, err := s.repo.GetById(ctx, id)
-		if err != nil {
-			continue
-		}
+		// Updates 仅写非零字段，建只含 ID+LastUse 的对象即可，无需读回完整记录
+		tag := domain.NewLocalTag()
+		tag.SetID(id)
 		tag.LastUse = sql.NullInt64{Int64: now, Valid: true}
 		if err := s.repo.Updates(ctx, tag); err != nil {
 			return err

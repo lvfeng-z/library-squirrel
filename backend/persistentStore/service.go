@@ -66,6 +66,8 @@ type storeWriter struct {
 	repo          Repository
 	closed        bool
 	workDirGetter func() string // 每次调用获取最新的 workDir
+	filePath      sql.NullString // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
+	ext           sql.NullString // 文件扩展名（Complete 判断是否图片用）
 }
 
 func (w *storeWriter) Write(p []byte) (n int, err error) {
@@ -101,17 +103,14 @@ func (w *storeWriter) Complete() error {
 		}
 	}
 
-	// 更新 DB 状态为已完成
-	record, err := w.repo.GetById(context.Background(), w.storeId)
-	if err != nil {
-		return fmt.Errorf("查询记录失败: %w", err)
-	}
-	if record == nil {
-		return fmt.Errorf("记录不存在: storeId=%d", w.storeId)
-	}
+	// 提取图片宽高（用构造时缓存的路径，无需读回 DB 记录）
+	width, height := tryDecodeImageDimensions(w.filePath, w.ext, w.workDirGetter())
+	// 仅写 Status + 宽高，其余字段靠 Updates 跳零值保留
+	record := domain.NewPersistentStore()
+	record.SetID(w.storeId)
 	record.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
-	// 提取图片宽高（若为图片），与状态更新合并为同一次 Update
-	fillImageDimensions(record, w.workDirGetter())
+	record.Width = width
+	record.Height = height
 	if err := w.repo.Updates(context.Background(), record); err != nil {
 		return fmt.Errorf("更新记录状态失败: %w", err)
 	}
@@ -125,19 +124,9 @@ func (w *storeWriter) Abort() error {
 		w.closed = true
 	}
 
-	// 获取记录以得到文件路径
-	record, err := w.repo.GetById(context.Background(), w.storeId)
-	if err != nil {
-		logger.Log.Error("Abort 时查询记录失败", zap.Int64("storeId", w.storeId), zap.Error(err))
-		return err
-	}
-	if record == nil {
-		return nil
-	}
-
-	// 删除磁盘文件
-	if record.FilePath.Valid {
-		absPath := filepath.Join(w.workDirGetter(), record.FilePath.String)
+	// 用构造时缓存的路径删除磁盘文件（无需读回 DB 记录）
+	if w.filePath.Valid {
+		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
 		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 			logger.Log.Warn("Abort 时删除文件失败", zap.String("path", absPath), zap.Error(err))
 		}
@@ -151,23 +140,30 @@ func (w *storeWriter) Abort() error {
 	return nil
 }
 
-// fillImageDimensions 若记录为图片，读取文件头部解码填入 Width/Height。
-// 解码失败时仅记日志、留 0，不阻断入库主流程。
-func fillImageDimensions(store *domain.PersistentStore, workDir string) {
-	if store == nil || !store.FilenameExtension.Valid || !store.FilePath.Valid {
+// tryDecodeImageDimensions 若为图片则读取文件头部解码返回宽高，否则返回无效值
+func tryDecodeImageDimensions(filePath, ext sql.NullString, workDir string) (width, height sql.NullInt64) {
+	if !ext.Valid || !filePath.Valid {
 		return
 	}
-	if !util.IsImageExt(store.FilenameExtension.String) {
+	if !util.IsImageExt(ext.String) {
 		return
 	}
-	absPath := filepath.Join(workDir, store.FilePath.String)
-	width, height, err := util.DecodeImageDimensions(absPath)
+	absPath := filepath.Join(workDir, filePath.String)
+	w, h, err := util.DecodeImageDimensions(absPath)
 	if err != nil {
 		logger.Log.Warn("提取图片宽高失败，留空", zap.String("path", absPath), zap.Error(err))
 		return
 	}
-	store.Width = sql.NullInt64{Int64: int64(width), Valid: true}
-	store.Height = sql.NullInt64{Int64: int64(height), Valid: true}
+	return sql.NullInt64{Int64: int64(w), Valid: true}, sql.NullInt64{Int64: int64(h), Valid: true}
+}
+
+// fillImageDimensions 若记录为图片，读取文件头部解码填入 Width/Height。
+// 解码失败时仅记日志、留 0，不阻断入库主流程。
+func fillImageDimensions(store *domain.PersistentStore, workDir string) {
+	if store == nil {
+		return
+	}
+	store.Width, store.Height = tryDecodeImageDimensions(store.FilePath, store.FilenameExtension, workDir)
 }
 
 // FileMover 文件移动备份接口（由 persistentStore 定义，backup.Service 实现）
@@ -265,7 +261,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 			os.Remove(absPath)
 			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
 		}
-		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter}
+		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: existing.FilePath, ext: existing.FilenameExtension}
 		return existing.GetID(), sw, nil
 	}
 
@@ -285,7 +281,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		return 0, nil, fmt.Errorf("保存记录失败: %w", err)
 	}
 
-	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter}
+	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: store.FilePath, ext: store.FilenameExtension}
 	return store.GetID(), sw, nil
 }
 
@@ -326,7 +322,7 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64)
 		return nil, fmt.Errorf("定位到偏移 %d 失败: %w", offset, err)
 	}
 
-	return &storeWriter{file: file, storeId: storeId, repo: s.repo, workDirGetter: s.workDirGetter}, nil
+	return &storeWriter{file: file, storeId: storeId, repo: s.repo, workDirGetter: s.workDirGetter, filePath: record.FilePath, ext: record.FilenameExtension}, nil
 }
 
 // Store 存入文件
