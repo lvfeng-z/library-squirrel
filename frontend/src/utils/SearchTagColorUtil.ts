@@ -1,25 +1,40 @@
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
-import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
+import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
+
+/** 搜索标签分类色 tone，对应分类色令牌 --app-tag-{tone}-* */
+type SearchTagTone = 'green' | 'blue' | 'red' | 'purple'
 
 /**
- * 根据搜索标签的来源类型（作者/标签 × 本地/站点）设置其状态别名 key，
- * 由 SegmentedTag 据 --app-status-{status}-* 令牌渲染颜色，自动跟随主题。
+ * 按「标签/作者 × 本地/站点」四分类为搜索标签着色，复用分类色令牌（--app-tag-{tone}-*）。
+ * 四色与 WorkQueryView/MainView 的类型筛选 checkbox 一致，使标签与其筛选项视觉对应、彼此可区分：
+ * 本地标签=绿、站点标签=蓝、本地作者=红、站点作者=紫。
+ * hover 底色由文字色 color-mix 派生，与 AutoLoadTagSelect 自定义标签同模式。
+ * 写入 SegmentedTag 的显式色字段（mainBackGround 等），优先级低于 status 令牌、高于 variant 默认色。
  * @param segmentedTagItem 标签项
  */
-export function setSearchTagStatus(segmentedTagItem: SegmentedTagItem): void {
+export function setSearchTagColor(segmentedTagItem: SegmentedTagItem): void {
   const subLabels = segmentedTagItem.subLabels
-  if (arrayNotEmpty(subLabels)) {
-    switch (subLabels[0]) {
-      case 'author':
-        // 作者：本地→source-local(红)，站点→source-site(蓝)
-        segmentedTagItem.status = subLabels[1] === 'local' ? 'source-local' : 'source-site'
-        break
-      case 'tag':
-        // 标签：站点→source-site(蓝)；本地不设，保持 neutral 默认
-        if (subLabels[1] !== 'local') {
-          segmentedTagItem.status = 'source-site'
-        }
-        break
-    }
+  if (!arrayNotEmpty(subLabels)) {
+    return
+  }
+  const tone = resolveTone(subLabels[0], subLabels[1])
+  if (isNullish(tone)) {
+    return
+  }
+  segmentedTagItem.mainBackGround = `var(--app-tag-${tone}-bg)`
+  segmentedTagItem.mainBackGroundHover = `color-mix(in srgb, var(--app-tag-${tone}-text) 15%, transparent)`
+  segmentedTagItem.mainTextColor = `var(--app-tag-${tone}-text)`
+}
+
+/** 由 subLabels 的「类目/来源」解析分类色 tone：tag→绿(本地)/蓝(站点)，author→红(本地)/紫(站点) */
+function resolveTone(category?: string, source?: string): SearchTagTone | undefined {
+  const isLocal = source === 'local'
+  switch (category) {
+    case 'tag':
+      return isLocal ? 'green' : 'blue'
+    case 'author':
+      return isLocal ? 'red' : 'purple'
+    default:
+      return undefined
   }
 }

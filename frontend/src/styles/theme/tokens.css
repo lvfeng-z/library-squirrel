@@ -101,8 +101,8 @@
   --app-tag-green-text: #67c23a;
   --app-tag-red-bg: rgba(245, 108, 108, 0.18);
   --app-tag-red-text: #f56c6c;
-  --app-tag-purple-bg: rgba(144, 147, 153, 0.18);
-  --app-tag-purple-text: #909399;
+  --app-tag-purple-bg: rgba(164, 158, 255, 0.18);
+  --app-tag-purple-text: #a49eff;
   --app-tag-orange-bg: rgba(230, 162, 60, 0.18);
   --app-tag-orange-text: #e6a23c;
   --app-tag-neutral-bg: color-mix(in srgb, var(--app-color-info) 18%, transparent);
