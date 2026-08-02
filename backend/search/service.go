@@ -274,19 +274,10 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		if coverWorkId, ok := coverMap[ws.GetID()]; ok {
 			if work, ok := worksMap[coverWorkId]; ok {
 				item.CoverWork = dto2.NewWorkDTO(work)
-				if resources, ok := resourcesMap[coverWorkId]; ok {
-					for _, res := range resources {
-						if res.Enabled {
-							rsList := resourceStoreMap[res.GetID()]
-							item.CoverResource = dto2.NewResourceFullDTO(res, rsList, storeMap)
-							break
-						}
-					}
-					if item.CoverResource == nil && len(resources) > 0 {
-						res := resources[0]
-						rsList := resourceStoreMap[res.GetID()]
-						item.CoverResource = dto2.NewResourceFullDTO(res, rsList, storeMap)
-					}
+				if resources, ok := resourcesMap[coverWorkId]; ok && len(resources) > 0 {
+					res := resources[0]
+					rsList := resourceStoreMap[res.GetID()]
+					item.CoverResource = dto2.NewResourceFullDTO(res, rsList, storeMap)
 				}
 			}
 		}

@@ -12,8 +12,8 @@ import (
 
 // Repository 回收站仓储接口
 type Repository interface {
-	// Save 保存回收站条目
-	Save(ctx context.Context, item *domain.RecycleItem) error
+	// Create 保存回收站条目
+	Create(ctx context.Context, item *domain.RecycleItem) error
 	// GetById 根据 ID 获取
 	GetById(ctx context.Context, id int64) (*domain.RecycleItem, error)
 	// List 查询列表

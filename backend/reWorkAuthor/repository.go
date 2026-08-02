@@ -35,41 +35,6 @@ func (r *ReWorkAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())
 }
 
-// Save 保存
-func (r *ReWorkAuthorRepository) Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
-	return r.BaseRepository.Save(ctx, reWorkAuthor)
-}
-
-// SaveBatch 批量保存
-func (r *ReWorkAuthorRepository) SaveBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error {
-	return r.BaseRepository.SaveBatch(ctx, reWorkAuthors)
-}
-
-// Update 更新
-func (r *ReWorkAuthorRepository) Update(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
-	return r.BaseRepository.Update(ctx, reWorkAuthor)
-}
-
-// Delete 删除
-func (r *ReWorkAuthorRepository) Delete(ctx context.Context, id int64) error {
-	return r.BaseRepository.Delete(ctx, id)
-}
-
-// GetById 根据ID获取
-func (r *ReWorkAuthorRepository) GetById(ctx context.Context, id int64) (*domain.ReWorkAuthor, error) {
-	return r.BaseRepository.GetById(ctx, id)
-}
-
-// List 查询列表
-func (r *ReWorkAuthorRepository) List(ctx context.Context, opt *database.QueryOption) ([]*domain.ReWorkAuthor, error) {
-	return r.BaseRepository.List(ctx, opt)
-}
-
-// Count 统计数量
-func (r *ReWorkAuthorRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
-	return r.BaseRepository.Count(ctx, opt)
-}
-
 // DeleteByWorkId 根据作品ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ?", workId).Delete(&domain.ReWorkAuthor{}).Error

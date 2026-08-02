@@ -57,7 +57,7 @@ func (h *Handler) Update(ctx context.Context, resource *sdkdto.ResourceDTO) *mod
 	domainResource.SetID(resource.ID)
 	domainResource.WorkID = resource.WorkID
 
-	if err := h.svc.Update(ctx, domainResource); err != nil {
+	if err := h.svc.Updates(ctx, domainResource); err != nil {
 		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)

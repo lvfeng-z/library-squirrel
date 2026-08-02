@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
@@ -12,8 +13,8 @@ type StorageRepository interface {
 	GetByKey(ctx context.Context, pluginID int64, key string) (*domain.PluginStorage, error)
 	ListByPlugin(ctx context.Context, pluginID int64) ([]*domain.PluginStorage, error)
 	DeleteByKey(ctx context.Context, pluginID int64, key string) error
-	Save(ctx context.Context, entity *domain.PluginStorage) error
-	Update(ctx context.Context, entity *domain.PluginStorage) error
+	Create(ctx context.Context, entity *domain.PluginStorage) error
+	Updates(ctx context.Context, entity *domain.PluginStorage) error
 }
 
 // PluginStorageService 插件自存信息服务
@@ -36,10 +37,10 @@ func (s *PluginStorageService) GetValue(ctx context.Context, pluginID int64, key
 	if entity == nil {
 		return "", nil
 	}
-	if entity.Encrypted {
-		return util.Decrypt(entity.Value)
+	if entity.Encrypted.Valid && entity.Encrypted.Bool {
+		return util.Decrypt(entity.Value.String)
 	}
-	return entity.Value, nil
+	return entity.Value.String, nil
 }
 
 // SetValue 写入明文自存信息
@@ -69,14 +70,14 @@ func (s *PluginStorageService) GetAllValues(ctx context.Context, pluginID int64)
 	}
 	result := make(map[string]string, len(entities))
 	for _, e := range entities {
-		if e.Encrypted {
-			decrypted, err := util.Decrypt(e.Value)
+		if e.Encrypted.Valid && e.Encrypted.Bool {
+			decrypted, err := util.Decrypt(e.Value.String)
 			if err != nil {
 				return nil, err
 			}
 			result[e.Key] = decrypted
 		} else {
-			result[e.Key] = e.Value
+			result[e.Key] = e.Value.String
 		}
 	}
 	return result, nil
@@ -89,14 +90,14 @@ func (s *PluginStorageService) saveEntry(ctx context.Context, pluginID int64, ke
 		return err
 	}
 	if existing != nil {
-		existing.Value = value
-		existing.Encrypted = encrypted
-		return s.repo.Update(ctx, existing)
+		existing.Value = sql.NullString{String: value, Valid: true}
+		existing.Encrypted = sql.NullBool{Bool: encrypted, Valid: true}
+		return s.repo.Updates(ctx, existing)
 	}
 	entity := domain.NewPluginStorage()
 	entity.PluginID = pluginID
 	entity.Key = key
-	entity.Value = value
-	entity.Encrypted = encrypted
-	return s.repo.Save(ctx, entity)
+	entity.Value = sql.NullString{String: value, Valid: true}
+	entity.Encrypted = sql.NullBool{Bool: encrypted, Valid: true}
+	return s.repo.Create(ctx, entity)
 }

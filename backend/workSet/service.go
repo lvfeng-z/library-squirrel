@@ -21,10 +21,10 @@ import (
 
 // Repository 作品集仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, workSet *entity2.WorkSet) error
-	// Update 更新
-	Update(ctx context.Context, workSet *entity2.WorkSet) error
+	// Create 新建
+	Create(ctx context.Context, workSet *entity2.WorkSet) error
+	// Updates 更新
+	Updates(ctx context.Context, workSet *entity2.WorkSet) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.WorkSet, error)
 	// List 查询列表
@@ -57,10 +57,10 @@ type WorkReader interface {
 
 // ReWorkWorkSetRepository 作品-作品集关联仓储接口
 type ReWorkWorkSetRepository interface {
-	// Save 保存关联
-	Save(ctx context.Context, rel *entity2.ReWorkWorkSet) error
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
+	// Create 新建关联
+	Create(ctx context.Context, rel *entity2.ReWorkWorkSet) error
+	// CreateBatch 批量新建关联
+	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// Delete 删除关联
 	Delete(ctx context.Context, id int64) error
 	// DeleteByWorkAndWorkSet 根据作品ID和作品集ID删除
@@ -267,7 +267,7 @@ func (s *Service) MergeWorkSetInto(ctx context.Context, sourceWorkSetId, targetW
 
 // Save 保存作品集
 func (s *Service) Save(ctx context.Context, workSet *entity2.WorkSet) error {
-	return s.repo.Save(ctx, workSet)
+	return s.repo.Create(ctx, workSet)
 }
 
 // Update 更新作品集
@@ -275,7 +275,7 @@ func (s *Service) Update(ctx context.Context, workSet *entity2.WorkSet) error {
 	if workSet.GetID() == 0 {
 		return ErrWorkSetIdRequired
 	}
-	return s.repo.Update(ctx, workSet)
+	return s.repo.Updates(ctx, workSet)
 }
 
 // GetById 根据ID获取
@@ -352,7 +352,7 @@ func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64
 	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: workSetId, Valid: true}
 	rel.IsCover = sql.NullBool{Bool: isCover, Valid: true}
-	return s.reWorkWorkSetRepo.Save(ctx, rel)
+	return s.reWorkWorkSetRepo.Create(ctx, rel)
 }
 
 // UnlinkWorkFromWorkSet 从作品集移除作品
@@ -373,7 +373,7 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 		rel.IsCover = sql.NullBool{Bool: false, Valid: true}
 		rels[i] = rel
 	}
-	return s.reWorkWorkSetRepo.SaveBatch(ctx, rels)
+	return s.reWorkWorkSetRepo.CreateBatch(ctx, rels)
 }
 
 // RemoveBatchFromWorkSet 批量从作品集移除作品

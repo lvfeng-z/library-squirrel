@@ -10,10 +10,10 @@ import (
 
 // Repository 作品-标签关联仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存关联
-	Save(ctx context.Context, rel *domain.ReWorkTag) error
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error
+	// Create 新建关联
+	Create(ctx context.Context, rel *domain.ReWorkTag) error
+	// CreateBatch 批量新建关联
+	CreateBatch(ctx context.Context, rels []*domain.ReWorkTag) error
 	// Delete 删除关联
 	Delete(ctx context.Context, id int64) error
 	// DeleteByWorkAndTag 根据作品ID和标签删除
@@ -50,12 +50,12 @@ func NewService(repo Repository) *Service {
 
 // Save 保存关联
 func (s *Service) Save(ctx context.Context, rel *domain.ReWorkTag) error {
-	return s.repo.Save(ctx, rel)
+	return s.repo.Create(ctx, rel)
 }
 
 // SaveBatch 批量保存关联
 func (s *Service) SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error {
-	return s.repo.SaveBatch(ctx, rels)
+	return s.repo.CreateBatch(ctx, rels)
 }
 
 // Delete 删除关联
@@ -121,7 +121,7 @@ func (s *Service) LinkTagToWork(ctx context.Context, workId int64, tagType int, 
 	} else {
 		rel.SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
 	}
-	return s.repo.Save(ctx, rel)
+	return s.repo.Create(ctx, rel)
 }
 
 // UnlinkTagFromWork 从作品移除标签
@@ -148,7 +148,7 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int
 			rels[i].SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
 		}
 	}
-	return s.repo.SaveBatch(ctx, rels)
+	return s.repo.CreateBatch(ctx, rels)
 }
 
 // RemoveBatchFromWork 批量从作品移除标签

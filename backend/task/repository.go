@@ -318,7 +318,7 @@ func (r *TaskRepository) ListStatus(ctx context.Context, ids []int64) ([]*domain
 
 // CreateTask 创建任务
 func (r *TaskRepository) CreateTask(ctx context.Context, task *domain.Task) error {
-	return r.Save(ctx, task)
+	return r.Create(ctx, task)
 }
 
 // ListChildrenTask 查询子任务列表

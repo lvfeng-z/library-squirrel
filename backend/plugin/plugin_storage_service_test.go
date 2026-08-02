@@ -46,14 +46,14 @@ func (m *mockStorageRepo) DeleteByKey(ctx context.Context, pluginID int64, key s
 	return nil
 }
 
-func (m *mockStorageRepo) Save(ctx context.Context, entity *domain.PluginStorage) error {
+func (m *mockStorageRepo) Create(ctx context.Context, entity *domain.PluginStorage) error {
 	m.idCounter++
 	entity.SetID(m.idCounter)
 	m.data[mockStorageKey(entity.PluginID, entity.Key)] = entity
 	return nil
 }
 
-func (m *mockStorageRepo) Update(ctx context.Context, entity *domain.PluginStorage) error {
+func (m *mockStorageRepo) Updates(ctx context.Context, entity *domain.PluginStorage) error {
 	m.data[mockStorageKey(entity.PluginID, entity.Key)] = entity
 	return nil
 }
@@ -83,10 +83,10 @@ func TestStorageEncryptedSetGet(t *testing.T) {
 	}
 	// 底层存储的 Value 应为密文，且 Encrypted 标记为 true
 	stored := repo.data[mockStorageKey(2, "accessToken")]
-	if stored.Value == secret {
+	if stored.Value.Valid && stored.Value.String == secret {
 		t.Error("加密项底层 Value 不应是明文")
 	}
-	if !stored.Encrypted {
+	if !stored.Encrypted.Bool {
 		t.Error("加密项 Encrypted 标记应为 true")
 	}
 	// GetValue 解密返回原文

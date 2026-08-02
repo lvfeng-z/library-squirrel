@@ -37,12 +37,14 @@ var (
 
 // Repository 插件仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
+	// Create 新建
+	Create(ctx context.Context, plugin *entity2.Plugin) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, plugins []*entity2.Plugin) error
+	// Updates 更新（部分更新，仅非零字段）
+	Updates(ctx context.Context, plugin *entity2.Plugin) error
+	// Save 完整替换（GORM Save，含零值；重新安装等场景使用）
 	Save(ctx context.Context, plugin *entity2.Plugin) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, plugins []*entity2.Plugin) error
-	// Update 更新
-	Update(ctx context.Context, plugin *entity2.Plugin) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.Plugin, error)
 	// List 查询列表
@@ -164,12 +166,12 @@ func (s *Service) GetById(ctx context.Context, id int64) (*entity2.Plugin, error
 
 // Save 保存插件
 func (s *Service) Save(ctx context.Context, plugin *entity2.Plugin) error {
-	return s.repo.Save(ctx, plugin)
+	return s.repo.Create(ctx, plugin)
 }
 
 // Update 更新插件
 func (s *Service) Update(ctx context.Context, plugin *entity2.Plugin) error {
-	return s.repo.Update(ctx, plugin)
+	return s.repo.Updates(ctx, plugin)
 }
 
 // Delete 删除插件
@@ -370,15 +372,15 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
 
 	if uninstalledPlugin != nil {
-		// 更新已卸载的插件，保留原始 CreateTime
+		// 重新安装已卸载的插件：完整替换该记录的所有字段，保留原始 CreateTime
 		plugin.ID = uninstalledPlugin.ID
 		plugin.SetCreateTime(uninstalledPlugin.GetCreateTime())
-		if err := s.repo.Update(ctx, plugin); err != nil {
+		if err := s.repo.Save(ctx, plugin); err != nil {
 			return nil, err
 		}
 	} else {
-		// 保存新插件
-		if err := s.repo.Save(ctx, plugin); err != nil {
+		// 新建插件
+		if err := s.repo.Create(ctx, plugin); err != nil {
 			return nil, err
 		}
 	}
@@ -389,7 +391,7 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		return nil, err
 	}
 	plugin.BackupID = sql.NullInt64{Int64: backup.ID, Valid: true}
-	if err := s.repo.Update(ctx, plugin); err != nil {
+	if err := s.repo.Updates(ctx, plugin); err != nil {
 		return nil, err
 	}
 
@@ -500,7 +502,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	}
 
 	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
-	if err := s.repo.Update(ctx, plugin); err != nil {
+	if err := s.repo.Updates(ctx, plugin); err != nil {
 		return err
 	}
 
@@ -550,7 +552,7 @@ func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
 	}
 
 	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
-	return s.repo.Update(ctx, plugin)
+	return s.repo.Updates(ctx, plugin)
 }
 
 // getAppRoot 获取应用根目录，用于插件安装、卸载等程序文件操作

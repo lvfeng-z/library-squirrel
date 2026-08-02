@@ -216,7 +216,6 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 				t1.nick_name, t1.local_author_id, t1.last_view,
 			(SELECT JSON_OBJECT(
 				'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
-				'enabled', IIF(r.enabled, json('true'), json('false')),
 				'suggestName', r.suggest_name, 'resourceType', r.resource_type, 'resourceComplete', r.resource_complete,
 				'stores', (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
 					'storeType', rs.store_type, 'generation', rs.generation,
@@ -242,7 +241,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 					WHERE rs.resource_id = r.id AND rs.store_type = 'thumbnail' LIMIT 1),
 				'createTime', r.create_time, 'updateTime', r.update_time)
 			FROM resource r
-			WHERE t1.id = r.work_id AND r.enabled = 1
+			WHERE t1.id = r.work_id
 			LIMIT 1) AS resource,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
 				'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,

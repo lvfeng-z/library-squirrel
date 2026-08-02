@@ -10,12 +10,12 @@ import (
 
 // Repository 作品-作者关联仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
-	// Update 更新
-	Update(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
+	// Create 新建
+	Create(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
+	// Updates 更新
+	Updates(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
 	// Delete 删除
 	Delete(ctx context.Context, id int64) error
 	// GetById 根据ID获取
@@ -65,17 +65,17 @@ func NewService(repo Repository) *Service {
 
 // Save 保存关联
 func (s *Service) Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
-	return s.repo.Save(ctx, reWorkAuthor)
+	return s.repo.Create(ctx, reWorkAuthor)
 }
 
 // SaveBatch 批量保存关联
 func (s *Service) SaveBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error {
-	return s.repo.SaveBatch(ctx, reWorkAuthors)
+	return s.repo.CreateBatch(ctx, reWorkAuthors)
 }
 
 // Update 更新关联
 func (s *Service) Update(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
-	return s.repo.Update(ctx, reWorkAuthor)
+	return s.repo.Updates(ctx, reWorkAuthor)
 }
 
 // Delete 删除关联

@@ -26,10 +26,10 @@ const (
 
 // Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存备份
-	Save(ctx context.Context, backup *entity.Backup) error
-	// Update 更新备份
-	Update(ctx context.Context, backup *entity.Backup) error
+	// Create 新建备份
+	Create(ctx context.Context, backup *entity.Backup) error
+	// Updates 更新备份
+	Updates(ctx context.Context, backup *entity.Backup) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceId 根据来源类型和来源ID获取
@@ -107,7 +107,7 @@ func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int
 	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
 	backup.FilePath = sql.NullString{String: filepath.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
-	if err := s.repo.Save(ctx, backup); err != nil {
+	if err := s.repo.Create(ctx, backup); err != nil {
 		return nil, err
 	}
 	return backup, nil
@@ -171,7 +171,7 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
 	backup.FilePath = sql.NullString{String: filepath.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
-	if err := s.repo.Save(ctx, backup); err != nil {
+	if err := s.repo.Create(ctx, backup); err != nil {
 		return nil, err
 	}
 	return backup, nil
@@ -226,7 +226,7 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sou
 	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
 	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
 	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
-	if err := s.repo.Update(ctx, backup); err != nil {
+	if err := s.repo.Updates(ctx, backup); err != nil {
 		return nil, fmt.Errorf("更新备份原始路径失败: %w", err)
 	}
 	return backup, nil
@@ -248,7 +248,7 @@ func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath 
 	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
 	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
 	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
-	if err := s.repo.Update(ctx, backup); err != nil {
+	if err := s.repo.Updates(ctx, backup); err != nil {
 		return 0, fmt.Errorf("更新备份原始路径失败: %w", err)
 	}
 	return backup.GetID(), nil

@@ -12,9 +12,8 @@ type Resource struct {
 	*model.BaseEntity
 	WorkID           int64          `gorm:"column:work_id;index:idx_resource_work_id" json:"workId"`
 	TaskID           int64          `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"`
-	Enabled          bool           `gorm:"column:enabled" json:"enabled"`
 	SuggestName      sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
-	ResourceComplete int            `gorm:"column:resource_complete" json:"resourceComplete"`
+	ResourceComplete sql.NullInt64  `gorm:"column:resource_complete" json:"resourceComplete"`
 	ResourceType     string         `gorm:"column:resource_type;not null" json:"resourceType"`
 }
 

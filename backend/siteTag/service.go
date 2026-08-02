@@ -37,12 +37,12 @@ type SiteQueryOperator interface {
 
 // Repository 站点标签仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, tag *entity2.SiteTag) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, tags []*entity2.SiteTag) error
-	// Update 更新
-	Update(ctx context.Context, tag *entity2.SiteTag) error
+	// Create 新建
+	Create(ctx context.Context, tag *entity2.SiteTag) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, tags []*entity2.SiteTag) error
+	// Updates 更新
+	Updates(ctx context.Context, tag *entity2.SiteTag) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.SiteTag, error)
 	// List 查询列表
@@ -95,12 +95,12 @@ func NewService(repo Repository, localTagOperator LocalTagOperator, localTagQuer
 
 // Save 保存站点标签
 func (s *Service) Save(ctx context.Context, tag *entity2.SiteTag) error {
-	return s.repo.Save(ctx, tag)
+	return s.repo.Create(ctx, tag)
 }
 
 // SaveBatch 批量保存站点标签
 func (s *Service) SaveBatch(ctx context.Context, tags []*entity2.SiteTag) error {
-	return s.repo.SaveBatch(ctx, tags)
+	return s.repo.CreateBatch(ctx, tags)
 }
 
 // UpdateById 更新站点标签
@@ -108,7 +108,7 @@ func (s *Service) UpdateById(ctx context.Context, tag *entity2.SiteTag) error {
 	if tag.ID == 0 {
 		return ErrTagIdRequired
 	}
-	return s.repo.Update(ctx, tag)
+	return s.repo.Updates(ctx, tag)
 }
 
 // GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
@@ -150,7 +150,7 @@ func (s *Service) UpdateLastUse(ctx context.Context, ids []int64) error {
 			continue
 		}
 		tag.LastUse = sql.NullInt64{Int64: now, Valid: true}
-		if err := s.repo.Update(ctx, tag); err != nil {
+		if err := s.repo.Updates(ctx, tag); err != nil {
 			return err
 		}
 	}

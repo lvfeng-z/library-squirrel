@@ -117,8 +117,8 @@ func (r *BaseRepository[T]) getDb(ctx context.Context) *gorm.DB {
 	return DBFromContext(ctx, r.db)
 }
 
-// Save 保存单个实体
-func (r *BaseRepository[T]) Save(ctx context.Context, entity *T) error {
+// Create 新建实体（INSERT，ID 为 0 时设 CreateTime）
+func (r *BaseRepository[T]) Create(ctx context.Context, entity *T) error {
 	now := util.GetCurrentTimestamp()
 	e := *entity
 	if e.GetID() == 0 {
@@ -129,8 +129,8 @@ func (r *BaseRepository[T]) Save(ctx context.Context, entity *T) error {
 	return r.getDb(ctx).WithContext(ctx).Create(entity).Error
 }
 
-// SaveBatch 批量保存
-func (r *BaseRepository[T]) SaveBatch(ctx context.Context, entities []*T) error {
+// CreateBatch 批量新建
+func (r *BaseRepository[T]) CreateBatch(ctx context.Context, entities []*T) error {
 	if len(entities) == 0 {
 		return nil
 	}
@@ -159,26 +159,26 @@ func (r *BaseRepository[T]) DeleteBatch(ctx context.Context, ids []int64) error 
 	return r.getDb(ctx).WithContext(ctx).Delete(new(T), ids).Error
 }
 
-// Update 更新实体
-func (r *BaseRepository[T]) Update(ctx context.Context, entity *T) error {
+// Updates 更新实体（部分更新，仅更新非零字段）
+// 注意：如果需要更新字段为零值（如清空描述），请使用 Save 并先 GetById 读回完整对象
+func (r *BaseRepository[T]) Updates(ctx context.Context, entity *T) error {
 	e := *entity
 	e.SetUpdateTime(util.GetCurrentTimestamp())
 	*entity = e
-	return r.getDb(ctx).WithContext(ctx).Save(entity).Error
+	return r.getDb(ctx).WithContext(ctx).Updates(entity).Error
 }
 
-// UpdateBatch 批量更新
-func (r *BaseRepository[T]) UpdateBatch(ctx context.Context, entities []*T) error {
-	if len(entities) == 0 {
-		return nil
-	}
+// Save 保存实体（GORM Save 语义：存在主键则全字段更新含零值，否则插入）
+// 需要完整替换已存在记录、或更新零值合法字段时使用
+func (r *BaseRepository[T]) Save(ctx context.Context, entity *T) error {
 	now := util.GetCurrentTimestamp()
-	for _, entity := range entities {
-		e := *entity
-		e.SetUpdateTime(now)
-		*entity = e
+	e := *entity
+	if e.GetID() == 0 {
+		e.SetCreateTime(now)
 	}
-	return r.getDb(ctx).WithContext(ctx).Save(entities).Error
+	e.SetUpdateTime(now)
+	*entity = e
+	return r.getDb(ctx).WithContext(ctx).Save(entity).Error
 }
 
 // GetById 根据ID获取
@@ -329,51 +329,4 @@ func (r *BaseRepository[T]) Transaction(ctx context.Context, fn func(tx *gorm.DB
 // ExecRawSQL 执行原生 SQL（仅用于复杂查询）
 func (r *BaseRepository[T]) ExecRawSQL(ctx context.Context, query string, args ...interface{}) *gorm.DB {
 	return r.getDb(ctx).WithContext(ctx).Raw(query, args...)
-}
-
-// ========== 辅助方法 ==========
-
-// Create 创建（别名，用于特定场景）
-func (r *BaseRepository[T]) Create(ctx context.Context, entity *T) error {
-	return r.Save(ctx, entity)
-}
-
-// Updates 更新（仅更新非零字段）
-func (r *BaseRepository[T]) Updates(ctx context.Context, entity *T) error {
-	return r.getDb(ctx).WithContext(ctx).Model(new(T)).Updates(entity).Error
-}
-
-// DeleteByIds 根据IDs删除（别名）
-func (r *BaseRepository[T]) DeleteByIds(ctx context.Context, ids []int64) error {
-	return r.DeleteBatch(ctx, ids)
-}
-
-// FindAll 查询所有
-func (r *BaseRepository[T]) FindAll(ctx context.Context) ([]*T, error) {
-	var entities []*T
-	err := r.getDb(ctx).WithContext(ctx).Find(&entities).Error
-	return entities, err
-}
-
-// FindOne 查询单个（带排序）
-func (r *BaseRepository[T]) FindOne(ctx context.Context, orderBy string, ascending bool) (*T, error) {
-	var entity T
-	query := r.getDb(ctx).WithContext(ctx).Model(new(T))
-	if orderBy != "" {
-		dir := "ASC"
-		if !ascending {
-			dir = "DESC"
-		}
-		query = query.Order(orderBy + " " + dir)
-	}
-	err := query.First(&entity).Error
-	if err != nil {
-		return nil, err
-	}
-	return &entity, nil
-}
-
-// String 格式化输出（调试用）
-func (r *BaseRepository[T]) String() string {
-	return fmt.Sprintf("BaseRepository<%T>", *new(T))
 }

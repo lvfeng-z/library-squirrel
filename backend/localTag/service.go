@@ -21,12 +21,12 @@ const RootLocalTagID = 0
 
 // Repository 本地标签仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, tag *domain.LocalTag) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, tags []*domain.LocalTag) error
-	// Update 更新
-	Update(ctx context.Context, tag *domain.LocalTag) error
+	// Create 新建
+	Create(ctx context.Context, tag *domain.LocalTag) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, tags []*domain.LocalTag) error
+	// Updates 更新
+	Updates(ctx context.Context, tag *domain.LocalTag) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.LocalTag, error)
 	// GetByName 根据名称获取
@@ -76,7 +76,7 @@ func (s *Service) Save(ctx context.Context, tag *domain.LocalTag) error {
 	if !tag.BaseLocalTagID.Valid || tag.BaseLocalTagID.Int64 == 0 {
 		tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true} // 表示根标签
 	}
-	err := s.repo.Save(ctx, tag)
+	err := s.repo.Create(ctx, tag)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (s *Service) SaveBatch(ctx context.Context, tags []*domain.LocalTag) error 
 			tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
 		}
 	}
-	return s.repo.SaveBatch(ctx, tags)
+	return s.repo.CreateBatch(ctx, tags)
 }
 
 // UpdateById 更新本地标签
@@ -133,13 +133,13 @@ func (s *Service) UpdateById(ctx context.Context, tag *domain.LocalTag) error {
 				newBaseTag.SetID(tag.BaseLocalTagID.Int64)
 			}
 			newBaseTag.BaseLocalTagID = old.BaseLocalTagID
-			if err := s.repo.Update(ctx, newBaseTag); err != nil {
+			if err := s.repo.Updates(ctx, newBaseTag); err != nil {
 				return err
 			}
 		}
 	}
 
-	return s.repo.Update(ctx, tag)
+	return s.repo.Updates(ctx, tag)
 }
 
 // UpdateLastUse 更新最后使用时间
@@ -151,7 +151,7 @@ func (s *Service) UpdateLastUse(ctx context.Context, ids []int64) error {
 			continue
 		}
 		tag.LastUse = sql.NullInt64{Int64: now, Valid: true}
-		if err := s.repo.Update(ctx, tag); err != nil {
+		if err := s.repo.Updates(ctx, tag); err != nil {
 			return err
 		}
 	}

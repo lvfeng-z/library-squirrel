@@ -6,7 +6,6 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
-	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -164,19 +163,3 @@ func (r *ReWorkTagRepository) ListSiteTagIdsByWorkIds(ctx context.Context, workI
 	return result, nil
 }
 
-// SaveBatch 批量保存
-func (r *ReWorkTagRepository) SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error {
-	if len(rels) == 0 {
-		return nil
-	}
-	now := util.GetCurrentTimestamp()
-	for _, rel := range rels {
-		if rel.GetID() == 0 {
-			rel.SetCreateTime(now)
-		}
-		rel.SetUpdateTime(now)
-	}
-	return r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Create(rels).Error
-}

@@ -32,7 +32,7 @@ type WorkSetQueryProvider interface {
 
 // SiteSaveProvider 站点保存
 type SiteSaveProvider interface {
-	Save(ctx context.Context, site *entity.Site) error
+	Create(ctx context.Context, site *entity.Site) error
 }
 
 // SiteQueryProvider 站点查询
@@ -191,7 +191,7 @@ func (pc *pluginContext) AddSite(sites []*pluginsdkdto.SiteDTO) error {
 		if existing, _ := pc.siteQuery.GetByName(ctx, e.SiteName.String); existing != nil {
 			continue
 		}
-		if err := pc.siteSave.Save(ctx, e); err != nil {
+		if err := pc.siteSave.Create(ctx, e); err != nil {
 			return fmt.Errorf("add site: %w", err)
 		}
 	}

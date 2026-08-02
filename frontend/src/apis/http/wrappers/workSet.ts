@@ -112,15 +112,11 @@ export async function workSetUpdate(workSet: {
   nickName?: string
   description?: string
 }): Promise<ApiResponse<null>> {
-  // BaseRepository.Update 实为 Save 全字段覆盖：必须先读回完整 DTO、合并用户编辑字段后整体提交，
-  // 否则只传 {id, nickName} 会把其余字段清空为 NULL。
-  const readBack = await WorkSetHandler.GetById(workSet.id)
-  const existed = requireResponse(readBack, '读取作品集当前数据').data
+  // 后端 Update 已改为部分更新（GORM Updates，仅写非零字段），直接传编辑字段即可，未传字段保留原值
   const dto = new WorkSetDTO({
-    ...existed,
     id: workSet.id,
-    nickName: workSet.nickName ?? existed.nickName ?? null,
-    description: workSet.description ?? existed.description ?? null
+    nickName: workSet.nickName ?? null,
+    description: workSet.description ?? null
   })
   return requireResponse(await WorkSetHandler.Update(dto), '更新作品集', false)
 }

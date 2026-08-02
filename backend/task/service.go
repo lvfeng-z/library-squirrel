@@ -73,12 +73,12 @@ func isTransientStatus(status int) bool {
 
 // Repository 任务仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, task *entity.Task) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, tasks []*entity.Task) error
-	// Update 更新
-	Update(ctx context.Context, task *entity.Task) error
+	// Create 新建
+	Create(ctx context.Context, task *entity.Task) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, tasks []*entity.Task) error
+	// Updates 更新
+	Updates(ctx context.Context, task *entity.Task) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Task, error)
 	// List 查询列表
@@ -276,17 +276,17 @@ func (s *Service) GetById(ctx context.Context, id int64) (*entity.Task, error) {
 
 // Save 保存任务
 func (s *Service) Save(ctx context.Context, task *entity.Task) error {
-	return s.repo.Save(ctx, task)
+	return s.repo.Create(ctx, task)
 }
 
 // SaveBatch 批量保存任务
 func (s *Service) SaveBatch(ctx context.Context, tasks []*entity.Task) error {
-	return s.repo.SaveBatch(ctx, tasks)
+	return s.repo.CreateBatch(ctx, tasks)
 }
 
 // Update 更新任务
 func (s *Service) Update(ctx context.Context, task *entity.Task) error {
-	return s.repo.Update(ctx, task)
+	return s.repo.Updates(ctx, task)
 }
 
 // Delete 删除任务
@@ -752,7 +752,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 		// 确保批量保存
 		flushBatch := func() {
 			if len(batch) > 0 {
-				if err := s.repo.SaveBatch(ctx, batch); err != nil {
+				if err := s.repo.CreateBatch(ctx, batch); err != nil {
 					for range batch {
 						outChan <- &CreateTaskStreamChan{Error: err}
 					}

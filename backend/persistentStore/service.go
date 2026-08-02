@@ -2,6 +2,7 @@ package persistentStore
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -22,10 +23,10 @@ import (
 
 // Repository 文件持久存储仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存记录（Create 后通过指针回填 ID）
-	Save(ctx context.Context, store *domain.PersistentStore) error
-	// Update 更新记录
-	Update(ctx context.Context, store *domain.PersistentStore) error
+	// Create 新建记录（Create 后通过指针回填 ID）
+	Create(ctx context.Context, store *domain.PersistentStore) error
+	// Updates 更新记录
+	Updates(ctx context.Context, store *domain.PersistentStore) error
 	// GetById 根据 ID 获取记录
 	GetById(ctx context.Context, id int64) (*domain.PersistentStore, error)
 	// List 查询列表
@@ -108,10 +109,10 @@ func (w *storeWriter) Complete() error {
 	if record == nil {
 		return fmt.Errorf("记录不存在: storeId=%d", w.storeId)
 	}
-	record.Status = domain.StoreStatusComplete
+	record.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	// 提取图片宽高（若为图片），与状态更新合并为同一次 Update
 	fillImageDimensions(record, w.workDirGetter())
-	if err := w.repo.Update(context.Background(), record); err != nil {
+	if err := w.repo.Updates(context.Background(), record); err != nil {
 		return fmt.Errorf("更新记录状态失败: %w", err)
 	}
 	return nil
@@ -165,8 +166,8 @@ func fillImageDimensions(store *domain.PersistentStore, workDir string) {
 		logger.Log.Warn("提取图片宽高失败，留空", zap.String("path", absPath), zap.Error(err))
 		return
 	}
-	store.Width = width
-	store.Height = height
+	store.Width = sql.NullInt64{Int64: int64(width), Valid: true}
+	store.Height = sql.NullInt64{Int64: int64(height), Valid: true}
 }
 
 // FileMover 文件移动备份接口（由 persistentStore 定义，backup.Service 实现）
@@ -258,8 +259,8 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		existing.FileName.String = fileName
 		existing.FilenameExtension.Valid = true
 		existing.FilenameExtension.String = ext
-		existing.Status = domain.StoreStatusIncomplete
-		if err := s.repo.Update(ctx, existing); err != nil {
+		existing.Status = sql.NullInt64{Int64: domain.StoreStatusIncomplete, Valid: true}
+		if err := s.repo.Updates(ctx, existing); err != nil {
 			file.Close()
 			os.Remove(absPath)
 			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
@@ -276,9 +277,9 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = domain.StoreStatusIncomplete
+	store.Status = sql.NullInt64{Int64: domain.StoreStatusIncomplete, Valid: true}
 
-	if err := s.repo.Save(ctx, store); err != nil {
+	if err := s.repo.Create(ctx, store); err != nil {
 		file.Close()
 		os.Remove(absPath)
 		return 0, nil, fmt.Errorf("保存记录失败: %w", err)
@@ -300,8 +301,8 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64)
 	if record == nil {
 		return nil, fmt.Errorf("记录不存在: storeId=%d", storeId)
 	}
-	if record.Status != domain.StoreStatusIncomplete {
-		return nil, fmt.Errorf("记录已完成，无法恢复: storeId=%d, status=%d", storeId, record.Status)
+	if !record.Status.Valid || record.Status.Int64 != domain.StoreStatusIncomplete {
+		return nil, fmt.Errorf("记录已完成，无法恢复: storeId=%d, status=%d", storeId, record.Status.Int64)
 	}
 
 	// 2. 获取绝对路径
@@ -385,9 +386,9 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 		existing.FileName.String = fileName
 		existing.FilenameExtension.Valid = true
 		existing.FilenameExtension.String = ext
-		existing.Status = domain.StoreStatusComplete
+		existing.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 		fillImageDimensions(existing, workDir)
-		if err := s.repo.Update(ctx, existing); err != nil {
+		if err := s.repo.Updates(ctx, existing); err != nil {
 			return 0, fmt.Errorf("更新记录失败: %w", err)
 		}
 		return existing.GetID(), nil
@@ -401,10 +402,10 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = domain.StoreStatusComplete
+	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	fillImageDimensions(store, workDir)
 
-	if err := s.repo.Save(ctx, store); err != nil {
+	if err := s.repo.Create(ctx, store); err != nil {
 		// 记录创建失败时清理文件
 		os.Remove(absPath)
 		return 0, fmt.Errorf("保存记录失败: %w", err)
@@ -478,7 +479,7 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 		absPath := filepath.Join(workDir, record.FilePath.String)
 
 		// 2. 对已完成的文件进行移动备份（可选）
-		if backup && record.Status == domain.StoreStatusComplete && s.fileMover != nil {
+		if backup && record.Status.Valid && record.Status.Int64 == domain.StoreStatusComplete && s.fileMover != nil {
 			originalFileName := ""
 			if record.FileName.Valid {
 				originalFileName = record.FileName.String
@@ -571,10 +572,10 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = domain.StoreStatusComplete
+	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	fillImageDimensions(store, workDir)
 
-	if err := s.repo.Save(ctx, store); err != nil {
+	if err := s.repo.Create(ctx, store); err != nil {
 		return 0, fmt.Errorf("注册 PersistentStore 记录失败: %w", err)
 	}
 
@@ -624,7 +625,7 @@ func (s *Service) IsCompleteByPath(ctx context.Context, relPath string) bool {
 		// 无记录时允许按磁盘文件 fallback（向后兼容）
 		return true
 	}
-	return record.Status == domain.StoreStatusComplete
+	return record.Status.Valid && record.Status.Int64 == domain.StoreStatusComplete
 }
 
 // ResolveStorePath 解析存储相对路径为绝对路径

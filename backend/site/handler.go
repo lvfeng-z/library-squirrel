@@ -25,7 +25,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Save(ctx context.Context, site *sdkdto.SiteDTO) *model.ApiResponse[int64] {
 	domainSite := dto.ToSiteEntity(site)
 
-	if err := h.svc.Save(ctx, domainSite); err != nil {
+	if err := h.svc.Create(ctx, domainSite); err != nil {
 		return model.HandleError[int64](err)
 	}
 	return model.Success(domainSite.GetID())

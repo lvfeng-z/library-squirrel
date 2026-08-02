@@ -17,12 +17,12 @@ import (
 
 // Repository 本地作者仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, author *domain.LocalAuthor) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, authors []*domain.LocalAuthor) error
-	// Update 更新
-	Update(ctx context.Context, author *domain.LocalAuthor) error
+	// Create 新建
+	Create(ctx context.Context, author *domain.LocalAuthor) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, authors []*domain.LocalAuthor) error
+	// Updates 更新
+	Updates(ctx context.Context, author *domain.LocalAuthor) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.LocalAuthor, error)
 	// List 查询列表
@@ -59,12 +59,12 @@ func NewService(repo Repository) *Service {
 
 // Save 保存作者
 func (s *Service) Save(ctx context.Context, author *domain.LocalAuthor) error {
-	return s.repo.Save(ctx, author)
+	return s.repo.Create(ctx, author)
 }
 
 // SaveBatch 批量保存本地作者
 func (s *Service) SaveBatch(ctx context.Context, authors []*domain.LocalAuthor) error {
-	return s.repo.SaveBatch(ctx, authors)
+	return s.repo.CreateBatch(ctx, authors)
 }
 
 // UpdateById 更新作者
@@ -72,7 +72,7 @@ func (s *Service) UpdateById(ctx context.Context, author *domain.LocalAuthor) er
 	if author.ID == 0 {
 		return ErrAuthorIdRequired
 	}
-	return s.repo.Update(ctx, author)
+	return s.repo.Updates(ctx, author)
 }
 
 // UpdateLastUse 批量更新最后使用时间
@@ -84,7 +84,7 @@ func (s *Service) UpdateLastUse(ctx context.Context, ids []int64) error {
 			continue
 		}
 		author.LastUse = sql.NullInt64{Int64: now, Valid: true}
-		if err := s.repo.Update(ctx, author); err != nil {
+		if err := s.repo.Updates(ctx, author); err != nil {
 			return err
 		}
 	}

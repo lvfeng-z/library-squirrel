@@ -259,23 +259,6 @@ func buildCaseExpression(sortOrders map[int64]int) string {
 	return "CASE work_id " + strings.Join(cases, " ") + " END"
 }
 
-// SaveBatch 批量保存
-func (r *ReWorkWorkSetRepository) SaveBatch(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {
-	if len(reWorkWorkSets) == 0 {
-		return nil
-	}
-	now := util.GetCurrentTimestamp()
-	for _, rel := range reWorkWorkSets {
-		if rel.GetID() == 0 {
-			rel.SetCreateTime(now)
-		}
-		rel.SetUpdateTime(now)
-	}
-	return r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Create(reWorkWorkSets).Error
-}
-
 // SaveBatchOnConflict 批量保存，遇 (work_id, work_set_id) 唯一冲突跳过该行（OnConflict DoNothing）
 // 物理纳入复制用：单条重复不拒绝整批（决策7）；is_cover 由调用方置 false 回避 set_cover 唯一索引
 func (r *ReWorkWorkSetRepository) SaveBatchOnConflict(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {

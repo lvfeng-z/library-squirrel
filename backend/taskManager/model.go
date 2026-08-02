@@ -167,7 +167,7 @@ type WorkMetaLoader interface {
 // ResourceSaver 资源保存接口
 type ResourceSaver interface {
 	Save(ctx context.Context, resource *entity.Resource) (int64, error)
-	Update(ctx context.Context, resource *entity.Resource) error
+	Updates(ctx context.Context, resource *entity.Resource) error
 }
 
 // WorkChecker 作品查重接口
@@ -181,8 +181,6 @@ type WorkChecker interface {
 type ResourceReader interface {
 	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
-	// GetEnabledByWorkId 查询作品关联的启用资源
-	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
 	// GetById 根据 ID 获取资源
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
@@ -239,7 +237,7 @@ type ResourceStoreReader interface {
 
 // ResourceStoreWriter resource_store 关联写入接口(saveResource 多 store 挂载)
 type ResourceStoreWriter interface {
-	SaveBatch(ctx context.Context, stores []*entity.ResourceStore) error
+	CreateBatch(ctx context.Context, stores []*entity.ResourceStore) error
 	DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error
 }
 
@@ -1046,8 +1044,8 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 	// 始终查找已有 Resource(不依赖 isReplace),防止重复创建
 	existing := m.findReplaceResource(ctx, workId)
 	if existing != nil {
-		existing.ResourceComplete = 0
-		if err := m.deps.ResourceUpdater.Update(ctx, existing); err != nil {
+		existing.ResourceComplete = sql.NullInt64{Int64: 0, Valid: true}
+		if err := m.deps.ResourceUpdater.Updates(ctx, existing); err != nil {
 			return 0, fmt.Errorf("更新 Resource 失败: %w", err)
 		}
 		resourceId = existing.GetID()
@@ -1058,8 +1056,7 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		resource := entity.NewResource()
 		resource.WorkID = workId
 		resource.TaskID = m.task.GetID()
-		resource.Enabled = true
-		resource.ResourceComplete = 0                      // 下载未完成
+		resource.ResourceComplete = sql.NullInt64{Int64: 0, Valid: true} // 下载未完成
 		// 创建期声明的资源类型;严格识别——空值或非预定义值在写入前抛错,不兜底
 		resourceType := m.task.ResourceType.String
 		if err := entity.ValidateResourceType(resourceType); err != nil {
@@ -1112,11 +1109,11 @@ func (m *ManagedTask) markResourceComplete(ctx context.Context, resourceId int64
 			}
 		}
 	}
-	if resource.ResourceComplete == complete {
+	if resource.ResourceComplete.Valid && resource.ResourceComplete.Int64 == int64(complete) {
 		return // 值未变,跳过写库
 	}
-	resource.ResourceComplete = complete
-	if err := m.deps.ResourceUpdater.Update(ctx, resource); err != nil {
+	resource.ResourceComplete = sql.NullInt64{Int64: int64(complete), Valid: true}
+	if err := m.deps.ResourceUpdater.Updates(ctx, resource); err != nil {
 		logger.Log.Warnf("[TaskManager] 更新 ResourceComplete 失败: resourceId=%d err=%v", resourceId, err)
 	}
 }
@@ -1132,7 +1129,7 @@ func (m *ManagedTask) findReplaceResource(ctx context.Context, workId int64) *en
 			return existing
 		}
 	}
-	resources, queryErr := m.deps.ResourceReader.GetEnabledByWorkId(ctx, workId)
+	resources, queryErr := m.deps.ResourceReader.ListByWorkId(ctx, workId)
 	if queryErr != nil {
 		logger.Log.Warnf("[TaskManager] 查询作品 %d 资源失败: %v", workId, queryErr)
 		return nil
@@ -1171,7 +1168,7 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 		roleSeq[mt.role]++
 		stores = append(stores, s)
 	}
-	return m.deps.ResourceStoreWriter.SaveBatch(ctx, stores)
+	return m.deps.ResourceStoreWriter.CreateBatch(ctx, stores)
 }
 
 // cleanupCreatedStores 清理本次 startDownload 新建的 PersistentStore（记录 + 磁盘文件）
@@ -1502,7 +1499,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		}
 		absPath := m.deps.StoreReader.GetAbsPath(store)
 		info, statErr := os.Stat(absPath)
-		if store.Status == entity.StoreStatusComplete && statErr == nil {
+		if store.Status.Valid && store.Status.Int64 == entity.StoreStatusComplete && statErr == nil {
 			// 该 store 已完成:按身份记录,不进入 Resume/重产(同 role 多 store 各自独立判定)
 			completedSet[ident] = struct{}{}
 			continue

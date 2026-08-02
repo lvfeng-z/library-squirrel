@@ -11,8 +11,8 @@ import (
 
 // StoreResourceProvider 资源查询接口（由 resource.Service 实现）
 type StoreResourceProvider interface {
-	// GetEnabledByWorkId 查询作品关联的启用资源
-	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
+	// ListByWorkId 查询作品关联的资源
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
 	// GetById 根据 ID 获取资源
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
@@ -34,7 +34,7 @@ type StoreImporter interface {
 
 // ResourceUpdater Resource 更新接口（由 resource.Service 实现）
 type ResourceUpdater interface {
-	Update(ctx context.Context, resource *entity.Resource) error
+	Updates(ctx context.Context, resource *entity.Resource) error
 }
 
 // BackupReader 备份查询接口（由 backup.Service 实现）
@@ -62,11 +62,11 @@ type StoreBackupItem struct {
 // StoreBackupOrchestratorImpl 资源存储备份编排器
 // 封装替换场景下作品 Resource 全部 PersistentStore 的一站式备份和还原
 type StoreBackupOrchestratorImpl struct {
-	resourceProvider StoreResourceProvider
+	resourceProvider    StoreResourceProvider
 	resourceStoreReader StoreResourceStoreReader
-	storeDeleter     StoreDeleter
-	storeImporter    StoreImporter
-	backupReader     BackupReader
+	storeDeleter        StoreDeleter
+	storeImporter       StoreImporter
+	backupReader        BackupReader
 }
 
 // NewStoreBackupOrchestrator 创建资源存储备份编排器
@@ -78,11 +78,11 @@ func NewStoreBackupOrchestrator(
 	backupReader BackupReader,
 ) *StoreBackupOrchestratorImpl {
 	return &StoreBackupOrchestratorImpl{
-		resourceProvider:   resourceProvider,
+		resourceProvider:    resourceProvider,
 		resourceStoreReader: resourceStoreReader,
-		storeDeleter:       storeDeleter,
-		storeImporter:      storeImporter,
-		backupReader:       backupReader,
+		storeDeleter:        storeDeleter,
+		storeImporter:       storeImporter,
+		backupReader:        backupReader,
 	}
 }
 
@@ -94,9 +94,9 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 		typeSet[t] = struct{}{}
 	}
 
-	resources, err := o.resourceProvider.GetEnabledByWorkId(ctx, workId)
+	resources, err := o.resourceProvider.ListByWorkId(ctx, workId)
 	if err != nil {
-		logger.Log.Warnf("[StoreBackupOrchestrator] 查询作品 %d 启用资源失败（跳过备份）: %v", workId, err)
+		logger.Log.Warnf("[StoreBackupOrchestrator] 查询作品 %d 资源失败（跳过备份）: %v", workId, err)
 		return nil
 	}
 

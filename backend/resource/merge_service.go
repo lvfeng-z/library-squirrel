@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -65,7 +66,7 @@ type Transactor interface {
 // 实现由 ResourceRepository 满足(BaseRepository 提供 GetById/Update)。
 type ResourceAccessor interface {
 	GetById(ctx context.Context, id int64) (*domain.Resource, error)
-	Update(ctx context.Context, resource *domain.Resource) error
+	Updates(ctx context.Context, resource *domain.Resource) error
 }
 
 // MergeService 音视频合并业务编排：取 resource 的 videoTrack/audioTrack → 调合并 →
@@ -167,7 +168,7 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 		// 此处 videoMain 为合并产物(一次性派生,非流式下载),语义 derived(不可续传);本地导入路径的 videoMain 则为 downloaded。
 		rs.Generation = domain.GenerationDerived
 		rs.StoreID = mergedPsId
-		return s.resourceStoreRepo.Save(txCtx, rs)
+		return s.resourceStoreRepo.Create(txCtx, rs)
 	}); err != nil {
 		if _, derr := s.storeOps.Delete(ctx, mergedPsId, false); derr != nil {
 			return nil, fmt.Errorf("挂载合并产物失败且补偿删除产物 store 也失败，挂载错误: %w", err)
@@ -225,11 +226,11 @@ func (s *MergeService) recomputeComplete(ctx context.Context, resourceId int64) 
 	if complete == 2 {
 		logger.Log.Infof("[MergeService] 合并后资源仍不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
 	}
-	if resource.ResourceComplete == complete {
+	if resource.ResourceComplete.Valid && resource.ResourceComplete.Int64 == int64(complete) {
 		return
 	}
-	resource.ResourceComplete = complete
-	if err := s.resource.Update(ctx, resource); err != nil {
+	resource.ResourceComplete = sql.NullInt64{Int64: int64(complete), Valid: true}
+	if err := s.resource.Updates(ctx, resource); err != nil {
 		logger.Log.Warnf("[MergeService] 合并后更新 ResourceComplete 失败: resourceId=%d err=%v", resourceId, err)
 	}
 }

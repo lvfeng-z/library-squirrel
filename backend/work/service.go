@@ -129,8 +129,8 @@ type ReWorkTagWriter interface {
 type ReWorkWorkSetWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
+	// CreateBatch 批量新建关联
+	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 }
 
 // LocalTagFindOrCreator 本地标签查找或创建接口
@@ -244,8 +244,8 @@ type StoreReader interface {
 
 // RecycleItemSaver 回收站条目保存接口（逻辑删除写入快照）
 type RecycleItemSaver interface {
-	// Save 保存回收站条目
-	Save(ctx context.Context, item *entity2.RecycleItem) error
+	// Create 保存回收站条目
+	Create(ctx context.Context, item *entity2.RecycleItem) error
 }
 
 // BackupMover 文件移动备份接口（逻辑删除时把资源文件移入 backup 目录）
@@ -275,7 +275,7 @@ type ResourceSaver interface {
 
 // ResourceStoreSaver resource_store 行保存接口(复原时重建关联)
 type ResourceStoreSaver interface {
-	SaveBatch(ctx context.Context, stores []*entity2.ResourceStore) error
+	CreateBatch(ctx context.Context, stores []*entity2.ResourceStore) error
 }
 
 // SiteAuthorByIdsReader 站点作者按 ID 批量查询接口（复原时引用校验）
@@ -292,10 +292,10 @@ type WorkSetByIdsReader interface {
 
 // Repository 作品仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, work *entity2.Work) error
-	// Update 更新
-	Update(ctx context.Context, work *entity2.Work) error
+	// Create 新建
+	Create(ctx context.Context, work *entity2.Work) error
+	// Updates 更新
+	Updates(ctx context.Context, work *entity2.Work) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.Work, error)
 	// List 查询列表
@@ -334,15 +334,15 @@ type Service struct {
 	storeDeleter      StoreDeleter
 
 	// 批量读取接口（用于 GetFullWorkInfoByIds）
-	localTagBatchReader     LocalTagBatchReader
-	siteTagBatchReader      SiteTagBatchReader
-	siteBatchReader         SiteBatchReader
-	localAuthorBatchReader  LocalAuthorBatchReader
-	siteAuthorBatchReader   SiteAuthorBatchReader
-	resourceBatchReader     ResourceBatchReader
+	localTagBatchReader      LocalTagBatchReader
+	siteTagBatchReader       SiteTagBatchReader
+	siteBatchReader          SiteBatchReader
+	localAuthorBatchReader   LocalAuthorBatchReader
+	siteAuthorBatchReader    SiteAuthorBatchReader
+	resourceBatchReader      ResourceBatchReader
 	resourceStoreBatchReader ResourceStoreBatchReader
-	storeBatchReader        StoreBatchReader
-	reWorkTagBatchReader    ReWorkTagBatchReader
+	storeBatchReader         StoreBatchReader
+	reWorkTagBatchReader     ReWorkTagBatchReader
 
 	// 写入接口（用于 SaveWorkInfo）
 	reWorkTagWriter          ReWorkTagWriter
@@ -470,7 +470,7 @@ func (s *Service) SetRunningTaskStopper(stopper RunningTaskStopper) {
 
 // Save 保存作品
 func (s *Service) Save(ctx context.Context, work *entity2.Work) error {
-	return s.repo.Save(ctx, work)
+	return s.repo.Create(ctx, work)
 }
 
 // UpdateById 更新作品
@@ -478,7 +478,7 @@ func (s *Service) UpdateById(ctx context.Context, work *entity2.Work) error {
 	if work.ID == 0 {
 		return ErrWorkIdRequired
 	}
-	return s.repo.Update(ctx, work)
+	return s.repo.Updates(ctx, work)
 }
 
 // GetById 根据ID获取
@@ -615,9 +615,8 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	for _, res := range resources {
 		rs := recycleBin.ResourceSnapshot{
 			TaskID:           res.TaskID,
-			Enabled:          res.Enabled,
 			SuggestName:      res.SuggestName,
-			ResourceComplete: res.ResourceComplete,
+			ResourceComplete: int(res.ResourceComplete.Int64),
 		}
 		// 遍历 resource_store 行备份(v1 快照格式)
 		for _, rsRow := range rsStoreMap[res.GetID()] {
@@ -689,7 +688,7 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 
 	// 5. [事务内] 写 recycle_bin + 删 persistent_store 记录 + 删关联 + 删 resource + 删 work
 	err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-		if err := s.recycleItemSaver.Save(txCtx, recycleItem); err != nil {
+		if err := s.recycleItemSaver.Create(txCtx, recycleItem); err != nil {
 			return err
 		}
 		for _, sb := range storeBackups {
@@ -794,7 +793,7 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 	work.NickName = snapshot.Work.NickName
 	work.LocalAuthorID = snapshot.Work.LocalAuthorID
 	work.LastView = snapshot.Work.LastView
-	if err := s.repo.Save(ctx, work); err != nil {
+	if err := s.repo.Create(ctx, work); err != nil {
 		return 0, fmt.Errorf("重建作品失败: %w", err)
 	}
 	workId := work.GetID()
@@ -804,9 +803,8 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		resource := entity2.NewResource()
 		resource.WorkID = workId
 		resource.TaskID = rs.TaskID
-		resource.Enabled = rs.Enabled
 		resource.SuggestName = rs.SuggestName
-		resource.ResourceComplete = rs.ResourceComplete
+		resource.ResourceComplete = sql.NullInt64{Int64: int64(rs.ResourceComplete), Valid: true}
 		if err := s.resourceSaver.Save(ctx, resource); err != nil {
 			return workId, fmt.Errorf("重建资源记录失败: %w", err)
 		}
@@ -828,7 +826,7 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 			rsStores = append(rsStores, rsRow)
 		}
 		if len(rsStores) > 0 {
-			if err := s.resourceStoreSaver.SaveBatch(ctx, rsStores); err != nil {
+			if err := s.resourceStoreSaver.CreateBatch(ctx, rsStores); err != nil {
 				return workId, fmt.Errorf("重建 resource_store 失败: %w", err)
 			}
 		}
@@ -898,7 +896,7 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		workSetLinks = append(workSetLinks, rel)
 	}
 	if len(workSetLinks) > 0 {
-		if err := s.reWorkWorkSetWriter.SaveBatch(ctx, workSetLinks); err != nil {
+		if err := s.reWorkWorkSetWriter.CreateBatch(ctx, workSetLinks); err != nil {
 			return workId, fmt.Errorf("重建作品作品集关联失败: %w", err)
 		}
 	}
@@ -1379,7 +1377,7 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	}
 	if len(workSetDBIds) > 0 {
 		links := buildWorkSetLinks(workId, workSetDBIds)
-		if err := s.reWorkWorkSetWriter.SaveBatch(ctx, links); err != nil {
+		if err := s.reWorkWorkSetWriter.CreateBatch(ctx, links); err != nil {
 			return 0, fmt.Errorf("保存作品作品集关联失败: %w", err)
 		}
 	}
@@ -1766,12 +1764,12 @@ func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int
 	existing, err := s.repo.GetBySiteAndSiteWorkID(ctx, work.SiteID.Int64, work.SiteWorkID.String)
 	if err == nil && existing != nil {
 		work.ID = existing.ID
-		if err := s.repo.Update(ctx, work); err != nil {
+		if err := s.repo.Updates(ctx, work); err != nil {
 			return 0, err
 		}
 		return existing.ID, nil
 	}
-	if err := s.repo.Save(ctx, work); err != nil {
+	if err := s.repo.Create(ctx, work); err != nil {
 		return 0, err
 	}
 	return work.ID, nil

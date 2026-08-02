@@ -88,7 +88,7 @@ func NewService(repo Repository, workRestorer WorkRestorer, backupReader BackupR
 
 // Save 保存回收站条目（供逻辑删除流程写入快照）
 func (s *Service) Save(ctx context.Context, item *domain.RecycleItem) error {
-	return s.repo.Save(ctx, item)
+	return s.repo.Create(ctx, item)
 }
 
 // GetById 根据 ID 获取回收站条目

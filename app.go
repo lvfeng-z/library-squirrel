@@ -93,8 +93,8 @@ type App struct {
 	taskRepo *task.TaskRepository
 
 	// 扩展注册中心
-	TaskHandlerRegistry *extension2.TaskHandlerRegistry
-	SiteBrowserRegistry *extension2.SiteBrowserRegistry
+	TaskHandlerRegistry       *extension2.TaskHandlerRegistry
+	SiteBrowserRegistry       *extension2.SiteBrowserRegistry
 	FrontendExtensionRegistry *extension2.FrontendExtensionRegistry
 
 	// 插件加载器
@@ -139,7 +139,7 @@ type App struct {
 	PluginSettingHandler         *plugin.SettingHandler
 	TaskHandler                  *task.Handler
 	TaskManagerHandler           *taskManager.Handler
-	FrontendExtensionHandler      *extension2.FrontendExtensionHandler
+	FrontendExtensionHandler     *extension2.FrontendExtensionHandler
 	SiteBrowserHandler           *siteBrowser.Handler
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
@@ -243,13 +243,13 @@ func (app *App) InstallBundledPlugins() {
 			continue
 		}
 
-		plugin, err := app.PluginService.InstallBundled(ctx, path)
+		bundledPlugin, err := app.PluginService.InstallBundled(ctx, path)
 		if err != nil {
 			logger.Log.Errorf("安装捆绑插件失败: %s, %v", path, err)
 			continue
 		}
-		if plugin != nil {
-			logger.Log.Infof("捆绑插件已安装: %s", plugin.PublicID.String)
+		if bundledPlugin != nil {
+			logger.Log.Infof("捆绑插件已安装: %s", bundledPlugin.PublicID.String)
 		}
 	}
 }
@@ -443,7 +443,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 			storeRepo:     resource.NewResourceStoreRepository(app.db),
 			persistentSvc: app.PersistentStoreService,
 		},
-		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
+		UrlListener: &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
 		FrontendEvent: &wailsFrontendEventProvider{
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
@@ -682,9 +682,9 @@ type urlListenerAdapter struct {
 
 func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, extensionId string, patterns []string) {
 	pwc := &pluginTaskUrlListener.PluginWithExtension{
-		Plugin:         a.pluginEntity,
-		ExtensionKey:  "taskHandler",
-		ExtensionID: extensionId,
+		Plugin:       a.pluginEntity,
+		ExtensionKey: "taskHandler",
+		ExtensionID:  extensionId,
 	}
 	a.svc.Register(pwc, patterns)
 }
@@ -885,7 +885,7 @@ func (app *App) initAdvancedServices() error {
 		app.WorkService,
 		app.ResourceService,
 		app.PersistentStoreService, // StoreBatchReader
-		app.ResourceService,       // ResourceStoreBatchReader
+		app.ResourceService,        // ResourceStoreBatchReader
 		app.LocalTagService,
 		app.SiteTagService,
 		app.LocalAuthorService,
@@ -950,7 +950,7 @@ func (app *App) initAdvancedServices() error {
 	// 创建资源存储备份编排器
 	backupResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 	storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
-		app.ResourceService,         // StoreResourceProvider
+		app.ResourceService,        // StoreResourceProvider
 		backupResourceStoreRepo,    // StoreResourceStoreReader(resource_store 批量查询)
 		app.PersistentStoreService, // StoreDeleter
 		app.PersistentStoreService, // StoreImporter
@@ -977,8 +977,8 @@ func (app *App) initAdvancedServices() error {
 			Pusher:                  taskManagerPusher,
 			StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
 			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
-			ResourceStoreReader:     taskMgrResourceStoreRepo,    // 实现 ResourceStoreReader 接口
-			ResourceStoreWriter:     taskMgrResourceStoreRepo,    // 实现 ResourceStoreWriter 接口
+			ResourceStoreReader:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
+			ResourceStoreWriter:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
 			Transactor:              &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口
@@ -1039,12 +1039,12 @@ func (a *workSetWriterAdapter) SaveOrUpdateByCompositeKey(ctx context.Context, w
 	existing, err := a.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
 	if err == nil && existing != nil {
 		ws.ID = existing.ID
-		if err := a.repo.Update(ctx, ws); err != nil {
+		if err := a.repo.Updates(ctx, ws); err != nil {
 			return 0, err
 		}
 		return existing.ID, nil
 	}
-	if err := a.repo.Save(ctx, ws); err != nil {
+	if err := a.repo.Create(ctx, ws); err != nil {
 		return 0, err
 	}
 	return ws.ID, nil
@@ -1074,8 +1074,8 @@ func (a *resourceSaverAdapter) Save(ctx context.Context, resource *entity2.Resou
 	return resource.GetID(), nil
 }
 
-func (a *resourceSaverAdapter) Update(ctx context.Context, resource *entity2.Resource) error {
-	return a.svc.Update(ctx, resource)
+func (a *resourceSaverAdapter) Updates(ctx context.Context, resource *entity2.Resource) error {
+	return a.svc.Updates(ctx, resource)
 }
 
 // initHandlers 初始化 Handlers（用于 Bind[] 参数暴露给前端）

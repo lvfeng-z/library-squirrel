@@ -9,10 +9,10 @@ import (
 
 // Repository 资源仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, resource *domain.Resource) error
-	// Update 更新
-	Update(ctx context.Context, resource *domain.Resource) error
+	// Create 新建
+	Create(ctx context.Context, resource *domain.Resource) error
+	// Updates 更新
+	Updates(ctx context.Context, resource *domain.Resource) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*domain.Resource, error)
 	// List 查询列表
@@ -23,8 +23,6 @@ type Repository interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error)
-	// GetEnabledByWorkId 查询作品关联的启用资源
-	GetEnabledByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error)
 	// ListByWorkIds 批量查询多个作品关联的资源
 	ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error)
 }
@@ -45,12 +43,12 @@ func NewService(repo Repository, resourceStoreRepo *ResourceStoreRepository) *Se
 
 // Save 保存资源
 func (s *Service) Save(ctx context.Context, resource *domain.Resource) error {
-	return s.repo.Save(ctx, resource)
+	return s.repo.Create(ctx, resource)
 }
 
 // Update 更新资源
-func (s *Service) Update(ctx context.Context, resource *domain.Resource) error {
-	return s.repo.Update(ctx, resource)
+func (s *Service) Updates(ctx context.Context, resource *domain.Resource) error {
+	return s.repo.Updates(ctx, resource)
 }
 
 // GetById 根据ID获取
@@ -71,11 +69,6 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // ListByWorkId 查询作品关联的资源
 func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
 	return s.repo.ListByWorkId(ctx, workId)
-}
-
-// GetEnabledByWorkId 查询作品关联的启用资源
-func (s *Service) GetEnabledByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
-	return s.repo.GetEnabledByWorkId(ctx, workId)
 }
 
 // DeleteByWorkId 根据作品ID删除所有资源

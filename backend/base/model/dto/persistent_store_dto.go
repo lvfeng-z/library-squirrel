@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"database/sql"
+
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -16,9 +18,9 @@ func NewPersistentStoreDTO(store *entity.PersistentStore) *sdkdto.PersistentStor
 		FilePath:          util.NullStringToPointer(store.FilePath),
 		FileName:          util.NullStringToPointer(store.FileName),
 		FilenameExtension: util.NullStringToPointer(store.FilenameExtension),
-		Status:            store.Status,
-		Width:             store.Width,
-		Height:            store.Height,
+		Status:            int(store.Status.Int64),
+		Width:             int(store.Width.Int64),
+		Height:            int(store.Height.Int64),
 		CreateTime:        store.GetCreateTime(),
 		UpdateTime:        store.GetUpdateTime(),
 	}
@@ -51,9 +53,9 @@ func ToPersistentStoreEntity(dto *sdkdto.PersistentStoreDTO) *entity.PersistentS
 		store.FilenameExtension.String = *dto.FilenameExtension
 	}
 
-	store.Status = dto.Status
-	store.Width = dto.Width
-	store.Height = dto.Height
+	store.Status = sql.NullInt64{Int64: int64(dto.Status), Valid: true}
+	store.Width = sql.NullInt64{Int64: int64(dto.Width), Valid: true}
+	store.Height = sql.NullInt64{Int64: int64(dto.Height), Valid: true}
 
 	if dto.CreateTime != 0 {
 		store.SetCreateTime(dto.CreateTime)

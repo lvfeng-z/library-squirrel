@@ -16,12 +16,12 @@ import (
 
 // Repository 站点作者仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, author *entity.SiteAuthor) error
-	// SaveBatch 批量保存
-	SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) error
-	// Update 更新
-	Update(ctx context.Context, author *entity.SiteAuthor) error
+	// Create 新建
+	Create(ctx context.Context, author *entity.SiteAuthor) error
+	// CreateBatch 批量新建
+	CreateBatch(ctx context.Context, authors []*entity.SiteAuthor) error
+	// Updates 更新
+	Updates(ctx context.Context, author *entity.SiteAuthor) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.SiteAuthor, error)
 	// List 查询列表
@@ -83,12 +83,12 @@ func NewService(repo Repository, localAuthorQueryOp LocalAuthorOperator, siteOp 
 
 // Save 保存站点作者
 func (s *Service) Save(ctx context.Context, author *entity.SiteAuthor) error {
-	return s.repo.Save(ctx, author)
+	return s.repo.Create(ctx, author)
 }
 
 // SaveBatch 批量保存站点作者
 func (s *Service) SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) error {
-	return s.repo.SaveBatch(ctx, authors)
+	return s.repo.CreateBatch(ctx, authors)
 }
 
 // UpdateById 更新站点作者
@@ -96,7 +96,7 @@ func (s *Service) UpdateById(ctx context.Context, author *entity.SiteAuthor) err
 	if author.ID == 0 {
 		return ErrAuthorIdRequired
 	}
-	return s.repo.Update(ctx, author)
+	return s.repo.Updates(ctx, author)
 }
 
 // UpdateLastUse 批量更新最后使用时间

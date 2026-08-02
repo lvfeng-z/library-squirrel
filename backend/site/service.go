@@ -15,10 +15,10 @@ import (
 
 // Repository 站点仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Save 保存
-	Save(ctx context.Context, site *entity.Site) error
-	// Update 更新
-	Update(ctx context.Context, site *entity.Site) error
+	// Create 新建
+	Create(ctx context.Context, site *entity.Site) error
+	// Updates 更新
+	Updates(ctx context.Context, site *entity.Site) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Site, error)
 	// Get 根据条件获取单个
@@ -48,8 +48,8 @@ func NewService(repo Repository) *Service {
 }
 
 // Save 保存站点
-func (s *Service) Save(ctx context.Context, site *entity.Site) error {
-	return s.repo.Save(ctx, site)
+func (s *Service) Create(ctx context.Context, site *entity.Site) error {
+	return s.repo.Create(ctx, site)
 }
 
 // UpdateById 更新站点
@@ -57,7 +57,7 @@ func (s *Service) UpdateById(ctx context.Context, site *entity.Site) error {
 	if site.GetID() == 0 {
 		return ErrSiteIdRequired
 	}
-	return s.repo.Update(ctx, site)
+	return s.repo.Updates(ctx, site)
 }
 
 // GetById 根据ID获取

@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"database/sql"
+
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -15,10 +17,9 @@ func NewResourceDTO(resource *entity.Resource) *sdkdto.ResourceDTO {
 		ID:               resource.GetID(),
 		WorkID:           resource.WorkID,
 		TaskID:           resource.TaskID,
-		Enabled:          resource.Enabled,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
 		ResourceType:     resource.ResourceType,
-		ResourceComplete: resource.ResourceComplete,
+		ResourceComplete: int(resource.ResourceComplete.Int64),
 		CreateTime:       resource.GetCreateTime(),
 		UpdateTime:       resource.GetUpdateTime(),
 	}
@@ -40,8 +41,7 @@ func ToResourceEntity(dto *sdkdto.ResourceDTO) *entity.Resource {
 	// 设置业务字段
 	newResource.WorkID = dto.WorkID
 	newResource.TaskID = dto.TaskID
-	newResource.Enabled = dto.Enabled
-	newResource.ResourceComplete = dto.ResourceComplete
+	newResource.ResourceComplete = sql.NullInt64{Int64: int64(dto.ResourceComplete), Valid: true}
 
 	if dto.SuggestName != nil {
 		newResource.SuggestName.Valid = true
@@ -74,10 +74,9 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 		ID:               resource.GetID(),
 		WorkID:           resource.WorkID,
 		TaskID:           resource.TaskID,
-		Enabled:          resource.Enabled,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
 		ResourceType:     resource.ResourceType,
-		ResourceComplete: resource.ResourceComplete,
+		ResourceComplete: int(resource.ResourceComplete.Int64),
 		CreateTime:       resource.GetCreateTime(),
 		UpdateTime:       resource.GetUpdateTime(),
 	}

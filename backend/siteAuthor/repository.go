@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -18,24 +17,24 @@ import (
 
 // SiteAuthorRepository 站点作者仓储实现
 type SiteAuthorRepository struct {
-	db *gorm.DB
+	*database.BaseRepository[entity.SiteAuthor]
 }
 
 // NewRepository 创建站点作者仓储
 func NewRepository(db *gorm.DB) *SiteAuthorRepository {
 	return &SiteAuthorRepository{
-		db: db,
+		BaseRepository: database.NewBaseRepository[entity.SiteAuthor](db),
 	}
 }
 
 // GORM 返回底层 GORM DB 实例
 func (r *SiteAuthorRepository) GORM() *gorm.DB {
-	return r.db
+	return r.BaseRepository.GORM()
 }
 
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *SiteAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
-	return database.DBFromContext(ctx, r.db)
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
 }
 
 // BatchUpsert 批量插入或更新（基于 site_id + site_author_id 唯一约束）
@@ -71,16 +70,6 @@ func (r *SiteAuthorRepository) ListBySiteAndSiteAuthorIDs(ctx context.Context, s
 	return result, err
 }
 
-// Save 保存
-func (r *SiteAuthorRepository) Save(ctx context.Context, author *entity.SiteAuthor) error {
-	now := util.GetCurrentTimestamp()
-	if author.GetID() == 0 {
-		author.SetCreateTime(now)
-	}
-	author.SetUpdateTime(now)
-	return r.dbFromCtx(ctx).WithContext(ctx).Create(author).Error
-}
-
 // Upsert 原子插入或更新（基于 site_id + site_author_id 唯一约束）
 func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAuthor) error {
 	now := util.GetCurrentTimestamp()
@@ -95,96 +84,6 @@ func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAu
 			"introduce", "local_author_id", "last_use", "update_time", "homepage",
 		}),
 	}).Create(author).Error
-}
-
-// SaveBatch 批量保存
-func (r *SiteAuthorRepository) SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) error {
-	now := util.GetCurrentTimestamp()
-	for _, author := range authors {
-		if author.GetID() == 0 {
-			author.SetCreateTime(now)
-		}
-		author.SetUpdateTime(now)
-	}
-	return r.dbFromCtx(ctx).WithContext(ctx).Create(authors).Error
-}
-
-// Update 更新
-func (r *SiteAuthorRepository) Update(ctx context.Context, author *entity.SiteAuthor) error {
-	author.SetUpdateTime(util.GetCurrentTimestamp())
-	return r.dbFromCtx(ctx).WithContext(ctx).Save(author).Error
-}
-
-// GetById 根据ID获取
-func (r *SiteAuthorRepository) GetById(ctx context.Context, id int64) (*entity.SiteAuthor, error) {
-	var author entity.SiteAuthor
-	err := r.dbFromCtx(ctx).WithContext(ctx).First(&author, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &author, nil
-}
-
-// List 查询列表
-func (r *SiteAuthorRepository) List(ctx context.Context, opt *database.QueryOption) ([]*entity.SiteAuthor, error) {
-	var authors []*entity.SiteAuthor
-	db := r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor))
-	db = applyQueryOption(db, opt)
-	err := db.Find(&authors).Error
-	if err != nil {
-		return nil, err
-	}
-	return authors, nil
-}
-
-// Count 统计数量
-func (r *SiteAuthorRepository) Count(ctx context.Context, opt *database.QueryOption) (int64, error) {
-	var count int64
-	db := r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor))
-	db = applyQueryOption(db, opt)
-	err := db.Count(&count).Error
-	return count, err
-}
-
-// Delete 删除
-func (r *SiteAuthorRepository) Delete(ctx context.Context, id int64) error {
-	return r.dbFromCtx(ctx).WithContext(ctx).Delete(new(entity.SiteAuthor), id).Error
-}
-
-// Page 分页查询
-func (r *SiteAuthorRepository) Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity.SiteAuthor], error) {
-	page := opt.Page
-	pageSize := opt.PageSize
-
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	offset := (page - 1) * pageSize
-
-	// 构建查询选项（设置 Limit 和 Offset）
-	queryOpt := opt.QueryOption
-	queryOpt.Limit = pageSize
-	queryOpt.Offset = offset
-
-	// 查询列表
-	list, err := r.List(ctx, &queryOpt)
-	if err != nil {
-		return nil, err
-	}
-
-	// 统计总数（不需要 Limit 和 Offset）
-	countOpt := opt.QueryOption
-	countOpt.Limit = 0
-	countOpt.Offset = 0
-	total, err := r.Count(ctx, &countOpt)
-	if err != nil {
-		return nil, err
-	}
-
-	return model.NewPage[entity.SiteAuthor](list, total, page, pageSize), nil
 }
 
 // ListByWorkId 查询作品的站点作者
