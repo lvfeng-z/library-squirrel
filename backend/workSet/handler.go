@@ -173,6 +173,11 @@ func (h *Handler) UpdateSortOrders(ctx context.Context, workSetId int64, workIds
 	return model.HandleVoid(h.svc.UpdateSortOrders(ctx, workSetId, workIds))
 }
 
+// ApplySiteOrder 把作品集的原站序应用到本地序（site_sort_order → sort_order）
+func (h *Handler) ApplySiteOrder(ctx context.Context, workSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.ApplySiteOrder(ctx, workSetId))
+}
+
 // SetCover 设置作品集封面
 func (h *Handler) SetCover(ctx context.Context, workSetId, workId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.SetCoverWork(ctx, workSetId, workId))

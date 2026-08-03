@@ -75,6 +75,10 @@ type ReWorkWorkSetRepository interface {
 	GetByWorkAndWorkSet(ctx context.Context, workId, workSetId int64) (*entity2.ReWorkWorkSet, error)
 	// UpdateSortOrders 批量更新排序顺序
 	UpdateSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
+	// UpdateSiteSortOrders 批量更新原站排序顺序（写 site_sort_order，不影响本地 sort_order）
+	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
+	// ApplySiteOrder 把原站序拷贝到本地序（site_sort_order → sort_order，仅 site_sort_order 非空成员）
+	ApplySiteOrder(ctx context.Context, workSetId int64) error
 	// UpdateIsCover 更新封面标记
 	UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error
 	// ClearOtherCovers 清除作品集的其他封面
@@ -454,6 +458,11 @@ func (s *Service) UpdateSortOrders(ctx context.Context, workSetId int64, workIds
 		sortOrders[id] = i
 	}
 	return s.reWorkWorkSetRepo.UpdateSortOrders(ctx, workSetId, sortOrders)
+}
+
+// ApplySiteOrder 把作品集的原站序应用到本地序（site_sort_order → sort_order，仅 site_sort_order 非空成员）
+func (s *Service) ApplySiteOrder(ctx context.Context, workSetId int64) error {
+	return s.reWorkWorkSetRepo.ApplySiteOrder(ctx, workSetId)
 }
 
 // UnsetCover 取消封面设置

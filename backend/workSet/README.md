@@ -24,7 +24,8 @@
 | `GetWorksByWorkSetId` | 取作品集下作品（**传递包含**：含全部后代作品集作品） |
 | `ListWorkSetsByWorkId` | 取作品关联的作品集列表 |
 | `SetCover` / `UnsetCover` / `GetCoverWorkId` | 封面管理 |
-| `UpdateSortOrders` | 批量更新作品在集内排序 |
+| `UpdateSortOrders` | 批量更新作品在集内本地排序（`sort_order`） |
+| `ApplySiteOrder` | 把原站序（`site_sort_order`）拷到本地序（`sort_order`） |
 | `ListWorkSetWithWorkByIds` | 作品集+作品完整信息聚合（传递包含，批量化） |
 
 ### 作品集 merge（逻辑关联 / 物理纳入）
@@ -39,7 +40,7 @@
 - **传递包含原语 `CollectDescendantWorkIDs`**：返回作品集自身及全部后代作品集所含 work（去重、保序）。`GetWorksByWorkSetId`、`ListWorkSetWithWorkByIds`、`MergeWorkSetInto` 均经此聚合——打开 A 看到的作品含其全部子作品集的作品。
 - **逻辑关联（多父 DAG）**：A 将 B 纳为子集 = 写一行 `re_work_set_work_set (A, B)`。B 不消失，B 后续变化实时跟随。事务内环路检测（`CollectAncestorWorkSetIds`）。
 - **物理纳入（复制快照）**：把 B 及其后代的 work 关联**复制**一份给 A（`re_work_work_set` 加行），B 不变、不记录来源、不可撤回。
-- **`sort_order` 两列职责**：`re_work_work_set.sort_order` 管作品在集内顺序，`re_work_set_work_set.sort_order` 管子集在父集下顺序。
+- **作品集内作品双轨排序**：`re_work_work_set` 含两列——`sort_order`（**本地序**，用户拖拽/入库续排，默认展示与封面兜底用它）与 `site_sort_order`（**原站序**，插件 `QueryWorkSetOrder` 拉取写入，用户不可改，入库后由 `work.SaveWorkInfo` 编排自动填充）；`ApplySiteOrder` 把原站序拷到本地序。`re_work_set_work_set.sort_order` 另管子集在父集下的顺序。
 
 ## 依赖关系
 - 依赖：`Repository`（作品集实体）、`ReWorkWorkSetRepository`（作品归属）、`ReWorkSetWorkSetRepository`（父子层级）、`Transactor`（事务执行器）、`FullWorkReader` / `WorkReader`（作品读取，接口隔离避免跨模块直接引用）

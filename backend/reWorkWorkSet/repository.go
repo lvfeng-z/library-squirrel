@@ -169,6 +169,31 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 		}).Error
 }
 
+// UpdateSiteSortOrders 批量更新原站排序顺序（写 site_sort_order 列，不影响本地 sort_order）
+func (r *ReWorkWorkSetRepository) UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error {
+	if len(sortOrders) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.ReWorkWorkSet)).
+		Where("work_set_id = ?", workSetId).
+		Where("work_id IN ?", getMapKeys(sortOrders)).
+		Updates(map[string]interface{}{
+			"site_sort_order": gorm.Expr(buildCaseExpression(sortOrders)),
+			"update_time":     util.GetCurrentTimestamp(),
+		}).Error
+}
+
+// ApplySiteOrder 把作品集的原站序(site_sort_order)拷贝到本地序(sort_order)，仅对 site_sort_order 非空成员
+func (r *ReWorkWorkSetRepository) ApplySiteOrder(ctx context.Context, workSetId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.ReWorkWorkSet)).
+		Where("work_set_id = ? AND site_sort_order IS NOT NULL", workSetId).
+		Update("sort_order", gorm.Expr("site_sort_order")).Error
+}
+
 // GetCoverWorkId 获取封面作品ID
 func (r *ReWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
 	var workId int64

@@ -38,15 +38,16 @@ type TagSnapshot struct {
 
 // WorkSetSnapshot 作品集关联快照
 type WorkSetSnapshot struct {
-	WorkSetID sql.NullInt64 `json:"workSetId"`
-	IsCover   sql.NullBool  `json:"isCover"`
-	SortOrder sql.NullInt64 `json:"sortOrder"`
+	WorkSetID     sql.NullInt64 `json:"workSetId"`
+	IsCover       sql.NullBool  `json:"isCover"`
+	SortOrder     sql.NullInt64 `json:"sortOrder"`
+	SiteSortOrder sql.NullInt64 `json:"siteSortOrder"`
 }
 
 // StoreBackupRef 单个 store 的备份引用(v1 快照格式)
 type StoreBackupRef struct {
-	StoreType string `json:"storeType"`  // main/thumbnail/videoTrack/...
-	BackupID  int64  `json:"backupId"`   // Backup 记录 ID(0=删除时无文件)
+	StoreType string `json:"storeType"` // main/thumbnail/videoTrack/...
+	BackupID  int64  `json:"backupId"`  // Backup 记录 ID(0=删除时无文件)
 }
 
 // ResourceSnapshot 资源快照（业务字段 + Backup 记录 ID 映射）
@@ -54,13 +55,13 @@ type StoreBackupRef struct {
 // v1(新): StoreBackups 多轨集合
 // 两种格式都保留 JSON tag,通过 SnapshotStoreBackups 适配器统一访问
 type ResourceSnapshot struct {
-	TaskID           int64            `json:"taskId"`
-	Enabled          bool             `json:"enabled"`
-	SuggestName      sql.NullString   `json:"suggestName"`
-	ResourceComplete int              `json:"resourceComplete"`
-	StoreBackups     []StoreBackupRef `json:"storeBackups,omitempty"`        // v1: 多轨备份引用
-	WorkStoreBackupID      int64      `json:"workStoreBackupId,omitempty"`   // v0 兼容: 主资源 Backup ID
-	ThumbnailStoreBackupID int64      `json:"thumbnailStoreBackupId,omitempty"` // v0 兼容: 缩略图 Backup ID
+	TaskID                 int64            `json:"taskId"`
+	Enabled                bool             `json:"enabled"`
+	SuggestName            sql.NullString   `json:"suggestName"`
+	ResourceComplete       int              `json:"resourceComplete"`
+	StoreBackups           []StoreBackupRef `json:"storeBackups,omitempty"`           // v1: 多轨备份引用
+	WorkStoreBackupID      int64            `json:"workStoreBackupId,omitempty"`      // v0 兼容: 主资源 Backup ID
+	ThumbnailStoreBackupID int64            `json:"thumbnailStoreBackupId,omitempty"` // v0 兼容: 缩略图 Backup ID
 }
 
 // SnapshotStoreBackups 从 ResourceSnapshot 提取统一的 StoreBackupRef 列表。

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
@@ -131,6 +132,17 @@ type ReWorkWorkSetWriter interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// CreateBatch 批量新建关联
 	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
+	// UpdateSiteSortOrders 批量更新原站排序（写 site_sort_order，不影响本地 sort_order）
+	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
+	// MaxSortOrderByWorkSetId 查询作品集下最大 sort_order（无作品返回 0），buildWorkSetLinks 续排用
+	MaxSortOrderByWorkSetId(ctx context.Context, workSetId int64) (int64, error)
+}
+
+// WorkSetOrderFetcher 原站序获取能力（plugin 模块实现，按 task 的 plugin 身份路由到对应插件 proxy）
+// 用于作品入库后拉取作品集内作品的原站顺序；nil（未注入）时跳过拉取
+type WorkSetOrderFetcher interface {
+	// QueryWorkSetOrder 按 (pluginPublicId, extensionId) 定位插件，拉取作品集内作品的原站全序；空=插件不掌握
+	QueryWorkSetOrder(ctx context.Context, pluginPublicId, extensionId string, siteId int64, siteWorkSetId string) ([]*sdkdto.WorkOrderEntry, error)
 }
 
 // LocalTagFindOrCreator 本地标签查找或创建接口
@@ -354,6 +366,9 @@ type Service struct {
 	localTagFindOrCreator    LocalTagFindOrCreator
 	localAuthorFindOrCreator LocalAuthorFindOrCreator
 
+	// 原站序获取能力（入库后异步拉取，nil 时跳过；经 SetWorkSetOrderFetcher 延迟注入）
+	workSetOrderFetcher WorkSetOrderFetcher
+
 	// 逻辑删除/复原所需的关联读取接口
 	reWorkTagReader     ReWorkTagReader
 	reWorkAuthorReader  ReWorkAuthorReader
@@ -459,6 +474,12 @@ func NewService(
 		siteAuthorByIdsReader:    siteAuthorByIdsReader,
 		workSetByIdsReader:       workSetByIdsReader,
 	}
+}
+
+// SetWorkSetOrderFetcher 延迟注入原站序获取能力
+// plugin 模块在 work 之后初始化（registry 需先就绪），故 WorkSetOrderFetcher 经此 setter 注入
+func (s *Service) SetWorkSetOrderFetcher(f WorkSetOrderFetcher) {
+	s.workSetOrderFetcher = f
 }
 
 // SetRunningTaskStopper 延迟注入运行中任务停止器
@@ -667,9 +688,10 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	}
 	for _, ws := range workSets {
 		snapshot.WorkSets = append(snapshot.WorkSets, recycleBin.WorkSetSnapshot{
-			WorkSetID: ws.WorkSetID,
-			IsCover:   ws.IsCover,
-			SortOrder: ws.SortOrder,
+			WorkSetID:     ws.WorkSetID,
+			IsCover:       ws.IsCover,
+			SortOrder:     ws.SortOrder,
+			SiteSortOrder: ws.SiteSortOrder,
 		})
 	}
 	snapshotJSON, err := recycleBin.MarshalSnapshot(snapshot)
@@ -893,6 +915,7 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		rel.WorkSetID = ws.WorkSetID
 		rel.IsCover = ws.IsCover
 		rel.SortOrder = ws.SortOrder
+		rel.SiteSortOrder = ws.SiteSortOrder
 		workSetLinks = append(workSetLinks, rel)
 	}
 	if len(workSetLinks) > 0 {
@@ -1285,6 +1308,9 @@ const (
 	AuthorTypeSite  = 2
 )
 
+// siteOrderSyncTimeout 原站序拉取超时（网络调用，须事务外异步）
+const siteOrderSyncTimeout = 30 * time.Second
+
 // SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID
 func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
 	var workId int64
@@ -1293,7 +1319,73 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 		workId, err = s.saveWorkInfoInTx(txCtx, task, workResp)
 		return err
 	})
-	return workId, err
+	if err != nil {
+		return workId, err
+	}
+	// 事务提交后异步拉取原站序写 site_sort_order：网络调用须事务外（MaxOpenConns=1 死锁），异步不阻塞入库流程
+	if s.workSetOrderFetcher != nil && len(workResp.WorkSets) > 0 {
+		go s.syncSiteSortOrders(task, workResp)
+	}
+	return workId, nil
+}
+
+// syncSiteSortOrders 作品入库后异步拉取其所属各 workSet 的原站全序，映射并写 site_sort_order（事务外、带超时）
+func (s *Service) syncSiteSortOrders(task *entity2.Task, workResp *sdkdto.WorkResponse) {
+	ctx, cancel := context.WithTimeout(context.Background(), siteOrderSyncTimeout)
+	defer cancel()
+	siteId := task.SiteID.Int64
+	for _, ws := range workResp.WorkSets {
+		if ws.SiteWorkSetID == "" || !task.PluginPublicID.Valid {
+			continue
+		}
+		entries, err := s.workSetOrderFetcher.QueryWorkSetOrder(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetID)
+		if err != nil {
+			logger.Log.Warnf("拉取作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetID, err)
+			continue
+		}
+		if len(entries) == 0 {
+			continue
+		}
+		if err := s.applySiteSortOrders(ctx, siteId, ws.SiteWorkSetID, entries); err != nil {
+			logger.Log.Warnf("写入作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetID, err)
+		}
+	}
+}
+
+// applySiteSortOrders 映射 siteWorkId→work.id，写该 workSet 的 site_sort_order（仅本站已入库成员）
+func (s *Service) applySiteSortOrders(ctx context.Context, siteId int64, siteWorkSetId string, entries []*sdkdto.WorkOrderEntry) error {
+	workSet, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
+	if err != nil {
+		return fmt.Errorf("查询作品集失败: %w", err)
+	}
+	// 批量映射 siteWorkId → work.id。ListBySiteAndSiteWorkIDs 是 (siteId, siteWorkId) 平行数组语义，
+	// 须为每个 siteWorkId 配同一个 siteId，否则 len(siteIds)=1 只查 siteWorkIds[0]
+	siteIds := make([]int64, len(entries))
+	siteWorkIds := make([]string, 0, len(entries))
+	for i, e := range entries {
+		siteIds[i] = siteId
+		siteWorkIds = append(siteWorkIds, e.SiteWorkID)
+	}
+	works, err := s.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
+	if err != nil {
+		return fmt.Errorf("批量查询作品失败: %w", err)
+	}
+	siteWorkIdToWorkId := make(map[string]int64, len(works))
+	for _, w := range works {
+		if w.SiteWorkID.Valid {
+			siteWorkIdToWorkId[w.SiteWorkID.String] = w.GetID()
+		}
+	}
+	sortOrders := make(map[int64]int, len(entries))
+	for _, e := range entries {
+		if workId, ok := siteWorkIdToWorkId[e.SiteWorkID]; ok {
+			sortOrders[workId] = int(e.SortOrder)
+		}
+	}
+	if len(sortOrders) == 0 {
+		return nil
+	}
+	return s.reWorkWorkSetWriter.UpdateSiteSortOrders(ctx, workSet.ID, sortOrders)
 }
 
 // saveWorkInfoInTx 事务内执行 SaveWorkInfo 的核心逻辑
@@ -1376,7 +1468,17 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 		return 0, fmt.Errorf("删除作品作品集关联失败: %w", err)
 	}
 	if len(workSetDBIds) > 0 {
-		links := buildWorkSetLinks(workId, workSetDBIds)
+		// 各 workSet 当前最大 sort_order，供 buildWorkSetLinks 续排（该 work 排末尾，纠正维度错位不再塌 0）。
+		// workSetDBIds 为该 work 声明的少数 workSet，逐个查 max 非典型 N+1。
+		maxSortOrders := make(map[int64]int64, len(workSetDBIds))
+		for _, wsId := range workSetDBIds {
+			maxSort, err := s.reWorkWorkSetWriter.MaxSortOrderByWorkSetId(ctx, wsId)
+			if err != nil {
+				return 0, fmt.Errorf("查询作品集最大排序失败: %w", err)
+			}
+			maxSortOrders[wsId] = maxSort
+		}
+		links := buildWorkSetLinks(workId, workSetDBIds, maxSortOrders)
 		if err := s.reWorkWorkSetWriter.CreateBatch(ctx, links); err != nil {
 			return 0, fmt.Errorf("保存作品作品集关联失败: %w", err)
 		}
@@ -1864,13 +1966,15 @@ func buildLocalTagLinks(workId int64, localTagIds []int64) []*entity2.ReWorkTag 
 	return links
 }
 
-func buildWorkSetLinks(workId int64, workSetIds []int64) []*entity2.ReWorkWorkSet {
+// buildWorkSetLinks 构造 work→各 workSet 关联；sort_order 按各 workSet 当前 max+1 续排（该 work 排末尾），
+// 纠正旧实现用「workSet 下标」当 sort_order 的维度错位（致集内全塌 0）。site_sort_order 留空待插件拉取。
+func buildWorkSetLinks(workId int64, workSetIds []int64, maxSortOrders map[int64]int64) []*entity2.ReWorkWorkSet {
 	links := make([]*entity2.ReWorkWorkSet, 0, len(workSetIds))
-	for i, wsId := range workSetIds {
+	for _, wsId := range workSetIds {
 		rel := entity2.NewReWorkWorkSet()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
-		rel.SortOrder = sql.NullInt64{Int64: int64(i), Valid: true}
+		rel.SortOrder = sql.NullInt64{Int64: maxSortOrders[wsId] + 1, Valid: true}
 		links = append(links, rel)
 	}
 	return links

@@ -154,6 +154,36 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.Work
 	return protoToWorkResponse(resp), nil
 }
 
+// QueryWorkSetOrder 查询作品集内作品的原站顺序（主程序作品入库后拉取，仅写 site_sort_order）
+func (p *TaskHandlerProxy) QueryWorkSetOrder(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkOrderEntry, error) {
+	client, err := p.getTaskClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	resp, err := client.QueryWorkSetOrder(ctx, &gen.QueryWorkSetOrderRequest{
+		SiteId:        siteId,
+		SiteWorkSetId: siteWorkSetId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return workOrderEntriesFromProto(resp.GetEntries()), nil
+}
+
+// workOrderEntriesFromProto 原站排序条目 proto → DTO
+func workOrderEntriesFromProto(entries []*gen.WorkOrderEntry) []*pluginsdkdto.WorkOrderEntry {
+	result := make([]*pluginsdkdto.WorkOrderEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, &pluginsdkdto.WorkOrderEntry{
+			SiteWorkID: e.GetSiteWorkId(),
+			SortOrder:  e.GetSortOrder(),
+		})
+	}
+	return result
+}
+
 func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {

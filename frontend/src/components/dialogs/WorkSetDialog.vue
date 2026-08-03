@@ -25,13 +25,13 @@ import {
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
-import {ArrowLeft, Close, Delete, Document, Download, Edit, Picture, Plus} from '@element-plus/icons-vue'
+import {ArrowLeft, Close, Delete, Document, Download, Edit, Picture, Plus, Sort} from '@element-plus/icons-vue'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import lodash from 'lodash'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import {setSearchTagColor} from '@renderer/utils/SearchTagColorUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
-import {workSetListChildWorkSets, workSetListWorkSetWithWorkByIds, workSetAddChildWorkSet, workSetRemoveChildWorkSet, workSetMergeWorkSetInto, workSetUpdate} from '@renderer/apis/http/wrappers/workSet'
+import {workSetListChildWorkSets, workSetListWorkSetWithWorkByIds, workSetAddChildWorkSet, workSetRemoveChildWorkSet, workSetMergeWorkSetInto, workSetUpdate, workSetApplySiteOrder} from '@renderer/apis/http/wrappers/workSet'
 import {
   reWorkWorkSetLinkBatchToWorkSet,
   reWorkWorkSetRemoveBatchFromWorkSet,
@@ -65,6 +65,7 @@ const apis = {
   workSetRemoveChildWorkSet,
   workSetMergeWorkSetInto,
   workSetUpdate,
+  workSetApplySiteOrder,
   reWorkWorkSetLinkBatchToWorkSet,
   reWorkWorkSetRemoveBatchFromWorkSet,
   reWorkWorkSetSetCover,
@@ -326,6 +327,26 @@ async function handleSetCover() {
       type: 'error',
       message: `设置封面失败: ${error}`
     })
+  }
+}
+
+// 应用原站序：把原站序(site_sort_order)拷贝到本地序(sort_order)，重载作品列表即按原站顺序展示
+async function handleApplySiteOrder() {
+  try {
+    await ElMessageBox.confirm('将按原站顺序重新排列作品集内作品（覆盖当前本地排序）。确认？', '应用原站序', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  const response = await apis.workSetApplySiteOrder(currentWorkSetId.value)
+  if (ApiUtil.check(response)) {
+    ElMessage({ type: 'success', message: '已应用原站序' })
+    await loadWorkList()
+  } else {
+    ElMessage({ type: 'error', message: `应用原站序失败: ${response.msg || '未知错误'}` })
   }
 }
 
@@ -692,6 +713,14 @@ watch(isCheckable, (newValue) => {
           >
             <el-icon><Edit /></el-icon>
             管理
+          </el-button>
+          <el-button
+            type="primary"
+            :plain="true"
+            @click="handleApplySiteOrder"
+          >
+            <el-icon><Sort /></el-icon>
+            原站序
           </el-button>
         </div>
         <div

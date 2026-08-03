@@ -31,6 +31,15 @@ export function AddChildWorkSet(parentWorkSetId: number, childWorkSetId: number)
 }
 
 /**
+ * ApplySiteOrder 把作品集的原站序应用到本地序（site_sort_order → sort_order）
+ */
+export function ApplySiteOrder(workSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(4092270917, workSetId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * Delete 删除作品集
  */
 export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {

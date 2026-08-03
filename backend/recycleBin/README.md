@@ -21,7 +21,7 @@
 
 ## 核心概念
 
-- **快照（WorkRecycleSnapshot）**：逻辑删除时序列化作品的全部关联元数据（work 字段 + 作者/标签/作品集关联 + resource 业务字段 + backup id 映射），存入 recycle_bin.snapshot。复原只依赖快照。
+- **快照（WorkRecycleSnapshot）**：逻辑删除时序列化作品的全部关联元数据（work 字段 + 作者/标签/作品集关联 + resource 业务字段 + backup id 映射），存入 recycle_bin.snapshot。复原只依赖快照。作品集关联快照（`WorkSetSnapshot`）含 `is_cover` / `sort_order`（本地序）/ `site_sort_order`（原站序）三字段，复原时一并还原。
 - **backupId 映射**：快照存 Backup 记录 ID（持久稳定），不存 persistent_store.id（复原后会变）。资源文件级信息由 Backup 记录承载。
 - **复原冲突**：(site_id, site_work_id) 唯一索引——逻辑删除后该键释放，用户可能重新下载占用；复原时冲突由 overwrite 控制（放弃/覆盖，覆盖走 work.HardDeleteWork）。
 - **引用校验**：复原重建关联时批量校验被引用实体（作者/标签/作品集）仍存在，已删除的关联跳过（部分复原）。

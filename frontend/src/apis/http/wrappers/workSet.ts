@@ -284,3 +284,15 @@ export async function workSetMergeWorkSetInto(
   }
   return { success: true, msg: result.msg ?? '', data: result.data }
 }
+
+/**
+ * 应用原站序：把作品集的原站序(site_sort_order)拷贝到本地序(sort_order)。
+ * 应用后本地序即原站序，重载作品列表即按原站顺序展示；site_sort_order 为空的成员保持原本地序。
+ */
+export async function workSetApplySiteOrder(workSetId: number): Promise<ApiResponse<boolean>> {
+  const result = await WorkSetHandler.ApplySiteOrder(workSetId)
+  if (!result) {
+    return { success: false, msg: '应用原站序失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
+}

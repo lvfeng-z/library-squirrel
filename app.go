@@ -1015,6 +1015,9 @@ func (app *App) initAdvancedServices() error {
 	// 将 TaskManager 注入到 work 作为运行中任务停止器（打破 work ↔ TaskManager 循环依赖）
 	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
 
+	// 注入原站序获取能力（plugin 提供，work 作品入库后异步拉取写 site_sort_order；registry 已就绪）
+	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry))
+
 	return nil
 }
 
