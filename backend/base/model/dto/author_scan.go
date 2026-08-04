@@ -21,7 +21,7 @@ type LocalAuthorScanRow struct {
 
 func (r LocalAuthorScanRow) toDTO() sdkdto.LocalAuthorDTO {
 	return sdkdto.LocalAuthorDTO{
-		ID:         r.ID,
+		Id:         r.ID,
 		AuthorName: util.NullStringToPointer(r.AuthorName),
 		Introduce:  util.NullStringToPointer(r.Introduce),
 		LastUse:    util.NullInt64ToPointer(r.LastUse),

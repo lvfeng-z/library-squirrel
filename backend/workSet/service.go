@@ -517,7 +517,7 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 		}
 		for _, fw := range fullWorks {
 			if fw.Work != nil {
-				fullWorkMap[fw.Work.ID] = fw
+				fullWorkMap[fw.Work.Id] = fw
 			}
 		}
 	}

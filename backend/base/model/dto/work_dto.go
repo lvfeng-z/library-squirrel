@@ -12,16 +12,16 @@ func NewWorkDTO(work *entity2.Work) *sdkdto.WorkDTO {
 		return nil
 	}
 	return &sdkdto.WorkDTO{
-		ID:                  work.GetID(),
-		SiteID:              util.NullInt64ToPointer(work.SiteID),
-		SiteWorkID:          util.NullStringToPointer(work.SiteWorkID),
+		Id:                  work.GetID(),
+		SiteId:              util.NullInt64ToPointer(work.SiteID),
+		SiteWorkId:          util.NullStringToPointer(work.SiteWorkID),
 		SiteWorkName:        util.NullStringToPointer(work.SiteWorkName),
-		SiteAuthorID:        util.NullStringToPointer(work.SiteAuthorID),
+		SiteAuthorId:        util.NullStringToPointer(work.SiteAuthorID),
 		SiteWorkDescription: util.NullStringToPointer(work.SiteWorkDescription),
 		SiteUploadTime:      util.NullInt64ToPointer(work.SiteUploadTime),
 		SiteUpdateTime:      util.NullInt64ToPointer(work.SiteUpdateTime),
 		NickName:            util.NullStringToPointer(work.NickName),
-		LocalAuthorID:       util.NullInt64ToPointer(work.LocalAuthorID),
+		LocalAuthorId:       util.NullInt64ToPointer(work.LocalAuthorID),
 		LastView:            util.NullInt64ToPointer(work.LastView),
 		CreateTime:          work.GetCreateTime(),
 		UpdateTime:          work.GetUpdateTime(),
@@ -55,21 +55,21 @@ func ToWorkEntity(dto *sdkdto.WorkDTO) *entity2.Work {
 	entity := entity2.NewWork()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+	if dto.Id != 0 {
+		entity.SetID(dto.Id)
 	}
 
 	// 设置业务字段
-	if dto.SiteID != nil {
+	if dto.SiteId != nil {
 		entity.SiteID.Valid = true
-		entity.SiteID.Int64 = *dto.SiteID
+		entity.SiteID.Int64 = *dto.SiteId
 	} else {
 		entity.SiteID.Valid = false
 	}
 
-	if dto.SiteWorkID != nil {
+	if dto.SiteWorkId != nil {
 		entity.SiteWorkID.Valid = true
-		entity.SiteWorkID.String = *dto.SiteWorkID
+		entity.SiteWorkID.String = *dto.SiteWorkId
 	} else {
 		entity.SiteWorkID.Valid = false
 	}
@@ -81,9 +81,9 @@ func ToWorkEntity(dto *sdkdto.WorkDTO) *entity2.Work {
 		entity.SiteWorkName.Valid = false
 	}
 
-	if dto.SiteAuthorID != nil {
+	if dto.SiteAuthorId != nil {
 		entity.SiteAuthorID.Valid = true
-		entity.SiteAuthorID.String = *dto.SiteAuthorID
+		entity.SiteAuthorID.String = *dto.SiteAuthorId
 	} else {
 		entity.SiteAuthorID.Valid = false
 	}
@@ -116,9 +116,9 @@ func ToWorkEntity(dto *sdkdto.WorkDTO) *entity2.Work {
 		entity.NickName.Valid = false
 	}
 
-	if dto.LocalAuthorID != nil {
+	if dto.LocalAuthorId != nil {
 		entity.LocalAuthorID.Valid = true
-		entity.LocalAuthorID.Int64 = *dto.LocalAuthorID
+		entity.LocalAuthorID.Int64 = *dto.LocalAuthorId
 	} else {
 		entity.LocalAuthorID.Valid = false
 	}

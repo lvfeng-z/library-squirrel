@@ -12,7 +12,7 @@ func NewLocalAuthorDTO(author *entity.LocalAuthor) *sdkdto.LocalAuthorDTO {
 		return nil
 	}
 	return &sdkdto.LocalAuthorDTO{
-		ID:         author.GetID(),
+		Id:         author.GetID(),
 		AuthorName: util.NullStringToPointer(author.AuthorName),
 		Introduce:  util.NullStringToPointer(author.Introduce),
 		LastUse:    util.NullInt64ToPointer(author.LastUse),
@@ -30,8 +30,8 @@ func ToLocalAuthorEntity(dto *sdkdto.LocalAuthorDTO) *entity.LocalAuthor {
 	entity := entity.NewLocalAuthor()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+	if dto.Id != 0 {
+		entity.SetID(dto.Id)
 	}
 
 	// 设置业务字段

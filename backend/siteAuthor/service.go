@@ -223,7 +223,7 @@ func (s *Service) enrichLocalRelateDTO(ctx context.Context, rawPage *model.Page[
 		}
 		for _, lt := range localAuthors {
 			localAuthorMap[lt.ID] = &sdkdto.LocalAuthorDTO{
-				ID:         lt.GetID(),
+				Id:         lt.GetID(),
 				AuthorName: util.NullStringToPointer(lt.AuthorName),
 				Introduce:  util.NullStringToPointer(lt.Introduce),
 				CreateTime: lt.GetCreateTime(),

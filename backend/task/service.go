@@ -119,7 +119,7 @@ type Repository interface {
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
 var taskProgressTreeBuilder = util.NewTreeBuilder[*dto.TaskProgressTreeDTO](
-	func(node *dto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
+	func(node *dto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.Id },
 	func(node *dto.TaskProgressTreeDTO) int64 {
 		if node.TaskProgress.Task.Pid != nil {
 			return *node.TaskProgress.Task.Pid
@@ -604,8 +604,8 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 	// 给任务赋值的函数
 	assignTask := func(task *entity.Task, taskResp *sdkdto.TaskCreateResponse, pid int64) error {
 		task.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
-		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkID, Valid: true}
-		task.URL = sql.NullString{String: taskResp.URL, Valid: true}
+		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkId, Valid: true}
+		task.URL = sql.NullString{String: taskResp.Url, Valid: true}
 		task.Status = int(TaskStatusCreated)
 		task.HasChild = sql.NullBool{Bool: false, Valid: true}
 		task.Pid = sql.NullInt64{Int64: pid, Valid: true}
@@ -661,8 +661,8 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			childResp := children[0]
 			if err := assignTask(task, &sdkdto.TaskCreateResponse{
 				TaskName:      childResp.TaskName,
-				SiteWorkID:    childResp.SiteWorkID,
-				URL:           childResp.URL,
+				SiteWorkId:    childResp.SiteWorkId,
+				Url:           childResp.Url,
 				SiteName:      childResp.SiteName,
 				PluginData:    childResp.PluginData,
 				InvolvedRoles: childResp.InvolvedRoles,
@@ -683,7 +683,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		}
 		if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
 			TaskName:      parentResp.TaskName,
-			URL:           parentResp.URL,
+			Url:           parentResp.Url,
 			SiteName:      parentResp.SiteName,
 			InvolvedRoles: parentResp.InvolvedRoles,
 			ResourceType:  parentResp.ResourceType,
@@ -704,8 +704,8 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 				}
 				if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
 					TaskName:      childResp.TaskName,
-					SiteWorkID:    childResp.SiteWorkID,
-					URL:           childResp.URL,
+					SiteWorkId:    childResp.SiteWorkId,
+					Url:           childResp.Url,
 					SiteName:      childResp.SiteName,
 					PluginData:    childResp.PluginData,
 					InvolvedRoles: childResp.InvolvedRoles,
@@ -781,7 +781,7 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 					BaseEntity: &model.BaseEntity{},
 				}
 				parentTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
-				parentTask.URL = sql.NullString{String: taskResp.URL, Valid: true}
+				parentTask.URL = sql.NullString{String: taskResp.Url, Valid: true}
 				parentTask.Status = int(TaskStatusCreated)
 				parentTask.HasChild = sql.NullBool{Bool: true, Valid: true}
 				parentTask.PluginPublicID = listener.PublicID
@@ -824,8 +824,8 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				}
 				childTask.Pid = sql.NullInt64{Int64: parentTask.GetID(), Valid: true}
 				childTask.TaskName = sql.NullString{String: childResp.TaskName, Valid: true}
-				childTask.SiteWorkID = sql.NullString{String: childResp.SiteWorkID, Valid: true}
-				childTask.URL = sql.NullString{String: childResp.URL, Valid: true}
+				childTask.SiteWorkID = sql.NullString{String: childResp.SiteWorkId, Valid: true}
+				childTask.URL = sql.NullString{String: childResp.Url, Valid: true}
 				childTask.Status = int(TaskStatusCreated)
 				childTask.HasChild = sql.NullBool{Bool: false, Valid: true}
 				childTask.PluginPublicID = listener.PublicID

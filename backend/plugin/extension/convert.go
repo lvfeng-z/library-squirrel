@@ -14,10 +14,10 @@ func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
 		return nil
 	}
 	t := &sdkdto.TaskDTO{
-		Status: task.Status,
+		Status: int32(task.Status),
 	}
 	if task.BaseEntity != nil {
-		t.ID = task.GetID()
+		t.Id = task.GetID()
 		t.CreateTime = task.GetCreateTime()
 		t.UpdateTime = task.GetUpdateTime()
 	}
@@ -28,13 +28,13 @@ func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
 		t.Pid = &task.Pid.Int64
 	}
 	t.TaskName = util.NullStringToPointer(task.TaskName)
-	t.SiteID = util.NullInt64ToPointer(task.SiteID)
-	t.SiteWorkID = util.NullStringToPointer(task.SiteWorkID)
-	t.URL = util.NullStringToPointer(task.URL)
-	t.PendingResourceID = util.NullInt64ToPointer(task.PendingResourceID)
+	t.SiteId = util.NullInt64ToPointer(task.SiteID)
+	t.SiteWorkId = util.NullStringToPointer(task.SiteWorkID)
+	t.Url = util.NullStringToPointer(task.URL)
+	t.PendingResourceId = util.NullInt64ToPointer(task.PendingResourceID)
 	t.Continuable = util.NullBoolToPointer(task.Continuable)
-	t.PluginPublicID = util.NullStringToPointer(task.PluginPublicID)
-	t.PluginExtensionID = util.NullStringToPointer(task.PluginExtensionID)
+	t.PluginPublicId = util.NullStringToPointer(task.PluginPublicID)
+	t.PluginExtensionId = util.NullStringToPointer(task.PluginExtensionID)
 	t.PluginData = util.NullStringToPointer(task.PluginData)
 	t.ErrorMessage = util.NullStringToPointer(task.ErrorMessage)
 	return t
@@ -47,14 +47,14 @@ func EntityWorkSetToSDK(ws *entity.WorkSet) *sdkdto.WorkSetDTO {
 	}
 	s := &sdkdto.WorkSetDTO{}
 	if ws.BaseEntity != nil {
-		s.ID = ws.GetID()
+		s.Id = ws.GetID()
 		s.CreateTime = ws.GetCreateTime()
 		s.UpdateTime = ws.GetUpdateTime()
 	}
-	s.SiteID = util.NullInt64ToPointer(ws.SiteID)
-	s.SiteWorkSetID = util.NullStringToPointer(ws.SiteWorkSetID)
+	s.SiteId = util.NullInt64ToPointer(ws.SiteID)
+	s.SiteWorkSetId = util.NullStringToPointer(ws.SiteWorkSetID)
 	s.SiteWorkSetName = util.NullStringToPointer(ws.SiteWorkSetName)
-	s.SiteAuthorID = util.NullStringToPointer(ws.SiteAuthorID)
+	s.SiteAuthorId = util.NullStringToPointer(ws.SiteAuthorID)
 	s.SiteWorkSetDescription = util.NullStringToPointer(ws.SiteWorkSetDescription)
 	s.SiteUploadTime = util.NullInt64ToPointer(ws.SiteUploadTime)
 	s.SiteUpdateTime = util.NullInt64ToPointer(ws.SiteUpdateTime)
@@ -69,8 +69,8 @@ func SDKSiteToEntity(s *sdkdto.SiteDTO) *entity.Site {
 		return nil
 	}
 	e := entity.NewSite()
-	if s.ID != 0 {
-		e.SetID(s.ID)
+	if s.Id != 0 {
+		e.SetID(s.Id)
 	}
 	if s.CreateTime != 0 {
 		e.SetCreateTime(s.CreateTime)

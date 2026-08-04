@@ -23,18 +23,18 @@ func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
 		}
 	}
 	return &sdkdto.TaskDTO{
-		ID:                task.GetID(),
+		Id:                task.GetID(),
 		HasChild:          util.NullBoolToPointer(task.HasChild),
 		Pid:               util.NullInt64ToPointer(task.Pid),
 		TaskName:          util.NullStringToPointer(task.TaskName),
-		SiteID:            util.NullInt64ToPointer(task.SiteID),
-		SiteWorkID:        util.NullStringToPointer(task.SiteWorkID),
-		URL:               util.NullStringToPointer(task.URL),
-		Status:            task.Status,
-		PendingResourceID: util.NullInt64ToPointer(task.PendingResourceID),
+		SiteId:            util.NullInt64ToPointer(task.SiteID),
+		SiteWorkId:        util.NullStringToPointer(task.SiteWorkID),
+		Url:               util.NullStringToPointer(task.URL),
+		Status:            int32(task.Status),
+		PendingResourceId: util.NullInt64ToPointer(task.PendingResourceID),
 		Continuable:       util.NullBoolToPointer(task.Continuable),
-		PluginPublicID:    util.NullStringToPointer(task.PluginPublicID),
-		PluginExtensionID: util.NullStringToPointer(task.PluginExtensionID),
+		PluginPublicId:    util.NullStringToPointer(task.PluginPublicID),
+		PluginExtensionId: util.NullStringToPointer(task.PluginExtensionID),
 		PluginData:        util.NullStringToPointer(task.PluginData),
 		ErrorMessage:      util.NullStringToPointer(task.ErrorMessage),
 		InvolvedRoles:     involvedRoles,
@@ -53,8 +53,8 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 	entity := entity2.NewTask()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+	if dto.Id != 0 {
+		entity.SetID(dto.Id)
 	}
 
 	// 设置业务字段
@@ -79,32 +79,32 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.TaskName.Valid = false
 	}
 
-	if dto.SiteID != nil {
+	if dto.SiteId != nil {
 		entity.SiteID.Valid = true
-		entity.SiteID.Int64 = *dto.SiteID
+		entity.SiteID.Int64 = *dto.SiteId
 	} else {
 		entity.SiteID.Valid = false
 	}
 
-	if dto.SiteWorkID != nil {
+	if dto.SiteWorkId != nil {
 		entity.SiteWorkID.Valid = true
-		entity.SiteWorkID.String = *dto.SiteWorkID
+		entity.SiteWorkID.String = *dto.SiteWorkId
 	} else {
 		entity.SiteWorkID.Valid = false
 	}
 
-	if dto.URL != nil {
+	if dto.Url != nil {
 		entity.URL.Valid = true
-		entity.URL.String = *dto.URL
+		entity.URL.String = *dto.Url
 	} else {
 		entity.URL.Valid = false
 	}
 
-	entity.Status = dto.Status
+	entity.Status = int(dto.Status)
 
-	if dto.PendingResourceID != nil {
+	if dto.PendingResourceId != nil {
 		entity.PendingResourceID.Valid = true
-		entity.PendingResourceID.Int64 = *dto.PendingResourceID
+		entity.PendingResourceID.Int64 = *dto.PendingResourceId
 	} else {
 		entity.PendingResourceID.Valid = false
 	}
@@ -116,16 +116,16 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.Continuable.Valid = false
 	}
 
-	if dto.PluginPublicID != nil {
+	if dto.PluginPublicId != nil {
 		entity.PluginPublicID.Valid = true
-		entity.PluginPublicID.String = *dto.PluginPublicID
+		entity.PluginPublicID.String = *dto.PluginPublicId
 	} else {
 		entity.PluginPublicID.Valid = false
 	}
 
-	if dto.PluginExtensionID != nil {
+	if dto.PluginExtensionId != nil {
 		entity.PluginExtensionID.Valid = true
-		entity.PluginExtensionID.String = *dto.PluginExtensionID
+		entity.PluginExtensionID.String = *dto.PluginExtensionId
 	} else {
 		entity.PluginExtensionID.Valid = false
 	}

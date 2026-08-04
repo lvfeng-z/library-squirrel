@@ -5,389 +5,66 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-/**
- * LocalAuthorDTO 本地作者
- */
-export class LocalAuthorDTO {
-    "id": number;
-    "authorName": string | null;
-    "introduce": string | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new LocalAuthorDTO instance. */
-    constructor($$source: Partial<LocalAuthorDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("authorName" in $$source)) {
-            this["authorName"] = null;
-        }
-        if (!("introduce" in $$source)) {
-            this["introduce"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalAuthorDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalAuthorDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalAuthorDTO($$parsedSource as Partial<LocalAuthorDTO>);
-    }
-}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as gen$0 from "../gen/models.js";
 
 /**
- * LocalTagDTO 本地标签
+ * LocalAuthorDTO 本地作者（别名 gen.LocalAuthorDTO，proto 单源；字段命名见 gen 包）
  */
-export class LocalTagDTO {
-    "id": number;
-    "localTagName": string | null;
-    "baseLocalTagId": number | null;
-    "description": string | null;
-    "lastUse": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new LocalTagDTO instance. */
-    constructor($$source: Partial<LocalTagDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("localTagName" in $$source)) {
-            this["localTagName"] = null;
-        }
-        if (!("baseLocalTagId" in $$source)) {
-            this["baseLocalTagId"] = null;
-        }
-        if (!("description" in $$source)) {
-            this["description"] = null;
-        }
-        if (!("lastUse" in $$source)) {
-            this["lastUse"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalTagDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalTagDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalTagDTO($$parsedSource as Partial<LocalTagDTO>);
-    }
-}
+export const LocalAuthorDTO = gen$0.LocalAuthorDTO;
 
 /**
- * SiteDTO 站点信息
+ * LocalAuthorDTO 本地作者（别名 gen.LocalAuthorDTO，proto 单源；字段命名见 gen 包）
  */
-export class SiteDTO {
-    "id": number;
-    "siteName": string | null;
-    "siteDescription": string | null;
-    "homepage": string | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new SiteDTO instance. */
-    constructor($$source: Partial<SiteDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteName" in $$source)) {
-            this["siteName"] = null;
-        }
-        if (!("siteDescription" in $$source)) {
-            this["siteDescription"] = null;
-        }
-        if (!("homepage" in $$source)) {
-            this["homepage"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SiteDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SiteDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SiteDTO($$parsedSource as Partial<SiteDTO>);
-    }
-}
+export type LocalAuthorDTO = gen$0.LocalAuthorDTO;
 
 /**
- * TaskDTO 任务数据传输对象
+ * LocalTagDTO 本地标签（别名 gen.LocalTagDTO，proto 单源）
  */
-export class TaskDTO {
-    "id": number;
-    "hasChild": boolean | null;
-    "pid": number | null;
-    "taskName": string | null;
-    "siteId": number | null;
-    "siteWorkId": string | null;
-    "url": string | null;
-    "status": number;
-    "pendingResourceId": number | null;
-    "continuable": boolean | null;
-    "pluginPublicId": string | null;
-    "pluginExtensionId": string | null;
-    "pluginData": string | null;
-    "errorMessage": string | null;
-
-    /**
-     * 任务涉及的 store_type 集合(创建期声明,universe);nil=未确定;用于前端按任务自选展示
-     */
-    "involvedRoles": string[];
-
-    /**
-     * 任务产生的 resource 的资源类型(预定义值);空=未声明
-     */
-    "resourceType": string;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new TaskDTO instance. */
-    constructor($$source: Partial<TaskDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("hasChild" in $$source)) {
-            this["hasChild"] = null;
-        }
-        if (!("pid" in $$source)) {
-            this["pid"] = null;
-        }
-        if (!("taskName" in $$source)) {
-            this["taskName"] = null;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("url" in $$source)) {
-            this["url"] = null;
-        }
-        if (!("status" in $$source)) {
-            this["status"] = 0;
-        }
-        if (!("pendingResourceId" in $$source)) {
-            this["pendingResourceId"] = null;
-        }
-        if (!("continuable" in $$source)) {
-            this["continuable"] = null;
-        }
-        if (!("pluginPublicId" in $$source)) {
-            this["pluginPublicId"] = null;
-        }
-        if (!("pluginExtensionId" in $$source)) {
-            this["pluginExtensionId"] = null;
-        }
-        if (!("pluginData" in $$source)) {
-            this["pluginData"] = null;
-        }
-        if (!("errorMessage" in $$source)) {
-            this["errorMessage"] = null;
-        }
-        if (!("involvedRoles" in $$source)) {
-            this["involvedRoles"] = [];
-        }
-        if (!("resourceType" in $$source)) {
-            this["resourceType"] = "";
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TaskDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TaskDTO {
-        const $$createField14_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("involvedRoles" in $$parsedSource) {
-            $$parsedSource["involvedRoles"] = $$createField14_0($$parsedSource["involvedRoles"]);
-        }
-        return new TaskDTO($$parsedSource as Partial<TaskDTO>);
-    }
-}
+export const LocalTagDTO = gen$0.LocalTagDTO;
 
 /**
- * WorkDTO 作品数据传输对象
+ * LocalTagDTO 本地标签（别名 gen.LocalTagDTO，proto 单源）
  */
-export class WorkDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkId": string | null;
-    "siteWorkName": string | null;
-    "siteAuthorId": string | null;
-    "siteWorkDescription": string | null;
-    "siteUploadTime": number | null;
-    "siteUpdateTime": number | null;
-    "nickName": string | null;
-    "localAuthorId": number | null;
-    "lastView": number | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new WorkDTO instance. */
-    constructor($$source: Partial<WorkDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("siteWorkName" in $$source)) {
-            this["siteWorkName"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("siteWorkDescription" in $$source)) {
-            this["siteWorkDescription"] = null;
-        }
-        if (!("siteUploadTime" in $$source)) {
-            this["siteUploadTime"] = null;
-        }
-        if (!("siteUpdateTime" in $$source)) {
-            this["siteUpdateTime"] = null;
-        }
-        if (!("nickName" in $$source)) {
-            this["nickName"] = null;
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("lastView" in $$source)) {
-            this["lastView"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkDTO($$parsedSource as Partial<WorkDTO>);
-    }
-}
+export type LocalTagDTO = gen$0.LocalTagDTO;
 
 /**
- * WorkSetDTO 作品集数据传输对象
+ * SiteDTO 站点信息（别名 gen.SiteDTO，proto 单源）
  */
-export class WorkSetDTO {
-    "id": number;
-    "siteId": number | null;
-    "siteWorkSetId": string | null;
-    "siteWorkSetName": string | null;
-    "siteAuthorId": string | null;
-    "siteWorkSetDescription": string | null;
-    "siteUploadTime": number | null;
-    "siteUpdateTime": number | null;
-    "nickName": string | null;
-    "description": string | null;
-    "lastView": number | null;
-    "createTime": number;
-    "updateTime": number;
+export const SiteDTO = gen$0.SiteDTO;
 
-    /** Creates a new WorkSetDTO instance. */
-    constructor($$source: Partial<WorkSetDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteWorkSetId" in $$source)) {
-            this["siteWorkSetId"] = null;
-        }
-        if (!("siteWorkSetName" in $$source)) {
-            this["siteWorkSetName"] = null;
-        }
-        if (!("siteAuthorId" in $$source)) {
-            this["siteAuthorId"] = null;
-        }
-        if (!("siteWorkSetDescription" in $$source)) {
-            this["siteWorkSetDescription"] = null;
-        }
-        if (!("siteUploadTime" in $$source)) {
-            this["siteUploadTime"] = null;
-        }
-        if (!("siteUpdateTime" in $$source)) {
-            this["siteUpdateTime"] = null;
-        }
-        if (!("nickName" in $$source)) {
-            this["nickName"] = null;
-        }
-        if (!("description" in $$source)) {
-            this["description"] = null;
-        }
-        if (!("lastView" in $$source)) {
-            this["lastView"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
+/**
+ * SiteDTO 站点信息（别名 gen.SiteDTO，proto 单源）
+ */
+export type SiteDTO = gen$0.SiteDTO;
 
-        Object.assign(this, $$source);
-    }
+/**
+ * TaskDTO 任务数据传输对象（别名 gen.Task，proto 单源；字段命名见 gen 包）
+ */
+export const TaskDTO = gen$0.Task;
 
-    /**
-     * Creates a new WorkSetDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSetDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkSetDTO($$parsedSource as Partial<WorkSetDTO>);
-    }
-}
+/**
+ * TaskDTO 任务数据传输对象（别名 gen.Task，proto 单源；字段命名见 gen 包）
+ */
+export type TaskDTO = gen$0.Task;
 
-// Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
+/**
+ * WorkDTO 作品数据传输对象（别名 gen.Work，proto 单源）
+ */
+export const WorkDTO = gen$0.Work;
+
+/**
+ * WorkDTO 作品数据传输对象（别名 gen.Work，proto 单源）
+ */
+export type WorkDTO = gen$0.Work;
+
+/**
+ * WorkSetDTO 作品集数据传输对象（别名 gen.WorkSet，proto 单源）
+ */
+export const WorkSetDTO = gen$0.WorkSet;
+
+/**
+ * WorkSetDTO 作品集数据传输对象（别名 gen.WorkSet，proto 单源）
+ */
+export type WorkSetDTO = gen$0.WorkSet;

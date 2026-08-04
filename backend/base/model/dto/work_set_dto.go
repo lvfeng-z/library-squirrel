@@ -12,11 +12,11 @@ func NewWorkSetDTO(workSet *entity2.WorkSet) *sdkdto.WorkSetDTO {
 		return nil
 	}
 	return &sdkdto.WorkSetDTO{
-		ID:                     workSet.GetID(),
-		SiteID:                 util.NullInt64ToPointer(workSet.SiteID),
-		SiteWorkSetID:          util.NullStringToPointer(workSet.SiteWorkSetID),
+		Id:                     workSet.GetID(),
+		SiteId:                 util.NullInt64ToPointer(workSet.SiteID),
+		SiteWorkSetId:          util.NullStringToPointer(workSet.SiteWorkSetID),
 		SiteWorkSetName:        util.NullStringToPointer(workSet.SiteWorkSetName),
-		SiteAuthorID:           util.NullStringToPointer(workSet.SiteAuthorID),
+		SiteAuthorId:           util.NullStringToPointer(workSet.SiteAuthorID),
 		SiteWorkSetDescription: util.NullStringToPointer(workSet.SiteWorkSetDescription),
 		SiteUploadTime:         util.NullInt64ToPointer(workSet.SiteUploadTime),
 		SiteUpdateTime:         util.NullInt64ToPointer(workSet.SiteUpdateTime),
@@ -37,21 +37,21 @@ func ToWorkSetEntity(dto *sdkdto.WorkSetDTO) *entity2.WorkSet {
 	entity := entity2.NewWorkSet()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+	if dto.Id != 0 {
+		entity.SetID(dto.Id)
 	}
 
 	// 设置业务字段
-	if dto.SiteID != nil {
+	if dto.SiteId != nil {
 		entity.SiteID.Valid = true
-		entity.SiteID.Int64 = *dto.SiteID
+		entity.SiteID.Int64 = *dto.SiteId
 	} else {
 		entity.SiteID.Valid = false
 	}
 
-	if dto.SiteWorkSetID != nil {
+	if dto.SiteWorkSetId != nil {
 		entity.SiteWorkSetID.Valid = true
-		entity.SiteWorkSetID.String = *dto.SiteWorkSetID
+		entity.SiteWorkSetID.String = *dto.SiteWorkSetId
 	} else {
 		entity.SiteWorkSetID.Valid = false
 	}
@@ -63,9 +63,9 @@ func ToWorkSetEntity(dto *sdkdto.WorkSetDTO) *entity2.WorkSet {
 		entity.SiteWorkSetName.Valid = false
 	}
 
-	if dto.SiteAuthorID != nil {
+	if dto.SiteAuthorId != nil {
 		entity.SiteAuthorID.Valid = true
-		entity.SiteAuthorID.String = *dto.SiteAuthorID
+		entity.SiteAuthorID.String = *dto.SiteAuthorId
 	} else {
 		entity.SiteAuthorID.Valid = false
 	}

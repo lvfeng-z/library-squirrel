@@ -109,11 +109,11 @@ func pluginIdsFromEntityTask(task *domain.Task) (pluginPublicId, extensionId str
 
 // pluginIdsFromSDKTask 从 sdkdto.TaskDTO 提取插件ID
 func pluginIdsFromSDKTask(task *sdkdto.TaskDTO) (pluginPublicId, extensionId string) {
-	if task.PluginPublicID != nil {
-		pluginPublicId = *task.PluginPublicID
+	if task.PluginPublicId != nil {
+		pluginPublicId = *task.PluginPublicId
 	}
-	if task.PluginExtensionID != nil {
-		extensionId = *task.PluginExtensionID
+	if task.PluginExtensionId != nil {
+		extensionId = *task.PluginExtensionId
 	}
 	return
 }

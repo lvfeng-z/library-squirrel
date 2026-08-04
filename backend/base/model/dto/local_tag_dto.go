@@ -12,9 +12,9 @@ func NewLocalTagDTO(tag *entity.LocalTag) *sdkdto.LocalTagDTO {
 		return nil
 	}
 	return &sdkdto.LocalTagDTO{
-		ID:             tag.GetID(),
+		Id:             tag.GetID(),
 		LocalTagName:   util.NullStringToPointer(tag.LocalTagName),
-		BaseLocalTagID: util.NullInt64ToPointer(tag.BaseLocalTagID),
+		BaseLocalTagId: util.NullInt64ToPointer(tag.BaseLocalTagID),
 		Description:    util.NullStringToPointer(tag.Description),
 		LastUse:        util.NullInt64ToPointer(tag.LastUse),
 		CreateTime:     tag.GetCreateTime(),
@@ -31,8 +31,8 @@ func ToLocalTagEntity(dto *sdkdto.LocalTagDTO) *entity.LocalTag {
 	entity := entity.NewLocalTag()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		entity.SetID(dto.ID)
+	if dto.Id != 0 {
+		entity.SetID(dto.Id)
 	}
 
 	// 设置业务字段
@@ -43,9 +43,9 @@ func ToLocalTagEntity(dto *sdkdto.LocalTagDTO) *entity.LocalTag {
 		entity.LocalTagName.Valid = false
 	}
 
-	if dto.BaseLocalTagID != nil {
+	if dto.BaseLocalTagId != nil {
 		entity.BaseLocalTagID.Valid = true
-		entity.BaseLocalTagID.Int64 = *dto.BaseLocalTagID
+		entity.BaseLocalTagID.Int64 = *dto.BaseLocalTagId
 	} else {
 		entity.BaseLocalTagID.Valid = false
 	}

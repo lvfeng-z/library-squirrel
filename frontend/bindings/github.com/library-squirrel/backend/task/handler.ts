@@ -19,6 +19,9 @@ import * as dto$0 from "../base/model/dto/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as dto$1 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as gen$0 from "../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -186,7 +189,7 @@ const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = dto$1.TaskDTO.createFrom;
+const $$createType8 = gen$0.Task.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
 const $$createType11 = $Create.Nullable($$createType10);

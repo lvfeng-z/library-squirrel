@@ -20,6 +20,9 @@ import * as dto$1 from "../base/model/dto/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as gen$0 from "../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -136,7 +139,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = dto$0.LocalTagDTO.createFrom;
+const $$createType2 = gen$0.LocalTagDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);

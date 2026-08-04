@@ -8,6 +8,9 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as dto$0 from "../../../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as gen$0 from "../../../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 
 /**
  * BackupDTO 备份数据传输对象
@@ -1375,9 +1378,9 @@ export class WorkSetWithWorksResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = dto$0.LocalTagDTO.createFrom;
+const $$createType0 = gen$0.LocalTagDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = dto$0.LocalAuthorDTO.createFrom;
+const $$createType2 = gen$0.LocalAuthorDTO.createFrom;
 const $$createType3 = SiteAuthorDTO.createFrom;
 const $$createType4 = ResourceStoreDTO.createFrom;
 const $$createType5 = $Create.Array($$createType4);
@@ -1387,11 +1390,11 @@ const $$createType8 = $Create.Array($Create.Any);
 const $$createType9 = $Create.Array($Create.Any);
 const $$createType10 = $Create.Nullable($$createType3);
 const $$createType11 = $Create.Nullable($$createType2);
-const $$createType12 = dto$0.SiteDTO.createFrom;
+const $$createType12 = gen$0.SiteDTO.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
 const $$createType14 = SiteTagDTO.createFrom;
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = dto$0.TaskDTO.createFrom;
+const $$createType16 = gen$0.Task.createFrom;
 const $$createType17 = $Create.Nullable($$createType16);
 const $$createType18 = TaskProgressDTO.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
@@ -1404,7 +1407,7 @@ const $$createType25 = $Create.Array($$createType24);
 const $$createType26 = RankedSiteAuthor.createFrom;
 const $$createType27 = $Create.Nullable($$createType26);
 const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = dto$0.WorkDTO.createFrom;
+const $$createType29 = gen$0.Work.createFrom;
 const $$createType30 = $Create.Nullable($$createType29);
 const $$createType31 = $Create.Array($$createType1);
 const $$createType32 = SiteTagFullDTO.createFrom;
@@ -1412,7 +1415,7 @@ const $$createType33 = $Create.Nullable($$createType32);
 const $$createType34 = $Create.Array($$createType33);
 const $$createType35 = ResourceFullDTO.createFrom;
 const $$createType36 = $Create.Nullable($$createType35);
-const $$createType37 = dto$0.WorkSetDTO.createFrom;
+const $$createType37 = gen$0.WorkSet.createFrom;
 const $$createType38 = $Create.Nullable($$createType37);
 const $$createType39 = WorkFullDTO.createFrom;
 const $$createType40 = $Create.Nullable($$createType39);

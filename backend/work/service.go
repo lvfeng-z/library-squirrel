@@ -1229,7 +1229,7 @@ func (s *Service) LoadWorkMeta(ctx context.Context, workId int64) (*sdkdto.WorkR
 	for _, sa := range f.SiteAuthors {
 		a := sa.Author
 		resp.SiteAuthors = append(resp.SiteAuthors, &sdkdto.TaskSiteAuthorDTO{
-			SiteAuthorID:    ptrStrValue(a.SiteAuthorID),
+			SiteAuthorId:    ptrStrValue(a.SiteAuthorID),
 			AuthorName:      ptrStrValue(a.AuthorName),
 			FixedAuthorName: ptrStrValue(a.FixedAuthorName),
 			Introduce:       ptrStrValue(a.Introduce),
@@ -1329,19 +1329,19 @@ func (s *Service) syncSiteSortOrders(task *entity2.Task, workResp *sdkdto.WorkRe
 	defer cancel()
 	siteId := task.SiteID.Int64
 	for _, ws := range workResp.WorkSets {
-		if ws.SiteWorkSetID == "" || !task.PluginPublicID.Valid {
+		if ws.SiteWorkSetId == "" || !task.PluginPublicID.Valid {
 			continue
 		}
-		entries, err := s.workSetOrderFetcher.QueryWorkSetOrder(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetID)
+		entries, err := s.workSetOrderFetcher.QueryWorkSetOrder(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
 		if err != nil {
-			logger.Log.Warnf("拉取作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetID, err)
+			logger.Log.Warnf("拉取作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
 			continue
 		}
 		if len(entries) == 0 {
 			continue
 		}
-		if err := s.applySiteSortOrders(ctx, siteId, ws.SiteWorkSetID, entries); err != nil {
-			logger.Log.Warnf("写入作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetID, err)
+		if err := s.applySiteSortOrders(ctx, siteId, ws.SiteWorkSetId, entries); err != nil {
+			logger.Log.Warnf("写入作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
 		}
 	}
 }
@@ -1358,7 +1358,7 @@ func (s *Service) applySiteSortOrders(ctx context.Context, siteId int64, siteWor
 	siteWorkIds := make([]string, 0, len(entries))
 	for i, e := range entries {
 		siteIds[i] = siteId
-		siteWorkIds = append(siteWorkIds, e.SiteWorkID)
+		siteWorkIds = append(siteWorkIds, e.SiteWorkId)
 	}
 	works, err := s.ListBySiteAndSiteWorkIDs(ctx, siteIds, siteWorkIds)
 	if err != nil {
@@ -1372,7 +1372,7 @@ func (s *Service) applySiteSortOrders(ctx context.Context, siteId int64, siteWor
 	}
 	sortOrders := make(map[int64]int, len(entries))
 	for _, e := range entries {
-		if workId, ok := siteWorkIdToWorkId[e.SiteWorkID]; ok {
+		if workId, ok := siteWorkIdToWorkId[e.SiteWorkId]; ok {
 			sortOrders[workId] = int(e.SortOrder)
 		}
 	}
@@ -1492,7 +1492,7 @@ func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSite
 	siteAuthorIds := make([]string, len(dtos))
 	for i, d := range dtos {
 		entities[i] = taskSiteAuthorDTOToEntity(d, siteId)
-		siteAuthorIds[i] = d.SiteAuthorID
+		siteAuthorIds[i] = d.SiteAuthorId
 	}
 
 	// 一次批量 upsert
@@ -1517,7 +1517,7 @@ func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSite
 	// 按 DTO 原始顺序输出
 	ids := make([]int64, len(dtos))
 	for i, d := range dtos {
-		ids[i] = idMap[d.SiteAuthorID]
+		ids[i] = idMap[d.SiteAuthorId]
 	}
 	return ids, nil
 }
@@ -1533,7 +1533,7 @@ func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTag
 	siteTagIds := make([]string, len(dtos))
 	for i, d := range dtos {
 		entities[i] = taskSiteTagDTOToEntity(d, siteId)
-		siteTagIds[i] = d.SiteTagID
+		siteTagIds[i] = d.SiteTagId
 	}
 
 	// 一次批量 upsert
@@ -1558,7 +1558,7 @@ func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTag
 	// 按 DTO 原始顺序输出
 	ids := make([]int64, len(dtos))
 	for i, d := range dtos {
-		ids[i] = idMap[d.SiteTagID]
+		ids[i] = idMap[d.SiteTagId]
 	}
 	return ids, nil
 }
@@ -1574,7 +1574,7 @@ func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSet
 	siteWorkSetIds := make([]string, len(dtos))
 	for i, d := range dtos {
 		entities[i] = taskWorkSetDTOToEntity(d, siteId)
-		siteWorkSetIds[i] = d.SiteWorkSetID
+		siteWorkSetIds[i] = d.SiteWorkSetId
 	}
 
 	// 一次批量 upsert
@@ -1599,7 +1599,7 @@ func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSet
 	// 按 DTO 原始顺序输出
 	ids := make([]int64, len(dtos))
 	for i, d := range dtos {
-		ids[i] = idMap[d.SiteWorkSetID]
+		ids[i] = idMap[d.SiteWorkSetId]
 	}
 	return ids, nil
 }
@@ -1615,8 +1615,8 @@ func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalA
 	var idModeIds []int64
 	var nameModeDtos []*sdkdto.LocalAuthorDTO
 	for _, d := range dtos {
-		if d.ID > 0 {
-			idModeIds = append(idModeIds, d.ID)
+		if d.Id > 0 {
+			idModeIds = append(idModeIds, d.Id)
 		} else {
 			nameModeDtos = append(nameModeDtos, d)
 		}
@@ -1720,7 +1720,7 @@ func (s *Service) resolveLocalAuthors(ctx context.Context, dtos []*sdkdto.LocalA
 	idIdx := 0
 	nameIdx := 0
 	for _, d := range dtos {
-		if d.ID > 0 {
+		if d.Id > 0 {
 			ids = append(ids, idModeIds[idIdx])
 			idIdx++
 		} else {
@@ -1742,8 +1742,8 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 	var idModeIds []int64
 	var nameModeDtos []*sdkdto.LocalTagDTO
 	for _, d := range dtos {
-		if d.ID > 0 {
-			idModeIds = append(idModeIds, d.ID)
+		if d.Id > 0 {
+			idModeIds = append(idModeIds, d.Id)
 		} else {
 			nameModeDtos = append(nameModeDtos, d)
 		}
@@ -1844,7 +1844,7 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 	idIdx := 0
 	nameIdx := 0
 	for _, d := range dtos {
-		if d.ID > 0 {
+		if d.Id > 0 {
 			ids = append(ids, idModeIds[idIdx])
 			idIdx++
 		} else {
@@ -1877,7 +1877,7 @@ func taskSiteAuthorDTOToEntity(d *sdkdto.TaskSiteAuthorDTO, siteId int64) *entit
 	return &entity2.SiteAuthor{
 		BaseEntity:      &model.BaseEntity{},
 		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},
-		SiteAuthorID:    sql.NullString{String: d.SiteAuthorID, Valid: true},
+		SiteAuthorID:    sql.NullString{String: d.SiteAuthorId, Valid: true},
 		AuthorName:      sql.NullString{String: d.AuthorName, Valid: true},
 		FixedAuthorName: sql.NullString{String: d.FixedAuthorName, Valid: d.FixedAuthorName != ""},
 		Introduce:       sql.NullString{String: d.Introduce, Valid: d.Introduce != ""},
@@ -1889,7 +1889,7 @@ func taskSiteTagDTOToEntity(d *sdkdto.TaskSiteTagDTO, siteId int64) *entity2.Sit
 	return &entity2.SiteTag{
 		BaseEntity:  &model.BaseEntity{},
 		SiteID:      sql.NullInt64{Int64: siteId, Valid: true},
-		SiteTagID:   sql.NullString{String: d.SiteTagID, Valid: true},
+		SiteTagID:   sql.NullString{String: d.SiteTagId, Valid: true},
 		SiteTagName: sql.NullString{String: d.TagName, Valid: true},
 		Description: sql.NullString{String: d.Description, Valid: d.Description != ""},
 	}
@@ -1899,7 +1899,7 @@ func taskWorkSetDTOToEntity(d *sdkdto.TaskWorkSetDTO, siteId int64) *entity2.Wor
 	return &entity2.WorkSet{
 		BaseEntity:      &model.BaseEntity{},
 		SiteID:          sql.NullInt64{Int64: siteId, Valid: true},
-		SiteWorkSetID:   sql.NullString{String: d.SiteWorkSetID, Valid: true},
+		SiteWorkSetID:   sql.NullString{String: d.SiteWorkSetId, Valid: true},
 		SiteWorkSetName: sql.NullString{String: d.WorkSetName, Valid: true},
 	}
 }
@@ -1984,13 +1984,13 @@ func enrichLocalAuthorDTOs(dtos []*sdkdto.LocalAuthorDTO, entities []*entity2.Lo
 		entityMap[e.GetID()] = e
 	}
 	for _, d := range dtos {
-		if d.ID <= 0 {
+		if d.Id <= 0 {
 			continue
 		}
 		if d.AuthorName != nil && *d.AuthorName != "" {
 			continue
 		}
-		if e, ok := entityMap[d.ID]; ok && e.AuthorName.Valid {
+		if e, ok := entityMap[d.Id]; ok && e.AuthorName.Valid {
 			d.AuthorName = &e.AuthorName.String
 		}
 	}
@@ -2006,13 +2006,13 @@ func enrichLocalTagDTOs(dtos []*sdkdto.LocalTagDTO, entities []*entity2.LocalTag
 		entityMap[e.GetID()] = e
 	}
 	for _, d := range dtos {
-		if d.ID <= 0 {
+		if d.Id <= 0 {
 			continue
 		}
 		if d.LocalTagName != nil && *d.LocalTagName != "" {
 			continue
 		}
-		if e, ok := entityMap[d.ID]; ok && e.LocalTagName.Valid {
+		if e, ok := entityMap[d.Id]; ok && e.LocalTagName.Valid {
 			d.LocalTagName = &e.LocalTagName.String
 		}
 	}

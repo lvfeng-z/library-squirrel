@@ -12,7 +12,7 @@ func NewSiteDTO(site *entity.Site) *sdkdto.SiteDTO {
 		return nil
 	}
 	return &sdkdto.SiteDTO{
-		ID:              site.GetID(),
+		Id:              site.GetID(),
 		SiteName:        util.NullStringToPointer(site.SiteName),
 		SiteDescription: util.NullStringToPointer(site.SiteDescription),
 		Homepage:        util.NullStringToPointer(site.Homepage),
@@ -30,8 +30,8 @@ func ToSiteEntity(dto *sdkdto.SiteDTO) *entity.Site {
 	newSite := entity.NewSite()
 
 	// 设置基础字段
-	if dto.ID != 0 {
-		newSite.SetID(dto.ID)
+	if dto.Id != 0 {
+		newSite.SetID(dto.Id)
 	}
 
 	// 设置业务字段

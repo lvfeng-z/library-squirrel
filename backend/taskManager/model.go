@@ -704,7 +704,7 @@ func (m *ManagedTask) handlePauseCmd(cmd taskCmd) {
 	// 通知插件暂停(有上游时关上游 HTTP 保留 validBytes 供 Resume Range 续传;无上游时插件幂等处理)
 	param := &sdkdto.TaskResParam{
 		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.task.PendingResourceID.Int64,
+		ResourceId: m.task.PendingResourceID.Int64,
 	}
 	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
@@ -732,7 +732,7 @@ func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
 	}
 	param := &sdkdto.TaskResParam{
 		Task:       dto.NewTaskDTO(m.task),
-		ResourceID: m.task.PendingResourceID.Int64,
+		ResourceId: m.task.PendingResourceID.Int64,
 	}
 	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
 		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)

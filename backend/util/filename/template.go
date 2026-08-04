@@ -47,7 +47,7 @@ func ExtractTokenData(workResp *sdkdto.WorkResponse) *TokenData {
 	data.LocalAuthorName = extractLocalAuthorName(workResp.LocalAuthors)
 	data.SiteAuthorName = extractSiteAuthorName(workResp.SiteAuthors)
 	data.SiteAuthorID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteAuthorID)
+		return ptrStr(w.SiteAuthorId)
 	})
 
 	// ${author}: 优先本地作者，其次站点作者
@@ -59,7 +59,7 @@ func ExtractTokenData(workResp *sdkdto.WorkResponse) *TokenData {
 
 	// 作品字段
 	data.SiteWorkID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteWorkID)
+		return ptrStr(w.SiteWorkId)
 	})
 	data.SiteWorkName = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
 		return ptrStr(w.SiteWorkName)

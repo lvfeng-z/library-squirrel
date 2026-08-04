@@ -177,7 +177,7 @@ func workOrderEntriesFromProto(entries []*gen.WorkOrderEntry) []*pluginsdkdto.Wo
 	result := make([]*pluginsdkdto.WorkOrderEntry, 0, len(entries))
 	for _, e := range entries {
 		result = append(result, &pluginsdkdto.WorkOrderEntry{
-			SiteWorkID: e.GetSiteWorkId(),
+			SiteWorkId: e.GetSiteWorkId(),
 			SortOrder:  e.GetSortOrder(),
 		})
 	}
@@ -393,20 +393,20 @@ func taskToProto(t *pluginsdkdto.TaskDTO) *gen.Task {
 		return nil
 	}
 	return &gen.Task{
-		Id:                t.ID,
+		Id:                t.Id,
 		CreateTime:        t.CreateTime,
 		UpdateTime:        t.UpdateTime,
 		HasChild:          t.HasChild,
 		Pid:               t.Pid,
 		TaskName:          t.TaskName,
-		SiteId:            t.SiteID,
-		SiteWorkId:        t.SiteWorkID,
-		Url:               t.URL,
+		SiteId:            t.SiteId,
+		SiteWorkId:        t.SiteWorkId,
+		Url:               t.Url,
 		Status:            int32(t.Status),
-		PendingResourceId: t.PendingResourceID,
+		PendingResourceId: t.PendingResourceId,
 		Continuable:       t.Continuable,
-		PluginPublicId:    t.PluginPublicID,
-		PluginExtensionId: t.PluginExtensionID,
+		PluginPublicId:    t.PluginPublicId,
+		PluginExtensionId: t.PluginExtensionId,
 		PluginData:        t.PluginData,
 		ErrorMessage:      t.ErrorMessage,
 	}
@@ -418,7 +418,7 @@ func taskResParamToProto(p *pluginsdkdto.TaskResParam) *gen.TaskResParam {
 	}
 	return &gen.TaskResParam{
 		Task:            taskToProto(p.Task),
-		ResourceId:      p.ResourceID,
+		ResourceId:      p.ResourceId,
 		ResourcePath:    p.ResourcePath,
 		DownloadedBytes: p.DownloadedBytes,
 	}
@@ -450,8 +450,8 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 	for j, c := range r.Children {
 		children[j] = &pluginsdkdto.TaskCreateChildResponse{
 			TaskName:      c.TaskName,
-			SiteWorkID:    c.SiteWorkId,
-			URL:           c.Url,
+			SiteWorkId:    c.SiteWorkId,
+			Url:           c.Url,
 			PluginData:    c.PluginData,
 			SiteName:      c.SiteName,
 			InvolvedRoles: c.InvolvedRoles,
@@ -459,10 +459,10 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 		}
 	}
 	return &pluginsdkdto.TaskCreateResponse{
-		PluginTaskID:  r.PluginTaskId,
+		PluginTaskId:  r.PluginTaskId,
 		TaskName:      r.TaskName,
-		SiteWorkID:    r.SiteWorkId,
-		URL:           r.Url,
+		SiteWorkId:    r.SiteWorkId,
+		Url:           r.Url,
 		PluginData:    r.PluginData,
 		SiteName:      r.SiteName,
 		InvolvedRoles: r.InvolvedRoles,
@@ -478,24 +478,24 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	resp := &pluginsdkdto.WorkResponse{}
 	if pb.Work != nil {
 		resp.Work = &pluginsdkdto.WorkDTO{
-			ID:                  pb.Work.Id,
+			Id:                  pb.Work.Id,
 			CreateTime:          pb.Work.CreateTime,
 			UpdateTime:          pb.Work.UpdateTime,
-			SiteID:              pb.Work.SiteId,
-			SiteWorkID:          pb.Work.SiteWorkId,
+			SiteId:              pb.Work.SiteId,
+			SiteWorkId:          pb.Work.SiteWorkId,
 			SiteWorkName:        pb.Work.SiteWorkName,
-			SiteAuthorID:        pb.Work.SiteAuthorId,
+			SiteAuthorId:        pb.Work.SiteAuthorId,
 			SiteWorkDescription: pb.Work.SiteWorkDescription,
 			SiteUploadTime:      pb.Work.SiteUploadTime,
 			SiteUpdateTime:      pb.Work.SiteUpdateTime,
 			NickName:            pb.Work.NickName,
-			LocalAuthorID:       pb.Work.LocalAuthorId,
+			LocalAuthorId:       pb.Work.LocalAuthorId,
 			LastView:            pb.Work.LastView,
 		}
 	}
 	if pb.Site != nil {
 		resp.Site = &pluginsdkdto.SiteDTO{
-			ID:              pb.Site.Id,
+			Id:              pb.Site.Id,
 			SiteName:        pb.Site.SiteName,
 			SiteDescription: pb.Site.SiteDescription,
 			Homepage:        pb.Site.Homepage,
@@ -505,7 +505,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	for _, a := range pb.LocalAuthors {
 		resp.LocalAuthors = append(resp.LocalAuthors, &pluginsdkdto.LocalAuthorDTO{
-			ID:         a.Id,
+			Id:         a.Id,
 			AuthorName: a.AuthorName,
 			Introduce:  a.Introduce,
 			LastUse:    a.LastUse,
@@ -515,9 +515,9 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	for _, t := range pb.LocalTags {
 		resp.LocalTags = append(resp.LocalTags, &pluginsdkdto.LocalTagDTO{
-			ID:             t.Id,
+			Id:             t.Id,
 			LocalTagName:   t.LocalTagName,
-			BaseLocalTagID: t.BaseLocalTagId,
+			BaseLocalTagId: t.BaseLocalTagId,
 			Description:    t.Description,
 			LastUse:        t.LastUse,
 			CreateTime:     t.CreateTime,
@@ -526,7 +526,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	for _, a := range pb.SiteAuthors {
 		resp.SiteAuthors = append(resp.SiteAuthors, &pluginsdkdto.TaskSiteAuthorDTO{
-			SiteAuthorID:    a.SiteAuthorId,
+			SiteAuthorId:    a.SiteAuthorId,
 			AuthorName:      a.AuthorName,
 			Homepage:        a.Homepage,
 			FixedAuthorName: a.FixedAuthorName,
@@ -535,14 +535,14 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	for _, t := range pb.SiteTags {
 		resp.SiteTags = append(resp.SiteTags, &pluginsdkdto.TaskSiteTagDTO{
-			SiteTagID:   t.SiteTagId,
+			SiteTagId:   t.SiteTagId,
 			TagName:     t.TagName,
 			Description: t.Description,
 		})
 	}
 	for _, ws := range pb.WorkSets {
 		resp.WorkSets = append(resp.WorkSets, &pluginsdkdto.TaskWorkSetDTO{
-			SiteWorkSetID: ws.SiteWorkSetId,
+			SiteWorkSetId: ws.SiteWorkSetId,
 			WorkSetName:   ws.WorkSetName,
 		})
 	}

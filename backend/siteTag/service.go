@@ -254,9 +254,9 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 		}
 		for _, lt := range localTags {
 			localTagMap[lt.ID] = &sdkdto.LocalTagDTO{
-				ID:             lt.GetID(),
+				Id:             lt.GetID(),
 				LocalTagName:   util.NullStringToPointer(lt.LocalTagName),
-				BaseLocalTagID: util.NullInt64ToPointer(lt.BaseLocalTagID),
+				BaseLocalTagId: util.NullInt64ToPointer(lt.BaseLocalTagID),
 				Description:    util.NullStringToPointer(lt.Description),
 				CreateTime:     lt.GetCreateTime(),
 				UpdateTime:     lt.GetUpdateTime(),

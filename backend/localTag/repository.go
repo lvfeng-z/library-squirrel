@@ -278,9 +278,9 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 	dtoList := make([]*dto.LocalTagWithBaseTagDTO, len(results))
 	for i, result := range results {
 		localTag := &sdkdto.LocalTagDTO{
-			ID:             result.TagID,
+			Id:             result.TagID,
 			LocalTagName:   result.TagName,
-			BaseLocalTagID: result.TagBaseID,
+			BaseLocalTagId: result.TagBaseID,
 			Description:    result.TagDescription,
 			LastUse:        result.TagLastUse,
 			CreateTime:     result.TagCreateTime,
@@ -290,9 +290,9 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 		var baseTag *sdkdto.LocalTagDTO
 		if result.BaseTagID != nil {
 			baseTag = &sdkdto.LocalTagDTO{
-				ID:             *result.BaseTagID,
+				Id:             *result.BaseTagID,
 				LocalTagName:   result.BaseTagName,
-				BaseLocalTagID: result.BaseTagBaseID,
+				BaseLocalTagId: result.BaseTagBaseID,
 				Description:    result.BaseTagDescription,
 				LastUse:        result.BaseTagLastUse,
 				CreateTime:     *result.BaseTagCreateTime,
