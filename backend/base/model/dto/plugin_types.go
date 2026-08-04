@@ -40,6 +40,7 @@ type PluginManifest struct {
 	Extensions      *PluginExtensions `json:"extensions"`
 	Activation      PluginActivation  `json:"activation"`
 	EntryFile       string            `json:"entryFile"`
+	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力（封闭枚举；主程序加载时读取，未声明者跳过对应能力调用）
 }
 
 // PluginInstallDTO 插件安装数据传输对象
@@ -53,6 +54,7 @@ type PluginInstallDTO struct {
 	Extensions      *PluginExtensions `json:"extensions"`
 	Activation      PluginActivation  `json:"activation"`
 	EntryFile       string            `json:"entryFile"`
+	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力
 	PackagePath     string            `json:"packagePath,omitempty"`
 	PublicID        string            `json:"publicId,omitempty"`
 }
@@ -74,6 +76,7 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Extensions:      p.Extensions,
 		Activation:      p.Activation,
 		EntryFile:       p.EntryFile,
+		Capabilities:    p.Capabilities,
 		PackagePath:     packagePath,
 		PublicID:        p.GetPublicID(),
 	}

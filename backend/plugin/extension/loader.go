@@ -2,6 +2,8 @@ package extension
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -48,6 +50,40 @@ func ValidateContractVersion(pluginContract int) error {
 	}
 	if pluginContract < minSupportedContractVersion {
 		return ErrPluginContractTooOld
+	}
+	return nil
+}
+
+// UnmarshalCapabilities 解析 entity 持久化的 capabilities JSON 字符串为切片。
+// s 无效/空/"null" 返回 nil（插件未声明能力）。
+func UnmarshalCapabilities(s sql.NullString) []string {
+	if !s.Valid || s.String == "" || s.String == "null" {
+		return nil
+	}
+	var caps []string
+	if err := json.Unmarshal([]byte(s.String), &caps); err != nil {
+		return nil
+	}
+	return caps
+}
+
+// 插件能力枚举（封闭集；插件 manifest capabilities 引用这些值，主程序据未声明者跳过对应能力调用）。
+const (
+	// CapabilityWorkOrderQuery 作品集原站序查询能力（插件实现 sdkdto.WorkOrderQuerier 可选接口）。
+	CapabilityWorkOrderQuery = "workOrderQuery"
+)
+
+// CapabilityQuerier 按插件公开 ID 查询其声明的能力集合（Loader 实现，供 fetcher 声明驱动调用）。
+type CapabilityQuerier interface {
+	GetCapabilities(pluginPublicId string) []string
+}
+
+// GetCapabilities 返回插件声明的可选能力集合（供主程序决定是否调用对应能力；未加载/未声明返回 nil）。
+func (l *Loader) GetCapabilities(pluginPublicId string) []string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if entry, ok := l.processes[pluginPublicId]; ok && entry.info != nil {
+		return entry.info.Capabilities
 	}
 	return nil
 }
@@ -376,7 +412,8 @@ type PluginInfo struct {
 	PublicID        string
 	Name            string
 	Version         string
-	ContractVersion int // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	ContractVersion int      // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	Capabilities    []string // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
 	Author          string
 	EntryPath       string
 	RootPath        string

@@ -424,6 +424,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		Name:            p.Name.String,
 		Version:         p.Version.String,
 		ContractVersion: int(p.ContractVersion.Int64),
+		Capabilities:    extension2.UnmarshalCapabilities(p.Capabilities),
 		Author:          p.Author.String,
 		EntryPath:       p.EntryPath.String,
 		RootPath:        p.RootPath.String,
@@ -1017,7 +1018,7 @@ func (app *App) initAdvancedServices() error {
 	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
 
 	// 注入原站序获取能力（plugin 提供，work 作品入库后异步拉取写 site_sort_order；registry 已就绪）
-	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry))
+	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 
 	return nil
 }

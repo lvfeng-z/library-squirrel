@@ -10,13 +10,13 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/library-squirrel/backend/plugin/extension"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/plugin/extension"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -78,10 +78,10 @@ type PluginActivator interface {
 
 // Service 插件服务
 type Service struct {
-	repo            Repository
-	backupProvider  BackupProvider
-	activator       PluginActivator
-	onUnload        func(pluginPublicId string)
+	repo           Repository
+	backupProvider BackupProvider
+	activator      PluginActivator
+	onUnload       func(pluginPublicId string)
 
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
@@ -373,6 +373,11 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Name = sql.NullString{String: installDTO.Name, Valid: true}
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
 	plugin.ContractVersion = sql.NullInt64{Int64: int64(installDTO.ContractVersion), Valid: installDTO.ContractVersion > 0}
+	if len(installDTO.Capabilities) > 0 {
+		if capsJSON, err := json.Marshal(installDTO.Capabilities); err == nil {
+			plugin.Capabilities = sql.NullString{String: string(capsJSON), Valid: true}
+		}
+	}
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
@@ -392,8 +397,8 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		}
 	}
 
-		// 创建备份
-		backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, installDTO.PackagePath)
+	// 创建备份
+	backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, installDTO.PackagePath)
 	if err != nil {
 		return nil, err
 	}
