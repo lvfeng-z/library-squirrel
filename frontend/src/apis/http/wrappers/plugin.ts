@@ -7,7 +7,7 @@ import {
   Handler as PluginHandler,
   PluginQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/plugin'
-import { PluginDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'

@@ -1,4 +1,4 @@
-import { SelectItem } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class SegmentedTagItem extends SelectItem {

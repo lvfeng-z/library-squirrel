@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import CardGrid from '@renderer/components/common/CardGrid.vue'
 import WorkSetCard from '@renderer/components/common/WorkSetCard.vue'
-import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'

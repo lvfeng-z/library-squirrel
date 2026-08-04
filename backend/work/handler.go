@@ -91,7 +91,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.WorkDTO
 }
 
 // GetFullWorkInfoByIds 批量获取完整作品信息
-func (h *Handler) GetFullWorkInfoByIds(ctx context.Context, ids []int64) *model.ApiResponse[[]*sdkdto.WorkFullDTO] {
+func (h *Handler) GetFullWorkInfoByIds(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto.WorkFullDTO] {
 	return model.HandleResult(h.svc.GetFullWorkInfoByIds(ctx, ids))
 }
 
@@ -105,7 +105,7 @@ func (h *Handler) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, site
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
-func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*sdkdto.RankedLocalAuthor] {
+func (h *Handler) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
 	return model.HandleResult(h.svc.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds))
 }
 

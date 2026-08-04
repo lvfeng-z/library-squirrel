@@ -126,12 +126,12 @@ func ToWorkSetEntity(dto *sdkdto.WorkSetDTO) *entity2.WorkSet {
 // WorkSetWithWorksResultDTO 作品集及其作品信息（作品包含完整关联数据）
 type WorkSetWithWorksResultDTO struct {
 	WorkSet *sdkdto.WorkSetDTO    `json:"workSet"`
-	Works   []*sdkdto.WorkFullDTO `json:"works,omitempty"`
+	Works   []*WorkFullDTO `json:"works,omitempty"`
 }
 
 // WorkSetWithCoverDTO 作品集及其封面作品信息
 type WorkSetWithCoverDTO struct {
 	WorkSet       *sdkdto.WorkSetDTO      `json:"workSet"`
 	CoverWork     *sdkdto.WorkDTO         `json:"coverWork,omitempty"`
-	CoverResource *sdkdto.ResourceFullDTO `json:"coverResource,omitempty"`
+	CoverResource *ResourceFullDTO `json:"coverResource,omitempty"`
 }

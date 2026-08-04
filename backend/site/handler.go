@@ -86,9 +86,9 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.SiteDTO
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], query SiteQueryDTO) *model.ApiResponse[*model.Page[sdkdto.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query SiteQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[sdkdto.SelectItem]{}
+		page = &model.Page[dto.SelectItem]{}
 	}
 	return model.HandleResult(h.svc.QuerySelectItemPage(ctx, page, query))
 }

@@ -10,7 +10,7 @@ import IPage from '@renderer/model/util/IPage.ts'
 import {
   SelectItem,
   SiteTagLocalRelateDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {SiteQueryDTO} from "@bindings/github.com/library-squirrel/backend/site"
 import {QueryAttribute} from "@bindings/github.com/library-squirrel/backend/base/query"
 import {isBlank} from "@renderer/utils/StringUtil.ts"

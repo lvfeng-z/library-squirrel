@@ -62,11 +62,11 @@ type Repository interface {
 	// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
 	GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
-	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagFullDTO], error)
+	QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO], error)
 	// QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagLocalRelateDTO], error)
+	QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error)
 	// QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error)
+	QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, tag *entity2.SiteTag) error
 	// BatchUpsert 批量插入或更新
@@ -187,7 +187,7 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.SiteTag], q
 }
 
 // QueryBoundOrUnboundToLocalTagPage 查询绑定或未绑定到本地标签的站点标签分页
-func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[sdkdto.SiteTagFullDTO], query SiteTagQueryDTO) (*model.Page[sdkdto.SiteTagFullDTO], error) {
+func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *model.Page[dto2.SiteTagFullDTO], query SiteTagQueryDTO) (*model.Page[dto2.SiteTagFullDTO], error) {
 	conv := querypkg.NewConverter(entity2.SiteTag{})
 
 	var boundOnLocalTagId *bool
@@ -227,10 +227,10 @@ func (s *Service) QueryBoundOrUnboundToLocalTagPage(ctx context.Context, page *m
 }
 
 // enrichSiteTagsWithRelations 批量填充站点标签的关联数据（本地标签和站点）
-func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *model.Page[entity2.SiteTag]) (*model.Page[sdkdto.SiteTagFullDTO], error) {
+func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *model.Page[entity2.SiteTag]) (*model.Page[dto2.SiteTagFullDTO], error) {
 	siteTags := rawPage.Data
 	if len(siteTags) == 0 {
-		return model.NewPage[sdkdto.SiteTagFullDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+		return model.NewPage[dto2.SiteTagFullDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 	}
 
 	// 收集需要查询的 LocalTagID 和 SiteID
@@ -277,7 +277,7 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 	}
 
 	// 组装结果
-	results := make([]*sdkdto.SiteTagFullDTO, 0, len(siteTags))
+	results := make([]*dto2.SiteTagFullDTO, 0, len(siteTags))
 	for _, tag := range siteTags {
 		dto := dto2.NewSiteTagFullDTO(tag)
 		if tag.LocalTagID.Valid && tag.LocalTagID.Int64 > 0 {
@@ -289,11 +289,11 @@ func (s *Service) enrichSiteTagsWithRelations(ctx context.Context, rawPage *mode
 		results = append(results, dto)
 	}
 
-	return model.NewPage[sdkdto.SiteTagFullDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto2.SiteTagFullDTO](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (s *Service) QueryPageByWorkId(ctx context.Context, page *model.Page[sdkdto.SiteTagFullDTO], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagFullDTO], error) {
+func (s *Service) QueryPageByWorkId(ctx context.Context, page *model.Page[dto2.SiteTagFullDTO], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO], error) {
 	conv := querypkg.NewConverter(entity2.SiteTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -303,7 +303,7 @@ func (s *Service) QueryPageByWorkId(ctx context.Context, page *model.Page[sdkdto
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[sdkdto.SiteTagLocalRelateDTO], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagLocalRelateDTO], error) {
+func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[dto2.SiteTagLocalRelateDTO], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error) {
 	conv := querypkg.NewConverter(entity2.SiteTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -313,7 +313,7 @@ func (s *Service) QueryLocalRelateDTOPage(ctx context.Context, page *model.Page[
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[sdkdto.SelectItem], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error) {
+func (s *Service) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto2.SelectItem], query SiteTagQueryDTO, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error) {
 	conv := querypkg.NewConverter(entity2.SiteTag{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {

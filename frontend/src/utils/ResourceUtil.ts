@@ -1,4 +1,4 @@
-import type { ResourceFullDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import type { ResourceFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
 
 // 展示类型嗅探扩展名(仅 resource_type 未声明/unknown 时降级用)

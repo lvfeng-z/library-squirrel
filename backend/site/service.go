@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"gorm.io/gorm/clause"
 )
 
@@ -32,7 +32,7 @@ type Repository interface {
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Site], error)
 	// QuerySelectItemPage 分页查询选择项
-	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.SelectItem], error)
+	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
 }
 
 // Service 站点服务
@@ -101,7 +101,7 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity.Site], query
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], query SiteQueryDTO) (*model.Page[sdkdto.SelectItem], error) {
+func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query SiteQueryDTO) (*model.Page[dto.SelectItem], error) {
 	conv := querypkg.NewConverter(entity.Site{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {

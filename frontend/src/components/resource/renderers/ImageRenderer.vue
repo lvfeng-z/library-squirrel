@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'

@@ -5,7 +5,8 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/backend/work'
-import { WorkDTO, type WorkFullDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { WorkDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { type WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 

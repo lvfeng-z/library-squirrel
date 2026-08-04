@@ -1,4 +1,4 @@
-import { PersistentStoreDTO, WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { PersistentStoreDTO, WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 
 // 从 PersistentStore 提取有效宽高（width/height 均 > 0 才视为有效）

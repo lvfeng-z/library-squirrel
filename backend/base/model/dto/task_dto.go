@@ -175,36 +175,36 @@ type TaskProgressDTO struct {
 	Total    *int64          `json:"total,omitempty"`
 	Finished *int64          `json:"finished,omitempty"`
 	SiteName *string         `json:"siteName,omitempty"`
-	Schedule *int            `json:"schedule,"` // 任务进度百分比（100 表示完成）
+	Schedule *int            `json:"schedule,omitempty"` // 任务进度百分比（100 表示完成）
 }
 
 // NewTaskProgressDTO 从 TaskDTO 创建 TaskProgressDTO
-func NewTaskProgressDTO(taskDTO *sdkdto.TaskDTO) *sdkdto.TaskProgressDTO {
+func NewTaskProgressDTO(taskDTO *sdkdto.TaskDTO) *TaskProgressDTO {
 	if taskDTO == nil {
 		return nil
 	}
-	return &sdkdto.TaskProgressDTO{
+	return &TaskProgressDTO{
 		Task: taskDTO,
 	}
 }
 
 // TaskProgressTreeDTO 任务进度树DTO（组合 TaskProgressDTO + 树形结构字段）
 type TaskProgressTreeDTO struct {
-	TaskProgress *sdkdto.TaskProgressDTO       `json:"taskProgress,omitempty"`
-	Children     []*sdkdto.TaskProgressTreeDTO `json:"children,omitempty"`
-	HasChildren  *bool                         `json:"hasChildren,omitempty"`
-	IsLeaf       *bool                         `json:"isLeaf,omitempty"`
+	TaskProgress *TaskProgressDTO       `json:"taskProgress,omitempty"`
+	Children     []*TaskProgressTreeDTO `json:"children,omitempty"`
+	HasChildren  *bool                  `json:"hasChildren,omitempty"`
+	IsLeaf       *bool                  `json:"isLeaf,omitempty"`
 }
 
 // NewTaskProgressTreeDTO 从 TaskDTO 创建 TaskProgressTreeDTO
-func NewTaskProgressTreeDTO(taskDTO *sdkdto.TaskDTO) *sdkdto.TaskProgressTreeDTO {
+func NewTaskProgressTreeDTO(taskDTO *sdkdto.TaskDTO) *TaskProgressTreeDTO {
 	if taskDTO == nil {
 		return nil
 	}
 	hasChildren := taskDTO.HasChild != nil && *taskDTO.HasChild
-	return &sdkdto.TaskProgressTreeDTO{
+	return &TaskProgressTreeDTO{
 		TaskProgress: NewTaskProgressDTO(taskDTO),
-		Children:     make([]*sdkdto.TaskProgressTreeDTO, 0),
+		Children:     make([]*TaskProgressTreeDTO, 0),
 		HasChildren:  &hasChildren,
 		IsLeaf:       new(!hasChildren),
 	}
@@ -230,5 +230,5 @@ type TreeDataPageDTO struct {
 	TreeID   int64                         `json:"treeId"`
 	TreeName string                        `json:"treeName"`
 	Total    int64                         `json:"total"`
-	Tasks    []*sdkdto.TaskProgressTreeDTO `json:"tasks"`
+	Tasks    []*TaskProgressTreeDTO `json:"tasks"`
 }

@@ -118,9 +118,9 @@ type Repository interface {
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
-var taskProgressTreeBuilder = util.NewTreeBuilder[*sdkdto.TaskProgressTreeDTO](
-	func(node *sdkdto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
-	func(node *sdkdto.TaskProgressTreeDTO) int64 {
+var taskProgressTreeBuilder = util.NewTreeBuilder[*dto.TaskProgressTreeDTO](
+	func(node *dto.TaskProgressTreeDTO) int64 { return node.TaskProgress.Task.ID },
+	func(node *dto.TaskProgressTreeDTO) int64 {
 		if node.TaskProgress.Task.Pid != nil {
 			return *node.TaskProgress.Task.Pid
 		}
@@ -129,16 +129,16 @@ var taskProgressTreeBuilder = util.NewTreeBuilder[*sdkdto.TaskProgressTreeDTO](
 	0,
 )
 
-func setTaskProgressTreeChildren(node *sdkdto.TaskProgressTreeDTO, children []*sdkdto.TaskProgressTreeDTO) {
+func setTaskProgressTreeChildren(node *dto.TaskProgressTreeDTO, children []*dto.TaskProgressTreeDTO) {
 	node.Children = children
 }
 
 // buildTaskProgressTree 将任务实体列表构建为 TaskProgressTreeDTO 树形结构
-func buildTaskProgressTree(tasks []*entity.Task) []*sdkdto.TaskProgressTreeDTO {
+func buildTaskProgressTree(tasks []*entity.Task) []*dto.TaskProgressTreeDTO {
 	if len(tasks) == 0 {
 		return nil
 	}
-	dtos := make([]*sdkdto.TaskProgressTreeDTO, len(tasks))
+	dtos := make([]*dto.TaskProgressTreeDTO, len(tasks))
 	for i, task := range tasks {
 		dtos[i] = dto.NewTaskProgressTreeDTO(dto.NewTaskDTO(task))
 	}
@@ -348,12 +348,12 @@ func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 }
 
 // ListStatus 查询状态列表
-func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*sdkdto.TaskProgressDTO, error) {
+func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
 	tasks, err := s.repo.ListStatus(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*sdkdto.TaskProgressDTO, len(tasks))
+	result := make([]*dto.TaskProgressDTO, len(tasks))
 	for i, task := range tasks {
 		taskDTO := dto.NewTaskDTO(task)
 		progressDTO := dto.NewTaskProgressDTO(taskDTO)
@@ -366,7 +366,7 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*sdkdto.TaskPr
 }
 
 // CreateTask 创建任务
-func (s *Service) CreateTask(ctx context.Context, req *sdkdto.CreateTaskRequest) (*entity.Task, error) {
+func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*entity.Task, error) {
 	task := &entity.Task{
 		BaseEntity:        &model.BaseEntity{},
 		Pid:               sql.NullInt64{Int64: req.Pid, Valid: true},
@@ -392,7 +392,7 @@ func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*sdkdto.TreeDataPageDTO, error) {
+func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, queryDTO *TaskQueryDTO) (*dto.TreeDataPageDTO, error) {
 	conv := querypkg.NewConverter(entity.Task{})
 	opt, err := conv.ToPageOption(queryDTO, page, pageSize, nil)
 	if err != nil {
@@ -416,7 +416,7 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		treeName = resultPage.Data[0].TaskName.String
 	}
 
-	return &sdkdto.TreeDataPageDTO{
+	return &dto.TreeDataPageDTO{
 		TreeID:   treeID,
 		TreeName: treeName,
 		Total:    resultPage.DataCount,
@@ -450,10 +450,10 @@ func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[en
 
 // EnrichTaskProgressTreePage 将 Task 实体分页丰富为 TaskProgressTreeDTO 分页
 // 批量查询站点名称并注入，同时填充树形结构字段（hasChildren、children、isLeaf）
-func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity.Task]) (*model.Page[sdkdto.TaskProgressTreeDTO], error) {
+func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity.Task]) (*model.Page[dto.TaskProgressTreeDTO], error) {
 	tasks := rawPage.Data
 	if len(tasks) == 0 {
-		return model.NewPage[sdkdto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+		return model.NewPage[dto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 	}
 
 	// 1. 收集 siteIds（去重）
@@ -483,7 +483,7 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 	}
 
 	// 3. 转换并丰富
-	data := make([]*sdkdto.TaskProgressTreeDTO, 0, len(tasks))
+	data := make([]*dto.TaskProgressTreeDTO, 0, len(tasks))
 	for _, task := range tasks {
 		taskDTO := dto.NewTaskDTO(task)
 		treeDTO := dto.NewTaskProgressTreeDTO(taskDTO)
@@ -496,11 +496,11 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 		data = append(data, treeDTO)
 	}
 
-	return model.NewPage[sdkdto.TaskProgressTreeDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.TaskProgressTreeDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // ListSchedule 查询任务进度列表
-func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*sdkdto.TaskProgressDTO, error) {
+func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
 	return s.ListStatus(ctx, ids)
 }
 

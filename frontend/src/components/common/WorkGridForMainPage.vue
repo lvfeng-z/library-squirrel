@@ -4,7 +4,7 @@ import { computed, Ref, ref } from 'vue'
 import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import CardGrid from '@renderer/components/common/CardGrid.vue'
 import WorkCard from '@renderer/components/common/WorkCard.vue'
-import {WorkFullDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto";
+import {WorkFullDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { getWorkCardDimension } from '@renderer/utils/ImageDimension.ts'
 

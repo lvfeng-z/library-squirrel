@@ -86,7 +86,7 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.LocalAu
 }
 
 // ListSelectItems 查询选择项列表
-func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[[]*sdkdto.SelectItem] {
+func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQueryDTO) *model.ApiResponse[[]*dto.SelectItem] {
 	if queryDTO == nil {
 		queryDTO = &LocalAuthorQueryDTO{}
 	}
@@ -94,11 +94,11 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalAuthorQuer
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkdto.SelectItem], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[sdkdto.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.SelectItem], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[sdkdto.SelectItem]{}
+		page = &model.Page[dto.SelectItem]{}
 	}
-	domainPage := &model.Page[sdkdto.SelectItem]{
+	domainPage := &model.Page[dto.SelectItem]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
@@ -106,7 +106,7 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[sdkd
 }
 
 // ListByWorkId 根据作品ID获取作者列表
-func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*sdkdto.RankedLocalAuthor] {
+func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResponse[[]*dto.RankedLocalAuthor] {
 	return model.HandleResult(h.svc.ListByWorkId(ctx, workId))
 }
 

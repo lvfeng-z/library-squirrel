@@ -3,15 +3,26 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
+// BackupDTO 备份数据传输对象
+type BackupDTO struct {
+	ID         int64   `json:"id"`
+	SourceType *int64  `json:"sourceType"`
+	SourceID   *int64  `json:"sourceId"`
+	FileName   *string `json:"fileName"`
+	FilePath   *string `json:"filePath"`
+	Workdir    *string `json:"workdir"`
+	CreateTime int64   `json:"createTime"`
+	UpdateTime int64   `json:"updateTime"`
+}
+
 // NewBackupDTO 从 entity.Backup 创建 BackupDTO
-func NewBackupDTO(backup *entity2.Backup) *sdkdto.BackupDTO {
+func NewBackupDTO(backup *entity2.Backup) *BackupDTO {
 	if backup == nil {
 		return nil
 	}
-	return &sdkdto.BackupDTO{
+	return &BackupDTO{
 		ID:         backup.GetID(),
 		SourceType: util.NullInt64ToPointer(backup.SourceType),
 		SourceID:   util.NullInt64ToPointer(backup.SourceID),
@@ -24,7 +35,7 @@ func NewBackupDTO(backup *entity2.Backup) *sdkdto.BackupDTO {
 }
 
 // ToBackupEntity 将 BackupDTO 转换为 Backup 实体
-func ToBackupEntity(dto *sdkdto.BackupDTO) *entity2.Backup {
+func ToBackupEntity(dto *BackupDTO) *entity2.Backup {
 	if dto == nil {
 		return nil
 	}

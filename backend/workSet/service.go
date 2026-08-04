@@ -12,7 +12,6 @@ import (
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm/clause"
 )
@@ -46,7 +45,7 @@ type Repository interface {
 // FullWorkReader 作品完整信息读取接口
 type FullWorkReader interface {
 	// GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点）
-	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*sdkdto.WorkFullDTO, error)
+	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error)
 }
 
 // WorkReader 作品基础信息读取接口
@@ -477,9 +476,9 @@ func (s *Service) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, e
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品完整信息
 // 传递包含：每个作品集的作品含其全部后代作品集的作品（去重、保序，§4.4），GetFullWorkInfoByIds 批量化消除 N+1
-func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*sdkdto.WorkSetWithWorksResultDTO, error) {
+func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*dto2.WorkSetWithWorksResultDTO, error) {
 	if len(workSetIds) == 0 {
-		return []*sdkdto.WorkSetWithWorksResultDTO{}, nil
+		return []*dto2.WorkSetWithWorksResultDTO{}, nil
 	}
 
 	// 查询作品集
@@ -506,7 +505,7 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	}
 
 	// 批量获取作品完整信息（消除 N+1）
-	fullWorkMap := make(map[int64]*sdkdto.WorkFullDTO, len(allWorkIdSet))
+	fullWorkMap := make(map[int64]*dto2.WorkFullDTO, len(allWorkIdSet))
 	if len(allWorkIdSet) > 0 {
 		allWorkIds := make([]int64, 0, len(allWorkIdSet))
 		for id := range allWorkIdSet {
@@ -524,9 +523,9 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	}
 
 	// 按作品集组装（保留含后代的保序作品列表）
-	result := make([]*sdkdto.WorkSetWithWorksResultDTO, 0, len(workSets))
+	result := make([]*dto2.WorkSetWithWorksResultDTO, 0, len(workSets))
 	for _, ws := range workSets {
-		dto := &sdkdto.WorkSetWithWorksResultDTO{
+		dto := &dto2.WorkSetWithWorksResultDTO{
 			WorkSet: dto2.NewWorkSetDTO(ws),
 		}
 		for _, workId := range workSetToOrderedWorkIds[ws.GetID()] {
@@ -540,14 +539,8 @@ func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int
 	return result, nil
 }
 
-// WorkSetWithCoverDTO 作品集及其封面作品信息
-type WorkSetWithCoverDTO struct {
-	WorkSet   *entity2.WorkSet `json:"workSet"`
-	CoverWork *entity2.Work    `json:"coverWork,omitempty"`
-}
-
 // QueryPageWithCover 带封面的作品集分页查询
-func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdto.WorkSetWithCoverDTO], query WorkSetQueryDTO) (*model.Page[sdkdto.WorkSetWithCoverDTO], error) {
+func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverDTO], query WorkSetQueryDTO) (*model.Page[dto2.WorkSetWithCoverDTO], error) {
 	conv := querypkg.NewConverter(entity2.WorkSet{})
 	opt, err := conv.ToPageOption(query, page.PageNumber, page.PageSize, nil)
 	if err != nil {
@@ -560,13 +553,13 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdt
 	}
 
 	if len(pageResult.Data) == 0 {
-		return model.NewPage[sdkdto.WorkSetWithCoverDTO]([]*sdkdto.WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
+		return model.NewPage[dto2.WorkSetWithCoverDTO]([]*dto2.WorkSetWithCoverDTO{}, 0, page.PageNumber, page.PageSize), nil
 	}
 
 	// 构建结果
-	result := make([]*sdkdto.WorkSetWithCoverDTO, 0, len(pageResult.Data))
+	result := make([]*dto2.WorkSetWithCoverDTO, 0, len(pageResult.Data))
 	for _, ws := range pageResult.Data {
-		dto := &sdkdto.WorkSetWithCoverDTO{
+		dto := &dto2.WorkSetWithCoverDTO{
 			WorkSet:   dto2.NewWorkSetDTO(ws),
 			CoverWork: nil,
 		}
@@ -589,7 +582,7 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdt
 		result = append(result, dto)
 	}
 
-	return model.NewPage[sdkdto.WorkSetWithCoverDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
+	return model.NewPage[dto2.WorkSetWithCoverDTO](result, pageResult.DataCount, page.PageNumber, page.PageSize), nil
 }
 
 // ErrWorkSetIdRequired 错误定义

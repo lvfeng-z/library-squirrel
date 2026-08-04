@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { StoreRole } from '@renderer/constants/sectionCode.ts'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 import MarkdownView from '@renderer/components/common/MarkdownView.vue'

@@ -8,7 +8,6 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -59,7 +58,7 @@ func (r *ReWorkAuthorRepository) ListRelationsByWorkId(ctx context.Context, work
 }
 
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
-func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedLocalAuthor, error) {
+func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
 	query := `
 		SELECT t1.id, t1.author_name, t1.introduce, t1.last_use, t1.create_time, t1.update_time,
 		       t2.role_name, t2.sort_order
@@ -74,7 +73,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedLocalAuthor, 0, len(rows))
+	results := make([]*dto.RankedLocalAuthor, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedLocalAuthor())
 	}
@@ -82,7 +81,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkId(ctx context.Context, w
 }
 
 // ListSiteAuthorsByWorkId 查询作品关联的站点作者
-func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
+func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.homepage, t1.local_author_id, t1.last_use,
@@ -98,7 +97,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, wo
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedSiteAuthor, 0, len(rows))
+	results := make([]*dto.RankedSiteAuthor, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedSiteAuthor())
 	}
@@ -106,9 +105,9 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkId(ctx context.Context, wo
 }
 
 // ListLocalAuthorsByWorkIds 批量查询作品的本地作者
-func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedLocalAuthor, error) {
+func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*sdkdto.RankedLocalAuthor), nil
+		return make(map[int64][]*dto.RankedLocalAuthor), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -136,10 +135,10 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 		return nil, err
 	}
 
-	resultMap := make(map[int64][]*sdkdto.RankedLocalAuthor)
+	resultMap := make(map[int64][]*dto.RankedLocalAuthor)
 	for _, row := range rows {
 		if _, ok := resultMap[row.WorkId]; !ok {
-			resultMap[row.WorkId] = make([]*sdkdto.RankedLocalAuthor, 0)
+			resultMap[row.WorkId] = make([]*dto.RankedLocalAuthor, 0)
 		}
 		resultMap[row.WorkId] = append(resultMap[row.WorkId], row.ToRankedLocalAuthor())
 	}
@@ -148,9 +147,9 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 }
 
 // ListSiteAuthorsByWorkIds 批量查询作品的站点作者
-func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*sdkdto.RankedSiteAuthor, error) {
+func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
 	if len(workIds) == 0 {
-		return make(map[int64][]*sdkdto.RankedSiteAuthor), nil
+		return make(map[int64][]*dto.RankedSiteAuthor), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -179,10 +178,10 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 		return nil, err
 	}
 
-	resultMap := make(map[int64][]*sdkdto.RankedSiteAuthor)
+	resultMap := make(map[int64][]*dto.RankedSiteAuthor)
 	for _, row := range rows {
 		if _, ok := resultMap[row.WorkId]; !ok {
-			resultMap[row.WorkId] = make([]*sdkdto.RankedSiteAuthor, 0)
+			resultMap[row.WorkId] = make([]*dto.RankedSiteAuthor, 0)
 		}
 		resultMap[row.WorkId] = append(resultMap[row.WorkId], row.ToRankedSiteAuthor())
 	}
@@ -191,9 +190,9 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
-func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedLocalAuthorWithWorkId, error) {
+func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*sdkdto.RankedLocalAuthorWithWorkId, 0), nil
+		return make([]*dto.RankedLocalAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -217,7 +216,7 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedLocalAuthorWithWorkId, 0, len(rows))
+	results := make([]*dto.RankedLocalAuthorWithWorkId, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedLocalAuthorWithWorkId())
 	}
@@ -225,9 +224,9 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
-func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error) {
+func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*sdkdto.RankedSiteAuthorWithWorkId, 0), nil
+		return make([]*dto.RankedSiteAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -252,7 +251,7 @@ func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx con
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedSiteAuthorWithWorkId, 0, len(rows))
+	results := make([]*dto.RankedSiteAuthorWithWorkId, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedSiteAuthorWithWorkId())
 	}

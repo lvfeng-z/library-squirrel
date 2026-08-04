@@ -15,7 +15,7 @@ import type {
   SelectItem,
   SearchCondition,
   SearchConditionQuery
-} from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+} from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
 

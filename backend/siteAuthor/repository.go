@@ -9,7 +9,6 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -87,7 +86,7 @@ func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAu
 }
 
 // ListByWorkId 查询作品的站点作者
-func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*sdkdto.RankedSiteAuthor, error) {
+func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
 	query := `
 		SELECT t1.id, t1.site_id, t1.site_author_id, t1.author_name, t1.fixed_author_name,
 		       t1.site_author_name_before, t1.introduce, t1.local_author_id, t1.last_use,
@@ -103,7 +102,7 @@ func (r *SiteAuthorRepository) ListByWorkId(ctx context.Context, workId int64) (
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedSiteAuthor, 0, len(rows))
+	results := make([]*dto.RankedSiteAuthor, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedSiteAuthor())
 	}
@@ -124,9 +123,9 @@ func (r *SiteAuthorRepository) ListBySiteAuthorIds(ctx context.Context, siteAuth
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
-func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*sdkdto.RankedSiteAuthorWithWorkId, error) {
+func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
 	if len(workIds) == 0 {
-		return make([]*sdkdto.RankedSiteAuthorWithWorkId, 0), nil
+		return make([]*dto.RankedSiteAuthorWithWorkId, 0), nil
 	}
 
 	placeholders := make([]string, len(workIds))
@@ -151,7 +150,7 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 		return nil, err
 	}
 
-	results := make([]*sdkdto.RankedSiteAuthorWithWorkId, 0, len(rows))
+	results := make([]*dto.RankedSiteAuthorWithWorkId, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, row.ToRankedSiteAuthorWithWorkId())
 	}

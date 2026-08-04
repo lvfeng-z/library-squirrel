@@ -15,13 +15,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
+import * as dto$0 from "../base/model/dto/models.js";
 
 /**
  * ListByWorkId 获取单个作品的作者关联信息
  * @Summary 获取单个作品的作者关联信息
  * @Param workId path int true "作品ID"
- * @Success 200 {object} model.ApiResponse[*sdkdto.WorkAuthorDTO]
+ * @Success 200 {object} model.ApiResponse[*dto.WorkAuthorDTO]
  */
 export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkAuthorDTO | null> | null> {
     return $Call.ByID(3131814203, workId).then(($result: any) => {

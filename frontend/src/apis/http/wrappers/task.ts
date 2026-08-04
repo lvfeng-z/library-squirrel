@@ -7,7 +7,8 @@ import { requireResponse, type ApiResult } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/backend/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/backend/taskManager'
 import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
-import { CreateTaskRequest, TaskDTO, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/models'
+import { TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/models'
+import { CreateTaskRequest, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 
 // ========== 查询操作 ==========

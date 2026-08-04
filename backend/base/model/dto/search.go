@@ -3,15 +3,40 @@ package dto
 // SearchType 搜索类型
 type SearchType int
 
+const (
+	LocalTag        SearchType = 1
+	SiteTag         SearchType = 2
+	LocalAuthor     SearchType = 3
+	SiteAuthor      SearchType = 4
+	WorksSiteName   SearchType = 5
+	WorksNickname   SearchType = 6
+	WorksUploadTime SearchType = 7
+	WorksLastView   SearchType = 8
+	Media           SearchType = 9
+	Site            SearchType = 10
+	WorkSet         SearchType = 11
+)
+
 // SearchCondition 搜索条件
 type SearchCondition struct {
-	// 查询参数类型
-	Type SearchType `json:"type"`
-	// 查询参数值
-	Value interface{} `json:"value"`
-	// 操作符 (等于、大于、小于等)
-	Operator string `json:"operator,omitempty"`
+	Type     SearchType         `json:"type"`
+	Value    interface{}        `json:"value"`
+	Operator WorkSearchOperator `json:"operator,omitempty"`
 }
+
+// WorkSearchOperator 作品搜索操作符
+type WorkSearchOperator string
+
+// 操作符常量
+const (
+	Equal          WorkSearchOperator = "="
+	NotEqual       WorkSearchOperator = "!="
+	GreaterThan    WorkSearchOperator = ">"
+	LessThan       WorkSearchOperator = "<"
+	GreaterOrEqual WorkSearchOperator = ">="
+	LessOrEqual    WorkSearchOperator = "<="
+	Like           WorkSearchOperator = "LIKE"
+)
 
 // MediaType 媒体类型
 type MediaType int
@@ -29,6 +54,12 @@ var MediaExtMapping = map[MediaType][]string{
 	MediaTypeVideo:    {".mp4", ".avi", ".mkv"},
 	MediaTypeDocument: {".pdf", ".docx", ".doc", ".xlsx", ".txt"},
 	MediaTypeAudio:    {".mp3", ".wav", ".aac"},
+}
+
+// SearchConditionQuery 搜索条件分页查询请求
+type SearchConditionQuery struct {
+	Types   []SearchType `json:"types,omitempty"`
+	Keyword string       `json:"keyword,omitempty"`
 }
 
 // NewSearchCondition 创建搜索条件

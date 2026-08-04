@@ -2,7 +2,7 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { taskApi } from '@renderer/apis/http'
 import { ElMessage } from 'element-plus'
-import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 /**
  * 任务操作组合式函数：封装任务控制栏通用的操作分发逻辑。

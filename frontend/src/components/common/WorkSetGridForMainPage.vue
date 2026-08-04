@@ -4,7 +4,7 @@ import WorkSetDialog from '@renderer/components/dialogs/WorkSetDialog.vue'
 import CardGrid from '@renderer/components/common/CardGrid.vue'
 import WorkSetCard from '@renderer/components/common/WorkSetCard.vue'
 import { getWorkSetCardDimension } from '@renderer/utils/ImageDimension.ts'
-import { WorkSetWithCoverDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
 const props = defineProps<{

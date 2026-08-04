@@ -101,7 +101,7 @@ func (h *Handler) GetTree(ctx context.Context, rootId int64, depth int) *model.A
 }
 
 // ListSelectItems 查询选择项列表
-func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDTO) *model.ApiResponse[[]*sdkdto.SelectItem] {
+func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDTO) *model.ApiResponse[[]*dto.SelectItem] {
 	if queryDTO == nil {
 		queryDTO = &LocalTagQueryDTO{}
 	}
@@ -109,11 +109,11 @@ func (h *Handler) ListSelectItems(ctx context.Context, queryDTO *LocalTagQueryDT
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[sdkdto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) *model.ApiResponse[*model.Page[sdkdto.SelectItem]] {
+func (h *Handler) QuerySelectItemPage(ctx context.Context, reqPage *model.Page[dto.SelectItem], query LocalTagQueryDTO, secondaryLabel string) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if reqPage == nil {
-		reqPage = &model.Page[sdkdto.SelectItem]{}
+		reqPage = &model.Page[dto.SelectItem]{}
 	}
-	domainPage := &model.Page[sdkdto.SelectItem]{
+	domainPage := &model.Page[dto.SelectItem]{
 		PageNumber: reqPage.PageNumber,
 		PageSize:   reqPage.PageSize,
 	}
@@ -135,11 +135,11 @@ func (h *Handler) ListByWorkId(ctx context.Context, workId int64) *model.ApiResp
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[sdkdto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) *model.ApiResponse[*model.Page[sdkdto.SelectItem]] {
+func (h *Handler) QuerySelectItemPageByWorkId(ctx context.Context, page *model.Page[dto.SelectItem], query LocalTagQueryDTO, boundOnWorkId *bool) *model.ApiResponse[*model.Page[dto.SelectItem]] {
 	if page == nil {
-		page = &model.Page[sdkdto.SelectItem]{}
+		page = &model.Page[dto.SelectItem]{}
 	}
-	domainPage := &model.Page[sdkdto.SelectItem]{
+	domainPage := &model.Page[dto.SelectItem]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
@@ -152,11 +152,11 @@ func (h *Handler) UpdateLastUse(ctx context.Context, ids []int64) *model.ApiResp
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[sdkdto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[sdkdto.LocalTagWithBaseTagDTO]] {
+func (h *Handler) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto.LocalTagWithBaseTagDTO], query LocalTagQueryDTO) *model.ApiResponse[*model.Page[dto.LocalTagWithBaseTagDTO]] {
 	if page == nil {
-		page = &model.Page[sdkdto.LocalTagWithBaseTagDTO]{}
+		page = &model.Page[dto.LocalTagWithBaseTagDTO]{}
 	}
-	domainPage := &model.Page[sdkdto.LocalTagWithBaseTagDTO]{
+	domainPage := &model.Page[dto.LocalTagWithBaseTagDTO]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}

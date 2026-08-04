@@ -6,7 +6,7 @@ import { ALL_STORE_ROLES, StoreRoleLabels } from '@renderer/constants/sectionCod
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import {computed, Ref, ref, toRaw} from 'vue'
-import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
 const props = defineProps<{

@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dto$1 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -51,7 +54,7 @@ export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $Can
 /**
  * GetFullWorkInfoByIds 批量获取完整作品信息
  */
-export function GetFullWorkInfoByIds(ids: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.WorkFullDTO | null)[]> | null> {
+export function GetFullWorkInfoByIds(ids: number[]): $CancellablePromise<model$0.ApiResponse<(dto$1.WorkFullDTO | null)[]> | null> {
     return $Call.ByID(3702036189, ids).then(($result: any) => {
         return $$createType10($result);
     });
@@ -60,7 +63,7 @@ export function GetFullWorkInfoByIds(ids: number[]): $CancellablePromise<model$0
 /**
  * ListRankedLocalAuthorWithWorkIdByWorkIds 根据作品ID列表获取带排名的本地作者
  */
-export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$0.RankedLocalAuthor | null)[]> | null> {
+export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$1.RankedLocalAuthor | null)[]> | null> {
     return $Call.ByID(3147867833, workIds).then(($result: any) => {
         return $$createType15($result);
     });
@@ -118,12 +121,12 @@ const $$createType2 = dto$0.WorkDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = dto$0.WorkFullDTO.createFrom;
+const $$createType6 = dto$1.WorkFullDTO.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $Create.Array($$createType7);
 const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = dto$0.RankedLocalAuthor.createFrom;
+const $$createType11 = dto$1.RankedLocalAuthor.createFrom;
 const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = model$0.ApiResponse.createFrom($$createType13);

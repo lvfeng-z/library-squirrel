@@ -7,7 +7,8 @@ import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { TaskSnapshotItem } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
-import { TaskProgressDTO, TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+import { TaskProgressDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 /** 最近移除的任务 ID 缓存有效期（毫秒） */
 const RECENTLY_REMOVED_TTL = 2000

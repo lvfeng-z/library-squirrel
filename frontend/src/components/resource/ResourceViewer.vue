@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, type Component } from 'vue'
-import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Loading } from '@element-plus/icons-vue'
 import { getResourcePreviewType } from '@renderer/utils/ResourceUtil.ts'
 import { ResourceType } from '@renderer/constants/sectionCode.ts'

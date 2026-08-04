@@ -38,8 +38,8 @@ type LocalAuthorRankScanRow struct {
 }
 
 // ToRankedLocalAuthor 将扫描行转换为带排序的本地作者DTO
-func (r LocalAuthorRankScanRow) ToRankedLocalAuthor() *sdkdto.RankedLocalAuthor {
-	return &sdkdto.RankedLocalAuthor{
+func (r LocalAuthorRankScanRow) ToRankedLocalAuthor() *RankedLocalAuthor {
+	return &RankedLocalAuthor{
 		Author:    r.LocalAuthorScanRow.toDTO(),
 		RoleName:  r.RoleName.String,
 		SortOrder: int(r.SortOrder.Int64),
@@ -53,8 +53,8 @@ type LocalAuthorRankWithWorkIdScanRow struct {
 }
 
 // ToRankedLocalAuthorWithWorkId 将扫描行转换为带作品ID的本地作者DTO
-func (r LocalAuthorRankWithWorkIdScanRow) ToRankedLocalAuthorWithWorkId() *sdkdto.RankedLocalAuthorWithWorkId {
-	return &sdkdto.RankedLocalAuthorWithWorkId{
+func (r LocalAuthorRankWithWorkIdScanRow) ToRankedLocalAuthorWithWorkId() *RankedLocalAuthorWithWorkId {
+	return &RankedLocalAuthorWithWorkId{
 		Author:    r.LocalAuthorScanRow.toDTO(),
 		RoleName:  r.RoleName.String,
 		SortOrder: int(r.SortOrder.Int64),
@@ -80,8 +80,8 @@ type SiteAuthorScanRow struct {
 	UpdateTime           int64          `gorm:"column:update_time"`
 }
 
-func (r SiteAuthorScanRow) toDTO() sdkdto.SiteAuthorDTO {
-	return sdkdto.SiteAuthorDTO{
+func (r SiteAuthorScanRow) toDTO() SiteAuthorDTO {
+	return SiteAuthorDTO{
 		ID:                   r.ID,
 		SiteID:               util.NullInt64ToPointer(r.SiteID),
 		SiteAuthorID:         util.NullStringToPointer(r.SiteAuthorID),
@@ -105,8 +105,8 @@ type SiteAuthorRankScanRow struct {
 }
 
 // ToRankedSiteAuthor 将扫描行转换为带排序的站点作者DTO
-func (r SiteAuthorRankScanRow) ToRankedSiteAuthor() *sdkdto.RankedSiteAuthor {
-	return &sdkdto.RankedSiteAuthor{
+func (r SiteAuthorRankScanRow) ToRankedSiteAuthor() *RankedSiteAuthor {
+	return &RankedSiteAuthor{
 		Author:    r.SiteAuthorScanRow.toDTO(),
 		RoleName:  r.RoleName.String,
 		SortOrder: int(r.SortOrder.Int64),
@@ -120,8 +120,8 @@ type SiteAuthorRankWithWorkIdScanRow struct {
 }
 
 // ToRankedSiteAuthorWithWorkId 将扫描行转换为带作品ID的站点作者DTO
-func (r SiteAuthorRankWithWorkIdScanRow) ToRankedSiteAuthorWithWorkId() *sdkdto.RankedSiteAuthorWithWorkId {
-	return &sdkdto.RankedSiteAuthorWithWorkId{
+func (r SiteAuthorRankWithWorkIdScanRow) ToRankedSiteAuthorWithWorkId() *RankedSiteAuthorWithWorkId {
+	return &RankedSiteAuthorWithWorkId{
 		Author:    r.SiteAuthorScanRow.toDTO(),
 		RoleName:  r.RoleName.String,
 		SortOrder: int(r.SortOrder.Int64),

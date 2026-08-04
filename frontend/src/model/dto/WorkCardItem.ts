@@ -1,7 +1,7 @@
 import {
   WorkFullDTO,
   ResourceFullDTO, RankedLocalAuthor, RankedSiteAuthor, WorkSetWithWorksResultDTO
-} from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
+} from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
 
 export default class WorkCardItem {

@@ -15,10 +15,13 @@ import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {localAuthorQuerySelectItemPageByName, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
 import {
   LocalAuthorDTO,
+  SiteDTO
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {
   SelectItem,
   SiteAuthorDTO,
-  SiteAuthorLocalRelateDTO, SiteDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+  SiteAuthorLocalRelateDTO
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";

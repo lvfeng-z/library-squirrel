@@ -64,7 +64,7 @@ func (h *Handler) SetTreeStatus(ctx context.Context, taskIds []int64, status int
 }
 
 // CreateTask 创建任务
-func (h *Handler) CreateTask(ctx context.Context, req *sdkdto.CreateTaskRequest) *model.ApiResponse[int64] {
+func (h *Handler) CreateTask(ctx context.Context, req *dto2.CreateTaskRequest) *model.ApiResponse[int64] {
 	result, err := h.svc.CreateTask(ctx, req)
 	if err != nil {
 		return model.HandleError[int64](err)
@@ -122,9 +122,9 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO
 }
 
 // QueryParentPage 分页查询父任务（返回带站点名称的 TaskProgressTreeDTO）
-func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[sdkdto.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[sdkdto.TaskProgressTreeDTO]] {
+func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[dto2.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskProgressTreeDTO]] {
 	if page == nil {
-		page = &model.Page[sdkdto.TaskProgressTreeDTO]{}
+		page = &model.Page[dto2.TaskProgressTreeDTO]{}
 	}
 	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
@@ -132,19 +132,19 @@ func (h *Handler) QueryParentPage(ctx context.Context, page *model.Page[sdkdto.T
 	}
 	result, err := h.svc.QueryParentPage(ctx, entityPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.TaskProgressTreeDTO]](err)
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.TaskProgressTreeDTO]](err)
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	return model.Success(enriched)
 }
 
 // QueryChildrenTaskPage 查询子任务分页（返回带站点名称的 TaskProgressTreeDTO）
-func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[sdkdto.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[sdkdto.TaskProgressTreeDTO]] {
+func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[dto2.TaskProgressTreeDTO], query TaskQueryDTO) *model.ApiResponse[*model.Page[dto2.TaskProgressTreeDTO]] {
 	if page == nil {
-		page = &model.Page[sdkdto.TaskProgressTreeDTO]{}
+		page = &model.Page[dto2.TaskProgressTreeDTO]{}
 	}
 	entityPage := &model.Page[entity2.Task]{
 		PageNumber: page.PageNumber,
@@ -152,11 +152,11 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[sd
 	}
 	result, err := h.svc.QueryChildrenTaskPage(ctx, entityPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.TaskProgressTreeDTO]](err)
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	enriched, err := h.svc.EnrichTaskProgressTreePage(ctx, result)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.TaskProgressTreeDTO]](err)
+		return model.HandleError[*model.Page[dto2.TaskProgressTreeDTO]](err)
 	}
 	return model.Success(enriched)
 }
@@ -189,7 +189,7 @@ func (h *Handler) ListTasksBySiteAndSiteWorkID(ctx context.Context, siteId int64
 }
 
 // QueryTreeDataPage 查询任务树数据分页
-func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*sdkdto.TreeDataPageDTO] {
+func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO], query TaskQueryDTO) *model.ApiResponse[*dto2.TreeDataPageDTO] {
 	return model.HandleResult(h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query))
 }
 
@@ -213,11 +213,11 @@ func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStat
 }
 
 // ListStatus 查询状态列表
-func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiResponse[[]*sdkdto.TaskProgressDTO] {
+func (h *Handler) ListStatus(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
 	return model.HandleResult(h.svc.ListStatus(ctx, ids))
 }
 
 // ListSchedule 查询任务进度列表
-func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*sdkdto.TaskProgressDTO] {
+func (h *Handler) ListSchedule(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto2.TaskProgressDTO] {
 	return model.HandleResult(h.svc.ListSchedule(ctx, ids))
 }

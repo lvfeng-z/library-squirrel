@@ -2,9 +2,10 @@
 import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
+import { LocalTagDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {
-  SelectItem, WorkFullDTO, LocalTagDTO, SiteTagFullDTO, WorkSetDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+  SelectItem, WorkFullDTO, SiteTagFullDTO
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model/models"
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'

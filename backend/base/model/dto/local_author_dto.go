@@ -66,3 +66,18 @@ func ToLocalAuthorEntity(dto *sdkdto.LocalAuthorDTO) *entity.LocalAuthor {
 
 	return entity
 }
+
+// RankedLocalAuthor 带排序的本地作者
+type RankedLocalAuthor struct {
+	Author    sdkdto.LocalAuthorDTO `json:"author"`
+	RoleName  string                `json:"roleName"`
+	SortOrder int                   `json:"sortOrder"`
+}
+
+// RankedLocalAuthorWithWorkId 带作品ID的本地作者
+type RankedLocalAuthorWithWorkId struct {
+	Author    sdkdto.LocalAuthorDTO `json:"author"`
+	RoleName  string                `json:"roleName"`
+	SortOrder int                   `json:"sortOrder"`
+	WorkId    int64                 `json:"workId"`
+}

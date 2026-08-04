@@ -10,7 +10,6 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -159,8 +158,8 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签
-func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagFullDTO], error) {
-	var results []*sdkdto.SiteTagFullDTO
+func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagFullDTO], error) {
+	var results []*dto2.SiteTagFullDTO
 	var total int64
 
 	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
@@ -223,12 +222,12 @@ func (r *SiteTagRepository) QueryPageByWorkId(ctx context.Context, opt *database
 		results = append(results, dto)
 	}
 
-	return model.NewPage[sdkdto.SiteTagFullDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SiteTagFullDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QueryLocalRelateDTOPage 查询站点标签与本地标签关联DTO分页
-func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SiteTagLocalRelateDTO], error) {
-	var results []*sdkdto.SiteTagLocalRelateDTO
+func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SiteTagLocalRelateDTO], error) {
+	var results []*dto2.SiteTagLocalRelateDTO
 	var total int64
 
 	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
@@ -296,12 +295,12 @@ func (r *SiteTagRepository) QueryLocalRelateDTOPage(ctx context.Context, opt *da
 		results = append(results, dto)
 	}
 
-	return model.NewPage[sdkdto.SiteTagLocalRelateDTO](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SiteTagLocalRelateDTO](results, total, opt.Page, opt.PageSize), nil
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询站点标签选择项
-func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error) {
-	var results []*sdkdto.SelectItem
+func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto2.SelectItem], error) {
+	var results []*dto2.SelectItem
 	var total int64
 
 	db := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity2.SiteTag{})
@@ -347,7 +346,7 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt
 		if tag.SiteTagName.Valid {
 			label = tag.SiteTagName.String
 		}
-		item := &sdkdto.SelectItem{
+		item := &dto2.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
@@ -369,5 +368,5 @@ func (r *SiteTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt
 		results = append(results, item)
 	}
 
-	return model.NewPage[sdkdto.SelectItem](results, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto2.SelectItem](results, total, opt.Page, opt.PageSize), nil
 }

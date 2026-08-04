@@ -9,9 +9,9 @@ import { Handler as WorkSetHandler, WorkSetQueryDTO } from '@bindings/github.com
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import {
   WorkDTO,
-  WorkSetDTO, WorkSetWithCoverDTO,
-  WorkSetWithWorksResultDTO
+  WorkSetDTO
 } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto";
+import { WorkSetWithCoverDTO, WorkSetWithWorksResultDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 
 export interface WorkSetVO {
   id: number

@@ -8,7 +8,8 @@ import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
-import {LocalAuthorDTO, SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {LocalAuthorDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";

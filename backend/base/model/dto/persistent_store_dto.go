@@ -5,15 +5,27 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
+// PersistentStoreDTO 文件持久存储数据传输对象
+type PersistentStoreDTO struct {
+	ID                int64   `json:"id"`
+	FilePath          *string `json:"filePath"`
+	FileName          *string `json:"fileName"`
+	FilenameExtension *string `json:"filenameExtension"`
+	Status            int     `json:"status"`   // 0=未完成，1=完成
+	Width             int     `json:"width"`    // 图片宽度（像素），非图片为 0
+	Height            int     `json:"height"`   // 图片高度（像素），非图片为 0
+	CreateTime        int64   `json:"createTime"`
+	UpdateTime        int64   `json:"updateTime"`
+}
+
 // NewPersistentStoreDTO 从 entity.PersistentStore 创建 PersistentStoreDTO
-func NewPersistentStoreDTO(store *entity.PersistentStore) *sdkdto.PersistentStoreDTO {
+func NewPersistentStoreDTO(store *entity.PersistentStore) *PersistentStoreDTO {
 	if store == nil {
 		return nil
 	}
-	return &sdkdto.PersistentStoreDTO{
+	return &PersistentStoreDTO{
 		ID:                store.GetID(),
 		FilePath:          util.NullStringToPointer(store.FilePath),
 		FileName:          util.NullStringToPointer(store.FileName),
@@ -27,7 +39,7 @@ func NewPersistentStoreDTO(store *entity.PersistentStore) *sdkdto.PersistentStor
 }
 
 // ToPersistentStoreEntity 将 PersistentStoreDTO 转换为 PersistentStore 实体
-func ToPersistentStoreEntity(dto *sdkdto.PersistentStoreDTO) *entity.PersistentStore {
+func ToPersistentStoreEntity(dto *PersistentStoreDTO) *entity.PersistentStore {
 	if dto == nil {
 		return nil
 	}

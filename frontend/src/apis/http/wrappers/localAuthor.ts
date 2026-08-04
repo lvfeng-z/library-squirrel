@@ -7,7 +7,8 @@ import {
   Handler as LocalAuthorHandler,
   LocalAuthorQueryDTO
 } from "@bindings/github.com/library-squirrel/backend/localAuthor"
-import { LocalAuthorDTO, SelectItem } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { LocalAuthorDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'

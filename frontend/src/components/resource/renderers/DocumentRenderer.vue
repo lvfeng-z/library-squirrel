@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Document as DocumentIcon } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { appLauncherOpen } from '@renderer/apis/http/wrappers/appLauncher'

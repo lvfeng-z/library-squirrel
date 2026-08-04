@@ -6,7 +6,8 @@ import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
 import {notNullish} from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import { localTagApi, localTagQuerySelectItemPageByName } from '@renderer/apis/http'
-import { LocalTagDTO, LocalTagWithBaseTagDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import { LocalTagDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import { LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { ElMessage } from 'element-plus'
 
 // props

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm"
 )
@@ -29,8 +29,8 @@ func (r *SiteRepository) GORM() *gorm.DB {
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.SelectItem], error) {
-	var results []*sdkdto.SelectItem
+func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error) {
+	var results []*dto.SelectItem
 
 	rawPage, err := r.Page(ctx, opt)
 	if err != nil {
@@ -44,11 +44,11 @@ func (r *SiteRepository) QuerySelectItemPage(ctx context.Context, opt *database.
 		if site.SiteName.Valid {
 			siteName = site.SiteName.String
 		}
-		results = append(results, &sdkdto.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: site.ID,
 			Label: siteName,
 		})
 	}
 
-	return model.NewPage[sdkdto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }

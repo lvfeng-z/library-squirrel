@@ -7,7 +7,8 @@ import {
   Handler as LocalTagHandler,
   LocalTagQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/localTag'
-import { LocalTagDTO, SelectItem, LocalTagWithBaseTagDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { LocalTagDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { SelectItem, LocalTagWithBaseTagDTO } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import { QueryAttribute } from "@bindings/github.com/library-squirrel/backend/base/query/models"
 import type { ApiResult } from '@renderer/apis/http/types'

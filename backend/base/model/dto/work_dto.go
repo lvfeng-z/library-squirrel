@@ -28,9 +28,20 @@ func NewWorkDTO(work *entity2.Work) *sdkdto.WorkDTO {
 	}
 }
 
+// WorkFullDTO 作品完整信息DTO
+type WorkFullDTO struct {
+	Work         *sdkdto.WorkDTO       `json:"work,omitempty"`
+	LocalAuthors []*RankedLocalAuthor  `json:"localAuthors,omitempty"`
+	SiteAuthors  []*RankedSiteAuthor   `json:"siteAuthors,omitempty"`
+	Site         *sdkdto.SiteDTO       `json:"site,omitempty"`
+	LocalTags    []*sdkdto.LocalTagDTO `json:"localTags,omitempty"`
+	SiteTags     []*SiteTagFullDTO     `json:"siteTags,omitempty"`
+	Resource     *ResourceFullDTO      `json:"resource,omitempty"` // 单个活跃资源（含 PersistentStore 信息）
+}
+
 // NewWorkFullDTO 创建WorkFullDTO
-func NewWorkFullDTO(work *entity2.Work) *sdkdto.WorkFullDTO {
-	return &sdkdto.WorkFullDTO{
+func NewWorkFullDTO(work *entity2.Work) *WorkFullDTO {
+	return &WorkFullDTO{
 		Work: NewWorkDTO(work),
 	}
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil'
-import { RankedLocalAuthor, RankedSiteAuthor } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
+import { RankedLocalAuthor, RankedSiteAuthor } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 
 // props
 const props = withDefaults(

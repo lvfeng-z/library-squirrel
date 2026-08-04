@@ -12,11 +12,13 @@ import DialogMode from '../model/util/DialogMode.ts'
 import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import {
   LocalTagDTO,
+  SiteDTO
+} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+import {
   SelectItem,
-  SiteDTO,
   SiteTagDTO,
   SiteTagLocalRelateDTO
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {localTagQuerySelectItemPageByName} from '@renderer/apis/http'

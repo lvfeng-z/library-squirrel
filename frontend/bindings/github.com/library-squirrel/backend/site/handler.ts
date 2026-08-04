@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dto$1 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -60,7 +63,7 @@ export function QueryPage(page: model$0.Page<dto$0.SiteDTO> | null, query: $mode
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<dto$0.SelectItem> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<dto$1.SelectItem> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$1.SelectItem> | null> | null> {
     return $Call.ByID(2991076938, page, query).then(($result: any) => {
         return $$createType14($result);
     });
@@ -95,7 +98,7 @@ const $$createType6 = model$0.Page.createFrom($$createType2);
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = dto$0.SelectItem.createFrom;
+const $$createType10 = dto$1.SelectItem.createFrom;
 const $$createType11 = model$0.Page.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);

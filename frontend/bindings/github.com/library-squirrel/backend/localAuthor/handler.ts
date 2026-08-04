@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dto$1 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -42,7 +45,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
 /**
  * ListByWorkId 根据作品ID获取作者列表
  */
-export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$0.RankedLocalAuthor | null)[]> | null> {
+export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<(dto$1.RankedLocalAuthor | null)[]> | null> {
     return $Call.ByID(1660848616, workId).then(($result: any) => {
         return $$createType10($result);
     });
@@ -51,7 +54,7 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 /**
  * ListSelectItems 查询选择项列表
  */
-export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(dto$0.SelectItem | null)[]> | null> {
+export function ListSelectItems(queryDTO: $models.LocalAuthorQueryDTO | null): $CancellablePromise<model$0.ApiResponse<(dto$1.SelectItem | null)[]> | null> {
     return $Call.ByID(2284821987, queryDTO).then(($result: any) => {
         return $$createType15($result);
     });
@@ -69,7 +72,7 @@ export function QueryPage(page: model$0.Page<dto$0.LocalAuthorDTO> | null, query
 /**
  * QuerySelectItemPage 分页查询选择项
  */
-export function QuerySelectItemPage(page: model$0.Page<dto$0.SelectItem> | null, query: $models.LocalAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SelectItem> | null> | null> {
+export function QuerySelectItemPage(page: model$0.Page<dto$1.SelectItem> | null, query: $models.LocalAuthorQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$1.SelectItem> | null> | null> {
     return $Call.ByID(1284970431, page, query).then(($result: any) => {
         return $$createType23($result);
     });
@@ -109,12 +112,12 @@ const $$createType2 = dto$0.LocalAuthorDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = dto$0.RankedLocalAuthor.createFrom;
+const $$createType6 = dto$1.RankedLocalAuthor.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $Create.Array($$createType7);
 const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = dto$0.SelectItem.createFrom;
+const $$createType11 = dto$1.SelectItem.createFrom;
 const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = model$0.ApiResponse.createFrom($$createType13);

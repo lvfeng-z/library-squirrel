@@ -15,7 +15,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as model$0 from "../base/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
+import * as dto$0 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$1 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,7 +27,7 @@ import * as $models from "./models.js";
 /**
  * CreateAndBindSameNameLocalTag 创建并绑定同名本地标签
  */
-export function CreateAndBindSameNameLocalTag(siteTag: dto$0.SiteTagDTO | null): $CancellablePromise<model$0.ApiResponse<dto$0.LocalTagDTO | null> | null> {
+export function CreateAndBindSameNameLocalTag(siteTag: dto$0.SiteTagDTO | null): $CancellablePromise<model$0.ApiResponse<dto$1.LocalTagDTO | null> | null> {
     return $Call.ByID(2616482188, siteTag).then(($result: any) => {
         return $$createType3($result);
     });
@@ -157,7 +160,7 @@ export function UpdateLastUse(ids: number[]): $CancellablePromise<model$0.ApiRes
 }
 
 // Private type creation functions
-const $$createType0 = dto$0.LocalTagDTO.createFrom;
+const $$createType0 = dto$1.LocalTagDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);

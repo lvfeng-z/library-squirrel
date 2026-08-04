@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
-import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
 const props = defineProps<{

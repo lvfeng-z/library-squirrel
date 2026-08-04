@@ -194,31 +194,31 @@ func (h *Handler) GetCoverWorkId(ctx context.Context, workSetId int64) *model.Ap
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
-func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*sdkdto.WorkSetWithWorksResultDTO] {
+func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*dto2.WorkSetWithWorksResultDTO] {
 	result, err := h.svc.ListWorkSetWithWorkByIds(ctx, workSetIds)
 	if err != nil {
-		return model.HandleError[[]*sdkdto.WorkSetWithWorksResultDTO](err)
+		return model.HandleError[[]*dto2.WorkSetWithWorksResultDTO](err)
 	}
 	return model.Success(result)
 }
 
 // QueryPageWithCover 分页查询作品集（带封面）
-func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdto.WorkSetWithCoverDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[sdkdto.WorkSetWithCoverDTO]] {
+func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.WorkSetWithCoverDTO], query WorkSetQueryDTO) *model.ApiResponse[*model.Page[dto2.WorkSetWithCoverDTO]] {
 	if page == nil {
-		page = &model.Page[sdkdto.WorkSetWithCoverDTO]{}
+		page = &model.Page[dto2.WorkSetWithCoverDTO]{}
 	}
-	workSetPage := &model.Page[sdkdto.WorkSetWithCoverDTO]{
+	workSetPage := &model.Page[dto2.WorkSetWithCoverDTO]{
 		PageNumber: page.PageNumber,
 		PageSize:   page.PageSize,
 	}
 	result, err := h.svc.QueryPageWithCover(ctx, workSetPage, query)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.WorkSetWithCoverDTO]](err)
+		return model.HandleError[*model.Page[dto2.WorkSetWithCoverDTO]](err)
 	}
 	// 转换为 ResultDTO
-	data := make([]*sdkdto.WorkSetWithCoverDTO, 0, len(result.Data))
+	data := make([]*dto2.WorkSetWithCoverDTO, 0, len(result.Data))
 	for _, ws := range result.Data {
-		dto := &sdkdto.WorkSetWithCoverDTO{
+		dto := &dto2.WorkSetWithCoverDTO{
 			WorkSet: ws.WorkSet,
 		}
 		if ws.CoverWork != nil {
@@ -226,7 +226,7 @@ func (h *Handler) QueryPageWithCover(ctx context.Context, page *model.Page[sdkdt
 		}
 		data = append(data, dto)
 	}
-	return model.Success(&model.Page[sdkdto.WorkSetWithCoverDTO]{
+	return model.Success(&model.Page[dto2.WorkSetWithCoverDTO]{
 		PageNumber:   result.PageNumber,
 		PageSize:     result.PageSize,
 		PageCount:    result.PageCount,

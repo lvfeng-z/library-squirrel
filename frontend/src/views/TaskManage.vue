@@ -15,7 +15,7 @@ import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task
 import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import type { PluginWithExtensionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
-import { TaskProgressTreeDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
+import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { newPage } from '@renderer/utils/Pager.ts'
 
 // onMounted

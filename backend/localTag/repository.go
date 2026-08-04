@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
@@ -135,8 +136,8 @@ func (r *LocalTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 }
 
 // ListSelectItems 查询选择项列表
-func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*sdkdto.SelectItem, error) {
-	var results []*sdkdto.SelectItem
+func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
+	var results []*dto.SelectItem
 
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{where},
@@ -154,7 +155,7 @@ func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.E
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		results = append(results, &sdkdto.SelectItem{
+		results = append(results, &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		})
@@ -164,7 +165,7 @@ func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.E
 }
 
 // QuerySelectItemPage 分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[sdkdto.SelectItem], error) {
+func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *database.PageOption, secondaryLabel string) (*model.Page[dto.SelectItem], error) {
 	rawPage, err := r.BaseRepository.Page(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -172,13 +173,13 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *datab
 	tags := rawPage.Data
 
 	// 转换为 SelectItem
-	var results []*sdkdto.SelectItem
+	var results []*dto.SelectItem
 	for _, tag := range tags {
 		label := ""
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		item := &sdkdto.SelectItem{
+		item := &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
@@ -188,7 +189,7 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *datab
 		results = append(results, item)
 	}
 
-	return model.NewPage[sdkdto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	return model.NewPage[dto.SelectItem](results, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 }
 
 // QueryPageByWorkId 根据作品ID分页查询
@@ -204,29 +205,29 @@ func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *databas
 }
 
 // QuerySelectItemPageByWorkId 根据作品ID分页查询选择项
-func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[sdkdto.SelectItem], error) {
+func (r *LocalTagRepository) QuerySelectItemPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[dto.SelectItem], error) {
 	pageResult, err := r.QueryPageByWorkId(ctx, opt, workId, boundOnWorkId)
 	if err != nil {
 		return nil, err
 	}
 
 	// 转换为 SelectItem
-	items := make([]*sdkdto.SelectItem, len(pageResult.Data))
+	items := make([]*dto.SelectItem, len(pageResult.Data))
 	for i, tag := range pageResult.Data {
 		label := ""
 		if tag.LocalTagName.Valid {
 			label = tag.LocalTagName.String
 		}
-		items[i] = &sdkdto.SelectItem{
+		items[i] = &dto.SelectItem{
 			Value: tag.ID,
 			Label: label,
 		}
 	}
-	return model.NewPage[sdkdto.SelectItem](items, pageResult.DataCount, pageResult.PageNumber, pageResult.PageSize), nil
+	return model.NewPage[dto.SelectItem](items, pageResult.DataCount, pageResult.PageNumber, pageResult.PageSize), nil
 }
 
 // QueryWithBaseTagPage 分页查询包含基础标签信息的本地标签
-func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[sdkdto.LocalTagWithBaseTagDTO], error) {
+func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.LocalTagWithBaseTagDTO], error) {
 	var results []struct {
 		TagID              int64   `gorm:"column:id"`
 		TagName            *string `gorm:"column:local_tag_name"`
@@ -274,7 +275,7 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 	}
 
 	// 直接构造组合 DTO，无需中间 entity 转换
-	dtoList := make([]*sdkdto.LocalTagWithBaseTagDTO, len(results))
+	dtoList := make([]*dto.LocalTagWithBaseTagDTO, len(results))
 	for i, result := range results {
 		localTag := &sdkdto.LocalTagDTO{
 			ID:             result.TagID,
@@ -299,13 +300,13 @@ func (r *LocalTagRepository) QueryWithBaseTagPage(ctx context.Context, opt *data
 			}
 		}
 
-		dtoList[i] = &sdkdto.LocalTagWithBaseTagDTO{
+		dtoList[i] = &dto.LocalTagWithBaseTagDTO{
 			LocalTag: localTag,
 			BaseTag:  baseTag,
 		}
 	}
 
-	return model.NewPage[sdkdto.LocalTagWithBaseTagDTO](dtoList, total, opt.Page, opt.PageSize), nil
+	return model.NewPage[dto.LocalTagWithBaseTagDTO](dtoList, total, opt.Page, opt.PageSize), nil
 }
 
 // Page 分页查询

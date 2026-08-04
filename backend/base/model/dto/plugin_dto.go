@@ -3,15 +3,33 @@ package dto
 import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
+// PluginDTO 插件
+type PluginDTO struct {
+	ID             int64   `json:"id"`
+	PublicID       *string `json:"publicId"`
+	Author         *string `json:"author"`
+	Name           *string `json:"name"`
+	Version        *string `json:"version"`
+	Description    *string `json:"description"`
+	Changelog      *string `json:"changelog"`
+	EntryPath      *string `json:"entryPath"`
+	RootPath       *string `json:"rootPath"`
+	BackupID       *int64  `json:"backupId"`
+	SortNum        *int64  `json:"sortNum"`
+	Uninstalled    *bool   `json:"uninstalled"`
+	ActivationType *string `json:"activationType"`
+	CreateTime     int64   `json:"createTime"`
+	UpdateTime     int64   `json:"updateTime"`
+}
+
 // NewPluginDTO 从 entity.Plugin 创建 PluginDTO
-func NewPluginDTO(plugin *entity2.Plugin) *sdkdto.PluginDTO {
+func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 	if plugin == nil {
 		return nil
 	}
-	return &sdkdto.PluginDTO{
+	return &PluginDTO{
 		ID:             plugin.GetID(),
 		PublicID:       util.NullStringToPointer(plugin.PublicID),
 		Author:         util.NullStringToPointer(plugin.Author),
@@ -31,7 +49,7 @@ func NewPluginDTO(plugin *entity2.Plugin) *sdkdto.PluginDTO {
 }
 
 // ToPluginEntity 将 PluginDTO 转换为 Plugin 实体
-func ToPluginEntity(dto *sdkdto.PluginDTO) *entity2.Plugin {
+func ToPluginEntity(dto *PluginDTO) *entity2.Plugin {
 	if dto == nil {
 		return nil
 	}

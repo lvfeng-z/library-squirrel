@@ -75,12 +75,18 @@ func ToLocalTagEntity(dto *sdkdto.LocalTagDTO) *entity.LocalTag {
 	return entity
 }
 
+// LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象
+type LocalTagWithBaseTagDTO struct {
+	LocalTag *sdkdto.LocalTagDTO `json:"localTag,omitempty"`
+	BaseTag  *sdkdto.LocalTagDTO `json:"baseTag,omitempty"`
+}
+
 // NewLocalTagWithBaseTagDTO 从 entity.LocalTag 创建 LocalTagWithBaseTagDTO
-func NewLocalTagWithBaseTagDTO(tag *entity.LocalTag, baseTag *entity.LocalTag) *sdkdto.LocalTagWithBaseTagDTO {
+func NewLocalTagWithBaseTagDTO(tag *entity.LocalTag, baseTag *entity.LocalTag) *LocalTagWithBaseTagDTO {
 	if tag == nil {
 		return nil
 	}
-	return &sdkdto.LocalTagWithBaseTagDTO{
+	return &LocalTagWithBaseTagDTO{
 		LocalTag: NewLocalTagDTO(tag),
 		BaseTag:  NewLocalTagDTO(baseTag),
 	}

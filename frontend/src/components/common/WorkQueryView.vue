@@ -8,7 +8,7 @@ import {
   SearchType,
   SelectItem,
   WorkSearchOperator
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import Page from '@renderer/model/util/Page.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'

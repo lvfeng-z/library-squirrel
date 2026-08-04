@@ -10,6 +10,7 @@ import WorkSetSelectPanel from '@renderer/components/common/WorkSetSelectPanel.v
 import TagBox from '@renderer/components/common/TagBox.vue'
 import AuthorInfo from '@renderer/components/common/AuthorInfo.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
+import { WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {
   SearchCondition,
   SearchConditionQuery,
@@ -17,12 +18,11 @@ import {
   SelectItem,
   WorkFullDTO,
   WorkSearchOperator,
-  WorkSetDTO,
   WorkSetWithCoverDTO,
   WorkSetWithWorksResultDTO,
   RankedLocalAuthor,
   RankedSiteAuthor
-} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
+} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
 import {ArrowLeft, Close, Delete, Document, Download, Edit, Picture, Plus, Sort} from '@element-plus/icons-vue'
