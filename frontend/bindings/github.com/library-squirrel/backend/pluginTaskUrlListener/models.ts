@@ -20,6 +20,7 @@ export class PluginWithExtension {
     "author": sql$0.NullString;
     "name": sql$0.NullString;
     "version": sql$0.NullString;
+    "contractVersion": sql$0.NullInt64;
     "description": sql$0.NullString;
     "changelog": sql$0.NullString;
     "entryPath": sql$0.NullString;
@@ -61,6 +62,9 @@ export class PluginWithExtension {
         }
         if (!("version" in $$source)) {
             this["version"] = (new sql$0.NullString());
+        }
+        if (!("contractVersion" in $$source)) {
+            this["contractVersion"] = (new sql$0.NullInt64());
         }
         if (!("description" in $$source)) {
             this["description"] = (new sql$0.NullString());
@@ -104,14 +108,15 @@ export class PluginWithExtension {
         const $$createField4_0 = $$createType0;
         const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType0;
+        const $$createField7_0 = $$createType1;
         const $$createField8_0 = $$createType0;
         const $$createField9_0 = $$createType0;
         const $$createField10_0 = $$createType0;
-        const $$createField11_0 = $$createType1;
+        const $$createField11_0 = $$createType0;
         const $$createField12_0 = $$createType1;
-        const $$createField13_0 = $$createType2;
-        const $$createField14_0 = $$createType0;
+        const $$createField13_0 = $$createType1;
+        const $$createField14_0 = $$createType2;
+        const $$createField15_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -125,29 +130,32 @@ export class PluginWithExtension {
         if ("version" in $$parsedSource) {
             $$parsedSource["version"] = $$createField6_0($$parsedSource["version"]);
         }
+        if ("contractVersion" in $$parsedSource) {
+            $$parsedSource["contractVersion"] = $$createField7_0($$parsedSource["contractVersion"]);
+        }
         if ("description" in $$parsedSource) {
-            $$parsedSource["description"] = $$createField7_0($$parsedSource["description"]);
+            $$parsedSource["description"] = $$createField8_0($$parsedSource["description"]);
         }
         if ("changelog" in $$parsedSource) {
-            $$parsedSource["changelog"] = $$createField8_0($$parsedSource["changelog"]);
+            $$parsedSource["changelog"] = $$createField9_0($$parsedSource["changelog"]);
         }
         if ("entryPath" in $$parsedSource) {
-            $$parsedSource["entryPath"] = $$createField9_0($$parsedSource["entryPath"]);
+            $$parsedSource["entryPath"] = $$createField10_0($$parsedSource["entryPath"]);
         }
         if ("rootPath" in $$parsedSource) {
-            $$parsedSource["rootPath"] = $$createField10_0($$parsedSource["rootPath"]);
+            $$parsedSource["rootPath"] = $$createField11_0($$parsedSource["rootPath"]);
         }
         if ("backupId" in $$parsedSource) {
-            $$parsedSource["backupId"] = $$createField11_0($$parsedSource["backupId"]);
+            $$parsedSource["backupId"] = $$createField12_0($$parsedSource["backupId"]);
         }
         if ("sortNum" in $$parsedSource) {
-            $$parsedSource["sortNum"] = $$createField12_0($$parsedSource["sortNum"]);
+            $$parsedSource["sortNum"] = $$createField13_0($$parsedSource["sortNum"]);
         }
         if ("uninstalled" in $$parsedSource) {
-            $$parsedSource["uninstalled"] = $$createField13_0($$parsedSource["uninstalled"]);
+            $$parsedSource["uninstalled"] = $$createField14_0($$parsedSource["uninstalled"]);
         }
         if ("activationType" in $$parsedSource) {
-            $$parsedSource["activationType"] = $$createField14_0($$parsedSource["activationType"]);
+            $$parsedSource["activationType"] = $$createField15_0($$parsedSource["activationType"]);
         }
         return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }

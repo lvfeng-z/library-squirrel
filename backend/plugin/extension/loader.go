@@ -22,8 +22,35 @@ import (
 
 // ErrPluginLoadFailed 错误定义
 var (
-	ErrPluginLoadFailed = errors.New("plugin load failed")
+	ErrPluginLoadFailed     = errors.New("plugin load failed")
+	ErrPluginContractTooNew = errors.New("插件契约版本过新，请升级主程序")
+	ErrPluginContractTooOld = errors.New("插件契约版本过旧，请升级插件")
 )
+
+// currentContractVersion 主程序当前实现的插件契约版本（引用 SDK transport.ContractVersion，
+// 与 SDK 同步发布、保持一致）。
+const currentContractVersion = pluginsdktransport.ContractVersion
+
+// minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
+const minSupportedContractVersion = 1
+
+// ValidateContractVersion 校验插件契约版本是否与主程序兼容。
+// pluginContract 为插件声明的契约版本；0 表示未声明/缺字段，视为当前契约放行（决策9：
+// 首发 minSupported=1，旧/手工插件缺字段视为最旧兼容版本，不拒绝）。
+// 返回 ErrPluginContractTooNew（插件比主程序新，需升级主程序）、
+// ErrPluginContractTooOld（插件低于最低支持版本，需升级插件）或 nil。
+func ValidateContractVersion(pluginContract int) error {
+	if pluginContract == 0 {
+		pluginContract = currentContractVersion
+	}
+	if pluginContract > currentContractVersion {
+		return ErrPluginContractTooNew
+	}
+	if pluginContract < minSupportedContractVersion {
+		return ErrPluginContractTooOld
+	}
+	return nil
+}
 
 // CreateNoWindow Windows 子进程创建标志：不创建控制台窗口
 const CreateNoWindow = 0x08000000
@@ -104,6 +131,10 @@ func (l *Loader) unregisterUrlListener(pluginPublicId string) {
 // pluginPublicId: 插件公开ID
 // deps: 加载插件所需的依赖（含 HostDeps 用于 HostService 注册）
 func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps PluginProcessDeps) error {
+	// 契约版本兼容校验（加载期终检，与安装期 loadPluginPackage 预检互为兜底）
+	if err := ValidateContractVersion(deps.PluginInfo.ContractVersion); err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
+	}
 	// 构建 HostDeps，用于在 GRPCClient 中注册 HostService
 	callbacks := newHostPluginCallbacks(deps.PluginInfo, l, l.taskHandlerRegistry, l.siteBrowserRegistry)
 	hostDeps := &pluginsdktransport.HostDeps{
@@ -341,13 +372,14 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 
 // PluginInfo 插件基本信息
 type PluginInfo struct {
-	ID        int64
-	PublicID  string
-	Name      string
-	Version   string
-	Author    string
-	EntryPath string
-	RootPath  string
+	ID              int64
+	PublicID        string
+	Name            string
+	Version         string
+	ContractVersion int // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	Author          string
+	EntryPath       string
+	RootPath        string
 }
 
 // ========== HostDeps 适配器 ==========

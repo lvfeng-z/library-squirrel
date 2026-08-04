@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/library-squirrel/backend/plugin/extension"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/dto"
@@ -286,6 +287,11 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, ErrInvalidManifest
 	}
 
+	// 契约版本兼容校验（安装期预检；过新/过旧均拒绝安装，与加载期 LoadPluginProcess 终检互为兜底）
+	if err := extension.ValidateContractVersion(manifest.ContractVersion); err != nil {
+		return nil, err
+	}
+
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
 	return installDTO, nil
@@ -366,6 +372,7 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Author = sql.NullString{String: installDTO.Author, Valid: true}
 	plugin.Name = sql.NullString{String: installDTO.Name, Valid: true}
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
+	plugin.ContractVersion = sql.NullInt64{Int64: int64(installDTO.ContractVersion), Valid: installDTO.ContractVersion > 0}
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}

@@ -31,28 +31,30 @@ type PluginActivation struct {
 
 // PluginManifest 插件清单（从 plugin.json 解析）
 type PluginManifest struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Author      string            `json:"author"`
-	Description string            `json:"description,omitempty"`
-	Extensions  *PluginExtensions `json:"extensions"`
-	Activation  PluginActivation  `json:"activation"`
-	EntryFile   string            `json:"entryFile"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	ContractVersion int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	Author          string            `json:"author"`
+	Description     string            `json:"description,omitempty"`
+	Extensions      *PluginExtensions `json:"extensions"`
+	Activation      PluginActivation  `json:"activation"`
+	EntryFile       string            `json:"entryFile"`
 }
 
 // PluginInstallDTO 插件安装数据传输对象
 type PluginInstallDTO struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Author      string            `json:"author"`
-	Description string            `json:"description,omitempty"`
-	Extensions  *PluginExtensions `json:"extensions"`
-	Activation  PluginActivation  `json:"activation"`
-	EntryFile   string            `json:"entryFile"`
-	PackagePath string            `json:"packagePath,omitempty"`
-	PublicID    string            `json:"publicId,omitempty"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	ContractVersion int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	Author          string            `json:"author"`
+	Description     string            `json:"description,omitempty"`
+	Extensions      *PluginExtensions `json:"extensions"`
+	Activation      PluginActivation  `json:"activation"`
+	EntryFile       string            `json:"entryFile"`
+	PackagePath     string            `json:"packagePath,omitempty"`
+	PublicID        string            `json:"publicId,omitempty"`
 }
 
 // GetPublicID 获取插件公开ID（格式：作者/名称）
@@ -63,16 +65,17 @@ func (p *PluginManifest) GetPublicID() string {
 // ToPluginInstallDTO 转换为安装DTO
 func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDTO {
 	return &PluginInstallDTO{
-		ID:          p.ID,
-		Name:        p.Name,
-		Version:     p.Version,
-		Author:      p.Author,
-		Description: p.Description,
-		Extensions:  p.Extensions,
-		Activation:  p.Activation,
-		EntryFile:   p.EntryFile,
-		PackagePath: packagePath,
-		PublicID:    p.GetPublicID(),
+		ID:              p.ID,
+		Name:            p.Name,
+		Version:         p.Version,
+		ContractVersion: p.ContractVersion,
+		Author:          p.Author,
+		Description:     p.Description,
+		Extensions:      p.Extensions,
+		Activation:      p.Activation,
+		EntryFile:       p.EntryFile,
+		PackagePath:     packagePath,
+		PublicID:        p.GetPublicID(),
 	}
 }
 
@@ -83,11 +86,11 @@ func NewPluginManifest() *PluginManifest {
 
 // PluginExtensions 插件扩展点集合（plugin.json 的 extensions 段）
 type PluginExtensions struct {
-	TaskHandlers    []TaskHandlerDeclaration `json:"taskHandlers,omitempty"`
-	SiteBrowsers    []SiteBrowserDeclaration `json:"siteBrowsers,omitempty"`
+	TaskHandlers       []TaskHandlerDeclaration       `json:"taskHandlers,omitempty"`
+	SiteBrowsers       []SiteBrowserDeclaration       `json:"siteBrowsers,omitempty"`
 	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
-	StaticResources *StaticResourcesConfig   `json:"staticResources,omitempty"`
-	Settings        []SettingDeclaration     `json:"settings,omitempty"`
+	StaticResources    *StaticResourcesConfig         `json:"staticResources,omitempty"`
+	Settings           []SettingDeclaration           `json:"settings,omitempty"`
 }
 
 // SettingDeclaration 用户设置项声明（plugin.json extensions.settings）
@@ -168,14 +171,14 @@ type DialogContent struct {
 
 // MenuContent menu 类型前端扩展配置
 type MenuContent struct {
-	Icon     string                          `json:"icon,omitempty"`
-	ViewId   string                          `json:"viewId,omitempty"`
-	Children []FrontendExtensionDeclaration  `json:"children,omitempty"`
+	Icon     string                         `json:"icon,omitempty"`
+	ViewId   string                         `json:"viewId,omitempty"`
+	Children []FrontendExtensionDeclaration `json:"children,omitempty"`
 }
 
 // SiteBrowserListContent siteBrowserList 类型前端扩展配置
 type SiteBrowserListContent struct {
-	Icon           string `json:"icon,omitempty"`
+	Icon        string `json:"icon,omitempty"`
 	ExtensionId string `json:"extensionId"`
 }
 

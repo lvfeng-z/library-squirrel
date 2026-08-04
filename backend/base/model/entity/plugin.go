@@ -13,6 +13,7 @@ type Plugin struct {
 	Author            sql.NullString `gorm:"column:author" json:"author"`
 	Name              sql.NullString `gorm:"column:name" json:"name"`
 	Version           sql.NullString `gorm:"column:version" json:"version"`
+	ContractVersion   sql.NullInt64  `gorm:"column:contract_version" json:"contractVersion"`
 	Description       sql.NullString `gorm:"column:description" json:"description"`
 	Changelog         sql.NullString `gorm:"column:changelog" json:"changelog"`
 	EntryPath         sql.NullString `gorm:"column:entry_path" json:"entryPath"`

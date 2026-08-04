@@ -419,13 +419,14 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 
 	pluginPath := filepath.Join(rootPath, p.EntryPath.String)
 	pluginInfo := &extension2.PluginInfo{
-		ID:        p.GetID(),
-		PublicID:  publicId,
-		Name:      p.Name.String,
-		Version:   p.Version.String,
-		Author:    p.Author.String,
-		EntryPath: p.EntryPath.String,
-		RootPath:  p.RootPath.String,
+		ID:              p.GetID(),
+		PublicID:        publicId,
+		Name:            p.Name.String,
+		Version:         p.Version.String,
+		ContractVersion: int(p.ContractVersion.Int64),
+		Author:          p.Author.String,
+		EntryPath:       p.EntryPath.String,
+		RootPath:        p.RootPath.String,
 	}
 
 	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
