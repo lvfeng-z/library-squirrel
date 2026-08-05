@@ -7,6 +7,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"github.com/lvfeng-z/library-squirrel-sdk/dto/render"
 )
 
 // Handler 作品 Handler
@@ -93,6 +94,12 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.WorkDTO
 // GetFullWorkInfoByIds 批量获取完整作品信息
 func (h *Handler) GetFullWorkInfoByIds(ctx context.Context, ids []int64) *model.ApiResponse[[]*dto.WorkFullDTO] {
 	return model.HandleResult(h.svc.GetFullWorkInfoByIds(ctx, ids))
+}
+
+// ToRenderContext 将完整作品信息投射为插件资源渲染契约 render.Context，供插件 resourceViewer 渲染器消费。
+// 主程序展示 WorkFullDTO 与插件契约 render.Context 经此单向投射解耦（契约断链见 render 包文档）。
+func (h *Handler) ToRenderContext(ctx context.Context, work *dto.WorkFullDTO) *model.ApiResponse[*render.Context] {
+	return model.Success(dto.ToRenderContext(work))
 }
 
 // GetBySiteAndSiteWorkID 根据站点ID和站点作品ID获取作品

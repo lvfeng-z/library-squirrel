@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, type Component } from 'vue'
+import { computed, defineAsyncComponent, h, ref, watch, type Component } from 'vue'
 import { ResourceFullDTO, WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { Context as RenderContext } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/render'
 import { Loading } from '@element-plus/icons-vue'
 import { getResourcePreviewType } from '@renderer/utils/ResourceUtil.ts'
 import { ResourceType } from '@renderer/constants/sectionCode.ts'
 import { useHandlerRegistryStore } from '@renderer/store/HandlerRegistryStore'
+import { workToRenderContext } from '@renderer/apis/http/wrappers/work'
 import PluginBoundary from '@renderer/components/common/PluginBoundary.vue'
 import ImageRenderer from './renderers/ImageRenderer.vue'
 import VideoRenderer from './renderers/VideoRenderer.vue'
@@ -50,14 +52,34 @@ const pluginComponent = computed(() => {
     timeout: 5000
   })
 })
+
+// 插件渲染器注入的稳定契约 props（render.Context）：主程序展示 WorkFullDTO 经后端单向投射而来，
+// 此后独立演进——主程序展示 DTO 变更不传导，破坏性变更由主程序 contractVersion 约束。随 work 变化异步刷新。
+const renderContext = ref<RenderContext | null>(null)
+watch(
+  () => props.work,
+  async (work) => {
+    if (!work) {
+      renderContext.value = null
+      return
+    }
+    try {
+      const resp = await workToRenderContext(work)
+      renderContext.value = resp.data ?? null
+    } catch {
+      renderContext.value = null
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
   <div class="resource-viewer">
     <PluginBoundary
-      v-if="pluginComponent"
+      v-if="pluginComponent && renderContext"
       :component="pluginComponent"
-      :component-props="{ resource, work }"
+      :component-props="{ context: renderContext }"
       :name="pluginHandler?.slotId"
     />
     <ImageRenderer

@@ -2,16 +2,17 @@ package entity
 
 import (
 	"errors"
+
+	"github.com/lvfeng-z/library-squirrel-sdk/contract"
 )
 
-// ResourceType* 预定义资源类型常量(封闭枚举,主程序中央注册)。
-// 插件创建资源时必须声明其一;主程序不推断、不兜底,空/未知值在写入路径抛错。
+// ResourceType 常量别名 SDK contract 包（单一真相源，见 contract 包文档）。
 const (
-	ResourceTypeImage    = "image"    // 图片资源(单图/多图每子资源)
-	ResourceTypeVideo    = "video"    // 视频资源(可播放主体 videoMain 必含;分离流另含 videoTrack+audioTrack 原料)
-	ResourceTypeArticle  = "article"  // 图文紧密结合文档(正文 markdown + 内嵌图)
-	ResourceTypeDocument = "document" // 现成文档原文件(pdf/docx/...)
-	ResourceTypeUnknown  = "unknown"  // 合法显式值:插件确实无法分类时声明
+	ResourceTypeImage    = contract.ResourceTypeImage
+	ResourceTypeVideo    = contract.ResourceTypeVideo
+	ResourceTypeArticle  = contract.ResourceTypeArticle
+	ResourceTypeDocument = contract.ResourceTypeDocument
+	ResourceTypeUnknown  = contract.ResourceTypeUnknown
 )
 
 // 写入路径严格识别错误

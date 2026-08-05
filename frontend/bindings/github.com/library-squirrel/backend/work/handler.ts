@@ -21,6 +21,9 @@ import * as dto$1 from "../base/model/dto/models.js";
 import * as dto$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as render$0 from "../../../lvfeng-z/library-squirrel-sdk/dto/render/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as gen$0 from "../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -100,6 +103,16 @@ export function SoftDelete(id: number): $CancellablePromise<model$0.ApiResponse<
 }
 
 /**
+ * ToRenderContext 将完整作品信息投射为插件资源渲染契约 render.Context，供插件 resourceViewer 渲染器消费。
+ * 主程序展示 WorkFullDTO 与插件契约 render.Context 经此单向投射解耦（契约断链见 render 包文档）。
+ */
+export function ToRenderContext(work: dto$1.WorkFullDTO | null): $CancellablePromise<model$0.ApiResponse<render$0.Context | null> | null> {
+    return $Call.ByID(8789468, work).then(($result: any) => {
+        return $$createType25($result);
+    });
+}
+
+/**
  * Update 更新作品
  */
 export function Update(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
@@ -140,3 +153,7 @@ const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
 const $$createType19 = $Create.Nullable($$createType18);
 const $$createType20 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = render$0.Context.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = model$0.ApiResponse.createFrom($$createType23);
+const $$createType25 = $Create.Nullable($$createType24);

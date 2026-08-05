@@ -7,6 +7,7 @@ import type { ApiResponse } from '../types'
 import { Handler as WorkHandler, WorkQueryDTO } from '@bindings/github.com/library-squirrel/backend/work'
 import { WorkDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto'
 import { type WorkFullDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { Context as RenderContext } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/render'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 
@@ -161,4 +162,18 @@ export async function workUpdateLastUsed(ids: number[]): Promise<ApiResponse<boo
     return { success: false, msg: '更新失败：接口返回为空' }
   }
   return { success: result.success, msg: result.msg ?? '' }
+}
+
+/**
+ * 将完整作品信息投射为插件资源渲染契约 render.Context
+ */
+export async function workToRenderContext(work: WorkFullDTO): Promise<ApiResponse<RenderContext | null>> {
+  const result = await WorkHandler.ToRenderContext(work)
+  if (!result) {
+    return { success: false, msg: '转换失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '转换失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
