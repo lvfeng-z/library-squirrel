@@ -102,7 +102,8 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；首发 = 1 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 2 |
+| `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
 
@@ -261,11 +262,11 @@ func main() {
 | 扩展点注册 | `RegisterTaskHandler` | `(id, name, desc string, handler TaskHandler) error` |
 | | `RegisterSiteBrowser` | `(id, name, desc string, browser SiteBrowser) error` |
 | | `UnregisterSiteBrowser` | `(id string) error` |
-| 自存信息 | `GetValue` | `(key string) (string, error)` |
+| 自存信息 | `GetValue` | `(key string) (*StorageValue, error)`（`StorageValue.Value` 明文 + `SchemaVersion`，见 8.3；key 不存在返回 nil） |
 | | `SetValue` | `(key, value string) error` |
 | | `SetValueEncrypted` | `(key, value string) error` |
 | | `DeleteValue` | `(key string) error` |
-| | `GetAllValues` | `() (map[string]string, error)` |
+| | `GetAllValues` | `() (map[string]*StorageValue, error)` |
 | 业务查询 | `GetWorkSetBySiteWorkSetId` | `(siteWorkSetId, siteName string) (*WorkSetDTO, error)` |
 | | `AddSite` | `(sites []*SiteDTO) error` |
 | 任务 | `RegisterUrlListener` | `(extensionId string, patterns []string) error` |
@@ -489,24 +490,62 @@ func (h *Handler) Create(url string) (*sdkdto.TaskCreateResult, error) {
 ```go
 // 明文
 ctx.SetValue("downloadPath", "/data")
-v, _ := ctx.GetValue("downloadPath")        // 读
+v, _ := ctx.GetValue("downloadPath")        // v 是 *StorageValue：v.Value 为明文，v.SchemaVersion 为写入时的配置 schema 版本
+path := ""
+if v != nil { path = v.Value }
 
 // 加密（敏感数据，存密文、读自动解密）
 ctx.SetValueEncrypted("apiToken", secret)
-token, _ := ctx.GetValue("apiToken")        // 自动解密返回明文
+av, _ := ctx.GetValue("apiToken")           // 自动解密，av.Value 为明文
+token := ""
+if av != nil { token = av.Value }
 
 // 删除 / 全部
 ctx.DeleteValue("downloadPath")
-all, _ := ctx.GetAllValues()                // map[key]明文值（加密项已解密）
+all, _ := ctx.GetAllValues()                // map[key]*StorageValue（加密项已解密）
 ```
 
-读取（`GetValue`/`GetAllValues`）对加密项**透明解密**，统一返回明文。插件只在**写入**时分 `SetValue`/`SetValueEncrypted`。
+读取（`GetValue`/`GetAllValues`）对加密项**透明解密**，返回 `*StorageValue`（含明文 `Value` 与 `SchemaVersion`，见 8.3）；key 不存在时 `GetValue` 返回 `nil`。插件只在**写入**时分 `SetValue`/`SetValueEncrypted`。
 
 ### 8.2 用户设置（settings）
 
 在 `plugin.json` 声明 `extensions.settings` 后：
 - 主程序在插件管理页渲染表单（按 `type` 分发控件、按 `group` 分组），用户编辑后由主程序按声明的 `encrypted` 路由 `SetValue`/`SetValueEncrypted` 存入。
-- 插件用 `ctx.GetValue(key)` 读取用户配置值（统一为 string，integer 等类型自行转换）。
+- 插件用 `ctx.GetValue(key).Value` 读取用户配置值（统一为 string，integer 等类型自行转换）；`GetValue` 返回 `*StorageValue`，key 不存在时为 `nil`。
+
+### 8.3 配置 schema 版本与迁移
+
+插件升级时旧版本写入的配置（settings 与自存 KV）仍保留在 `plugin_storage`（升级保留 `plugin_id`、不清数据）。若新版本改了配置结构（key 改名、值格式变、加密预期变），旧值会**语义丢失**——读到旧值喂入新逻辑，静默错配。`configSchemaVersion`（plugin.json 顶层整数）让插件感知并迁移旧配置：
+
+- 每条值写入时由主程序盖 `schema_version` 戳（= 插件当前声明的 `configSchemaVersion`）；插件 `GetValue` 时拿到每条值的 `SchemaVersion`。
+- 插件在 `Activate` 开头用 SDK 助手 `plugin.MigrateConfig` 自行迁移。
+
+```go
+import "github.com/lvfeng-z/library-squirrel-sdk/plugin"
+
+func Activate(ctx pluginsdk.PluginContext, ...) {
+    // 第一件事：配置迁移（幂等，best-effort）
+    plugin.MigrateConfig(ctx, 3, map[int]plugin.MigrateStep{
+        2: func(ctx pluginsdk.PluginContext) error { // v1 → v2：dlQuality 改名 downloadQuality
+            old, _ := ctx.GetValue("dlQuality")
+            if old != nil && old.SchemaVersion < 2 {
+                ctx.SetValue("downloadQuality", old.Value) // 主程序自动盖新版本戳
+                ctx.DeleteValue("dlQuality")
+            }
+            return nil
+        },
+        3: func(ctx pluginsdk.PluginContext) error { /* v2 → v3 */ return nil },
+    })
+    // 注册扩展点、读配置 ...
+}
+```
+
+要点：
+- **`configSchemaVersion=0`（缺省）= legacy**：不参与版本管理，主程序不检测/告警，插件也不调 `MigrateConfig`——行为同未启用。要用迁移从 `1` 起递增。
+- **best-effort + 幂等重跑**：某步报错时跳过该 key、记日志、继续激活（不阻断）；下次 `Activate` 重跑时已迁 key（版本=目标）自动跳过——断点续传。此重跑**与任务模块的失败重跑无关**。
+- **不保证跨 key 原子性**：联动配置迁移中存在暂时不一致窗口，靠幂等重跑最终一致；建议联动 key 放同一迁移步。
+- **降级**（行版本 > 声明，如装旧版覆盖新版）：主程序告警、不自动迁移。
+- 主程序激活后会扫 `plugin_storage` 行，存在 `schema_version < configSchemaVersion` 的行则日志告警（迁移未完成或插件未声明 `MigrateConfig`），作为安全网。
 
 ## 九、前端通信
 
@@ -657,7 +696,7 @@ dist/
 ### 版本管理
 
 - **单版本**：同一 `publicId` 不支持多版本共存，DB 只保留一条记录。
-- **升级**：通过「修复」（`Reinstall` 从备份恢复）或「选择安装包修复」（`ReinstallFromPath` 指定新 ZIP），会先卸载旧版（删目录）再重装。
+- **升级**：通过「修复」（`Reinstall` 从备份恢复）或「选择安装包修复」（`ReinstallFromPath` 指定新 ZIP）。流程：停旧版运行时并删除旧版目录（`deactivate`，仅停进程与删文件，**不标记卸载、不清插件配置**）→ 以重装模式解压新版、复用同 `publicId` 的 DB 记录（保留 ID 与 CreateTime，覆盖版本/路径等字段）→ 激活新版。**升级保留插件的 `plugin_storage` 配置数据**（仅替换程序文件与 DB 记录字段），为后续配置版本迁移提供前提。
 
 ## 十三、卸载行为
 

@@ -34,7 +34,8 @@ type PluginManifest struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Version         string            `json:"version"`
-	ContractVersion int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author          string            `json:"author"`
 	Description     string            `json:"description,omitempty"`
 	Extensions      *PluginExtensions `json:"extensions"`
@@ -48,7 +49,8 @@ type PluginInstallDTO struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Version         string            `json:"version"`
-	ContractVersion int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author          string            `json:"author"`
 	Description     string            `json:"description,omitempty"`
 	Extensions      *PluginExtensions `json:"extensions"`
@@ -71,6 +73,7 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Name:            p.Name,
 		Version:         p.Version,
 		ContractVersion: p.ContractVersion,
+		ConfigSchemaVersion: p.ConfigSchemaVersion,
 		Author:          p.Author,
 		Description:     p.Description,
 		Extensions:      p.Extensions,

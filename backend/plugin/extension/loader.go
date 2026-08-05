@@ -272,6 +272,20 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 
 	logger.Log.Infof("插件子进程已激活: %s", pluginPublicId)
 
+	// 配置 schema 版本漂移告警（第⑤节安全网）：激活（含插件自迁移）后扫 plugin_storage 行，
+	// 存在 schema_version < 声明 configSchemaVersion 的行则告警（迁移未完成或插件未声明 MigrateConfig）。
+	// legacy 插件（configSchemaVersion=0）整体跳过。best-effort：读失败静默，不阻断加载。
+	if deps.PluginInfo.ConfigSchemaVersion > 0 {
+		if entries, err := deps.PluginCtx.GetAllValues(); err == nil {
+			for k, v := range entries {
+				if v.SchemaVersion < int32(deps.PluginInfo.ConfigSchemaVersion) {
+					logger.Log.Warnf("插件 %s 配置 schema 漂移: key=%s schemaVersion=%d < target=%d（迁移未完成或插件未声明 MigrateConfig）",
+						pluginPublicId, k, v.SchemaVersion, deps.PluginInfo.ConfigSchemaVersion)
+				}
+			}
+		}
+	}
+
 	entry := &pluginEntry{
 		client:      client,
 		services:    services,
@@ -412,8 +426,9 @@ type PluginInfo struct {
 	PublicID        string
 	Name            string
 	Version         string
-	ContractVersion int      // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
-	Capabilities    []string // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
+	ContractVersion     int      // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	ConfigSchemaVersion int64    // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
+	Capabilities        []string // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
 	Author          string
 	EntryPath       string
 	RootPath        string
@@ -427,7 +442,7 @@ type hostStorageProvider struct {
 	ctx sdkdto.PluginContext
 }
 
-func (p *hostStorageProvider) GetValue(_ context.Context, key string) (string, error) {
+func (p *hostStorageProvider) GetValue(_ context.Context, key string) (*sdkdto.StorageValue, error) {
 	return p.ctx.GetValue(key)
 }
 
@@ -443,7 +458,7 @@ func (p *hostStorageProvider) DeleteValue(_ context.Context, key string) error {
 	return p.ctx.DeleteValue(key)
 }
 
-func (p *hostStorageProvider) GetAllValues(_ context.Context) (map[string]string, error) {
+func (p *hostStorageProvider) GetAllValues(_ context.Context) (map[string]*sdkdto.StorageValue, error) {
 	return p.ctx.GetAllValues()
 }
 

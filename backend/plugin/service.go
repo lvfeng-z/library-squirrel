@@ -227,7 +227,7 @@ func (s *Service) InstallFromPath(ctx context.Context, packagePath string, insta
 		return nil, err
 	}
 
-	return s.install(ctx, installDTO, installType)
+	return s.install(ctx, installDTO, installType, false)
 }
 
 // loadPluginPackage 加载插件安装包
@@ -297,9 +297,9 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	return installDTO, nil
 }
 
-// install 安装插件（包含激活）
-func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType) (*entity2.Plugin, error) {
-	plugin, err := s.installCore(ctx, installDTO)
+// install 安装插件（包含激活）。reinstall=true 为重装/升级（复用同 publicId 原记录覆盖），false 为全新安装（已存在且未卸载则报错）
+func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType, reinstall bool) (*entity2.Plugin, error) {
+	plugin, err := s.installCore(ctx, installDTO, reinstall)
 	if err != nil {
 		return nil, err
 	}
@@ -333,23 +333,32 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 		return nil, nil
 	}
 
-	return s.installCore(ctx, installDTO)
+	return s.installCore(ctx, installDTO, false)
 }
 
-// installCore 安装插件核心逻辑（解压 + 写 DB + 备份），不含激活
-func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInstallDTO) (*entity2.Plugin, error) {
+// installCore 安装插件核心逻辑（解压 + 写 DB + 备份），不含激活。
+// reinstall=true 为重装/升级：复用同 publicId 原记录（保留 ID 与 CreateTime）覆盖，不论其卸载状态；
+// reinstall=false 为全新安装：同 publicId 且未卸载的记录视为重复安装，返回 ErrPluginAlreadyExists。
+func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool) (*entity2.Plugin, error) {
 	// 检查是否已安装
 	existing, err := s.repo.GetByPublicId(ctx, installDTO.PublicID)
 	if err != nil {
 		return nil, err
 	}
 
-	var uninstalledPlugin *entity2.Plugin
+	// reusePlugin 非 nil 时复用该记录（保留 ID 与 CreateTime）覆盖写入；nil 时新建
+	var reusePlugin *entity2.Plugin
 	if existing != nil {
-		if existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
-			return nil, ErrPluginAlreadyExists
+		if reinstall {
+			// 重装/升级：复用原记录覆盖
+			reusePlugin = existing
+		} else {
+			// 全新安装：同 publicId 且未卸载的记录视为重复
+			if existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
+				return nil, ErrPluginAlreadyExists
+			}
+			reusePlugin = existing
 		}
-		uninstalledPlugin = existing
 	}
 
 	// 构建安装路径（插件安装到应用根目录）
@@ -373,6 +382,7 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Name = sql.NullString{String: installDTO.Name, Valid: true}
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
 	plugin.ContractVersion = sql.NullInt64{Int64: int64(installDTO.ContractVersion), Valid: installDTO.ContractVersion > 0}
+	plugin.ConfigSchemaVersion = sql.NullInt64{Int64: int64(installDTO.ConfigSchemaVersion), Valid: true} // 0=legacy/未管理，总是写入
 	if len(installDTO.Capabilities) > 0 {
 		if capsJSON, err := json.Marshal(installDTO.Capabilities); err == nil {
 			plugin.Capabilities = sql.NullString{String: string(capsJSON), Valid: true}
@@ -383,10 +393,10 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
 	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
 
-	if uninstalledPlugin != nil {
-		// 重新安装已卸载的插件：完整替换该记录的所有字段，保留原始 CreateTime
-		plugin.ID = uninstalledPlugin.ID
-		plugin.SetCreateTime(uninstalledPlugin.GetCreateTime())
+	if reusePlugin != nil {
+		// 复用原记录（重装/升级，或重装已卸载插件）：完整替换该记录的所有字段，保留原始 ID 与 CreateTime
+		plugin.ID = reusePlugin.ID
+		plugin.SetCreateTime(reusePlugin.GetCreateTime())
 		if err := s.repo.Save(ctx, plugin); err != nil {
 			return nil, err
 		}
@@ -480,7 +490,7 @@ func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, 
 	}
 
 	// 重新安装
-	return s.install(ctx, installDTO, installType)
+	return s.install(ctx, installDTO, installType, true)
 }
 
 // Uninstall 卸载插件

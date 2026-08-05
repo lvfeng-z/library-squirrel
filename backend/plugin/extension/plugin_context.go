@@ -18,11 +18,11 @@ import (
 // PluginStorageService 插件自存信息服务（由 plugin 包实现）
 // 统一 KV 存储：明文项直接读写，加密项 Value 存密文
 type PluginStorageService interface {
-	GetValue(ctx context.Context, pluginID int64, key string) (string, error)
-	SetValue(ctx context.Context, pluginID int64, key, value string) error
-	SetValueEncrypted(ctx context.Context, pluginID int64, key, value string) error
+	GetValue(ctx context.Context, pluginID int64, key string) (*pluginsdkdto.StorageValue, error)
+	SetValue(ctx context.Context, pluginID int64, key, value string, schemaVersion int64) error
+	SetValueEncrypted(ctx context.Context, pluginID int64, key, value string, schemaVersion int64) error
 	DeleteValue(ctx context.Context, pluginID int64, key string) error
-	GetAllValues(ctx context.Context, pluginID int64) (map[string]string, error)
+	GetAllValues(ctx context.Context, pluginID int64) (map[string]*pluginsdkdto.StorageValue, error)
 }
 
 // WorkSetQueryProvider 作品集查询
@@ -153,23 +153,23 @@ func (pc *pluginContext) UnregisterSiteBrowser(id string) error {
 
 // --- 插件自存信息（统一 KV）---
 
-func (pc *pluginContext) GetValue(key string) (string, error) {
+func (pc *pluginContext) GetValue(key string) (*pluginsdkdto.StorageValue, error) {
 	return pc.storage.GetValue(context.Background(), pc.pluginInfo.ID, key)
 }
 
 func (pc *pluginContext) SetValue(key string, value string) error {
-	return pc.storage.SetValue(context.Background(), pc.pluginInfo.ID, key, value)
+	return pc.storage.SetValue(context.Background(), pc.pluginInfo.ID, key, value, pc.pluginInfo.ConfigSchemaVersion)
 }
 
 func (pc *pluginContext) SetValueEncrypted(key string, value string) error {
-	return pc.storage.SetValueEncrypted(context.Background(), pc.pluginInfo.ID, key, value)
+	return pc.storage.SetValueEncrypted(context.Background(), pc.pluginInfo.ID, key, value, pc.pluginInfo.ConfigSchemaVersion)
 }
 
 func (pc *pluginContext) DeleteValue(key string) error {
 	return pc.storage.DeleteValue(context.Background(), pc.pluginInfo.ID, key)
 }
 
-func (pc *pluginContext) GetAllValues() (map[string]string, error) {
+func (pc *pluginContext) GetAllValues() (map[string]*pluginsdkdto.StorageValue, error) {
 	return pc.storage.GetAllValues(context.Background(), pc.pluginInfo.ID)
 }
 

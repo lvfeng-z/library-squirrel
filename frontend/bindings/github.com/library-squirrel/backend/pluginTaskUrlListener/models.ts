@@ -21,6 +21,11 @@ export class PluginWithExtension {
     "name": sql$0.NullString;
     "version": sql$0.NullString;
     "contractVersion": sql$0.NullInt64;
+
+    /**
+     * 插件声明的配置 schema 版本（plugin.json configSchemaVersion；0=legacy/未管理）
+     */
+    "configSchemaVersion": sql$0.NullInt64;
     "capabilities": sql$0.NullString;
     "description": sql$0.NullString;
     "changelog": sql$0.NullString;
@@ -66,6 +71,9 @@ export class PluginWithExtension {
         }
         if (!("contractVersion" in $$source)) {
             this["contractVersion"] = (new sql$0.NullInt64());
+        }
+        if (!("configSchemaVersion" in $$source)) {
+            this["configSchemaVersion"] = (new sql$0.NullInt64());
         }
         if (!("capabilities" in $$source)) {
             this["capabilities"] = (new sql$0.NullString());
@@ -113,15 +121,16 @@ export class PluginWithExtension {
         const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
         const $$createField7_0 = $$createType1;
-        const $$createField8_0 = $$createType0;
+        const $$createField8_0 = $$createType1;
         const $$createField9_0 = $$createType0;
         const $$createField10_0 = $$createType0;
         const $$createField11_0 = $$createType0;
         const $$createField12_0 = $$createType0;
-        const $$createField13_0 = $$createType1;
+        const $$createField13_0 = $$createType0;
         const $$createField14_0 = $$createType1;
-        const $$createField15_0 = $$createType2;
-        const $$createField16_0 = $$createType0;
+        const $$createField15_0 = $$createType1;
+        const $$createField16_0 = $$createType2;
+        const $$createField17_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -138,32 +147,35 @@ export class PluginWithExtension {
         if ("contractVersion" in $$parsedSource) {
             $$parsedSource["contractVersion"] = $$createField7_0($$parsedSource["contractVersion"]);
         }
+        if ("configSchemaVersion" in $$parsedSource) {
+            $$parsedSource["configSchemaVersion"] = $$createField8_0($$parsedSource["configSchemaVersion"]);
+        }
         if ("capabilities" in $$parsedSource) {
-            $$parsedSource["capabilities"] = $$createField8_0($$parsedSource["capabilities"]);
+            $$parsedSource["capabilities"] = $$createField9_0($$parsedSource["capabilities"]);
         }
         if ("description" in $$parsedSource) {
-            $$parsedSource["description"] = $$createField9_0($$parsedSource["description"]);
+            $$parsedSource["description"] = $$createField10_0($$parsedSource["description"]);
         }
         if ("changelog" in $$parsedSource) {
-            $$parsedSource["changelog"] = $$createField10_0($$parsedSource["changelog"]);
+            $$parsedSource["changelog"] = $$createField11_0($$parsedSource["changelog"]);
         }
         if ("entryPath" in $$parsedSource) {
-            $$parsedSource["entryPath"] = $$createField11_0($$parsedSource["entryPath"]);
+            $$parsedSource["entryPath"] = $$createField12_0($$parsedSource["entryPath"]);
         }
         if ("rootPath" in $$parsedSource) {
-            $$parsedSource["rootPath"] = $$createField12_0($$parsedSource["rootPath"]);
+            $$parsedSource["rootPath"] = $$createField13_0($$parsedSource["rootPath"]);
         }
         if ("backupId" in $$parsedSource) {
-            $$parsedSource["backupId"] = $$createField13_0($$parsedSource["backupId"]);
+            $$parsedSource["backupId"] = $$createField14_0($$parsedSource["backupId"]);
         }
         if ("sortNum" in $$parsedSource) {
-            $$parsedSource["sortNum"] = $$createField14_0($$parsedSource["sortNum"]);
+            $$parsedSource["sortNum"] = $$createField15_0($$parsedSource["sortNum"]);
         }
         if ("uninstalled" in $$parsedSource) {
-            $$parsedSource["uninstalled"] = $$createField15_0($$parsedSource["uninstalled"]);
+            $$parsedSource["uninstalled"] = $$createField16_0($$parsedSource["uninstalled"]);
         }
         if ("activationType" in $$parsedSource) {
-            $$parsedSource["activationType"] = $$createField16_0($$parsedSource["activationType"]);
+            $$parsedSource["activationType"] = $$createField17_0($$parsedSource["activationType"]);
         }
         return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }

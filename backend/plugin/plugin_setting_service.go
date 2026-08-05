@@ -60,8 +60,10 @@ func (s *PluginSettingService) GetSettings(ctx context.Context, publicId string)
 
 	items := make([]SettingItem, 0, len(declarations))
 	for _, d := range declarations {
-		val, exists := values[d.Key]
-		if !exists {
+		var val string
+		if entry, exists := values[d.Key]; exists {
+			val = entry.Value
+		} else {
 			val = d.Default
 		}
 		items = append(items, toSettingItem(d, val))
@@ -88,10 +90,14 @@ func (s *PluginSettingService) SaveSetting(ctx context.Context, publicId, key, v
 		return fmt.Errorf("未知的设置项: %s", key)
 	}
 
-	if decl.Encrypted {
-		return s.storage.SetValueEncrypted(ctx, plugin.GetID(), key, value)
+	var schemaVer int64
+	if plugin.ConfigSchemaVersion.Valid {
+		schemaVer = plugin.ConfigSchemaVersion.Int64
 	}
-	return s.storage.SetValue(ctx, plugin.GetID(), key, value)
+	if decl.Encrypted {
+		return s.storage.SetValueEncrypted(ctx, plugin.GetID(), key, value, schemaVer)
+	}
+	return s.storage.SetValue(ctx, plugin.GetID(), key, value, schemaVer)
 }
 
 // ResetSetting 重置设置项为声明默认值（删除存储值）

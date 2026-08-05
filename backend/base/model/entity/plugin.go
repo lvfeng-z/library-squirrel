@@ -14,6 +14,7 @@ type Plugin struct {
 	Name              sql.NullString `gorm:"column:name" json:"name"`
 	Version           sql.NullString `gorm:"column:version" json:"version"`
 	ContractVersion   sql.NullInt64  `gorm:"column:contract_version" json:"contractVersion"`
+	ConfigSchemaVersion sql.NullInt64 `gorm:"column:config_schema_version" json:"configSchemaVersion"` // 插件声明的配置 schema 版本（plugin.json configSchemaVersion；0=legacy/未管理）
 	Capabilities      sql.NullString `gorm:"column:capabilities" json:"capabilities"`
 	Description       sql.NullString `gorm:"column:description" json:"description"`
 	Changelog         sql.NullString `gorm:"column:changelog" json:"changelog"`
