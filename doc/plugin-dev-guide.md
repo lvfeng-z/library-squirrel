@@ -102,6 +102,8 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；首发 = 1 |
+| `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
 
 ### extensions 字段
@@ -143,7 +145,7 @@ type MyTaskHandler struct{}
 | `dialog` | `{contentType, source, props?}` | 弹窗（模态层） |
 | `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归） |
 | `siteBrowserList` | `{icon?, extensionId}` | 站点浏览器入口卡片（extensionId 必须等于某 siteBrowsers 的 id） |
-| `resourceViewer` | `{contentType, source, resourceType, props?}` | 资源渲染器（Handler 被动响应型；resourceType = 资源类型查找键，渲染器接收 `{resource, work}` props） |
+| `resourceViewer` | `{contentType, source, resourceType, props?}` | 资源渲染器（Handler 被动响应型；resourceType = 资源类型查找键，渲染器接收 `{context: render.Context}` props——独立于主程序展示 DTO 的断链契约，见「资源渲染器契约」） |
 
 **contentType 与 source 格式：**
 
@@ -180,6 +182,46 @@ type MyTaskHandler struct{}
 ```
 
 声明后，主程序在**插件管理页**自动渲染设置表单，用户编辑后存入插件自存信息；插件用 `ctx.GetValue(key)` 读取（见 8.2）。
+
+### 契约版本协商
+
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（首发 1）与 `minSupportedContractVersion`（首发 1），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+
+**校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
+- 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
+- 插件 `contractVersion` < 主程序 `minSupported` → 插件太旧，拒（提示升级插件）。
+- 缺字段（`contractVersion` 缺省 = 0）→ 视为当前契约放行（兼容旧/手编插件）。
+
+**跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段不 bump；删/改字段、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。
+
+### 能力声明
+
+`capabilities` 是封闭枚举数组，声明插件提供的**可选接口能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口（不盲调类型断言）。首发仅 1 值：
+
+| 能力 | 含义 | 对应接口 |
+|---|---|---|
+| `workOrderQuery` | 提供作品集作品原站序查询 | `WorkOrderQuerier`（TaskHandler 可选扩展） |
+
+实现 `WorkOrderQuerier` 的插件（如 pixiv）须声明 `"capabilities": ["workOrderQuery"]`；未实现的省略或 `[]`。能力不单独版本化，演进由全局 `contractVersion` 兜底。
+
+### 资源渲染器契约（render.Context）
+
+`resourceViewer` 扩展点的渲染器组件接收 `{context: render.Context}` props（运行时注入），**不是**主程序的 `WorkFullDTO`/`ResourceFullDTO`。`render.Context` 是 SDK 定义的插件渲染契约类型（`github.com/lvfeng-z/library-squirrel-sdk/dto/render`）：
+
+- **独立断链**：初始字段集对齐主程序 `WorkFullDTO`（含 work/site/authors/tags/resource 全量），此后独立演进——主程序展示 DTO 变更不传导至 `render.Context`，破坏性变更由 `contractVersion` 保护。
+- **前端引用**：插件前端组件（TS）从 `@bindings/.../library-squirrel-sdk/dto/render` 引用 `Context` 类型。Go 侧映射权威在主程序（`dto.ToRenderContext`），插件不写映射。
+
+插件作者按 `render.Context` 结构开发渲染器，不要依赖主程序展示 DTO 的字段细节（那些会随主程序 UI 演进而变）。
+
+### 共享枚举常量
+
+store_type / resource_type / generation 的字符串值**单一真相源**在 SDK `contract` 子包（`github.com/lvfeng-z/library-squirrel-sdk/contract`）。插件经 SDK dto 包的常量别名引用：
+
+- `sdkdto.StoreRoleImage`/`StoreRoleDocument`/`StoreRoleThumbnail`/`StoreRoleVideoTrack`/`StoreRoleAudioTrack`/`StoreRoleVideoMain`（store_type；dto 保留 StoreRole 旧名）
+- `sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Unknown`（resource_type）
+- `sdkdto.GenerationDownloaded`/`GenerationDerived`（generation）
+
+**禁止硬编码字面量**（`"image"`/`"videoTrack"`/`"downloaded"` 等）——改 SDK contract 一处即经编译期同步到所有引用点；硬编码绕过编译期保护，升级时易漂移。
 
 ## 四、插件入口
 
@@ -280,7 +322,7 @@ type TaskHandler interface {
 - `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain` 六角色 → 抛错
 - `unknown` 是合法显式值(插件确实无法分类时声明),不报错
 
-资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。
+资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。**禁止硬编码字面量**——store_type/resource_type/generation 一律用 SDK dto 常量(`sdkdto.StoreRole*`/`ResourceType*`/`Generation*`，真相源在 SDK `contract` 子包)，改一处即处处同步;硬编码绕过编译期保护，升级时易漂移（见「共享枚举常量」）。
 
 #### StoreSpec(资源产出声明)
 
@@ -699,3 +741,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 16. **登录态加密持久化 + 未登录引导**：cookie/credential 用 `SetValueEncrypted` 加密存储跨重启；`Create` 检测未登录时异步弹登录窗 + 返回"登录后重试"，不阻塞主线程（见 7.3）。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
+19. **manifest 声明 contractVersion**：发布前确认 `contractVersion` 与目标主程序契约版本一致（首发 1，跟随 SDK `transport.ContractVersion`）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 须声明 `"capabilities": ["workOrderQuery"]`；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
+21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
+22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。

@@ -76,7 +76,7 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 1. **必须声明 ResourceType**：`TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段必须填预定义值之一（`image`/`video`/`article`/`document`/`unknown`）。
 
    ```go
-   // 插件 SDK 常量（与主程序 entity.ResourceType* 一致）
+   // 插件 SDK 常量（真相源 SDK contract 子包，主程序 entity/dto 别名 re-export，改一处即处处同步）
    sdkdto.ResourceTypeImage / Video / Article / Document / Unknown
    ```
 
