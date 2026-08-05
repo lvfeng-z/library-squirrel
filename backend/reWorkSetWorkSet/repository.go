@@ -2,6 +2,8 @@ package reWorkSetWorkSet
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -91,6 +93,36 @@ func (r *ReWorkSetWorkSetRepository) ListChildWorkSetIds(ctx context.Context, pa
 		Order("sort_order ASC").
 		Pluck("child_work_set_id", &childIds).Error
 	return childIds, err
+}
+
+// UpdateSiteSortOrdersForChild 批量更新一个子作品集在各父集下的原站序（写 site_sort_order，不影响本地 sort_order）
+// 与 re_work_work_set.UpdateSiteSortOrders 的区别：此处 CASE 按 parent_work_set_id 匹配、限定单个 child 的父关系行
+func (r *ReWorkSetWorkSetRepository) UpdateSiteSortOrdersForChild(ctx context.Context, childWorkSetId int64, parentOrders map[int64]int) error {
+	if len(parentOrders) == 0 {
+		return nil
+	}
+	caseExpr, parentIds := buildParentCaseExpression(parentOrders)
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.ReWorkSetWorkSet)).
+		Where("child_work_set_id = ?", childWorkSetId).
+		Where("parent_work_set_id IN ?", parentIds).
+		Updates(map[string]interface{}{
+			"site_sort_order": gorm.Expr(caseExpr),
+			"update_time":     util.GetCurrentTimestamp(),
+		}).Error
+}
+
+// buildParentCaseExpression 构造按 parent_work_set_id 匹配的 CASE 表达式 + 涉及的父集 ID 列表
+// 抽为纯函数便于单测（环境 CGO 不可用时无法跑内存 SQLite，CASE 串构造由此覆盖）
+func buildParentCaseExpression(parentOrders map[int64]int) (expr string, parentIds []int64) {
+	parentIds = make([]int64, 0, len(parentOrders))
+	cases := make([]string, 0, len(parentOrders))
+	for parentId, order := range parentOrders {
+		parentIds = append(parentIds, parentId)
+		cases = append(cases, fmt.Sprintf("WHEN %d THEN %d", parentId, order))
+	}
+	return "CASE parent_work_set_id " + strings.Join(cases, " ") + " END", parentIds
 }
 
 // ListParentWorkSetIds 查询子作品集的直接父作品集ID

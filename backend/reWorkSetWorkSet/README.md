@@ -17,14 +17,15 @@
 | `ListChildWorkSetIds` | 父集的直接子集 ID（按 `sort_order` 升序） |
 | `CollectDescendantWorkSetIds` | 递归 CTE 向下取全部后代作品集 ID（不含自身） |
 | `CollectAncestorWorkSetIds` | 递归 CTE 向上取全部祖先作品集 ID（不含自身，环路检测用） |
+| `UpdateSiteSortOrdersForChild` | 批量更新一个子集在各父集下的原站序（写 `site_sort_order`，CASE 按 `parent_work_set_id` 匹配，不影响本地 `sort_order`） |
 
 ## 核心概念
 - **多父 DAG**：一个子作品集可有多个父集，但禁止成环。本表只存关系，环路由 service 层在事务内用 `CollectAncestorWorkSetIds` 检测。
-- **`sort_order`** 属 `(parent_work_set_id, child_work_set_id)` 元组——同一子集在不同父集下顺序可不同，故 order 与关系行绑定，联合唯一索引 `(parent, child)`。
+- **双轨排序（对齐 `re_work_work_set`）**：`sort_order` 本地序（用户拖拽 / 建立关系时初始取原站序）/ `site_sort_order` 原站序（插件 `QueryWorkSetRelations` 拉取，用户不可改）。`sort_order` 属 `(parent_work_set_id, child_work_set_id)` 元组——同一子集在不同父集下顺序可不同，故 order 与关系行绑定，联合唯一索引 `(parent, child)`。
 
 ## 依赖关系
 - 依赖：`database`（`BaseRepository` + `dbFromCtx` 事务感知）
-- 被依赖：`workSet` service（接口注入）
+- 被依赖：`workSet` service（接口注入，层级管理 / 传递包含）、`work` service（`WorkSetRelationWriter` 接口注入，作品入库后异步建立父子关系 + 写 `site_sort_order`）
 
 ## 关键设计
 - **递归 CTE 用 `UNION`（非 `UNION ALL`）**：多父 DAG 下菱形依赖（A→B、A→C、B→D、C→D）会让同一后代会经多条路径到达，`UNION` 自动去重，否则重复展开。

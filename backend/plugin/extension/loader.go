@@ -71,6 +71,8 @@ func UnmarshalCapabilities(s sql.NullString) []string {
 const (
 	// CapabilityWorkOrderQuery 作品集原站序查询能力（插件实现 sdkdto.WorkOrderQuerier 可选接口）。
 	CapabilityWorkOrderQuery = "workOrderQuery"
+	// CapabilityWorkSetRelationQuery 作品集父集关系查询能力（插件实现 sdkdto.WorkSetRelationQuerier 可选接口）。
+	CapabilityWorkSetRelationQuery = "workSetRelationQuery"
 )
 
 // CapabilityQuerier 按插件公开 ID 查询其声明的能力集合（Loader 实现，供 fetcher 声明驱动调用）。

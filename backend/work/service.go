@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -138,11 +139,29 @@ type ReWorkWorkSetWriter interface {
 	MaxSortOrderByWorkSetId(ctx context.Context, workSetId int64) (int64, error)
 }
 
+// WorkSetRelationWriter 作品集间父子关系写入接口（reWorkSetWorkSet 模块实现）
+// 用于作品入库后异步拉取父集关系并建立层级 + 写 site_sort_order（对齐 ReWorkWorkSetWriter 的写入角色）
+type WorkSetRelationWriter interface {
+	// CollectAncestorWorkSetIds 递归查询作品集的所有祖先 ID（环路检测：建立 parent→child 前确认 child 非 parent 祖先）
+	CollectAncestorWorkSetIds(ctx context.Context, workSetId int64) ([]int64, error)
+	// SaveRelation 幂等建立父子关系（OnConflict DoNothing，重复建立同一关系不报错、不覆盖既有字段）
+	SaveRelation(ctx context.Context, rel *entity2.ReWorkSetWorkSet) error
+	// UpdateSiteSortOrdersForChild 批量更新一个子集在各父集下的原站序（写 site_sort_order，不影响本地 sort_order）
+	UpdateSiteSortOrdersForChild(ctx context.Context, childWorkSetId int64, parentOrders map[int64]int) error
+}
+
 // WorkSetOrderFetcher 原站序获取能力（plugin 模块实现，按 task 的 plugin 身份路由到对应插件 proxy）
 // 用于作品入库后拉取作品集内作品的原站顺序；nil（未注入）时跳过拉取
 type WorkSetOrderFetcher interface {
 	// QueryWorkSetOrder 按 (pluginPublicId, extensionId) 定位插件，拉取作品集内作品的原站全序；空=插件不掌握
 	QueryWorkSetOrder(ctx context.Context, pluginPublicId, extensionId string, siteId int64, siteWorkSetId string) ([]*sdkdto.WorkOrderEntry, error)
+}
+
+// WorkSetRelationFetcher 作品集父集关系获取能力（plugin 模块实现，按 task 的 plugin 身份路由到对应插件 proxy）
+// 用于作品入库后拉取其所属各 workSet 的父集关系 + 子集原站序；nil（未注入）时跳过拉取
+type WorkSetRelationFetcher interface {
+	// QueryWorkSetRelations 按 (pluginPublicId, extensionId) 定位插件，拉取本作品集的父集 + 在各父集下的原站序；空=无父/插件不掌握
+	QueryWorkSetRelations(ctx context.Context, pluginPublicId, extensionId string, siteId int64, siteWorkSetId string) ([]*sdkdto.WorkSetRelationEntry, error)
 }
 
 // LocalTagFindOrCreator 本地标签查找或创建接口
@@ -365,9 +384,12 @@ type Service struct {
 	reWorkAuthorWriter       ReWorkAuthorWriter
 	localTagFindOrCreator    LocalTagFindOrCreator
 	localAuthorFindOrCreator LocalAuthorFindOrCreator
+	workSetRelationWriter    WorkSetRelationWriter
 
 	// 原站序获取能力（入库后异步拉取，nil 时跳过；经 SetWorkSetOrderFetcher 延迟注入）
-	workSetOrderFetcher WorkSetOrderFetcher
+	// 作品集父集关系获取能力（入库后异步拉取，nil 时跳过；经 SetWorkSetRelationFetcher 延迟注入）
+	workSetOrderFetcher    WorkSetOrderFetcher
+	workSetRelationFetcher WorkSetRelationFetcher
 
 	// 逻辑删除/复原所需的关联读取接口
 	reWorkTagReader     ReWorkTagReader
@@ -431,6 +453,7 @@ func NewService(
 	resourceStoreSaver ResourceStoreSaver,
 	siteAuthorByIdsReader SiteAuthorByIdsReader,
 	workSetByIdsReader WorkSetByIdsReader,
+	workSetRelationWriter WorkSetRelationWriter,
 ) *Service {
 	return &Service{
 		repo:                     repo,
@@ -473,6 +496,7 @@ func NewService(
 		resourceStoreSaver:       resourceStoreSaver,
 		siteAuthorByIdsReader:    siteAuthorByIdsReader,
 		workSetByIdsReader:       workSetByIdsReader,
+		workSetRelationWriter:    workSetRelationWriter,
 	}
 }
 
@@ -480,6 +504,11 @@ func NewService(
 // plugin 模块在 work 之后初始化（registry 需先就绪），故 WorkSetOrderFetcher 经此 setter 注入
 func (s *Service) SetWorkSetOrderFetcher(f WorkSetOrderFetcher) {
 	s.workSetOrderFetcher = f
+}
+
+// SetWorkSetRelationFetcher 延迟注入作品集父集关系获取能力（同 SetWorkSetOrderFetcher 的延迟注入理由）
+func (s *Service) SetWorkSetRelationFetcher(f WorkSetRelationFetcher) {
+	s.workSetRelationFetcher = f
 }
 
 // SetRunningTaskStopper 延迟注入运行中任务停止器
@@ -1320,6 +1349,10 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 	if s.workSetOrderFetcher != nil && len(workResp.WorkSets) > 0 {
 		go s.syncSiteSortOrders(task, workResp)
 	}
+	// 事务提交后异步拉取作品集父集关系，建立层级 + 写 site_sort_order（同上：网络调用须事务外异步）
+	if s.workSetRelationFetcher != nil && len(workResp.WorkSets) > 0 {
+		go s.syncWorkSetRelations(task, workResp)
+	}
 	return workId, nil
 }
 
@@ -1380,6 +1413,86 @@ func (s *Service) applySiteSortOrders(ctx context.Context, siteId int64, siteWor
 		return nil
 	}
 	return s.reWorkWorkSetWriter.UpdateSiteSortOrders(ctx, workSet.ID, sortOrders)
+}
+
+// syncWorkSetRelations 作品入库后异步拉取其所属各 workSet 的父集关系，建立层级 + 写 site_sort_order（事务外、带超时）
+// 对齐 syncSiteSortOrders 的拉取范式（主程序→插件 pull），遍历 workResp.WorkSets 逐集拉取其父集关系
+func (s *Service) syncWorkSetRelations(task *entity2.Task, workResp *sdkdto.WorkResponse) {
+	ctx, cancel := context.WithTimeout(context.Background(), siteOrderSyncTimeout)
+	defer cancel()
+	siteId := task.SiteID.Int64
+	for _, ws := range workResp.WorkSets {
+		if ws.SiteWorkSetId == "" || !task.PluginPublicID.Valid {
+			continue
+		}
+		childWorkSet, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, ws.SiteWorkSetId)
+		if err != nil {
+			logger.Log.Warnf("查询子作品集失败(跳过父集关系同步) siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
+			continue
+		}
+		parents, err := s.workSetRelationFetcher.QueryWorkSetRelations(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
+		if err != nil {
+			logger.Log.Warnf("拉取作品集父集关系失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
+			continue
+		}
+		if len(parents) == 0 {
+			continue
+		}
+		if err := s.applyWorkSetRelations(ctx, siteId, childWorkSet.ID, parents); err != nil {
+			logger.Log.Warnf("写入作品集父集关系失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
+		}
+	}
+}
+
+// applyWorkSetRelations upsert 父集实体、建立父子关系（事务内环路检测）、写 site_sort_order
+// 初始本地序 sort_order 取原站序（SaveRelation 的 OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽）
+func (s *Service) applyWorkSetRelations(ctx context.Context, siteId, childWorkSetId int64, parents []*sdkdto.WorkSetRelationEntry) error {
+	validParents := make([]*sdkdto.WorkSetRelationEntry, 0, len(parents))
+	parentDTOs := make([]*sdkdto.TaskWorkSetDTO, 0, len(parents))
+	for _, p := range parents {
+		if p.ParentSiteWorkSetId == "" {
+			continue
+		}
+		validParents = append(validParents, p)
+		parentDTOs = append(parentDTOs, &sdkdto.TaskWorkSetDTO{SiteWorkSetId: p.ParentSiteWorkSetId, WorkSetName: p.ParentWorkSetName})
+	}
+	if len(validParents) == 0 {
+		return nil
+	}
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		// upsert 父集实体，回查 DB ID（与 validParents 顺序对齐）
+		parentIds, err := s.upsertWorkSets(txCtx, parentDTOs, siteId)
+		if err != nil {
+			return fmt.Errorf("upsert 父作品集失败: %w", err)
+		}
+		parentOrders := make(map[int64]int, len(validParents))
+		for i, p := range validParents {
+			parentDbId := parentIds[i]
+			// 环路检测：若 child 已是 parent 的祖先，建 parent→child 会闭合环路，跳过该父
+			ancestors, err := s.workSetRelationWriter.CollectAncestorWorkSetIds(txCtx, parentDbId)
+			if err != nil {
+				return fmt.Errorf("查询父作品集祖先失败(parent=%d): %w", parentDbId, err)
+			}
+			if slices.Contains(ancestors, childWorkSetId) {
+				logger.Log.Warnf("跳过成环的父子关系 parent=%d child=%d", parentDbId, childWorkSetId)
+				continue
+			}
+			// 幂等建立关系：初始 sort_order 取原站序，OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽
+			rel := entity2.NewReWorkSetWorkSet()
+			rel.ParentWorkSetID = sql.NullInt64{Int64: parentDbId, Valid: true}
+			rel.ChildWorkSetID = sql.NullInt64{Int64: childWorkSetId, Valid: true}
+			rel.SortOrder = sql.NullInt64{Int64: p.SortOrder, Valid: true}
+			if err := s.workSetRelationWriter.SaveRelation(txCtx, rel); err != nil {
+				return fmt.Errorf("建立父子关系失败(parent=%d child=%d): %w", parentDbId, childWorkSetId, err)
+			}
+			parentOrders[parentDbId] = int(p.SortOrder)
+		}
+		if len(parentOrders) == 0 {
+			return nil
+		}
+		// 批量写 site_sort_order（覆盖写，支持 re-pull 刷新；不影响本地 sort_order）
+		return s.workSetRelationWriter.UpdateSiteSortOrdersForChild(txCtx, childWorkSetId, parentOrders)
+	})
 }
 
 // saveWorkInfoInTx 事务内执行 SaveWorkInfo 的核心逻辑

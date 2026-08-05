@@ -27,11 +27,12 @@
 
 - **关联写入中枢**：work 持有 reWork 系列的 Writer / Reader 接口，保存作品时全量替换关联（DeleteByWorkId + SaveBatch）。`buildWorkSetLinks` 按各 workSet 当前最大 sort_order +1 续排（纠正维度错位，避免集内塌 0）。
 - **原站序拉取编排**：`SaveWorkInfo` 作品入库事务提交后，异步经 `WorkSetOrderFetcher`（plugin 提供，`SetWorkSetOrderFetcher` 延迟注入）拉取作品所属作品集的原站序，映射 siteWorkId→work.id 写 `re_work_work_set.site_sort_order`（ORCHESTRATION_BY_CALLER：编排归入库发起方 work，获取能力归 plugin）。网络调用须事务外（`MaxOpenConns=1` 死锁），故事务提交后异步派发。
+- **作品集父集关系拉取编排**：同窗口异步经 `WorkSetRelationFetcher`（plugin 提供，`SetWorkSetRelationFetcher` 延迟注入）拉取作品所属作品集的父集关系，upsert 父集 + 建立父子关系（事务内 `CollectAncestorWorkSetIds` 环路检测）+ 写 `re_work_set_work_set.site_sort_order`（对齐原站序拉取范式）。初始本地序 `sort_order` 取原站序，`SaveRelation` 的 OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽。
 - **关联快照**：软删除 / 板块重执行前，采集作品的作者 / 标签 / 作品集关联快照（含 role_name / sort_order / is_cover），用于恢复。
 - **逻辑删除对外、物理删除内部**：`SoftDelete`（Handler 暴露）软删除进回收站；物理删除 `DeleteWorkAndSurroundingData` / `HardDeleteWork` 为内部方法，不经 Handler 暴露，供 recycleBin 复原覆盖分支调用。
 - **WorkRestorer**：work 实现 recycleBin 的 WorkRestorer 接口（`HardDeleteWork` / `RestoreWorkFromSnapshot` / `GetBySiteAndSiteWorkID`），支撑回收站复原（含引用校验、关联重建）。
 
 ## 依赖关系
 
-- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、persistentStore（Store 删除/读取）、resource（Resource 保存/删除）、localTagFindOrCreator、backup（移动备份）、recycleBin（RecycleItemSaver：写回收站快照）、plugin（WorkSetOrderFetcher：原站序获取，延迟注入）
+- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/读取）、resource（Resource 保存/删除）、localTagFindOrCreator、backup（移动备份）、recycleBin（RecycleItemSaver：写回收站快照）、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）
 - 被依赖：前端作品库（列表 / 详情 / 编辑）、task（任务完成后落库作品）、recycleBin（WorkRestorer：复原重建 / 覆盖删除）

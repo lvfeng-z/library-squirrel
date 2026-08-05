@@ -863,6 +863,7 @@ func (app *App) initAdvancedServices() error {
 		workResourceStoreRepo, // ResourceStoreSaver(SaveBatch)
 		app.SiteAuthorService,
 		workSetRepo,
+		reWorkSetWorkSetRepo,
 	)
 
 	// recycleBin 服务（work 之后创建，注入 WorkRestorer=app.WorkService）
@@ -1020,6 +1021,8 @@ func (app *App) initAdvancedServices() error {
 
 	// 注入原站序获取能力（plugin 提供，work 作品入库后异步拉取写 site_sort_order；registry 已就绪）
 	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry, app.pluginLoader))
+	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
+	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 
 	return nil
 }

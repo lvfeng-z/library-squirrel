@@ -184,6 +184,37 @@ func workOrderEntriesFromProto(entries []*gen.WorkOrderEntry) []*pluginsdkdto.Wo
 	return result
 }
 
+// QueryWorkSetRelations 查询本作品集的父集关系 + 在各父集下的原站序（主程序作品入库后拉取，仅写 site_sort_order）
+func (p *TaskHandlerProxy) QueryWorkSetRelations(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkSetRelationEntry, error) {
+	client, err := p.getTaskClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, pluginsdkliveness.UnaryRPCTimeout)
+	defer cancel()
+	resp, err := client.QueryWorkSetRelations(ctx, &gen.QueryWorkSetRelationsRequest{
+		SiteId:        siteId,
+		SiteWorkSetId: siteWorkSetId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return workSetRelationEntriesFromProto(resp.GetParents()), nil
+}
+
+// workSetRelationEntriesFromProto 作品集父集关系条目 proto → DTO
+func workSetRelationEntriesFromProto(entries []*gen.WorkSetRelationEntry) []*pluginsdkdto.WorkSetRelationEntry {
+	result := make([]*pluginsdkdto.WorkSetRelationEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, &pluginsdkdto.WorkSetRelationEntry{
+			ParentSiteWorkSetId: e.GetParentSiteWorkSetId(),
+			ParentWorkSetName:   e.GetParentWorkSetName(),
+			SortOrder:           e.GetSortOrder(),
+		})
+	}
+	return result
+}
+
 func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {

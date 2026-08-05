@@ -8,11 +8,13 @@ import (
 
 // ReWorkSetWorkSet 作品集间父子关联（多父 DAG：一个子作品集可有多个父集，禁止成环）
 // 逻辑关联 merge 的数据载体——B 作为 A 的子集 = 一行 (parent=A, child=B)
+// 双轨排序（对齐 re_work_work_set）：sort_order 本地序（用户拖拽）/ site_sort_order 原站序（插件 QueryWorkSetRelations 拉取）
 type ReWorkSetWorkSet struct {
 	*model.BaseEntity
 	ParentWorkSetID sql.NullInt64 `gorm:"column:parent_work_set_id;uniqueIndex:idx_re_work_set_work_set_pc;index:idx_re_work_set_work_set_parent;" json:"parentWorkSetId"`
 	ChildWorkSetID  sql.NullInt64 `gorm:"column:child_work_set_id;uniqueIndex:idx_re_work_set_work_set_pc;index:idx_re_work_set_work_set_child;" json:"childWorkSetId"`
 	SortOrder       sql.NullInt64 `gorm:"column:sort_order;index:idx_re_work_set_work_set_parent;" json:"sortOrder"`
+	SiteSortOrder   sql.NullInt64 `gorm:"column:site_sort_order;" json:"siteSortOrder"`
 }
 
 func NewReWorkSetWorkSet() *ReWorkSetWorkSet {
