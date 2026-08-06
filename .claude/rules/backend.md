@@ -47,9 +47,9 @@ query.go            — 查询 DTO
 
 - **Site（站点）**: 远程来源（pixiv 等）
 - **Work（作品）**: 核心实体 — 资源集合 + 元数据
-- **Resource（资源）**: Work 下的可展示单元，带 `ResourceType`（image/video/article/document/unknown）
-- **ResourceType（资源类型）**: 封闭枚举，决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）
-- **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/videoMain（封闭枚举；videoMain 为视频可播放主体，封装原文件或合并产物）
+- **Resource（资源）**: Work 下的可展示单元，带 `ResourceType`（内置 image/video/article/document/audio/unknown 或插件自定义类型）
+- **ResourceType（资源类型）**: 内置 6 类（image/video/article/document/audio/unknown）封闭 + 插件可经 manifest `resourceTypes` 段声明自定义类型（注册进 `ResourceTypeRegistry`，注册时强校验）；决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）
+- **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/videoMain/audioMain（内置封闭枚举；videoMain 为视频可播放主体、audioMain 为音频可播放主体；插件自定义 store 角色延后）
 - **本地标签/作者 ↔ 站点标签/作者**: 通过关联实现跨站点统一搜索
 - **Task（任务）**: 作品创建流程（URL → 插件 → 保存），插件 Create 声明 ResourceType
 
@@ -71,7 +71,7 @@ query.go            — 查询 DTO
 - **错误处理**：`var ErrXxx = errors.New(...)`，使用 `errors.Is()` 判断。
 - **所有公开方法以** `context.Context` 作为第一个参数，禁止在 `context.WithValue` 中存储业务数据。
 - **Service 层禁止直接导入** `backend/database`，仅 Repository 层可导入。
-- **RESOURCE_TYPE_STRICT** (P0): 资源类型与 store_type 严格识别——插件 Create 必须声明有效 `ResourceType`（`entity.ResourceType*` 之一，unknown 合法），`StoreSpec.Role` 必须 ∈ 6 预定义 `entity.StoreType*`；空/未知值在写入路径抛错（`entity.ValidateResourceType`/`ValidateStoreType`），不推断、不兜底。展示主体由后端 `ResolvePrimaryStore`（按 PrimaryRoles）派生，前端纯消费。规约见 `doc/resource-type-spec.md`。
+- **RESOURCE_TYPE_STRICT** (P0): 资源类型与 store_type 严格识别——插件 Create 必须声明有效 `ResourceType`（已注册即可：内置 `entity.ResourceType*` 之一含 audio，或插件经 resourceTypes 段注册的自定义类型；unknown 合法），`StoreSpec.Role` 必须 ∈ 7 预定义 `entity.StoreType*`（含 audioMain）；空/未注册值在写入路径抛错（`entity.ValidateResourceType`/`ValidateStoreType`），不推断、不兜底。插件自定义类型注册时强校验（反向域名前缀 + Roles 合法性，`entity.ResourceTypeRegistry.Register`）。展示主体由后端 `ResolvePrimaryStore`（按 PrimaryRoles）派生，前端纯消费。规约见 `doc/resource-type-spec.md`。
 - **ORCHESTRATION_BY_CALLER** (P0): 业务编排（串联多个原子能力完成一个流程）归**发起方**模块——发起方通过依赖注入获取各提供方的能力接口，自行串联；**禁止**把多个模块的能力揉进一个「集成器/编排器」接口在某个提供方模块集中实现。例：「拉取插件原站序 + 映射 + 写 site_sort_order」的编排归发起该流程的模块（如入库流程的 `SaveWorkInfo`）；「从插件获取」归 plugin（提供获取接口）、「写入 sort_order」归 workSet（提供写入接口），发起方注入两者并编排。不建 `WorkSetOrderSyncer` 这种把两者揉在单一模块的接口——它会导致模块职责越界。
 
 ## 禁止的做法

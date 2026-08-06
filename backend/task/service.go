@@ -770,6 +770,41 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 
 			children := taskResp.Children
 			if len(children) == 0 {
+				// leaf 响应:taskResp 本身是独立任务(无 parent/children,如 local 单文件导入),
+				// 直接创建为叶子任务(pid=0),不套 parent+children 结构。
+				leafTask := &entity.Task{BaseEntity: &model.BaseEntity{}}
+				leafTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
+				leafTask.SiteWorkID = sql.NullString{String: taskResp.SiteWorkId, Valid: true}
+				leafTask.URL = sql.NullString{String: taskResp.Url, Valid: true}
+				leafTask.Status = int(TaskStatusCreated)
+				leafTask.HasChild = sql.NullBool{Bool: false, Valid: true}
+				leafTask.PluginPublicID = listener.PublicID
+				leafTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
+				if taskResp.SiteName != "" {
+					siteId, ok := siteCache[taskResp.SiteName]
+					if !ok {
+						if site, err := s.siteSvc.GetByName(ctx, taskResp.SiteName); err == nil && site != nil {
+							siteId = int(site.ID)
+							siteCache[taskResp.SiteName] = siteId
+						}
+					}
+					leafTask.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
+				}
+				if taskResp.PluginData != "" {
+					leafTask.PluginData = sql.NullString{String: taskResp.PluginData, Valid: true}
+				}
+				if len(taskResp.InvolvedRoles) > 0 {
+					leafTask.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
+				}
+				// resourceType:创建期声明的资源类型(已注册即可,含内置 audio 或插件自定义);空=NULL(未声明)
+				if taskResp.ResourceType != "" {
+					leafTask.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
+				}
+				batch = append(batch, leafTask)
+				if len(batch) >= batchSize {
+					flushBatch()
+				}
+				outChan <- &CreateTaskStreamChan{Task: leafTask}
 				continue
 			}
 

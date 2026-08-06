@@ -13,6 +13,7 @@ const (
 	StoreTypeVideoTrack = contract.StoreTypeVideoTrack
 	StoreTypeAudioTrack = contract.StoreTypeAudioTrack
 	StoreTypeVideoMain  = contract.StoreTypeVideoMain
+	StoreTypeAudioMain  = contract.StoreTypeAudioMain
 
 	GenerationDownloaded = contract.GenerationDownloaded
 	GenerationDerived    = contract.GenerationDerived

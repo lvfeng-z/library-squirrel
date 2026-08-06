@@ -102,7 +102,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 2 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 3 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
@@ -197,13 +197,47 @@ type MyTaskHandler struct{}
 
 ### 能力声明
 
-`capabilities` 是封闭枚举数组，声明插件提供的**可选接口能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口（不盲调类型断言）。首发仅 1 值：
+`capabilities` 是内置枚举数组，声明插件提供的**可选能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口或解析对应声明段。当前 2 值：
 
-| 能力 | 含义 | 对应接口 |
+| 能力 | 含义 | 对应接口/声明 |
 |---|---|---|
 | `workOrderQuery` | 提供作品集作品原站序查询 | `WorkOrderQuerier`（TaskHandler 可选扩展） |
+| `resourceTypeProvider` | 提供自定义资源类型声明 | manifest `resourceTypes` 段（见「自定义资源类型声明」） |
 
-实现 `WorkOrderQuerier` 的插件（如 pixiv）须声明 `"capabilities": ["workOrderQuery"]`；未实现的省略或 `[]`。能力不单独版本化，演进由全局 `contractVersion` 兜底。
+实现 `WorkOrderQuerier` 的插件（如 pixiv）须声明 `"capabilities": ["workOrderQuery"]`；声明自定义资源类型的插件须含 `"resourceTypeProvider"`（主程序据此解析 `resourceTypes` 段）。未声明者省略或 `[]`。能力不单独版本化，演进由全局 `contractVersion` 兜底。
+
+### 自定义资源类型声明（resourceTypes 段）
+
+插件可声明**自定义资源类型**，经主程序注册进 `ResourceTypeRegistry` 后，插件 Create 即可声明该类型资源（`TaskCreateResponse.ResourceType` 填声明的类型值）。要求主程序 `contractVersion`≥3。
+
+**声明方式**：plugin.json 顶层加 `resourceTypes` 段 + `capabilities` 含 `resourceTypeProvider` 通行证：
+
+```json
+{
+  "capabilities": ["resourceTypeProvider"],
+  "resourceTypes": [
+    {
+      "type": "com.example.interactiveNovel",
+      "roles": [
+        {"storeType": "document", "min": 1, "max": 1},
+        {"storeType": "image", "min": 0, "max": 0}
+      ],
+      "primaryRoles": ["document"]
+    }
+  ]
+}
+```
+
+**字段**：
+- `type`：类型值，**强制反向域名前缀**（如 `com.example.xxx`），禁止裸通用词（防抢占内置名）。插件 Create 时填此值。
+- `roles`：结构角色 + 基数。`storeType` 必须 ∈ 内置 7 角色（`image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain`）；**插件自定义 store 角色当前不支持**（延后）。`min`=最少数量(0=可选,1=必含)，`max`=最多数量(0=不限,1=单例)。
+- `primaryRoles`：展示主体优先级链，每项须在 `roles.storeType` 集合内。
+
+**注册时强校验**（守卫严格识别不变量；坏 spec 拒绝并记日志跳过，不株连插件其他能力）：
+- `type` 缺反向域名前缀 → 拒；`roles.storeType` 非 7 角色 / `min`>`max` / `primaryRoles` 不在 roles → 拒。
+- 两插件声明同 `type` → 后注册者拒 + 日志告警。
+
+**渲染/完整性自动跟随**：自定义类型注册后，前端 resourceViewer 按该类型查找插件 `resourceViewer` 渲染器（命中覆盖内置，无则降级 UnknownRenderer）；完整性按 `roles` 基数自动判定。完整规约见 `doc/resource-type-spec.md` 第七节。
 
 ### 资源渲染器契约（render.Context）
 
@@ -218,8 +252,8 @@ type MyTaskHandler struct{}
 
 store_type / resource_type / generation 的字符串值**单一真相源**在 SDK `contract` 子包（`github.com/lvfeng-z/library-squirrel-sdk/contract`）。插件经 SDK dto 包的常量别名引用：
 
-- `sdkdto.StoreRoleImage`/`StoreRoleDocument`/`StoreRoleThumbnail`/`StoreRoleVideoTrack`/`StoreRoleAudioTrack`/`StoreRoleVideoMain`（store_type；dto 保留 StoreRole 旧名）
-- `sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Unknown`（resource_type）
+- `sdkdto.StoreRoleImage`/`StoreRoleDocument`/`StoreRoleThumbnail`/`StoreRoleVideoTrack`/`StoreRoleAudioTrack`/`StoreRoleVideoMain`/`StoreRoleAudioMain`（store_type；dto 保留 StoreRole 旧名）
+- `sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Audio`/`Unknown`（resource_type）
 - `sdkdto.GenerationDownloaded`/`GenerationDerived`（generation）
 
 **禁止硬编码字面量**（`"image"`/`"videoTrack"`/`"downloaded"` 等）——改 SDK contract 一处即经编译期同步到所有引用点；硬编码绕过编译期保护，升级时易漂移。
@@ -317,10 +351,10 @@ type TaskHandler interface {
 
 #### 声明资源类型(ResourceType,必填)
 
-`TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段**必须声明**预定义值之一(`sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Unknown`)。主程序**严格识别,不推断、不兜底**:
+`TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段**必须声明**内置值之一(`sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Audio`/`Unknown`)或插件经 `resourceTypes` 段注册的自定义类型。主程序**严格识别,不推断、不兜底**:
 
-- `ResourceType` 空 / 非预定义值 → 写入路径抛错(任务创建/执行失败)
-- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain` 六角色 → 抛错
+- `ResourceType` 空 / 未注册值 → 写入路径抛错(任务创建/执行失败)
+- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain` 七角色 → 抛错
 - `unknown` 是合法显式值(插件确实无法分类时声明),不报错
 
 资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。**禁止硬编码字面量**——store_type/resource_type/generation 一律用 SDK dto 常量(`sdkdto.StoreRole*`/`ResourceType*`/`Generation*`，真相源在 SDK `contract` 子包)，改一处即处处同步;硬编码绕过编译期保护，升级时易漂移（见「共享枚举常量」）。
@@ -329,7 +363,7 @@ type TaskHandler interface {
 
 ```go
 type StoreSpec struct {
-    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | videoMain
+    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | videoMain | audioMain
     Generation  string        // downloaded(流式可续传) | derived(一次性派生)
     ReadCloser  io.ReadCloser // 资源数据流,调用方负责 Close
     Format      string        // 文件扩展名

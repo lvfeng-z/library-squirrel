@@ -101,7 +101,9 @@ function formatDatetime(timestamp: number | null | undefined): string {
 // 取行状态：优先 store 实时状态，回退行数据自带状态
 function getStatus(row: TaskProgressTreeDTO): number {
   const taskId = row.taskProgress?.task?.id
-  const rowStatus = row.taskProgress?.task?.status
+  // proto3 TaskDTO.Status 用 json omitempty,Created(0=默认值)被序列化省略→前端读到 undefined;
+  // 字段缺失视为 Created(0),避免回退 invalidStatus(-1) 误显"失败"
+  const rowStatus = row.taskProgress?.task?.status ?? TaskStatusEnum.CREATED
   if (isNullish(taskId)) return rowStatus ?? invalidStatus
   const storeStatus = (row.hasChildren ? parentTaskStore : taskStore).getTask(taskId)?.task?.status
   return storeStatus ?? rowStatus ?? invalidStatus

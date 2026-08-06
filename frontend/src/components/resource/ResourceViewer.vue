@@ -10,6 +10,7 @@ import { workToRenderContext } from '@renderer/apis/http/wrappers/work'
 import PluginBoundary from '@renderer/components/common/PluginBoundary.vue'
 import ImageRenderer from './renderers/ImageRenderer.vue'
 import VideoRenderer from './renderers/VideoRenderer.vue'
+import AudioRenderer from './renderers/AudioRenderer.vue'
 import ArticleRenderer from './renderers/ArticleRenderer.vue'
 import DocumentRenderer from './renderers/DocumentRenderer.vue'
 import UnknownRenderer from './renderers/UnknownRenderer.vue'
@@ -89,6 +90,11 @@ watch(
     />
     <VideoRenderer
       v-else-if="previewType === ResourceType.VIDEO"
+      :resource="resource"
+      :work="work"
+    />
+    <AudioRenderer
+      v-else-if="previewType === ResourceType.AUDIO"
       :resource="resource"
       :work="work"
     />

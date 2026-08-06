@@ -31,7 +31,8 @@ type PluginManifest struct {
 	Extensions      *PluginExtensions `json:"extensions"`
 	Activation      PluginActivation  `json:"activation"`
 	EntryFile       string            `json:"entryFile"`
-	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力（封闭枚举；主程序加载时读取，未声明者跳过对应能力调用）
+	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力（内置枚举,可随主程序版本扩展;主程序加载时读取,未声明者跳过对应能力调用）
+	ResourceTypes []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(须配合 capabilities 含 resourceTypeProvider 通行证)
 }
 
 // PluginInstallDTO 插件安装数据传输对象
@@ -47,6 +48,7 @@ type PluginInstallDTO struct {
 	Activation      PluginActivation  `json:"activation"`
 	EntryFile       string            `json:"entryFile"`
 	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力
+	ResourceTypes []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(透传 manifest)
 	PackagePath     string            `json:"packagePath,omitempty"`
 	PublicID        string            `json:"publicId,omitempty"`
 	IntegrityHash   string            `json:"integrityHash,omitempty"` // 包级 SHA256(hex)，主程序安装时对原始 zip 字节流计算，供完整性追溯
@@ -71,6 +73,7 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Activation:      p.Activation,
 		EntryFile:       p.EntryFile,
 		Capabilities:    p.Capabilities,
+		ResourceTypes:   p.ResourceTypes,
 		PackagePath:     packagePath,
 		PublicID:        p.GetPublicID(),
 	}
@@ -190,4 +193,20 @@ type ResourceViewerContent struct {
 // StaticResourcesConfig 静态资源配置
 type StaticResourcesConfig struct {
 	Directories []string `json:"directories"`
+}
+
+// ResourceTypeDeclaration 插件自定义资源类型声明（plugin.json 顶层 resourceTypes 段每项）。
+// 主程序加载时见 CapabilityResourceTypeProvider 通行证后解析此段,转为 entity.ResourceTypeSpec 注册进 Registry。
+// 注册时强校验(决策7同名拒绝+决策8反向域名前缀+Roles合法性),坏 spec 拒绝并记日志跳过、不株连插件其他能力。
+type ResourceTypeDeclaration struct {
+	Type         string                 `json:"type"`         // 类型值(强制反向域名前缀如 com.example.xxx;决策8)
+	Roles        []StoreRoleDeclaration `json:"roles"`        // 结构角色 + 基数(完整性校验)
+	PrimaryRoles []string               `json:"primaryRoles"` // 展示主体优先级链(每项须在 Roles.storeType 集合内)
+}
+
+// StoreRoleDeclaration ResourceTypeDeclaration 的结构角色声明(plugin.json 解析用,独立于 entity.StoreRoleSpec)。
+type StoreRoleDeclaration struct {
+	StoreType string `json:"storeType"` // store_type(内置 7 角色之一;插件自定义角色延后 G')
+	Min       int    `json:"min"`       // 最少数量(0=可选,1=必含)
+	Max       int    `json:"max"`       // 最多数量(0=不限,1=单例)
 }

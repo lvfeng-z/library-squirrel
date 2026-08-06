@@ -2,6 +2,8 @@ package entity
 
 import (
 	"errors"
+	"strings"
+	"sync"
 
 	"github.com/lvfeng-z/library-squirrel-sdk/contract"
 )
@@ -12,6 +14,7 @@ const (
 	ResourceTypeVideo    = contract.ResourceTypeVideo
 	ResourceTypeArticle  = contract.ResourceTypeArticle
 	ResourceTypeDocument = contract.ResourceTypeDocument
+	ResourceTypeAudio    = contract.ResourceTypeAudio
 	ResourceTypeUnknown  = contract.ResourceTypeUnknown
 )
 
@@ -20,6 +23,13 @@ var (
 	ErrResourceTypeEmpty   = errors.New("资源类型未声明")
 	ErrResourceTypeInvalid = errors.New("资源类型非预定义值")
 	ErrStoreTypeInvalid    = errors.New("store_type 非预定义值")
+
+	// Registry 注册时强校验错误(插件自定义类型声明)
+	ErrResourceTypeAlreadyRegistered = errors.New("资源类型已注册")
+	ErrResourceTypeInvalidPrefix     = errors.New("插件自定义资源类型须用反向域名前缀(如 com.example.xxx)")
+	ErrStoreRoleMinNegative          = errors.New("store 角色基数 Min 不能为负")
+	ErrStoreRoleMaxLessThanMin       = errors.New("store 角色基数 Max 不能小于 Min(Max=0 表示不限)")
+	ErrPrimaryRoleNotInRoles         = errors.New("展示主体角色须在结构角色集合内")
 )
 
 // StoreRoleSpec 结构角色基数(完整性校验用)。
@@ -46,17 +56,112 @@ type ResourceTypeSpec struct {
 	StoreStandards map[string]StoreStandard // key=StoreType
 }
 
-// ResourceTypeRegistry 资源类型中央注册表(封闭枚举)。
-// 主程序预定义 5 种资源类型;插件暂不可自定义。
-var ResourceTypeRegistry = map[string]ResourceTypeSpec{
-	ResourceTypeImage:    imageResourceTypeSpec,
-	ResourceTypeVideo:    videoResourceTypeSpec,
-	ResourceTypeArticle:  articleResourceTypeSpec,
-	ResourceTypeDocument: documentResourceTypeSpec,
-	ResourceTypeUnknown:  unknownResourceTypeSpec,
+// ResourceTypeRegistry 资源类型中央注册表。
+// 内置类型(预定义 6 种,含 audio)在包级初始化注册;插件自定义类型经 Register 运行时注册(注册时强校验)。
+// 读多写少,用 RWMutex 保护并发安全。
+var ResourceTypeRegistry = &resourceTypeRegistry{
+	specs: map[string]ResourceTypeSpec{
+		ResourceTypeImage:    imageResourceTypeSpec,
+		ResourceTypeVideo:    videoResourceTypeSpec,
+		ResourceTypeArticle:  articleResourceTypeSpec,
+		ResourceTypeDocument: documentResourceTypeSpec,
+		ResourceTypeAudio:    audioResourceTypeSpec,
+		ResourceTypeUnknown:  unknownResourceTypeSpec,
+	},
 }
 
-// validStoreTypes 合法的 store_type 集合(写入路径严格识别用)
+// resourceTypeRegistry 并发安全的资源类型注册表。
+type resourceTypeRegistry struct {
+	mu    sync.RWMutex
+	specs map[string]ResourceTypeSpec
+}
+
+// Register 注册资源类型规约(插件自定义类型用)。注册时强校验 spec 合法性,拒绝坏 spec。
+// 已存在的类型(含内置)返回 ErrResourceTypeAlreadyRegistered——调用方(loader)据决策7记日志跳过该类型、不株连插件其他能力。
+func (r *resourceTypeRegistry) Register(spec ResourceTypeSpec) error {
+	if err := validateSpecForRegister(spec); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.specs[spec.ResourceType]; exists {
+		return ErrResourceTypeAlreadyRegistered
+	}
+	r.specs[spec.ResourceType] = spec
+	return nil
+}
+
+// Unregister 反注册(插件卸载用)。内置类型受白名单保护不可卸载,避免历史数据失去 spec。
+func (r *resourceTypeRegistry) Unregister(resourceType string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if isBuiltinResourceType(resourceType) {
+		return
+	}
+	delete(r.specs, resourceType)
+}
+
+// Lookup 查询资源类型规约。
+func (r *resourceTypeRegistry) Lookup(resourceType string) (ResourceTypeSpec, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	spec, ok := r.specs[resourceType]
+	return spec, ok
+}
+
+// builtinResourceTypes 内置类型集合(含 audio):不可被插件覆盖注册或反注册。
+var builtinResourceTypes = map[string]struct{}{
+	ResourceTypeImage:    {},
+	ResourceTypeVideo:    {},
+	ResourceTypeArticle:  {},
+	ResourceTypeDocument: {},
+	ResourceTypeAudio:    {},
+	ResourceTypeUnknown:  {},
+}
+
+func isBuiltinResourceType(resourceType string) bool {
+	_, ok := builtinResourceTypes[resourceType]
+	return ok
+}
+
+// validateSpecForRegister 注册时强校验 spec 合法性(守卫严格识别不变量,前移到注册时拦截)。
+//   - ResourceType 非空;插件自定义类型(非内置)强制反向域名前缀(决策8,防抢占未来内置名)
+//   - 每个 Role 的 StoreType ∈ 内置 7 角色;Min≥0;Max=0(不限) 或 Max≥Min
+//   - PrimaryRoles 每项 ∈ Roles 的 StoreType 集合
+//
+// 内置类型经包级初始化注册,豁免前缀校验(内置名无点,如 image/video/audio)。
+func validateSpecForRegister(spec ResourceTypeSpec) error {
+	if spec.ResourceType == "" {
+		return ErrResourceTypeEmpty
+	}
+	if !isBuiltinResourceType(spec.ResourceType) {
+		// 决策8:插件自定义类型强制反向域名前缀(含 '.',如 com.example.xxx),禁止裸通用词防抢占
+		if !strings.Contains(spec.ResourceType, ".") {
+			return ErrResourceTypeInvalidPrefix
+		}
+	}
+	roleSet := make(map[string]struct{}, len(spec.Roles))
+	for _, role := range spec.Roles {
+		if _, ok := validStoreTypes[role.StoreType]; !ok {
+			return ErrStoreTypeInvalid
+		}
+		if role.Min < 0 {
+			return ErrStoreRoleMinNegative
+		}
+		if role.Max != 0 && role.Max < role.Min {
+			return ErrStoreRoleMaxLessThanMin
+		}
+		roleSet[role.StoreType] = struct{}{}
+	}
+	for _, primary := range spec.PrimaryRoles {
+		if _, ok := roleSet[primary]; !ok {
+			return ErrPrimaryRoleNotInRoles
+		}
+	}
+	return nil
+}
+
+// validStoreTypes 合法的 store_type 集合(写入路径严格识别用;内置 7 角色)
 var validStoreTypes = map[string]struct{}{
 	StoreTypeImage:      {},
 	StoreTypeDocument:   {},
@@ -64,6 +169,7 @@ var validStoreTypes = map[string]struct{}{
 	StoreTypeVideoTrack: {},
 	StoreTypeAudioTrack: {},
 	StoreTypeVideoMain:  {},
+	StoreTypeAudioMain:  {},
 }
 
 var imageResourceTypeSpec = ResourceTypeSpec{
@@ -126,6 +232,21 @@ var documentResourceTypeSpec = ResourceTypeSpec{
 	},
 }
 
+// audioResourceTypeSpec 纯音频资源:audioMain(可播放主体,必含) + thumbnail(可选封面)。
+// audioMain 为新增可播放主体角色(对称 videoMain);audioTrack 仍属 video 分离流原料,不复用为 audio 主体。
+var audioResourceTypeSpec = ResourceTypeSpec{
+	ResourceType: ResourceTypeAudio,
+	Roles: []StoreRoleSpec{
+		{StoreType: StoreTypeAudioMain, Min: 1, Max: 1},
+		{StoreType: StoreTypeThumbnail, Min: 0, Max: 1},
+	},
+	PrimaryRoles: []string{StoreTypeAudioMain},
+	StoreStandards: map[string]StoreStandard{
+		StoreTypeAudioMain: {Description: "可播放音频主体", Formats: []string{".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg"}, Generation: GenerationDownloaded},
+		StoreTypeThumbnail: {Description: "封面/缩略图", Formats: []string{".jpg", ".png", ".webp"}, Generation: GenerationDerived},
+	},
+}
+
 // unknownResourceTypeSpec 合法显式值:插件确实无法分类时声明。
 // 无结构约束、无展示主体,前端走扩展名嗅探兜底。
 var unknownResourceTypeSpec = ResourceTypeSpec{
@@ -137,7 +258,7 @@ var unknownResourceTypeSpec = ResourceTypeSpec{
 
 // LookupResourceTypeSpec 查询资源类型规约;未注册(含空字符串)返回 nil。
 func LookupResourceTypeSpec(resourceType string) *ResourceTypeSpec {
-	spec, ok := ResourceTypeRegistry[resourceType]
+	spec, ok := ResourceTypeRegistry.Lookup(resourceType)
 	if !ok {
 		return nil
 	}
@@ -148,7 +269,7 @@ func LookupResourceTypeSpec(resourceType string) *ResourceTypeSpec {
 // 纯集合运算,无 IO。resourceType 未注册(含空/unknown)→ 不校验,返回空。
 // 返回 missing(必含角色缺失或不足)、excess(角色超量)。
 func ValidateResourceStructure(resourceType string, storeTypeCounts map[string]int) (missing, excess []string) {
-	spec, ok := ResourceTypeRegistry[resourceType]
+	spec, ok := ResourceTypeRegistry.Lookup(resourceType)
 	if !ok {
 		return nil, nil
 	}
@@ -217,7 +338,7 @@ func ValidateResourceType(resourceType string) error {
 	if resourceType == "" {
 		return ErrResourceTypeEmpty
 	}
-	if _, ok := ResourceTypeRegistry[resourceType]; !ok {
+	if _, ok := ResourceTypeRegistry.Lookup(resourceType); !ok {
 		return ErrResourceTypeInvalid
 	}
 	return nil

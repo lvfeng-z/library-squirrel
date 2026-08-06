@@ -427,6 +427,11 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 			plugin.Capabilities = sql.NullString{String: string(capsJSON), Valid: true}
 		}
 	}
+	if len(installDTO.ResourceTypes) > 0 {
+		if rtJSON, err := json.Marshal(installDTO.ResourceTypes); err == nil {
+			plugin.ResourceTypes = sql.NullString{String: string(rtJSON), Valid: true}
+		}
+	}
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}

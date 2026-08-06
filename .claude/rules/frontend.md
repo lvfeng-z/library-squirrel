@@ -13,7 +13,7 @@ frontend/src/
   components/
     common/           — 通用组件 + 业务复用组件（DataTable/SearchTable 等通用容器；TaskList 业务复用列表；WorkCard/CardGrid/TagBox）
     dialogs/          — 对话框组件
-    resource/         — 作品资源渲染（ResourceViewer 分发 + 内置渲染器 image/video/article/document/unknown）
+    resource/         — 作品资源渲染（ResourceViewer 分发 + 内置渲染器 image/video/article/document/audio/unknown）
     slot/             — 插件插槽渲染器
     tour/             — 向导组件（TourOverlay、TourCenterPanel）
   composables/        — 组合式函数（useTourTargets、useTourReady、useBuiltinMenus 等）

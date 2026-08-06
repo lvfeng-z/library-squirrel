@@ -8,7 +8,7 @@
   - props：`{ resource: ResourceFullDTO, work: WorkFullDTO }`
   - 渲染流程：
     1. `getResourcePreviewType(resource)`（含 unknown 降级嗅探）得到展示类型 rt
-    2. 查 `HandlerRegistryStore.resourceViewerByType(rt)`：命中则渲染插件组件（`PluginBoundary` 包裹，透传 `{resource, work}`）
+    2. 查 `HandlerRegistryStore.resourceViewerByType(rt)`：命中则渲染插件组件（`PluginBoundary` 包裹，透传 `{ context: renderContext }`——SDK render.Context 契约，非主程序展示 DTO）
     3. 未命中则按 rt 分发到内置渲染器
 
 ## 内置渲染器（`renderers/`）
@@ -17,13 +17,14 @@
 |---|---|---|
 | ImageRenderer | image | el-image 展示原图（workStore）；双模式切换（全部展示 contain / 较短边占满 fill）；点击 `appLauncherOpenImage` |
 | VideoRenderer | video | `<video controls>` 内联播放，优先 videoMain（可播放主体）否则 videoTrack |
+| AudioRenderer | audio | `<audio controls>` 内联播放 audioMain（可播放主体，独立音频资源） |
 | ArticleRenderer | article | MarkdownView 渲染正文 .md（document store fetch）+ 内嵌图（image stores 按 store_seq 顺序位置绑定） |
 | DocumentRenderer | document | 无内联查看器，文件名占位 + 外部打开按钮（`appLauncherOpen`） |
 | UnknownRenderer | unknown | 嗅探后仍无法分类的兜底，占位 + 外部打开 |
 
 ## 插件覆盖（Handler 通道）
 
-插件在 `plugin.json` 声明 `slotType: "resourceViewer"` + `content.resourceType`，前端 `useSlotSyncListener` 路由到 `HandlerRegistryStore`（不进 SlotRegistryStore）。同 resourceType 多插件取 `order` 最小者。插件渲染器组件接收 `{resource, work}` props（运行时注入）。声明契约见 `.claude/rules/plugin.md`，二分框架（Slot 主动注入 vs Handler 被动响应）见同文件。
+插件在 `plugin.json` 声明 frontendExtension `kind: "resourceViewer"` + `content.resourceType`，前端 `useSlotSyncListener` 路由到 `HandlerRegistryStore`（不进 SlotRegistryStore）。同 resourceType 多插件取 `order` 最小者。插件渲染器组件接收 `{ context: renderContext }` props（运行时注入，SDK render.Context 契约）。声明契约见 `.claude/rules/plugin.md`，二分框架（Slot 主动注入 vs Handler 被动响应）见同文件。
 
 ## 追加新内置渲染器
 

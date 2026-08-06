@@ -4,6 +4,7 @@ import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
 // 展示类型嗅探扩展名(仅 resource_type 未声明/unknown 时降级用)
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
+const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg']
 const DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.rtf']
 
 function getFileExtension(filePath?: string): string {
@@ -40,6 +41,7 @@ export function getResourcePreviewType(resource: ResourceFullDTO | null | undefi
   if (ext) {
     if (IMAGE_EXTENSIONS.includes(ext)) return ResourceType.IMAGE
     if (VIDEO_EXTENSIONS.includes(ext)) return ResourceType.VIDEO
+    if (AUDIO_EXTENSIONS.includes(ext)) return ResourceType.AUDIO
     if (ext === '.md') return ResourceType.ARTICLE
     if (DOCUMENT_EXTENSIONS.includes(ext)) return ResourceType.DOCUMENT
   }

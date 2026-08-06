@@ -19,6 +19,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/base/model/entity"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
@@ -67,12 +69,28 @@ func UnmarshalCapabilities(s sql.NullString) []string {
 	return caps
 }
 
-// 插件能力枚举（封闭集；插件 manifest capabilities 引用这些值，主程序据未声明者跳过对应能力调用）。
+// UnmarshalResourceTypes 解析 entity 持久化的 resourceTypes JSON 字符串为声明切片。
+// s 无效/空/"null" 返回 nil(插件未声明自定义资源类型)。
+func UnmarshalResourceTypes(s sql.NullString) []dto.ResourceTypeDeclaration {
+	if !s.Valid || s.String == "" || s.String == "null" {
+		return nil
+	}
+	var decls []dto.ResourceTypeDeclaration
+	if err := json.Unmarshal([]byte(s.String), &decls); err != nil {
+		return nil
+	}
+	return decls
+}
+
+// 插件能力枚举（内置集,可随主程序版本扩展;插件 manifest capabilities 引用这些值,主程序据未声明者跳过对应能力调用）。
 const (
 	// CapabilityWorkOrderQuery 作品集原站序查询能力（插件实现 sdkdto.WorkOrderQuerier 可选接口）。
 	CapabilityWorkOrderQuery = "workOrderQuery"
 	// CapabilityWorkSetRelationQuery 作品集父集关系查询能力（插件实现 sdkdto.WorkSetRelationQuerier 可选接口）。
 	CapabilityWorkSetRelationQuery = "workSetRelationQuery"
+	// CapabilityResourceTypeProvider 自定义资源类型提供能力(插件 manifest 声明 resourceTypes 段;
+	// 主程序加载时解析并注册进 ResourceTypeRegistry,使插件 Create 可声明该类型资源)。
+	CapabilityResourceTypeProvider = "resourceTypeProvider"
 )
 
 // CapabilityQuerier 按插件公开 ID 查询其声明的能力集合（Loader 实现，供 fetcher 声明驱动调用）。
@@ -88,6 +106,56 @@ func (l *Loader) GetCapabilities(pluginPublicId string) []string {
 		return entry.info.Capabilities
 	}
 	return nil
+}
+
+// hasCapability 判断插件是否声明了指定能力。
+func hasCapability(caps []string, cap string) bool {
+	for _, c := range caps {
+		if c == cap {
+			return true
+		}
+	}
+	return false
+}
+
+// registerPluginResourceTypes 注册插件声明的自定义资源类型到 ResourceTypeRegistry。
+// 仅当声明 CapabilityResourceTypeProvider 通行证时解析 resourceTypes 段;每个 declaration 转 Spec 注册,
+// 强校验失败(决策7同名/决策8前缀/Roles合法性)记日志跳过、不株连其他类型与插件能力。
+func registerPluginResourceTypes(info *PluginInfo) {
+	if info == nil || !hasCapability(info.Capabilities, CapabilityResourceTypeProvider) {
+		return
+	}
+	for _, decl := range info.ResourceTypes {
+		spec := entity.ResourceTypeSpec{
+			ResourceType: decl.Type,
+			Roles:        toStoreRoleSpecs(decl.Roles),
+			PrimaryRoles: decl.PrimaryRoles,
+		}
+		if err := entity.ResourceTypeRegistry.Register(spec); err != nil {
+			logger.Log.Warnf("插件 %s 自定义资源类型 %s 注册失败,跳过(不株连其他能力): %v", info.PublicID, decl.Type, err)
+			continue
+		}
+		logger.Log.Infof("插件 %s 自定义资源类型已注册: %s", info.PublicID, decl.Type)
+	}
+}
+
+// unregisterPluginResourceTypes 反注册插件声明的自定义资源类型(卸载时清理);内置类型受白名单保护不会被删。
+func unregisterPluginResourceTypes(info *PluginInfo) {
+	if info == nil || !hasCapability(info.Capabilities, CapabilityResourceTypeProvider) {
+		return
+	}
+	for _, decl := range info.ResourceTypes {
+		entity.ResourceTypeRegistry.Unregister(decl.Type)
+	}
+}
+
+// toStoreRoleSpecs 将 manifest 声明角色转 Registry StoreRoleSpec。
+func toStoreRoleSpecs(roles []dto.StoreRoleDeclaration) []entity.StoreRoleSpec {
+	out := make([]entity.StoreRoleSpec, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, entity.StoreRoleSpec{StoreType: r.StoreType, Min: r.Min, Max: r.Max})
+	}
+	return out
 }
 
 // CreateNoWindow Windows 子进程创建标志：不创建控制台窗口
@@ -288,6 +356,10 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		}
 	}
 
+	// 注册插件自定义资源类型(声明 CapabilityResourceTypeProvider 通行证时);
+	// best-effort:坏 spec/同名(决策7)记日志跳过,不阻断加载、不株连插件其他能力。
+	registerPluginResourceTypes(deps.PluginInfo)
+
 	entry := &pluginEntry{
 		client:      client,
 		services:    services,
@@ -314,6 +386,7 @@ func (l *Loader) UnloadPlugin(pluginPublicId string) error {
 	if ok {
 		l.gracefulShutdown(entry)
 		entry.client.Kill()
+		unregisterPluginResourceTypes(entry.info)
 	}
 
 	l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
@@ -431,6 +504,7 @@ type PluginInfo struct {
 	ContractVersion     int      // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
 	ConfigSchemaVersion int64    // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
 	Capabilities        []string // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
+	ResourceTypes       []dto.ResourceTypeDeclaration // 插件自定义资源类型声明(来自 manifest;声明 resourceTypeProvider 通行证时注册进 Registry)
 	Author          string
 	EntryPath       string
 	RootPath        string

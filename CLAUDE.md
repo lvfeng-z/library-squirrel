@@ -130,7 +130,7 @@ task build:server && task run:server
 - **插件**: `.claude/rules/plugin.md` — 插件系统架构
 
 **规约文档**（跨模块领域规约，非单模块 README）：
-- `doc/resource-type-spec.md` — 资源类型规约体系（ResourceType 封闭枚举 image/video/article/document/unknown + store_type 6 角色 + 严格识别 + 完整性三态）；插件声明契约见 `doc/plugin-dev-guide.md`。
+- `doc/resource-type-spec.md` — 资源类型规约体系（ResourceType 内置 6 类 image/video/article/document/audio/unknown + 插件可声明自定义类型 + store_type 7 角色 + 严格识别 + 完整性三态）；插件声明契约见 `doc/plugin-dev-guide.md`。
 
 ### Git 提交
 - 中文，格式：`类型(范围): 描述`

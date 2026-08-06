@@ -5,7 +5,8 @@ export const StoreRole = {
   THUMBNAIL: 'thumbnail', // 缩略图/封面
   VIDEO_TRACK: 'videoTrack', // 分离流视频原料(无音频)
   AUDIO_TRACK: 'audioTrack', // 分离流音频原料
-  VIDEO_MAIN: 'videoMain' // 视频可播放主体(封装原文件 downloaded 或合并产物 derived)
+  VIDEO_MAIN: 'videoMain', // 视频可播放主体(封装原文件 downloaded 或合并产物 derived)
+  AUDIO_MAIN: 'audioMain' // 音频可播放主体(独立音频资源主体)
 } as const
 
 // 兜底资源角色集(task 未声明 involvedRoles 时展示的可选全集;用户不勾选任何板块时下发等价全量重执行)
@@ -15,7 +16,8 @@ export const ALL_STORE_ROLES: string[] = [
   StoreRole.THUMBNAIL,
   StoreRole.VIDEO_TRACK,
   StoreRole.AUDIO_TRACK,
-  StoreRole.VIDEO_MAIN
+  StoreRole.VIDEO_MAIN,
+  StoreRole.AUDIO_MAIN
 ]
 
 // 资源板块中文标签(操作栏勾选项展示)
@@ -25,7 +27,8 @@ export const StoreRoleLabels: Record<string, string> = {
   [StoreRole.THUMBNAIL]: '缩略图',
   [StoreRole.VIDEO_TRACK]: '分离流视频',
   [StoreRole.AUDIO_TRACK]: '分离流音频',
-  [StoreRole.VIDEO_MAIN]: '视频主体'
+  [StoreRole.VIDEO_MAIN]: '视频主体',
+  [StoreRole.AUDIO_MAIN]: '音频主体'
 }
 
 // 资源类型(与后端 entity.ResourceType* 常量一致;前端按此分发渲染/外部打开)
@@ -34,5 +37,6 @@ export const ResourceType = {
   VIDEO: 'video', // 视频资源(可播放主体 videoMain 必含;分离流另含 videoTrack+audioTrack 原料)
   ARTICLE: 'article', // 图文紧密结合文档(正文 markdown + 内嵌图)
   DOCUMENT: 'document', // 现成文档原文件(pdf/docx/...)
+  AUDIO: 'audio', // 音频资源(可播放主体 audioMain 必含)
   UNKNOWN: 'unknown' // 插件确实无法分类时声明
 } as const

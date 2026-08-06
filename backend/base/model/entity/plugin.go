@@ -16,6 +16,7 @@ type Plugin struct {
 	ContractVersion   sql.NullInt64  `gorm:"column:contract_version" json:"contractVersion"`
 	ConfigSchemaVersion sql.NullInt64 `gorm:"column:config_schema_version" json:"configSchemaVersion"` // 插件声明的配置 schema 版本（plugin.json configSchemaVersion；0=legacy/未管理）
 	Capabilities      sql.NullString `gorm:"column:capabilities" json:"capabilities"`
+	ResourceTypes     sql.NullString `gorm:"column:resource_types" json:"resourceTypes"` // 插件自定义资源类型声明(JSON,来自 manifest resourceTypes 段;声明 resourceTypeProvider 通行证时注册进 Registry)
 	Description       sql.NullString `gorm:"column:description" json:"description"`
 	Changelog         sql.NullString `gorm:"column:changelog" json:"changelog"`
 	EntryPath         sql.NullString `gorm:"column:entry_path" json:"entryPath"`

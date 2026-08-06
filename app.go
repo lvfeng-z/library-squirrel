@@ -462,6 +462,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		ContractVersion:     int(p.ContractVersion.Int64),
 		ConfigSchemaVersion: p.ConfigSchemaVersion.Int64,
 		Capabilities:        extension2.UnmarshalCapabilities(p.Capabilities),
+		ResourceTypes:       extension2.UnmarshalResourceTypes(p.ResourceTypes),
 		Author:          p.Author.String,
 		EntryPath:       p.EntryPath.String,
 		RootPath:        p.RootPath.String,

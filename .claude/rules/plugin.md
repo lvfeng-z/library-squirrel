@@ -146,7 +146,7 @@ globs:
 {"contentType": "precompiled", "source": {"js": "views/article-viewer.js", "css": "views/article-viewer.css"}, "resourceType": "article"}
 ```
 
-> 渲染器组件接收 `{context: render.Context}` props（运行时注入，非静态 props）。`render.Context` 是 SDK 定义的插件渲染契约类型（`github.com/lvfeng-z/library-squirrel-sdk/dto/render`），字段集独立演进——不随主程序展示 DTO 变化，破坏性变更由主程序 `contractVersion` 约束。同 resourceType 多插件声明取 order 最小者。仅覆盖现有 5 种 ResourceType；插件自定义类型需后端 T3（未落地）。
+> 渲染器组件接收 `{context: render.Context}` props（运行时注入，非静态 props）。`render.Context` 是 SDK 定义的插件渲染契约类型（`github.com/lvfeng-z/library-squirrel-sdk/dto/render`），字段集独立演进——不随主程序展示 DTO 变化，破坏性变更由主程序 `contractVersion` 约束。同 resourceType 多插件声明取 order 最小者。覆盖内置 6 种 ResourceType（含 audio）与插件自定义类型（自定义类型经 manifest `resourceTypes` 段 + `resourceTypeProvider` 通行证声明，详见 `doc/plugin-dev-guide.md`）。
 
 ### source 格式（contentType 对应）
 
