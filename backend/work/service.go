@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
@@ -893,12 +894,12 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 			RoleName:   a.RoleName,
 			SortOrder:  a.SortOrder,
 		}
-		if a.AuthorType.Valid && a.AuthorType.Int64 == AuthorTypeLocal && a.LocalAuthorID.Valid {
+		if a.AuthorType.Valid && a.AuthorType.Int64 == constant.LOCAL && a.LocalAuthorID.Valid {
 			if existingLocalAuthorIds[a.LocalAuthorID.Int64] {
 				link.LocalAuthorID = a.LocalAuthorID
 				authorLinks = append(authorLinks, link)
 			}
-		} else if a.AuthorType.Valid && a.AuthorType.Int64 == AuthorTypeSite && a.SiteAuthorID.Valid {
+		} else if a.AuthorType.Valid && a.AuthorType.Int64 == constant.SITE && a.SiteAuthorID.Valid {
 			if existingSiteAuthorIds[a.SiteAuthorID.Int64] {
 				link.SiteAuthorID = a.SiteAuthorID
 				authorLinks = append(authorLinks, link)
@@ -1325,12 +1326,6 @@ var (
 	ErrWorkNotFound   = &pkgerr.BusinessError{Code: 404, Message: "作品不存在"}
 )
 
-// AuthorType 常量（与 reWorkTag.TagType 对齐）
-const (
-	AuthorTypeLocal = 1
-	AuthorTypeSite  = 2
-)
-
 // siteOrderSyncTimeout 原站序拉取超时（网络调用，须事务外异步）
 const siteOrderSyncTimeout = 30 * time.Second
 
@@ -1562,7 +1557,12 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, workId); err != nil {
 		return 0, fmt.Errorf("删除作品标签关联失败: %w", err)
 	}
-	tagLinks := buildSiteTagLinks(workId, siteTagDBIds)
+	// re_work_tag.namespace 镜像所指 site_tag.namespace（site 关联）；顺序与 siteTagDBIds 一致（upsertSiteTags 按 dtos 顺序返回）
+	siteTagNamespaces := make([]string, len(workResp.SiteTags))
+	for i, t := range workResp.SiteTags {
+		siteTagNamespaces[i] = t.Namespace
+	}
+	tagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
 	tagLinks = append(tagLinks, buildLocalTagLinks(workId, localTagDBIds)...)
 	if len(tagLinks) > 0 {
 		if err := s.reWorkTagWriter.SaveBatch(ctx, tagLinks); err != nil {
@@ -2005,6 +2005,7 @@ func taskSiteTagDTOToEntity(d *sdkdto.TaskSiteTagDTO, siteId int64) *entity2.Sit
 		SiteTagID:   sql.NullString{String: d.SiteTagId, Valid: true},
 		SiteTagName: sql.NullString{String: d.TagName, Valid: true},
 		Description: sql.NullString{String: d.Description, Valid: d.Description != ""},
+		Namespace:   sql.NullString{String: d.Namespace, Valid: d.Namespace != ""},
 	}
 }
 
@@ -2024,7 +2025,7 @@ func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWork
 	for i, authorId := range siteAuthorIds {
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:   &model.BaseEntity{},
-			AuthorType:   sql.NullInt64{Int64: AuthorTypeSite, Valid: true},
+			AuthorType:   sql.NullInt64{Int64: constant.SITE, Valid: true},
 			WorkID:       sql.NullInt64{Int64: workId, Valid: true},
 			SiteAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
 			SortOrder:    sql.NullInt64{Int64: int64(i), Valid: true},
@@ -2033,14 +2034,19 @@ func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWork
 	return links
 }
 
-func buildSiteTagLinks(workId int64, siteTagIds []int64) []*entity2.ReWorkTag {
+func buildSiteTagLinks(workId int64, siteTagIds []int64, namespaces []string) []*entity2.ReWorkTag {
 	links := make([]*entity2.ReWorkTag, 0, len(siteTagIds))
-	for _, tagId := range siteTagIds {
+	for i, tagId := range siteTagIds {
+		ns := ""
+		if i < len(namespaces) {
+			ns = namespaces[i]
+		}
 		links = append(links, &entity2.ReWorkTag{
 			BaseEntity: &model.BaseEntity{},
 			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			TagType:    sql.NullInt64{Int64: 2, Valid: true}, // TagTypeSite
+			TagType:    sql.NullInt64{Int64: constant.SITE, Valid: true},
 			SiteTagID:  sql.NullInt64{Int64: tagId, Valid: true},
+			Namespace:  sql.NullString{String: ns, Valid: ns != ""},
 		})
 	}
 	return links
@@ -2051,7 +2057,7 @@ func buildLocalAuthorLinks(workId int64, localAuthorIds []int64) []*entity2.ReWo
 	for i, authorId := range localAuthorIds {
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:    &model.BaseEntity{},
-			AuthorType:    sql.NullInt64{Int64: AuthorTypeLocal, Valid: true},
+			AuthorType:    sql.NullInt64{Int64: constant.LOCAL, Valid: true},
 			WorkID:        sql.NullInt64{Int64: workId, Valid: true},
 			LocalAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
 			SortOrder:     sql.NullInt64{Int64: int64(i), Valid: true},
@@ -2066,7 +2072,7 @@ func buildLocalTagLinks(workId int64, localTagIds []int64) []*entity2.ReWorkTag 
 		links = append(links, &entity2.ReWorkTag{
 			BaseEntity: &model.BaseEntity{},
 			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			TagType:    sql.NullInt64{Int64: 1, Valid: true}, // TagTypeLocal
+			TagType:    sql.NullInt64{Int64: constant.LOCAL, Valid: true},
 			LocalTagID: sql.NullInt64{Int64: tagId, Valid: true},
 		})
 	}

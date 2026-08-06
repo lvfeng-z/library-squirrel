@@ -15,6 +15,7 @@ type SiteTag struct {
 	BaseSiteTagID sql.NullString `gorm:"column:base_site_tag_id" json:"baseSiteTagId"`
 	Description   sql.NullString `gorm:"column:description" json:"description"`
 	LocalTagID    sql.NullInt64  `gorm:"column:local_tag_id" json:"localTagId"`
+	Namespace     sql.NullString `gorm:"column:namespace" json:"namespace"` // 站点侧 namespace（language/character/parody/female/male/misc/general 等）；null=站点无 namespace（pixiv 等）
 	LastUse       sql.NullInt64  `gorm:"column:last_use" json:"lastUse"`
 }
 

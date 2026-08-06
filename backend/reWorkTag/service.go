@@ -111,10 +111,8 @@ func (s *Service) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) 
 // LinkTagToWork 链接标签到作品
 func (s *Service) LinkTagToWork(ctx context.Context, workId int64, tagType int, tagId int64) error {
 	rel := &domain.ReWorkTag{
-		WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-		TagType:    sql.NullInt64{Int64: int64(tagType), Valid: true},
-		LocalTagID: sql.NullInt64{Int64: 0, Valid: true},
-		SiteTagID:  sql.NullInt64{Int64: 0, Valid: true},
+		WorkID:  sql.NullInt64{Int64: workId, Valid: true},
+		TagType: sql.NullInt64{Int64: int64(tagType), Valid: true},
 	}
 	if tagType == constant.LOCAL {
 		rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
