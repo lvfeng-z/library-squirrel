@@ -1,5 +1,6 @@
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { arrayNotEmpty, isNullish } from '@renderer/utils/CommonUtil.ts'
+import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 
 /** 搜索标签分类色 tone，对应分类色令牌 --app-tag-{tone}-* */
 type SearchTagTone = 'green' | 'blue' | 'red' | 'purple'
@@ -13,6 +14,7 @@ type SearchTagTone = 'green' | 'blue' | 'red' | 'purple'
  * @param segmentedTagItem 标签项
  */
 export function setSearchTagColor(segmentedTagItem: SegmentedTagItem): void {
+  appendNamespaceSegment(segmentedTagItem)
   const subLabels = segmentedTagItem.subLabels
   if (!arrayNotEmpty(subLabels)) {
     return
@@ -24,6 +26,18 @@ export function setSearchTagColor(segmentedTagItem: SegmentedTagItem): void {
   segmentedTagItem.mainBackGround = `var(--app-tag-${tone}-bg)`
   segmentedTagItem.mainBackGroundHover = `color-mix(in srgb, var(--app-tag-${tone}-text) 15%, transparent)`
   segmentedTagItem.mainTextColor = `var(--app-tag-${tone}-text)`
+}
+
+/** namespace 文本展示：site_tag 候选 extraData.namespace 非空时追加为 subLabels 的一节，SegmentedTag 按 subLabels 渲染 N 段 sub（组件零改动） */
+function appendNamespaceSegment(item: SegmentedTagItem): void {
+  const namespace: string | undefined = item.extraData?.namespace
+  if (!isNotBlank(namespace)) {
+    return
+  }
+  if (!arrayNotEmpty(item.subLabels)) {
+    item.subLabels = []
+  }
+  item.subLabels.push(namespace)
 }
 
 /** 由 subLabels 的「类目/来源」解析分类色 tone：tag→绿(本地)/蓝(站点)，author→红(本地)/紫(站点) */

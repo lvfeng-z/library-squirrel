@@ -40,7 +40,8 @@ export async function searchQueryWorkPage(
   const searchConditions: SearchCondition[] = conditions.map(c => ({
     type: c.type as any,
     value: c.value,
-    operator: c.operator as any
+    operator: c.operator as any,
+    namespace: c.namespace
   }))
   return requireResponse(
     await SearchHandler.QueryWorkPage(page.pageNumber, page.pageSize, searchConditions),
@@ -56,7 +57,8 @@ export async function searchQueryWorkSetPage(
   const searchConditions: SearchCondition[] = conditions.map(c => ({
     type: c.type as any,
     value: c.value,
-    operator: c.operator as any
+    operator: c.operator as any,
+    namespace: c.namespace
   }))
   return requireResponse(
     await SearchHandler.QueryWorkSetPage(page, searchConditions),
