@@ -40,27 +40,27 @@ func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.A
 	return model.Success[any](nil)
 }
 
-// InstallFromPath 从插件包路径安装插件
-func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.InstallFromPath(ctx, packagePath, domain.InstallType(installType))
+// InstallFromPath 从插件包路径安装插件。trusted 透传用户知情同意结果（true=用户已确认信任，false=绕过 UI 的异常安装）
+func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.InstallFromPath(ctx, packagePath, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
-// Reinstall 重新安装插件
-func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, installType int) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.Reinstall(ctx, pluginPublicId, domain.InstallType(installType))
+// Reinstall 重新安装插件。trusted 透传用户知情同意结果
+func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.Reinstall(ctx, pluginPublicId, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
 	return model.Success(domain.NewPluginDTO(result))
 }
 
-// ReinstallFromPath 从指定路径重新安装插件
-func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType int) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, domain.InstallType(installType))
+// ReinstallFromPath 从指定路径重新安装插件。trusted 透传用户知情同意结果
+func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
@@ -75,6 +75,15 @@ func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.A
 // SetUninstalled 设置插件为已卸载状态
 func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.SetUninstalled(ctx, pluginId))
+}
+
+// SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件
+func (h *Handler) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.SetTrusted(ctx, pluginPublicId, trusted)
+	if err != nil {
+		return model.HandleError[*domain.PluginDTO](err)
+	}
+	return model.Success(domain.NewPluginDTO(result))
 }
 
 // ========== 查询操作 ==========

@@ -24,6 +24,10 @@ type Plugin struct {
 	SortNum           sql.NullInt64  `gorm:"column:sort_num" json:"sortNum"`
 	Uninstalled       sql.NullBool   `gorm:"column:uninstalled" json:"uninstalled"`
 	ActivationType    sql.NullString `gorm:"column:activation_type" json:"activationType"`
+	Source            sql.NullString `gorm:"column:source" json:"source"`               // 来源枚举 bundled/local/url/marketplace，由主程序按安装入口判定（不由插件声明）
+	SourceDetail      sql.NullString `gorm:"column:source_detail" json:"sourceDetail"`  // 来源详情（安装包路径或 URL），供追溯
+	IntegrityHash     sql.NullString `gorm:"column:integrity_hash" json:"integrityHash"` // 包级 SHA256(hex)，安装时对原始 zip 计算，纯追溯存档
+	Trusted           sql.NullBool   `gorm:"column:trusted" json:"trusted"`             // 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
 }
 
 // NewPlugin 创建插件

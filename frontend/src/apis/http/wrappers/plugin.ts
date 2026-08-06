@@ -50,24 +50,29 @@ export async function pluginCheckInstalled(publicId: string): Promise<ApiResult<
   return requireResponse(await PluginHandler.CheckInstalled(publicId), '检查插件安装状态')
 }
 
-/** 从路径安装插件 */
-export async function pluginInstallFromPath(packagePath: string, installType?: number): Promise<ApiResult<PluginDTO>> {
-  return requireResponse(await PluginHandler.InstallFromPath(packagePath, installType ?? 0), '安装插件')
+/** 从路径安装插件。trusted 透传用户知情同意结果：仅在安装确认弹窗中用户点击确认后传 true；缺省/绕过弹窗传 false（插件标为未信任，需手动信任后才运行） */
+export async function pluginInstallFromPath(packagePath: string, trusted: boolean = false): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.InstallFromPath(packagePath, trusted), '安装插件')
 }
 
-/** 重新安装插件 */
-export async function pluginReinstall(publicId: string, installType?: number): Promise<ApiResult<PluginDTO>> {
-  return requireResponse(await PluginHandler.Reinstall(publicId, installType ?? 0), '重新安装插件')
+/** 重新安装插件。trusted 透传用户知情同意结果（bundled 插件后端强制信任，此参数仅影响第三方） */
+export async function pluginReinstall(publicId: string, trusted: boolean = false): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.Reinstall(publicId, trusted), '重新安装插件')
 }
 
-/** 从路径重新安装插件 */
-export async function pluginReinstallFromPath(pluginPublicId: string, packagePath: string, installType?: number): Promise<ApiResult<PluginDTO>> {
-  return requireResponse(await PluginHandler.ReinstallFromPath(pluginPublicId, packagePath, installType ?? 0), '重新安装插件')
+/** 从路径重新安装插件。trusted 透传用户知情同意结果（bundled 插件后端强制信任，此参数仅影响第三方） */
+export async function pluginReinstallFromPath(pluginPublicId: string, packagePath: string, trusted: boolean = false): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.ReinstallFromPath(pluginPublicId, packagePath, trusted), '重新安装插件')
 }
 
 /** 卸载插件 */
 export async function pluginUnInstall(publicId: string): Promise<ApiResult<any>> {
   return requireResponse(await PluginHandler.Uninstall(publicId), '卸载插件', false)
+}
+
+/** 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件 */
+export async function pluginSetTrusted(publicId: string, trusted: boolean): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.SetTrusted(publicId, trusted), '设置插件信任状态')
 }
 
 /** 获取插件状态 */

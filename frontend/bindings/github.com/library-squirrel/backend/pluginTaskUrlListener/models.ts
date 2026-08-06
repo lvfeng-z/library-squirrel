@@ -37,6 +37,26 @@ export class PluginWithExtension {
     "activationType": sql$0.NullString;
 
     /**
+     * 来源枚举 bundled/local/url/marketplace，由主程序按安装入口判定（不由插件声明）
+     */
+    "source": sql$0.NullString;
+
+    /**
+     * 来源详情（安装包路径或 URL），供追溯
+     */
+    "sourceDetail": sql$0.NullString;
+
+    /**
+     * 包级 SHA256(hex)，安装时对原始 zip 计算，纯追溯存档
+     */
+    "integrityHash": sql$0.NullString;
+
+    /**
+     * 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
+     */
+    "trusted": sql$0.NullBool;
+
+    /**
      * 贡献点类型
      */
     "ExtensionKey": string;
@@ -102,6 +122,18 @@ export class PluginWithExtension {
         if (!("activationType" in $$source)) {
             this["activationType"] = (new sql$0.NullString());
         }
+        if (!("source" in $$source)) {
+            this["source"] = (new sql$0.NullString());
+        }
+        if (!("sourceDetail" in $$source)) {
+            this["sourceDetail"] = (new sql$0.NullString());
+        }
+        if (!("integrityHash" in $$source)) {
+            this["integrityHash"] = (new sql$0.NullString());
+        }
+        if (!("trusted" in $$source)) {
+            this["trusted"] = (new sql$0.NullBool());
+        }
         if (!("ExtensionKey" in $$source)) {
             this["ExtensionKey"] = "";
         }
@@ -131,6 +163,10 @@ export class PluginWithExtension {
         const $$createField15_0 = $$createType1;
         const $$createField16_0 = $$createType2;
         const $$createField17_0 = $$createType0;
+        const $$createField18_0 = $$createType0;
+        const $$createField19_0 = $$createType0;
+        const $$createField20_0 = $$createType0;
+        const $$createField21_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -176,6 +212,18 @@ export class PluginWithExtension {
         }
         if ("activationType" in $$parsedSource) {
             $$parsedSource["activationType"] = $$createField17_0($$parsedSource["activationType"]);
+        }
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField18_0($$parsedSource["source"]);
+        }
+        if ("sourceDetail" in $$parsedSource) {
+            $$parsedSource["sourceDetail"] = $$createField19_0($$parsedSource["sourceDetail"]);
+        }
+        if ("integrityHash" in $$parsedSource) {
+            $$parsedSource["integrityHash"] = $$createField20_0($$parsedSource["integrityHash"]);
+        }
+        if ("trusted" in $$parsedSource) {
+            $$parsedSource["trusted"] = $$createField21_0($$parsedSource["trusted"]);
         }
         return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }

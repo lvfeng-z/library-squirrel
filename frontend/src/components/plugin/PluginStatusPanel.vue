@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { pluginApi } from '@renderer/apis/http'
 import { ElMessage } from 'element-plus'
 import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
+import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { isNotBlank } from '@renderer/utils/StringUtil'
 
 interface Props {
@@ -13,6 +14,7 @@ const props = defineProps<Props>()
 
 const loading = ref(false)
 const status = ref<PluginStatusDTO | null>(null)
+const plugin = ref<PluginDTO | null>(null)
 
 watch(() => props.publicId, (newId) => {
   if (isNotBlank(newId)) {
@@ -23,12 +25,25 @@ watch(() => props.publicId, (newId) => {
 async function loadStatus(publicId: string) {
   loading.value = true
   try {
-    const result = await pluginApi.pluginGetStatus(publicId)
-    status.value = result.data
+    const statusResult = await pluginApi.pluginGetStatus(publicId)
+    status.value = statusResult.data
+    const pluginResult = await pluginApi.pluginGetByPublicId(publicId)
+    plugin.value = pluginResult.data
   } catch (e) {
     ElMessage.error(`获取插件状态失败: ${(e as Error).message}`)
   } finally {
     loading.value = false
+  }
+}
+
+// 来源标签文案
+function sourceLabel(source: string | undefined): string {
+  switch (source) {
+    case 'bundled': return '官方捆绑'
+    case 'local': return '本地安装'
+    case 'url': return '网络下载'
+    case 'marketplace': return '市场'
+    default: return source || '-'
   }
 }
 
@@ -51,6 +66,38 @@ function formatSize(bytes: number | undefined): string {
     class="plugin-status-panel"
   >
     <template v-if="status">
+      <!-- 来源与信任 -->
+      <el-descriptions
+        v-if="plugin"
+        title="来源与信任"
+        :column="1"
+        border
+        size="small"
+      >
+        <el-descriptions-item label="来源">
+          <el-tag
+            size="small"
+            :type="plugin.source === 'bundled' ? 'success' : 'info'"
+          >
+            {{ sourceLabel(plugin.source ?? undefined) }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="信任状态">
+          <el-tag
+            size="small"
+            :type="plugin.trusted === false ? 'warning' : 'success'"
+          >
+            {{ plugin.trusted === false ? '未信任（需手动信任后激活）' : '已信任' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="plugin.integrityHash"
+          label="完整性校验"
+        >
+          <code class="hash-code">{{ plugin.integrityHash.slice(0, 16) }}…</code>
+        </el-descriptions-item>
+      </el-descriptions>
+
       <!-- 运行时状态 -->
       <el-descriptions
         title="运行时状态"
@@ -208,5 +255,13 @@ function formatSize(bytes: number | undefined): string {
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 12px;
+}
+
+.hash-code {
+  background: var(--app-bg-surface-variant);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  word-break: break-all;
 }
 </style>

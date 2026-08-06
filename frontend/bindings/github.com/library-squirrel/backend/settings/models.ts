@@ -93,10 +93,18 @@ export class MergeSettings {
 export class PluginSettings {
     "allowUnsafeEval": boolean;
 
+    /**
+     * 受限模式：开启后启动时仅激活 bundled 插件，跳过所有第三方（出问题时安全启动的救生圈）
+     */
+    "restrictedMode": boolean;
+
     /** Creates a new PluginSettings instance. */
     constructor($$source: Partial<PluginSettings> = {}) {
         if (!("allowUnsafeEval" in $$source)) {
             this["allowUnsafeEval"] = false;
+        }
+        if (!("restrictedMode" in $$source)) {
+            this["restrictedMode"] = false;
         }
 
         Object.assign(this, $$source);

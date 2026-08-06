@@ -4,16 +4,6 @@ import (
 	"encoding/json"
 )
 
-// InstallType 安装类型
-type InstallType int
-
-const (
-	// InstallTypeManual 手动安装
-	InstallTypeManual InstallType = 0
-	// InstallTypeAuto 自动安装
-	InstallTypeAuto InstallType = 1
-)
-
 // ActivationType 激活类型
 type ActivationType int
 
@@ -59,6 +49,7 @@ type PluginInstallDTO struct {
 	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力
 	PackagePath     string            `json:"packagePath,omitempty"`
 	PublicID        string            `json:"publicId,omitempty"`
+	IntegrityHash   string            `json:"integrityHash,omitempty"` // 包级 SHA256(hex)，主程序安装时对原始 zip 字节流计算，供完整性追溯
 }
 
 // GetPublicID 获取插件公开ID（格式：作者/名称）

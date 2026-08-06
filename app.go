@@ -220,6 +220,8 @@ func (app *App) SetMainWindow(window application.Window) {
 
 // LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）
 func (app *App) LoadPlugins() {
+	// 回填历史插件（升级前安装、source/trusted 为 NULL）的来源与信任状态，须在加载前完成
+	app.PluginService.BackfillLegacyPlugins(context.Background())
 	app.loadInstalledPlugins()
 }
 
@@ -294,10 +296,37 @@ func (app *App) loadInstalledPlugins() {
 
 	runtimeLoaded := 0
 	pureUICount := 0
+	pendingTrust := 0      // trusted=false 未激活（需用户手动信任）
+	restrictedSkipped := 0 // 受限模式下跳过的非 bundled 插件
+
+	restrictedMode := false
+	if app.SettingsService != nil {
+		restrictedMode = app.SettingsService.GetSettings().PluginSettings.RestrictedMode
+	}
 
 	for _, p := range plugins {
 		// 跳过已卸载的插件
 		if p.Uninstalled.Valid && p.Uninstalled.Bool {
+			continue
+		}
+
+		// 信任门控（决策6）：trusted=false 不激活；NULL 历史插件兜底视作信任
+		if p.Trusted.Valid && !p.Trusted.Bool {
+			pendingTrust++
+			logger.Log.Infof("插件未信任，跳过激活（需手动信任）: %s", p.PublicID.String)
+			continue
+		}
+
+		// 受限模式（决策4）：开启时跳过所有非 bundled 插件（NULL 来源兜底视作 bundled）
+		source := plugin.SourceLocal
+		if p.Source.Valid {
+			source = p.Source.String
+		} else {
+			source = plugin.SourceBundled
+		}
+		if restrictedMode && source != plugin.SourceBundled {
+			restrictedSkipped++
+			logger.Log.Infof("受限模式启用，跳过非 bundled 插件: %s", p.PublicID.String)
 			continue
 		}
 
@@ -321,7 +350,8 @@ func (app *App) loadInstalledPlugins() {
 		}
 	}
 
-	logger.Log.Infof("插件加载完成: %d 个运行时, %d 个纯 UI, 共 %d 个", runtimeLoaded, pureUICount, len(plugins))
+	logger.Log.Infof("插件加载完成: %d 个运行时, %d 个纯 UI, 共 %d 个; 未信任待激活 %d 个, 受限模式跳过 %d 个",
+		runtimeLoaded, pureUICount, len(plugins), pendingTrust, restrictedSkipped)
 }
 
 // Activate 实现 PluginActivator 接口，激活单个插件
@@ -334,6 +364,12 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	// 跳过没有 PublicID 的插件
 	if !p.PublicID.Valid || p.PublicID.String == "" {
 		return fmt.Errorf("插件缺少 PublicID")
+	}
+
+	// 信任门控（决策6）：trusted=false 不激活，需用户在管理页显式信任后由 Activate 重新激活。
+	// trusted=NULL（历史遗留、回填未覆盖）放行，由 loadInstalledPlugins 兜底判定
+	if p.Trusted.Valid && !p.Trusted.Bool {
+		return fmt.Errorf("插件未信任，拒绝激活: %s", p.PublicID.String)
 	}
 
 	// 跳过没有 RootPath 的插件

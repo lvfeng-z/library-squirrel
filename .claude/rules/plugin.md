@@ -270,6 +270,17 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 
 宿主端通过 `HostDeps`（`backend/plugin/extension/loader.go`）注入各 Provider 适配器，将插件 RPC 调用桥接到对应的 Service/Registry。
 
+## 插件信任模型
+
+插件是 Go 子进程，经 `PluginContext` 拥有完整宿主能力。信任模型为**来源追溯 + 知情同意 + 运行门控**的最小集（非沙箱隔离），完整沙箱属延后项。
+
+- **来源判定（host 权威）**：`plugin.Source`（枚举 `bundled`/`local`/`url`/`marketplace`，常量定义于 `backend/plugin/service.go`）由主程序按**安装入口**判定（`InstallBundled`→bundled、`InstallFromPath`→local），**不由插件声明**——`plugin.json` 无 source/trust/integrity 字段，自声明可伪造、不作信任锚。`plugin.SourceDetail` 记录安装包路径/URL 供追溯。
+- **完整性哈希**：`plugin.IntegrityHash`（SHA256 hex），安装时由 `loadPluginPackage` 对原始 zip 字节流计算，纯追溯存档（重装即覆盖、不做比对、加载时不校验）。entry exe 加载时校验留延后项。
+- **信任标记与 consent**：`plugin.Trusted`（`sql.NullBool`）服务端权威写入——bundled 安装即 `true`；第三方（`InstallFromPath`）的 `trusted` 由前端弹窗收集用户知情同意后经 handler 参数透传（`Handler.InstallFromPath(ctx, packagePath, trusted bool)`），**缺省/绕过 UI 一律落 false**。
+- **运行门控**：`trusted=false` 的插件**不 Activate**（`activatePlugin` 起始检查）。用户在插件管理页「信任」后置 `true` 并激活（`Handler.SetTrusted`）；取消信任仅更新标记，下次启动不再激活（当前运行需重启）。**这是「是否运行」的二值门控，非「裁剪 HostService 能力」**——trusted=true 运行后能力仍全开；按信任裁剪 RPC 属延后项（完整沙箱）。
+- **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted），作安全启动救生圈；与运行门控正交。
+- **历史兜底**：升级前安装的插件 `source`/`trusted` 为 NULL，启动时 `BackfillLegacyPlugins`（`LoadPlugins` 第一步）幂等回填为 bundled/trusted=true、尽力补算哈希；`loadInstalledPlugins` 对 NULL 来源兜底视作 bundled。
+
 ## 插件开发规范
 
 - **前端扩展注册**：通过 `plugin.json` 的 `extensions.frontendExtensions` 声明式注册（`kind` 区分类型），调用 `RegisterSlot()` 的这种方式已不再被支持

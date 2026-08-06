@@ -480,6 +480,34 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     什么是运行时编译？
                   </el-text>
                 </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>受限模式</el-text>
+                  <el-switch
+                    v-model="settings.pluginSettings.restrictedMode"
+                    class="settings-element-in-divider"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    开启后，应用启动时仅激活官方捆绑插件，跳过所有第三方插件。<br>用于排查第三方插件问题时的安全启动；重启应用后生效。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    什么是受限模式？
+                  </el-text>
+                </el-tooltip>
                 <el-divider />
               </div>
               <div id="recycleBinSettings">

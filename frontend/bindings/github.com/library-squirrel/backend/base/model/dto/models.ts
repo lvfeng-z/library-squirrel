@@ -235,6 +235,26 @@ export class PluginDTO {
     "sortNum": number | null;
     "uninstalled": boolean | null;
     "activationType": string | null;
+
+    /**
+     * 来源枚举 bundled/local/url/marketplace
+     */
+    "source": string | null;
+
+    /**
+     * 来源详情（安装包路径/URL）
+     */
+    "sourceDetail": string | null;
+
+    /**
+     * 包级 SHA256(hex)
+     */
+    "integrityHash": string | null;
+
+    /**
+     * 信任标记；false=未信任（未激活，需手动信任）
+     */
+    "trusted": boolean | null;
     "createTime": number;
     "updateTime": number;
 
@@ -278,6 +298,18 @@ export class PluginDTO {
         }
         if (!("activationType" in $$source)) {
             this["activationType"] = null;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = null;
+        }
+        if (!("sourceDetail" in $$source)) {
+            this["sourceDetail"] = null;
+        }
+        if (!("integrityHash" in $$source)) {
+            this["integrityHash"] = null;
+        }
+        if (!("trusted" in $$source)) {
+            this["trusted"] = null;
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;

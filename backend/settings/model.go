@@ -31,6 +31,7 @@ type ImportSettings struct {
 // PluginSettings 插件相关设置
 type PluginSettings struct {
 	AllowUnsafeEval bool `json:"allowUnsafeEval" koanf:"allowUnsafeEval"`
+	RestrictedMode  bool `json:"restrictedMode" koanf:"restrictedMode"` // 受限模式：开启后启动时仅激活 bundled 插件，跳过所有第三方（出问题时安全启动的救生圈）
 }
 
 // TourSettings 向导完成状态，按向导 ID 记录是否已完成
@@ -74,6 +75,7 @@ func NewSettings() *Settings {
 		},
 		PluginSettings: PluginSettings{
 			AllowUnsafeEval: false,
+			RestrictedMode:  false,
 		},
 		Tour: TourSettings{
 			Completed: map[string]bool{},

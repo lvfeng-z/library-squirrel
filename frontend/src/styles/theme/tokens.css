@@ -201,6 +201,17 @@
   --app-status-toggle-enabled-text: var(--app-status-done-text);
   --app-status-toggle-enabled-border: var(--app-status-done-border);
 
+  /* —— 插件来源/信任（bundled=官方可信→done，local=本地第三方→idle，unverified=未信任→warn）—— */
+  --app-status-plugin-bundled-bg: var(--app-status-done-bg);
+  --app-status-plugin-bundled-text: var(--app-status-done-text);
+  --app-status-plugin-bundled-border: var(--app-status-done-border);
+  --app-status-plugin-local-bg: var(--app-status-idle-bg);
+  --app-status-plugin-local-text: var(--app-status-idle-text);
+  --app-status-plugin-local-border: var(--app-status-idle-border);
+  --app-status-plugin-unverified-bg: var(--app-status-warn-bg);
+  --app-status-plugin-unverified-text: var(--app-status-warn-text);
+  --app-status-plugin-unverified-border: var(--app-status-warn-border);
+
   --app-status-toggle-disabled-bg: var(--app-status-idle-bg);
   --app-status-toggle-disabled-text: var(--app-status-idle-text);
   --app-status-toggle-disabled-border: var(--app-status-idle-border);

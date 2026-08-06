@@ -2,12 +2,16 @@ package plugin
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -25,6 +29,12 @@ const (
 	PluginRoot = "plugin"
 	// PluginPackageRoot 插件包目录
 	PluginPackageRoot = "plugin/package"
+
+	// 插件来源枚举（plugin.Source 字段取值，由主程序按安装入口判定，不由插件声明）
+	SourceBundled     = "bundled"
+	SourceLocal       = "local"
+	SourceURL         = "url"
+	SourceMarketplace = "marketplace"
 )
 
 // 错误定义
@@ -35,6 +45,26 @@ var (
 	ErrInvalidManifest     = errors.New("invalid plugin manifest")
 	ErrBackupNotFound      = errors.New("backup not found")
 )
+
+// installContext 安装上下文：来源与信任（由安装入口判定，服务端权威；与承载 manifest 数据的 installDTO 正交）
+type installContext struct {
+	Source  string // 来源枚举 SourceBundled/SourceLocal/SourceURL/SourceMarketplace
+	Trusted bool   // 信任标记；bundled=true，第三方经用户确认后 true，绕过 UI 的异常安装为 false
+}
+
+// resolveReinstallContext 据原插件来源与调用方透传的 trusted 解析重装上下文：
+// 来源沿用原插件记录（NULL 兜底 local），bundled 强制信任（不论透传值），第三方沿用透传 trusted。
+func resolveReinstallContext(source sql.NullString, trusted bool) installContext {
+	resolved := SourceLocal
+	if source.Valid {
+		resolved = source.String
+	}
+	resolvedTrusted := trusted
+	if resolved == SourceBundled {
+		resolvedTrusted = true
+	}
+	return installContext{Source: resolved, Trusted: resolvedTrusted}
+}
 
 // Repository 插件仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
@@ -214,8 +244,9 @@ func (s *Service) GetByPublicId(ctx context.Context, publicId string) (*entity2.
 	return s.repo.GetByPublicId(ctx, publicId)
 }
 
-// InstallFromPath 从插件包路径安装插件
-func (s *Service) InstallFromPath(ctx context.Context, packagePath string, installType domain.InstallType) (*entity2.Plugin, error) {
+// InstallFromPath 从本地插件包路径安装插件。来源固定 local；trusted 由调用方透传用户的知情同意结果，
+// 缺省/绕过 UI 的异常安装为 false（运行门控：trusted=false 的插件不激活，需用户在管理页显式信任）。
+func (s *Service) InstallFromPath(ctx context.Context, packagePath string, trusted bool) (*entity2.Plugin, error) {
 	// 验证文件存在
 	if !util.FileExists(packagePath) {
 		return nil, fmt.Errorf("plugin package not found: %s", packagePath)
@@ -227,17 +258,24 @@ func (s *Service) InstallFromPath(ctx context.Context, packagePath string, insta
 		return nil, err
 	}
 
-	return s.install(ctx, installDTO, installType, false)
+	return s.install(ctx, installDTO, false, installContext{Source: SourceLocal, Trusted: trusted})
 }
 
 // loadPluginPackage 加载插件安装包
 func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDTO, error) {
-	// 打开 ZIP 文件
-	reader, err := zip.OpenReader(packagePath)
+	// 读取包字节并计算包级 SHA256（原始 zip 字节流，供完整性追溯）
+	pkgBytes, err := os.ReadFile(packagePath)
 	if err != nil {
 		return nil, ErrInvalidPackage
 	}
-	defer reader.Close()
+	sum := sha256.Sum256(pkgBytes)
+	integrityHash := hex.EncodeToString(sum[:])
+
+	// 打开 ZIP
+	reader, err := zip.NewReader(bytes.NewReader(pkgBytes), int64(len(pkgBytes)))
+	if err != nil {
+		return nil, ErrInvalidPackage
+	}
 
 	// 查找 plugin.json
 	var manifestBytes []byte
@@ -294,12 +332,13 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
+	installDTO.IntegrityHash = integrityHash
 	return installDTO, nil
 }
 
 // install 安装插件（包含激活）。reinstall=true 为重装/升级（复用同 publicId 原记录覆盖），false 为全新安装（已存在且未卸载则报错）
-func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, installType domain.InstallType, reinstall bool) (*entity2.Plugin, error) {
-	plugin, err := s.installCore(ctx, installDTO, reinstall)
+func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool, ictx installContext) (*entity2.Plugin, error) {
+	plugin, err := s.installCore(ctx, installDTO, reinstall, ictx)
 	if err != nil {
 		return nil, err
 	}
@@ -333,13 +372,13 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 		return nil, nil
 	}
 
-	return s.installCore(ctx, installDTO, false)
+	return s.installCore(ctx, installDTO, false, installContext{Source: SourceBundled, Trusted: true})
 }
 
 // installCore 安装插件核心逻辑（解压 + 写 DB + 备份），不含激活。
 // reinstall=true 为重装/升级：复用同 publicId 原记录（保留 ID 与 CreateTime）覆盖，不论其卸载状态；
 // reinstall=false 为全新安装：同 publicId 且未卸载的记录视为重复安装，返回 ErrPluginAlreadyExists。
-func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool) (*entity2.Plugin, error) {
+func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool, ictx installContext) (*entity2.Plugin, error) {
 	// 检查是否已安装
 	existing, err := s.repo.GetByPublicId(ctx, installDTO.PublicID)
 	if err != nil {
@@ -392,6 +431,10 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
 	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
+	plugin.Source = sql.NullString{String: ictx.Source, Valid: ictx.Source != ""}
+	plugin.SourceDetail = sql.NullString{String: installDTO.PackagePath, Valid: installDTO.PackagePath != ""}
+	plugin.IntegrityHash = sql.NullString{String: installDTO.IntegrityHash, Valid: installDTO.IntegrityHash != ""}
+	plugin.Trusted = sql.NullBool{Bool: ictx.Trusted, Valid: true}
 
 	if reusePlugin != nil {
 		// 复用原记录（重装/升级，或重装已卸载插件）：完整替换该记录的所有字段，保留原始 ID 与 CreateTime
@@ -421,8 +464,8 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	return plugin, nil
 }
 
-// Reinstall 重新安装插件
-func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, installType domain.InstallType) (*entity2.Plugin, error) {
+// Reinstall 重新安装插件（trusted 由调用方透传；source 沿用原插件来源）
+func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, trusted bool) (*entity2.Plugin, error) {
 	// 获取插件
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
@@ -455,11 +498,11 @@ func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, installT
 	}
 	packagePath := filepath.Join(workdir, filePath)
 
-	return s.ReinstallFromPath(ctx, pluginPublicId, packagePath, installType)
+	return s.ReinstallFromPath(ctx, pluginPublicId, packagePath, trusted)
 }
 
-// ReinstallFromPath 从指定路径重新安装插件
-func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, installType domain.InstallType) (*entity2.Plugin, error) {
+// ReinstallFromPath 从指定路径重新安装插件。source 沿用原插件来源；bundled 强制 trusted=true，第三方用调用方透传的 trusted
+func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, trusted bool) (*entity2.Plugin, error) {
 	if packagePath == "" {
 		return nil, fmt.Errorf("package path is required")
 	}
@@ -489,8 +532,8 @@ func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, 
 		return nil, fmt.Errorf("plugin publicId mismatch")
 	}
 
-	// 重新安装
-	return s.install(ctx, installDTO, installType, true)
+	// 重新安装（来源沿用原插件、bundled 强制信任、第三方沿用透传 trusted）
+	return s.install(ctx, installDTO, true, resolveReinstallContext(plugin.Source, trusted))
 }
 
 // Uninstall 卸载插件
@@ -505,6 +548,73 @@ func (s *Service) Uninstall(ctx context.Context, pluginPublicId string) error {
 	}
 
 	return s.uninstall(ctx, pluginPublicId)
+}
+
+// SetTrusted 设置插件信任状态（决策6 手动信任/取消信任入口）。
+// trusted=true 时立即激活；trusted=false 仅更新标记，下次启动不再激活（当前已运行进程无法即时停止，需重启生效）。
+func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool) (*entity2.Plugin, error) {
+	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
+	if err != nil {
+		return nil, err
+	}
+	if plugin == nil {
+		return nil, ErrPluginNotFound
+	}
+
+	plugin.Trusted = sql.NullBool{Bool: trusted, Valid: true}
+	if err := s.repo.Save(ctx, plugin); err != nil {
+		return nil, err
+	}
+
+	if trusted && s.activator != nil {
+		if err := s.activator.Activate(plugin); err != nil {
+			logger.Log.Warnf("信任后激活插件失败: %s, %v", pluginPublicId, err)
+		}
+	}
+
+	logger.Log.Infof("插件信任状态已更新: %s trusted=%v", pluginPublicId, trusted)
+	return plugin, nil
+}
+
+// BackfillLegacyPlugins 回填升级前安装的插件（source/trusted 为 NULL）的来源与信任状态。
+// 幂等：仅处理 source 为 NULL 的记录；视作 bundled 默认信任；IntegrityHash 尽力从备份原 zip 补算，失败留空不阻断。
+func (s *Service) BackfillLegacyPlugins(ctx context.Context) {
+	plugins, err := s.repo.List(ctx, &database.QueryOption{})
+	if err != nil {
+		logger.Log.Warnf("回填插件信任状态：查询插件列表失败: %v", err)
+		return
+	}
+	backfilled := 0
+	for _, p := range plugins {
+		if p.Source.Valid {
+			continue
+		}
+		p.Source = sql.NullString{String: SourceBundled, Valid: true}
+		p.Trusted = sql.NullBool{Bool: true, Valid: true}
+		// 尽力补算包级哈希：从备份取原 zip 路径计算（与安装时 loadPluginPackage 同算法）
+		if backup, err := s.backupProvider.GetPluginBackup(ctx, p.ID); err == nil && backup != nil {
+			workdir := ""
+			if backup.Workdir.Valid {
+				workdir = backup.Workdir.String
+			}
+			filePath := ""
+			if backup.FilePath.Valid {
+				filePath = backup.FilePath.String
+			}
+			if data, err := os.ReadFile(filepath.Join(workdir, filePath)); err == nil {
+				sum := sha256.Sum256(data)
+				p.IntegrityHash = sql.NullString{String: hex.EncodeToString(sum[:]), Valid: true}
+			}
+		}
+		if err := s.repo.Save(ctx, p); err != nil {
+			logger.Log.Warnf("回填插件信任状态失败: %s, %v", p.PublicID.String, err)
+			continue
+		}
+		backfilled++
+	}
+	if backfilled > 0 {
+		logger.Log.Infof("已回填 %d 个历史插件的来源与信任状态（视作 bundled 默认信任）", backfilled)
+	}
 }
 
 // uninstall 卸载插件核心逻辑

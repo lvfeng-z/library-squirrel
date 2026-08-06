@@ -67,10 +67,10 @@ export function GetPluginStatus(pluginPublicId: string): $CancellablePromise<mod
 }
 
 /**
- * InstallFromPath 从插件包路径安装插件
+ * InstallFromPath 从插件包路径安装插件。trusted 透传用户知情同意结果（true=用户已确认信任，false=绕过 UI 的异常安装）
  */
-export function InstallFromPath(packagePath: string, installType: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
-    return $Call.ByID(2158721802, packagePath, installType).then(($result: any) => {
+export function InstallFromPath(packagePath: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(2158721802, packagePath, trusted).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -85,19 +85,19 @@ export function Page(page: model$0.Page<dto$0.PluginDTO> | null, query: $models.
 }
 
 /**
- * Reinstall 重新安装插件
+ * Reinstall 重新安装插件。trusted 透传用户知情同意结果
  */
-export function Reinstall(pluginPublicId: string, installType: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
-    return $Call.ByID(2982558974, pluginPublicId, installType).then(($result: any) => {
+export function Reinstall(pluginPublicId: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(2982558974, pluginPublicId, trusted).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 /**
- * ReinstallFromPath 从指定路径重新安装插件
+ * ReinstallFromPath 从指定路径重新安装插件。trusted 透传用户知情同意结果
  */
-export function ReinstallFromPath(pluginPublicId: string, packagePath: string, installType: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
-    return $Call.ByID(1285597481, pluginPublicId, packagePath, installType).then(($result: any) => {
+export function ReinstallFromPath(pluginPublicId: string, packagePath: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(1285597481, pluginPublicId, packagePath, trusted).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -108,6 +108,15 @@ export function ReinstallFromPath(pluginPublicId: string, packagePath: string, i
 export function Save(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(877049511, plugin).then(($result: any) => {
         return $$createType17($result);
+    });
+}
+
+/**
+ * SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件
+ */
+export function SetTrusted(pluginPublicId: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(1776306361, pluginPublicId, trusted).then(($result: any) => {
+        return $$createType5($result);
     });
 }
 

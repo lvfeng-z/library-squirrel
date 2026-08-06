@@ -13,9 +13,10 @@
 
 | 方法 | 作用 |
 | --- | --- |
-| `InstallFromPath(packagePath, installType)` | 从 ZIP 包安装插件 |
-| `Reinstall(pluginPublicId, installType)` | 重新安装（已安装插件） |
-| `ReinstallFromPath(...)` | 从指定包重装 |
+| `InstallFromPath(packagePath, trusted)` | 从 ZIP 包安装插件；trusted 透传用户知情同意结果 |
+| `Reinstall(pluginPublicId, trusted)` | 重新安装（已安装插件） |
+| `ReinstallFromPath(pluginPublicId, packagePath, trusted)` | 从指定包重装 |
+| `SetTrusted(pluginPublicId, trusted)` | 设置信任状态（手动信任/取消信任；true 时激活） |
 | `Uninstall(pluginPublicId)` | 卸载插件 |
 | `SetUninstalled(pluginId)` | 标记为已卸载（残留清理） |
 | `Save` / `Update` | 保存 / 更新插件记录 |
@@ -36,7 +37,9 @@
 ## 核心概念
 
 - **运行时插件 vs 纯 UI 插件**：前者有 Go 入口（DLL 子进程），后者仅 plugin.json。
-- **installType**：安装类型（如正式 / 开发模式）。
+- **来源（Source）**：插件安装来源（bundled/local/url/marketplace），由主程序按安装入口判定、写入 `plugin.Source`，不由插件声明。
+- **信任标记（Trusted）**：`plugin.Trusted`（bool）。bundled 默认 true；第三方经用户知情同意后 true；false 则不激活（运行门控）。
+- **完整性哈希（IntegrityHash）**：安装时对原始 zip 算 SHA256 存档，纯追溯（重装覆盖、不做比对）。
 - **PluginStatus**：插件运行时状态（进程存活、激活情况等）。
 - **PluginStorage（插件自存信息）**：统一 KV 存储（`plugin_storage` 单表），取代旧的 `plugin.plugin_data` 与 `secure_storage`。明文项直接读写，加密项 `SetValueEncrypted` 存密文（`util/crypto` 加解密）、读取自动解密。
 
@@ -48,3 +51,4 @@
 ## 关键设计
 
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
+- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` 先 `BackfillLegacyPlugins`（幂等回填升级前 source/trusted 为 NULL 的插件为 bundled/trusted=true）→ `loadInstalledPlugins` 按 trusted 门控（false 不激活）+ Restricted Mode（settings 开关，仅 bundled）+ NULL 来源兜底加载；`activatePlugin` 起始统一拦截 trusted=false。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `doc/plan/插件信任模型最小集方案.md`。

@@ -61,15 +61,15 @@ func (m *mockStorageRepo) Updates(ctx context.Context, entity *domain.PluginStor
 func TestStoragePlainSetGet(t *testing.T) {
 	svc := NewPluginStorageService(newMockStorageRepo())
 	ctx := context.Background()
-	if err := svc.SetValue(ctx, 1, "path", "/data"); err != nil {
+	if err := svc.SetValue(ctx, 1, "path", "/data", 1); err != nil {
 		t.Fatal(err)
 	}
 	got, err := svc.GetValue(ctx, 1, "path")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/data" {
-		t.Errorf("明文 GetValue = %q, want %q", got, "/data")
+	if got == nil || got.Value != "/data" {
+		t.Errorf("明文 GetValue = %+v, want Value %q", got, "/data")
 	}
 }
 
@@ -78,7 +78,7 @@ func TestStorageEncryptedSetGet(t *testing.T) {
 	svc := NewPluginStorageService(repo)
 	ctx := context.Background()
 	secret := "super-secret-token"
-	if err := svc.SetValueEncrypted(ctx, 2, "accessToken", secret); err != nil {
+	if err := svc.SetValueEncrypted(ctx, 2, "accessToken", secret, 1); err != nil {
 		t.Fatal(err)
 	}
 	// 底层存储的 Value 应为密文，且 Encrypted 标记为 true
@@ -94,16 +94,16 @@ func TestStorageEncryptedSetGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != secret {
-		t.Errorf("加密项 GetValue = %q, want %q", got, secret)
+	if got == nil || got.Value != secret {
+		t.Errorf("加密项 GetValue = %+v, want Value %q", got, secret)
 	}
 }
 
 func TestStorageGetAllMixed(t *testing.T) {
 	svc := NewPluginStorageService(newMockStorageRepo())
 	ctx := context.Background()
-	svc.SetValue(ctx, 1, "plain", "hello")
-	svc.SetValueEncrypted(ctx, 1, "secret", "world")
+	svc.SetValue(ctx, 1, "plain", "hello", 1)
+	svc.SetValueEncrypted(ctx, 1, "secret", "world", 1)
 	all, err := svc.GetAllValues(ctx, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -111,11 +111,11 @@ func TestStorageGetAllMixed(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("GetAllValues 返回 %d 项, want 2", len(all))
 	}
-	if all["plain"] != "hello" {
-		t.Errorf("plain = %q, want hello", all["plain"])
+	if all["plain"] == nil || all["plain"].Value != "hello" {
+		t.Errorf("plain = %+v, want Value hello", all["plain"])
 	}
-	if all["secret"] != "world" {
-		t.Errorf("secret = %q, want world", all["secret"])
+	if all["secret"] == nil || all["secret"].Value != "world" {
+		t.Errorf("secret = %+v, want Value world", all["secret"])
 	}
 }
 
@@ -123,31 +123,31 @@ func TestStorageUpdateExisting(t *testing.T) {
 	repo := newMockStorageRepo()
 	svc := NewPluginStorageService(repo)
 	ctx := context.Background()
-	svc.SetValue(ctx, 1, "k", "v1")
-	svc.SetValue(ctx, 1, "k", "v2")
+	svc.SetValue(ctx, 1, "k", "v1", 1)
+	svc.SetValue(ctx, 1, "k", "v2", 1)
 	if len(repo.data) != 1 {
 		t.Errorf("同 key 二次写入应更新而非新增, got %d 条", len(repo.data))
 	}
 	got, _ := svc.GetValue(ctx, 1, "k")
-	if got != "v2" {
-		t.Errorf("更新后 GetValue = %q, want v2", got)
+	if got == nil || got.Value != "v2" {
+		t.Errorf("更新后 GetValue = %+v, want Value v2", got)
 	}
 }
 
 func TestStorageDeleteAndMissing(t *testing.T) {
 	svc := NewPluginStorageService(newMockStorageRepo())
 	ctx := context.Background()
-	// 不存在的 key 应返回空串无错误
+	// 不存在的 key 应返回 nil 无错误
 	got, err := svc.GetValue(ctx, 1, "nope")
-	if err != nil || got != "" {
-		t.Errorf("不存在 key 应返回空串无错, got %q err %v", got, err)
+	if err != nil || got != nil {
+		t.Errorf("不存在 key 应返回 nil 无错, got %+v err %v", got, err)
 	}
-	svc.SetValue(ctx, 1, "k", "v")
+	svc.SetValue(ctx, 1, "k", "v", 1)
 	if err := svc.DeleteValue(ctx, 1, "k"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = svc.GetValue(ctx, 1, "k")
-	if got != "" {
-		t.Errorf("删除后应返回空, got %q", got)
+	if got != nil {
+		t.Errorf("删除后应返回 nil, got %+v", got)
 	}
 }

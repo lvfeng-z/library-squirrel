@@ -11,7 +11,8 @@ export const emptySettings: Settings = {
     updateWorkInfoWhenImport: true
   },
   pluginSettings: {
-    allowUnsafeEval: false
+    allowUnsafeEval: false,
+    restrictedMode: false
   },
   recycleBin: {
     autoCleanupEnabled: true,

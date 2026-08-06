@@ -36,6 +36,7 @@ const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '设置', icon: 'Setting', code: 'settings' },
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
+  { label: '信任', icon: 'Check', code: 'trust' },
   { label: '修复', icon: 'Refresh', code: 'reinstall' },
   { label: '卸载', icon: 'delete', code: 'uninstall' }
 ]
@@ -68,6 +69,17 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     title: '版本号',
     hide: false,
     width: 100,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'text',
+    defaultDisabled: true,
+    key: 'source',
+    title: '来源',
+    hide: false,
+    width: 90,
     headerAlign: 'center',
     dataAlign: 'center',
     showOverflowTooltip: true
@@ -119,6 +131,9 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
       settingPublicId.value = String(op.data.publicId)
       settingDialogState.value = true
       break
+    case 'trust':
+      handleTrust(op.data)
+      break
     case 'reinstall':
       beforeReInstall(String(op.data.publicId))
       break
@@ -160,7 +175,7 @@ async function beforeReInstall(pluginPublicId: string) {
 // 重新安装
 async function reInstall(pluginPublicId: string) {
   try {
-    await pluginApi.pluginReinstall(pluginPublicId)
+    await pluginApi.pluginReinstall(pluginPublicId, true)
     pluginSearchTable.value.doSearch()
     ElMessage({ type: 'success', message: '修复完成' })
   } catch (e) {
@@ -170,13 +185,46 @@ async function reInstall(pluginPublicId: string) {
 }
 // 卸载
 async function unInstall(pluginPublicId: string) {
-  try {
-    await pluginApi.pluginUnInstall(pluginPublicId)
-    pluginSearchTable.value.doSearch()
-    ElMessage({ type: 'success', message: '已卸载' })
-  } catch (e) {
-    pluginSearchTable.value.doSearch()
-    ElMessage({ type: 'error', message: `卸载失败，${(e as Error).message}` })
+  ElMessageBox.confirm('确认卸载该插件？卸载后其扩展功能将不可用。', '卸载插件', {
+    confirmButtonText: '卸载', cancelButtonText: '取消', type: 'warning'
+  })
+    .then(async () => {
+      try {
+        await pluginApi.pluginUnInstall(pluginPublicId)
+        pluginSearchTable.value.doSearch()
+        ElMessage({ type: 'success', message: '已卸载' })
+      } catch (e) {
+        pluginSearchTable.value.doSearch()
+        ElMessage({ type: 'error', message: `卸载失败，${(e as Error).message}` })
+      }
+    })
+    .catch(() => {})
+}
+// 设置插件信任状态（手动信任/取消信任）：trusted=false 切换为信任并激活，true 切换为取消（下次启动不激活）
+async function handleTrust(plugin: PluginDTO) {
+  const publicId = String(plugin.publicId)
+  if (plugin.trusted === true) {
+    ElMessageBox.confirm('取消信任后，下次启动将不再激活该插件（当前运行需重启生效）。确认取消信任？', '取消信任', {
+      confirmButtonText: '取消信任', cancelButtonText: '保留', type: 'warning'
+    })
+      .then(async () => {
+        try {
+          await pluginApi.pluginSetTrusted(publicId, false)
+          pluginSearchTable.value.doSearch()
+          ElMessage.success('已取消信任')
+        } catch (e) {
+          ElMessage.error((e as Error).message)
+        }
+      })
+      .catch(() => {})
+  } else {
+    try {
+      await pluginApi.pluginSetTrusted(publicId, true)
+      pluginSearchTable.value.doSearch()
+      ElMessage.success('已信任并激活')
+    } catch (e) {
+      ElMessage.error((e as Error).message)
+    }
   }
 }
 // 选择安装包
@@ -195,13 +243,20 @@ async function selectPackage(): Promise<string | undefined> {
 async function handleInstallClicked() {
   const packagePath = await selectPackage()
   if (isNotBlank(packagePath)) {
-    return installFromPath(packagePath)
+    // 第三方插件（用户手动选择的本地包）知情同意：告知完整宿主能力风险，确认后传 trusted=true；取消则不安装
+    ElMessageBox.confirm(
+      '此插件来自第三方，安装运行后将获得宿主完整权限，包括：读写你的全部资源库数据、创建下载任务、发起任意网络请求、打开原生窗口、执行任意代码。<br><br>注意：插件作者身份无法验证，运行期间造成的数据外泄或损坏将不可逆。<br><br>请仅在你了解并信任该插件及其作者时确认安装。',
+      '安装第三方插件',
+      { confirmButtonText: '确认安装', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true }
+    )
+      .then(() => installFromPath(packagePath, true))
+      .catch(() => {})
   }
 }
-// 通过安装包路径安装插件
-async function installFromPath(packagePath: string) {
+// 通过安装包路径安装插件。trusted 透传知情同意结果（true=已确认信任；false=未信任，装后需手动信任）
+async function installFromPath(packagePath: string, trusted: boolean = false) {
   try {
-    const result = await pluginApi.pluginInstallFromPath(packagePath)
+    const result = await pluginApi.pluginInstallFromPath(packagePath, trusted)
     ApiUtil.msg(result)
     pluginSearchTable.value.doSearch()
   } catch (e) {
@@ -211,7 +266,7 @@ async function installFromPath(packagePath: string) {
 // 通过安装包路径重新安装插件
 async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   try {
-    const result = await pluginApi.pluginReinstallFromPath(publicPublicId, packagePath)
+    const result = await pluginApi.pluginReinstallFromPath(publicPublicId, packagePath, true)
     ApiUtil.msg(result)
     pluginSearchTable.value.doSearch()
   } catch (e) {
@@ -234,7 +289,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           :multi-select="false"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"
-          :operation-width="220"
+          :operation-width="280"
           @row-button-clicked="handleRowButtonClicked"
           @selection-change="handleSelectionChange"
         >
