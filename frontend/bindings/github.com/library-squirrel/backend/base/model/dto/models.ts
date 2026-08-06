@@ -664,6 +664,11 @@ export class SearchCondition {
     "value": any;
     "operator"?: WorkSearchOperator;
 
+    /**
+     * namespace 过滤维度（character/parody/female/male/language/misc/general 等），仅 LocalTag/SiteTag 生效；空=不按 namespace 过滤（命中全部含 null）
+     */
+    "namespace"?: string;
+
     /** Creates a new SearchCondition instance. */
     constructor($$source: Partial<SearchCondition> = {}) {
         if (!("type" in $$source)) {

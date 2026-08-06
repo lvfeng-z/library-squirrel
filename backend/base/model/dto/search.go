@@ -19,9 +19,10 @@ const (
 
 // SearchCondition 搜索条件
 type SearchCondition struct {
-	Type     SearchType         `json:"type"`
-	Value    interface{}        `json:"value"`
-	Operator WorkSearchOperator `json:"operator,omitempty"`
+	Type      SearchType         `json:"type"`
+	Value     interface{}        `json:"value"`
+	Operator  WorkSearchOperator `json:"operator,omitempty"`
+	Namespace string             `json:"namespace,omitempty"` // namespace 过滤维度（character/parody/female/male/language/misc/general 等），仅 LocalTag/SiteTag 生效；空=不按 namespace 过滤（命中全部含 null）
 }
 
 // WorkSearchOperator 作品搜索操作符

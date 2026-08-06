@@ -63,7 +63,8 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 		stmt := `SELECT t1.id || 'siteTag' AS value, t1.site_tag_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 2, 'id', t1.id,
 				 'localTag', JSON_OBJECT('id', COALESCE(t2.id, 0), 'localTagName', COALESCE(t2.local_tag_name, ''), 'baseLocalTagId', COALESCE(t2.base_local_tag_id, 0)),
-				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, ''))
+				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, '')),
+				 'namespace', t1.namespace
 				 ) AS extraData
 				 FROM site_tag t1
 				 LEFT JOIN local_tag t2 ON t1.local_tag_id = t2.id
@@ -367,6 +368,15 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 	return results, total, nil
 }
 
+// namespaceCondition 构造 namespace 过滤片段。非空 namespace 返回 " AND rwt.namespace = ?" 与对应参数；
+// 空 namespace 返回空串（不限制 namespace）。SQL 中 NULL=? 为 unknown 不命中，指定 namespace 时不匹配无 namespace 关联。
+func namespaceCondition(namespace string) (string, []interface{}) {
+	if namespace == "" {
+		return "", nil
+	}
+	return " AND rwt.namespace = ?", []interface{}{namespace}
+}
+
 // buildWhereClause 根据搜索条件构建 WHERE 子句（别名 "t1"）
 func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}) {
 	return buildWhereClauseWithAlias(conditions, "t1")
@@ -388,29 +398,35 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 
 		switch cond.Type {
 		case dto2.LocalTag:
+			nsCond, nsParams := namespaceCondition(cond.Namespace)
 			if cond.Operator == dto2.NotEqual {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
-						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`, alias))
+						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?)%s)`, alias, nsCond))
 				params = append(params, cond.Value, cond.Value)
+				params = append(params, nsParams...)
 			} else {
 				whereClauses = append(whereClauses,
 					fmt.Sprintf(`EXISTS(SELECT 1 FROM re_work_tag rwt
 						LEFT JOIN site_tag st ON rwt.site_tag_id = st.id
-						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?))`, alias))
+						WHERE rwt.work_id = %s.id AND (rwt.local_tag_id = ? OR st.local_tag_id = ?)%s)`, alias, nsCond))
 				params = append(params, cond.Value, cond.Value)
+				params = append(params, nsParams...)
 			}
 
 		case dto2.SiteTag:
+			nsCond, nsParams := namespaceCondition(cond.Namespace)
 			if cond.Operator == dto2.NotEqual {
 				whereClauses = append(whereClauses,
-					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
+					fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?%s)", alias, nsCond))
 				params = append(params, cond.Value)
+				params = append(params, nsParams...)
 			} else {
 				whereClauses = append(whereClauses,
-					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?)", alias))
+					fmt.Sprintf("EXISTS(SELECT 1 FROM re_work_tag rwt WHERE rwt.work_id = %s.id AND rwt.site_tag_id = ?%s)", alias, nsCond))
 				params = append(params, cond.Value)
+				params = append(params, nsParams...)
 			}
 
 		case dto2.LocalAuthor:

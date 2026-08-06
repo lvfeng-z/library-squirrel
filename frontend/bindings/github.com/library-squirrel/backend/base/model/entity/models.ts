@@ -21,6 +21,11 @@ export class ReWorkTag {
     "localTagId": sql$0.NullInt64;
     "siteTagId": sql$0.NullInt64;
 
+    /**
+     * 关联级 namespace（site 关联=所指 site_tag.namespace 镜像；local 关联=用户自设/null）
+     */
+    "namespace": sql$0.NullString;
+
     /** Creates a new ReWorkTag instance. */
     constructor($$source: Partial<ReWorkTag> = {}) {
         if (!("id" in $$source)) {
@@ -44,6 +49,9 @@ export class ReWorkTag {
         if (!("siteTagId" in $$source)) {
             this["siteTagId"] = (new sql$0.NullInt64());
         }
+        if (!("namespace" in $$source)) {
+            this["namespace"] = (new sql$0.NullString());
+        }
 
         Object.assign(this, $$source);
     }
@@ -56,6 +64,7 @@ export class ReWorkTag {
         const $$createField4_0 = $$createType0;
         const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workId" in $$parsedSource) {
             $$parsedSource["workId"] = $$createField3_0($$parsedSource["workId"]);
@@ -69,9 +78,13 @@ export class ReWorkTag {
         if ("siteTagId" in $$parsedSource) {
             $$parsedSource["siteTagId"] = $$createField6_0($$parsedSource["siteTagId"]);
         }
+        if ("namespace" in $$parsedSource) {
+            $$parsedSource["namespace"] = $$createField7_0($$parsedSource["namespace"]);
+        }
         return new ReWorkTag($$parsedSource as Partial<ReWorkTag>);
     }
 }
 
 // Private type creation functions
 const $$createType0 = sql$0.NullInt64.createFrom;
+const $$createType1 = sql$0.NullString.createFrom;
