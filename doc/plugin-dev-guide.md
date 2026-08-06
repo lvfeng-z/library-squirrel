@@ -427,6 +427,18 @@ CreateWorkInfo(task) → 反序列化 task.PluginData
 
 **兜底原则**:作者/标签的富信息(简介/等级)获取失败时(站点风控、字段不存在等),回退基本字段(name + homepage),标记为非致命——`CreateWorkInfo` 不应因富信息缺失而整体失败。站点返回的字段名/结构务必先 curl 确认(见第十五节),勿盲猜字段名。
 
+#### plugin_data 格式版本约定
+
+`TaskCreateResponse.PluginData` 是插件自定义的不透明字符串，主程序不解析其内容（仅原样存入 task 记录、执行时原样回传，见上一小节数据流）。插件升级后，新版本 TaskHandler 可能需要识别旧版本写入的 PluginData 格式。约定插件**自行管理 PluginData 的格式版本**：
+
+1. **写入**：序列化 PluginData 时在 JSON 顶层带版本字段（建议命名 `schemaVersion`，整数，初值 1）。
+2. **读取兜底**：反序列化后按 `schemaVersion` 分支解析；**字段缺失（旧数据）按默认旧格式（v0）兜底**，不报错。
+3. **未知高版本 fail-fast**：读到高于自身支持的 `schemaVersion`（数据由更新版本插件写入；含用户从高版本回滚到低版本插件的场景）时返回明确错误（如"任务数据由更高版本插件创建，请升级插件或重建任务"），禁止尽力解析以防静默数据损坏。**此为插件自决的约定，主程序无法强制**——主程序不解析 PluginData 内容，是否实现完全由插件负责。
+4. **递增时机**：`schemaVersion` 仅在 PluginData 结构**破坏性变更**（删字段/改字段语义/改类型）时递增；加可选字段不必递增（向前兼容）。
+5. **责任声明**：PluginData 的格式兼容性与跨版本迁移由**插件自负**，主程序不解析、不裁决、不强制迁移。
+
+> 与 `contractVersion`（host↔plugin 协议代际，见「契约版本协商」）和 `configSchemaVersion`（插件配置 KV 结构，见 8.3）是三个独立维度：contractVersion 管 RPC/proto 契约、configSchemaVersion 管 `plugin_storage` 配置、PluginData 的 `schemaVersion` 管 task 内部数据格式，互不耦合。
+
 ### 6.2 SiteBrowser（运行时）
 
 ```go

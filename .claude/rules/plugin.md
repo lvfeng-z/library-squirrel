@@ -290,3 +290,4 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 - **FACTORY_IMPORT_AS** (P0): 预编译组件中禁止使用 `import { X as Y }` 的 `as` 语法（Vite 工厂插件不兼容），需要别名时直接修改变量名
 - **LAZY_EMITTER_CLOSURE** (P1): 主程序中引用 `emitter` 必须通过闭包延迟读取，禁止在初始化阶段直接持有 emitter 引用
 - **THEME_TOKEN_CONFORMANCE** (P1): 插件 UI 样式遵循主题令牌契约（`doc/plugin-theme-tokens.md`），使用主程序的 `var(--app-*)` 令牌，禁止硬编码颜色与 `var(--el-*)`，使插件界面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
+- **PLUGIN_DATA_VERSIONING** (P1): 插件写入 task `PluginData` 时自管格式版本（JSON 顶层 `schemaVersion`，整数，初值1）；读取按版本分支——缺失=旧格式 v0 兜底，高于自身支持版本=fail-fast 报错拒绝执行（防静默数据损坏）。主程序不解析 PluginData 内容，版本兼容性由插件自负。详见 `doc/plugin-dev-guide.md`「plugin_data 格式版本约定」。
