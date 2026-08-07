@@ -20,10 +20,13 @@ const videoSource = computed(() => {
 </script>
 
 <template>
+  <!-- preload="none"：打开详情不主动加载视频，避免 1.5GB 等大视频 eager 解码致 WebView2 渲染进程崩溃；
+       用户点播放才加载（合并测试只需打开详情点合并，无需播放源视频）。 -->
   <video
     v-if="videoSource"
     class="video-renderer"
     controls
+    preload="none"
     :src="videoSource"
   />
   <div
