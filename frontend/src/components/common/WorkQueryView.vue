@@ -14,8 +14,10 @@ import IPage from '@renderer/model/util/IPage.ts'
 import { ref, Ref, watch, onMounted, onUnmounted } from 'vue'
 import lodash from 'lodash'
 import {notNullish, arrayNotEmpty, isNullish} from '@renderer/utils/CommonUtil.ts'
+import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import WorkCardItem from '@renderer/model/dto/WorkCardItem.ts'
 import { getWorkCardDimension } from '@renderer/utils/ImageDimension.ts'
+import { BUILTIN_NAMESPACES } from '@renderer/constants/namespace.ts'
 
 // props
 const props = withDefaults(
@@ -75,6 +77,8 @@ const customTagList: Ref<SegmentedTagItem[]> = ref([])
 const autoLoadInput: Ref<string | undefined> = ref(undefined)
 // 查询参数类型
 const searchConditionType: Ref<SearchType[]> = defineModel<SearchType[]>('searchConditionType', { required: false, default: [] })
+// 当前 namespace 过滤维度（仅作用于新加的 local 标签条件；site 标签用站点自带固定 namespace）
+const currentNamespace: Ref<string | undefined> = ref()
 
 // 变量
 const workList: Ref<WorkCardItem[]> = ref([])
@@ -146,6 +150,48 @@ async function querySearchItemPage(page: IPage<SelectItem>, input?: string): Pro
   return props.loadSearchItemPage(page, input)
 }
 
+// namespace 在标签加入选中时已写入 extraData.namespace（local=加时的 namespace 戳快照、site=站点自带）；author 不带
+function resolveSearchNamespace(extraData: { type: SearchType; namespace?: string }): string | undefined {
+  if (extraData.type === SearchType.LocalTag || extraData.type === SearchType.SiteTag) {
+    return extraData.namespace
+  }
+  return undefined
+}
+
+// 已快照 namespace 的 local 标签 key 集合：区分"新加待快照"与"已处理"，使已加标签的 namespace 不随 namespace 戳变化（per-tag）
+const snapshottedLocalTagKeys = new Set<string>()
+
+// local 标签加入选中时，把当时的 namespace 戳快照到 extraData.namespace 与 subLabels（加后不再随 namespace 戳变动）
+function snapshotNewLocalTagNamespace(): void {
+  const currentKeys = new Set<string>()
+  selectedTagList.value.forEach((tag) => {
+    const key = String(tag.value)
+    currentKeys.add(key)
+    const extraData = tag.extraData as { type?: SearchType; namespace?: string } | undefined
+    if (extraData?.type !== SearchType.LocalTag) {
+      return
+    }
+    if (snapshottedLocalTagKeys.has(key)) {
+      return
+    }
+    snapshottedLocalTagKeys.add(key)
+    if (isNotBlank(currentNamespace.value)) {
+      extraData.namespace = currentNamespace.value
+      if (arrayNotEmpty(tag.subLabels)) {
+        tag.subLabels = tag.subLabels.slice(0, 2)
+      }
+      props.colorResolver?.(tag)
+    }
+  })
+  for (const key of Array.from(snapshottedLocalTagKeys)) {
+    if (!currentKeys.has(key)) {
+      snapshottedLocalTagKeys.delete(key)
+    }
+  }
+}
+
+watch(() => selectedTagList.value.length, snapshotNewLocalTagNamespace)
+
 /** 构建查询条件 */
 async function buildSearchConditions(): Promise<SearchCondition[]> {
   const conditions: SearchCondition[] = []
@@ -158,8 +204,8 @@ async function buildSearchConditions(): Promise<SearchCondition[]> {
     }
     // operator 为 undefined 表示"包含"语义（后端 NotEqual 判否即走 EXISTS 包含分支），不可作为跳过条件
     if (notNullish(searchCondition.extraData)) {
-      const extraData = searchCondition.extraData as { type: SearchType; id: number }
-      conditions.push(new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator }))
+      const extraData = searchCondition.extraData as { type: SearchType; id: number; namespace?: string }
+      conditions.push(new SearchCondition({ type: extraData.type, value: extraData.id, operator: operator, namespace: resolveSearchNamespace(extraData) }))
     }
   })
 
@@ -294,6 +340,7 @@ defineExpose({
           @input="handleInputChange"
         >
           <template #left>
+            <div class="main-page-namespace-filter" style="display: flex; flex-direction: column; gap: 8px;">
             <el-checkbox-group
               v-model="searchConditionType"
               class="main-page-auto-load-tag-select-tag-type-checkbox-group"
@@ -328,6 +375,24 @@ defineExpose({
                 </span>
               </el-checkbox>
             </el-checkbox-group>
+            <el-select
+              v-model="currentNamespace"
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              :teleported="false"
+              placeholder="namespace"
+              style="width: 100%;"
+            >
+              <el-option
+                v-for="ns in BUILTIN_NAMESPACES"
+                :key="ns.value"
+                :label="ns.label"
+                :value="ns.value"
+              />
+            </el-select>
+            </div>
           </template>
         </auto-load-tag-select>
       </div>
