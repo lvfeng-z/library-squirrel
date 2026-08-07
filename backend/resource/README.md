@@ -21,7 +21,8 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 | `DeleteByWorkId(workId)` | 按作品ID删除所有资源 |
 | `GetById(id)` | 按ID查询 |
 | `ListByWorkId(workId)` | 查询作品关联的资源列表 |
-| `MergeResource(resourceId)` | 合并指定 Resource 的 videoTrack+audioTrack 为可播放单文件（videoMain store） |
+| `MergeResource(resourceId)` | 异步启动合并（立即返回，进度与结果经 merge-events 事件推送） |
+| `MergeCancel(resourceId)` | 取消指定 Resource 的进行中合并（无则 no-op） |
 
 ## 核心概念
 
@@ -31,16 +32,19 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 ## 合并编排（MergeService）
 
-音视频合并的业务编排层。设计详见 `doc/plan/merge-business.md`。
+音视频合并的业务编排层。合并**异步执行**（不阻塞 IPC），进度与结果经独立 `merge-events` 事件推送（不进 taskManager 控制面，阶段1 止血设计）。设计详见 `doc/plan/merge-business.md`（同步期）与 `doc/plan/merge-async-stage1.md`（异步化）。
 
-- **流程**：取 resource 的 videoTrack/audioTrack store → 调 `merge.FFmpegMuxer.MergeRemux` → 落产物 PersistentStore(videoMain)（路径由 `persistentStore.BuildVariantPath` 从源视频轨 FilePath 推导）→ 事务挂 `resource_store`(videoMain)。
+- **异步执行**：`MergeResource` 同步做前置校验（ffmpeg 可用 / 已存在 videoMain 幂等 / 缺轨 fail-fast / in-flight 守卫），通过则注册 in-flight job（detached ctx，脱离 IPC handler ctx，handler 返回后合并仍跑）并在独立 goroutine 跑合并，立即返回。in-flight 注册表（resourceId→job）防并发叠加 + 作 cancel 锚点。
+- **流程**（goroutine 内）：取 videoTrack/audioTrack store → 调 `merge.FFmpegMuxer.MergeRemux`（带进度回调）→ 落产物 PersistentStore(videoMain)（路径由 `persistentStore.BuildVariantPath` 从源视频轨 FilePath 推导）→ 事务挂 `resource_store`(videoMain)。
+- **进度与完成**：ffmpeg stderr 的 `-progress` 输出解析为百分比，经 `MergeEventEmitter.PushProgress` 推前端；终态（成功 mergedStoreId / 失败 errMsg）经 `PushComplete` 推送。前端 useMergeProgress 组合式消费（complete 为权威终态，忽略迟到 progress 防乱序闪烁）。
+- **取消**：`MergeCancel` 调 job 的 ctx.cancel，杀 ffmpeg 子进程（`exec.CommandContext`）；取消在 MergeRemux 阶段生效，落盘/overwrite 仅成功路径执行，故不误删原轨。
 - **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、删原轨道 store+文件）。
-- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
+- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
 - **事务**：挂 resource_store 走 dbTransactorAdapter（tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；挂载失败补偿删产物 store。
 
 ## 依赖关系
 
-- 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）
+- 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）
 - 被依赖：**work**（ResourceUpdater）、**backup**（StoreResourceProvider / ResourceUpdater）、**task**（任务产出资源）
 
 ## 关键设计

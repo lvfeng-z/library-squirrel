@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref } from 'vue'
+import { computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import { LocalTagDTO, WorkSetDTO } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
@@ -27,7 +27,8 @@ import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
-import { resourceMerge } from '@renderer/apis/http/wrappers/resource'
+import { resourceMerge, resourceMergeCancel } from '@renderer/apis/http/wrappers/resource'
+import { getMergeState, markMergeStarted, clearMergeState } from '@renderer/composables/useMergeProgress'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 import { getResourceOpenPath, getResourcePreviewType, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
 import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
@@ -160,24 +161,60 @@ function getResourceFilePath(info: WorkFullDTO): string {
   return getResourceOpenPath(info.resource)
 }
 
-// ===== 音视频合并 =====
+// ===== 音视频合并（异步：进度与结果经 merge-events 事件推送）=====
 // 当前资源是否可合并（含视频轨+音频轨）
 const mergeable: Ref<boolean> = computed(() => isResourceMergeable(currentWorkFullInfo.value.resource))
-// 合并进行中
-const merging: Ref<boolean> = ref(false)
-// 合并当前资源音视频轨，成功后刷新作品信息
+// 当前资源 id（合并状态索引）
+const currentResourceId = computed(() => currentWorkFullInfo.value.resource?.id)
+// 当前资源的合并状态（由 useMergeProgress 单例 Map 驱动，切换作品时自动跟随）
+const mergeState = computed(() => getMergeState(currentResourceId.value))
+const isMerging = computed(() => mergeState.value?.status === 'running')
+// 合并按钮文案：进行中显示百分比（不定态显示"合并中…"），否则"合并"
+const mergeButtonText = computed(() => {
+  if (!isMerging.value) return '合并'
+  const percent = mergeState.value?.percent ?? -1
+  return percent >= 0 ? `合并 ${percent}%` : '合并中…'
+})
+// 本视图发起的合并 resourceId：把 complete 收尾限定在本视图发起的合并上，避免切换作品时的误触发
+const initiatedMergeId = ref<number | null>(null)
+
+// 监听合并状态：仅处理"本视图发起 + 当前在看 + running→terminal"的收尾（成功刷新作品信息 / 失败提示）
+watch(() => mergeState.value?.status, (status, oldStatus) => {
+  if (initiatedMergeId.value === null) return
+  if (currentResourceId.value !== initiatedMergeId.value) return
+  if (oldStatus !== 'running' || !status || status === 'running') return
+  initiatedMergeId.value = null
+  if (status === 'done') {
+    ElMessage.success('合并完成')
+    getWorkInfo()
+  } else {
+    ElMessage.warning(mergeState.value?.errMsg || '合并失败')
+  }
+})
+
+// 启动当前资源音视频合并（异步：立即返回，进度与结果经事件推送）
 async function handleMergeButtonClick() {
-  const resourceId = currentWorkFullInfo.value.resource?.id
+  const resourceId = currentResourceId.value
   if (!resourceId) return
-  merging.value = true
+  markMergeStarted(resourceId)
+  initiatedMergeId.value = resourceId
   try {
     await resourceMerge(resourceId)
-    ElMessage.success('合并完成')
-    await getWorkInfo()
   } catch (e) {
+    clearMergeState(resourceId)
+    initiatedMergeId.value = null
     ElMessage.error(e instanceof Error ? e.message : '合并失败')
-  } finally {
-    merging.value = false
+  }
+}
+
+// 取消当前资源的进行中合并
+async function handleMergeCancelClick() {
+  const resourceId = currentResourceId.value
+  if (!resourceId) return
+  try {
+    await resourceMergeCancel(resourceId)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '取消合并失败')
   }
 }
 
@@ -685,10 +722,17 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
           v-if="mergeable"
           type="primary"
           icon="MagicStick"
-          :loading="merging"
+          :loading="isMerging"
           @click="handleMergeButtonClick"
         >
-          合并
+          {{ mergeButtonText }}
+        </el-button>
+        <el-button
+          v-if="mergeable && isMerging"
+          type="warning"
+          @click="handleMergeCancelClick"
+        >
+          取消
         </el-button>
         <el-button-group
           class="work-dialog-footer-buttons-group"

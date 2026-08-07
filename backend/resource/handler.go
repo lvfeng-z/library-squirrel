@@ -19,13 +19,18 @@ func NewHandler(svc *Service, mergeSvc *MergeService) *Handler {
 	return &Handler{svc: svc, mergeSvc: mergeSvc}
 }
 
-// MergeResource 合并指定 Resource 的音视频轨，产出可播放的单文件。
-func (h *Handler) MergeResource(ctx context.Context, resourceId int64) *model.ApiResponse[*MergeResult] {
-	result, err := h.mergeSvc.MergeResource(ctx, resourceId)
-	if err != nil {
-		return model.HandleError[*MergeResult](err)
+// MergeResource 启动指定 Resource 的音视频合并（异步：立即返回，进度与结果经 merge-events 事件推送）。
+func (h *Handler) MergeResource(ctx context.Context, resourceId int64) *model.ApiResponse[any] {
+	if err := h.mergeSvc.MergeResource(ctx, resourceId); err != nil {
+		return model.HandleError[any](err)
 	}
-	return model.Success(result)
+	return model.Success[any](nil)
+}
+
+// MergeCancel 取消指定 Resource 的进行中合并（无进行中合并则 no-op）。
+func (h *Handler) MergeCancel(ctx context.Context, resourceId int64) *model.ApiResponse[any] {
+	h.mergeSvc.CancelMerge(resourceId)
+	return model.Success[any](nil)
 }
 
 // ========== 增删改操作 ==========

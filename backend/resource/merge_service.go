@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -25,22 +26,39 @@ var (
 	ErrVideoTrackNotFound = errors.New("该资源缺少视频轨，无法合并")
 	// ErrAudioTrackNotFound 该资源缺少音频轨。
 	ErrAudioTrackNotFound = errors.New("该资源缺少音频轨，无法合并")
+	// ErrAlreadyMerged 该资源已存在合并产物（幂等守卫命中，不重复合并）。
+	ErrAlreadyMerged = errors.New("该资源已存在合并产物")
+	// ErrMergeInProgress 该资源已有进行中的合并（in-flight 守卫，防异步化后并发叠加）。
+	ErrMergeInProgress = errors.New("该资源正在合并中")
 )
 
 // mergeTempFilePrefix 合并产物临时文件前缀：MergeResource 在 os.TempDir() 下以此前缀创建临时产物，
 // 启动清理据此识别并删除崩溃残留（进程在 os.Remove 前退出时的未清理文件）。
 const mergeTempFilePrefix = "ls-merge-"
 
-// MergeResult 合并产物信息
-type MergeResult struct {
-	// MergedStoreID 合并产物的 PersistentStore ID
-	MergedStoreID int64 `json:"mergedStoreId"`
+// Merger 文件合并能力（由 merge.FFmpegMuxer 实现）。
+// 输入输出均为文件绝对路径，不感知 store/resource；onProgress 上报合并百分比(0~100)，nil 不上报。
+type Merger interface {
+	MergeRemux(ctx context.Context, videoPath, audioPath, outPath string, onProgress func(percent int)) error
 }
 
-// Merger 文件合并能力（由 merge.FFmpegMuxer 实现）。
-// 输入输出均为文件绝对路径，不感知 store/resource。
-type Merger interface {
-	MergeRemux(ctx context.Context, videoPath, audioPath, outPath string) error
+// EventEmitter Wails 事件发射能力（仅在 resource 包内本地定义，避免 resource→taskManager 包耦合；
+// 阶段1 合并不进 taskManager 控制面，故独立 merge-events topic）。
+type EventEmitter interface {
+	Emit(eventName string, data ...any) bool
+}
+
+// MergeEventEmitter 合并进度/完成事件推送器。仅做无状态 emit，goroutine 安全（onProgress 由 ffmpeg
+// 内部 copy goroutine 触发）。
+type MergeEventEmitter interface {
+	PushProgress(resourceId int64, percent int)
+	PushComplete(resourceId int64, success bool, mergedStoreId int64, errMsg string)
+}
+
+// mergeJob 一次进行中的合并：持有脱离 IPC handler ctx 的独立 ctx，供 CancelMerge 主动中断。
+type mergeJob struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // StoreOps store 落盘/查询/删除/路径原语（由 persistentStore.Service 实现）。
@@ -71,7 +89,7 @@ type ResourceAccessor interface {
 
 // MergeService 音视频合并业务编排：取 resource 的 videoTrack/audioTrack → 调合并 →
 // 落产物 PersistentStore(merged) → 挂 resource_store。合并能力由 Merger 提供，
-// store 落盘/路径由 StoreOps 提供，本服务只做编排。
+// store 落盘/路径由 StoreOps 提供，本服务只做编排。合并异步执行（不阻塞 IPC），进度与结果经 emitter 推送。
 type MergeService struct {
 	resourceStoreRepo *ResourceStoreRepository
 	resource          ResourceAccessor
@@ -79,10 +97,14 @@ type MergeService struct {
 	storeOps          StoreOps
 	settings          MergeSettingsReader
 	tx                Transactor
+	emitter           MergeEventEmitter
+	jobsMu            sync.Mutex
+	jobs              map[int64]*mergeJob // resourceId → 进行中合并（in-flight 守卫 + cancel 锚点）
 }
 
 // NewMergeService 创建合并业务服务。merger 为 nil 时合并功能不可用（调用返回 ErrMergeUnavailable）。
-func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor) *MergeService {
+// emitter 用于异步合并的进度/完成推送（阶段1 独立 merge-events topic，不进 taskManager）。
+func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, emitter MergeEventEmitter) *MergeService {
 	return &MergeService{
 		resourceStoreRepo: resourceStoreRepo,
 		resource:          resource,
@@ -90,49 +112,78 @@ func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource Resour
 		storeOps:          storeOps,
 		settings:          settings,
 		tx:                tx,
+		emitter:           emitter,
+		jobs:              make(map[int64]*mergeJob),
 	}
 }
 
-// MergeResource 对指定 Resource 执行音视频合并（用户主动触发）。
-// 产物为新 PersistentStore(store_type=merged) 挂回该 Resource；mergeStrategy=overwrite 时另删原轨道。
-func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*MergeResult, error) {
+// MergeResource 启动指定 Resource 的音视频合并（用户主动触发，异步执行）。
+// 同步做前置校验（ffmpeg 可用 / 已存在 merged 产物幂等 / 缺轨 fail-fast / in-flight 守卫），
+// 通过则注册 in-flight job 并在独立 goroutine 跑 runMerge，立即返回 nil（合并结果经 emitter 推送）。
+// 不阻塞 IPC：handler 返回后合并仍在 detached ctx 上跑。
+func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) error {
 	if s.merger == nil {
-		return nil, ErrMergeUnavailable
+		return ErrMergeUnavailable
 	}
 
-	// 去重守卫：已存在 merged 产物则幂等返回，避免 keep 模式重复合并累积孤儿 resource_store(merged) 关联。
-	// 历史已累积的多行 merged 不在此清理（属数据修复范畴）；若需强制重合并，未来按需加 force 参数。
+	// 幂等守卫：已存在 merged 产物则不重复合并（避免 keep 模式累积孤儿 resource_store(merged) 关联）。
+	// 历史已累积的多行 merged 不在此清理（属数据修复范畴）。
 	if existing, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeVideoMain); err == nil {
-		s.recomputeComplete(ctx, resourceId) // 已合并幂等返回前重算(修复历史 complete 值)
-		return &MergeResult{MergedStoreID: existing.StoreID}, nil
+		s.recomputeComplete(ctx, resourceId) // 幂等命中前重算(修复历史 complete 值)
+		_ = existing
+		return ErrAlreadyMerged
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("查询已合并产物失败: %w", err)
+		return fmt.Errorf("查询已合并产物失败: %w", err)
 	}
 
-	// 取 videoTrack/audioTrack store（缺轨返回明确中文错误）
+	// 取 videoTrack/audioTrack store（缺轨 fail-fast，返回明确中文错误）
 	videoRS, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeVideoTrack)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrVideoTrackNotFound
+			return ErrVideoTrackNotFound
 		}
-		return nil, fmt.Errorf("查询视频轨失败: %w", err)
+		return fmt.Errorf("查询视频轨失败: %w", err)
 	}
 	audioRS, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeAudioTrack)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAudioTrackNotFound
+			return ErrAudioTrackNotFound
 		}
-		return nil, fmt.Errorf("查询音频轨失败: %w", err)
+		return fmt.Errorf("查询音频轨失败: %w", err)
 	}
+
+	// 注册 in-flight job：detached ctx（脱离 handler ctx，handler 返回后合并仍跑）+ 加锁双检防并发抢占。
+	mergeCtx, cancel := context.WithCancel(context.Background())
+	s.jobsMu.Lock()
+	if _, running := s.jobs[resourceId]; running {
+		s.jobsMu.Unlock()
+		cancel()
+		return ErrMergeInProgress
+	}
+	s.jobs[resourceId] = &mergeJob{ctx: mergeCtx, cancel: cancel}
+	s.jobsMu.Unlock()
+
+	go s.runMerge(mergeCtx, resourceId, videoRS, audioRS)
+	return nil
+}
+
+// runMerge 在独立 goroutine 中执行合并全流程（ffmpeg → 落盘 → 挂 store → overwrite → 重算完整度）。
+// 进度经 emitter.PushProgress 推送，终态经 emitter.PushComplete 推送；任何退出路径都从 jobs 删除（defer）。
+// 取消（CancelMerge 触发 ctx 取消）仅在 MergeRemux 阶段生效：ffmpeg 运行中取消则中止合并、报"已取消"；
+// ffmpeg 既已完成则改用独立 commitCtx 落盘（不随取消中断），避免 cancel 与 ffmpeg 完成的竞态误报"落盘失败"。落盘/overwrite 仅成功路径执行，故取消不会误删原轨。
+func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, audioRS *domain.ResourceStore) {
+	defer s.removeJob(resourceId)
 
 	// 取源文件绝对路径
 	videoPS, err := s.storeOps.GetById(ctx, videoRS.StoreID)
 	if err != nil {
-		return nil, fmt.Errorf("加载视频轨 store 失败: %w", err)
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("加载视频轨 store 失败: %v", err))
+		return
 	}
 	audioPS, err := s.storeOps.GetById(ctx, audioRS.StoreID)
 	if err != nil {
-		return nil, fmt.Errorf("加载音频轨 store 失败: %w", err)
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("加载音频轨 store 失败: %v", err))
+		return
 	}
 	videoAbs := s.storeOps.GetAbsPath(videoPS)
 	audioAbs := s.storeOps.GetAbsPath(audioPS)
@@ -144,24 +195,37 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 	}
 	tmpOut := filepath.Join(os.TempDir(), fmt.Sprintf(mergeTempFilePrefix+"%d-%d%s", resourceId, time.Now().UnixNano(), videoExt))
 
-	// 合并（muxer 自处理超时/失败/产物残留）
-	if err := s.merger.MergeRemux(ctx, videoAbs, audioAbs, tmpOut); err != nil {
-		return nil, err
+	// 合并（muxer 自处理超时/失败/产物残留）；onProgress 把百分比推给前端
+	if err := s.merger.MergeRemux(ctx, videoAbs, audioAbs, tmpOut, func(percent int) {
+		s.emitter.PushProgress(resourceId, percent)
+	}); err != nil {
+		msg := err.Error()
+		if ctx.Err() != nil {
+			msg = "已取消"
+		}
+		s.emitter.PushComplete(resourceId, false, 0, msg)
+		return
 	}
+
+	// ffmpeg 已成功产出 tmpOut，后续落盘/挂 store/overwrite 用独立 ctx（不随 cancel 中断）：
+	// 用户取消的意图是停 ffmpeg；ffmpeg 既已完成，落盘应正常完成（避免浪费已完成的合并 + 留下半成品落盘）。
+	// 否则 cancel 与 ffmpeg 完成的竞态会让 StoreFromFile 撞上已取消的 ctx 报"落盘失败: context canceled"。
+	commitCtx := context.Background()
 
 	// 产物相对路径（源视频轨旁、文件名加 _merged）与展示文件名
 	mergedRelPath := s.storeOps.BuildVariantPath(videoPS.FilePath.String, "_merged")
 	mergedFileName := buildMergedFileName(videoPS.FileName.String, videoExt)
 
 	// 落盘 + 建 PersistentStore；临时文件已复制为产物，随之清除
-	mergedPsId, err := s.storeOps.StoreFromFile(ctx, mergedRelPath, mergedFileName, tmpOut)
+	mergedPsId, err := s.storeOps.StoreFromFile(commitCtx, mergedRelPath, mergedFileName, tmpOut)
 	_ = os.Remove(tmpOut)
 	if err != nil {
-		return nil, fmt.Errorf("落盘合并产物失败: %w", err)
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("落盘合并产物失败: %v", err))
+		return
 	}
 
 	// 事务内挂 resource_store(merged)；失败补偿删产物 store
-	if err := s.tx.ExecInTransaction(ctx, func(txCtx context.Context) error {
+	if err := s.tx.ExecInTransaction(commitCtx, func(txCtx context.Context) error {
 		rs := domain.NewResourceStore()
 		rs.ResourceID = resourceId
 		rs.StoreType = domain.StoreTypeVideoMain
@@ -170,27 +234,47 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) (*Me
 		rs.StoreID = mergedPsId
 		return s.resourceStoreRepo.Create(txCtx, rs)
 	}); err != nil {
-		if _, derr := s.storeOps.Delete(ctx, mergedPsId, false); derr != nil {
-			return nil, fmt.Errorf("挂载合并产物失败且补偿删除产物 store 也失败，挂载错误: %w", err)
+		if _, derr := s.storeOps.Delete(commitCtx, mergedPsId, false); derr != nil {
+			logger.Log.Errorf("[MergeService] 挂载合并产物失败且补偿删除产物 store 也失败: resourceId=%d 挂载错误=%v 删除错误=%v", resourceId, err, derr)
 		}
-		return nil, fmt.Errorf("挂载合并产物失败: %w", err)
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("挂载合并产物失败: %v", err))
+		return
 	}
 
 	// overwrite：删原轨道 store 及文件，并清理 resource_store 关联
 	if s.settings.GetMergeStrategy() == settings.MergeStrategyOverwrite {
-		if _, err := s.storeOps.Delete(ctx, videoPS.GetID(), true); err != nil {
-			return nil, fmt.Errorf("删除原视频轨失败: %w", err)
+		if _, err := s.storeOps.Delete(commitCtx, videoPS.GetID(), true); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原视频轨失败: %v", err))
+			return
 		}
-		if _, err := s.storeOps.Delete(ctx, audioPS.GetID(), true); err != nil {
-			return nil, fmt.Errorf("删除原音频轨失败: %w", err)
+		if _, err := s.storeOps.Delete(commitCtx, audioPS.GetID(), true); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原音频轨失败: %v", err))
+			return
 		}
-		if err := s.resourceStoreRepo.DeleteByResourceIdAndTypes(ctx, resourceId, []string{domain.StoreTypeVideoTrack, domain.StoreTypeAudioTrack}); err != nil {
-			return nil, fmt.Errorf("清理原轨道关联失败: %w", err)
+		if err := s.resourceStoreRepo.DeleteByResourceIdAndTypes(commitCtx, resourceId, []string{domain.StoreTypeVideoTrack, domain.StoreTypeAudioTrack}); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("清理原轨道关联失败: %v", err))
+			return
 		}
 	}
 
-	s.recomputeComplete(ctx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
-	return &MergeResult{MergedStoreID: mergedPsId}, nil
+	s.recomputeComplete(commitCtx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
+	s.emitter.PushComplete(resourceId, true, mergedPsId, "")
+}
+
+// removeJob 从 in-flight 注册表删除指定 resource 的合并（runMerge 退出时调用）。
+func (s *MergeService) removeJob(resourceId int64) {
+	s.jobsMu.Lock()
+	delete(s.jobs, resourceId)
+	s.jobsMu.Unlock()
+}
+
+// CancelMerge 取消指定 resource 的进行中合并（无进行中合并则 no-op）。
+func (s *MergeService) CancelMerge(resourceId int64) {
+	s.jobsMu.Lock()
+	if job, ok := s.jobs[resourceId]; ok {
+		job.cancel()
+	}
+	s.jobsMu.Unlock()
 }
 
 // buildMergedFileName 由源文件名构造合并产物展示名（源名去扩展 + _merged + 扩展）。
@@ -253,4 +337,53 @@ func (s *MergeService) CleanupResidualTempFiles(ctx context.Context) error {
 		_ = os.Remove(filepath.Join(os.TempDir(), entry.Name()))
 	}
 	return nil
+}
+
+// wailsMergeEmitter 基于 Wails Events 的合并事件推送器，推 merge-events topic。
+// 复用 Wails 事件管道与 ipcMergeEvent{type,data} 信封模式（与 taskManager 推送器同范式），
+// 独立 topic、不进 taskManager 控制面。仅做无状态 emit，goroutine 安全。
+type wailsMergeEmitter struct {
+	emitterFn func() EventEmitter // 延迟读取：构造期 Wails emitter 可能尚未注入，emit 时再取
+}
+
+// NewWailsMergeEmitter 用"延迟返回 Wails 事件发射器"的闭包构造合并事件推送器。
+// 闭包模式：合并服务在应用初始化早期构造（此时 Wails emitter 尚未经 SetEventEmitter 注入），
+// 而进度事件只在用户触发合并时才 emit（彼时 emitter 已就绪），故 emit 时再读取，避免持有未就绪引用。
+func NewWailsMergeEmitter(emitterFn func() EventEmitter) MergeEventEmitter {
+	return &wailsMergeEmitter{emitterFn: emitterFn}
+}
+
+// emit 向 merge-events topic 推送带类型信封的事件；emitter 未就绪时静默跳过（无合并能在该阶段发生）。
+func (e *wailsMergeEmitter) emit(eventType string, data any) {
+	if em := e.emitterFn(); em != nil {
+		em.Emit("merge-events", &ipcMergeEvent{Type: eventType, Data: data})
+	}
+}
+
+func (e *wailsMergeEmitter) PushProgress(resourceId int64, percent int) {
+	e.emit("progress", &mergeProgressData{ResourceId: resourceId, Percent: percent})
+}
+
+func (e *wailsMergeEmitter) PushComplete(resourceId int64, success bool, mergedStoreId int64, errMsg string) {
+	e.emit("complete", &mergeCompleteData{ResourceId: resourceId, Success: success, MergedStoreId: mergedStoreId, ErrMsg: errMsg})
+}
+
+// ipcMergeEvent merge-events topic 的信封（type 区分 progress/complete），与 taskManager ipcEvent 同范式。
+type ipcMergeEvent struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
+}
+
+// mergeProgressData 合并进度事件载荷（percent∈[0,100]）。
+type mergeProgressData struct {
+	ResourceId int64 `json:"resourceId"`
+	Percent    int   `json:"percent"`
+}
+
+// mergeCompleteData 合并完成事件载荷（success=true 时 MergedStoreId 有效）。
+type mergeCompleteData struct {
+	ResourceId    int64  `json:"resourceId"`
+	Success       bool   `json:"success"`
+	MergedStoreId int64  `json:"mergedStoreId"`
+	ErrMsg        string `json:"errMsg"`
 }

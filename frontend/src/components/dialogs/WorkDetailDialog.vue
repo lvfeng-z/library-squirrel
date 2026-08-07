@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeUnmount, onMounted, Ref, ref } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import { LocalTagDTO, WorkSetDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
@@ -23,7 +23,8 @@ import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
 import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
 import { reWorkTagApi } from '@renderer/apis/http'
-import { resourceMerge } from '@renderer/apis/http/wrappers/resource'
+import { resourceMerge, resourceMergeCancel } from '@renderer/apis/http/wrappers/resource'
+import { getMergeState, markMergeStarted, clearMergeState } from '@renderer/composables/useMergeProgress'
 import { isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
 import ResourceViewer from '@renderer/components/resource/ResourceViewer.vue'
 
@@ -90,22 +91,62 @@ const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQu
 
 // 当前资源是否可合并（含视频轨+音频轨）
 const mergeable: Ref<boolean> = computed(() => isResourceMergeable(currentWorkFullInfo.value.resource))
-// 合并进行中
-const merging: Ref<boolean> = ref(false)
+// 当前资源 id（合并状态索引）
+const currentResourceId = computed(() => currentWorkFullInfo.value.resource?.id)
+// 当前资源的合并状态（由 useMergeProgress 单例 Map 驱动，切换作品时自动跟随）
+const mergeState = computed(() => getMergeState(currentResourceId.value))
+const isMerging = computed(() => mergeState.value?.status === 'running')
+// 合并按钮 title（鼠标悬停提示）：进行中显示百分比，否则"合并音视频轨"
+const mergeButtonTitle = computed(() => {
+  if (!isMerging.value) return '合并音视频轨'
+  const percent = mergeState.value?.percent ?? -1
+  return percent >= 0 ? `合并中 ${percent}%` : '合并中…'
+})
+// 侧栏可见的合并百分比标签（合并中显示；不定态显示 …）—— 工具栏为图标按钮，进度仅藏在 tooltip 不易发现，故补可见标签
+const mergePercentLabel = computed(() => {
+  const percent = mergeState.value?.percent ?? -1
+  return percent >= 0 ? `${percent}%` : '…'
+})
+// 本视图发起的合并 resourceId：把 complete 收尾限定在本视图发起的合并上，避免切换作品时的误触发
+const initiatedMergeId = ref<number | null>(null)
 
-// 合并当前资源音视频轨，成功后刷新作品信息
+// 监听合并状态：仅处理"本视图发起 + 当前在看 + running→terminal"的收尾（成功刷新作品信息 / 失败提示）
+watch(() => mergeState.value?.status, (status, oldStatus) => {
+  if (initiatedMergeId.value === null) return
+  if (currentResourceId.value !== initiatedMergeId.value) return
+  if (oldStatus !== 'running' || !status || status === 'running') return
+  initiatedMergeId.value = null
+  if (status === 'done') {
+    ElMessage.success('合并完成')
+    getWorkInfo()
+  } else {
+    ElMessage.warning(mergeState.value?.errMsg || '合并失败')
+  }
+})
+
+// 启动当前资源音视频合并（异步：立即返回，进度与结果经事件推送）
 async function handleMergeButtonClick() {
-  const resourceId = currentWorkFullInfo.value.resource?.id
+  const resourceId = currentResourceId.value
   if (!resourceId) return
-  merging.value = true
+  markMergeStarted(resourceId)
+  initiatedMergeId.value = resourceId
   try {
     await resourceMerge(resourceId)
-    ElMessage.success('合并完成')
-    await getWorkInfo()
   } catch (e) {
+    clearMergeState(resourceId)
+    initiatedMergeId.value = null
     ElMessage.error(e instanceof Error ? e.message : '合并失败')
-  } finally {
-    merging.value = false
+  }
+}
+
+// 取消当前资源的进行中合并
+async function handleMergeCancelClick() {
+  const resourceId = currentResourceId.value
+  if (!resourceId) return
+  try {
+    await resourceMergeCancel(resourceId)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '取消合并失败')
   }
 }
 
@@ -400,9 +441,20 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
             v-if="mergeable"
             type="primary"
             icon="MagicStick"
-            title="合并音视频轨"
-            :loading="merging"
+            :title="mergeButtonTitle"
+            :loading="isMerging"
             @click="handleMergeButtonClick"
+          />
+          <span
+            v-if="mergeable && isMerging"
+            class="work-detail-merge-pct"
+          >{{ mergePercentLabel }}</span>
+          <el-button
+            v-if="mergeable && isMerging"
+            type="warning"
+            icon="Close"
+            title="取消合并"
+            @click="handleMergeCancelClick"
           />
         </div>
         <!-- 元数据抽屉：作者/简介/站点/作品集 + 标签 TagBox（点编辑弹出独立编辑抽屉） -->
@@ -636,6 +688,12 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
 }
 .work-detail-sidebar .el-button {
   margin-left: 0;
+}
+.work-detail-merge-pct {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-color-primary);
+  line-height: 1;
 }
 .work-detail-drawer-scrollbar {
   padding: 12px;

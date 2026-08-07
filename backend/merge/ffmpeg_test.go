@@ -62,7 +62,7 @@ func TestMergeRemux_Success(t *testing.T) {
 	video, audio := generateTestMedia(t, bin)
 	out := filepath.Join(t.TempDir(), "merged.mp4")
 
-	if err := muxer.MergeRemux(context.Background(), video, audio, out); err != nil {
+	if err := muxer.MergeRemux(context.Background(), video, audio, out, nil); err != nil {
 		t.Fatalf("合并失败：%v", err)
 	}
 	info, err := os.Stat(out)
@@ -87,7 +87,7 @@ func TestMergeRemux_InvalidInput(t *testing.T) {
 	_, audio := generateTestMedia(t, muxer.binaryPath)
 	out := filepath.Join(dir, "merged.mp4")
 
-	err := muxer.MergeRemux(context.Background(), bad, audio, out)
+	err := muxer.MergeRemux(context.Background(), bad, audio, out, nil)
 	if err == nil {
 		t.Fatal("期望合并失败，实际成功")
 	}
@@ -107,11 +107,37 @@ func TestMergeRemux_Timeout(t *testing.T) {
 	video, audio := generateTestMedia(t, bin)
 	out := filepath.Join(t.TempDir(), "merged.mp4")
 
-	err := muxer.MergeRemux(context.Background(), video, audio, out)
+	err := muxer.MergeRemux(context.Background(), video, audio, out, nil)
 	if err == nil {
 		t.Fatal("期望因超时失败，实际成功")
 	}
 	if !strings.Contains(err.Error(), "被中断") {
 		t.Fatalf("错误信息缺少\"被中断\"：%v", err)
+	}
+}
+
+// TestMergeRemux_Progress 验证进度回调：合并成功路径最终回调 onProgress(100)。
+// 中途百分比依赖 ffmpeg 对 1 秒测试媒体的 -progress 输出，仅断言终态 100（快速 remux 中途块数不定，避免 flaky）。
+func TestMergeRemux_Progress(t *testing.T) {
+	bin := skipIfNoFFmpeg(t)
+	muxer := mustNewMuxer(t)
+
+	video, audio := generateTestMedia(t, bin)
+	out := filepath.Join(t.TempDir(), "merged.mp4")
+
+	var maxPercent int
+	var got100 bool
+	if err := muxer.MergeRemux(context.Background(), video, audio, out, func(percent int) {
+		if percent > maxPercent {
+			maxPercent = percent
+		}
+		if percent == 100 {
+			got100 = true
+		}
+	}); err != nil {
+		t.Fatalf("合并失败：%v", err)
+	}
+	if !got100 {
+		t.Fatalf("期望成功回调 onProgress(100)，实际未收到（最大 %d）", maxPercent)
 	}
 }

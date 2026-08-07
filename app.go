@@ -1043,6 +1043,7 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 		app.SettingsService,
 		&dbTransactorAdapter{db: app.db},
+		resource.NewWailsMergeEmitter(func() resource.EventEmitter { return app.taskProgressEmitter }),
 	)
 
 	// 启动清理：合并产物临时文件残留（ls-merge-*，进程崩溃未 os.Remove 时残留）

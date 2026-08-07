@@ -17,10 +17,6 @@ import * as model$0 from "../base/model/models.js";
 // @ts-ignore: Unused imports
 import * as dto$0 from "../base/model/dto/models.js";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as $models from "./models.js";
-
 /**
  * Delete 删除资源
  */
@@ -58,11 +54,20 @@ export function ListByWorkId(workId: number): $CancellablePromise<model$0.ApiRes
 }
 
 /**
- * MergeResource 合并指定 Resource 的音视频轨，产出可播放的单文件。
+ * MergeCancel 取消指定 Resource 的进行中合并（无进行中合并则 no-op）。
  */
-export function MergeResource(resourceId: number): $CancellablePromise<model$0.ApiResponse<$models.MergeResult | null> | null> {
+export function MergeCancel(resourceId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3604018407, resourceId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * MergeResource 启动指定 Resource 的音视频合并（异步：立即返回，进度与结果经 merge-events 事件推送）。
+ */
+export function MergeResource(resourceId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1785150905, resourceId).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType1($result);
     });
 }
 
@@ -71,7 +76,7 @@ export function MergeResource(resourceId: number): $CancellablePromise<model$0.A
  */
 export function Save(resource: dto$0.ResourceDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(3923956150, resource).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType10($result);
     });
 }
 
@@ -94,9 +99,5 @@ const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = $Create.Array($$createType3);
 const $$createType7 = model$0.ApiResponse.createFrom($$createType6);
 const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = $models.MergeResult.createFrom;
+const $$createType9 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType14 = $Create.Nullable($$createType13);

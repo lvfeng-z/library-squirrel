@@ -10,6 +10,7 @@ import { askGotoPage } from '@renderer/utils/PageUtil.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
+import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
@@ -44,6 +45,12 @@ export function iniListener() {
         useParentTaskStore().removeParentTask(data as number[])
         break
     }
+  })
+
+  // 合并事件（独立 topic，与任务面板解耦；阶段1 合并不进 taskManager 控制面）
+  Events.On('merge-events', (event: any) => {
+    const { type, data } = event.data as { type: string; data: any }
+    onMergeEvent(type, data)
   })
 
   // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）

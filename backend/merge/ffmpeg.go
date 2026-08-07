@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"context"
+	"strconv"
+	"strings"
 	"os/exec"
 )
 
@@ -51,14 +53,17 @@ func (m *FFmpegMuxer) WithTimeout(d time.Duration) *FFmpegMuxer {
 
 // MergeRemux 对两个完整的本地媒体文件做无重编码合并（remux），
 // 产物写到 outPath（调用方负责 outPath 唯一性与父目录存在）。
-// 视频轨或音频轨无效、ffmpeg 失败、或合并被中断（超时/取消），均返回携带诊断信息的错误；
-// 任何失败路径都会清理 outPath 处的残留产物。
-func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outPath string) error {
+// onProgress 在合并过程中被回调上报百分比（0~99，nil 表示不上报），合并成功后回调 100；
+// 无总时长可解析时不回调（调用方维持不定态展示）。视频轨或音频轨无效、ffmpeg 失败、或合并被中断
+//（超时/取消），均返回携带诊断信息的错误；任何失败路径都会清理 outPath 处的残留产物。
+func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outPath string, onProgress func(percent int)) error {
 	// 合并超时与调用方 ctx 共同决定子进程生命周期：先到期者触发中断
 	ctx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, m.binaryPath,
+		"-nostats",            // 关闭默认 stats 行，改用 -progress 的结构化进度块
+		"-progress", "pipe:2", // 进度块(key=value)写 stderr，供解析百分比
 		"-i", videoPath,
 		"-i", audioPath,
 		"-c", "copy",
@@ -66,9 +71,14 @@ func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outP
 		"-y", outPath,
 	)
 
-	// ffmpeg 的进度与错误信息均写 stderr，捕获末尾用于失败诊断
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
+	// stderr 双用：全量累积到 sink.buf（失败诊断取末尾）+ 按行解析进度。
+	// sink.Write 由 os/exec 内部 copy goroutine 驱动（与下方 cmd.Run 并发）；失败诊断的读取发生在
+	// cmd.Run 返回后（Run 会 join 内部 copy goroutine），故 buf 无并发读写。onProgress 仅在解析进度时回调。
+	sink := &stderrSink{}
+	if onProgress != nil {
+		sink.onLine = (&ffmpegProgressParser{onPercent: onProgress}).parse
+	}
+	cmd.Stderr = sink
 
 	if err := cmd.Run(); err != nil {
 		cleanupPartialOutput(outPath)
@@ -76,7 +86,7 @@ func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outP
 		if ctx.Err() != nil {
 			return fmt.Errorf("合并被中断：%w", ctx.Err())
 		}
-		return fmt.Errorf("合并失败：%s", ffmpegFailureDetail(err, stderrBuf.Bytes()))
+		return fmt.Errorf("合并失败：%s", ffmpegFailureDetail(err, sink.buf.Bytes()))
 	}
 
 	// 产物校验：remux 成功应得到非空文件；ffmpeg 退出码为 0 却无产物视作异常
@@ -85,7 +95,105 @@ func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outP
 		cleanupPartialOutput(outPath)
 		return fmt.Errorf("%w：%s", ErrMergeOutputInvalid, outPath)
 	}
+	if onProgress != nil {
+		onProgress(100)
+	}
 	return nil
+}
+
+// stderrSink 收集 ffmpeg stderr：全量累积到 buf（失败诊断取末尾）+ 切完整行回调 onLine（进度解析）。
+// 实现 io.Writer，由 os/exec 内部 copy goroutine 驱动（与 cmd.Run 所在 goroutine 并发）。
+type stderrSink struct {
+	buf     bytes.Buffer
+	onLine  func(line string)
+	partial []byte // 跨 Write 的未凑成行尾部
+}
+
+// Write 追加字节、累积全量，并把凑成的完整行（去 \r）交给 onLine；未成行的尾部留待下次。
+func (s *stderrSink) Write(p []byte) (int, error) {
+	s.buf.Write(p)
+	if s.onLine == nil {
+		return len(p), nil
+	}
+	s.partial = append(s.partial, p...)
+	for {
+		nl := bytes.IndexByte(s.partial, '\n')
+		if nl < 0 {
+			break
+		}
+		line := strings.TrimRight(string(s.partial[:nl]), "\r")
+		s.partial = s.partial[nl+1:]
+		s.onLine(line)
+	}
+	return len(p), nil
+}
+
+// ffmpegProgressParser 解析 ffmpeg stderr 行计算合并进度百分比。
+// totalSec 取自 banner 的 Duration（各输入取最大值；remux 无 -shortest，输出≈最长输入）；
+// out_time= 行给出已完成时长，percent = clamp(outSec/totalSec*100, 0, 99)。
+type ffmpegProgressParser struct {
+	totalSec  float64
+	onPercent func(int)
+}
+
+// parse 处理一行 stderr：banner 提取总时长、进度块提取已完成时长算百分比。
+func (p *ffmpegProgressParser) parse(line string) {
+	if dur, ok := parseDurationLine(line); ok {
+		if dur > p.totalSec {
+			p.totalSec = dur
+		}
+		return
+	}
+	if p.totalSec <= 0 {
+		return // 尚未解析到总时长，无法算百分比（调用方维持不定态）
+	}
+	if secs, ok := parseOutTimeLine(line); ok {
+		pct := int(secs / p.totalSec * 100)
+		if pct < 0 {
+			pct = 0
+		} else if pct > 99 {
+			pct = 99
+		}
+		p.onPercent(pct)
+	}
+}
+
+// parseDurationLine 从 ffmpeg banner 行（形如 "  Duration: 00:01:23.45, ..."）提取时长秒数。
+func parseDurationLine(line string) (float64, bool) {
+	const prefix = "Duration:"
+	idx := strings.Index(line, prefix)
+	if idx < 0 {
+		return 0, false
+	}
+	rest := strings.TrimSpace(line[idx+len(prefix):])
+	if comma := strings.IndexByte(rest, ','); comma >= 0 {
+		rest = rest[:comma]
+	}
+	return parseFFmpegTime(strings.TrimSpace(rest))
+}
+
+// parseOutTimeLine 从进度块行（形如 "out_time=00:00:12.345678"）提取已完成时长秒数。
+func parseOutTimeLine(line string) (float64, bool) {
+	const prefix = "out_time="
+	if !strings.HasPrefix(line, prefix) {
+		return 0, false
+	}
+	return parseFFmpegTime(strings.TrimSpace(line[len(prefix):]))
+}
+
+// parseFFmpegTime 解析 ffmpeg 时长格式 HH:MM:SS[.ffffff] 为秒数。
+func parseFFmpegTime(s string) (float64, bool) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 {
+		return 0, false
+	}
+	h, err1 := strconv.Atoi(parts[0])
+	m, err2 := strconv.Atoi(parts[1])
+	sec, err3 := strconv.ParseFloat(parts[2], 64)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0, false
+	}
+	return float64(h)*3600 + float64(m)*60 + sec, true
 }
 
 // ffmpegFailureDetail 从 stderr 末尾提取可读片段作为失败原因；stderr 为空时回退到运行错误本身。
