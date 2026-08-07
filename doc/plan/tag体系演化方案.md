@@ -75,6 +75,19 @@ e-hentai 用复合身份（声明8），但它是单站点、namespace 一致；
 - 历史数据：namespace = null。
 - tag_type 清障见第七节（与本列正交）。
 
+### 双存职责分离（避免误解）
+
+`site_tag.namespace` 与 `re_work_tag.namespace` 双存，但职责不同——**namespace 维度的关联/搜索只走 `re_work_tag.namespace`**：
+
+| 列 | 职责 | 参与关联/搜索维度？ |
+|---|---|---|
+| `re_work_tag.namespace` | 关联级 namespace——每条作品↔tag 关联的 namespace | ✅ 唯一参与者（搜索过滤 `rwt.namespace`、关联维度都看它） |
+| `site_tag.namespace` | 站点侧元数据——记录 site_tag 在站点的固定 namespace | ❌ 不直接参与。用途：候选联想展示（让用户看到 site 标签的 namespace）+ 入库镜像源 |
+
+- **搜索不读 site_tag.namespace**：`buildWhereClause` 的 LocalTag/SiteTag 两路过滤的都是 `rwt.namespace`（re_work_tag），即使 SiteTag 搜索也用 re_work_tag.namespace（镜像值），不 join site_tag。
+- **site 关联的 namespace 维度经镜像实现**：site 关联要进入 namespace 维度，必须在 link 时把 `site_tag.namespace` 拷进 `re_work_tag.namespace`（入库由 `buildSiteTagLinks` 做；手动 link 由 I 节点补），之后搜索只认 re_work_tag.namespace。
+- **为什么分离**：搜索只认 re_work_tag.namespace 一处，语义清晰且不必 join site_tag；site_tag.namespace 作为站点 truth 的存放处，其变更不自动回填历史关联（决策3），避免批量同步代价与语义歧义。
+
 ## 四、namespace 模型
 
 - **内置已知集**（决策2，UI 特殊渲染：过滤 chip / 配色 / 图标）：`language`、`character`、`parody`、`female`、`male`、`misc`、`general`。
