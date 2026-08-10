@@ -1,6 +1,6 @@
 # 单文件/独立任务（leaf）创建路径回归根治
 
-> 任务图节点 N（reveal 自 A「插件约定发布准备」，G audio 端到端测试发现）。与插件约定正交，属 task 基建。延后实施。
+> 任务图节点 N（reveal 自 A「插件约定发布准备」，G audio 端到端测试发现）；已激活为 pre-release-decision-lock 节点 F，2026-08-10 实施完成。与插件约定正交，属 task 基建。
 
 ## 审查摘要
 
@@ -11,8 +11,8 @@
 - 声明4：`len(children) == 0` 判断由 `8a43ee3 refactor` 引入（`git log -S` 证据）；独立任务（pid=0 leaf）多次回归：执行（`1fc3bf1`）、暂停/停止（`eeb27f7` + memory `standalone-task-pause-regression`）。
 - 临时修复：`handleCreateTaskStream` 已加 leaf 分支（`service.go` 当前），把无 Children 的响应作为独立叶子任务创建。**本临时修复是治标，非根治**。
 
-**待决策：**
-- 决策1（待定）：根治范围——仅机制层（提取 `applyCreateResponse` 统一两路径）/ +守护层（回归测试）/ +不变量与 memory 全做。推荐全做（治本）。
+**已决策（2026-08-10，节点 F 实施）：**
+- 决策1：根治范围全做——机制层（提取 `planCreateResponse`/`fillTaskFromResponse` 单点判定 leaf/parent/child 三态）+ 守护层（`backend/task/service_create_test.go` 8 例回归测试）+ 三处入口不变量注释 + memory `leaf-task-regression-hotspot`。统一契约：无 Children→独立 leaf、Children=[1] 不折叠、leaf pid=0 Valid=true、计数=叶子单元；stream 保留合并、键=PluginTaskId（非 TaskName）。详见 `doc/plugin-dev-guide.md`「Create 返回的任务结构契约」。
 
 **自曝风险：**
 - 风险1：提取 `applyCreateResponse` 重构创建路径（核心高频逻辑），若测试未先行可能引入新回归；须「测试先行 + 小步重构 + 每步编译测试」。

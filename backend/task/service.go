@@ -561,13 +561,16 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 				logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
 				continue
 			}
-			for range streamCh {
-				count++
+			// 计数叶子级单元：leaf 与 child（Task 项），parent 容器（Parent 项）不计
+			for item := range streamCh {
+				if item.Task != nil {
+					count++
+				}
 			}
 		} else {
 			responses := result.Array()
 			if len(responses) > 0 {
-				count, err = s.handleCreateTaskArray(ctx, responses, url, listener)
+				count, err = s.handleCreateTaskArray(ctx, responses, listener)
 				if err != nil {
 					logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
 					continue
@@ -592,131 +595,154 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 	}, nil
 }
 
-// handleCreateTaskArray 处理插件返回的任务数组
-func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, url string, listener *pluginTaskUrlListener.PluginWithExtension) (int, error) {
+// createPlan 一个 TaskCreateResponse 经单点判定后的创建计划。
+// leaf 与 parent 互斥：无 Children 时 leaf 非空（独立任务）；有 Children 时 parent+children。
+// children 的 Pid 待调用方落盘 parent 后回填。
+type createPlan struct {
+	leaf     *entity.Task
+	parent   *entity.Task
+	children []*entity.Task
+}
+
+// count 此计划贡献的叶子级任务计数（leaf=1；parent+N=N，parent 容器不计）。
+func (p *createPlan) count() int {
+	if p.leaf != nil {
+		return 1
+	}
+	return len(p.children)
+}
+
+// childToResponse 把子响应适配为 TaskCreateResponse，复用 fillTaskFromResponse 的统一字段映射。
+func childToResponse(c *sdkdto.TaskCreateChildResponse) *sdkdto.TaskCreateResponse {
+	return &sdkdto.TaskCreateResponse{
+		TaskName:      c.TaskName,
+		SiteWorkId:    c.SiteWorkId,
+		Url:           c.Url,
+		SiteName:      c.SiteName,
+		PluginData:    c.PluginData,
+		InvolvedRoles: c.InvolvedRoles,
+		ResourceType:  c.ResourceType,
+	}
+}
+
+// fillTaskFromResponse 把响应字段填入一个已分配的 Task（leaf/parent/child 通用，双路径共用）。
+// pid：父任务 ID（child 传 parent.id；leaf/parent 传 0）。
+// hasChild：是否父任务（容器，不带 SiteWorkID/PluginData）。
+// siteCache：站点名→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
+// SiteName 为空时返回 ErrSiteNameRequired——leaf/parent/child 均须归属站点。
+func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, resp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, pid int64, hasChild bool, siteCache map[string]int) error {
+	task.TaskName = sql.NullString{String: resp.TaskName, Valid: true}
+	task.URL = sql.NullString{String: resp.Url, Valid: true}
+	task.Status = int(TaskStatusCreated)
+	task.HasChild = sql.NullBool{Bool: hasChild, Valid: true}
+	task.Pid = sql.NullInt64{Int64: pid, Valid: true}
+	task.PluginPublicID = listener.PublicID
+	task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
+
+	if resp.SiteName == "" {
+		return errors.Join(ErrSiteNameRequired, errors.New("siteName is empty"))
+	}
+	siteId, ok := siteCache[resp.SiteName]
+	if !ok {
+		site, err := s.siteSvc.GetByName(ctx, resp.SiteName)
+		if err != nil || site == nil {
+			return errors.Join(ErrSiteNotFound, errors.New(resp.SiteName))
+		}
+		siteId = int(site.ID)
+		siteCache[resp.SiteName] = siteId
+	}
+	task.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
+
+	// 身份字段：leaf/child 带 SiteWorkID/PluginData；parent 容器不带
+	if !hasChild {
+		task.SiteWorkID = sql.NullString{String: resp.SiteWorkId, Valid: true}
+		if resp.PluginData != "" {
+			task.PluginData = sql.NullString{String: resp.PluginData, Valid: true}
+		}
+	}
+
+	// involvedRoles:创建期声明的涉及板块(universe),逗号join;空=NULL(未确定/默认)
+	if len(resp.InvolvedRoles) > 0 {
+		task.InvolvedRoles = sql.NullString{String: strings.Join(resp.InvolvedRoles, ","), Valid: true}
+	}
+
+	// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明);有 children 时由各 child 声明
+	if resp.ResourceType != "" {
+		task.ResourceType = sql.NullString{String: resp.ResourceType, Valid: true}
+	}
+
+	return nil
+}
+
+// planCreateResponse 把一个插件响应单点判定为 leaf 或 parent+children 并填好字段（children 的 Pid 除外）。
+// stream 与 array 共用此方法——leaf/parent/child 三态在此唯一实现，消除双路径不对称：
+// 无 Children → 独立 leaf（pid=0）；有 Children → parent+children，不折叠（Children=[1] 也建 parent+child）。
+// 不变量：改此函数须保 leaf(pid=0) 路径不被遗漏/折叠，参见 memory leaf-task-regression-hotspot。
+// 通信契约详见 doc/plugin-dev-guide.md「Create 返回的任务结构契约」。
+func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, siteCache map[string]int) (*createPlan, error) {
+	if len(taskResp.Children) == 0 {
+		// 无 Children：独立 leaf（如 local 单文件导入），pid=0、HasChild=false
+		leaf := &entity.Task{BaseEntity: &model.BaseEntity{}}
+		if err := s.fillTaskFromResponse(ctx, leaf, taskResp, listener, 0, false, siteCache); err != nil {
+			return nil, err
+		}
+		return &createPlan{leaf: leaf}, nil
+	}
+
+	// 有 Children：parent + 每个 child，不折叠
+	parent := &entity.Task{BaseEntity: &model.BaseEntity{}}
+	if err := s.fillTaskFromResponse(ctx, parent, taskResp, listener, 0, true, siteCache); err != nil {
+		return nil, err
+	}
+	children := make([]*entity.Task, 0, len(taskResp.Children))
+	for _, childResp := range taskResp.Children {
+		child := &entity.Task{BaseEntity: &model.BaseEntity{}}
+		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp), listener, 0, false, siteCache); err != nil {
+			return nil, err
+		}
+		children = append(children, child)
+	}
+	return &createPlan{parent: parent, children: children}, nil
+}
+
+// handleCreateTaskArray 处理插件返回的任务数组。
+// 经 planCreateResponse 单点判定：无 Children→独立 leaf；有 Children→parent+children（不折叠）。
+// 返回叶子级任务计数（leaf=1、parent+N=N，parent 容器不计）。
+func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension) (int, error) {
 	if len(pluginResponses) == 0 {
 		return 0, nil
 	}
 
-	childrenCount := 0
+	count := 0
 	siteCache := make(map[string]int) // siteName -> siteId 缓存
 
-	// 给任务赋值的函数
-	assignTask := func(task *entity.Task, taskResp *sdkdto.TaskCreateResponse, pid int64) error {
-		task.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
-		task.SiteWorkID = sql.NullString{String: taskResp.SiteWorkId, Valid: true}
-		task.URL = sql.NullString{String: taskResp.Url, Valid: true}
-		task.Status = int(TaskStatusCreated)
-		task.HasChild = sql.NullBool{Bool: false, Valid: true}
-		task.Pid = sql.NullInt64{Int64: pid, Valid: true}
-		task.PluginPublicID = listener.PublicID
-		task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
-
-		// 根据站点名称获取站点id
-		if taskResp.SiteName == "" {
-			return errors.Join(ErrSiteNameRequired, errors.New("siteName is empty"))
-		}
-
-		siteId, ok := siteCache[taskResp.SiteName]
-		if !ok {
-			site, err := s.siteSvc.GetByName(ctx, taskResp.SiteName)
-			if err != nil || site == nil {
-				return errors.Join(ErrSiteNotFound, errors.New(taskResp.SiteName))
-			}
-			siteId = int(site.ID)
-			siteCache[taskResp.SiteName] = siteId
-		}
-		task.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
-
-		// 处理 pluginData
-		if taskResp.PluginData != "" {
-			task.PluginData = sql.NullString{String: taskResp.PluginData, Valid: true}
-		}
-
-		// involvedRoles:创建期声明的涉及板块(universe),逗号join;空=NULL(未确定/默认)
-		if len(taskResp.InvolvedRoles) > 0 {
-			task.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
-		}
-
-		// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
-		if taskResp.ResourceType != "" {
-			task.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
-		}
-
-		return nil
-	}
-
-	// 处理每个父任务响应
-	for _, parentResp := range pluginResponses {
-		children := parentResp.Children
-		if len(children) == 0 {
+	for _, resp := range pluginResponses {
+		plan, err := s.planCreateResponse(ctx, resp, listener, siteCache)
+		if err != nil {
+			// 字段填充失败（如 SiteName 缺失）：跳过此响应
 			continue
 		}
 
-		// 单个任务不创建父任务，只创建子任务
-		if len(children) == 1 {
-			task := &entity.Task{
-				BaseEntity: &model.BaseEntity{},
-			}
-			childResp := children[0]
-			if err := assignTask(task, &sdkdto.TaskCreateResponse{
-				TaskName:      childResp.TaskName,
-				SiteWorkId:    childResp.SiteWorkId,
-				Url:           childResp.Url,
-				SiteName:      childResp.SiteName,
-				PluginData:    childResp.PluginData,
-				InvolvedRoles: childResp.InvolvedRoles,
-				ResourceType:  childResp.ResourceType,
-			}, 0); err != nil {
+		if plan.leaf != nil {
+			// 独立 leaf：直接落盘
+			if err := s.repo.CreateTask(ctx, plan.leaf); err != nil {
 				continue
 			}
-			if err := s.repo.CreateTask(ctx, task); err != nil {
-				continue
-			}
-			childrenCount++
+			count += plan.count()
 			continue
 		}
 
-		// 多个子任务：事务内创建父任务 + 全部子任务
-		parentTask := &entity.Task{
-			BaseEntity: &model.BaseEntity{},
-		}
-		if err := assignTask(parentTask, &sdkdto.TaskCreateResponse{
-			TaskName:      parentResp.TaskName,
-			Url:           parentResp.Url,
-			SiteName:      parentResp.SiteName,
-			InvolvedRoles: parentResp.InvolvedRoles,
-			ResourceType:  parentResp.ResourceType,
-		}, 0); err != nil {
-			continue
-		}
-		parentTask.HasChild = sql.NullBool{Bool: true, Valid: true} // 集合任务
-
-		err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-			if err := s.repo.CreateTask(txCtx, parentTask); err != nil {
+		// parent + children：事务内落盘 parent → 回填 children.Pid → 落盘 children
+		err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+			if err := s.repo.CreateTask(txCtx, plan.parent); err != nil {
 				return err
 			}
-			parentId := parentTask.GetID()
-
-			for _, childResp := range children {
-				childTask := &entity.Task{
-					BaseEntity: &model.BaseEntity{},
-				}
-				if err := assignTask(childTask, &sdkdto.TaskCreateResponse{
-					TaskName:      childResp.TaskName,
-					SiteWorkId:    childResp.SiteWorkId,
-					Url:           childResp.Url,
-					SiteName:      childResp.SiteName,
-					PluginData:    childResp.PluginData,
-					InvolvedRoles: childResp.InvolvedRoles,
-					ResourceType:  childResp.ResourceType,
-				}, parentId); err != nil {
+			parentId := plan.parent.GetID()
+			for _, child := range plan.children {
+				child.Pid = sql.NullInt64{Int64: parentId, Valid: true}
+				if err := s.repo.CreateTask(txCtx, child); err != nil {
 					return err
 				}
-				if err := s.repo.CreateTask(txCtx, childTask); err != nil {
-					return err
-				}
-				childrenCount++
 			}
 			return nil
 		})
@@ -724,9 +750,10 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			logger.Log.Errorf("[Task] 创建任务组失败: %v", err)
 			continue
 		}
+		count += plan.count()
 	}
 
-	return childrenCount, nil
+	return count, nil
 }
 
 // CreateTaskStreamChan Go 风格的流式任务创建通道
@@ -737,19 +764,25 @@ type CreateTaskStreamChan struct {
 	Error  error
 }
 
-// handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）
-// 该方法会启动一个 goroutine 来读取任务流，并通过 channel 返回结果
+// handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）。
+// 经 planCreateResponse 单点判定（与 array 路径一致）：无 Children→独立 leaf；有 Children→parent+children（不折叠）。
+// 同 PluginTaskId 的多响应归入同一 parent（合并），让插件可把一个超大 work 拆成多响应流式发
+// （如 local 扫描含大量文件的目录：边扫边发、复用同一 PluginTaskId）。
+// parent 即时落盘（CreateTask），leaf/child 进批量缓存经 CreateBatch 落盘；通过 channel 返回结果。
 func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
 		defer close(outChan)
 
-		var parentTask *entity.Task
 		siteCache := make(map[string]int)
 		batch := make([]*entity.Task, 0, batchSize)
+		// 当前 work 的父任务与其 PluginTaskId；同 PluginTaskId 的后续响应归入同一父（合并续传），
+		// 不同 PluginTaskId 或空值则建新父——以 PluginTaskId（插件稳定 work 标识）为合并键。
+		var currentParent *entity.Task
+		var currentPluginTaskId string
 
-		// 确保批量保存
+		// 批量保存缓存中的 leaf/child
 		flushBatch := func() {
 			if len(batch) > 0 {
 				if err := s.repo.CreateBatch(ctx, batch); err != nil {
@@ -768,139 +801,40 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 			default:
 			}
 
-			children := taskResp.Children
-			if len(children) == 0 {
-				// leaf 响应:taskResp 本身是独立任务(无 parent/children,如 local 单文件导入),
-				// 直接创建为叶子任务(pid=0),不套 parent+children 结构。
-				leafTask := &entity.Task{BaseEntity: &model.BaseEntity{}}
-				leafTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
-				leafTask.SiteWorkID = sql.NullString{String: taskResp.SiteWorkId, Valid: true}
-				leafTask.URL = sql.NullString{String: taskResp.Url, Valid: true}
-				leafTask.Status = int(TaskStatusCreated)
-				leafTask.HasChild = sql.NullBool{Bool: false, Valid: true}
-				leafTask.PluginPublicID = listener.PublicID
-				leafTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
-				if taskResp.SiteName != "" {
-					siteId, ok := siteCache[taskResp.SiteName]
-					if !ok {
-						if site, err := s.siteSvc.GetByName(ctx, taskResp.SiteName); err == nil && site != nil {
-							siteId = int(site.ID)
-							siteCache[taskResp.SiteName] = siteId
-						}
-					}
-					leafTask.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
-				}
-				if taskResp.PluginData != "" {
-					leafTask.PluginData = sql.NullString{String: taskResp.PluginData, Valid: true}
-				}
-				if len(taskResp.InvolvedRoles) > 0 {
-					leafTask.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
-				}
-				// resourceType:创建期声明的资源类型(已注册即可,含内置 audio 或插件自定义);空=NULL(未声明)
-				if taskResp.ResourceType != "" {
-					leafTask.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
-				}
-				batch = append(batch, leafTask)
-				if len(batch) >= batchSize {
-					flushBatch()
-				}
-				outChan <- &CreateTaskStreamChan{Task: leafTask}
+			plan, err := s.planCreateResponse(ctx, taskResp, listener, siteCache)
+			if err != nil {
+				outChan <- &CreateTaskStreamChan{Error: err}
 				continue
 			}
 
-			// 处理父任务信息
-			if parentTask == nil || (parentTask.TaskName.Valid && parentTask.TaskName.String != taskResp.TaskName) {
-				flushBatch()
-
-				parentTask = &entity.Task{
-					BaseEntity: &model.BaseEntity{},
-				}
-				parentTask.TaskName = sql.NullString{String: taskResp.TaskName, Valid: true}
-				parentTask.URL = sql.NullString{String: taskResp.Url, Valid: true}
-				parentTask.Status = int(TaskStatusCreated)
-				parentTask.HasChild = sql.NullBool{Bool: true, Valid: true}
-				parentTask.PluginPublicID = listener.PublicID
-				parentTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
-
-				// 获取站点id
-				if taskResp.SiteName != "" {
-					siteId, ok := siteCache[taskResp.SiteName]
-					if !ok {
-						if site, err := s.siteSvc.GetByName(ctx, taskResp.SiteName); err == nil && site != nil {
-							siteId = int(site.ID)
-							siteCache[taskResp.SiteName] = siteId
-						}
-					}
-					parentTask.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
-				}
-
-				// involvedRoles:创建期声明的涉及板块(universe)
-				if len(taskResp.InvolvedRoles) > 0 {
-					parentTask.InvolvedRoles = sql.NullString{String: strings.Join(taskResp.InvolvedRoles, ","), Valid: true}
-				}
-
-				// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
-				if taskResp.ResourceType != "" {
-					parentTask.ResourceType = sql.NullString{String: taskResp.ResourceType, Valid: true}
-				}
-
-				if err := s.repo.CreateTask(ctx, parentTask); err != nil {
-					outChan <- &CreateTaskStreamChan{Error: err}
-					parentTask = nil
-					continue
-				}
-				outChan <- &CreateTaskStreamChan{Parent: parentTask}
-			}
-
-			// 处理子任务
-			for _, childResp := range children {
-				childTask := &entity.Task{
-					BaseEntity: &model.BaseEntity{},
-				}
-				childTask.Pid = sql.NullInt64{Int64: parentTask.GetID(), Valid: true}
-				childTask.TaskName = sql.NullString{String: childResp.TaskName, Valid: true}
-				childTask.SiteWorkID = sql.NullString{String: childResp.SiteWorkId, Valid: true}
-				childTask.URL = sql.NullString{String: childResp.Url, Valid: true}
-				childTask.Status = int(TaskStatusCreated)
-				childTask.HasChild = sql.NullBool{Bool: false, Valid: true}
-				childTask.PluginPublicID = listener.PublicID
-				childTask.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
-
-				// 获取站点id
-				if childResp.SiteName != "" {
-					siteId, ok := siteCache[childResp.SiteName]
-					if !ok {
-						if site, err := s.siteSvc.GetByName(ctx, childResp.SiteName); err == nil && site != nil {
-							siteId = int(site.ID)
-							siteCache[childResp.SiteName] = siteId
-						}
-					}
-					childTask.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
-				}
-
-				// 处理 pluginData
-				if childResp.PluginData != "" {
-					childTask.PluginData = sql.NullString{String: childResp.PluginData, Valid: true}
-				}
-
-				// involvedRoles:创建期声明的涉及板块(universe)
-				if len(childResp.InvolvedRoles) > 0 {
-					childTask.InvolvedRoles = sql.NullString{String: strings.Join(childResp.InvolvedRoles, ","), Valid: true}
-				}
-
-				// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明)
-				if childResp.ResourceType != "" {
-					childTask.ResourceType = sql.NullString{String: childResp.ResourceType, Valid: true}
-				}
-
-				batch = append(batch, childTask)
-
-				// 达到批量大小时保存
+			if plan.leaf != nil {
+				// 独立 leaf：进批量缓存
+				batch = append(batch, plan.leaf)
 				if len(batch) >= batchSize {
 					flushBatch()
 				}
+				outChan <- &CreateTaskStreamChan{Task: plan.leaf}
+				continue
+			}
 
-				outChan <- &CreateTaskStreamChan{Task: childTask}
+			// parent + children：同 PluginTaskId 复用现有 parent（合并续传），否则建新 parent
+			if currentParent == nil || taskResp.PluginTaskId == "" || taskResp.PluginTaskId != currentPluginTaskId {
+				if err := s.repo.CreateTask(ctx, plan.parent); err != nil {
+					outChan <- &CreateTaskStreamChan{Error: err}
+					continue
+				}
+				outChan <- &CreateTaskStreamChan{Parent: plan.parent}
+				currentParent = plan.parent
+				currentPluginTaskId = taskResp.PluginTaskId
+			}
+			parentId := currentParent.GetID()
+			for _, child := range plan.children {
+				child.Pid = sql.NullInt64{Int64: parentId, Valid: true}
+				batch = append(batch, child)
+				if len(batch) >= batchSize {
+					flushBatch()
+				}
+				outChan <- &CreateTaskStreamChan{Task: child}
 			}
 		}
 

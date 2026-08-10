@@ -1076,6 +1076,8 @@ const (
 // classifyTaskUnit 据任务的 Pid/HasChild 判定单元类型(单一分类来源)。
 // Start 据此决定如何构建(taskMap/parentMap),控制操作经 resolveTargets 据内存状态解析目标,
 // 二者共享同一套"独立/叶子/父"语义,避免判定分叉(曾致独立任务无法暂停/停止的回归)。
+// 不变量:改此分类须保独立任务(pid=0、HasChild=false)与叶子(pid>0)均被正确归类,
+// 否则执行/控制操作会漏掉独立 leaf——参见 memory leaf-task-regression-hotspot / standalone-task-pause-regression。
 func classifyTaskUnit(t *domain.Task) taskUnitKind {
 	if t.HasChild.Valid && t.HasChild.Bool {
 		return unitParent

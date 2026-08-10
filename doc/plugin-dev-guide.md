@@ -339,6 +339,30 @@ type TaskHandler interface {
 - `Pause`/`Stop`:任务级控制。应关闭 reader 上游连接(HTTP body / 文件句柄),使在途读取尽快返回。
 - `Resume`:按 StreamOffsets 续传未完成 downloaded 轨;derived 轨未完成时由主程序另行调 Start 整轨重产。
 
+#### Create 返回的任务结构契约(重要)
+
+`Create` 返回 `*TaskCreateResult`,内含一串 `*TaskCreateResponse`(`sdkdto.BatchResult([...])` 批量 / `sdkdto.StreamResult(ch)` 流式二选一)。**每个 `TaskCreateResponse` 是一个自洽的工作单元**,主程序按其 `Children` 是否为空落盘:
+
+| 响应结构 | 落盘任务 | 计入 AddedQuantity |
+|---|---|---|
+| **无 Children**(独立 leaf) | 1 个任务:pid=0、HasChild=false | 1 |
+| **有 Children**(任务组) | 1 个 parent(HasChild=true、pid=0)+ 每个 child(pid=parent.id、HasChild=false) | len(Children)(parent 容器不计) |
+
+- **不折叠**:即便 `Children` 只有 1 个,也建 parent+1child(2 任务),不把单 child 提升为 leaf。parent 是"作品/目录"容器、child 是"可下载单元",语义不同。
+- **字段落位**:parent 容器只取 `TaskName`/`Url`/`SiteName`/`InvolvedRoles`/`ResourceType`(不带 `SiteWorkId`/`PluginData`);leaf 与 child 取全部身份字段(含 `SiteWorkId`/`PluginData`)。`SiteName` 必填——缺失则该响应被跳过(不入库)。
+- **流式合并(stream 专属)**:一个超大 work 可拆成多个响应流式发,**复用同一 `PluginTaskId`**——主程序把同 `PluginTaskId` 的连续响应合并到同一 parent(children 累加、不重复建 parent)。`PluginTaskId` 是插件稳定的 work 标识;**勿用 `TaskName` 当合并键**(展示名易重复,且 local 一次导入内 `TaskName` 恒定,用它会误把不同目录焊成一个 work)。批量(array)路径不合并,每个响应须自洽。流式适合"work 数量多想渐进反馈"或"单 work 巨大需拆分"的场景(如本地导入含大量文件的目录)。
+
+四例:
+
+| 场景 | 交付 | 响应结构 | 落盘 | 计数 |
+|---|---|---|---|---|
+| 本地单文件导入 | stream,1 响应 | 独立 leaf(无 Children) | 1 leaf | 1 |
+| 本地目录 5 文件 | stream,1 响应 | 任务组 Children=[5] | 1 parent + 5 child | 5 |
+| pixiv 单图作品 | array,1 响应 | 任务组 Children=[1] | 1 parent + 1 child | 1 |
+| pixiv 5 图作品 | array,1 响应 | 任务组 Children=[5] | 1 parent + 5 child | 5 |
+
+> 站点类插件(如 pixiv)始终发任务组(作品概念,单图也是 Children=[1]);本地单文件发独立 leaf。这是**插件编码的选择**,主程序规则统一(尊重编码、不替它折叠)。一次 `Create` 可返回多个响应(如本地选多个目录),每个独立按上表落盘。
+
 #### 创建期声明涉及板块(InvolvedRoles)
 
 `Create` 返回的 `TaskCreateResponse`(及子任务 `TaskCreateChildResponse`)可声明本任务涉及的 store_type 集合 `InvolvedRoles`(universe),供主程序与前端按任务感知:
