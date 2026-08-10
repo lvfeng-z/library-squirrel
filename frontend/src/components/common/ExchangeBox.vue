@@ -16,6 +16,8 @@ const props = defineProps<{
   lowerLoad: (page: IPage<SelectItem>) => Promise<IPage<SelectItem>> // lower的加载函数
   searchButtonDisabled: boolean
   tagsGap?: string
+  /** 绑定区（upper 主区域+缓冲区）是否开启 namespace 编辑：true=绑定区 tag 的 ns 段可编辑 */
+  upperEditableNs?: boolean
 }>()
 
 // 事件
@@ -169,15 +171,15 @@ function resetScrollBarPosition(isUpper?: boolean) {
     lowerTagBox.value.scrollbar.setScrollTop(0)
   }
 }
-// 过滤存在于Buffer中的
+// 过滤已移入缓冲区的数据，避免分页重复加载
 function leachBufferData(increment: SegmentedTagItem[], isUpper: boolean) {
   if (isUpper) {
-    // 过滤掉upperBufferId已包含的数据
+    // upper 分页（已绑定）：过滤掉 lowerBufferId（待解绑）与 upperBufferId（待重新确认，如已绑定 tag 编辑 ns 后移入缓冲区）
     return increment.filter((item: SegmentedTagItem) => {
-      return !lowerBufferId.value.has(item.value)
+      return !lowerBufferId.value.has(item.value) && !upperBufferId.value.has(item.value)
     })
   } else {
-    // 过滤掉lowerBufferId已包含的数据
+    // lower 分页（候选）：过滤掉 upperBufferId（已选入待绑定缓冲区）
     return increment.filter((item: SegmentedTagItem) => {
       return !upperBufferId.value.has(item.value)
     })
@@ -187,6 +189,12 @@ function leachBufferData(increment: SegmentedTagItem[], isUpper: boolean) {
 function handleBufferToggle() {
   upperBufferState.value = arrayNotEmpty(upperBufferData.value)
   lowerBufferState.value = arrayNotEmpty(lowerBufferData.value)
+}
+// 处理 upper 主区域 tag 的 namespace 被编辑：移至 upper 缓冲区待重新确认（确认时 upsert 更新现有绑定 ns）
+function handleUpperDataNsEdited(tag: SelectItem) {
+  exchange(upperData.value, upperBufferData.value, tag)
+  upperBufferId.value.add(tag.value)
+  handleBufferToggle()
 }
 </script>
 
@@ -261,7 +269,9 @@ function handleBufferToggle() {
             class="exchange-box-upper-tag-box"
             :load="(_page: IPage<SelectItem>) => requestNextPage(_page, true)"
             :tags-gap="tagsGap"
+            :editable-ns="upperEditableNs"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperData')"
+            @tag-ns-edited="(tag: SelectItem) => handleUpperDataNsEdited(tag)"
           />
           <collapse-panel
             class="exchange-box-upper-op-button-group"
@@ -299,6 +309,7 @@ function handleBufferToggle() {
             <tag-box
               v-model:data="upperBufferData"
               class="exchange-box-middle-buffer-upper"
+              :editable-ns="upperEditableNs"
               @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperBuffer')"
             />
           </collapse-panel>

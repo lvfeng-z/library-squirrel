@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
-import { nextTick, Ref, ref, watch } from 'vue'
+import { nextTick, type Component, Ref, ref, watch } from 'vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
-import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
+import NamespaceTag from '@renderer/components/common/NamespaceTag.vue'
 import IPage from '@renderer/model/util/IPage.ts'
 import Page from '@renderer/model/util/Page.ts'
 import lodash from 'lodash'
@@ -15,6 +15,10 @@ const props = withDefaults(
     tagCloseable?: boolean
     tagsGap?: string
     maxHeight?: string
+    /** namespace 选择框区域级开关（透传给默认 NamespaceTag：true=该区域 tag 的 ns 段可编辑） */
+    editableNs?: boolean
+    /** 自定义 tag 渲染组件（默认 NamespaceTag）。自定义组件须接收 item/closeable props 并 emit clicked/mainLabelClicked/subLabelClicked/close。 */
+    tagComponent?: Component
   }>(),
   {
     tagCloseable: false,
@@ -30,7 +34,7 @@ const page = defineModel<IPage<SegmentedTagItem>>('page', { default: new Page<Se
 const data = defineModel<SegmentedTagItem[]>('data', { default: [] })
 
 // 事件
-const emit = defineEmits(['tagClicked', 'tagMainLabelClicked', 'tagSubLabelClicked', 'tagClose'])
+const emit = defineEmits(['tagClicked', 'tagMainLabelClicked', 'tagSubLabelClicked', 'tagClose', 'tagNsEdited'])
 
 // 变量
 // el-scrollbar组件的实例
@@ -125,6 +129,10 @@ function handleTagSubLabelClicked(tag: SelectItem, index: number) {
 function handleTagClose(tag: SelectItem) {
   emit('tagClose', tag)
 }
+// 处理 namespace 被编辑事件（透传给父组件，如 ExchangeBox 据此把已绑定区 tag 移至缓冲区）
+function handleTagNsEdited(tag: SelectItem) {
+  emit('tagNsEdited', tag)
+}
 // 刷新加载按钮状态
 function refreshLoadButton() {
   let notFull: boolean
@@ -173,14 +181,17 @@ defineExpose({ scrollbar, newSearch })
         class="tag-box-item-container"
       >
         <slot name="head" />
-        <segmented-tag
+        <component
+          :is="tagComponent ?? NamespaceTag"
           v-for="item in data"
           :key="item.value"
           :item="item"
           :closeable="tagCloseable"
+          :editable-ns="editableNs"
           @clicked="handleTagClicked(item)"
           @main-label-clicked="handleTagMainLabelClicked(item)"
           @sub-label-clicked="(event) => handleTagSubLabelClicked(item, event)"
+          @ns-edited="handleTagNsEdited(item)"
           @close="handleTagClose(item)"
         />
         <slot name="tail" />

@@ -18,10 +18,11 @@ import * as model$0 from "../base/model/models.js";
 import * as entity$0 from "../base/model/entity/models.js";
 
 /**
- * Link 链接标签到作品
+ * Link 链接标签到作品。namespaces 与 tagIds 等长配对（local=用户自设 ns，空串=无 ns）；
+ * site 关联的 namespace 由后端按 site_tag.namespace 镜像，namespaces 传值被忽略。
  */
-export function Link(tagType: number, tagIds: number[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3897435833, tagType, tagIds, workId).then(($result: any) => {
+export function Link(tagType: number, tagIds: number[], namespaces: string[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3897435833, tagType, tagIds, namespaces, workId).then(($result: any) => {
         return $$createType1($result);
     });
 }

@@ -3,6 +3,7 @@ package reWorkTag
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -14,6 +15,8 @@ type Repository interface {
 	Create(ctx context.Context, rel *domain.ReWorkTag) error
 	// CreateBatch 批量新建关联
 	CreateBatch(ctx context.Context, rels []*domain.ReWorkTag) error
+	// UpsertBatch 批量 upsert：按 (work_id, tag_id) 冲突更新 namespace，否则插入
+	UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error
 	// Delete 删除关联
 	Delete(ctx context.Context, id int64) error
 	// DeleteByWorkAndTag 根据作品ID和标签删除
@@ -36,15 +39,23 @@ type Repository interface {
 	ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
 }
 
-// Service 作品-标签关联服务
-type Service struct {
-	repo Repository
+// SiteTagNamespaceReader 提供 site_tag 查询，供 site 关联镜像 namespace。
+// siteTag.Service 的 ListBySiteTagIds 结构化匹配此接口（无需 siteTag 反向依赖 reWorkTag）。
+type SiteTagNamespaceReader interface {
+	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error)
 }
 
-// NewService 创建关联服务
-func NewService(repo Repository) *Service {
+// Service 作品-标签关联服务
+type Service struct {
+	repo          Repository
+	siteTagReader SiteTagNamespaceReader
+}
+
+// NewService 创建关联服务。siteTagReader 用于 site 关联镜像 site_tag.namespace（可为 nil，仅 site 分支需要）。
+func NewService(repo Repository, siteTagReader SiteTagNamespaceReader) *Service {
 	return &Service{
-		repo: repo,
+		repo:          repo,
+		siteTagReader: siteTagReader,
 	}
 }
 
@@ -127,26 +138,61 @@ func (s *Service) UnlinkTagFromWork(ctx context.Context, workId int64, tagType i
 	return s.repo.DeleteByWorkAndTag(ctx, workId, tagType, tagId)
 }
 
-// LinkBatchToWork 批量链接标签到作品
-func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int, tagIds []int64) error {
+// ErrNamespaceCountMismatch namespaces 与 tagIds 长度不匹配（须等长配对或全空）
+var ErrNamespaceCountMismatch = errors.New("namespaces 与 tagIds 长度不匹配")
+
+// LinkBatchToWork 批量链接标签到作品（upsert：同 work_id+tag_id 已存在则更新 namespace，否则新增）。
+// namespaces：local 关联由前端传用户自设值（与 tagIds 等长配对，空数组=全无 namespace）；
+// site 关联忽略前端传值，由后端按 site_tag.namespace 镜像（re_work_tag.namespace = 所指 site_tag.namespace）。
+func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int, tagIds []int64, namespaces []string) error {
 	if len(tagIds) == 0 {
 		return nil
 	}
-	rels := make([]*domain.ReWorkTag, len(tagIds))
-	for i, tagId := range tagIds {
-		temp := domain.NewReWorkTag()
-		temp.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-		temp.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
-		rels[i] = temp
-		if tagType == constant.LOCAL {
-			rels[i].LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
-			rels[i].SiteTagID = sql.NullInt64{Valid: false}
-		} else {
-			temp.LocalTagID = sql.NullInt64{Valid: false}
-			rels[i].SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
+	if len(namespaces) != 0 && len(namespaces) != len(tagIds) {
+		return ErrNamespaceCountMismatch
+	}
+
+	// site 关联的 namespace 按 site_tag.namespace 镜像（local 用前端传值，无需查 site_tag）
+	nsByTagId := make(map[int64]string, len(tagIds))
+	if tagType == constant.SITE && s.siteTagReader != nil {
+		siteTags, err := s.siteTagReader.ListBySiteTagIds(ctx, tagIds)
+		if err != nil {
+			return err
+		}
+		for _, st := range siteTags {
+			if st.Namespace.Valid {
+				nsByTagId[st.ID] = st.Namespace.String
+			}
 		}
 	}
-	return s.repo.CreateBatch(ctx, rels)
+
+	rels := make([]*domain.ReWorkTag, len(tagIds))
+	for i, tagId := range tagIds {
+		rel := domain.NewReWorkTag()
+		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+		rel.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
+
+		// namespace 解析：local 用前端传值（越界守卫），site 用镜像 map
+		ns := ""
+		if tagType == constant.LOCAL {
+			if i < len(namespaces) {
+				ns = namespaces[i]
+			}
+		} else {
+			ns = nsByTagId[tagId]
+		}
+		rel.Namespace = sql.NullString{String: ns, Valid: ns != ""}
+
+		if tagType == constant.LOCAL {
+			rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
+			rel.SiteTagID = sql.NullInt64{Valid: false}
+		} else {
+			rel.LocalTagID = sql.NullInt64{Valid: false}
+			rel.SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
+		}
+		rels[i] = rel
+	}
+	return s.repo.UpsertBatch(ctx, rels, tagType)
 }
 
 // RemoveBatchFromWork 批量从作品移除标签

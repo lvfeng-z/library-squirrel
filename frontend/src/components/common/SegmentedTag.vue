@@ -112,8 +112,8 @@ function handleClicked() {
 function handleMainLabelClicked() {
   emits('mainLabelClicked')
 }
-function handleSubLabelClicked(index: number) {
-  emits('subLabelClicked', index)
+function handleSubLabelClicked(index: number, event: MouseEvent) {
+  emits('subLabelClicked', index, event)
 }
 function handleCloseButtonClicked() {
   emits('close')
@@ -157,7 +157,7 @@ function handleCloseButtonClicked() {
             'segmented-tag-sub-1-label': index % 2 === 0,
             'segmented-tag-sub-2-label': !(index % 2 === 0)
           }"
-          @click="handleSubLabelClicked(index)"
+          @click="handleSubLabelClicked(index, $event)"
         >
           <span
             :class="{

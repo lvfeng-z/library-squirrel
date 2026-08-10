@@ -826,7 +826,7 @@ func (app *App) initBaseServices() {
 
 	// reWorkTag 服务
 	reWorkTagRepo := reWorkTag.NewRepository(app.db)
-	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo)
+	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, app.SiteTagService)
 
 	// settings 服务
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")

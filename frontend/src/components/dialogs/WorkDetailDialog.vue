@@ -9,6 +9,7 @@ import {
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import ApiUtil from '@renderer/utils/ApiUtil'
 import ExchangeBox from '@renderer/components/common/ExchangeBox.vue'
+import type { ReWorkTag } from '@bindings/github.com/library-squirrel/backend/base/model/entity/models'
 import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { OriginType } from '@renderer/constants/OriginType.ts'
@@ -55,6 +56,7 @@ const apis = {
   siteTagQuerySelectItemPageByWorkId: siteTagApi.siteTagQuerySelectItemPageByWorkId,
   reWorkTagLink: reWorkTagApi.reWorkTagLink,
   reWorkTagUnlink: reWorkTagApi.reWorkTagUnlink,
+  reWorkTagListByWorkId: reWorkTagApi.reWorkTagListByWorkId,
   workSoftDelete: workApi.workSoftDelete,
   workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
   workSetListByWorkId: workSetApi.workSetListByWorkId
@@ -73,6 +75,33 @@ const currentWorkFullInfo: Ref<WorkFullDTO> = computed(() => {
 const localTags: Ref<SegmentedTagItem[]> = ref([])
 // 站点标签
 const siteTags: Ref<SegmentedTagItem[]> = ref([])
+// 作品已绑定 tag 的 namespace 映射（localTagId→ns、siteTagId→ns），供已绑定候选区/详情区只读展示 ns 子段
+const workTagNs = ref<{ local: Map<number, string>; site: Map<number, string> }>({ local: new Map(), site: new Map() })
+// 刷新作品已绑定 tag 的 namespace 映射（local/site 各一）；失败不阻断（仅无 ns 展示）
+async function refreshWorkTagNs() {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) {
+    workTagNs.value = { local: new Map(), site: new Map() }
+    return
+  }
+  try {
+    const response = await apis.reWorkTagListByWorkId(workId)
+    const rels = ApiUtil.data<(ReWorkTag | null)[]>(response) ?? []
+    const local = new Map<number, string>()
+    const site = new Map<number, string>()
+    for (const rel of rels) {
+      if (!rel?.namespace?.Valid || !rel.namespace.String) continue
+      if (rel.tagType?.Int64 === OriginType.LOCAL && rel.localTagId?.Valid) {
+        local.set(rel.localTagId.Int64, rel.namespace.String)
+      } else if (rel.tagType?.Int64 === OriginType.SITE && rel.siteTagId?.Valid) {
+        site.set(rel.siteTagId.Int64, rel.namespace.String)
+      }
+    }
+    workTagNs.value = { local, site }
+  } catch {
+    workTagNs.value = { local: new Map(), site: new Map() }
+  }
+}
 // 作品集
 const workSets: Ref<SegmentedTagItem[]> = ref([])
 // 元数据抽屉开关
@@ -167,22 +196,22 @@ async function getWorkInfo() {
 // 刷新标签
 function refreshTags() {
   const tempLocalTags = currentWorkFullInfo.value.localTags?.filter(notNullish).map(
-    (localTag) =>
-      new SegmentedTagItem({
-        value: localTag.id as number,
-        label: localTag.localTagName as string,
-        disabled: false
-      })
+    (localTag) => new SegmentedTagItem({
+      value: localTag.id as number,
+      label: localTag.localTagName as string,
+      extraData: { namespace: workTagNs.value.local.get(localTag.id as number) },
+      disabled: false
+    })
   )
   localTags.value = isNullish(tempLocalTags) ? [] : tempLocalTags
   const tempSiteTags = currentWorkFullInfo.value.siteTags?.filter(notNullish).map(
-    (siteTag) =>
-      new SegmentedTagItem({
-        value: (siteTag.siteTag?.id ?? 0) as number,
-        label: (siteTag.siteTag?.siteTagName ?? '') as string,
-        subLabels: [(isBlank(siteTag.site?.siteName) ? '?' : siteTag.site?.siteName) as string],
-        disabled: false
-      })
+    (siteTag) => new SegmentedTagItem({
+      value: (siteTag.siteTag?.id ?? 0) as number,
+      label: (siteTag.siteTag?.siteTagName ?? '') as string,
+      subLabels: [(isBlank(siteTag.site?.siteName) ? '?' : siteTag.site?.siteName) as string],
+      extraData: { namespace: workTagNs.value.site.get((siteTag.siteTag?.id ?? 0) as number) },
+      disabled: false
+    })
   )
   siteTags.value = isNullish(tempSiteTags) ? [] : tempSiteTags
 }
@@ -210,6 +239,7 @@ async function refreshWorkSets() {
 // 刷新作品（信息+标签+作品集）
 async function refreshWorkInfo() {
   await getWorkInfo()
+  await refreshWorkTagNs()
   refreshTags()
   await refreshWorkSets()
 }
@@ -219,7 +249,9 @@ async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], l
   if (!workId) return
   if (isNullish(isUpper) ? true : isUpper) {
     const boundIds = upper.map((item) => item.value)
-    const boundResponse: ApiResponse = await apis.reWorkTagLink(workId, type, boundIds as number[])
+    // namespace：local 关联取 upperBuffer 各 tag 的 extraData.namespace（NamespaceTag 编辑写入）；site 关联后端镜像，此处传 '' 由后端反查 site_tag.namespace
+    const namespaces = upper.map((item) => item.extraData?.namespace ?? '')
+    const boundResponse: ApiResponse = await apis.reWorkTagLink(workId, type, boundIds as number[], namespaces)
     if (ApiUtil.check(boundResponse)) {
       ApiUtil.msg(boundResponse)
     }
@@ -231,12 +263,14 @@ async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], l
       ApiUtil.msg(unboundResponse)
     }
   }
+  await refreshWorkTagNs()
   if (OriginType.LOCAL === type) {
     localTagExchangeBox.value?.refreshData(isUpper)
   } else {
     siteTagExchangeBox.value?.refreshData(isUpper)
   }
-  updateWorkTags(type)
+  await updateWorkTags(type)
+  refreshTags()
 }
 // 更新标签
 async function updateWorkTags(type: OriginType) {
@@ -272,7 +306,15 @@ async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean
   const response = await apis.localTagQuerySelectItemPageByWorkId(bindingsPage, query, bounded)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
-    return isNullish(newPage) ? page : newPage
+    if (!isNullish(newPage)) {
+      // namespace 值回写 tag 数据；可编辑性由区域 prop 控制（local ExchangeBox upperEditableNs=true 开启绑定区编辑，候选区不可编辑）
+      for (const item of newPage.data ?? []) {
+        if (!item) continue
+        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.local.get(item.value as number) }
+      }
+      return newPage
+    }
+    return page
   } else {
     throw new Error()
   }
@@ -288,7 +330,15 @@ async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean)
   const response = await apis.siteTagQuerySelectItemPageByWorkId(workId, bindingsPage, query, bounded)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
-    return isNullish(newPage) ? page : newPage
+    if (!isNullish(newPage)) {
+      // site tag ns 为 site_tag.namespace 镜像，只读（不可编辑）
+      for (const item of newPage.data ?? []) {
+        if (!item) continue
+        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.site.get(item.value as number) }
+      }
+      return newPage
+    }
+    return page
   } else {
     throw new Error()
   }
@@ -532,6 +582,7 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
             :lower-load="(_page: IPage<SelectItem>) => requestWorkLocalTagPage(_page, false)"
             :search-button-disabled="false"
             tags-gap="10px"
+            :upper-editable-ns="true"
             @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower, true)"
             @lower-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower, false)"
             @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.LOCAL, upper, lower)"

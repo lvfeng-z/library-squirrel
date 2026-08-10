@@ -6,6 +6,7 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -52,6 +53,33 @@ func (r *ReWorkTagRepository) DeleteByWorkId(ctx context.Context, workId int64) 
 		WithContext(ctx).
 		Where("work_id = ?", workId).
 		Delete(new(domain.ReWorkTag)).Error
+}
+
+// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 唯一约束冲突时更新 namespace，否则插入。
+// tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)。
+// 已存在的关联（如已绑定 tag 改了 namespace 重新确认）走 UPDATE namespace；新关联走 INSERT。
+func (r *ReWorkTagRepository) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
+	if len(rels) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, rel := range rels {
+		rel.SetUpdateTime(now)
+		if rel.GetID() == 0 {
+			rel.SetCreateTime(now)
+		}
+	}
+	var conflictCols []clause.Column
+	if tagType == constant.LOCAL {
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "local_tag_id"}}
+	} else {
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "site_tag_id"}}
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   conflictCols,
+			DoUpdates: clause.AssignmentColumns([]string{"namespace", "update_time"}),
+		}).Create(rels).Error
 }
 
 // ListByWorkId 查询作品关联的所有标签

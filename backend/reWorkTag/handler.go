@@ -17,9 +17,10 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Link 链接标签到作品
-func (h *Handler) Link(ctx context.Context, tagType int, tagIds []int64, workId int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.LinkBatchToWork(ctx, workId, tagType, tagIds))
+// Link 链接标签到作品。namespaces 与 tagIds 等长配对（local=用户自设 ns，空串=无 ns）；
+// site 关联的 namespace 由后端按 site_tag.namespace 镜像，namespaces 传值被忽略。
+func (h *Handler) Link(ctx context.Context, tagType int, tagIds []int64, namespaces []string, workId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.LinkBatchToWork(ctx, workId, tagType, tagIds, namespaces))
 }
 
 // Unlink 从作品移除标签
