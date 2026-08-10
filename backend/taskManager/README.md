@@ -33,6 +33,11 @@
 - **跳过解耦**：用户在 `ConfirmReplace` 选跳过的子任务置 `skipped` 标志（内存态、不持久化、仅本次 Start/Retry 执行有效，Resume 不读），`AllChildrenTerminal` 据此视为终态让父正常清理——不再把 Created 当终态（避免误伤未启动兄弟）。崩溃重启当作未跳过重新执行。
 - **静默跳过**：Pause/Stop/Resume 对不在内存的 taskId（`!ok`）静默跳过 return nil（控制操作幂等）。
 
+## 状态与生命周期不变量
+
+- **手动触发，无自动执行/恢复**：任务创建后停留 Created，等用户手动"开始"才进 Processing；app 重启后 Paused 任务**不自动恢复**，需手动"恢复"。无启动钩子自动跑任务——`resumeFromDB`/跨重启续传仅在手动 `ResumeTaskTree` 触发时执行，启动只做 `InstallBundledPlugins` 等基建。
+- **状态以资源实际状态为准**：续传/重下/完成判定依据资源实际状态（文件 `os.Stat` + `persistent_store.status`），不盲信 `PendingResourceID`（该字段可能与 store 实际脱节，如 recycleBin/backup 还原重建 store 后 task 仍持旧值）。`resumeFromPersistedState` 等决策点：文件存在 + Complete → Finished、文件缺失 → 重下、Incomplete → 续传；PendingResourceID 仅用于定位 resource，不作"是否续传"的决定因素。
+
 ## 核心概念
 
 - **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。

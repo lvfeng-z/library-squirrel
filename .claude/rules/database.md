@@ -21,6 +21,8 @@ globs:
   - `Updates` → GORM `Updates`（部分更新，仅写非零字段，编辑表单/更新状态时用）
   - ⚠️ `Updates` 跳过零值字段——若字段的 Go 零值（int 0/bool false/string ""）是合法业务取值，须用 `sql.Null*` 类型（靠 `Valid` 区分"未设置"与"零值"），否则零值无法落盘
 - **事务**：`database.WithTransaction(db, func(tx *gorm.DB) error { ... })`
+  - **连接池 MaxOpenConns=1**（`backend/database/db.go`）：SQLite 单写者，整个应用所有 DB 操作共享 1 个连接，Go `sql.DB` 连接池排队。
+  - **事务内 repository 方法必须用 `dbFromCtx(ctx)`**（= `database.DBFromContext(ctx, r.GORM())`，从 ctx 取事务 tx），禁止 `r.GORM()`——后者会向连接池再取连接，而唯一连接正被事务占用 → Go 连接池永久等待 → **死锁**（`busy_timeout` 无效，卡在 Go 连接池层而非 SQLite 层）。自定义 repository 方法默认走 `dbFromCtx(ctx)` 模式。
 - 实体通过 GORM 自动迁移，入口在 `backend/migration/migrate.go`
 - 所有实体嵌入 `BaseEntity`（ID、CreateTime、UpdateTime）
 - **时间字段**：统一使用 Unix 时间戳（毫秒），`INTEGER` 类型存储
@@ -62,4 +64,5 @@ globs:
 - **ENTITY_USE_NEW_FACTORY** (P1): 使用 `entity.NewXxx()` 工厂方法，禁止 `&entity.Xxx{}`。
 - **NULLABLE_PARAM_USE_POINTER** (P1): 可空参数使用 `*int64`/`*string`（null = 清除关联）。
 - **RESOURCE_TYPE_STRICT** (P0): `resource.resource_type` NOT NULL；写入路径严格识别（空/未注册 ResourceType 与 store_type 抛错，`entity.ValidateResourceType`/`ValidateStoreType`——Registry 来源为内置 6 类 + 插件自定义，未注册即抛错），不迁移历史数据（用户上线前手动处理）。规约见 `doc/resource-type-spec.md`。
+- **TRANSACTION_INTERNAL_USE_DBFROMCTX** (P0): 事务（`ExecInTransaction`/`WithTransaction`）内调用的 repository 方法必须用 `dbFromCtx(ctx)` 取事务连接，禁止 `r.GORM()`——MaxOpenConns=1 下后者会死锁（详见上「事务」）。自定义 repository 方法默认走 `dbFromCtx(ctx)` 模式；排查 `grep "GORM()\." backend/*/repository.go` 逐一确认是否被事务调用链触发。
 - Service 层禁止直接导入 `backend/database`，仅 Repository 层可导入。

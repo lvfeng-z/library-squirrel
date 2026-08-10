@@ -31,6 +31,7 @@
   `Created(0) / Waiting(1) / Processing(2) / Pausing(3) / Paused(4) / Stopping(5) / Finished(6) / Failed(7) / PartlyFinished(8)`
 - **任务树**：父任务聚合子任务，父任务状态由子任务聚合得出（PartlyFinished 为父任务聚合态）。
 - **CreateTaskByURL 路由**：URL 匹配插件的 URL 监听器，路由到对应插件创建任务。
+- **leaf/独立任务（pid=0）创建高回归区**：无 Children 响应 → 独立 leaf、有 Children → parent+children（不折叠），统一经 `planCreateResponse` 单点判定（stream/array 共用，消除双路径不对称）。改创建路径须保 leaf(pid=0) 覆盖，回归测试 `backend/task/service_create_test.go`（8 例）。契约见 `doc/plugin-dev-guide.md`「Create 返回的任务结构契约」。
 
 ## 依赖关系
 
