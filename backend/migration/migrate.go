@@ -30,6 +30,29 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// 数据迁移：re_work_author 去重并升级索引（普通联合 index → 唯一索引）
+	// 旧 schema 用普通联合 index（idx_re_work_author_local_author_id / idx_re_work_author_site_author_id），
+	// 升级为 (work_id, local_author_id) / (work_id, site_author_id) 唯一索引，使 LOCAL 关联增量入库可借 OnConflict DoNothing 去重。
+	// 须在 AutoMigrate 前执行：清理历史重复行（否则建唯一索引失败），并删除旧普通索引（AutoMigrate 不删旧索引，改名后会与新唯一索引冗余共存）。
+	// SQLite 唯一索引中 NULL 不参与唯一性：LOCAL 关联 site_author_id=NULL、SITE 关联 local_author_id=NULL，两类互不冲突。
+	if db.Migrator().HasIndex(&entity2.ReWorkAuthor{}, "idx_re_work_author_local_author_id") {
+		// 清理 LOCAL 重复行（每组 work_id+local_author_id 保留最早 id）
+		if err := db.Exec(`DELETE FROM re_work_author WHERE local_author_id IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM re_work_author WHERE local_author_id IS NOT NULL GROUP BY work_id, local_author_id)`).Error; err != nil {
+			return fmt.Errorf("迁移 re_work_author LOCAL 去重失败: %w", err)
+		}
+		// 清理 SITE 重复行（每组 work_id+site_author_id 保留最早 id）
+		if err := db.Exec(`DELETE FROM re_work_author WHERE site_author_id IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM re_work_author WHERE site_author_id IS NOT NULL GROUP BY work_id, site_author_id)`).Error; err != nil {
+			return fmt.Errorf("迁移 re_work_author SITE 去重失败: %w", err)
+		}
+		// 删除旧普通索引（改名后 AutoMigrate 不会自动删除）
+		if err := db.Migrator().DropIndex(&entity2.ReWorkAuthor{}, "idx_re_work_author_local_author_id"); err != nil {
+			return fmt.Errorf("迁移 re_work_author 删除旧 LOCAL 索引失败: %w", err)
+		}
+		if err := db.Migrator().DropIndex(&entity2.ReWorkAuthor{}, "idx_re_work_author_site_author_id"); err != nil {
+			return fmt.Errorf("迁移 re_work_author 删除旧 SITE 索引失败: %w", err)
+		}
+	}
+
 	// 定义所有需要迁移的模型(按依赖顺序排列)
 	models := []interface{}{
 		// 基础表(无外键依赖)

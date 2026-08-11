@@ -51,9 +51,10 @@ func (r *SiteTagRepository) BatchUpsert(ctx context.Context, tags []*entity2.Sit
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_tag_id"}},
+		// upsert 仅更新插件来源字段。local_tag_id（用户手动 site→local 桥接）、base_site_tag_id、last_use
+		// 不归插件管：它们不在插件 DTO 中，excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
 		DoUpdates: clause.AssignmentColumns([]string{
-			"site_tag_name", "base_site_tag_id", "description",
-			"local_tag_id", "last_use", "update_time",
+			"site_tag_name", "description", "update_time",
 		}),
 	}).Create(tags).Error
 }
@@ -74,9 +75,10 @@ func (r *SiteTagRepository) ListBySiteAndSiteTagIDs(ctx context.Context, siteId 
 func (r *SiteTagRepository) Upsert(ctx context.Context, tag *entity2.SiteTag) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_tag_id"}},
+		// upsert 仅更新插件来源字段。local_tag_id（用户手动 site→local 桥接）、base_site_tag_id、last_use
+		// 不归插件管：它们不在插件 DTO 中，excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
 		DoUpdates: clause.AssignmentColumns([]string{
-			"site_tag_name", "base_site_tag_id", "description",
-			"local_tag_id", "last_use", "update_time",
+			"site_tag_name", "description", "update_time",
 		}),
 	}).Create(tag).Error
 }

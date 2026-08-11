@@ -12,7 +12,7 @@
 
 - 与 **reWorkAuthor**：结构同构（作品关联表），但交互方式不同——
   - **reWorkTag 暴露写入**（`Link` / `Unlink`）：标签由用户在作品详情页交互式增删；
-  - **reWorkAuthor 只读**（Handler 无写入）：作者关联由 work 在保存作品时全量替换。
+  - **reWorkAuthor 只读**（Handler 无写入）：作者关联由 work 在保存作品时按 SITE 删后重建、LOCAL 增量保留。
 - 与 **localTag / siteTag**：标签实体由 localTag / siteTag 管理；本模块只管"作品关联了哪些标签"这层关系，tagType=LOCAL 填 LocalTagID，tagType=SITE 填 SiteTagID。
 
 ## 对外接口（Handler）

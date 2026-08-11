@@ -23,6 +23,10 @@ type Repository interface {
 	DeleteByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeleteSiteByWorkId 删除作品的 SITE 标签关联（保留 LOCAL）
+	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用）
+	SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error
 	// ListByWorkId 查询作品关联的所有标签
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkTag, error)
 	// ListLocalTagIdsByWorkId 查询作品关联的本地标签ID列表
@@ -82,6 +86,14 @@ func (s *Service) DeleteByWorkAndTag(ctx context.Context, workId int64, tagType 
 // DeleteByWorkId 根据作品ID删除所有关联
 func (s *Service) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return s.repo.DeleteByWorkId(ctx, workId)
+}
+
+func (s *Service) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+	return s.repo.DeleteSiteByWorkId(ctx, workId)
+}
+
+func (s *Service) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {
+	return s.repo.SaveBatchOnConflict(ctx, rels)
 }
 
 // ListByWorkId 查询作品关联的所有标签

@@ -15,7 +15,7 @@
 ## 边界
 
 - 与 **localAuthor / siteAuthor**：作者**实体**（名称、头像等）由 `localAuthor`/`siteAuthor` 管理；本模块只管"作品关联了哪些作者"这层关系，作者详情到对应作者模块取。
-- 与 **work**：work 决定"什么时候建立关联"（保存/更新作品时全量替换），本模块提供存取能力。对比 reWorkTag：作者关联不直接暴露写入，而标签关联由前端直接 Link/Unlink。
+- 与 **work**：work 决定"什么时候建立关联"（保存作品时 SITE 关联删后重建、LOCAL 关联增量保留），本模块提供存取能力。对比 reWorkTag：作者关联不直接暴露写入，而标签关联由前端直接 Link/Unlink。
 
 ## 对外接口（Handler）
 
@@ -30,14 +30,14 @@ Handler 当前**只读**，供作品详情 / 卡片展示作者。
 | `ListRankedLocalAuthorWithWorkIdByWorkIds(workIds)` | 批量查询本地作者（带作品ID） |
 | `ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)` | 批量查询站点作者（带作品ID） |
 
-> 写入（`SaveBatch` / `DeleteByWorkId`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用。
+> 写入（`SaveBatch` / `DeleteByWorkId` / `DeleteSiteByWorkId` / `SaveBatchOnConflict`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用。
 
 ## 核心概念
 
 - **本地作者 / 站点作者双层**：同一作品可同时关联本地作者（用户体系）与站点作者（pixiv 等），DTO 分别为 `RankedLocalAuthor` / `RankedSiteAuthor`。
 - **role_name**：作者在本作品中的角色（如原作、系列作者）。
 - **sort_order**：作者在作品中的展示排序。
-- **全量替换**：更新作品关联时先 `DeleteByWorkId` 再 `SaveBatch`，非增量。
+- **增量同步**：work 保存作品时，SITE 关联删后重建（`DeleteSiteByWorkId` + `SaveBatch`），LOCAL 关联增量保留（`SaveBatchOnConflict`，已存在跳过）——保留用户手动加的本地作者关联。`(work_id, local_author_id)` / `(work_id, site_author_id)` 唯一索引是 LOCAL 增量去重的约束保障（SQLite NULL 不参与唯一性，LOCAL/SITE 两类互不冲突）。
 
 ## 依赖关系
 

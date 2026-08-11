@@ -26,6 +26,10 @@ type Repository interface {
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
+	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用）
+	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
 	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
 	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
 	// DeleteBySiteAuthorId 根据站点作者ID删除所有关联
@@ -101,6 +105,14 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 // DeleteByWorkId 根据作品ID删除所有关联
 func (s *Service) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return s.repo.DeleteByWorkId(ctx, workId)
+}
+
+func (s *Service) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+	return s.repo.DeleteSiteByWorkId(ctx, workId)
+}
+
+func (s *Service) SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error {
+	return s.repo.SaveBatchOnConflict(ctx, reWorkAuthors)
 }
 
 // DeleteByLocalAuthorId 根据本地作者ID删除所有关联

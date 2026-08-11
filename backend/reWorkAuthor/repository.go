@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -37,6 +39,27 @@ func (r *ReWorkAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 // DeleteByWorkId 根据作品ID删除所有关联
 func (r *ReWorkAuthorRepository) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ?", workId).Delete(&domain.ReWorkAuthor{}).Error
+}
+
+// DeleteSiteByWorkId 删除作品的全部 SITE 作者关联（保留 LOCAL 关联）
+func (r *ReWorkAuthorRepository) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+	return r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ? AND author_type = ?", workId, constant.SITE).Delete(&domain.ReWorkAuthor{}).Error
+}
+
+// SaveBatchOnConflict 批量保存，遇任何唯一约束冲突跳过该行（OnConflict DoNothing）。
+// LOCAL 关联增量入库用：已存在的 (work_id, local_author_id) 跳过，不覆盖用户手动建的关联。
+func (r *ReWorkAuthorRepository) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkAuthor) error {
+	if len(rels) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, rel := range rels {
+		if rel.GetID() == 0 {
+			rel.SetCreateTime(now)
+		}
+		rel.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(rels).Error
 }
 
 // DeleteByLocalAuthorId 根据本地作者ID删除所有关联

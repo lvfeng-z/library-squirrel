@@ -55,6 +55,33 @@ func (r *ReWorkTagRepository) DeleteByWorkId(ctx context.Context, workId int64) 
 		Delete(new(domain.ReWorkTag)).Error
 }
 
+// DeleteSiteByWorkId 删除作品的全部 SITE 标签关联（保留 LOCAL 关联）
+func (r *ReWorkTagRepository) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("work_id = ? AND tag_type = ?", workId, constant.SITE).
+		Delete(new(domain.ReWorkTag)).Error
+}
+
+// SaveBatchOnConflict 批量保存，遇任何唯一约束冲突跳过该行（OnConflict DoNothing）。
+// LOCAL 关联增量入库用：已存在的 (work_id, local_tag_id) 跳过，保留用户手动设的 namespace 等字段不被新行零值覆盖。
+func (r *ReWorkTagRepository) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {
+	if len(rels) == 0 {
+		return nil
+	}
+	now := util.GetCurrentTimestamp()
+	for _, rel := range rels {
+		if rel.GetID() == 0 {
+			rel.SetCreateTime(now)
+		}
+		rel.SetUpdateTime(now)
+	}
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(rels).Error
+}
+
 // UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 唯一约束冲突时更新 namespace，否则插入。
 // tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)。
 // 已存在的关联（如已绑定 tag 改了 namespace 重新确认）走 UPDATE namespace；新关联走 INSERT。

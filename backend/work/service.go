@@ -124,8 +124,12 @@ type ReWorkTagBatchReader interface {
 type ReWorkTagWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeleteSiteByWorkId 删除作品的 SITE 标签关联（保留 LOCAL）
+	DeleteSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatch 批量保存关联
 	SaveBatch(ctx context.Context, rels []*entity2.ReWorkTag) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用，保留用户手动设的 namespace 等字段）
+	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkTag) error
 }
 
 // ReWorkWorkSetWriter 作品-作品集关联写入接口
@@ -134,6 +138,8 @@ type ReWorkWorkSetWriter interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// CreateBatch 批量新建关联
 	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（增量入库，保留历史关联与 is_cover/sort_order 元数据）
+	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// UpdateSiteSortOrders 批量更新原站排序（写 site_sort_order，不影响本地 sort_order）
 	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
 	// MaxSortOrderByWorkSetId 查询作品集下最大 sort_order（无作品返回 0），buildWorkSetLinks 续排用
@@ -233,6 +239,10 @@ type ReWorkAuthorWriter interface {
 	SaveBatch(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
+	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用，不覆盖用户手动建的关联）
+	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 }
 
 // ResourceDeleter 资源删除接口
@@ -1532,48 +1542,54 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	if err != nil {
 		return 0, fmt.Errorf("处理本地标签失败: %w", err)
 	}
-	// TODO: 当前的全量替换策略会删除该作品的全部关联（包括用户在 UI 中手动添加的本地作者/标签关联），
-	//  然后仅用插件返回的数据重建。应在执行替换前提示用户确认是"替换"还是"合并"，
-	//  合并模式下保留非插件来源的关联，仅更新插件管理的 Site 类型关联。
-	// === Phase 3: 保存 Work + 全量替换关联 ===
+	// === Phase 3: 保存 Work + 关联增量同步 ===
+	// SITE 关联由插件权威管理（按 type 删后重建）；LOCAL 关联归用户管理，保留不动，插件返回的 local 增量追加（已存在跳过）；
+	// workSet 增量保留（不删历史关联，避免丢失用户手动加的关联与 is_cover/sort_order 元数据）。
 	workId, err := s.saveOrUpdateWork(ctx, work)
 	if err != nil {
 		return 0, fmt.Errorf("保存作品失败: %w", err)
 	}
 
-	// 全量替换 work-author 关联（Site + Local）
-	if err := s.reWorkAuthorWriter.DeleteByWorkId(ctx, workId); err != nil {
-		return 0, fmt.Errorf("删除作品作者关联失败: %w", err)
+	// 作者关联：SITE 删后重建，LOCAL 增量追加
+	if err := s.reWorkAuthorWriter.DeleteSiteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品 SITE 作者关联失败: %w", err)
 	}
-	authorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
-	authorLinks = append(authorLinks, buildLocalAuthorLinks(workId, localAuthorDBIds)...)
-	if len(authorLinks) > 0 {
-		if err := s.reWorkAuthorWriter.SaveBatch(ctx, authorLinks); err != nil {
-			return 0, fmt.Errorf("保存作品作者关联失败: %w", err)
+	siteAuthorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
+	if len(siteAuthorLinks) > 0 {
+		if err := s.reWorkAuthorWriter.SaveBatch(ctx, siteAuthorLinks); err != nil {
+			return 0, fmt.Errorf("保存作品 SITE 作者关联失败: %w", err)
+		}
+	}
+	localAuthorLinks := buildLocalAuthorLinks(workId, localAuthorDBIds)
+	if len(localAuthorLinks) > 0 {
+		if err := s.reWorkAuthorWriter.SaveBatchOnConflict(ctx, localAuthorLinks); err != nil {
+			return 0, fmt.Errorf("保存作品 LOCAL 作者关联失败: %w", err)
 		}
 	}
 
-	// 全量替换 work-tag 关联（Site + Local）
-	if err := s.reWorkTagWriter.DeleteByWorkId(ctx, workId); err != nil {
-		return 0, fmt.Errorf("删除作品标签关联失败: %w", err)
+	// 标签关联：SITE 删后重建，LOCAL 增量追加
+	if err := s.reWorkTagWriter.DeleteSiteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品 SITE 标签关联失败: %w", err)
 	}
 	// re_work_tag.namespace 镜像所指 site_tag.namespace（site 关联）；顺序与 siteTagDBIds 一致（upsertSiteTags 按 dtos 顺序返回）
 	siteTagNamespaces := make([]string, len(workResp.SiteTags))
 	for i, t := range workResp.SiteTags {
 		siteTagNamespaces[i] = t.Namespace
 	}
-	tagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
-	tagLinks = append(tagLinks, buildLocalTagLinks(workId, localTagDBIds)...)
-	if len(tagLinks) > 0 {
-		if err := s.reWorkTagWriter.SaveBatch(ctx, tagLinks); err != nil {
-			return 0, fmt.Errorf("保存作品标签关联失败: %w", err)
+	siteTagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
+	if len(siteTagLinks) > 0 {
+		if err := s.reWorkTagWriter.SaveBatch(ctx, siteTagLinks); err != nil {
+			return 0, fmt.Errorf("保存作品 SITE 标签关联失败: %w", err)
+		}
+	}
+	localTagLinks := buildLocalTagLinks(workId, localTagDBIds)
+	if len(localTagLinks) > 0 {
+		if err := s.reWorkTagWriter.SaveBatchOnConflict(ctx, localTagLinks); err != nil {
+			return 0, fmt.Errorf("保存作品 LOCAL 标签关联失败: %w", err)
 		}
 	}
 
-	// 全量替换 work-workset 关联
-	if err := s.reWorkWorkSetWriter.DeleteByWorkId(ctx, workId); err != nil {
-		return 0, fmt.Errorf("删除作品作品集关联失败: %w", err)
-	}
+	// 作品集关联：增量保留（已存在跳过，不删历史关联）
 	if len(workSetDBIds) > 0 {
 		// 各 workSet 当前最大 sort_order，供 buildWorkSetLinks 续排（该 work 排末尾，纠正维度错位不再塌 0）。
 		// workSetDBIds 为该 work 声明的少数 workSet，逐个查 max 非典型 N+1。
@@ -1586,7 +1602,7 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 			maxSortOrders[wsId] = maxSort
 		}
 		links := buildWorkSetLinks(workId, workSetDBIds, maxSortOrders)
-		if err := s.reWorkWorkSetWriter.CreateBatch(ctx, links); err != nil {
+		if err := s.reWorkWorkSetWriter.SaveBatchOnConflict(ctx, links); err != nil {
 			return 0, fmt.Errorf("保存作品作品集关联失败: %w", err)
 		}
 	}
