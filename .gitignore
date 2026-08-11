@@ -29,7 +29,7 @@ build/windows/nsis/wails_tools.nsh
 build/windows/icon.ico
 build/darwin/icons.icns
 build/darwin/Assets.car
-/configlibrary-squirrel.exe
+/library-squirrel.exe
 
 # 捆绑插件安装包（体积大，不提交）
 resources/bundled-plugins/*.zip
