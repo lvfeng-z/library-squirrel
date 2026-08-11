@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, Ref, ref, toRaw, watch} from 'vue'
+import {onBeforeUnmount, onMounted, Ref, ref, toRaw} from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
   SearchCondition,
@@ -20,7 +20,6 @@ import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
-import { BUILTIN_NAMESPACES } from '@renderer/constants/namespace.ts'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
@@ -50,8 +49,6 @@ const workList: Ref<WorkFullDTO[]> = ref([]) // 需展示的作品列表
 const currentWorkIndex = ref(0)
 // 查询参数类型
 const searchConditionType: Ref<SearchType[]> = ref([])
-// 当前 namespace 过滤维度（仅作用于新加的 local 标签条件；site 标签用站点自带固定 namespace）
-const currentNamespace: Ref<string | undefined> = ref()
 // 作品分页
 const workPage: Ref<Page<WorkFullDTO>> = ref(newPage<WorkFullDTO>())
 // 搜索栏折叠面板开关
@@ -117,49 +114,14 @@ async function querySearchItemPage(page: IPage<any>, input?: string): Promise<IP
   }
 }
 
-// namespace 在标签加入选中时已写入 extraData.namespace（local=加时的 namespace 戳快照、site=站点自带）；author 不带
+// namespace 由已选 tag 的 ns 段编辑写入 extraData.namespace（local=用户点 ns 段设搜索 ns、site=站点自带固定 ns）；author 不带
+// 空串视作未设（undefined）：local 标签清空 ns 段后不应按 namespace='' 过滤（DB 空串落 NULL，无命中）
 function resolveSearchNamespace(extraData: { type: SearchType; namespace?: string }): string | undefined {
   if (extraData.type === SearchType.LocalTag || extraData.type === SearchType.SiteTag) {
-    return extraData.namespace
+    return extraData.namespace || undefined
   }
   return undefined
 }
-
-// 已快照 namespace 的 local 标签 key 集合：区分"新加待快照"与"已处理"，使已加标签的 namespace 不随 namespace 戳变化（per-tag）
-const snapshottedLocalTagKeys = new Set<string>()
-
-// local 标签加入选中时，把当时的 namespace 戳快照到 extraData.namespace 与 subLabels（加后不再随 namespace 戳变动）
-function snapshotNewLocalTagNamespace(): void {
-  const currentKeys = new Set<string>()
-  selectedTagList.value.forEach((tag) => {
-    const key = String(tag.value)
-    currentKeys.add(key)
-    const extraData = tag.extraData as { type?: SearchType; namespace?: string } | undefined
-    if (extraData?.type !== SearchType.LocalTag) {
-      return
-    }
-    if (snapshottedLocalTagKeys.has(key)) {
-      return
-    }
-    snapshottedLocalTagKeys.add(key)
-    if (isNotBlank(currentNamespace.value)) {
-      extraData.namespace = currentNamespace.value
-      // subLabels 前 2 项为分类基础（tag/local），namespace 段为其后；保留基础后由 setSearchTagColor 重新追加 namespace 段
-      if (arrayNotEmpty(tag.subLabels)) {
-        tag.subLabels = tag.subLabels.slice(0, 2)
-      }
-      setSearchTagColor(tag)
-    }
-  })
-  // 移除已删标签的 key，允许删后重新加快照
-  for (const key of Array.from(snapshottedLocalTagKeys)) {
-    if (!currentKeys.has(key)) {
-      snapshottedLocalTagKeys.delete(key)
-    }
-  }
-}
-
-watch(() => selectedTagList.value.length, snapshotNewLocalTagNamespace)
 
 // 请求作品接口
 async function searchWork(page: Page<WorkFullDTO>): Promise<Page<WorkFullDTO>> {
@@ -356,23 +318,6 @@ function handleTest() {
                 </span>
               </el-checkbox>
             </el-checkbox-group>
-            <el-select
-              v-model="currentNamespace"
-              filterable
-              allow-create
-              default-first-option
-              clearable
-              :teleported="false"
-              placeholder="namespace"
-              style="width: 100%;"
-            >
-              <el-option
-                v-for="ns in BUILTIN_NAMESPACES"
-                :key="ns.value"
-                :label="ns.label"
-                :value="ns.value"
-              />
-            </el-select>
             </div>
           </template>
         </auto-load-tag-select>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { BUILTIN_NAMESPACES } from '@renderer/constants/namespace.ts'
@@ -44,9 +44,8 @@ function onSubLabelClicked(index: number, event: MouseEvent) {
   if (editable.value && index === nsIndex.value) {
     event.stopPropagation() // 阻止冒泡到 SegmentedTag 根 @click，避免触发 tag 移动
     anchorEl.value = event.currentTarget as HTMLElement
-    nextTick(() => {
-      popoverVisible.value = true
-    })
+    // 手动 toggle：trigger="manual" 下 EP 不自动 toggle/不自动 outside-click，避免与 EP 的 visible 控制竞争导致「开后又关」
+    popoverVisible.value = !popoverVisible.value
     return
   }
   emits('subLabelClicked', index, event)
@@ -57,6 +56,27 @@ function onSubLabelClicked(index: number, event: MouseEvent) {
 watch(editingNs, (ns) => {
   props.item.extraData = { ...(props.item.extraData ?? {}), namespace: ns }
   emits('nsEdited')
+})
+
+// outside-click 关闭：trigger="manual" 下 EP 不自动 outside-click，手动监听 document mousedown——
+// target 在 ns 段（virtual-ref）或 popover 内容（el-select 及其 options）内不关，否则关
+function handleOutsideClick(event: MouseEvent) {
+  if (!popoverVisible.value) return
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (anchorEl.value?.contains(target)) return
+  if (target.closest('.namespace-tag-popper')) return
+  popoverVisible.value = false
+}
+watch(popoverVisible, (visible) => {
+  if (visible) {
+    document.addEventListener('mousedown', handleOutsideClick, true)
+  } else {
+    document.removeEventListener('mousedown', handleOutsideClick, true)
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleOutsideClick, true)
 })
 </script>
 
@@ -75,7 +95,8 @@ watch(editingNs, (ns) => {
     :virtual-ref="anchorEl"
     virtual-triggering
     v-model:visible="popoverVisible"
-    trigger="click"
+    trigger="manual"
+    popper-class="namespace-tag-popper"
     placement="bottom"
     :width="220"
   >

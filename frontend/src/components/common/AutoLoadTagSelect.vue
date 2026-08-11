@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import IPage from '@renderer/model/util/IPage.ts'
 import { nextTick, onMounted, onUnmounted, Ref, ref, watch } from 'vue'
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { SelectItem, SearchType } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import TagBox from '@renderer/components/common/TagBox.vue'
 import lodash, { throttle } from 'lodash'
 import { Close } from '@element-plus/icons-vue'
@@ -137,6 +137,12 @@ function handelTagClicked(tag: SegmentedTagItem, optional: boolean) {
     if (isNullish(tag.disabled) || !tag.disabled) {
       // 如果标签未禁用，则把这个标签放进已选栏，待选栏中的这个标签设为禁用，同时清除输入文本
       const tempTag = lodash.cloneDeep(tag)
+      // local 标签开启 namespace 可编辑（ns 段显示 '+'，用户点选设搜索 ns）；
+      // site 标签自带固定 namespace 只读、author 无 namespace，均不设
+      const extraData = tempTag.extraData as { type?: SearchType } | undefined
+      if (extraData?.type === SearchType.LocalTag) {
+        tempTag.extraData = { ...extraData, nsEditable: true }
+      }
       selectedData.value.push(tempTag)
       optionalCheck(tag, true)
       input.value = undefined
