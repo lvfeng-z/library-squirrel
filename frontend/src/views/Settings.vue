@@ -322,6 +322,35 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-col>
                   </el-row>
                 </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>USN 离线追溯（实验性）</el-text>
+                  <el-switch
+                    v-model="settings.fsmonitor.usnEnabled"
+                    class="settings-element-in-divider"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    开启后，软件未运行期间对工作目录的文件操作将通过 Windows USN Journal 精确追溯（区别于默认的全量对账，能区分"本次离线变的"与"历史遗留不一致"）。<br>
+                    <b>需以管理员身份运行</b>，非管理员运行时自动降级为全量对账。仅 Windows 支持。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    什么是 USN 离线追溯？
+                  </el-text>
+                </el-tooltip>
                 <el-divider />
               </div>
               <div id="appearanceSettings">

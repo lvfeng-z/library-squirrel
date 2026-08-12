@@ -8,6 +8,7 @@ export {
 
 export {
     AppearanceSettings,
+    FsmonitorSettings,
     ImportSettings,
     MergeSettings,
     PluginSettings,

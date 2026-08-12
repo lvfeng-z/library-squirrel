@@ -33,6 +33,33 @@ export class AppearanceSettings {
 }
 
 /**
+ * FsmonitorSettings 工作目录监控设置
+ */
+export class FsmonitorSettings {
+    /**
+     * USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
+     */
+    "usnEnabled": boolean;
+
+    /** Creates a new FsmonitorSettings instance. */
+    constructor($$source: Partial<FsmonitorSettings> = {}) {
+        if (!("usnEnabled" in $$source)) {
+            this["usnEnabled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FsmonitorSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FsmonitorSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FsmonitorSettings($$parsedSource as Partial<FsmonitorSettings>);
+    }
+}
+
+/**
  * ImportSettings 导入相关设置
  */
 export class ImportSettings {
@@ -195,6 +222,7 @@ export class Settings {
     "recycleBin": RecycleBinSettings;
     "appearance": AppearanceSettings;
     "mergeSettings": MergeSettings;
+    "fsmonitor": FsmonitorSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -225,6 +253,9 @@ export class Settings {
         if (!("mergeSettings" in $$source)) {
             this["mergeSettings"] = (new MergeSettings());
         }
+        if (!("fsmonitor" in $$source)) {
+            this["fsmonitor"] = (new FsmonitorSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -240,6 +271,7 @@ export class Settings {
         const $$createField6_0 = $$createType4;
         const $$createField7_0 = $$createType5;
         const $$createField8_0 = $$createType6;
+        const $$createField9_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -261,6 +293,9 @@ export class Settings {
         }
         if ("mergeSettings" in $$parsedSource) {
             $$parsedSource["mergeSettings"] = $$createField8_0($$parsedSource["mergeSettings"]);
+        }
+        if ("fsmonitor" in $$parsedSource) {
+            $$parsedSource["fsmonitor"] = $$createField9_0($$parsedSource["fsmonitor"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -285,7 +320,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType7;
+        const $$createField0_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -326,4 +361,5 @@ const $$createType3 = TourSettings.createFrom;
 const $$createType4 = RecycleBinSettings.createFrom;
 const $$createType5 = AppearanceSettings.createFrom;
 const $$createType6 = MergeSettings.createFrom;
-const $$createType7 = $Create.Map($Create.Any, $Create.Any);
+const $$createType7 = FsmonitorSettings.createFrom;
+const $$createType8 = $Create.Map($Create.Any, $Create.Any);

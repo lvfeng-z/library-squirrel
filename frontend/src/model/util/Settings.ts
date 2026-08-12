@@ -23,5 +23,11 @@ export const emptySettings: Settings = {
   },
   appearance: {
     theme: 'default-light'
+  },
+  mergeSettings: {
+    strategy: 'keep'
+  },
+  fsmonitor: {
+    usnEnabled: false
   }
 }

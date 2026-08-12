@@ -42,7 +42,8 @@ type Deps struct {
 }
 
 // NewPlatformDeps 按当前操作系统构造可用依赖集合，不可用能力留 nil 并记录降级日志。
-func NewPlatformDeps(workDir string) *Deps {
+// usnEnabled 控制是否启用 USN 离线精确追溯（仅 Windows 且需管理员；开关开但非管理员则降级对账）。
+func NewPlatformDeps(workDir string, usnEnabled bool) *Deps {
 	d := &Deps{
 		Fingerprinter: NewHeadFingerprinter(),
 	}
@@ -53,7 +54,15 @@ func NewPlatformDeps(workDir string) *Deps {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		// OfflineChangeProvider(USN Journal)暂不实现，接口预留
+		// USN 离线精确追溯门控（D8）：开关开启 + 管理员权限 才注入 provider
+		if usnEnabled {
+			if isElevated() {
+				// TODO(C-4): 实现并注入 usnProvider（OfflineChangeProvider）；当前 provider 未实现，离线仍走全量对账
+				logger.Log.Infof("[fsmonitor] USN 离线精确追溯已启用（管理员权限）；provider 待实现，离线暂走全量对账")
+			} else {
+				logger.Log.Warnf("[fsmonitor] USN 离线追溯开关已开启，但当前非管理员运行，降级为全量对账（USN 卷级读取需管理员权限）")
+			}
+		}
 	}
 	return d
 }

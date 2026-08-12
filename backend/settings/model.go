@@ -11,6 +11,7 @@ type Settings struct {
 	RecycleBinSettings RecycleBinSettings `json:"recycleBin" koanf:"recycleBin"`
 	Appearance         AppearanceSettings `json:"appearance" koanf:"appearance"`
 	MergeSettings      MergeSettings      `json:"mergeSettings" koanf:"mergeSettings"`
+	FsmonitorSettings  FsmonitorSettings  `json:"fsmonitor" koanf:"fsmonitor"`
 }
 
 // WorkSettings 作品相关设置
@@ -55,6 +56,11 @@ type MergeSettings struct {
 	Strategy string `json:"strategy" koanf:"strategy"` // 合并产物挂载策略：keep=新建 merged 保留原轨道 / overwrite=新建 merged 删原轨道
 }
 
+// FsmonitorSettings 工作目录监控设置
+type FsmonitorSettings struct {
+	UsnEnabled bool `json:"usnEnabled" koanf:"usnEnabled"` // USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
+}
+
 // 合并策略取值
 const (
 	MergeStrategyKeep      = "keep"      // 新建 merged store，保留原 videoTrack/audioTrack
@@ -89,6 +95,9 @@ func NewSettings() *Settings {
 		},
 		MergeSettings: MergeSettings{
 			Strategy: MergeStrategyKeep,
+		},
+		FsmonitorSettings: FsmonitorSettings{
+			UsnEnabled: false,
 		},
 	}
 }
