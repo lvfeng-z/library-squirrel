@@ -1,0 +1,20 @@
+workDir = E:\code\lvfeng\library-squirrel
+volume  = \\.\E:
+[卷信息] E:\ 文件系统=NTFS, 支持 USN journal=true
+
+=== A. 卷句柄 + FSCTL_QUERY_USN_JOURNAL（离线追溯路径）===
+[R2] GENERIC_READ 打开卷句柄成功
+[QUERY] function61/0x000900F4 成功（返回 56 字节）
+USN_JOURNAL_DATA:
+  UsnJournalID = 134090534876434938 (0x1DC62A18B0D51FA)
+  FirstUsn     = 1006632960
+  NextUsn      = 1044295168
+  MaximumSize  = 33554432 字节（≈32.0 MB）
+
+=== B. 文件句柄 + FSCTL_READ_FILE_USN_DATA（对照实验）===
+[对照] FSCTL_READ_FILE_USN_DATA 成功（72 字节）
+[记录] V2 recLen=72 FRN=3377699720621538 ParentFRN=1970324837039821 USN=1039551248 Reason=0x0 FileName="go.mod"
+[记录]   Reason 位: 0x0(无已知位)
+
+=== 结论 ===
+R2 通过：非管理员可经卷句柄读 USN journal，可继续 C-0b。
