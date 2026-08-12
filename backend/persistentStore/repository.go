@@ -48,3 +48,12 @@ func (r *PersistentStoreRepository) ExistsByFilePath(ctx context.Context, filePa
 	}
 	return record != nil
 }
+
+// NormalizeFilePaths 将 file_path 中的反斜杠统一为正斜杠（符合存储规范）
+// 幂等：无反斜杠时无操作。返回受影响行数
+func (r *PersistentStoreRepository) NormalizeFilePaths(ctx context.Context) (int64, error) {
+	result := r.GORM().WithContext(ctx).Exec(
+		"UPDATE persistent_store SET file_path = REPLACE(file_path, '\\', '/') WHERE file_path LIKE '%\\%'",
+	)
+	return result.RowsAffected, result.Error
+}

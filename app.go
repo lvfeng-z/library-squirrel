@@ -28,6 +28,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/fileSysUtil"
 	"github.com/library-squirrel/backend/frontendLog"
+	"github.com/library-squirrel/backend/fsmonitor"
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/merge"
@@ -88,6 +89,7 @@ type App struct {
 	SiteBrowserService     *siteBrowser.Service
 	PersistentStoreService *persistentStore.Service
 	RecycleBinService      *recycleBin.Service
+	FsmonitorService       *fsmonitor.Service
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -145,6 +147,7 @@ type App struct {
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
+	FsmonitorHandler             *fsmonitor.Handler
 	WindowHandler                *window.Handler
 }
 
@@ -455,17 +458,17 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 
 	pluginPath := filepath.Join(rootPath, p.EntryPath.String)
 	pluginInfo := &extension2.PluginInfo{
-		ID:              p.GetID(),
-		PublicID:        publicId,
-		Name:            p.Name.String,
-		Version:         p.Version.String,
+		ID:                  p.GetID(),
+		PublicID:            publicId,
+		Name:                p.Name.String,
+		Version:             p.Version.String,
 		ContractVersion:     int(p.ContractVersion.Int64),
 		ConfigSchemaVersion: p.ConfigSchemaVersion.Int64,
 		Capabilities:        extension2.UnmarshalCapabilities(p.Capabilities),
 		ResourceTypes:       extension2.UnmarshalResourceTypes(p.ResourceTypes),
-		Author:          p.Author.String,
-		EntryPath:       p.EntryPath.String,
-		RootPath:        p.RootPath.String,
+		Author:              p.Author.String,
+		EntryPath:           p.EntryPath.String,
+		RootPath:            p.RootPath.String,
 	}
 
 	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
@@ -915,6 +918,30 @@ func (app *App) initAdvancedServices() error {
 	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
 	app.RecycleBinService.StartCleanup()
 
+	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
+	// 启动监控前规范化 file_path 分隔符（历史数据统一正斜杠，避免对账路径比对误报）
+	if n, err := app.PersistentStoreService.NormalizeFilePaths(context.Background()); err != nil {
+		logger.Log.Warnf("规范化 file_path 分隔符失败: %v", err)
+	} else if n > 0 {
+		logger.Log.Infof("[persistentStore] file_path 分隔符规范化完成，共 %d 条", n)
+	}
+	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir())
+	fsmonitorDeps.StoreReader = &storeReaderAdapter{svc: app.PersistentStoreService}
+	fsmonitorDeps.StoreRepairer = &storeRepairerAdapter{svc: app.PersistentStoreService}
+	fsmonitorDeps.Scanner = fsmonitor.NewScanner(fsmonitorDeps.StoreReader, func() string { return app.SettingsService.GetWorkDir() })
+	app.FsmonitorService = fsmonitor.NewService(
+		fsmonitorDeps,
+		func() string { return app.SettingsService.GetWorkDir() },
+		func() fsmonitor.EventEmitter { return app.taskProgressEmitter },
+	)
+	// 把内容指纹计算器注入 persistentStore（落盘完成时同步算指纹落库）
+	if fsmonitorDeps.Fingerprinter != nil {
+		app.PersistentStoreService.SetFingerprinter(&fingerprinterAdapter{fp: fsmonitorDeps.Fingerprinter})
+		// 存量指纹回填（异步，不阻塞启动）
+		app.PersistentStoreService.BackfillFingerprints(context.Background())
+	}
+	app.FsmonitorService.Start()
+
 	// workSet 服务
 	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, reWorkSetWorkSetRepo, &dbTransactorAdapter{db: app.db}, app.WorkService, app.WorkService)
 
@@ -1082,6 +1109,79 @@ func (a *dbTransactorAdapter) ExecInTransaction(ctx context.Context, fn func(ctx
 	})
 }
 
+// fingerprinterAdapter 将 fsmonitor.ContentFingerprinter（返回 Fingerprint 结构体）
+// 适配为 persistentStore.Fingerprinter（返回指纹串），供 persistentStore 落盘完成时调用
+type fingerprinterAdapter struct {
+	fp fsmonitor.ContentFingerprinter
+}
+
+func (a *fingerprinterAdapter) Fingerprint(ctx context.Context, absPath string) (string, error) {
+	fp, err := a.fp.Fingerprint(ctx, absPath)
+	if err != nil {
+		return "", err
+	}
+	return fp.Digest, nil
+}
+
+// storeReaderAdapter 将 persistentStore.Service 适配为 fsmonitor.StoreReader，
+// domain.PersistentStore → fsmonitor.StoreRecord 转换，避免 fsmonitor 依赖 domain 实体
+type storeReaderAdapter struct {
+	svc *persistentStore.Service
+}
+
+func (a *storeReaderAdapter) GetByFingerprint(ctx context.Context, fingerprint string, excludePath string) (*fsmonitor.StoreRecord, error) {
+	r, err := a.svc.GetByFingerprint(ctx, fingerprint, excludePath)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return toStoreRecord(r), nil
+}
+
+func (a *storeReaderAdapter) GetByFilePathComplete(ctx context.Context, filePath string) (*fsmonitor.StoreRecord, error) {
+	r, err := a.svc.GetByFilePathComplete(ctx, filePath)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return toStoreRecord(r), nil
+}
+
+func (a *storeReaderAdapter) ListValidComplete(ctx context.Context) ([]fsmonitor.StoreRecord, error) {
+	records, err := a.svc.ListValidComplete(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]fsmonitor.StoreRecord, 0, len(records))
+	for _, r := range records {
+		result = append(result, *toStoreRecord(r))
+	}
+	return result, nil
+}
+
+// storeRepairerAdapter 将 persistentStore.Service 适配为 fsmonitor.StoreRepairer
+type storeRepairerAdapter struct {
+	svc *persistentStore.Service
+}
+
+func (a *storeRepairerAdapter) UpdateFilePath(ctx context.Context, id int64, newFilePath string) error {
+	return a.svc.UpdateFilePath(ctx, id, newFilePath)
+}
+
+func (a *storeRepairerAdapter) MarkInvalid(ctx context.Context, id int64, invalidAt int64) error {
+	return a.svc.MarkInvalid(ctx, id, invalidAt)
+}
+
+// toStoreRecord domain.PersistentStore → fsmonitor.StoreRecord
+func toStoreRecord(r *entity2.PersistentStore) *fsmonitor.StoreRecord {
+	rec := &fsmonitor.StoreRecord{ID: r.GetID()}
+	if r.FilePath.Valid {
+		rec.FilePath = r.FilePath.String
+	}
+	if r.ContentFingerprint.Valid {
+		rec.ContentFingerprint = r.ContentFingerprint.String
+	}
+	return rec
+}
+
 func (a *workSetWriterAdapter) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.WorkSet) (int64, error) {
 	existing, err := a.repo.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
 	if err == nil && existing != nil {
@@ -1151,6 +1251,7 @@ func (app *App) initHandlers() {
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
+	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	// 主窗口句柄实时获取（构造时窗口尚未创建，运行时通过 mainWindow 实时读取原生句柄）
 	app.WindowHandler = window.NewHandler(window.NewService(func() uintptr {
 		if app.mainWindow == nil {
@@ -1252,6 +1353,11 @@ func (app *App) shutdownPlugins() {
 	// 停止回收站 TTL 自动清理 goroutine（在 database.Close 前停止，避免操作已关闭的 DB）
 	if app.RecycleBinService != nil {
 		app.RecycleBinService.Stop()
+	}
+
+	// 停止工作目录监控（在数据库关闭前停止，避免操作已关闭的资源）
+	if app.FsmonitorService != nil {
+		app.FsmonitorService.Stop()
 	}
 
 	if app.pluginLoader == nil {

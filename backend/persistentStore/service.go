@@ -37,6 +37,8 @@ type Repository interface {
 	Delete(ctx context.Context, id int64) error
 	// ExistsByFilePath 检查文件路径是否已存在记录
 	ExistsByFilePath(ctx context.Context, filePath string) bool
+	// NormalizeFilePaths 将 file_path 反斜杠统一为正斜杠（数据规范化迁移，幂等）
+	NormalizeFilePaths(ctx context.Context) (int64, error)
 }
 
 // StoreWriter 封装文件句柄和 DB 记录，实现完整的写入生命周期管理
@@ -68,6 +70,7 @@ type storeWriter struct {
 	workDirGetter func() string // 每次调用获取最新的 workDir
 	filePath      sql.NullString // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
 	ext           sql.NullString // 文件扩展名（Complete 判断是否图片用）
+	fingerprinter Fingerprinter  // 可选，nil 时 Complete 不算指纹
 }
 
 func (w *storeWriter) Write(p []byte) (n int, err error) {
@@ -105,12 +108,20 @@ func (w *storeWriter) Complete() error {
 
 	// 提取图片宽高（用构造时缓存的路径，无需读回 DB 记录）
 	width, height := tryDecodeImageDimensions(w.filePath, w.ext, w.workDirGetter())
-	// 仅写 Status + 宽高，其余字段靠 Updates 跳零值保留
+	// 仅写 Status + 宽高 + 指纹，其余字段靠 Updates 跳零值保留
 	record := domain.NewPersistentStore()
 	record.SetID(w.storeId)
 	record.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	record.Width = width
 	record.Height = height
+	if w.fingerprinter != nil && w.filePath.Valid {
+		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
+		if digest, err := w.fingerprinter.Fingerprint(context.Background(), absPath); err == nil {
+			record.ContentFingerprint = sql.NullString{String: digest, Valid: true}
+		} else {
+			logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
+		}
+	}
 	if err := w.repo.Updates(context.Background(), record); err != nil {
 		return fmt.Errorf("更新记录状态失败: %w", err)
 	}
@@ -178,10 +189,18 @@ type FileMover interface {
 	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
+// Fingerprinter 内容指纹计算接口（由 persistentStore 定义，fsmonitor.Service 实现）
+// 落盘完成时同步算指纹落库，供文件移动/重命名的内容关联匹配；nil 时不算（降级）
+type Fingerprinter interface {
+	// Fingerprint 计算绝对路径文件的内容指纹串（实现自定格式）
+	Fingerprint(ctx context.Context, absPath string) (string, error)
+}
+
 // Service 文件存取服务
 type Service struct {
 	repo          Repository
 	fileMover     FileMover     // 可选依赖，nil 时不备份
+	fingerprinter Fingerprinter // 可选依赖，nil 时不计算内容指纹
 	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
@@ -192,6 +211,105 @@ func NewService(repo Repository, fileMover FileMover, workDirGetter func() strin
 		fileMover:     fileMover,
 		workDirGetter: workDirGetter,
 	}
+}
+
+// SetFingerprinter 注入内容指纹计算器（可选依赖，外部变更监控启用时注入）
+func (s *Service) SetFingerprinter(fp Fingerprinter) {
+	s.fingerprinter = fp
+}
+
+// NormalizeFilePaths 将 file_path 反斜杠统一为正斜杠（数据规范化，启动时调用）
+func (s *Service) NormalizeFilePaths(ctx context.Context) (int64, error) {
+	return s.repo.NormalizeFilePaths(ctx)
+}
+
+// UpdateFilePath 更新记录的 file_path（移动/重命名修复：DB 路径同步到文件新位置）
+// 仅改 file_path 字段，其余保留。记录须未失效。
+func (s *Service) UpdateFilePath(ctx context.Context, id int64, newFilePath string) error {
+	record := domain.NewPersistentStore()
+	record.SetID(id)
+	record.FilePath = sql.NullString{String: newFilePath, Valid: true}
+	return s.repo.Updates(ctx, record)
+}
+
+// MarkInvalid 置记录失效（软删除：外部删除且用户不复原 / 移出 workDir）
+// 仅置 invalid_at 时间戳，记录保留可追溯
+func (s *Service) MarkInvalid(ctx context.Context, id int64, invalidAt int64) error {
+	record := domain.NewPersistentStore()
+	record.SetID(id)
+	record.InvalidAt = invalidAt
+	return s.repo.Updates(ctx, record)
+}
+
+// BackfillFingerprints 存量指纹回填：扫描所有 Status=Complete 但 ContentFingerprint 缺失的记录，
+// 对磁盘仍存在的文件算指纹填入。磁盘已无的记录留空（交对账处理）。
+// 未注入 Fingerprinter 时直接返回。异步调用，不阻塞主流程。
+func (s *Service) BackfillFingerprints(ctx context.Context) {
+	if s.fingerprinter == nil {
+		return
+	}
+	go s.runBackfillFingerprints(ctx)
+}
+
+func (s *Service) runBackfillFingerprints(ctx context.Context) {
+	records, err := s.repo.List(ctx, &database.QueryOption{})
+	if err != nil {
+		logger.Log.Warn("[persistentStore] 回填指纹：查询记录失败", zap.Error(err))
+		return
+	}
+	workDir := s.getWorkDir()
+	filled := 0
+	for _, r := range records {
+		// 仅回填已完成且指纹缺失的记录
+		if !r.Status.Valid || r.Status.Int64 != domain.StoreStatusComplete {
+			continue
+		}
+		if r.ContentFingerprint.Valid {
+			continue
+		}
+		if !r.FilePath.Valid {
+			continue
+		}
+		absPath := filepath.Join(workDir, r.FilePath.String)
+		if _, err := os.Stat(absPath); err != nil {
+			continue // 磁盘已无，留空交对账
+		}
+		digest, err := s.fingerprinter.Fingerprint(ctx, absPath)
+		if err != nil {
+			logger.Log.Warn("[persistentStore] 回填指纹：计算失败", zap.String("path", absPath), zap.Error(err))
+			continue
+		}
+		r.ContentFingerprint = sql.NullString{String: digest, Valid: true}
+		if err := s.repo.Updates(ctx, r); err != nil {
+			logger.Log.Warn("[persistentStore] 回填指纹：更新失败", zap.Int64("id", r.GetID()), zap.Error(err))
+			continue
+		}
+		filled++
+	}
+	if filled > 0 {
+		logger.Log.Infof("[persistentStore] 指纹回填完成，共 %d 条", filled)
+	}
+}
+
+// computeFingerprint 若注入了 Fingerprinter，计算绝对路径文件指纹并返回可落库的 NullString；否则返回无效值
+func (s *Service) computeFingerprint(absPath string) sql.NullString {
+	if s.fingerprinter == nil {
+		return sql.NullString{}
+	}
+	digest, err := s.fingerprinter.Fingerprint(context.Background(), absPath)
+	if err != nil {
+		logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
+		return sql.NullString{}
+	}
+	return sql.NullString{String: digest, Valid: true}
+}
+
+// fillFingerprint 若注入了 Fingerprinter，计算绝对路径文件指纹填入 store.ContentFingerprint
+func (s *Service) fillFingerprint(store *domain.PersistentStore, absPath string) {
+	if store == nil || s.fingerprinter == nil {
+		return
+	}
+	store.ContentFingerprint = s.computeFingerprint(absPath)
 }
 
 // getWorkDir 获取当前 workDir（每次从设置管理器读取最新值）
@@ -261,14 +379,14 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 			os.Remove(absPath)
 			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
 		}
-		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: existing.FilePath, ext: existing.FilenameExtension}
+		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: existing.FilePath, ext: existing.FilenameExtension, fingerprinter: s.fingerprinter}
 		return existing.GetID(), sw, nil
 	}
 
 	// 创建新记录
 	store := domain.NewPersistentStore()
 	store.FilePath.Valid = true
-	store.FilePath.String = relPath
+	store.FilePath.String = filepath.ToSlash(relPath)
 	store.FileName.Valid = true
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
@@ -281,7 +399,7 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		return 0, nil, fmt.Errorf("保存记录失败: %w", err)
 	}
 
-	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: store.FilePath, ext: store.FilenameExtension}
+	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: store.FilePath, ext: store.FilenameExtension, fingerprinter: s.fingerprinter}
 	return store.GetID(), sw, nil
 }
 
@@ -384,6 +502,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 		existing.FilenameExtension.String = ext
 		existing.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 		fillImageDimensions(existing, workDir)
+		s.fillFingerprint(existing, absPath)
 		if err := s.repo.Updates(ctx, existing); err != nil {
 			return 0, fmt.Errorf("更新记录失败: %w", err)
 		}
@@ -393,13 +512,14 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 	// 6. 创建记录（已完成）
 	store := domain.NewPersistentStore()
 	store.FilePath.Valid = true
-	store.FilePath.String = relPath
+	store.FilePath.String = filepath.ToSlash(relPath)
 	store.FileName.Valid = true
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
 	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	fillImageDimensions(store, workDir)
+	s.fillFingerprint(store, absPath)
 
 	if err := s.repo.Create(ctx, store); err != nil {
 		// 记录创建失败时清理文件
@@ -427,6 +547,61 @@ func (s *Service) StoreFromFile(ctx context.Context, relPath string, fileName st
 // GetById 根据 ID 获取记录
 func (s *Service) GetById(ctx context.Context, id int64) (*domain.PersistentStore, error) {
 	return s.repo.GetById(ctx, id)
+}
+
+// GetByFingerprint 按内容指纹查询有效已完成记录（排除指定路径），供文件移动关联匹配。
+// 指纹匹配=内容相同→判定为同一文件的移动；返回首条命中（理论上指纹唯一，多命中取首条）。
+// 仅查未失效(invalid_at=0)记录。无命中返回 (nil, nil)。
+func (s *Service) GetByFingerprint(ctx context.Context, fingerprint string, excludePath string) (*domain.PersistentStore, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Eq{Column: "content_fingerprint", Value: fingerprint},
+			clause.Neq{Column: "file_path", Value: excludePath},
+			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Eq{Column: "invalid_at", Value: 0},
+		},
+		Limit: 1,
+	}
+	records, err := s.repo.List(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, nil
+	}
+	return records[0], nil
+}
+
+// GetByFilePathComplete 按路径查询有效已完成记录（移动场景：旧路径记录存在且已完成）
+// 仅查未失效(invalid_at=0)记录。无命中返回 (nil, nil)
+func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*domain.PersistentStore, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Eq{Column: "file_path", Value: filePath},
+			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Eq{Column: "invalid_at", Value: 0},
+		},
+		Limit: 1,
+	}
+	records, err := s.repo.List(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, nil
+	}
+	return records[0], nil
+}
+
+// ListValidComplete 全量查询有效(invalid_at=0)且已完成(status=1)的记录，供离线对账
+func (s *Service) ListValidComplete(ctx context.Context) ([]*domain.PersistentStore, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Eq{Column: "invalid_at", Value: 0},
+		},
+	}
+	return s.repo.List(ctx, opt)
 }
 
 // GetByIds 根据 ID 列表批量查询记录
@@ -563,13 +738,14 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 	// 7. 创建 PersistentStore 记录（已完成状态）
 	store := domain.NewPersistentStore()
 	store.FilePath.Valid = true
-	store.FilePath.String = relPath
+	store.FilePath.String = filepath.ToSlash(relPath)
 	store.FileName.Valid = true
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
 	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
 	fillImageDimensions(store, workDir)
+	s.fillFingerprint(store, targetAbsPath)
 
 	if err := s.repo.Create(ctx, store); err != nil {
 		return 0, fmt.Errorf("注册 PersistentStore 记录失败: %w", err)
