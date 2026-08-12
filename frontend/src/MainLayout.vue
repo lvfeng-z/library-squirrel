@@ -5,6 +5,7 @@ import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
+import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
 
@@ -61,6 +62,7 @@ async function handleCloseCurrentView() {
       :state="notificationListState"
     />
     <ReplaceConfirmDialog />
+    <ChangeConfirmDialog />
     <DialogSlotRenderer />
 
     <!-- 向导覆盖层（新向导系统） -->

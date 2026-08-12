@@ -2,6 +2,7 @@ package fsmonitor
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -18,6 +19,8 @@ const (
 	SemanticDelete
 	// SemanticUntracked 未追踪：磁盘出现 DB 无记录的文件（外部新增）
 	SemanticUntracked
+	// SemanticDirMove 目录移动/改名：目录路径前缀变更，下级所有文件 DB 路径需批量同步
+	SemanticDirMove
 )
 
 // StoreRecord persistent_store 记录的精简视图（由 StoreReader 返回，避免关联层依赖 domain 实体）
@@ -50,6 +53,9 @@ type SemanticChange struct {
 // moveDedupWindow 移动去重窗口：Remove 后该窗口内同路径的 Delete 不重复报告
 // （Linux inotify rename 会发 Remove(旧)+Create(新)，Create 已配对成 Move，Remove 不应再报 Delete）
 const moveDedupWindow = 5 * time.Second
+
+// dirScanSampleLimit 目录移动检测时采样下级文件上限，避免大目录全量算指纹的性能问题
+const dirScanSampleLimit = 50
 
 // Correlator 关联层：消费 FileChange，结合 DB 记录与内容指纹，产出语义变更。
 // 依赖注入：Fingerprinter（算新文件指纹）+ StoreReader（查 DB）+ WorkDirGetter（拼绝对路径）。
@@ -94,6 +100,10 @@ func (c *Correlator) Process(ctx context.Context, ev FileChange) *SemanticChange
 
 // processCreate 处理文件出现：算指纹 → 查 DB 同指纹旧记录 → 命中=Move，否则=Untracked
 func (c *Correlator) processCreate(ctx context.Context, ev FileChange, now int64) *SemanticChange {
+	if ev.IsDir {
+		// 目录无内容指纹，改为下级扫描配对（检测目录改名）
+		return c.processDirCreate(ctx, ev, now)
+	}
 	absPath := joinWorkDir(c.workDirGetter(), ev.Path)
 	fp, err := c.fingerprinter.Fingerprint(ctx, absPath)
 	if err != nil {
@@ -141,6 +151,48 @@ func (c *Correlator) processRemove(ctx context.Context, ev FileChange, now int64
 		StoreID:    old.ID,
 		DetectedAt: now,
 	}
+}
+
+// processDirCreate 处理目录出现：扫描新目录下级文件算指纹 → 查 DB 匹配旧记录 →
+// 聚合最常见旧目录前缀 → 命中=DirMove(旧目录→新目录)，否则=Untracked(新建目录)。
+// 采样下级文件上限 dirScanSampleLimit，避免大目录性能问题。
+func (c *Correlator) processDirCreate(ctx context.Context, ev FileChange, now int64) *SemanticChange {
+	workDir := c.workDirGetter()
+	newDirAbs := joinWorkDir(workDir, ev.Path)
+	prefixCount := make(map[string]int) // 旧目录前缀 → 命中文件数
+	scanned := 0
+	_ = filepath.Walk(newDirAbs, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if scanned >= dirScanSampleLimit {
+			return filepath.SkipDir
+		}
+		scanned++
+		fp, fpErr := c.fingerprinter.Fingerprint(ctx, path)
+		if fpErr != nil {
+			return nil
+		}
+		old, _ := c.storeReader.GetByFingerprint(ctx, fp.Digest, ev.Path+"/")
+		if old != nil && old.FilePath != "" {
+			// filepath.Dir 在 Windows 会把正斜杠规范成反斜杠，需 ToSlash 还原（DB file_path 是正斜杠）
+			oldDir := filepath.ToSlash(filepath.Dir(old.FilePath))
+			prefixCount[oldDir]++
+		}
+		return nil
+	})
+	var bestPrefix string
+	bestCount := 0
+	for prefix, n := range prefixCount {
+		if n > bestCount {
+			bestPrefix = prefix
+			bestCount = n
+		}
+	}
+	if bestCount > 0 && bestPrefix != ev.Path {
+		return &SemanticChange{Kind: SemanticDirMove, FromPath: bestPrefix, ToPath: ev.Path, DetectedAt: now}
+	}
+	return &SemanticChange{Kind: SemanticUntracked, ToPath: ev.Path, DetectedAt: now}
 }
 
 // gcRecentMoves 清理过期的去重记录（超过 moveDedupWindow）

@@ -1170,6 +1170,10 @@ func (a *storeRepairerAdapter) MarkInvalid(ctx context.Context, id int64, invali
 	return a.svc.MarkInvalid(ctx, id, invalidAt)
 }
 
+func (a *storeRepairerAdapter) RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error) {
+	return a.svc.RenameDirectoryPrefix(ctx, oldPrefix, newPrefix)
+}
+
 // toStoreRecord domain.PersistentStore → fsmonitor.StoreRecord
 func toStoreRecord(r *entity2.PersistentStore) *fsmonitor.StoreRecord {
 	rec := &fsmonitor.StoreRecord{ID: r.GetID()}

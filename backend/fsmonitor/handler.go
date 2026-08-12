@@ -62,6 +62,8 @@ func kindName(k SemanticKind) string {
 		return "文件删除"
 	case SemanticUntracked:
 		return "外部新增文件"
+	case SemanticDirMove:
+		return "目录移动/改名"
 	default:
 		return "未知"
 	}

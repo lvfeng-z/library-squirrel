@@ -48,7 +48,7 @@ func NewService(deps *Deps, workDirGetter func() string, emitter func() EventEmi
 		s.correlator = NewCorrelator(deps.Fingerprinter, deps.StoreReader, workDirGetter)
 	}
 	if deps.StoreRepairer != nil {
-		s.repair = NewRepairManager(deps.StoreRepairer)
+		s.repair = NewRepairManager(deps.StoreRepairer, workDirGetter)
 	}
 	return s
 }
@@ -234,6 +234,8 @@ func formatSemanticChange(sc *SemanticChange) string {
 		return formatDelete(sc.FromPath, sc.StoreID)
 	case SemanticUntracked:
 		return formatUntracked(sc.ToPath)
+	case SemanticDirMove:
+		return "目录移动/改名: " + sc.FromPath + " → " + sc.ToPath + " (下级文件路径需批量同步)"
 	default:
 		return "未知变更"
 	}

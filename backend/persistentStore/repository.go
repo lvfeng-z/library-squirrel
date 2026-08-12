@@ -2,6 +2,7 @@ package persistentStore
 
 import (
 	"context"
+	"strings"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -54,6 +55,20 @@ func (r *PersistentStoreRepository) ExistsByFilePath(ctx context.Context, filePa
 func (r *PersistentStoreRepository) NormalizeFilePaths(ctx context.Context) (int64, error) {
 	result := r.GORM().WithContext(ctx).Exec(
 		"UPDATE persistent_store SET file_path = REPLACE(file_path, '\\', '/') WHERE file_path LIKE '%\\%'",
+	)
+	return result.RowsAffected, result.Error
+}
+
+// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步：oldPrefix/ → newPrefix/）
+// 匹配 oldPrefix 开头的所有下级文件路径。返回受影响行数
+func (r *PersistentStoreRepository) RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error) {
+	// DB file_path 统一正斜杠，入参规范化防 Windows 反斜杠导致匹配失败
+	oldPrefix = strings.ReplaceAll(oldPrefix, "\\", "/")
+	newPrefix = strings.ReplaceAll(newPrefix, "\\", "/")
+	// 用 GLOB 而非 LIKE：GLOB 区分大小写→走 file_path 索引（LIKE 默认不区分大小写→全表扫）
+	result := r.GORM().WithContext(ctx).Exec(
+		"UPDATE persistent_store SET file_path = REPLACE(file_path, ?, ?) WHERE file_path GLOB ?",
+		oldPrefix+"/", newPrefix+"/", oldPrefix+"/*",
 	)
 	return result.RowsAffected, result.Error
 }

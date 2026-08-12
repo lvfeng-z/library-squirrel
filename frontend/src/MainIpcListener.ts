@@ -10,6 +10,7 @@ import { askGotoPage } from '@renderer/utils/PageUtil.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
+import { useChangeConfirmStore, CHANGE_KIND_NAME } from '@renderer/store/UseChangeConfirmStore'
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
@@ -75,6 +76,19 @@ export function iniListener() {
   Events.On('taskStatus-duplicateDetected', (event: any) => {
     const data = event.data as { taskId: number; taskName: string; existingWorkId: number; existingWorkName: string }
     useReplaceConfirmStore().add(data)
+  })
+
+  // 工作目录外部文件变更 - Wails Events（待用户确认修复：移动/删除）
+  Events.On('fsmonitor:change', (event: any) => {
+    const data = event.data as { id: number; kind: number; fromPath: string; toPath: string; storeId: number }
+    useChangeConfirmStore().add({
+      id: data.id,
+      kind: data.kind,
+      kindName: CHANGE_KIND_NAME[data.kind] ?? '未知',
+      fromPath: data.fromPath,
+      toPath: data.toPath,
+      storeId: data.storeId
+    })
   })
 
   // 自定义确认弹窗 - Wails Events

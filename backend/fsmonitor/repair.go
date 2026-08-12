@@ -3,8 +3,11 @@ package fsmonitor
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -26,6 +29,9 @@ type StoreRepairer interface {
 	UpdateFilePath(ctx context.Context, id int64, newFilePath string) error
 	// MarkInvalid 置记录失效（删除确认）
 	MarkInvalid(ctx context.Context, id int64, invalidAt int64) error
+	// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步：oldPrefix/→newPrefix/）
+	// 返回受影响行数（下级文件数）
+	RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error)
 }
 
 // PendingChange 待修复的语义变更（入队后等用户确认）
@@ -36,7 +42,8 @@ type PendingChange struct {
 
 // RepairManager 修复管理：维护待修复变更队列 + 执行用户确认的修复动作
 type RepairManager struct {
-	repairer StoreRepairer // nil 时修复不可用（仅通知，不能修）
+	repairer      StoreRepairer // nil 时修复不可用（仅通知，不能修）
+	workDirGetter func() string // 复原(文件移回)时拼绝对路径
 
 	mu      sync.Mutex
 	nextID  int64
@@ -44,10 +51,11 @@ type RepairManager struct {
 }
 
 // NewRepairManager 创建修复管理器
-func NewRepairManager(repairer StoreRepairer) *RepairManager {
+func NewRepairManager(repairer StoreRepairer, workDirGetter func() string) *RepairManager {
 	return &RepairManager{
-		repairer: repairer,
-		pending:  make(map[int64]*PendingChange),
+		repairer:      repairer,
+		workDirGetter: workDirGetter,
+		pending:       make(map[int64]*PendingChange),
 	}
 }
 
@@ -114,8 +122,34 @@ func (m *RepairManager) apply(ctx context.Context, sc *SemanticChange, action Re
 		return m.applyMove(ctx, sc, action)
 	case SemanticDelete:
 		return m.applyDelete(ctx, sc, action)
+	case SemanticDirMove:
+		return m.applyDirMove(ctx, sc, action)
 	default:
 		return fmt.Errorf("不支持的变更类型修复: %v", sc.Kind)
+	}
+}
+
+// applyDirMove 目录移动修复：sync=批量替换下级前缀；restore=目录移回
+func (m *RepairManager) applyDirMove(ctx context.Context, sc *SemanticChange, action RepairAction) error {
+	switch action {
+	case ActionSync:
+		n, err := m.repairer.RenameDirectoryPrefix(ctx, sc.FromPath, sc.ToPath)
+		if err != nil {
+			return fmt.Errorf("目录前缀批量同步失败: %w", err)
+		}
+		logger.Log.Infof("[fsmonitor] 目录改名同步完成: %s → %s，更新 %d 条记录", sc.FromPath, sc.ToPath, n)
+		return nil
+	case ActionRestore:
+		// 目录从新路径移回旧路径
+		workDir := m.workDirGetter()
+		fromAbs := filepath.Join(workDir, filepath.FromSlash(sc.ToPath))
+		toAbs := filepath.Join(workDir, filepath.FromSlash(sc.FromPath))
+		if err := os.Rename(fromAbs, toAbs); err != nil {
+			return fmt.Errorf("目录复原(移回)失败: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("目录移动变更不支持动作 %s", action)
 	}
 }
 
@@ -126,11 +160,14 @@ func (m *RepairManager) applyMove(ctx context.Context, sc *SemanticChange, actio
 		// DB file_path 同步到新位置
 		return m.repairer.UpdateFilePath(ctx, sc.StoreID, sc.ToPath)
 	case ActionRestore:
-		// 文件从新路径移回旧路径
-		if mover, ok := m.repairer.(FileMover); ok {
-			return mover.MoveFile(sc.ToPath, sc.FromPath)
+		// 复原：文件从新路径移回旧路径（DB 仍指旧路径，移回后一致，无需改 DB）
+		workDir := m.workDirGetter()
+		fromAbs := filepath.Join(workDir, filepath.FromSlash(sc.ToPath))
+		toAbs := filepath.Join(workDir, filepath.FromSlash(sc.FromPath))
+		if err := os.Rename(fromAbs, toAbs); err != nil {
+			return fmt.Errorf("复原(文件移回)失败: %w", err)
 		}
-		return fmt.Errorf("复原需要文件移动能力，当前未注入")
+		return nil
 	default:
 		return fmt.Errorf("移动变更不支持动作 %s", action)
 	}
@@ -150,7 +187,5 @@ func (m *RepairManager) applyDelete(ctx context.Context, sc *SemanticChange, act
 	}
 }
 
-// FileMover 可选：文件移动能力（移动复原用，由实现注入；首版可选）
-type FileMover interface {
-	MoveFile(from, to string) error
-}
+// _ 确保 context 在未来扩展（批量确认等）可用
+var _ = context.TODO

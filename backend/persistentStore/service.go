@@ -39,6 +39,8 @@ type Repository interface {
 	ExistsByFilePath(ctx context.Context, filePath string) bool
 	// NormalizeFilePaths 将 file_path 反斜杠统一为正斜杠（数据规范化迁移，幂等）
 	NormalizeFilePaths(ctx context.Context) (int64, error)
+	// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步）
+	RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error)
 }
 
 // StoreWriter 封装文件句柄和 DB 记录，实现完整的写入生命周期管理
@@ -221,6 +223,11 @@ func (s *Service) SetFingerprinter(fp Fingerprinter) {
 // NormalizeFilePaths 将 file_path 反斜杠统一为正斜杠（数据规范化，启动时调用）
 func (s *Service) NormalizeFilePaths(ctx context.Context) (int64, error) {
 	return s.repo.NormalizeFilePaths(ctx)
+}
+
+// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步：下级文件路径批量更新）
+func (s *Service) RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error) {
+	return s.repo.RenameDirectoryPrefix(ctx, oldPrefix, newPrefix)
 }
 
 // UpdateFilePath 更新记录的 file_path（移动/重命名修复：DB 路径同步到文件新位置）
