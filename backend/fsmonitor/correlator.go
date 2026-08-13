@@ -93,6 +93,8 @@ func (c *Correlator) Process(ctx context.Context, ev FileChange) *SemanticChange
 		return c.processCreate(ctx, ev, now)
 	case ChangeRemove:
 		return c.processRemove(ctx, ev, now)
+	case ChangeMove:
+		return c.processMove(ctx, ev, now)
 	default:
 		return nil
 	}
@@ -148,6 +150,38 @@ func (c *Correlator) processRemove(ctx context.Context, ev FileChange, now int64
 	return &SemanticChange{
 		Kind:       SemanticDelete,
 		FromPath:   ev.Path,
+		StoreID:    old.ID,
+		DetectedAt: now,
+	}
+}
+
+// processMove 处理已配对的移动/重命名（ChangeMove）：旧路径查 DB 记录 → 命中即产 SemanticMove，
+// 不依赖指纹（比 Create/Remove 指纹配对更精确）。专为 USN 离线 Move 服务（运行时 fsnotify
+// 不产 ChangeMove，见 event.go/TREE 决策与约束）。
+//
+// 仅处理文件：目录改名由上层 usnProvider 以 ChangeCreate(IsDir) 发出、走 processDirCreate——
+// 目录无 persistent_store 记录（GetByFilePathComplete 必返 nil），且 processDirCreate 已内含
+// 「无追踪文件→Untracked 不入队」的噪声抑制；收到 ChangeMove(IsDir) 时防御性返回 nil。
+//
+// 连读重命名（X→Y→Z）的中间腿可能因 DB 路径尚未同步而查不到（DB 仍指 X，第二腿查 Y 落空）→
+// 该腿丢弃，最终状态由全量对账兜底（D2）+ 修复层按 StoreID 合并冲突（§5.3）。
+func (c *Correlator) processMove(ctx context.Context, ev FileChange, now int64) *SemanticChange {
+	if ev.IsDir {
+		return nil
+	}
+	old, err := c.storeReader.GetByFilePathComplete(ctx, ev.Path)
+	if err != nil {
+		logger.Log.Warnf("[fsmonitor] 关联层：移动按路径查记录失败: %v", err)
+		return nil
+	}
+	if old == nil {
+		// DB 无旧路径记录 → 非本库文件 rename，不报告（对账兜底）
+		return nil
+	}
+	return &SemanticChange{
+		Kind:       SemanticMove,
+		FromPath:   ev.Path,
+		ToPath:     ev.ToPath,
 		StoreID:    old.ID,
 		DetectedAt: now,
 	}
