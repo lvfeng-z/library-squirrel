@@ -70,6 +70,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Resource{},
 		&entity2.ResourceStore{},
 		entity2.NewPersistentStore(),
+		entity2.NewFsmonitorCursor(),
 
 		// 关联表(有外键依赖)
 		&entity2.ReWorkAuthor{},

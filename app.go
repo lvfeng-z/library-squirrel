@@ -928,6 +928,7 @@ func (app *App) initAdvancedServices() error {
 	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir(), app.SettingsService.GetSettings().FsmonitorSettings.UsnEnabled)
 	fsmonitorDeps.StoreReader = &storeReaderAdapter{svc: app.PersistentStoreService}
 	fsmonitorDeps.StoreRepairer = &storeRepairerAdapter{svc: app.PersistentStoreService}
+	fsmonitorDeps.CursorStore = fsmonitor.NewCursorRepository(app.db)
 	fsmonitorDeps.Scanner = fsmonitor.NewScanner(fsmonitorDeps.StoreReader, func() string { return app.SettingsService.GetWorkDir() })
 	app.FsmonitorService = fsmonitor.NewService(
 		fsmonitorDeps,

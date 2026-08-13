@@ -35,6 +35,7 @@ type ContentFingerprinter interface {
 type Deps struct {
 	LiveSource      LiveEventSource       // 实时事件流，环境不可用时为 nil
 	OfflineProvider OfflineChangeProvider // 离线追溯，仅 Windows 可用，首版为 nil
+	CursorStore     CursorStore           // USN 游标持久化（仅 USN 用），nil = 无持久化每次全量对账
 	Scanner         ReconciliationScanner // 全量对账，通用(离线对账实现就位后填充)
 	Fingerprinter   ContentFingerprinter  // 内容指纹，通用
 	StoreReader     StoreReader           // persistent_store 读取(按指纹/路径查记录)，关联层依赖
