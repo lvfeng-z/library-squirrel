@@ -12,13 +12,14 @@
 4. **白名单已固化为包级变量**：`scanner.go:14-19 scanDirs`（store/resource、store/thumbnail、store/avatar/{local,site}）；USN 产出的路径须用同一白名单过滤，避免 backup/ 等目录噪声。
 5. **分平台构建模式可照搬**：`backend/window/titlebar_windows.go:1` 的 `//go:build windows` + `_windows.go` 后缀 + `syscall.NewLazyDLL` 模式，USN 实现走 `usn_windows.go` + 其他平台 stub。
 6. **游标存储无现成主程序 KV**：`backend/settings/model.go:4 Settings` 是用户设置结构（工作目录/下载/外观等），塞卷级二进制 USN 游标语义不合；`plugin_storage` 仅插件可用。游标须新存储载体（见待决策 D1）。
+7. **USN_RECORD V3 布局陷阱（C-0b 实测确认）**：Win8+ NTFS 驱动返回 V3 记录（`Major=3`），其 `FileReferenceNumber`/`ParentFileReferenceNumber` 各占 **128 位**（`FILE_ID_128`，为 ReFS 128-bit 文件 ID 预留；NTFS 上高 64 位为 0），非 V2 的 64 位——使记录较 V2 整体后移 +16B。按 V2 偏移解析 V3 会令 `ParentFRN@16` 读成 FRN 高半(=0)、Reason/FileName 全错位（C-0b 5 次迭代定位）。V3 正确偏移：`FRN@8(低64)` `ParentFRN@24` `Usn@40` `Reason@56` `FileNameLength@72` `FileNameOffset@74`；V2 偏移：`FRN@8` `ParentFRN@16` `Usn@24` `Reason@40` `FileNameLength@56` `FileNameOffset@58`。解析须按 `Major` 版本分支；`readFRN`（READ_FILE_USN_DATA）读 @8 低 64 同口径不受影响。
 
 ### 待决策
 
 - **D1 游标持久化载体**：①新建 `fsmonitor_cursor` 表（推荐）vs ②扩 `settings.json` 加游标段 vs ③独立游标文件。推荐①——随 DB 走、事务安全、随备份走，且游标绑定「卷 UsnJournalID + workDir」，结构化存储天然适配。
 - **D2 USN 与对账的关系**：①USN 精确补账 + 对账兜底校验（推荐，互补）vs ②USN 成功即跳过对账（互斥）。推荐①——USN 游标可能因 journal 截断/卷格式化而过期，对账是唯一能捕获「游标失效」的兜底，不可省。
 - **D3 `ChangeMove` 处理落点**：①Correlator 增 `ChangeMove` 分支（推荐，运行时/离线统一关联）vs ②USN 层直接产 `SemanticChange` 绕过 Correlator。推荐①——保持单一关联出口，避免两套 Move 语义。
-- **D4 FRN 路径解析是否独立基建节点**：父 FRN 逐级回溯 + 缓存是 USN 复杂度核心（见风险 R1），可能值得 `derive` 独立子任务先做。倾向先 PoC 评估体量再定。
+- **D4 FRN 路径解析是否独立基建节点**（✅ 已定 2026-08-13，C-0b PoC）：**不拆分，C-2 直接实现**。方案B（建 FRN→路径缓存）实测可行——活动段 8/8 命中、路径人眼校验正确；全 workDir 22730 文件建缓存 8s（白名单 ≤ 此），体量可接受。
 - **D5 首次启动无游标的起点语义**：`ChangesSince(nil)` 由实现定起点。①从 `NextUsn`（journal 当前末尾，不报历史，下次起开始追）（推荐）vs ②从 `FirstUsn`（报全部历史变更）。推荐①——首次报全部历史会刷屏且多为陈旧变更，与 USN「增量」定位相悖；首版的离线历史检测交给全量对账。
 - **D6 USN 读取中途失败的游标更新位置（不可逆决策）**：分批读取中某批失败时，游标更新到①已成功解析并 dispatch 的位置（推荐）vs ②不更新（整次重来）。推荐①——已处理部分不重报（避免重复 dispatch），未读部分下次续读；须保证「游标更新与 dispatch 同事务」，否则错位致漏报/重报。
 - **D7 USN 批次与实时 fsnotify 并发去重**：`Start()`（`service.go:74`）中 `runOfflineReconcile` 与 `startLive` 并发，启动瞬间 USN 离线事件与实时 fsnotify 事件可能重叠同一变更。须在 dispatch 层按 `(Kind, FromPath, ToPath, StoreID)` 去重，USN 批次与实时事件共用同一去重集合，窗口覆盖离线对账运行期。
@@ -26,12 +27,12 @@
 
 ### 自曝风险
 
-- **R1 FRN→全路径解析是 USN 的真正难点**（非 syscall 本身）：FRN（File Reference Number，NTFS 主文件表 MFT 中条目的文件引用号，文件在卷内的稳定标识）；`USN_RECORD` 只给文件名 + 父目录的 `ParentFileReferenceNumber`（父 FRN），**不含全路径**；须从父 FRN 逐级向上解析目录链拼出相对 workDir 的路径。大目录/深嵌套下解析开销与缓存一致性是非平凡问题，可能撑大 C 的实现体量，触发 D4 拆分。
+- **R1 FRN→全路径解析是 USN 的真正难点**（非 syscall 本身）：FRN（File Reference Number，NTFS 主文件表 MFT 中条目的文件引用号，文件在卷内的稳定标识）；`USN_RECORD` 只给文件名 + 父目录的 `ParentFileReferenceNumber`（父 FRN），**不含全路径**；须从父 FRN 逐级向上解析目录链拼出相对 workDir 的路径。大目录/深嵌套下解析开销与缓存一致性是非平凡问题，可能撑大 C 的实现体量，触发 D4 拆分。**C-0b 实测（2026-08-13）**：方案B 可行——PoC 触发活动段 8/8 命中缓存、相对路径人眼校验正确（含 rename OLD/NEW 同 FRN 配对验证）；全 workDir 22730 文件建缓存 8s（生产白名单 store/* 子树 ≤ 此）。**D4 判定：不拆分，C-2 直接实现**。
 - **R2 USN 读取需管理员权限（2026-08-12 C-0a PoC 实测确认）**：非管理员 GENERIC_READ 打开 `\\.\X:` 卷句柄返回 `ERROR_ACCESS_DENIED(5)`（FILE_READ_ATTRIBUTES 句柄能开但不足以发 FSCTL_QUERY_USN_JOURNAL，返回 `INVALID_FUNCTION(1)`）；以管理员运行同一 PoC，卷句柄打开成功、`FSCTL_QUERY_USN_JOURNAL`（function 61=0x000900F4）成功，返回有效 USN_JOURNAL_DATA（UsnJournalID/NextUsn/MaximumSize）。即**卷级 USN 离线追溯必须管理员权限**。对照实验 `FSCTL_READ_FILE_USN_DATA` 经文件句柄非管理员可成功，佐证机制/解析正确，障碍仅卷句柄权限。PoC 见 `usn-poc/main_windows.go`。
 - **R3 journal 截断致游标过期**：NTFS journal 有最大尺寸，高 IO 卷会循环覆盖旧记录；离线期过长时 `StartUSN` 可能已被覆盖，`ChangesSince` 拿不到完整历史。必须靠 D2 的对账兜底捕获此情况（检测到 `StartUSN < NextUsn` 的「游标落后于 journal 起始」即判失效）。
-- **R4 USN 记录版本差异**：`USN_RECORD` 有 V2/V3/V4 三版本，结构布局与对齐不同。MFT 文件引用号（FRN）恒为 64 位，三版本差异**不在 FRN 位宽**——V3 相对 V2 主要是 64 位对齐与字段扩展，V4 额外引入 OwnerId/SchemaVersion 等扩展字段（面向 ReFS 等长标识场景）。解析须按版本分支读结构布局，首版按 V2/V3 处理，V4 留兼容占位。
+- **R4 USN 记录版本差异（C-0b 实测修正）**：`USN_RECORD` 有 V2/V3/V4 三版本。**V3 的 FileReferenceNumber/ParentFileReferenceNumber 各占 128 位（`FILE_ID_128`，为 ReFS 预留；NTFS 高 64 位为 0），非 V2 的 64 位**——此前「FRN 恒 64 位、差异不在位宽」判断错误。V3 较 V2 整体后移 +16B：V2 `ParentFRN@16/Reason@40/NameLen@56/NameOff@58`，V3 `ParentFRN@24/Reason@56/NameLen@72/NameOff@74`（FRN@8 低 64 位 V2/V3 同）。按 V2 偏移解析 V3 令 ParentFRN 读成 FRN 高半(=0)、Reason/Name 错位。解析须按 `Major` 分支；readFRN 读 @8 低 64 同口径不受影响。V4 留兼容占位。
 - **R5 路径过滤基准**：USN 是**卷级**事件流（整个 NTFS 卷所有文件变更），非 workDir 级；须按 workDir 路径前缀过滤，且 workDir 跨卷/移卷时 `UsnJournalID` 变化致游标失效——需显式失效重建逻辑。
-- **R6 FRN 复用致缓存错映射（潜在数据损坏）**：NTFS 会回收已删文件的 FRN 分配给新建文件；若 FRN→路径缓存未及时清条目，新文件会被错映射到旧路径，关联层据此产错误 Move/修复，可能改错 DB 记录。4.2「靠 journal 序号窗口容忍」须显式落实为：缓存条目绑定（FRN + 最近见到的 USN 序号），删除记录到达时即时清条目，复用窗口靠 journal 单调序保证。C-0 PoC 须实测 FRN 复用频率以校准窗口策略。
+- **R6 FRN 复用致缓存错映射（潜在数据损坏）**：NTFS 会回收已删文件的 FRN 分配给新建文件；若 FRN→路径缓存未及时清条目，新文件会被错映射到旧路径，关联层据此产错误 Move/修复，可能改错 DB 记录。4.2「靠 journal 序号窗口容忍」须显式落实为：缓存条目绑定（FRN + 最近见到的 USN 序号），删除记录到达时即时清条目，复用窗口靠 journal 单调序保证。**C-0b 实测（2026-08-13，5352 样本，正确 V3 Reason）：0 例 delete→create 复用**——复用在常规活动下为低频/未触发。（注：迭代中一度因 V3 Reason 字段错位——把 Usn 低 32 位误读为 Reason——误报 1210 例假阳性，修复 V3 布局后归零。）防御仍须保留：FRN 池理论上存在复用，且 R6 是潜在数据损坏风险不可省略；但窗口策略按低频设计即可，非高频驱动。
 - **R7 USN 记录乱序与 rename 配对不连续**：USN_RECORD 不保证严格按提交序对调用方可见，且 rename 的 OLD_NAME/NEW_NAME 两条记录可能不连续、中间夹其他记录；4.1 的「USN 层预先按 FRN 合并配对」须容忍乱序（按 FRN 在整批读出的记录里配对，非相邻也能配），本批未配上的 OLD 按 `ChangeRemove`、NEW 按 `ChangeCreate` 兜底。
 
 ---
@@ -135,7 +136,20 @@ fsmonitor_cursor
 - 一致性：USN rename 事件同步更新缓存条目；FRN 复用（NTFS 回收 FRN）靠 journal 序号窗口容忍。
 - workDir 外的父目录无需解析（直接判定为外部变更丢弃），避开「解析到卷根」的全链回溯开销。
 
-> 若 PoC 发现缓存一致性/重建开销超预期（大库 workDir 子树文件极多），按 D4 `derive` 独立基建节点。
+> C-0b 已实测验证（见 R1/§八）：方案B 体量可接受（全 workDir 22730 文件/8s），D4 判定**不拆分**，C-2 直接实现。workDir 外父目录默认丢弃——唯一例外见 4.3（同卷移出需回溯 workDir 外目标）。
+
+### 4.3 同卷移出目标感知（workDir 内文件移到 workDir 外）
+
+首版 fsnotify/对账受 watch 树/扫描范围限制，文件移出 workDir 后看不到目标，只能归删除。USN 卷级流为**同卷移出**提供了感知目标的能力，列为 C 的显式子项 C-4.1：
+
+- **触发条件**：rename 预合并（§4.1）产出的配对中，OLD 的 ParentFRN 命中 workDir 缓存（源在 workDir 内）、但 NEW 的 ParentFRN **不在** workDir 缓存（目标在 workDir 外）。
+- **按需回溯 NEW 全路径**：workDir 子树缓存（方案B）覆盖不到 workDir 外，此时对 NEW 的 ParentFRN 逐级回溯到卷根——用「按 File ID 打开目录（`FILE_OPEN_BY_FILE_ID`）+ `FSCTL_READ_FILE_USN_DATA` 读其 FileName 与上一级 ParentFRN」循环，拼出 NEW 的卷内绝对路径（如 `E:\elsewhere\y.jpg`）。
+- **产出带外目标的 ChangeMove**：`Path=workDir 内旧路径`、`ToPath=卷内绝对路径(外部)`，复用 §5.2 Correlator 的 `ChangeMove` 分支产 `SemanticMove`。
+- **修复层扩展**：`RepairManager.applyMove` 的 `ActionRestore` 当前用 `joinWorkDir(ToPath)`（默认 ToPath 在 workDir 内）；ToPath 为卷内绝对路径时直接用其本身，`os.Rename(外部绝对路径 → workDir 内旧绝对路径)` 实现真复原。
+
+**成本可控**：触发面窄——仅「workDir 内文件移出」才回溯，绝大多数 USN 事件（workDir 外噪声）在 §4.2 ParentFRN 缓存过滤阶段已丢弃；每次回溯几次 IOCTL（微秒级）。
+
+**边界（跨卷移出不追踪）**：单卷 USN 只见源卷删除，目标卷新建在另一 journal；跨卷关联（多卷 USN + 时间戳/指纹匹配）复杂且不可靠，**明确放弃**——跨卷移出仍归 `SemanticDelete`（ack）。
 
 ---
 
@@ -188,7 +202,8 @@ dispatch 入队 `RepairManager` 的待修复项（pending）一旦生成即**快
 ```
 OfflineProvider 构造失败（卷句柄拿不到/非 NTFS/权限不足 R2） → 不注入(nil)，离线纯对账
 游标失效（journal 截断 R3 / 卷格式化 / workDir 移卷 R5）     → 本次跳过 USN，纯对账，重建游标
-FRN 路径解析失败（缓存未命中且父目录在 workDir 外）           → 丢弃该事件，对账兜底
+普通 workDir 外事件（ParentFRN 不在缓存、非 workDir 内文件移出） → 丢弃该事件，对账兜底
+同卷移出回溯失败（§4.3：NEW 的 ParentFRN 回溯越界/IOCTL 失败/跨卷移出） → 降级为 ChangeRemove（归删除），对账兜底
 USN 读取中途错误                                                → 已读部分 dispatch，剩余转对账
 非 Windows 平台                                                 → OfflineProvider 恒 nil
 ```
@@ -203,11 +218,12 @@ USN 读取中途错误                                                → 已读
 |---|---|---|
 | **C-0a PoC**（✅ 完成 2026-08-12） | QUERY 卷句柄权限验证（`usn-poc/`）。**结论：function 61=0x000900F4 正确、USN_RECORD 解析正确、R2 确认需管理员** → 触发 D8（设置开关+权限降级），C 重新定位为可选增强 | 无 |
 | **C-0.5** | USN 设置开关 + 权限检测降级基建：settings 加 `fsmonitor.usnEnabled`（默认 false）；`NewPlatformDeps` 注入前检测开关+管理员提权；非管理员/开关关 → 不注入（对账）+ 中文日志 | D8 |
-| **C-0b PoC** | 管理员环境：FSCTL_READ_USN_JOURNAL 续读一批记录 + 解析，验证 R1 路径解析体量 + R6 FRN 复用频率 → 定 D4 | C-0a |
+| **C-0b PoC**（✅ 完成 2026-08-13） | 管理员环境 READ 续读 + 解析 + R1/R6 验证 → **定 D4：不拆分，C-2 直接实现**。关键产出：①V3 布局陷阱（R4 修正，FRN 128-bit）；②R1 解析可行（活动段 8/8 命中人眼校验，rename 同 FRN 配对验证）；③R1 体量可接受（全 workDir 22730 文件/8s）；④R6 复用低频（0/5352 正确数据，曾因 Reason 错位误报 1210） | C-0a |
 | **C-1** | USN 记录解析 + Reason→FileChange 映射 + 白名单过滤（`usn_windows.go`） | C-0 |
 | **C-2** | FRN→路径缓存（方案B）+ 增量维护 | C-1（若 D4 拆分则独立节点） |
 | **C-3** | `fsmonitor_cursor` 表 + migration + 游标读写 repository | D1 |
 | **C-4** | `usnProvider` 实现 `OfflineChangeProvider`，`NewPlatformDeps` windows 注入 | C-1/2/3 |
+| **C-4.1** | 同卷移出目标感知（§4.3）：rename 配对 OLD 命中 workDir、NEW 在外时按需 FRN 回溯取卷内绝对路径 → 带外目标 ChangeMove + `applyMove` restore 扩展；跨卷放弃 | C-2/4 |
 | **C-5** | Correlator 补 `ChangeMove` 分支（D3）+ 单测 | 无 |
 | **C-6** | `runOfflineReconcile` 编排分叉 + USN/对账去重 + 游标失效检测 | C-4/5 |
 | **C-7** | 端到端验证：离线期改名/移动/删除三场景，USN 精确报告 + 对账兜底 | 全部 |
@@ -219,9 +235,10 @@ USN 读取中途错误                                                → 已读
 ## 八、验证清单
 
 - [x] C-0 PoC（R2）：**否**——非管理员 ACCESS_DENIED，需管理员（详见自曝风险 R2）
-- [ ] C-0 PoC：FRN→路径解析在 workDir 子树的体量可接受（R1/D4 判据）
-- [ ] C-0 PoC：实测 FRN 复用频率，校准缓存窗口策略（R6）
+- [x] C-0b PoC：FRN→路径解析可行——活动段 8/8 命中（人眼校验路径正确，含 rename 同 FRN 配对），体量全 workDir 22730 文件/8s 可接受（白名单 ≤ 此）→ **D4 定：无需独立节点，C-2 直接实现**
+- [x] C-0b PoC：FRN 复用频率——5352 样本 0 例（正确 V3 Reason），低频；防御保留但按低频设计（曾因 Reason 错位误报 1210 假阳性）
 - [ ] 游标跨重启续读：停机前 StartUsn → 重启后续读无遗漏无重复
 - [ ] 游标失效场景：journal 截断 / 卷格式化 / workDir 移卷 → 自动降级对账 + 重建游标
 - [ ] USN/对账去重：同一变更不重复 dispatch
 - [ ] 非 Windows 构建：`usn_windows.go` 外有 stub，编译通过，OfflineProvider 恒 nil
+- [ ] 同卷移出感知（C-4.1）：workDir 内文件移到卷内 workDir 外 → USN 报带外目标 Move + restore 可复原；跨卷移出 → 归删除
