@@ -92,7 +92,7 @@ fsmonitor_cursor
   journal_id    BIGINT    -- UsnJournalID，标识卷 journal 实例（卷格式化后变）
   start_usn     BIGINT    -- 下次续读起点
   work_dir      TEXT      -- 绑定的 workDir 绝对路径（游标与目录绑定）
-  updated_at    BIGINT    -- 最近一次成功续读时间
+  updated_at    BIGINT    -- 最近一次成功续读时间（C-3 落地：复用 BaseEntity.UpdateTime 列，不另设 updated_at 列）
 ```
 
 - key 语义：`(journal_id, work_dir)` 唯一；workDir 切换或卷变化（journal_id 变）自动新建行，旧行自然失效。
@@ -186,6 +186,8 @@ case ChangeMove:
 ```
 
 > 运行时不走此分支（fsnotify Windows 对 rename 只发 Create 新名事件、不发旧名事件，见 `workdir-file-change-monitor/TREE.md`「决策与约束·Windows fsnotify rename 限制」）；此分支专为 USN 离线 Move 服务，放在 Correlator 保持单一关联出口。
+>
+> **目录改名不经此分支**（C-5 决策）：目录无 persistent_store 记录，`GetByFilePathComplete`(目录路径) 必返 nil；且 `RepairManager.applyDirMove` 对空目录会留噪声 pending、`ActionRestore` 会 `os.Rename` 真目录（无追踪文件时是风险）。故上层 usnProvider（C-4）将目录改名以 `ChangeCreate(IsDir)` 发出、走既有 `processDirCreate`（已内含「无追踪文件→Untracked 不入队」噪声抑制 + 下级指纹配对）；`ChangeMove(IsDir)` 到达 Correlator 时防御性返回 nil。
 
 ### 5.3 产品约束：pending 为快照，不持续追踪（用户决策 2026-08-12）
 
@@ -220,11 +222,11 @@ USN 读取中途错误                                                → 已读
 | **C-0.5** | USN 设置开关 + 权限检测降级基建：settings 加 `fsmonitor.usnEnabled`（默认 false）；`NewPlatformDeps` 注入前检测开关+管理员提权；非管理员/开关关 → 不注入（对账）+ 中文日志 | D8 |
 | **C-0b PoC**（✅ 完成 2026-08-13） | 管理员环境 READ 续读 + 解析 + R1/R6 验证 → **定 D4：不拆分，C-2 直接实现**。关键产出：①V3 布局陷阱（R4 修正，FRN 128-bit）；②R1 解析可行（活动段 8/8 命中人眼校验，rename 同 FRN 配对验证）；③R1 体量可接受（全 workDir 22730 文件/8s）；④R6 复用低频（0/5352 正确数据，曾因 Reason 错位误报 1210） | C-0a |
 | **C-1** | USN 记录解析 + Reason→FileChange 映射 + 白名单过滤（`usn_windows.go`） | C-0 |
-| **C-2** | FRN→路径缓存（方案B）+ 增量维护 | C-1（若 D4 拆分则独立节点） |
-| **C-3** | `fsmonitor_cursor` 表 + migration + 游标读写 repository | D1 |
+| **C-2**（✅ 完成 2026-08-13） | FRN→路径缓存（方案B）+ 增量维护 — `frn_cache_windows.go`：readFRN（FSCTL_READ_FILE_USN_DATA，GENERIC_READ+BACKUP_SEMANTICS，**堆缓冲 64KB** 规避 METHOD_NEITHER 栈缓冲陷阱）+ frnPathCache（Build 遍历白名单子树逐目录读 FRN / Resolve(parentFRN,fileName) / OnDirCreate·OnDirDelete·OnDirRename + moveSubtree·removeSubtree）。仅缓存目录（路径解析只查 ParentFRN）。11 单测全绿（含 readFRN 实测非管理员可用、重命名连读收敛）。 | C-1 |
+| **C-3**（✅ 完成 2026-08-13） | `fsmonitor_cursor` 表 + migration + 游标读写 repository — 实体 `entity.FsmonitorCursor`（复合唯一键 `journal_id`+`work_dir`；**`updated_at` 复用 `BaseEntity.UpdateTime`，不另设列**——语义一致免冗余）；`CursorStore` 接口 + `Cursor` DTO（`fsmonitor/cursor.go`）+ `cursorRepository`（find→Create/Updates upsert，经 `BaseRepository` 自动 `dbFromContext` 事务感知，支持 D6）；`migrate.go` 注册；`app.go` 注入 `Deps.CursorStore`。**项目首个 DB 单测**（`cursor_repository_test.go`，`//go:build cgo` 隔离，内存 SQLite 验证复合键 upsert + 多键独立）。 | D1 |
 | **C-4** | `usnProvider` 实现 `OfflineChangeProvider`，`NewPlatformDeps` windows 注入 | C-1/2/3 |
 | **C-4.1** | 同卷移出目标感知（§4.3）：rename 配对 OLD 命中 workDir、NEW 在外时按需 FRN 回溯取卷内绝对路径 → 带外目标 ChangeMove + `applyMove` restore 扩展；跨卷放弃 | C-2/4 |
-| **C-5** | Correlator 补 `ChangeMove` 分支（D3）+ 单测 | 无 |
+| **C-5**（✅ 完成 2026-08-13） | Correlator 补 `ChangeMove` 分支（D3 方案①）+ 单测 — `correlator.go` Process switch 增 `case ChangeMove`→`processMove`（文件：`GetByFilePathComplete`(旧路径) 命中产 `SemanticMove`，不依赖指纹；未命中/查错返回 nil 由对账兜底）。**目录改名路由决策**：目录无 persistent_store 记录，走既有 `processDirCreate`（C-4 以 `ChangeCreate(IsDir)` 发出，复用其「无追踪文件→Untracked 不入队」噪声抑制），`ChangeMove(IsDir)` 防御性返回 nil。6 单测全平台全绿。 | 无 |
 | **C-6** | `runOfflineReconcile` 编排分叉 + USN/对账去重 + 游标失效检测 | C-4/5 |
 | **C-7** | 端到端验证：离线期改名/移动/删除三场景，USN 精确报告 + 对账兜底 | 全部 |
 
@@ -237,6 +239,8 @@ USN 读取中途错误                                                → 已读
 - [x] C-0 PoC（R2）：**否**——非管理员 ACCESS_DENIED，需管理员（详见自曝风险 R2）
 - [x] C-0b PoC：FRN→路径解析可行——活动段 8/8 命中（人眼校验路径正确，含 rename 同 FRN 配对），体量全 workDir 22730 文件/8s 可接受（白名单 ≤ 此）→ **D4 定：无需独立节点，C-2 直接实现**
 - [x] C-0b PoC：FRN 复用频率——5352 样本 0 例（正确 V3 Reason），低频；防御保留但按低频设计（曾因 Reason 错位误报 1210 假阳性）
+- [x] C-2 readFRN 非管理员可用：FSCTL_READ_FILE_USN_DATA 经文件/目录句柄（GENERIC_READ + FILE_FLAG_BACKUP_SEMANTICS）在非管理员下成功读出 FRN（实测 NTFS 临时目录 FRN=5629499535248535）。**关键坑**：输出缓冲必须堆分配（`make([]byte, 64KB)`），栈缓冲触发 `ERROR_INVALID_USER_BUFFER`（METHOD_NEITHER 驱动直接探测用户缓冲）。卷级 QUERY/READ_USN_JOURNAL 仍需管理员（C-4）。
+- [x] C-2 缓存增量维护正确性：子树内移动（整棵前缀迁移）/移出（级联移除）/移入（新建加入）/同名（无副作用）/连读重命名收敛（S1 构建以「缓存当前路径」为迁移源重放中间态）均单测通过
 - [ ] 游标跨重启续读：停机前 StartUsn → 重启后续读无遗漏无重复
 - [ ] 游标失效场景：journal 截断 / 卷格式化 / workDir 移卷 → 自动降级对账 + 重建游标
 - [ ] USN/对账去重：同一变更不重复 dispatch

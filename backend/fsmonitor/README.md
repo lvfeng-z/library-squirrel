@@ -16,9 +16,9 @@
 前端另监听 Wails 事件 `fsmonitor:change`（变更发生时实时推送，data 含待修复 id/kind/fromPath/toPath）。
 
 ## 核心概念
-- **FileChange**：原始文件变更（Create/Remove，相对 workDir 的正斜杠路径，平台无关语义）
+- **FileChange**：原始文件变更（Create/Remove，相对 workDir 的正斜杠路径，平台无关语义；Move 仅 USN 离线产出——已配对的旧→新路径，运行时 fsnotify 不产）
 - **SemanticChange**：关联后的语义变更（`Move` 文件移动 / `Delete` 删除 / `Untracked` 外部新增 / `DirMove` 目录改名）
-- **能力接口（Deps 注入，nil = 降级）**：`LiveEventSource`(实时事件) / `ReconciliationScanner`(离线对账) / `ContentFingerprinter`(指纹) / `StoreReader`+`StoreRepairer`(DB 读写) / `OfflineChangeProvider`(USN，预留)
+- **能力接口（Deps 注入，nil = 降级）**：`LiveEventSource`(实时事件) / `ReconciliationScanner`(离线对账) / `ContentFingerprinter`(指纹) / `StoreReader`+`StoreRepairer`(DB 读写) / `OfflineChangeProvider`(USN 离线追溯：Windows 记录解析 + FRN→路径缓存已就位 `usn_windows.go`/`frn_cache_windows.go`，provider 注入待 C-4) / `CursorStore`(USN 游标持久化 `fsmonitor_cursor` 表，C-3)
 - **RepairManager**：待修复变更队列 + 用户确认执行
 
 ## 依赖关系
@@ -31,3 +31,4 @@
 - **目录改名检测**：目录 Create 触发下级扫描（采样 50 文件算指纹配对 DB）→ 聚合最常见旧目录前缀 → `DirMove`；修复用 `GLOB` 批量 REPLACE 下级路径前缀（走 `file_path` 索引，`LIKE` 默认不走索引）
 - **路径分隔符统一正斜杠**：DB `file_path` 规范正斜杠（`NormalizeFilePaths` 启动迁移）；`filepath.Dir` 在 Windows 会规范成反斜杠，必须 `ToSlash` 还原
 - **降级**：能力 nil（如实时事件源不可用、网络盘）时上层走降级路径（仅离线对账 / 关联降级为原始事件日志）
+- **USN readFRN 缓冲须堆分配**：`FSCTL_READ_FILE_USN_DATA`（经文件句柄读单文件/目录 FRN，非管理员可用）属 METHOD_NEITHER，`DeviceIoControl` 输出缓冲必须堆分配（`make([]byte, 64KB)`），栈缓冲（`var buf [N]byte`）触发 `ERROR_INVALID_USER_BUFFER`（C-0b PoC 踩坑）。FRN→路径缓存只存目录（路径解析只查 ParentFRN，恒为目录）
