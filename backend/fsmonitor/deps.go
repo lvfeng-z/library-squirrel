@@ -34,8 +34,7 @@ type ContentFingerprinter interface {
 // Deps 工作目录监控所需依赖集合，各能力以指针持有，nil 表示该能力降级不可用。
 type Deps struct {
 	LiveSource      LiveEventSource       // 实时事件流，环境不可用时为 nil
-	OfflineProvider OfflineChangeProvider // 离线追溯，仅 Windows 可用，首版为 nil
-	CursorStore     CursorStore           // USN 游标持久化（仅 USN 用），nil = 无持久化每次全量对账
+	OfflineProvider OfflineChangeProvider // 离线追溯，仅 Windows 可用，nil = 全量对账
 	Scanner         ReconciliationScanner // 全量对账，通用(离线对账实现就位后填充)
 	Fingerprinter   ContentFingerprinter  // 内容指纹，通用
 	StoreReader     StoreReader           // persistent_store 读取(按指纹/路径查记录)，关联层依赖
@@ -44,7 +43,8 @@ type Deps struct {
 
 // NewPlatformDeps 按当前操作系统构造可用依赖集合，不可用能力留 nil 并记录降级日志。
 // usnEnabled 控制是否启用 USN 离线精确追溯（仅 Windows 且需管理员；开关开但非管理员则降级对账）。
-func NewPlatformDeps(workDir string, usnEnabled bool) *Deps {
+// cursorStore 为 USN provider 的游标持久化依赖（仅 Windows USN 用，非 Windows 忽略）。
+func NewPlatformDeps(workDir string, usnEnabled bool, cursorStore CursorStore) *Deps {
 	d := &Deps{
 		Fingerprinter: NewHeadFingerprinter(),
 	}
@@ -58,8 +58,8 @@ func NewPlatformDeps(workDir string, usnEnabled bool) *Deps {
 		// USN 离线精确追溯门控（D8）：开关开启 + 管理员权限 才注入 provider
 		if usnEnabled {
 			if isElevated() {
-				// TODO(C-4): 实现并注入 usnProvider（OfflineChangeProvider）；当前 provider 未实现，离线仍走全量对账
-				logger.Log.Infof("[fsmonitor] USN 离线精确追溯已启用（管理员权限）；provider 待实现，离线暂走全量对账")
+				d.OfflineProvider = NewUsnProvider(workDir, cursorStore)
+				logger.Log.Infof("[fsmonitor] USN 离线精确追溯已启用（管理员权限）")
 			} else {
 				logger.Log.Warnf("[fsmonitor] USN 离线追溯开关已开启，但当前非管理员运行，降级为全量对账（USN 卷级读取需管理员权限）")
 			}

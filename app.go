@@ -925,10 +925,10 @@ func (app *App) initAdvancedServices() error {
 	} else if n > 0 {
 		logger.Log.Infof("[persistentStore] file_path 分隔符规范化完成，共 %d 条", n)
 	}
-	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir(), app.SettingsService.GetSettings().FsmonitorSettings.UsnEnabled)
+	cursorRepo := fsmonitor.NewCursorRepository(app.db)
+	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir(), app.SettingsService.GetSettings().FsmonitorSettings.UsnEnabled, cursorRepo)
 	fsmonitorDeps.StoreReader = &storeReaderAdapter{svc: app.PersistentStoreService}
 	fsmonitorDeps.StoreRepairer = &storeRepairerAdapter{svc: app.PersistentStoreService}
-	fsmonitorDeps.CursorStore = fsmonitor.NewCursorRepository(app.db)
 	fsmonitorDeps.Scanner = fsmonitor.NewScanner(fsmonitorDeps.StoreReader, func() string { return app.SettingsService.GetWorkDir() })
 	app.FsmonitorService = fsmonitor.NewService(
 		fsmonitorDeps,

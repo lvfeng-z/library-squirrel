@@ -85,16 +85,68 @@ func (s *Service) Start() {
 	go s.watchWorkDir()
 }
 
-// runOfflineReconcile 离线对账：Scan 产 DiffSet → 指纹配对关联 → 入队待修复 + 通知
+// dedupKey 离线追溯变更去重键（D7）：USN 段与对账段可能对同一变更各报一次，按业务身份去重。
+type dedupKey struct {
+	kind     SemanticKind
+	fromPath string
+	toPath   string
+	storeID  int64
+}
+
+func makeDedupKey(sc *SemanticChange) dedupKey {
+	return dedupKey{kind: sc.Kind, fromPath: sc.FromPath, toPath: sc.ToPath, storeID: sc.StoreID}
+}
+
+// runOfflineReconcile 离线追溯：USN 精确补账（OfflineProvider 可用）+ 全量对账兜底（D2）。
+// USN 段产出 []FileChange 经 Correlator 关联后 dispatch；对账段始终再跑，命中 USN 已报键则跳过（D7 去重），
+// 补齐 USN 未覆盖项（游标失效/降级/历史遗留）。USN 失败（含游标失效 R3）→ 降级纯对账。
 func (s *Service) runOfflineReconcile() {
 	ctx := context.Background()
+	reported := make(map[dedupKey]bool) // 已 dispatch 的变更键（USN 段填充，对账段查重）
+	// dispatchNew 去重 dispatch：已报键跳过，否则记键 + dispatch。返回是否实际 dispatch（novel）。
+	dispatchNew := func(sc *SemanticChange) bool {
+		k := makeDedupKey(sc)
+		if reported[k] {
+			return false
+		}
+		reported[k] = true
+		s.dispatchSemanticChange(sc)
+		return true
+	}
+
+	// 1. USN 精确追溯段（OfflineProvider 可用 + 关联层就绪）
+	if s.deps != nil && s.deps.OfflineProvider != nil && s.correlator != nil {
+		changes, _, err := s.deps.OfflineProvider.ChangesSince(ctx, nil)
+		switch {
+		case err != nil:
+			logger.Log.Warnf("[fsmonitor] USN 离线追溯失败，降级全量对账: %v", err)
+		default:
+			var produced, novel, dedup int // 关联产出 / 新报 / 段内去重（同变更多次产出同一语义）
+			for _, ch := range changes {
+				sc := s.correlator.Process(ctx, ch)
+				if sc == nil {
+					continue
+				}
+				produced++
+				if dispatchNew(sc) {
+					novel++
+				} else {
+					dedup++
+				}
+			}
+			logger.Log.Infof("[fsmonitor] USN 段完成：%d 条原始变更 → 关联产出 %d 条，新报 %d 条（段内去重 %d 条）",
+				len(changes), produced, novel, dedup)
+		}
+	}
+
+	// 2. 全量对账段（始终，D2 兜底；与 USN 去重）
 	diff, err := s.deps.Scanner.Scan(ctx)
 	if err != nil {
 		logger.Log.Warnf("[fsmonitor] 离线对账失败: %v", err)
 		return
 	}
 	if len(diff.Missing) == 0 && len(diff.Untracked) == 0 {
-		logger.Log.Infof("[fsmonitor] 离线对账完成：无变更")
+		logger.Log.Infof("[fsmonitor] 离线对账完成：无变更（USN 已报 %d 条）", len(reported))
 		return
 	}
 	// 全量查 DB 有效记录（带指纹），构建 Missing 记录的 ID→指纹映射用于配对
@@ -115,7 +167,15 @@ func (s *Service) runOfflineReconcile() {
 		}
 		untrackedFP[u.FilePath] = fp.Digest
 	}
-	// 指纹配对：Missing 的 DB 指纹 == Untracked 的现场指纹 → Move
+	// 指纹配对：Missing 的 DB 指纹 == Untracked 的现场指纹 → Move（dispatch 前去重）
+	var reconNovel, reconDedup int // 对账段新报 / 去重（命中 USN 段或段内已报）
+	reconDispatch := func(sc *SemanticChange) {
+		if dispatchNew(sc) {
+			reconNovel++
+		} else {
+			reconDedup++
+		}
+	}
 	usedUntracked := make(map[string]bool)
 	for _, m := range diff.Missing {
 		dbFP := fpByID[m.StoreID]
@@ -134,12 +194,12 @@ func (s *Service) runOfflineReconcile() {
 		}
 		if matched != "" {
 			usedUntracked[matched] = true
-			s.dispatchSemanticChange(&SemanticChange{
+			reconDispatch(&SemanticChange{
 				Kind: SemanticMove, FromPath: m.FilePath, ToPath: matched, StoreID: m.StoreID, DetectedAt: now(),
 			})
 		} else {
 			// 无配对 Untracked → 删除
-			s.dispatchSemanticChange(&SemanticChange{
+			reconDispatch(&SemanticChange{
 				Kind: SemanticDelete, FromPath: m.FilePath, StoreID: m.StoreID, DetectedAt: now(),
 			})
 		}
@@ -147,12 +207,13 @@ func (s *Service) runOfflineReconcile() {
 	// 剩余未配对 Untracked → 外部新增
 	for _, u := range diff.Untracked {
 		if !usedUntracked[u.FilePath] {
-			s.dispatchSemanticChange(&SemanticChange{
+			reconDispatch(&SemanticChange{
 				Kind: SemanticUntracked, ToPath: u.FilePath, DetectedAt: now(),
 			})
 		}
 	}
-	logger.Log.Infof("[fsmonitor] 离线对账完成：Missing=%d Untracked=%d", len(diff.Missing), len(diff.Untracked))
+	logger.Log.Infof("[fsmonitor] 离线对账完成：Missing=%d Untracked=%d（新报 %d 条，去重跳过 %d 条 USN/段内已报）",
+		len(diff.Missing), len(diff.Untracked), reconNovel, reconDedup)
 }
 
 // dispatchSemanticChange 派发语义变更：入队待修复 + 通知前端（离线对账与运行时共用）
