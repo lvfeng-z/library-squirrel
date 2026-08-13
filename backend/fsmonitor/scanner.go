@@ -18,6 +18,21 @@ var scanDirs = []string{
 	"store/avatar/site",
 }
 
+// inScanDirs 判断 workDir 相对路径是否命中任一白名单子树（含子树根自身）。
+// 离线对账扫描与 USN 路径过滤共用：USN 解析出的全路径须命中白名单才上报，
+// store/ 外的变更（backup/、.git/ 等）为噪声丢弃。rel 用正斜杠基准（与 file_path 一致）。
+func inScanDirs(rel string) bool {
+	if rel == "" || rel == "." {
+		return false
+	}
+	for _, d := range scanDirs {
+		if rel == d || strings.HasPrefix(rel, d+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // scanner 基于 workDir 遍历 + DB 全量比对的 ReconciliationScanner 实现
 type scanner struct {
 	storeReader   StoreReader
