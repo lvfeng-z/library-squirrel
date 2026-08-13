@@ -2,19 +2,44 @@ workDir = E:\code\lvfeng\library-squirrel
 volume  = \\.\E:
 [卷信息] E:\ 文件系统=NTFS, 支持 USN journal=true
 
-=== A. 卷句柄 + FSCTL_QUERY_USN_JOURNAL（离线追溯路径）===
-[R2] GENERIC_READ 打开卷句柄成功
-[QUERY] function61/0x000900F4 成功（返回 56 字节）
-USN_JOURNAL_DATA:
-  UsnJournalID = 134090534876434938 (0x1DC62A18B0D51FA)
-  FirstUsn     = 1006632960
-  NextUsn      = 1044295168
-  MaximumSize  = 33554432 字节（≈32.0 MB）
+[QUERY] UsnJournalID=134090534876434938 FirstUsn=1015021568 NextUsn=1051304672（journal 跨度 34.6 MB）
 
-=== B. 文件句柄 + FSCTL_READ_FILE_USN_DATA（对照实验）===
-[对照] FSCTL_READ_FILE_USN_DATA 成功（72 字节）
-[记录] V2 recLen=72 FRN=3377699720621538 ParentFRN=1970324837039821 USN=1039551248 Reason=0x0 FileName="go.mod"
-[记录]   Reason 位: 0x0(无已知位)
+=== B. 触发 workDir 文件活动（create/rename）===
+  [触发] 已在 E:\code\lvfeng\library-squirrel\.usn-poc-trigger 做 create/rename（保留目录+tmp2.txt 进缓存）
+  [触发] base 目录 FRN=4503599627586917（诊断锚点：tmp 记录 ParentFRN 应等于此）
+  活动期间 USN 区间 [1051304672, 1051305584]（新增 912 字节记录）
 
-=== 结论 ===
-R2 通过：非管理员可经卷句柄读 USN journal，可继续 C-0b。
+=== C. [R1] 建 FRN→路径缓存（方案B，全 workDir）===
+  全 workDir：22730 文件 / 2969 目录 → 25699 缓存条目，耗时 8.0213403s
+  白名单 store/* 子树：0 文件 / 0 目录（生产上报口径；开发环境常为空）
+
+=== D. [READ-活动段] R1 解析验证 ===
+  活动段 1 批 IO，8 条路径类记录
+  Reason 分布：CLOSE=3 CREATE=5 RENAME_NEW=2 RENAME_OLD=1
+  [命中] ./.usn-poc-trigger  (V3 FRN=4503599627586917 ← ParentFRN=1970324837039821, Reason=CREATE)
+  [命中] ./.usn-poc-trigger  (V3 FRN=4503599627586917 ← ParentFRN=1970324837039821, Reason=CREATE|CLOSE)
+  [命中] .usn-poc-trigger/tmp1.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=CREATE)
+  [命中] .usn-poc-trigger/tmp1.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=CREATE)
+  [命中] .usn-poc-trigger/tmp1.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=CREATE|CLOSE)
+  [命中] .usn-poc-trigger/tmp1.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=RENAME_OLD)
+  [命中] .usn-poc-trigger/tmp2.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=RENAME_NEW)
+  [命中] .usn-poc-trigger/tmp2.txt  (V3 FRN=3096224744033641 ← ParentFRN=4503599627586917, Reason=RENAME_NEW|CLOSE)
+  解析：全缓存命中 8 / 未命中 0（命中率 100.0%），白名单内 0
+
+=== E. [READ-历史段] R6 复用检测（大样本）===
+  历史段 10 批 IO，5352 条路径类记录（读到 NextUsn=1015600728）
+  唯一 FRN = 2256，出现多次的 FRN = 1649
+  检测到 delete→create 复用 = 0 例
+
+=== 结论（D4 判据）===
+R1 建缓存：全 workDir 22730 文件/2969 目录 → 25699 缓存条目，耗时 8.0213403s
+         （白名单 store/* 子树：0 文件/0 目录——生产实际上报口径；开发环境常为空）
+R1 解析  ：全缓存命中率 100.0%（命中=8/未命中=0），白名单内 0 条
+R6 复用  ：唯一 FRN 2256，复用例 0（观察样本 5352 条）
+
+D4 建议：
+  解析机制可行：ParentFRN 命中全缓存即拼出 workDir 相对路径（样本已人眼校验）。
+  全 workDir 22730 文件建缓存耗时 8.0213403s，体量可接受（白名单子树 ≤ 此）。
+  → FRN 解析无需独立基建节点，C-2 直接实现。
+  R6 样本未捕获复用；缓存仍须落实「删除记录到达即清条目」防御（方案 §4.2），不可省略。
+  注2：D1 游标表/D2 对账兜底/D3 ChangeMove 分支 不受本 PoC 影响，可并行推进。
