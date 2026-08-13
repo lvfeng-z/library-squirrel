@@ -41,10 +41,18 @@ export class FsmonitorSettings {
      */
     "usnEnabled": boolean;
 
+    /**
+     * 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 doc/plan/store操作抑制suppression方案.md
+     */
+    "suppressEnabled": boolean;
+
     /** Creates a new FsmonitorSettings instance. */
     constructor($$source: Partial<FsmonitorSettings> = {}) {
         if (!("usnEnabled" in $$source)) {
             this["usnEnabled"] = false;
+        }
+        if (!("suppressEnabled" in $$source)) {
+            this["suppressEnabled"] = false;
         }
 
         Object.assign(this, $$source);

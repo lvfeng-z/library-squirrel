@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/util/fingerprint"
 )
 
 // SemanticKind 语义变更类型（关联层产出，比原始 FileChange 更接近业务）
@@ -61,7 +62,7 @@ const dirScanSampleLimit = 50
 // 依赖注入：Fingerprinter（算新文件指纹）+ StoreReader（查 DB）+ WorkDirGetter（拼绝对路径）。
 // 任一为 nil 时降级（无法关联，原始事件被丢弃）。
 type Correlator struct {
-	fingerprinter ContentFingerprinter
+	fingerprinter fingerprint.Computer
 	storeReader   StoreReader
 	workDirGetter func() string
 
@@ -71,7 +72,7 @@ type Correlator struct {
 }
 
 // NewCorrelator 创建关联器
-func NewCorrelator(fp ContentFingerprinter, sr StoreReader, workDirGetter func() string) *Correlator {
+func NewCorrelator(fp fingerprint.Computer, sr StoreReader, workDirGetter func() string) *Correlator {
 	return &Correlator{
 		fingerprinter: fp,
 		storeReader:   sr,

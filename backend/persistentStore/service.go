@@ -13,8 +13,10 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/util/filename"
+	"github.com/library-squirrel/backend/util/fingerprint"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -72,7 +74,7 @@ type storeWriter struct {
 	workDirGetter func() string // 每次调用获取最新的 workDir
 	filePath      sql.NullString // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
 	ext           sql.NullString // 文件扩展名（Complete 判断是否图片用）
-	fingerprinter Fingerprinter  // 可选，nil 时 Complete 不算指纹
+	fingerprinter fingerprint.Computer  // 可选，nil 时 Complete 不算指纹
 }
 
 func (w *storeWriter) Write(p []byte) (n int, err error) {
@@ -118,8 +120,8 @@ func (w *storeWriter) Complete() error {
 	record.Height = height
 	if w.fingerprinter != nil && w.filePath.Valid {
 		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
-		if digest, err := w.fingerprinter.Fingerprint(context.Background(), absPath); err == nil {
-			record.ContentFingerprint = sql.NullString{String: digest, Valid: true}
+		if fp, err := w.fingerprinter.Fingerprint(context.Background(), absPath); err == nil {
+			record.ContentFingerprint = sql.NullString{String: fp.Digest, Valid: true}
 		} else {
 			logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
 		}
@@ -139,6 +141,8 @@ func (w *storeWriter) Abort() error {
 
 	// 用构造时缓存的路径删除磁盘文件（无需读回 DB 记录）
 	if w.filePath.Valid {
+		storeRegistry.Suppress(w.filePath.String)
+		defer storeRegistry.Release(w.filePath.String)
 		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
 		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 			logger.Log.Warn("Abort 时删除文件失败", zap.String("path", absPath), zap.Error(err))
@@ -191,18 +195,11 @@ type FileMover interface {
 	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
-// Fingerprinter 内容指纹计算接口（由 persistentStore 定义，fsmonitor.Service 实现）
-// 落盘完成时同步算指纹落库，供文件移动/重命名的内容关联匹配；nil 时不算（降级）
-type Fingerprinter interface {
-	// Fingerprint 计算绝对路径文件的内容指纹串（实现自定格式）
-	Fingerprint(ctx context.Context, absPath string) (string, error)
-}
-
 // Service 文件存取服务
 type Service struct {
 	repo          Repository
 	fileMover     FileMover     // 可选依赖，nil 时不备份
-	fingerprinter Fingerprinter // 可选依赖，nil 时不计算内容指纹
+	fingerprinter fingerprint.Computer // 可选依赖，nil 时不计算内容指纹
 	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
@@ -216,7 +213,7 @@ func NewService(repo Repository, fileMover FileMover, workDirGetter func() strin
 }
 
 // SetFingerprinter 注入内容指纹计算器（可选依赖，外部变更监控启用时注入）
-func (s *Service) SetFingerprinter(fp Fingerprinter) {
+func (s *Service) SetFingerprinter(fp fingerprint.Computer) {
 	s.fingerprinter = fp
 }
 
@@ -281,12 +278,12 @@ func (s *Service) runBackfillFingerprints(ctx context.Context) {
 		if _, err := os.Stat(absPath); err != nil {
 			continue // 磁盘已无，留空交对账
 		}
-		digest, err := s.fingerprinter.Fingerprint(ctx, absPath)
+		fp, err := s.fingerprinter.Fingerprint(ctx, absPath)
 		if err != nil {
 			logger.Log.Warn("[persistentStore] 回填指纹：计算失败", zap.String("path", absPath), zap.Error(err))
 			continue
 		}
-		r.ContentFingerprint = sql.NullString{String: digest, Valid: true}
+		r.ContentFingerprint = sql.NullString{String: fp.Digest, Valid: true}
 		if err := s.repo.Updates(ctx, r); err != nil {
 			logger.Log.Warn("[persistentStore] 回填指纹：更新失败", zap.Int64("id", r.GetID()), zap.Error(err))
 			continue
@@ -303,12 +300,12 @@ func (s *Service) computeFingerprint(absPath string) sql.NullString {
 	if s.fingerprinter == nil {
 		return sql.NullString{}
 	}
-	digest, err := s.fingerprinter.Fingerprint(context.Background(), absPath)
+	fp, err := s.fingerprinter.Fingerprint(context.Background(), absPath)
 	if err != nil {
 		logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
 		return sql.NullString{}
 	}
-	return sql.NullString{String: digest, Valid: true}
+	return sql.NullString{String: fp.Digest, Valid: true}
 }
 
 // fillFingerprint 若注入了 Fingerprinter，计算绝对路径文件指纹填入 store.ContentFingerprint
@@ -326,6 +323,8 @@ func (s *Service) getWorkDir() string {
 
 // CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
 func (s *Service) CleanupFile(relPath string) {
+	storeRegistry.Suppress(relPath)
+	defer storeRegistry.Release(relPath)
 	absPath := filepath.Join(s.getWorkDir(), relPath)
 	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 		logger.Log.Warn("清理文件失败", zap.String("path", absPath), zap.Error(err))
@@ -337,9 +336,11 @@ func (s *Service) CleanupFile(relPath string) {
 // fileName: 原始文件名
 func (s *Service) StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer StoreWriter, err error) {
 	// 1. 校验 relPath
-	if err := validatePath(relPath); err != nil {
+	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, nil, err
 	}
+	storeRegistry.Suppress(relPath)
+	defer storeRegistry.Release(relPath)
 
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, relPath)
@@ -457,9 +458,11 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64)
 // 返回 persistent_store 记录 ID
 func (s *Service) Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error) {
 	// 1. 校验 relPath 是否匹配已注册子目录
-	if err := validatePath(relPath); err != nil {
+	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, err
 	}
+	storeRegistry.Suppress(relPath)
+	defer storeRegistry.Release(relPath)
 
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, relPath)
@@ -653,6 +656,8 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 
 	var backupId int64
 	if record.FilePath.Valid {
+		storeRegistry.Suppress(record.FilePath.String)
+		defer storeRegistry.Release(record.FilePath.String)
 		workDir := s.getWorkDir()
 		absPath := filepath.Join(workDir, record.FilePath.String)
 
@@ -698,9 +703,11 @@ func (s *Service) DeleteRecord(ctx context.Context, id int64) error {
 // fileName: 原始文件名
 func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error) {
 	// 1. 校验 relPath
-	if err := validatePath(relPath); err != nil {
+	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, err
 	}
+	storeRegistry.Suppress(relPath)
+	defer storeRegistry.Release(relPath)
 
 	// 2. 确认源文件存在
 	if _, err := os.Stat(srcAbsPath); err != nil {

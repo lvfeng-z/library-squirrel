@@ -58,7 +58,8 @@ type MergeSettings struct {
 
 // FsmonitorSettings 工作目录监控设置
 type FsmonitorSettings struct {
-	UsnEnabled bool `json:"usnEnabled" koanf:"usnEnabled"` // USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
+	UsnEnabled      bool `json:"usnEnabled" koanf:"usnEnabled"`           // USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
+	SuppressEnabled bool `json:"suppressEnabled" koanf:"suppressEnabled"` // 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 doc/plan/store操作抑制suppression方案.md
 }
 
 // 合并策略取值
@@ -97,7 +98,8 @@ func NewSettings() *Settings {
 			Strategy: MergeStrategyKeep,
 		},
 		FsmonitorSettings: FsmonitorSettings{
-			UsnEnabled: false,
+			UsnEnabled:      false,
+			SuppressEnabled: true,
 		},
 	}
 }

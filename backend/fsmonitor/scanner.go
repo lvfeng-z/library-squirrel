@@ -7,31 +7,8 @@ import (
 	"strings"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/storeRegistry"
 )
-
-// scanDirs 离线对账扫描的工作目录子目录（与 persistentStore/dir.go 白名单一致）
-// 只扫这些前缀下的文件；白名单外目录（如 backup/）不纳入
-var scanDirs = []string{
-	"store/resource",
-	"store/thumbnail",
-	"store/avatar/local",
-	"store/avatar/site",
-}
-
-// inScanDirs 判断 workDir 相对路径是否命中任一白名单子树（含子树根自身）。
-// 离线对账扫描与 USN 路径过滤共用：USN 解析出的全路径须命中白名单才上报，
-// store/ 外的变更（backup/、.git/ 等）为噪声丢弃。rel 用正斜杠基准（与 file_path 一致）。
-func inScanDirs(rel string) bool {
-	if rel == "" || rel == "." {
-		return false
-	}
-	for _, d := range scanDirs {
-		if rel == d || strings.HasPrefix(rel, d+"/") {
-			return true
-		}
-	}
-	return false
-}
 
 // scanner 基于 workDir 遍历 + DB 全量比对的 ReconciliationScanner 实现
 type scanner struct {
@@ -82,14 +59,14 @@ func (s *scanner) Scan(ctx context.Context) (DiffSet, error) {
 // collectDiskFiles 遍历白名单子目录，收集所有文件的相对 workDir 正斜杠路径集合
 func (s *scanner) collectDiskFiles(workDir string) (map[string]bool, error) {
 	files := make(map[string]bool)
-	for _, sub := range scanDirs {
-		absSub := filepath.Join(workDir, filepath.FromSlash(sub))
+	for _, dir := range storeRegistry.RegisteredDirs {
+		absSub := filepath.Join(workDir, filepath.FromSlash(dir.Path))
 		info, err := os.Stat(absSub)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue // 子目录不存在，跳过
 			}
-			logger.Log.Warnf("[fsmonitor] 对账扫描：访问目录失败 %s: %v", sub, err)
+			logger.Log.Warnf("[fsmonitor] 对账扫描：访问目录失败 %s: %v", dir.Path, err)
 			continue
 		}
 		if !info.IsDir() {
@@ -110,7 +87,7 @@ func (s *scanner) collectDiskFiles(workDir string) (map[string]bool, error) {
 			return nil
 		})
 		if err != nil {
-			logger.Log.Warnf("[fsmonitor] 对账扫描：遍历目录失败 %s: %v", sub, err)
+			logger.Log.Warnf("[fsmonitor] 对账扫描：遍历目录失败 %s: %v", dir.Path, err)
 		}
 	}
 	return files, nil

@@ -48,6 +48,10 @@ func defaultSettings() *Settings {
 		MergeSettings: MergeSettings{
 			Strategy: MergeStrategyKeep,
 		},
+		FsmonitorSettings: FsmonitorSettings{
+			UsnEnabled:      false,
+			SuppressEnabled: true,
+		},
 	}
 }
 

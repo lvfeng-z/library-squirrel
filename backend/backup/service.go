@@ -255,6 +255,10 @@ func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath 
 }
 
 // RestoreFile 从备份路径还原文件到目标路径
+//
+// TODO(suppression): 当前无调用方（活跃还原走 persistentStore.StoreFromExternal）。
+// 若未来接入且 targetPath 落在 store/ 白名单内，须在 os.Rename/os.Remove 前后
+// storeRegistry.Suppress/Release(targetPath)，避免还原写入被 fsmonitor 误报为外部变更。
 func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
 	if !util.FileExists(backupPath) {
 		return fmt.Errorf("还原失败，备份文件不存在: %s", backupPath)

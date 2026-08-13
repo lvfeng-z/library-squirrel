@@ -261,29 +261,3 @@ func TestIsDir(t *testing.T) {
 		t.Fatal("含目录位+其他位应判 IsDir=true")
 	}
 }
-
-// TestInScanDirs 验证白名单谓词：命中 store/* 子树为 true，外部目录为 false。
-func TestInScanDirs(t *testing.T) {
-	cases := []struct {
-		rel  string
-		want bool
-	}{
-		{"store/resource/作者/x.jpg", true},
-		{"store/resource", true}, // 子树根自身
-		{"store/thumbnail/t.jpg", true},
-		{"store/avatar/local/a.png", true},
-		{"store/avatar/site/b.png", true},
-		{"store/avatar", false}, // 仅 store/avatar 不在白名单（只有 local/site）
-		{"backup/2026/x.mp4", false},
-		{".git/config", false},
-		{"log/server.log", false},
-		{"", false},
-		{".", false},
-		{"store/resourceX/y.jpg", false}, // 前缀串匹配须按分隔符，非 store/resourceX
-	}
-	for _, c := range cases {
-		if got := inScanDirs(c.rel); got != c.want {
-			t.Fatalf("inScanDirs(%q) = %v want %v", c.rel, got, c.want)
-		}
-	}
-}

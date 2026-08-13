@@ -351,6 +351,34 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     什么是 USN 离线追溯？
                   </el-text>
                 </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>操作抑制</el-text>
+                  <el-switch
+                    v-model="settings.fsmonitor.suppressEnabled"
+                    class="settings-element-in-divider"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    开启后，软件自身的 store/ 写入（下载落盘、合并、还原等）不会被监控误报为外部变更。仅在排查误报/漏报问题时关闭——关闭后内部写入会重新触发"外部新增"误报（对账兜底，不致数据损坏）。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    什么是操作抑制？
+                  </el-text>
+                </el-tooltip>
                 <el-divider />
               </div>
               <div id="appearanceSettings">

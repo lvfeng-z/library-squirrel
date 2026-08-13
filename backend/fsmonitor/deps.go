@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/util/fingerprint"
 )
 
 // OfflineChangeProvider 离线变更追溯(基于持久日志)。
@@ -25,18 +26,12 @@ type ReconciliationScanner interface {
 	Scan(ctx context.Context) (DiffSet, error)
 }
 
-// ContentFingerprinter 内容指纹计算(size + 头部哈希)。
-// 用途：store 落盘时算并落库；离线对账移动匹配键；运行时配对丢失兜底。
-type ContentFingerprinter interface {
-	Fingerprint(ctx context.Context, absPath string) (Fingerprint, error)
-}
-
 // Deps 工作目录监控所需依赖集合，各能力以指针持有，nil 表示该能力降级不可用。
 type Deps struct {
 	LiveSource      LiveEventSource       // 实时事件流，环境不可用时为 nil
 	OfflineProvider OfflineChangeProvider // 离线追溯，仅 Windows 可用，nil = 全量对账
 	Scanner         ReconciliationScanner // 全量对账，通用(离线对账实现就位后填充)
-	Fingerprinter   ContentFingerprinter  // 内容指纹，通用
+	Fingerprinter   fingerprint.Computer  // 内容指纹，通用
 	StoreReader     StoreReader           // persistent_store 读取(按指纹/路径查记录)，关联层依赖
 	StoreRepairer   StoreRepairer         // persistent_store 修复(改 file_path/置失效)，修复层依赖
 }
@@ -46,7 +41,7 @@ type Deps struct {
 // cursorStore 为 USN provider 的游标持久化依赖（仅 Windows USN 用，非 Windows 忽略）。
 func NewPlatformDeps(workDir string, usnEnabled bool, cursorStore CursorStore) *Deps {
 	d := &Deps{
-		Fingerprinter: NewHeadFingerprinter(),
+		Fingerprinter: fingerprint.NewHeadComputer(),
 	}
 	if src, err := NewFsnotifySource(workDir); err == nil {
 		d.LiveSource = src

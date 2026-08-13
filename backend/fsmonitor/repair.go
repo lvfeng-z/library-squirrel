@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -140,7 +141,11 @@ func (m *RepairManager) applyDirMove(ctx context.Context, sc *SemanticChange, ac
 		logger.Log.Infof("[fsmonitor] 目录改名同步完成: %s → %s，更新 %d 条记录", sc.FromPath, sc.ToPath, n)
 		return nil
 	case ActionRestore:
-		// 目录从新路径移回旧路径
+		// 目录从新路径移回旧路径。抑制两端（FromPath/ToPath），避免复原触发自身的移动事件
+		storeRegistry.Suppress(sc.FromPath)
+		storeRegistry.Suppress(sc.ToPath)
+		defer storeRegistry.Release(sc.FromPath)
+		defer storeRegistry.Release(sc.ToPath)
 		workDir := m.workDirGetter()
 		fromAbs := filepath.Join(workDir, filepath.FromSlash(sc.ToPath))
 		toAbs := filepath.Join(workDir, filepath.FromSlash(sc.FromPath))
@@ -161,6 +166,11 @@ func (m *RepairManager) applyMove(ctx context.Context, sc *SemanticChange, actio
 		return m.repairer.UpdateFilePath(ctx, sc.StoreID, sc.ToPath)
 	case ActionRestore:
 		// 复原：文件从新路径移回旧路径（DB 仍指旧路径，移回后一致，无需改 DB）
+		// 抑制两端，避免复原触发自身的移动事件（自反馈）
+		storeRegistry.Suppress(sc.FromPath)
+		storeRegistry.Suppress(sc.ToPath)
+		defer storeRegistry.Release(sc.FromPath)
+		defer storeRegistry.Release(sc.ToPath)
 		workDir := m.workDirGetter()
 		fromAbs := filepath.Join(workDir, filepath.FromSlash(sc.ToPath))
 		toAbs := filepath.Join(workDir, filepath.FromSlash(sc.FromPath))

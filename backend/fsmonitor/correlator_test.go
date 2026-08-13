@@ -3,13 +3,15 @@ package fsmonitor
 import (
 	"context"
 	"testing"
+
+	"github.com/library-squirrel/backend/util/fingerprint"
 )
 
 // stubFingerprinter 测试用指纹器：返回固定摘要（processMove 不用指纹，仅供 Process 非 nil 守卫通过）。
 type stubFingerprinter struct{ digest string }
 
-func (s stubFingerprinter) Fingerprint(ctx context.Context, absPath string) (Fingerprint, error) {
-	return Fingerprint{Digest: s.digest}, nil
+func (s stubFingerprinter) Fingerprint(ctx context.Context, absPath string) (fingerprint.Fingerprint, error) {
+	return fingerprint.Fingerprint{Digest: s.digest}, nil
 }
 
 // mockStoreReader 测试用 StoreReader：按路径表查记录。

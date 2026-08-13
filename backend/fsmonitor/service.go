@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/storeRegistry"
 )
 
 // EventEmitter 前端事件发射器(由 Wails EventManager 实现)。
@@ -274,6 +275,13 @@ func (s *Service) startLive() {
 
 // handleFileChange 处理一个原始文件变更：经关联层产出语义变更 → 入队待修复 + 通知前端 + 日志
 func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
+	// 内部操作抑制：软件自身的 store/ 写入登记的路径，命中即丢弃，不进关联层
+	if storeRegistry.IsSuppressed(ev.Path) {
+		return
+	}
+	if ev.ToPath != "" && storeRegistry.IsSuppressed(ev.ToPath) {
+		return // Move 事件两端任一命中都抑制
+	}
 	// 关联层未就绪（Fingerprinter/StoreReader 缺失）：仅记录原始事件
 	if s.correlator == nil {
 		logger.Log.Debugf("[fsmonitor] 原始事件(关联降级): %+v", ev)

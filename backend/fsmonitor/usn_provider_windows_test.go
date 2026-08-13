@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"go.uber.org/zap"
 )
 
@@ -139,7 +140,7 @@ func TestPairAndResolve_ExternalParentDropped(t *testing.T) {
 
 // TestPairAndResolve_WhitelistFilter 解析出白名单外路径（缓存手动填了非 store/* 路径）→ emit 丢弃。
 func TestPairAndResolve_WhitelistFilter(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "backup/x"}) // backup/ 不在 scanDirs
+	cache := newCache(map[uint64]string{100: "backup/x"}) // backup/ 不在 storeRegistry.RegisteredPaths
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonFileCreate, false, "y.jpg"),
 	}, cache)
@@ -185,7 +186,7 @@ func TestUsnProvider_Integration(t *testing.T) {
 	}
 	logger.Log = zap.NewNop().Sugar() // 测试期 logger 未初始化，置 nop 防 ChangesSince 日志调用 panic
 	workDir := t.TempDir()            // 系统盘 NTFS 临时目录
-	for _, sub := range scanDirs {
+	for _, sub := range storeRegistry.RegisteredPaths {
 		if err := os.MkdirAll(filepath.Join(workDir, filepath.FromSlash(sub)), 0o755); err != nil {
 			t.Fatalf("建白名单子树失败 %s: %v", sub, err)
 		}
@@ -208,11 +209,11 @@ func TestUsnProvider_Integration(t *testing.T) {
 	for _, c := range append(append([]FileChange{}, ch1...), ch2...) {
 		switch c.Kind {
 		case ChangeMove:
-			if !inScanDirs(c.Path) && !inScanDirs(c.ToPath) {
+			if !storeRegistry.InScanDirs(c.Path) && !storeRegistry.InScanDirs(c.ToPath) {
 				t.Errorf("ChangeMove 路径未命中白名单: %+v", c)
 			}
 		default:
-			if !inScanDirs(c.Path) {
+			if !storeRegistry.InScanDirs(c.Path) {
 				t.Errorf("变更路径未命中白名单: %+v", c)
 			}
 		}

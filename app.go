@@ -48,9 +48,11 @@ import (
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteBrowser"
 	"github.com/library-squirrel/backend/siteTag"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util"
+	"github.com/library-squirrel/backend/util/fingerprint"
 	"github.com/library-squirrel/backend/window"
 	"github.com/library-squirrel/backend/work"
 	"github.com/library-squirrel/backend/workSet"
@@ -919,6 +921,8 @@ func (app *App) initAdvancedServices() error {
 	app.RecycleBinService.StartCleanup()
 
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
+	// 操作抑制开关（D7）：按设置注入 storeRegistry，关闭则不抑制内部写入（退回误报原状态）
+	storeRegistry.SetSuppressEnabled(app.SettingsService.GetSettings().FsmonitorSettings.SuppressEnabled)
 	// 启动监控前规范化 file_path 分隔符（历史数据统一正斜杠，避免对账路径比对误报）
 	if n, err := app.PersistentStoreService.NormalizeFilePaths(context.Background()); err != nil {
 		logger.Log.Warnf("规范化 file_path 分隔符失败: %v", err)
@@ -936,11 +940,9 @@ func (app *App) initAdvancedServices() error {
 		func() fsmonitor.EventEmitter { return app.taskProgressEmitter },
 	)
 	// 把内容指纹计算器注入 persistentStore（落盘完成时同步算指纹落库）
-	if fsmonitorDeps.Fingerprinter != nil {
-		app.PersistentStoreService.SetFingerprinter(&fingerprinterAdapter{fp: fsmonitorDeps.Fingerprinter})
-		// 存量指纹回填（异步，不阻塞启动）
-		app.PersistentStoreService.BackfillFingerprints(context.Background())
-	}
+	app.PersistentStoreService.SetFingerprinter(fingerprint.NewHeadComputer())
+	// 存量指纹回填（异步，不阻塞启动）
+	app.PersistentStoreService.BackfillFingerprints(context.Background())
 	app.FsmonitorService.Start()
 
 	// workSet 服务
@@ -1108,20 +1110,6 @@ func (a *dbTransactorAdapter) ExecInTransaction(ctx context.Context, fn func(ctx
 		txCtx := context.WithValue(ctx, database.TxKey, tx)
 		return fn(txCtx)
 	})
-}
-
-// fingerprinterAdapter 将 fsmonitor.ContentFingerprinter（返回 Fingerprint 结构体）
-// 适配为 persistentStore.Fingerprinter（返回指纹串），供 persistentStore 落盘完成时调用
-type fingerprinterAdapter struct {
-	fp fsmonitor.ContentFingerprinter
-}
-
-func (a *fingerprinterAdapter) Fingerprint(ctx context.Context, absPath string) (string, error) {
-	fp, err := a.fp.Fingerprint(ctx, absPath)
-	if err != nil {
-		return "", err
-	}
-	return fp.Digest, nil
 }
 
 // storeReaderAdapter 将 persistentStore.Service 适配为 fsmonitor.StoreReader，

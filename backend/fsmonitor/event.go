@@ -26,12 +26,6 @@ type FileChange struct {
 // 上层不解析，仅持有与回传；跨重启持久化由上层负责。
 type OfflineCursor []byte
 
-// Fingerprint 内容指纹，用于变更关联匹配(同内容文件匹配为同一文件)。
-type Fingerprint struct {
-	Size   int64
-	Digest string // size 拼接头部哈希
-}
-
 // MissingRecord 对账缺失项：persistent_store 有记录、磁盘无文件(被删或移走)
 type MissingRecord struct {
 	StoreID  int64 // persistent_store.id

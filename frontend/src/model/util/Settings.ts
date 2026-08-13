@@ -28,6 +28,7 @@ export const emptySettings: Settings = {
     strategy: 'keep'
   },
   fsmonitor: {
-    usnEnabled: false
+    usnEnabled: false,
+    suppressEnabled: true
   }
 }

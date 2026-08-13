@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"golang.org/x/sys/windows"
 )
 
@@ -240,11 +241,11 @@ func pairAndResolve(records []usnRecord, cache *frnPathCache) []FileChange {
 	emit := func(ch FileChange) {
 		switch ch.Kind {
 		case ChangeMove:
-			if !inScanDirs(ch.Path) && !inScanDirs(ch.ToPath) {
+			if !storeRegistry.InScanDirs(ch.Path) && !storeRegistry.InScanDirs(ch.ToPath) {
 				return
 			}
 		default:
-			if !inScanDirs(ch.Path) {
+			if !storeRegistry.InScanDirs(ch.Path) {
 				return
 			}
 		}
