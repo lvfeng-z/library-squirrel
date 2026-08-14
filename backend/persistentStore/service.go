@@ -230,6 +230,11 @@ func (s *Service) RenameDirectoryPrefix(ctx context.Context, oldPrefix string, n
 // UpdateFilePath 更新记录的 file_path（移动/重命名修复：DB 路径同步到文件新位置）
 // 仅改 file_path 字段，其余保留。记录须未失效。
 func (s *Service) UpdateFilePath(ctx context.Context, id int64, newFilePath string) error {
+	// 路径须在 store/ 白名单内：file_path 指向 backup/ 等白名单外路径（如误报的
+	// "移动到备份"被确认同步）会令记录指向非受管文件，后续读取/对账全部失效
+	if err := storeRegistry.ValidatePath(newFilePath); err != nil {
+		return fmt.Errorf("目标路径不在 store/ 白名单内: %w", err)
+	}
 	record := domain.NewPersistentStore()
 	record.SetID(id)
 	record.FilePath = sql.NullString{String: newFilePath, Valid: true}

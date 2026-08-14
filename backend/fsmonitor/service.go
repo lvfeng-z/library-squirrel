@@ -275,6 +275,12 @@ func (s *Service) startLive() {
 
 // handleFileChange 处理一个原始文件变更：经关联层产出语义变更 → 入队待修复 + 通知前端 + 日志
 func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
+	// 白名单过滤：仅关心 store/ 子树，backup/、log/ 等目录的事件直接丢弃
+	// （与离线 USN 段的 emit 过滤同一口径；内部 MoveToBackup 写入 backup/ 的事件在此拦下，
+	// 防其指纹命中 store 记录被误报为"移动到 backup"）
+	if !storeRegistry.InScanDirs(ev.Path) && (ev.ToPath == "" || !storeRegistry.InScanDirs(ev.ToPath)) {
+		return
+	}
 	// 内部操作抑制：软件自身的 store/ 写入登记的路径，命中即丢弃，不进关联层
 	if storeRegistry.IsSuppressed(ev.Path) {
 		return
