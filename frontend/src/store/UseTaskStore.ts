@@ -256,8 +256,10 @@ export const useTaskStore = defineStore('task', {
             // 新出现的活跃任务：建通知
             notificationId = notificationStore.add(buildTaskNotification(taskDTO))
           }
-        } else if (notNullish(outcome) && notNullish(prev) && isActiveStatus(prev.status)) {
-          // 活跃→终态：转终态保留并脱离 + 提醒
+        } else if (notNullish(outcome) && notNullish(prev) && isNullish(terminalOutcome(prev.status))) {
+          // 中间态（活跃/待确认/暂停等）→终态：转终态保留并脱离 + 提醒。
+          // prev 已终态 = 此前快照已处理过该迁移，跳过避免重复提醒；
+          // prev 缺席 = 跨会话装载的历史终态子任务（用户 Start 会连历史终态子任务一起载入 taskMap），不提醒
           handleTerminalTransition(taskDTO, prev.notificationId, outcome)
         }
         // 其余（未见/已终态/暂停等中间态）：不新建通知，既有活跃通知由第 4 步收尾统一撤下
@@ -269,9 +271,12 @@ export const useTaskStore = defineStore('task', {
         const taskDTO = buildTaskProgressDTO(item)
         const prev = previous.get(item.id)
         const outcome = terminalOutcome(taskDTO.task?.status)
-        if (notNullish(outcome) && notNullish(prev) && isActiveStatus(prev.status)) {
-          // 活跃→终态（经移除缓冲到达）：同样迁移处理
-          handleTerminalTransition(taskDTO, prev.notificationId, outcome)
+        // prev 缺席 = 任务活跃期整体落在后端快照防抖窗口内（前端从未见过活跃态，如确认替换后即刻失败）；
+        // prev 为中间态（待确认/暂停等）同理未处理过迁移。移除缓冲条目必为本会话新近终态
+        // （PushTaskRemove 仅由任务终止/停止清理触发，跨会话旧终态不进快照），故均提醒并补终态条目；
+        // prev 已终态 = 实时快照分支已处理过该迁移，跳过避免重复提醒
+        if (notNullish(outcome) && !(notNullish(prev) && notNullish(terminalOutcome(prev.status)))) {
+          handleTerminalTransition(taskDTO, prev?.notificationId, outcome)
         }
         this.tasks.set(item.id, { task: taskDTO, notificationId: undefined })
         // 延迟移除

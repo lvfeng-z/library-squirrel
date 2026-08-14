@@ -28,8 +28,10 @@ export interface ReminderCard {
   duration: number
 }
 
-/** 聚合窗口（毫秒）：窗口内多条按（category+level+title）合并为一张卡片 */
-const WINDOW_MS = 1000
+/** 聚合窗口（毫秒）：窗口内多条按（category+level+title）合并为一张卡片。
+ *  一次快照触发的多条 announce 在同一同步循环内入队，短窗口即可完整聚合；
+ *  窗口越长合并率越高但提醒越迟，300ms 为即时性与跨快照合并的平衡点 */
+const WINDOW_MS = 300
 /** 同屏最多展示卡片数，超出排队随关闭补位 */
 const MAX_VISIBLE = 3
 /** 默认自动关闭时长 */
