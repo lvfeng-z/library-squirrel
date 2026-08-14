@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
+import ReminderStack from '@renderer/components/common/ReminderStack.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
 import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
@@ -64,6 +65,9 @@ async function handleCloseCurrentView() {
     <ReplaceConfirmDialog />
     <ChangeConfirmDialog />
     <DialogSlotRenderer />
+
+    <!-- 消息提醒堆叠（右上角，聚合窗口合并批量提醒） -->
+    <ReminderStack />
 
     <!-- 向导覆盖层（新向导系统） -->
     <TourOverlay />
