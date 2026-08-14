@@ -1,11 +1,8 @@
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
-import { ElMessageBox, ElNotification } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import ConfirmConfig from '@renderer/model/util/ConfirmConfig.ts'
 import GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
-import { h } from 'vue'
-import NotifyConfig from '@renderer/model/util/NotifyConfig.ts'
-import { isNullish } from '@renderer/utils/CommonUtil.ts'
 import { askGotoPage } from '@renderer/utils/PageUtil.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
@@ -104,28 +101,6 @@ export function iniListener() {
     } catch {
       await Events.Emit('custom-confirm-echo', { confirmId, result: false })
     }
-  })
-
-  // 自定义通知 - Wails Events
-  Events.On('custom-notify', (event: any) => {
-    const config = event.data as NotifyConfig
-    ElNotification({
-      type: config.type,
-      message: h(
-        'span',
-        {
-          style: {
-            display: '-webkit-box',
-            '-webkit-box-orient': 'vertical',
-            '-webkit-line-clamp': isNullish(config.maxRow) ? 3 : config.maxRow,
-            overflow: 'hidden',
-            'text-overflow': 'ellipsis'
-          }
-        },
-        config.msg
-      ),
-      duration: config.duration
-    })
   })
 
   // 跳转页面

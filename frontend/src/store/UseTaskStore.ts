@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
-import NotificationItem from '@renderer/model/util/NotificationItem.ts'
-import { h } from 'vue'
+import { ElMessage } from 'element-plus'
+import { type NewNotificationItem } from '@renderer/model/util/NotificationItem.ts'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
@@ -81,7 +81,7 @@ export const useTaskStore = defineStore('task', {
         let notificationId: string | undefined
         // 只有进行中、等待中两种状态才推送到通知Store中
         if (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status) {
-          const notificationItem = createNotificationItem(task)
+          const notificationItem = buildTaskNotification(task)
           notificationId = useNotificationStore().add(notificationItem)
         }
         taskStatus.set(id, { task, notificationId })
@@ -109,25 +109,21 @@ export const useTaskStore = defineStore('task', {
           this.tasks.set(id, taskStoreObj)
         }
         if (task.task.status !== taskStoreObj.task.task?.status) {
-          // 任务状态变化为完成或失败，解决通知Store中该任务的Promise
+          // 任务进入终态：通知原地更新为终态并脱离任务 store（清空 notificationId），不再 remove
           if (notNullish(taskStoreObj.notificationId)) {
+            const notifyId = taskStoreObj.notificationId
+            const taskName = taskStoreObj.task.task?.taskName ?? taskStoreObj.task.task?.id
             if (task.task.status === TaskStatusEnum.FINISHED) {
-              useNotificationStore().remove(taskStoreObj.notificationId, {
-                type: 'success',
-                msg: `任务【${taskStoreObj.task.task?.taskName}】完成`
-              })
+              useNotificationStore().update(notifyId, { terminal: true, level: 'success', statusText: '完成' })
+              ElMessage.success(`任务【${taskName}】完成`)
               taskStoreObj.notificationId = undefined
             } else if (task.task.status === TaskStatusEnum.FAILED) {
-              useNotificationStore().remove(taskStoreObj.notificationId, {
-                type: 'error',
-                msg: `任务【${taskStoreObj.task.task?.taskName ?? taskStoreObj.task.task?.id}】失败`
-              })
+              useNotificationStore().update(notifyId, { terminal: true, level: 'error', statusText: '失败' })
+              ElMessage.error(`任务【${taskName}】失败`)
               taskStoreObj.notificationId = undefined
             } else if (task.task.status === TaskStatusEnum.PARTLY_FINISHED) {
-              useNotificationStore().remove(taskStoreObj.notificationId, {
-                type: 'warning',
-                msg: `任务【${taskStoreObj.task.task?.taskName ?? taskStoreObj.task.task?.id}】部分完成`
-              })
+              useNotificationStore().update(notifyId, { terminal: true, level: 'warning', statusText: '部分完成' })
+              ElMessage.warning(`任务【${taskName}】部分完成`)
               taskStoreObj.notificationId = undefined
             }
           }
@@ -137,7 +133,7 @@ export const useTaskStore = defineStore('task', {
             (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status)
           ) {
             copyIgnoreUndefined(taskStoreObj.task, task)
-            const notificationItem = createNotificationItem(taskStoreObj.task)
+            const notificationItem = buildTaskNotification(taskStoreObj.task)
             taskStoreObj.notificationId = useNotificationStore().add(notificationItem)
             return
           }
@@ -151,13 +147,20 @@ export const useTaskStore = defineStore('task', {
         if (isNullish(scheduleDTO.id)) {
           throw new Error('UseTaskStore: 更新任务进度失败，任务id为空')
         }
-        const task = this.getTask(scheduleDTO.id)
+        const taskStoreObj = this.tasks.get(scheduleDTO.id)
+        const task = taskStoreObj?.task
         if (notNullish(task)) {
           if (notNullish(scheduleDTO.total)) {
             task.total = scheduleDTO.total
           }
           if (notNullish(scheduleDTO.finished)) {
             task.finished = scheduleDTO.finished
+          }
+          // 同步通知中心的进度（仅活跃通知；终态通知已脱离、notificationId 为空故跳过）
+          if (notNullish(taskStoreObj?.notificationId)) {
+            useNotificationStore().update(taskStoreObj.notificationId, {
+              progress: { current: task.finished, total: task.total }
+            })
           }
         }
       })
@@ -213,7 +216,7 @@ export const useTaskStore = defineStore('task', {
         const taskDTO = buildTaskProgressDTO(item)
         let notificationId: string | undefined
         if (taskDTO.task?.status === TaskStatusEnum.PROCESSING || taskDTO.task?.status === TaskStatusEnum.WAITING) {
-          const notificationItem = createNotificationItem(taskDTO)
+          const notificationItem = buildTaskNotification(taskDTO)
           notificationId = useNotificationStore().add(notificationItem)
         }
         this.tasks.set(item.id, { task: taskDTO, notificationId })
@@ -247,9 +250,13 @@ export type TaskStoreObj = {
   notificationId: string | undefined
 }
 
-function createNotificationItem(task: TaskProgressDTO): NotificationItem {
-  const notificationItem = new NotificationItem()
-  notificationItem.title = `任务【${task.task?.taskName}】`
-  notificationItem.render = () => h('div', {}, '下载中')
-  return notificationItem
+function buildTaskNotification(task: TaskProgressDTO): NewNotificationItem {
+  return {
+    level: 'info',
+    category: 'task',
+    title: `任务【${task.task?.taskName ?? task.task?.id}】`,
+    statusText: '下载中',
+    progress: { current: task.finished, total: task.total },
+    route: { name: 'taskManage' }
+  }
 }

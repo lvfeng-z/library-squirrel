@@ -7,7 +7,6 @@ import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/ut
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
 import TaskList from '../components/common/TaskList.vue'
 
-import NotificationItem from '../model/util/NotificationItem.ts'
 import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
@@ -86,22 +85,28 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
 }
 
 async function createTaskFromSource() {
-  const notificationItem = new NotificationItem()
-  notificationItem.title = `正在根据【${sourceUrl.value}】创建任务`
-  const notificationStore = useNotificationStore()
-  const notificationId = notificationStore.add(notificationItem)
+  const notificationId = useNotificationStore().add({
+    level: 'info',
+    category: 'task',
+    title: `正在根据【${sourceUrl.value}】创建任务`,
+    statusText: '创建中',
+    route: { name: 'taskManage' }
+  })
   taskApi.taskCreateByUrl(sourceUrl.value)
     .then((response) => {
       const data = response.data
       taskListRef.value.doSearch()
       if (data.succeed) {
-        useNotificationStore().remove(notificationId, { type: 'success', msg: `成功创建了 ${data.addedQuantity} 个任务` })
+        useNotificationStore().update(notificationId, { terminal: true, level: 'success', statusText: `成功创建 ${data.addedQuantity} 个任务` })
+        ElMessage.success(`成功创建了 ${data.addedQuantity} 个任务`)
       } else {
-        useNotificationStore().remove(notificationId, { type: 'error', msg: '创建失败，' + (data.msg || '未知错误') })
+        useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: data.msg || '未知错误' })
+        ElMessage.error('创建失败，' + (data.msg || '未知错误'))
       }
     })
     .catch((e: Error) => {
-      useNotificationStore().remove(notificationId, { type: 'error', msg: e.message })
+      useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: e.message })
+      ElMessage.error(e.message)
     })
   downloadDialogState.value = false
   // 移除url

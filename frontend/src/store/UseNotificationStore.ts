@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
-import NotificationItem from '@renderer/model/util/NotificationItem.ts'
 import { v4 } from 'uuid'
-import { ElNotification } from 'element-plus'
-import { h } from 'vue'
-import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
+import { isNullish } from '@renderer/utils/CommonUtil.ts'
+import {
+  type NotificationItem,
+  type NewNotificationItem
+} from '@renderer/model/util/NotificationItem.ts'
 
 export const useNotificationStore = defineStore('notification', {
   state: (): {
@@ -16,11 +17,14 @@ export const useNotificationStore = defineStore('notification', {
     }
   },
   actions: {
-    add(notificationItem: NotificationItem): string {
+    /**
+     * 新增通知。store 分配 id/createTime 并存入副本，返回 id 供外部持有以做后续 update/remove。
+     */
+    add(item: NewNotificationItem): string {
       const id: string = v4()
-      notificationItem.id = id
-      this.notificationMap.set(id, notificationItem)
-      this.notificationList.push(notificationItem)
+      const stored: NotificationItem = { ...item, id, createTime: Date.now() }
+      this.notificationMap.set(id, stored)
+      this.notificationList.push(stored)
       return id
     },
     get(id: string): NotificationItem | undefined {
@@ -55,93 +59,29 @@ export const useNotificationStore = defineStore('notification', {
       // 使用 slice 方法获取区间数据 (包含 startIndex，不包含 endIndex + 1)
       return this.notificationList.slice(startIndex, endIndex + 1)
     },
-    remove(
-      id: string,
-      notificationConfig?: { msg: string; type?: 'error' | 'primary' | 'success' | 'warning' | 'info'; duration?: number }
-    ): void {
+    /**
+     * 原地合并更新通知（progress 等顶层字段整体替换，非深合并）。终态置 terminal:true 后，
+     * 调用方应放弃持有的 id 引用（如任务 store 清空 notificationId），使该通知脱离全量清理路径。
+     */
+    update(id: string, partial: Partial<NewNotificationItem>): void {
+      const stored = this.notificationMap.get(id)
+      if (isNullish(stored)) {
+        return
+      }
+      Object.assign(stored, partial)
+    },
+    remove(id: string): void {
       this.notificationMap.delete(id)
       const index = this.notificationList.findIndex((notification) => notification.id === id)
       if (index !== -1) {
         this.notificationList.splice(index, 1)
       }
-      if (notNullish(notificationConfig)) {
-        startNotify({
-          msg: notificationConfig.msg,
-          type: isNullish(notificationConfig.type) ? 'info' : notificationConfig.type,
-          duration: isNullish(notificationConfig.duration) ? 3000 : notificationConfig.duration
-        })
-      }
     }
   },
   getters: {
-    count: (state): number => state.notificationMap.size
+    /** 全部通知数（分页 total 用） */
+    count: (state): number => state.notificationMap.size,
+    /** 非终态（活跃）通知数（角标用） */
+    activeCount: (state): number => state.notificationList.filter((notification) => !notification.terminal).length
   }
 })
-
-type NotificationConfig = { msg: string; type: 'error' | 'primary' | 'success' | 'warning' | 'info'; duration: number }
-
-const positon: boolean[] = [true, true]
-const notificationBuffer: NotificationConfig[] = []
-const startNotify = (config: NotificationConfig) => {
-  notificationBuffer.push(config)
-  recursiveNotify()
-}
-const recursiveNotify = async () => {
-  const index = positon.findIndex((item) => item)
-  if (index === -1) {
-    return
-  }
-  positon[index] = false
-  if (index === 1) {
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 300))
-  }
-  let config: NotificationConfig | undefined = undefined
-  let currentLength: number = 0
-  if (notificationBuffer.length > 0) {
-    config = notificationBuffer[0]
-    currentLength = notificationBuffer.length
-    notificationBuffer.length = 0
-  }
-  if (config === undefined) {
-    positon[index] = true
-    return
-  }
-  const children = [h('i', {}, config.msg)]
-  if (currentLength > 1) {
-    children.push(
-      h(
-        'span',
-        {
-          style: {
-            display: 'inline-block',
-            backgroundColor: '#f56c6c',
-            color: 'white',
-            borderRadius: '10px',
-            padding: '0 6px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            marginLeft: '8px',
-            lineHeight: '18px',
-            minWidth: '18px',
-            textAlign: 'center'
-          }
-        },
-        currentLength + '+'
-      )
-    )
-  }
-  const releaseSlot = () => {
-    positon[index] = true
-    if (notificationBuffer.length > 0) {
-      recursiveNotify()
-    }
-  }
-  ElNotification({
-    type: config.type,
-    message: h('div', {}, children),
-    duration: config.duration,
-    offset: 80,
-    onClose: releaseSlot
-  })
-  setTimeout(releaseSlot, config.duration + 1000)
-}
