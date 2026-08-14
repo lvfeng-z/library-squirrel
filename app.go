@@ -923,6 +923,10 @@ func (app *App) initAdvancedServices() error {
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
 	// 操作抑制开关（D7）：按设置注入 storeRegistry，关闭则不抑制内部写入（退回误报原状态）
 	storeRegistry.SetSuppressEnabled(app.SettingsService.GetSettings().FsmonitorSettings.SuppressEnabled)
+	// D7 开关即时生效：设置保存/重置后联动同步到 storeRegistry（避免改开关需重启）
+	app.SettingsService.SetAfterSave(func(s *settings.Settings) {
+		storeRegistry.SetSuppressEnabled(s.FsmonitorSettings.SuppressEnabled)
+	})
 	// 启动监控前规范化 file_path 分隔符（历史数据统一正斜杠，避免对账路径比对误报）
 	if n, err := app.PersistentStoreService.NormalizeFilePaths(context.Background()); err != nil {
 		logger.Log.Warnf("规范化 file_path 分隔符失败: %v", err)

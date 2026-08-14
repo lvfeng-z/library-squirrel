@@ -15,9 +15,18 @@ import (
 
 // Service 设置服务
 type Service struct {
-	k        *koanf.Koanf
-	filePath string
-	mu       sync.RWMutex
+	k         *koanf.Koanf
+	filePath  string
+	mu        sync.RWMutex
+	afterSave func(*Settings) // 设置保存/重置后回调（app 注入，联动需即时生效的设置如 storeRegistry suppression 开关）；nil 不调
+}
+
+// SetAfterSave 注册设置保存/重置后的回调。回调在保存的写锁内同步调用，
+// 不得回调本 Service 的方法（会死锁）；用于联动需即时生效的设置项。
+func (s *Service) SetAfterSave(fn func(*Settings)) {
+	s.mu.Lock()
+	s.afterSave = fn
+	s.mu.Unlock()
 }
 
 // defaultSettings 返回默认配置
@@ -147,7 +156,13 @@ func (s *Service) SaveSettings(changes []SettingChange) error {
 		return err
 	}
 
-	return os.WriteFile(s.filePath, data, 0644)
+	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+		return err
+	}
+	if s.afterSave != nil {
+		s.afterSave(&settings)
+	}
+	return nil
 }
 
 // ResetSettings 重置设置到默认值
@@ -168,5 +183,11 @@ func (s *Service) ResetSettings() error {
 		return err
 	}
 
-	return os.WriteFile(s.filePath, data, 0644)
+	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+		return err
+	}
+	if s.afterSave != nil {
+		s.afterSave(&settings)
+	}
+	return nil
 }
