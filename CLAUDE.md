@@ -131,6 +131,7 @@ task build:server && task run:server
 
 **规约文档**（跨模块领域规约，非单模块 README）：
 - `doc/resource-type-spec.md` — 资源类型规约体系（ResourceType 内置 6 类 image/video/article/document/audio/unknown + 插件可声明自定义类型 + store_type 7 角色 + 严格识别 + 完整性三态）；插件声明契约见 `doc/plugin-dev-guide.md`。
+- `doc/message-integration-guide.md` — 前端消息系统接入指南（ElMessage/通知中心/对话框/消息提醒四轨机制地图、通知中心与 `announce` 的 API 及生命周期骨架、终态脱离不变量、后端事件转译形态）。新的消息生产者接入前必读。
 
 ### Git 提交
 - 中文，格式：`类型(范围): 描述`
