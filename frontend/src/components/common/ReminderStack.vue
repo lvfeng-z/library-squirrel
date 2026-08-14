@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Close } from '@element-plus/icons-vue'
 import { useReminderStore } from '@renderer/store/UseReminderStore.ts'
 
 const reminderStore = useReminderStore()
@@ -16,11 +17,19 @@ const MAX_LIST_ITEMS = 3
         :class="['reminder-card', `reminder-level-${card.level}`]"
       >
         <div class="reminder-card-title-row">
-          <span class="reminder-card-title">{{ card.title }}</span>
-          <span
-            v-if="card.items.length > 1"
-            class="reminder-card-count"
-          >{{ card.items.length }} 条</span>
+          <div class="reminder-card-title-group">
+            <span class="reminder-card-title">{{ card.title }}</span>
+            <span
+              v-if="card.items.length > 1"
+              class="reminder-card-count"
+            >{{ card.items.length }} 条</span>
+          </div>
+          <el-icon
+            class="reminder-card-close"
+            @click="reminderStore.dismiss(card.id)"
+          >
+            <Close />
+          </el-icon>
         </div>
         <div
           v-if="card.items.length === 1"
@@ -80,15 +89,38 @@ const MAX_LIST_ITEMS = 3
   justify-content: space-between;
   gap: 6px;
 }
+.reminder-card-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .reminder-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--app-text-primary);
   font-size: var(--el-font-size-medium);
   font-weight: bold;
 }
 .reminder-card-count {
   flex-shrink: 0;
+  border-radius: var(--app-radius);
+  background-color: var(--app-fill-color);
+  padding: 0 6px;
   color: var(--app-text-secondary);
   font-size: var(--el-font-size-small);
+  line-height: 18px;
+}
+.reminder-card-close {
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--app-text-secondary);
+}
+.reminder-card-close:hover {
+  color: var(--app-text-primary);
 }
 .reminder-card-message {
   margin-top: 4px;

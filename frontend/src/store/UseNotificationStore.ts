@@ -24,7 +24,8 @@ export const useNotificationStore = defineStore('notification', {
       const id: string = v4()
       const stored: NotificationItem = { ...item, id, createTime: Date.now() }
       this.notificationMap.set(id, stored)
-      this.notificationList.push(stored)
+      // 最新通知插在列表头部：列表即展示序（最新在前），分页第 1 页取到最新条目
+      this.notificationList.unshift(stored)
       return id
     },
     get(id: string): NotificationItem | undefined {
