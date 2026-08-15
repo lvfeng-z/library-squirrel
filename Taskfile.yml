@@ -54,6 +54,11 @@ tasks:
     cmds:
       - task: common:run:server
 
+  build:plugins:
+    summary: Builds all sibling plugin repos and copies their zips into resources/bundled-plugins
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File build/plugins.ps1
+
   build:docker:
     summary: Builds a Docker image for server mode deployment
     cmds:

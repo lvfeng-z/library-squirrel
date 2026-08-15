@@ -1,0 +1,9 @@
+﻿{
+  "reposRoot": "",
+  "plugins": {
+    "library-squirrel-plugin-local": "",
+    "library-squirrel-plugin-pixiv": "",
+    "library-squirrel-plugin-bilibili": "",
+    "library-squirrel-plugin-test": ""
+  }
+}

@@ -24,6 +24,10 @@ task run
 # 调试运行（Delve 调试器，监听 :2345）
 task run:debug
 
+# 一键构建全部插件并更新捆绑安装包 resources/bundled-plugins/
+# 插件仓库默认取主仓库同级目录，位置不同时复制 build/plugins.local.example.json 为 build/plugins.local.json 覆盖
+task build:plugins
+
 # 仅前端
 cd frontend && yarn build          # 生产构建
 cd frontend && yarn build:dev      # 开发构建（不压缩）
