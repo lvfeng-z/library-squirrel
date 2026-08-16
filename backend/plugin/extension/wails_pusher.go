@@ -14,8 +14,8 @@ const (
 
 // FrontendExtensionPusher 前端扩展事件推送器接口
 type FrontendExtensionPusher interface {
-	PushRegister(id string, data FrontendExtensionResponse)
-	PushUnregister(id string, pluginID int64, kind string)
+	PushRegister(data FrontendExtensionResponse)
+	PushUnregister(item FrontendExtensionUnregisterItem)
 	PushBatchUnregister(items []FrontendExtensionUnregisterItem)
 }
 
@@ -37,23 +37,25 @@ func NewWailsFrontendExtensionPusher(emitter WailsEventEmitter) *WailsFrontendEx
 	}
 }
 
-// PushRegister 推送注册事件到前端
-func (p *WailsFrontendExtensionPusher) PushRegister(id string, data FrontendExtensionResponse) {
+// PushRegister 推送注册事件到前端（信封 id 字段为 manifest 声明的裸 extensionId，与注销事件同语义）
+func (p *WailsFrontendExtensionPusher) PushRegister(data FrontendExtensionResponse) {
 	event := FrontendExtensionEventData{
-		Event: string(FrontendExtensionEventRegister),
-		ID:    id,
-		Data:  data,
+		Event:          string(FrontendExtensionEventRegister),
+		PluginPublicID: data.PluginPublicID,
+		ID:             data.ID,
+		Kind:           data.Type,
+		Data:           data,
 	}
 	p.emitter.Emit("frontend-extension-register", event)
 }
 
 // PushUnregister 推送注销事件到前端
-func (p *WailsFrontendExtensionPusher) PushUnregister(id string, pluginID int64, kind string) {
+func (p *WailsFrontendExtensionPusher) PushUnregister(item FrontendExtensionUnregisterItem) {
 	event := FrontendExtensionEventData{
-		Event:    string(FrontendExtensionEventUnregister),
-		ID:       id,
-		PluginID: pluginID,
-		Kind:     kind,
+		Event:          string(FrontendExtensionEventUnregister),
+		PluginPublicID: item.PluginPublicID,
+		ID:             item.ID,
+		Kind:           item.Kind,
 	}
 	p.emitter.Emit("frontend-extension-unregister", event)
 }
@@ -67,18 +69,21 @@ func (p *WailsFrontendExtensionPusher) PushBatchUnregister(items []FrontendExten
 	p.emitter.Emit("frontend-extension-batch-unregister", event)
 }
 
-// FrontendExtensionEventData 前端扩展事件数据
+// FrontendExtensionEventData 前端扩展事件数据（注册/注销/批量注销共用信封：
+// pluginPublicId 与 frontendExtensionId 分列，frontendExtensionId 一律为 manifest 声明的裸 extensionId）
 type FrontendExtensionEventData struct {
-	Event    string      `json:"event"`
-	ID       string      `json:"frontendExtensionId,omitempty"`
-	PluginID int64       `json:"pluginId,omitempty"`
-	Kind     string      `json:"kind,omitempty"`
-	Data     interface{} `json:"data,omitempty"`
-	Items    interface{} `json:"items,omitempty"`
+	Event          string      `json:"event"`
+	PluginPublicID string      `json:"pluginPublicId,omitempty"`
+	ID             string      `json:"frontendExtensionId,omitempty"`
+	Kind           string      `json:"kind,omitempty"`
+	Data           interface{} `json:"data,omitempty"`
+	Items          interface{} `json:"items,omitempty"`
 }
 
-// FrontendExtensionUnregisterItem 批量注销项
+// FrontendExtensionUnregisterItem 批量注销项（frontendExtensionId 为 manifest 声明的裸 extensionId，
+// 与注册事件 Response.ID 同语义；pluginPublicId 分列供前端派生复合 store 键）
 type FrontendExtensionUnregisterItem struct {
-	ID   string `json:"frontendExtensionId"`
-	Kind string `json:"kind"`
+	PluginPublicID string `json:"pluginPublicId"`
+	ID             string `json:"frontendExtensionId"`
+	Kind           string `json:"kind"`
 }

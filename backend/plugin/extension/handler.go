@@ -29,6 +29,16 @@ type FrontendExtensionResponse struct {
 	Children       []FrontendExtensionResponse `json:"children,omitempty"`
 }
 
+// newUnregisterItem 从扩展构造注销事件项（与 FrontendExtensionConfigToResponse 同源：
+// frontendExtensionId=Metadata.ID 裸 extensionId，与注册事件 Response.ID 同语义）
+func newUnregisterItem(ext *model.Extension[*domain.FrontendExtensionConfig]) FrontendExtensionUnregisterItem {
+	return FrontendExtensionUnregisterItem{
+		PluginPublicID: ext.Metadata.PluginPublicID,
+		ID:             ext.Metadata.ID,
+		Kind:           string(ext.Instance.Kind),
+	}
+}
+
 // FrontendExtensionHandler 前端扩展 Handler（IPC 入口）
 type FrontendExtensionHandler struct {
 	registry *FrontendExtensionRegistry

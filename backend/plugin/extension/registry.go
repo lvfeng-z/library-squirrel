@@ -48,10 +48,10 @@ func (r *FrontendExtensionRegistry) Register(extension *model.Extension[*domain.
 		zap.String("key", key),
 		zap.String("kind", string(extension.Instance.Kind)))
 
-	// 推送注册事件
+	// 推送注册事件（payload 与注销事件同源，frontendExtensionId 为裸 extensionId）
 	if r.pusher != nil {
 		resp := FrontendExtensionConfigToResponse(extension.Instance)
-		r.pusher.PushRegister(key, *resp)
+		r.pusher.PushRegister(*resp)
 	}
 
 	return nil
@@ -69,9 +69,9 @@ func (r *FrontendExtensionRegistry) Unregister(pluginPublicId string, extensionI
 	}
 	delete(r.extensions, key)
 
-	// 推送注销事件
+	// 推送注销事件（item 构造与注册事件同源）
 	if r.pusher != nil && ext != nil {
-		r.pusher.PushUnregister(key, ext.Metadata.PluginID, string(ext.Instance.Kind))
+		r.pusher.PushUnregister(newUnregisterItem(ext))
 	}
 
 	return nil
@@ -86,10 +86,7 @@ func (r *FrontendExtensionRegistry) UnregisterAll(pluginPublicId string) error {
 	var items []FrontendExtensionUnregisterItem
 	for key, ext := range r.extensions {
 		if strings.HasPrefix(key, prefix) {
-			items = append(items, FrontendExtensionUnregisterItem{
-				ID:   key,
-				Kind: string(ext.Instance.Kind),
-			})
+			items = append(items, newUnregisterItem(ext))
 			delete(r.extensions, key)
 		}
 	}

@@ -37,12 +37,21 @@ function wrapWithBoundary(loader: () => Promise<DefineComponent>, name: string):
 }
 
 /**
+ * 派生插件前端扩展的复合 store 键/路由名（publicId/裸extensionId）。
+ * 裸 extensionId 仅插件内唯一，复合键保证跨插件全局唯一（与后端 registry 内部 map 键同构）。
+ * 前端所有 slot 桶的键与 view 路由名统一由此派生，注册与注销共用同一函数保证对称
+ */
+function compositeSlotId(pluginPublicId: string, extensionId: string): string {
+  return `${pluginPublicId}/${extensionId}`
+}
+
+/**
  * 转换视图插槽配置
  */
 function convertToViewSlot(config: FrontendExtensionResponse): ViewSlot {
   const componentLoader = () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId)
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     name: config.name,
     component: wrapWithBoundary(componentLoader, config.name),
     order: config.order ?? 100,
@@ -59,7 +68,7 @@ function convertToEmbedSlot(config: FrontendExtensionResponse): EmbedSlot {
     throw new Error('转换嵌入插槽配置失败，position不能为空')
   }
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     position: config.position,  // 主程序具名插槽位标识
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
@@ -75,7 +84,7 @@ function convertToResourceViewerHandler(config: FrontendExtensionResponse): Reso
     throw new Error('转换资源渲染器配置失败，resourceType 不能为空')
   }
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     resourceType: config.resourceType,
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
@@ -88,7 +97,7 @@ function convertToResourceViewerHandler(config: FrontendExtensionResponse): Reso
  */
 function convertToDialogSlot(config: FrontendExtensionResponse): DialogSlot {
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     component: () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId),
     props: config.props as Record<string, unknown> | undefined,
     order: config.order ?? 100
@@ -103,7 +112,7 @@ function convertToReplaceViewSlot(config: FrontendExtensionResponse): ReplaceVie
     throw new Error('转换替换视图插槽配置失败，target不能为空')
   }
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     target: config.target,
     component: wrapWithBoundary(() => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId), config.name),
     props: config.props as Record<string, unknown> | undefined
@@ -111,30 +120,34 @@ function convertToReplaceViewSlot(config: FrontendExtensionResponse): ReplaceVie
 }
 
 /**
- * 转换菜单插槽配置
+ * 转换菜单插槽配置。viewId 在此解析为可直接跳转的路由名：
+ * 插件菜单指向同插件的 view，view 声明的是裸 extensionId，与同插件 publicId 拼复合路由名
  */
 function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
+  const resolveViewRouteName = (viewId: string | undefined, pluginPublicId: string): string | undefined =>
+    viewId ? compositeSlotId(pluginPublicId, viewId) : undefined
+
   // 递归转换子菜单
   const convertChildren = (children?: FrontendExtensionResponse[]): MenuSlotItem[] | undefined => {
     if (!children || children.length === 0) return undefined
     return children.map((child) => ({
-      slotId: child.frontendExtensionId,
-      index: child.pluginPublicId,
+      slotId: compositeSlotId(child.pluginPublicId, child.frontendExtensionId),
+      index: compositeSlotId(child.pluginPublicId, child.frontendExtensionId),
       label: child.name,
       icon: child.icon,
       order: child.order ?? 100,
-      viewId: child.viewId,
+      viewId: resolveViewRouteName(child.viewId, child.pluginPublicId),
       children: convertChildren(child.children)
     }))
   }
 
   return {
-    slotId: config.frontendExtensionId,
-    index: config.pluginPublicId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
+    index: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     label: config.name,
     icon: config.icon,
     order: config.order ?? 100,
-    viewId: config.viewId,
+    viewId: resolveViewRouteName(config.viewId, config.pluginPublicId),
     children: convertChildren(config.children)
   }
 }
@@ -144,7 +157,7 @@ function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
  */
 function convertToSiteBrowserListSlot(config: FrontendExtensionResponse): SiteBrowserListSlotItem {
   return {
-    slotId: config.frontendExtensionId,
+    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     pluginId: config.pluginId,
     pluginPublicId: config.pluginPublicId ?? '',
     name: config.name,
@@ -186,14 +199,13 @@ async function loadPluginStyles(pluginPublicId: string, cssPath: string): Promis
 }
 
 /**
- * 卸载插件CSS样式
- * @param pluginId 插件ID
+ * 移除插件注入的全部 CSS 痕迹（<link> 预编译样式与 <style> 运行时编译样式），
+ * 注销事件摄入时调用——与注册时的注入对称，换版（先注销后重注册）后新旧样式不并存
+ * @param pluginPublicId 插件公开ID
  */
-function unloadPluginStyles(pluginId: number): void {
-  const links = document.querySelectorAll(`link[data-plugin-id="${pluginId}"]`)
-  links.forEach((link) => {
-    link.remove()
-  })
+function removePluginStyles(pluginPublicId: string): void {
+  document.querySelectorAll(`link[data-plugin-id="${pluginPublicId}"]`).forEach((element) => element.remove())
+  document.querySelectorAll(`style[data-plugin-id="${pluginPublicId}"]`).forEach((element) => element.remove())
 }
 
 /**
@@ -425,10 +437,24 @@ async function loadVueSourceComponent(vuePath: string, pluginPublicId: string): 
 }
 
 /**
- * 动态注入 CSS 样式
+ * FNV-1a 简单哈希，生成 CSS 内容指纹——内容变则 styleId 变，
+ * 换版后新样式作为新元素注入，旧样式由注销清理（removePluginStyles）移除
+ */
+function hashCssContent(css: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < css.length; i++) {
+    hash ^= css.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+/**
+ * 动态注入 CSS 样式。styleId 含内容指纹（同内容幂等跳过），元素带 data-plugin-id
+ * 归属标记供 removePluginStyles 按 publicId 精确移除
  */
 function injectStyle(css: string, pluginPublicId: string, scopeId?: string): void {
-  const styleId = `plugin-style-${pluginPublicId}${scopeId ? `-${scopeId}` : ''}`
+  const styleId = `plugin-style-${pluginPublicId}${scopeId ? `-${scopeId}` : ''}-${hashCssContent(css)}`
   const existingStyle = document.getElementById(styleId)
   if (existingStyle) {
     return
@@ -436,6 +462,7 @@ function injectStyle(css: string, pluginPublicId: string, scopeId?: string): voi
 
   const styleElement = document.createElement('style')
   styleElement.id = styleId
+  styleElement.setAttribute('data-plugin-id', pluginPublicId)
   styleElement.textContent = css
   document.head.appendChild(styleElement)
 }
@@ -509,21 +536,26 @@ export function initSlotSyncListener() {
     }
   })
 
-  // 监听运行时前端扩展注销事件
+  // 监听运行时前端扩展注销事件（payload 为 pluginPublicId + 裸 frontendExtensionId 分列，
+  // 与注册事件同语义；复合 store 键在此派生，与注册共用 compositeSlotId 保证对称）
   Events.On('frontend-extension-unregister', (event: unknown) => {
-    const data = (event as { data: { frontendExtensionId: string; kind: string } }).data
-    if (data?.frontendExtensionId && data?.kind) {
-      unregisterSlotByType(store, data.frontendExtensionId, data.kind)
+    const data = (event as { data: { pluginPublicId: string; frontendExtensionId: string; kind: string } }).data
+    if (data?.pluginPublicId && data?.frontendExtensionId && data?.kind) {
+      unregisterSlotByType(store, compositeSlotId(data.pluginPublicId, data.frontendExtensionId), data.kind)
+      removePluginStyles(data.pluginPublicId)
     }
   })
 
   // 监听运行时前端扩展批量注销事件
   Events.On('frontend-extension-batch-unregister', (event: unknown) => {
-    const data = (event as { data: { items: Array<{ frontendExtensionId: string; kind: string }> } }).data
+    const data = (event as { data: { items: Array<{ pluginPublicId: string; frontendExtensionId: string; kind: string }> } }).data
     if (data?.items) {
+      const involvedPlugins = new Set<string>()
       data.items.forEach((item) => {
-        unregisterSlotByType(store, item.frontendExtensionId, item.kind)
+        unregisterSlotByType(store, compositeSlotId(item.pluginPublicId, item.frontendExtensionId), item.kind)
+        involvedPlugins.add(item.pluginPublicId)
       })
+      involvedPlugins.forEach(removePluginStyles)
 
       // 含 view/replaceView 时刷新清除已渲染页面与模块缓存（保持当前 URL）
       // useBuiltinMenus 注册路由后会 replace 重新匹配，避免 reload 后路由未注册灰屏

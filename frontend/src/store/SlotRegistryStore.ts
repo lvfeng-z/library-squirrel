@@ -14,7 +14,8 @@ export interface MenuSlotItem {
   label: string
   order?: number
   children?: MenuSlotItem[]
-  // 如果是叶子菜单项，指向对应的视图
+  // 如果是叶子菜单项，指向对应视图的路由名：内置菜单为裸路由名（如 'mainPage'），
+  // 插件菜单在摄入层（useSlotSyncListener.convertToMenuSlot）已解析为复合路由名 publicId/viewExtId
   viewId?: string
   // 如果是叶子菜单项，指向对应的页面状态
   pageStateKey?: string
