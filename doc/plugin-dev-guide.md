@@ -107,6 +107,8 @@ type MyTaskHandler struct{}
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
 
+> 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
+
 ### extensions 字段
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -858,7 +860,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **安装时用户知情同意**：用户安装第三方插件（非官方捆绑）时，主程序弹窗告知「该插件将获得完整宿主能力（读写资源库、创建任务、网络、原生窗口）」并由用户确认。确认后插件标记为 trusted；绕过确认的异常安装标记为未信任。
 - **未信任插件不运行**：`trusted=false` 的插件**不会被激活**（不启动子进程）。用户需在插件管理页手动「信任」后才运行——这是主程序与用户之间的信任契约，不经插件代码，插件作者无能为力。
 - **运行后能力仍全开**：一旦 trusted 运行，插件经 `PluginContext` 拥有的全部宿主能力（数据读写、任务、网络、窗口）**不受信任状态裁剪**。当前模型不做沙箱隔离与能力裁剪（完整沙箱属后续规划）；即用户「信任」即等于授予完整权限，**请你在插件文档中如实说明插件的权限行为**。
-- **完整性哈希**：主程序安装时计算插件包 SHA256 存档（`plugin.integrity_hash`），供事后追溯比对（重装覆盖、不做运行时校验）。插件作者无需关心。
+- **构建身份（buildId）**：构建管线（build.ps1）自动把 `git describe` 输出写入 plugin.json `buildId`，主程序以它判同构建（捆绑插件升级检测）并作前端资产缓存键。插件作者无需手写、不应手改（见第十八节）。
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
@@ -866,3 +868,46 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 须声明 `"capabilities": ["workOrderQuery"]`；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
+
+## 十八、身份与版本体系速查（开发者视角）
+
+整套体系是「**一个身份键 + 五条版本轴**」：身份键回答"这是哪个插件"，五条轴各自回答一个独立的版本问题。核心纪律：**每条轴只在它回答的那个问题变化时才动，不混用**。
+
+### 身份键：id（= publicId），一次性决定，终身不变
+
+- `id` 即全局身份键 publicId。格式为反向域名 `com.<你拥有的域名>.<插件名>`（个人开发者可用 `io.github.<用户名>.<插件名>`），至少两段 label、字符集限字母/数字/连字符/点——安装期强校验，含下划线、斜杠或单段的 id 直接被拒。
+- **第一个版本发布后 id 永不改**：id 变更等于做了一个新插件（新记录、新目录、新身份），旧的用户设置（plugin_storage）与任务关联不会跟随。
+- id 全局唯一，请用自己拥有的域名，防止与他人插件撞车。
+- `author` 是纯展示属性：改名随意，对身份零影响。
+
+### 五条版本轴：改了什么，才动什么
+
+| 你改了什么 | 动哪条轴 | 谁维护 | 忘了动的后果 |
+| --- | --- | --- | --- |
+| 纯代码修复 / 内部重构 | 什么都不动 | — | 无后果，buildId 自动感知 |
+| 功能发布、行为变化 | `version` | 插件作者 | 失去人读语义与升降级排序线索 |
+| SDK 协议（gRPC 接口）破坏性变更 | `contractVersion`（见第三节「契约版本协商」） | 插件作者与主程序协商 | 主程序加载时拒绝（fail-fast），不会静默出错 |
+| settings 设置项结构变化 | `configSchemaVersion`（见 8.3 配置迁移） | 插件作者 | 旧配置感知不到结构变化，`MigrateConfig` 不触发 |
+| 任务 PluginData JSON 格式变化 | PluginData 顶层 `schemaVersion`（见第六节「plugin_data 格式版本约定」，插件完全自管） | 插件作者 | 旧代码读到高版本数据 fail-fast 拒绝执行，防静默损坏 |
+| 任何源码状态变化 | `buildId` 自动变 | 构建管线（build.ps1 以 `git describe` 打标） | — |
+
+### 三个判同信号的分工
+
+- 判「**是不是同一份构建**」→ buildId：机器判同，驱动捆绑升级检测（已装与 zip 的 buildId 不一致即重装）与前端资产缓存失效（重构建必换 URL/ETag，见第十一节）。
+- 判「**升还是降**」→ version：语义排序，人读。
+- 判「**能否兼容运行**」→ contractVersion：协议边界，过新/过旧均拒绝。
+
+### 开发迭代流
+
+```
+改代码 → 跑 build.ps1（自动打标 buildId）→ 主程序重启
+  → buildId 与已装不同 → 自动升级重装 → 落新目录、清旧目录
+  → plugin_storage 用户设置/凭据保留（按记录 ID 关联，重装不丢）
+```
+
+发布节奏：`version` bump + commit + 打 tag（如 `v1.2.0`，buildId 转为 tag 基准、获得人读语义）→ `task build:plugins` 产出 zip（产物校验 buildId 非空，漏打标整体失败）。
+
+### 两个开发期特有的坑
+
+1. **dirty 盲区**：`git describe --dirty` 只区分"有无未提交改动"——同一 commit 下，前后两天各构建一次 dirty 包，buildId 相同，捆绑升级判定会认为"没变"而漏掉重装。开发期遇到（改了代码但没 commit，升级没触发），用插件管理页的「修复 / 选择安装包修复」手动重装，或 commit 后再构建。
+2. **不要手工编辑 zip 里的 buildId**：它同时是前端资产的缓存键，乱改会导致浏览器长缓存不失效（见第十一节缓存说明）。
