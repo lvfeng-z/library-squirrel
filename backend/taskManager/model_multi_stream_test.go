@@ -260,8 +260,8 @@ func TestMergeWorkInfo(t *testing.T) {
 	workName := "x"
 	from := &sdkdto.WorkResponse{
 		Work:         &sdkdto.WorkDTO{SiteWorkName: &workName},
-		SiteAuthors:  []*sdkdto.TaskSiteAuthorDTO{{SiteAuthorID: "a1"}},
-		LocalAuthors: []*sdkdto.LocalAuthorDTO{{ID: 1}},
+		SiteAuthors:  []*sdkdto.TaskSiteAuthorDTO{{SiteAuthorId: "a1"}},
+		LocalAuthors: []*sdkdto.LocalAuthorDTO{{Id: 1}},
 	}
 	mergeWorkInfo(to, from)
 	if to.Work == nil || to.Work.SiteWorkName == nil {

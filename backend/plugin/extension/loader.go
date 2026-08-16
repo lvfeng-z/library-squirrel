@@ -193,6 +193,10 @@ type Loader struct {
 	// URL 监听清理回调（插件卸载/崩溃时调用，清理该插件的 URL 监听）
 	urlListenerCleaner func(pluginPublicId string)
 
+	// 崩溃清理通知回调：Loader 完成自身清理（进程表+所属注册表+URL 监听）后调用，
+	// 供宿主触发生命周期参与者的 OnStopped，使崩溃路径与显式停用的清理集合对称
+	crashNotifier func(pluginPublicId string)
+
 	// 子进程模式：跟踪活跃的插件进程
 	processes map[string]*pluginEntry // publicId -> entry
 	mu        sync.RWMutex
@@ -223,6 +227,12 @@ func NewLoader(
 // SetUrlListenerCleaner 设置 URL 监听清理回调（插件卸载/崩溃时由 Loader 调用，清理该插件的 URL 监听）
 func (l *Loader) SetUrlListenerCleaner(fn func(pluginPublicId string)) {
 	l.urlListenerCleaner = fn
+}
+
+// SetCrashNotifier 设置崩溃清理通知回调：崩溃时 Loader 完成自身清理后调用，
+// 供宿主触发生命周期参与者的 OnStopped（与显式停用的清理集合对称）
+func (l *Loader) SetCrashNotifier(fn func(pluginPublicId string)) {
+	l.crashNotifier = fn
 }
 
 // unregisterUrlListener 清理插件 URL 监听（回调未设置时跳过）
@@ -491,6 +501,9 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
 		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
 		l.unregisterUrlListener(pluginPublicId)
+		if l.crashNotifier != nil {
+			l.crashNotifier(pluginPublicId)
+		}
 		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
 	}
 }

@@ -66,6 +66,16 @@ func (s *Service) stopRuntime(ctx context.Context, pluginPublicId string, op Plu
 	return nil
 }
 
+// NotifyPluginCrashed 插件进程崩溃通知：Loader 已完成自身清理（进程表与其所属注册表），
+// 此处执行参与者的 OnStopped 痕迹清理，使崩溃路径与显式停用的清理集合对称；
+// 不执行 PrepareStop（崩溃无法否决）也不再停进程
+func (s *Service) NotifyPluginCrashed(ctx context.Context, pluginPublicId string) {
+	logger.Log.Warnf("插件进程崩溃，执行参与者痕迹清理: %s", pluginPublicId)
+	for _, p := range s.participants {
+		p.OnStopped(ctx, pluginPublicId)
+	}
+}
+
 // removeFiles 删除插件目录文件（不触运行时、不修改数据库记录）
 func (s *Service) removeFiles(plugin *entity2.Plugin) {
 	appRoot := s.getAppRoot()

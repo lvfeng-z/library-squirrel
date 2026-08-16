@@ -51,6 +51,6 @@
 
 ## 关键设计
 
-- **停用生命周期（能力分散、契约集中）**：停用/换版统一走 `stopRuntime`（`lifecycle.go`）——参与者 `PrepareStop` 否决检查 → 运行时停止器（loader.UnloadPlugin，停进程+清其所属注册表）→ 参与者 `OnStopped` 清痕迹；`removeFiles` 独立成原子操作。凡持有插件运行时痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配静态资源/前端扩展两个参与者），注册表是停用清理完备性的唯一审计点。卸载=stopRuntime+removeFiles+标记；重装/换版=stopRuntime+removeFiles+installCore+Activate；取消信任=仅 stopRuntime。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置。设计见 `doc/plan/插件热重载体系完善方案.md`。
+- **停用生命周期（能力分散、契约集中）**：停用/换版统一走 `stopRuntime`（`lifecycle.go`）——参与者 `PrepareStop` 否决检查 → 运行时停止器（loader.UnloadPlugin，停进程+清其所属注册表）→ 参与者 `OnStopped` 清痕迹；`removeFiles` 独立成原子操作。凡持有插件运行时痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配静态资源/前端扩展/taskManager 三个参与者），注册表是停用清理完备性的唯一审计点。taskManager 参与者在卸载/更新/重装时否决存在运行中任务的操作（Processing/Pausing/Stopping/WaitingForInput；Paused 不拦），取消信任不否决（代价由前端确认框按 `GetActiveTaskCount` 明示后 force 强制停）。卸载=stopRuntime+removeFiles+标记；重装/换版=stopRuntime+removeFiles+installCore+Activate；取消信任=仅 stopRuntime。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置。**崩溃路径对称**：loader 崩溃清理后经 `SetCrashNotifier` 回调 `NotifyPluginCrashed`，执行同一参与者 OnStopped 集合（不否决、不停进程）。设计见 `doc/plan/插件热重载体系完善方案.md`。
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
 - **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`activatePlugin` 起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `doc/plan/插件信任模型最小集方案.md`。

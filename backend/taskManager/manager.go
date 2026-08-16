@@ -817,6 +817,26 @@ func (m *Manager) IsIdle() bool {
 	return len(m.taskMap) == 0
 }
 
+// CountActiveByPlugin 统计插件名下运行中的任务数。运行中=Processing/Pausing/Stopping/
+// WaitingForInput（在途执行、执行中收敛或执行中待用户确认——插件停用会打断其插件交互）；
+// Created/Waiting/Paused/终态不计（未启动与已暂停的任务不阻塞插件停用，暂停任务随停用
+// 的存续由用户自行处置）
+func (m *Manager) CountActiveByPlugin(pluginPublicId string) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	count := 0
+	for _, mt := range m.taskMap {
+		if !mt.task.PluginPublicID.Valid || mt.task.PluginPublicID.String != pluginPublicId {
+			continue
+		}
+		switch mt.GetState() {
+		case TaskStateProcessing, TaskStatePausing, TaskStateStopping, TaskStateWaitingForInput:
+			count++
+		}
+	}
+	return count
+}
+
 // ConfirmReplace 用户确认替换或跳过
 func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	m.waitingForInputMu.Lock()

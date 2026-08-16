@@ -26,7 +26,7 @@ func newNamingTask(author, workId, workName string) *ManagedTask {
 		},
 		workResp: &sdkdto.WorkResponse{
 			Work: &sdkdto.WorkDTO{
-				SiteWorkID:   pathTestStrPtr(workId),
+				SiteWorkId:   pathTestStrPtr(workId),
 				SiteWorkName: pathTestStrPtr(workName),
 			},
 			LocalAuthors: []*sdkdto.LocalAuthorDTO{{AuthorName: pathTestStrPtr(author)}},

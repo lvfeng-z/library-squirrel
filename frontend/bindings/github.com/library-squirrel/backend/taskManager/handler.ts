@@ -37,11 +37,21 @@ export function ConfirmReplaceBatch(taskIds: number[], action: string): $Cancell
 }
 
 /**
+ * GetActiveTaskCount 获取插件名下运行中任务数（Processing/Pausing/Stopping/WaitingForInput），
+ * 供插件停用/换版确认框明示代价与拦截提醒
+ */
+export function GetActiveTaskCount(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(1894382447, pluginPublicId).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
  */
 export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$models.TaskSnapshotDTO | null> | null> {
     return $Call.ByID(1922063002).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -50,7 +60,7 @@ export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$mode
  */
 export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1655799451, taskId).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType3($result);
     });
 }
 
@@ -59,7 +69,7 @@ export function GetTaskState(taskId: number): $CancellablePromise<model$0.ApiRes
  */
 export function GetTaskTreeState(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(1455726591, taskId).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType3($result);
     });
 }
 
@@ -129,11 +139,11 @@ export function StopTaskTrees(taskIds: number[]): $CancellablePromise<model$0.Ap
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.TaskSnapshotDTO.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
+const $$createType4 = $models.TaskSnapshotDTO.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType9 = $Create.Nullable($$createType8);

@@ -15,7 +15,7 @@ import PluginSettingDialog from '@renderer/components/dialogs/PluginSettingDialo
 import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isNotBlank} from '@renderer/utils/StringUtil.ts'
-import {fileSysUtilApi, pluginApi} from '@renderer/apis/http'
+import {fileSysUtilApi, pluginApi, taskApi} from '@renderer/apis/http'
 import {PluginDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 
@@ -200,11 +200,15 @@ async function unInstall(pluginPublicId: string) {
     })
     .catch(() => {})
 }
-// 设置插件信任状态（手动信任/取消信任）：取消信任即时停用运行时（force=确认对话框明示代价后强制停）
+// 设置插件信任状态（手动信任/取消信任）：取消信任即时停用运行时——确认框按运行中任务数明示代价（决策6）
 async function handleTrust(plugin: PluginDTO) {
   const publicId = String(plugin.publicId)
   if (plugin.trusted === true) {
-    ElMessageBox.confirm('取消信任将立即停用该插件，其正在运行的任务将失败终止。确认取消信任？', '取消信任', {
+    const activeCount = (await taskApi.taskGetActiveCountByPlugin(publicId)).data ?? 0
+    const message = activeCount > 0
+      ? `取消信任将立即停用该插件，其 ${activeCount} 个运行中任务将失败终止。确认取消信任？`
+      : '取消信任将立即停用该插件。确认取消信任？'
+    ElMessageBox.confirm(message, '取消信任', {
       confirmButtonText: '取消信任', cancelButtonText: '保留', type: 'warning'
     })
       .then(async () => {

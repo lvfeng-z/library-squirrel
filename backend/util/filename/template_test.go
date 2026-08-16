@@ -132,14 +132,14 @@ func TestExtractTokenData_NilResponse(t *testing.T) {
 func TestExtractTokenData_SiteAuthorOnly(t *testing.T) {
 	resp := &sdkdto.WorkResponse{
 		Work: &sdkdto.WorkDTO{
-			SiteWorkID:          strPtr("art123"),
+			SiteWorkId:          strPtr("art123"),
 			SiteWorkName:        strPtr("Test Art"),
 			SiteUploadTime:      int64Ptr(1779542400000), // 2026-05-21 00:00:00 UTC
-			SiteAuthorID:        strPtr("author456"),
+			SiteAuthorId:        strPtr("author456"),
 			SiteWorkDescription: strPtr("desc"),
 		},
 		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
-			{SiteAuthorID: "1", AuthorName: "PixivArtist"},
+			{SiteAuthorId: "1", AuthorName: "PixivArtist"},
 		},
 	}
 
@@ -229,7 +229,7 @@ func TestExtractTokenData_DownloadTime(t *testing.T) {
 func TestFullFlow_TemplateWithSanitize(t *testing.T) {
 	resp := &sdkdto.WorkResponse{
 		Work: &sdkdto.WorkDTO{
-			SiteWorkID:   strPtr("12345"),
+			SiteWorkId:   strPtr("12345"),
 			SiteWorkName: strPtr("Test: Art*Work?"),
 		},
 		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{

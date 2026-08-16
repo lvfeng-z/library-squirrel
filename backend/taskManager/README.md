@@ -21,6 +21,7 @@
 | `GetTaskTreeState(taskId)` | 查询任务状态：父任务返回聚合状态、叶子/独立任务返回自身状态 |
 | `GetTaskSnapshot()` | 获取所有活跃任务的完整状态快照 |
 | `IsIdle()` | 是否空闲（无运行中任务） |
+| `CountActiveByPlugin(pluginPublicId)` | 统计插件名下运行中任务数（Processing/Pausing/Stopping/WaitingForInput）——供插件停用/换版拦截判据与确认框代价明示 |
 | `ConfirmReplace` / `ConfirmReplaceBatch` | 用户确认重复作品的替换 / 跳过 |
 
 ## 控制语义

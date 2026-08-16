@@ -65,6 +65,12 @@ func (h *Handler) IsIdle() *model.ApiResponse[bool] {
 	return model.Success(result)
 }
 
+// GetActiveTaskCount 获取插件名下运行中任务数（Processing/Pausing/Stopping/WaitingForInput），
+// 供插件停用/换版确认框明示代价与拦截提醒
+func (h *Handler) GetActiveTaskCount(pluginPublicId string) *model.ApiResponse[int] {
+	return model.Success(h.mgr.CountActiveByPlugin(pluginPublicId))
+}
+
 // ConfirmReplace 用户确认替换或跳过重复作品
 func (h *Handler) ConfirmReplace(ctx context.Context, taskId int64, action string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.mgr.ConfirmReplace(taskId, action))

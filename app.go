@@ -982,6 +982,10 @@ func (app *App) initAdvancedServices() error {
 	app.PluginService.SetRuntimeStopper(app.pluginLoader.UnloadPlugin)
 	app.PluginService.RegisterLifecycleParticipant(&staticResourceParticipant{svc: app.StaticResourceService})
 	app.PluginService.RegisterLifecycleParticipant(&frontendExtensionParticipant{registry: app.FrontendExtensionRegistry})
+	// 崩溃路径与显式停用共用参与者清理集合：Loader 自身清理后回调触发参与者 OnStopped
+	app.pluginLoader.SetCrashNotifier(func(pluginPublicId string) {
+		app.PluginService.NotifyPluginCrashed(context.Background(), pluginPublicId)
+	})
 	app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
 	app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
 		taskHandlerRegistry:       app.TaskHandlerRegistry,
@@ -1053,6 +1057,8 @@ func (app *App) initAdvancedServices() error {
 			StoreDeleter:            app.PersistentStoreService, // 实现 StoreDeleter 接口
 		},
 	)
+	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）
+	app.PluginService.RegisterLifecycleParticipant(&taskManagerParticipant{mgr: app.TaskManagerService})
 
 	// merge 合并服务（音视频合并编排；ffmpeg 缺失时 merger=nil，合并调用返回 ErrMergeUnavailable）
 	mergeResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
@@ -1341,6 +1347,27 @@ func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPubl
 	if err := p.registry.UnregisterAll(pluginPublicId); err != nil {
 		logger.Log.Warnf("停用注销前端扩展失败: %s, %v", pluginPublicId, err)
 	}
+}
+
+// taskManagerParticipant 任务生命周期参与者：停用/换版前拦截该插件运行中任务的操作。
+// 卸载/更新/重装统一拦「运行中」（Paused 不拦，存续由用户处置）；取消信任不否决——
+// 安全意图执行，任务代价由前端确认对话框明示
+type taskManagerParticipant struct {
+	mgr *taskManager.Manager
+}
+
+func (p *taskManagerParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
+	if op == plugin.PluginStopOpUntrust {
+		return nil
+	}
+	if n := p.mgr.CountActiveByPlugin(pluginPublicId); n > 0 {
+		return fmt.Errorf("该插件有 %d 个运行中任务，请先暂停或等待其完成后再操作", n)
+	}
+	return nil
+}
+
+func (p *taskManagerParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	// 任务侧无停用后清理：非运行中任务保留原状，插件重装后由用户手动恢复
 }
 
 // runtimeStatusAdapter 将 extension.RuntimeStatus 适配为 plugin.RuntimeStatus

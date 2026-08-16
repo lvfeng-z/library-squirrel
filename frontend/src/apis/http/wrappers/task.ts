@@ -100,6 +100,11 @@ export async function taskRetryTrees(taskIds: number[]): Promise<ApiResult<void>
   return requireResponse(await TaskManagerHandler.RetryTaskTrees(taskIds), '重试任务', false)
 }
 
+// 插件名下运行中任务数（Processing/Pausing/Stopping/WaitingForInput），供插件停用/换版确认框明示代价
+export async function taskGetActiveCountByPlugin(pluginPublicId: string): Promise<ApiResult<number>> {
+  return requireResponse(await TaskManagerHandler.GetActiveTaskCount(pluginPublicId), '查询插件运行中任务数')
+}
+
 // ========== 作品板块重执行（多选） ==========
 
 // storeRoles 为所选资源 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
