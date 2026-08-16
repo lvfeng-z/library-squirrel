@@ -16,7 +16,7 @@ globs:
 - **两种类型**：运行时插件（Go 子进程）和纯 UI 插件（仅 `plugin.json`）
 - **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式前端扩展（`plugin.json` 的 `extensions.frontendExtensions`）后端 7 种 kind 平级（embed/view/replaceView/dialog/menu/siteBrowserList/resourceViewer），前端按消费契约二分——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
 - **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
-- **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{ver}/...`
+- **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{cacheKey}/...`（cacheKey 为缓存键 = plugin.json `buildId`，未打标包回落 version）
 
 ## 初始化时序
 
@@ -157,7 +157,7 @@ globs:
 | `html` | `{"html": "path/to/file.html"}` |
 | `code` | JavaScript 代码字符串（行内 JS，通过 `new Function` 执行，不注入 Vue/WailsRuntime 依赖） |
 
-source 中的相对路径会自动解析为 `/plugin/{publicId}/{version}/...` 形式的完整 URL。
+source 中的相对路径会自动解析为 `/plugin/{publicId}/{cacheKey}/...` 形式的完整 URL（cacheKey = buildId，未打标包为 version）。
 
 ### extensions.settings[] 声明
 
@@ -275,7 +275,7 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 插件是 Go 子进程，经 `PluginContext` 拥有完整宿主能力。信任模型为**来源追溯 + 知情同意 + 运行门控**的最小集（非沙箱隔离），完整沙箱属延后项。
 
 - **来源判定（host 权威）**：`plugin.Source`（枚举 `bundled`/`local`/`url`/`marketplace`，常量定义于 `backend/plugin/service.go`）由主程序按**安装入口**判定（`InstallBundled`→bundled、`InstallFromPath`→local），**不由插件声明**——`plugin.json` 无 source/trust/integrity 字段，自声明可伪造、不作信任锚。`plugin.SourceDetail` 记录安装包路径/URL 供追溯。
-- **完整性哈希**：`plugin.IntegrityHash`（SHA256 hex），安装时由 `loadPluginPackage` 对原始 zip 字节流计算，纯追溯存档（重装即覆盖、不做比对、加载时不校验）。entry exe 加载时校验留延后项。
+- **构建身份（BuildID）**：`plugin.BuildID`，构建管线注入 plugin.json `buildId` 字段（`git describe --tags --always --dirty` 输出；同源码状态重构建永远同值，与构建机器/路径/时间无关）。`InstallBundled` 以它做捆绑插件升级检测（bundled 来源已装 buildId 与 zip 不一致或已装缺失即重装；zip 未打标回落 version 比较）；亦作静态资产 URL/ETag 缓存键（重构建必变，令 immutable 长缓存随构建失效）。设计见 `doc/plan/插件构建身份与升级判据机制.md`。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除。
 - **信任标记与 consent**：`plugin.Trusted`（`sql.NullBool`）服务端权威写入——bundled 安装即 `true`；第三方（`InstallFromPath`）的 `trusted` 由前端弹窗收集用户知情同意后经 handler 参数透传（`Handler.InstallFromPath(ctx, packagePath, trusted bool)`），**缺省/绕过 UI 一律落 false**。
 - **运行门控**：`trusted=false` 的插件**不 Activate**（`activatePlugin` 起始检查）。用户在插件管理页「信任」后置 `true` 并激活（`Handler.SetTrusted`）；取消信任仅更新标记，下次启动不再激活（当前运行需重启）。**这是「是否运行」的二值门控，非「裁剪 HostService 能力」**——trusted=true 运行后能力仍全开；按信任裁剪 RPC 属延后项（完整沙箱）。
 - **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted），作安全启动救生圈；与运行门控正交。

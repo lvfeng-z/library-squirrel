@@ -14,6 +14,7 @@
 | 方法 | 作用 |
 | --- | --- |
 | `InstallFromPath(packagePath, trusted)` | 从 ZIP 包安装插件；trusted 透传用户知情同意结果 |
+| `InstallBundled(packagePath)`（Service） | 安装捆绑插件（启动期 `InstallBundledPlugins` 调用）；bundled 已装记录按构建身份 buildId 检测变化（不一致或已装缺失即升级重装，zip 未打标回落 version 比较），否则跳过；不激活 |
 | `Reinstall(pluginPublicId, trusted)` | 重新安装（已安装插件） |
 | `ReinstallFromPath(pluginPublicId, packagePath, trusted)` | 从指定包重装 |
 | `SetTrusted(pluginPublicId, trusted)` | 设置信任状态（手动信任/取消信任；true 时激活） |
@@ -39,7 +40,7 @@
 - **运行时插件 vs 纯 UI 插件**：前者有 Go 入口（DLL 子进程），后者仅 plugin.json。
 - **来源（Source）**：插件安装来源（bundled/local/url/marketplace），由主程序按安装入口判定、写入 `plugin.Source`，不由插件声明。
 - **信任标记（Trusted）**：`plugin.Trusted`（bool）。bundled 默认 true；第三方经用户知情同意后 true；false 则不激活（运行门控）。
-- **完整性哈希（IntegrityHash）**：安装时对原始 zip 算 SHA256 存档，纯追溯（重装覆盖、不做比对）。
+- **构建身份（BuildID）**：构建管线注入 plugin.json `buildId` 字段的 git describe 标识（同源码状态重构建永远同值，与构建环境无关）。`InstallBundled` 以它做捆绑插件升级检测；静态资产 URL/ETag 缓存键同源（激活时优先 buildId，未打标包回落 version，见 `app.go` activatePlugin）。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除（无判据性读取方）。设计见 `doc/plan/插件构建身份与升级判据机制.md`。
 - **PluginStatus**：插件运行时状态（进程存活、激活情况等）。
 - **PluginStorage（插件自存信息）**：统一 KV 存储（`plugin_storage` 单表），取代旧的 `plugin.plugin_data` 与 `secure_storage`。明文项直接读写，加密项 `SetValueEncrypted` 存密文（`util/crypto` 加解密）、读取自动解密。
 

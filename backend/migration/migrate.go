@@ -2,7 +2,10 @@ package migration
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/library-squirrel/backend/base/logger"
+	domain "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 
 	"gorm.io/gorm"
@@ -91,5 +94,67 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	// 数据迁移：publicId 身份键收敛为纯插件 id（旧格式 author/id，id 可含 UUID 后缀）。
+	// 捆绑插件安装（InstallBundledPlugins）按 publicId 查已装记录判升级，新键先于安装落库
+	// 才能命中存量记录、复用原记录 ID——plugin_storage 按 plugin_id 关联用户数据，记录换 ID 即孤儿
+	if err := migratePluginPublicId(db); err != nil {
+		return fmt.Errorf("迁移 plugin.public_id 身份简化失败: %w", err)
+	}
+
 	return nil
+}
+
+// migratePluginPublicId 一次性数据迁移：把旧格式 publicId（author/id[_uuid]）改写为纯插件 id，
+// 同步改写 task.plugin_public_id（任务按 publicId 引用插件、解析执行器）。
+// root_path/entry_path 不动：bundled 记录随后的升级重装会写为新路径，local 记录沿旧目录激活（激活不比对 manifest id）
+func migratePluginPublicId(db *gorm.DB) error {
+	var plugins []entity2.Plugin
+	if err := db.Where("public_id LIKE ?", "%/%").Find(&plugins).Error; err != nil {
+		return err
+	}
+	if len(plugins) == 0 {
+		return nil
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, p := range plugins {
+			old := p.PublicID.String
+			fresh := deriveNewPublicId(old)
+			// 派生失败（id 段为空或整体被后缀剥离耗尽）的异常记录不处理
+			if fresh == "" {
+				logger.Log.Warnf("publicId 迁移跳过（无法派生新身份键）: %s", old)
+				continue
+			}
+			// 目标身份键已被占用（旧主程序配新插件包回滚后再升级会造出双记录）：跳过并告警，交由人工处置
+			var conflict int64
+			if err := tx.Model(&entity2.Plugin{}).Where("public_id = ?", fresh).Count(&conflict).Error; err != nil {
+				return err
+			}
+			if conflict > 0 {
+				logger.Log.Warnf("publicId 迁移跳过（目标身份键已存在）: %s -> %s", old, fresh)
+				continue
+			}
+			if err := tx.Model(&entity2.Plugin{}).Where("id = ?", p.GetID()).Update("public_id", fresh).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&entity2.Task{}).Where("plugin_public_id = ?", old).Update("plugin_public_id", fresh).Error; err != nil {
+				return err
+			}
+			logger.Log.Infof("publicId 已迁移: %s -> %s", old, fresh)
+		}
+		return nil
+	})
+}
+
+// deriveNewPublicId 从旧格式 publicId 派生新身份键：去掉 author 段，再剥离 id 末尾的旧身份 UUID 后缀。
+// 派生结果须为纯 id（反向域名不含 "/"）；空或残留 "/" 视为记录数据异常，返回空串交由迁移跳过并告警
+func deriveNewPublicId(old string) string {
+	idx := strings.Index(old, "/")
+	if idx < 0 {
+		return ""
+	}
+	id := domain.StripLegacyUUIDSuffix(old[idx+1:])
+	if id == "" || strings.Contains(id, "/") {
+		return ""
+	}
+	return id
 }

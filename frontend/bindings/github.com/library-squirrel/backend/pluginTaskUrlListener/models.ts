@@ -52,9 +52,9 @@ export class PluginWithExtension {
     "sourceDetail": sql$0.NullString;
 
     /**
-     * 包级 SHA256(hex)，安装时对原始 zip 计算，纯追溯存档
+     * 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，升级判据与静态资产缓存键以此判同；历史记录为 NULL）
      */
-    "integrityHash": sql$0.NullString;
+    "buildId": sql$0.NullString;
 
     /**
      * 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
@@ -136,8 +136,8 @@ export class PluginWithExtension {
         if (!("sourceDetail" in $$source)) {
             this["sourceDetail"] = (new sql$0.NullString());
         }
-        if (!("integrityHash" in $$source)) {
-            this["integrityHash"] = (new sql$0.NullString());
+        if (!("buildId" in $$source)) {
+            this["buildId"] = (new sql$0.NullString());
         }
         if (!("trusted" in $$source)) {
             this["trusted"] = (new sql$0.NullBool());
@@ -231,8 +231,8 @@ export class PluginWithExtension {
         if ("sourceDetail" in $$parsedSource) {
             $$parsedSource["sourceDetail"] = $$createField20_0($$parsedSource["sourceDetail"]);
         }
-        if ("integrityHash" in $$parsedSource) {
-            $$parsedSource["integrityHash"] = $$createField21_0($$parsedSource["integrityHash"]);
+        if ("buildId" in $$parsedSource) {
+            $$parsedSource["buildId"] = $$createField21_0($$parsedSource["buildId"]);
         }
         if ("trusted" in $$parsedSource) {
             $$parsedSource["trusted"] = $$createField22_0($$parsedSource["trusted"]);

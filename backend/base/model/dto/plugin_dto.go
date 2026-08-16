@@ -22,7 +22,6 @@ type PluginDTO struct {
 	ActivationType *string `json:"activationType"`
 	Source         *string `json:"source"`        // 来源枚举 bundled/local/url/marketplace
 	SourceDetail   *string `json:"sourceDetail"`  // 来源详情（安装包路径/URL）
-	IntegrityHash  *string `json:"integrityHash"` // 包级 SHA256(hex)
 	Trusted        *bool   `json:"trusted"`       // 信任标记；false=未信任（未激活，需手动信任）
 	CreateTime     int64   `json:"createTime"`
 	UpdateTime     int64   `json:"updateTime"`
@@ -49,7 +48,6 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		ActivationType: util.NullStringToPointer(plugin.ActivationType),
 		Source:         util.NullStringToPointer(plugin.Source),
 		SourceDetail:   util.NullStringToPointer(plugin.SourceDetail),
-		IntegrityHash:  util.NullStringToPointer(plugin.IntegrityHash),
 		Trusted:        util.NullBoolToPointer(plugin.Trusted),
 		CreateTime:     plugin.GetCreateTime(),
 		UpdateTime:     plugin.GetUpdateTime(),

@@ -247,11 +247,6 @@ export class PluginDTO {
     "sourceDetail": string | null;
 
     /**
-     * 包级 SHA256(hex)
-     */
-    "integrityHash": string | null;
-
-    /**
      * 信任标记；false=未信任（未激活，需手动信任）
      */
     "trusted": boolean | null;
@@ -304,9 +299,6 @@ export class PluginDTO {
         }
         if (!("sourceDetail" in $$source)) {
             this["sourceDetail"] = null;
-        }
-        if (!("integrityHash" in $$source)) {
-            this["integrityHash"] = null;
         }
         if (!("trusted" in $$source)) {
             this["trusted"] = null;

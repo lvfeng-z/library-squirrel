@@ -15,7 +15,7 @@ import (
 type pluginResourceMapping struct {
 	rootPath    string   // 插件根目录绝对路径
 	allowedDirs []string // staticResources 中声明的允许目录（如 "views/", "assets/"）
-	version     string   // 版本号（用于缓存）
+	cacheKey    string   // 缓存键（构建身份 buildId，未打标包为 version；进入资产 URL 与 ETag，令 immutable 长缓存随构建失效）
 }
 
 // StaticResourceService 插件静态资源服务，管理插件的静态资源路径映射和文件服务
@@ -31,14 +31,14 @@ func NewStaticResourceService() *StaticResourceService {
 	}
 }
 
-// RegisterPlugin 注册插件的静态资源路径
-func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, allowedDirs []string, version string) {
+// RegisterPlugin 注册插件的静态资源路径（cacheKey 为缓存键：构建身份 buildId，未打标包为 version）
+func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, allowedDirs []string, cacheKey string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.plugins[publicId] = &pluginResourceMapping{
 		rootPath:    absRootPath,
 		allowedDirs: allowedDirs,
-		version:     version,
+		cacheKey:    cacheKey,
 	}
 	logger.Log.Info("插件静态资源已注册",
 		zap.String("plugin", publicId),
@@ -55,25 +55,25 @@ func (s *StaticResourceService) UnregisterPlugin(publicId string) {
 }
 
 // ServeHTTP 处理插件静态资源请求
-// URL 格式: /plugin/{author}/{id}/{version}/{relativePath}
-// publicId = author/id，在 URL 中展开为两段
+// URL 格式: /plugin/{publicId}/{cacheKey}/{relativePath}
+// publicId 即插件 id（反向域名，不含 "/"，占一段）；cacheKey 为缓存键（构建身份 buildId，未打标包为 version）
 func (s *StaticResourceService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 解析路径: /plugin/{author}/{id}/{version}/{relativePath}
+	// 解析路径: /plugin/{publicId}/{cacheKey}/{relativePath}
 	path := strings.TrimPrefix(r.URL.Path, "/plugin/")
-	parts := strings.SplitN(path, "/", 4)
-	if len(parts) < 4 {
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 3 {
 		http.NotFound(w, r)
 		return
 	}
 
-	publicId := parts[0] + "/" + parts[1]
-	// parts[2] = version（用于缓存，不参与文件路径解析）
-	relativePath := parts[3]
+	publicId := parts[0]
+	// parts[1] = cacheKey（用于缓存，不参与文件路径解析）
+	relativePath := parts[2]
 
 	s.mu.RLock()
 	mapping, ok := s.plugins[publicId]
@@ -105,8 +105,8 @@ func (s *StaticResourceService) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 设置缓存头：URL 含版本号，可长期缓存
-	etag := `"` + mapping.version + ":" + cleanedPath + `"`
+	// 设置缓存头：URL 含缓存键（buildId/version），可长期缓存；ETag 同源，重构建必变
+	etag := `"` + mapping.cacheKey + ":" + cleanedPath + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 
@@ -138,9 +138,9 @@ func (s *StaticResourceService) isPathAllowed(relativePath string, allowedDirs [
 	return false
 }
 
-// ResolveURL 构建插件资源 URL（供主程序构建 FrontendExtensionConfig 时使用）
-func (s *StaticResourceService) ResolveURL(publicId, version, relativePath string) string {
-	return "/plugin/" + publicId + "/" + version + "/" + relativePath
+// ResolveURL 构建插件资源 URL（供主程序构建 FrontendExtensionConfig 时使用；cacheKey 为缓存键：buildId，未打标包为 version）
+func (s *StaticResourceService) ResolveURL(publicId, cacheKey, relativePath string) string {
+	return "/plugin/" + publicId + "/" + cacheKey + "/" + relativePath
 }
 
 // HasPlugin 检查插件是否已注册

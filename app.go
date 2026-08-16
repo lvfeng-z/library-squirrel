@@ -411,11 +411,13 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 	if ext.StaticResources != nil {
 		allowedDirs = ext.StaticResources.Directories
 	}
-	version := ""
-	if p.Version.Valid {
-		version = p.Version.String
+	// 缓存键：构建身份 buildId 优先（同源码状态永远同值、源码变化必变，令资产 URL/ETag 随构建失效，
+	// immutable 长缓存才安全）；未打标包回落 version
+	cacheKey := manifest.BuildID
+	if cacheKey == "" && p.Version.Valid {
+		cacheKey = p.Version.String
 	}
-	app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, version)
+	app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, cacheKey)
 	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
 
 	// 声明式注册前端扩展
@@ -430,7 +432,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		feConfig.Order = fe.Order
 
 		// 按 kind 解析 content
-		if err := parseFrontendExtensionContent(fe, feConfig, publicId, version); err != nil {
+		if err := parseFrontendExtensionContent(fe, feConfig, publicId, cacheKey); err != nil {
 			logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
 			continue
 		}
@@ -510,7 +512,7 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 }
 
 // parseFrontendExtensionContent 按 kind 解析 content 字段并填充 FrontendExtensionConfig（决策6：各类定位键非空校验统一在后端）
-func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *base.FrontendExtensionConfig, publicId, version string) error {
+func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *base.FrontendExtensionConfig, publicId, cacheKey string) error {
 	if len(fe.Content) == 0 {
 		return nil
 	}
@@ -525,7 +527,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("embed 前端扩展 position 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.Position = c.Position
 		cfg.Props = c.Props
 
@@ -535,7 +537,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("解析 view content 失败: %w", err)
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.Title = c.Title
 		cfg.Props = c.Props
 
@@ -549,9 +551,9 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("menu 前端扩展须提供 viewId（叶子项）或 children（父项）")
 		}
 		cfg.ViewId = c.ViewId
-		cfg.Children = convertFrontendExtensionChildren(c.Children, cfg.Metadata.PluginID, publicId, version)
+		cfg.Children = convertFrontendExtensionChildren(c.Children, cfg.Metadata.PluginID, publicId, cacheKey)
 		if c.Icon != "" {
-			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
+			cfg.Icon = resolveIconURL(c.Icon, publicId, cacheKey)
 		}
 
 	case base.FrontendExtensionKindSiteBrowserList:
@@ -564,7 +566,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 		}
 		cfg.ExtensionId = c.ExtensionId
 		if c.Icon != "" {
-			cfg.Icon = resolveIconURL(c.Icon, publicId, version)
+			cfg.Icon = resolveIconURL(c.Icon, publicId, cacheKey)
 		}
 
 	case base.FrontendExtensionKindReplaceView:
@@ -576,7 +578,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("replaceView 前端扩展 target 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.Target = c.Target
 		cfg.Props = c.Props
 
@@ -586,7 +588,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("解析 dialog content 失败: %w", err)
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.Props = c.Props
 
 	case base.FrontendExtensionKindResourceViewer:
@@ -599,7 +601,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 			return fmt.Errorf("resourceViewer 前端扩展 resourceType 不能为空")
 		}
 		cfg.ContentType = base.ContentType(c.ContentType)
-		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, version)
+		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.ResourceType = c.ResourceType
 		cfg.Props = c.Props
 	}
@@ -608,7 +610,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 }
 
 // convertFrontendExtensionChildren 递归转换子前端扩展声明为 FrontendExtensionConfig
-func convertFrontendExtensionChildren(children []dto.FrontendExtensionDeclaration, pluginID int64, publicId, version string) []base.FrontendExtensionConfig {
+func convertFrontendExtensionChildren(children []dto.FrontendExtensionDeclaration, pluginID int64, publicId, cacheKey string) []base.FrontendExtensionConfig {
 	if len(children) == 0 {
 		return nil
 	}
@@ -625,7 +627,7 @@ func convertFrontendExtensionChildren(children []dto.FrontendExtensionDeclaratio
 		result[i].Kind = base.FrontendExtensionKind(child.Kind)
 		result[i].Order = child.Order
 
-		if err := parseFrontendExtensionContent(child, &result[i], publicId, version); err != nil {
+		if err := parseFrontendExtensionContent(child, &result[i], publicId, cacheKey); err != nil {
 			logger.Log.Warnf("解析子前端扩展 content 失败 %s/%s: %v", publicId, child.ID, err)
 		}
 	}
@@ -633,7 +635,7 @@ func convertFrontendExtensionChildren(children []dto.FrontendExtensionDeclaratio
 }
 
 // resolveSourceURLs 将组件源中的相对路径转换为完整 URL
-func resolveSourceURLs(source json.RawMessage, contentType, publicId, version string) json.RawMessage {
+func resolveSourceURLs(source json.RawMessage, contentType, publicId, cacheKey string) json.RawMessage {
 	if len(source) == 0 || contentType == "code" {
 		return source
 	}
@@ -643,7 +645,7 @@ func resolveSourceURLs(source json.RawMessage, contentType, publicId, version st
 		return source
 	}
 
-	prefix := "/plugin/" + publicId + "/" + version + "/"
+	prefix := "/plugin/" + publicId + "/" + cacheKey + "/"
 	for key, path := range c {
 		if path != "" {
 			c[key] = prefix + path
@@ -658,11 +660,11 @@ func resolveSourceURLs(source json.RawMessage, contentType, publicId, version st
 }
 
 // resolveIconURL 将图标相对路径转换为完整 URL
-func resolveIconURL(iconPath, publicId, version string) string {
+func resolveIconURL(iconPath, publicId, cacheKey string) string {
 	if iconPath == "" {
 		return ""
 	}
-	return "/plugin/" + publicId + "/" + version + "/" + iconPath
+	return "/plugin/" + publicId + "/" + cacheKey + "/" + iconPath
 }
 
 type taskCreateAdapter struct {

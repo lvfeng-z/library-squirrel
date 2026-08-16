@@ -90,12 +90,6 @@ function formatSize(bytes: number | undefined): string {
             {{ plugin.trusted === false ? '未信任（需手动信任后激活）' : '已信任' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item
-          v-if="plugin.integrityHash"
-          label="完整性校验"
-        >
-          <code class="hash-code">{{ plugin.integrityHash.slice(0, 16) }}…</code>
-        </el-descriptions-item>
       </el-descriptions>
 
       <!-- 运行时状态 -->
@@ -255,13 +249,5 @@ function formatSize(bytes: number | undefined): string {
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 12px;
-}
-
-.hash-code {
-  background: var(--app-bg-surface-variant);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 12px;
-  word-break: break-all;
 }
 </style>

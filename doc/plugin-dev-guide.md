@@ -74,7 +74,7 @@ type MyTaskHandler struct{}
 
 ```json
 {
-  "id": "com.author.myPlugin_guid",
+  "id": "com.author.myPlugin",
   "name": "myPlugin",
   "version": "1.0.0",
   "author": "author",
@@ -95,10 +95,10 @@ type MyTaskHandler struct{}
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `id` | string | 是 | 插件标识（建议 `com.作者.名称_guid`） |
+| `id` | string | 是 | 插件标识（**= publicId 身份键**，反向域名格式 `com.作者.名称`，安装期强校验格式并拒绝 UUID 后缀残留） |
 | `name` | string | 是 | 显示名称 |
 | `version` | string | 是 | 语义化版本 |
-| `author` | string | 是 | 作者；**PublicID = `author/id`** |
+| `author` | string | 是 | 作者（纯展示属性，不参与身份键） |
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
@@ -157,7 +157,7 @@ type MyTaskHandler struct{}
 | `code` | JS 代码字符串（行内） | 通过 `new Function` 执行，**不注入 Vue/WailsRuntime** |
 | `html` | `{html}` | HTML 文件 |
 
-> source 中的相对路径（`code` 类型除外）由后端自动转为 `http://wails.localhost:{port}/plugin/{author}/{id}/{version}/...` 完整 URL。
+> source 中的相对路径（`code` 类型除外）由后端自动转为 `http://wails.localhost:{port}/plugin/{author}/{id}/{cacheKey}/...` 完整 URL（cacheKey 为缓存键 = plugin.json `buildId`，未打标包回落 version）。
 
 ### settings 用户设置声明
 
@@ -710,11 +710,12 @@ win.Close()
 ### URL 规约
 
 ```
-http://wails.localhost:{backend-port}/plugin/{author}/{id}/{version}/{relativePath}
+http://wails.localhost:{backend-port}/plugin/{publicId}/{cacheKey}/{relativePath}
 ```
 
-- `publicId = author/id`（URL 中展开为两段）。
-- 后端在注册 Slot 时自动把 `source`/`icon` 的相对路径转为上述完整 URL，前端组件直接用。
+- `publicId` 即插件 `id`（反向域名，URL 中占一段）。
+- `cacheKey` 为缓存键 = plugin.json `buildId`（构建身份标识，构建时由 build.ps1 以 `git describe` 注入；未打标包回落 `version`）。构建变化必换 URL/ETag，长缓存随之失效。
+- 后端在注册前端扩展时自动把 `source`/`icon` 的相对路径转为上述完整 URL，前端组件直接用。
 - 插件代码内可用 `ctx.GetPluginRoot(false)` 获取插件根目录绝对路径。
 
 ### 目录白名单

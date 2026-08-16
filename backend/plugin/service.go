@@ -4,9 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -263,13 +261,11 @@ func (s *Service) InstallFromPath(ctx context.Context, packagePath string, trust
 
 // loadPluginPackage 加载插件安装包
 func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDTO, error) {
-	// 读取包字节并计算包级 SHA256（原始 zip 字节流，供完整性追溯）
+	// 读取包字节
 	pkgBytes, err := os.ReadFile(packagePath)
 	if err != nil {
 		return nil, ErrInvalidPackage
 	}
-	sum := sha256.Sum256(pkgBytes)
-	integrityHash := hex.EncodeToString(sum[:])
 
 	// 打开 ZIP
 	reader, err := zip.NewReader(bytes.NewReader(pkgBytes), int64(len(pkgBytes)))
@@ -311,6 +307,10 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	if manifest.ID == "" || manifest.Name == "" || manifest.Version == "" || manifest.Author == "" {
 		return nil, ErrInvalidManifest
 	}
+	// 身份键校验（id 即 publicId）：反向域名格式，且拒绝旧身份 UUID 后缀残留（防新旧格式混存产生双身份记录）
+	if err := domain.ValidatePluginID(manifest.ID); err != nil {
+		return nil, err
+	}
 	if manifest.Extensions == nil {
 		return nil, ErrInvalidManifest
 	}
@@ -332,7 +332,6 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
-	installDTO.IntegrityHash = integrityHash
 	return installDTO, nil
 }
 
@@ -353,7 +352,10 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	return plugin, nil
 }
 
-// InstallBundled 安装捆绑插件，已安装时静默跳过
+// InstallBundled 安装捆绑插件；已安装未卸载时按构建身份（buildId，构建管线注入的源码状态标识）决定升级或跳过：
+// 仅 bundled 来源记录参与——buildId 与已装记录不一致（或已装无 buildId 的历史记录）即升级重装
+// （捆绑插件随主程序发布，以 zip 为权威）；zip 未打标（无 buildId）时回落 version 比较。
+// 非 bundled 来源静默跳过（尊重用户手动安装的版本）。
 // 与 InstallFromPath 的区别：不调用 activator.Activate()，已安装时不报错
 func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*entity2.Plugin, error) {
 	// 加载插件包
@@ -368,11 +370,29 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 		return nil, err
 	}
 	if existing != nil && existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
+		if needBundledUpgrade(existing, installDTO) {
+			logger.Log.Infof("捆绑插件构建已变化(buildId=%s)，升级重装: %s", installDTO.BuildID, installDTO.PublicID)
+			return s.installCore(ctx, installDTO, true, resolveReinstallContext(existing.Source, true))
+		}
 		logger.Log.Infof("捆绑插件已安装，跳过: %s", installDTO.PublicID)
 		return nil, nil
 	}
 
 	return s.installCore(ctx, installDTO, false, installContext{Source: SourceBundled, Trusted: true})
+}
+
+// needBundledUpgrade 判断已安装记录是否需随捆绑包升级重装：
+// 仅 bundled 来源的记录受此约束。判据优先 buildId（构建身份，同源码状态永远同值）——
+// 不一致或已装缺失（历史记录）即重装；zip 未打标时回落 version 比较（同版本跳过，
+// 该盲区由 build:plugins 的打标校验兜底，仅绕过管线的疑似手工包会落入）
+func needBundledUpgrade(existing *entity2.Plugin, installDTO *domain.PluginInstallDTO) bool {
+	if !existing.Source.Valid || existing.Source.String != SourceBundled {
+		return false
+	}
+	if installDTO.BuildID != "" {
+		return !existing.BuildID.Valid || existing.BuildID.String != installDTO.BuildID
+	}
+	return !existing.Version.Valid || existing.Version.String != installDTO.Version
 }
 
 // installCore 安装插件核心逻辑（解压 + 写 DB + 备份），不含激活。
@@ -438,7 +458,7 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
 	plugin.Source = sql.NullString{String: ictx.Source, Valid: ictx.Source != ""}
 	plugin.SourceDetail = sql.NullString{String: installDTO.PackagePath, Valid: installDTO.PackagePath != ""}
-	plugin.IntegrityHash = sql.NullString{String: installDTO.IntegrityHash, Valid: installDTO.IntegrityHash != ""}
+	plugin.BuildID = sql.NullString{String: installDTO.BuildID, Valid: installDTO.BuildID != ""}
 	plugin.Trusted = sql.NullBool{Bool: ictx.Trusted, Valid: true}
 
 	if reusePlugin != nil {
@@ -463,6 +483,20 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.BackupID = sql.NullInt64{Int64: backup.ID, Valid: true}
 	if err := s.repo.Updates(ctx, plugin); err != nil {
 		return nil, err
+	}
+
+	// 重装时清理旧安装目录（解压与落库均已成功后执行，失败最多留垃圾目录、不产生半损态）：
+	// publicId 改名或版本变更都会使安装路径变化，旧目录不再被任何记录引用
+	if reusePlugin != nil && reusePlugin.RootPath.Valid && reusePlugin.RootPath.String != "" &&
+		reusePlugin.RootPath.String != plugin.RootPath.String {
+		oldInstallPath := filepath.Join(appRoot, reusePlugin.RootPath.String)
+		if err := util.RemoveDir(oldInstallPath); err != nil {
+			logger.Log.Warnf("清理旧插件目录失败: %s, %v", oldInstallPath, err)
+		} else {
+			// 逐级回收空父目录（如身份键简化前残留的 author 层；os.Remove 仅空目录成功，非空静默失败）
+			_ = os.Remove(filepath.Dir(oldInstallPath))
+			_ = os.Remove(filepath.Dir(filepath.Dir(oldInstallPath)))
+		}
 	}
 
 	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
@@ -582,7 +616,7 @@ func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted
 }
 
 // BackfillLegacyPlugins 回填升级前安装的插件（source/trusted 为 NULL）的来源与信任状态。
-// 幂等：仅处理 source 为 NULL 的记录；视作 bundled 默认信任；IntegrityHash 尽力从备份原 zip 补算，失败留空不阻断。
+// 幂等：仅处理 source 为 NULL 的记录；视作 bundled 默认信任。
 func (s *Service) BackfillLegacyPlugins(ctx context.Context) {
 	plugins, err := s.repo.List(ctx, &database.QueryOption{})
 	if err != nil {
@@ -596,21 +630,6 @@ func (s *Service) BackfillLegacyPlugins(ctx context.Context) {
 		}
 		p.Source = sql.NullString{String: SourceBundled, Valid: true}
 		p.Trusted = sql.NullBool{Bool: true, Valid: true}
-		// 尽力补算包级哈希：从备份取原 zip 路径计算（与安装时 loadPluginPackage 同算法）
-		if backup, err := s.backupProvider.GetPluginBackup(ctx, p.ID); err == nil && backup != nil {
-			workdir := ""
-			if backup.Workdir.Valid {
-				workdir = backup.Workdir.String
-			}
-			filePath := ""
-			if backup.FilePath.Valid {
-				filePath = backup.FilePath.String
-			}
-			if data, err := os.ReadFile(filepath.Join(workdir, filePath)); err == nil {
-				sum := sha256.Sum256(data)
-				p.IntegrityHash = sql.NullString{String: hex.EncodeToString(sum[:]), Valid: true}
-			}
-		}
 		if err := s.repo.Save(ctx, p); err != nil {
 			logger.Log.Warnf("回填插件信任状态失败: %s, %v", p.PublicID.String, err)
 			continue

@@ -2,6 +2,8 @@ package dto
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
 )
 
 // ActivationType 激活类型
@@ -24,6 +26,7 @@ type PluginManifest struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Version         string            `json:"version"`
+	BuildID         string            `json:"buildId,omitempty"` // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
 	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
 	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author          string            `json:"author"`
@@ -40,6 +43,7 @@ type PluginInstallDTO struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Version         string            `json:"version"`
+	BuildID         string            `json:"buildId,omitempty"` // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
 	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
 	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author          string            `json:"author"`
@@ -51,20 +55,16 @@ type PluginInstallDTO struct {
 	ResourceTypes []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(透传 manifest)
 	PackagePath     string            `json:"packagePath,omitempty"`
 	PublicID        string            `json:"publicId,omitempty"`
-	IntegrityHash   string            `json:"integrityHash,omitempty"` // 包级 SHA256(hex)，主程序安装时对原始 zip 字节流计算，供完整性追溯
 }
 
-// GetPublicID 获取插件公开ID（格式：作者/名称）
-func (p *PluginManifest) GetPublicID() string {
-	return p.Author + "/" + p.ID
-}
-
-// ToPluginInstallDTO 转换为安装DTO
+// ToPluginInstallDTO 转换为安装DTO。publicId 即插件 id（纯反向域名，全局唯一身份键），
+// author 是纯展示属性、不参与身份
 func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDTO {
 	return &PluginInstallDTO{
 		ID:              p.ID,
 		Name:            p.Name,
 		Version:         p.Version,
+		BuildID:         p.BuildID,
 		ContractVersion: p.ContractVersion,
 		ConfigSchemaVersion: p.ConfigSchemaVersion,
 		Author:          p.Author,
@@ -75,8 +75,33 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Capabilities:    p.Capabilities,
 		ResourceTypes:   p.ResourceTypes,
 		PackagePath:     packagePath,
-		PublicID:        p.GetPublicID(),
+		PublicID:        p.ID,
 	}
+}
+
+var (
+	// pluginIDFormatRe 插件 id 格式：反向域名，至少两段 label，字符集限字母/数字/连字符/点
+	pluginIDFormatRe = regexp.MustCompile(`^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$`)
+	// legacyUUIDSuffixRe 旧身份格式在 id 末尾附加的 "_<UUID>" 后缀（author/id_uuid 三重唯一性冗余期产物）
+	legacyUUIDSuffixRe = regexp.MustCompile(`_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+)
+
+// ValidatePluginID 校验插件 id（= publicId 身份键）：须为反向域名格式，且不得残留旧身份的 UUID 后缀。
+// 旧后缀残留说明是身份简化前的旧包，安装会产生双身份记录，须拒绝
+func ValidatePluginID(id string) error {
+	if !pluginIDFormatRe.MatchString(id) {
+		return fmt.Errorf("invalid plugin id %q: expect reverse-domain format like com.example.plugin", id)
+	}
+	if legacyUUIDSuffixRe.MatchString(id) {
+		return fmt.Errorf("invalid plugin id %q: legacy uuid suffix detected, rebuild the plugin package with the new identity scheme", id)
+	}
+	return nil
+}
+
+// StripLegacyUUIDSuffix 剥离插件 id 末尾的旧身份 UUID 后缀（无后缀时原样返回），
+// 供存量数据迁移派生新身份键使用
+func StripLegacyUUIDSuffix(id string) string {
+	return legacyUUIDSuffixRe.ReplaceAllString(id, "")
 }
 
 // NewPluginManifest 创建插件清单

@@ -48,6 +48,25 @@ $plugins = @(
 
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 
+# 校验产物 zip 内 plugin.json 带非空 buildId（构建身份标识，主程序升级判据依赖）且无 BOM（Go json 拒绝 BOM）。
+# 集中兜底各仓库打标遗漏；校验失败按该插件构建失败处理
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+function Assert-BuildId([string]$zipPath, [string]$repoName) {
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entry = $zip.GetEntry('plugin.json')
+        if ($null -eq $entry) { throw "zip 内缺少 plugin.json" }
+        $reader = New-Object System.IO.StreamReader($entry.Open())
+        try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { throw "plugin.json 带 BOM" }
+        $manifest = $text | ConvertFrom-Json
+        if ([string]::IsNullOrWhiteSpace($manifest.buildId)) { throw "plugin.json 缺少 buildId" }
+        Write-Host "  [校验通过] $repoName buildId=$($manifest.buildId)" -ForegroundColor DarkGreen
+    } finally {
+        $zip.Dispose()
+    }
+}
+
 $failedPlugins = @()
 $skippedPlugins = @()
 
@@ -80,10 +99,17 @@ foreach ($plugin in $plugins) {
     }
 
     if ($plugin.Direct) {
-        if (Test-Path (Join-Path $targetDir $zipName)) {
-            Write-Host "[完成] $zipName 已直接打包到目标目录" -ForegroundColor Green
-        } else {
+        $directZip = Join-Path $targetDir $zipName
+        if (-not (Test-Path $directZip)) {
             Write-Host "[失败] $repoName ：目标目录未生成 $zipName" -ForegroundColor Red
+            $failedPlugins += $repoName
+            continue
+        }
+        try {
+            Assert-BuildId $directZip $repoName
+            Write-Host "[完成] $zipName 已直接打包到目标目录" -ForegroundColor Green
+        } catch {
+            Write-Host "[失败] $repoName ：产物校验未通过（$($_.Exception.Message)）" -ForegroundColor Red
             $failedPlugins += $repoName
         }
         continue
@@ -92,6 +118,13 @@ foreach ($plugin in $plugins) {
     $zipPath = Join-Path $repoDir "dist\$zipName"
     if (-not (Test-Path $zipPath)) {
         Write-Host "[失败] $repoName ：未找到构建产物 $zipPath" -ForegroundColor Red
+        $failedPlugins += $repoName
+        continue
+    }
+    try {
+        Assert-BuildId $zipPath $repoName
+    } catch {
+        Write-Host "[失败] $repoName ：产物校验未通过（$($_.Exception.Message)）" -ForegroundColor Red
         $failedPlugins += $repoName
         continue
     }
