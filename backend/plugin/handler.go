@@ -77,9 +77,10 @@ func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.Api
 	return model.HandleVoid(h.svc.SetUninstalled(ctx, pluginId))
 }
 
-// SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件
-func (h *Handler) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.SetTrusted(ctx, pluginPublicId, trusted)
+// SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；
+// trusted=false 即时停用运行时，force=前端确认对话框明示代价后强制停（跳过参与者否决检查）
+func (h *Handler) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool, force bool) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.SetTrusted(ctx, pluginPublicId, trusted, force)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}

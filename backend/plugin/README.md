@@ -17,7 +17,7 @@
 | `InstallBundled(packagePath)`（Service） | 安装捆绑插件（启动期 `InstallBundledPlugins` 调用）；bundled 已装记录按构建身份 buildId 检测变化（不一致或已装缺失即升级重装，zip 未打标回落 version 比较），否则跳过；不激活 |
 | `Reinstall(pluginPublicId, trusted)` | 重新安装（已安装插件） |
 | `ReinstallFromPath(pluginPublicId, packagePath, trusted)` | 从指定包重装 |
-| `SetTrusted(pluginPublicId, trusted)` | 设置信任状态（手动信任/取消信任；true 时激活） |
+| `SetTrusted(pluginPublicId, trusted, force)` | 设置信任状态：true 时落标记并激活；false 时**即时停用运行时**（停进程+参与者清痕迹，不删文件），停用成功才落标记（参与者否决则保持运行、标记不变），force=true 跳过否决检查 |
 | `Uninstall(pluginPublicId)` | 卸载插件 |
 | `SetUninstalled(pluginId)` | 标记为已卸载（残留清理） |
 | `Save` / `Update` | 保存 / 更新插件记录 |
@@ -51,5 +51,6 @@
 
 ## 关键设计
 
+- **停用生命周期（能力分散、契约集中）**：停用/换版统一走 `stopRuntime`（`lifecycle.go`）——参与者 `PrepareStop` 否决检查 → 运行时停止器（loader.UnloadPlugin，停进程+清其所属注册表）→ 参与者 `OnStopped` 清痕迹；`removeFiles` 独立成原子操作。凡持有插件运行时痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配静态资源/前端扩展两个参与者），注册表是停用清理完备性的唯一审计点。卸载=stopRuntime+removeFiles+标记；重装/换版=stopRuntime+removeFiles+installCore+Activate；取消信任=仅 stopRuntime。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置。设计见 `doc/plan/插件热重载体系完善方案.md`。
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
 - **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`activatePlugin` 起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `doc/plan/插件信任模型最小集方案.md`。

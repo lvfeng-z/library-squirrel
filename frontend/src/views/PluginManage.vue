@@ -200,18 +200,18 @@ async function unInstall(pluginPublicId: string) {
     })
     .catch(() => {})
 }
-// 设置插件信任状态（手动信任/取消信任）：trusted=false 切换为信任并激活，true 切换为取消（下次启动不激活）
+// 设置插件信任状态（手动信任/取消信任）：取消信任即时停用运行时（force=确认对话框明示代价后强制停）
 async function handleTrust(plugin: PluginDTO) {
   const publicId = String(plugin.publicId)
   if (plugin.trusted === true) {
-    ElMessageBox.confirm('取消信任后，下次启动将不再激活该插件（当前运行需重启生效）。确认取消信任？', '取消信任', {
+    ElMessageBox.confirm('取消信任将立即停用该插件，其正在运行的任务将失败终止。确认取消信任？', '取消信任', {
       confirmButtonText: '取消信任', cancelButtonText: '保留', type: 'warning'
     })
       .then(async () => {
         try {
-          await pluginApi.pluginSetTrusted(publicId, false)
+          await pluginApi.pluginSetTrusted(publicId, false, true)
           pluginSearchTable.value.doSearch()
-          ElMessage.success('已取消信任')
+          ElMessage.success('已取消信任并停用')
         } catch (e) {
           ElMessage.error((e as Error).message)
         }

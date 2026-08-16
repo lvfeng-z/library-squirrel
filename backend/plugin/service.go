@@ -109,7 +109,8 @@ type Service struct {
 	repo           Repository
 	backupProvider BackupProvider
 	activator      PluginActivator
-	onUnload       func(pluginPublicId string)
+	participants   []LifecycleParticipant
+	runtimeStopper func(pluginPublicId string) error
 
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
@@ -122,12 +123,6 @@ func NewService(repo Repository, backupProvider BackupProvider) *Service {
 		repo:           repo,
 		backupProvider: backupProvider,
 	}
-}
-
-// SetOnUnload 设置插件卸载时的运行时清理回调
-// 回调负责停止子进程、注销注册中心等运行时清理
-func (s *Service) SetOnUnload(fn func(pluginPublicId string)) {
-	s.onUnload = fn
 }
 
 // SetActivator 设置插件激活器
@@ -556,7 +551,7 @@ func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, 
 	}
 
 	// 停止旧插件运行时并删除旧文件（不修改数据库状态）
-	if err := s.deactivate(ctx, pluginPublicId); err != nil {
+	if err := s.deactivate(ctx, pluginPublicId, PluginStopOpUpdate); err != nil {
 		return nil, err
 	}
 
@@ -589,15 +584,23 @@ func (s *Service) Uninstall(ctx context.Context, pluginPublicId string) error {
 	return s.uninstall(ctx, pluginPublicId)
 }
 
-// SetTrusted 设置插件信任状态（决策6 手动信任/取消信任入口）。
-// trusted=true 时立即激活；trusted=false 仅更新标记，下次启动不再激活（当前已运行进程无法即时停止，需重启生效）。
-func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool) (*entity2.Plugin, error) {
+// SetTrusted 设置插件信任状态（手动信任/取消信任入口）。
+// trusted=true 落标记后立即激活；trusted=false 即时停用运行时（停进程+清痕迹，不删文件不卸载标记），
+// 停用成功才落标记——参与者否决（如运行中任务拦截）时插件保持运行、标记不变；
+// force=true 跳过否决检查（前端确认对话框明示代价后传入）
+func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool, force bool) (*entity2.Plugin, error) {
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
 		return nil, err
 	}
 	if plugin == nil {
 		return nil, ErrPluginNotFound
+	}
+
+	if !trusted {
+		if err := s.stopRuntime(ctx, pluginPublicId, PluginStopOpUntrust, force); err != nil {
+			return nil, err
+		}
 	}
 
 	plugin.Trusted = sql.NullBool{Bool: trusted, Valid: true}
@@ -618,7 +621,7 @@ func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted
 // uninstall 卸载插件核心逻辑
 func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	// 停止运行时并删除文件
-	if err := s.deactivate(ctx, pluginPublicId); err != nil {
+	if err := s.deactivate(ctx, pluginPublicId, PluginStopOpUninstall); err != nil {
 		return err
 	}
 
@@ -640,8 +643,9 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	return nil
 }
 
-// deactivate 停止插件运行时并删除插件文件，不修改数据库记录
-func (s *Service) deactivate(ctx context.Context, pluginPublicId string) error {
+// deactivate 停止插件运行时并删除插件文件，不修改数据库记录（卸载/重装共用）。
+// op 透传给参与者否决检查（卸载/重装/取消信任的拦截标准不同）
+func (s *Service) deactivate(ctx context.Context, pluginPublicId string, op PluginStopOp) error {
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
 		return err
@@ -650,24 +654,13 @@ func (s *Service) deactivate(ctx context.Context, pluginPublicId string) error {
 		return ErrPluginNotFound
 	}
 
-	logger.Log.Infof("正在停用插件: %s", pluginPublicId)
+	logger.Log.Infof("正在停用插件: %s (op=%s)", pluginPublicId, op)
 
-	// 停止运行时插件（子进程、注册中心等）
-	if s.onUnload != nil {
-		s.onUnload(pluginPublicId)
+	if err := s.stopRuntime(ctx, pluginPublicId, op, false); err != nil {
+		return err
 	}
 
-	// 删除插件目录
-	appRoot := s.getAppRoot()
-	rootPath := ""
-	if plugin.RootPath.Valid {
-		rootPath = plugin.RootPath.String
-	}
-	pluginPath := filepath.Join(appRoot, rootPath)
-	if err := util.RemoveDir(pluginPath); err != nil {
-		logger.Log.Warnf("删除插件目录失败: %v", err)
-	}
-
+	s.removeFiles(plugin)
 	return nil
 }
 

@@ -112,10 +112,11 @@ export function Save(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$
 }
 
 /**
- * SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件
+ * SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；
+ * trusted=false 即时停用运行时，force=前端确认对话框明示代价后强制停（跳过参与者否决检查）
  */
-export function SetTrusted(pluginPublicId: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
-    return $Call.ByID(1776306361, pluginPublicId, trusted).then(($result: any) => {
+export function SetTrusted(pluginPublicId: string, trusted: boolean, force: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
+    return $Call.ByID(1776306361, pluginPublicId, trusted, force).then(($result: any) => {
         return $$createType5($result);
     });
 }

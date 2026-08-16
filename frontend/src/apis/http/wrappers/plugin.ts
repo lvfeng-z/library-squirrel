@@ -70,9 +70,12 @@ export async function pluginUnInstall(publicId: string): Promise<ApiResult<any>>
   return requireResponse(await PluginHandler.Uninstall(publicId), '卸载插件', false)
 }
 
-/** 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件 */
-export async function pluginSetTrusted(publicId: string, trusted: boolean): Promise<ApiResult<PluginDTO>> {
-  return requireResponse(await PluginHandler.SetTrusted(publicId, trusted), '设置插件信任状态')
+/**
+ * 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；
+ * trusted=false 即时停用运行时，force=确认对话框明示代价后强制停（跳过参与者否决检查）
+ */
+export async function pluginSetTrusted(publicId: string, trusted: boolean, force: boolean = false): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.SetTrusted(publicId, trusted, force), '设置插件信任状态')
 }
 
 /** 获取插件状态 */

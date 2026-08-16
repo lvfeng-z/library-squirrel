@@ -977,11 +977,11 @@ func (app *App) initAdvancedServices() error {
 	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
 	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath())
 	app.PluginService.SetActivator(app)
-	app.PluginService.SetOnUnload(func(pluginPublicId string) {
-		app.pluginLoader.UnloadPlugin(pluginPublicId)
-		app.StaticResourceService.UnregisterPlugin(pluginPublicId)
-		app.FrontendExtensionRegistry.UnregisterAll(pluginPublicId)
-	})
+	// 插件停用生命周期：loader 为运行时停止器（停进程+清其所属注册表），
+	// 持运行时痕迹的模块注册为参与者（停用清理完备性的审计点），清单集中于此
+	app.PluginService.SetRuntimeStopper(app.pluginLoader.UnloadPlugin)
+	app.PluginService.RegisterLifecycleParticipant(&staticResourceParticipant{svc: app.StaticResourceService})
+	app.PluginService.RegisterLifecycleParticipant(&frontendExtensionParticipant{registry: app.FrontendExtensionRegistry})
 	app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
 	app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
 		taskHandlerRegistry:       app.TaskHandlerRegistry,
@@ -1313,6 +1313,34 @@ func (a *extensionListProviderAdapter) GetFrontendExtensionsByPlugin(pluginPubli
 		result = append(result, plugin.FrontendExtensionMeta{ID: cfg.Metadata.ID, Name: cfg.Metadata.Name, Kind: string(cfg.Kind)})
 	}
 	return result
+}
+
+// staticResourceParticipant 静态资源生命周期参与者：停用后注销插件静态资源目录
+type staticResourceParticipant struct {
+	svc *extension2.StaticResourceService
+}
+
+func (p *staticResourceParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
+	return nil // 静态资源无否决条件
+}
+
+func (p *staticResourceParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	p.svc.UnregisterPlugin(pluginPublicId)
+}
+
+// frontendExtensionParticipant 前端扩展生命周期参与者：停用后注销全部前端扩展（触发前端注销事件）
+type frontendExtensionParticipant struct {
+	registry *extension2.FrontendExtensionRegistry
+}
+
+func (p *frontendExtensionParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
+	return nil // 前端扩展注册无否决条件
+}
+
+func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	if err := p.registry.UnregisterAll(pluginPublicId); err != nil {
+		logger.Log.Warnf("停用注销前端扩展失败: %s, %v", pluginPublicId, err)
+	}
 }
 
 // runtimeStatusAdapter 将 extension.RuntimeStatus 适配为 plugin.RuntimeStatus
