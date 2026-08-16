@@ -39,6 +39,6 @@
 39. 作品集子集排序
 40. 插件契约版本规范化之后，文档调整，开发注意事项
 41. 插件能否在两次任务中向同一作品集插入作品，以及是否能够查询到本地存储的作品集（还有是否有必要进行这个支持）
-42. 卸载插件时注销其前端改动的操作没有覆盖到自定义渲染器
+42. ~~卸载插件时注销其前端改动的操作没有覆盖到自定义渲染器~~（已修复：根因=注销事件键位错配——注册事件携带裸 extensionId 而注销事件携带复合键 `publicId/extensionId`，前端 Map.delete 全 kind 失效、仅 resourceViewer 无 reload 掩蔽故显形；修复=注销 payload 双字段化（pluginPublicId+裸 extensionId 分列）+前端摄入点统一派生复合 store 键，契约测试见 `backend/plugin/extension/registry_test.go`，方案见 `doc/plan/插件热重载体系完善方案.md` 期一）
 43. 总结功能，能够读取作品内容并给出剧情简述或者场景描述等
 44. ~~更通用更合理的通知系统~~
