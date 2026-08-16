@@ -225,8 +225,6 @@ func (app *App) SetMainWindow(window application.Window) {
 
 // LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）
 func (app *App) LoadPlugins() {
-	// 回填历史插件（升级前安装、source/trusted 为 NULL）的来源与信任状态，须在加载前完成
-	app.PluginService.BackfillLegacyPlugins(context.Background())
 	app.loadInstalledPlugins()
 }
 
@@ -315,21 +313,15 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
-		// 信任门控（决策6）：trusted=false 不激活；NULL 历史插件兜底视作信任
-		if p.Trusted.Valid && !p.Trusted.Bool {
+		// 信任门控（决策6）：trusted 非真（未设置或显式 false）不激活
+		if !p.Trusted.Valid || !p.Trusted.Bool {
 			pendingTrust++
 			logger.Log.Infof("插件未信任，跳过激活（需手动信任）: %s", p.PublicID.String)
 			continue
 		}
 
-		// 受限模式（决策4）：开启时跳过所有非 bundled 插件（NULL 来源兜底视作 bundled）
-		source := plugin.SourceLocal
-		if p.Source.Valid {
-			source = p.Source.String
-		} else {
-			source = plugin.SourceBundled
-		}
-		if restrictedMode && source != plugin.SourceBundled {
+		// 受限模式（决策4）：开启时跳过所有非 bundled 插件（来源未设置视作非 bundled）
+		if restrictedMode && (!p.Source.Valid || p.Source.String != plugin.SourceBundled) {
 			restrictedSkipped++
 			logger.Log.Infof("受限模式启用，跳过非 bundled 插件: %s", p.PublicID.String)
 			continue
@@ -371,9 +363,8 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		return fmt.Errorf("插件缺少 PublicID")
 	}
 
-	// 信任门控（决策6）：trusted=false 不激活，需用户在管理页显式信任后由 Activate 重新激活。
-	// trusted=NULL（历史遗留、回填未覆盖）放行，由 loadInstalledPlugins 兜底判定
-	if p.Trusted.Valid && !p.Trusted.Bool {
+	// 信任门控（决策6）：trusted 非真（未设置或显式 false）不激活，需用户在管理页显式信任后由 Activate 重新激活
+	if !p.Trusted.Valid || !p.Trusted.Bool {
 		return fmt.Errorf("插件未信任，拒绝激活: %s", p.PublicID.String)
 	}
 

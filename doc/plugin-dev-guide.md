@@ -95,7 +95,7 @@ type MyTaskHandler struct{}
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `id` | string | 是 | 插件标识（**= publicId 身份键**，反向域名格式 `com.作者.名称`，安装期强校验格式并拒绝 UUID 后缀残留） |
+| `id` | string | 是 | 插件标识（**= publicId 身份键**，反向域名格式 `com.作者.名称`，安装期强校验字符集与段结构） |
 | `name` | string | 是 | 显示名称 |
 | `version` | string | 是 | 语义化版本 |
 | `author` | string | 是 | 作者（纯展示属性，不参与身份键） |

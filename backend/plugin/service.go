@@ -615,32 +615,6 @@ func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted
 	return plugin, nil
 }
 
-// BackfillLegacyPlugins 回填升级前安装的插件（source/trusted 为 NULL）的来源与信任状态。
-// 幂等：仅处理 source 为 NULL 的记录；视作 bundled 默认信任。
-func (s *Service) BackfillLegacyPlugins(ctx context.Context) {
-	plugins, err := s.repo.List(ctx, &database.QueryOption{})
-	if err != nil {
-		logger.Log.Warnf("回填插件信任状态：查询插件列表失败: %v", err)
-		return
-	}
-	backfilled := 0
-	for _, p := range plugins {
-		if p.Source.Valid {
-			continue
-		}
-		p.Source = sql.NullString{String: SourceBundled, Valid: true}
-		p.Trusted = sql.NullBool{Bool: true, Valid: true}
-		if err := s.repo.Save(ctx, p); err != nil {
-			logger.Log.Warnf("回填插件信任状态失败: %s, %v", p.PublicID.String, err)
-			continue
-		}
-		backfilled++
-	}
-	if backfilled > 0 {
-		logger.Log.Infof("已回填 %d 个历史插件的来源与信任状态（视作 bundled 默认信任）", backfilled)
-	}
-}
-
 // uninstall 卸载插件核心逻辑
 func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	// 停止运行时并删除文件

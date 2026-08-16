@@ -147,3 +147,14 @@
 - **风险2 实证踩中**：dev 库 buildId 已是 dirty 值（前晚 dirty 构建写入），新 zip 同 SHA 同 dirty → buildId 相等 → 首启判定「跳过升级」。生产不受影响（生产 build_id 为 NULL 必触发重装）。dev 处置：清空 bundled 记录 build_id 模拟生产态后重启，升级路径走通。后续插件仓库提交后重构建会得到 clean SHA buildId，自然走出 dirty 盲区。
 - 既有问题（与本项目无关，未处理）：`backend/taskManager/model_multi_stream_test.go:263`（`SiteAuthorID` vs SDK 实名 `SiteAuthorId`）与 `backend/util/filename/template_test.go:135`（`SiteWorkID` vs `SiteWorkId`）字段名漂移导致两包测试构建失败。
 - 遗留小项：installCore 清理旧目录遇文件锁（前次运行被强杀遗留的孤儿子进程锁 exe）时仅告警不重试，本次 dev 旧目录为手动清除；正常退出流程（优雅关停子进程）不触发此况。dev 库 test-plugin（uninstalled）记录的 root_path 指向已删目录，不影响激活（未卸载状态不激活），重装走新 zip 即落新目录。
+
+## 七、后裁决：旧体系兼容整体移除（2026-08-16 用户拍板）
+
+软件未正式发布、「生产环境」为开发者自用环境，无需兼顾旧版本数据。据此移除本方案 3.3 节的数据迁移及全部仅服务旧记录的兼容代码：
+
+- `migration/migrate.go` 的 `migratePluginPublicId`/`deriveNewPublicId` 及调用、`migrate_test.go` 整文件；
+- dto 的 `legacyUUIDSuffixRe`/`StripLegacyUUIDSuffix` 与 `ValidatePluginID` 的 UUID 后缀拒绝分支（反向域名字符集不含 `_`，旧式 id 天然被格式校验拒绝，语义不损）；
+- `plugin.Service.BackfillLegacyPlugins`（source/trusted NULL 回填）及其在 `LoadPlugins` 的调用；
+- 仅服务 NULL 旧行的兜底：`loadInstalledPlugins`/`activatePlugin` 的 trusted=NULL 放行、受限模式的 NULL 来源视作 bundled——统一收紧为「trusted/source 未设置按不利解释」。
+
+**未迁移旧环境的处置**（如 D:\ProgramFile\Library Squirrel 直接升级新版）：旧格式记录不迁移、不激活旧兼容，InstallBundled 按 publicId 查无 → 全新安装新记录，旧记录并存显示为重复条目——在该环境插件管理页手工卸载旧条目即可（顺带删除旧磁盘目录）；其 plugin_storage 为空（2026-08-16 查证），无数据损失。

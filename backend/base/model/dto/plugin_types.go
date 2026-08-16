@@ -79,29 +79,15 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 	}
 }
 
-var (
-	// pluginIDFormatRe 插件 id 格式：反向域名，至少两段 label，字符集限字母/数字/连字符/点
-	pluginIDFormatRe = regexp.MustCompile(`^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$`)
-	// legacyUUIDSuffixRe 旧身份格式在 id 末尾附加的 "_<UUID>" 后缀（author/id_uuid 三重唯一性冗余期产物）
-	legacyUUIDSuffixRe = regexp.MustCompile(`_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-)
+// pluginIDFormatRe 插件 id 格式：反向域名，至少两段 label，字符集限字母/数字/连字符/点
+var pluginIDFormatRe = regexp.MustCompile(`^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$`)
 
-// ValidatePluginID 校验插件 id（= publicId 身份键）：须为反向域名格式，且不得残留旧身份的 UUID 后缀。
-// 旧后缀残留说明是身份简化前的旧包，安装会产生双身份记录，须拒绝
+// ValidatePluginID 校验插件 id（= publicId 身份键）：须为反向域名格式
 func ValidatePluginID(id string) error {
 	if !pluginIDFormatRe.MatchString(id) {
 		return fmt.Errorf("invalid plugin id %q: expect reverse-domain format like com.example.plugin", id)
 	}
-	if legacyUUIDSuffixRe.MatchString(id) {
-		return fmt.Errorf("invalid plugin id %q: legacy uuid suffix detected, rebuild the plugin package with the new identity scheme", id)
-	}
 	return nil
-}
-
-// StripLegacyUUIDSuffix 剥离插件 id 末尾的旧身份 UUID 后缀（无后缀时原样返回），
-// 供存量数据迁移派生新身份键使用
-func StripLegacyUUIDSuffix(id string) string {
-	return legacyUUIDSuffixRe.ReplaceAllString(id, "")
 }
 
 // NewPluginManifest 创建插件清单

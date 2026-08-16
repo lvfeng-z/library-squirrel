@@ -52,4 +52,4 @@
 ## 关键设计
 
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
-- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` 先 `BackfillLegacyPlugins`（幂等回填升级前 source/trusted 为 NULL 的插件为 bundled/trusted=true）→ `loadInstalledPlugins` 按 trusted 门控（false 不激活）+ Restricted Mode（settings 开关，仅 bundled）+ NULL 来源兜底加载；`activatePlugin` 起始统一拦截 trusted=false。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `doc/plan/插件信任模型最小集方案.md`。
+- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`activatePlugin` 起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `doc/plan/插件信任模型最小集方案.md`。

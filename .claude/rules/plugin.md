@@ -278,8 +278,7 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 - **构建身份（BuildID）**：`plugin.BuildID`，构建管线注入 plugin.json `buildId` 字段（`git describe --tags --always --dirty` 输出；同源码状态重构建永远同值，与构建机器/路径/时间无关）。`InstallBundled` 以它做捆绑插件升级检测（bundled 来源已装 buildId 与 zip 不一致或已装缺失即重装；zip 未打标回落 version 比较）；亦作静态资产 URL/ETag 缓存键（重构建必变，令 immutable 长缓存随构建失效）。设计见 `doc/plan/插件构建身份与升级判据机制.md`。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除。
 - **信任标记与 consent**：`plugin.Trusted`（`sql.NullBool`）服务端权威写入——bundled 安装即 `true`；第三方（`InstallFromPath`）的 `trusted` 由前端弹窗收集用户知情同意后经 handler 参数透传（`Handler.InstallFromPath(ctx, packagePath, trusted bool)`），**缺省/绕过 UI 一律落 false**。
 - **运行门控**：`trusted=false` 的插件**不 Activate**（`activatePlugin` 起始检查）。用户在插件管理页「信任」后置 `true` 并激活（`Handler.SetTrusted`）；取消信任仅更新标记，下次启动不再激活（当前运行需重启）。**这是「是否运行」的二值门控，非「裁剪 HostService 能力」**——trusted=true 运行后能力仍全开；按信任裁剪 RPC 属延后项（完整沙箱）。
-- **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted），作安全启动救生圈；与运行门控正交。
-- **历史兜底**：升级前安装的插件 `source`/`trusted` 为 NULL，启动时 `BackfillLegacyPlugins`（`LoadPlugins` 第一步）幂等回填为 bundled/trusted=true、尽力补算哈希；`loadInstalledPlugins` 对 NULL 来源兜底视作 bundled。
+- **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted；来源未设置视作非 bundled），作安全启动救生圈；与运行门控正交。
 
 ## 插件开发规范
 
