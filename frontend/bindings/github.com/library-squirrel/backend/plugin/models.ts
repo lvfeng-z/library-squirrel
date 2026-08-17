@@ -96,6 +96,11 @@ export class PluginQueryDTO {
     "author": query$0.QueryAttribute<string>;
 
     /**
+     * 来源（bundled/local/url/marketplace，精确匹配）
+     */
+    "source": query$0.QueryAttribute<string>;
+
+    /**
      * 版本号（精确匹配）
      */
     "version": query$0.QueryAttribute<string>;
@@ -131,6 +136,9 @@ export class PluginQueryDTO {
         if (!("author" in $$source)) {
             this["author"] = (new query$0.QueryAttribute());
         }
+        if (!("source" in $$source)) {
+            this["source"] = (new query$0.QueryAttribute());
+        }
         if (!("version" in $$source)) {
             this["version"] = (new query$0.QueryAttribute());
         }
@@ -159,9 +167,10 @@ export class PluginQueryDTO {
         const $$createField2_0 = $$createType0;
         const $$createField3_0 = $$createType0;
         const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType1;
-        const $$createField6_0 = $$createType2;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType1;
         const $$createField7_0 = $$createType2;
+        const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField0_0($$parsedSource["publicId"]);
@@ -172,20 +181,23 @@ export class PluginQueryDTO {
         if ("author" in $$parsedSource) {
             $$parsedSource["author"] = $$createField2_0($$parsedSource["author"]);
         }
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField3_0($$parsedSource["source"]);
+        }
         if ("version" in $$parsedSource) {
-            $$parsedSource["version"] = $$createField3_0($$parsedSource["version"]);
+            $$parsedSource["version"] = $$createField4_0($$parsedSource["version"]);
         }
         if ("activationType" in $$parsedSource) {
-            $$parsedSource["activationType"] = $$createField4_0($$parsedSource["activationType"]);
+            $$parsedSource["activationType"] = $$createField5_0($$parsedSource["activationType"]);
         }
         if ("uninstalled" in $$parsedSource) {
-            $$parsedSource["uninstalled"] = $$createField5_0($$parsedSource["uninstalled"]);
+            $$parsedSource["uninstalled"] = $$createField6_0($$parsedSource["uninstalled"]);
         }
         if ("createTime" in $$parsedSource) {
-            $$parsedSource["createTime"] = $$createField6_0($$parsedSource["createTime"]);
+            $$parsedSource["createTime"] = $$createField7_0($$parsedSource["createTime"]);
         }
         if ("updateTime" in $$parsedSource) {
-            $$parsedSource["updateTime"] = $$createField7_0($$parsedSource["updateTime"]);
+            $$parsedSource["updateTime"] = $$createField8_0($$parsedSource["updateTime"]);
         }
         return new PluginQueryDTO($$parsedSource as Partial<PluginQueryDTO>);
     }
