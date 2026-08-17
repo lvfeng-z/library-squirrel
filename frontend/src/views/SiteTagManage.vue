@@ -312,6 +312,8 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
           v-model:changed-rows="changedRows"
           v-model:sort="sort"
           class="local-tag-manage-search-table"
+          toolbar-radius="var(--app-radius)"
+          data-radius="var(--app-radius)"
           data-key="siteTag.id"
           :operation-button="operationButton"
           :thead="siteTagThead"
@@ -374,15 +376,13 @@ async function creatSameNameLocalTagAndBind(siteTag: SiteTagLocalRelateDTO) {
   </base-view>
 </template>
 
-<style>
+<style scoped>
 .local-tag-manage-container {
-  background: var(--app-bg-surface);
-  border-radius: var(--app-radius);
   display: flex;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  padding: 5px;
-  margin: 5px;
+  /* 容器不带底色：一体感由 SearchTable 自身的工具栏面与数据面（含分页面）连成的卡片承担；间距纯 margin（总边距 10px 不变） */
+  margin: 10px;
   flex-direction: row;
   justify-content: center;
   align-items: center;

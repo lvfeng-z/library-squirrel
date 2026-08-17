@@ -429,7 +429,7 @@ async function requestSiteTagSelectItemPage(
   </base-view>
 </template>
 
-<style>
+<style scoped>
 .local-tag-manage-container {
   display: flex;
   flex-direction: row;

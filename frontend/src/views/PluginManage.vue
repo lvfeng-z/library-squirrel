@@ -563,8 +563,8 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"
           :operation-width="280"
-          toolbar-radius="10px"
-          data-radius="10px"
+          toolbar-radius="var(--app-radius)"
+          data-radius="var(--app-radius)"
           @row-button-clicked="handleRowButtonClicked"
           @selection-change="handleSelectionChange"
         >

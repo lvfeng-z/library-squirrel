@@ -190,6 +190,8 @@ function handleSiteDialogRequestSuccess() {
           v-model:page="sitePage"
           v-model:changed-rows="siteChangedRows"
           class="site-manage-search-table"
+          toolbar-radius="var(--app-radius)"
+          data-radius="var(--app-radius)"
           data-key="id"
           :operation-button="siteOperationButton"
           :operation-width="140"
@@ -234,12 +236,10 @@ function handleSiteDialogRequestSuccess() {
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: var(--app-bg-surface);
-  border-radius: var(--app-radius);
+  /* 容器不带底色：一体感由 SearchTable 自身的工具栏面与数据面（含分页面）连成的卡片承担；间距纯 margin（总边距 10px 不变） */
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  padding: 5px;
-  margin: 5px;
+  margin: 10px;
 }
 
 .site-manage-search-table {
