@@ -210,6 +210,7 @@ function handleSiteDialogRequestSuccess() {
               新增
             </el-button>
             <el-input
+              class="site-manage-search-input"
               v-model="siteSearchParams.siteName.value"
               placeholder="输入站点名称"
               clearable
@@ -245,5 +246,9 @@ function handleSiteDialogRequestSuccess() {
 .site-manage-search-table {
   height: 100%;
   width: 100%;
+}
+.site-manage-search-input {
+  width: auto;
+  flex-grow: 1;
 }
 </style>

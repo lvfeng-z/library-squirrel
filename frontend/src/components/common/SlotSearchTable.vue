@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="Data extends object">
 import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models.ts'
 import lodash from 'lodash'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
@@ -25,14 +25,27 @@ const props = withDefaults(
     createButton?: boolean
     pageSizes?: number[]
     searchButtonDisabled?: boolean
+    toolbarBackground?: string // 工具栏块底色（CSS color 值）
+    dataBackground?: string // 数据栏块底色（默认透明：表体与分页壳各自承担底色）
+    toolbarDataGap?: string // 工具栏与数据栏之间的间隔高度
+    toolbarRadius?: string // 工具栏块圆角（默认上圆角下直角，与历史视觉一致）
+    dataRadius?: string // 数据栏块圆角（默认无：底色透明时不可见）
   }>(),
   {
     createButton: false,
     pageSizes: () => [10, 20, 30, 50, 100],
     treeLazy: false,
-    border: false
+    border: false,
+    toolbarBackground: 'var(--app-bg-surface)',
+    dataBackground: 'transparent',
+    toolbarDataGap: '5px',
+    toolbarRadius: 'var(--app-radius) var(--app-radius) 0 0',
+    dataRadius: '0'
   }
 )
+
+// 数据栏底色是否为自定义（非透明默认）：自定义时表体/分页壳整体让位透明，放行容器底色
+const isDataBgCustom = computed(() => props.dataBackground !== 'transparent')
 
 // model
 const data = defineModel<Data[]>('data', { default: [], required: false })
@@ -154,7 +167,7 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
         <slot name="toolbarDropdown" />
       </template>
     </search-toolbar>
-    <div class="search-table-data">
+    <div :class="{ 'search-table-data': true, 'search-table-data-custom-bg': isDataBgCustom }">
       <slot-data-table
         ref="dataTableRef"
         v-model:data="data"
@@ -204,11 +217,11 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
   justify-content: center;
   align-items: center;
 }
+/* 工具栏/数据栏分离视觉的皮肤参数（props 经 v-bind 注入，与 SearchTable 同构，默认值与历史视觉一致） */
 .search-table-toolbar {
   width: 100%;
-  background-color: var(--app-bg-surface);
-  border-top-left-radius: var(--app-radius);
-  border-top-right-radius: var(--app-radius);
+  background-color: v-bind('props.toolbarBackground');
+  border-radius: v-bind('props.toolbarRadius');
 }
 .search-table-data {
   display: flex;
@@ -218,7 +231,25 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
   flex: 1;
   min-height: 0;
   width: 100%;
-  margin-top: 5px;
+  /* 圆角裁剪子元素（表体/分页面方角），否则容器圆角被越出绘制盖掉 */
+  overflow: hidden;
+  background-color: v-bind('props.dataBackground');
+  border-radius: v-bind('props.dataRadius');
+  margin-top: v-bind('props.toolbarDataGap');
+}
+/* 数据栏自定义底色时放行容器底色：el-table 底色走 CSS 变量级覆盖（EP 内部全部级联），
+   默认不命中本规则，EP 原生观感零改动 */
+.search-table-data-custom-bg :deep(.el-table) {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-expanded-cell-bg-color: transparent;
+}
+.search-table-data-custom-bg .search-table-data-pagination-wrapper {
+  background-color: transparent;
+}
+.search-table-data-custom-bg .search-table-data-pagination-scroll {
+  background-color: transparent;
 }
 .search-table-data-table {
   flex-grow: 1;

@@ -282,6 +282,8 @@ async function requestSiteTagSelectItemPage(
             v-model:page="page"
             v-model:changed-rows="changedRows"
             class="local-tag-manage-left-search-table"
+            toolbar-radius="var(--app-radius)"
+            data-radius="var(--app-radius)"
             data-key="localTag.id"
             :operation-button="operationButton"
             :thead="localTagThead"
@@ -435,12 +437,10 @@ async function requestSiteTagSelectItemPage(
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  background: var(--app-bg-surface);
-  border-radius: var(--app-radius);
+  /* 容器不带底色：左侧由 SearchTable 卡片面承担、右侧交换盒自带分区面；间距纯 margin（总边距 10px 不变） */
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  padding: 5px;
-  margin: 5px;
+  margin: 10px;
 }
 
 .local-tag-manage-left {

@@ -29,13 +29,23 @@ const props = withDefaults(
     selectable?: boolean
     multiSelect?: boolean
     pageSizes?: number[]
+    toolbarBackground?: string // 工具栏块底色（透传 SlotSearchTable 皮肤参数）
+    dataBackground?: string // 数据栏块底色
+    toolbarDataGap?: string // 工具栏与数据栏之间的间隔高度
+    toolbarRadius?: string // 工具栏块圆角
+    dataRadius?: string // 数据栏块圆角
   }>(),
   {
     treeData: false,
     treeLazy: false,
     selectable: true,
     multiSelect: true,
-    pageSizes: () => [10, 20, 30, 50, 100]
+    pageSizes: () => [10, 20, 30, 50, 100],
+    toolbarBackground: 'var(--app-bg-surface)',
+    dataBackground: 'transparent',
+    toolbarDataGap: '5px',
+    toolbarRadius: 'var(--app-radius) var(--app-radius) 0 0',
+    dataRadius: '0'
   }
 )
 
@@ -194,10 +204,17 @@ onUnmounted(() => {
     :tree-load="treeLoad"
     :tree-data="treeData"
     :page-sizes="pageSizes"
+    :toolbar-background="toolbarBackground"
+    :data-background="dataBackground"
+    :toolbar-data-gap="toolbarDataGap"
+    :toolbar-radius="toolbarRadius"
+    :data-radius="dataRadius"
     @sort-change="doSearch"
     @selection-change="(rows: TaskProgressTreeDTO[]) => emits('selectionChange', rows)"
   >
     <template #toolbarMain>
+      <!-- 工具栏前缀插槽：调用方注入页面专属操作（如任务管理页的导入/下载入口按钮），位于筛选区之前 -->
+      <slot name="toolbarPrefix" />
       <el-row class="task-list-search-bar">
         <el-col :span="14">
           <el-input

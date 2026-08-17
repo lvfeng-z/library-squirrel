@@ -194,37 +194,13 @@ async function handleSourceUrlInput() {
 <template>
   <base-view>
     <div class="task-manage-search-table-wrapper">
-      <div class="task-manage-local-import-button-row">
-        <div class="task-manage-local-import-button-col">
-          <el-button
-            ref="localImportButton"
-            size="large"
-            type="primary"
-            icon="Monitor"
-            @click="(event: PointerEvent) => handleDownloadDialog(event, true)"
-          >
-            从本地导入
-          </el-button>
-        </div>
-        <div class="task-manage-site-import-button-col">
-          <el-button
-            ref="siteDownloadButton"
-            v-model="downloadDialogState"
-            class="source-site-button"
-            size="large"
-            type="primary"
-            icon="Link"
-            @click="(event: PointerEvent) => handleDownloadDialog(event, false)"
-          >
-            从站点下载
-          </el-button>
-        </div>
-      </div>
       <task-list
         ref="taskListRef"
         v-model:data="dataList"
         v-model:page="page"
         class="task-manage-search-table"
+        toolbar-radius="var(--app-radius)"
+        data-radius="var(--app-radius)"
         :search="taskQueryParentPage"
         :selectable="true"
         :multi-select="true"
@@ -232,7 +208,32 @@ async function handleSourceUrlInput() {
         :tree-lazy="true"
         :tree-load="load"
         @view="onViewRow"
-      />
+      >
+        <template #toolbarPrefix>
+          <!-- 第一行：入口大按钮（全宽元素强制分行，保持 large 尺寸） -->
+          <div class="task-manage-toolbar-action-row">
+            <el-button
+              ref="localImportButton"
+              size="large"
+              type="primary"
+              icon="Monitor"
+              @click="(event: PointerEvent) => handleDownloadDialog(event, true)"
+            >
+              从本地导入
+            </el-button>
+            <el-button
+              ref="siteDownloadButton"
+              class="source-site-button"
+              size="large"
+              type="primary"
+              icon="Link"
+              @click="(event: PointerEvent) => handleDownloadDialog(event, false)"
+            >
+              从站点下载
+            </el-button>
+          </div>
+        </template>
+      </task-list>
     </div>
     <template #dialog>
       <task-dialog
@@ -295,17 +296,12 @@ async function handleSourceUrlInput() {
 </template>
 
 <style scoped>
-.task-manage-local-import-button-row {
-  height: 50px;
+/* 工具栏第一行：入口大按钮（全宽强制分行，筛选区落第二行；居中排布、按钮间留间隔） */
+.task-manage-toolbar-action-row {
   width: 100%;
   display: flex;
-  align-items: center;
-}
-.task-manage-local-import-button-col {
-  margin: auto;
-}
-.task-manage-site-import-button-col {
-  margin: auto;
+  justify-content: center;
+  gap: 30%;
 }
 /* 从站点下载按钮：走"浅底深字"（区别于本地导入按钮的 primary 深底白字）——
    底用 source-site-bg（淡主题色）、字用 source-site-text（primary 深字），体现站点来源"较浅"。
@@ -323,15 +319,17 @@ async function handleSourceUrlInput() {
   --el-button-active-text-color: var(--app-status-source-site-text);
 }
 .task-manage-search-table-wrapper {
-  background: var(--app-bg-surface);
-  border-radius: var(--app-radius);
+  /* 容器不带底色：按钮行与任务列表各自成 surface 卡；间距纯 margin（总边距 10px 不变） */
+  display: flex;
+  flex-direction: column;
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  padding: 5px;
-  margin: 5px;
+  margin: 10px;
 }
 .task-manage-search-table {
-  height: calc(100% - 50px);
+  /* 高度由 flex 分配（原 calc(100% - 50px) 按按钮行硬补偿，含卡片间距后改为 flex 自适应） */
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 .task-manage-download-dialog-local-button-container {
