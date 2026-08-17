@@ -22,6 +22,7 @@ type PluginDTO struct {
 	ActivationType *string `json:"activationType"`
 	Source         *string `json:"source"`        // 来源枚举 bundled/local/url/marketplace
 	SourceDetail   *string `json:"sourceDetail"`  // 来源详情（安装包路径/URL）
+	UpgradeDeclinedBuildID *string `json:"upgradeDeclinedBuildId"` // 用户拒绝升级的目标 buildId（非空=已跳过该构建，管理页渲染「已跳过」并提供重新提示）
 	Trusted        *bool   `json:"trusted"`       // 信任标记；false=未信任（未激活，需手动信任）
 	CreateTime     int64   `json:"createTime"`
 	UpdateTime     int64   `json:"updateTime"`
@@ -48,6 +49,7 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		ActivationType: util.NullStringToPointer(plugin.ActivationType),
 		Source:         util.NullStringToPointer(plugin.Source),
 		SourceDetail:   util.NullStringToPointer(plugin.SourceDetail),
+		UpgradeDeclinedBuildID: util.NullStringToPointer(plugin.UpgradeDeclinedBuildID),
 		Trusted:        util.NullBoolToPointer(plugin.Trusted),
 		CreateTime:     plugin.GetCreateTime(),
 		UpdateTime:     plugin.GetUpdateTime(),
@@ -161,4 +163,18 @@ func ToPluginEntity(dto *PluginDTO) *entity2.Plugin {
 	}
 
 	return entity
+}
+
+// PendingUpgradeDTO 插件更新待办项（检查更新流 IPC DTO）。启动期检测产出、前端拉取消费：
+// available 为可答复项（红点计数、管理页升级/跳过按钮），forced/error 为只读告知项
+type PendingUpgradeDTO struct {
+	PublicID         string `json:"publicId"`         // 插件身份键；error 项包解析失败无身份，为空串
+	PluginName       string `json:"pluginName"`       // 展示名；error 项为包文件名
+	InstalledVersion string `json:"installedVersion"` // 已装版本；error 项为空
+	TargetVersion    string `json:"targetVersion"`    // 捆绑包版本
+	TargetBuildID    string `json:"targetBuildId"`    // 捆绑包构建身份标识；未打标包为空（不进检查更新流）
+	Direction        string `json:"direction"`        // up/down/none（version 语义排序，仅展示用）
+	Kind             string `json:"kind"`             // available（可升级）/forced（已因契约不兼容强制升级）/error（捆绑包安装失败）
+	Source           string `json:"source"`           // 更新来源：bundled（当前唯一；网络源接入后扩展）
+	Message          string `json:"message"`          // forced/error 类的说明文案（错误摘要）
 }

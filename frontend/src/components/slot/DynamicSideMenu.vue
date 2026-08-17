@@ -5,6 +5,7 @@ import SideMenu from '@renderer/components/oneOff/SideMenu.vue'
 import AppIcon from '@renderer/components/common/AppIcon.vue'
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import type { MenuSlotItem } from '@renderer/store/SlotRegistryStore'
+import { useMenuBadgeStore } from '@renderer/store/UseMenuBadgeStore.ts'
 
 const props = defineProps<{
   width?: string
@@ -14,6 +15,7 @@ const props = defineProps<{
 const router = useRouter()
 const route = useRoute()
 const slotStore = useSlotRegistryStore()
+const menuBadgeStore = useMenuBadgeStore()
 
 interface MenuItem {
   slotId: string
@@ -114,7 +116,15 @@ function handleMenuClick(item: MenuItem) {
           :index="item.index"
         >
           <template #title>
-            <el-icon><AppIcon :icon="item.icon" /></el-icon>
+            <el-badge
+              :value="menuBadgeStore.badgeOf(item.slotId)"
+              :max="99"
+              :offset="[-2, 20]"
+              :hidden="menuBadgeStore.badgeOf(item.slotId) === 0"
+              class="menu-badge"
+            >
+              <el-icon><AppIcon :icon="item.icon" /></el-icon>
+            </el-badge>
             <span>{{ item.label }}</span>
           </template>
           <el-menu-item
@@ -123,7 +133,15 @@ function handleMenuClick(item: MenuItem) {
             :index="child.index"
             @click="handleMenuClick(child)"
           >
-            <el-icon><AppIcon :icon="child.icon" /></el-icon>
+            <el-badge
+              :value="menuBadgeStore.badgeOf(child.slotId)"
+              :max="99"
+              :offset="[-2, 20]"
+              :hidden="menuBadgeStore.badgeOf(child.slotId) === 0"
+              class="menu-badge"
+            >
+              <el-icon><AppIcon :icon="child.icon" /></el-icon>
+            </el-badge>
             <span>{{ child.label }}</span>
           </el-menu-item>
         </el-sub-menu>
@@ -134,10 +152,25 @@ function handleMenuClick(item: MenuItem) {
           :index="item.index"
           @click="handleMenuClick(item)"
         >
-          <el-icon><AppIcon :icon="item.icon" /></el-icon>
+          <el-badge
+            :value="menuBadgeStore.badgeOf(item.slotId)"
+            :max="99"
+            :offset="[-2, 20]"
+            :hidden="menuBadgeStore.badgeOf(item.slotId) === 0"
+            class="menu-badge"
+          >
+            <el-icon><AppIcon :icon="item.icon" /></el-icon>
+          </el-badge>
           <span>{{ item.label }}</span>
         </el-menu-item>
       </template>
     </template>
   </side-menu>
 </template>
+
+<style scoped>
+/* 菜单红点（UseMenuBadgeStore 注册表驱动，任意菜单项可注册）：色取 fail tone（失败语义色槽），随主题调色变化 */
+.menu-badge :deep(.el-badge__content) {
+  background-color: var(--app-status-fail-text);
+}
+</style>

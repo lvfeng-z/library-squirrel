@@ -2,13 +2,14 @@
 import BaseView from '@renderer/views/BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
 import PluginStatusPanel from '@renderer/components/plugin/PluginStatusPanel.vue'
-import {onMounted, ref, Ref} from 'vue'
+import {computed, onMounted, ref, Ref} from 'vue'
+import {useRouter} from 'vue-router'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
 import {Thead} from '@renderer/model/util/Thead.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import DataTableOperationResponse from '@renderer/model/util/DataTableOperationResponse.ts'
-import {arrayNotEmpty} from '@renderer/utils/CommonUtil.ts'
+import {arrayIsEmpty, arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import PluginSettingDialog from '@renderer/components/dialogs/PluginSettingDialog.vue'
@@ -16,8 +17,11 @@ import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plug
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isNotBlank} from '@renderer/utils/StringUtil.ts'
 import {fileSysUtilApi, pluginApi, taskApi} from '@renderer/apis/http'
-import {PluginDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {PluginDTO, PendingUpgradeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
+import {usePluginUpdateStore} from '@renderer/store/UsePluginUpdateStore.ts'
+
+const router = useRouter()
 
 // onMounted
 onMounted(() => {
@@ -25,6 +29,8 @@ onMounted(() => {
   pluginSearchParams.value.updateTime = { value: null, order: SortOrder.OrderDesc, priority: 0 }
   pluginSearchParams.value.createTime = { value: null, order: SortOrder.OrderDesc, priority: 1 }
   pluginSearchTable.value.doSearch()
+  // 进入页面即刷新检查更新待办（红点与待更新区块同步）
+  pluginUpdateStore.refresh()
 })
 
 // 变量
@@ -32,12 +38,15 @@ onMounted(() => {
 const pluginSearchTable = ref()
 // 插件分页参数
 const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
-// 插件操作栏按钮
+// 插件操作栏按钮（首个 rule 命中的为主按钮，其余进下拉；升级/跳过仅对有可升级待办的行显示）
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
+  { label: '升级', icon: 'Upload', code: 'upgrade', buttonType: 'primary', rule: (row) => notNullish(findAvailableByPublicId(String(row.publicId))) },
   { label: '设置', icon: 'Setting', code: 'settings' },
   { label: '查看', icon: 'View', code: DialogMode.VIEW },
   { label: '信任', icon: 'Check', code: 'trust' },
   { label: '修复', icon: 'Refresh', code: 'reinstall' },
+  { label: '状态', icon: 'Monitor', code: 'status' },
+  { label: '跳过此构建', icon: 'Close', code: 'decline', rule: (row) => notNullish(findAvailableByPublicId(String(row.publicId))) },
   { label: '卸载', icon: 'delete', code: 'uninstall' }
 ]
 // 插件的表头
@@ -98,8 +107,8 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
 ])
 // 插件的查询参数
 const pluginSearchParams: Ref<PluginQueryDTO> = ref<PluginQueryDTO>(new PluginQueryDTO())
-// 被选中的插件
-const pluginSelected: Ref<PluginDTO> = ref(new PluginDTO())
+// 被选中的插件（多选，供批量升级）
+const selectedPlugins: Ref<PluginDTO[]> = ref([])
 // 对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 对话框的数据
@@ -112,6 +121,162 @@ const statusPublicId: Ref<string> = ref('')
 const settingDialogState: Ref<boolean> = ref(false)
 // 设置对话框对应的插件 publicId
 const settingPublicId: Ref<string> = ref('')
+
+// 检查更新待办（红点数据源同 store；本页承担答复：升级/跳过/重新提示）
+const pluginUpdateStore = usePluginUpdateStore()
+// 升级执行中的待办 publicId（按钮 loading 与重复点击拦截；后端执行中守卫为最权威兜底）
+const applyingIds: Ref<string[]> = ref([])
+
+// 已跳过更新的 bundled 插件（来自本页插件列表数据，PluginDTO 透传拒绝标记）
+const declinedPlugins = computed<PluginDTO[]>(() => {
+  return (pluginPage.value.data ?? []).filter(
+    (plugin) => plugin?.source === 'bundled' && isNotBlank(plugin.upgradeDeclinedBuildId ?? undefined)
+  ) as PluginDTO[]
+})
+
+// 待更新区块是否可见（告知类任一非空；可升级项经行内按钮与批量升级答复，不占区块）
+const hasPendingEntry = computed(() => {
+  return (
+    arrayNotEmpty(pluginUpdateStore.forcedList) ||
+    arrayNotEmpty(pluginUpdateStore.errorList) ||
+    arrayNotEmpty(declinedPlugins.value)
+  )
+})
+
+// 按插件身份键查其可升级待办
+function findAvailableByPublicId(publicId: string): PendingUpgradeDTO | undefined {
+  return pluginUpdateStore.availableList.find((item) => item.publicId === publicId)
+}
+
+// 选中插件中的可升级待办（批量升级目标）
+const selectedAvailableItems = computed<PendingUpgradeDTO[]>(() => {
+  const selectedIds = new Set(selectedPlugins.value.map((plugin) => String(plugin.publicId)))
+  return pluginUpdateStore.availableList.filter((item) => selectedIds.has(item.publicId))
+})
+
+// 批量升级按钮禁用态（未选中任何可升级插件）
+const batchUpgradeDisabled = computed(() => arrayIsEmpty(selectedAvailableItems.value))
+
+// 版本展示文案（含降级标注）
+function versionText(item: PendingUpgradeDTO): string {
+  const direction = item.direction === 'down' ? '（降级）' : ''
+  return `v${item.installedVersion} → v${item.targetVersion}${direction}`
+}
+
+// 点击升级：先按运行中任务数分流——N>0 引导先去暂停（服务端必否决，不提供「仍要尝试」），N=0 直接确认执行
+async function handleUpgradeClicked(item: PendingUpgradeDTO) {
+  const activeCount = (await taskApi.taskGetActiveCountByPlugin(item.publicId)).data ?? 0
+  if (activeCount > 0) {
+    ElMessageBox.confirm(
+      `该插件有 ${activeCount} 个运行中任务，升级前需先暂停（已暂停任务不受影响）。`,
+      '插件升级',
+      { confirmButtonText: '去任务页', cancelButtonText: '取消', type: 'warning' }
+    )
+      .then(() => {
+        router.push({ name: 'taskManage' })
+      })
+      .catch(() => {})
+    return
+  }
+  ElMessageBox.confirm(`将【${item.pluginName}】升级：${versionText(item)}`, '插件升级', {
+    confirmButtonText: '升级', cancelButtonText: '取消'
+  })
+    .then(() => applyPendingUpgrade(item))
+    .catch(() => {})
+}
+
+// 执行换版核心（无提示；运行期热重载，被运行中任务否决时返回 false）。单条与批量共用
+async function doApplyUpgrade(item: PendingUpgradeDTO): Promise<boolean> {
+  if (applyingIds.value.includes(item.publicId)) {
+    return false
+  }
+  applyingIds.value.push(item.publicId)
+  try {
+    await pluginApi.pluginApplyPendingUpgrade(item.publicId)
+    return true
+  } catch {
+    return false
+  } finally {
+    applyingIds.value = applyingIds.value.filter((id) => id !== item.publicId)
+  }
+}
+
+// 单条升级（行内按钮路径）：成败即时提示并刷新
+async function applyPendingUpgrade(item: PendingUpgradeDTO) {
+  const success = await doApplyUpgrade(item)
+  if (success) {
+    ElMessage.success(`【${item.pluginName}】已升级到 v${item.targetVersion}`)
+  } else {
+    ElMessage.error(`升级失败：${item.pluginName}（存在运行中任务或执行中，请暂停任务后重试）`)
+  }
+  await pluginUpdateStore.refresh()
+  pluginSearchTable.value.doSearch()
+}
+
+// 批量升级：顺序升级选中插件中的可升级项（逐项走服务端否决），汇总结果
+function handleBatchUpgradeClicked() {
+  const targets = selectedAvailableItems.value
+  const skipped = selectedPlugins.value.length - targets.length
+  const skipText = skipped > 0 ? `，${skipped} 个选中项无可用更新将跳过` : ''
+  ElMessageBox.confirm(
+    `将升级 ${targets.length} 个插件${skipText}。存在运行中任务的插件的升级将被阻止。`,
+    '批量升级',
+    { confirmButtonText: '升级', cancelButtonText: '取消', type: 'warning' }
+  )
+    .then(async () => {
+      let successCount = 0
+      const failures: string[] = []
+      for (const item of targets) {
+        if (await doApplyUpgrade(item)) {
+          successCount++
+        } else {
+          failures.push(item.pluginName)
+        }
+      }
+      if (arrayIsEmpty(failures)) {
+        ElMessage.success(`批量升级完成：${successCount} 个成功`)
+      } else {
+        ElMessage.warning(`批量升级完成：${successCount} 个成功，${failures.length} 个失败（${failures.join('、')}）`)
+      }
+      await pluginUpdateStore.refresh()
+      pluginSearchTable.value.doSearch()
+    })
+    .catch(() => {})
+}
+
+// 跳过此构建：持久化拒绝标记，下次启动对等值 buildId 静默跳过，直到新构建出现
+function handleDeclineClicked(item: PendingUpgradeDTO) {
+  ElMessageBox.confirm(
+    `跳过【${item.pluginName}】的此构建（v${item.targetVersion}）？下次启动不再提示，直到新构建出现。`,
+    '跳过此构建',
+    { confirmButtonText: '跳过', cancelButtonText: '取消', type: 'warning' }
+  )
+    .then(async () => {
+      try {
+        await pluginApi.pluginDeclinePendingUpgrade(item.publicId)
+        ElMessage.success('已跳过此构建')
+      } catch (e) {
+        ElMessage.error((e as Error).message)
+      } finally {
+        await pluginUpdateStore.refresh()
+        pluginSearchTable.value.doSearch()
+      }
+    })
+    .catch(() => {})
+}
+
+// 重新提示（反悔入口）：清除拒绝标记并立即重跑检测重建待办
+async function handleRestoreClicked(plugin: PluginDTO) {
+  try {
+    await pluginApi.pluginRestorePendingUpgrade(String(plugin.publicId))
+    ElMessage.success('已恢复更新提示')
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  } finally {
+    await pluginUpdateStore.refresh()
+    pluginSearchTable.value.doSearch()
+  }
+}
 
 // 方法
 // 分页查询插件
@@ -137,6 +302,28 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
     case 'reinstall':
       beforeReInstall(String(op.data.publicId))
       break
+    case 'status':
+      statusPublicId.value = String(op.data.publicId)
+      drawerVisible.value = true
+      break
+    case 'upgrade': {
+      const item = findAvailableByPublicId(String(op.data.publicId))
+      if (isNullish(item)) {
+        ElMessage.info('该插件无可用更新')
+      } else {
+        handleUpgradeClicked(item)
+      }
+      break
+    }
+    case 'decline': {
+      const item = findAvailableByPublicId(String(op.data.publicId))
+      if (isNullish(item)) {
+        ElMessage.info('该插件无可用更新')
+      } else {
+        handleDeclineClicked(item)
+      }
+      break
+    }
     case 'uninstall':
       unInstall(String(op.data.publicId))
       break
@@ -144,15 +331,9 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
       break
   }
 }
-// 处理被选中的插件改变的事件
-async function handleSelectionChange(selections: PluginDTO[]) {
-  if (selections.length > 0) {
-    pluginSelected.value = selections[0]
-    statusPublicId.value = String(selections[0].publicId)
-    drawerVisible.value = true
-  } else {
-    drawerVisible.value = false
-  }
+// 处理被选中的插件改变的事件（多选；选中集供批量升级使用）
+function handleSelectionChange(selections: PluginDTO[]) {
+  selectedPlugins.value = selections
 }
 // 重新安装前询问安装来源
 async function beforeReInstall(pluginPublicId: string) {
@@ -282,6 +463,60 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   <base-view>
     <template #default>
       <div class="plugin-manage-container">
+        <!-- 检查更新告知区块：可升级项经行内按钮与批量升级答复，此处仅保留告知与反悔（已跳过/已自动升级/安装失败） -->
+        <div
+          v-if="hasPendingEntry"
+          class="plugin-pending-panel"
+        >
+          <div
+            v-if="arrayNotEmpty(declinedPlugins)"
+            class="plugin-pending-group"
+          >
+            <div class="plugin-pending-group-title">已跳过</div>
+            <div
+              v-for="plugin in declinedPlugins"
+              :key="plugin.id"
+              class="plugin-pending-row"
+            >
+              <span class="plugin-pending-name">{{ plugin.name }}</span>
+              <span class="plugin-pending-version">已跳过构建 {{ plugin.upgradeDeclinedBuildId }}</span>
+              <el-button
+                size="small"
+                @click="handleRestoreClicked(plugin)"
+              >
+                重新提示
+              </el-button>
+            </div>
+          </div>
+          <div
+            v-if="arrayNotEmpty(pluginUpdateStore.forcedList)"
+            class="plugin-pending-group"
+          >
+            <div class="plugin-pending-group-title">已自动升级</div>
+            <div
+              v-for="item in pluginUpdateStore.forcedList"
+              :key="item.publicId"
+              class="plugin-pending-row"
+            >
+              <span class="plugin-pending-name">{{ item.pluginName }}</span>
+              <span class="plugin-pending-version">{{ versionText(item) }}（已装版本契约不兼容，已强制升级）</span>
+            </div>
+          </div>
+          <div
+            v-if="arrayNotEmpty(pluginUpdateStore.errorList)"
+            class="plugin-pending-group"
+          >
+            <div class="plugin-pending-group-title">捆绑包安装失败</div>
+            <div
+              v-for="(item, index) in pluginUpdateStore.errorList"
+              :key="index"
+              class="plugin-pending-row"
+            >
+              <span class="plugin-pending-name">{{ item.pluginName }}</span>
+              <span class="plugin-pending-message">{{ item.message }}</span>
+            </div>
+          </div>
+        </div>
         <search-table
           ref="pluginSearchTable"
           v-model:page="pluginPage"
@@ -290,7 +525,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           :operation-button="pluginOperationButton"
           :thead="pluginThead"
           :search="queryPage"
-          :multi-select="false"
+          :multi-select="true"
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"
           :operation-width="280"
@@ -298,6 +533,12 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           @selection-change="handleSelectionChange"
         >
           <template #toolbarMain>
+            <el-button
+              :disabled="batchUpgradeDisabled"
+              @click="handleBatchUpgradeClicked"
+            >
+              批量升级
+            </el-button>
             <el-button
               type="primary"
               @click="handleInstallClicked"
@@ -347,7 +588,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
 <style scoped>
 .plugin-manage-container {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   background: var(--app-bg-surface);
@@ -358,7 +599,44 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   margin: 5px;
 }
 .plugin-manage-left-search-table {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
+}
+/* 检查更新待办区块（有待办时显示于表格上方） */
+.plugin-pending-panel {
+  flex-shrink: 0;
+  width: 100%;
+  max-height: 30%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--app-border-color-light);
+  margin-bottom: 5px;
+  padding: 0 10px 5px;
+}
+.plugin-pending-group-title {
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  margin: 5px 0;
+}
+.plugin-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+}
+.plugin-pending-name {
+  color: var(--app-text-primary);
+  min-width: 140px;
+}
+.plugin-pending-version {
+  color: var(--app-text-regular);
+  flex: 1;
+}
+.plugin-pending-message {
+  color: var(--app-text-regular);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

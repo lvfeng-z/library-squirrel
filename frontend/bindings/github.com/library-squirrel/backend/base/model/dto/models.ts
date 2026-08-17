@@ -151,6 +151,98 @@ export class LocalTagWithBaseTagDTO {
 }
 
 /**
+ * PendingUpgradeDTO 插件更新待办项（检查更新流 IPC DTO）。启动期检测产出、前端拉取消费：
+ * available 为可答复项（红点计数、管理页升级/跳过按钮），forced/error 为只读告知项
+ */
+export class PendingUpgradeDTO {
+    /**
+     * 插件身份键；error 项包解析失败无身份，为空串
+     */
+    "publicId": string;
+
+    /**
+     * 展示名；error 项为包文件名
+     */
+    "pluginName": string;
+
+    /**
+     * 已装版本；error 项为空
+     */
+    "installedVersion": string;
+
+    /**
+     * 捆绑包版本
+     */
+    "targetVersion": string;
+
+    /**
+     * 捆绑包构建身份标识；未打标包为空（不进检查更新流）
+     */
+    "targetBuildId": string;
+
+    /**
+     * up/down/none（version 语义排序，仅展示用）
+     */
+    "direction": string;
+
+    /**
+     * available（可升级）/forced（已因契约不兼容强制升级）/error（捆绑包安装失败）
+     */
+    "kind": string;
+
+    /**
+     * 更新来源：bundled（当前唯一；网络源接入后扩展）
+     */
+    "source": string;
+
+    /**
+     * forced/error 类的说明文案（错误摘要）
+     */
+    "message": string;
+
+    /** Creates a new PendingUpgradeDTO instance. */
+    constructor($$source: Partial<PendingUpgradeDTO> = {}) {
+        if (!("publicId" in $$source)) {
+            this["publicId"] = "";
+        }
+        if (!("pluginName" in $$source)) {
+            this["pluginName"] = "";
+        }
+        if (!("installedVersion" in $$source)) {
+            this["installedVersion"] = "";
+        }
+        if (!("targetVersion" in $$source)) {
+            this["targetVersion"] = "";
+        }
+        if (!("targetBuildId" in $$source)) {
+            this["targetBuildId"] = "";
+        }
+        if (!("direction" in $$source)) {
+            this["direction"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PendingUpgradeDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PendingUpgradeDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PendingUpgradeDTO($$parsedSource as Partial<PendingUpgradeDTO>);
+    }
+}
+
+/**
  * PersistentStoreDTO 文件持久存储数据传输对象
  */
 export class PersistentStoreDTO {
@@ -247,6 +339,11 @@ export class PluginDTO {
     "sourceDetail": string | null;
 
     /**
+     * 用户拒绝升级的目标 buildId（非空=已跳过该构建，管理页渲染「已跳过」并提供重新提示）
+     */
+    "upgradeDeclinedBuildId": string | null;
+
+    /**
      * 信任标记；false=未信任（未激活，需手动信任）
      */
     "trusted": boolean | null;
@@ -299,6 +396,9 @@ export class PluginDTO {
         }
         if (!("sourceDetail" in $$source)) {
             this["sourceDetail"] = null;
+        }
+        if (!("upgradeDeclinedBuildId" in $$source)) {
+            this["upgradeDeclinedBuildId"] = null;
         }
         if (!("trusted" in $$source)) {
             this["trusted"] = null;

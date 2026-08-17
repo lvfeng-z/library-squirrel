@@ -5,6 +5,7 @@ export {
     BackupDTO,
     CreateTaskRequest,
     LocalTagWithBaseTagDTO,
+    PendingUpgradeDTO,
     PersistentStoreDTO,
     PluginDTO,
     RankedLocalAuthor,

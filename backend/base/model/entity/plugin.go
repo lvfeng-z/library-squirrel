@@ -28,6 +28,7 @@ type Plugin struct {
 	Source            sql.NullString `gorm:"column:source" json:"source"`               // 来源枚举 bundled/local/url/marketplace，由主程序按安装入口判定（不由插件声明）
 	SourceDetail      sql.NullString `gorm:"column:source_detail" json:"sourceDetail"`  // 来源详情（安装包路径或 URL），供追溯
 	BuildID           sql.NullString `gorm:"column:build_id" json:"buildId"` // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，升级判据与静态资产缓存键以此判同；历史记录为 NULL）
+	UpgradeDeclinedBuildID sql.NullString `gorm:"column:upgrade_declined_build_id" json:"upgradeDeclinedBuildId"` // 用户拒绝升级的目标 buildId（「跳过此构建」持久化；与捆绑包 buildId 等值时检测静默跳过，新 buildId 到来自动失效；重装全字段覆盖自然清零）
 	Trusted           sql.NullBool   `gorm:"column:trusted" json:"trusted"`             // 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
 }
 

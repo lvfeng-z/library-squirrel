@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
@@ -115,13 +116,17 @@ type Service struct {
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
 	urlListenerProvider   UrlListenerProvider
+
+	pendingMu       sync.Mutex                     // 检查更新待办列表互斥锁（含执行中守卫）
+	pendingUpgrades map[string]*pendingUpgradeEntry // 启动期检测出的更新待办（内存态，重启重检）
 }
 
 // NewService 创建插件服务
 func NewService(repo Repository, backupProvider BackupProvider) *Service {
 	return &Service{
-		repo:           repo,
-		backupProvider: backupProvider,
+		repo:            repo,
+		backupProvider:  backupProvider,
+		pendingUpgrades: make(map[string]*pendingUpgradeEntry),
 	}
 }
 
@@ -347,15 +352,22 @@ func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallD
 	return plugin, nil
 }
 
-// InstallBundled 安装捆绑插件；已安装未卸载时按构建身份（buildId，构建管线注入的源码状态标识）决定升级或跳过：
-// 仅 bundled 来源记录参与——buildId 与已装记录不一致（或已装无 buildId 的历史记录）即升级重装
-// （捆绑插件随主程序发布，以 zip 为权威）；zip 未打标（无 buildId）时回落 version 比较。
-// 非 bundled 来源静默跳过（尊重用户手动安装的版本）。
+// InstallBundled 安装捆绑插件（检查更新流的检测入口）。仅 pre-Run 由启动扫描调用：
+// 运行期换版必须走 ApplyPendingUpgrade（含参与者否决），勿复用本方法——强制分支的直装会绕过否决。
+// 分支优先级（已装且未卸载、判变成立时）：契约不兼容强制 > 拒绝标记短路 > 未打标记默升级 > 记 available 待办。
+// 仅 bundled 来源记录参与判变（尊重用户手动安装的版本）；非 bundled 静默跳过。
 // 与 InstallFromPath 的区别：不调用 activator.Activate()，已安装时不报错
 func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*entity2.Plugin, error) {
-	// 加载插件包
+	// 加载插件包：失败（含契约不兼容装不进）记 error 待办供管理页告知，原错误继续上抛（调用方记日志）
 	installDTO, err := s.loadPluginPackage(packagePath)
 	if err != nil {
+		s.recordPending(&pendingUpgradeEntry{
+			PluginName:  filepath.Base(packagePath),
+			Kind:        PendingKindError,
+			Source:      SourceBundled,
+			PackagePath: packagePath,
+			Message:     err.Error(),
+		})
 		return nil, err
 	}
 
@@ -366,8 +378,52 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 	}
 	if existing != nil && existing.Uninstalled.Valid && !existing.Uninstalled.Bool {
 		if needBundledUpgrade(existing, installDTO) {
-			logger.Log.Infof("捆绑插件构建已变化(buildId=%s)，升级重装: %s", installDTO.BuildID, installDTO.PublicID)
-			return s.installCore(ctx, installDTO, true, resolveReinstallContext(existing.Source, true))
+			// 已装契约不兼容：旧版无法在当前主程序加载，保留无意义——强制直装换版（pre-Run 无进程可停，
+			// 无视拒绝标记），记 forced 待办供管理页告知
+			if forceErr := extension.ValidateContractVersion(contractVersionOf(existing)); forceErr != nil {
+				logger.Log.Warnf("已装插件契约不兼容，强制升级重装: %s, %v", installDTO.PublicID, forceErr)
+				plugin, installErr := s.installCore(ctx, installDTO, true, resolveReinstallContext(existing.Source, true))
+				if installErr != nil {
+					return nil, installErr
+				}
+				s.recordPending(&pendingUpgradeEntry{
+					PublicID:         installDTO.PublicID,
+					PluginName:       installDTO.Name,
+					InstalledVersion: versionString(existing.Version),
+					TargetVersion:    installDTO.Version,
+					TargetBuildID:    installDTO.BuildID,
+					Direction:        upgradeDirection(versionString(existing.Version), installDTO.Version),
+					Kind:             PendingKindForced,
+					Source:           SourceBundled,
+					PackagePath:      packagePath,
+					Message:          forceErr.Error(),
+				})
+				return plugin, nil
+			}
+			// 拒绝标记等值短路：用户已跳过此构建，不再记待办（新 buildId 到来自动失效）
+			if existing.UpgradeDeclinedBuildID.Valid && existing.UpgradeDeclinedBuildID.String == installDTO.BuildID {
+				logger.Log.Infof("捆绑插件升级已被用户跳过(buildId=%s): %s", installDTO.BuildID, installDTO.PublicID)
+				return nil, nil
+			}
+			// 未打标包：判据回落 version，维持静默升级（不进检查更新流；打标校验由构建管线兜底）
+			if installDTO.BuildID == "" {
+				logger.Log.Infof("捆绑插件包未打标，按 version 静默升级重装: %s", installDTO.PublicID)
+				return s.installCore(ctx, installDTO, true, resolveReinstallContext(existing.Source, true))
+			}
+			// 可升级：记 available 待办，保留旧版继续运行（红点提醒，答复走 ApplyPendingUpgrade 当次生效）
+			logger.Log.Infof("捆绑插件有新构建(buildId=%s)，记入更新待办: %s", installDTO.BuildID, installDTO.PublicID)
+			s.recordPending(&pendingUpgradeEntry{
+				PublicID:         installDTO.PublicID,
+				PluginName:       installDTO.Name,
+				InstalledVersion: versionString(existing.Version),
+				TargetVersion:    installDTO.Version,
+				TargetBuildID:    installDTO.BuildID,
+				Direction:        upgradeDirection(versionString(existing.Version), installDTO.Version),
+				Kind:             PendingKindAvailable,
+				Source:           SourceBundled,
+				PackagePath:      packagePath,
+			})
+			return nil, nil
 		}
 		logger.Log.Infof("捆绑插件已安装，跳过: %s", installDTO.PublicID)
 		return nil, nil
@@ -638,6 +694,9 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	if err := s.repo.Updates(ctx, plugin); err != nil {
 		return err
 	}
+
+	// 清理该插件的更新待办（防卸载后残留可操作项）
+	s.removePending(pluginPublicId)
 
 	logger.Log.Infof("插件已卸载: %s", pluginPublicId)
 	return nil

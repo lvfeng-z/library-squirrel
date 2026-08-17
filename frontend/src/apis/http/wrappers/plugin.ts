@@ -7,7 +7,7 @@ import {
   Handler as PluginHandler,
   PluginQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/plugin'
-import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { PluginDTO, PendingUpgradeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
@@ -81,4 +81,26 @@ export async function pluginSetTrusted(publicId: string, trusted: boolean, force
 /** 获取插件状态 */
 export async function pluginGetStatus(publicId: string): Promise<ApiResult<PluginStatusDTO>> {
   return requireResponse(await PluginHandler.GetPluginStatus(publicId), '获取插件状态')
+}
+
+// ========== 检查更新流 ==========
+
+/** 获取插件更新待办（available 可答复计入红点；forced/error 只读告知） */
+export async function pluginGetPendingUpgrades(): Promise<ApiResult<PendingUpgradeDTO[]>> {
+  return requireResponse(await PluginHandler.GetPendingUpgrades(), '获取插件更新待办')
+}
+
+/** 答复「升级」：对 available 待办执行运行期换版（当次会话生效；运行中任务被后端参与者否决并报错引导） */
+export async function pluginApplyPendingUpgrade(publicId: string): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.ApplyPendingUpgrade(publicId), '升级插件')
+}
+
+/** 答复「跳过此构建」：持久化拒绝标记，下次启动对等值 buildId 静默跳过 */
+export async function pluginDeclinePendingUpgrade(publicId: string): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.DeclinePendingUpgrade(publicId), '跳过插件更新')
+}
+
+/** 「重新提示」：清除拒绝标记并立即重跑检测重建待办（反悔入口） */
+export async function pluginRestorePendingUpgrade(publicId: string): Promise<ApiResult<PluginDTO>> {
+  return requireResponse(await PluginHandler.RestorePendingUpgrade(publicId), '恢复插件更新提示')
 }

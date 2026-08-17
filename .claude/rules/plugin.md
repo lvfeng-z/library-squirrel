@@ -280,6 +280,16 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 - **运行门控**：`trusted=false` 的插件**不 Activate**（`activatePlugin` 起始检查）。用户在插件管理页「信任」后置 `true` 并激活（`Handler.SetTrusted`）；取消信任仅更新标记，下次启动不再激活（当前运行需重启）。**这是「是否运行」的二值门控，非「裁剪 HostService 能力」**——trusted=true 运行后能力仍全开；按信任裁剪 RPC 属延后项（完整沙箱）。
 - **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted；来源未设置视作非 bundled），作安全启动救生圈；与运行门控正交。
 
+## 插件检查更新流
+
+bundled 插件的升级检测与用户答复流（设计见 `doc/plan/插件检查更新方案.md`）：
+
+- **检测**：pre-Run `InstallBundled`（**仅此入口**——其契约强制分支直装绕过参与者否决，运行期一律走 `ApplyPendingUpgrade`）。已装判变成立时分支优先级：契约不兼容强制直装 > 拒绝标记等值静默跳过 > 未打标（buildId 空）维持 version 静默升级 > 记 available 待办保留旧版运行。
+- **待办（pendingUpgrade）**：service 内存态（available/forced/error 三类，重启重检），前端「插件」菜单按钮红点计 available 数（`usePluginUpdateStore` 写通用菜单红点注册表 `useMenuBadgeStore`，MainLayout mounted 拉取）；答复在插件管理页——行内 [升级]/[跳过此构建] 按钮（仅有待办的行显示）+ 多选批量升级（顺序执行逐项否决），升级走换版链当次会话生效（运行中任务否决、Paused 不拦）。
+- **拒绝标记（UpgradeDeclinedBuildID）**：「跳过此构建」持久化到 plugin 实体列，语义为跳过特定 buildId 而非永不再问；新 buildId 到来自动失效，重装经 installCore 全字段覆盖自然清零（无清理代码）；契约强制升级无视它。
+- **三信号分工**：判「变没变」用 buildId、判「升/降」用 version（仅展示）、判「能否允许拒绝」用 contractVersion——不混用。
+- **非 bundled 网络检查更新**：仅留接口未实现——待办列表、DTO（`Source` 字段）、handler 命名均不绑死 bundled，未来网络源生产者写入同一待办列表即可复用红点与答复面。
+
 ## 插件开发规范
 
 - **前端扩展注册**：通过 `plugin.json` 的 `extensions.frontendExtensions` 声明式注册（`kind` 区分类型），调用 `RegisterSlot()` 的这种方式已不再被支持

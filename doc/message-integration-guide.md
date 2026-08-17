@@ -18,6 +18,8 @@
 - 异步结局绝不走 ElMessage——用户可能停留在别的页面会错过，且无批量聚合。
 - 要留档（事后回看）就必须自己调通知中心，`announce` 不会代写。
 
+另有无文本的**常驻入口提示**通道：菜单红点（`useMenuBadgeStore`，`frontend/src/store/UseMenuBadgeStore.ts`）——按菜单项 slotId 写入计数即在侧边菜单对应按钮显示角标（0 隐藏），适用于「有 N 件事等在某页面处理」的待办类提醒（先例：插件检查更新红点）。它与四轨正交：红点管常驻可发现性，事件结局仍按上表选轨。
+
 ## 二、通知中心（持久追踪）
 
 store：`useNotificationStore`（`frontend/src/store/UseNotificationStore.ts`）；UI：`NotificationList.vue`（MainLayout 挂载，右侧边栏）。

@@ -67,6 +67,40 @@ func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, 
 	return model.Success(domain.NewPluginDTO(result))
 }
 
+// ========== 检查更新流 ==========
+
+// GetPendingUpgrades 获取插件更新待办（available 可答复计入红点；forced/error 只读告知）
+func (h *Handler) GetPendingUpgrades(ctx context.Context) *model.ApiResponse[[]*domain.PendingUpgradeDTO] {
+	return model.Success(h.svc.GetPendingUpgrades(ctx))
+}
+
+// ApplyPendingUpgrade 答复「升级」：对 available 待办执行运行期换版（当次会话生效，运行中任务被参与者否决）
+func (h *Handler) ApplyPendingUpgrade(ctx context.Context, pluginPublicId string) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.ApplyPendingUpgrade(ctx, pluginPublicId)
+	if err != nil {
+		return model.HandleError[*domain.PluginDTO](err)
+	}
+	return model.Success(domain.NewPluginDTO(result))
+}
+
+// DeclinePendingUpgrade 答复「跳过此构建」：持久化拒绝标记，下次启动对等值 buildId 静默跳过
+func (h *Handler) DeclinePendingUpgrade(ctx context.Context, pluginPublicId string) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.DeclinePendingUpgrade(ctx, pluginPublicId)
+	if err != nil {
+		return model.HandleError[*domain.PluginDTO](err)
+	}
+	return model.Success(domain.NewPluginDTO(result))
+}
+
+// RestorePendingUpgrade 「重新提示」：清除拒绝标记并立即重跑检测重建待办（反悔入口）
+func (h *Handler) RestorePendingUpgrade(ctx context.Context, pluginPublicId string) *model.ApiResponse[*domain.PluginDTO] {
+	result, err := h.svc.RestorePendingUpgrade(ctx, pluginPublicId)
+	if err != nil {
+		return model.HandleError[*domain.PluginDTO](err)
+	}
+	return model.Success(domain.NewPluginDTO(result))
+}
+
 // Uninstall 卸载插件
 func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.Uninstall(ctx, pluginPublicId))

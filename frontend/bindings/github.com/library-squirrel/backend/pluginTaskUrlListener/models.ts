@@ -57,6 +57,11 @@ export class PluginWithExtension {
     "buildId": sql$0.NullString;
 
     /**
+     * 用户拒绝升级的目标 buildId（「跳过此构建」持久化；与捆绑包 buildId 等值时检测静默跳过，新 buildId 到来自动失效；重装全字段覆盖自然清零）
+     */
+    "upgradeDeclinedBuildId": sql$0.NullString;
+
+    /**
      * 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
      */
     "trusted": sql$0.NullBool;
@@ -139,6 +144,9 @@ export class PluginWithExtension {
         if (!("buildId" in $$source)) {
             this["buildId"] = (new sql$0.NullString());
         }
+        if (!("upgradeDeclinedBuildId" in $$source)) {
+            this["upgradeDeclinedBuildId"] = (new sql$0.NullString());
+        }
         if (!("trusted" in $$source)) {
             this["trusted"] = (new sql$0.NullBool());
         }
@@ -175,7 +183,8 @@ export class PluginWithExtension {
         const $$createField19_0 = $$createType0;
         const $$createField20_0 = $$createType0;
         const $$createField21_0 = $$createType0;
-        const $$createField22_0 = $$createType2;
+        const $$createField22_0 = $$createType0;
+        const $$createField23_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -234,8 +243,11 @@ export class PluginWithExtension {
         if ("buildId" in $$parsedSource) {
             $$parsedSource["buildId"] = $$createField21_0($$parsedSource["buildId"]);
         }
+        if ("upgradeDeclinedBuildId" in $$parsedSource) {
+            $$parsedSource["upgradeDeclinedBuildId"] = $$createField22_0($$parsedSource["upgradeDeclinedBuildId"]);
+        }
         if ("trusted" in $$parsedSource) {
-            $$parsedSource["trusted"] = $$createField22_0($$parsedSource["trusted"]);
+            $$parsedSource["trusted"] = $$createField23_0($$parsedSource["trusted"]);
         }
         return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }

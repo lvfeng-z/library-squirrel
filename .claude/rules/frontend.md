@@ -17,7 +17,7 @@ frontend/src/
     slot/             — 插件插槽渲染器
     tour/             — 向导组件（TourOverlay、TourCenterPanel）
   composables/        — 组合式函数（useTourTargets、useTourReady、useBuiltinMenus 等）
-  store/              — Pinia 状态（SlotRegistry 主动注入型扩展、HandlerRegistry 被动响应型扩展、Notification、Task、TourCenter、Theme 等）
+  store/              — Pinia 状态（SlotRegistry 主动注入型扩展、HandlerRegistry 被动响应型扩展、Notification、Task、TourCenter、Theme 等）；UseMenuBadgeStore 为菜单红点注册表——任意菜单项按 slotId 写入计数即显示红点（0 隐藏），消费侧 DynamicSideMenu 不感知业务来源，插件插槽菜单的复合键同样可注册
   theme/              — 主题元信息清单（themes.ts：主题 id/名称/预览色板）
   tour/               — 向导定义集中文件（definitions.ts）
   styles/             — 全局样式（z-axis-layers、rounded-borders、scroll-text 等）

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
@@ -9,10 +9,17 @@ import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDia
 import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
+import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 
 const router = useRouter()
 const route = useRoute()
 const notificationListState = ref(false)
+
+// 外壳挂载即拉取插件更新待办：启动期检测（pre-Run InstallBundled）的结果在此进入前端，
+// 「插件」菜单红点与管理页待更新区块均消费本 store
+onMounted(() => {
+  usePluginUpdateStore().refresh()
+})
 
 // 根据当前路由路径判断是否显示关闭按钮（非主页时显示）
 const showCloseButton = computed(() => {
