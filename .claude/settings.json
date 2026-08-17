@@ -11,5 +11,22 @@
       "../library-squirrel-plugin-pixiv",
       "../LibrarySquirrel"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/go-check.sh\"",
+            "shell": "bash",
+            "timeout": 180,
+            "asyncRewake": true,
+            "statusMessage": "Go 后台编译检查中"
+          }
+        ]
+      }
+    ]
   }
 }
