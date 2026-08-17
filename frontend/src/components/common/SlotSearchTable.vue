@@ -205,7 +205,6 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
   align-items: center;
 }
 .search-table-toolbar {
-  height: 32px;
   width: 100%;
   background-color: var(--app-bg-surface);
   border-top-left-radius: var(--app-radius);
@@ -215,7 +214,9 @@ function toggleRowSelection(row: Data, selected?: boolean, ignoreSelectable?: bo
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: calc(100% - 37px);
+  /* 工具栏多行自适应后高度由 flex 分配（原 calc(100% - 37px) 按 32px 工具栏硬补偿） */
+  flex: 1;
+  min-height: 0;
   width: 100%;
   margin-top: 5px;
 }

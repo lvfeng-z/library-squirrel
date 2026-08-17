@@ -157,6 +157,9 @@ const selectedAvailableItems = computed<PendingUpgradeDTO[]>(() => {
 // 批量升级按钮禁用态（未选中任何可升级插件）
 const batchUpgradeDisabled = computed(() => arrayIsEmpty(selectedAvailableItems.value))
 
+// 批量卸载按钮禁用态（未选中任何插件）
+const batchUninstallDisabled = computed(() => arrayIsEmpty(selectedPlugins.value))
+
 // 版本展示文案（含降级标注）
 function versionText(item: PendingUpgradeDTO): string {
   const direction = item.direction === 'down' ? '（降级）' : ''
@@ -244,6 +247,36 @@ function handleBatchUpgradeClicked() {
     .catch(() => {})
 }
 
+// 批量卸载：顺序卸载选中插件（逐项走服务端否决——运行中任务阻止卸载），汇总结果
+function handleBatchUninstallClicked() {
+  const targets = selectedPlugins.value
+  ElMessageBox.confirm(
+    `确认卸载选中的 ${targets.length} 个插件？卸载后其扩展功能将不可用；存在运行中任务的插件的卸载将被阻止。`,
+    '批量卸载',
+    { confirmButtonText: '卸载', cancelButtonText: '取消', type: 'warning' }
+  )
+    .then(async () => {
+      let successCount = 0
+      const failures: string[] = []
+      for (const plugin of targets) {
+        try {
+          await pluginApi.pluginUnInstall(String(plugin.publicId))
+          successCount++
+        } catch {
+          failures.push(String(plugin.name))
+        }
+      }
+      if (arrayIsEmpty(failures)) {
+        ElMessage.success(`批量卸载完成：${successCount} 个成功`)
+      } else {
+        ElMessage.warning(`批量卸载完成：${successCount} 个成功，${failures.length} 个失败（${failures.join('、')}）`)
+      }
+      await pluginUpdateStore.refresh()
+      pluginSearchTable.value.doSearch()
+    })
+    .catch(() => {})
+}
+
 // 跳过此构建：持久化拒绝标记，下次启动对等值 buildId 静默跳过，直到新构建出现
 function handleDeclineClicked(item: PendingUpgradeDTO) {
   ElMessageBox.confirm(
@@ -282,6 +315,7 @@ async function handleRestoreClicked(plugin: PluginDTO) {
 // 分页查询插件
 async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO>> {
   pluginSearchParams.value.name.operator = Operator.OpLike
+  pluginSearchParams.value.author.operator = Operator.OpLike
   const response = await pluginApi.pluginQueryPage(page, pluginSearchParams.value)
   return response.data
 }
@@ -529,27 +563,74 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
           :selectable="true"
           :page-sizes="[10, 20, 50, 100]"
           :operation-width="280"
+          toolbar-radius="10px"
+          data-radius="10px"
           @row-button-clicked="handleRowButtonClicked"
           @selection-change="handleSelectionChange"
         >
           <template #toolbarMain>
+            <!-- 第一行：按钮类操作（批量卸载为破坏性操作：danger + tone-fail） -->
             <el-button
               :disabled="batchUpgradeDisabled"
               @click="handleBatchUpgradeClicked"
             >
               批量升级
             </el-button>
-            <el-button
-              type="primary"
-              @click="handleInstallClicked"
-            >
-              安装
-            </el-button>
-            <el-input
-              v-model="pluginSearchParams.name.value"
-              placeholder="输入名称"
-              clearable
-            />
+              <el-button
+                type="danger"
+                class="tone-fail"
+                :disabled="batchUninstallDisabled"
+                @click="handleBatchUninstallClicked"
+              >
+                批量卸载
+              </el-button>
+              <el-button
+                type="primary"
+                @click="handleInstallClicked"
+              >
+                安装
+              </el-button>
+              <!-- 第二行：输入类筛选（全宽元素强制分行——工具栏显式分行由消费者负责） -->
+              <div class="plugin-toolbar-filter-row">
+                <el-input
+                  v-model="pluginSearchParams.name.value"
+                  class="plugin-name-search-input"
+                  placeholder="输入名称"
+                  clearable
+                  @clear="pluginSearchParams.name.value = null"
+                />
+                <el-input
+                  v-model="pluginSearchParams.author.value"
+                  class="plugin-author-search-input"
+                  placeholder="输入作者"
+                  clearable
+                  @clear="pluginSearchParams.author.value = null"
+                />
+                <el-select
+                  v-model="pluginSearchParams.source.value"
+                  class="plugin-source-search-select"
+                  placeholder="选择来源"
+                  clearable
+                  @clear="pluginSearchParams.source.value = null"
+                >
+                  <el-option
+                    label="捆绑"
+                    value="bundled"
+                  />
+                  <el-option
+                    label="本地"
+                    value="local"
+                  />
+                  <el-option
+                    label="URL"
+                    value="url"
+                  />
+                  <el-option
+                    label="市场"
+                    value="marketplace"
+                  />
+                </el-select>
+              </div>
           </template>
           <template #toolbarDropdown>
             <el-button />
@@ -591,17 +672,32 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: var(--app-bg-surface);
-  border-radius: var(--app-radius);
+  /* 容器不带底色：一体感由 SearchTable 自身的工具栏面与数据面（含分页面）连成的卡片承担；
+     间距纯 margin（原 padding+margin 各 5px 中的 padding 用于把底色铺到内部元素之外，随底色移除退役，总边距 10px 不变） */
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  padding: 5px;
-  margin: 5px;
+  margin: 10px;
 }
 .plugin-manage-left-search-table {
   flex: 1;
   min-height: 0;
   width: 100%;
+}
+/* 工具栏第二行：输入类筛选容器（全宽强制分行，内部可放多个输入控件） */
+.plugin-toolbar-filter-row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+/* 工具栏折行后筛选控件的宽度约束（无约束的输入框折行点不可控） */
+.plugin-name-search-input {
+  width: 220px;
+}
+.plugin-author-search-input {
+  width: 180px;
+}
+.plugin-source-search-select {
+  width: 140px;
 }
 /* 检查更新待办区块（有待办时显示于表格上方） */
 .plugin-pending-panel {
@@ -609,9 +705,12 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   width: 100%;
   max-height: 30%;
   overflow-y: auto;
-  border-bottom: 1px solid var(--app-border-color-light);
+  /* 容器去底色后自带卡片面，与下方 SearchTable 卡片各自成块 */
+  background: var(--app-bg-surface);
+  border-radius: var(--app-radius);
   margin-bottom: 5px;
-  padding: 0 10px 5px;
+  padding: 5px 10px;
+  box-sizing: border-box;
 }
 .plugin-pending-group-title {
   color: var(--app-text-secondary);

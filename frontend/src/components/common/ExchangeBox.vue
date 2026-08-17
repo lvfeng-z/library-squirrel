@@ -476,11 +476,12 @@ function handleUpperDataNsEdited(tag: SelectItem) {
   display: flex;
   flex-direction: row;
   width: 100%;
-  height: calc(100% - 32px);
+  /* 工具栏多行自适应后高度由 flex 分配（原 calc(100% - 32px) 按 32px 工具栏硬补偿） */
+  flex: 1;
+  min-height: 0;
 }
 .exchange-box-upper-toolbar {
   width: 100%;
-  height: 32px;
   background-color: var(--app-bg-surface);
   border-top-left-radius: var(--app-radius-sm);
 }
@@ -561,11 +562,12 @@ function handleUpperDataNsEdited(tag: SelectItem) {
 .exchange-box-lower-main {
   display: flex;
   width: 100%;
-  height: calc(100% - 32px);
+  /* 工具栏多行自适应后高度由 flex 分配（原 calc(100% - 32px) 按 32px 工具栏硬补偿） */
+  flex: 1;
+  min-height: 0;
 }
 .exchange-box-lower-toolbar {
   width: 100%;
-  height: 32px;
   background-color: var(--app-bg-surface);
   border-bottom-left-radius: var(--app-radius-sm);
 }

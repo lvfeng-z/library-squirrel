@@ -17,7 +17,7 @@ import {arrayNotEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.t
 import {ElMessage} from 'element-plus'
 import IPage from '@renderer/model/util/IPage.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
+import {localTagQuerySelectItemPageByName, siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import {LocalAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/localAuthor/models'
 import {Operator, QueryAttribute, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
@@ -281,6 +281,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
                 新增
               </el-button>
               <el-input
+                class="local-author-manage-input"
                 v-model="localAuthorQuery.authorName.value"
                 placeholder="输入作者名称"
                 clearable
@@ -411,6 +412,10 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
 .local-author-manage-left-search-table {
   height: 100%;
   width: 100%;
+}
+.local-author-manage-input {
+  width: auto;
+  flex-grow: 1;
 }
 .local-author-manage-right {
   width: calc(50% - 5px);

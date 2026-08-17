@@ -37,7 +37,11 @@ function expandCollapsePanel(event) {
     }"
   >
     <div class="search-toolbar-main">
-      <slot name="main" />
+      <div class="search-toolbar-content">
+        <slot name="main" />
+      </div>
+      <!-- 内嵌式竖向分隔线（inset divider）：不与上下边缘相接，分隔自定义区与搜索按钮区 -->
+      <div class="search-toolbar-divider" />
       <el-dropdown class="search-toolbar-search-button">
         <el-button
           :disabled="props.searchButtonDisabled"
@@ -72,7 +76,9 @@ function expandCollapsePanel(event) {
 <style scoped>
 .search-toolbar {
   width: 100%;
-  height: calc(32px);
+  /* 高度随内容自适应（多行时撑开），单行时与原 32px 视觉一致 */
+  height: auto;
+  min-height: 32px;
   display: flex;
   flex-direction: column;
   align-content: center;
@@ -84,15 +90,37 @@ function expandCollapsePanel(event) {
   flex-direction: column-reverse;
 }
 .search-toolbar-main {
+  /* 左右两列：自定义内容（左，内部自由折行）与搜索按钮（右，相对内容总高垂直居中） */
   display: flex;
-  height: 32px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+  box-sizing: border-box;
+  /* 皮肤内边距：内容列、分隔线、搜索按钮对卡片边缘的统一留白（皮肤与边距同宿主，消费者只管内容排布） */
+  padding: 4px 8px;
+}
+.search-toolbar-content {
+  flex: 1;
+  min-width: 0;
+  /* 自动折行：内容拥挤时换行，显式分行由消费者用全宽元素自行实现 */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.search-toolbar-divider {
+  flex-shrink: 0;
+  /* 高度跟随内容区（行内最高子项）：stretch 拉满行高，上下 margin 负责与边缘脱开（inset） */
+  align-self: stretch;
+  height: auto;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  width: 1px;
+  background-color: var(--app-border-color);
 }
 .search-toolbar-search-button {
-  height: 100%;
+  flex-shrink: 0;
   display: flex;
-  justify-content: flex-end;
-  margin-left: auto;
 }
 .search-toolbar-dropdown-menu {
   width: 100%;
