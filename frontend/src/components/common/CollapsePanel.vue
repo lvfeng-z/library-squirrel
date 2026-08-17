@@ -9,6 +9,7 @@ const props = withDefaults(
     toggleOnOutsideClick?: boolean
     hideHandle?: boolean
     borderRadios?: string
+    allCornerRadios?: boolean // 四角全圆（默认仅 position 远端两角圆、贴锚侧直角；下拉贴圆角卡片时开启以消除割裂）
     destroyOnClose?: boolean
     enableBadge?: boolean
     badgeValue?: number
@@ -20,6 +21,7 @@ const props = withDefaults(
     toggleOnOutsideClick: true,
     hideHandle: false,
     borderRadios: '0',
+    allCornerRadios: false,
     destroyOnClose: false,
     enableBadge: false,
     badgeValue: 0,
@@ -79,7 +81,8 @@ watch(state, (newValue: boolean) => {
           'collapse-panel-container-vertical-open': (top || bottom) && state,
           'collapse-panel-container-vertical-close': (top || bottom) && !state,
           'collapse-panel-container-horizontal-open': (left || right) && state,
-          'collapse-panel-container-horizontal-close': (left || right) && !state
+          'collapse-panel-container-horizontal-close': (left || right) && !state,
+          'collapse-panel-container-all': props.allCornerRadios
         }"
       >
         <slot v-if="delayedState || !destroyOnClose" />
@@ -189,6 +192,10 @@ watch(state, (newValue: boolean) => {
   height: 100%;
   border-top-left-radius: v-bind(borderRadios);
   border-bottom-left-radius: v-bind(borderRadios);
+}
+/* 四角全圆开关：置于 position 规则之后，border-radius 简写整体覆盖远端角长属性 */
+.collapse-panel-container-all {
+  border-radius: v-bind(borderRadios);
 }
 .collapse-panel-container-vertical-open {
   height: auto;

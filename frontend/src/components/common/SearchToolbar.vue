@@ -63,6 +63,7 @@ function expandCollapsePanel(event) {
       class="search-toolbar-dropdown-menu rounded-borders"
       :position="reverse ? 'bottom' : 'top'"
       border-radios="10px"
+      all-corner-radios
     >
       <el-scrollbar class="search-toolbar-dropdown-menu-scrollbar">
         <template #default>

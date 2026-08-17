@@ -237,5 +237,5 @@
   /* ===== 阴影 ===== */
   --app-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
   --app-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  --app-shadow-card: 0 0 10px rgba(0, 0, 0, 0.1);
+  --app-shadow-card: 0 0 10px rgba(0, 0, 0, 0.25);
 }

@@ -797,10 +797,11 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   background: var(--app-bg-surface);
   border-radius: var(--app-radius);
   display: flex;
-  width: calc(100% - 10px);
-  height: calc(100% - 10px);
+  /* 页面边距统一：卡片距视口 10px（纯 margin，与其余管理页卡片一致）；padding 为本卡内衬保留 */
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
   padding: 5px;
-  margin: 5px;
+  margin: 10px;
 }
 .settings-scrollbar {
   margin-left: 30px;
