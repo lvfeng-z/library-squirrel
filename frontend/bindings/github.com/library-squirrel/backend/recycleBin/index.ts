@@ -7,5 +7,6 @@ export {
 };
 
 export {
-    RecycleItemDTO
+    RecycleItemDTO,
+    RecycleQueryDTO
 } from "./models.js";

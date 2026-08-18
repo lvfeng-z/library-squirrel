@@ -20,9 +20,10 @@ import * as $models from "./models.js";
 
 /**
  * Page 分页查询回收站列表
+ * query: 查询条件（时间范围/站点/作者/标签 + 排序），见 RecycleQueryDTO
  */
-export function Page(page: model$0.Page<$models.RecycleItemDTO> | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.RecycleItemDTO> | null> | null> {
-    return $Call.ByID(3501636614, page).then(($result: any) => {
+export function Page(page: model$0.Page<$models.RecycleItemDTO> | null, query: $models.RecycleQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.RecycleItemDTO> | null> | null> {
+    return $Call.ByID(3501636614, page, query).then(($result: any) => {
         return $$createType4($result);
     });
 }

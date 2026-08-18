@@ -687,6 +687,7 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 			NickName:            work.NickName,
 			LocalAuthorID:       work.LocalAuthorID,
 			LastView:            work.LastView,
+			CreateTime:          sql.NullInt64{Int64: work.CreateTime, Valid: work.CreateTime > 0},
 		},
 		Resources: resourceSnapshots,
 	}
@@ -725,6 +726,7 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	recycleItem.SiteID = work.SiteID
 	recycleItem.SiteWorkID = work.SiteWorkID
 	recycleItem.WorkName = work.SiteWorkName
+	recycleItem.WorkCreateTime = sql.NullInt64{Int64: work.CreateTime, Valid: work.CreateTime > 0}
 	recycleItem.DeleteTime = util.GetCurrentTimestamp()
 	recycleItem.Snapshot = snapshotJSON
 
@@ -810,6 +812,14 @@ func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycle
 		return 0, fmt.Errorf("重建作品失败: %w", err)
 	}
 	workId := work.GetID()
+	// 还原原作品入库时间：Create 以当前时间填充 create_time，快照有值时回写覆盖；
+	// 旧格式快照无此字段（NULL），保持 Create 填充的复原时刻
+	if snapshot.Work.CreateTime.Valid && snapshot.Work.CreateTime.Int64 > 0 {
+		work.SetCreateTime(snapshot.Work.CreateTime.Int64)
+		if err := s.repo.Updates(ctx, work); err != nil {
+			return 0, fmt.Errorf("还原作品入库时间失败: %w", err)
+		}
+	}
 
 	// 3. 重建 resource + resource_store（store_id 用 backup 映射,不写旧列）
 	for _, rs := range snapshot.Resources {

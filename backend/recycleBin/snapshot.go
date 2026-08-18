@@ -18,6 +18,7 @@ type WorkSnapshot struct {
 	NickName            sql.NullString `json:"nickName"`
 	LocalAuthorID       sql.NullInt64  `json:"localAuthorId"`
 	LastView            sql.NullInt64  `json:"lastView"`
+	CreateTime          sql.NullInt64  `json:"createTime"` // 作品入库时间（work.create_time）；旧格式快照无此字段，反序列化为 NULL
 }
 
 // AuthorSnapshot 作者关联快照

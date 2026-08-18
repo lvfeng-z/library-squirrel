@@ -906,6 +906,9 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 		&dbTransactorAdapter{db: app.db},
 		app.SettingsService,
+		app.SiteService,
+		app.LocalAuthorService,
+		app.SiteAuthorService,
 	)
 	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
 	app.RecycleBinService.StartCleanup()

@@ -11,13 +11,14 @@ import (
 // 冗余字段仅供回收站列表展示与 TTL 筛选，复原只依赖 Snapshot
 type RecycleItem struct {
 	*model.BaseEntity
-	WorkID     sql.NullInt64  `gorm:"column:work_id" json:"workId"`               // 原作品 ID（溯源，不参与复原）
-	SiteID     sql.NullInt64  `gorm:"column:site_id;index" json:"siteId"`         // 冗余，列表筛选
-	SiteWorkID sql.NullString `gorm:"column:site_work_id" json:"siteWorkId"`      // 冗余，列表展示
-	WorkName   sql.NullString `gorm:"column:work_name" json:"workName"`           // 冗余，列表展示
-	Thumbnail  sql.NullString `gorm:"column:thumbnail" json:"thumbnail"`          // 冗余缩略图 backup 路径，列表展示
-	DeleteTime int64          `gorm:"column:delete_time;index" json:"deleteTime"` // 逻辑删除时间（毫秒时间戳，TTL 依据）
-	Snapshot   string         `gorm:"column:snapshot;type:text" json:"snapshot"`  // 完整快照 JSON
+	WorkID         sql.NullInt64  `gorm:"column:work_id" json:"workId"`                        // 原作品 ID（溯源，不参与复原）
+	SiteID         sql.NullInt64  `gorm:"column:site_id;index" json:"siteId"`                  // 冗余，列表筛选
+	SiteWorkID     sql.NullString `gorm:"column:site_work_id" json:"siteWorkId"`               // 冗余，列表展示
+	WorkName       sql.NullString `gorm:"column:work_name" json:"workName"`                    // 冗余，列表展示
+	WorkCreateTime sql.NullInt64  `gorm:"column:work_create_time;index" json:"workCreateTime"` // 冗余，原作品入库时间，列表筛选/排序；字段引入前删除的条目为 NULL
+	Thumbnail      sql.NullString `gorm:"column:thumbnail" json:"thumbnail"`                   // 冗余缩略图 backup 路径，列表展示
+	DeleteTime     int64          `gorm:"column:delete_time;index" json:"deleteTime"`          // 逻辑删除时间（毫秒时间戳，TTL 依据）
+	Snapshot       string         `gorm:"column:snapshot;type:text" json:"snapshot"`           // 完整快照 JSON
 }
 
 // NewRecycleItem 创建回收站条目

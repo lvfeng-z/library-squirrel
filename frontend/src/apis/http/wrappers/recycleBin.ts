@@ -3,26 +3,22 @@
  * 直接调用 bindings 接口
  */
 
-import type { ApiResponse } from '../types'
-import { Handler as RecycleBinHandler } from '@bindings/github.com/library-squirrel/backend/recycleBin'
+import {
+	Handler as RecycleBinHandler,
+	RecycleQueryDTO
+} from '@bindings/github.com/library-squirrel/backend/recycleBin'
 import { RecycleItemDTO } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
+import type { ApiResult } from '@renderer/apis/http/types'
+import { requireResponse } from '@renderer/apis/http/types'
 
 // ========== API 方法 ==========
 
 /**
- * 分页查询回收站列表
+ * 分页查询回收站列表（支持时间范围/站点/作者/标签筛选与排序）
  */
-export async function recycleBinPage(page: number, pageSize: number): Promise<ApiResponse<Page<RecycleItemDTO>>> {
-  const pageReq = new Page<RecycleItemDTO>({ pageNumber: page, pageSize: pageSize })
-  const result = await RecycleBinHandler.Page(pageReq)
-  if (!result) {
-    return { success: false, msg: '查询失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '查询失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
+export async function recycleBinPage(page: Page<RecycleItemDTO>, query: RecycleQueryDTO): Promise<ApiResult<Page<RecycleItemDTO>>> {
+  return requireResponse(await RecycleBinHandler.Page(page, query), '查询回收站')
 }
 
 /**

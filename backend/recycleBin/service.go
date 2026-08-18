@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
@@ -62,27 +64,51 @@ type RecycleBinSettingsProvider interface {
 	GetRecycleBinSettings() (enabled bool, retentionDays int)
 }
 
+// SiteNameReader 站点名批量读取接口（由 site.Service 实现，列表展示站点名）
+type SiteNameReader interface {
+	// ListByIds 根据 ID 列表批量查询
+	ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, error)
+}
+
+// LocalAuthorNameReader 本地作者批量读取接口（由 localAuthor.Service 实现，列表展示作者名）
+type LocalAuthorNameReader interface {
+	// ListByIds 根据 ID 列表批量查询
+	ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalAuthor, error)
+}
+
+// SiteAuthorNameReader 站点作者批量读取接口（由 siteAuthor.Service 实现，列表展示作者名回退源）
+type SiteAuthorNameReader interface {
+	// ListBySiteAuthorIds 根据站点作者 ID 列表批量查询
+	ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) ([]*domain.SiteAuthor, error)
+}
+
 // Service 回收站服务
 type Service struct {
-	repo           Repository
-	workRestorer   WorkRestorer
-	backupReader   BackupReader
-	storeImporter  StoreImporter
-	transactor     Transactor
-	settingsReader RecycleBinSettingsProvider
-	stopCh         chan struct{}
+	repo              Repository
+	workRestorer      WorkRestorer
+	backupReader      BackupReader
+	storeImporter     StoreImporter
+	transactor        Transactor
+	settingsReader    RecycleBinSettingsProvider
+	siteNameReader    SiteNameReader
+	localAuthorReader LocalAuthorNameReader
+	siteAuthorReader  SiteAuthorNameReader
+	stopCh            chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(repo Repository, workRestorer WorkRestorer, backupReader BackupReader, storeImporter StoreImporter, transactor Transactor, settingsReader RecycleBinSettingsProvider) *Service {
+func NewService(repo Repository, workRestorer WorkRestorer, backupReader BackupReader, storeImporter StoreImporter, transactor Transactor, settingsReader RecycleBinSettingsProvider, siteNameReader SiteNameReader, localAuthorReader LocalAuthorNameReader, siteAuthorReader SiteAuthorNameReader) *Service {
 	return &Service{
-		repo:           repo,
-		workRestorer:   workRestorer,
-		backupReader:   backupReader,
-		storeImporter:  storeImporter,
-		transactor:     transactor,
-		settingsReader: settingsReader,
-		stopCh:         make(chan struct{}),
+		repo:              repo,
+		workRestorer:      workRestorer,
+		backupReader:      backupReader,
+		storeImporter:     storeImporter,
+		transactor:        transactor,
+		settingsReader:    settingsReader,
+		siteNameReader:    siteNameReader,
+		localAuthorReader: localAuthorReader,
+		siteAuthorReader:  siteAuthorReader,
+		stopCh:            make(chan struct{}),
 	}
 }
 
@@ -96,9 +122,154 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.RecycleItem, e
 	return s.repo.GetById(ctx, id)
 }
 
-// Page 分页查询回收站列表
-func (s *Service) Page(ctx context.Context, opt *database.PageOption) (*model.Page[domain.RecycleItem], error) {
-	return s.repo.Page(ctx, opt)
+// Page 分页查询回收站列表并组装展示 DTO
+// query 的 SQL 条件（时间范围/站点）经 Converter 进 opt；作者/标签走快照过滤；SortBy/SortOrder 显式排序
+func (s *Service) Page(ctx context.Context, opt *database.PageOption, query *RecycleQueryDTO) (*model.Page[RecycleItemDTO], error) {
+	var filter *RecycleSnapshotFilter
+	var order *RecycleOrder
+	if query != nil {
+		conv := querypkg.NewConverter(domain.RecycleItem{})
+		queryOpt, err := conv.ToQueryOption(query, nil)
+		if err != nil {
+			return nil, err
+		}
+		opt.Conditions = append(opt.Conditions, queryOpt.Conditions...)
+		filter = &RecycleSnapshotFilter{LocalAuthorID: query.LocalAuthorID, LocalTagID: query.LocalTagID}
+		order = resolveOrder(query)
+	}
+	entityPage, err := s.repo.Page(ctx, opt, filter, order)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]*RecycleItemDTO, 0, len(entityPage.Data))
+	snapshots := make([]*WorkRecycleSnapshot, 0, len(entityPage.Data))
+	for _, item := range entityPage.Data {
+		dtos = append(dtos, NewRecycleItemDTO(item))
+		snap, err := UnmarshalSnapshot(item.Snapshot)
+		if err != nil {
+			logger.Log.Warnf("回收站条目 %d 快照解析失败，作者名列留空: %v", item.GetID(), err)
+			snap = &WorkRecycleSnapshot{}
+		}
+		snapshots = append(snapshots, snap)
+	}
+	if err := s.fillDisplayNames(ctx, dtos, snapshots); err != nil {
+		return nil, err
+	}
+	return &model.Page[RecycleItemDTO]{
+		PageNumber:   entityPage.PageNumber,
+		PageSize:     entityPage.PageSize,
+		PageCount:    entityPage.PageCount,
+		DataCount:    entityPage.DataCount,
+		CurrentCount: entityPage.CurrentCount,
+		Data:         dtos,
+	}, nil
+}
+
+// resolveOrder 把查询 DTO 的排序意图解析为仓储排序（无法识别的取值回落默认 delete_time DESC）
+func resolveOrder(query *RecycleQueryDTO) *RecycleOrder {
+	if query == nil || query.SortBy == nil || *query.SortBy == "" {
+		return nil
+	}
+	desc := true
+	if query.SortOrder != nil && *query.SortOrder == "asc" {
+		desc = false
+	}
+	switch *query.SortBy {
+	case "workCreateTime":
+		return &RecycleOrder{Field: orderFieldWorkCreateTime, Desc: desc}
+	case "deleteTime":
+		return &RecycleOrder{Field: orderFieldDeleteTime, Desc: desc}
+	}
+	return nil
+}
+
+// fillDisplayNames 批量填充站点名与作者名（收集 ID → 批量查询 → 构建 map → 组装，避免逐行查询）
+// snapshots 与 dtos 平行：作者名按快照关联顺序顿号拼接，本地作者名优先、无本地关联的关联行回退站点作者名
+func (s *Service) fillDisplayNames(ctx context.Context, dtos []*RecycleItemDTO, snapshots []*WorkRecycleSnapshot) error {
+	if len(dtos) == 0 {
+		return nil
+	}
+
+	// 收集三类 ID
+	siteIdSet := make(map[int64]struct{})
+	localAuthorIdSet := make(map[int64]struct{})
+	siteAuthorIdSet := make(map[int64]struct{})
+	for _, dto := range dtos {
+		if dto.SiteID != nil {
+			siteIdSet[*dto.SiteID] = struct{}{}
+		}
+	}
+	for _, snap := range snapshots {
+		for _, a := range snap.Authors {
+			if a.LocalAuthorID.Valid {
+				localAuthorIdSet[a.LocalAuthorID.Int64] = struct{}{}
+			} else if a.SiteAuthorID.Valid {
+				siteAuthorIdSet[a.SiteAuthorID.Int64] = struct{}{}
+			}
+		}
+	}
+
+	// 批量查询三类名字源
+	siteNames := make(map[int64]string)
+	if len(siteIdSet) > 0 {
+		sites, err := s.siteNameReader.ListByIds(ctx, toIDSlice(siteIdSet))
+		if err != nil {
+			return err
+		}
+		for _, site := range sites {
+			siteNames[site.GetID()] = site.SiteName.String
+		}
+	}
+	localAuthorNames := make(map[int64]string)
+	if len(localAuthorIdSet) > 0 {
+		authors, err := s.localAuthorReader.ListByIds(ctx, toIDSlice(localAuthorIdSet))
+		if err != nil {
+			return err
+		}
+		for _, a := range authors {
+			localAuthorNames[a.GetID()] = a.AuthorName.String
+		}
+	}
+	siteAuthorNames := make(map[int64]string)
+	if len(siteAuthorIdSet) > 0 {
+		authors, err := s.siteAuthorReader.ListBySiteAuthorIds(ctx, toIDSlice(siteAuthorIdSet))
+		if err != nil {
+			return err
+		}
+		for _, a := range authors {
+			siteAuthorNames[a.GetID()] = a.AuthorName.String
+		}
+	}
+
+	// 组装
+	for i, dto := range dtos {
+		if dto.SiteID != nil {
+			dto.SiteName = siteNames[*dto.SiteID]
+		}
+		var names []string
+		for _, a := range snapshots[i].Authors {
+			if a.LocalAuthorID.Valid {
+				if name := localAuthorNames[a.LocalAuthorID.Int64]; name != "" {
+					names = append(names, name)
+				}
+			} else if a.SiteAuthorID.Valid {
+				if name := siteAuthorNames[a.SiteAuthorID.Int64]; name != "" {
+					names = append(names, name)
+				}
+			}
+		}
+		dto.AuthorNames = strings.Join(names, "、")
+	}
+	return nil
+}
+
+// toIDSlice 把 ID 集合转为切片（查询参数用）
+func toIDSlice(set map[int64]struct{}) []int64 {
+	ids := make([]int64, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // Delete 删除回收站条目

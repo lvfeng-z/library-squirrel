@@ -13,7 +13,7 @@
 
 | 方法 | 作用 |
 | --- | --- |
-| `Page(page)` | 分页查询回收站列表 |
+| `Page(page, query)` | 分页查询回收站列表（query：删除/创建时间范围、站点、作者、标签筛选 + 时间列排序） |
 | `Restore(id, overwrite)` | 从回收站复原作品（overwrite 控制冲突覆盖） |
 | `Purge(id)` | 彻底删除回收站条目（不可恢复） |
 
@@ -21,7 +21,9 @@
 
 ## 核心概念
 
-- **快照（WorkRecycleSnapshot）**：逻辑删除时序列化作品的全部关联元数据（work 字段 + 作者/标签/作品集关联 + resource 业务字段 + backup id 映射），存入 recycle_bin.snapshot。复原只依赖快照。作品集关联快照（`WorkSetSnapshot`）含 `is_cover` / `sort_order`（本地序）/ `site_sort_order`（原站序）三字段，复原时一并还原。
+- **快照（WorkRecycleSnapshot）**：逻辑删除时序列化作品的全部关联元数据（work 字段 + 作者/标签/作品集关联 + resource 业务字段 + backup id 映射），存入 recycle_bin.snapshot。复原只依赖快照。作品集关联快照（`WorkSetSnapshot`）含 `is_cover` / `sort_order`（本地序）/ `site_sort_order`（原站序）三字段，复原时一并还原。`WorkSnapshot.CreateTime`（作品入库时间）为后加字段：采集之前的旧快照无此值（NULL），复原时保持 Create 填充的复原时刻。
+- **列表筛选的混合过滤**：时间范围（delete_time/work_create_time）与站点是 recycle_bin 冗余列，SQL 层直筛；作者/标签只存在于 snapshot JSON，带这两类条件时改为 SQL 预筛全量 → 解析快照过滤 → 内存排序分页（回收站量级小，TTL 清理兜底）。排序支持 delete_time/work_create_time 两列，默认 delete_time DESC；work_create_time 为 NULL 的条目（字段引入前删除的）不命中创建时间范围筛选、排序时 NULL 当最小值。
+- **列表展示名组装**：siteName/authorNames 由 service 分页后批量查询组装（站点名/本地作者名优先、无本地关联回退站点作者名，顿号拼接），依赖 site/localAuthor/siteAuthor 的名字读取接口。
 - **backupId 映射**：快照存 Backup 记录 ID（持久稳定），不存 persistent_store.id（复原后会变）。资源文件级信息由 Backup 记录承载。
 - **复原冲突**：(site_id, site_work_id) 唯一索引——逻辑删除后该键释放，用户可能重新下载占用；复原时冲突由 overwrite 控制（放弃/覆盖，覆盖走 work.HardDeleteWork）。
 - **引用校验**：复原重建关联时批量校验被引用实体（作者/标签/作品集）仍存在，已删除的关联跳过（部分复原）。
@@ -29,7 +31,7 @@
 
 ## 依赖关系
 
-- 依赖：work（WorkRestorer：复原重建/冲突检查/覆盖删除）、backup（BackupReader：还原/清理 backup）、persistentStore（StoreImporter：还原文件）、settings（RecycleBinSettingsProvider：TTL 配置）、database（Transactor）
+- 依赖：work（WorkRestorer：复原重建/冲突检查/覆盖删除）、backup（BackupReader：还原/清理 backup）、persistentStore（StoreImporter：还原文件）、settings（RecycleBinSettingsProvider：TTL 配置）、site/localAuthor/siteAuthor（名字批量读取：列表展示 siteName/authorNames）、database（Transactor）
 - 被依赖：work（RecycleItemSaver：逻辑删除写入快照，由 recycleBin.Repository 实现）、前端回收站页面
 
 ## 关键设计

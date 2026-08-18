@@ -18,7 +18,8 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Page 分页查询回收站列表
-func (h *Handler) Page(ctx context.Context, page *model.Page[RecycleItemDTO]) *model.ApiResponse[*model.Page[RecycleItemDTO]] {
+// query: 查询条件（时间范围/站点/作者/标签 + 排序），见 RecycleQueryDTO
+func (h *Handler) Page(ctx context.Context, page *model.Page[RecycleItemDTO], query RecycleQueryDTO) *model.ApiResponse[*model.Page[RecycleItemDTO]] {
 	if page == nil {
 		page = &model.Page[RecycleItemDTO]{}
 	}
@@ -26,22 +27,11 @@ func (h *Handler) Page(ctx context.Context, page *model.Page[RecycleItemDTO]) *m
 		Page:     page.PageNumber,
 		PageSize: page.PageSize,
 	}
-	result, err := h.svc.Page(ctx, opt)
+	result, err := h.svc.Page(ctx, opt, &query)
 	if err != nil {
 		return model.HandleError[*model.Page[RecycleItemDTO]](err)
 	}
-	data := make([]*RecycleItemDTO, 0, len(result.Data))
-	for _, item := range result.Data {
-		data = append(data, NewRecycleItemDTO(item))
-	}
-	return model.Success(&model.Page[RecycleItemDTO]{
-		PageNumber:   result.PageNumber,
-		PageSize:     result.PageSize,
-		PageCount:    result.PageCount,
-		DataCount:    result.DataCount,
-		CurrentCount: result.CurrentCount,
-		Data:         data,
-	})
+	return model.Success(result)
 }
 
 // Restore 从回收站复原作品
