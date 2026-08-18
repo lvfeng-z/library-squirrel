@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -431,8 +432,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		if child.resumeFromDB {
 			continue
 		}
-		// 不含主资源的板块组合不查重（不覆盖资源文件，无需"作品已存在"提醒）
-		if !child.runMode.hasStore(domain.StoreTypeImage) {
+		// 仅作品信息板块的任务不查重（不拉任何资源，不可能覆盖 store 行）
+		if !child.runMode.fetchStores {
 			child.skipDuplicateCheck = true
 			continue
 		}
@@ -480,6 +481,30 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		existingMap[key] = w
 	}
 
+	// 命中任务收集已有作品 store 行角色集合(行级覆盖判定:所选板块与已有行求交,空交集不弹窗)
+	// 查询失败退回全弹窗(宁多弹不漏弹,与批量查重失败降级逐查同向)
+	existingStoreTypeSets := make(map[int64]map[string]struct{})
+	hitWorkIds := make([]int64, 0)
+	for _, child := range children {
+		if child.resumeFromDB || !child.runMode.fetchStores || child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
+			continue
+		}
+		key := fmt.Sprintf("%d:%s", child.task.SiteID.Int64, child.task.SiteWorkID.String)
+		if existing, found := existingMap[key]; found {
+			hitWorkIds = append(hitWorkIds, existing.GetID())
+		}
+	}
+	storeTypeSetQueryFailed := false
+	if len(hitWorkIds) > 0 && m.deps.WorkStoreRoleChecker != nil {
+		sets, serr := m.deps.WorkStoreRoleChecker.ListStoreTypeSetsByWorkIds(checkCtx, hitWorkIds)
+		if serr != nil {
+			logger.Log.Errorf("[TaskManager] batchCheckDuplicates 行级覆盖判定查询失败: %v，命中任务全部退回弹窗", serr)
+			storeTypeSetQueryFailed = true
+		} else {
+			existingStoreTypeSets = sets
+		}
+	}
+
 	var toDispatch []*ManagedTask
 	for _, child := range children {
 		// 跨重启续传的任务直接派发（需要信号量）
@@ -488,8 +513,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 			continue
 		}
 
-		// 不含主资源的板块组合：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
-		if !child.runMode.hasStore(domain.StoreTypeImage) {
+		// 仅作品信息板块的任务：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
+		if !child.runMode.fetchStores {
 			toDispatch = append(toDispatch, child)
 			continue
 		}
@@ -502,14 +527,40 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 
 		key := fmt.Sprintf("%d:%s", child.task.SiteID.Int64, child.task.SiteWorkID.String)
 		if existing, found := existingMap[key]; found {
-			// 重复命中：放入等待确认队列，不参与信号量派发
+			// 行级覆盖判定：所选板块与已有作品 store 行求交，空交集不弹窗(仍保留 existingWorkId 供替换定位)
+			// 板块为空(插件自决全量)时已有任意行即冲突，冲突载荷取已有行角色
+			existingTypes := existingStoreTypeSets[existing.GetID()]
+			var conflictRoles []string
+			if storeTypeSetQueryFailed || m.deps.WorkStoreRoleChecker == nil {
+				// 行级信息不可得：保守退回弹窗，载荷不带板块
+				conflictRoles = nil
+			} else if len(child.runMode.storeRoles) == 0 {
+				// 全量任务：已有任意行即冲突；零行则无覆盖对象，不弹窗
+				if len(existingTypes) == 0 {
+					child.existingWorkId = existing.GetID()
+					child.skipDuplicateCheck = true
+					toDispatch = append(toDispatch, child)
+					continue
+				}
+				conflictRoles = sortedStoreRoles(existingTypes)
+			} else {
+				conflictRoles = intersectRoles(child.runMode.storeRoles, existingTypes)
+				if len(conflictRoles) == 0 {
+					// 交集为空：无任何 store 行将被覆盖，不弹窗，但保留替换语义定位已有作品
+					child.existingWorkId = existing.GetID()
+					child.skipDuplicateCheck = true
+					toDispatch = append(toDispatch, child)
+					continue
+				}
+			}
+			// 覆盖冲突：放入等待确认队列，不参与信号量派发
 			existingWorkName := ""
 			if existing.SiteWorkName.Valid {
 				existingWorkName = existing.SiteWorkName.String
 			}
 			child.existingWorkId = existing.GetID()
 			child.setState(TaskStateWaitingForInput)
-			m.deps.Pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName)
+			m.deps.Pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName, conflictRoles)
 
 			m.waitingForInputMu.Lock()
 			m.waitingForInputMap[child.taskId] = child
@@ -522,6 +573,27 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	}
 
 	return toDispatch
+}
+
+// intersectRoles 求所选板块角色与已有 store 行角色集合的交集(保持 roles 原始顺序，供弹窗展示)
+func intersectRoles(roles []string, existing map[string]struct{}) []string {
+	var result []string
+	for _, r := range roles {
+		if _, ok := existing[r]; ok {
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+// sortedStoreRoles 已有 store 行角色集合转有序切片(字母序，保证弹窗载荷确定性)
+func sortedStoreRoles(set map[string]struct{}) []string {
+	result := make([]string, 0, len(set))
+	for r := range set {
+		result = append(result, r)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // dispatch 任务进入执行的入口:首次 dispatch(actorStarted CAS)投 cmdStart 启动执行;

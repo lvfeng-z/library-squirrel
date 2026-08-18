@@ -17,7 +17,8 @@ type TaskProgressPusher interface {
 	PushError(taskId int64, err string)
 	PushTaskRemove(taskIds []int64)
 	PushParentTaskRemove(taskIds []int64)
-	PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string)
+	// PushDuplicateDetected 推送覆盖确认事件;conflictRoles 为将被覆盖的板块角色(行级交集,查询失败时为 nil 表示未知)
+	PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string)
 }
 
 // WailsEventEmitter Wails 事件发射器接口
@@ -134,19 +135,21 @@ type taskScheduleDTO struct {
 
 // duplicateDetectedDTO 作品重复检测推送 DTO
 type duplicateDetectedDTO struct {
-	TaskId           int64  `json:"taskId"`
-	TaskName         string `json:"taskName"`
-	ExistingWorkId   int64  `json:"existingWorkId"`
-	ExistingWorkName string `json:"existingWorkName"`
+	TaskId           int64    `json:"taskId"`
+	TaskName         string   `json:"taskName"`
+	ExistingWorkId   int64    `json:"existingWorkId"`
+	ExistingWorkName string   `json:"existingWorkName"`
+	ConflictRoles    []string `json:"conflictRoles"`
 }
 
 // PushDuplicateDetected 推送作品重复检测事件到前端
-func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string) {
+func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string) {
 	dto := &duplicateDetectedDTO{
 		TaskId:           taskId,
 		TaskName:         taskName,
 		ExistingWorkId:   existingWorkId,
 		ExistingWorkName: existingWorkName,
+		ConflictRoles:    conflictRoles,
 	}
 	p.emitter.Emit("taskStatus-duplicateDetected", dto)
 }
@@ -160,15 +163,15 @@ func NewNoopProgressPusher() *NoopProgressPusher {
 	return &NoopProgressPusher{}
 }
 
-func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)           {}
-func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState)     {}
-func (p *NoopProgressPusher) PushProgress(int64, int64, int64)                   {}
-func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)               {}
-func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)             {}
-func (p *NoopProgressPusher) PushError(int64, string)                            {}
-func (p *NoopProgressPusher) PushTaskRemove([]int64)                             {}
-func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                       {}
-func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string) {}
+func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)                     {}
+func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState)               {}
+func (p *NoopProgressPusher) PushProgress(int64, int64, int64)                             {}
+func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)                         {}
+func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)                       {}
+func (p *NoopProgressPusher) PushError(int64, string)                                      {}
+func (p *NoopProgressPusher) PushTaskRemove([]int64)                                       {}
+func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                                 {}
+func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string, []string) {}
 
 // TaskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
 type TaskSnapshotDTO struct {
@@ -387,12 +390,13 @@ func (s *SnapshotPusher) PushParentTaskRemove(taskIds []int64) {
 }
 
 // PushDuplicateDetected 重复检测仍走独立 topic（与状态推送解耦）
-func (s *SnapshotPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string) {
+func (s *SnapshotPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string) {
 	dto := &duplicateDetectedDTO{
 		TaskId:           taskId,
 		TaskName:         taskName,
 		ExistingWorkId:   existingWorkId,
 		ExistingWorkName: existingWorkName,
+		ConflictRoles:    conflictRoles,
 	}
 	s.emitter.Emit("taskStatus-duplicateDetected", dto)
 }

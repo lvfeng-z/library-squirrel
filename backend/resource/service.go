@@ -104,3 +104,42 @@ func (s *Service) ListStoresByResourceIds(ctx context.Context, resourceIds []int
 	}
 	return result, nil
 }
+
+// ListStoreTypeSetsByWorkIds 批量查询多个作品的 resource_store 行 store_type 集合(覆盖确认判定用:任务板块选择与已有行求交)
+func (s *Service) ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int64) (map[int64]map[string]struct{}, error) {
+	result := make(map[int64]map[string]struct{})
+	if len(workIds) == 0 {
+		return result, nil
+	}
+	resources, err := s.repo.ListByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if len(resources) == 0 {
+		return result, nil
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	for _, r := range resources {
+		resourceIds = append(resourceIds, r.ID)
+		result[r.WorkID] = make(map[string]struct{})
+	}
+	stores, err := s.resourceStoreRepo.ListByResourceIds(ctx, resourceIds)
+	if err != nil {
+		return nil, err
+	}
+	storeByResourceId := make(map[int64][]*domain.ResourceStore, len(resources))
+	for _, rs := range stores {
+		storeByResourceId[rs.ResourceID] = append(storeByResourceId[rs.ResourceID], rs)
+	}
+	resourceIdToWorkId := make(map[int64]int64, len(resources))
+	for _, r := range resources {
+		resourceIdToWorkId[r.ID] = r.WorkID
+	}
+	for resourceId, rsList := range storeByResourceId {
+		workId := resourceIdToWorkId[resourceId]
+		for _, rs := range rsList {
+			result[workId][rs.StoreType] = struct{}{}
+		}
+	}
+	return result, nil
+}

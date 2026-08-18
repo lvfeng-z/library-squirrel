@@ -71,7 +71,13 @@ export function iniListener() {
 
   // 作品重复检测 - Wails Events
   Events.On('taskStatus-duplicateDetected', (event: any) => {
-    const data = event.data as { taskId: number; taskName: string; existingWorkId: number; existingWorkName: string }
+    const data = event.data as {
+      taskId: number
+      taskName: string
+      existingWorkId: number
+      existingWorkName: string
+      conflictRoles?: string[] | null
+    }
     useReplaceConfirmStore().add(data)
   })
 

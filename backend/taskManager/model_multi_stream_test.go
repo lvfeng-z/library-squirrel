@@ -168,10 +168,10 @@ func newTestManagedTask() *ManagedTask {
 // newStream 构造一个单流控制器
 func newStream(role, generation string, size int64, reader io.ReadCloser, writer *fakeStoreWriter) *streamController {
 	return &streamController{
-		role:       role,
-		generation: generation,
-		size:       size,
-		reader:     reader,
+		role:        role,
+		generation:  generation,
+		size:        size,
+		reader:      reader,
 		storeWriter: writer,
 	}
 }

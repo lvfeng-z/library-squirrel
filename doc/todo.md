@@ -42,3 +42,5 @@
 42. ~~卸载插件时注销其前端改动的操作没有覆盖到自定义渲染器~~（已修复：根因=注销事件键位错配——注册事件携带裸 extensionId 而注销事件携带复合键 `publicId/extensionId`，前端 Map.delete 全 kind 失效、仅 resourceViewer 无 reload 掩蔽故显形；修复=注销 payload 双字段化（pluginPublicId+裸 extensionId 分列）+前端摄入点统一派生复合 store 键，契约测试见 `backend/plugin/extension/registry_test.go`，方案见 `doc/plan/插件热重载体系完善方案.md` 期一）
 43. 总结功能，能够读取作品内容并给出剧情简述或者场景描述等
 44. ~~更通用更合理的通知系统~~
+45. ~~哔哩哔哩插件重新下载视频不弹确认覆盖~~（已修复：覆盖确认门槛行级化——原板块门槛只看任务所选板块不看已有作品实际 store 行，纯 videoTrack/audioTrack/thumbnail 选择被整体豁免；现改为所选板块与已有作品 `resource_store` 行求交、交集非空才弹窗，方案见 `doc/plan/覆盖确认门槛行级化方案.md`）
+46. 本地标签的继承关系支持作品搜索

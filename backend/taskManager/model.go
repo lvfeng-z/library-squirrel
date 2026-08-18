@@ -241,6 +241,12 @@ type ResourceStoreWriter interface {
 	DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error
 }
 
+// WorkStoreRoleChecker 已有作品 store 行角色查询接口(覆盖确认行级判定用:任务板块选择与已有行求交)
+type WorkStoreRoleChecker interface {
+	// ListStoreTypeSetsByWorkIds 批量查询多个作品的 {store_type 集合};无 resource 行的作品不出键,零 store 行的作品出空集合
+	ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int64) (map[int64]map[string]struct{}, error)
+}
+
 // TaskDeps ManagedTask 的共享依赖集合
 // 将 NewManager 和 NewManagedTask 的大量参数收敛为一个结构体，新增依赖只需改此处
 type TaskDeps struct {
@@ -258,6 +264,7 @@ type TaskDeps struct {
 	StoreReader             StoreReader
 	ResourceStoreReader     ResourceStoreReader
 	ResourceStoreWriter     ResourceStoreWriter
+	WorkStoreRoleChecker    WorkStoreRoleChecker
 	Transactor              Transactor
 	PendingResourceUpdater  PendingResourceUpdater
 	StoreFileCleaner        StoreFileCleaner
@@ -807,47 +814,61 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
-	// 含主资源：查重（fallback；主路径在 Manager.batchCheckDuplicates）
-	if m.runMode.hasStore(entity.StoreTypeImage) && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
+	// 含资源板块：查重（fallback；主路径在 Manager.batchCheckDuplicates）
+	if m.runMode.fetchStores && !m.skipDuplicateCheck && m.deps.WorkChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
 		existing, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.runCtx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
 		if err == nil && existing != nil {
+			// 行级覆盖判定:所选板块与已有作品 store 行求交,空交集不弹窗(保留 existingWorkId 供替换定位)
+			// 板块为空(插件自决全量)时已有任意行即冲突,冲突载荷取已有行角色;行级信息不可得时保守弹窗
+			var conflictRoles []string
+			hitStoreRows := true
+			if m.deps.WorkStoreRoleChecker != nil {
+				sets, serr := m.deps.WorkStoreRoleChecker.ListStoreTypeSetsByWorkIds(m.runCtx, []int64{existing.GetID()})
+				if serr != nil {
+					logger.Log.Errorf("[TaskManager] 任务 %d 行级覆盖判定查询失败: %v，退回弹窗", m.taskId, serr)
+				} else if existingTypes := sets[existing.GetID()]; len(existingTypes) == 0 {
+					hitStoreRows = false
+				} else if len(m.runMode.storeRoles) == 0 {
+					conflictRoles = sortedStoreRoles(existingTypes)
+				} else {
+					conflictRoles = intersectRoles(m.runMode.storeRoles, existingTypes)
+					if len(conflictRoles) == 0 {
+						hitStoreRows = false
+					}
+				}
+			}
+			if hitStoreRows {
+				m.existingWorkId = existing.GetID()
+				existingWorkName := ""
+				if existing.SiteWorkName.Valid {
+					existingWorkName = existing.SiteWorkName.String
+				}
+				if m.deps.Pusher != nil {
+					m.deps.Pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, existing.GetID(), existingWorkName, conflictRoles)
+				}
+				m.setState(TaskStateWaitingForInput)
+				return runResultNeedConfirm
+			}
+			// 零交集/零行:无覆盖对象,不弹窗,保留 existingWorkId 供替换定位
 			m.existingWorkId = existing.GetID()
-			existingWorkName := ""
-			if existing.SiteWorkName.Valid {
-				existingWorkName = existing.SiteWorkName.String
-			}
-			if m.deps.Pusher != nil {
-				m.deps.Pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, existing.GetID(), existingWorkName)
-			}
-			m.setState(TaskStateWaitingForInput)
-			return runResultNeedConfirm
 		}
 	}
 
 	// workId 定位 + 替换判定
-	// 任何资源板块(image/thumbnail/...)在已有作品上重执行都视为替换,需备份旧 store;不限于主资源
-	if m.runMode.hasStore(entity.StoreTypeImage) {
+	// 含资源板块在已有作品上重执行都视为替换,需备份旧 store
+	if m.runMode.fetchStores {
 		// 查重命中(existingWorkId>0，确认后重入或 batchCheckDuplicates 设置)
 		if m.existingWorkId > 0 {
 			m.workId = m.existingWorkId
 			m.existingWorkId = 0
 			m.isReplace = true
 		} else if !m.runMode.hasWorkInfo() {
-			// 含主资源的重执行必须定位到已有作品(否则无处挂载主资源)
+			// 含资源板块的重执行必须定位到已有作品(否则无处挂载资源)
 			logger.Log.Errorf("[TaskManager] 任务 %d 资源重执行未定位到作品", m.taskId)
 			return m.comboFail("未找到任务对应的作品，无法重新下载资源")
 		}
 		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
-	} else if !m.runMode.hasWorkInfo() && m.runMode.hasAnyStore() {
-		// 非主资源(纯缩略图等)板块:由任务记录定位已有作品,标记为替换
-		workId, err := m.resolveWorkIdByTask()
-		if err != nil {
-			logger.Log.Errorf("[TaskManager] 任务 %d 定位作品失败: %v", m.taskId, err)
-			return m.comboFail(fmt.Sprintf("定位作品失败: %v", err))
-		}
-		m.workId = workId
-		m.isReplace = true
 	}
 
 	// 替换场景:备份所选板块对应的旧 store。
@@ -991,21 +1012,6 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 	// DB 连接,仅事务提交后 resource_store 行与任务 PendingResourceID 才对其可见。事务回滚/暂停路径上方已提前 return。
 	m.streams = streams
 	return m.downloadLoop()
-}
-
-// resolveWorkIdByTask 由任务记录的 (site_id, site_work_id) 定位作品 ID
-func (m *ManagedTask) resolveWorkIdByTask() (int64, error) {
-	if m.deps.WorkChecker == nil || !m.task.SiteID.Valid || !m.task.SiteWorkID.Valid || m.task.SiteWorkID.String == "" {
-		return 0, fmt.Errorf("任务缺少 site_id/site_work_id，无法定位作品")
-	}
-	work, err := m.deps.WorkChecker.GetBySiteAndSiteWorkID(m.runCtx, m.task.SiteID.Int64, m.task.SiteWorkID.String)
-	if err != nil {
-		return 0, fmt.Errorf("查询作品失败: %w", err)
-	}
-	if work == nil {
-		return 0, fmt.Errorf("未找到任务对应的作品（siteWorkId=%s）", m.task.SiteWorkID.String)
-	}
-	return work.GetID(), nil
 }
 
 // isNonTerminalMode 是否为非终态板块组合（无资源板块）：执行不产生任务终态、不持久化任务状态

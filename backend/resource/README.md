@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（main/thumbnail/videoTrack/audioTrack/videoMain）；并提供音视频合并编排（MergeService）。
+Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（image/thumbnail/videoTrack/videoMain/...）；并提供音视频合并编排（MergeService）。
 
 ## 边界
 
@@ -28,7 +28,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 - **Resource 实体字段**：`WorkID` / `TaskID`（所属作品 / 产生它的任务）、`ResourceComplete`（完整度三态：0=未校验/1=完整/2=不完整，`sql.NullInt64`）、`SuggestName`（建议文件名）。Resource 不直接持有 store 外键。
 - **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`StoreSeq`（同 role 内 store 序号，路径消歧与续传身份化用）。
-- **StoreType 开放枚举**（`entity/resource_store.go`）：`main`（主资源）、`thumbnail`（缩略图）、`videoTrack`（视频轨）、`audioTrack`（音频轨）、`videoMain`（视频可播放主体：本地封装原文件或分离流合并产物）。新增类型只加常量、不改表结构；backup/restore/软删按 store 集合遍历，对新类型透明（videoMain 自动被覆盖，零改）。
+- **StoreType 开放枚举**（`entity/resource_store.go`，别名 SDK contract 包）：`image`（主资源）、`document`（图文文档）、`thumbnail`（缩略图）、`videoTrack`（视频轨）、`audioTrack`（音频轨）、`videoMain`（视频可播放主体：本地封装原文件或分离流合并产物）、`audioMain`（音频可播放主体）。新增类型只加常量、不改表结构；backup/restore/软删按 store 集合遍历，对新类型透明（videoMain 自动被覆盖，零改）。
 
 ## 合并编排（MergeService）
 
@@ -45,7 +45,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 ## 依赖关系
 
 - 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）
-- 被依赖：**work**（ResourceUpdater）、**backup**（StoreResourceProvider / ResourceUpdater）、**task**（任务产出资源）
+- 被依赖：**work**（ResourceUpdater）、**backup**（StoreResourceProvider / ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品 store 行角色集合）
 
 ## 关键设计
 

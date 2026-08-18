@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 import { taskManagerConfirmReplace, taskManagerConfirmReplaceBatch } from '@renderer/apis/http/wrappers/task'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import type { DuplicateInfo } from '@renderer/store/UseReplaceConfirmStore'
+import { StoreRoleLabels } from '@renderer/constants/sectionCode'
 
 const store = useReplaceConfirmStore()
+
+// 板块角色转中文标签;行级信息不可得(冲突角色缺失)时返回空串,前端不展示板块明细
+function conflictRoleText(item: DuplicateInfo): string {
+  if (!arrayNotEmpty(item.conflictRoles)) {
+    return ''
+  }
+  return item.conflictRoles
+    .map((role) => StoreRoleLabels[role] ?? role)
+    .join('、')
+}
 
 async function handleReplace(item: DuplicateInfo) {
   store.setLoading(item.taskId, true)
@@ -71,6 +83,10 @@ async function handleSkipAll() {
           <div class="replace-confirm-item-info">
             <span class="replace-confirm-item-name">{{ item.taskName }}</span>
             <span class="replace-confirm-item-existing">已有作品：{{ item.existingWorkName }}</span>
+            <span
+              v-if="conflictRoleText(item)"
+              class="replace-confirm-item-conflict"
+            >将替换板块：{{ conflictRoleText(item) }}</span>
           </div>
         </div>
         <el-button-group class="replace-confirm-item-actions">
@@ -165,6 +181,14 @@ async function handleSkipAll() {
 .replace-confirm-item-existing {
   font-size: 12px;
   color: var(--app-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replace-confirm-item-conflict {
+  font-size: 12px;
+  color: var(--app-color-danger);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

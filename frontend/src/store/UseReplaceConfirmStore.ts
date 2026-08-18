@@ -6,6 +6,8 @@ export interface DuplicateInfo {
   taskName: string
   existingWorkId: number
   existingWorkName: string
+  /** 将被覆盖的板块角色(行级交集后);null/undefined 表示行级信息不可得(查询失败/旧版本载荷) */
+  conflictRoles?: string[] | null
 }
 
 export const useReplaceConfirmStore = defineStore('replaceConfirm', () => {

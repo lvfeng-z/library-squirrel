@@ -1051,6 +1051,7 @@ func (app *App) initAdvancedServices() error {
 			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
 			ResourceStoreReader:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
 			ResourceStoreWriter:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
+			WorkStoreRoleChecker:    app.ResourceService,        // 实现 WorkStoreRoleChecker 接口(覆盖确认行级判定)
 			Transactor:              &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口

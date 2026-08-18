@@ -6,7 +6,7 @@
 
 | 组件 | 文件路径 |
 |------|---------|
-| 任务状态、ManagedTask、run()（统一 runSectionCombo）、downloadLoop、板块组合执行、parseSections | `backend/taskManager/model.go` |
+| 任务状态、ManagedTask、run()（统一 runSectionCombo）、downloadLoop、板块组合执行、覆盖确认行级门槛 | `backend/taskManager/model.go` |
 | Manager（多根调度、信号量、flush、onStateChange、batchCheckDuplicates） | `backend/taskManager/manager.go` |
 | Handler（Start/Retry/Resume、Redownload 板块重执行） | `backend/taskManager/handler.go` |
 | Task Service（创建、重试） | `backend/task/service.go` |
@@ -131,7 +131,8 @@ CreateTaskByURL(ctx, url)
 Handler.StartTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.RetryTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.ResumeTaskTree(taskId, isLeaf) → resumeTaskTrees([taskId])           // 固定 runModeFull, skipTerminal=true
-板块 Redownload(taskIds, sections)    → startTaskTrees(taskIds, parseSections(sections))  // sections 为板块代码 A=1/B=2/C=3
+板块 Redownload(taskIds, storeRoles, includeWorkInfo)
+                                         → 持久化板块选择到 task(UpdateRedownloadSections) + startTaskTrees(taskIds)  // 空 storeRoles + 不含元数据 = 全集
 ```
 
 `loadAndStartTaskTrees(taskIds, skipTerminal, mode)` 接受任意多个 taskId（子任务或父任务），一次构建完整任务树：
@@ -152,10 +153,12 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
   → processParentUnit(...)                        // 父单元：建 ParentTask + 收集直接子任务
       - 所有子任务已终态（仅 skipTerminal 时）→ 计算父最终状态 + PushTaskRemove
   → batchCheckDuplicates(allToCheck)              // 多根共享一次批量查重
-      - 无 B（!hasResource）的板块组合直接标记 skipDuplicateCheck 并派发（A/C 不覆盖资源，无需"作品已存在"提醒）
-      - 查询 workChecker.ListBySiteAndSiteWorkIDs（仅含 B 的组合参与）
-      - 重复 → WaitingForInput + 前端推送 DuplicateDetected
-      - 不重复 → skipDuplicateCheck=true
+      - 仅作品信息(!fetchStores)的组合直接标记 skipDuplicateCheck 并派发（不拉资源，不可能覆盖 store 行）
+      - 查询 workChecker.ListBySiteAndSiteWorkIDs（仅含资源板块的组合参与）
+      - 业务键命中后行级覆盖判定（WorkStoreRoleChecker.ListStoreTypeSetsByWorkIds）：所选板块 ∩ 已有 store 行非空 → 重复
+      - 重复 → WaitingForInput + 前端推送 DuplicateDetected（载荷含 conflictRoles 将覆盖板块明细）
+      - 空交集/零行/不重复 → skipDuplicateCheck=true（空交集仍置 existingWorkId 供替换定位）
+      - 行级角色查询失败 → 命中任务全部退回弹窗（宁多弹不漏弹）
   → tryDispatch(child)                            // 受信号量调度（逐个）
       - dispatch(child):actorStarted CAS + postCmd(cmdStart / cmdResume)
       - 槽位在 handleRunCmd 内取(失败 → enqueueSelf Waiting)
@@ -421,17 +424,16 @@ BaseRepository.getDb(ctx)
 
 | 调用方 | 备份范围 | 说明 |
 |--------|---------|------|
-| Full / 含 B 的组合 替换 | `BackupStores(StoreTypeWork)` 仅 Work | 资源重下不动缩略图 |
-| 含 C（缩略图重新生成时） | `BackupStores(StoreTypeThumbnail)` 仅 Thumbnail | 由 `doSaveThumbnail(force=true)` 内部触发，生成新缩略图失败时 defer 还原 |
+| 含资源板块的组合 替换 | `BackupStores(workId, storeRoles...)` 仅所选板块角色 | 空交集放行/确认替换后重执行时备份将被覆盖的旧 store |
 
-> 历史 `BackupAllStores`（Work+Thumbnail 一次性全量）已删除：拆为 B 只备份 Work、缩略图延后到 `doSaveThumbnail(force=true)` 自管，各板块彻底隔离。
+> 历史 `BackupAllStores`（一次性全量）与单类型 `StoreTypeWork`/`StoreTypeThumbnail` 拆分备份均已删除：替换备份统一按 `runMode.storeRoles` 展开为类型集合，缩略图作为普通 role 随所选板块参与备份（无独立链路）。
 
 **BackupStores 流程**：
 
 ```
 BackupStores(ctx, workId, types...)        // types 决定只处理哪些 StoreType
   → 查询 workId 下所有 enabled 的 Resource
-  → 对每个 Resource 的每个匹配 types 的 Store（Work / Thumbnail）：
+  → 对每个 Resource 的每个匹配 types 的 Store（所选 store_type 集合内的角色）：
       storeDeleter.Delete(ctx, storeId, backup=true)
         → 物理文件移动到 workdir/backup/YYYY/MM/DD/
         → 创建 Backup DB 记录（保存原始路径元数据）
@@ -451,7 +453,7 @@ RestoreAllStores(ctx, items)                     // 使用 context.Background()
       4. 删除 Backup DB 记录
 ```
 
-还原有两处触发：`run()` 的 defer（含 B 的组合终态 Failed 时还原 Work 备份项）、`doSaveThumbnail(force=true)` 的 defer（缩略图重新生成失败时还原旧缩略图）。两者各管自身 Store 的备份项。
+还原触发：`run()` 的 defer（含资源板块的组合终态 Failed 时还原备份项）。备份/还原各管自身调用方传入的 Store 备份项。
 
 **降级处理**：如果备份过程中某个 Store 备份失败，`BackupID` 为 0。还原时跳过此类条目，该 Store 文件永久丢失，Resource 对应字段保持 null。
 
@@ -529,52 +531,51 @@ doFlush():
 
 ## 板块重执行（多选组合）
 
-对已下载的作品，支持**多选**重新执行若干板块（板块 A 作品信息 / 板块 B 资源文件 / 板块 C 封面）：前端勾选要执行的板块（不勾选视为全集），后端严格按所选板块组合执行。重执行与普通任务执行**等价**——同样走唯二入口 `startTaskTrees`、新建 `ManagedTask` 实例，只是 `runMode` 携带所选板块集合。
+对已下载的作品，支持重新执行所选板块（板块 A 作品信息 / 板块 B 资源文件，后者按 store_type 子集多选）：前端下发所选 `storeRoles` 与 `includeWorkInfo`（空 storeRoles + 不含元数据 = 全集），后端严格按所选板块组合执行。重执行与普通任务执行**等价**——同样走唯二入口 `startTaskTrees`、新建 `ManagedTask` 实例，只是 `runMode` 携带所选板块集合。
 
 ### runMode：板块选择结构体
 
 ```go
 type runMode struct {
     workInfo   bool     // 板块 A(作品信息)
-    storeRoles []string // 板块 B(资源):所选 store_type 子集(main/thumbnail/videoTrack/...),空=全量
+    storeRoles []string // 板块 B(资源):所选 store_type 子集(image/thumbnail/videoTrack/...);空=插件自决全量或仅作品信息(由 fetchStores 区分)
 }
 var runModeFull = runMode{workInfo: true, storeRoles: allStoreRoles}
 ```
 
 runMode 由 `workInfo`(板块 A)与 `storeRoles`(板块 B 资源,多角色)组成。缩略图作为 `storeRoles` 中的 `thumbnail` 角色由 derived StoreSpec 产出,不再单列板块 C。
 
-`run()` 统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块 A→B→C 顺序执行、末尾统一终态化。
+`run()` 统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块执行、末尾统一终态化。
 
-前端 `Redownload(taskIds, sections)` 收板块代码数组（A=1/B=2/C=3，不勾选时下发全集 `[1,2,3]`），后端 `parseSections` 映射为 `runMode`：
+前端 `Redownload(taskIds, storeRoles, includeWorkInfo)` 收所选 store_type 集合与是否含作品元数据（空 storeRoles + includeWorkInfo=false 表示全集）。选择先持久化到 task 实体（`UpdateRedownloadSections` 写 `store_roles`/`include_work_info`），`runMode` 经 `runModeFromTask` 从 task 派生，暂停/跨重启恢复保持原板块选择；随后走 `startTaskTrees`：
 
 ```go
-func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTaskTrees(ctx, taskIds, parseSections(sections))
+func (h *Handler) Redownload(ctx, taskIds []int64, storeRoles []string, includeWorkInfo bool)
 ```
 
 任务定位：重执行所需数据（`PluginPublicID`/`PluginExtensionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
 
 ### runSectionCombo 执行流程
 
-严格按 `runMode` 所选板块，A→B→C 顺序执行：
+严格按 `runMode` 所选板块执行：
 
-1. **workdir 检查**（B/C 需要，置于查重前避免无效确认）。
-2. **含 B → 查重**（`runSectionCombo` 内 fallback；主路径在 `batchCheckDuplicates`）：作品已存在 → `PushDuplicateDetected` + `WaitingForInput` + `runResultNeedConfirm`，确认后第二次 run 走备份+执行。**无 B 不查重**（A/C 不覆盖资源，无需"作品已存在"提醒）。
-3. **workId 定位 + B 备份**：含 B 则 `BackupStores(StoreTypeWork)` 备份旧资源（`existingWorkId` 由查重设置）；无 B 无 A（C-only）则 `resolveWorkIdByTask` 定位。
+1. **workdir 检查**（含资源板块时需要，置于查重前避免无效确认）。
+2. **含资源板块 → 查重**（`runSectionCombo` 内 fallback；主路径在 `batchCheckDuplicates`）：`(site_id, site_work_id)` 业务键命中已有作品后走**行级覆盖门槛**——所选板块角色（`runMode.storeRoles`）与已有作品 `resource_store` 行的 store_type 集合求交，**交集非空才弹**（thumbnail 行命中同样弹窗）；空交集或已有作品零 store 行不弹窗，但保留 `existingWorkId` 供替换定位（门槛与替换语义解耦）；板块为空（插件自决全量）时已有任意行即弹；行级角色查询失败保守退回弹窗（宁多弹不漏弹）。弹窗 → `PushDuplicateDetected`（载荷含 `conflictRoles` 将覆盖板块明细，null 表示行级信息不可得）+ `WaitingForInput` + `runResultNeedConfirm`，确认后第二次 run 走备份+执行。**仅作品信息任务（无资源板块）不查重**（不拉任何资源，不可能覆盖 store 行）。
+3. **workId 定位 + 替换判定**：含资源板块时 `existingWorkId > 0` → 定位到已有作品（`workId` 置位、`isReplace=true`，空交集放行场景由此承接替换语义）；替换场景按所选板块 `BackupStores(workId, storeRoles...)` 备份旧 store。
 4. **板块 A**（`hasWorkInfo`）：`CreateWorkInfo` + `SaveWorkInfo`（提供 workId，并捕获 `workResp` 供 B 的文件名模板）。
-5. **板块 B**（`hasResource`，终态）：`Start` →（若 A 执行过，合并 `workResp` 作品信息到 `startResp` 供文件名模板）→ `startDownload` → `downloadLoop`（完成 `setState(Finished)`；`hasThumbnail` 时以 `force=true` 顺带生成缩略图）。
-6. **板块 C**（`hasThumbnail` 且无 B）：`saveThumbnailByWorkId(force=true)`。
-7. **无 B → 非终态成功**：`finishNonTerminalSection("")` 回到执行前状态。
+5. **资源板块**（`fetchStores`，终态）：`Start(task, storeRoles)` → 合并 `workResp` 作品信息到 `startResp` 供文件名模板 → `filterSpecsByRoles` 按所选板块过滤插件 specs → `startDownload` → `downloadLoop`（完成 `setState(Finished)`）。
+6. **无资源板块 → 非终态成功**：`finishNonTerminalSection("")` 回到执行前状态。
 
-失败由 `comboFail(errMsg)` 统一处理：含 B → `setFailed`（终态，`run()` defer 还原 Work 备份）；无 B → `finishNonTerminalSection`（非终态，恢复执行前状态）。
+失败由 `comboFail(errMsg)` 统一处理：含资源板块 → `setFailed`（终态，`run()` defer 还原备份）；无资源板块 → `finishNonTerminalSection`（非终态，恢复执行前状态）。
 
-### 终态性规则：由是否含 B 决定
+### 终态性规则：由是否含资源板块决定
 
 | 组合 | 终态性 | 持久化 | 查重 |
 |------|:---:|:---:|:---:|
-| 含 B（B / A+B / B+C / 全集） | 终态（Finished/Failed） | 是 | 是（ConfirmReplace） |
-| 无 B（A / C / A+C） | 非终态（保持执行前状态） | 否 | 否 |
+| 含资源板块（仅资源 / 全集） | 终态（Finished/Failed） | 是 | 是（行级门槛 + ConfirmReplace） |
+| 仅作品信息（无资源板块） | 非终态（保持执行前状态） | 否 | 否 |
 
-- `isNonTerminalMode()` = `!hasResource()`。
+- `isNonTerminalMode()` = `!fetchStores`。
 - `finishNonTerminalSection(errMsg)`：成功（空 errMsg）回到执行前状态（`setState(TaskState(m.task.Status))`）；失败记录错误 + 推送通知，同样回到执行前状态，**不调用 `setFailed`**、不污染源任务。
 - `onStateChange` 持久化闸门：`isStableState(newState) && !mt.isNonTerminalMode()`，无 B 的组合一律跳过 `addToPending`（仍推送前端状态变化）。
 - 前端表现：重执行期间任务卡片短暂可见（Processing），结束（成功/失败）后由 `cleanupFinishedTask` 走标准移除流程（作根 parentId=0 → 从 `taskMap` 移除 + `PushTaskRemove`）。
@@ -586,12 +587,9 @@ func (h *Handler) Redownload(ctx, taskIds []int64, sections []int) → startTask
 | 板块 | 备份范围 | 行为 |
 |:---:|---------|------|
 | A 作品信息 | 无 | 不动文件 |
-| B 资源文件 | 仅 main role | `BackupStores(workId, main)`；`saveResource` 替换分支只重建所选 role 的 resource_store 行,不动其他 role |
-| C 封面 | 仅 `StoreTypeThumbnail` | `doSaveThumbnail(force=true)` 内部 `BackupStores(workId, StoreTypeThumbnail)` 备份旧缩略图，生成失败 defer 还原 |
+| B 资源文件 | 所选 storeRoles | `BackupStores(workId, storeRoles...)`；`saveResource` 替换分支只重建所选 role 的 resource_store 行,不动其他 role |
 
-含 B 的组合在 `downloadLoop` 完成时若同时选 C（`hasThumbnail`），以 `force=true` 生成新缩略图（备份旧→生成新→失败还原），并入 B 的完成路径（B 终态后无法再单独跑 C）。缩略图作为独立 role 的 resource_store 行，与 main role 互不影响，修复了原固定列模型下缩略图生成失败导致封面丢失的问题。
-
-`saveThumbnail` 已从耦合 `PendingResourceID` 的下载流程解耦，改为 `workId` 基：`saveThumbnail()`（`downloadLoop` 完成分支，`force=true`）→ `saveThumbnailByWorkId(ctx, workId, force)` → `doSaveThumbnail(ctx, resource, force)`。板块 C 直接调 `saveThumbnailByWorkId(ctx, workId, true)`。
+缩略图不单列板块：作为 `storeRoles` 中的 `thumbnail` 角色，由插件 Start 返回的 `Generation=derived` StoreSpec 产出，与 downloaded 角色同链路下载/备份/重挂（`resolveStorePath` 无 thumbnail 特例，多 store 资源按 `<bas>_<role>_<seq>` 命名）。任务全程只动插件本次声明的 StoreSpec 对应板块；`videoMain`（分离流场景由用户「合并」操作挂载、不来自插件 specs 时）对任务流程透明——不被删/覆盖/失效。
 
 ---
 
@@ -639,6 +637,11 @@ ManagedTask.pluginExec.Xxx()
 ---
 
 ## 更新记录
+
+### 2026-08-18
+- [修改] 覆盖确认门槛行级化：删除意图层板块门槛（`hasNonThumbnailStore`），改为所选板块角色与已有作品 `resource_store` 行 store_type 集合求交、交集非空才弹覆盖确认（thumbnail 行命中同样弹窗）；空交集/零行不弹窗但保留 `existingWorkId` 替换定位；行级角色查询失败保守退回弹窗。`PushDuplicateDetected` 载荷新增 `conflictRoles`（将覆盖板块明细，前端弹窗展示；null 表示行级信息不可得）
+- [修改] 删除 `resolveWorkIdByTask`：含资源板块的任务统一经查重链定位已有作品；替换备份改为按所选板块 `BackupStores(workId, storeRoles...)`（不再是 `StoreTypeWork` 单角色，缩略图备份独立链路 `doSaveThumbnail` 一并移除）
+- [修改] 文档同步：Redownload 签名更正为 `(taskIds, storeRoles, includeWorkInfo)`（板块选择持久化到 task，`runMode` 经 `runModeFromTask` 从 task 派生）；删除板块 C（封面）描述——缩略图已是 derived StoreSpec 普通 role
 
 ### 2026-07-08
 - [修改] 阶段 3-5 重写为 per-task actor 模型(项三):`Manager.executeTask`/`go executeTask` 删除,改为每任务常驻 `actorLoop` + `cmdCh` 串行命令;`handleRunCmd`(取槽位→prepareForResume→runCtx→cmdWatcher→runOnce);`cmdWatcher` 收 pause/stop 立即 `runCancel` 中断在途长任务
