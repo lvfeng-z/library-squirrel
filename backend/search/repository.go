@@ -464,18 +464,13 @@ func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias stri
 			whereClauses = append(whereClauses, fmt.Sprintf("%s.nick_name LIKE ?", alias))
 			params = append(params, "%"+fmt.Sprintf("%v", cond.Value)+"%")
 
-		case dto2.WorksUploadTime:
-			if cond.Operator == dto2.NotEqual {
-				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time <> ?", alias))
-			} else {
-				whereClauses = append(whereClauses, fmt.Sprintf("%s.site_upload_time = ?", alias))
-			}
-			params = append(params, cond.Value)
-
-		case dto2.WorksCreateTime, dto2.WorksDeleteTime:
+		case dto2.WorksUploadTime, dto2.WorksCreateTime, dto2.WorksDeleteTime:
 			// 时间范围条件：按操作符生成（范围用 GreaterOrEqual/LessOrEqual，两端各传一条）
 			column := "create_time"
-			if cond.Type == dto2.WorksDeleteTime {
+			switch cond.Type {
+			case dto2.WorksUploadTime:
+				column = "site_upload_time"
+			case dto2.WorksDeleteTime:
 				column = "deleted_at"
 			}
 			op := "="
@@ -652,7 +647,17 @@ func (r *SearchRepository) QueryRecycleWorkPage(ctx context.Context, page, pageS
 				FROM re_work_author rwa
 				LEFT JOIN local_author la ON rwa.local_author_id = la.id
 				LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
-				WHERE t1.id = rwa.work_id) AS author_names
+				WHERE t1.id = rwa.work_id) AS author_names,
+			COALESCE(
+				(SELECT ps.file_path FROM resource r
+					JOIN resource_store rs ON rs.resource_id = r.id AND rs.store_type = 'thumbnail'
+					JOIN persistent_store ps ON rs.store_id = ps.id
+					WHERE t1.id = r.work_id LIMIT 1),
+				(SELECT ps.file_path FROM resource r
+					JOIN resource_store rs ON rs.resource_id = r.id AND rs.store_type = 'image'
+					JOIN persistent_store ps ON rs.store_id = ps.id
+					WHERE t1.id = r.work_id AND r.resource_type = 'image' LIMIT 1)
+			) AS preview_path
 		FROM work t1
 		LEFT JOIN site s ON t1.site_id = s.id
 		%s
@@ -670,7 +675,7 @@ func (r *SearchRepository) QueryRecycleWorkPage(ctx context.Context, page, pageS
 	for rows.Next() {
 		var item dto2.RecycleWorkDTO
 		var siteId sql.NullInt64
-		var siteWorkId, workName, authorNames sql.NullString
+		var siteWorkId, workName, authorNames, previewPath sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&siteId,
@@ -680,6 +685,7 @@ func (r *SearchRepository) QueryRecycleWorkPage(ctx context.Context, page, pageS
 			&item.DeleteTime,
 			&item.SiteName,
 			&authorNames,
+			&previewPath,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -697,6 +703,9 @@ func (r *SearchRepository) QueryRecycleWorkPage(ctx context.Context, page, pageS
 		}
 		if authorNames.Valid {
 			item.AuthorNames = authorNames.String
+		}
+		if previewPath.Valid {
+			item.PreviewPath = previewPath.String
 		}
 		results = append(results, &item)
 	}

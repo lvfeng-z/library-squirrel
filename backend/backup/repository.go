@@ -64,3 +64,20 @@ func (r *BackupRepository) ListByWorkId(ctx context.Context, workId int64) ([]*e
 	}
 	return backups, nil
 }
+
+// GetLatestByOriginalPath 按原始 store 路径查最近一条备份（无则 nil）
+// 供 /store/ 文件服务兜底：作品软删期间文件已移 backup/，原路径 404 时按 original_file_path 反查
+func (r *BackupRepository) GetLatestByOriginalPath(ctx context.Context, originalRelPath string) (*entity.Backup, error) {
+	var backup entity.Backup
+	err := r.GORM().WithContext(ctx).Model(&entity.Backup{}).
+		Where("original_file_path = ?", originalRelPath).
+		Order("id DESC").
+		First(&backup).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &backup, nil
+}

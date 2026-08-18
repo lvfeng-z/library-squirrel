@@ -38,8 +38,10 @@ type Repository interface {
 	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceIds 批量获取备份记录
 	GetBySourceTypeAndSourceIds(ctx context.Context, sourceType int, sourceIds []int64) ([]*entity.Backup, error)
-	// ListByWorkId 查询作品的全部备份记录（软删除链归属关联）
+	// ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联）
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error)
+	// GetLatestByOriginalPath 按原始 store 路径查最近一条备份（无则 nil）
+	GetLatestByOriginalPath(ctx context.Context, originalRelPath string) (*entity.Backup, error)
 	// Delete 删除备份记录
 	Delete(ctx context.Context, id int64) error
 }
@@ -271,6 +273,16 @@ func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, workId int64
 // ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联，文件级明细）
 func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error) {
 	return s.repo.ListByWorkId(ctx, workId)
+}
+
+// ResolveBackupPathByOriginal 按原始 store 路径反查最近一条备份的文件绝对路径（无则空串）
+// 供 /store/ 文件服务兜底（软删作品文件在 backup/）
+func (s *Service) ResolveBackupPathByOriginal(ctx context.Context, originalRelPath string) string {
+	backup, err := s.repo.GetLatestByOriginalPath(ctx, originalRelPath)
+	if err != nil || backup == nil {
+		return ""
+	}
+	return s.GetBackupPath(backup)
 }
 
 // RestoreFile 从备份路径还原文件到目标路径

@@ -22,7 +22,7 @@
 
 ## 核心概念
 
-- **回收站条目 = work 已删行**：work.deleted_at（毫秒时间戳）> 0 即回收站条目；删除时间、TTL 过期判定、删除时间排序均由该列承担。从属行（resource/resource_store/re_work_*）与 persistent_store 记录在软删期间原地保留，复原无需重建。
+- **回收站条目 = work 已删行**：work.deleted_at（毫秒时间戳）> 0 即回收站条目；删除时间、TTL 过期判定、删除时间排序均由该列承担。从属行（resource/resource_store/re_work_*）与 persistent_store 记录在软删期间原地保留，复原无需重建。列表 DTO 含剩余天数（service 按 TTL 设置组装）与预览图路径（与作品卡片同优先级：缩略图优先、图片资源主图回退；软删期间文件在 backup/，经 /store/ 的 backup 兜底仍可访问）。
 - **backup 归属关联**：软删除链逐 store 建 backup 记录时写入 work_id；复原/彻底删除按 `ListByWorkId` 聚合取文件级明细。
 - **复原冲突**：删除后重新下载同作品会占用业务键（部分唯一索引 `idx_work_site_site_work_active` 仅约束活行，已删行释放键）。复原时检测到活占位行 → 放弃（报 ErrRestoreConflict）或覆盖（占位作品转入回收站，文件移 backup 让出 store/ 路径，反悔可再复原）。
 - **文件还原的操作抑制**：还原目标在 store/ 监控白名单内，逐文件 storeRegistry.Suppress/Release 登记避免被 fsmonitor 误报为外部变更。

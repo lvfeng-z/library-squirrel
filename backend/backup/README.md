@@ -33,7 +33,7 @@
 ## 依赖关系
 
 - 依赖：persistentStore（StoreDeleter / StoreImporter）、resource（ResourceUpdater / StoreResourceProvider）
-- 被依赖：persistentStore（FileMover：`Delete`/`DeleteWithBackup` 的文件移动与 work_id 归属写入）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader：ListByWorkId/RestoreFile/GetBackupPath/Delete——复原与彻底删除的文件链）
+- 被依赖：persistentStore（FileMover：`Delete`/`DeleteWithBackup` 的文件移动与 work_id 归属写入）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader：ListByWorkId/RestoreFile/GetBackupPath/Delete——复原与彻底删除的文件链）、assetserver（BackupPathResolver：`/store/` 原路径文件缺失时按 original_file_path 反查兜底服务，软删作品文件在 backup/ 期间可访问）
 
 ## 关键设计
 

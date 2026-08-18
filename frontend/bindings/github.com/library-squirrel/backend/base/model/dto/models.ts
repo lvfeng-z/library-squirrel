@@ -607,6 +607,17 @@ export class RecycleWorkDTO {
      */
     "deleteTime": number;
 
+    /**
+     * 距 TTL 自动清理的剩余整天数（向上取整，负值归 0）；自动清理未启用时为 null（service 按 TTL 设置组装）
+     */
+    "expireDaysLeft": number | null;
+
+    /**
+     * 预览图 store 相对路径（与作品卡片同优先级：缩略图优先，回退图片资源的主图；无图为空串）
+     * 软删期间文件在 backup/，经 /store/ 服务的 backup 兜底仍可访问
+     */
+    "previewPath": string;
+
     /** Creates a new RecycleWorkDTO instance. */
     constructor($$source: Partial<RecycleWorkDTO> = {}) {
         if (!("id" in $$source)) {
@@ -632,6 +643,12 @@ export class RecycleWorkDTO {
         }
         if (!("deleteTime" in $$source)) {
             this["deleteTime"] = 0;
+        }
+        if (!("expireDaysLeft" in $$source)) {
+            this["expireDaysLeft"] = null;
+        }
+        if (!("previewPath" in $$source)) {
+            this["previewPath"] = "";
         }
 
         Object.assign(this, $$source);

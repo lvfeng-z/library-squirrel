@@ -97,7 +97,29 @@ func (s *Service) Page(ctx context.Context, page int, pageSize int, conditions [
 		sortField = "create_time"
 	}
 	sortDesc := sortOrder != "asc"
-	return s.recycleQuerier.QueryRecycleWorkPage(ctx, page, pageSize, conditions, sortField, sortDesc)
+	result, err := s.recycleQuerier.QueryRecycleWorkPage(ctx, page, pageSize, conditions, sortField, sortDesc)
+	if err != nil {
+		return nil, err
+	}
+	s.fillExpireDaysLeft(result)
+	return result, nil
+}
+
+// fillExpireDaysLeft 按 TTL 设置填充各条目距自动清理的剩余整天数（向上取整、负值归 0；未启用时留 null）
+func (s *Service) fillExpireDaysLeft(result *model.Page[dto.RecycleWorkDTO]) {
+	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
+	if !enabled || retentionDays <= 0 {
+		return
+	}
+	now := util.GetCurrentTimestamp()
+	retentionMillis := int64(retentionDays) * 24 * 60 * 60 * 1000
+	for _, item := range result.Data {
+		daysLeft := int(retentionMillis-(now-item.DeleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
+		if daysLeft < 0 {
+			daysLeft = 0
+		}
+		item.ExpireDaysLeft = &daysLeft
+	}
 }
 
 // RestoreWork 复原已软删作品

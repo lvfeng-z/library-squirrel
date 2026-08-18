@@ -817,6 +817,8 @@ func (app *App) initBaseServices() {
 		return app.SettingsService.GetWorkDir()
 	})
 	app.StoreFileHandler.SetStatusChecker(app.PersistentStoreService)
+	// /store/ 兜底：软删作品的文件已移 backup/，按 original_file_path 反查服务
+	app.StoreFileHandler.SetBackupResolver(app.BackupService)
 
 	// reWorkAuthor 服务
 	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
