@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"time"
 
@@ -258,6 +257,9 @@ type StoreDeleter interface {
 	// Delete 删除记录及对应文件
 	// backup: 是否对已完成文件进行移动备份
 	Delete(ctx context.Context, id int64, backup bool) (int64, error)
+	// DeleteWithBackup 删除 store 文件（移入 backup 并建备份记录），保留 persistent_store 记录
+	// （记录由调用方在事务内经 DeleteRecord 删除，配合构成逻辑删除两半）
+	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 }
 
 // ReWorkTagReader 作品-标签关联读取接口（逻辑删除快照采集）
@@ -278,22 +280,10 @@ type ReWorkWorkSetReader interface {
 	ListRelationsByWorkId(ctx context.Context, workId int64) ([]*entity2.ReWorkWorkSet, error)
 }
 
-// StoreReader PersistentStore 读取接口（逻辑删除前采集资源文件元数据）
-type StoreReader interface {
-	// GetById 根据 ID 获取
-	GetById(ctx context.Context, id int64) (*entity2.PersistentStore, error)
-}
-
 // RecycleItemSaver 回收站条目保存接口（逻辑删除写入快照）
 type RecycleItemSaver interface {
 	// Create 保存回收站条目
 	Create(ctx context.Context, item *entity2.RecycleItem) error
-}
-
-// BackupMover 文件移动备份接口（逻辑删除时把资源文件移入 backup 目录）
-type BackupMover interface {
-	// MoveToBackup 将文件移动到 backup 目录并创建 Backup 记录，返回 Backup 记录 ID
-	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
 // StoreRecordDeleter PersistentStore 记录删除接口（仅删 DB 记录，磁盘文件已另行处理）
@@ -406,14 +396,11 @@ type Service struct {
 	reWorkTagReader     ReWorkTagReader
 	reWorkAuthorReader  ReWorkAuthorReader
 	reWorkWorkSetReader ReWorkWorkSetReader
-	storeReader         StoreReader
 
 	// 逻辑删除（SoftDeleteWork）所需接口与配置
 	recycleItemSaver   RecycleItemSaver
-	backupMover        BackupMover
 	storeRecordDeleter StoreRecordDeleter
 	runningTaskStopper RunningTaskStopper // 可选，nil 时跳过任务停止
-	workDirGetter      func() string
 
 	// 复原（RestoreWorkFromSnapshot）所需接口
 	resourceSaver         ResourceSaver
@@ -454,12 +441,9 @@ func NewService(
 	reWorkTagReader ReWorkTagReader,
 	reWorkAuthorReader ReWorkAuthorReader,
 	reWorkWorkSetReader ReWorkWorkSetReader,
-	storeReader StoreReader,
 	recycleItemSaver RecycleItemSaver,
-	backupMover BackupMover,
 	storeRecordDeleter StoreRecordDeleter,
 	runningTaskStopper RunningTaskStopper,
-	workDirGetter func() string,
 	resourceSaver ResourceSaver,
 	resourceStoreSaver ResourceStoreSaver,
 	siteAuthorByIdsReader SiteAuthorByIdsReader,
@@ -497,12 +481,9 @@ func NewService(
 		reWorkTagReader:          reWorkTagReader,
 		reWorkAuthorReader:       reWorkAuthorReader,
 		reWorkWorkSetReader:      reWorkWorkSetReader,
-		storeReader:              storeReader,
 		recycleItemSaver:         recycleItemSaver,
-		backupMover:              backupMover,
 		storeRecordDeleter:       storeRecordDeleter,
 		runningTaskStopper:       runningTaskStopper,
-		workDirGetter:            workDirGetter,
 		resourceSaver:            resourceSaver,
 		resourceStoreSaver:       resourceStoreSaver,
 		siteAuthorByIdsReader:    siteAuthorByIdsReader,
@@ -659,7 +640,6 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	}
 
 	// 3. [事务外] 资源文件备份 + 构建 resource 快照(从 resource_store 收集 store,不读旧列)
-	workDir := s.workDirGetter()
 	// 批量查询 resource_store
 	resourceIds := make([]int64, 0, len(resources))
 	for _, res := range resources {
@@ -681,7 +661,7 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 		}
 		// 遍历 resource_store 行备份(v1 快照格式)
 		for _, rsRow := range rsStoreMap[res.GetID()] {
-			backupId, err := s.backupStore(ctx, rsRow.StoreID, workDir)
+			backupId, err := s.storeDeleter.DeleteWithBackup(ctx, rsRow.StoreID)
 			if err != nil {
 				return err
 			}
@@ -783,35 +763,6 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 		}
 	}
 	return nil
-}
-
-// backupStore 将单个 PersistentStore 的文件移入 backup 目录，返回 Backup 记录 ID
-// 文件移动后原 persistent_store 记录保留，由调用方在事务内统一删除
-func (s *Service) backupStore(ctx context.Context, storeId int64, workDir string) (int64, error) {
-	store, err := s.storeReader.GetById(ctx, storeId)
-	if err != nil {
-		// store 记录查询失败(含脏数据 record not found:上游失败留下指向已删 store 的 resource_store 关联):
-		// 不阻断,返回 BackupID=0 由调用方跳过(删作品/替换不应因脏 store 失败)
-		logger.Log.Warnf("备份查询 storeId=%d 失败,跳过: %v", storeId, err)
-		return 0, nil
-	}
-	if store == nil || !store.FilePath.Valid {
-		return 0, nil
-	}
-	absFilePath := filepath.Join(workDir, store.FilePath.String)
-	originalFileName := ""
-	if store.FileName.Valid {
-		originalFileName = store.FileName.String
-	}
-	originalExt := ""
-	if store.FilenameExtension.Valid {
-		originalExt = store.FilenameExtension.String
-	}
-	backupId, err := s.backupMover.MoveToBackup(ctx, storeId, absFilePath, store.FilePath.String, originalFileName, originalExt)
-	if err != nil {
-		return 0, fmt.Errorf("移动资源文件到备份失败: %w", err)
-	}
-	return backupId, nil
 }
 
 // HardDeleteWork 物理删除作品（数据库记录 + 资源文件）

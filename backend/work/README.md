@@ -34,5 +34,5 @@
 
 ## 依赖关系
 
-- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/读取）、resource（Resource 保存/删除）、localTagFindOrCreator、backup（移动备份）、recycleBin（RecycleItemSaver：写回收站快照）、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）
+- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/带备份删除/记录删除）、resource（Resource 保存/删除）、localTagFindOrCreator、recycleBin（RecycleItemSaver：写回收站快照）、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）
 - 被依赖：前端作品库（列表 / 详情 / 编辑）、task（任务完成后落库作品）、recycleBin（WorkRestorer：复原重建 / 覆盖删除）

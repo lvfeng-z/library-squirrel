@@ -6,7 +6,7 @@
 
 ## 边界
 
-- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录；backup 管备份副本与备份记录。删除 persistentStore 时可通过 `backup` 参数联动创建备份。
+- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录；backup 管备份副本与备份记录。persistentStore 经其自定义的 `FileMover` 接口消费 backup（app 装配注入），`Delete(id, backup=true)`（物理删除联动备份）与 `DeleteWithBackup(id)`（逻辑删除两半的文件侧：移文件入 backup、保留记录）都经此移动文件。
 - 与 **StoreBackupOrchestrator**：通用 Handler 处理单文件备份；Orchestrator 编排"作品级"的多 Store 批量备份 / 还原（板块隔离）。
 
 ## 对外接口（Handler）
@@ -18,7 +18,7 @@
 | `GetById(id)` | 按ID查询备份 |
 | `GetPluginBackup(sourceId)` | 查询插件的备份 |
 
-> 作品资源 store 的批量备份 / 还原由 work（替换场景）通过 `StoreBackupOrchestrator` 调用，不经 Handler。
+> 作品资源 store 的批量备份 / 还原由 taskManager（替换 / 板块重执行场景）经 TaskDeps 持有的 `StoreBackupOrchestrator` 调用，不经 Handler。
 
 ## 核心概念
 
@@ -31,7 +31,7 @@
 ## 依赖关系
 
 - 依赖：persistentStore（StoreDeleter / StoreImporter）、resource（ResourceUpdater / StoreResourceProvider）
-- 被依赖：work（替换 / 板块重执行场景的 store 备份还原）、recycleBin
+- 被依赖：persistentStore（FileMover：`Delete`/`DeleteWithBackup` 的文件移动）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader）
 
 ## 关键设计
 

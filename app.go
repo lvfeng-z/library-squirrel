@@ -888,12 +888,9 @@ func (app *App) initAdvancedServices() error {
 		app.ReWorkTagService,
 		app.ReWorkAuthorService,
 		reWorkWorkSetRepo,
-		app.PersistentStoreService,
 		recycleBinRepo,
-		app.BackupService,
 		app.PersistentStoreService,
 		nil,
-		func() string { return app.SettingsService.GetWorkDir() },
 		app.ResourceService,
 		workResourceStoreRepo, // ResourceStoreSaver(SaveBatch)
 		app.SiteAuthorService,

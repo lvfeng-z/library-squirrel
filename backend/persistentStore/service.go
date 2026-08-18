@@ -695,6 +695,53 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 	return backupId, nil
 }
 
+// DeleteWithBackup 删除 store 文件——移入 backup 目录并创建备份记录，保留 persistent_store 记录。
+// 供逻辑删除流程使用：文件移动须在调用方事务外先行完成，记录由调用方在事务内经 DeleteRecord 删除，
+// 两者配合保证事务失败时 DB 整体回滚。
+// 与 Delete(id, backup=true) 的契约区别：后者即刻删除记录（非事务）、仅备份已完成文件、失败降级为直接删除；
+// 本方法不删记录、不看文件完成状态、失败返回错误中断调用方流程（保全优先——降级删除会销毁待复原文件）。
+// 返回备份记录 ID；0 = 无需备份（记录不存在、路径无效、源文件缺失或未注入 FileMover，均不阻断删除）。
+func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+	// 查询失败（含脏数据 record not found）不阻断删除：返回 0，调用方按"未备份"跳过该条
+	record, err := s.repo.GetById(ctx, id)
+	if err != nil {
+		logger.Log.Warn("备份前查询 store 记录失败，跳过", zap.Int64("storeId", id), zap.Error(err))
+		return 0, nil
+	}
+	if record == nil || !record.FilePath.Valid {
+		return 0, nil
+	}
+
+	// 文件操作前登记操作抑制：文件离开 store/ 会触发旧路径 Remove 事件（MoveBackup 汇点亦登记，此处同层加固）
+	storeRegistry.Suppress(record.FilePath.String)
+	defer storeRegistry.Release(record.FilePath.String)
+
+	if s.fileMover == nil {
+		logger.Log.Warn("未注入 FileMover，跳过备份（文件留存原地）", zap.Int64("storeId", id))
+		return 0, nil
+	}
+	workDir := s.getWorkDir()
+	absPath := filepath.Join(workDir, record.FilePath.String)
+	if !util.FileExists(absPath) {
+		logger.Log.Warn("源文件不存在，跳过备份", zap.Int64("storeId", id), zap.String("path", absPath))
+		return 0, nil
+	}
+
+	originalFileName := ""
+	if record.FileName.Valid {
+		originalFileName = record.FileName.String
+	}
+	originalFilenameExtension := ""
+	if record.FilenameExtension.Valid {
+		originalFilenameExtension = record.FilenameExtension.String
+	}
+	backupId, err := s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+	if err != nil {
+		return 0, fmt.Errorf("移动 store 文件到备份失败: %w", err)
+	}
+	return backupId, nil
+}
+
 // DeleteRecord 仅删除 PersistentStore 数据库记录，不触动磁盘文件
 // 用于逻辑删除场景：文件已由调用方移入 backup，此处只清理 DB 记录
 func (s *Service) DeleteRecord(ctx context.Context, id int64) error {
