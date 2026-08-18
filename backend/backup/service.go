@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -122,6 +124,14 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 
 	workDir := s.getWorkDir()
 	fileName := filepath.Base(sourcePath)
+
+	// 源文件移出扫描目录会触发旧路径 Remove 事件（跨目录 rename 旧路径事件不被
+	// fsnotify 吞掉），在文件操作点登记抑制，避免 fsmonitor 将内部移动误报为外部
+	// 删除。源路径不在 workDir 内（Rel 逃逸）时不登记——监控树外路径本就无事件。
+	if rel, err := filepath.Rel(workDir, sourcePath); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		storeRegistry.Suppress(rel)
+		defer storeRegistry.Release(rel)
+	}
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
 	now := time.Now()
