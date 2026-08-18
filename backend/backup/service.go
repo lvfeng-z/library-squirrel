@@ -38,6 +38,8 @@ type Repository interface {
 	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceIds 批量获取备份记录
 	GetBySourceTypeAndSourceIds(ctx context.Context, sourceType int, sourceIds []int64) ([]*entity.Backup, error)
+	// ListByWorkId 查询作品的全部备份记录（软删除链归属关联）
+	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error)
 	// Delete 删除备份记录
 	Delete(ctx context.Context, id int64) error
 }
@@ -244,17 +246,19 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sou
 
 // MoveToBackup 将文件移动到备份目录并创建备份记录，供 PersistentStore 删除时调用
 // sourceId: PersistentStore 记录 ID
+// workId: 归属作品 ID（软删除链写入，复原/彻底删除按此聚合；0 = 无归属）
 // absFilePath: 源文件绝对路径
 // originalFilePath: PersistentStore 中的相对路径（用于还原时确定目标位置）
 // originalFileName: 原始文件名
 // originalFilenameExtension: 原始扩展名
 // 返回备份记录 ID
-func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
+func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, workId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
 	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, absFilePath)
 	if err != nil {
 		return 0, err
 	}
-	// 记录 PersistentStore 的原始路径信息，用于还原
+	// 记录归属作品与 PersistentStore 的原始路径信息，用于还原
+	backup.WorkID = sql.NullInt64{Int64: workId, Valid: workId > 0}
 	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
 	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
 	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
@@ -264,11 +268,14 @@ func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath 
 	return backup.GetID(), nil
 }
 
+// ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联，文件级明细）
+func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error) {
+	return s.repo.ListByWorkId(ctx, workId)
+}
+
 // RestoreFile 从备份路径还原文件到目标路径
-//
-// TODO(suppression): 当前无调用方（活跃还原走 persistentStore.StoreFromExternal）。
-// 若未来接入且 targetPath 落在 store/ 白名单内，须在 os.Rename/os.Remove 前后
-// storeRegistry.Suppress/Release(targetPath)，避免还原写入被 fsmonitor 误报为外部变更。
+// targetPath 为绝对路径（文件操作）；目标落在 store/ 白名单内时的 fsmonitor 操作抑制由调用方负责
+// （抑制键为 workDir 相对路径，与绝对路径不同构，调用方编排时两者皆知）
 func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
 	if !util.FileExists(backupPath) {
 		return fmt.Errorf("还原失败，备份文件不存在: %s", backupPath)

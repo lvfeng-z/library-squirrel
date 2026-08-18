@@ -56,6 +56,14 @@ globs:
 - **路径校验**：`persistent_store.file_path` 必须以 `storeRegistry` 中已注册的子目录开头（如 `store/resource`、`store/thumbnail`、`store/avatar/local`、`store/avatar/site`）
 - **URL 映射**：前端 `buildStoreUrl(filePath)` 将 workDir 相对路径编码为 `/store/{encoded}` URL，后端 `StoreFileHandler` 剥离 `/store/` 前缀后直接 `filepath.Join(workDir, path)` 解析
 
+## 软删除（GORM soft_delete）
+
+- **当前仅 work 表启用**：`DeletedAt soft_delete.DeletedAt` + tag `softDelete:milli`（毫秒时间戳，0=活）。Find/Count/Get/Update 自动排除已删行、Delete 自动改写为打时间戳（仅作用活行）——**经 GORM 管线的查询全受保护**（含各模块自定义仓储的链式调用）；**原生 SQL（Raw/Exec）不受保护**，须手工补 `deleted_at = 0` 基线（参照 search 模块 `buildWhereClauseWithBaseline`）。
+- **含已删/仅已删查询**：`QueryOption.IncludeDeleted=true`（Unscoped）；「仅已删」由调用方自组 `deleted_at > 0` 条件；按 ID 查含已删行用 `GetByIdUnscoped`。
+- **对已删行的写操作必须 Unscoped 变体**（`DeleteUnscoped` 或专用方法）：普通 Update/Delete 被软删 scope 静默挡住（无效果且不报错）。对**活行**的既有物理删调用点同样须 `DeleteUnscoped`——否则被静默改写为软删（语义反转事故）。
+- **业务键唯一性**：启用软删的表用部分唯一索引 `CREATE UNIQUE INDEX ... WHERE deleted_at = 0`（AutoMigrate 不管部分索引，drop 旧 + 建新全手写，以新索引名做幂等标记）；**加列迁移必带存量回填** `UPDATE ... SET deleted_at = 0 WHERE deleted_at IS NULL`——AutoMigrate 加列无默认值，存量行 NULL × `deleted_at = 0` 过滤不命中，全部存量行从查询中消失（实机踩中）。
+- **fsmonitor 联动**：软删实体的从属 store 行须排除在对账/关联查询外（参照 persistentStore 的 `notDeletedWorkCond`），否则文件移 backup 期间被误报缺失。
+
 ## 数据库相关编码规则
 
 - **BASE_REPOSITORY_REUSE** (P0): 复用 `BaseRepository` 方法。仅当 `BaseRepository` 无法表达时才编写自定义 repository 逻辑。

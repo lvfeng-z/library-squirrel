@@ -37,6 +37,9 @@ type QueryOption struct {
 	Having     clause.Expression   // HAVING 表达式（覆盖型）
 	Limit      int                 // 限制返回数量（覆盖型）
 	Offset     int                 // 偏移量（覆盖型）
+	// IncludeDeleted 查询是否包含软删行（Unscoped；仅对带软删列的实体有效，其余实体等价于普通查询）
+	// 「仅已删」场景由调用方以 IncludeDeleted=true + 自组 deleted_at>0 条件表达
+	IncludeDeleted bool
 }
 
 // PageOption 分页查询选项（嵌入 QueryOption + 分页参数）
@@ -146,7 +149,12 @@ func (r *BaseRepository[T]) CreateBatch(ctx context.Context, entities []*T) erro
 	return r.getDb(ctx).WithContext(ctx).Create(entities).Error
 }
 
-// Delete 根据ID删除
+// DeleteUnscoped 根据ID物理删除（绕过软删改写；对无软删列的实体与 Delete 等价）
+func (r *BaseRepository[T]) DeleteUnscoped(ctx context.Context, id int64) error {
+	return r.getDb(ctx).WithContext(ctx).Unscoped().Delete(new(T), id).Error
+}
+
+// Delete 根据ID删除（对带软删列的实体自动改写为打软删标志，仅作用于活行）
 func (r *BaseRepository[T]) Delete(ctx context.Context, id int64) error {
 	return r.getDb(ctx).WithContext(ctx).Delete(new(T), id).Error
 }
@@ -179,6 +187,16 @@ func (r *BaseRepository[T]) Save(ctx context.Context, entity *T) error {
 	e.SetUpdateTime(now)
 	*entity = e
 	return r.getDb(ctx).WithContext(ctx).Save(entity).Error
+}
+
+// GetByIdUnscoped 根据ID获取（含软删行；对无软删列的实体与 GetById 等价）
+func (r *BaseRepository[T]) GetByIdUnscoped(ctx context.Context, id int64) (*T, error) {
+	var entity T
+	err := r.getDb(ctx).WithContext(ctx).Unscoped().First(&entity, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &entity, nil
 }
 
 // GetById 根据ID获取
@@ -217,6 +235,11 @@ func (r *BaseRepository[T]) List(ctx context.Context, opt *QueryOption) ([]*T, e
 
 // applyQueryOption 将 QueryOption 应用到 db 实例
 func applyQueryOption(db *gorm.DB, opt *QueryOption) *gorm.DB {
+	// 0. 软删逃逸（须最先应用，Unscoped 对无软删列实体无副作用）
+	if opt.IncludeDeleted {
+		db = db.Unscoped()
+	}
+
 	// 1. Select（覆盖型）
 	if opt.Select != nil {
 		db = db.Select(opt.Select)

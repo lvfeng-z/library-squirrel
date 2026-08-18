@@ -6,11 +6,10 @@ import { onMounted, Ref, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { recycleBinApi } from '@renderer/apis/http'
 import { localAuthorQuerySelectItemPageByName, localTagQuerySelectItemPageByName, siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
-import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { Thead } from '@renderer/model/util/Thead.ts'
 import { newPage } from '@renderer/utils/Pager.ts'
-import { RecycleQueryDTO, type RecycleItemDTO } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
-import { Operator } from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import { SearchCondition, SearchType, WorkSearchOperator, RecycleWorkDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { RecyclePageQuery } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
 import type { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
@@ -23,18 +22,18 @@ onMounted(() => {
 // 回收站数据表组件的实例
 const recycleBinSearchTable = ref()
 // 回收站分页参数
-const page: Ref<Page<RecycleItemDTO>> = ref(newPage<RecycleItemDTO>())
-// 回收站查询参数（时间范围/站点/作者/标签 + 排序）
-const query: Ref<RecycleQueryDTO> = ref(new RecycleQueryDTO())
-// 时间范围控件值（Date 二元组，change 时转毫秒时间戳进 query；null = 清空范围）
+const page: Ref<Page<RecycleWorkDTO>> = ref(newPage<RecycleWorkDTO>())
+// 回收站查询参数（SearchCondition 条件体系 + 排序）
+const query: Ref<RecyclePageQuery> = ref(new RecyclePageQuery({ conditions: [] }))
+// 时间范围控件值（Date 二元组，查询时转毫秒时间戳条件；null = 清空范围）
 const deleteTimeRange = ref<[Date, Date] | null>(null)
 const workCreateTimeRange = ref<[Date, Date] | null>(null)
-// 选择器选中值（SelectItem.value 为 string，提交查询时统一 Number 转换）
+// 选择器选中值（SelectItem.value 为 string，组装条件时统一 Number 转换）
 const siteIdSelected = ref<string | number | null>(null)
 const localAuthorIdSelected = ref<string | number | null>(null)
 const localTagIdSelected = ref<string | number | null>(null)
 // 回收站的表头
-const recycleBinThead: Ref<Thead<RecycleItemDTO>[]> = ref([
+const recycleBinThead: Ref<Thead<RecycleWorkDTO>[]> = ref([
   new Thead({
     type: 'text',
     defaultDisabled: true,
@@ -70,7 +69,7 @@ const recycleBinThead: Ref<Thead<RecycleItemDTO>[]> = ref([
   new Thead({
     type: 'datetime',
     defaultDisabled: true,
-    key: 'workCreateTime',
+    key: 'createTime',
     title: '创建时间',
     hide: false,
     width: 200,
@@ -94,29 +93,33 @@ const recycleBinThead: Ref<Thead<RecycleItemDTO>[]> = ref([
 ])
 
 // 方法
-// 分页查询回收站列表（ID 类选择值经 Number 转换后随 query 提交）
-async function recycleBinQueryPageFn(p: Page<RecycleItemDTO>): Promise<Page<RecycleItemDTO> | undefined> {
-  query.value.siteId.value = isNullish(siteIdSelected.value) ? null : Number(siteIdSelected.value)
-  query.value.localAuthorId = isNullish(localAuthorIdSelected.value) ? null : Number(localAuthorIdSelected.value)
-  query.value.localTagId = isNullish(localTagIdSelected.value) ? null : Number(localTagIdSelected.value)
+// 组装查询条件（与作品搜索同构：站点/作者/标签等值 + 时间范围成对 gte/lte）
+function buildConditions(): SearchCondition[] {
+  const conditions: SearchCondition[] = []
+  if (!isNullish(siteIdSelected.value)) {
+    conditions.push(new SearchCondition(SearchType.Site, Number(siteIdSelected.value)))
+  }
+  if (!isNullish(localAuthorIdSelected.value)) {
+    conditions.push(new SearchCondition(SearchType.LocalAuthor, Number(localAuthorIdSelected.value)))
+  }
+  if (!isNullish(localTagIdSelected.value)) {
+    conditions.push(new SearchCondition(SearchType.LocalTag, Number(localTagIdSelected.value)))
+  }
+  if (!isNullish(deleteTimeRange.value)) {
+    conditions.push(new SearchCondition(SearchType.WorksDeleteTime, deleteTimeRange.value[0].getTime(), WorkSearchOperator.GreaterOrEqual))
+    conditions.push(new SearchCondition(SearchType.WorksDeleteTime, deleteTimeRange.value[1].getTime(), WorkSearchOperator.LessOrEqual))
+  }
+  if (!isNullish(workCreateTimeRange.value)) {
+    conditions.push(new SearchCondition(SearchType.WorksCreateTime, workCreateTimeRange.value[0].getTime(), WorkSearchOperator.GreaterOrEqual))
+    conditions.push(new SearchCondition(SearchType.WorksCreateTime, workCreateTimeRange.value[1].getTime(), WorkSearchOperator.LessOrEqual))
+  }
+  return conditions
+}
+// 分页查询回收站列表
+async function recycleBinQueryPageFn(p: Page<RecycleWorkDTO>): Promise<Page<RecycleWorkDTO> | undefined> {
+  query.value.conditions = buildConditions()
   const response = await recycleBinApi.recycleBinPage(p, query.value)
   return response.data
-}
-// 时间范围控件值转查询属性（起 gte / 止 lte，毫秒时间戳）
-function toRangeAttr(time: Date | undefined, operator: Operator): { value: number | null; operator: Operator } {
-  return { value: isNullish(time) ? null : time.getTime(), operator }
-}
-// 处理删除时间范围变化
-function handleDeleteTimeRangeChange(range: [Date, Date] | null) {
-  deleteTimeRange.value = range
-  query.value.deleteTimeStart = toRangeAttr(range?.[0], Operator.OpGte)
-  query.value.deleteTimeEnd = toRangeAttr(range?.[1], Operator.OpLte)
-}
-// 处理创建时间范围变化
-function handleWorkCreateTimeRangeChange(range: [Date, Date] | null) {
-  workCreateTimeRange.value = range
-  query.value.workCreateTimeStart = toRangeAttr(range?.[0], Operator.OpGte)
-  query.value.workCreateTimeEnd = toRangeAttr(range?.[1], Operator.OpLte)
 }
 // 处理列头排序变化（后端排序；取消排序时回落默认 deleteTime DESC）
 function handleSortChange(sortData: { column: unknown; prop: string; order: 'ascending' | 'descending' | null }) {
@@ -124,59 +127,56 @@ function handleSortChange(sortData: { column: unknown; prop: string; order: 'asc
     query.value.sortBy = null
     query.value.sortOrder = null
   } else {
-    query.value.sortBy = sortData.prop
+    query.value.sortBy = sortData.prop === 'createTime' ? 'createTime' : 'deleteTime'
     query.value.sortOrder = sortData.order === 'ascending' ? 'asc' : 'desc'
   }
   recycleBinSearchTable.value.doSearch()
 }
-// 复原回收站条目
-async function restore(item: RecycleItemDTO) {
-  const response = await recycleBinApi.recycleBinRestore(item.id, false)
-  if (ApiUtil.check(response)) {
+// 复原回收站条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 重试）
+async function restore(item: RecycleWorkDTO) {
+  try {
+    await recycleBinApi.recycleBinRestore(item.id, false)
     ElMessage.success('复原成功')
     await recycleBinSearchTable.value.doSearch()
-    return
-  }
-  // 后端仅冲突时返回 ErrRestoreConflict（消息含“冲突”/“已存在”）；其他错误直接展示，不误弹覆盖框
-  const failMsg = response?.msg ?? '复原失败'
-  if (!failMsg.includes('冲突') && !failMsg.includes('已存在')) {
-    ElMessage.error(failMsg)
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`${failMsg}\n是否覆盖已存在的作品？`, '复原冲突', {
-      confirmButtonText: '覆盖',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    const overwriteResponse = await recycleBinApi.recycleBinRestore(item.id, true)
-    if (ApiUtil.check(overwriteResponse)) {
+  } catch (e) {
+    const failMsg = (e as Error).message ?? '复原失败'
+    if (!failMsg.includes('冲突') && !failMsg.includes('已存在')) {
+      ElMessage.error(failMsg)
+      return
+    }
+    try {
+      await ElMessageBox.confirm(`${failMsg}\n是否覆盖已存在的作品？`, '复原冲突', {
+        confirmButtonText: '覆盖',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+      await recycleBinApi.recycleBinRestore(item.id, true)
       ElMessage.success('复原成功')
       await recycleBinSearchTable.value.doSearch()
-    } else {
-      ElMessage.error(overwriteResponse?.msg ?? '复原失败')
+    } catch (e2) {
+      // ElMessageBox 取消为字符串 reject，静默；二次失败为 Error，展示
+      if (e2 instanceof Error) {
+        ElMessage.error(e2.message)
+      }
     }
-  } catch {
-    // 用户取消
   }
 }
 // 彻底删除回收站条目
-async function purge(item: RecycleItemDTO) {
+async function purge(item: RecycleWorkDTO) {
   try {
     await ElMessageBox.confirm('彻底删除后不可恢复，是否继续？', '彻底删除', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning'
     })
-    const response = await recycleBinApi.recycleBinPurge(item.id)
-    if (ApiUtil.check(response)) {
-      ElMessage.success('已彻底删除')
-      await recycleBinSearchTable.value.doSearch()
-    } else {
-      ElMessage.error(response?.msg ?? '删除失败')
+    await recycleBinApi.recycleBinPurge(item.id)
+    ElMessage.success('已彻底删除')
+    await recycleBinSearchTable.value.doSearch()
+  } catch (e) {
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    if (e instanceof Error) {
+      ElMessage.error(e.message)
     }
-  } catch {
-    // 用户取消
   }
 }
 </script>
@@ -261,7 +261,6 @@ async function purge(item: RecycleItemDTO) {
               type="datetimerange"
               start-placeholder="删除时间起"
               end-placeholder="删除时间止"
-              @change="handleDeleteTimeRangeChange"
             />
             <el-date-picker
               v-model="workCreateTimeRange"
@@ -269,13 +268,12 @@ async function purge(item: RecycleItemDTO) {
               type="datetimerange"
               start-placeholder="创建时间起"
               end-placeholder="创建时间止"
-              @change="handleWorkCreateTimeRangeChange"
             />
           </template>
           <!-- 破坏性按钮需保真 danger+tone-fail 红色形态，内置 operationButton 下拉项无 danger 样式，故走自定义操作列 -->
           <template #customOperations="{ row }">
-            <el-button size="small" type="primary" @click="restore(row as RecycleItemDTO)">复原</el-button>
-            <el-button size="small" type="danger" class="tone-fail" @click="purge(row as RecycleItemDTO)">彻底删除</el-button>
+            <el-button size="small" type="primary" @click="restore(row as RecycleWorkDTO)">复原</el-button>
+            <el-button size="small" type="danger" class="tone-fail" @click="purge(row as RecycleWorkDTO)">彻底删除</el-button>
           </template>
         </search-table>
       </div>

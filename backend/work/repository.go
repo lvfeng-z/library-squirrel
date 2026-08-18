@@ -62,6 +62,38 @@ func (r *WorkRepository) UpdateLastViewBatch(ctx context.Context, ids []int64, l
 		Update("last_view", lastView).Error
 }
 
+// GetDeletedById 按ID查询已软删行（复原链入口校验；Unscoped 逃逸软删过滤）
+func (r *WorkRepository) GetDeletedById(ctx context.Context, id int64) (*domain.Work, error) {
+	work, err := r.GetByIdUnscoped(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if work == nil || work.DeletedAt == 0 {
+		return nil, nil
+	}
+	return work, nil
+}
+
+// ClearDeletedFlag 清软删标志（复原核心：一行 UPDATE；Unscoped 逃逸 Update 的软删过滤）
+func (r *WorkRepository) ClearDeletedFlag(ctx context.Context, id int64) error {
+	return r.GORM().
+		WithContext(ctx).
+		Unscoped().
+		Model(new(domain.Work)).
+		Where("id = ?", id).
+		Update("deleted_at", 0).Error
+}
+
+// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
+func (r *WorkRepository) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error) {
+	return r.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []interface{}{expireBefore}},
+		},
+		IncludeDeleted: true,
+	})
+}
+
 // batchSizeOfSiteWorkQuery 批量查重每批的 (site_id, site_work_id) 对数量上限
 // 控制单条 SQL 的 OR 子句数与绑定参数数，避免 SQLite 规划器对超大 OR 查询的组合爆炸
 const batchSizeOfSiteWorkQuery = 200

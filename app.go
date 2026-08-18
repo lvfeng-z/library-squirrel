@@ -851,8 +851,6 @@ func (app *App) initAdvancedServices() error {
 	reWorkWorkSetRepo := reWorkWorkSet.NewRepository(app.db)
 	// reWorkSetWorkSet 仓储（作品集间父子关联，workSet 传递包含原语 CollectDescendantWorkIDs 用）
 	reWorkSetWorkSetRepo := reWorkSetWorkSet.NewRepository(app.db)
-	// recycleBin 仓储（提前创建，work 逻辑删除写入快照用；service 在 work 之后创建以注入 WorkRestorer）
-	recycleBinRepo := recycleBin.NewRepository(app.db)
 
 	// work 服务
 	workRepo := work.NewRepository(app.db)
@@ -885,33 +883,10 @@ func (app *App) initAdvancedServices() error {
 		app.LocalTagService,
 		app.LocalAuthorService,
 		app.PersistentStoreService,
-		app.ReWorkTagService,
-		app.ReWorkAuthorService,
-		reWorkWorkSetRepo,
-		recycleBinRepo,
-		app.PersistentStoreService,
 		nil,
-		app.ResourceService,
-		workResourceStoreRepo, // ResourceStoreSaver(SaveBatch)
-		app.SiteAuthorService,
-		workSetRepo,
+		workResourceStoreRepo, // ResourceStoreHardDeleter(DeleteByResourceIds)
 		reWorkSetWorkSetRepo,
 	)
-
-	// recycleBin 服务（work 之后创建，注入 WorkRestorer=app.WorkService）
-	app.RecycleBinService = recycleBin.NewService(
-		recycleBinRepo,
-		app.WorkService,
-		app.BackupService,
-		app.PersistentStoreService,
-		&dbTransactorAdapter{db: app.db},
-		app.SettingsService,
-		app.SiteService,
-		app.LocalAuthorService,
-		app.SiteAuthorService,
-	)
-	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
-	app.RecycleBinService.StartCleanup()
 
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
 	// 操作抑制开关（D7）：按设置注入 storeRegistry，关闭则不抑制内部写入（退回误报原状态）
@@ -959,6 +934,18 @@ func (app *App) initAdvancedServices() error {
 		app.LocalAuthorService,
 		app.SiteAuthorService,
 	)
+
+	// recycleBin 服务（work 与 search 之后创建：WorkRestorer=app.WorkService、查询链转发 search.Service；
+	// 文件还原的 workDir 经设置读取器闭包注入）
+	app.RecycleBinService = recycleBin.NewService(
+		app.WorkService,
+		app.BackupService,
+		app.SearchService,
+		app.SettingsService,
+		func() string { return app.SettingsService.GetWorkDir() },
+	)
+	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
+	app.RecycleBinService.StartCleanup()
 
 	// siteBrowser 服务
 	app.SiteBrowserService = siteBrowser.NewService(app.SiteBrowserRegistry)

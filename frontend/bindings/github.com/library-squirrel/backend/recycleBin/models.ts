@@ -7,192 +7,58 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as query$0 from "../base/query/models.js";
+import * as dto$0 from "../base/model/dto/models.js";
 
 /**
- * RecycleItemDTO 回收站条目 DTO（列表展示用，不含快照明细）
+ * RecyclePageQuery 回收站分页查询请求
+ * 条件体系复用作品搜索 SearchCondition（作者/标签/站点/时间范围等），
+ * 时间范围用 WorksCreateTime/WorksDeleteTime + GreaterOrEqual/LessOrEqual 成对表达
  */
-export class RecycleItemDTO {
-    "id": number;
-    "workId": number | null;
-    "siteId": number | null;
+export class RecyclePageQuery {
+    /**
+     * 筛选条件（与作品搜索同构）
+     */
+    "conditions": (dto$0.SearchCondition | null)[];
 
     /**
-     * 站点名（service 组装，列表展示）
+     * 排序列：createTime | 空=deleteTime
      */
-    "siteName": string;
-    "siteWorkId": string | null;
-    "workName": string | null;
+    "sortBy": string;
 
     /**
-     * 作者名顿号拼接（service 组装；本地作者名优先，无本地关联回退站点作者名）
+     * 排序方向：asc | desc（默认 desc）
      */
-    "authorNames": string;
+    "sortOrder": string;
 
-    /**
-     * 原作品入库时间（快照采集该字段之前删除的条目为 null）
-     */
-    "workCreateTime": number | null;
-    "thumbnail": string | null;
-    "deleteTime": number;
-
-    /** Creates a new RecycleItemDTO instance. */
-    constructor($$source: Partial<RecycleItemDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("workId" in $$source)) {
-            this["workId"] = null;
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = null;
-        }
-        if (!("siteName" in $$source)) {
-            this["siteName"] = "";
-        }
-        if (!("siteWorkId" in $$source)) {
-            this["siteWorkId"] = null;
-        }
-        if (!("workName" in $$source)) {
-            this["workName"] = null;
-        }
-        if (!("authorNames" in $$source)) {
-            this["authorNames"] = "";
-        }
-        if (!("workCreateTime" in $$source)) {
-            this["workCreateTime"] = null;
-        }
-        if (!("thumbnail" in $$source)) {
-            this["thumbnail"] = null;
-        }
-        if (!("deleteTime" in $$source)) {
-            this["deleteTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RecycleItemDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RecycleItemDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new RecycleItemDTO($$parsedSource as Partial<RecycleItemDTO>);
-    }
-}
-
-/**
- * RecycleQueryDTO 回收站查询条件
- * 时间范围由 Start/End 字段对表达（operator 由前端显式传 gte/lte）；
- * 作者/标签存在快照 JSON 中（非数据库列），走应用层过滤，不进 Converter
- */
-export class RecycleQueryDTO {
-    /**
-     * 删除时间起（gte）
-     */
-    "deleteTimeStart": query$0.QueryAttribute<number>;
-
-    /**
-     * 删除时间止（lte）
-     */
-    "deleteTimeEnd": query$0.QueryAttribute<number>;
-
-    /**
-     * 创建时间起（gte）
-     */
-    "workCreateTimeStart": query$0.QueryAttribute<number>;
-
-    /**
-     * 创建时间止（lte）
-     */
-    "workCreateTimeEnd": query$0.QueryAttribute<number>;
-
-    /**
-     * 站点（eq）
-     */
-    "siteId": query$0.QueryAttribute<number>;
-
-    /**
-     * 本地作者（快照过滤）
-     */
-    "localAuthorId": number | null;
-
-    /**
-     * 本地标签（快照过滤）
-     */
-    "localTagId": number | null;
-
-    /**
-     * 排序列：deleteTime | workCreateTime
-     */
-    "sortBy": string | null;
-
-    /**
-     * 排序方向：asc | desc
-     */
-    "sortOrder": string | null;
-
-    /** Creates a new RecycleQueryDTO instance. */
-    constructor($$source: Partial<RecycleQueryDTO> = {}) {
-        if (!("deleteTimeStart" in $$source)) {
-            this["deleteTimeStart"] = (new query$0.QueryAttribute());
-        }
-        if (!("deleteTimeEnd" in $$source)) {
-            this["deleteTimeEnd"] = (new query$0.QueryAttribute());
-        }
-        if (!("workCreateTimeStart" in $$source)) {
-            this["workCreateTimeStart"] = (new query$0.QueryAttribute());
-        }
-        if (!("workCreateTimeEnd" in $$source)) {
-            this["workCreateTimeEnd"] = (new query$0.QueryAttribute());
-        }
-        if (!("siteId" in $$source)) {
-            this["siteId"] = (new query$0.QueryAttribute());
-        }
-        if (!("localAuthorId" in $$source)) {
-            this["localAuthorId"] = null;
-        }
-        if (!("localTagId" in $$source)) {
-            this["localTagId"] = null;
+    /** Creates a new RecyclePageQuery instance. */
+    constructor($$source: Partial<RecyclePageQuery> = {}) {
+        if (!("conditions" in $$source)) {
+            this["conditions"] = [];
         }
         if (!("sortBy" in $$source)) {
-            this["sortBy"] = null;
+            this["sortBy"] = "";
         }
         if (!("sortOrder" in $$source)) {
-            this["sortOrder"] = null;
+            this["sortOrder"] = "";
         }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new RecycleQueryDTO instance from a string or object.
+     * Creates a new RecyclePageQuery instance from a string or object.
      */
-    static createFrom($$source: any = {}): RecycleQueryDTO {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
+    static createFrom($$source: any = {}): RecyclePageQuery {
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("deleteTimeStart" in $$parsedSource) {
-            $$parsedSource["deleteTimeStart"] = $$createField0_0($$parsedSource["deleteTimeStart"]);
+        if ("conditions" in $$parsedSource) {
+            $$parsedSource["conditions"] = $$createField0_0($$parsedSource["conditions"]);
         }
-        if ("deleteTimeEnd" in $$parsedSource) {
-            $$parsedSource["deleteTimeEnd"] = $$createField1_0($$parsedSource["deleteTimeEnd"]);
-        }
-        if ("workCreateTimeStart" in $$parsedSource) {
-            $$parsedSource["workCreateTimeStart"] = $$createField2_0($$parsedSource["workCreateTimeStart"]);
-        }
-        if ("workCreateTimeEnd" in $$parsedSource) {
-            $$parsedSource["workCreateTimeEnd"] = $$createField3_0($$parsedSource["workCreateTimeEnd"]);
-        }
-        if ("siteId" in $$parsedSource) {
-            $$parsedSource["siteId"] = $$createField4_0($$parsedSource["siteId"]);
-        }
-        return new RecycleQueryDTO($$parsedSource as Partial<RecycleQueryDTO>);
+        return new RecyclePageQuery($$parsedSource as Partial<RecyclePageQuery>);
     }
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType0 = dto$0.SearchCondition.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

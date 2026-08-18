@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../base/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../base/model/dto/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -20,9 +23,9 @@ import * as $models from "./models.js";
 
 /**
  * Page 分页查询回收站列表
- * query: 查询条件（时间范围/站点/作者/标签 + 排序），见 RecycleQueryDTO
+ * query: 查询条件（SearchCondition 条件体系 + 排序），见 RecyclePageQuery
  */
-export function Page(page: model$0.Page<$models.RecycleItemDTO> | null, query: $models.RecycleQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<$models.RecycleItemDTO> | null> | null> {
+export function Page(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query: $models.RecyclePageQuery): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleWorkDTO> | null> | null> {
     return $Call.ByID(3501636614, page, query).then(($result: any) => {
         return $$createType4($result);
     });
@@ -30,25 +33,26 @@ export function Page(page: model$0.Page<$models.RecycleItemDTO> | null, query: $
 
 /**
  * Purge 彻底删除回收站条目（不可恢复）
+ * workId: 已软删作品 ID
  */
-export function Purge(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2777631604, id).then(($result: any) => {
+export function Purge(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2777631604, workId).then(($result: any) => {
         return $$createType6($result);
     });
 }
 
 /**
  * Restore 从回收站复原作品
- * overwrite: 检测到 (site_id, site_work_id) 冲突时是否覆盖已存在作品
+ * workId: 已软删作品 ID；overwrite: 检测到业务键被占位时是否将占位作品转入回收站
  */
-export function Restore(id: number, overwrite: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
-    return $Call.ByID(1088883809, id, overwrite).then(($result: any) => {
+export function Restore(workId: number, overwrite: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(1088883809, workId, overwrite).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.RecycleItemDTO.createFrom;
+const $$createType0 = dto$0.RecycleWorkDTO.createFrom;
 const $$createType1 = model$0.Page.createFrom($$createType0);
 const $$createType2 = $Create.Nullable($$createType1);
 const $$createType3 = model$0.ApiResponse.createFrom($$createType2);

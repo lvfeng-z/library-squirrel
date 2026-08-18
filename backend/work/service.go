@@ -15,7 +15,6 @@ import (
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
-	"github.com/library-squirrel/backend/recycleBin"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -257,39 +256,14 @@ type StoreDeleter interface {
 	// Delete 删除记录及对应文件
 	// backup: 是否对已完成文件进行移动备份
 	Delete(ctx context.Context, id int64, backup bool) (int64, error)
-	// DeleteWithBackup 删除 store 文件（移入 backup 并建备份记录），保留 persistent_store 记录
-	// （记录由调用方在事务内经 DeleteRecord 删除，配合构成逻辑删除两半）
-	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
+	// DeleteWithBackup 删除 store 文件（移入 backup 并建含 work_id 归属的备份记录），保留 persistent_store 记录
+	DeleteWithBackup(ctx context.Context, id int64, workId int64) (int64, error)
 }
 
-// ReWorkTagReader 作品-标签关联读取接口（逻辑删除快照采集）
-type ReWorkTagReader interface {
-	// ListByWorkId 查询作品关联的所有标签关联记录
-	ListByWorkId(ctx context.Context, workId int64) ([]*entity2.ReWorkTag, error)
-}
-
-// ReWorkAuthorReader 作品-作者关联读取接口（逻辑删除快照采集）
-type ReWorkAuthorReader interface {
-	// ListRelationsByWorkId 查询作品关联的所有作者关联记录（含 role_name/sort_order）
-	ListRelationsByWorkId(ctx context.Context, workId int64) ([]*entity2.ReWorkAuthor, error)
-}
-
-// ReWorkWorkSetReader 作品-作品集关联读取接口（逻辑删除快照采集）
-type ReWorkWorkSetReader interface {
-	// ListRelationsByWorkId 查询作品关联的所有作品集关联记录（含 is_cover/sort_order）
-	ListRelationsByWorkId(ctx context.Context, workId int64) ([]*entity2.ReWorkWorkSet, error)
-}
-
-// RecycleItemSaver 回收站条目保存接口（逻辑删除写入快照）
-type RecycleItemSaver interface {
-	// Create 保存回收站条目
-	Create(ctx context.Context, item *entity2.RecycleItem) error
-}
-
-// StoreRecordDeleter PersistentStore 记录删除接口（仅删 DB 记录，磁盘文件已另行处理）
-type StoreRecordDeleter interface {
-	// DeleteRecord 仅删除数据库记录
-	DeleteRecord(ctx context.Context, id int64) error
+// ResourceStoreHardDeleter resource_store 物理删除接口（作品彻底删除链级联清理）
+type ResourceStoreHardDeleter interface {
+	// DeleteByResourceIds 批量物理删除 resource 关联行
+	DeleteByResourceIds(ctx context.Context, resourceIds []int64) error
 }
 
 // RunningTaskStopper 运行中任务停止接口（逻辑删除前停止关联任务实例，防止重建作品）
@@ -297,29 +271,6 @@ type StoreRecordDeleter interface {
 type RunningTaskStopper interface {
 	// StopRunningBySiteWork 停止指定作品关联的运行中任务实例
 	StopRunningBySiteWork(ctx context.Context, siteId int64, siteWorkId string) error
-}
-
-// ResourceSaver 资源保存接口（复原时重建 resource 记录）
-type ResourceSaver interface {
-	// Save 保存资源记录
-	Save(ctx context.Context, resource *entity2.Resource) error
-}
-
-// ResourceStoreSaver resource_store 行保存接口(复原时重建关联)
-type ResourceStoreSaver interface {
-	CreateBatch(ctx context.Context, stores []*entity2.ResourceStore) error
-}
-
-// SiteAuthorByIdsReader 站点作者按 ID 批量查询接口（复原时引用校验）
-type SiteAuthorByIdsReader interface {
-	// ListBySiteAuthorIds 根据站点作者 ID 列表批量查询
-	ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) ([]*entity2.SiteAuthor, error)
-}
-
-// WorkSetByIdsReader 作品集按 ID 批量查询接口（复原时引用校验）
-type WorkSetByIdsReader interface {
-	// ListByIds 根据 ID 列表批量查询
-	ListByIds(ctx context.Context, ids []int64) ([]*entity2.WorkSet, error)
 }
 
 // Repository 作品仓储接口（由 service 定义需要的数据库操作方法）
@@ -334,8 +285,16 @@ type Repository interface {
 	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Work, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
-	// Delete 删除
+	// Delete 删除（对 work 实体自动改写为打软删标志；物理删除走 DeleteUnscoped）
 	Delete(ctx context.Context, id int64) error
+	// DeleteUnscoped 物理删除（级联删除链/死入口用，绕过软删改写）
+	DeleteUnscoped(ctx context.Context, id int64) error
+	// GetDeletedById 按ID查询已软删行（复原链入口校验；nil = 非已删条目）
+	GetDeletedById(ctx context.Context, id int64) (*entity2.Work, error)
+	// ClearDeletedFlag 清软删标志（复原核心：一行 UPDATE）
+	ClearDeletedFlag(ctx context.Context, id int64) error
+	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
+	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.Work, error)
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Work], error)
 	// GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
@@ -392,21 +351,11 @@ type Service struct {
 	workSetOrderFetcher    WorkSetOrderFetcher
 	workSetRelationFetcher WorkSetRelationFetcher
 
-	// 逻辑删除/复原所需的关联读取接口
-	reWorkTagReader     ReWorkTagReader
-	reWorkAuthorReader  ReWorkAuthorReader
-	reWorkWorkSetReader ReWorkWorkSetReader
-
-	// 逻辑删除（SoftDeleteWork）所需接口与配置
-	recycleItemSaver   RecycleItemSaver
-	storeRecordDeleter StoreRecordDeleter
+	// 逻辑删除（SoftDeleteWork）所需配置
 	runningTaskStopper RunningTaskStopper // 可选，nil 时跳过任务停止
 
-	// 复原（RestoreWorkFromSnapshot）所需接口
-	resourceSaver         ResourceSaver
-	resourceStoreSaver    ResourceStoreSaver
-	siteAuthorByIdsReader SiteAuthorByIdsReader
-	workSetByIdsReader    WorkSetByIdsReader
+	// 彻底删除（DeleteWorkAndSurroundingData）级联清理接口
+	resourceStoreHardDeleter ResourceStoreHardDeleter
 }
 
 // NewService 创建作品服务
@@ -438,16 +387,8 @@ func NewService(
 	localTagFindOrCreator LocalTagFindOrCreator,
 	localAuthorFindOrCreator LocalAuthorFindOrCreator,
 	storeDeleter StoreDeleter,
-	reWorkTagReader ReWorkTagReader,
-	reWorkAuthorReader ReWorkAuthorReader,
-	reWorkWorkSetReader ReWorkWorkSetReader,
-	recycleItemSaver RecycleItemSaver,
-	storeRecordDeleter StoreRecordDeleter,
 	runningTaskStopper RunningTaskStopper,
-	resourceSaver ResourceSaver,
-	resourceStoreSaver ResourceStoreSaver,
-	siteAuthorByIdsReader SiteAuthorByIdsReader,
-	workSetByIdsReader WorkSetByIdsReader,
+	resourceStoreHardDeleter ResourceStoreHardDeleter,
 	workSetRelationWriter WorkSetRelationWriter,
 ) *Service {
 	return &Service{
@@ -478,16 +419,8 @@ func NewService(
 		localAuthorFindOrCreator: localAuthorFindOrCreator,
 		storeBatchReader:         storeBatchReader,
 		storeDeleter:             storeDeleter,
-		reWorkTagReader:          reWorkTagReader,
-		reWorkAuthorReader:       reWorkAuthorReader,
-		reWorkWorkSetReader:      reWorkWorkSetReader,
-		recycleItemSaver:         recycleItemSaver,
-		storeRecordDeleter:       storeRecordDeleter,
 		runningTaskStopper:       runningTaskStopper,
-		resourceSaver:            resourceSaver,
-		resourceStoreSaver:       resourceStoreSaver,
-		siteAuthorByIdsReader:    siteAuthorByIdsReader,
-		workSetByIdsReader:       workSetByIdsReader,
+		resourceStoreHardDeleter: resourceStoreHardDeleter,
 		workSetRelationWriter:    workSetRelationWriter,
 	}
 }
@@ -543,11 +476,6 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除作品
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
-}
-
 // DeleteWorkAndSurroundingData 删除作品及其周围数据（级联删除）
 // DB 操作在事务内原子执行，磁盘文件删除在事务成功后尽力而为
 func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) error {
@@ -583,10 +511,15 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 		if err := s.reWorkAuthorWriter.DeleteByWorkId(txCtx, id); err != nil {
 			return err
 		}
+		// 级联删 resource_store 关联行（历史链缺此步，遗留孤儿行——本链修复）
+		if err := s.resourceStoreHardDeleter.DeleteByResourceIds(txCtx, resourceIds); err != nil {
+			return err
+		}
 		if err := s.resourceDeleter.DeleteByWorkId(txCtx, id); err != nil {
 			return err
 		}
-		return s.repo.Delete(txCtx, id)
+		// 物理删 work：本链仅服务彻底删除（目标为已删行，软删过滤会挡住普通 Delete）
+		return s.repo.DeleteUnscoped(txCtx, id)
 	})
 	if err != nil {
 		return err
@@ -601,18 +534,19 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 	return nil
 }
 
-// SoftDeleteWork 逻辑删除作品（移入回收站，可经回收站复原）
+// SoftDeleteWork 软删除作品（移入回收站，可经回收站复原）
 //
 // 流程：
-//  1. 收集 work 及其作者/标签/作品集关联、resource（含 store id）
-//  2. 事务外：资源文件经 BackupMover 移入 backup 目录（移动文件 + 建 Backup 记录，不删 persistent_store 记录）
-//  3. 构建 recycle_bin 快照（关联元数据 + resource 的 backup id 映射）
-//  4. 事务内：写 recycle_bin → 删 persistent_store 记录 → 删三类关联 → 删 resource → 删 work
-//  5. 停止关联的运行中任务实例（task 记录保留）
+//  1. 校验 work 为活行
+//  2. 事务外：资源文件经 DeleteWithBackup 移入 backup 目录（建含 work_id 归属的备份记录；persistent_store 记录原地保留）
+//  3. 事务内：work 软删一条 UPDATE（GORM softDelete 改写打毫秒时间戳）
+//  4. 停止关联的运行中任务实例（task 记录保留）
 //
-// 资源文件移动在事务外（文件 IO 不可回滚），事务失败时文件已安全落在 backup 目录、DB 完整回滚。
+// 从属行（resource/resource_store/re_work_*）原地保留——复原仅需文件还原 + 清标志。
+// 资源文件移动在事务外（文件 IO 不可回滚）；事务失败中间态为文件暂离原位但备份记录含 work_id 归属，
+// 作品仍为活行，可经再次删除（复用既有备份）或彻底删除清理，不产生无主文件。
 func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
-	// 1. 校验 work 存在
+	// 1. 校验 work 存在（软删过滤下仅命中活行）
 	work, err := s.repo.GetById(ctx, workId)
 	if err != nil {
 		return err
@@ -621,144 +555,36 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 		return ErrWorkNotFound
 	}
 
-	// 2. 收集关联数据
+	// 2. [事务外] 资源文件移入 backup（从 resource_store 收集 store，不读旧列）
 	resources, err := s.resourceDeleter.ListByWorkId(ctx, workId)
 	if err != nil {
 		return fmt.Errorf("查询作品资源失败: %w", err)
 	}
-	authors, err := s.reWorkAuthorReader.ListRelationsByWorkId(ctx, workId)
-	if err != nil {
-		return fmt.Errorf("查询作品作者关联失败: %w", err)
-	}
-	tags, err := s.reWorkTagReader.ListByWorkId(ctx, workId)
-	if err != nil {
-		return fmt.Errorf("查询作品标签关联失败: %w", err)
-	}
-	workSets, err := s.reWorkWorkSetReader.ListRelationsByWorkId(ctx, workId)
-	if err != nil {
-		return fmt.Errorf("查询作品作品集关联失败: %w", err)
-	}
-
-	// 3. [事务外] 资源文件备份 + 构建 resource 快照(从 resource_store 收集 store,不读旧列)
-	// 批量查询 resource_store
 	resourceIds := make([]int64, 0, len(resources))
 	for _, res := range resources {
 		resourceIds = append(resourceIds, res.GetID())
 	}
 	rsStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, resourceIds)
-
-	resourceSnapshots := make([]recycleBin.ResourceSnapshot, 0, len(resources))
-	type storeBackupRef struct {
-		storeId  int64
-		backupId int64
-	}
-	var storeBackups []storeBackupRef
-	for _, res := range resources {
-		rs := recycleBin.ResourceSnapshot{
-			TaskID:           res.TaskID,
-			SuggestName:      res.SuggestName,
-			ResourceComplete: int(res.ResourceComplete.Int64),
-		}
-		// 遍历 resource_store 行备份(v1 快照格式)
-		for _, rsRow := range rsStoreMap[res.GetID()] {
-			backupId, err := s.storeDeleter.DeleteWithBackup(ctx, rsRow.StoreID)
-			if err != nil {
+	for _, rsList := range rsStoreMap {
+		for _, rsRow := range rsList {
+			if rsRow.StoreID <= 0 {
+				continue
+			}
+			if _, err := s.storeDeleter.DeleteWithBackup(ctx, rsRow.StoreID, workId); err != nil {
 				return err
 			}
-			rs.StoreBackups = append(rs.StoreBackups, recycleBin.StoreBackupRef{
-				StoreType: rsRow.StoreType,
-				BackupID:  backupId,
-			})
-			storeBackups = append(storeBackups, storeBackupRef{storeId: rsRow.StoreID, backupId: backupId})
 		}
-		resourceSnapshots = append(resourceSnapshots, rs)
 	}
 
-	// 4. 构建完整快照
-	snapshot := &recycleBin.WorkRecycleSnapshot{
-		Work: recycleBin.WorkSnapshot{
-			SiteID:              work.SiteID,
-			SiteWorkID:          work.SiteWorkID,
-			SiteWorkName:        work.SiteWorkName,
-			SiteAuthorID:        work.SiteAuthorID,
-			SiteWorkDescription: work.SiteWorkDescription,
-			SiteUploadTime:      work.SiteUploadTime,
-			SiteUpdateTime:      work.SiteUpdateTime,
-			NickName:            work.NickName,
-			LocalAuthorID:       work.LocalAuthorID,
-			LastView:            work.LastView,
-			CreateTime:          sql.NullInt64{Int64: work.CreateTime, Valid: work.CreateTime > 0},
-		},
-		Resources: resourceSnapshots,
-	}
-	for _, a := range authors {
-		snapshot.Authors = append(snapshot.Authors, recycleBin.AuthorSnapshot{
-			AuthorType:    a.AuthorType,
-			LocalAuthorID: a.LocalAuthorID,
-			SiteAuthorID:  a.SiteAuthorID,
-			RoleName:      a.RoleName,
-			SortOrder:     a.SortOrder,
-		})
-	}
-	for _, t := range tags {
-		snapshot.Tags = append(snapshot.Tags, recycleBin.TagSnapshot{
-			TagType:    t.TagType,
-			LocalTagID: t.LocalTagID,
-			SiteTagID:  t.SiteTagID,
-		})
-	}
-	for _, ws := range workSets {
-		snapshot.WorkSets = append(snapshot.WorkSets, recycleBin.WorkSetSnapshot{
-			WorkSetID:     ws.WorkSetID,
-			IsCover:       ws.IsCover,
-			SortOrder:     ws.SortOrder,
-			SiteSortOrder: ws.SiteSortOrder,
-		})
-	}
-	snapshotJSON, err := recycleBin.MarshalSnapshot(snapshot)
-	if err != nil {
-		return err
-	}
-
-	// 构建 recycle_bin 条目
-	recycleItem := entity2.NewRecycleItem()
-	recycleItem.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-	recycleItem.SiteID = work.SiteID
-	recycleItem.SiteWorkID = work.SiteWorkID
-	recycleItem.WorkName = work.SiteWorkName
-	recycleItem.WorkCreateTime = sql.NullInt64{Int64: work.CreateTime, Valid: work.CreateTime > 0}
-	recycleItem.DeleteTime = util.GetCurrentTimestamp()
-	recycleItem.Snapshot = snapshotJSON
-
-	// 5. [事务内] 写 recycle_bin + 删 persistent_store 记录 + 删关联 + 删 resource + 删 work
+	// 3. [事务内] work 软删一条 UPDATE
 	err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-		if err := s.recycleItemSaver.Create(txCtx, recycleItem); err != nil {
-			return err
-		}
-		for _, sb := range storeBackups {
-			if err := s.storeRecordDeleter.DeleteRecord(txCtx, sb.storeId); err != nil {
-				return err
-			}
-		}
-		if err := s.reWorkTagWriter.DeleteByWorkId(txCtx, workId); err != nil {
-			return err
-		}
-		if err := s.reWorkWorkSetWriter.DeleteByWorkId(txCtx, workId); err != nil {
-			return err
-		}
-		if err := s.reWorkAuthorWriter.DeleteByWorkId(txCtx, workId); err != nil {
-			return err
-		}
-		if err := s.resourceDeleter.DeleteByWorkId(txCtx, workId); err != nil {
-			return err
-		}
 		return s.repo.Delete(txCtx, workId)
 	})
 	if err != nil {
 		return err
 	}
 
-	// 6. 停止关联的运行中任务实例（task 记录保留；接口由 taskManager 实现，nil 时跳过）
+	// 4. 停止关联的运行中任务实例（task 记录保留；接口由 taskManager 实现，nil 时跳过）
 	if s.runningTaskStopper != nil && work.SiteID.Valid && work.SiteWorkID.Valid {
 		if err := s.runningTaskStopper.StopRunningBySiteWork(ctx, work.SiteID.Int64, work.SiteWorkID.String); err != nil {
 			logger.Log.Warnf("停止作品 %d 关联运行中任务失败: %v", workId, err)
@@ -767,246 +593,19 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	return nil
 }
 
-// HardDeleteWork 物理删除作品（数据库记录 + 资源文件）
-// 仅供复原"覆盖"分支内部调用，不暴露前端
-func (s *Service) HardDeleteWork(ctx context.Context, workId int64) error {
-	// 停止关联运行中任务（nil 时跳过）
-	if s.runningTaskStopper != nil {
-		work, err := s.repo.GetById(ctx, workId)
-		if err != nil {
-			return err
-		}
-		if work != nil && work.SiteID.Valid && work.SiteWorkID.Valid {
-			if err := s.runningTaskStopper.StopRunningBySiteWork(ctx, work.SiteID.Int64, work.SiteWorkID.String); err != nil {
-				logger.Log.Warnf("停止作品 %d 关联运行中任务失败: %v", workId, err)
-			}
-		}
-	}
-	return s.DeleteWorkAndSurroundingData(ctx, workId)
+// GetDeletedWork 按ID获取已软删作品（复原链入口校验；nil = 非已删条目）
+func (s *Service) GetDeletedWork(ctx context.Context, id int64) (*entity2.Work, error) {
+	return s.repo.GetDeletedById(ctx, id)
 }
 
-// RestoreWorkFromSnapshot 从回收站快照重建作品及其关联、resource（事务由调用方通过 ctx 管理）
-// storeIdByBackupId: backup 记录 ID → 还原后的新 persistent_store ID 映射
-// 引用校验：snapshot 中引用了已不存在实体的关联行跳过（部分复原）
-// 返回新作品 ID
-func (s *Service) RestoreWorkFromSnapshot(ctx context.Context, snapshot *recycleBin.WorkRecycleSnapshot, storeIdByBackupId map[int64]int64) (int64, error) {
-	// 1. 引用校验：批量查询 snapshot 引用的实体是否存在
-	existingLocalAuthorIds, existingSiteAuthorIds, existingLocalTagIds, existingSiteTagIds, existingWorkSetIds, err := s.resolveExistingRefs(ctx, snapshot)
-	if err != nil {
-		return 0, err
-	}
-
-	// 2. 重建 work
-	work := entity2.NewWork()
-	work.SiteID = snapshot.Work.SiteID
-	work.SiteWorkID = snapshot.Work.SiteWorkID
-	work.SiteWorkName = snapshot.Work.SiteWorkName
-	work.SiteAuthorID = snapshot.Work.SiteAuthorID
-	work.SiteWorkDescription = snapshot.Work.SiteWorkDescription
-	work.SiteUploadTime = snapshot.Work.SiteUploadTime
-	work.SiteUpdateTime = snapshot.Work.SiteUpdateTime
-	work.NickName = snapshot.Work.NickName
-	work.LocalAuthorID = snapshot.Work.LocalAuthorID
-	work.LastView = snapshot.Work.LastView
-	if err := s.repo.Create(ctx, work); err != nil {
-		return 0, fmt.Errorf("重建作品失败: %w", err)
-	}
-	workId := work.GetID()
-	// 还原原作品入库时间：Create 以当前时间填充 create_time，快照有值时回写覆盖；
-	// 旧格式快照无此字段（NULL），保持 Create 填充的复原时刻
-	if snapshot.Work.CreateTime.Valid && snapshot.Work.CreateTime.Int64 > 0 {
-		work.SetCreateTime(snapshot.Work.CreateTime.Int64)
-		if err := s.repo.Updates(ctx, work); err != nil {
-			return 0, fmt.Errorf("还原作品入库时间失败: %w", err)
-		}
-	}
-
-	// 3. 重建 resource + resource_store（store_id 用 backup 映射,不写旧列）
-	for _, rs := range snapshot.Resources {
-		resource := entity2.NewResource()
-		resource.WorkID = workId
-		resource.TaskID = rs.TaskID
-		resource.SuggestName = rs.SuggestName
-		resource.ResourceComplete = sql.NullInt64{Int64: int64(rs.ResourceComplete), Valid: true}
-		if err := s.resourceSaver.Save(ctx, resource); err != nil {
-			return workId, fmt.Errorf("重建资源记录失败: %w", err)
-		}
-		// 从快照还原 resource_store 行(v0/v1 兼容)
-		var rsStores []*entity2.ResourceStore
-		for _, sb := range recycleBin.SnapshotStoreBackups(&rs) {
-			if sb.BackupID <= 0 {
-				continue
-			}
-			newStoreId, ok := storeIdByBackupId[sb.BackupID]
-			if !ok || newStoreId <= 0 {
-				continue
-			}
-			rsRow := entity2.NewResourceStore()
-			rsRow.ResourceID = resource.GetID()
-			rsRow.StoreType = sb.StoreType
-			rsRow.Generation = entity2.GenerationDownloaded // 还原的 store 默认 downloaded
-			rsRow.StoreID = newStoreId
-			rsStores = append(rsStores, rsRow)
-		}
-		if len(rsStores) > 0 {
-			if err := s.resourceStoreSaver.CreateBatch(ctx, rsStores); err != nil {
-				return workId, fmt.Errorf("重建 resource_store 失败: %w", err)
-			}
-		}
-	}
-
-	// 4. 重建作品-作者关联（仅引用校验通过的，保留 role_name/sort_order）
-	var authorLinks []*entity2.ReWorkAuthor
-	for _, a := range snapshot.Authors {
-		link := &entity2.ReWorkAuthor{
-			BaseEntity: &model.BaseEntity{},
-			AuthorType: a.AuthorType,
-			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			RoleName:   a.RoleName,
-			SortOrder:  a.SortOrder,
-		}
-		if a.AuthorType.Valid && a.AuthorType.Int64 == constant.LOCAL && a.LocalAuthorID.Valid {
-			if existingLocalAuthorIds[a.LocalAuthorID.Int64] {
-				link.LocalAuthorID = a.LocalAuthorID
-				authorLinks = append(authorLinks, link)
-			}
-		} else if a.AuthorType.Valid && a.AuthorType.Int64 == constant.SITE && a.SiteAuthorID.Valid {
-			if existingSiteAuthorIds[a.SiteAuthorID.Int64] {
-				link.SiteAuthorID = a.SiteAuthorID
-				authorLinks = append(authorLinks, link)
-			}
-		}
-	}
-	if len(authorLinks) > 0 {
-		if err := s.reWorkAuthorWriter.SaveBatch(ctx, authorLinks); err != nil {
-			return workId, fmt.Errorf("重建作品作者关联失败: %w", err)
-		}
-	}
-
-	// 5. 重建作品-标签关联（仅引用校验通过的）
-	var tagLinks []*entity2.ReWorkTag
-	for _, t := range snapshot.Tags {
-		link := &entity2.ReWorkTag{
-			BaseEntity: &model.BaseEntity{},
-			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
-			TagType:    t.TagType,
-		}
-		if t.LocalTagID.Valid && t.LocalTagID.Int64 > 0 && existingLocalTagIds[t.LocalTagID.Int64] {
-			link.LocalTagID = t.LocalTagID
-			tagLinks = append(tagLinks, link)
-		} else if t.SiteTagID.Valid && t.SiteTagID.Int64 > 0 && existingSiteTagIds[t.SiteTagID.Int64] {
-			link.SiteTagID = t.SiteTagID
-			tagLinks = append(tagLinks, link)
-		}
-	}
-	if len(tagLinks) > 0 {
-		if err := s.reWorkTagWriter.SaveBatch(ctx, tagLinks); err != nil {
-			return workId, fmt.Errorf("重建作品标签关联失败: %w", err)
-		}
-	}
-
-	// 6. 重建作品-作品集关联（仅引用校验通过的，保留 is_cover/sort_order）
-	var workSetLinks []*entity2.ReWorkWorkSet
-	for _, ws := range snapshot.WorkSets {
-		if !ws.WorkSetID.Valid || !existingWorkSetIds[ws.WorkSetID.Int64] {
-			continue
-		}
-		rel := entity2.NewReWorkWorkSet()
-		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-		rel.WorkSetID = ws.WorkSetID
-		rel.IsCover = ws.IsCover
-		rel.SortOrder = ws.SortOrder
-		rel.SiteSortOrder = ws.SiteSortOrder
-		workSetLinks = append(workSetLinks, rel)
-	}
-	if len(workSetLinks) > 0 {
-		if err := s.reWorkWorkSetWriter.CreateBatch(ctx, workSetLinks); err != nil {
-			return workId, fmt.Errorf("重建作品作品集关联失败: %w", err)
-		}
-	}
-
-	return workId, nil
+// RestoreDeletedWork 清软删标志（复原核心：一行 UPDATE，文件还原由调用方编排）
+func (s *Service) RestoreDeletedWork(ctx context.Context, id int64) error {
+	return s.repo.ClearDeletedFlag(ctx, id)
 }
 
-// resolveExistingRefs 批量查询 snapshot 引用的实体是否存在，返回各类的存在 ID 集合（用于引用校验）
-func (s *Service) resolveExistingRefs(ctx context.Context, snapshot *recycleBin.WorkRecycleSnapshot) (map[int64]bool, map[int64]bool, map[int64]bool, map[int64]bool, map[int64]bool, error) {
-	localAuthorIds := make(map[int64]bool)
-	siteAuthorIds := make(map[int64]bool)
-	localTagIds := make(map[int64]bool)
-	siteTagIds := make(map[int64]bool)
-	workSetIds := make(map[int64]bool)
-
-	// 收集 snapshot 引用的所有实体 ID
-	var laIds, saIds, ltIds, stIds, wsIds []int64
-	for _, a := range snapshot.Authors {
-		if a.LocalAuthorID.Valid && a.LocalAuthorID.Int64 > 0 {
-			laIds = append(laIds, a.LocalAuthorID.Int64)
-		}
-		if a.SiteAuthorID.Valid && a.SiteAuthorID.Int64 > 0 {
-			saIds = append(saIds, a.SiteAuthorID.Int64)
-		}
-	}
-	for _, t := range snapshot.Tags {
-		if t.LocalTagID.Valid && t.LocalTagID.Int64 > 0 {
-			ltIds = append(ltIds, t.LocalTagID.Int64)
-		}
-		if t.SiteTagID.Valid && t.SiteTagID.Int64 > 0 {
-			stIds = append(stIds, t.SiteTagID.Int64)
-		}
-	}
-	for _, ws := range snapshot.WorkSets {
-		if ws.WorkSetID.Valid && ws.WorkSetID.Int64 > 0 {
-			wsIds = append(wsIds, ws.WorkSetID.Int64)
-		}
-	}
-
-	// 批量查询存在的实体 ID
-	if len(laIds) > 0 {
-		entities, err := s.localAuthorBatchReader.ListByIds(ctx, laIds)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("校验本地作者失败: %w", err)
-		}
-		for _, e := range entities {
-			localAuthorIds[e.GetID()] = true
-		}
-	}
-	if len(saIds) > 0 {
-		entities, err := s.siteAuthorByIdsReader.ListBySiteAuthorIds(ctx, saIds)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("校验站点作者失败: %w", err)
-		}
-		for _, e := range entities {
-			siteAuthorIds[e.GetID()] = true
-		}
-	}
-	if len(ltIds) > 0 {
-		entities, err := s.localTagBatchReader.ListByIds(ctx, ltIds)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("校验本地标签失败: %w", err)
-		}
-		for _, e := range entities {
-			localTagIds[e.GetID()] = true
-		}
-	}
-	if len(stIds) > 0 {
-		entities, err := s.siteTagBatchReader.ListBySiteTagIds(ctx, stIds)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("校验站点标签失败: %w", err)
-		}
-		for _, e := range entities {
-			siteTagIds[e.GetID()] = true
-		}
-	}
-	if len(wsIds) > 0 {
-		entities, err := s.workSetByIdsReader.ListByIds(ctx, wsIds)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("校验作品集失败: %w", err)
-		}
-		for _, e := range entities {
-			workSetIds[e.GetID()] = true
-		}
-	}
-	return localAuthorIds, siteAuthorIds, localTagIds, siteTagIds, workSetIds, nil
+// ListDeletedBefore 查询软删时间早于 expireBefore 的已删作品，供 TTL 清理
+func (s *Service) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.Work, error) {
+	return s.repo.ListDeletedBefore(ctx, expireBefore)
 }
 
 // Page 分页查询

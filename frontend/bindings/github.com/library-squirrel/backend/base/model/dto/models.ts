@@ -575,6 +575,78 @@ export class RankedSiteAuthorWithWorkId {
 }
 
 /**
+ * RecycleWorkDTO 回收站作品条目（列表展示用）
+ * 软删除模型下回收站条目即 work 已删行，删除时间为 work.deleted_at
+ */
+export class RecycleWorkDTO {
+    /**
+     * work.id（复原/彻底删除的操作键）
+     */
+    "id": number;
+    "siteId": number | null;
+
+    /**
+     * 站点名（查询时 LEFT JOIN site 拼出）
+     */
+    "siteName": string;
+    "siteWorkId": string | null;
+    "workName": string | null;
+
+    /**
+     * 作者名顿号拼接（本地作者名优先，无本地关联回退站点作者名；SQL GROUP_CONCAT 聚合）
+     */
+    "authorNames": string;
+
+    /**
+     * 作品入库时间
+     */
+    "createTime": number;
+
+    /**
+     * 软删时间（work.deleted_at）
+     */
+    "deleteTime": number;
+
+    /** Creates a new RecycleWorkDTO instance. */
+    constructor($$source: Partial<RecycleWorkDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = "";
+        }
+        if (!("siteWorkId" in $$source)) {
+            this["siteWorkId"] = null;
+        }
+        if (!("workName" in $$source)) {
+            this["workName"] = null;
+        }
+        if (!("authorNames" in $$source)) {
+            this["authorNames"] = "";
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("deleteTime" in $$source)) {
+            this["deleteTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleWorkDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleWorkDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleWorkDTO($$parsedSource as Partial<RecycleWorkDTO>);
+    }
+}
+
+/**
  * ResourceDTO 资源数据传输对象
  */
 export class ResourceDTO {
@@ -828,6 +900,16 @@ export enum SearchType {
     Media = 9,
     Site = 10,
     WorkSet = 11,
+
+    /**
+     * 作品入库时间（范围：GreaterOrEqual/LessOrEqual）
+     */
+    WorksCreateTime = 12,
+
+    /**
+     * 作品软删时间（回收站场景，范围同上）
+     */
+    WorksDeleteTime = 13,
 };
 
 /**

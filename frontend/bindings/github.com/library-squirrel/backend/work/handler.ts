@@ -31,20 +31,11 @@ import * as gen$0 from "../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 import * as $models from "./models.js";
 
 /**
- * Delete 删除作品
- */
-export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2804424335, id).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * GetById 根据ID获取作品
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkDTO | null> | null> {
     return $Call.ByID(761599000, id).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -53,7 +44,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
  */
 export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $CancellablePromise<model$0.ApiResponse<dto$0.WorkDTO | null> | null> {
     return $Call.ByID(4252213572, siteId, siteWorkId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -62,7 +53,7 @@ export function GetBySiteAndSiteWorkID(siteId: number, siteWorkId: string): $Can
  */
 export function GetFullWorkInfoByIds(ids: number[]): $CancellablePromise<model$0.ApiResponse<(dto$1.WorkFullDTO | null)[]> | null> {
     return $Call.ByID(3702036189, ids).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType8($result);
     });
 }
 
@@ -71,7 +62,7 @@ export function GetFullWorkInfoByIds(ids: number[]): $CancellablePromise<model$0
  */
 export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $CancellablePromise<model$0.ApiResponse<(dto$1.RankedLocalAuthor | null)[]> | null> {
     return $Call.ByID(3147867833, workIds).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType13($result);
     });
 }
 
@@ -80,7 +71,7 @@ export function ListRankedLocalAuthorWithWorkIdByWorkIds(workIds: number[]): $Ca
  */
 export function QueryPage(page: model$0.Page<dto$0.WorkDTO> | null, query: $models.WorkQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.WorkDTO> | null> | null> {
     return $Call.ByID(916471787, page, query).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType17($result);
     });
 }
 
@@ -89,7 +80,7 @@ export function QueryPage(page: model$0.Page<dto$0.WorkDTO> | null, query: $mode
  */
 export function Save(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2065165505, work).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType19($result);
     });
 }
 
@@ -98,7 +89,7 @@ export function Save(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.Ap
  */
 export function SoftDelete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2303847439, id).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType21($result);
     });
 }
 
@@ -117,7 +108,7 @@ export function ToRenderContext(work: dto$1.WorkFullDTO | null): $CancellablePro
  */
 export function Update(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(17674021, work).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType21($result);
     });
 }
 
@@ -126,30 +117,30 @@ export function Update(work: dto$0.WorkDTO | null): $CancellablePromise<model$0.
  */
 export function UpdateLastUsed(ids: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2305023356, ids).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType21($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType0 = gen$0.Work.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = gen$0.Work.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
+const $$createType4 = dto$1.WorkFullDTO.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = dto$1.WorkFullDTO.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = model$0.ApiResponse.createFrom($$createType6);
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = dto$1.RankedLocalAuthor.createFrom;
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = dto$1.RankedLocalAuthor.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = model$0.ApiResponse.createFrom($$createType13);
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = model$0.ApiResponse.createFrom($$createType11);
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = model$0.Page.createFrom($$createType0);
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = model$0.Page.createFrom($$createType2);
+const $$createType16 = model$0.ApiResponse.createFrom($$createType15);
 const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
+const $$createType18 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType19 = $Create.Nullable($$createType18);
 const $$createType20 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType21 = $Create.Nullable($$createType20);

@@ -71,10 +71,10 @@ type storeWriter struct {
 	storeId       int64
 	repo          Repository
 	closed        bool
-	workDirGetter func() string // 每次调用获取最新的 workDir
-	filePath      sql.NullString // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
-	ext           sql.NullString // 文件扩展名（Complete 判断是否图片用）
-	fingerprinter fingerprint.Computer  // 可选，nil 时 Complete 不算指纹
+	workDirGetter func() string        // 每次调用获取最新的 workDir
+	filePath      sql.NullString       // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
+	ext           sql.NullString       // 文件扩展名（Complete 判断是否图片用）
+	fingerprinter fingerprint.Computer // 可选，nil 时 Complete 不算指纹
 }
 
 func (w *storeWriter) Write(p []byte) (n int, err error) {
@@ -187,20 +187,21 @@ func fillImageDimensions(store *domain.PersistentStore, workDir string) {
 type FileMover interface {
 	// MoveToBackup 将文件移动到备份目录并创建备份记录
 	// sourceId: PersistentStore 记录 ID
+	// workId: 归属作品 ID（写入 backup.work_id；0 = 无归属）
 	// absFilePath: 源文件绝对路径
 	// originalFilePath: PersistentStore 中的相对路径（用于还原）
 	// originalFileName: 原始文件名
 	// originalFilenameExtension: 原始扩展名
 	// 返回备份记录 ID
-	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
+	MoveToBackup(ctx context.Context, sourceId int64, workId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
 // Service 文件存取服务
 type Service struct {
 	repo          Repository
-	fileMover     FileMover     // 可选依赖，nil 时不备份
+	fileMover     FileMover            // 可选依赖，nil 时不备份
 	fingerprinter fingerprint.Computer // 可选依赖，nil 时不计算内容指纹
-	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
+	workDirGetter func() string        // 每次调用获取最新的 workDir（从设置管理器读取）
 }
 
 // NewService 创建文件存取服务
@@ -574,6 +575,7 @@ func (s *Service) GetByFingerprint(ctx context.Context, fingerprint string, excl
 			clause.Neq{Column: "file_path", Value: excludePath},
 			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
 			clause.Eq{Column: "invalid_at", Value: 0},
+			notDeletedWorkCond,
 		},
 		Limit: 1,
 	}
@@ -595,6 +597,7 @@ func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*
 			clause.Eq{Column: "file_path", Value: filePath},
 			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
 			clause.Eq{Column: "invalid_at", Value: 0},
+			notDeletedWorkCond,
 		},
 		Limit: 1,
 	}
@@ -614,10 +617,16 @@ func (s *Service) ListValidComplete(ctx context.Context) ([]*domain.PersistentSt
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
 			clause.Eq{Column: "invalid_at", Value: 0},
+			notDeletedWorkCond,
 		},
 	}
 	return s.repo.List(ctx, opt)
 }
+
+// notDeletedWorkCond 排除已软删作品的 store 行：fsmonitor 关联/对账不感知已删作品——
+// 其文件软删期间位于 backup/（监控白名单外），store 记录若被对账命中会误报「记录在文件无」缺失，
+// 修复动作会破坏复原。非作品资源（头像等，无 resource→work 链）不受影响。
+var notDeletedWorkCond = clause.Expr{SQL: "NOT EXISTS (SELECT 1 FROM resource_store rs JOIN resource r ON rs.resource_id = r.id JOIN work w ON r.work_id = w.id WHERE rs.store_id = persistent_store.id AND w.deleted_at > 0)"}
 
 // GetByIds 根据 ID 列表批量查询记录
 func (s *Service) GetByIds(ctx context.Context, ids []int64) ([]*domain.PersistentStore, error) {
@@ -676,7 +685,7 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 			if record.FilenameExtension.Valid {
 				originalFilenameExtension = record.FilenameExtension.String
 			}
-			backupId, err = s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+			backupId, err = s.fileMover.MoveToBackup(ctx, id, 0, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
 			if err != nil {
 				logger.Log.Warn("备份文件失败，降级为直接删除", zap.String("path", absPath), zap.Error(err))
 				_ = os.Remove(absPath)
@@ -698,10 +707,11 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 // DeleteWithBackup 删除 store 文件——移入 backup 目录并创建备份记录，保留 persistent_store 记录。
 // 供逻辑删除流程使用：文件移动须在调用方事务外先行完成，记录由调用方在事务内经 DeleteRecord 删除，
 // 两者配合保证事务失败时 DB 整体回滚。
+// workId: 备份归属作品 ID（写入 backup.work_id，复原/彻底删除按此聚合；0 = 无归属）。
 // 与 Delete(id, backup=true) 的契约区别：后者即刻删除记录（非事务）、仅备份已完成文件、失败降级为直接删除；
 // 本方法不删记录、不看文件完成状态、失败返回错误中断调用方流程（保全优先——降级删除会销毁待复原文件）。
 // 返回备份记录 ID；0 = 无需备份（记录不存在、路径无效、源文件缺失或未注入 FileMover，均不阻断删除）。
-func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+func (s *Service) DeleteWithBackup(ctx context.Context, id int64, workId int64) (int64, error) {
 	// 查询失败（含脏数据 record not found）不阻断删除：返回 0，调用方按"未备份"跳过该条
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -735,7 +745,7 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	if record.FilenameExtension.Valid {
 		originalFilenameExtension = record.FilenameExtension.String
 	}
-	backupId, err := s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+	backupId, err := s.fileMover.MoveToBackup(ctx, id, workId, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
 	if err != nil {
 		return 0, fmt.Errorf("移动 store 文件到备份失败: %w", err)
 	}

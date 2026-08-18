@@ -15,6 +15,8 @@ const (
 	Media           SearchType = 9
 	Site            SearchType = 10
 	WorkSet         SearchType = 11
+	WorksCreateTime SearchType = 12 // 作品入库时间（范围：GreaterOrEqual/LessOrEqual）
+	WorksDeleteTime SearchType = 13 // 作品软删时间（回收站场景，范围同上）
 )
 
 // SearchCondition 搜索条件

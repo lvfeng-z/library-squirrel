@@ -17,7 +17,7 @@
 | `StoreStream` / `ResumeStream` | 流式写入（支持断点续传，StoreWriter） |
 | `Store` / `StoreFromFile` / `StoreFromExternal` | 从 Reader / 本地文件 / 外部文件写入；`StoreFromExternal` 导入前先清同 `file_path` 旧记录（避免 UNIQUE 冲突） |
 | `Delete(id, backup)` | 删除记录与文件（backup=true 联动备份，仅已完成文件、失败降级直接删除）；记录不存在视为已删除，返回 `(0,nil)` 而非错误 |
-| `DeleteWithBackup(id)` | 删除 store 文件（移入 backup 建备份记录），**保留 persistent_store 记录**供调用方事务内经 `DeleteRecord` 删除；不看完成状态、失败返回错误（逻辑删除两半的文件侧，契约与 `Delete` 的区别见方法注释） |
+| `DeleteWithBackup(id, workId)` | 删除 store 文件（移入 backup 建含 work_id 归属的备份记录），**persistent_store 记录原地保留**（作品软删除链：从属行不离开，复原时文件还原即复用）；不看完成状态、失败返回错误（契约与 `Delete` 的区别见方法注释） |
 | `DeleteByFilePath` / `DeleteRecord` | 按路径删除 / 仅删记录 |
 | `GetById` / `GetByIds` / `GetByFilePath` | 查询 |
 | `Exists` / `IsCompleteByPath` | 存在性 / 完整性校验 |
@@ -34,11 +34,12 @@
 ## 依赖关系
 
 - 依赖：workDir 提供者（根目录）
-- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（逻辑删除经 `DeleteWithBackup` + `DeleteRecord` 两半完成）、**recycleBin**、**resource**
+- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（软删除经 `DeleteWithBackup` 移文件，记录保留）、**recycleBin**（StoreReader——见下条 fsmonitor 联动）、**resource**、**fsmonitor**（StoreReader 对账）
 
 ## 关键设计
 
 - **直接落最终路径 + status 占位**：流式写入直接落到最终路径（不经过临时文件），DB 记录以 `status=Incomplete` 起步，`Complete` 时才置为 `Complete`。未完成文件不靠临时后缀隔离，而是由读取层 `StoreFileHandler`（`backend/assetserver/store_handler.go`）依据 `status` 校验——未完成记录的 `/store/` 请求直接返回 404，从而避免半成品被读取。
 - **路径强校验**：`storeRegistry.ValidatePath` 拒绝未注册子目录，统一正斜杠比较以兼容 Windows。
 - **操作抑制登记（suppression）**：各 Create/Remove/Rename 落盘点（`Store`/`StoreStream`/`StoreFromExternal`/`Delete`/`DeleteWithBackup`/`CleanupFile`/`storeWriter.Abort`）在磁盘操作前 `storeRegistry.Suppress(relPath)` + `defer Release`，让 fsmonitor 把自身写入与外部操作区分开（`Complete`/`ResumeStream` 无 fsnotify Create/Remove 事件，不登记）。backup 模块的 `MoveBackup` 亦在汇点自登记（覆盖所有移入 backup 的调用方）。
+- **fsmonitor 查询排除已删作品**：StoreReader 三方法（`GetByFingerprint`/`GetByFilePathComplete`/`ListValidComplete`）统一带 NOT EXISTS 条件排除已软删作品的 store 行（`notDeletedWorkCond`）——其文件软删期间位于 backup/（监控白名单外），记录若被对账命中会误报缺失、修复动作破坏复原；非作品资源（无 resource→work 链）不受影响。
 - **图像宽高提取**：`Complete`/`Store`/`StoreFromExternal` 落盘后，若是图片（`util.IsImageExt`）则用 `image.DecodeConfig` 读头部解码填入 `Width`/`Height`（供前端瀑布流精准布局）。解码失败仅记日志、留 0，不阻断入库。

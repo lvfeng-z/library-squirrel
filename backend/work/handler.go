@@ -32,11 +32,6 @@ func (h *Handler) Save(ctx context.Context, work *sdkdto.WorkDTO) *model.ApiResp
 	return model.Success(domainWork.GetID())
 }
 
-// Delete 删除作品
-func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.Delete(ctx, id))
-}
-
 // Update 更新作品
 func (h *Handler) Update(ctx context.Context, work *sdkdto.WorkDTO) *model.ApiResponse[any] {
 	domainWork := dto.ToWorkEntity(work)

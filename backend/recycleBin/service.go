@@ -5,15 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
-	querypkg "github.com/library-squirrel/backend/base/query"
-	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
@@ -25,37 +25,40 @@ var (
 	ErrRestoreConflict     = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
 )
 
-// WorkRestorer 作品复原接口（由 work.Service 实现）
+// WorkRestorer 作品软删/复原能力接口（由 work.Service 实现）
 type WorkRestorer interface {
-	// GetBySiteAndSiteWorkID 检查 (site_id, site_work_id) 是否已存在作品，返回已存在作品（nil 表示无冲突）
+	// GetBySiteAndSiteWorkID 检查 (site_id, site_work_id) 是否已存在活作品，返回已存在作品（nil 表示无冲突）
 	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error)
-	// HardDeleteWork 物理删除作品（复原覆盖分支：删除占用业务键的新作品）
-	HardDeleteWork(ctx context.Context, workId int64) error
-	// RestoreWorkFromSnapshot 从快照重建作品及其关联、resource，返回新作品 ID
-	// storeIdByBackupId: backup 记录 ID → 还原后的新 persistent_store ID 映射
-	RestoreWorkFromSnapshot(ctx context.Context, snapshot *WorkRecycleSnapshot, storeIdByBackupId map[int64]int64) (int64, error)
+	// SoftDeleteWork 软删除作品（复原"覆盖"分支：占位新作品转入回收站，让出业务键与文件路径）
+	SoftDeleteWork(ctx context.Context, workId int64) error
+	// GetDeletedWork 按ID获取已软删作品（nil = 非已删条目）
+	GetDeletedWork(ctx context.Context, id int64) (*domain.Work, error)
+	// RestoreDeletedWork 清软删标志（复原核心，文件还原由本模块编排）
+	RestoreDeletedWork(ctx context.Context, id int64) error
+	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删作品，供 TTL 清理
+	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error)
+	// DeleteWorkAndSurroundingData 物理级联删除（彻底删除链：删 work 谱系行与 store 记录/文件）
+	DeleteWorkAndSurroundingData(ctx context.Context, id int64) error
 }
 
-// BackupReader 备份读取接口（由 backup.Service 实现）
+// BackupReader 备份读取/还原能力接口（由 backup.Service 实现）
 type BackupReader interface {
 	// GetById 根据 ID 获取备份记录
 	GetById(ctx context.Context, id int64) (*domain.Backup, error)
 	// GetBackupPath 获取备份文件的绝对路径
 	GetBackupPath(backup *domain.Backup) string
+	// ListByWorkId 查询作品的全部备份记录（软删除链归属关联）
+	ListByWorkId(ctx context.Context, workId int64) ([]*domain.Backup, error)
+	// RestoreFile 从备份路径还原文件到目标绝对路径
+	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
 	// Delete 删除备份记录
 	Delete(ctx context.Context, id int64) error
 }
 
-// StoreImporter 资源导入接口（由 persistentStore.Service 实现）
-type StoreImporter interface {
-	// StoreFromExternal 将外部文件导入到 store 目录并创建 DB 记录（文件移动）
-	StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error)
-}
-
-// Transactor 事务执行器
-type Transactor interface {
-	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
-	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+// RecycleWorkQuerier 回收站作品查询接口（由 search.Service 实现；条件体系复用作品搜索 SearchCondition）
+type RecycleWorkQuerier interface {
+	// QueryRecycleWorkPage 分页查询回收站作品（work 已删行）
+	QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto.SearchCondition, sortField string, sortDesc bool) (*model.Page[dto.RecycleWorkDTO], error)
 }
 
 // RecycleBinSettingsProvider 回收站设置提供者接口（由 settings.Service 实现）
@@ -64,372 +67,147 @@ type RecycleBinSettingsProvider interface {
 	GetRecycleBinSettings() (enabled bool, retentionDays int)
 }
 
-// SiteNameReader 站点名批量读取接口（由 site.Service 实现，列表展示站点名）
-type SiteNameReader interface {
-	// ListByIds 根据 ID 列表批量查询
-	ListByIds(ctx context.Context, ids []int64) ([]*domain.Site, error)
-}
-
-// LocalAuthorNameReader 本地作者批量读取接口（由 localAuthor.Service 实现，列表展示作者名）
-type LocalAuthorNameReader interface {
-	// ListByIds 根据 ID 列表批量查询
-	ListByIds(ctx context.Context, ids []int64) ([]*domain.LocalAuthor, error)
-}
-
-// SiteAuthorNameReader 站点作者批量读取接口（由 siteAuthor.Service 实现，列表展示作者名回退源）
-type SiteAuthorNameReader interface {
-	// ListBySiteAuthorIds 根据站点作者 ID 列表批量查询
-	ListBySiteAuthorIds(ctx context.Context, siteAuthorIds []int64) ([]*domain.SiteAuthor, error)
-}
-
-// Service 回收站服务
+// Service 回收站服务（软删除模型：回收站条目 = work 已删行）
 type Service struct {
-	repo              Repository
-	workRestorer      WorkRestorer
-	backupReader      BackupReader
-	storeImporter     StoreImporter
-	transactor        Transactor
-	settingsReader    RecycleBinSettingsProvider
-	siteNameReader    SiteNameReader
-	localAuthorReader LocalAuthorNameReader
-	siteAuthorReader  SiteAuthorNameReader
-	stopCh            chan struct{}
+	workRestorer   WorkRestorer
+	backupReader   BackupReader
+	recycleQuerier RecycleWorkQuerier
+	settingsReader RecycleBinSettingsProvider
+	workDirGetter  func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
+	stopCh         chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(repo Repository, workRestorer WorkRestorer, backupReader BackupReader, storeImporter StoreImporter, transactor Transactor, settingsReader RecycleBinSettingsProvider, siteNameReader SiteNameReader, localAuthorReader LocalAuthorNameReader, siteAuthorReader SiteAuthorNameReader) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
 	return &Service{
-		repo:              repo,
-		workRestorer:      workRestorer,
-		backupReader:      backupReader,
-		storeImporter:     storeImporter,
-		transactor:        transactor,
-		settingsReader:    settingsReader,
-		siteNameReader:    siteNameReader,
-		localAuthorReader: localAuthorReader,
-		siteAuthorReader:  siteAuthorReader,
-		stopCh:            make(chan struct{}),
+		workRestorer:   workRestorer,
+		backupReader:   backupReader,
+		recycleQuerier: recycleQuerier,
+		settingsReader: settingsReader,
+		workDirGetter:  workDirGetter,
+		stopCh:         make(chan struct{}),
 	}
 }
 
-// Save 保存回收站条目（供逻辑删除流程写入快照）
-func (s *Service) Save(ctx context.Context, item *domain.RecycleItem) error {
-	return s.repo.Create(ctx, item)
+// Page 分页查询回收站列表（转发作品搜索查询链）
+// conditions 条件体系与作品搜索一致（作者/标签/站点/时间范围）；sortBy: createTime | 空=deleteTime
+func (s *Service) Page(ctx context.Context, page int, pageSize int, conditions []*dto.SearchCondition, sortBy string, sortOrder string) (*model.Page[dto.RecycleWorkDTO], error) {
+	sortField := "deleted_at"
+	if sortBy == "createTime" {
+		sortField = "create_time"
+	}
+	sortDesc := sortOrder != "asc"
+	return s.recycleQuerier.QueryRecycleWorkPage(ctx, page, pageSize, conditions, sortField, sortDesc)
 }
 
-// GetById 根据 ID 获取回收站条目
-func (s *Service) GetById(ctx context.Context, id int64) (*domain.RecycleItem, error) {
-	return s.repo.GetById(ctx, id)
-}
-
-// Page 分页查询回收站列表并组装展示 DTO
-// query 的 SQL 条件（时间范围/站点）经 Converter 进 opt；作者/标签走快照过滤；SortBy/SortOrder 显式排序
-func (s *Service) Page(ctx context.Context, opt *database.PageOption, query *RecycleQueryDTO) (*model.Page[RecycleItemDTO], error) {
-	var filter *RecycleSnapshotFilter
-	var order *RecycleOrder
-	if query != nil {
-		conv := querypkg.NewConverter(domain.RecycleItem{})
-		queryOpt, err := conv.ToQueryOption(query, nil)
-		if err != nil {
-			return nil, err
-		}
-		opt.Conditions = append(opt.Conditions, queryOpt.Conditions...)
-		filter = &RecycleSnapshotFilter{LocalAuthorID: query.LocalAuthorID, LocalTagID: query.LocalTagID}
-		order = resolveOrder(query)
-	}
-	entityPage, err := s.repo.Page(ctx, opt, filter, order)
-	if err != nil {
-		return nil, err
-	}
-	dtos := make([]*RecycleItemDTO, 0, len(entityPage.Data))
-	snapshots := make([]*WorkRecycleSnapshot, 0, len(entityPage.Data))
-	for _, item := range entityPage.Data {
-		dtos = append(dtos, NewRecycleItemDTO(item))
-		snap, err := UnmarshalSnapshot(item.Snapshot)
-		if err != nil {
-			logger.Log.Warnf("回收站条目 %d 快照解析失败，作者名列留空: %v", item.GetID(), err)
-			snap = &WorkRecycleSnapshot{}
-		}
-		snapshots = append(snapshots, snap)
-	}
-	if err := s.fillDisplayNames(ctx, dtos, snapshots); err != nil {
-		return nil, err
-	}
-	return &model.Page[RecycleItemDTO]{
-		PageNumber:   entityPage.PageNumber,
-		PageSize:     entityPage.PageSize,
-		PageCount:    entityPage.PageCount,
-		DataCount:    entityPage.DataCount,
-		CurrentCount: entityPage.CurrentCount,
-		Data:         dtos,
-	}, nil
-}
-
-// resolveOrder 把查询 DTO 的排序意图解析为仓储排序（无法识别的取值回落默认 delete_time DESC）
-func resolveOrder(query *RecycleQueryDTO) *RecycleOrder {
-	if query == nil || query.SortBy == nil || *query.SortBy == "" {
-		return nil
-	}
-	desc := true
-	if query.SortOrder != nil && *query.SortOrder == "asc" {
-		desc = false
-	}
-	switch *query.SortBy {
-	case "workCreateTime":
-		return &RecycleOrder{Field: orderFieldWorkCreateTime, Desc: desc}
-	case "deleteTime":
-		return &RecycleOrder{Field: orderFieldDeleteTime, Desc: desc}
-	}
-	return nil
-}
-
-// fillDisplayNames 批量填充站点名与作者名（收集 ID → 批量查询 → 构建 map → 组装，避免逐行查询）
-// snapshots 与 dtos 平行：作者名按快照关联顺序顿号拼接，本地作者名优先、无本地关联的关联行回退站点作者名
-func (s *Service) fillDisplayNames(ctx context.Context, dtos []*RecycleItemDTO, snapshots []*WorkRecycleSnapshot) error {
-	if len(dtos) == 0 {
-		return nil
-	}
-
-	// 收集三类 ID
-	siteIdSet := make(map[int64]struct{})
-	localAuthorIdSet := make(map[int64]struct{})
-	siteAuthorIdSet := make(map[int64]struct{})
-	for _, dto := range dtos {
-		if dto.SiteID != nil {
-			siteIdSet[*dto.SiteID] = struct{}{}
-		}
-	}
-	for _, snap := range snapshots {
-		for _, a := range snap.Authors {
-			if a.LocalAuthorID.Valid {
-				localAuthorIdSet[a.LocalAuthorID.Int64] = struct{}{}
-			} else if a.SiteAuthorID.Valid {
-				siteAuthorIdSet[a.SiteAuthorID.Int64] = struct{}{}
-			}
-		}
-	}
-
-	// 批量查询三类名字源
-	siteNames := make(map[int64]string)
-	if len(siteIdSet) > 0 {
-		sites, err := s.siteNameReader.ListByIds(ctx, toIDSlice(siteIdSet))
-		if err != nil {
-			return err
-		}
-		for _, site := range sites {
-			siteNames[site.GetID()] = site.SiteName.String
-		}
-	}
-	localAuthorNames := make(map[int64]string)
-	if len(localAuthorIdSet) > 0 {
-		authors, err := s.localAuthorReader.ListByIds(ctx, toIDSlice(localAuthorIdSet))
-		if err != nil {
-			return err
-		}
-		for _, a := range authors {
-			localAuthorNames[a.GetID()] = a.AuthorName.String
-		}
-	}
-	siteAuthorNames := make(map[int64]string)
-	if len(siteAuthorIdSet) > 0 {
-		authors, err := s.siteAuthorReader.ListBySiteAuthorIds(ctx, toIDSlice(siteAuthorIdSet))
-		if err != nil {
-			return err
-		}
-		for _, a := range authors {
-			siteAuthorNames[a.GetID()] = a.AuthorName.String
-		}
-	}
-
-	// 组装
-	for i, dto := range dtos {
-		if dto.SiteID != nil {
-			dto.SiteName = siteNames[*dto.SiteID]
-		}
-		var names []string
-		for _, a := range snapshots[i].Authors {
-			if a.LocalAuthorID.Valid {
-				if name := localAuthorNames[a.LocalAuthorID.Int64]; name != "" {
-					names = append(names, name)
-				}
-			} else if a.SiteAuthorID.Valid {
-				if name := siteAuthorNames[a.SiteAuthorID.Int64]; name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-		dto.AuthorNames = strings.Join(names, "、")
-	}
-	return nil
-}
-
-// toIDSlice 把 ID 集合转为切片（查询参数用）
-func toIDSlice(set map[int64]struct{}) []int64 {
-	ids := make([]int64, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// Delete 删除回收站条目
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
-}
-
-// ListExpired 查询超过保留时长的回收站条目（供 TTL 自动清理）
-func (s *Service) ListExpired(ctx context.Context, expireBefore int64) ([]*domain.RecycleItem, error) {
-	return s.repo.ListExpired(ctx, expireBefore)
-}
-
-// RestoreWork 从回收站复原作品
-// overwrite: 检测到 (site_id, site_work_id) 冲突时是否覆盖（先物理删除占用业务键的新作品）
+// RestoreWork 复原已软删作品
+// overwrite: 检测到 (site_id, site_work_id) 被活作品占位时是否覆盖（占位作品转入回收站）
 // 冲突且 overwrite=false 时返回 ErrRestoreConflict
-func (s *Service) RestoreWork(ctx context.Context, recycleItemId int64, overwrite bool) (int64, error) {
-	// 1. 读快照
-	item, err := s.repo.GetById(ctx, recycleItemId)
+func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool) (int64, error) {
+	// 1. 校验为已删条目
+	work, err := s.workRestorer.GetDeletedWork(ctx, workId)
 	if err != nil {
 		return 0, err
 	}
-	if item == nil {
+	if work == nil {
 		return 0, ErrRecycleItemNotFound
 	}
-	snapshot, err := UnmarshalSnapshot(item.Snapshot)
-	if err != nil {
-		return 0, err
-	}
 
-	// 2. 冲突检查：(site_id, site_work_id) 是否已被新作品占用
+	// 2. 冲突检测：业务键是否被活作品占位（重新下载场景）
 	// GetBySiteAndSiteWorkID 查不到时返回 gorm.ErrRecordNotFound，表示无冲突，按 nil 处理
-	if snapshot.Work.SiteID.Valid && snapshot.Work.SiteWorkID.Valid {
-		existing, err := s.workRestorer.GetBySiteAndSiteWorkID(ctx, snapshot.Work.SiteID.Int64, snapshot.Work.SiteWorkID.String)
+	if work.SiteID.Valid && work.SiteWorkID.Valid {
+		existing, err := s.workRestorer.GetBySiteAndSiteWorkID(ctx, work.SiteID.Int64, work.SiteWorkID.String)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, err
 		}
-		if existing != nil {
+		if existing != nil && existing.GetID() != workId {
 			if !overwrite {
 				return 0, ErrRestoreConflict
 			}
-			if err := s.workRestorer.HardDeleteWork(ctx, existing.GetID()); err != nil {
-				return 0, fmt.Errorf("覆盖删除冲突作品失败: %w", err)
+			// 覆盖：占位新作品转入回收站（文件移 backup 让出 store/ 路径、业务键释放），反悔可再复原
+			if err := s.workRestorer.SoftDeleteWork(ctx, existing.GetID()); err != nil {
+				return 0, fmt.Errorf("覆盖转移冲突作品失败: %w", err)
 			}
 		}
 	}
 
-	// 3. [事务外] 文件还原：逐 backup 还原文件 + 建新 persistent_store，得 backupId→newStoreId 映射
-	// 走 SnapshotStoreBackups 适配器(v0/v1 兼容)
-	storeIdByBackupId := make(map[int64]int64)
-	for i := range snapshot.Resources {
-		for _, sb := range SnapshotStoreBackups(&snapshot.Resources[i]) {
-			if sb.BackupID <= 0 {
-				continue
-			}
-			newStoreId, err := s.restoreStore(ctx, sb.BackupID)
-			if err != nil {
-				return 0, err
-			}
-			if newStoreId > 0 {
-				storeIdByBackupId[sb.BackupID] = newStoreId
-			}
-		}
-	}
-
-	// 4. [事务内] 重建 work + 关联 + resource + 删 recycle_bin
-	var newWorkId int64
-	err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-		var err error
-		newWorkId, err = s.workRestorer.RestoreWorkFromSnapshot(txCtx, snapshot, storeIdByBackupId)
-		if err != nil {
-			return err
-		}
-		return s.repo.Delete(txCtx, recycleItemId)
-	})
-	if err != nil {
+	// 3. [事务外] 文件还原（backup → store/ 原路径；缺文件警告后继续=部分复原）
+	if err := s.restoreWorkFiles(ctx, workId); err != nil {
 		return 0, err
 	}
-	return newWorkId, nil
+
+	// 4. 清软删标志（复原核心：一行 UPDATE；从属行从未离开，无需重建）
+	if err := s.workRestorer.RestoreDeletedWork(ctx, workId); err != nil {
+		return 0, err
+	}
+	return workId, nil
 }
 
-// restoreStore 从 backup 还原单个资源文件，返回新的 persistent_store ID
-func (s *Service) restoreStore(ctx context.Context, backupId int64) (int64, error) {
-	backupEntity, err := s.backupReader.GetById(ctx, backupId)
+// restoreWorkFiles 还原作品的全部备份文件（backup → store/ 原路径）并删除已还原备份记录
+// 目标路径在 store/ 监控白名单内，逐文件登记操作抑制避免还原写入被 fsmonitor 误报
+func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
+	backups, err := s.backupReader.ListByWorkId(ctx, workId)
 	if err != nil {
-		return 0, fmt.Errorf("查询备份记录失败: %w", err)
+		return fmt.Errorf("查询作品备份失败: %w", err)
 	}
-	if backupEntity == nil {
-		return 0, nil
+	for _, backup := range backups {
+		if !backup.OriginalFilePath.Valid || backup.OriginalFilePath.String == "" {
+			continue
+		}
+		relPath := backup.OriginalFilePath.String
+		storeRegistry.Suppress(relPath)
+		backupAbsPath := s.backupReader.GetBackupPath(backup)
+		targetAbs := filepath.Join(s.workDirGetter(), relPath)
+		err := s.backupReader.RestoreFile(ctx, backupAbsPath, targetAbs)
+		storeRegistry.Release(relPath)
+		if err != nil {
+			logger.Log.Warnf("还原作品 %d 备份文件失败（跳过继续，部分复原）: %v", workId, err)
+			continue
+		}
+		if err := s.backupReader.Delete(ctx, backup.GetID()); err != nil {
+			logger.Log.Warnf("清理已还原备份记录 %d 失败: %v", backup.GetID(), err)
+		}
 	}
-	originalFilePath := ""
-	if backupEntity.OriginalFilePath.Valid {
-		originalFilePath = backupEntity.OriginalFilePath.String
-	}
-	originalFileName := ""
-	if backupEntity.OriginalFileName.Valid {
-		originalFileName = backupEntity.OriginalFileName.String
-	}
-	if originalFilePath == "" || originalFileName == "" {
-		return 0, nil // 缺少原始路径信息，跳过
-	}
-	backupAbsPath := s.backupReader.GetBackupPath(backupEntity)
-	newStoreId, err := s.storeImporter.StoreFromExternal(ctx, backupAbsPath, originalFilePath, originalFileName)
-	if err != nil {
-		return 0, fmt.Errorf("还原资源文件失败: %w", err)
-	}
-	// 清理 backup 记录（文件已被 StoreFromExternal 移走）
-	if err := s.backupReader.Delete(ctx, backupId); err != nil {
-		logger.Log.Warnf("清理备份记录 %d 失败: %v", backupId, err)
-	}
-	return newStoreId, nil
+	return nil
 }
 
 // Purge 彻底删除回收站条目（不可恢复）
-// 删除关联的 backup 磁盘文件与记录，以及回收站快照本身
-func (s *Service) Purge(ctx context.Context, recycleItemId int64) error {
-	// 1. 读快照，收集所有 backupId
-	item, err := s.repo.GetById(ctx, recycleItemId)
+// 物理级联删 work 谱系行 + 清理 backup 磁盘文件与记录
+func (s *Service) Purge(ctx context.Context, workId int64) error {
+	// 1. 校验为已删条目
+	work, err := s.workRestorer.GetDeletedWork(ctx, workId)
 	if err != nil {
 		return err
 	}
-	if item == nil {
+	if work == nil {
 		return ErrRecycleItemNotFound
 	}
-	snapshot, err := UnmarshalSnapshot(item.Snapshot)
+
+	// 2. 物理级联删除（事务内删行；store 原路径文件已在 backup，链内文件删除扑空无害）
+	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
+		return fmt.Errorf("物理删除作品数据失败: %w", err)
+	}
+
+	// 3. 清理 backup 磁盘文件与记录
+	backups, err := s.backupReader.ListByWorkId(ctx, workId)
 	if err != nil {
 		return err
 	}
-
-	// 2. [事务外] 删 backup 磁盘文件 + 记录(走适配器,v0/v1 兼容)
-	for i := range snapshot.Resources {
-		for _, sb := range SnapshotStoreBackups(&snapshot.Resources[i]) {
-			if sb.BackupID <= 0 {
-				continue
-			}
-			if err := s.purgeBackup(ctx, sb.BackupID); err != nil {
-				return err
-			}
+	for _, backup := range backups {
+		if err := s.purgeBackup(ctx, backup); err != nil {
+			return err
 		}
 	}
-
-	// 3. 删 recycle_bin 快照（单条删除，原子操作）
-	return s.repo.Delete(ctx, recycleItemId)
+	return nil
 }
 
-// purgeBackup 删除单个 backup 的磁盘文件与记录
-func (s *Service) purgeBackup(ctx context.Context, backupId int64) error {
-	backupEntity, err := s.backupReader.GetById(ctx, backupId)
-	if err != nil {
-		return fmt.Errorf("查询备份记录失败: %w", err)
-	}
-	if backupEntity == nil {
-		return nil
-	}
-	// 删 backup 磁盘文件（不存在则忽略，best-effort）
-	backupAbsPath := s.backupReader.GetBackupPath(backupEntity)
+// purgeBackup 删除单个备份的磁盘文件与记录
+func (s *Service) purgeBackup(ctx context.Context, backup *domain.Backup) error {
+	backupAbsPath := s.backupReader.GetBackupPath(backup)
 	if err := os.Remove(backupAbsPath); err != nil && !os.IsNotExist(err) {
 		logger.Log.Warnf("删除备份文件失败（将仅删除记录）: %s, %v", backupAbsPath, err)
 	}
-	// 删 Backup 记录
-	if err := s.backupReader.Delete(ctx, backupId); err != nil {
+	if err := s.backupReader.Delete(ctx, backup.GetID()); err != nil {
 		return fmt.Errorf("删除备份记录失败: %w", err)
 	}
 	return nil
@@ -451,9 +229,8 @@ func (s *Service) Stop() {
 	}
 }
 
-// cleanupLoop TTL 清理循环：启动即清理一次，随后每 24h；stopCh 关闭时退出
+// cleanupLoop TTL 清理循环：启动即清理一次（清理上次运行期间过期的条目），随后每 24h；stopCh 关闭时退出
 func (s *Service) cleanupLoop() {
-	// 启动即清理一次（清理上次运行期间过期的条目）
 	s.runCleanup()
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -467,7 +244,7 @@ func (s *Service) cleanupLoop() {
 	}
 }
 
-// runCleanup 执行一次 TTL 清理：查询过期条目并逐条 Purge
+// runCleanup 执行一次 TTL 清理：查询过期已删作品并逐条 Purge
 func (s *Service) runCleanup() {
 	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
 	if !enabled || retentionDays <= 0 {
@@ -476,16 +253,14 @@ func (s *Service) runCleanup() {
 	ctx := context.Background()
 	// 过期阈值 = 当前时间 - 保留天数（毫秒）
 	expireBefore := util.GetCurrentTimestamp() - int64(retentionDays)*24*60*60*1000
-	items, err := s.repo.ListExpired(ctx, expireBefore)
+	works, err := s.workRestorer.ListDeletedBefore(ctx, expireBefore)
 	if err != nil {
 		logger.Log.Warnf("[RecycleBin] 查询过期回收站条目失败: %v", err)
 		return
 	}
-	for _, item := range items {
-		if err := s.Purge(ctx, item.GetID()); err != nil {
-			logger.Log.Warnf("[RecycleBin] 自动清理回收站条目 %d 失败: %v", item.GetID(), err)
-		} else {
-			logger.Log.Infof("[RecycleBin] 自动清理过期回收站条目 %d", item.GetID())
+	for _, work := range works {
+		if err := s.Purge(ctx, work.GetID()); err != nil {
+			logger.Log.Warnf("[RecycleBin] 清理过期回收站条目 %d 失败: %v", work.GetID(), err)
 		}
 	}
 }

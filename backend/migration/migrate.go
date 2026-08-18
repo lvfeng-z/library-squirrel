@@ -79,9 +79,6 @@ func AutoMigrate(db *gorm.DB) error {
 		entity2.NewReWorkSetWorkSet(),
 		&entity2.RePoiTarget{},
 
-		// 回收站(作品逻辑删除快照,独立表)
-		entity2.NewRecycleItem(),
-
 		// 本地标签(独立表)
 		entity2.NewLocalTag(),
 	}
@@ -89,6 +86,24 @@ func AutoMigrate(db *gorm.DB) error {
 	// 执行自动迁移
 	if err := db.AutoMigrate(models...); err != nil {
 		return err
+	}
+
+	// 命名迁移(后置)：work 软删列存量回填——AutoMigrate 加列无默认值，存量行 deleted_at 为 NULL，
+	// 而软删过滤条件 deleted_at = 0 对 NULL 不命中（NULL=0 为 UNKNOWN），不回填则存量作品全部从查询中消失
+	if err := db.Exec(`UPDATE work SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("迁移 work.deleted_at 存量回填失败: %w", err)
+	}
+
+	// 命名迁移(后置)：work 业务键唯一索引升级为部分唯一索引（软删标志引入后，已删行释放业务键，
+	// 删除后可重新下载同作品；AutoMigrate 不管部分索引，drop 旧全量索引 + 建新索引全手写。
+	// 以新索引名存在性做幂等标记，二次启动直接跳过）
+	if !db.Migrator().HasIndex(&entity2.Work{}, "idx_work_site_site_work_active") {
+		if err := db.Migrator().DropIndex(&entity2.Work{}, "idx_work_site_site_work"); err != nil {
+			return fmt.Errorf("迁移 work 旧全量唯一索引删除失败: %w", err)
+		}
+		if err := db.Exec(`CREATE UNIQUE INDEX idx_work_site_site_work_active ON work(site_id, site_work_id) WHERE deleted_at = 0`).Error; err != nil {
+			return fmt.Errorf("迁移 work 部分唯一索引创建失败: %w", err)
+		}
 	}
 
 	return nil

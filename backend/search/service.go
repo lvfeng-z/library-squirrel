@@ -18,6 +18,8 @@ type Repository interface {
 	QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []dto2.SearchType) ([]*dto2.SelectItem, int64, error)
 	// QueryWorkPage 查询作品分页
 	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error)
+	// QueryRecycleWorkPage 查询回收站作品分页（work 已删行）
+	QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition, sortField string, sortDesc bool) ([]*dto2.RecycleWorkDTO, int64, error)
 	// QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询）
 	QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error)
 }
@@ -75,10 +77,10 @@ type Service struct {
 	repo Repository
 
 	// 作品集查询依赖
-	coverResolver    CoverResolver
-	workReader       WorkSetPageWorkReader
-	resourceReader   WorkSetPageResourceReader
-	storeBatchReader StoreBatchReader
+	coverResolver            CoverResolver
+	workReader               WorkSetPageWorkReader
+	resourceReader           WorkSetPageResourceReader
+	storeBatchReader         StoreBatchReader
 	resourceStoreBatchReader ResourceStoreBatchReader
 
 	// 外部模块依赖（通过构造函数注入）
@@ -102,16 +104,16 @@ func NewService(
 	siteAuthorUpdater SiteAuthorUpdater,
 ) *Service {
 	return &Service{
-		repo:               repo,
-		coverResolver:      coverResolver,
-		workReader:         workReader,
-		resourceReader:     resourceReader,
-		storeBatchReader:     storeBatchReader,
+		repo:                     repo,
+		coverResolver:            coverResolver,
+		workReader:               workReader,
+		resourceReader:           resourceReader,
+		storeBatchReader:         storeBatchReader,
 		resourceStoreBatchReader: resourceStoreBatchReader,
-		localTagUpdater:    localTagUpdater,
-		siteTagUpdater:     siteTagUpdater,
-		localAuthorUpdater: localAuthorUpdater,
-		siteAuthorUpdater:  siteAuthorUpdater,
+		localTagUpdater:          localTagUpdater,
+		siteTagUpdater:           siteTagUpdater,
+		localAuthorUpdater:       localAuthorUpdater,
+		siteAuthorUpdater:        siteAuthorUpdater,
 	}
 }
 
@@ -143,6 +145,16 @@ func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditi
 	}
 
 	return model.NewPage[dto2.WorkFullDTO](items, total, page, pageSize), nil
+}
+
+// QueryRecycleWorkPage 查询回收站作品分页（work 已删行；条件体系与正常作品搜索一致）
+// sortField: "deleted_at"（默认）| "create_time"；sortDesc: 降序
+func (s *Service) QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition, sortField string, sortDesc bool) (*model.Page[dto2.RecycleWorkDTO], error) {
+	items, total, err := s.repo.QueryRecycleWorkPage(ctx, page, pageSize, conditions, sortField, sortDesc)
+	if err != nil {
+		return nil, err
+	}
+	return model.NewPage[dto2.RecycleWorkDTO](items, total, page, pageSize), nil
 }
 
 // extractUsedConditions 从搜索条件中提取需要更新lastUse的ID

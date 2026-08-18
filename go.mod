@@ -20,6 +20,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
+	gorm.io/plugin/soft_delete v1.2.1
 )
 
 require (

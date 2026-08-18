@@ -76,6 +76,17 @@ func (r *ResourceStoreRepository) DeleteByResourceIdAndTypes(ctx context.Context
 		Delete(new(domain.ResourceStore)).Error
 }
 
+// DeleteByResourceIds 批量物理删除 resource 关联行（作品彻底删除链：级联清理 resource_store）
+func (r *ResourceStoreRepository) DeleteByResourceIds(ctx context.Context, resourceIds []int64) error {
+	if len(resourceIds) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("resource_id IN ?", resourceIds).
+		Delete(new(domain.ResourceStore)).Error
+}
+
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *ResourceStoreRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())

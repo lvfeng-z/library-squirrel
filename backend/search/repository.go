@@ -379,16 +379,17 @@ func namespaceCondition(namespace string) (string, []interface{}) {
 
 // buildWhereClause 根据搜索条件构建 WHERE 子句（别名 "t1"）
 func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}) {
-	return buildWhereClauseWithAlias(conditions, "t1")
+	return buildWhereClauseWithBaseline(conditions, "t1", "t1.deleted_at = 0")
 }
 
-// buildWhereClauseWithAlias 根据搜索条件构建 WHERE 子句（可配置表别名）
+// buildWhereClauseWithAlias 根据搜索条件构建 WHERE 子句（可配置表别名，软删基线=仅活行）
 func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string) (string, []interface{}) {
-	if len(conditions) == 0 {
-		return "", nil
-	}
+	return buildWhereClauseWithBaseline(conditions, alias, fmt.Sprintf("%s.deleted_at = 0", alias))
+}
 
-	var whereClauses []string
+// buildWhereClauseWithBaseline 根据搜索条件构建 WHERE 子句（软删基线可配置：活行 "= 0" / 已删行 "> 0"）
+func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias string, baseline string) (string, []interface{}) {
+	whereClauses := []string{baseline}
 	var params []interface{}
 
 	for _, cond := range conditions {
@@ -471,6 +472,28 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 			}
 			params = append(params, cond.Value)
 
+		case dto2.WorksCreateTime, dto2.WorksDeleteTime:
+			// 时间范围条件：按操作符生成（范围用 GreaterOrEqual/LessOrEqual，两端各传一条）
+			column := "create_time"
+			if cond.Type == dto2.WorksDeleteTime {
+				column = "deleted_at"
+			}
+			op := "="
+			switch cond.Operator {
+			case dto2.GreaterThan:
+				op = ">"
+			case dto2.GreaterOrEqual:
+				op = ">="
+			case dto2.LessThan:
+				op = "<"
+			case dto2.LessOrEqual:
+				op = "<="
+			case dto2.NotEqual:
+				op = "<>"
+			}
+			whereClauses = append(whereClauses, fmt.Sprintf("%s.%s %s ?", alias, column, op))
+			params = append(params, cond.Value)
+
 		case dto2.WorksLastView:
 			if cond.Operator == dto2.NotEqual {
 				whereClauses = append(whereClauses, fmt.Sprintf("%s.last_view <> ?", alias))
@@ -507,10 +530,6 @@ func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string)
 				fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)", alias))
 			params = append(params, cond.Value)
 		}
-	}
-
-	if len(whereClauses) == 0 {
-		return "", nil
 	}
 
 	return "WHERE " + strings.Join(whereClauses, " AND "), params
@@ -603,4 +622,83 @@ func containsType(types []dto2.SearchType, target dto2.SearchType) bool {
 		}
 	}
 	return false
+}
+
+// QueryRecycleWorkPage 查询回收站作品分页（work 已删行，条件体系复用 buildWhereClauseWithBaseline，
+// 基线为 deleted_at > 0；排序支持 deleted_at/create_time；投影为回收站列表精简列，站点名 LEFT JOIN、
+// 作者名子查询聚合——本地作者名优先，无本地关联回退站点作者名，顿号拼接）
+func (r *SearchRepository) QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition, sortField string, sortDesc bool) ([]*dto2.RecycleWorkDTO, int64, error) {
+	whereClause, params := buildWhereClauseWithBaseline(conditions, "t1", "t1.deleted_at > 0")
+
+	orderBy := "t1.deleted_at DESC"
+	if sortField == "create_time" {
+		orderBy = fmt.Sprintf("t1.create_time %s, t1.id DESC", map[bool]string{true: "DESC", false: "ASC"}[sortDesc])
+	} else if !sortDesc {
+		orderBy = "t1.deleted_at ASC, t1.id DESC"
+	}
+
+	// 计算总数
+	var total int64
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM work t1 %s", whereClause)
+	if err := r.db.WithContext(ctx).Raw(countQuery, params...).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	query := fmt.Sprintf(`
+		SELECT t1.id, t1.site_id, t1.site_work_id, t1.site_work_name, t1.create_time, t1.deleted_at,
+			COALESCE(s.site_name, '') AS site_name,
+			(SELECT GROUP_CONCAT(COALESCE(la.author_name, sa.author_name), '、')
+				FROM re_work_author rwa
+				LEFT JOIN local_author la ON rwa.local_author_id = la.id
+				LEFT JOIN site_author sa ON rwa.site_author_id = sa.id
+				WHERE t1.id = rwa.work_id) AS author_names
+		FROM work t1
+		LEFT JOIN site s ON t1.site_id = s.id
+		%s
+		ORDER BY %s
+		LIMIT %d OFFSET %d
+	`, whereClause, orderBy, pageSize, offset)
+
+	rows, err := r.db.WithContext(ctx).Raw(query, params...).Rows()
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var results []*dto2.RecycleWorkDTO
+	for rows.Next() {
+		var item dto2.RecycleWorkDTO
+		var siteId sql.NullInt64
+		var siteWorkId, workName, authorNames sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&siteId,
+			&siteWorkId,
+			&workName,
+			&item.CreateTime,
+			&item.DeleteTime,
+			&item.SiteName,
+			&authorNames,
+		); err != nil {
+			return nil, 0, err
+		}
+		if siteId.Valid {
+			v := siteId.Int64
+			item.SiteID = &v
+		}
+		if siteWorkId.Valid {
+			v := siteWorkId.String
+			item.SiteWorkID = &v
+		}
+		if workName.Valid {
+			v := workName.String
+			item.WorkName = &v
+		}
+		if authorNames.Valid {
+			item.AuthorNames = authorNames.String
+		}
+		results = append(results, &item)
+	}
+	return results, total, nil
 }
