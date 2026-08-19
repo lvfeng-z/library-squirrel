@@ -54,7 +54,7 @@ func TestPrefixMatch(t *testing.T) {
 		{"store/resource/作者", true},           // 目录自身
 		{"store/resource/作者X/z.jpg", false},   // 同前缀串但非祖先（分隔符边界）
 		{"store/resource/其他/w.jpg", false},    // 兄弟目录
-		{"store/thumbnail/t.jpg", false},        // 无关
+		{"store/thumbnail/t.jpg", false},      // 无关
 	}
 	for _, c := range cases {
 		if got := IsSuppressed(c.path); got != c.want {
@@ -72,10 +72,10 @@ func TestDescendantMatch(t *testing.T) {
 		want bool
 	}{
 		{"store/resource/作者", true},  // 父目录（后代匹配）
-		{"store/resource", true},       // 祖父目录（后代匹配）
-		{"store", true},                // 根（后代匹配）
+		{"store/resource", true},     // 祖父目录（后代匹配）
+		{"store", true},              // 根（后代匹配）
 		{"store/resource/其他", false}, // 兄弟（无后代关系）
-		{"store/thumbnail", false},     // 无关
+		{"store/thumbnail", false},   // 无关
 	}
 	for _, c := range cases {
 		if got := IsSuppressed(c.path); got != c.want {

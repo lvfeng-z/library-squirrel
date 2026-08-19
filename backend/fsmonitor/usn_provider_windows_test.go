@@ -59,9 +59,9 @@ func TestPairAndResolve_FileRename(t *testing.T) {
 func TestPairAndResolve_NonAdjacentRename(t *testing.T) {
 	cache := newCache(map[uint64]string{100: "store/resource"})
 	out := pairAndResolve([]usnRecord{
-		urec(1, 100, usnReasonRenameOld, false, "old.jpg"),     // OLD（FRN=1）
-		urec(2, 100, usnReasonFileCreate, false, "other.jpg"),  // 无关 create（FRN=2）
-		urec(1, 100, usnReasonRenameNew, false, "new.jpg"),     // NEW（FRN=1，与 OLD 非相邻）
+		urec(1, 100, usnReasonRenameOld, false, "old.jpg"),    // OLD（FRN=1）
+		urec(2, 100, usnReasonFileCreate, false, "other.jpg"), // 无关 create（FRN=2）
+		urec(1, 100, usnReasonRenameNew, false, "new.jpg"),    // NEW（FRN=1，与 OLD 非相邻）
 	}, cache)
 	if len(out) != 2 {
 		t.Fatalf("期望 2 条（Move + Create），got %d: %+v", len(out), out)

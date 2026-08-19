@@ -50,9 +50,9 @@ type StoreStandard struct {
 // ResourceTypeSpec 资源类型规约:该类型资源的结构角色组合(含基数)、
 // 展示主体优先级、各角色文件标准。
 type ResourceTypeSpec struct {
-	ResourceType   string                  // 资源类型值(对应 ResourceType* 常量)
-	Roles          []StoreRoleSpec         // 结构角色 + 基数(完整性校验)
-	PrimaryRoles   []string                // 展示主体优先级链(高→低,ResolvePrimaryStore 取第一个实际存在)
+	ResourceType   string                   // 资源类型值(对应 ResourceType* 常量)
+	Roles          []StoreRoleSpec          // 结构角色 + 基数(完整性校验)
+	PrimaryRoles   []string                 // 展示主体优先级链(高→低,ResolvePrimaryStore 取第一个实际存在)
 	StoreStandards map[string]StoreStandard // key=StoreType
 }
 

@@ -1,15 +1,15 @@
 package merge
 
 import (
-	"os"
-	"fmt"
-	"time"
 	"bytes"
-	"errors"
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
-	"os/exec"
+	"time"
 )
 
 // 错误定义
@@ -55,7 +55,7 @@ func (m *FFmpegMuxer) WithTimeout(d time.Duration) *FFmpegMuxer {
 // 产物写到 outPath（调用方负责 outPath 唯一性与父目录存在）。
 // onProgress 在合并过程中被回调上报百分比（0~99，nil 表示不上报），合并成功后回调 100；
 // 无总时长可解析时不回调（调用方维持不定态展示）。视频轨或音频轨无效、ffmpeg 失败、或合并被中断
-//（超时/取消），均返回携带诊断信息的错误；任何失败路径都会清理 outPath 处的残留产物。
+// （超时/取消），均返回携带诊断信息的错误；任何失败路径都会清理 outPath 处的残留产物。
 func (m *FFmpegMuxer) MergeRemux(ctx context.Context, videoPath, audioPath, outPath string, onProgress func(percent int)) error {
 	// 合并超时与调用方 ctx 共同决定子进程生命周期：先到期者触发中断
 	ctx, cancel := context.WithTimeout(ctx, m.timeout)

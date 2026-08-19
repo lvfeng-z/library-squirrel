@@ -1,13 +1,13 @@
 package merge
 
 import (
-	"os"
-	"time"
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
-	"path/filepath"
+	"time"
 )
 
 // skipIfNoFFmpeg 返回 ffmpeg 路径；系统未安装时跳过当前测试。

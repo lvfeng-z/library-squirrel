@@ -13,13 +13,13 @@ import (
 func TestNeedBundledUpgrade(t *testing.T) {
 	bundled := sql.NullString{String: SourceBundled, Valid: true}
 	tests := []struct {
-		name        string
-		source      sql.NullString
-		buildID     sql.NullString
-		version     sql.NullString
-		zipBuildID  string
-		zipVersion  string
-		want        bool
+		name       string
+		source     sql.NullString
+		buildID    sql.NullString
+		version    sql.NullString
+		zipBuildID string
+		zipVersion string
+		want       bool
 	}{
 		{"bundled 且 buildId 一致，跳过", bundled, ns("v1.0.0"), ns("1.0.0"), "v1.0.0", "1.0.0", false},
 		{"bundled 且 buildId 变化，重装", bundled, ns("v1.0.0"), ns("1.0.0"), "v1.0.0-3-ga1b2c3d", "1.0.0", true},

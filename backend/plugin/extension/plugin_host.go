@@ -11,10 +11,10 @@ import (
 // hostPluginCallbacks 提供 HostDeps 注册回调的实现
 // 在 loader.go 中通过 HostDeps.OnRegisterTaskHandler 等字段注入
 type hostPluginCallbacks struct {
-	pluginInfo           *PluginInfo
-	serviceAccessor      ServiceAccessor
-	taskHandlerRegistry  *TaskHandlerRegistry
-	siteBrowserRegistry  *SiteBrowserRegistry
+	pluginInfo          *PluginInfo
+	serviceAccessor     ServiceAccessor
+	taskHandlerRegistry *TaskHandlerRegistry
+	siteBrowserRegistry *SiteBrowserRegistry
 }
 
 func newHostPluginCallbacks(
@@ -24,10 +24,10 @@ func newHostPluginCallbacks(
 	siteBrowserRegistry *SiteBrowserRegistry,
 ) *hostPluginCallbacks {
 	return &hostPluginCallbacks{
-		pluginInfo:           pluginInfo,
-		serviceAccessor:      serviceAccessor,
-		taskHandlerRegistry:  taskHandlerRegistry,
-		siteBrowserRegistry:  siteBrowserRegistry,
+		pluginInfo:          pluginInfo,
+		serviceAccessor:     serviceAccessor,
+		taskHandlerRegistry: taskHandlerRegistry,
+		siteBrowserRegistry: siteBrowserRegistry,
 	}
 }
 
@@ -35,7 +35,7 @@ func (c *hostPluginCallbacks) onRegisterTaskHandler(extensionId, name, descripti
 	proxy := &TaskHandlerProxy{
 		serviceAccessor: c.serviceAccessor,
 		pluginPublicId:  c.pluginInfo.PublicID,
-		extensionId:  extensionId,
+		extensionId:     extensionId,
 	}
 
 	metadata := model.ExtensionMetadata{
@@ -59,7 +59,7 @@ func (c *hostPluginCallbacks) onRegisterSiteBrowser(extensionId, name, descripti
 	proxy := &SiteBrowserProxy{
 		serviceAccessor: c.serviceAccessor,
 		pluginPublicId:  c.pluginInfo.PublicID,
-		extensionId:  extensionId,
+		extensionId:     extensionId,
 	}
 
 	metadata := model.ExtensionMetadata{

@@ -227,8 +227,8 @@ type CreateTaskRequest struct {
 
 // TreeDataPageDTO 任务树数据分页DTO
 type TreeDataPageDTO struct {
-	TreeID   int64                         `json:"treeId"`
-	TreeName string                        `json:"treeName"`
-	Total    int64                         `json:"total"`
+	TreeID   int64                  `json:"treeId"`
+	TreeName string                 `json:"treeName"`
+	Total    int64                  `json:"total"`
 	Tasks    []*TaskProgressTreeDTO `json:"tasks"`
 }

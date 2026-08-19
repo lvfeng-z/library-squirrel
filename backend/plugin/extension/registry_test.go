@@ -10,8 +10,8 @@ import (
 
 // mockPusher 捕获推送调用的契约测试替身
 type mockPusher struct {
-	registered       []FrontendExtensionResponse
-	unregistered     []FrontendExtensionUnregisterItem
+	registered        []FrontendExtensionResponse
+	unregistered      []FrontendExtensionUnregisterItem
 	batchUnregistered [][]FrontendExtensionUnregisterItem
 }
 

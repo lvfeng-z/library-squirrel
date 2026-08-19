@@ -22,9 +22,9 @@ func NewService(registry *extension.SiteBrowserRegistry) *Service {
 // PageResult 分页结果
 type PageResult struct {
 	Data       []*dto.SiteBrowserDTO `json:"data"`
-	PageNumber int                      `json:"pageNumber"`
-	PageSize   int                      `json:"pageSize"`
-	Total      int                      `json:"total"`
+	PageNumber int                   `json:"pageNumber"`
+	PageSize   int                   `json:"pageSize"`
+	Total      int                   `json:"total"`
 }
 
 // List 获取所有站点浏览器
@@ -105,7 +105,7 @@ func (s *Service) Open(pluginPublicId, extensionId string) error {
 // toDTO 将扩展转换为DTO
 func toDTO(ext *model.Extension[sdkdto.SiteBrowser]) *dto.SiteBrowserDTO {
 	return &dto.SiteBrowserDTO{
-		ExtensionID: ext.Metadata.ID,
+		ExtensionID:    ext.Metadata.ID,
 		PluginPublicID: ext.Metadata.PluginPublicID,
 		Name:           ext.Metadata.Name,
 		PluginID:       ext.Metadata.PluginID,

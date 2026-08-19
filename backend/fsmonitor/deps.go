@@ -12,7 +12,9 @@ import (
 // 提供能力：基于操作系统持久变更日志追溯应用未运行期间发生的精确变更，
 // 区别于全量对账(对账只发现"当前状态不一致"，无法区分"本次离线变的"还是"历史遗留")。
 // 平台实现：Windows(USN Journal，NTFS 卷级持久变更日志)可实现；
-//           Linux/macOS 无原生等价 → 不注入，退化为全量对账。
+//
+//	Linux/macOS 无原生等价 → 不注入，退化为全量对账。
+//
 // 首版接口预留，暂不实现。
 type OfflineChangeProvider interface {
 	// ChangesSince 从给定游标续读变更，返回离线期间变更列表与新游标。

@@ -28,8 +28,9 @@ import (
 var ErrCursorInvalid = errors.New("USN 游标失效：续读起点已被 journal 覆盖")
 
 // FSCTL 常量（x/sys/windows 未导出卷级 USN 码，按 winioctl.h CTL_CODE 自算；取自已验证 PoC e9ee2d1）：
-//   FSCTL_QUERY_USN_JOURNAL = CTL_CODE(9, 61, METHOD_BUFFERED, 0) = 0x000900F4
-//   FSCTL_READ_USN_JOURNAL  = CTL_CODE(9, 46, METHOD_NEITHER, 0) = 0x000900BB  ← METHOD_NEITHER（输出须堆缓冲）
+//
+//	FSCTL_QUERY_USN_JOURNAL = CTL_CODE(9, 61, METHOD_BUFFERED, 0) = 0x000900F4
+//	FSCTL_READ_USN_JOURNAL  = CTL_CODE(9, 46, METHOD_NEITHER, 0) = 0x000900BB  ← METHOD_NEITHER（输出须堆缓冲）
 const (
 	fsctlQueryUSNJournal = 0x000900F4
 	fsctlReadUSNJournal  = 0x000900BB
@@ -72,10 +73,10 @@ type readUSNJournalDataV1 struct {
 
 // usnProvider 基于 USN Journal 的 OfflineChangeProvider 实现。
 type usnProvider struct {
-	workDir string         // workDir 绝对路径（游标绑定 + 缓存遍历基准）
-	volume  string         // 卷设备路径 \\.\E:（从 workDir 推导）
-	cursors CursorStore    // USN 游标持久化（C-3），provider 持有（唯一能 QUERY 拿 UsnJournalID 者）
-	cache   *frnPathCache  // FRN→路径缓存（C-2），懒构建（首次有待读变更时）
+	workDir string        // workDir 绝对路径（游标绑定 + 缓存遍历基准）
+	volume  string        // 卷设备路径 \\.\E:（从 workDir 推导）
+	cursors CursorStore   // USN 游标持久化（C-3），provider 持有（唯一能 QUERY 拿 UsnJournalID 者）
+	cache   *frnPathCache // FRN→路径缓存（C-2），懒构建（首次有待读变更时）
 }
 
 // NewUsnProvider 创建 USN 离线追溯 provider（Windows）。非 Windows 见 usn_provider_other.go 桩。

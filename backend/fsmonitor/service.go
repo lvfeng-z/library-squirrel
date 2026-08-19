@@ -21,7 +21,7 @@ type EventEmitter interface {
 // 持有平台依赖集合(Deps)，编排实时事件源/关联/通知/修复。
 type Service struct {
 	deps          *Deps
-	correlator    *Correlator   // 关联层（Fingerprinter + StoreReader 就绪时启用，否则 nil 降级）
+	correlator    *Correlator    // 关联层（Fingerprinter + StoreReader 就绪时启用，否则 nil 降级）
 	repair        *RepairManager // 修复层（StoreRepairer 就绪时启用，否则 nil 仅通知）
 	workDirGetter func() string
 	emitter       func() EventEmitter // 闭包延迟读取，避开初始化时序(SetEventEmitter 之前)

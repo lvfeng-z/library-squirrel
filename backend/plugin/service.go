@@ -117,7 +117,7 @@ type Service struct {
 	extensionListProvider ExtensionListProvider
 	urlListenerProvider   UrlListenerProvider
 
-	pendingMu       sync.Mutex                     // 检查更新待办列表互斥锁（含执行中守卫）
+	pendingMu       sync.Mutex                      // 检查更新待办列表互斥锁（含执行中守卫）
 	pendingUpgrades map[string]*pendingUpgradeEntry // 启动期检测出的更新待办（内存态，重启重检）
 }
 

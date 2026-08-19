@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
-	entity "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/base/logger"
+	entity "github.com/library-squirrel/backend/base/model/entity"
 )
 
 // TestMain 测试环境挂 nop logger（生产 logger 由应用启动时 Init，测试中为 nil）
@@ -88,11 +88,11 @@ func TestCompareVersion(t *testing.T) {
 	}{
 		{"1.0.0", "1.0.0", 0},
 		{"1.0.0", "1.1.0", -1},
-		{"1.10.0", "1.9.0", 1},  // 数值比较，非字典序
-		{"1.0", "1.0.0", -1},    // 缺段视为最小
-		{"", "1.0.0", -1},       // 空串最小
+		{"1.10.0", "1.9.0", 1}, // 数值比较，非字典序
+		{"1.0", "1.0.0", -1},   // 缺段视为最小
+		{"", "1.0.0", -1},      // 空串最小
 		{"1.0.0", "", 1},
-		{"v1.0", "1.0", 1},      // 非数字段按字符串比较
+		{"v1.0", "1.0", 1}, // 非数字段按字符串比较
 		{"1.0.0-beta", "1.0.0-alpha", 1},
 	}
 	for _, tt := range tests {

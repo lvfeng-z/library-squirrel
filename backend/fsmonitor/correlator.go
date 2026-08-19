@@ -26,8 +26,8 @@ const (
 
 // StoreRecord persistent_store 记录的精简视图（由 StoreReader 返回，避免关联层依赖 domain 实体）
 type StoreRecord struct {
-	ID                int64
-	FilePath          string // 相对 workDir
+	ID                 int64
+	FilePath           string // 相对 workDir
 	ContentFingerprint string
 }
 

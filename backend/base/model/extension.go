@@ -14,12 +14,12 @@ const (
 
 // ExtensionMetadata 扩展点元数据（三类共用）
 type ExtensionMetadata struct {
-	Type           ExtensionType `json:"type"`                   // 扩展点类型
-	ID             string        `json:"extensionId"`            // 扩展点ID
-	PluginID       int64         `json:"pluginId"`               // 插件数据库ID
-	PluginPublicID string        `json:"pluginPublicId"`         // 插件公开ID
-	Name           string        `json:"name"`                   // 扩展点名称
-	Description    string        `json:"description,omitempty"`  // 扩展点描述
+	Type           ExtensionType `json:"type"`                  // 扩展点类型
+	ID             string        `json:"extensionId"`           // 扩展点ID
+	PluginID       int64         `json:"pluginId"`              // 插件数据库ID
+	PluginPublicID string        `json:"pluginPublicId"`        // 插件公开ID
+	Name           string        `json:"name"`                  // 扩展点名称
+	Description    string        `json:"description,omitempty"` // 扩展点描述
 }
 
 // Extension 扩展点（实例 + 元数据组合）

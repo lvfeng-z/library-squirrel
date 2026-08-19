@@ -17,8 +17,8 @@ type PluginTaskUrlListener struct {
 // PluginWithExtension 带贡献点的插件
 type PluginWithExtension struct {
 	*domain.Plugin
-	ExtensionKey  string // 贡献点类型
-	ExtensionID string // 贡献点ID
+	ExtensionKey string // 贡献点类型
+	ExtensionID  string // 贡献点ID
 }
 
 // Manager 插件任务URL监听器管理器

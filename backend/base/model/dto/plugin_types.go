@@ -23,59 +23,59 @@ type PluginActivation struct {
 
 // PluginManifest 插件清单（从 plugin.json 解析）
 type PluginManifest struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	Version         string            `json:"version"`
-	BuildID         string            `json:"buildId,omitempty"` // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
-	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author          string            `json:"author"`
-	Description     string            `json:"description,omitempty"`
-	Extensions      *PluginExtensions `json:"extensions"`
-	Activation      PluginActivation  `json:"activation"`
-	EntryFile       string            `json:"entryFile"`
-	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力（内置枚举,可随主程序版本扩展;主程序加载时读取,未声明者跳过对应能力调用）
-	ResourceTypes []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(须配合 capabilities 含 resourceTypeProvider 通行证)
+	ID                  string                    `json:"id"`
+	Name                string                    `json:"name"`
+	Version             string                    `json:"version"`
+	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string                    `json:"author"`
+	Description         string                    `json:"description,omitempty"`
+	Extensions          *PluginExtensions         `json:"extensions"`
+	Activation          PluginActivation          `json:"activation"`
+	EntryFile           string                    `json:"entryFile"`
+	Capabilities        []string                  `json:"capabilities,omitempty"`  // 声明的可选能力（内置枚举,可随主程序版本扩展;主程序加载时读取,未声明者跳过对应能力调用）
+	ResourceTypes       []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(须配合 capabilities 含 resourceTypeProvider 通行证)
 }
 
 // PluginInstallDTO 插件安装数据传输对象
 type PluginInstallDTO struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	Version         string            `json:"version"`
-	BuildID         string            `json:"buildId,omitempty"` // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int               `json:"contractVersion"` // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
-	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author          string            `json:"author"`
-	Description     string            `json:"description,omitempty"`
-	Extensions      *PluginExtensions `json:"extensions"`
-	Activation      PluginActivation  `json:"activation"`
-	EntryFile       string            `json:"entryFile"`
-	Capabilities    []string          `json:"capabilities,omitempty"` // 声明的可选能力
-	ResourceTypes []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(透传 manifest)
-	PackagePath     string            `json:"packagePath,omitempty"`
-	PublicID        string            `json:"publicId,omitempty"`
+	ID                  string                    `json:"id"`
+	Name                string                    `json:"name"`
+	Version             string                    `json:"version"`
+	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string                    `json:"author"`
+	Description         string                    `json:"description,omitempty"`
+	Extensions          *PluginExtensions         `json:"extensions"`
+	Activation          PluginActivation          `json:"activation"`
+	EntryFile           string                    `json:"entryFile"`
+	Capabilities        []string                  `json:"capabilities,omitempty"`  // 声明的可选能力
+	ResourceTypes       []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(透传 manifest)
+	PackagePath         string                    `json:"packagePath,omitempty"`
+	PublicID            string                    `json:"publicId,omitempty"`
 }
 
 // ToPluginInstallDTO 转换为安装DTO。publicId 即插件 id（纯反向域名，全局唯一身份键），
 // author 是纯展示属性、不参与身份
 func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDTO {
 	return &PluginInstallDTO{
-		ID:              p.ID,
-		Name:            p.Name,
-		Version:         p.Version,
-		BuildID:         p.BuildID,
-		ContractVersion: p.ContractVersion,
+		ID:                  p.ID,
+		Name:                p.Name,
+		Version:             p.Version,
+		BuildID:             p.BuildID,
+		ContractVersion:     p.ContractVersion,
 		ConfigSchemaVersion: p.ConfigSchemaVersion,
-		Author:          p.Author,
-		Description:     p.Description,
-		Extensions:      p.Extensions,
-		Activation:      p.Activation,
-		EntryFile:       p.EntryFile,
-		Capabilities:    p.Capabilities,
-		ResourceTypes:   p.ResourceTypes,
-		PackagePath:     packagePath,
-		PublicID:        p.ID,
+		Author:              p.Author,
+		Description:         p.Description,
+		Extensions:          p.Extensions,
+		Activation:          p.Activation,
+		EntryFile:           p.EntryFile,
+		Capabilities:        p.Capabilities,
+		ResourceTypes:       p.ResourceTypes,
+		PackagePath:         packagePath,
+		PublicID:            p.ID,
 	}
 }
 

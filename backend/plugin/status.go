@@ -8,8 +8,8 @@ type PluginStatusDTO struct {
 	ActivatedAt int64 `json:"activatedAt"` // Unix 毫秒，0 表示未激活
 
 	// 扩展点列表
-	TaskHandlers       []ExtensionInfo        `json:"taskHandlers"`
-	SiteBrowsers       []ExtensionInfo        `json:"siteBrowsers"`
+	TaskHandlers       []ExtensionInfo         `json:"taskHandlers"`
+	SiteBrowsers       []ExtensionInfo         `json:"siteBrowsers"`
 	FrontendExtensions []FrontendExtensionInfo `json:"frontendExtensions"`
 
 	// URL 监听规则

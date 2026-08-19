@@ -7,25 +7,25 @@ import (
 
 // PluginDTO 插件
 type PluginDTO struct {
-	ID             int64   `json:"id"`
-	PublicID       *string `json:"publicId"`
-	Author         *string `json:"author"`
-	Name           *string `json:"name"`
-	Version        *string `json:"version"`
-	Description    *string `json:"description"`
-	Changelog      *string `json:"changelog"`
-	EntryPath      *string `json:"entryPath"`
-	RootPath       *string `json:"rootPath"`
-	BackupID       *int64  `json:"backupId"`
-	SortNum        *int64  `json:"sortNum"`
-	Uninstalled    *bool   `json:"uninstalled"`
-	ActivationType *string `json:"activationType"`
-	Source         *string `json:"source"`        // 来源枚举 bundled/local/url/marketplace
-	SourceDetail   *string `json:"sourceDetail"`  // 来源详情（安装包路径/URL）
+	ID                     int64   `json:"id"`
+	PublicID               *string `json:"publicId"`
+	Author                 *string `json:"author"`
+	Name                   *string `json:"name"`
+	Version                *string `json:"version"`
+	Description            *string `json:"description"`
+	Changelog              *string `json:"changelog"`
+	EntryPath              *string `json:"entryPath"`
+	RootPath               *string `json:"rootPath"`
+	BackupID               *int64  `json:"backupId"`
+	SortNum                *int64  `json:"sortNum"`
+	Uninstalled            *bool   `json:"uninstalled"`
+	ActivationType         *string `json:"activationType"`
+	Source                 *string `json:"source"`                 // 来源枚举 bundled/local/url/marketplace
+	SourceDetail           *string `json:"sourceDetail"`           // 来源详情（安装包路径/URL）
 	UpgradeDeclinedBuildID *string `json:"upgradeDeclinedBuildId"` // 用户拒绝升级的目标 buildId（非空=已跳过该构建，管理页渲染「已跳过」并提供重新提示）
-	Trusted        *bool   `json:"trusted"`       // 信任标记；false=未信任（未激活，需手动信任）
-	CreateTime     int64   `json:"createTime"`
-	UpdateTime     int64   `json:"updateTime"`
+	Trusted                *bool   `json:"trusted"`                // 信任标记；false=未信任（未激活，需手动信任）
+	CreateTime             int64   `json:"createTime"`
+	UpdateTime             int64   `json:"updateTime"`
 }
 
 // NewPluginDTO 从 entity.Plugin 创建 PluginDTO
@@ -34,25 +34,25 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		return nil
 	}
 	return &PluginDTO{
-		ID:             plugin.GetID(),
-		PublicID:       util.NullStringToPointer(plugin.PublicID),
-		Author:         util.NullStringToPointer(plugin.Author),
-		Name:           util.NullStringToPointer(plugin.Name),
-		Version:        util.NullStringToPointer(plugin.Version),
-		Description:    util.NullStringToPointer(plugin.Description),
-		Changelog:      util.NullStringToPointer(plugin.Changelog),
-		EntryPath:      util.NullStringToPointer(plugin.EntryPath),
-		RootPath:       util.NullStringToPointer(plugin.RootPath),
-		BackupID:       util.NullInt64ToPointer(plugin.BackupID),
-		SortNum:        util.NullInt64ToPointer(plugin.SortNum),
-		Uninstalled:    util.NullBoolToPointer(plugin.Uninstalled),
-		ActivationType: util.NullStringToPointer(plugin.ActivationType),
-		Source:         util.NullStringToPointer(plugin.Source),
-		SourceDetail:   util.NullStringToPointer(plugin.SourceDetail),
+		ID:                     plugin.GetID(),
+		PublicID:               util.NullStringToPointer(plugin.PublicID),
+		Author:                 util.NullStringToPointer(plugin.Author),
+		Name:                   util.NullStringToPointer(plugin.Name),
+		Version:                util.NullStringToPointer(plugin.Version),
+		Description:            util.NullStringToPointer(plugin.Description),
+		Changelog:              util.NullStringToPointer(plugin.Changelog),
+		EntryPath:              util.NullStringToPointer(plugin.EntryPath),
+		RootPath:               util.NullStringToPointer(plugin.RootPath),
+		BackupID:               util.NullInt64ToPointer(plugin.BackupID),
+		SortNum:                util.NullInt64ToPointer(plugin.SortNum),
+		Uninstalled:            util.NullBoolToPointer(plugin.Uninstalled),
+		ActivationType:         util.NullStringToPointer(plugin.ActivationType),
+		Source:                 util.NullStringToPointer(plugin.Source),
+		SourceDetail:           util.NullStringToPointer(plugin.SourceDetail),
 		UpgradeDeclinedBuildID: util.NullStringToPointer(plugin.UpgradeDeclinedBuildID),
-		Trusted:        util.NullBoolToPointer(plugin.Trusted),
-		CreateTime:     plugin.GetCreateTime(),
-		UpdateTime:     plugin.GetUpdateTime(),
+		Trusted:                util.NullBoolToPointer(plugin.Trusted),
+		CreateTime:             plugin.GetCreateTime(),
+		UpdateTime:             plugin.GetUpdateTime(),
 	}
 }
 

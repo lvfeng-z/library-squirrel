@@ -510,17 +510,17 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 
 // PluginInfo 插件基本信息
 type PluginInfo struct {
-	ID              int64
-	PublicID        string
-	Name            string
-	Version         string
-	ContractVersion     int      // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
-	ConfigSchemaVersion int64    // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
-	Capabilities        []string // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
+	ID                  int64
+	PublicID            string
+	Name                string
+	Version             string
+	ContractVersion     int                           // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	ConfigSchemaVersion int64                         // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
+	Capabilities        []string                      // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
 	ResourceTypes       []dto.ResourceTypeDeclaration // 插件自定义资源类型声明(来自 manifest;声明 resourceTypeProvider 通行证时注册进 Registry)
-	Author          string
-	EntryPath       string
-	RootPath        string
+	Author              string
+	EntryPath           string
+	RootPath            string
 }
 
 // ========== HostDeps 适配器 ==========

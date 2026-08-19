@@ -3,8 +3,8 @@ package dto
 import (
 	"database/sql"
 
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/library-squirrel/backend/util"
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // ========== 本地作者扫描行 ==========
