@@ -53,11 +53,14 @@ func (r *BackupRepository) GetBySourceTypeAndSourceIds(ctx context.Context, sour
 	return backups, nil
 }
 
-// ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联）
-func (r *BackupRepository) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error) {
+// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录（软删除链的归属通路）
+func (r *BackupRepository) ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*entity.Backup, error) {
+	if len(originalRelPaths) == 0 {
+		return []*entity.Backup{}, nil
+	}
 	var backups []*entity.Backup
 	err := r.GORM().WithContext(ctx).Model(&entity.Backup{}).
-		Where("work_id = ?", workId).
+		Where("original_file_path IN ?", originalRelPaths).
 		Find(&backups).Error
 	if err != nil {
 		return nil, err

@@ -253,11 +253,15 @@ type ResourceDeleter interface {
 
 // StoreDeleter PersistentStore 删除接口
 type StoreDeleter interface {
-	// Delete 删除记录及对应文件
+	// HardDelete 删除记录及对应文件（物理删记录）
 	// backup: 是否对已完成文件进行移动备份
-	Delete(ctx context.Context, id int64, backup bool) (int64, error)
-	// DeleteWithBackup 删除 store 文件（移入 backup 并建含 work_id 归属的备份记录），保留 persistent_store 记录
-	DeleteWithBackup(ctx context.Context, id int64, workId int64) (int64, error)
+	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+	// DeleteWithBackup 删除 store 文件（移入 backup 建备份记录，记录随软删）
+	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
+	// ListFilePathsIncludeDeleted 按 ID 集合取 file_path（含已删行）
+	ListFilePathsIncludeDeleted(ctx context.Context, ids []int64) []string
+	// RestoreWorkStores 批量复活 store 记录（复原链：清软删标志）
+	RestoreWorkStores(ctx context.Context, ids []int64) error
 }
 
 // ResourceStoreHardDeleter resource_store 物理删除接口（作品彻底删除链级联清理）
@@ -528,7 +532,7 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 	// 事务后：删除磁盘文件（尽力而为，失败不影响业务）
 	if s.storeDeleter != nil {
 		for _, storeId := range storeIds {
-			s.storeDeleter.Delete(ctx, storeId, false)
+			s.storeDeleter.HardDelete(ctx, storeId, false)
 		}
 	}
 	return nil
@@ -570,7 +574,7 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 			if rsRow.StoreID <= 0 {
 				continue
 			}
-			if _, err := s.storeDeleter.DeleteWithBackup(ctx, rsRow.StoreID, workId); err != nil {
+			if _, err := s.storeDeleter.DeleteWithBackup(ctx, rsRow.StoreID); err != nil {
 				return err
 			}
 		}
@@ -606,6 +610,47 @@ func (s *Service) RestoreDeletedWork(ctx context.Context, id int64) error {
 // ListDeletedBefore 查询软删时间早于 expireBefore 的已删作品，供 TTL 清理
 func (s *Service) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.Work, error) {
 	return s.repo.ListDeletedBefore(ctx, expireBefore)
+}
+
+// ListWorkStoreFilePaths 取作品的全部 store 文件路径（含已删行；复原/彻底删除链反查 backup 的路径清单）
+func (s *Service) ListWorkStoreFilePaths(ctx context.Context, workId int64) []string {
+	storeIds, err := s.collectWorkStoreIds(ctx, workId)
+	if err != nil {
+		logger.Log.Warnf("收集作品 %d store ID 失败: %v", workId, err)
+		return []string{}
+	}
+	return s.storeDeleter.ListFilePathsIncludeDeleted(ctx, storeIds)
+}
+
+// collectWorkStoreIds 收集作品的全部 store ID（resource→resource_store 链）
+func (s *Service) collectWorkStoreIds(ctx context.Context, workId int64) ([]int64, error) {
+	resources, err := s.resourceDeleter.ListByWorkId(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	for _, res := range resources {
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	rsStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, resourceIds)
+	storeIds := make([]int64, 0)
+	for _, rsList := range rsStoreMap {
+		for _, rsRow := range rsList {
+			if rsRow.StoreID > 0 {
+				storeIds = append(storeIds, rsRow.StoreID)
+			}
+		}
+	}
+	return storeIds, nil
+}
+
+// RestoreWorkStores 复原作品的全部 store 记录（清软删标志；文件还原由 recycleBin 编排先行）
+func (s *Service) RestoreWorkStores(ctx context.Context, workId int64) error {
+	storeIds, err := s.collectWorkStoreIds(ctx, workId)
+	if err != nil {
+		return fmt.Errorf("收集作品 store 失败: %w", err)
+	}
+	return s.storeDeleter.RestoreWorkStores(ctx, storeIds)
 }
 
 // Page 分页查询

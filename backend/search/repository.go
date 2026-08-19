@@ -222,20 +222,20 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 					'storeType', rs.store_type, 'generation', rs.generation,
 					'store', JSON_OBJECT(
 						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
-						'filenameExtension', ps.filename_extension, 'status', ps.status,
+						'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at,
 						'createTime', ps.create_time, 'updateTime', ps.update_time)))
 					FROM resource_store rs
 					LEFT JOIN persistent_store ps ON rs.store_id = ps.id
 					WHERE rs.resource_id = r.id),
 				'workStore', COALESCE(
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'status', ps.status, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoMain' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'status', ps.status, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'image' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'status', ps.status, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'document' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'status', ps.status, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoTrack' LIMIT 1)
+					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoMain' LIMIT 1),
+					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'image' LIMIT 1),
+					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'document' LIMIT 1),
+					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoTrack' LIMIT 1)
 				),
 				'thumbnailStore', (SELECT JSON_OBJECT(
 						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
-						'filenameExtension', ps.filename_extension, 'status', ps.status,
+						'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at,
 						'createTime', ps.create_time, 'updateTime', ps.update_time)
 					FROM resource_store rs
 					INNER JOIN persistent_store ps ON rs.store_id = ps.id

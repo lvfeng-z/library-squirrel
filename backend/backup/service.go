@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,8 +39,8 @@ type Repository interface {
 	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
 	// GetBySourceTypeAndSourceIds 批量获取备份记录
 	GetBySourceTypeAndSourceIds(ctx context.Context, sourceType int, sourceIds []int64) ([]*entity.Backup, error)
-	// ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联）
-	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error)
+	// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录（软删除链的归属通路：路径即作品的 store 清单）
+	ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*entity.Backup, error)
 	// GetLatestByOriginalPath 按原始 store 路径查最近一条备份（无则 nil）
 	GetLatestByOriginalPath(ctx context.Context, originalRelPath string) (*entity.Backup, error)
 	// Delete 删除备份记录
@@ -73,7 +74,8 @@ func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
 	now := time.Now()
-	relativeDir := filepath.Join(
+	// relPath 域用 path.Join（正斜杠基准，入库/做键）；absPath 拼接才用 filepath.Join
+	relativeDir := path.Join(
 		BackupRootDirName,
 		fmt.Sprintf("%04d", now.Year()),
 		fmt.Sprintf("%02d", now.Month()),
@@ -111,7 +113,7 @@ func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int
 	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
 	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
 	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
-	backup.FilePath = sql.NullString{String: filepath.Join(relativeDir, finalFileName), Valid: true}
+	backup.FilePath = sql.NullString{String: path.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
 	if err := s.repo.Create(ctx, backup); err != nil {
 		return nil, err
@@ -139,7 +141,8 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
 	now := time.Now()
-	relativeDir := filepath.Join(
+	// relPath 域用 path.Join（正斜杠基准，入库/做键）；absPath 拼接才用 filepath.Join
+	relativeDir := path.Join(
 		BackupRootDirName,
 		fmt.Sprintf("%04d", now.Year()),
 		fmt.Sprintf("%02d", now.Month()),
@@ -183,7 +186,7 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
 	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
 	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
-	backup.FilePath = sql.NullString{String: filepath.Join(relativeDir, finalFileName), Valid: true}
+	backup.FilePath = sql.NullString{String: path.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
 	if err := s.repo.Create(ctx, backup); err != nil {
 		return nil, err
@@ -254,13 +257,12 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sou
 // originalFileName: 原始文件名
 // originalFilenameExtension: 原始扩展名
 // 返回备份记录 ID
-func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, workId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
+func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
 	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, absFilePath)
 	if err != nil {
 		return 0, err
 	}
-	// 记录归属作品与 PersistentStore 的原始路径信息，用于还原
-	backup.WorkID = sql.NullInt64{Int64: workId, Valid: workId > 0}
+	// 记录 PersistentStore 的原始路径信息，用于还原（复原/彻底删除按 original_file_path 反查聚合）
 	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
 	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
 	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
@@ -270,9 +272,10 @@ func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, workId int64
 	return backup.GetID(), nil
 }
 
-// ListByWorkId 查询作品的全部备份记录（软删除链写入的归属关联，文件级明细）
-func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Backup, error) {
-	return s.repo.ListByWorkId(ctx, workId)
+// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录
+// （软删除链的归属通路：作品 store 路径清单经 persistent_store 含删行取，再按 original_file_path 反查）
+func (s *Service) ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*entity.Backup, error) {
+	return s.repo.ListByOriginalPaths(ctx, originalRelPaths)
 }
 
 // ResolveBackupPathByOriginal 按原始 store 路径反查最近一条备份的文件绝对路径（无则空串）

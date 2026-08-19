@@ -6,7 +6,8 @@
 
 ## 边界
 
-- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录；backup 管备份副本与备份记录。persistentStore 经其自定义的 `FileMover` 接口消费 backup（app 装配注入），`Delete(id, backup=true)`（物理删除联动备份）与 `DeleteWithBackup(id, workId)`（作品软删除链的文件侧：移文件入 backup 并写 work_id 归属，persistent_store 记录原地保留）都经此移动文件。
+- **通用性约束（2026-08-19 复盘确立，work_id 已删列）**：backup 是领域无关能力包（MODULE_BOUNDARY_PURITY），表结构仅允许通用来源关联（source_type/source_id）与路径信息，**禁止业务实体身份键**——作品的备份归属经 original_file_path 反查表达（`ListByOriginalPaths`：作品 store 路径清单由 work 侧含删行收集后传入）。
+- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录；backup 管备份副本与备份记录。persistentStore 经其自定义的 `FileMover` 接口消费 backup（app 装配注入），`HardDelete(id, backup=true)`（物理删除联动备份）与 `DeleteWithBackup(id)`（作品软删除链的文件侧：移文件入 backup，persistent_store 记录随软删）都经此移动文件。
 - 与 **StoreBackupOrchestrator**：通用 Handler 处理单文件备份；Orchestrator 编排"作品级"的多 Store 批量备份 / 还原（板块隔离）。
 
 ## 对外接口（Handler）
@@ -23,7 +24,7 @@
 ## 核心概念
 
 - **sourceType**：备份来源类型（作品资源 / 插件数据等）。
-- **work_id 归属**：作品软删除链逐 store 建备份时写入 `backup.work_id`——复原（`ListByWorkId` 聚合取文件清单 → `RestoreFile` 还原回 store/ 原路径）与彻底删除（清文件与记录）都按此关联；任务板块重执行等其他来源的备份无归属（NULL），不在软删除链范围。
+- **归属通路（original_file_path 反查）**：复原与彻底删除按「作品 store 路径清单（work 侧经 persistent_store 含删行收集）→ `ListByOriginalPaths` IN 匹配」聚合备份；任务板块重执行等其他来源的备份不在软删除链范围。
 - **RestoreFile**：从备份绝对路径还原文件到目标绝对路径（存在则覆盖、跨盘回退复制）；目标在 store/ 监控白名单内的 fsmonitor 操作抑制由调用方负责（抑制键为相对路径，与绝对路径不同构）。
 - **StoreBackupOrchestrator**：封装作品 Resource 全部 PersistentStore 的一站式备份与还原。
   - `BackupStores(workId, types...)`：按 StoreType 板块隔离备份（如仅资源文件、不触及缩略图）。

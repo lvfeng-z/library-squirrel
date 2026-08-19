@@ -816,8 +816,8 @@ func (app *App) initBaseServices() {
 	app.PersistentStoreService = persistentStore.NewService(psRepo, app.BackupService, func() string {
 		return app.SettingsService.GetWorkDir()
 	})
-	app.StoreFileHandler.SetStatusChecker(app.PersistentStoreService)
-	// /store/ 兜底：软删作品的文件已移 backup/，按 original_file_path 反查服务
+	app.StoreFileHandler.SetStateResolver(app.PersistentStoreService)
+	// /store/ 状态路由：软删记录的文件在 backup/，按 original_file_path 反查服务
 	app.StoreFileHandler.SetBackupResolver(app.BackupService)
 
 	// reWorkAuthor 服务
@@ -1148,8 +1148,8 @@ func (a *storeRepairerAdapter) UpdateFilePath(ctx context.Context, id int64, new
 	return a.svc.UpdateFilePath(ctx, id, newFilePath)
 }
 
-func (a *storeRepairerAdapter) MarkInvalid(ctx context.Context, id int64, invalidAt int64) error {
-	return a.svc.MarkInvalid(ctx, id, invalidAt)
+func (a *storeRepairerAdapter) MarkInvalid(ctx context.Context, id int64) error {
+	return a.svc.MarkInvalid(ctx, id)
 }
 
 func (a *storeRepairerAdapter) RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error) {

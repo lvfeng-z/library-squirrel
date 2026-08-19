@@ -35,6 +35,12 @@ type Repository interface {
 	List(ctx context.Context, opt *database.QueryOption) ([]*domain.PersistentStore, error)
 	// GetByFilePath 根据路径获取记录
 	GetByFilePath(ctx context.Context, filePath string) (*domain.PersistentStore, error)
+	// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）
+	ResetCompleted(ctx context.Context, id int64) error
+	// DeleteUnscoped 物理删除记录（绕过软删改写；软删仅作品软删链经 DeleteWithBackup/MarkInvalid 使用）
+	DeleteUnscoped(ctx context.Context, id int64) error
+	// RestoreByIds 批量清软删标志（复原链复活记录）
+	RestoreByIds(ctx context.Context, ids []int64) error
 	// Delete 删除记录
 	Delete(ctx context.Context, id int64) error
 	// ExistsByFilePath 检查文件路径是否已存在记录
@@ -112,10 +118,10 @@ func (w *storeWriter) Complete() error {
 
 	// 提取图片宽高（用构造时缓存的路径，无需读回 DB 记录）
 	width, height := tryDecodeImageDimensions(w.filePath, w.ext, w.workDirGetter())
-	// 仅写 Status + 宽高 + 指纹，其余字段靠 Updates 跳零值保留
+	// 仅写 completed_at + 宽高 + 指纹，其余字段靠 Updates 跳零值保留
 	record := domain.NewPersistentStore()
 	record.SetID(w.storeId)
-	record.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
+	record.CompletedAt = util.GetCurrentTimestamp()
 	record.Width = width
 	record.Height = height
 	if w.fingerprinter != nil && w.filePath.Valid {
@@ -150,7 +156,7 @@ func (w *storeWriter) Abort() error {
 	}
 
 	// 删除 DB 记录
-	if err := w.repo.Delete(context.Background(), w.storeId); err != nil {
+	if err := w.repo.DeleteUnscoped(context.Background(), w.storeId); err != nil {
 		logger.Log.Error("Abort 时删除记录失败", zap.Int64("storeId", w.storeId), zap.Error(err))
 		return err
 	}
@@ -187,13 +193,12 @@ func fillImageDimensions(store *domain.PersistentStore, workDir string) {
 type FileMover interface {
 	// MoveToBackup 将文件移动到备份目录并创建备份记录
 	// sourceId: PersistentStore 记录 ID
-	// workId: 归属作品 ID（写入 backup.work_id；0 = 无归属）
 	// absFilePath: 源文件绝对路径
 	// originalFilePath: PersistentStore 中的相对路径（用于还原）
 	// originalFileName: 原始文件名
 	// originalFilenameExtension: 原始扩展名
 	// 返回备份记录 ID
-	MoveToBackup(ctx context.Context, sourceId int64, workId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
+	MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error)
 }
 
 // Service 文件存取服务
@@ -242,13 +247,10 @@ func (s *Service) UpdateFilePath(ctx context.Context, id int64, newFilePath stri
 	return s.repo.Updates(ctx, record)
 }
 
-// MarkInvalid 置记录失效（软删除：外部删除且用户不复原 / 移出 workDir）
-// 仅置 invalid_at 时间戳，记录保留可追溯
-func (s *Service) MarkInvalid(ctx context.Context, id int64, invalidAt int64) error {
-	record := domain.NewPersistentStore()
-	record.SetID(id)
-	record.InvalidAt = invalidAt
-	return s.repo.Updates(ctx, record)
+// MarkInvalid 置记录失效（外部删除且用户不复原 / 移出 workDir 的用户裁决）
+// 经记录级软删（deleted_at 打时间戳）实现，行保留可追溯；invalid_at 列已退役并入 deleted_at
+func (s *Service) MarkInvalid(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
 }
 
 // BackfillFingerprints 存量指纹回填：扫描所有 Status=Complete 但 ContentFingerprint 缺失的记录，
@@ -271,7 +273,7 @@ func (s *Service) runBackfillFingerprints(ctx context.Context) {
 	filled := 0
 	for _, r := range records {
 		// 仅回填已完成且指纹缺失的记录
-		if !r.Status.Valid || r.Status.Int64 != domain.StoreStatusComplete {
+		if r.CompletedAt == 0 {
 			continue
 		}
 		if r.ContentFingerprint.Valid {
@@ -348,6 +350,9 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 	storeRegistry.Suppress(relPath)
 	defer storeRegistry.Release(relPath)
 
+	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：查旧/抑制登记/落库全程与 DB 基准一致
+	relPath = filepath.ToSlash(relPath)
+
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, relPath)
 
@@ -387,11 +392,16 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 		existing.FileName.String = fileName
 		existing.FilenameExtension.Valid = true
 		existing.FilenameExtension.String = ext
-		existing.Status = sql.NullInt64{Int64: domain.StoreStatusIncomplete, Valid: true}
+		// completed_at 置 0（续传重置为未完成）是合法业务零值，GORM Updates 会跳过，经显式列更新补写
 		if err := s.repo.Updates(ctx, existing); err != nil {
 			file.Close()
 			os.Remove(absPath)
 			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
+		}
+		if err := s.repo.ResetCompleted(ctx, existing.GetID()); err != nil {
+			file.Close()
+			os.Remove(absPath)
+			return 0, nil, fmt.Errorf("重置未完成状态失败: %w", err)
 		}
 		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: existing.FilePath, ext: existing.FilenameExtension, fingerprinter: s.fingerprinter}
 		return existing.GetID(), sw, nil
@@ -405,7 +415,6 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = sql.NullInt64{Int64: domain.StoreStatusIncomplete, Valid: true}
 
 	if err := s.repo.Create(ctx, store); err != nil {
 		file.Close()
@@ -429,8 +438,8 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64)
 	if record == nil {
 		return nil, fmt.Errorf("记录不存在: storeId=%d", storeId)
 	}
-	if !record.Status.Valid || record.Status.Int64 != domain.StoreStatusIncomplete {
-		return nil, fmt.Errorf("记录已完成，无法恢复: storeId=%d, status=%d", storeId, record.Status.Int64)
+	if record.CompletedAt != 0 {
+		return nil, fmt.Errorf("记录已完成，无法恢复: storeId=%d, completed_at=%d", storeId, record.CompletedAt)
 	}
 
 	// 2. 获取绝对路径
@@ -469,6 +478,9 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 	}
 	storeRegistry.Suppress(relPath)
 	defer storeRegistry.Release(relPath)
+
+	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：查旧/抑制登记/落库全程与 DB 基准一致
+	relPath = filepath.ToSlash(relPath)
 
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, relPath)
@@ -516,7 +528,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 		existing.FileName.String = fileName
 		existing.FilenameExtension.Valid = true
 		existing.FilenameExtension.String = ext
-		existing.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
+		existing.CompletedAt = util.GetCurrentTimestamp()
 		fillImageDimensions(existing, workDir)
 		s.fillFingerprint(existing, absPath)
 		if err := s.repo.Updates(ctx, existing); err != nil {
@@ -533,7 +545,7 @@ func (s *Service) Store(ctx context.Context, relPath string, fileName string, re
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
+	store.CompletedAt = util.GetCurrentTimestamp()
 	fillImageDimensions(store, workDir)
 	s.fillFingerprint(store, absPath)
 
@@ -573,9 +585,8 @@ func (s *Service) GetByFingerprint(ctx context.Context, fingerprint string, excl
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "content_fingerprint", Value: fingerprint},
 			clause.Neq{Column: "file_path", Value: excludePath},
-			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Expr{SQL: "completed_at > 0"},
 			clause.Eq{Column: "invalid_at", Value: 0},
-			notDeletedWorkCond,
 		},
 		Limit: 1,
 	}
@@ -595,9 +606,8 @@ func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "file_path", Value: filePath},
-			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Expr{SQL: "completed_at > 0"},
 			clause.Eq{Column: "invalid_at", Value: 0},
-			notDeletedWorkCond,
 		},
 		Limit: 1,
 	}
@@ -615,18 +625,12 @@ func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*
 func (s *Service) ListValidComplete(ctx context.Context) ([]*domain.PersistentStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
-			clause.Eq{Column: "status", Value: domain.StoreStatusComplete},
+			clause.Expr{SQL: "completed_at > 0"},
 			clause.Eq{Column: "invalid_at", Value: 0},
-			notDeletedWorkCond,
 		},
 	}
 	return s.repo.List(ctx, opt)
 }
-
-// notDeletedWorkCond 排除已软删作品的 store 行：fsmonitor 关联/对账不感知已删作品——
-// 其文件软删期间位于 backup/（监控白名单外），store 记录若被对账命中会误报「记录在文件无」缺失，
-// 修复动作会破坏复原。非作品资源（头像等，无 resource→work 链）不受影响。
-var notDeletedWorkCond = clause.Expr{SQL: "NOT EXISTS (SELECT 1 FROM resource_store rs JOIN resource r ON rs.resource_id = r.id JOIN work w ON r.work_id = w.id WHERE rs.store_id = persistent_store.id AND w.deleted_at > 0)"}
 
 // GetByIds 根据 ID 列表批量查询记录
 func (s *Service) GetByIds(ctx context.Context, ids []int64) ([]*domain.PersistentStore, error) {
@@ -652,9 +656,9 @@ func (s *Service) GetByFilePath(ctx context.Context, filePath string) (*domain.P
 	return s.repo.GetByFilePath(ctx, filePath)
 }
 
-// Delete 删除记录及对应文件
+// HardDelete 删除记录及对应文件（物理删记录；软删语义的 Delete 归作品软删链经 DeleteWithBackup/MarkInvalid）
 // backup: 是否对已完成文件进行移动备份，返回备份记录 ID（0 表示未备份）
-func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, error) {
+func (s *Service) HardDelete(ctx context.Context, id int64, backup bool) (int64, error) {
 	// 1. 根据 ID 查询记录
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -676,7 +680,7 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 		absPath := filepath.Join(workDir, record.FilePath.String)
 
 		// 2. 对已完成的文件进行移动备份（可选）
-		if backup && record.Status.Valid && record.Status.Int64 == domain.StoreStatusComplete && s.fileMover != nil {
+		if backup && record.CompletedAt > 0 && s.fileMover != nil {
 			originalFileName := ""
 			if record.FileName.Valid {
 				originalFileName = record.FileName.String
@@ -685,7 +689,7 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 			if record.FilenameExtension.Valid {
 				originalFilenameExtension = record.FilenameExtension.String
 			}
-			backupId, err = s.fileMover.MoveToBackup(ctx, id, 0, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+			backupId, err = s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
 			if err != nil {
 				logger.Log.Warn("备份文件失败，降级为直接删除", zap.String("path", absPath), zap.Error(err))
 				_ = os.Remove(absPath)
@@ -697,21 +701,22 @@ func (s *Service) Delete(ctx context.Context, id int64, backup bool) (int64, err
 		}
 	}
 
-	// 3. 删除数据库记录
-	if err := s.repo.Delete(ctx, id); err != nil {
+	// 3. 物理删除数据库记录（本方法为物理删语义；软删仅作品软删链经 DeleteWithBackup/MarkInvalid 内部使用）
+	if err := s.repo.DeleteUnscoped(ctx, id); err != nil {
 		return backupId, err
 	}
 	return backupId, nil
 }
 
-// DeleteWithBackup 删除 store 文件——移入 backup 目录并创建备份记录，保留 persistent_store 记录。
-// 供逻辑删除流程使用：文件移动须在调用方事务外先行完成，记录由调用方在事务内经 DeleteRecord 删除，
-// 两者配合保证事务失败时 DB 整体回滚。
-// workId: 备份归属作品 ID（写入 backup.work_id，复原/彻底删除按此聚合；0 = 无归属）。
-// 与 Delete(id, backup=true) 的契约区别：后者即刻删除记录（非事务）、仅备份已完成文件、失败降级为直接删除；
-// 本方法不删记录、不看文件完成状态、失败返回错误中断调用方流程（保全优先——降级删除会销毁待复原文件）。
-// 返回备份记录 ID；0 = 无需备份（记录不存在、路径无效、源文件缺失或未注入 FileMover，均不阻断删除）。
-func (s *Service) DeleteWithBackup(ctx context.Context, id int64, workId int64) (int64, error) {
+// DeleteWithBackup 删除 store 文件——移入 backup 目录并创建备份记录，同时软删 persistent_store 记录
+// （文件移走与记录软删同生共死：记录状态如实反映文件去向）。
+// 供作品软删除链使用，均在调用方事务外执行；复原/彻底删除按 original_file_path 反查备份聚合（不再有 work_id 归属列）。
+// 与 HardDelete(id, backup=true) 的契约区别：后者仅备份已完成文件、失败降级为直接删除、物理删记录；
+// 本方法不看文件完成状态、失败返回错误中断调用方流程（保全优先——降级删除会销毁待复原文件）。
+// 返回备份记录 ID；0 = 无需备份（记录不存在、路径无效、源文件缺失或未注入 FileMover，均不阻断）。
+func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+	// 记录软删与文件移动同生共死：文件确定离开原位（移动成功或确认缺失）后软删，移动失败中断不软删
+	softDelete := func() error { return s.repo.Delete(ctx, id) }
 	// 查询失败（含脏数据 record not found）不阻断删除：返回 0，调用方按"未备份"跳过该条
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -728,13 +733,13 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64, workId int64) 
 
 	if s.fileMover == nil {
 		logger.Log.Warn("未注入 FileMover，跳过备份（文件留存原地）", zap.Int64("storeId", id))
-		return 0, nil
+		return 0, softDelete()
 	}
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, record.FilePath.String)
 	if !util.FileExists(absPath) {
 		logger.Log.Warn("源文件不存在，跳过备份", zap.Int64("storeId", id), zap.String("path", absPath))
-		return 0, nil
+		return 0, softDelete()
 	}
 
 	originalFileName := ""
@@ -745,17 +750,42 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64, workId int64) 
 	if record.FilenameExtension.Valid {
 		originalFilenameExtension = record.FilenameExtension.String
 	}
-	backupId, err := s.fileMover.MoveToBackup(ctx, id, workId, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
+	backupId, err := s.fileMover.MoveToBackup(ctx, id, absPath, record.FilePath.String, originalFileName, originalFilenameExtension)
 	if err != nil {
 		return 0, fmt.Errorf("移动 store 文件到备份失败: %w", err)
 	}
-	return backupId, nil
+	return backupId, softDelete()
 }
 
-// DeleteRecord 仅删除 PersistentStore 数据库记录，不触动磁盘文件
-// 用于逻辑删除场景：文件已由调用方移入 backup，此处只清理 DB 记录
-func (s *Service) DeleteRecord(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+// RestoreWorkStores 批量复活作品的 store 记录（复原链：文件还原回 store/ 后清软删标志）
+func (s *Service) RestoreWorkStores(ctx context.Context, ids []int64) error {
+	return s.repo.RestoreByIds(ctx, ids)
+}
+
+// ListFilePathsIncludeDeleted 按 ID 集合取 file_path（含已删行；复原/彻底删除链反查 backup 的路径清单来源）
+func (s *Service) ListFilePathsIncludeDeleted(ctx context.Context, ids []int64) []string {
+	if len(ids) == 0 {
+		return []string{}
+	}
+	idVals := make([]interface{}, len(ids))
+	for i, id := range ids {
+		idVals[i] = id
+	}
+	records, err := s.repo.List(ctx, &database.QueryOption{
+		Conditions:     []clause.Expression{clause.IN{Column: "id", Values: idVals}},
+		IncludeDeleted: true,
+	})
+	if err != nil {
+		logger.Log.Warn("按 ID 批量查询 store 记录（含删）失败", zap.Error(err))
+		return []string{}
+	}
+	paths := make([]string, 0, len(records))
+	for _, r := range records {
+		if r.FilePath.Valid {
+			paths = append(paths, r.FilePath.String)
+		}
+	}
+	return paths
 }
 
 // StoreFromExternal 将外部文件导入到 store 目录并创建 DB 记录
@@ -764,6 +794,8 @@ func (s *Service) DeleteRecord(ctx context.Context, id int64) error {
 // relPath: 目标相对路径（相对于 {workDir}）
 // fileName: 原始文件名
 func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error) {
+	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：清旧/抑制登记/落库全程与 DB 基准一致
+	relPath = filepath.ToSlash(relPath)
 	// 1. 校验 relPath
 	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, err
@@ -786,7 +818,7 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 
 	// 4. 清理目标路径旧 store：先删同 file_path 的既有记录(含其磁盘文件)，再兜底删残留磁盘文件
 	//    避免导入路径被既有 store 占用时 INSERT 触发 file_path UNIQUE 冲突
-	if _, err := s.DeleteByFilePath(ctx, relPath, false); err != nil {
+	if _, err := s.HardDeleteByFilePath(ctx, relPath, false); err != nil {
 		return 0, fmt.Errorf("清理目标路径旧 store 记录失败: %w", err)
 	}
 	if _, err := os.Stat(targetAbsPath); err == nil {
@@ -819,7 +851,7 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 	store.FileName.String = fileName
 	store.FilenameExtension.Valid = true
 	store.FilenameExtension.String = ext
-	store.Status = sql.NullInt64{Int64: domain.StoreStatusComplete, Valid: true}
+	store.CompletedAt = util.GetCurrentTimestamp()
 	fillImageDimensions(store, workDir)
 	s.fillFingerprint(store, targetAbsPath)
 
@@ -830,8 +862,8 @@ func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relP
 	return store.GetID(), nil
 }
 
-// DeleteByFilePath 根据路径删除记录及文件
-func (s *Service) DeleteByFilePath(ctx context.Context, filePath string, backup bool) (int64, error) {
+// HardDeleteByFilePath 根据路径删除记录及文件（物理删）
+func (s *Service) HardDeleteByFilePath(ctx context.Context, filePath string, backup bool) (int64, error) {
 	record, err := s.repo.GetByFilePath(ctx, filePath)
 	if err != nil {
 		return 0, err
@@ -839,7 +871,7 @@ func (s *Service) DeleteByFilePath(ctx context.Context, filePath string, backup 
 	if record == nil {
 		return 0, nil
 	}
-	return s.Delete(ctx, record.GetID(), backup)
+	return s.HardDelete(ctx, record.GetID(), backup)
 }
 
 // Exists 检查文件是否存在（记录存在且磁盘文件存在）
@@ -866,14 +898,21 @@ func (s *Service) GetAbsPath(store *domain.PersistentStore) string {
 	return filepath.Join(workDir, store.FilePath.String)
 }
 
-// IsCompleteByPath 根据相对路径检查记录是否已完成
-func (s *Service) IsCompleteByPath(ctx context.Context, relPath string) bool {
-	record, err := s.repo.GetByFilePath(ctx, relPath)
-	if err != nil || record == nil {
-		// 无记录时允许按磁盘文件 fallback（向后兼容）
-		return true
+// ResolveFileState 按相对路径解析记录状态（含已删行；同路径多代行时活行优先——deleted_at 升序活行 0 在前）
+// completed = 文件曾完整落盘；deleted = 记录已软删（文件移 backup 或外部裁决失效）
+// 无记录时 completed=true 兜底（向后兼容：按磁盘文件 fallback，如 store/ 白名单内的非受管文件）
+func (s *Service) ResolveFileState(ctx context.Context, relPath string) (bool, bool) {
+	opt := &database.QueryOption{
+		Conditions:     []clause.Expression{clause.Eq{Column: "file_path", Value: relPath}},
+		OrderBy:        []clause.Expression{clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "deleted_at"}}}}},
+		IncludeDeleted: true,
+		Limit:          1,
 	}
-	return record.Status.Valid && record.Status.Int64 == domain.StoreStatusComplete
+	records, err := s.repo.List(ctx, opt)
+	if err != nil || len(records) == 0 {
+		return true, false
+	}
+	return records[0].CompletedAt > 0, records[0].DeletedAt > 0
 }
 
 // ResolveStorePath 解析存储相对路径为绝对路径

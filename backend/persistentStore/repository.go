@@ -50,6 +50,26 @@ func (r *PersistentStoreRepository) ExistsByFilePath(ctx context.Context, filePa
 	return record != nil
 }
 
+// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）
+func (r *PersistentStoreRepository) ResetCompleted(ctx context.Context, id int64) error {
+	return r.GORM().WithContext(ctx).
+		Model(new(domain.PersistentStore)).
+		Where("id = ?", id).
+		Update("completed_at", 0).Error
+}
+
+// RestoreByIds 批量清软删标志（复原链：文件还原回 store/ 后记录复活，Unscoped 逃逸 Update 的软删过滤）
+func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.GORM().WithContext(ctx).
+		Unscoped().
+		Model(new(domain.PersistentStore)).
+		Where("id IN ?", ids).
+		Update("deleted_at", 0).Error
+}
+
 // NormalizeFilePaths 将 file_path 中的反斜杠统一为正斜杠（符合存储规范）
 // 幂等：无反斜杠时无操作。返回受影响行数
 func (r *PersistentStoreRepository) NormalizeFilePaths(ctx context.Context) (int64, error) {

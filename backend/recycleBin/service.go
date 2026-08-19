@@ -35,6 +35,10 @@ type WorkRestorer interface {
 	GetDeletedWork(ctx context.Context, id int64) (*domain.Work, error)
 	// RestoreDeletedWork 清软删标志（复原核心，文件还原由本模块编排）
 	RestoreDeletedWork(ctx context.Context, id int64) error
+	// RestoreWorkStores 复原作品的全部 store 记录（清软删标志，文件还原后调用）
+	RestoreWorkStores(ctx context.Context, workId int64) error
+	// ListWorkStoreFilePaths 取作品的全部 store 文件路径（含已删行；反查 backup 的路径清单）
+	ListWorkStoreFilePaths(ctx context.Context, workId int64) []string
 	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删作品，供 TTL 清理
 	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error)
 	// DeleteWorkAndSurroundingData 物理级联删除（彻底删除链：删 work 谱系行与 store 记录/文件）
@@ -47,8 +51,8 @@ type BackupReader interface {
 	GetById(ctx context.Context, id int64) (*domain.Backup, error)
 	// GetBackupPath 获取备份文件的绝对路径
 	GetBackupPath(backup *domain.Backup) string
-	// ListByWorkId 查询作品的全部备份记录（软删除链归属关联）
-	ListByWorkId(ctx context.Context, workId int64) ([]*domain.Backup, error)
+	// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录（软删除链归属通路）
+	ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*domain.Backup, error)
 	// RestoreFile 从备份路径还原文件到目标绝对路径
 	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
 	// Delete 删除备份记录
@@ -158,7 +162,10 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 		return 0, err
 	}
 
-	// 4. 清软删标志（复原核心：一行 UPDATE；从属行从未离开，无需重建）
+	// 4. 复活 store 记录 + 清作品软删标志（从属行从未离开，仅状态复位）
+	if err := s.workRestorer.RestoreWorkStores(ctx, workId); err != nil {
+		return 0, err
+	}
 	if err := s.workRestorer.RestoreDeletedWork(ctx, workId); err != nil {
 		return 0, err
 	}
@@ -168,7 +175,9 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 // restoreWorkFiles 还原作品的全部备份文件（backup → store/ 原路径）并删除已还原备份记录
 // 目标路径在 store/ 监控白名单内，逐文件登记操作抑制避免还原写入被 fsmonitor 误报
 func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
-	backups, err := s.backupReader.ListByWorkId(ctx, workId)
+	// 备份清单按 original_file_path 反查：作品 store 路径集合（含删行）→ backup IN 匹配
+	paths := s.workRestorer.ListWorkStoreFilePaths(ctx, workId)
+	backups, err := s.backupReader.ListByOriginalPaths(ctx, paths)
 	if err != nil {
 		return fmt.Errorf("查询作品备份失败: %w", err)
 	}
@@ -205,15 +214,16 @@ func (s *Service) Purge(ctx context.Context, workId int64) error {
 		return ErrRecycleItemNotFound
 	}
 
-	// 2. 物理级联删除（事务内删行；store 原路径文件已在 backup，链内文件删除扑空无害）
-	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
-		return fmt.Errorf("物理删除作品数据失败: %w", err)
-	}
-
-	// 3. 清理 backup 磁盘文件与记录
-	backups, err := s.backupReader.ListByWorkId(ctx, workId)
+	// 2. 先收集作品 store 路径清单并反查备份（物理级联会删行，含删查询也无处可查）
+	paths := s.workRestorer.ListWorkStoreFilePaths(ctx, workId)
+	backups, err := s.backupReader.ListByOriginalPaths(ctx, paths)
 	if err != nil {
 		return err
+	}
+
+	// 3. 物理级联删除（事务内删行；store 原路径文件已在 backup，链内文件删除扑空无害）
+	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
+		return fmt.Errorf("物理删除作品数据失败: %w", err)
 	}
 	for _, backup := range backups {
 		if err := s.purgeBackup(ctx, backup); err != nil {

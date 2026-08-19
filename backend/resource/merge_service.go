@@ -66,7 +66,7 @@ type StoreOps interface {
 	GetById(ctx context.Context, id int64) (*domain.PersistentStore, error)
 	GetAbsPath(store *domain.PersistentStore) string
 	StoreFromFile(ctx context.Context, relPath, fileName, srcAbsPath string) (int64, error)
-	Delete(ctx context.Context, id int64, backup bool) (int64, error)
+	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
 	BuildVariantPath(sourceRelPath, suffix string) string
 }
 
@@ -234,7 +234,7 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 		rs.StoreID = mergedPsId
 		return s.resourceStoreRepo.Create(txCtx, rs)
 	}); err != nil {
-		if _, derr := s.storeOps.Delete(commitCtx, mergedPsId, false); derr != nil {
+		if _, derr := s.storeOps.HardDelete(commitCtx, mergedPsId, false); derr != nil {
 			logger.Log.Errorf("[MergeService] 挂载合并产物失败且补偿删除产物 store 也失败: resourceId=%d 挂载错误=%v 删除错误=%v", resourceId, err, derr)
 		}
 		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("挂载合并产物失败: %v", err))
@@ -243,11 +243,11 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 
 	// overwrite：删原轨道 store 及文件，并清理 resource_store 关联
 	if s.settings.GetMergeStrategy() == settings.MergeStrategyOverwrite {
-		if _, err := s.storeOps.Delete(commitCtx, videoPS.GetID(), true); err != nil {
+		if _, err := s.storeOps.HardDelete(commitCtx, videoPS.GetID(), true); err != nil {
 			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原视频轨失败: %v", err))
 			return
 		}
-		if _, err := s.storeOps.Delete(commitCtx, audioPS.GetID(), true); err != nil {
+		if _, err := s.storeOps.HardDelete(commitCtx, audioPS.GetID(), true); err != nil {
 			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原音频轨失败: %v", err))
 			return
 		}

@@ -77,9 +77,9 @@ export class PersistentStoreDTO {
     "filenameExtension": string | null;
 
     /**
-     * 0=未完成，1=完成
+     * 落盘完成时刻（毫秒时间戳，0=未完成）
      */
-    "status": number;
+    "completedAt": number;
 
     /**
      * 图片宽度（像素），非图片为 0
@@ -107,8 +107,8 @@ export class PersistentStoreDTO {
         if (!("filenameExtension" in $$source)) {
             this["filenameExtension"] = null;
         }
-        if (!("status" in $$source)) {
-            this["status"] = 0;
+        if (!("completedAt" in $$source)) {
+            this["completedAt"] = 0;
         }
         if (!("width" in $$source)) {
             this["width"] = 0;

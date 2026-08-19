@@ -7,15 +7,15 @@ import (
 	"github.com/library-squirrel/backend/util"
 )
 
-// PersistentStoreDTO 文件持久存储数据传输对象
+// PersistentStoreDTO 文件持久存储数据传输对象（契约与实体同构直通，无转换层）
 type PersistentStoreDTO struct {
 	ID                int64   `json:"id"`
 	FilePath          *string `json:"filePath"`
 	FileName          *string `json:"fileName"`
 	FilenameExtension *string `json:"filenameExtension"`
-	Status            int     `json:"status"`   // 0=未完成，1=完成
-	Width             int     `json:"width"`    // 图片宽度（像素），非图片为 0
-	Height            int     `json:"height"`   // 图片高度（像素），非图片为 0
+	CompletedAt       int64   `json:"completedAt"` // 落盘完成时刻（毫秒时间戳，0=未完成）
+	Width             int     `json:"width"`       // 图片宽度（像素），非图片为 0
+	Height            int     `json:"height"`      // 图片高度（像素），非图片为 0
 	CreateTime        int64   `json:"createTime"`
 	UpdateTime        int64   `json:"updateTime"`
 }
@@ -30,7 +30,7 @@ func NewPersistentStoreDTO(store *entity.PersistentStore) *PersistentStoreDTO {
 		FilePath:          util.NullStringToPointer(store.FilePath),
 		FileName:          util.NullStringToPointer(store.FileName),
 		FilenameExtension: util.NullStringToPointer(store.FilenameExtension),
-		Status:            int(store.Status.Int64),
+		CompletedAt:       store.CompletedAt,
 		Width:             int(store.Width.Int64),
 		Height:            int(store.Height.Int64),
 		CreateTime:        store.GetCreateTime(),
@@ -65,7 +65,7 @@ func ToPersistentStoreEntity(dto *PersistentStoreDTO) *entity.PersistentStore {
 		store.FilenameExtension.String = *dto.FilenameExtension
 	}
 
-	store.Status = sql.NullInt64{Int64: int64(dto.Status), Valid: true}
+	store.CompletedAt = dto.CompletedAt
 	store.Width = sql.NullInt64{Int64: int64(dto.Width), Valid: true}
 	store.Height = sql.NullInt64{Int64: int64(dto.Height), Valid: true}
 

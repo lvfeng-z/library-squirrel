@@ -10,6 +10,43 @@ import (
 
 // AutoMigrate 执行数据库自动迁移
 func AutoMigrate(db *gorm.DB) error {
+	// 命名迁移(前置)：persistent_store 软删机制引入——status 改名改型 completed_at（0/1 → 完成时刻毫秒，1 转 create_time 近似）、
+	// invalid_at 退役并入 deleted_at（外部裁决不复从改走软删；deleted_at 先手工加列，AutoMigrate 见列已存在不重复建）
+	var pcStatusCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('persistent_store') WHERE name = 'status'").Scan(&pcStatusCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 persistent_store.status 列失败: %w", err)
+	}
+	if pcStatusCol > 0 {
+		if err := db.Exec(`ALTER TABLE persistent_store ADD COLUMN completed_at INTEGER DEFAULT 0`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store 加 completed_at 列失败: %w", err)
+		}
+		if err := db.Exec(`UPDATE persistent_store SET completed_at = CASE WHEN status = 1 THEN create_time ELSE 0 END`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store status 值转换失败: %w", err)
+		}
+		if err := db.Exec(`ALTER TABLE persistent_store DROP COLUMN status`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store 删 status 列失败: %w", err)
+		}
+	}
+	var pcInvalidCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('persistent_store') WHERE name = 'invalid_at'").Scan(&pcInvalidCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 persistent_store.invalid_at 列失败: %w", err)
+	}
+	if pcInvalidCol > 0 {
+		if err := db.Exec(`ALTER TABLE persistent_store ADD COLUMN deleted_at INTEGER DEFAULT 0`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store 加 deleted_at 列失败: %w", err)
+		}
+		if err := db.Exec(`UPDATE persistent_store SET deleted_at = invalid_at WHERE invalid_at > 0`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store invalid_at 并入 deleted_at 失败: %w", err)
+		}
+		if err := db.Exec(`ALTER TABLE persistent_store DROP COLUMN invalid_at`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store 删 invalid_at 列失败: %w", err)
+		}
+	}
+	// deleted_at 存量 NULL 回填（AutoMigrate 加列无默认值，NULL × deleted_at=0 过滤不命中会让全表从查询中消失）
+	if err := db.Exec(`UPDATE persistent_store SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("迁移 persistent_store.deleted_at 存量回填失败: %w", err)
+	}
+
 	// 命名迁移:task.plugin_contribution_id → plugin_extension_id(contribution→extension 命名统一)
 	// 须在 AutoMigrate 前执行,否则 AutoMigrate 会先新建 plugin_extension_id 列导致 RenameColumn 冲突
 	if db.Migrator().HasColumn(&entity2.Task{}, "plugin_contribution_id") {
@@ -88,10 +125,43 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	// 命名迁移(后置)：persistent_store file_path 唯一索引升级为部分唯一索引（软删行释放路径，
+	// 重新下载同路径合法；drop 用 IF EXISTS 幂等——部分库的历史全量索引可能从未建成或已不在，
+	// 缺失即跳过直接建新；新索引名存在性做二次启动幂等标记）
+	if !db.Migrator().HasIndex(&entity2.PersistentStore{}, "idx_persistent_store_file_path_active") {
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_persistent_store_file_path`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store 旧 file_path 唯一索引删除失败: %w", err)
+		}
+		if err := db.Exec(`CREATE UNIQUE INDEX idx_persistent_store_file_path_active ON persistent_store(file_path) WHERE deleted_at = 0`).Error; err != nil {
+			return fmt.Errorf("迁移 persistent_store file_path 部分唯一索引创建失败: %w", err)
+		}
+	}
+
 	// 命名迁移(后置)：work 软删列存量回填——AutoMigrate 加列无默认值，存量行 deleted_at 为 NULL，
 	// 而软删过滤条件 deleted_at = 0 对 NULL 不命中（NULL=0 为 UNKNOWN），不回填则存量作品全部从查询中消失
 	if err := db.Exec(`UPDATE work SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
 		return fmt.Errorf("迁移 work.deleted_at 存量回填失败: %w", err)
+	}
+
+	// 命名迁移(后置)：backup.file_path 存量分隔符规范化（历史 filepath.Join 构造产反斜杠入库，
+	// 与 relPath 域正斜杠基准不符；幂等：规范化后无反斜杠不再命中）
+	if err := db.Exec(`UPDATE backup SET file_path = REPLACE(file_path, '\\', '/') WHERE file_path LIKE '%\\%'`).Error; err != nil {
+		return fmt.Errorf("迁移 backup.file_path 分隔符规范化失败: %w", err)
+	}
+
+	// 命名迁移(后置)：backup.work_id 归属列退役（P0 违规修复：能力包表结构不得有业务实体键，
+	// 备份归属改经 original_file_path 反查表达；未发布口径直接删列）
+	var backupWorkIdCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('backup') WHERE name = 'work_id'").Scan(&backupWorkIdCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 backup.work_id 列失败: %w", err)
+	}
+	if backupWorkIdCol > 0 {
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_backup_work_id`).Error; err != nil {
+			return fmt.Errorf("迁移删除 backup.work_id 索引失败: %w", err)
+		}
+		if err := db.Exec(`ALTER TABLE backup DROP COLUMN work_id`).Error; err != nil {
+			return fmt.Errorf("迁移删除 backup.work_id 列失败: %w", err)
+		}
 	}
 
 	// 命名迁移(后置)：work 业务键唯一索引升级为部分唯一索引（软删标志引入后，已删行释放业务键，

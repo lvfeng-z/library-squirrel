@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -211,7 +212,8 @@ type StoreFileCleaner interface {
 // StoreDeleter 删除 PersistentStore 记录及磁盘文件（由 persistentStore.Service 实现）
 // 失败还原前清理本次新建 store 时使用，backup=false 表示直接删除不产生备份
 type StoreDeleter interface {
-	Delete(ctx context.Context, id int64, backup bool) (int64, error)
+	// HardDelete 删除记录及对应文件（物理删记录）
+	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
 }
 
 // Transactor 事务执行器接口
@@ -1192,7 +1194,7 @@ func (m *ManagedTask) cleanupCreatedStores(ctx context.Context) {
 		}
 	}
 	for _, s := range m.streams {
-		if _, err := m.deps.StoreDeleter.Delete(ctx, s.storeId, false); err != nil {
+		if _, err := m.deps.StoreDeleter.HardDelete(ctx, s.storeId, false); err != nil {
 			logger.Log.Warnf("[TaskManager] 清理本次新建 store(id=%d, type=%s) 失败: %v", s.storeId, s.role, err)
 		}
 	}
@@ -1505,7 +1507,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		}
 		absPath := m.deps.StoreReader.GetAbsPath(store)
 		info, statErr := os.Stat(absPath)
-		if store.Status.Valid && store.Status.Int64 == entity.StoreStatusComplete && statErr == nil {
+		if store.CompletedAt > 0 && statErr == nil {
 			// 该 store 已完成:按身份记录,不进入 Resume/重产(同 role 多 store 各自独立判定)
 			completedSet[ident] = struct{}{}
 			continue
@@ -1984,7 +1986,8 @@ func (m *ManagedTask) resolveBaseName(workResp *sdkdto.WorkResponse) (relativePa
 	formatted := filename.FormatFileName(tpl, tokenData)
 	bas = filename.SanitizeFileName(formatted)
 	authorDir := filename.SanitizeFileName(tokenData.Author)
-	relativePath = filepath.Join("store", "resource", authorDir)
+	// relPath 域用 path.Join（正斜杠），落库/查重基准一致
+	relativePath = path.Join("store", "resource", authorDir)
 	return
 }
 

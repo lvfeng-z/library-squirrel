@@ -9,7 +9,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/storeRegistry"
-	"github.com/library-squirrel/backend/util"
 )
 
 // RepairAction 修复动作
@@ -29,7 +28,7 @@ type StoreRepairer interface {
 	// UpdateFilePath 更新记录 file_path（移动同步）
 	UpdateFilePath(ctx context.Context, id int64, newFilePath string) error
 	// MarkInvalid 置记录失效（删除确认）
-	MarkInvalid(ctx context.Context, id int64, invalidAt int64) error
+	MarkInvalid(ctx context.Context, id int64) error
 	// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步：oldPrefix/→newPrefix/）
 	// 返回受影响行数（下级文件数）
 	RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error)
@@ -37,8 +36,8 @@ type StoreRepairer interface {
 
 // PendingChange 待修复的语义变更（入队后等用户确认）
 type PendingChange struct {
-	ID            int64           `json:"id"`
-	SemanticChange                // 嵌入语义变更字段
+	ID             int64 `json:"id"`
+	SemanticChange       // 嵌入语义变更字段
 }
 
 // RepairManager 修复管理：维护待修复变更队列 + 执行用户确认的修复动作
@@ -188,7 +187,7 @@ func (m *RepairManager) applyDelete(ctx context.Context, sc *SemanticChange, act
 	switch action {
 	case ActionAck:
 		// 接受删除，标记记录失效
-		return m.repairer.MarkInvalid(ctx, sc.StoreID, util.GetCurrentTimestamp())
+		return m.repairer.MarkInvalid(ctx, sc.StoreID)
 	case ActionRestore:
 		// 从备份还原（首版简化：依赖 backup，后续接入）
 		return fmt.Errorf("删除复原(从备份还原)待后续阶段接入")

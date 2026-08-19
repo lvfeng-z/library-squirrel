@@ -29,6 +29,7 @@ globs:
 
 ## 路径存储规范
 
+- **路径分隔符纪律见 `rules/backend.md` 的 PATH_SEPARATOR_DISCIPLINE（两域模型）**：本节以下所有相对路径（relPath 域）一律正斜杠——构造用 `path.Join`，禁止 `filepath.Join`/`Clean` 的结果进入存储/比较/传递；absPath 域仅存在于 os.* 调用点。
 - **所有相对路径必须基于适当的根目录**，根据业务场景选择根目录：
   - **workDir（资源库根目录）**：用户配置的资源存储目录，用于资源文件、缩略图、备份等用户数据路径
   - **程序根目录**：应用运行目录，用于插件资源、配置文件等应用自身数据路径
@@ -46,7 +47,7 @@ globs:
 
 > 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。`store/thumbnail/` 仅历史已落盘文件保留(路径校验白名单不删),新文件不再写入。
 
-> 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`status`（落盘状态 0=未完成/1=完成）同为 `sql.NullInt64`（0 是合法值，须能被 Updates 写入）。
+> 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`completed_at`（落盘完成时刻毫秒时间戳，0=未完成）是合法零值——GORM Updates 跳零值，「续传重置回未完成」须经 `ResetCompleted` 显式列更新（service 层已封装）。
 
 > 注：`site_tag.namespace` / `re_work_tag.namespace`（`sql.NullString`，tag 关联级 namespace 维度，非路径字段）：站点有 namespace 时存值（如 e-hentai 的 character），无 namespace 站点（pixiv）落 NULL。落库守卫 `Valid: namespace != ""`——插件不声明（空串）→ `Valid:false` = NULL，对无 namespace 站点插件无感。`re_work_tag.namespace` 为所指 `site_tag.namespace` 镜像（site 关联）或用户自设（local 关联）。**`site_tag.namespace` 仅作站点元数据/镜像源，不直接参与关联/搜索维度——namespace 维度统一在 `re_work_tag.namespace`（搜索过滤 `rwt.namespace`，不读 site_tag.namespace）**。设计见 `doc/plan/tag体系演化方案.md`。
 
@@ -58,11 +59,11 @@ globs:
 
 ## 软删除（GORM soft_delete）
 
-- **当前仅 work 表启用**：`DeletedAt soft_delete.DeletedAt` + tag `softDelete:milli`（毫秒时间戳，0=活）。Find/Count/Get/Update 自动排除已删行、Delete 自动改写为打时间戳（仅作用活行）——**经 GORM 管线的查询全受保护**（含各模块自定义仓储的链式调用）；**原生 SQL（Raw/Exec）不受保护**，须手工补 `deleted_at = 0` 基线（参照 search 模块 `buildWhereClauseWithBaseline`）。
+- **当前 work 与 persistent_store 两表启用**（persistent_store 见其模块 README 的记录-文件不变量）：`DeletedAt soft_delete.DeletedAt` + tag `softDelete:milli`（毫秒时间戳，0=活）。Find/Count/Get/Update 自动排除已删行、Delete 自动改写为打时间戳（仅作用活行）——**经 GORM 管线的查询全受保护**（含各模块自定义仓储的链式调用）；**原生 SQL（Raw/Exec）不受保护**，须手工补 `deleted_at = 0` 基线（参照 search 模块 `buildWhereClauseWithBaseline`）。
 - **含已删/仅已删查询**：`QueryOption.IncludeDeleted=true`（Unscoped）；「仅已删」由调用方自组 `deleted_at > 0` 条件；按 ID 查含已删行用 `GetByIdUnscoped`。
 - **对已删行的写操作必须 Unscoped 变体**（`DeleteUnscoped` 或专用方法）：普通 Update/Delete 被软删 scope 静默挡住（无效果且不报错）。对**活行**的既有物理删调用点同样须 `DeleteUnscoped`——否则被静默改写为软删（语义反转事故）。
 - **业务键唯一性**：启用软删的表用部分唯一索引 `CREATE UNIQUE INDEX ... WHERE deleted_at = 0`（AutoMigrate 不管部分索引，drop 旧 + 建新全手写，以新索引名做幂等标记）；**加列迁移必带存量回填** `UPDATE ... SET deleted_at = 0 WHERE deleted_at IS NULL`——AutoMigrate 加列无默认值，存量行 NULL × `deleted_at = 0` 过滤不命中，全部存量行从查询中消失（实机踩中）。
-- **fsmonitor 联动**：软删实体的从属 store 行须排除在对账/关联查询外（参照 persistentStore 的 `notDeletedWorkCond`），否则文件移 backup 期间被误报缺失。
+- **fsmonitor 联动**：store 行软删后经 GORM 自动 scope 排除在对账/关联查询外（曾用消费侧 JOIN work 排除条件 `notDeletedWorkCond`，属 persistentStore 越界感知业务实体，已随 persistent_store 软删落地删除）。
 
 ## 数据库相关编码规则
 

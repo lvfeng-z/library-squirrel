@@ -24,7 +24,8 @@ type StoreResourceStoreReader interface {
 
 // StoreDeleter Store 删除接口（支持备份，由 persistentStore.Service 实现）
 type StoreDeleter interface {
-	Delete(ctx context.Context, id int64, backup bool) (int64, error)
+	// HardDelete 删除记录及对应文件（物理删记录）
+	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
 }
 
 // StoreImporter Store 导入接口（将外部文件导入到 store 目录并创建 DB 记录，由 persistentStore.Service 实现）
@@ -115,7 +116,7 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 					continue
 				}
 			}
-			backupId, err := o.storeDeleter.Delete(ctx, rs.StoreID, true)
+			backupId, err := o.storeDeleter.HardDelete(ctx, rs.StoreID, true)
 			if err != nil {
 				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 Store(id=%d, type=%s) 失败: %v", rs.StoreID, rs.StoreType, err)
 			}

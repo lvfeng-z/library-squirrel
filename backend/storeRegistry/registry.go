@@ -51,6 +51,7 @@ func InScanDirs(rel string) bool {
 	if rel == "" || rel == "." {
 		return false
 	}
+	rel = filepath.ToSlash(rel)
 	for _, d := range RegisteredDirs {
 		if rel == d.Path || strings.HasPrefix(rel, d.Path+"/") {
 			return true

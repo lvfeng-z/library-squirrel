@@ -13,10 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// StoreStatusChecker 检查存储记录的状态
-type StoreStatusChecker interface {
-	// IsCompleteByPath 根据相对路径检查记录是否已完成
-	IsCompleteByPath(ctx context.Context, relPath string) bool
+// StoreStateResolver 按路径解析存储记录状态（含已删行；由 persistentStore.Service 实现）
+type StoreStateResolver interface {
+	// ResolveFileState completed=文件曾完整落盘；deleted=记录已软删（文件移 backup 或外部裁决失效）
+	// 无记录时 completed=true 兜底（按磁盘文件 fallback）
+	ResolveFileState(ctx context.Context, relPath string) (completed bool, deleted bool)
 }
 
 // BackupPathResolver 按原始 store 路径反查备份文件绝对路径（/store/ 兜底：软删作品文件在 backup/）
@@ -28,24 +29,25 @@ type BackupPathResolver interface {
 // StoreFileHandler 从工作目录提供文件服务的 HTTP Handler
 // URL 格式: /store/{relativePath}?params...
 // 文件存储路径: {workDir}/{relativePath}
-// 原路径文件不存在时按 backup 兜底（软删作品的文件已移入 backup/，按 original_file_path 反查）
+// 状态路由：记录软删（deleted）的请求按 backup.original_file_path 反查兜底服务；
+// 活行请求服务 workDir 原路径文件，缺失即 404（外部变更归 fsmonitor 观测域）
 type StoreFileHandler struct {
 	mu             sync.RWMutex
 	workDir        string
-	statusChecker  StoreStatusChecker
+	stateResolver  StoreStateResolver
 	backupResolver BackupPathResolver
 }
 
 // NewStoreFileHandler 创建存储文件处理器
-func NewStoreFileHandler(statusChecker StoreStatusChecker) *StoreFileHandler {
+func NewStoreFileHandler(stateResolver StoreStateResolver) *StoreFileHandler {
 	return &StoreFileHandler{
-		statusChecker: statusChecker,
+		stateResolver: stateResolver,
 	}
 }
 
-// SetStatusChecker 设置状态检查器
-func (h *StoreFileHandler) SetStatusChecker(checker StoreStatusChecker) {
-	h.statusChecker = checker
+// SetStateResolver 设置状态解析器（记录完成态/软删态路由）
+func (h *StoreFileHandler) SetStateResolver(resolver StoreStateResolver) {
+	h.stateResolver = resolver
 }
 
 // SetBackupResolver 设置备份路径解析器（软删作品的 /store/ 请求兜底）
@@ -95,10 +97,29 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查 PersistentStore 记录状态，未完成记录返回 404
-	if h.statusChecker != nil && !h.statusChecker.IsCompleteByPath(r.Context(), cleanedPath) {
-		http.NotFound(w, r)
-		return
+	// DB/backup 记录的路径基准是正斜杠（file_path 同基准），Windows 上 filepath.Clean 会把
+	// 分隔符换成反斜杠导致记录查询永不命中——查库键经 ToSlash 还原，文件系统操作仍用 cleanedPath
+	lookupPath := filepath.ToSlash(cleanedPath)
+
+	// 状态路由：未完成记录 404（防半成品）；软删记录确定性走 backup 反查
+	if h.stateResolver != nil {
+		completed, deleted := h.stateResolver.ResolveFileState(r.Context(), lookupPath)
+		if !completed {
+			http.NotFound(w, r)
+			return
+		}
+		if deleted {
+			if h.backupResolver != nil {
+				if backupPath := h.backupResolver.ResolveBackupPathByOriginal(r.Context(), lookupPath); backupPath != "" {
+					if bInfo, bErr := os.Stat(backupPath); bErr == nil && !bInfo.IsDir() {
+						h.serveFile(w, r, backupPath)
+						return
+					}
+				}
+			}
+			http.NotFound(w, r)
+			return
+		}
 	}
 
 	absPath := filepath.Join(workDir, cleanedPath)
@@ -109,20 +130,7 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		// 原路径文件缺失：软删作品的文件已移 backup/，按 original_file_path 反查兜底服务
-		if h.backupResolver != nil {
-			if backupPath := h.backupResolver.ResolveBackupPathByOriginal(r.Context(), cleanedPath); backupPath != "" {
-				if bInfo, bErr := os.Stat(backupPath); bErr == nil && !bInfo.IsDir() {
-					h.serveFile(w, r, backupPath)
-					return
-				}
-			}
-		}
-		http.NotFound(w, r)
-		return
-	}
-	if info.IsDir() {
+	if err != nil || info.IsDir() {
 		http.NotFound(w, r)
 		return
 	}

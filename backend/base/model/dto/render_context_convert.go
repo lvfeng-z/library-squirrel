@@ -153,7 +153,7 @@ func toRenderPersistentStore(s *PersistentStoreDTO) *render.PersistentStoreDTO {
 		FilePath:          s.FilePath,
 		FileName:          s.FileName,
 		FilenameExtension: s.FilenameExtension,
-		Status:            s.Status,
+		CompletedAt:       s.CompletedAt,
 		Width:             s.Width,
 		Height:            s.Height,
 		CreateTime:        s.CreateTime,
