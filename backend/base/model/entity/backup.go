@@ -14,8 +14,6 @@ type Backup struct {
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
 	FilePath          sql.NullString `gorm:"column:file_path" json:"filePath"`
 	Workdir           sql.NullString `gorm:"column:workdir" json:"workdir"`
-	// 软删除链写入的备份归属作品（复原/彻底删除按此聚合查询）；快照时代存量行与其他来源为 NULL
-	WorkID sql.NullInt64 `gorm:"column:work_id;index" json:"workId"`
 	// 资源备份时记录的原始路径信息，用于还原到原始位置
 	// original_file_path 带 index：软删记录的 /store/ 状态路由（按路径反查最近备份）高频等值查询
 	OriginalFilePath          sql.NullString `gorm:"column:original_file_path;index" json:"originalFilePath"`

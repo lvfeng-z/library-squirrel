@@ -251,7 +251,6 @@ func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sou
 
 // MoveToBackup 将文件移动到备份目录并创建备份记录，供 PersistentStore 删除时调用
 // sourceId: PersistentStore 记录 ID
-// workId: 归属作品 ID（软删除链写入，复原/彻底删除按此聚合；0 = 无归属）
 // absFilePath: 源文件绝对路径
 // originalFilePath: PersistentStore 中的相对路径（用于还原时确定目标位置）
 // originalFileName: 原始文件名

@@ -263,9 +263,12 @@ func applyQueryOption(db *gorm.DB, opt *QueryOption) *gorm.DB {
 		db = db.Where(cond)
 	}
 
-	// 4. OrderBy（叠加型）
+	// 4. OrderBy（叠加型）——逐元素下传：GORM Order() 按元素具体类型
+	// （clause.OrderBy/OrderByColumn/string）分派，整切片传入会走不进任何 case 而被静默忽略，查询失去排序
 	if len(opt.OrderBy) > 0 {
-		db = db.Order(opt.OrderBy)
+		for _, order := range opt.OrderBy {
+			db = db.Order(order)
+		}
 	}
 
 	// 5. GroupBy（覆盖型）
