@@ -573,16 +573,15 @@ func (s *Service) GetById(ctx context.Context, id int64) (*domain.PersistentStor
 	return s.repo.GetById(ctx, id)
 }
 
-// GetByFingerprint 按内容指纹查询有效已完成记录（排除指定路径），供文件移动关联匹配。
+// GetByFingerprint 按内容指纹查询已完成记录（排除指定路径），供文件移动关联匹配。
 // 指纹匹配=内容相同→判定为同一文件的移动；返回首条命中（理论上指纹唯一，多命中取首条）。
-// 仅查未失效(invalid_at=0)记录。无命中返回 (nil, nil)。
+// 已删行（外部删除裁决/作品软删）经 GORM 软删 scope 自动排除。无命中返回 (nil, nil)。
 func (s *Service) GetByFingerprint(ctx context.Context, fingerprint string, excludePath string) (*domain.PersistentStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "content_fingerprint", Value: fingerprint},
 			clause.Neq{Column: "file_path", Value: excludePath},
 			clause.Expr{SQL: "completed_at > 0"},
-			clause.Eq{Column: "invalid_at", Value: 0},
 		},
 		Limit: 1,
 	}
@@ -596,14 +595,13 @@ func (s *Service) GetByFingerprint(ctx context.Context, fingerprint string, excl
 	return records[0], nil
 }
 
-// GetByFilePathComplete 按路径查询有效已完成记录（移动场景：旧路径记录存在且已完成）
-// 仅查未失效(invalid_at=0)记录。无命中返回 (nil, nil)
+// GetByFilePathComplete 按路径查询已完成记录（移动场景：旧路径记录存在且已完成）
+// 已删行经 GORM 软删 scope 自动排除。无命中返回 (nil, nil)
 func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*domain.PersistentStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "file_path", Value: filePath},
 			clause.Expr{SQL: "completed_at > 0"},
-			clause.Eq{Column: "invalid_at", Value: 0},
 		},
 		Limit: 1,
 	}
@@ -617,12 +615,12 @@ func (s *Service) GetByFilePathComplete(ctx context.Context, filePath string) (*
 	return records[0], nil
 }
 
-// ListValidComplete 全量查询有效(invalid_at=0)且已完成(status=1)的记录，供离线对账
+// ListValidComplete 全量查询已完成（completed_at>0）且在位的记录，供 fsmonitor 离线对账
+// （已删行——外部删除裁决/作品软删——经 GORM 软删 scope 自动排除，不进对账基线）
 func (s *Service) ListValidComplete(ctx context.Context) ([]*domain.PersistentStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
 			clause.Expr{SQL: "completed_at > 0"},
-			clause.Eq{Column: "invalid_at", Value: 0},
 		},
 	}
 	return s.repo.List(ctx, opt)

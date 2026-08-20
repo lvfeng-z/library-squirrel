@@ -38,7 +38,7 @@ type StoreReader interface {
 	GetByFingerprint(ctx context.Context, fingerprint string, excludePath string) (*StoreRecord, error)
 	// GetByFilePathComplete 按路径查已完成记录，无命中返回 nil
 	GetByFilePathComplete(ctx context.Context, filePath string) (*StoreRecord, error)
-	// ListValidComplete 全量查有效(invalid_at=0)且已完成(status=1)的记录，供离线对账
+	// ListValidComplete 全量查在位且已完成的记录（软删行经 GORM scope 排除），供离线对账
 	ListValidComplete(ctx context.Context) ([]StoreRecord, error)
 }
 
