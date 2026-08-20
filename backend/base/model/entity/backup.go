@@ -6,19 +6,14 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 )
 
-// Backup 备份
+// Backup 备份保管清单行（纯文件仓库：只记保管位置与时间，不记来源——
+// 来源关联由发起方业务行内嵌记录，如 persistent_store.backup_id / plugin.BackupID）
 type Backup struct {
 	*model.BaseEntity                // 嵌入基础实体
-	SourceType        sql.NullInt64  `gorm:"column:source_type" json:"sourceType"`
-	SourceID          sql.NullInt64  `gorm:"column:source_id" json:"sourceId"`
 	FileName          sql.NullString `gorm:"column:file_name" json:"fileName"`
-	FilePath          sql.NullString `gorm:"column:file_path" json:"filePath"`
-	Workdir           sql.NullString `gorm:"column:workdir" json:"workdir"`
-	// 资源备份时记录的原始路径信息，用于还原到原始位置
-	// original_file_path 带 index：软删记录的 /store/ 状态路由（按路径反查最近备份）高频等值查询
-	OriginalFilePath          sql.NullString `gorm:"column:original_file_path;index" json:"originalFilePath"`
-	OriginalFileName          sql.NullString `gorm:"column:original_file_name" json:"originalFileName"`
-	OriginalFilenameExtension sql.NullString `gorm:"column:original_filename_extension" json:"originalFilenameExtension"`
+	// FilePath 保管文件相对路径（workDir 基准，正斜杠），形如 backup/2026/06/08/文件.mp4
+	FilePath sql.NullString `gorm:"column:file_path" json:"filePath"`
+	Workdir  sql.NullString `gorm:"column:workdir" json:"workdir"`
 }
 
 // NewBackup 创建备份

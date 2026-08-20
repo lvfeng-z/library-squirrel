@@ -71,7 +71,6 @@ func main() {
 			application.NewService(app.WorkSetHandler),
 			application.NewService(app.SearchHandler),
 			application.NewService(app.SettingsHandler),
-			application.NewService(app.BackupHandler),
 			application.NewService(app.AppLauncherHandler),
 			application.NewService(app.FileSysUtilHandler),
 			application.NewService(app.FrontendLogHandler),

@@ -2,7 +2,10 @@ package migration
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
+	"github.com/library-squirrel/backend/base/logger"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 
 	"gorm.io/gorm"
@@ -161,6 +164,61 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 		if err := db.Exec(`ALTER TABLE backup DROP COLUMN work_id`).Error; err != nil {
 			return fmt.Errorf("迁移删除 backup.work_id 列失败: %w", err)
+		}
+	}
+
+	// 命名迁移(后置)：backup 能力包纯化——来源三元组（source_type/source_id/original_*）退役，
+	// 来源关联内嵌发起方业务行（persistent_store.backup_id / plugin.backup_id 引用保管清单行）。
+	// 整段以 source_type 列存在性为幂等标记：搬迁与无主清理须先于 drop 列完成（判别依赖 source_type）
+	var backupSourceTypeCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('backup') WHERE name = 'source_type'").Scan(&backupSourceTypeCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 backup.source_type 列失败: %w", err)
+	}
+	if backupSourceTypeCol > 0 {
+		// 1. 存量搬迁：store 类备份（source_type=3）的清单行 ID 写入对应 persistent_store 行的 backup_id
+		//    （仅已软删行承接引用；行已物理删的清单行留在原地，由下方无主清理处置）
+		if err := db.Exec(`UPDATE persistent_store SET backup_id = (
+			SELECT b.id FROM backup b WHERE b.source_type = 3 AND b.source_id = persistent_store.id LIMIT 1
+		) WHERE backup_id = 0 AND deleted_at > 0`).Error; err != nil {
+			return fmt.Errorf("迁移 backup_id 存量搬迁失败: %w", err)
+		}
+
+		// 2. 无主存量清理（用户裁决直接清理）：清单行不被任何业务列引用——store 类行已物理删、
+		//    资源类全链死代码无引用方、插件类未被 plugin.backup_id 引用；文件与记录一并删除
+		type orphanBackupRow struct {
+			ID       int64
+			Workdir  string
+			FilePath string
+		}
+		var orphans []orphanBackupRow
+		if err := db.Raw(`
+			SELECT id, COALESCE(workdir, '') AS workdir, COALESCE(file_path, '') AS file_path FROM backup
+			WHERE NOT EXISTS (SELECT 1 FROM persistent_store ps WHERE ps.backup_id = backup.id)
+			  AND NOT EXISTS (SELECT 1 FROM plugin p WHERE p.backup_id = backup.id)
+		`).Scan(&orphans).Error; err != nil {
+			return fmt.Errorf("迁移查询无主备份失败: %w", err)
+		}
+		for _, o := range orphans {
+			if o.Workdir != "" && o.FilePath != "" {
+				if err := os.Remove(filepath.Join(o.Workdir, o.FilePath)); err != nil && !os.IsNotExist(err) {
+					logger.Log.Warnf("迁移清理无主备份文件失败（仅删记录）: %s, %v", o.FilePath, err)
+				}
+			}
+		}
+		if err := db.Exec(`DELETE FROM backup
+			WHERE NOT EXISTS (SELECT 1 FROM persistent_store ps WHERE ps.backup_id = backup.id)
+			  AND NOT EXISTS (SELECT 1 FROM plugin p WHERE p.backup_id = backup.id)`).Error; err != nil {
+			return fmt.Errorf("迁移清理无主备份记录失败: %w", err)
+		}
+
+		// 3. drop 来源列与索引（backup 瘦身为纯保管清单：file_name/file_path/workdir + 时间戳）
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_backup_original_file_path`).Error; err != nil {
+			return fmt.Errorf("迁移删除 backup.original_file_path 索引失败: %w", err)
+		}
+		for _, col := range []string{"source_type", "source_id", "original_file_path", "original_file_name", "original_filename_extension"} {
+			if err := db.Exec(fmt.Sprintf("ALTER TABLE backup DROP COLUMN %s", col)).Error; err != nil {
+				return fmt.Errorf("迁移删除 backup.%s 列失败: %w", col, err)
+			}
 		}
 	}
 

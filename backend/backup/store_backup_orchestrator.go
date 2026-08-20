@@ -13,8 +13,6 @@ import (
 type StoreResourceProvider interface {
 	// ListByWorkId 查询作品关联的资源
 	ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error)
-	// GetById 根据 ID 获取资源
-	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
 // StoreResourceStoreReader resource_store 查询接口(按 resourceId 查关联 store)
@@ -26,6 +24,8 @@ type StoreResourceStoreReader interface {
 type StoreDeleter interface {
 	// HardDelete 删除记录及对应文件（物理删记录）
 	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+	// GetById 按 ID 查记录行（备份前取 file_path/file_name 快照供还原）
+	GetById(ctx context.Context, id int64) (*entity.PersistentStore, error)
 }
 
 // StoreImporter Store 导入接口（将外部文件导入到 store 目录并创建 DB 记录，由 persistentStore.Service 实现）
@@ -33,24 +33,24 @@ type StoreImporter interface {
 	StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error)
 }
 
-// ResourceUpdater Resource 更新接口（由 resource.Service 实现）
-type ResourceUpdater interface {
-	Updates(ctx context.Context, resource *entity.Resource) error
-}
-
 // BackupReader 备份查询接口（由 backup.Service 实现）
 type BackupReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	GetBackupPath(backup *entity.Backup) string
-	Delete(ctx context.Context, id int64) error
+	DeleteBackup(ctx context.Context, id int64) error
 }
 
-// StoreBackupItem 单个 Store 的备份条目
+// StoreBackupItem 单个 Store 的备份条目（备份方内存快照：还原所需的行信息由发起方自行记录，
+// 不落 backup 表——backup 为纯保管清单，不记来源）
 type StoreBackupItem struct {
 	// ResourceID 所属 Resource ID
 	ResourceID int64
-	// BackupID Backup 记录 ID（0 = 未备份，直接删除了）
+	// BackupID Backup 保管清单行 ID（0 = 未备份，直接删除了）
 	BackupID int64
+	// FilePath 备份时行内 file_path 快照（workDir 相对路径，还原目标位置）
+	FilePath string
+	// FileName 备份时行内 file_name 快照（还原导入的原始文件名）
+	FileName string
 	// StoreType store_type 字符串(main/thumbnail/videoTrack/...)
 	StoreType string
 	// Generation 生成方式(downloaded/derived)
@@ -116,6 +116,18 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 					continue
 				}
 			}
+			// 删行前快照 file_path/file_name（物理删行后行内信息无处可查，还原目标由本内存清单承载）
+			filePath, fileName := "", ""
+			if record, err := o.storeDeleter.GetById(ctx, rs.StoreID); err == nil && record != nil {
+				if record.FilePath.Valid {
+					filePath = record.FilePath.String
+				}
+				if record.FileName.Valid {
+					fileName = record.FileName.String
+				}
+			} else {
+				logger.Log.Warnf("[StoreBackupOrchestrator] 查询 store 行(id=%d) 失败，快照为空", rs.StoreID)
+			}
 			backupId, err := o.storeDeleter.HardDelete(ctx, rs.StoreID, true)
 			if err != nil {
 				logger.Log.Warnf("[StoreBackupOrchestrator] 备份 Store(id=%d, type=%s) 失败: %v", rs.StoreID, rs.StoreType, err)
@@ -123,6 +135,8 @@ func (o *StoreBackupOrchestratorImpl) BackupStores(ctx context.Context, workId i
 			items = append(items, &StoreBackupItem{
 				ResourceID: res.GetID(),
 				BackupID:   backupId,
+				FilePath:   filePath,
+				FileName:   fileName,
 				StoreType:  rs.StoreType,
 				Generation: rs.Generation,
 			})
@@ -149,43 +163,33 @@ func (o *StoreBackupOrchestratorImpl) RestoreAllStores(ctx context.Context, item
 			logger.Log.Warnf("[StoreBackupOrchestrator] 跳过还原: type=%s, BackupID=%d（备份未成功，旧资源可能已丢失）", item.StoreType, item.BackupID)
 			continue
 		}
+		if item.FilePath == "" || item.FileName == "" {
+			skipped++
+			logger.Log.Warnf("[StoreBackupOrchestrator] 跳过还原: type=%s, BackupID=%d（备份时行快照缺失，无法定位还原目标）", item.StoreType, item.BackupID)
+			continue
+		}
 
-		// 1. 获取 Backup 记录
+		// 1. 获取 Backup 保管清单行
 		backupEntity, err := o.backupReader.GetById(ctx, item.BackupID)
 		if err != nil || backupEntity == nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 查询备份记录 %d 失败，跳过还原", item.BackupID)
 			continue
 		}
 
-		// 2. 从 Backup 记录获取原始路径信息
-		originalFilePath := ""
-		if backupEntity.OriginalFilePath.Valid {
-			originalFilePath = backupEntity.OriginalFilePath.String
-		}
-		originalFileName := ""
-		if backupEntity.OriginalFileName.Valid {
-			originalFileName = backupEntity.OriginalFileName.String
-		}
-
-		if originalFilePath == "" || originalFileName == "" {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 备份记录 %d 缺少原始路径信息，跳过还原", item.BackupID)
-			continue
-		}
-
-		// 3. 获取备份文件绝对路径
+		// 2. 获取备份文件绝对路径
 		backupAbsPath := o.backupReader.GetBackupPath(backupEntity)
 
-		// 4. 通过 PersistentStore 将备份文件导入到 store 目录
-		newStoreId, err := o.storeImporter.StoreFromExternal(ctx, backupAbsPath, originalFilePath, originalFileName)
+		// 3. 通过 PersistentStore 将备份文件导入到 store 目录（还原目标取备份时的行快照）
+		newStoreId, err := o.storeImporter.StoreFromExternal(ctx, backupAbsPath, item.FilePath, item.FileName)
 		if err != nil {
 			logger.Log.Warnf("[StoreBackupOrchestrator] 导入 Store 失败: %v", zap.Error(err))
 			continue
 		}
 		item.NewStoreID = newStoreId
 
-		// 5. 清理备份记录(resource_store 由调用方在还原后据 NewStoreID 重挂；backup 不感知)
-		if err := o.backupReader.Delete(ctx, item.BackupID); err != nil {
-			logger.Log.Warnf("[StoreBackupOrchestrator] 删除备份记录 %d 失败: %v", item.BackupID, err)
+		// 4. 清理备份清单行与文件(resource_store 由调用方在还原后据 NewStoreID 重挂；backup 不感知)
+		if err := o.backupReader.DeleteBackup(ctx, item.BackupID); err != nil {
+			logger.Log.Warnf("[StoreBackupOrchestrator] 删除备份 %d 失败: %v", item.BackupID, err)
 		}
 
 		logger.Log.Infof("[StoreBackupOrchestrator] Store 已还原: type=%s, newStoreId=%d", item.StoreType, newStoreId)

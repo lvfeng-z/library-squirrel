@@ -15,15 +15,16 @@ import (
 
 // StoreStateResolver 按路径解析存储记录状态（含已删行；由 persistentStore.Service 实现）
 type StoreStateResolver interface {
-	// ResolveFileState completed=文件曾完整落盘；deleted=记录已软删（文件移 backup 或外部裁决失效）
+	// ResolveFileState completed=文件曾完整落盘；deleted=记录已软删（文件移 backup 或外部裁决失效）；
+	// backupId=行内嵌的备份清单行 ID（0=无备份）
 	// 无记录时 completed=true 兜底（按磁盘文件 fallback）
-	ResolveFileState(ctx context.Context, relPath string) (completed bool, deleted bool)
+	ResolveFileState(ctx context.Context, relPath string) (completed bool, deleted bool, backupId int64)
 }
 
-// BackupPathResolver 按原始 store 路径反查备份文件绝对路径（/store/ 兜底：软删作品文件在 backup/）
+// BackupPathResolver 按备份清单行 ID 取备份文件绝对路径（/store/ 兜底：软删记录文件在 backup/）
 type BackupPathResolver interface {
-	// ResolveBackupPathByOriginal 无备份返回空串
-	ResolveBackupPathByOriginal(ctx context.Context, originalRelPath string) string
+	// ResolveBackupPathById 无备份返回空串
+	ResolveBackupPathById(ctx context.Context, backupId int64) string
 }
 
 // StoreFileHandler 从工作目录提供文件服务的 HTTP Handler
@@ -101,16 +102,16 @@ func (h *StoreFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 分隔符换成反斜杠导致记录查询永不命中——查库键经 ToSlash 还原，文件系统操作仍用 cleanedPath
 	lookupPath := filepath.ToSlash(cleanedPath)
 
-	// 状态路由：未完成记录 404（防半成品）；软删记录确定性走 backup 反查
+	// 状态路由：未完成记录 404（防半成品）；软删记录按行内 backup_id 定位备份文件服务
 	if h.stateResolver != nil {
-		completed, deleted := h.stateResolver.ResolveFileState(r.Context(), lookupPath)
+		completed, deleted, backupId := h.stateResolver.ResolveFileState(r.Context(), lookupPath)
 		if !completed {
 			http.NotFound(w, r)
 			return
 		}
 		if deleted {
-			if h.backupResolver != nil {
-				if backupPath := h.backupResolver.ResolveBackupPathByOriginal(r.Context(), lookupPath); backupPath != "" {
+			if h.backupResolver != nil && backupId > 0 {
+				if backupPath := h.backupResolver.ResolveBackupPathById(r.Context(), backupId); backupPath != "" {
 					if bInfo, bErr := os.Stat(backupPath); bErr == nil && !bInfo.IsDir() {
 						h.serveFile(w, r, backupPath)
 						return

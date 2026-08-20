@@ -93,10 +93,10 @@ type Repository interface {
 
 // BackupProvider 备份提供者接口（由 plugin service 定义需要的备份能力）
 type BackupProvider interface {
-	// CreatePluginBackup 创建插件备份
-	CreatePluginBackup(ctx context.Context, sourceId int64, sourcePath string) (*entity2.Backup, error)
-	// GetPluginBackup 获取插件备份
-	GetPluginBackup(ctx context.Context, sourceId int64) (*entity2.Backup, error)
+	// CreateBackup 复制源文件到备份目录并建保管清单行（插件安装包备份，保留源文件）
+	CreateBackup(ctx context.Context, sourcePath string) (*entity2.Backup, error)
+	// GetById 按清单行 ID 获取备份（行内 BackupID 引用直查）
+	GetById(ctx context.Context, id int64) (*entity2.Backup, error)
 }
 
 // PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、前端扩展和启动子进程
@@ -526,8 +526,8 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		}
 	}
 
-	// 创建备份
-	backup, err := s.backupProvider.CreatePluginBackup(ctx, plugin.ID, installDTO.PackagePath)
+	// 创建备份（安装包复制入 backup/，清单行 ID 内嵌 plugin.BackupID 引用）
+	backup, err := s.backupProvider.CreateBackup(ctx, installDTO.PackagePath)
 	if err != nil {
 		return nil, err
 	}
@@ -568,8 +568,8 @@ func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, trusted 
 		return nil, ErrBackupNotFound
 	}
 
-	// 获取备份
-	backup, err := s.backupProvider.GetPluginBackup(ctx, plugin.ID)
+	// 获取备份（行内 BackupID 直查保管清单）
+	backup, err := s.backupProvider.GetById(ctx, plugin.BackupID.Int64)
 	if err != nil {
 		return nil, err
 	}

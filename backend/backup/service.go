@@ -16,38 +16,20 @@ import (
 	"github.com/library-squirrel/backend/util"
 )
 
-const (
-	// SourceTypePlugin 插件备份
-	SourceTypePlugin = 1
-	// SourceTypeResource 资源备份
-	SourceTypeResource = 2
-	// SourceTypePersistentStore PersistentStore 备份
-	SourceTypePersistentStore = 3
-	// BackupRootDirName 备份根目录名
-	BackupRootDirName = "backup"
-)
+// BackupRootDirName 备份根目录名
+const BackupRootDirName = "backup"
 
 // Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Create 新建备份
+	// Create 新建备份清单行
 	Create(ctx context.Context, backup *entity.Backup) error
-	// Updates 更新备份
-	Updates(ctx context.Context, backup *entity.Backup) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
-	// GetBySourceTypeAndSourceId 根据来源类型和来源ID获取
-	GetBySourceTypeAndSourceId(ctx context.Context, sourceType int, sourceId int64) (*entity.Backup, error)
-	// GetBySourceTypeAndSourceIds 批量获取备份记录
-	GetBySourceTypeAndSourceIds(ctx context.Context, sourceType int, sourceIds []int64) ([]*entity.Backup, error)
-	// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录（软删除链的归属通路：路径即作品的 store 清单）
-	ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*entity.Backup, error)
-	// GetLatestByOriginalPath 按原始 store 路径查最近一条备份（无则 nil）
-	GetLatestByOriginalPath(ctx context.Context, originalRelPath string) (*entity.Backup, error)
-	// Delete 删除备份记录
+	// Delete 删除备份清单行
 	Delete(ctx context.Context, id int64) error
 }
 
-// Service 备份服务
+// Service 备份服务（纯文件仓库：移入保管/取回/清理，不感知备份来源）
 type Service struct {
 	repo          Repository
 	workDirGetter func() string // 每次调用获取最新的 workDir（从设置管理器读取）
@@ -63,69 +45,10 @@ func (s *Service) getWorkDir() string {
 	return s.workDirGetter()
 }
 
-// CreateBackup 创建备份，将源文件复制到 workdir/backup/YYYY/MM/DD/ 下
-func (s *Service) CreateBackup(ctx context.Context, sourceType int, sourceId int64, sourcePath string) (*entity.Backup, error) {
+// storeFile 将源文件收入备份目录并建保管清单行；copy=true 复制保留源文件（安装包备份），false 移动（O(1) 同文件系统）
+func (s *Service) storeFile(ctx context.Context, sourcePath string, copy bool) (*entity.Backup, error) {
 	if !util.FileExists(sourcePath) {
-		return nil, fmt.Errorf("创建备份失败，源文件不存在: %s", sourcePath)
-	}
-
-	workDir := s.getWorkDir()
-	fileName := filepath.Base(sourcePath)
-
-	// 按日期构建备份目录：backup/YYYY/MM/DD/
-	now := time.Now()
-	// relPath 域用 path.Join（正斜杠基准，入库/做键）；absPath 拼接才用 filepath.Join
-	relativeDir := path.Join(
-		BackupRootDirName,
-		fmt.Sprintf("%04d", now.Year()),
-		fmt.Sprintf("%02d", now.Month()),
-		fmt.Sprintf("%02d", now.Day()),
-	)
-	absoluteDir := filepath.Join(workDir, relativeDir)
-	if err := util.CreateDirIfNotExists(absoluteDir); err != nil {
-		return nil, err
-	}
-
-	// 处理文件名冲突
-	finalFileName := fileName
-	finalAbsolutePath := filepath.Join(absoluteDir, finalFileName)
-	maxRetries := 50
-	for util.FileExists(finalAbsolutePath) {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("创建备份失败，上下文已取消: %w", ctx.Err())
-		}
-		if maxRetries <= 0 {
-			return nil, fmt.Errorf("创建备份失败，文件名冲突重试次数超限: %s", fileName)
-		}
-		maxRetries--
-		finalFileName = addSuffix(finalFileName, fmt.Sprintf("_%d", util.GetCurrentTimestamp()))
-		finalAbsolutePath = filepath.Join(absoluteDir, finalFileName)
-		logger.Log.Infof("文件已存在，尝试文件名: %s", finalFileName)
-	}
-
-	// 复制源文件到备份目录
-	if err := util.CopyFile(sourcePath, finalAbsolutePath); err != nil {
-		return nil, fmt.Errorf("创建备份失败，复制文件出错: %w", err)
-	}
-
-	// 保存备份记录，file_path 存储相对路径
-	backup := entity.NewBackup()
-	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
-	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
-	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
-	backup.FilePath = sql.NullString{String: path.Join(relativeDir, finalFileName), Valid: true}
-	backup.Workdir = sql.NullString{String: workDir, Valid: true}
-	if err := s.repo.Create(ctx, backup); err != nil {
-		return nil, err
-	}
-	return backup, nil
-}
-
-// MoveBackup 移动备份，将源文件移动到 workdir/backup/YYYY/MM/DD/ 下（O(1) 同文件系统）
-// 当调用方不需要保留源文件时使用，比 CreateBackup（复制）更高效
-func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64, sourcePath string) (*entity.Backup, error) {
-	if !util.FileExists(sourcePath) {
-		return nil, fmt.Errorf("移动备份失败，源文件不存在: %s", sourcePath)
+		return nil, fmt.Errorf("备份失败，源文件不存在: %s", sourcePath)
 	}
 
 	workDir := s.getWorkDir()
@@ -134,9 +57,11 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 	// 源文件移出扫描目录会触发旧路径 Remove 事件（跨目录 rename 旧路径事件不被
 	// fsnotify 吞掉），在文件操作点登记抑制，避免 fsmonitor 将内部移动误报为外部
 	// 删除。源路径不在 workDir 内（Rel 逃逸）时不登记——监控树外路径本就无事件。
-	if rel, err := filepath.Rel(workDir, sourcePath); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		storeRegistry.Suppress(rel)
-		defer storeRegistry.Release(rel)
+	if !copy {
+		if rel, err := filepath.Rel(workDir, sourcePath); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			storeRegistry.Suppress(rel)
+			defer storeRegistry.Release(rel)
+		}
 	}
 
 	// 按日期构建备份目录：backup/YYYY/MM/DD/
@@ -159,10 +84,10 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 	maxRetries := 50
 	for util.FileExists(finalAbsolutePath) {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("移动备份失败，上下文已取消: %w", ctx.Err())
+			return nil, fmt.Errorf("备份失败，上下文已取消: %w", ctx.Err())
 		}
 		if maxRetries <= 0 {
-			return nil, fmt.Errorf("移动备份失败，文件名冲突重试次数超限: %s", fileName)
+			return nil, fmt.Errorf("备份失败，文件名冲突重试次数超限: %s", fileName)
 		}
 		maxRetries--
 		finalFileName = addSuffix(finalFileName, fmt.Sprintf("_%d", util.GetCurrentTimestamp()))
@@ -170,21 +95,25 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 		logger.Log.Infof("文件已存在，尝试文件名: %s", finalFileName)
 	}
 
-	// 移动源文件到备份目录（同文件系统下 O(1)）
-	if err := os.Rename(sourcePath, finalAbsolutePath); err != nil {
-		// 跨文件系统时回退为复制
-		logger.Log.Warnf("移动备份失败（回退为复制）: %v", err)
-		if copyErr := util.CopyFile(sourcePath, finalAbsolutePath); copyErr != nil {
-			return nil, fmt.Errorf("移动备份失败，回退复制也失败: %w（原始移动错误: %v）", copyErr, err)
+	if copy {
+		if err := util.CopyFile(sourcePath, finalAbsolutePath); err != nil {
+			return nil, fmt.Errorf("备份失败，复制文件出错: %w", err)
 		}
-		// 复制成功后删除源文件
-		_ = os.Remove(sourcePath)
+	} else {
+		// 移动源文件到备份目录（同文件系统下 O(1)）
+		if err := os.Rename(sourcePath, finalAbsolutePath); err != nil {
+			// 跨文件系统时回退为复制
+			logger.Log.Warnf("移动备份失败（回退为复制）: %v", err)
+			if copyErr := util.CopyFile(sourcePath, finalAbsolutePath); copyErr != nil {
+				return nil, fmt.Errorf("移动备份失败，回退复制也失败: %w（原始移动错误: %v）", copyErr, err)
+			}
+			// 复制成功后删除源文件
+			_ = os.Remove(sourcePath)
+		}
 	}
 
-	// 保存备份记录，file_path 存储相对路径
+	// 建保管清单行，file_path 存储相对路径
 	backup := entity.NewBackup()
-	backup.SourceType = sql.NullInt64{Int64: int64(sourceType), Valid: true}
-	backup.SourceID = sql.NullInt64{Int64: sourceId, Valid: true}
 	backup.FileName = sql.NullString{String: finalFileName, Valid: true}
 	backup.FilePath = sql.NullString{String: path.Join(relativeDir, finalFileName), Valid: true}
 	backup.Workdir = sql.NullString{String: workDir, Valid: true}
@@ -194,24 +123,24 @@ func (s *Service) MoveBackup(ctx context.Context, sourceType int, sourceId int64
 	return backup, nil
 }
 
-// CreatePluginBackup 创建插件备份
-func (s *Service) CreatePluginBackup(ctx context.Context, sourceId int64, sourcePath string) (*entity.Backup, error) {
-	return s.CreateBackup(ctx, SourceTypePlugin, sourceId, sourcePath)
+// CreateBackup 复制源文件到备份目录并建保管清单行（保留源文件；供安装包备份等需保留源的场景）
+func (s *Service) CreateBackup(ctx context.Context, sourcePath string) (*entity.Backup, error) {
+	return s.storeFile(ctx, sourcePath, true)
 }
 
-// GetById 根据ID获取备份
+// MoveToBackup 移动源文件到备份目录并建保管清单行，返回清单行 ID
+// （供 store 软删链：文件离开 store/ 移入 backup/，行内嵌 backup_id 引用本清单行）
+func (s *Service) MoveToBackup(ctx context.Context, absFilePath string) (int64, error) {
+	backup, err := s.storeFile(ctx, absFilePath, false)
+	if err != nil {
+		return 0, err
+	}
+	return backup.GetID(), nil
+}
+
+// GetById 根据ID获取备份清单行
 func (s *Service) GetById(ctx context.Context, id int64) (*entity.Backup, error) {
 	return s.repo.GetById(ctx, id)
-}
-
-// GetPluginBackup 获取插件备份
-func (s *Service) GetPluginBackup(ctx context.Context, sourceId int64) (*entity.Backup, error) {
-	return s.repo.GetBySourceTypeAndSourceId(ctx, SourceTypePlugin, sourceId)
-}
-
-// GetResourceBackup 获取资源备份
-func (s *Service) GetResourceBackup(ctx context.Context, resourceId int64) (*entity.Backup, error) {
-	return s.repo.GetBySourceTypeAndSourceId(ctx, SourceTypeResource, resourceId)
 }
 
 // GetBackupPath 获取备份文件的完整路径
@@ -226,65 +155,34 @@ func (s *Service) GetBackupPath(backup *entity.Backup) string {
 	return filepath.Join(workdir, filePath)
 }
 
-// addSuffix 在文件名（不含扩展名）后添加后缀，保留扩展名
-func addSuffix(filename string, suffix string) string {
-	ext := filepath.Ext(filename)
-	name := filename[:len(filename)-len(ext)]
-	return name + suffix + ext
-}
-
-// MoveBackupForResource 移动资源文件到备份目录，并记录原始路径信息用于后续还原
-func (s *Service) MoveBackupForResource(ctx context.Context, sourceId int64, sourcePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (*entity.Backup, error) {
-	backup, err := s.MoveBackup(ctx, SourceTypeResource, sourceId, sourcePath)
-	if err != nil {
-		return nil, err
+// ResolveBackupPathById 按清单行 ID 取备份文件绝对路径（无记录/查询失败返回空串）
+// 供 /store/ 文件服务：软删记录行内嵌 backup_id，据此定位备份文件
+func (s *Service) ResolveBackupPathById(ctx context.Context, backupId int64) string {
+	if backupId <= 0 {
+		return ""
 	}
-	// 补充原始资源路径信息
-	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
-	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
-	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
-	if err := s.repo.Updates(ctx, backup); err != nil {
-		return nil, fmt.Errorf("更新备份原始路径失败: %w", err)
-	}
-	return backup, nil
-}
-
-// MoveToBackup 将文件移动到备份目录并创建备份记录，供 PersistentStore 删除时调用
-// sourceId: PersistentStore 记录 ID
-// absFilePath: 源文件绝对路径
-// originalFilePath: PersistentStore 中的相对路径（用于还原时确定目标位置）
-// originalFileName: 原始文件名
-// originalFilenameExtension: 原始扩展名
-// 返回备份记录 ID
-func (s *Service) MoveToBackup(ctx context.Context, sourceId int64, absFilePath string, originalFilePath string, originalFileName string, originalFilenameExtension string) (int64, error) {
-	backup, err := s.MoveBackup(ctx, SourceTypePersistentStore, sourceId, absFilePath)
-	if err != nil {
-		return 0, err
-	}
-	// 记录 PersistentStore 的原始路径信息，用于还原（复原/彻底删除按 original_file_path 反查聚合）
-	backup.OriginalFilePath = sql.NullString{String: originalFilePath, Valid: originalFilePath != ""}
-	backup.OriginalFileName = sql.NullString{String: originalFileName, Valid: originalFileName != ""}
-	backup.OriginalFilenameExtension = sql.NullString{String: originalFilenameExtension, Valid: originalFilenameExtension != ""}
-	if err := s.repo.Updates(ctx, backup); err != nil {
-		return 0, fmt.Errorf("更新备份原始路径失败: %w", err)
-	}
-	return backup.GetID(), nil
-}
-
-// ListByOriginalPaths 按原始 store 路径集合批量查询备份记录
-// （软删除链的归属通路：作品 store 路径清单经 persistent_store 含删行取，再按 original_file_path 反查）
-func (s *Service) ListByOriginalPaths(ctx context.Context, originalRelPaths []string) ([]*entity.Backup, error) {
-	return s.repo.ListByOriginalPaths(ctx, originalRelPaths)
-}
-
-// ResolveBackupPathByOriginal 按原始 store 路径反查最近一条备份的文件绝对路径（无则空串）
-// 供 /store/ 文件服务兜底（软删作品文件在 backup/）
-func (s *Service) ResolveBackupPathByOriginal(ctx context.Context, originalRelPath string) string {
-	backup, err := s.repo.GetLatestByOriginalPath(ctx, originalRelPath)
+	backup, err := s.repo.GetById(ctx, backupId)
 	if err != nil || backup == nil {
 		return ""
 	}
 	return s.GetBackupPath(backup)
+}
+
+// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍——可能已被取回）
+func (s *Service) DeleteBackup(ctx context.Context, id int64) error {
+	backup, err := s.repo.GetById(ctx, id)
+	if err != nil {
+		return fmt.Errorf("查询备份 %d 失败: %w", id, err)
+	}
+	if backup == nil {
+		return nil
+	}
+	if absPath := s.GetBackupPath(backup); absPath != "" {
+		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
+			logger.Log.Warnf("删除备份文件失败（将仅删除记录）: %s, %v", absPath, err)
+		}
+	}
+	return s.repo.Delete(ctx, id)
 }
 
 // RestoreFile 从备份路径还原文件到目标路径
@@ -316,12 +214,9 @@ func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath
 	return nil
 }
 
-// GetResourceBackups 批量获取资源备份记录
-func (s *Service) GetResourceBackups(ctx context.Context, resourceIds []int64) ([]*entity.Backup, error) {
-	return s.repo.GetBySourceTypeAndSourceIds(ctx, SourceTypeResource, resourceIds)
-}
-
-// Delete 删除备份记录
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+// addSuffix 在文件名（不含扩展名）后添加后缀，保留扩展名
+func addSuffix(filename string, suffix string) string {
+	ext := filepath.Ext(filename)
+	name := filename[:len(filename)-len(ext)]
+	return name + suffix + ext
 }

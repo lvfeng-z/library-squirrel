@@ -256,11 +256,11 @@ type StoreDeleter interface {
 	// HardDelete 删除记录及对应文件（物理删记录）
 	// backup: 是否对已完成文件进行移动备份
 	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
-	// DeleteWithBackup 删除 store 文件（移入 backup 建备份记录，记录随软删）
+	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）
 	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
-	// ListFilePathsIncludeDeleted 按 ID 集合取 file_path（含已删行）
-	ListFilePathsIncludeDeleted(ctx context.Context, ids []int64) []string
-	// RestoreWorkStores 批量复活 store 记录（复原链：清软删标志）
+	// ListByIdsIncludeDeleted 按 ID 集合查记录行（含已删行；行内 backup_id 与 file_path 供复原/彻底删除链使用）
+	ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity2.PersistentStore
+	// RestoreWorkStores 批量复活 store 记录（复原链：清软删标志与 backup_id）
 	RestoreWorkStores(ctx context.Context, ids []int64) error
 }
 
@@ -612,14 +612,14 @@ func (s *Service) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]
 	return s.repo.ListDeletedBefore(ctx, expireBefore)
 }
 
-// ListWorkStoreFilePaths 取作品的全部 store 文件路径（含已删行；复原/彻底删除链反查 backup 的路径清单）
-func (s *Service) ListWorkStoreFilePaths(ctx context.Context, workId int64) []string {
+// ListWorkStoresIncludeDeleted 取作品的全部 store 记录行（含已删行；复原/彻底删除链按行内 backup_id 定位备份）
+func (s *Service) ListWorkStoresIncludeDeleted(ctx context.Context, workId int64) []*entity2.PersistentStore {
 	storeIds, err := s.collectWorkStoreIds(ctx, workId)
 	if err != nil {
 		logger.Log.Warnf("收集作品 %d store ID 失败: %v", workId, err)
-		return []string{}
+		return []*entity2.PersistentStore{}
 	}
-	return s.storeDeleter.ListFilePathsIncludeDeleted(ctx, storeIds)
+	return s.storeDeleter.ListByIdsIncludeDeleted(ctx, storeIds)
 }
 
 // collectWorkStoreIds 收集作品的全部 store ID（resource→resource_store 链）

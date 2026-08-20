@@ -135,7 +135,6 @@ type App struct {
 	WorkSetHandler               *workSet.Handler
 	SearchHandler                *search.Handler
 	SettingsHandler              *settings.Handler
-	BackupHandler                *backup.Handler
 	AppLauncherHandler           *appLauncher.Handler
 	FileSysUtilHandler           *fileSysUtil.Handler
 	FrontendLogHandler           *frontendLog.Handler
@@ -1223,7 +1222,6 @@ func (app *App) initHandlers() {
 	app.WorkSetHandler = workSet.NewHandler(app.WorkSetService)
 	app.SearchHandler = search.NewHandler(app.SearchService)
 	app.SettingsHandler = settings.NewHandler(app.SettingsService)
-	app.BackupHandler = backup.NewHandler(app.BackupService)
 	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
 	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
 	app.FrontendLogHandler = frontendLog.NewHandler(app.FrontendLogService)

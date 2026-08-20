@@ -13,58 +13,6 @@ import * as dto$0 from "../../../../../lvfeng-z/library-squirrel-sdk/dto/models.
 import * as gen$0 from "../../../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 
 /**
- * BackupDTO 备份数据传输对象
- */
-export class BackupDTO {
-    "id": number;
-    "sourceType": number | null;
-    "sourceId": number | null;
-    "fileName": string | null;
-    "filePath": string | null;
-    "workdir": string | null;
-    "createTime": number;
-    "updateTime": number;
-
-    /** Creates a new BackupDTO instance. */
-    constructor($$source: Partial<BackupDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = 0;
-        }
-        if (!("sourceType" in $$source)) {
-            this["sourceType"] = null;
-        }
-        if (!("sourceId" in $$source)) {
-            this["sourceId"] = null;
-        }
-        if (!("fileName" in $$source)) {
-            this["fileName"] = null;
-        }
-        if (!("filePath" in $$source)) {
-            this["filePath"] = null;
-        }
-        if (!("workdir" in $$source)) {
-            this["workdir"] = null;
-        }
-        if (!("createTime" in $$source)) {
-            this["createTime"] = 0;
-        }
-        if (!("updateTime" in $$source)) {
-            this["updateTime"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new BackupDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): BackupDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new BackupDTO($$parsedSource as Partial<BackupDTO>);
-    }
-}
-
-/**
  * CreateTaskRequest 创建任务请求
  */
 export class CreateTaskRequest {

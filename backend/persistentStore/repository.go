@@ -6,6 +6,7 @@ import (
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -58,7 +59,8 @@ func (r *PersistentStoreRepository) ResetCompleted(ctx context.Context, id int64
 		Update("completed_at", 0).Error
 }
 
-// RestoreByIds 批量清软删标志（复原链：文件还原回 store/ 后记录复活，Unscoped 逃逸 Update 的软删过滤）
+// RestoreByIds 批量清软删标志与备份引用（复原链：文件还原回 store/ 后记录复活，
+// backup_id 指向的清单行已随还原删除故一并清零；Unscoped 逃逸 Update 的软删过滤）
 func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -67,7 +69,20 @@ func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int6
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id IN ?", ids).
-		Update("deleted_at", 0).Error
+		Updates(map[string]interface{}{"deleted_at": 0, "backup_id": 0}).Error
+}
+
+// SoftDeleteWithBackup 软删记录并写入备份清单行引用（单条 UPDATE 同生共死：
+// 文件移动入 backup/ 成功后调用，backup_id 与 deleted_at 原子落盘；backupId=0 表无备份的软删）
+func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id int64, backupId int64) error {
+	return r.GORM().WithContext(ctx).
+		Unscoped().
+		Model(new(domain.PersistentStore)).
+		Where("id = ? AND deleted_at = 0", id).
+		Updates(map[string]interface{}{
+			"deleted_at": util.GetCurrentTimestamp(),
+			"backup_id":  backupId,
+		}).Error
 }
 
 // NormalizeFilePaths 将 file_path 中的反斜杠统一为正斜杠（符合存储规范）

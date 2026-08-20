@@ -39,7 +39,7 @@
 
 ## 关键设计
 
-- **记录-文件不变量（2026-08-19 修复）**：状态字段如实反映物理世界——`completed_at`（落盘完成时刻，0=未完成）+ `deleted_at`（软删：文件移 backup 或 fsmonitor 外部裁决不复从，复原/裁决链清除）。终态两状态，原 0/1 枚举 `status` 改名改型 `completed_at`、原 fsmonitor 自制软删 `invalid_at` 退役并入 `deleted_at`（RECORD_STATE_TRUTHFUL 与方案文档第九节的落地）。/store/ 文件服务按状态路由：软删记录确定性走 backup.original_file_path 反查，不再 stat 失败猜测式兜底。
+- **记录-文件不变量（2026-08-19 修复，2026-08-20 补 backup_id）**：状态字段如实反映物理世界——`completed_at`（落盘完成时刻，0=未完成）+ `deleted_at`（软删：文件移 backup 或 fsmonitor 外部裁决不复从，复原/裁决链清除）+ `backup_id`（备份清单行引用，软删链与 deleted_at 单条 UPDATE 同生共死写入、复原双列同清，外部删除失效行保持 0）。/store/ 文件服务按状态路由：软删记录按行内 backup_id 查 backup 保管清单定位文件（同路径多代各行指各的，代次隔离）。
 - **直接落最终路径 + completed_at 占位**：流式写入直接落到最终路径（不经过临时文件），DB 记录以 `completed_at=0` 起步，`Complete` 时置完成时刻。未完成文件不靠临时后缀隔离，而是由读取层 `StoreFileHandler` 依据 completed 状态校验——未完成记录的 `/store/` 请求直接返回 404，从而避免半成品被读取。零值写入注意：续传重置回未完成须经 `ResetCompleted` 显式列更新（GORM Updates 跳零值）。
 - **路径强校验**：`storeRegistry.ValidatePath` 拒绝未注册子目录，统一正斜杠比较以兼容 Windows。
 - **操作抑制登记（suppression）**：各 Create/Remove/Rename 落盘点（`Store`/`StoreStream`/`StoreFromExternal`/`Delete`/`DeleteWithBackup`/`CleanupFile`/`storeWriter.Abort`）在磁盘操作前 `storeRegistry.Suppress(relPath)` + `defer Release`，让 fsmonitor 把自身写入与外部操作区分开（`Complete`/`ResumeStream` 无 fsnotify Create/Remove 事件，不登记）。backup 模块的 `MoveBackup` 亦在汇点自登记（覆盖所有移入 backup 的调用方）。
