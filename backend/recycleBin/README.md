@@ -8,7 +8,7 @@
 
 - 与 **work**：work 实现 `WorkRestorer` 接口（软删/复原清标志/冲突查询/物理级联删除），recycleBin 负责复原与彻底删除的**编排**（业务键冲突裁决、文件还原顺序、backup 清理）。软删除入口 `work.SoftDeleteWork` 由 work 模块直接暴露给前端，不经本模块。
 - 与 **search**：回收站列表查询转发 search 的 `QueryRecycleWorkPage`（条件体系与作品搜索同构，基线 `deleted_at > 0`）——作者/标签/站点/时间范围筛选与排序全部复用作品搜索链。
-- 与 **backup**：软删除时资源文件移入 backup/（backup.work_id 归属关联），复原时经 `RestoreFile` 还原回 store/ 原路径并删备份记录，彻底删除时清备份文件与记录。
+- 与 **backup**：软删除时资源文件移入 backup/（persistent_store 行内 backup_id 引用保管清单行），复原时经 `RestoreFile` 还原回 store/ 原路径并删备份记录，彻底删除时按行内 backup_id 清备份文件与记录。
 
 ## 对外接口（Handler）
 
@@ -23,13 +23,13 @@
 ## 核心概念
 
 - **回收站条目 = work 已删行**：work.deleted_at（毫秒时间戳）> 0 即回收站条目；删除时间、TTL 过期判定、删除时间排序均由该列承担。从属行（resource/resource_store/re_work_*）与 persistent_store 记录在软删期间原地保留，复原无需重建。列表 DTO 含剩余天数（service 按 TTL 设置组装）与预览图路径（与作品卡片同优先级：缩略图优先、图片资源主图回退；软删期间文件在 backup/，经 /store/ 的 backup 兜底仍可访问）。
-- **backup 归属关联**：软删除链逐 store 建 backup 记录时写入 work_id；复原/彻底删除按 `ListByWorkId` 聚合取文件级明细。
+- **备份圈定按行内引用**：软删除链逐 store 行写入 backup_id；复原/彻底删除按行内 backup_id 圈定各自备份（同路径多代备份互不干扰，多代复原隔离的根基）。
 - **复原冲突**：删除后重新下载同作品会占用业务键（部分唯一索引 `idx_work_site_site_work_active` 仅约束活行，已删行释放键）。复原时检测到活占位行 → 放弃（报 ErrRestoreConflict）或覆盖（占位作品转入回收站，文件移 backup 让出 store/ 路径，反悔可再复原）。
 - **文件还原的操作抑制**：还原目标在 store/ 监控白名单内，逐文件 storeRegistry.Suppress/Release 登记避免被 fsmonitor 误报为外部变更。
 
 ## 依赖关系
 
-- 依赖：work（WorkRestorer）、backup（BackupReader：ListByWorkId/RestoreFile/GetBackupPath/Delete）、search（RecycleWorkQuerier：QueryRecycleWorkPage）、settings（TTL 配置 + workDir）
+- 依赖：work（WorkRestorer）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup）、search（RecycleWorkQuerier：QueryRecycleWorkPage）、settings（TTL 配置 + workDir）
 - 被依赖：前端回收站页面
 
 ## 关键设计
