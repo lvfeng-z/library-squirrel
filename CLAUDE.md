@@ -57,7 +57,7 @@ task build:server && task run:server
 项目根目录（= RootPath，开发环境为工作目录，生产环境为可执行文件所在目录）
 ├── main.go / app.go          — 程序入口与 Wails 应用主文件
 ├── config.yaml               — 应用配置文件（覆盖嵌入的 default_config.yaml）
-├── backend/                  — Go 后端（32 个业务模块 + 基础设施模块）
+├── backend/                  — Go 后端（33 个业务模块 + 基础设施模块）
 │   ├── base/                 — 公共基础：logger、model（entity/dto）、工具
 │   ├── config/               — 配置加载（嵌入 default_config.yaml 作为默认层）
 │   ├── database/             — 数据库初始化、BaseRepository、事务工具
@@ -152,7 +152,7 @@ task build:server && task run:server
 - **模板**：`doc/module-spec-template.md`（结构骨架、填写要点、维护机制）
 - **范围**：只写"是什么 / 提供什么 / 依赖谁"，不重复编码规则（`.claude/rules/`）与变更历史（`doc/plan/`）
 - **维护**：修改模块行为时同步更新其 `README.md`
-- 已覆盖：`taskManager`、`task`、`work`、`resource`、`plugin`、`backup`、`persistentStore`、`reWorkAuthor`、`reWorkTag`、`recycleBin`、`fsmonitor`
+- 已覆盖：`taskManager`、`task`、`work`、`resource`、`plugin`、`backup`、`persistentStore`、`reWorkAuthor`、`reWorkTag`、`recycleBin`、`fsmonitor`、`backupGovernance`
 
 ## 添加新功能
 

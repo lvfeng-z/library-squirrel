@@ -52,7 +52,7 @@
 ## 依赖关系
 
 - 依赖：`extension/`（扩展点加载）、插件 SDK（HostService 桥接）、settings（激活配置）、`util/crypto`（自存信息加解密）
-- 被依赖：app.go 初始化（`LoadPlugins`）、前端插件管理页
+- 被依赖：app.go 初始化（`LoadPlugins`）、前端插件管理页、backupGovernance（BackupReferencer：安装包备份引用集投影 `ListReferencedBackupIDs`（含已卸载行——重装能力引用，合法有主）、悬空清列 `ClearBackupRefsByBackupIDs` 置 NULL）
 
 ## 关键设计
 

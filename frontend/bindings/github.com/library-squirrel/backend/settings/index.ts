@@ -8,6 +8,7 @@ export {
 
 export {
     AppearanceSettings,
+    BackupGovernanceSettings,
     FsmonitorSettings,
     ImportSettings,
     MergeSettings,

@@ -89,6 +89,10 @@ type Repository interface {
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
 	GetByPublicId(ctx context.Context, publicId string) (*entity2.Plugin, error)
+	// ListReferencedBackupIds 全量投影行内 BackupID（供备份治理引用集对账；含已卸载行）
+	ListReferencedBackupIds(ctx context.Context) ([]int64, error)
+	// ClearBackupRefsByBackupIds 按引用目标清列（悬空引用清列，BackupID 置 NULL）
+	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
 }
 
 // BackupProvider 备份提供者接口（由 plugin service 定义需要的备份能力）
@@ -552,6 +556,23 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 
 	logger.Log.Infof("插件已安装: %s/%s-%s", installDTO.Author, installDTO.Name, installDTO.Version)
 	return plugin, nil
+}
+
+// Name 引用方展示名（实现 backupGovernance.BackupReferencer：监视哨统计分组与备份管理面板用）
+func (s *Service) Name() string {
+	return "插件"
+}
+
+// ListReferencedBackupIDs 全量行内 BackupID 引用的清单行 ID（实现 backupGovernance.BackupReferencer）。
+// 表无软删全量即含已卸载行——卸载行持有重装能力引用，合法有主
+func (s *Service) ListReferencedBackupIDs(ctx context.Context) ([]int64, error) {
+	return s.repo.ListReferencedBackupIds(ctx)
+}
+
+// ClearBackupRefsByBackupIDs 按引用目标清列（实现 backupGovernance.BackupReferencer：治理方算出
+// 悬空 ID 后调用，BackupID 置 NULL）
+func (s *Service) ClearBackupRefsByBackupIDs(ctx context.Context, ids []int64) error {
+	return s.repo.ClearBackupRefsByBackupIds(ctx, ids)
 }
 
 // Reinstall 重新安装插件（trusted 由调用方透传；source 沿用原插件来源）

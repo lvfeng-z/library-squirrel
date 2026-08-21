@@ -51,6 +51,13 @@ type Repository interface {
 	NormalizeFilePaths(ctx context.Context) (int64, error)
 	// RenameDirectoryPrefix 批量替换 file_path 的目录前缀（目录改名同步）
 	RenameDirectoryPrefix(ctx context.Context, oldPrefix string, newPrefix string) (int64, error)
+	// ListReferencedBackupIds 全量投影行内引用的备份清单行 ID（含已删行——软删行是合法引用者；
+	// 供备份治理引用集对账）
+	ListReferencedBackupIds(ctx context.Context) ([]int64, error)
+	// ClearBackupRefsByBackupIds 按引用目标清 backup_id（悬空引用清列；含已删行）
+	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
+	// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带 backup_id>0 的非法态列，返回受影响行数
+	ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error)
 }
 
 // StoreWriter 封装文件句柄和 DB 记录，实现完整的写入生命周期管理
@@ -916,4 +923,28 @@ func (s *Service) BuildVariantPath(sourceRelPath, suffix string) string {
 	base := strings.TrimSuffix(filepath.Base(sourceRelPath), ext)
 	// filepath.Join 在 Windows 产生反斜杠；store 路径以正斜杠入库（跨平台规范），统一转为正斜杠
 	return filepath.ToSlash(filepath.Join(filepath.Dir(sourceRelPath), filename.SanitizeFileName(base+suffix)+ext))
+}
+
+// Name 引用方展示名（实现 backupGovernance.BackupReferencer：监视哨统计分组与备份管理面板用）
+func (s *Service) Name() string {
+	return "作品存储"
+}
+
+// ListReferencedBackupIDs 全量行内引用的备份清单行 ID（实现 backupGovernance.BackupReferencer）。
+// 含已删行——软删行是合法引用者（回收站待复原），漏含即活备份被治理误判无主清删
+func (s *Service) ListReferencedBackupIDs(ctx context.Context) ([]int64, error) {
+	return s.repo.ListReferencedBackupIds(ctx)
+}
+
+// ClearBackupRefsByBackupIDs 按引用目标清 backup_id（实现 backupGovernance.BackupReferencer：
+// 治理方算出悬空 ID 后调用）。含已删行
+func (s *Service) ClearBackupRefsByBackupIDs(ctx context.Context, ids []int64) error {
+	return s.repo.ClearBackupRefsByBackupIds(ctx, ids)
+}
+
+// ClearIllegalAliveBackupRefs 清活行携带 backup_id>0 的非法态列（实现
+// backupGovernance.IllegalBackupRefSanitizer）。构造上不可达：backup_id 与 deleted_at 单条
+// UPDATE 同生共死、复原双列同清——检出即外部直改数据库痕迹，返回受影响行数
+func (s *Service) ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error) {
+	return s.repo.ClearIllegalAliveBackupRefs(ctx)
 }

@@ -27,6 +27,10 @@ type Repository interface {
 	GetById(ctx context.Context, id int64) (*entity.Backup, error)
 	// Delete 删除备份清单行
 	Delete(ctx context.Context, id int64) error
+	// ListCreatedBefore 查询创建时间早于 beforeMs（毫秒）的清单行（治理正向无主候选扫描）
+	ListCreatedBefore(ctx context.Context, beforeMs int64) ([]*entity.Backup, error)
+	// ListAllIDs 全量投影清单行 ID（治理反向悬空判定的现存集）
+	ListAllIDs(ctx context.Context) ([]int64, error)
 }
 
 // Service 备份服务（纯文件仓库：移入保管/取回/清理，不感知备份来源）
@@ -141,6 +145,17 @@ func (s *Service) MoveToBackup(ctx context.Context, absFilePath string) (int64, 
 // GetById 根据ID获取备份清单行
 func (s *Service) GetById(ctx context.Context, id int64) (*entity.Backup, error) {
 	return s.repo.GetById(ctx, id)
+}
+
+// ListCreatedBefore 查询创建时间早于 beforeMs（毫秒）的备份清单行
+// （实现 backupGovernance.BackupCatalog：正向无主候选的扫描数据源）
+func (s *Service) ListCreatedBefore(ctx context.Context, beforeMs int64) ([]*entity.Backup, error) {
+	return s.repo.ListCreatedBefore(ctx, beforeMs)
+}
+
+// ListAllIDs 全量投影备份清单行 ID（实现 backupGovernance.BackupCatalog：反向悬空判定的现存集）
+func (s *Service) ListAllIDs(ctx context.Context) ([]int64, error) {
+	return s.repo.ListAllIDs(ctx)
 }
 
 // GetBackupPath 获取备份文件的完整路径

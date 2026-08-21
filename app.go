@@ -24,6 +24,7 @@ import (
 	"github.com/library-squirrel/backend/appLauncher"
 	"github.com/library-squirrel/backend/assetserver"
 	"github.com/library-squirrel/backend/backup"
+	"github.com/library-squirrel/backend/backupGovernance"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/fileSysUtil"
@@ -66,32 +67,33 @@ type App struct {
 	db *gorm.DB
 
 	// 业务服务
-	LocalTagService        *localTag.Service
-	LocalAuthorService     *localAuthor.Service
-	SiteTagService         *siteTag.Service
-	SiteAuthorService      *siteAuthor.Service
-	SiteService            *site.Service
-	ResourceService        *resource.Service
-	MergeService           *resource.MergeService
-	ReWorkAuthorService    *reWorkAuthor.Service
-	ReWorkTagService       *reWorkTag.Service
-	WorkService            *work.Service
-	WorkSetService         *workSet.Service
-	SearchService          *search.Service
-	SettingsService        *settings.Service
-	BackupService          *backup.Service
-	AppLauncherService     *appLauncher.Service
-	FileSysUtilService     *fileSysUtil.Service
-	FrontendLogService     *frontendLog.Service
-	PluginService          *plugin.Service
-	PluginStorageService   *plugin.PluginStorageService
-	PluginSettingService   *plugin.PluginSettingService
-	TaskService            *task.Service
-	TaskManagerService     *taskManager.Manager
-	SiteBrowserService     *siteBrowser.Service
-	PersistentStoreService *persistentStore.Service
-	RecycleBinService      *recycleBin.Service
-	FsmonitorService       *fsmonitor.Service
+	LocalTagService         *localTag.Service
+	LocalAuthorService      *localAuthor.Service
+	SiteTagService          *siteTag.Service
+	SiteAuthorService       *siteAuthor.Service
+	SiteService             *site.Service
+	ResourceService         *resource.Service
+	MergeService            *resource.MergeService
+	ReWorkAuthorService     *reWorkAuthor.Service
+	ReWorkTagService        *reWorkTag.Service
+	WorkService             *work.Service
+	WorkSetService          *workSet.Service
+	SearchService           *search.Service
+	SettingsService         *settings.Service
+	BackupService           *backup.Service
+	AppLauncherService      *appLauncher.Service
+	FileSysUtilService      *fileSysUtil.Service
+	FrontendLogService      *frontendLog.Service
+	PluginService           *plugin.Service
+	PluginStorageService    *plugin.PluginStorageService
+	PluginSettingService    *plugin.PluginSettingService
+	TaskService             *task.Service
+	TaskManagerService      *taskManager.Manager
+	SiteBrowserService      *siteBrowser.Service
+	PersistentStoreService  *persistentStore.Service
+	RecycleBinService       *recycleBin.Service
+	FsmonitorService        *fsmonitor.Service
+	BackupGovernanceService *backupGovernance.Service
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -982,6 +984,21 @@ func (app *App) initAdvancedServices() error {
 	})
 	app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
 
+	// backupGovernance 备份治理服务（backup/plugin 两个引用方就绪后创建：双向对账 + 监视哨 + 24h 巡检）。
+	// ★ 引用方枚举登记处（唯一落点）：新增「业务行内嵌 backup_id 列引用保管清单行」的模块时，必须在此
+	// 追加其 BackupReferencer 实现——漏登记=该方备份被治理误判无主清理；登记时须确认该方自带终态清理
+	// 路径（消费式复原/物理删联动/手工入口），否则其引用永不释放、备份永不清（监视哨按年龄暴露）
+	app.BackupGovernanceService = backupGovernance.NewService(
+		app.BackupService, // BackupCatalog（保管清单目录面）
+		[]backupGovernance.BackupReferencer{
+			app.PersistentStoreService, // persistent_store.backup_id（作品软删链，含已删行引用）
+			app.PluginService,          // plugin.backup_id（安装包备份/重装能力，含已卸载行引用）
+		},
+		app.SettingsService, // RetentionDaysProvider（无主备份保留期）
+	)
+	// 启动治理巡检后台 goroutine（启动即巡检一次 + 每 24h）
+	app.BackupGovernanceService.Start()
+
 	// task 仓储和服务
 	app.taskRepo = task.NewRepository(app.db)
 
@@ -1386,6 +1403,11 @@ func (app *App) shutdownPlugins() {
 	// 停止回收站 TTL 自动清理 goroutine（在 database.Close 前停止，避免操作已关闭的 DB）
 	if app.RecycleBinService != nil {
 		app.RecycleBinService.Stop()
+	}
+
+	// 停止备份治理巡检 goroutine（在 database.Close 前停止，避免操作已关闭的 DB）
+	if app.BackupGovernanceService != nil {
+		app.BackupGovernanceService.Stop()
 	}
 
 	// 停止工作目录监控（在数据库关闭前停止，避免操作已关闭的资源）

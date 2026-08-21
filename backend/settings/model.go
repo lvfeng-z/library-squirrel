@@ -2,16 +2,17 @@ package settings
 
 // Settings 应用设置
 type Settings struct {
-	Initialized        bool               `json:"initialized" koanf:"initialized"`
-	WorkDir            string             `json:"workdir" koanf:"workdir"`
-	WorkSettings       WorkSettings       `json:"workSettings" koanf:"workSettings"`
-	ImportSettings     ImportSettings     `json:"importSettings" koanf:"importSettings"`
-	PluginSettings     PluginSettings     `json:"pluginSettings" koanf:"pluginSettings"`
-	Tour               TourSettings       `json:"tour" koanf:"tour"`
-	RecycleBinSettings RecycleBinSettings `json:"recycleBin" koanf:"recycleBin"`
-	Appearance         AppearanceSettings `json:"appearance" koanf:"appearance"`
-	MergeSettings      MergeSettings      `json:"mergeSettings" koanf:"mergeSettings"`
-	FsmonitorSettings  FsmonitorSettings  `json:"fsmonitor" koanf:"fsmonitor"`
+	Initialized        bool                     `json:"initialized" koanf:"initialized"`
+	WorkDir            string                   `json:"workdir" koanf:"workdir"`
+	WorkSettings       WorkSettings             `json:"workSettings" koanf:"workSettings"`
+	ImportSettings     ImportSettings           `json:"importSettings" koanf:"importSettings"`
+	PluginSettings     PluginSettings           `json:"pluginSettings" koanf:"pluginSettings"`
+	Tour               TourSettings             `json:"tour" koanf:"tour"`
+	RecycleBinSettings RecycleBinSettings       `json:"recycleBin" koanf:"recycleBin"`
+	Appearance         AppearanceSettings       `json:"appearance" koanf:"appearance"`
+	MergeSettings      MergeSettings            `json:"mergeSettings" koanf:"mergeSettings"`
+	FsmonitorSettings  FsmonitorSettings        `json:"fsmonitor" koanf:"fsmonitor"`
+	BackupGovernance   BackupGovernanceSettings `json:"backupGovernance" koanf:"backupGovernance"`
 }
 
 // WorkSettings 作品相关设置
@@ -62,6 +63,15 @@ type FsmonitorSettings struct {
 	SuppressEnabled bool `json:"suppressEnabled" koanf:"suppressEnabled"` // 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 doc/plan/store操作抑制suppression方案.md
 }
 
+// BackupGovernanceSettings 备份治理设置（治理常开无开关，仅保留期可配）
+type BackupGovernanceSettings struct {
+	RetentionDays int `json:"retentionDays" koanf:"retentionDays"` // 无主备份保留天数：清单行不被任何业务列引用且超期即清理
+}
+
+// DefaultBackupGovernanceRetentionDays 无主备份保留天数默认值（7 天大于替换任务合理在途时长，
+// 覆盖任意链崩溃/中断窗口；小于 1 的取值视为未配置/误配，回退此值——0 作为"立即清空"不被接受）
+const DefaultBackupGovernanceRetentionDays = 7
+
 // 合并策略取值
 const (
 	MergeStrategyKeep      = "keep"      // 新建 merged store，保留原 videoTrack/audioTrack
@@ -100,6 +110,9 @@ func NewSettings() *Settings {
 		FsmonitorSettings: FsmonitorSettings{
 			UsnEnabled:      false,
 			SuppressEnabled: true,
+		},
+		BackupGovernance: BackupGovernanceSettings{
+			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
 	}
 }

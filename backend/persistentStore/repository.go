@@ -107,3 +107,40 @@ func (r *PersistentStoreRepository) RenameDirectoryPrefix(ctx context.Context, o
 	)
 	return result.RowsAffected, result.Error
 }
+
+// ListReferencedBackupIds 全量投影行内引用的备份清单行 ID（DISTINCT backup_id WHERE backup_id > 0）。
+// Unscoped 含已删行——软删行是合法引用者（回收站待复原），GORM 默认软删 scope 排除即活备份被误判无主
+func (r *PersistentStoreRepository) ListReferencedBackupIds(ctx context.Context) ([]int64, error) {
+	var ids []int64
+	err := r.GORM().WithContext(ctx).
+		Unscoped().
+		Model(new(domain.PersistentStore)).
+		Where("backup_id > 0").
+		Distinct().
+		Pluck("backup_id", &ids).Error
+	return ids, err
+}
+
+// ClearBackupRefsByBackupIds 按引用目标清 backup_id（悬空引用清列）。
+// Unscoped 含已删行——已删行持有引用同样须清
+func (r *PersistentStoreRepository) ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.GORM().WithContext(ctx).
+		Unscoped().
+		Model(new(domain.PersistentStore)).
+		Where("backup_id IN ?", ids).
+		Update("backup_id", 0).Error
+}
+
+// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带 backup_id>0 的非法态列，返回受影响行数。
+// 构造上不可达（backup_id 与 deleted_at 单条 UPDATE 同生共死、复原双列同清），防御外部直改数据库
+func (r *PersistentStoreRepository) ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error) {
+	result := r.GORM().WithContext(ctx).
+		Unscoped().
+		Model(new(domain.PersistentStore)).
+		Where("deleted_at = 0 AND backup_id > 0").
+		Update("backup_id", 0)
+	return result.RowsAffected, result.Error
+}

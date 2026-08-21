@@ -146,6 +146,12 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("迁移 work.deleted_at 存量回填失败: %w", err)
 	}
 
+	// 命名迁移(后置)：persistent_store.backup_id 存量 NULL 回填（加列迁移无默认值遗留）。
+	// NULL 与 0 在引用语义（backup_id > 0）下行为等价，回填为「加列迁移必带回填」纪律的规范化对齐
+	if err := db.Exec(`UPDATE persistent_store SET backup_id = 0 WHERE backup_id IS NULL`).Error; err != nil {
+		return fmt.Errorf("迁移 persistent_store.backup_id 存量回填失败: %w", err)
+	}
+
 	// 命名迁移(后置)：backup.file_path 存量分隔符规范化（历史 filepath.Join 构造产反斜杠入库，
 	// 与 relPath 域正斜杠基准不符；幂等：规范化后无反斜杠不再命中）
 	if err := db.Exec(`UPDATE backup SET file_path = REPLACE(file_path, '\\', '/') WHERE file_path LIKE '%\\%'`).Error; err != nil {

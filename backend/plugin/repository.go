@@ -53,6 +53,27 @@ func (r *PluginRepository) GetByPublicId(ctx context.Context, publicId string) (
 	return &plugin, nil
 }
 
+// ListReferencedBackupIds 全量投影行内 BackupID（DISTINCT，非 NULL 且 >0；供备份治理引用集对账）。
+// 表无软删，全量即含已卸载行——卸载行持有重装能力引用，合法有主
+func (r *PluginRepository) ListReferencedBackupIds(ctx context.Context) ([]int64, error) {
+	var ids []int64
+	err := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
+		Where("backup_id IS NOT NULL AND backup_id > 0").
+		Distinct().
+		Pluck("backup_id", &ids).Error
+	return ids, err
+}
+
+// ClearBackupRefsByBackupIds 按引用目标清列（悬空引用清列，BackupID 置 NULL——NullInt64 语义）
+func (r *PluginRepository) ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
+		Where("backup_id IN ?", ids).
+		Update("backup_id", nil).Error
+}
+
 // 辅助函数
 func buildPublicIdCondition(publicId string) string {
 	return fmt.Sprintf("public_id = '%s'", publicId)

@@ -61,6 +61,9 @@ func defaultSettings() *Settings {
 			UsnEnabled:      false,
 			SuppressEnabled: true,
 		},
+		BackupGovernance: BackupGovernanceSettings{
+			RetentionDays: DefaultBackupGovernanceRetentionDays,
+		},
 	}
 }
 
@@ -121,6 +124,15 @@ func (s *Service) GetFileNameFormat() string {
 func (s *Service) GetRecycleBinSettings() (bool, int) {
 	r := s.GetSettings().RecycleBinSettings
 	return r.AutoCleanupEnabled, r.RetentionDays
+}
+
+// GetBackupGovernanceRetentionDays 获取无主备份保留天数（实现 backupGovernance.RetentionDaysProvider 接口）。
+// 治理常开无开关；取值小于 1 视为未配置/误配，回退默认（0 作为"立即清空"不被接受）
+func (s *Service) GetBackupGovernanceRetentionDays() int {
+	if days := s.GetSettings().BackupGovernance.RetentionDays; days > 0 {
+		return days
+	}
+	return DefaultBackupGovernanceRetentionDays
 }
 
 // GetMergeStrategy 获取合并产物挂载策略（实现 resource.MergeSettingsReader 接口）

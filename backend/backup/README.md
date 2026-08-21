@@ -20,12 +20,14 @@
 | `GetBackupPath(backup)` / `ResolveBackupPathById(id)` | 取备份文件绝对路径 |
 | `RestoreFile(backupPath, targetPath)` | 从备份路径还原文件到目标绝对路径 |
 | `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍） |
+| `ListCreatedBefore(beforeMs)` | 查询创建时间早于阈值的清单行（实现 backupGovernance.BackupCatalog：正向无主候选） |
+| `ListAllIDs()` | 全量投影清单行 ID（实现 backupGovernance.BackupCatalog：反向现存集） |
 
-> 无 Wails Handler（前端零消费，已随纯化退役）。作品 store 的批量备份 / 还原由 taskManager（替换 / 板块重执行场景）经 TaskDeps 持有的 `StoreBackupOrchestrator` 调用。
+> 无 Wails Handler（前端零消费，已随纯化退役）。作品 store 的批量备份 / 还原由 taskManager（替换 / 板块重执行场景）经 TaskDeps 持有的 `StoreBackupOrchestrator` 调用。无主备份的治理（双向对账/清理调度）由 backupGovernance 编排，本模块只提供目录查询面与删除能力。
 
 ## 核心概念
 
-- **保管清单行**：backup 表行 = 一份被保管的文件（位置 + 时间），无来源信息；被业务行引用（backup_id）即为有主，无引用即为无主（治理对象，见任务图 backup 治理分支的双向对账模型）。
+- **保管清单行**：backup 表行 = 一份被保管的文件（位置 + 时间），无来源信息；被业务行引用（backup_id）即为有主，无引用即为无主（backupGovernance 双向对账的治理对象：无主且超保留期→清理，悬空引用→清列）。
 - **RestoreFile**：从备份绝对路径还原文件到目标绝对路径（存在则覆盖、跨盘回退复制）；目标在 store/ 监控白名单内的 fsmonitor 操作抑制由调用方负责（抑制键为相对路径，与绝对路径不同构）。
 - **StoreBackupOrchestrator**：封装作品 Resource 全部 PersistentStore 的一站式备份和还原。
   - `BackupStores(workId, types...)`：按 StoreType 板块隔离备份（如仅资源文件、不触及缩略图）；删行前对 file_path/file_name 做内存快照存入 `StoreBackupItem`（物理删行后行内信息无处可查，还原目标由内存清单承载）。
@@ -35,7 +37,7 @@
 ## 依赖关系
 
 - 依赖：persistentStore（StoreDeleter / StoreImporter）、resource（StoreResourceProvider）
-- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）
+- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）、backupGovernance（BackupCatalog：无主对账的清单目录面）
 
 ## 关键设计
 

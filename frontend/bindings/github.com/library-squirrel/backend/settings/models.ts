@@ -33,6 +33,33 @@ export class AppearanceSettings {
 }
 
 /**
+ * BackupGovernanceSettings 备份治理设置（治理常开无开关，仅保留期可配）
+ */
+export class BackupGovernanceSettings {
+    /**
+     * 无主备份保留天数：清单行不被任何业务列引用且超期即清理
+     */
+    "retentionDays": number;
+
+    /** Creates a new BackupGovernanceSettings instance. */
+    constructor($$source: Partial<BackupGovernanceSettings> = {}) {
+        if (!("retentionDays" in $$source)) {
+            this["retentionDays"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new BackupGovernanceSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): BackupGovernanceSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new BackupGovernanceSettings($$parsedSource as Partial<BackupGovernanceSettings>);
+    }
+}
+
+/**
  * FsmonitorSettings 工作目录监控设置
  */
 export class FsmonitorSettings {
@@ -231,6 +258,7 @@ export class Settings {
     "appearance": AppearanceSettings;
     "mergeSettings": MergeSettings;
     "fsmonitor": FsmonitorSettings;
+    "backupGovernance": BackupGovernanceSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -264,6 +292,9 @@ export class Settings {
         if (!("fsmonitor" in $$source)) {
             this["fsmonitor"] = (new FsmonitorSettings());
         }
+        if (!("backupGovernance" in $$source)) {
+            this["backupGovernance"] = (new BackupGovernanceSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -280,6 +311,7 @@ export class Settings {
         const $$createField7_0 = $$createType5;
         const $$createField8_0 = $$createType6;
         const $$createField9_0 = $$createType7;
+        const $$createField10_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -305,6 +337,9 @@ export class Settings {
         if ("fsmonitor" in $$parsedSource) {
             $$parsedSource["fsmonitor"] = $$createField9_0($$parsedSource["fsmonitor"]);
         }
+        if ("backupGovernance" in $$parsedSource) {
+            $$parsedSource["backupGovernance"] = $$createField10_0($$parsedSource["backupGovernance"]);
+        }
         return new Settings($$parsedSource as Partial<Settings>);
     }
 }
@@ -328,7 +363,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType8;
+        const $$createField0_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -370,4 +405,5 @@ const $$createType4 = RecycleBinSettings.createFrom;
 const $$createType5 = AppearanceSettings.createFrom;
 const $$createType6 = MergeSettings.createFrom;
 const $$createType7 = FsmonitorSettings.createFrom;
-const $$createType8 = $Create.Map($Create.Any, $Create.Any);
+const $$createType8 = BackupGovernanceSettings.createFrom;
+const $$createType9 = $Create.Map($Create.Any, $Create.Any);

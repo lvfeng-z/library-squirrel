@@ -35,7 +35,7 @@
 ## 依赖关系
 
 - 依赖：workDir 提供者（根目录）
-- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreWorkStores` 复活）、**recycleBin**（复原编排）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）
+- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreWorkStores` 复活）、**recycleBin**（复原编排）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）、**backupGovernance**（BackupReferencer：引用集投影 `ListReferencedBackupIDs`（Unscoped 含已删行）、悬空清列 `ClearBackupRefsByBackupIDs`、非法活行防御清列）
 
 ## 关键设计
 
