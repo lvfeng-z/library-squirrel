@@ -43,7 +43,6 @@ globs:
 |---|---|---|---|---|
 | `persistent_store` | `file_path` | workDir | 资源文件存储 | `store/resource/作者/文件.mp4`、`store/resource/作者/文件_thumbnail_000.jpg` |
 | `backup` | `file_path` | workDir | 备份文件路径 | `backup/2026/06/08/文件.mp4` |
-| `backup` | `original_file_path` | workDir | 同 `persistent_store.file_path`，用于还原时确定目标位置 | `store/resource/作者/文件.mp4` |
 
 > 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。`store/thumbnail/` 仅历史已落盘文件保留(路径校验白名单不删),新文件不再写入。
 
