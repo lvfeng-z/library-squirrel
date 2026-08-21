@@ -12,10 +12,19 @@
 
 ## 对外接口
 
-无 Wails Handler（当前无前端消费面；备份管理 GUI 见 doc/plan/备份管理界面方案.md，届时补 handler）。被调用方：
+Wails Handler（备份管理面板 `views/BackupManage.vue` 消费，「备份与回收」二级菜单）：
+
+- `PageBackups(page, referenced *bool)`：分页查保管清单（create_time 倒序），逐行标注有主/无主并按引用态过滤（nil=全部）；fileSize 逐行 os.Stat
+- `DeleteBackups(ids)`：批量删除——任一 id ∈ 当前引用集即整体拒绝（错误消息指明有主行）；单行删除不限年龄，「清理全部无主」的圈定走 GetBackupStats 的 expiredOrphanIds（超保留期）
+- `RunReconciliationNow()`：手动触发一轮双向对账（复用 RunOnce，runMu 与定时巡检互斥），返回清理统计
+- `GetBackupStats()`：占用统计（总占用/有主·无主拆分/按引用方分组=监视哨同源/无主超期圈定）；全量 Stat 大库可达秒级，30s TTL 缓存，删除/巡检后失效
+
+引用态数据面与删除守卫的引用集均走 `collectReferencedStrict`——与对账同一 BackupReferencer 枚举同源，任一引用方查询失败即报错熔断（失败方引用呈现为零 = 误标误删）。
+
+被调用方：
 
 - app 启动序列 `Start()` / 退出 `Stop()`（后台 goroutine：启动即巡检一次 + 每 24h）
-- `RunOnce(ctx)`：单轮对账（公开供未来 GUI 手动触发；与定时巡检经 runMu 串行）
+- `RunOnce(ctx)`：单轮对账（返回清理统计；与定时巡检经 runMu 串行）
 
 ## 核心概念
 
@@ -27,7 +36,7 @@
 ## 依赖关系
 
 - 依赖：backup（BackupCatalog）、persistentStore 与 plugin（BackupReferencer，经 app.go 注入的枚举切片）、settings（RetentionDaysProvider）
-- 被依赖：app（启动/退出挂钩）
+- 被依赖：app（启动/退出挂钩 + Handler 装配）、前端备份管理页（Handler 四方法）
 
 ## 关键设计
 

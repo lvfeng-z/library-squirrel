@@ -85,6 +85,7 @@ func main() {
 			application.NewService(app.PluginTaskUrlListenerHandler),
 			application.NewService(app.RecycleBinHandler),
 			application.NewService(app.FsmonitorHandler),
+			application.NewService(app.BackupGovernanceHandler),
 			application.NewService(app.WindowHandler),
 		},
 		Assets: application.AssetOptions{

@@ -271,6 +271,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               title="回收站"
             />
             <el-anchor-link
+              href="#backupGovernanceSettings"
+              title="备份治理"
+            />
+            <el-anchor-link
               href="#otherSettings"
               title="其他"
             />
@@ -610,6 +614,38 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     size="small"
                   >
                     自动清理规则
+                  </el-text>
+                </el-tooltip>
+                <el-divider />
+              </div>
+              <div id="backupGovernanceSettings">
+                <el-text size="large" tag="b">
+                  备份治理
+                </el-text>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>无主备份保留天数</el-text>
+                  <el-input-number
+                    v-model="settings.backupGovernance.retentionDays"
+                    :min="1"
+                    controls-position="right"
+                    class="settings-element-in-divider"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    不再被任何作品/插件引用的备份超过保留天数后将自动删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次；替换任务在途期间其还原点备份受引用保护，不受保留期影响。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    清理规则
                   </el-text>
                 </el-tooltip>
                 <el-divider />

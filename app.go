@@ -151,6 +151,7 @@ type App struct {
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
 	FsmonitorHandler             *fsmonitor.Handler
+	BackupGovernanceHandler      *backupGovernance.Handler
 	WindowHandler                *window.Handler
 }
 
@@ -1253,6 +1254,7 @@ func (app *App) initHandlers() {
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
+	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	// 主窗口句柄实时获取（构造时窗口尚未创建，运行时通过 mainWindow 实时读取原生句柄）
 	app.WindowHandler = window.NewHandler(window.NewService(func() uintptr {
 		if app.mainWindow == nil {

@@ -2,7 +2,7 @@ import { TaskStatusEnum } from './TaskStatusEnum'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 /** 状态类目：与 tokens.css 中 --app-status-{类目}-{语义} 命名对应 */
-export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin'
+export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin' | 'backup'
 
 export interface StatusMeta {
   /** 状态唯一标识，与 tokens.css 的 --app-status-{key}-{bg|text|border} 令牌后缀严格一致 */
@@ -40,7 +40,10 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   // —— 插件来源/信任 ——
   'plugin-bundled': { key: 'plugin-bundled', label: '官方', category: 'plugin' },
   'plugin-local': { key: 'plugin-local', label: '本地', category: 'plugin' },
-  'plugin-unverified': { key: 'plugin-unverified', label: '未信任', category: 'plugin' }
+  'plugin-unverified': { key: 'plugin-unverified', label: '未信任', category: 'plugin' },
+  // —— 备份引用态（有主=被业务行引用，由回收站/插件流程管理；无主=可清理） ——
+  'backup-referenced': { key: 'backup-referenced', label: '有主', category: 'backup' },
+  'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' }
 }
 
 /** TaskStatusEnum(后端状态码) → 状态别名 key 映射 */

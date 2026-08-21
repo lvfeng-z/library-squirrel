@@ -9,7 +9,7 @@ globs:
 ## 前端目录结构
 ```
 frontend/src/
-  views/              — 页面组件（16 个，含 BaseView 外壳）
+  views/              — 页面组件（17 个，含 BaseView 外壳）
   components/
     common/           — 通用组件 + 业务复用组件（DataTable/SearchTable 等通用容器；TaskList 业务复用列表；WorkCard/CardGrid/TagBox）
     dialogs/          — 对话框组件

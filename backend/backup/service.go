@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
@@ -31,6 +32,8 @@ type Repository interface {
 	ListCreatedBefore(ctx context.Context, beforeMs int64) ([]*entity.Backup, error)
 	// ListAllIDs 全量投影清单行 ID（治理反向悬空判定的现存集）
 	ListAllIDs(ctx context.Context) ([]int64, error)
+	// PageBackups 分页查询保管清单（create_time 倒序）；includeIDs/excludeIDs 为 ID 集过滤，nil=无该向过滤
+	PageBackups(ctx context.Context, pageNumber, pageSize int, includeIDs []int64, excludeIDs []int64) (*model.Page[entity.Backup], error)
 }
 
 // Service 备份服务（纯文件仓库：移入保管/取回/清理，不感知备份来源）
@@ -156,6 +159,12 @@ func (s *Service) ListCreatedBefore(ctx context.Context, beforeMs int64) ([]*ent
 // ListAllIDs 全量投影备份清单行 ID（实现 backupGovernance.BackupCatalog：反向悬空判定的现存集）
 func (s *Service) ListAllIDs(ctx context.Context) ([]int64, error) {
 	return s.repo.ListAllIDs(ctx)
+}
+
+// PageBackups 分页查询保管清单（实现 backupGovernance.BackupCatalog：备份管理面板的清单分页）。
+// 引用态过滤由治理方折算成 ID 集传入，本方法只做纯 ID 集过滤与分页
+func (s *Service) PageBackups(ctx context.Context, pageNumber, pageSize int, includeIDs []int64, excludeIDs []int64) (*model.Page[entity.Backup], error) {
+	return s.repo.PageBackups(ctx, pageNumber, pageSize, includeIDs, excludeIDs)
 }
 
 // GetBackupPath 获取备份文件的完整路径

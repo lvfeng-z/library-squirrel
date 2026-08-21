@@ -25,7 +25,9 @@ const CATEGORY_TITLES: { category: StatusCategory; title: string }[] = [
   { category: 'task', title: '任务状态（task）' },
   { category: 'source', title: '来源类型（source）' },
   { category: 'toggle', title: '开关/运行态（toggle）' },
-  { category: 'resource', title: '资源/作品状态（resource）' }
+  { category: 'resource', title: '资源/作品状态（resource）' },
+  { category: 'plugin', title: '插件来源/信任（plugin）' },
+  { category: 'backup', title: '备份引用态（backup）' }
 ]
 const statusByCategory = (cat: StatusCategory) =>
   Object.values(STATUS_REGISTRY).filter(item => item.category === cat)

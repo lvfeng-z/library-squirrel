@@ -1,5 +1,5 @@
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
-import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete, Brush } from '@element-plus/icons-vue'
+import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete, FolderChecked, Brush } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 
 /**
@@ -135,12 +135,29 @@ export function initBuiltinMenus() {
       viewId: 'guide'
     },
     {
-      slotId: 'builtin-recycleBin',
-      index: 'recycleBin',
+      slotId: 'builtin-backupRecycle',
+      index: 'backupRecycle',
       icon: markRaw(Delete),
-      label: '回收站',
+      label: '备份与回收',
       order: 90,
-      viewId: 'recycleBin'
+      children: [
+        {
+          slotId: 'builtin-recycleBin',
+          index: 'recycleBin',
+          icon: markRaw(Delete),
+          label: '回收站',
+          order: 91,
+          viewId: 'recycleBin'
+        },
+        {
+          slotId: 'builtin-backupManage',
+          index: 'backupManage',
+          icon: markRaw(FolderChecked),
+          label: '备份',
+          order: 92,
+          viewId: 'backupManage'
+        }
+      ]
     },
     {
       slotId: 'builtin-test',

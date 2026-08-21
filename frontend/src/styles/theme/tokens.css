@@ -229,6 +229,14 @@
   --app-status-resource-damaged-text: var(--app-status-fail-text);
   --app-status-resource-damaged-border: var(--app-status-fail-border);
 
+  /* —— 备份引用态（backup-*）：referenced=有主（被业务行引用，受保护）→done，orphaned=无主（可清理）→idle —— */
+  --app-status-backup-referenced-bg: var(--app-status-done-bg);
+  --app-status-backup-referenced-text: var(--app-status-done-text);
+  --app-status-backup-referenced-border: var(--app-status-done-border);
+  --app-status-backup-orphaned-bg: var(--app-status-idle-bg);
+  --app-status-backup-orphaned-text: var(--app-status-idle-text);
+  --app-status-backup-orphaned-border: var(--app-status-idle-border);
+
   /* ===== 圆角 ===== */
   --app-radius-sm: 4px;
   --app-radius: 6px;

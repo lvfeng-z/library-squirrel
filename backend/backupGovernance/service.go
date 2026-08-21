@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 
@@ -21,6 +22,9 @@ type BackupCatalog interface {
 	ListCreatedBefore(ctx context.Context, beforeMs int64) ([]*entity.Backup, error)
 	// ListAllIDs 全量投影现存清单行 ID（反向悬空判定的现存集）
 	ListAllIDs(ctx context.Context) ([]int64, error)
+	// PageBackups 分页查询保管清单（create_time 倒序）；includeIDs/excludeIDs 为 ID 集过滤，
+	// nil=无该向过滤（引用态语义由治理方折算成 ID 集，backup 只做纯过滤）
+	PageBackups(ctx context.Context, pageNumber, pageSize int, includeIDs []int64, excludeIDs []int64) (*model.Page[entity.Backup], error)
 	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍）
 	DeleteBackup(ctx context.Context, id int64) error
 }
@@ -54,10 +58,10 @@ type RetentionDaysProvider interface {
 
 // ReferencerStats 按引用方分组的引用统计（监视哨 Warn 判定与备份管理面板展示共用）
 type ReferencerStats struct {
-	Name          string // 引用方展示名
-	Count         int    // 引用的清单行数
-	TotalBytes    int64  // 引用备份的磁盘占用（文件缺失计 0）
-	OldestAgeDays int    // 最老引用年龄（天，按清单行创建时刻；0=无引用）
+	Name          string `json:"name"`          // 引用方展示名
+	Count         int    `json:"count"`         // 引用的清单行数
+	TotalBytes    int64  `json:"totalBytes"`    // 引用备份的磁盘占用（文件缺失计 0）
+	OldestAgeDays int    `json:"oldestAgeDays"` // 最老引用年龄（天，按清单行创建时刻；0=无引用）
 }
 
 // observeThresholdDays 监视哨观察阈值（天）：引用方最老引用年龄超过即记 Warn 日志。
@@ -77,6 +81,12 @@ type Service struct {
 	stopCh      chan struct{}
 	stopOnce    sync.Once
 	runMu       sync.Mutex // 对账轮次互斥（手动触发与定时巡检并发时串行，避免双轮并跑重复清列）
+	// 备份管理面板统计缓存：逐行文件字节数（全量 os.Stat 大库可达秒级，TTL 内复用；
+	// 删除/巡检后失效）。引用态计数与超期圈定不进缓存——保留期调整/引用变化即时生效，
+	// 「清理全部无主」不拿旧圈定。statsMu 同时串行化统计计算（缓存 map 的补写在锁内共享）
+	statsMu        sync.Mutex
+	statsBytesById map[int64]int64
+	statsCachedAt  time.Time // 零值=未缓存
 }
 
 // NewService 创建备份治理服务。
@@ -117,17 +127,26 @@ func (s *Service) loop() {
 	}
 }
 
-// RunOnce 执行一轮双向对账（反向悬空清列 → 监视哨 → 正向无主清理）。
+// ReconciliationResult 一轮对账的清理统计（手动「立即巡检」返回给备份管理面板）
+type ReconciliationResult struct {
+	OrphansCleaned      int `json:"orphansCleaned"`      // 正向：清理的无主备份数
+	DanglingRefsCleared int `json:"danglingRefsCleared"` // 反向：清除的悬空引用数
+	IllegalRefsCleared  int `json:"illegalRefsCleared"`  // 防御：清除的活行非法引用数
+}
+
+// RunOnce 执行一轮双向对账（反向悬空清列 → 监视哨 → 正向无主清理），返回清理统计。
 // 公开供备份管理面板手动触发；与定时巡检经 runMu 串行
-func (s *Service) RunOnce(ctx context.Context) {
+func (s *Service) RunOnce(ctx context.Context) ReconciliationResult {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
+
+	result := ReconciliationResult{}
 
 	// 各引用方引用集（监视哨按方分组复用）
 	refsByReferencer, referenced := s.collectReferenced(ctx)
 
 	// 反向（防御性先行，与正向无数据依赖）：业务列引用的清单行已不存在 → 清列
-	s.clearDanglingRefs(ctx, refsByReferencer)
+	result.DanglingRefsCleared, result.IllegalRefsCleared = s.clearDanglingRefs(ctx, refsByReferencer)
 
 	// 监视哨（有主侧可观测性）：按引用方分组统计引用年龄，超阈值 Warn
 	s.watchReferencers(ctx, refsByReferencer)
@@ -136,10 +155,11 @@ func (s *Service) RunOnce(ctx context.Context) {
 	// 任一引用方查询失败（哨兵 nil）时整体熔断——该方引用的备份会呈现为零引用，进候选即误清
 	for _, ids := range refsByReferencer {
 		if ids == nil {
-			return
+			return result
 		}
 	}
-	s.cleanupOrphans(ctx, referenced)
+	result.OrphansCleaned = s.cleanupOrphans(ctx, referenced)
+	return result
 }
 
 // collectReferenced 汇总各引用方的引用集；返回按方分组的引用列表与并集
@@ -163,12 +183,13 @@ func (s *Service) collectReferenced(ctx context.Context) (refsByReferencer map[s
 	return refsByReferencer, referenced
 }
 
-// clearDanglingRefs 反向对账：引用集 ∖ 现存清单行 = 悬空引用，逐方清列
-func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[string][]int64) {
+// clearDanglingRefs 反向对账：引用集 ∖ 现存清单行 = 悬空引用，逐方清列。
+// 返回（悬空清列数, 非法活行防御清列数）
+func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[string][]int64) (cleared int, illegalCleared int) {
 	existing, err := s.catalog.ListAllIDs(ctx)
 	if err != nil {
 		logger.Log.Warn("[backupGovernance] 查询现存清单行失败，本轮跳过反向对账", zap.Error(err))
-		return
+		return 0, 0
 	}
 	existingSet := make(map[int64]struct{}, len(existing))
 	for _, id := range existing {
@@ -188,6 +209,7 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 		if err := ref.ClearBackupRefsByBackupIDs(ctx, dangling); err != nil {
 			logger.Log.Warn("[backupGovernance] 清理悬空引用失败", zap.String("referencer", ref.Name()), zap.Int64s("backupIds", dangling), zap.Error(err))
 		} else {
+			cleared += len(dangling)
 			logger.Log.Infof("[backupGovernance] 已清理 %d 条悬空引用（清单行已不存在）: %s", len(dangling), ref.Name())
 		}
 	}
@@ -197,10 +219,12 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 			if n, err := san.ClearIllegalAliveBackupRefs(ctx); err != nil {
 				logger.Log.Warn("[backupGovernance] 清理非法活行引用失败", zap.String("referencer", ref.Name()), zap.Error(err))
 			} else if n > 0 {
+				illegalCleared += int(n)
 				logger.Log.Warnf("[backupGovernance] 检出并清理 %d 行活行非法备份引用（构造上不可达，疑外部直改数据库）: %s", n, ref.Name())
 			}
 		}
 	}
+	return cleared, illegalCleared
 }
 
 // watchReferencers 监视哨：按引用方分组统计引用数量/占用/最老引用年龄，最老年龄超观察阈值记 Warn。
@@ -264,16 +288,16 @@ func (s *Service) computeReferencerStats(ctx context.Context, refsByReferencer m
 	return stats, nil
 }
 
-// cleanupOrphans 正向对账：创建时间早于「现在 − 保留期」且不被任何业务列引用的清单行，逐个删除。
+// cleanupOrphans 正向对账：创建时间早于「现在 − 保留期」且不被任何业务列引用的清单行，逐个删除，返回清理数。
 // 保留期是正确性参数：替换任务在途期间其还原点备份合法地零业务引用（内存清单/无清单），
 // 保留期垫住该窗口；任一引用方查询失败时本轮整体熔断（collectReferenced 已置哨兵）
-func (s *Service) cleanupOrphans(ctx context.Context, referenced map[int64]struct{}) {
+func (s *Service) cleanupOrphans(ctx context.Context, referenced map[int64]struct{}) int {
 	retentionDays := s.retention.GetBackupGovernanceRetentionDays()
 	expireBefore := util.GetCurrentTimestamp() - int64(retentionDays)*24*60*60*1000
 	candidates, err := s.catalog.ListCreatedBefore(ctx, expireBefore)
 	if err != nil {
 		logger.Log.Warn("[backupGovernance] 查询无主候选失败", zap.Error(err))
-		return
+		return 0
 	}
 	cleaned := 0
 	for _, row := range candidates {
@@ -289,6 +313,7 @@ func (s *Service) cleanupOrphans(ctx context.Context, referenced map[int64]struc
 	if cleaned > 0 {
 		logger.Log.Infof("[backupGovernance] 本轮清理无主备份 %d 份（保留期 %d 天）", cleaned, retentionDays)
 	}
+	return cleaned
 }
 
 // backupFileBytes 取备份文件的磁盘占用（os.Stat；文件缺失或路径无效计 0——文件存在性感知属 fsmonitor 域）

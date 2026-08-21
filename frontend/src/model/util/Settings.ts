@@ -18,6 +18,9 @@ export const emptySettings: Settings = {
     autoCleanupEnabled: true,
     retentionDays: 30
   },
+  backupGovernance: {
+    retentionDays: 7
+  },
   tour: {
     completed: {}
   },

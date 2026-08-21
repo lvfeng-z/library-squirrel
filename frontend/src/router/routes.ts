@@ -82,7 +82,13 @@ export const routes: RouteRecordRaw[] = [
         path: 'recycleBin',
         name: 'recycleBin',
         component: () => import('@renderer/views/RecycleBin.vue'),
-        meta: { title: '回收站', order: 90 }
+        meta: { title: '回收站', order: 91 }
+      },
+      {
+        path: 'backupManage',
+        name: 'backupManage',
+        component: () => import('@renderer/views/BackupManage.vue'),
+        meta: { title: '备份', order: 92 }
       },
       {
         path: 'test',

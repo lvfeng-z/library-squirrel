@@ -22,6 +22,7 @@
 | `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍） |
 | `ListCreatedBefore(beforeMs)` | 查询创建时间早于阈值的清单行（实现 backupGovernance.BackupCatalog：正向无主候选） |
 | `ListAllIDs()` | 全量投影清单行 ID（实现 backupGovernance.BackupCatalog：反向现存集） |
+| `PageBackups(pageNumber, pageSize, includeIDs, excludeIDs)` | 分页查保管清单（create_time 倒序；实现 backupGovernance.BackupCatalog：备份管理面板清单分页。ID 集过滤，引用态语义由治理方折算，本模块只做纯过滤——大集分块避 SQLite 参数上限） |
 
 > 无 Wails Handler（前端零消费，已随纯化退役）。作品 store 的批量备份 / 还原由 taskManager（替换 / 板块重执行场景）经 TaskDeps 持有的 `StoreBackupOrchestrator` 调用。无主备份的治理（双向对账/清理调度）由 backupGovernance 编排，本模块只提供目录查询面与删除能力。
 
