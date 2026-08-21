@@ -256,6 +256,9 @@ type StoreDeleter interface {
 	// HardDelete 删除记录及对应文件（物理删记录）
 	// backup: 是否对已完成文件进行移动备份
 	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+	// DeleteUnscopedByIds 批量物理删除记录（作品彻底删除链：目标行全为已软删行，
+	// HardDelete 的 GetById 受软删 scope 保护会静默跳过，故走 Unscoped 直删）
+	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）
 	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	// ListByIdsIncludeDeleted 按 ID 集合查记录行（含已删行；行内 backup_id 与 file_path 供复原/彻底删除链使用）
@@ -519,6 +522,12 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 		if err := s.resourceStoreHardDeleter.DeleteByResourceIds(txCtx, resourceIds); err != nil {
 			return err
 		}
+		// 物理删 persistent_store 行：本链目标（已删作品）的 store 行全为软删行，HardDelete 的
+		// GetById 受软删 scope 保护会静默跳过（NotFound 提前返回），遗留离链孤儿行——故事务内 Unscoped 直删；
+		// 原路径文件已移 backup/（由调用方按行内 backup_id 清理备份），链内无文件删除
+		if err := s.storeDeleter.DeleteUnscopedByIds(txCtx, storeIds); err != nil {
+			return err
+		}
 		if err := s.resourceDeleter.DeleteByWorkId(txCtx, id); err != nil {
 			return err
 		}
@@ -527,13 +536,6 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 	})
 	if err != nil {
 		return err
-	}
-
-	// 事务后：删除磁盘文件（尽力而为，失败不影响业务）
-	if s.storeDeleter != nil {
-		for _, storeId := range storeIds {
-			s.storeDeleter.HardDelete(ctx, storeId, false)
-		}
 	}
 	return nil
 }

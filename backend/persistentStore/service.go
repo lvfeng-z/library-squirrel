@@ -31,6 +31,8 @@ type Repository interface {
 	Updates(ctx context.Context, store *domain.PersistentStore) error
 	// GetById 根据 ID 获取记录
 	GetById(ctx context.Context, id int64) (*domain.PersistentStore, error)
+	// GetByIdUnscoped 按 ID 获取记录（含已软删行；回收站文件条目清理链读取）
+	GetByIdUnscoped(ctx context.Context, id int64) (*domain.PersistentStore, error)
 	// List 查询列表
 	List(ctx context.Context, opt *database.QueryOption) ([]*domain.PersistentStore, error)
 	// GetByFilePath 根据路径获取记录
@@ -39,6 +41,9 @@ type Repository interface {
 	ResetCompleted(ctx context.Context, id int64) error
 	// DeleteUnscoped 物理删除记录（绕过软删改写；软删仅作品软删链经 DeleteWithBackup/MarkInvalid 使用）
 	DeleteUnscoped(ctx context.Context, id int64) error
+	// DeleteUnscopedByIds 批量物理删除记录（单条 SQL；目标为已软删行的物理删除通路——
+	// HardDelete 的 GetById 受软删 scope 保护会静默跳过已删行，作品彻底删除链的目标行全为软删行故走此直删）
+	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 	// RestoreByIds 批量清软删标志（复原链复活记录）
 	RestoreByIds(ctx context.Context, ids []int64) error
 	// Delete 删除记录
@@ -655,6 +660,27 @@ func (s *Service) GetByIds(ctx context.Context, ids []int64) ([]*domain.Persiste
 // GetByFilePath 根据路径获取记录
 func (s *Service) GetByFilePath(ctx context.Context, filePath string) (*domain.PersistentStore, error) {
 	return s.repo.GetByFilePath(ctx, filePath)
+}
+
+// GetDeletedStore 按 ID 获取已软删记录行（含行内 backup_id 与 file_path；回收站文件条目清理链入口校验，
+// nil = 行不存在或非已删态）
+func (s *Service) GetDeletedStore(ctx context.Context, id int64) (*domain.PersistentStore, error) {
+	record, err := s.repo.GetByIdUnscoped(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if record.DeletedAt == 0 {
+		return nil, nil
+	}
+	return record, nil
+}
+
+// DeleteUnscopedByIds 批量物理删除记录（目标为已软删行的物理删除通路，见仓储方法注释）
+func (s *Service) DeleteUnscopedByIds(ctx context.Context, ids []int64) error {
+	return s.repo.DeleteUnscopedByIds(ctx, ids)
 }
 
 // HardDelete 删除记录及对应文件（物理删记录；软删语义的 Delete 归作品软删链经 DeleteWithBackup/MarkInvalid）

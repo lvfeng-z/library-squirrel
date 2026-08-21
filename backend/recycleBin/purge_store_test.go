@@ -1,0 +1,158 @@
+package recycleBin
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/library-squirrel/backend/base/logger"
+	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/persistentStore"
+
+	"go.uber.org/zap"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+// purgeStoreTestEnv 内存库 + 真实 persistentStore 服务（文件条目清理链焦点件）+ 记账 BackupReader
+type purgeStoreTestEnv struct {
+	svc     *Service
+	psSvc   *persistentStore.Service
+	backup  *recordingBackupReader
+	db      *gorm.DB
+	workDir string
+}
+
+func newPurgeStoreTestEnv(t *testing.T) *purgeStoreTestEnv {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	if err := db.AutoMigrate(&domain.PersistentStore{}); err != nil {
+		t.Fatalf("迁移测试实体失败: %v", err)
+	}
+	workDir := t.TempDir()
+	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
+	backup := &recordingBackupReader{}
+	svc := NewService(nil, backup, nil, nil, psSvc, nil, func() string { return workDir })
+	return &purgeStoreTestEnv{svc: svc, psSvc: psSvc, backup: backup, db: db, workDir: workDir}
+}
+
+// insertDeletedStore 插一行并软删（backupId 写行内引用；relPath 为空则不落 file_path）
+func (e *purgeStoreTestEnv) insertDeletedStore(t *testing.T, name, relPath string, backupId int64) int64 {
+	t.Helper()
+	s := domain.NewPersistentStore()
+	s.FileName = sql.NullString{String: name, Valid: true}
+	if relPath != "" {
+		s.FilePath = sql.NullString{String: relPath, Valid: true}
+	}
+	s.CompletedAt = 1
+	if err := e.db.Create(s).Error; err != nil {
+		t.Fatalf("插 store 失败: %v", err)
+	}
+	if err := e.db.Exec("UPDATE persistent_store SET deleted_at = 2000, backup_id = ? WHERE id = ?", backupId, s.GetID()).Error; err != nil {
+		t.Fatalf("软删 store 失败: %v", err)
+	}
+	return s.GetID()
+}
+
+// storeRowExists 含已删行判定行是否仍存在
+func (e *purgeStoreTestEnv) storeRowExists(t *testing.T, id int64) bool {
+	t.Helper()
+	var n int64
+	if err := e.db.Unscoped().Model(&domain.PersistentStore{}).Where("id = ?", id).Count(&n).Error; err != nil {
+		t.Fatalf("统计行失败: %v", err)
+	}
+	return n > 0
+}
+
+// TestPurgeStoreConsumesBackup 彻底删除文件条目：行物理消亡 + 行内引用的备份消费式删除
+func TestPurgeStoreConsumesBackup(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	storeId := env.insertDeletedStore(t, "带备份残迹", "store/resource/作者/带备份残迹.mp4", 701)
+
+	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
+		t.Fatalf("清理文件条目失败: %v", err)
+	}
+	if env.storeRowExists(t, storeId) {
+		t.Fatalf("清理后 store 行应物理消亡")
+	}
+	if len(env.backup.deletedIds) != 1 || env.backup.deletedIds[0] != 701 {
+		t.Fatalf("行内 backup_id=701 应被消费式删除，实际删除 %v", env.backup.deletedIds)
+	}
+}
+
+// TestPurgeStoreWithoutBackup 无备份行（MarkInvalid 失效形态）清理：仅删行，无备份调用
+func TestPurgeStoreWithoutBackup(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	storeId := env.insertDeletedStore(t, "失效行", "store/resource/作者/失效行.png", 0)
+
+	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
+		t.Fatalf("清理失效行失败: %v", err)
+	}
+	if env.storeRowExists(t, storeId) {
+		t.Fatalf("清理后失效行应物理消亡")
+	}
+	if len(env.backup.deletedIds) != 0 {
+		t.Fatalf("无备份行不应触发备份删除，实际删除 %v", env.backup.deletedIds)
+	}
+}
+
+// TestPurgeStoreRemovesResidualFile 尽力删文件：file_path 指向 backup/ 域的实存残迹文件随行清除
+// （无保管清单行的散落文件，不删即不可见垃圾）；不存在的路径扑空无害
+func TestPurgeStoreRemovesResidualFile(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	relPath := "backup/2026/08/21/残迹文件.bin"
+	absPath := filepath.Join(env.workDir, relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		t.Fatalf("造目录失败: %v", err)
+	}
+	if err := os.WriteFile(absPath, []byte("residual"), 0o644); err != nil {
+		t.Fatalf("造残迹文件失败: %v", err)
+	}
+	storeId := env.insertDeletedStore(t, "残迹行", relPath, 0)
+
+	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
+		t.Fatalf("清理残迹行失败: %v", err)
+	}
+	if _, err := os.Stat(absPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("残迹文件应随行清除，实际 Stat 结果 err=%v", err)
+	}
+	// 不存在路径的行：清理扑空无害不报错
+	storeId2 := env.insertDeletedStore(t, "路径已失行", "store/resource/作者/不存在.mp4", 0)
+	if err := env.svc.PurgeStore(context.Background(), storeId2); err != nil {
+		t.Fatalf("路径扑空的清理不应报错: %v", err)
+	}
+}
+
+// TestPurgeStoreRejectsAliveRow 活行与不存在行拒绝清理（入口校验：仅已删条目）
+func TestPurgeStoreRejectsAliveRow(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	alive := domain.NewPersistentStore()
+	if err := env.db.Create(alive).Error; err != nil {
+		t.Fatalf("插活行失败: %v", err)
+	}
+	if err := env.svc.PurgeStore(context.Background(), alive.GetID()); !errors.Is(err, ErrRecycleStoreNotFound) {
+		t.Fatalf("活行清理应返回 ErrRecycleStoreNotFound，实际 %v", err)
+	}
+	if err := env.svc.PurgeStore(context.Background(), 99999); !errors.Is(err, ErrRecycleStoreNotFound) {
+		t.Fatalf("不存在行清理应返回 ErrRecycleStoreNotFound，实际 %v", err)
+	}
+	if !env.storeRowExists(t, alive.GetID()) {
+		t.Fatalf("活行不应被误删")
+	}
+}
+
+// 保障 logger（persistentStore 路径记日志，未初始化会 nil panic）
+func init() {
+	if logger.Log == nil {
+		logger.Log = zap.NewNop().Sugar()
+	}
+}

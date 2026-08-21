@@ -20,6 +20,10 @@ type Repository interface {
 	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error)
 	// QueryRecycleWorkPage 查询回收站作品分页（work 已删行）
 	QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition, sortField string, sortDesc bool) ([]*dto2.RecycleWorkDTO, int64, error)
+	// QueryRecycleStorePage 查询回收站文件条目分页（persistent_store 已删行，非「作品已删」聚合形态）
+	QueryRecycleStorePage(ctx context.Context, page, pageSize int, query *dto2.RecycleStorePageQuery) ([]*dto2.RecycleStoreDTO, int64, error)
+	// ListRecycleStoreIdsDeletedBefore 圈定删除时间早于 expireBefore 的文件条目 ID（回收站 TTL 清理）
+	ListRecycleStoreIdsDeletedBefore(ctx context.Context, expireBefore int64) ([]int64, error)
 	// QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询）
 	QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error)
 }
@@ -155,6 +159,22 @@ func (s *Service) QueryRecycleWorkPage(ctx context.Context, page, pageSize int, 
 		return nil, err
 	}
 	return model.NewPage[dto2.RecycleWorkDTO](items, total, page, pageSize), nil
+}
+
+// QueryRecycleStorePage 查询回收站文件条目分页（persistent_store 已删行，非「作品已删」聚合形态；
+// 文件域条件体系见 RecycleStorePageQuery，与作品条目的 SearchCondition 体系分轨）
+func (s *Service) QueryRecycleStorePage(ctx context.Context, page, pageSize int, query *dto2.RecycleStorePageQuery) (*model.Page[dto2.RecycleStoreDTO], error) {
+	items, total, err := s.repo.QueryRecycleStorePage(ctx, page, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+	return model.NewPage[dto2.RecycleStoreDTO](items, total, page, pageSize), nil
+}
+
+// ListRecycleStoreIdsDeletedBefore 圈定删除时间早于 expireBefore 的文件条目 ID（回收站 TTL 清理；
+// 与列表查询同谓词——「作品已删」聚合行不被圈定）
+func (s *Service) ListRecycleStoreIdsDeletedBefore(ctx context.Context, expireBefore int64) ([]int64, error) {
+	return s.repo.ListRecycleStoreIdsDeletedBefore(ctx, expireBefore)
 }
 
 // extractUsedConditions 从搜索条件中提取需要更新lastUse的ID

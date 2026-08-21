@@ -609,6 +609,207 @@ func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, pag
 	return results, total, nil
 }
 
+// buildRecycleStoreWhere 构建回收站文件条目查询的 WHERE 子句（列表与 TTL 圈定共用同一构建函数防谓词漂移）。
+// 基线两条：ps 已软删；挂载链不指向已软删作品（该形态聚合进回收站作品条目，提前清会破坏作品复原能力）。
+// 挂载链断（resource_store/resource/work 行不存在）与 work 存活的软删行均纳入——离链孤儿自愈落入文件条目
+func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []interface{}) {
+	clauses := []string{
+		"ps.deleted_at > 0",
+		`NOT EXISTS (SELECT 1 FROM resource_store rs
+			JOIN resource r ON rs.resource_id = r.id
+			JOIN work w ON r.work_id = w.id
+			WHERE rs.store_id = ps.id AND w.deleted_at > 0)`,
+	}
+	var params []interface{}
+	if query != nil {
+		if query.FileName != "" {
+			clauses = append(clauses, "ps.file_name LIKE ?")
+			params = append(params, "%"+query.FileName+"%")
+		}
+		if query.FilePath != "" {
+			clauses = append(clauses, "ps.file_path LIKE ?")
+			params = append(params, "%"+query.FilePath+"%")
+		}
+		if query.MediaType != nil {
+			if exts := dto2.MediaExtMapping[dto2.MediaType(*query.MediaType)]; len(exts) > 0 {
+				placeholders := make([]string, len(exts))
+				for i, ext := range exts {
+					placeholders[i] = "?"
+					params = append(params, ext)
+				}
+				clauses = append(clauses, fmt.Sprintf("ps.filename_extension IN (%s)", strings.Join(placeholders, ",")))
+			}
+		}
+		if query.HasBackup != nil {
+			if *query.HasBackup {
+				clauses = append(clauses, "ps.backup_id > 0")
+			} else {
+				clauses = append(clauses, "ps.backup_id = 0")
+			}
+		}
+		if query.DeleteTimeFrom > 0 {
+			clauses = append(clauses, "ps.deleted_at >= ?")
+			params = append(params, query.DeleteTimeFrom)
+		}
+		if query.DeleteTimeTo > 0 {
+			clauses = append(clauses, "ps.deleted_at <= ?")
+			params = append(params, query.DeleteTimeTo)
+		}
+		if query.WorkName != "" {
+			clauses = append(clauses, `EXISTS (SELECT 1 FROM resource_store rs2
+				JOIN resource r2 ON rs2.resource_id = r2.id
+				JOIN work w2 ON r2.work_id = w2.id
+				WHERE rs2.store_id = ps.id AND w2.deleted_at = 0 AND w2.site_work_name LIKE ?)`)
+			params = append(params, "%"+query.WorkName+"%")
+		}
+	}
+	return "WHERE " + strings.Join(clauses, " AND "), params
+}
+
+// QueryRecycleStorePage 查询回收站文件条目分页（persistent_store 已删行，非「作品已删」聚合形态）。
+// 行本体单查投影；作品上下文（挂载活作品的名称/站点）经二段批查组装——分页行收集 ID 一次 JOIN，
+// 消除逐行查询。CanRestore = backup_id>0 且挂载链存在活作品（防御式独立判定，不依赖主谓词排除）
+func (r *SearchRepository) QueryRecycleStorePage(ctx context.Context, page, pageSize int, query *dto2.RecycleStorePageQuery) ([]*dto2.RecycleStoreDTO, int64, error) {
+	whereClause, params := buildRecycleStoreWhere(query)
+
+	orderBy := "ps.deleted_at DESC, ps.id DESC"
+	if query != nil && query.SortOrder == "asc" {
+		orderBy = "ps.deleted_at ASC, ps.id DESC"
+	}
+
+	// 计数
+	var total int64
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM persistent_store ps %s", whereClause)
+	if err := r.db.WithContext(ctx).Raw(countQuery, params...).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	querySQL := fmt.Sprintf(`
+		SELECT ps.id, ps.file_name, ps.file_path, ps.filename_extension, ps.deleted_at, ps.backup_id
+		FROM persistent_store ps
+		%s
+		ORDER BY %s
+		LIMIT %d OFFSET %d
+	`, whereClause, orderBy, pageSize, offset)
+
+	rows, err := r.db.WithContext(ctx).Raw(querySQL, params...).Rows()
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	results := make([]*dto2.RecycleStoreDTO, 0, pageSize)
+	for rows.Next() {
+		item := &dto2.RecycleStoreDTO{}
+		var fileName, filePath, ext sql.NullString
+		var backupId int64
+		if err := rows.Scan(
+			&item.ID,
+			&fileName,
+			&filePath,
+			&ext,
+			&item.DeleteTime,
+			&backupId,
+		); err != nil {
+			return nil, 0, err
+		}
+		item.FileName = nullStr(fileName)
+		item.FilePath = nullStr(filePath)
+		item.FilenameExtension = nullStr(ext)
+		item.HasBackup = backupId > 0
+		results = append(results, item)
+	}
+
+	// 二段批查：分页行的挂载上下文（resource_store→resource→work 活作品 + 站点名），回填作品字段与可复原性
+	mounts := r.queryStoreMountContext(ctx, collectStoreIds(results))
+	for _, item := range results {
+		if mount, ok := mounts[item.ID]; ok {
+			workId := mount.workId
+			item.WorkId = &workId
+			item.WorkName = mount.workName
+			item.SiteName = mount.siteName
+			item.CanRestore = item.HasBackup
+		}
+	}
+	return results, total, nil
+}
+
+// ListRecycleStoreIdsDeletedBefore 圈定删除时间早于 expireBefore（毫秒时间戳）的文件条目 ID（TTL 清理）。
+// 与列表查询共用 buildRecycleStoreWhere——「作品已删」聚合行不被圈定（保护作品条目的复原能力）
+func (r *SearchRepository) ListRecycleStoreIdsDeletedBefore(ctx context.Context, expireBefore int64) ([]int64, error) {
+	whereClause, params := buildRecycleStoreWhere(nil)
+	querySQL := fmt.Sprintf("SELECT ps.id FROM persistent_store ps %s AND ps.deleted_at < ?", whereClause)
+	var ids []int64
+	err := r.db.WithContext(ctx).Raw(querySQL, append(params, expireBefore)...).Pluck("id", &ids).Error
+	return ids, err
+}
+
+// storeMountContext 一行挂载上下文（resource_store→resource→work 链 + 站点名；仅活作品挂载）
+type storeMountContext struct {
+	storeId  int64
+	workId   int64
+	workName string
+	siteName string
+}
+
+// queryStoreMountContext 批查 store 行的挂载上下文（仅登记活作品挂载；「作品已删」挂载被主谓词排除，
+// 此处再过滤为防御）。同 store 多挂载时取首个活挂载（展示用途，挂载唯一性无契约）
+func (r *SearchRepository) queryStoreMountContext(ctx context.Context, storeIds []int64) map[int64]*storeMountContext {
+	result := make(map[int64]*storeMountContext, len(storeIds))
+	if len(storeIds) == 0 {
+		return result
+	}
+	placeholders := make([]string, len(storeIds))
+	params := make([]interface{}, len(storeIds))
+	for i, id := range storeIds {
+		placeholders[i] = "?"
+		params[i] = id
+	}
+	querySQL := fmt.Sprintf(`
+		SELECT rs.store_id, w.id, w.site_work_name, COALESCE(s.site_name, '')
+		FROM resource_store rs
+		JOIN resource r ON rs.resource_id = r.id
+		JOIN work w ON r.work_id = w.id AND w.deleted_at = 0
+		LEFT JOIN site s ON w.site_id = s.id
+		WHERE rs.store_id IN (%s)
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.WithContext(ctx).Raw(querySQL, params...).Rows()
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mount storeMountContext
+		var workName sql.NullString
+		if err := rows.Scan(&mount.storeId, &mount.workId, &workName, &mount.siteName); err != nil {
+			return result
+		}
+		mount.workName = nullStr(workName)
+		if _, exists := result[mount.storeId]; !exists {
+			result[mount.storeId] = &mount
+		}
+	}
+	return result
+}
+
+// collectStoreIds 从分页结果收集 store ID（二段批查入参）
+func collectStoreIds(items []*dto2.RecycleStoreDTO) []int64 {
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	return ids
+}
+
+// nullStr sql.NullString 取值（NULL 归空串）
+func nullStr(v sql.NullString) string {
+	if v.Valid {
+		return v.String
+	}
+	return ""
+}
+
 // containsType 检查类型切片是否包含指定类型
 func containsType(types []dto2.SearchType, target dto2.SearchType) bool {
 	for _, t := range types {

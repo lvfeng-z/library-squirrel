@@ -2,7 +2,7 @@ import { TaskStatusEnum } from './TaskStatusEnum'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 /** 状态类目：与 tokens.css 中 --app-status-{类目}-{语义} 命名对应 */
-export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin' | 'backup'
+export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin' | 'backup' | 'recycle'
 
 export interface StatusMeta {
   /** 状态唯一标识，与 tokens.css 的 --app-status-{key}-{bg|text|border} 令牌后缀严格一致 */
@@ -43,7 +43,12 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   'plugin-unverified': { key: 'plugin-unverified', label: '未信任', category: 'plugin' },
   // —— 备份引用态（有主=被业务行引用，由回收站/插件流程管理；无主=可清理） ——
   'backup-referenced': { key: 'backup-referenced', label: '有主', category: 'backup' },
-  'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' }
+  'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' },
+  // —— 回收站文件条目状态（可复原=有备份且挂载活作品，操作入口随替换/merge 软删化接通；
+  //    无备份=外部裁决失效或备份缺失；离链=挂载链断的历史残迹） ——
+  'recycle-store-restorable': { key: 'recycle-store-restorable', label: '可复原', category: 'recycle' },
+  'recycle-store-no-backup': { key: 'recycle-store-no-backup', label: '已失效', category: 'recycle' },
+  'recycle-store-orphan': { key: 'recycle-store-orphan', label: '离链', category: 'recycle' }
 }
 
 /** TaskStatusEnum(后端状态码) → 状态别名 key 映射 */

@@ -939,12 +939,15 @@ func (app *App) initAdvancedServices() error {
 		app.SiteAuthorService,
 	)
 
-	// recycleBin 服务（work 与 search 之后创建：WorkRestorer=app.WorkService、查询链转发 search.Service；
+	// recycleBin 服务（work/search/persistentStore 之后创建：WorkRestorer=app.WorkService、查询链转发
+	// search.Service（作品条目+文件条目）、StoreCleaner=app.PersistentStoreService（文件条目清理）；
 	// 文件还原的 workDir 经设置读取器闭包注入）
 	app.RecycleBinService = recycleBin.NewService(
 		app.WorkService,
 		app.BackupService,
 		app.SearchService,
+		app.SearchService,
+		app.PersistentStoreService,
 		app.SettingsService,
 		func() string { return app.SettingsService.GetWorkDir() },
 	)

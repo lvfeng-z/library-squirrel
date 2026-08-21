@@ -523,6 +523,191 @@ export class RankedSiteAuthorWithWorkId {
 }
 
 /**
+ * RecycleStoreDTO 回收站文件条目（列表展示用）
+ * 软删除模型下文件条目 = persistent_store 已删行且非「作品已删」聚合形态（work 不可达或 work 存活）；
+ * 条目单位是 store 行非作品，TTL/过期按行自身 deleted_at，作品仅提供上下文展示
+ */
+export class RecycleStoreDTO {
+    /**
+     * persistent_store 行 ID（清理操作键）
+     */
+    "id": number;
+
+    /**
+     * 文件名（NULL 归空串）
+     */
+    "fileName": string;
+
+    /**
+     * workDir 相对路径（正斜杠；软删期间文件在 backup/，/store/ 服务按行内 backup_id 兜底可访问）
+     */
+    "filePath": string;
+
+    /**
+     * 扩展名（含点）
+     */
+    "filenameExtension": string;
+
+    /**
+     * 删除时间（persistent_store.deleted_at，TTL 基准）
+     */
+    "deleteTime": number;
+
+    /**
+     * HasBackup 行内是否引用备份清单行（backup_id>0；软删链移文件入 backup/ 时写入，MarkInvalid 失效行保持 0）
+     */
+    "hasBackup": boolean;
+
+    /**
+     * CanRestore 可复原性：HasBackup 且挂载链可达（活作品）——版本回滚置换入口的状态预铺（操作接通在 J' 软删化）
+     */
+    "canRestore": boolean;
+
+    /**
+     * WorkId / WorkName / SiteName 有主链（挂载活作品）的作品上下文；离链行 WorkId 为 null、名称为空串
+     */
+    "workId": number | null;
+    "workName": string;
+    "siteName": string;
+
+    /**
+     * ExpireDaysLeft 距 TTL 自动清理的剩余整天数（向上取整，负值归 0）；自动清理未启用时为 null
+     */
+    "expireDaysLeft": number | null;
+
+    /** Creates a new RecycleStoreDTO instance. */
+    constructor($$source: Partial<RecycleStoreDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = "";
+        }
+        if (!("filenameExtension" in $$source)) {
+            this["filenameExtension"] = "";
+        }
+        if (!("deleteTime" in $$source)) {
+            this["deleteTime"] = 0;
+        }
+        if (!("hasBackup" in $$source)) {
+            this["hasBackup"] = false;
+        }
+        if (!("canRestore" in $$source)) {
+            this["canRestore"] = false;
+        }
+        if (!("workId" in $$source)) {
+            this["workId"] = null;
+        }
+        if (!("workName" in $$source)) {
+            this["workName"] = "";
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = "";
+        }
+        if (!("expireDaysLeft" in $$source)) {
+            this["expireDaysLeft"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleStoreDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleStoreDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleStoreDTO($$parsedSource as Partial<RecycleStoreDTO>);
+    }
+}
+
+/**
+ * RecycleStorePageQuery 回收站文件条目分页查询请求（文件域条件体系，平铺字段直映射 SQL；
+ * 与作品条目的 SearchCondition 标签体系分轨——store 条目条件域与作品标签正交）
+ */
+export class RecycleStorePageQuery {
+    /**
+     * 文件名模糊（file_name LIKE）
+     */
+    "fileName": string;
+
+    /**
+     * 路径模糊（file_path LIKE）
+     */
+    "filePath": string;
+
+    /**
+     * 媒体类型→扩展名集过滤（dto.MediaExtMapping；nil=不过滤，未知值同不过滤）
+     */
+    "mediaType": number | null;
+
+    /**
+     * 备份状态（true=backup_id>0 / false=0；nil=不过滤）
+     */
+    "hasBackup": boolean | null;
+
+    /**
+     * 所属作品名模糊（挂载活作品 site_work_name；离链行天然不命中）
+     */
+    "workName": string;
+
+    /**
+     * 删除时间范围起（毫秒，0=不限）
+     */
+    "deleteTimeFrom": number;
+
+    /**
+     * 删除时间范围止（毫秒，0=不限）
+     */
+    "deleteTimeTo": number;
+
+    /**
+     * 按删除时间排序方向：asc | 其他=desc（默认）
+     */
+    "sortOrder": string;
+
+    /** Creates a new RecycleStorePageQuery instance. */
+    constructor($$source: Partial<RecycleStorePageQuery> = {}) {
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("filePath" in $$source)) {
+            this["filePath"] = "";
+        }
+        if (!("mediaType" in $$source)) {
+            this["mediaType"] = null;
+        }
+        if (!("hasBackup" in $$source)) {
+            this["hasBackup"] = null;
+        }
+        if (!("workName" in $$source)) {
+            this["workName"] = "";
+        }
+        if (!("deleteTimeFrom" in $$source)) {
+            this["deleteTimeFrom"] = 0;
+        }
+        if (!("deleteTimeTo" in $$source)) {
+            this["deleteTimeTo"] = 0;
+        }
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleStorePageQuery instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleStorePageQuery {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleStorePageQuery($$parsedSource as Partial<RecycleStorePageQuery>);
+    }
+}
+
+/**
  * RecycleWorkDTO 回收站作品条目（列表展示用）
  * 软删除模型下回收站条目即 work 已删行，删除时间为 work.deleted_at
  */

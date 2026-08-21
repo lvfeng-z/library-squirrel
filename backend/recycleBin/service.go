@@ -20,8 +20,9 @@ import (
 
 // 错误定义
 var (
-	ErrRecycleItemNotFound = &pkgerr.BusinessError{Code: 404, Message: "回收站条目不存在"}
-	ErrRestoreConflict     = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
+	ErrRecycleItemNotFound  = &pkgerr.BusinessError{Code: 404, Message: "回收站条目不存在"}
+	ErrRecycleStoreNotFound = &pkgerr.BusinessError{Code: 404, Message: "回收站文件条目不存在"}
+	ErrRestoreConflict      = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
 )
 
 // WorkRestorer 作品软删/复原能力接口（由 work.Service 实现）
@@ -62,37 +63,62 @@ type RecycleWorkQuerier interface {
 	QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto.SearchCondition, sortField string, sortDesc bool) (*model.Page[dto.RecycleWorkDTO], error)
 }
 
+// RecycleStoreQuerier 回收站文件条目查询接口（由 search.Service 实现；文件域条件体系见 RecycleStorePageQuery）
+type RecycleStoreQuerier interface {
+	// QueryRecycleStorePage 分页查询回收站文件条目（persistent_store 已删行，非「作品已删」聚合形态）
+	QueryRecycleStorePage(ctx context.Context, page, pageSize int, query *dto.RecycleStorePageQuery) (*model.Page[dto.RecycleStoreDTO], error)
+	// ListRecycleStoreIdsDeletedBefore 圈定删除时间早于 expireBefore 的文件条目 ID（TTL 清理；
+	// 与列表查询同谓词，「作品已删」聚合行不被圈定）
+	ListRecycleStoreIdsDeletedBefore(ctx context.Context, expireBefore int64) ([]int64, error)
+}
+
+// StoreCleaner store 行清理能力接口（由 persistentStore.Service 实现）
+type StoreCleaner interface {
+	// GetDeletedStore 按 ID 获取已软删记录行（nil = 行不存在或非已删态）
+	GetDeletedStore(ctx context.Context, id int64) (*domain.PersistentStore, error)
+	// CleanupFile 尽力删行 file_path 指向的磁盘文件（扑空容忍；操作抑制登记）
+	CleanupFile(relPath string)
+	// DeleteUnscopedByIds 批量物理删行（目标为已软删行）
+	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
+}
+
 // RecycleBinSettingsProvider 回收站设置提供者接口（由 settings.Service 实现）
 type RecycleBinSettingsProvider interface {
 	// GetRecycleBinSettings 获取回收站自动清理设置（启用标志、保留天数）
 	GetRecycleBinSettings() (enabled bool, retentionDays int)
 }
 
-// Service 回收站服务（软删除模型：回收站条目 = work 已删行）
+// Service 回收站服务（软删除模型：作品条目 = work 已删行聚合其内；文件条目 = persistent_store
+// 已删行且非「作品已删」聚合形态——work 不可达（离链孤儿自愈落入）或 work 存活（MarkInvalid 失效行、
+// J' 替换/merge 软删残留），条目单位是 store 行、TTL 按行自身 deleted_at）
 type Service struct {
 	workRestorer   WorkRestorer
 	backupReader   BackupReader
 	recycleQuerier RecycleWorkQuerier
+	storeQuerier   RecycleStoreQuerier
+	storeCleaner   StoreCleaner
 	settingsReader RecycleBinSettingsProvider
 	workDirGetter  func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
 	stopCh         chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
 	return &Service{
 		workRestorer:   workRestorer,
 		backupReader:   backupReader,
 		recycleQuerier: recycleQuerier,
+		storeQuerier:   storeQuerier,
+		storeCleaner:   storeCleaner,
 		settingsReader: settingsReader,
 		workDirGetter:  workDirGetter,
 		stopCh:         make(chan struct{}),
 	}
 }
 
-// Page 分页查询回收站列表（转发作品搜索查询链）
+// PageWorks 分页查询回收站作品条目（转发作品搜索查询链）
 // conditions 条件体系与作品搜索一致（作者/标签/站点/时间范围）；sortBy: createTime | 空=deleteTime
-func (s *Service) Page(ctx context.Context, page int, pageSize int, conditions []*dto.SearchCondition, sortBy string, sortOrder string) (*model.Page[dto.RecycleWorkDTO], error) {
+func (s *Service) PageWorks(ctx context.Context, page int, pageSize int, conditions []*dto.SearchCondition, sortBy string, sortOrder string) (*model.Page[dto.RecycleWorkDTO], error) {
 	sortField := "deleted_at"
 	if sortBy == "createTime" {
 		sortField = "create_time"
@@ -106,8 +132,36 @@ func (s *Service) Page(ctx context.Context, page int, pageSize int, conditions [
 	return result, nil
 }
 
+// PageStores 分页查询回收站文件条目（persistent_store 已删行，非「作品已删」聚合形态；
+// 文件域条件体系见 RecycleStorePageQuery）
+func (s *Service) PageStores(ctx context.Context, page int, pageSize int, query *dto.RecycleStorePageQuery) (*model.Page[dto.RecycleStoreDTO], error) {
+	result, err := s.storeQuerier.QueryRecycleStorePage(ctx, page, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+	s.fillStoreExpireDaysLeft(result)
+	return result, nil
+}
+
 // fillExpireDaysLeft 按 TTL 设置填充各条目距自动清理的剩余整天数（向上取整、负值归 0；未启用时留 null）
 func (s *Service) fillExpireDaysLeft(result *model.Page[dto.RecycleWorkDTO]) {
+	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
+	if !enabled || retentionDays <= 0 {
+		return
+	}
+	now := util.GetCurrentTimestamp()
+	retentionMillis := int64(retentionDays) * 24 * 60 * 60 * 1000
+	for _, item := range result.Data {
+		daysLeft := int(retentionMillis-(now-item.DeleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
+		if daysLeft < 0 {
+			daysLeft = 0
+		}
+		item.ExpireDaysLeft = &daysLeft
+	}
+}
+
+// fillStoreExpireDaysLeft 文件条目的 TTL 剩余天数填充（与作品条目共享保留期设置，按行自身删除时间计）
+func (s *Service) fillStoreExpireDaysLeft(result *model.Page[dto.RecycleStoreDTO]) {
 	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
 	if !enabled || retentionDays <= 0 {
 		return
@@ -201,9 +255,9 @@ func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
 	return nil
 }
 
-// Purge 彻底删除回收站条目（不可恢复）
-// 物理级联删 work 谱系行 + 按行内 backup_id 清理备份磁盘文件与清单行
-func (s *Service) Purge(ctx context.Context, workId int64) error {
+// PurgeWork 彻底删除回收站作品条目（不可恢复）
+// 物理级联删 work 谱系行 + store 记录行 + 按行内 backup_id 清理备份磁盘文件与清单行
+func (s *Service) PurgeWork(ctx context.Context, workId int64) error {
 	// 1. 校验为已删条目
 	work, err := s.workRestorer.GetDeletedWork(ctx, workId)
 	if err != nil {
@@ -222,13 +276,46 @@ func (s *Service) Purge(ctx context.Context, workId int64) error {
 		}
 	}
 
-	// 3. 物理级联删除（事务内删行；store 原路径文件已在 backup，链内文件删除扑空无害）
+	// 3. 物理级联删除（事务内删 work 谱系行与 store 记录行；原路径文件已在 backup，无文件可删）
 	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
 		return fmt.Errorf("物理删除作品数据失败: %w", err)
 	}
 	for _, backupId := range backupIds {
 		if err := s.backupReader.DeleteBackup(ctx, backupId); err != nil {
 			return fmt.Errorf("清理备份 %d 失败: %w", backupId, err)
+		}
+	}
+	return nil
+}
+
+// PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）
+// 尽力删行内 file_path 指向的文件 + 物理删行 + 按行内 backup_id 消费式删备份（终态清理义务，
+// 不产生「删行不清备份」的通路；失败模式=无主备份由治理兜底，与 PurgeWork 同族）
+func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
+	// 1. 校验为已删条目
+	st, err := s.storeCleaner.GetDeletedStore(ctx, storeId)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return ErrRecycleStoreNotFound
+	}
+
+	// 2. 尽力删文件：正常软删行文件已移 backup/ 或已离场（扑空无害，备份文件由步骤 4 按清单行删除）；
+	// file_path 指向 backup/ 域的历史残迹行（无保管清单行的散落文件）文件随行清除，不删即不可见垃圾
+	if st.FilePath.Valid && st.FilePath.String != "" {
+		s.storeCleaner.CleanupFile(st.FilePath.String)
+	}
+
+	// 3. 物理删行
+	if err := s.storeCleaner.DeleteUnscopedByIds(ctx, []int64{storeId}); err != nil {
+		return fmt.Errorf("物理删除 store 记录失败: %w", err)
+	}
+
+	// 4. 消费式清理行内引用的备份
+	if st.BackupID > 0 {
+		if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
+			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID, err)
 		}
 	}
 	return nil
@@ -265,7 +352,8 @@ func (s *Service) cleanupLoop() {
 	}
 }
 
-// runCleanup 执行一次 TTL 清理：查询过期已删作品并逐条 Purge
+// runCleanup 执行一次 TTL 清理：两轮——过期作品条目（work 级，级联清从属行与备份）后
+// 过期文件条目（store 行级）；作品与文件条目共享保留期设置
 func (s *Service) runCleanup() {
 	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
 	if !enabled || retentionDays <= 0 {
@@ -274,14 +362,28 @@ func (s *Service) runCleanup() {
 	ctx := context.Background()
 	// 过期阈值 = 当前时间 - 保留天数（毫秒）
 	expireBefore := util.GetCurrentTimestamp() - int64(retentionDays)*24*60*60*1000
+
+	// 第一轮：过期作品条目
 	works, err := s.workRestorer.ListDeletedBefore(ctx, expireBefore)
 	if err != nil {
 		logger.Log.Warnf("[RecycleBin] 查询过期回收站条目失败: %v", err)
 		return
 	}
 	for _, work := range works {
-		if err := s.Purge(ctx, work.GetID()); err != nil {
+		if err := s.PurgeWork(ctx, work.GetID()); err != nil {
 			logger.Log.Warnf("[RecycleBin] 清理过期回收站条目 %d 失败: %v", work.GetID(), err)
+		}
+	}
+
+	// 第二轮：过期文件条目（圈定与列表查询同谓词——「作品已删」聚合行已被第一轮级联处理，不被此轮圈定）
+	storeIds, err := s.storeQuerier.ListRecycleStoreIdsDeletedBefore(ctx, expireBefore)
+	if err != nil {
+		logger.Log.Warnf("[RecycleBin] 查询过期文件条目失败: %v", err)
+		return
+	}
+	for _, storeId := range storeIds {
+		if err := s.PurgeStore(ctx, storeId); err != nil {
+			logger.Log.Warnf("[RecycleBin] 清理过期文件条目 %d 失败: %v", storeId, err)
 		}
 	}
 }

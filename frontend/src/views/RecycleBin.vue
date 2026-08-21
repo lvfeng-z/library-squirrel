@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BaseView from './BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
+import StatusTag from '@renderer/components/common/StatusTag.vue'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue'
 import { onMounted, Ref, ref, h } from 'vue'
@@ -14,7 +15,7 @@ import { Thead } from '@renderer/model/util/Thead.ts'
 import { newPage } from '@renderer/utils/Pager.ts'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import IPage from '@renderer/model/util/IPage.ts'
-import { SearchCondition, SearchType, WorkSearchOperator, RecycleWorkDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { SearchCondition, SearchType, WorkSearchOperator, RecycleWorkDTO, RecycleStoreDTO, RecycleStorePageQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { SearchConditionQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { SelectItem } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { RecyclePageQuery } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
@@ -29,12 +30,18 @@ onMounted(() => {
 })
 
 // 变量
-// 回收站数据表组件的实例
+// 当前 tab：works=作品条目（work 已删行聚合）/ stores=文件条目（store 已删行，work 不可达或存活）
+const activeTab = ref('works')
+// 回收站数据表组件的实例（作品 tab）
 const recycleBinSearchTable = ref()
-// 标签选择器（AutoLoadTagSelect）实例
-const searchConditionBar = ref()
-// 回收站分页参数
+// 文件条目表组件的实例（文件 tab；首次切入才查询）
+const storeSearchTable = ref()
+// 文件 tab 是否已加载过（lazy：首次切入触发一次查询）
+let storeTabLoaded = false
+// 回收站分页参数（作品 tab）
 const page: Ref<Page<RecycleWorkDTO>> = ref(newPage<RecycleWorkDTO>())
+// 文件条目分页参数（文件 tab）
+const storePage: Ref<Page<RecycleStoreDTO>> = ref(newPage<RecycleStoreDTO>())
 // 回收站查询参数（SearchCondition 条件体系 + 排序）
 const query: Ref<RecyclePageQuery> = ref(new RecyclePageQuery({ conditions: [] }))
 // 标签条已选条目（extraData 携带 type/id/namespace；disabled 态 = 排除该条件）
@@ -51,7 +58,32 @@ const workCreateTimeRange = ref<[Date, Date] | null>(null)
 const uploadTimeRange = ref<[Date, Date] | null>(null)
 // 站点选择（SelectItem.value 为 string，组装条件时 Number 转换）
 const siteIdSelected = ref<string | number | null>(null)
-// 回收站的表头
+
+// —— 文件 tab 筛选（文件域条件体系，与作品 tab 的 SearchCondition 体系分轨） ——
+// 文件名模糊
+const storeFileName = ref('')
+// 路径模糊
+const storeFilePath = ref('')
+// 所属作品名模糊（有主链；离链行天然不命中）
+const storeWorkName = ref('')
+// 媒体类型（null=不过滤；值与后端 dto.MediaType 枚举对齐：1 图片/2 视频/3 文档/4 音频）
+const storeMediaType = ref<number | null>(null)
+// 备份状态（'all'=不过滤；'backup'=有备份（backup_id>0）；'none'=无备份）
+const storeBackupFilter = ref('all')
+// 删除时间范围（Date 二元组；null = 不限）
+const storeDeleteTimeRange = ref<[Date, Date] | null>(null)
+
+// 媒体类型筛选项（与后端 dto.MediaExtMapping 四类对齐）
+const mediaTypeOptions = [
+  { label: '图片', value: 1 },
+  { label: '视频', value: 2 },
+  { label: '文档', value: 3 },
+  { label: '音频', value: 4 }
+]
+// 可预览的图片扩展名（含点小写；悬停预览判定用）
+const PREVIEW_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+
+// 回收站的表头（作品 tab）
 const recycleBinThead: Ref<Thead<RecycleWorkDTO>[]> = ref([
   new Thead({
     type: 'custom',
@@ -143,7 +175,124 @@ const recycleBinThead: Ref<Thead<RecycleWorkDTO>[]> = ref([
   })
 ])
 
+// 文件条目的表头（文件 tab）
+const storeThead: Ref<Thead<RecycleStoreDTO>[]> = ref([
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'fileName',
+    title: '文件名',
+    hide: false,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 图片行悬停弹出预览（软删期间文件在 backup/，/store/ 服务按行内 backup_id 兜底可访问）；
+    // show-after 与单元格溢出 tooltip 错峰，避免双气泡叠加
+    render: (data, extraData) => {
+      const row = extraData as RecycleStoreDTO
+      const name = (data as string | null) ?? ''
+      const ext = row.filenameExtension?.toLowerCase() ?? ''
+      if (isNullish(row) || isBlank(row.filePath) || !PREVIEW_EXTS.includes(ext)) {
+        return h('span', name)
+      }
+      return h(
+        ElPopover,
+        { trigger: 'hover', placement: 'top', width: 'auto', showAfter: 400 },
+        {
+          reference: () => h('span', name),
+          default: () =>
+            h(ElImage, {
+              src: buildStoreUrl(row.filePath),
+              fit: 'contain',
+              style: 'max-width: 360px; max-height: 240px;'
+            })
+        }
+      )
+    }
+  }),
+  new Thead({
+    type: 'text',
+    defaultDisabled: true,
+    key: 'filePath',
+    title: '路径',
+    hide: false,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'workName',
+    title: '所属作品',
+    hide: false,
+    width: 200,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true,
+    // 离链行（挂载链断）无作品上下文，显示「—」
+    render: (data, extraData) => {
+      const row = extraData as RecycleStoreDTO
+      const name = (data as string | null) ?? ''
+      if (isNullish(row.workId)) {
+        return h('span', '—')
+      }
+      return h('span', name)
+    }
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'hasBackup',
+    title: '状态',
+    hide: false,
+    width: 100,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 三态：可复原（有备份+挂载活作品，操作入口随替换/merge 软删化接通）＞已失效（无备份，文件已失）＞离链（挂载链断残迹）
+    render: (data, extraData) => {
+      const row = extraData as RecycleStoreDTO
+      if (row.canRestore) {
+        return h(StatusTag, { status: 'recycle-store-restorable' })
+      }
+      if (!row.hasBackup) {
+        return h(StatusTag, { status: 'recycle-store-no-backup' })
+      }
+      return h(StatusTag, { status: 'recycle-store-orphan' })
+    }
+  }),
+  new Thead({
+    type: 'datetime',
+    defaultDisabled: true,
+    key: 'deleteTime',
+    title: '删除时间',
+    hide: false,
+    width: 200,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'expireDaysLeft',
+    title: '剩余天数',
+    hide: false,
+    width: 100,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 自动清理未启用时为 null，显示「—」
+    render: (data) => h('span', isNullish(data) ? '—' : String(data))
+  })
+])
+
 // 方法
+// tab 切换：首次切入文件 tab 触发一次查询（后续保留筛选状态，由用户手动查询/翻页）
+function handleTabChange(tab: string | number) {
+  if (tab === 'stores' && !storeTabLoaded) {
+    storeTabLoaded = true
+    storeSearchTable.value?.doSearch()
+  }
+}
 // 查询标签/作者候选列表（类型开关经 types 下发，空 = 全部）
 async function querySearchItemPage(p: IPage<SelectItem>, input?: string): Promise<IPage<SelectItem>> {
   const conditionQuery = new SearchConditionQuery({ keyword: isBlank(input) ? undefined : input })
@@ -207,10 +356,28 @@ function buildConditions(): SearchCondition[] {
   }
   return conditions
 }
-// 分页查询回收站列表
+// 分页查询回收站作品列表（作品 tab）
 async function recycleBinQueryPageFn(p: Page<RecycleWorkDTO>): Promise<Page<RecycleWorkDTO> | undefined> {
   query.value.conditions = buildConditions()
-  const response = await recycleBinApi.recycleBinPage(p, query.value)
+  const response = await recycleBinApi.recycleBinPageWorks(p, query.value)
+  return response.data
+}
+// 组装文件条目查询（文件域条件体系；改动后需手动点查询刷新）
+function buildStoreQuery(): RecycleStorePageQuery {
+  const backup = storeBackupFilter.value === 'all' ? null : storeBackupFilter.value === 'backup'
+  return new RecycleStorePageQuery({
+    fileName: storeFileName.value,
+    filePath: storeFilePath.value,
+    workName: storeWorkName.value,
+    mediaType: storeMediaType.value,
+    hasBackup: backup,
+    deleteTimeFrom: isNullish(storeDeleteTimeRange.value) ? 0 : storeDeleteTimeRange.value[0].getTime(),
+    deleteTimeTo: isNullish(storeDeleteTimeRange.value) ? 0 : storeDeleteTimeRange.value[1].getTime()
+  })
+}
+// 分页查询回收站文件条目（文件 tab）
+async function storeQueryPageFn(p: Page<RecycleStoreDTO>): Promise<Page<RecycleStoreDTO> | undefined> {
+  const response = await recycleBinApi.recycleBinPageStores(p, buildStoreQuery())
   return response.data
 }
 // 处理列头排序变化（后端排序；取消排序时回落默认 deleteTime DESC）
@@ -227,7 +394,7 @@ function handleSortChange(sortData: { column: unknown; prop: string; order: 'asc
 // 复原回收站条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 重试）
 async function restore(item: RecycleWorkDTO) {
   try {
-    await recycleBinApi.recycleBinRestore(item.id, false)
+    await recycleBinApi.recycleBinRestoreWork(item.id, false)
     ElMessage.success('复原成功')
     await recycleBinSearchTable.value.doSearch()
   } catch (e) {
@@ -242,7 +409,7 @@ async function restore(item: RecycleWorkDTO) {
         cancelButtonText: '取消',
         type: 'warning'
       })
-      await recycleBinApi.recycleBinRestore(item.id, true)
+      await recycleBinApi.recycleBinRestoreWork(item.id, true)
       ElMessage.success('复原成功')
       await recycleBinSearchTable.value.doSearch()
     } catch (e2) {
@@ -253,7 +420,7 @@ async function restore(item: RecycleWorkDTO) {
     }
   }
 }
-// 彻底删除回收站条目
+// 彻底删除回收站作品条目
 async function purge(item: RecycleWorkDTO) {
   try {
     await ElMessageBox.confirm('彻底删除后不可恢复，是否继续？', '彻底删除', {
@@ -261,9 +428,27 @@ async function purge(item: RecycleWorkDTO) {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await recycleBinApi.recycleBinPurge(item.id)
+    await recycleBinApi.recycleBinPurgeWork(item.id)
     ElMessage.success('已彻底删除')
     await recycleBinSearchTable.value.doSearch()
+  } catch (e) {
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    if (e instanceof Error) {
+      ElMessage.error(e.message)
+    }
+  }
+}
+// 彻底删除回收站文件条目（条目单位=store 行，连同其引用的备份一并清理）
+async function purgeStore(item: RecycleStoreDTO) {
+  try {
+    await ElMessageBox.confirm(`彻底删除文件条目后不可恢复（含其引用的备份），是否继续？\n${item.filePath}`, '彻底删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await recycleBinApi.recycleBinPurgeStore(item.id)
+    ElMessage.success('已彻底删除')
+    await storeSearchTable.value.doSearch()
   } catch (e) {
     // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
     if (e instanceof Error) {
@@ -277,100 +462,182 @@ async function purge(item: RecycleWorkDTO) {
   <base-view>
     <template #default>
       <div class="recycle-bin-container">
-        <search-table
-          ref="recycleBinSearchTable"
-          v-model:page="page"
-          class="recycle-bin-search-table"
-          toolbar-radius="var(--app-radius)"
-          data-radius="var(--app-radius)"
-          data-key="id"
-          :thead="recycleBinThead"
-          :search="recycleBinQueryPageFn"
-          :selectable="false"
-          :multi-select="false"
-          :custom-operation-button="true"
-          :operation-width="200"
-          @sort-change="handleSortChange"
-        >
-          <template #toolbarMain>
-            <div class="recycle-bin-tag-select">
-              <auto-load-tag-select
-                ref="searchConditionBar"
-                v-model:selected-data="selectedTagList"
-                v-model:custom-data="customTagList"
-                v-model:input="autoLoadInput"
-                :load="querySearchItemPage"
-                :page-size="40"
-                :color-resolver="setSearchTagColor"
-                tags-gap="10px"
-                max-height="300px"
-                min-height="33px"
-              >
-                <template #left>
-                  <el-checkbox-group
-                    v-model="searchConditionType"
-                    class="recycle-bin-tag-type-checkbox-group"
-                    @change="handleConditionTypeChange"
+        <el-tabs v-model="activeTab" class="recycle-bin-tabs" @tab-change="handleTabChange">
+          <!-- 作品 tab：work 已删行聚合（SearchCondition 条件体系） -->
+          <el-tab-pane label="作品" name="works">
+            <search-table
+              ref="recycleBinSearchTable"
+              v-model:page="page"
+              class="recycle-bin-search-table"
+              toolbar-radius="var(--app-radius)"
+              data-radius="var(--app-radius)"
+              data-key="id"
+              :thead="recycleBinThead"
+              :search="recycleBinQueryPageFn"
+              :selectable="false"
+              :multi-select="false"
+              :custom-operation-button="true"
+              :operation-width="200"
+              @sort-change="handleSortChange"
+            >
+              <template #toolbarMain>
+                <div class="recycle-bin-tag-select">
+                  <auto-load-tag-select
+                    ref="searchConditionBar"
+                    v-model:selected-data="selectedTagList"
+                    v-model:custom-data="customTagList"
+                    v-model:input="autoLoadInput"
+                    :load="querySearchItemPage"
+                    :page-size="40"
+                    :color-resolver="setSearchTagColor"
+                    tags-gap="10px"
+                    max-height="300px"
+                    min-height="33px"
                   >
-                    <el-checkbox :value="SearchType.LocalTag">本地标签</el-checkbox>
-                    <el-checkbox :value="SearchType.SiteTag">站点标签</el-checkbox>
-                    <el-checkbox :value="SearchType.LocalAuthor">本地作者</el-checkbox>
-                    <el-checkbox :value="SearchType.SiteAuthor">站点作者</el-checkbox>
-                  </el-checkbox-group>
-                </template>
-              </auto-load-tag-select>
-            </div>
-          </template>
-          <!-- 次要筛选收进搜索按钮「更多选项」折叠面板，工具栏只保留标签条 -->
-          <template #toolbarDropdown>
-            <div class="recycle-bin-advanced-filter">
-              <auto-load-select
-                v-model:data="siteIdSelected"
-                class="recycle-bin-filter-select"
-                :load="siteQuerySelectItemPageBySiteName"
-                placeholder="选择站点"
-                remote
-                filterable
-                clearable
-              >
-                <template #default="{ list }">
-                  <el-option
-                    v-for="item in list"
-                    :key="item.value"
-                    :value="item.value"
-                    :label="item.label"
+                    <template #left>
+                      <el-checkbox-group
+                        v-model="searchConditionType"
+                        class="recycle-bin-tag-type-checkbox-group"
+                        @change="handleConditionTypeChange"
+                      >
+                        <el-checkbox :value="SearchType.LocalTag">本地标签</el-checkbox>
+                        <el-checkbox :value="SearchType.SiteTag">站点标签</el-checkbox>
+                        <el-checkbox :value="SearchType.LocalAuthor">本地作者</el-checkbox>
+                        <el-checkbox :value="SearchType.SiteAuthor">站点作者</el-checkbox>
+                      </el-checkbox-group>
+                    </template>
+                  </auto-load-tag-select>
+                </div>
+              </template>
+              <!-- 次要筛选收进搜索按钮「更多选项」折叠面板，工具栏只保留标签条 -->
+              <template #toolbarDropdown>
+                <div class="recycle-bin-advanced-filter">
+                  <auto-load-select
+                    v-model:data="siteIdSelected"
+                    class="recycle-bin-filter-select"
+                    :load="siteQuerySelectItemPageBySiteName"
+                    placeholder="选择站点"
+                    remote
+                    filterable
+                    clearable
+                  >
+                    <template #default="{ list }">
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
+                    </template>
+                  </auto-load-select>
+                  <el-date-picker
+                    v-model="deleteTimeRange"
+                    class="recycle-bin-filter-range"
+                    type="datetimerange"
+                    start-placeholder="删除时间起"
+                    end-placeholder="删除时间止"
                   />
-                </template>
-              </auto-load-select>
-              <el-date-picker
-                v-model="deleteTimeRange"
-                class="recycle-bin-filter-range"
-                type="datetimerange"
-                start-placeholder="删除时间起"
-                end-placeholder="删除时间止"
-              />
-              <el-date-picker
-                v-model="workCreateTimeRange"
-                class="recycle-bin-filter-range"
-                type="datetimerange"
-                start-placeholder="创建时间起"
-                end-placeholder="创建时间止"
-              />
-              <el-date-picker
-                v-model="uploadTimeRange"
-                class="recycle-bin-filter-range"
-                type="datetimerange"
-                start-placeholder="上传时间起"
-                end-placeholder="上传时间止"
-              />
-            </div>
-          </template>
-          <!-- 破坏性按钮需保真 danger+tone-fail 红色形态，内置 operationButton 下拉项无 danger 样式，故走自定义操作列 -->
-          <template #customOperations="{ row }">
-            <el-button size="small" type="primary" @click="restore(row as RecycleWorkDTO)">复原</el-button>
-            <el-button size="small" type="danger" class="tone-fail" @click="purge(row as RecycleWorkDTO)">彻底删除</el-button>
-          </template>
-        </search-table>
+                  <el-date-picker
+                    v-model="workCreateTimeRange"
+                    class="recycle-bin-filter-range"
+                    type="datetimerange"
+                    start-placeholder="创建时间起"
+                    end-placeholder="创建时间止"
+                  />
+                  <el-date-picker
+                    v-model="uploadTimeRange"
+                    class="recycle-bin-filter-range"
+                    type="datetimerange"
+                    start-placeholder="上传时间起"
+                    end-placeholder="上传时间止"
+                  />
+                </div>
+              </template>
+              <!-- 破坏性按钮需保真 danger+tone-fail 红色形态，内置 operationButton 下拉项无 danger 样式，故走自定义操作列 -->
+              <template #customOperations="{ row }">
+                <el-button size="small" type="primary" @click="restore(row as RecycleWorkDTO)">复原</el-button>
+                <el-button size="small" type="danger" class="tone-fail" @click="purge(row as RecycleWorkDTO)">彻底删除</el-button>
+              </template>
+            </search-table>
+          </el-tab-pane>
+          <!-- 文件 tab：persistent_store 已删行（文件域条件体系，与作品 tab 分轨） -->
+          <el-tab-pane label="文件" name="stores">
+            <search-table
+              ref="storeSearchTable"
+              v-model:page="storePage"
+              class="recycle-bin-search-table"
+              toolbar-radius="var(--app-radius)"
+              data-radius="var(--app-radius)"
+              data-key="id"
+              :thead="storeThead"
+              :search="storeQueryPageFn"
+              :selectable="false"
+              :multi-select="false"
+              :custom-operation-button="true"
+              :operation-width="110"
+            >
+              <template #toolbarMain>
+                <div class="recycle-store-filter">
+                  <el-input
+                    v-model="storeFileName"
+                    class="recycle-store-filter-input"
+                    placeholder="文件名"
+                    clearable
+                  />
+                  <el-input
+                    v-model="storeFilePath"
+                    class="recycle-store-filter-input"
+                    placeholder="路径"
+                    clearable
+                  />
+                  <el-input
+                    v-model="storeWorkName"
+                    class="recycle-store-filter-input"
+                    placeholder="所属作品名"
+                    clearable
+                  />
+                  <el-select
+                    v-model="storeMediaType"
+                    class="recycle-store-filter-select"
+                    placeholder="类型"
+                    clearable
+                  >
+                    <el-option
+                      v-for="opt in mediaTypeOptions"
+                      :key="opt.value"
+                      :value="opt.value"
+                      :label="opt.label"
+                    />
+                  </el-select>
+                  <el-select
+                    v-model="storeBackupFilter"
+                    class="recycle-store-filter-select"
+                    placeholder="备份状态"
+                  >
+                    <el-option value="all" label="全部" />
+                    <el-option value="backup" label="有备份" />
+                    <el-option value="none" label="无备份" />
+                  </el-select>
+                  <el-button type="primary" @click="storeSearchTable?.doSearch()">查询</el-button>
+                </div>
+              </template>
+              <template #toolbarDropdown>
+                <div class="recycle-bin-advanced-filter">
+                  <el-date-picker
+                    v-model="storeDeleteTimeRange"
+                    class="recycle-bin-filter-range"
+                    type="datetimerange"
+                    start-placeholder="删除时间起"
+                    end-placeholder="删除时间止"
+                  />
+                </div>
+              </template>
+              <template #customOperations="{ row }">
+                <el-button size="small" type="danger" class="tone-fail" @click="purgeStore(row as RecycleStoreDTO)">彻底删除</el-button>
+              </template>
+            </search-table>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </template>
   </base-view>
@@ -386,6 +653,28 @@ async function purge(item: RecycleWorkDTO) {
   width: calc(100% - 20px);
   height: calc(100% - 20px);
   margin: 10px;
+}
+
+/* 页内双 tab（作品/文件）：tab 头占固有高度，内容区撑满剩余高度 */
+.recycle-bin-tabs {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.recycle-bin-tabs > :deep(.el-tabs__header) {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.recycle-bin-tabs > :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+}
+
+.recycle-bin-tabs > :deep(.el-tabs__content) > .el-tab-pane {
+  height: 100%;
 }
 
 .recycle-bin-search-table {
@@ -424,6 +713,25 @@ async function purge(item: RecycleWorkDTO) {
 
 .recycle-bin-filter-range {
   width: 350px;
+  flex-shrink: 0;
+}
+
+/* 文件 tab 工具栏筛选区：自由折行 */
+.recycle-store-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.recycle-store-filter-input {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.recycle-store-filter-select {
+  width: 120px;
   flex-shrink: 0;
 }
 </style>

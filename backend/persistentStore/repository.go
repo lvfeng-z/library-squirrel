@@ -59,6 +59,18 @@ func (r *PersistentStoreRepository) ResetCompleted(ctx context.Context, id int64
 		Update("completed_at", 0).Error
 }
 
+// DeleteUnscopedByIds 批量物理删除记录（单条 DELETE IN）。dbFromCtx 模式：可安全用于事务内
+// （作品彻底删除链在事务内调用）。目标为已软删行时 HardDelete 的 GetById 会静默跳过，故走此直删
+func (r *PersistentStoreRepository) DeleteUnscopedByIds(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return database.DBFromContext(ctx, r.GORM()).WithContext(ctx).
+		Unscoped().
+		Where("id IN ?", ids).
+		Delete(new(domain.PersistentStore)).Error
+}
+
 // RestoreByIds 批量清软删标志与备份引用（复原链：文件还原回 store/ 后记录复活，
 // backup_id 指向的清单行已随还原删除故一并清零；Unscoped 逃逸 Update 的软删过滤）
 func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int64) error {

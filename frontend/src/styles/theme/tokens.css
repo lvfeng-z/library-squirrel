@@ -237,6 +237,18 @@
   --app-status-backup-orphaned-text: var(--app-status-idle-text);
   --app-status-backup-orphaned-border: var(--app-status-idle-border);
 
+  /* —— 回收站文件条目状态（recycle-*）：restorable=可复原（有备份+挂载活作品）→done，
+         no-backup=已失效（外部裁决/备份缺失，文件已失）→fail，orphan=离链（挂载链断残迹）→warn —— */
+  --app-status-recycle-store-restorable-bg: var(--app-status-done-bg);
+  --app-status-recycle-store-restorable-text: var(--app-status-done-text);
+  --app-status-recycle-store-restorable-border: var(--app-status-done-border);
+  --app-status-recycle-store-no-backup-bg: var(--app-status-fail-bg);
+  --app-status-recycle-store-no-backup-text: var(--app-status-fail-text);
+  --app-status-recycle-store-no-backup-border: var(--app-status-fail-border);
+  --app-status-recycle-store-orphan-bg: var(--app-status-warn-bg);
+  --app-status-recycle-store-orphan-text: var(--app-status-warn-text);
+  --app-status-recycle-store-orphan-border: var(--app-status-warn-border);
+
   /* ===== 圆角 ===== */
   --app-radius-sm: 4px;
   --app-radius: 6px;

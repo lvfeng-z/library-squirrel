@@ -11,6 +11,8 @@ export {
     RankedLocalAuthorWithWorkId,
     RankedSiteAuthor,
     RankedSiteAuthorWithWorkId,
+    RecycleStoreDTO,
+    RecycleStorePageQuery,
     RecycleWorkDTO,
     ResourceDTO,
     ResourceFullDTO,

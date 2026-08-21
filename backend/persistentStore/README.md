@@ -17,6 +17,9 @@
 | `StoreStream` / `ResumeStream` | 流式写入（支持断点续传，StoreWriter） |
 | `Store` / `StoreFromFile` / `StoreFromExternal` | 从 Reader / 本地文件 / 外部文件写入；`StoreFromExternal` 导入前先清同 `file_path` 旧记录（避免 UNIQUE 冲突） |
 | `Delete(id, backup)` | 删除记录与文件（backup=true 联动备份，仅已完成文件、失败降级直接删除）；记录不存在视为已删除，返回 `(0,nil)` 而非错误 |
+| `HardDelete(id, backup)` | 物理删记录 + 删文件（查行走 GetById 受软删 scope 保护——**对已软删行静默跳过**，适用于活行） |
+| `DeleteUnscopedByIds(ids)` | 批量物理删行（单条 DELETE IN，dbFromCtx 模式可入事务；对已软删行的直删通路——purge 链专用） |
+| `GetDeletedStore(id)` | 按 ID 获取已软删行（nil = 不存在或非已删态；回收站文件条目清理链入口校验） |
 | `DeleteWithBackup(id)` | 作品软删除链专用：移文件入 backup + **记录软删**（与文件移动同生共死）；不看完成状态、失败返回错误（契约与 `HardDelete` 的区别见方法注释） |
 | `DeleteByFilePath` | 按路径删除（物理删） |
 | `MarkInvalid(id)` / `RestoreWorkStores(ids)` / `ResolveFileState(relPath)` | 外部裁决失效（软删）/ 批量复活（复原链）/ 状态解析（/store/ 路由，含删口径） |
@@ -35,7 +38,7 @@
 ## 依赖关系
 
 - 依赖：workDir 提供者（根目录）
-- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreWorkStores` 复活）、**recycleBin**（复原编排）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）、**backupGovernance**（BackupReferencer：引用集投影 `ListReferencedBackupIDs`（Unscoped 含已删行）、悬空清列 `ClearBackupRefsByBackupIDs`、非法活行防御清列）
+- 被依赖：**task**（下载资源落盘）、**backup**（StoreBackupOrchestrator 的导入 / 删除）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreWorkStores` 复活，purge 经 `DeleteUnscopedByIds` 物理删行）、**recycleBin**（复原编排 + 文件条目清理 StoreCleaner）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）、**backupGovernance**（BackupReferencer：引用集投影 `ListReferencedBackupIDs`（Unscoped 含已删行）、悬空清列 `ClearBackupRefsByBackupIDs`、非法活行防御清列）
 
 ## 关键设计
 
