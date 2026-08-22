@@ -76,6 +76,7 @@ query.go            — 查询 DTO
 - **所有公开方法以** `context.Context` 作为第一个参数，禁止在 `context.WithValue` 中存储业务数据。
 - **Service 层禁止直接导入** `backend/database`，仅 Repository 层可导入。
 - **RESOURCE_TYPE_STRICT** (P0): 资源类型与 store_type 严格识别——插件 Create 必须声明有效 `ResourceType`（已注册即可：内置 `entity.ResourceType*` 之一含 audio，或插件经 resourceTypes 段注册的自定义类型；unknown 合法），`StoreSpec.Role` 必须 ∈ 7 预定义 `entity.StoreType*`（含 audioMain）；空/未注册值在写入路径抛错（`entity.ValidateResourceType`/`ValidateStoreType`），不推断、不兜底。插件自定义类型注册时强校验（反向域名前缀 + Roles 合法性，`entity.ResourceTypeRegistry.Register`）。展示主体由后端 `ResolvePrimaryStore`（按 PrimaryRoles）派生，前端纯消费。规约见 `doc/resource-type-spec.md`。
+- **STORE_ASSOCIATION_LIVENESS_FILTER** (P1): resource_store 关联保留形态下（store 行软删不摘关联——替换/merge 残留、外部裁决失效行），每挂载键（resource_id+store_type+store_seq）呈「活行 0..1 + 死行 0..N 按代次」。**消费 resource_store 的查询/计数/展示/覆盖判定一律按行活性过滤**——经 JOIN persistent_store 判活（`GetByType`/`CountAliveTypesByResourceId`/`ListAliveByResourceIds`）或展示组装按 storeMap 活行命中过滤（`NewResourceFullDTO`），禁止直接用全量关联形态把软删残留当现役数据（反例：覆盖确认行级判定曾按全量角色集合计算，merge overwrite 轨道残留令同作品重下永远弹覆盖确认，2026-08-22 实测修复）。挂载清理（`DeleteByResourceIdAndTypes`）只摘指向活行的关联；复活按**同键最新死代**（argmax deleted_at）单代圈定（`deriveRevivableStores`/`deriveReplaceVictims`），无差别复活会令双活行同 file_path 撞部分唯一索引。
 - **ORCHESTRATION_BY_CALLER** (P0): 业务编排（串联多个原子能力完成一个流程）归**发起方**模块——发起方通过依赖注入获取各提供方的能力接口，自行串联；**禁止**把多个模块的能力揉进一个「集成器/编排器」接口在某个提供方模块集中实现。例：「拉取插件原站序 + 映射 + 写 site_sort_order」的编排归发起该流程的模块（如入库流程的 `SaveWorkInfo`）；「从插件获取」归 plugin（提供获取接口）、「写入 sort_order」归 workSet（提供写入接口），发起方注入两者并编排。不建 `WorkSetOrderSyncer` 这种把两者揉在单一模块的接口——它会导致模块职责越界。
 
 ## 禁止的做法
