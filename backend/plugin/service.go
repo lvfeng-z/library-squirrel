@@ -43,6 +43,9 @@ var (
 	ErrInvalidPackage      = errors.New("invalid plugin package")
 	ErrInvalidManifest     = errors.New("invalid plugin manifest")
 	ErrBackupNotFound      = errors.New("backup not found")
+	// ErrPluginStateChanged 并发守卫命中：读取行后行内备份引用已被其他流程（重装/换版）改写，
+	// 本次操作中止，由调用方引导重试
+	ErrPluginStateChanged = errors.New("plugin state changed since read")
 )
 
 // installContext 安装上下文：来源与信任（由安装入口判定，服务端权威；与承载 manifest 数据的 installDTO 正交）
@@ -81,18 +84,19 @@ type Repository interface {
 	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.Plugin, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
-	// Delete 删除
-	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.Plugin], error)
 	// CheckInstalled 检查插件是否已安装
 	CheckInstalled(ctx context.Context, publicId string) (bool, error)
 	// GetByPublicId 根据公开ID获取
 	GetByPublicId(ctx context.Context, publicId string) (*entity2.Plugin, error)
-	// ListReferencedBackupIds 全量投影行内 BackupID（供备份治理引用集对账；含已卸载行）
+	// ListReferencedBackupIds 全量投影行内 BackupID（供备份治理引用集对账）
 	ListReferencedBackupIds(ctx context.Context) ([]int64, error)
 	// ClearBackupRefsByBackupIds 按引用目标清列（悬空引用清列，BackupID 置 NULL）
 	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
+	// MarkUninstalledAndClearBackup 标记已卸载并清空备份引用（expectedBackupId 为并发守卫——
+	// 行内引用与捕获值不符时 0 行受影响，返回 ErrPluginStateChanged 由调用方引导重试）
+	MarkUninstalledAndClearBackup(ctx context.Context, publicId string, expectedBackupId int64) error
 }
 
 // BackupProvider 备份提供者接口（由 plugin service 定义需要的备份能力）
@@ -101,6 +105,8 @@ type BackupProvider interface {
 	CreateBackup(ctx context.Context, sourcePath string) (*entity2.Backup, error)
 	// GetById 按清单行 ID 获取备份（行内 BackupID 引用直查）
 	GetById(ctx context.Context, id int64) (*entity2.Backup, error)
+	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍；卸载/换版直清旧备份）
+	DeleteBackup(ctx context.Context, id int64) error
 }
 
 // PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、前端扩展和启动子进程
@@ -195,21 +201,6 @@ func (s *Service) SetUrlListenerProvider(provider UrlListenerProvider) {
 // GetById 根据ID获取
 func (s *Service) GetById(ctx context.Context, id int64) (*entity2.Plugin, error) {
 	return s.repo.GetById(ctx, id)
-}
-
-// Save 保存插件
-func (s *Service) Save(ctx context.Context, plugin *entity2.Plugin) error {
-	return s.repo.Create(ctx, plugin)
-}
-
-// Update 更新插件
-func (s *Service) Update(ctx context.Context, plugin *entity2.Plugin) error {
-	return s.repo.Updates(ctx, plugin)
-}
-
-// Delete 删除插件
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
 }
 
 // Page 分页查询
@@ -516,6 +507,12 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.BuildID = sql.NullString{String: installDTO.BuildID, Valid: installDTO.BuildID != ""}
 	plugin.Trusted = sql.NullBool{Bool: ictx.Trusted, Valid: true}
 
+	// 捕获重装前的旧备份引用（换版直清目标；Save 全字段覆盖后行内旧值即失）
+	prevBackupID := int64(0)
+	if reusePlugin != nil && reusePlugin.BackupID.Valid {
+		prevBackupID = reusePlugin.BackupID.Int64
+	}
+
 	if reusePlugin != nil {
 		// 复用原记录（重装/升级，或重装已卸载插件）：完整替换该记录的所有字段，保留原始 ID 与 CreateTime
 		plugin.ID = reusePlugin.ID
@@ -538,6 +535,14 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.BackupID = sql.NullInt64{Int64: backup.ID, Valid: true}
 	if err := s.repo.Updates(ctx, plugin); err != nil {
 		return nil, err
+	}
+
+	// 换版直清旧备份：备份仅服务当前安装版本的重装修复，行内引用已指向新备份后旧备份无用；
+	// 失败留无主备份由治理保留期兜底
+	if prevBackupID > 0 && prevBackupID != backup.ID {
+		if err := s.backupProvider.DeleteBackup(ctx, prevBackupID); err != nil {
+			logger.Log.Warnf("换版后清理旧安装包备份 %d 失败（留待治理清理）: %v", prevBackupID, err)
+		}
 	}
 
 	// 重装时清理旧安装目录（解压与落库均已成功后执行，失败最多留垃圾目录、不产生半损态）：
@@ -564,7 +569,7 @@ func (s *Service) Name() string {
 }
 
 // ListReferencedBackupIDs 全量行内 BackupID 引用的清单行 ID（实现 backupGovernance.BackupReferencer）。
-// 表无软删全量即含已卸载行——卸载行持有重装能力引用，合法有主
+// 卸载链清空 backup_id，已卸载行不再持有备份引用——投影集即当前已安装版本的现役引用
 func (s *Service) ListReferencedBackupIDs(ctx context.Context) ([]int64, error) {
 	return s.repo.ListReferencedBackupIds(ctx)
 }
@@ -702,7 +707,7 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 		return err
 	}
 
-	// 获取插件记录并标记为已卸载
+	// 获取插件记录，捕获卸载前的备份引用（直清目标）
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
 		return err
@@ -710,10 +715,22 @@ func (s *Service) uninstall(ctx context.Context, pluginPublicId string) error {
 	if plugin == nil {
 		return ErrPluginNotFound
 	}
+	oldBackupID := int64(0)
+	if plugin.BackupID.Valid {
+		oldBackupID = plugin.BackupID.Int64
+	}
 
-	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
-	if err := s.repo.Updates(ctx, plugin); err != nil {
+	// 标记已卸载并清空备份引用（单条 UPDATE，map 形态零值安全——结构体 Updates 跳过 NULL 列）。
+	// backup_id 条件为并发守卫：读取后引用被重装/换版并发改写时条件不中，中止并引导重试
+	if err := s.repo.MarkUninstalledAndClearBackup(ctx, pluginPublicId, oldBackupID); err != nil {
 		return err
+	}
+
+	// 直清安装包备份（备份仅服务已安装版本的重装修复，卸载后无用；失败留无主备份由治理保留期兜底）
+	if oldBackupID > 0 {
+		if err := s.backupProvider.DeleteBackup(ctx, oldBackupID); err != nil {
+			logger.Log.Warnf("卸载后清理安装包备份 %d 失败（留待治理清理）: %v", oldBackupID, err)
+		}
 	}
 
 	// 清理该插件的更新待办（防卸载后残留可操作项）
@@ -742,20 +759,6 @@ func (s *Service) deactivate(ctx context.Context, pluginPublicId string, op Plug
 
 	s.removeFiles(plugin)
 	return nil
-}
-
-// SetUninstalled 设置插件为已卸载状态
-func (s *Service) SetUninstalled(ctx context.Context, pluginId int64) error {
-	plugin, err := s.repo.GetById(ctx, pluginId)
-	if err != nil {
-		return err
-	}
-	if plugin == nil {
-		return ErrPluginNotFound
-	}
-
-	plugin.Uninstalled = sql.NullBool{Bool: true, Valid: true}
-	return s.repo.Updates(ctx, plugin)
 }
 
 // getAppRoot 获取应用根目录，用于插件安装、卸载等程序文件操作

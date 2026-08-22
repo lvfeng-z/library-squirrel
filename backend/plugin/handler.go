@@ -20,26 +20,6 @@ func NewHandler(svc *Service) *Handler {
 
 // ========== 增删改操作 ==========
 
-// Save 保存插件
-func (h *Handler) Save(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[int64] {
-	domainPlugin := domain.ToPluginEntity(plugin)
-
-	if err := h.svc.Save(ctx, domainPlugin); err != nil {
-		return model.HandleError[int64](err)
-	}
-	return model.Success(domainPlugin.GetID())
-}
-
-// Update 更新插件
-func (h *Handler) Update(ctx context.Context, plugin *domain.PluginDTO) *model.ApiResponse[any] {
-	domainPlugin := domain.ToPluginEntity(plugin)
-
-	if err := h.svc.Update(ctx, domainPlugin); err != nil {
-		return model.HandleError[any](err)
-	}
-	return model.Success[any](nil)
-}
-
 // InstallFromPath 从插件包路径安装插件。trusted 透传用户知情同意结果（true=用户已确认信任，false=绕过 UI 的异常安装）
 func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
 	result, err := h.svc.InstallFromPath(ctx, packagePath, trusted)
@@ -104,11 +84,6 @@ func (h *Handler) RestorePendingUpgrade(ctx context.Context, pluginPublicId stri
 // Uninstall 卸载插件
 func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.Uninstall(ctx, pluginPublicId))
-}
-
-// SetUninstalled 设置插件为已卸载状态
-func (h *Handler) SetUninstalled(ctx context.Context, pluginId int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.SetUninstalled(ctx, pluginId))
 }
 
 // SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；

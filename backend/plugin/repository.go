@@ -54,7 +54,7 @@ func (r *PluginRepository) GetByPublicId(ctx context.Context, publicId string) (
 }
 
 // ListReferencedBackupIds 全量投影行内 BackupID（DISTINCT，非 NULL 且 >0；供备份治理引用集对账）。
-// 表无软删，全量即含已卸载行——卸载行持有重装能力引用，合法有主
+// 卸载链清空 backup_id，已卸载行不再持有备份引用——投影集即当前已安装版本的现役引用
 func (r *PluginRepository) ListReferencedBackupIds(ctx context.Context) ([]int64, error) {
 	var ids []int64
 	err := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
@@ -62,6 +62,29 @@ func (r *PluginRepository) ListReferencedBackupIds(ctx context.Context) ([]int64
 		Distinct().
 		Pluck("backup_id", &ids).Error
 	return ids, err
+}
+
+// MarkUninstalledAndClearBackup 标记已卸载并清空备份引用（单条 UPDATE；map 形态零值安全——
+// 结构体 Updates 跳过 NULL 列）。backup_id IS 条件为 null-safe 并发守卫：读取后引用被
+// 重装/换版并发改写时 0 行受影响，返回 ErrPluginStateChanged 由调用方引导重试
+func (r *PluginRepository) MarkUninstalledAndClearBackup(ctx context.Context, publicId string, expectedBackupId int64) error {
+	var expected interface{}
+	if expectedBackupId > 0 {
+		expected = expectedBackupId
+	}
+	result := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
+		Where("public_id = ? AND backup_id IS ?", publicId, expected).
+		Updates(map[string]interface{}{
+			"uninstalled": true,
+			"backup_id":   nil,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrPluginStateChanged
+	}
+	return nil
 }
 
 // ClearBackupRefsByBackupIds 按引用目标清列（悬空引用清列，BackupID 置 NULL——NullInt64 语义）

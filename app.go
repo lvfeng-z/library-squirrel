@@ -1005,7 +1005,7 @@ func (app *App) initAdvancedServices() error {
 		app.BackupService, // BackupCatalog（保管清单目录面）
 		[]backupGovernance.BackupReferencer{
 			app.PersistentStoreService, // persistent_store.backup_id（作品软删链，含已删行引用）
-			app.PluginService,          // plugin.backup_id（安装包备份/重装能力，含已卸载行引用）
+			app.PluginService,          // plugin.backup_id（安装包备份，仅服务已安装版本的重装修复；卸载/换版直清，无长寿命引用）
 		},
 		app.SettingsService, // RetentionDaysProvider（无主备份保留期）
 	)

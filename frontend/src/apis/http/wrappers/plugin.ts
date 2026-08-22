@@ -15,21 +15,6 @@ import { requireResponse } from '@renderer/apis/http/types'
 
 // ========== API 方法 ==========
 
-/** 保存插件 */
-export async function pluginSave(plugin: PluginDTO): Promise<ApiResult<number>> {
-  return requireResponse(await PluginHandler.Save(plugin), '保存插件', false)
-}
-
-/** 更新插件 */
-export async function pluginUpdate(plugin: PluginDTO): Promise<ApiResult<any>> {
-  return requireResponse(await PluginHandler.Update(plugin), '更新插件', false)
-}
-
-/** 删除插件（设置为已卸载状态） */
-export async function pluginDelete(id: number): Promise<ApiResult<any>> {
-  return requireResponse(await PluginHandler.SetUninstalled(id), '删除插件', false)
-}
-
 /** 根据ID获取插件 */
 export async function pluginGetById(id: number): Promise<ApiResult<PluginDTO>> {
   return requireResponse(await PluginHandler.GetById(id), '获取插件')

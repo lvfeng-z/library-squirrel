@@ -18,9 +18,7 @@
 | `Reinstall(pluginPublicId, trusted)` | 重新安装（已安装插件） |
 | `ReinstallFromPath(pluginPublicId, packagePath, trusted)` | 从指定包重装 |
 | `SetTrusted(pluginPublicId, trusted, force)` | 设置信任状态：true 时落标记并激活；false 时**即时停用运行时**（停进程+参与者清痕迹，不删文件），停用成功才落标记（参与者否决则保持运行、标记不变），force=true 跳过否决检查 |
-| `Uninstall(pluginPublicId)` | 卸载插件 |
-| `SetUninstalled(pluginId)` | 标记为已卸载（残留清理） |
-| `Save` / `Update` | 保存 / 更新插件记录 |
+| `Uninstall(pluginPublicId)` | 卸载插件：停运行时+删插件文件+标记已卸载并清空备份引用，同时直清安装包备份（失败留无主由治理保留期兜底） |
 | `GetById` / `GetByPublicId` | 按ID / 公共ID查询 |
 | `Page(query)` | 分页查询 |
 | `CheckInstalled(publicId)` | 检查是否已安装 |
@@ -51,10 +49,12 @@
 
 ## 依赖关系
 
-- 依赖：`extension/`（扩展点加载）、插件 SDK（HostService 桥接）、settings（激活配置）、`util/crypto`（自存信息加解密）
-- 被依赖：app.go 初始化（`LoadPlugins`）、前端插件管理页、backupGovernance（BackupReferencer：安装包备份引用集投影 `ListReferencedBackupIDs`（含已卸载行——重装能力引用，合法有主）、悬空清列 `ClearBackupRefsByBackupIDs` 置 NULL）
+- 依赖：`extension/`（扩展点加载）、插件 SDK（HostService 桥接）、settings（激活配置）、`util/crypto`（自存信息加解密）、backup（BackupProvider：安装包备份的建立/查询/删除）
+- 被依赖：app.go 初始化（`LoadPlugins`）、前端插件管理页、backupGovernance（BackupReferencer：安装包备份引用集投影 `ListReferencedBackupIDs`——卸载链清空 backup_id，已卸载行不再持有引用，投影集即当前已安装版本的现役引用；悬空清列 `ClearBackupRefsByBackupIDs` 置 NULL）
 
 ## 关键设计
+
+- **安装包备份生命周期**：备份（`plugin.BackupID` 内嵌引用 backup 清单行）仅服务**当前安装版本**的重装修复（`Reinstall` 以备份文件为安装源）。换版/重装成功后直清旧备份（installCore 末尾，行内引用已指向新备份）；卸载时清空引用并直清备份（失败均留无主由治理保留期兜底）。行永不物理删（卸载仅标记）——重装复用行时 `plugin_storage` 按 ID 延续、设置不丢。第三方插件卸载/换版后重装或回退须自备安装包（bundled 不受影响：重启自动重装用捆绑 zip）。
 
 - **停用生命周期（能力分散、契约集中）**：停用/换版统一走 `stopRuntime`（`lifecycle.go`）——参与者 `PrepareStop` 否决检查 → 运行时停止器（loader.UnloadPlugin，停进程+清其所属注册表）→ 参与者 `OnStopped` 清痕迹；`removeFiles` 独立成原子操作。凡持有插件运行时痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配静态资源/前端扩展/taskManager 三个参与者），注册表是停用清理完备性的唯一审计点。taskManager 参与者在卸载/更新/重装时否决存在运行中任务的操作（Processing/Pausing/Stopping/WaitingForInput；Paused 不拦），取消信任不否决（代价由前端确认框按 `GetActiveTaskCount` 明示后 force 强制停）。卸载=stopRuntime+removeFiles+标记；重装/换版=stopRuntime+removeFiles+installCore+Activate；取消信任=仅 stopRuntime。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置。**崩溃路径对称**：loader 崩溃清理后经 `SetCrashNotifier` 回调 `NotifyPluginCrashed`，执行同一参与者 OnStopped 集合（不否决、不停进程）。设计见 `doc/plan/插件热重载体系完善方案.md`。
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。

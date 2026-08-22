@@ -139,15 +139,6 @@ export function RestorePendingUpgrade(pluginPublicId: string): $CancellablePromi
 }
 
 /**
- * Save 保存插件
- */
-export function Save(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
-    return $Call.ByID(877049511, plugin).then(($result: any) => {
-        return $$createType22($result);
-    });
-}
-
-/**
  * SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；
  * trusted=false 即时停用运行时，force=前端确认对话框明示代价后强制停（跳过参与者否决检查）
  */
@@ -158,29 +149,11 @@ export function SetTrusted(pluginPublicId: string, trusted: boolean, force: bool
 }
 
 /**
- * SetUninstalled 设置插件为已卸载状态
- */
-export function SetUninstalled(pluginId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2772021117, pluginId).then(($result: any) => {
-        return $$createType24($result);
-    });
-}
-
-/**
  * Uninstall 卸载插件
  */
 export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1092276364, pluginPublicId).then(($result: any) => {
-        return $$createType24($result);
-    });
-}
-
-/**
- * Update 更新插件
- */
-export function Update(plugin: dto$0.PluginDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(412122547, plugin).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType22($result);
     });
 }
 
@@ -208,5 +181,3 @@ const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
 const $$createType20 = $Create.Nullable($$createType19);
 const $$createType21 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType24 = $Create.Nullable($$createType23);
