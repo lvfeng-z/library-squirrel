@@ -46,15 +46,6 @@ export function ApplySiteOrder(workSetId: number): $CancellablePromise<model$0.A
 }
 
 /**
- * Delete 删除作品集
- */
-export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3283039871, id).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * GetById 根据ID获取作品集
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.WorkSetDTO | null> | null> {
@@ -194,6 +185,15 @@ export function Save(workSet: dto$0.WorkSetDTO | null): $CancellablePromise<mode
  */
 export function SetCover(workSetId: number, workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2722729479, workSetId, workId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * SoftDeleteWorkSet 软删除作品集（移入回收站，可复原；关联保留）
+ */
+export function SoftDeleteWorkSet(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1105518602, id).then(($result: any) => {
         return $$createType1($result);
     });
 }

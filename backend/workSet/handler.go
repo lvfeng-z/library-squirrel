@@ -31,9 +31,9 @@ func (h *Handler) Save(ctx context.Context, workSet *sdkdto.WorkSetDTO) *model.A
 	return model.Success(domainWorkSet.GetID())
 }
 
-// Delete 删除作品集
-func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.Delete(ctx, id))
+// SoftDeleteWorkSet 软删除作品集（移入回收站，可复原；关联保留）
+func (h *Handler) SoftDeleteWorkSet(ctx context.Context, id int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.SoftDeleteWorkSet(ctx, id))
 }
 
 // Update 更新作品集

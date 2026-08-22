@@ -38,11 +38,18 @@ import {
   reWorkWorkSetSetCover
 } from '@renderer/apis/http/wrappers/reWorkWorkSet'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@renderer/apis/http/wrappers/search'
+import {workSetSoftDelete} from '@renderer/apis/http/wrappers/workSet'
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // props
 const props = defineProps<{
   width?: string
+}>()
+
+// emits
+// workSetDeleted: 作品集已软删除（关闭弹窗后上抛，供持有方刷新作品集列表）
+const emits = defineEmits<{
+  workSetDeleted: [id: number]
 }>()
 
 // model
@@ -233,6 +240,32 @@ async function loadChildWorkSets() {
     const list = ApiUtil.data<(WorkSetDTO | null)[]>(response)
     childWorkSets.value = (list ?? []).filter(notNullish) as WorkSetDTO[]
     existingChildWorkSetIds.value = new Set(childWorkSets.value.map((ws) => ws.id))
+  }
+}
+
+// 删除作品集按钮点击处理：软删入回收站（可复原），成功后关闭弹窗并上抛刷新
+async function handleDeleteWorkSet() {
+  const workSetId = currentWorkSetId.value
+  const name = currentWorkSet.value?.siteWorkSetName ?? currentWorkSet.value?.nickName ?? ''
+  try {
+    await ElMessageBox.confirm(
+      `是否删除作品集？删除后可在回收站复原。\n${name}`,
+      '确认删除',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await workSetSoftDelete(workSetId)
+    ElMessage.success('已移入回收站')
+    state.value = false
+    emits('workSetDeleted', workSetId)
+  } catch (e) {
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    if (e instanceof Error) {
+      ElMessage.error(e.message)
+    }
   }
 }
 
@@ -721,6 +754,15 @@ watch(isCheckable, (newValue) => {
           >
             <el-icon><Sort /></el-icon>
             原站序
+          </el-button>
+          <el-button
+            type="danger"
+            class="tone-fail"
+            :plain="true"
+            @click="handleDeleteWorkSet"
+          >
+            <el-icon><Delete /></el-icon>
+            删除作品集
           </el-button>
         </div>
         <div

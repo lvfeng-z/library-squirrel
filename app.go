@@ -945,10 +945,11 @@ func (app *App) initAdvancedServices() error {
 		app.SiteAuthorService,
 	)
 
-	// recycleBin 服务（work/search/persistentStore/resource 之后创建：WorkRestorer=app.WorkService、
-	// 查询链转发 search.Service（作品条目+文件条目+挂载身份）、StoreCleaner/StoreRestorer=
+	// recycleBin 服务（work/search/persistentStore/resource/workSet 之后创建：WorkRestorer=app.WorkService、
+	// 查询链转发 search.Service（作品条目+文件条目+作品集条目+挂载身份）、StoreCleaner/StoreRestorer=
 	// app.PersistentStoreService（文件条目清理/复原置换）、ResourceRecomputer=app.ResourceService（
-	// 复原置换后重算完整度）；文件还原的 workDir 经设置读取器闭包注入）
+	// 复原置换后重算完整度）、WorkSetRestorer=app.WorkSetService（作品集条目软删/复原/级联）；
+	// 文件还原的 workDir 经设置读取器闭包注入）
 	app.RecycleBinService = recycleBin.NewService(
 		app.WorkService,
 		app.BackupService,
@@ -959,6 +960,8 @@ func (app *App) initAdvancedServices() error {
 		app.ResourceService,
 		app.SettingsService,
 		func() string { return app.SettingsService.GetWorkDir() },
+		app.WorkSetService,
+		app.SearchService,
 	)
 	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
 	app.RecycleBinService.StartCleanup()

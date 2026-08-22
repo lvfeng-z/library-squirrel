@@ -14,6 +14,8 @@ export {
     RecycleStoreDTO,
     RecycleStorePageQuery,
     RecycleWorkDTO,
+    RecycleWorkSetDTO,
+    RecycleWorkSetPageQuery,
     ResourceDTO,
     ResourceFullDTO,
     ResourceStoreDTO,

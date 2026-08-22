@@ -30,8 +30,10 @@ type Repository interface {
 	List(ctx context.Context, opt *database.QueryOption) ([]*entity2.WorkSet, error)
 	// Count 统计数量
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
-	// Delete 删除
+	// Delete 软删（打 deleted_at 时间戳）
 	Delete(ctx context.Context, id int64) error
+	// DeleteUnscoped 物理删（彻底删除链：目标为已软删行，普通 Delete 被软删 scope 挡住）
+	DeleteUnscoped(ctx context.Context, id int64) error
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet], error)
 	// GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
@@ -40,6 +42,12 @@ type Repository interface {
 	GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, ws *entity2.WorkSet) error
+	// GetDeletedById 按ID获取已软删行（nil = 非已删条目）
+	GetDeletedById(ctx context.Context, id int64) (*entity2.WorkSet, error)
+	// ClearDeletedFlag 清软删标志（复原核心，一行 UPDATE）
+	ClearDeletedFlag(ctx context.Context, id int64) error
+	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
+	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.WorkSet, error)
 }
 
 // FullWorkReader 作品完整信息读取接口
@@ -296,8 +304,37 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除作品集（事务内清理全部关联：作品关联、父子关联[作为父集与作为子集]，再删实体）
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// SoftDeleteWorkSet 软删除作品集（移入回收站，可复原）：校验活行后事务内一条软删 UPDATE。
+// 成员关联与父子关联原地保留（复原零成本——层级/成员/封面关联全在，清标志即全恢复）；
+// 作品集无自有资源文件，无文件移动
+func (s *Service) SoftDeleteWorkSet(ctx context.Context, id int64) error {
+	if _, err := s.repo.GetById(ctx, id); err != nil {
+		// 软删过滤下 First 仅命中活行：id 不存在或已软删均报 record not found
+		return err
+	}
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		return s.repo.Delete(txCtx, id)
+	})
+}
+
+// GetDeletedWorkSet 按ID获取已软删作品集（回收站条目校验；nil = 非已删条目）
+func (s *Service) GetDeletedWorkSet(ctx context.Context, id int64) (*entity2.WorkSet, error) {
+	return s.repo.GetDeletedById(ctx, id)
+}
+
+// RestoreDeletedWorkSet 清软删标志（复原核心；关联从未离开，一条 UPDATE 即全恢复）
+func (s *Service) RestoreDeletedWorkSet(ctx context.Context, id int64) error {
+	return s.repo.ClearDeletedFlag(ctx, id)
+}
+
+// ListDeletedBefore 查询软删时间早于 expireBefore 的已删作品集，供回收站 TTL 清理
+func (s *Service) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.WorkSet, error) {
+	return s.repo.ListDeletedBefore(ctx, expireBefore)
+}
+
+// DeleteWorkSetAndAssociations 物理级联删除作品集及其全部关联行（彻底删除链；目标为已软删行）：
+// 事务内清成员关联、父子关联（作为父集与作为子集的行）后物理删实体行
+func (s *Service) DeleteWorkSetAndAssociations(ctx context.Context, id int64) error {
 	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		// 作品-作品集关联
 		if err := s.reWorkWorkSetRepo.DeleteByWorkSetId(txCtx, id); err != nil {
@@ -310,7 +347,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		if err := s.reWorkSetWorkSetRepo.DeleteByChildWorkSetId(txCtx, id); err != nil {
 			return err
 		}
-		return s.repo.Delete(txCtx, id)
+		return s.repo.DeleteUnscoped(txCtx, id)
 	})
 }
 

@@ -121,12 +121,11 @@ export async function workSetUpdate(workSet: {
   return requireResponse(await WorkSetHandler.Update(dto), '更新作品集', false)
 }
 
-export async function workSetDelete(id: number): Promise<ApiResponse<null>> {
-  const result = await WorkSetHandler.Delete(id)
-  if (!result) {
-    return { success: false, msg: '删除失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
+/**
+ * 软删除作品集（移入回收站可复原，关联保留）
+ */
+export async function workSetSoftDelete(id: number): Promise<ApiResponse<null>> {
+  return requireResponse(await WorkSetHandler.SoftDeleteWorkSet(id), '删除作品集', false)
 }
 
 /**

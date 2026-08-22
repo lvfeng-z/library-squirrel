@@ -43,7 +43,7 @@ func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	backup := &recordingBackupReader{}
 	recompute := &fakeResourceRecomputer{}
-	svc := NewService(nil, backup, nil, searchSvc, ps, ps, recompute, nil, func() string { return workDir })
+	svc := NewService(nil, backup, nil, searchSvc, ps, ps, recompute, nil, func() string { return workDir }, nil, nil)
 	return &restoreStoreEnv{svc: svc, db: db, ps: ps, backup: backup, recompute: recompute, workDir: workDir}
 }
 

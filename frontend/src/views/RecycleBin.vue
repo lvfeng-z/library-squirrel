@@ -15,7 +15,7 @@ import { Thead } from '@renderer/model/util/Thead.ts'
 import { newPage } from '@renderer/utils/Pager.ts'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import IPage from '@renderer/model/util/IPage.ts'
-import { SearchCondition, SearchType, WorkSearchOperator, RecycleWorkDTO, RecycleStoreDTO, RecycleStorePageQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { SearchCondition, SearchType, WorkSearchOperator, RecycleWorkDTO, RecycleStoreDTO, RecycleStorePageQuery, RecycleWorkSetDTO, RecycleWorkSetPageQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { SearchConditionQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { SelectItem } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { RecyclePageQuery } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
@@ -30,18 +30,25 @@ onMounted(() => {
 })
 
 // 变量
-// 当前 tab：works=作品条目（work 已删行聚合）/ stores=文件条目（store 已删行，work 不可达或存活）
+// 当前 tab：works=作品条目（work 已删行聚合）/ stores=文件条目（store 已删行，work 不可达或存活）/
+// workSets=作品集条目（work_set 已删行）
 const activeTab = ref('works')
 // 回收站数据表组件的实例（作品 tab）
 const recycleBinSearchTable = ref()
 // 文件条目表组件的实例（文件 tab；首次切入才查询）
 const storeSearchTable = ref()
+// 作品集条目表组件的实例（作品集 tab；首次切入才查询）
+const workSetSearchTable = ref()
 // 文件 tab 是否已加载过（lazy：首次切入触发一次查询）
 let storeTabLoaded = false
+// 作品集 tab 是否已加载过（lazy：首次切入触发一次查询）
+let workSetTabLoaded = false
 // 回收站分页参数（作品 tab）
 const page: Ref<Page<RecycleWorkDTO>> = ref(newPage<RecycleWorkDTO>())
 // 文件条目分页参数（文件 tab）
 const storePage: Ref<Page<RecycleStoreDTO>> = ref(newPage<RecycleStoreDTO>())
+// 作品集条目分页参数（作品集 tab）
+const workSetPage: Ref<Page<RecycleWorkSetDTO>> = ref(newPage<RecycleWorkSetDTO>())
 // 回收站查询参数（SearchCondition 条件体系 + 排序）
 const query: Ref<RecyclePageQuery> = ref(new RecyclePageQuery({ conditions: [] }))
 // 标签条已选条目（extraData 携带 type/id/namespace；disabled 态 = 排除该条件）
@@ -72,6 +79,14 @@ const storeMediaType = ref<number | null>(null)
 const storeBackupFilter = ref('all')
 // 删除时间范围（Date 二元组；null = 不限）
 const storeDeleteTimeRange = ref<[Date, Date] | null>(null)
+
+// —— 作品集 tab 筛选（作品集域平铺条件体系，与作品 tab 的 SearchCondition 体系分轨） ——
+// 名称模糊（站点名/昵称任一命中）
+const workSetName = ref('')
+// 站点选择（null=不限）
+const workSetSiteIdSelected = ref<string | number | null>(null)
+// 删除时间范围（Date 二元组；null = 不限）
+const workSetDeleteTimeRange = ref<[Date, Date] | null>(null)
 
 // 媒体类型筛选项（与后端 dto.MediaExtMapping 四类对齐）
 const mediaTypeOptions = [
@@ -285,12 +300,96 @@ const storeThead: Ref<Thead<RecycleStoreDTO>[]> = ref([
   })
 ])
 
+// 作品集条目的表头（作品集 tab）
+const workSetThead: Ref<Thead<RecycleWorkSetDTO>[]> = ref([
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'name',
+    title: '作品集名',
+    hide: false,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true,
+    // 站点名优先，空则昵称，均空显示「—」（本地手建集可能无名）
+    render: (data, extraData) => {
+      const row = extraData as RecycleWorkSetDTO
+      const name = (data as string | null) ?? ''
+      if (isBlank(name) && isBlank(row.nickName)) {
+        return h('span', '—')
+      }
+      return h('span', isNotBlank(name) ? name : row.nickName)
+    }
+  }),
+  new Thead({
+    type: 'text',
+    defaultDisabled: true,
+    key: 'siteName',
+    title: '站点',
+    hide: false,
+    width: 120,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'aliveMemberCount',
+    title: '活成员数',
+    hide: false,
+    width: 100,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 已删成员不计（成员关联保留，作品复原后自动回位）
+    render: (data) => h('span', String(data ?? 0))
+  }),
+  new Thead({
+    type: 'datetime',
+    defaultDisabled: true,
+    key: 'createTime',
+    title: '创建时间',
+    hide: false,
+    width: 200,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'datetime',
+    defaultDisabled: true,
+    key: 'deleteTime',
+    title: '删除时间',
+    hide: false,
+    width: 200,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'expireDaysLeft',
+    title: '剩余天数',
+    hide: false,
+    width: 100,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 自动清理未启用时为 null，显示「—」
+    render: (data) => h('span', isNullish(data) ? '—' : String(data))
+  })
+])
+
 // 方法
-// tab 切换：首次切入文件 tab 触发一次查询（后续保留筛选状态，由用户手动查询/翻页）
+// tab 切换：首次切入文件/作品集 tab 触发一次查询（后续保留筛选状态，由用户手动查询/翻页）
 function handleTabChange(tab: string | number) {
   if (tab === 'stores' && !storeTabLoaded) {
     storeTabLoaded = true
     storeSearchTable.value?.doSearch()
+  }
+  if (tab === 'workSets' && !workSetTabLoaded) {
+    workSetTabLoaded = true
+    workSetSearchTable.value?.doSearch()
   }
 }
 // 查询标签/作者候选列表（类型开关经 types 下发，空 = 全部）
@@ -378,6 +477,22 @@ function buildStoreQuery(): RecycleStorePageQuery {
 // 分页查询回收站文件条目（文件 tab）
 async function storeQueryPageFn(p: Page<RecycleStoreDTO>): Promise<Page<RecycleStoreDTO> | undefined> {
   const response = await recycleBinApi.recycleBinPageStores(p, buildStoreQuery())
+  return response.data
+}
+
+// 组装作品集条目查询（作品集域平铺条件；改动后需手动点查询刷新）
+function buildWorkSetQuery(): RecycleWorkSetPageQuery {
+  return new RecycleWorkSetPageQuery({
+    name: workSetName.value,
+    siteId: isNullish(workSetSiteIdSelected.value) ? null : Number(workSetSiteIdSelected.value),
+    deleteTimeFrom: isNullish(workSetDeleteTimeRange.value) ? 0 : workSetDeleteTimeRange.value[0].getTime(),
+    deleteTimeTo: isNullish(workSetDeleteTimeRange.value) ? 0 : workSetDeleteTimeRange.value[1].getTime()
+  })
+}
+
+// 分页查询回收站作品集条目（作品集 tab）
+async function workSetQueryPageFn(p: Page<RecycleWorkSetDTO>): Promise<Page<RecycleWorkSetDTO> | undefined> {
+  const response = await recycleBinApi.recycleBinPageWorkSets(p, buildWorkSetQuery())
   return response.data
 }
 // 处理列头排序变化（后端排序；取消排序时回落默认 deleteTime DESC）
@@ -478,6 +593,55 @@ async function restoreStore(item: RecycleStoreDTO) {
     await recycleBinApi.recycleBinRestoreStore(item.id)
     ElMessage.success('复原成功')
     await storeSearchTable.value.doSearch()
+  } catch (e) {
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    if (e instanceof Error) {
+      ElMessage.error(e.message)
+    }
+  }
+}
+
+// 复原作品集条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 重试——照作品 tab 形态）
+async function restoreWorkSet(item: RecycleWorkSetDTO) {
+  try {
+    await recycleBinApi.recycleBinRestoreWorkSet(item.id, false)
+    ElMessage.success('复原成功')
+    await workSetSearchTable.value.doSearch()
+  } catch (e) {
+    const failMsg = (e as Error).message ?? '复原失败'
+    if (!failMsg.includes('冲突') && !failMsg.includes('已存在')) {
+      ElMessage.error(failMsg)
+      return
+    }
+    try {
+      await ElMessageBox.confirm(`${failMsg}\n是否覆盖已存在的作品集？`, '复原冲突', {
+        confirmButtonText: '覆盖',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+      await recycleBinApi.recycleBinRestoreWorkSet(item.id, true)
+      ElMessage.success('复原成功')
+      await workSetSearchTable.value.doSearch()
+    } catch (e2) {
+      // ElMessageBox 取消为字符串 reject，静默；二次失败为 Error，展示
+      if (e2 instanceof Error) {
+        ElMessage.error(e2.message)
+      }
+    }
+  }
+}
+
+// 彻底删除回收站作品集条目（级联清成员与父子关联行）
+async function purgeWorkSet(item: RecycleWorkSetDTO) {
+  try {
+    await ElMessageBox.confirm('彻底删除后不可恢复（作品集及其成员、层级关联一并清除），是否继续？', '彻底删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await recycleBinApi.recycleBinPurgeWorkSet(item.id)
+    ElMessage.success('已彻底删除')
+    await workSetSearchTable.value.doSearch()
   } catch (e) {
     // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
     if (e instanceof Error) {
@@ -676,6 +840,68 @@ async function restoreStore(item: RecycleStoreDTO) {
                   </span>
                 </el-tooltip>
                 <el-button size="small" type="danger" class="tone-fail" @click="purgeStore(row as RecycleStoreDTO)">彻底删除</el-button>
+              </template>
+            </search-table>
+          </el-tab-pane>
+          <!-- 作品集 tab：work_set 已删行（作品集域平铺条件体系） -->
+          <el-tab-pane label="作品集" name="workSets">
+            <search-table
+              ref="workSetSearchTable"
+              v-model:page="workSetPage"
+              class="recycle-bin-search-table"
+              toolbar-radius="var(--app-radius)"
+              data-radius="var(--app-radius)"
+              data-key="id"
+              :thead="workSetThead"
+              :search="workSetQueryPageFn"
+              :selectable="false"
+              :multi-select="false"
+              :custom-operation-button="true"
+              :operation-width="200"
+            >
+              <template #toolbarMain>
+                <div class="recycle-store-filter">
+                  <el-input
+                    v-model="workSetName"
+                    class="recycle-store-filter-input"
+                    placeholder="作品集名"
+                    clearable
+                  />
+                  <auto-load-select
+                    v-model:data="workSetSiteIdSelected"
+                    class="recycle-bin-filter-select"
+                    :load="siteQuerySelectItemPageBySiteName"
+                    placeholder="选择站点"
+                    remote
+                    filterable
+                    clearable
+                  >
+                    <template #default="{ list }">
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
+                    </template>
+                  </auto-load-select>
+                  <el-button type="primary" @click="workSetSearchTable?.doSearch()">查询</el-button>
+                </div>
+              </template>
+              <template #toolbarDropdown>
+                <div class="recycle-bin-advanced-filter">
+                  <el-date-picker
+                    v-model="workSetDeleteTimeRange"
+                    class="recycle-bin-filter-range"
+                    type="datetimerange"
+                    start-placeholder="删除时间起"
+                    end-placeholder="删除时间止"
+                  />
+                </div>
+              </template>
+              <template #customOperations="{ row }">
+                <el-button size="small" type="primary" @click="restoreWorkSet(row as RecycleWorkSetDTO)">复原</el-button>
+                <el-button size="small" type="danger" class="tone-fail" @click="purgeWorkSet(row as RecycleWorkSetDTO)">彻底删除</el-button>
               </template>
             </search-table>
           </el-tab-pane>

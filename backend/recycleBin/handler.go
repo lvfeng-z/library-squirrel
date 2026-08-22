@@ -44,6 +44,35 @@ func (h *Handler) PageStores(ctx context.Context, page *model.Page[dto.RecycleSt
 	return model.Success(result)
 }
 
+// PageWorkSets 分页查询回收站作品集条目（work_set 已删行）
+// query: 作品集域平铺条件体系，见 dto.RecycleWorkSetPageQuery
+func (h *Handler) PageWorkSets(ctx context.Context, page *model.Page[dto.RecycleWorkSetDTO], query *dto.RecycleWorkSetPageQuery) *model.ApiResponse[*model.Page[dto.RecycleWorkSetDTO]] {
+	if page == nil {
+		page = &model.Page[dto.RecycleWorkSetDTO]{}
+	}
+	result, err := h.svc.PageWorkSets(ctx, page.PageNumber, page.PageSize, query)
+	if err != nil {
+		return model.HandleError[*model.Page[dto.RecycleWorkSetDTO]](err)
+	}
+	return model.Success(result)
+}
+
+// RestoreWorkSet 从回收站复原作品集条目
+// workSetId: 已软删作品集 ID；overwrite: 检测到业务键被占位时是否将占位作品集转入回收站
+func (h *Handler) RestoreWorkSet(ctx context.Context, workSetId int64, overwrite bool) *model.ApiResponse[int64] {
+	result, err := h.svc.RestoreWorkSet(ctx, workSetId, overwrite)
+	if err != nil {
+		return model.HandleError[int64](err)
+	}
+	return model.Success(result)
+}
+
+// PurgeWorkSet 彻底删除回收站作品集条目（不可恢复，级联清成员与父子关联行）
+// workSetId: 已软删作品集 ID
+func (h *Handler) PurgeWorkSet(ctx context.Context, workSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.PurgeWorkSet(ctx, workSetId))
+}
+
 // RestoreWork 从回收站复原作品条目
 // workId: 已软删作品 ID；overwrite: 检测到业务键被占位时是否将占位作品转入回收站
 func (h *Handler) RestoreWork(ctx context.Context, workId int64, overwrite bool) *model.ApiResponse[int64] {

@@ -241,6 +241,11 @@ async function queryWorkSetPage(next: boolean) {
   }
 }
 
+// 作品集已软删除（弹窗删除入口上抛）：刷新作品集列表，已删集从列表消失
+function handleWorkSetDeleted() {
+  queryWorkSetPage(false)
+}
+
 // 重新查询搜索条件
 async function querySearchCondition() {
   return searchConditionBar.value.newSearch()
@@ -371,6 +376,7 @@ function handleTest() {
               v-model:current-work-index="currentWorkIndex"
               class="main-page-work-grid"
               :work-list="workList"
+              @work-set-deleted="handleWorkSetDeleted"
             />
           </el-scrollbar>
           <span
@@ -396,6 +402,7 @@ function handleTest() {
               v-model:current-work-set-index="currentWorkSetIndex"
               class="main-page-work-grid"
               :work-set-list="workSetList"
+              @work-set-deleted="handleWorkSetDeleted"
             />
           </el-scrollbar>
           <span

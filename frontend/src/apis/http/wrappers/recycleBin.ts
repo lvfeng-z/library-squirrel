@@ -8,7 +8,12 @@ import {
 	RecyclePageQuery
 } from '@bindings/github.com/library-squirrel/backend/recycleBin'
 import { RecycleWorkDTO } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
-import { RecycleStoreDTO, RecycleStorePageQuery } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import {
+	RecycleStoreDTO,
+	RecycleStorePageQuery,
+	RecycleWorkSetDTO,
+	RecycleWorkSetPageQuery
+} from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
@@ -27,6 +32,13 @@ export async function recycleBinPageWorks(page: Page<RecycleWorkDTO>, query: Rec
  */
 export async function recycleBinPageStores(page: Page<RecycleStoreDTO>, query: RecycleStorePageQuery): Promise<ApiResult<Page<RecycleStoreDTO>>> {
   return requireResponse(await RecycleBinHandler.PageStores(page, query), '查询回收站文件')
+}
+
+/**
+ * 分页查询回收站作品集条目（work_set 已删行；作品集域平铺条件体系见 RecycleWorkSetPageQuery）
+ */
+export async function recycleBinPageWorkSets(page: Page<RecycleWorkSetDTO>, query: RecycleWorkSetPageQuery): Promise<ApiResult<Page<RecycleWorkSetDTO>>> {
+  return requireResponse(await RecycleBinHandler.PageWorkSets(page, query), '查询回收站作品集')
 }
 
 /**
@@ -56,4 +68,19 @@ export async function recycleBinPurgeStore(storeId: number): Promise<ApiResult<a
  */
 export async function recycleBinRestoreStore(storeId: number): Promise<ApiResult<any>> {
   return requireResponse(await RecycleBinHandler.RestoreStore(storeId), '复原文件条目', false)
+}
+
+/**
+ * 从回收站复原作品集条目
+ * overwrite: 冲突时是否将占位作品集转入回收站
+ */
+export async function recycleBinRestoreWorkSet(workSetId: number, overwrite: boolean): Promise<ApiResult<number>> {
+  return requireResponse(await RecycleBinHandler.RestoreWorkSet(workSetId, overwrite), '复原作品集', false)
+}
+
+/**
+ * 彻底删除回收站作品集条目（不可恢复，级联清成员与父子关联行）
+ */
+export async function recycleBinPurgeWorkSet(workSetId: number): Promise<ApiResult<any>> {
+  return requireResponse(await RecycleBinHandler.PurgeWorkSet(workSetId), '彻底删除作品集', false)
 }

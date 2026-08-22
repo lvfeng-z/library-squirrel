@@ -11,6 +11,12 @@ const props = defineProps<{
   workSetList: WorkSetWithCoverDTO[]
 }>()
 
+// emits
+// workSetDeleted: 作品集已软删除（转发弹窗事件，供上层刷新作品集列表）
+const emits = defineEmits<{
+  workSetDeleted: [id: number]
+}>()
+
 // model
 const currentWorkSetIndex = defineModel<number>('current-work-set-index', { required: true })
 
@@ -53,6 +59,7 @@ function handleImageClicked(workSet: WorkSetWithCoverDTO) {
       v-model:state="workSetDialogState"
       v-model:current-work-set-id="currentWorkSetId"
       width="90%"
+      @work-set-deleted="emits('workSetDeleted', $event)"
     />
   </div>
 </template>

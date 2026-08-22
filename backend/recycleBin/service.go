@@ -20,9 +20,11 @@ import (
 
 // 错误定义
 var (
-	ErrRecycleItemNotFound  = &pkgerr.BusinessError{Code: 404, Message: "回收站条目不存在"}
-	ErrRecycleStoreNotFound = &pkgerr.BusinessError{Code: 404, Message: "回收站文件条目不存在"}
-	ErrRestoreConflict      = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
+	ErrRecycleItemNotFound    = &pkgerr.BusinessError{Code: 404, Message: "回收站条目不存在"}
+	ErrRecycleStoreNotFound   = &pkgerr.BusinessError{Code: 404, Message: "回收站文件条目不存在"}
+	ErrRecycleWorkSetNotFound = &pkgerr.BusinessError{Code: 404, Message: "回收站作品集条目不存在"}
+	ErrRestoreConflict        = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
+	ErrRestoreWorkSetConflict = &pkgerr.BusinessError{Code: 409, Message: "作品集复原冲突：该作品集已存在，请选择放弃或覆盖"}
 	// ErrRestoreStoreNoBackup 无备份（外部裁决失效行/备份缺失）不可复原——仅清理态
 	ErrRestoreStoreNoBackup = &pkgerr.BusinessError{Code: 409, Message: "该条目无备份，不可复原"}
 	// ErrRestoreStoreUnreachable 挂载链断或作品已软删——复原目标作品不可达
@@ -63,6 +65,29 @@ type BackupReader interface {
 	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
 	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍）
 	DeleteBackup(ctx context.Context, id int64) error
+}
+
+// WorkSetRestorer 作品集软删/复原能力接口（由 workSet.Service 实现）
+type WorkSetRestorer interface {
+	// GetDeletedWorkSet 按ID获取已软删作品集（nil = 非已删条目）
+	GetDeletedWorkSet(ctx context.Context, id int64) (*domain.WorkSet, error)
+	// GetBySiteAndSiteWorkSetID 查业务键 (site_id, site_work_set_id) 的活作品集（复原冲突检测；
+	// 无占位时返回 gorm.ErrRecordNotFound）
+	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*domain.WorkSet, error)
+	// SoftDeleteWorkSet 软删除作品集（复原"覆盖"分支：占位新作品集转入回收站，让出业务键）
+	SoftDeleteWorkSet(ctx context.Context, id int64) error
+	// RestoreDeletedWorkSet 清软删标志（复原核心；关联行保留，一条 UPDATE 即全恢复）
+	RestoreDeletedWorkSet(ctx context.Context, id int64) error
+	// DeleteWorkSetAndAssociations 物理级联删除（彻底删除链：作品集行 + 成员关联 + 父子关联双向）
+	DeleteWorkSetAndAssociations(ctx context.Context, id int64) error
+	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删作品集，供 TTL 清理
+	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.WorkSet, error)
+}
+
+// RecycleWorkSetQuerier 回收站作品集条目查询接口（由 search.Service 实现；作品集域平铺条件体系）
+type RecycleWorkSetQuerier interface {
+	// QueryRecycleWorkSetPage 分页查询回收站作品集条目（work_set 已删行）
+	QueryRecycleWorkSetPage(ctx context.Context, page, pageSize int, query *dto.RecycleWorkSetPageQuery) (*model.Page[dto.RecycleWorkSetDTO], error)
 }
 
 // RecycleWorkQuerier 回收站作品查询接口（由 search.Service 实现；条件体系复用作品搜索 SearchCondition）
@@ -123,31 +148,35 @@ type RecycleBinSettingsProvider interface {
 // 已删行且非「作品已删」聚合形态——work 不可达（离链孤儿自愈落入）或 work 存活（MarkInvalid 失效行、
 // J' 替换/merge 软删残留），条目单位是 store 行、TTL 按行自身 deleted_at）
 type Service struct {
-	workRestorer       WorkRestorer
-	backupReader       BackupReader
-	recycleQuerier     RecycleWorkQuerier
-	storeQuerier       RecycleStoreQuerier
-	storeCleaner       StoreCleaner
-	storeRestorer      StoreRestorer
-	resourceRecomputer ResourceRecomputer
-	settingsReader     RecycleBinSettingsProvider
-	workDirGetter      func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
-	stopCh             chan struct{}
+	workRestorer          WorkRestorer
+	backupReader          BackupReader
+	recycleQuerier        RecycleWorkQuerier
+	storeQuerier          RecycleStoreQuerier
+	storeCleaner          StoreCleaner
+	storeRestorer         StoreRestorer
+	resourceRecomputer    ResourceRecomputer
+	settingsReader        RecycleBinSettingsProvider
+	workDirGetter         func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
+	workSetRestorer       WorkSetRestorer
+	recycleWorkSetQuerier RecycleWorkSetQuerier
+	stopCh                chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string, workSetRestorer WorkSetRestorer, recycleWorkSetQuerier RecycleWorkSetQuerier) *Service {
 	return &Service{
-		workRestorer:       workRestorer,
-		backupReader:       backupReader,
-		recycleQuerier:     recycleQuerier,
-		storeQuerier:       storeQuerier,
-		storeCleaner:       storeCleaner,
-		storeRestorer:      storeRestorer,
-		resourceRecomputer: resourceRecomputer,
-		settingsReader:     settingsReader,
-		workDirGetter:      workDirGetter,
-		stopCh:             make(chan struct{}),
+		workRestorer:          workRestorer,
+		backupReader:          backupReader,
+		recycleQuerier:        recycleQuerier,
+		storeQuerier:          storeQuerier,
+		storeCleaner:          storeCleaner,
+		storeRestorer:         storeRestorer,
+		resourceRecomputer:    resourceRecomputer,
+		settingsReader:        settingsReader,
+		workDirGetter:         workDirGetter,
+		workSetRestorer:       workSetRestorer,
+		recycleWorkSetQuerier: recycleWorkSetQuerier,
+		stopCh:                make(chan struct{}),
 	}
 }
 
@@ -178,37 +207,49 @@ func (s *Service) PageStores(ctx context.Context, page int, pageSize int, query 
 	return result, nil
 }
 
-// fillExpireDaysLeft 按 TTL 设置填充各条目距自动清理的剩余整天数（向上取整、负值归 0；未启用时留 null）
-func (s *Service) fillExpireDaysLeft(result *model.Page[dto.RecycleWorkDTO]) {
+// PageWorkSets 分页查询回收站作品集条目（work_set 已删行；作品集域平铺条件体系见 RecycleWorkSetPageQuery）
+func (s *Service) PageWorkSets(ctx context.Context, page int, pageSize int, query *dto.RecycleWorkSetPageQuery) (*model.Page[dto.RecycleWorkSetDTO], error) {
+	result, err := s.recycleWorkSetQuerier.QueryRecycleWorkSetPage(ctx, page, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+	s.fillWorkSetExpireDaysLeft(result)
+	return result, nil
+}
+
+// computeExpireDaysLeft 按 TTL 设置计算距自动清理的剩余整天数（向上取整、负值归 0；未启用时 null）
+func (s *Service) computeExpireDaysLeft(deleteTime int64) *int {
 	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
 	if !enabled || retentionDays <= 0 {
-		return
+		return nil
 	}
 	now := util.GetCurrentTimestamp()
 	retentionMillis := int64(retentionDays) * 24 * 60 * 60 * 1000
+	daysLeft := int(retentionMillis-(now-deleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
+	if daysLeft < 0 {
+		daysLeft = 0
+	}
+	return &daysLeft
+}
+
+// fillExpireDaysLeft 作品条目的 TTL 剩余天数填充
+func (s *Service) fillExpireDaysLeft(result *model.Page[dto.RecycleWorkDTO]) {
 	for _, item := range result.Data {
-		daysLeft := int(retentionMillis-(now-item.DeleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
-		if daysLeft < 0 {
-			daysLeft = 0
-		}
-		item.ExpireDaysLeft = &daysLeft
+		item.ExpireDaysLeft = s.computeExpireDaysLeft(item.DeleteTime)
 	}
 }
 
 // fillStoreExpireDaysLeft 文件条目的 TTL 剩余天数填充（与作品条目共享保留期设置，按行自身删除时间计）
 func (s *Service) fillStoreExpireDaysLeft(result *model.Page[dto.RecycleStoreDTO]) {
-	enabled, retentionDays := s.settingsReader.GetRecycleBinSettings()
-	if !enabled || retentionDays <= 0 {
-		return
-	}
-	now := util.GetCurrentTimestamp()
-	retentionMillis := int64(retentionDays) * 24 * 60 * 60 * 1000
 	for _, item := range result.Data {
-		daysLeft := int(retentionMillis-(now-item.DeleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
-		if daysLeft < 0 {
-			daysLeft = 0
-		}
-		item.ExpireDaysLeft = &daysLeft
+		item.ExpireDaysLeft = s.computeExpireDaysLeft(item.DeleteTime)
+	}
+}
+
+// fillWorkSetExpireDaysLeft 作品集条目的 TTL 剩余天数填充（共享保留期设置）
+func (s *Service) fillWorkSetExpireDaysLeft(result *model.Page[dto.RecycleWorkSetDTO]) {
+	for _, item := range result.Data {
+		item.ExpireDaysLeft = s.computeExpireDaysLeft(item.DeleteTime)
 	}
 }
 
@@ -458,6 +499,56 @@ func (s *Service) swapOutLiveRow(ctx context.Context, id int64) error {
 	return nil
 }
 
+// RestoreWorkSet 复原已软删作品集（关联行保留，清标志即全恢复——层级/成员/封面）
+// overwrite: 检测到业务键 (site_id, site_work_set_id) 被活作品集占位时是否覆盖（占位作品集转入回收站）
+// 冲突且 overwrite=false 时返回 ErrRestoreWorkSetConflict；本地手建集（键 NULL）不参与唯一性、无冲突可能
+func (s *Service) RestoreWorkSet(ctx context.Context, workSetId int64, overwrite bool) (int64, error) {
+	// 1. 校验为已删条目
+	ws, err := s.workSetRestorer.GetDeletedWorkSet(ctx, workSetId)
+	if err != nil {
+		return 0, err
+	}
+	if ws == nil {
+		return 0, ErrRecycleWorkSetNotFound
+	}
+
+	// 2. 冲突检测：业务键是否被活作品集占位（重新下载同键作品集场景）
+	if ws.SiteID.Valid && ws.SiteWorkSetID.Valid {
+		existing, err := s.workSetRestorer.GetBySiteAndSiteWorkSetID(ctx, ws.SiteID.Int64, ws.SiteWorkSetID.String)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+		if existing != nil && existing.GetID() != workSetId {
+			if !overwrite {
+				return 0, ErrRestoreWorkSetConflict
+			}
+			// 覆盖：占位新作品集转入回收站让出业务键，反悔可再复原
+			if err := s.workSetRestorer.SoftDeleteWorkSet(ctx, existing.GetID()); err != nil {
+				return 0, fmt.Errorf("覆盖转移冲突作品集失败: %w", err)
+			}
+		}
+	}
+
+	// 3. 清软删标志
+	if err := s.workSetRestorer.RestoreDeletedWorkSet(ctx, workSetId); err != nil {
+		return 0, err
+	}
+	return workSetId, nil
+}
+
+// PurgeWorkSet 彻底删除回收站作品集条目（不可恢复）
+// 物理级联删作品集行 + 成员关联 + 父子关联双向；作品集无自有文件与备份，无文件面
+func (s *Service) PurgeWorkSet(ctx context.Context, workSetId int64) error {
+	ws, err := s.workSetRestorer.GetDeletedWorkSet(ctx, workSetId)
+	if err != nil {
+		return err
+	}
+	if ws == nil {
+		return ErrRecycleWorkSetNotFound
+	}
+	return s.workSetRestorer.DeleteWorkSetAndAssociations(ctx, workSetId)
+}
+
 // StartCleanup 启动 TTL 自动清理后台 goroutine（启动即清理一次，随后每 24h）
 // 必须在 NewService 后调用；应用关闭时调 Stop 终止
 func (s *Service) StartCleanup() {
@@ -521,6 +612,20 @@ func (s *Service) runCleanup() {
 	for _, storeId := range storeIds {
 		if err := s.PurgeStore(ctx, storeId); err != nil {
 			logger.Log.Warnf("[RecycleBin] 清理过期文件条目 %d 失败: %v", storeId, err)
+		}
+	}
+
+	// 第三轮：过期作品集条目（级联清关联行；共享保留期设置）
+	if s.workSetRestorer != nil {
+		workSets, err := s.workSetRestorer.ListDeletedBefore(ctx, expireBefore)
+		if err != nil {
+			logger.Log.Warnf("[RecycleBin] 查询过期作品集条目失败: %v", err)
+			return
+		}
+		for _, ws := range workSets {
+			if err := s.PurgeWorkSet(ctx, ws.GetID()); err != nil {
+				logger.Log.Warnf("[RecycleBin] 清理过期作品集条目 %d 失败: %v", ws.GetID(), err)
+			}
 		}
 	}
 }

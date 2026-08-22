@@ -45,10 +45,6 @@ func AutoMigrate(db *gorm.DB) error {
 			return fmt.Errorf("迁移 persistent_store 删 invalid_at 列失败: %w", err)
 		}
 	}
-	// deleted_at 存量 NULL 回填（AutoMigrate 加列无默认值，NULL × deleted_at=0 过滤不命中会让全表从查询中消失）
-	if err := db.Exec(`UPDATE persistent_store SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("迁移 persistent_store.deleted_at 存量回填失败: %w", err)
-	}
 
 	// 命名迁移:task.plugin_contribution_id → plugin_extension_id(contribution→extension 命名统一)
 	// 须在 AutoMigrate 前执行,否则 AutoMigrate 会先新建 plugin_extension_id 列导致 RenameColumn 冲突
@@ -146,6 +142,13 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("迁移 work.deleted_at 存量回填失败: %w", err)
 	}
 
+	// 命名迁移(后置)：persistent_store.deleted_at 存量 NULL 回填（AutoMigrate 加列无默认值遗留 NULL，
+	// NULL × deleted_at=0 过滤不命中会让全表从查询中消失）。置于后置段：全新库此处表才存在
+	//（前置段时 AutoMigrate 未跑、表未建）
+	if err := db.Exec(`UPDATE persistent_store SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("迁移 persistent_store.deleted_at 存量回填失败: %w", err)
+	}
+
 	// 命名迁移(后置)：persistent_store.backup_id 存量 NULL 回填（加列迁移无默认值遗留）。
 	// NULL 与 0 在引用语义（backup_id > 0）下行为等价，回填为「加列迁移必带回填」纪律的规范化对齐
 	if err := db.Exec(`UPDATE persistent_store SET backup_id = 0 WHERE backup_id IS NULL`).Error; err != nil {
@@ -232,11 +235,31 @@ func AutoMigrate(db *gorm.DB) error {
 	// 删除后可重新下载同作品；AutoMigrate 不管部分索引，drop 旧全量索引 + 建新索引全手写。
 	// 以新索引名存在性做幂等标记，二次启动直接跳过）
 	if !db.Migrator().HasIndex(&entity2.Work{}, "idx_work_site_site_work_active") {
-		if err := db.Migrator().DropIndex(&entity2.Work{}, "idx_work_site_site_work"); err != nil {
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_work_site_site_work`).Error; err != nil {
 			return fmt.Errorf("迁移 work 旧全量唯一索引删除失败: %w", err)
 		}
 		if err := db.Exec(`CREATE UNIQUE INDEX idx_work_site_site_work_active ON work(site_id, site_work_id) WHERE deleted_at = 0`).Error; err != nil {
 			return fmt.Errorf("迁移 work 部分唯一索引创建失败: %w", err)
+		}
+	}
+
+	// 命名迁移(后置)：work_set 软删列存量回填——AutoMigrate 加列无默认值，存量行 deleted_at 为 NULL，
+	// 而软删过滤条件 deleted_at = 0 对 NULL 不命中（NULL=0 为 UNKNOWN），不回填则存量作品集全部从查询中消失
+	if err := db.Exec(`UPDATE work_set SET deleted_at = 0 WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("迁移 work_set.deleted_at 存量回填失败: %w", err)
+	}
+
+	// 命名迁移(后置)：work_set 业务键唯一索引升级为三列唯一索引（软删行按删除时刻互异释放业务键，
+	// 删除后可重新下载同键作品集）。取三列全量形态而非部分索引：ON CONFLICT 带列目标的 upsert
+	// 只能匹配无 WHERE 的唯一索引（SQLite 限制），三列形态使 BatchUpsert/Upsert 的单语句原子 upsert 得以保留
+	// （冲突目标补 deleted_at 列）。drop 用 IF EXISTS——全新库旧索引从未存在时静默跳过；
+	// 以新索引名存在性做幂等标记，二次启动直接跳过
+	if !db.Migrator().HasIndex(&entity2.WorkSet{}, "idx_work_set_site_site_set_gen") {
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_work_set_site_site_set`).Error; err != nil {
+			return fmt.Errorf("迁移 work_set 旧全量唯一索引删除失败: %w", err)
+		}
+		if err := db.Exec(`CREATE UNIQUE INDEX idx_work_set_site_site_set_gen ON work_set(site_id, site_work_set_id, deleted_at)`).Error; err != nil {
+			return fmt.Errorf("迁移 work_set 三列唯一索引创建失败: %w", err)
 		}
 	}
 

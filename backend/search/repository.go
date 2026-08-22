@@ -522,8 +522,12 @@ func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias stri
 			params = append(params, cond.Value)
 
 		case dto2.WorkSet:
+			// 「不在作品集 X 中」：X 的活性经 JOIN work_set 判定——已软删作品集的关联行虽保留（复原即回挂），
+			// 但其成员不应再被本条件排除
 			whereClauses = append(whereClauses,
-				fmt.Sprintf("NOT EXISTS(SELECT 1 FROM re_work_work_set rwws WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)", alias))
+				fmt.Sprintf(`NOT EXISTS(SELECT 1 FROM re_work_work_set rwws
+					JOIN work_set ws ON rwws.work_set_id = ws.id AND ws.deleted_at = 0
+					WHERE rwws.work_id = %s.id AND rwws.work_set_id = ?)`, alias))
 			params = append(params, cond.Value)
 		}
 	}
@@ -553,20 +557,18 @@ func getMediaExts(value interface{}) []string {
 
 // QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询关联 work）
 func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error) {
-	var whereClause string
+	// 恒基线：作品集软删行不入正常列表（原生 SQL 不受 GORM 软删 scope 保护）
+	clauses := []string{"work_set.deleted_at = 0"}
 	var params []interface{}
-
 	if len(conditions) > 0 {
 		workWhere, workParams := buildWhereClauseWithAlias(conditions, "w")
-		if workWhere != "" {
-			innerConditions := strings.TrimPrefix(workWhere, "WHERE ")
-			whereClause = fmt.Sprintf(
-				"WHERE EXISTS (SELECT 1 FROM work w INNER JOIN re_work_work_set rws ON w.id = rws.work_id WHERE rws.work_set_id = work_set.id AND %s)",
-				innerConditions,
-			)
-			params = workParams
-		}
+		clauses = append(clauses, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM work w INNER JOIN re_work_work_set rws ON w.id = rws.work_id WHERE rws.work_set_id = work_set.id AND %s)",
+			strings.TrimPrefix(workWhere, "WHERE "),
+		))
+		params = workParams
 	}
+	whereClause := "WHERE " + strings.Join(clauses, " AND ")
 
 	// 计算总数
 	var total int64
@@ -844,6 +846,102 @@ func nullStr(v sql.NullString) string {
 		return v.String
 	}
 	return ""
+}
+
+// buildRecycleWorkSetWhere 构建回收站作品集条目查询的 WHERE 子句。基线 = work_set 已软删行；
+// 活成员数子查询按 work 活行计数（已删成员不计）
+func buildRecycleWorkSetWhere(query *dto2.RecycleWorkSetPageQuery) (string, []interface{}) {
+	clauses := []string{"ws.deleted_at > 0"}
+	var params []interface{}
+	if query != nil {
+		if query.Name != "" {
+			clauses = append(clauses, "(ws.site_work_set_name LIKE ? OR ws.nick_name LIKE ?)")
+			params = append(params, "%"+query.Name+"%", "%"+query.Name+"%")
+		}
+		if query.SiteId != nil {
+			clauses = append(clauses, "ws.site_id = ?")
+			params = append(params, *query.SiteId)
+		}
+		if query.DeleteTimeFrom > 0 {
+			clauses = append(clauses, "ws.deleted_at >= ?")
+			params = append(params, query.DeleteTimeFrom)
+		}
+		if query.DeleteTimeTo > 0 {
+			clauses = append(clauses, "ws.deleted_at <= ?")
+			params = append(params, query.DeleteTimeTo)
+		}
+	}
+	return "WHERE " + strings.Join(clauses, " AND "), params
+}
+
+// QueryRecycleWorkSetPage 查询回收站作品集条目分页（work_set 已删行；作品集域平铺条件体系）
+func (r *SearchRepository) QueryRecycleWorkSetPage(ctx context.Context, page, pageSize int, query *dto2.RecycleWorkSetPageQuery) ([]*dto2.RecycleWorkSetDTO, int64, error) {
+	whereClause, params := buildRecycleWorkSetWhere(query)
+
+	orderBy := "ws.deleted_at DESC, ws.id DESC"
+	if query != nil && query.SortOrder == "asc" {
+		orderBy = "ws.deleted_at ASC, ws.id DESC"
+	}
+
+	// 计数
+	var total int64
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM work_set ws %s", whereClause)
+	if err := r.db.WithContext(ctx).Raw(countQuery, params...).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	querySQL := fmt.Sprintf(`
+		SELECT ws.id, ws.site_id, ws.site_work_set_id, ws.site_work_set_name, ws.nick_name,
+			ws.create_time, ws.deleted_at,
+			COALESCE(s.site_name, '') AS site_name,
+			(SELECT COUNT(*) FROM re_work_work_set rwws
+				JOIN work w ON rwws.work_id = w.id AND w.deleted_at = 0
+				WHERE rwws.work_set_id = ws.id) AS alive_member_count
+		FROM work_set ws
+		LEFT JOIN site s ON ws.site_id = s.id
+		%s
+		ORDER BY %s
+		LIMIT %d OFFSET %d
+	`, whereClause, orderBy, pageSize, offset)
+
+	rows, err := r.db.WithContext(ctx).Raw(querySQL, params...).Rows()
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	results := make([]*dto2.RecycleWorkSetDTO, 0, pageSize)
+	for rows.Next() {
+		item := &dto2.RecycleWorkSetDTO{}
+		var siteId sql.NullInt64
+		var siteWorkSetId, name, nickName sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&siteId,
+			&siteWorkSetId,
+			&name,
+			&nickName,
+			&item.CreateTime,
+			&item.DeleteTime,
+			&item.SiteName,
+			&item.AliveMemberCount,
+		); err != nil {
+			return nil, 0, err
+		}
+		if siteId.Valid {
+			v := siteId.Int64
+			item.SiteID = &v
+		}
+		if siteWorkSetId.Valid {
+			v := siteWorkSetId.String
+			item.SiteWorkSetID = &v
+		}
+		item.Name = nullStr(name)
+		item.NickName = nullStr(nickName)
+		results = append(results, item)
+	}
+	return results, total, nil
 }
 
 // containsType 检查类型切片是否包含指定类型

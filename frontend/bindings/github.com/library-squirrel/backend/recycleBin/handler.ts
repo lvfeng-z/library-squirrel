@@ -33,12 +33,22 @@ export function PageStores(page: model$0.Page<dto$0.RecycleStoreDTO> | null, que
 }
 
 /**
+ * PageWorkSets 分页查询回收站作品集条目（work_set 已删行）
+ * query: 作品集域平铺条件体系，见 dto.RecycleWorkSetPageQuery
+ */
+export function PageWorkSets(page: model$0.Page<dto$0.RecycleWorkSetDTO> | null, query: dto$0.RecycleWorkSetPageQuery | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleWorkSetDTO> | null> | null> {
+    return $Call.ByID(1982244126, page, query).then(($result: any) => {
+        return $$createType9($result);
+    });
+}
+
+/**
  * PageWorks 分页查询回收站作品条目
  * query: 查询条件（SearchCondition 条件体系 + 排序），见 RecyclePageQuery
  */
 export function PageWorks(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query: $models.RecyclePageQuery): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleWorkDTO> | null> | null> {
     return $Call.ByID(1139234152, page, query).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType14($result);
     });
 }
 
@@ -48,7 +58,7 @@ export function PageWorks(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query
  */
 export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3859689381, storeId).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType16($result);
     });
 }
 
@@ -58,7 +68,17 @@ export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResp
  */
 export function PurgeWork(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3030960545, workId).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType16($result);
+    });
+}
+
+/**
+ * PurgeWorkSet 彻底删除回收站作品集条目（不可恢复，级联清成员与父子关联行）
+ * workSetId: 已软删作品集 ID
+ */
+export function PurgeWorkSet(workSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(4280127911, workSetId).then(($result: any) => {
+        return $$createType16($result);
     });
 }
 
@@ -68,7 +88,7 @@ export function PurgeWork(workId: number): $CancellablePromise<model$0.ApiRespon
  */
 export function RestoreStore(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1152685402, storeId).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType16($result);
     });
 }
 
@@ -78,7 +98,17 @@ export function RestoreStore(storeId: number): $CancellablePromise<model$0.ApiRe
  */
 export function RestoreWork(workId: number, overwrite: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2563681660, workId, overwrite).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType18($result);
+    });
+}
+
+/**
+ * RestoreWorkSet 从回收站复原作品集条目
+ * workSetId: 已软删作品集 ID；overwrite: 检测到业务键被占位时是否将占位作品集转入回收站
+ */
+export function RestoreWorkSet(workSetId: number, overwrite: boolean): $CancellablePromise<model$0.ApiResponse<number> | null> {
+    return $Call.ByID(920927092, workSetId, overwrite).then(($result: any) => {
+        return $$createType18($result);
     });
 }
 
@@ -88,12 +118,17 @@ const $$createType1 = model$0.Page.createFrom($$createType0);
 const $$createType2 = $Create.Nullable($$createType1);
 const $$createType3 = model$0.ApiResponse.createFrom($$createType2);
 const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = dto$0.RecycleWorkDTO.createFrom;
+const $$createType5 = dto$0.RecycleWorkSetDTO.createFrom;
 const $$createType6 = model$0.Page.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType13 = $Create.Nullable($$createType12);
+const $$createType10 = dto$0.RecycleWorkDTO.createFrom;
+const $$createType11 = model$0.Page.createFrom($$createType10);
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType18 = $Create.Nullable($$createType17);

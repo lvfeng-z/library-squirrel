@@ -16,6 +16,12 @@ const props = defineProps<{
 // model
 const currentWorkIndex = defineModel<number>('currentWorkIndex', { required: true })
 
+// emits
+// workSetDeleted: 作品集已软删除（转发弹窗事件，供上层刷新作品集列表）
+const emits = defineEmits<{
+  workSetDeleted: [id: number]
+}>()
+
 // 变量
 // workDialog开关
 const workDialogState: Ref<boolean> = ref(false)
@@ -71,6 +77,7 @@ async function openWorkSetDialog(workSetId: number) {
       v-model:state="workSetDialogState"
       v-model:current-work-set-id="currentWorkSetId"
       width="90%"
+      @work-set-deleted="emits('workSetDeleted', $event)"
     />
   </div>
 </template>

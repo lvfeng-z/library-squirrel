@@ -43,7 +43,9 @@ func (r *WorkSetRepository) ListByIds(ctx context.Context, ids []int64) ([]*doma
 	return items, err
 }
 
-// BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id 唯一约束）
+// BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id + deleted_at 三列唯一约束：
+// 插入行 deleted_at=0（soft_delete CreateClause 显式写值），与既有活行冲突→更新元数据；
+// 已删行（deleted_at=删除时刻≠0）不冲突→同键新建放行、不复活已删行）
 func (r *WorkSetRepository) BatchUpsert(ctx context.Context, workSets []*domain.WorkSet) error {
 	if len(workSets) == 0 {
 		return nil
@@ -56,7 +58,7 @@ func (r *WorkSetRepository) BatchUpsert(ctx context.Context, workSets []*domain.
 		ws.SetUpdateTime(now)
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}},
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}, {Name: "deleted_at"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_work_set_name", "site_author_id", "site_work_set_description",
 			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
@@ -76,10 +78,10 @@ func (r *WorkSetRepository) ListBySiteAndSiteWorkSetIDs(ctx context.Context, sit
 	return result, err
 }
 
-// Upsert 原子插入或更新（基于 site_id + site_work_set_id 唯一约束）
+// Upsert 原子插入或更新（冲突目标与语义同 BatchUpsert：三列唯一约束，活行更新、已删行不复活）
 func (r *WorkSetRepository) Upsert(ctx context.Context, ws *domain.WorkSet) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}},
+		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}, {Name: "deleted_at"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_work_set_name", "site_author_id", "site_work_set_description",
 			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
@@ -113,4 +115,36 @@ func (r *WorkSetRepository) GetBySiteWorkSetIdAndSiteName(ctx context.Context, s
 		return nil, err
 	}
 	return result, nil
+}
+
+// GetDeletedById 按ID获取已软删作品集（复原链入口校验；nil = 非已删条目）
+func (r *WorkSetRepository) GetDeletedById(ctx context.Context, id int64) (*domain.WorkSet, error) {
+	ws, err := r.GetByIdUnscoped(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if ws == nil || ws.DeletedAt == 0 {
+		return nil, nil
+	}
+	return ws, nil
+}
+
+// ClearDeletedFlag 清软删标志（复原核心：一行 UPDATE；Unscoped 逃逸 Update 的软删过滤）
+func (r *WorkSetRepository) ClearDeletedFlag(ctx context.Context, id int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Unscoped().
+		Model(new(domain.WorkSet)).
+		Where("id = ?", id).
+		Update("deleted_at", 0).Error
+}
+
+// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
+func (r *WorkSetRepository) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.WorkSet, error) {
+	return r.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []interface{}{expireBefore}},
+		},
+		IncludeDeleted: true,
+	})
 }

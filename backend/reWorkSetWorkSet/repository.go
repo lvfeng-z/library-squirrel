@@ -136,18 +136,22 @@ func (r *ReWorkSetWorkSetRepository) ListParentWorkSetIds(ctx context.Context, c
 	return parentIds, err
 }
 
-// CollectDescendantWorkSetIds 递归查询作品集的所有后代作品集ID（沿 parent→child 边向下，不含 root 自身）
+// CollectDescendantWorkSetIds 递归查询作品集的所有后代作品集ID（沿 parent→child 边向下，不含 root 自身）。
+// 传递包含用（用户可见数据）：递归每步经 JOIN work_set 过滤已删子集——已删子集整枝剪除
+// （其作品不再计入父集传递包含），该子集的活后代经其他活父集路径仍可达；调用方保证 root 自身为活集。
 // 多父 DAG 用 UNION（非 UNION ALL）去重——菱形依赖（A→B、A→C、B→D、C→D）下同一后代会经多条路径到达
 func (r *ReWorkSetWorkSetRepository) CollectDescendantWorkSetIds(ctx context.Context, rootWorkSetId int64) ([]int64, error) {
 	query := `
 		WITH RECURSIVE descendants(id, level) AS (
-			SELECT child_work_set_id, 1
-			FROM re_work_set_work_set
-			WHERE parent_work_set_id = ?
+			SELECT rw.child_work_set_id, 1
+			FROM re_work_set_work_set rw
+			JOIN work_set c ON c.id = rw.child_work_set_id AND c.deleted_at = 0
+			WHERE rw.parent_work_set_id = ?
 			UNION
-			SELECT child_work_set_id, descendants.level + 1
-			FROM re_work_set_work_set
-			JOIN descendants ON re_work_set_work_set.parent_work_set_id = descendants.id
+			SELECT rw.child_work_set_id, descendants.level + 1
+			FROM re_work_set_work_set rw
+			JOIN descendants ON rw.parent_work_set_id = descendants.id
+			JOIN work_set c2 ON c2.id = rw.child_work_set_id AND c2.deleted_at = 0
 			WHERE descendants.level < ?
 		)
 		SELECT id FROM descendants
@@ -157,8 +161,9 @@ func (r *ReWorkSetWorkSetRepository) CollectDescendantWorkSetIds(ctx context.Con
 	return ids, err
 }
 
-// CollectAncestorWorkSetIds 递归查询作品集的所有祖先作品集ID（沿 child→parent 边向上，不含 node 自身）
-// 环路检测依据：建立 A→B 前，若 A 已是 B 的祖先（B 能沿 parent 边到达 A），再加 A→B 会闭合环路
+// CollectAncestorWorkSetIds 递归查询作品集的所有祖先作品集ID（沿 child→parent 边向上，不含 node 自身）。
+// 环路检测用（结构完整性）：**不做活性过滤**——若过滤已删节点，经已删节点闭合的环会漏检，
+// 建边放行后已删节点复原即成死环；遍历须全量覆盖
 func (r *ReWorkSetWorkSetRepository) CollectAncestorWorkSetIds(ctx context.Context, workSetId int64) ([]int64, error) {
 	query := `
 		WITH RECURSIVE ancestors(id, level) AS (

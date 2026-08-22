@@ -797,6 +797,165 @@ export class RecycleWorkDTO {
 }
 
 /**
+ * RecycleWorkSetDTO 回收站作品集条目（work_set 已删行；关联行保留，复原即清标志）
+ */
+export class RecycleWorkSetDTO {
+    /**
+     * work_set 行 ID（操作键）
+     */
+    "id": number;
+
+    /**
+     * 站点 ID（无站点为 null）
+     */
+    "siteId": number | null;
+
+    /**
+     * 站点作品集 ID（本地手建集为 null）
+     */
+    "siteWorkSetId": string | null;
+
+    /**
+     * 站点作品集名（NULL 归空串）
+     */
+    "name": string;
+
+    /**
+     * 本地昵称（NULL 归空串）
+     */
+    "nickName": string;
+
+    /**
+     * 站点名（LEFT JOIN，无站点为空串）
+     */
+    "siteName": string;
+
+    /**
+     * AliveMemberCount 活成员作品数（已删作品不计；成员关联保留，作品复原后自动回位）
+     */
+    "aliveMemberCount": number;
+
+    /**
+     * 创建时间
+     */
+    "createTime": number;
+
+    /**
+     * 删除时间（work_set.deleted_at，TTL 基准）
+     */
+    "deleteTime": number;
+
+    /**
+     * ExpireDaysLeft 距 TTL 自动清理的剩余整天数（向上取整，负值归 0）；自动清理未启用时为 null
+     */
+    "expireDaysLeft": number | null;
+
+    /** Creates a new RecycleWorkSetDTO instance. */
+    constructor($$source: Partial<RecycleWorkSetDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("siteWorkSetId" in $$source)) {
+            this["siteWorkSetId"] = null;
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("nickName" in $$source)) {
+            this["nickName"] = "";
+        }
+        if (!("siteName" in $$source)) {
+            this["siteName"] = "";
+        }
+        if (!("aliveMemberCount" in $$source)) {
+            this["aliveMemberCount"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("deleteTime" in $$source)) {
+            this["deleteTime"] = 0;
+        }
+        if (!("expireDaysLeft" in $$source)) {
+            this["expireDaysLeft"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleWorkSetDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleWorkSetDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleWorkSetDTO($$parsedSource as Partial<RecycleWorkSetDTO>);
+    }
+}
+
+/**
+ * RecycleWorkSetPageQuery 回收站作品集条目分页查询请求（作品集域平铺条件；
+ * 作品集无标签/作者关联，与作品条目的 SearchCondition 标签体系分轨）
+ */
+export class RecycleWorkSetPageQuery {
+    /**
+     * 名称模糊（site_work_set_name / nick_name 任一命中）
+     */
+    "name": string;
+
+    /**
+     * 站点（nil=不限）
+     */
+    "siteId": number | null;
+
+    /**
+     * 删除时间范围起（毫秒，0=不限）
+     */
+    "deleteTimeFrom": number;
+
+    /**
+     * 删除时间范围止（毫秒，0=不限）
+     */
+    "deleteTimeTo": number;
+
+    /**
+     * 按删除时间排序方向：asc | 其他=desc（默认）
+     */
+    "sortOrder": string;
+
+    /** Creates a new RecycleWorkSetPageQuery instance. */
+    constructor($$source: Partial<RecycleWorkSetPageQuery> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("siteId" in $$source)) {
+            this["siteId"] = null;
+        }
+        if (!("deleteTimeFrom" in $$source)) {
+            this["deleteTimeFrom"] = 0;
+        }
+        if (!("deleteTimeTo" in $$source)) {
+            this["deleteTimeTo"] = 0;
+        }
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleWorkSetPageQuery instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RecycleWorkSetPageQuery {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleWorkSetPageQuery($$parsedSource as Partial<RecycleWorkSetPageQuery>);
+    }
+}
+
+/**
  * ResourceDTO 资源数据传输对象
  */
 export class ResourceDTO {

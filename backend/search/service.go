@@ -30,6 +30,8 @@ type Repository interface {
 	GetAliveStoreIdByKey(ctx context.Context, resourceId int64, storeType string, storeSeq int) (int64, error)
 	// QueryWorkSetPageByConditions 根据搜索条件查询作品集分页（EXISTS 子查询）
 	QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error)
+	// QueryRecycleWorkSetPage 查询回收站作品集条目分页（work_set 已删行；作品集域平铺条件体系）
+	QueryRecycleWorkSetPage(ctx context.Context, page, pageSize int, query *dto2.RecycleWorkSetPageQuery) ([]*dto2.RecycleWorkSetDTO, int64, error)
 }
 
 // CoverResolver 批量封面解析接口
@@ -189,6 +191,15 @@ func (s *Service) GetRecycleStoreMount(ctx context.Context, storeId int64) (*dto
 // GetAliveStoreIdByKey 查挂载键 (resource_id, store_type, store_seq) 下的活行 store ID（无则 0）
 func (s *Service) GetAliveStoreIdByKey(ctx context.Context, resourceId int64, storeType string, storeSeq int) (int64, error) {
 	return s.repo.GetAliveStoreIdByKey(ctx, resourceId, storeType, storeSeq)
+}
+
+// QueryRecycleWorkSetPage 查询回收站作品集条目分页（work_set 已删行；作品集域平铺条件体系）
+func (s *Service) QueryRecycleWorkSetPage(ctx context.Context, page, pageSize int, query *dto2.RecycleWorkSetPageQuery) (*model.Page[dto2.RecycleWorkSetDTO], error) {
+	items, total, err := s.repo.QueryRecycleWorkSetPage(ctx, page, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+	return model.NewPage[dto2.RecycleWorkSetDTO](items, total, page, pageSize), nil
 }
 
 // extractUsedConditions 从搜索条件中提取需要更新lastUse的ID
