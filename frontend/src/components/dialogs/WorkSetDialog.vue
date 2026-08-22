@@ -38,7 +38,7 @@ import {
   reWorkWorkSetSetCover
 } from '@renderer/apis/http/wrappers/reWorkWorkSet'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@renderer/apis/http/wrappers/search'
-import {workSetSoftDelete} from '@renderer/apis/http/wrappers/workSet'
+import {workSetSoftDelete, workSetGetDirectWorkIds} from '@renderer/apis/http/wrappers/workSet'
 import {newPage} from "@renderer/utils/Pager.ts";
 
 // props
@@ -103,6 +103,11 @@ const selectedMergeSourceIds = ref<number[]>([])
 const selectPurpose = ref<'addChild' | 'mergeSource'>('addChild')
 // 已是子集的作品集 id 集合（选择面板排除已加入 + 排除自身，防重复纳入）
 const existingChildWorkSetIds = ref<Set<number>>(new Set())
+// 当前作品集的直接成员作品 id 集（作品列表是传递包含——含子集作品；封面/移除为直接成员专属操作，
+// 勾选含子集作品时两按钮禁用）
+const directWorkIds = ref<Set<number>>(new Set())
+// 勾选项中是否含子集作品（非直接成员——封面标记与移除打在本集关联行上，对其操作无效果）
+const hasNonDirectChecked = computed(() => checkedWorkIds.value.some((id) => !directWorkIds.value.has(id)))
 // WorkSetSelectPanel 组件的 ref
 const workSetSelectPanelRef = ref()
 
@@ -226,8 +231,21 @@ async function loadWorkList() {
       currentWorkIndex.value = 0
     }
   }
-  // 并行加载直接子作品集（层级管理展示用）
+  // 并行加载直接子作品集（层级管理展示用）与直接成员集（子集作品区分判定用）
   loadChildWorkSets()
+  loadDirectWorkIds()
+}
+
+// 加载当前作品集的直接成员作品ID集（作品列表是传递包含——含子集作品；封面/移除为直接成员专属操作）
+async function loadDirectWorkIds() {
+  if (isNullish(currentWorkSetId.value)) {
+    return
+  }
+  const response = await workSetGetDirectWorkIds(currentWorkSetId.value)
+  if (ApiUtil.check(response)) {
+    const ids = ApiUtil.data<number[]>(response)
+    directWorkIds.value = new Set(ids ?? [])
+  }
 }
 
 // 加载当前作品集的直接子作品集
@@ -776,22 +794,41 @@ watch(isCheckable, (newValue) => {
             <el-icon><Plus /></el-icon>
             添加作品
           </el-button>
-          <el-button
-            type="danger"
-            class="tone-fail"
-            @click="handleDelete"
+          <!-- 子集作品无本集关联行，移除打在其上会静默无效果——勾选含子集作品时禁用 -->
+          <el-tooltip
+            :disabled="!hasNonDirectChecked"
+            content="勾选中含子集作品，子集作品请在对应子集内移除"
+            placement="top"
           >
-            <el-icon><Delete /></el-icon>
-            移除
-          </el-button>
-          <el-button
-            type="success"
-            :disabled="checkedWorkIds.length !== 1"
-            @click="handleSetCover"
+            <span class="work-set-action-wrap">
+              <el-button
+                type="danger"
+                class="tone-fail"
+                :disabled="checkedWorkIds.length === 0 || hasNonDirectChecked"
+                @click="handleDelete"
+              >
+                <el-icon><Delete /></el-icon>
+                移除
+              </el-button>
+            </span>
+          </el-tooltip>
+          <!-- 封面标记挂本集关联行的 is_cover，子集作品设封面会静默无效果——勾选含子集作品时禁用 -->
+          <el-tooltip
+            :disabled="!hasNonDirectChecked"
+            content="勾选中含子集作品，封面只能设直接属于本集的作品"
+            placement="top"
           >
-            <el-icon><Picture /></el-icon>
-            设为封面
-          </el-button>
+            <span class="work-set-action-wrap">
+              <el-button
+                type="success"
+                :disabled="checkedWorkIds.length !== 1 || hasNonDirectChecked"
+                @click="handleSetCover"
+              >
+                <el-icon><Picture /></el-icon>
+                设为封面
+              </el-button>
+            </span>
+          </el-tooltip>
           <el-button
               type="primary"
               @click="handleAddChildWorkSet"
@@ -981,6 +1018,11 @@ watch(isCheckable, (newValue) => {
 </template>
 
 <style scoped>
+/* 禁用态操作按钮的外包裹：禁用按钮不触发鼠标事件，tooltip 须挂在外层元素上 */
+.work-set-action-wrap {
+  display: inline-flex;
+  margin-right: 12px;
+}
 .work-set-dialog-main-container {
   display: flex;
   flex-direction: row;

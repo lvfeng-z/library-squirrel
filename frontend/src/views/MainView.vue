@@ -18,6 +18,7 @@ import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue
 import lodash from 'lodash'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
+import WorkSetCreateDialog from '@renderer/components/dialogs/WorkSetCreateDialog.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
@@ -246,6 +247,14 @@ function handleWorkSetDeleted() {
   queryWorkSetPage(false)
 }
 
+// 新建作品集弹窗开关
+const workSetCreateDialogState = ref(false)
+
+// 作品集已创建：刷新作品集列表
+function handleWorkSetCreated() {
+  queryWorkSetPage(false)
+}
+
 // 重新查询搜索条件
 async function querySearchCondition() {
   return searchConditionBar.value.newSearch()
@@ -359,6 +368,15 @@ function handleTest() {
       >
         搜索
       </el-button>
+      <el-button
+        v-if="workSetView"
+        type="primary"
+        plain
+        class="topbar-items"
+        @click="workSetCreateDialogState = true"
+      >
+        新建作品集
+      </el-button>
     </div>
     <div
       ref="workSpace"
@@ -418,6 +436,11 @@ function handleTest() {
         </div>
       </div>
     </div>
+    <!-- 新建作品集弹窗（创建成功后刷新作品集列表） -->
+    <work-set-create-dialog
+      v-model:state="workSetCreateDialogState"
+      @created="handleWorkSetCreated"
+    />
   </div>
 </template>
 

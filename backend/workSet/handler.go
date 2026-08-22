@@ -193,6 +193,15 @@ func (h *Handler) GetCoverWorkId(ctx context.Context, workSetId int64) *model.Ap
 	return model.HandleResult(h.svc.GetCoverWorkId(ctx, workSetId))
 }
 
+// GetDirectWorkIds 获取作品集的直接成员作品ID（不含后代子集成员；封面/移除等直接成员专属操作的判定依据）
+func (h *Handler) GetDirectWorkIds(ctx context.Context, workSetId int64) *model.ApiResponse[[]int64] {
+	result, err := h.svc.GetDirectWorkIds(ctx, workSetId)
+	if err != nil {
+		return model.HandleError[[]int64](err)
+	}
+	return model.Success(result)
+}
+
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及作品完整信息
 func (h *Handler) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) *model.ApiResponse[[]*dto2.WorkSetWithWorksResultDTO] {
 	result, err := h.svc.ListWorkSetWithWorkByIds(ctx, workSetIds)

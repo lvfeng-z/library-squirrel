@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/library-squirrel/backend/base/model"
@@ -416,10 +417,14 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 	return s.reWorkWorkSetRepo.CreateBatch(ctx, rels)
 }
 
-// RemoveBatchFromWorkSet 批量从作品集移除作品
+// RemoveBatchFromWorkSet 批量从作品集移除作品（仅直接成员可移除——子集作品无本集关联行，
+// 对其删除会静默无效果，前置校验显式拒绝）
 func (s *Service) RemoveBatchFromWorkSet(ctx context.Context, workSetId int64, workIds []int64) error {
 	if len(workIds) == 0 {
 		return nil
+	}
+	if err := s.ensureDirectMembers(ctx, workSetId, workIds); err != nil {
+		return err
 	}
 	for _, workId := range workIds {
 		if err := s.reWorkWorkSetRepo.DeleteByWorkAndWorkSet(ctx, workId, workSetId); err != nil {
@@ -476,14 +481,45 @@ func (s *Service) ListWorkSetsByWorkId(ctx context.Context, workId int64) ([]*en
 	return result, nil
 }
 
-// SetCoverWork 设置作品集的封面作品
+// SetCoverWork 设置作品集的封面作品（仅直接成员可设——封面标记挂本集关联行的 is_cover，
+// 子集作品无本集关联行，对其更新会静默无效果，前置校验显式拒绝）
 func (s *Service) SetCoverWork(ctx context.Context, workSetId, workId int64) error {
+	if err := s.ensureDirectMembers(ctx, workSetId, []int64{workId}); err != nil {
+		return err
+	}
 	// 清除现有封面
 	if err := s.reWorkWorkSetRepo.ClearOtherCovers(ctx, workSetId, workId); err != nil {
 		return err
 	}
 	// 设置新封面
 	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, true)
+}
+
+// ensureDirectMembers 校验作品均为作品集的直接成员（存在 (work_id, work_set_id) 关联行）
+func (s *Service) ensureDirectMembers(ctx context.Context, workSetId int64, workIds []int64) error {
+	directIds, err := s.reWorkWorkSetRepo.ListByWorkSetId(ctx, workSetId)
+	if err != nil {
+		return err
+	}
+	directSet := make(map[int64]struct{}, len(directIds))
+	for _, id := range directIds {
+		directSet[id] = struct{}{}
+	}
+	notDirect := make([]int64, 0)
+	for _, id := range workIds {
+		if _, ok := directSet[id]; !ok {
+			notDirect = append(notDirect, id)
+		}
+	}
+	if len(notDirect) > 0 {
+		return fmt.Errorf("%w：作品 %v 不属于该作品集（子集作品请在对应子集内操作）", ErrWorkNotInWorkSet, notDirect)
+	}
+	return nil
+}
+
+// GetDirectWorkIds 获取作品集的直接成员作品 ID（不含后代子集成员；封面/移除等直接成员专属操作的判定依据）
+func (s *Service) GetDirectWorkIds(ctx context.Context, workSetId int64) ([]int64, error) {
+	return s.reWorkWorkSetRepo.ListByWorkSetId(ctx, workSetId)
 }
 
 // UpdateSortOrders 批量更新排序顺序
@@ -628,7 +664,9 @@ var (
 	ErrWorkSetSelfParent    = errors.New("建立作品集父子关系失败，父集与子集不能相同")
 	ErrWorkSetCycleDetected = errors.New("建立作品集父子关系失败，子集已是父集的祖先，将形成环路")
 	ErrWorkSetMergeSelf     = errors.New("物理纳入失败，源作品集与目标作品集不能相同")
-	_                       = (*pkgerr.BusinessError)(nil) // 确保 pkgerr 包被引用
+	// ErrWorkNotInWorkSet 作品不是作品集的直接成员（子集作品请在对应子集内操作）
+	ErrWorkNotInWorkSet = errors.New("作品不属于该作品集")
+	_                   = (*pkgerr.BusinessError)(nil) // 确保 pkgerr 包被引用
 )
 
 // toInterfaceSlice converts int64 slice to interface{} slice

@@ -122,6 +122,57 @@ func TestSoftDeleteWorkSetNotFound(t *testing.T) {
 	}
 }
 
+// TestSetCoverRejectsNonDirectMember 封面/移除的直接成员校验：子集作品无本集关联行，
+// 对其操作应显式报错而非静默无效果
+func TestSetCoverRejectsNonDirectMember(t *testing.T) {
+	svc, db := newLifecycleService(t)
+	ctx := context.Background()
+
+	parentId := insertWorkAndGetId(t, svc, 1, "parent")
+	childId := insertWorkAndGetId(t, svc, 1, "child")
+	// 挂 child 为 parent 的子集，作品仅直接属于 child
+	if err := svc.AddChildWorkSet(ctx, parentId, childId); err != nil {
+		t.Fatalf("建父子关系失败: %v", err)
+	}
+	w := entity2.NewWork()
+	if err := db.Create(w).Error; err != nil {
+		t.Fatalf("建作品失败: %v", err)
+	}
+	rel := entity2.NewReWorkWorkSet()
+	rel.WorkID = sql.NullInt64{Int64: w.GetID(), Valid: true}
+	rel.WorkSetID = sql.NullInt64{Int64: childId, Valid: true}
+	if err := db.Create(rel).Error; err != nil {
+		t.Fatalf("挂成员失败: %v", err)
+	}
+
+	// 子集作品设 parent 封面：拒绝
+	if err := svc.SetCoverWork(ctx, parentId, w.GetID()); !errors.Is(err, ErrWorkNotInWorkSet) {
+		t.Fatalf("子集作品设封面应报 ErrWorkNotInWorkSet，实际: %v", err)
+	}
+	// 子集作品从 parent 移除：拒绝
+	if err := svc.RemoveBatchFromWorkSet(ctx, parentId, []int64{w.GetID()}); !errors.Is(err, ErrWorkNotInWorkSet) {
+		t.Fatalf("子集作品移除应报 ErrWorkNotInWorkSet，实际: %v", err)
+	}
+	// 封面标记未被污染（parent 下无 is_cover 行）
+	var coverCnt int64
+	db.Raw(`SELECT COUNT(*) FROM re_work_work_set WHERE work_set_id = ? AND is_cover = 1`, parentId).Scan(&coverCnt)
+	if coverCnt != 0 {
+		t.Fatalf("被拒绝的设封面不应残留标记，实际 %d 行", coverCnt)
+	}
+
+	// 直接成员设封面：成功且可查回
+	if err := svc.LinkWorkToWorkSet(ctx, w.GetID(), parentId, false); err != nil {
+		t.Fatalf("挂直接成员失败: %v", err)
+	}
+	if err := svc.SetCoverWork(ctx, parentId, w.GetID()); err != nil {
+		t.Fatalf("直接成员设封面失败: %v", err)
+	}
+	coverId, err := svc.GetCoverWorkId(ctx, parentId)
+	if err != nil || coverId != w.GetID() {
+		t.Fatalf("封面应可查回 %d，实际 %d err=%v", w.GetID(), coverId, err)
+	}
+}
+
 // TestDeleteWorkSetAndAssociations 彻底删除：软删后级联物理删行与两关联行，全表归零
 func TestDeleteWorkSetAndAssociations(t *testing.T) {
 	svc, db := newLifecycleService(t)

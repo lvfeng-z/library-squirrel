@@ -90,23 +90,6 @@ export async function workSetQueryPage(page: Page<WorkSetDTO>, query: WorkSetQue
   return { success: true, msg: result.msg ?? '', data: result.data ?? undefined }
 }
 
-export async function workSetSave(workSet: {
-  name?: string
-  coverId?: number
-}): Promise<ApiResponse<WorkSetVO>> {
-  const dto = new WorkSetDTO({
-    siteWorkSetName: workSet.name ?? null
-  })
-  const result = await WorkSetHandler.Save(dto)
-  if (!result) {
-    return { success: false, msg: '保存失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '保存失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: { id: result.data ?? 0, name: '', coverId: 0, createTime: 0, updateTime: 0 } }
-}
-
 export async function workSetUpdate(workSet: {
   id: number
   nickName?: string
@@ -119,6 +102,20 @@ export async function workSetUpdate(workSet: {
     description: workSet.description ?? null
   })
   return requireResponse(await WorkSetHandler.Update(dto), '更新作品集', false)
+}
+
+/**
+ * 手动创建作品集（本地手建集：站点键为空，不占站点业务键；名称落本地昵称）
+ */
+export async function workSetCreate(workSet: {
+  nickName: string
+  description?: string
+}): Promise<ApiResponse<number>> {
+  const dto = new WorkSetDTO({
+    nickName: workSet.nickName,
+    description: workSet.description ?? null
+  })
+  return requireResponse(await WorkSetHandler.Save(dto), '创建作品集', false)
 }
 
 /**
@@ -143,6 +140,20 @@ export async function workSetGetBySiteWorkSetIdAndSiteName(
     return { success: false, msg: result.msg ?? '获取失败' }
   }
   return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
+}
+
+/**
+ * 获取作品集的直接成员作品ID（不含后代子集成员；封面/移除等直接成员专属操作的判定依据）
+ */
+export async function workSetGetDirectWorkIds(workSetId: number): Promise<ApiResponse<number[]>> {
+  const result = await WorkSetHandler.GetDirectWorkIds(workSetId)
+  if (!result) {
+    return { success: false, msg: '获取失败：接口返回为空' }
+  }
+  if (!result.success) {
+    return { success: false, msg: result.msg ?? '获取失败' }
+  }
+  return { success: true, msg: result.msg ?? '', data: result.data ?? [] }
 }
 
 /**
