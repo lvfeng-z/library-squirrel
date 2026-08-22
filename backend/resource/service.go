@@ -2,7 +2,9 @@ package resource
 
 import (
 	"context"
+	"database/sql"
 
+	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 )
@@ -89,6 +91,36 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) (map[int64
 	return result, nil
 }
 
+// RecomputeResourceComplete 重算并持久化资源完整度（活行 store 角色计数 → ComputeResourceComplete 三态）。
+// 下载完成、合并、回收站复原置换共用，保证各路径判定一致；关联保留形态下软删行关联不计入。
+// 读路径不抛错：查询/更新异常降级为保持原值，不阻断调用方主流程
+func (s *Service) RecomputeResourceComplete(ctx context.Context, resourceId int64) {
+	if resourceId == 0 {
+		return
+	}
+	resource, err := s.repo.GetById(ctx, resourceId)
+	if err != nil || resource == nil {
+		logger.Log.Warnf("[Resource] 重算完整度失败(查 resource): resourceId=%d err=%v", resourceId, err)
+		return
+	}
+	counts, err := s.resourceStoreRepo.CountAliveTypesByResourceId(ctx, resourceId)
+	if err != nil {
+		logger.Log.Warnf("[Resource] 重算完整度失败(统计 store 角色): resourceId=%d err=%v", resourceId, err)
+		return
+	}
+	complete, missing, excess := domain.ComputeResourceComplete(resource.ResourceType, counts)
+	if complete == 2 {
+		logger.Log.Infof("[Resource] 资源结构不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
+	}
+	if resource.ResourceComplete.Valid && resource.ResourceComplete.Int64 == int64(complete) {
+		return // 值未变，跳过写库
+	}
+	resource.ResourceComplete = sql.NullInt64{Int64: int64(complete), Valid: true}
+	if err := s.repo.Updates(ctx, resource); err != nil {
+		logger.Log.Warnf("[Resource] 更新完整度失败: resourceId=%d err=%v", resourceId, err)
+	}
+}
+
 // ListStoresByResourceIds 批量查询多个 Resource 关联的 resource_store 行(按 resourceId 分组,避免 N+1)
 func (s *Service) ListStoresByResourceIds(ctx context.Context, resourceIds []int64) (map[int64][]*domain.ResourceStore, error) {
 	if len(resourceIds) == 0 {
@@ -105,7 +137,9 @@ func (s *Service) ListStoresByResourceIds(ctx context.Context, resourceIds []int
 	return result, nil
 }
 
-// ListStoreTypeSetsByWorkIds 批量查询多个作品的 resource_store 行 store_type 集合(覆盖确认判定用:任务板块选择与已有行求交)
+// ListStoreTypeSetsByWorkIds 批量查询多个作品的活行 store 角色集合(覆盖确认判定用:任务板块选择与已有行求交)。
+// 只计指向活行 store 的关联——软删残留代（merge overwrite 轨道、替换残留）不算「作品拥有该角色」，
+// 全量计入会令仅剩死行的角色永远弹覆盖确认
 func (s *Service) ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int64) (map[int64]map[string]struct{}, error) {
 	result := make(map[int64]map[string]struct{})
 	if len(workIds) == 0 {
@@ -123,7 +157,7 @@ func (s *Service) ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int6
 		resourceIds = append(resourceIds, r.ID)
 		result[r.WorkID] = make(map[string]struct{})
 	}
-	stores, err := s.resourceStoreRepo.ListByResourceIds(ctx, resourceIds)
+	stores, err := s.resourceStoreRepo.ListAliveByResourceIds(ctx, resourceIds)
 	if err != nil {
 		return nil, err
 	}

@@ -766,8 +766,28 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	return backupId, s.repo.SoftDeleteWithBackup(ctx, id, backupId)
 }
 
-// RestoreWorkStores 批量复活作品的 store 记录（复原链：文件还原回 store/ 后清软删标志）
-func (s *Service) RestoreWorkStores(ctx context.Context, ids []int64) error {
+// SoftDeleteAndDiscardFile 软删记录并废弃其文件（未完成行进入软删产道的分支：partial 文件无复原价值，
+// 移入 backup/ 只会膨胀备份目录）。文件尽力删（扑空容忍+操作抑制登记），软删经 SoftDeleteWithBackup
+// 单点写入（backup_id=0）。完成后行复活时无文件，交文件监控对账裁决
+func (s *Service) SoftDeleteAndDiscardFile(ctx context.Context, id int64) error {
+	record, err := s.repo.GetById(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if record == nil {
+		return nil
+	}
+	if record.FilePath.Valid && record.FilePath.String != "" {
+		s.CleanupFile(record.FilePath.String)
+	}
+	return s.repo.SoftDeleteWithBackup(ctx, id, 0)
+}
+
+// RestoreByIds 批量复活记录（清软删标志与 backup_id，复原链：文件还原回 store/ 后调用）
+func (s *Service) RestoreByIds(ctx context.Context, ids []int64) error {
 	return s.repo.RestoreByIds(ctx, ids)
 }
 

@@ -75,7 +75,7 @@ const DefaultBackupGovernanceRetentionDays = 7
 // 合并策略取值
 const (
 	MergeStrategyKeep      = "keep"      // 新建 merged store，保留原 videoTrack/audioTrack
-	MergeStrategyOverwrite = "overwrite" // 新建 merged store，删除原轨道 store 及文件
+	MergeStrategyOverwrite = "overwrite" // 新建 merged store，原轨道 store 及文件转入回收站（可复原，到期自动清理）
 )
 
 // NewSettings 创建默认设置

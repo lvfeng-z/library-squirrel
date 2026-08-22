@@ -23,6 +23,12 @@ var (
 	ErrRecycleItemNotFound  = &pkgerr.BusinessError{Code: 404, Message: "回收站条目不存在"}
 	ErrRecycleStoreNotFound = &pkgerr.BusinessError{Code: 404, Message: "回收站文件条目不存在"}
 	ErrRestoreConflict      = &pkgerr.BusinessError{Code: 409, Message: "作品复原冲突：该作品已存在，请选择放弃或覆盖"}
+	// ErrRestoreStoreNoBackup 无备份（外部裁决失效行/备份缺失）不可复原——仅清理态
+	ErrRestoreStoreNoBackup = &pkgerr.BusinessError{Code: 409, Message: "该条目无备份，不可复原"}
+	// ErrRestoreStoreUnreachable 挂载链断或作品已软删——复原目标作品不可达
+	ErrRestoreStoreUnreachable = &pkgerr.BusinessError{Code: 409, Message: "该条目所属作品不可达，不可复原"}
+	// ErrRestoreStorePathConflict 还原目标路径被其他资源的活行占用（路径冲突异常态，须人工处理）
+	ErrRestoreStorePathConflict = &pkgerr.BusinessError{Code: 409, Message: "还原目标路径被其他资源占用，请先处理该文件"}
 )
 
 // WorkRestorer 作品软删/复原能力接口（由 work.Service 实现）
@@ -35,10 +41,12 @@ type WorkRestorer interface {
 	GetDeletedWork(ctx context.Context, id int64) (*domain.Work, error)
 	// RestoreDeletedWork 清软删标志（复原核心，文件还原由本模块编排）
 	RestoreDeletedWork(ctx context.Context, id int64) error
-	// RestoreWorkStores 复原作品的全部 store 记录（清软删标志与 backup_id，文件还原后调用）
+	// RestoreWorkStores 复原作品的复活集 store 记录（同键最新死代，清软删标志与 backup_id，文件还原由本模块编排）
 	RestoreWorkStores(ctx context.Context, workId int64) error
-	// ListWorkStoresIncludeDeleted 取作品的全部 store 记录行（含已删行；行内 backup_id 定位备份、file_path 定位还原目标）
+	// ListWorkStoresIncludeDeleted 取作品的全部 store 记录行（含已删行；彻底删除链按行内 backup_id 定位备份）
 	ListWorkStoresIncludeDeleted(ctx context.Context, workId int64) []*domain.PersistentStore
+	// ListRevivableWorkStores 取作品的复活集（同键最新死代行；文件还原链按此圈定，避免更早死代备份还原互相覆盖）
+	ListRevivableWorkStores(ctx context.Context, workId int64) []*domain.PersistentStore
 	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删作品，供 TTL 清理
 	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error)
 	// DeleteWorkAndSurroundingData 物理级联删除（彻底删除链：删 work 谱系行与 store 记录/文件）
@@ -70,6 +78,10 @@ type RecycleStoreQuerier interface {
 	// ListRecycleStoreIdsDeletedBefore 圈定删除时间早于 expireBefore 的文件条目 ID（TTL 清理；
 	// 与列表查询同谓词，「作品已删」聚合行不被圈定）
 	ListRecycleStoreIdsDeletedBefore(ctx context.Context, expireBefore int64) ([]int64, error)
+	// GetRecycleStoreMount 查询单个 store 行的挂载身份与作品活性（复原置换链）
+	GetRecycleStoreMount(ctx context.Context, storeId int64) (*dto.StoreMountDTO, error)
+	// GetAliveStoreIdByKey 查挂载键 (resource_id, store_type, store_seq) 下的活行 store ID（无则 0）
+	GetAliveStoreIdByKey(ctx context.Context, resourceId int64, storeType string, storeSeq int) (int64, error)
 }
 
 // StoreCleaner store 行清理能力接口（由 persistentStore.Service 实现）
@@ -82,6 +94,25 @@ type StoreCleaner interface {
 	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 }
 
+// StoreRestorer store 行复原置换能力接口（由 persistentStore.Service 实现；版本回滚置换链）
+type StoreRestorer interface {
+	// GetById 按 ID 查活行记录行（置换对象完成态分派用；nil = 行不存在或已删）
+	GetById(ctx context.Context, id int64) (*domain.PersistentStore, error)
+	// GetByFilePath 按路径查活行记录行（置换的路径占位检测；nil = 无活行占位）
+	GetByFilePath(ctx context.Context, filePath string) (*domain.PersistentStore, error)
+	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）
+	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
+	// SoftDeleteAndDiscardFile 软删记录并废弃其文件（未完成占位行分支：partial 文件不入备份）
+	SoftDeleteAndDiscardFile(ctx context.Context, id int64) error
+	// RestoreByIds 批量复活记录（清软删标志与 backup_id；文件还原回 store/ 后调用）
+	RestoreByIds(ctx context.Context, ids []int64) error
+}
+
+// ResourceRecomputer 资源完整度重算（由 resource.Service 实现；复原置换改变角色构成后刷新）
+type ResourceRecomputer interface {
+	RecomputeResourceComplete(ctx context.Context, resourceId int64)
+}
+
 // RecycleBinSettingsProvider 回收站设置提供者接口（由 settings.Service 实现）
 type RecycleBinSettingsProvider interface {
 	// GetRecycleBinSettings 获取回收站自动清理设置（启用标志、保留天数）
@@ -92,27 +123,31 @@ type RecycleBinSettingsProvider interface {
 // 已删行且非「作品已删」聚合形态——work 不可达（离链孤儿自愈落入）或 work 存活（MarkInvalid 失效行、
 // J' 替换/merge 软删残留），条目单位是 store 行、TTL 按行自身 deleted_at）
 type Service struct {
-	workRestorer   WorkRestorer
-	backupReader   BackupReader
-	recycleQuerier RecycleWorkQuerier
-	storeQuerier   RecycleStoreQuerier
-	storeCleaner   StoreCleaner
-	settingsReader RecycleBinSettingsProvider
-	workDirGetter  func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
-	stopCh         chan struct{}
+	workRestorer       WorkRestorer
+	backupReader       BackupReader
+	recycleQuerier     RecycleWorkQuerier
+	storeQuerier       RecycleStoreQuerier
+	storeCleaner       StoreCleaner
+	storeRestorer      StoreRestorer
+	resourceRecomputer ResourceRecomputer
+	settingsReader     RecycleBinSettingsProvider
+	workDirGetter      func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
+	stopCh             chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string) *Service {
 	return &Service{
-		workRestorer:   workRestorer,
-		backupReader:   backupReader,
-		recycleQuerier: recycleQuerier,
-		storeQuerier:   storeQuerier,
-		storeCleaner:   storeCleaner,
-		settingsReader: settingsReader,
-		workDirGetter:  workDirGetter,
-		stopCh:         make(chan struct{}),
+		workRestorer:       workRestorer,
+		backupReader:       backupReader,
+		recycleQuerier:     recycleQuerier,
+		storeQuerier:       storeQuerier,
+		storeCleaner:       storeCleaner,
+		storeRestorer:      storeRestorer,
+		resourceRecomputer: resourceRecomputer,
+		settingsReader:     settingsReader,
+		workDirGetter:      workDirGetter,
+		stopCh:             make(chan struct{}),
 	}
 }
 
@@ -213,7 +248,7 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 		return 0, err
 	}
 
-	// 4. 复活 store 记录 + 清作品软删标志（从属行从未离开，仅状态复位）
+	// 4. 复活 store 记录（复活集=同键最新死代）+ 清作品软删标志（从属行从未离开，仅状态复位）
 	if err := s.workRestorer.RestoreWorkStores(ctx, workId); err != nil {
 		return 0, err
 	}
@@ -223,11 +258,12 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 	return workId, nil
 }
 
-// restoreWorkFiles 还原作品的全部备份文件（backup → store/ 原路径）并删除已还原备份清单行
-// 备份按行内 backup_id 定位（与作品经 store 行精确圈定，同路径多代互不干扰）；
+// restoreWorkFiles 还原作品复活集的备份文件（backup → store/ 原路径）并删除已还原备份清单行
+// 复活集=同键最新死代（与 RestoreWorkStores 共用派生）——更早死代的备份不动，避免同路径多代
+// 文件还原互相覆盖；备份按行内 backup_id 定位（与作品经 store 行精确圈定，同路径多代互不干扰）；
 // 目标路径在 store/ 监控白名单内，逐文件登记操作抑制避免还原写入被 fsmonitor 误报
 func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
-	stores := s.workRestorer.ListWorkStoresIncludeDeleted(ctx, workId)
+	stores := s.workRestorer.ListRevivableWorkStores(ctx, workId)
 	for _, st := range stores {
 		if st.BackupID <= 0 || !st.FilePath.Valid {
 			// 无备份行（外部删除失效或备份失败残留）无文件可还原
@@ -317,6 +353,107 @@ func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 		if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
 			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID, err)
 		}
+	}
+	return nil
+}
+
+// RestoreStore 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站，
+// 其自身可再复原——回滚即一次替换，机制单态）。前置：行已软删、有备份、挂载链可达活作品。
+// 关联零操作：本行关联保留（复活即挂载回位）、被置换行关联保留成死（双关联标准形态）
+func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
+	// 1. 校验：已删行 + 行内备份 + 挂载活作品
+	st, err := s.storeCleaner.GetDeletedStore(ctx, storeId)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return ErrRecycleStoreNotFound
+	}
+	if st.BackupID <= 0 || !st.FilePath.Valid {
+		return ErrRestoreStoreNoBackup
+	}
+	mount, err := s.storeQuerier.GetRecycleStoreMount(ctx, storeId)
+	if err != nil {
+		return err
+	}
+	if mount.ResourceId == 0 || !mount.WorkAlive {
+		return ErrRestoreStoreUnreachable
+	}
+
+	// 2. 置换同键当前代：挂载键 (resource,role,seq) 的活行让位（软删入回收站，可再复原）——
+	// 不置换会出现同键双活行，破坏挂载不变量并令完整度计数翻倍
+	if aliveId, err := s.storeQuerier.GetAliveStoreIdByKey(ctx, mount.ResourceId, mount.Role, mount.Seq); err != nil {
+		return err
+	} else if aliveId > 0 && aliveId != storeId {
+		if err := s.swapOutLiveRow(ctx, aliveId); err != nil {
+			return err
+		}
+	}
+
+	// 3. 置换同路径占位行：还原目标路径上的其他活行让出路径；跨资源占位为路径冲突异常态，拒绝人工处理
+	if holder, err := s.storeRestorer.GetByFilePath(ctx, st.FilePath.String); err != nil {
+		return err
+	} else if holder != nil && holder.GetID() != storeId {
+		holderMount, err := s.storeQuerier.GetRecycleStoreMount(ctx, holder.GetID())
+		if err != nil {
+			return err
+		}
+		if holderMount.ResourceId != mount.ResourceId {
+			return ErrRestoreStorePathConflict
+		}
+		if err := s.swapOutLiveRow(ctx, holder.GetID()); err != nil {
+			return err
+		}
+	}
+
+	// 4. 文件还原（backup → 原路径；操作抑制登记防 fsmonitor 误报）
+	backup, err := s.backupReader.GetById(ctx, st.BackupID)
+	if err != nil || backup == nil {
+		return fmt.Errorf("查询备份 %d 失败: %w", st.BackupID, err)
+	}
+	relPath := st.FilePath.String
+	storeRegistry.Suppress(relPath)
+	backupAbsPath := s.backupReader.GetBackupPath(backup)
+	targetAbs := filepath.Join(s.workDirGetter(), relPath)
+	rerr := s.backupReader.RestoreFile(ctx, backupAbsPath, targetAbs)
+	storeRegistry.Release(relPath)
+	if rerr != nil {
+		return fmt.Errorf("还原备份文件失败: %w", rerr)
+	}
+
+	// 5. 复活本行（清软删标志与 backup_id）
+	if err := s.storeRestorer.RestoreByIds(ctx, []int64{storeId}); err != nil {
+		return fmt.Errorf("复活记录失败: %w", err)
+	}
+
+	// 6. 清备份清单行（行已复活引用已清；失败则残余清单行由无主治理兜底）
+	if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
+		logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID, err)
+	}
+
+	// 7. 重算完整度（角色构成可能变化，如合并回滚补回轨道）
+	s.resourceRecomputer.RecomputeResourceComplete(ctx, mount.ResourceId)
+	return nil
+}
+
+// swapOutLiveRow 置换活行：已完成入备份软删（自身入回收站可再复原），未完成废弃文件软删
+// （partial 文件无复原价值不入备份）
+func (s *Service) swapOutLiveRow(ctx context.Context, id int64) error {
+	row, err := s.storeRestorer.GetById(ctx, id)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return nil // 已非活行（并发变更），幂等跳过
+	}
+	if row.CompletedAt > 0 {
+		if _, err := s.storeRestorer.DeleteWithBackup(ctx, id); err != nil {
+			return fmt.Errorf("置换当前版本(id=%d) 失败: %w", id, err)
+		}
+		return nil
+	}
+	if err := s.storeRestorer.SoftDeleteAndDiscardFile(ctx, id); err != nil {
+		return fmt.Errorf("置换未完成占位行(id=%d) 失败: %w", id, err)
 	}
 	return nil
 }

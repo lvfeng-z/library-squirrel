@@ -23,11 +23,12 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 | `ListByWorkId(workId)` | 查询作品关联的资源列表 |
 | `MergeResource(resourceId)` | 异步启动合并（立即返回，进度与结果经 merge-events 事件推送） |
 | `MergeCancel(resourceId)` | 取消指定 Resource 的进行中合并（无则 no-op） |
+| `RecomputeResourceComplete(resourceId)` | 完整度共享重算（活行 store 角色计数→三态持久化；下载完成/合并/回收站复原置换三方共用，读路径不抛错） |
 
 ## 核心概念
 
 - **Resource 实体字段**：`WorkID` / `TaskID`（所属作品 / 产生它的任务）、`ResourceComplete`（完整度三态：0=未校验/1=完整/2=不完整，`sql.NullInt64`）、`SuggestName`（建议文件名）。Resource 不直接持有 store 外键。
-- **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`StoreSeq`（同 role 内 store 序号，路径消歧与续传身份化用）；作品软删除期间关联行原地保留（复原零重建），彻底删除时随级联物理清理（`DeleteByResourceIds`）。
+- **resource_store 关联表**：1 Resource 挂 N typed store，每行含 `StoreType`（业务角色）、`Generation`（生成方式：downloaded 可续传 / derived 一次性）、`StoreID`（→ persistent_store）、`StoreSeq`（同 role 内 store 序号，路径消歧与续传身份化用）；作品软删除期间关联行原地保留（复原零重建），彻底删除时随级联物理清理（`DeleteByResourceIds`）。**关联保留形态**：store 行软删（替换/merge 残留、外部裁决失效）时其关联行保留——每挂载键 (resource_id, store_type, store_seq) 呈「活行 0..1 + 死行 0..N（按 deleted_at 代次）」；本模块消费面（GetByType/CountAliveTypesByResourceId/DeleteByResourceIdAndTypes）与 DTO 组装（NewResourceFullDTO 经 storeMap 命中过滤）均按行活性过滤。
 - **StoreType 开放枚举**（`entity/resource_store.go`，别名 SDK contract 包）：`image`（主资源）、`document`（图文文档）、`thumbnail`（缩略图）、`videoTrack`（视频轨）、`audioTrack`（音频轨）、`videoMain`（视频可播放主体：本地封装原文件或分离流合并产物）、`audioMain`（音频可播放主体）。新增类型只加常量、不改表结构；backup/restore/软删按 store 集合遍历，对新类型透明（videoMain 自动被覆盖，零改）。
 
 ## 合并编排（MergeService）
@@ -38,14 +39,14 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 - **流程**（goroutine 内）：取 videoTrack/audioTrack store → 调 `merge.FFmpegMuxer.MergeRemux`（带进度回调）→ 落产物 PersistentStore(videoMain)（路径由 `persistentStore.BuildVariantPath` 从源视频轨 FilePath 推导）→ 事务挂 `resource_store`(videoMain)。
 - **进度与完成**：ffmpeg stderr 的 `-progress` 输出解析为百分比，经 `MergeEventEmitter.PushProgress` 推前端；终态（成功 mergedStoreId / 失败 errMsg）经 `PushComplete` 推送。前端 useMergeProgress 组合式消费（complete 为权威终态，忽略迟到 progress 防乱序闪烁）。
 - **取消**：`MergeCancel` 调 job 的 ctx.cancel，杀 ffmpeg 子进程（`exec.CommandContext`）；取消在 MergeRemux 阶段生效，落盘/overwrite 仅成功路径执行，故不误删原轨。
-- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、删原轨道 store+文件）。
-- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
+- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、原轨道 store+文件转入回收站——经 `DeleteWithBackup` 软删带备份，可经回收站文件条目复原置换回滚，TTL 到期自动清理）。
+- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，含 DeleteWithBackup）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
 - **事务**：挂 resource_store 走 dbTransactorAdapter（tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；挂载失败补偿删产物 store。
 
 ## 依赖关系
 
 - 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）
-- 被依赖：**work**（ResourceUpdater）、**backup**（StoreResourceProvider / ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品 store 行角色集合）
+- 被依赖：**work**（ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品**活行** store 角色集合，软删残留代不算；`RecomputeResourceComplete`——完整度共享重算）、**recycleBin**（`RecomputeResourceComplete`——复原置换后重算）、**merge**（由本模块 MergeService 编排）
 
 ## 关键设计
 

@@ -100,18 +100,71 @@ func (e *fakeExec) Resume(ctx context.Context, param *sdkdto.TaskResumeParam) ([
 	return nil, nil, fmt.Errorf("测试桩:不进入续传")
 }
 
-// fakeBackupOrchestrator 备份编排器桩:记录备份调用的板块参数
-type fakeBackupOrchestrator struct {
-	calls [][]string
+// fakeResourceReader 资源查询桩（替换软删链取作品资源）
+type fakeResourceReader struct {
+	resources []*entity.Resource
 }
 
-func (b *fakeBackupOrchestrator) BackupStores(ctx context.Context, workId int64, storeTypes ...string) []*StoreBackupItem {
-	b.calls = append(b.calls, storeTypes)
+func (f *fakeResourceReader) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error) {
+	return f.resources, nil
+}
+
+func (f *fakeResourceReader) GetById(ctx context.Context, id int64) (*entity.Resource, error) {
+	return nil, nil
+}
+
+// fakeResourceStoreReader 关联查询桩（ListByResourceIds 供替换软删/回滚派生）
+type fakeResourceStoreReader struct {
+	assocs []*entity.ResourceStore
+}
+
+func (f *fakeResourceStoreReader) ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error) {
+	return f.assocs, nil
+}
+
+func (f *fakeResourceStoreReader) ListByResourceIds(ctx context.Context, resourceIds []int64) ([]*entity.ResourceStore, error) {
+	return f.assocs, nil
+}
+
+// fakeStoreBackupReader store 行含删读取桩（软删判活与回滚派生共用）
+type fakeStoreBackupReader struct {
+	rows        []*entity.PersistentStore
+	restoredIds []int64
+}
+
+func (f *fakeStoreBackupReader) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity.PersistentStore {
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	result := make([]*entity.PersistentStore, 0, len(f.rows))
+	for _, row := range f.rows {
+		if want[row.GetID()] {
+			result = append(result, row)
+		}
+	}
+	return result
+}
+
+func (f *fakeStoreBackupReader) RestoreByIds(ctx context.Context, ids []int64) error {
+	f.restoredIds = append(f.restoredIds, ids...)
 	return nil
 }
 
-func (b *fakeBackupOrchestrator) RestoreAllStores(ctx context.Context, items []*StoreBackupItem) (int, int) {
-	return 0, 0
+// fakeStoreReplacer 替换软删桩：记录软删调用（备份软删/废弃软删分流）
+type fakeStoreReplacer struct {
+	backupIds    []int64
+	discardedIds []int64
+}
+
+func (f *fakeStoreReplacer) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+	f.backupIds = append(f.backupIds, id)
+	return 0, nil
+}
+
+func (f *fakeStoreReplacer) SoftDeleteAndDiscardFile(ctx context.Context, id int64) error {
+	f.discardedIds = append(f.discardedIds, id)
+	return nil
 }
 
 // stubWorkDirProvider 工作目录桩
@@ -131,8 +184,9 @@ func (s *fakeWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task,
 }
 
 // newRoleGateTask 构造进入 runSectionCombo 查重段的 ManagedTask(不启动 actor)。
-// 门槛后各段依赖(备份/插件执行器)注入桩:Start 桩固定报错,不弹窗用例在下载前终止
-func newRoleGateTask(taskId int64, mode runMode, checker *fakeWorkChecker, roles *fakeRoleChecker, pusher *fakePusher) *ManagedTask {
+// 门槛后各段依赖(替换软删/插件执行器)注入桩:Start 桩固定报错,不弹窗用例在下载前终止。
+// 返回替换链桩供用例预置资源图与断言
+func newRoleGateTask(taskId int64, mode runMode, checker *fakeWorkChecker, roles *fakeRoleChecker, pusher *fakePusher) (*ManagedTask, *fakeResourceReader, *fakeResourceStoreReader, *fakeStoreBackupReader, *fakeStoreReplacer) {
 	m := newTestManagedTask()
 	m.taskId = taskId
 	m.task.TaskName = sql.NullString{String: "t", Valid: true}
@@ -140,17 +194,24 @@ func newRoleGateTask(taskId int64, mode runMode, checker *fakeWorkChecker, roles
 	m.task.SiteWorkID = sql.NullString{String: "sw1", Valid: true}
 	m.runMode = mode
 	m.pluginExec = &fakeExec{}
+	resReader := &fakeResourceReader{}
+	rsReader := &fakeResourceStoreReader{}
+	backupReader := &fakeStoreBackupReader{}
+	replacer := &fakeStoreReplacer{}
 	// 角色查询器为 nil 时接口字段保持未设置(类型化 nil 指针赋给接口会令接口非 nil,走进空接收者调用)
 	m.deps = &TaskDeps{
-		WorkChecker:             checker,
-		Pusher:                  pusher,
-		WorkDirProvider:         stubWorkDirProvider{dir: "E:/lib"},
-		StoreBackupOrchestrator: &fakeBackupOrchestrator{},
+		WorkChecker:         checker,
+		Pusher:              pusher,
+		WorkDirProvider:     stubWorkDirProvider{dir: "E:/lib"},
+		ResourceReader:      resReader,
+		ResourceStoreReader: rsReader,
+		StoreBackupReader:   backupReader,
+		StoreReplacer:       replacer,
 	}
 	if roles != nil {
 		m.deps.WorkStoreRoleChecker = roles
 	}
-	return m
+	return m, resReader, rsReader, backupReader, replacer
 }
 
 // newExistingWork 预置已有作品
@@ -268,7 +329,7 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 				roles = &fakeRoleChecker{sets: sets, err: tc.roleErr}
 			}
 
-			m := newRoleGateTask(300, runMode{storeRoles: tc.roles, fetchStores: true}, checker, roles, pusher)
+			m, _, _, _, _ := newRoleGateTask(300, runMode{storeRoles: tc.roles, fetchStores: true}, checker, roles, pusher)
 
 			pushed := runDuplicateGate(t, m, pusher)
 			if pushed != tc.wantPush {
@@ -307,16 +368,31 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 }
 
 // TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId 空交集不弹窗但视为替换:
-// 定位到已有作品(workId 置位、isReplace=true)并按所选板块发起备份
+// 定位到已有作品(workId 置位、isReplace=true)并按所选板块前置软删旧 store
 func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	existing := newExistingWork(500)
 	roles := &fakeRoleChecker{sets: map[int64]map[string]struct{}{
 		500: {entity.StoreTypeImage: {}},
 	}}
-	m := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
+	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
 		&fakeWorkChecker{existing: existing}, roles, &fakePusher{})
-	backup := m.deps.StoreBackupOrchestrator.(*fakeBackupOrchestrator)
 	pusher := m.deps.Pusher.(*fakePusher)
+	// 预置资源图：作品 500 → 资源 700 → thumbnail 关联(store 800，已完成活行)
+	res := entity.NewResource()
+	res.ID = 700
+	res.WorkID = 500
+	resReader.resources = []*entity.Resource{res}
+	assoc := entity.NewResourceStore()
+	assoc.ID = 1
+	assoc.ResourceID = 700
+	assoc.StoreType = entity.StoreTypeThumbnail
+	assoc.StoreID = 800
+	assoc.StoreSeq = 0
+	rsReader.assocs = []*entity.ResourceStore{assoc}
+	storeRow := entity.NewPersistentStore()
+	storeRow.SetID(800)
+	storeRow.CompletedAt = 1
+	backupReader.rows = []*entity.PersistentStore{storeRow}
 
 	pushed := runDuplicateGate(t, m, pusher)
 	if pushed {
@@ -326,8 +402,11 @@ func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 		t.Fatalf("空交集应定位到已有作品并视为替换(existingWorkId=%d workId=%d isReplace=%v)",
 			m.existingWorkId, m.workId, m.isReplace)
 	}
-	if len(backup.calls) != 1 || len(backup.calls[0]) != 1 || backup.calls[0][0] != entity.StoreTypeThumbnail {
-		t.Fatalf("替换场景应按所选板块备份一次(thumbnail), 实际 %v", backup.calls)
+	if len(replacer.backupIds) != 1 || replacer.backupIds[0] != 800 {
+		t.Fatalf("替换场景应按所选板块前置软删旧 store(800), 实际 %v", replacer.backupIds)
+	}
+	if len(replacer.discardedIds) != 0 {
+		t.Fatalf("已完成行不应走废弃分支, 实际 %v", replacer.discardedIds)
 	}
 }
 
@@ -336,7 +415,7 @@ func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 func TestDuplicateGate_InfoOnlySkipsCheck(t *testing.T) {
 	checker := &fakeWorkChecker{existing: newExistingWork(500)}
 	pusher := &fakePusher{}
-	m := newRoleGateTask(300, runMode{workInfo: true, fetchStores: false}, checker, nil, pusher)
+	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, fetchStores: false}, checker, nil, pusher)
 	m.deps.WorkInfoSaver = &fakeWorkInfoSaver{savedWorkId: 100}
 
 	_ = m.runSectionCombo()

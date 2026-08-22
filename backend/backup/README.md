@@ -2,13 +2,13 @@
 
 ## 一句话职责
 
-纯文件仓库：将文件收入 `backup/YYYY/MM/DD/` 保管并维护保管清单，支持按清单行 ID 取回与清理。核心是 `StoreBackupOrchestrator`——在资源替换场景下，一站式备份并还原作品 Resource 的全部 PersistentStore（还原目标由其内存清单快照承载）。
+纯文件仓库：将文件收入 `backup/YYYY/MM/DD/` 保管并维护保管清单，支持按清单行 ID 取回与清理。
 
 ## 边界
 
 - **纯保管定位（2026-08-20 纯化裁决）**：backup 是领域无关能力包（MODULE_BOUNDARY_PURITY），表结构**只记保管位置与时间**（file_name/file_path/workdir），**禁止任何来源/归属信息**（曾有的 source_type/source_id/original_* 五列已删列退役）。来源关联一律内嵌发起方业务行：`persistent_store.backup_id`、`plugin.BackupID`（引用保管清单行 ID）。
-- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录（行内 `backup_id` 引用备份）；backup 管保管副本与清单。persistentStore 经其自定义的 `FileMover` 接口消费 backup（app 装配注入），`HardDelete(id, backup=true)`（物理删除联动留档）与 `DeleteWithBackup(id)`（作品软删除链的文件侧：移文件入 backup、行内写 backup_id 并软删）都经此移动文件。
-- 与 **StoreBackupOrchestrator**：Service 提供单文件保管/取回/清理；Orchestrator 编排"作品级"的多 Store 批量备份 / 还原（板块隔离）。
+- 与 **persistentStore**：persistentStore 管源资源文件与 DB 记录（行内 `backup_id` 引用备份）；backup 管保管副本与清单。persistentStore 经其自定义的 `FileMover` 接口消费 backup（app 装配注入），`HardDelete(id, backup=true)`（物理删除联动留档）与 `DeleteWithBackup(id)`（软删链的文件侧：移文件入 backup、行内写 backup_id 并软删）都经此移动文件。
+- 替换/板块重执行的**作品级多 store 软删与回滚编排归发起方 taskManager**（ORCHESTRATION_BY_CALLER）：经 TaskDeps 持久 StoreReplacer/StoreBackupReader/BackupFileRestorer 组合本模块与 persistentStore 能力自行串联；本模块不驻留业务编排器（曾有的 `StoreBackupOrchestrator` 随替换链软删化退役——内存清单快照形态被「软删行本身即持久还原点」取代）。
 
 ## 对外接口（Service）
 
@@ -24,23 +24,19 @@
 | `ListAllIDs()` | 全量投影清单行 ID（实现 backupGovernance.BackupCatalog：反向现存集） |
 | `PageBackups(pageNumber, pageSize, includeIDs, excludeIDs)` | 分页查保管清单（create_time 倒序；实现 backupGovernance.BackupCatalog：备份管理面板清单分页。ID 集过滤，引用态语义由治理方折算，本模块只做纯过滤——大集分块避 SQLite 参数上限） |
 
-> 无 Wails Handler（前端零消费，已随纯化退役）。作品 store 的批量备份 / 还原由 taskManager（替换 / 板块重执行场景）经 TaskDeps 持有的 `StoreBackupOrchestrator` 调用。无主备份的治理（双向对账/清理调度）由 backupGovernance 编排，本模块只提供目录查询面与删除能力。
+> 无 Wails Handler（前端零消费，已随纯化退役）。无主备份的治理（双向对账/清理调度）由 backupGovernance 编排，本模块只提供目录查询面与删除能力。
 
 ## 核心概念
 
 - **保管清单行**：backup 表行 = 一份被保管的文件（位置 + 时间），无来源信息；被业务行引用（backup_id）即为有主，无引用即为无主（backupGovernance 双向对账的治理对象：无主且超保留期→清理，悬空引用→清列）。
 - **RestoreFile**：从备份绝对路径还原文件到目标绝对路径（存在则覆盖、跨盘回退复制）；目标在 store/ 监控白名单内的 fsmonitor 操作抑制由调用方负责（抑制键为相对路径，与绝对路径不同构）。
-- **StoreBackupOrchestrator**：封装作品 Resource 全部 PersistentStore 的一站式备份和还原。
-  - `BackupStores(workId, types...)`：按 StoreType 板块隔离备份（如仅资源文件、不触及缩略图）；删行前对 file_path/file_name 做内存快照存入 `StoreBackupItem`（物理删行后行内信息无处可查，还原目标由内存清单承载）。
-  - `RestoreAllStores(items) (restored, skipped)`：按内存快照路径还原；`BackupID<=0`（备份未成功）或快照缺失的条目计入 `skipped` 并告警。还原成功后在各 `StoreBackupItem.NewStoreID` 回填新 store ID，供调用方重挂 `resource_store`——**backup 只还原文件、不感知 resource_store**。
 - **StoreType**：标识 Resource 上不同类型的 Store 字段（资源、缩略图等），新增字段时追加常量。
 
 ## 依赖关系
 
-- 依赖：persistentStore（StoreDeleter / StoreImporter）、resource（StoreResourceProvider）
-- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（StoreBackupOrchestrator：替换 / 板块重执行的批量备份还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）、backupGovernance（BackupCatalog：无主对账的清单目录面）
+- 依赖：无（纯文件能力，不依赖其他业务模块）
+- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（BackupFileRestorer：替换失败回滚的文件还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）、backupGovernance（BackupCatalog：无主对账的清单目录面）
 
 ## 关键设计
 
 - **备份时重命名释放占用**：备份原文件前先重命名，快速释放原名称占用，再写入新文件。
-- **板块隔离**：BackupStores 按 StoreType 选择性备份，支持板块重执行只备份相关 store。

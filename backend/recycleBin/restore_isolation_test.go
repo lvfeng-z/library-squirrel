@@ -34,6 +34,9 @@ func (m *mockWorkRestorer) RestoreWorkStores(ctx context.Context, workId int64) 
 func (m *mockWorkRestorer) ListWorkStoresIncludeDeleted(ctx context.Context, workId int64) []*domain.PersistentStore {
 	return m.storesByWork[workId]
 }
+func (m *mockWorkRestorer) ListRevivableWorkStores(ctx context.Context, workId int64) []*domain.PersistentStore {
+	return m.storesByWork[workId]
+}
 func (m *mockWorkRestorer) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error) {
 	return nil, nil
 }
@@ -80,7 +83,7 @@ func TestRestoreWorkFilesGenerationIsolation(t *testing.T) {
 		2: {newRow(202)},
 	}}
 	reader := &recordingBackupReader{}
-	svc := NewService(restorer, reader, nil, nil, nil, nil, func() string { return t.TempDir() })
+	svc := NewService(restorer, reader, nil, nil, nil, nil, nil, nil, func() string { return t.TempDir() })
 
 	if err := svc.restoreWorkFiles(context.Background(), 1); err != nil {
 		t.Fatalf("复原作品 1 失败: %v", err)

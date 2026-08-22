@@ -33,3 +33,12 @@ type RecycleStoreDTO struct {
 	// ExpireDaysLeft 距 TTL 自动清理的剩余整天数（向上取整，负值归 0）；自动清理未启用时为 null
 	ExpireDaysLeft *int `json:"expireDaysLeft"`
 }
+
+// StoreMountDTO 单个 store 行的挂载身份（resource_store 关联行 + 所属作品活性；无关联 ResourceId=0）。
+// 复原置换链用：圈定同键活行（当前代）与校验挂载可达
+type StoreMountDTO struct {
+	ResourceId int64  `json:"resourceId"` // 所属 Resource ID（挂载链）
+	Role       string `json:"role"`       // store_type（挂载键维度之一）
+	Seq        int    `json:"seq"`        // store_seq（挂载键维度之一）
+	WorkAlive  bool   `json:"workAlive"`  // 所属作品是否活行
+}

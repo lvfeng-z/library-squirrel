@@ -198,6 +198,9 @@ func TestGetBackupStats(t *testing.T) {
 	softDeleteStoreWithRef(t, db, store.GetID(), referenced.GetID())
 	expiredOrphan := makeBackup(t, backupSvc, db, workDir, 8) // 无主超期 → 入圈定
 	freshOrphan := makeBackup(t, backupSvc, db, workDir, 0)   // 无主未超期 → 不入圈定
+	// 统计的行圈定按 create_time < now 严格比较：未回拨时间的 freshOrphan 与查询同毫秒时会被
+	// 误排除（内存库操作快于 1ms 时偶发总量少一行），垫 2ms 保证其落入圈定窗口
+	time.Sleep(2 * time.Millisecond)
 
 	stats, err := svc.GetBackupStats(ctx)
 	if err != nil {

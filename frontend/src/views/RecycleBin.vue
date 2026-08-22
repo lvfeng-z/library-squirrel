@@ -456,6 +456,35 @@ async function purgeStore(item: RecycleStoreDTO) {
     }
   }
 }
+// 复原按钮禁用原因（不可复原条目的 tooltip 说明）
+function storeRestoreDisabledReason(item: RecycleStoreDTO): string {
+  if (!item.hasBackup) {
+    return '该条目无备份（已失效或备份缺失），不可复原'
+  }
+  return '该条目所属作品不可达（已删除或挂载缺失），不可复原'
+}
+// 复原文件条目（版本回滚置换：备份还原为当前版本，当前版本转入回收站）
+async function restoreStore(item: RecycleStoreDTO) {
+  try {
+    await ElMessageBox.confirm(
+      `将把该版本还原为当前版本，当前生效版本会转入回收站（可再复原），是否继续？\n${item.filePath}`,
+      '复原文件',
+      {
+        confirmButtonText: '复原',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await recycleBinApi.recycleBinRestoreStore(item.id)
+    ElMessage.success('复原成功')
+    await storeSearchTable.value.doSearch()
+  } catch (e) {
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    if (e instanceof Error) {
+      ElMessage.error(e.message)
+    }
+  }
+}
 </script>
 
 <template>
@@ -574,7 +603,7 @@ async function purgeStore(item: RecycleStoreDTO) {
               :selectable="false"
               :multi-select="false"
               :custom-operation-button="true"
-              :operation-width="110"
+              :operation-width="160"
             >
               <template #toolbarMain>
                 <div class="recycle-store-filter">
@@ -633,6 +662,19 @@ async function purgeStore(item: RecycleStoreDTO) {
                 </div>
               </template>
               <template #customOperations="{ row }">
+                <el-tooltip
+                  :disabled="(row as RecycleStoreDTO).canRestore"
+                  :content="storeRestoreDisabledReason(row as RecycleStoreDTO)"
+                  placement="top"
+                >
+                  <span class="recycle-store-restore-wrap">
+                    <el-button
+                      size="small"
+                      :disabled="!(row as RecycleStoreDTO).canRestore"
+                      @click="restoreStore(row as RecycleStoreDTO)"
+                    >复原</el-button>
+                  </span>
+                </el-tooltip>
                 <el-button size="small" type="danger" class="tone-fail" @click="purgeStore(row as RecycleStoreDTO)">彻底删除</el-button>
               </template>
             </search-table>
@@ -717,8 +759,7 @@ async function purgeStore(item: RecycleStoreDTO) {
 }
 
 /* 文件 tab 工具栏筛选区：自由折行 */
-.recycle-store-filter {
-  display: flex;
+.recycle-store-filter {  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -733,5 +774,11 @@ async function purgeStore(item: RecycleStoreDTO) {
 .recycle-store-filter-select {
   width: 120px;
   flex-shrink: 0;
+}
+
+/* 复原按钮外包裹：禁用态按钮不触发鼠标事件，tooltip 须挂在外层元素上 */
+.recycle-store-restore-wrap {
+  display: inline-flex;
+  margin-right: 8px;
 }
 </style>

@@ -14,11 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util/filename"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -186,16 +186,43 @@ type ResourceReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
-// StoreBackupItem 单个 Store 的备份条目（由 backup 包定义具体实现，此处仅引用类型）
-type StoreBackupItem = backup.StoreBackupItem
+// WorkLivenessReader 作品活行查询接口（失败还原链守卫：作品已软删则跳过回滚）
+type WorkLivenessReader interface {
+	GetById(ctx context.Context, id int64) (*entity.Work, error)
+}
 
-// StoreBackupOrchestrator 资源存储备份编排器接口
-// 封装替换场景下作品 Resource 指定 store_type 的备份和还原（板块隔离：按需只备份指定类型）
-type StoreBackupOrchestrator interface {
-	// BackupStores 备份作品 Resource 指定 store_type 的 Store，返回备份清单
-	BackupStores(ctx context.Context, workId int64, storeTypes ...string) []*StoreBackupItem
-	// RestoreAllStores 从备份清单还原所有 Store，返回 (restored, skipped)
-	RestoreAllStores(ctx context.Context, items []*StoreBackupItem) (restored, skipped int)
+// StoreReplacer 替换链 store 软删能力（由 persistentStore.Service 实现）
+type StoreReplacer interface {
+	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）
+	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
+	// SoftDeleteAndDiscardFile 软删记录并废弃其文件（未完成行分支：partial 文件无复原价值不入备份）
+	SoftDeleteAndDiscardFile(ctx context.Context, id int64) error
+}
+
+// StoreBackupReader store 行含删读取与复活（由 persistentStore.Service 实现）
+type StoreBackupReader interface {
+	// ListByIdsIncludeDeleted 按 ID 集合查记录行（含已删行；行内 backup_id/file_path/deleted_at 供失败还原派生）
+	ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity.PersistentStore
+	// RestoreByIds 批量复活记录（清软删标志与 backup_id；文件还原回 store/ 后调用）
+	RestoreByIds(ctx context.Context, ids []int64) error
+}
+
+// BackupFileRestorer 备份文件还原能力（由 backup.Service 实现）
+type BackupFileRestorer interface {
+	// GetById 根据 ID 获取备份保管清单行
+	GetById(ctx context.Context, id int64) (*entity.Backup, error)
+	// GetBackupPath 获取备份文件的绝对路径
+	GetBackupPath(backup *entity.Backup) string
+	// RestoreFile 从备份路径还原文件到目标绝对路径
+	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
+	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍）
+	DeleteBackup(ctx context.Context, id int64) error
+}
+
+// ResourceRecomputer 资源完整度重算（由 resource.Service 实现；活行 store 角色计数，
+// 关联保留形态下软删行关联不计入）
+type ResourceRecomputer interface {
+	RecomputeResourceComplete(ctx context.Context, resourceId int64)
 }
 
 // StoreStreamer 创建存储记录并返回 StoreWriter
@@ -235,12 +262,17 @@ type StoreReader interface {
 // ResourceStoreReader resource_store 关联查询接口(多轨续传按 role 遍历 store)
 type ResourceStoreReader interface {
 	ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error)
+	// ListByResourceIds 批量查询多个 Resource 的关联行（替换链软删/失败还原派生用）
+	ListByResourceIds(ctx context.Context, resourceIds []int64) ([]*entity.ResourceStore, error)
 }
 
 // ResourceStoreWriter resource_store 关联写入接口(saveResource 多 store 挂载)
 type ResourceStoreWriter interface {
 	CreateBatch(ctx context.Context, stores []*entity.ResourceStore) error
+	// DeleteByResourceIdAndTypes 删除指定 Resource 下、store_type 属于给定集合且指向活行 store 的关联
 	DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error
+	// DeleteByStoreIds 按 store ID 集合物理删除关联行（失败还原清理本次新建 store 的关联）
+	DeleteByStoreIds(ctx context.Context, storeIds []int64) error
 }
 
 // WorkStoreRoleChecker 已有作品 store 行角色查询接口(覆盖确认行级判定用:任务板块选择与已有行求交)
@@ -252,25 +284,29 @@ type WorkStoreRoleChecker interface {
 // TaskDeps ManagedTask 的共享依赖集合
 // 将 NewManager 和 NewManagedTask 的大量参数收敛为一个结构体，新增依赖只需改此处
 type TaskDeps struct {
-	WorkInfoSaver           WorkInfoSaver
-	WorkMetaLoader          WorkMetaLoader
-	ResourceSaver           ResourceSaver
-	WorkDirProvider         WorkDirProvider
-	FileNameFormatProvider  FileNameFormatProvider
-	WorkChecker             WorkChecker
-	ResourceReader          ResourceReader
-	StoreBackupOrchestrator StoreBackupOrchestrator
-	ResourceUpdater         ResourceSaver // 替换场景更新 Resource 的 Store 字段
-	Pusher                  TaskProgressPusher
-	StoreStreamer           StoreStreamer
-	StoreReader             StoreReader
-	ResourceStoreReader     ResourceStoreReader
-	ResourceStoreWriter     ResourceStoreWriter
-	WorkStoreRoleChecker    WorkStoreRoleChecker
-	Transactor              Transactor
-	PendingResourceUpdater  PendingResourceUpdater
-	StoreFileCleaner        StoreFileCleaner
-	StoreDeleter            StoreDeleter
+	WorkInfoSaver          WorkInfoSaver
+	WorkMetaLoader         WorkMetaLoader
+	ResourceSaver          ResourceSaver
+	WorkDirProvider        WorkDirProvider
+	FileNameFormatProvider FileNameFormatProvider
+	WorkChecker            WorkChecker
+	ResourceReader         ResourceReader
+	WorkLivenessReader     WorkLivenessReader
+	StoreReplacer          StoreReplacer
+	StoreBackupReader      StoreBackupReader
+	BackupFileRestorer     BackupFileRestorer
+	ResourceUpdater        ResourceSaver // 替换场景更新 Resource 的 Store 字段
+	Pusher                 TaskProgressPusher
+	StoreStreamer          StoreStreamer
+	StoreReader            StoreReader
+	ResourceStoreReader    ResourceStoreReader
+	ResourceStoreWriter    ResourceStoreWriter
+	WorkStoreRoleChecker   WorkStoreRoleChecker
+	ResourceRecomputer     ResourceRecomputer
+	Transactor             Transactor
+	PendingResourceUpdater PendingResourceUpdater
+	StoreFileCleaner       StoreFileCleaner
+	StoreDeleter           StoreDeleter
 }
 
 // ==== 多流控制器 ====
@@ -376,9 +412,7 @@ type ManagedTask struct {
 	// 共享依赖
 	deps *TaskDeps
 
-	// 备份清单（用于任务失败时还原）
-	storeBackupItems []*StoreBackupItem
-	isReplace        bool
+	isReplace bool // 替换场景（已有作品上重执行资源板块），前置软删旧 store 的决策位
 	// 跳过重复检查（替换确认后的第二次 run）
 	skipDuplicateCheck bool
 	// 用户在 ConfirmReplace 选择跳过：本会话视为终态参与父聚合（AllChildrenTerminal），不持久化、崩溃重启当作未跳过；仅对本次 Start/Retry 执行有效，Resume 不读
@@ -767,25 +801,10 @@ func (m *ManagedTask) Stop() {
 }
 
 // run 核心执行逻辑入口，按 runMode 分流到对应板块
+// 失败回滚（复活被软删的旧 store 行）挂在 setFailed 单点：Stop 的 setFailed 在 run() 返回后的
+// pendingCmds 循环里才执行，run() 出口的 defer 检查不到 Failed 态
 func (m *ManagedTask) run() runResult {
-	// 最先注册，最后执行：任务失败时还原已备份的 Store
-	// 使用 context.Background() 而非 m.ctx，确保任务被停止（context 已取消）后还原操作仍能正常执行
-	defer func() {
-		if m.GetState() == TaskStateFailed && len(m.storeBackupItems) > 0 {
-			logger.Log.Infof("[TaskManager] 任务 %d 失败，开始还原 %d 个已备份 Store", m.taskId, len(m.storeBackupItems))
-			// 先清理本次 startDownload 新建的 store：回滚本次下载产物到备份点，
-			// 释放其占用的 file_path，否则还原旧 store 时 INSERT 会触发 UNIQUE 冲突
-			m.cleanupCreatedStores(context.Background())
-			_, skipped := m.deps.StoreBackupOrchestrator.RestoreAllStores(context.Background(), m.storeBackupItems)
-			// 还原后重挂 resource_store 到还原的 store（RestoreAllStores 仅还原文件、不感知 resource_store）
-			m.remountRestoredStores(context.Background())
-			if skipped > 0 {
-				logger.Log.Warnf("[TaskManager] 任务 %d 有 %d 个旧资源因备份缺失无法还原", m.taskId, skipped)
-			}
-			m.storeBackupItems = nil
-		}
-	}()
-	// panic recovery：后注册，先执行
+	// panic recovery
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d panic: %v", m.taskId, r)
@@ -873,10 +892,15 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
 	}
 
-	// 替换场景:备份所选板块对应的旧 store。
-	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就备份(备份→生成→失败还原,统一替换语义)。
+	// 替换场景:软删所选板块对应的旧 store。
+	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就软删(软删→生成→失败回滚,统一替换语义);
+	// 已完成行移文件入 backup 并写行内 backup_id(同生共死),未完成行废弃文件,历史残留死行不动。
+	// 软删行入回收站文件条目由 TTL 收尾,resource_store 关联保留(失败回滚复活即挂载回位)
 	if m.isReplace && m.runMode.hasAnyStore() {
-		m.storeBackupItems = m.deps.StoreBackupOrchestrator.BackupStores(m.runCtx, m.workId, m.runMode.storeRoles...)
+		if err := m.softDeleteReplaceTargets(m.runCtx, m.workId, m.runMode.storeRoles); err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d 替换前置软删失败: %v", m.taskId, err)
+			return m.comboFail(fmt.Sprintf("替换前置软删旧资源失败: %v", err))
+		}
 	}
 
 	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
@@ -1087,56 +1111,17 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 	return resourceId, nil
 }
 
-// markResourceComplete 计算资源完整度并持久化(下载完成时调用)。
-// 三态(决策4):0=未校验(未知/未声明 resource_type 或 reader 缺失,不校验)、1=完整(结构校验通过)、
-// 2=不完整(缺角色或超量,前端徽标提示但不阻断打开)。
-// 读路径不抛错;查询异常降级为保持未校验,不阻断任务完成。
+// markResourceComplete 计算资源完整度并持久化(下载完成/续传完成时调用)。
+// 委派共享重算能力（resource.Service）：按活行 store 角色计数——关联保留形态下软删行关联不计入
 func (m *ManagedTask) markResourceComplete(ctx context.Context, resourceId int64) {
-	if resourceId == 0 {
+	if resourceId == 0 || m.deps.ResourceRecomputer == nil {
 		return
 	}
-	resource, err := m.deps.ResourceReader.GetById(ctx, resourceId)
-	if err != nil || resource == nil {
-		logger.Log.Warnf("[TaskManager] 计算资源完整度失败: resourceId=%d err=%v", resourceId, err)
-		return
-	}
-	complete := 0 // 默认未校验
-	if entity.LookupResourceTypeSpec(resource.ResourceType) != nil && m.deps.ResourceStoreReader != nil {
-		storeRows, sErr := m.deps.ResourceStoreReader.ListByResourceId(ctx, resourceId)
-		if sErr != nil {
-			logger.Log.Warnf("[TaskManager] 查询 resource_store 计数失败: resourceId=%d err=%v", resourceId, sErr)
-		} else {
-			counts := make(map[string]int, len(storeRows))
-			for _, s := range storeRows {
-				counts[s.StoreType]++
-			}
-			c, missing, excess := entity.ComputeResourceComplete(resource.ResourceType, counts)
-			complete = c
-			if c == 2 {
-				logger.Log.Infof("[TaskManager] 资源结构不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
-			}
-		}
-	}
-	if resource.ResourceComplete.Valid && resource.ResourceComplete.Int64 == int64(complete) {
-		return // 值未变,跳过写库
-	}
-	resource.ResourceComplete = sql.NullInt64{Int64: int64(complete), Valid: true}
-	if err := m.deps.ResourceUpdater.Updates(ctx, resource); err != nil {
-		logger.Log.Warnf("[TaskManager] 更新 ResourceComplete 失败: resourceId=%d err=%v", resourceId, err)
-	}
+	m.deps.ResourceRecomputer.RecomputeResourceComplete(ctx, resourceId)
 }
 
-// findReplaceResource 替换场景定位已有 Resource(优先备份清单第一个条目,回退 workId 查询)
+// findReplaceResource 替换场景定位已有 Resource(按 workId 查询,取首个)
 func (m *ManagedTask) findReplaceResource(ctx context.Context, workId int64) *entity.Resource {
-	if len(m.storeBackupItems) > 0 {
-		item := m.storeBackupItems[0]
-		existing, err := m.deps.ResourceReader.GetById(ctx, item.ResourceID)
-		if err != nil || existing == nil {
-			logger.Log.Warnf("[TaskManager] 查询已有 Resource(id=%d) 失败: %v", item.ResourceID, err)
-		} else {
-			return existing
-		}
-	}
 	resources, queryErr := m.deps.ResourceReader.ListByWorkId(ctx, workId)
 	if queryErr != nil {
 		logger.Log.Warnf("[TaskManager] 查询作品 %d 资源失败: %v", workId, queryErr)
@@ -1179,6 +1164,33 @@ func (m *ManagedTask) mountResourceStores(ctx context.Context, resourceId int64,
 	return m.deps.ResourceStoreWriter.CreateBatch(ctx, stores)
 }
 
+// filterAliveAssocs 过滤出指向活行 store 的关联（批量判活，无 N+1；行缺失的关联一并剔除）
+func (m *ManagedTask) filterAliveAssocs(ctx context.Context, rows []*entity.ResourceStore) []*entity.ResourceStore {
+	if len(rows) == 0 || m.deps.StoreBackupReader == nil {
+		return rows
+	}
+	ids := make([]int64, 0, len(rows))
+	for _, rs := range rows {
+		if rs.StoreID > 0 {
+			ids = append(ids, rs.StoreID)
+		}
+	}
+	stores := m.deps.StoreBackupReader.ListByIdsIncludeDeleted(ctx, ids)
+	alive := make(map[int64]struct{}, len(stores))
+	for _, st := range stores {
+		if st.DeletedAt == 0 {
+			alive[st.GetID()] = struct{}{}
+		}
+	}
+	result := make([]*entity.ResourceStore, 0, len(rows))
+	for _, rs := range rows {
+		if _, ok := alive[rs.StoreID]; ok {
+			result = append(result, rs)
+		}
+	}
+	return result
+}
+
 // cleanupCreatedStores 清理本次 startDownload 新建的 PersistentStore（记录 + 磁盘文件）
 // 替换场景任务失败、还原旧 store 前调用：释放本次新建 store 占用的 file_path，
 // 否则 RestoreAllStores 还原旧 store 时 INSERT 会触发 UNIQUE 冲突。
@@ -1201,26 +1213,217 @@ func (m *ManagedTask) cleanupCreatedStores(ctx context.Context) {
 	m.streams = nil
 }
 
-// remountRestoredStores 还原旧 store 后，将 resource_store 重挂到还原的 store
-// RestoreAllStores 已在 storeBackupItems 各项回填 NewStoreID；据此重建 resource_store 关联，
-// 否则 resource_store 仍指向已清理的本次新建 store（断裂孤儿）。
-// 复用 mountResourceStores 语义（先删同 role 旧关联再插），resourceId 取本次 saveResource 的产物。
-func (m *ManagedTask) remountRestoredStores(ctx context.Context) {
-	if m.currentResourceId == 0 || len(m.storeBackupItems) == 0 {
+// softDeleteReplaceTargets 替换前置软删：软删作品资源下、所选角色的活行 store（发起方编排）。
+// 已完成行经 DeleteWithBackup 移文件入 backup 并写行内 backup_id（同生共死，失败保全优先报错中断）；
+// 未完成行废弃文件后无备份软删（partial 无复原价值）；已软删的历史残留行跳过。
+// resource_store 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位
+func (m *ManagedTask) softDeleteReplaceTargets(ctx context.Context, workId int64, roles []string) error {
+	resources, err := m.deps.ResourceReader.ListByWorkId(ctx, workId)
+	if err != nil {
+		return fmt.Errorf("查询作品资源失败: %w", err)
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	for _, res := range resources {
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	assocs, err := m.deps.ResourceStoreReader.ListByResourceIds(ctx, resourceIds)
+	if err != nil {
+		return fmt.Errorf("查询资源 store 关联失败: %w", err)
+	}
+	roleSet := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		roleSet[r] = struct{}{}
+	}
+	storeIds := make([]int64, 0, len(assocs))
+	for _, rs := range assocs {
+		if rs.StoreID <= 0 {
+			continue
+		}
+		// 空角色集=默认插件下全量板块
+		if len(roleSet) > 0 {
+			if _, ok := roleSet[rs.StoreType]; !ok {
+				continue
+			}
+		}
+		storeIds = append(storeIds, rs.StoreID)
+	}
+	rows := m.deps.StoreBackupReader.ListByIdsIncludeDeleted(ctx, storeIds)
+	count := 0
+	for _, row := range rows {
+		if row.DeletedAt != 0 {
+			continue // 历史残留代不动
+		}
+		if row.CompletedAt > 0 {
+			if _, err := m.deps.StoreReplacer.DeleteWithBackup(ctx, row.GetID()); err != nil {
+				return fmt.Errorf("软删 store(id=%d) 失败: %w", row.GetID(), err)
+			}
+		} else {
+			if err := m.deps.StoreReplacer.SoftDeleteAndDiscardFile(ctx, row.GetID()); err != nil {
+				return fmt.Errorf("废弃未完成 store(id=%d) 失败: %w", row.GetID(), err)
+			}
+		}
+		count++
+	}
+	logger.Log.Infof("[TaskManager] 任务 %d 替换前置软删完成: %d 个 store 行", m.taskId, count)
+	return nil
+}
+
+// restoreReplaceTargets 失败回滚：复活被替换软删的旧 store 行（数据驱动派生，崩溃重启后同样可派生——
+// 软删行本身即持久还原点）。作品已软删则跳过（两代归回收站作品条目管理）；先清本次新建 store 及其
+// 关联（释放 file_path、摘除断链关联），再按同键最新死代圈定 victim，文件还原回原路径后复活
+func (m *ManagedTask) restoreReplaceTargets(ctx context.Context) {
+	if m.workId <= 0 || m.deps.WorkLivenessReader == nil {
 		return
 	}
-	mounts := make([]pendingMount, 0, len(m.storeBackupItems))
-	for _, item := range m.storeBackupItems {
-		if item.NewStoreID > 0 {
-			mounts = append(mounts, pendingMount{role: item.StoreType, generation: item.Generation, storeId: item.NewStoreID})
+	// 作品活性守卫：作品已软删时两代皆留已删态，归作品条目管理，回滚让位
+	work, err := m.deps.WorkLivenessReader.GetById(ctx, m.workId)
+	if err == nil && work == nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 失败回滚跳过: 作品 %d 已软删，被替换行归回收站作品条目", m.taskId, m.workId)
+		return
+	}
+
+	// 清本次新建 store 的关联（行即将物理删，不摘即断链孤儿混入完整度计数与展示面）
+	if len(m.streams) > 0 {
+		newIds := make([]int64, 0, len(m.streams))
+		for _, s := range m.streams {
+			newIds = append(newIds, s.storeId)
+		}
+		if err := m.deps.ResourceStoreWriter.DeleteByStoreIds(ctx, newIds); err != nil {
+			logger.Log.Warnf("[TaskManager] 任务 %d 清理新建 store 关联失败: %v", m.taskId, err)
 		}
 	}
-	if len(mounts) == 0 {
+	m.cleanupCreatedStores(ctx)
+
+	victims, victimResourceIds := m.deriveReplaceVictims(ctx)
+	if len(victims) == 0 {
 		return
 	}
-	if err := m.mountResourceStores(ctx, m.currentResourceId, mounts); err != nil {
-		logger.Log.Warnf("[TaskManager] 还原后重挂 resource_store 失败: %v", err)
+	logger.Log.Infof("[TaskManager] 任务 %d 失败回滚: 复活 %d 个被替换 store 行", m.taskId, len(victims))
+	reviveIds := make([]int64, 0, len(victims))
+	for _, row := range victims {
+		if row.BackupID > 0 && row.FilePath.Valid {
+			backup, berr := m.deps.BackupFileRestorer.GetById(ctx, row.BackupID)
+			if berr != nil || backup == nil {
+				logger.Log.Warnf("[TaskManager] 任务 %d 查询备份 %d 失败，跳过该行文件还原: %v", m.taskId, row.BackupID, berr)
+			} else {
+				relPath := row.FilePath.String
+				storeRegistry.Suppress(relPath)
+				targetAbs := filepath.Join(m.deps.WorkDirProvider.GetWorkDir(), relPath)
+				rerr := m.deps.BackupFileRestorer.RestoreFile(ctx, m.deps.BackupFileRestorer.GetBackupPath(backup), targetAbs)
+				storeRegistry.Release(relPath)
+				if rerr != nil {
+					logger.Log.Warnf("[TaskManager] 任务 %d 还原 store 文件失败(跳过该行): %v", m.taskId, rerr)
+					continue
+				}
+				if derr := m.deps.BackupFileRestorer.DeleteBackup(ctx, row.BackupID); derr != nil {
+					logger.Log.Warnf("[TaskManager] 任务 %d 清理已还原备份 %d 失败: %v", m.taskId, row.BackupID, derr)
+				}
+			}
+		}
+		// 无备份 victim（未完成行废弃分支）：仅复活，文件缺席交文件监控对账裁决
+		reviveIds = append(reviveIds, row.GetID())
 	}
+	if err := m.deps.StoreBackupReader.RestoreByIds(ctx, reviveIds); err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 复活被替换 store 行失败: %v", m.taskId, err)
+	}
+	// 重算完整度：替换开始时 saveResource 将其重置为未校验，复活旧代后按活行构成刷回回滚前状态
+	for _, resourceId := range victimResourceIds {
+		m.markResourceComplete(ctx, resourceId)
+	}
+}
+
+// replaceVictimKey 替换 victim 派生的挂载键（resource_id + store_type + store_seq，
+// 与多轨续传身份、文件名消歧同维度）
+type replaceVictimKey struct {
+	resourceId int64
+	role       string
+	seq        int
+}
+
+// deriveReplaceVictims 圈定替换 victim：作品资源 × 所选角色，按挂载键取最新死代。
+// 同时返回 victim 涉及的 resource ID 集（回滚后完整度重算用）。活行残留的键跳过——复活会与残留
+// 活行同 file_path 撞部分唯一索引（活行残留仅在新建 store 清理失败的异常态出现）；
+// 非替换任务的派生天然为空（新建作品的资源下无软删行）
+func (m *ManagedTask) deriveReplaceVictims(ctx context.Context) ([]*entity.PersistentStore, []int64) {
+	resources, err := m.deps.ResourceReader.ListByWorkId(ctx, m.workId)
+	if err != nil || len(resources) == 0 {
+		return nil, nil
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	for _, res := range resources {
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	assocs, err := m.deps.ResourceStoreReader.ListByResourceIds(ctx, resourceIds)
+	if err != nil {
+		logger.Log.Warnf("[TaskManager] 任务 %d 回滚派生查询关联失败: %v", m.taskId, err)
+		return nil, nil
+	}
+	roleSet := make(map[string]struct{}, len(m.runMode.storeRoles))
+	for _, r := range m.runMode.storeRoles {
+		roleSet[r] = struct{}{}
+	}
+	storeIds := make([]int64, 0, len(assocs))
+	for _, rs := range assocs {
+		if rs.StoreID <= 0 {
+			continue
+		}
+		if len(roleSet) > 0 {
+			if _, ok := roleSet[rs.StoreType]; !ok {
+				continue
+			}
+		}
+		storeIds = append(storeIds, rs.StoreID)
+	}
+	rows := m.deps.StoreBackupReader.ListByIdsIncludeDeleted(ctx, storeIds)
+	rowById := make(map[int64]*entity.PersistentStore, len(rows))
+	for _, row := range rows {
+		rowById[row.GetID()] = row
+	}
+	type keyState struct {
+		hasLive    bool
+		newestDead *entity.PersistentStore
+	}
+	states := make(map[replaceVictimKey]*keyState)
+	for _, rs := range assocs {
+		if rs.StoreID <= 0 {
+			continue
+		}
+		if len(roleSet) > 0 {
+			if _, ok := roleSet[rs.StoreType]; !ok {
+				continue
+			}
+		}
+		row := rowById[rs.StoreID]
+		if row == nil {
+			continue
+		}
+		key := replaceVictimKey{resourceId: rs.ResourceID, role: rs.StoreType, seq: rs.StoreSeq}
+		state := states[key]
+		if state == nil {
+			state = &keyState{}
+			states[key] = state
+		}
+		if row.DeletedAt == 0 {
+			state.hasLive = true
+			continue
+		}
+		if state.newestDead == nil || row.DeletedAt > state.newestDead.DeletedAt {
+			state.newestDead = row
+		}
+	}
+	victims := make([]*entity.PersistentStore, 0, len(states))
+	victimResourceIds := make([]int64, 0)
+	seenResources := make(map[int64]struct{})
+	for key, state := range states {
+		if !state.hasLive && state.newestDead != nil {
+			victims = append(victims, state.newestDead)
+			if _, ok := seenResources[key.resourceId]; !ok {
+				seenResources[key.resourceId] = struct{}{}
+				victimResourceIds = append(victimResourceIds, key.resourceId)
+			}
+		}
+	}
+	return victims, victimResourceIds
 }
 
 // downloadLoop 多流并发下载循环:每条 spec 一个 goroutine 跑 read→write→累计
@@ -1481,8 +1684,11 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 		logger.Log.Warnf("[TaskManager] 任务 %d 查询 resource_store 失败: %v，降级为完整重新执行", m.taskId, err)
 		return m.run()
 	}
+	// 活性过滤：关联保留形态下软删行（替换 victim/外部裁决失效行）的关联也在列，但死行不是续传对象
+	// （被误判"store 记录丢失"触发整轨重下、身份匹配错位）——按行活性过滤后再进续传判定
+	storeRows = m.filterAliveAssocs(m.runCtx, storeRows)
 	if len(storeRows) == 0 {
-		logger.Log.Warnf("[TaskManager] 任务 %d Resource 无 resource_store 关联，降级为完整重新执行", m.taskId)
+		logger.Log.Warnf("[TaskManager] 任务 %d Resource 无活行 store 关联，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
 
@@ -1713,12 +1919,15 @@ func (m *ManagedTask) setState(state TaskState) {
 // setFailed 设置任务为失败状态，并记录错误信息
 // 终态清空 pending_resource_id：失败的任务不再续传，避免残留的 pending_resource_id
 // 在 work/resource 被外部操作（删除/还原）后指向失效的 resource/store
+// 失败即回滚替换：复活被软删的旧 store 行（数据驱动派生，无 victim 时 no-op）。全部 Failed 置位
+// （含 Stop 在 run() 返回后经 pendingCmds 循环到达的 setFailed、暂停态直接 Stop）都经此单点触发
 func (m *ManagedTask) setFailed(errMsg string) {
 	m.errorMessage = errMsg
 	m.setState(TaskStateFailed)
 	if m.task.PendingResourceID.Valid {
 		m.clearPendingResourceID()
 	}
+	m.restoreReplaceTargets(context.Background())
 }
 
 // Done 返回任务完成信号 channel，任务终态（Finished/Failed）时关闭

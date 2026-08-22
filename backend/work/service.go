@@ -263,8 +263,8 @@ type StoreDeleter interface {
 	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	// ListByIdsIncludeDeleted 按 ID 集合查记录行（含已删行；行内 backup_id 与 file_path 供复原/彻底删除链使用）
 	ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity2.PersistentStore
-	// RestoreWorkStores 批量复活 store 记录（复原链：清软删标志与 backup_id）
-	RestoreWorkStores(ctx context.Context, ids []int64) error
+	// RestoreByIds 批量复活 store 记录（复原链：清软删标志与 backup_id）
+	RestoreByIds(ctx context.Context, ids []int64) error
 }
 
 // ResourceStoreHardDeleter resource_store 物理删除接口（作品彻底删除链级联清理）
@@ -614,7 +614,7 @@ func (s *Service) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]
 	return s.repo.ListDeletedBefore(ctx, expireBefore)
 }
 
-// ListWorkStoresIncludeDeleted 取作品的全部 store 记录行（含已删行；复原/彻底删除链按行内 backup_id 定位备份）
+// ListWorkStoresIncludeDeleted 取作品的全部 store 记录行（含已删行；彻底删除链按行内 backup_id 定位备份）
 func (s *Service) ListWorkStoresIncludeDeleted(ctx context.Context, workId int64) []*entity2.PersistentStore {
 	storeIds, err := s.collectWorkStoreIds(ctx, workId)
 	if err != nil {
@@ -622,6 +622,71 @@ func (s *Service) ListWorkStoresIncludeDeleted(ctx context.Context, workId int64
 		return []*entity2.PersistentStore{}
 	}
 	return s.storeDeleter.ListByIdsIncludeDeleted(ctx, storeIds)
+}
+
+// mountKey 挂载键（resource_id + store_type + store_seq），多轨身份与文件名消歧的同一身份维度
+type mountKey struct {
+	resourceId int64
+	role       string
+	seq        int
+}
+
+// deriveRevivableStores 圈定作品的复活集：按挂载键取最新死代。关联保留形态下同键可有多个软删代
+// （替换/merge 残留、失效前代），无差别复活会令两活行同 file_path 撞部分唯一索引、备份文件还原互相
+// 覆盖；最新死代即该键最后被处置的一代（作品软删链删除的正是删除时的活代），更早代保持死态归
+// 回收站文件条目
+func (s *Service) deriveRevivableStores(ctx context.Context, workId int64) []*entity2.PersistentStore {
+	resources, err := s.resourceDeleter.ListByWorkId(ctx, workId)
+	if err != nil {
+		logger.Log.Warnf("圈定作品 %d 复活集失败(查资源): %v", workId, err)
+		return nil
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	for _, res := range resources {
+		resourceIds = append(resourceIds, res.GetID())
+	}
+	rsStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, resourceIds)
+	storeIdSet := make(map[int64]struct{})
+	for _, rsList := range rsStoreMap {
+		for _, rs := range rsList {
+			if rs.StoreID > 0 {
+				storeIdSet[rs.StoreID] = struct{}{}
+			}
+		}
+	}
+	storeIds := make([]int64, 0, len(storeIdSet))
+	for id := range storeIdSet {
+		storeIds = append(storeIds, id)
+	}
+	rows := s.storeDeleter.ListByIdsIncludeDeleted(ctx, storeIds)
+	rowById := make(map[int64]*entity2.PersistentStore, len(rows))
+	for _, row := range rows {
+		rowById[row.GetID()] = row
+	}
+	newest := make(map[mountKey]*entity2.PersistentStore)
+	for _, rsList := range rsStoreMap {
+		for _, rs := range rsList {
+			row := rowById[rs.StoreID]
+			if row == nil || row.DeletedAt == 0 {
+				continue // 活行与行缺失不进复活集
+			}
+			key := mountKey{resourceId: rs.ResourceID, role: rs.StoreType, seq: rs.StoreSeq}
+			if cur := newest[key]; cur == nil || row.DeletedAt > cur.DeletedAt {
+				newest[key] = row
+			}
+		}
+	}
+	result := make([]*entity2.PersistentStore, 0, len(newest))
+	for _, row := range newest {
+		result = append(result, row)
+	}
+	return result
+}
+
+// ListRevivableWorkStores 取作品的复活集（同键最新死代行；文件还原链按此圈定还原目标，
+// 避免更早死代的备份文件还原到同路径互相覆盖）
+func (s *Service) ListRevivableWorkStores(ctx context.Context, workId int64) []*entity2.PersistentStore {
+	return s.deriveRevivableStores(ctx, workId)
 }
 
 // collectWorkStoreIds 收集作品的全部 store ID（resource→resource_store 链）
@@ -646,13 +711,15 @@ func (s *Service) collectWorkStoreIds(ctx context.Context, workId int64) ([]int6
 	return storeIds, nil
 }
 
-// RestoreWorkStores 复原作品的全部 store 记录（清软删标志；文件还原由 recycleBin 编排先行）
+// RestoreWorkStores 复原作品的 store 记录（复活集=同键最新死代——无差别复活会在双代同路径形态下
+// 撞 file_path 部分唯一索引；文件还原由 recycleBin 编排先行，与其共用同一复活集）
 func (s *Service) RestoreWorkStores(ctx context.Context, workId int64) error {
-	storeIds, err := s.collectWorkStoreIds(ctx, workId)
-	if err != nil {
-		return fmt.Errorf("收集作品 store 失败: %w", err)
+	rows := s.deriveRevivableStores(ctx, workId)
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.GetID())
 	}
-	return s.storeDeleter.RestoreWorkStores(ctx, storeIds)
+	return s.storeDeleter.RestoreByIds(ctx, ids)
 }
 
 // Page 分页查询

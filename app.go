@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -704,6 +705,11 @@ func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int6
 		}
 		ps, err := a.persistentSvc.GetById(ctx, s.StoreID)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 关联指向软删行（替换/merge 残留、失效行）：非本代，跳过继续找活行——
+				// 中断查询会令同键存在活行时插件拿不到路径
+				continue
+			}
 			return "", fmt.Errorf("查询 store %d 失败: %w", s.StoreID, err)
 		}
 		if !ps.FilePath.Valid {
@@ -939,15 +945,18 @@ func (app *App) initAdvancedServices() error {
 		app.SiteAuthorService,
 	)
 
-	// recycleBin 服务（work/search/persistentStore 之后创建：WorkRestorer=app.WorkService、查询链转发
-	// search.Service（作品条目+文件条目）、StoreCleaner=app.PersistentStoreService（文件条目清理）；
-	// 文件还原的 workDir 经设置读取器闭包注入）
+	// recycleBin 服务（work/search/persistentStore/resource 之后创建：WorkRestorer=app.WorkService、
+	// 查询链转发 search.Service（作品条目+文件条目+挂载身份）、StoreCleaner/StoreRestorer=
+	// app.PersistentStoreService（文件条目清理/复原置换）、ResourceRecomputer=app.ResourceService（
+	// 复原置换后重算完整度）；文件还原的 workDir 经设置读取器闭包注入）
 	app.RecycleBinService = recycleBin.NewService(
 		app.WorkService,
 		app.BackupService,
 		app.SearchService,
 		app.SearchService,
 		app.PersistentStoreService,
+		app.PersistentStoreService,
+		app.ResourceService,
 		app.SettingsService,
 		func() string { return app.SettingsService.GetWorkDir() },
 	)
@@ -1028,15 +1037,6 @@ func (app *App) initAdvancedServices() error {
 
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
-	// 创建资源存储备份编排器
-	backupResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
-	storeBackupOrchestrator := backup.NewStoreBackupOrchestrator(
-		app.ResourceService,        // StoreResourceProvider
-		backupResourceStoreRepo,    // StoreResourceStoreReader(resource_store 批量查询)
-		app.PersistentStoreService, // StoreDeleter
-		app.PersistentStoreService, // StoreImporter
-		app.BackupService,          // BackupReader
-	)
 	// resource_store 仓储(taskManager 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
 	taskMgrResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
@@ -1046,25 +1046,29 @@ func (app *App) initAdvancedServices() error {
 		taskManagerPusher,
 		pluginExecFactory,
 		&taskManager.TaskDeps{
-			WorkInfoSaver:           app.WorkService, // 实现 WorkInfoSaver 接口
-			WorkMetaLoader:          app.WorkService, // 实现 WorkMetaLoader 接口(资源板块单独重下时取命名元数据)
-			ResourceSaver:           resourceSaverAdapter,
-			WorkDirProvider:         app.SettingsService,
-			FileNameFormatProvider:  app.SettingsService,
-			WorkChecker:             app.WorkService,     // 实现 WorkChecker 接口
-			ResourceReader:          app.ResourceService, // 实现 ResourceReader 接口
-			StoreBackupOrchestrator: storeBackupOrchestrator,
-			ResourceUpdater:         resourceSaverAdapter, // 实现 ResourceUpdater 接口
-			Pusher:                  taskManagerPusher,
-			StoreStreamer:           app.PersistentStoreService, // 实现 StoreStreamer 接口
-			StoreReader:             app.PersistentStoreService, // 实现 StoreReader 接口
-			ResourceStoreReader:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
-			ResourceStoreWriter:     taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
-			WorkStoreRoleChecker:    app.ResourceService,        // 实现 WorkStoreRoleChecker 接口(覆盖确认行级判定)
-			Transactor:              &dbTransactorAdapter{db: app.db},
-			PendingResourceUpdater:  app.taskRepo,               // 实现 PendingResourceUpdater 接口
-			StoreFileCleaner:        app.PersistentStoreService, // 实现 StoreFileCleaner 接口
-			StoreDeleter:            app.PersistentStoreService, // 实现 StoreDeleter 接口
+			WorkInfoSaver:          app.WorkService, // 实现 WorkInfoSaver 接口
+			WorkMetaLoader:         app.WorkService, // 实现 WorkMetaLoader 接口(资源板块单独重下时取命名元数据)
+			ResourceSaver:          resourceSaverAdapter,
+			WorkDirProvider:        app.SettingsService,
+			FileNameFormatProvider: app.SettingsService,
+			WorkChecker:            app.WorkService,            // 实现 WorkChecker 接口
+			ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
+			WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口(失败回滚守卫)
+			StoreReplacer:          app.PersistentStoreService, // 实现 StoreReplacer 接口(替换前置软删)
+			StoreBackupReader:      app.PersistentStoreService, // 实现 StoreBackupReader 接口(回滚派生/复活)
+			BackupFileRestorer:     app.BackupService,          // 实现 BackupFileRestorer 接口(回滚文件还原)
+			ResourceUpdater:        resourceSaverAdapter,       // 实现 ResourceUpdater 接口
+			Pusher:                 taskManagerPusher,
+			StoreStreamer:          app.PersistentStoreService, // 实现 StoreStreamer 接口
+			StoreReader:            app.PersistentStoreService, // 实现 StoreReader 接口
+			ResourceStoreReader:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
+			ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
+			WorkStoreRoleChecker:   app.ResourceService,        // 实现 WorkStoreRoleChecker 接口(覆盖确认行级判定)
+			ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口(完整度共享重算)
+			Transactor:             &dbTransactorAdapter{db: app.db},
+			PendingResourceUpdater: app.taskRepo,               // 实现 PendingResourceUpdater 接口
+			StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
+			StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
 		},
 	)
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）
@@ -1086,6 +1090,7 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 		app.SettingsService,
 		&dbTransactorAdapter{db: app.db},
+		app.ResourceService, // ResourceRecomputer（资源完整度重算，按活行 store 角色计数）
 		resource.NewWailsMergeEmitter(func() resource.EventEmitter { return app.taskProgressEmitter }),
 	)
 

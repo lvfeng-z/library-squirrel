@@ -30,7 +30,8 @@
 - **作品集父集关系拉取编排**：同窗口异步经 `WorkSetRelationFetcher`（plugin 提供，`SetWorkSetRelationFetcher` 延迟注入）拉取作品所属作品集的父集关系，upsert 父集 + 建立父子关系（事务内 `CollectAncestorWorkSetIds` 环路检测）+ 写 `re_work_set_work_set.site_sort_order`（对齐原站序拉取范式）。初始本地序 `sort_order` 取原站序，`SaveRelation` 的 OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽。
 - **软删除（聚合根单表标志）**：`SoftDeleteWork` = 停关联任务 → 事务外逐 store 移文件进 backup（backup.work_id 归属）→ 事务内 work 一条软删 UPDATE（`deleted_at` 毫秒时间戳，soft_delete 插件改写）。从属行（resource / resource_store / re_work_*）与 persistent_store 记录原地保留——复原仅需文件还原 + 清标志，无需重建。业务键唯一性由部分索引 `idx_work_site_site_work_active`（WHERE deleted_at = 0）承担：已删行释放键，删除后可重新下载同作品，复原撞占位作品走「放弃/覆盖」。
 - **物理删除内部**：`DeleteWorkAndSurroundingData`（级联删从属行 + store 记录行 + work 行）为内部方法，供 recycleBin 彻底删除链调用；对已删行操作须走 `DeleteUnscoped`（GORM 软删 scope 会挡住普通 Delete）。store 记录行在事务内经 `StoreDeleter.DeleteUnscopedByIds` 批量物理删——purge 目标行全为软删行，`HardDelete` 的 GetById 受软删 scope 保护会静默跳过（NotFound 提前返回），早期版本事务后走 HardDelete 曾致每次 Purge 遗留离链孤儿行；原路径文件已移 backup/，文件清理由调用方按行内 backup_id 承担。
-- **WorkRestorer**：work 实现 recycleBin 的 WorkRestorer 接口（`SoftDeleteWork` / `GetDeletedWork` / `RestoreDeletedWork` / `ListDeletedBefore` / `DeleteWorkAndSurroundingData` / `GetBySiteAndSiteWorkID`），回收站复原/彻底删除/TTL 的原子能力提供方。
+- **WorkRestorer**：work 实现 recycleBin 的 WorkRestorer 接口（`SoftDeleteWork` / `GetDeletedWork` / `RestoreDeletedWork` / `ListRevivableWorkStores` / `ListDeletedBefore` / `DeleteWorkAndSurroundingData` / `GetBySiteAndSiteWorkID`），回收站复原/彻底删除/TTL 的原子能力提供方。
+- **复活集=同键最新死代**：`RestoreWorkStores`/`ListRevivableWorkStores`（内部 `deriveRevivableStores`）按挂载键 (resource_id, store_type, store_seq) 取最新死代（argmax deleted_at）——关联保留形态下同键多代（替换/merge 残留）无差别复活会令双活行同 file_path 撞部分唯一索引、备份文件还原互相覆盖；作品软删链最后处置的一代即删除时活代，更早代保持死态归回收站文件条目。`ListWorkStoresIncludeDeleted`（全量含删）保留给彻底删除链的备份收集。
 
 ## 依赖关系
 

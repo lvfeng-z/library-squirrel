@@ -65,3 +65,9 @@ func (h *Handler) PurgeWork(ctx context.Context, workId int64) *model.ApiRespons
 func (h *Handler) PurgeStore(ctx context.Context, storeId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.PurgeStore(ctx, storeId))
 }
+
+// RestoreStore 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站）
+// storeId: 已软删 persistent_store 行 ID（须有备份且挂载活作品）
+func (h *Handler) RestoreStore(ctx context.Context, storeId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.RestoreStore(ctx, storeId))
+}

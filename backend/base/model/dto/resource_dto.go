@@ -119,16 +119,21 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 		UpdateTime:       resource.GetUpdateTime(),
 	}
 
-	// 遍历 resource_store 行构 Stores,同时派生 ThumbnailStore
+	// 活行过滤：storeMap 由活行批量查询构建，未命中的关联指向软删行（替换/merge 残留、外部裁决失效行），
+	// 不进展示面（软删代属回收站文件条目域），亦不参与展示主体与缩略图派生
+	liveStores := make([]*entity.ResourceStore, 0, len(resourceStores))
 	for _, rs := range resourceStores {
-		if rs == nil {
-			continue
+		if rs != nil && storeMap[rs.StoreID] != nil {
+			liveStores = append(liveStores, rs)
 		}
-		store := storeMap[rs.StoreID]
+	}
+
+	// 遍历活行关联构 Stores,同时派生 ThumbnailStore
+	for _, rs := range liveStores {
 		storeDTO := &ResourceStoreDTO{
 			StoreType:  rs.StoreType,
 			Generation: rs.Generation,
-			Store:      NewPersistentStoreDTO(store),
+			Store:      NewPersistentStoreDTO(storeMap[rs.StoreID]),
 		}
 		dto.Stores = append(dto.Stores, *storeDTO)
 
@@ -139,7 +144,7 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 
 	// WorkStore 按资源类型规约的 PrimaryRoles 优先级链派生展示主体;
 	// 未知/历史 resource_type(LookupResourceTypeSpec 返回 nil)由 ResolvePrimaryStore 安全降级
-	if primaryRS := entity.ResolvePrimaryStore(resourceStores, entity.LookupResourceTypeSpec(resource.ResourceType)); primaryRS != nil {
+	if primaryRS := entity.ResolvePrimaryStore(liveStores, entity.LookupResourceTypeSpec(resource.ResourceType)); primaryRS != nil {
 		if ps := storeMap[primaryRS.StoreID]; ps != nil {
 			dto.WorkStore = NewPersistentStoreDTO(ps)
 		}

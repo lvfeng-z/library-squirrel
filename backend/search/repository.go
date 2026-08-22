@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -791,6 +792,41 @@ func (r *SearchRepository) queryStoreMountContext(ctx context.Context, storeIds 
 		}
 	}
 	return result
+}
+
+// GetRecycleStoreMount 查询单个 store 行的挂载身份（首条关联行的 resource_id/store_type/store_seq
+// 与所属作品活性）。无关联行返回 ResourceId=0。回收站复原置换链用
+func (r *SearchRepository) GetRecycleStoreMount(ctx context.Context, storeId int64) (*dto2.StoreMountDTO, error) {
+	querySQL := `
+		SELECT rs.resource_id, rs.store_type, rs.store_seq,
+		       EXISTS(SELECT 1 FROM resource r2 JOIN work w2 ON r2.work_id = w2.id AND w2.deleted_at = 0
+		              WHERE r2.id = rs.resource_id)
+		FROM resource_store rs
+		WHERE rs.store_id = ?
+		LIMIT 1`
+	row := r.db.WithContext(ctx).Raw(querySQL, storeId).Row()
+	mount := &dto2.StoreMountDTO{}
+	if err := row.Scan(&mount.ResourceId, &mount.Role, &mount.Seq, &mount.WorkAlive); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, sql.ErrNoRows) {
+			return &dto2.StoreMountDTO{}, nil
+		}
+		return nil, err
+	}
+	return mount, nil
+}
+
+// GetAliveStoreIdByKey 查挂载键 (resource_id, store_type, store_seq) 下的活行 store ID（无则 0）。
+// 挂载不变量：每键活行至多一条。复原置换链圈定当前代用
+func (r *SearchRepository) GetAliveStoreIdByKey(ctx context.Context, resourceId int64, storeType string, storeSeq int) (int64, error) {
+	querySQL := `
+		SELECT rs.store_id
+		FROM resource_store rs
+		JOIN persistent_store ps ON rs.store_id = ps.id AND ps.deleted_at = 0
+		WHERE rs.resource_id = ? AND rs.store_type = ? AND rs.store_seq = ?
+		LIMIT 1`
+	var storeId int64
+	err := r.db.WithContext(ctx).Raw(querySQL, resourceId, storeType, storeSeq).Scan(&storeId).Error
+	return storeId, err
 }
 
 // collectStoreIds 从分页结果收集 store ID（二段批查入参）

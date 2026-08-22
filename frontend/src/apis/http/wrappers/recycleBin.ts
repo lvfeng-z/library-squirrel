@@ -50,3 +50,10 @@ export async function recycleBinPurgeWork(workId: number): Promise<ApiResult<any
 export async function recycleBinPurgeStore(storeId: number): Promise<ApiResult<any>> {
   return requireResponse(await RecycleBinHandler.PurgeStore(storeId), '彻底删除文件条目', false)
 }
+
+/**
+ * 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站）
+ */
+export async function recycleBinRestoreStore(storeId: number): Promise<ApiResult<any>> {
+  return requireResponse(await RecycleBinHandler.RestoreStore(storeId), '复原文件条目', false)
+}

@@ -50,30 +50,81 @@ func (r *ResourceStoreRepository) ListByResourceIds(ctx context.Context, resourc
 	return r.BaseRepository.List(ctx, opt)
 }
 
-// GetByType 按 store_type 查询单个 store
+// ListAliveByResourceIds 批量查询多个 Resource 关联且指向活行 store 的关联（软删行关联保留形态下，
+// 覆盖确认等「作品拥有该角色」判定只看活代——merge overwrite 轨道残留、替换残留不算）
+func (r *ResourceStoreRepository) ListAliveByResourceIds(ctx context.Context, resourceIds []int64) ([]*domain.ResourceStore, error) {
+	if len(resourceIds) == 0 {
+		return []*domain.ResourceStore{}, nil
+	}
+	var stores []*domain.ResourceStore
+	err := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("resource_id IN ?", resourceIds).
+		Where("store_id IN (SELECT id FROM persistent_store WHERE deleted_at = 0)").
+		Find(&stores).Error
+	return stores, err
+}
+
+// GetByType 按 store_type 查询单个关联行（仅指向活行 store——软删行关联保留形态下，
+// 软删行不是可操作的 store，命中死行会令幂等/缺轨判定取错代）
 func (r *ResourceStoreRepository) GetByType(ctx context.Context, resourceId int64, storeType string) (*domain.ResourceStore, error) {
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
 			clause.Eq{Column: "resource_id", Value: resourceId},
 			clause.Eq{Column: "store_type", Value: storeType},
+			clause.Expr{SQL: "EXISTS (SELECT 1 FROM persistent_store ps WHERE ps.id = resource_store.store_id AND ps.deleted_at = 0)"},
 		},
 	}
 	return r.BaseRepository.Get(ctx, opt)
 }
 
-// DeleteByResourceIdAndTypes 删除指定 Resource 下、store_type 属于给定集合的 store 关联(替换/续传场景清理旧关联)
+// DeleteByResourceIdAndTypes 删除指定 Resource 下、store_type 属于给定集合且指向活行 store 的关联
+// （挂载前置清理：软删行关联保留——残留行经挂载链可联作品、随作品级联净化，挂载不摘其关联）
 func (r *ResourceStoreRepository) DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error {
 	if len(storeTypes) == 0 {
 		return nil
 	}
-	values := make([]any, 0, len(storeTypes))
-	for _, t := range storeTypes {
-		values = append(values, t)
-	}
 	return r.dbFromCtx(ctx).
 		WithContext(ctx).
 		Where("resource_id = ? AND store_type IN ?", resourceId, storeTypes).
+		Where("store_id IN (SELECT id FROM persistent_store WHERE deleted_at = 0)").
 		Delete(new(domain.ResourceStore)).Error
+}
+
+// DeleteByStoreIds 按 store ID 集合物理删除关联行（失败还原链清理本次新建 store 的关联：
+// 新行已物理删，其关联若不摘即成断链孤儿，混入完整度计数与展示面）
+func (r *ResourceStoreRepository) DeleteByStoreIds(ctx context.Context, storeIds []int64) error {
+	if len(storeIds) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("store_id IN ?", storeIds).
+		Delete(new(domain.ResourceStore)).Error
+}
+
+// CountAliveTypesByResourceId 统计 Resource 关联的活行 store 角色计数（JOIN persistent_store 过滤
+// 软删行；关联保留形态下同 role 双关联只计活行）。资源完整度重算用
+func (r *ResourceStoreRepository) CountAliveTypesByResourceId(ctx context.Context, resourceId int64) (map[string]int, error) {
+	rows, err := r.dbFromCtx(ctx).WithContext(ctx).Raw(`
+		SELECT rs.store_type, COUNT(*) FROM resource_store rs
+		JOIN persistent_store ps ON rs.store_id = ps.id AND ps.deleted_at = 0
+		WHERE rs.resource_id = ?
+		GROUP BY rs.store_type`, resourceId).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]int)
+	for rows.Next() {
+		var storeType string
+		var count int
+		if err := rows.Scan(&storeType, &count); err != nil {
+			return nil, err
+		}
+		result[storeType] = count
+	}
+	return result, rows.Err()
 }
 
 // DeleteByResourceIds 批量物理删除 resource 关联行（作品彻底删除链：级联清理 resource_store）

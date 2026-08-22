@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -67,12 +66,21 @@ type StoreOps interface {
 	GetAbsPath(store *domain.PersistentStore) string
 	StoreFromFile(ctx context.Context, relPath, fileName, srcAbsPath string) (int64, error)
 	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）——
+	// overwrite 删原轨道用：轨道行入回收站文件条目，可经复原置换回滚
+	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	BuildVariantPath(sourceRelPath, suffix string) string
 }
 
 // MergeSettingsReader 读合并策略（由 settings.Service 实现）。
 type MergeSettingsReader interface {
 	GetMergeStrategy() string
+}
+
+// ResourceRecomputer 资源完整度重算（由 resource.Service 实现）。重算按活行 store 角色计数——
+// 关联保留形态下轨道软删行关联不计入
+type ResourceRecomputer interface {
+	RecomputeResourceComplete(ctx context.Context, resourceId int64)
 }
 
 // Transactor 事务执行器（事务 DB 通过 ctx 传递，repository 经 dbFromCtx 感知）。
@@ -97,6 +105,7 @@ type MergeService struct {
 	storeOps          StoreOps
 	settings          MergeSettingsReader
 	tx                Transactor
+	completer         ResourceRecomputer
 	emitter           MergeEventEmitter
 	jobsMu            sync.Mutex
 	jobs              map[int64]*mergeJob // resourceId → 进行中合并（in-flight 守卫 + cancel 锚点）
@@ -104,7 +113,8 @@ type MergeService struct {
 
 // NewMergeService 创建合并业务服务。merger 为 nil 时合并功能不可用（调用返回 ErrMergeUnavailable）。
 // emitter 用于异步合并的进度/完成推送（阶段1 独立 merge-events topic，不进 taskManager）。
-func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, emitter MergeEventEmitter) *MergeService {
+// completer 为资源完整度重算（幂等命中与合并完成两路径共用）。
+func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter) *MergeService {
 	return &MergeService{
 		resourceStoreRepo: resourceStoreRepo,
 		resource:          resource,
@@ -112,6 +122,7 @@ func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource Resour
 		storeOps:          storeOps,
 		settings:          settings,
 		tx:                tx,
+		completer:         completer,
 		emitter:           emitter,
 		jobs:              make(map[int64]*mergeJob),
 	}
@@ -127,9 +138,10 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) erro
 	}
 
 	// 幂等守卫：已存在 merged 产物则不重复合并（避免 keep 模式累积孤儿 resource_store(merged) 关联）。
-	// 历史已累积的多行 merged 不在此清理（属数据修复范畴）。
+	// 历史已累积的多行 merged 不在此清理（属数据修复范畴）。GetByType 仅命中活行——轨道软删入回收站后
+	// 复原置换回滚的形态下重合并不被误挡
 	if existing, err := s.resourceStoreRepo.GetByType(ctx, resourceId, domain.StoreTypeVideoMain); err == nil {
-		s.recomputeComplete(ctx, resourceId) // 幂等命中前重算(修复历史 complete 值)
+		s.completer.RecomputeResourceComplete(ctx, resourceId) // 幂等命中前重算(修复历史 complete 值)
 		_ = existing
 		return ErrAlreadyMerged
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -241,23 +253,20 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 		return
 	}
 
-	// overwrite：删原轨道 store 及文件，并清理 resource_store 关联
+	// overwrite：原轨道软删（文件移 backup 建保管清单行，行随软删入回收站文件条目，可经复原置换回滚）。
+	// 轨道 resource_store 关联保留——软删行经挂载链可联作品、随作品级联净化
 	if s.settings.GetMergeStrategy() == settings.MergeStrategyOverwrite {
-		if _, err := s.storeOps.HardDelete(commitCtx, videoPS.GetID(), true); err != nil {
-			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原视频轨失败: %v", err))
+		if _, err := s.storeOps.DeleteWithBackup(commitCtx, videoPS.GetID()); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("软删原视频轨失败: %v", err))
 			return
 		}
-		if _, err := s.storeOps.HardDelete(commitCtx, audioPS.GetID(), true); err != nil {
-			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("删除原音频轨失败: %v", err))
-			return
-		}
-		if err := s.resourceStoreRepo.DeleteByResourceIdAndTypes(commitCtx, resourceId, []string{domain.StoreTypeVideoTrack, domain.StoreTypeAudioTrack}); err != nil {
-			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("清理原轨道关联失败: %v", err))
+		if _, err := s.storeOps.DeleteWithBackup(commitCtx, audioPS.GetID()); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("软删原音频轨失败: %v", err))
 			return
 		}
 	}
 
-	s.recomputeComplete(commitCtx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
+	s.completer.RecomputeResourceComplete(commitCtx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
 	s.emitter.PushComplete(resourceId, true, mergedPsId, "")
 }
 
@@ -284,39 +293,6 @@ func buildMergedFileName(srcFileName, ext string) string {
 		base = "merged"
 	}
 	return base + "_merged" + ext
-}
-
-// recomputeComplete 合并后重算 resource_complete。
-// 分离流场景下载完成时缺 videoMain 判 2,合并产出 videoMain 后 store 构成改变,需重算(否则角标卡在"不完整")。
-// 读路径不抛错;查询/更新异常降级为保持原值,不阻断合并成功。
-func (s *MergeService) recomputeComplete(ctx context.Context, resourceId int64) {
-	resource, err := s.resource.GetById(ctx, resourceId)
-	if err != nil || resource == nil {
-		logger.Log.Warnf("[MergeService] 合并后重算完整度失败(查 resource): resourceId=%d err=%v", resourceId, err)
-		return
-	}
-	storeRows, err := s.resourceStoreRepo.ListByResourceId(ctx, resourceId)
-	if err != nil {
-		logger.Log.Warnf("[MergeService] 合并后重算完整度失败(查 stores): resourceId=%d err=%v", resourceId, err)
-		return
-	}
-	counts := make(map[string]int, len(storeRows))
-	for _, rs := range storeRows {
-		if rs != nil {
-			counts[rs.StoreType]++
-		}
-	}
-	complete, missing, excess := domain.ComputeResourceComplete(resource.ResourceType, counts)
-	if complete == 2 {
-		logger.Log.Infof("[MergeService] 合并后资源仍不完整: resourceId=%d type=%s missing=%v excess=%v", resourceId, resource.ResourceType, missing, excess)
-	}
-	if resource.ResourceComplete.Valid && resource.ResourceComplete.Int64 == int64(complete) {
-		return
-	}
-	resource.ResourceComplete = sql.NullInt64{Int64: int64(complete), Valid: true}
-	if err := s.resource.Updates(ctx, resource); err != nil {
-		logger.Log.Warnf("[MergeService] 合并后更新 ResourceComplete 失败: resourceId=%d err=%v", resourceId, err)
-	}
 }
 
 // CleanupResidualTempFiles 清理合并产物临时文件残留（os.TempDir() 下 mergeTempFilePrefix 前缀文件）。

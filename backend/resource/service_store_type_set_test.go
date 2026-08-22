@@ -14,8 +14,9 @@ import (
 // 依赖 gorm.io/driver/sqlite 的 CGO sqlite，纯 Go 环境自动跳过本文件。
 // 验证 ListStoreTypeSetsByWorkIds 的两跳批量拼接（work→resource→resource_store 行）与分组语义。
 
-// newTestStoreTypeSetDB 建立隔离的内存 SQLite（每测试独立库）+ 建表，返回 Service。
-func newTestStoreTypeSetDB(t *testing.T) *Service {
+// newTestStoreTypeSetDB 建立隔离的内存 SQLite（每测试独立库）+ 建表，返回 Service 与 db。
+// 活行角色集合查询 JOIN persistent_store（软删残留代不算「作品拥有该角色」），故三表齐建
+func newTestStoreTypeSetDB(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -26,11 +27,11 @@ func newTestStoreTypeSetDB(t *testing.T) *Service {
 		t.Fatalf("获取底层 sql.DB 失败: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&domain.Resource{}, &domain.ResourceStore{}); err != nil {
+	if err := db.AutoMigrate(&domain.Resource{}, &domain.ResourceStore{}, &domain.PersistentStore{}); err != nil {
 		t.Fatalf("AutoMigrate 失败: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return NewService(NewRepository(db), NewResourceStoreRepository(db))
+	return NewService(NewRepository(db), NewResourceStoreRepository(db)), db
 }
 
 func mustCreateResource(t *testing.T, s *Service, ctx context.Context, workId int64) *domain.Resource {
@@ -44,13 +45,20 @@ func mustCreateResource(t *testing.T, s *Service, ctx context.Context, workId in
 	return r
 }
 
-func mustCreateStore(t *testing.T, s *Service, ctx context.Context, resourceId int64, storeType string) {
+// mustCreateStore 建一行活 persistent_store + 指向它的关联（角色集合查询按行活性 JOIN，行须真实存在）
+func mustCreateStore(t *testing.T, db *gorm.DB, ctx context.Context, resourceId int64, storeType string) {
 	t.Helper()
+	ps := domain.NewPersistentStore()
+	ps.CompletedAt = 1
+	if err := db.Create(ps).Error; err != nil {
+		t.Fatalf("创建 persistent_store 失败: %v", err)
+	}
 	rs := domain.NewResourceStore()
 	rs.ResourceID = resourceId
 	rs.StoreType = storeType
 	rs.Generation = domain.GenerationDownloaded
-	if err := s.resourceStoreRepo.Create(ctx, rs); err != nil {
+	rs.StoreID = ps.GetID()
+	if err := db.Create(rs).Error; err != nil {
 		t.Fatalf("创建 resource_store 失败: %v", err)
 	}
 }
@@ -70,7 +78,7 @@ func sameStringSet(a, b map[string]struct{}) bool {
 // TestListStoreTypeSetsByWorkIds 验证：多作品多资源多行正确聚合为 {workId: store_type 集合}；
 // 空 workIds/无资源作品分别返回空 map、不出键；零行作品出空集合键。
 func TestListStoreTypeSetsByWorkIds(t *testing.T) {
-	s := newTestStoreTypeSetDB(t)
+	s, db := newTestStoreTypeSetDB(t)
 	ctx := context.Background()
 
 	// work 100：resource 1（image+thumbnail 行）、resource 2（videoTrack 行）
@@ -81,10 +89,10 @@ func TestListStoreTypeSetsByWorkIds(t *testing.T) {
 	// work 300：resource 4（零 store 行）
 	_ = mustCreateResource(t, s, ctx, 300)
 
-	mustCreateStore(t, s, ctx, r1.ID, "image")
-	mustCreateStore(t, s, ctx, r1.ID, "thumbnail")
-	mustCreateStore(t, s, ctx, r2.ID, "videoTrack")
-	mustCreateStore(t, s, ctx, r3.ID, "thumbnail")
+	mustCreateStore(t, db, ctx, r1.ID, "image")
+	mustCreateStore(t, db, ctx, r1.ID, "thumbnail")
+	mustCreateStore(t, db, ctx, r2.ID, "videoTrack")
+	mustCreateStore(t, db, ctx, r3.ID, "thumbnail")
 
 	got, err := s.ListStoreTypeSetsByWorkIds(ctx, []int64{100, 200, 300, 999})
 	if err != nil {
@@ -117,12 +125,12 @@ func TestListStoreTypeSetsByWorkIds(t *testing.T) {
 
 // TestListStoreTypeSetsByWorkIds_SameTypeAcrossResources 验证同一作品多资源重复 store_type 去重。
 func TestListStoreTypeSetsByWorkIds_SameTypeAcrossResources(t *testing.T) {
-	s := newTestStoreTypeSetDB(t)
+	s, db := newTestStoreTypeSetDB(t)
 	ctx := context.Background()
 	r1 := mustCreateResource(t, s, ctx, 100)
 	r2 := mustCreateResource(t, s, ctx, 100)
 	for _, r := range []*domain.Resource{r1, r2} {
-		mustCreateStore(t, s, ctx, r.ID, "image")
+		mustCreateStore(t, db, ctx, r.ID, "image")
 	}
 	got, err := s.ListStoreTypeSetsByWorkIds(ctx, []int64{100})
 	if err != nil {
