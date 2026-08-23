@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -65,6 +66,49 @@ func TestWorkSetThreeColumnIndex(t *testing.T) {
 	err = db.Exec(`UPDATE work_set SET deleted_at = (SELECT MAX(deleted_at) FROM work_set WHERE deleted_at > 0) WHERE deleted_at = 0`).Error
 	if err == nil || !strings.Contains(err.Error(), "UNIQUE") {
 		t.Fatalf("同键同刻双删应报 UNIQUE，实际: %v", err)
+	}
+}
+
+// TestCoverMigrationFromIsCover 封面存储迁移：旧库形态（re_work_work_set.is_cover 列+标记行）
+// 经迁移回填进 work_set.cover_work_id 后列与索引退役；二次启动幂等
+func TestCoverMigrationFromIsCover(t *testing.T) {
+	db := newMigratedWorkSetDB(t)
+
+	// 构造旧库形态：手工加回 is_cover 列与封面标记（模拟存量库）
+	if err := db.Exec(`ALTER TABLE re_work_work_set ADD COLUMN is_cover BOOLEAN`).Error; err != nil {
+		t.Fatalf("构造 is_cover 列失败: %v", err)
+	}
+	ws := insertWorkSet(t, db, 1, "abc")
+	coverWork, otherWork := int64(101), int64(102)
+	if err := db.Exec(`INSERT INTO re_work_work_set (id, create_time, update_time, work_id, work_set_id, is_cover) VALUES (1, 0, 0, ?, ?, 1)`, coverWork, ws.ID).Error; err != nil {
+		t.Fatalf("插封面关联行失败: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO re_work_work_set (id, create_time, update_time, work_id, work_set_id, is_cover) VALUES (2, 0, 0, ?, ?, 0)`, otherWork, ws.ID).Error; err != nil {
+		t.Fatalf("插普通关联行失败: %v", err)
+	}
+
+	// 迁移：回填 + 列/索引退役
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("封面迁移失败: %v", err)
+	}
+	var gotCover sql.NullInt64
+	db.Raw(`SELECT cover_work_id FROM work_set WHERE id = ?`, ws.ID).Scan(&gotCover)
+	if !gotCover.Valid || gotCover.Int64 != coverWork {
+		t.Fatalf("封面引用应回填为封面标记作品 %d，实际 %v", coverWork, gotCover)
+	}
+	var colCnt int
+	db.Raw("SELECT COUNT(*) FROM pragma_table_info('re_work_work_set') WHERE name = 'is_cover'").Scan(&colCnt)
+	if colCnt != 0 {
+		t.Fatal("is_cover 列应随迁移退役")
+	}
+
+	// 二次启动幂等
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("二次迁移失败: %v", err)
+	}
+	db.Raw(`SELECT cover_work_id FROM work_set WHERE id = ?`, ws.ID).Scan(&gotCover)
+	if !gotCover.Valid || gotCover.Int64 != coverWork {
+		t.Fatalf("二次迁移不应改动封面引用，实际 %v", gotCover)
 	}
 }
 

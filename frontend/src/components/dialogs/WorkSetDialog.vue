@@ -812,23 +812,15 @@ watch(isCheckable, (newValue) => {
               </el-button>
             </span>
           </el-tooltip>
-          <!-- 封面标记挂本集关联行的 is_cover，子集作品设封面会静默无效果——勾选含子集作品时禁用 -->
-          <el-tooltip
-            :disabled="!hasNonDirectChecked"
-            content="勾选中含子集作品，封面只能设直接属于本集的作品"
-            placement="top"
+          <!-- 封面是作品集自身引用（可指向传递包含内任意作品，管理列表即传递包含——勾选项均合法） -->
+          <el-button
+            type="success"
+            :disabled="checkedWorkIds.length !== 1"
+            @click="handleSetCover"
           >
-            <span class="work-set-action-wrap">
-              <el-button
-                type="success"
-                :disabled="checkedWorkIds.length !== 1 || hasNonDirectChecked"
-                @click="handleSetCover"
-              >
-                <el-icon><Picture /></el-icon>
-                设为封面
-              </el-button>
-            </span>
-          </el-tooltip>
+            <el-icon><Picture /></el-icon>
+            设为封面
+          </el-button>
           <el-button
               type="primary"
               @click="handleAddChildWorkSet"

@@ -24,6 +24,9 @@ type WorkSet struct {
 	NickName               sql.NullString        `gorm:"column:nick_name" json:"nickName"`
 	Description            sql.NullString        `gorm:"column:description" json:"description"`
 	LastView               sql.NullInt64         `gorm:"column:last_view" json:"lastView"`
+	// 封面作品引用（集级单值，NULL=未设置）：封面是作品集自身属性而非成员关系属性——
+	// 可指向传递包含内任意作品（含子集作品）；解析时作品已删/不存在回退 MIN(sort_order) 直接成员
+	CoverWorkID sql.NullInt64 `gorm:"column:cover_work_id" json:"coverWorkId"`
 }
 
 func NewWorkSet() *WorkSet {

@@ -136,10 +136,12 @@ func TestRestoreWorkSetConflictAndOverwrite(t *testing.T) {
 	if ws, err := env.workSet.GetById(ctx, deadId); err != nil || ws == nil {
 		t.Fatalf("复原后应可见: %v %v", ws, err)
 	}
-	// 占位集已软删且可再复原（三列索引：同键两死行删除时刻互异不撞）
+	// 占位集已软删且可再复原（三列索引：同键两死行删除时刻互异不撞——再覆盖软删 deadId 与
+	// 前次软删 newWs 是相邻毫秒对，垫 2ms 模拟真实间隔）
 	if _, err := env.workSet.GetDeletedWorkSet(ctx, newWs.GetID()); err != nil {
 		t.Fatalf("查占位集已删态失败: %v", err)
 	}
+	time.Sleep(2 * time.Millisecond)
 	if _, err := env.svc.RestoreWorkSet(ctx, newWs.GetID(), true); err != nil {
 		t.Fatalf("占位集应可再复原: %v", err)
 	}

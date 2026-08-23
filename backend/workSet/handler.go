@@ -113,7 +113,7 @@ func (h *Handler) ListWorkSetsByWorkId(ctx context.Context, workId int64) *model
 
 // LinkWorkToWorkSet 关联作品到作品集
 func (h *Handler) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.LinkWorkToWorkSet(ctx, workId, workSetId, false))
+	return model.HandleVoid(h.svc.LinkWorkToWorkSet(ctx, workId, workSetId))
 }
 
 // UnlinkWorkFromWorkSet 取消作品与作品集的关联
@@ -184,8 +184,8 @@ func (h *Handler) SetCover(ctx context.Context, workSetId, workId int64) *model.
 }
 
 // UnsetCover 取消作品集封面
-func (h *Handler) UnsetCover(ctx context.Context, workSetId, workId int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.UnsetCover(ctx, workSetId, workId))
+func (h *Handler) UnsetCover(ctx context.Context, workSetId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.UnsetCover(ctx, workSetId))
 }
 
 // GetCoverWorkId 获取封面作品ID

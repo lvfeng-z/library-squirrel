@@ -219,8 +219,8 @@ export function UnlinkWorkFromWorkSet(workId: number, workSetId: number): $Cance
 /**
  * UnsetCover 取消作品集封面
  */
-export function UnsetCover(workSetId: number, workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2668425816, workSetId, workId).then(($result: any) => {
+export function UnsetCover(workSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2668425816, workSetId).then(($result: any) => {
         return $$createType1($result);
     });
 }

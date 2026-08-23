@@ -136,7 +136,7 @@ type ReWorkWorkSetWriter interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// CreateBatch 批量新建关联
 	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（增量入库，保留历史关联与 is_cover/sort_order 元数据）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（增量入库，保留历史关联与 sort_order 元数据）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// UpdateSiteSortOrders 批量更新原站排序（写 site_sort_order，不影响本地 sort_order）
 	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
@@ -1218,7 +1218,7 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	}
 	// === Phase 3: 保存 Work + 关联增量同步 ===
 	// SITE 关联由插件权威管理（按 type 删后重建）；LOCAL 关联归用户管理，保留不动，插件返回的 local 增量追加（已存在跳过）；
-	// workSet 增量保留（不删历史关联，避免丢失用户手动加的关联与 is_cover/sort_order 元数据）。
+	// workSet 增量保留（不删历史关联，避免丢失用户手动加的关联与 sort_order 元数据）。
 	workId, err := s.saveOrUpdateWork(ctx, work)
 	if err != nil {
 		return 0, fmt.Errorf("保存作品失败: %w", err)

@@ -61,33 +61,3 @@ export async function reWorkWorkSetSetCover(
   }
   return { success: result.success, msg: result.msg ?? '' }
 }
-
-/**
- * 取消作品集封面
- */
-export async function reWorkWorkSetUnsetCover(
-  workSetId: number,
-  workId: number
-): Promise<ApiResponse<boolean>> {
-  const result = await WorkSetHandler.UnsetCover(workSetId, workId)
-  if (!result) {
-    return { success: false, msg: '操作失败：接口返回为空' }
-  }
-  return { success: result.success, msg: result.msg ?? '' }
-}
-
-/**
- * 获取作品集封面作品ID
- */
-export async function reWorkWorkSetGetCoverWorkId(
-  workSetId: number
-): Promise<ApiResponse<number | null>> {
-  const result = await WorkSetHandler.GetCoverWorkId(workSetId)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ?? null }
-}

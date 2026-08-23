@@ -241,30 +241,13 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		workSetIds = append(workSetIds, ws.GetID())
 	}
 
-	// Phase 2a: 批量查 is_cover=1 的封面
+	// Phase 2a: 批量查封面引用（work_set.cover_work_id）
 	coverMap, err := s.coverResolver.ListCoverWorkIdsByWorkSetIds(ctx, workSetIds)
 	if err != nil {
 		return nil, fmt.Errorf("resolve covers pass 1 error: %w", err)
 	}
 
-	// Phase 2b: 对未找到封面的作品集，用 MIN(sort_order) 兜底
-	var uncoveredWorkSetIds []int64
-	for _, id := range workSetIds {
-		if _, ok := coverMap[id]; !ok {
-			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
-		}
-	}
-	if len(uncoveredWorkSetIds) > 0 {
-		fallbackMap, err := s.coverResolver.ListMinSortOrderWorkIdsByWorkSetIds(ctx, uncoveredWorkSetIds)
-		if err != nil {
-			return nil, fmt.Errorf("resolve covers pass 2 error: %w", err)
-		}
-		for k, v := range fallbackMap {
-			coverMap[k] = v
-		}
-	}
-
-	// Phase 3: 批量查封面作品
+	// Phase 3: 批量查封面作品（软删过滤——封面指向已删作品时此处不命中）
 	var coverWorkIds []int64
 	for _, workId := range coverMap {
 		coverWorkIds = append(coverWorkIds, workId)
@@ -277,6 +260,45 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		}
 		for _, w := range works {
 			worksMap[w.GetID()] = w
+		}
+	}
+
+	// Phase 2b: 封面未生效的集（无引用或指向的作品已删/不存在）用 MIN(sort_order) 兜底
+	var uncoveredWorkSetIds []int64
+	for _, id := range workSetIds {
+		workId, ok := coverMap[id]
+		if !ok {
+			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
+			continue
+		}
+		if _, alive := worksMap[workId]; !alive {
+			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
+		}
+	}
+	if len(uncoveredWorkSetIds) > 0 {
+		fallbackMap, err := s.coverResolver.ListMinSortOrderWorkIdsByWorkSetIds(ctx, uncoveredWorkSetIds)
+		if err != nil {
+			return nil, fmt.Errorf("resolve covers pass 2 error: %w", err)
+		}
+		for k, v := range fallbackMap {
+			coverMap[k] = v
+		}
+		// 兜底作品补入批查
+		for _, id := range uncoveredWorkSetIds {
+			if wid, ok := coverMap[id]; ok {
+				if _, fetched := worksMap[wid]; !fetched {
+					coverWorkIds = append(coverWorkIds, wid)
+				}
+			}
+		}
+		if len(coverWorkIds) > 0 {
+			works, err := s.workReader.ListByIds(ctx, coverWorkIds)
+			if err != nil {
+				return nil, fmt.Errorf("batch fetch cover works error: %w", err)
+			}
+			for _, w := range works {
+				worksMap[w.GetID()] = w
+			}
 		}
 	}
 

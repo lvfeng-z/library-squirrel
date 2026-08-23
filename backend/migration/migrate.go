@@ -263,5 +263,27 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// 命名迁移(后置)：封面存储从成员关联行的 is_cover 列迁至作品集自身的 cover_work_id 引用列
+	//（封面升格为作品集属性，可指向传递包含内任意作品）。以 is_cover 列存在性为幂等标记：
+	// 回填（一集历史多封面行取其一）→ drop 封面唯一索引（SQLite DROP COLUMN 不允许列被索引引用，
+	// 须先删索引）→ drop 列
+	var rwwsCoverCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('re_work_work_set') WHERE name = 'is_cover'").Scan(&rwwsCoverCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 re_work_work_set.is_cover 列失败: %w", err)
+	}
+	if rwwsCoverCol > 0 {
+		if err := db.Exec(`UPDATE work_set SET cover_work_id = (
+			SELECT work_id FROM re_work_work_set WHERE work_set_id = work_set.id AND is_cover = 1 LIMIT 1
+		) WHERE cover_work_id IS NULL`).Error; err != nil {
+			return fmt.Errorf("迁移封面引用回填失败: %w", err)
+		}
+		if err := db.Exec(`DROP INDEX IF EXISTS idx_re_work_work_set_set_cover`).Error; err != nil {
+			return fmt.Errorf("迁移删除封面唯一索引失败: %w", err)
+		}
+		if err := db.Exec(`ALTER TABLE re_work_work_set DROP COLUMN is_cover`).Error; err != nil {
+			return fmt.Errorf("迁移删除 is_cover 列失败: %w", err)
+		}
+	}
+
 	return nil
 }

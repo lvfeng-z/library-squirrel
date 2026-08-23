@@ -49,6 +49,10 @@ type Repository interface {
 	ClearDeletedFlag(ctx context.Context, id int64) error
 	// ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
 	ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*entity2.WorkSet, error)
+	// UpdateCoverWorkId 更新封面作品引用（集级单值；workId nil=清除封面）
+	UpdateCoverWorkId(ctx context.Context, workSetId int64, workId *int64) error
+	// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（work_set.cover_work_id）
+	ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
 }
 
 // FullWorkReader 作品完整信息读取接口
@@ -87,18 +91,14 @@ type ReWorkWorkSetRepository interface {
 	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
 	// ApplySiteOrder 把原站序拷贝到本地序（site_sort_order → sort_order，仅 site_sort_order 非空成员）
 	ApplySiteOrder(ctx context.Context, workSetId int64) error
-	// UpdateIsCover 更新封面标记
-	UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error
-	// ClearOtherCovers 清除作品集的其他封面
-	ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error
-	// GetCoverWorkId 获取封面作品ID
-	GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error)
 	// ListWorkIdsByWorkSetIds 批量查询多个作品集关联的去重作品ID（传递包含原语用，消除 N+1）
 	ListWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) ([]int64, error)
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过该行（物理纳入复制用）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// MaxSortOrderByWorkSetId 作品集下最大 sort_order（无作品返回 0）
 	MaxSortOrderByWorkSetId(ctx context.Context, workSetId int64) (int64, error)
+	// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
+	ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
 }
 
 // ReWorkSetWorkSetRepository 作品集间父子关联（多父 DAG）仓储接口
@@ -246,7 +246,7 @@ func (s *Service) ListChildWorkSets(ctx context.Context, parentWorkSetId int64) 
 }
 
 // MergeWorkSetInto 物理纳入：把源作品集（及其全部后代）的 work 复制一份关联到目标作品集（静态快照）
-// 复制非转移，源 B 不变；不记录来源、不可撤回；目标原有作品保序在前，纳入作品按源序追加在后；is_cover=false 维持目标自身封面
+// 复制非转移，源 B 不变；不记录来源、不可撤回；目标原有作品保序在前，纳入作品按源序追加在后
 func (s *Service) MergeWorkSetInto(ctx context.Context, sourceWorkSetId, targetWorkSetId int64) error {
 	if sourceWorkSetId == targetWorkSetId {
 		return ErrWorkSetMergeSelf
@@ -264,13 +264,12 @@ func (s *Service) MergeWorkSetInto(ctx context.Context, sourceWorkSetId, targetW
 	if err != nil {
 		return err
 	}
-	// 构造复制关联：OnConflict DoNothing 去重（单条重复不拒整批），is_cover=false 维持目标自身封面
+	// 构造复制关联：OnConflict DoNothing 去重（单条重复不拒整批）
 	rels := make([]*entity2.ReWorkWorkSet, 0, len(workIds))
 	for i, workId := range workIds {
 		rel := entity2.NewReWorkWorkSet()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: targetWorkSetId, Valid: true}
-		rel.IsCover = sql.NullBool{Bool: false, Valid: true}
 		rel.SortOrder = sql.NullInt64{Int64: maxSort + 1 + int64(i), Valid: true}
 		rels = append(rels, rel)
 	}
@@ -388,11 +387,10 @@ func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.Wo
 }
 
 // LinkWorkToWorkSet 链接作品到作品集
-func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64, isCover bool) error {
+func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64) error {
 	rel := entity2.NewReWorkWorkSet()
 	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: workSetId, Valid: true}
-	rel.IsCover = sql.NullBool{Bool: isCover, Valid: true}
 	return s.reWorkWorkSetRepo.Create(ctx, rel)
 }
 
@@ -411,7 +409,6 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 		rel := entity2.NewReWorkWorkSet()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: workSetId, Valid: true}
-		rel.IsCover = sql.NullBool{Bool: false, Valid: true}
 		rels[i] = rel
 	}
 	return s.reWorkWorkSetRepo.CreateBatch(ctx, rels)
@@ -481,18 +478,17 @@ func (s *Service) ListWorkSetsByWorkId(ctx context.Context, workId int64) ([]*en
 	return result, nil
 }
 
-// SetCoverWork 设置作品集的封面作品（仅直接成员可设——封面标记挂本集关联行的 is_cover，
-// 子集作品无本集关联行，对其更新会静默无效果，前置校验显式拒绝）
+// SetCoverWork 设置作品集的封面作品（集级单值引用，可指向传递包含内任意作品——含子集作品；
+// 非传递包含内的作品拒绝，防误设无关作品）
 func (s *Service) SetCoverWork(ctx context.Context, workSetId, workId int64) error {
-	if err := s.ensureDirectMembers(ctx, workSetId, []int64{workId}); err != nil {
+	transitiveIds, err := s.CollectDescendantWorkIDs(ctx, workSetId)
+	if err != nil {
 		return err
 	}
-	// 清除现有封面
-	if err := s.reWorkWorkSetRepo.ClearOtherCovers(ctx, workSetId, workId); err != nil {
-		return err
+	if !slices.Contains(transitiveIds, workId) {
+		return fmt.Errorf("%w：作品 %d 不在该作品集的传递包含内", ErrWorkNotInWorkSet, workId)
 	}
-	// 设置新封面
-	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, true)
+	return s.repo.UpdateCoverWorkId(ctx, workSetId, &workId)
 }
 
 // ensureDirectMembers 校验作品均为作品集的直接成员（存在 (work_id, work_set_id) 关联行）
@@ -517,7 +513,7 @@ func (s *Service) ensureDirectMembers(ctx context.Context, workSetId int64, work
 	return nil
 }
 
-// GetDirectWorkIds 获取作品集的直接成员作品 ID（不含后代子集成员；封面/移除等直接成员专属操作的判定依据）
+// GetDirectWorkIds 获取作品集的直接成员作品 ID（不含后代子集成员；移除等直接成员专属操作的判定依据）
 func (s *Service) GetDirectWorkIds(ctx context.Context, workSetId int64) ([]int64, error) {
 	return s.reWorkWorkSetRepo.ListByWorkSetId(ctx, workSetId)
 }
@@ -537,14 +533,31 @@ func (s *Service) ApplySiteOrder(ctx context.Context, workSetId int64) error {
 	return s.reWorkWorkSetRepo.ApplySiteOrder(ctx, workSetId)
 }
 
-// UnsetCover 取消封面设置
-func (s *Service) UnsetCover(ctx context.Context, workSetId, workId int64) error {
-	return s.reWorkWorkSetRepo.UpdateIsCover(ctx, workId, workSetId, false)
+// UnsetCover 取消封面设置（清空封面引用，一条 UPDATE）
+func (s *Service) UnsetCover(ctx context.Context, workSetId int64) error {
+	return s.repo.UpdateCoverWorkId(ctx, workSetId, nil)
 }
 
-// GetCoverWorkId 获取封面作品ID
+// GetCoverWorkId 获取封面作品ID（cover_work_id 引用；未设置为 0）
 func (s *Service) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
-	return s.reWorkWorkSetRepo.GetCoverWorkId(ctx, workSetId)
+	ws, err := s.repo.GetById(ctx, workSetId)
+	if err != nil {
+		return 0, err
+	}
+	if ws.CoverWorkID.Valid {
+		return ws.CoverWorkID.Int64, nil
+	}
+	return 0, nil
+}
+
+// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（work_set.cover_work_id）
+func (s *Service) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
+	return s.repo.ListCoverWorkIdsByWorkSetIds(ctx, workSetIds)
+}
+
+// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
+func (s *Service) ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
+	return s.reWorkWorkSetRepo.ListMinSortOrderWorkIdsByWorkSetIds(ctx, workSetIds)
 }
 
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品完整信息
@@ -637,10 +650,11 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 			CoverWork: nil,
 		}
 
-		// 获取封面作品ID
-		coverWorkId, err := s.reWorkWorkSetRepo.GetCoverWorkId(ctx, ws.GetID())
-		if err != nil {
-			return nil, err
+		// 封面引用（cover_work_id）；指向的作品已删/不存在时回退直接成员首个（MIN(sort_order) 语义，
+		// ListByWorkSetId 按 sort_order 升序返回）
+		coverWorkId := int64(0)
+		if ws.CoverWorkID.Valid {
+			coverWorkId = ws.CoverWorkID.Int64
 		}
 		if coverWorkId > 0 {
 			works, err := s.workReader.ListByIds(ctx, []int64{coverWorkId})
@@ -649,6 +663,30 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 			}
 			if len(works) > 0 {
 				dto.CoverWork = dto2.NewWorkDTO(works[0])
+			}
+		}
+		if dto.CoverWork == nil {
+			// 兜底直接成员首个活作品（ListByWorkSetId 按 sort_order 升序；作品软删后关联行保留，
+			// 逐位跳过死作品——批量查活作品后按关联序取首个命中）
+			directIds, err := s.reWorkWorkSetRepo.ListByWorkSetId(ctx, ws.GetID())
+			if err != nil {
+				return nil, err
+			}
+			if len(directIds) > 0 {
+				works, err := s.workReader.ListByIds(ctx, directIds)
+				if err != nil {
+					return nil, err
+				}
+				workMap := make(map[int64]*entity2.Work, len(works))
+				for _, w := range works {
+					workMap[w.GetID()] = w
+				}
+				for _, id := range directIds {
+					if w, ok := workMap[id]; ok {
+						dto.CoverWork = dto2.NewWorkDTO(w)
+						break
+					}
+				}
 			}
 		}
 

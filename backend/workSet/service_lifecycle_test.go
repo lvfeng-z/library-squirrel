@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/library-squirrel/backend/base/model"
+	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/migration"
@@ -26,7 +28,16 @@ func (t *lifecycleTransactor) ExecInTransaction(ctx context.Context, fn func(ctx
 	})
 }
 
-// newLifecycleService 内存库 + 真仓储事务组装 Service（fullWorkReader/workReader 本链不涉及，传 nil）
+// lifecycleWorkReader 真库作品读取器（GORM 管线软删过滤天然生效；封面链消费）
+type lifecycleWorkReader struct{ db *gorm.DB }
+
+func (r *lifecycleWorkReader) ListByIds(ctx context.Context, ids []int64) ([]*entity2.Work, error) {
+	var works []*entity2.Work
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&works).Error
+	return works, err
+}
+
+// newLifecycleService 内存库 + 真仓储事务组装 Service（fullWorkReader 不涉传 nil；workReader 真库）
 func newLifecycleService(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -41,7 +52,8 @@ func newLifecycleService(t *testing.T) (*Service, *gorm.DB) {
 		reWorkWorkSet.NewRepository(db),
 		reWorkSetWorkSet.NewRepository(db),
 		&lifecycleTransactor{db: db},
-		nil, nil,
+		nil,
+		&lifecycleWorkReader{db: db},
 	)
 	return svc, db
 }
@@ -122,54 +134,125 @@ func TestSoftDeleteWorkSetNotFound(t *testing.T) {
 	}
 }
 
-// TestSetCoverRejectsNonDirectMember 封面/移除的直接成员校验：子集作品无本集关联行，
-// 对其操作应显式报错而非静默无效果
-func TestSetCoverRejectsNonDirectMember(t *testing.T) {
+// TestSetCoverTransitiveMember 封面可指向传递包含内任意作品（含子集作品）；
+// 非传递包含内的作品拒绝；移除仍为直接成员专属
+func TestSetCoverTransitiveMember(t *testing.T) {
 	svc, db := newLifecycleService(t)
 	ctx := context.Background()
 
 	parentId := insertWorkAndGetId(t, svc, 1, "parent")
 	childId := insertWorkAndGetId(t, svc, 1, "child")
-	// 挂 child 为 parent 的子集，作品仅直接属于 child
 	if err := svc.AddChildWorkSet(ctx, parentId, childId); err != nil {
 		t.Fatalf("建父子关系失败: %v", err)
 	}
-	w := entity2.NewWork()
-	if err := db.Create(w).Error; err != nil {
+	// 作品仅直接属于 child（子集成员）
+	childWork := entity2.NewWork()
+	if err := db.Create(childWork).Error; err != nil {
 		t.Fatalf("建作品失败: %v", err)
 	}
 	rel := entity2.NewReWorkWorkSet()
-	rel.WorkID = sql.NullInt64{Int64: w.GetID(), Valid: true}
+	rel.WorkID = sql.NullInt64{Int64: childWork.GetID(), Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: childId, Valid: true}
 	if err := db.Create(rel).Error; err != nil {
 		t.Fatalf("挂成员失败: %v", err)
 	}
 
-	// 子集作品设 parent 封面：拒绝
-	if err := svc.SetCoverWork(ctx, parentId, w.GetID()); !errors.Is(err, ErrWorkNotInWorkSet) {
-		t.Fatalf("子集作品设封面应报 ErrWorkNotInWorkSet，实际: %v", err)
-	}
-	// 子集作品从 parent 移除：拒绝
-	if err := svc.RemoveBatchFromWorkSet(ctx, parentId, []int64{w.GetID()}); !errors.Is(err, ErrWorkNotInWorkSet) {
-		t.Fatalf("子集作品移除应报 ErrWorkNotInWorkSet，实际: %v", err)
-	}
-	// 封面标记未被污染（parent 下无 is_cover 行）
-	var coverCnt int64
-	db.Raw(`SELECT COUNT(*) FROM re_work_work_set WHERE work_set_id = ? AND is_cover = 1`, parentId).Scan(&coverCnt)
-	if coverCnt != 0 {
-		t.Fatalf("被拒绝的设封面不应残留标记，实际 %d 行", coverCnt)
-	}
-
-	// 直接成员设封面：成功且可查回
-	if err := svc.LinkWorkToWorkSet(ctx, w.GetID(), parentId, false); err != nil {
-		t.Fatalf("挂直接成员失败: %v", err)
-	}
-	if err := svc.SetCoverWork(ctx, parentId, w.GetID()); err != nil {
-		t.Fatalf("直接成员设封面失败: %v", err)
+	// 子集作品设 parent 封面：成功（封面是集级引用，不依赖直接关联行）
+	if err := svc.SetCoverWork(ctx, parentId, childWork.GetID()); err != nil {
+		t.Fatalf("子集作品设封面应成功: %v", err)
 	}
 	coverId, err := svc.GetCoverWorkId(ctx, parentId)
-	if err != nil || coverId != w.GetID() {
-		t.Fatalf("封面应可查回 %d，实际 %d err=%v", w.GetID(), coverId, err)
+	if err != nil || coverId != childWork.GetID() {
+		t.Fatalf("封面应查回子集作品 %d，实际 %d err=%v", childWork.GetID(), coverId, err)
+	}
+	// 再设直接成员为封面：覆盖旧引用（集级单值）
+	directWork := entity2.NewWork()
+	if err := db.Create(directWork).Error; err != nil {
+		t.Fatalf("建作品失败: %v", err)
+	}
+	relDirect := entity2.NewReWorkWorkSet()
+	relDirect.WorkID = sql.NullInt64{Int64: directWork.GetID(), Valid: true}
+	relDirect.WorkSetID = sql.NullInt64{Int64: parentId, Valid: true}
+	if err := db.Create(relDirect).Error; err != nil {
+		t.Fatalf("挂直接成员失败: %v", err)
+	}
+	if err := svc.SetCoverWork(ctx, parentId, directWork.GetID()); err != nil {
+		t.Fatalf("直接成员设封面失败: %v", err)
+	}
+	if coverId, _ = svc.GetCoverWorkId(ctx, parentId); coverId != directWork.GetID() {
+		t.Fatalf("后设封面应覆盖，实际 %d", coverId)
+	}
+
+	// 非传递包含内的作品：拒绝
+	outsider := entity2.NewWork()
+	if err := db.Create(outsider).Error; err != nil {
+		t.Fatalf("建作品失败: %v", err)
+	}
+	if err := svc.SetCoverWork(ctx, parentId, outsider.GetID()); !errors.Is(err, ErrWorkNotInWorkSet) {
+		t.Fatalf("非成员设封面应报 ErrWorkNotInWorkSet，实际: %v", err)
+	}
+
+	// 子集作品从 parent 移除：仍拒绝（移除是直接成员专属）
+	if err := svc.RemoveBatchFromWorkSet(ctx, parentId, []int64{childWork.GetID()}); !errors.Is(err, ErrWorkNotInWorkSet) {
+		t.Fatalf("子集作品移除应报 ErrWorkNotInWorkSet，实际: %v", err)
+	}
+	// 直接成员移除：成功
+	if err := svc.RemoveBatchFromWorkSet(ctx, parentId, []int64{directWork.GetID()}); err != nil {
+		t.Fatalf("直接成员移除失败: %v", err)
+	}
+}
+
+// TestCoverFallbackSkipsDeletedWork 封面回退跳过死作品：显式封面死 / 首个成员死，
+// 兜底均落到首个活成员（作品软删后关联行保留，兜底查询与单集链须判活）
+func TestCoverFallbackSkipsDeletedWork(t *testing.T) {
+	svc, db := newLifecycleService(t)
+	ctx := context.Background()
+
+	wsId := insertWorkAndGetId(t, svc, 1, "abc")
+	newWork := func(sort int64) int64 {
+		w := entity2.NewWork()
+		if err := db.Create(w).Error; err != nil {
+			t.Fatalf("建作品失败: %v", err)
+		}
+		rel := entity2.NewReWorkWorkSet()
+		rel.WorkID = sql.NullInt64{Int64: w.GetID(), Valid: true}
+		rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
+		rel.SortOrder = sql.NullInt64{Int64: sort, Valid: true}
+		if err := db.Create(rel).Error; err != nil {
+			t.Fatalf("挂成员失败: %v", err)
+		}
+		return w.GetID()
+	}
+	first, second := newWork(1), newWork(2)
+
+	// 软删首个成员（显式封面与兜底来源双杀：封面设 first 后再删它）
+	if err := svc.SetCoverWork(ctx, wsId, first); err != nil {
+		t.Fatalf("设封面失败: %v", err)
+	}
+	if err := db.Exec(`UPDATE work SET deleted_at = 1700000000000 WHERE id = ?`, first).Error; err != nil {
+		t.Fatalf("软删作品失败: %v", err)
+	}
+
+	// 单集链（QueryPageWithCover 内含 GetCoverWorkId 判活回退）：封面落到第二个活成员
+	page, err := svc.QueryPageWithCover(ctx, &model.Page[dto2.WorkSetWithCoverDTO]{PageNumber: 1, PageSize: 10}, WorkSetQueryDTO{})
+	if err != nil {
+		t.Fatalf("分页查询失败: %v", err)
+	}
+	if len(page.Data) != 1 || page.Data[0].CoverWork == nil {
+		t.Fatalf("封面应回退到活成员，实际 %v", page.Data)
+	}
+	if page.Data[0].CoverWork.GetId() != second {
+		t.Fatalf("封面应回退到第二个活成员 %d，实际 %d", second, page.Data[0].CoverWork.GetId())
+	}
+
+	// 批查兜底（reWorkWorkSet 仓储）：MIN(sort_order) 判活，返回活成员
+	repo := reWorkWorkSet.NewRepository(db)
+	fallback, err := repo.ListMinSortOrderWorkIdsByWorkSetIds(ctx, []int64{wsId})
+	if err != nil {
+		t.Fatalf("兜底查询失败: %v", err)
+	}
+	if fallback[wsId] != second {
+		t.Fatalf("兜底应返回活成员 %d，实际 %v", second, fallback[wsId])
 	}
 }
 

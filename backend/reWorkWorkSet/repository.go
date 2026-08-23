@@ -92,7 +92,7 @@ func (r *ReWorkWorkSetRepository) ListWorkIdsByWorkSetIds(ctx context.Context, w
 	return workIds, err
 }
 
-// ListRelationsByWorkId 查询作品关联的所有作品集关联记录（原始实体，含 is_cover/sort_order）
+// ListRelationsByWorkId 查询作品关联的所有作品集关联记录（原始实体，含 sort_order）
 func (r *ReWorkWorkSetRepository) ListRelationsByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkWorkSet, error) {
 	var items []*domain.ReWorkWorkSet
 	err := r.dbFromCtx(ctx).
@@ -133,24 +133,6 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrder(ctx context.Context, workId, w
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
 		Update("sort_order", sortOrder).Error
-}
-
-// UpdateIsCover 更新封面标记
-func (r *ReWorkWorkSetRepository) UpdateIsCover(ctx context.Context, workId, workSetId int64, isCover bool) error {
-	return r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Model(new(domain.ReWorkWorkSet)).
-		Where("work_id = ? AND work_set_id = ?", workId, workSetId).
-		Update("is_cover", isCover).Error
-}
-
-// ClearOtherCovers 清除作品集的其他封面
-func (r *ReWorkWorkSetRepository) ClearOtherCovers(ctx context.Context, workSetId int64, exceptWorkId int64) error {
-	return r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Model(new(domain.ReWorkWorkSet)).
-		Where("work_set_id = ? AND work_id != ?", workSetId, exceptWorkId).
-		Update("is_cover", false).Error
 }
 
 // UpdateSortOrders 批量更新排序顺序
@@ -194,47 +176,8 @@ func (r *ReWorkWorkSetRepository) ApplySiteOrder(ctx context.Context, workSetId 
 		Update("sort_order", gorm.Expr("site_sort_order")).Error
 }
 
-// GetCoverWorkId 获取封面作品ID
-func (r *ReWorkWorkSetRepository) GetCoverWorkId(ctx context.Context, workSetId int64) (int64, error) {
-	var workId int64
-	err := r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Model(new(domain.ReWorkWorkSet)).
-		Where("work_set_id = ? AND is_cover = 1", workSetId).
-		Pluck("work_id", &workId).Error
-	if err != nil {
-		return 0, err
-	}
-	return workId, nil
-}
-
-// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（is_cover = 1）
-func (r *ReWorkWorkSetRepository) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
-	if len(workSetIds) == 0 {
-		return map[int64]int64{}, nil
-	}
-	type result struct {
-		WorkSetID int64
-		WorkID    int64
-	}
-	var results []result
-	err := r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Model(new(domain.ReWorkWorkSet)).
-		Where("is_cover = 1 AND work_set_id IN ?", workSetIds).
-		Select("work_set_id, work_id").
-		Find(&results).Error
-	if err != nil {
-		return nil, err
-	}
-	coverMap := make(map[int64]int64, len(results))
-	for _, r := range results {
-		coverMap[r.WorkSetID] = r.WorkID
-	}
-	return coverMap, nil
-}
-
-// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
+// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的**活**作品ID（兜底封面）。
+// 两端 JOIN work 判活：作品软删后关联行保留，不判活则兜底选中死作品、封面落空
 func (r *ReWorkWorkSetRepository) ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
 	if len(workSetIds) == 0 {
 		return map[int64]int64{}, nil
@@ -245,16 +188,18 @@ func (r *ReWorkWorkSetRepository) ListMinSortOrderWorkIdsByWorkSetIds(ctx contex
 	}
 	var results []result
 	subQuery := r.dbFromCtx(ctx).
-		Model(new(domain.ReWorkWorkSet)).
-		Select("work_set_id, MIN(sort_order) as sort_order").
-		Where("work_set_id IN ?", workSetIds).
-		Group("work_set_id")
+		Table("re_work_work_set rwws2").
+		Select("rwws2.work_set_id, MIN(rwws2.sort_order) as sort_order").
+		Joins("JOIN work w2 ON rwws2.work_id = w2.id AND w2.deleted_at = 0").
+		Where("rwws2.work_set_id IN ?", workSetIds).
+		Group("rwws2.work_set_id")
 	err := r.dbFromCtx(ctx).
 		WithContext(ctx).
-		Table("re_work_work_set").
-		Where("work_set_id IN ?", workSetIds).
-		Where("(work_set_id, sort_order) IN (?)", subQuery).
-		Select("work_set_id, work_id").
+		Table("re_work_work_set rwws").
+		Joins("JOIN work w ON rwws.work_id = w.id AND w.deleted_at = 0").
+		Where("rwws.work_set_id IN ?", workSetIds).
+		Where("(rwws.work_set_id, rwws.sort_order) IN (?)", subQuery).
+		Select("rwws.work_set_id, rwws.work_id").
 		Find(&results).Error
 	if err != nil {
 		return nil, err
@@ -285,7 +230,7 @@ func buildCaseExpression(sortOrders map[int64]int) string {
 }
 
 // SaveBatchOnConflict 批量保存，遇 (work_id, work_set_id) 唯一冲突跳过该行（OnConflict DoNothing）
-// 物理纳入复制用：单条重复不拒绝整批（决策7）；is_cover 由调用方置 false 回避 set_cover 唯一索引
+// 物理纳入复制用：单条重复不拒绝整批（决策7）
 func (r *ReWorkWorkSetRepository) SaveBatchOnConflict(ctx context.Context, reWorkWorkSets []*domain.ReWorkWorkSet) error {
 	if len(reWorkWorkSets) == 0 {
 		return nil

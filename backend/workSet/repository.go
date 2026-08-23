@@ -2,6 +2,7 @@ package workSet
 
 import (
 	"context"
+	"database/sql"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -147,4 +148,42 @@ func (r *WorkSetRepository) ListDeletedBefore(ctx context.Context, expireBefore 
 		},
 		IncludeDeleted: true,
 	})
+}
+
+// UpdateCoverWorkId 更新作品集的封面作品引用（集级单值，一条 UPDATE；workId nil=清除封面）
+func (r *WorkSetRepository) UpdateCoverWorkId(ctx context.Context, workSetId int64, workId *int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.WorkSet)).
+		Where("id = ?", workSetId).
+		Update("cover_work_id", workId).Error
+}
+
+// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（work_set.cover_work_id；
+// 作品活性由消费方判——封面指向已删作品时回退兜底）
+func (r *WorkSetRepository) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
+	if len(workSetIds) == 0 {
+		return map[int64]int64{}, nil
+	}
+	type result struct {
+		ID          int64
+		CoverWorkID sql.NullInt64
+	}
+	var results []result
+	err := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.WorkSet)).
+		Where("id IN ?", workSetIds).
+		Select("id, cover_work_id").
+		Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	coverMap := make(map[int64]int64, len(results))
+	for _, r := range results {
+		if r.CoverWorkID.Valid {
+			coverMap[r.ID] = r.CoverWorkID.Int64
+		}
+	}
+	return coverMap, nil
 }

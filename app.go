@@ -934,7 +934,7 @@ func (app *App) initAdvancedServices() error {
 	searchRepo := search.NewRepository(app.db)
 	app.SearchService = search.NewService(
 		searchRepo,
-		reWorkWorkSetRepo,
+		app.WorkSetService, // CoverResolver：封面引用（work_set.cover_work_id）+ MIN(sort_order) 兜底
 		app.WorkService,
 		app.ResourceService,
 		app.PersistentStoreService, // StoreBatchReader
