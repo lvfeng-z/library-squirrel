@@ -363,19 +363,19 @@ function handleTest() {
       <el-button
         v-if="workSetView"
         type="primary"
-        class="topbar-items"
-        @click="queryWorkSetPage(false)"
-      >
-        搜索
-      </el-button>
-      <el-button
-        v-if="workSetView"
-        type="primary"
         plain
         class="topbar-items"
         @click="workSetCreateDialogState = true"
       >
         新建作品集
+      </el-button>
+      <el-button
+          v-if="workSetView"
+          type="primary"
+          class="topbar-items"
+          @click="queryWorkSetPage(false)"
+      >
+        搜索
       </el-button>
     </div>
     <div
