@@ -44,7 +44,7 @@ globs:
 | `persistent_store` | `file_path` | workDir | 资源文件存储 | `store/resource/作者/文件.mp4`、`store/resource/作者/文件_thumbnail_000.jpg` |
 | `backup` | `file_path` | workDir | 备份文件路径 | `backup/2026/06/08/文件.mp4` |
 
-> 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。`store/thumbnail/` 仅历史已落盘文件保留(路径校验白名单不删),新文件不再写入。
+> 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。历史独立目录 `store/thumbnail/` 白名单条目已退役(零写入方、库内零存量行)。
 
 > 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`completed_at`（落盘完成时刻毫秒时间戳，0=未完成）是合法零值——GORM Updates 跳零值，「续传重置回未完成」须经 `ResetCompleted` 显式列更新（service 层已封装）。
 
@@ -53,7 +53,7 @@ globs:
 ### 路径解析约定
 
 - **绝对路径解析**：`filepath.Join(rootDir, relativePath)`，禁止额外拼接中间目录（如 `"store"`）
-- **路径校验**：`persistent_store.file_path` 必须以 `storeRegistry` 中已注册的子目录开头（如 `store/resource`、`store/thumbnail`、`store/avatar/local`、`store/avatar/site`）
+- **路径校验**：`persistent_store.file_path` 必须以 `storeRegistry` 中已注册的子目录开头（如 `store/resource`、`store/avatar/local`、`store/avatar/site`）
 - **URL 映射**：前端 `buildStoreUrl(filePath)` 将 workDir 相对路径编码为 `/store/{encoded}` URL，后端 `StoreFileHandler` 剥离 `/store/` 前缀后直接 `filepath.Join(workDir, path)` 解析
 
 ## 软删除（GORM soft_delete）

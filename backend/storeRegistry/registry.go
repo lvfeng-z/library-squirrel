@@ -17,7 +17,6 @@ type StoreDir struct {
 // persistentStore 落盘前路径校验、fsmonitor 对账扫描与 USN 路径过滤都引用本清单。
 var RegisteredDirs = []StoreDir{
 	{Path: "store/resource", Description: "作品资源文件（迁移过渡用）"},
-	{Path: "store/thumbnail", Description: "视频缩略图"},
 	{Path: "store/avatar/local", Description: "本地作者头像"},
 	{Path: "store/avatar/site", Description: "站点作者头像"},
 }

@@ -12,8 +12,8 @@ func TestInScanDirs(t *testing.T) {
 		want bool
 	}{
 		{"store/resource/作者/x.jpg", true},
-		{"store/resource", true}, // 子树根自身
-		{"store/thumbnail/t.jpg", true},
+		{"store/resource", true},         // 子树根自身
+		{"store/thumbnail/t.jpg", false}, // 已退役目录（缩略图统一进 store/resource，不再独立子目录）
 		{"store/avatar/local/a.png", true},
 		{"store/avatar/site/b.png", true},
 		{"store/avatar", false}, // 仅 store/avatar 不在白名单（只有 local/site）
@@ -36,7 +36,6 @@ func TestValidatePath(t *testing.T) {
 	ok := []string{
 		"store/resource/作者/video.mp4",
 		"store/resource",
-		"store/thumbnail/x.jpg",
 		"store/avatar/local/1.png",
 		"store/avatar/site/2.png",
 	}
@@ -47,6 +46,7 @@ func TestValidatePath(t *testing.T) {
 	}
 	bad := []string{
 		"backup/2026/x.mp4",
+		"store/thumbnail/x.jpg", // 已退役目录，不再放行
 		"store/avatar",          // 仅 store/avatar，未注册子目录
 		"store/resourceX/y.jpg", // 前缀串匹配按分隔符，不误命中
 		".git/config",
