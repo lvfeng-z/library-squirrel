@@ -13,6 +13,20 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/read-guard.sh\"",
+            "shell": "bash",
+            "timeout": 10,
+            "statusMessage": "Read-guard: 大文件整读检查"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
