@@ -24,6 +24,12 @@ esac
 
 [ -f "$file" ] || exit 0
 
+# 方案文档豁免：doc/plan/ 的 Markdown 是方案会话的蒸馏产物，
+# 实施编排会话合法需要整读（一次性 10-15K token 是合理固定开销）
+case "$file" in
+  */doc/plan/*.md) exit 0 ;;
+esac
+
 lines=$(wc -l < "$file" 2>/dev/null || echo 0)
 bytes=$(stat -c %s "$file" 2>/dev/null || echo 0)
 
