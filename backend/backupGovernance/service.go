@@ -46,7 +46,7 @@ type BackupReferencer interface {
 // 不变量知识（persistentStore：backup_id 与软删标志单条 UPDATE 同生共死，活行携带非 0 值构造上
 // 不可达），治理方对账时经类型断言调用做防御清列
 type IllegalBackupRefSanitizer interface {
-	// ClearIllegalAliveBackupRefs 清活行携带 backup_id>0 的非法态列，返回受影响行数
+	// ClearIllegalAliveBackupRefs 清活行携带备份引用的非法态列，返回受影响行数
 	ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error)
 }
 
@@ -233,7 +233,7 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 			logger.Log.Infof("[backupGovernance] 已清理 %d 条悬空引用（清单行已不存在）: %s", len(dangling), ref.Name())
 		}
 	}
-	// 非法引用态防御清列（活行携带 backup_id>0，构造上不可达；实现方按需提供）
+	// 非法引用态防御清列（活行携带 备份引用，构造上不可达；实现方按需提供）
 	for _, ref := range s.referencers {
 		if san, ok := ref.(IllegalBackupRefSanitizer); ok {
 			if n, err := san.ClearIllegalAliveBackupRefs(ctx); err != nil {

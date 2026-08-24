@@ -896,6 +896,7 @@ func (app *App) initAdvancedServices() error {
 		nil,
 		workResourceStoreRepo, // ResourceStoreHardDeleter(DeleteByResourceIds)
 		reWorkSetWorkSetRepo,
+		workSetRepo, // CoverReferenceClearer（purge 链首步清封面引用）
 	)
 
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）

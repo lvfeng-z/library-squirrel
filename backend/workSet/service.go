@@ -97,8 +97,6 @@ type ReWorkWorkSetRepository interface {
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// MaxSortOrderByWorkSetId 作品集下最大 sort_order（无作品返回 0）
 	MaxSortOrderByWorkSetId(ctx context.Context, workSetId int64) (int64, error)
-	// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
-	ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
 }
 
 // ReWorkSetWorkSetRepository 作品集间父子关联（多父 DAG）仓储接口
@@ -555,11 +553,6 @@ func (s *Service) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds [
 	return s.repo.ListCoverWorkIdsByWorkSetIds(ctx, workSetIds)
 }
 
-// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的作品ID（兜底封面）
-func (s *Service) ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
-	return s.reWorkWorkSetRepo.ListMinSortOrderWorkIdsByWorkSetIds(ctx, workSetIds)
-}
-
 // ListWorkSetWithWorkByIds 根据作品集ID列表获取作品集及其作品完整信息
 // 传递包含：每个作品集的作品含其全部后代作品集的作品（去重、保序，§4.4），GetFullWorkInfoByIds 批量化消除 N+1
 func (s *Service) ListWorkSetWithWorkByIds(ctx context.Context, workSetIds []int64) ([]*dto2.WorkSetWithWorksResultDTO, error) {
@@ -650,8 +643,8 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 			CoverWork: nil,
 		}
 
-		// 封面引用（cover_work_id）；指向的作品已删/不存在时回退直接成员首个（MIN(sort_order) 语义，
-		// ListByWorkSetId 按 sort_order 升序返回）
+		// 封面引用（cover_work_id）；指向的作品不在活行（软删/已彻底删除）时封面落空——
+		// 无兜底转投（purge 链清引用后悬空不复存在；软删期显示空，复原后恢复）
 		coverWorkId := int64(0)
 		if ws.CoverWorkID.Valid {
 			coverWorkId = ws.CoverWorkID.Int64
@@ -663,30 +656,6 @@ func (s *Service) QueryPageWithCover(ctx context.Context, page *model.Page[dto2.
 			}
 			if len(works) > 0 {
 				dto.CoverWork = dto2.NewWorkDTO(works[0])
-			}
-		}
-		if dto.CoverWork == nil {
-			// 兜底直接成员首个活作品（ListByWorkSetId 按 sort_order 升序；作品软删后关联行保留，
-			// 逐位跳过死作品——批量查活作品后按关联序取首个命中）
-			directIds, err := s.reWorkWorkSetRepo.ListByWorkSetId(ctx, ws.GetID())
-			if err != nil {
-				return nil, err
-			}
-			if len(directIds) > 0 {
-				works, err := s.workReader.ListByIds(ctx, directIds)
-				if err != nil {
-					return nil, err
-				}
-				workMap := make(map[int64]*entity2.Work, len(works))
-				for _, w := range works {
-					workMap[w.GetID()] = w
-				}
-				for _, id := range directIds {
-					if w, ok := workMap[id]; ok {
-						dto.CoverWork = dto2.NewWorkDTO(w)
-						break
-					}
-				}
 			}
 		}
 

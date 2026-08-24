@@ -64,34 +64,61 @@ func (r *LocalTagRepository) GetByNames(ctx context.Context, names []string) ([]
 	return tags, err
 }
 
-// SelectTreeNode 递归查询子标签
+// SelectTreeNode 递归查询子标签（rootId<=0 时从根标签起查——base_local_tag_id NULL=根）
 func (r *LocalTagRepository) SelectTreeNode(ctx context.Context, rootId int64, depth int) ([]*entity.LocalTag, error) {
 	if depth <= 0 {
 		depth = 10
 	}
 
-	// 使用 GORM Raw 执行递归 CTE 查询
-	query := `
-		WITH RECURSIVE treeNode AS
-		(
-			SELECT *, 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
-			FROM local_tag t1
-			WHERE base_local_tag_id = ?
-			UNION ALL
-			SELECT t1.*, treeNode.level + 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
-			FROM local_tag t1
-			JOIN treeNode ON t1.base_local_tag_id = treeNode.id
-			WHERE treeNode.level < ?
-		)
-		SELECT id, local_tag_name, base_local_tag_id, last_use, create_time, update_time FROM treeNode
-	`
-
+	// 使用 GORM Raw 执行递归 CTE 查询（锚点按根/指定父二选一）
 	var tags []*entity.LocalTag
-	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(query, rootId, depth).Scan(&tags).Error
+	var err error
+	if rootId > 0 {
+		query := `
+			WITH RECURSIVE treeNode AS
+			(
+				SELECT *, 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
+				FROM local_tag t1
+				WHERE base_local_tag_id = ?
+				UNION ALL
+				SELECT t1.*, treeNode.level + 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
+				FROM local_tag t1
+				JOIN treeNode ON t1.base_local_tag_id = treeNode.id
+				WHERE treeNode.level < ?
+			)
+			SELECT id, local_tag_name, base_local_tag_id, last_use, create_time, update_time FROM treeNode
+		`
+		err = r.dbFromCtx(ctx).WithContext(ctx).Raw(query, rootId, depth).Scan(&tags).Error
+	} else {
+		query := `
+			WITH RECURSIVE treeNode AS
+			(
+				SELECT *, 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
+				FROM local_tag t1
+				WHERE base_local_tag_id IS NULL
+				UNION ALL
+				SELECT t1.*, treeNode.level + 1 AS level, NOT EXISTS(SELECT 1 FROM local_tag WHERE base_local_tag_id = t1.id) AS isLeaf
+				FROM local_tag t1
+				JOIN treeNode ON t1.base_local_tag_id = treeNode.id
+				WHERE treeNode.level < ?
+			)
+			SELECT id, local_tag_name, base_local_tag_id, last_use, create_time, update_time FROM treeNode
+		`
+		err = r.dbFromCtx(ctx).WithContext(ctx).Raw(query, depth).Scan(&tags).Error
+	}
 	if err != nil {
 		return nil, err
 	}
 	return tags, nil
+}
+
+// ClearBaseLocalTagID 清父引用为 NULL（移到根——Updates 跳零值，NULL 须显式单列更新）
+func (r *LocalTagRepository) ClearBaseLocalTagID(ctx context.Context, id int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(entity.LocalTag)).
+		Where("id = ?", id).
+		Update("base_local_tag_id", nil).Error
 }
 
 // SelectParentNode 递归查询上级标签

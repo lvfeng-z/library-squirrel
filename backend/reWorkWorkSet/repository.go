@@ -176,41 +176,6 @@ func (r *ReWorkWorkSetRepository) ApplySiteOrder(ctx context.Context, workSetId 
 		Update("sort_order", gorm.Expr("site_sort_order")).Error
 }
 
-// ListMinSortOrderWorkIdsByWorkSetIds 批量查询多个作品集中排序最小的**活**作品ID（兜底封面）。
-// 两端 JOIN work 判活：作品软删后关联行保留，不判活则兜底选中死作品、封面落空
-func (r *ReWorkWorkSetRepository) ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
-	if len(workSetIds) == 0 {
-		return map[int64]int64{}, nil
-	}
-	type result struct {
-		WorkSetID int64
-		WorkID    int64
-	}
-	var results []result
-	subQuery := r.dbFromCtx(ctx).
-		Table("re_work_work_set rwws2").
-		Select("rwws2.work_set_id, MIN(rwws2.sort_order) as sort_order").
-		Joins("JOIN work w2 ON rwws2.work_id = w2.id AND w2.deleted_at = 0").
-		Where("rwws2.work_set_id IN ?", workSetIds).
-		Group("rwws2.work_set_id")
-	err := r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Table("re_work_work_set rwws").
-		Joins("JOIN work w ON rwws.work_id = w.id AND w.deleted_at = 0").
-		Where("rwws.work_set_id IN ?", workSetIds).
-		Where("(rwws.work_set_id, rwws.sort_order) IN (?)", subQuery).
-		Select("rwws.work_set_id, rwws.work_id").
-		Find(&results).Error
-	if err != nil {
-		return nil, err
-	}
-	fallbackMap := make(map[int64]int64, len(results))
-	for _, r := range results {
-		fallbackMap[r.WorkSetID] = r.WorkID
-	}
-	return fallbackMap, nil
-}
-
 // getMapKeys 获取map的key列表
 func getMapKeys(m map[int64]int) []int64 {
 	keys := make([]int64, 0, len(m))

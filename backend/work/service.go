@@ -273,6 +273,12 @@ type ResourceStoreHardDeleter interface {
 	DeleteByResourceIds(ctx context.Context, resourceIds []int64) error
 }
 
+// CoverReferenceClearer 封面引用清理（作品彻底删除链首步：清 work_set.cover_work_id 指向本作品的
+// 引用——外键删除防线下的前置义务；软删集行同样持有引用，清理不分行态，由 workSet 仓储实现）
+type CoverReferenceClearer interface {
+	ClearCoverReferences(ctx context.Context, workId int64) error
+}
+
 // RunningTaskStopper 运行中任务停止接口（逻辑删除前停止关联任务实例，防止重建作品）
 // task 记录不在删除范围，仅停止内存中的运行实例
 type RunningTaskStopper interface {
@@ -363,6 +369,9 @@ type Service struct {
 
 	// 彻底删除（DeleteWorkAndSurroundingData）级联清理接口
 	resourceStoreHardDeleter ResourceStoreHardDeleter
+
+	// 封面引用清理（彻底删除链首步，workSet 仓储实现）
+	coverReferenceClearer CoverReferenceClearer
 }
 
 // NewService 创建作品服务
@@ -397,6 +406,7 @@ func NewService(
 	runningTaskStopper RunningTaskStopper,
 	resourceStoreHardDeleter ResourceStoreHardDeleter,
 	workSetRelationWriter WorkSetRelationWriter,
+	coverReferenceClearer CoverReferenceClearer,
 ) *Service {
 	return &Service{
 		repo:                     repo,
@@ -429,6 +439,7 @@ func NewService(
 		runningTaskStopper:       runningTaskStopper,
 		resourceStoreHardDeleter: resourceStoreHardDeleter,
 		workSetRelationWriter:    workSetRelationWriter,
+		coverReferenceClearer:    coverReferenceClearer,
 	}
 }
 
@@ -509,6 +520,10 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 
 	// 事务内：删除所有 DB 关联 + Resource + Work
 	err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		// 首步清封面引用（work_set.cover_work_id 指向本作品）——删 work 前须无子引用（外键删除防线）
+		if err := s.coverReferenceClearer.ClearCoverReferences(txCtx, id); err != nil {
+			return err
+		}
 		if err := s.reWorkTagWriter.DeleteByWorkId(txCtx, id); err != nil {
 			return err
 		}

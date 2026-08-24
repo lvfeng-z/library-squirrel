@@ -72,7 +72,7 @@ func (r *PersistentStoreRepository) DeleteUnscopedByIds(ctx context.Context, ids
 }
 
 // RestoreByIds 批量清软删标志与备份引用（复原链：文件还原回 store/ 后记录复活，
-// backup_id 指向的清单行已随还原删除故一并清零；Unscoped 逃逸 Update 的软删过滤）
+// backup_id 指向的清单行已随还原删除故一并清空；Unscoped 逃逸 Update 的软删过滤）
 func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -81,19 +81,24 @@ func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int6
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{"deleted_at": 0, "backup_id": 0}).Error
+		Updates(map[string]interface{}{"deleted_at": 0, "backup_id": nil}).Error
 }
 
 // SoftDeleteWithBackup 软删记录并写入备份清单行引用（单条 UPDATE 同生共死：
-// 文件移动入 backup/ 成功后调用，backup_id 与 deleted_at 原子落盘；backupId=0 表无备份的软删）
+// 文件移动入 backup/ 成功后调用，backup_id 与 deleted_at 原子落盘；backupId<=0 表无备份的软删，
+// 行内引用写 NULL）
 func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id int64, backupId int64) error {
+	backupRef := interface{}(backupId)
+	if backupId <= 0 {
+		backupRef = nil
+	}
 	return r.GORM().WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id = ? AND deleted_at = 0", id).
 		Updates(map[string]interface{}{
 			"deleted_at": util.GetCurrentTimestamp(),
-			"backup_id":  backupId,
+			"backup_id":  backupRef,
 		}).Error
 }
 
@@ -120,14 +125,14 @@ func (r *PersistentStoreRepository) RenameDirectoryPrefix(ctx context.Context, o
 	return result.RowsAffected, result.Error
 }
 
-// ListReferencedBackupIds 全量投影行内引用的备份清单行 ID（DISTINCT backup_id WHERE backup_id > 0）。
+// ListReferencedBackupIds 全量投影行内引用的备份清单行 ID（DISTINCT backup_id WHERE backup_id IS NOT NULL）。
 // Unscoped 含已删行——软删行是合法引用者（回收站待复原），GORM 默认软删 scope 排除即活备份被误判无主
 func (r *PersistentStoreRepository) ListReferencedBackupIds(ctx context.Context) ([]int64, error) {
 	var ids []int64
 	err := r.GORM().WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
-		Where("backup_id > 0").
+		Where("backup_id IS NOT NULL").
 		Distinct().
 		Pluck("backup_id", &ids).Error
 	return ids, err
@@ -143,16 +148,16 @@ func (r *PersistentStoreRepository) ClearBackupRefsByBackupIds(ctx context.Conte
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("backup_id IN ?", ids).
-		Update("backup_id", 0).Error
+		Update("backup_id", nil).Error
 }
 
-// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带 backup_id>0 的非法态列，返回受影响行数。
+// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带备份引用的非法态列，返回受影响行数。
 // 构造上不可达（backup_id 与 deleted_at 单条 UPDATE 同生共死、复原双列同清），防御外部直改数据库
 func (r *PersistentStoreRepository) ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error) {
 	result := r.GORM().WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
-		Where("deleted_at = 0 AND backup_id > 0").
-		Update("backup_id", 0)
+		Where("deleted_at = 0 AND backup_id IS NOT NULL").
+		Update("backup_id", nil)
 	return result.RowsAffected, result.Error
 }

@@ -25,8 +25,9 @@ func Init(path string) error {
 
 	var err error
 	once.Do(func() {
-		// 打开 SQLite 连接（GORM 自动使用 mattn/go-sqlite3）
-		gormDB, err = gorm.Open(sqlite.Open(path+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000"), &gorm.Config{
+		// 打开 SQLite 连接（GORM 自动使用 mattn/go-sqlite3）。
+		// _foreign_keys=on：外键强制执行（SQLite 按连接生效，单连接一处覆盖全部操作）
+		gormDB, err = gorm.Open(sqlite.Open(path+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000&_foreign_keys=on"), &gorm.Config{
 			Logger: pkglogger.NewGormLogger(), // GORM SQL 日志输出到 zap
 		})
 		if err != nil {

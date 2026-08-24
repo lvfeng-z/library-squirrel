@@ -64,6 +64,15 @@ globs:
 - **业务键唯一性**：启用软删的表用部分唯一索引 `CREATE UNIQUE INDEX ... WHERE deleted_at = 0`（AutoMigrate 不管部分索引，drop 旧 + 建新全手写，以新索引名做幂等标记）；**加列迁移必带存量回填** `UPDATE ... SET deleted_at = 0 WHERE deleted_at IS NULL`——AutoMigrate 加列无默认值，存量行 NULL × `deleted_at = 0` 过滤不命中，全部存量行从查询中消失（实机踩中）。
 - **fsmonitor 联动**：store 行软删后经 GORM 自动 scope 排除在对账/关联查询外（曾用消费侧 JOIN work 排除条件 `notDeletedWorkCond`，属 persistentStore 越界感知业务实体，已随 persistent_store 软删落地删除）。
 
+## 外键强制执行（schema 级引用完整性）
+
+- **执行开关**：DSN（`backend/database/db.go`）带 `_foreign_keys=on`——SQLite 外键强制按连接生效、默认关闭，MaxOpenConns=1 单连接一处全覆盖；不能在事务内切换，DSN 级设置天然规避。
+- **形态仅 NO ACTION**：外键只做「被引用行删除/改键时若有子引用即拒绝」的报错式防线。**禁用 CASCADE/SET NULL**——级联清理是业务编排，归发起方模块（删除链手工显式子→父顺序，如 `DeleteWorkAndSurroundingData`）；外键不覆盖软删行态、「关联行缺失」类孤儿、跨表行态不变量与文件面一致性。
+- **声明登记面**：`backend/migration/foreign_keys.go` 的 `fkBatches`（全库 25 对）。SQLite 无 `ALTER TABLE ADD CONSTRAINT`，存量表挂 FK 经**表重建舞步**（以 `sqlite_master` 现表 DDL 为源文本注入 FK 子句→建新表→拷数据→删旧表→改名→复原索引；**禁用实体重建 DDL**——实体字段序与表列序漂移会静默错位）。幂等标记：`pragma_foreign_key_list` 的（引用列, 引用表）对（SQLite FK 无独立命名）。
+- **迁移时序与存量**：存量悬空引用先清（`cleanDanglingAssociations`——关联行 DELETE、业务行引用列置 NULL）；0 哨兵引用列一律 NULL 化（FK 对 NULL 豁免、对 0 不豁免）。悬空引用的存量遗留形态在 FK 强制下不可经正常写入产生，测试须关 PRAGMA 种植（对照 `plantDanglingPluginRef` 先例）。
+- **AutoMigrate 交互**：GORM AutoMigrate 不感知 FK；对 FK 表的列型变更走其 SQLite 重建可能掉 FK 子句——**FK 表结构变更此后只走命名迁移**，在其中保留 FK 定义。
+- **测试协同**：测试库一律 `migration.OpenTestDB()`（`:memory:?_foreign_keys=on` + 完整迁移），杜绝裸 `gorm.Open`——裸开测试库无 FK 强制、断言失效且与生产行为分叉。
+
 ## 数据库相关编码规则
 
 - **BASE_REPOSITORY_REUSE** (P0): 复用 `BaseRepository` 方法。仅当 `BaseRepository` 无法表达时才编写自定义 repository 逻辑。

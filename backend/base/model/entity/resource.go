@@ -11,7 +11,7 @@ import (
 type Resource struct {
 	*model.BaseEntity
 	WorkID           int64          `gorm:"column:work_id;index:idx_resource_work_id" json:"workId"`
-	TaskID           int64          `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"`
+	TaskID           sql.NullInt64  `gorm:"column:task_id;index:idx_resource_task_id" json:"taskId"` // 产生本资源的任务（溯源用，NULL=非任务产）
 	SuggestName      sql.NullString `gorm:"column:suggest_name" json:"suggestName"`
 	ResourceComplete sql.NullInt64  `gorm:"column:resource_complete" json:"resourceComplete"`
 	ResourceType     string         `gorm:"column:resource_type;not null" json:"resourceType"`

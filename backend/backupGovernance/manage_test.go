@@ -170,7 +170,7 @@ func TestRunReconciliationNowReturnsStats(t *testing.T) {
 	// 悬空引用两条：store 行引用不存在的 999、plugin 行引用不存在的 888
 	store := makeStoreRow(t, db, "store/resource/stats-dangling.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), 999)
-	makePluginRow(t, db, 888, false)
+	plantDanglingPluginRef(t, db, 888)
 	// 无主超期一份（保留期 7 天）
 	makeBackup(t, backupSvc, db, workDir, 8)
 

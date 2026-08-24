@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/search"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -31,7 +31,7 @@ func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
@@ -76,7 +76,13 @@ func (e *restoreStoreEnv) seedVictim(t *testing.T, role string, backupId int64) 
 	if err := e.db.Create(row).Error; err != nil {
 		t.Fatalf("插 store 失败: %v", err)
 	}
-	if err := e.db.Exec("UPDATE persistent_store SET deleted_at = 1000, backup_id = ? WHERE id = ?", backupId, row.GetID()).Error; err != nil {
+	// 备份清单行种子（persistent_store.backup_id 外键防线——行内引用须指向存在行）
+	if backupId > 0 {
+		if err := e.db.Exec("INSERT OR IGNORE INTO backup (id, create_time, update_time) VALUES (?, 0, 0)", backupId).Error; err != nil {
+			t.Fatalf("建备份行失败: %v", err)
+		}
+	}
+	if err := e.db.Exec("UPDATE persistent_store SET deleted_at = 1000, backup_id = NULLIF(?, 0) WHERE id = ?", backupId, row.GetID()).Error; err != nil {
 		t.Fatalf("软删失败: %v", err)
 	}
 	rs := domain.NewResourceStore()

@@ -21,7 +21,7 @@
 | `DeleteUnscopedByIds(ids)` | 批量物理删行（单条 DELETE IN，dbFromCtx 模式可入事务；对已软删行的直删通路——purge 链专用） |
 | `GetDeletedStore(id)` | 按 ID 获取已软删行（nil = 不存在或非已删态；回收站文件条目清理链入口校验） |
 | `DeleteWithBackup(id)` | 软删链的文件侧：移文件入 backup + **记录软删**（与文件移动同生共死）；不看完成状态、失败返回错误（契约与 `HardDelete` 的区别见方法注释）。作品软删除、替换前置、merge overwrite、回收站复原置换共用 |
-| `SoftDeleteAndDiscardFile(id)` | 软删记录并废弃其文件（未完成行进入软删产道的分支：partial 文件无复原价值不入备份，尽力删+抑制登记；软删仍经 SoftDeleteWithBackup 单点写入 backup_id=0） |
+| `SoftDeleteAndDiscardFile(id)` | 软删记录并废弃其文件（未完成行进入软删产道的分支：partial 文件无复原价值不入备份，尽力删+抑制登记；软删仍经 SoftDeleteWithBackup 单点写入 backup_id=NULL） |
 | `DeleteByFilePath` | 按路径删除（物理删） |
 | `MarkInvalid(id)` / `RestoreByIds(ids)` / `ResolveFileState(relPath)` | 外部裁决失效（软删）/ 批量复活（复原/失败回滚/置换链，清软删标志与 backup_id 双列）/ 状态解析（/store/ 路由，含删口径） |
 | `GetById` / `GetByIds` / `GetByFilePath` | 查询 |

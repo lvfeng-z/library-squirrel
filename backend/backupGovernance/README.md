@@ -42,5 +42,5 @@ Wails Handler（备份管理面板 `views/BackupManage.vue` 消费，「备份�
 ## 关键设计
 
 - **引用集查询失败熔断**：任一引用方 `ListReferencedBackupIDs` 失败（哨兵 nil 标记）时本轮正向清理整体跳过——该方引用呈现为零，进候选即误清活备份。
-- **非法态防御清列**：`IllegalBackupRefSanitizer` 可选接口（persistentStore 实现）——活行携带 backup_id>0 构造上不可达（backup_id 与 deleted_at 单条 UPDATE 同生共死），检出即外部直改数据库痕迹。
+- **非法态防御清列**：`IllegalBackupRefSanitizer` 可选接口（persistentStore 实现）——活行携带备份引用构造上不可达（backup_id 与 deleted_at 单条 UPDATE 同生共死），检出即外部直改数据库痕迹。
 - **无主清理不可逆**：`DeleteBackup` 直接删文件与清单行（无隔离区/软删缓冲），对齐其既有语义。

@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/entity"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+	"github.com/library-squirrel/backend/migration"
 	"gorm.io/gorm/clause"
 )
 
@@ -20,7 +19,7 @@ func TestQueryOptionOrderByNotSilentlyDropped(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}

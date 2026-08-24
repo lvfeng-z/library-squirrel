@@ -306,13 +306,13 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
 	stores := s.workRestorer.ListRevivableWorkStores(ctx, workId)
 	for _, st := range stores {
-		if st.BackupID <= 0 || !st.FilePath.Valid {
+		if !st.BackupID.Valid || !st.FilePath.Valid {
 			// 无备份行（外部删除失效或备份失败残留）无文件可还原
 			continue
 		}
-		backup, err := s.backupReader.GetById(ctx, st.BackupID)
+		backup, err := s.backupReader.GetById(ctx, st.BackupID.Int64)
 		if err != nil || backup == nil {
-			logger.Log.Warnf("还原作品 %d 备份 %d 失败（清单行缺失，跳过）: %v", workId, st.BackupID, err)
+			logger.Log.Warnf("还原作品 %d 备份 %d 失败（清单行缺失，跳过）: %v", workId, st.BackupID.Int64, err)
 			continue
 		}
 		relPath := st.FilePath.String
@@ -325,8 +325,8 @@ func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
 			logger.Log.Warnf("还原作品 %d 备份文件失败（跳过继续，部分复原）: %v", workId, err)
 			continue
 		}
-		if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
-			logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID, err)
+		if err := s.backupReader.DeleteBackup(ctx, st.BackupID.Int64); err != nil {
+			logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID.Int64, err)
 		}
 	}
 	return nil
@@ -348,8 +348,8 @@ func (s *Service) PurgeWork(ctx context.Context, workId int64) error {
 	stores := s.workRestorer.ListWorkStoresIncludeDeleted(ctx, workId)
 	backupIds := make([]int64, 0, len(stores))
 	for _, st := range stores {
-		if st.BackupID > 0 {
-			backupIds = append(backupIds, st.BackupID)
+		if st.BackupID.Valid {
+			backupIds = append(backupIds, st.BackupID.Int64)
 		}
 	}
 
@@ -390,9 +390,9 @@ func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 	}
 
 	// 4. 消费式清理行内引用的备份
-	if st.BackupID > 0 {
-		if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
-			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID, err)
+	if st.BackupID.Valid {
+		if err := s.backupReader.DeleteBackup(ctx, st.BackupID.Int64); err != nil {
+			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID.Int64, err)
 		}
 	}
 	return nil
@@ -410,7 +410,7 @@ func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
 	if st == nil {
 		return ErrRecycleStoreNotFound
 	}
-	if st.BackupID <= 0 || !st.FilePath.Valid {
+	if !st.BackupID.Valid || !st.FilePath.Valid {
 		return ErrRestoreStoreNoBackup
 	}
 	mount, err := s.storeQuerier.GetRecycleStoreMount(ctx, storeId)
@@ -448,9 +448,9 @@ func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
 	}
 
 	// 4. 文件还原（backup → 原路径；操作抑制登记防 fsmonitor 误报）
-	backup, err := s.backupReader.GetById(ctx, st.BackupID)
+	backup, err := s.backupReader.GetById(ctx, st.BackupID.Int64)
 	if err != nil || backup == nil {
-		return fmt.Errorf("查询备份 %d 失败: %w", st.BackupID, err)
+		return fmt.Errorf("查询备份 %d 失败: %w", st.BackupID.Int64, err)
 	}
 	relPath := st.FilePath.String
 	storeRegistry.Suppress(relPath)
@@ -468,8 +468,8 @@ func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
 	}
 
 	// 6. 清备份清单行（行已复活引用已清；失败则残余清单行由无主治理兜底）
-	if err := s.backupReader.DeleteBackup(ctx, st.BackupID); err != nil {
-		logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID, err)
+	if err := s.backupReader.DeleteBackup(ctx, st.BackupID.Int64); err != nil {
+		logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID.Int64, err)
 	}
 
 	// 7. 重算完整度（角色构成可能变化，如合并回滚补回轨道）

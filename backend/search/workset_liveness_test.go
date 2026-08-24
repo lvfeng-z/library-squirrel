@@ -9,19 +9,15 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 // newWorkSetLivenessEnv 内存库（全量迁移）+ 真实搜索仓储（QueryWorkPage 联全部作品谱系表）
 func newWorkSetLivenessEnv(t *testing.T) (*SearchRepository, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
-	}
-	if err := migration.AutoMigrate(db); err != nil {
-		t.Fatalf("迁移失败: %v", err)
 	}
 	return NewRepository(db), db
 }

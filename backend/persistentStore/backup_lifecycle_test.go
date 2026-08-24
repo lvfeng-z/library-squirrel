@@ -7,11 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,6 +23,7 @@ type mockFileMover struct {
 	failNext bool
 	nextId   int64
 	keepDir  string
+	db       *gorm.DB
 }
 
 func (m *mockFileMover) MoveToBackup(ctx context.Context, absFilePath string) (int64, error) {
@@ -30,6 +32,10 @@ func (m *mockFileMover) MoveToBackup(ctx context.Context, absFilePath string) (i
 	}
 	m.nextId++
 	if err := os.Rename(absFilePath, filepath.Join(m.keepDir, fmt.Sprintf("keep_%d", m.nextId))); err != nil {
+		return 0, err
+	}
+	// 落真实备份清单行（persistent_store.backup_id 外键防线——返回的引用须指向存在行）
+	if err := m.db.Exec("INSERT INTO backup (id, create_time, update_time) VALUES (?, 0, 0)", m.nextId).Error; err != nil {
 		return 0, err
 	}
 	return m.nextId, nil
@@ -41,7 +47,7 @@ func newLifecycleTestService(t *testing.T) (*Service, string) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
@@ -53,7 +59,7 @@ func newLifecycleTestService(t *testing.T) (*Service, string) {
 		t.Fatalf("建 store 目录失败: %v", err)
 	}
 	repo := NewRepository(db)
-	svc := NewService(repo, &mockFileMover{keepDir: t.TempDir()}, func() string { return workDir })
+	svc := NewService(repo, &mockFileMover{keepDir: t.TempDir(), db: db}, func() string { return workDir })
 	return svc, workDir
 }
 
@@ -95,8 +101,8 @@ func TestDeleteWithBackupLifecycle(t *testing.T) {
 	if _, err := svc.DeleteWithBackup(ctx, row.GetID()); err == nil {
 		t.Fatalf("移动失败时期望返回错误")
 	}
-	if got := getRowById(t, svc, row.GetID()); got.DeletedAt > 0 || got.BackupID != 0 {
-		t.Fatalf("移动失败后行须保持活行（deleted_at=0, backup_id=0），实际 deleted_at=%d backup_id=%d", got.DeletedAt, got.BackupID)
+	if got := getRowById(t, svc, row.GetID()); got.DeletedAt > 0 || got.BackupID.Valid {
+		t.Fatalf("移动失败后行须保持活行（deleted_at=0, backup_id=NULL），实际 deleted_at=%d backup_id=%+v", got.DeletedAt, got.BackupID)
 	}
 
 	// 移动成功：行软删且 backup_id 写入（同生共死）
@@ -105,16 +111,16 @@ func TestDeleteWithBackupLifecycle(t *testing.T) {
 	if err != nil || backupId <= 0 {
 		t.Fatalf("DeleteWithBackup 成功路径失败: %v, backupId=%d", err, backupId)
 	}
-	if got := getRowById(t, svc, row.GetID()); got.DeletedAt == 0 || got.BackupID != backupId {
-		t.Fatalf("成功后行须 deleted_at>0 且 backup_id=%d，实际 deleted_at=%d backup_id=%d", backupId, got.DeletedAt, got.BackupID)
+	if got := getRowById(t, svc, row.GetID()); got.DeletedAt == 0 || !got.BackupID.Valid || got.BackupID.Int64 != backupId {
+		t.Fatalf("成功后行须 deleted_at>0 且 backup_id=%d，实际 deleted_at=%d backup_id=%+v", backupId, got.DeletedAt, got.BackupID)
 	}
 
-	// 复原：双列同清（deleted_at=0 且 backup_id=0）
+	// 复原：双列同清（deleted_at=0 且 backup_id=NULL）
 	if err := svc.repo.RestoreByIds(ctx, []int64{row.GetID()}); err != nil {
 		t.Fatalf("复原失败: %v", err)
 	}
-	if got := getRowById(t, svc, row.GetID()); got.DeletedAt != 0 || got.BackupID != 0 {
-		t.Fatalf("复原后须双列同清，实际 deleted_at=%d backup_id=%d", got.DeletedAt, got.BackupID)
+	if got := getRowById(t, svc, row.GetID()); got.DeletedAt != 0 || got.BackupID.Valid {
+		t.Fatalf("复原后须双列同清，实际 deleted_at=%d backup_id=%+v", got.DeletedAt, got.BackupID)
 	}
 }
 
@@ -125,16 +131,21 @@ func TestResolveFileStateGenerationOrder(t *testing.T) {
 	ctx := context.Background()
 	const relPath = "store/resource/gen.mp4"
 
+	// 逐代「插入→软删」构造两死一活（部分唯一索引约束活行路径唯一，多活行同路径不可直插）。
+	// 死代引用的备份清单行须真实存在（persistent_store.backup_id 外键防线）
+	if err := svc.repo.(*PersistentStoreRepository).GORM().Exec("INSERT INTO backup (id, create_time, update_time) VALUES (101, 0, 0), (102, 0, 0)").Error; err != nil {
+		t.Fatalf("建备份种子失败: %v", err)
+	}
 	oldRow := insertStoreRow(t, svc, relPath)
-	newRow := insertStoreRow(t, svc, relPath)
-	liveRow := insertStoreRow(t, svc, relPath)
-	// 旧删代（先删）与最新删代
 	if err := svc.repo.SoftDeleteWithBackup(ctx, oldRow.GetID(), 101); err != nil {
 		t.Fatalf("软删旧行失败: %v", err)
 	}
+	time.Sleep(2 * time.Millisecond) // 相邻软删垫 2ms：同毫秒死代令 deleted_at DESC 排序不稳
+	newRow := insertStoreRow(t, svc, relPath)
 	if err := svc.repo.SoftDeleteWithBackup(ctx, newRow.GetID(), 102); err != nil {
 		t.Fatalf("软删新行失败: %v", err)
 	}
+	liveRow := insertStoreRow(t, svc, relPath)
 
 	// 活行存在：活行优先（backup_id=0，活行不持有备份引用）
 	completed, deleted, backupId := svc.ResolveFileState(ctx, relPath)

@@ -8,10 +8,10 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/storeRegistry"
 
 	"go.uber.org/zap"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +27,7 @@ func newBackupTestEnv(t *testing.T) (*Service, *gorm.DB) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}

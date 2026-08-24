@@ -10,7 +10,7 @@ import (
 type LocalTag struct {
 	*model.BaseEntity                // 嵌入基础实体
 	LocalTagName      sql.NullString `gorm:"column:local_tag_name" json:"localTagName"`
-	BaseLocalTagID    sql.NullInt64  `gorm:"column:base_local_tag_id" json:"baseLocalTagId"`
+	BaseLocalTagID    sql.NullInt64  `gorm:"column:base_local_tag_id" json:"baseLocalTagId"` // 父标签引用（标签树，NULL=根标签）
 	Description       sql.NullString `gorm:"column:description" json:"description"`
 	LastUse           sql.NullInt64  `gorm:"column:last_use" json:"lastUse"`
 }

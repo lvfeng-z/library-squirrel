@@ -159,8 +159,16 @@ func (r *WorkSetRepository) UpdateCoverWorkId(ctx context.Context, workSetId int
 		Update("cover_work_id", workId).Error
 }
 
-// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（work_set.cover_work_id；
-// 作品活性由消费方判——封面指向已删作品时回退兜底）
+// ClearCoverReferences 清空指向指定作品的封面引用（作品彻底删除链首步，外键删除防线前置）。
+// 原生 UPDATE 覆盖含软删集行——GORM 软删 scope 会排除已删集，而外键不分行态
+func (r *WorkSetRepository) ClearCoverReferences(ctx context.Context, workId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Exec("UPDATE work_set SET cover_work_id = NULL WHERE cover_work_id = ?", workId).Error
+}
+
+// ListCoverWorkIdsByWorkSetIds 批量查询多个作品集的封面作品ID（work_set.cover_work_id 直读；
+// 封面生效性由消费方判活——指向软删/已彻底删除作品时不命中，无兜底转投）
 func (r *WorkSetRepository) ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error) {
 	if len(workSetIds) == 0 {
 		return map[int64]int64{}, nil

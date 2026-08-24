@@ -11,12 +11,12 @@ import (
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/plugin"
 	"github.com/library-squirrel/backend/util"
 
 	"go.uber.org/zap"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -51,7 +51,7 @@ func newGovernanceTestEnv(t *testing.T, retentionDays int, extra ...BackupRefere
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
@@ -121,11 +121,33 @@ func makePluginRow(t *testing.T, db *gorm.DB, backupId int64, uninstalled bool) 
 	return row
 }
 
+// plantDanglingPluginRef 造 plugin 行的悬空备份引用（外键强制下不可经正常写入产生，
+// 短暂关闭外键模拟存量遗留形态——运行期对账负责修复此类行）
+func plantDanglingPluginRef(t *testing.T, db *gorm.DB, backupId int64) *domain.Plugin {
+	t.Helper()
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		t.Fatalf("关闭外键失败: %v", err)
+	}
+	row := makePluginRow(t, db, backupId, false)
+	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		t.Fatalf("恢复外键失败: %v", err)
+	}
+	return row
+}
+
 // softDeleteStoreWithRef 走生产路径软删 store 行并写备份引用（回收站条目的真实形态）
 func softDeleteStoreWithRef(t *testing.T, db *gorm.DB, storeId, backupId int64) {
 	t.Helper()
+	// 悬空引用形态（backupId 无对应清单行）在 FK 强制下不可经正常写入产生，
+	// 关闭外键种植以模拟存量遗留（真实引用的调用同样无害）
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		t.Fatalf("关闭外键失败: %v", err)
+	}
 	if err := persistentStore.NewRepository(db).SoftDeleteWithBackup(context.Background(), storeId, backupId); err != nil {
 		t.Fatalf("软删 store 行失败: %v", err)
+	}
+	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		t.Fatalf("恢复外键失败: %v", err)
 	}
 }
 
@@ -188,8 +210,8 @@ func TestRunOnceOrphanCleanup(t *testing.T) {
 	if absPath := backupSvc.GetBackupPath(referenced); !util.FileExists(absPath) {
 		t.Fatalf("被引用备份文件不应被删除: %s", absPath)
 	}
-	if got := readStoreRow(t, db, store.GetID()).BackupID; got != referenced.GetID() {
-		t.Fatalf("软删行引用被误清: backup_id=%d 期望 %d", got, referenced.GetID())
+	if got := readStoreRow(t, db, store.GetID()).BackupID; !got.Valid || got.Int64 != referenced.GetID() {
+		t.Fatalf("软删行引用被误清: backup_id=%+v 期望 %d", got, referenced.GetID())
 	}
 }
 
@@ -216,12 +238,12 @@ func TestRunOnceDanglingRefsCleared(t *testing.T) {
 
 	store := makeStoreRow(t, db, "store/resource/dangling.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), 999) // 999 无对应清单行
-	pRow := makePluginRow(t, db, 888, false)          // 888 无对应清单行
+	pRow := plantDanglingPluginRef(t, db, 888)        // 888 无对应清单行
 
 	svc.RunOnce(ctx)
 
-	if got := readStoreRow(t, db, store.GetID()).BackupID; got != 0 {
-		t.Fatalf("已删 store 行悬空引用未清: backup_id=%d", got)
+	if got := readStoreRow(t, db, store.GetID()).BackupID; got.Valid {
+		t.Fatalf("已删 store 行悬空引用未清: backup_id=%+v", got)
 	}
 	p := readPluginRow(t, db, pRow.GetID())
 	if p.BackupID.Valid {
@@ -244,8 +266,8 @@ func TestRunOnceIllegalAliveRefsCleared(t *testing.T) {
 
 	svc.RunOnce(ctx)
 
-	if got := readStoreRow(t, db, store.GetID()); got.DeletedAt != 0 || got.BackupID != 0 {
-		t.Fatalf("活行非法引用未清: deleted_at=%d backup_id=%d", got.DeletedAt, got.BackupID)
+	if got := readStoreRow(t, db, store.GetID()); got.DeletedAt != 0 || got.BackupID.Valid {
+		t.Fatalf("活行非法引用未清: deleted_at=%d backup_id=%+v", got.DeletedAt, got.BackupID)
 	}
 	if !backupExists(t, db, backupRow.GetID()) {
 		t.Fatalf("被引用的清单行 %d 不应被清理", backupRow.GetID())
@@ -338,8 +360,8 @@ func TestEndToEndRestoreAfterGovernance(t *testing.T) {
 	if !backupExists(t, db, backupId) {
 		t.Fatalf("软删行引用的备份被治理误清，复原将不可用")
 	}
-	if got := readStoreRow(t, db, store.GetID()).BackupID; got != backupId {
-		t.Fatalf("软删行引用丢失: backup_id=%d 期望 %d", got, backupId)
+	if got := readStoreRow(t, db, store.GetID()).BackupID; !got.Valid || got.Int64 != backupId {
+		t.Fatalf("软删行引用丢失: backup_id=%+v 期望 %d", got, backupId)
 	}
 
 	// 4. 复原全链：按行内 backup_id 定位备份 → 文件还原回原路径 → 行复活（引用双清）
@@ -356,7 +378,7 @@ func TestEndToEndRestoreAfterGovernance(t *testing.T) {
 	if err := persistentStore.NewRepository(db).RestoreByIds(ctx, []int64{store.GetID()}); err != nil {
 		t.Fatalf("复活 store 行失败: %v", err)
 	}
-	if got := readStoreRow(t, db, store.GetID()); got.DeletedAt != 0 || got.BackupID != 0 {
-		t.Fatalf("复原后行应复活且引用双清: deleted_at=%d backup_id=%d", got.DeletedAt, got.BackupID)
+	if got := readStoreRow(t, db, store.GetID()); got.DeletedAt != 0 || got.BackupID.Valid {
+		t.Fatalf("复原后行应复活且引用双清: deleted_at=%d backup_id=%+v", got.DeletedAt, got.BackupID)
 	}
 }

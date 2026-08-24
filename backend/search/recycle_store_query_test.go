@@ -8,8 +8,8 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +19,7 @@ func newRecycleStoreTestEnv(t *testing.T) (*SearchRepository, *gorm.DB) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
@@ -78,7 +78,13 @@ func buildRsFixture(t *testing.T, db *gorm.DB) *rsFixtureEnv {
 		}
 	}
 	softDeleteStore := func(storeId int64, backupId int64) {
-		if err := db.Exec("UPDATE persistent_store SET deleted_at = 2000, backup_id = ? WHERE id = ?", backupId, storeId).Error; err != nil {
+		// 备份清单行种子（persistent_store.backup_id 外键防线）；NULLIF(0)=NULL 表无备份
+		if backupId > 0 {
+			if err := db.Exec("INSERT OR IGNORE INTO backup (id, create_time, update_time) VALUES (?, 0, 0)", backupId).Error; err != nil {
+				t.Fatalf("建备份行失败: %v", err)
+			}
+		}
+		if err := db.Exec("UPDATE persistent_store SET deleted_at = 2000, backup_id = NULLIF(?, 0) WHERE id = ?", backupId, storeId).Error; err != nil {
 			t.Fatalf("软删 store 失败: %v", err)
 		}
 	}

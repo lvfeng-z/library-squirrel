@@ -37,7 +37,6 @@ type Repository interface {
 // CoverResolver 批量封面解析接口
 type CoverResolver interface {
 	ListCoverWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
-	ListMinSortOrderWorkIdsByWorkSetIds(ctx context.Context, workSetIds []int64) (map[int64]int64, error)
 }
 
 // WorkSetPageWorkReader 作品读取接口
@@ -260,45 +259,6 @@ func (s *Service) QueryWorkSetPage(ctx context.Context, page, pageSize int, cond
 		}
 		for _, w := range works {
 			worksMap[w.GetID()] = w
-		}
-	}
-
-	// Phase 2b: 封面未生效的集（无引用或指向的作品已删/不存在）用 MIN(sort_order) 兜底
-	var uncoveredWorkSetIds []int64
-	for _, id := range workSetIds {
-		workId, ok := coverMap[id]
-		if !ok {
-			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
-			continue
-		}
-		if _, alive := worksMap[workId]; !alive {
-			uncoveredWorkSetIds = append(uncoveredWorkSetIds, id)
-		}
-	}
-	if len(uncoveredWorkSetIds) > 0 {
-		fallbackMap, err := s.coverResolver.ListMinSortOrderWorkIdsByWorkSetIds(ctx, uncoveredWorkSetIds)
-		if err != nil {
-			return nil, fmt.Errorf("resolve covers pass 2 error: %w", err)
-		}
-		for k, v := range fallbackMap {
-			coverMap[k] = v
-		}
-		// 兜底作品补入批查
-		for _, id := range uncoveredWorkSetIds {
-			if wid, ok := coverMap[id]; ok {
-				if _, fetched := worksMap[wid]; !fetched {
-					coverWorkIds = append(coverWorkIds, wid)
-				}
-			}
-		}
-		if len(coverWorkIds) > 0 {
-			works, err := s.workReader.ListByIds(ctx, coverWorkIds)
-			if err != nil {
-				return nil, fmt.Errorf("batch fetch cover works error: %w", err)
-			}
-			for _, w := range works {
-				worksMap[w.GetID()] = w
-			}
 		}
 	}
 

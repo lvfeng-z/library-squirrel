@@ -1087,7 +1087,7 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		// 无已有 Resource:创建新 Resource
 		resource := entity.NewResource()
 		resource.WorkID = workId
-		resource.TaskID = m.task.GetID()
+		resource.TaskID = sql.NullInt64{Int64: m.task.GetID(), Valid: true}
 		resource.ResourceComplete = sql.NullInt64{Int64: 0, Valid: true} // 下载未完成
 		// 创建期声明的资源类型;严格识别——空值或非预定义值在写入前抛错,不兜底
 		resourceType := m.task.ResourceType.String
@@ -1301,10 +1301,10 @@ func (m *ManagedTask) restoreReplaceTargets(ctx context.Context) {
 	logger.Log.Infof("[TaskManager] 任务 %d 失败回滚: 复活 %d 个被替换 store 行", m.taskId, len(victims))
 	reviveIds := make([]int64, 0, len(victims))
 	for _, row := range victims {
-		if row.BackupID > 0 && row.FilePath.Valid {
-			backup, berr := m.deps.BackupFileRestorer.GetById(ctx, row.BackupID)
+		if row.BackupID.Valid && row.FilePath.Valid {
+			backup, berr := m.deps.BackupFileRestorer.GetById(ctx, row.BackupID.Int64)
 			if berr != nil || backup == nil {
-				logger.Log.Warnf("[TaskManager] 任务 %d 查询备份 %d 失败，跳过该行文件还原: %v", m.taskId, row.BackupID, berr)
+				logger.Log.Warnf("[TaskManager] 任务 %d 查询备份 %d 失败，跳过该行文件还原: %v", m.taskId, row.BackupID.Int64, berr)
 			} else {
 				relPath := row.FilePath.String
 				storeRegistry.Suppress(relPath)
@@ -1315,8 +1315,8 @@ func (m *ManagedTask) restoreReplaceTargets(ctx context.Context) {
 					logger.Log.Warnf("[TaskManager] 任务 %d 还原 store 文件失败(跳过该行): %v", m.taskId, rerr)
 					continue
 				}
-				if derr := m.deps.BackupFileRestorer.DeleteBackup(ctx, row.BackupID); derr != nil {
-					logger.Log.Warnf("[TaskManager] 任务 %d 清理已还原备份 %d 失败: %v", m.taskId, row.BackupID, derr)
+				if derr := m.deps.BackupFileRestorer.DeleteBackup(ctx, row.BackupID.Int64); derr != nil {
+					logger.Log.Warnf("[TaskManager] 任务 %d 清理已还原备份 %d 失败: %v", m.taskId, row.BackupID.Int64, derr)
 				}
 			}
 		}

@@ -45,4 +45,5 @@
 45. ~~哔哩哔哩插件重新下载视频不弹确认覆盖~~（已修复：覆盖确认门槛行级化——原板块门槛只看任务所选板块不看已有作品实际 store 行，纯 videoTrack/audioTrack/thumbnail 选择被整体豁免；现改为所选板块与已有作品 `resource_store` 行求交、交集非空才弹窗，方案见 `doc/plan/覆盖确认门槛行级化方案.md`）
 46. 本地标签的继承关系支持作品搜索
 47. 作品与其他元素的关联需要记录来源（手动创建、插件创建等）
-48. 补充外键
+48. ~~补充外键~~（已完成：全库 25 对外键 NO ACTION 声明并强制执行——DSN `_foreign_keys=on` + `backend/migration/foreign_keys.go` 表重建舞步 + 存量清理/0 哨兵 NULL 化；封面兜底随之退役、purge 链补清封面引用；方案与执行记录见 `doc/plan/外键补充方案.md`，实机验证见 `.claude/testing/reports/VERIFY-外键批次一~四.md`）
+49. 站点这种基础数据的逻辑删除，用于避免大规模数据迁移

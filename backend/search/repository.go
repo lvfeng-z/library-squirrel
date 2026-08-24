@@ -645,9 +645,9 @@ func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []interf
 		}
 		if query.HasBackup != nil {
 			if *query.HasBackup {
-				clauses = append(clauses, "ps.backup_id > 0")
+				clauses = append(clauses, "ps.backup_id IS NOT NULL")
 			} else {
-				clauses = append(clauses, "ps.backup_id = 0")
+				clauses = append(clauses, "ps.backup_id IS NULL")
 			}
 		}
 		if query.DeleteTimeFrom > 0 {
@@ -671,7 +671,7 @@ func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []interf
 
 // QueryRecycleStorePage 查询回收站文件条目分页（persistent_store 已删行，非「作品已删」聚合形态）。
 // 行本体单查投影；作品上下文（挂载活作品的名称/站点）经二段批查组装——分页行收集 ID 一次 JOIN，
-// 消除逐行查询。CanRestore = backup_id>0 且挂载链存在活作品（防御式独立判定，不依赖主谓词排除）
+// 消除逐行查询。CanRestore = 行内引用备份（backup_id 非空）且挂载链存在活作品（防御式独立判定，不依赖主谓词排除）
 func (r *SearchRepository) QueryRecycleStorePage(ctx context.Context, page, pageSize int, query *dto2.RecycleStorePageQuery) ([]*dto2.RecycleStoreDTO, int64, error) {
 	whereClause, params := buildRecycleStoreWhere(query)
 
@@ -706,7 +706,7 @@ func (r *SearchRepository) QueryRecycleStorePage(ctx context.Context, page, page
 	for rows.Next() {
 		item := &dto2.RecycleStoreDTO{}
 		var fileName, filePath, ext sql.NullString
-		var backupId int64
+		var backupId sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&fileName,
@@ -720,7 +720,7 @@ func (r *SearchRepository) QueryRecycleStorePage(ctx context.Context, page, page
 		item.FileName = nullStr(fileName)
 		item.FilePath = nullStr(filePath)
 		item.FilenameExtension = nullStr(ext)
-		item.HasBackup = backupId > 0
+		item.HasBackup = backupId.Valid
 		results = append(results, item)
 	}
 

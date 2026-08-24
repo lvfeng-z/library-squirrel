@@ -17,7 +17,6 @@ import (
 	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/workSet"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -40,12 +39,13 @@ func (t *wsTransactor) ExecInTransaction(ctx context.Context, fn func(ctx contex
 
 func newWsTestEnv(t *testing.T) *wsTestEnv {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
-	if err := migration.AutoMigrate(db); err != nil {
-		t.Fatalf("迁移失败: %v", err)
+	// 站点行种子（work_set.site_id 外键防线，fixture 站侧键统一用 siteId=1）
+	if err := db.Exec("INSERT OR IGNORE INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+		t.Fatalf("建站点种子失败: %v", err)
 	}
 	workSetSvc := workSet.NewService(
 		workSet.NewRepository(db),

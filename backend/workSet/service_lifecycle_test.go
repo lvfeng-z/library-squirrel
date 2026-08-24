@@ -14,7 +14,6 @@ import (
 	"github.com/library-squirrel/backend/reWorkSetWorkSet"
 	"github.com/library-squirrel/backend/reWorkWorkSet"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -40,12 +39,13 @@ func (r *lifecycleWorkReader) ListByIds(ctx context.Context, ids []int64) ([]*en
 // newLifecycleService 内存库 + 真仓储事务组装 Service（fullWorkReader 不涉传 nil；workReader 真库）
 func newLifecycleService(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
-	if err := migration.AutoMigrate(db); err != nil {
-		t.Fatalf("迁移失败: %v", err)
+	// 站点行种子（work_set.site_id 外键防线，fixture 统一用 siteId=1）
+	if err := db.Exec("INSERT OR IGNORE INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+		t.Fatalf("建站点种子失败: %v", err)
 	}
 	svc := NewService(
 		NewRepository(db),
@@ -68,6 +68,16 @@ func insertWorkAndGetId(t *testing.T, svc *Service, siteId int64, siteWorkSetId 
 	return ws.GetID()
 }
 
+// insertWorkRow 插入作品行并返回 ID（re_work_work_set 外键的父行种子）
+func insertWorkRow(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	w := entity2.NewWork()
+	if err := db.Create(w).Error; err != nil {
+		t.Fatalf("建作品行失败: %v", err)
+	}
+	return w.GetID()
+}
+
 // TestSoftDeleteWorkSetKeepsRelations 软删：行打时间戳、GORM 查询不可见、两关联表行原地保留
 func TestSoftDeleteWorkSetKeepsRelations(t *testing.T) {
 	svc, db := newLifecycleService(t)
@@ -76,9 +86,9 @@ func TestSoftDeleteWorkSetKeepsRelations(t *testing.T) {
 	wsId := insertWorkAndGetId(t, svc, 1, "abc")
 	parentId := insertWorkAndGetId(t, svc, 1, "parent")
 
-	// 挂成员关联 + DAG 父子关联
+	// 挂成员关联 + DAG 父子关联（成员关联的 work_id 须指向真实作品行——外键防线）
 	rel := entity2.NewReWorkWorkSet()
-	rel.WorkID = sql.NullInt64{Int64: 100, Valid: true}
+	rel.WorkID = sql.NullInt64{Int64: insertWorkRow(t, db), Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
 	if err := db.Create(rel).Error; err != nil {
 		t.Fatalf("建成员关联失败: %v", err)
@@ -202,9 +212,10 @@ func TestSetCoverTransitiveMember(t *testing.T) {
 	}
 }
 
-// TestCoverFallbackSkipsDeletedWork 封面回退跳过死作品：显式封面死 / 首个成员死，
-// 兜底均落到首个活成员（作品软删后关联行保留，兜底查询与单集链须判活）
-func TestCoverFallbackSkipsDeletedWork(t *testing.T) {
+// TestCoverNoFallbackToMember 封面无兜底转投（兜底路径已随外键化退役）：显式封面指向软删作品时
+// 封面落空（不转投首个活成员）；软删期结束（复原）后封面恢复显示。
+// purge 链首步清封面引用后悬空引用不复存在，未设置封面的集也不再默认取首个成员
+func TestCoverNoFallbackToMember(t *testing.T) {
 	svc, db := newLifecycleService(t)
 	ctx := context.Background()
 
@@ -225,35 +236,36 @@ func TestCoverFallbackSkipsDeletedWork(t *testing.T) {
 	}
 	first, second := newWork(1), newWork(2)
 
-	// 软删首个成员（显式封面与兜底来源双杀：封面设 first 后再删它）
+	// 封面设 first 后软删它：封面落空，不转投 second
 	if err := svc.SetCoverWork(ctx, wsId, first); err != nil {
 		t.Fatalf("设封面失败: %v", err)
 	}
 	if err := db.Exec(`UPDATE work SET deleted_at = 1700000000000 WHERE id = ?`, first).Error; err != nil {
 		t.Fatalf("软删作品失败: %v", err)
 	}
-
-	// 单集链（QueryPageWithCover 内含 GetCoverWorkId 判活回退）：封面落到第二个活成员
 	page, err := svc.QueryPageWithCover(ctx, &model.Page[dto2.WorkSetWithCoverDTO]{PageNumber: 1, PageSize: 10}, WorkSetQueryDTO{})
 	if err != nil {
 		t.Fatalf("分页查询失败: %v", err)
 	}
-	if len(page.Data) != 1 || page.Data[0].CoverWork == nil {
-		t.Fatalf("封面应回退到活成员，实际 %v", page.Data)
+	if len(page.Data) != 1 {
+		t.Fatalf("应有 1 个集，实际 %d", len(page.Data))
 	}
-	if page.Data[0].CoverWork.GetId() != second {
-		t.Fatalf("封面应回退到第二个活成员 %d，实际 %d", second, page.Data[0].CoverWork.GetId())
+	if page.Data[0].CoverWork != nil {
+		t.Fatalf("封面指向软删作品时应落空（无兜底转投），实际命中作品 %d", page.Data[0].CoverWork.GetId())
 	}
 
-	// 批查兜底（reWorkWorkSet 仓储）：MIN(sort_order) 判活，返回活成员
-	repo := reWorkWorkSet.NewRepository(db)
-	fallback, err := repo.ListMinSortOrderWorkIdsByWorkSetIds(ctx, []int64{wsId})
+	// 复原封面作品：封面恢复显示
+	if err := db.Exec(`UPDATE work SET deleted_at = 0 WHERE id = ?`, first).Error; err != nil {
+		t.Fatalf("复原作品失败: %v", err)
+	}
+	page, err = svc.QueryPageWithCover(ctx, &model.Page[dto2.WorkSetWithCoverDTO]{PageNumber: 1, PageSize: 10}, WorkSetQueryDTO{})
 	if err != nil {
-		t.Fatalf("兜底查询失败: %v", err)
+		t.Fatalf("复原后分页查询失败: %v", err)
 	}
-	if fallback[wsId] != second {
-		t.Fatalf("兜底应返回活成员 %d，实际 %v", second, fallback[wsId])
+	if page.Data[0].CoverWork == nil || page.Data[0].CoverWork.GetId() != first {
+		t.Fatalf("复原后封面应恢复为 %d，实际 %v", first, page.Data[0].CoverWork)
 	}
+	_ = second
 }
 
 // TestDeleteWorkSetAndAssociations 彻底删除：软删后级联物理删行与两关联行，全表归零
@@ -262,15 +274,16 @@ func TestDeleteWorkSetAndAssociations(t *testing.T) {
 	ctx := context.Background()
 
 	wsId := insertWorkAndGetId(t, svc, 1, "abc")
+	childSetId := insertWorkAndGetId(t, svc, 1, "child")
 	rel := entity2.NewReWorkWorkSet()
-	rel.WorkID = sql.NullInt64{Int64: 100, Valid: true}
+	rel.WorkID = sql.NullInt64{Int64: insertWorkRow(t, db), Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
 	if err := db.Create(rel).Error; err != nil {
 		t.Fatalf("建成员关联失败: %v", err)
 	}
 	dag := entity2.NewReWorkSetWorkSet()
 	dag.ParentWorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
-	dag.ChildWorkSetID = sql.NullInt64{Int64: 888, Valid: true}
+	dag.ChildWorkSetID = sql.NullInt64{Int64: childSetId, Valid: true}
 	if err := db.Create(dag).Error; err != nil {
 		t.Fatalf("建父子关联失败: %v", err)
 	}

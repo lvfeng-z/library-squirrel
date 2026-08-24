@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -24,9 +24,13 @@ func newLivenessEnv(t *testing.T) *livenessEnv {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	// 作品行种子（resource.work_id 外键防线，fixture 统一 WorkID=1）
+	if err := db.Exec("INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (1, 0, 0, 0)").Error; err != nil {
+		t.Fatalf("建作品种子失败: %v", err)
 	}
 	if err := db.AutoMigrate(&domain.Resource{}, &domain.ResourceStore{}, &domain.PersistentStore{}); err != nil {
 		t.Fatalf("迁移测试实体失败: %v", err)
@@ -51,6 +55,10 @@ func (e *livenessEnv) seedDualAssociation(t *testing.T, role string) (resourceId
 	dead.CompletedAt = 1
 	if err := e.db.Create(dead).Error; err != nil {
 		t.Fatalf("插死行失败: %v", err)
+	}
+	// 备份清单行种子（persistent_store.backup_id 外键防线——死行引用须指向存在行）
+	if err := e.db.Exec("INSERT INTO backup (id, create_time, update_time) VALUES (91, 0, 0)").Error; err != nil {
+		t.Fatalf("建备份种子失败: %v", err)
 	}
 	if err := e.db.Exec("UPDATE persistent_store SET deleted_at = 1000, backup_id = 91 WHERE id = ?", dead.GetID()).Error; err != nil {
 		t.Fatalf("软删失败: %v", err)

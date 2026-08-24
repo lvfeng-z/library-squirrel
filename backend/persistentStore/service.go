@@ -61,7 +61,7 @@ type Repository interface {
 	ListReferencedBackupIds(ctx context.Context) ([]int64, error)
 	// ClearBackupRefsByBackupIds 按引用目标清 backup_id（悬空引用清列；含已删行）
 	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
-	// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带 backup_id>0 的非法态列，返回受影响行数
+	// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带备份引用的非法态列，返回受影响行数
 	ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error)
 }
 
@@ -768,7 +768,7 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 
 // SoftDeleteAndDiscardFile 软删记录并废弃其文件（未完成行进入软删产道的分支：partial 文件无复原价值，
 // 移入 backup/ 只会膨胀备份目录）。文件尽力删（扑空容忍+操作抑制登记），软删经 SoftDeleteWithBackup
-// 单点写入（backup_id=0）。完成后行复活时无文件，交文件监控对账裁决
+// 单点写入（backup_id=NULL）。完成后行复活时无文件，交文件监控对账裁决
 func (s *Service) SoftDeleteAndDiscardFile(ctx context.Context, id int64) error {
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -923,7 +923,7 @@ func (s *Service) GetAbsPath(store *domain.PersistentStore) string {
 
 // ResolveFileState 按相对路径解析记录状态（含已删行；活行优先，全删时取最新删代）
 // completed = 文件曾完整落盘；deleted = 记录已软删（文件移 backup 或外部裁决失效）；
-// backupId = 行内嵌的备份清单行 ID（0 = 无备份），供已删分支定位备份文件
+// backupId = 行内嵌的备份清单行 ID（0 = 无备份，行内存储 NULL=无备份），供已删分支定位备份文件
 // 无记录时 completed=true 兜底（向后兼容：按磁盘文件 fallback，如 store/ 白名单内的非受管文件）
 func (s *Service) ResolveFileState(ctx context.Context, relPath string) (completed bool, deleted bool, backupId int64) {
 	activeOpt := &database.QueryOption{
@@ -931,7 +931,7 @@ func (s *Service) ResolveFileState(ctx context.Context, relPath string) (complet
 		Limit:      1,
 	}
 	if records, err := s.repo.List(ctx, activeOpt); err == nil && len(records) > 0 {
-		return records[0].CompletedAt > 0, false, records[0].BackupID
+		return records[0].CompletedAt > 0, false, records[0].BackupID.Int64
 	}
 	deletedOpt := &database.QueryOption{
 		Conditions: []clause.Expression{
@@ -943,7 +943,7 @@ func (s *Service) ResolveFileState(ctx context.Context, relPath string) (complet
 		Limit:          1,
 	}
 	if records, err := s.repo.List(ctx, deletedOpt); err == nil && len(records) > 0 {
-		return records[0].CompletedAt > 0, true, records[0].BackupID
+		return records[0].CompletedAt > 0, true, records[0].BackupID.Int64
 	}
 	return true, false, 0
 }
@@ -988,7 +988,7 @@ func (s *Service) ClearBackupRefsByBackupIDs(ctx context.Context, ids []int64) e
 	return s.repo.ClearBackupRefsByBackupIds(ctx, ids)
 }
 
-// ClearIllegalAliveBackupRefs 清活行携带 backup_id>0 的非法态列（实现
+// ClearIllegalAliveBackupRefs 清活行携带备份引用的非法态列（实现
 // backupGovernance.IllegalBackupRefSanitizer）。构造上不可达：backup_id 与 deleted_at 单条
 // UPDATE 同生共死、复原双列同清——检出即外部直改数据库痕迹，返回受影响行数
 func (s *Service) ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error) {

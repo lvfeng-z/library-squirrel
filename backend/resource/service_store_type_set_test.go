@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
-	"gorm.io/driver/sqlite"
+	"github.com/library-squirrel/backend/migration"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +18,7 @@ import (
 // 活行角色集合查询 JOIN persistent_store（软删残留代不算「作品拥有该角色」），故三表齐建
 func newTestStoreTypeSetDB(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Fatalf("打开内存 SQLite 失败: %v", err)
 	}
@@ -27,6 +27,10 @@ func newTestStoreTypeSetDB(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatalf("获取底层 sql.DB 失败: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
+	// 作品行种子（resource.work_id 外键防线，fixture 用 workId 100/200/300）
+	if err := db.Exec("INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (100, 0, 0, 0), (200, 0, 0, 0), (300, 0, 0, 0)").Error; err != nil {
+		t.Fatalf("建作品种子失败: %v", err)
+	}
 	if err := db.AutoMigrate(&domain.Resource{}, &domain.ResourceStore{}, &domain.PersistentStore{}); err != nil {
 		t.Fatalf("AutoMigrate 失败: %v", err)
 	}

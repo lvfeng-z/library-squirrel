@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
-	"gorm.io/driver/sqlite"
+	"github.com/library-squirrel/backend/migration"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +18,7 @@ import (
 // newTestCursorDB 建立隔离的内存 SQLite（:memory: + 单连接，每测试独立库）+ 建表，返回仓储与底层 db。
 func newTestCursorDB(t *testing.T) (CursorStore, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Fatalf("打开内存 SQLite 失败: %v", err)
 	}

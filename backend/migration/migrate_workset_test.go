@@ -80,6 +80,12 @@ func TestCoverMigrationFromIsCover(t *testing.T) {
 	}
 	ws := insertWorkSet(t, db, 1, "abc")
 	coverWork, otherWork := int64(101), int64(102)
+	// 封面指向的作品行（迁移的悬空引用修复会清空指向不存在作品的封面，预置行保住回填断言对象）
+	for _, wid := range []int64{coverWork, otherWork} {
+		if err := db.Exec(`INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (?, 0, 0, 0)`, wid).Error; err != nil {
+			t.Fatalf("插作品行失败: %v", err)
+		}
+	}
 	if err := db.Exec(`INSERT INTO re_work_work_set (id, create_time, update_time, work_id, work_set_id, is_cover) VALUES (1, 0, 0, ?, ?, 1)`, coverWork, ws.ID).Error; err != nil {
 		t.Fatalf("插封面关联行失败: %v", err)
 	}

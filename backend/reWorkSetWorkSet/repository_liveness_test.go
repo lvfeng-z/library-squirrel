@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 // newTraversalEnv 内存库（work_set + re_work_set_work_set）+ 真实仓储
 func newTraversalEnv(t *testing.T) (*ReWorkSetWorkSetRepository, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}

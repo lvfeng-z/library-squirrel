@@ -149,10 +149,10 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("迁移 persistent_store.deleted_at 存量回填失败: %w", err)
 	}
 
-	// 命名迁移(后置)：persistent_store.backup_id 存量 NULL 回填（加列迁移无默认值遗留）。
-	// NULL 与 0 在引用语义（backup_id > 0）下行为等价，回填为「加列迁移必带回填」纪律的规范化对齐
-	if err := db.Exec(`UPDATE persistent_store SET backup_id = 0 WHERE backup_id IS NULL`).Error; err != nil {
-		return fmt.Errorf("迁移 persistent_store.backup_id 存量回填失败: %w", err)
+	// 命名迁移(后置)：persistent_store.backup_id 无引用哨兵由 0 迁移为 NULL
+	//（外键对 NULL 豁免对 0 不豁免；含历史加列遗留 NULL 归一，幂等）
+	if err := db.Exec(`UPDATE persistent_store SET backup_id = NULL WHERE backup_id = 0`).Error; err != nil {
+		return fmt.Errorf("迁移 persistent_store.backup_id 哨兵 NULL 化失败: %w", err)
 	}
 
 	// 命名迁移(后置)：backup.file_path 存量分隔符规范化（历史 filepath.Join 构造产反斜杠入库，
@@ -283,6 +283,15 @@ func AutoMigrate(db *gorm.DB) error {
 		if err := db.Exec(`ALTER TABLE re_work_work_set DROP COLUMN is_cover`).Error; err != nil {
 			return fmt.Errorf("迁移删除 is_cover 列失败: %w", err)
 		}
+	}
+
+	// 外键声明批次：关联表悬空行清理 + 表重建挂外键。置于全部命名迁移后——
+	// 表结构已为最终形态，重建舞步以此为基准复原列与索引
+	if err := cleanDanglingAssociations(db); err != nil {
+		return err
+	}
+	if err := ApplyForeignKeys(db); err != nil {
+		return err
 	}
 
 	return nil

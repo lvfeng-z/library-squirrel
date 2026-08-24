@@ -12,12 +12,13 @@ import (
 
 	domain "github.com/library-squirrel/backend/base/model/dto"
 	entity "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-// fakeBackupProvider BackupProvider 测试替身：内存清单（自增 ID 记录 Create/Delete 调用）；
+// fakeBackupProvider BackupProvider 测试替身：内存清单（自增 ID 记录 Create/Delete 调用），
+// 同步落真实 backup 表行（plugin.backup_id 外键防线——行内引用须指向存在的清单行）；
 // failCreate/failDelete 注入对应步骤失败
 type fakeBackupProvider struct {
 	failCreate bool
@@ -25,6 +26,7 @@ type fakeBackupProvider struct {
 	nextId     int64
 	rows       map[int64]*entity.Backup
 	deleted    []int64
+	db         *gorm.DB
 }
 
 func (f *fakeBackupProvider) CreateBackup(ctx context.Context, sourcePath string) (*entity.Backup, error) {
@@ -36,6 +38,9 @@ func (f *fakeBackupProvider) CreateBackup(ctx context.Context, sourcePath string
 	row.SetID(f.nextId)
 	row.FileName = sql.NullString{String: sourcePath, Valid: true}
 	f.rows[row.GetID()] = row
+	if err := f.db.Exec("INSERT INTO backup (id, create_time, update_time, file_name) VALUES (?, 0, 0, ?)", row.GetID(), sourcePath).Error; err != nil {
+		return nil, fmt.Errorf("落备份表行失败: %w", err)
+	}
 	return row, nil
 }
 
@@ -53,6 +58,9 @@ func (f *fakeBackupProvider) DeleteBackup(ctx context.Context, id int64) error {
 	}
 	f.deleted = append(f.deleted, id)
 	delete(f.rows, id)
+	if err := f.db.Exec("DELETE FROM backup WHERE id = ?", id).Error; err != nil {
+		return fmt.Errorf("删备份表行失败: %w", err)
+	}
 	return nil
 }
 
@@ -72,14 +80,18 @@ func newCleanupTestService(t *testing.T) (*Service, *fakeBackupProvider) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	// 备份清单行种子（plugin.backup_id 外键防线——fixture 引用的备份 id 预置真实行）
+	if err := db.Exec("INSERT INTO backup (id, create_time, update_time) VALUES (5, 0, 0), (200, 0, 0)").Error; err != nil {
+		t.Fatalf("建备份种子失败: %v", err)
 	}
 	if err := db.AutoMigrate(&entity.Plugin{}); err != nil {
 		t.Fatalf("迁移测试实体失败: %v", err)
 	}
-	provider := &fakeBackupProvider{rows: map[int64]*entity.Backup{}}
+	provider := &fakeBackupProvider{rows: map[int64]*entity.Backup{}, db: db}
 	svc := NewService(NewRepository(db), provider)
 	return svc, provider
 }

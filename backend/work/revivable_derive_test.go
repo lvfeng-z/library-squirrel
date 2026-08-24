@@ -31,7 +31,13 @@ func makeStoreRow(t *testing.T, env *revivableEnv, path string, deletedAt int64,
 		t.Fatalf("插 store 失败: %v", err)
 	}
 	if deletedAt > 0 {
-		if err := env.db.Exec("UPDATE persistent_store SET deleted_at = ?, backup_id = ? WHERE id = ?", deletedAt, backupId, row.GetID()).Error; err != nil {
+		// 备份清单行种子（persistent_store.backup_id 外键防线）；NULLIF(0)=NULL 表无备份
+		if backupId > 0 {
+			if err := env.db.Exec("INSERT OR IGNORE INTO backup (id, create_time, update_time) VALUES (?, 0, 0)", backupId).Error; err != nil {
+				t.Fatalf("建备份行失败: %v", err)
+			}
+		}
+		if err := env.db.Exec("UPDATE persistent_store SET deleted_at = ?, backup_id = NULLIF(?, 0) WHERE id = ?", deletedAt, backupId, row.GetID()).Error; err != nil {
 			t.Fatalf("软删 store 失败: %v", err)
 		}
 	}
@@ -74,7 +80,7 @@ func TestDeriveRevivableStoresPicksNewestDeadPerKey(t *testing.T) {
 	live := makeStoreRow(t, env, "store/resource/作者/活行.png", 0, 0)        // res1 key(image,1) 活行不进复活集
 	other := makeStoreRow(t, env, "store/resource/作者/他资源.png", 3000, 103) // res2 key(image,0) 同 role 跨资源
 
-	env.rd = &purgeResourceDeleter{resources: []*domain.Resource{res1, res2}}
+	env.rd = &purgeResourceDeleter{db: db, resources: []*domain.Resource{res1, res2}}
 	env.rsBr = &purgeRsBatchReader{rsMap: map[int64][]*domain.ResourceStore{
 		res1.GetID(): {makeAssoc(res1.GetID(), domain.StoreTypeImage, 0, gen1), makeAssoc(res1.GetID(), domain.StoreTypeImage, 0, gen2), makeAssoc(res1.GetID(), domain.StoreTypeImage, 1, live)},
 		res2.GetID(): {makeAssoc(res2.GetID(), domain.StoreTypeImage, 0, other)},
@@ -110,8 +116,8 @@ func TestDeriveRevivableStoresPicksNewestDeadPerKey(t *testing.T) {
 func TestRestoreWorkStoresRevivesOnlyNewestGeneration(t *testing.T) {
 	svc, psSvc, db := newPurgeTestEnv(t)
 	env := &revivableEnv{svc: svc, ps: psSvc, db: db}
-	// 手工建生产同款部分唯一索引（AutoMigrate 不建部分索引）
-	if err := db.Exec(`CREATE UNIQUE INDEX idx_persistent_store_file_path_active ON persistent_store(file_path) WHERE deleted_at = 0`).Error; err != nil {
+	// 手工建生产同款部分唯一索引（AutoMigrate 不建部分索引；全量迁移已建时跳过）
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_persistent_store_file_path_active ON persistent_store(file_path) WHERE deleted_at = 0`).Error; err != nil {
 		t.Fatalf("建部分唯一索引失败: %v", err)
 	}
 
@@ -125,7 +131,7 @@ func TestRestoreWorkStoresRevivesOnlyNewestGeneration(t *testing.T) {
 	gen1 := makeStoreRow(t, env, sharedPath, 1000, 201)
 	gen2 := makeStoreRow(t, env, sharedPath, 2000, 202)
 
-	svc.resourceDeleter = &purgeResourceDeleter{resources: []*domain.Resource{res}}
+	svc.resourceDeleter = &purgeResourceDeleter{db: db, resources: []*domain.Resource{res}}
 	svc.resourceStoreBatchReader = &purgeRsBatchReader{rsMap: map[int64][]*domain.ResourceStore{
 		res.GetID(): {makeAssoc(res.GetID(), domain.StoreTypeImage, 0, gen1), makeAssoc(res.GetID(), domain.StoreTypeImage, 0, gen2)},
 	}}
@@ -146,11 +152,11 @@ func TestRestoreWorkStoresRevivesOnlyNewestGeneration(t *testing.T) {
 	if gen2DeletedAt != 0 {
 		t.Fatalf("最新死代 gen2 应被复活（deleted_at=0），实际仍为死态 %d", gen2DeletedAt)
 	}
-	var backupCleared int64
+	var backupCleared sql.NullInt64
 	if err := db.Raw("SELECT backup_id FROM persistent_store WHERE id = ?", gen2).Scan(&backupCleared).Error; err != nil {
 		t.Fatalf("查 gen2 backup_id 失败: %v", err)
 	}
-	if backupCleared != 0 {
-		t.Fatalf("复活应同清 backup_id，实际 %d", backupCleared)
+	if backupCleared.Valid {
+		t.Fatalf("复活应同清 backup_id，实际 %+v", backupCleared)
 	}
 }

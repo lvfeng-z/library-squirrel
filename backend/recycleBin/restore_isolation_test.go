@@ -73,7 +73,7 @@ func TestRestoreWorkFilesGenerationIsolation(t *testing.T) {
 	const sharedPath = "store/resource/作者/同路径文件.mp4"
 	newRow := func(backupId int64) *domain.PersistentStore {
 		row := domain.NewPersistentStore()
-		row.BackupID = backupId
+		row.BackupID = sql.NullInt64{Int64: backupId, Valid: true}
 		row.FilePath = sql.NullString{String: sharedPath, Valid: true}
 		return row
 	}

@@ -6,20 +6,18 @@ import (
 
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
-
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 // newUpsertTestRepo 建内存库（全量迁移终态，含三列唯一索引）并返回仓储
 func newUpsertTestRepo(t *testing.T) *WorkSetRepository {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := migration.OpenTestDB()
 	if err != nil {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
-	if err := migration.AutoMigrate(db); err != nil {
-		t.Fatalf("迁移失败: %v", err)
+	// 站点行种子（work_set.site_id 外键防线，fixture 统一用 siteId=1）
+	if err := db.Exec("INSERT OR IGNORE INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+		t.Fatalf("建站点种子失败: %v", err)
 	}
 	return NewRepository(db)
 }

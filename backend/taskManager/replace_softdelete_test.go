@@ -137,7 +137,7 @@ func makeReplaceStoreRow(id int64, completed int64, deletedAt int64, backupId in
 	if deletedAt > 0 {
 		row.DeletedAt = soft_delete.DeletedAt(deletedAt)
 	}
-	row.BackupID = backupId
+	row.BackupID = sql.NullInt64{Int64: backupId, Valid: true}
 	row.FilePath = sql.NullString{String: path, Valid: true}
 	return row
 }

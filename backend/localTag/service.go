@@ -25,6 +25,8 @@ type Repository interface {
 	Create(ctx context.Context, tag *domain.LocalTag) error
 	// CreateBatch 批量新建
 	CreateBatch(ctx context.Context, tags []*domain.LocalTag) error
+	// ClearBaseLocalTagID 清父引用为 NULL（移到根——Updates 跳零值，NULL 须显式单列更新）
+	ClearBaseLocalTagID(ctx context.Context, id int64) error
 	// Updates 更新
 	Updates(ctx context.Context, tag *domain.LocalTag) error
 	// GetById 根据ID获取
@@ -74,7 +76,7 @@ func NewService(repo Repository) *Service {
 // Save 保存本地标签
 func (s *Service) Save(ctx context.Context, tag *domain.LocalTag) error {
 	if !tag.BaseLocalTagID.Valid || tag.BaseLocalTagID.Int64 == 0 {
-		tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true} // 表示根标签
+		tag.BaseLocalTagID = sql.NullInt64{} // 根标签：无父引用（历史 0 值输入归一为 NULL）
 	}
 	err := s.repo.Create(ctx, tag)
 	if err != nil {
@@ -87,7 +89,7 @@ func (s *Service) Save(ctx context.Context, tag *domain.LocalTag) error {
 func (s *Service) SaveBatch(ctx context.Context, tags []*domain.LocalTag) error {
 	for _, tag := range tags {
 		if !tag.BaseLocalTagID.Valid || tag.BaseLocalTagID.Int64 == 0 {
-			tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
+			tag.BaseLocalTagID = sql.NullInt64{}
 		}
 	}
 	return s.repo.CreateBatch(ctx, tags)
@@ -105,11 +107,11 @@ func (s *Service) UpdateById(ctx context.Context, tag *domain.LocalTag) error {
 	}
 
 	if !tag.BaseLocalTagID.Valid || tag.BaseLocalTagID.Int64 == 0 {
-		tag.BaseLocalTagID = sql.NullInt64{Int64: 0, Valid: true}
+		tag.BaseLocalTagID = sql.NullInt64{} // 根标签：无父引用
 	}
 
 	// 查询新上级节点的所有上级节点，如果新上级是本节点的下级，则需要调整
-	if tag.BaseLocalTagID.Valid && tag.BaseLocalTagID.Int64 != 0 {
+	if tag.BaseLocalTagID.Valid {
 		parentTags, err := s.repo.SelectParentNode(ctx, tag.BaseLocalTagID.Int64)
 		if err != nil {
 			return err
@@ -139,7 +141,14 @@ func (s *Service) UpdateById(ctx context.Context, tag *domain.LocalTag) error {
 		}
 	}
 
-	return s.repo.Updates(ctx, tag)
+	if err := s.repo.Updates(ctx, tag); err != nil {
+		return err
+	}
+	// 根标签的父引用为 NULL（零值被 Updates 跳过），显式单列更新保证清列
+	if !tag.BaseLocalTagID.Valid {
+		return s.repo.ClearBaseLocalTagID(ctx, tag.ID)
+	}
+	return nil
 }
 
 // UpdateLastUse 更新最后使用时间

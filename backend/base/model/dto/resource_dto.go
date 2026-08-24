@@ -28,7 +28,7 @@ func NewResourceDTO(resource *entity.Resource) *ResourceDTO {
 	return &ResourceDTO{
 		ID:               resource.GetID(),
 		WorkID:           resource.WorkID,
-		TaskID:           resource.TaskID,
+		TaskID:           resource.TaskID.Int64,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
 		ResourceType:     resource.ResourceType,
 		ResourceComplete: int(resource.ResourceComplete.Int64),
@@ -50,9 +50,9 @@ func ToResourceEntity(dto *ResourceDTO) *entity.Resource {
 		newResource.SetID(dto.ID)
 	}
 
-	// 设置业务字段
+	// 设置业务字段（task_id 存储 NULL=非任务产，DTO 契约 int64 0=无）
 	newResource.WorkID = dto.WorkID
-	newResource.TaskID = dto.TaskID
+	newResource.TaskID = sql.NullInt64{Int64: dto.TaskID, Valid: dto.TaskID != 0}
 	newResource.ResourceComplete = sql.NullInt64{Int64: int64(dto.ResourceComplete), Valid: true}
 
 	if dto.SuggestName != nil {
@@ -111,7 +111,7 @@ func NewResourceFullDTO(resource *entity.Resource, resourceStores []*entity.Reso
 	dto := &ResourceFullDTO{
 		ID:               resource.GetID(),
 		WorkID:           resource.WorkID,
-		TaskID:           resource.TaskID,
+		TaskID:           resource.TaskID.Int64,
 		SuggestName:      util.NullStringToPointer(resource.SuggestName),
 		ResourceType:     resource.ResourceType,
 		ResourceComplete: int(resource.ResourceComplete.Int64),

@@ -28,10 +28,10 @@ type PersistentStore struct {
 	// 写入方两类：作品软删链（文件移 backup，复原链清除）；fsmonitor 外部变更裁决不复原（原 invalid_at 退役并入）。
 	// 彻底删除时行物理消亡。查询经 GORM 自动排除已删行（Unscoped/IncludeDeleted 逃逸）
 	DeletedAt soft_delete.DeletedAt `gorm:"column:deleted_at;index;softDelete:milli" json:"deletedAt"`
-	// BackupID 备份清单行 ID（backup 表主键，0=无备份）：软删链移文件入 backup/ 时写入（与 DeletedAt 同生共死），
-	// 复原链读取定位备份文件后与 DeletedAt 一并清除；外部删除失效（fsmonitor 裁决）行保持 0。
-	// 活行（deleted_at=0）携带非 0 值为非法态，无主治理对账可查
-	BackupID int64 `gorm:"column:backup_id;default:0" json:"backupId"`
+	// BackupID 备份清单行 ID（backup 表主键，NULL=无备份）：软删链移文件入 backup/ 时写入（与 DeletedAt 同生共死），
+	// 复原链读取定位备份文件后与 DeletedAt 一并清除；外部删除失效（fsmonitor 裁决）行保持 NULL。
+	// 活行（deleted_at=0）携带非 NULL 值为非法态，无主治理对账可查
+	BackupID sql.NullInt64 `gorm:"column:backup_id" json:"backupId"`
 }
 
 func (PersistentStore) TableName() string {
