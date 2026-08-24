@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { useChangeConfirmStore, CHANGE_KIND } from '@renderer/store/UseChangeConfirmStore'
+import { useChangeConfirmStore, CHANGE_KIND, CHANGE_DOMAIN } from '@renderer/store/UseChangeConfirmStore'
 import { fsmonitorConfirmChange } from '@renderer/apis/http/wrappers/fsmonitor'
 import type { ChangeInfo } from '@renderer/store/UseChangeConfirmStore'
 
@@ -11,7 +11,12 @@ function isSyncKind(kind: number): boolean {
   return kind === CHANGE_KIND.Move || kind === CHANGE_KIND.DirMove
 }
 
-/** 接受现状：Move/DirMove→sync(同步路径)，Delete→ack(标记失效) */
+/** 是否为 backup 域条目（保管清单行；Delete 的接受语义=删除清单行并清除引用） */
+function isBackupDomain(item: ChangeInfo): boolean {
+  return item.domain === CHANGE_DOMAIN.Backup
+}
+
+/** 接受现状：Move/DirMove→sync(同步路径)，Delete→ack(标记失效/删除清单行) */
 async function handleAccept(item: ChangeInfo) {
   store.setLoading(item.id, true)
   try {
@@ -52,6 +57,14 @@ async function handleAcceptAll() {
   }
 }
 
+/** 接受按钮文案：backup 域缺失=确认缺失（删清单行），store 域删除=确认删除（置失效），移动类=同步路径 */
+function acceptLabel(item: ChangeInfo): string {
+  if (isSyncKind(item.kind)) {
+    return '同步路径'
+  }
+  return isBackupDomain(item) ? '确认缺失' : '确认删除'
+}
+
 /** 变更描述（路径对比） */
 function describe(item: ChangeInfo): string {
   if (isSyncKind(item.kind)) {
@@ -87,7 +100,7 @@ function describe(item: ChangeInfo): string {
             :loading="store.isLoading(item.id)"
             @click="handleAccept(item)"
           >
-            {{ isSyncKind(item.kind) ? '同步路径' : '确认删除' }}
+            {{ acceptLabel(item) }}
           </el-button>
           <el-button
             v-if="isSyncKind(item.kind)"

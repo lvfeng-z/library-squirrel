@@ -238,15 +238,17 @@ func pairAndResolve(records []usnRecord, cache *frnPathCache) []FileChange {
 	var out []FileChange
 	pendingOld := make(map[uint64]renameLeg) // FRN → 待配对旧名腿
 
-	// emit 追加一条 FileChange，带白名单过滤（cache 解析出的路径本就在 store/* 子树，过滤作安全网）。
+	// emit 追加一条 FileChange，带域过滤（cache 解析出的路径本就在监控子树内，过滤作安全网）：
+	// store 白名单子树与 backup 子树均为监控范围，其余丢弃
 	emit := func(ch FileChange) {
 		switch ch.Kind {
 		case ChangeMove:
-			if !storeRegistry.InScanDirs(ch.Path) && !storeRegistry.InScanDirs(ch.ToPath) {
+			if !storeRegistry.InScanDirs(ch.Path) && !storeRegistry.InScanDirs(ch.ToPath) &&
+				!storeRegistry.InBackupDir(ch.Path) {
 				return
 			}
 		default:
-			if !storeRegistry.InScanDirs(ch.Path) {
+			if !storeRegistry.InScanDirs(ch.Path) && !storeRegistry.InBackupDir(ch.Path) {
 				return
 			}
 		}

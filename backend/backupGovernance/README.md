@@ -25,6 +25,7 @@ Wails Handler（备份管理面板 `views/BackupManage.vue` 消费，「备份�
 
 - app 启动序列 `Start()` / 退出 `Stop()`（后台 goroutine：启动即巡检一次 + 每 24h）
 - `RunOnce(ctx)`：单轮对账（返回清理统计；与定时巡检经 runMu 串行）
+- `ClearBackupRefs(ctx, ids)`：按 ID 即时清除各引用方对清单行的引用（实现 fsmonitor.BackupRefCleaner——fsmonitor backup 域确认删除清单行后联动调用，令回收站可复原状态即时准确；单方失败 Warn，残余悬空由既有反向对账兜底）
 
 ## 核心概念
 
@@ -36,7 +37,7 @@ Wails Handler（备份管理面板 `views/BackupManage.vue` 消费，「备份�
 ## 依赖关系
 
 - 依赖：backup（BackupCatalog）、persistentStore 与 plugin（BackupReferencer，经 app.go 注入的枚举切片）、settings（RetentionDaysProvider）
-- 被依赖：app（启动/退出挂钩 + Handler 装配）、前端备份管理页（Handler 四方法）
+- 被依赖：app（启动/退出挂钩 + Handler 装配）、前端备份管理页（Handler 四方法）、fsmonitor（BackupRefCleaner：backup 域确认删行后的即时清列联动，经 app.go 闭包适配注入——装配次序上治理服务晚于 fsmonitor 创建）
 
 ## 关键设计
 

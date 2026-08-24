@@ -6,26 +6,30 @@
 
 - 声明1：fsnotify 事件源对整个 workDir 递归加 watch，backup/ 的事件**已在捕获**，运行时接入零源改动——被 `service.go` 的白名单过滤丢弃（`backend/fsmonitor/service.go:281`，`InScanDirs` 为 store-only，`backend/storeRegistry/registry.go:50-61`）。
 - 声明2：backup/ 现在监控白名单外，外部删除备份文件无感知；backupGovernance 明确「文件存在性感知属 fsmonitor 域」（`backend/backupGovernance/service.go:319` 注释），保持纯 DB 对账（行存在性为限）。
-- 声明3：backup 清单行无指纹列（`backend/base/model/entity/backup.go:11-17`，仅 FileName/FilePath/Workdir），运行时 fsnotify 无 rename 配对（无 USN cookie）→ backup 域运行时**只做 Missing 检出，不做指纹配对**；USN 离线段 rename 由 journal 自带配对（`backend/fsmonitor/usn_provider_windows.go:237-254` 的 ChangeMove），按路径查行即可支持 Move。
-- 声明4：backup 模块自操作 backup/ 文件的全部落点仅两处产生 Remove 事件须抑制——`RestoreFile`（`backend/backup/service.go:215-239`，调用方：recycleBin `restoreWorkFiles` `backend/recycleBin/service.go:322` 与 `RestoreStore` `backend/recycleBin/service.go:459`、taskManager 回滚 `backend/taskManager/model.go:1312`）与 `DeleteBackup`（`backend/backup/service.go:196-210`，调用方：recycleBin 三处清理、backupGovernance 正向清理 `backend/backupGovernance/service.go:307`、plugin 卸载/换版直清 `backend/plugin/service.go:543,731`）；`storeFile` 目的端是 Create 事件（`backend/backup/service.go:111` rename 落入 / `:106` copy 落入），backup 域不报 Create → 无需登记。plugin 无其他 backup 文件写点（`backend/plugin/service.go` 全量 grep 仅 CreateBackup/DeleteBackup 消费）。
+- 声明3：backup 清单行无指纹列（`backend/base/model/entity/backup.go:11-17`，仅 FileName/FilePath/Workdir），运行时 fsnotify 无 rename 配对（无 USN cookie）→ backup 域运行时**只做 Missing 检出，不做指纹配对**；USN（NTFS 卷级持久变更日志，追溯应用未运行期间变更的离线段数据源）rename 由 journal 自带配对（`backend/fsmonitor/usn_provider_windows.go:237-254` 的 ChangeMove），按路径查行即可支持 Move。
+- 声明4：backup 模块自操作 backup/ 文件的全部落点仅两处产生 Remove 事件须抑制——`RestoreFile`（`backend/backup/service.go:215-239`，调用方：recycleBin `restoreWorkFiles` `backend/recycleBin/service.go:322` 与 `RestoreStore` `backend/recycleBin/service.go:459`、taskManager 回滚 `backend/taskManager/model.go:1312`）与 `DeleteBackup`（`backend/backup/service.go:196-210`，调用方：recycleBin 四处——`restoreWorkFiles` `backend/recycleBin/service.go:328`/`PurgeWork` `:361`/`PurgeStore` `:394`/`RestoreStore` `:471`、backupGovernance 正向清理 `backend/backupGovernance/service.go:307`、plugin 卸载/换版直清 `backend/plugin/service.go:543,731`）；`storeFile` 目的端是 Create 事件（`backend/backup/service.go:111` rename 落入 / `:106` copy 落入），backup 域不报 Create → 无需登记。plugin 无其他 backup 文件写点（`backend/plugin/service.go` 全量 grep 仅 CreateBackup/DeleteBackup 消费）。
 - 声明5：USN 离线段不需要抑制——自操作完成后 DB 行态已同步（RestoreFile 后调用方删行、DeleteBackup 自删行），下轮 USN Remove 事件查行落空即丢弃，与 store 域同构（store 域 DeleteWithBackup 后行软删、GORM scope 排除，`backend/fsmonitor/correlator.go:142-149` 查无记录不报告）。
 - 声明6：ack 删行后引用清理已有既有兜底——backupGovernance 反向对账清悬空引用（`backend/backupGovernance/service.go:188-228`），启动+24h 节奏（`backend/backupGovernance/service.go:116-128`）；回收站条目 `CanRestore = HasBackup(backup_id>0) 且挂载链活作品`（`backend/search/repository.go:674,735`），引用未清期间会呈现「可复原」但复原走容忍跳过（`backend/recycleBin/service.go:313-316` 清单行缺失告警跳过、`:309-311` backup_id=0 静默跳过）。
 - 声明7：确认流先例——RepairManager 内存待修复队列 + sync/restore/ack 三动作（`backend/fsmonitor/repair.go:14-24,97-116`），前端 ChangeConfirmDialog 模态框逐条+全部接受（`frontend/src/components/dialogs/ChangeConfirmDialog.vue:64-106`），事件 `fsmonitor:change` 经 MainIpcListener 入 store（`frontend/src/MainIpcListener.ts:85-95`）。
 - 声明8：backup.FilePath 为 workDir 相对正斜杠路径（`backend/backup/service.go:125`），行内另存创建时 workDir（`Workdir` 列，`:126`）——workDir 迁移后的旧行不在当前监控树，须跳过不报。
 
-**待决策（需用户拍板）**：
+**待决策（需用户拍板）**——已裁决（2026-08-23）：七项全部裁定：
+- 决策1-5 按推荐（甲/不加列/立即清引用/USN Move 随 V1/不加开关）。
+- 决策6：`store/thumbnail` 白名单死条目随 H 退役（独立小提交）——代码引用面仅定义行 `registry.go:20` 与测试、零写入方，当前库 `file_path LIKE 'store/thumbnail/%'` 行数=0，未发布无外部用户，「历史文件保留」前提不成立。
+- 决策7：backup 表**不补**指纹列——指纹只增益外部 rename 场景（backup/ 是内部管理目录，主流外部操作是删除，对指纹零需求），成本=表结构变更+存量回填+配对歧义面+不变量复杂化（「行存在⇔文件在位」引入中间态）。记为显式延后增强路径：未来加 `content_fingerprint` 列纯增量、不破坏本方案任何结构。
 
 - 决策1（阻塞）：检出后联动形态——甲：进 fsmonitor 现有确认流（推荐）；乙：仅通知+备份管理面板治理；丙：自动删行无确认。
 - 决策2（阻塞）：真相对齐形态——不加缺失标记列、ack=删清单行（推荐）；或 backup 表加缺失态列（触发能力包数据模型决策关口）。
 - 决策3（阻塞）：引用清理时机——ack 时立即清（推荐）；或等既有反向对账（启动+24h）。
 - 决策4（非阻塞）：USN rename 配对（Move 的 sync/restore）是否随 V1 支持——推荐支持（按路径查行，成本极低）；不支持则 USN 用户 rename 也降级为 Delete 报告。
-- 决策5（非阻塞）：不增设监控开关（backup/ 随 fsmonitor 整体监控，D7 `suppressEnabled` 全局既有开关继续覆盖）。
+- 决策5（非阻塞）：不增设监控开关（backup/ 随 fsmonitor 整体监控；既有抑制开关 `settings.fsmonitor.suppressEnabled`——紧急回退用，关闭后主程序自身写入事件不再被抑制——继续全局覆盖）。
 
 **自曝风险**：
 
 - 风险1：运行时（fsnotify 无配对）外部**改名** backup 文件 → 报 Delete，用户 ack 后行删除、新路径文件成无主磁盘孤儿（无行、治理不可见）。USN 开启者经 ChangeMove 获得 sync 避免误删。
+  **修正（2026-08-24 实测推翻原描述）**：Windows fsnotify 同目录改名旧名腿=Rename Op（非 Remove）、跨目录移动旧名腿=Remove（行为锚定 `source_rename_probe_test.go`）。原实现丢弃 Rename Op 致同目录改名运行时完全静默（跨目录移动可报）。修复（方案甲，已实施）：source.go 转发 Rename Op 为 `ChangeRemove{FromRename:true}`——backup 域消费（同目录改名→缺失报告）；store 域跳过 FromRename（其改名检出走 Create 新名指纹配对，旧名腿进关联会与 Move 双报告）。
 - 风险2：整 backup/ 目录被删 → 目录 Remove 前缀展开 N 条目，模态确认框 N 条洪泛（与 store 域整删同病，「全部接受现状」可一键）。
-- 风险3：D7 抑制开关关闭时主程序自写 backup/（还原/清理）会误报为外部删除，用户若 ack 会误删行——与 store 域 D7 退化行为同构，接受（开关文档已声明退回误报原状态）。
+- 风险3：抑制开关（`settings.fsmonitor.suppressEnabled`）关闭时主程序自写 backup/（还原/清理）会误报为外部删除，用户若 ack 会误删行——与 store 域该开关关闭时的退化行为同构，接受（开关语义已声明退回误报原状态）。
 - 风险4：外部进程短暂移走又移回（杀毒隔离等）→ Remove 已入队，移回后 ack 会误删；窗口极窄+人工确认兜底。
 - 风险5：待修复队列为内存态，未确认条目重启即失，靠下次离线对账复报（既有 store 域同构）。
 
@@ -33,7 +37,7 @@
 
 ## 1 背景与目标
 
-任务 H（谱系 `work-lineage-soft-delete`）：用户经文件管理器直删 `backup/` 下备份文件时，该目录在 fsmonitor 监控白名单外无感知，backup 清单行指向已不存在的文件，复原链消费侧只能告警容忍（声明6）。C（backup 无主备份治理）裁决时把该感知职责移出：**backupGovernance 保持纯 DB 对账（行存在性为限），文件缺失感知归 fsmonitor 域**（声明2）。
+任务 H（谱系 `work-lineage-soft-delete`）：用户经文件管理器直删 `backup/` 下备份文件时，该目录在 fsmonitor 监控白名单外无感知，backup 清单行指向已不存在的文件，复原链消费侧只能告警容忍（声明6）。C 任务（backup 无主备份治理，本谱系已完成节点）裁决时把该感知职责移出：**backupGovernance 保持纯 DB 对账（行存在性为限），文件缺失感知归 fsmonitor 域**（声明2）。
 
 本任务 = 把 `backup/` 纳入 fsmonitor 监控（运行时 + 离线两时机）+ 检出后与 backup 清单行的联动。
 
@@ -118,7 +122,7 @@ RepairManager 按 Domain 路由；backup 域注入两个新能力（Deps 增 `Ba
 | `RestoreFile`（`service.go:215`） | 源端 Remove（rename 移出 / 跨盘回退 copy 后 `os.Remove` `:236`） | 方法内计算 backupPath 相对 workDir 的 rel（Rel 逃逸/旧 workDir 不登记，镜像 `storeFile:68` 手法），`Suppress` → 操作 → `Release` |
 | `DeleteBackup`（`service.go:196`） | 文件 Remove（`:205`，行删除在文件删除之后 → 竞态窗口） | 同上 |
 
-单一登记点覆盖全部调用方（声明4 的 recycleBin×2 还原链、taskManager 回滚、backupGovernance 清理、plugin 卸载/换版）。`storeFile` 目的端 Create 不报不登记；其源端 Remove（MoveToBackup 移出 store/）既有登记保留。
+单一登记点覆盖全部调用方（声明4 的 recycleBin 四处与 taskManager 回滚、backupGovernance 清理、plugin 卸载/换版）。`storeFile` 目的端 Create 不报不登记；其源端 Remove（MoveToBackup 移出 store/）既有登记保留。
 
 ### 3.5 真相对齐（决策2 推荐：不加列）
 
@@ -162,7 +166,7 @@ RepairManager 按 Domain 路由；backup 域注入两个新能力（Deps 增 `Ba
 
 ## 6 决策详述（对摘要待决策项的展开）
 
-- **决策1 联动形态**：推荐甲（进现有确认流）。丙（自动删行）在 D7 抑制开关关闭时把自操作误报放大为静默数据删除，不可接受；乙（仅通知+面板治理）需在备份管理面板再造缺失态呈现+清理动作面，且丢失运行时即时推送的消费闭环，机制二存。甲复用 RepairManager/确认框/事件三件套，backup 域只多一个 Domain 维度。
+- **决策1 联动形态**：推荐甲（进现有确认流）。丙（自动删行）在抑制开关 `settings.fsmonitor.suppressEnabled` 关闭时把自操作误报放大为静默数据删除，不可接受；乙（仅通知+面板治理）需在备份管理面板再造缺失态呈现+清理动作面，且丢失运行时即时推送的消费闭环，机制二存。甲复用 RepairManager/确认框/事件三件套，backup 域只多一个 Domain 维度。
 - **决策2 真相对齐**：推荐不加列。缺失态列使「行存在」不再蕴含「文件在位」，消费面（治理/引用/复原）全都要加过滤——引入第二真源；ack 删行一步对齐，行集即文件集。能力包表结构关口因此不触发。
 - **决策3 引用清理时机**：推荐 ack 时立即清。等 24h 的窗口期内回收站条目 `CanRestore` 虚高（声明6），用户点复原走容忍跳过——正是 H 要消灭的体验；立即清由 backupGovernance 新公开方法承担，枚举知识不外溢，失败有既有反向对账兜底，代价一个小方法。
 - **决策4 USN Move**：推荐随 V1 支持。processMove 形态按路径查行（`correlator.go:169-189` 同构），无指纹依赖；不支持则 USN 用户的 rename 降级为 Delete（风险1 扩大到 USN 群体）。

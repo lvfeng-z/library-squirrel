@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
@@ -43,6 +44,56 @@ func (r *BackupRepository) ListAllIDs(ctx context.Context) ([]int64, error) {
 	var ids []int64
 	err := r.GORM().WithContext(ctx).Model(&entity.Backup{}).Pluck("id", &ids).Error
 	return ids, err
+}
+
+// GetByFilePathInWorkDir 按保管路径精确查指定工作目录的清单行，无命中返回 (nil, nil)。
+// 供 fsmonitor backup 域：文件 Remove 事件按路径定位清单行。workdir 过滤排除
+// 工作目录迁移前的旧行（其文件不在当前监控树内，路径字符串可能撞车）
+func (r *BackupRepository) GetByFilePathInWorkDir(ctx context.Context, workDir string, filePath string) (*entity.Backup, error) {
+	var row entity.Backup
+	err := r.GORM().WithContext(ctx).Where("workdir = ? AND file_path = ?", workDir, filePath).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// ListByPathPrefixInWorkDir 按路径前缀查指定工作目录的清单行（含多级下级）。
+// 供 fsmonitor backup 域：目录 Remove 事件按前缀圈定受影响清单行。
+// prefix 为目录路径（正斜杠），匹配 prefix + "/" 下级
+func (r *BackupRepository) ListByPathPrefixInWorkDir(ctx context.Context, workDir string, prefix string) ([]*entity.Backup, error) {
+	rows := make([]*entity.Backup, 0)
+	err := r.GORM().WithContext(ctx).
+		Where("workdir = ? AND file_path LIKE ?", workDir, prefix+"/%").
+		Find(&rows).Error
+	return rows, err
+}
+
+// ListAllInWorkDir 全量查指定工作目录中保管路径有效的清单行（file_path 非空）。
+// 供 fsmonitor backup 域离线对账：清单行 × 磁盘文件比对的数据源
+func (r *BackupRepository) ListAllInWorkDir(ctx context.Context, workDir string) ([]*entity.Backup, error) {
+	rows := make([]*entity.Backup, 0)
+	err := r.GORM().WithContext(ctx).
+		Where("workdir = ? AND file_path IS NOT NULL AND file_path != ''", workDir).
+		Find(&rows).Error
+	return rows, err
+}
+
+// UpdateFilePath 更新清单行保管路径（fsmonitor backup 域移动同步：行路径跟随文件新位置）
+func (r *BackupRepository) UpdateFilePath(ctx context.Context, id int64, filePath string) error {
+	return r.GORM().WithContext(ctx).Model(&entity.Backup{}).Where("id = ?", id).Update("file_path", filePath).Error
+}
+
+// NormalizeFilePaths 规范化 file_path 分隔符为正斜杠（历史行曾以反斜杠入库，与
+// fsmonitor backup 域对账的正斜杠磁盘键、事件路径永不匹配即恒判缺失），返回修正行数
+func (r *BackupRepository) NormalizeFilePaths(ctx context.Context) (int64, error) {
+	result := r.GORM().WithContext(ctx).Model(&entity.Backup{}).
+		Where("file_path LIKE ?", `%\%`).
+		Update("file_path", gorm.Expr(`replace(file_path, '\', '/')`))
+	return result.RowsAffected, result.Error
 }
 
 // PageBackups 分页查询保管清单（create_time 倒序固定序）。

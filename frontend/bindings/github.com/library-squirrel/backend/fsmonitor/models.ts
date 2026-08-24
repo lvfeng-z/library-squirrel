@@ -12,12 +12,17 @@ export class PendingChangeDTO {
     "id": number;
 
     /**
-     * 0=Move 1=Delete 2=Untracked
+     * 0=store 资源文件域 1=backup 保管清单域
+     */
+    "domain": number;
+
+    /**
+     * 0=Move 1=Delete 2=Untracked 3=DirMove
      */
     "kind": number;
 
     /**
-     * 可读名称
+     * 可读名称（域感知）
      */
     "kindName": string;
 
@@ -30,12 +35,24 @@ export class PendingChangeDTO {
      * Move: 新路径
      */
     "toPath": string;
+
+    /**
+     * store 域条目：关联记录 ID；其余 0
+     */
     "storeId": number;
+
+    /**
+     * backup 域条目：关联清单行 ID；其余 0
+     */
+    "backupId": number;
 
     /** Creates a new PendingChangeDTO instance. */
     constructor($$source: Partial<PendingChangeDTO> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
+        }
+        if (!("domain" in $$source)) {
+            this["domain"] = 0;
         }
         if (!("kind" in $$source)) {
             this["kind"] = 0;
@@ -51,6 +68,9 @@ export class PendingChangeDTO {
         }
         if (!("storeId" in $$source)) {
             this["storeId"] = 0;
+        }
+        if (!("backupId" in $$source)) {
+            this["backupId"] = 0;
         }
 
         Object.assign(this, $$source);

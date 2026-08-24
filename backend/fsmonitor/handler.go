@@ -19,11 +19,13 @@ func NewHandler(svc *Service) *Handler {
 // PendingChangeDTO 待修复变更（前端展示用）
 type PendingChangeDTO struct {
 	ID       int64  `json:"id"`
-	Kind     int    `json:"kind"`     // 0=Move 1=Delete 2=Untracked
-	KindName string `json:"kindName"` // 可读名称
+	Domain   int    `json:"domain"`   // 0=store 资源文件域 1=backup 保管清单域
+	Kind     int    `json:"kind"`     // 0=Move 1=Delete 2=Untracked 3=DirMove
+	KindName string `json:"kindName"` // 可读名称（域感知）
 	FromPath string `json:"fromPath"` // Move: 旧路径；Delete: 消失路径
 	ToPath   string `json:"toPath"`   // Move: 新路径
-	StoreID  int64  `json:"storeId"`
+	StoreID  int64  `json:"storeId"`  // store 域条目：关联记录 ID；其余 0
+	BackupID int64  `json:"backupId"` // backup 域条目：关联清单行 ID；其余 0
 }
 
 // ListPendingChanges 列出待修复变更（供前端确认列表展示）
@@ -36,11 +38,13 @@ func (h *Handler) ListPendingChanges(ctx context.Context) *model.ApiResponse[[]P
 	for _, pc := range items {
 		dtos = append(dtos, PendingChangeDTO{
 			ID:       pc.ID,
+			Domain:   int(pc.Domain),
 			Kind:     int(pc.Kind),
-			KindName: kindName(pc.Kind),
+			KindName: kindName(pc.Domain, pc.Kind),
 			FromPath: pc.FromPath,
 			ToPath:   pc.ToPath,
 			StoreID:  pc.StoreID,
+			BackupID: pc.BackupID,
 		})
 	}
 	return model.Success(dtos)
@@ -53,8 +57,18 @@ func (h *Handler) ConfirmChange(ctx context.Context, id int64, action string) *m
 	return model.HandleVoid(h.svc.ConfirmChange(ctx, id, RepairAction(action)))
 }
 
-// kindName 语义变更类型可读名称
-func kindName(k SemanticKind) string {
+// kindName 语义变更类型可读名称（域感知：backup 域缺失/移动面向保管清单行）
+func kindName(domain ChangeDomain, k SemanticKind) string {
+	if domain == DomainBackup {
+		switch k {
+		case SemanticMove:
+			return "备份文件移动/改名"
+		case SemanticDelete:
+			return "备份文件缺失"
+		default:
+			return "未知备份变更"
+		}
+	}
 	switch k {
 	case SemanticMove:
 		return "文件移动/重命名"

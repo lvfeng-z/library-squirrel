@@ -18,11 +18,13 @@
 | `MoveToBackup(absFilePath) (id, err)` | 移动源文件入备份目录并建清单行，返回清单行 ID（store 软删链） |
 | `GetById(id)` | 按清单行 ID 查询（对业务行的唯一查询面） |
 | `GetBackupPath(backup)` / `ResolveBackupPathById(id)` | 取备份文件绝对路径 |
-| `RestoreFile(backupPath, targetPath)` | 从备份路径还原文件到目标绝对路径 |
-| `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍） |
+| `RestoreFile(backupPath, targetPath)` | 从备份路径还原文件到目标绝对路径（源端 backup/ 的 fsmonitor 操作抑制在本方法内登记） |
+| `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍、行不存在幂等；文件端抑制在本方法内登记） |
 | `ListCreatedBefore(beforeMs)` | 查询创建时间早于阈值的清单行（实现 backupGovernance.BackupCatalog：正向无主候选） |
 | `ListAllIDs()` | 全量投影清单行 ID（实现 backupGovernance.BackupCatalog：反向现存集） |
 | `PageBackups(pageNumber, pageSize, includeIDs, excludeIDs)` | 分页查保管清单（create_time 倒序；实现 backupGovernance.BackupCatalog：备份管理面板清单分页。ID 集过滤，引用态语义由治理方折算，本模块只做纯过滤——大集分块避 SQLite 参数上限） |
+| `GetByFilePath(filePath)` / `ListByPathPrefix(prefix)` / `ListAllInWorkDir()` | 按当前工作目录的保管路径查询面（精确/前缀/全量；实现 fsmonitor.BackupReader——backup 域文件缺失感知的关联数据源，工作目录迁移前旧行不在监控树被排除） |
+| `UpdateFilePath(id, newFilePath)` | 更新清单行保管路径（实现 fsmonitor.BackupRepairer：backup 域移动同步） |
 
 > 无 Wails Handler（前端零消费，已随纯化退役）。无主备份的治理（双向对账/清理调度）由 backupGovernance 编排，本模块只提供目录查询面与删除能力。
 
@@ -34,9 +36,10 @@
 
 ## 依赖关系
 
-- 依赖：无（纯文件能力，不依赖其他业务模块）
-- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（BackupFileRestorer：替换失败回滚的文件还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）、backupGovernance（BackupCatalog：无主对账的清单目录面）
+- 依赖：无业务模块依赖（纯文件能力）；仅引用 storeRegistry（备份根单一源 `BackupDirPath` + 操作抑制登记）
+- 被依赖：persistentStore（FileMover：`HardDelete(backup=true)`/`DeleteWithBackup` 的文件移动）、taskManager（BackupFileRestorer：替换失败回滚的文件还原）、recycleBin（BackupReader：复原与彻底删除按行内 backup_id 定位备份）、plugin（BackupProvider：安装包备份 + Reinstall 按 BackupID 直查）、assetserver（BackupPathResolver：`/store/` 已删记录按行内 backup_id 定位备份文件服务）、backupGovernance（BackupCatalog：无主对账的清单目录面）、fsmonitor（BackupReader/BackupRepairer：backup 域文件缺失感知的查询与修复，经 app.go 适配器注入）
 
 ## 关键设计
 
 - **备份时重命名释放占用**：备份原文件前先重命名，快速释放原名称占用，再写入新文件。
+- **backup/ 文件操作的操作抑制登记归本模块**：`RestoreFile`（源端移出触发 backup 域 Remove 事件，行删除在还原之后有竞态窗口）与 `DeleteBackup`（文件先删行后删的窗口）在方法内登记抑制——单一登记点覆盖全部调用方（recycleBin/taskManager/backupGovernance/plugin），调用方无须感知；storeFile 目的端是 Create 事件，backup 域不报 Create，无需登记。

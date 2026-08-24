@@ -30,12 +30,15 @@ type ReconciliationScanner interface {
 
 // Deps 工作目录监控所需依赖集合，各能力以指针持有，nil 表示该能力降级不可用。
 type Deps struct {
-	LiveSource      LiveEventSource       // 实时事件流，环境不可用时为 nil
-	OfflineProvider OfflineChangeProvider // 离线追溯，仅 Windows 可用，nil = 全量对账
-	Scanner         ReconciliationScanner // 全量对账，通用(离线对账实现就位后填充)
-	Fingerprinter   fingerprint.Computer  // 内容指纹，通用
-	StoreReader     StoreReader           // persistent_store 读取(按指纹/路径查记录)，关联层依赖
-	StoreRepairer   StoreRepairer         // persistent_store 修复(改 file_path/置失效)，修复层依赖
+	LiveSource       LiveEventSource       // 实时事件流，环境不可用时为 nil
+	OfflineProvider  OfflineChangeProvider // 离线追溯，仅 Windows 可用，nil = 全量对账
+	Scanner          ReconciliationScanner // 全量对账，通用(离线对账实现就位后填充)
+	Fingerprinter    fingerprint.Computer  // 内容指纹，通用
+	StoreReader      StoreReader           // persistent_store 读取(按指纹/路径查记录)，store 域关联层依赖
+	StoreRepairer    StoreRepairer         // persistent_store 修复(改 file_path/置失效)，store 域修复层依赖
+	BackupReader     BackupReader          // backup 清单行读取(按路径/前缀/全量)，nil = backup 域整体降级
+	BackupRepairer   BackupRepairer        // backup 清单行修复(删行/改路径)，nil = backup 域不入修复队列
+	BackupRefCleaner BackupRefCleaner      // backup 引用清列联动(backupGovernance 提供)，nil = 确认后悬空引用由治理对账兜底
 }
 
 // NewPlatformDeps 按当前操作系统构造可用依赖集合，不可用能力留 nil 并记录降级日志。

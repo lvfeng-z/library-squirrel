@@ -40,10 +40,13 @@ type PendingChange struct {
 	SemanticChange       // 嵌入语义变更字段
 }
 
-// RepairManager 修复管理：维护待修复变更队列 + 执行用户确认的修复动作
+// RepairManager 修复管理：维护待修复变更队列 + 执行用户确认的修复动作。
+// store 域与 backup 域分立修复能力，按变更所属域路由
 type RepairManager struct {
-	repairer      StoreRepairer // nil 时修复不可用（仅通知，不能修）
-	workDirGetter func() string // 复原(文件移回)时拼绝对路径
+	repairer         StoreRepairer    // store 域修复（nil 时该域修复不可用，仅通知）
+	backupRepairer   BackupRepairer   // backup 域修复（nil 时该域不入修复队列）
+	backupRefCleaner BackupRefCleaner // backup 域引用清列联动（nil 时悬空引用由治理对账兜底）
+	workDirGetter    func() string    // 复原(文件移回)时拼绝对路径
 
 	mu      sync.Mutex
 	nextID  int64
@@ -51,15 +54,17 @@ type RepairManager struct {
 }
 
 // NewRepairManager 创建修复管理器
-func NewRepairManager(repairer StoreRepairer, workDirGetter func() string) *RepairManager {
+func NewRepairManager(repairer StoreRepairer, backupRepairer BackupRepairer, backupRefCleaner BackupRefCleaner, workDirGetter func() string) *RepairManager {
 	return &RepairManager{
-		repairer:      repairer,
-		workDirGetter: workDirGetter,
-		pending:       make(map[int64]*PendingChange),
+		repairer:         repairer,
+		backupRepairer:   backupRepairer,
+		backupRefCleaner: backupRefCleaner,
+		workDirGetter:    workDirGetter,
+		pending:          make(map[int64]*PendingChange),
 	}
 }
 
-// Enqueue 入队一个语义变更，返回分配的待修复 ID（repairer 为 nil 时返回 0 表示不入队）
+// Enqueue 入队一个语义变更，返回分配的待修复 ID（该域修复能力不可用时返回 0 表示不入队）
 func (m *RepairManager) Enqueue(sc *SemanticChange) int64 {
 	if m == nil || sc == nil {
 		return 0
@@ -68,8 +73,12 @@ func (m *RepairManager) Enqueue(sc *SemanticChange) int64 {
 	if sc.Kind == SemanticUntracked {
 		return 0
 	}
-	if m.repairer == nil {
-		return 0 // 修复能力不可用，不入队（前端只收到通知）
+	if sc.Domain == DomainBackup {
+		if m.backupRepairer == nil {
+			return 0 // backup 域修复能力不可用，不入队（前端只收到通知）
+		}
+	} else if m.repairer == nil {
+		return 0 // store 域修复能力不可用，不入队（前端只收到通知）
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -115,8 +124,11 @@ func (m *RepairManager) Confirm(ctx context.Context, id int64, action RepairActi
 	return nil
 }
 
-// apply 对单个语义变更执行修复动作
+// apply 对单个语义变更执行修复动作（按所属域路由）
 func (m *RepairManager) apply(ctx context.Context, sc *SemanticChange, action RepairAction) error {
+	if sc.Domain == DomainBackup {
+		return m.applyBackup(ctx, sc, action)
+	}
 	switch sc.Kind {
 	case SemanticMove:
 		return m.applyMove(ctx, sc, action)
@@ -126,6 +138,56 @@ func (m *RepairManager) apply(ctx context.Context, sc *SemanticChange, action Re
 		return m.applyDirMove(ctx, sc, action)
 	default:
 		return fmt.Errorf("不支持的变更类型修复: %v", sc.Kind)
+	}
+}
+
+// applyBackup backup 域修复：Delete 的 ack=删清单行+清引用（文件已失，restore 不适用）；
+// Move 的 sync=行路径跟随新位置、restore=文件移回旧路径
+func (m *RepairManager) applyBackup(ctx context.Context, sc *SemanticChange, action RepairAction) error {
+	switch sc.Kind {
+	case SemanticDelete:
+		if action != ActionAck {
+			return fmt.Errorf("备份缺失变更不支持动作 %s（文件已失，无从复原）", action)
+		}
+		// 删行幂等（行不存在视为成功，容忍重复条目确认）
+		if err := m.backupRepairer.DeleteRow(ctx, sc.BackupID); err != nil {
+			return fmt.Errorf("删除缺失备份清单行 %d 失败: %w", sc.BackupID, err)
+		}
+		if m.backupRefCleaner != nil {
+			if err := m.backupRefCleaner.ClearBackupRefs(ctx, []int64{sc.BackupID}); err != nil {
+				// 清列失败不阻断确认——悬空引用由备份治理既有反向对账兜底
+				logger.Log.Warnf("[fsmonitor] 清除备份 %d 的悬空引用失败（将由治理对账兜底）: %v", sc.BackupID, err)
+			}
+		}
+		logger.Log.Infof("[fsmonitor] 备份缺失确认完成：清单行 %d 已删除（%s）", sc.BackupID, sc.FromPath)
+		return nil
+	case SemanticMove:
+		switch action {
+		case ActionSync:
+			// 清单行保管路径同步到新位置
+			if err := m.backupRepairer.UpdateFilePath(ctx, sc.BackupID, sc.ToPath); err != nil {
+				return fmt.Errorf("备份清单行 %d 路径同步失败: %w", sc.BackupID, err)
+			}
+			return nil
+		case ActionRestore:
+			// 文件从新路径移回清单行记录的旧路径（行不动，移回后一致）；
+			// 两端登记抑制，避免复原触发自身的移动事件（自反馈）
+			storeRegistry.Suppress(sc.FromPath)
+			storeRegistry.Suppress(sc.ToPath)
+			defer storeRegistry.Release(sc.FromPath)
+			defer storeRegistry.Release(sc.ToPath)
+			workDir := m.workDirGetter()
+			fromAbs := filepath.Join(workDir, filepath.FromSlash(sc.ToPath))
+			toAbs := filepath.Join(workDir, filepath.FromSlash(sc.FromPath))
+			if err := os.Rename(fromAbs, toAbs); err != nil {
+				return fmt.Errorf("备份复原(文件移回)失败: %w", err)
+			}
+			return nil
+		default:
+			return fmt.Errorf("备份移动变更不支持动作 %s", action)
+		}
+	default:
+		return fmt.Errorf("backup 域不支持变更类型修复: %v", sc.Kind)
 	}
 }
 

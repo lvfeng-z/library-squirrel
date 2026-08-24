@@ -44,10 +44,12 @@ type StoreReader interface {
 
 // SemanticChange 语义变更（关联层产出，驱动修复层）
 type SemanticChange struct {
+	Domain     ChangeDomain // 所属监控域（store 资源文件 / backup 保管清单行），零值 = store
 	Kind       SemanticKind
 	FromPath   string // Move: DB 记录的旧路径；Delete: 消失的路径；Untracked: 空
 	ToPath     string // Move: 文件新路径；Untracked: 新出现的路径；Delete: 空
-	StoreID    int64  // Move/Delete: 关联的 persistent_store 记录 ID；Untracked: 0
+	StoreID    int64  // store 域 Move/Delete: 关联的 persistent_store 记录 ID；其余 0
+	BackupID   int64  // backup 域 Move/Delete: 关联的 backup 清单行 ID；其余 0
 	DetectedAt int64  // 毫秒时间戳
 }
 

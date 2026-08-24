@@ -911,11 +911,21 @@ func (app *App) initAdvancedServices() error {
 	} else if n > 0 {
 		logger.Log.Infof("[persistentStore] file_path 分隔符规范化完成，共 %d 条", n)
 	}
+	// backup 清单行同款规范化：历史反斜杠行与 fsmonitor backup 域对账的正斜杠磁盘键永不匹配即恒判缺失
+	if n, err := app.BackupService.NormalizeFilePaths(context.Background()); err != nil {
+		logger.Log.Warnf("[backup] 规范化 file_path 分隔符失败: %v", err)
+	} else if n > 0 {
+		logger.Log.Infof("[backup] file_path 分隔符规范化完成，共 %d 条", n)
+	}
 	cursorRepo := fsmonitor.NewCursorRepository(app.db)
 	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir(), app.SettingsService.GetSettings().FsmonitorSettings.UsnEnabled, cursorRepo)
 	fsmonitorDeps.StoreReader = &storeReaderAdapter{svc: app.PersistentStoreService}
 	fsmonitorDeps.StoreRepairer = &storeRepairerAdapter{svc: app.PersistentStoreService}
-	fsmonitorDeps.Scanner = fsmonitor.NewScanner(fsmonitorDeps.StoreReader, func() string { return app.SettingsService.GetWorkDir() })
+	fsmonitorDeps.BackupReader = &backupReaderAdapter{svc: app.BackupService}
+	fsmonitorDeps.BackupRepairer = &backupRepairerAdapter{svc: app.BackupService}
+	// 治理服务在 fsmonitor 之后创建（引用方枚举依赖 plugin），闭包延迟解析——确认流调用发生在运行期，届时已就绪
+	fsmonitorDeps.BackupRefCleaner = &backupRefCleanerAdapter{getSvc: func() *backupGovernance.Service { return app.BackupGovernanceService }}
+	fsmonitorDeps.Scanner = fsmonitor.NewScanner(fsmonitorDeps.StoreReader, fsmonitorDeps.BackupReader, func() string { return app.SettingsService.GetWorkDir() })
 	app.FsmonitorService = fsmonitor.NewService(
 		fsmonitorDeps,
 		func() string { return app.SettingsService.GetWorkDir() },
@@ -1192,6 +1202,76 @@ func toStoreRecord(r *entity2.PersistentStore) *fsmonitor.StoreRecord {
 	}
 	if r.ContentFingerprint.Valid {
 		rec.ContentFingerprint = r.ContentFingerprint.String
+	}
+	return rec
+}
+
+// backupReaderAdapter 将 backup.Service 适配为 fsmonitor.BackupReader，
+// entity.Backup → fsmonitor.BackupRecord 转换，避免 fsmonitor 依赖 domain 实体
+type backupReaderAdapter struct {
+	svc *backup.Service
+}
+
+func (a *backupReaderAdapter) GetByFilePath(ctx context.Context, filePath string) (*fsmonitor.BackupRecord, error) {
+	r, err := a.svc.GetByFilePath(ctx, filePath)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return toBackupRecord(r), nil
+}
+
+func (a *backupReaderAdapter) ListByPathPrefix(ctx context.Context, prefix string) ([]fsmonitor.BackupRecord, error) {
+	rows, err := a.svc.ListByPathPrefix(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]fsmonitor.BackupRecord, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, *toBackupRecord(r))
+	}
+	return result, nil
+}
+
+func (a *backupReaderAdapter) ListAllInWorkDir(ctx context.Context) ([]fsmonitor.BackupRecord, error) {
+	rows, err := a.svc.ListAllInWorkDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]fsmonitor.BackupRecord, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, *toBackupRecord(r))
+	}
+	return result, nil
+}
+
+// backupRepairerAdapter 将 backup.Service 适配为 fsmonitor.BackupRepairer
+type backupRepairerAdapter struct {
+	svc *backup.Service
+}
+
+func (a *backupRepairerAdapter) DeleteRow(ctx context.Context, id int64) error {
+	return a.svc.DeleteBackup(ctx, id)
+}
+
+func (a *backupRepairerAdapter) UpdateFilePath(ctx context.Context, id int64, newFilePath string) error {
+	return a.svc.UpdateFilePath(ctx, id, newFilePath)
+}
+
+// backupRefCleanerAdapter 延迟解析 backupGovernance.Service 的引用清列适配器。
+// 装配时治理服务尚未创建（fsmonitor 段在前、治理段依赖 plugin 在后），经闭包运行期取用
+type backupRefCleanerAdapter struct {
+	getSvc func() *backupGovernance.Service
+}
+
+func (a *backupRefCleanerAdapter) ClearBackupRefs(ctx context.Context, backupIds []int64) error {
+	return a.getSvc().ClearBackupRefs(ctx, backupIds)
+}
+
+// toBackupRecord entity.Backup → fsmonitor.BackupRecord
+func toBackupRecord(r *entity2.Backup) *fsmonitor.BackupRecord {
+	rec := &fsmonitor.BackupRecord{ID: r.GetID()}
+	if r.FilePath.Valid {
+		rec.FilePath = r.FilePath.String
 	}
 	return rec
 }

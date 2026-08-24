@@ -19,6 +19,7 @@ type FileChange struct {
 	Path       string // 相对 workDir 的路径；Move 时为旧路径(From)
 	ToPath     string // 仅 Move 有值：新路径(相对 workDir)
 	IsDir      bool
+	FromRename bool  // Remove 源于改名/移动的旧名腿（fsnotify Rename Op）：旧路径文件已不在原位
 	DetectedAt int64 // 毫秒时间戳
 }
 
@@ -37,8 +38,16 @@ type UntrackedFile struct {
 	FilePath string
 }
 
+// BackupMissingRecord backup 域对账缺失项：backup 清单行存在、磁盘无文件
+type BackupMissingRecord struct {
+	BackupID int64 // backup.id
+	FilePath string
+}
+
 // DiffSet 全量对账差异集
 type DiffSet struct {
 	Missing   []MissingRecord
 	Untracked []UntrackedFile
+	// BackupMissing backup 域缺失（孤儿文件方向不产出——外部文件落入 backup/ 不构成清单行变更）
+	BackupMissing []BackupMissingRecord
 }

@@ -18,11 +18,13 @@ type EventEmitter interface {
 }
 
 // Service 工作目录监控编排服务。
-// 持有平台依赖集合(Deps)，编排实时事件源/关联/通知/修复。
+// 持有平台依赖集合(Deps)，编排实时事件源/关联/通知/修复。store 域与 backup 域分立关联
+// (Correlator / backupWatcher)，共用事件源、确认流与修复队列
 type Service struct {
 	deps          *Deps
-	correlator    *Correlator    // 关联层（Fingerprinter + StoreReader 就绪时启用，否则 nil 降级）
-	repair        *RepairManager // 修复层（StoreRepairer 就绪时启用，否则 nil 仅通知）
+	correlator    *Correlator    // store 域关联层（Fingerprinter + StoreReader 就绪时启用，否则 nil 降级）
+	backupWatcher *backupWatcher // backup 域关联层（BackupReader 就绪时启用，否则 nil 降级）
+	repair        *RepairManager // 修复层（StoreRepairer/BackupRepairer 就绪时启用，否则 nil 仅通知）
 	workDirGetter func() string
 	emitter       func() EventEmitter // 闭包延迟读取，避开初始化时序(SetEventEmitter 之前)
 
@@ -36,7 +38,8 @@ type Service struct {
 
 // NewService 创建监控服务。
 // workDirGetter/emitter 均为闭包延迟读取，构造期其底层依赖未就绪也无妨。
-// correlator 在 Fingerprinter + StoreReader 都就绪时构造；repair 在 StoreRepairer 就绪时构造。
+// correlator 在 Fingerprinter + StoreReader 都就绪时构造；backupWatcher 在 BackupReader 就绪时构造；
+// repair 在 StoreRepairer 就绪时构造。
 func NewService(deps *Deps, workDirGetter func() string, emitter func() EventEmitter) *Service {
 	s := &Service{
 		deps:           deps,
@@ -48,8 +51,11 @@ func NewService(deps *Deps, workDirGetter func() string, emitter func() EventEmi
 	if deps.Fingerprinter != nil && deps.StoreReader != nil {
 		s.correlator = NewCorrelator(deps.Fingerprinter, deps.StoreReader, workDirGetter)
 	}
+	if deps.BackupReader != nil {
+		s.backupWatcher = newBackupWatcher(deps.BackupReader, workDirGetter)
+	}
 	if deps.StoreRepairer != nil {
-		s.repair = NewRepairManager(deps.StoreRepairer, workDirGetter)
+		s.repair = NewRepairManager(deps.StoreRepairer, deps.BackupRepairer, deps.BackupRefCleaner, workDirGetter)
 	}
 	return s
 }
@@ -87,7 +93,9 @@ func (s *Service) Start() {
 }
 
 // dedupKey 离线追溯变更去重键（D7）：USN 段与对账段可能对同一变更各报一次，按业务身份去重。
+// domain 参与键——两域变更的 ID 空间互不相干，不区分会误撞
 type dedupKey struct {
+	domain   ChangeDomain
 	kind     SemanticKind
 	fromPath string
 	toPath   string
@@ -95,7 +103,7 @@ type dedupKey struct {
 }
 
 func makeDedupKey(sc *SemanticChange) dedupKey {
-	return dedupKey{kind: sc.Kind, fromPath: sc.FromPath, toPath: sc.ToPath, storeID: sc.StoreID}
+	return dedupKey{domain: sc.Domain, kind: sc.Kind, fromPath: sc.FromPath, toPath: sc.ToPath, storeID: sc.StoreID}
 }
 
 // runOfflineReconcile 离线追溯：USN 精确补账（OfflineProvider 可用）+ 全量对账兜底（D2）。
@@ -124,6 +132,21 @@ func (s *Service) runOfflineReconcile() {
 		default:
 			var produced, novel, dedup int // 关联产出 / 新报 / 段内去重（同变更多次产出同一语义）
 			for _, ch := range changes {
+				if storeRegistry.InBackupDir(ch.Path) {
+					// backup 域：仅 Remove 与 ChangeMove 有语义（Create 不消费）
+					if s.backupWatcher == nil {
+						continue
+					}
+					for _, sc := range s.backupWatcher.Process(ctx, ch) {
+						produced++
+						if dispatchNew(sc) {
+							novel++
+						} else {
+							dedup++
+						}
+					}
+					continue
+				}
 				sc := s.correlator.Process(ctx, ch)
 				if sc == nil {
 					continue
@@ -146,7 +169,7 @@ func (s *Service) runOfflineReconcile() {
 		logger.Log.Warnf("[fsmonitor] 离线对账失败: %v", err)
 		return
 	}
-	if len(diff.Missing) == 0 && len(diff.Untracked) == 0 {
+	if len(diff.Missing) == 0 && len(diff.Untracked) == 0 && len(diff.BackupMissing) == 0 {
 		logger.Log.Infof("[fsmonitor] 离线对账完成：无变更（USN 已报 %d 条）", len(reported))
 		return
 	}
@@ -213,8 +236,14 @@ func (s *Service) runOfflineReconcile() {
 			})
 		}
 	}
-	logger.Log.Infof("[fsmonitor] 离线对账完成：Missing=%d Untracked=%d（新报 %d 条，去重跳过 %d 条 USN/段内已报）",
-		len(diff.Missing), len(diff.Untracked), reconNovel, reconDedup)
+	// backup 段：清单行 × 磁盘比对（无指纹配对；孤儿文件不产出）
+	for _, m := range diff.BackupMissing {
+		reconDispatch(&SemanticChange{
+			Domain: DomainBackup, Kind: SemanticDelete, FromPath: m.FilePath, BackupID: m.BackupID, DetectedAt: now(),
+		})
+	}
+	logger.Log.Infof("[fsmonitor] 离线对账完成：Missing=%d Untracked=%d BackupMissing=%d（新报 %d 条，去重跳过 %d 条 USN/段内已报）",
+		len(diff.Missing), len(diff.Untracked), len(diff.BackupMissing), reconNovel, reconDedup)
 }
 
 // dispatchSemanticChange 派发语义变更：入队待修复 + 通知前端（离线对账与运行时共用）
@@ -227,10 +256,12 @@ func (s *Service) dispatchSemanticChange(sc *SemanticChange) {
 	if em := s.emitter(); em != nil {
 		em.Emit("fsmonitor:change", map[string]any{
 			"id":       pendingID,
+			"domain":   int(sc.Domain),
 			"kind":     int(sc.Kind),
 			"fromPath": sc.FromPath,
 			"toPath":   sc.ToPath,
 			"storeId":  sc.StoreID,
+			"backupId": sc.BackupID,
 		})
 	}
 }
@@ -273,12 +304,38 @@ func (s *Service) startLive() {
 	}()
 }
 
-// handleFileChange 处理一个原始文件变更：经关联层产出语义变更 → 入队待修复 + 通知前端 + 日志
+// handleFileChange 处理一个原始文件变更：按路径域路由——backup 子树走 backup 域关联
+// （仅 Remove 与 ChangeMove），store 白名单子树走 store 域关联，其余目录直接丢弃。
+// 产物语义变更入队待修复 + 通知前端 + 日志
 func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
-	// 白名单过滤：仅关心 store/ 子树，backup/、log/ 等目录的事件直接丢弃
-	// （与离线 USN 段的 emit 过滤同一口径；内部 MoveToBackup 写入 backup/ 的事件在此拦下，
-	// 防其指纹命中 store 记录被误报为"移动到 backup"）
+	// backup 域路由：事件源路径命中备份根子树。Create 不消费（无指纹配对，
+	// 外部文件落入 backup/ 不构成清单行变更）；watcher 未注入（能力降级）时丢弃
+	if storeRegistry.InBackupDir(ev.Path) {
+		if s.backupWatcher == nil {
+			return
+		}
+		// 内部操作抑制：软件自身的 backup/ 文件操作（还原移出、清理删除）登记的路径，
+		// 命中即丢弃，不进关联层。Move 事件两端任一命中都抑制
+		if storeRegistry.IsSuppressed(ev.Path) {
+			return
+		}
+		if ev.ToPath != "" && storeRegistry.IsSuppressed(ev.ToPath) {
+			return
+		}
+		for _, sc := range s.backupWatcher.Process(ctx, ev) {
+			s.dispatchSemanticChange(sc)
+		}
+		return
+	}
+	// store 域白名单过滤：仅关心 store/ 子树，log/ 等其他目录的事件直接丢弃
+	// （与离线 USN 段的 emit 过滤同一口径；内部 MoveToBackup 写入 backup/ 的事件在 backup 域
+	// 只剩 Create（源端 Remove 由 backup 模块自登记抑制），不报语义变更）
 	if !storeRegistry.InScanDirs(ev.Path) && (ev.ToPath == "" || !storeRegistry.InScanDirs(ev.ToPath)) {
+		return
+	}
+	// 改名旧名腿不进 store 域关联：store 域的改名检出走 Create(新名) 指纹配对产 Move，
+	// 旧名腿若再产 Delete 会与 Move 双报告（Remove 先到、配对发生在 Create 后，去重窗口方向相反）
+	if ev.Kind == ChangeRemove && ev.FromRename {
 		return
 	}
 	// 内部操作抑制：软件自身的 store/ 写入登记的路径，命中即丢弃，不进关联层
@@ -300,8 +357,18 @@ func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
 	s.dispatchSemanticChange(sc)
 }
 
-// formatSemanticChange 语义变更的可读串（含移动前后路径对比）
+// formatSemanticChange 语义变更的可读串（含移动前后路径对比；backup 域带清单行 ID）
 func formatSemanticChange(sc *SemanticChange) string {
+	if sc.Domain == DomainBackup {
+		switch sc.Kind {
+		case SemanticMove:
+			return "备份文件移动/改名: " + sc.FromPath + " → " + sc.ToPath + " (backupID=" + strconv.FormatInt(sc.BackupID, 10) + ")"
+		case SemanticDelete:
+			return "备份文件缺失: " + sc.FromPath + " (backupID=" + strconv.FormatInt(sc.BackupID, 10) + ")"
+		default:
+			return "未知备份变更"
+		}
+	}
 	switch sc.Kind {
 	case SemanticMove:
 		return formatMove(sc.FromPath, sc.ToPath, sc.StoreID)

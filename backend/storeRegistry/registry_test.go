@@ -31,6 +31,26 @@ func TestInScanDirs(t *testing.T) {
 	}
 }
 
+// TestInBackupDir 验证备份根谓词：backup 子树（含根）为 true，store 子树与外部为 false。
+func TestInBackupDir(t *testing.T) {
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{"backup", true}, // 子树根自身
+		{"backup/2026/08/23/x.mp4", true},
+		{"backupX/y.mp4", false}, // 前缀串匹配须按分隔符
+		{"store/resource/x.jpg", false},
+		{"", false},
+		{".", false},
+	}
+	for _, c := range cases {
+		if got := InBackupDir(c.rel); got != c.want {
+			t.Fatalf("InBackupDir(%q) = %v want %v", c.rel, got, c.want)
+		}
+	}
+}
+
 // TestValidatePath 验证落盘前路径校验：白名单内放行、白名单外拒绝、反斜杠归一。
 func TestValidatePath(t *testing.T) {
 	ok := []string{

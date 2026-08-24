@@ -138,14 +138,15 @@ func TestPairAndResolve_ExternalParentDropped(t *testing.T) {
 	}
 }
 
-// TestPairAndResolve_WhitelistFilter 解析出白名单外路径（缓存手动填了非 store/* 路径）→ emit 丢弃。
+// TestPairAndResolve_WhitelistFilter 解析出监控域外路径（缓存手动填了非 store/*、非 backup/* 路径）→ emit 丢弃。
+// backup/ 子树现属 backup 域监控范围，emit 放行（backup 域路由与语义测试见 backup_domain_test.go）
 func TestPairAndResolve_WhitelistFilter(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "backup/x"}) // backup/ 不在 storeRegistry.RegisteredPaths
+	cache := newCache(map[uint64]string{100: "log/x"}) // log/ 不在任何监控域
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonFileCreate, false, "y.jpg"),
 	}, cache)
 	if len(out) != 0 {
-		t.Fatalf("白名单外路径应丢弃（got %q）", out[0].Path)
+		t.Fatalf("监控域外路径应丢弃（got %q）", out[0].Path)
 	}
 }
 

@@ -9,18 +9,33 @@ export const CHANGE_KIND = {
   DirMove: 3
 } as const
 
-/** 可读名称（与后端 kindName 对齐） */
+/** 变更所属监控域：0=store 资源文件域 1=backup 保管清单行域 */
+export const CHANGE_DOMAIN = {
+  Store: 0,
+  Backup: 1
+} as const
+
+/** 可读名称（与后端 kindName 对齐；backup 域缺失/移动面向保管清单行，独立文案） */
 export const CHANGE_KIND_NAME: Record<number, string> = {
-  0: '文件移动/重命名',
-  1: '文件删除',
-  2: '外部新增文件',
-  3: '目录移动/改名'
+  '0-0': '文件移动/重命名',
+  '0-1': '文件删除',
+  '0-2': '外部新增文件',
+  '0-3': '目录移动/改名',
+  '1-0': '备份文件移动/改名',
+  '1-1': '备份文件缺失'
+}
+
+/** 域感知的类型可读名称（domain × kind；未知组合回退「未知」） */
+export function changeKindName(domain: number, kind: number): string {
+  return CHANGE_KIND_NAME[`${domain}-${kind}`] ?? '未知'
 }
 
 export interface ChangeInfo {
   /** 待修复 ID（后端 RepairManager 分配，0 表示仅通知未入队） */
   id: number
-  /** 0=Move 1=Delete 2=Untracked */
+  /** 0=store 资源文件域 1=backup 保管清单行域 */
+  domain: number
+  /** 0=Move 1=Delete 2=Untracked 3=DirMove */
   kind: number
   kindName: string
   /** Move: 旧路径；Delete: 消失路径 */
@@ -28,6 +43,8 @@ export interface ChangeInfo {
   /** Move: 新路径 */
   toPath: string
   storeId: number
+  /** backup 域条目：关联的保管清单行 ID；其余 0 */
+  backupId: number
 }
 
 /**

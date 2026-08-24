@@ -7,7 +7,7 @@ import { askGotoPage } from '@renderer/utils/PageUtil.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
-import { useChangeConfirmStore, CHANGE_KIND_NAME } from '@renderer/store/UseChangeConfirmStore'
+import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChangeConfirmStore'
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
@@ -81,16 +81,26 @@ export function iniListener() {
     useReplaceConfirmStore().add(data)
   })
 
-  // 工作目录外部文件变更 - Wails Events（待用户确认修复：移动/删除）
+  // 工作目录外部文件变更 - Wails Events（待用户确认修复：移动/删除；store 域资源文件与 backup 域保管清单行）
   Events.On('fsmonitor:change', (event: any) => {
-    const data = event.data as { id: number; kind: number; fromPath: string; toPath: string; storeId: number }
+    const data = event.data as {
+      id: number
+      domain: number
+      kind: number
+      fromPath: string
+      toPath: string
+      storeId: number
+      backupId: number
+    }
     useChangeConfirmStore().add({
       id: data.id,
+      domain: data.domain,
       kind: data.kind,
-      kindName: CHANGE_KIND_NAME[data.kind] ?? '未知',
+      kindName: changeKindName(data.domain, data.kind),
       fromPath: data.fromPath,
       toPath: data.toPath,
-      storeId: data.storeId
+      storeId: data.storeId,
+      backupId: data.backupId
     })
   })
 

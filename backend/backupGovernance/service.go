@@ -162,6 +162,26 @@ func (s *Service) RunOnce(ctx context.Context) ReconciliationResult {
 	return result
 }
 
+// ClearBackupRefs 按 ID 清除各引用方对清单行的引用（backup 行已被删除后的联动清列，
+// 供 fsmonitor 确认流在删行后即时调用——回收站可复原状态随之即时准确）。
+// 与反向对账共用引用方枚举与清列能力，即时形态；单方失败 Warn 不中断，
+// 残余悬空引用由既有反向对账兜底。返回首个失败错误供调用方记日志
+func (s *Service) ClearBackupRefs(ctx context.Context, backupIds []int64) error {
+	if len(backupIds) == 0 {
+		return nil
+	}
+	var firstErr error
+	for _, ref := range s.referencers {
+		if err := ref.ClearBackupRefsByBackupIDs(ctx, backupIds); err != nil {
+			logger.Log.Warn("[backupGovernance] 联动清列失败", zap.String("referencer", ref.Name()), zap.Int64s("backupIds", backupIds), zap.Error(err))
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
 // collectReferenced 汇总各引用方的引用集；返回按方分组的引用列表与并集
 func (s *Service) collectReferenced(ctx context.Context) (refsByReferencer map[string][]int64, referenced map[int64]struct{}) {
 	refsByReferencer = make(map[string][]int64, len(s.referencers))

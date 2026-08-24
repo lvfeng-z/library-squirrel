@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -15,10 +16,12 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
+
+	"gorm.io/gorm"
 )
 
-// BackupRootDirName 备份根目录名
-const BackupRootDirName = "backup"
+// BackupRootDirName 备份根目录名（单一源在 storeRegistry.BackupDirPath，本常量供模块内外引用）
+const BackupRootDirName = storeRegistry.BackupDirPath
 
 // Repository 备份仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
@@ -34,6 +37,16 @@ type Repository interface {
 	ListAllIDs(ctx context.Context) ([]int64, error)
 	// PageBackups 分页查询保管清单（create_time 倒序）；includeIDs/excludeIDs 为 ID 集过滤，nil=无该向过滤
 	PageBackups(ctx context.Context, pageNumber, pageSize int, includeIDs []int64, excludeIDs []int64) (*model.Page[entity.Backup], error)
+	// GetByFilePathInWorkDir 按保管路径精确查指定工作目录的清单行（无命中返回 nil）
+	GetByFilePathInWorkDir(ctx context.Context, workDir string, filePath string) (*entity.Backup, error)
+	// ListByPathPrefixInWorkDir 按路径前缀查指定工作目录的清单行（目录前缀圈定受影响行）
+	ListByPathPrefixInWorkDir(ctx context.Context, workDir string, prefix string) ([]*entity.Backup, error)
+	// ListAllInWorkDir 全量查指定工作目录中保管路径有效的清单行（离线对账数据源）
+	ListAllInWorkDir(ctx context.Context, workDir string) ([]*entity.Backup, error)
+	// UpdateFilePath 更新清单行保管路径（移动同步）
+	UpdateFilePath(ctx context.Context, id int64, filePath string) error
+	// NormalizeFilePaths 规范化 file_path 分隔符为正斜杠，返回修正行数（启动迁移：历史反斜杠行修正）
+	NormalizeFilePaths(ctx context.Context) (int64, error)
 }
 
 // Service 备份服务（纯文件仓库：移入保管/取回/清理，不感知备份来源）
@@ -50,6 +63,20 @@ func NewService(repo Repository, workDirGetter func() string) *Service {
 // getWorkDir 获取当前 workDir（每次从设置管理器读取最新值）
 func (s *Service) getWorkDir() string {
 	return s.workDirGetter()
+}
+
+// suppressWithinWorkDir 对 workDir 内的绝对路径登记 fsmonitor 操作抑制，返回释放函数。
+// 本模块对 backup/ 域的文件操作（移出还原、删除清理）触发 Remove 事件，事件命中尚存的
+// 清单行会误报为外部删除，故操作点登记。路径在 workDir 外（工作目录迁移前的旧行）或
+// 相对路径逃逸时不登记——监控树外本就无事件。抑制键为 workDir 相对正斜杠路径
+func (s *Service) suppressWithinWorkDir(absPath string) func() {
+	workDir := s.getWorkDir()
+	rel, err := filepath.Rel(workDir, absPath)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return func() {}
+	}
+	storeRegistry.Suppress(rel)
+	return func() { storeRegistry.Release(rel) }
 }
 
 // storeFile 将源文件收入备份目录并建保管清单行；copy=true 复制保留源文件（安装包备份），false 移动（O(1) 同文件系统）
@@ -167,6 +194,35 @@ func (s *Service) PageBackups(ctx context.Context, pageNumber, pageSize int, inc
 	return s.repo.PageBackups(ctx, pageNumber, pageSize, includeIDs, excludeIDs)
 }
 
+// GetByFilePath 按保管路径精确查当前工作目录的清单行，无命中返回 nil。
+// 供 fsmonitor backup 域：文件 Remove 事件按路径定位清单行。
+// 工作目录过滤排除迁移前旧行（其文件不在当前监控树内，路径字符串可能撞车）
+func (s *Service) GetByFilePath(ctx context.Context, filePath string) (*entity.Backup, error) {
+	return s.repo.GetByFilePathInWorkDir(ctx, s.getWorkDir(), filePath)
+}
+
+// ListByPathPrefix 按路径前缀查当前工作目录的清单行（含多级下级）。
+// 供 fsmonitor backup 域：目录 Remove 事件按前缀圈定受影响清单行
+func (s *Service) ListByPathPrefix(ctx context.Context, prefix string) ([]*entity.Backup, error) {
+	return s.repo.ListByPathPrefixInWorkDir(ctx, s.getWorkDir(), prefix)
+}
+
+// ListAllInWorkDir 全量查当前工作目录中保管路径有效的清单行。
+// 供 fsmonitor backup 域离线对账：清单行 × 磁盘文件比对的数据源
+func (s *Service) ListAllInWorkDir(ctx context.Context) ([]*entity.Backup, error) {
+	return s.repo.ListAllInWorkDir(ctx, s.getWorkDir())
+}
+
+// UpdateFilePath 更新清单行保管路径（fsmonitor backup 域移动同步：行路径跟随文件新位置）
+func (s *Service) UpdateFilePath(ctx context.Context, id int64, newFilePath string) error {
+	return s.repo.UpdateFilePath(ctx, id, newFilePath)
+}
+
+// NormalizeFilePaths 规范化 file_path 分隔符为正斜杠（启动时调用一次；镜像 persistentStore 同名迁移）
+func (s *Service) NormalizeFilePaths(ctx context.Context) (int64, error) {
+	return s.repo.NormalizeFilePaths(ctx)
+}
+
 // GetBackupPath 获取备份文件的完整路径
 func (s *Service) GetBackupPath(backup *entity.Backup) string {
 	var workdir, filePath string
@@ -192,30 +248,41 @@ func (s *Service) ResolveBackupPathById(ctx context.Context, backupId int64) str
 	return s.GetBackupPath(backup)
 }
 
-// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍——可能已被取回）
+// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍；行不存在幂等成功——
+// 并发删除/确认流重复条目确认时行可能已先被清）
 func (s *Service) DeleteBackup(ctx context.Context, id int64) error {
 	backup, err := s.repo.GetById(ctx, id)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
 		return fmt.Errorf("查询备份 %d 失败: %w", id, err)
 	}
 	if backup == nil {
 		return nil
 	}
 	if absPath := s.GetBackupPath(backup); absPath != "" {
+		// 文件先删、清单行后删的窗口内 Remove 事件会命中本行，登记抑制防误报
+		release := s.suppressWithinWorkDir(absPath)
 		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 			logger.Log.Warnf("删除备份文件失败（将仅删除记录）: %s, %v", absPath, err)
 		}
+		release()
 	}
 	return s.repo.Delete(ctx, id)
 }
 
 // RestoreFile 从备份路径还原文件到目标路径
 // targetPath 为绝对路径（文件操作）；目标落在 store/ 白名单内时的 fsmonitor 操作抑制由调用方负责
-// （抑制键为 workDir 相对路径，与绝对路径不同构，调用方编排时两者皆知）
+// （抑制键为 workDir 相对路径，与绝对路径不同构，调用方编排时两者皆知）；
+// 源端（backup/ 域）的抑制在本方法内登记——文件移出备份目录即触发 backup 域 Remove 事件，
+// 此时清单行尚未被调用方删除，命中即误报为外部删除
 func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
 	if !util.FileExists(backupPath) {
 		return fmt.Errorf("还原失败，备份文件不存在: %s", backupPath)
 	}
+	releaseSource := s.suppressWithinWorkDir(backupPath)
+	defer releaseSource()
 	// 确保目标目录存在
 	if err := util.CreateDirIfNotExists(filepath.Dir(targetPath)); err != nil {
 		return fmt.Errorf("还原失败，创建目标目录出错: %w", err)

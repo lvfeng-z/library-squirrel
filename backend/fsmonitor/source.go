@@ -117,6 +117,12 @@ func (s *fsnotifySource) handleEvent(ev fsnotify.Event) {
 		isDir := s.isWatchedDir(ev.Name)
 		s.unwatchIfDir(ev.Name)
 		s.send(FileChange{Kind: ChangeRemove, Path: rel, IsDir: isDir, DetectedAt: util.GetCurrentTimestamp()})
+	case ev.Op&fsnotify.Rename != 0:
+		// 改名/移动的旧名腿：旧路径文件已消失。Windows 同目录改名只发 Rename+Create 不发 Remove
+		// （行为锚定 source_rename_probe_test.go），不转发则该消失对消费 Remove 的域不可见
+		isDir := s.isWatchedDir(ev.Name)
+		s.unwatchIfDir(ev.Name)
+		s.send(FileChange{Kind: ChangeRemove, Path: rel, IsDir: isDir, FromRename: true, DetectedAt: util.GetCurrentTimestamp()})
 	case ev.Op&fsnotify.Create != 0:
 		isDir := s.isDirAtCreate(ev.Name)
 		if isDir {
@@ -127,8 +133,7 @@ func (s *fsnotifySource) handleEvent(ev fsnotify.Event) {
 		}
 		s.send(FileChange{Kind: ChangeCreate, Path: rel, IsDir: isDir, DetectedAt: util.GetCurrentTimestamp()})
 	default:
-		// Write/Rename/Chmod 首版不处理：内容修改不在首版范围；
-		// Rename 在 fsnotify 表现为伴随的 Remove(旧名) + Create(新名)，由关联层配对。
+		// Write/Chmod 不处理：内容修改不在监控范围（外部改写文件内容不产生记录级变更）
 	}
 }
 
