@@ -19,6 +19,22 @@ import (
 // 根标签ID
 const RootLocalTagID = 0
 
+// Transactor 数据库事务执行器
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// SiteTagBindingClearer 清除站点标签对本地标签的绑定（site→local 桥接列置 NULL，站点标签行保留）
+type SiteTagBindingClearer interface {
+	ClearLocalTagBinding(ctx context.Context, localTagId int64) error
+}
+
+// ReWorkTagDeleter 删除本地标签挂载的作品-标签关联
+type ReWorkTagDeleter interface {
+	DeleteByLocalTagId(ctx context.Context, localTagId int64) error
+}
+
 // Repository 本地标签仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
 	// Create 新建
@@ -27,6 +43,8 @@ type Repository interface {
 	CreateBatch(ctx context.Context, tags []*domain.LocalTag) error
 	// ClearBaseLocalTagID 清父引用为 NULL（移到根——Updates 跳零值，NULL 须显式单列更新）
 	ClearBaseLocalTagID(ctx context.Context, id int64) error
+	// ReparentChildren 被删标签的子标签整体改挂新父（newBaseId=被删标签自身父引用，孙变子上提；根被删传 NULL）
+	ReparentChildren(ctx context.Context, parentId int64, newBaseId sql.NullInt64) error
 	// Updates 更新
 	Updates(ctx context.Context, tag *domain.LocalTag) error
 	// GetById 根据ID获取
@@ -63,13 +81,20 @@ type Repository interface {
 
 // Service 本地标签服务
 type Service struct {
-	repo Repository
+	repo              Repository
+	transactor        Transactor
+	siteTagBindingClr SiteTagBindingClearer
+	reWorkTagDeleter  ReWorkTagDeleter
 }
 
-// NewService 创建本地标签服务
-func NewService(repo Repository) *Service {
+// NewService 创建本地标签服务。transactor 承载删除编排事务；
+// siteTagBindingClr / reWorkTagDeleter 供 Delete 清理指向被删标签的站点绑定与作品关联
+func NewService(repo Repository, transactor Transactor, siteTagBindingClr SiteTagBindingClearer, reWorkTagDeleter ReWorkTagDeleter) *Service {
 	return &Service{
-		repo: repo,
+		repo:              repo,
+		transactor:        transactor,
+		siteTagBindingClr: siteTagBindingClr,
+		reWorkTagDeleter:  reWorkTagDeleter,
 	}
 }
 
@@ -214,9 +239,29 @@ func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalTag], q
 	return s.repo.Page(ctx, opt)
 }
 
-// Delete 删除标签
+// Delete 删除本地标签：同一事务内先清理指向该标签的全部引用，再删标签行——
+// 子标签上提一层（孙变子，被删标签为根则子标签成为根）、站点标签绑定置 NULL、
+// 作品-标签关联删除。外键强制下先清子引用后删父行为强制顺序。
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	return s.transactor.ExecInTransaction(ctx, func(ctx context.Context) error {
+		tag, err := s.repo.GetById(ctx, id)
+		if err != nil {
+			return err
+		}
+		// 子标签整体上提：改挂被删标签自身的父引用
+		if err := s.repo.ReparentChildren(ctx, id, tag.BaseLocalTagID); err != nil {
+			return err
+		}
+		// 站点标签绑定置 NULL（绑定列无外键，清理静默悬空面）
+		if err := s.siteTagBindingClr.ClearLocalTagBinding(ctx, id); err != nil {
+			return err
+		}
+		// 作品-标签关联删除（有外键，未清即删标签行被拒）
+		if err := s.reWorkTagDeleter.DeleteByLocalTagId(ctx, id); err != nil {
+			return err
+		}
+		return s.repo.Delete(ctx, id)
+	})
 }
 
 // GetTree 获取标签树形结构

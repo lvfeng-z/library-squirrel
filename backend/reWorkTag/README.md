@@ -35,4 +35,4 @@
 ## 依赖关系
 
 - 依赖：`localTag` / `siteTag` 实体（通过 tagType 关联）；**siteTag**（注入 `SiteTagNamespaceReader` 接口，site 关联镜像 `site_tag.namespace`，复用其 `ListBySiteTagIds`）
-- 被依赖：前端作品详情（Link / Unlink 交互）、**work**（通过 `ReWorkTagReader` 读取关联快照）
+- 被依赖：前端作品详情（Link / Unlink 交互）、**work**（通过 `ReWorkTagWriter` 读取关联快照、按 work 删除）、**localTag**（删除编排注入 `DeleteByLocalTagId` 清理被删标签挂载的全部关联——`re_work_tag.local_tag_id` 有外键，未清即删标签行被拒）、**siteTag**（删除编排注入 `DeleteBySiteTagId` 清理被删站点标签挂载的全部关联——`re_work_tag.site_tag_id` 有外键，未清即删标签行被拒）

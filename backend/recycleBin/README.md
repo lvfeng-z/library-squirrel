@@ -24,7 +24,7 @@
 | `PurgeWork(workId)` | 彻底删除已软删作品（不可恢复，级联清从属行与备份） |
 | `PageStores(page, query)` | 分页查询文件条目（query 为 RecycleStorePageQuery 文件域条件体系） |
 | `RestoreStore(storeId)` | 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站） |
-| `PurgeStore(storeId)` | 彻底删除文件条目（不可恢复，条目单位=store 行，含消费式删备份） |
+| `PurgeStore(storeId)` | 彻底删除文件条目（不可恢复，条目单位=store 行；事务内先摘 resource_store 关联再物理删行，含消费式删备份） |
 | `PageWorkSets(page, query)` | 分页查询作品集条目（query 为 RecycleWorkSetPageQuery 作品集域平铺条件体系） |
 | `RestoreWorkSet(workSetId, overwrite)` | 复原已软删作品集（overwrite 控制冲突时占位作品集转入回收站；本地手建集键 NULL 无冲突） |
 | `PurgeWorkSet(workSetId)` | 彻底删除已软删作品集（不可恢复，级联清成员关联与父子关联行） |
@@ -43,7 +43,7 @@
 
 ## 依赖关系
 
-- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer）、settings（TTL 配置 + workDir）
+- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer + StoreAssociationCleaner=ResourceStoreRepository 关联摘除）、database（Transactor 事务执行器）、settings（TTL 配置 + workDir）
 - 被依赖：前端回收站页面（作品/文件/作品集三 tab）
 
 ## 关键设计
@@ -51,5 +51,5 @@
 - **编排归发起方**：复原/彻底删除/清理的流程编排（校验→冲突裁决→文件→DB）在本模块，原子能力经接口注入（work/workSet/backup/persistentStore 提供）。
 - **查询完全复用**：列表不自带查询实现，转发 search（作品条目=EXISTS 条件体系 + 精简投影；文件条目=谓词 `deleted_at>0 ∧ NOT EXISTS(挂载链指向已软删作品)` + 行本体投影 + 挂载上下文二段批查组装 CanRestore/作品字段；作品集条目=谓词 `deleted_at>0` + 活成员数子查询）。
 - **TTL 三轮清理**：第一轮过期作品条目（PurgeWork 级联），第二轮过期文件条目（圈定与列表同谓词——「作品已删」聚合行不被圈定，保护作品条目复原能力），第三轮过期作品集条目（PurgeWorkSet 级联清关联行）；三类条目共享 `settings.recycleBin.retentionDays` 保留期。
-- **文件条目清理的终态清理义务**：物理删行 + 消费式删备份 + 尽力删行内 file_path 指向的文件（正常软删行扑空无害；file_path 指向 backup/ 域的残迹行——无保管清单行的散落文件——随行清除，不删即不可见垃圾）。不产生「删行不清备份」的通路（backupGovernance 引用集语义不受破坏）。
+- **文件条目清理的终态清理义务**：事务内先摘指向该行的 resource_store 关联再物理删行（外键强制下的删除前置义务；关联摘除经 resource 的 ResourceStoreRepository `DeleteByStoreIds` 能力注入）+ 消费式删备份 + 尽力删行内 file_path 指向的文件（正常软删行扑空无害；file_path 指向 backup/ 域的残迹行——无保管清单行的散落文件——随行清除，不删即不可见垃圾）。不产生「删行不清备份」的通路（backupGovernance 引用集语义不受破坏）。
 - **best-effort 文件链**：文件还原在清标志前、失败警告后继续（部分复原语义）；彻底删除的级联链内 store 原路径文件删除对已移 backup 的文件扑空无害。

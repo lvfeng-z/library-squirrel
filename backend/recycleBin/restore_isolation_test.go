@@ -83,7 +83,7 @@ func TestRestoreWorkFilesGenerationIsolation(t *testing.T) {
 		2: {newRow(202)},
 	}}
 	reader := &recordingBackupReader{}
-	svc := NewService(restorer, reader, nil, nil, nil, nil, nil, nil, func() string { return t.TempDir() }, nil, nil)
+	svc := NewService(restorer, reader, nil, nil, nil, nil, nil, nil, func() string { return t.TempDir() }, nil, nil, nil, nil)
 
 	if err := svc.restoreWorkFiles(context.Background(), 1); err != nil {
 		t.Fatalf("复原作品 1 失败: %v", err)

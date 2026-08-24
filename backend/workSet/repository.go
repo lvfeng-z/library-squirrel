@@ -140,6 +140,26 @@ func (r *WorkSetRepository) ClearDeletedFlag(ctx context.Context, id int64) erro
 		Update("deleted_at", 0).Error
 }
 
+// CountBySiteId 统计站点的作品集引用行数，活行与软删行分别计数（站点删除守卫用，由 site 经窄接口注入）。
+// 软删行计数须 Unscoped——GORM 管线自动排除软删行，而站点删除对软删行同样拒绝（外键拦截不分行态），
+// 且软删行清理路径与活行不同（回收站彻底删除），故两类行分别计数
+func (r *WorkSetRepository) CountBySiteId(ctx context.Context, siteId int64) (alive int64, softDeleted int64, err error) {
+	if err = r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.WorkSet)).
+		Where("site_id = ?", siteId).
+		Count(&alive).Error; err != nil {
+		return 0, 0, err
+	}
+	err = r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Unscoped().
+		Model(new(domain.WorkSet)).
+		Where("site_id = ? AND deleted_at > 0", siteId).
+		Count(&softDeleted).Error
+	return alive, softDeleted, err
+}
+
 // ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理
 func (r *WorkSetRepository) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.WorkSet, error) {
 	return r.List(ctx, &database.QueryOption{

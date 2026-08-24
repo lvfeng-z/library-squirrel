@@ -31,6 +31,16 @@ func (r *SiteAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// CountBySiteId 统计站点的站点作者引用行数（站点删除守卫用，由 site 经窄接口注入）
+func (r *SiteAuthorRepository) CountBySiteId(ctx context.Context, siteId int64) (int64, error) {
+	var count int64
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Model(new(entity.SiteAuthor)).
+		Where("site_id = ?", siteId).
+		Count(&count).Error
+	return count, err
+}
+
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *SiteAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())
@@ -183,6 +193,14 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 	}
 
 	return result.RowsAffected, nil
+}
+
+// ClearLocalAuthorBinding 清除指向指定本地作者的站点绑定（local_author_id 置 NULL；删除本地作者链调用，
+// 由 localAuthor 经窄接口注入）。绑定列无外键防线，残留指向已删作者的值是静默悬空引用，删除链须显式清空
+func (r *SiteAuthorRepository) ClearLocalAuthorBinding(ctx context.Context, localAuthorId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Exec("UPDATE site_author SET local_author_id = NULL WHERE local_author_id = ?", localAuthorId).Error
 }
 
 // UpdateLastUseByIds 批量更新最后使用时间

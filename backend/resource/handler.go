@@ -48,11 +48,6 @@ func (h *Handler) Save(ctx context.Context, resource *dto2.ResourceDTO) *model.A
 	return model.Success(domainResource.GetID())
 }
 
-// Delete 删除资源
-func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.Delete(ctx, id))
-}
-
 // Update 更新资源
 func (h *Handler) Update(ctx context.Context, resource *dto2.ResourceDTO) *model.ApiResponse[any] {
 	domainResource := &domain.Resource{

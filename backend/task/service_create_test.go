@@ -9,8 +9,10 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/site"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -21,9 +23,9 @@ import (
 // 守护 applyCreateResponse 单点权威：stream 与 array 两路径对 leaf/parent+children 三态行为一致。
 //
 // 统一契约（planCreateResponse，stream/array 共用）：
-//   - 无 Children → 独立 leaf：1 任务，pid=0（Valid=true）、HasChild=false，计数 1。
+//   - 无 Children → 独立 leaf：1 任务，pid=NULL（Valid=false，根级）、HasChild=false，计数 1。
 //   - 有 Children → parent + 每个 child（不折叠，Children=[1] 也建 parent+child）：
-//     parent HasChild=true、pid=0；children pid=parent.id；计数 = len(children)（parent 容器不计）。
+//     parent HasChild=true、pid=NULL（根级）；children pid=parent.id；计数 = len(children)（parent 容器不计）。
 //   - stream 额外：同 PluginTaskId 的多响应合并为同一 parent（让插件可把一个超大 work 拆成多响应流式发）。
 //
 // 计数语义：叶子级单元——独立 leaf 算 1、parent+N 算 N；CreateTaskByURL 对 stream 数 Task 项
@@ -96,7 +98,7 @@ func (fakeTransactor) ExecInTransaction(ctx context.Context, fn func(ctx context
 func newTestService(t *testing.T) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
-	siteSvc := site.NewService(fakeSiteRepo{})
+	siteSvc := site.NewService(fakeSiteRepo{}, fakeTransactor{}, nil, nil, nil, nil, nil) // 守卫计数提供方不触达（创建路径）
 	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc)
 	return svc, repo
 }
@@ -165,9 +167,9 @@ func assertLeafTask(t *testing.T, leaf *entity.Task) {
 	if leaf.HasChild.Valid && leaf.HasChild.Bool {
 		t.Errorf("leaf HasChild 应为 false，得到 true")
 	}
-	// 统一契约：leaf 显式置 pid=0（Valid=true），与 parent 的 pid=0 一致，标志无父
-	if !leaf.Pid.Valid || leaf.Pid.Int64 != 0 {
-		t.Errorf("leaf Pid 应为 0 且 Valid=true，得到 %+v", leaf.Pid)
+	// 统一契约：leaf 无父写 pid=NULL（Valid=false），与 parent 的根级形态一致（外键下无 id=0 行，0 必违约）
+	if leaf.Pid.Valid {
+		t.Errorf("leaf Pid 应为 NULL（Valid=false，根级），得到 %+v", leaf.Pid)
 	}
 	if !leaf.SiteID.Valid || leaf.SiteID.Int64 != testSiteID {
 		t.Errorf("SiteID 回填应为 %d，得到 %+v", testSiteID, leaf.SiteID)
@@ -247,8 +249,8 @@ func TestHandleCreateTaskStream_SingleChild(t *testing.T) {
 	if parent == nil {
 		t.Fatal("未找到 HasChild=true 的父任务")
 	}
-	if !parent.Pid.Valid || parent.Pid.Int64 != 0 {
-		t.Errorf("父任务 Pid 应为 0（Valid=true），得到 %+v", parent.Pid)
+	if parent.Pid.Valid {
+		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 1)
 }
@@ -284,8 +286,8 @@ func TestHandleCreateTaskStream_ParentChildren(t *testing.T) {
 	if parent == nil {
 		t.Fatal("未找到 HasChild=true 的父任务")
 	}
-	if !parent.Pid.Valid || parent.Pid.Int64 != 0 {
-		t.Errorf("父任务 Pid 应为 0（Valid=true），得到 %+v", parent.Pid)
+	if parent.Pid.Valid {
+		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 2)
 }
@@ -434,8 +436,8 @@ func TestHandleTaskArray_SingleChild(t *testing.T) {
 	if parent == nil {
 		t.Fatal("未找到 HasChild=true 的父任务")
 	}
-	if !parent.Pid.Valid || parent.Pid.Int64 != 0 {
-		t.Errorf("父任务 Pid 应为 0，得到 %+v", parent.Pid)
+	if parent.Pid.Valid {
+		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 1)
 	// 子任务身份字段取自 child 响应
@@ -483,8 +485,90 @@ func TestHandleTaskArray_ParentChildren(t *testing.T) {
 	if parent == nil {
 		t.Fatal("未找到 HasChild=true 的父任务")
 	}
-	if !parent.Pid.Valid || parent.Pid.Int64 != 0 {
-		t.Errorf("父任务 Pid 应为 0，得到 %+v", parent.Pid)
+	if parent.Pid.Valid {
+		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 2)
+}
+
+// ---- OpenTestDB 外键强制库落盘锚定：pid 形态回归 ----
+
+// TestCreateTaskPidFormOnFKDB 在外键强制库（migration.OpenTestDB）真实落盘锚定 pid 形态：
+// pid 外键引用 task.id 且库内无 id=0 行，根级任务写 0（Valid=true）必违约——三入口
+// （CreateTask 根级/子级、插件响应 array 路径 leaf 与 parent+children）落盘成功本身即
+// 不违约的证明，另断言落库值：根级= NULL、子任务= 父 ID。fakeRepo 测试（上文）无 FK
+// 约束，锚不住本形态，故须真实库锚定。
+func TestCreateTaskPidFormOnFKDB(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+
+	// 站点种子（task.site_id 外键防线；插件响应路径经 GetByName 查到本行）
+	seedSite := entity.NewSite()
+	seedSite.SiteName = sql.NullString{String: testSiteName, Valid: true}
+	if err := db.Create(seedSite).Error; err != nil {
+		t.Fatalf("建站点种子失败: %v", err)
+	}
+
+	// 经生产构造函数组装（真实 task 仓储 + 真事务执行器 + 真实 site 服务）
+	siteSvc := site.NewService(site.NewRepository(db), nil, nil, nil, nil, nil, nil)
+	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
+	ctx := context.Background()
+
+	// 入口一/二：CreateTask——req.Pid=0 落 NULL=根级；req.Pid=父 落父 ID
+	root, err := svc.CreateTask(ctx, &dto.CreateTaskRequest{TaskName: "根任务", SiteID: int(seedSite.GetID())})
+	if err != nil {
+		t.Fatalf("创建根任务失败: %v", err)
+	}
+	child, err := svc.CreateTask(ctx, &dto.CreateTaskRequest{Pid: root.GetID(), TaskName: "子任务", SiteID: int(seedSite.GetID())})
+	if err != nil {
+		t.Fatalf("创建子任务失败: %v", err)
+	}
+
+	// 入口三：插件响应 array 路径——独立 leaf 与 parent 容器均根级（pid=NULL）、child 指向父
+	responses := []*sdkdto.TaskCreateResponse{
+		{TaskName: "独立leaf", SiteWorkId: "w-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+		{
+			TaskName: "work-A", Url: "http://x/a", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/c1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			},
+		},
+	}
+	if _, err := svc.handleCreateTaskArray(ctx, responses, testListener()); err != nil {
+		t.Fatalf("插件响应路径创建失败: %v", err)
+	}
+
+	// pid 落库形态断言（直接查列，不经实体扫描）
+	pidOf := func(where string, args ...any) sql.NullInt64 {
+		t.Helper()
+		var pid sql.NullInt64
+		if err := db.Raw("SELECT pid FROM task WHERE "+where, args...).Scan(&pid).Error; err != nil {
+			t.Fatalf("查 pid 失败(%s): %v", where, err)
+		}
+		return pid
+	}
+	if pid := pidOf("id = ?", root.GetID()); pid.Valid {
+		t.Errorf("CreateTask 根级任务 pid 应落 NULL，得到 %+v", pid)
+	}
+	if pid := pidOf("id = ?", child.GetID()); !pid.Valid || pid.Int64 != root.GetID() {
+		t.Errorf("CreateTask 子任务 pid 应落父 ID %d，得到 %+v", root.GetID(), pid)
+	}
+	if pid := pidOf("site_work_id = ?", "w-1"); pid.Valid {
+		t.Errorf("插件路径独立 leaf pid 应落 NULL，得到 %+v", pid)
+	}
+	if pid := pidOf("task_name = ?", "work-A"); pid.Valid {
+		t.Errorf("插件路径 parent 容器 pid 应落 NULL，得到 %+v", pid)
+	}
+	var parentId int64
+	if err := db.Raw("SELECT id FROM task WHERE task_name = ?", "work-A").Scan(&parentId).Error; err != nil {
+		t.Fatalf("查 parent id 失败: %v", err)
+	}
+	if pid := pidOf("site_work_id = ?", "c-1"); !pid.Valid || pid.Int64 != parentId {
+		t.Errorf("插件路径子任务 pid 应落父 ID %d，得到 %+v", parentId, pid)
+	}
 }

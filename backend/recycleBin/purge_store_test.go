@@ -12,6 +12,7 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/resource"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -41,7 +42,8 @@ func newPurgeStoreTestEnv(t *testing.T) *purgeStoreTestEnv {
 	workDir := t.TempDir()
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	backup := &recordingBackupReader{}
-	svc := NewService(nil, backup, nil, nil, psSvc, psSvc, nil, nil, func() string { return workDir }, nil, nil)
+	svc := NewService(nil, backup, nil, nil, psSvc, psSvc, nil, nil, func() string { return workDir }, nil, nil,
+		&wsTransactor{db: db}, resource.NewResourceStoreRepository(db))
 	return &purgeStoreTestEnv{svc: svc, psSvc: psSvc, backup: backup, db: db, workDir: workDir}
 }
 
@@ -135,6 +137,38 @@ func TestPurgeStoreRemovesResidualFile(t *testing.T) {
 	storeId2 := env.insertDeletedStore(t, "路径已失行", "store/resource/作者/不存在.mp4", 0)
 	if err := env.svc.PurgeStore(context.Background(), storeId2); err != nil {
 		t.Fatalf("路径扑空的清理不应报错: %v", err)
+	}
+}
+
+// TestPurgeStoreRemovesAssociations 软删 store（带 resource_store 关联）→ PurgeStore →
+// 关联行归零。外键强制库下清理成功本身即「事务内先摘关联后删行」顺序的证明
+// （关联未摘即物理删 store 行直接 FK 违约报错）
+func TestPurgeStoreRemovesAssociations(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	// 挂载链种子（resource_store 的 resource_id/store_id 两面外键防线）
+	if err := env.db.Exec("INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (1, 0, 0, 0)").Error; err != nil {
+		t.Fatalf("建作品种子失败: %v", err)
+	}
+	if err := env.db.Exec("INSERT INTO resource (id, create_time, update_time, work_id, resource_type) VALUES (1, 0, 0, 1, 'image')").Error; err != nil {
+		t.Fatalf("建资源种子失败: %v", err)
+	}
+	storeId := env.insertDeletedStore(t, "带关联行", "store/resource/作者/带关联行.png", 0)
+	if err := env.db.Exec("INSERT INTO resource_store (resource_id, store_id, store_type, store_seq, create_time, update_time) VALUES (1, ?, 'image', 1, 0, 0)", storeId).Error; err != nil {
+		t.Fatalf("建关联种子失败: %v", err)
+	}
+
+	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
+		t.Fatalf("清理带关联条目失败: %v", err)
+	}
+	if env.storeRowExists(t, storeId) {
+		t.Fatalf("清理后 store 行应物理消亡")
+	}
+	var assocCount int64
+	if err := env.db.Model(&domain.ResourceStore{}).Where("store_id = ?", storeId).Count(&assocCount).Error; err != nil {
+		t.Fatalf("统计关联行失败: %v", err)
+	}
+	if assocCount != 0 {
+		t.Fatalf("resource_store 关联行应归零，剩余 %d 行", assocCount)
 	}
 }
 

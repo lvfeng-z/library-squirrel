@@ -65,7 +65,8 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.HasChild.Valid = false
 	}
 
-	if dto.Pid != nil {
+	// pid 外键引用 task.id（无 id=0 行）：nil 或 0 均为根级语义 → NULL，写 0 必外键违约
+	if dto.Pid != nil && *dto.Pid != 0 {
 		entity.Pid.Valid = true
 		entity.Pid.Int64 = *dto.Pid
 	} else {

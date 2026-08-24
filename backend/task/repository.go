@@ -39,8 +39,8 @@ func (r *TaskRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[domain.Task], error) {
 	query := r.GORM().WithContext(ctx).Model(&domain.Task{})
 
-	// 查询是父任务的或者只有单个任务的
-	query = query.Where("has_child = 1 OR pid IS NULL OR pid = 0")
+	// 查询是父任务的或者只有单个任务的（根级任务 pid=NULL）
+	query = query.Where("has_child = 1 OR pid IS NULL")
 
 	for _, cond := range opt.Conditions {
 		if cond != nil {
@@ -381,17 +381,38 @@ func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*doma
 	return r.ListStatus(ctx, ids)
 }
 
+// CountBySiteId 统计站点的任务引用行数（站点删除守卫用，由 site 经窄接口注入；task 无软删）
+func (r *TaskRepository) CountBySiteId(ctx context.Context, siteId int64) (int64, error) {
+	var count int64
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Model(new(domain.Task)).
+		Where("site_id = ?", siteId).
+		Count(&count).Error
+	return count, err
+}
+
+// ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（置 NULL=非任务产）。
+// 任务行删除链的前置步：外键强制下引用未清即删任务行被拒；子任务行同随删除链消亡，引用面一并覆盖
+func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).WithContext(ctx).
+		Exec("UPDATE resource SET task_id = NULL WHERE task_id IN (SELECT id FROM task WHERE id IN ? OR pid IN ?)", ids, ids).Error
+}
+
 // DeleteTask 删除任务（包含子任务）- 批量删除
+// dbFromCtx 模式：删除链在事务内执行（先清 resource.task_id 引用再删行，见 Service.DeleteTask）
 func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	// 先删除所有子任务
-	if err := r.GORM().WithContext(ctx).Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
+	if err := r.dbFromCtx(ctx).WithContext(ctx).Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
 		return err
 	}
 	// 再删除主任务
-	return r.GORM().WithContext(ctx).Where("id IN ?", ids).Delete(&domain.Task{}).Error
+	return r.dbFromCtx(ctx).WithContext(ctx).Where("id IN ?", ids).Delete(&domain.Task{}).Error
 }
 
 // listChildrenByParentsTask 按父任务ID列表查询子任务

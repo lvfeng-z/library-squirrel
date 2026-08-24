@@ -45,15 +45,55 @@ type Repository interface {
 	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
 }
 
+// Transactor 数据库事务执行器（删除编排用）
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// SiteAuthorBindingClearer 站点绑定清理接口（siteAuthor 仓储实现）
+type SiteAuthorBindingClearer interface {
+	// ClearLocalAuthorBinding 清除指向本地作者的站点绑定列（置 NULL）
+	ClearLocalAuthorBinding(ctx context.Context, localAuthorId int64) error
+}
+
+// ReWorkAuthorDeleter 作品-作者关联删除接口（reWorkAuthor 服务实现）
+type ReWorkAuthorDeleter interface {
+	// DeleteByLocalAuthorId 删除本地作者的全部作品关联
+	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
+}
+
+// WorkAuthorMirrorClearer 作品镜像作者列清理接口（work 仓储实现）
+type WorkAuthorMirrorClearer interface {
+	// ClearLocalAuthorOnWorks 清作品的本地作者镜像列（置 NULL，覆盖含软删行）
+	ClearLocalAuthorOnWorks(ctx context.Context, localAuthorId int64) error
+}
+
 // Service 本地作者服务
 type Service struct {
 	repo Repository
+	// 事务执行器（删除编排）
+	transactor Transactor
+	// 删除编排的引用清理提供方（窄接口注入）
+	siteAuthorBindingClearer SiteAuthorBindingClearer
+	reWorkAuthorDeleter      ReWorkAuthorDeleter
+	workAuthorMirrorClearer  WorkAuthorMirrorClearer
 }
 
 // NewService 创建本地作者服务
-func NewService(repo Repository) *Service {
+func NewService(
+	repo Repository,
+	transactor Transactor,
+	siteAuthorBindingClearer SiteAuthorBindingClearer,
+	reWorkAuthorDeleter ReWorkAuthorDeleter,
+	workAuthorMirrorClearer WorkAuthorMirrorClearer,
+) *Service {
 	return &Service{
-		repo: repo,
+		repo:                     repo,
+		transactor:               transactor,
+		siteAuthorBindingClearer: siteAuthorBindingClearer,
+		reWorkAuthorDeleter:      reWorkAuthorDeleter,
+		workAuthorMirrorClearer:  workAuthorMirrorClearer,
 	}
 }
 
@@ -140,9 +180,24 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除作者
+// Delete 删除本地作者。三类指向引用在同一事务内先行清理，最后删作者行：
+// ①站点绑定列（site_author.local_author_id 无外键防线，不清则留静默悬空引用）
+// ②作品-作者关联行（re_work_author，有外键防线，不清则删作者被拒）
+// ③作品镜像列（work.local_author_id，有外键防线且拦截不分行态——软删作品行的引用同样须清）
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.siteAuthorBindingClearer.ClearLocalAuthorBinding(txCtx, id); err != nil {
+			return err
+		}
+		if err := s.reWorkAuthorDeleter.DeleteByLocalAuthorId(txCtx, id); err != nil {
+			return err
+		}
+		if err := s.workAuthorMirrorClearer.ClearLocalAuthorOnWorks(txCtx, id); err != nil {
+			return err
+		}
+		// 引用已清空，外键放行
+		return s.repo.Delete(txCtx, id)
+	})
 }
 
 // Page 分页查询

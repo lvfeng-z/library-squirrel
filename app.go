@@ -789,25 +789,51 @@ func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {
 func (app *App) initBaseServices() {
 	rootPath := util.RootPath()
 
-	// localTag 服务
+	// localTag 服务（删除编排注入事务执行器与 siteTag/reWorkTag 仓储——siteTag 服务构造依赖
+	// localTag 服务，经仓储接线满足窄接口以打破装配环）
 	localTagRepo := localTag.NewRepository(app.db)
-	app.LocalTagService = localTag.NewService(localTagRepo)
-
-	// localAuthor 服务
-	localAuthorRepo := localAuthor.NewRepository(app.db)
-	app.LocalAuthorService = localAuthor.NewService(localAuthorRepo)
-
-	// site 服务（需在 siteTag 之前初始化，因为 siteTag 依赖 site 的查询接口）
-	siteRepo := site.NewRepository(app.db)
-	app.SiteService = site.NewService(siteRepo)
-
-	// siteTag 服务
 	siteTagRepo := siteTag.NewRepository(app.db)
-	app.SiteTagService = siteTag.NewService(siteTagRepo, app.LocalTagService, app.LocalTagService, app.SiteService)
+	reWorkTagRepo := reWorkTag.NewRepository(app.db)
+	app.LocalTagService = localTag.NewService(localTagRepo, &dbTransactorAdapter{db: app.db}, siteTagRepo, reWorkTagRepo)
 
-	// siteAuthor 服务
+	// reWorkAuthor 服务（localAuthor 删除编排的关联删除提供方，须先于 localAuthor 创建）
+	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
+	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
+
+	// localAuthor 服务（删除编排注入：事务执行器 + 站点绑定/镜像列清理仓储 + 关联删除服务）
+	localAuthorRepo := localAuthor.NewRepository(app.db)
 	siteAuthorRepo := siteAuthor.NewRepository(app.db)
-	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo, app.LocalAuthorService, app.SiteService)
+	workRepo := work.NewRepository(app.db)
+	app.LocalAuthorService = localAuthor.NewService(
+		localAuthorRepo,
+		&dbTransactorAdapter{db: app.db},
+		siteAuthorRepo,          // SiteAuthorBindingClearer（清 site_author 绑定列）
+		app.ReWorkAuthorService, // ReWorkAuthorDeleter（删 re_work_author 关联）
+		workRepo,                // WorkAuthorMirrorClearer（清 work 镜像列，含软删行）
+	)
+
+	// site 服务（需在 siteTag 之前初始化，因为 siteTag 依赖 site 的查询接口；删除守卫注入事务执行器
+	// 与五类引用计数仓储——work/task/workSet 的服务在高级服务阶段创建，经仓储接线满足窄接口以打破装配环，
+	// siteTag/siteAuthor 仓储上方已建）
+	siteRepo := site.NewRepository(app.db)
+	app.SiteService = site.NewService(
+		siteRepo,
+		&dbTransactorAdapter{db: app.db},
+		workRepo,                      // WorkSiteRefCounter（站点删除守卫：作品计数含软删行）
+		task.NewRepository(app.db),    // TaskSiteRefCounter
+		workSet.NewRepository(app.db), // WorkSetSiteRefCounter（作品集计数含软删行）
+		siteTagRepo,                   // SiteTagSiteRefCounter
+		siteAuthorRepo,                // SiteAuthorSiteRefCounter
+	)
+
+	// siteTag 服务（删除编排注入事务执行器与 reWorkTag 仓储——reWorkTag 服务构造在其后，
+	// 经仓储接线满足窄接口，与 localTag 删除编排同款）
+	app.SiteTagService = siteTag.NewService(siteTagRepo, app.LocalTagService, app.LocalTagService, app.SiteService,
+		&dbTransactorAdapter{db: app.db}, reWorkTagRepo) // ReWorkTagDeleter（删 re_work_tag 关联）
+
+	// siteAuthor 服务（仓储已随 localAuthor 删除编排提前创建；删除编排注入事务执行器与 reWorkAuthor 服务）
+	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo, app.LocalAuthorService, app.SiteService,
+		&dbTransactorAdapter{db: app.db}, app.ReWorkAuthorService) // ReWorkAuthorDeleter（删 re_work_author 关联）
 
 	// resource 服务
 	resourceRepo := resource.NewRepository(app.db)
@@ -828,12 +854,7 @@ func (app *App) initBaseServices() {
 	// /store/ 状态路由：软删记录的文件在 backup/，按 original_file_path 反查服务
 	app.StoreFileHandler.SetBackupResolver(app.BackupService)
 
-	// reWorkAuthor 服务
-	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
-	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
-
 	// reWorkTag 服务
-	reWorkTagRepo := reWorkTag.NewRepository(app.db)
 	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, app.SiteTagService)
 
 	// settings 服务
@@ -960,7 +981,9 @@ func (app *App) initAdvancedServices() error {
 	// 查询链转发 search.Service（作品条目+文件条目+作品集条目+挂载身份）、StoreCleaner/StoreRestorer=
 	// app.PersistentStoreService（文件条目清理/复原置换）、ResourceRecomputer=app.ResourceService（
 	// 复原置换后重算完整度）、WorkSetRestorer=app.WorkSetService（作品集条目软删/复原/级联）；
-	// 文件还原的 workDir 经设置读取器闭包注入）
+	// 文件还原的 workDir 经设置读取器闭包注入；
+	// Transactor=dbTransactorAdapter、StoreAssociationCleaner=ResourceStoreRepository（purge 文件条目
+	// 事务内先摘 resource_store 关联再物理删行——外键强制下的删除前置义务））
 	app.RecycleBinService = recycleBin.NewService(
 		app.WorkService,
 		app.BackupService,
@@ -973,6 +996,8 @@ func (app *App) initAdvancedServices() error {
 		func() string { return app.SettingsService.GetWorkDir() },
 		app.WorkSetService,
 		app.SearchService,
+		&dbTransactorAdapter{db: app.db},
+		resource.NewResourceStoreRepository(app.db),
 	)
 	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
 	app.RecycleBinService.StartCleanup()

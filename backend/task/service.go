@@ -109,6 +109,8 @@ type Repository interface {
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// DeleteTask 删除任务（包含子任务）- 批量删除
 	DeleteTask(ctx context.Context, ids []int64) error
+	// ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（删除链前置步）
+	ClearResourceTaskId(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error
 	// UpdatePendingResourceID 更新任务的 pending_resource_id
@@ -368,8 +370,9 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgr
 // CreateTask 创建任务
 func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*entity.Task, error) {
 	task := &entity.Task{
-		BaseEntity:        &model.BaseEntity{},
-		Pid:               sql.NullInt64{Int64: req.Pid, Valid: true},
+		BaseEntity: &model.BaseEntity{},
+		// pid 外键引用 task.id（无 id=0 行）：req.Pid=0 → NULL=根级任务
+		Pid:               sql.NullInt64{Int64: req.Pid, Valid: req.Pid != 0},
 		TaskName:          sql.NullString{String: req.TaskName, Valid: true},
 		SiteID:            sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
 		SiteWorkID:        sql.NullString{String: req.SiteWorkID, Valid: true},
@@ -387,8 +390,14 @@ func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
+// 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）
 func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
-	return s.repo.DeleteTask(ctx, ids)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.ClearResourceTaskId(txCtx, ids); err != nil {
+			return err
+		}
+		return s.repo.DeleteTask(txCtx, ids)
+	})
 }
 
 // QueryTreeDataPage 查询任务树数据分页
@@ -399,7 +408,7 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 		return nil, err
 	}
 
-	// 分页查询父任务（has_child=1 OR pid IS NULL OR pid=0）
+	// 分页查询父任务（has_child=1 OR pid IS NULL，根级任务 pid=NULL）
 	resultPage, err := s.repo.QueryParentPage(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -626,7 +635,7 @@ func childToResponse(c *sdkdto.TaskCreateChildResponse) *sdkdto.TaskCreateRespon
 }
 
 // fillTaskFromResponse 把响应字段填入一个已分配的 Task（leaf/parent/child 通用，双路径共用）。
-// pid：父任务 ID（child 传 parent.id；leaf/parent 传 0）。
+// pid：父任务 ID（child 传 parent.id；leaf/parent 传 0）。pid=0 写 NULL=根级任务（外键引用 task.id，无 id=0 行）。
 // hasChild：是否父任务（容器，不带 SiteWorkID/PluginData）。
 // siteCache：站点名→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
 // SiteName 为空时返回 ErrSiteNameRequired——leaf/parent/child 均须归属站点。
@@ -635,7 +644,8 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, r
 	task.URL = sql.NullString{String: resp.Url, Valid: true}
 	task.Status = int(TaskStatusCreated)
 	task.HasChild = sql.NullBool{Bool: hasChild, Valid: true}
-	task.Pid = sql.NullInt64{Int64: pid, Valid: true}
+	// pid=0 → NULL=根级任务（外键引用 task.id，无 id=0 行，写 0 必违约）；child 落盘前由调用方回填父 ID
+	task.Pid = sql.NullInt64{Int64: pid, Valid: pid != 0}
 	task.PluginPublicID = listener.PublicID
 	task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
@@ -676,12 +686,12 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, r
 
 // planCreateResponse 把一个插件响应单点判定为 leaf 或 parent+children 并填好字段（children 的 Pid 除外）。
 // stream 与 array 共用此方法——leaf/parent/child 三态在此唯一实现，消除双路径不对称：
-// 无 Children → 独立 leaf（pid=0）；有 Children → parent+children，不折叠（Children=[1] 也建 parent+child）。
-// 不变量：改此函数须保 leaf(pid=0) 路径不被遗漏/折叠，参见 memory leaf-task-regression-hotspot。
+// 无 Children → 独立 leaf（pid=NULL 根级）；有 Children → parent+children，不折叠（Children=[1] 也建 parent+child）。
+// 不变量：改此函数须保 leaf(pid=NULL 根级) 路径不被遗漏/折叠，参见 memory leaf-task-regression-hotspot。
 // 通信契约详见 doc/plugin-dev-guide.md「Create 返回的任务结构契约」。
 func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, siteCache map[string]int) (*createPlan, error) {
 	if len(taskResp.Children) == 0 {
-		// 无 Children：独立 leaf（如 local 单文件导入），pid=0、HasChild=false
+		// 无 Children：独立 leaf（如 local 单文件导入），pid=NULL（根级）、HasChild=false
 		leaf := &entity.Task{BaseEntity: &model.BaseEntity{}}
 		if err := s.fillTaskFromResponse(ctx, leaf, taskResp, listener, 0, false, siteCache); err != nil {
 			return nil, err

@@ -17,6 +17,18 @@ import (
 
 // ========== 外部模块接口定义（由 siteTag 模块定义自己需要的接口）==========
 
+// Transactor 数据库事务执行器（删除编排用）
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// ReWorkTagDeleter 作品-标签关联删除接口（reWorkTag 提供）
+type ReWorkTagDeleter interface {
+	// DeleteBySiteTagId 删除站点标签的全部作品关联
+	DeleteBySiteTagId(ctx context.Context, siteTagId int64) error
+}
+
 // LocalTagOperator 本地标签操作接口
 type LocalTagOperator interface {
 	// Save 保存本地标签
@@ -59,6 +71,8 @@ type Repository interface {
 	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*entity2.SiteTag, error)
 	// UpdateBindLocalTag 绑定本地标签
 	UpdateBindLocalTag(ctx context.Context, localTagId *int64, siteTagIds []int64) (int64, error)
+	// ClearLocalTagBinding 清除指向本地标签的绑定（local_tag_id 置 NULL，站点标签行保留）
+	ClearLocalTagBinding(ctx context.Context, localTagId int64) error
 	// GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询
 	GetBySiteAndSiteTagID(ctx context.Context, siteId int64, siteTagId string) (*entity2.SiteTag, error)
 	// QueryPageByWorkId 根据作品ID分页查询站点标签
@@ -81,15 +95,22 @@ type Service struct {
 	localTagOperator LocalTagOperator
 	localTagQueryOp  LocalTagQueryOperator
 	siteQueryOp      SiteQueryOperator
+	// 事务执行器（删除编排）
+	transactor Transactor
+	// 删除编排的关联清理提供方（窄接口注入）
+	reWorkTagDeleter ReWorkTagDeleter
 }
 
-// NewService 创建站点标签服务
-func NewService(repo Repository, localTagOperator LocalTagOperator, localTagQueryOp LocalTagQueryOperator, siteQueryOp SiteQueryOperator) *Service {
+// NewService 创建站点标签服务。transactor 承载删除编排事务；reWorkTagDeleter 供
+// Delete 清理被删站点标签挂载的作品-标签关联
+func NewService(repo Repository, localTagOperator LocalTagOperator, localTagQueryOp LocalTagQueryOperator, siteQueryOp SiteQueryOperator, transactor Transactor, reWorkTagDeleter ReWorkTagDeleter) *Service {
 	return &Service{
 		repo:             repo,
 		localTagOperator: localTagOperator,
 		localTagQueryOp:  localTagQueryOp,
 		siteQueryOp:      siteQueryOp,
+		transactor:       transactor,
+		reWorkTagDeleter: reWorkTagDeleter,
 	}
 }
 
@@ -171,9 +192,16 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除标签
+// Delete 删除站点标签：同一事务内先删该标签挂载的全部作品-标签关联，再删标签行——
+// re_work_tag.site_tag_id 有外键，未清关联即删标签行会被外键拒绝，先清子后删父为强制顺序
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.reWorkTagDeleter.DeleteBySiteTagId(txCtx, id); err != nil {
+			return err
+		}
+		// 关联已清空，外键放行
+		return s.repo.Delete(txCtx, id)
+	})
 }
 
 // Page 分页查询
@@ -342,6 +370,12 @@ func (s *Service) UpdateBindLocalTag(ctx context.Context, localTagId *int64, sit
 		return false, err
 	}
 	return affected > 0, nil
+}
+
+// ClearLocalTagBinding 清除指向本地标签的绑定（site→local 桥接列置 NULL，站点标签行保留；
+// 供 localTag 删除编排调用——绑定列无外键，本步清理的是静默悬空面）
+func (s *Service) ClearLocalTagBinding(ctx context.Context, localTagId int64) error {
+	return s.repo.ClearLocalTagBinding(ctx, localTagId)
 }
 
 // CreateAndBindSameNameLocalTag 创建并绑定同名本地标签

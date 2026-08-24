@@ -119,6 +119,17 @@ type StoreCleaner interface {
 	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 }
 
+// StoreAssociationCleaner resource_store 关联行清理能力接口（由 resource 的 ResourceStoreRepository 实现）
+type StoreAssociationCleaner interface {
+	// DeleteByStoreIds 按 store ID 集合物理删除 resource_store 关联行
+	DeleteByStoreIds(ctx context.Context, storeIds []int64) error
+}
+
+// Transactor 事务执行器接口
+type Transactor interface {
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 // StoreRestorer store 行复原置换能力接口（由 persistentStore.Service 实现；版本回滚置换链）
 type StoreRestorer interface {
 	// GetById 按 ID 查活行记录行（置换对象完成态分派用；nil = 行不存在或已删）
@@ -159,11 +170,13 @@ type Service struct {
 	workDirGetter         func() string // 每次调用获取最新 workDir（文件还原拼绝对路径用）
 	workSetRestorer       WorkSetRestorer
 	recycleWorkSetQuerier RecycleWorkSetQuerier
+	transactor            Transactor
+	storeAssocCleaner     StoreAssociationCleaner
 	stopCh                chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string, workSetRestorer WorkSetRestorer, recycleWorkSetQuerier RecycleWorkSetQuerier) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string, workSetRestorer WorkSetRestorer, recycleWorkSetQuerier RecycleWorkSetQuerier, transactor Transactor, storeAssocCleaner StoreAssociationCleaner) *Service {
 	return &Service{
 		workRestorer:          workRestorer,
 		backupReader:          backupReader,
@@ -176,6 +189,8 @@ func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQue
 		workDirGetter:         workDirGetter,
 		workSetRestorer:       workSetRestorer,
 		recycleWorkSetQuerier: recycleWorkSetQuerier,
+		transactor:            transactor,
+		storeAssocCleaner:     storeAssocCleaner,
 		stopCh:                make(chan struct{}),
 	}
 }
@@ -366,8 +381,8 @@ func (s *Service) PurgeWork(ctx context.Context, workId int64) error {
 }
 
 // PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）
-// 尽力删行内 file_path 指向的文件 + 物理删行 + 按行内 backup_id 消费式删备份（终态清理义务，
-// 不产生「删行不清备份」的通路；失败模式=无主备份由治理兜底，与 PurgeWork 同族）
+// 尽力删行内 file_path 指向的文件 + 事务内摘 resource_store 关联并物理删行 + 按行内 backup_id
+// 消费式删备份（终态清理义务，不产生「删行不清备份」的通路；失败模式=无主备份由治理兜底，与 PurgeWork 同族）
 func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 	// 1. 校验为已删条目
 	st, err := s.storeCleaner.GetDeletedStore(ctx, storeId)
@@ -384,9 +399,17 @@ func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 		s.storeCleaner.CleanupFile(st.FilePath.String)
 	}
 
-	// 3. 物理删行
-	if err := s.storeCleaner.DeleteUnscopedByIds(ctx, []int64{storeId}); err != nil {
-		return fmt.Errorf("物理删除 store 记录失败: %w", err)
+	// 3. 事务内摘除指向该行的 resource_store 关联并物理删行（外键强制下关联未摘即删行被拒）
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.storeAssocCleaner.DeleteByStoreIds(txCtx, []int64{storeId}); err != nil {
+			return fmt.Errorf("摘除 store 关联失败: %w", err)
+		}
+		if err := s.storeCleaner.DeleteUnscopedByIds(txCtx, []int64{storeId}); err != nil {
+			return fmt.Errorf("物理删除 store 记录失败: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// 4. 消费式清理行内引用的备份

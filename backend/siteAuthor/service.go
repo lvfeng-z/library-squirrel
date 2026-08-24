@@ -52,6 +52,18 @@ type Repository interface {
 	ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error)
 }
 
+// Transactor 数据库事务执行器（删除编排用）
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// ReWorkAuthorDeleter 作品-作者关联删除接口（reWorkAuthor 服务实现）
+type ReWorkAuthorDeleter interface {
+	// DeleteBySiteAuthorId 删除站点作者的全部作品关联
+	DeleteBySiteAuthorId(ctx context.Context, siteAuthorId int64) error
+}
+
 // LocalAuthorOperator 本地作者接口
 type LocalAuthorOperator interface {
 	ListByIds(ctx context.Context, ids []int64) ([]*entity.LocalAuthor, error)
@@ -70,14 +82,21 @@ type Service struct {
 	repo          Repository
 	localAuthorOp LocalAuthorOperator
 	siteOp        SiteOperator
+	// 事务执行器（删除编排）
+	transactor Transactor
+	// 删除编排的关联清理提供方（窄接口注入）
+	reWorkAuthorDeleter ReWorkAuthorDeleter
 }
 
-// NewService 创建站点作者服务
-func NewService(repo Repository, localAuthorQueryOp LocalAuthorOperator, siteOp SiteOperator) *Service {
+// NewService 创建站点作者服务。transactor 承载删除编排事务；reWorkAuthorDeleter 供
+// Delete 清理被删站点作者挂载的作品-作者关联
+func NewService(repo Repository, localAuthorQueryOp LocalAuthorOperator, siteOp SiteOperator, transactor Transactor, reWorkAuthorDeleter ReWorkAuthorDeleter) *Service {
 	return &Service{
-		repo:          repo,
-		localAuthorOp: localAuthorQueryOp,
-		siteOp:        siteOp,
+		repo:                repo,
+		localAuthorOp:       localAuthorQueryOp,
+		siteOp:              siteOp,
+		transactor:          transactor,
+		reWorkAuthorDeleter: reWorkAuthorDeleter,
 	}
 }
 
@@ -120,9 +139,16 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除作者
+// Delete 删除站点作者：同一事务内先删该作者挂载的全部作品-作者关联，再删作者行——
+// re_work_author.site_author_id 有外键，未清关联即删作者行会被外键拒绝，先清子后删父为强制顺序
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.reWorkAuthorDeleter.DeleteBySiteAuthorId(txCtx, id); err != nil {
+			return err
+		}
+		// 关联已清空，外键放行
+		return s.repo.Delete(txCtx, id)
+	})
 }
 
 // Page 分页查询

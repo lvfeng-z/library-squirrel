@@ -30,7 +30,7 @@ Handler 当前**只读**，供作品详情 / 卡片展示作者。
 | `ListRankedLocalAuthorWithWorkIdByWorkIds(workIds)` | 批量查询本地作者（带作品ID） |
 | `ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)` | 批量查询站点作者（带作品ID） |
 
-> 写入（`SaveBatch` / `DeleteByWorkId` / `DeleteSiteByWorkId` / `SaveBatchOnConflict`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用。
+> 写入（`SaveBatch` / `DeleteByWorkId` / `DeleteSiteByWorkId` / `SaveBatchOnConflict`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用；`DeleteByLocalAuthorId` 由 localAuthor 删除编排调用（删本地作者时清其全部作品关联）；`DeleteBySiteAuthorId` 由 siteAuthor 删除编排调用（删站点作者时清其全部作品关联）。
 
 ## 核心概念
 
@@ -42,4 +42,4 @@ Handler 当前**只读**，供作品详情 / 卡片展示作者。
 ## 依赖关系
 
 - 依赖：`localAuthor`、`siteAuthor` 实体（通过关联表 JOIN 查询作者信息）
-- 被依赖：**work**（通过 `ReWorkAuthorWriter` / `ReWorkAuthorReader` 接口写入与快照采集）、前端作品详情展示（通过 Handler 查询）
+- 被依赖：**work**（通过 `ReWorkAuthorWriter` / `ReWorkAuthorReader` 接口写入与快照采集）、**localAuthor**（删除本地作者时通过 `DeleteByLocalAuthorId` 清作品关联）、**siteAuthor**（删除站点作者时通过 `DeleteBySiteAuthorId` 清作品关联）、前端作品详情展示（通过 Handler 查询）

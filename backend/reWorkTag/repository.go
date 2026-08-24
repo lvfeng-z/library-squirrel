@@ -63,6 +63,22 @@ func (r *ReWorkTagRepository) DeleteSiteByWorkId(ctx context.Context, workId int
 		Delete(new(domain.ReWorkTag)).Error
 }
 
+// DeleteByLocalTagId 根据本地标签ID删除所有关联
+func (r *ReWorkTagRepository) DeleteByLocalTagId(ctx context.Context, localTagId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("local_tag_id = ?", localTagId).
+		Delete(new(domain.ReWorkTag)).Error
+}
+
+// DeleteBySiteTagId 根据站点标签ID删除所有关联
+func (r *ReWorkTagRepository) DeleteBySiteTagId(ctx context.Context, siteTagId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("site_tag_id = ?", siteTagId).
+		Delete(new(domain.ReWorkTag)).Error
+}
+
 // SaveBatchOnConflict 批量保存，遇任何唯一约束冲突跳过该行（OnConflict DoNothing）。
 // LOCAL 关联增量入库用：已存在的 (work_id, local_tag_id) 跳过，保留用户手动设的 namespace 等字段不被新行零值覆盖。
 func (r *ReWorkTagRepository) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {

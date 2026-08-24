@@ -17,7 +17,6 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 | --- | --- |
 | `Save(resource)` | 保存资源 |
 | `Update(resource)` | 更新资源 |
-| `Delete(id)` | 删除资源 |
 | `DeleteByWorkId(workId)` | 按作品ID删除所有资源 |
 | `GetById(id)` | 按ID查询 |
 | `ListByWorkId(workId)` | 查询作品关联的资源列表 |

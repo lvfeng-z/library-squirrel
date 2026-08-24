@@ -2,6 +2,7 @@ package localTag
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
@@ -119,6 +120,14 @@ func (r *LocalTagRepository) ClearBaseLocalTagID(ctx context.Context, id int64) 
 		Model(new(entity.LocalTag)).
 		Where("id = ?", id).
 		Update("base_local_tag_id", nil).Error
+}
+
+// ReparentChildren 被删标签的子标签整体改挂新父：newBaseId 取被删标签自身的父引用
+// （孙变子，子树上提一层）；被删标签为根时传 NULL，子标签随之成为根
+func (r *LocalTagRepository) ReparentChildren(ctx context.Context, parentId int64, newBaseId sql.NullInt64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Exec("UPDATE local_tag SET base_local_tag_id = ? WHERE base_local_tag_id = ?", newBaseId, parentId).Error
 }
 
 // SelectParentNode 递归查询上级标签

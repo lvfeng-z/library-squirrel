@@ -32,6 +32,16 @@ func (r *SiteTagRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// CountBySiteId 统计站点的站点标签引用行数（站点删除守卫用，由 site 经窄接口注入）
+func (r *SiteTagRepository) CountBySiteId(ctx context.Context, siteId int64) (int64, error) {
+	var count int64
+	err := r.dbFromCtx(ctx).WithContext(ctx).
+		Model(new(entity2.SiteTag)).
+		Where("site_id = ?", siteId).
+		Count(&count).Error
+	return count, err
+}
+
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *SiteTagRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())
@@ -157,6 +167,15 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 	}
 
 	return result.RowsAffected, nil
+}
+
+// ClearLocalTagBinding 清除指向本地标签的绑定（local_tag_id 置 NULL，站点标签行保留）
+func (r *SiteTagRepository) ClearLocalTagBinding(ctx context.Context, localTagId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(entity2.SiteTag)).
+		Where("local_tag_id = ?", localTagId).
+		Update("local_tag_id", nil).Error
 }
 
 // QueryPageByWorkId 根据作品ID分页查询站点标签

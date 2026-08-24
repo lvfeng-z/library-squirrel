@@ -26,6 +26,11 @@ func (r *WorkRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *WorkRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.BaseRepository.GORM())
+}
+
 // GetBySiteAndSiteWorkID 根据站点和站点作品ID查询
 func (r *WorkRepository) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*domain.Work, error) {
 	opt := &database.QueryOption{
@@ -82,6 +87,35 @@ func (r *WorkRepository) ClearDeletedFlag(ctx context.Context, id int64) error {
 		Model(new(domain.Work)).
 		Where("id = ?", id).
 		Update("deleted_at", 0).Error
+}
+
+// ClearLocalAuthorOnWorks 清作品的本地作者镜像列（work.local_author_id 置 NULL；删除本地作者链调用，
+// 由 localAuthor 经窄接口注入）。原生 UPDATE 覆盖含软删行——GORM 软删 scope 会排除已删作品，而
+// 外键拦截不分行态，软删行引用不清则删作者行即被拒；作者已删，软删行镜像列置 NULL 语义同样正确
+func (r *WorkRepository) ClearLocalAuthorOnWorks(ctx context.Context, localAuthorId int64) error {
+	return r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Exec("UPDATE work SET local_author_id = NULL WHERE local_author_id = ?", localAuthorId).Error
+}
+
+// CountBySiteId 统计站点的作品引用行数，活行与软删行分别计数（站点删除守卫用，由 site 经窄接口注入）。
+// 软删行计数须 Unscoped——GORM 管线自动排除软删行，而站点删除对软删行同样拒绝（外键拦截不分行态），
+// 且软删行清理路径与活行不同（回收站彻底删除），故两类行分别计数
+func (r *WorkRepository) CountBySiteId(ctx context.Context, siteId int64) (alive int64, softDeleted int64, err error) {
+	if err = r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Model(new(domain.Work)).
+		Where("site_id = ?", siteId).
+		Count(&alive).Error; err != nil {
+		return 0, 0, err
+	}
+	err = r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Unscoped().
+		Model(new(domain.Work)).
+		Where("site_id = ? AND deleted_at > 0", siteId).
+		Count(&softDeleted).Error
+	return alive, softDeleted, err
 }
 
 // ListDeletedBefore 查询软删时间早于 expireBefore（毫秒时间戳）的已删行，供 TTL 清理

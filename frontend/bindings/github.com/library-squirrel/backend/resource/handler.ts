@@ -18,15 +18,6 @@ import * as model$0 from "../base/model/models.js";
 import * as dto$0 from "../base/model/dto/models.js";
 
 /**
- * Delete 删除资源
- */
-export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2005888296, id).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * DeleteByWorkId 根据作品ID删除资源
  */
 export function DeleteByWorkId(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {

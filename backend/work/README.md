@@ -36,4 +36,4 @@
 ## 依赖关系
 
 - 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/带归属备份删除）、resource（Resource 保存/删除/resource_store 级联删除）、localTagFindOrCreator、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）
-- 被依赖：前端作品库（列表 / 详情 / 编辑）、task（任务完成后落库作品）、recycleBin（WorkRestorer：软删/复原/彻底删除原子能力）、search（作品搜索：查询经 BaseRepository 自动排除已删行）
+- 被依赖：前端作品库（列表 / 详情 / 编辑）、task（任务完成后落库作品）、recycleBin（WorkRestorer：软删/复原/彻底删除原子能力）、search（作品搜索：查询经 BaseRepository 自动排除已删行）、localAuthor（WorkAuthorMirrorClearer：删除本地作者时清 `work.local_author_id` 镜像列——仓储 `ClearLocalAuthorOnWorks` 原生 UPDATE 覆盖含软删行，外键拦截不分行态）、site（WorkSiteRefCounter：站点删除守卫的作品引用计数，仓储 `CountBySiteId` 活行/软删行分别计数）
