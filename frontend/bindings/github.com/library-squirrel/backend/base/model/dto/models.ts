@@ -554,7 +554,7 @@ export class RecycleStoreDTO {
     "deleteTime": number;
 
     /**
-     * HasBackup 行内是否引用备份清单行（backup_id>0；软删链移文件入 backup/ 时写入，MarkInvalid 失效行保持 0）
+     * HasBackup 行内是否引用备份清单行（backup_id 非空；软删链移文件入 backup/ 时写入，MarkInvalid 失效行保持 NULL）
      */
     "hasBackup": boolean;
 
@@ -644,7 +644,7 @@ export class RecycleStorePageQuery {
     "mediaType": number | null;
 
     /**
-     * 备份状态（true=backup_id>0 / false=0；nil=不过滤）
+     * 备份状态（true=行内引用备份（backup_id 非空）/ false=无；nil=不过滤）
      */
     "hasBackup": boolean | null;
 
