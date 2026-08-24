@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -60,6 +61,11 @@ func main() {
 	wailsApp := application.New(application.Options{
 		Name:        "library-squirrel",
 		Description: "A personal resource library with tag-based search",
+		Windows: application.WindowsOptions{
+			// 实机测试通道：设置 LS_CDP_PORT 环境变量时开启 WebView2 CDP 远程调试，
+			// 供外部进程驱动真实前端（调用 bindings/读取页面状态）；未设置时零影响
+			AdditionalBrowserArgs: cdpArgsFromEnv(),
+		},
 		Services: []application.Service{
 			application.NewService(app.LocalTagHandler),
 			application.NewService(app.LocalAuthorHandler),
@@ -194,4 +200,15 @@ func main() {
 
 	// 关闭完成标记（如果进程异常退出，此行不会出现在日志中）
 	logger.Log.Info("[———————————————— Library Squirrel  已关闭🪂 ————————————————]")
+}
+
+// cdpArgsFromEnv 读取 LS_CDP_PORT 环境变量构造 WebView2 附加浏览器参数。
+// 设置该变量（如 9222）时开启 CDP 远程调试端口，供实机测试的外部驱动进程接入；
+// 未设置时返回 nil（不附加任何参数）
+func cdpArgsFromEnv() []string {
+	port := os.Getenv("LS_CDP_PORT")
+	if port == "" {
+		return nil
+	}
+	return []string{"--remote-debugging-port=" + port}
 }
