@@ -8,7 +8,7 @@ import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/ba
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/backend/taskManager'
 import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
 import { TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/models'
-import { CreateTaskRequest, TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 
 // ========== 查询操作 ==========
@@ -68,10 +68,6 @@ export async function taskSetTreeStatus(
   includeStatus?: number[]
 ): Promise<ApiResult<number>> {
   return requireResponse(await TaskHandler.SetTreeStatus(taskIds, status, includeStatus ?? []), '设置任务树状态')
-}
-
-export async function taskCreate(request: CreateTaskRequest): Promise<ApiResult<number>> {
-  return requireResponse(await TaskHandler.CreateTask(request), '创建任务')
 }
 
 export async function taskCreateByUrl(url: string): Promise<ApiResult<CreateTaskByURLResponse>> {

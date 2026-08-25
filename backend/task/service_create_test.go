@@ -493,12 +493,12 @@ func TestHandleTaskArray_ParentChildren(t *testing.T) {
 
 // ---- OpenTestDB 外键强制库落盘锚定：pid 形态回归 ----
 
-// TestCreateTaskPidFormOnFKDB 在外键强制库（migration.OpenTestDB）真实落盘锚定 pid 形态：
-// pid 外键引用 task.id 且库内无 id=0 行，根级任务写 0（Valid=true）必违约——三入口
-// （CreateTask 根级/子级、插件响应 array 路径 leaf 与 parent+children）落盘成功本身即
-// 不违约的证明，另断言落库值：根级= NULL、子任务= 父 ID。fakeRepo 测试（上文）无 FK
-// 约束，锚不住本形态，故须真实库锚定。
-func TestCreateTaskPidFormOnFKDB(t *testing.T) {
+// TestCreateTaskFKColumnsOnFKDB 在外键强制库（migration.OpenTestDB）真实落盘锚定 CreateTask 的
+// 外键列形态（pid/site_id）：两列各引用 task.id/site.id 且库内无 id=0 行，写 0（Valid=true）必违约——
+// 落盘成功本身即不违约的证明，另断言落库值：pid 根级/子任务= NULL/父 ID、site_id 无站点/带站点=
+// NULL/站点 ID。插件响应 array 路径（leaf 与 parent+children）pid 一并锚定（其 site_id 恒经站点
+// 查找解析，无 0 值形态）。fakeRepo 测试（上文）无 FK 约束，锚不住本形态，故须真实库锚定。
+func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
@@ -527,6 +527,11 @@ func TestCreateTaskPidFormOnFKDB(t *testing.T) {
 	child, err := svc.CreateTask(ctx, &dto.CreateTaskRequest{Pid: root.GetID(), TaskName: "子任务", SiteID: int(seedSite.GetID())})
 	if err != nil {
 		t.Fatalf("创建子任务失败: %v", err)
+	}
+	// req.SiteID=0（未关联站点）落 NULL——site 无 id=0 行，写 0 必 FK 违约
+	noSite, err := svc.CreateTask(ctx, &dto.CreateTaskRequest{TaskName: "无站点任务"})
+	if err != nil {
+		t.Fatalf("创建无站点任务失败: %v", err)
 	}
 
 	// 入口三：插件响应 array 路径——独立 leaf 与 parent 容器均根级（pid=NULL）、child 指向父
@@ -570,5 +575,21 @@ func TestCreateTaskPidFormOnFKDB(t *testing.T) {
 	}
 	if pid := pidOf("site_work_id = ?", "c-1"); !pid.Valid || pid.Int64 != parentId {
 		t.Errorf("插件路径子任务 pid 应落父 ID %d，得到 %+v", parentId, pid)
+	}
+
+	// site_id 落库形态断言（直接查列，不经实体扫描）
+	siteIdOf := func(where string, args ...any) sql.NullInt64 {
+		t.Helper()
+		var siteId sql.NullInt64
+		if err := db.Raw("SELECT site_id FROM task WHERE "+where, args...).Scan(&siteId).Error; err != nil {
+			t.Fatalf("查 site_id 失败(%s): %v", where, err)
+		}
+		return siteId
+	}
+	if siteId := siteIdOf("id = ?", root.GetID()); !siteId.Valid || siteId.Int64 != seedSite.GetID() {
+		t.Errorf("CreateTask 带站点任务 site_id 应落站点 ID %d，得到 %+v", seedSite.GetID(), siteId)
+	}
+	if siteId := siteIdOf("id = ?", noSite.GetID()); siteId.Valid {
+		t.Errorf("CreateTask 无站点任务 site_id 应落 NULL，得到 %+v", siteId)
 	}
 }

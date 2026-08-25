@@ -372,9 +372,10 @@ func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*
 	task := &entity.Task{
 		BaseEntity: &model.BaseEntity{},
 		// pid 外键引用 task.id（无 id=0 行）：req.Pid=0 → NULL=根级任务
-		Pid:               sql.NullInt64{Int64: req.Pid, Valid: req.Pid != 0},
-		TaskName:          sql.NullString{String: req.TaskName, Valid: true},
-		SiteID:            sql.NullInt64{Int64: int64(req.SiteID), Valid: true},
+		Pid:      sql.NullInt64{Int64: req.Pid, Valid: req.Pid != 0},
+		TaskName: sql.NullString{String: req.TaskName, Valid: true},
+		// site_id 外键引用 site.id（无 id=0 行）：req.SiteID=0 → NULL=未关联站点
+		SiteID:            sql.NullInt64{Int64: int64(req.SiteID), Valid: req.SiteID != 0},
 		SiteWorkID:        sql.NullString{String: req.SiteWorkID, Valid: true},
 		URL:               sql.NullString{String: req.URL, Valid: true},
 		HasChild:          sql.NullBool{Bool: req.HasChild, Valid: true},
