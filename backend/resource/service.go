@@ -63,11 +63,6 @@ func (s *Service) List(ctx context.Context, opt *database.QueryOption) ([]*domai
 	return s.repo.List(ctx, opt)
 }
 
-// Delete 删除资源
-func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
-}
-
 // ListByWorkId 查询作品关联的资源
 func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*domain.Resource, error) {
 	return s.repo.ListByWorkId(ctx, workId)
