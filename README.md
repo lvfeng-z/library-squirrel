@@ -57,3 +57,11 @@ Take a moment to familiarize yourself with your project structure:
 4. When ready, build your application with `wails3 build`.
 
 Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+
+## 许可协议
+
+本项目采用 GPL-3.0-or-later（GNU 通用公共许可证第 3 版或其后续版本）授权，全文见 [LICENSE](LICENSE)。
+
+Copyright (C) 2026 lvfeng
+
+本程序为自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证（第 3 版或任意后续版本，任选其一）重新发布或修改它。发布本程序是希望它有用，但不提供任何担保——不含适销性或特定用途适用性担保。具体条款详见 [LICENSE](LICENSE)。
