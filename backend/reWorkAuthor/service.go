@@ -12,8 +12,6 @@ import (
 type Repository interface {
 	// Create 新建
 	Create(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
-	// CreateBatch 批量新建
-	CreateBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
 	// Updates 更新
 	Updates(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error
 	// Delete 删除
@@ -28,7 +26,7 @@ type Repository interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
 	DeleteSiteByWorkId(ctx context.Context, workId int64) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库用）
 	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
 	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
 	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
@@ -70,11 +68,6 @@ func NewService(repo Repository) *Service {
 // Save 保存关联
 func (s *Service) Save(ctx context.Context, reWorkAuthor *domain.ReWorkAuthor) error {
 	return s.repo.Create(ctx, reWorkAuthor)
-}
-
-// SaveBatch 批量保存关联
-func (s *Service) SaveBatch(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error {
-	return s.repo.CreateBatch(ctx, reWorkAuthors)
 }
 
 // Update 更新关联

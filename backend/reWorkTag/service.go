@@ -13,8 +13,6 @@ import (
 type Repository interface {
 	// Create 新建关联
 	Create(ctx context.Context, rel *domain.ReWorkTag) error
-	// CreateBatch 批量新建关联
-	CreateBatch(ctx context.Context, rels []*domain.ReWorkTag) error
 	// UpsertBatch 批量 upsert：按 (work_id, tag_id) 冲突更新 namespace，否则插入
 	UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error
 	// Delete 删除关联
@@ -29,7 +27,7 @@ type Repository interface {
 	DeleteByLocalTagId(ctx context.Context, localTagId int64) error
 	// DeleteBySiteTagId 根据站点标签ID删除所有关联
 	DeleteBySiteTagId(ctx context.Context, siteTagId int64) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库用）
 	SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error
 	// ListByWorkId 查询作品关联的所有标签
 	ListByWorkId(ctx context.Context, workId int64) ([]*domain.ReWorkTag, error)
@@ -70,11 +68,6 @@ func NewService(repo Repository, siteTagReader SiteTagNamespaceReader) *Service 
 // Save 保存关联
 func (s *Service) Save(ctx context.Context, rel *domain.ReWorkTag) error {
 	return s.repo.Create(ctx, rel)
-}
-
-// SaveBatch 批量保存关联
-func (s *Service) SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error {
-	return s.repo.CreateBatch(ctx, rels)
 }
 
 // Delete 删除关联

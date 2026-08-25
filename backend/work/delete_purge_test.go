@@ -72,9 +72,6 @@ type purgeReWorkTagWriter struct{}
 
 func (purgeReWorkTagWriter) DeleteByWorkId(ctx context.Context, workId int64) error     { return nil }
 func (purgeReWorkTagWriter) DeleteSiteByWorkId(ctx context.Context, workId int64) error { return nil }
-func (purgeReWorkTagWriter) SaveBatch(ctx context.Context, rels []*domain.ReWorkTag) error {
-	return nil
-}
 func (purgeReWorkTagWriter) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {
 	return nil
 }
@@ -83,9 +80,6 @@ type purgeReWorkAuthorWriter struct{}
 
 func (purgeReWorkAuthorWriter) DeleteByWorkId(ctx context.Context, workId int64) error { return nil }
 func (purgeReWorkAuthorWriter) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
-	return nil
-}
-func (purgeReWorkAuthorWriter) SaveBatch(ctx context.Context, rels []*domain.ReWorkAuthor) error {
 	return nil
 }
 func (purgeReWorkAuthorWriter) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkAuthor) error {

@@ -124,9 +124,7 @@ type ReWorkTagWriter interface {
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// DeleteSiteByWorkId 删除作品的 SITE 标签关联（保留 LOCAL）
 	DeleteSiteByWorkId(ctx context.Context, workId int64) error
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, rels []*entity2.ReWorkTag) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用，保留用户手动设的 namespace 等字段）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库，保留用户手动设的 namespace 等字段）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkTag) error
 }
 
@@ -233,13 +231,11 @@ type Transactor interface {
 
 // ReWorkAuthorWriter 作品-作者关联写入接口
 type ReWorkAuthorWriter interface {
-	// SaveBatch 批量保存关联
-	SaveBatch(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
 	DeleteSiteByWorkId(ctx context.Context, workId int64) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库用，不覆盖用户手动建的关联）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库，不覆盖用户手动建的关联）
 	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 }
 
@@ -1245,7 +1241,8 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	}
 	siteAuthorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
 	if len(siteAuthorLinks) > 0 {
-		if err := s.reWorkAuthorWriter.SaveBatch(ctx, siteAuthorLinks); err != nil {
+		// OnConflict：插件元数据对同一作者产出多条同 ID DTO 时（upsert 落同一 site_author 行、回查输出重复 DB ID），批内重复折叠为单条关联
+		if err := s.reWorkAuthorWriter.SaveBatchOnConflict(ctx, siteAuthorLinks); err != nil {
 			return 0, fmt.Errorf("保存作品 SITE 作者关联失败: %w", err)
 		}
 	}
@@ -1267,7 +1264,8 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	}
 	siteTagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
 	if len(siteTagLinks) > 0 {
-		if err := s.reWorkTagWriter.SaveBatch(ctx, siteTagLinks); err != nil {
+		// OnConflict：同 SITE 作者——插件元数据同 ID 标签 DTO 重复时批内折叠
+		if err := s.reWorkTagWriter.SaveBatchOnConflict(ctx, siteTagLinks); err != nil {
 			return 0, fmt.Errorf("保存作品 SITE 标签关联失败: %w", err)
 		}
 	}
