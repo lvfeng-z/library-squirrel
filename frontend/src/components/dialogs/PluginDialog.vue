@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import DialogMode from '../../model/util/DialogMode'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
+import { computed } from 'vue'
+import StatusTag from '@renderer/components/common/StatusTag.vue'
 import {PluginDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto";
 import { ElMessage } from 'element-plus'
 import { pluginApi } from '@renderer/apis/http'
@@ -24,6 +26,12 @@ const formData = defineModel<PluginDTO>('formData', { required: true })
 const state = defineModel<boolean>('state', { required: true })
 
 // 变量
+// 来源状态 key（source 枚举值直接拼 plugin-{source}，与列表来源列同 key）
+const sourceStatusKey = computed(() => `plugin-${formData.value.source ?? ''}`)
+// 信任状态 key（仅 true 视为已信任，与列表信任列同判断规则）
+const trustedStatusKey = computed(() =>
+  formData.value.trusted === true ? 'plugin-trusted' : 'plugin-unverified'
+)
 
 // 方法
 // 重新安装
@@ -61,7 +69,7 @@ async function unInstall(pluginPublicId: string | undefined | null) {
     :mode="props.mode"
   >
     <template #header>
-      <span style="font-size: 20px">站点</span>
+      <span style="font-size: 20px">插件</span>
     </template>
     <template #form>
       <el-row>
@@ -90,6 +98,18 @@ async function unInstall(pluginPublicId: string | undefined | null) {
               type="textarea"
               autosize
             />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row>
+        <el-col :span="12">
+          <el-form-item label="来源">
+            <StatusTag :status="sourceStatusKey" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="信任">
+            <StatusTag :status="trustedStatusKey" />
           </el-form-item>
         </el-col>
       </el-row>

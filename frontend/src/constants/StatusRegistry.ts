@@ -37,10 +37,13 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   'resource-downloaded': { key: 'resource-downloaded', label: '已下载', category: 'resource' },
   'resource-missing': { key: 'resource-missing', label: '缺失', category: 'resource' },
   'resource-damaged': { key: 'resource-damaged', label: '损坏', category: 'resource' },
-  // —— 插件来源/信任 ——
+  // —— 插件来源/信任（来源：bundled=官方、local/url/marketplace=第三方渠道；信任：trusted/unverified） ——
   'plugin-bundled': { key: 'plugin-bundled', label: '官方', category: 'plugin' },
   'plugin-local': { key: 'plugin-local', label: '本地', category: 'plugin' },
+  'plugin-url': { key: 'plugin-url', label: '网络', category: 'plugin' },
+  'plugin-marketplace': { key: 'plugin-marketplace', label: '市场', category: 'plugin' },
   'plugin-unverified': { key: 'plugin-unverified', label: '未信任', category: 'plugin' },
+  'plugin-trusted': { key: 'plugin-trusted', label: '已信任', category: 'plugin' },
   // —— 备份引用态（有主=被业务行引用，由回收站/插件流程管理；无主=可清理） ——
   'backup-referenced': { key: 'backup-referenced', label: '有主', category: 'backup' },
   'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' },

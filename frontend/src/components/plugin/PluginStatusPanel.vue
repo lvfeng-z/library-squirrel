@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { pluginApi } from '@renderer/apis/http'
 import { ElMessage } from 'element-plus'
+import StatusTag from '@renderer/components/common/StatusTag.vue'
 import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { isNotBlank } from '@renderer/utils/StringUtil'
@@ -36,16 +37,12 @@ async function loadStatus(publicId: string) {
   }
 }
 
-// 来源标签文案
-function sourceLabel(source: string | undefined): string {
-  switch (source) {
-    case 'bundled': return '官方捆绑'
-    case 'local': return '本地安装'
-    case 'url': return '网络下载'
-    case 'marketplace': return '市场'
-    default: return source || '-'
-  }
-}
+// 来源状态 key（source 枚举值直接拼 plugin-{source}，与列表来源列同 key）
+const sourceStatusKey = computed(() => `plugin-${plugin.value?.source ?? ''}`)
+// 信任状态 key（仅 true 视为已信任，false/NULL 一律未信任——保守方向）
+const trustedStatusKey = computed(() =>
+  plugin.value?.trusted === true ? 'plugin-trusted' : 'plugin-unverified'
+)
 
 function formatTime(timestamp: number | undefined): string {
   if (!timestamp) return '-'
@@ -75,20 +72,16 @@ function formatSize(bytes: number | undefined): string {
         size="small"
       >
         <el-descriptions-item label="来源">
-          <el-tag
+          <StatusTag
             size="small"
-            :type="plugin.source === 'bundled' ? 'success' : 'info'"
-          >
-            {{ sourceLabel(plugin.source ?? undefined) }}
-          </el-tag>
+            :status="sourceStatusKey"
+          />
         </el-descriptions-item>
         <el-descriptions-item label="信任状态">
-          <el-tag
+          <StatusTag
             size="small"
-            :type="plugin.trusted === false ? 'warning' : 'success'"
-          >
-            {{ plugin.trusted === false ? '未信任（需手动信任后激活）' : '已信任' }}
-          </el-tag>
+            :status="trustedStatusKey"
+          />
         </el-descriptions-item>
       </el-descriptions>
 

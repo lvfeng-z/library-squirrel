@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import BaseView from '@renderer/views/BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
+import StatusTag from '@renderer/components/common/StatusTag.vue'
 import PluginStatusPanel from '@renderer/components/plugin/PluginStatusPanel.vue'
-import {computed, onMounted, ref, Ref} from 'vue'
+import {computed, h, onMounted, ref, Ref} from 'vue'
 import {useRouter} from 'vue-router'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
@@ -38,6 +39,8 @@ onMounted(() => {
 const pluginSearchTable = ref()
 // 插件分页参数
 const pluginPage: Ref<Page<PluginDTO>> = ref(new Page<PluginDTO>())
+// 列表当前行（queryPage 每次查询刷新；SearchTable 行数据留在组件内部，v-model:page 仅回写分页元数据）
+const tableRows: Ref<PluginDTO[]> = ref([])
 // 插件操作栏按钮（首个 rule 命中的为主按钮，其余进下拉；升级/跳过仅对有可升级待办的行显示）
 const pluginOperationButton: OperationItem<PluginDTO>[] = [
   { label: '升级', icon: 'Upload', code: 'upgrade', buttonType: 'primary', rule: (row) => notNullish(findAvailableByPublicId(String(row.publicId))) },
@@ -83,7 +86,7 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     showOverflowTooltip: true
   }),
   new Thead({
-    type: 'text',
+    type: 'custom',
     defaultDisabled: true,
     key: 'source',
     title: '来源',
@@ -91,7 +94,18 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     width: 90,
     headerAlign: 'center',
     dataAlign: 'center',
-    showOverflowTooltip: true
+    render: (data) => h(StatusTag, { status: buildSourceStatusKey(data) })
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'trusted',
+    title: '信任',
+    hide: false,
+    width: 90,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    render: (data) => h(StatusTag, { status: data === true ? 'plugin-trusted' : 'plugin-unverified' })
   }),
   new Thead({
     type: 'datetime',
@@ -105,6 +119,10 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     showOverflowTooltip: true
   })
 ])
+// 来源枚举值 → 状态 key（bundled/local/url/marketplace 与 StatusRegistry 的 plugin-* key 一一对应，绿=官方、灰=第三方）
+function buildSourceStatusKey(source: string | null | undefined): string {
+  return `plugin-${source ?? ''}`
+}
 // 插件的查询参数
 const pluginSearchParams: Ref<PluginQueryDTO> = ref<PluginQueryDTO>(new PluginQueryDTO())
 // 被选中的插件（多选，供批量升级）
@@ -129,9 +147,14 @@ const applyingIds: Ref<string[]> = ref([])
 
 // 已跳过更新的 bundled 插件（来自本页插件列表数据，PluginDTO 透传拒绝标记）
 const declinedPlugins = computed<PluginDTO[]>(() => {
-  return (pluginPage.value.data ?? []).filter(
+  return tableRows.value.filter(
     (plugin) => plugin?.source === 'bundled' && isNotBlank(plugin.upgradeDeclinedBuildId ?? undefined)
   ) as PluginDTO[]
+})
+
+// 列表是否存在非官方来源插件（第三方免责提示仅此时显示，纯官方库下省略）
+const hasThirdPartyPlugin = computed(() => {
+  return tableRows.value.some((plugin) => plugin?.source !== 'bundled')
 })
 
 // 待更新区块是否可见（告知类任一非空；可升级项经行内按钮与批量升级答复，不占区块）
@@ -317,6 +340,7 @@ async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO>> {
   pluginSearchParams.value.name.operator = Operator.OpLike
   pluginSearchParams.value.author.operator = Operator.OpLike
   const response = await pluginApi.pluginQueryPage(page, pluginSearchParams.value)
+  tableRows.value = response.data?.data ?? []
   return response.data
 }
 // 处理插件数据行按钮点击事件
@@ -551,6 +575,13 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
             </div>
           </div>
         </div>
+        <!-- 第三方免责提示：仅列表存在非官方来源插件时显示 -->
+        <div
+          v-if="hasThirdPartyPlugin"
+          class="plugin-disclaimer"
+        >
+          来源标记区分官方捆绑插件与第三方插件；第三方插件由其作者独立维护，相关问题请找插件作者。
+        </div>
         <search-table
           ref="pluginSearchTable"
           v-model:page="pluginPage"
@@ -614,7 +645,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
                   @clear="pluginSearchParams.source.value = null"
                 >
                   <el-option
-                    label="捆绑"
+                    label="官方"
                     value="bundled"
                   />
                   <el-option
@@ -622,7 +653,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
                     value="local"
                   />
                   <el-option
-                    label="URL"
+                    label="网络"
                     value="url"
                   />
                   <el-option
@@ -698,6 +729,15 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
 }
 .plugin-source-search-select {
   width: 140px;
+}
+/* 第三方免责提示行（插件列表上方 muted 小字） */
+.plugin-disclaimer {
+  flex-shrink: 0;
+  width: 100%;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  margin-bottom: 5px;
+  box-sizing: border-box;
 }
 /* 检查更新待办区块（有待办时显示于表格上方） */
 .plugin-pending-panel {
