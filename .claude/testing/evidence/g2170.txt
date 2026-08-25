@@ -1,0 +1,54 @@
+Type 'help' for list of commands.
+ 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+ 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+ 2  0x00007ff6bf4b04d5 in [1mdatabase/sql.(*DB).conn[0m
+    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1369[0m
+ 3  0x00007ff6bf4b3dcd in [1mdatabase/sql.(*DB).begin[0m
+    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1891[0m
+ 4  0x00007ff6bf4b3cde in [1mdatabase/sql.(*DB).BeginTx.func1[0m
+    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1874[0m
+ 5  0x00007ff6bf4b1622 in [1mdatabase/sql.(*DB).retry[0m
+    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1576[0m
+ 6  0x00007ff6bf4b3c2c in [1mdatabase/sql.(*DB).BeginTx[0m
+    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1873[0m
+ 7  0x00007ff6bf5705d8 in [1mgorm.io/gorm.(*DB).Begin[0m
+    at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mfinisher_api.go:686[0m
+ 8  0x00007ff6bf909dfa in [1mgorm.io/gorm/callbacks.BeginTransaction[0m
+    at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/callbacks/[1mtransaction.go:9[0m
+ 9  0x00007ff6bf564c13 in [1mgorm.io/gorm.(*processor).Execute[0m
+    at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mcallbacks.go:136[0m
+10  0x00007ff6bf56de74 in [1mgorm.io/gorm.(*DB).Update[0m
+    at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mfinisher_api.go:406[0m
+11  0x00007ff6bf954c50 in [1mgithub.com/library-squirrel/backend/persistentStore.(*PersistentStoreRepository).ResetCompleted[0m
+    at E:/code/lvfeng/library-squirrel/backend/persistentStore/[1mrepository.go:59[0m
+12  0x00007ff6bf9588c6 in [1mgithub.com/library-squirrel/backend/persistentStore.(*Service).StoreStream[0m
+    at E:/code/lvfeng/library-squirrel/backend/persistentStore/[1mservice.go:409[0m
+13  0x00007ff6bf96fd63 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).startDownload.func1[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:984[0m
+14  0x00007ff6bfc106ca in [1mmain.(*dbTransactorAdapter).ExecInTransaction.func1[0m
+    at E:/code/lvfeng/library-squirrel/[1mapp.go:1168[0m
+15  0x00007ff6bf5700da in [1mgorm.io/gorm.(*DB).Transaction[0m
+    at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mfinisher_api.go:654[0m
+16  0x00007ff6bf937105 in [1mgithub.com/library-squirrel/backend/database.WithTransactionContext[0m
+    at E:/code/lvfeng/library-squirrel/backend/database/[1mtransaction.go:19[0m
+17  0x00007ff6bfc10649 in [1mmain.(*dbTransactorAdapter).ExecInTransaction[0m
+    at E:/code/lvfeng/library-squirrel/[1mapp.go:1166[0m
+18  0x00007ff6bf96f776 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).startDownload[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:978[0m
+19  0x00007ff6bf96ee2a in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).runSectionCombo[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:941[0m
+20  0x00007ff6bf96de88 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).run[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:826[0m
+21  0x00007ff6bf96cdd1 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).runOnce[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:656[0m
+22  0x00007ff6bf96ca05 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).handleRunCmd[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:600[0m
+23  0x00007ff6bf96c55b in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).actorLoop[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:533[0m
+24  0x00007ff6bf96c2b7 in [1mgithub.com/library-squirrel/backend/taskManager.NewManagedTask.gowrap1[0m
+    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:471[0m
+25  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+EOF

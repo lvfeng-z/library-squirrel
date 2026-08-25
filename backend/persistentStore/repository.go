@@ -51,9 +51,16 @@ func (r *PersistentStoreRepository) ExistsByFilePath(ctx context.Context, filePa
 	return record != nil
 }
 
-// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）
+// dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
+func (r *PersistentStoreRepository) dbFromCtx(ctx context.Context) *gorm.DB {
+	return database.DBFromContext(ctx, r.GORM())
+}
+
+// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）。
+// dbFromCtx 模式：StoreStream 在建资源事务内调用（替换流同路径已有行走本方法），非事务连接会与
+// 外层事务争抢唯一连接（MaxOpenConns=1）形成自死锁
 func (r *PersistentStoreRepository) ResetCompleted(ctx context.Context, id int64) error {
-	return r.GORM().WithContext(ctx).
+	return r.dbFromCtx(ctx).WithContext(ctx).
 		Model(new(domain.PersistentStore)).
 		Where("id = ?", id).
 		Update("completed_at", 0).Error
@@ -65,19 +72,20 @@ func (r *PersistentStoreRepository) DeleteUnscopedByIds(ctx context.Context, ids
 	if len(ids) == 0 {
 		return nil
 	}
-	return database.DBFromContext(ctx, r.GORM()).WithContext(ctx).
+	return r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Where("id IN ?", ids).
 		Delete(new(domain.PersistentStore)).Error
 }
 
 // RestoreByIds 批量清软删标志与备份引用（复原链：文件还原回 store/ 后记录复活，
-// backup_id 指向的清单行已随还原删除故一并清空；Unscoped 逃逸 Update 的软删过滤）
+// backup_id 指向的清单行已随还原删除故一并清空；Unscoped 逃逸 Update 的软删过滤）。
+// dbFromCtx 模式：复原/失败回滚/置换链编排方可能包事务，可安全用于事务内
 func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return r.GORM().WithContext(ctx).
+	return r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id IN ?", ids).
@@ -86,13 +94,13 @@ func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int6
 
 // SoftDeleteWithBackup 软删记录并写入备份清单行引用（单条 UPDATE 同生共死：
 // 文件移动入 backup/ 成功后调用，backup_id 与 deleted_at 原子落盘；backupId<=0 表无备份的软删，
-// 行内引用写 NULL）
+// 行内引用写 NULL）。dbFromCtx 模式：置换/替换链编排方可能包事务，可安全用于事务内
 func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id int64, backupId int64) error {
 	backupRef := interface{}(backupId)
 	if backupId <= 0 {
 		backupRef = nil
 	}
-	return r.GORM().WithContext(ctx).
+	return r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id = ? AND deleted_at = 0", id).
@@ -105,7 +113,7 @@ func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id
 // NormalizeFilePaths 将 file_path 中的反斜杠统一为正斜杠（符合存储规范）
 // 幂等：无反斜杠时无操作。返回受影响行数
 func (r *PersistentStoreRepository) NormalizeFilePaths(ctx context.Context) (int64, error) {
-	result := r.GORM().WithContext(ctx).Exec(
+	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(
 		"UPDATE persistent_store SET file_path = REPLACE(file_path, '\\', '/') WHERE file_path LIKE '%\\%'",
 	)
 	return result.RowsAffected, result.Error
@@ -118,7 +126,7 @@ func (r *PersistentStoreRepository) RenameDirectoryPrefix(ctx context.Context, o
 	oldPrefix = strings.ReplaceAll(oldPrefix, "\\", "/")
 	newPrefix = strings.ReplaceAll(newPrefix, "\\", "/")
 	// 用 GLOB 而非 LIKE：GLOB 区分大小写→走 file_path 索引（LIKE 默认不区分大小写→全表扫）
-	result := r.GORM().WithContext(ctx).Exec(
+	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(
 		"UPDATE persistent_store SET file_path = REPLACE(file_path, ?, ?) WHERE file_path GLOB ?",
 		oldPrefix+"/", newPrefix+"/", oldPrefix+"/*",
 	)
@@ -129,7 +137,7 @@ func (r *PersistentStoreRepository) RenameDirectoryPrefix(ctx context.Context, o
 // Unscoped 含已删行——软删行是合法引用者（回收站待复原），GORM 默认软删 scope 排除即活备份被误判无主
 func (r *PersistentStoreRepository) ListReferencedBackupIds(ctx context.Context) ([]int64, error) {
 	var ids []int64
-	err := r.GORM().WithContext(ctx).
+	err := r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("backup_id IS NOT NULL").
@@ -144,7 +152,7 @@ func (r *PersistentStoreRepository) ClearBackupRefsByBackupIds(ctx context.Conte
 	if len(ids) == 0 {
 		return nil
 	}
-	return r.GORM().WithContext(ctx).
+	return r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("backup_id IN ?", ids).
@@ -154,7 +162,7 @@ func (r *PersistentStoreRepository) ClearBackupRefsByBackupIds(ctx context.Conte
 // ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带备份引用的非法态列，返回受影响行数。
 // 构造上不可达（backup_id 与 deleted_at 单条 UPDATE 同生共死、复原双列同清），防御外部直改数据库
 func (r *PersistentStoreRepository) ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error) {
-	result := r.GORM().WithContext(ctx).
+	result := r.dbFromCtx(ctx).WithContext(ctx).
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("deleted_at = 0 AND backup_id IS NOT NULL").

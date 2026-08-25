@@ -262,12 +262,14 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		"UPDATE site_tag SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = site_tag.site_id)",
 		"UPDATE site_author SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = site_author.site_id)",
 		"UPDATE task SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = task.site_id)",
-		"UPDATE task SET pid = NULL WHERE pid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task WHERE id = task.pid)",
+		// 自引用外键（task.pid→task.id）子查询须以别名引用父行：内层 FROM 若沿用同名 task 会
+		// 遮蔽外层表，task.pid 解析到内层行自身致 NOT EXISTS 恒真、全表 pid 被清（存量事故实锚）
+		"UPDATE task SET pid = NULL WHERE pid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task parent_tk WHERE parent_tk.id = task.pid)",
 		"UPDATE task SET pending_resource_id = NULL WHERE pending_resource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource WHERE id = task.pending_resource_id)",
 		"UPDATE plugin SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = plugin.backup_id)",
 		"UPDATE persistent_store SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = persistent_store.backup_id)",
 		"UPDATE resource SET task_id = NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task WHERE id = resource.task_id)",
-		"UPDATE local_tag SET base_local_tag_id = NULL WHERE base_local_tag_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM local_tag WHERE id = local_tag.base_local_tag_id)",
+		"UPDATE local_tag SET base_local_tag_id = NULL WHERE base_local_tag_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM local_tag parent_lg WHERE parent_lg.id = local_tag.base_local_tag_id)",
 	}
 	// 无引用哨兵 0→NULL 归一（0 哨兵列改 NULL 语义的存量迁移；幂等）
 	zeroToNull := []string{

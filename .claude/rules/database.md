@@ -69,7 +69,7 @@ globs:
 - **执行开关**：DSN（`backend/database/db.go`）带 `_foreign_keys=on`——SQLite 外键强制按连接生效、默认关闭，MaxOpenConns=1 单连接一处全覆盖；不能在事务内切换，DSN 级设置天然规避。
 - **形态仅 NO ACTION**：外键只做「被引用行删除/改键时若有子引用即拒绝」的报错式防线。**禁用 CASCADE/SET NULL**——级联清理是业务编排，归发起方模块（删除链手工显式子→父顺序，如 `DeleteWorkAndSurroundingData`）；外键不覆盖软删行态、「关联行缺失」类孤儿、跨表行态不变量与文件面一致性。
 - **声明登记面**：`backend/migration/foreign_keys.go` 的 `fkBatches`（全库 25 对）。SQLite 无 `ALTER TABLE ADD CONSTRAINT`，存量表挂 FK 经**表重建舞步**（以 `sqlite_master` 现表 DDL 为源文本注入 FK 子句→建新表→拷数据→删旧表→改名→复原索引；**禁用实体重建 DDL**——实体字段序与表列序漂移会静默错位）。幂等标记：`pragma_foreign_key_list` 的（引用列, 引用表）对（SQLite FK 无独立命名）。
-- **迁移时序与存量**：存量悬空引用先清（`cleanDanglingAssociations`——关联行 DELETE、业务行引用列置 NULL）；0 哨兵引用列一律 NULL 化（FK 对 NULL 豁免、对 0 不豁免）。悬空引用的存量遗留形态在 FK 强制下不可经正常写入产生，测试须关 PRAGMA 种植（对照 `plantDanglingPluginRef` 先例）。
+- **迁移时序与存量**：存量悬空引用先清（`cleanDanglingAssociations`——关联行 DELETE、业务行引用列置 NULL）；0 哨兵引用列一律 NULL 化（FK 对 NULL 豁免、对 0 不豁免）。悬空引用的存量遗留形态在 FK 强制下不可经正常写入产生，测试须关 PRAGMA 种植（对照 `plantDanglingPluginRef` 先例）。**自引用外键（task.pid→task.id、local_tag.base_local_tag_id）的悬空清理子查询必须以别名引用父行**（`NOT EXISTS (SELECT 1 FROM task parent_tk WHERE parent_tk.id = task.pid)`）——内层 `FROM task` 同名会遮蔽外层表引用，条件退化为内层行自身比较恒空、NOT EXISTS 恒真，每次启动把全表引用列清成 NULL（存量事故：子任务 pid 全灭致任务页树状塌平，回归测试 `clean_dangling_self_ref_test.go` 锚定）。
 - **AutoMigrate 交互**：GORM AutoMigrate 不感知 FK；对 FK 表的列型变更走其 SQLite 重建可能掉 FK 子句——**FK 表结构变更此后只走命名迁移**，在其中保留 FK 定义。
 - **测试协同**：测试库一律 `migration.OpenTestDB()`（`:memory:?_foreign_keys=on` + 完整迁移），杜绝裸 `gorm.Open`——裸开测试库无 FK 强制、断言失效且与生产行为分叉。
 

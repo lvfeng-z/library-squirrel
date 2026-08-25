@@ -3,7 +3,8 @@
 > 方案：`doc/plan/主数据删除关联清理缺口修复方案.md`（八入口编排化/守卫/退役）
 > 形态：dev 实机（vite 9245 + 测试二进制 CGO `bin/library-squirrel-test.exe` + CDP 9222），真实前端链路（CDP 调 wrapper / 真实 UI 按钮点击 = 用户操作同链路），只读 SQL/日志/DOM 断言。
 > 数据红线：删除类验证全部在本会话自建数据（`delv` 前缀 / `delv-*` 键）上闭环；site 守卫拒绝路径对既有站点（pixiv/bilibili）天然只读安全（删除被拒不动数据）。
-> **补验轮（2026-08-25 下午）**：pid=0 缺口修复（`Valid: pid != 0`）后任务链路恢复，V9/V10/V11 三项实机补验全过（12/12）；新发现 bug 2（替换流挂起）与基建根因修正见各专节。
+> **补验轮（2026-08-25 下午）**：pid=0 缺口修复（`Valid: pid != 0`）后任务链路恢复，V9/V10/V11 三项实机补验全过（12/12）；新发现 bug 2（替换流挂起）见各专节。
+> **bug 2 修复轮（2026-08-25 晚，diagnose+live-test）**：goroutine dump 定位 ResetCompleted 连接池自死锁并修复，V13 实机复验通过；V11b 文件条目页 UI 端到端补验通过（13/13）。
 
 ## 基建与基线
 
@@ -89,12 +90,19 @@
   - 形态二 父树：`taskDelete([355])`（单传父 ID，子行经 `pid IN` 覆盖）→ 成功、零 FK 报错 → 355/356/357 全删、**resource 195/196 保留且 task_id=NULL**、work 204/205 活行保留。
 - **pid 修复实机铁证**：修复后 4 次任务创建（348/349-351/352-354/355-357/358）全部成功——根任务 `pid IS NULL` 落库（348/352/355 均 pid_is_null=1）、子任务 pid=真实父 ID（353→352、356/357→355）、全程零 `FOREIGN KEY constraint failed`；修复前同链路必败（「尝试了所有插件均未成功」+日志 pid 列写 0 违约）。
 
-### V11 recycleBin.PurgeStore（缺口7）—— PASS（2026-08-25 补验轮实机，含场景偏离说明）
+### V11 recycleBin.PurgeStore（缺口7）—— PASS（2026-08-25 补验轮实机，含场景偏离说明；**同日 bug 2 修复后已补 UI 端到端，见 V11b**）
 
 - 素材：work 204 软删（`workSoftDelete`）→ 其 store 683 软删（deleted_at=1787600742912）+ 移文件入 backup（backup 483）+ **resource_store 关联 1198（resource 195↔store 683）保留**——正是缺口7 的 FK 拦截形态（关联未摘即物理删行必被拒）。
 - 操作：前端 wrapper `recycleBinPurgeStore(683)`（= 回收站「彻底删除」按钮同链路），成功、零 FK 报错。
 - 删后 SQL：persistent_store 683 行=0（物理删）；`resource_store WHERE store_id=683`=0（**关联清理**）；resource 195 行保留；work 204 软删态不受扰；**backup 483 消费式删除**（终态清理义务生效）。
-- **场景偏离说明（诚实记录）**：回收站文件条目页只收录「挂载链不指向软删作品」的软删行（`buildRecycleStoreWhere` 排除子句，`backend/search/repository.go:616-624`）；带关联文件条目的规范产道=替换流（ConfirmReplace→softDeleteReplaceTargets），但替换流被**新发现 bug 2**（确定性挂起，见下）阻断。本项改在「随作品软删的 store 行」上经同一 handler→service→事务（摘关联→物理删）链验证——`PurgeStore` 仅校验「已删条目」无可见性守卫，缺口7 修复代码路径被完整覆盖；「文件条目页 UI 上点按钮」的端到端留待 bug 2 修复后补。
+- **场景偏离说明（诚实记录）**：回收站文件条目页只收录「挂载链不指向软删作品」的软删行（`buildRecycleStoreWhere` 排除子句，`backend/search/repository.go:616-624`）；带关联文件条目的规范产道=替换流（ConfirmReplace→softDeleteReplaceTargets），但替换流被**新发现 bug 2**（确定性挂起，见下）阻断。本项改在「随作品软删的 store 行」上经同一 handler→service→事务（摘关联→物理删）链验证——`PurgeStore` 仅校验「已删条目」无可见性守卫，缺口7 修复代码路径被完整覆盖；「文件条目页 UI 上点按钮」的端到端已于 bug 2 修复后补验（V11b）。
+
+### V11b PurgeStore 文件条目页 UI 端到端（缺口7 补验）—— PASS（2026-08-25 bug 2 修复后）
+
+- 素材（规范产道=替换流板块重下，bug 2 修复后可产）：对已入库作品 `local://D:/lstest/delvR/one.png`（work 206）执行 `taskRedownload([361], ["image"], false)` → 查重命中 WaitingForInput → `taskManagerConfirmReplace(361, "replace")` → 日志「替换前置软删完成: 1 个 store 行」→ Finished（13ms）。DB 形态：store 685 软删 + backup 486（文件移入 backup/）+ **resource_store 死关联 1201 保留**；新活行 686 + 关联 1202。
+- 操作（真实 UI 链，CDP DOM click）：`#/recycleBin` → 切「文件」tab → 列表首行即 685（文件条目收录口径实证：软删行+挂载链指向活作品）→ 点行内「彻底删除」→ ElMessageBox 确认框（文案含路径与「含其引用的备份」）→ 点「删除」→ ElMessage「已彻底删除」。
+- 删后 SQL 六面断言：persistent_store 685 行=0（物理删）；`resource_store WHERE store_id=685`=0（**死关联摘除**）；backup 486 行=0（**消费式删除**）；新行 686 活 + 关联 1202 在 + resource 行在（**替换产物不受扰**）。
+- 截图：`v11b-file-tab.png`（文件条目页含 685 行）、`v11b-confirm-dialog.png`（确认框）。
 
 ### V12 resource.Delete 退役（阶段6）—— PASS
 
@@ -112,15 +120,19 @@
 - **影响面**：外键落地（commit 09950f3）后**任何插件任何 URL 的任务创建全部失败**。历史日志全量仅 1 次 task INSERT（即本次失败尝试）——用户此后未创建过任务，缺陷未暴露。
 - **修复**：`backend/task/service.go:648` 改 `task.Pid = sql.NullInt64{Int64: pid, Valid: pid != 0}`（根任务 NULL、子任务 Valid=true 指向真实父 ID）+ 修正 service_create_test 旧契约断言 + OpenTestDB 负向探针。**补验轮实机确认修复生效**（V10 节铁证：4 次创建全成、根 pid=NULL、子 pid=父、零 FK 报约）。
 
-## 新发现 bug 2（补验轮）：ConfirmReplace 替换流确定性挂起 + 全局 DB/IPC 楔死
+## 新发现 bug 2（补验轮）：ConfirmReplace 替换流确定性挂起 + 全局 DB/IPC 楔死 —— **已定位修复并实机复验（同日）**
 
 - **复现步骤**（两轮独立复现，跨应用重启确定性）：①对已有作品重导入同 URL（`local://D:/lstest/delvA/one.png`，siteWorkId 同 hash）→ 创建任务 358；②`taskStartTrees` → 任务进 WaitingForInput（查重命中、覆盖确认弹窗路径）；③`taskManagerConfirmReplace(358, "replace")` → 日志停在：
   > `确认替换任务: taskId=358` / `WaitingForInput → Processing` / `run() 入口: taskId=358, runMode={workInfo:true, stores:[]}, ...`
-  此后**再无任何日志**（查重回退/softDeleteReplaceTargets/CreateWorkInfo/SaveWorkInfo 均未到达）。
-- **楔死面实测**：纯 DOM eval 正常响应（页面活着）；一切经 DB 的 IPC 全部挂起（`taskGetById` 8s 超时无响应）；外部 sqlite 只读连接正常（WAL）——**单一 DB 连接被持、Go 连接池永久等待**，与 MaxOpenConns=1 死锁家族特征吻合（rules/database.md「事务」节）。DB 中 task 358 status 停留 0（Processing 未提交）。
-- **静态排查到此为止**：actor 链（handleRunCmd→runOnce→run→runSectionCombo）无事务包裹；batchCheckDuplicates（manager.go:428-506）纯查询无事务且带 30s 超时；confirm 重入路径 skipDuplicateCheck=true 跳过查重；DeleteWithBackup（persistentStore/service.go:736-767）无重试环。精确挂点需 goroutine dump（delve attach 或 pprof），建议按 diagnose 协议续查。
-- **影响**：替换确认（重下覆盖）后任务永久卡 Processing、应用所有 DB 功能瘫痪（需重启恢复）；同时阻断 V11 的规范素材产道（带关联回收站文件条目=替换流产物）。
-- **测试盲区同源**：与 pid 缺口同族——替换流集成路径无 OpenTestDB 落盘测试覆盖（ConfirmReplace→run 全链）。
+  此后**再无任何日志**。
+- **楔死面实测**：纯 DOM eval 正常响应（页面活着）；一切经 DB 的 IPC 全部挂起（`taskGetById` 8s 超时无响应）；外部 sqlite 只读连接正常（WAL）——单一 DB 连接被持、Go 连接池永久等待。DB 中 task 358 status 停留 0。
+- **根因（goroutine dump 实证，2026-08-25 diagnose 轮）**：`ResetCompleted`（`backend/persistentStore/repository.go:56`）用 `r.GORM()` 不感知事务。替换流 `startDownload` 开启建资源事务（`taskManager/model.go:978`，占住 MaxOpenConns=1 的唯一连接）→ 事务内 `StoreStream(txCtx,...)`（model.go:984）→ 同路径已有行走 existing 分支（`persistentStore/service.go:409`）调 `ResetCompleted` → 其 Update 经 GORM 默认单语句事务发 BEGIN 向连接池取连接 → **同一 goroutine 自持事务连接又等新连接 = 自死锁**（dump：goroutine 2170 单栈同时含 `WithTransactionContext→Transaction` 外层帧与 `database/sql.(*DB).conn` 等待帧；goroutine 2294 `(*Tx).awaitDone` 佐证事务未结束）。
+- **首跑不触发、替换流确定性触发的机制**：首跑同路径无已有行走新建分支（不经过 ResetCompleted）；替换流同路径已有行必走 existing 分支。
+- **对前轮静态排查的修正**：CreateWorkInfo/SaveWorkInfo 实际均已成功完成（该段链路无日志语句，「未到达」系无日志误判）；挂点在 SaveWorkInfo 之后的 startDownload 事务内。
+- **修复**：`ResetCompleted` 改 `dbFromCtx` 模式；同文件 `RestoreByIds`/`SoftDeleteWithBackup`/`NormalizeFilePaths`/`RenameDirectoryPrefix`/`ListReferencedBackupIds`/`ClearBackupRefsByBackupIds`/`ClearIllegalAliveBackupRefs` 一并收口 dbFromCtx（无事务时行为零变化，事务链安全）。回归测试 `TestStoreStreamInsideTransactionOnExistingPath`（`persistentStore/store_stream_tx_test.go`，OpenTestDB MaxOpenConns=1 + 超时守卫）：修复前 31.5s 确定性红（超时 + 死锁 goroutine 持文件句柄的 unlinkat 报错），修复后 0.03s 绿且断言 completed_at 经事务重置生效。全仓 `go build`/`go vet`/`go test` 通过。
+- **修复后实机复验（V13，2026-08-25）**：同场景重建（重导入同 URL → 任务 361 → start → WaitingForInput → `taskManagerConfirmReplace(361,"replace")`）→ `run() 入口` 后 **19ms** 即 `downloadLoop 结束`、`Processing → Finished`；`taskGetById` 3ms 响应（DB IPC 存活）；替换产物 store 685 同行覆写（活行、completed_at 更新、零孤儿零残留）。板块重下形态（`taskRedownload([361],["image"],false)` + confirm replace）同样全通（替换前置软删 1 行 → 新行落盘 → Finished 13ms），并产出 V11b 素材。
+- dump 证据：`.claude/testing/evidence/goroutines-bug2.txt`（全量）/ `g2170.txt`（死锁 goroutine 完整栈）。
+- **测试盲区同源收口**：替换流集成路径的落盘测试缺口由上述回归测试锚定（事务内同路径 StoreStream）。
 
 ## 新发现观察（低危）：work 服务站点作者 SaveBatch 对重复作者无幂等
 
@@ -138,17 +150,18 @@
 
 - 首轮清理：三个 delv work 经前端链 SoftDelete→PurgeWork 全成功；delv 标签/站点标签/站点作者/本地作者全删；失败的任务创建未落任何行。
 - 补验轮清理：任务 358（bug 2 残留 Created）删除；works 203/204/205 经软删+PurgeWork 全回收（store/关联/备份/物理文件全清，`store/resource/delvAuthor9` 空目录一并移除）；源素材目录 `D:\lstest` 与临时脚本删除。
-- **终态 SQL（两轮后）**：task=260（基线）、work=93（基线）、store 软删=3（用户既有基线）、新增 task/work/resource/resource_store/site_author/re_work_author/backup 计数全 0、`delv%` 全表计数=0。
-- 物理面：`store/resource/unknownAuthor` 17 文件全为用户既有（测试 one.png 已随 purge 消失）；backup 域按测试指纹扫描 0 残留。
+- bug 2 修复轮清理：任务 359/360/361 删除（360=前轮挂死残留、修复前基线复现产物）；work 206 经软删+`recycleBinPurgeWork` 全回收（store 685/686、关联、backup 486、物理文件全清）；源素材 `D:\lstest\delvR` 删除；测试进程（应用+独立 vite）与端口 9245/9222 全清；库级备份留 `/tmp/db-backup-bug2.db`（本轮无 schema 变更、数据全经真实链路回收，仅供终审前追溯）。
+- **终态 SQL（三轮后）**：task=260（基线）、work=93（基线）、store 软删=3（用户既有基线）、backup=4（用户既有插件包备份）、`delv%`/`aa03a350%`（delvR hash）全表计数=0。
+- 物理面：`store/resource/unknownAuthor` 恢复用户既有 17 文件形态（测试 one.png 两代已随 purge 消失）；dump/截图证据归档 `.claude/testing/evidence/` 与 `.claude/testing/shots/v11b-*.png`。
 - 测试进程全杀（测试应用 + 独立 vite），端口 9245/9222 无监听残留。
 
 ## 结论
 
-- **通过面（12/12 项，八入口全覆盖）**：localTag.Delete（缺口1 re 关联面 + 缺口8 树重挂）、localAuthor.Delete（缺口2 双面实机）、siteTag.Delete（缺口3）、**siteAuthor.Delete（缺口4，补验轮实机——re_work_author 关联清理实证）**、site.Delete 纯守卫（缺口5：全空删除 + 活行拒绝 + 软删占用拒绝）、**task.DeleteTask（缺口6，补验轮实机——根 leaf 与父树两形态、resource 行保留 task_id=NULL 实证）**、**recycleBin.PurgeStore（缺口7，补验轮实机——摘关联+物理删+消费式清备份实证，场景偏离见 V11 节）**、resource.Delete 退役（阶段6）——全部删除成功、无 FK 报错、无悬空引用。
+- **通过面（13/13 项，八入口全覆盖）**：localTag.Delete（缺口1 re 关联面 + 缺口8 树重挂）、localAuthor.Delete（缺口2 双面实机）、siteTag.Delete（缺口3）、**siteAuthor.Delete（缺口4，补验轮实机——re_work_author 关联清理实证）**、site.Delete 纯守卫（缺口5：全空删除 + 活行拒绝 + 软删占用拒绝）、**task.DeleteTask（缺口6，补验轮实机——根 leaf 与父树两形态、resource 行保留 task_id=NULL 实证）**、**recycleBin.PurgeStore（缺口7，补验轮实机——摘关联+物理删+消费式清备份实证；V11b 文件条目页 UI 端到端同日补验全过）**、resource.Delete 退役（阶段6）——全部删除成功、无 FK 报错、无悬空引用。
 - **pid=0 缺口修复实机生效**：`Valid: pid != 0` 落地后 4 次任务创建全成（根 pid=NULL/子 pid=父 ID/零 FK 违约），任务链路恢复正常，V9/V10/V11 三项验证解锁并全过。
 - **site 守卫业务提示实测正确**（首轮）：计数与库逐项一致、明细只列非零项、含分类清理指引、软删行「（含回收站 N）」聚合；真实 UI 按钮链展示正常。方案风险4 实机复核成立。
-- **新发现 bug 2（未修复，高优先）**：ConfirmReplace 替换流确定性挂起并楔死全局 DB/IPC（复现步骤与证据见专节）——建议按 diagnose 协议以 goroutine dump 定位挂点后修复，修复后补「文件条目页 UI 端到端」的 PurgeStore 验证。
+- **新发现 bug 2（已修复并实机复验）**：ConfirmReplace 替换流确定性挂起的根因=`ResetCompleted` 连接池自死锁（goroutine dump 实证，详见专节）；修复（dbFromCtx 收口）+ 回归测试 + V13 实机复验（run() 入口→Finished 19ms、DB IPC 3ms 响应）全过，V11b 素材产道随之解锁。
 - **低危观察**：work 服务站点作者 SaveBatch 对重复作者无幂等（UNIQUE 违约致任务 Failed，事务回滚无残留）。
 - **测试基建修正**：「插件双激活 flake」根因=CDP eval 不带 `?v=` 查询串 import runtime 预打包件（第二实例副作用）；已固化规避方法。
 
-**终审建议**：①对照 `.claude/testing/shots/v2-ui-guard-message.png` 亲点一次站点管理页「删除」核对提示文案；②（可选）亲历一次重下同作品的替换确认，体验 bug 2 的卡死现象以评估修复优先级。
+**终审建议**：①对照 `.claude/testing/shots/v2-ui-guard-message.png` 亲点一次站点管理页「删除」核对提示文案；②（可选）对任一已有作品亲历一次重下替换确认，体验修复后的顺畅流程（原「体验 bug 2 卡死」建议已随修复作废）；③回收站文件条目页可对照 `v11b-file-tab.png`/`v11b-confirm-dialog.png` 抽查。

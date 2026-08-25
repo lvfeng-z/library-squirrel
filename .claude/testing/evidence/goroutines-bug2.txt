@@ -1,0 +1,1643 @@
+Type 'help' for list of commands.
+* Goroutine 1 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 23056) [unknown wait reason 1]
+	 0  0x00007ffe51eb1344 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf1f579c in [1msyscall.(*Proc).Call[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:256[0m
+	 6  0x00007ff6bf1f5b8a in [1msyscall.(*LazyProc).Call[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:376[0m
+	 7  0x00007ff6bfb0560e in [1mgithub.com/wailsapp/wails/v3/pkg/w32.GetMessage[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/w32/[1muser32.go:500[0m
+	 8  0x00007ff6bfb0560e in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*windowsApp).runMainLoop[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mmainthread_windows.go:62[0m
+	 9  0x00007ff6bfaf4ae5 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*windowsApp).run[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication_windows.go:190[0m
+	10  0x00007ff6bfaf0d7a in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:661[0m
+	(truncated)
+  Goroutine 2 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 11 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1a32f8 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf1a32f8 in [1mruntime.forcegchelper[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:375[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 3 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 8]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf18b7d1 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf18b7d1 in [1mruntime.bgsweep[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgcsweep.go:324[0m
+	3  0x00007ff6bf17cb17 in [1mruntime.gcenable.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:214[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 4 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 9]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf189249 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf189249 in [1mruntime.(*scavengerState).park[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgcscavenge.go:425[0m
+	3  0x00007ff6bf1897d9 in [1mruntime.bgscavenge[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgcscavenge.go:658[0m
+	4  0x00007ff6bf17cad7 in [1mruntime.gcenable.gowrap2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:215[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 5 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 12 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b1267 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf1b1267 in [1mruntime.updateMaxProcsGoroutine[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:7095[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 6 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 10]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17ba27 in [1mruntime.runFinalizers[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmfinal.go:210[0m
+	2  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 7 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 46 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf178a14 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf178a14 in [1mruntime.(*cleanupQueue).dequeue[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmcleanup.go:522[0m
+	3  0x00007ff6bf179085 in [1mruntime.runCleanups[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmcleanup.go:718[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 8 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 9 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 10 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1639259517600]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 11 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 12 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 13 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1639259517600]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 15 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:234 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv (0x7ff6bf8d1be5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1be5 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:234[0m
+	3  0x00007ff6bf8d3b4c in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:581[0m
+	4  0x00007ff6bf8d53b7 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:72[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 16 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83999e in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:825[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8a9e86 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCBrokerStartStreamClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_broker_grpc.pb.go:68[0m
+	 9  0x00007ff6bf8d1624 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:199[0m
+	10  0x00007ff6bf8d5377 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:73[0m
+	(truncated)
+  Goroutine 17 - User: D:/ProgramFile/Go/src/runtime/asm_amd64.s:1772 runtime.goexit (0x7ff6bf1dd561)
+	0  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1772[0m
+  Goroutine 18 - User: C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/lumberjack.go:379 gopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1 (0x7ff6bf5b9c65) [unknown wait reason 19 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:379[0m
+	4  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:390[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 19 - User: D:/ProgramFile/Go/src/database/sql/sql.go:1261 database/sql.(*DB).connectionOpener (0x7ff6bf4afbe9) [unknown wait reason 18 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf4afbe9 in [1mdatabase/sql.(*DB).connectionOpener[0m
+	    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1261[0m
+	3  0x00007ff6bf4adf3f in [1mdatabase/sql.OpenDB.gowrap1[0m
+	    at D:/ProgramFile/Go/src/database/sql/[1msql.go:841[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 20 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 21 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 22 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 23 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 26 - User: E:/code/lvfeng/library-squirrel/backend/fsmonitor/source.go:88 github.com/library-squirrel/backend/fsmonitor.(*fsnotifySource).loop (0x7ff6bfb58cad) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfb58cad in [1mgithub.com/library-squirrel/backend/fsmonitor.(*fsnotifySource).loop[0m
+	    at E:/code/lvfeng/library-squirrel/backend/fsmonitor/[1msource.go:88[0m
+	3  0x00007ff6bfb58a5f in [1mgithub.com/library-squirrel/backend/fsmonitor.(*fsnotifySource).Start.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/fsmonitor/[1msource.go:71[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 27 - User: E:/code/lvfeng/library-squirrel/backend/fsmonitor/service.go:288 github.com/library-squirrel/backend/fsmonitor.(*Service).startLive.func1 (0x7ff6bfb577be) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfb577be in [1mgithub.com/library-squirrel/backend/fsmonitor.(*Service).startLive.func1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/fsmonitor/[1mservice.go:288[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 28 - User: E:/code/lvfeng/library-squirrel/backend/fsmonitor/service.go:401 github.com/library-squirrel/backend/fsmonitor.(*Service).watchWorkDir (0x7ff6bfb580ee) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfb580ee in [1mgithub.com/library-squirrel/backend/fsmonitor.(*Service).watchWorkDir[0m
+	    at E:/code/lvfeng/library-squirrel/backend/fsmonitor/[1mservice.go:401[0m
+	3  0x00007ff6bfb556d7 in [1mgithub.com/library-squirrel/backend/fsmonitor.(*Service).Start.gowrap2[0m
+	    at E:/code/lvfeng/library-squirrel/backend/fsmonitor/[1mservice.go:92[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 29 - User: E:/code/lvfeng/library-squirrel/backend/recycleBin/service.go:597 github.com/library-squirrel/backend/recycleBin.(*Service).cleanupLoop (0x7ff6bfba6165) [unknown wait reason 18 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfba6165 in [1mgithub.com/library-squirrel/backend/recycleBin.(*Service).cleanupLoop[0m
+	    at E:/code/lvfeng/library-squirrel/backend/recycleBin/[1mservice.go:597[0m
+	3  0x00007ff6bfba6017 in [1mgithub.com/library-squirrel/backend/recycleBin.(*Service).StartCleanup.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/recycleBin/[1mservice.go:578[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 30 - User: E:/code/lvfeng/library-squirrel/backend/backupGovernance/service.go:121 github.com/library-squirrel/backend/backupGovernance.(*Service).loop (0x7ff6bfb4b3b9) [unknown wait reason 18 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfb4b3b9 in [1mgithub.com/library-squirrel/backend/backupGovernance.(*Service).loop[0m
+	    at E:/code/lvfeng/library-squirrel/backend/backupGovernance/[1mservice.go:121[0m
+	3  0x00007ff6bfb4b217 in [1mgithub.com/library-squirrel/backend/backupGovernance.(*Service).Start.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/backupGovernance/[1mservice.go:105[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 31 - User: E:/code/lvfeng/library-squirrel/backend/taskManager/manager.go:1368 github.com/library-squirrel/backend/taskManager.(*Manager).flushLoop (0x7ff6bf96b212) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf96b212 in [1mgithub.com/library-squirrel/backend/taskManager.(*Manager).flushLoop[0m
+	    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmanager.go:1368[0m
+	3  0x00007ff6bf962bb7 in [1mgithub.com/library-squirrel/backend/taskManager.NewManager.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmanager.go:107[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 32 - User: C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/lumberjack.go:379 gopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1 (0x7ff6bf5b9c65) [unknown wait reason 19 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:379[0m
+	4  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:390[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 34 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28 1637695110500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 35 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 36 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 37 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 38 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 39 - User: D:/ProgramFile/Go/src/runtime/proc.go:463 runtime.gopark (0x7ff6bf1d5d4e) [unknown wait reason 28]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf17f64b in [1mruntime.gcBgMarkWorker[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1791[0m
+	2  0x00007ff6bf17f537 in [1mruntime.gcBgMarkStartWorkers.gowrap1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mmgc.go:1695[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 41 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 21016) [unknown wait reason 1]
+	0  0x00007ffe543c04a4 in [1m???[0m
+	    at [1m?:-1[0m
+	1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	    at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	5  0x00007ff6bf66f4ac in [1mgolang.org/x/sys/windows.GetQueuedCompletionStatus[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/golang.org/x/sys@v0.46.0/windows/[1mzsyscall_windows.go:2657[0m
+	6  0x00007ff6bf673e7b in [1mgithub.com/fsnotify/fsnotify.(*readDirChangesW).readEvents[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/fsnotify/fsnotify@v1.10.1/[1mbackend_windows.go:514[0m
+	7  0x00007ff6bf671537 in [1mgithub.com/fsnotify/fsnotify.newBackend.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/fsnotify/fsnotify@v1.10.1/[1mbackend_windows.go:59[0m
+	8  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 51 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/transport_http.go:93 github.com/wailsapp/wails/v3/pkg/application.(*HTTPTransport).cleanupChunks (0x7ff6bfb20e87) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bfb20e87 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*HTTPTransport).cleanupChunks[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mtransport_http.go:93[0m
+	3  0x00007ff6bfb20d57 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*HTTPTransport).Start.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mtransport_http.go:85[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 66 - User: D:/ProgramFile/Go/src/runtime/time.go:363 time.Sleep (0x7ff6bf1d9da7) [unknown wait reason 14]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1d9da7 in [1mtime.Sleep[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mtime.go:363[0m
+	2  0x00007ff6bfc14d70 in [1mmain.main.func5[0m
+	    at E:/code/lvfeng/library-squirrel/[1mmain.go:179[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 86 - User: D:/ProgramFile/Go/src/net/http/transport.go:2450 net/http.(*persistConn).readLoop (0x7ff6bf496d25) [unknown wait reason 18 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf496d25 in [1mnet/http.(*persistConn).readLoop[0m
+	    at D:/ProgramFile/Go/src/net/http/[1mtransport.go:2450[0m
+	3  0x00007ff6bf494cb7 in [1mnet/http.(*Transport).dialConn.gowrap2[0m
+	    at D:/ProgramFile/Go/src/net/http/[1mtransport.go:1994[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 87 - User: D:/ProgramFile/Go/src/net/http/transport.go:2652 net/http.(*persistConn).writeLoop (0x7ff6bf497c46) [unknown wait reason 18 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf497c46 in [1mnet/http.(*persistConn).writeLoop[0m
+	    at D:/ProgramFile/Go/src/net/http/[1mtransport.go:2652[0m
+	3  0x00007ff6bf494c77 in [1mnet/http.(*Transport).dialConn.gowrap3[0m
+	    at D:/ProgramFile/Go/src/net/http/[1mtransport.go:1995[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 276 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:596 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 (0x7ff6bfaf1425) [unknown wait reason 19 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf1425 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:596[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 277 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:602 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func2 (0x7ff6bfaf1345) [unknown wait reason 19]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf1345 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func2[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:602[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 278 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:608 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func3 (0x7ff6bfaf1265) [unknown wait reason 19]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf1265 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:608[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 279 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:614 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func4 (0x7ff6bfaf1185) [unknown wait reason 19 1638648083800]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf1185 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:614[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 280 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:620 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func5 (0x7ff6bfaf10a5) [unknown wait reason 19 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf10a5 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func5[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:620[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 281 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:626 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func6 (0x7ff6bfaf0fc5) [unknown wait reason 19 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf0fc5 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func6[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:626[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 282 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/application.go:633 github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func7 (0x7ff6bfaf0ec9) [unknown wait reason 19 1637829173500]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bfaf0ec9 in [1mgithub.com/wailsapp/wails/v3/pkg/application.(*App).Run.func7[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/wailsapp/wails/v3@v3.0.0-alpha.98/pkg/application/[1mapplication.go:633[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 928 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 27984)
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 929 - User: D:/ProgramFile/Go/src/runtime/sema.go:114 sync.runtime_SemacquireWaitGroup (0x7ff6bf1d72ee) [unknown wait reason 25 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b63c5 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf1b63c5 in [1mruntime.semacquire1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:192[0m
+	3  0x00007ff6bf1d72ee in [1msync.runtime_SemacquireWaitGroup[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:114[0m
+	4  0x00007ff6bf1ea9c5 in [1msync.(*WaitGroup).Wait[0m
+	    at D:/ProgramFile/Go/src/sync/[1mwaitgroup.go:206[0m
+	5  0x00007ff6bf8cf09c in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func2[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:774[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1099 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7d4032 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.func6[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:471[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1100 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1101 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83972d in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:841[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8aafe6 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCStdioStreamStdioClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_stdio_grpc.pb.go:75[0m
+	 9  0x00007ff6bf8d59c2 in [1mgithub.com/hashicorp/go-plugin.(*grpcStdioClient).Run[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_stdio.go:135[0m
+	10  0x00007ff6bf8d5347 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap2[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:80[0m
+	(truncated)
+  Goroutine 1102 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/group.go:43 github.com/oklog/run.(*Group).Run (0x7ff6bf8ace85) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bf8ace85 in [1mgithub.com/oklog/run.(*Group).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:43[0m
+	4  0x00007ff6bf8d2815 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:417[0m
+	5  0x00007ff6bf8dce9e in [1mgithub.com/lvfeng-z/library-squirrel-sdk/transport.(*LSPlugin).GRPCClient.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel-sdk/transport/[1mlsplugin.go:45[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1103 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7e0b7c in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.func3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:342[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1104 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_server.go:1203 google.golang.org/grpc/internal/transport.(*http2Server).keepalive (0x7ff6bf7e7ee5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7e7ee5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Server).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:1203[0m
+	3  0x00007ff6bf7e0a77 in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:363[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1105 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 1133 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 10684) [unknown wait reason 22 1638648083800]
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 1134 - User: D:/ProgramFile/Go/src/runtime/sema.go:114 sync.runtime_SemacquireWaitGroup (0x7ff6bf1d72ee) [unknown wait reason 25 1638648083800]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b63c5 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf1b63c5 in [1mruntime.semacquire1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:192[0m
+	3  0x00007ff6bf1d72ee in [1msync.runtime_SemacquireWaitGroup[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:114[0m
+	4  0x00007ff6bf1ea9c5 in [1msync.(*WaitGroup).Wait[0m
+	    at D:/ProgramFile/Go/src/sync/[1mwaitgroup.go:206[0m
+	5  0x00007ff6bf8cf09c in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func2[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:774[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1135 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 1580)
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 1200 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/client.go:819 github.com/hashicorp/go-plugin.(*Client).Start.func4.1 (0x7ff6bf8ceb71) [unknown wait reason 19 1638648083800]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf8ceb71 in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func4.1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:819[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1201 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638648083800]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1217 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1309 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:234 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv (0x7ff6bf8d1be5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1be5 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:234[0m
+	3  0x00007ff6bf8d3b4c in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:581[0m
+	4  0x00007ff6bf8d53b7 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:72[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1310 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83999e in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:825[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8a9e86 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCBrokerStartStreamClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_broker_grpc.pb.go:68[0m
+	 9  0x00007ff6bf8d1624 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:199[0m
+	10  0x00007ff6bf8d5377 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:73[0m
+	(truncated)
+  Goroutine 1311 - User: D:/ProgramFile/Go/src/net/fd_windows.go:202 net.(*netFD).accept (0x7ff6bf3366cb) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26f019 in [1minternal/poll.(*FD).acceptOne[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1118[0m
+	 7  0x00007ff6bf26f390 in [1minternal/poll.(*FD).Accept[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1153[0m
+	 8  0x00007ff6bf3366cb in [1mnet.(*netFD).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_windows.go:202[0m
+	 9  0x00007ff6bf35143b in [1mnet.(*TCPListener).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock_posix.go:159[0m
+	10  0x00007ff6bf3505b0 in [1mnet.(*TCPListener).Accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock.go:387[0m
+	(truncated)
+  Goroutine 1312 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:406 github.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4 (0x7ff6bf8d2910) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d2910 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:406[0m
+	3  0x00007ff6bf8acfa9 in [1mgithub.com/oklog/run.(*Group).Run.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:38[0m
+	4  0x00007ff6bf8acf5f in [1mgithub.com/oklog/run.(*Group).Run.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:39[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1314 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1315 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1317 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_client.go:1743 google.golang.org/grpc/internal/transport.(*http2Client).keepalive (0x7ff6bf7de7c5) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7de7c5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Client).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:1743[0m
+	3  0x00007ff6bf7d4177 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.gowrap3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:403[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1318 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 1319 - User: D:/ProgramFile/Go/src/net/fd_windows.go:202 net.(*netFD).accept (0x7ff6bf3366cb) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26f019 in [1minternal/poll.(*FD).acceptOne[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1118[0m
+	 7  0x00007ff6bf26f390 in [1minternal/poll.(*FD).Accept[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1153[0m
+	 8  0x00007ff6bf3366cb in [1mnet.(*netFD).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_windows.go:202[0m
+	 9  0x00007ff6bf35143b in [1mnet.(*TCPListener).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock_posix.go:159[0m
+	10  0x00007ff6bf3505b0 in [1mnet.(*TCPListener).Accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock.go:387[0m
+	(truncated)
+  Goroutine 1320 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:406 github.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4 (0x7ff6bf8d2910) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d2910 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:406[0m
+	3  0x00007ff6bf8acfa9 in [1mgithub.com/oklog/run.(*Group).Run.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:38[0m
+	4  0x00007ff6bf8acf5f in [1mgithub.com/oklog/run.(*Group).Run.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:39[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1330 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1331 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:186 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1 (0x7ff6bf8d1896) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1896 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:186[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1332 - User: D:/ProgramFile/Go/src/net/fd_windows.go:202 net.(*netFD).accept (0x7ff6bf3366cb) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26f019 in [1minternal/poll.(*FD).acceptOne[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1118[0m
+	 7  0x00007ff6bf26f390 in [1minternal/poll.(*FD).Accept[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:1153[0m
+	 8  0x00007ff6bf3366cb in [1mnet.(*netFD).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_windows.go:202[0m
+	 9  0x00007ff6bf35143b in [1mnet.(*TCPListener).accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock_posix.go:159[0m
+	10  0x00007ff6bf3505b0 in [1mnet.(*TCPListener).Accept[0m
+	     at D:/ProgramFile/Go/src/net/[1mtcpsock.go:387[0m
+	(truncated)
+  Goroutine 1333 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:406 github.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4 (0x7ff6bf8d2910) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d2910 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:406[0m
+	3  0x00007ff6bf8acfa9 in [1mgithub.com/oklog/run.(*Group).Run.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:38[0m
+	4  0x00007ff6bf8acf5f in [1mgithub.com/oklog/run.(*Group).Run.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:39[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1336 - User: E:/code/lvfeng/library-squirrel/backend/plugin/extension/loader.go:622 github.com/library-squirrel/backend/plugin/extension.(*hostFrontendEventProvider).SubscribeFrontend.func1 (0x7ff6bf98147c) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf98147c in [1mgithub.com/library-squirrel/backend/plugin/extension.(*hostFrontendEventProvider).SubscribeFrontend.func1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/plugin/extension/[1mloader.go:622[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1353 - User: C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/lumberjack.go:379 gopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1 (0x7ff6bf5b9c65) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:379[0m
+	4  0x00007ff6bf5b9c65 in [1mgopkg.in/natefinch/lumberjack%2ev2.(*Logger).mill.func1.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/gopkg.in/natefinch/lumberjack.v2@v2.2.1/[1mlumberjack.go:390[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1362 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 28188)
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 1363 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/client.go:819 github.com/hashicorp/go-plugin.(*Client).Start.func4.1 (0x7ff6bf8ceb71) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf8ceb71 in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func4.1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:819[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1364 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1365 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1366 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1368 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:234 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv (0x7ff6bf8d1be5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1be5 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).Recv[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:234[0m
+	3  0x00007ff6bf8d3b4c in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:581[0m
+	4  0x00007ff6bf8d53b7 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:72[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1369 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83999e in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:825[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8a9e86 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCBrokerStartStreamClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_broker_grpc.pb.go:68[0m
+	 9  0x00007ff6bf8d1624 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:199[0m
+	10  0x00007ff6bf8d5377 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:73[0m
+	(truncated)
+  Goroutine 1370 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7e0b7c in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.func3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:342[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1371 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_server.go:1203 google.golang.org/grpc/internal/transport.(*http2Server).keepalive (0x7ff6bf7e7ee5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7e7ee5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Server).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:1203[0m
+	3  0x00007ff6bf7e0a77 in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:363[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1372 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 1379 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_client.go:1743 google.golang.org/grpc/internal/transport.(*http2Client).keepalive (0x7ff6bf7de7c5) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7de7c5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Client).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:1743[0m
+	3  0x00007ff6bf7d4177 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.gowrap3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:403[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1380 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 1381 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7d4032 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.func6[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:471[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1382 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1383 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83972d in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:841[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8aafe6 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCStdioStreamStdioClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_stdio_grpc.pb.go:75[0m
+	 9  0x00007ff6bf8d59c2 in [1mgithub.com/hashicorp/go-plugin.(*grpcStdioClient).Run[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_stdio.go:135[0m
+	10  0x00007ff6bf8d5347 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap2[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:80[0m
+	(truncated)
+  Goroutine 1384 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/group.go:43 github.com/oklog/run.(*Group).Run (0x7ff6bf8ace85) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bf8ace85 in [1mgithub.com/oklog/run.(*Group).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:43[0m
+	4  0x00007ff6bf8d2815 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:417[0m
+	5  0x00007ff6bf8dce9e in [1mgithub.com/lvfeng-z/library-squirrel-sdk/transport.(*LSPlugin).GRPCClient.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel-sdk/transport/[1mlsplugin.go:45[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1385 - User: E:/code/lvfeng/library-squirrel-sdk/transport/host.go:175 github.com/lvfeng-z/library-squirrel-sdk/transport.(*HostServiceServer).SubscribeFrontend (0x7ff6bf8dc27d) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8dc27d in [1mgithub.com/lvfeng-z/library-squirrel-sdk/transport.(*HostServiceServer).SubscribeFrontend[0m
+	    at E:/code/lvfeng/library-squirrel-sdk/transport/[1mhost.go:175[0m
+	3  0x00007ff6bf859cb3 in [1mgithub.com/lvfeng-z/library-squirrel-sdk/gen._HostService_SubscribeFrontend_Handler[0m
+	    at E:/code/lvfeng/library-squirrel-sdk/gen/[1mplugin_grpc.pb.go:1391[0m
+	4  0x00007ff6bf831472 in [1mgoogle.golang.org/grpc.(*Server).processStreamingRPC[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mserver.go:1716[0m
+	5  0x00007ff6bf833125 in [1mgoogle.golang.org/grpc.(*Server).handleStream[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mserver.go:1860[0m
+	6  0x00007ff6bf82b93f in [1mgoogle.golang.org/grpc.(*Server).serveStreams.func2.1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mserver.go:1065[0m
+	7  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1394 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:186 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1 (0x7ff6bf8d1896) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1896 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:186[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1421 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/client.go:819 github.com/hashicorp/go-plugin.(*Client).Start.func4.1 (0x7ff6bf8ceb71) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf8ceb71 in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func4.1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:819[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1422 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1423 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1424 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/callback_serializer.go:88 google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run (0x7ff6bf792fe5) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf792fe5 in [1mgoogle.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:88[0m
+	4  0x00007ff6bf792dff in [1mgoogle.golang.org/grpc/internal/grpcsync.NewCallbackSerializer.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/grpcsync/[1mcallback_serializer.go:52[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1466 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 14808) [unknown wait reason 22 1638870813900]
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 1467 - User: D:/ProgramFile/Go/src/runtime/sema.go:114 sync.runtime_SemacquireWaitGroup (0x7ff6bf1d72ee) [unknown wait reason 25 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b63c5 in [1mruntime.goparkunlock[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:468[0m
+	2  0x00007ff6bf1b63c5 in [1mruntime.semacquire1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:192[0m
+	3  0x00007ff6bf1d72ee in [1msync.runtime_SemacquireWaitGroup[0m
+	    at D:/ProgramFile/Go/src/runtime/[1msema.go:114[0m
+	4  0x00007ff6bf1ea9c5 in [1msync.(*WaitGroup).Wait[0m
+	    at D:/ProgramFile/Go/src/sync/[1mwaitgroup.go:206[0m
+	5  0x00007ff6bf8cf09c in [1mgithub.com/hashicorp/go-plugin.(*Client).Start.func2[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mclient.go:774[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1468 - User: D:/ProgramFile/Go/src/runtime/syscall_windows.go:431 syscall.syscalln (0x7ff6bf1d9ace) (thread 6648)
+	 0  0x00007ffe543c0444 in [1m???[0m
+	     at [1m?:-1[0m
+	 1  0x00007ff6bf1db8a8 in [1mruntime.systemstack_switch[0m
+	     at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:516[0m
+	 2  0x00007ff6bf1d2b52 in [1mruntime.cgocall[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mcgocall.go:185[0m
+	 3  0x00007ff6bf1d9ace in [1msyscall.syscalln[0m
+	     at D:/ProgramFile/Go/src/runtime/[1msyscall_windows.go:431[0m
+	 4  0x00007ff6bf1f527e in [1msyscall.SyscallN[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mdll_windows.go:99[0m
+	 5  0x00007ff6bf20163a in [1msyscall.readFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1mzsyscall_windows.go:1030[0m
+	 6  0x00007ff6bf26b16a in [1msyscall.ReadFile[0m
+	     at D:/ProgramFile/Go/src/syscall/[1msyscall_windows.go:510[0m
+	 7  0x00007ff6bf26b16a in [1minternal/poll.(*FD).Read.func1[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:572[0m
+	 8  0x00007ff6bf26a129 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:290[0m
+	 9  0x00007ff6bf26ae50 in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:571[0m
+	10  0x00007ff6bf277aaf in [1mos.(*File).read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile_posix.go:29[0m
+	11  0x00007ff6bf277aaf in [1mos.(*File).Read[0m
+	     at D:/ProgramFile/Go/src/os/[1mfile.go:144[0m
+	(truncated)
+  Goroutine 1471 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1472 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/grpc_broker.go:186 github.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1 (0x7ff6bf8d1896) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8d1896 in [1mgithub.com/hashicorp/go-plugin.(*gRPCBrokerClientImpl).StartStream.func1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:186[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1524 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_client.go:1743 google.golang.org/grpc/internal/transport.(*http2Client).keepalive (0x7ff6bf7de7c5) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7de7c5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Client).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:1743[0m
+	3  0x00007ff6bf7d4177 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.gowrap3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:403[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1525 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 1526 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7d4032 in [1mgoogle.golang.org/grpc/internal/transport.NewHTTP2Client.func6[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_client.go:471[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1527 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1528 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/client_stream.go:96 google.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader (0x7ff6bf7c9446) [unknown wait reason 18 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf7c9446 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).waitOnHeader[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:96[0m
+	 3  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc/internal/transport.(*ClientStream).RecvCompress[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mclient_stream.go:111[0m
+	 4  0x00007ff6bf83b9e5 in [1mgoogle.golang.org/grpc.(*csAttempt).recvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1156[0m
+	 5  0x00007ff6bf83adff in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg.func1[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1021[0m
+	 6  0x00007ff6bf83972d in [1mgoogle.golang.org/grpc.(*clientStream).withRetry[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:841[0m
+	 7  0x00007ff6bf83abe9 in [1mgoogle.golang.org/grpc.(*clientStream).RecvMsg[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:1020[0m
+	 8  0x00007ff6bf8aafe6 in [1mgithub.com/hashicorp/go-plugin/internal/plugin.(*gRPCStdioStreamStdioClient).Recv[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/internal/plugin/[1mgrpc_stdio_grpc.pb.go:75[0m
+	 9  0x00007ff6bf8d59c2 in [1mgithub.com/hashicorp/go-plugin.(*grpcStdioClient).Run[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_stdio.go:135[0m
+	10  0x00007ff6bf8d5347 in [1mgithub.com/hashicorp/go-plugin.newGRPCClient.gowrap2[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_client.go:80[0m
+	(truncated)
+  Goroutine 1529 - User: C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/group.go:43 github.com/oklog/run.(*Group).Run (0x7ff6bf8ace85) [unknown wait reason 19 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bf8ace85 in [1mgithub.com/oklog/run.(*Group).Run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/oklog/run@v1.2.0/[1mgroup.go:43[0m
+	4  0x00007ff6bf8d2815 in [1mgithub.com/hashicorp/go-plugin.(*GRPCBroker).AcceptAndServe[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/github.com/hashicorp/go-plugin@v1.8.0/[1mgrpc_broker.go:417[0m
+	5  0x00007ff6bf8dce9e in [1mgithub.com/lvfeng-z/library-squirrel-sdk/transport.(*LSPlugin).GRPCClient.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel-sdk/transport/[1mlsplugin.go:45[0m
+	6  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1539 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/controlbuf.go:420 google.golang.org/grpc/internal/transport.(*controlBuffer).get (0x7ff6bf7ca0aa) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7ca0aa in [1mgoogle.golang.org/grpc/internal/transport.(*controlBuffer).get[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:420[0m
+	3  0x00007ff6bf7ca858 in [1mgoogle.golang.org/grpc/internal/transport.(*loopyWriter).run[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mcontrolbuf.go:597[0m
+	4  0x00007ff6bf7e0b7c in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.func3[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:342[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1540 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/http2_server.go:1203 google.golang.org/grpc/internal/transport.(*http2Server).keepalive (0x7ff6bf7e7ee5) [unknown wait reason 18 1638870813900]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf7e7ee5 in [1mgoogle.golang.org/grpc/internal/transport.(*http2Server).keepalive[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:1203[0m
+	3  0x00007ff6bf7e0a77 in [1mgoogle.golang.org/grpc/internal/transport.NewServerTransport.gowrap1[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/internal/transport/[1mhttp2_server.go:363[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 1541 - User: D:/ProgramFile/Go/src/net/fd_posix.go:68 net.(*netFD).Read (0x7ff6bf334705) [unknown wait reason 2 1638870813900]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf19a357 in [1mruntime.netpollblock[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:575[0m
+	 2  0x00007ff6bf1d4e85 in [1minternal/poll.runtime_pollWait[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mnetpoll.go:351[0m
+	 3  0x00007ff6bf268827 in [1minternal/poll.(*pollDesc).wait[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_poll_runtime.go:84[0m
+	 4  0x00007ff6bf269b6c in [1minternal/poll.(*FD).waitIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:214[0m
+	 5  0x00007ff6bf26a1c5 in [1minternal/poll.(*FD).execIO[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:297[0m
+	 6  0x00007ff6bf26adce in [1minternal/poll.(*FD).Read[0m
+	     at D:/ProgramFile/Go/src/internal/poll/[1mfd_windows.go:586[0m
+	 7  0x00007ff6bf334705 in [1mnet.(*netFD).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mfd_posix.go:68[0m
+	 8  0x00007ff6bf348d65 in [1mnet.(*conn).Read[0m
+	     at D:/ProgramFile/Go/src/net/[1mnet.go:196[0m
+	 9  0x00007ff6bf4108f7 in [1mbufio.(*Reader).Read[0m
+	     at D:/ProgramFile/Go/src/bufio/[1mbufio.go:245[0m
+	10  0x00007ff6bf2226ae in [1mio.ReadAtLeast[0m
+	     at D:/ProgramFile/Go/src/io/[1mio.go:335[0m
+	(truncated)
+  Goroutine 2138 - User: E:/code/lvfeng/library-squirrel/backend/taskManager/model.go:518 github.com/library-squirrel/backend/taskManager.(*ManagedTask).actorLoop.func1.1 (0x7ff6bf96c7fe) [unknown wait reason 19]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae32 in [1mruntime.chanrecv2[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:514[0m
+	3  0x00007ff6bf96c7fe in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).actorLoop.func1.1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:518[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 2170 - User: D:/ProgramFile/Go/src/database/sql/sql.go:1369 database/sql.(*DB).conn (0x7ff6bf4b04d5) [unknown wait reason 18]
+	 0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	 1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	     at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	 2  0x00007ff6bf4b04d5 in [1mdatabase/sql.(*DB).conn[0m
+	     at D:/ProgramFile/Go/src/database/sql/[1msql.go:1369[0m
+	 3  0x00007ff6bf4b3dcd in [1mdatabase/sql.(*DB).begin[0m
+	     at D:/ProgramFile/Go/src/database/sql/[1msql.go:1891[0m
+	 4  0x00007ff6bf4b3cde in [1mdatabase/sql.(*DB).BeginTx.func1[0m
+	     at D:/ProgramFile/Go/src/database/sql/[1msql.go:1874[0m
+	 5  0x00007ff6bf4b1622 in [1mdatabase/sql.(*DB).retry[0m
+	     at D:/ProgramFile/Go/src/database/sql/[1msql.go:1576[0m
+	 6  0x00007ff6bf4b3c2c in [1mdatabase/sql.(*DB).BeginTx[0m
+	     at D:/ProgramFile/Go/src/database/sql/[1msql.go:1873[0m
+	 7  0x00007ff6bf5705d8 in [1mgorm.io/gorm.(*DB).Begin[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mfinisher_api.go:686[0m
+	 8  0x00007ff6bf909dfa in [1mgorm.io/gorm/callbacks.BeginTransaction[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/callbacks/[1mtransaction.go:9[0m
+	 9  0x00007ff6bf564c13 in [1mgorm.io/gorm.(*processor).Execute[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mcallbacks.go:136[0m
+	10  0x00007ff6bf56de74 in [1mgorm.io/gorm.(*DB).Update[0m
+	     at C:/Users/Adminstrator/go/pkg/mod/gorm.io/gorm@v1.31.1/[1mfinisher_api.go:406[0m
+	(truncated)
+  Goroutine 2239 - User: E:/code/lvfeng/library-squirrel/backend/taskManager/model.go:667 github.com/library-squirrel/backend/taskManager.(*ManagedTask).cmdWatcher (0x7ff6bf96cea5) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf96cea5 in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).cmdWatcher[0m
+	    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:667[0m
+	3  0x00007ff6bf96ccdb in [1mgithub.com/library-squirrel/backend/taskManager.(*ManagedTask).handleRunCmd.gowrap1[0m
+	    at E:/code/lvfeng/library-squirrel/backend/taskManager/[1mmodel.go:597[0m
+	4  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 2294 - User: D:/ProgramFile/Go/src/database/sql/sql.go:2212 database/sql.(*Tx).awaitDone (0x7ff6bf4b50e9) [unknown wait reason 19]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf16b2ee in [1mruntime.chanrecv[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:667[0m
+	2  0x00007ff6bf16ae12 in [1mruntime.chanrecv1[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mchan.go:509[0m
+	3  0x00007ff6bf4b50e9 in [1mdatabase/sql.(*Tx).awaitDone[0m
+	    at D:/ProgramFile/Go/src/database/sql/[1msql.go:2212[0m
+	4  0x00007ff6bf4b4117 in [1mdatabase/sql.(*DB).beginDC.gowrap1[0m
+	    at D:/ProgramFile/Go/src/database/sql/[1msql.go:1925[0m
+	5  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+  Goroutine 2309 - User: C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/stream.go:427 google.golang.org/grpc.newClientStreamWithParams.func4 (0x7ff6bf8377ae) [unknown wait reason 18]
+	0  0x00007ff6bf1d5d4e in [1mruntime.gopark[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mproc.go:463[0m
+	1  0x00007ff6bf1b5505 in [1mruntime.selectgo[0m
+	    at D:/ProgramFile/Go/src/runtime/[1mselect.go:351[0m
+	2  0x00007ff6bf8377ae in [1mgoogle.golang.org/grpc.newClientStreamWithParams.func4[0m
+	    at C:/Users/Adminstrator/go/pkg/mod/google.golang.org/grpc@v1.81.1/[1mstream.go:427[0m
+	3  0x00007ff6bf1dd561 in [1mruntime.goexit[0m
+	    at D:/ProgramFile/Go/src/runtime/[1masm_amd64.s:1771[0m
+[119 goroutines]
+Command failed: command not available
+exit
+EOF
