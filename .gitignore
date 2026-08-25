@@ -44,3 +44,5 @@ build/plugins.local.json
 
 # task-graph 技能的活态任务依赖图（个人进行中状态，非团队共享设计；完成后归档于同目录）
 .claude/workflow/
+# 测试截图
+.claude/testing/shots
