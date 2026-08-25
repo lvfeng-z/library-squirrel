@@ -30,6 +30,7 @@ type Plugin struct {
 	BuildID                sql.NullString `gorm:"column:build_id" json:"buildId"`                                 // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，升级判据与静态资产缓存键以此判同；历史记录为 NULL）
 	UpgradeDeclinedBuildID sql.NullString `gorm:"column:upgrade_declined_build_id" json:"upgradeDeclinedBuildId"` // 用户拒绝升级的目标 buildId（「跳过此构建」持久化；与捆绑包 buildId 等值时检测静默跳过，新 buildId 到来自动失效；重装全字段覆盖自然清零）
 	Trusted                sql.NullBool   `gorm:"column:trusted" json:"trusted"`                                  // 信任标记：bundled=true，第三方经用户确认后 true；false 则不运行（运行门控）
+	Official               sql.NullBool   `gorm:"column:official" json:"official"`                                // 官方身份：内容摘要命中主程序携带的官方指纹名单（locked_config.yaml）为 true；NULL/false=未证实。与渠道（source）和信任（trusted）均正交，恒不接入信任/运行门控
 }
 
 // NewPlugin 创建插件

@@ -67,6 +67,23 @@ function Assert-BuildId([string]$zipPath, [string]$repoName) {
     }
 }
 
+# Upsert one official fingerprint entry (publicId/buildId/contentDigest) into
+# backend/config/locked_config.yaml for a successfully built plugin zip.
+# Runs the single Go tool build/tools/genofficial, which reuses the runtime
+# digest implementation in backend/plugin - no parallel digest logic in PS.
+# Failure is treated as a build failure of that plugin (roster must stay in
+# sync with the shipped zips).
+function Add-OfficialRosterEntry([string]$zipPath) {
+    $lockedPath = Join-Path $mainRepo 'backend\config\locked_config.yaml'
+    Push-Location $mainRepo
+    try {
+        & go run ./build/tools/genofficial -zip $zipPath -locked $lockedPath
+        if ($LASTEXITCODE -ne 0) { throw "genofficial exit code $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+}
+
 $failedPlugins = @()
 $skippedPlugins = @()
 
@@ -107,6 +124,7 @@ foreach ($plugin in $plugins) {
         }
         try {
             Assert-BuildId $directZip $repoName
+            Add-OfficialRosterEntry $directZip
             Write-Host "[完成] $zipName 已直接打包到目标目录" -ForegroundColor Green
         } catch {
             Write-Host "[失败] $repoName ：产物校验未通过（$($_.Exception.Message)）" -ForegroundColor Red
@@ -129,6 +147,14 @@ foreach ($plugin in $plugins) {
         continue
     }
     Copy-Item $zipPath (Join-Path $targetDir $zipName) -Force
+    # Roster entry is generated from the copy in the target dir (the artifact that ships)
+    try {
+        Add-OfficialRosterEntry (Join-Path $targetDir $zipName)
+    } catch {
+        Write-Host "[FAIL] $repoName : official roster generation failed - $($_.Exception.Message)" -ForegroundColor Red
+        $failedPlugins += $repoName
+        continue
+    }
     Write-Host "[完成] $zipName -> resources\bundled-plugins\" -ForegroundColor Green
 }
 

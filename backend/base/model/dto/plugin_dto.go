@@ -24,6 +24,7 @@ type PluginDTO struct {
 	SourceDetail           *string `json:"sourceDetail"`           // 来源详情（安装包路径/URL）
 	UpgradeDeclinedBuildID *string `json:"upgradeDeclinedBuildId"` // 用户拒绝升级的目标 buildId（非空=已跳过该构建，管理页渲染「已跳过」并提供重新提示）
 	Trusted                *bool   `json:"trusted"`                // 信任标记；false=未信任（未激活，需手动信任）
+	Official               *bool   `json:"official"`               // 官方身份；true=内容摘要命中官方指纹名单，NULL/false=未证实（前端按 === true 消费，与 trusted 同风格）
 	CreateTime             int64   `json:"createTime"`
 	UpdateTime             int64   `json:"updateTime"`
 }
@@ -51,6 +52,7 @@ func NewPluginDTO(plugin *entity2.Plugin) *PluginDTO {
 		SourceDetail:           util.NullStringToPointer(plugin.SourceDetail),
 		UpgradeDeclinedBuildID: util.NullStringToPointer(plugin.UpgradeDeclinedBuildID),
 		Trusted:                util.NullBoolToPointer(plugin.Trusted),
+		Official:               util.NullBoolToPointer(plugin.Official),
 		CreateTime:             plugin.GetCreateTime(),
 		UpdateTime:             plugin.GetUpdateTime(),
 	}

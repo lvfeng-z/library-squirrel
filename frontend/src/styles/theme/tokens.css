@@ -201,7 +201,7 @@
   --app-status-toggle-enabled-text: var(--app-status-done-text);
   --app-status-toggle-enabled-border: var(--app-status-done-border);
 
-  /* —— 插件来源/信任（bundled=官方→done；local/url/marketplace=第三方渠道→idle；unverified=未信任→warn，trusted=已信任→done）—— */
+  /* —— 插件渠道/官方身份/信任（渠道 bundled=捆绑、local/url/marketplace=第三方→idle；official=官方身份（内容命中官方指纹名单）→done；unverified=未信任→warn，trusted=已信任→done）—— */
   --app-status-plugin-bundled-bg: var(--app-status-done-bg);
   --app-status-plugin-bundled-text: var(--app-status-done-text);
   --app-status-plugin-bundled-border: var(--app-status-done-border);
@@ -214,6 +214,9 @@
   --app-status-plugin-marketplace-bg: var(--app-status-idle-bg);
   --app-status-plugin-marketplace-text: var(--app-status-idle-text);
   --app-status-plugin-marketplace-border: var(--app-status-idle-border);
+  --app-status-plugin-official-bg: var(--app-status-done-bg);
+  --app-status-plugin-official-text: var(--app-status-done-text);
+  --app-status-plugin-official-border: var(--app-status-done-border);
   --app-status-plugin-unverified-bg: var(--app-status-warn-bg);
   --app-status-plugin-unverified-text: var(--app-status-warn-text);
   --app-status-plugin-unverified-border: var(--app-status-warn-border);

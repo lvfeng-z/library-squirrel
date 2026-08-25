@@ -37,7 +37,9 @@ async function loadStatus(publicId: string) {
   }
 }
 
-// 来源状态 key（source 枚举值直接拼 plugin-{source}，与列表来源列同 key）
+// 官方身份（内容摘要命中主程序携带的官方指纹名单；仅 true 视为官方，false/NULL 一律非官方——保守方向）
+const official = computed(() => plugin.value?.official === true)
+// 安装渠道状态 key（source 枚举值直接拼 plugin-{source}，与列表渠道维度同 key）
 const sourceStatusKey = computed(() => `plugin-${plugin.value?.source ?? ''}`)
 // 信任状态 key（仅 true 视为已信任，false/NULL 一律未信任——保守方向）
 const trustedStatusKey = computed(() =>
@@ -71,7 +73,18 @@ function formatSize(bytes: number | undefined): string {
         border
         size="small"
       >
-        <el-descriptions-item label="来源">
+        <el-descriptions-item label="官方身份">
+          <StatusTag
+            v-if="official"
+            size="small"
+            status="plugin-official"
+          />
+          <span
+            v-else
+            class="text-unofficial"
+          >非官方</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="安装渠道">
           <StatusTag
             size="small"
             :status="sourceStatusKey"
@@ -230,6 +243,12 @@ function formatSize(bytes: number | undefined): string {
 
 .text-muted {
   color: #909399;
+  font-size: 12px;
+}
+
+/* 官方身份行非官方时的中性文案（与渠道 tag 的灰同走 idle tone，随主题变化） */
+.text-unofficial {
+  color: var(--app-status-idle-text);
   font-size: 12px;
 }
 

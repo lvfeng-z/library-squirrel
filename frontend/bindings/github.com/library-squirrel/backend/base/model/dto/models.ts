@@ -295,6 +295,11 @@ export class PluginDTO {
      * 信任标记；false=未信任（未激活，需手动信任）
      */
     "trusted": boolean | null;
+
+    /**
+     * 官方身份；true=内容摘要命中官方指纹名单，NULL/false=未证实（前端按 === true 消费，与 trusted 同风格）
+     */
+    "official": boolean | null;
     "createTime": number;
     "updateTime": number;
 
@@ -350,6 +355,9 @@ export class PluginDTO {
         }
         if (!("trusted" in $$source)) {
             this["trusted"] = null;
+        }
+        if (!("official" in $$source)) {
+            this["official"] = null;
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;

@@ -421,6 +421,12 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 			return nil, nil
 		}
 		logger.Log.Infof("捆绑插件已安装，跳过: %s", installDTO.PublicID)
+		// 存量官方身份证实（启动扫描顺带）：历史手动安装的官方包在此按已装目录内容纠正 Official 标记
+		installedDir := ""
+		if existing.RootPath.Valid && existing.RootPath.String != "" {
+			installedDir = filepath.Join(s.getAppRoot(), existing.RootPath.String)
+		}
+		s.verifyExistingOfficial(ctx, officialRoster(), existing, installedDir)
 		return nil, nil
 	}
 
@@ -506,6 +512,8 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.SourceDetail = sql.NullString{String: installDTO.PackagePath, Valid: installDTO.PackagePath != ""}
 	plugin.BuildID = sql.NullString{String: installDTO.BuildID, Valid: installDTO.BuildID != ""}
 	plugin.Trusted = sql.NullBool{Bool: ictx.Trusted, Valid: true}
+	// 官方身份统一查名单推导（单一推导点，重装链换内容后随此重算）：与渠道/信任均正交
+	plugin.Official = s.matchOfficial(installDTO)
 
 	// 捕获重装前的旧备份引用（换版直清目标；Save 全字段覆盖后行内旧值即失）
 	prevBackupID := int64(0)

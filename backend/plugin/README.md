@@ -42,6 +42,7 @@
 - **运行时插件 vs 纯 UI 插件**：前者有 Go 入口（DLL 子进程），后者仅 plugin.json。
 - **来源（Source）**：插件安装来源（bundled/local/url/marketplace），由主程序按安装入口判定、写入 `plugin.Source`，不由插件声明。
 - **信任标记（Trusted）**：`plugin.Trusted`（bool）。bundled 默认 true；第三方经用户知情同意后 true；false 则不激活（运行门控）。
+- **官方身份（Official）**：`plugin.Official`（bool；NULL/false=未证实）。判定=内容摘要命中主程序内嵌的官方指纹名单（`backend/config/locked_config.yaml`，构建管线生成维护、不参与配置两层合并、磁盘无覆盖物）。与渠道（source）、信任（trusted）均正交：bundled 渠道不短路判定（清单被换自制 zip 时 source=bundled 但 official=false），官方身份恒不接入信任/运行门控与升级资格。安装路径 `installCore` 统一推导（重装换内容随此重算）；启动扫描对判变不成立的已装行按已装目录摘要顺带证实（存量纠正，buildId 命中名单为门槛）。实现在 `official.go`，设计见 `doc/plan/插件官方身份判定与来源维度拆分方案.md`。
 - **构建身份（BuildID）**：构建管线注入 plugin.json `buildId` 字段的 git describe 标识（同源码状态重构建永远同值，与构建环境无关）。`InstallBundled` 以它做捆绑插件升级检测；静态资产 URL/ETag 缓存键同源（激活时优先 buildId，未打标包回落 version，见 `app.go` activatePlugin）。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除（无判据性读取方）。设计见 `doc/plan/插件构建身份与升级判据机制.md`。
 - **检查更新待办（pendingUpgrade，内存态）**：启动期检测出的更新事项（available/forced/error 三类），进程生命周期、重启重检；前端「插件」菜单红点与管理页待更新区块消费。落库的只有拒绝标记 `UpgradeDeclinedBuildID`（「跳过此构建」持久化，重装全字段覆盖自然清零）。设计见 `doc/plan/插件检查更新方案.md`。
 - **PluginStatus**：插件运行时状态（进程存活、激活情况等）。

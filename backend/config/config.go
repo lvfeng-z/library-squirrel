@@ -8,10 +8,14 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/viper"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 //go:embed default_config.yaml
 var defaultConfigFS embed.FS
+
+//go:embed locked_config.yaml
+var lockedConfigFS embed.FS
 
 // Config 应用配置（统一配置结构）
 type Config struct {
@@ -22,6 +26,23 @@ type Config struct {
 	Task     TaskConfig     `mapstructure:"task"`
 	Sites    []SiteConfig   `mapstructure:"sites"`
 	Plugins  []PluginConfig `mapstructure:"plugins"`
+	// Locked 订死配置：随二进制分发的权威数据，由 loadLocked 独立加载（不走 viper 合并链，
+	// 磁盘 config.yaml 无对应覆盖物）；mapstructure:"-" 显式排除出主 Unmarshal，防磁盘手写 locked 键弄脏单一来源
+	Locked LockedConfig `mapstructure:"-"`
+}
+
+// LockedConfig 订死配置——随二进制分发的权威数据。加载走独立 go:embed + yaml.Unmarshal，
+// 不参与 viper 两层合并（磁盘无覆盖物，防篡改由覆盖路径不存在保证）。
+// 未来新增「随二进制分发的权威数据」一律进本文件并保持不进合并链
+type LockedConfig struct {
+	OfficialPlugins []OfficialPluginEntry `yaml:"officialPlugins"` // 官方插件指纹名单（构建管线累积维护，旧条目不删；空名单时官方判定全不命中）
+}
+
+// OfficialPluginEntry 官方插件指纹名单条目：以 (publicId, buildId) 定位、contentDigest 终裁
+type OfficialPluginEntry struct {
+	PublicID      string `yaml:"publicId"`      // 插件身份键（反向域名）
+	BuildID       string `yaml:"buildId"`       // 构建身份标识（git describe 输出，同源码状态重构建同值）
+	ContentDigest string `yaml:"contentDigest"` // 包内容摘要（文件级 sha256 聚合 hex，排除 zip 容器元数据）
 }
 
 // ServerConfig 服务器配置
@@ -126,8 +147,31 @@ func LoadFromDir(dir string) (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
+	cfg.Locked = loadLocked()
 
 	return cfg, nil
+}
+
+// parseLocked 解析订死配置内容。解析失败不拦启动：返回空名单（保守降级，官方判定全不命中）。
+// config 包不依赖 logger（logger 反向依赖 config），降级告警走 stderr
+func parseLocked(data []byte) LockedConfig {
+	var locked LockedConfig
+	if err := yaml.Unmarshal(data, &locked); err != nil {
+		fmt.Fprintf(os.Stderr, "解析订死配置 locked_config.yaml 失败（空名单降级）: %v\n", err)
+		return LockedConfig{}
+	}
+	return locked
+}
+
+// loadLocked 读取嵌入的订死配置文件并解析。go:embed 编译期内嵌、文件必然存在；
+// 本函数是订死配置的唯一取值路径（恒不进 viper 合并链）
+func loadLocked() LockedConfig {
+	data, err := lockedConfigFS.ReadFile("locked_config.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取嵌入订死配置失败（空名单降级）: %v\n", err)
+		return LockedConfig{}
+	}
+	return parseLocked(data)
 }
 
 // Get 获取全局配置

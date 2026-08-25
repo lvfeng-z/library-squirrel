@@ -67,6 +67,11 @@ export class PluginWithExtension {
     "trusted": sql$0.NullBool;
 
     /**
+     * 官方身份：内容摘要命中主程序携带的官方指纹名单（locked_config.yaml）为 true；NULL/false=未证实。与渠道（source）和信任（trusted）均正交，恒不接入信任/运行门控
+     */
+    "official": sql$0.NullBool;
+
+    /**
      * 贡献点类型
      */
     "ExtensionKey": string;
@@ -150,6 +155,9 @@ export class PluginWithExtension {
         if (!("trusted" in $$source)) {
             this["trusted"] = (new sql$0.NullBool());
         }
+        if (!("official" in $$source)) {
+            this["official"] = (new sql$0.NullBool());
+        }
         if (!("ExtensionKey" in $$source)) {
             this["ExtensionKey"] = "";
         }
@@ -185,6 +193,7 @@ export class PluginWithExtension {
         const $$createField21_0 = $$createType0;
         const $$createField22_0 = $$createType0;
         const $$createField23_0 = $$createType2;
+        const $$createField24_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField3_0($$parsedSource["publicId"]);
@@ -248,6 +257,9 @@ export class PluginWithExtension {
         }
         if ("trusted" in $$parsedSource) {
             $$parsedSource["trusted"] = $$createField23_0($$parsedSource["trusted"]);
+        }
+        if ("official" in $$parsedSource) {
+            $$parsedSource["official"] = $$createField24_0($$parsedSource["official"]);
         }
         return new PluginWithExtension($$parsedSource as Partial<PluginWithExtension>);
     }

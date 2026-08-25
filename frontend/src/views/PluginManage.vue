@@ -94,7 +94,7 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     width: 90,
     headerAlign: 'center',
     dataAlign: 'center',
-    render: (data) => h(StatusTag, { status: buildSourceStatusKey(data) })
+    render: (data, row) => h(StatusTag, { status: buildSourceStatusKey(row) })
   }),
   new Thead({
     type: 'custom',
@@ -119,9 +119,9 @@ const pluginThead: Ref<Thead<PluginDTO>[]> = ref([
     showOverflowTooltip: true
   })
 ])
-// 来源枚举值 → 状态 key（bundled/local/url/marketplace 与 StatusRegistry 的 plugin-* key 一一对应，绿=官方、灰=第三方）
-function buildSourceStatusKey(source: string | null | undefined): string {
-  return `plugin-${source ?? ''}`
+// 来源状态 key：官方身份优先（内容摘要命中官方指纹名单→plugin-official 绿），未证实按安装渠道 plugin-{source}（bundled/local/url/marketplace）
+function buildSourceStatusKey(plugin: PluginDTO | null | undefined): string {
+  return plugin?.official === true ? 'plugin-official' : `plugin-${plugin?.source ?? ''}`
 }
 // 插件的查询参数
 const pluginSearchParams: Ref<PluginQueryDTO> = ref<PluginQueryDTO>(new PluginQueryDTO())
@@ -152,9 +152,9 @@ const declinedPlugins = computed<PluginDTO[]>(() => {
   ) as PluginDTO[]
 })
 
-// 列表是否存在非官方来源插件（第三方免责提示仅此时显示，纯官方库下省略）
+// 列表是否存在非官方插件（第三方免责提示仅此时显示，纯官方库下省略；仅 true 视为官方，false/NULL 一律非官方——保守方向）
 const hasThirdPartyPlugin = computed(() => {
-  return tableRows.value.some((plugin) => plugin?.source !== 'bundled')
+  return tableRows.value.some((plugin) => plugin?.official !== true)
 })
 
 // 待更新区块是否可见（告知类任一非空；可升级项经行内按钮与批量升级答复，不占区块）
@@ -486,10 +486,11 @@ async function selectPackage(): Promise<string | undefined> {
 async function handleInstallClicked() {
   const packagePath = await selectPackage()
   if (isNotBlank(packagePath)) {
-    // 第三方插件（用户手动选择的本地包）知情同意：告知完整宿主能力风险，确认后传 trusted=true；取消则不安装
+    // 手动安装（用户选择的本地包）知情同意：告知完整宿主能力风险，确认后传 trusted=true；取消则不安装。
+    // 文案中性化——不断言包的发布者身份，官方判定由 host 指纹名单在安装后给出（列表绿「官方」标呈现）
     ElMessageBox.confirm(
-      '此插件来自第三方，安装运行后将获得宿主完整权限，包括：读写你的全部资源库数据、创建下载任务、发起任意网络请求、打开原生窗口、执行任意代码。<br><br>注意：插件作者身份无法验证，运行期间造成的数据外泄或损坏将不可逆。<br><br>请仅在你了解并信任该插件及其作者时确认安装。',
-      '安装第三方插件',
+      '此插件非随主程序捆绑分发，安装运行后将获得宿主完整权限，包括：读写你的全部资源库数据、创建下载任务、发起任意网络请求、打开原生窗口、执行任意代码。<br><br>注意：插件作者身份无法验证，运行期间造成的数据外泄或损坏将不可逆。<br><br>请仅在你了解并信任该插件及其作者时确认安装。',
+      '安装插件',
       { confirmButtonText: '确认安装', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true }
     )
       .then(() => installFromPath(packagePath, true))
@@ -575,12 +576,12 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
             </div>
           </div>
         </div>
-        <!-- 第三方免责提示：仅列表存在非官方来源插件时显示 -->
+        <!-- 第三方免责提示：仅列表存在非官方插件时显示 -->
         <div
           v-if="hasThirdPartyPlugin"
           class="plugin-disclaimer"
         >
-          来源标记区分官方捆绑插件与第三方插件；第三方插件由其作者独立维护，相关问题请找插件作者。
+          来源标记区分官方与第三方插件；第三方插件由其作者独立维护，相关问题请咨询插件作者。
         </div>
         <search-table
           ref="pluginSearchTable"
@@ -645,7 +646,7 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
                   @clear="pluginSearchParams.source.value = null"
                 >
                   <el-option
-                    label="官方"
+                    label="捆绑"
                     value="bundled"
                   />
                   <el-option

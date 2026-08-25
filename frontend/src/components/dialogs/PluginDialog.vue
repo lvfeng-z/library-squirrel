@@ -26,7 +26,9 @@ const formData = defineModel<PluginDTO>('formData', { required: true })
 const state = defineModel<boolean>('state', { required: true })
 
 // 变量
-// 来源状态 key（source 枚举值直接拼 plugin-{source}，与列表来源列同 key）
+// 官方身份（内容摘要命中主程序携带的官方指纹名单；仅 true 视为官方，与列表来源列同判断规则）
+const official = computed(() => formData.value.official === true)
+// 安装渠道状态 key（source 枚举值直接拼 plugin-{source}，与列表渠道维度同 key）
 const sourceStatusKey = computed(() => `plugin-${formData.value.source ?? ''}`)
 // 信任状态 key（仅 true 视为已信任，与列表信任列同判断规则）
 const trustedStatusKey = computed(() =>
@@ -103,10 +105,24 @@ async function unInstall(pluginPublicId: string | undefined | null) {
       </el-row>
       <el-row>
         <el-col :span="12">
-          <el-form-item label="来源">
+          <el-form-item label="官方身份">
+            <StatusTag
+              v-if="official"
+              status="plugin-official"
+            />
+            <span
+              v-else
+              class="text-unofficial"
+            >非官方</span>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="安装渠道">
             <StatusTag :status="sourceStatusKey" />
           </el-form-item>
         </el-col>
+      </el-row>
+      <el-row>
         <el-col :span="12">
           <el-form-item label="信任">
             <StatusTag :status="trustedStatusKey" />
@@ -165,4 +181,10 @@ async function unInstall(pluginPublicId: string | undefined | null) {
   </form-dialog>
 </template>
 
-<style scoped></style>
+<style scoped>
+/* 官方身份行非官方时的中性文案（与渠道 tag 的灰同走 idle tone，随主题变化） */
+.text-unofficial {
+  color: var(--app-status-idle-text);
+  font-size: 12px;
+}
+</style>
