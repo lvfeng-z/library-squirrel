@@ -19,7 +19,9 @@
 | `GetById(id)` | 按清单行 ID 查询（对业务行的唯一查询面） |
 | `GetBackupPath(backup)` / `ResolveBackupPathById(id)` | 取备份文件绝对路径 |
 | `RestoreFile(backupPath, targetPath)` | 从备份路径还原文件到目标绝对路径（源端 backup/ 的 fsmonitor 操作抑制在本方法内登记） |
-| `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍、行不存在幂等；文件端抑制在本方法内登记） |
+| `DeleteBackup(id)` | 删除备份的磁盘文件与清单行（文件缺失容忍、行不存在幂等；文件端抑制在本方法内登记）。**真实删除失败（非文件缺失）不删记录并返回错误**——文件还在就删记录会使记录失真，由调用方决定仅删记录或放弃。两阶段拆分：先 `DeleteBackupFile` 后 `DeleteBackupRecord` |
+| `DeleteBackupFile(id)` | 仅删除备份的磁盘文件（清单行不动）——删除流「先文件后记录」Phase A：文件删不动即中止（记录未动），由调用方决定仅删记录或放弃 |
+| `DeleteBackupRecord(id)` | 仅删除备份清单行（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径 |
 | `ListCreatedBefore(beforeMs)` | 查询创建时间早于阈值的清单行（实现 backupGovernance.BackupCatalog：正向无主候选） |
 | `ListAllIDs()` | 全量投影清单行 ID（实现 backupGovernance.BackupCatalog：反向现存集） |
 | `PageBackups(pageNumber, pageSize, includeIDs, excludeIDs)` | 分页查保管清单（create_time 倒序；实现 backupGovernance.BackupCatalog：备份管理面板清单分页。ID 集过滤，引用态语义由治理方折算，本模块只做纯过滤——大集分块避 SQLite 参数上限） |

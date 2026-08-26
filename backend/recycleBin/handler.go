@@ -83,16 +83,30 @@ func (h *Handler) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 	return model.Success(result)
 }
 
-// PurgeWork 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）
+// PurgeWork 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）。
+// 文件删除失败（被占用/只读等）时保留记录并返回错误——前端据此询问「仅删记录或放弃」（PurgeWorkRecords）
 // workId: 已软删作品 ID
 func (h *Handler) PurgeWork(ctx context.Context, workId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.PurgeWork(ctx, workId))
 }
 
-// PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）
+// PurgeWorkRecords 仅删除回收站作品条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+// workId: 已软删作品 ID
+func (h *Handler) PurgeWorkRecords(ctx context.Context, workId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.PurgeWorkRecords(ctx, workId))
+}
+
+// PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）。
+// 文件删除失败（被占用/只读等）时保留记录并返回错误——前端据此询问「仅删记录或放弃」（PurgeStoreRecords）
 // storeId: 已软删 persistent_store 行 ID
 func (h *Handler) PurgeStore(ctx context.Context, storeId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.PurgeStore(ctx, storeId))
+}
+
+// PurgeStoreRecords 仅删除回收站文件条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+// storeId: 已软删 persistent_store 行 ID
+func (h *Handler) PurgeStoreRecords(ctx context.Context, storeId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.PurgeStoreRecords(ctx, storeId))
 }
 
 // RestoreStore 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站）

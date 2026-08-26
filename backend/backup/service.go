@@ -249,8 +249,20 @@ func (s *Service) ResolveBackupPathById(ctx context.Context, backupId int64) str
 }
 
 // DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍；行不存在幂等成功——
-// 并发删除/确认流重复条目确认时行可能已先被清）
+// 并发删除/确认流重复条目确认时行可能已先被清）。真实删除失败（非文件缺失）
+// 不删记录并返回错误：文件还在就删记录会使记录失真（RECORD_STATE_TRUTHFUL），
+// 由调用方决定仅删记录（DeleteBackupRecord）或放弃。两阶段拆分见 DeleteBackupFile/DeleteBackupRecord
 func (s *Service) DeleteBackup(ctx context.Context, id int64) error {
+	if err := s.DeleteBackupFile(ctx, id); err != nil {
+		return err
+	}
+	return s.DeleteBackupRecord(ctx, id)
+}
+
+// DeleteBackupFile 仅删除备份的磁盘文件（清单行不动）——文件缺失容忍，真实删除失败返回错误。
+// 供删除流「先文件后记录」两阶段的 Phase A：文件删不动即中止（记录未动），由调用方决定
+// 仅删记录或放弃
+func (s *Service) DeleteBackupFile(ctx context.Context, id int64) error {
 	backup, err := s.repo.GetById(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -264,11 +276,19 @@ func (s *Service) DeleteBackup(ctx context.Context, id int64) error {
 	if absPath := s.GetBackupPath(backup); absPath != "" {
 		// 文件先删、清单行后删的窗口内 Remove 事件会命中本行，登记抑制防误报
 		release := s.suppressWithinWorkDir(absPath)
-		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-			logger.Log.Warnf("删除备份文件失败（将仅删除记录）: %s, %v", absPath, err)
-		}
+		err := os.Remove(absPath)
 		release()
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("删除备份文件失败（记录已保留）: %w", err)
+		}
 	}
+	return nil
+}
+
+// DeleteBackupRecord 仅删除备份清单行（不动磁盘文件）——用户对文件删除失败明确选择
+// 「仅删记录」的降级路径（Phase B 记录侧）：文件被占用/只读保留在磁盘，记录不再指向它
+// （与 DeleteBackup 的「文件缺失容忍」同属用户知情例外，缺省路径仍是不删记录）
+func (s *Service) DeleteBackupRecord(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 

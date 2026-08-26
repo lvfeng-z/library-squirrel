@@ -92,7 +92,13 @@ func TestPurgeStoreConsumesBackup(t *testing.T) {
 	if env.storeRowExists(t, storeId) {
 		t.Fatalf("清理后 store 行应物理消亡")
 	}
-	if len(env.backup.deletedIds) != 1 || env.backup.deletedIds[0] != 701 {
+	consumed := false
+	for _, id := range env.backup.deletedIds {
+		if id == 701 {
+			consumed = true
+		}
+	}
+	if !consumed {
 		t.Fatalf("行内 backup_id=701 应被消费式删除，实际删除 %v", env.backup.deletedIds)
 	}
 }
@@ -187,6 +193,48 @@ func TestPurgeStoreRejectsAliveRow(t *testing.T) {
 	}
 	if !env.storeRowExists(t, alive.GetID()) {
 		t.Fatalf("活行不应被误删")
+	}
+}
+
+// TestPurgeStoreFileFailureRetainsRecord Phase A 文件删除失败（非缺失）→ 返回错误、记录保留，
+// 不静默删记录制造「记录消失、文件残留」孤儿。用非空目录制造跨平台 os.Remove 失败
+func TestPurgeStoreFileFailureRetainsRecord(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	rel := "store/resource/作者/删不动"
+	if err := os.MkdirAll(filepath.Join(env.workDir, rel, "inner"), 0o755); err != nil {
+		t.Fatalf("造非空目录失败: %v", err)
+	}
+	storeId := env.insertDeletedStore(t, "删除失败残迹", rel, 0)
+
+	if err := env.svc.PurgeStore(context.Background(), storeId); err == nil {
+		t.Fatalf("文件删除失败应返回错误，实际 nil")
+	}
+	if !env.storeRowExists(t, storeId) {
+		t.Fatalf("文件删除失败后记录应保留，实际被删")
+	}
+}
+
+// TestPurgeStoreRecordsKeepsFile 仅删记录（用户对文件失败显式选择）：记录删除、磁盘文件保留
+func TestPurgeStoreRecordsKeepsFile(t *testing.T) {
+	env := newPurgeStoreTestEnv(t)
+	rel := "store/resource/作者/仅删记录.mp4"
+	abs := filepath.Join(env.workDir, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatalf("造目录失败: %v", err)
+	}
+	if err := os.WriteFile(abs, []byte("x"), 0o644); err != nil {
+		t.Fatalf("造文件失败: %v", err)
+	}
+	storeId := env.insertDeletedStore(t, "仅删记录", rel, 0)
+
+	if err := env.svc.PurgeStoreRecords(context.Background(), storeId); err != nil {
+		t.Fatalf("仅删记录应成功，实际 %v", err)
+	}
+	if env.storeRowExists(t, storeId) {
+		t.Fatalf("仅删记录后行应删除")
+	}
+	if _, err := os.Stat(abs); err != nil {
+		t.Fatalf("仅删记录不应动磁盘文件，实际 %v", err)
 	}
 }
 

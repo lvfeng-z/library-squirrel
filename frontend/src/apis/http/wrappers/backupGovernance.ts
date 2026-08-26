@@ -24,9 +24,17 @@ export async function backupGovernancePageBackups(page: Page<BackupDTO>, referen
 /**
  * 批量删除备份（磁盘文件与清单行）。任一 id 被业务行引用即整体拒绝；
  * 「清理全部无主」的批量圈定取 backupGovernanceGetBackupStats 的 expiredOrphanIds（超保留期）
+ * 文件删除失败（被占用/只读）时后端保留记录并返回错误——调用方据此询问「仅删记录或放弃」
  */
 export async function backupGovernanceDeleteBackups(ids: number[]): Promise<ApiResult<any>> {
   return requireResponse(await BackupGovernanceHandler.DeleteBackups(ids), '删除备份', false)
+}
+
+/**
+ * 仅删除备份清单行（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+ */
+export async function backupGovernanceDeleteBackupRecords(ids: number[]): Promise<ApiResult<any>> {
+  return requireResponse(await BackupGovernanceHandler.DeleteBackupRecords(ids), '仅删除备份记录', false)
 }
 
 /**

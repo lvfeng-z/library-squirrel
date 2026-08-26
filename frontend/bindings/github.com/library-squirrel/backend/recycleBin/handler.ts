@@ -53,7 +53,8 @@ export function PageWorks(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query
 }
 
 /**
- * PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）
+ * PurgeStore 彻底删除回收站文件条目（不可恢复，条目单位=store 行）。
+ * 文件删除失败（被占用/只读等）时保留记录并返回错误——前端据此询问「仅删记录或放弃」（PurgeStoreRecords）
  * storeId: 已软删 persistent_store 行 ID
  */
 export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
@@ -63,11 +64,32 @@ export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResp
 }
 
 /**
- * PurgeWork 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）
+ * PurgeStoreRecords 仅删除回收站文件条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+ * storeId: 已软删 persistent_store 行 ID
+ */
+export function PurgeStoreRecords(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2988714605, storeId).then(($result: any) => {
+        return $$createType16($result);
+    });
+}
+
+/**
+ * PurgeWork 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）。
+ * 文件删除失败（被占用/只读等）时保留记录并返回错误——前端据此询问「仅删记录或放弃」（PurgeWorkRecords）
  * workId: 已软删作品 ID
  */
 export function PurgeWork(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3030960545, workId).then(($result: any) => {
+        return $$createType16($result);
+    });
+}
+
+/**
+ * PurgeWorkRecords 仅删除回收站作品条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+ * workId: 已软删作品 ID
+ */
+export function PurgeWorkRecords(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1231168777, workId).then(($result: any) => {
         return $$createType16($result);
     });
 }

@@ -50,17 +50,33 @@ export async function recycleBinRestoreWork(workId: number, overwrite: boolean):
 }
 
 /**
- * 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）
+ * 彻底删除回收站作品条目（不可恢复，级联清从属行与备份）。
+ * 文件删除失败（被占用/只读等）时后端保留记录并返回错误——调用方据此询问「仅删记录或放弃」
  */
 export async function recycleBinPurgeWork(workId: number): Promise<ApiResult<any>> {
   return requireResponse(await RecycleBinHandler.PurgeWork(workId), '彻底删除作品', false)
 }
 
 /**
- * 彻底删除回收站文件条目（不可恢复，条目单位=store 行）
+ * 仅删除回收站作品条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+ */
+export async function recycleBinPurgeWorkRecords(workId: number): Promise<ApiResult<any>> {
+  return requireResponse(await RecycleBinHandler.PurgeWorkRecords(workId), '仅删除作品记录', false)
+}
+
+/**
+ * 彻底删除回收站文件条目（不可恢复，条目单位=store 行）。
+ * 文件删除失败（被占用/只读等）时后端保留记录并返回错误——调用方据此询问「仅删记录或放弃」
  */
 export async function recycleBinPurgeStore(storeId: number): Promise<ApiResult<any>> {
   return requireResponse(await RecycleBinHandler.PurgeStore(storeId), '彻底删除文件条目', false)
+}
+
+/**
+ * 仅删除回收站文件条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+ */
+export async function recycleBinPurgeStoreRecords(storeId: number): Promise<ApiResult<any>> {
+  return requireResponse(await RecycleBinHandler.PurgeStoreRecords(storeId), '仅删除文件条目记录', false)
 }
 
 /**

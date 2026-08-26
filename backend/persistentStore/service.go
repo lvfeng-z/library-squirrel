@@ -337,13 +337,22 @@ func (s *Service) getWorkDir() string {
 	return s.workDirGetter()
 }
 
-// CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
-func (s *Service) CleanupFile(relPath string) {
+// CleanupFileResult 删除指定相对路径的磁盘文件并返回真实失败（文件缺失容忍返回 nil）。
+// 供删除流「先文件后记录」两阶段的 Phase A——文件删不动即中止（记录未动），由调用方决定仅删记录或放弃
+func (s *Service) CleanupFileResult(relPath string) error {
 	storeRegistry.Suppress(relPath)
 	defer storeRegistry.Release(relPath)
 	absPath := filepath.Join(s.getWorkDir(), relPath)
 	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-		logger.Log.Warn("清理文件失败", zap.String("path", absPath), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
+func (s *Service) CleanupFile(relPath string) {
+	if err := s.CleanupFileResult(relPath); err != nil {
+		logger.Log.Warn("清理文件失败", zap.String("path", filepath.Join(s.getWorkDir(), relPath)), zap.Error(err))
 	}
 }
 

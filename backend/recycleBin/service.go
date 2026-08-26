@@ -63,8 +63,13 @@ type BackupReader interface {
 	GetBackupPath(backup *domain.Backup) string
 	// RestoreFile 从备份路径还原文件到目标绝对路径
 	RestoreFile(ctx context.Context, backupPath string, targetPath string) error
-	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍）
+	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍；真实删除失败不删记录并返回错误）
 	DeleteBackup(ctx context.Context, id int64) error
+	// DeleteBackupFile 仅删除备份的磁盘文件（清单行不动；文件缺失容忍，真实删除失败返回错误）——
+	// 删除流「先文件后记录」两阶段的 Phase A
+	DeleteBackupFile(ctx context.Context, id int64) error
+	// DeleteBackupRecord 仅删除备份清单行（不动磁盘文件）——删除流「先文件后记录」两阶段的 Phase B 记录侧
+	DeleteBackupRecord(ctx context.Context, id int64) error
 }
 
 // WorkSetRestorer 作品集软删/复原能力接口（由 workSet.Service 实现）
@@ -115,6 +120,8 @@ type StoreCleaner interface {
 	GetDeletedStore(ctx context.Context, id int64) (*domain.PersistentStore, error)
 	// CleanupFile 尽力删行 file_path 指向的磁盘文件（扑空容忍；操作抑制登记）
 	CleanupFile(relPath string)
+	// CleanupFileResult 删行 file_path 指向的磁盘文件并返回真实失败（扑空容忍返回 nil）——「先文件后记录」Phase A
+	CleanupFileResult(relPath string) error
 	// DeleteUnscopedByIds 批量物理删行（目标为已软删行）
 	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 }
@@ -359,7 +366,7 @@ func (s *Service) PurgeWork(ctx context.Context, workId int64) error {
 		return ErrRecycleItemNotFound
 	}
 
-	// 2. 级联前收集行内 backup_id（物理级联会删行，之后无处可查）
+	// 2. 级联前收集 store 行与行内 backup_id（物理级联会删行，之后无处可查）
 	stores := s.workRestorer.ListWorkStoresIncludeDeleted(ctx, workId)
 	backupIds := make([]int64, 0, len(stores))
 	for _, st := range stores {
@@ -368,12 +375,57 @@ func (s *Service) PurgeWork(ctx context.Context, workId int64) error {
 		}
 	}
 
-	// 3. 物理级联删除（事务内删 work 谱系行与 store 记录行；原路径文件已在 backup，无文件可删）
+	// 3. Phase A 先删文件（store 行 file_path + 行内备份文件）：任一真实失败即返回、记录未动——
+	// 文件删不动就删记录会制造「记录消失、文件残留」的孤儿（RECORD_STATE_TRUTHFUL），
+	// 由调用方询问用户仅删记录（PurgeWorkRecords）或放弃。软删正常流文件已移 backup/，
+	// store/ 原路径扑空无害；软删移入失败的历史残迹文件随行清除
+	for _, st := range stores {
+		if st.FilePath.Valid && st.FilePath.String != "" {
+			if err := s.storeCleaner.CleanupFileResult(st.FilePath.String); err != nil {
+				return fmt.Errorf("文件删除失败（记录已保留）: %w", err)
+			}
+		}
+	}
+	for _, backupId := range backupIds {
+		if err := s.backupReader.DeleteBackupFile(ctx, backupId); err != nil {
+			return fmt.Errorf("文件删除失败（记录已保留）: %w", err)
+		}
+	}
+
+	// 4. Phase B 物理级联删除（事务内删 work 谱系行与 store 记录行）并消费式删备份记录（文件已在 Phase A 删除）
 	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
 		return fmt.Errorf("物理删除作品数据失败: %w", err)
 	}
 	for _, backupId := range backupIds {
-		if err := s.backupReader.DeleteBackup(ctx, backupId); err != nil {
+		if err := s.backupReader.DeleteBackupRecord(ctx, backupId); err != nil {
+			return fmt.Errorf("清理备份 %d 失败: %w", backupId, err)
+		}
+	}
+	return nil
+}
+
+// PurgeWorkRecords 仅删除回收站作品条目记录（不动磁盘文件）——文件删除失败后用户明确选择
+// 「仅删记录」的降级路径（PurgeWork 的 Phase A 已保留记录）；文件残留在磁盘由用户自行处理
+func (s *Service) PurgeWorkRecords(ctx context.Context, workId int64) error {
+	work, err := s.workRestorer.GetDeletedWork(ctx, workId)
+	if err != nil {
+		return err
+	}
+	if work == nil {
+		return ErrRecycleItemNotFound
+	}
+	stores := s.workRestorer.ListWorkStoresIncludeDeleted(ctx, workId)
+	backupIds := make([]int64, 0, len(stores))
+	for _, st := range stores {
+		if st.BackupID.Valid {
+			backupIds = append(backupIds, st.BackupID.Int64)
+		}
+	}
+	if err := s.workRestorer.DeleteWorkAndSurroundingData(ctx, workId); err != nil {
+		return fmt.Errorf("物理删除作品数据失败: %w", err)
+	}
+	for _, backupId := range backupIds {
+		if err := s.backupReader.DeleteBackupRecord(ctx, backupId); err != nil {
 			return fmt.Errorf("清理备份 %d 失败: %w", backupId, err)
 		}
 	}
@@ -393,13 +445,22 @@ func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 		return ErrRecycleStoreNotFound
 	}
 
-	// 2. 尽力删文件：正常软删行文件已移 backup/ 或已离场（扑空无害，备份文件由步骤 4 按清单行删除）；
-	// file_path 指向 backup/ 域的历史残迹行（无保管清单行的散落文件）文件随行清除，不删即不可见垃圾
+	// 2. Phase A 先删文件（store 行 file_path + 行内备份文件）：任一真实失败即返回、记录未动——
+	// 文件删不动就删记录会制造「记录消失、文件残留」的孤儿（RECORD_STATE_TRUTHFUL），
+	// 由调用方询问用户仅删记录（PurgeStoreRecords）或放弃。正常软删行文件已移 backup/ 或已离场
+	// （扑空无害）；file_path 指向 backup/ 域的历史残迹行文件随行清除
 	if st.FilePath.Valid && st.FilePath.String != "" {
-		s.storeCleaner.CleanupFile(st.FilePath.String)
+		if err := s.storeCleaner.CleanupFileResult(st.FilePath.String); err != nil {
+			return fmt.Errorf("文件删除失败（记录已保留）: %w", err)
+		}
+	}
+	if st.BackupID.Valid {
+		if err := s.backupReader.DeleteBackupFile(ctx, st.BackupID.Int64); err != nil {
+			return fmt.Errorf("文件删除失败（记录已保留）: %w", err)
+		}
 	}
 
-	// 3. 事务内摘除指向该行的 resource_store 关联并物理删行（外键强制下关联未摘即删行被拒）
+	// 3. Phase B 事务内摘除指向该行的 resource_store 关联并物理删行（外键强制下关联未摘即删行被拒）
 	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.storeAssocCleaner.DeleteByStoreIds(txCtx, []int64{storeId}); err != nil {
 			return fmt.Errorf("摘除 store 关联失败: %w", err)
@@ -412,9 +473,38 @@ func (s *Service) PurgeStore(ctx context.Context, storeId int64) error {
 		return err
 	}
 
-	// 4. 消费式清理行内引用的备份
+	// 4. Phase B 消费式清理行内引用的备份记录（文件已在 Phase A 删除）
 	if st.BackupID.Valid {
-		if err := s.backupReader.DeleteBackup(ctx, st.BackupID.Int64); err != nil {
+		if err := s.backupReader.DeleteBackupRecord(ctx, st.BackupID.Int64); err != nil {
+			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID.Int64, err)
+		}
+	}
+	return nil
+}
+
+// PurgeStoreRecords 仅删除回收站文件条目记录（不动磁盘文件）——文件删除失败后用户明确选择
+// 「仅删记录」的降级路径（PurgeStore 的 Phase A 已保留记录）；文件残留在磁盘由用户自行处理
+func (s *Service) PurgeStoreRecords(ctx context.Context, storeId int64) error {
+	st, err := s.storeCleaner.GetDeletedStore(ctx, storeId)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return ErrRecycleStoreNotFound
+	}
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.storeAssocCleaner.DeleteByStoreIds(txCtx, []int64{storeId}); err != nil {
+			return fmt.Errorf("摘除 store 关联失败: %w", err)
+		}
+		if err := s.storeCleaner.DeleteUnscopedByIds(txCtx, []int64{storeId}); err != nil {
+			return fmt.Errorf("物理删除 store 记录失败: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if st.BackupID.Valid {
+		if err := s.backupReader.DeleteBackupRecord(ctx, st.BackupID.Int64); err != nil {
 			return fmt.Errorf("清理备份 %d 失败: %w", st.BackupID.Int64, err)
 		}
 	}

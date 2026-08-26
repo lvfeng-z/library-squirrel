@@ -37,6 +37,12 @@ func (h *Handler) DeleteBackups(ctx context.Context, ids []int64) *model.ApiResp
 	return model.HandleVoid(h.svc.DeleteBackups(ctx, ids))
 }
 
+// DeleteBackupRecords 仅删除备份清单行（不动磁盘文件）——文件删除失败（被占用/只读等）
+// 后用户明确选择「仅删记录」的降级路径；引用检查与 DeleteBackups 同源
+func (h *Handler) DeleteBackupRecords(ctx context.Context, ids []int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.DeleteBackupRecords(ctx, ids))
+}
+
 // RunReconciliationNow 手动触发一轮双向对账（与定时巡检互斥），返回清理统计
 func (h *Handler) RunReconciliationNow(ctx context.Context) *model.ApiResponse[ReconciliationResult] {
 	return model.Success(h.svc.RunReconciliationNow(ctx))

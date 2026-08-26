@@ -11,7 +11,7 @@
 - 与 **search**：作品条目查询转发 `QueryRecycleWorkPage`（条件体系与作品搜索同构，基线 `deleted_at > 0`）；文件条目查询转发 `QueryRecycleStorePage` + `ListRecycleStoreIdsDeletedBefore`（TTL 圈定）——文件域条件体系（文件名/路径模糊、媒体类型、备份状态、作品名、删除时间）与作品条目的 SearchCondition 标签体系**分轨**，筛选器按前端 tab 切换查询模型；作品集条目查询转发 `QueryRecycleWorkSetPage`（作品集域平铺条件：名称/站点/删除时间，与另两类分轨）。
 - 与 **persistentStore**：文件条目清理链经 `StoreCleaner` 接口（GetDeletedStore 查已删行 / CleanupFile 尽力删文件 / DeleteUnscopedByIds 物理删行），复原置换链经 `StoreRestorer` 接口（GetById/GetByFilePath 活行查询 / DeleteWithBackup 与 SoftDeleteAndDiscardFile 置换软删 / RestoreByIds 复活）。
 - 与 **resource**：复原置换后经 `ResourceRecomputer` 重算资源完整度（角色构成可能变化，如合并回滚补回轨道）。
-- 与 **backup**：软删除时资源文件移入 backup/（persistent_store 行内 backup_id 引用保管清单行），复原时经 `RestoreFile` 还原回 store/ 原路径并删备份记录，彻底删除/清理时按行内 backup_id 消费式删备份文件与记录。作品集条目无文件无备份面。
+- 与 **backup**：软删除时资源文件移入 backup/（persistent_store 行内 backup_id 引用保管清单行），复原时经 `RestoreFile` 还原回 store/ 原路径并删备份记录，彻底删除/清理时**两阶段**（先 `DeleteBackupFile` 删文件、再 `DeleteBackupRecord` 删记录）消费式删备份——文件删不动即中止、记录保留，由前端询问用户仅删记录或放弃。作品集条目无文件无备份面。
 
 ## 对外接口（Handler）
 
@@ -21,10 +21,12 @@
 | --- | --- |
 | `PageWorks(page, query)` | 分页查询作品条目（query.conditions 为 SearchCondition 条件体系 + sortBy/sortOrder） |
 | `RestoreWork(workId, overwrite)` | 复原已软删作品（overwrite 控制冲突时占位作品转入回收站） |
-| `PurgeWork(workId)` | 彻底删除已软删作品（不可恢复，级联清从属行与备份） |
+| `PurgeWork(workId)` | 彻底删除已软删作品（不可恢复，级联清从属行与备份）。**两阶段**：先删文件（store 原路径 + backup 文件），任一真实失败即返回「文件删除失败（记录已保留）」、记录未动；成功才删记录（`DeleteWorkAndSurroundingData` + 备份记录）。前端据此询问「仅删记录或放弃」（`PurgeWorkRecords`） |
+| `PurgeWorkRecords(workId)` | 仅删除作品条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径 |
 | `PageStores(page, query)` | 分页查询文件条目（query 为 RecycleStorePageQuery 文件域条件体系） |
 | `RestoreStore(storeId)` | 复原文件条目（版本回滚置换：行内备份还原为当前版本，被置换的当前活行转入回收站） |
-| `PurgeStore(storeId)` | 彻底删除文件条目（不可恢复，条目单位=store 行；事务内先摘 resource_store 关联再物理删行，含消费式删备份） |
+| `PurgeStore(storeId)` | 彻底删除文件条目（不可恢复，条目单位=store 行）。**两阶段**：先删文件（行 file_path + 行内备份文件），任一真实失败即返回「文件删除失败（记录已保留）」、记录未动；成功才事务删行（先摘 resource_store 关联再物理删行）+ 备份记录。前端据此询问「仅删记录或放弃」（`PurgeStoreRecords`） |
+| `PurgeStoreRecords(storeId)` | 仅删除文件条目记录（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径 |
 | `PageWorkSets(page, query)` | 分页查询作品集条目（query 为 RecycleWorkSetPageQuery 作品集域平铺条件体系） |
 | `RestoreWorkSet(workSetId, overwrite)` | 复原已软删作品集（overwrite 控制冲突时占位作品集转入回收站；本地手建集键 NULL 无冲突） |
 | `PurgeWorkSet(workSetId)` | 彻底删除已软删作品集（不可恢复，级联清成员关联与父子关联行） |
@@ -43,7 +45,7 @@
 
 ## 依赖关系
 
-- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer + StoreAssociationCleaner=ResourceStoreRepository 关联摘除）、database（Transactor 事务执行器）、settings（TTL 配置 + workDir）
+- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup/DeleteBackupFile/DeleteBackupRecord）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer + StoreAssociationCleaner=ResourceStoreRepository 关联摘除）、database（Transactor 事务执行器）、settings（TTL 配置 + workDir）
 - 被依赖：前端回收站页面（作品/文件/作品集三 tab）
 
 ## 关键设计

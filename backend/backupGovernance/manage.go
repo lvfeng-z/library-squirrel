@@ -94,6 +94,31 @@ func (s *Service) DeleteBackups(ctx context.Context, ids []int64) error {
 	return nil
 }
 
+// DeleteBackupRecords 仅删除备份清单行（不动磁盘文件）——文件删除失败后用户明确选择
+// 「仅删记录」的降级路径（DeleteBackups 的文件失败已保留记录）。引用检查与 DeleteBackups
+// 同源：有主备份的清单行同样不可仅删记录——引用仍指向它，删记录会令引用悬空
+func (s *Service) DeleteBackupRecords(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, referencedSet, err := s.collectReferencedStrict(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, ok := referencedSet[id]; ok {
+			return fmt.Errorf("%w: %v（有主备份由回收站/插件流程管理，不能仅删记录）", ErrBackupReferenced, id)
+		}
+	}
+	for _, id := range ids {
+		if err := s.catalog.DeleteBackupRecord(ctx, id); err != nil {
+			return fmt.Errorf("删除备份记录 %d 失败: %w", id, err)
+		}
+	}
+	s.invalidateStatsCache()
+	return nil
+}
+
 // RunReconciliationNow 手动触发一轮双向对账（复用 RunOnce，与定时巡检经 runMu 串行），
 // 返回清理统计；统计缓存随清理失效
 func (s *Service) RunReconciliationNow(ctx context.Context) ReconciliationResult {

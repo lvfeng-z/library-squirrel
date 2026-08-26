@@ -25,8 +25,12 @@ type BackupCatalog interface {
 	// PageBackups 分页查询保管清单（create_time 倒序）；includeIDs/excludeIDs 为 ID 集过滤，
 	// nil=无该向过滤（引用态语义由治理方折算成 ID 集，backup 只做纯过滤）
 	PageBackups(ctx context.Context, pageNumber, pageSize int, includeIDs []int64, excludeIDs []int64) (*model.Page[entity.Backup], error)
-	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍）
+	// DeleteBackup 删除备份的磁盘文件与清单行（文件缺失容忍；真实删除失败不删记录并返回错误）
 	DeleteBackup(ctx context.Context, id int64) error
+	// DeleteBackupFile 仅删除备份的磁盘文件（清单行不动）——删除流「先文件后记录」Phase A
+	DeleteBackupFile(ctx context.Context, id int64) error
+	// DeleteBackupRecord 仅删除备份清单行（不动磁盘文件）——文件删除失败后用户明确选择「仅删记录」的降级路径
+	DeleteBackupRecord(ctx context.Context, id int64) error
 }
 
 // BackupReferencer 备份引用方（由行内嵌 backup_id 列的业务方实现：persistentStore.Service、plugin.Service）。

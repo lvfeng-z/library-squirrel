@@ -547,9 +547,13 @@ async function purge(item: RecycleWorkDTO) {
     ElMessage.success('已彻底删除')
     await recycleBinSearchTable.value.doSearch()
   } catch (e) {
-    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，文件删除失败询问仅删记录，其余直接展示
     if (e instanceof Error) {
-      ElMessage.error(e.message)
+      await handlePurgeFileFailure(
+        e,
+        () => recycleBinApi.recycleBinPurgeWorkRecords(item.id),
+        () => recycleBinSearchTable.value.doSearch()
+      )
     }
   }
 }
@@ -565,10 +569,38 @@ async function purgeStore(item: RecycleStoreDTO) {
     ElMessage.success('已彻底删除')
     await storeSearchTable.value.doSearch()
   } catch (e) {
-    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
+    // 确认框取消为字符串 reject，静默；接口失败为 Error，文件删除失败询问仅删记录，其余直接展示
     if (e instanceof Error) {
-      ElMessage.error(e.message)
+      await handlePurgeFileFailure(
+        e,
+        () => recycleBinApi.recycleBinPurgeStoreRecords(item.id),
+        () => storeSearchTable.value.doSearch()
+      )
     }
+  }
+}
+// 彻底删除时文件删除失败（被占用/只读等，后端已保留记录）：询问「仅删除记录」还是放弃；
+// 其余错误直接展示。仅删记录走独立降级入口（不动磁盘文件，留用户手动处理）
+async function handlePurgeFileFailure(e: Error, recordOnlyFn: () => Promise<unknown>, refreshFn: () => Promise<void>) {
+  if (!e.message.includes('文件删除失败')) {
+    ElMessage.error(e.message)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`${e.message}。是否仅删除记录（磁盘文件保留，请手动处理）？`, '彻底删除', {
+      confirmButtonText: '仅删除记录',
+      cancelButtonText: '放弃',
+      type: 'warning'
+    })
+  } catch {
+    return // 用户放弃：记录保留
+  }
+  try {
+    await recordOnlyFn()
+    ElMessage.success('已仅删除记录')
+    await refreshFn()
+  } catch (err) {
+    ElMessage.error((err as Error).message ?? '仅删除记录失败')
   }
 }
 // 复原按钮禁用原因（不可复原条目的 tooltip 说明）

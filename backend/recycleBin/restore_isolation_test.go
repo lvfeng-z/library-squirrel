@@ -65,6 +65,14 @@ func (r *recordingBackupReader) DeleteBackup(ctx context.Context, id int64) erro
 	r.deletedIds = append(r.deletedIds, id)
 	return nil
 }
+func (r *recordingBackupReader) DeleteBackupFile(ctx context.Context, id int64) error {
+	r.deletedIds = append(r.deletedIds, id)
+	return nil
+}
+func (r *recordingBackupReader) DeleteBackupRecord(ctx context.Context, id int64) error {
+	r.deletedIds = append(r.deletedIds, id)
+	return nil
+}
 
 // TestRestoreWorkFilesGenerationIsolation 多代同路径已删作品复原隔离：
 // 复原作品 A 只消耗 A 各行 backup_id 指向的备份，作品 B 的备份原封不动。
