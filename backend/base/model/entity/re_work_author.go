@@ -20,3 +20,9 @@ type ReWorkAuthor struct {
 func (ReWorkAuthor) TableName() string {
 	return "re_work_author"
 }
+
+func NewReWorkAuthor() *ReWorkAuthor {
+	return &ReWorkAuthor{
+		BaseEntity: &model.BaseEntity{},
+	}
+}

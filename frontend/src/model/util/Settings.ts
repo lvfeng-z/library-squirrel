@@ -39,5 +39,8 @@ export const emptySettings: Settings = {
   },
   exportSettings: {
     outputDir: ''
+  },
+  shareSettings: {
+    relayAddress: 'relay.library-squirrel.cn'
   }
 }

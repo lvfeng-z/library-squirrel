@@ -33,6 +33,7 @@ import (
 	"github.com/library-squirrel/backend/fileSysUtil"
 	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/fsmonitor"
+	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/merge"
@@ -48,6 +49,7 @@ import (
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/search"
 	"github.com/library-squirrel/backend/settings"
+	"github.com/library-squirrel/backend/share"
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteBrowser"
@@ -96,6 +98,7 @@ type App struct {
 	SiteBrowserService      *siteBrowser.Service
 	PersistentStoreService  *persistentStore.Service
 	ExportService           *export.Service
+	ShareService            *share.Service
 	RecycleBinService       *recycleBin.Service
 	FsmonitorService        *fsmonitor.Service
 	BackupGovernanceService *backupGovernance.Service
@@ -157,6 +160,8 @@ type App struct {
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
 	ExportHandler                *export.Handler
+	ShareHandler                 *share.Handler
+	ImportHandler                *importer.Handler
 	FsmonitorHandler             *fsmonitor.Handler
 	BackupGovernanceHandler      *backupGovernance.Handler
 	WorkDirGuardHandler          *workdirGuard.Handler
@@ -887,6 +892,23 @@ func (app *App) initBaseServices() {
 		func() string { return app.SettingsService.GetWorkDir() },
 		export.NewWailsExportEmitter(func() export.EventEmitter { return app.taskProgressEmitter }),
 	)
+
+	// share 服务（分享方发布：复用 export 收集/规划数据面 + 出站隧道连中继；事件走 share-events）。
+	// 数据面依赖经接口注入（export.Service 实现 Collect、export.Packer 实现 Plan——发起方 share 编排）；
+	// 设备绑定实例 ID 持久化于程序根 config/，读取失败降级为本次运行的随机实例（溯源锚点不阻断分享）
+	shareInstanceID, err := share.LoadOrCreateInstanceID(filepath.Join(rootPath, "config", "share-instance-id"))
+	if err != nil {
+		shareInstanceID = fmt.Sprintf("ephemeral-%d", time.Now().UnixNano())
+		logger.Log.Warnf("[share] 实例 ID 持久化失败，本次运行使用临时实例: %v", err)
+	}
+	app.ShareService = share.NewService(
+		app.ExportService,
+		export.NewPacker(),
+		func() string { return app.SettingsService.GetSettings().ShareSettings.RelayAddress },
+		func() string { return app.SettingsService.GetWorkDir() },
+		shareInstanceID,
+		share.NewWailsShareEmitter(func() share.EventEmitter { return app.taskProgressEmitter }),
+	)
 }
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
@@ -1399,6 +1421,14 @@ func (app *App) initHandlers() {
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
 	app.ExportHandler = export.NewHandler(app.ExportService)
+	app.ShareHandler = share.NewHandler(app.ShareService)
+	// import：导出产物回灌导入。入库能力为 ManifestIngestor（分享收件侧任务执行器二期复用，
+	// 本期唯一消费方即此 handler）；文件落盘复用 persistentStore 能力，事务经 dbTransactorAdapter 传递
+	app.ImportHandler = importer.NewHandler(importer.NewIngestor(
+		importer.NewRepository(app.db),
+		&dbTransactorAdapter{db: app.db},
+		app.PersistentStoreService,
+	))
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)

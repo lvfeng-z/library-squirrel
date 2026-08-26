@@ -498,6 +498,23 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   content-position="left"
                   border-style="dotted"
                 >
+                  <el-text>分享中继地址</el-text>
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                  content="分享功能的盲转中继地址（host 或 host:port，可带 https:// 前缀；未写端口默认 9527）。官方中继为默认值，可改为社区自建中继。"
+                >
+                  <el-input
+                    v-model="settings.shareSettings.relayAddress"
+                    placeholder="relay.example.com"
+                    clearable
+                  />
+                </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
                   <el-text>USN 离线追溯（实验性）</el-text>
                   <el-switch
                     v-model="settings.fsmonitor.usnEnabled"

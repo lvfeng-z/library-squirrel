@@ -10,6 +10,7 @@ import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChangeConfirmStore'
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { onExportEvent } from '@renderer/composables/useExportProgress'
+import { useShareStore } from '@renderer/store/UseShareStore'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
@@ -74,6 +75,12 @@ export function iniListener() {
   Events.On('export-events', (event: any) => {
     const { type, data } = event.data as { type: string; data: any }
     onExportEvent(type, data)
+  })
+
+  // 分享事件（独立 topic，分享发布进度/完成/会话状态）
+  Events.On('share-events', (event: any) => {
+    const { type, data } = event.data as { type: string; data: any }
+    useShareStore().onShareEvent(type, data)
   })
 
   // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）

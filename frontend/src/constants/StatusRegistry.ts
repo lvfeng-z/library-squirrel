@@ -2,7 +2,7 @@ import { TaskStatusEnum } from './TaskStatusEnum'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
 
 /** 状态类目：与 tokens.css 中 --app-status-{类目}-{语义} 命名对应 */
-export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin' | 'backup' | 'recycle'
+export type StatusCategory = 'task' | 'source' | 'toggle' | 'resource' | 'plugin' | 'backup' | 'recycle' | 'share'
 
 export interface StatusMeta {
   /** 状态唯一标识，与 tokens.css 的 --app-status-{key}-{bg|text|border} 令牌后缀严格一致 */
@@ -52,7 +52,14 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   //    无备份=外部裁决失效或备份缺失；离链=挂载链断的历史残迹） ——
   'recycle-store-restorable': { key: 'recycle-store-restorable', label: '可复原', category: 'recycle' },
   'recycle-store-no-backup': { key: 'recycle-store-no-backup', label: '已失效', category: 'recycle' },
-  'recycle-store-orphan': { key: 'recycle-store-orphan', label: '离链', category: 'recycle' }
+  'recycle-store-orphan': { key: 'recycle-store-orphan', label: '离链', category: 'recycle' },
+  // —— 分享会话状态（在线=隧道在线可拉取；connecting/reconnecting=注册/断线重连；revoked/expired/failed=终态） ——
+  'share-online': { key: 'share-online', label: '在线', category: 'share' },
+  'share-connecting': { key: 'share-connecting', label: '注册中', category: 'share' },
+  'share-reconnecting': { key: 'share-reconnecting', label: '重连中', category: 'share' },
+  'share-revoked': { key: 'share-revoked', label: '已撤销', category: 'share' },
+  'share-expired': { key: 'share-expired', label: '已过期', category: 'share' },
+  'share-failed': { key: 'share-failed', label: '失败', category: 'share' }
 }
 
 /** TaskStatusEnum(后端状态码) → 状态别名 key 映射 */

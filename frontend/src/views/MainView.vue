@@ -20,6 +20,8 @@ import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
 import WorkSetCreateDialog from '@renderer/components/dialogs/WorkSetCreateDialog.vue'
 import ExportProgressDialog from '@renderer/components/dialogs/ExportProgressDialog.vue'
+import SharePublishDialog from '@renderer/components/dialogs/SharePublishDialog.vue'
+import ShareManageDialog from '@renderer/components/dialogs/ShareManageDialog.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
 import {settingsGetSettings, settingsSaveSettings} from '@renderer/apis/http/wrappers/settings'
@@ -28,6 +30,7 @@ import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
 import EmbedSlotRenderer from '@renderer/components/slot/EmbedSlotRenderer.vue'
 import {useWorkSelectionStore} from '@renderer/store/UseWorkSelectionStore.ts'
+import {useShareStore} from '@renderer/store/UseShareStore.ts'
 
 // 接口
 const apis = {
@@ -84,12 +87,16 @@ const workSetPage: Ref<Page<WorkSetWithCoverDTO>> = ref(new Page<WorkSetWithCove
 const workSelectionStore = useWorkSelectionStore()
 // 主页多选模式开关（默认关；持久化到 settings.appearance.multiSelectEnabled，重启保持）
 const multiSelectEnabled: Ref<boolean> = ref(false)
+// 分享会话 store（「分享进行中」一等状态；管理弹窗徽标数据源）
+const shareStore = useShareStore()
 
 // onMounted
 onMounted(() => {
   resizeObserver.observe(workGridRef.value.$el)
   resizeObserver.observe(workSetGridRef.value.$el)
   void loadMultiSelectSetting()
+  // 拉取分享会话快照（徽标与分享管理弹窗的数据兜底；state 事件持续维护）
+  void shareStore.loadSessions().catch((e) => console.warn('拉取分享会话失败', e))
 })
 
 // onBeforeUnmount
@@ -283,10 +290,26 @@ function handleWorkSetCheckedChange(workSetIds: number[]): void {
 // 导出弹窗开关（打开后先在弹窗内确认输出目录，再触发后端异步导出）
 const exportDialogState = ref(false)
 
+// 分享弹窗开关（打开后配置有效期/密码，再触发后端异步发布）
+const shareDialogState = ref(false)
+
+// 分享管理弹窗开关（会话列表/链接复制/撤销）
+const shareManageDialogState = ref(false)
+
 // 导出：把选择集 store 中的选中作品/作品集 id 列表传给后端收集打包（决策5），
 // 弹窗展示进度条与 [取消]，完成后展示产物路径
 function handleExport(): void {
   exportDialogState.value = true
+}
+
+// 分享：把选中作品/作品集发布为分享会话（复用导出收集 + 出站隧道连中继 + E2E 加密）
+function handleShare(): void {
+  shareDialogState.value = true
+}
+
+// 打开分享管理（会话列表/链接复制/撤销；不依赖当前选择）
+function handleShareManage(): void {
+  shareManageDialogState.value = true
 }
 
 // 清除选择：清空选择集 store，网格经 checkedIds 置空联动取消勾选
@@ -343,6 +366,15 @@ function handleTest() {
           @change="handleMultiSelectChange"
         />
       </div>
+      <el-badge
+        :value="shareStore.activeSessionCount"
+        :hidden="!shareStore.hasActiveSessions"
+        class="main-page-share-badge topbar-items"
+      >
+        <el-button size="small" @click="handleShareManage">
+          分享管理
+        </el-button>
+      </el-badge>
       <div class="main-page-searchbar topbar-items">
         <auto-load-tag-select
           ref="searchConditionBar"
@@ -517,6 +549,12 @@ function handleTest() {
       >
         导出
       </el-button>
+      <el-button
+        type="primary"
+        @click="handleShare"
+      >
+        分享
+      </el-button>
       <el-button @click="handleClearSelection">
         清除选择
       </el-button>
@@ -532,6 +570,14 @@ function handleTest() {
       :work-ids="workSelectionStore.workIds"
       :work-set-ids="workSelectionStore.workSetIds"
     />
+    <!-- 分享发布弹窗（配置有效期/密码后携带选中 id 列表触发异步发布，完成后展示链接） -->
+    <share-publish-dialog
+      v-model:state="shareDialogState"
+      :work-ids="workSelectionStore.workIds"
+      :work-set-ids="workSelectionStore.workSetIds"
+    />
+    <!-- 分享管理弹窗（会话列表/链接复制/撤销；「关 App 链接即失效」提示） -->
+    <share-manage-dialog v-model:state="shareManageDialogState" />
   </div>
 </template>
 
@@ -562,6 +608,12 @@ function handleTest() {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 分享管理入口：顶栏多选开关右侧（红点=存在在线会话） */
+.main-page-share-badge {
+  display: flex;
+  align-items: center;
 }
 
 .main-page-multiselect-toggle-label {

@@ -17,6 +17,7 @@ export {
     RecycleBinSettings,
     SettingChange,
     Settings,
+    ShareSettings,
     TourSettings,
     WorkSettings
 } from "./models.js";

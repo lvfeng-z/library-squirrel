@@ -14,6 +14,7 @@ type Settings struct {
 	FsmonitorSettings  FsmonitorSettings        `json:"fsmonitor" koanf:"fsmonitor"`
 	BackupGovernance   BackupGovernanceSettings `json:"backupGovernance" koanf:"backupGovernance"`
 	ExportSettings     ExportSettings           `json:"exportSettings" koanf:"exportSettings"`
+	ShareSettings      ShareSettings            `json:"shareSettings" koanf:"shareSettings"`
 }
 
 // WorkSettings 作品相关设置
@@ -79,6 +80,16 @@ type ExportSettings struct {
 	OutputDir string `json:"outputDir" koanf:"outputDir"`
 }
 
+// ShareSettings 分享相关设置
+type ShareSettings struct {
+	// RelayAddress 分享中继地址（host 或 host:port，可带 https:// 前缀；无端口默认 9527）。
+	// 官方中继占位默认值，可改为社区自建中继
+	RelayAddress string `json:"relayAddress" koanf:"relayAddress"`
+}
+
+// DefaultShareRelayAddress 官方中继占位地址（正式部署前为占位值，用户可在设置页改指社区自建中继）
+const DefaultShareRelayAddress = "relay.library-squirrel.cn"
+
 // DefaultBackupGovernanceRetentionDays 无主备份保留天数默认值（7 天大于替换任务合理在途时长，
 // 覆盖任意链崩溃/中断窗口；小于 1 的取值视为未配置/误配，回退此值——0 作为"立即清空"不被接受）
 const DefaultBackupGovernanceRetentionDays = 7
@@ -129,6 +140,9 @@ func NewSettings() *Settings {
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
 		ExportSettings: ExportSettings{},
+		ShareSettings: ShareSettings{
+			RelayAddress: DefaultShareRelayAddress,
+		},
 	}
 }
 

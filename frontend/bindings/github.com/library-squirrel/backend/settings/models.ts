@@ -316,6 +316,7 @@ export class Settings {
     "fsmonitor": FsmonitorSettings;
     "backupGovernance": BackupGovernanceSettings;
     "exportSettings": ExportSettings;
+    "shareSettings": ShareSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -355,6 +356,9 @@ export class Settings {
         if (!("exportSettings" in $$source)) {
             this["exportSettings"] = (new ExportSettings());
         }
+        if (!("shareSettings" in $$source)) {
+            this["shareSettings"] = (new ShareSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -373,6 +377,7 @@ export class Settings {
         const $$createField9_0 = $$createType8;
         const $$createField10_0 = $$createType9;
         const $$createField11_0 = $$createType10;
+        const $$createField12_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -404,7 +409,38 @@ export class Settings {
         if ("exportSettings" in $$parsedSource) {
             $$parsedSource["exportSettings"] = $$createField11_0($$parsedSource["exportSettings"]);
         }
+        if ("shareSettings" in $$parsedSource) {
+            $$parsedSource["shareSettings"] = $$createField12_0($$parsedSource["shareSettings"]);
+        }
         return new Settings($$parsedSource as Partial<Settings>);
+    }
+}
+
+/**
+ * ShareSettings 分享相关设置
+ */
+export class ShareSettings {
+    /**
+     * RelayAddress 分享中继地址（host 或 host:port，可带 https:// 前缀；无端口默认 9527）。
+     * 官方中继占位默认值，可改为社区自建中继
+     */
+    "relayAddress": string;
+
+    /** Creates a new ShareSettings instance. */
+    constructor($$source: Partial<ShareSettings> = {}) {
+        if (!("relayAddress" in $$source)) {
+            this["relayAddress"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShareSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShareSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ShareSettings($$parsedSource as Partial<ShareSettings>);
     }
 }
 
@@ -427,7 +463,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType11;
+        const $$createField0_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -472,4 +508,5 @@ const $$createType7 = MergeSettings.createFrom;
 const $$createType8 = FsmonitorSettings.createFrom;
 const $$createType9 = BackupGovernanceSettings.createFrom;
 const $$createType10 = ExportSettings.createFrom;
-const $$createType11 = $Create.Map($Create.Any, $Create.Any);
+const $$createType11 = ShareSettings.createFrom;
+const $$createType12 = $Create.Map($Create.Any, $Create.Any);

@@ -68,6 +68,9 @@ func defaultSettings() *Settings {
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
 		ExportSettings: ExportSettings{},
+		ShareSettings: ShareSettings{
+			RelayAddress: DefaultShareRelayAddress,
+		},
 	}
 }
 

@@ -261,6 +261,31 @@
   --app-status-recycle-store-orphan-text: var(--app-status-warn-text);
   --app-status-recycle-store-orphan-border: var(--app-status-warn-border);
 
+  /* —— 分享会话状态（share-*）：online=在线可拉取、reconnecting=断线重连、revoked/expired=终态、failed=失败 —— */
+  --app-status-share-online-bg: var(--app-status-active-bg);
+  --app-status-share-online-text: var(--app-status-active-text);
+  --app-status-share-online-border: var(--app-status-active-border);
+
+  --app-status-share-reconnecting-bg: var(--app-status-pending-bg);
+  --app-status-share-reconnecting-text: var(--app-status-pending-text);
+  --app-status-share-reconnecting-border: var(--app-status-pending-border);
+
+  --app-status-share-connecting-bg: var(--app-status-pending-bg);
+  --app-status-share-connecting-text: var(--app-status-pending-text);
+  --app-status-share-connecting-border: var(--app-status-pending-border);
+
+  --app-status-share-revoked-bg: var(--app-status-idle-bg);
+  --app-status-share-revoked-text: var(--app-status-idle-text);
+  --app-status-share-revoked-border: var(--app-status-idle-border);
+
+  --app-status-share-expired-bg: var(--app-status-idle-bg);
+  --app-status-share-expired-text: var(--app-status-idle-text);
+  --app-status-share-expired-border: var(--app-status-idle-border);
+
+  --app-status-share-failed-bg: var(--app-status-fail-bg);
+  --app-status-share-failed-text: var(--app-status-fail-text);
+  --app-status-share-failed-border: var(--app-status-fail-border);
+
   /* ===== 圆角 ===== */
   --app-radius-sm: 4px;
   --app-radius: 6px;
