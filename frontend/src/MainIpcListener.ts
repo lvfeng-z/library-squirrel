@@ -9,6 +9,7 @@ import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChangeConfirmStore'
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
+import { onExportEvent } from '@renderer/composables/useExportProgress'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
@@ -67,6 +68,12 @@ export function iniListener() {
   Events.On('merge-events', (event: any) => {
     const { type, data } = event.data as { type: string; data: any }
     onMergeEvent(type, data)
+  })
+
+  // 导出事件（独立 topic，异步导出进度/完成）
+  Events.On('export-events', (event: any) => {
+    const { type, data } = event.data as { type: string; data: any }
+    onExportEvent(type, data)
   })
 
   // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）

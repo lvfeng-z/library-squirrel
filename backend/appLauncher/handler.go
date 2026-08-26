@@ -31,6 +31,11 @@ func (h *Handler) OpenPath(ctx context.Context, filePath string) *model.ApiRespo
 	return model.HandleVoid(h.svc.OpenPath(filePath))
 }
 
+// OpenAbsolutePath 使用系统默认应用打开绝对路径（文件或目录），不做 workdir 拼接。
+func (h *Handler) OpenAbsolutePath(ctx context.Context, path string) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.OpenAbsolutePath(path))
+}
+
 // OpenExternal 打开外部链接
 func (h *Handler) OpenExternal(ctx context.Context, url string) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.OpenExternal(url))

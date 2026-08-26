@@ -13,6 +13,7 @@ type Settings struct {
 	MergeSettings      MergeSettings            `json:"mergeSettings" koanf:"mergeSettings"`
 	FsmonitorSettings  FsmonitorSettings        `json:"fsmonitor" koanf:"fsmonitor"`
 	BackupGovernance   BackupGovernanceSettings `json:"backupGovernance" koanf:"backupGovernance"`
+	ExportSettings     ExportSettings           `json:"exportSettings" koanf:"exportSettings"`
 }
 
 // WorkSettings 作品相关设置
@@ -70,6 +71,13 @@ type BackupGovernanceSettings struct {
 	RetentionDays int `json:"retentionDays" koanf:"retentionDays"` // 无主备份保留天数：清单行不被任何业务列引用且超期即清理
 }
 
+// ExportSettings 导出相关设置
+type ExportSettings struct {
+	// OutputDir 设置页显式配置的导出默认输出目录（空=沿用工作目录作为导出落盘根）；
+	// 导出弹窗内的临时改选仅本次生效，不写回本字段
+	OutputDir string `json:"outputDir" koanf:"outputDir"`
+}
+
 // DefaultBackupGovernanceRetentionDays 无主备份保留天数默认值（7 天大于替换任务合理在途时长，
 // 覆盖任意链崩溃/中断窗口；小于 1 的取值视为未配置/误配，回退此值——0 作为"立即清空"不被接受）
 const DefaultBackupGovernanceRetentionDays = 7
@@ -118,6 +126,7 @@ func NewSettings() *Settings {
 		BackupGovernance: BackupGovernanceSettings{
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
+		ExportSettings: ExportSettings{},
 	}
 }
 

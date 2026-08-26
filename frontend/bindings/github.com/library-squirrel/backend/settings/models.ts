@@ -60,6 +60,33 @@ export class BackupGovernanceSettings {
 }
 
 /**
+ * ExportSettings 导出相关设置
+ */
+export class ExportSettings {
+    /**
+     * OutputDir 上次导出的输出目录（空=沿用工作目录作为导出落盘根）
+     */
+    "outputDir": string;
+
+    /** Creates a new ExportSettings instance. */
+    constructor($$source: Partial<ExportSettings> = {}) {
+        if (!("outputDir" in $$source)) {
+            this["outputDir"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExportSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExportSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExportSettings($$parsedSource as Partial<ExportSettings>);
+    }
+}
+
+/**
  * FsmonitorSettings 工作目录监控设置
  */
 export class FsmonitorSettings {
@@ -279,6 +306,7 @@ export class Settings {
     "mergeSettings": MergeSettings;
     "fsmonitor": FsmonitorSettings;
     "backupGovernance": BackupGovernanceSettings;
+    "exportSettings": ExportSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -315,6 +343,9 @@ export class Settings {
         if (!("backupGovernance" in $$source)) {
             this["backupGovernance"] = (new BackupGovernanceSettings());
         }
+        if (!("exportSettings" in $$source)) {
+            this["exportSettings"] = (new ExportSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -332,6 +363,7 @@ export class Settings {
         const $$createField8_0 = $$createType7;
         const $$createField9_0 = $$createType8;
         const $$createField10_0 = $$createType9;
+        const $$createField11_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -360,6 +392,9 @@ export class Settings {
         if ("backupGovernance" in $$parsedSource) {
             $$parsedSource["backupGovernance"] = $$createField10_0($$parsedSource["backupGovernance"]);
         }
+        if ("exportSettings" in $$parsedSource) {
+            $$parsedSource["exportSettings"] = $$createField11_0($$parsedSource["exportSettings"]);
+        }
         return new Settings($$parsedSource as Partial<Settings>);
     }
 }
@@ -383,7 +418,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType10;
+        const $$createField0_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -427,4 +462,5 @@ const $$createType6 = AppearanceSettings.createFrom;
 const $$createType7 = MergeSettings.createFrom;
 const $$createType8 = FsmonitorSettings.createFrom;
 const $$createType9 = BackupGovernanceSettings.createFrom;
-const $$createType10 = $Create.Map($Create.Any, $Create.Any);
+const $$createType10 = ExportSettings.createFrom;
+const $$createType11 = $Create.Map($Create.Any, $Create.Any);

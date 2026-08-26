@@ -28,6 +28,7 @@ import (
 	"github.com/library-squirrel/backend/backupGovernance"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/fileSysUtil"
 	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/fsmonitor"
@@ -93,6 +94,7 @@ type App struct {
 	TaskManagerService      *taskManager.Manager
 	SiteBrowserService      *siteBrowser.Service
 	PersistentStoreService  *persistentStore.Service
+	ExportService           *export.Service
 	RecycleBinService       *recycleBin.Service
 	FsmonitorService        *fsmonitor.Service
 	BackupGovernanceService *backupGovernance.Service
@@ -153,6 +155,7 @@ type App struct {
 	ReWorkTagHandler             *reWorkTag.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
+	ExportHandler                *export.Handler
 	FsmonitorHandler             *fsmonitor.Handler
 	BackupGovernanceHandler      *backupGovernance.Handler
 	WorkDirGuardHandler          *workdirGuard.Handler
@@ -875,6 +878,14 @@ func (app *App) initBaseServices() {
 
 	// frontendLog 服务
 	app.FrontendLogService = frontendLog.NewService()
+
+	// export 服务（导出数据收集 + 异步打包执行；工作目录取 settings，事件经延迟闭包读 emitter）
+	app.ExportService = export.NewService(
+		export.NewRepository(app.db),
+		func() string { return "0.0.1" },
+		func() string { return app.SettingsService.GetWorkDir() },
+		export.NewWailsExportEmitter(func() export.EventEmitter { return app.taskProgressEmitter }),
+	)
 }
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
@@ -1149,6 +1160,11 @@ func (app *App) initAdvancedServices() error {
 		logger.Log.Warnf("清理合并产物临时残留失败: %v", err)
 	}
 
+	// 启动清理：导出临时文件残留（library-squirrel-export-*.zip.tmp，进程崩溃未 rename 时残留）
+	if err := app.ExportService.CleanupResidualTempFiles(); err != nil {
+		logger.Log.Warnf("清理导出临时残留失败: %v", err)
+	}
+
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
 
@@ -1381,6 +1397,7 @@ func (app *App) initHandlers() {
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
+	app.ExportHandler = export.NewHandler(app.ExportService)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)

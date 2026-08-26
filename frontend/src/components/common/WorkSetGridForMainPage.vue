@@ -7,14 +7,26 @@ import { getWorkSetCardDimension } from '@renderer/utils/ImageDimension.ts'
 import { WorkSetWithCoverDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
 // props
-const props = defineProps<{
-  workSetList: WorkSetWithCoverDTO[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    workSetList: WorkSetWithCoverDTO[]
+    /** 是否可选中（主页接线由 MainView 传 true；false 时保持原网格纯浏览形态） */
+    checkable?: boolean
+    /** 选中的作品集 id 列表（跨页保持，由上层选择集 store 提供，作勾选态初始化种子） */
+    checkedWorkSetIds?: number[]
+  }>(),
+  {
+    checkable: false,
+    checkedWorkSetIds: () => []
+  }
+)
 
 // emits
 // workSetDeleted: 作品集已软删除（转发弹窗事件，供上层刷新作品集列表）
+// checkedChange: 勾选变化（当前网格已加载项中的勾选 id 列表，跨页保持由上层选择集 store 合并）
 const emits = defineEmits<{
   workSetDeleted: [id: number]
+  checkedChange: [workSetIds: number[]]
 }>()
 
 // model
@@ -34,23 +46,30 @@ function handleImageClicked(workSet: WorkSetWithCoverDTO) {
     workSetDialogState.value = true
   }
 }
+// 勾选变化上抛（跨页保持由上层选择集 store 合并）
+function handleCheckedChange(workSetIds: number[]): void {
+  emits('checkedChange', workSetIds)
+}
 </script>
 
 <template>
   <div>
     <card-grid
       :items="props.workSetList"
-      :checkable="false"
+      :checkable="checkable"
+      :checked-ids="checkedWorkSetIds"
       :get-id="(workSet: WorkSetWithCoverDTO) => workSet.workSet?.id"
       :get-dimension="getWorkSetCardDimension"
+      @checked-change="handleCheckedChange"
     >
-      <template #card="{ item, checked }">
+      <template #card="{ item, checked, onUpdateChecked }">
         <work-set-card
           :checked="checked"
           :work-set="item"
           :max-height="500"
           :max-width="500"
-          :checkable="false"
+          :checkable="checkable"
+          @update:checked="onUpdateChecked"
           @image-clicked="handleImageClicked"
         />
       </template>

@@ -24,6 +24,15 @@ export async function appLauncherOpen(path: string): Promise<ApiResponse<void>> 
   return { success: result.success, msg: result.msg ?? '' }
 }
 
+export async function appLauncherOpenAbsolutePath(path: string): Promise<ApiResponse<void>> {
+  // 系统默认应用打开绝对路径（文件或目录），不做 workdir 拼接（导出产物等资源库外路径）
+  const result = await AppLauncherHandler.OpenAbsolutePath(path)
+  if (!result) {
+    return { success: false, msg: '打开失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
+}
+
 export async function appLauncherOpenExternal(url: string): Promise<ApiResponse<void>> {
   const result = await AppLauncherHandler.OpenExternal(url)
   if (!result) {

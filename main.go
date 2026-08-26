@@ -90,6 +90,7 @@ func main() {
 			application.NewService(app.ReWorkTagHandler),
 			application.NewService(app.PluginTaskUrlListenerHandler),
 			application.NewService(app.RecycleBinHandler),
+			application.NewService(app.ExportHandler),
 			application.NewService(app.FsmonitorHandler),
 			application.NewService(app.BackupGovernanceHandler),
 			application.NewService(app.WorkDirGuardHandler),

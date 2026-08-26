@@ -35,5 +35,8 @@ export const emptySettings: Settings = {
     suppressEnabled: true,
     autoRepairEnabled: false,
     autoRepairPolicies: {}
+  },
+  exportSettings: {
+    outputDir: ''
   }
 }

@@ -94,15 +94,28 @@ func (s *Service) OpenPath(filePath string) error {
 		return ErrInvalidPath
 	}
 	fullPath := filepath.Join(s.workDirProvider.GetWorkDir(), filePath)
+	return openWithSystemDefault(fullPath)
+}
 
+// OpenAbsolutePath 使用系统默认应用打开绝对路径（文件或目录），不做 workdir 拼接。
+// 用于导出产物等绝对路径已知的场景（Windows: cmd /c start / macOS: open / Linux: xdg-open）。
+func (s *Service) OpenAbsolutePath(path string) error {
+	if path == "" {
+		return ErrInvalidPath
+	}
+	return openWithSystemDefault(path)
+}
+
+// openWithSystemDefault 按平台调用系统默认应用打开指定路径（文件或目录均适用）。
+func openWithSystemDefault(path string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", fullPath)
+		cmd = exec.Command("cmd", "/c", "start", "", path)
 	case "darwin":
-		cmd = exec.Command("open", fullPath)
+		cmd = exec.Command("open", path)
 	case "linux":
-		cmd = exec.Command("xdg-open", fullPath)
+		cmd = exec.Command("xdg-open", path)
 	default:
 		return ErrOpenFailed
 	}

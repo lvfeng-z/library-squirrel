@@ -246,6 +246,22 @@ async function selectDir() {
     }
   }
 }
+// 选择导出默认目录（持久化随设置整体保存流程）
+async function selectExportDir() {
+  const response = await apis.fileSysUtilSelectDirectory('选择导出默认目录')
+  if (ApiUtil.check(response)) {
+    const dirSelectResult = ApiUtil.data(response) as { canceled: boolean; filePaths: string[] }
+    if (!dirSelectResult.canceled && arrayNotEmpty(dirSelectResult.filePaths) && notNullish(settings.value)) {
+      settings.value.exportSettings.outputDir = dirSelectResult.filePaths[0]
+    }
+  }
+}
+// 重置导出默认目录（回退：不设置即使用工作目录）
+function resetExportDir() {
+  if (notNullish(settings.value)) {
+    settings.value.exportSettings.outputDir = ''
+  }
+}
 // 重置前询问
 async function askBeforeReset(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -444,6 +460,40 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </div>
                   </template>
                 </el-card>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>导出默认目录</el-text>
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                  content="导出作品时 ZIP 默认保存到该目录；不设置则使用工作目录。导出弹窗内仍可临时改为其他目录（仅本次有效，不改变此处默认值）。"
+                >
+                  <el-row>
+                    <el-col :span="22">
+                      <el-input
+                        v-model="settings.exportSettings.outputDir"
+                        placeholder="默认：工作目录"
+                      />
+                    </el-col>
+                    <el-col :span="1">
+                      <el-button
+                        icon="FolderOpened"
+                        @click="selectExportDir"
+                      />
+                    </el-col>
+                    <el-col :span="1">
+                      <el-button
+                        type="danger"
+                        class="tone-fail"
+                        icon="RefreshLeft"
+                        @click="resetExportDir"
+                      />
+                    </el-col>
+                  </el-row>
+                </el-tooltip>
                 <el-divider
                   content-position="left"
                   border-style="dotted"

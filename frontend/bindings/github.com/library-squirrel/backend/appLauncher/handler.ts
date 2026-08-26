@@ -28,6 +28,15 @@ export function Open(app: $models.ExternalAppEnum, filePath: string): $Cancellab
 }
 
 /**
+ * OpenAbsolutePath 使用系统默认应用打开绝对路径（文件或目录），不做 workdir 拼接。
+ */
+export function OpenAbsolutePath(path: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1072762326, path).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * OpenExternal 打开外部链接
  */
 export function OpenExternal(url: string): $CancellablePromise<model$0.ApiResponse<any> | null> {

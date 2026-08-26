@@ -19,12 +19,14 @@ import lodash from 'lodash'
 import WorkGridForMainPage from '@renderer/components/common/WorkGridForMainPage.vue'
 import WorkSetGridForMainPage from '@renderer/components/common/WorkSetGridForMainPage.vue'
 import WorkSetCreateDialog from '@renderer/components/dialogs/WorkSetCreateDialog.vue'
+import ExportProgressDialog from '@renderer/components/dialogs/ExportProgressDialog.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
 import EmbedSlotRenderer from '@renderer/components/slot/EmbedSlotRenderer.vue'
+import {useWorkSelectionStore} from '@renderer/store/UseWorkSelectionStore.ts'
 
 // 接口
 const apis = {
@@ -77,6 +79,8 @@ const workSetList: Ref<WorkSetWithCoverDTO[]> = ref([])
 const currentWorkSetIndex = ref(0)
 // 作品集分页
 const workSetPage: Ref<Page<WorkSetWithCoverDTO>> = ref(new Page<WorkSetWithCoverDTO>())
+// 主页作品/作品集多选选择集（跨页保持；操作栏展示与导出数据源）
+const workSelectionStore = useWorkSelectionStore()
 
 // onMounted
 onMounted(() => {
@@ -260,6 +264,32 @@ async function querySearchCondition() {
   return searchConditionBar.value.newSearch()
 }
 
+// 作品勾选变化 → 选择集 store 同步（携带当前已加载 id 集，保留不在可见集的已选项）
+function handleWorkCheckedChange(workIds: number[]): void {
+  const visibleWorkIds = workList.value.map((work) => work.work?.id).filter(notNullish)
+  workSelectionStore.syncWorkIds(workIds, visibleWorkIds)
+}
+
+// 作品集勾选变化 → 选择集 store 同步（语义同作品）
+function handleWorkSetCheckedChange(workSetIds: number[]): void {
+  const visibleWorkSetIds = workSetList.value.map((workSet) => workSet.workSet?.id).filter(notNullish)
+  workSelectionStore.syncWorkSetIds(workSetIds, visibleWorkSetIds)
+}
+
+// 导出弹窗开关（打开后先在弹窗内确认输出目录，再触发后端异步导出）
+const exportDialogState = ref(false)
+
+// 导出：把选择集 store 中的选中作品/作品集 id 列表传给后端收集打包（决策5），
+// 弹窗展示进度条与 [取消]，完成后展示产物路径
+function handleExport(): void {
+  exportDialogState.value = true
+}
+
+// 清除选择：清空选择集 store，网格经 checkedIds 置空联动取消勾选
+function handleClearSelection(): void {
+  workSelectionStore.clear()
+}
+
 // test
 function handleTest() {
   Events.Emit('plugin:local-import:classify:request', { level: 0, dirName: 'test-author' })
@@ -394,6 +424,9 @@ function handleTest() {
               v-model:current-work-index="currentWorkIndex"
               class="main-page-work-grid"
               :work-list="workList"
+              :checkable="true"
+              :checked-work-ids="workSelectionStore.workIds"
+              @checked-change="handleWorkCheckedChange"
               @work-set-deleted="handleWorkSetDeleted"
             />
           </el-scrollbar>
@@ -420,6 +453,9 @@ function handleTest() {
               v-model:current-work-set-index="currentWorkSetIndex"
               class="main-page-work-grid"
               :work-set-list="workSetList"
+              :checkable="true"
+              :checked-work-set-ids="workSelectionStore.workSetIds"
+              @checked-change="handleWorkSetCheckedChange"
               @work-set-deleted="handleWorkSetDeleted"
             />
           </el-scrollbar>
@@ -436,10 +472,34 @@ function handleTest() {
         </div>
       </div>
     </div>
+    <!-- 浮动操作栏：任一选择非空时浮出；[导出] 为首个消费者，未来批量操作位（删除/加入作品集等）在此追加 -->
+    <div
+      v-if="workSelectionStore.hasSelection"
+      class="main-page-selection-bar z-layer-5"
+    >
+      <span class="main-page-selection-bar-count">
+        已选 {{ workSelectionStore.totalCount }} 项
+      </span>
+      <el-button
+        type="primary"
+        @click="handleExport"
+      >
+        导出
+      </el-button>
+      <el-button @click="handleClearSelection">
+        清除选择
+      </el-button>
+    </div>
     <!-- 新建作品集弹窗（创建成功后刷新作品集列表） -->
     <work-set-create-dialog
       v-model:state="workSetCreateDialogState"
       @created="handleWorkSetCreated"
+    />
+    <!-- 导出进度弹窗（打开即携带选中 id 列表触发异步导出，进度/取消/完成展示） -->
+    <export-progress-dialog
+      v-model:state="exportDialogState"
+      :work-ids="workSelectionStore.workIds"
+      :work-set-ids="workSelectionStore.workSetIds"
     />
   </div>
 </template>
@@ -452,6 +512,7 @@ function handleTest() {
   width: calc(100% - 12px);
   padding: 6px;
   background-color: var(--app-bg-page);
+  position: relative;
 }
 
 .main-page-topbar {
@@ -479,6 +540,28 @@ function handleTest() {
   overflow: hidden;
   padding: 6px;
   background-color: var(--app-bg-surface);
+}
+
+/* 浮动操作栏：底部居中悬浮，覆盖内容但不遮挡顶部栏 */
+.main-page-selection-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--app-bg-surface);
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow);
+}
+
+.main-page-selection-bar-count {
+  color: var(--app-text-primary);
+  font-weight: bold;
+  white-space: nowrap;
 }
 
 .main-page-work-grid {

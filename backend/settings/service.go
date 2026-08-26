@@ -66,6 +66,7 @@ func defaultSettings() *Settings {
 		BackupGovernance: BackupGovernanceSettings{
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
+		ExportSettings: ExportSettings{},
 	}
 }
 
