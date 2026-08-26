@@ -26,6 +26,7 @@ import (
 	"github.com/library-squirrel/backend/assetserver"
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/backupGovernance"
+	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/export"
@@ -882,7 +883,7 @@ func (app *App) initBaseServices() {
 	// export 服务（导出数据收集 + 异步打包执行；工作目录取 settings，事件经延迟闭包读 emitter）
 	app.ExportService = export.NewService(
 		export.NewRepository(app.db),
-		func() string { return "0.0.1" },
+		func() string { return constant.AppVersion },
 		func() string { return app.SettingsService.GetWorkDir() },
 		export.NewWailsExportEmitter(func() export.EventEmitter { return app.taskProgressEmitter }),
 	)
