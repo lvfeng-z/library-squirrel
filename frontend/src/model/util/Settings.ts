@@ -25,7 +25,8 @@ export const emptySettings: Settings = {
     completed: {}
   },
   appearance: {
-    theme: 'default-light'
+    theme: 'default-light',
+    multiSelectEnabled: false
   },
   mergeSettings: {
     strategy: 'keep'

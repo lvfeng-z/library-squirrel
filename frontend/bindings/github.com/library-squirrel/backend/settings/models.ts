@@ -6,7 +6,7 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * AppearanceSettings 外观设置
+ * AppearanceSettings 外观与交互偏好设置
  */
 export class AppearanceSettings {
     /**
@@ -14,10 +14,18 @@ export class AppearanceSettings {
      */
     "theme": string;
 
+    /**
+     * 主页多选模式开关（默认关；开启后作品/作品集网格可勾选、操作栏可用）
+     */
+    "multiSelectEnabled": boolean;
+
     /** Creates a new AppearanceSettings instance. */
     constructor($$source: Partial<AppearanceSettings> = {}) {
         if (!("theme" in $$source)) {
             this["theme"] = "";
+        }
+        if (!("multiSelectEnabled" in $$source)) {
+            this["multiSelectEnabled"] = false;
         }
 
         Object.assign(this, $$source);
@@ -64,7 +72,8 @@ export class BackupGovernanceSettings {
  */
 export class ExportSettings {
     /**
-     * OutputDir 上次导出的输出目录（空=沿用工作目录作为导出落盘根）
+     * OutputDir 设置页显式配置的导出默认输出目录（空=沿用工作目录作为导出落盘根）；
+     * 导出弹窗内的临时改选仅本次生效，不写回本字段
      */
     "outputDir": string;
 

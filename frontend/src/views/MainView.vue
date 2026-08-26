@@ -22,6 +22,7 @@ import WorkSetCreateDialog from '@renderer/components/dialogs/WorkSetCreateDialo
 import ExportProgressDialog from '@renderer/components/dialogs/ExportProgressDialog.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
+import {settingsGetSettings, settingsSaveSettings} from '@renderer/apis/http/wrappers/settings'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
@@ -81,11 +82,14 @@ const currentWorkSetIndex = ref(0)
 const workSetPage: Ref<Page<WorkSetWithCoverDTO>> = ref(new Page<WorkSetWithCoverDTO>())
 // 主页作品/作品集多选选择集（跨页保持；操作栏展示与导出数据源）
 const workSelectionStore = useWorkSelectionStore()
+// 主页多选模式开关（默认关；持久化到 settings.appearance.multiSelectEnabled，重启保持）
+const multiSelectEnabled: Ref<boolean> = ref(false)
 
 // onMounted
 onMounted(() => {
   resizeObserver.observe(workGridRef.value.$el)
   resizeObserver.observe(workSetGridRef.value.$el)
+  void loadMultiSelectSetting()
 })
 
 // onBeforeUnmount
@@ -290,6 +294,26 @@ function handleClearSelection(): void {
   workSelectionStore.clear()
 }
 
+// 读取设置中的多选开关初始状态（设置缺失/读取失败回落默认关，不阻塞主页渲染）
+async function loadMultiSelectSetting(): Promise<void> {
+  try {
+    const res = await settingsGetSettings()
+    if (!res.success || !res.data) return
+    const appearance = res.data.appearance as { multiSelectEnabled?: boolean } | undefined
+    multiSelectEnabled.value = appearance?.multiSelectEnabled ?? false
+  } catch (e) {
+    console.warn('读取多选开关设置失败', e)
+  }
+}
+
+// 多选开关切换：关闭时清空选择集（操作栏隐藏、勾选态联动取消）；状态持久化到设置
+function handleMultiSelectChange(): void {
+  if (!multiSelectEnabled.value) {
+    workSelectionStore.clear()
+  }
+  void settingsSaveSettings([{path: 'appearance.multiSelectEnabled', value: multiSelectEnabled.value}])
+}
+
 // test
 function handleTest() {
   Events.Emit('plugin:local-import:classify:request', { level: 0, dirName: 'test-author' })
@@ -312,6 +336,13 @@ function handleTest() {
           :value="true"
         />
       </el-radio-group>
+      <div class="main-page-multiselect-toggle topbar-items">
+        <span class="main-page-multiselect-toggle-label">多选</span>
+        <el-switch
+          v-model="multiSelectEnabled"
+          @change="handleMultiSelectChange"
+        />
+      </div>
       <div class="main-page-searchbar topbar-items">
         <auto-load-tag-select
           ref="searchConditionBar"
@@ -424,7 +455,7 @@ function handleTest() {
               v-model:current-work-index="currentWorkIndex"
               class="main-page-work-grid"
               :work-list="workList"
-              :checkable="true"
+              :checkable="multiSelectEnabled"
               :checked-work-ids="workSelectionStore.workIds"
               @checked-change="handleWorkCheckedChange"
               @work-set-deleted="handleWorkSetDeleted"
@@ -453,7 +484,7 @@ function handleTest() {
               v-model:current-work-set-index="currentWorkSetIndex"
               class="main-page-work-grid"
               :work-set-list="workSetList"
-              :checkable="true"
+              :checkable="multiSelectEnabled"
               :checked-work-set-ids="workSelectionStore.workSetIds"
               @checked-change="handleWorkSetCheckedChange"
               @work-set-deleted="handleWorkSetDeleted"
@@ -472,9 +503,9 @@ function handleTest() {
         </div>
       </div>
     </div>
-    <!-- 浮动操作栏：任一选择非空时浮出；[导出] 为首个消费者，未来批量操作位（删除/加入作品集等）在此追加 -->
+    <!-- 浮动操作栏：多选开启且选择非空时浮出；[导出] 为首个消费者，未来批量操作位（删除/加入作品集等）在此追加 -->
     <div
-      v-if="workSelectionStore.hasSelection"
+      v-if="multiSelectEnabled && workSelectionStore.hasSelection"
       class="main-page-selection-bar z-layer-5"
     >
       <span class="main-page-selection-bar-count">
@@ -524,6 +555,19 @@ function handleTest() {
 .main-page-topbar > :deep(.topbar-items) {
   flex-wrap: nowrap;
   margin: 0 5px 0 0;
+}
+
+/* 多选开关：顶栏 radio 组旁，垂直居中与相邻控件对齐 */
+.main-page-multiselect-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.main-page-multiselect-toggle-label {
+  font-size: 13px;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
 }
 
 .main-page-searchbar {

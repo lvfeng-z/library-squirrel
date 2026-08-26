@@ -48,9 +48,10 @@ type RecycleBinSettings struct {
 	RetentionDays      int  `json:"retentionDays" koanf:"retentionDays"`           // 回收站保留天数，超过后自动清理
 }
 
-// AppearanceSettings 外观设置
+// AppearanceSettings 外观与交互偏好设置
 type AppearanceSettings struct {
-	Theme string `json:"theme" koanf:"theme"` // 当前主题 id
+	Theme              string `json:"theme" koanf:"theme"`                           // 当前主题 id
+	MultiSelectEnabled bool   `json:"multiSelectEnabled" koanf:"multiSelectEnabled"` // 主页多选模式开关（默认关；开启后作品/作品集网格可勾选、操作栏可用）
 }
 
 // MergeSettings 合并相关设置
@@ -112,7 +113,8 @@ func NewSettings() *Settings {
 			RetentionDays:      30,
 		},
 		Appearance: AppearanceSettings{
-			Theme: "default-light",
+			Theme:              "default-light",
+			MultiSelectEnabled: false,
 		},
 		MergeSettings: MergeSettings{
 			Strategy: MergeStrategyKeep,
