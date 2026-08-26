@@ -1,7 +1,7 @@
 # fsmonitor 模块说明
 
 ## 一句话职责
-感知软件外部对工作目录（workDir）的文件操作（移动/重命名/删除/目录改名），通知用户并提供一键修复（同步 DB 路径 / 复原 / 确认失效）。覆盖**运行时**（事件驱动）与**启动时**（离线对账）两个时机。监控分两域：**store 域**（persistent_store 资源文件）与 **backup 域**（backup 保管清单行文件——外部直删 backup/ 备份文件的缺失感知归本模块，backupGovernance 保持纯 DB 对账）。
+感知软件外部对工作目录（workDir）的文件操作（移动/重命名/删除/目录改名），通知用户并提供一键修复（同步 DB 路径 / 复原 / 确认失效）；可选开启**自动修复模式**——live 路径变更按用户策略自动处理，减少人工确认。覆盖**运行时**（事件驱动）与**启动时**（离线对账）两个时机。监控分两域：**store 域**（persistent_store 资源文件）与 **backup 域**（backup 保管清单行文件——外部直删 backup/ 备份文件的缺失感知归本模块，backupGovernance 保持纯 DB 对账）。
 
 ## 边界
 - 与 persistentStore：persistentStore 管文件落盘 + DB 记录的全生命周期；fsmonitor 监控外部变更并**编排修复**（经接口注入 persistentStore 的查询/修复能力，不直接写其表）
@@ -13,6 +13,7 @@
 | --- | --- |
 | `ListPendingChanges` | 列出待修复变更（供前端确认列表） |
 | `ConfirmChange(id, action)` | 用户确认修复：`sync`(同步路径) / `restore`(复原) / `ack`(确认失效) |
+| `GetAutoRepairPolicySchema` | 自动修复策略可选项集（Key/Label/Options/Default；前端据此渲染策略下拉，选项受 `apply` 实际能力约束） |
 
 前端另监听 Wails 事件 `fsmonitor:change`（变更发生时实时推送，data 含待修复 id/kind/fromPath/toPath）。
 
@@ -23,9 +24,10 @@
 - **backup 域策略**（与 store 域分立）：保管清单行无内容指纹列 → 运行时不做指纹配对（外部改名降级为 Delete 报告），Create 不消费（外部文件落入 backup/ 不构成清单行变更）；仅 USN ChangeMove 产 Move（sync=行路径跟随/移出子树视为 Delete）；目录 Remove 按前缀圈行后逐行 stat 复核；Delete 的 ack=删清单行+即时清引用（backupGovernance），restore 不适用（文件已失无从复原）
 - **能力接口（Deps 注入，nil = 降级）**：`LiveEventSource`(实时事件) / `OfflineChangeProvider`(USN 离线追溯 `usn_provider_windows.go`，Windows 管理员可选、开关门控) / `ReconciliationScanner`(离线对账，含 backup 段) / 指纹(`util/fingerprint.Computer`，`NewPlatformDeps` 自建) / `StoreReader`+`StoreRepairer`(store 域 DB 读写) / `BackupReader`+`BackupRepairer`+`BackupRefCleaner`(backup 域)
 - **RepairManager**：待修复变更队列 + 用户确认执行（按 Domain 路由到对应修复能力）
+- **自动修复模式（AutoRepair）**：`settings.fsmonitor.autoRepairEnabled` 开启时，live 路径变更在派发链路（`dispatchSemanticChange`，携带 ctx + live/offline 来源）先尝试 `AutoApply`——按策略表（`autoRepairPolicies` 覆盖 + 内置默认）查动作并复用既有 `apply` 执行，成功则不入队、事件 payload 带 `autoHandled=true`；**offline（启动对账）来源一律入队人工确认**（离线批量高发诱因是环境异常——挂载断开/云盘占位/杀软隔离，自动处理会造成无感知批量失效）；失败/无默认动作降级入队。策略可选项集见 `GetAutoRepairPolicySchema`（store/backup × Move/DirMove/Delete，选项受 apply 能力约束；Untracked 不可配置）。自动执行复用 apply 天然带操作抑制。设置读取器（`SetAutoRepairReader`）由 app.go 接线为惰性闭包，运行时改开关/策略即时生效
 
 ## 依赖关系
-- 依赖（接口注入，app.go 适配）：persistentStore（`StoreReader` 查记录 / `StoreRepairer` 改路径+失效）、backup（`BackupReader` 查清单行 / `BackupRepairer` 删行+改路径）、backupGovernance（`BackupRefCleaner` 删行后即时清引用）、settings（workDir 闭包）、WailsEventEmitter（闭包延迟）；指纹由 `util/fingerprint` 提供（`NewPlatformDeps` 自建注入 correlator）；监控范围（store 白名单 + backup 根）由 `storeRegistry` 提供
+- 依赖（接口注入，app.go 适配）：persistentStore（`StoreReader` 查记录 / `StoreRepairer` 改路径+失效）、backup（`BackupReader` 查清单行 / `BackupRepairer` 删行+改路径）、backupGovernance（`BackupRefCleaner` 删行后即时清引用）、settings（workDir 闭包 + `AutoRepairConfig` 惰性读取器）、WailsEventEmitter（闭包延迟）；指纹由 `util/fingerprint` 提供（`NewPlatformDeps` 自建注入 correlator）；监控范围（store 白名单 + backup 根）由 `storeRegistry` 提供
 - 被依赖：前端 `ChangeConfirmDialog`（确认 UI，域感知文案）、`MainIpcListener`（事件监听）
 
 ## 关键设计

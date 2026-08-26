@@ -1,5 +1,5 @@
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import ConfirmConfig from '@renderer/model/util/ConfirmConfig.ts'
 import GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
@@ -11,6 +11,24 @@ import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChange
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
+
+// 自动修复聚合提示：短时间内多起自动处理合并为一条提示（避免弹窗刷屏；详见日志为单一真相源）
+let autoHandledCount = 0
+let autoHandledTimer: ReturnType<typeof setTimeout> | null = null
+
+function pushAutoHandledNotice() {
+  autoHandledCount += 1
+  if (autoHandledTimer !== null) return
+  autoHandledTimer = setTimeout(() => {
+    const count = autoHandledCount
+    autoHandledCount = 0
+    autoHandledTimer = null
+    ElMessage({
+      message: `已自动处理 ${count} 条外部变更，详见日志`,
+      type: 'success'
+    })
+  }, 800)
+}
 
 export function iniListener() {
   // 子任务事件（统一 topic，同 topic FIFO 保证事件顺序）
@@ -91,6 +109,13 @@ export function iniListener() {
       toPath: string
       storeId: number
       backupId: number
+      /** 是否已由自动修复模式处理（true 时不入队，前端改为聚合提示） */
+      autoHandled?: boolean
+    }
+    // 已自动处理：不弹确认框，聚合提示（计数防抖合并批量）
+    if (data.autoHandled === true) {
+      pushAutoHandledNotice()
+      return
     }
     useChangeConfirmStore().add({
       id: data.id,

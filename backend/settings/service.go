@@ -58,8 +58,10 @@ func defaultSettings() *Settings {
 			Strategy: MergeStrategyKeep,
 		},
 		FsmonitorSettings: FsmonitorSettings{
-			UsnEnabled:      false,
-			SuppressEnabled: true,
+			UsnEnabled:         false,
+			SuppressEnabled:    true,
+			AutoRepairEnabled:  false,
+			AutoRepairPolicies: map[string]string{},
 		},
 		BackupGovernance: BackupGovernanceSettings{
 			RetentionDays: DefaultBackupGovernanceRetentionDays,

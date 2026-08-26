@@ -30,18 +30,31 @@ export function ConfirmChange(id: number, action: string): $CancellablePromise<m
 }
 
 /**
+ * GetAutoRepairPolicySchema 返回自动修复策略可选项集（前端据此渲染策略下拉；可选项由 apply 实际能力约束）
+ */
+export function GetAutoRepairPolicySchema(): $CancellablePromise<model$0.ApiResponse<$models.AutoRepairPolicyDTO[]> | null> {
+    return $Call.ByID(3634037419).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
  * ListPendingChanges 列出待修复变更（供前端确认列表展示）
  */
 export function ListPendingChanges(): $CancellablePromise<model$0.ApiResponse<$models.PendingChangeDTO[]> | null> {
     return $Call.ByID(3194761824).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType9($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.PendingChangeDTO.createFrom;
+const $$createType2 = $models.AutoRepairPolicyDTO.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $models.PendingChangeDTO.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
+const $$createType9 = $Create.Nullable($$createType8);

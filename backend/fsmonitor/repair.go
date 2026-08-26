@@ -23,6 +23,91 @@ const (
 	ActionAck RepairAction = "ack"
 )
 
+// AutoRepairConfig 自动修复模式运行配置（读取时点取自 settings，避免构造期快照——用户运行时改开关/策略即时生效）。
+// 由 app 以闭包适配 settings.Service 注入，fsmonitor 不依赖 settings 包
+type AutoRepairConfig struct {
+	Enabled  bool              // 总开关（默认关，用户显式开启）
+	Policies map[string]string // 用户策略覆盖表（key="<domain>:<kind>"，value=动作；未覆盖的组合回落内置默认）
+}
+
+// autoRepairPolicyKey (domain+kind) 组合的策略键（与前端 schema 及用户设置键共用，形态 "<domain>:<kind>"）
+func autoRepairPolicyKey(domain ChangeDomain, kind SemanticKind) string {
+	return domainKeyName(domain) + ":" + kindKeyName(kind)
+}
+
+// domainKeyName 域的策略键名（store/backup）
+func domainKeyName(d ChangeDomain) string {
+	if d == DomainBackup {
+		return "backup"
+	}
+	return "store"
+}
+
+// kindKeyName 语义变更类型的策略键名（Move/Delete/Untracked/DirMove）
+func kindKeyName(k SemanticKind) string {
+	switch k {
+	case SemanticDelete:
+		return "Delete"
+	case SemanticUntracked:
+		return "Untracked"
+	case SemanticDirMove:
+		return "DirMove"
+	default:
+		return "Move"
+	}
+}
+
+// AutoRepairPolicy 自动修复策略描述：固定可选项（受 apply 能力约束，不可选项不暴露）+ 内置默认
+type AutoRepairPolicy struct {
+	Key     string
+	Label   string
+	Options []RepairAction
+	Default RepairAction
+}
+
+// autoRepairPolicies 自动修复策略常量表（决策1）：每 (domain+kind) 组合的可选项来自 apply 实际支持的动作。
+// Untracked 不入队无动作，不在表中（不可配置）
+var autoRepairPolicies = []AutoRepairPolicy{
+	{Key: "store:Move", Label: "资源文件移动", Options: []RepairAction{ActionSync, ActionRestore}, Default: ActionSync},
+	{Key: "store:DirMove", Label: "资源目录移动", Options: []RepairAction{ActionSync, ActionRestore}, Default: ActionSync},
+	{Key: "backup:Move", Label: "备份文件移动", Options: []RepairAction{ActionSync, ActionRestore}, Default: ActionSync},
+	{Key: "store:Delete", Label: "资源文件删除", Options: []RepairAction{ActionAck}, Default: ActionAck},
+	{Key: "backup:Delete", Label: "备份文件删除", Options: []RepairAction{ActionAck}, Default: ActionAck},
+}
+
+// resolveAutoRepairAction 按 (domain+kind) 解析自动修复动作：用户策略覆盖优先，未配置回落内置默认。
+// 返回 ok=false 表示该组合无默认动作（不自动处理，调用方降级入队留人工）
+func resolveAutoRepairAction(sc *SemanticChange, userPolicies map[string]string) (RepairAction, bool) {
+	key := autoRepairPolicyKey(sc.Domain, sc.Kind)
+	if action, ok := userPolicies[key]; ok {
+		if actionAllowed(key, RepairAction(action)) {
+			return RepairAction(action), true
+		}
+		logger.Log.Warnf("[fsmonitor] 自动修复策略 %s 配置了不可选项 %q，回落内置默认", key, action)
+	}
+	for _, p := range autoRepairPolicies {
+		if p.Key == key {
+			return p.Default, true
+		}
+	}
+	return "", false
+}
+
+// actionAllowed 校验动作是否属于该组合的可选项（不可选项不暴露；配置了非法值视为配置错误回落默认）
+func actionAllowed(key string, action RepairAction) bool {
+	for _, p := range autoRepairPolicies {
+		if p.Key != key {
+			continue
+		}
+		for _, opt := range p.Options {
+			if opt == action {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // StoreRepairer persistent_store 修复能力（由 persistentStore.Service 实现适配）
 type StoreRepairer interface {
 	// UpdateFilePath 更新记录 file_path（移动同步）
@@ -43,10 +128,11 @@ type PendingChange struct {
 // RepairManager 修复管理：维护待修复变更队列 + 执行用户确认的修复动作。
 // store 域与 backup 域分立修复能力，按变更所属域路由
 type RepairManager struct {
-	repairer         StoreRepairer    // store 域修复（nil 时该域修复不可用，仅通知）
-	backupRepairer   BackupRepairer   // backup 域修复（nil 时该域不入修复队列）
-	backupRefCleaner BackupRefCleaner // backup 域引用清列联动（nil 时悬空引用由治理对账兜底）
-	workDirGetter    func() string    // 复原(文件移回)时拼绝对路径
+	repairer         StoreRepairer           // store 域修复（nil 时该域修复不可用，仅通知）
+	backupRepairer   BackupRepairer          // backup 域修复（nil 时该域不入修复队列）
+	backupRefCleaner BackupRefCleaner        // backup 域引用清列联动（nil 时悬空引用由治理对账兜底）
+	workDirGetter    func() string           // 复原(文件移回)时拼绝对路径
+	autoRepair       func() AutoRepairConfig // 自动修复设置读取器（nil = 未装配，自动修复不可用）
 
 	mu      sync.Mutex
 	nextID  int64
@@ -62,6 +148,43 @@ func NewRepairManager(repairer StoreRepairer, backupRepairer BackupRepairer, bac
 		workDirGetter:    workDirGetter,
 		pending:          make(map[int64]*PendingChange),
 	}
+}
+
+// SetAutoRepairReader 注入自动修复设置读取器（app 装配闭包适配 settings.Service；nil 关闭自动修复）。
+// 读取时点执行——用户运行时改开关/策略即时生效，无需重启
+func (m *RepairManager) SetAutoRepairReader(reader func() AutoRepairConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.autoRepair = reader
+}
+
+// AutoApply 自动修复：按当前策略表（用户覆盖 + 内置默认）查动作并执行。
+// 返回 true 表示已自动处理（命中策略且执行成功）；false 表示未处理（未装配/开关关/无默认动作/
+// 执行失败），调用方须降级入队留人工（决策1 的降级）
+func (m *RepairManager) AutoApply(ctx context.Context, sc *SemanticChange) bool {
+	if m == nil || sc == nil {
+		return false
+	}
+	m.mu.Lock()
+	reader := m.autoRepair
+	m.mu.Unlock()
+	if reader == nil {
+		return false
+	}
+	cfg := reader()
+	if !cfg.Enabled {
+		return false
+	}
+	action, ok := resolveAutoRepairAction(sc, cfg.Policies)
+	if !ok {
+		return false // 无默认动作（如 Untracked）：不入队不自动
+	}
+	if err := m.apply(ctx, sc, action); err != nil {
+		logger.Log.Warnf("[fsmonitor] 自动修复失败，降级人工确认（%s → %s）: %v", formatSemanticChange(sc), action, err)
+		return false
+	}
+	logger.Log.Infof("[fsmonitor] 已自动处理：%s（动作 %s）", formatSemanticChange(sc), action)
+	return true
 }
 
 // Enqueue 入队一个语义变更，返回分配的待修复 ID（该域修复能力不可用时返回 0 表示不入队）
@@ -257,6 +380,3 @@ func (m *RepairManager) applyDelete(ctx context.Context, sc *SemanticChange, act
 		return fmt.Errorf("删除变更不支持动作 %s", action)
 	}
 }
-
-// _ 确保 context 在未来扩展（批量确认等）可用
-var _ = context.TODO

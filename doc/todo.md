@@ -47,3 +47,6 @@
 47. 作品与其他元素的关联需要记录来源（手动创建、插件创建等）
 48. ~~补充外键~~（已完成：全库 25 对外键 NO ACTION 声明并强制执行——DSN `_foreign_keys=on` + `backend/migration/foreign_keys.go` 表重建舞步 + 存量清理/0 哨兵 NULL 化；封面兜底随之退役、purge 链补清封面引用；方案与执行记录见 `doc/plan/外键补充方案.md`，实机验证见 `.claude/testing/reports/VERIFY-外键批次一~四.md`）
 49. ~~站点这种基础数据的逻辑删除，用于避免大规模数据迁移~~（已经被外键限制取代）
+50. 导出功能，入口必须醒目
+51. 分享功能，考虑法律风险
+52. ~~工作目录外部操作防护~~（已完成：fsmonitor 自动修复模式（live 自动/offline 人工/失败降级）+ workdirGuard 模块（Windows 受控文件夹引导+探针，其余平台 no-op），方案与执行记录见 `doc/plan/工作目录外部操作防护方案.md`，实机验证见 `.claude/testing/reports/VERIFY-工作目录外部操作防护.md`）

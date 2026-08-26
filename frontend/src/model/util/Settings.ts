@@ -32,6 +32,8 @@ export const emptySettings: Settings = {
   },
   fsmonitor: {
     usnEnabled: false,
-    suppressEnabled: true
+    suppressEnabled: true,
+    autoRepairEnabled: false,
+    autoRepairPolicies: {}
   }
 }

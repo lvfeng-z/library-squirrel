@@ -17,6 +17,16 @@ type EventEmitter interface {
 	Emit(eventName string, data ...any) bool
 }
 
+// changeSource 语义变更来源：live=运行时实时事件；offline=启动离线对账。
+// 自动修复仅对 live 生效（决策2）：离线批量高发诱因是环境异常（挂载断开/云盘占位/杀软隔离），
+// 自动处理会造成无感知批量失效
+type changeSource int
+
+const (
+	changeSourceLive changeSource = iota
+	changeSourceOffline
+)
+
 // Service 工作目录监控编排服务。
 // 持有平台依赖集合(Deps)，编排实时事件源/关联/通知/修复。store 域与 backup 域分立关联
 // (Correlator / backupWatcher)，共用事件源、确认流与修复队列
@@ -76,6 +86,14 @@ func (s *Service) ConfirmChange(ctx context.Context, id int64, action RepairActi
 	return s.repair.Confirm(ctx, id, action)
 }
 
+// SetAutoRepairReader 注入自动修复设置读取器（app 装配闭包适配 settings.Service；nil 关闭自动修复）。
+// 读取时点执行——用户运行时改开关/策略即时生效。repair 层不可用时自动修复无承载
+func (s *Service) SetAutoRepairReader(reader func() AutoRepairConfig) {
+	if s.repair != nil {
+		s.repair.SetAutoRepairReader(reader)
+	}
+}
+
 // Start 启动监控：离线对账(启动时一次性) + 实时事件源消费 + workDir 变更轮询。
 // 实时事件源未注入(nil)时仅跳过事件消费，离线对账与 workDir 轮询仍执行。
 func (s *Service) Start() {
@@ -119,7 +137,7 @@ func (s *Service) runOfflineReconcile() {
 			return false
 		}
 		reported[k] = true
-		s.dispatchSemanticChange(sc)
+		s.dispatchSemanticChange(ctx, sc, changeSourceOffline)
 		return true
 	}
 
@@ -246,22 +264,29 @@ func (s *Service) runOfflineReconcile() {
 		len(diff.Missing), len(diff.Untracked), len(diff.BackupMissing), reconNovel, reconDedup)
 }
 
-// dispatchSemanticChange 派发语义变更：入队待修复 + 通知前端（离线对账与运行时共用）
-func (s *Service) dispatchSemanticChange(sc *SemanticChange) {
+// dispatchSemanticChange 派发语义变更：live 变更在自动模式下按策略自动处理，否则入队待修复 + 通知前端。
+// offline（启动离线对账）一律入队人工确认（决策2）；自动执行失败降级入队；事件带 autoHandled 供前端区分
+func (s *Service) dispatchSemanticChange(ctx context.Context, sc *SemanticChange, source changeSource) {
 	logger.Log.Infof("[fsmonitor] %s", formatSemanticChange(sc))
 	pendingID := int64(0)
-	if s.repair != nil {
+	autoHandled := false
+	// 自动修复仅 live 生效；repair 层不可用时无自动处理（仅通知）
+	if source == changeSourceLive && s.repair != nil {
+		autoHandled = s.repair.AutoApply(ctx, sc)
+	}
+	if !autoHandled && s.repair != nil {
 		pendingID = s.repair.Enqueue(sc)
 	}
 	if em := s.emitter(); em != nil {
 		em.Emit("fsmonitor:change", map[string]any{
-			"id":       pendingID,
-			"domain":   int(sc.Domain),
-			"kind":     int(sc.Kind),
-			"fromPath": sc.FromPath,
-			"toPath":   sc.ToPath,
-			"storeId":  sc.StoreID,
-			"backupId": sc.BackupID,
+			"id":          pendingID,
+			"domain":      int(sc.Domain),
+			"kind":        int(sc.Kind),
+			"fromPath":    sc.FromPath,
+			"toPath":      sc.ToPath,
+			"storeId":     sc.StoreID,
+			"backupId":    sc.BackupID,
+			"autoHandled": autoHandled,
 		})
 	}
 }
@@ -323,7 +348,7 @@ func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
 			return
 		}
 		for _, sc := range s.backupWatcher.Process(ctx, ev) {
-			s.dispatchSemanticChange(sc)
+			s.dispatchSemanticChange(ctx, sc, changeSourceLive)
 		}
 		return
 	}
@@ -354,7 +379,7 @@ func (s *Service) handleFileChange(ctx context.Context, ev FileChange) {
 	if sc == nil {
 		return // 无需报告（如外部无关文件删除、去重跳过）
 	}
-	s.dispatchSemanticChange(sc)
+	s.dispatchSemanticChange(ctx, sc, changeSourceLive)
 }
 
 // formatSemanticChange 语义变更的可读串（含移动前后路径对比；backup 域带清单行 ID）

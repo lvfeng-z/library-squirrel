@@ -7,6 +7,6 @@ export {
 };
 
 export {
-    AutoRepairPolicyDTO,
-    PendingChangeDTO
+    GuardInfoResponse,
+    Info
 } from "./models.js";

@@ -5,7 +5,7 @@
 
 import { requireResponse, type ApiResult } from '../types'
 import { Handler as FsmonitorHandler } from '@bindings/github.com/library-squirrel/backend/fsmonitor'
-import type { PendingChangeDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
+import type { AutoRepairPolicyDTO, PendingChangeDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
 
 // ========== 查询操作 ==========
 
@@ -14,6 +14,11 @@ export async function fsmonitorListPending(): Promise<ApiResult<PendingChangeDTO
   const result = requireResponse(await FsmonitorHandler.ListPendingChanges(), '查询待修复变更')
   const data = result.data?.filter((item): item is PendingChangeDTO => item !== null) ?? []
   return { success: true as const, msg: result.msg, data }
+}
+
+/** 查询自动修复策略可选项集（前端据此渲染策略下拉；可选项由 apply 实际能力约束） */
+export async function fsmonitorGetAutoRepairPolicySchema(): Promise<ApiResult<AutoRepairPolicyDTO[]>> {
+  return requireResponse(await FsmonitorHandler.GetAutoRepairPolicySchema(), '获取自动修复策略')
 }
 
 // ========== 修复确认 ==========

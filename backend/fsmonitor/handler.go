@@ -57,6 +57,32 @@ func (h *Handler) ConfirmChange(ctx context.Context, id int64, action string) *m
 	return model.HandleVoid(h.svc.ConfirmChange(ctx, id, RepairAction(action)))
 }
 
+// AutoRepairPolicyDTO 自动修复策略项（前端渲染策略下拉；仅 Options 多于一项的组合提供配置 UI）
+type AutoRepairPolicyDTO struct {
+	Key     string   `json:"key"`     // "<domain>:<kind>"，settings 保存键（fsmonitor.autoRepairPolicies 的键）
+	Label   string   `json:"label"`   // 展示名
+	Options []string `json:"options"` // 可选项（RepairAction 字符串，不可选项不暴露）
+	Default string   `json:"default"` // 内置默认动作
+}
+
+// GetAutoRepairPolicySchema 返回自动修复策略可选项集（前端据此渲染策略下拉；可选项由 apply 实际能力约束）
+func (h *Handler) GetAutoRepairPolicySchema(ctx context.Context) *model.ApiResponse[[]AutoRepairPolicyDTO] {
+	items := make([]AutoRepairPolicyDTO, 0, len(autoRepairPolicies))
+	for _, p := range autoRepairPolicies {
+		opts := make([]string, 0, len(p.Options))
+		for _, o := range p.Options {
+			opts = append(opts, string(o))
+		}
+		items = append(items, AutoRepairPolicyDTO{
+			Key:     p.Key,
+			Label:   p.Label,
+			Options: opts,
+			Default: string(p.Default),
+		})
+	}
+	return model.Success(items)
+}
+
 // kindName 语义变更类型可读名称（域感知：backup 域缺失/移动面向保管清单行）
 func kindName(domain ChangeDomain, k SemanticKind) string {
 	if domain == DomainBackup {

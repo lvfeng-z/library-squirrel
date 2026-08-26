@@ -6,6 +6,61 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AutoRepairPolicyDTO 自动修复策略项（前端渲染策略下拉；仅 Options 多于一项的组合提供配置 UI）
+ */
+export class AutoRepairPolicyDTO {
+    /**
+     * "<domain>:<kind>"，settings 保存键（fsmonitor.autoRepairPolicies 的键）
+     */
+    "key": string;
+
+    /**
+     * 展示名
+     */
+    "label": string;
+
+    /**
+     * 可选项（RepairAction 字符串，不可选项不暴露）
+     */
+    "options": string[];
+
+    /**
+     * 内置默认动作
+     */
+    "default": string;
+
+    /** Creates a new AutoRepairPolicyDTO instance. */
+    constructor($$source: Partial<AutoRepairPolicyDTO> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("options" in $$source)) {
+            this["options"] = [];
+        }
+        if (!("default" in $$source)) {
+            this["default"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutoRepairPolicyDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutoRepairPolicyDTO {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
+        }
+        return new AutoRepairPolicyDTO($$parsedSource as Partial<AutoRepairPolicyDTO>);
+    }
+}
+
+/**
  * PendingChangeDTO 待修复变更（前端展示用）
  */
 export class PendingChangeDTO {
@@ -84,3 +139,6 @@ export class PendingChangeDTO {
         return new PendingChangeDTO($$parsedSource as Partial<PendingChangeDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);

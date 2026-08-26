@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseView from './BaseView.vue'
-import { nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
+import { computed, nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import lodash from 'lodash'
 import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
@@ -10,10 +10,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
-import { settingsApi, fileSysUtilApi } from '@renderer/apis/http'
+import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi } from '@renderer/apis/http'
 import {emptySettings} from "@renderer/model/util/Settings.js";
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import type { ThemeId } from '@renderer/theme/themes'
+import type { AutoRepairPolicyDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
+import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/backend/workdirGuard/models'
 
 // onBeforeMount
 onBeforeMount(() => {
@@ -25,7 +27,9 @@ const apis = {
   fileSysUtilSelectDirectory: fileSysUtilApi.fileSysUtilSelectDirectory,
   settingsGetSettings: settingsApi.settingsGetSettings,
   settingsSaveSettings: settingsApi.settingsSaveSettings,
-  settingsResetSettings: settingsApi.settingsResetSettings
+  settingsResetSettings: settingsApi.settingsResetSettings,
+  fsmonitorGetAutoRepairPolicySchema: fsmonitorApi.fsmonitorGetAutoRepairPolicySchema,
+  workdirGuardGetInfo: workdirGuardApi.workdirGuardGetInfo
 } // 接口
 // 工作目录输入组件实例
 const workdirInput = ref()
@@ -43,6 +47,19 @@ const settings: Ref<Settings> = ref(emptySettings)
 let oldSettings: Settings = emptySettings // 原设置
 // 主题（即时生效，独立于设置的保存流程，切换时由 store 自行持久化）
 const themeStore = useThemeStore()
+// 自动修复策略 schema（可选项由后端 apply 能力约束，前端不写死）
+const policySchema = ref<AutoRepairPolicyDTO[]>([])
+// 有选择空间的策略组合（options 多于一项）才渲染下拉；Delete 单选项与 Untracked 不可配置不渲染
+const configurablePolicies = computed(() => policySchema.value.filter((p) => p.options.length > 1))
+// 目录保护探测结果（平台机制信息 + 当前 workDir 可写性）
+const guardInfo = ref<GuardInfoResponse | null>(null)
+const guardLoading = ref(false)
+// 修复动作可读名（与确认弹窗文案对齐）
+const REPAIR_ACTION_LABEL: Record<string, string> = {
+  sync: '同步路径',
+  restore: '复原',
+  ack: '确认失效'
+}
 async function handleSelectTheme(id: ThemeId) {
   await themeStore.setTheme(id)
 }
@@ -52,10 +69,16 @@ const workSettingsFileNameFormatDialogState: Ref<boolean> = ref(false)
 const router = useRouter()
 
 // 方法
+// autoRepairPolicies 为 map：递归 diff 只遍历旧键，新键不产出变更——整表比较判定变更
+function hasPolicyChanges(): boolean {
+  const policies = settings.value.fsmonitor.autoRepairPolicies ?? {}
+  const oldPolicies = oldSettings.fsmonitor.autoRepairPolicies ?? {}
+  return !lodash.isEqual(policies, oldPolicies)
+}
 // 检查设置是否有未保存的更改
 function hasUnsavedChanges(): boolean {
   const changed = getChangedProperties(settings.value, oldSettings)
-  return arrayNotEmpty(changed)
+  return arrayNotEmpty(changed) || hasPolicyChanges()
 }
 
 // 路由守卫 - 离开前检查未保存的更改
@@ -110,11 +133,48 @@ async function loadSettings() {
       type: 'error'
     })
   }
+  // 设置就绪后同步加载策略 schema 与目录保护探测（workDir 变更保存后经此刷新）
+  await loadPolicySchema()
+  await probeWorkDirGuard()
+}
+// 加载自动修复策略 schema
+async function loadPolicySchema() {
+  try {
+    const response = await apis.fsmonitorGetAutoRepairPolicySchema()
+    policySchema.value = response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 探测目录保护（读当前 workdir；workdir 为空时后端跳过探测仅返回机制信息）
+async function probeWorkDirGuard() {
+  guardLoading.value = true
+  try {
+    const response = await apis.workdirGuardGetInfo(settings.value.workdir ?? '')
+    guardInfo.value = response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    guardLoading.value = false
+  }
+}
+// 策略下拉变更写入（写入 autoRepairPolicies 覆盖表）
+function setAutoRepairPolicy(key: string, value: string) {
+  settings.value.fsmonitor.autoRepairPolicies[key] = value
+}
+// 修复动作可读名（未登记回退原值）
+function actionLabel(action: string): string {
+  return REPAIR_ACTION_LABEL[action] ?? action
 }
 // 保存设置
 async function saveSettings() {
   const changed = getChangedProperties(settings.value, oldSettings)
-  const response = await apis.settingsSaveSettings(changed)
+  // autoRepairPolicies 是 map：递归 diff 仅遍历旧键，新键不产出变更路径——整表比较后整体提交
+  const changedWithoutPolicies = changed.filter((c) => !c.path.startsWith('fsmonitor.autoRepairPolicies'))
+  if (hasPolicyChanges()) {
+    changedWithoutPolicies.push({ path: 'fsmonitor.autoRepairPolicies', value: settings.value.fsmonitor.autoRepairPolicies ?? {} })
+  }
+  const response = await apis.settingsSaveSettings(changedWithoutPolicies)
   await loadSettings()
   if (ApiUtil.check(response)) {
     const succeed = ApiUtil.data<boolean>(response)
@@ -326,6 +386,64 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-col>
                   </el-row>
                 </el-tooltip>
+                <el-card
+                  shadow="never"
+                  class="settings-guard-card"
+                >
+                  <template #header>
+                    <div class="settings-guard-card-header">
+                      <span>目录保护</span>
+                      <el-button
+                        size="small"
+                        :loading="guardLoading"
+                        @click="probeWorkDirGuard"
+                      >
+                        重新检测
+                      </el-button>
+                    </div>
+                  </template>
+                  <template v-if="notNullish(guardInfo)">
+                    <div class="settings-guard-mechanism">
+                      <span class="settings-guard-mechanism-name">防护机制：{{ guardInfo.info.mechanism }}</span>
+                      <el-tag
+                        size="small"
+                        :type="guardInfo.info.supported ? 'success' : 'info'"
+                      >
+                        {{ guardInfo.info.supported ? '受支持' : '不支持' }}
+                      </el-tag>
+                    </div>
+                    <el-alert
+                      v-if="guardInfo.probeOk"
+                      class="settings-guard-alert"
+                      title="探测通过：工作目录当前可写，未被系统保护机制拦截"
+                      type="success"
+                      :closable="false"
+                      show-icon
+                    />
+                    <el-alert
+                      v-else-if="guardInfo.probeErr"
+                      class="settings-guard-alert"
+                      :title="`探测失败：${guardInfo.probeErr}`"
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                    />
+                    <el-alert
+                      v-else
+                      class="settings-guard-alert"
+                      title="工作目录未配置，跳过探测"
+                      type="info"
+                      :closable="false"
+                      show-icon
+                    />
+                    <div
+                      v-if="guardInfo.info.guide"
+                      class="settings-guard-guide"
+                    >
+                      {{ guardInfo.info.guide }}
+                    </div>
+                  </template>
+                </el-card>
                 <el-divider
                   content-position="left"
                   border-style="dotted"
@@ -383,6 +501,59 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     什么是操作抑制？
                   </el-text>
                 </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>自动修复</el-text>
+                  <el-switch
+                    v-model="settings.fsmonitor.autoRepairEnabled"
+                    class="settings-element-in-divider"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                  />
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                >
+                  <template #content>
+                    开启后，软件运行期间检测到的路径层面外部变更（资源文件/目录移动、备份文件移动）将按下方策略自动处理，不再逐条弹窗确认；自动执行失败会降级为人工确认。离线对账发现的变更始终保留人工确认。
+                  </template>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    什么是自动修复？
+                  </el-text>
+                </el-tooltip>
+                <div
+                  v-if="settings.fsmonitor.autoRepairEnabled"
+                  class="settings-auto-repair-policies"
+                >
+                  <div
+                    v-for="p in configurablePolicies"
+                    :key="p.key"
+                    class="settings-auto-repair-policy-row"
+                  >
+                    <span class="settings-auto-repair-policy-label">{{ p.label }}</span>
+                    <el-select
+                      :model-value="settings.fsmonitor.autoRepairPolicies[p.key] ?? p.default"
+                      class="settings-auto-repair-policy-select"
+                      size="small"
+                      @update:model-value="(v: string) => setAutoRepairPolicy(p.key, v)"
+                    >
+                      <el-option
+                        v-for="opt in p.options"
+                        :key="opt"
+                        :label="actionLabel(opt)"
+                        :value="opt"
+                      />
+                    </el-select>
+                  </div>
+                </div>
                 <el-divider />
               </div>
               <div id="appearanceSettings">
@@ -905,6 +1076,51 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 }
 .work-settings-file-name-format-input {
   padding-right: 10px;
+}
+.settings-guard-card {
+  margin-top: 12px;
+}
+.settings-guard-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-guard-mechanism {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.settings-guard-mechanism-name {
+  font-size: 13px;
+  color: var(--app-text-primary);
+}
+.settings-guard-alert {
+  margin-bottom: 10px;
+}
+.settings-guard-guide {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--app-text-secondary);
+  white-space: pre-wrap;
+}
+.settings-auto-repair-policies {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-auto-repair-policy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-auto-repair-policy-label {
+  font-size: 13px;
+  color: var(--app-text-primary);
+}
+.settings-auto-repair-policy-select {
+  width: 160px;
 }
 </style>
 <style>

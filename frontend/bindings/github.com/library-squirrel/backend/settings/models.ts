@@ -73,6 +73,16 @@ export class FsmonitorSettings {
      */
     "suppressEnabled": boolean;
 
+    /**
+     * 自动修复模式开关（决策1）：默认关，用户显式开启。开启后 live 路径变更按策略自动处理，offline 一律人工确认。详见 doc/plan/工作目录外部操作防护方案.md
+     */
+    "autoRepairEnabled": boolean;
+
+    /**
+     * 自动修复策略覆盖表（key="<domain>:<kind>"，value=动作；未覆盖的组合回落内置默认，可选项由 fsmonitor 策略表约束）
+     */
+    "autoRepairPolicies": { [_ in string]?: string };
+
     /** Creates a new FsmonitorSettings instance. */
     constructor($$source: Partial<FsmonitorSettings> = {}) {
         if (!("usnEnabled" in $$source)) {
@@ -80,6 +90,12 @@ export class FsmonitorSettings {
         }
         if (!("suppressEnabled" in $$source)) {
             this["suppressEnabled"] = false;
+        }
+        if (!("autoRepairEnabled" in $$source)) {
+            this["autoRepairEnabled"] = false;
+        }
+        if (!("autoRepairPolicies" in $$source)) {
+            this["autoRepairPolicies"] = {};
         }
 
         Object.assign(this, $$source);
@@ -89,7 +105,11 @@ export class FsmonitorSettings {
      * Creates a new FsmonitorSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): FsmonitorSettings {
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("autoRepairPolicies" in $$parsedSource) {
+            $$parsedSource["autoRepairPolicies"] = $$createField3_0($$parsedSource["autoRepairPolicies"]);
+        }
         return new FsmonitorSettings($$parsedSource as Partial<FsmonitorSettings>);
     }
 }
@@ -303,15 +323,15 @@ export class Settings {
      * Creates a new Settings instance from a string or object.
      */
     static createFrom($$source: any = {}): Settings {
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
-        const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType3;
-        const $$createField6_0 = $$createType4;
-        const $$createField7_0 = $$createType5;
-        const $$createField8_0 = $$createType6;
-        const $$createField9_0 = $$createType7;
-        const $$createField10_0 = $$createType8;
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType2;
+        const $$createField4_0 = $$createType3;
+        const $$createField5_0 = $$createType4;
+        const $$createField6_0 = $$createType5;
+        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType7;
+        const $$createField9_0 = $$createType8;
+        const $$createField10_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
             $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
@@ -363,7 +383,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType9;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -397,13 +417,14 @@ export class WorkSettings {
 }
 
 // Private type creation functions
-const $$createType0 = WorkSettings.createFrom;
-const $$createType1 = ImportSettings.createFrom;
-const $$createType2 = PluginSettings.createFrom;
-const $$createType3 = TourSettings.createFrom;
-const $$createType4 = RecycleBinSettings.createFrom;
-const $$createType5 = AppearanceSettings.createFrom;
-const $$createType6 = MergeSettings.createFrom;
-const $$createType7 = FsmonitorSettings.createFrom;
-const $$createType8 = BackupGovernanceSettings.createFrom;
-const $$createType9 = $Create.Map($Create.Any, $Create.Any);
+const $$createType0 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = WorkSettings.createFrom;
+const $$createType2 = ImportSettings.createFrom;
+const $$createType3 = PluginSettings.createFrom;
+const $$createType4 = TourSettings.createFrom;
+const $$createType5 = RecycleBinSettings.createFrom;
+const $$createType6 = AppearanceSettings.createFrom;
+const $$createType7 = MergeSettings.createFrom;
+const $$createType8 = FsmonitorSettings.createFrom;
+const $$createType9 = BackupGovernanceSettings.createFrom;
+const $$createType10 = $Create.Map($Create.Any, $Create.Any);

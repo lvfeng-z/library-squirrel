@@ -58,6 +58,7 @@ import (
 	"github.com/library-squirrel/backend/window"
 	"github.com/library-squirrel/backend/work"
 	"github.com/library-squirrel/backend/workSet"
+	"github.com/library-squirrel/backend/workdirGuard"
 )
 
 // App Wails应用主结构
@@ -95,6 +96,7 @@ type App struct {
 	RecycleBinService       *recycleBin.Service
 	FsmonitorService        *fsmonitor.Service
 	BackupGovernanceService *backupGovernance.Service
+	WorkDirGuard            workdirGuard.Guard
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -153,6 +155,7 @@ type App struct {
 	RecycleBinHandler            *recycleBin.Handler
 	FsmonitorHandler             *fsmonitor.Handler
 	BackupGovernanceHandler      *backupGovernance.Handler
+	WorkDirGuardHandler          *workdirGuard.Handler
 	WindowHandler                *window.Handler
 }
 
@@ -953,11 +956,19 @@ func (app *App) initAdvancedServices() error {
 		func() string { return app.SettingsService.GetWorkDir() },
 		func() fsmonitor.EventEmitter { return app.taskProgressEmitter },
 	)
+	// 注入自动修复设置读取器（读取时点惰性闭包：用户运行时改开关/策略即时生效，避免构造期快照）
+	app.FsmonitorService.SetAutoRepairReader(func() fsmonitor.AutoRepairConfig {
+		f := app.SettingsService.GetSettings().FsmonitorSettings
+		return fsmonitor.AutoRepairConfig{Enabled: f.AutoRepairEnabled, Policies: f.AutoRepairPolicies}
+	})
 	// 把内容指纹计算器注入 persistentStore（落盘完成时同步算指纹落库）
 	app.PersistentStoreService.SetFingerprinter(fingerprint.NewHeadComputer())
 	// 存量指纹回填（异步，不阻塞启动）
 	app.PersistentStoreService.BackfillFingerprints(context.Background())
 	app.FsmonitorService.Start()
+
+	// workdirGuard 工作目录外部操作防护（Windows 受控文件夹访问引导 + 可写性探针；其余平台 no-op 依赖 fsmonitor 兜底）
+	app.WorkDirGuard = workdirGuard.NewPlatformGuard()
 
 	// workSet 服务
 	app.WorkSetService = workSet.NewService(workSetRepo, reWorkWorkSetRepo, reWorkSetWorkSetRepo, &dbTransactorAdapter{db: app.db}, app.WorkService, app.WorkService)
@@ -1372,6 +1383,7 @@ func (app *App) initHandlers() {
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
+	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)
 	// 主窗口句柄实时获取（构造时窗口尚未创建，运行时通过 mainWindow 实时读取原生句柄）
 	app.WindowHandler = window.NewHandler(window.NewService(func() uintptr {
 		if app.mainWindow == nil {
