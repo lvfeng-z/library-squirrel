@@ -39,6 +39,8 @@ const recycleBinSearchTable = ref()
 const storeSearchTable = ref()
 // 作品集条目表组件的实例（作品集 tab；首次切入才查询）
 const workSetSearchTable = ref()
+// 标签条 auto-load-tag-select 的实例（类型开关变化后重置候选）
+const searchConditionBar = ref()
 // 文件 tab 是否已加载过（lazy：首次切入触发一次查询）
 let storeTabLoaded = false
 // 作品集 tab 是否已加载过（lazy：首次切入触发一次查询）
@@ -498,8 +500,8 @@ async function workSetQueryPageFn(p: Page<RecycleWorkSetDTO>): Promise<Page<Recy
 // 处理列头排序变化（后端排序；取消排序时回落默认 deleteTime DESC）
 function handleSortChange(sortData: { column: unknown; prop: string; order: 'ascending' | 'descending' | null }) {
   if (isNullish(sortData.order)) {
-    query.value.sortBy = null
-    query.value.sortOrder = null
+    query.value.sortBy = ''
+    query.value.sortOrder = ''
   } else {
     query.value.sortBy = sortData.prop === 'createTime' ? 'createTime' : 'deleteTime'
     query.value.sortOrder = sortData.order === 'ascending' ? 'asc' : 'desc'

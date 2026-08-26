@@ -28,11 +28,11 @@ export interface WorkSetVO {
  */
 function toWorkSetVO(dto: WorkSetDTO): WorkSetVO {
   return {
-    id: dto.id,
+    id: dto.id ?? 0,
     name: dto.siteWorkSetName ?? '',
     coverId: 0,
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
+    createTime: dto.createTime ?? 0,
+    updateTime: dto.updateTime ?? 0
   }
 }
 

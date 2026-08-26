@@ -16,7 +16,7 @@ export const CHANGE_DOMAIN = {
 } as const
 
 /** 可读名称（与后端 kindName 对齐；backup 域缺失/移动面向保管清单行，独立文案） */
-export const CHANGE_KIND_NAME: Record<number, string> = {
+export const CHANGE_KIND_NAME: Record<string, string> = {
   '0-0': '文件移动/重命名',
   '0-1': '文件删除',
   '0-2': '外部新增文件',

@@ -215,7 +215,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
     if (isNullish(isUpper) ? true : isUpper) {
       if (arrayNotEmpty(upper)) {
         const boundIds = upper.map((item) => Number(item.value))
-        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id, boundIds)
+        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id ?? null, boundIds)
       }
     }
     if (isNullish(isUpper) ? true : !isUpper) {

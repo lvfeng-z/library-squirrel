@@ -234,7 +234,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
 
   if (isNullish(isUpper) ? true : isUpper && arrayNotEmpty(upper)) {
     const boundIds = upper.map((item) => Number(item.value))
-    await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id, boundIds)
+    await apis.siteTagUpdateBindLocalTag(localTagSelected.value.id ?? null, boundIds)
   }
   if (isNullish(isUpper) ? true : !isUpper && arrayNotEmpty(lower)) {
     const unBoundIds = lower.map((item) => Number(item.value))

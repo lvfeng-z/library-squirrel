@@ -50,13 +50,6 @@ function formatTime(timestamp: number | undefined): string {
   if (!timestamp) return '-'
   return new Date(timestamp).toLocaleString()
 }
-
-function formatSize(bytes: number | undefined): string {
-  if (!bytes) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 </script>
 
 <template>
@@ -165,33 +158,21 @@ function formatSize(bytes: number | undefined): string {
           >无</span>
         </el-descriptions-item>
         <el-descriptions-item label="Slot">
-          <template v-if="status.slots && status.slots.length > 0">
+          <template v-if="status.frontendExtensions && status.frontendExtensions.length > 0">
             <el-tag
-              v-for="s in status.slots"
+              v-for="s in status.frontendExtensions"
               :key="s.id"
               size="small"
               type="warning"
               class="status-tag"
             >
-              {{ s.name || s.id }} ({{ s.slotType }})
+              {{ s.name || s.id }} ({{ s.kind }})
             </el-tag>
           </template>
           <span
             v-else
             class="text-muted"
           >无</span>
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <!-- 存储状态 -->
-      <el-descriptions
-        title="存储状态"
-        :column="1"
-        border
-        size="small"
-      >
-        <el-descriptions-item label="PluginData">
-          {{ formatSize(status.pluginDataSize) }}
         </el-descriptions-item>
       </el-descriptions>
 

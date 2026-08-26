@@ -35,13 +35,13 @@ export interface PageResult {
  */
 function toWorkVO(dto: WorkDTO): WorkVO {
   return {
-    id: dto.id,
+    id: dto.id ?? 0,
     title: dto.siteWorkName ?? '',
     siteId: dto.siteId ?? 0,
     siteWorkId: dto.siteWorkId ?? '',
     coverUrl: '',
-    createTime: dto.createTime,
-    updateTime: dto.updateTime
+    createTime: dto.createTime ?? 0,
+    updateTime: dto.updateTime ?? 0
   }
 }
 

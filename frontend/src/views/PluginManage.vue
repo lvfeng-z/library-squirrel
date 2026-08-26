@@ -340,7 +340,7 @@ async function queryPage(page: Page<PluginDTO>): Promise<Page<PluginDTO>> {
   pluginSearchParams.value.name.operator = Operator.OpLike
   pluginSearchParams.value.author.operator = Operator.OpLike
   const response = await pluginApi.pluginQueryPage(page, pluginSearchParams.value)
-  tableRows.value = response.data?.data ?? []
+  tableRows.value = (response.data?.data ?? []).filter(notNullish)
   return response.data
 }
 // 处理插件数据行按钮点击事件

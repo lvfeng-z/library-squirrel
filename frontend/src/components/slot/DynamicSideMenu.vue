@@ -23,7 +23,7 @@ interface MenuItem {
   name: string
   label: string
   // 内置菜单为 Element Plus 图标组件对象，插件菜单为图片 URL 字符串
-  icon: Component | string
+  icon?: Component | string
   order: number
   isGroup: boolean
   children: MenuItem[]

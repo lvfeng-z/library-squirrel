@@ -3,18 +3,18 @@ import { VNode } from 'vue'
 /** 通知严重度，驱动颜色/图标（映射状态 tone：info→active、success→done、warning→warn、error→fail） */
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 
-/** 动态进度；percent 可显式给出（无 total 的 indeterminate 进度），否则由 current/total 派生 */
+/** 动态进度；percent 可显式给出（无 total 的 indeterminate 进度），否则由 current/total 派生；current/total 承接任务进度的可空性 */
 export interface NotificationProgress {
-  current?: number
-  total?: number
+  current?: number | null
+  total?: number | null
   percent?: number
 }
 
-/** 跳转目标（vue-router location，name 如 'taskManage'） */
+/** 跳转目标（vue-router location，name 如 'taskManage'）；params/query 值与 vue-router 位置类型对齐 */
 export interface NotificationRoute {
   name: string
-  params?: Record<string, unknown>
-  query?: Record<string, unknown>
+  params?: Record<string, string | number>
+  query?: Record<string, string>
 }
 
 /** 通知条目（完整形态，含 store 分配的 id/createTime） */

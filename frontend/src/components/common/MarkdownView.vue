@@ -42,12 +42,13 @@ const SANITIZE_CONFIG: DOMPurify.Config = {
   ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
     'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img', 'hr',
     'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+  // dompurify 类型仅声明 ALLOWED_ATTR 为 string[]（扁平属性白名单），tag→attrs 分组对象是其类型未覆盖的写法；cast 仅为通过类型检查，运行行为不变
   ALLOWED_ATTR: {
     img: ['src', 'alt', 'width', 'height', 'title'],
     a: ['href', 'title'],
     th: ['align'],
     td: ['align']
-  },
+  } as unknown as string[],
   ALLOW_DATA_ATTR: false
 }
 

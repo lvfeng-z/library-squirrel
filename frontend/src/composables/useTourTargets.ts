@@ -12,7 +12,7 @@ import { registerTourTarget, unregisterTourTarget, resolveTourTarget } from '@re
 export function useTourTargets() {
   function register<T>(key: string, targetRef: Ref<T | undefined>) {
     const resolver = (): Element | null => {
-      const v = targetRef.value as unknown as { $el?: Element } | Element | undefined
+      const v = targetRef.value as unknown as { $el: Element } | Element | undefined
       if (!v) return null
       // 兼容组件实例（取 $el）与原生元素
       return ('$el' in v ? v.$el : v) ?? null

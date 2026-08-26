@@ -20,7 +20,8 @@
       "@bindings/*": ["bindings/*"],
       "@apis/*": ["src/apis/*"]
     },
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "bindings", "src/shared/**/*"],
   "exclude": ["node_modules"]

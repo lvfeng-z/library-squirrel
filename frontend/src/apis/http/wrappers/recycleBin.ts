@@ -7,10 +7,10 @@ import {
 	Handler as RecycleBinHandler,
 	RecyclePageQuery
 } from '@bindings/github.com/library-squirrel/backend/recycleBin'
-import { RecycleWorkDTO } from '@bindings/github.com/library-squirrel/backend/recycleBin/models'
 import {
 	RecycleStoreDTO,
 	RecycleStorePageQuery,
+	RecycleWorkDTO,
 	RecycleWorkSetDTO,
 	RecycleWorkSetPageQuery
 } from '@bindings/github.com/library-squirrel/backend/base/model/dto'

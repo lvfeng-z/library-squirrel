@@ -206,7 +206,7 @@ const aggregatedSiteTags = computed<SegmentedTagItem[]>(() => {
         new SegmentedTagItem({
           value: st.siteTag.id,
           label: st.siteTag.siteTagName ?? '?',
-          subLabels: [isBlank(st.site?.siteName) ? '?' : (st.site.siteName ?? '?')],
+          subLabels: [isBlank(st.site?.siteName) ? '?' : (st.site?.siteName ?? '?')],
           disabled: false
         })
       )
@@ -257,7 +257,7 @@ async function loadChildWorkSets() {
   if (ApiUtil.check(response)) {
     const list = ApiUtil.data<(WorkSetDTO | null)[]>(response)
     childWorkSets.value = (list ?? []).filter(notNullish) as WorkSetDTO[]
-    existingChildWorkSetIds.value = new Set(childWorkSets.value.map((ws) => ws.id))
+    existingChildWorkSetIds.value = new Set(childWorkSets.value.map((ws) => ws.id).filter((id): id is number => notNullish(id)))
   }
 }
 
@@ -459,8 +459,8 @@ async function fetchWorkPageForAdd(page: Page<WorkCardItem>, conditions: SearchC
     }
     // 后端返回 WorkFullDTO（id/nickName 嵌套在 .work 下），CardGrid/WorkInfo 期望 WorkCardItem（顶层字段），
     // 需经 WorkCardItem 适配层转换，否则 getId 取不到 id（勾选失效）、WorkInfo 取不到 nickName（显示"?"）
-    resultPage.data = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkCardItem(new WorkFullDTO(origin)))
-    return resultPage as unknown as Page<WorkCardItem>
+    const converted = resultPage.data?.filter((origin): origin is WorkFullDTO => notNullish(origin)).map((origin) => new WorkCardItem(new WorkFullDTO(origin)))
+    return { ...resultPage, data: converted } as unknown as Page<WorkCardItem>
   }
   return new Page<WorkCardItem>()
 }
@@ -701,7 +701,7 @@ function openWorkSetDrawer() {
 // 保存作品集元数据（名称 + 本地描述），成功后重新加载作品列表
 async function handleSaveWorkSetMeta() {
   if (isNullish(currentWorkSet.value)) return
-  const id = currentWorkSet.value.id
+  const id = currentWorkSet.value.id ?? 0
   try {
     const response = await apis.workSetUpdate({
       id,
@@ -988,7 +988,7 @@ watch(isCheckable, (newValue) => {
                 :key="cws.id"
                 class="work-set-drawer-child-chip"
                 closable
-                @close="handleRemoveChildWorkSet(cws.id)"
+                @close="handleRemoveChildWorkSet(cws.id ?? 0)"
               >
                 {{ cws.nickName ?? cws.siteWorkSetName ?? '未命名' }}
               </el-tag>

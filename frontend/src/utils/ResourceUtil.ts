@@ -7,7 +7,7 @@ const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
 const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg']
 const DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.rtf']
 
-function getFileExtension(filePath?: string): string {
+function getFileExtension(filePath?: string | null): string {
   if (!filePath) return ''
   const idx = filePath.lastIndexOf('.')
   if (idx < 0) return ''

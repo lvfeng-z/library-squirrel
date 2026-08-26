@@ -72,7 +72,8 @@ export async function pluginGetStatus(publicId: string): Promise<ApiResult<Plugi
 
 /** 获取插件更新待办（available 可答复计入红点；forced/error 只读告知） */
 export async function pluginGetPendingUpgrades(): Promise<ApiResult<PendingUpgradeDTO[]>> {
-  return requireResponse(await PluginHandler.GetPendingUpgrades(), '获取插件更新待办')
+  const res = requireResponse(await PluginHandler.GetPendingUpgrades(), '获取插件更新待办')
+  return { ...res, data: res.data.filter((item): item is PendingUpgradeDTO => item !== null) }
 }
 
 /** 答复「升级」：对 available 待办执行运行期换版（当次会话生效；运行中任务被后端参与者否决并报错引导） */
