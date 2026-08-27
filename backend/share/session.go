@@ -162,6 +162,10 @@ type sessionConfig struct {
 	createdAt    int64
 	emitter      ShareEventEmitter // nil=不发事件（部分单测场景）
 	opts         sessionRuntimeOptions
+	// 复原形态（启动自动复原）：凭记录行原 token 经 bind 重绑而非 register（链接不变，
+	// 剩余有效期由中继侧会话管理——bind 不重传 expiresAt/passwordHash/元数据）
+	seedToken string // 原 token（非空=首次连接即 bind）
+	restore   bool   // 复原形态标记：bind WELCOME 即首次在线信号
 }
 
 // shareSession 单个分享会话
@@ -193,6 +197,9 @@ type shareSession struct {
 	streams sync.Map      // streamID → *streamState（读循环与流处理 goroutine 并发访问）
 	ctx     context.Context
 	cancel  context.CancelFunc
+	// firstSignaled 首次在线/失败信号是否已发出（与 firstCh 配对的只发一次标记；
+	// 复原形态下 bind WELCOME/被拒也属首次信号，不能只按 token 有无判定）
+	firstSignaled bool
 }
 
 // newShareSession 创建会话（不启动；由 run 驱动）。密钥在此完成密码学对象构建。
@@ -207,6 +214,7 @@ func newShareSession(cfg sessionConfig) (*shareSession, error) {
 		firstCh: make(chan error, 1),
 		doneCh:  make(chan struct{}),
 	}
+	s.token = cfg.seedToken // 复原形态：原 token 预置（首次连接即 bind）
 	s.opts = defaultRuntimeOptions().withOverrides(cfg.opts)
 	s.state = stateConnecting
 	// 白名单与统计：包内路径即白名单键——收件人请求的 path 仅作 map 查找，永不进入文件系统
@@ -358,7 +366,9 @@ func (s *shareSession) metaSource() string {
 	return SanitizeMetaText(src, 100)
 }
 
-// acceptWelcome 记录 WELCOME；返回是否为「首次在线」（首次时置 online 并复位退避由 run 处理）
+// acceptWelcome 记录 WELCOME；返回是否为「首次在线」（首次时置 online 并复位退避由 run 处理）。
+// 首次信号只发一次：注册形态以 WELCOME 带 token 为准（重连 bind 无 token 不重复触发）；
+// 复原形态以首个 bind WELCOME 为准。
 func (s *shareSession) acceptWelcome(wp welcomePayload) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -371,7 +381,11 @@ func (s *shareSession) acceptWelcome(wp welcomePayload) bool {
 		s.state = stateOnline
 		s.errMsg = ""
 	}
-	return !wasOnline && wp.Token != "" // 首次注册成功在线（重绑不重复发首次信号）
+	if !wasOnline && !s.firstSignaled && (wp.Token != "" || s.cfg.restore) {
+		s.firstSignaled = true
+		return true
+	}
+	return false
 }
 
 // applyRelayRejection 按 ERROR code 落终态或保持可重试
@@ -392,10 +406,13 @@ func (s *shareSession) applyRelayRejection(we *wireErr) {
 		s.state = state
 		s.errMsg = msg
 	}
-	first := s.token == ""
+	first := !s.firstSignaled
+	if first {
+		s.firstSignaled = true
+	}
 	s.mu.Unlock()
 	if first {
-		s.signalFirst(we) // 注册即被拒：发布流程收终态失败
+		s.signalFirst(we) // 首次连接即被拒（注册或复原 bind）：发布/复原流程收终态失败
 	}
 }
 

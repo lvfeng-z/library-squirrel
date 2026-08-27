@@ -99,6 +99,10 @@ export function iniListener() {
     if (link !== '') useShareReceiveStore().openWith(link)
   })
 
+  // 分享会话快照兜底：「分享」菜单红点与分享视图会话区的数据引导（启动复原的 state
+  // 事件可能先于本监听注册发出；此后由 share-events 持续维护）
+  void useShareStore().loadSessions().catch((e) => console.warn('拉取分享会话失败', e))
+
   // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）
   Events.On('taskStatus-setTask', (event: any) => {
     const taskList = event.data as any[]

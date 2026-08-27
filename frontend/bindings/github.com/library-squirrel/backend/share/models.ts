@@ -63,7 +63,7 @@ export class SharePublishOptions {
     "expireSeconds": number;
 
     /**
-     * Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落任务载荷的只有摘要）
+     * Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落记录行的只有有无标记）
      */
     "password": string;
 
@@ -88,6 +88,119 @@ export class SharePublishOptions {
     static createFrom($$source: any = {}): SharePublishOptions {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new SharePublishOptions($$parsedSource as Partial<SharePublishOptions>);
+    }
+}
+
+/**
+ * ShareRecordDTO 分享记录行（历史分享账本查询 DTO）。链接由 relayAddress+token+key
+ * 重建（与发布时完全一致——复原不换 token/密钥）；密钥/令牌缺失的异常行链接为空。
+ */
+export class ShareRecordDTO {
+    "id": number;
+    "shareId": string;
+    "token": string;
+    "title": string;
+    "workIds": number[];
+    "workSetIds": number[];
+    "relayAddress": string;
+    "keyB64": string;
+
+    /**
+     * 重建的完整分享链接（含 fragment 密钥）
+     */
+    "link": string;
+    "passwordProtected": boolean;
+    "expireSeconds": number;
+    "expiresAt": number;
+    "fileCount": number;
+    "totalBytes": number;
+    "missingFiles": number;
+    "state": string;
+    "errMsg": string;
+    "revokedAt": number;
+    "createdAt": number;
+    "updatedAt": number;
+
+    /** Creates a new ShareRecordDTO instance. */
+    constructor($$source: Partial<ShareRecordDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("shareId" in $$source)) {
+            this["shareId"] = "";
+        }
+        if (!("token" in $$source)) {
+            this["token"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("workIds" in $$source)) {
+            this["workIds"] = [];
+        }
+        if (!("workSetIds" in $$source)) {
+            this["workSetIds"] = [];
+        }
+        if (!("relayAddress" in $$source)) {
+            this["relayAddress"] = "";
+        }
+        if (!("keyB64" in $$source)) {
+            this["keyB64"] = "";
+        }
+        if (!("link" in $$source)) {
+            this["link"] = "";
+        }
+        if (!("passwordProtected" in $$source)) {
+            this["passwordProtected"] = false;
+        }
+        if (!("expireSeconds" in $$source)) {
+            this["expireSeconds"] = 0;
+        }
+        if (!("expiresAt" in $$source)) {
+            this["expiresAt"] = 0;
+        }
+        if (!("fileCount" in $$source)) {
+            this["fileCount"] = 0;
+        }
+        if (!("totalBytes" in $$source)) {
+            this["totalBytes"] = 0;
+        }
+        if (!("missingFiles" in $$source)) {
+            this["missingFiles"] = 0;
+        }
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("errMsg" in $$source)) {
+            this["errMsg"] = "";
+        }
+        if (!("revokedAt" in $$source)) {
+            this["revokedAt"] = 0;
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = 0;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShareRecordDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShareRecordDTO {
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workIds" in $$parsedSource) {
+            $$parsedSource["workIds"] = $$createField4_0($$parsedSource["workIds"]);
+        }
+        if ("workSetIds" in $$parsedSource) {
+            $$parsedSource["workSetIds"] = $$createField5_0($$parsedSource["workSetIds"]);
+        }
+        return new ShareRecordDTO($$parsedSource as Partial<ShareRecordDTO>);
     }
 }
 
@@ -210,3 +323,6 @@ export class ShareSessionDTO {
         return new ShareSessionDTO($$parsedSource as Partial<ShareSessionDTO>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);

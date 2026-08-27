@@ -261,7 +261,12 @@
   --app-status-recycle-store-orphan-text: var(--app-status-warn-text);
   --app-status-recycle-store-orphan-border: var(--app-status-warn-border);
 
-  /* —— 分享会话状态（share-*）：online=在线可拉取、reconnecting=断线重连、revoked/expired=终态、failed=失败 —— */
+  /* —— 分享状态（share-*）：会话运行态 online/connecting/reconnecting、记录态 active=链接有效（启动自动复原）、
+        revoked/expired/failed=终态 —— */
+  --app-status-share-active-bg: var(--app-status-active-bg);
+  --app-status-share-active-text: var(--app-status-active-text);
+  --app-status-share-active-border: var(--app-status-active-border);
+
   --app-status-share-online-bg: var(--app-status-active-bg);
   --app-status-share-online-text: var(--app-status-active-text);
   --app-status-share-online-border: var(--app-status-active-border);

@@ -18,8 +18,9 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// SharePublish 启动分享发布（异步：立即返回 shareID，进度/完成/会话状态经 share-events 推送）。
-// workIDs/workSetIds 为前端选中 id 列表（与导出同形态）；options 见 SharePublishOptions。
+// SharePublish 发布分享（直跑，不经任务模块；异步：立即返回 shareID，进度/完成/会话状态
+// 经 share-events 推送）。workIDs/workSetIds 为前端选中 id 列表（与导出同形态）；options 见
+// SharePublishOptions。
 func (h *Handler) SharePublish(ctx context.Context, workIDs []int64, workSetIDs []int64, options SharePublishOptions) *model.ApiResponse[string] {
 	id, err := h.svc.Publish(ctx, workIDs, workSetIDs, options)
 	if err != nil {
@@ -28,13 +29,13 @@ func (h *Handler) SharePublish(ctx context.Context, workIDs []int64, workSetIDs 
 	return model.Success(id)
 }
 
-// ShareCancelPublish 取消分享（停止 share-host 任务；已在线会话的撤销走 ShareRevoke）
+// ShareCancelPublish 取消分享发布（发布弹窗「取消」，直接终止会话主体；已在线会话的撤销走 ShareRevoke）
 func (h *Handler) ShareCancelPublish(ctx context.Context, shareID string) *model.ApiResponse[any] {
 	h.svc.CancelPublish(ctx, shareID)
 	return model.Success[any](nil)
 }
 
-// ShareRevoke 撤销分享会话（在线即在中继即时生效，后续拨号被拒）
+// ShareRevoke 撤销分享会话（在线即在中继即时生效，后续拨号被拒；离线 active 记录行本地落 revoked）
 func (h *Handler) ShareRevoke(ctx context.Context, shareID string) *model.ApiResponse[any] {
 	if err := h.svc.Revoke(ctx, shareID); err != nil {
 		return model.HandleError[any](err)
@@ -42,9 +43,26 @@ func (h *Handler) ShareRevoke(ctx context.Context, shareID string) *model.ApiRes
 	return model.Success[any](nil)
 }
 
-// ShareSessions 查询全部分享会话快照（含终态）
+// ShareSessions 查询全部分享会话快照（含终态；运行态实时源，按 share_id 与分享记录关联展示）
 func (h *Handler) ShareSessions(ctx context.Context) *model.ApiResponse[[]*ShareSessionDTO] {
 	return model.Success(h.svc.Sessions(ctx))
+}
+
+// ShareRecords 查询全部分享记录（历史分享账本：状态/链接重建要素/统计，create_time 倒序）
+func (h *Handler) ShareRecords(ctx context.Context) *model.ApiResponse[[]*ShareRecordDTO] {
+	records, err := h.svc.Records(ctx)
+	if err != nil {
+		return model.HandleError[[]*ShareRecordDTO](err)
+	}
+	return model.Success(records)
+}
+
+// ShareDeleteRecord 删除分享记录（物理删行；在驻会话先撤销——活跃分享删除即链接失效）
+func (h *Handler) ShareDeleteRecord(ctx context.Context, shareID string) *model.ApiResponse[any] {
+	if err := h.svc.DeleteRecord(ctx, shareID); err != nil {
+		return model.HandleError[any](err)
+	}
+	return model.Success[any](nil)
 }
 
 // ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→

@@ -71,7 +71,7 @@ task build:server && task run:server
 │       ├── components/       — 通用组件（DataTable、WorkCard、TagBox）与对话框
 │       ├── model/            — TypeScript 类型定义
 │       ├── store/            — Pinia Store（主要用于前端全局动态信息存储）
-│       ├── views/            — 页面组件（16 个视图，含 BaseView 外壳）
+│       ├── views/            — 页面组件（18 个视图，含 BaseView 外壳）
 │       └── composables/      — 组合式函数
 ├── database/                 — SQLite 数据库文件（database.db）
 ├── log/                      — 日志文件（server.log，lumberjack 自动轮转）

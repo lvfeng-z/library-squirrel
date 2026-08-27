@@ -202,7 +202,7 @@ watch(state, (open) => {
           :closable="false"
           show-icon
         >
-          分享在应用运行期间有效：关闭本应用后链接立即失效（收件人将无法拉取）；
+          收件人仅能在本应用运行期间拉取：关闭本应用后链接临时失效，有效期内重新打开应用自动恢复分享；
           有效期到期后中继也会拒绝访问。
         </el-alert>
         <div class="share-dialog-footer">
@@ -282,7 +282,7 @@ watch(state, (open) => {
         :closable="false"
         show-icon
       >
-        分享内容端到端加密，中继无法读取；应用需保持运行，收件人才能拉取。
+        分享内容端到端加密，中继无法读取；应用需保持运行收件人才能拉取，关闭后有效期内重开自动恢复。
       </el-alert>
       <div class="share-dialog-footer">
         <el-button @click="handleClose">

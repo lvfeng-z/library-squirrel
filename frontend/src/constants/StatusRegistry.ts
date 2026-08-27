@@ -53,7 +53,9 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   'recycle-store-restorable': { key: 'recycle-store-restorable', label: '可复原', category: 'recycle' },
   'recycle-store-no-backup': { key: 'recycle-store-no-backup', label: '已失效', category: 'recycle' },
   'recycle-store-orphan': { key: 'recycle-store-orphan', label: '离链', category: 'recycle' },
-  // —— 分享会话状态（在线=隧道在线可拉取；connecting/reconnecting=注册/断线重连；revoked/expired/failed=终态） ——
+  // —— 分享状态（会话运行态：online=隧道在线可拉取、connecting/reconnecting=注册/断线重连；
+  //    记录态：active=链接有效（有效期内启动自动复原）；revoked/expired/failed=终态） ——
+  'share-active': { key: 'share-active', label: '有效', category: 'share' },
   'share-online': { key: 'share-online', label: '在线', category: 'share' },
   'share-connecting': { key: 'share-connecting', label: '注册中', category: 'share' },
   'share-reconnecting': { key: 'share-reconnecting', label: '重连中', category: 'share' },

@@ -19,7 +19,7 @@ import * as model$0 from "../base/model/models.js";
 import * as $models from "./models.js";
 
 /**
- * ShareCancelPublish 取消分享（停止 share-host 任务；已在线会话的撤销走 ShareRevoke）
+ * ShareCancelPublish 取消分享发布（发布弹窗「取消」，直接终止会话主体；已在线会话的撤销走 ShareRevoke）
  */
 export function ShareCancelPublish(shareID: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3883396668, shareID).then(($result: any) => {
@@ -38,6 +38,15 @@ export function ShareConsumePendingLink(): $CancellablePromise<model$0.ApiRespon
 }
 
 /**
+ * ShareDeleteRecord 删除分享记录（物理删行；在驻会话先撤销——活跃分享删除即链接失效）
+ */
+export function ShareDeleteRecord(shareID: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(2976488305, shareID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * ShareProtocolRegStatus 深链协议注册状态（Windows 为 HKCU 自注册视图，其余平台恒未注册）
  */
 export function ShareProtocolRegStatus(): $CancellablePromise<model$0.ApiResponse<$models.ShareProtocolRegStatus | null> | null> {
@@ -47,8 +56,9 @@ export function ShareProtocolRegStatus(): $CancellablePromise<model$0.ApiRespons
 }
 
 /**
- * SharePublish 启动分享发布（异步：立即返回 shareID，进度/完成/会话状态经 share-events 推送）。
- * workIDs/workSetIds 为前端选中 id 列表（与导出同形态）；options 见 SharePublishOptions。
+ * SharePublish 发布分享（直跑，不经任务模块；异步：立即返回 shareID，进度/完成/会话状态
+ * 经 share-events 推送）。workIDs/workSetIds 为前端选中 id 列表（与导出同形态）；options 见
+ * SharePublishOptions。
  */
 export function SharePublish(workIDs: number[], workSetIDs: number[], options: $models.SharePublishOptions): $CancellablePromise<model$0.ApiResponse<string> | null> {
     return $Call.ByID(191296510, workIDs, workSetIDs, options).then(($result: any) => {
@@ -67,7 +77,16 @@ export function ShareReceive(link: string, password: string): $CancellablePromis
 }
 
 /**
- * ShareRevoke 撤销分享会话（在线即在中继即时生效，后续拨号被拒）
+ * ShareRecords 查询全部分享记录（历史分享账本：状态/链接重建要素/统计，create_time 倒序）
+ */
+export function ShareRecords(): $CancellablePromise<model$0.ApiResponse<($models.ShareRecordDTO | null)[]> | null> {
+    return $Call.ByID(2429072535).then(($result: any) => {
+        return $$createType14($result);
+    });
+}
+
+/**
+ * ShareRevoke 撤销分享会话（在线即在中继即时生效，后续拨号被拒；离线 active 记录行本地落 revoked）
  */
 export function ShareRevoke(shareID: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2828240061, shareID).then(($result: any) => {
@@ -76,11 +95,11 @@ export function ShareRevoke(shareID: string): $CancellablePromise<model$0.ApiRes
 }
 
 /**
- * ShareSessions 查询全部分享会话快照（含终态）
+ * ShareSessions 查询全部分享会话快照（含终态；运行态实时源，按 share_id 与分享记录关联展示）
  */
 export function ShareSessions(): $CancellablePromise<model$0.ApiResponse<($models.ShareSessionDTO | null)[]> | null> {
     return $Call.ByID(1815905174).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType19($result);
     });
 }
 
@@ -105,8 +124,13 @@ const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.ShareSessionDTO.createFrom;
+const $$createType10 = $models.ShareRecordDTO.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
 const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = $models.ShareSessionDTO.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
+const $$createType19 = $Create.Nullable($$createType18);

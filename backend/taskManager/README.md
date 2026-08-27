@@ -41,7 +41,7 @@
 
 ## 核心概念
 
-- **执行面策略（ExecutionStrategy，内置任务类型）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——`task.task_type` 非空的任务经按类型注册的策略执行（Manager 构造时注入策略表，app.go 装配；如 share-host/share-receive 归 share 模块实现），策略经 `StrategyHandle` 上报终态（Finish/Fail）与进度，RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管；未注册策略的类型不可构建。插件任务（task_type 空）维持既有执行路径（板块组合 + 多轨下载/续传），其执行面的物理外提归 longops D 阶段。
+- **执行面策略（ExecutionStrategy，内置任务类型）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——`task.task_type` 非空的任务经按类型注册的策略执行（Manager 构造时注入策略表，app.go 装配；如 share-receive 归 share 模块实现），策略经 `StrategyHandle` 上报终态（Finish/Fail）与进度，RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管；未注册策略的类型不可构建。插件任务（task_type 空）维持既有执行路径（板块组合 + 多轨下载/续传），其执行面的物理外提归 longops D 阶段。
 - **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
 - **板块执行模式**（runMode）：`{workInfo, storeRoles}`——`workInfo` 为作品元数据独立板块，`storeRoles` 为所选资源 store_type 子集（main/thumbnail/...）。mode 不再由调用方传参，而从 task 实体的 `StoreRoles`/`IncludeWorkInfo` 字段派生（`runModeFromTask`），故暂停 / 跨重启恢复时保持原板块选择，不退化为全量。`Redownload` 入口负责写入这两个字段后启动。
@@ -51,7 +51,7 @@
 ## 依赖关系
 
 - 依赖：`Repository`（任务树查询 / 批量状态设置）、`task` 包（TaskStatusEnum 状态枚举）、`WorkDirProvider`、`FileNameFormatProvider`、`pluginExecFactory`（插件执行器，TaskExecutor）、`TaskProgressPusher`、内置任务类型执行面策略表（task_type → ExecutionStrategy，构造注入）
-- 被依赖：前端任务执行面板（操作栏）、share（实现 share-host/share-receive 执行面策略）
+- 被依赖：前端任务执行面板（操作栏）、share（实现 share-receive 执行面策略）
 
 ## 关键设计
 

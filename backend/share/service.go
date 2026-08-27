@@ -1,27 +1,30 @@
 package share
 
 // 分享服务：把用户选中的作品/作品集发布为分享会话（复用 export 数据面收集 → 中继注册 →
-// 出站隧道常驻），并提供撤销/状态查询。
-// 二期任务化（share-host）：发布入口创建 share-host 任务并交 taskManager 执行
-// （具备任务标准能力：状态机/进度/暂停恢复/停止/重试，重启不自动重建、按任务标准语义停留）；
-// 会话宿主主体在 HostSession（由 HostExecution 策略驱动），会话运行态仍为进程内注册表
-// （App 退出即隧道断、链接失效属设计语义；任务行持久化承载重试/恢复语义）。
+// 出站隧道常驻），并提供取消/撤销/状态查询与分享记录（share_record）管理。
+// 发布直跑（不经任务模块）：Publish 校验通过即以受监督 goroutine 驱动宿主主体
+// （收集 → 规划 → 注册 → 隧道维持至会话终态），进度/完成/状态经 share-events 推送，
+// 弹窗「取消」经 CancelPublish 直达主体取消；首次在线起生命周期落 share_record 行，
+// 跨重启由启动自动复原（RestoreAll：active 行原 token bind 重绑，链接不变）复活。
+// 收件拉取（Receive）仍走任务模块（share-receive 任务承载断点续传/暂停恢复语义）。
 
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
+	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/util"
 )
@@ -38,117 +41,46 @@ var (
 	ErrShareNotFound = errors.New("分享会话不存在")
 	// ErrShareTaskControlNil 未注入任务控制能力（装配缺失）
 	ErrShareTaskControlNil = errors.New("分享任务控制能力未装配")
-	// ErrSharePayloadInvalid share-host 任务载荷非法（版本不支持/JSON 不解析）
+	// ErrSharePayloadInvalid share-receive 任务载荷非法（版本不支持/JSON 不解析）
 	ErrSharePayloadInvalid = errors.New("分享任务载荷非法")
+	// ErrShareRecordKeyBad 分享记录的 E2E 密钥不合法（非 32 字节 base64url）
+	ErrShareRecordKeyBad = errors.New("分享记录密钥不合法")
 )
 
 // 内置任务类型（登记于 task.task_type，注册进 taskManager 执行面策略表）
 const (
-	// TaskTypeHost 分享方：宿主分享会话（收集 → 注册中继 → 隧道维持至终态）
-	TaskTypeHost = "share-host"
-	// TaskTypeReceive 收件方：经中继拉取分享并回灌导入（数据流归下阶段，仅类型与执行器骨架）
+	// TaskTypeReceive 收件方：经中继拉取分享并回灌导入（断点续传/暂停恢复语义归任务建模）
 	TaskTypeReceive = "share-receive"
 )
 
-// shareHostPayloadSchemaVersion share-host 任务载荷格式版本
-const shareHostPayloadSchemaVersion = 1
-
-// shareHostPayload share-host 任务载荷（创建时序列化入 task.payload，恢复/重试重执行时反解）
-type shareHostPayload struct {
-	SchemaVersion int     `json:"schemaVersion"` // 载荷格式版本（高于自身支持即失败，防静默数据损坏）
-	WorkIDs       []int64 `json:"workIds"`
-	WorkSetIDs    []int64 `json:"workSetIds"`
-	Title         string  `json:"title"`
-	ExpireSeconds int64   `json:"expireSeconds"` // -1=中继默认 / 0=无限期 / >0=自定义秒
-	PasswordHash  string  `json:"passwordHash"`  // sha256 hex；访问密码明文不落库，重注册直接复用摘要
-}
-
-// newShareHostPayload 构建并序列化任务载荷（明文密码在此转为摘要）
-func newShareHostPayload(workIDs, workSetIDs []int64, options SharePublishOptions) (string, error) {
-	hash := ""
-	if options.Password != "" {
-		hash = PasswordHashHex(options.Password)
-	}
-	b, err := json.Marshal(&shareHostPayload{
-		SchemaVersion: shareHostPayloadSchemaVersion,
-		WorkIDs:       workIDs,
-		WorkSetIDs:    workSetIDs,
-		Title:         options.Title,
-		ExpireSeconds: options.ExpireSeconds,
-		PasswordHash:  hash,
-	})
-	if err != nil {
-		return "", fmt.Errorf("%w：序列化失败 %v", ErrSharePayloadInvalid, err)
-	}
-	return string(b), nil
-}
-
-// parseShareHostPayload 反解任务载荷（版本锚校验，高于支持版本 fail-fast）
-func parseShareHostPayload(raw string) (*shareHostPayload, error) {
-	if raw == "" {
-		return nil, fmt.Errorf("%w：载荷为空", ErrSharePayloadInvalid)
-	}
-	var p shareHostPayload
-	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return nil, fmt.Errorf("%w：%v", ErrSharePayloadInvalid, err)
-	}
-	if p.SchemaVersion > shareHostPayloadSchemaVersion {
-		return nil, fmt.Errorf("%w：载荷版本 %d 高于支持的 %d", ErrSharePayloadInvalid, p.SchemaVersion, shareHostPayloadSchemaVersion)
-	}
-	return &p, nil
-}
-
-// ShareIDFromTaskID 由任务 ID 推导分享会话 ID（"share-{taskId}"，创建即定、重启不变，
-// 会话注册表与任务行双向可推导）
-func ShareIDFromTaskID(taskID int64) string {
-	return fmt.Sprintf("share-%d", taskID)
-}
-
-// TaskIDFromShareID 反解任务 ID（格式不符返回 false）
-func TaskIDFromShareID(shareID string) (int64, bool) {
-	s, ok := strings.CutPrefix(shareID, "share-")
-	if !ok {
-		return 0, false
-	}
-	id, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, false
-	}
-	return id, true
-}
-
-// BuiltinTaskControl share-host 任务生命周期控制能力（task.Service.CreateBuiltinTask 与
-// taskManager.Manager 的启停经 app.go 适配器组合装配；taskCtl 经延迟闭包取用，装配时序上
+// BuiltinTaskControl share-receive 任务创建与启动能力（task.Service.CreateBuiltinTask 与
+// taskManager.Manager 的启动经 app.go 适配器组合装配；taskCtl 经延迟闭包取用，装配时序上
 // ShareService 先于 taskManager 创建）。
 type BuiltinTaskControl interface {
 	// CreateBuiltinTask 创建内置类型任务（返回任务 ID）
 	CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error)
 	// StartTasks 启动任务树
 	StartTasks(ctx context.Context, taskIds []int64) error
-	// StopTasks 停止任务树
-	StopTasks(ctx context.Context, taskIds []int64) error
 }
 
-// HostOutcome share-host 任务主体一次执行的结果分类（HostExecution 据此映射任务终态）
-type HostOutcome int
-
-const (
-	// HostFinished 会话终态自然结束（撤销/过期）→ 任务成功终态
-	HostFinished HostOutcome = iota
-	// HostFailed 主体失败（发布失败/会话失败终态）→ 任务失败终态
-	HostFailed
-	// HostInterrupted ctx 取消（任务暂停/停止）→ 不上报终态，控制面接管
-	HostInterrupted
-)
-
-// ProgressReporter 任务进度上报（total/finished 阶段步进；nil=不上报）
-type ProgressReporter func(total, finished int64)
+// hostParams 宿主主体入参（发布选项经此进入主体；复原时由分享记录行构建——
+// 复原走 bind 不涉及密码与有效期重传）
+type hostParams struct {
+	WorkIDs       []int64
+	WorkSetIDs    []int64
+	Title         string
+	ExpireSeconds int64  // -1=中继默认 / 0=无限期 / >0=自定义秒
+	Password      string // 访问密码明文（仅本机使用，线上只走 sha256 摘要；空=无密码）
+}
 
 // 默认中继 TCP 端口（中继配置 listenAddr 默认 0.0.0.0:9527）
 const defaultRelayPort = "9527"
 
 // instanceIDPattern 中继对 instanceId 的形态约束（[A-Za-z0-9-]{8,128}）
 var instanceIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{8,128}$`)
+
+// lastShareIDTs shareID 时间戳水位（包级原子）：同毫秒并发发布顺延 +1，保 share_id 唯一
+var lastShareIDTs int64
 
 // ExportCollector 分享数据面依赖：复用导出收集能力（发起方定义接口，export.Service 实现）
 type ExportCollector interface {
@@ -166,35 +98,37 @@ type SharePublishOptions struct {
 	Title string `json:"title"`
 	// ExpireSeconds 有效期秒数：-1=中继默认(7 天)；0=无限期；>0=自定义秒数
 	ExpireSeconds int64 `json:"expireSeconds"`
-	// Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落任务载荷的只有摘要）
+	// Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落记录行的只有有无标记）
 	Password string `json:"password"`
 }
 
 // Service 分享服务
 type Service struct {
-	collector  ExportCollector
-	planner    ExportPlanner
-	relayAddr  func() string // 中继地址（settings.shareSettings.relayAddress）
-	workDir    func() string
+	repo       *Repository           // 分享记录仓储（nil=不落记录，单测场景）
+	collector  ExportCollector       // 复用 export 收集能力
+	planner    ExportPlanner         // 复用 export 规划能力
+	relayAddr  func() string         // 中继地址（settings.shareSettings.relayAddress）
+	workDir    func() string         // 工作目录（settings）
 	instanceID string                // 设备绑定实例 ID（溯源锚点，持久化于程序根 config/）
 	emitter    ShareEventEmitter     // nil=不发事件（单测场景）
-	taskCtl    BuiltinTaskControl    // share-host 任务创建/启停能力（app.go 装配）
+	taskCtl    BuiltinTaskControl    // share-receive 任务创建/启动能力（app.go 装配）
 	opts       sessionRuntimeOptions // 测试覆写（零值=默认）
 
-	mu       sync.Mutex
-	sessions map[string]*shareSession // shareId → 会话（含终态，列表展示用）
-	// 深链到达缓存（冷启动衔接：事件先于前端就绪时暂存，前端启动后 ConsumeIncomingLink 取走）
-	pendingIncomingLink string
+	mu                  sync.Mutex
+	sessions            map[string]*shareSession      // shareId → 会话（含终态，列表展示用）
+	hostCancels         map[string]context.CancelFunc // shareId → 宿主主体 goroutine 取消（发布弹窗「取消」直达）
+	pendingIncomingLink string                        // 深链到达缓存（冷启动衔接，前端启动后 ConsumeIncomingLink 取走）
 	lastIncomingLink    string
 	lastIncomingLinkAt  time.Time
 }
 
 // NewService 创建分享服务。
-// instanceID 为设备绑定实例 ID（LoadOrCreateInstanceID 产物，App 生命周期内恒定）；
-// taskCtl 为 share-host 任务控制能力（延迟闭包适配器，运行期取用）。
-func NewService(collector ExportCollector, planner ExportPlanner, relayAddr func() string,
+// repo 为分享记录仓储（nil=不落记录）；instanceID 为设备绑定实例 ID（LoadOrCreateInstanceID
+// 产物，App 生命周期内恒定）；taskCtl 为 share-receive 任务控制能力（延迟闭包适配器，运行期取用）。
+func NewService(repo *Repository, collector ExportCollector, planner ExportPlanner, relayAddr func() string,
 	workDir func() string, instanceID string, emitter ShareEventEmitter, taskCtl BuiltinTaskControl) *Service {
 	return &Service{
+		repo:       repo,
 		collector:  collector,
 		planner:    planner,
 		relayAddr:  relayAddr,
@@ -211,9 +145,9 @@ func (s *Service) setTunables(opts sessionRuntimeOptions) {
 	s.opts = opts
 }
 
-// Publish 启动任务化分享发布：创建 share-host 任务并立即启动（用户点「开始分享」即显式触发），
-// 返回 shareID（"share-{taskId}"）。进度/完成/会话状态经 share-events 推送，任务运行态
-// （暂停/停止/重试/失败信息）由任务面板标准能力承载。
+// Publish 发布分享（直跑，不经任务模块）：前置校验通过即以受监督 goroutine 驱动宿主主体，
+// 立即返回 shareID。进度/完成/会话状态经 share-events 推送（发布弹窗消费）；
+// 「取消」经 CancelPublish；首次在线起生命周期落 share_record。
 func (s *Service) Publish(ctx context.Context, workIDs []int64, workSetIDs []int64, options SharePublishOptions) (string, error) {
 	if len(workIDs) == 0 && len(workSetIDs) == 0 {
 		return "", ErrShareEmptySelection
@@ -224,47 +158,79 @@ func (s *Service) Publish(ctx context.Context, workIDs []int64, workSetIDs []int
 	if s.workDir() == "" {
 		return "", ErrShareWorkDirEmpty
 	}
-	if s.taskCtl == nil {
-		return "", ErrShareTaskControlNil
-	}
-	payload, err := newShareHostPayload(workIDs, workSetIDs, options)
-	if err != nil {
-		return "", err
-	}
-	taskID, err := s.taskCtl.CreateBuiltinTask(ctx, TaskTypeHost,
-		defaultTitle(len(workIDs), len(workSetIDs), options.Title), payload)
-	if err != nil {
-		return "", err
-	}
-	if err := s.taskCtl.StartTasks(ctx, []int64{taskID}); err != nil {
-		return "", err
-	}
-	return ShareIDFromTaskID(taskID), nil
+	shareID := nextShareID()
+	s.startHostSupervised(shareID, hostParams{
+		WorkIDs:       workIDs,
+		WorkSetIDs:    workSetIDs,
+		Title:         options.Title,
+		ExpireSeconds: options.ExpireSeconds,
+		Password:      options.Password,
+	}, nil)
+	return shareID, nil
 }
 
-// CancelPublish 取消分享（停止 share-host 任务；任务停止经标准语义置 Failed）。
-// 已在线会话的撤销走 Revoke（REVOKE 帧直达中继即时生效）。
+// CancelPublish 取消分享发布（发布弹窗「取消」，不经任务控制面）：直接取消宿主主体——
+// 会话本地终止；未到首次在线不产生记录行；已在线则会话移出注册表（中继侧存续至有效期
+// 到期——在线撤销走 Revoke）。
 func (s *Service) CancelPublish(ctx context.Context, shareID string) {
-	taskID, ok := TaskIDFromShareID(shareID)
-	if !ok || s.taskCtl == nil {
-		return
-	}
-	if err := s.taskCtl.StopTasks(ctx, []int64{taskID}); err != nil {
-		logger.Log.Warnf("[share] 停止分享任务失败 shareId=%s: %v", shareID, err)
+	s.mu.Lock()
+	cancel := s.hostCancels[shareID]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
-// Revoke 撤销分享会话（在线：REVOKE 帧直达中继即时生效；离线：本地终止）。
-// 发布中（尚未注册在线）的分享不在会话注册表内，取消走 CancelPublish。
+// Revoke 撤销分享会话。在线：REVOKE 帧直达中继即时生效，终态事件驱动落记录行；
+// 离线（会话不在注册表，如启动后未复原/复原重连中）：记录行直接落 revoked——本地终态，
+// 中继侧会话存续至到期（撤销是隧道帧，离线无法送达，见 README 边界）。
 func (s *Service) Revoke(ctx context.Context, shareID string) error {
 	s.mu.Lock()
 	sess, ok := s.sessions[shareID]
 	s.mu.Unlock()
-	if !ok {
+	if ok {
+		sess.Revoke()
+		return nil
+	}
+	if s.repo != nil {
+		rec, err := s.repo.GetByShareID(ctx, shareID)
+		if err != nil {
+			return err
+		}
+		if rec != nil && rec.State == RecordStateActive {
+			return s.repo.UpdateTerminal(ctx, rec.GetID(), RecordStateRevoked, "", util.GetCurrentTimestamp())
+		}
+	}
+	return ErrShareNotFound
+}
+
+// DeleteRecord 删除分享记录（物理删行）：在驻会话先撤销（REVOKE 帧直达中继，链接即时失效），
+// 主体尚在收集/注册中则先取消；随后删除记录行。离线 active 记录仅本地删行
+// （中继侧会话存续至到期，与离线撤销同边界）。
+func (s *Service) DeleteRecord(ctx context.Context, shareID string) error {
+	if s.repo == nil {
 		return ErrShareNotFound
 	}
-	sess.Revoke()
-	return nil
+	s.mu.Lock()
+	sess := s.sessions[shareID]
+	cancel := s.hostCancels[shareID]
+	s.mu.Unlock()
+	if sess != nil {
+		sess.Revoke()
+	} else if cancel != nil {
+		cancel()
+	}
+	rec, err := s.repo.GetByShareID(ctx, shareID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		if sess != nil || cancel != nil {
+			return nil // 发布/复原主体在驻但未达首次在线（无记录行）：主体已终止，视为删净
+		}
+		return ErrShareNotFound
+	}
+	return s.repo.DeleteUnscoped(ctx, rec.GetID())
 }
 
 // Sessions 全部会话快照（含终态会话；按创建时间升序）
@@ -284,73 +250,190 @@ func (s *Service) Sessions(ctx context.Context) []*ShareSessionDTO {
 	return out
 }
 
-// HostSession 执行分享宿主主体（share-host 任务的执行面，阻塞直至终态或 ctx 取消）：
-// 收集 → 规划（包内路径/白名单）→ 生成密钥 → 注册会话 → 首次在线 → 隧道维持至会话终态。
-// 阶段进度经 prog 上报（步进 total=3）；发布失败/成功仍经 share-events 推 complete。
-// ctx 取消（任务暂停/停止）时返回 HostInterrupted：会话本地终止并移出注册表，终态由任务控制面接管。
-func (s *Service) HostSession(ctx context.Context, shareID string, payload *shareHostPayload, prog ProgressReporter) (HostOutcome, string) {
-	fail := func(errMsg string) (HostOutcome, string) {
-		if s.emitter != nil {
-			s.emitter.PushComplete(ShareCompleteData{ShareID: shareID, Success: false, ErrMsg: errMsg})
+// Records 全部分享记录（create_time 倒序，最新分享在前；视图按 share_id 关联会话运行态）
+func (s *Service) Records(ctx context.Context) ([]*ShareRecordDTO, error) {
+	if s.repo == nil {
+		return []*ShareRecordDTO{}, nil
+	}
+	recs, err := s.repo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ShareRecordDTO, 0, len(recs))
+	for _, rec := range recs {
+		out = append(out, toShareRecordDTO(rec))
+	}
+	return out, nil
+}
+
+// RestoreAll 启动自动复原：对 share_record 全部 active 行逐条独立 goroutine 复原
+// （重新收集 → 规划 → 原 token bind 重绑；链接不变，剩余有效期由中继侧会话管理——
+// bind 不重传 expiresAt）。复原失败按原因落终态：收集失败（作品已删）/中继 not_found →
+// failed 记原因；中继不可达 → 会话重连循环（运行态不入表，下次启动重试）。
+func (s *Service) RestoreAll(ctx context.Context) {
+	if s.repo == nil {
+		return
+	}
+	recs, err := s.repo.ListByState(ctx, RecordStateActive)
+	if err != nil {
+		logger.Log.Warnf("[share] 读取待复原分享记录失败: %v", err)
+		return
+	}
+	for _, rec := range recs {
+		workIDs, werr := unmarshalInt64s(rec.WorkIDs)
+		workSetIDs, serr := unmarshalInt64s(rec.WorkSetIDs)
+		if werr != nil || serr != nil {
+			s.markRecordFailed(rec, "分享记录数据损坏（分享对象清单不可解析）")
+			continue
+		}
+		logger.Log.Infof("[share] 复原分享 shareId=%s token=%s", rec.ShareID, rec.Token)
+		s.startHostSupervised(rec.ShareID, hostParams{
+			WorkIDs:       workIDs,
+			WorkSetIDs:    workSetIDs,
+			Title:         rec.Title,
+			ExpireSeconds: rec.ExpireSeconds,
+		}, rec)
+	}
+}
+
+// startHostSupervised 启动受监督的宿主主体 goroutine（发布/复原共用）：panic 经 recover
+// 收尾（发布：complete 失败事件终止弹窗等待；复原：记录落 failed），主体异常不外溢进程。
+// 取消函数登记进 hostCancels（CancelPublish/DeleteRecord 直达），主体退出时自摘。
+func (s *Service) startHostSupervised(shareID string, p hostParams, rec *entity.ShareRecord) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if s.hostCancels == nil {
+		s.hostCancels = make(map[string]context.CancelFunc)
+	}
+	s.hostCancels[shareID] = cancel
+	s.mu.Unlock()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Errorf("[share] 宿主主体 panic shareId=%s: %v\n%s", shareID, r, debug.Stack())
+				if rec != nil {
+					s.markRecordFailed(rec, "分享服务内部错误")
+				} else if s.emitter != nil {
+					s.emitter.PushComplete(ShareCompleteData{ShareID: shareID, Success: false, ErrMsg: "分享服务内部错误"})
+				}
+				s.removeSession(shareID)
+			}
+			s.mu.Lock()
+			delete(s.hostCancels, shareID)
+			s.mu.Unlock()
+			cancel()
+		}()
+		s.hostSessionBody(ctx, shareID, p, rec)
+	}()
+}
+
+// hostSessionBody 分享宿主主体（发布/复原共用，goroutine 内执行，阻塞直至会话终态或取消）：
+// 收集 → 规划（包内路径/白名单）→ 建会话（发布：生成新密钥 register；复原：记录行原
+// token/key bind 重绑）→ 首次在线 → 隧道维持至会话终态（终态同步落记录行）。
+// 发布形态（rec=nil）：进度/完成经 share-events 推送；未达首次在线即终止不产生记录行。
+// 复原形态（rec 非 nil）：记录行已存在保持 active；失败按原因落终态，中继不可达则会话
+// 重连循环不落表（下次启动重试）。
+func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostParams, rec *entity.ShareRecord) {
+	fail := func(errMsg string) {
+		if rec == nil {
+			if s.emitter != nil {
+				s.emitter.PushComplete(ShareCompleteData{ShareID: shareID, Success: false, ErrMsg: errMsg})
+			}
+		} else {
+			// 复原主体失败（收集失败/密钥损坏等无会话终态场景）：记录行落 failed 记原因
+			s.markRecordFailed(rec, errMsg)
 		}
 		s.removeSession(shareID)
-		return HostFailed, errMsg
 	}
-	interrupted := func() (HostOutcome, string) {
-		// 首次在线前中止（暂停/停止）：推送取消终态供发布弹窗收尾，任务终态交控制面
-		if s.emitter != nil {
+	interrupted := func() {
+		// 发布：推「已取消」终态收尾弹窗（记录行不存在）；复原：静默终止（记录保持 active，下次启动重试）
+		if rec == nil && s.emitter != nil {
 			s.emitter.PushComplete(ShareCompleteData{ShareID: shareID, Success: false, ErrMsg: "已取消"})
 		}
 		s.removeSession(shareID)
-		return HostInterrupted, ""
 	}
-	phase := func(finished int64, name string) {
+	phase := func(name string) {
 		if s.emitter != nil {
 			s.emitter.PushProgress(shareID, name)
 		}
-		if prog != nil {
-			prog(3, finished)
-		}
 	}
 
-	phase(1, "collecting")
-	model, err := s.collector.Collect(ctx, payload.WorkIDs, payload.WorkSetIDs)
+	phase("collecting")
+	model, err := s.collector.Collect(ctx, p.WorkIDs, p.WorkSetIDs)
 	if err != nil {
 		if ctx.Err() != nil {
-			return interrupted()
+			interrupted()
+			return
 		}
-		return fail(cancelAwareMsg(ctx, err))
+		fail(cancelAwareMsg(ctx, err))
+		return
+	}
+	// 复原形态：分享对象必须全部仍可收集——对象删除后经活作品查询静默消失（Collect 不报错），
+	// 此处比对记录清单与收集结果，缺失即落 failed（不复活内容残缺的会话）
+	if rec != nil {
+		if missing := missingShareTargets(model, p.WorkIDs, p.WorkSetIDs); len(missing) > 0 {
+			fail(fmt.Sprintf("分享对象已删除: %s", strings.Join(missing, ", ")))
+			return
+		}
 	}
 	workDir := s.workDir()
 	if workDir == "" {
-		return fail(ErrShareWorkDirEmpty.Error())
+		fail(ErrShareWorkDirEmpty.Error())
+		return
 	}
 	if _, err := s.planner.Plan(ctx, workDir, model); err != nil {
 		if ctx.Err() != nil {
-			return interrupted()
+			interrupted()
+			return
 		}
-		return fail(cancelAwareMsg(ctx, err))
+		fail(cancelAwareMsg(ctx, err))
+		return
 	}
 
-	dialAddr, relayHost, err := normalizeRelayAddress(strings.TrimSpace(s.relayAddr()))
+	// 中继地址：发布取当前配置；复原取记录行（链接所指中继，不受当前配置切换影响）
+	relayCfg := strings.TrimSpace(s.relayAddr())
+	if rec != nil {
+		relayCfg = rec.RelayAddress
+	}
+	dialAddr, relayHost, err := normalizeRelayAddress(relayCfg)
 	if err != nil {
-		return fail(err.Error())
+		fail(err.Error())
+		return
 	}
 
 	// 发给收件人的 manifest JSON（含包内路径/大小/缺失标记；sha256 不预计算——见 README 边界）
 	manifestData, err := model.Manifest.Serialize()
 	if err != nil {
-		return fail(fmt.Sprintf("序列化 manifest 失败: %v", err))
+		fail(fmt.Sprintf("序列化 manifest 失败: %v", err))
+		return
 	}
 
-	key, err := GenerateShareKey()
-	if err != nil {
-		return fail(err.Error())
+	var key []byte
+	createdAt := util.GetCurrentTimestamp()
+	if rec != nil {
+		// 复原：密钥必须与原链接一致（收件人链接 fragment 不变）
+		key, err = base64.RawURLEncoding.DecodeString(rec.KeyB64)
+		if err != nil || len(key) != shareKeyLen {
+			fail(fmt.Errorf("%w：长度不符", ErrShareRecordKeyBad).Error())
+			return
+		}
+		createdAt = rec.GetCreateTime() // 列表展示的创建时间跨重启稳定
+	} else {
+		key, err = GenerateShareKey()
+		if err != nil {
+			fail(err.Error())
+			return
+		}
+	}
+
+	passwordHash := ""
+	if p.Password != "" {
+		passwordHash = PasswordHashHex(p.Password)
 	}
 
 	cfg := sessionConfig{
 		id:           shareID,
-		title:        SanitizeMetaText(defaultTitle(len(payload.WorkIDs), len(payload.WorkSetIDs), payload.Title), 200),
+		title:        SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
 		instanceID:   s.instanceID,
 		relayDial:    dialAddr,
 		relayHost:    relayHost,
@@ -358,69 +441,162 @@ func (s *Service) HostSession(ctx context.Context, shareID string, payload *shar
 		key:          key,
 		model:        model,
 		manifestData: manifestData,
-		passwordHash: payload.PasswordHash,
-		expireSecs:   mapExpireSeconds(payload.ExpireSeconds),
-		createdAt:    util.GetCurrentTimestamp(),
+		passwordHash: passwordHash,
+		expireSecs:   mapExpireSeconds(p.ExpireSeconds),
+		createdAt:    createdAt,
 		emitter:      s.emitter,
 		opts:         s.opts,
 	}
+	if rec != nil {
+		cfg.seedToken = rec.Token
+		cfg.restore = true
+	}
 	sess, err := newShareSession(cfg)
 	if err != nil {
-		return fail(err.Error())
+		fail(err.Error())
+		return
 	}
 	s.mu.Lock()
 	s.sessions[shareID] = sess
 	s.mu.Unlock()
 
-	phase(2, "registering")
+	phase("registering")
 	go sess.run(ctx)
 
+	// 首次连接结果（发布：注册；复原：bind 重绑）
+	var firstErr error
 	select {
-	case firstErr := <-sess.firstCh:
-		if firstErr != nil {
-			return fail(firstErr.Error())
-		}
+	case firstErr = <-sess.firstCh:
 	case <-ctx.Done():
-		return interrupted()
+		interrupted()
+		return
+	case <-sess.doneCh:
+		// 首次结果未发而主循环已退出（在线前撤销等防御路径）：优先取已缓冲的首次结果，
+		// 无则按会话当前终态折算
+		select {
+		case firstErr = <-sess.firstCh:
+		default:
+			firstErr = fmt.Errorf("会话在首次在线前终止（%s）", sess.currentState())
+		}
+	}
+	if firstErr != nil {
+		if rec != nil {
+			// 复原 bind 被拒：按会话终态映射记录（revoked/expired 保持原语义，其余落 failed）
+			s.applyRecordTerminal(rec, sess.currentState(), firstErr.Error())
+		} else if s.emitter != nil {
+			s.emitter.PushComplete(ShareCompleteData{ShareID: shareID, Success: false, ErrMsg: firstErr.Error()})
+		}
+		s.removeSession(shareID)
+		return
 	}
 
 	link := BuildShareLink(relayHost, sess.tokenOf(), key)
 	sess.setLink(link)
 	sess.emitSnapshot()
-	if s.emitter != nil {
-		s.emitter.PushComplete(ShareCompleteData{
-			ShareID: shareID,
-			Success: true,
-			Link:    link,
-			Session: sess.snapshot(),
-		})
+	if rec == nil {
+		if s.emitter != nil {
+			s.emitter.PushComplete(ShareCompleteData{
+				ShareID: shareID,
+				Success: true,
+				Link:    link,
+				Session: sess.snapshot(),
+			})
+		}
+		// 首次在线落 active 记录行（发布形态的写入点）；后续终态更新以此行锚定
+		rec = s.persistActiveRecord(shareID, p, relayHost, key, sess)
+	} else {
+		s.refreshRestoredRecord(rec, sess)
 	}
-	if prog != nil {
-		prog(3, 3)
-	}
-	logger.Log.Infof("[share] 分享发布成功 shareId=%s token=%s relay=%s", shareID, sess.tokenOf(), relayHost)
+	logger.Log.Infof("[share] 分享在线 shareId=%s token=%s relay=%s 复原=%v", shareID, sess.tokenOf(), relayHost, cfg.restore)
 
-	// 隧道维持：等待会话终态或任务中断（暂停/停止）
+	// 隧道维持：等待会话终态或主体取消
 	select {
 	case <-sess.doneCh:
 	case <-ctx.Done():
 	}
 	if ctx.Err() != nil && !sess.terminal() {
-		// 中断：会话本地终止（中继侧存续至有效期到期，与撤销离线路径同语义），移出注册表；
-		// 恢复/重试将重新注册（新 token/密钥/链接，与重启不自动重建的设计语义一致）
+		// 进程内终止（取消发布/复原主体终止）：发布无记录行；复原记录保持 active（下次启动再复原）
 		s.removeSession(shareID)
-		return HostInterrupted, ""
+		return
 	}
-	switch sess.currentState() {
-	case stateRevoked, stateExpired:
-		// 会话终态自然结束：宿主职责完成
-		return HostFinished, ""
-	case stateFailed:
-		return HostFailed, sess.snapshot().ErrMsg
-	default:
-		// doneCh 已关但非终态且 ctx 未取消：会话主循环异常退出的防御路径
-		s.removeSession(shareID)
-		return HostInterrupted, ""
+	if sess.terminal() {
+		// 会话终态（撤销/过期/失败）→ 记录行终态
+		s.applyRecordTerminal(rec, sess.currentState(), sess.snapshot().ErrMsg)
+		return
+	}
+	// doneCh 已关但非终态且 ctx 未取消：会话主循环异常退出的防御路径
+	s.removeSession(shareID)
+}
+
+// persistActiveRecord 首次在线落 active 记录行（发布形态的写入点）；失败返回 nil（终态更新跳过）
+func (s *Service) persistActiveRecord(shareID string, p hostParams, relayHost string, key []byte, sess *shareSession) *entity.ShareRecord {
+	if s.repo == nil {
+		return nil
+	}
+	snap := sess.snapshot()
+	rec := entity.NewShareRecord()
+	rec.ShareID = shareID
+	rec.Token = snap.Token
+	rec.Title = snap.Title
+	rec.WorkIDs = marshalInt64s(p.WorkIDs)
+	rec.WorkSetIDs = marshalInt64s(p.WorkSetIDs)
+	rec.RelayAddress = relayHost
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.PasswordProtected = p.Password != ""
+	rec.ExpireSeconds = p.ExpireSeconds
+	rec.ExpiresAt = snap.ExpiresAt
+	rec.FileCount = snap.FileCount
+	rec.TotalBytes = snap.TotalBytes
+	rec.MissingFiles = snap.MissingFiles
+	rec.State = RecordStateActive
+	if err := s.repo.Create(context.Background(), rec); err != nil {
+		logger.Log.Errorf("[share] 落分享记录失败 shareId=%s: %v", shareID, err)
+		return nil
+	}
+	return rec
+}
+
+// refreshRestoredRecord 复原在线后刷新记录行：到期时刻按中继 WELCOME 回填（bind 不重传
+// expiresAt，剩余有效期以中继侧会话为准）、规划统计按重新收集值刷新
+func (s *Service) refreshRestoredRecord(rec *entity.ShareRecord, sess *shareSession) {
+	if s.repo == nil {
+		return
+	}
+	snap := sess.snapshot()
+	if err := s.repo.RefreshOnline(context.Background(), rec.GetID(), snap.ExpiresAt, snap.FileCount, snap.TotalBytes, snap.MissingFiles); err != nil {
+		logger.Log.Warnf("[share] 刷新复原分享记录失败 shareId=%s: %v", rec.ShareID, err)
+	}
+}
+
+// applyRecordTerminal 会话终态 → 记录行终态（revoked 记撤销时刻；failed 记原因；
+// expired 无附加信息）。state 入参为会话状态（stateRevoked/stateExpired/stateFailed 等）。
+func (s *Service) applyRecordTerminal(rec *entity.ShareRecord, state, errMsg string) {
+	if s.repo == nil || rec == nil {
+		return
+	}
+	recState := RecordStateFailed
+	var revokedAt int64
+	switch state {
+	case stateRevoked:
+		recState = RecordStateRevoked
+		revokedAt = util.GetCurrentTimestamp()
+		errMsg = ""
+	case stateExpired:
+		recState = RecordStateExpired
+		errMsg = ""
+	}
+	if err := s.repo.UpdateTerminal(context.Background(), rec.GetID(), recState, errMsg, revokedAt); err != nil {
+		logger.Log.Warnf("[share] 落分享记录终态失败 shareId=%s state=%s: %v", rec.ShareID, recState, err)
+	}
+}
+
+// markRecordFailed 复原失败落 failed 终态并记原因（记录行损坏/主体 panic 等无会话终态场景）
+func (s *Service) markRecordFailed(rec *entity.ShareRecord, errMsg string) {
+	if s.repo == nil || rec == nil {
+		return
+	}
+	if err := s.repo.UpdateTerminal(context.Background(), rec.GetID(), RecordStateFailed, errMsg, 0); err != nil {
+		logger.Log.Warnf("[share] 落分享记录失败终态失败 shareId=%s: %v", rec.ShareID, err)
 	}
 }
 
@@ -429,6 +605,48 @@ func (s *Service) removeSession(shareID string) {
 	s.mu.Lock()
 	delete(s.sessions, shareID)
 	s.mu.Unlock()
+}
+
+// missingShareTargets 比对分享对象清单与收集结果，返回收集缺失的对象（「作品#175」形态）。
+func missingShareTargets(model *export.ExportModel, workIDs []int64, workSetIDs []int64) []string {
+	collectedWorks := make(map[int64]struct{}, len(model.Manifest.Works))
+	for _, w := range model.Manifest.Works {
+		collectedWorks[w.ID] = struct{}{}
+	}
+	collectedSets := make(map[int64]struct{}, len(model.Manifest.WorkSets))
+	for _, ws := range model.Manifest.WorkSets {
+		collectedSets[ws.ID] = struct{}{}
+	}
+	var missing []string
+	for _, id := range workIDs {
+		if id > 0 {
+			if _, ok := collectedWorks[id]; !ok {
+				missing = append(missing, fmt.Sprintf("作品#%d", id))
+			}
+		}
+	}
+	for _, id := range workSetIDs {
+		if id > 0 {
+			if _, ok := collectedSets[id]; !ok {
+				missing = append(missing, fmt.Sprintf("作品集#%d", id))
+			}
+		}
+	}
+	return missing
+}
+
+// nextShareID 分配分享会话 ID（"share-{unixMilli}"；同毫秒顺延 +1 保唯一）
+func nextShareID() string {
+	for {
+		old := atomic.LoadInt64(&lastShareIDTs)
+		ts := util.GetCurrentTimestamp()
+		if ts <= old {
+			ts = old + 1
+		}
+		if atomic.CompareAndSwapInt64(&lastShareIDTs, old, ts) {
+			return fmt.Sprintf("share-%d", ts)
+		}
+	}
 }
 
 // mapExpireSeconds 选项映射 HELLO expireSeconds：-1→nil（中继默认）；0→&0（无限期）；>0→&n

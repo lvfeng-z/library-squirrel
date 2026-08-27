@@ -611,7 +611,7 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 		t.Fatal("空任务类型应拒绝")
 	}
 
-	created, err := svc.CreateBuiltinTask(ctx, "share-host", "分享 1 个作品", `{"schemaVersion":1}`)
+	created, err := svc.CreateBuiltinTask(ctx, "share-receive", "拉取分享", `{"schemaVersion":1}`)
 	if err != nil {
 		t.Fatalf("创建内置任务失败: %v", err)
 	}
@@ -624,7 +624,7 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 		Row().Scan(&taskType, &payload, &pluginID, &pid); err != nil {
 		t.Fatalf("查内置任务列失败: %v", err)
 	}
-	if !taskType.Valid || taskType.String != "share-host" {
+	if !taskType.Valid || taskType.String != "share-receive" {
 		t.Errorf("task_type 落库不符: %+v", taskType)
 	}
 	if !payload.Valid || payload.String != `{"schemaVersion":1}` {

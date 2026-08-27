@@ -2,12 +2,18 @@ import { defineStore } from 'pinia'
 import type { ShareSessionDTO } from '@bindings/github.com/library-squirrel/backend/share/models'
 import { ShareSessionDTO as ShareSessionDTOClass } from '@bindings/github.com/library-squirrel/backend/share/models'
 import { shareSessions } from '@renderer/apis/http/wrappers/share'
+import { useMenuBadgeStore } from '@renderer/store/UseMenuBadgeStore'
+
+/** 「分享」菜单项 slotId（useBuiltinMenus 的 builtin-share 项）——活跃会话红点的注册键 */
+export const SHARE_MENU_SLOT_ID = 'builtin-share'
 
 /**
  * 分享会话 store：后端 share-events 事件（progress/complete/state）驱动 + ShareSessions
  * 快照兜底，维护「分享进行中」的一等状态（会话列表/链接/终态）。
  *
- * 会话生命周期与 App 进程一致（后端不落库）：App 退出即隧道断、链接失效属设计语义。
+ * 会话为进程内运行态（connecting/online/reconnecting/终态）；跨启动的分享账本在
+ * share_record 表（分享视图历史区，经 ShareRecords 查询），本 store 不承载。
+ * 活跃（在线/重连中）会话数同步写入菜单红点注册表（「分享」菜单项徽标）。
  */
 
 /** 一次发布的过程态（progress/complete 事件驱动；发布完成后转为会话态） */
@@ -39,11 +45,7 @@ export const useShareStore = defineStore('share', {
     sessionList(state): ShareSessionDTO[] {
       return Object.values(state.sessions).sort((a, b) => a.createdAt - b.createdAt)
     },
-    /** 是否存在任一在线/重连中的会话（入口徽标数据源） */
-    hasActiveSessions(state): boolean {
-      return Object.values(state.sessions).some((s) => s.state === 'online' || s.state === 'reconnecting')
-    },
-    /** 在线/重连中的会话数（入口徽标值） */
+    /** 在线/重连中的会话数（「分享」菜单红点值） */
     activeSessionCount(state): number {
       return Object.values(state.sessions).filter((s) => s.state === 'online' || s.state === 'reconnecting').length
     }
@@ -90,7 +92,7 @@ export const useShareStore = defineStore('share', {
     clearPublishing(shareId: string): void {
       delete this.publishings[shareId]
     },
-    /** 拉取全量会话快照（面板打开/刷新时调用） */
+    /** 拉取全量会话快照（启动引导/视图刷新时调用） */
     async loadSessions(): Promise<void> {
       this.loading = true
       try {
@@ -100,6 +102,7 @@ export const useShareStore = defineStore('share', {
         }
       } finally {
         this.loading = false
+        this.syncMenuBadge()
       }
     },
     /** 写入/更新会话快照（state 事件与快照查询共用入口；终态不被旧事件回退） */
@@ -110,6 +113,11 @@ export const useShareStore = defineStore('share', {
       // 终态不可逆：已终态的会话忽略迟到事件（防 revoked → online 回跳）
       if (existing && isTerminalState(existing.state) && !isTerminalState(dto.state)) return
       this.sessions[dto.shareId] = dto
+      this.syncMenuBadge()
+    },
+    /** 活跃会话数写入「分享」菜单红点（消费侧 DynamicSideMenu 经注册表解耦，不直连本 store） */
+    syncMenuBadge(): void {
+      useMenuBadgeStore().setBadge(SHARE_MENU_SLOT_ID, this.activeSessionCount)
     }
   }
 })

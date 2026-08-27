@@ -7,9 +7,9 @@ package share
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -20,10 +20,12 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/migration"
 )
 
 // —— 测试夹具 ——
@@ -218,7 +220,7 @@ func (c *recordingConn) Write(b []byte) (int, error) {
 // newTestService 组装面向桩中继的分享服务（planner 用生产 Packer，收集用桩模型）
 func newTestService(t *testing.T, stub *relayStub, workDir string, model *export.ExportModel,
 	em *captureEmitter, dialer *recordingDialer) *Service {
-	svc := NewService(&fakeCollector{model: model}, export.NewPacker(),
+	svc := NewService(nil, &fakeCollector{model: model}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
 		"test-instance-0001", em, nil)
 	opts := sessionRuntimeOptions{streamRate: 8 << 20}
@@ -226,7 +228,7 @@ func newTestService(t *testing.T, stub *relayStub, workDir string, model *export
 		opts.dialFn = dialer.dial
 	}
 	svc.setTunables(opts)
-	// 测试收尾清理：撤销全部会话，终止客户端重连循环
+	// 测试收尾清理：撤销全部会话（终止直跑主体与客户端重连循环）
 	t.Cleanup(func() {
 		for _, d := range svc.Sessions(context.Background()) {
 			_ = svc.Revoke(context.Background(), d.ShareID)
@@ -235,37 +237,13 @@ func newTestService(t *testing.T, stub *relayStub, workDir string, model *export
 	return svc
 }
 
-// hostInBackground 后台执行分享宿主主体（固定 shareID；t.Cleanup 取消宿主 ctx 终止会话，
-// 模拟任务暂停/停止的中断路径）
-func hostInBackground(t *testing.T, svc *Service, opts SharePublishOptions) string {
-	t.Helper()
-	shareID := "share-1001"
-	payload, err := newShareHostPayload([]int64{1}, nil, opts)
-	if err != nil {
-		t.Fatalf("构建任务载荷失败: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_, _ = svc.HostSession(ctx, shareID, parseTestPayload(t, payload), nil)
-	}()
-	t.Cleanup(cancel)
-	return shareID
-}
-
-// parseTestPayload 反解载荷（构建即已知合法，失败即测试夹具问题）
-func parseTestPayload(t *testing.T, raw string) *shareHostPayload {
-	t.Helper()
-	p, err := parseShareHostPayload(raw)
-	if err != nil {
-		t.Fatalf("反解任务载荷失败: %v", err)
-	}
-	return p
-}
-
-// publishAndWait 后台执行分享宿主主体并等待完成事件
+// publishAndWait 经发布入口（Publish 直跑）启动宿主主体并等待完成事件
 func publishAndWait(t *testing.T, svc *Service, em *captureEmitter, opts SharePublishOptions) (string, ShareCompleteData) {
 	t.Helper()
-	shareID := hostInBackground(t, svc, opts)
+	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, opts)
+	if err != nil {
+		t.Fatalf("发布启动失败: %v", err)
+	}
 	return shareID, em.waitComplete(t, shareID, 8*time.Second)
 }
 
@@ -741,32 +719,25 @@ func TestReconnectBind(t *testing.T) {
 	_ = conn.Close()
 }
 
-// TestCancelPublish 宿主中断（任务暂停/停止路径）：收集阶段取消宿主 ctx → complete 推送「已取消」
+// TestCancelPublish 发布取消（弹窗「取消」路径）：收集阶段取消 → complete 推送「已取消」、
+// 会话不留驻、不产生分享记录
 func TestCancelPublish(t *testing.T) {
 	stub := startRelayStub(t)
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
 	bc := &blockingCollector{model: model, started: make(chan struct{})}
-	svc := NewService(bc, export.NewPacker(),
+	svc := NewService(nil, bc, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
 		"test-instance-0001", em, nil)
 	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
 
-	shareID := "share-2001"
-	payload, err := newShareHostPayload([]int64{1}, nil, SharePublishOptions{})
+	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		outcome, _ := svc.HostSession(ctx, shareID, parseTestPayload(t, payload), nil)
-		if outcome != HostInterrupted {
-			t.Errorf("中断路径结果应为 HostInterrupted, got %d", outcome)
-		}
-	}()
 	<-bc.started // 等进入收集阶段
-	cancel()
+	svc.CancelPublish(context.Background(), shareID)
 	comp := em.waitComplete(t, shareID, 5*time.Second)
 	if comp.Success {
 		t.Fatal("取消的发布不应成功")
@@ -779,108 +750,18 @@ func TestCancelPublish(t *testing.T) {
 	}
 }
 
-// —— 任务化发布（share-host 任务接入）——
+// —— 发布直跑 + 分享记录生命周期 ——
 
-// fakeTaskControl 任务控制能力桩（记录调用、自增任务 ID）
-type fakeTaskControl struct {
-	mu      sync.Mutex
-	nextID  int64
-	created []fakeTaskCreation
-	started [][]int64
-	stopped [][]int64
+// failingCollector 收集恒失败（复原时作品已删场景）
+type failingCollector struct {
+	err error
 }
 
-type fakeTaskCreation struct {
-	taskType string
-	name     string
-	payload  string
+func (f *failingCollector) Collect(ctx context.Context, workIDs []int64, workSetIDs []int64) (*export.ExportModel, error) {
+	return nil, f.err
 }
 
-func (f *fakeTaskControl) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.nextID++
-	f.created = append(f.created, fakeTaskCreation{taskType: taskType, name: taskName, payload: payload})
-	return f.nextID, nil
-}
-
-func (f *fakeTaskControl) StartTasks(ctx context.Context, taskIds []int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.started = append(f.started, taskIds)
-	return nil
-}
-
-func (f *fakeTaskControl) StopTasks(ctx context.Context, taskIds []int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.stopped = append(f.stopped, taskIds)
-	return nil
-}
-
-// TestPublishTaskLaunch 发布入口创建并启动 share-host 任务：载荷只含密码摘要、shareID 可反解任务 ID
-func TestPublishTaskLaunch(t *testing.T) {
-	workDir := t.TempDir()
-	model, _ := buildTestModel(t, workDir)
-	fc := &fakeTaskControl{}
-	svc := NewService(&fakeCollector{model: model}, export.NewPacker(),
-		func() string { return "relay.example.com" }, func() string { return workDir },
-		"test-instance-0001", nil, fc)
-
-	shareID, err := svc.Publish(context.Background(), []int64{1, 2}, []int64{3}, SharePublishOptions{
-		Title:         "任务化发布",
-		ExpireSeconds: 3600,
-		Password:      "pw-明文",
-	})
-	if err != nil {
-		t.Fatalf("发布启动失败: %v", err)
-	}
-	if shareID != "share-1" {
-		t.Fatalf("shareID 应由任务 ID 推导: %q", shareID)
-	}
-	if id, ok := TaskIDFromShareID(shareID); !ok || id != 1 {
-		t.Fatalf("shareID 反解任务 ID 失败: %d %v", id, ok)
-	}
-	if len(fc.created) != 1 {
-		t.Fatalf("应创建一个任务: %d", len(fc.created))
-	}
-	c := fc.created[0]
-	if c.taskType != TaskTypeHost {
-		t.Fatalf("任务类型不符: %q", c.taskType)
-	}
-	if c.name != "任务化发布" {
-		t.Fatalf("任务名应取发布标题: %q", c.name)
-	}
-	p, err := parseShareHostPayload(c.payload)
-	if err != nil {
-		t.Fatalf("载荷反解失败: %v", err)
-	}
-	if len(p.WorkIDs) != 2 || len(p.WorkSetIDs) != 1 || p.ExpireSeconds != 3600 {
-		t.Fatalf("载荷字段不符: %+v", p)
-	}
-	if p.PasswordHash != PasswordHashHex("pw-明文") {
-		t.Fatal("载荷应只存密码摘要（明文不落库）")
-	}
-	if len(fc.started) != 1 || len(fc.started[0]) != 1 || fc.started[0][0] != 1 {
-		t.Fatalf("创建后应立即启动任务: %+v", fc.started)
-	}
-}
-
-// TestPublishPreconditionRejected 前置校验失败不创建任务
-func TestPublishPreconditionRejected(t *testing.T) {
-	fc := &fakeTaskControl{}
-	svc := NewService(&fakeCollector{model: nil}, export.NewPacker(),
-		func() string { return "" }, func() string { return "" },
-		"test-instance-0001", nil, fc)
-	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
-		t.Fatalf("中继未配置应拒绝: %v", err)
-	}
-	if len(fc.created) != 0 {
-		t.Fatal("校验失败不应创建任务")
-	}
-}
-
-// fakeStrategyHandle 执行面句柄桩（记录终态与进度上报）
+// fakeStrategyHandle 收件执行面句柄桩（记录终态与进度上报；ReceiveExecution 测试用）
 type fakeStrategyHandle struct {
 	task       *entity.Task
 	runCtx     context.Context
@@ -911,72 +792,366 @@ func (h *fakeStrategyHandle) isTerminal() bool {
 	return h.finished || h.failed
 }
 
-// TestHostExecutionLifecycle share-host 执行面策略终态映射：
-// 在线后撤销 → 任务 Finish；宿主 ctx 取消（暂停/停止）→ 不上报终态（控制面接管）
-func TestHostExecutionLifecycle(t *testing.T) {
-	stub := startRelayStub(t)
-	workDir := t.TempDir()
-	model, _ := buildTestModel(t, workDir)
-	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
-
-	task := entity.NewTask()
-	task.SetID(3001)
-	payload, err := newShareHostPayload([]int64{1}, nil, SharePublishOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	task.Payload = sql.NullString{String: payload, Valid: true}
-
-	// 在线 → 撤销 → Finish
-	h := &fakeStrategyHandle{task: task, runCtx: context.Background()}
-	strategy := NewHostExecution(svc)
-	go strategy.Execute(h)
-	if comp := em.waitComplete(t, ShareIDFromTaskID(3001), 8*time.Second); !comp.Success {
-		t.Fatalf("发布应在线成功: %+v", comp)
-	}
-	if err := svc.Revoke(context.Background(), ShareIDFromTaskID(3001)); err != nil {
-		t.Fatal(err)
-	}
-	waitHandleTerminal(t, h, 5*time.Second)
-	h.mu.Lock()
-	finished, failed := h.finished, h.failed
-	h.mu.Unlock()
-	if !finished || failed {
-		t.Fatalf("撤销终态应映射任务 Finish: finished=%v failed=%v", finished, failed)
-	}
-
-	// 中断路径：ctx 取消 → 不上报终态
-	task2 := entity.NewTask()
-	task2.SetID(3002)
-	task2.Payload = sql.NullString{String: payload, Valid: true}
-	ctx, cancel := context.WithCancel(context.Background())
-	h2 := &fakeStrategyHandle{task: task2, runCtx: ctx}
-	go NewHostExecution(svc).Execute(h2)
-	if comp := em.waitComplete(t, ShareIDFromTaskID(3002), 8*time.Second); !comp.Success {
-		t.Fatalf("第二次发布应在线成功: %s", comp.ErrMsg)
-	}
-	cancel()
-	time.Sleep(300 * time.Millisecond)
-	if h2.isTerminal() {
-		t.Fatal("宿主 ctx 取消不应上报任务终态（控制面接管）")
-	}
-	// 中断的会话移出注册表（share-3001 已撤销终态留驻属设计语义，不在断言范围）
-	for _, d := range svc.Sessions(context.Background()) {
-		if d.ShareID == ShareIDFromTaskID(3002) {
-			t.Fatalf("中断后会话应移出注册表: %+v", d)
-		}
+// TestPublishPreconditionRejected 前置校验失败不启动发布主体
+func TestPublishPreconditionRejected(t *testing.T) {
+	svc := NewService(nil, &fakeCollector{model: nil}, export.NewPacker(),
+		func() string { return "" }, func() string { return "" },
+		"test-instance-0001", nil, nil)
+	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
+		t.Fatalf("中继未配置应拒绝: %v", err)
 	}
 }
 
-// waitHandleTerminal 等待句柄上报终态
-func waitHandleTerminal(t *testing.T, h *fakeStrategyHandle, timeout time.Duration) {
+// openRecordTestDB 打开完整迁移的内存测试库（share_record 表就位）
+func openRecordTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for !h.isTerminal() && time.Now().Before(deadline) {
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Fatalf("打开测试库失败: %v", err)
+	}
+	return db
+}
+
+// newRecordTestService 组装落记录的分享服务（发布直跑 + share_record 账本）
+func newRecordTestService(t *testing.T, repo *Repository, stub *relayStub, workDir string,
+	model *export.ExportModel, em *captureEmitter) *Service {
+	t.Helper()
+	svc := NewService(repo, &fakeCollector{model: model}, export.NewPacker(),
+		func() string { return stub.addr }, func() string { return workDir },
+		"test-instance-0001", em, nil)
+	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
+	t.Cleanup(func() {
+		for _, d := range svc.Sessions(context.Background()) {
+			_ = svc.Revoke(context.Background(), d.ShareID)
+		}
+	})
+	return svc
+}
+
+// waitRecordState 轮询等待分享记录达到期望状态（记录写入/终态由直跑主体 goroutine 异步落）
+func waitRecordState(t *testing.T, repo *Repository, shareID, state string) *entity.ShareRecord {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for {
+		rec, err := repo.GetByShareID(context.Background(), shareID)
+		if err != nil {
+			t.Fatalf("查询分享记录失败: %v", err)
+		}
+		if rec != nil && rec.State == state {
+			return rec
+		}
+		if time.Now().After(deadline) {
+			cur := "<无记录>"
+			if rec != nil {
+				cur = rec.State
+			}
+			t.Fatalf("等待分享记录状态 %s 超时（当前: %s）", state, cur)
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if !h.isTerminal() {
-		t.Fatal("等待执行面终态超时")
+}
+
+// TestPublishRecordLifecycle 发布直跑生命周期落账（无任务参与）：首次在线落 active 行、
+// 记录可重建原链接；撤销 → revoked 并记撤销时刻
+func TestPublishRecordLifecycle(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{
+		Title:         "直跑发布",
+		Password:      "pw-直跑",
+		ExpireSeconds: 3600,
+	})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
 	}
+	if !strings.HasPrefix(shareID, "share-") {
+		t.Fatalf("shareID 形态不符: %q", shareID)
+	}
+
+	rec := waitRecordState(t, repo, shareID, RecordStateActive)
+	if rec.Token != comp.Session.Token {
+		t.Fatalf("记录 token 与会话不一致: %s / %s", rec.Token, comp.Session.Token)
+	}
+	if rec.Title != "直跑发布" || !rec.PasswordProtected || rec.ExpireSeconds != 3600 || rec.ExpiresAt == 0 {
+		t.Fatalf("记录参数不符: %+v", rec)
+	}
+	// 规划统计：2 个存在文件 + 1 个缺失条目
+	if rec.FileCount != 2 || rec.MissingFiles != 1 || rec.TotalBytes == 0 {
+		t.Fatalf("记录规划统计不符: fileCount=%d missing=%d totalBytes=%d", rec.FileCount, rec.MissingFiles, rec.TotalBytes)
+	}
+	if rec.RevokedAt != 0 {
+		t.Fatal("active 记录不应有撤销时刻")
+	}
+	workIDs, _ := unmarshalInt64s(rec.WorkIDs)
+	if len(workIDs) != 1 || workIDs[0] != 1 {
+		t.Fatalf("记录分享对象不符: %v", workIDs)
+	}
+	// 记录可重建原链接（relayAddress+token+key）
+	if dto := toShareRecordDTO(rec); dto.Link != comp.Link {
+		t.Fatalf("记录重建链接与发布链接不一致:\n%s\n%s", dto.Link, comp.Link)
+	}
+
+	// 撤销 → revoked + 撤销时刻
+	if err := svc.Revoke(context.Background(), shareID); err != nil {
+		t.Fatal(err)
+	}
+	em.waitState(t, shareID, stateRevoked, 5*time.Second)
+	rec = waitRecordState(t, repo, shareID, RecordStateRevoked)
+	if rec.RevokedAt == 0 {
+		t.Fatal("撤销终态应记撤销时刻")
+	}
+}
+
+// TestRecordExpiredFromRelay 中继推送过期终态（隧道内 ERROR expired）→ 会话 expired → 记录 expired
+func TestRecordExpiredFromRelay(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	if err := stub.pushTunnelError(comp.Session.Token, errCodeExpired); err != nil {
+		t.Fatalf("推送过期终态失败: %v", err)
+	}
+	em.waitState(t, shareID, stateExpired, 5*time.Second)
+	waitRecordState(t, repo, shareID, RecordStateExpired)
+}
+
+// TestDeleteRecord 删除分享记录：在线删除（撤销会话+物理删行）、无记录删除报不存在、
+// 离线 active 记录删除
+func TestDeleteRecord(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	// 在线删除：会话撤销 + 记录物理删除
+	if err := svc.DeleteRecord(context.Background(), shareID); err != nil {
+		t.Fatalf("在线删除失败: %v", err)
+	}
+	em.waitState(t, shareID, stateRevoked, 5*time.Second)
+	if rec, _ := repo.GetByShareID(context.Background(), shareID); rec != nil {
+		t.Fatalf("删除后记录行应不存在: %+v", rec)
+	}
+	// 无记录且无主体 → NotFound
+	if err := svc.DeleteRecord(context.Background(), "share-不存在"); err == nil {
+		t.Fatal("无记录删除应报不存在")
+	}
+	// 离线 active 记录（会话不在注册表）：本地删行（中继侧存续至到期）
+	key := make([]byte, shareKeyLen)
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-9003"
+	rec.Token = fmt.Sprintf("stubtoken%013d", 9003)
+	rec.Title = "离线记录"
+	rec.WorkIDs = marshalInt64s([]int64{1})
+	rec.RelayAddress = stub.addr
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.ExpireSeconds = -1
+	rec.State = RecordStateActive
+	if err := repo.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteRecord(context.Background(), "share-9003"); err != nil {
+		t.Fatalf("离线删除失败: %v", err)
+	}
+	if rec, _ := repo.GetByShareID(context.Background(), "share-9003"); rec != nil {
+		t.Fatal("离线删除后记录行应不存在")
+	}
+}
+
+// —— 启动自动复原 ——
+
+// TestRestoreAllBind 复原主链路：重启（新 Service 实例）→ active 记录原 token bind 重绑 →
+// 会话在线、记录保持 active、链接不变且可拉取
+func TestRestoreAllBind(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em1 := newCaptureEmitter()
+	svc1 := newRecordTestService(t, repo, stub, workDir, model, em1)
+
+	shareID, comp := publishAndWait(t, svc1, em1, SharePublishOptions{Title: "复原分享"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	token := comp.Session.Token
+	link := comp.Link
+	// 模拟关闭：终止宿主主体（会话本地移除，记录保持 active）
+	svc1.CancelPublish(context.Background(), shareID)
+
+	// 模拟重启：全新 Service（进程内会话清空），同库同桩中继 → 启动自动复原
+	em2 := newCaptureEmitter()
+	svc2 := newRecordTestService(t, repo, stub, workDir, model, em2)
+	svc2.RestoreAll(context.Background())
+
+	em2.waitState(t, shareID, stateOnline, 8*time.Second)
+	if stub.bindCountOf(token) < 1 {
+		t.Fatal("复原未以原 token bind 重绑")
+	}
+	waitRecordState(t, repo, shareID, RecordStateActive)
+	// 链接不变：记录重建链接与原发布一致，且可经原链接拉取 manifest
+	rec, err := repo.GetByShareID(context.Background(), shareID)
+	if err != nil || rec == nil {
+		t.Fatalf("查询复原记录失败: %v %v", rec, err)
+	}
+	if dto := toShareRecordDTO(rec); dto.Link != link {
+		t.Fatalf("复原后链接应不变:\n%s\n%s", dto.Link, link)
+	}
+	key, _ := keyFromLink(t, link)
+	cip, err := newE2ECipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := recipientDial(t, stub.addr, token, "")
+	if err != nil {
+		t.Fatalf("复原后收件拨号失败: %v", err)
+	}
+	head, _, _, err := recipientFetch(t, cip, conn, streamRequest{Type: "manifest"})
+	if err != nil || !head.OK || head.Kind != "manifest" {
+		t.Fatalf("复原后拉取失败: head=%+v err=%v", head, err)
+	}
+	_ = conn.Close()
+}
+
+// TestRestoreWorkDeleted 复原时作品已删（收集失败）→ 记录落 failed 记原因
+func TestRestoreWorkDeleted(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc1 := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc1, em, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	svc1.CancelPublish(context.Background(), shareID)
+
+	// 重启后作品已删：重新收集失败 → failed 记原因
+	em2 := newCaptureEmitter()
+	svc2 := NewService(repo, &failingCollector{err: errors.New("作品已删除")}, export.NewPacker(),
+		func() string { return stub.addr }, func() string { return workDir },
+		"test-instance-0001", em2, nil)
+	svc2.RestoreAll(context.Background())
+	rec := waitRecordState(t, repo, shareID, RecordStateFailed)
+	if !strings.Contains(rec.ErrMsg, "作品已删除") {
+		t.Fatalf("失败原因应含收集错误: %q", rec.ErrMsg)
+	}
+}
+
+// TestRestoreWorkSilentMissing 重启后作品软删：活作品查询令其静默消失（Collect 不报错），
+// 复原须比对清单发现缺失并落 failed——「收集成功但内容残缺」不可复活会话
+func TestRestoreWorkSilentMissing(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc1 := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc1, em, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	svc1.CancelPublish(context.Background(), shareID)
+
+	// 重启：收集成功但清单缺作品（软删作品的活行查询形态）
+	emptyModel := export.NewExportModel(&export.Manifest{SchemaVersion: export.SchemaVersion})
+	em2 := newCaptureEmitter()
+	svc2 := NewService(repo, &fakeCollector{model: emptyModel}, export.NewPacker(),
+		func() string { return stub.addr }, func() string { return workDir },
+		"test-instance-0001", em2, nil)
+	svc2.RestoreAll(context.Background())
+	rec := waitRecordState(t, repo, shareID, RecordStateFailed)
+	if !strings.Contains(rec.ErrMsg, "分享对象已删除") {
+		t.Fatalf("失败原因应含分享对象删除语义: %q", rec.ErrMsg)
+	}
+	if !strings.Contains(rec.ErrMsg, "作品#1") {
+		t.Fatalf("失败原因应点名缺失对象: %q", rec.ErrMsg)
+	}
+}
+
+// TestRestoreRelayNotFound 中继侧会话不存在（bind 被 not_found 拒）→ 记录落 failed 记原因
+func TestRestoreRelayNotFound(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+
+	// 直造 active 记录行（token 从未注册到中继——模拟中继会话已被清理）
+	key := make([]byte, shareKeyLen)
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-9001"
+	rec.Token = fmt.Sprintf("stubtoken%013d", 9001)
+	rec.Title = "幽灵分享"
+	rec.WorkIDs = marshalInt64s([]int64{1})
+	rec.RelayAddress = stub.addr
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.ExpireSeconds = -1
+	rec.State = RecordStateActive
+	if err := repo.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+	svc.RestoreAll(context.Background())
+	em.waitState(t, "share-9001", stateFailed, 8*time.Second)
+	rec2 := waitRecordState(t, repo, "share-9001", RecordStateFailed)
+	if !strings.Contains(rec2.ErrMsg, errCodeNotFound) {
+		t.Fatalf("失败原因应含中继错误码 %s: %q", errCodeNotFound, rec2.ErrMsg)
+	}
+}
+
+// TestRestoreRelayUnreachable 中继不可达：会话进入重连循环（reconnecting 运行态不入表），
+// 记录保持 active、主体终止不落终态
+func TestRestoreRelayUnreachable(t *testing.T) {
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+
+	// 直造记录，中继地址指向本机不可达端口（连接即拒，重连退避快速循环）
+	key := make([]byte, shareKeyLen)
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-9002"
+	rec.Token = fmt.Sprintf("stubtoken%013d", 9002)
+	rec.Title = "断连分享"
+	rec.WorkIDs = marshalInt64s([]int64{1})
+	rec.RelayAddress = "127.0.0.1:1"
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.ExpireSeconds = -1
+	rec.State = RecordStateActive
+	if err := repo.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	em := newCaptureEmitter()
+	svc := NewService(repo, &fakeCollector{model: model}, export.NewPacker(),
+		func() string { return "127.0.0.1:1" }, func() string { return workDir },
+		"test-instance-0001", em, nil)
+	svc.RestoreAll(context.Background())
+	em.waitState(t, "share-9002", stateReconnecting, 8*time.Second)
+	waitRecordState(t, repo, "share-9002", RecordStateActive)
+	// 主体终止（模拟关闭）：不落终态，记录保持 active
+	svc.CancelPublish(context.Background(), "share-9002")
+	time.Sleep(300 * time.Millisecond)
+	waitRecordState(t, repo, "share-9002", RecordStateActive)
 }

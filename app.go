@@ -905,14 +905,15 @@ func (app *App) initBaseServices() {
 		logger.Log.Warnf("[share] 实例 ID 持久化失败，本次运行使用临时实例: %v", err)
 	}
 	app.ShareService = share.NewService(
+		share.NewRepository(app.db),
 		app.ExportService,
 		export.NewPacker(),
 		func() string { return app.SettingsService.GetSettings().ShareSettings.RelayAddress },
 		func() string { return app.SettingsService.GetWorkDir() },
 		shareInstanceID,
 		share.NewWailsShareEmitter(func() share.EventEmitter { return app.taskProgressEmitter }),
-		// share-host 任务创建/启停能力：task.Service + taskManager 经适配器组合；
-		// 二者在本阶段之后创建，经闭包运行期取用（发布/取消调用时均已就绪）
+		// share-receive 任务创建/启动能力：task.Service + taskManager 经适配器组合；
+		// 二者在本阶段之后创建，经闭包运行期取用（收件拉取调用时均已就绪）
 		&shareTaskControlAdapter{
 			getTaskSvc: func() *task.Service { return app.TaskService },
 			getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
@@ -1170,11 +1171,10 @@ func (app *App) initAdvancedServices() error {
 			StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
 			StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
 		},
-		// 内置任务类型的执行面策略表：分享发布/收件拉取经任务标准能力承载——
-		// share-host 驱动会话宿主主体，share-receive 拉取回灌导入（ManifestIngestor 与
-		// import handler 共用同一实例）
+		// 内置任务类型的执行面策略表：收件拉取经任务标准能力承载（share-receive 拉取回灌
+		// 导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经任务模块
+		// （发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
-			share.TaskTypeHost:    share.NewHostExecution(app.ShareService),
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor),
 		},
 	)
@@ -1245,8 +1245,9 @@ type workSetWriterAdapter struct {
 	repo *workSet.WorkSetRepository
 }
 
-// shareTaskControlAdapter 将任务创建与启停能力适配为 share.BuiltinTaskControl。
-// ShareService 在 task/taskManager 之前创建，依赖经闭包运行期取用（发布/取消调用时均已就绪）。
+// shareTaskControlAdapter 将任务创建与启动能力适配为 share.BuiltinTaskControl
+// （share-receive 收件拉取建任务用）。ShareService 在 task/taskManager 之前创建，
+// 依赖经闭包运行期取用（收件拉取调用时均已就绪）。
 type shareTaskControlAdapter struct {
 	getTaskSvc func() *task.Service
 	getMgr     func() *taskManager.Manager
@@ -1262,10 +1263,6 @@ func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskTyp
 
 func (a *shareTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int64) error {
 	return a.getMgr().StartTaskTrees(ctx, taskIds)
-}
-
-func (a *shareTaskControlAdapter) StopTasks(ctx context.Context, taskIds []int64) error {
-	return a.getMgr().StopTaskTrees(ctx, taskIds)
 }
 
 // dbTransactorAdapter 数据库事务执行器适配器
@@ -1504,6 +1501,9 @@ func (app *App) initHandlers() {
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）
 func (app *App) onDomReady() {
 	logger.Log.Info("[———————————————— Library Squirrel  已启动🛰️ ————————————————]")
+	// 分享自动复原（应用启动稳定后）：active 分享记录逐条 bind 重绑复活，链接不变。
+	// 事件通道此时已就绪，复原会话的 state 事件可直达前端
+	go app.ShareService.RestoreAll(context.Background())
 }
 
 // onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）

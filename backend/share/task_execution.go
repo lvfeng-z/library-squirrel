@@ -1,9 +1,11 @@
 package share
 
-// share-host / share-receive 任务的执行面策略（taskManager.ExecutionStrategy 实现，
-// 按 task_type 注册进 Manager 策略表，app.go 装配）：
-//   - HostExecution：驱动 Service.HostSession（收集 → 注册 → 隧道维持），映射会话终态到任务终态
+// share-receive 任务的执行面策略（taskManager.ExecutionStrategy 实现，按 task_type 注册进
+// Manager 策略表，app.go 装配）：
 //   - ReceiveExecution：收件人拉取数据流（拉 manifest → 逐文件暂存续传 → ManifestIngestor 回灌导入）
+//
+// 分享方发布不走任务模块（发布直跑经 Service 内受监督 goroutine 驱动，生命周期落
+// share_record——见 service.go/record.go）。
 
 import (
 	"context"
@@ -20,36 +22,6 @@ import (
 	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/taskManager"
 )
-
-// HostExecution share-host（分享宿主）任务的执行面策略。
-type HostExecution struct {
-	svc *Service
-}
-
-// NewHostExecution 创建 share-host 执行面策略
-func NewHostExecution(svc *Service) *HostExecution {
-	return &HostExecution{svc: svc}
-}
-
-// Execute 执行分享宿主主体：反解任务载荷 → HostSession 阻塞执行 → 映射结果到任务终态。
-// 中断（HostInterrupted=任务暂停/停止）不上报终态，交任务控制面接管。
-func (e *HostExecution) Execute(h taskManager.StrategyHandle) {
-	task := h.Task()
-	payload, err := parseShareHostPayload(task.Payload.String)
-	if err != nil {
-		h.Fail(err.Error())
-		return
-	}
-	outcome, errMsg := e.svc.HostSession(h.RunCtx(), ShareIDFromTaskID(task.GetID()), payload, h.ReportProgress)
-	switch outcome {
-	case HostFinished:
-		h.Finish()
-	case HostFailed:
-		h.Fail(errMsg)
-	case HostInterrupted:
-		// 终态由任务控制面接管（暂停→Paused / 停止→Failed("任务被用户停止")）
-	}
-}
 
 // —— share-receive（收件人拉取）——
 //

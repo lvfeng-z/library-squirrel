@@ -9,5 +9,6 @@ export {
 export {
     ShareProtocolRegStatus,
     SharePublishOptions,
+    ShareRecordDTO,
     ShareSessionDTO
 } from "./models.js";

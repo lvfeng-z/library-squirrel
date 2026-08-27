@@ -2,7 +2,7 @@ package taskManager
 
 // 执行面策略（可插拔）：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在
 // taskManager，「任务主体怎么执行」外提为接口——内置任务类型（task.task_type 非空，如
-// share-host/share-receive）经按类型注册的策略执行；插件任务（task_type 空）维持既有
+// share-receive）经按类型注册的策略执行；插件任务（task_type 空）维持既有
 // 执行路径（板块组合 + 多轨下载/续传）。策略按 task_type 在 Manager 构造时注入
 // （app.go 装配），taskManager 不感知具体业务类型。
 

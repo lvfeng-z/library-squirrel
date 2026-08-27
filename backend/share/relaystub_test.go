@@ -459,6 +459,17 @@ func (s *relayStub) dropTunnel(token string) {
 	}
 }
 
+// pushTunnelError 向分享方隧道推 ERROR 帧（模拟中继终态推送：expired 等；
+// 分享方读循环据此落终态）
+func (s *relayStub) pushTunnelError(token, code string) error {
+	tun := s.tunnelOf(token)
+	if tun == nil {
+		return fmt.Errorf("隧道不在线")
+	}
+	b, _ := json.Marshal(wireErr{Code: code, Message: "测试注入终态"})
+	return tun.writeFrame(frameError, 0, b)
+}
+
 // tunnelOf 查询会话当前隧道是否在线
 func (s *relayStub) tunnelOf(token string) *stubTunnel {
 	s.mu.Lock()

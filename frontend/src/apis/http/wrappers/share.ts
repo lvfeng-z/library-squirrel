@@ -4,7 +4,7 @@
  */
 
 import { Handler as ShareHandler } from '@bindings/github.com/library-squirrel/backend/share'
-import type { SharePublishOptions, ShareProtocolRegStatus, ShareSessionDTO } from '@bindings/github.com/library-squirrel/backend/share/models'
+import type { SharePublishOptions, ShareProtocolRegStatus, ShareRecordDTO, ShareSessionDTO } from '@bindings/github.com/library-squirrel/backend/share/models'
 import { requireResponse } from '../types'
 
 /**
@@ -44,6 +44,21 @@ export async function shareSessions(): Promise<ShareSessionDTO[]> {
   const result = requireResponse(await ShareHandler.ShareSessions(), '查询分享列表')
   // 绑定层元素类型含 null（[]*T 的 JSON 形态），后端不会产出 null 元素，过滤兜底
   return result.data.filter((s): s is ShareSessionDTO => s !== null)
+}
+
+/**
+ * 查询全部分享记录（历史分享账本：状态/链接重建要素/统计，create_time 倒序）。
+ */
+export async function shareRecords(): Promise<ShareRecordDTO[]> {
+  const result = requireResponse(await ShareHandler.ShareRecords(), '查询分享记录')
+  return result.data.filter((r): r is ShareRecordDTO => r !== null)
+}
+
+/**
+ * 删除分享记录（物理删行；在驻会话后端先撤销——活跃分享删除即链接失效）。
+ */
+export async function shareDeleteRecord(shareId: string): Promise<void> {
+  requireResponse(await ShareHandler.ShareDeleteRecord(shareId), '删除分享记录', false)
 }
 
 /**

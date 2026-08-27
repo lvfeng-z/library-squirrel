@@ -1,5 +1,5 @@
 import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
-import { HomeFilled, Discount, User, Star, List, Link, TakeawayBox, Setting, Guide, Coordinate, Delete, FolderChecked, Brush } from '@element-plus/icons-vue'
+import { HomeFilled, Discount, User, Star, List, Link, Share, TakeawayBox, Setting, Guide, Coordinate, Delete, FolderChecked, Brush } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 
 /**
@@ -84,6 +84,14 @@ export function initBuiltinMenus() {
       label: '任务(Slot)',
       order: 41,
       viewId: 'taskManage'
+    },
+    {
+      slotId: 'builtin-share',
+      index: 'share',
+      icon: markRaw(Share),
+      label: '分享',
+      order: 45,
+      viewId: 'shareManage'
     },
     {
       slotId: 'builtin-site',

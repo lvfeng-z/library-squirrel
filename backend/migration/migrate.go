@@ -103,6 +103,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Plugin{},
 		&entity2.PluginStorage{},
 		&entity2.Task{},
+		&entity2.ShareRecord{},
 		&entity2.Resource{},
 		&entity2.ResourceStore{},
 		entity2.NewPersistentStore(),
@@ -122,6 +123,13 @@ func AutoMigrate(db *gorm.DB) error {
 	// 执行自动迁移
 	if err := db.AutoMigrate(models...); err != nil {
 		return err
+	}
+
+	// 数据迁移：share-host 任务行退役清理（分享方发布去任务化——发布直跑不经任务模块，
+	// 分享参数与生命周期改由 share_record 承载）。存量 share-host 任务行一次性物理删除
+	// （原生 DELETE，无软删改写；task 表无软删列；幂等——二次启动无命中行）
+	if err := db.Exec(`DELETE FROM task WHERE task_type = 'share-host'`).Error; err != nil {
+		return fmt.Errorf("迁移清理 share-host 任务行失败: %w", err)
 	}
 
 	// 命名迁移(后置)：persistent_store file_path 唯一索引升级为部分唯一索引（软删行释放路径，

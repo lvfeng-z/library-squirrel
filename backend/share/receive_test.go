@@ -101,7 +101,7 @@ func TestParseShareLinkInvalid(t *testing.T) {
 // —— 深链到达缓存与消费 ——
 
 func TestNotifyIncomingLinkConsumeAndDedupe(t *testing.T) {
-	svc := NewService(nil, nil, func() string { return "" }, func() string { return "" },
+	svc := NewService(nil, nil, nil, func() string { return "" }, func() string { return "" },
 		"test-instance-0001", nil, nil)
 
 	assert.False(t, svc.NotifyIncomingLink("https://evil.example.com/x"), "非深链形态应被拒")
@@ -206,7 +206,7 @@ func startReceiveEnv(t *testing.T, opts SharePublishOptions) *receiveTestEnv {
 
 	// 收件侧：独立 Service（工作目录指向收件方临时目录）
 	recvDir := t.TempDir()
-	recvSvc := NewService(nil, nil,
+	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
 		"recipient-instance-0001", nil, nil)
 	recvSvc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})

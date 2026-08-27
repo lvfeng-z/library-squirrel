@@ -49,6 +49,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '任务', order: 41 }
       },
       {
+        path: 'shareManage',
+        name: 'shareManage',
+        component: () => import('@renderer/views/ShareManage.vue'),
+        meta: { title: '分享', order: 45 }
+      },
+      {
         path: 'siteManage',
         name: 'siteManage',
         component: () => import('@renderer/views/SiteManage.vue'),
