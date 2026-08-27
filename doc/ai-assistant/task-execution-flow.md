@@ -154,8 +154,8 @@ loadAndStartTaskTrees(taskIds, skipTerminal, mode)
       - 所有子任务已终态（仅 skipTerminal 时）→ 计算父最终状态 + PushTaskRemove
   → batchCheckDuplicates(allToCheck)              // 多根共享一次批量查重
       - 仅作品信息(!fetchStores)的组合直接标记 skipDuplicateCheck 并派发（不拉资源，不可能覆盖 store 行）
-      - 查询 workChecker.ListBySiteAndSiteWorkIDs（仅含资源板块的组合参与）
-      - 业务键命中后行级覆盖判定（WorkStoreRoleChecker.ListStoreTypeSetsByWorkIds）：所选板块 ∩ 已有 store 行非空 → 重复
+      - 调用 duplicate.DuplicateChecker.Check（站点名→本库站点映射 + 作品批量定位 + 活行 store 角色求交；纯查询判定，仅含资源板块的组合参与）
+      - 命中冲突（所选板块 ∩ 已有活行 store 角色非空）→ 重复，冲突载荷携带交集角色明细
       - 重复 → WaitingForInput + 前端推送 DuplicateDetected（载荷含 conflictRoles 将覆盖板块明细）
       - 空交集/零行/不重复 → skipDuplicateCheck=true（空交集仍置 existingWorkId 供替换定位）
       - 行级角色查询失败 → 命中任务全部退回弹窗（宁多弹不漏弹）
@@ -211,7 +211,7 @@ handleRunCmd(cmd):
 | 步骤 | 操作 | DB 操作 | 事务 |
 |:---:|------|---------|:---:|
 | 0 | 检查 workdir 已配置 | 无 | - |
-| 0.0 | 重复检测(`workChecker.GetBySiteAndSiteWorkID`) | SELECT | - |
+| 0.0 | 重复检测(`DuplicateChecker.Check`) | SELECT | - |
 | 0.1 | 替换场景备份(`BackupStores`,板块隔离) | SELECT + 备份 per store | - |
 | 1 | `pluginExec.CreateWorkInfo`(插件 RPC) | 无 | - |
 | 2 | `workInfoSaver.SaveWorkInfo` | 批量 INSERT | **事务 1** |
