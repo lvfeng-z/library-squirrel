@@ -75,7 +75,7 @@ async function handleSkipAll() {
     <div class="replace-confirm-list">
       <div
         v-for="(item, index) in store.list"
-        :key="item.taskId"
+        :key="`${item.taskId}-${item.existingWorkId}`"
         class="replace-confirm-item"
       >
         <div class="replace-confirm-item-content">

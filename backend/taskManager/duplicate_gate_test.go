@@ -7,48 +7,53 @@ import (
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/duplicate"
+	"github.com/library-squirrel/backend/resource"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// 覆盖确认行级门槛测试:任务所选板块角色与已有作品 resource_store 行的 store_type 集合求交,
-// 交集非空才弹覆盖确认。覆盖要点:
-// - thumbnail 行命中同样弹窗(缩略图覆盖需用户知情,无板块级豁免)
-// - 行级角色查询失败/未配置角色查询器时保守退回弹窗(宁多弹不漏弹),载荷 conflictRoles=nil
-// - 空角色集(插件自决全量)已有任意行即弹,载荷取已有行角色全集
-// - 空交集/零行不弹窗,但保留替换定位(workId 置为已有作品、isReplace=true)
+// 覆盖确认行级门槛测试（改接 duplicate.DuplicateChecker 后）：任务进入 runSectionCombo 查重段，
+// 按查重判定结果分流——命中冲突 → WaitingForInput 弹覆盖确认；命中无冲突/未命中 → 不弹窗、
+// 保留替换定位（existingWorkId → workId、isReplace=true）。覆盖要点：
+// - 命中冲突载荷透传交集角色；行级信息不可得（判定返回 nil 冲突角色）时保守弹窗
+// - 命中无冲突不弹窗但保留替换定位（对齐原 model.go 空交集/零行语义）
 // - 仅作品信息任务(无资源板块)不参与查重
+// 判定规则本身（站点名映射/作品定位/角色求交/保守弹窗分支）由 duplicate 模块单测覆盖，
+// 本文件只验证 taskManager 控制面动作与载荷透传。
 
 // ==== fakes ====
 
-// fakeWorkChecker 查重接口桩:按 (siteId, siteWorkId) 返回预置作品,并记录查询次数供"未查重"断言
-type fakeWorkChecker struct {
-	existing *entity.Work
-	getCalls int
+// fakeDuplicateChecker 查重判定桩:预置判定结果并记录查询次数供"未查重"断言
+type fakeDuplicateChecker struct {
+	result duplicate.DuplicateCheckResult
+	calls  int
 }
 
-func (f *fakeWorkChecker) GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity.Work, error) {
-	f.getCalls++
-	if f.existing != nil && f.existing.SiteID.Int64 == siteId && f.existing.SiteWorkID.String == siteWorkId {
-		return f.existing, nil
+func (f *fakeDuplicateChecker) Check(ctx context.Context, items []duplicate.DuplicateCheckItem) ([]duplicate.DuplicateCheckResult, error) {
+	f.calls++
+	out := make([]duplicate.DuplicateCheckResult, len(items))
+	for i := range items {
+		out[i] = f.result
 	}
-	return nil, nil
+	return out, nil
 }
 
-func (f *fakeWorkChecker) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds []int64, siteWorkIds []string) ([]*entity.Work, error) {
-	return nil, fmt.Errorf("批量查重未在本测试使用")
+// fakeSiteNameResolver 站点 ID → 站点名桩(查重输入键形态统一:task.SiteID 反查站点名)
+type fakeSiteNameResolver struct {
+	names map[int64]string
 }
 
-// fakeRoleChecker 行级角色查询桩:返回预置 {workId: store_type 集合};err 非 nil 时模拟查询失败
-type fakeRoleChecker struct {
-	sets map[int64]map[string]struct{}
-	err  error
-}
-
-func (f *fakeRoleChecker) ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int64) (map[int64]map[string]struct{}, error) {
-	if f.err != nil {
-		return nil, f.err
+func (f *fakeSiteNameResolver) ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error) {
+	out := make([]*entity.Site, 0, len(ids))
+	for _, id := range ids {
+		if name, ok := f.names[id]; ok {
+			s := entity.NewSite()
+			s.ID = id
+			s.SiteName = sql.NullString{String: name, Valid: true}
+			out = append(out, s)
+		}
 	}
-	return f.sets, nil
+	return out, nil
 }
 
 // fakePusher 推送桩:捕获 PushDuplicateDetected 载荷
@@ -186,7 +191,7 @@ func (s *fakeWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task,
 // newRoleGateTask 构造进入 runSectionCombo 查重段的 ManagedTask(不启动 actor)。
 // 门槛后各段依赖(替换软删/插件执行器)注入桩:Start 桩固定报错,不弹窗用例在下载前终止。
 // 返回替换链桩供用例预置资源图与断言
-func newRoleGateTask(taskId int64, mode runMode, checker *fakeWorkChecker, roles *fakeRoleChecker, pusher *fakePusher) (*ManagedTask, *fakeResourceReader, *fakeResourceStoreReader, *fakeStoreBackupReader, *fakeStoreReplacer) {
+func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, resolver *fakeSiteNameResolver, pusher *fakePusher) (*ManagedTask, *fakeResourceReader, *fakeResourceStoreReader, *fakeStoreBackupReader, *fakeStoreReplacer) {
 	m := newTestManagedTask()
 	m.taskId = taskId
 	m.task.TaskName = sql.NullString{String: "t", Valid: true}
@@ -198,30 +203,28 @@ func newRoleGateTask(taskId int64, mode runMode, checker *fakeWorkChecker, roles
 	rsReader := &fakeResourceStoreReader{}
 	backupReader := &fakeStoreBackupReader{}
 	replacer := &fakeStoreReplacer{}
-	// 角色查询器为 nil 时接口字段保持未设置(类型化 nil 指针赋给接口会令接口非 nil,走进空接收者调用)
 	m.deps = &TaskDeps{
-		WorkChecker:         checker,
+		DuplicateChecker:    checker,
+		SiteNameResolver:    resolver,
 		Pusher:              pusher,
 		WorkDirProvider:     stubWorkDirProvider{dir: "E:/lib"},
 		ResourceReader:      resReader,
 		ResourceStoreReader: rsReader,
 		StoreBackupReader:   backupReader,
-		StoreReplacer:       replacer,
-	}
-	if roles != nil {
-		m.deps.WorkStoreRoleChecker = roles
+		// 替换链能力注入真实 resource.ReplacementService（复用本文件 fakes 作其依赖接口）——
+		// 门槛通过后的前置软删经 resource 域执行，断言仍落到同一批桩上
+		ReplaceStoreOps: resource.NewReplacementService(
+			resReader, rsReader, backupReader, replacer,
+			&fakeBackupFileRestorer{}, &fakeWorkLivenessReader{work: entity.NewWork()},
+			&fakeResourceRecomputer{}, stubWorkDirProvider{dir: "E:/lib"},
+		),
 	}
 	return m, resReader, rsReader, backupReader, replacer
 }
 
-// newExistingWork 预置已有作品
-func newExistingWork(workId int64) *entity.Work {
-	w := entity.NewWork()
-	w.ID = workId
-	w.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-	w.SiteWorkID = sql.NullString{String: "sw1", Valid: true}
-	w.SiteWorkName = sql.NullString{String: "已存在作品", Valid: true}
-	return w
+// fakeCheckResult 构造查重判定结果
+func fakeCheckResult(class duplicate.DuplicateClass, conflictRoles []string) duplicate.DuplicateCheckResult {
+	return duplicate.DuplicateCheckResult{Class: class, WorkID: 500, WorkName: "已存在作品", ConflictRoles: conflictRoles}
 }
 
 // runDuplicateGate 执行 runSectionCombo 并断言弹窗语义:
@@ -238,110 +241,79 @@ func runDuplicateGate(t *testing.T, m *ManagedTask, pusher *fakePusher) (pushed 
 
 // ==== 表驱动用例 ====
 
-// TestDuplicateGate_RowLevel 验证 fallback 路径(runSectionCombo 查重段)的行级门槛判定
+// TestDuplicateGate_RowLevel 验证 fallback 路径(runSectionCombo 查重段)对三分类判定的控制面分流
 func TestDuplicateGate_RowLevel(t *testing.T) {
 	cases := []struct {
 		name string
-		// 任务所选板块;nil+fetchStores=true 表示插件自决全量(空角色集)
-		roles []string
-		// 已有作品 store 行角色集合
-		storeTypes []string
-		zeroRows   bool  // 已有作品零 store 行
-		roleErr    error // 行级查询失败模拟
-		roleNil    bool  // 未配置 WorkStoreRoleChecker
-		wantPush   bool
+		// 查重判定预置结果
+		result   duplicate.DuplicateCheckResult
+		wantPush bool
+		// wantMiss 未命中:不定位已有作品(资源重执行无法挂载转 Failed);false 表示命中无冲突(定位为替换目标)
+		wantMiss bool
 		// wantRoles 期望载荷板块明细;wantPush 且 wantNil 时期望载荷为 nil
 		wantRoles []string
 		wantNil   bool
 	}{
 		{
-			name:       "行全缺_交集空_不弹窗",
-			roles:      []string{entity.StoreTypeVideoTrack, entity.StoreTypeAudioTrack},
-			storeTypes: []string{entity.StoreTypeImage, entity.StoreTypeThumbnail},
-			wantPush:   false,
-		},
-		{
-			name:       "部分板块存在_交集非空_弹窗且载荷为交集",
-			roles:      []string{entity.StoreTypeVideoTrack, entity.StoreTypeAudioTrack, entity.StoreTypeThumbnail},
-			storeTypes: []string{entity.StoreTypeImage, entity.StoreTypeThumbnail},
-			wantPush:   true,
-			wantRoles:  []string{entity.StoreTypeThumbnail},
-		},
-		{
-			name:       "仅thumbnail行命中_弹窗", // 缩略图覆盖不豁免
-			roles:      []string{entity.StoreTypeThumbnail},
-			storeTypes: []string{entity.StoreTypeThumbnail},
-			wantPush:   true,
-			wantRoles:  []string{entity.StoreTypeThumbnail},
-		},
-		{
-			name:       "行级查询失败_退回弹窗_载荷nil", // 宁多弹不漏弹
-			roles:      []string{entity.StoreTypeVideoTrack},
-			storeTypes: []string{entity.StoreTypeImage},
-			roleErr:    fmt.Errorf("db down"),
-			wantPush:   true,
-			wantNil:    true,
-		},
-		{
-			name:       "未配置角色查询器_退回弹窗_载荷nil",
-			roles:      []string{entity.StoreTypeVideoTrack},
-			storeTypes: []string{entity.StoreTypeImage},
-			roleNil:    true,
-			wantPush:   true,
-			wantNil:    true,
-		},
-		{
-			name:       "空角色集_已有任意行_弹窗_载荷为已有行全集", // 插件自决全量视为覆盖所有已有行
-			roles:      nil,
-			storeTypes: []string{entity.StoreTypeImage, entity.StoreTypeThumbnail},
-			wantPush:   true,
-			wantRoles:  []string{entity.StoreTypeImage, entity.StoreTypeThumbnail},
-		},
-		{
-			name:     "空角色集_已有零行_不弹窗",
-			roles:    nil,
-			zeroRows: true,
+			name:     "命中无冲突_交集空_不弹窗",
+			result:   fakeCheckResult(duplicate.DuplicateHitNoConflict, nil),
 			wantPush: false,
 		},
 		{
-			name:     "显式所选_已有零行_不弹窗",
-			roles:    []string{entity.StoreTypeImage},
-			zeroRows: true,
+			name:      "命中冲突_载荷为交集",
+			result:    fakeCheckResult(duplicate.DuplicateHitConflict, []string{entity.StoreTypeThumbnail}),
+			wantPush:  true,
+			wantRoles: []string{entity.StoreTypeThumbnail},
+		},
+		{
+			name:      "命中冲突_载荷为已有行全集",
+			result:    fakeCheckResult(duplicate.DuplicateHitConflict, []string{entity.StoreTypeImage, entity.StoreTypeThumbnail}),
+			wantPush:  true,
+			wantRoles: []string{entity.StoreTypeImage, entity.StoreTypeThumbnail},
+		},
+		{
+			name:     "命中冲突_行级信息不可得_保守弹窗_载荷nil", // 宁多弹不漏弹(原行级查询失败/未配置角色查询器)
+			result:   fakeCheckResult(duplicate.DuplicateHitConflict, nil),
+			wantPush: true,
+			wantNil:  true,
+		},
+		{
+			name:     "命中无冲突_零行_不弹窗",
+			result:   fakeCheckResult(duplicate.DuplicateHitNoConflict, nil),
 			wantPush: false,
+		},
+		{
+			name:     "未命中_不弹窗",
+			result:   duplicate.DuplicateCheckResult{Class: duplicate.DuplicateMiss},
+			wantPush: false,
+			wantMiss: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			checker := &fakeWorkChecker{existing: newExistingWork(500)}
+			checker := &fakeDuplicateChecker{result: tc.result}
 			pusher := &fakePusher{}
 
-			var roles *fakeRoleChecker
-			if !tc.roleNil {
-				set := map[string]struct{}{}
-				for _, s := range tc.storeTypes {
-					set[s] = struct{}{}
-				}
-				sets := map[int64]map[string]struct{}{500: set}
-				if tc.zeroRows {
-					sets[500] = map[string]struct{}{}
-				}
-				roles = &fakeRoleChecker{sets: sets, err: tc.roleErr}
-			}
-
-			m, _, _, _, _ := newRoleGateTask(300, runMode{storeRoles: tc.roles, fetchStores: true}, checker, roles, pusher)
+			m, _, _, _, _ := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
+				checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
 
 			pushed := runDuplicateGate(t, m, pusher)
 			if pushed != tc.wantPush {
 				t.Fatalf("弹窗期望 %v, 实际 %v (pushes=%d)", tc.wantPush, pushed, len(pusher.duplicates))
 			}
 			if !tc.wantPush {
-				// 不弹窗:已有作品定位为替换目标,门槛后由下载桩报错转 Failed
-				if m.workId != 500 || !m.isReplace {
-					t.Fatalf("未弹窗时应定位已有作品为替换目标(workId=%d isReplace=%v)", m.workId, m.isReplace)
-				}
 				if m.state.Load() != int32(TaskStateFailed) {
-					t.Fatalf("未弹窗场景门槛通过后应由下载桩报错转 Failed, 实际 %d", m.state.Load())
+					t.Fatalf("未弹窗场景门槛通过后应转 Failed, 实际 %d", m.state.Load())
+				}
+				if tc.wantMiss {
+					// 未命中:不定位已有作品,资源重执行无法挂载
+					if m.workId != 0 || m.isReplace {
+						t.Fatalf("未命中不应定位已有作品(workId=%d isReplace=%v)", m.workId, m.isReplace)
+					}
+				} else if m.workId != 500 || !m.isReplace {
+					// 命中无冲突:已有作品定位为替换目标
+					t.Fatalf("未弹窗时应定位已有作品为替换目标(workId=%d isReplace=%v)", m.workId, m.isReplace)
 				}
 				return
 			}
@@ -367,15 +339,12 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 	}
 }
 
-// TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId 空交集不弹窗但视为替换:
+// TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId 命中无冲突不弹窗但视为替换:
 // 定位到已有作品(workId 置位、isReplace=true)并按所选板块前置软删旧 store
 func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
-	existing := newExistingWork(500)
-	roles := &fakeRoleChecker{sets: map[int64]map[string]struct{}{
-		500: {entity.StoreTypeImage: {}},
-	}}
+	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
 	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
-		&fakeWorkChecker{existing: existing}, roles, &fakePusher{})
+		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
 	pusher := m.deps.Pusher.(*fakePusher)
 	// 预置资源图：作品 500 → 资源 700 → thumbnail 关联(store 800，已完成活行)
 	res := entity.NewResource()
@@ -411,17 +380,18 @@ func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 }
 
 // TestDuplicateGate_InfoOnlySkipsCheck 仅作品信息任务(无资源板块)不查重:
-// WorkChecker 零调用、无弹窗,作品信息板块正常执行
+// DuplicateChecker 零调用、无弹窗,作品信息板块正常执行
 func TestDuplicateGate_InfoOnlySkipsCheck(t *testing.T) {
-	checker := &fakeWorkChecker{existing: newExistingWork(500)}
+	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitConflict, nil)}
 	pusher := &fakePusher{}
-	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, fetchStores: false}, checker, nil, pusher)
+	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, fetchStores: false},
+		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
 	m.deps.WorkInfoSaver = &fakeWorkInfoSaver{savedWorkId: 100}
 
 	_ = m.runSectionCombo()
 
-	if checker.getCalls != 0 {
-		t.Fatalf("仅作品信息任务不应触发查重, WorkChecker 被调用 %d 次", checker.getCalls)
+	if checker.calls != 0 {
+		t.Fatalf("仅作品信息任务不应触发查重, DuplicateChecker 被调用 %d 次", checker.calls)
 	}
 	if len(pusher.duplicates) != 0 {
 		t.Fatalf("仅作品信息任务不应弹覆盖确认, 实际 %d 次", len(pusher.duplicates))
@@ -431,26 +401,5 @@ func TestDuplicateGate_InfoOnlySkipsCheck(t *testing.T) {
 	}
 	if m.workId != 100 {
 		t.Fatalf("作品信息保存后应定位新作品 workId=100, 实际 %d", m.workId)
-	}
-}
-
-// TestIntersectRoles 纯逻辑:交集保持 roles 原始顺序
-func TestIntersectRoles(t *testing.T) {
-	roles := []string{entity.StoreTypeVideoTrack, entity.StoreTypeImage, entity.StoreTypeThumbnail}
-	existing := map[string]struct{}{entity.StoreTypeImage: {}, entity.StoreTypeThumbnail: {}, "other": {}}
-	got := intersectRoles(roles, existing)
-	if len(got) != 2 || got[0] != entity.StoreTypeImage || got[1] != entity.StoreTypeThumbnail {
-		t.Fatalf("交集期望按 roles 原序 [image thumbnail], 实际 %v", got)
-	}
-	if got := intersectRoles(roles, map[string]struct{}{}); len(got) != 0 {
-		t.Fatalf("空已有集合期望空交集, 实际 %v", got)
-	}
-}
-
-// TestSortedStoreRoles 纯逻辑:集合转切片按字母序(载荷确定性)
-func TestSortedStoreRoles(t *testing.T) {
-	got := sortedStoreRoles(map[string]struct{}{entity.StoreTypeThumbnail: {}, entity.StoreTypeImage: {}, entity.StoreTypeVideoTrack: {}})
-	if len(got) != 3 || got[0] != entity.StoreTypeImage || got[1] != entity.StoreTypeThumbnail || got[2] != entity.StoreTypeVideoTrack {
-		t.Fatalf("期望字母序 [image thumbnail videoTrack], 实际 %v", got)
 	}
 }

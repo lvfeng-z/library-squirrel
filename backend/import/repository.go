@@ -17,11 +17,11 @@ const batchCreateChunk = 500
 // Repository 导入仓储接口（本模块定义所需数据操作，直查共享表——对齐 export 模块先例）。
 // 查询方法走 dbFromCtx（事务感知）；批量写方法保留实体上已设置的时间戳——
 // BaseRepository.CreateBatch 会把时间统一覆写为当前时刻，无法表达「保真源库时间戳」语义，故自定义。
+// 站点名查询与作品查重定位（ListSitesByNames/ListWorksBySiteAndWorkIDs）已迁至 duplicate 模块共享，
+// 经 ingestor 持有的 dupRepo 调用。
 type Repository interface {
 	// ===== 查询（find-or-create 匹配 / 查重）=====
 
-	// ListSitesByNames 按站点名批量查询站点（site_name 唯一索引；软删表无此列，全量口径）
-	ListSitesByNames(ctx context.Context, names []string) ([]*entity.Site, error)
 	// ListLocalTagsByNames 按名称批量查询本地标签
 	ListLocalTagsByNames(ctx context.Context, names []string) ([]*entity.LocalTag, error)
 	// ListLocalAuthorsByNames 按名称批量查询本地作者
@@ -30,10 +30,28 @@ type Repository interface {
 	ListSiteTagsBySiteAndTagIDs(ctx context.Context, siteId int64, siteTagIds []string) ([]*entity.SiteTag, error)
 	// ListSiteAuthorsBySiteAndAuthorIDs 按站点 + 站点作者 ID 批量查询站点作者（站点侧稳定身份）
 	ListSiteAuthorsBySiteAndAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error)
-	// ListWorksBySiteAndWorkIDs 按站点 + 站点作品 ID 批量查询作品（查重口径=活行，软删行经 GORM scope 自动排除）
-	ListWorksBySiteAndWorkIDs(ctx context.Context, siteId int64, siteWorkIds []string) ([]*entity.Work, error)
 	// ListWorkSetsBySiteAndSetIDs 按站点 + 站点作品集 ID 批量查询作品集（查重口径=活行）
 	ListWorkSetsBySiteAndSetIDs(ctx context.Context, siteId int64, siteWorkSetIds []string) ([]*entity.WorkSet, error)
+
+	// ===== 替换模式（IngestOptions 替换分支）=====
+
+	// UpdateWork 更新作品行字段（替换元数据覆盖：按 manifest 覆盖站点侧字段，仅写非零字段，
+	// 本地 create_time 保留）。仅作用活行（GORM 软删 scope）
+	UpdateWork(ctx context.Context, work *entity.Work) error
+	// ListEmptyShellResourceIdsByWorkId 作品下无活行 store 挂载的资源 ID（替换空壳净化用）：
+	// 资源全部关联均指向软删 store 行（替换前置软删把交集角色活行软删后该资源成空壳）
+	// 或无任何关联的资源即空壳
+	ListEmptyShellResourceIdsByWorkId(ctx context.Context, workId int64) ([]int64, error)
+	// DeleteResourceStoresByResourceIds 物理删除资源挂载关联行（空壳净化：资源行物理删前先摘关联）
+	DeleteResourceStoresByResourceIds(ctx context.Context, resourceIds []int64) error
+	// DeleteResourcesByResourceIds 物理删除资源行（空壳净化）
+	DeleteResourcesByResourceIds(ctx context.Context, resourceIds []int64) error
+	// ListReWorkTagsByWorkIds 批量查询作品的标签关联（替换关联合并：预读本库已有关联去重用）
+	ListReWorkTagsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkTag, error)
+	// ListReWorkAuthorsByWorkIds 批量查询作品的作者关联（替换关联合并去重用）
+	ListReWorkAuthorsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkAuthor, error)
+	// ListReWorkWorkSetsByWorkIds 批量查询作品的作品集成员关系（替换关联合并去重用）
+	ListReWorkWorkSetsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkWorkSet, error)
 
 	// ===== 批量写入（保留实体自带 create_time/update_time；ID 由数据库自增分配并回填）=====
 
@@ -65,17 +83,6 @@ func NewRepository(db *gorm.DB) Repository {
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *repository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.db)
-}
-
-func (r *repository) ListSitesByNames(ctx context.Context, names []string) ([]*entity.Site, error) {
-	if len(names) == 0 {
-		return nil, nil
-	}
-	var rows []*entity.Site
-	if err := r.dbFromCtx(ctx).Where("site_name IN ?", names).Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
 }
 
 func (r *repository) ListLocalTagsByNames(ctx context.Context, names []string) ([]*entity.LocalTag, error) {
@@ -122,17 +129,6 @@ func (r *repository) ListSiteAuthorsBySiteAndAuthorIDs(ctx context.Context, site
 	return rows, err
 }
 
-func (r *repository) ListWorksBySiteAndWorkIDs(ctx context.Context, siteId int64, siteWorkIds []string) ([]*entity.Work, error) {
-	if len(siteWorkIds) == 0 {
-		return nil, nil
-	}
-	var rows []*entity.Work
-	err := r.dbFromCtx(ctx).
-		Where("site_id = ? AND site_work_id IN ?", siteId, siteWorkIds).
-		Find(&rows).Error
-	return rows, err
-}
-
 func (r *repository) ListWorkSetsBySiteAndSetIDs(ctx context.Context, siteId int64, siteWorkSetIds []string) ([]*entity.WorkSet, error) {
 	if len(siteWorkSetIds) == 0 {
 		return nil, nil
@@ -141,6 +137,64 @@ func (r *repository) ListWorkSetsBySiteAndSetIDs(ctx context.Context, siteId int
 	err := r.dbFromCtx(ctx).
 		Where("site_id = ? AND site_work_set_id IN ?", siteId, siteWorkSetIds).
 		Find(&rows).Error
+	return rows, err
+}
+
+func (r *repository) UpdateWork(ctx context.Context, work *entity.Work) error {
+	return r.dbFromCtx(ctx).Model(work).Updates(work).Error
+}
+
+func (r *repository) ListEmptyShellResourceIdsByWorkId(ctx context.Context, workId int64) ([]int64, error) {
+	var ids []int64
+	err := r.dbFromCtx(ctx).Raw(`
+		SELECT r.id FROM resource r
+		WHERE r.work_id = ?
+		  AND NOT EXISTS (
+			SELECT 1 FROM resource_store rs
+			INNER JOIN persistent_store ps ON ps.id = rs.store_id AND ps.deleted_at = 0
+			WHERE rs.resource_id = r.id
+		  )`, workId).Scan(&ids).Error
+	return ids, err
+}
+
+func (r *repository) DeleteResourceStoresByResourceIds(ctx context.Context, resourceIds []int64) error {
+	if len(resourceIds) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).Where("resource_id IN ?", resourceIds).Delete(new(entity.ResourceStore)).Error
+}
+
+func (r *repository) DeleteResourcesByResourceIds(ctx context.Context, resourceIds []int64) error {
+	if len(resourceIds) == 0 {
+		return nil
+	}
+	return r.dbFromCtx(ctx).Where("id IN ?", resourceIds).Delete(new(entity.Resource)).Error
+}
+
+func (r *repository) ListReWorkTagsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkTag, error) {
+	if len(workIds) == 0 {
+		return nil, nil
+	}
+	var rows []*entity.ReWorkTag
+	err := r.dbFromCtx(ctx).Where("work_id IN ?", workIds).Find(&rows).Error
+	return rows, err
+}
+
+func (r *repository) ListReWorkAuthorsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkAuthor, error) {
+	if len(workIds) == 0 {
+		return nil, nil
+	}
+	var rows []*entity.ReWorkAuthor
+	err := r.dbFromCtx(ctx).Where("work_id IN ?", workIds).Find(&rows).Error
+	return rows, err
+}
+
+func (r *repository) ListReWorkWorkSetsByWorkIds(ctx context.Context, workIds []int64) ([]*entity.ReWorkWorkSet, error) {
+	if len(workIds) == 0 {
+		return nil, nil
+	}
+	var rows []*entity.ReWorkWorkSet
+	err := r.dbFromCtx(ctx).Where("work_id IN ?", workIds).Find(&rows).Error
 	return rows, err
 }
 

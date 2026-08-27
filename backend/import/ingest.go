@@ -18,6 +18,7 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
@@ -42,14 +43,27 @@ var (
 // 导出回灌由 zip 打开器实现；分享收件侧由网络拉取流实现——导入核心不感知来源形态。
 type FileSource func(entryPath string) (io.ReadCloser, error)
 
+// IngestOptions 回灌导入选项（nil = 现状全跳过语义，zip 导入沿用）。
+// 替换全集 = ReplaceWorks ∪ AutoMergeWorks（二者皆空 = 不替换任何已存在作品）。
+type IngestOptions struct {
+	// ReplaceWorks 经用户确认要替换的 manifest 作品 ID 集（冲突确认替换：角色交集命中、
+	// 用户选择替换后由调用方传入）。命中该集的作品走替换分支——资源面新建挂载、
+	// 元数据覆盖、关联合并、空壳净化。
+	ReplaceWorks map[int64]struct{}
+	// AutoMergeWorks 零交集命中自动并入的 manifest 作品 ID 集（不经用户确认直接增补挂载到
+	// 已有作品——查重命中即挂已有作品、弹窗与否只决定用户确认的既有语义）。统计按
+	// 「确认替换 / 自动增补」拆分计数（ReplacedConfirmed / ReplacedAuto）。
+	AutoMergeWorks map[int64]struct{}
+}
+
 // ManifestIngestor manifest 驱动回灌导入能力（分享收件人侧任务执行器复用的能力形态）：
 // 校验版本锚、find-or-create 站点/标签/作者、按 site_id+site_work_id 查重作品、
 // 导出库 ID → 本库 ID 重映射、文件落盘与全量关联重建。
 type ManifestIngestor interface {
 	// Ingest 导入一份导出 manifest（文件内容经 fileSource 按包内路径读取），返回结果摘要。
-	// 幂等：同一产物重复导入经查重语义兜底——已存在作品/作品集整体跳过，
-	// 标签/作者/站点按身份键复用既有行，不产生重复数据。
-	Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource) (*ImportResult, error)
+	// opts 为 nil 时行为与现签名完全一致：已存在作品整体跳过；opts 携带替换集时命中作品
+	// 走替换分支（资源面新建挂载、元数据覆盖、关联合并、空壳净化，见 IngestOptions 注释）。
+	Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, opts *IngestOptions) (*ImportResult, error)
 }
 
 // Transactor 事务执行器（事务 DB 经 ctx 传递；app.go 以 dbTransactorAdapter 装配）。
@@ -70,6 +84,9 @@ type FileStoreOperator interface {
 // ImportResult 导入结果摘要。
 type ImportResult struct {
 	CreatedWorks        int64 `json:"createdWorks"`        // 新建作品数
+	ReplacedWorks       int64 `json:"replacedWorks"`       // 替换作品数（确认替换 + 自动增补 全集）
+	ReplacedConfirmed   int64 `json:"replacedConfirmed"`   // 经用户确认替换的作品数
+	ReplacedAuto        int64 `json:"replacedAuto"`        // 零交集命中自动增补的作品数
 	SkippedWorks        int64 `json:"skippedWorks"`        // 查重命中（site_id+site_work_id 已存在）跳过的作品数
 	CreatedWorkSets     int64 `json:"createdWorkSets"`     // 新建作品集数
 	SkippedWorkSets     int64 `json:"skippedWorkSets"`     // 查重命中跳过的作品集数
@@ -85,14 +102,16 @@ type ImportResult struct {
 // ingestor ManifestIngestor 实现。
 type ingestor struct {
 	repo       Repository
+	dupRepo    duplicate.Repository // 站点名/作品查重共享查询（自本模块迁出，与 duplicate.Service 共用同一实例）
 	transactor Transactor
 	fileStore  FileStoreOperator
 }
 
 // NewIngestor 创建导入器。
-func NewIngestor(repo Repository, transactor Transactor, fileStore FileStoreOperator) ManifestIngestor {
+func NewIngestor(dupRepo duplicate.Repository, repo Repository, transactor Transactor, fileStore FileStoreOperator) ManifestIngestor {
 	return &ingestor{
 		repo:       repo,
+		dupRepo:    dupRepo,
 		transactor: transactor,
 		fileStore:  fileStore,
 	}
@@ -112,7 +131,7 @@ type filePhaseResult struct {
 //	相位三（单事务入库）：find-or-create 主数据 + 新建作品/资源/挂载/关联 + 全量 ID 重映射
 //
 // 相位二先于事务（文件 IO 不持有唯一 DB 连接），失败时对已落盘文件做补偿清理。
-func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource) (*ImportResult, error) {
+func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, opts *IngestOptions) (*ImportResult, error) {
 	if manifest == nil {
 		return nil, errors.New("导入 manifest 为空")
 	}
@@ -126,13 +145,17 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 	if err != nil {
 		return nil, err
 	}
-	existingWorks, toCreateWorks, err := ing.partitionWorks(ctx, manifest.Works, preSiteRemap)
+	replaceSet := replaceUnion(opts)
+	existingWorks, toCreateWorks, toReplaceWorks, err := ing.partitionWorks(ctx, manifest.Works, preSiteRemap, replaceSet)
 	if err != nil {
 		return nil, err
 	}
 
-	// 相位二：文件落盘（仅待建作品；查重命中的作品其文件与记录一概不动）
-	filePhase, err := ing.extractFiles(ctx, manifest, toCreateWorks, fileSource)
+	// 相位二：文件落盘（待建与替换作品；其余查重命中的作品其文件与记录一概不动）
+	toExtract := make([]*export.WorkRecord, 0, len(toCreateWorks)+len(toReplaceWorks))
+	toExtract = append(toExtract, toCreateWorks...)
+	toExtract = append(toExtract, toReplaceWorks...)
+	filePhase, err := ing.extractFiles(ctx, manifest, toExtract, fileSource)
 	if err != nil {
 		ing.cleanupCreatedStores(ctx, filePhase.createdStores)
 		return nil, err
@@ -142,7 +165,7 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 	var result *ImportResult
 	err = ing.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		var txErr error
-		result, txErr = ing.ingestEntities(txCtx, manifest, toCreateWorks, existingWorks, filePhase.storeRemap)
+		result, txErr = ing.ingestEntities(txCtx, manifest, toCreateWorks, toReplaceWorks, existingWorks, opts, filePhase.storeRemap)
 		return txErr
 	})
 	if err != nil {
@@ -150,9 +173,29 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 		return nil, err
 	}
 	result.ExtractedFiles = filePhase.extractedFiles
-	logger.Log.Infof("导入完成：新建作品 %d / 跳过 %d，新建作品集 %d / 跳过 %d，落盘文件 %d",
-		result.CreatedWorks, result.SkippedWorks, result.CreatedWorkSets, result.SkippedWorkSets, result.ExtractedFiles)
+	logger.Log.Infof("导入完成：新建作品 %d / 替换 %d（确认 %d / 增补 %d）/ 跳过 %d，新建作品集 %d / 跳过 %d，落盘文件 %d",
+		result.CreatedWorks, result.ReplacedWorks, result.ReplacedConfirmed, result.ReplacedAuto, result.SkippedWorks,
+		result.CreatedWorkSets, result.SkippedWorkSets, result.ExtractedFiles)
 	return result, nil
+}
+
+// replaceUnion 计算替换全集（确认替换 ∪ 零交集自动增补）；opts 为空或两集皆空返回 nil
+// （现状全跳过语义）。
+func replaceUnion(opts *IngestOptions) map[int64]struct{} {
+	if opts == nil {
+		return nil
+	}
+	if len(opts.ReplaceWorks) == 0 && len(opts.AutoMergeWorks) == 0 {
+		return nil
+	}
+	set := make(map[int64]struct{}, len(opts.ReplaceWorks)+len(opts.AutoMergeWorks))
+	for id := range opts.ReplaceWorks {
+		set[id] = struct{}{}
+	}
+	for id := range opts.AutoMergeWorks {
+		set[id] = struct{}{}
+	}
+	return set
 }
 
 // ===== 相位一：只读预检 =====
@@ -172,7 +215,7 @@ func (ing *ingestor) mapExistingSites(ctx context.Context, records []export.Site
 		}
 		nameToRecordID[*r.SiteName] = r.ID
 	}
-	rows, err := ing.repo.ListSitesByNames(ctx, names)
+	rows, err := ing.dupRepo.ListSitesByNames(ctx, names)
 	if err != nil {
 		return nil, fmt.Errorf("查询既有站点失败: %w", err)
 	}
@@ -192,7 +235,9 @@ func (ing *ingestor) mapExistingSites(ctx context.Context, records []export.Site
 // 键不完整（站点或站点作品 ID 缺失）或站点在本库不存在（不可能有作品引用它）时判待建；
 // 无站点身份的作品无跨库稳定身份，恒判待建——重复导入会重复建，属查重语义兜底范围之外
 // （与无站点身份作品集同一口径）。
-func (ing *ingestor) partitionWorks(ctx context.Context, works []export.WorkRecord, siteRemap map[int64]int64) (existing map[int64]int64, toCreate []*export.WorkRecord, err error) {
+// 查重命中的作品按 replaceSet 分流：命中者入 toReplace（替换分支），未命中者保持仅记录于
+// existing（跳过语义）。replaceSet 为 nil 时 toReplace 恒空，行为与旧签名一致。
+func (ing *ingestor) partitionWorks(ctx context.Context, works []export.WorkRecord, siteRemap map[int64]int64, replaceSet map[int64]struct{}) (existing map[int64]int64, toCreate []*export.WorkRecord, toReplace []*export.WorkRecord, err error) {
 	type workKey struct {
 		siteID     int64
 		siteWorkID string
@@ -217,9 +262,9 @@ func (ing *ingestor) partitionWorks(ctx context.Context, works []export.WorkReco
 		for _, k := range keys {
 			ids = append(ids, k.siteWorkID)
 		}
-		rows, err := ing.repo.ListWorksBySiteAndWorkIDs(ctx, localSiteID, ids)
+		rows, err := ing.dupRepo.ListWorksBySiteAndWorkIDs(ctx, localSiteID, ids)
 		if err != nil {
-			return nil, nil, fmt.Errorf("查询既有作品失败: %w", err)
+			return nil, nil, nil, fmt.Errorf("查询既有作品失败: %w", err)
 		}
 		for _, row := range rows {
 			if row.SiteID.Valid && row.SiteWorkID.Valid {
@@ -232,21 +277,24 @@ func (ing *ingestor) partitionWorks(ctx context.Context, works []export.WorkReco
 		if w.SiteID != nil && w.SiteWorkID != nil {
 			if localID, hit := found[workKey{siteRemap[*w.SiteID], *w.SiteWorkID}]; hit {
 				existing[w.ID] = localID
+				if _, inReplace := replaceSet[w.ID]; inReplace {
+					toReplace = append(toReplace, w)
+				}
 				continue
 			}
 		}
 		toCreate = append(toCreate, w)
 	}
-	return existing, toCreate, nil
+	return existing, toCreate, toReplace, nil
 }
 
 // ===== 相位二：文件落盘 =====
 
-// extractFiles 为待建作品的 store 挂载提取包内文件并落盘。
+// extractFiles 为待建与替换作品的 store 挂载提取包内文件并落盘。
 // 结构校验（ResourceType/StoreType/Generation 严格识别）前置到本相位开头——非法产物在写盘前失败。
 // 挂载缺席（决策4：源文件缺失标记 / 无包内路径 / files 未收录）不落盘、不报错，
 // 缺席计数由入库相位在挂载级统计。
-func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest, toCreate []*export.WorkRecord, fileSource FileSource) (*filePhaseResult, error) {
+func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest, toExtract []*export.WorkRecord, fileSource FileSource) (*filePhaseResult, error) {
 	result := &filePhaseResult{storeRemap: make(map[int64]int64)}
 
 	// 结构校验 + 收集待提取的文件条目（按挂载遍历序去重保序）
@@ -256,7 +304,7 @@ func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest
 	}
 	seen := make(map[int64]struct{})
 	var needed []*export.FileEntry
-	for _, w := range toCreate {
+	for _, w := range toExtract {
 		for _, res := range w.Resources {
 			if err := entity.ValidateResourceType(res.ResourceType); err != nil {
 				return result, fmt.Errorf("作品 %d 资源类型不合法: %w", w.ID, err)
@@ -379,11 +427,15 @@ func (ing *ingestor) cleanupCreatedStores(ctx context.Context, storeIds []int64)
 // ingestEntities 事务内重建全部主数据与关联。顺序满足外键依赖：
 // 站点 → 本地标签（层级按轮次）→ 本地作者 → 站点标签/站点作者 → 作品 → 资源 →
 // resource_store 挂载 → 作品集（封面引用作品，故在作品后）→ 作品集父边 → 作品关联。
+// 替换分支（toReplace）叠加在作品相位：元数据覆盖 → 空壳净化 → manifest 资源/挂载新建到
+// 已有作品 → 关联合并挂载。
 func (ing *ingestor) ingestEntities(
 	ctx context.Context,
 	manifest *export.Manifest,
 	toCreate []*export.WorkRecord,
+	toReplace []*export.WorkRecord,
 	existingWorks map[int64]int64,
+	opts *IngestOptions,
 	storeRemap map[int64]int64,
 ) (*ImportResult, error) {
 	result := &ImportResult{}
@@ -436,13 +488,47 @@ func (ing *ingestor) ingestEntities(
 		}
 	}
 	result.CreatedWorks = int64(len(toCreate))
-	result.SkippedWorks = int64(len(manifest.Works)) - int64(len(toCreate))
+	result.SkippedWorks = int64(len(manifest.Works)) - int64(len(toCreate)) - int64(len(toReplace))
+	result.ReplacedWorks = int64(len(toReplace))
+	result.ReplacedConfirmed, result.ReplacedAuto = countReplaceByKind(toReplace, opts)
 
-	// 资源（源库任务不在本库存在，task_id 溯源链断开置 NULL）
+	// 替换作品的元数据覆盖：work 行字段按 manifest 覆盖更新（站点侧名称等），workID 不变
+	for _, w := range toReplace {
+		localWorkID := existingWorks[w.ID]
+		if err := ing.repo.UpdateWork(ctx, buildReplaceWorkUpdate(w, siteRemap, localAuthorRemap, localWorkID)); err != nil {
+			return nil, fmt.Errorf("更新替换作品元数据失败: %w", err)
+		}
+	}
+
+	// 替换作品的空壳净化：被软删光活行 store 的已有 resource 成空壳（无活行内容），
+	// 物理删其残留关联行与资源行——软删行关联保留是替换链语义（供失败回滚复活挂载回位），
+	// 但空壳资源行已无活行内容，其残留关联指向软删 store 行，按 DEAD 行处理规则净化
+	for _, w := range toReplace {
+		localWorkID := existingWorks[w.ID]
+		emptyShellIDs, err := ing.repo.ListEmptyShellResourceIdsByWorkId(ctx, localWorkID)
+		if err != nil {
+			return nil, fmt.Errorf("查询替换作品空壳资源失败: %w", err)
+		}
+		if len(emptyShellIDs) == 0 {
+			continue
+		}
+		if err := ing.repo.DeleteResourceStoresByResourceIds(ctx, emptyShellIDs); err != nil {
+			return nil, fmt.Errorf("清理替换作品空壳资源挂载失败: %w", err)
+		}
+		if err := ing.repo.DeleteResourcesByResourceIds(ctx, emptyShellIDs); err != nil {
+			return nil, fmt.Errorf("清理替换作品空壳资源失败: %w", err)
+		}
+	}
+
+	// 资源（源库任务不在本库存在，task_id 溯源链断开置 NULL）：
+	// 新建作品资源全新建；替换作品 manifest 的资源以新资源行挂到已有作品
+	allWorks := make([]*export.WorkRecord, 0, len(toCreate)+len(toReplace))
+	allWorks = append(allWorks, toCreate...)
+	allWorks = append(allWorks, toReplace...)
 	resourceRemap := make(map[int64]int64)
 	var resourceRows []*entity.Resource
 	var resourceRecords []*export.ResourceRecord // 与 resourceRows 平行：落库后回填重映射
-	for _, w := range toCreate {
+	for _, w := range allWorks {
 		for i := range w.Resources {
 			res := &w.Resources[i]
 			resourceRecords = append(resourceRecords, res)
@@ -458,7 +544,7 @@ func (ing *ingestor) ingestEntities(
 
 	// resource_store 挂载（文件引用按 storeRemap 重映射；缺席挂载跳过并计数）
 	var mountRows []*entity.ResourceStore
-	for _, w := range toCreate {
+	for _, w := range allWorks {
 		for i := range w.Resources {
 			res := &w.Resources[i]
 			for _, mount := range res.Stores {
@@ -483,11 +569,30 @@ func (ing *ingestor) ingestEntities(
 	result.CreatedWorkSets = createdSets
 	result.SkippedWorkSets = skippedSets
 
-	// 作品关联（仅新建作品——查重命中的作品整体跳过，其关联归本库既有状态管理）
-	if err := ing.ensureWorkLinks(ctx, toCreate, workRemap, localTagRemap, siteTagRemap, localAuthorRemap, siteAuthorRemap, workSetRemap); err != nil {
+	// 作品关联：新建作品全新建；替换作品与本地已有关联去重合并挂载（本地已有关联不删）
+	replaceLocalIDs := make(map[int64]struct{}, len(toReplace))
+	for _, w := range toReplace {
+		replaceLocalIDs[existingWorks[w.ID]] = struct{}{}
+	}
+	if err := ing.ensureWorkLinks(ctx, toCreate, toReplace, replaceLocalIDs, workRemap, localTagRemap, siteTagRemap, localAuthorRemap, siteAuthorRemap, workSetRemap); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// countReplaceByKind 按替换来源分类拆分计数（确认替换 / 零交集自动增补）。
+// opts 为空或作品不在确认集时归入自动增补（替换全集 = 确认集 ∪ 自动集，重叠按确认计）。
+func countReplaceByKind(toReplace []*export.WorkRecord, opts *IngestOptions) (confirmed, auto int64) {
+	for _, w := range toReplace {
+		if opts != nil {
+			if _, ok := opts.ReplaceWorks[w.ID]; ok {
+				confirmed++
+				continue
+			}
+		}
+		auto++
+	}
+	return confirmed, auto
 }
 
 // ===== 主数据 find-or-create =====
@@ -501,7 +606,7 @@ func (ing *ingestor) ensureSites(ctx context.Context, records []export.SiteRecor
 			names = append(names, *r.SiteName)
 		}
 	}
-	rows, err := ing.repo.ListSitesByNames(ctx, util.UniqueString(names))
+	rows, err := ing.dupRepo.ListSitesByNames(ctx, util.UniqueString(names))
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询既有站点失败: %w", err)
 	}
@@ -1082,12 +1187,16 @@ func (ing *ingestor) ensureWorkSets(ctx context.Context, records []export.WorkSe
 	return remap, int64(len(creates)), int64(len(records)) - int64(len(creates)), nil
 }
 
-// ensureWorkLinks 为新建作品挂标签/作者/作品集关联。find-or-create 的同名坍缩可能令多条
-// manifest 关联落到同一本库行，按各关联表的唯一索引键（work+tag / work+author / work+workset）
-// 批内折叠，保留 manifest 首条的关联级属性（namespace/role/sort 等）。
+// ensureWorkLinks 为新建作品挂标签/作者/作品集关联、为替换作品做关联合并。find-or-create 的
+// 同名坍缩可能令多条 manifest 关联落到同一本库行，按各关联表的唯一索引键（work+tag /
+// work+author / work+workset）批内折叠，保留 manifest 首条的关联级属性（namespace/role/sort 等）。
+// 替换作品（replaceLocalIDs）预读本库已有关联键进 seen 防撞唯一索引——本地已有关联不删、
+// manifest 关联增量挂载。
 func (ing *ingestor) ensureWorkLinks(
 	ctx context.Context,
 	toCreate []*export.WorkRecord,
+	toReplace []*export.WorkRecord,
+	replaceLocalIDs map[int64]struct{},
 	workRemap, localTagRemap, siteTagRemap, localAuthorRemap, siteAuthorRemap, workSetRemap map[int64]int64,
 ) error {
 	now := util.GetCurrentTimestamp()
@@ -1098,12 +1207,48 @@ func (ing *ingestor) ensureWorkLinks(
 	var setRows []*entity.ReWorkWorkSet
 	setSeen := make(map[string]struct{})
 
-	for _, w := range toCreate {
+	// 替换作品的关联合并去重：预读本库已有关联键，防新增关联撞唯一索引
+	if len(replaceLocalIDs) > 0 {
+		ids := make([]int64, 0, len(replaceLocalIDs))
+		for id := range replaceLocalIDs {
+			ids = append(ids, id)
+		}
+		if rows, err := ing.repo.ListReWorkTagsByWorkIds(ctx, ids); err != nil {
+			return fmt.Errorf("查询替换作品已有标签关联失败: %w", err)
+		} else {
+			for _, r := range rows {
+				if k := existingTagLinkKey(r); k != "" {
+					tagSeen[k] = struct{}{}
+				}
+			}
+		}
+		if rows, err := ing.repo.ListReWorkAuthorsByWorkIds(ctx, ids); err != nil {
+			return fmt.Errorf("查询替换作品已有作者关联失败: %w", err)
+		} else {
+			for _, r := range rows {
+				if k := existingAuthorLinkKey(r); k != "" {
+					authorSeen[k] = struct{}{}
+				}
+			}
+		}
+		if rows, err := ing.repo.ListReWorkWorkSetsByWorkIds(ctx, ids); err != nil {
+			return fmt.Errorf("查询替换作品已有作品集成员关系失败: %w", err)
+		} else {
+			for _, r := range rows {
+				if k := existingWorkSetLinkKey(r); k != "" {
+					setSeen[k] = struct{}{}
+				}
+			}
+		}
+	}
+
+	for _, w := range append(append([]*export.WorkRecord{}, toCreate...), toReplace...) {
 		localWorkID := workRemap[w.ID]
 		for _, link := range w.TagLinks {
 			e := entity.NewReWorkTag()
 			e.WorkID = sql.NullInt64{Int64: localWorkID, Valid: true}
 			e.TagType = sql.NullInt64{Int64: int64(link.TagType), Valid: true}
+			var seenKey string
 			switch link.TagType {
 			case constant.LOCAL:
 				localTagID, ok := localTagRemap[link.TagID]
@@ -1111,16 +1256,17 @@ func (ing *ingestor) ensureWorkLinks(
 					continue // 引用悬空（数据异常），跳过该关联
 				}
 				e.LocalTagID = sql.NullInt64{Int64: localTagID, Valid: true}
+				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.LOCAL, localTagID)
 			case constant.SITE:
 				localSiteTagID, ok := siteTagRemap[link.TagID]
 				if !ok {
 					continue
 				}
 				e.SiteTagID = sql.NullInt64{Int64: localSiteTagID, Valid: true}
+				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.SITE, localSiteTagID)
 			default:
 				continue // 未知关联类型（数据异常），跳过
 			}
-			seenKey := fmt.Sprintf("%d|%d|%d", localWorkID, link.TagType, link.TagID)
 			if _, dup := tagSeen[seenKey]; dup {
 				continue
 			}
@@ -1134,6 +1280,7 @@ func (ing *ingestor) ensureWorkLinks(
 			e := entity.NewReWorkAuthor()
 			e.WorkID = sql.NullInt64{Int64: localWorkID, Valid: true}
 			e.AuthorType = sql.NullInt64{Int64: int64(link.AuthorType), Valid: true}
+			var seenKey string
 			switch link.AuthorType {
 			case constant.LOCAL:
 				localAuthorID, ok := localAuthorRemap[link.AuthorID]
@@ -1141,16 +1288,17 @@ func (ing *ingestor) ensureWorkLinks(
 					continue
 				}
 				e.LocalAuthorID = sql.NullInt64{Int64: localAuthorID, Valid: true}
+				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.LOCAL, localAuthorID)
 			case constant.SITE:
 				localSiteAuthorID, ok := siteAuthorRemap[link.AuthorID]
 				if !ok {
 					continue
 				}
 				e.SiteAuthorID = sql.NullInt64{Int64: localSiteAuthorID, Valid: true}
+				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.SITE, localSiteAuthorID)
 			default:
 				continue
 			}
-			seenKey := fmt.Sprintf("%d|%d|%d", localWorkID, link.AuthorType, link.AuthorID)
 			if _, dup := authorSeen[seenKey]; dup {
 				continue
 			}
@@ -1194,6 +1342,43 @@ func (ing *ingestor) ensureWorkLinks(
 	return nil
 }
 
+// existingTagLinkKey 本库已有标签关联的去重键（work_id + 标签类型 + 本库标签 ID），
+// 与 ensureWorkLinks 新增关联的 seenKey 同型（按唯一索引键去重）。
+func existingTagLinkKey(r *entity.ReWorkTag) string {
+	if !r.WorkID.Valid {
+		return ""
+	}
+	if r.LocalTagID.Valid {
+		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.LOCAL, r.LocalTagID.Int64)
+	}
+	if r.SiteTagID.Valid {
+		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.SITE, r.SiteTagID.Int64)
+	}
+	return ""
+}
+
+// existingAuthorLinkKey 本库已有作者关联的去重键（work_id + 作者类型 + 本库作者 ID）。
+func existingAuthorLinkKey(r *entity.ReWorkAuthor) string {
+	if !r.WorkID.Valid {
+		return ""
+	}
+	if r.LocalAuthorID.Valid {
+		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.LOCAL, r.LocalAuthorID.Int64)
+	}
+	if r.SiteAuthorID.Valid {
+		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.SITE, r.SiteAuthorID.Int64)
+	}
+	return ""
+}
+
+// existingWorkSetLinkKey 本库已有作品集成员关系的去重键（work_id + 作品集 ID）。
+func existingWorkSetLinkKey(r *entity.ReWorkWorkSet) string {
+	if !r.WorkID.Valid || !r.WorkSetID.Valid {
+		return ""
+	}
+	return fmt.Sprintf("%d|%d", r.WorkID.Int64, r.WorkSetID.Int64)
+}
+
 // ===== manifest 记录 → 实体转换 =====
 
 // buildWorkEntity manifest 作品记录 → 作品实体（site/local_author 引用重映射，时间戳保真）。
@@ -1218,6 +1403,34 @@ func buildWorkEntity(r *export.WorkRecord, siteRemap, localAuthorRemap map[int64
 	}
 	w.LastView = nullInt64FromPtr(r.LastView)
 	w.SetCreateTime(r.CreateTime)
+	w.SetUpdateTime(r.UpdateTime)
+	return w
+}
+
+// buildReplaceWorkUpdate 替换作品的元数据覆盖更新实体：work 行字段按 manifest 覆盖
+// （站点侧名称/描述/时间戳等），workID 不变。create_time 保留零值（本地入库时刻为权威，
+// GORM Updates 跳过零值字段即不改写），update_time 按 manifest 源库更新时刻落。
+func buildReplaceWorkUpdate(r *export.WorkRecord, siteRemap, localAuthorRemap map[int64]int64, localWorkID int64) *entity.Work {
+	w := entity.NewWork()
+	w.SetID(localWorkID)
+	if r.SiteID != nil {
+		if localID, ok := siteRemap[*r.SiteID]; ok {
+			w.SiteID = sql.NullInt64{Int64: localID, Valid: true}
+		}
+	}
+	w.SiteWorkID = nullStringFromPtr(r.SiteWorkID, false)
+	w.SiteWorkName = nullStringFromPtr(r.SiteWorkName, false)
+	w.SiteAuthorID = nullStringFromPtr(r.SiteAuthorID, false)
+	w.SiteWorkDescription = nullStringFromPtr(r.SiteWorkDescription, false)
+	w.SiteUploadTime = nullInt64FromPtr(r.SiteUploadTime)
+	w.SiteUpdateTime = nullInt64FromPtr(r.SiteUpdateTime)
+	w.NickName = nullStringFromPtr(r.NickName, false)
+	if r.LocalAuthorID != nil {
+		if localID, ok := localAuthorRemap[*r.LocalAuthorID]; ok {
+			w.LocalAuthorID = sql.NullInt64{Int64: localID, Valid: true}
+		}
+	}
+	w.LastView = nullInt64FromPtr(r.LastView)
 	w.SetUpdateTime(r.UpdateTime)
 	return w
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/fileSysUtil"
 	"github.com/library-squirrel/backend/frontendLog"
@@ -80,6 +81,8 @@ type App struct {
 	SiteService             *site.Service
 	ResourceService         *resource.Service
 	MergeService            *resource.MergeService
+	ReplaceService          *resource.ReplacementService // 替换链能力（taskManager 替换链改接；分享收件接入见阶段5）
+	DuplicateService        *duplicate.Service           // 查重判定能力（taskManager 查重改接；分享收件接入见阶段5）
 	ReWorkAuthorService     *reWorkAuthor.Service
 	ReWorkTagService        *reWorkTag.Service
 	WorkService             *work.Service
@@ -1134,8 +1137,26 @@ func (app *App) initAdvancedServices() error {
 	// resource_store 仓储(taskManager 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
 	taskMgrResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
+	// 替换链能力（resource 模块提供；taskManager 替换链改接与 share-receive 收件复用）。
+	// store 软删/文件备份/作品活性等能力经接口注入（persistentStore/backup/work/settings 实现）
+	app.ReplaceService = resource.NewReplacementService(
+		app.ResourceService,        // ReplaceResourceLister(ListByWorkId)
+		taskMgrResourceStoreRepo,   // ReplaceResourceStoreLister(ListByResourceIds)
+		app.PersistentStoreService, // ReplaceStoreRowReader + ReplaceStoreDeleter
+		app.PersistentStoreService, // ReplaceStoreDeleter(软删原语)
+		app.BackupService,          // ReplaceBackupRestorer(备份文件还原)
+		app.WorkService,            // ReplaceWorkLivenessReader(作品活性守卫)
+		app.ResourceService,        // ResourceRecomputer(完整度重算)
+		app.SettingsService,        // ReplaceWorkDirProvider(文件还原目标根目录)
+	)
+
+	// 查重判定能力先行构建（taskManager 查重改接对象；import ingestor 复用其共享查询仓储）
+	dupRepo := duplicate.NewRepository(app.db)
+	app.DuplicateService = duplicate.NewService(dupRepo, app.ResourceService)
+
 	// 导入能力先行构建（import handler 与 share-receive 任务执行器共用同一实例）
 	app.manifestIngestor = importer.NewIngestor(
+		dupRepo,
 		importer.NewRepository(app.db),
 		&dbTransactorAdapter{db: app.db},
 		app.PersistentStoreService,
@@ -1152,19 +1173,18 @@ func (app *App) initAdvancedServices() error {
 			ResourceSaver:          resourceSaverAdapter,
 			WorkDirProvider:        app.SettingsService,
 			FileNameFormatProvider: app.SettingsService,
-			WorkChecker:            app.WorkService,            // 实现 WorkChecker 接口
+			DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
+			SiteNameResolver:       app.SiteService,            // 实现 SiteNameResolver 接口(查重输入键形态统一)
 			ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
 			WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口(失败回滚守卫)
-			StoreReplacer:          app.PersistentStoreService, // 实现 StoreReplacer 接口(替换前置软删)
+			ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口(替换链能力)
 			StoreBackupReader:      app.PersistentStoreService, // 实现 StoreBackupReader 接口(回滚派生/复活)
-			BackupFileRestorer:     app.BackupService,          // 实现 BackupFileRestorer 接口(回滚文件还原)
 			ResourceUpdater:        resourceSaverAdapter,       // 实现 ResourceUpdater 接口
 			Pusher:                 taskManagerPusher,
 			StoreStreamer:          app.PersistentStoreService, // 实现 StoreStreamer 接口
 			StoreReader:            app.PersistentStoreService, // 实现 StoreReader 接口
 			ResourceStoreReader:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
 			ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
-			WorkStoreRoleChecker:   app.ResourceService,        // 实现 WorkStoreRoleChecker 接口(覆盖确认行级判定)
 			ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口(完整度共享重算)
 			Transactor:             &dbTransactorAdapter{db: app.db},
 			PendingResourceUpdater: app.taskRepo,               // 实现 PendingResourceUpdater 接口
@@ -1175,7 +1195,8 @@ func (app *App) initAdvancedServices() error {
 		// 导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经任务模块
 		// （发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
-			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor),
+			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor,
+				app.DuplicateService, app.ReplaceService),
 		},
 	)
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）

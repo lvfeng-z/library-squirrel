@@ -49,7 +49,7 @@ func (h *Handler) importFromZip(ctx context.Context, zipPath string) (*ImportRes
 	if err != nil {
 		return nil, err
 	}
-	return h.ingestor.Ingest(ctx, manifest, zipFileSource(&reader.Reader))
+	return h.ingestor.Ingest(ctx, manifest, zipFileSource(&reader.Reader), nil)
 }
 
 // readManifest 读取包内 manifest.json 并反序列化（版本锚校验由 Ingest 承担——能力契约对

@@ -15,6 +15,21 @@ export class ImportResult {
     "createdWorks": number;
 
     /**
+     * 替换作品数（确认替换 + 自动增补 全集）
+     */
+    "replacedWorks": number;
+
+    /**
+     * 经用户确认替换的作品数
+     */
+    "replacedConfirmed": number;
+
+    /**
+     * 零交集命中自动增补的作品数
+     */
+    "replacedAuto": number;
+
+    /**
      * 查重命中（site_id+site_work_id 已存在）跳过的作品数
      */
     "skippedWorks": number;
@@ -68,6 +83,15 @@ export class ImportResult {
     constructor($$source: Partial<ImportResult> = {}) {
         if (!("createdWorks" in $$source)) {
             this["createdWorks"] = 0;
+        }
+        if (!("replacedWorks" in $$source)) {
+            this["replacedWorks"] = 0;
+        }
+        if (!("replacedConfirmed" in $$source)) {
+            this["replacedConfirmed"] = 0;
+        }
+        if (!("replacedAuto" in $$source)) {
+            this["replacedAuto"] = 0;
         }
         if (!("skippedWorks" in $$source)) {
             this["skippedWorks"] = 0;

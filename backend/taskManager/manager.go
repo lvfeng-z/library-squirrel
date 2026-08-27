@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/task"
 )
 
@@ -453,7 +453,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		toCheck = append(toCheck, child)
 	}
 
-	if len(toCheck) == 0 || m.deps.WorkChecker == nil {
+	if len(toCheck) == 0 || m.deps.DuplicateChecker == nil {
 		// 无需查重或未配置查重器，所有可预检任务标记跳过
 		for _, child := range children {
 			if !child.resumeFromDB {
@@ -463,145 +463,102 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		return children
 	}
 
-	// 收集查询参数，一次批量查询
-	siteIds := make([]int64, len(toCheck))
-	siteWorkIds := make([]string, len(toCheck))
-	for i, child := range toCheck {
-		siteIds[i] = child.task.SiteID.Int64
-		siteWorkIds[i] = child.task.SiteWorkID.String
-	}
-
 	// 包裹超时 context，避免查重查询异常卡死时独占唯一 DB 连接拖垮全局
 	// 超时后走 err 分支降级为 run() 逐个查重
 	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	existingWorks, err := m.deps.WorkChecker.ListBySiteAndSiteWorkIDs(checkCtx, siteIds, siteWorkIds)
+
+	// 站点 ID → 站点名反查（查重输入键形态统一：插件任务侧 SiteID → 站点名，
+	// 与 share-receive/zip 导入的 manifest 域键对齐）
+	siteIds := make([]int64, 0, len(toCheck))
+	for _, child := range toCheck {
+		siteIds = append(siteIds, child.task.SiteID.Int64)
+	}
+	siteIdToName, err := m.resolveSiteNames(checkCtx, siteIds)
+	if err != nil {
+		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 站点名反查失败: %v，降级为 run() 逐个检查", err)
+		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底
+		return children
+	}
+
+	// 构建查重项（站点名缺失即无站点身份，Check 侧按未命中处理）
+	items := make([]duplicate.DuplicateCheckItem, len(toCheck))
+	for i, child := range toCheck {
+		items[i] = duplicate.DuplicateCheckItem{
+			SiteName:   siteIdToName[child.task.SiteID.Int64],
+			SiteWorkID: child.task.SiteWorkID.String,
+			Roles:      child.runMode.storeRoles,
+		}
+	}
+
+	results, err := m.deps.DuplicateChecker.Check(checkCtx, items)
 	if err != nil {
 		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 批量查重失败: %v，降级为 run() 逐个检查", err)
 		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底
 		return children
 	}
 
-	// 构建查重结果映射
-	existingMap := make(map[string]*domain.Work, len(existingWorks))
-	for _, w := range existingWorks {
-		key := fmt.Sprintf("%d:%s", w.SiteID.Int64, w.SiteWorkID.String)
-		existingMap[key] = w
+	// 按查重结果派发：命中冲突入等待确认队列（不参与信号量），未命中/命中无冲突标记跳过并派发
+	toCheckIndex := make(map[*ManagedTask]int, len(toCheck))
+	for i, child := range toCheck {
+		toCheckIndex[child] = i
 	}
-
-	// 命中任务收集已有作品 store 行角色集合(行级覆盖判定:所选板块与已有行求交,空交集不弹窗)
-	// 查询失败退回全弹窗(宁多弹不漏弹,与批量查重失败降级逐查同向)
-	existingStoreTypeSets := make(map[int64]map[string]struct{})
-	hitWorkIds := make([]int64, 0)
-	for _, child := range children {
-		if child.resumeFromDB || !child.runMode.fetchStores || child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
-			continue
-		}
-		key := fmt.Sprintf("%d:%s", child.task.SiteID.Int64, child.task.SiteWorkID.String)
-		if existing, found := existingMap[key]; found {
-			hitWorkIds = append(hitWorkIds, existing.GetID())
-		}
-	}
-	storeTypeSetQueryFailed := false
-	if len(hitWorkIds) > 0 && m.deps.WorkStoreRoleChecker != nil {
-		sets, serr := m.deps.WorkStoreRoleChecker.ListStoreTypeSetsByWorkIds(checkCtx, hitWorkIds)
-		if serr != nil {
-			logger.Log.Errorf("[TaskManager] batchCheckDuplicates 行级覆盖判定查询失败: %v，命中任务全部退回弹窗", serr)
-			storeTypeSetQueryFailed = true
-		} else {
-			existingStoreTypeSets = sets
-		}
-	}
-
 	var toDispatch []*ManagedTask
 	for _, child := range children {
-		// 跨重启续传的任务直接派发（需要信号量）
-		if child.resumeFromDB {
+		idx, inToCheck := toCheckIndex[child]
+		if !inToCheck {
+			// 非查重集任务（跨重启续传/仅作品信息/无站点身份）直接派发
 			toDispatch = append(toDispatch, child)
 			continue
 		}
-
-		// 仅作品信息板块的任务：已标记 skipDuplicateCheck，直接派发（不参与查重命中判断）
-		if !child.runMode.fetchStores {
-			toDispatch = append(toDispatch, child)
-			continue
-		}
-
-		// 不具备查重条件的任务
-		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
-			toDispatch = append(toDispatch, child)
-			continue
-		}
-
-		key := fmt.Sprintf("%d:%s", child.task.SiteID.Int64, child.task.SiteWorkID.String)
-		if existing, found := existingMap[key]; found {
-			// 行级覆盖判定：所选板块与已有作品 store 行求交，空交集不弹窗(仍保留 existingWorkId 供替换定位)
-			// 板块为空(插件自决全量)时已有任意行即冲突，冲突载荷取已有行角色
-			existingTypes := existingStoreTypeSets[existing.GetID()]
-			var conflictRoles []string
-			if storeTypeSetQueryFailed || m.deps.WorkStoreRoleChecker == nil {
-				// 行级信息不可得：保守退回弹窗，载荷不带板块
-				conflictRoles = nil
-			} else if len(child.runMode.storeRoles) == 0 {
-				// 全量任务：已有任意行即冲突；零行则无覆盖对象，不弹窗
-				if len(existingTypes) == 0 {
-					child.existingWorkId = existing.GetID()
-					child.skipDuplicateCheck = true
-					toDispatch = append(toDispatch, child)
-					continue
-				}
-				conflictRoles = sortedStoreRoles(existingTypes)
-			} else {
-				conflictRoles = intersectRoles(child.runMode.storeRoles, existingTypes)
-				if len(conflictRoles) == 0 {
-					// 交集为空：无任何 store 行将被覆盖，不弹窗，但保留替换语义定位已有作品
-					child.existingWorkId = existing.GetID()
-					child.skipDuplicateCheck = true
-					toDispatch = append(toDispatch, child)
-					continue
-				}
-			}
+		res := results[idx]
+		if res.Class == duplicate.DuplicateHitConflict {
 			// 覆盖冲突：放入等待确认队列，不参与信号量派发
-			existingWorkName := ""
-			if existing.SiteWorkName.Valid {
-				existingWorkName = existing.SiteWorkName.String
-			}
-			child.existingWorkId = existing.GetID()
+			child.existingWorkId = res.WorkID
 			child.setState(TaskStateWaitingForInput)
-			m.deps.Pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, existing.GetID(), existingWorkName, conflictRoles)
-
+			m.deps.Pusher.PushDuplicateDetected(child.taskId, child.task.TaskName.String, res.WorkID, res.WorkName, res.ConflictRoles)
 			m.waitingForInputMu.Lock()
 			m.waitingForInputMap[child.taskId] = child
 			m.waitingForInputMu.Unlock()
-		} else {
-			// 非重复：标记跳过 run() 中的重复检测
-			child.skipDuplicateCheck = true
-			toDispatch = append(toDispatch, child)
+			continue
 		}
+		// 未命中/命中无冲突：均不弹窗；命中无冲突保留已有作品 ID 供替换定位
+		if res.Class == duplicate.DuplicateHitNoConflict {
+			child.existingWorkId = res.WorkID
+		}
+		child.skipDuplicateCheck = true
+		toDispatch = append(toDispatch, child)
 	}
 
 	return toDispatch
 }
 
-// intersectRoles 求所选板块角色与已有 store 行角色集合的交集(保持 roles 原始顺序，供弹窗展示)
-func intersectRoles(roles []string, existing map[string]struct{}) []string {
-	var result []string
-	for _, r := range roles {
-		if _, ok := existing[r]; ok {
-			result = append(result, r)
+// resolveSiteNames 批量反查站点 ID → 站点名（查重输入键形态统一：插件任务侧把 task.SiteID
+// 反查站点名，与 manifest 域键对齐）。站点行缺失/站点名无效的 ID 不出键，调用方按未命中处理。
+func (m *Manager) resolveSiteNames(ctx context.Context, siteIds []int64) (map[int64]string, error) {
+	result := make(map[int64]string)
+	if len(siteIds) == 0 || m.deps.SiteNameResolver == nil {
+		return result, nil
+	}
+	distinct := make([]int64, 0, len(siteIds))
+	seen := make(map[int64]struct{}, len(siteIds))
+	for _, id := range siteIds {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		distinct = append(distinct, id)
+	}
+	sites, err := m.deps.SiteNameResolver.ListByIds(ctx, distinct)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range sites {
+		if s.SiteName.Valid {
+			result[s.GetID()] = s.SiteName.String
 		}
 	}
-	return result
-}
-
-// sortedStoreRoles 已有 store 行角色集合转有序切片(字母序，保证弹窗载荷确定性)
-func sortedStoreRoles(set map[string]struct{}) []string {
-	result := make([]string, 0, len(set))
-	for r := range set {
-		result = append(result, r)
-	}
-	sort.Strings(result)
-	return result
+	return result, nil
 }
 
 // dispatch 任务进入执行的入口:首次 dispatch(actorStarted CAS)投 cmdStart 启动执行;
@@ -635,6 +592,14 @@ func (m *Manager) dispatchFromQueue() {
 func (m *Manager) enqueueWaitingForInput(task *ManagedTask) {
 	m.waitingForInputMu.Lock()
 	m.waitingForInputMap[task.taskId] = task
+	m.waitingForInputMu.Unlock()
+}
+
+// removeWaitingForInput 从等待确认表移除任务（答复由 ConfirmReplace 移除；确认挂起被
+// RunCtx 取消时由等待原语自移除，防后续确认命令误投）
+func (m *Manager) removeWaitingForInput(taskId int64) {
+	m.waitingForInputMu.Lock()
+	delete(m.waitingForInputMap, taskId)
 	m.waitingForInputMu.Unlock()
 }
 
@@ -928,15 +893,21 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	delete(m.waitingForInputMap, taskId)
 	m.waitingForInputMu.Unlock()
 
-	// 投 cmdConfirmReplace:actor 处理(skip → 回执行前状态+清理+退出;replace → 设 skipDuplicateCheck + run)
 	logger.Log.Infof("[TaskManager] 确认替换任务: taskId=%d, action=%s", taskId, action)
+	if task.strategy != nil {
+		// 策略任务：执行内挂起等待（actor 阻塞在 Execute 内，cmdCh 无人消费），
+		// 直接向确认通道投递答复，由 WaitReplaceConfirm 唤醒继续执行
+		task.confirmCh <- replaceConfirmResult{decision: confirmDecision(action)}
+		return nil
+	}
+	// 插件任务：投 cmdConfirmReplace:actor 处理(skip → 回执行前状态+清理+退出;replace → 设 skipDuplicateCheck + run)
 	task.postCmd(taskCmd{kind: cmdConfirmReplace, skipDup: action != "skip", skip: action == "skip"})
 	return nil
 }
 
 // ConfirmReplaceBatch 批量确认替换或跳过重复作品
 // 未在等待确认Map中的任务ID会被静默跳过（尽力而为）
-// 加锁提取任务后投递命令,各 actor 独立处理
+// 加锁提取任务后按任务类型分流投递（策略任务走确认通道、插件任务走命令通道），各 actor 独立处理
 func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
 	m.waitingForInputMu.Lock()
 	tasks := make([]*ManagedTask, 0, len(taskIds))
@@ -950,6 +921,10 @@ func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
 
 	logger.Log.Infof("[TaskManager] 批量确认替换: count=%d, action=%s", len(tasks), action)
 	for _, task := range tasks {
+		if task.strategy != nil {
+			task.confirmCh <- replaceConfirmResult{decision: confirmDecision(action)}
+			continue
+		}
 		task.postCmd(taskCmd{kind: cmdConfirmReplace, skipDup: action != "skip", skip: action == "skip"})
 	}
 }
@@ -978,17 +953,26 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	// 清理等待用户确认的任务（无运行协程，直接移除）
+	// 清理等待用户确认的任务（插件任务已退出 actor，直接移除）
 	m.waitingForInputMu.Lock()
-	waitingIds := make([]int64, 0, len(m.waitingForInputMap))
-	for id, t := range m.waitingForInputMap {
-		waitingIds = append(waitingIds, id)
+	waiting := make([]*ManagedTask, 0, len(m.waitingForInputMap))
+	for _, t := range m.waitingForInputMap {
+		waiting = append(waiting, t)
 		// 关闭时未确认的任务视为本次跳过(skipped),回退 Created 使父聚合判定一致
 		t.skipped = true
 		t.setState(TaskStateCreated)
 	}
 	m.waitingForInputMap = make(map[int64]*ManagedTask)
 	m.waitingForInputMu.Unlock()
+
+	// 策略任务确认挂起中（actor 阻塞在 Execute 内，区别于插件任务已退出 actor）：取消其 ctx
+	// 使 WaitReplaceConfirm 返回取消、Execute 退出、actor 收尾，避免优雅关闭等待其稳态超时。
+	// 在释放等待确认表锁后取消（等待原语的取消分支会取同一把锁自移除）
+	for _, t := range waiting {
+		if t.strategy != nil {
+			t.cancel()
+		}
+	}
 
 	// 暂停所有 Processing 任务
 	for _, t := range tasks {

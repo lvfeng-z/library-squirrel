@@ -26,6 +26,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/taskManager"
 )
 
 // —— 测试夹具 ——
@@ -763,13 +764,17 @@ func (f *failingCollector) Collect(ctx context.Context, workIDs []int64, workSet
 
 // fakeStrategyHandle 收件执行面句柄桩（记录终态与进度上报；ReceiveExecution 测试用）
 type fakeStrategyHandle struct {
-	task       *entity.Task
-	runCtx     context.Context
-	mu         sync.Mutex
-	finished   bool
-	failed     bool
-	errMsg     string
-	progresses [][2]int64
+	task             *entity.Task
+	runCtx           context.Context
+	mu               sync.Mutex
+	finished         bool
+	failed           bool
+	errMsg           string
+	progresses       [][2]int64
+	confirmDecision  taskManager.ReplaceDecision // WaitReplaceConfirm 返回值（测试预设）
+	confirmCanceled  bool                        // WaitReplaceConfirm 返回值（测试预设）
+	confirmConflicts [][]taskManager.ConflictInfo
+	rollback         *taskManager.TerminalRollback
 }
 
 func (h *fakeStrategyHandle) Task() *entity.Task      { return h.task }
@@ -784,6 +789,36 @@ func (h *fakeStrategyHandle) Fail(errMsg string) {
 func (h *fakeStrategyHandle) ReportProgress(t, f int64) {
 	h.mu.Lock()
 	h.progresses = append(h.progresses, [2]int64{t, f})
+	h.mu.Unlock()
+}
+func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.ConflictInfo) (taskManager.ReplaceDecision, bool) {
+	h.mu.Lock()
+	h.confirmConflicts = append(h.confirmConflicts, conflicts)
+	d, c := h.confirmDecision, h.confirmCanceled
+	h.mu.Unlock()
+	return d, c
+}
+func (h *fakeStrategyHandle) SetTerminalRollback(rollback taskManager.TerminalRollback) {
+	h.mu.Lock()
+	if len(rollback.Victims) == 0 {
+		h.mu.Unlock()
+		return
+	}
+	// 合并累积（对齐真实 strategyHandle：多作品软删按 StoreID 去重登记，终态回滚覆盖全部软删行）
+	if h.rollback == nil {
+		h.rollback = &taskManager.TerminalRollback{}
+	}
+	seen := make(map[int64]struct{}, len(h.rollback.Victims))
+	for _, v := range h.rollback.Victims {
+		seen[v.StoreID] = struct{}{}
+	}
+	for _, v := range rollback.Victims {
+		if _, dup := seen[v.StoreID]; dup {
+			continue
+		}
+		seen[v.StoreID] = struct{}{}
+		h.rollback.Victims = append(h.rollback.Victims, v)
+	}
 	h.mu.Unlock()
 }
 func (h *fakeStrategyHandle) isTerminal() bool {

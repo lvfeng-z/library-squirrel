@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/resource"
 
 	"gorm.io/plugin/soft_delete"
 )
@@ -119,12 +120,17 @@ func newReplaceTestTask(workId int64) (*ManagedTask, *replaceStubs) {
 		ResourceReader:      stubs.res,
 		ResourceStoreReader: stubs.rs,
 		StoreBackupReader:   stubs.rows,
-		StoreReplacer:       stubs.replacer,
 		WorkLivenessReader:  stubs.liveness,
 		ResourceStoreWriter: stubs.writer,
 		StoreDeleter:        stubs.deleter,
-		BackupFileRestorer:  stubs.restorer,
 		ResourceRecomputer:  stubs.recompute,
+		// 替换链能力注入真实 resource.ReplacementService（复用本文件 fakes 作其依赖接口）——
+		// 软删/回滚派生逻辑在 resource 域执行，断言仍落到同一批桩上
+		ReplaceStoreOps: resource.NewReplacementService(
+			stubs.res, stubs.rs, stubs.rows, stubs.replacer,
+			stubs.restorer, stubs.liveness, stubs.recompute,
+			stubWorkDirProvider{dir: "E:/lib"},
+		),
 	}
 	return m, stubs
 }

@@ -22,10 +22,8 @@ export const useReplaceConfirmStore = defineStore('replaceConfirm', () => {
   }
 
   function remove(taskId: number) {
-    const idx = list.value.findIndex((item) => item.taskId === taskId)
-    if (idx !== -1) {
-      list.value.splice(idx, 1)
-    }
+    // 答复语义为任务粒度整体决策:一次答复清理该 taskId 的全部冲突行(同任务多冲突作品各占一行)
+    list.value = list.value.filter((item) => item.taskId !== taskId)
     loadingTaskIds.value.delete(taskId)
   }
 

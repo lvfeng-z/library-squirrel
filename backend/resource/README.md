@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（image/thumbnail/videoTrack/videoMain/...）；并提供音视频合并编排（MergeService）。
+Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（image/thumbnail/videoTrack/videoMain/...）；并提供音视频合并编排（MergeService）与替换链能力（ReplacementService——替换前置软删、失败回滚复活）。
 
 ## 边界
 
@@ -42,10 +42,19 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 - **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，含 DeleteWithBackup）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
 - **事务**：挂 resource_store 走 dbTransactorAdapter（tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；挂载失败补偿删产物 store。
 
+## 替换链能力（ReplacementService）
+
+替换链的通用能力（输入 `(workId, roles)` 纯领域参数，不感知任务语义），自 taskManager 抽入本模块，插件任务与 share-receive 两发起方复用。实现于 `replacement.go`，对外接口 `ReplaceStoreOps`。
+
+- **`SoftDeleteWorkStoreRoles(ctx, workId, roles)`**：替换前置软删——软删作品下所选角色活行 store，已完成行走 `DeleteWithBackup`（移文件入 backup 并写行内 backup_id）、未完成行废弃文件软删（partial 无复原价值）、历史残留死行跳过；返回被软删行清单 `[]StoreRef`（供回滚登记）。`resource_store` 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位。
+- **`RestoreReplacedStores(ctx, scope RestoreScope)`**：失败回滚复活——备份还原文件（还原后清理备份）、批量复活行、重算 victim 所属资源完整度。清单来源两途（`RestoreScope`）：`WorkID` 数据驱动派生（插件任务，按挂载键同键最新死代圈定，软删行即持久还原点）/ `Victims` 显式清单（策略任务，执行器软删成功后登记的多作品清单）；`WorkID` 途带作品活性守卫（作品已软删则回滚让位）。
+- **派生函数**：`deriveReplaceVictims`/`replaceVictimKey`（同键最新死代圈定，活行残留的键跳过——复活会撞部分唯一索引）随迁本模块。
+- **依赖注入**（接口隔离）：`ReplaceResourceLister`/`ResourceRecomputer`（resource.Service）、`ReplaceResourceStoreLister`（ResourceStoreRepository）、`ReplaceStoreRowReader`/`ReplaceStoreDeleter`（persistentStore.Service）、`ReplaceBackupRestorer`（backup.Service）、`ReplaceWorkLivenessReader`（work.Service）、`ReplaceWorkDirProvider`（settings.Service）。插件任务侧的「清本次新建 store」（依赖执行期 streams 状态）仍由发起方（taskManager 失败回滚单点）在调用前完成，不在能力内。
+
 ## 依赖关系
 
 - 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）
-- 被依赖：**work**（ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品**活行** store 角色集合，软删残留代不算；`RecomputeResourceComplete`——完整度共享重算）、**recycleBin**（`RecomputeResourceComplete`——复原置换后重算）、**merge**（由本模块 MergeService 编排）
+- 被依赖：**work**（ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品**活行** store 角色集合，软删残留代不算；`RecomputeResourceComplete`——完整度共享重算；`ReplaceStoreOps`——替换链能力，前置软删/失败回滚复活）、**recycleBin**（`RecomputeResourceComplete`——复原置换后重算）、**merge**（由本模块 MergeService 编排）
 
 ## 关键设计
 

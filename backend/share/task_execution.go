@@ -18,8 +18,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
+	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
@@ -43,13 +45,16 @@ const (
 
 // ReceiveExecution share-receive（收件人拉取）任务的执行面策略。
 type ReceiveExecution struct {
-	svc      *Service                  // 提供 workDir / instanceID / 测试可覆写参数
-	ingestor importer.ManifestIngestor // 回灌导入能力（与 import handler 同一实例，app.go 装配）
+	svc        *Service                  // 提供 workDir / instanceID / 测试可覆写参数
+	ingestor   importer.ManifestIngestor // 回灌导入能力（与 import handler 同一实例，app.go 装配）
+	checker    duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
+	replaceOps resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
 }
 
 // NewReceiveExecution 创建 share-receive 执行面策略
-func NewReceiveExecution(svc *Service, ingestor importer.ManifestIngestor) *ReceiveExecution {
-	return &ReceiveExecution{svc: svc, ingestor: ingestor}
+func NewReceiveExecution(svc *Service, ingestor importer.ManifestIngestor,
+	checker duplicate.DuplicateChecker, replaceOps resource.ReplaceStoreOps) *ReceiveExecution {
+	return &ReceiveExecution{svc: svc, ingestor: ingestor, checker: checker, replaceOps: replaceOps}
 }
 
 // Execute 收件人拉取主体：拉取至暂存 → 回灌导入 → 清理暂存并置成功；
@@ -90,14 +95,37 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 
-	// 阶段二：逐文件拉取至暂存（断点续传锚 = 暂存已落盘字节数）
-	if err := e.stageFiles(ctx, client, staging, manifest, h); err != nil {
+	// 查重 → 确认 → 软删 + 回滚登记（时序改造核心）：确认发生在数据传输前，
+	// 用户选跳过即省去对应作品的全量传输；替换全集作品的软删在此落账（失败/停止
+	// 经控制面 setFailed 单点触发登记的回滚清单复活）
+	plan, canceled, err := e.planReplace(ctx, manifest, h)
+	if err != nil {
+		reportReceiveError(h, ctx, err)
+		return
+	}
+	if canceled {
+		return // 确认被取消（暂停/停止防御性打断）：不上报终态，交控制面接管
+	}
+	if ctx.Err() != nil {
+		return // 软删窗口内暂停/停止：回滚清单已登记（交 setFailed 单点），暂停延续替换
+	}
+
+	// 阶段二：逐文件拉取至暂存（断点续传锚 = 暂存已落盘字节数；被裁决跳过作品的文件不拉）
+	if err := e.stageFiles(ctx, client, staging, manifest, fileSkipSet(manifest, plan.skipWorks), h); err != nil {
 		reportReceiveError(h, ctx, err)
 		return
 	}
 
-	// 阶段三：回灌导入（文件源读暂存；入库/查重/落盘全链复用导出回灌能力）
-	if _, err := e.ingestor.Ingest(ctx, manifest, stagedFileSource(staging)); err != nil {
+	// 阶段三：回灌导入（文件源读暂存；入库/查重/落盘全链复用导出回灌能力）。
+	// 替换选项：确认替换与零交集并入全集注入；二者皆空（无命中替换）则保持全跳过旧语义
+	var opts *importer.IngestOptions
+	if len(plan.confirmedWorks) > 0 || len(plan.autoMergeWorks) > 0 {
+		opts = &importer.IngestOptions{
+			ReplaceWorks:   plan.confirmedWorks,
+			AutoMergeWorks: plan.autoMergeWorks,
+		}
+	}
+	if _, err := e.ingestor.Ingest(ctx, manifest, stagedFileSource(staging), opts); err != nil {
 		reportReceiveError(h, ctx, err)
 		return
 	}
@@ -148,15 +176,219 @@ func receiveUserMessage(err error) string {
 	return msg
 }
 
-// stageFiles 逐文件拉取暂存：已完成（暂存大小==声明大小）跳过；部分完成按暂存大小续传；
-// 分享方现报缺失（发布后源文件被删）的条目标记 Missing 走导入缺席降级（对齐决策4）。
+// receiveReplacePlan 查重裁决产物：替换全集（确认替换 ∪ 零交集并入）与用户裁决跳过作品。
+// 三集合均以 manifest 作品 ID 为键（与 IngestOptions 替换集的键域一致，ingest 据此回灌）。
+type receiveReplacePlan struct {
+	confirmedWorks map[int64]struct{} // 确认替换：冲突交集命中且用户选替换
+	autoMergeWorks map[int64]struct{} // 零交集自动并入：不经确认直接增补挂载（决策5）
+	skipWorks      map[int64]struct{} // 用户裁决跳过：整作品跳过，文件不拉
+}
+
+// replaceSoftTarget 需软删的替换目标（确认替换与零交集并入共用）：
+// manifest 作品 ID → 本库作品 ID + 软删角色集。
+type replaceSoftTarget struct {
+	manifestID    int64
+	localWorkID   int64
+	conflictRoles []string // 交集角色（冲突命中载荷；零交集为空 → 回退 manifest 板块角色）
+	manifestRoles []string
+}
+
+// planReplace 查重 → 确认 → 软删与回滚登记（时序改造核心）：
+//   - manifest 作品键（站点名 + 站点侧作品 ID）+ 板块角色集合三分类（DuplicateChecker.Check）
+//   - 命中冲突非空 → WaitReplaceConfirm 整体决策（任务粒度，复用 ConfirmReplace 答复）；
+//     取消返回 canceled=true，Execute 不上报终态交控制面接管
+//   - 零交集命中作品自动并入 autoMergeWorks（查重命中即挂已有作品，弹窗与否只决定确认）
+//   - 替换全集（确认替换 ∪ 零交集并入）按各作品「交集角色」（零交集/保守弹窗回退 manifest
+//     板块角色全集）软删——冲突交集替换与零交集 no-op 两语义天然统一（活行交集仅冲突角色）；
+//     软删成功后立即经 SetTerminalRollback 登记回滚清单（失败/停止由控制面 setFailed 单点复活，
+//     多作品清单合并登记，软删中断窗口三态收口见方案「设计六」）
+func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Manifest,
+	h taskManager.StrategyHandle) (*receiveReplacePlan, bool, error) {
+	plan := &receiveReplacePlan{
+		confirmedWorks: make(map[int64]struct{}),
+		autoMergeWorks: make(map[int64]struct{}),
+		skipWorks:      make(map[int64]struct{}),
+	}
+	if e.checker == nil || e.replaceOps == nil {
+		// 查重/替换能力未装配（异常装配兜底）：维持全新建/既有跳过旧语义
+		return plan, false, nil
+	}
+
+	// 反解 manifest 作品键与板块角色集合（站点名取 manifest.Sites 映射；无站点身份作品按未命中处理）
+	siteNameByID := make(map[int64]string, len(manifest.Sites))
+	for i := range manifest.Sites {
+		if s := manifest.Sites[i]; s.SiteName != nil {
+			siteNameByID[s.ID] = *s.SiteName
+		}
+	}
+	items := make([]duplicate.DuplicateCheckItem, 0, len(manifest.Works))
+	rolesByWork := make(map[int64][]string, len(manifest.Works))
+	for i := range manifest.Works {
+		w := &manifest.Works[i]
+		roles := manifestWorkRoles(w)
+		rolesByWork[w.ID] = roles
+		var siteName, siteWorkID string
+		if w.SiteID != nil {
+			siteName = siteNameByID[*w.SiteID]
+		}
+		if w.SiteWorkID != nil {
+			siteWorkID = *w.SiteWorkID
+		}
+		items = append(items, duplicate.DuplicateCheckItem{
+			SiteName:   siteName,
+			SiteWorkID: siteWorkID,
+			Roles:      roles,
+		})
+	}
+	results, err := e.checker.Check(ctx, items)
+	if err != nil {
+		return nil, false, fmt.Errorf("作品查重判定失败: %w", err)
+	}
+
+	// 三分类分流：冲突作品收集确认输入，零交集作品并入自动增补（未命中作品交 ingest 既有创建）
+	var conflicts []taskManager.ConflictInfo
+	var confirmTargets, autoTargets []replaceSoftTarget
+	for i, res := range results {
+		w := &manifest.Works[i]
+		switch res.Class {
+		case duplicate.DuplicateHitConflict:
+			conflicts = append(conflicts, taskManager.ConflictInfo{
+				WorkID:        res.WorkID,
+				WorkName:      res.WorkName,
+				ConflictRoles: res.ConflictRoles,
+			})
+			confirmTargets = append(confirmTargets, replaceSoftTarget{
+				manifestID:    w.ID,
+				localWorkID:   res.WorkID,
+				conflictRoles: res.ConflictRoles,
+				manifestRoles: rolesByWork[w.ID],
+			})
+		case duplicate.DuplicateHitNoConflict:
+			plan.autoMergeWorks[w.ID] = struct{}{}
+			autoTargets = append(autoTargets, replaceSoftTarget{
+				manifestID:    w.ID,
+				localWorkID:   res.WorkID,
+				manifestRoles: rolesByWork[w.ID],
+			})
+		}
+	}
+
+	// 冲突作品整体决策（任务粒度）：替换 → 确认替换集；跳过 → 整作品跳过（零交集角色同样不增补）
+	if len(conflicts) > 0 {
+		decision, canceled := h.WaitReplaceConfirm(conflicts)
+		if canceled {
+			return nil, true, nil
+		}
+		switch decision {
+		case taskManager.ReplaceDecisionSkip:
+			for _, t := range confirmTargets {
+				plan.skipWorks[t.manifestID] = struct{}{}
+			}
+		default:
+			for _, t := range confirmTargets {
+				plan.confirmedWorks[t.manifestID] = struct{}{}
+			}
+		}
+	}
+
+	// 软删替换全集（确认替换 ∪ 零交集并入）各作品的软删角色并登记回滚清单；
+	// 零交集命中作品经此 no-op（活行交集为空），软删后恢复重跑延续同一机制
+	softTargets := autoTargets
+	if len(plan.confirmedWorks) > 0 {
+		softTargets = append(softTargets, confirmTargets...)
+	}
+	for _, t := range softTargets {
+		roles := t.conflictRoles
+		if len(roles) == 0 {
+			roles = t.manifestRoles
+		}
+		refs, serr := e.replaceOps.SoftDeleteWorkStoreRoles(ctx, t.localWorkID, roles)
+		if serr != nil {
+			// 部分清单也可回滚：已软删行先登记（即使错误），再上抛交 Fail 单点复活
+			if len(refs) > 0 {
+				h.SetTerminalRollback(taskManager.TerminalRollback{Victims: refs})
+			}
+			return nil, false, fmt.Errorf("软删替换目标作品(id=%d)失败: %w", t.localWorkID, serr)
+		}
+		if len(refs) > 0 {
+			h.SetTerminalRollback(taskManager.TerminalRollback{Victims: refs})
+		}
+	}
+	return plan, false, nil
+}
+
+// manifestWorkRoles 作品在 manifest 中声明的板块角色集合（资源挂载去重并集）：
+// 作查重输入的期望板块与软删角色集（零交集命中时对活行 no-op）
+func manifestWorkRoles(w *export.WorkRecord) []string {
+	seen := make(map[string]struct{})
+	var roles []string
+	for i := range w.Resources {
+		for _, s := range w.Resources[i].Stores {
+			if s.StoreType == "" {
+				continue
+			}
+			if _, dup := seen[s.StoreType]; dup {
+				continue
+			}
+			seen[s.StoreType] = struct{}{}
+			roles = append(roles, s.StoreType)
+		}
+	}
+	return roles
+}
+
+// fileSkipSet 被裁决跳过作品的文件条目 StoreID 集：文件可能被多作品引用，
+// 仅当引用它的全部作品都被跳过时才不拉取（共享文件不因单作品跳过而丢失）
+func fileSkipSet(manifest *export.Manifest, skipWorks map[int64]struct{}) map[int64]struct{} {
+	if len(skipWorks) == 0 {
+		return nil
+	}
+	workIDsByFile := make(map[int64]map[int64]struct{})
+	for i := range manifest.Works {
+		w := &manifest.Works[i]
+		for j := range w.Resources {
+			for _, s := range w.Resources[j].Stores {
+				set := workIDsByFile[s.StoreID]
+				if set == nil {
+					set = make(map[int64]struct{})
+					workIDsByFile[s.StoreID] = set
+				}
+				set[w.ID] = struct{}{}
+			}
+		}
+	}
+	skip := make(map[int64]struct{})
+	for storeID, refs := range workIDsByFile {
+		allSkipped := true
+		for wid := range refs {
+			if _, ok := skipWorks[wid]; !ok {
+				allSkipped = false
+				break
+			}
+		}
+		if allSkipped {
+			skip[storeID] = struct{}{}
+		}
+	}
+	return skip
+}
+
+
 func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient, staging string,
-	manifest *export.Manifest, h taskManager.StrategyHandle) error {
+	manifest *export.Manifest, skipFiles map[int64]struct{}, h taskManager.StrategyHandle) error {
+	// 待拉条目判定：缺包内路径/源缺失标记/被裁决跳过作品的文件 一律跳过
+	pull := func(entry *export.FileEntry) bool {
+		if entry.Path == "" || entry.Missing {
+			return false
+		}
+		_, skip := skipFiles[entry.StoreID]
+		return !skip
+	}
 	// 进度基数：全部待拉条目的声明字节（已完成条目也计入基数，finished 经暂存盘点补齐）
 	var total int64
 	for i := range manifest.Files {
 		entry := &manifest.Files[i]
-		if entry.Path == "" || entry.Missing {
+		if !pull(entry) {
 			continue
 		}
 		total += entry.Size
@@ -170,7 +402,7 @@ func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient
 	// 初始进度：已暂存字节（重试/恢复任务的即时段位）
 	for i := range manifest.Files {
 		entry := &manifest.Files[i]
-		if entry.Path == "" || entry.Missing {
+		if !pull(entry) {
 			continue
 		}
 		if sz := stagedSize(stagingPath(staging, entry.Path)); sz > 0 && sz <= entry.Size {
@@ -180,7 +412,7 @@ func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient
 	report()
 	for i := range manifest.Files {
 		entry := &manifest.Files[i]
-		if entry.Path == "" || entry.Missing {
+		if !pull(entry) {
 			continue
 		}
 		if err := stageFile(ctx, client, staging, entry, func(delta int64) {
