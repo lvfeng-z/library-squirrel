@@ -107,6 +107,9 @@ type App struct {
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
 
+	// 导出产物回灌导入能力（import handler 与 share-receive 任务执行器共用同一实例）
+	manifestIngestor importer.ManifestIngestor
+
 	// 扩展注册中心
 	TaskHandlerRegistry       *extension2.TaskHandlerRegistry
 	SiteBrowserRegistry       *extension2.SiteBrowserRegistry
@@ -908,6 +911,12 @@ func (app *App) initBaseServices() {
 		func() string { return app.SettingsService.GetWorkDir() },
 		shareInstanceID,
 		share.NewWailsShareEmitter(func() share.EventEmitter { return app.taskProgressEmitter }),
+		// share-host 任务创建/启停能力：task.Service + taskManager 经适配器组合；
+		// 二者在本阶段之后创建，经闭包运行期取用（发布/取消调用时均已就绪）
+		&shareTaskControlAdapter{
+			getTaskSvc: func() *task.Service { return app.TaskService },
+			getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
+		},
 	)
 }
 
@@ -1124,6 +1133,13 @@ func (app *App) initAdvancedServices() error {
 	// resource_store 仓储(taskManager 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
 	taskMgrResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
+	// 导入能力先行构建（import handler 与 share-receive 任务执行器共用同一实例）
+	app.manifestIngestor = importer.NewIngestor(
+		importer.NewRepository(app.db),
+		&dbTransactorAdapter{db: app.db},
+		app.PersistentStoreService,
+	)
+
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
 		app.taskRepo,
@@ -1153,6 +1169,13 @@ func (app *App) initAdvancedServices() error {
 			PendingResourceUpdater: app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
 			StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
+		},
+		// 内置任务类型的执行面策略表：分享发布/收件拉取经任务标准能力承载——
+		// share-host 驱动会话宿主主体，share-receive 拉取回灌导入（ManifestIngestor 与
+		// import handler 共用同一实例）
+		map[string]taskManager.ExecutionStrategy{
+			share.TaskTypeHost:    share.NewHostExecution(app.ShareService),
+			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor),
 		},
 	)
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）
@@ -1199,12 +1222,50 @@ func (app *App) initAdvancedServices() error {
 	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
 	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 
+	// 深链协议自注册（便携分发：HKCU 幂等自写；安装版 HKLM 由 NSIS 管理；失败仅记日志不阻断）
+	if err := share.EnsureShareProtocolRegistered(); err != nil {
+		logger.Log.Warnf("[share] 深链协议自注册失败: %v", err)
+	}
+
+	// 收件暂存清扫：回收任务行已不存在的暂存目录（任务删除后/崩溃残留；成功任务执行尾已自清）
+	if workDir := app.SettingsService.GetWorkDir(); workDir != "" {
+		if err := share.CleanupOrphanReceiveStaging(workDir, func(id int64) bool {
+			tasks, err := app.taskRepo.ListStatus(context.Background(), []int64{id})
+			return err == nil && len(tasks) > 0
+		}); err != nil {
+			logger.Log.Warnf("[share] 收件暂存清扫失败: %v", err)
+		}
+	}
+
 	return nil
 }
 
 // workSetWriterAdapter WorkSetWriter 接口适配器（打破 work ↔ workSet 循环依赖）
 type workSetWriterAdapter struct {
 	repo *workSet.WorkSetRepository
+}
+
+// shareTaskControlAdapter 将任务创建与启停能力适配为 share.BuiltinTaskControl。
+// ShareService 在 task/taskManager 之前创建，依赖经闭包运行期取用（发布/取消调用时均已就绪）。
+type shareTaskControlAdapter struct {
+	getTaskSvc func() *task.Service
+	getMgr     func() *taskManager.Manager
+}
+
+func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
+	t, err := a.getTaskSvc().CreateBuiltinTask(ctx, taskType, taskName, payload)
+	if err != nil {
+		return 0, err
+	}
+	return t.GetID(), nil
+}
+
+func (a *shareTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int64) error {
+	return a.getMgr().StartTaskTrees(ctx, taskIds)
+}
+
+func (a *shareTaskControlAdapter) StopTasks(ctx context.Context, taskIds []int64) error {
+	return a.getMgr().StopTaskTrees(ctx, taskIds)
 }
 
 // dbTransactorAdapter 数据库事务执行器适配器
@@ -1422,13 +1483,9 @@ func (app *App) initHandlers() {
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
 	app.ExportHandler = export.NewHandler(app.ExportService)
 	app.ShareHandler = share.NewHandler(app.ShareService)
-	// import：导出产物回灌导入。入库能力为 ManifestIngestor（分享收件侧任务执行器二期复用，
-	// 本期唯一消费方即此 handler）；文件落盘复用 persistentStore 能力，事务经 dbTransactorAdapter 传递
-	app.ImportHandler = importer.NewHandler(importer.NewIngestor(
-		importer.NewRepository(app.db),
-		&dbTransactorAdapter{db: app.db},
-		app.PersistentStoreService,
-	))
+	// import：导出产物回灌导入 handler（入库能力为 ManifestIngestor，与 share-receive
+	// 任务执行器共用 app.manifestIngestor 同一实例；文件落盘复用 persistentStore 能力）
+	app.ImportHandler = importer.NewHandler(app.manifestIngestor)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)

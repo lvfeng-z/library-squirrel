@@ -3,7 +3,7 @@
 > 目录名 `backend/import`，包名 `importer`（`import` 是 Go 关键字不能作包名）。
 
 ## 一句话职责
-把导出产物（manifest 契约 + 包内文件）回灌导入本库：完整重建作品与全部关联（往返保真），入库逻辑抽为 **ManifestIngestor 能力接口**，供导出回灌（本模块 Handler）与分享收件人侧（share-receive 任务执行器，二期）两个消费方复用（方案见 `doc/plan/分享功能总体方案.md` 阶段2）。
+把导出产物（manifest 契约 + 包内文件）回灌导入本库：完整重建作品与全部关联（往返保真），入库逻辑抽为 **ManifestIngestor 能力接口**，供导出回灌（本模块 Handler）与分享收件人侧（share-receive 任务执行器）两个消费方复用（方案见 `doc/plan/分享功能总体方案.md` 阶段2）。
 
 ## 边界
 - 与 export：export 是导出数据面（收集 + 打包），本模块是其逆向（回灌）；manifest 契约直接复用 `backend/export/manifest.go`（SchemaVersion 版本锚），**禁止重定义**。
@@ -23,7 +23,7 @@
 
 ## 依赖关系
 - 依赖：`Repository`（本模块自有，直查共享表——对齐 export 先例）；`Transactor`（app.go 以 dbTransactorAdapter 装配）；`FileStoreOperator`（persistentStore.Service 实现：落盘+建记录含抑制登记/指纹/宽高、按路径查活行、补偿物理删）。
-- 被依赖：前端导入入口（待接线）；二期 share-receive 任务执行器（注入 ManifestIngestor）。
+- 被依赖：前端导入入口（待接线）；share-receive 任务执行器（已注入 ManifestIngestor，app.go 与本模块 Handler 共用同一实例）。
 
 ## 关键设计
 - **文件落位冲突消解**：persistentStore.Store 的同路径语义是「删旧文件+改旧记录」（面向重下载），导入命中既有占用时改为派生变体路径，保护既有作品文件（RECORD_STATE_TRUTHFUL）。

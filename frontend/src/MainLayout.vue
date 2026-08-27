@@ -9,6 +9,7 @@ import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDia
 import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
+import ShareReceiveDialog from '@renderer/components/dialogs/ShareReceiveDialog.vue'
 import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 
 const router = useRouter()
@@ -72,6 +73,9 @@ async function handleCloseCurrentView() {
     <ReplaceConfirmDialog />
     <ChangeConfirmDialog />
     <DialogSlotRenderer />
+
+    <!-- 接收分享对话框（深链到达/手动入口共用；挂载于外壳以跨页面生效） -->
+    <ShareReceiveDialog />
 
     <!-- 消息提醒堆叠（右上角，聚合窗口合并批量提醒） -->
     <ReminderStack />

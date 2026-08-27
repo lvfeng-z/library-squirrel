@@ -6,6 +6,49 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * ShareProtocolRegStatus 深链协议注册状态（HKCU 视图）
+ */
+export class ShareProtocolRegStatus {
+    /**
+     * HKCU 注册键存在且 command 非空
+     */
+    "registered": boolean;
+
+    /**
+     * 当前注册的启动命令
+     */
+    "command": string;
+
+    /**
+     * 注册命令是否指向当前运行的 exe
+     */
+    "currentExe": boolean;
+
+    /** Creates a new ShareProtocolRegStatus instance. */
+    constructor($$source: Partial<ShareProtocolRegStatus> = {}) {
+        if (!("registered" in $$source)) {
+            this["registered"] = false;
+        }
+        if (!("command" in $$source)) {
+            this["command"] = "";
+        }
+        if (!("currentExe" in $$source)) {
+            this["currentExe"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShareProtocolRegStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShareProtocolRegStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ShareProtocolRegStatus($$parsedSource as Partial<ShareProtocolRegStatus>);
+    }
+}
+
+/**
  * SharePublishOptions 发布选项（IPC 入参）
  */
 export class SharePublishOptions {
@@ -20,7 +63,7 @@ export class SharePublishOptions {
     "expireSeconds": number;
 
     /**
-     * Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要）
+     * Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落任务载荷的只有摘要）
      */
     "password": string;
 

@@ -140,7 +140,8 @@ func (s *relayStub) handleRegister(conn net.Conn, h helloPayload) {
 		return
 	}
 	s.nextToken++
-	token := fmt.Sprintf("stubtoken%08d", s.nextToken)
+	// token 形态对齐真中继（22 字符 [A-Za-z0-9_-]）：9 字符前缀 + 13 位零填充序号
+	token := fmt.Sprintf("stubtoken%013d", s.nextToken)
 	var expiresAt int64
 	now := time.Now()
 	switch {

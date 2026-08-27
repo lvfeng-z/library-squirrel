@@ -593,3 +593,47 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 		t.Errorf("CreateTask 无站点任务 site_id 应落 NULL，得到 %+v", siteId)
 	}
 }
+
+// TestCreateBuiltinTaskColumns 内置任务创建落库形态：task_type/payload 落值、插件字段恒 NULL、
+// 状态 Created 根级；空类型拒绝（真实 FK 库锚定，与 CreateTask 同一锚定口径）
+func TestCreateBuiltinTaskColumns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	svc := NewService(NewRepository(db), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型", "{}"); err == nil {
+		t.Fatal("空任务类型应拒绝")
+	}
+
+	created, err := svc.CreateBuiltinTask(ctx, "share-host", "分享 1 个作品", `{"schemaVersion":1}`)
+	if err != nil {
+		t.Fatalf("创建内置任务失败: %v", err)
+	}
+	if created.Status != int(TaskStatusCreated) {
+		t.Fatalf("创建后状态应为 Created: %d", created.Status)
+	}
+	var taskType, payload, pluginID sql.NullString
+	var pid sql.NullInt64
+	if err := db.Raw("SELECT task_type, payload, plugin_public_id, pid FROM task WHERE id = ?", created.GetID()).
+		Row().Scan(&taskType, &payload, &pluginID, &pid); err != nil {
+		t.Fatalf("查内置任务列失败: %v", err)
+	}
+	if !taskType.Valid || taskType.String != "share-host" {
+		t.Errorf("task_type 落库不符: %+v", taskType)
+	}
+	if !payload.Valid || payload.String != `{"schemaVersion":1}` {
+		t.Errorf("payload 落库不符: %+v", payload)
+	}
+	if pluginID.Valid {
+		t.Errorf("内置任务 plugin_public_id 应落 NULL: %+v", pluginID)
+	}
+	if pid.Valid {
+		t.Errorf("内置任务应为根级（pid NULL）: %+v", pid)
+	}
+}

@@ -28,9 +28,9 @@ func (h *Handler) SharePublish(ctx context.Context, workIDs []int64, workSetIDs 
 	return model.Success(id)
 }
 
-// ShareCancelPublish 取消进行中的发布（无进行中发布则 no-op）
+// ShareCancelPublish 取消分享（停止 share-host 任务；已在线会话的撤销走 ShareRevoke）
 func (h *Handler) ShareCancelPublish(ctx context.Context, shareID string) *model.ApiResponse[any] {
-	h.svc.CancelPublish(shareID)
+	h.svc.CancelPublish(ctx, shareID)
 	return model.Success[any](nil)
 }
 
@@ -45,4 +45,35 @@ func (h *Handler) ShareRevoke(ctx context.Context, shareID string) *model.ApiRes
 // ShareSessions 查询全部分享会话快照（含终态）
 func (h *Handler) ShareSessions(ctx context.Context) *model.ApiResponse[[]*ShareSessionDTO] {
 	return model.Success(h.svc.Sessions(ctx))
+}
+
+// ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→
+// 创建并启动 share-receive 任务，返回任务 ID（进度/终态由任务面板承载）。
+func (h *Handler) ShareReceive(ctx context.Context, link string, password string) *model.ApiResponse[int64] {
+	taskID, err := h.svc.Receive(ctx, link, password)
+	if err != nil {
+		return model.HandleError[int64](err)
+	}
+	return model.Success(taskID)
+}
+
+// ShareConsumePendingLink 取走深链到达时缓存的待处理链接（前端启动衔接：深链事件可能
+// 先于前端就绪，消费式拉取兜底；空串=无待处理）
+func (h *Handler) ShareConsumePendingLink(ctx context.Context) *model.ApiResponse[string] {
+	return model.Success(h.svc.ConsumeIncomingLink())
+}
+
+// ShareProtocolRegStatus 深链协议注册状态（Windows 为 HKCU 自注册视图，其余平台恒未注册）
+func (h *Handler) ShareProtocolRegStatus(ctx context.Context) *model.ApiResponse[*ShareProtocolRegStatus] {
+	status := QueryShareProtocolRegStatus()
+	return model.Success(&status)
+}
+
+// ShareUnregisterProtocol 取消深链协议注册（便携版无卸载器的清理入口；安装版 HKLM 键
+// 由卸载器管理，不受影响）
+func (h *Handler) ShareUnregisterProtocol(ctx context.Context) *model.ApiResponse[any] {
+	if err := UnregisterShareProtocol(); err != nil {
+		return model.HandleError[any](err)
+	}
+	return model.Success[any](nil)
 }

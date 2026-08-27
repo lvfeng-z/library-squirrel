@@ -11,6 +11,8 @@ import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChange
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { onExportEvent } from '@renderer/composables/useExportProgress'
 import { useShareStore } from '@renderer/store/UseShareStore'
+import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
+import { shareConsumePendingLink } from '@renderer/apis/http/wrappers/share'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
 
@@ -77,10 +79,24 @@ export function iniListener() {
     onExportEvent(type, data)
   })
 
-  // 分享事件（独立 topic，分享发布进度/完成/会话状态）
+  // 分享事件（独立 topic，分享发布进度/完成/会话状态/深链到达）
   Events.On('share-events', (event: any) => {
     const { type, data } = event.data as { type: string; data: any }
-    useShareStore().onShareEvent(type, data)
+    switch (type) {
+      case 'receive-link':
+        // 深链到达：打开接收分享对话框（链接预填），并清空后端待处理缓存
+        // （事件送达即前端已就绪，缓存使命完成——防下次启动被消费式拉取重复打开）
+        useShareReceiveStore().openWith(data as string)
+        void shareConsumePendingLink()
+        break
+      default:
+        useShareStore().onShareEvent(type, data)
+    }
+  })
+  // 冷启动深链兜底：深链事件可能先于前端就绪（本监听注册）而丢失，消费式拉取缓存的
+  // 待处理链接（空串=无）
+  void shareConsumePendingLink().then((link: string) => {
+    if (link !== '') useShareReceiveStore().openWith(link)
   })
 
   // 兼容：setTask / setParentTask（后端当前未发射，保留监听以备将来使用）

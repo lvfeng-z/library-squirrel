@@ -7,6 +7,7 @@ package share
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
 )
 
@@ -134,6 +136,8 @@ func (c *captureEmitter) PushState(dto *ShareSessionDTO) {
 	c.mu.Unlock()
 }
 
+func (c *captureEmitter) PushReceiveLink(link string) {}
+
 func (c *captureEmitter) waitComplete(t *testing.T, shareID string, timeout time.Duration) ShareCompleteData {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -216,7 +220,7 @@ func newTestService(t *testing.T, stub *relayStub, workDir string, model *export
 	em *captureEmitter, dialer *recordingDialer) *Service {
 	svc := NewService(&fakeCollector{model: model}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em)
+		"test-instance-0001", em, nil)
 	opts := sessionRuntimeOptions{streamRate: 8 << 20}
 	if dialer != nil {
 		opts.dialFn = dialer.dial
@@ -231,13 +235,37 @@ func newTestService(t *testing.T, stub *relayStub, workDir string, model *export
 	return svc
 }
 
-// publishAndWait 发布并等待完成事件
+// hostInBackground 后台执行分享宿主主体（固定 shareID；t.Cleanup 取消宿主 ctx 终止会话，
+// 模拟任务暂停/停止的中断路径）
+func hostInBackground(t *testing.T, svc *Service, opts SharePublishOptions) string {
+	t.Helper()
+	shareID := "share-1001"
+	payload, err := newShareHostPayload([]int64{1}, nil, opts)
+	if err != nil {
+		t.Fatalf("构建任务载荷失败: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		_, _ = svc.HostSession(ctx, shareID, parseTestPayload(t, payload), nil)
+	}()
+	t.Cleanup(cancel)
+	return shareID
+}
+
+// parseTestPayload 反解载荷（构建即已知合法，失败即测试夹具问题）
+func parseTestPayload(t *testing.T, raw string) *shareHostPayload {
+	t.Helper()
+	p, err := parseShareHostPayload(raw)
+	if err != nil {
+		t.Fatalf("反解任务载荷失败: %v", err)
+	}
+	return p
+}
+
+// publishAndWait 后台执行分享宿主主体并等待完成事件
 func publishAndWait(t *testing.T, svc *Service, em *captureEmitter, opts SharePublishOptions) (string, ShareCompleteData) {
 	t.Helper()
-	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, opts)
-	if err != nil {
-		t.Fatalf("发布启动失败: %v", err)
-	}
+	shareID := hostInBackground(t, svc, opts)
 	return shareID, em.waitComplete(t, shareID, 8*time.Second)
 }
 
@@ -713,22 +741,32 @@ func TestReconnectBind(t *testing.T) {
 	_ = conn.Close()
 }
 
-// TestCancelPublish 取消进行中的发布：complete 推送「已取消」
+// TestCancelPublish 宿主中断（任务暂停/停止路径）：收集阶段取消宿主 ctx → complete 推送「已取消」
 func TestCancelPublish(t *testing.T) {
 	stub := startRelayStub(t)
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := NewService(&blockingCollector{model: model, started: make(chan struct{})}, export.NewPacker(),
+	bc := &blockingCollector{model: model, started: make(chan struct{})}
+	svc := NewService(bc, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em)
+		"test-instance-0001", em, nil)
 	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
 
-	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{})
+	shareID := "share-2001"
+	payload, err := newShareHostPayload([]int64{1}, nil, SharePublishOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.CancelPublish(shareID)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		outcome, _ := svc.HostSession(ctx, shareID, parseTestPayload(t, payload), nil)
+		if outcome != HostInterrupted {
+			t.Errorf("中断路径结果应为 HostInterrupted, got %d", outcome)
+		}
+	}()
+	<-bc.started // 等进入收集阶段
+	cancel()
 	comp := em.waitComplete(t, shareID, 5*time.Second)
 	if comp.Success {
 		t.Fatal("取消的发布不应成功")
@@ -738,5 +776,207 @@ func TestCancelPublish(t *testing.T) {
 	}
 	if list := svc.Sessions(context.Background()); len(list) != 0 {
 		t.Fatal("取消后会话不应留驻清单")
+	}
+}
+
+// —— 任务化发布（share-host 任务接入）——
+
+// fakeTaskControl 任务控制能力桩（记录调用、自增任务 ID）
+type fakeTaskControl struct {
+	mu      sync.Mutex
+	nextID  int64
+	created []fakeTaskCreation
+	started [][]int64
+	stopped [][]int64
+}
+
+type fakeTaskCreation struct {
+	taskType string
+	name     string
+	payload  string
+}
+
+func (f *fakeTaskControl) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextID++
+	f.created = append(f.created, fakeTaskCreation{taskType: taskType, name: taskName, payload: payload})
+	return f.nextID, nil
+}
+
+func (f *fakeTaskControl) StartTasks(ctx context.Context, taskIds []int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.started = append(f.started, taskIds)
+	return nil
+}
+
+func (f *fakeTaskControl) StopTasks(ctx context.Context, taskIds []int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, taskIds)
+	return nil
+}
+
+// TestPublishTaskLaunch 发布入口创建并启动 share-host 任务：载荷只含密码摘要、shareID 可反解任务 ID
+func TestPublishTaskLaunch(t *testing.T) {
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	fc := &fakeTaskControl{}
+	svc := NewService(&fakeCollector{model: model}, export.NewPacker(),
+		func() string { return "relay.example.com" }, func() string { return workDir },
+		"test-instance-0001", nil, fc)
+
+	shareID, err := svc.Publish(context.Background(), []int64{1, 2}, []int64{3}, SharePublishOptions{
+		Title:         "任务化发布",
+		ExpireSeconds: 3600,
+		Password:      "pw-明文",
+	})
+	if err != nil {
+		t.Fatalf("发布启动失败: %v", err)
+	}
+	if shareID != "share-1" {
+		t.Fatalf("shareID 应由任务 ID 推导: %q", shareID)
+	}
+	if id, ok := TaskIDFromShareID(shareID); !ok || id != 1 {
+		t.Fatalf("shareID 反解任务 ID 失败: %d %v", id, ok)
+	}
+	if len(fc.created) != 1 {
+		t.Fatalf("应创建一个任务: %d", len(fc.created))
+	}
+	c := fc.created[0]
+	if c.taskType != TaskTypeHost {
+		t.Fatalf("任务类型不符: %q", c.taskType)
+	}
+	if c.name != "任务化发布" {
+		t.Fatalf("任务名应取发布标题: %q", c.name)
+	}
+	p, err := parseShareHostPayload(c.payload)
+	if err != nil {
+		t.Fatalf("载荷反解失败: %v", err)
+	}
+	if len(p.WorkIDs) != 2 || len(p.WorkSetIDs) != 1 || p.ExpireSeconds != 3600 {
+		t.Fatalf("载荷字段不符: %+v", p)
+	}
+	if p.PasswordHash != PasswordHashHex("pw-明文") {
+		t.Fatal("载荷应只存密码摘要（明文不落库）")
+	}
+	if len(fc.started) != 1 || len(fc.started[0]) != 1 || fc.started[0][0] != 1 {
+		t.Fatalf("创建后应立即启动任务: %+v", fc.started)
+	}
+}
+
+// TestPublishPreconditionRejected 前置校验失败不创建任务
+func TestPublishPreconditionRejected(t *testing.T) {
+	fc := &fakeTaskControl{}
+	svc := NewService(&fakeCollector{model: nil}, export.NewPacker(),
+		func() string { return "" }, func() string { return "" },
+		"test-instance-0001", nil, fc)
+	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
+		t.Fatalf("中继未配置应拒绝: %v", err)
+	}
+	if len(fc.created) != 0 {
+		t.Fatal("校验失败不应创建任务")
+	}
+}
+
+// fakeStrategyHandle 执行面句柄桩（记录终态与进度上报）
+type fakeStrategyHandle struct {
+	task       *entity.Task
+	runCtx     context.Context
+	mu         sync.Mutex
+	finished   bool
+	failed     bool
+	errMsg     string
+	progresses [][2]int64
+}
+
+func (h *fakeStrategyHandle) Task() *entity.Task      { return h.task }
+func (h *fakeStrategyHandle) RunCtx() context.Context { return h.runCtx }
+func (h *fakeStrategyHandle) Finish()                 { h.mu.Lock(); h.finished = true; h.mu.Unlock() }
+func (h *fakeStrategyHandle) Fail(errMsg string) {
+	h.mu.Lock()
+	h.failed = true
+	h.errMsg = errMsg
+	h.mu.Unlock()
+}
+func (h *fakeStrategyHandle) ReportProgress(t, f int64) {
+	h.mu.Lock()
+	h.progresses = append(h.progresses, [2]int64{t, f})
+	h.mu.Unlock()
+}
+func (h *fakeStrategyHandle) isTerminal() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.finished || h.failed
+}
+
+// TestHostExecutionLifecycle share-host 执行面策略终态映射：
+// 在线后撤销 → 任务 Finish；宿主 ctx 取消（暂停/停止）→ 不上报终态（控制面接管）
+func TestHostExecutionLifecycle(t *testing.T) {
+	stub := startRelayStub(t)
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newTestService(t, stub, workDir, model, em, nil)
+
+	task := entity.NewTask()
+	task.SetID(3001)
+	payload, err := newShareHostPayload([]int64{1}, nil, SharePublishOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Payload = sql.NullString{String: payload, Valid: true}
+
+	// 在线 → 撤销 → Finish
+	h := &fakeStrategyHandle{task: task, runCtx: context.Background()}
+	strategy := NewHostExecution(svc)
+	go strategy.Execute(h)
+	if comp := em.waitComplete(t, ShareIDFromTaskID(3001), 8*time.Second); !comp.Success {
+		t.Fatalf("发布应在线成功: %+v", comp)
+	}
+	if err := svc.Revoke(context.Background(), ShareIDFromTaskID(3001)); err != nil {
+		t.Fatal(err)
+	}
+	waitHandleTerminal(t, h, 5*time.Second)
+	h.mu.Lock()
+	finished, failed := h.finished, h.failed
+	h.mu.Unlock()
+	if !finished || failed {
+		t.Fatalf("撤销终态应映射任务 Finish: finished=%v failed=%v", finished, failed)
+	}
+
+	// 中断路径：ctx 取消 → 不上报终态
+	task2 := entity.NewTask()
+	task2.SetID(3002)
+	task2.Payload = sql.NullString{String: payload, Valid: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	h2 := &fakeStrategyHandle{task: task2, runCtx: ctx}
+	go NewHostExecution(svc).Execute(h2)
+	if comp := em.waitComplete(t, ShareIDFromTaskID(3002), 8*time.Second); !comp.Success {
+		t.Fatalf("第二次发布应在线成功: %s", comp.ErrMsg)
+	}
+	cancel()
+	time.Sleep(300 * time.Millisecond)
+	if h2.isTerminal() {
+		t.Fatal("宿主 ctx 取消不应上报任务终态（控制面接管）")
+	}
+	// 中断的会话移出注册表（share-3001 已撤销终态留驻属设计语义，不在断言范围）
+	for _, d := range svc.Sessions(context.Background()) {
+		if d.ShareID == ShareIDFromTaskID(3002) {
+			t.Fatalf("中断后会话应移出注册表: %+v", d)
+		}
+	}
+}
+
+// waitHandleTerminal 等待句柄上报终态
+func waitHandleTerminal(t *testing.T, h *fakeStrategyHandle, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for !h.isTerminal() && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !h.isTerminal() {
+		t.Fatal("等待执行面终态超时")
 	}
 }

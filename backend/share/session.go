@@ -188,8 +188,9 @@ type shareSession struct {
 	activeStreams int
 	curWriter     *frameWriter // 当前隧道写出器（离线为 nil；撤销帧经它发出）
 
-	firstCh chan error // 首次注册结果（nil=已在线；非 nil=终态失败），缓冲 1、只发一次
-	streams sync.Map   // streamID → *streamState（读循环与流处理 goroutine 并发访问）
+	firstCh chan error    // 首次注册结果（nil=已在线；非 nil=终态失败），缓冲 1、只发一次
+	doneCh  chan struct{} // 会话主循环退出信号（终态或宿主 ctx 取消；宿主任务据此判定会话结束）
+	streams sync.Map      // streamID → *streamState（读循环与流处理 goroutine 并发访问）
 	ctx     context.Context
 	cancel  context.CancelFunc
 }
@@ -204,6 +205,7 @@ func newShareSession(cfg sessionConfig) (*shareSession, error) {
 		cfg:     cfg,
 		cip:     cip,
 		firstCh: make(chan error, 1),
+		doneCh:  make(chan struct{}),
 	}
 	s.opts = defaultRuntimeOptions().withOverrides(cfg.opts)
 	s.state = stateConnecting
@@ -229,8 +231,9 @@ func newShareSession(cfg sessionConfig) (*shareSession, error) {
 }
 
 // run 会话主循环：连接→注册/重绑→服务，断线按退避重连，终态退出。
-// ctx 由发布方持有（撤销/取消即 cancel）。
+// ctx 由发布方持有（撤销/取消即 cancel）；无论何种退出路径均关闭 doneCh 供宿主等待。
 func (s *shareSession) run(ctx context.Context) {
+	defer close(s.doneCh)
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	ctx = s.ctx
 	delay := reconnectMinDelay

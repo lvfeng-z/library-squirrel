@@ -103,6 +103,11 @@ export class Task {
      */
     "resourceType"?: string;
 
+    /**
+     * 任务类型:空=插件任务;内置类型如 share-host/share-receive(主程序内置执行面,插件不产出)
+     */
+    "taskType"?: string | null;
+
     /** Creates a new Task instance. */
     constructor($$source: Partial<Task> = {}) {
 

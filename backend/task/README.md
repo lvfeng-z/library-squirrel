@@ -14,6 +14,7 @@
 | --- | --- |
 | `CreateTask(req)` | 创建任务（含父子任务树） |
 | `CreateTaskByURL(url)` | URL → 查询监听该 URL 的插件 → 创建任务 |
+| `CreateBuiltinTask(taskType, taskName, payload)` | 创建内置类型任务（`task_type` 非空、非插件执行；payload 为该类型执行面自有 JSON 载荷，本模块不解析；创建后停留 Created，运行控制与插件任务一致）。亦作为 `share.BuiltinTaskControl` 能力的实现方之一（app.go 装配） |
 | `Save` / `Update` | 保存 / 更新任务 |
 | `DeleteTask(ids)` | 批量删除任务（含子任务；事务内先清 resource.task_id 引用再删行，引用置 NULL=非任务产，resource 行保留） |
 | `RefreshStatus(taskId)` | 刷新任务状态 |
@@ -29,6 +30,7 @@
 
 - **TaskStatusEnum**：任务状态枚举，与 taskManager.TaskState 保持一致。
   `Created(0) / Waiting(1) / Processing(2) / Pausing(3) / Paused(4) / Stopping(5) / Finished(6) / Failed(7) / PartlyFinished(8)`
+- **任务类型（task_type）**：NULL/空=插件任务（plugin_public_id 路由执行器）；非空=内置类型（share-host/share-receive 等，经 taskManager 注册的执行面策略执行，`payload` 列承载该类型自有 JSON 载荷）。
 - **任务树**：父任务聚合子任务，父任务状态由子任务聚合得出（PartlyFinished 为父任务聚合态）。
 - **CreateTaskByURL 路由**：URL 匹配插件的 URL 监听器，路由到对应插件创建任务。
 - **leaf/独立任务（pid=NULL 根级）创建高回归区**：无 Children 响应 → 独立 leaf、有 Children → parent+children（不折叠），统一经 `planCreateResponse` 单点判定（stream/array 共用，消除双路径不对称）。根级任务 pid 落 NULL（外键引用 task.id，无 id=0 行，写 0 必违约），子任务 pid=父 ID。改创建路径须保 leaf(pid=NULL) 覆盖，回归测试 `backend/task/service_create_test.go`（fakeRepo 8 例 + OpenTestDB 外键库落盘锚定 1 例）。契约见 `doc/plugin-dev-guide.md`「Create 返回的任务结构契约」。

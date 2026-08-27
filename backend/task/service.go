@@ -390,6 +390,33 @@ func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*
 	return task, nil
 }
 
+// ErrTaskTypeEmpty 创建内置任务时任务类型为空
+var ErrTaskTypeEmpty = &pkgerr.BusinessError{Code: 400, Message: "任务类型为空"}
+
+// CreateBuiltinTask 创建内置类型任务（task_type 非空，非插件执行）。
+// taskName 供任务面板展示；payload 为该类型执行面自有的 JSON 载荷，任务模块不解析其内容。
+// 创建后停留 Created，启动/暂停/停止等运行控制与插件任务一致（经 taskManager）。
+func (s *Service) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (*entity.Task, error) {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == "" {
+		return nil, ErrTaskTypeEmpty
+	}
+	task := &entity.Task{
+		BaseEntity: &model.BaseEntity{},
+		TaskName:   sql.NullString{String: taskName, Valid: true},
+		Status:     int(TaskStatusCreated),
+		TaskType:   sql.NullString{String: taskType, Valid: true},
+		Payload:    sql.NullString{String: payload, Valid: payload != ""},
+		// 内置任务恒为独立叶子任务：has_child 须落 0 而非 NULL——任务树查询以
+		// has_child = 0/1 二值圈定 children/parent，NULL 与两分支皆不匹配（行从树查询消失）
+		HasChild: sql.NullBool{Bool: false, Valid: true},
+	}
+	if err := s.repo.CreateTask(ctx, task); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
 // DeleteTask 删除任务（包含子任务）- 批量删除
 // 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）
 func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {

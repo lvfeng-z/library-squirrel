@@ -66,8 +66,11 @@ type Manager struct {
 	semaphore   chan struct{}
 	maxParallel int
 
-	// 任务执行器工厂（用于创建任务执行器）
+	// 任务执行器工厂（用于创建任务执行器；插件任务路径）
 	pluginExecFactory func(pluginPublicId string) (TaskExecutor, error)
+
+	// 内置任务类型的执行面策略表（task_type → 策略；构造时注入，运行期只读）
+	strategies map[string]ExecutionStrategy
 
 	// 进度推送器
 	pusher TaskProgressPusher
@@ -84,8 +87,12 @@ type Manager struct {
 	waitingForInputMu  sync.Mutex
 }
 
-// NewManager 创建任务管理器
-func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), deps *TaskDeps) *Manager {
+// NewManager 创建任务管理器。
+// builtinStrategies 内置任务类型的执行面策略表（task_type → 策略；可为 nil=无内置类型）。
+func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, pluginExecFactory func(pluginPublicId string) (TaskExecutor, error), deps *TaskDeps, builtinStrategies map[string]ExecutionStrategy) *Manager {
+	if builtinStrategies == nil {
+		builtinStrategies = make(map[string]ExecutionStrategy)
+	}
 	m := &Manager{
 		taskMap:                  make(map[int64]*ManagedTask),
 		parentMap:                make(map[int64]*ParentTask),
@@ -101,6 +108,7 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, plu
 		repo:                     repo,
 		pusher:                   pusher,
 		pluginExecFactory:        pluginExecFactory,
+		strategies:               builtinStrategies,
 		deps:                     deps,
 		waitingForInputMap:       make(map[int64]*ManagedTask),
 	}
@@ -1279,15 +1287,27 @@ func (m *Manager) BuildSnapshot() *TaskSnapshotDTO {
 }
 
 func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
-	// 获取任务执行器
-	if !t.PluginPublicID.Valid {
-		logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
-		return nil
-	}
-	pluginExec, err := m.pluginExecFactory(t.PluginPublicID.String)
-	if err != nil {
-		logger.Log.Errorf("获取任务执行器失败: %v", err)
-		return nil
+	// 按任务类型取执行面：内置类型（task_type 非空）走注册的策略，插件任务走插件执行器
+	var pluginExec TaskExecutor
+	var strategy ExecutionStrategy
+	if taskType := t.TaskType.String; t.TaskType.Valid && taskType != "" {
+		strat, ok := m.strategies[taskType]
+		if !ok {
+			logger.Log.Errorf("获取任务执行面失败: task_type %q 未注册策略", taskType)
+			return nil
+		}
+		strategy = strat
+	} else {
+		if !t.PluginPublicID.Valid {
+			logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
+			return nil
+		}
+		exec, err := m.pluginExecFactory(t.PluginPublicID.String)
+		if err != nil {
+			logger.Log.Errorf("获取任务执行器失败: %v", err)
+			return nil
+		}
+		pluginExec = exec
 	}
 
 	parentId := int64(0)
@@ -1295,6 +1315,7 @@ func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
 		parentId = t.Pid.Int64
 	}
 	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.deps, m, m.semaphore)
+	mt.strategy = strategy
 	mt.runMode = runModeFromTask(t)
 
 	// 设置状态变化回调

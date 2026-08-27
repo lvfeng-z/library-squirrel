@@ -2,7 +2,8 @@ package share
 
 // 分享事件载荷与推送器（share-events topic，与 export-events 同信封范式）。
 // 事件类型：progress（发布进行中阶段推进）/ complete（发布终态：成功在线或失败）/
-// state（会话运行态变化：重连/撤销/过期/失败/服务统计更新）。
+// state（会话运行态变化：重连/撤销/过期/失败/服务统计更新）/
+// receive-link（深链到达：分享拉取入口链接，前端打开接收对话框）。
 
 // ShareSessionDTO 分享会话快照（IPC DTO：状态查询返回值与 state 事件载荷共用）
 type ShareSessionDTO struct {
@@ -50,6 +51,8 @@ type ShareEventEmitter interface {
 	PushProgress(shareID, phase string)
 	PushComplete(data ShareCompleteData)
 	PushState(dto *ShareSessionDTO)
+	// PushReceiveLink 深链到达（raw 为完整深链 URL；前端打开接收分享对话框）
+	PushReceiveLink(link string)
 }
 
 // EventEmitter Wails 事件发射能力（本地接口，避免 share → taskManager/plugin 包耦合）
@@ -84,4 +87,8 @@ func (e *wailsShareEmitter) PushComplete(data ShareCompleteData) {
 
 func (e *wailsShareEmitter) PushState(dto *ShareSessionDTO) {
 	e.emit("state", dto)
+}
+
+func (e *wailsShareEmitter) PushReceiveLink(link string) {
+	e.emit("receive-link", link)
 }

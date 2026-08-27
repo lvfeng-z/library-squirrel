@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import StatusTag from '@renderer/components/common/StatusTag.vue'
 import { shareRevoke } from '@renderer/apis/http/wrappers/share'
 import { useShareStore } from '@renderer/store/UseShareStore'
+import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
 import { arrayNotEmpty } from '@renderer/utils/CommonUtil'
 import { copyText } from '@renderer/utils/ClipboardUtil'
 
@@ -56,6 +57,12 @@ async function handleRevoke(shareId: string): Promise<void> {
   } finally {
     revokingId.value = ''
   }
+}
+
+// 打开接收分享对话框（粘贴他人分享的链接拉取入库；空链接入口，粘贴后创建任务）
+function handleReceive(): void {
+  state.value = false
+  useShareReceiveStore().openWith('')
 }
 
 onMounted(() => {
@@ -134,6 +141,12 @@ onMounted(() => {
           </el-button>
         </div>
       </div>
+
+      <div class="share-manage-receive">
+        <el-button size="small" @click="handleReceive">
+          接收分享（粘贴链接拉取入库）
+        </el-button>
+      </div>
     </div>
   </el-dialog>
 </template>
@@ -156,6 +169,12 @@ onMounted(() => {
   color: var(--app-text-secondary);
   padding: 24px 0;
   text-align: center;
+}
+
+.share-manage-receive {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
 }
 
 .share-manage-item {

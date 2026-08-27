@@ -122,6 +122,20 @@ function getStatus(row: TaskProgressTreeDTO): number {
 function getStatusKey(row: TaskProgressTreeDTO): string {
   return taskStatusToKey(getStatus(row))
 }
+// 内置任务类型（taskType 非空=非插件任务）：名称列前置类型标签
+function isBuiltinTaskType(row: TaskProgressTreeDTO): boolean {
+  const taskType = row.taskProgress?.task?.taskType
+  return notNullish(taskType) && taskType !== ''
+}
+// 内置任务类型显示名（未登记类型回退原始字符串）
+const builtinTaskTypeLabels: Record<string, string> = {
+  'share-host': '分享',
+  'share-receive': '收件'
+}
+function taskTypeLabel(row: TaskProgressTreeDTO): string {
+  const taskType = row.taskProgress?.task?.taskType ?? ''
+  return builtinTaskTypeLabels[taskType] ?? taskType
+}
 // 行样式：父任务加粗、子任务首列缩进
 function rowClassName(rowData: { row: unknown; rowIndex: number }) {
   const row = rowData.row as TaskProgressTreeDTO
@@ -292,6 +306,9 @@ onUnmounted(() => {
         <el-tag>名称</el-tag>
       </template>
       <template #default="{ row }">
+        <el-tag v-if="isBuiltinTaskType(row)" size="small" class="task-list-type-tag">
+          {{ taskTypeLabel(row) }}
+        </el-tag>
         {{ row.taskProgress?.task?.taskName ?? '-' }}
       </template>
     </el-table-column>
@@ -405,5 +422,8 @@ onUnmounted(() => {
 }
 :deep(.el-table .task-list-child-row > :nth-child(3) > .cell :nth-child(1)) {
   transform: translateX(7px);
+}
+.task-list-type-tag {
+  margin-right: 6px;
 }
 </style>

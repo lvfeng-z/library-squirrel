@@ -59,6 +59,14 @@ dev_mode:
     - cmd: wails3 task run
       type: primary
 
+# Custom Protocols
+# Used to register URL schemes (deep links) for the application.
+# Windows: rendered into NSIS installer (HKLM association); portable builds self-register HKCU at runtime.
+# macOS: rendered into Info.plist CFBundleURLTypes; Linux: rendered into desktop MimeType.
+protocols:
+  - scheme: library-squirrel
+    description: "URL:LibrarySquirrel Share Link"
+
 # File Associations
 # More information at: https://v3.wails.io/noit/done/yet
 fileAssociations:

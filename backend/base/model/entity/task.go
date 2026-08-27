@@ -26,6 +26,8 @@ type Task struct {
 	InvolvedRoles     sql.NullString `gorm:"column:involved_roles" json:"involvedRoles"`      // 任务涉及的 store_type 集合(创建期声明,universe;逗号分隔);NULL=未确定/默认,执行期插件下全量
 	ResourceType      sql.NullString `gorm:"column:resource_type" json:"resourceType"`        // 任务产生的 resource 的资源类型(创建期声明,预定义值);NULL=未声明
 	IncludeWorkInfo   bool           `gorm:"column:include_work_info" json:"includeWorkInfo"` // 是否执行作品元数据板块
+	TaskType          sql.NullString `gorm:"column:task_type" json:"taskType"`                // 任务类型:NULL/空=插件任务;内置类型(share-host/share-receive)经 taskManager 注册的执行面策略执行
+	Payload           sql.NullString `gorm:"column:payload" json:"payload"`                   // 内置任务的执行载荷 JSON(由该类型执行面自有解析,任务模块不感知内容);插件任务恒 NULL
 }
 
 // NewTask 创建任务

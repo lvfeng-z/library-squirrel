@@ -11,6 +11,8 @@ import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
 import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi } from '@renderer/apis/http'
+import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
+import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
 import {emptySettings} from "@renderer/model/util/Settings.js";
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import type { ThemeId } from '@renderer/theme/themes'
@@ -20,6 +22,7 @@ import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/ba
 // onBeforeMount
 onBeforeMount(() => {
   loadSettings()
+  void loadProtocolStatus()
 })
 
 // 变量
@@ -62,6 +65,32 @@ const REPAIR_ACTION_LABEL: Record<string, string> = {
 }
 async function handleSelectTheme(id: ThemeId) {
   await themeStore.setTheme(id)
+}
+// 深链协议注册状态（便携版运行时自注册视图；安装版由安装/卸载器管理 HKLM 键）
+const protocolStatus = ref<ShareProtocolRegStatus | null>(null)
+// 拉取深链协议注册状态（失败静默——非核心功能不阻塞设置页）
+async function loadProtocolStatus(): Promise<void> {
+  try {
+    protocolStatus.value = await shareProtocolStatus()
+  } catch (e) {
+    console.warn('查询深链协议注册状态失败', e)
+  }
+}
+// 取消深链协议注册（便携版无卸载器的清理入口；应用每次启动会重新自注册）
+async function handleUnregisterProtocol(): Promise<void> {
+  const confirm = await ElMessageBox.confirm(
+    '取消后浏览器中的分享链接将不再唤起本应用（下次启动应用时会重新注册）。',
+    '取消深链协议注册',
+    { confirmButtonText: '取消注册', cancelButtonText: '保留', type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirm) return
+  try {
+    await shareUnregisterProtocol()
+    ElMessage.success('已取消深链协议注册')
+    await loadProtocolStatus()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '取消注册失败')
+  }
 }
 // 作品文件名称命名格式对话框开关
 const workSettingsFileNameFormatDialogState: Ref<boolean> = ref(false)
@@ -510,6 +539,37 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     placeholder="relay.example.com"
                     clearable
                   />
+                </el-tooltip>
+                <el-divider
+                  content-position="left"
+                  border-style="dotted"
+                >
+                  <el-text>深链协议注册</el-text>
+                </el-divider>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                  content="library-squirrel:// 分享链接的唤起注册：安装版随安装器写入（卸载时清理），便携版由应用启动时自注册。此入口仅取消便携自注册（HKCU），下次启动会重新注册。"
+                >
+                  <div class="settings-protocol-row">
+                    <el-text
+                      size="small"
+                      :type="protocolStatus?.registered ? 'success' : 'info'"
+                    >
+                      {{ protocolStatus?.registered
+                        ? (protocolStatus.currentExe ? '已注册（当前程序）' : '已注册（其他程序路径）')
+                        : '未注册（非 Windows 平台或未自注册）' }}
+                    </el-text>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      class="tone-fail"
+                      :disabled="!protocolStatus?.registered"
+                      @click="handleUnregisterProtocol"
+                    >
+                      取消注册
+                    </el-button>
+                  </div>
                 </el-tooltip>
                 <el-divider
                   content-position="left"
@@ -1140,6 +1200,13 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 }
 .work-settings-file-name-format-button {
   margin-bottom: 10px;
+}
+.settings-protocol-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 .work-settings-file-name-format-input {
   padding-right: 10px;

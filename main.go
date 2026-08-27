@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/share"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -28,6 +29,10 @@ func init() {
 	application.RegisterEvent[string]("time")
 }
 
+// singleInstanceUniqueID 单实例标识（wails 命名互斥体/消息窗口名组成；深链二启转发与
+// 首实例检测共用，全进程一致）
+const singleInstanceUniqueID = "com.lvfeng.library-squirrel"
+
 // main function serves as the application's entry point. It initializes the application, creates a window,
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
@@ -38,6 +43,12 @@ func main() {
 	}
 	defer logger.Sync()
 	logger.Log.Info("[———————————————— Library Squirrel  初始化⛽ ————————————————]")
+
+	// 深链二启早退：argv 携带深链且已有实例运行时，跳过重初始化以极简实例转发退出
+	if share.FindShareDeepLinkArg(os.Args) != "" && anotherInstanceRunning() {
+		forwardDeepLinkToRunningInstance()
+		return
+	}
 
 	// Create App instance
 	app, err := NewApp()
@@ -58,6 +69,8 @@ func main() {
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
 	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
 	// 'Mac' options tailor the application when running an macOS.
+	// 主窗口引用先声明后赋值：单实例回调在 New 时注册、窗口在其后创建，经闭包延迟读取
+	var mainWindow *application.WebviewWindow
 	wailsApp := application.New(application.Options{
 		Name:        "library-squirrel",
 		Description: "A personal resource library with tag-based search",
@@ -65,6 +78,20 @@ func main() {
 			// 实机测试通道：设置 LS_CDP_PORT 环境变量时开启 WebView2 CDP 远程调试，
 			// 供外部进程驱动真实前端（调用 bindings/读取页面状态）；未设置时零影响
 			AdditionalBrowserArgs: cdpArgsFromEnv(),
+		},
+		// 单实例：二启进程经互斥体检测后将 argv（含深链 URL）转发首实例后自动退出
+		// （顺带根治双开两实例抢 SQLite）；首实例回调提取深链进分享拉取流程并聚焦主窗口
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: singleInstanceUniqueID,
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				if url := share.FindShareDeepLinkArg(data.Args); url != "" {
+					app.ShareService.NotifyIncomingLink(url)
+				}
+				if mainWindow != nil {
+					mainWindow.Show()
+					mainWindow.Focus()
+				}
+			},
 		},
 		Services: []application.Service{
 			application.NewService(app.LocalTagHandler),
@@ -136,6 +163,20 @@ func main() {
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
 	})
+	mainWindow = window
+
+	// 深链冷启动（argv 携带 URL）经 wails URL 事件进入（事件判定要求单 URL 参数；
+	// dev 模式 argv 有附加参数不满足，下方 argv 兜底扫描补位；双通道同源由服务端去重）
+	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(e *application.ApplicationEvent) {
+		if url := e.Context().URL(); url != "" {
+			app.ShareService.NotifyIncomingLink(url)
+		}
+	})
+	// argv 深链兜底扫描（URL 事件判定不满足的启动形态；深链事件可能先于前端就绪，由
+	// NotifyIncomingLink 缓存 + 前端启动消费式拉取衔接）
+	if url := share.FindShareDeepLinkArg(os.Args); url != "" {
+		app.ShareService.NotifyIncomingLink(url)
+	}
 
 	// Set the Wails event emitter for frontend extension pusher and frontend event listener
 	app.SetEventEmitter(wailsApp.Event, func(topic string, callback func(data any)) func() {

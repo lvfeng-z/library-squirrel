@@ -8,7 +8,7 @@ import (
 // TestCountActiveByPlugin 验证插件停用拦截判据：仅统计该插件名下运行中任务
 // （Processing/Pausing/Stopping/WaitingForInput），Created/Paused/终态与其他插件不计
 func TestCountActiveByPlugin(t *testing.T) {
-	mgr := NewManager(2, nil, nil, nil, nil)
+	mgr := NewManager(2, nil, nil, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	const target = "com.example.plugin"

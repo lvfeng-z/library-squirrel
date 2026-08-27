@@ -687,7 +687,7 @@ func TestPrepareForResume_NoBlockAndResetsFields(t *testing.T) {
 // TestDispatch_Exclusive 回归:dispatch 的 actorStarted CAS 保证"一任务一 actor"。
 // 首次 dispatch 成功(actorStarted false→true + 投 cmdStart);重复 dispatch 幂等返回 false。
 func TestDispatch_Exclusive(t *testing.T) {
-	mgr := NewManager(2, nil, nil, nil, nil)
+	mgr := NewManager(2, nil, nil, nil, nil, nil)
 	defer func() {
 		close(mgr.closeCh)
 		<-mgr.flushDone
@@ -710,7 +710,7 @@ func TestDispatch_Exclusive(t *testing.T) {
 // 本测试经 NewManagedTask 构造(生产路径),区别于 newTestManagedTask 的字面量构造——
 // 后者绕过 NewManagedTask,无法捕获创建期的错误赋值(正是此前 bug 的潜伏原因)。
 func TestNewManagedTask_ActorStartedZero(t *testing.T) {
-	mgr := NewManager(2, nil, nil, nil, nil)
+	mgr := NewManager(2, nil, nil, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	task := entity.NewTask()
@@ -729,7 +729,7 @@ func TestNewManagedTask_ActorStartedZero(t *testing.T) {
 // TestPauseTaskTree_PostsCmdPause 回归:PauseTaskTree 对非终态子任务投 cmdPause(actor 命令队列保证 pause 覆盖陈旧 resume)。
 // actor 模型下不再用 pendingResume 标志;本测试验证 cmdPause 被投递到子任务 cmdCh。
 func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
-	mgr := NewManager(2, nil, nil, nil, nil)
+	mgr := NewManager(2, nil, nil, nil, nil, nil)
 	defer func() {
 		close(mgr.closeCh)
 		<-mgr.flushDone

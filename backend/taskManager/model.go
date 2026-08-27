@@ -403,8 +403,11 @@ type ManagedTask struct {
 	drainTimer   *time.Timer // drain 超时兜底定时器:在途数据迟迟不落盘(插件卡死/网络黑洞)时强制 runCancel,退化为有损立即暂停
 	pendingCmds  []taskCmd   // 长任务执行期间 watcher 累积的命令(主循环稍后处理)
 
-	// 任务执行器（通过接口调用）
+	// 任务执行器（通过接口调用；内置任务类型为 nil，主体执行走 strategy）
 	pluginExec TaskExecutor
+
+	// 内置任务类型的执行面策略（task_type 非空时非 nil；主体执行/终态上报经此）
+	strategy ExecutionStrategy
 
 	// 执行模式（Full/ResourceOnly/WorkInfo/Thumbnail）
 	runMode runMode
@@ -647,13 +650,45 @@ func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 	}
 }
 
-// runOnce 执行单次任务主体(run 或跨重启续传)
+// runOnce 执行单次任务主体(运行或跨重启续传)
 func (m *ManagedTask) runOnce() runResult {
+	if m.strategy != nil {
+		return m.runStrategy()
+	}
 	if m.resumeFromDB {
 		logger.Log.Infof("[TaskManager] executeTask: taskId=%d, resumeFromDB=%v", m.taskId, m.resumeFromDB)
 		return m.resumeFromPersistedState()
 	}
 	return m.run()
+}
+
+// runStrategy 内置任务类型的主体执行：委托执行面策略，映射其结果到控制面。
+// 策略经 handle 自行上报终态（Finish/Fail）；RunCtx 取消（暂停/停止）时策略返回
+// 而不上报终态，此处按中断处理（暂停→runResultPaused 交还控制面，停止→handleStopCmd 置 Failed）。
+func (m *ManagedTask) runStrategy() runResult {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("[TaskManager] 内置任务 %d 执行 panic: %v", m.taskId, r)
+			m.setFailed(fmt.Sprintf("任务执行 panic: %v", r))
+		}
+	}()
+	if m.runCtx.Err() != nil {
+		// 命令排队竞态（派发前已取消）：按中断处理，不进执行
+		return runResultPaused
+	}
+	m.setState(TaskStateProcessing)
+	h := newStrategyHandle(m)
+	m.strategy.Execute(h)
+	if h.terminal {
+		return runResultDone
+	}
+	if m.runCtx.Err() != nil {
+		return runResultPaused
+	}
+	// 契约违约防御：既未上报终态也未被取消——置失败终态，避免任务停在 Processing
+	logger.Log.Errorf("[TaskManager] 内置任务 %d 执行器未上报终态", m.taskId)
+	m.setFailed("执行器未上报终态")
+	return runResultDone
 }
 
 // drainTimeout 优雅暂停的 drain 超时阈值:暂停后等待在途数据落盘的最长时间,超时则强制取消 runCtx,退化为有损立即暂停。
@@ -744,13 +779,16 @@ func (m *ManagedTask) handlePauseCmd(cmd taskCmd) {
 			m.runCancel()
 		}
 	}
-	// 通知插件暂停(有上游时关上游 HTTP 保留 validBytes 供 Resume Range 续传;无上游时插件幂等处理)
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceId: m.task.PendingResourceID.Int64,
-	}
-	if err := m.pluginExec.Pause(m.ctx, param); err != nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
+	// 通知插件暂停(有上游时关上游 HTTP 保留 validBytes 供 Resume Range 续传;无上游时插件幂等处理)。
+	// 内置任务类型无插件执行器,RunCtx 取消即中断信号,无需额外通知。
+	if m.pluginExec != nil {
+		param := &sdkdto.TaskResParam{
+			Task:       dto.NewTaskDTO(m.task),
+			ResourceId: m.task.PendingResourceID.Int64,
+		}
+		if err := m.pluginExec.Pause(m.ctx, param); err != nil {
+			logger.Log.Warnf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
+		}
 	}
 	m.setState(TaskStatePaused)
 	if cmd.ack != nil {
@@ -773,12 +811,15 @@ func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
 	for _, s := range m.streams {
 		s.abort()
 	}
-	param := &sdkdto.TaskResParam{
-		Task:       dto.NewTaskDTO(m.task),
-		ResourceId: m.task.PendingResourceID.Int64,
-	}
-	if err := m.pluginExec.Stop(m.ctx, param); err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+	// 内置任务类型无插件执行器;RunCtx 取消即终止信号
+	if m.pluginExec != nil {
+		param := &sdkdto.TaskResParam{
+			Task:       dto.NewTaskDTO(m.task),
+			ResourceId: m.task.PendingResourceID.Int64,
+		}
+		if err := m.pluginExec.Stop(m.ctx, param); err != nil {
+			logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
+		}
 	}
 	m.setFailed("任务被用户停止")
 	if cmd.ack != nil {
@@ -1272,6 +1313,10 @@ func (m *ManagedTask) softDeleteReplaceTargets(ctx context.Context, workId int64
 // 软删行本身即持久还原点）。作品已软删则跳过（两代归回收站作品条目管理）；先清本次新建 store 及其
 // 关联（释放 file_path、摘除断链关联），再按同键最新死代圈定 victim，文件还原回原路径后复活
 func (m *ManagedTask) restoreReplaceTargets(ctx context.Context) {
+	// 内置任务类型不产出/替换 store,与替换回滚链无关(其 workId 为占位 taskId,不得误入作品回滚)
+	if m.strategy != nil {
+		return
+	}
 	if m.workId <= 0 || m.deps.WorkLivenessReader == nil {
 		return
 	}

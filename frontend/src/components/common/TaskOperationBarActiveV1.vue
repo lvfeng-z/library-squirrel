@@ -101,6 +101,12 @@ const status: Ref<number | undefined | null> = computed(() => {
   }
   return isNullish(tempStatus) ? props.row.taskProgress?.task?.status : tempStatus
 })
+// 是否为内置任务类型（share-host/share-receive 等，taskType 非空）：无板块概念，
+// 终态不提供板块重下、完成后的"再次"动作语义为重新执行
+const isBuiltinTask = computed<boolean>(() => {
+  const taskType = props.row.taskProgress?.task?.taskType
+  return notNullish(taskType) && taskType !== ''
+})
 // 进度（百分比）
 const schedule: Ref<number> = computed<number>((oldValue) => {
   const taskId = props.row.taskProgress?.task?.id
@@ -166,7 +172,12 @@ function mapToButtonStatus(): {
   processing: boolean
 } {
   if (notNullish(status.value)) {
-    return taskStatusMapping[status.value]
+    const mapped = taskStatusMapping[status.value]
+    // 内置任务无下载语义：终态"再次下载/重试"文案统一为"重新执行"
+    if (isBuiltinTask.value && (status.value === TaskStatusEnum.FINISHED || status.value === TaskStatusEnum.FAILED)) {
+      return { ...mapped, tooltip: '重新执行' }
+    }
+    return mapped
   } else {
     return taskStatusMapping['0']
   }
@@ -273,9 +284,9 @@ function formatBytes(bytes: number) {
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>
-      <!-- 终态：执行按钮作为 popover 触发器，多选板块重执行 -->
+      <!-- 终态（插件任务）：执行按钮作为 popover 触发器，多选板块重执行 -->
       <el-popover
-        v-else
+        v-else-if="!isBuiltinTask"
         v-model:visible="sectionPopoverVisible"
         trigger="hover"
         placement="bottom"
@@ -311,6 +322,20 @@ function formatBytes(bytes: number) {
           </el-tooltip>
         </div>
       </el-popover>
+      <!-- 终态（内置任务类型）：无板块概念，直接整任务重新执行 -->
+      <el-tooltip
+        v-else
+        :content="mapToButtonStatus().tooltip"
+        :enterable="false"
+        :show-after="650"
+        :hide-after="0"
+      >
+        <el-button
+          size="small"
+          icon="RefreshRight"
+          @click="buttonClicked(row, TaskOperationCodeEnum.RETRY)"
+        />
+      </el-tooltip>
       <el-tooltip
         content="取消"
         :enterable="false"

@@ -41,6 +41,8 @@ resources/bundled-plugins/*.zip
 config.yaml
 config/settings.json
 build/plugins.local.json
+# 分享设备绑定持久实例 ID（运行时生成，溯源用）
+config/share-instance-id
 
 # task-graph 技能的活态任务依赖图（个人进行中状态，非团队共享设计；完成后归档于同目录）
 .claude/workflow/
