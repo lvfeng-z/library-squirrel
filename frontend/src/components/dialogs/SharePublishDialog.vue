@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { shareCancelPublish, sharePublish } from '@renderer/apis/http/wrappers/share'
 import { settingsGetSettings } from '@renderer/apis/http/wrappers/settings'
 import { useShareStore } from '@renderer/store/UseShareStore'
@@ -47,6 +48,14 @@ const inConfig = computed(() => hasSelection.value && !shareId.value && !startin
 
 // 发布过程态（share-events 驱动）
 const publishing = computed(() => (shareId.value ? shareStore.publishings[shareId.value] : undefined))
+
+// 会话运行态（registering 阶段起 state 事件持续推送；中继不可达时为 reconnecting）
+const session = computed(() => (shareId.value ? shareStore.sessions[shareId.value] : undefined))
+
+// 中继重连中（注册阶段连接失败无限退避重试，须向用户透出而非静默等待）
+const relayReconnecting = computed(
+  (): boolean => publishing.value?.phase === 'registering' && session.value?.state === 'reconnecting'
+)
 
 // 取消按钮可用性：发布运行中（收集/注册阶段）
 const canCancel = computed(() => shareId.value !== null && publishing.value?.status === 'running')
@@ -142,7 +151,9 @@ watch(state, (open) => {
     append-to-body
   >
     <div v-if="starting" class="share-dialog-body">
-      <el-progress :percentage="0" :indeterminate="true" :duration="2" />
+      <div class="share-dialog-loading">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+      </div>
       <div class="share-dialog-hint">正在准备分享…</div>
     </div>
 
@@ -160,9 +171,14 @@ watch(state, (open) => {
 
     <div v-else-if="publishing" class="share-dialog-body">
       <template v-if="publishing.status === 'running'">
-        <el-progress :percentage="0" :indeterminate="true" :duration="2" />
+        <div class="share-dialog-loading">
+          <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        </div>
         <div class="share-dialog-status">
           {{ publishing.phase === 'collecting' ? '正在收集分享数据…' : '正在注册到中继…' }}
+        </div>
+        <div v-if="relayReconnecting" class="share-dialog-warn">
+          中继 {{ session?.relayAddress }} 连接失败，重连中——请检查分享中继设置与网络
         </div>
         <div class="share-dialog-footer">
           <el-button :disabled="!canCancel" @click="handleCancel">
@@ -310,6 +326,21 @@ watch(state, (open) => {
 
 .share-dialog-status-fail {
   color: var(--app-status-task-failed-text);
+}
+
+/* 阶段进行中的加载图标（收集/注册阶段无百分比语义，用旋转图标代替进度条） */
+.share-dialog-loading {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+  color: var(--app-text-secondary);
+}
+
+/* 中继重连提示（注册阶段连接失败的透出） */
+.share-dialog-warn {
+  font-size: 13px;
+  color: var(--app-status-warn-text);
+  word-break: break-all;
 }
 
 .share-dialog-detail {

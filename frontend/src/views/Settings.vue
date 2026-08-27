@@ -532,7 +532,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-tooltip
                   placement="top"
                   effect="customized"
-                  content="分享功能的盲转中继地址（host 或 host:port，可带 https:// 前缀；未写端口默认 9527）。官方中继为默认值，可改为社区自建中继。"
+                  content="分享功能的盲转中继地址（host 或 host:port，可带 https:// 前缀；未写端口默认 9527）。官方中继为默认值，可改为自建中继。"
                 >
                   <el-input
                     v-model="settings.shareSettings.relayAddress"
