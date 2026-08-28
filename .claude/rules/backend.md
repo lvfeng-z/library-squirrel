@@ -70,6 +70,7 @@ query.go            — 查询 DTO
 - **NULLABLE_PARAM_USE_POINTER** (P1): 可空参数使用 `*int64`/`*string`（null = 清除关联）。
 - **REMOVE_REDUNDANT_QUERY_FIELDS** (P2): QueryDTO 中禁止为同一列定义多个语义重复的字段（如精确+模糊），保留一个字段通过 `QueryAttribute.operator` 控制匹配方式。
 - **DEAD_CODE_CLEANUP** (P2): 重构后确认无调用方的旧方法直接删除，禁止保留"以防万一"的代码。
+- **SINGLE_CRITERION_PER_SEMANTIC** (P2): 同一语义判定（如「本次是否涉及资源板块」）在一条执行链内只允许一套判据；并存两套即缺陷信号，评审/自查遇到必质疑（先例：替换判定用 `fetchStores`、替换软删 gate 用 `hasAnyStore()` 判同一语义，后者在「空=全量」场景漏走守卫链致孤儿泄漏）。
 - **FIELD_RENAME_GUARD_AUDIT** (P1): 重命名或复用字段承担新职责时，必须审计该字段的**所有读写点**——基于初值的守卫（CAS 首派、状态机初态、零值可用契约）不得被新增赋值破坏。字段命名须反映其唯一真实职责；一个字段禁止同时承担“对象生命周期标志”与“派发/状态守卫”两个初值要求互斥的职责。例：`dispatchState`(三态,零值即初态) 迁移为 `actorStarted`(单 bool) 时，`dispatch` 的 `CAS(false→true)` 守卫依赖初值 false，创建期对其 `Store(true)` 会令守卫恒失败、新任务永不启动。
 - **CONSTRUCTOR_TEST_VIA_FACTORY** (P1): 验证受生产构造函数（`NewXxx`）初始化影响的行为时，测试必须经生产构造函数构造对象，禁止用绕过其初始化的字面量（`&Xxx{}`）来测试该行为；字面量构造仅用于无依赖的纯逻辑测试。否则生产构造中的错误初值对测试不可见（测试恒绿反而掩盖 bug）。
 - **错误处理**：`var ErrXxx = errors.New(...)`，使用 `errors.Is()` 判断。
@@ -77,6 +78,8 @@ query.go            — 查询 DTO
 - **Service 层禁止直接导入** `backend/database`，仅 Repository 层可导入。
 - **RESOURCE_TYPE_STRICT** (P0): 资源类型与 store_type 严格识别——插件 Create 必须声明有效 `ResourceType`（已注册即可：内置 `entity.ResourceType*` 之一含 audio，或插件经 resourceTypes 段注册的自定义类型；unknown 合法），`StoreSpec.Role` 必须 ∈ 7 预定义 `entity.StoreType*`（含 audioMain）；空/未注册值在写入路径抛错（`entity.ValidateResourceType`/`ValidateStoreType`），不推断、不兜底。插件自定义类型注册时强校验（反向域名前缀 + Roles 合法性，`entity.ResourceTypeRegistry.Register`）。展示主体由后端 `ResolvePrimaryStore`（按 PrimaryRoles）派生，前端纯消费。规约见 `doc/resource-type-spec.md`。
 - **STORE_ASSOCIATION_LIVENESS_FILTER** (P1): resource_store 关联保留形态下（store 行软删不摘关联——替换/merge 残留、外部裁决失效行），每挂载键（resource_id+store_type+store_seq）呈「活行 0..1 + 死行 0..N 按代次」。**消费 resource_store 的查询/计数/展示/覆盖判定一律按行活性过滤**——经 JOIN persistent_store 判活（`GetByType`/`CountAliveTypesByResourceId`/`ListAliveByResourceIds`）或展示组装按 storeMap 活行命中过滤（`NewResourceFullDTO`），禁止直接用全量关联形态把软删残留当现役数据（反例：覆盖确认行级判定曾按全量角色集合计算，merge overwrite 轨道残留令同作品重下永远弹覆盖确认，2026-08-22 实测修复）。挂载清理（`DeleteByResourceIdAndTypes`）只摘指向活行的关联；复活按**同键最新死代**（argmax deleted_at）单代圈定（`deriveRevivableStores`/`deriveReplaceVictims`），无差别复活会令双活行同 file_path 撞部分唯一索引。
+- **PREDICATE_NAMING_SUBJECT** (P1): 布尔谓词命名必须自含主语与语义域，**调用点不依赖定义处注释即可无歧义解读**——名字是调用点唯一的语义载体，注释留在定义处不随调用传播。「存在性」与「选择域」等字面易混的语义禁止共用一个名字。反例：`hasAnyStore()`（字面=存量存在，实义=用户选择集非空，runMode 谓词）；正例：`hasSelectedStores()`。新增 `isXxx`/`hasXxx` 谓词时自查「主语是谁、问的是哪个域」。
+- **AMBIGUOUS_VALUE_MUST_ENUM** (P1): 一个字段的空值/零值承载两种及以上业务含义时，必须封装为显式枚举/三态类型（如 None/All/Selected），禁止「靠伴随字段 + 注释区分」的隐式多义约定——歧义留在注释里必有一处调用点丢上下文。反例：`runMode.storeRoles` 空=「插件下全量」或「仅作品信息」由 `fetchStores` 区分——裸读单字段的谓词在定义上就无法独立无歧义。
 - **ORCHESTRATION_BY_CALLER** (P0): 业务编排（串联多个原子能力完成一个流程）归**发起方**模块——发起方通过依赖注入获取各提供方的能力接口，自行串联；**禁止**把多个模块的能力揉进一个「集成器/编排器」接口在某个提供方模块集中实现。例：「拉取插件原站序 + 映射 + 写 site_sort_order」的编排归发起该流程的模块（如入库流程的 `SaveWorkInfo`）；「从插件获取」归 plugin（提供获取接口）、「写入 sort_order」归 workSet（提供写入接口），发起方注入两者并编排。不建 `WorkSetOrderSyncer` 这种把两者揉在单一模块的接口——它会导致模块职责越界。
 
 ## 禁止的做法
