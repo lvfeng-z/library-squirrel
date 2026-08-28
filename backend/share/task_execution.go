@@ -2,7 +2,7 @@ package share
 
 // share-receive 任务的执行面策略（taskManager.ExecutionStrategy 实现，按 task_type 注册进
 // Manager 策略表，app.go 装配）：
-//   - ReceiveExecution：收件人拉取数据流（拉 manifest → 逐文件暂存续传 → ManifestIngestor 回灌导入）
+//   - ReceiveExecution：收件人子任务拉取数据流（读本地共享 manifest → 逐文件暂存续传 → ManifestIngestor 回灌导入）
 //
 // 分享方发布不走任务模块（发布直跑经 Service 内受监督 goroutine 驱动，生命周期落
 // share_record——见 service.go/record.go）。
@@ -27,10 +27,11 @@ import (
 
 // —— share-receive（收件人拉取）——
 //
-// 数据流：反解载荷 → 收件人客户端拨中继 → 拉 manifest → 逐文件拉取至暂存目录
-// （大小对齐即完成；中断后按暂存大小续传，非中止清理）→ ManifestIngestor 回灌导入 →
-// 成功清理暂存。拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从
-// 暂存续传；会话终态（撤销/过期/不存在）以用户可读文案置失败。
+// 数据流：反解子任务载荷 → 读本地共享 manifest（Receive 预拉落盘父任务目录）→ 过滤本作品
+// 子集构造子 manifest → 收件人客户端拨中继逐文件拉取本作品文件至暂存目录（大小对齐即完成；
+// 中断后按暂存大小续传，非中止清理）→ ManifestIngestor 回灌导入子 manifest → 成功清理暂存。
+// 拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从暂存续传；会话终态
+// （撤销/过期/不存在）以用户可读文案置失败。过时载荷（ManifestID==0，存量整体任务）显式 Fail。
 
 // receiveStagingRootName workDir 下的收件暂存目录名（任务行一个子目录；不在 store/ 白名单
 // 子树内，fsmonitor 不感知）
@@ -45,8 +46,8 @@ const (
 
 // ReceiveExecution share-receive（收件人拉取）任务的执行面策略。
 type ReceiveExecution struct {
-	svc        *Service                  // 提供 workDir / instanceID / 测试可覆写参数
-	ingestor   importer.ManifestIngestor // 回灌导入能力（与 import handler 同一实例，app.go 装配）
+	svc        *Service                   // 提供 workDir / instanceID / 测试可覆写参数
+	ingestor   importer.ManifestIngestor  // 回灌导入能力（与 import handler 同一实例，app.go 装配）
 	checker    duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
 	replaceOps resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
 }
@@ -57,8 +58,9 @@ func NewReceiveExecution(svc *Service, ingestor importer.ManifestIngestor,
 	return &ReceiveExecution{svc: svc, ingestor: ingestor, checker: checker, replaceOps: replaceOps}
 }
 
-// Execute 收件人拉取主体：拉取至暂存 → 回灌导入 → 清理暂存并置成功；
-// 失败置用户可读文案（暂存保留供重试续传）；ctx 取消（暂停/停止）不上报终态交控制面接管。
+// Execute 收件人子任务拉取主体：读本地共享 manifest → 过滤本作品子集 → 拉取本作品文件至
+// 暂存 → 回灌导入 → 清理暂存并置成功；失败置用户可读文案（暂存保留供重试续传）；
+// ctx 取消（暂停/停止）不上报终态交控制面接管。过时载荷（ManifestID==0）显式 Fail。
 func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	task := h.Task()
 	payload, err := parseShareReceivePayload(task.Payload.String)
@@ -69,6 +71,27 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	workDir := e.svc.workDir()
 	if workDir == "" {
 		h.Fail("工作目录未配置，无法接收分享")
+		return
+	}
+	if payload.ManifestID == 0 {
+		// 过时载荷（存量整体任务）：新代码不兼容存量，不做迁移或降级
+		h.Fail("请删除本任务后重新接收分享")
+		return
+	}
+	// 读本地共享 manifest（Receive 预拉落盘父任务目录，子任务不重复网络拉取）
+	manifest, err := readSharedManifest(workDir, payload.ManifestPath)
+	if err != nil {
+		h.Fail(err.Error())
+		return
+	}
+	if manifest.SchemaVersion != export.SchemaVersion {
+		h.Fail(fmt.Sprintf("共享 manifest 版本不支持: %d", manifest.SchemaVersion))
+		return
+	}
+	// 构造只含本作品的子 manifest（按 ManifestID 定位本作品，查重/暂存/导入均收窄到本作品）
+	sub, err := buildSubManifest(manifest, payload.ManifestID)
+	if err != nil {
+		h.Fail(err.Error())
 		return
 	}
 	client, err := newReceiveClient(payload, e.svc.instanceID, e.svc.opts)
@@ -83,22 +106,8 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 
-	// 阶段一：拉 manifest（中转字节全量小，一次拉全；瞬态错误退避重试）
-	manifestData, err := fetchWithRetry(ctx, client, &streamRequest{Type: "manifest"}, readAllBody)
-	if err != nil {
-		reportReceiveError(h, ctx, err)
-		return
-	}
-	manifest, err := export.Deserialize(manifestData)
-	if err != nil {
-		h.Fail(fmt.Sprintf("解析 manifest 失败: %v", err))
-		return
-	}
-
-	// 查重 → 确认 → 软删 + 回滚登记（时序改造核心）：确认发生在数据传输前，
-	// 用户选跳过即省去对应作品的全量传输；替换全集作品的软删在此落账（失败/停止
-	// 经控制面 setFailed 单点触发登记的回滚清单复活）
-	plan, canceled, err := e.planReplace(ctx, manifest, h)
+	// 查重 → 确认 → 软删 + 回滚登记（作用域为本作品子集；时序语义同整体路径，见设计七）
+	plan, canceled, err := e.planReplace(ctx, sub, h)
 	if err != nil {
 		reportReceiveError(h, ctx, err)
 		return
@@ -110,14 +119,14 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return // 软删窗口内暂停/停止：回滚清单已登记（交 setFailed 单点），暂停延续替换
 	}
 
-	// 阶段二：逐文件拉取至暂存（断点续传锚 = 暂存已落盘字节数；被裁决跳过作品的文件不拉）
-	if err := e.stageFiles(ctx, client, staging, manifest, fileSkipSet(manifest, plan.skipWorks), h); err != nil {
+	// 阶段二：逐文件拉取至暂存（只拉本作品引用文件；被裁决跳过作品的文件不拉）
+	if err := e.stageFiles(ctx, client, staging, sub, fileSkipSet(sub, plan.skipWorks), h); err != nil {
 		reportReceiveError(h, ctx, err)
 		return
 	}
 
-	// 阶段三：回灌导入（文件源读暂存；入库/查重/落盘全链复用导出回灌能力）。
-	// 替换选项：确认替换与零交集并入全集注入；二者皆空（无命中替换）则保持全跳过旧语义
+	// 阶段三：回灌导入子 manifest（文件源读暂存；入库/查重/落盘全链复用导出回灌能力）。
+	// 替换选项：确认替换与零交集并入并入注入；二者皆空（无命中替换）则保持全跳过旧语义
 	var opts *importer.IngestOptions
 	if len(plan.confirmedWorks) > 0 || len(plan.autoMergeWorks) > 0 {
 		opts = &importer.IngestOptions{
@@ -125,14 +134,72 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 			AutoMergeWorks: plan.autoMergeWorks,
 		}
 	}
-	if _, err := e.ingestor.Ingest(ctx, manifest, stagedFileSource(staging), opts); err != nil {
+	if _, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts); err != nil {
 		reportReceiveError(h, ctx, err)
 		return
 	}
-	// 成功：清理暂存（任务行保留，删除任务行由启动清扫兜底回收）；清理失败不置失败终态
-	// （导入已成功），残留由启动清扫回收
+	// 成功：清理本任务暂存（共享 manifest.json 在父任务目录，不动；残留由启动清扫回收）
 	_ = os.RemoveAll(staging)
 	h.Finish()
+}
+
+// readSharedManifest 读本地共享 manifest：workDir 相对路径（正斜杠 relPath 域），
+// 在 os.ReadFile 调用点现场 join 为绝对路径（absPath 域）。
+func readSharedManifest(workDir, relPath string) (*export.Manifest, error) {
+	if relPath == "" {
+		return nil, errors.New("任务载荷缺少共享 manifest 路径")
+	}
+	data, err := os.ReadFile(filepath.Join(workDir, relPath))
+	if err != nil {
+		return nil, fmt.Errorf("读取共享 manifest 失败: %w", err)
+	}
+	manifest, err := export.Deserialize(data)
+	if err != nil {
+		return nil, fmt.Errorf("解析共享 manifest 失败: %w", err)
+	}
+	return manifest, nil
+}
+
+// buildSubManifest 构造只含本作品的子 manifest（纯数据组装，不改 ManifestIngestor 接口）：
+// Works 仅保留 manifestID 匹配的作品，Files 仅保留本作品 Stores[].StoreID 引用的条目；
+// 站点/作者/标签/作品集保留全集（find-or-create 幂等，多子任务并发导入同一主数据无冲突）。
+// Meta 计数按子 manifest 实际内容更新（仅展示用途，不参与导入判定）。
+func buildSubManifest(src *export.Manifest, manifestID int64) (*export.Manifest, error) {
+	var work *export.WorkRecord
+	for i := range src.Works {
+		if src.Works[i].ID == manifestID {
+			work = &src.Works[i]
+			break
+		}
+	}
+	if work == nil {
+		return nil, fmt.Errorf("共享 manifest 中不存在作品 ID %d", manifestID)
+	}
+	storeIDs := make(map[int64]struct{})
+	for i := range work.Resources {
+		for _, s := range work.Resources[i].Stores {
+			storeIDs[s.StoreID] = struct{}{}
+		}
+	}
+	sub := &export.Manifest{
+		SchemaVersion: src.SchemaVersion,
+		Meta:          src.Meta,
+		Sites:         src.Sites,
+		LocalAuthors:  src.LocalAuthors,
+		SiteAuthors:   src.SiteAuthors,
+		LocalTags:     src.LocalTags,
+		SiteTags:      src.SiteTags,
+		WorkSets:      src.WorkSets,
+		Works:         []export.WorkRecord{*work},
+	}
+	for i := range src.Files {
+		if _, ok := storeIDs[src.Files[i].StoreID]; ok {
+			sub.Files = append(sub.Files, src.Files[i])
+		}
+	}
+	sub.Meta.WorkCount = 1
+	sub.Meta.FileCount = len(sub.Files)
+	return sub, nil
 }
 
 // reportReceiveError 统一的错误收口：ctx 已取消（暂停/停止）不上报终态交控制面接管，
@@ -373,7 +440,6 @@ func fileSkipSet(manifest *export.Manifest, skipWorks map[int64]struct{}) map[in
 	return skip
 }
 
-
 func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient, staging string,
 	manifest *export.Manifest, skipFiles map[int64]struct{}, h taskManager.StrategyHandle) error {
 	// 待拉条目判定：缺包内路径/源缺失标记/被裁决跳过作品的文件 一律跳过
@@ -612,7 +678,9 @@ func safeEntryPath(p string) bool {
 
 // CleanupOrphanReceiveStaging 启动清扫：回收任务行已不存在的收件暂存目录（任务删除后
 // 其暂存随之失去归属；成功任务的暂存已在执行尾清理，此处兜底崩溃残留与已删任务残留）。
-// exists 由调用方提供任务行存在性查询。
+// 收件任务为父子树形态：父目录 {parentID}/ 含共享 manifest.json，子目录为各子任务文件暂存，
+// 三者均为任务 ID 命名的平级子目录——清扫按任务行存在性逐目录独立判定：父行删除回收父目录
+// （含 manifest）、子行删除回收子目录，互不影响。exists 由调用方提供任务行存在性查询。
 func CleanupOrphanReceiveStaging(workDir string, exists func(id int64) bool) error {
 	if workDir == "" {
 		return nil

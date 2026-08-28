@@ -92,6 +92,53 @@ export class SharePublishOptions {
 }
 
 /**
+ * ShareReceiveResult 收件拉取建树结果（决策4 之①：作品名列表供收件侧创建反馈展示）
+ */
+export class ShareReceiveResult {
+    /**
+     * 父任务 ID（进度/终态由任务面板树形承载）
+     */
+    "parentTaskId": number;
+
+    /**
+     * 分享作品数（子任务数）
+     */
+    "workCount": number;
+
+    /**
+     * 作品名列表（净化后；与子任务命名一致）
+     */
+    "workNames": string[];
+
+    /** Creates a new ShareReceiveResult instance. */
+    constructor($$source: Partial<ShareReceiveResult> = {}) {
+        if (!("parentTaskId" in $$source)) {
+            this["parentTaskId"] = 0;
+        }
+        if (!("workCount" in $$source)) {
+            this["workCount"] = 0;
+        }
+        if (!("workNames" in $$source)) {
+            this["workNames"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShareReceiveResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShareReceiveResult {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("workNames" in $$parsedSource) {
+            $$parsedSource["workNames"] = $$createField2_0($$parsedSource["workNames"]);
+        }
+        return new ShareReceiveResult($$parsedSource as Partial<ShareReceiveResult>);
+    }
+}
+
+/**
  * ShareRecordDTO 分享记录行（历史分享账本查询 DTO）。链接由 relayAddress+token+key
  * 重建（与发布时完全一致——复原不换 token/密钥）；密钥/令牌缺失的异常行链接为空。
  */
@@ -191,8 +238,8 @@ export class ShareRecordDTO {
      * Creates a new ShareRecordDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): ShareRecordDTO {
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workIds" in $$parsedSource) {
             $$parsedSource["workIds"] = $$createField4_0($$parsedSource["workIds"]);
@@ -326,3 +373,4 @@ export class ShareSessionDTO {
 
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $Create.Array($Create.Any);

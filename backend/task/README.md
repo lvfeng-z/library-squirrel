@@ -32,10 +32,14 @@
   `Created(0) / Waiting(1) / Processing(2) / Pausing(3) / Paused(4) / Stopping(5) / Finished(6) / Failed(7) / PartlyFinished(8)`
 - **任务类型（task_type）**：NULL/空=插件任务（plugin_public_id 路由执行器）；非空=内置类型（share-host/share-receive 等，经 taskManager 注册的执行面策略执行，`payload` 列承载该类型自有 JSON 载荷）。
 - **任务树**：父任务聚合子任务，父任务状态由子任务聚合得出（PartlyFinished 为父任务聚合态）。
+- **内置任务树建树**（Service 层能力，非 Handler 暴露；经调用方定义的能力接口注入使用，如 share 的 `BuiltinTaskControl`，app.go 装配）：
+  - `CreateBuiltinTaskTree(taskType, parentName, children)`：事务原子创建整树——1 个父容器（has_child=true、pid=NULL、task_type 落值）+ N 个子任务（pid=父ID、has_child=false、task_type/payload 落值），父 ID 在事务内回填子 pid，任一步失败整体回滚。
+  - `CreateBuiltinTaskParent` + `CreateBuiltinTaskChildren`：两段式建树——先建父容器拿 parentID（子任务入参依赖父 ID 的场景，如子任务载荷引用父任务目录下的共享文件路径），再补建子任务；子任务创建非事务，失败由调用方显式 `DeleteTask` 删树回滚。
+  - 入参 `BuiltinTaskChild{TaskName, Payload}`（children 顺序即子任务展示顺序；payload 为执行面自有 JSON，本模块不解析）；错误：子任务为空 `ErrBuiltinTaskNoChildren`、父 ID 无效 `ErrBuiltinTaskChildrenNoParent`。父容器为纯聚合节点（无执行面、无 payload），子任务各自独立执行。
 - **CreateTaskByURL 路由**：URL 匹配插件的 URL 监听器，路由到对应插件创建任务。
 - **leaf/独立任务（pid=NULL 根级）创建高回归区**：无 Children 响应 → 独立 leaf、有 Children → parent+children（不折叠），统一经 `planCreateResponse` 单点判定（stream/array 共用，消除双路径不对称）。根级任务 pid 落 NULL（外键引用 task.id，无 id=0 行，写 0 必违约），子任务 pid=父 ID。改创建路径须保 leaf(pid=NULL) 覆盖，回归测试 `backend/task/service_create_test.go`（fakeRepo 8 例 + OpenTestDB 外键库落盘锚定 1 例）。契约见 `doc/plugin-dev-guide.md`「Create 返回的任务结构契约」。
 
 ## 依赖关系
 
 - 依赖：URL 监听器（`urlListener.ListListener`，由插件提供）、站点 / 作品集查询、事务执行器（Transactor，删除链编排用）、resource.task_id 引用清理（repository 层原生 UPDATE，删任务前置义务）
-- 被依赖：**taskManager**（消费 TaskStatusEnum）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）
+- 被依赖：**taskManager**（消费 TaskStatusEnum）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树，app.go 装配）

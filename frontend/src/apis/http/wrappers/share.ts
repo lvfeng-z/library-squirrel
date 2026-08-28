@@ -4,6 +4,7 @@
  */
 
 import { Handler as ShareHandler } from '@bindings/github.com/library-squirrel/backend/share'
+import { ShareReceiveResult } from '@bindings/github.com/library-squirrel/backend/share/models'
 import type { SharePublishOptions, ShareProtocolRegStatus, ShareRecordDTO, ShareSessionDTO } from '@bindings/github.com/library-squirrel/backend/share/models'
 import { requireResponse } from '../types'
 
@@ -62,13 +63,15 @@ export async function shareDeleteRecord(shareId: string): Promise<void> {
 }
 
 /**
- * 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 创建并启动
- * share-receive 任务，返回任务 ID（进度/终态由任务面板承载）。
- * 链接形态/密钥缺失等前置错误由 requireResponse 抛出 Error，调用方 try/catch 捕获。
+ * 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 同步拉取 manifest →
+ * 创建并启动 share-receive 父子任务树（父任务聚合进度 + 每作品一子任务）。
+ * 返回建树结果（父任务 ID/作品数/作品名列表——作品名供收件侧创建反馈展示，进度/终态由任务面板树形承载）。
+ * 链接形态/密钥缺失/manifest 拉取失败等前置错误由 requireResponse 抛出 Error，调用方 try/catch 捕获。
  */
-export async function shareReceive(link: string, password: string): Promise<number> {
+export async function shareReceive(link: string, password: string): Promise<ShareReceiveResult> {
   const result = requireResponse(await ShareHandler.ShareReceive(link, password), '启动拉取分享')
-  return result.data
+  // requireResponse 已保证 data 非空；空兜底仅消除类型层 `| null` 残余
+  return result.data ?? new ShareReceiveResult()
 }
 
 /**

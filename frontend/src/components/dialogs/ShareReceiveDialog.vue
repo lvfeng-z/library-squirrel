@@ -4,12 +4,14 @@ import { ElMessage } from 'element-plus'
 import { shareReceive } from '@renderer/apis/http/wrappers/share'
 import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
 import { isBlank, isNotBlank } from '@renderer/utils/StringUtil'
-import { askGotoPage } from '@renderer/utils/PageUtil'
-import type GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
+import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
+import { gotoPage } from '@renderer/utils/PageUtil'
 import { PageEnum } from '@renderer/model/constant/PageEnum.ts'
+import type { ShareReceiveResult } from '@bindings/github.com/library-squirrel/backend/share/models'
 
 // 接收分享对话框（MainLayout 挂载，深链到达/手动入口共用）：
-// 粘贴或预填分享链接 → 可选访问密码 → 创建 share-receive 任务（进度/终态由任务面板承载）。
+// 粘贴或预填分享链接 → 可选访问密码 → 创建 share-receive 父子任务树（父任务聚合 + 每作品一子任务；
+// 成功态展示作品名列表——决策4 之①，进度/终态由任务面板承载）。
 // 支持两种链接形态：library-squirrel://share/{中继}/{token}#k={密钥} 与
 // https://{中继}/s/{token}#k={密钥}；完整校验在后端（错误信息在此内联展示）。
 
@@ -23,6 +25,8 @@ const password = ref('')
 const starting = ref(false)
 // 前置错误（链接形态/密钥缺失等，后端校验返回）
 const startError = ref('')
+// 接收成功建树结果（非空=对话框切换为成功态：作品名列表 + 前往任务面板引导）
+const result = ref<ShareReceiveResult | null>(null)
 
 const visible = computed({
   get: (): boolean => receiveStore.visible,
@@ -39,6 +43,7 @@ watch(visible, (v: boolean): void => {
     password.value = ''
     startError.value = ''
     starting.value = false
+    result.value = null
   }
 })
 watch(
@@ -58,26 +63,32 @@ const missingKeyHint = computed((): boolean => {
   return l !== '' && !l.includes('#k=') && !l.includes('?k=')
 })
 
-// 启动拉取：创建并启动 share-receive 任务，成功后引导前往任务面板查看进度
+// 启动拉取：创建并启动 share-receive 父子任务树，成功后对话框切成功态展示作品名列表
 async function handleStart(): Promise<void> {
   if (starting.value || isBlank(link.value)) return
   starting.value = true
   startError.value = ''
   try {
-    await shareReceive(link.value.trim(), password.value)
+    result.value = await shareReceive(link.value.trim(), password.value)
     ElMessage.success('已创建拉取任务')
-    visible.value = false
-    askGotoPage({
-      title: '拉取分享',
-      content: '拉取任务已创建，是否前往任务面板查看进度？拉取完成后内容自动入库。',
-      options: { confirmButtonText: '前往查看' },
-      page: PageEnum.TaskManage
-    } satisfies GotoPageConfig)
   } catch (e) {
     startError.value = e instanceof Error ? e.message : '启动拉取失败'
   } finally {
     starting.value = false
   }
+}
+
+// 成功态：前往任务面板查看进度（父任务聚合 + 子任务作品名/状态/进度/操作）
+async function goTaskPanel(): Promise<void> {
+  visible.value = false
+  result.value = null
+  await gotoPage(PageEnum.TaskManage)
+}
+
+// 成功态：关闭（用户稍后自行到任务面板查看）
+function closeAfterSuccess(): void {
+  visible.value = false
+  result.value = null
 }
 </script>
 
@@ -89,64 +100,108 @@ async function handleStart(): Promise<void> {
     append-to-body
   >
     <div class="share-receive-body">
-      <el-alert
-        class="share-receive-alert"
-        type="info"
-        :closable="false"
-        show-icon
-      >
-        粘贴完整分享链接（含 #k= 解密密钥）；拉取需要分享方保持应用在线，
-        内容端到端加密、中继无法读取。进度与结果在任务面板查看。
-      </el-alert>
+      <template v-if="result">
+        <!-- 成功态：作品名列表（决策4 之①）——收件人创建任务即知分享内容 -->
+        <el-alert
+          class="share-receive-alert"
+          type="success"
+          :closable="false"
+          show-icon
+        >
+          已创建拉取任务，共 {{ result.workCount }} 个作品。每个作品一个子任务，进度与结果在任务面板查看。
+        </el-alert>
+        <div class="share-receive-result-list">
+          <div
+            v-if="arrayNotEmpty(result.workNames)"
+            class="share-receive-result-list-inner"
+          >
+            <div
+              v-for="(name, index) in result.workNames"
+              :key="index"
+              class="share-receive-result-item"
+            >
+              <span class="share-receive-result-index">{{ index + 1 }}</span>
+              <span class="share-receive-result-name">{{ name }}</span>
+            </div>
+          </div>
+          <div v-else class="share-receive-result-empty">
+            未获取到作品名
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <el-alert
+          class="share-receive-alert"
+          type="info"
+          :closable="false"
+          show-icon
+        >
+          粘贴完整分享链接（含 #k= 解密密钥）；拉取需要分享方保持应用在线，
+          内容端到端加密、中继无法读取。进度与结果在任务面板查看。
+        </el-alert>
 
-      <el-input
-        v-model="link"
-        type="textarea"
-        :rows="3"
-        placeholder="library-squirrel://share/{中继}/{token}#k={密钥} 或 https://{中继}/s/{token}#k={密钥}"
-      />
+        <el-input
+          v-model="link"
+          type="textarea"
+          :rows="3"
+          placeholder="library-squirrel://share/{中继}/{token}#k={密钥} 或 https://{中继}/s/{token}#k={密钥}"
+        />
 
-      <el-alert
-        v-if="missingKeyHint"
-        class="share-receive-alert"
-        type="warning"
-        :closable="false"
-        show-icon
-      >
-        链接缺少解密密钥（#k=…），无法解密内容——请向分享方索取完整链接（含 #k= 部分）后粘贴
-      </el-alert>
+        <el-alert
+          v-if="missingKeyHint"
+          class="share-receive-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          链接缺少解密密钥（#k=…），无法解密内容——请向分享方索取完整链接（含 #k= 部分）后粘贴
+        </el-alert>
 
-      <el-input
-        v-model="password"
-        type="password"
-        placeholder="访问密码（分享未设密码时留空）"
-        show-password
-        clearable
-      />
+        <el-input
+          v-model="password"
+          type="password"
+          placeholder="访问密码（分享未设密码时留空）"
+          show-password
+          clearable
+        />
 
-      <el-alert
-        v-if="startError"
-        class="share-receive-alert"
-        type="error"
-        :closable="false"
-        show-icon
-      >
-        {{ startError }}
-      </el-alert>
+        <el-alert
+          v-if="startError"
+          class="share-receive-alert"
+          type="error"
+          :closable="false"
+          show-icon
+        >
+          {{ startError }}
+        </el-alert>
+      </template>
     </div>
 
     <template #footer>
-      <el-button @click="visible = false">
-        取消
-      </el-button>
-      <el-button
-        type="primary"
-        :loading="starting"
-        :disabled="!canSubmit"
-        @click="handleStart"
-      >
-        开始拉取
-      </el-button>
+      <template v-if="result">
+        <el-button @click="closeAfterSuccess">
+          关闭
+        </el-button>
+        <el-button
+          type="primary"
+          @click="goTaskPanel"
+        >
+          前往任务面板查看进度
+        </el-button>
+      </template>
+      <template v-else>
+        <el-button @click="visible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="starting"
+          :disabled="!canSubmit"
+          @click="handleStart"
+        >
+          开始拉取
+        </el-button>
+      </template>
     </template>
   </el-dialog>
 </template>
@@ -160,5 +215,54 @@ async function handleStart(): Promise<void> {
 
 .share-receive-alert {
   flex-shrink: 0;
+}
+
+.share-receive-result-list {
+  max-height: 260px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--app-border-color-lighter);
+  border-radius: var(--app-radius-sm);
+  flex-shrink: 1;
+}
+
+.share-receive-result-list-inner {
+  padding: 4px 0;
+}
+
+.share-receive-result-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 12px;
+}
+
+.share-receive-result-item + .share-receive-result-item {
+  border-top: 1px solid var(--app-border-color-lighter);
+}
+
+.share-receive-result-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  background-color: var(--app-fill-color-dark);
+  border-radius: var(--app-radius-sm);
+  flex-shrink: 0;
+}
+
+.share-receive-result-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-receive-result-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--app-text-secondary);
 }
 </style>

@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1189,4 +1190,127 @@ func TestRestoreRelayUnreachable(t *testing.T) {
 	svc.CancelPublish(context.Background(), "share-9002")
 	time.Sleep(300 * time.Millisecond)
 	waitRecordState(t, repo, "share-9002", RecordStateActive)
+}
+
+// TestMetaPayloadWorksName 设计十：register 帧 meta 携带 worksName（顺序对齐 manifest.Works、
+// site_work_name 优先、次 nick_name、全空名以「作品 {ID}」占位）；bind 帧不携带；空清单不出现该键。
+func TestMetaPayloadWorksName(t *testing.T) {
+	stub := startRelayStub(t)
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	// 扩展清单：ID=2 仅 nick_name、ID=3 全空名——覆盖优先级回落与空名占位
+	model.Manifest.Works = append(model.Manifest.Works,
+		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: strPtr("1002"), NickName: strPtr("昵称作品1002")},
+		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: strPtr("1003")},
+	)
+
+	em := newCaptureEmitter()
+	svc := newTestService(t, stub, workDir, model, em, nil)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "作品名元数据分享", Password: "pw"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	token := comp.Session.Token
+
+	// ① register 帧 meta 含 worksName：顺序对齐 manifest.Works、优先级与占位
+	reg := stub.sessionOf(token).registerHELLO
+	if reg.Meta == nil {
+		t.Fatalf("注册 HELLO 元数据缺失")
+	}
+	want := []string{"测试作品1001", "昵称作品1002", "作品 3"}
+	if !slices.Equal(reg.Meta.WorksName, want) {
+		t.Fatalf("worksName 不符: got %#v, want %#v", reg.Meta.WorksName, want)
+	}
+
+	// ② bind 帧不含 meta（复原重绑不携带元数据，中继侧已存）
+	sess := svc.sessions[shareID]
+	sess.mu.Lock()
+	cur := sess.token
+	sess.mu.Unlock()
+	if cur == "" {
+		t.Fatalf("发布后会话应已持有 token")
+	}
+	hb := sess.buildHello()
+	if hb.Action != "bind" {
+		t.Fatalf("持有 token 应走 bind 分支: %s", hb.Action)
+	}
+	if hb.Meta != nil {
+		t.Fatalf("bind 帧不应携带 meta: %+v", hb.Meta)
+	}
+
+	// ③ 空作品清单 register：worksName 键不出现（omitempty）
+	emptyModel := export.NewExportModel(&export.Manifest{
+		SchemaVersion: export.SchemaVersion,
+		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Works:         []export.WorkRecord{},
+	})
+	key, err := GenerateShareKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	es, err := newShareSession(sessionConfig{
+		id:         "empty-share",
+		title:      "空分享",
+		instanceID: "test-instance-0001",
+		relayDial:  stub.addr,
+		relayHost:  "localhost",
+		workDir:    workDir,
+		key:        key,
+		model:      emptyModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eh := es.buildHello()
+	if eh.Meta == nil {
+		t.Fatalf("空分享 register 仍应有 meta")
+	}
+	raw, err := json.Marshal(eh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("worksName")) {
+		t.Fatalf("空分享 register 帧不应含 worksName 键: %s", raw)
+	}
+}
+
+// TestMetaPayloadWorksNameSanitized 跨仓契约修复（阶段3）：metaWorksName 每个作品名须净化——
+// 剔除控制字符、截断 200 rune（relay 侧 worksName 单名校验 ≤200 rune 且禁控制字符，不净化会被
+// 中继以 malformed 拒绝）。与收件侧子任务命名、Receive 返回 workNames 共用 sanitizedWorkName。
+func TestMetaPayloadWorksNameSanitized(t *testing.T) {
+	stub := startRelayStub(t)
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	// 追加：含换行/制表/回车控制字符的作品名 + 超长（>200 rune）作品名
+	long := strings.Repeat("长", 250)
+	model.Manifest.Works = append(model.Manifest.Works,
+		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: strPtr("1002"), SiteWorkName: strPtr("作品\n带换行\t和制表\r控制")},
+		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: strPtr("1003"), SiteWorkName: strPtr(long)},
+	)
+
+	em := newCaptureEmitter()
+	svc := newTestService(t, stub, workDir, model, em, nil)
+	_, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "作品名净化分享"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	reg := stub.sessionOf(comp.Session.Token).registerHELLO
+	if reg.Meta == nil {
+		t.Fatalf("注册 HELLO 元数据缺失")
+	}
+	if len(reg.Meta.WorksName) != 3 {
+		t.Fatalf("worksName 数量不符: got %d, want 3", len(reg.Meta.WorksName))
+	}
+	// 控制字符（\n\t\r）被剔除
+	if reg.Meta.WorksName[1] != "作品带换行和制表控制" {
+		t.Fatalf("控制字符未净化: %q", reg.Meta.WorksName[1])
+	}
+	// 超长截断到 200 rune
+	if got := len([]rune(reg.Meta.WorksName[2])); got != 200 {
+		t.Fatalf("超长作品名未截断: %d rune", got)
+	}
+	if want := string([]rune(long)[:200]); reg.Meta.WorksName[2] != want {
+		t.Fatalf("截断内容不符: got %q, want %q", reg.Meta.WorksName[2], want)
+	}
 }

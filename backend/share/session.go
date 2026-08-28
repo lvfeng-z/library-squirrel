@@ -327,7 +327,7 @@ func (s *shareSession) buildHello() *helloPayload {
 		h.Action = "register"
 		h.PasswordHash = s.cfg.passwordHash
 		h.ExpireSeconds = s.cfg.expireSecs
-		h.Meta = &metaPayload{Title: s.cfg.title, WorkCount: s.metaWorkCount, Source: s.metaSource()}
+		h.Meta = &metaPayload{Title: s.cfg.title, WorkCount: s.metaWorkCount, Source: s.metaSource(), WorksName: s.metaWorksName()}
 	} else {
 		h.Action = "bind"
 		h.Token = token
@@ -364,6 +364,35 @@ func (s *shareSession) metaSource() string {
 		src += "/" + n
 	}
 	return SanitizeMetaText(src, 100)
+}
+
+// sanitizedWorkName 作品名净化（与 title/source 同款）：site_work_name 优先、次 nick_name、
+// 全空以「作品 {ID}」占位，净化控制字符并截断到 200 rune。收件侧子任务命名与落地页 worksName
+// 三处共用同一净化后作品名；relay 侧对 worksName 单名校验 ≤200 rune 且禁控制字符，不净化会被
+// 中继以 malformed 拒绝（跨仓契约，见方案风险8）。
+func sanitizedWorkName(w *export.WorkRecord) string {
+	name := ""
+	if w.SiteWorkName != nil {
+		name = *w.SiteWorkName
+	}
+	if name == "" && w.NickName != nil {
+		name = *w.NickName
+	}
+	if name == "" {
+		name = fmt.Sprintf("作品 %d", w.ID)
+	}
+	return SanitizeMetaText(name, 200)
+}
+
+// metaWorksName 落地页作品名列表：按 manifest.Works 顺序取净化后作品名（与收件侧子任务命名一致）。
+// 仅 register 上传，bind 复原不携带。
+func (s *shareSession) metaWorksName() []string {
+	works := s.cfg.model.Manifest.Works
+	names := make([]string, 0, len(works))
+	for i := range works {
+		names = append(names, sanitizedWorkName(&works[i]))
+	}
+	return names
 }
 
 // acceptWelcome 记录 WELCOME；返回是否为「首次在线」（首次时置 online 并复位退避由 run 处理）。

@@ -417,6 +417,113 @@ func (s *Service) CreateBuiltinTask(ctx context.Context, taskType string, taskNa
 	return task, nil
 }
 
+// BuiltinTaskChild 内置任务树子任务入参：任务名 + 载荷（执行面自有 JSON，任务模块不解析其内容）。
+// children 顺序即子任务展示顺序（任务树查询按创建序返回子任务）。
+type BuiltinTaskChild struct {
+	TaskName string
+	Payload  string
+}
+
+// ErrBuiltinTaskNoChildren 创建内置任务树时子任务为空
+var ErrBuiltinTaskNoChildren = &pkgerr.BusinessError{Code: 400, Message: "子任务为空"}
+
+// ErrBuiltinTaskChildrenNoParent 创建内置任务树子任务时父任务 ID 无效
+var ErrBuiltinTaskChildrenNoParent = &pkgerr.BusinessError{Code: 400, Message: "父任务 ID 无效"}
+
+// newBuiltinTaskParent 构造内置任务树父容器实体：has_child=1（Valid=true）、pid=NULL、task_type 落值。
+// has_child 落 1 而非 NULL——任务树查询以 has_child=0/1 二值圈定 children/parent，NULL 与两分支
+// 皆不匹配（行从树查询消失），同 CreateBuiltinTask 的叶子二值落法。
+func newBuiltinTaskParent(taskType string, parentName string) *entity.Task {
+	return &entity.Task{
+		BaseEntity: &model.BaseEntity{},
+		TaskName:   sql.NullString{String: parentName, Valid: true},
+		Status:     int(TaskStatusCreated),
+		TaskType:   sql.NullString{String: taskType, Valid: true},
+		HasChild:   sql.NullBool{Bool: true, Valid: true},
+	}
+}
+
+// newBuiltinTaskChild 构造内置任务树子任务实体：pid=parentID、has_child=false、task_type/payload 落值。
+func newBuiltinTaskChild(taskType string, parentID int64, c BuiltinTaskChild) *entity.Task {
+	return &entity.Task{
+		BaseEntity: &model.BaseEntity{},
+		Pid:        sql.NullInt64{Int64: parentID, Valid: true},
+		TaskName:   sql.NullString{String: c.TaskName, Valid: true},
+		Status:     int(TaskStatusCreated),
+		TaskType:   sql.NullString{String: taskType, Valid: true},
+		Payload:    sql.NullString{String: c.Payload, Valid: c.Payload != ""},
+		HasChild:   sql.NullBool{Bool: false, Valid: true},
+	}
+}
+
+// CreateBuiltinTaskTree 创建内置任务树：1 个父容器（task_type=taskType、has_child=true、pid=NULL）
+// + N 个子任务（pid=父任务ID、has_child=false、task_type=taskType）。
+// 事务内建父得 ID → 回填子 pid；任一步失败整体回滚。返回父任务（含 ID）。
+// 父容器为纯聚合节点（has_child=1），无执行面；子任务各自独立执行。
+func (s *Service) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []BuiltinTaskChild) (*entity.Task, error) {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == "" {
+		return nil, ErrTaskTypeEmpty
+	}
+	if len(children) == 0 {
+		return nil, ErrBuiltinTaskNoChildren
+	}
+	parent := newBuiltinTaskParent(taskType, parentName)
+	err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.CreateTask(txCtx, parent); err != nil {
+			return err
+		}
+		parentID := parent.GetID()
+		for _, c := range children {
+			if err := s.repo.CreateTask(txCtx, newBuiltinTaskChild(taskType, parentID, c)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parent, nil
+}
+
+// CreateBuiltinTaskParent 创建内置任务树父容器（has_child=true、pid=NULL、task_type 落值）。
+// 单独建父供调用方在「子任务入参依赖父任务 ID」的场景——如收件建树先建父任务、落盘共享清单
+// 到父任务目录、再建子任务（子任务载荷含清单路径）；失败回滚由调用方显式 DeleteTask 整树。
+func (s *Service) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity.Task, error) {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == "" {
+		return nil, ErrTaskTypeEmpty
+	}
+	parent := newBuiltinTaskParent(taskType, parentName)
+	if err := s.repo.CreateTask(ctx, parent); err != nil {
+		return nil, err
+	}
+	return parent, nil
+}
+
+// CreateBuiltinTaskChildren 在既有父任务下创建内置任务树子任务（pid=parentID、has_child=false、
+// task_type/payload 落值）。children 顺序即子任务展示顺序。非事务——调用方（share Receive 建树）
+// 在建子失败时自行 DeleteTask 回滚整树（决策5 显式删树语义）。
+func (s *Service) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []BuiltinTaskChild) error {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == "" {
+		return ErrTaskTypeEmpty
+	}
+	if parentID <= 0 {
+		return ErrBuiltinTaskChildrenNoParent
+	}
+	if len(children) == 0 {
+		return ErrBuiltinTaskNoChildren
+	}
+	for _, c := range children {
+		if err := s.repo.CreateTask(ctx, newBuiltinTaskChild(taskType, parentID, c)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteTask 删除任务（包含子任务）- 批量删除
 // 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）
 func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {

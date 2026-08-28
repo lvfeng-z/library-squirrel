@@ -67,12 +67,13 @@ export function SharePublish(workIDs: number[], workSetIDs: number[], options: $
 }
 
 /**
- * ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→
- * 创建并启动 share-receive 任务，返回任务 ID（进度/终态由任务面板承载）。
+ * ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 同步预拉
+ * manifest → 建父子任务树（父容器 + 每作品一子任务）→ 共享 manifest 落盘 → 整树启动。
+ * 返回 {parentTaskId, workCount, workNames}（进度/终态由任务面板承载）。
  */
-export function ShareReceive(link: string, password: string): $CancellablePromise<model$0.ApiResponse<number> | null> {
+export function ShareReceive(link: string, password: string): $CancellablePromise<model$0.ApiResponse<$models.ShareReceiveResult | null> | null> {
     return $Call.ByID(980252716, link, password).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -81,7 +82,7 @@ export function ShareReceive(link: string, password: string): $CancellablePromis
  */
 export function ShareRecords(): $CancellablePromise<model$0.ApiResponse<($models.ShareRecordDTO | null)[]> | null> {
     return $Call.ByID(2429072535).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
@@ -99,7 +100,7 @@ export function ShareRevoke(shareID: string): $CancellablePromise<model$0.ApiRes
  */
 export function ShareSessions(): $CancellablePromise<model$0.ApiResponse<($models.ShareSessionDTO | null)[]> | null> {
     return $Call.ByID(1815905174).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType21($result);
     });
 }
 
@@ -122,15 +123,17 @@ const $$createType4 = $models.ShareProtocolRegStatus.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType8 = $models.ShareReceiveResult.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.ShareRecordDTO.createFrom;
+const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = $models.ShareSessionDTO.createFrom;
+const $$createType12 = $models.ShareRecordDTO.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = model$0.ApiResponse.createFrom($$createType14);
 const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = model$0.ApiResponse.createFrom($$createType17);
-const $$createType19 = $Create.Nullable($$createType18);
+const $$createType17 = $models.ShareSessionDTO.createFrom;
+const $$createType18 = $Create.Nullable($$createType17);
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = model$0.ApiResponse.createFrom($$createType19);
+const $$createType21 = $Create.Nullable($$createType20);

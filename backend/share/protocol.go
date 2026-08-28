@@ -165,9 +165,10 @@ type helloPayload struct {
 
 // metaPayload 落地页文字元数据（预览最小化：仅文字，无任何图像字段）
 type metaPayload struct {
-	Title     string `json:"title"`     // ≤200 字符、无控制字符
-	WorkCount int64  `json:"workCount"` // 0..1e9
-	Source    string `json:"source"`    // ≤100 字符（来源站点，落地页强制展示）
+	Title     string   `json:"title"`               // ≤200 字符、无控制字符
+	WorkCount int64    `json:"workCount"`           // 0..1e9
+	Source    string   `json:"source"`              // ≤100 字符（来源站点，落地页强制展示）
+	WorksName []string `json:"worksName,omitempty"` // 各作品名（register 明文上传；bind 复原不携带，中继侧已存）
 }
 
 // welcomePayload WELCOME 载荷（register 应答含新 token；bind 应答仅 expiresAt）

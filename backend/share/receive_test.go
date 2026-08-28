@@ -15,7 +15,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
@@ -187,8 +190,9 @@ type receiveTestEnv struct {
 	recvSvc    *Service
 	em         *captureEmitter
 	link       string
-	workDir    string // 宿主源文件目录
-	recvDir    string // 收件方工作目录（暂存根）
+	workDir    string           // 宿主源文件目录
+	recvDir    string           // 收件方工作目录（暂存根）
+	manifest   *export.Manifest // 规划后共享 manifest（写本地共享文件用）
 	ingestor   *fakeIngestor
 	dialer     *recordingDialer
 	sourceData map[string][]byte
@@ -202,6 +206,14 @@ func startReceiveEnv(t *testing.T, opts SharePublishOptions) *receiveTestEnv {
 // startReceiveEnvModel 发布分享并构建收件执行器夹具（自定义导出模型构建器）
 func startReceiveEnvModel(t *testing.T, opts SharePublishOptions,
 	build func(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte)) *receiveTestEnv {
+	return startReceiveEnvWithTaskCtl(t, opts, build, nil)
+}
+
+// startReceiveEnvWithTaskCtl 同 startReceiveEnvModel，但收件 Service 注入指定 taskCtl
+// （阶段3 建树流程测试注入 fakeBuiltinTaskControl）。
+func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
+	build func(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte),
+	taskCtl BuiltinTaskControl) *receiveTestEnv {
 	t.Helper()
 	stub := startRelayStub(t)
 
@@ -223,13 +235,13 @@ func startReceiveEnvModel(t *testing.T, opts SharePublishOptions,
 	recvDir := t.TempDir()
 	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
-		"recipient-instance-0001", nil, nil)
+		"recipient-instance-0001", nil, taskCtl)
 	recvSvc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})
 
 	return &receiveTestEnv{
 		stub: stub, hostSvc: hostSvc, recvSvc: recvSvc, em: em,
 		link: comp.Link, workDir: hostWorkDir, recvDir: recvDir,
-		ingestor: &fakeIngestor{}, dialer: dialer, sourceData: sourceData,
+		manifest: model.Manifest, ingestor: &fakeIngestor{}, dialer: dialer, sourceData: sourceData,
 	}
 }
 
@@ -272,15 +284,40 @@ func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	return export.NewExportModel(manifest), map[string][]byte{relA: contentA, relB: contentB}
 }
 
-// buildReceiveHandle 构建收件任务与执行句柄（载荷由链接解析产物构建；cancel 供暂停路径）
+// testParentTaskID 收件父子树测试的父任务 ID（共享 manifest 落盘目录锚；子任务 ID 用 777 起）
+const testParentTaskID = 999
+
+// writeSharedManifest 将共享 manifest（规划后）序列化落盘到收件方父任务目录，
+// 返回 workDir 相对路径（正斜杠 relPath 域，与子任务载荷 ManifestPath 同构）
+func (env *receiveTestEnv) writeSharedManifest(t *testing.T) string {
+	t.Helper()
+	data, err := env.manifest.Serialize()
+	require.NoError(t, err)
+	abs := env.manifestPathOf()
+	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+	require.NoError(t, os.WriteFile(abs, data, 0o644))
+	return path.Join(receiveStagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
+}
+
+// buildReceiveHandle 构建收件子任务与执行句柄（默认负责共享 manifest 第一个作品；
+// cancel 供暂停路径）
 func (env *receiveTestEnv) buildReceiveHandle(t *testing.T, password string) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution) {
 	t.Helper()
+	require.NotEmpty(t, env.manifest.Works, "共享 manifest 应含作品")
+	return env.buildReceiveHandleForWork(t, password, env.manifest.Works[0].ID, 777)
+}
+
+// buildReceiveHandleForWork 构建收件子任务与执行句柄（指定负责的 manifest 作品 ID 与任务 ID）：
+// 写本地共享 manifest + 子任务载荷（ManifestPath/ManifestID）落任务行
+func (env *receiveTestEnv) buildReceiveHandleForWork(t *testing.T, password string, manifestID, taskID int64) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution) {
+	t.Helper()
+	rel := env.writeSharedManifest(t)
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
-	payload, err := newShareReceivePayload(target, password)
+	payload, err := newShareReceiveChildPayload(target, password, rel, manifestID)
 	require.NoError(t, err)
 	task := entity.NewTask()
-	task.ID = 777
+	task.ID = taskID
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
 	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, cancel := newReceiveHandle(task)
@@ -288,12 +325,21 @@ func (env *receiveTestEnv) buildReceiveHandle(t *testing.T, password string) (*f
 	return h, cancel, exec
 }
 
-// buildDupHandle 构建带查重/替换能力的收件任务、执行句柄与执行器（cancel 供暂停路径；
+// buildDupHandle 构建带查重/替换能力的收件子任务、执行句柄与执行器（默认第一个作品；
 // checker/ops 缺省为空桩，断言经返回的 ops 落地）
 func (env *receiveTestEnv) buildDupHandle(t *testing.T, password string,
 	checker *fakeDuplicateChecker, ops *fakeReplaceOps) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution, *fakeReplaceOps) {
 	t.Helper()
-	h, cancel, _ := env.buildReceiveHandle(t, password)
+	require.NotEmpty(t, env.manifest.Works, "共享 manifest 应含作品")
+	return env.buildDupHandleForWork(t, password, env.manifest.Works[0].ID, 777, checker, ops)
+}
+
+// buildDupHandleForWork 构建带查重/替换能力的收件子任务、执行句柄与执行器（指定作品与任务 ID；
+// cancel 供暂停路径；checker/ops 缺省为空桩，断言经返回的 ops 落地）
+func (env *receiveTestEnv) buildDupHandleForWork(t *testing.T, password string, manifestID, taskID int64,
+	checker *fakeDuplicateChecker, ops *fakeReplaceOps) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution, *fakeReplaceOps) {
+	t.Helper()
+	h, cancel, _ := env.buildReceiveHandleForWork(t, password, manifestID, taskID)
 	if checker == nil {
 		checker = &fakeDuplicateChecker{}
 	}
@@ -340,11 +386,11 @@ type softDeleteCall struct {
 
 // fakeReplaceOps 替换链桩：记录软删调用与回滚复活范围；cancelAfter 供软删窗口暂停注入
 type fakeReplaceOps struct {
-	mu          sync.Mutex
-	softCalls   []softDeleteCall
-	softErr     error
-	victimBase  int64 // 每次软删返回的 victim StoreID 起始（0=返回空清单）
-	cancelAfter context.CancelFunc
+	mu            sync.Mutex
+	softCalls     []softDeleteCall
+	softErr       error
+	victimBase    int64 // 每次软删返回的 victim StoreID 起始（0=返回空清单）
+	cancelAfter   context.CancelFunc
 	restoreScopes []resource.RestoreScope
 }
 
@@ -378,7 +424,17 @@ func (f *fakeReplaceOps) RestoreReplacedStores(ctx context.Context, scope resour
 
 // stagingDirOf 夹具暂存目录（任务 777）
 func (env *receiveTestEnv) stagingDirOf() string {
-	return filepath.Join(env.recvDir, receiveStagingRootName, "777")
+	return env.stagingDirOfTask(777)
+}
+
+// stagingDirOfTask 指定任务 ID 的暂存目录
+func (env *receiveTestEnv) stagingDirOfTask(taskID int64) string {
+	return filepath.Join(env.recvDir, receiveStagingRootName, strconv.FormatInt(taskID, 10))
+}
+
+// manifestPathOf 共享 manifest 的绝对路径（父任务目录内；子任务 Finish 清理自己暂存不动它）
+func (env *receiveTestEnv) manifestPathOf() string {
+	return filepath.Join(env.stagingDirOfTask(testParentTaskID), "manifest.json")
 }
 
 // waitExecuteDone 同步执行并等待终态（Execute 阻塞直至终态或取消，直接调用即可）
@@ -449,22 +505,76 @@ func TestReceiveExecutionEndToEnd(t *testing.T) {
 		}
 	}
 	assert.NoDirExists(t, env.stagingDirOf(), "成功后暂存应清理")
+	assert.FileExists(t, env.manifestPathOf(), "共享 manifest 在父目录，子任务 Finish 清理自己暂存不动它")
+}
+
+// TestReceiveExecutionSubTaskFiltersWork 子任务只处理本作品（设计四/五/六）：
+// 双作品模型，子任务负责作品 B（ID 2）→ 读本地共享 manifest → 过滤出本作品子集 →
+// 只拉本作品引用文件 → 导入子 manifest（Works 仅本作品、Files 仅本作品引用文件）
+func TestReceiveExecutionSubTaskFiltersWork(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildTwoWorkModel)
+	h, _, exec := env.buildReceiveHandleForWork(t, "", 2, 777)
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败信息: %s", failed)
+
+	// 导入的是子 manifest：仅本作品 + 仅本作品引用文件
+	env.ingestor.mu.Lock()
+	defer env.ingestor.mu.Unlock()
+	require.Equal(t, 1, env.ingestor.called, "回灌导入应恰好调用一次")
+	require.Len(t, env.ingestor.manifest.Works, 1, "子 manifest 应只含本作品")
+	require.Equal(t, int64(2), env.ingestor.manifest.Works[0].ID, "子 manifest 作品应为作品 B")
+	require.Len(t, env.ingestor.manifest.Files, 1, "子 manifest 应只含本作品引用文件")
+	require.Equal(t, int64(201), env.ingestor.manifest.Files[0].StoreID, "应只含作品 B 的 StoreID 201")
+	// 作品 A 的文件（StoreID 101）不得进入子 manifest
+	for _, entry := range env.ingestor.manifest.Files {
+		require.NotEqual(t, int64(101), entry.StoreID, "作品 A 的文件不应进入子 manifest")
+	}
+	// 本作品文件内容经暂存导入（与源逐字节一致）
+	file := env.ingestor.manifest.Files[0]
+	assert.Equal(t, env.sourceData[file.StorePath], env.ingestor.contents[file.Path], "作品 B 文件内容应与源一致")
+	assert.NoDirExists(t, env.stagingDirOf(), "成功后暂存应清理")
+
+	// 网络请求：manifest 已本地读取（无 manifest 请求），仅拉作品 B 的文件（无作品 A 文件请求）
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 1, "应恰有作品 B 文件一个请求，实际: %+v", reqs)
+	assert.Equal(t, "file", reqs[0].Type)
+	assert.Equal(t, file.Path, reqs[0].Path)
+}
+
+// TestReceiveExecutionOverduePayloadFails 过时载荷（ManifestID==0，存量整体任务）显式 Fail
+// 并返回用户可读文案（决策2 不兼容存量，不做迁移或降级）
+func TestReceiveExecutionOverduePayloadFails(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	// 旧载荷：newShareReceivePayload 不写子任务字段 → ManifestID==0（过时载荷）
+	payload, err := newShareReceivePayload(target, "")
+	require.NoError(t, err)
+	task := entity.NewTask()
+	task.ID = 777
+	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
+	task.Payload = sql.NullString{String: payload, Valid: true}
+	h, _ := newReceiveHandle(task)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil)
+
+	finished, failed := waitExecuteDone(t, h, exec)
+	assert.False(t, finished, "过时载荷不应成功")
+	assert.Equal(t, "请删除本任务后重新接收分享", failed)
 }
 
 // TestReceiveExecutionResumeFromStaging 断点续传：预置完整小文件 + 半个大文件暂存，
-// 重执行仅请求 manifest 与大文件剩余部分（offset 锚 = 已暂存字节数）
+// 重执行仅请求大文件剩余部分（offset 锚 = 已暂存字节数；manifest 已本地读取，无网络请求）
 func TestReceiveExecutionResumeFromStaging(t *testing.T) {
 	env := startReceiveEnv(t, SharePublishOptions{})
 
-	// 包内路径经同一模型重新规划取得（规划为纯计算，对同模型产物确定）
-	planModel, sourceData := buildTestModel(t, env.workDir)
-	_, err := export.NewPacker().Plan(context.Background(), env.workDir, planModel)
-	require.NoError(t, err)
+	// 共享 manifest 已含规划后包内路径（startReceiveEnvModel 规划产物）
 	var smallPath, bigPath string
 	var bigSize int64
 	var bigData []byte
-	for i := range planModel.Manifest.Files {
-		f := &planModel.Manifest.Files[i]
+	for i := range env.manifest.Files {
+		f := &env.manifest.Files[i]
 		if f.Missing {
 			continue
 		}
@@ -475,7 +585,7 @@ func TestReceiveExecutionResumeFromStaging(t *testing.T) {
 		if bigPath == "" {
 			bigPath = f.Path
 			bigSize = f.Size
-			bigData = sourceData[f.StorePath]
+			bigData = env.sourceData[f.StorePath]
 		}
 	}
 	require.NotEmpty(t, bigPath, "夹具应含两个非缺失文件")
@@ -484,22 +594,21 @@ func TestReceiveExecutionResumeFromStaging(t *testing.T) {
 	staging := env.stagingDirOf()
 	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(staging, filepath.FromSlash(bigPath))), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(staging, filepath.FromSlash(smallPath)),
-		sourceData[planModel.Manifest.Files[0].StorePath], 0o644))
+		env.sourceData[env.manifest.Files[0].StorePath], 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(staging, filepath.FromSlash(bigPath)), bigData[:bigSize/2], 0o644))
 
 	h, _, exec := env.buildReceiveHandle(t, "")
 	finished, failed := waitExecuteDone(t, h, exec)
 	require.True(t, finished, "应成功终态，失败信息: %s", failed)
 
-	// 请求锚断言：manifest + file(big, offset=bigSize/2)；小文件应跳过（无请求）
+	// 请求锚断言：子任务只拉本作品文件；小文件已完整暂存跳过，仅大文件续传（无 manifest 请求）
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
 	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
-	require.Len(t, reqs, 2, "应恰有 manifest 与大文件续传两个请求，实际: %+v", reqs)
-	assert.Equal(t, "manifest", reqs[0].Type)
-	assert.Equal(t, "file", reqs[1].Type)
-	assert.Equal(t, bigPath, reqs[1].Path)
-	assert.Equal(t, bigSize/2, reqs[1].Offset, "续传 offset 应为已暂存字节")
+	require.Len(t, reqs, 1, "应恰有大文件续传一个请求，实际: %+v", reqs)
+	assert.Equal(t, "file", reqs[0].Type)
+	assert.Equal(t, bigPath, reqs[0].Path)
+	assert.Equal(t, bigSize/2, reqs[0].Offset, "续传 offset 应为已暂存字节")
 
 	// 续传产物与源一致
 	env.ingestor.mu.Lock()
@@ -510,6 +619,7 @@ func TestReceiveExecutionResumeFromStaging(t *testing.T) {
 // TestReceiveExecutionDialTerminal 中继终态拒绝（未知 token）→ 失败终态 + 用户可读文案
 func TestReceiveExecutionDialTerminal(t *testing.T) {
 	env := startReceiveEnv(t, SharePublishOptions{})
+	rel := env.writeSharedManifest(t)
 	// 篡改 token 为不存在的会话
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
@@ -517,7 +627,7 @@ func TestReceiveExecutionDialTerminal(t *testing.T) {
 		RelayDial: target.RelayDial, RelayHost: target.RelayHost,
 		Token: "zzzzzzzzzzzzzzzzzzzzzz", Key: target.Key,
 	}
-	payload, err := newShareReceivePayload(badTarget, "")
+	payload, err := newShareReceiveChildPayload(badTarget, "", rel, env.manifest.Works[0].ID)
 	require.NoError(t, err)
 	task := entity.NewTask()
 	task.ID = 777
@@ -590,65 +700,131 @@ func TestCleanupOrphanReceiveStaging(t *testing.T) {
 	require.NoError(t, CleanupOrphanReceiveStaging("", nil))
 }
 
-// —— 查重接入普通下载轨道：端到端时序（设计五）与中断窗口三态（设计六） ——
+// TestCleanupOrphanReceiveStagingTreeForm 启动清扫的父子树形态：收件任务为「父容器 + 每作品一
+// 子任务」，目录布局为父目录 {parentID}/ 含共享 manifest.json、子目录为各子任务文件暂存，三者
+// 均按任务 ID 命名的平级子目录——清扫按任务行存在性逐目录独立判定：父行删除回收父目录（含
+// manifest）、子行删除回收子目录；父目录 manifest 在父行删除前不动（子任务 Finish 只清自己的
+// 暂存目录，见 TestReceiveExecutionEndToEnd 断言）。
+func TestCleanupOrphanReceiveStagingTreeForm(t *testing.T) {
+	workDir := t.TempDir()
+	root := filepath.Join(workDir, receiveStagingRootName)
 
-// TestReceiveExecutionReplaceConfirm 冲突弹窗决策替换（多作品整体决策）：
-// 两个冲突作品经 WaitReplaceConfirm 整体答复替换 → 各自按交集角色软删 + 回滚登记 →
-// 回灌 ReplaceWorks 全集（两 manifest 作品均入替换集）
-func TestReceiveExecutionReplaceConfirm(t *testing.T) {
-	env := startReceiveEnvModel(t, SharePublishOptions{}, buildTwoWorkModel)
-	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
-		{hitConflict(500, "作品A", []string{entity.StoreTypeImage}), hitConflict(600, "作品B", []string{entity.StoreTypeImage})},
-	}}
-	ops := &fakeReplaceOps{victimBase: 900}
-	h, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
-	h.confirmDecision = taskManager.ReplaceDecisionReplace
-	finished, failed := waitExecuteDone(t, h, exec)
-	require.True(t, finished, "应成功终态，失败: %s", failed)
+	const parentID, childA, childB = 999, 777, 778
+	parentDir := filepath.Join(root, strconv.FormatInt(parentID, 10))
+	childADir := filepath.Join(root, strconv.FormatInt(childA, 10))
+	childBDir := filepath.Join(root, strconv.FormatInt(childB, 10))
+	for _, d := range []string{parentDir, childADir, childBDir} {
+		require.NoError(t, os.MkdirAll(d, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(parentDir, "manifest.json"), []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(childADir, "a.bin"), []byte("a"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(childBDir, "b.bin"), []byte("b"), 0o644))
 
-	// 确认载荷：两个冲突作品一次整体决策
-	h.mu.Lock()
-	require.Len(t, h.confirmConflicts, 1)
-	require.Len(t, h.confirmConflicts[0], 2, "冲突列表应含两个作品")
-	require.Equal(t, int64(500), h.confirmConflicts[0][0].WorkID)
-	require.Equal(t, []string{entity.StoreTypeImage}, h.confirmConflicts[0][0].ConflictRoles)
-	require.Equal(t, int64(600), h.confirmConflicts[0][1].WorkID)
-	h.mu.Unlock()
+	aliveSet := map[int64]bool{parentID: true, childA: true, childB: true}
+	exists := func(id int64) bool { return aliveSet[id] }
 
-	// 两个作品都按交集角色软删，回滚登记合并两 victim
-	ops.mu.Lock()
-	require.Len(t, ops.softCalls, 2)
-	require.Equal(t, int64(500), ops.softCalls[0].workID)
-	require.Equal(t, []string{entity.StoreTypeImage}, ops.softCalls[0].roles)
-	require.Equal(t, int64(600), ops.softCalls[1].workID)
-	ops.mu.Unlock()
-	h.mu.Lock()
-	require.NotNil(t, h.rollback)
-	require.Len(t, h.rollback.Victims, 2, "多作品回滚清单应合并登记")
-	h.mu.Unlock()
+	// 全树行存活：父目录（含 manifest）与全部子目录保留
+	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
+	assert.DirExists(t, parentDir, "父行存活时父目录应保留")
+	assert.FileExists(t, filepath.Join(parentDir, "manifest.json"), "父行存活时共享 manifest 应保留")
+	assert.DirExists(t, childADir, "子行存活时子目录应保留")
+	assert.DirExists(t, childBDir, "子行存活时子目录应保留")
 
-	// 回灌替换集（确认替换全集）
-	env.ingestor.mu.Lock()
-	require.Equal(t, 1, env.ingestor.called)
-	require.NotNil(t, env.ingestor.opts)
-	require.Len(t, env.ingestor.opts.ReplaceWorks, 2)
-	_, okA := env.ingestor.opts.ReplaceWorks[1]
-	_, okB := env.ingestor.opts.ReplaceWorks[2]
-	env.ingestor.mu.Unlock()
-	assert.True(t, okA && okB, "两个 manifest 作品都应入确认替换集")
-	assert.NoDirExists(t, env.stagingDirOf(), "成功后暂存应清理")
+	// 仅子任务 B 行删除：回收 B 子目录，父目录（含 manifest）与 A 子目录保留
+	delete(aliveSet, childB)
+	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
+	assert.DirExists(t, parentDir, "父行存活时父目录应保留")
+	assert.FileExists(t, filepath.Join(parentDir, "manifest.json"), "manifest 应保留直至父行删除")
+	assert.DirExists(t, childADir, "A 行存活时 A 子目录应保留")
+	assert.NoDirExists(t, childBDir, "B 行删除后 B 子目录应被回收")
+
+	// 父任务行删除：回收父目录（含 manifest）；A 子目录（行仍存活）保留
+	delete(aliveSet, parentID)
+	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
+	assert.NoDirExists(t, parentDir, "父行删除后父目录（含 manifest）应被回收")
+	assert.NoFileExists(t, filepath.Join(parentDir, "manifest.json"), "manifest 随父目录一并回收")
+	assert.DirExists(t, childADir, "A 行仍存活时 A 子目录应保留")
+
+	// 最后 A 行也删除：A 子目录回收
+	delete(aliveSet, childA)
+	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
+	assert.NoDirExists(t, childADir, "A 行删除后 A 子目录应被回收")
 }
 
-// TestReceiveExecutionReplaceSkip 冲突弹窗决策跳过（多作品整体跳过 + 跳过作品文件不拉）：
-// 两个冲突作品整体答复跳过 → 不经软删路径 → 跳过作品文件条目不拉（仅 manifest 请求）→
-// 回灌维持全跳过旧语义（nil opts）
-func TestReceiveExecutionReplaceSkip(t *testing.T) {
+// —— 查重接入普通下载轨道：端到端时序（设计五）与中断窗口三态（设计六） ——
+
+// TestReceiveExecutionReplaceConfirmPerWork 每作品独立查重确认替换（设计七）：
+// 双作品模型，子任务 A 与子任务 B 各自独立确认替换自己的冲突作品——每个子任务
+// WaitReplaceConfirm 只含本作品冲突、只软删本作品、回灌替换集只含本作品
+func TestReceiveExecutionReplaceConfirmPerWork(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildTwoWorkModel)
+
+	// 子任务 A（作品 1）：冲突命中本库作品 500
+	checkerA := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "作品A", []string{entity.StoreTypeImage})},
+	}}
+	opsA := &fakeReplaceOps{victimBase: 900}
+	hA, _, execA, opsA := env.buildDupHandleForWork(t, "", 1, 777, checkerA, opsA)
+	hA.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished, failed := waitExecuteDone(t, hA, execA)
+	require.True(t, finished, "A 应成功终态，失败: %s", failed)
+	hA.mu.Lock()
+	require.Len(t, hA.confirmConflicts, 1, "A 应弹窗一次")
+	require.Len(t, hA.confirmConflicts[0], 1, "A 弹窗只含本作品冲突")
+	require.Equal(t, int64(500), hA.confirmConflicts[0][0].WorkID)
+	require.Equal(t, []string{entity.StoreTypeImage}, hA.confirmConflicts[0][0].ConflictRoles)
+	hA.mu.Unlock()
+	opsA.mu.Lock()
+	require.Len(t, opsA.softCalls, 1, "A 只软删本作品")
+	require.Equal(t, int64(500), opsA.softCalls[0].workID)
+	require.Equal(t, []string{entity.StoreTypeImage}, opsA.softCalls[0].roles)
+	opsA.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called, "A 导入一次")
+	require.Len(t, env.ingestor.opts.ReplaceWorks, 1)
+	_, okA := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, okA, "A 替换集只含作品 1")
+	env.ingestor.mu.Unlock()
+
+	// 子任务 B（作品 2）：冲突命中本库作品 600
+	checkerB := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(600, "作品B", []string{entity.StoreTypeImage})},
+	}}
+	opsB := &fakeReplaceOps{victimBase: 900}
+	hB, _, execB, opsB := env.buildDupHandleForWork(t, "", 2, 778, checkerB, opsB)
+	hB.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished, failed = waitExecuteDone(t, hB, execB)
+	require.True(t, finished, "B 应成功终态，失败: %s", failed)
+	hB.mu.Lock()
+	require.Len(t, hB.confirmConflicts, 1, "B 应弹窗一次")
+	require.Len(t, hB.confirmConflicts[0], 1, "B 弹窗只含本作品冲突")
+	require.Equal(t, int64(600), hB.confirmConflicts[0][0].WorkID)
+	hB.mu.Unlock()
+	opsB.mu.Lock()
+	require.Len(t, opsB.softCalls, 1, "B 只软删本作品")
+	require.Equal(t, int64(600), opsB.softCalls[0].workID)
+	opsB.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 2, env.ingestor.called, "A、B 各导入一次")
+	require.Len(t, env.ingestor.opts.ReplaceWorks, 1)
+	_, okB := env.ingestor.opts.ReplaceWorks[2]
+	require.True(t, okB, "B 替换集只含作品 2")
+	env.ingestor.mu.Unlock()
+
+	// 各自暂存清理（manifest 在父目录 999，不动）
+	assert.NoDirExists(t, env.stagingDirOfTask(777), "A 成功后暂存应清理")
+	assert.NoDirExists(t, env.stagingDirOfTask(778), "B 成功后暂存应清理")
+}
+
+// TestReceiveExecutionReplaceSkipPerWork 每作品独立裁决跳过（设计七）：子任务冲突裁决跳过
+// → 不软删、不登记回滚、本作品文件不拉取（子任务内整作品跳过，回灌维持全跳过旧语义）
+func TestReceiveExecutionReplaceSkipPerWork(t *testing.T) {
 	env := startReceiveEnvModel(t, SharePublishOptions{}, buildTwoWorkModel)
 	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
-		{hitConflict(500, "作品A", []string{entity.StoreTypeImage}), hitConflict(600, "作品B", []string{entity.StoreTypeImage})},
+		{hitConflict(500, "作品A", []string{entity.StoreTypeImage})},
 	}}
 	ops := &fakeReplaceOps{victimBase: 900}
-	h, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h, _, exec, ops := env.buildDupHandleForWork(t, "", 1, 777, checker, ops)
 	h.confirmDecision = taskManager.ReplaceDecisionSkip
 	finished, failed := waitExecuteDone(t, h, exec)
 	require.True(t, finished, "应成功终态，失败: %s", failed)
@@ -667,12 +843,11 @@ func TestReceiveExecutionReplaceSkip(t *testing.T) {
 	require.Nil(t, env.ingestor.opts, "全跳过应保持 nil opts（现状语义）")
 	env.ingestor.mu.Unlock()
 
-	// 被裁决跳过作品的文件不拉取：仅 manifest 请求，无 file 请求
+	// 本作品被跳过 → 无文件拉取请求（manifest 本地读取，无任何网络请求）
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
 	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
-	require.Len(t, reqs, 1, "应恰有 manifest 请求（跳过作品文件不拉），实际: %+v", reqs)
-	assert.Equal(t, "manifest", reqs[0].Type)
+	require.Len(t, reqs, 0, "跳过作品应无拉取请求，实际: %+v", reqs)
 }
 
 // TestReceiveExecutionReplaceAutoMerge 零交集命中自动增补（决策5，不经确认直接挂载）：
@@ -709,47 +884,60 @@ func TestReceiveExecutionReplaceAutoMerge(t *testing.T) {
 	env.ingestor.mu.Unlock()
 }
 
-// TestReceiveExecutionReplaceMixedSkipAuto 混合多作品决策作用域：A 冲突裁决跳过、
-// B 零交集自动增补不受牵连——跳过只作用于冲突作品（其文件不拉），零交集作品照常静默挂载
-func TestReceiveExecutionReplaceMixedSkipAuto(t *testing.T) {
+// TestReceiveExecutionReplaceMixedSkipAutoPerWork 混合决策作用域（每作品独立，设计七）：
+// 子任务 A 冲突裁决跳过（文件不拉）、子任务 B 零交集自动增补（照常拉取挂载）——
+// 跳过只作用于本作品，互不牵连
+func TestReceiveExecutionReplaceMixedSkipAutoPerWork(t *testing.T) {
 	env := startReceiveEnvModel(t, SharePublishOptions{}, buildTwoWorkModel)
-	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
-		{hitConflict(500, "作品A", []string{entity.StoreTypeImage}), noConflict(600, "作品B")},
-	}}
-	ops := &fakeReplaceOps{victimBase: 900}
-	h, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
-	h.confirmDecision = taskManager.ReplaceDecisionSkip
-	finished, failed := waitExecuteDone(t, h, exec)
-	require.True(t, finished, "应成功终态，失败: %s", failed)
 
-	// 确认载荷仅含冲突作品 A（B 零交集不经确认）
-	h.mu.Lock()
-	require.Len(t, h.confirmConflicts, 1)
-	require.Len(t, h.confirmConflicts[0], 1, "仅冲突作品 A 弹窗")
-	require.Equal(t, int64(500), h.confirmConflicts[0][0].WorkID)
-	h.mu.Unlock()
-	// 软删仅作用于自动增补作品 B（no-op）；A 跳过不经软删路径
-	ops.mu.Lock()
-	require.Len(t, ops.softCalls, 1)
-	require.Equal(t, int64(600), ops.softCalls[0].workID)
-	ops.mu.Unlock()
+	// 子任务 A（作品 1）：冲突 → 跳过
+	checkerA := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "作品A", []string{entity.StoreTypeImage})},
+	}}
+	opsA := &fakeReplaceOps{victimBase: 900}
+	hA, _, execA, opsA := env.buildDupHandleForWork(t, "", 1, 777, checkerA, opsA)
+	hA.confirmDecision = taskManager.ReplaceDecisionSkip
+	finished, failed := waitExecuteDone(t, hA, execA)
+	require.True(t, finished, "A 应成功终态，失败: %s", failed)
+	hA.mu.Lock()
+	require.Len(t, hA.confirmConflicts, 1, "A 弹窗一次")
+	require.Len(t, hA.confirmConflicts[0], 1, "A 弹窗只含本作品冲突")
+	require.Equal(t, int64(500), hA.confirmConflicts[0][0].WorkID)
+	hA.mu.Unlock()
+	opsA.mu.Lock()
+	require.Len(t, opsA.softCalls, 0, "A 跳过不软删")
+	opsA.mu.Unlock()
+
+	// 子任务 B（作品 2）：零交集 → 自动增补（不弹窗、软删 no-op、回灌 AutoMerge）
+	checkerB := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{noConflict(600, "作品B")},
+	}}
+	opsB := &fakeReplaceOps{}
+	hB, _, execB, opsB := env.buildDupHandleForWork(t, "", 2, 778, checkerB, opsB)
+	finished, failed = waitExecuteDone(t, hB, execB)
+	require.True(t, finished, "B 应成功终态，失败: %s", failed)
+	hB.mu.Lock()
+	require.Len(t, hB.confirmConflicts, 0, "B 零交集不弹窗")
+	hB.mu.Unlock()
+	opsB.mu.Lock()
+	require.Len(t, opsB.softCalls, 1, "B 走软删 no-op")
+	require.Equal(t, int64(600), opsB.softCalls[0].workID)
+	opsB.mu.Unlock()
 
 	// 回灌：B 入自动增补集，A 不在任何替换集（跳过即整作品跳过）
 	env.ingestor.mu.Lock()
-	require.Equal(t, 1, env.ingestor.called)
-	require.NotNil(t, env.ingestor.opts)
+	require.Equal(t, 2, env.ingestor.called, "A、B 各导入一次")
 	_, okB := env.ingestor.opts.AutoMergeWorks[2]
 	require.True(t, okB, "零交集作品 B 应入自动增补集")
 	require.Empty(t, env.ingestor.opts.ReplaceWorks)
 	env.ingestor.mu.Unlock()
 
-	// A 被跳过：仅拉取 B 的文件（manifest + 1 个 file 请求）
+	// 拉取请求：A 跳过不拉，B 拉本作品文件（共 1 个 file 请求；manifest 本地读取）
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
 	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
-	require.Len(t, reqs, 2, "应恰有 manifest + B 文件两个请求，实际: %+v", reqs)
-	assert.Equal(t, "manifest", reqs[0].Type)
-	assert.Equal(t, "file", reqs[1].Type)
+	require.Len(t, reqs, 1, "应恰有 B 文件一个请求，实际: %+v", reqs)
+	assert.Equal(t, "file", reqs[0].Type)
 }
 
 // TestReceiveExecutionReplaceFailRollback 失败回滚复活：软删成功后回灌导入失败 →
@@ -824,7 +1012,7 @@ func TestReceiveExecutionPauseResumeContinuation(t *testing.T) {
 	env := startReceiveEnv(t, SharePublishOptions{})
 	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
 		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 首次：命中冲突弹窗
-		{noConflict(500, "测试作品1001")},                                  // 恢复重跑：软删后零交集不重弹
+		{noConflict(500, "测试作品1001")},                                   // 恢复重跑：软删后零交集不重弹
 	}}
 	ops := &fakeReplaceOps{victimBase: 900}
 
@@ -917,4 +1105,206 @@ func TestReceiveExecutionConfirmCanceled(t *testing.T) {
 	ops.mu.Lock()
 	require.Len(t, ops.softCalls, 0, "确认未答复不得软删")
 	ops.mu.Unlock()
+}
+
+// —— 阶段3：Receive 建树流程 ——
+
+// fakeBuiltinTaskControl 阶段3 建树流程的收件任务控制桩：模拟 task.Service 建树行为
+// （CreateBuiltinTaskTree 原子建树；CreateBuiltinTaskParent/CreateBuiltinTaskChildren 两段式），
+// 记录启动/删除调用与建树结果供断言。createChildrenErr 注入建子失败路径。
+type fakeBuiltinTaskControl struct {
+	mu                sync.Mutex
+	nextTaskID        int64
+	parent            *entity.Task
+	children          []*entity.Task
+	startedIDs        []int64
+	deletedIDs        []int64
+	createChildrenErr error
+}
+
+func (f *fakeBuiltinTaskControl) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeBuiltinTaskControl) StartTasks(ctx context.Context, taskIds []int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.startedIDs = append(f.startedIDs, taskIds...)
+	return nil
+}
+
+func (f *fakeBuiltinTaskControl) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextTaskID++
+	parent := entity.NewTask()
+	parent.ID = f.nextTaskID
+	parent.TaskName = sql.NullString{String: parentName, Valid: true}
+	parent.TaskType = sql.NullString{String: taskType, Valid: true}
+	parent.HasChild = sql.NullBool{Bool: true, Valid: true}
+	for _, c := range children {
+		f.nextTaskID++
+		child := entity.NewTask()
+		child.ID = f.nextTaskID
+		child.Pid = sql.NullInt64{Int64: parent.ID, Valid: true}
+		child.TaskName = sql.NullString{String: c.TaskName, Valid: true}
+		child.TaskType = sql.NullString{String: taskType, Valid: true}
+		child.Payload = sql.NullString{String: c.Payload, Valid: c.Payload != ""}
+		child.HasChild = sql.NullBool{Bool: false, Valid: true}
+		f.children = append(f.children, child)
+	}
+	f.parent = parent
+	return parent, nil
+}
+
+func (f *fakeBuiltinTaskControl) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextTaskID++
+	parent := entity.NewTask()
+	parent.ID = f.nextTaskID
+	parent.TaskName = sql.NullString{String: parentName, Valid: true}
+	parent.TaskType = sql.NullString{String: taskType, Valid: true}
+	parent.HasChild = sql.NullBool{Bool: true, Valid: true}
+	f.parent = parent
+	return parent, nil
+}
+
+func (f *fakeBuiltinTaskControl) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.createChildrenErr != nil {
+		return f.createChildrenErr
+	}
+	for _, c := range children {
+		f.nextTaskID++
+		child := entity.NewTask()
+		child.ID = f.nextTaskID
+		child.Pid = sql.NullInt64{Int64: parentID, Valid: true}
+		child.TaskName = sql.NullString{String: c.TaskName, Valid: true}
+		child.TaskType = sql.NullString{String: taskType, Valid: true}
+		child.Payload = sql.NullString{String: c.Payload, Valid: c.Payload != ""}
+		child.HasChild = sql.NullBool{Bool: false, Valid: true}
+		f.children = append(f.children, child)
+	}
+	return nil
+}
+
+func (f *fakeBuiltinTaskControl) DeleteTask(ctx context.Context, ids []int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deletedIDs = append(f.deletedIDs, ids...)
+	return nil
+}
+
+// TestReceiveBuildsTaskTree 阶段3 建树流程：同步拉 manifest → 建父子树（父容器 + 每作品一子任务）→
+// 共享 manifest 落盘父任务目录 → 整树启动 → 返回 DTO（parentTaskId/workCount/workNames）。
+func TestReceiveBuildsTaskTree(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+
+	res, err := env.recvSvc.Receive(context.Background(), env.link, "")
+	require.NoError(t, err)
+
+	// 返回 DTO：parentTaskId/workCount/workNames（净化后作品名）
+	parentID := taskCtl.parent.GetID()
+	assert.Equal(t, parentID, res.ParentTaskID)
+	assert.Equal(t, 2, res.WorkCount)
+	assert.Equal(t, []string{"作品A", "作品B"}, res.WorkNames)
+
+	// 父容器：has_child=true、pid NULL、task_type 落值、命名「拉取分享（{host}）」
+	parent := taskCtl.parent
+	require.NotNil(t, parent)
+	assert.True(t, parent.HasChild.Valid && parent.HasChild.Bool)
+	assert.False(t, parent.Pid.Valid)
+	assert.Equal(t, TaskTypeReceive, parent.TaskType.String)
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("拉取分享（%s）", target.RelayHost), parent.TaskName.String)
+
+	// 子任务：pid=父ID、has_child=false、task_type 落值、命名 = 净化后作品名、载荷含 ManifestPath+ManifestID
+	require.Len(t, taskCtl.children, 2)
+	wantManifestPath := path.Join(receiveStagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	for i, want := range []struct {
+		name       string
+		manifestID int64
+	}{{"作品A", 1}, {"作品B", 2}} {
+		child := taskCtl.children[i]
+		assert.Equal(t, parentID, child.Pid.Int64)
+		assert.False(t, child.HasChild.Bool)
+		assert.Equal(t, TaskTypeReceive, child.TaskType.String)
+		assert.Equal(t, want.name, child.TaskName.String)
+		payload, err := parseShareReceivePayload(child.Payload.String)
+		require.NoError(t, err)
+		assert.Equal(t, wantManifestPath, payload.ManifestPath)
+		assert.Equal(t, want.manifestID, payload.ManifestID)
+	}
+
+	// 共享 manifest 落盘父任务目录（可反序列化、schemaVersion 匹配、含全部作品）
+	absManifest := filepath.Join(env.recvDir, filepath.FromSlash(wantManifestPath))
+	data, err := os.ReadFile(absManifest)
+	require.NoError(t, err)
+	manifest, err := export.Deserialize(data)
+	require.NoError(t, err)
+	assert.Equal(t, export.SchemaVersion, manifest.SchemaVersion)
+	assert.Len(t, manifest.Works, 2)
+
+	// 整树启动：传父任务 ID
+	assert.Equal(t, []int64{parentID}, taskCtl.startedIDs)
+}
+
+// TestReceiveManifestFetchFailsNoTask 阶段3 失败语义：manifest 拉取失败不建任何任务，
+// 返回用户可读文案（决策5/风险1——无任务可重试，用户修正后重新接收）。
+func TestReceiveManifestFetchFailsNoTask(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+	// 篡改 token 为不存在会话（not_found 终态直达，不重试）
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	badLink := BuildShareLink(target.RelayHost, "zzzzzzzzzzzzzzzzzzzzzz", target.Key)
+
+	_, err = env.recvSvc.Receive(context.Background(), badLink, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "拉取分享清单失败")
+
+	// 未建任何任务、未启动、未删除
+	assert.Nil(t, taskCtl.parent)
+	assert.Empty(t, taskCtl.children)
+	assert.Empty(t, taskCtl.startedIDs)
+	assert.Empty(t, taskCtl.deletedIDs)
+}
+
+// TestReceiveManifestPersistFailsRollback 阶段3 失败语义：父任务创建后 manifest 落盘失败
+// → 显式删除已建父任务（DeleteTask 含子任务，此处尚无子任务），不留孤儿。
+func TestReceiveManifestPersistFailsRollback(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+	// 令 workDir/share-receive 为普通文件：MkdirAll(workDir/share-receive/{parentID}) 失败
+	blocker := filepath.Join(env.recvDir, receiveStagingRootName)
+	require.NoError(t, os.MkdirAll(env.recvDir, 0o755))
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
+
+	_, err := env.recvSvc.Receive(context.Background(), env.link, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "保存分享清单失败")
+	// 回滚：删除已建父任务；未建子任务、未启动
+	require.NotNil(t, taskCtl.parent)
+	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.deletedIDs)
+	assert.Empty(t, taskCtl.children)
+	assert.Empty(t, taskCtl.startedIDs)
+}
+
+// TestReceiveChildCreateFailsRollback 阶段3 失败语义：建子任务失败 → 显式删除已建任务树
+// （父任务已建、子任务未建成），不留孤儿父任务。
+func TestReceiveChildCreateFailsRollback(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{createChildrenErr: errors.New("建子任务失败")}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+
+	_, err := env.recvSvc.Receive(context.Background(), env.link, "")
+	require.Error(t, err)
+	// 回滚：删除已建父任务；建子失败无子任务落盘、未启动
+	require.NotNil(t, taskCtl.parent)
+	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.deletedIDs)
+	assert.Empty(t, taskCtl.children)
+	assert.Empty(t, taskCtl.startedIDs)
 }

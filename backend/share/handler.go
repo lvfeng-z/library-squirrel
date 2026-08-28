@@ -65,14 +65,22 @@ func (h *Handler) ShareDeleteRecord(ctx context.Context, shareID string) *model.
 	return model.Success[any](nil)
 }
 
-// ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→
-// 创建并启动 share-receive 任务，返回任务 ID（进度/终态由任务面板承载）。
-func (h *Handler) ShareReceive(ctx context.Context, link string, password string) *model.ApiResponse[int64] {
-	taskID, err := h.svc.Receive(ctx, link, password)
+// ShareReceiveResult 收件拉取建树结果（决策4 之①：作品名列表供收件侧创建反馈展示）
+type ShareReceiveResult struct {
+	ParentTaskID int64    `json:"parentTaskId"` // 父任务 ID（进度/终态由任务面板树形承载）
+	WorkCount    int      `json:"workCount"`    // 分享作品数（子任务数）
+	WorkNames    []string `json:"workNames"`    // 作品名列表（净化后；与子任务命名一致）
+}
+
+// ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 同步预拉
+// manifest → 建父子任务树（父容器 + 每作品一子任务）→ 共享 manifest 落盘 → 整树启动。
+// 返回 {parentTaskId, workCount, workNames}（进度/终态由任务面板承载）。
+func (h *Handler) ShareReceive(ctx context.Context, link string, password string) *model.ApiResponse[*ShareReceiveResult] {
+	res, err := h.svc.Receive(ctx, link, password)
 	if err != nil {
-		return model.HandleError[int64](err)
+		return model.HandleError[*ShareReceiveResult](err)
 	}
-	return model.Success(taskID)
+	return model.Success(res)
 }
 
 // ShareConsumePendingLink 取走深链到达时缓存的待处理链接（前端启动衔接：深链事件可能

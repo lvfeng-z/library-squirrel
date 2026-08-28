@@ -1286,6 +1286,26 @@ func (a *shareTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int6
 	return a.getMgr().StartTaskTrees(ctx, taskIds)
 }
 
+// CreateBuiltinTaskTree 委托 task.Service 原子建树（父容器 + N 子任务，事务内父 ID 回填子 pid）
+func (a *shareTaskControlAdapter) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity2.Task, error) {
+	return a.getTaskSvc().CreateBuiltinTaskTree(ctx, taskType, parentName, children)
+}
+
+// CreateBuiltinTaskParent 委托 task.Service 建父容器（收件建树先建父拿 parentID，再落盘共享清单后补子）
+func (a *shareTaskControlAdapter) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity2.Task, error) {
+	return a.getTaskSvc().CreateBuiltinTaskParent(ctx, taskType, parentName)
+}
+
+// CreateBuiltinTaskChildren 委托 task.Service 在既有父任务下补建子任务
+func (a *shareTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error {
+	return a.getTaskSvc().CreateBuiltinTaskChildren(ctx, taskType, parentID, children)
+}
+
+// DeleteTask 委托 task.Service 批量删除任务（含子任务；建树失败回滚用）
+func (a *shareTaskControlAdapter) DeleteTask(ctx context.Context, ids []int64) error {
+	return a.getTaskSvc().DeleteTask(ctx, ids)
+}
+
 // dbTransactorAdapter 数据库事务执行器适配器
 type dbTransactorAdapter struct {
 	db *gorm.DB

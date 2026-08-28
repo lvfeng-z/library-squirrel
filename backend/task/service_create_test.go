@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -635,5 +636,206 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 	}
 	if pid.Valid {
 		t.Errorf("内置任务应为根级（pid NULL）: %+v", pid)
+	}
+}
+
+// failOnNthCreateRepo 包装真实仓储：第 N 次 CreateTask 调用注入失败，用于事务原子性测试
+// （父=call1，指定 failAt>1 即令第 failAt-1 个子任务创建失败）。
+type failOnNthCreateRepo struct {
+	*TaskRepository
+	call   int
+	failAt int
+}
+
+func (r *failOnNthCreateRepo) CreateTask(ctx context.Context, task *entity.Task) error {
+	r.call++
+	if r.call == r.failAt {
+		return errors.New("注入子任务创建失败")
+	}
+	return r.TaskRepository.CreateTask(ctx, task)
+}
+
+// TestCreateBuiltinTaskTree 内置任务树创建：父容器（has_child=true、pid=NULL、task_type 落值）
+// + N 子任务（pid=父ID、has_child=false、task_type/payload 落值、顺序即入参顺序）。内存仓储锚定结构。
+func TestCreateBuiltinTaskTree(t *testing.T) {
+	svc, repo := newTestService(t)
+	ctx := context.Background()
+
+	if _, err := svc.CreateBuiltinTaskTree(ctx, "  ", "父", []BuiltinTaskChild{{TaskName: "子"}}); err == nil {
+		t.Fatal("空任务类型应拒绝")
+	}
+	if _, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "父", nil); err == nil {
+		t.Fatal("空子任务应拒绝")
+	}
+
+	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
+		{TaskName: "作品A", Payload: `{"manifestID":1}`},
+		{TaskName: "作品B"},
+	})
+	if err != nil {
+		t.Fatalf("创建内置任务树失败: %v", err)
+	}
+	if parent.Status != int(TaskStatusCreated) {
+		t.Errorf("父任务状态应为 Created: %d", parent.Status)
+	}
+	if !parent.HasChild.Valid || !parent.HasChild.Bool {
+		t.Errorf("父任务 has_child 应为 true 且 Valid: %+v", parent.HasChild)
+	}
+	if parent.Pid.Valid {
+		t.Errorf("父任务应为根级（pid NULL）: %+v", parent.Pid)
+	}
+	if !parent.TaskType.Valid || parent.TaskType.String != "share-receive" {
+		t.Errorf("父任务 task_type 落值不符: %+v", parent.TaskType)
+	}
+	if len(repo.tasks) != 3 {
+		t.Fatalf("应落盘 3 行（父+2 子），得到 %d", len(repo.tasks))
+	}
+
+	parentID := parent.GetID()
+	expected := []struct {
+		name     string
+		pidValid bool
+		pid      int64
+		hasChild bool
+		payload  string
+	}{
+		{name: "拉取分享", pidValid: false, hasChild: true},
+		{name: "作品A", pidValid: true, pid: parentID, payload: `{"manifestID":1}`},
+		{name: "作品B", pidValid: true, pid: parentID},
+	}
+	for i, exp := range expected {
+		task := repo.tasks[i]
+		if task.TaskName.String != exp.name {
+			t.Errorf("落盘顺序 %d 任务名不符: 期望 %q 得到 %q", i, exp.name, task.TaskName.String)
+		}
+		if task.Pid.Valid != exp.pidValid || (exp.pidValid && task.Pid.Int64 != exp.pid) {
+			t.Errorf("落盘顺序 %d pid 不符: %+v（期望 valid=%v pid=%d）", i, task.Pid, exp.pidValid, exp.pid)
+		}
+		if !task.HasChild.Valid || task.HasChild.Bool != exp.hasChild {
+			t.Errorf("落盘顺序 %d has_child 不符: %+v（期望 %v）", i, task.HasChild, exp.hasChild)
+		}
+		if !task.TaskType.Valid || task.TaskType.String != "share-receive" {
+			t.Errorf("落盘顺序 %d task_type 不符: %+v", i, task.TaskType)
+		}
+		if task.Payload.String != exp.payload || task.Payload.Valid != (exp.payload != "") {
+			t.Errorf("落盘顺序 %d payload 不符: %+v（期望 %q）", i, task.Payload, exp.payload)
+		}
+		if task.Status != int(TaskStatusCreated) {
+			t.Errorf("落盘顺序 %d 状态应为 Created: %d", i, task.Status)
+		}
+	}
+}
+
+// TestCreateBuiltinTaskTreeColumns 内置任务树落库形态（真实 FK 库锚定）：
+// 父行 has_child=1/pid NULL，子行 pid=父ID/has_child=0/task_type/payload 落值，子行按入参顺序排列。
+func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, nil)
+	ctx := context.Background()
+
+	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
+		{TaskName: "作品A", Payload: `{"schemaVersion":1,"manifestID":1}`},
+		{TaskName: "作品B", Payload: `{"schemaVersion":1,"manifestID":2}`},
+	})
+	if err != nil {
+		t.Fatalf("创建内置任务树失败: %v", err)
+	}
+	parentID := parent.GetID()
+
+	var hasChild int
+	var pid sql.NullInt64
+	if err := db.Raw("SELECT has_child, pid FROM task WHERE id = ?", parentID).Row().Scan(&hasChild, &pid); err != nil {
+		t.Fatalf("查父任务列失败: %v", err)
+	}
+	if hasChild != 1 {
+		t.Errorf("父任务 has_child 应落 1: %d", hasChild)
+	}
+	if pid.Valid {
+		t.Errorf("父任务 pid 应落 NULL: %+v", pid)
+	}
+
+	rows, err := db.Raw("SELECT task_name, pid, has_child, task_type, payload, status FROM task WHERE pid = ? ORDER BY id", parentID).Rows()
+	if err != nil {
+		t.Fatalf("查子任务列失败: %v", err)
+	}
+	defer rows.Close()
+
+	expectedChildren := []struct{ name, payload string }{
+		{name: "作品A", payload: `{"schemaVersion":1,"manifestID":1}`},
+		{name: "作品B", payload: `{"schemaVersion":1,"manifestID":2}`},
+	}
+	i := 0
+	for rows.Next() {
+		var taskName, taskType, payload sql.NullString
+		var childPid sql.NullInt64
+		var childHasChild, status int
+		if err := rows.Scan(&taskName, &childPid, &childHasChild, &taskType, &payload, &status); err != nil {
+			t.Fatalf("扫子任务行失败: %v", err)
+		}
+		if i >= len(expectedChildren) {
+			t.Fatalf("子任务行数超出预期")
+		}
+		exp := expectedChildren[i]
+		if taskName.String != exp.name {
+			t.Errorf("子任务 %d 任务名不符: 期望 %q 得到 %q", i, exp.name, taskName.String)
+		}
+		if !childPid.Valid || childPid.Int64 != parentID {
+			t.Errorf("子任务 %d pid 应指向父 %d: %+v", i, parentID, childPid)
+		}
+		if childHasChild != 0 {
+			t.Errorf("子任务 %d has_child 应落 0: %d", i, childHasChild)
+		}
+		if !taskType.Valid || taskType.String != "share-receive" {
+			t.Errorf("子任务 %d task_type 不符: %+v", i, taskType)
+		}
+		if payload.String != exp.payload {
+			t.Errorf("子任务 %d payload 不符: 期望 %q 得到 %q", i, exp.payload, payload.String)
+		}
+		if status != int(TaskStatusCreated) {
+			t.Errorf("子任务 %d 状态应为 Created: %d", i, status)
+		}
+		i++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("遍历子任务行出错: %v", err)
+	}
+	if i != len(expectedChildren) {
+		t.Errorf("子任务行数不符: 期望 %d 得到 %d", len(expectedChildren), i)
+	}
+}
+
+// TestCreateBuiltinTaskTreeRollback 事务原子性：子任务创建失败时父行整体回滚，不留孤儿任务。
+func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	// 父=call1，第一个子任务（call2）注入失败
+	failRepo := &failOnNthCreateRepo{TaskRepository: NewRepository(db), failAt: 2}
+	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil)
+	ctx := context.Background()
+
+	if _, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
+		{TaskName: "作品A", Payload: "{}"},
+		{TaskName: "作品B", Payload: "{}"},
+	}); err == nil {
+		t.Fatal("子任务创建失败应返回错误")
+	}
+
+	var count int64
+	if err := db.Model(&entity.Task{}).Count(&count).Error; err != nil {
+		t.Fatalf("统计任务行失败: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("子任务创建失败后事务应整体回滚（无残留任务行），得到 %d", count)
 	}
 }

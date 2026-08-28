@@ -26,6 +26,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -53,14 +54,21 @@ const (
 	TaskTypeReceive = "share-receive"
 )
 
-// BuiltinTaskControl share-receive 任务创建与启动能力（task.Service.CreateBuiltinTask 与
-// taskManager.Manager 的启动经 app.go 适配器组合装配；taskCtl 经延迟闭包取用，装配时序上
-// ShareService 先于 taskManager 创建）。
+// BuiltinTaskControl share-receive 任务创建与启动能力（task.Service 与 taskManager.Manager 经
+// app.go 适配器组合装配；taskCtl 经延迟闭包取用，装配时序上 ShareService 先于 taskManager 创建）。
 type BuiltinTaskControl interface {
 	// CreateBuiltinTask 创建内置类型任务（返回任务 ID）
 	CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error)
-	// StartTasks 启动任务树
+	// StartTasks 启动任务树（传父任务 ID 即整树加载派发）
 	StartTasks(ctx context.Context, taskIds []int64) error
+	// CreateBuiltinTaskTree 事务原子创建内置任务树：1 父容器 + N 子任务（父 ID 回填子 pid）
+	CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity.Task, error)
+	// CreateBuiltinTaskParent 创建内置任务树父容器（has_child=true、pid=NULL），供先建父再建子的两段式建树
+	CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity.Task, error)
+	// CreateBuiltinTaskChildren 在既有父任务下创建内置任务树子任务（pid=parentID、has_child=false）
+	CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error
+	// DeleteTask 批量删除任务（含子任务）；建树失败回滚用
+	DeleteTask(ctx context.Context, ids []int64) error
 }
 
 // hostParams 宿主主体入参（发布选项经此进入主体；复原时由分享记录行构建——

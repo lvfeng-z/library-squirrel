@@ -1,7 +1,7 @@
 package share
 
 // 收件人侧分享拉取：链接解析（深链 / https 分享链接）→ share-receive 任务创建。
-// 拉取数据流主体（经中继拨号 → 流内协议拉 manifest/文件 → 暂存续传 → ManifestIngestor
+// 拉取数据流主体（读本地共享 manifest → 经中继拨号逐文件拉取 → 暂存续传 → ManifestIngestor
 // 回灌导入）在 task_execution.go 的 ReceiveExecution（任务执行面）与 receive_client.go
 // （收件人协议客户端）中实现。
 
@@ -12,11 +12,17 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/task"
 )
 
 // 深链常量（与中继落地页深链格式一致，PROTOCOL.md §6：library-squirrel://share/{relay}/{token}）
@@ -131,10 +137,27 @@ type shareReceivePayload struct {
 	Token         string `json:"token"`         // 会话 token
 	KeyB64        string `json:"keyB64"`        // E2E 密钥（base64url）
 	PasswordHash  string `json:"passwordHash"`  // 访问密码摘要（sha256 hex；空=无密码）
+
+	// 子任务字段（父+子任务树形态，每作品一个子任务）：ManifestPath 为共享 manifest 的
+	// workDir 相对路径（正斜杠 relPath 域），ManifestID 为本任务负责的 manifest 作品 ID。
+	// 加可选字段不递增 schemaVersion——旧载荷新代码可解析（新字段零值 → ManifestID==0），
+	// 执行面按过时载荷显式 Fail（决策2 不兼容存量）。
+	ManifestPath string `json:"manifestPath"`
+	ManifestID   int64  `json:"manifestID"`
 }
 
-// newShareReceivePayload 构建并序列化任务载荷（明文密码在此转为摘要）
+// newShareReceivePayload 构建并序列化任务载荷（明文密码在此转为摘要；不含子任务定位字段）
 func newShareReceivePayload(target *ReceiveTarget, password string) (string, error) {
+	return buildShareReceivePayload(target, password, "", 0)
+}
+
+// newShareReceiveChildPayload 构建子任务载荷：基础连接参数 + 共享 manifest 定位与作品过滤。
+// 子任务只存连接参数 + 清单定位 + 作品过滤，不重复存 manifest 内容（manifest 落盘共享文件）。
+func newShareReceiveChildPayload(target *ReceiveTarget, password string, manifestPath string, manifestID int64) (string, error) {
+	return buildShareReceivePayload(target, password, manifestPath, manifestID)
+}
+
+func buildShareReceivePayload(target *ReceiveTarget, password string, manifestPath string, manifestID int64) (string, error) {
 	hash := ""
 	if password != "" {
 		hash = PasswordHashHex(password)
@@ -146,6 +169,8 @@ func newShareReceivePayload(target *ReceiveTarget, password string) (string, err
 		Token:         target.Token,
 		KeyB64:        base64.RawURLEncoding.EncodeToString(target.Key),
 		PasswordHash:  hash,
+		ManifestPath:  manifestPath,
+		ManifestID:    manifestID,
 	})
 	if err != nil {
 		return "", fmt.Errorf("%w：序列化失败 %v", ErrSharePayloadInvalid, err)
@@ -168,30 +193,112 @@ func parseShareReceivePayload(raw string) (*shareReceivePayload, error) {
 	return &p, nil
 }
 
-// Receive 启动收件拉取：解析链接（深链或 https 分享链接）→ 创建 share-receive 任务并立即
-// 启动（拉取主体经任务执行面 ReceiveExecution），返回任务 ID（进度/终态由任务面板承载）。
+// fetchManifest 同步拉取分享 manifest：复用执行面拉取壳（fetchWithRetry 瞬态退避 + readAllBody
+// 应答全量读入），解序列化后返回。供 Receive 建树前预拉（决策1），与子任务执行读本地共享清单互补。
+func fetchManifest(ctx context.Context, client *receiveClient) (*export.Manifest, error) {
+	body, err := fetchWithRetry(ctx, client, &streamRequest{Type: "manifest"}, readAllBody)
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := export.Deserialize(body)
+	if err != nil {
+		return nil, fmt.Errorf("解析分享清单失败: %w", err)
+	}
+	return manifest, nil
+}
+
+// writeSharedManifestFile 将 manifest 序列化落盘到 workDir 相对路径（relPath 域正斜杠；
+// absPath 域仅存在于 os 调用点现场 join）。落盘失败由调用方按决策5 回滚删树。
+func writeSharedManifestFile(workDir, relPath string, manifest *export.Manifest) error {
+	if workDir == "" {
+		return errors.New("工作目录未配置，无法保存分享清单")
+	}
+	data, err := manifest.Serialize()
+	if err != nil {
+		return fmt.Errorf("序列化分享清单失败: %w", err)
+	}
+	abs := filepath.Join(workDir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(abs, data, 0o644)
+}
+
+// Receive 启动收件拉取：解析链接（深链或 https 分享链接）→ 同步预拉 manifest（决策1）→
+// 建父子任务树（父「拉取分享（{host}）」容器 + 每作品一子任务）→ 共享 manifest 落盘父任务目录 →
+// 整树启动 → 返回 {parentTaskId, workCount, workNames}（作品名列表供收件侧展示，决策4 之①）。
 // password 为分享设有访问密码时的明文（仅本机使用，落任务载荷的只有 sha256 摘要）。
-func (s *Service) Receive(ctx context.Context, link string, password string) (int64, error) {
+// 失败语义（决策5）：manifest 拉取失败不建任何任务；父任务创建后、子任务全部建成前任一步失败
+// （manifest 落盘失败/建子任务中断）显式删除已建任务树（DeleteTask 含子任务），不留孤儿任务。
+func (s *Service) Receive(ctx context.Context, link string, password string) (*ShareReceiveResult, error) {
 	target, err := ParseShareLink(link)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if s.taskCtl == nil {
-		return 0, ErrShareTaskControlNil
+		return nil, ErrShareTaskControlNil
 	}
-	payload, err := newShareReceivePayload(target, password)
+	// 收件人客户端（连接参数载荷 + 拨号）——预拉 manifest 与子任务后续拉取共用同形态连接参数
+	payloadJSON, err := newShareReceivePayload(target, password)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	taskID, err := s.taskCtl.CreateBuiltinTask(ctx, TaskTypeReceive,
-		fmt.Sprintf("拉取分享（%s）", target.RelayHost), payload)
+	connPayload, err := parseShareReceivePayload(payloadJSON)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	if err := s.taskCtl.StartTasks(ctx, []int64{taskID}); err != nil {
-		return 0, err
+	client, err := newReceiveClient(connPayload, s.instanceID, s.opts)
+	if err != nil {
+		return nil, err
 	}
-	return taskID, nil
+	// 同步预拉 manifest（建树前唯一网络往返；失败无任务可重试，返回用户可读文案，修正后重新接收）
+	manifest, err := fetchManifest(ctx, client)
+	if err != nil {
+		return nil, fmt.Errorf("拉取分享清单失败: %s", receiveUserMessage(err))
+	}
+	if manifest.SchemaVersion != export.SchemaVersion {
+		return nil, fmt.Errorf("分享清单版本不支持: %d", manifest.SchemaVersion)
+	}
+	if len(manifest.Works) == 0 {
+		return nil, errors.New("分享清单中没有作品，无法接收")
+	}
+	// 作品名（净化后）为子任务命名与返回 DTO workNames 的共同来源（与落地页 worksName 三处一致）
+	names := make([]string, 0, len(manifest.Works))
+	for i := range manifest.Works {
+		names = append(names, sanitizedWorkName(&manifest.Works[i]))
+	}
+
+	// 两段式建树：先建父容器拿 parentID（子任务载荷的 ManifestPath 依赖父目录路径），
+	// 落盘共享 manifest 到父任务目录后补建子任务
+	parent, err := s.taskCtl.CreateBuiltinTaskParent(ctx, TaskTypeReceive,
+		fmt.Sprintf("拉取分享（%s）", target.RelayHost))
+	if err != nil {
+		return nil, err
+	}
+	parentID := parent.GetID()
+	manifestRel := path.Join(receiveStagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	if err := writeSharedManifestFile(s.workDir(), manifestRel, manifest); err != nil {
+		_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
+		return nil, fmt.Errorf("保存分享清单失败: %v", err)
+	}
+	children := make([]task.BuiltinTaskChild, 0, len(manifest.Works))
+	for i := range manifest.Works {
+		childPayload, err := newShareReceiveChildPayload(target, password, manifestRel, manifest.Works[i].ID)
+		if err != nil {
+			_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
+			return nil, err
+		}
+		children = append(children, task.BuiltinTaskChild{TaskName: names[i], Payload: childPayload})
+	}
+	if err := s.taskCtl.CreateBuiltinTaskChildren(ctx, TaskTypeReceive, parentID, children); err != nil {
+		_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
+		return nil, err
+	}
+	// 整树启动（taskManager 按父 ID 加载整树并派发全部子任务）
+	if err := s.taskCtl.StartTasks(ctx, []int64{parentID}); err != nil {
+		return nil, err
+	}
+	return &ShareReceiveResult{ParentTaskID: parentID, WorkCount: len(manifest.Works), WorkNames: names}, nil
 }
 
 // —— 深链到达入口（main.go 三通道汇入：单实例二启转发 / URL 事件 / argv 兜底）——
