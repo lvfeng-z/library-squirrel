@@ -18,7 +18,7 @@ description: 实机测试协议——AI 直接驱动真实运行中的应用执�
 
 - **测试阶梯**：单元测试（`go test`，逻辑锚定）→ **本技能（实机测试，验收级）** → 用户终审（签收）。
 - 触发时机：开发计划的「测试锚定 / dev 实机手测」环节；提交（/commit）前的实机验证；用户说「实测一下」。
-- 与 task-graph 衔接：手测里程碑到达时进入本技能；报告落在当前活跃谱系目录。
+- 与 task-graph 衔接：手测里程碑到达时进入本技能；报告落 `.claude/testing/runs/<YYYYMMDD>-<任务短名>/`，谱系 TREE.md 节点行外链该 run 目录。
 
 ## 测试形态基建（启动配方）
 
@@ -42,19 +42,27 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 | 脚本 | 用途 |
 | --- | --- |
 | `cdp-eval.mjs '<js>'` | 在应用真实页面上下文求值——可 `await import("/src/apis/http/wrappers/x.js")` 调用**前端 wrapper = 用户点按钮的同一条链路**；可读 DOM（弹框渲染/按钮文案断言）；可读 Pinia store |
-| `cdp-shot.mjs <out.png>` | 页面截图（存 `.claude/testing/shots/`，可视觉核验与给用户终审看） |
+| `cdp-shot.mjs <out.png>` | 页面截图（存当前 run 目录 `shots/`，可视觉核验与给用户终审看） |
 | `backup-file-op.mjs <dir> <asciiPattern>` | **长路径文件操作**（按 ASCII 通配定位→暂存临时区→删除）：应用产出的文件名常超 Windows MAX_PATH，bash 的 ls/cp/rm/find 全部失效（stat 报错/枚举截断），必须走本脚本（Node `\\?\` 前缀） |
 
 ## 协议流程
 
 ### 1. 生成测试清单（报告文件即清单）
 
-落点：活跃谱系目录 `VERIFY-<任务>.md`；无谱系时 `.claude/testing/reports/`。头部记基建配方与进度计数，每项四要素：
+落点（唯一）：`.claude/testing/runs/<YYYYMMDD>-<任务短名>/VERIFY-<任务>.md`。头部记基建配方与进度计数，每项四要素：
 
 - **目的**（一句话，验收语义）
 - **前置**（AI 备好的素材——查库选定/经真实链路造数）
 - **操作**（谁做：AI 或用户）
 - **断言**（可机检的预期：bindings 返回值 / DOM 状态 / DB 行 / 日志行 / 截图）
+
+**run 目录规约**（run 目录 = 一次测试的全生命周期，报告与证据同目录绑定）：
+
+- 目录名 `YYYYMMDD-<任务短名>`（日期前缀使 `ls runs/` 天然按时间序）；同日同短名冲突追加 `-2`。
+- 同目录 `shots/` 存本 run 全部截图、`evidence/` 存本 run 的日志/dump 等文本证据文件。
+- 截图命名 `<报告项编号或短代号>-<语义描述>.png`（如 `01-replace-confirm.png`）；复验不覆盖已有文件，追加 `-rN` 后缀（历史证据保留）。
+- 报告内截图引用用 Markdown 嵌入语法 `![描述](shots/x.png)`（相对路径，报告与证据同目录，IDE 预览直接见图）；文本类证据仍以行内代码路径提及。
+- **遗留冻结区**：`.claude/testing/` 下旧 `shots/`、`reports/`、`evidence/` 三目录属旧落点模型遗留，冻结原地（存量报告以旧路径引用截图，引用链必须保持可解析），勿往其中新增任何文件。
 
 **项数收敛原则**：能自动验证的不设用户项；单元测试已锚定的逻辑不重复实测（记跳过+原因）；用户项只留终审。
 
@@ -66,7 +74,7 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 2. **DOM 断言**：`document.querySelector('.el-dialog__title')?.textContent`、按钮 `textContent` 列表——UI 渲染正确性的机检面。
 3. **只读 SQL**（sqlite3 MCP 工具，`database/database.db`）：行存在性/字段值终验；不熟表结构先 `pragma_table_info`。
 4. **日志 grep**（`log/server.log`）：先 `wc -l` 打标记行号，操作后 `tail -n +<标记> | grep` 断言新增内容。
-5. **截图**：渲染类断言存档 + 终审材料。
+5. **截图**：渲染类断言存档 + 终审材料；落当前 run 目录 `shots/`，报告内以 `![描述](shots/x.png)` 嵌入引用（文本类证据落 `evidence/`，行内路径提及）。
 6. **外部文件操作**：`backup-file-op.mjs`（模拟用户经文件管理器删改——对应用而言与真实外部操作无异）。
 
 **造数纪律**：测试素材一律经**真实链路**造（bindings 调用软删作品/卸载插件等），禁止直写运行中的库；素材选测试号数据（如 site=2 测试下载、`[test01]_` 前缀）或可再生资源。
@@ -87,7 +95,7 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 
 ### 5. 报告与终审
 
-清单文件补「结论」节（通过面/证据摘要/残余风险）→ 请用户终审（看截图或亲手复现一个关键项）→ 签收后进入提交。报告文件随谱系归档。
+清单文件补「结论」节（通过面/证据摘要/残余风险）→ 请用户终审（看截图或亲手复现一个关键项）→ 签收后进入提交。报告常驻 run 目录，不随谱系归档移动。
 
 ## 红线
 
@@ -107,7 +115,7 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 
 ## 与其他体系的衔接
 
-- **task-graph**：手测里程碑触发本技能；报告文件放谱系目录随归档收存。
+- **task-graph**：手测里程碑触发本技能；报告落 runs/ run 目录，谱系 TREE.md 节点行以 `../../../testing/runs/<dir>/` 相对路径外链（active→archive 归档不改相对深度，链接不断）。
 - **plan 文档**：清单项从方案的「测试锚定」节提取；结论回填提交信息。
 - **commit**：本技能报告通过 + 用户终审 = 提交前置条件之一。
-- 首跑范例：`.claude/workflow/active/work-lineage-soft-delete/VERIFY-H.md`（归档后移至 archive 对应目录）。
+- 首跑范例：`.claude/workflow/archive/work-lineage-soft-delete/VERIFY-H.md`（属旧落点模型遗留——当时报告落谱系目录随归档收存；新报告一律落 runs/）。
