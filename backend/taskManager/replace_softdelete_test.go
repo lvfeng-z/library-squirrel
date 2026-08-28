@@ -7,6 +7,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/shareLock"
 
 	"gorm.io/plugin/soft_delete"
 )
@@ -104,6 +105,9 @@ type replaceStubs struct {
 func newReplaceTestTask(workId int64) (*ManagedTask, *replaceStubs) {
 	m := newTestManagedTask()
 	m.workId = workId
+	// 替换场景的执行模式:资源板块=All(软删/回滚派生经 replaceSoftDeleteRoles 从三态派生,
+	// 零值 None 会令回滚派生角色为空——None 任务从未过替换软删 gate,无 victim 可复活)
+	m.runMode = runMode{storeScope: storeScope{kind: scopeAll}}
 	stubs := &replaceStubs{
 		res:       &fakeResourceReader{},
 		rs:        &fakeResourceStoreReader{},
@@ -130,6 +134,7 @@ func newReplaceTestTask(workId int64) (*ManagedTask, *replaceStubs) {
 			stubs.res, stubs.rs, stubs.rows, stubs.replacer,
 			stubs.restorer, stubs.liveness, stubs.recompute,
 			stubWorkDirProvider{dir: "E:/lib"},
+			shareLock.NewShareLockRegistry(),
 		),
 	}
 	return m, stubs

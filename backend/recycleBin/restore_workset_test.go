@@ -55,7 +55,7 @@ func newWsTestEnv(t *testing.T) *wsTestEnv {
 	)
 	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	return &wsTestEnv{
-		svc:     NewService(nil, nil, nil, nil, nil, nil, nil, nil, nil, workSetSvc, searchSvc, nil, nil),
+		svc:     NewService(nil, nil, nil, nil, nil, nil, nil, nil, nil, workSetSvc, searchSvc, nil, nil, nil, nil),
 		workSet: workSetSvc,
 		db:      db,
 	}

@@ -146,6 +146,15 @@ func (o sessionRuntimeOptions) withOverrides(ov sessionRuntimeOptions) sessionRu
 	return o
 }
 
+// WorkLockRegistrar 拉取中作品锁的登记/解除能力（由 shareLock.ShareLockRegistry 实现）。
+// 收件人经中继拉取作品文件时分享方进程在供流路径上——首次为某作品读/发文件数据即以
+// 会话 token 为会话键登记，宿主本地替换/软删/移动该作品的操作据此被并发防护拦截；
+// 会话终态/停止时统一解除本会话登记的全部作品引用。
+type WorkLockRegistrar interface {
+	Register(ctx context.Context, workIDs []int64, session string)
+	Unregister(ctx context.Context, workIDs []int64, session string)
+}
+
 // sessionConfig 会话发布参数（发布时一次确定、运行期只读）
 type sessionConfig struct {
 	id           string
@@ -161,7 +170,9 @@ type sessionConfig struct {
 	expireSecs   *int64 // nil=中继默认；0=无限期；>0=自定义秒
 	createdAt    int64
 	emitter      ShareEventEmitter // nil=不发事件（部分单测场景）
-	opts         sessionRuntimeOptions
+	// lockRegistrar 拉取中作品锁登记/解除（nil=不登记，单测场景）；登记/解除的会话键为会话 token
+	lockRegistrar WorkLockRegistrar
+	opts          sessionRuntimeOptions
 	// 复原形态（启动自动复原）：凭记录行原 token 经 bind 重绑而非 register（链接不变，
 	// 剩余有效期由中继侧会话管理——bind 不重传 expiresAt/passwordHash/元数据）
 	seedToken string // 原 token（非空=首次连接即 bind）
@@ -175,6 +186,9 @@ type shareSession struct {
 	opts sessionRuntimeOptions // 运行参数（构造时由默认值+覆写合并）
 
 	fileIndex map[string]int // 包内路径 → manifest.Files 索引（拉取白名单）
+	// storeWorkIndex StoreID → 挂载该文件的作品 ID 集合（构造时由 manifest 构建、运行期只读）：
+	// 收件人拉取文件时反查所属作品，供流登记拉取锁用（同一文件被多作品挂载时全部登记）
+	storeWorkIndex map[int64][]int64
 	// 统计基数（发布时由 manifest 计算，DTO 展示用）
 	metaWorkCount int64
 	fileCount     int64
@@ -191,6 +205,9 @@ type shareSession struct {
 	bytesServed   int64
 	activeStreams int
 	curWriter     *frameWriter // 当前隧道写出器（离线为 nil；撤销帧经它发出）
+	// lockedWorks 本会话已登记进锁注册中心的作品（供流首次触达时加入，终态统一解除；
+	// 靠它避免每次文件请求都调注册中心——注册中心虽为集合语义幂等，登记判断仍收敛到一次）
+	lockedWorks map[int64]struct{}
 
 	firstCh chan error    // 首次注册结果（nil=已在线；非 nil=终态失败），缓冲 1、只发一次
 	doneCh  chan struct{} // 会话主循环退出信号（终态或宿主 ctx 取消；宿主任务据此判定会话结束）
@@ -235,13 +252,37 @@ func newShareSession(cfg sessionConfig) (*shareSession, error) {
 	if cfg.model.Manifest.Meta.WorkCount > 0 {
 		s.metaWorkCount = int64(cfg.model.Manifest.Meta.WorkCount)
 	}
+	// StoreID → 作品归属索引：拉取文件反查所属作品（同一 store 被同作品多次挂载或跨作品
+	// 挂载时去重/并存），供流登记拉取锁用
+	s.storeWorkIndex = make(map[int64][]int64)
+	for i := range cfg.model.Manifest.Works {
+		w := &cfg.model.Manifest.Works[i]
+		for r := range w.Resources {
+			for _, mount := range w.Resources[r].Stores {
+				ids := s.storeWorkIndex[mount.StoreID]
+				dup := false
+				for _, id := range ids {
+					if id == w.ID {
+						dup = true
+						break
+					}
+				}
+				if !dup {
+					s.storeWorkIndex[mount.StoreID] = append(ids, w.ID)
+				}
+			}
+		}
+	}
+	s.lockedWorks = make(map[int64]struct{})
 	return s, nil
 }
 
 // run 会话主循环：连接→注册/重绑→服务，断线按退避重连，终态退出。
-// ctx 由发布方持有（撤销/取消即 cancel）；无论何种退出路径均关闭 doneCh 供宿主等待。
+// ctx 由发布方持有（撤销/取消即 cancel）；无论何种退出路径均先解除本会话登记的作品锁、
+// 再关闭 doneCh 供宿主等待。
 func (s *shareSession) run(ctx context.Context) {
 	defer close(s.doneCh)
+	defer s.releaseWorkLocks()
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	ctx = s.ctx
 	delay := reconnectMinDelay
@@ -645,6 +686,8 @@ func (s *shareSession) serveFile(w *frameWriter, st *streamState, req *streamReq
 		s.finishStreamWithError(w, st, streamErrBadRequest)
 		return
 	}
+	// 首次为该作品供流：登记拉取锁（宿主本地替换/软删/移动该作品由此被阻，会话终态统一解除）
+	s.lockWorksForFile(entry.StoreID)
 	// absPath 域：仅 os.* 调用点现场构造（PATH_SEPARATOR_DISCIPLINE）
 	f, err := os.Open(filepath.Join(s.cfg.workDir, entry.StorePath))
 	if err != nil {
@@ -654,6 +697,51 @@ func (s *shareSession) serveFile(w *frameWriter, st *streamState, req *streamReq
 	defer func() { _ = f.Close() }()
 	size := entry.Size - req.Offset
 	s.serveBytes(w, st, "file", req.Offset, size, io.NewSectionReader(f, req.Offset, size))
+}
+
+// lockWorksForFile 供流文件前按归属作品登记拉取锁：首次为某作品读/发文件数据时以会话 token
+// 为会话键登记进锁注册中心，已登记作品跳过（收敛到每作品一次）。未注入注册中心（单测场景）
+// 时无操作；强制解锁清掉的引用不回补——用户已知情放行，后续供流不重新上锁。
+func (s *shareSession) lockWorksForFile(storeID int64) {
+	if s.cfg.lockRegistrar == nil {
+		return
+	}
+	s.mu.Lock()
+	var pending []int64
+	for _, wid := range s.storeWorkIndex[storeID] {
+		if _, ok := s.lockedWorks[wid]; !ok {
+			s.lockedWorks[wid] = struct{}{}
+			pending = append(pending, wid)
+		}
+	}
+	s.mu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.cfg.lockRegistrar.Register(ctx, pending, s.tokenOf())
+}
+
+// releaseWorkLocks 会话终态/停止时解除本会话登记的全部作品锁：run 主循环的一切退出路径
+// （终态、撤销、发布取消）均经此收尾；其他会话仍持有同一作品时锁不释放（注册中心集合语义）。
+func (s *shareSession) releaseWorkLocks() {
+	if s.cfg.lockRegistrar == nil {
+		return
+	}
+	s.mu.Lock()
+	works := make([]int64, 0, len(s.lockedWorks))
+	for wid := range s.lockedWorks {
+		works = append(works, wid)
+	}
+	s.lockedWorks = make(map[int64]struct{})
+	s.mu.Unlock()
+	if len(works) == 0 {
+		return
+	}
+	s.cfg.lockRegistrar.Unregister(context.Background(), works, s.tokenOf())
 }
 
 // serveBytes 统一的字节流应答：JSON 头记录 + 内容分块记录 + STREAM_CLOSE 收尾。

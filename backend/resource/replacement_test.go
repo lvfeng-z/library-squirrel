@@ -12,6 +12,7 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/shareLock"
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -119,6 +120,7 @@ func TestRestoreReplacedStoresBackupOrder(t *testing.T) {
 		noopReplaceWorkLiveness{},
 		noopReplaceRecompute{},
 		replaceWorkDir{workDir: workDir},
+		shareLock.NewShareLockRegistry(),
 	)
 
 	scope := RestoreScope{Victims: []StoreRef{{

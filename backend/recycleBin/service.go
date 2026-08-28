@@ -12,6 +12,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 
@@ -162,6 +163,18 @@ type RecycleBinSettingsProvider interface {
 	GetRecycleBinSettings() (enabled bool, retentionDays int)
 }
 
+// WorkLockChecker 作品锁查询（由 shareLock.ShareLockRegistry 实现）。复原置换与覆盖转移
+// 会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到源文件消失，须前置拒绝
+type WorkLockChecker interface {
+	IsLocked(ctx context.Context, workID int64) bool
+}
+
+// ResourceWorkReader resource 行查询（由 resource.Service 实现）。文件条目复原置换链的
+// 活行挂载键只有 resource 维度，锁按作品粒度，须反查所属作品
+type ResourceWorkReader interface {
+	GetById(ctx context.Context, resourceId int64) (*domain.Resource, error)
+}
+
 // Service 回收站服务（软删除模型：作品条目 = work 已删行聚合其内；文件条目 = persistent_store
 // 已删行且非「作品已删」聚合形态——work 不可达（离链孤儿自愈落入）或 work 存活（MarkInvalid 失效行、
 // J' 替换/merge 软删残留），条目单位是 store 行、TTL 按行自身 deleted_at）
@@ -179,11 +192,13 @@ type Service struct {
 	recycleWorkSetQuerier RecycleWorkSetQuerier
 	transactor            Transactor
 	storeAssocCleaner     StoreAssociationCleaner
+	workLock              WorkLockChecker    // 复原置换/覆盖转移前置作品锁守卫
+	resourceWorkReader    ResourceWorkReader // 活行挂载键反查所属作品（作品锁按作品粒度）
 	stopCh                chan struct{}
 }
 
 // NewService 创建回收站服务
-func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string, workSetRestorer WorkSetRestorer, recycleWorkSetQuerier RecycleWorkSetQuerier, transactor Transactor, storeAssocCleaner StoreAssociationCleaner) *Service {
+func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQuerier RecycleWorkQuerier, storeQuerier RecycleStoreQuerier, storeCleaner StoreCleaner, storeRestorer StoreRestorer, resourceRecomputer ResourceRecomputer, settingsReader RecycleBinSettingsProvider, workDirGetter func() string, workSetRestorer WorkSetRestorer, recycleWorkSetQuerier RecycleWorkSetQuerier, transactor Transactor, storeAssocCleaner StoreAssociationCleaner, workLock WorkLockChecker, resourceWorkReader ResourceWorkReader) *Service {
 	return &Service{
 		workRestorer:          workRestorer,
 		backupReader:          backupReader,
@@ -198,6 +213,8 @@ func NewService(workRestorer WorkRestorer, backupReader BackupReader, recycleQue
 		recycleWorkSetQuerier: recycleWorkSetQuerier,
 		transactor:            transactor,
 		storeAssocCleaner:     storeAssocCleaner,
+		workLock:              workLock,
+		resourceWorkReader:    resourceWorkReader,
 		stopCh:                make(chan struct{}),
 	}
 }
@@ -298,6 +315,12 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 		if existing != nil && existing.GetID() != workId {
 			if !overwrite {
 				return 0, ErrRestoreConflict
+			}
+			// 覆盖转移会把占位作品的活行 store 文件移入 backup，作品正被分享拉取持有
+			// 时在途拉取会读到源文件消失，前置拒绝（用户知情强制解锁后重试）
+			if s.workLock.IsLocked(ctx, existing.GetID()) {
+				logger.Log.Infof("[RecycleBin] 复原覆盖转移被作品锁拒绝: 占位作品 %d 正被分享拉取持有", existing.GetID())
+				return 0, shareLock.ErrWorkLocked
 			}
 			// 覆盖：占位新作品转入回收站（文件移 backup 让出 store/ 路径、业务键释放），反悔可再复原
 			if err := s.workRestorer.SoftDeleteWork(ctx, existing.GetID()); err != nil {
@@ -534,6 +557,13 @@ func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
 		return ErrRestoreStoreUnreachable
 	}
 
+	// 前置作品锁守卫：置换会移走挂载作品的活行 store 文件（同键当前代与同路径占位行
+	// 入 backup），作品正被分享拉取持有时在途拉取会读到源文件消失，拒绝执行
+	// （用户知情强制解锁后重试）
+	if err := s.guardWorkLockByResource(ctx, mount.ResourceId); err != nil {
+		return err
+	}
+
 	// 2. 置换同键当前代：挂载键 (resource,role,seq) 的活行让位（软删入回收站，可再复原）——
 	// 不置换会出现同键双活行，破坏挂载不变量并令完整度计数翻倍
 	if aliveId, err := s.storeQuerier.GetAliveStoreIdByKey(ctx, mount.ResourceId, mount.Role, mount.Seq); err != nil {
@@ -587,6 +617,21 @@ func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
 
 	// 7. 重算完整度（角色构成可能变化，如合并回滚补回轨道）
 	s.resourceRecomputer.RecomputeResourceComplete(ctx, mount.ResourceId)
+	return nil
+}
+
+// guardWorkLockByResource 按资源反查所属作品并校验作品锁，作品被持有时返回哨兵错误。
+// 锁为防误触软防护：资源行缺失或反查异常时告警放行，不因守卫自身故障阻断复原
+func (s *Service) guardWorkLockByResource(ctx context.Context, resourceId int64) error {
+	res, err := s.resourceWorkReader.GetById(ctx, resourceId)
+	if err != nil || res == nil {
+		logger.Log.Warnf("[RecycleBin] 作品锁守卫反查资源 %d 失败（放行继续）: %v", resourceId, err)
+		return nil
+	}
+	if s.workLock.IsLocked(ctx, res.WorkID) {
+		logger.Log.Infof("[RecycleBin] 复原置换被作品锁拒绝: 资源 %d 所属作品 %d 正被分享拉取持有", resourceId, res.WorkID)
+		return shareLock.ErrWorkLocked
+	}
 	return nil
 }
 

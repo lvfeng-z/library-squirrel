@@ -27,6 +27,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
@@ -219,12 +220,13 @@ func (c *recordingConn) Write(b []byte) (int, error) {
 	return c.Conn.Write(b)
 }
 
-// newTestService 组装面向桩中继的分享服务（planner 用生产 Packer，收集用桩模型）
+// newTestService 组装面向桩中继的分享服务（planner 用生产 Packer，收集用桩模型）。
+// lockReg 传 nil 即不接作品锁（多数测试不关心）；供流锁接线测试传真实注册中心断言登记/解除
 func newTestService(t *testing.T, stub *relayStub, workDir string, model *export.ExportModel,
-	em *captureEmitter, dialer *recordingDialer) *Service {
+	em *captureEmitter, dialer *recordingDialer, lockReg shareLock.ShareLockRegistry) *Service {
 	svc := NewService(nil, &fakeCollector{model: model}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em, nil)
+		"test-instance-0001", em, nil, lockReg)
 	opts := sessionRuntimeOptions{streamRate: 8 << 20}
 	if dialer != nil {
 		opts.dialFn = dialer.dial
@@ -371,7 +373,7 @@ func TestE2EHardAcceptance(t *testing.T) {
 	model, files := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
 	dialer := &recordingDialer{}
-	svc := newTestService(t, stub, workDir, model, em, dialer)
+	svc := newTestService(t, stub, workDir, model, em, dialer, nil)
 
 	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{
 		Title:         "E2E 硬验收分享",
@@ -474,7 +476,7 @@ func TestRecipientPullFileChunked(t *testing.T) {
 	workDir := t.TempDir()
 	model, files := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	_, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if !comp.Success {
@@ -529,7 +531,7 @@ func TestPathWhitelistDenied(t *testing.T) {
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	_, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if !comp.Success {
@@ -593,7 +595,7 @@ func TestRevokeLifecycle(t *testing.T) {
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if !comp.Success {
@@ -639,7 +641,7 @@ func TestRegisterRejected(t *testing.T) {
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if comp.Success {
@@ -660,7 +662,7 @@ func TestPingPongKeepalive(t *testing.T) {
 	workDir := t.TempDir()
 	model, _ := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	_, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if !comp.Success {
@@ -683,7 +685,7 @@ func TestReconnectBind(t *testing.T) {
 	workDir := t.TempDir()
 	model, files := buildTestModel(t, workDir)
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{})
 	if !comp.Success {
@@ -731,7 +733,7 @@ func TestCancelPublish(t *testing.T) {
 	bc := &blockingCollector{model: model, started: make(chan struct{})}
 	svc := NewService(nil, bc, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em, nil)
+		"test-instance-0001", em, nil, nil)
 	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
 
 	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{})
@@ -832,7 +834,7 @@ func (h *fakeStrategyHandle) isTerminal() bool {
 func TestPublishPreconditionRejected(t *testing.T) {
 	svc := NewService(nil, &fakeCollector{model: nil}, export.NewPacker(),
 		func() string { return "" }, func() string { return "" },
-		"test-instance-0001", nil, nil)
+		"test-instance-0001", nil, nil, nil)
 	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
 		t.Fatalf("中继未配置应拒绝: %v", err)
 	}
@@ -854,7 +856,7 @@ func newRecordTestService(t *testing.T, repo *Repository, stub *relayStub, workD
 	t.Helper()
 	svc := NewService(repo, &fakeCollector{model: model}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em, nil)
+		"test-instance-0001", em, nil, nil)
 	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
 	t.Cleanup(func() {
 		for _, d := range svc.Sessions(context.Background()) {
@@ -1066,6 +1068,97 @@ func TestRestoreAllBind(t *testing.T) {
 	_ = conn.Close()
 }
 
+// waitHostExit 轮询等待 shareID 宿主主体退出（hostCancels 条目摘除）
+func waitHostExit(t *testing.T, svc *Service, shareID string) {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		svc.mu.Lock()
+		_, inFlight := svc.hostCancels[shareID]
+		svc.mu.Unlock()
+		if !inFlight {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("宿主主体未退出 shareId=%s", shareID)
+}
+
+// waitBindCount 轮询等待 token 的 bind 次数达到 want。同实例复用场景 emitter 状态历史含
+// 发布期 online 快照，不能作「复原已在线」信号，以中继侧 bind 计数为准。
+func waitBindCount(t *testing.T, stub *relayStub, token string, want int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for stub.bindCountOf(token) < want && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if stub.bindCountOf(token) < want {
+		t.Fatalf("等待 bind 次数达 %d 超时（当前 %d）", want, stub.bindCountOf(token))
+	}
+}
+
+// TestRestoreAllSkipsInflightHost 复原入口在驻检测：主体在线在驻时重复 RestoreAll 不再拨号。
+// 前端 reload 令 onDomReady 二次触发复原入口，若无在驻守卫会以同 token 再次 bind 顶替在驻
+// 隧道，两会话互踢进入秒级重连热循环（吃满中继拨号限流）。
+func TestRestoreAllSkipsInflightHost(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "在驻复原"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	token := comp.Session.Token
+	// 首轮复原：发布主体退出（记录保持 active）后 RestoreAll 拉起复原主体至在线
+	svc.CancelPublish(context.Background(), shareID)
+	waitHostExit(t, svc, shareID)
+	svc.RestoreAll(context.Background())
+	waitBindCount(t, stub, token, 1, 8*time.Second)
+	bindCount := stub.bindCountOf(token)
+
+	// 重复复原（模拟 reload 二次触发复原入口）：主体在驻，不重复拨号
+	svc.RestoreAll(context.Background())
+	svc.RestoreAll(context.Background())
+	time.Sleep(1500 * time.Millisecond) // 覆盖最小重连退避窗口：无守卫时第二主体此时必已 bind
+	if got := stub.bindCountOf(token); got != bindCount {
+		t.Fatalf("在驻期间重复复原不应再拨号: bind %d -> %d", bindCount, got)
+	}
+}
+
+// TestRestoreAllAgainAfterHostExit 主体退出后在驻标记解除：取消复原主体（记录保持 active）
+// 后再次 RestoreAll 可重新拨号复原——在驻守卫不得把分享永久锁死在跳过。
+func TestRestoreAllAgainAfterHostExit(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "退出后再复原"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	token := comp.Session.Token
+	// 首轮复原在线
+	svc.CancelPublish(context.Background(), shareID)
+	waitHostExit(t, svc, shareID)
+	svc.RestoreAll(context.Background())
+	waitBindCount(t, stub, token, 1, 8*time.Second)
+	firstBinds := stub.bindCountOf(token)
+
+	// 复原主体退出（记录保持 active）→ 在驻解除，再次复原可重新拨号
+	svc.CancelPublish(context.Background(), shareID)
+	waitHostExit(t, svc, shareID)
+	svc.RestoreAll(context.Background())
+	waitBindCount(t, stub, token, firstBinds+1, 8*time.Second)
+	waitRecordState(t, repo, shareID, RecordStateActive)
+}
+
 // TestRestoreWorkDeleted 复原时作品已删（收集失败）→ 记录落 failed 记原因
 func TestRestoreWorkDeleted(t *testing.T) {
 	stub := startRelayStub(t)
@@ -1085,7 +1178,7 @@ func TestRestoreWorkDeleted(t *testing.T) {
 	em2 := newCaptureEmitter()
 	svc2 := NewService(repo, &failingCollector{err: errors.New("作品已删除")}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em2, nil)
+		"test-instance-0001", em2, nil, nil)
 	svc2.RestoreAll(context.Background())
 	rec := waitRecordState(t, repo, shareID, RecordStateFailed)
 	if !strings.Contains(rec.ErrMsg, "作品已删除") {
@@ -1114,7 +1207,7 @@ func TestRestoreWorkSilentMissing(t *testing.T) {
 	em2 := newCaptureEmitter()
 	svc2 := NewService(repo, &fakeCollector{model: emptyModel}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return workDir },
-		"test-instance-0001", em2, nil)
+		"test-instance-0001", em2, nil, nil)
 	svc2.RestoreAll(context.Background())
 	rec := waitRecordState(t, repo, shareID, RecordStateFailed)
 	if !strings.Contains(rec.ErrMsg, "分享对象已删除") {
@@ -1182,7 +1275,7 @@ func TestRestoreRelayUnreachable(t *testing.T) {
 	em := newCaptureEmitter()
 	svc := NewService(repo, &fakeCollector{model: model}, export.NewPacker(),
 		func() string { return "127.0.0.1:1" }, func() string { return workDir },
-		"test-instance-0001", em, nil)
+		"test-instance-0001", em, nil, nil)
 	svc.RestoreAll(context.Background())
 	em.waitState(t, "share-9002", stateReconnecting, 8*time.Second)
 	waitRecordState(t, repo, "share-9002", RecordStateActive)
@@ -1205,7 +1298,7 @@ func TestMetaPayloadWorksName(t *testing.T) {
 	)
 
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 
 	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "作品名元数据分享", Password: "pw"})
 	if !comp.Success {
@@ -1290,7 +1383,7 @@ func TestMetaPayloadWorksNameSanitized(t *testing.T) {
 	)
 
 	em := newCaptureEmitter()
-	svc := newTestService(t, stub, workDir, model, em, nil)
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
 	_, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "作品名净化分享"})
 	if !comp.Success {
 		t.Fatalf("发布失败: %s", comp.ErrMsg)

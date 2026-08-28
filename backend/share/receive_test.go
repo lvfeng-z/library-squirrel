@@ -108,7 +108,7 @@ func TestParseShareLinkInvalid(t *testing.T) {
 
 func TestNotifyIncomingLinkConsumeAndDedupe(t *testing.T) {
 	svc := NewService(nil, nil, nil, func() string { return "" }, func() string { return "" },
-		"test-instance-0001", nil, nil)
+		"test-instance-0001", nil, nil, nil)
 
 	assert.False(t, svc.NotifyIncomingLink("https://evil.example.com/x"), "非深链形态应被拒")
 	assert.Equal(t, "", svc.ConsumeIncomingLink(), "被拒链接不应缓存")
@@ -225,7 +225,7 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 	}
 	em := newCaptureEmitter()
 	dialer := &recordingDialer{}
-	hostSvc := newTestService(t, stub, hostWorkDir, model, em, dialer)
+	hostSvc := newTestService(t, stub, hostWorkDir, model, em, dialer, nil)
 	_, comp := publishAndWait(t, hostSvc, em, opts)
 	if !comp.Success {
 		t.Fatalf("宿主发布失败: %s", comp.ErrMsg)
@@ -235,7 +235,7 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 	recvDir := t.TempDir()
 	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
-		"recipient-instance-0001", nil, taskCtl)
+		"recipient-instance-0001", nil, taskCtl, nil)
 	recvSvc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})
 
 	return &receiveTestEnv{
@@ -1307,4 +1307,68 @@ func TestReceiveChildCreateFailsRollback(t *testing.T) {
 	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.deletedIDs)
 	assert.Empty(t, taskCtl.children)
 	assert.Empty(t, taskCtl.startedIDs)
+}
+
+// newSelfRefReceiveSvc 组装带本地分享账本的收件 Service（自指检测测试用：独立实例，
+// dialer 独立于夹具共享的宿主记录器，供零外呼断言）
+func newSelfRefReceiveSvc(env *receiveTestEnv, repo *Repository, taskCtl BuiltinTaskControl,
+	dialer *recordingDialer) *Service {
+	svc := NewService(repo, nil, nil,
+		func() string { return env.stub.addr }, func() string { return env.recvDir },
+		"recipient-instance-0001", nil, taskCtl, nil)
+	svc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})
+	return svc
+}
+
+// TestReceiveSelfReferenceRejected 自指拒绝：链接 token 命中本地分享记录（本实例自产）
+// → 接收启动即拒绝（哨兵错误可辨识），不拨中继、不拉 manifest、不建任何任务。
+func TestReceiveSelfReferenceRejected(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	// 本地账本含同 token 记录行（本实例发布过该分享）
+	repo := NewRepository(openRecordTestDB(t))
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-selfref"
+	rec.Token = target.Token
+	rec.State = RecordStateActive
+	require.NoError(t, repo.Create(context.Background(), rec))
+	dialer := &recordingDialer{}
+	recvSvc := newSelfRefReceiveSvc(env, repo, taskCtl, dialer)
+
+	_, err = recvSvc.Receive(context.Background(), env.link, "")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrShareSelfReference)
+	assert.Contains(t, err.Error(), "不能接收自己分享的内容")
+
+	// 未拨中继（零字节外呼）、未建任务、未启动、未删除
+	assert.Empty(t, dialer.snapshot())
+	assert.Nil(t, taskCtl.parent)
+	assert.Empty(t, taskCtl.children)
+	assert.Empty(t, taskCtl.startedIDs)
+	assert.Empty(t, taskCtl.deletedIDs)
+}
+
+// TestReceiveSelfReferencePassCrossInstance 跨实例放行：本实例有自己的分享账本，但链接
+// token 不在其中（同账号、他实例产出）→ 非自指，正常走原有建树流程。
+func TestReceiveSelfReferencePassCrossInstance(t *testing.T) {
+	taskCtl := &fakeBuiltinTaskControl{}
+	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
+	// 本地账本仅含本实例自己的分享（token 与接收链接不同）
+	repo := NewRepository(openRecordTestDB(t))
+	own := entity.NewShareRecord()
+	own.ShareID = "share-own"
+	own.Token = "XyZaBcDeFgHiJkLmNoPqRs"
+	own.State = RecordStateActive
+	require.NoError(t, repo.Create(context.Background(), own))
+	recvSvc := newSelfRefReceiveSvc(env, repo, taskCtl, &recordingDialer{})
+
+	res, err := recvSvc.Receive(context.Background(), env.link, "")
+	require.NoError(t, err)
+	// 正常建树：父容器 + 每作品一子任务 + 整树启动
+	require.NotNil(t, taskCtl.parent)
+	assert.Equal(t, taskCtl.parent.GetID(), res.ParentTaskID)
+	assert.Len(t, taskCtl.children, 2)
+	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.startedIDs)
 }

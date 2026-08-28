@@ -120,6 +120,7 @@ type Service struct {
 	instanceID string                // 设备绑定实例 ID（溯源锚点，持久化于程序根 config/）
 	emitter    ShareEventEmitter     // nil=不发事件（单测场景）
 	taskCtl    BuiltinTaskControl    // share-receive 任务创建/启动能力（app.go 装配）
+	lockReg    WorkLockRegistrar     // 供流作品锁登记/解除（app.go 注入 shareLock 单例；nil=不登记）
 	opts       sessionRuntimeOptions // 测试覆写（零值=默认）
 
 	mu                  sync.Mutex
@@ -132,9 +133,11 @@ type Service struct {
 
 // NewService 创建分享服务。
 // repo 为分享记录仓储（nil=不落记录）；instanceID 为设备绑定实例 ID（LoadOrCreateInstanceID
-// 产物，App 生命周期内恒定）；taskCtl 为 share-receive 任务控制能力（延迟闭包适配器，运行期取用）。
+// 产物，App 生命周期内恒定）；taskCtl 为 share-receive 任务控制能力（延迟闭包适配器，运行期取用）；
+// lockReg 为供流作品锁登记/解除能力（收件人拉取中的作品并发防护，nil=不登记）。
 func NewService(repo *Repository, collector ExportCollector, planner ExportPlanner, relayAddr func() string,
-	workDir func() string, instanceID string, emitter ShareEventEmitter, taskCtl BuiltinTaskControl) *Service {
+	workDir func() string, instanceID string, emitter ShareEventEmitter, taskCtl BuiltinTaskControl,
+	lockReg WorkLockRegistrar) *Service {
 	return &Service{
 		repo:       repo,
 		collector:  collector,
@@ -144,6 +147,7 @@ func NewService(repo *Repository, collector ExportCollector, planner ExportPlann
 		instanceID: instanceID,
 		emitter:    emitter,
 		taskCtl:    taskCtl,
+		lockReg:    lockReg,
 		sessions:   make(map[string]*shareSession),
 	}
 }
@@ -295,23 +299,34 @@ func (s *Service) RestoreAll(ctx context.Context) {
 			continue
 		}
 		logger.Log.Infof("[share] 复原分享 shareId=%s token=%s", rec.ShareID, rec.Token)
-		s.startHostSupervised(rec.ShareID, hostParams{
+		if !s.startHostSupervised(rec.ShareID, hostParams{
 			WorkIDs:       workIDs,
 			WorkSetIDs:    workSetIDs,
 			Title:         rec.Title,
 			ExpireSeconds: rec.ExpireSeconds,
-		}, rec)
+		}, rec) {
+			logger.Log.Infof("[share] 分享主体在驻跳过复原 shareId=%s token=%s", rec.ShareID, rec.Token)
+		}
 	}
 }
 
 // startHostSupervised 启动受监督的宿主主体 goroutine（发布/复原共用）：panic 经 recover
 // 收尾（发布：complete 失败事件终止弹窗等待；复原：记录落 failed），主体异常不外溢进程。
 // 取消函数登记进 hostCancels（CancelPublish/DeleteRecord 直达），主体退出时自摘。
-func (s *Service) startHostSupervised(shareID string, p hostParams, rec *entity.ShareRecord) {
+// 同 shareID 主体已在驻则跳过启动（返回 false）：复原入口可被重复触发（前端 reload 令
+// onDomReady 二次执行），在驻会话的隧道仍在服务，此时再次拨号 bind 以同 token 顶替在驻
+// 隧道——两会话互踢断线、各自每次在线把重连退避复位到最小值，形成秒级重连热循环吃满
+// 中继拨号限流。检测与登记同临界区，并发触发无重复启动窗口。
+func (s *Service) startHostSupervised(shareID string, p hostParams, rec *entity.ShareRecord) bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	if s.hostCancels == nil {
 		s.hostCancels = make(map[string]context.CancelFunc)
+	}
+	if _, inFlight := s.hostCancels[shareID]; inFlight {
+		s.mu.Unlock()
+		cancel()
+		return false
 	}
 	s.hostCancels[shareID] = cancel
 	s.mu.Unlock()
@@ -333,6 +348,7 @@ func (s *Service) startHostSupervised(shareID string, p hostParams, rec *entity.
 		}()
 		s.hostSessionBody(ctx, shareID, p, rec)
 	}()
+	return true
 }
 
 // hostSessionBody 分享宿主主体（发布/复原共用，goroutine 内执行，阻塞直至会话终态或取消）：
@@ -440,20 +456,21 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 	}
 
 	cfg := sessionConfig{
-		id:           shareID,
-		title:        SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
-		instanceID:   s.instanceID,
-		relayDial:    dialAddr,
-		relayHost:    relayHost,
-		workDir:      workDir,
-		key:          key,
-		model:        model,
-		manifestData: manifestData,
-		passwordHash: passwordHash,
-		expireSecs:   mapExpireSeconds(p.ExpireSeconds),
-		createdAt:    createdAt,
-		emitter:      s.emitter,
-		opts:         s.opts,
+		id:            shareID,
+		title:         SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
+		instanceID:    s.instanceID,
+		relayDial:     dialAddr,
+		relayHost:     relayHost,
+		workDir:       workDir,
+		key:           key,
+		model:         model,
+		manifestData:  manifestData,
+		passwordHash:  passwordHash,
+		expireSecs:    mapExpireSeconds(p.ExpireSeconds),
+		createdAt:     createdAt,
+		emitter:       s.emitter,
+		lockRegistrar: s.lockReg,
+		opts:          s.opts,
 	}
 	if rec != nil {
 		cfg.seedToken = rec.Token

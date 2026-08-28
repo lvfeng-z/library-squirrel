@@ -2,6 +2,7 @@ package entity
 
 import (
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 
@@ -170,6 +171,17 @@ var validStoreTypes = map[string]struct{}{
 	StoreTypeAudioTrack: {},
 	StoreTypeVideoMain:  {},
 	StoreTypeAudioMain:  {},
+}
+
+// AllStoreTypes 内置 store_type 封闭枚举全集(字母序)。供「空选择=全量板块」展开为显式角色集合——
+// 封闭枚举下全集过滤等价于不过滤(作品全部活行 store)
+func AllStoreTypes() []string {
+	out := make([]string, 0, len(validStoreTypes))
+	for t := range validStoreTypes {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
 
 var imageResourceTypeSpec = ResourceTypeSpec{

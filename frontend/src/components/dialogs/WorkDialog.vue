@@ -30,6 +30,7 @@ import { reWorkTagApi } from '@renderer/apis/http'
 import { appLauncherOpen, appLauncherOpenImage } from '@renderer/apis/http/wrappers/appLauncher'
 import { resourceMerge, resourceMergeCancel } from '@renderer/apis/http/wrappers/resource'
 import { getMergeState, markMergeStarted, clearMergeState } from '@renderer/composables/useMergeProgress'
+import { useWorkLockConfirm } from '@renderer/composables/useWorkLockConfirm'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
 import { getResourceOpenPath, getResourcePreviewType, isResourceMergeable } from '@renderer/utils/ResourceUtil.ts'
 import { ResourceType, StoreRole } from '@renderer/constants/sectionCode.ts'
@@ -75,6 +76,8 @@ const apis = {
   workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
   workSetListByWorkId: workSetApi.workSetListByWorkId
 }
+// 作品分享拉取锁交互（删除命中锁时弹强制解锁确认）
+const { isWorkLockedResponse, confirmWorkForceUnlock } = useWorkLockConfirm()
 // 主要容器的实例
 const infosRef = ref()
 // localTag的ExchangeBox组件的实例
@@ -493,7 +496,11 @@ function handleKeydown(event: KeyboardEvent) {
 async function deleteWork() {
   const workId = currentWorkFullInfo.value.work?.id
   if (notNullish(workId)) {
-    const response = await apis.workSoftDelete(workId!)
+    let response = await apis.workSoftDelete(workId!)
+    // 作品正被分享拉取持有时后端拒绝软删：确认强制解锁后重试本次删除，取消则按原响应提示
+    if (isWorkLockedResponse(response) && (await confirmWorkForceUnlock(workId!))) {
+      response = await apis.workSoftDelete(workId!)
+    }
     ApiUtil.msg(response)
   }
 }

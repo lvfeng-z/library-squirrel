@@ -25,6 +25,10 @@ const password = ref('')
 const starting = ref(false)
 // 前置错误（链接形态/密钥缺失等，后端校验返回）
 const startError = ref('')
+// 前置错误是否为自指拒绝（链接会话 token 命中本地分享记录=本实例自己分享的内容，
+// 后端 share.ErrShareSelfReference 透传文案「不能接收自己分享的内容」，按文案包含匹配；
+// true 时以警示态展示——属使用方式问题而非系统故障）
+const isSelfReference = ref(false)
 // 接收成功建树结果（非空=对话框切换为成功态：作品名列表 + 前往任务面板引导）
 const result = ref<ShareReceiveResult | null>(null)
 
@@ -42,6 +46,7 @@ watch(visible, (v: boolean): void => {
   if (v) {
     password.value = ''
     startError.value = ''
+    isSelfReference.value = false
     starting.value = false
     result.value = null
   }
@@ -68,11 +73,16 @@ async function handleStart(): Promise<void> {
   if (starting.value || isBlank(link.value)) return
   starting.value = true
   startError.value = ''
+  isSelfReference.value = false
   try {
     result.value = await shareReceive(link.value.trim(), password.value)
     ElMessage.success('已创建拉取任务')
   } catch (e) {
-    startError.value = e instanceof Error ? e.message : '启动拉取失败'
+    const message = e instanceof Error ? e.message : '启动拉取失败'
+    // 自指拒绝：本实例自己分享的内容不能在本机接收（不进入拉取流程）；
+    // 跨设备接收自己的分享是合法场景、不受影响
+    isSelfReference.value = message.includes('不能接收自己分享的内容')
+    startError.value = message
   } finally {
     starting.value = false
   }
@@ -168,11 +178,11 @@ function closeAfterSuccess(): void {
         <el-alert
           v-if="startError"
           class="share-receive-alert"
-          type="error"
+          :type="isSelfReference ? 'warning' : 'error'"
           :closable="false"
           show-icon
         >
-          {{ startError }}
+          {{ isSelfReference ? `${startError}（该分享由本机创建）` : startError }}
         </el-alert>
       </template>
     </div>

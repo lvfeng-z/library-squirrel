@@ -5,17 +5,19 @@ import (
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/shareLock"
 )
 
 // Handler 回收站 Handler（方法名显式表达条目实体归属：Works=作品条目、Stores=文件条目，
 // 为作品集条目（WorkSets）的并列扩展留语义空间）
 type Handler struct {
-	svc *Service
+	svc      *Service
+	workLock shareLock.ShareLockRegistry // 作品锁注册中心（强制解锁 IPC 直通；守卫查询在 Service 内经窄接口）
 }
 
 // NewHandler 创建回收站 Handler
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, workLock shareLock.ShareLockRegistry) *Handler {
+	return &Handler{svc: svc, workLock: workLock}
 }
 
 // PageWorks 分页查询回收站作品条目
@@ -113,4 +115,13 @@ func (h *Handler) PurgeStoreRecords(ctx context.Context, storeId int64) *model.A
 // storeId: 已软删 persistent_store 行 ID（须有备份且挂载活作品）
 func (h *Handler) RestoreStore(ctx context.Context, storeId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.RestoreStore(ctx, storeId))
+}
+
+// ForceUnlockWork 强制解锁作品锁。作品正被分享拉取持有时，触碰其活行 store 文件的操作
+// （替换软删、复原置换、覆盖转移）会被拒并返回 shareLock.ErrWorkLocked；用户知情接受
+// 在途拉取可能失败后调用本方法清除该作品的全部会话引用，再重试原操作即可放行
+// workId: 被锁作品 ID
+func (h *Handler) ForceUnlockWork(ctx context.Context, workId int64) *model.ApiResponse[any] {
+	h.workLock.ForceUnlock(ctx, workId)
+	return model.Success[any](nil)
 }

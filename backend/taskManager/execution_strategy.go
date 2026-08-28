@@ -55,6 +55,20 @@ type replaceConfirmResult struct {
 	decision ReplaceDecision
 }
 
+// conflictWorkIds 提取冲突作品 ID 集合（保序去重）
+func conflictWorkIds(conflicts []ConflictInfo) []int64 {
+	ids := make([]int64, 0, len(conflicts))
+	seen := make(map[int64]struct{}, len(conflicts))
+	for _, c := range conflicts {
+		if _, ok := seen[c.WorkID]; ok {
+			continue
+		}
+		seen[c.WorkID] = struct{}{}
+		ids = append(ids, c.WorkID)
+	}
+	return ids
+}
+
 // confirmDecision 由前端确认动作推导整体决策（"skip" → 跳过，其余 → 替换；
 // 对应现有 ConfirmReplace 单值答复的 action 语义）
 func confirmDecision(action string) ReplaceDecision {
@@ -150,6 +164,9 @@ func (h *strategyHandle) WaitReplaceConfirm(conflicts []ConflictInfo) (ReplaceDe
 			m.deps.Pusher.PushDuplicateDetected(m.taskId, m.task.TaskName.String, c.WorkID, c.WorkName, c.ConflictRoles)
 		}
 	}
+	// 记录本次等待涉及的冲突作品集合：替换答复投递前 Manager 同步预检作品锁用
+	// （内置类型确认替换的执行同样会软删这些已有作品的活行 store 文件）
+	m.confirmConflictWorkIds = conflictWorkIds(conflicts)
 	// 注册进等待确认表：供 Manager.ConfirmReplace 按任务类型分流投递答复、前端状态展示
 	m.manager.enqueueWaitingForInput(m)
 	// 释放信号量槽位：挂起等待期间不挤占并发额度（对齐插件任务命中冲突不入队不占槽的既有形态）

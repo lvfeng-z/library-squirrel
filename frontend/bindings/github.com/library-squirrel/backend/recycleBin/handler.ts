@@ -23,12 +23,24 @@ import * as dto$0 from "../base/model/dto/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ForceUnlockWork 强制解锁作品锁。作品正被分享拉取持有时，触碰其活行 store 文件的操作
+ * （替换软删、复原置换、覆盖转移）会被拒并返回 shareLock.ErrWorkLocked；用户知情接受
+ * 在途拉取可能失败后调用本方法清除该作品的全部会话引用，再重试原操作即可放行
+ * workId: 被锁作品 ID
+ */
+export function ForceUnlockWork(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1194447709, workId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * PageStores 分页查询回收站文件条目（persistent_store 已删行，非「作品已删」聚合形态）
  * query: 文件域条件体系，见 dto.RecycleStorePageQuery
  */
 export function PageStores(page: model$0.Page<dto$0.RecycleStoreDTO> | null, query: dto$0.RecycleStorePageQuery | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleStoreDTO> | null> | null> {
     return $Call.ByID(327218636, page, query).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
 }
 
@@ -38,7 +50,7 @@ export function PageStores(page: model$0.Page<dto$0.RecycleStoreDTO> | null, que
  */
 export function PageWorkSets(page: model$0.Page<dto$0.RecycleWorkSetDTO> | null, query: dto$0.RecycleWorkSetPageQuery | null): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleWorkSetDTO> | null> | null> {
     return $Call.ByID(1982244126, page, query).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -48,7 +60,7 @@ export function PageWorkSets(page: model$0.Page<dto$0.RecycleWorkSetDTO> | null,
  */
 export function PageWorks(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query: $models.RecyclePageQuery): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.RecycleWorkDTO> | null> | null> {
     return $Call.ByID(1139234152, page, query).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
@@ -59,7 +71,7 @@ export function PageWorks(page: model$0.Page<dto$0.RecycleWorkDTO> | null, query
  */
 export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3859689381, storeId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -69,7 +81,7 @@ export function PurgeStore(storeId: number): $CancellablePromise<model$0.ApiResp
  */
 export function PurgeStoreRecords(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2988714605, storeId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -80,7 +92,7 @@ export function PurgeStoreRecords(storeId: number): $CancellablePromise<model$0.
  */
 export function PurgeWork(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3030960545, workId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -90,7 +102,7 @@ export function PurgeWork(workId: number): $CancellablePromise<model$0.ApiRespon
  */
 export function PurgeWorkRecords(workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1231168777, workId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -100,7 +112,7 @@ export function PurgeWorkRecords(workId: number): $CancellablePromise<model$0.Ap
  */
 export function PurgeWorkSet(workSetId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(4280127911, workSetId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -110,7 +122,7 @@ export function PurgeWorkSet(workSetId: number): $CancellablePromise<model$0.Api
  */
 export function RestoreStore(storeId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1152685402, storeId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType1($result);
     });
 }
 
@@ -135,22 +147,22 @@ export function RestoreWorkSet(workSetId: number, overwrite: boolean): $Cancella
 }
 
 // Private type creation functions
-const $$createType0 = dto$0.RecycleStoreDTO.createFrom;
-const $$createType1 = model$0.Page.createFrom($$createType0);
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = model$0.ApiResponse.createFrom($$createType2);
+const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = dto$0.RecycleStoreDTO.createFrom;
+const $$createType3 = model$0.Page.createFrom($$createType2);
 const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = dto$0.RecycleWorkSetDTO.createFrom;
-const $$createType6 = model$0.Page.createFrom($$createType5);
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
+const $$createType5 = model$0.ApiResponse.createFrom($$createType4);
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = dto$0.RecycleWorkSetDTO.createFrom;
+const $$createType8 = model$0.Page.createFrom($$createType7);
 const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = dto$0.RecycleWorkDTO.createFrom;
-const $$createType11 = model$0.Page.createFrom($$createType10);
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
+const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = dto$0.RecycleWorkDTO.createFrom;
+const $$createType13 = model$0.Page.createFrom($$createType12);
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType15 = model$0.ApiResponse.createFrom($$createType14);
 const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType18 = $Create.Nullable($$createType17);

@@ -76,10 +76,10 @@ func (h *Handler) ConfirmReplace(ctx context.Context, taskId int64, action strin
 	return model.HandleVoid(h.mgr.ConfirmReplace(taskId, action))
 }
 
-// ConfirmReplaceBatch 批量确认替换或跳过重复作品
+// ConfirmReplaceBatch 批量确认替换或跳过重复作品（replace 答复遇涉及作品被分享拉取持有时
+// 整体不投递并返回错误，任务留在等待确认表）
 func (h *Handler) ConfirmReplaceBatch(ctx context.Context, taskIds []int64, action string) *model.ApiResponse[any] {
-	h.mgr.ConfirmReplaceBatch(taskIds, action)
-	return model.Success[any](nil)
+	return model.HandleVoid(h.mgr.ConfirmReplaceBatch(taskIds, action))
 }
 
 // GetTaskSnapshot 获取当前所有活跃任务的完整状态快照

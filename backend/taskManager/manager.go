@@ -12,6 +12,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/task"
 )
 
@@ -131,7 +132,12 @@ func (m *Manager) startTaskTrees(ctx context.Context, taskIds []int64, recordMod
 // Redownload 板块重执行:把所选板块记录到任务树全部成员(父+子)后启动
 // 记录到全部成员保证每个子任务都持有该模式(供执行派生与单独续传读取),而非仅父任务持有
 func (m *Manager) Redownload(ctx context.Context, taskIds []int64, storeRoles []string, includeWorkInfo bool) error {
-	mode := runMode{workInfo: includeWorkInfo, storeRoles: storeRoles}
+	// 空选择=仅作品信息(None),非空=用户子集(Selected);全量开始走 StartTaskTrees 的 All
+	scope := storeScope{kind: scopeNone}
+	if len(storeRoles) > 0 {
+		scope = storeScope{kind: scopeSelected, roles: storeRoles}
+	}
+	mode := runMode{workInfo: includeWorkInfo, storeScope: scope}
 	return m.loadAndStartTaskTrees(ctx, taskIds, false, &mode)
 }
 
@@ -163,17 +169,20 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	}
 
 	// recordMode 非 nil(开始/重下):为各任务设置执行模式内存字段,供 runModeFromTask 派生执行。
-	// 开始(StartTaskTree)记录空 selection(派生时回退 universe)+workInfo=true;重下(Redownload)记录用户所选子集。
+	// 开始(StartTaskTree)记录 All+workInfo=true(派生时 universe 回填 roles);重下(Redownload)记录
+	// 用户所选——子集=Selected、仅作品信息=None。
 	// 持久化推迟到确定调度范围后按"实际纳入调度的任务"写入(决策1·B):整树 Start 写全部子任务,
 	// 运行中父单元重纳(reinject)只写请求的终态叶子,不波及未被纳入的运行中兄弟。
 	var modeStoreRoles sql.NullString
 	if recordMode != nil {
-		// Start(runModeFull,storeRoles=nil)→重置 StoreRoles 为 NULL,执行期由 universe 派生(支持默认插件下全量)
-		// Redownload(storeRoles 非 nil,可空)→记录所选;空=仅作品信息(不拉资源)
-		if recordMode.storeRoles == nil {
+		// 执行模式三态落库:All→NULL(执行期由 universe 派生)、None→空串(仅作品信息)、Selected→所选子集
+		switch recordMode.storeScope.kind {
+		case scopeAll:
 			modeStoreRoles = sql.NullString{Valid: false}
-		} else {
-			modeStoreRoles = sql.NullString{String: strings.Join(recordMode.storeRoles, ","), Valid: true}
+		case scopeNone:
+			modeStoreRoles = sql.NullString{String: "", Valid: true}
+		default:
+			modeStoreRoles = sql.NullString{String: strings.Join(recordMode.storeScope.roles, ","), Valid: true}
 		}
 		// 内存字段对全部 tasks 设置:被构建的任务据此派生 runMode,未被构建的任务(如 reinject 跳过的兄弟)不被读取、无害
 		for _, t := range tasks {
@@ -441,7 +450,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 			continue
 		}
 		// 仅作品信息板块的任务不查重（不拉任何资源，不可能覆盖 store 行）
-		if !child.runMode.fetchStores {
+		if !child.runMode.storeScope.coversStores() {
 			child.skipDuplicateCheck = true
 			continue
 		}
@@ -487,7 +496,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		items[i] = duplicate.DuplicateCheckItem{
 			SiteName:   siteIdToName[child.task.SiteID.Int64],
 			SiteWorkID: child.task.SiteWorkID.String,
-			Roles:      child.runMode.storeRoles,
+			Roles:      child.runMode.storeScope.roles,
 		}
 	}
 
@@ -882,7 +891,10 @@ func (m *Manager) CountActiveByPlugin(pluginPublicId string) int {
 	return count
 }
 
-// ConfirmReplace 用户确认替换或跳过
+// ConfirmReplace 用户确认替换或跳过重复作品。
+// replace 答复在投递前同步预检涉及作品的分享拉取锁（checkConfirmWorkLocks）：命中不摘确认
+// 条目、不投递，返回 shareLock.ErrWorkLocked 直达前端（前端弹强制解锁确认，用户知情解锁后
+// 重发本答复即放行）；skip 答复不动作品资源，不查锁
 func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 	m.waitingForInputMu.Lock()
 	task, ok := m.waitingForInputMap[taskId]
@@ -890,8 +902,15 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 		m.waitingForInputMu.Unlock()
 		return ErrTaskTreeNotFound
 	}
+	if action != "skip" {
+		if err := m.checkConfirmWorkLocks(task); err != nil {
+			m.waitingForInputMu.Unlock()
+			return err
+		}
+	}
 	delete(m.waitingForInputMap, taskId)
 	m.waitingForInputMu.Unlock()
+	task.confirmConflictWorkIds = nil
 
 	logger.Log.Infof("[TaskManager] 确认替换任务: taskId=%d, action=%s", taskId, action)
 	if task.strategy != nil {
@@ -906,27 +925,59 @@ func (m *Manager) ConfirmReplace(taskId int64, action string) error {
 }
 
 // ConfirmReplaceBatch 批量确认替换或跳过重复作品
-// 未在等待确认Map中的任务ID会被静默跳过（尽力而为）
+// 未在等待确认Map中的任务ID会被静默跳过（尽力而为）。replace 答复投递前同步预检全部涉及作品
+// 的分享拉取锁：任一命中即整体不投递（任务全部留在等待确认表，用户解锁后重发本答复），
+// 返回 shareLock.ErrWorkLocked；skip 答复不查锁。
 // 加锁提取任务后按任务类型分流投递（策略任务走确认通道、插件任务走命令通道），各 actor 独立处理
-func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) {
+func (m *Manager) ConfirmReplaceBatch(taskIds []int64, action string) error {
 	m.waitingForInputMu.Lock()
 	tasks := make([]*ManagedTask, 0, len(taskIds))
 	for _, id := range taskIds {
 		if task, ok := m.waitingForInputMap[id]; ok {
-			delete(m.waitingForInputMap, id)
 			tasks = append(tasks, task)
 		}
+	}
+	if action != "skip" {
+		for _, task := range tasks {
+			if err := m.checkConfirmWorkLocks(task); err != nil {
+				m.waitingForInputMu.Unlock()
+				return err
+			}
+		}
+	}
+	for _, task := range tasks {
+		delete(m.waitingForInputMap, task.taskId)
 	}
 	m.waitingForInputMu.Unlock()
 
 	logger.Log.Infof("[TaskManager] 批量确认替换: count=%d, action=%s", len(tasks), action)
 	for _, task := range tasks {
+		task.confirmConflictWorkIds = nil
 		if task.strategy != nil {
 			task.confirmCh <- replaceConfirmResult{decision: confirmDecision(action)}
 			continue
 		}
 		task.postCmd(taskCmd{kind: cmdConfirmReplace, skipDup: action != "skip", skip: action == "skip"})
 	}
+	return nil
+}
+
+// checkConfirmWorkLocks 替换答复投递前置作品锁预检：涉及作品=任务替换定位的已有作品
+// （existingWorkId，查重命中时设置）与策略任务等待确认时记录的冲突作品集合，任一被分享
+// 拉取持有即返回 shareLock.ErrWorkLocked（确认替换的执行会软删其活行 store 文件，在途拉取
+// 会读到源文件消失）
+func (m *Manager) checkConfirmWorkLocks(task *ManagedTask) error {
+	if task.existingWorkId > 0 && m.deps.WorkLockChecker.IsLocked(context.Background(), task.existingWorkId) {
+		logger.Log.Infof("[TaskManager] 替换确认被作品锁拒绝: taskId=%d 涉及作品 %d 正被分享拉取持有", task.taskId, task.existingWorkId)
+		return shareLock.ErrWorkLocked
+	}
+	for _, workId := range task.confirmConflictWorkIds {
+		if m.deps.WorkLockChecker.IsLocked(context.Background(), workId) {
+			logger.Log.Infof("[TaskManager] 替换确认被作品锁拒绝: taskId=%d 涉及作品 %d 正被分享拉取持有", task.taskId, workId)
+			return shareLock.ErrWorkLocked
+		}
+	}
+	return nil
 }
 
 // IsShuttingDown 检查是否正在优雅关闭
@@ -1432,7 +1483,7 @@ func (m *Manager) doFlush() {
 
 // addToPending 添加状态变更:终态即时落盘,非终态进批量通道由 flushLoop 合并刷库
 func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg string) {
-	if isClearableTerminal(TaskState(status)) {
+	if isImmediateTerminal(TaskState(status)) {
 		// 终态即时落盘:同步写库,不进批量通道,进程崩溃也不丢失终态
 		m.pendingMu.Lock()
 		// 该任务可能在终态前已把 Paused 等非终态写进批量通道;终态即时写后,
@@ -1444,12 +1495,6 @@ func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg 
 			logger.Log.Errorf("[TaskManager] 即时写入任务 %d 终态 %d 失败: %v", taskId, status, err)
 		}
 		m.pendingMu.Unlock()
-
-		// 终态清空执行模式持久化。StoreRoles/IncludeWorkInfo 仅为在途任务(暂停→跨重启续传)服务,
-		// 任务完成后保留无意义,且会泄漏到下次执行(如 Redownload 子集残留导致后续全量开始时该任务仍跑子集)
-		if err := m.repo.UpdateRedownloadSections(context.Background(), []int64{taskId}, sql.NullString{}, false); err != nil {
-			logger.Log.Warnf("[TaskManager] 清空任务 %d 终态执行模式失败: %v", taskId, err)
-		}
 		return
 	}
 
@@ -1467,7 +1512,9 @@ func (m *Manager) addToPending(taskId int64, status task.TaskStatusEnum, errMsg 
 	}
 }
 
-// isClearableTerminal 是否为应清空执行模式的终态(Finished/Failed/PartlyFinished);Paused 保留以支持续传
-func isClearableTerminal(s TaskState) bool {
+// isImmediateTerminal 是否为应即时落盘的终态(Finished/Failed/PartlyFinished);Paused 保留批量通道以支持续传。
+// 执行模式(StoreRoles/IncludeWorkInfo)在终态不清空——保留供重试按原模式再来一次;
+// 后续全量开始/重下经 loadAndStartTaskTrees 的 recordMode 记录覆盖,不泄漏
+func isImmediateTerminal(s TaskState) bool {
 	return s == TaskStateFinished || s == TaskStateFailed || s == TaskStatePartlyFinished
 }

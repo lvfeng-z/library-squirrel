@@ -9,14 +9,17 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/search"
+	"github.com/library-squirrel/backend/shareLock"
 
 	"gorm.io/gorm"
 )
 
 // restoreStoreEnv 内存库（work/resource/resource_store/persistent_store 四表）+ 真实
-// persistentStore/search 服务（复原置换链焦点件：置换软删、复活、挂载身份查询走真实 SQL），
-// BackupReader 与完整度重算用记账桩
+// persistentStore/search/resource 服务（复原置换链焦点件：置换软删、复活、挂载身份查询、
+// 锁守卫反查所属作品走真实 SQL），BackupReader 与完整度重算用记账桩；
+// 挂真实作品锁注册中心（守卫测试登记/强制解锁用）
 type restoreStoreEnv struct {
 	svc       *Service
 	db        *gorm.DB
@@ -24,8 +27,10 @@ type restoreStoreEnv struct {
 	backup    *recordingBackupReader
 	recompute *fakeResourceRecomputer
 	workDir   string
+	lock      shareLock.ShareLockRegistry
 }
 
+// newRestoreStoreEnv 构建复原置换链测试环境
 func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	t.Helper()
 	if testing.Short() {
@@ -43,8 +48,10 @@ func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	backup := &recordingBackupReader{}
 	recompute := &fakeResourceRecomputer{}
-	svc := NewService(nil, backup, nil, searchSvc, ps, ps, recompute, nil, func() string { return workDir }, nil, nil, nil, nil)
-	return &restoreStoreEnv{svc: svc, db: db, ps: ps, backup: backup, recompute: recompute, workDir: workDir}
+	lock := shareLock.NewShareLockRegistry()
+	resourceSvc := resource.NewService(resource.NewRepository(db), resource.NewResourceStoreRepository(db))
+	svc := NewService(nil, backup, nil, searchSvc, ps, ps, recompute, nil, func() string { return workDir }, nil, nil, nil, nil, lock, resourceSvc)
+	return &restoreStoreEnv{svc: svc, db: db, ps: ps, backup: backup, recompute: recompute, workDir: workDir, lock: lock}
 }
 
 // fakeResourceRecomputer 完整度重算记账桩

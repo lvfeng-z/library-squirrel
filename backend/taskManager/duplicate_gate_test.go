@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/shareLock"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
@@ -217,6 +218,7 @@ func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, 
 			resReader, rsReader, backupReader, replacer,
 			&fakeBackupFileRestorer{}, &fakeWorkLivenessReader{work: entity.NewWork()},
 			&fakeResourceRecomputer{}, stubWorkDirProvider{dir: "E:/lib"},
+			shareLock.NewShareLockRegistry(),
 		),
 	}
 	return m, resReader, rsReader, backupReader, replacer
@@ -295,7 +297,7 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 			checker := &fakeDuplicateChecker{result: tc.result}
 			pusher := &fakePusher{}
 
-			m, _, _, _, _ := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
+			m, _, _, _, _ := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}},
 				checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
 
 			pushed := runDuplicateGate(t, m, pusher)
@@ -343,7 +345,7 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 // 定位到已有作品(workId 置位、isReplace=true)并按所选板块前置软删旧 store
 func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
-	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeRoles: []string{entity.StoreTypeThumbnail}, fetchStores: true},
+	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}},
 		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
 	pusher := m.deps.Pusher.(*fakePusher)
 	// 预置资源图：作品 500 → 资源 700 → thumbnail 关联(store 800，已完成活行)
@@ -379,12 +381,97 @@ func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	}
 }
 
+// TestDuplicateGate_FullModeReplaceSoftDeletesAllRoles 空 universe 全量(All)模式的替换软删锚：
+// All 语义=全量板块，替换 gate 按「是否拉取资源」判定而非「用户是否指定子集」——
+// 前置软删经封闭枚举全集展开覆盖作品全部角色活行。修复前 gate 按空选择旁路软删：
+// 锁不查+无备份+旧 store 行/文件孤儿泄漏(purge 不级联)
+func TestDuplicateGate_FullModeReplaceSoftDeletesAllRoles(t *testing.T) {
+	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
+	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeAll}},
+		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
+	pusher := m.deps.Pusher.(*fakePusher)
+	// 预置资源图：作品 500 → 资源 700 → image(800) 与 thumbnail(801) 两条已完成活行
+	res := entity.NewResource()
+	res.ID = 700
+	res.WorkID = 500
+	resReader.resources = []*entity.Resource{res}
+	rsReader.assocs = nil
+	for i, role := range []string{entity.StoreTypeImage, entity.StoreTypeThumbnail} {
+		assoc := entity.NewResourceStore()
+		assoc.ID = int64(i + 1)
+		assoc.ResourceID = 700
+		assoc.StoreType = role
+		assoc.StoreID = int64(800 + i)
+		assoc.StoreSeq = 0
+		rsReader.assocs = append(rsReader.assocs, assoc)
+		row := entity.NewPersistentStore()
+		row.SetID(int64(800 + i))
+		row.CompletedAt = 1
+		backupReader.rows = append(backupReader.rows, row)
+	}
+
+	pushed := runDuplicateGate(t, m, pusher)
+	if pushed {
+		t.Fatal("空交集不应弹窗")
+	}
+	if m.workId != 500 || !m.isReplace {
+		t.Fatalf("全量模式命中已有作品应视为替换(workId=%d isReplace=%v)", m.workId, m.isReplace)
+	}
+	if len(replacer.backupIds) != 2 {
+		t.Fatalf("全量模式前置软删应覆盖作品全部角色活行(800,801)，实际 %v", replacer.backupIds)
+	}
+}
+
+// TestDuplicateGate_FullModeReplaceLockGuard 守卫链含锁锚：全量模式前置软删走作品锁守卫——
+// 作品被分享拉取持有时软删被拒、任务转 Failed，不触碰任何 store 行(修复前 gate 旁路连锁都不查)
+func TestDuplicateGate_FullModeReplaceLockGuard(t *testing.T) {
+	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
+	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeAll}},
+		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
+	pusher := m.deps.Pusher.(*fakePusher)
+	res := entity.NewResource()
+	res.ID = 700
+	res.WorkID = 500
+	resReader.resources = []*entity.Resource{res}
+	assoc := entity.NewResourceStore()
+	assoc.ID = 1
+	assoc.ResourceID = 700
+	assoc.StoreType = entity.StoreTypeImage
+	assoc.StoreID = 800
+	assoc.StoreSeq = 0
+	rsReader.assocs = []*entity.ResourceStore{assoc}
+	storeRow := entity.NewPersistentStore()
+	storeRow.SetID(800)
+	storeRow.CompletedAt = 1
+	backupReader.rows = []*entity.PersistentStore{storeRow}
+	// 重挂带锁注册中心的替换链能力（其余依赖复用同批桩）
+	lock := shareLock.NewShareLockRegistry()
+	lock.Register(context.Background(), []int64{500}, "session-x")
+	m.deps.ReplaceStoreOps = resource.NewReplacementService(
+		resReader, rsReader, backupReader, replacer,
+		&fakeBackupFileRestorer{}, &fakeWorkLivenessReader{work: entity.NewWork()},
+		&fakeResourceRecomputer{}, stubWorkDirProvider{dir: "E:/lib"},
+		lock,
+	)
+
+	pushed := runDuplicateGate(t, m, pusher)
+	if pushed {
+		t.Fatal("空交集不应弹窗")
+	}
+	if m.GetState() != TaskStateFailed {
+		t.Fatalf("锁命中应令替换前置软删失败转 Failed，实际 %d", m.GetState())
+	}
+	if len(replacer.backupIds) != 0 || len(replacer.discardedIds) != 0 {
+		t.Fatalf("锁命中不应触碰 store 行，实际备份软删 %v 废弃 %v", replacer.backupIds, replacer.discardedIds)
+	}
+}
+
 // TestDuplicateGate_InfoOnlySkipsCheck 仅作品信息任务(无资源板块)不查重:
 // DuplicateChecker 零调用、无弹窗,作品信息板块正常执行
 func TestDuplicateGate_InfoOnlySkipsCheck(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitConflict, nil)}
 	pusher := &fakePusher{}
-	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, fetchStores: false},
+	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, storeScope: storeScope{kind: scopeNone}},
 		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
 	m.deps.WorkInfoSaver = &fakeWorkInfoSaver{savedWorkId: 100}
 

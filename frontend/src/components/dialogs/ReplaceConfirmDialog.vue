@@ -4,9 +4,11 @@ import { arrayNotEmpty } from '@renderer/utils/CommonUtil.ts'
 import { taskManagerConfirmReplace, taskManagerConfirmReplaceBatch } from '@renderer/apis/http/wrappers/task'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import type { DuplicateInfo } from '@renderer/store/UseReplaceConfirmStore'
+import { useWorkLockConfirm } from '@renderer/composables/useWorkLockConfirm'
 import { StoreRoleLabels } from '@renderer/constants/sectionCode'
 
 const store = useReplaceConfirmStore()
+const { isWorkLockedMessage, confirmWorkForceUnlock } = useWorkLockConfirm()
 
 // 板块角色转中文标签;行级信息不可得(冲突角色缺失)时返回空串,前端不展示板块明细
 function conflictRoleText(item: DuplicateInfo): string {
@@ -24,7 +26,18 @@ async function handleReplace(item: DuplicateInfo) {
     await taskManagerConfirmReplace(item.taskId, 'replace')
     store.remove(item.taskId)
   } catch (e: any) {
-    ElMessage.error(e.message)
+    if (!isWorkLockedMessage(e.message)) {
+      ElMessage.error(e.message)
+      return
+    }
+    // 替换涉及的作品正被分享拉取持有（任务仍在等待确认表）：知情确认后强制解锁并重发答复
+    if (!(await confirmWorkForceUnlock(item.existingWorkId))) return // 取消强制解锁：条目留在确认列表
+    try {
+      await taskManagerConfirmReplace(item.taskId, 'replace')
+      store.remove(item.taskId)
+    } catch (e2: any) {
+      ElMessage.error(e2.message)
+    }
   } finally {
     store.setLoading(item.taskId, false)
   }
@@ -44,19 +57,21 @@ async function handleSkip(item: DuplicateInfo) {
 
 async function handleReplaceAll() {
   const taskIds = store.list.map((item) => item.taskId)
-  store.clear()
   try {
     await taskManagerConfirmReplaceBatch(taskIds, 'replace')
+    store.clear()
   } catch (e: any) {
+    // 任一涉及作品被锁时后端整体不投递（任务全留在确认表），列表保留供逐项走强制解锁回路
+    // 或解锁后重试全部替换；其余错误同样保留列表等待用户处置
     ElMessage.error(e.message)
   }
 }
 
 async function handleSkipAll() {
   const taskIds = store.list.map((item) => item.taskId)
-  store.clear()
   try {
     await taskManagerConfirmReplaceBatch(taskIds, 'skip')
+    store.clear()
   } catch (e: any) {
     ElMessage.error(e.message)
   }

@@ -60,6 +60,18 @@ func (r *Repository) GetByShareID(ctx context.Context, shareID string) (*entity.
 	return rec, nil
 }
 
+// ExistsByToken 判定是否存在指定 token 的记录行（接收自指检测：share_record 只存在于
+// 分享产出实例的库中，token 命中即本实例自产）
+func (r *Repository) ExistsByToken(ctx context.Context, token string) (bool, error) {
+	n, err := r.Count(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{clause.Eq{Column: "token", Value: token}},
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // UpdateTerminal 落终态（state/err_msg/revoked_at 显式列更新——零值 err_msg/revoked_at
 // 须可写，不能用跳零值的 Updates）
 func (r *Repository) UpdateTerminal(ctx context.Context, id int64, state, errMsg string, revokedAt int64) error {

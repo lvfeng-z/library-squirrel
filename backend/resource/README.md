@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（image/thumbnail/videoTrack/videoMain/...）；并提供音视频合并编排（MergeService）与替换链能力（ReplacementService——替换前置软删、失败回滚复活）。
+Resource 实体管理与资源编排：一份 Resource 关联一个作品，通过 `resource_store` 关联表挂载多个 typed store（image/thumbnail/videoTrack/videoMain/...）；并提供音视频合并编排（MergeService，overwrite 原轨道置换前置带分享拉取作品锁守卫）与替换链能力（ReplacementService——替换前置软删、失败回滚复活，前置带分享拉取作品锁守卫）。
 
 ## 边界
 
@@ -38,22 +38,23 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 - **流程**（goroutine 内）：取 videoTrack/audioTrack store → 调 `merge.FFmpegMuxer.MergeRemux`（带进度回调）→ 落产物 PersistentStore(videoMain)（路径由 `persistentStore.BuildVariantPath` 从源视频轨 FilePath 推导）→ 事务挂 `resource_store`(videoMain)。
 - **进度与完成**：ffmpeg stderr 的 `-progress` 输出解析为百分比，经 `MergeEventEmitter.PushProgress` 推前端；终态（成功 mergedStoreId / 失败 errMsg）经 `PushComplete` 推送。前端 useMergeProgress 组合式消费（complete 为权威终态，忽略迟到 progress 防乱序闪烁）。
 - **取消**：`MergeCancel` 调 job 的 ctx.cancel，杀 ffmpeg 子进程（`exec.CommandContext`）；取消在 MergeRemux 阶段生效，落盘/overwrite 仅成功路径执行，故不误删原轨。
-- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、原轨道 store+文件转入回收站——经 `DeleteWithBackup` 软删带备份，可经回收站文件条目复原置换回滚，TTL 到期自动清理）。
-- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，含 DeleteWithBackup）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
+- **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、原轨道 store+文件转入回收站——经 `DeleteWithBackup` 软删带备份，可经回收站文件条目复原置换回滚，TTL 到期自动清理）。overwrite 置换前置带作品锁守卫：原轨道所属作品正被分享拉取持有时拒绝置换（返回 `shareLock.ErrWorkLocked`，产物已挂载保留、原轨道不动；资源反查异常时告警放行的软防护）。
+- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，含 DeleteWithBackup）、`MergeSettingsReader`（settings.Service）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）、`MergeWorkLockChecker`（shareLock.ShareLockRegistry——overwrite 原轨道置换前置作品锁守卫）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
 - **事务**：挂 resource_store 走 dbTransactorAdapter（tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；挂载失败补偿删产物 store。
 
 ## 替换链能力（ReplacementService）
 
 替换链的通用能力（输入 `(workId, roles)` 纯领域参数，不感知任务语义），自 taskManager 抽入本模块，插件任务与 share-receive 两发起方复用。实现于 `replacement.go`，对外接口 `ReplaceStoreOps`。
 
-- **`SoftDeleteWorkStoreRoles(ctx, workId, roles)`**：替换前置软删——软删作品下所选角色活行 store，已完成行走 `DeleteWithBackup`（移文件入 backup 并写行内 backup_id）、未完成行废弃文件软删（partial 无复原价值）、历史残留死行跳过；返回被软删行清单 `[]StoreRef`（供回滚登记）。`resource_store` 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位。
-- **`RestoreReplacedStores(ctx, scope RestoreScope)`**：失败回滚复活——备份还原文件（还原后清理备份）、批量复活行、重算 victim 所属资源完整度。清单来源两途（`RestoreScope`）：`WorkID` 数据驱动派生（插件任务，按挂载键同键最新死代圈定，软删行即持久还原点）/ `Victims` 显式清单（策略任务，执行器软删成功后登记的多作品清单）；`WorkID` 途带作品活性守卫（作品已软删则回滚让位）。
+- **`SoftDeleteWorkStoreRoles(ctx, workId, roles)`**：替换前置软删——软删作品下**指定角色集合**的活行 store（roles 为显式集合，**空集=不软删任何行**；「空选择=全量板块」的展开归发起方——taskManager 展开为 store_type 封闭枚举全集后传入，能力不承接该语义），已完成行走 `DeleteWithBackup`（移文件入 backup 并写行内 backup_id）、未完成行废弃文件软删（partial 无复原价值）、历史残留死行跳过；返回被软删行清单 `[]StoreRef`（供回滚登记）。`resource_store` 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位。前置作品锁守卫：软删会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到源文件消失，拒绝执行并返回 `shareLock.ErrWorkLocked`（上层透传，用户知情强制解锁后重试本操作）。
+- **`RestoreReplacedStores(ctx, scope RestoreScope)`**：失败回滚复活——备份还原文件（还原后清理备份）、批量复活行、重算 victim 所属资源完整度。清单来源两途（`RestoreScope`）：`WorkID` 数据驱动派生（插件任务，按挂载键同键最新死代圈定，软删行即持久还原点；Roles 同为显式集合，空集=无 victim）/ `Victims` 显式清单（策略任务，执行器软删成功后登记的多作品清单）；`WorkID` 途带作品活性守卫（作品已软删则回滚让位）。
 - **派生函数**：`deriveReplaceVictims`/`replaceVictimKey`（同键最新死代圈定，活行残留的键跳过——复活会撞部分唯一索引）随迁本模块。
-- **依赖注入**（接口隔离）：`ReplaceResourceLister`/`ResourceRecomputer`（resource.Service）、`ReplaceResourceStoreLister`（ResourceStoreRepository）、`ReplaceStoreRowReader`/`ReplaceStoreDeleter`（persistentStore.Service）、`ReplaceBackupRestorer`（backup.Service）、`ReplaceWorkLivenessReader`（work.Service）、`ReplaceWorkDirProvider`（settings.Service）。插件任务侧的「清本次新建 store」（依赖执行期 streams 状态）仍由发起方（taskManager 失败回滚单点）在调用前完成，不在能力内。
+- **依赖注入**（接口隔离）：`ReplaceResourceLister`/`ResourceRecomputer`（resource.Service）、`ReplaceResourceStoreLister`（ResourceStoreRepository）、`ReplaceStoreRowReader`/`ReplaceStoreDeleter`（persistentStore.Service）、`ReplaceBackupRestorer`（backup.Service）、`ReplaceWorkLivenessReader`（work.Service）、`ReplaceWorkDirProvider`（settings.Service）、`ReplaceWorkLockChecker`（shareLock.ShareLockRegistry——前置作品锁守卫）。插件任务侧的「清本次新建 store」（依赖执行期 streams 状态）仍由发起方（taskManager 失败回滚单点）在调用前完成，不在能力内。
 
 ## 依赖关系
 
-- 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）
+- 依赖（MergeService）：**merge**（Merger）、**persistentStore**（StoreOps）、**settings**（MergeSettingsReader）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）、**shareLock**（MergeWorkLockChecker——overwrite 原轨道置换前置作品锁守卫）
+- 依赖（ReplacementService）：**shareLock**（ReplaceWorkLockChecker——替换前置作品锁守卫；其余依赖见「替换链能力」节）
 - 被依赖：**work**（ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品**活行** store 角色集合，软删残留代不算；`RecomputeResourceComplete`——完整度共享重算；`ReplaceStoreOps`——替换链能力，前置软删/失败回滚复活）、**recycleBin**（`RecomputeResourceComplete`——复原置换后重算）、**merge**（由本模块 MergeService 编排）
 
 ## 关键设计

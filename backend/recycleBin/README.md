@@ -10,7 +10,8 @@
 - 与 **workSet**：workSet 实现 `WorkSetRestorer` 接口（软删/已删查询/冲突查询/清标志/级联删除）；作品集条目复原=冲突裁决+清标志（无文件无从属复活段），软删入口 `workSet.SoftDeleteWorkSet` 由 workSet 模块直接暴露。
 - 与 **search**：作品条目查询转发 `QueryRecycleWorkPage`（条件体系与作品搜索同构，基线 `deleted_at > 0`）；文件条目查询转发 `QueryRecycleStorePage` + `ListRecycleStoreIdsDeletedBefore`（TTL 圈定）——文件域条件体系（文件名/路径模糊、媒体类型、备份状态、作品名、删除时间）与作品条目的 SearchCondition 标签体系**分轨**，筛选器按前端 tab 切换查询模型；作品集条目查询转发 `QueryRecycleWorkSetPage`（作品集域平铺条件：名称/站点/删除时间，与另两类分轨）。
 - 与 **persistentStore**：文件条目清理链经 `StoreCleaner` 接口（GetDeletedStore 查已删行 / CleanupFile 尽力删文件 / DeleteUnscopedByIds 物理删行），复原置换链经 `StoreRestorer` 接口（GetById/GetByFilePath 活行查询 / DeleteWithBackup 与 SoftDeleteAndDiscardFile 置换软删 / RestoreByIds 复活）。
-- 与 **resource**：复原置换后经 `ResourceRecomputer` 重算资源完整度（角色构成可能变化，如合并回滚补回轨道）。
+- 与 **resource**：复原置换后经 `ResourceRecomputer` 重算资源完整度（角色构成可能变化，如合并回滚补回轨道）；文件条目置换的作品锁守卫经 `ResourceWorkReader` 反查挂载资源所属作品。
+- 与 **shareLock**：复原覆盖转移与文件条目置换前置经 `WorkLockChecker` 接口查作品锁（shareLock.ShareLockRegistry 实现），作品正被分享拉取持有时拒绝执行；强制解锁 `ForceUnlockWork` 由 Handler 直通注册中心。
 - 与 **backup**：软删除时资源文件移入 backup/（persistent_store 行内 backup_id 引用保管清单行），复原时经 `RestoreFile` 还原回 store/ 原路径并删备份记录，彻底删除/清理时**两阶段**（先 `DeleteBackupFile` 删文件、再 `DeleteBackupRecord` 删记录）消费式删备份——文件删不动即中止、记录保留，由前端询问用户仅删记录或放弃。作品集条目无文件无备份面。
 
 ## 对外接口（Handler）
@@ -30,6 +31,7 @@
 | `PageWorkSets(page, query)` | 分页查询作品集条目（query 为 RecycleWorkSetPageQuery 作品集域平铺条件体系） |
 | `RestoreWorkSet(workSetId, overwrite)` | 复原已软删作品集（overwrite 控制冲突时占位作品集转入回收站；本地手建集键 NULL 无冲突） |
 | `PurgeWorkSet(workSetId)` | 彻底删除已软删作品集（不可恢复，级联清成员关联与父子关联行） |
+| `ForceUnlockWork(workId)` | 强制解锁作品锁——清除该作品的全部分享拉取会话引用。被 `shareLock.ErrWorkLocked` 拒绝的操作（复原覆盖转移、文件条目置换、替换前置软删）在用户知情确认强制继续后调用本方法，重试原操作即放行 |
 
 > 逻辑删除入口 `work.SoftDelete` / `workSet.SoftDeleteWorkSet`（handler）由各模块暴露；TTL 自动清理由后台 goroutine 内部调用 PurgeWork/PurgeStore/PurgeWorkSet，不经 Handler。快照时代的 recycle_bin 表与仓储已随快照体系整体移除（软件未发布，无兼容保留）。
 
@@ -42,10 +44,11 @@
 - **复原冲突**（作品条目）：删除后重新下载同作品会占用业务键（部分唯一索引 `idx_work_site_site_work_active` 仅约束活行，已删行释放键）。复原时检测到活占位行 → 放弃（报 ErrRestoreConflict）或覆盖（占位作品转入回收站，文件移 backup 让出 store/ 路径，反悔可再复原）。
 - **作品集条目 = work_set 已删行**：删除时间、TTL 按 work_set.deleted_at；成员关联（re_work_work_set）与父子关联（re_work_set_work_set）行**原地保留**——复原零成本（清标志即全恢复，层级/成员/封面全在），彻底删除才级联清理。活成员数按 work 活行计数（已删成员不计，作品复原后自动回位）。**复原冲突**：业务键被同键新活集占位（重新下载场景，三列唯一索引下活行占键）→ 放弃或覆盖（占位集转回收站）；本地手建集（键 NULL）不参与唯一性、无冲突可能。**注意三列索引的毫秒约束**：同键两代死行删除时刻互异（同毫秒双删撞索引报错，显式失败非静默损坏，现实操作无同毫秒产道）。
 - **文件还原的操作抑制**：还原目标在 store/ 监控白名单内，逐文件 storeRegistry.Suppress/Release 登记避免被 fsmonitor 误报为外部变更。
+- **作品锁守卫（分享拉取中）**：复原覆盖转移与文件条目置换会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到源文件消失，两链前置查锁、命中返回 `shareLock.ErrWorkLocked`（覆盖转移按占位作品、置换经挂载资源反查所属作品）。锁为防误触软防护：资源行缺失或反查异常时告警放行，不因守卫自身故障阻断复原。
 
 ## 依赖关系
 
-- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup/DeleteBackupFile/DeleteBackupRecord）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer + StoreAssociationCleaner=ResourceStoreRepository 关联摘除）、database（Transactor 事务执行器）、settings（TTL 配置 + workDir）
+- 依赖：work（WorkRestorer：含 ListRevivableWorkStores 复活集派生）、workSet（WorkSetRestorer：软删/复原/级联）、backup（BackupReader：GetById/GetBackupPath/RestoreFile/DeleteBackup/DeleteBackupFile/DeleteBackupRecord）、search（RecycleWorkQuerier：QueryRecycleWorkPage；RecycleStoreQuerier：QueryRecycleStorePage/ListRecycleStoreIdsDeletedBefore/GetRecycleStoreMount/GetAliveStoreIdByKey；RecycleWorkSetQuerier：QueryRecycleWorkSetPage）、persistentStore（StoreCleaner + StoreRestorer）、resource（ResourceRecomputer + ResourceWorkReader=Service 行查询反查所属作品 + StoreAssociationCleaner=ResourceStoreRepository 关联摘除）、database（Transactor 事务执行器）、settings（TTL 配置 + workDir）、shareLock（WorkLockChecker 作品锁守卫，Handler 另直通 ShareLockRegistry 供 ForceUnlockWork）
 - 被依赖：前端回收站页面（作品/文件/作品集三 tab）
 
 ## 关键设计

@@ -7,6 +7,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 )
 
@@ -25,7 +26,7 @@ type StoreRef struct {
 //   - WorkID 数据驱动：插件任务场景——按作品+角色派生 victim（同键最新死代圈定，软删行即持久还原点）
 //   - Victims 显式清单：策略任务场景——执行器在软删成功后登记的多作品清单
 //
-// 两途皆空则 no-op；WorkID 途的 Roles 为空 = 全量角色
+// 两途皆空则 no-op；Roles 为显式角色集合，空集=无 victim（「空选择=全量」的展开归发起方）
 type RestoreScope struct {
 	WorkID  int64
 	Roles   []string
@@ -35,7 +36,9 @@ type RestoreScope struct {
 // ReplaceStoreOps 替换链能力接口（resource 模块提供）。任务语义（板块选择、确认、任务状态）不进入能力——
 // 输入输出为纯领域参数（workId/roles/StoreRef 清单），供插件任务与 share-receive 两发起方复用
 type ReplaceStoreOps interface {
-	// SoftDeleteWorkStoreRoles 替换前置软删：软删作品下所选角色的活行 store，返回被软删行清单（供回滚登记）
+	// SoftDeleteWorkStoreRoles 替换前置软删：软删作品下指定角色集合的活行 store，返回被软删行清单（供回滚登记）。
+	// roles 为显式角色集合（空集=不软删任何行）；「空选择=全量板块」的展开归发起方（如 taskManager
+	// 展开为 store_type 封闭枚举全集后传入），能力不承接该语义
 	SoftDeleteWorkStoreRoles(ctx context.Context, workId int64, roles []string) ([]StoreRef, error)
 	// RestoreReplacedStores 失败回滚复活（按清单）：备份还原文件、复活 victim，并重算所属资源完整度
 	RestoreReplacedStores(ctx context.Context, scope RestoreScope) error
@@ -85,6 +88,12 @@ type ReplaceWorkDirProvider interface {
 	GetWorkDir() string
 }
 
+// ReplaceWorkLockChecker 作品锁查询（由 shareLock.ShareLockRegistry 实现）。替换前置软删
+// 会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到源文件消失，须前置拒绝
+type ReplaceWorkLockChecker interface {
+	IsLocked(ctx context.Context, workID int64) bool
+}
+
 // ReplacementService 替换链能力编排：软删作品下所选角色活行 store、失败回滚按清单复活。
 // resource_store 关联与活行过滤归 resource 域；store 软删、文件备份、作品活性等能力经接口注入
 type ReplacementService struct {
@@ -96,6 +105,7 @@ type ReplacementService struct {
 	workLiveness ReplaceWorkLivenessReader  // 作品活性守卫
 	recompute    ResourceRecomputer         // 回滚后完整度重算
 	workDir      ReplaceWorkDirProvider     // 文件还原目标根目录
+	workLock     ReplaceWorkLockChecker     // 替换前置作品锁守卫
 }
 
 // NewReplacementService 创建替换链能力服务
@@ -108,6 +118,7 @@ func NewReplacementService(
 	workLiveness ReplaceWorkLivenessReader,
 	recompute ResourceRecomputer,
 	workDir ReplaceWorkDirProvider,
+	workLock ReplaceWorkLockChecker,
 ) *ReplacementService {
 	return &ReplacementService{
 		resources:    resources,
@@ -118,15 +129,23 @@ func NewReplacementService(
 		workLiveness: workLiveness,
 		recompute:    recompute,
 		workDir:      workDir,
+		workLock:     workLock,
 	}
 }
 
-// SoftDeleteWorkStoreRoles 替换前置软删：软删作品资源下所选角色的活行 store。
+// SoftDeleteWorkStoreRoles 替换前置软删：软删作品资源下指定角色集合的活行 store（roles 为显式
+// 集合，空集=不软删任何行——空选择的展开归发起方）。
 // 已完成行经 DeleteWithBackup 移文件入 backup 并写行内 backup_id（同生共死，失败保全优先报错中断）；
 // 未完成行废弃文件后无备份软删（partial 无复原价值）；已软删的历史残留行跳过。
 // resource_store 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位。
 // 返回被软删行清单（供回滚登记）；中途出错返回已软删的部分清单与错误
 func (s *ReplacementService) SoftDeleteWorkStoreRoles(ctx context.Context, workId int64, roles []string) ([]StoreRef, error) {
+	// 前置作品锁守卫：作品正被分享拉取持有时软删会移走在途拉取读取的源文件，拒绝执行
+	// （返回哨兵错误供上层透传，用户知情强制解锁后重试本操作）
+	if s.workLock.IsLocked(ctx, workId) {
+		logger.Log.Infof("[Resource] 替换前置软删被作品锁拒绝: workId=%d 正被分享拉取持有", workId)
+		return nil, shareLock.ErrWorkLocked
+	}
 	resources, err := s.resources.ListByWorkId(ctx, workId)
 	if err != nil {
 		return nil, fmt.Errorf("查询作品资源失败: %w", err)
@@ -149,14 +168,15 @@ func (s *ReplacementService) SoftDeleteWorkStoreRoles(ctx context.Context, workI
 		if rs.StoreID <= 0 {
 			continue
 		}
-		// 空角色集=默认插件下全量板块
-		if len(roleSet) > 0 {
-			if _, ok := roleSet[rs.StoreType]; !ok {
-				continue
-			}
+		if _, ok := roleSet[rs.StoreType]; !ok {
+			continue
 		}
 		storeIds = append(storeIds, rs.StoreID)
 		resourceIdByStore[rs.StoreID] = rs.ResourceID
+	}
+	// 角色集为空(或作品无匹配角色关联)时无候选行:显式 no-op,不发查询
+	if len(storeIds) == 0 {
+		return nil, nil
 	}
 	rows := s.storeRows.ListByIdsIncludeDeleted(ctx, storeIds)
 	victims := make([]StoreRef, 0, len(rows))
@@ -275,10 +295,10 @@ type replaceVictimKey struct {
 	seq        int
 }
 
-// deriveReplaceVictims 圈定替换 victim：作品资源 × 所选角色，按挂载键取最新死代。
+// deriveReplaceVictims 圈定替换 victim：作品资源 × 指定角色集合，按挂载键取最新死代。
 // 同时返回 victim 涉及的 resource ID 集（回滚后完整度重算用）。活行残留的键跳过——复活会与残留
 // 活行同 file_path 撞部分唯一索引（活行残留仅在新建 store 清理失败的异常态出现）；
-// 非替换任务的派生天然为空（新建作品的资源下无软删行）
+// 非替换任务的派生天然为空（新建作品的资源下无软删行）；roles 空集=无 victim
 func (s *ReplacementService) deriveReplaceVictims(ctx context.Context, workId int64, roles []string) ([]StoreRef, []int64) {
 	resources, err := s.resources.ListByWorkId(ctx, workId)
 	if err != nil || len(resources) == 0 {
@@ -302,10 +322,8 @@ func (s *ReplacementService) deriveReplaceVictims(ctx context.Context, workId in
 		if rs.StoreID <= 0 {
 			continue
 		}
-		if len(roleSet) > 0 {
-			if _, ok := roleSet[rs.StoreType]; !ok {
-				continue
-			}
+		if _, ok := roleSet[rs.StoreType]; !ok {
+			continue
 		}
 		storeIds = append(storeIds, rs.StoreID)
 	}
@@ -323,10 +341,8 @@ func (s *ReplacementService) deriveReplaceVictims(ctx context.Context, workId in
 		if rs.StoreID <= 0 {
 			continue
 		}
-		if len(roleSet) > 0 {
-			if _, ok := roleSet[rs.StoreType]; !ok {
-				continue
-			}
+		if _, ok := roleSet[rs.StoreType]; !ok {
+			continue
 		}
 		row := rowById[rs.StoreID]
 		if row == nil {

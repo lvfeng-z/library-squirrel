@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,36 +48,52 @@ const (
 	runResultPaused                       // Setup 阶段暂停，goroutine 退出，等待恢复后重新调度
 )
 
-// runMode 板块执行选择:workInfo 为作品元数据独立板块,storeRoles 为所选资源 store_type 集合
-type runMode struct {
-	workInfo    bool     // 作品元数据板块
-	storeRoles  []string // 资源板块:所选 store_type 子集(main/thumbnail/videoTrack/...);空可能为"默认插件下全量"或"仅作品信息",由 fetchStores 区分
-	fetchStores bool     // 本次是否拉取资源:仅作品信息=false(跳过 Start);首跑/重下资源=true。空 universe 的默认插件首跑亦为 true(Start 传空→插件下全量)
+// storeScopeKind 资源板块选择三态
+type storeScopeKind int
+
+const (
+	// scopeNone 仅作品信息板块:不拉取资源、不产生任务终态
+	scopeNone storeScopeKind = iota
+	// scopeAll 全量板块:下载范围取插件 universe(空 universe=插件自决),替换语义覆盖作品全部活行 store
+	scopeAll
+	// scopeSelected 用户显式指定的板块子集
+	scopeSelected
+)
+
+// storeScope 资源板块选择(storeRoles+fetchStores 组合两义的显式三态封装)。
+// roles 的解释由 kind 决定:Selected 携带用户子集(非空)、All 携带插件 universe(可空,空=插件自决全量)、None 恒空
+type storeScope struct {
+	kind  storeScopeKind
+	roles []string
 }
 
-// runModeFull 首跑执行模式:含作品元数据板块;资源板块留空(由 runModeFromTask 据 universe 派生,空=插件自决全量)
-var runModeFull = runMode{workInfo: true}
+// coversStores 是否拉取资源板块(None=false,All/Selected=true)
+func (s storeScope) coversStores() bool { return s.kind != scopeNone }
+
+// runMode 板块执行选择:workInfo 为作品元数据独立板块,storeScope 为资源板块三态选择
+type runMode struct {
+	workInfo   bool       // 作品元数据板块
+	storeScope storeScope // 资源板块选择(三态)
+}
+
+// runModeFull 首跑执行模式:含作品元数据板块;资源板块=All(universe 由 runModeFromTask 据 InvolvedRoles 派生)
+var runModeFull = runMode{workInfo: true, storeScope: storeScope{kind: scopeAll}}
 
 func (m runMode) hasWorkInfo() bool { return m.workInfo }
 
-// hasStore 是否选择了指定 store_type
-func (m runMode) hasStore(storeType string) bool {
-	return slices.Contains(m.storeRoles, storeType)
-}
-
-// hasAnyStore 是否选择了任意资源板块(决定是否产生任务终态)
-func (m runMode) hasAnyStore() bool { return len(m.storeRoles) > 0 }
-
-// runModeFromTask 从 task 持久化字段派生 runMode
-// StoreRoles NULL(Start/首次执行,含默认插件)→拉取资源,storeRoles 取 universe(空 universe→Start 传空,插件下全量)
-// StoreRoles Valid(Redownload 已记录)→空 selection=仅作品信息(不拉资源),非空=所选子集(拉资源)
+// runModeFromTask 从 task 持久化字段派生 runMode(三态产出)
+// StoreRoles NULL(Start/首次执行,含默认插件)→All,roles 取 universe(空 universe=插件自决全量)
+// StoreRoles Valid(Redownload 已记录)→空串=None(仅作品信息),非空=Selected(用户子集)
 // workInfo 统一取 IncludeWorkInfo 字段(首跑由 StartTaskTree 记录为 true)
 func runModeFromTask(t *entity.Task) runMode {
 	if !t.StoreRoles.Valid {
-		return runMode{workInfo: t.IncludeWorkInfo, storeRoles: parseStoreRoles(t.InvolvedRoles), fetchStores: true}
+		return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeAll, roles: parseStoreRoles(t.InvolvedRoles)}}
 	}
 	sel := parseStoreRoles(t.StoreRoles)
-	return runMode{workInfo: t.IncludeWorkInfo, storeRoles: sel, fetchStores: len(sel) > 0}
+	if len(sel) == 0 {
+		return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeNone}}
+	}
+	return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeSelected, roles: sel}}
 }
 
 // parseStoreRoles 解析逗号分隔的 store_type 字符串为切片
@@ -255,6 +270,13 @@ type ResourceStoreWriter interface {
 	DeleteByStoreIds(ctx context.Context, storeIds []int64) error
 }
 
+// WorkLockChecker 作品锁查询（由 shareLock.ShareLockRegistry 实现）。替换确认投递前置守卫：
+// 确认替换的执行会软删涉及作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到
+// 源文件消失，须在投递前同步拒绝（哨兵错误直达前端触发强制解锁回路）
+type WorkLockChecker interface {
+	IsLocked(ctx context.Context, workID int64) bool
+}
+
 // TaskDeps ManagedTask 的共享依赖集合
 // 将 NewManager 和 NewManagedTask 的大量参数收敛为一个结构体，新增依赖只需改此处
 type TaskDeps struct {
@@ -280,6 +302,7 @@ type TaskDeps struct {
 	PendingResourceUpdater PendingResourceUpdater
 	StoreFileCleaner       StoreFileCleaner
 	StoreDeleter           StoreDeleter
+	WorkLockChecker        WorkLockChecker // 替换确认投递前置作品锁守卫（Manager 确认答复面使用）
 }
 
 // ==== 多流控制器 ====
@@ -403,6 +426,9 @@ type ManagedTask struct {
 	resumeFromDB bool
 	// 已有作品 ID（第一次 run 检测到重复时设置，第二次 run 时用于备份）
 	existingWorkId int64
+	// 等待确认涉及的冲突作品集合（策略任务 WaitReplaceConfirm 进入等待时记录；替换答复投递前的
+	// 作品锁预检用，与 existingWorkId 合并检锁，答复投递后清空）
+	confirmConflictWorkIds []int64
 
 	// 当前错误信息（仅 TaskStateFailed 时有效，通过 onStateChange 回调传递到 Manager）
 	errorMessage string
@@ -848,7 +874,7 @@ func (m *ManagedTask) run() runResult {
 		return runResultPaused
 	}
 	m.setState(TaskStateProcessing)
-	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, stores:%v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeRoles, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
+	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, storeScope:%+v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeScope, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
 
 	// 统一走板块组合执行（全集等价完整下载含查重；真子集按所选板块）
 	return m.runSectionCombo()
@@ -858,20 +884,20 @@ func (m *ManagedTask) run() runResult {
 // 含任一资源板块(含全集)时走查重(ConfirmReplace 两段式)并产生终态;仅 workInfo 为非终态(保持执行前状态、不持久化)
 func (m *ManagedTask) runSectionCombo() runResult {
 	// workdir 检查（资源板块需要，置于查重前避免无效确认）
-	if m.runMode.fetchStores && m.deps.WorkDirProvider.GetWorkDir() == "" {
+	if m.runMode.storeScope.coversStores() && m.deps.WorkDirProvider.GetWorkDir() == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
 	// 含资源板块：查重（fallback；主路径在 Manager.batchCheckDuplicates）
-	if m.runMode.fetchStores && !m.skipDuplicateCheck && m.deps.DuplicateChecker != nil &&
+	if m.runMode.storeScope.coversStores() && !m.skipDuplicateCheck && m.deps.DuplicateChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
 		// 查重输入键形态统一：插件任务侧把 task.SiteID 反查站点名（一次查询），
 		// 与 share-receive/zip 导入的 manifest 域键（站点名）对齐
 		siteName, ok := m.resolveSiteName(m.runCtx, m.task.SiteID.Int64)
 		if ok {
 			results, err := m.deps.DuplicateChecker.Check(m.runCtx, []duplicate.DuplicateCheckItem{{
-				SiteName: siteName, SiteWorkID: m.task.SiteWorkID.String, Roles: m.runMode.storeRoles,
+				SiteName: siteName, SiteWorkID: m.task.SiteWorkID.String, Roles: m.runMode.storeScope.roles,
 			}})
 			if err == nil && len(results) == 1 {
 				res := results[0]
@@ -895,7 +921,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 
 	// workId 定位 + 替换判定
 	// 含资源板块在已有作品上重执行都视为替换,需备份旧 store
-	if m.runMode.fetchStores {
+	if m.runMode.storeScope.coversStores() {
 		// 查重命中(existingWorkId>0，确认后重入或 batchCheckDuplicates 设置)
 		if m.existingWorkId > 0 {
 			m.workId = m.existingWorkId
@@ -910,11 +936,12 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	}
 
 	// 替换场景:软删所选板块对应的旧 store。
+	// 含资源板块的重执行即替换(空选择=全量板块同样覆盖),需备份旧 store。
 	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就软删(软删→生成→失败回滚,统一替换语义);
 	// 已完成行移文件入 backup 并写行内 backup_id(同生共死),未完成行废弃文件,历史残留死行不动。
 	// 软删行入回收站文件条目由 TTL 收尾,resource_store 关联保留(失败回滚复活即挂载回位)
-	if m.isReplace && m.runMode.hasAnyStore() {
-		if err := m.softDeleteReplaceTargets(m.runCtx, m.workId, m.runMode.storeRoles); err != nil {
+	if m.isReplace && m.runMode.storeScope.coversStores() {
+		if err := m.softDeleteReplaceTargets(m.runCtx, m.workId, m.replaceSoftDeleteRoles()); err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 替换前置软删失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("替换前置软删旧资源失败: %v", err))
 		}
@@ -937,9 +964,9 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		m.workId = savedWorkId
 	}
 
-	// 资源板块:fetchStores 时 Start 按所选 storeRoles 选择性产出(空 storeRoles=默认插件下全量)
-	if m.runMode.fetchStores {
-		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.runMode.storeRoles)
+	// 资源板块:coversStores 时 Start 按 scope 携带角色选择性产出(All 空 universe=插件自决全量)
+	if m.runMode.storeScope.coversStores() {
+		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.runMode.storeScope.roles)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("获取资源流集合失败: %v", err))
@@ -952,7 +979,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 		// 若插件多产出了未选 role,其 io.Pipe 无消费者会永久阻塞 demux(多流复用一条 gRPC stream),此处兜底排空
 		m.drainUnselectedReaders(specs, selected)
 		if len(selected) == 0 {
-			logger.Log.Errorf("[TaskManager] 任务 %d 插件未产出所选资源角色: %v", m.taskId, m.runMode.storeRoles)
+			logger.Log.Errorf("[TaskManager] 任务 %d 插件未产出所选资源角色: %v", m.taskId, m.runMode.storeScope.roles)
 			return m.comboFail("插件未产出所选资源类型")
 		}
 		return m.startDownload(selected, startResp)
@@ -969,7 +996,7 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 	if m.abortedByPause() {
 		return runResultPaused
 	}
-	if m.runMode.fetchStores {
+	if m.runMode.storeScope.coversStores() {
 		if m.deps.Pusher != nil {
 			m.deps.Pusher.PushError(m.taskId, errMsg)
 		}
@@ -1072,7 +1099,7 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 
 // isNonTerminalMode 是否为非终态板块组合（无资源板块）：执行不产生任务终态、不持久化任务状态
 func (m *ManagedTask) isNonTerminalMode() bool {
-	return !m.runMode.fetchStores
+	return !m.runMode.storeScope.coversStores()
 }
 
 // finishNonTerminalSection 结束 A 非终态板块：恢复执行前状态（任务的 DB status），不持久化
@@ -1243,9 +1270,23 @@ func (m *ManagedTask) cleanupCreatedStores(ctx context.Context) {
 	m.streams = nil
 }
 
+// replaceSoftDeleteRoles 替换软删与失败回滚派生的生效角色集,从 storeScope 三态派生:
+// Selected 用用户子集;All 用 store_type 封闭枚举全集(=作品全部活行);None 不涉及资源板块、
+// 无软删对象。resource 替换能力只认显式角色集合(空集=不软删任何行),「空=全量」的展开归发起方
+func (m *ManagedTask) replaceSoftDeleteRoles() []string {
+	switch m.runMode.storeScope.kind {
+	case scopeSelected:
+		return m.runMode.storeScope.roles
+	case scopeAll:
+		return entity.AllStoreTypes()
+	default:
+		return nil
+	}
+}
+
 // softDeleteReplaceTargets 替换前置软删：软删作品资源下所选角色的活行 store（发起方编排）。
-// 实现委派 resource 替换能力（SoftDeleteWorkStoreRoles）——软删与回滚清单派生统一归 resource 域，
-// 此处仅透传任务所选角色并上报错误；调用点与调用时机不变
+// 实现委派 resource 替换能力（SoftDeleteWorkStoreRoles，显式角色集合语义）——软删与回滚清单
+// 派生统一归 resource 域，此处透传任务生效角色（经 replaceSoftDeleteRoles 展开）并上报错误
 func (m *ManagedTask) softDeleteReplaceTargets(ctx context.Context, workId int64, roles []string) error {
 	if m.deps.ReplaceStoreOps == nil {
 		return fmt.Errorf("替换链能力未注入")
@@ -1286,7 +1327,7 @@ func (m *ManagedTask) restoreReplaceTargets(ctx context.Context) {
 	}
 	if err := m.deps.ReplaceStoreOps.RestoreReplacedStores(ctx, resource.RestoreScope{
 		WorkID: m.workId,
-		Roles:  m.runMode.storeRoles,
+		Roles:  m.replaceSoftDeleteRoles(),
 	}); err != nil {
 		logger.Log.Warnf("[TaskManager] 任务 %d 失败回滚失败: %v", m.taskId, err)
 	}
@@ -1915,15 +1956,16 @@ func (m *ManagedTask) reportProgress() {
 	m.onProgress(m.taskId, total, finished)
 }
 
-// filterSpecsByRoles 按 runMode.storeRoles 过滤 spec(空集合=全量)
+// filterSpecsByRoles 按 storeScope 携带的角色集过滤 spec(All 空 universe=插件自决,不过滤;
+// Selected 按 user 子集过滤;None 不到达——调用点在 coversStores 门槛内)
 func (m *ManagedTask) filterSpecsByRoles(specs []*sdkdto.StoreSpec) []*sdkdto.StoreSpec {
-	if len(m.runMode.storeRoles) == 0 {
+	if len(m.runMode.storeScope.roles) == 0 {
 		out := make([]*sdkdto.StoreSpec, len(specs))
 		copy(out, specs)
 		return out
 	}
-	roleSet := make(map[string]struct{}, len(m.runMode.storeRoles))
-	for _, r := range m.runMode.storeRoles {
+	roleSet := make(map[string]struct{}, len(m.runMode.storeScope.roles))
+	for _, r := range m.runMode.storeScope.roles {
 		roleSet[r] = struct{}{}
 	}
 	var out []*sdkdto.StoreSpec

@@ -10,6 +10,7 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkTag"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteTag"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -44,22 +45,23 @@ func newSaveWorkInfoTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil),  // SiteTagWriter（真实件）
 		nil, // WorkSetWriter
 		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db)), // ReWorkAuthorWriter（真实件）
-		nil, // LocalTagBatchReader
-		nil, // SiteTagBatchReader
-		nil, // SiteBatchReader
-		nil, // LocalAuthorBatchReader
-		nil, // SiteAuthorBatchReader
-		nil, // ResourceBatchReader
-		nil, // ResourceStoreBatchReader
-		nil, // StoreBatchReader
-		nil, // ReWorkTagBatchReader
-		nil, // LocalTagFindOrCreator
-		nil, // LocalAuthorFindOrCreator
-		nil, // StoreDeleter
-		nil, // RunningTaskStopper
-		nil, // ResourceStoreHardDeleter
-		nil, // WorkSetRelationWriter
-		nil, // CoverReferenceClearer
+		nil,                              // LocalTagBatchReader
+		nil,                              // SiteTagBatchReader
+		nil,                              // SiteBatchReader
+		nil,                              // LocalAuthorBatchReader
+		nil,                              // SiteAuthorBatchReader
+		nil,                              // ResourceBatchReader
+		nil,                              // ResourceStoreBatchReader
+		nil,                              // StoreBatchReader
+		nil,                              // ReWorkTagBatchReader
+		nil,                              // LocalTagFindOrCreator
+		nil,                              // LocalAuthorFindOrCreator
+		nil,                              // StoreDeleter
+		nil,                              // RunningTaskStopper
+		nil,                              // ResourceStoreHardDeleter
+		nil,                              // WorkSetRelationWriter
+		nil,                              // CoverReferenceClearer
+		shareLock.NewShareLockRegistry(), // WorkLockChecker（真实件：纯内存能力，零外部依赖）
 	)
 	return svc, db
 }

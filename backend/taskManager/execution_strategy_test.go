@@ -16,9 +16,17 @@ import (
 
 // fakeBuiltinRepo 内置任务路径测试仓储桩：仅 ListTaskTree 有值，其余记录调用
 type fakeBuiltinRepo struct {
-	mu       sync.Mutex
-	tasks    []*domain.Task
-	statuses map[int64]task.StatusUpdate
+	mu             sync.Mutex
+	tasks          []*domain.Task
+	statuses       map[int64]task.StatusUpdate
+	sectionUpdates []sectionUpdateRecord
+}
+
+// sectionUpdateRecord 板块重执行选择写入记录（终态清空回归锚断言用）
+type sectionUpdateRecord struct {
+	taskIds         []int64
+	storeRoles      sql.NullString
+	includeWorkInfo bool
 }
 
 func newFakeBuiltinRepo(tasks ...*domain.Task) *fakeBuiltinRepo {
@@ -54,7 +62,26 @@ func (r *fakeBuiltinRepo) BatchUpdatePendingResourceID(ctx context.Context, upda
 }
 
 func (r *fakeBuiltinRepo) UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sectionUpdates = append(r.sectionUpdates, sectionUpdateRecord{taskIds: taskIds, storeRoles: storeRoles, includeWorkInfo: includeWorkInfo})
 	return nil
+}
+
+// sectionUpdatesOf 取指定任务的板块选择写入记录
+func (r *fakeBuiltinRepo) sectionUpdatesOf(id int64) []sectionUpdateRecord {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []sectionUpdateRecord
+	for _, u := range r.sectionUpdates {
+		for _, tid := range u.taskIds {
+			if tid == id {
+				out = append(out, u)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func (r *fakeBuiltinRepo) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error) {
@@ -173,6 +200,38 @@ func TestBuiltinTaskFinishLifecycle(t *testing.T) {
 	waitIdle(t, mgr, 3*time.Second)
 	if u, ok := repo.statusOf(1); !ok || u.Status != task.TaskStatusFinished {
 		t.Fatalf("终态应即时落盘: %+v ok=%v", u, ok)
+	}
+}
+
+// TestFailedTerminalKeepsRecordedSections 失败重试板块选择保留锚：终态不清空执行模式持久化——
+// 子集重下失败后 StoreRoles 留存，重试(RetryTaskTrees 不重记模式)按原子集再来一次。
+// 修复前终态即时清空板块选择，失败重试退化为空 universe 派生(丢子集选择)
+func TestFailedTerminalKeepsRecordedSections(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
+	strat := newScriptedStrategy("fail")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat})
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	// 子集重下：记录 thumbnail 板块选择后启动
+	if err := mgr.Redownload(context.Background(), []int64{1}, []string{domain.StoreTypeThumbnail}, false); err != nil {
+		t.Fatalf("重下启动失败: %v", err)
+	}
+	<-strat.entered
+	strat.release <- struct{}{}
+	waitIdle(t, mgr, 3*time.Second)
+
+	updates := repo.sectionUpdatesOf(1)
+	if len(updates) == 0 {
+		t.Fatal("重下启动应记录板块选择")
+	}
+	for _, u := range updates {
+		if !u.storeRoles.Valid || u.storeRoles.String != domain.StoreTypeThumbnail || u.includeWorkInfo {
+			t.Fatalf("任务 1 的板块记录应保持 thumbnail 子集(终态不清空)，实际 %+v", u)
+		}
+	}
+	if u, ok := repo.statusOf(1); !ok || u.Status != task.TaskStatusFailed {
+		t.Fatalf("任务应已失败落盘: %+v ok=%v", u, ok)
 	}
 }
 

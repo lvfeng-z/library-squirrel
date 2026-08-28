@@ -43,7 +43,7 @@ func newPurgeStoreTestEnv(t *testing.T) *purgeStoreTestEnv {
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	backup := &recordingBackupReader{}
 	svc := NewService(nil, backup, nil, nil, psSvc, psSvc, nil, nil, func() string { return workDir }, nil, nil,
-		&wsTransactor{db: db}, resource.NewResourceStoreRepository(db))
+		&wsTransactor{db: db}, resource.NewResourceStoreRepository(db), nil, nil)
 	return &purgeStoreTestEnv{svc: svc, psSvc: psSvc, backup: backup, db: db, workDir: workDir}
 }
 

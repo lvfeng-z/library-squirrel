@@ -15,6 +15,7 @@ import (
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -282,6 +283,12 @@ type RunningTaskStopper interface {
 	StopRunningBySiteWork(ctx context.Context, siteId int64, siteWorkId string) error
 }
 
+// WorkLockChecker 作品锁查询（由 shareLock.ShareLockRegistry 实现）。软删除会把作品的活行
+// store 文件移入 backup，作品正被分享拉取持有时在途拉取会读到源文件消失，须前置拒绝
+type WorkLockChecker interface {
+	IsLocked(ctx context.Context, workID int64) bool
+}
+
 // Repository 作品仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
 	// Create 新建
@@ -362,6 +369,7 @@ type Service struct {
 
 	// 逻辑删除（SoftDeleteWork）所需配置
 	runningTaskStopper RunningTaskStopper // 可选，nil 时跳过任务停止
+	workLock           WorkLockChecker    // 软删除前置作品锁守卫（作品被分享拉取持有时拒绝）
 
 	// 彻底删除（DeleteWorkAndSurroundingData）级联清理接口
 	resourceStoreHardDeleter ResourceStoreHardDeleter
@@ -403,6 +411,7 @@ func NewService(
 	resourceStoreHardDeleter ResourceStoreHardDeleter,
 	workSetRelationWriter WorkSetRelationWriter,
 	coverReferenceClearer CoverReferenceClearer,
+	workLock WorkLockChecker,
 ) *Service {
 	return &Service{
 		repo:                     repo,
@@ -436,6 +445,7 @@ func NewService(
 		resourceStoreHardDeleter: resourceStoreHardDeleter,
 		workSetRelationWriter:    workSetRelationWriter,
 		coverReferenceClearer:    coverReferenceClearer,
+		workLock:                 workLock,
 	}
 }
 
@@ -554,7 +564,7 @@ func (s *Service) DeleteWorkAndSurroundingData(ctx context.Context, id int64) er
 // SoftDeleteWork 软删除作品（移入回收站，可经回收站复原）
 //
 // 流程：
-//  1. 校验 work 为活行
+//  1. 校验 work 为活行；作品被分享拉取持有时拒绝软删（shareLock.ErrWorkLocked，强制解锁后重试）
 //  2. 事务外：资源文件经 DeleteWithBackup 移入 backup 目录（建含 work_id 归属的备份记录；persistent_store 记录原地保留）
 //  3. 事务内：work 软删一条 UPDATE（GORM softDelete 改写打毫秒时间戳）
 //  4. 停止关联的运行中任务实例（task 记录保留）
@@ -570,6 +580,13 @@ func (s *Service) SoftDeleteWork(ctx context.Context, workId int64) error {
 	}
 	if work == nil {
 		return ErrWorkNotFound
+	}
+
+	// 前置作品锁守卫：软删会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到
+	// 源文件消失，拒绝执行（返回哨兵错误供上层透传，用户知情强制解锁后重试本操作）
+	if s.workLock.IsLocked(ctx, workId) {
+		logger.Log.Infof("软删除被作品锁拒绝: 作品 %d 正被分享拉取持有", workId)
+		return shareLock.ErrWorkLocked
 	}
 
 	// 2. [事务外] 资源文件移入 backup（从 resource_store 收集 store，不读旧列）

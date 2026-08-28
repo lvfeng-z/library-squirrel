@@ -7,7 +7,7 @@ import AutoLoadTagSelect from '@renderer/components/common/AutoLoadTagSelect.vue
 import { onMounted, Ref, ref, h } from 'vue'
 import { ElMessage, ElMessageBox, ElPopover, ElImage } from 'element-plus'
 import lodash from 'lodash'
-import { recycleBinApi, siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
+import { recycleBinApi, siteQuerySelectItemPageBySiteName, workApi } from '@renderer/apis/http'
 import { searchQuerySearchConditionPage } from '@renderer/apis/http/wrappers/search'
 import { setSearchTagColor } from '@renderer/utils/SearchTagColorUtil.js'
 import { buildStoreUrl } from '@renderer/utils/UrlUtil.ts'
@@ -23,6 +23,10 @@ import type { Page } from '@bindings/github.com/library-squirrel/backend/base/mo
 import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
+import { useWorkLockConfirm } from '@renderer/composables/useWorkLockConfirm'
+
+// 作品分享拉取锁交互（复原置换/覆盖转移命中锁时弹强制解锁确认）
+const { isWorkLockedMessage, confirmWorkForceUnlock } = useWorkLockConfirm()
 
 // onMounted
 onMounted(() => {
@@ -508,7 +512,7 @@ function handleSortChange(sortData: { column: unknown; prop: string; order: 'asc
   }
   recycleBinSearchTable.value.doSearch()
 }
-// 复原回收站条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 重试）
+// 复原回收站条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 走覆盖复原）
 async function restore(item: RecycleWorkDTO) {
   try {
     await recycleBinApi.recycleBinRestoreWork(item.id, false)
@@ -526,16 +530,48 @@ async function restore(item: RecycleWorkDTO) {
         cancelButtonText: '取消',
         type: 'warning'
       })
+    } catch {
+      return // ElMessageBox 取消为字符串 reject，静默中止
+    }
+    await restoreOverwrite(item)
+  }
+}
+
+// 覆盖复原（overwrite=true）。覆盖转移会把占位作品的活行 store 文件移入备份，占位作品正被
+// 分享拉取持有时后端拒绝：按同业务键反解占位作品 ID，确认强制解锁后重试一次；取消静默中止
+async function restoreOverwrite(item: RecycleWorkDTO): Promise<void> {
+  try {
+    await recycleBinApi.recycleBinRestoreWork(item.id, true)
+  } catch (e) {
+    if (!(e instanceof Error)) return
+    if (!isWorkLockedMessage(e.message)) {
+      ElMessage.error(e.message)
+      return
+    }
+    // 被锁的是占用业务键的占位作品（非本条目自身），按同业务键查活作品反解其 ID
+    if (isNullish(item.siteId) || isNullish(item.siteWorkId)) {
+      ElMessage.error(e.message)
+      return
+    }
+    const placeholder = await workApi.workGetBySiteAndSiteWorkID(item.siteId!, item.siteWorkId!)
+    const placeholderId = placeholder.data?.id
+    if (!placeholder.success || isNullish(placeholderId)) {
+      ElMessage.error(e.message)
+      return
+    }
+    if (!(await confirmWorkForceUnlock(placeholderId!))) return // 取消强制解锁：静默中止
+    try {
       await recycleBinApi.recycleBinRestoreWork(item.id, true)
-      ElMessage.success('复原成功')
-      await recycleBinSearchTable.value.doSearch()
     } catch (e2) {
-      // ElMessageBox 取消为字符串 reject，静默；二次失败为 Error，展示
+      // 二次失败为 Error，展示
       if (e2 instanceof Error) {
         ElMessage.error(e2.message)
       }
+      return
     }
   }
+  ElMessage.success('复原成功')
+  await recycleBinSearchTable.value.doSearch()
 }
 // 彻底删除回收站作品条目
 async function purge(item: RecycleWorkDTO) {
@@ -612,7 +648,8 @@ function storeRestoreDisabledReason(item: RecycleStoreDTO): string {
   }
   return '该条目所属作品不可达（已删除或挂载缺失），不可复原'
 }
-// 复原文件条目（版本回滚置换：备份还原为当前版本，当前版本转入回收站）
+// 复原文件条目（版本回滚置换：备份还原为当前版本，当前版本转入回收站）。
+// 置换触碰条目挂载链所属作品的活行 store 文件，作品正被分享拉取持有时确认强制解锁后重试
 async function restoreStore(item: RecycleStoreDTO) {
   try {
     await ElMessageBox.confirm(
@@ -624,15 +661,35 @@ async function restoreStore(item: RecycleStoreDTO) {
         type: 'warning'
       }
     )
+  } catch {
+    return // 确认框取消为字符串 reject，静默中止
+  }
+  try {
     await recycleBinApi.recycleBinRestoreStore(item.id)
-    ElMessage.success('复原成功')
-    await storeSearchTable.value.doSearch()
   } catch (e) {
-    // 确认框取消为字符串 reject，静默；接口失败为 Error，展示
-    if (e instanceof Error) {
+    if (!(e instanceof Error)) return
+    if (!isWorkLockedMessage(e.message)) {
       ElMessage.error(e.message)
+      return
+    }
+    // 被锁的是条目挂载链所属作品（DTO 有主链携带 workId，可复原条目必挂活作品）
+    if (isNullish(item.workId)) {
+      ElMessage.error(e.message)
+      return
+    }
+    if (!(await confirmWorkForceUnlock(item.workId!))) return // 取消强制解锁：静默中止
+    try {
+      await recycleBinApi.recycleBinRestoreStore(item.id)
+    } catch (e2) {
+      // 二次失败为 Error，展示
+      if (e2 instanceof Error) {
+        ElMessage.error(e2.message)
+      }
+      return
     }
   }
+  ElMessage.success('复原成功')
+  await storeSearchTable.value.doSearch()
 }
 
 // 复原作品集条目（失败消息含「冲突/已存在」时弹覆盖确认，确认后 overwrite=true 重试——照作品 tab 形态）

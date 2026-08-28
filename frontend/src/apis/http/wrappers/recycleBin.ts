@@ -95,6 +95,15 @@ export async function recycleBinRestoreWorkSet(workSetId: number, overwrite: boo
 }
 
 /**
+ * 强制解锁作品分享拉取锁。作品正被分享拉取持有时，触碰其活行 store 文件的操作
+ * （作品软删、复原置换、覆盖转移、替换软删）会被拒并返回「该作品正在被分享拉取中」；
+ * 用户知情接受在途拉取可能失败后调用本方法清除该作品的全部会话引用，再重试原操作即可放行
+ */
+export async function recycleBinForceUnlockWork(workId: number): Promise<ApiResult<any>> {
+  return requireResponse(await RecycleBinHandler.ForceUnlockWork(workId), '强制解锁作品', false)
+}
+
+/**
  * 彻底删除回收站作品集条目（不可恢复，级联清成员与父子关联行）
  */
 export async function recycleBinPurgeWorkSet(workSetId: number): Promise<ApiResult<any>> {

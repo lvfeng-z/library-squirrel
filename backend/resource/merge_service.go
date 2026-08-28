@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/settings"
+	"github.com/library-squirrel/backend/shareLock"
 
 	"gorm.io/gorm"
 )
@@ -77,6 +78,13 @@ type MergeSettingsReader interface {
 	GetMergeStrategy() string
 }
 
+// MergeWorkLockChecker 作品锁查询（由 shareLock.ShareLockRegistry 实现）。overwrite 策略合并
+// 收尾会软删原轨道（移走作品的活行 store 文件），作品正被分享拉取持有时在途拉取会读到
+// 源文件消失，须在置换前拒绝
+type MergeWorkLockChecker interface {
+	IsLocked(ctx context.Context, workID int64) bool
+}
+
 // ResourceRecomputer 资源完整度重算（由 resource.Service 实现）。重算按活行 store 角色计数——
 // 关联保留形态下轨道软删行关联不计入
 type ResourceRecomputer interface {
@@ -107,6 +115,7 @@ type MergeService struct {
 	tx                Transactor
 	completer         ResourceRecomputer
 	emitter           MergeEventEmitter
+	workLock          MergeWorkLockChecker // overwrite 原轨道置换前置作品锁守卫
 	jobsMu            sync.Mutex
 	jobs              map[int64]*mergeJob // resourceId → 进行中合并（in-flight 守卫 + cancel 锚点）
 }
@@ -114,7 +123,8 @@ type MergeService struct {
 // NewMergeService 创建合并业务服务。merger 为 nil 时合并功能不可用（调用返回 ErrMergeUnavailable）。
 // emitter 用于异步合并的进度/完成推送（阶段1 独立 merge-events topic，不进 taskManager）。
 // completer 为资源完整度重算（幂等命中与合并完成两路径共用）。
-func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter) *MergeService {
+// workLock 为 overwrite 原轨道置换前置作品锁守卫（shareLock.ShareLockRegistry 实现）。
+func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter, workLock MergeWorkLockChecker) *MergeService {
 	return &MergeService{
 		resourceStoreRepo: resourceStoreRepo,
 		resource:          resource,
@@ -124,6 +134,7 @@ func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource Resour
 		tx:                tx,
 		completer:         completer,
 		emitter:           emitter,
+		workLock:          workLock,
 		jobs:              make(map[int64]*mergeJob),
 	}
 }
@@ -253,21 +264,40 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 		return
 	}
 
-	// overwrite：原轨道软删（文件移 backup 建保管清单行，行随软删入回收站文件条目，可经复原置换回滚）。
-	// 轨道 resource_store 关联保留——软删行经挂载链可联作品、随作品级联净化
+	// overwrite：原轨道软删（置换作品的活行 store 文件，细节见 overwriteOriginalTracks）
 	if s.settings.GetMergeStrategy() == settings.MergeStrategyOverwrite {
-		if _, err := s.storeOps.DeleteWithBackup(commitCtx, videoPS.GetID()); err != nil {
-			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("软删原视频轨失败: %v", err))
-			return
-		}
-		if _, err := s.storeOps.DeleteWithBackup(commitCtx, audioPS.GetID()); err != nil {
-			s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("软删原音频轨失败: %v", err))
+		if err := s.overwriteOriginalTracks(commitCtx, resourceId, videoPS, audioPS); err != nil {
+			s.emitter.PushComplete(resourceId, false, 0, err.Error())
 			return
 		}
 	}
 
 	s.completer.RecomputeResourceComplete(commitCtx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
 	s.emitter.PushComplete(resourceId, true, mergedPsId, "")
+}
+
+// overwriteOriginalTracks overwrite 策略收尾：软删原视频/音频轨——文件移 backup 建保管清单行，
+// 行随软删入回收站文件条目（可经复原置换回滚）；轨道 resource_store 关联保留，软删行经挂载链
+// 可联作品、随作品级联净化。置换前置作品锁守卫：作品正被分享拉取持有时移走原轨道文件会令
+// 在途拉取读到源文件消失，命中返回 shareLock.ErrWorkLocked（合并产物已挂载保留、原轨道不动，
+// 用户知情强制解锁后重试本操作）。锁为防误触软防护：资源反查异常时告警放行，不因守卫自身
+// 故障阻断合并
+func (s *MergeService) overwriteOriginalTracks(ctx context.Context, resourceId int64, videoPS, audioPS *domain.PersistentStore) error {
+	if res, err := s.resource.GetById(ctx, resourceId); err == nil && res != nil {
+		if s.workLock.IsLocked(ctx, res.WorkID) {
+			logger.Log.Infof("[MergeService] 原轨道置换被作品锁拒绝: 资源 %d 所属作品 %d 正被分享拉取持有", resourceId, res.WorkID)
+			return shareLock.ErrWorkLocked
+		}
+	} else {
+		logger.Log.Warnf("[MergeService] 作品锁守卫反查资源 %d 失败（放行继续）: %v", resourceId, err)
+	}
+	if _, err := s.storeOps.DeleteWithBackup(ctx, videoPS.GetID()); err != nil {
+		return fmt.Errorf("软删原视频轨失败: %w", err)
+	}
+	if _, err := s.storeOps.DeleteWithBackup(ctx, audioPS.GetID()); err != nil {
+		return fmt.Errorf("软删原音频轨失败: %w", err)
+	}
+	return nil
 }
 
 // removeJob 从 in-flight 注册表删除指定 resource 的合并（runMerge 退出时调用）。

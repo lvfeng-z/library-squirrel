@@ -51,6 +51,7 @@ import (
 	"github.com/library-squirrel/backend/search"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/share"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteBrowser"
@@ -102,6 +103,7 @@ type App struct {
 	PersistentStoreService  *persistentStore.Service
 	ExportService           *export.Service
 	ShareService            *share.Service
+	ShareLockRegistry       shareLock.ShareLockRegistry
 	RecycleBinService       *recycleBin.Service
 	FsmonitorService        *fsmonitor.Service
 	BackupGovernanceService *backupGovernance.Service
@@ -853,6 +855,10 @@ func (app *App) initBaseServices() {
 	app.SiteAuthorService = siteAuthor.NewService(siteAuthorRepo, app.LocalAuthorService, app.SiteService,
 		&dbTransactorAdapter{db: app.db}, app.ReWorkAuthorService) // ReWorkAuthorDeleter（删 re_work_author 关联）
 
+	// shareLock 作品锁注册中心（进程内内存态能力包单例：拉取会话登记/解除作品引用，
+	// 触碰作品的操作前查询防竞态；进程退出自动解除，无持久化）
+	app.ShareLockRegistry = shareLock.NewShareLockRegistry()
+
 	// resource 服务
 	resourceRepo := resource.NewRepository(app.db)
 	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
@@ -921,6 +927,8 @@ func (app *App) initBaseServices() {
 			getTaskSvc: func() *task.Service { return app.TaskService },
 			getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
 		},
+		// 供流作品锁登记/解除：收件人拉取中的作品防宿主本地替换/删除（与替换链/回收站查锁同一单例）
+		app.ShareLockRegistry,
 	)
 }
 
@@ -967,7 +975,8 @@ func (app *App) initAdvancedServices() error {
 		nil,
 		workResourceStoreRepo, // ResourceStoreHardDeleter(DeleteByResourceIds)
 		reWorkSetWorkSetRepo,
-		workSetRepo, // CoverReferenceClearer（purge 链首步清封面引用）
+		workSetRepo,           // CoverReferenceClearer（purge 链首步清封面引用）
+		app.ShareLockRegistry, // WorkLockChecker（软删除前置作品锁守卫）
 	)
 
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
@@ -1041,7 +1050,9 @@ func (app *App) initAdvancedServices() error {
 	// 复原置换后重算完整度）、WorkSetRestorer=app.WorkSetService（作品集条目软删/复原/级联）；
 	// 文件还原的 workDir 经设置读取器闭包注入；
 	// Transactor=dbTransactorAdapter、StoreAssociationCleaner=ResourceStoreRepository（purge 文件条目
-	// 事务内先摘 resource_store 关联再物理删行——外键强制下的删除前置义务））
+	// 事务内先摘 resource_store 关联再物理删行——外键强制下的删除前置义务）；
+	// WorkLockChecker=ShareLockRegistry（复原置换/覆盖转移前置作品锁守卫）、ResourceWorkReader=
+	// app.ResourceService（守卫反查活行挂载键所属作品））
 	app.RecycleBinService = recycleBin.NewService(
 		app.WorkService,
 		app.BackupService,
@@ -1056,6 +1067,8 @@ func (app *App) initAdvancedServices() error {
 		app.SearchService,
 		&dbTransactorAdapter{db: app.db},
 		resource.NewResourceStoreRepository(app.db),
+		app.ShareLockRegistry,
+		app.ResourceService,
 	)
 	// 启动 TTL 自动清理后台 goroutine（启动即清理一次 + 每 24h）
 	app.RecycleBinService.StartCleanup()
@@ -1148,6 +1161,7 @@ func (app *App) initAdvancedServices() error {
 		app.WorkService,            // ReplaceWorkLivenessReader(作品活性守卫)
 		app.ResourceService,        // ResourceRecomputer(完整度重算)
 		app.SettingsService,        // ReplaceWorkDirProvider(文件还原目标根目录)
+		app.ShareLockRegistry,      // ReplaceWorkLockChecker(前置作品锁守卫)
 	)
 
 	// 查重判定能力先行构建（taskManager 查重改接对象；import ingestor 复用其共享查询仓储）
@@ -1190,6 +1204,7 @@ func (app *App) initAdvancedServices() error {
 			PendingResourceUpdater: app.taskRepo,               // 实现 PendingResourceUpdater 接口
 			StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
 			StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
+			WorkLockChecker:        app.ShareLockRegistry,      // 实现 WorkLockChecker 接口(替换确认投递前置作品锁守卫)
 		},
 		// 内置任务类型的执行面策略表：收件拉取经任务标准能力承载（share-receive 拉取回灌
 		// 导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经任务模块
@@ -1220,6 +1235,7 @@ func (app *App) initAdvancedServices() error {
 		&dbTransactorAdapter{db: app.db},
 		app.ResourceService, // ResourceRecomputer（资源完整度重算，按活行 store 角色计数）
 		resource.NewWailsMergeEmitter(func() resource.EventEmitter { return app.taskProgressEmitter }),
+		app.ShareLockRegistry, // MergeWorkLockChecker（overwrite 原轨道置换前置作品锁守卫）
 	)
 
 	// 启动清理：合并产物临时文件残留（ls-merge-*，进程崩溃未 os.Remove 时残留）
@@ -1518,7 +1534,7 @@ func (app *App) initHandlers() {
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
-	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService)
+	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService, app.ShareLockRegistry)
 	app.ExportHandler = export.NewHandler(app.ExportService)
 	app.ShareHandler = share.NewHandler(app.ShareService)
 	// import：导出产物回灌导入 handler（入库能力为 ManifestIngestor，与 share-receive

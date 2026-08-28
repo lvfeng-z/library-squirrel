@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/task"
 )
 
@@ -60,14 +61,16 @@ func (s *confirmStrategy) outcome() (ReplaceDecision, bool) {
 // 管理器仅提供确认表与信号量。strategy 恒非 nil，使 Manager.ConfirmReplace 按策略型分流投递
 func newConfirmTestTask(maxParallel int) (*ManagedTask, *Manager, *fakePusher) {
 	mgr := NewManager(maxParallel, nil, nil, nil, nil, nil)
+	pusher := &fakePusher{}
+	// Manager 与任务共享同一 TaskDeps（对齐生产装配形态；确认面锁预检读 Manager 侧依赖）
+	mgr.deps = &TaskDeps{Pusher: pusher, WorkLockChecker: shareLock.NewShareLockRegistry()}
 	m := newTestManagedTask()
 	m.task = newBuiltinTask(1, "demo")
 	m.manager = mgr
 	m.semaphore = mgr.semaphore
 	m.confirmCh = make(chan replaceConfirmResult, 1)
 	m.strategy = &stubStrategy{}
-	pusher := &fakePusher{}
-	m.deps = &TaskDeps{Pusher: pusher}
+	m.deps = mgr.deps
 	return m, mgr, pusher
 }
 
@@ -335,7 +338,7 @@ func TestTerminalRollbackMergeAndFinishClear(t *testing.T) {
 func TestStrategyConfirmThroughManager(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100, WorkName: "作品A", ConflictRoles: []string{"image"}}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": strategy})
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -365,7 +368,7 @@ func TestStrategyConfirmThroughManager(t *testing.T) {
 func TestStrategyPauseDuringConfirmWait(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": strategy})
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -398,7 +401,7 @@ func TestStrategyMultipleWaitingNotHogConcurrency(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"), newBuiltinTask(2, "demo"))
 	s1 := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
 	s2 := newConfirmStrategy([]ConflictInfo{{WorkID: 200}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": &multiStrategy{s1: s1, s2: s2}})
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 

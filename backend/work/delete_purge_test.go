@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/workSet"
 
 	"gorm.io/gorm"
@@ -141,35 +142,36 @@ func newPurgeTestEnv(t *testing.T) (*Service, *persistentStore.Service, *gorm.DB
 	svc := NewService(
 		workRepo,
 		&txTransactor{db: db},
-		nil,                         // LocalTagReader
-		nil,                         // LocalAuthorReader
-		nil,                         // SiteTagReader
-		nil,                         // SiteAuthorReader
-		nil,                         // SiteReader
-		nil,                         // ResourceReader
-		purgeReWorkTagWriter{},      // ReWorkTagWriter
-		purgeReWorkWorkSetWriter{},  // ReWorkWorkSetWriter
-		nil,                         // ResourceDeleter（测试内经 fixture 覆盖私有字段注入预置）
-		nil,                         // SiteAuthorWriter
-		nil,                         // SiteTagWriter
-		nil,                         // WorkSetWriter
-		purgeReWorkAuthorWriter{},   // ReWorkAuthorWriter
-		nil,                         // LocalTagBatchReader
-		nil,                         // SiteTagBatchReader
-		nil,                         // SiteBatchReader
-		nil,                         // LocalAuthorBatchReader
-		nil,                         // SiteAuthorBatchReader
-		nil,                         // ResourceBatchReader
-		nil,                         // ResourceStoreBatchReader（同 ResourceDeleter，测试内注入）
-		nil,                         // StoreBatchReader
-		nil,                         // ReWorkTagBatchReader
-		nil,                         // LocalTagFindOrCreator
-		nil,                         // LocalAuthorFindOrCreator
-		psSvc,                       // StoreDeleter（真实件：purge 链 store 行物理删除的提供方）
-		nil,                         // RunningTaskStopper
-		&purgeRsHardDeleter{db: db}, // ResourceStoreHardDeleter
-		nil,                         // WorkSetRelationWriter
-		workSet.NewRepository(db),   // CoverReferenceClearer（真实件：purge 链首步清封面引用）
+		nil,                              // LocalTagReader
+		nil,                              // LocalAuthorReader
+		nil,                              // SiteTagReader
+		nil,                              // SiteAuthorReader
+		nil,                              // SiteReader
+		nil,                              // ResourceReader
+		purgeReWorkTagWriter{},           // ReWorkTagWriter
+		purgeReWorkWorkSetWriter{},       // ReWorkWorkSetWriter
+		nil,                              // ResourceDeleter（测试内经 fixture 覆盖私有字段注入预置）
+		nil,                              // SiteAuthorWriter
+		nil,                              // SiteTagWriter
+		nil,                              // WorkSetWriter
+		purgeReWorkAuthorWriter{},        // ReWorkAuthorWriter
+		nil,                              // LocalTagBatchReader
+		nil,                              // SiteTagBatchReader
+		nil,                              // SiteBatchReader
+		nil,                              // LocalAuthorBatchReader
+		nil,                              // SiteAuthorBatchReader
+		nil,                              // ResourceBatchReader
+		nil,                              // ResourceStoreBatchReader（同 ResourceDeleter，测试内注入）
+		nil,                              // StoreBatchReader
+		nil,                              // ReWorkTagBatchReader
+		nil,                              // LocalTagFindOrCreator
+		nil,                              // LocalAuthorFindOrCreator
+		psSvc,                            // StoreDeleter（真实件：purge 链 store 行物理删除的提供方）
+		nil,                              // RunningTaskStopper
+		&purgeRsHardDeleter{db: db},      // ResourceStoreHardDeleter
+		nil,                              // WorkSetRelationWriter
+		workSet.NewRepository(db),        // CoverReferenceClearer（真实件：purge 链首步清封面引用）
+		shareLock.NewShareLockRegistry(), // WorkLockChecker（真实件：纯内存能力，零外部依赖）
 	)
 	return svc, psSvc, db
 }

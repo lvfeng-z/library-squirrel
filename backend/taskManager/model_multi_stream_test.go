@@ -29,6 +29,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -188,24 +189,29 @@ func TestFilterSpecsByRoles(t *testing.T) {
 		mkSpec(entity.StoreTypeThumbnail, entity.GenerationDerived, 1, nil),
 		mkSpec(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 20, nil),
 	}
-	// 空 storeRoles = 全量
-	m := &ManagedTask{runMode: runMode{storeRoles: nil}}
+	// All 空 universe = 插件自决全量,不过滤
+	m := &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeAll}}}
 	if got := m.filterSpecsByRoles(specs); len(got) != 3 {
 		t.Fatalf("全量过滤期望 3, 实际 %d", len(got))
 	}
+	// All 携带 universe 时按 universe 过滤(防御性收窄插件产出)
+	m = &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeAll, roles: []string{entity.StoreTypeImage, entity.StoreTypeVideoTrack}}}}
+	if got := m.filterSpecsByRoles(specs); len(got) != 2 {
+		t.Fatalf("All+universe 过滤期望 2, 实际 %d", len(got))
+	}
 	// 子集
-	m = &ManagedTask{runMode: runMode{storeRoles: []string{entity.StoreTypeThumbnail}}}
+	m = &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}}}
 	got := m.filterSpecsByRoles(specs)
 	if len(got) != 1 || got[0].Role != entity.StoreTypeThumbnail {
 		t.Fatalf("子集过滤期望仅 thumbnail, 实际 %+v", got)
 	}
 	// 多选子集
-	m = &ManagedTask{runMode: runMode{storeRoles: []string{entity.StoreTypeImage, entity.StoreTypeVideoTrack}}}
+	m = &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeImage, entity.StoreTypeVideoTrack}}}}
 	if got := m.filterSpecsByRoles(specs); len(got) != 2 {
 		t.Fatalf("多选过滤期望 2, 实际 %d", len(got))
 	}
 	// 无命中
-	m = &ManagedTask{runMode: runMode{storeRoles: []string{"unknown"}}}
+	m = &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{"unknown"}}}}
 	if got := m.filterSpecsByRoles(specs); len(got) != 0 {
 		t.Fatalf("无命中期望 0, 实际 %d", len(got))
 	}
@@ -223,35 +229,91 @@ func TestNormalizeExt(t *testing.T) {
 	}
 }
 
-// TestRunModeFromTask 锁定板块派生契约(StartTaskTree 重置 StoreRoles=NULL 依赖此返回全量)
+// TestRunModeFromTask 锁定板块派生契约(StartTaskTree 重置 StoreRoles=NULL 依赖此返回 All)
 // 回归:上一次 Redownload 持久化的子集 StoreRoles 不应泄漏到后续全量执行
 func TestRunModeFromTask(t *testing.T) {
-	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= 全量:fetchStores=true + storeRoles 取 universe(InvolvedRoles)
+	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= All:roles 取 universe(InvolvedRoles)
 	// 回归:Redownload 持久化的子集 StoreRoles 不应泄漏(StartTaskTree 重置为 NULL → runModeFromTask 回退 universe)
 	t1 := entity.NewTask()
 	t1.IncludeWorkInfo = true // StartTaskTree 记录 workInfo=true
 	t1.InvolvedRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
 	mode := runModeFromTask(t1)
-	if !mode.hasWorkInfo() || !mode.fetchStores || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
-		t.Fatalf("NULL StoreRoles 期望全量(workInfo+fetchStores+universe roles), 实际 %+v", mode)
+	if !mode.hasWorkInfo() || mode.storeScope.kind != scopeAll || !containsRole(mode.storeScope.roles, entity.StoreTypeImage) || !containsRole(mode.storeScope.roles, entity.StoreTypeThumbnail) {
+		t.Fatalf("NULL StoreRoles 期望 All(workInfo+universe roles), 实际 %+v", mode)
 	}
 
-	// StoreRoles="thumbnail"(Redownload 子集)= 仅缩略图
+	// StoreRoles=NULL 且 universe 空 = All 空角色(插件自决全量)
+	t1b := entity.NewTask()
+	t1b.IncludeWorkInfo = true
+	mode = runModeFromTask(t1b)
+	if mode.storeScope.kind != scopeAll || len(mode.storeScope.roles) != 0 {
+		t.Fatalf("NULL StoreRoles + 空 universe 期望 All 空 roles, 实际 %+v", mode)
+	}
+
+	// StoreRoles=空串(Redownload 仅作品信息)= None:不拉资源、不产生任务终态
 	t2 := entity.NewTask()
-	t2.StoreRoles = sql.NullString{String: entity.StoreTypeThumbnail, Valid: true}
-	t2.IncludeWorkInfo = false
+	t2.StoreRoles = sql.NullString{String: "", Valid: true}
+	t2.IncludeWorkInfo = true
 	mode = runModeFromTask(t2)
-	if mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
-		t.Fatalf("thumbnail 子集期望仅缩略图, 实际 %+v", mode)
+	if mode.storeScope.kind != scopeNone || mode.storeScope.coversStores() || !mode.hasWorkInfo() {
+		t.Fatalf("空串 StoreRoles 期望 None(仅作品信息), 实际 %+v", mode)
 	}
 
-	// StoreRoles="main,thumbnail" + includeWorkInfo=true = 全量显式
+	// StoreRoles="thumbnail"(Redownload 子集)= Selected:仅缩略图
 	t3 := entity.NewTask()
-	t3.StoreRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
-	t3.IncludeWorkInfo = true
+	t3.StoreRoles = sql.NullString{String: entity.StoreTypeThumbnail, Valid: true}
+	t3.IncludeWorkInfo = false
 	mode = runModeFromTask(t3)
-	if !mode.hasWorkInfo() || !mode.hasStore(entity.StoreTypeImage) || !mode.hasStore(entity.StoreTypeThumbnail) {
-		t.Fatalf("显式全量期望 main+thumbnail+workInfo, 实际 %+v", mode)
+	if mode.storeScope.kind != scopeSelected || len(mode.storeScope.roles) != 1 || mode.storeScope.roles[0] != entity.StoreTypeThumbnail {
+		t.Fatalf("thumbnail 子集期望 Selected 仅缩略图, 实际 %+v", mode)
+	}
+
+	// StoreRoles="main,thumbnail" + includeWorkInfo=true = Selected 显式全集(用户勾选全部)
+	t4 := entity.NewTask()
+	t4.StoreRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
+	t4.IncludeWorkInfo = true
+	mode = runModeFromTask(t4)
+	if !mode.hasWorkInfo() || mode.storeScope.kind != scopeSelected || !containsRole(mode.storeScope.roles, entity.StoreTypeImage) || !containsRole(mode.storeScope.roles, entity.StoreTypeThumbnail) {
+		t.Fatalf("显式全集期望 Selected(main+thumbnail)+workInfo, 实际 %+v", mode)
+	}
+}
+
+// containsRole 角色集合包含断言辅助
+func containsRole(roles []string, role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// TestStoreScopeDerivations 三态派生语义锚(AMBIGUOUS_VALUE_MUST_ENUM 治本回归):
+// coversStores 与 replaceSoftDeleteRoles 全部从 kind 派生,不再依赖「空值+伴随字段」约定
+func TestStoreScopeDerivations(t *testing.T) {
+	// None:不覆盖资源板块,替换软删角色集为空(无软删对象)
+	none := &ManagedTask{runMode: runMode{workInfo: true, storeScope: storeScope{kind: scopeNone}}}
+	if none.runMode.storeScope.coversStores() || !none.isNonTerminalMode() {
+		t.Fatal("None 应不覆盖资源板块、为非终态板块组合")
+	}
+	if roles := none.replaceSoftDeleteRoles(); roles != nil {
+		t.Fatalf("None 替换软删角色集应为空, 实际 %v", roles)
+	}
+	// All(空 universe=插件自决):覆盖资源板块、产生终态,软删展开为封闭枚举全集(=作品全部活行)
+	all := &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeAll}}}
+	if !all.runMode.storeScope.coversStores() || all.isNonTerminalMode() {
+		t.Fatal("All 应覆盖资源板块、产生任务终态")
+	}
+	if roles := all.replaceSoftDeleteRoles(); !slices.Equal(roles, entity.AllStoreTypes()) {
+		t.Fatalf("All 替换软删角色集应为封闭枚举全集, 实际 %v", roles)
+	}
+	// Selected:按用户子集软删
+	sel := &ManagedTask{runMode: runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}}}
+	if roles := sel.replaceSoftDeleteRoles(); len(roles) != 1 || roles[0] != entity.StoreTypeThumbnail {
+		t.Fatalf("Selected 替换软删角色集应为用户子集, 实际 %v", roles)
+	}
+	if !sel.runMode.storeScope.coversStores() {
+		t.Fatal("Selected 应覆盖资源板块")
 	}
 }
 

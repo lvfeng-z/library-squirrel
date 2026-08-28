@@ -41,6 +41,11 @@ var (
 	ErrShareLinkNoKey = errors.New("分享链接缺少解密密钥（#k=…），请复制完整链接")
 	// ErrShareLinkKeyBad 密钥编码不合法或长度不符
 	ErrShareLinkKeyBad = errors.New("分享链接中的解密密钥不合法")
+	// ErrShareSelfReference 自指拒绝：链接会话 token 命中本地分享记录。share_record 只存在于
+	// 分享产出实例的库中，token 精确命中即本实例自产——单机自接收中收件端替换会移走拉取中
+	// 的源文件，收件与分享互争同一批文件，属结构性冲突，接收启动即拒绝。跨设备同账号拉取
+	// 自己的分享（他实例产出）在本库无此记录，正常放行。
+	ErrShareSelfReference = errors.New("不能接收自己分享的内容")
 )
 
 // shareTokenPattern 中继 token 形态（PROTOCOL.md §7：22 字符 base64url，128 bit 熵）
@@ -224,7 +229,8 @@ func writeSharedManifestFile(workDir, relPath string, manifest *export.Manifest)
 	return os.WriteFile(abs, data, 0o644)
 }
 
-// Receive 启动收件拉取：解析链接（深链或 https 分享链接）→ 同步预拉 manifest（决策1）→
+// Receive 启动收件拉取：解析链接（深链或 https 分享链接）→ 自指检测（本地分享记录命中同
+// token 即本实例自产，拒绝接收）→ 同步预拉 manifest（决策1）→
 // 建父子任务树（父「拉取分享（{host}）」容器 + 每作品一子任务）→ 共享 manifest 落盘父任务目录 →
 // 整树启动 → 返回 {parentTaskId, workCount, workNames}（作品名列表供收件侧展示，决策4 之①）。
 // password 为分享设有访问密码时的明文（仅本机使用，落任务载荷的只有 sha256 摘要）。
@@ -234,6 +240,19 @@ func (s *Service) Receive(ctx context.Context, link string, password string) (*S
 	target, err := ParseShareLink(link)
 	if err != nil {
 		return nil, err
+	}
+	// 自指检测（链接反解拿到 token 后、拨中继/拉 manifest 前的纯本地判定）：本地分享记录
+	// 命中同 token 即本实例自产，拒绝接收。share_record 只存在于分享产出实例的库中，判定
+	// 只做 token 精确匹配、不引入账号/身份维度——跨设备同账号拉取自己的分享（他实例产出）
+	// 在本库无此记录，不受影响。
+	if s.repo != nil {
+		selfShared, err := s.repo.ExistsByToken(ctx, target.Token)
+		if err != nil {
+			return nil, fmt.Errorf("检查本地分享记录失败: %w", err)
+		}
+		if selfShared {
+			return nil, ErrShareSelfReference
+		}
 	}
 	if s.taskCtl == nil {
 		return nil, ErrShareTaskControlNil
