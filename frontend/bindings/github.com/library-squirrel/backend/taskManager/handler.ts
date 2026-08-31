@@ -28,7 +28,8 @@ export function ConfirmReplace(taskId: number, action: string): $CancellableProm
 }
 
 /**
- * ConfirmReplaceBatch 批量确认替换或跳过重复作品
+ * ConfirmReplaceBatch 批量确认替换或跳过重复作品（replace 答复遇涉及作品被分享拉取持有时
+ * 整体不投递并返回错误，任务留在等待确认表）
  */
 export function ConfirmReplaceBatch(taskIds: number[], action: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3271009447, taskIds, action).then(($result: any) => {
