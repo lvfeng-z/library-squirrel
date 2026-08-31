@@ -16,7 +16,7 @@ import (
 
 // secondInstanceMutexName wails 单实例互斥体名（与 wails single_instance_windows.go 一致）
 func secondInstanceMutexName() string {
-	return "wails-app-" + singleInstanceUniqueID + "-sim"
+	return "wails-app-" + singleInstanceUniqueID() + "-sim"
 }
 
 // anotherInstanceRunning 探测已有应用实例是否持有单实例互斥体（探测后立即释放自身句柄）
@@ -46,7 +46,7 @@ func forwardDeepLinkToRunningInstance() {
 	_ = application.New(application.Options{
 		Name: "library-squirrel",
 		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: singleInstanceUniqueID,
+			UniqueID: singleInstanceUniqueID(),
 		},
 	})
 	logger.Log.Warn("[main] 深链转发未按预期退出（首实例可能已退出），请重新打开分享链接")

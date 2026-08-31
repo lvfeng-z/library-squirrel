@@ -4,12 +4,14 @@ import (
 	"embed"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/share"
+	"github.com/library-squirrel/backend/util"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -29,9 +31,26 @@ func init() {
 	application.RegisterEvent[string]("time")
 }
 
-// singleInstanceUniqueID 单实例标识（wails 命名互斥体/消息窗口名组成；深链二启转发与
-// 首实例检测共用，全进程一致）
-const singleInstanceUniqueID = "com.lvfeng.library-squirrel"
+// singleInstanceUniqueID 单实例互斥体标识：默认按 RootPath 派生（不同数据目录的应用实例
+// 可并存——多库多开、本地生产与开发环境并存做双端联调均属此列），可用 LS_INSTANCE_ID
+// 环境变量显式覆盖。防双开仅针对同 RootPath（同库并发写 SQLite），不同库互不干扰故不互斥。
+// Windows 命名互斥体名禁反斜杠，RootPath 需净化后拼入。
+func singleInstanceUniqueID() string {
+	id := util.RootPath()
+	if override := os.Getenv("LS_INSTANCE_ID"); override != "" {
+		id = override
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return "com.lvfeng.library-squirrel-" + b.String()
+}
 
 // main function serves as the application's entry point. It initializes the application, creates a window,
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
@@ -82,7 +101,7 @@ func main() {
 		// 单实例：二启进程经互斥体检测后将 argv（含深链 URL）转发首实例后自动退出
 		// （顺带根治双开两实例抢 SQLite）；首实例回调提取深链进分享拉取流程并聚焦主窗口
 		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: singleInstanceUniqueID,
+			UniqueID: singleInstanceUniqueID(),
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
 				if url := share.FindShareDeepLinkArg(data.Args); url != "" {
 					app.ShareService.NotifyIncomingLink(url)
