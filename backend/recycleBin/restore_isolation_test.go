@@ -93,10 +93,11 @@ func TestRestoreWorkFilesGenerationIsolation(t *testing.T) {
 	reader := &recordingBackupReader{}
 	svc := NewService(restorer, reader, nil, nil, nil, nil, nil, nil, func() string { return t.TempDir() }, nil, nil, nil, nil, nil, nil)
 
-	if err := svc.restoreWorkFiles(context.Background(), 1); err != nil {
+	restored, err := svc.restoreWorkFiles(context.Background(), 1)
+	if err != nil {
 		t.Fatalf("复原作品 1 失败: %v", err)
 	}
-	if len(reader.deletedIds) != 1 || reader.deletedIds[0] != 101 {
-		t.Fatalf("复原作品 1 须仅删其行内引用的备份 101，实际删除 %v（作品 2 的备份 202 被波及即为回归）", reader.deletedIds)
+	if len(restored) != 1 || restored[0] != 101 {
+		t.Fatalf("复原作品 1 须仅消耗其行内引用的备份 101，实际 %v（作品 2 的备份 202 被波及即为回归）", restored)
 	}
 }

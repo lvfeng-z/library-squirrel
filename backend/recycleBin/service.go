@@ -330,7 +330,8 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 	}
 
 	// 3. [事务外] 文件还原（backup → store/ 原路径；缺文件警告后继续=部分复原）
-	if err := s.restoreWorkFiles(ctx, workId); err != nil {
+	restoredBackups, err := s.restoreWorkFiles(ctx, workId)
+	if err != nil {
 		return 0, err
 	}
 
@@ -341,15 +342,27 @@ func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool)
 	if err := s.workRestorer.RestoreDeletedWork(ctx, workId); err != nil {
 		return 0, err
 	}
+
+	// 5. 清理已还原的备份清单行——RestoreWorkStores 已清 store 行 backup_id，外键放行；
+	// 先删备份会撞 persistent_store.backup_id 外键拒绝（与 RestoreReplacedStores 同因）。
+	// 失败残余清单行由无主治理兜底
+	for _, backupID := range restoredBackups {
+		if derr := s.backupReader.DeleteBackup(ctx, backupID); derr != nil {
+			logger.Log.Warnf("清理已还原备份 %d 失败: %v", backupID, derr)
+		}
+	}
 	return workId, nil
 }
 
-// restoreWorkFiles 还原作品复活集的备份文件（backup → store/ 原路径）并删除已还原备份清单行
+// restoreWorkFiles 还原作品复活集的备份文件（backup → store/ 原路径），返回已还原的备份行 ID。
+// 备份清单行删除不在此处——store 行 backup_id 未清时删清单行会被 persistent_store.backup_id
+// 外键拒绝（与 RestoreReplacedStores 同因），由 RestoreWork 在复活清引用后执行。
 // 复活集=同键最新死代（与 RestoreWorkStores 共用派生）——更早死代的备份不动，避免同路径多代
 // 文件还原互相覆盖；备份按行内 backup_id 定位（与作品经 store 行精确圈定，同路径多代互不干扰）；
 // 目标路径在 store/ 监控白名单内，逐文件登记操作抑制避免还原写入被 fsmonitor 误报
-func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
+func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) ([]int64, error) {
 	stores := s.workRestorer.ListRevivableWorkStores(ctx, workId)
+	restored := make([]int64, 0, len(stores))
 	for _, st := range stores {
 		if !st.BackupID.Valid || !st.FilePath.Valid {
 			// 无备份行（外部删除失效或备份失败残留）无文件可还原
@@ -370,11 +383,9 @@ func (s *Service) restoreWorkFiles(ctx context.Context, workId int64) error {
 			logger.Log.Warnf("还原作品 %d 备份文件失败（跳过继续，部分复原）: %v", workId, err)
 			continue
 		}
-		if err := s.backupReader.DeleteBackup(ctx, st.BackupID.Int64); err != nil {
-			logger.Log.Warnf("清理已还原备份 %d 失败: %v", st.BackupID.Int64, err)
-		}
+		restored = append(restored, st.BackupID.Int64)
 	}
-	return nil
+	return restored, nil
 }
 
 // PurgeWork 彻底删除回收站作品条目（不可恢复）
