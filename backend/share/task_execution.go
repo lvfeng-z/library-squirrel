@@ -625,11 +625,18 @@ func fetchWithRetry[T any](ctx context.Context, client *receiveClient, req *stre
 		head, r, err := client.fetch(ctx, req)
 		if err == nil {
 			res, berr := body(head, r)
+			partial := r.got > 0
 			_ = r.Close()
 			if berr == nil {
 				return res, nil
 			}
 			err = berr
+			// 内容已部分消费后失败：本次尝试已把部分字节写入暂存（O_APPEND 追加），同 offset
+			// 重试会叠加重复字节——文件超长损坏且进度双计（实测：传输中中断即现）。交外层
+			// 续传锚重算（stageFile 按实际落盘字节重设 offset）处理，不再内层重复追加。
+			if partial {
+				return zero, err
+			}
 		}
 		if ctx.Err() != nil {
 			return zero, ctx.Err()
