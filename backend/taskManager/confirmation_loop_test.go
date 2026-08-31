@@ -201,6 +201,9 @@ func TestStrategyWaitConfirmCanceled(t *testing.T) {
 	if len(m.semaphore) != 0 {
 		t.Fatal("取消路径槽位应保持释放")
 	}
+	if h.ConfirmMemo() != nil {
+		t.Fatal("取消时无答复不应记录确认记忆")
+	}
 }
 
 // TestStrategyWaitConfirmSlotReleased 排队唤醒：maxParallel=1 下策略任务持有唯一槽位,
@@ -439,4 +442,196 @@ func (s *multiStrategy) Execute(h StrategyHandle) {
 		return
 	}
 	s.s2.Execute(h)
+}
+
+// sameWorkIDSet 判定两个作品 ID 集合相等（顺序无关）
+func sameWorkIDSet(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[int64]struct{}, len(a))
+	for _, id := range a {
+		seen[id] = struct{}{}
+	}
+	for _, id := range b {
+		if _, ok := seen[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// TestStrategyWaitConfirmRecordsMemoOnReply 正常答复路径记录记忆：返回后 ConfirmMemo 非 nil，
+// ConflictWorkIds 为 conflictWorkIds 保序去重输出（同作品多冲突行去重）、Decision 与输入答复一致
+func TestStrategyWaitConfirmRecordsMemoOnReply(t *testing.T) {
+	m, mgr, _ := newConfirmTestTask(2)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	m.slotHeld = true
+	m.semaphore <- struct{}{}
+	h := newStrategyHandle(m)
+	conflicts := []ConflictInfo{
+		{WorkID: 100, WorkName: "作品A", ConflictRoles: []string{"image"}},
+		{WorkID: 100, WorkName: "作品A", ConflictRoles: []string{"video"}}, // 同作品多冲突行:记忆键去重
+		{WorkID: 200, WorkName: "作品B", ConflictRoles: []string{"thumbnail"}},
+	}
+
+	var decision ReplaceDecision
+	var canceled bool
+	done := make(chan struct{})
+	go func() {
+		decision, canceled = h.WaitReplaceConfirm(conflicts)
+		close(done)
+	}()
+	waitRegistered(t, mgr, 1)
+	waitSlotReleased(t, m)
+
+	if err := mgr.ConfirmReplace(1, "replace"); err != nil {
+		t.Fatalf("确认失败: %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitReplaceConfirm 未返回")
+	}
+	if canceled {
+		t.Fatal("正常答复不应视为取消")
+	}
+	if decision != ReplaceDecisionReplace {
+		t.Fatalf("决策应为替换,实际 %v", decision)
+	}
+	memo := h.ConfirmMemo()
+	if memo == nil {
+		t.Fatal("正常答复后应记录确认记忆")
+	}
+	if memo.Decision != ReplaceDecisionReplace {
+		t.Fatalf("记忆决策应为替换,实际 %v", memo.Decision)
+	}
+	if len(memo.ConflictWorkIds) != 2 || !sameWorkIDSet(memo.ConflictWorkIds, []int64{100, 200}) {
+		t.Fatalf("记忆冲突集应为保序去重 [100 200],实际 %v", memo.ConflictWorkIds)
+	}
+}
+
+// TestStrategyWaitConfirmRecordsMemoOnInnerCancel 内层取消记录记忆：答复投递后重新取槽被
+// runCtx 取消打断 → 返回 (决策, true) 且记忆已记录（答复已被 confirmCh 消费,仅取槽被打断）
+func TestStrategyWaitConfirmRecordsMemoOnInnerCancel(t *testing.T) {
+	m, mgr, _ := newConfirmTestTask(1)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	m.slotHeld = true
+	m.semaphore <- struct{}{}
+	h := newStrategyHandle(m)
+	conflicts := []ConflictInfo{{WorkID: 100, WorkName: "作品A"}}
+
+	var decision ReplaceDecision
+	var canceled bool
+	done := make(chan struct{})
+	go func() {
+		decision, canceled = h.WaitReplaceConfirm(conflicts)
+		close(done)
+	}()
+	waitRegistered(t, mgr, 1)
+	waitSlotReleased(t, m)
+
+	// 外部任务取走释放的槽位:答复后重新取槽将阻塞(内层取消的前提)
+	mgr.semaphore <- struct{}{}
+	if err := mgr.ConfirmReplace(1, "replace"); err != nil {
+		t.Fatalf("确认失败: %v", err)
+	}
+	// 轮询到记忆已记录:答复已被 confirmCh 消费、goroutine 阻塞在重新取槽,随后 runCancel 打断取槽
+	deadline := time.Now().Add(3 * time.Second)
+	for h.ConfirmMemo() == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("答复后应记录确认记忆")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	m.runCancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitReplaceConfirm 未返回")
+	}
+	if !canceled {
+		t.Fatal("内层取消应返回取消信号")
+	}
+	if decision != ReplaceDecisionReplace {
+		t.Fatalf("内层取消应返回已消费答复的决策,实际 %v", decision)
+	}
+	memo := h.ConfirmMemo()
+	if memo == nil || memo.Decision != ReplaceDecisionReplace || !sameWorkIDSet(memo.ConflictWorkIds, []int64{100}) {
+		t.Fatalf("内层取消后记忆应记录答复决策,实际 %+v", memo)
+	}
+	if _, ok := mgr.waitingForInputMap[1]; ok {
+		t.Fatal("取消后应从等待确认表移除")
+	}
+}
+
+// TestStrategyWaitConfirmConsumesRacedReply 外层取消竞态消费答复：取消时 confirmCh 已有答复
+// （用户答复与暂停竞态）→ 答复被消费记入记忆。答复先于取消入通道（缓冲投递同步完成），
+// 无论 select 选中答复路径还是取消路径,竞态答复都不白点
+func TestStrategyWaitConfirmConsumesRacedReply(t *testing.T) {
+	m, mgr, _ := newConfirmTestTask(2)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	m.slotHeld = true
+	m.semaphore <- struct{}{}
+	h := newStrategyHandle(m)
+
+	done := make(chan struct{})
+	go func() {
+		h.WaitReplaceConfirm([]ConflictInfo{{WorkID: 100, WorkName: "作品A"}})
+		close(done)
+	}()
+	waitRegistered(t, mgr, 1)
+	waitSlotReleased(t, m)
+
+	// 答复投递（同步入缓冲通道）后立即取消:竞态窗口——答复在通道中、runCtx 同时取消
+	if err := mgr.ConfirmReplace(1, "replace"); err != nil {
+		t.Fatalf("确认失败: %v", err)
+	}
+	m.runCancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitReplaceConfirm 未返回")
+	}
+	memo := h.ConfirmMemo()
+	if memo == nil {
+		t.Fatal("竞态答复应被消费记入确认记忆")
+	}
+	if memo.Decision != ReplaceDecisionReplace {
+		t.Fatalf("记忆决策应来自竞态答复(replace),实际 %v", memo.Decision)
+	}
+	if !sameWorkIDSet(memo.ConflictWorkIds, []int64{100}) {
+		t.Fatalf("记忆冲突集应为 [100],实际 %v", memo.ConflictWorkIds)
+	}
+}
+
+// TestStrategyWaitConfirmCancelNoMemo 取消时无答复 → 记忆保持 nil（用户确实未答,恢复重新弹窗）
+func TestStrategyWaitConfirmCancelNoMemo(t *testing.T) {
+	m, mgr, _ := newConfirmTestTask(2)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	m.slotHeld = true
+	m.semaphore <- struct{}{}
+	h := newStrategyHandle(m)
+
+	done := make(chan struct{})
+	go func() {
+		h.WaitReplaceConfirm([]ConflictInfo{{WorkID: 100, WorkName: "作品A"}})
+		close(done)
+	}()
+	waitRegistered(t, mgr, 1)
+	waitSlotReleased(t, m)
+
+	m.runCancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitReplaceConfirm 未返回")
+	}
+	if h.ConfirmMemo() != nil {
+		t.Fatal("取消时无答复不应记录确认记忆")
+	}
 }

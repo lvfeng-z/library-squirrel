@@ -1107,6 +1107,170 @@ func TestReceiveExecutionConfirmCanceled(t *testing.T) {
 	ops.mu.Unlock()
 }
 
+// TestReceiveExecutionConfirmKeptAcrossPauseResume 确认决策跨暂停/恢复保留（单次会话内确认不丢）：
+// 确认替换答复后软删窗口内暂停（ctx 取消）→ 确认记忆已记录、不上报终态 → 恢复重跑
+// 记忆命中 → 不重弹、复用替换决策、回灌 ReplaceWorks 延续、Finished
+func TestReceiveExecutionConfirmKeptAcrossPauseResume(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 首次：确认替换
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 恢复重跑：仍命中冲突
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+
+	// 第一次执行：确认替换 → 软删后暂停（ctx 取消）→ 确认记忆已记录、不上报终态
+	h1, cancel1, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h1.confirmDecision = taskManager.ReplaceDecisionReplace
+	ops.cancelAfter = cancel1
+	finished1, failed1 := waitExecuteDone(t, h1, exec)
+	assert.False(t, finished1, "暂停不应置成功终态")
+	assert.Equal(t, "", failed1, "暂停不应置失败终态（恢复延续）")
+	h1.mu.Lock()
+	require.Len(t, h1.confirmConflicts, 1, "首次应弹窗一次")
+	require.NotNil(t, h1.confirmMemo, "答复后应记录确认记忆")
+	require.NotNil(t, h1.rollback, "软删后应登记回滚")
+	h1.mu.Unlock()
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 1, "首次应软删")
+	ops.mu.Unlock()
+
+	// 恢复：确认记忆随任务保留（真实系统存于 ManagedTask，暂停不清），新句柄承接后重跑
+	// 复用决策不重弹（软删对活行 no-op，回滚并集去重）
+	h2, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h2.confirmMemo = h1.confirmMemo
+	ops.cancelAfter = nil
+	finished2, failed2 := waitExecuteDone(t, h2, exec)
+	require.True(t, finished2, "恢复应成功，失败: %s", failed2)
+	h2.mu.Lock()
+	require.Len(t, h2.confirmConflicts, 0, "记忆命中不重弹")
+	h2.mu.Unlock()
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 2, "恢复复用决策应再次软删（对活行 no-op 由真实替换链保证）")
+	ops.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called, "恢复执行到达回灌")
+	require.NotNil(t, env.ingestor.opts)
+	_, ok := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, ok, "记忆复用替换决策应入替换集")
+	env.ingestor.mu.Unlock()
+}
+
+// TestReceiveExecutionReRunFromFinishedReconfirms 终态清空确认记忆：首次执行确认替换
+// 完成后（Finished 清空记忆）重跑 → 重新命中冲突 → 重新弹窗确认
+func TestReceiveExecutionReRunFromFinishedReconfirms(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 首次：确认替换完成
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 重跑：终态清空后重新命中冲突
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+
+	// 首次执行：确认替换 → 软删 → 回灌 → Finished（终态清空确认记忆）
+	h1, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h1.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished1, failed1 := waitExecuteDone(t, h1, exec)
+	require.True(t, finished1, "首次应成功，失败: %s", failed1)
+	h1.mu.Lock()
+	require.Len(t, h1.confirmConflicts, 1, "首次应弹窗一次")
+	h1.mu.Unlock()
+
+	// 重跑（新句柄，记忆随终态清空为 nil）→ 重新弹窗确认 → 替换完成
+	h2, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h2.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished2, failed2 := waitExecuteDone(t, h2, exec)
+	require.True(t, finished2, "重跑应成功，失败: %s", failed2)
+	h2.mu.Lock()
+	require.Len(t, h2.confirmConflicts, 1, "终态清空后重跑应重新弹窗")
+	h2.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 2, env.ingestor.called, "两次执行均到达回灌")
+	require.NotNil(t, env.ingestor.opts)
+	_, ok := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, ok, "重跑确认替换后应入替换集")
+	env.ingestor.mu.Unlock()
+}
+
+// TestReceiveExecutionPauseBeforeConfirmReconfirms 暂停在确认弹窗等待期（未答复）：
+// 无确认记忆 → 恢复重新弹窗（用户确实未答，恢复需重新征询）
+func TestReceiveExecutionPauseBeforeConfirmReconfirms(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 首次：弹窗等待被取消
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 恢复：重新弹窗
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+
+	// 第一次执行：确认弹窗等待期暂停（用户未答复，WaitReplaceConfirm 返回取消）
+	h1, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h1.confirmCanceled = true
+	finished1, failed1 := waitExecuteDone(t, h1, exec)
+	assert.False(t, finished1, "确认取消不应置成功终态")
+	assert.Equal(t, "", failed1, "确认取消不应置失败终态（交控制面接管）")
+	h1.mu.Lock()
+	require.Len(t, h1.confirmConflicts, 1, "首次应弹窗一次")
+	require.Nil(t, h1.confirmMemo, "未答复不应记录确认记忆")
+	h1.mu.Unlock()
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 0, "确认未答复不得软删")
+	ops.mu.Unlock()
+
+	// 恢复：无记忆 → 重新弹窗确认 → 替换完成
+	h2, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h2.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished2, failed2 := waitExecuteDone(t, h2, exec)
+	require.True(t, finished2, "恢复应成功，失败: %s", failed2)
+	h2.mu.Lock()
+	require.Len(t, h2.confirmConflicts, 1, "无记忆恢复应重新弹窗")
+	h2.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called, "恢复执行到达回灌")
+	require.NotNil(t, env.ingestor.opts)
+	_, ok := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, ok, "恢复确认替换后应入替换集")
+	env.ingestor.mu.Unlock()
+}
+
+// TestReceiveExecutionConfirmRacedWithPauseKept 答复与暂停竞态（对齐真实外层取消分支非阻塞消费
+// 残留答复记记忆）：答复已投递但被暂停打断 → 确认记忆已记录、返回取消 → 恢复记忆命中不重弹
+func TestReceiveExecutionConfirmRacedWithPauseKept(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 首次：答复与取消竞态
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})}, // 恢复：记忆命中不重弹
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+
+	// 第一次执行：答复已投递（记录确认记忆）与暂停并发 → WaitReplaceConfirm 返回取消
+	h1, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h1.confirmDecision = taskManager.ReplaceDecisionReplace
+	h1.confirmRaced = true
+	finished1, failed1 := waitExecuteDone(t, h1, exec)
+	assert.False(t, finished1, "竞态取消不应置成功终态")
+	assert.Equal(t, "", failed1, "竞态取消不应置失败终态（交控制面接管）")
+	h1.mu.Lock()
+	require.Len(t, h1.confirmConflicts, 1, "首次应弹窗一次")
+	require.NotNil(t, h1.confirmMemo, "竞态答复应被消费记入确认记忆")
+	h1.mu.Unlock()
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 0, "竞态取消未走到软删")
+	ops.mu.Unlock()
+
+	// 恢复：确认记忆随任务保留 → 记忆命中 → 不重弹、复用替换决策完成
+	h2, _, exec, ops := env.buildDupHandle(t, "", checker, ops)
+	h2.confirmMemo = h1.confirmMemo
+	finished2, failed2 := waitExecuteDone(t, h2, exec)
+	require.True(t, finished2, "恢复应成功，失败: %s", failed2)
+	h2.mu.Lock()
+	require.Len(t, h2.confirmConflicts, 0, "竞态记忆命中恢复不重弹")
+	h2.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called, "恢复执行到达回灌")
+	require.NotNil(t, env.ingestor.opts)
+	_, ok := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, ok, "竞态记忆复用替换决策应入替换集")
+	env.ingestor.mu.Unlock()
+}
+
 // —— 阶段3：Receive 建树流程 ——
 
 // fakeBuiltinTaskControl 阶段3 建树流程的收件任务控制桩：模拟 task.Service 建树行为

@@ -410,6 +410,9 @@ type ManagedTask struct {
 	// 策略任务终态回滚登记（软删成功后执行器经 SetTerminalRollback 登记；setFailed 单点
 	// 触发后清空，Finish 清空；仅 actor goroutine 访问）
 	terminalRollback *TerminalRollback
+	// 覆盖确认决策记忆（WaitReplaceConfirm 答复到达时记录；跨暂停/恢复保留，终态
+	// Finish/setFailed 清空——重跑重新弹窗；仅 actor goroutine 访问）
+	confirmMemo *ReplaceConfirmMemo
 
 	// 执行模式（Full/ResourceOnly/WorkInfo/Thumbnail）
 	runMode runMode
@@ -1833,6 +1836,7 @@ func (m *ManagedTask) setState(state TaskState) {
 func (m *ManagedTask) setFailed(errMsg string) {
 	m.errorMessage = errMsg
 	m.setState(TaskStateFailed)
+	m.confirmMemo = nil // 失败终态清空确认决策记忆（重跑重新弹窗）；置于单点而非 triggerTerminalRollback——其按登记是否为空早退，会漏清
 	if m.task.PendingResourceID.Valid {
 		m.clearPendingResourceID()
 	}

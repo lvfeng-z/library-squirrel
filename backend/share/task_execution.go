@@ -340,21 +340,19 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 		}
 	}
 
-	// 冲突作品整体决策（任务粒度）：替换 → 确认替换集；跳过 → 整作品跳过（零交集角色同样不增补）
+	// 冲突作品整体决策（任务粒度）：先查确认决策记忆命中（冲突本地作品 ID 集集合相等）复用决策
+	// 不弹窗（单次会话内确认保留）；未命中弹窗等待整体答复（WaitReplaceConfirm 内部已记
+	// 记忆，取消返回时供恢复复用）
 	if len(conflicts) > 0 {
-		decision, canceled := h.WaitReplaceConfirm(conflicts)
-		if canceled {
-			return nil, true, nil
-		}
-		switch decision {
-		case taskManager.ReplaceDecisionSkip:
-			for _, t := range confirmTargets {
-				plan.skipWorks[t.manifestID] = struct{}{}
+		if memo := h.ConfirmMemo(); memo != nil && sameIDSet(memo.ConflictWorkIds, conflictWorkIDsOf(conflicts)) {
+			// 记忆命中：复用既有整体决策，不重复弹窗
+			applyConfirmDecision(plan, confirmTargets, memo.Decision)
+		} else {
+			decision, canceled := h.WaitReplaceConfirm(conflicts)
+			if canceled {
+				return nil, true, nil // 记忆已由 WaitReplaceConfirm 记录，恢复复用
 			}
-		default:
-			for _, t := range confirmTargets {
-				plan.confirmedWorks[t.manifestID] = struct{}{}
-			}
+			applyConfirmDecision(plan, confirmTargets, decision)
 		}
 	}
 
@@ -382,6 +380,54 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 		}
 	}
 	return plan, false, nil
+}
+
+// applyConfirmDecision 将整体决策应用到确认目标集（任务粒度）：替换 → 确认替换集；跳过 → 整作品跳过
+// （零交集角色同样不增补）。planReplace 的记忆复用与弹窗两路径共用同一落位。
+func applyConfirmDecision(plan *receiveReplacePlan, targets []replaceSoftTarget, decision taskManager.ReplaceDecision) {
+	switch decision {
+	case taskManager.ReplaceDecisionSkip:
+		for _, t := range targets {
+			plan.skipWorks[t.manifestID] = struct{}{}
+		}
+	default:
+		for _, t := range targets {
+			plan.confirmedWorks[t.manifestID] = struct{}{}
+		}
+	}
+}
+
+// conflictWorkIDsOf 提取冲突作品的本地 ID 集（保序去重；确认决策记忆键，
+// 对齐 taskManager.conflictWorkIds 语义——记忆记录与比对共用同一形态）
+func conflictWorkIDsOf(conflicts []taskManager.ConflictInfo) []int64 {
+	ids := make([]int64, 0, len(conflicts))
+	seen := make(map[int64]struct{}, len(conflicts))
+	for _, c := range conflicts {
+		if _, ok := seen[c.WorkID]; ok {
+			continue
+		}
+		seen[c.WorkID] = struct{}{}
+		ids = append(ids, c.WorkID)
+	}
+	return ids
+}
+
+// sameIDSet 集合相等比对（顺序无关）：确认记忆键与当前冲突 ID 集一致才复用决策。
+// 两次执行的冲突集查重顺序理论可漂移，集合比对消除顺序依赖。
+func sameIDSet(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[int64]struct{}, len(a))
+	for _, id := range a {
+		seen[id] = struct{}{}
+	}
+	for _, id := range b {
+		if _, ok := seen[id]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // manifestWorkRoles 作品在 manifest 中声明的板块角色集合（资源挂载去重并集）：

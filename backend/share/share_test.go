@@ -774,19 +774,27 @@ type fakeStrategyHandle struct {
 	failed           bool
 	errMsg           string
 	progresses       [][2]int64
-	confirmDecision  taskManager.ReplaceDecision // WaitReplaceConfirm 返回值（测试预设）
-	confirmCanceled  bool                        // WaitReplaceConfirm 返回值（测试预设）
+	confirmDecision  taskManager.ReplaceDecision     // WaitReplaceConfirm 返回值（测试预设）
+	confirmCanceled  bool                            // WaitReplaceConfirm 返回值（测试预设）
+	confirmRaced     bool                            // 答复与暂停竞态注入：记录确认记忆但返回取消（对齐真实外层取消分支）
+	confirmMemo      *taskManager.ReplaceConfirmMemo // 确认决策记忆（暂停/恢复保留，终态清空）
 	confirmConflicts [][]taskManager.ConflictInfo
 	rollback         *taskManager.TerminalRollback
 }
 
 func (h *fakeStrategyHandle) Task() *entity.Task      { return h.task }
 func (h *fakeStrategyHandle) RunCtx() context.Context { return h.runCtx }
-func (h *fakeStrategyHandle) Finish()                 { h.mu.Lock(); h.finished = true; h.mu.Unlock() }
+func (h *fakeStrategyHandle) Finish() {
+	h.mu.Lock()
+	h.finished = true
+	h.confirmMemo = nil // 终态清空确认记忆（对齐真实 strategyHandle.Finish，重跑重新确认）
+	h.mu.Unlock()
+}
 func (h *fakeStrategyHandle) Fail(errMsg string) {
 	h.mu.Lock()
 	h.failed = true
 	h.errMsg = errMsg
+	h.confirmMemo = nil // 终态清空确认记忆（对齐真实 setFailed，重试重新确认）
 	h.mu.Unlock()
 }
 func (h *fakeStrategyHandle) ReportProgress(t, f int64) {
@@ -794,10 +802,34 @@ func (h *fakeStrategyHandle) ReportProgress(t, f int64) {
 	h.progresses = append(h.progresses, [2]int64{t, f})
 	h.mu.Unlock()
 }
+
+// ConfirmMemo 返回已记住的确认决策记忆（无则 nil）
+func (h *fakeStrategyHandle) ConfirmMemo() *taskManager.ReplaceConfirmMemo {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.confirmMemo
+}
 func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.ConflictInfo) (taskManager.ReplaceDecision, bool) {
 	h.mu.Lock()
 	h.confirmConflicts = append(h.confirmConflicts, conflicts)
 	d, c := h.confirmDecision, h.confirmCanceled
+	switch {
+	case h.confirmRaced:
+		// 答复与暂停竞态（对齐真实外层取消分支非阻塞消费残留答复记记忆）：记录决策后返回取消，
+		// 返回决策值按真实语义固定 Skip（取消时调用方忽略决策，记忆承载实际答复）
+		h.confirmMemo = &taskManager.ReplaceConfirmMemo{
+			ConflictWorkIds: conflictWorkIDsOf(conflicts),
+			Decision:        d,
+		}
+		c = true
+		d = taskManager.ReplaceDecisionSkip
+	case !c:
+		// 正常答复：记录确认决策记忆（对齐真实 strategyHandle——答复消费即记记忆）
+		h.confirmMemo = &taskManager.ReplaceConfirmMemo{
+			ConflictWorkIds: conflictWorkIDsOf(conflicts),
+			Decision:        d,
+		}
+	}
 	h.mu.Unlock()
 	return d, c
 }

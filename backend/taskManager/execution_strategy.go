@@ -50,6 +50,13 @@ type TerminalRollback struct {
 	Victims []resource.StoreRef // 被软删行清单（失败回滚时按清单复活）
 }
 
+// ReplaceConfirmMemo 覆盖确认决策记忆：用户对某冲突作品集作出的整体答复（任务粒度）。
+// 跨暂停/恢复保留（同一任务执行生命周期内不重复弹窗）；终态（Finish/setFailed）清空，重跑重新确认。
+type ReplaceConfirmMemo struct {
+	ConflictWorkIds []int64         // 决策适用的冲突本地作品 ID 集（conflictWorkIds 保序去重输出）
+	Decision        ReplaceDecision // ReplaceDecisionReplace / ReplaceDecisionSkip
+}
+
 // replaceConfirmResult 确认通道投递的答复（策略任务执行内挂起等待的唤醒载荷）
 type replaceConfirmResult struct {
 	decision ReplaceDecision
@@ -94,9 +101,12 @@ type StrategyHandle interface {
 	// WaitReplaceConfirm 覆盖确认等待（执行中挂起）：置任务 WaitingForInput、对每个冲突作品
 	// 复用现有 PushDuplicateDetected 逐条推送（同 taskId 多事件、现有载荷与事件名不动），
 	// 阻塞直至用户整体答复或 RunCtx 取消。返回整体决策（replace/skip，任务粒度）；
-	// canceled=true 表示 RunCtx 取消（防御性分支——模态弹窗期间暂停/停止实际不可达，
-	// 真正中断窗口在确认之后），Execute 约定不上报终态交控制面接管。
+	// canceled=true 表示 RunCtx 取消——确认等待期可被暂停打断（setup 阶段 inDownload=false
+	// 时 cmdPause 立即取消 runCtx），返回 canceled 交控制面接管；setFailed 单点仍收口
+	// 确认之后的中断窗口。Execute 约定不上报终态交控制面接管。
 	WaitReplaceConfirm(conflicts []ConflictInfo) (decision ReplaceDecision, canceled bool)
+	// ConfirmMemo 返回已记住的确认决策记忆（无则 nil；仅策略任务用）
+	ConfirmMemo() *ReplaceConfirmMemo
 	// SetTerminalRollback 登记终态回滚（失败/停止时由控制面 setFailed 单点统一触发；
 	// Execute 的取消返回路径无法区分暂停与停止，不得自行回滚）。同一任务多次软删
 	// （如暂停恢复后延续替换再次软删）的受害者清单合并登记（按 store ID 去重），
@@ -119,14 +129,18 @@ func (h *strategyHandle) Task() *entity.Task { return h.m.task }
 
 func (h *strategyHandle) RunCtx() context.Context { return h.m.runCtx }
 
+// ConfirmMemo 返回已记住的确认决策记忆（无则 nil；跨暂停/恢复保留，终态清空）
+func (h *strategyHandle) ConfirmMemo() *ReplaceConfirmMemo { return h.m.confirmMemo }
+
 // Finish 上报成功终态：置 Finished（幂等，重复调用与 Fail 之后的调用均为 no-op）。
-// 替换完成即软删行进入终态，清空回滚登记——重试从空态重新登记，不复活历史软删行
+// 替换完成即软删行进入终态，清空回滚登记与确认记忆——重试从空态重新登记，不复活历史软删行
 func (h *strategyHandle) Finish() {
 	if h.terminal {
 		return
 	}
 	h.terminal = true
 	h.m.terminalRollback = nil
+	h.m.confirmMemo = nil
 	h.m.setState(TaskStateFinished)
 }
 
@@ -149,15 +163,13 @@ func (h *strategyHandle) ReportProgress(total, finished int64) {
 
 // WaitReplaceConfirm 覆盖确认等待：置任务 WaitingForInput、逐条推送冲突事件、注册进等待确认表，
 // 释放信号量槽位（确认挂起期间不占并发额度），阻塞直至用户整体答复（确认通道）或 RunCtx 取消。
+// 答复到达即记入确认决策记忆（confirmMemo：跨暂停/恢复保留，终态清空），供恢复复用决策不重弹窗。
+// 进入等待不排空历史残留答复——取消路径已消费竞态答复（内层取消答复已出队、外层取消非阻塞读），
+// 排空反会丢弃刚入队的竞态答复。
 // 答复后重新排队取槽继续执行；取消时返回 canceled=true、槽位保持释放（交回控制面，
 // 由 handleRunCmd 释放路径按 slotHeld 守卫防重复释放）。
 func (h *strategyHandle) WaitReplaceConfirm(conflicts []ConflictInfo) (ReplaceDecision, bool) {
 	m := h.m
-	// 排空历史残留答复：上次挂起被取消时可能遗留缓冲中的答复，避免被误当本次答复
-	select {
-	case <-m.confirmCh:
-	default:
-	}
 	m.setState(TaskStateWaitingForInput)
 	if m.deps.Pusher != nil {
 		for _, c := range conflicts {
@@ -175,15 +187,22 @@ func (h *strategyHandle) WaitReplaceConfirm(conflicts []ConflictInfo) (ReplaceDe
 		<-m.semaphore
 		m.manager.dispatchFromQueue()
 	}
-	// 阻塞等待整体答复或 RunCtx 取消（防御性：模态弹窗期间暂停/停止实际不可达，真正的
-	// 中断窗口在确认之后，由 setFailed 单点经登记钩子收口）
+	// 阻塞等待整体答复或 RunCtx 取消。确认等待期可被暂停打断（setup 阶段 inDownload=false 时
+	// cmdPause 立即取消 runCtx）：取消返回 canceled 交控制面接管（暂停→Paused 可恢复、
+	// 停止→setFailed），setFailed 单点仍收口确认之后的中断窗口。
 	select {
 	case res := <-m.confirmCh:
+		// 答复已到达：先记记忆——用户点过确认不白点，暂停恢复复用决策
+		m.confirmMemo = &ReplaceConfirmMemo{
+			ConflictWorkIds: conflictWorkIds(conflicts),
+			Decision:        res.decision,
+		}
 		// 答复后重新排队取槽（阻塞取槽可被取消打断；取消时槽位保持释放）
 		select {
 		case m.semaphore <- struct{}{}:
 			m.slotHeld = true
 		case <-m.runCtx.Done():
+			// 内层取消：答复已被 confirmCh 消费、仅取槽被打断——记忆已记，交恢复复用
 			m.manager.removeWaitingForInput(m.taskId)
 			return res.decision, true
 		}
@@ -191,6 +210,15 @@ func (h *strategyHandle) WaitReplaceConfirm(conflicts []ConflictInfo) (ReplaceDe
 		return res.decision, false
 	case <-m.runCtx.Done():
 		m.manager.removeWaitingForInput(m.taskId)
+		// 外层取消竞态：用户已答复但被暂停打断——非阻塞读残留答复记入记忆
+		select {
+		case res := <-m.confirmCh:
+			m.confirmMemo = &ReplaceConfirmMemo{
+				ConflictWorkIds: conflictWorkIds(conflicts),
+				Decision:        res.decision,
+			}
+		default:
+		}
 		return ReplaceDecisionSkip, true
 	}
 }
