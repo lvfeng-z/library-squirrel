@@ -181,3 +181,55 @@ func TestDialCoordinatorReleaseSlotIdempotent(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+// TestDialCoordinatorQuotaFullCallback：配额满进入阻塞态时配额满回调触发一次，
+// 且跨复查循环不重复触发（一次 TakeDial 调用至多通知一次）。
+func TestDialCoordinatorQuotaFullCallback(t *testing.T) {
+	c := NewDialCoordinator(0, 1) // 速率 1/min：一次取令牌即满
+	if err := c.TakeDial(context.Background()); err != nil {
+		t.Fatalf("TakeDial 填满配额: %v", err)
+	}
+	var mu sync.Mutex
+	calls := 0
+	c.SetQuotaFullCallback(func() {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+	})
+
+	cctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- c.TakeDial(cctx) }()
+	// 等待回调至少触发一次（阻塞已建立）
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		n := calls
+		mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("配额满回调未触发")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// 阻塞持续多个复查周期，回调不得重复触发
+	time.Sleep(3 * dialPollInterval)
+	mu.Lock()
+	if calls != 1 {
+		t.Fatalf("回调应只触发一次，实际 %d", calls)
+	}
+	mu.Unlock()
+	// 取消解除阻塞
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ctx 取消应返回 context.Canceled，got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ctx 取消后阻塞拨号应立即返回")
+	}
+}

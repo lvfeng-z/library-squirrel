@@ -5,6 +5,7 @@ import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum
 import { ALL_STORE_ROLES, StoreRoleLabels } from '@renderer/constants/sectionCode.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
+import { isOpInFlight } from '@renderer/composables/useTaskOperations'
 import {computed, Ref, ref, toRaw} from 'vue'
 import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
@@ -90,8 +91,9 @@ const taskStore = useTaskStore()
 // 父任务进度信息Store
 const parentTaskStore = useParentTaskStore()
 // 任务状态
+const rowTaskId = computed<number | undefined>(() => props.row.taskProgress?.task?.id)
 const status: Ref<number | undefined | null> = computed(() => {
-  const taskId = props.row.taskProgress?.task?.id
+  const taskId = rowTaskId.value
   if (isNullish(taskId)) return props.row.taskProgress?.task?.status
   let tempStatus: number | undefined | null
   if (props.row.hasChildren) {
@@ -101,6 +103,8 @@ const status: Ref<number | undefined | null> = computed(() => {
   }
   return isNullish(tempStatus) ? props.row.taskProgress?.task?.status : tempStatus
 })
+// 本行操作在途/冷却（防重入守卫）：按钮 loading 反馈「禁止再次操作」
+const opInFlight = computed<boolean>(() => notNullish(rowTaskId.value) && isOpInFlight(rowTaskId.value))
 // 是否为内置任务类型（share-host/share-receive 等，taskType 非空）：无板块概念，
 // 终态不提供板块重下、完成后的"再次"动作语义为重新执行
 const isBuiltinTask = computed<boolean>(() => {
@@ -280,7 +284,10 @@ function formatBytes(bytes: number) {
         <el-button
           size="small"
           :icon="mapToButtonStatus().icon"
-          :loading="mapToButtonStatus().processing && !row.taskProgress?.task?.continuable && !row.taskProgress?.task?.hasChild"
+          :loading="
+            (mapToButtonStatus().processing && !row.taskProgress?.task?.continuable && !row.taskProgress?.task?.hasChild) ||
+            opInFlight
+          "
           @click="buttonClicked(row, mapToButtonStatus().operation)"
         />
       </el-tooltip>

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/library-squirrel/backend/base/model"
+	"github.com/library-squirrel/backend/config"
 )
 
 // Handler 任务管理器 Handler
@@ -14,6 +15,20 @@ type Handler struct {
 // NewHandler 创建任务管理器 Handler
 func NewHandler(mgr *Manager) *Handler {
 	return &Handler{mgr: mgr}
+}
+
+// TaskControlConfigDTO 任务控制操作防重入配置（IPC 响应体）
+type TaskControlConfigDTO struct {
+	OperationCooldownMs int `json:"operationCooldownMs"` // 控制操作冷却毫秒（0=不启用，开发者调试放开）
+}
+
+// GetTaskControlConfig 获取任务控制操作防重入配置（前端操作栏按钮冷却依据，读 config.yaml）
+func (h *Handler) GetTaskControlConfig() *model.ApiResponse[*TaskControlConfigDTO] {
+	dto := &TaskControlConfigDTO{}
+	if cfg := config.Get(); cfg != nil {
+		dto.OperationCooldownMs = cfg.Task.OperationCooldownMs
+	}
+	return model.Success(dto)
 }
 
 // StartTaskTrees 批量启动任务

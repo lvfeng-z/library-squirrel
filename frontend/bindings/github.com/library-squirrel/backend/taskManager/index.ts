@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    TaskControlConfigDTO,
     TaskSnapshotDTO,
     TaskSnapshotItem
 } from "./models.js";

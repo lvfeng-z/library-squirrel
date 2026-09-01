@@ -26,6 +26,10 @@ type DialCoordinator struct {
 	dialCap   int           // 每分钟拨号上限（<=0 不限）
 	mu        sync.Mutex
 	dialTimes []time.Time // 滑动窗口拨号事件（窗口 = 1 分钟）
+	// quotaFullCb 配额满通知回调：TakeDial 进入阻塞态（配额已满）时触发一次，供装配方上报
+	// 用户感知（如轻提示「拨号配额耗尽」）。纯能力维度，载荷仅时间语义，不感知业务实体；
+	// nil=不通知（测试/未装配场景）
+	quotaFullCb func()
 }
 
 // NewDialCoordinator 创建统筹器：maxConcurrent<=0 不限并发，maxDialsPerMinute<=0 不限速率。
@@ -78,12 +82,21 @@ func (c *DialCoordinator) ReleaseSlot() {
 	}
 }
 
+// SetQuotaFullCallback 设置配额满通知回调（进程装配用）：TakeDial 进入阻塞态时触发一次。
+// 触发不经协调器锁（回调内若再取门控不构成持锁重入）；nil=关闭通知。
+func (c *DialCoordinator) SetQuotaFullCallback(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.quotaFullCb = fn
+}
+
 // TakeDial 取拨号令牌：滑动窗口速率门控，无配额则等待至滑出窗口（ctx 可取消）。每次拨号前调用。
 func (c *DialCoordinator) TakeDial(ctx context.Context) error {
 	if c.dialCap <= 0 {
 		return nil // 不限速率
 	}
 	var blockedStart time.Time
+	var quotaFullCb func()
 	for {
 		c.mu.Lock()
 		now := time.Now()
@@ -101,9 +114,16 @@ func (c *DialCoordinator) TakeDial(ctx context.Context) error {
 			blockedStart = time.Now()
 			logger.Log.Debugf("[share-recv] 拨号速率配额满 等待窗口滑出（窗口=%d/%d，最老事件%v后滑出）",
 				len(c.dialTimes), c.dialCap, c.dialTimes[0].Add(dialWindow).Sub(now))
+			quotaFullCb = c.quotaFullCb // 捕获回调，解锁后触发（防持锁重入）
 		}
 		wait := c.dialTimes[0].Add(dialWindow).Sub(now)
 		c.mu.Unlock()
+		// 本次调用首次进入阻塞态：触发配额满通知（仅一次）
+		if quotaFullCb != nil {
+			cb := quotaFullCb
+			quotaFullCb = nil
+			cb()
+		}
 		if wait > 0 {
 			if wait > dialPollInterval {
 				wait = dialPollInterval

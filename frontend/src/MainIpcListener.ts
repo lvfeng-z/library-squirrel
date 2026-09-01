@@ -89,6 +89,15 @@ export function iniListener() {
         useShareReceiveStore().openWith(data as string)
         void shareConsumePendingLink()
         break
+      case 'dial-quota-full':
+        // 接收拨号配额耗尽：频繁启动/暂停耗尽速率配额，门控阻塞至窗口滑出（自恢复瞬态）。
+        // 后端已冷却去重（10s 内至多一次），此处轻提示让用户知道在等配额而非卡死
+        ElMessage({
+          message: '接收拨号配额已耗尽，正在等待恢复（约 1 分钟）。频繁启动/暂停会快速消耗配额，请勿频繁操作。',
+          type: 'warning',
+          duration: 5000
+        })
+        break
       default:
         useShareStore().onShareEvent(type, data)
     }

@@ -6,6 +6,33 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * TaskControlConfigDTO 任务控制操作防重入配置（IPC 响应体）
+ */
+export class TaskControlConfigDTO {
+    /**
+     * 控制操作冷却毫秒（0=不启用，开发者调试放开）
+     */
+    "operationCooldownMs": number;
+
+    /** Creates a new TaskControlConfigDTO instance. */
+    constructor($$source: Partial<TaskControlConfigDTO> = {}) {
+        if (!("operationCooldownMs" in $$source)) {
+            this["operationCooldownMs"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TaskControlConfigDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TaskControlConfigDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TaskControlConfigDTO($$parsedSource as Partial<TaskControlConfigDTO>);
+    }
+}
+
+/**
  * TaskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
  */
 export class TaskSnapshotDTO {

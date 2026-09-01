@@ -88,6 +88,9 @@ type PluginConfig struct {
 // TaskConfig 任务相关配置
 type TaskConfig struct {
 	UseSnapshotMode bool `mapstructure:"useSnapshotMode"` // 是否使用快照模式推送任务状态（默认 true）
+	// OperationCooldownMs 任务控制操作防重入冷却（毫秒）：操作提交后该窗口内按钮不可再点，
+	// 压制高频启停烧拨号配额；0=不启用（开发者调试放开）。默认 1500
+	OperationCooldownMs int `mapstructure:"operationCooldownMs"`
 }
 
 var cfg *Config
@@ -107,6 +110,7 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("app.resourcePath", "./resources")
 	viper.SetDefault("app.dataPath", "./data")
 	viper.SetDefault("task.useSnapshotMode", true)
+	viper.SetDefault("task.operationCooldownMs", 1500)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)

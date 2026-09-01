@@ -126,6 +126,10 @@ type Service struct {
 	lockReg    WorkLockRegistrar     // 供流作品锁登记/解除（app.go 注入 shareLock 单例；nil=不登记）
 	opts       sessionRuntimeOptions // 测试覆写（零值=默认）
 
+	// dialQuotaFull 配额满通知去重：多 fetch 并发阻塞时只提示一次（冷却期内静默）
+	dialQuotaFullMu         sync.Mutex
+	lastDialQuotaFullNotify time.Time
+
 	mu                  sync.Mutex
 	sessions            map[string]*shareSession      // shareId → 会话（含终态，列表展示用）
 	hostCancels         map[string]context.CancelFunc // shareId → 宿主主体 goroutine 取消（发布弹窗「取消」直达）
@@ -163,8 +167,29 @@ func (s *Service) setTunables(opts sessionRuntimeOptions) {
 // SetDialCoordinator 注入进程级收件拨号统筹器（app.go 装配）：Receive 预拉 manifest 与各收件
 // 子任务文件拉取经 opts 共享同一门控实例，接收方把并发流数与拨号速率对齐到发送方会话上限与
 // 中继限流之内。单测不注入，newReceiveClient 回落包级默认单例（需按测试需注入无限制桩绕过）。
+// 装配时把配额满通知回调挂到门控：门控阻塞（配额耗尽）即经 share-events 推 dial-quota-full 轻提示。
 func (s *Service) SetDialCoordinator(coord *DialCoordinator) {
+	coord.SetQuotaFullCallback(s.notifyDialQuotaFull)
 	s.opts.dialCoordinator = coord
+}
+
+// dialQuotaFullNotifyCooldown 配额满通知冷却：风暴期多 fetch 并发进入阻塞态，冷却内只提示一次
+const dialQuotaFullNotifyCooldown = 10 * time.Second
+
+// notifyDialQuotaFull 配额满通知入口（门控回调，可并发调用）：冷却去重后经 share-events 推送。
+// 仅通知「配额耗尽在等恢复」这一自恢复瞬态，不携带任务上下文（风暴期多任务同时阻塞，系统级提示即可）
+func (s *Service) notifyDialQuotaFull() {
+	s.dialQuotaFullMu.Lock()
+	now := time.Now()
+	if now.Sub(s.lastDialQuotaFullNotify) < dialQuotaFullNotifyCooldown {
+		s.dialQuotaFullMu.Unlock()
+		return
+	}
+	s.lastDialQuotaFullNotify = now
+	s.dialQuotaFullMu.Unlock()
+	if s.emitter != nil {
+		s.emitter.PushDialQuotaFull()
+	}
 }
 
 // Publish 发布分享（直跑，不经任务模块）：前置校验通过即以受监督 goroutine 驱动宿主主体，

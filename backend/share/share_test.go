@@ -123,6 +123,8 @@ type captureEmitter struct {
 	mu        sync.Mutex
 	completes map[string]ShareCompleteData
 	states    map[string][]*ShareSessionDTO
+	// dialQuotaFullCount 配额满通知次数（PushDialQuotaFull 计数）
+	dialQuotaFullCount int
 }
 
 func newCaptureEmitter() *captureEmitter {
@@ -147,6 +149,12 @@ func (c *captureEmitter) PushState(dto *ShareSessionDTO) {
 }
 
 func (c *captureEmitter) PushReceiveLink(link string) {}
+
+func (c *captureEmitter) PushDialQuotaFull() {
+	c.mu.Lock()
+	c.dialQuotaFullCount++
+	c.mu.Unlock()
+}
 
 func (c *captureEmitter) waitComplete(t *testing.T, shareID string, timeout time.Duration) ShareCompleteData {
 	deadline := time.Now().Add(timeout)
@@ -918,6 +926,33 @@ func TestPublishPreconditionRejected(t *testing.T) {
 		"test-instance-0001", nil, nil, nil)
 	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
 		t.Fatalf("中继未配置应拒绝: %v", err)
+	}
+}
+
+// TestShareNotifyDialQuotaFullDedup：配额满通知冷却去重——冷却期内多次触发只推一次，
+// 冷却滑出后再触发重新推送（风暴期多 fetch 并发阻塞只提示一次）。
+func TestShareNotifyDialQuotaFullDedup(t *testing.T) {
+	em := newCaptureEmitter()
+	svc := NewService(nil, nil, nil, func() string { return "" }, func() string { return "" },
+		"test-instance-0001", em, nil, nil)
+	svc.notifyDialQuotaFull()
+	svc.notifyDialQuotaFull()
+	em.mu.Lock()
+	n := em.dialQuotaFullCount
+	em.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("冷却期内重复触发应去重为一次，实际 %d", n)
+	}
+	// 回拨冷却起点越过冷却窗 → 再次触发应重新推送
+	svc.dialQuotaFullMu.Lock()
+	svc.lastDialQuotaFullNotify = time.Now().Add(-dialQuotaFullNotifyCooldown - time.Second)
+	svc.dialQuotaFullMu.Unlock()
+	svc.notifyDialQuotaFull()
+	em.mu.Lock()
+	n = em.dialQuotaFullCount
+	em.mu.Unlock()
+	if n != 2 {
+		t.Fatalf("冷却滑出后再触发应推送，实际 %d", n)
 	}
 }
 

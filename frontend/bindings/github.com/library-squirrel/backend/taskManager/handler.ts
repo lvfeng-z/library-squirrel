@@ -48,11 +48,20 @@ export function GetActiveTaskCount(pluginPublicId: string): $CancellablePromise<
 }
 
 /**
+ * GetTaskControlConfig 获取任务控制操作防重入配置（前端操作栏按钮冷却依据，读 config.yaml）
+ */
+export function GetTaskControlConfig(): $CancellablePromise<model$0.ApiResponse<$models.TaskControlConfigDTO | null> | null> {
+    return $Call.ByID(1091418265).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+/**
  * GetTaskSnapshot 获取当前所有活跃任务的完整状态快照
  */
 export function GetTaskSnapshot(): $CancellablePromise<model$0.ApiResponse<$models.TaskSnapshotDTO | null> | null> {
     return $Call.ByID(1922063002).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType11($result);
     });
 }
 
@@ -79,7 +88,7 @@ export function GetTaskTreeState(taskId: number): $CancellablePromise<model$0.Ap
  */
 export function IsIdle(): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(3320329243).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType13($result);
     });
 }
 
@@ -142,9 +151,13 @@ const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.TaskSnapshotDTO.createFrom;
+const $$createType4 = $models.TaskControlConfigDTO.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType8 = $models.TaskSnapshotDTO.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType13 = $Create.Nullable($$createType12);

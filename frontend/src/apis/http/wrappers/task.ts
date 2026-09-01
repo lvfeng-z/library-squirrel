@@ -7,6 +7,7 @@ import { requireResponse, type ApiResult } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/backend/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/backend/taskManager'
 import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
+import { TaskControlConfigDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models'
 import { TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/models'
 import { TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
@@ -99,6 +100,11 @@ export async function taskRetryTrees(taskIds: number[]): Promise<ApiResult<void>
 // 插件名下运行中任务数（Processing/Pausing/Stopping/WaitingForInput），供插件停用/换版确认框明示代价
 export async function taskGetActiveCountByPlugin(pluginPublicId: string): Promise<ApiResult<number>> {
   return requireResponse(await TaskManagerHandler.GetActiveTaskCount(pluginPublicId), '查询插件运行中任务数')
+}
+
+// 任务控制操作防重入配置（前端操作栏按钮冷却依据，读 config.yaml 的 task.operationCooldownMs）
+export async function taskGetTaskControlConfig(): Promise<ApiResult<TaskControlConfigDTO>> {
+  return requireResponse(await TaskManagerHandler.GetTaskControlConfig(), '获取任务控制配置')
 }
 
 // ========== 作品板块重执行（多选） ==========
