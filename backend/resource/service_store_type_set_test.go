@@ -35,7 +35,7 @@ func newTestStoreTypeSetDB(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatalf("AutoMigrate 失败: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return NewService(NewRepository(db), NewResourceStoreRepository(db)), db
+	return NewService(NewRepository(db), NewResourceStoreRepository(db), nil), db
 }
 
 func mustCreateResource(t *testing.T, s *Service, ctx context.Context, workId int64) *domain.Resource {

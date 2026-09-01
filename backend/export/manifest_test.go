@@ -76,7 +76,7 @@ func TestManifestRoundTrip(t *testing.T) {
 			},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/画师/作品名.jpg", Path: "works/作品名/作品名.jpg", Size: 12345, Sha256: "abc123", Missing: false},
+			{StoreID: 100, StorePath: "store/resource/画师/作品名.jpg", Path: "works/作品名/作品名.jpg", Size: 12345, ContentFingerprint: "12345:abc123", Sha256: "abc123", Missing: false},
 		},
 	}
 

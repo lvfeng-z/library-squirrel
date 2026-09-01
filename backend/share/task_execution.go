@@ -9,6 +9,8 @@ package share
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -44,18 +46,28 @@ const (
 	receiveBackoffMax   = 8 * time.Second
 )
 
+// StoreMountReader 活行 store 挂载内容载荷批量查询（resource.Service 实现，接口由本模块声明）：
+// 按作品批量返回其活行 store 的挂载键（store_type + store_seq）、头部指纹与文件路径，
+// 供 planReplace 逐文件内容判定与暂存拷贝使用。StoreMountInfo 域类型定义在 resource 包。
+type StoreMountReader interface {
+	ListMountsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]resource.StoreMountInfo, error)
+}
+
 // ReceiveExecution share-receive（收件人拉取）任务的执行面策略。
 type ReceiveExecution struct {
-	svc        *Service                   // 提供 workDir / instanceID / 测试可覆写参数
-	ingestor   importer.ManifestIngestor  // 回灌导入能力（与 import handler 同一实例，app.go 装配）
-	checker    duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
-	replaceOps resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
+	svc         *Service                   // 提供 workDir / instanceID / 测试可覆写参数
+	ingestor    importer.ManifestIngestor  // 回灌导入能力（与 import handler 同一实例，app.go 装配）
+	checker     duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
+	replaceOps  resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
+	mountReader StoreMountReader           // 活行 store 挂载内容载荷查询（逐文件内容判定；nil=不判定走原替换）
 }
 
 // NewReceiveExecution 创建 share-receive 执行面策略
 func NewReceiveExecution(svc *Service, ingestor importer.ManifestIngestor,
-	checker duplicate.DuplicateChecker, replaceOps resource.ReplaceStoreOps) *ReceiveExecution {
-	return &ReceiveExecution{svc: svc, ingestor: ingestor, checker: checker, replaceOps: replaceOps}
+	checker duplicate.DuplicateChecker, replaceOps resource.ReplaceStoreOps,
+	mountReader StoreMountReader) *ReceiveExecution {
+	return &ReceiveExecution{svc: svc, ingestor: ingestor, checker: checker,
+		replaceOps: replaceOps, mountReader: mountReader}
 }
 
 // Execute 收件人子任务拉取主体：读本地共享 manifest → 过滤本作品子集 → 拉取本作品文件至
@@ -106,8 +118,8 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 
-	// 查重 → 确认 → 软删 + 回滚登记（作用域为本作品子集；时序语义同整体路径，见设计七）
-	plan, canceled, err := e.planReplace(ctx, sub, h)
+	// 查重 → 确认 → 逐文件内容判定 → 软删 + 回滚登记（作用域为本作品子集；时序语义同整体路径，见设计七）
+	plan, canceled, err := e.planReplace(ctx, sub, staging, workDir, h)
 	if err != nil {
 		reportReceiveError(h, ctx, err)
 		return
@@ -270,7 +282,7 @@ type replaceSoftTarget struct {
 //     软删成功后立即经 SetTerminalRollback 登记回滚清单（失败/停止由控制面 setFailed 单点复活，
 //     多作品清单合并登记，软删中断窗口三态收口见方案「设计六」）
 func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Manifest,
-	h taskManager.StrategyHandle) (*receiveReplacePlan, bool, error) {
+	staging, workDir string, h taskManager.StrategyHandle) (*receiveReplacePlan, bool, error) {
 	plan := &receiveReplacePlan{
 		confirmedWorks: make(map[int64]struct{}),
 		autoMergeWorks: make(map[int64]struct{}),
@@ -356,6 +368,15 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 		}
 	}
 
+	// 逐文件内容判定：确认替换作品按 manifest 文件条目与本地活行 store 内容比对——
+	// 全部匹配的整作品跳过（不软删/不拉取/不导入），部分匹配的匹配文件由本地活文件
+	// 拷入暂存免网络重拉。判定仅作用于确认替换目标（confirmTargets），零交集自动增补不受影响。
+	if e.mountReader != nil {
+		if err := e.applyContentMatches(ctx, manifest, staging, workDir, plan, &confirmTargets); err != nil {
+			return nil, false, fmt.Errorf("逐文件内容判定失败: %w", err)
+		}
+	}
+
 	// 软删替换全集（确认替换 ∪ 零交集并入）各作品的软删角色并登记回滚清单；
 	// 零交集命中作品经此 no-op（活行交集为空），软删后恢复重跑延续同一机制
 	softTargets := autoTargets
@@ -395,6 +416,173 @@ func applyConfirmDecision(plan *receiveReplacePlan, targets []replaceSoftTarget,
 			plan.confirmedWorks[t.manifestID] = struct{}{}
 		}
 	}
+}
+
+// mountKey 挂载键（store_type + store_seq）：manifest 文件条目与本地活行 store 按此配对判定
+type mountKey struct {
+	storeType string
+	storeSeq  int64
+}
+
+// applyContentMatches 对确认替换作品做逐文件内容判定：
+//   - 全部文件与本地活行 store 内容一致（头部指纹快路径 + 全量 sha256 强校验）→ 整作品跳过：
+//     从确认替换集移除并加入整作品跳过集——不软删/不拉取/不导入，保留现状（confirmTargets 同步过滤）。
+//   - 部分匹配 → 作品保留确认替换（整作品替换收尾），匹配文件由本地活文件拷入暂存免网络重拉
+//     （stageFiles 见满尺寸暂存即跳过）。
+//   - 无匹配/缺指纹/无本地对应 store/文件数 0 → 原样整作品替换（安全回退，不误跳过）。
+//
+// 判定仅作用于确认替换目标；裁决跳过作品已入 skipWorks、零交集自动增补不涉及覆盖，均不受影响。
+func (e *ReceiveExecution) applyContentMatches(ctx context.Context, manifest *export.Manifest,
+	staging, workDir string, plan *receiveReplacePlan, targets *[]replaceSoftTarget) error {
+	workIds := make([]int64, 0, len(*targets))
+	for _, t := range *targets {
+		if _, ok := plan.confirmedWorks[t.manifestID]; ok {
+			workIds = append(workIds, t.localWorkID)
+		}
+	}
+	localMounts, err := e.mountReader.ListMountsByWorkIds(ctx, workIds)
+	if err != nil {
+		return err
+	}
+	entryByStoreID := make(map[int64]*export.FileEntry, len(manifest.Files))
+	for i := range manifest.Files {
+		entryByStoreID[manifest.Files[i].StoreID] = &manifest.Files[i]
+	}
+	for i := len(*targets) - 1; i >= 0; i-- {
+		t := (*targets)[i]
+		if _, ok := plan.confirmedWorks[t.manifestID]; !ok {
+			continue // 裁决跳过作品已入 skipWorks，不参与内容判定
+		}
+		work := findManifestWork(manifest, t.manifestID)
+		if work == nil {
+			continue
+		}
+		fileByKey := make(map[mountKey]*export.FileEntry)
+		for j := range work.Resources {
+			for _, s := range work.Resources[j].Stores {
+				fileByKey[mountKey{s.StoreType, int64(s.StoreSeq)}] = entryByStoreID[s.StoreID]
+			}
+		}
+		localByKey := make(map[mountKey]resource.StoreMountInfo)
+		for _, m := range localMounts[t.localWorkID] {
+			localByKey[mountKey{m.StoreType, m.StoreSeq}] = m
+		}
+		var matched []resource.StoreMountInfo
+		total := 0
+		for key, entry := range fileByKey {
+			if entry == nil {
+				continue // 挂载无文件条目（异常态）：不计入文件数，不影响判定
+			}
+			total++
+			if entry.Missing || entry.Path == "" {
+				continue // 缺席/无包内路径文件不参与匹配（也不拉取），同时阻断整作品跳过
+			}
+			local, ok := localByKey[key]
+			if !ok {
+				continue // 无本地对应活行 store → 不匹配
+			}
+			if e.fileContentMatches(ctx, workDir, local, entry) {
+				matched = append(matched, local)
+			}
+		}
+		if total > 0 && len(matched) == total {
+			// 全部匹配：内容一致 → 整作品跳过（保留现状，不软删/不拉取/不导入）
+			delete(plan.confirmedWorks, t.manifestID)
+			plan.skipWorks[t.manifestID] = struct{}{}
+			*targets = append((*targets)[:i], (*targets)[i+1:]...)
+			continue
+		}
+		if len(matched) == 0 {
+			continue // 无匹配 → 原样整作品替换（安全回退）
+		}
+		// 部分匹配：匹配文件拷入暂存（免网络重拉）；不匹配文件留待 stageFiles 拉取
+		for _, local := range matched {
+			key := mountKey{local.StoreType, local.StoreSeq}
+			if err := copyLocalToStaging(ctx, staging, workDir, local, fileByKey[key]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// fileContentMatches 判定本地活文件与宿主文件条目内容一致：快路径头部指纹直比（零读盘），
+// 匹配再读本地文件全量 sha256 与 manifest Sha256 比对（全量强校验）。
+// 任一指纹缺失/本地路径为空/本地文件不可读 → 不匹配（安全回退，不误跳过）。
+func (e *ReceiveExecution) fileContentMatches(ctx context.Context, workDir string,
+	local resource.StoreMountInfo, entry *export.FileEntry) bool {
+	if entry.ContentFingerprint == "" || entry.Sha256 == "" || local.ContentFingerprint == "" || local.StorePath == "" {
+		return false
+	}
+	if entry.ContentFingerprint != local.ContentFingerprint {
+		return false
+	}
+	sum, err := sha256File(ctx, filepath.Join(workDir, filepath.FromSlash(local.StorePath)))
+	if err != nil {
+		return false
+	}
+	return sum == entry.Sha256
+}
+
+// copyLocalToStaging 把本地活文件拷入暂存（满尺寸；stageFiles 见「暂存==声明」即跳过拉取）。
+// 拷贝读流 tee 全量 sha256 二次确认——源文件在判定与拷贝之间被改动则放弃拷贝改网络拉取。
+// 所有失败路径移除半成品暂存后回落拉取（不阻断整作品替换主流程，真实错误由 stageFiles 报出）。
+func copyLocalToStaging(ctx context.Context, staging, workDir string,
+	local resource.StoreMountInfo, entry *export.FileEntry) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	target := stagingPath(staging, entry.Path)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return nil // 暂存不可写由 stageFiles 报错，此处回落拉取
+	}
+	src, err := os.Open(filepath.Join(workDir, filepath.FromSlash(local.StorePath)))
+	if err != nil {
+		return nil // 本地文件已不可读 → 回落网络拉取
+	}
+	defer func() { _ = src.Close() }()
+	dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		_ = os.Remove(target)
+		return nil
+	}
+	hasher := sha256.New()
+	written, copyErr := io.Copy(dst, io.TeeReader(src, hasher))
+	closeErr := dst.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(target)
+		return nil
+	}
+	if written != entry.Size || hex.EncodeToString(hasher.Sum(nil)) != entry.Sha256 {
+		// 源文件内容在判定后漂移（size 或全量哈希不一致）：放弃拷贝，改由 stageFiles 网络拉取
+		_ = os.Remove(target)
+		return nil
+	}
+	return nil
+}
+
+// sha256File 计算文件全量 SHA256（hex；读本地活文件作内容身份强校验）
+func sha256File(ctx context.Context, absPath string) (string, error) {
+	f, err := os.Open(absPath)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// findManifestWork 按 manifest 作品 ID 定位作品记录（子 manifest 通常单作品，通用化供多作品遍历）
+func findManifestWork(manifest *export.Manifest, manifestID int64) *export.WorkRecord {
+	for i := range manifest.Works {
+		if manifest.Works[i].ID == manifestID {
+			return &manifest.Works[i]
+		}
+	}
+	return nil
 }
 
 // conflictWorkIDsOf 提取冲突作品的本地 ID 集（保序去重；确认决策记忆键，

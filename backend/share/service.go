@@ -11,9 +11,12 @@ package share
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -155,6 +158,13 @@ func NewService(repo *Repository, collector ExportCollector, planner ExportPlann
 // setTunables 覆写会话运行参数（仅测试使用）
 func (s *Service) setTunables(opts sessionRuntimeOptions) {
 	s.opts = opts
+}
+
+// SetDialCoordinator 注入进程级收件拨号统筹器（app.go 装配）：Receive 预拉 manifest 与各收件
+// 子任务文件拉取经 opts 共享同一门控实例，接收方把并发流数与拨号速率对齐到发送方会话上限与
+// 中继限流之内。单测不注入，newReceiveClient 回落包级默认单例（需按测试需注入无限制桩绕过）。
+func (s *Service) SetDialCoordinator(coord *DialCoordinator) {
+	s.opts.dialCoordinator = coord
 }
 
 // Publish 发布分享（直跑，不经任务模块）：前置校验通过即以受监督 goroutine 驱动宿主主体，
@@ -351,6 +361,50 @@ func (s *Service) startHostSupervised(shareID string, p hostParams, rec *entity.
 	return true
 }
 
+// fillManifestFingerprints 为 manifest 的非缺失文件条目预计算内容指纹（头部指纹 + 全量 SHA256）。
+// 一次读流双哈希——每个文件只打开一次：头部 64KB 同时喂两个哈希器（头部指纹顺带），剩余字节仅喂
+// 全量哈希器（主成本）。头部指纹口径与库内 persistent_store.content_fingerprint 一致
+// （size + 头部 64KB SHA256，`<size>:<hex>`），供收件方零读盘快速判定本地是否已拥有同内容文件；
+// 全量 SHA256 作「文件期望哈希」预下载参考——收件方下载前判定内容身份、导入落盘时校验下载完整性。
+// 缺失文件（Missing=true）与无包内路径条目（未被任何作品挂载引用）双字段保持空串。
+func fillManifestFingerprints(ctx context.Context, workDir string, files []export.FileEntry) error {
+	const headBytes = int64(64 * 1024)
+	for i := range files {
+		entry := &files[i]
+		if entry.Missing || entry.Path == "" {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		file, err := os.Open(filepath.Join(workDir, entry.StorePath))
+		if err != nil {
+			return fmt.Errorf("打开源文件失败 %s: %w", entry.StorePath, err)
+		}
+		info, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			return fmt.Errorf("获取文件信息失败 %s: %w", entry.StorePath, err)
+		}
+		headHasher := sha256.New()
+		fullHasher := sha256.New()
+		if _, err := io.CopyN(io.MultiWriter(headHasher, fullHasher), file, headBytes); err != nil && err != io.EOF {
+			_ = file.Close()
+			return fmt.Errorf("读取文件头部失败 %s: %w", entry.StorePath, err)
+		}
+		if _, err := io.Copy(fullHasher, file); err != nil {
+			_ = file.Close()
+			return fmt.Errorf("读取文件失败 %s: %w", entry.StorePath, err)
+		}
+		if err := file.Close(); err != nil {
+			return fmt.Errorf("关闭源文件失败 %s: %w", entry.StorePath, err)
+		}
+		entry.ContentFingerprint = fmt.Sprintf("%d:%s", info.Size(), hex.EncodeToString(headHasher.Sum(nil)))
+		entry.Sha256 = hex.EncodeToString(fullHasher.Sum(nil))
+	}
+	return nil
+}
+
 // hostSessionBody 分享宿主主体（发布/复原共用，goroutine 内执行，阻塞直至会话终态或取消）：
 // 收集 → 规划（包内路径/白名单）→ 建会话（发布：生成新密钥 register；复原：记录行原
 // token/key bind 重绑）→ 首次在线 → 隧道维持至会话终态（终态同步落记录行）。
@@ -413,6 +467,16 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 		fail(cancelAwareMsg(ctx, err))
 		return
 	}
+	// 分享路径预填 manifest 每文件内容哈希（头部指纹 + 全量 SHA256）：manifest 不带预计算哈希时
+	// 收件方无法在下载前判定本地是否已拥有同内容文件，重跑同一分享即重新拉取全部文件。
+	if err := fillManifestFingerprints(ctx, workDir, model.Manifest.Files); err != nil {
+		if ctx.Err() != nil {
+			interrupted()
+			return
+		}
+		fail(fmt.Sprintf("计算分享文件哈希失败: %v", err))
+		return
+	}
 
 	// 中继地址：发布取当前配置；复原取记录行（链接所指中继，不受当前配置切换影响）
 	relayCfg := strings.TrimSpace(s.relayAddr())
@@ -425,7 +489,7 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 		return
 	}
 
-	// 发给收件人的 manifest JSON（含包内路径/大小/缺失标记；sha256 不预计算——见 README 边界）
+	// 发给收件人的 manifest JSON（含包内路径/大小/缺失标记与预填的双哈希）
 	manifestData, err := model.Manifest.Serialize()
 	if err != nil {
 		fail(fmt.Sprintf("序列化 manifest 失败: %v", err))

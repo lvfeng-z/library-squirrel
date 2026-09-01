@@ -92,6 +92,7 @@ type sessionRuntimeOptions struct {
 	dialTimeout           time.Duration
 	dialFn                func(addr string) (net.Conn, error)
 	maxRequestRecordBytes int
+	dialCoordinator       *DialCoordinator // 收件拨号统筹器（nil=回落进程级默认门控；单测注入无限制桩绕过）
 }
 
 func defaultRuntimeOptions() sessionRuntimeOptions {
@@ -142,6 +143,9 @@ func (o sessionRuntimeOptions) withOverrides(ov sessionRuntimeOptions) sessionRu
 	}
 	if ov.maxRequestRecordBytes > 0 {
 		o.maxRequestRecordBytes = ov.maxRequestRecordBytes
+	}
+	if ov.dialCoordinator != nil {
+		o.dialCoordinator = ov.dialCoordinator
 	}
 	return o
 }

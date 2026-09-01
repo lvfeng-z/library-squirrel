@@ -7,7 +7,9 @@ package share
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -45,7 +50,7 @@ func i64Ptr(v int64) *int64   { return &v }
 // buildTestModel 构造含 3 个文件条目（小文件/跨块大文件/缺失文件）的导出模型，源文件落临时工作目录
 func buildTestModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
 	small := []byte("SMALL-PLAINTEXT-MARKER-分享明文锚点-0123456789")
-	big := make([]byte, 40*1024+123)
+	big := make([]byte, 128*1024+123)
 	for i := range big {
 		big[i] = byte(i % 251)
 	}
@@ -500,7 +505,7 @@ func TestRecipientPullFileChunked(t *testing.T) {
 	if !bytes.Equal(content, bigWant) {
 		t.Fatal("大文件分块重组与源内容非逐字节一致")
 	}
-	// 分块断言：内容 + 头记录数须超过单块（chunk 16KiB，内容 ~40KiB）
+	// 分块断言：内容 + 头记录数须超过单块（chunk 16KiB，内容 ~128KiB）
 	minFrames := 1 + len(bigWant)/(16*1024)
 	if frames < minFrames {
 		t.Fatalf("分块帧数不足: %d（期望 ≥ %d，背压分块路径未生效）", frames, minFrames)
@@ -523,6 +528,50 @@ func TestRecipientPullFileChunked(t *testing.T) {
 		t.Fatal("offset 拉取内容与源尾部不一致")
 	}
 	_ = conn.Close()
+}
+
+// TestManifestFileEntryFingerprintsFilled 锚定分享宿主在 Serialize 前预填 manifest 文件内容指纹：
+// 非 Missing 文件 ContentFingerprint（size + 头部 64KB SHA256，`<size>:<hex>`）与全量 Sha256
+// 均与直接对源内容计算一致；Missing 文件双字段留空。
+func TestManifestFileEntryFingerprintsFilled(t *testing.T) {
+	stub := startRelayStub(t)
+	workDir := t.TempDir()
+	model, files := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newTestService(t, stub, workDir, model, em, nil, nil)
+
+	_, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "指纹填充锚", ExpireSeconds: 3600})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+
+	require.Len(t, model.Manifest.Files, 3)
+	for _, f := range model.Manifest.Files {
+		if f.Missing {
+			assert.Empty(t, f.ContentFingerprint, "缺失文件不填头部指纹")
+			assert.Empty(t, f.Sha256, "缺失文件不填全量哈希")
+			continue
+		}
+		content, ok := files[f.StorePath]
+		require.True(t, ok, "非缺失文件应有源内容: %s", f.StorePath)
+		require.NotEmpty(t, f.ContentFingerprint, "非缺失文件应填头部指纹: %s", f.StorePath)
+		require.NotEmpty(t, f.Sha256, "非缺失文件应填全量哈希: %s", f.StorePath)
+
+		// 头部指纹格式 `<size>:<hex>`（size 为文件实际字节数），与库内 content_fingerprint 同口径
+		parts := strings.SplitN(f.ContentFingerprint, ":", 2)
+		require.Len(t, parts, 2, "头部指纹格式应为 <size>:<hex>: %s", f.ContentFingerprint)
+		assert.Equal(t, strconv.FormatInt(int64(len(content)), 10), parts[0], "头部指纹 size 分量应等于文件字节数")
+
+		headLen := len(content)
+		if headLen > 64*1024 {
+			headLen = 64 * 1024
+		}
+		headSum := sha256.Sum256(content[:headLen])
+		assert.Equal(t, hex.EncodeToString(headSum[:]), parts[1], "头部指纹哈希与源头部直算不一致")
+
+		fullSum := sha256.Sum256(content)
+		assert.Equal(t, hex.EncodeToString(fullSum[:]), f.Sha256, "全量哈希与源内容直算不一致")
+	}
 }
 
 // TestPathWhitelistDenied 路径白名单拒绝：白名单外路径/缺失文件/非法请求/密文损坏一律拒绝

@@ -51,4 +51,4 @@
 51. 分享功能，考虑法律风险
 52. ~~工作目录外部操作防护~~（已完成：fsmonitor 自动修复模式（live 自动/offline 人工/失败降级）+ workdirGuard 模块（Windows 受控文件夹引导+探针，其余平台 no-op），方案与执行记录见 `doc/plan/工作目录外部操作防护方案.md`，实机验证见 `.claude/testing/reports/VERIFY-工作目录外部操作防护.md`）
 53. 任务下载直接落盘最终路径是否可以改为先落盘临时路径完成后再移动到最终路径，观察分享的下载流程发现，入库与落盘的划分清晰，更益于后续任务模块的执行面与控制面分离（分析定论 2026-08-28：方向成立——收益=替换链坍缩（软删可推迟至提交点，失败复活链敞口从长下载窗口压缩到提交原子点）、persistent_store 未完成中间态（completed_at=0 族机制）对下载轨道消失、执行面纯化为与 share-receive stageFiles 同构的纯搬运器；硬约束=GetStoreRelPath 下载中查兄弟最终路径的时序契约需重设、续传锚迁移（ResumeStream 行锚→暂存大小锚）、存量未完成行兼容；同卷 rename 无写放大。归属 longops D 阶段与插件下载执行面外提合并设计、一次回归覆盖，不单独提前做——见 .claude/workflow/active/longops-task-integration/TREE.md D 节点）
-54. 分享和站点下载都缺少校验功能
+54. 分享和站点下载都缺少校验功能（分享侧已前置解锁（2026-09-01，`doc/plan/分享恢复执行延迟修复方案.md`）：分享 manifest 填全量 `Sha256`=「文件期望哈希」预下载参考，Ingest 落盘边写边算校验下载完整性；站点/插件侧校验为独立后续设计，仅共享 `fingerprint.Computer` 能力）

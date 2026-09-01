@@ -165,7 +165,11 @@ func startL1Env(t *testing.T, n int, size int64, streamRate int64) *l1Env {
 	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
 		"recipient-instance-L1", nil, nil, nil)
-	recvSvc.setTunables(sessionRuntimeOptions{dialFn: plainDial, streamRate: streamRate})
+	recvSvc.setTunables(sessionRuntimeOptions{
+		dialFn:          plainDial,
+		streamRate:      streamRate,
+		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：绕过默认拨号门控（并发拉取不受速率限流）
+	})
 	t.Cleanup(func() {
 		for _, d := range hostSvc.Sessions(context.Background()) {
 			_ = hostSvc.Revoke(context.Background(), d.ShareID)
@@ -210,7 +214,7 @@ func (env *l1Env) buildL1HandleForWork(t *testing.T, manifestID, taskID int64) (
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
 	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, cancel := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
 	return h, cancel, exec
 }
 

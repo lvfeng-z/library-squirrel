@@ -32,6 +32,7 @@ import (
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
+	"github.com/library-squirrel/backend/util/fingerprint"
 )
 
 // —— 链接解析 ——
@@ -236,7 +237,11 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
 		"recipient-instance-0001", nil, taskCtl, nil)
-	recvSvc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})
+	recvSvc.setTunables(sessionRuntimeOptions{
+		dialFn:          dialer.dial,
+		streamRate:      8 << 20,
+		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：绕过默认拨号门控（多次拨号不受 50/min 速率限流）
+	})
 
 	return &receiveTestEnv{
 		stub: stub, hostSvc: hostSvc, recvSvc: recvSvc, em: em,
@@ -284,6 +289,79 @@ func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	return export.NewExportModel(manifest), map[string][]byte{relA: contentA, relB: contentB}
 }
 
+// buildAllPresentModel 单作品双文件全在的导出模型（逐文件内容判定·全部匹配/部分匹配锚定用；
+// 无缺失文件——缺失文件会阻断「全部匹配」判定）
+func buildAllPresentModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
+	t.Helper()
+	relA := "store/resource/测试作者/a_001.jpg"
+	relB := "store/resource/测试作者/video_000.mp4"
+	contentA := []byte("FILE-A-PLAINTEXT-CONTENT-分享明文锚点")
+	contentB := []byte("FILE-B-PLAINTEXT-CONTENT-分享明文锚点")
+	for _, p := range []string{relA, relB} {
+		abs := filepath.Join(workDir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := contentA
+		if p == relB {
+			content = contentB
+		}
+		if err := os.WriteFile(abs, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := &export.Manifest{
+		SchemaVersion: export.SchemaVersion,
+		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Works: []export.WorkRecord{{
+			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
+			Resources: []export.ResourceRecord{{
+				ID: 11, ResourceType: "image",
+				Stores: []export.StoreMount{
+					{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: 101},
+					{StoreType: "videoMain", Generation: "downloaded", StoreSeq: 1, StoreID: 102},
+				},
+			}},
+		}},
+		Files: []export.FileEntry{
+			{StoreID: 101, StorePath: relA},
+			{StoreID: 102, StorePath: relB},
+		},
+	}
+	return export.NewExportModel(manifest), map[string][]byte{relA: contentA, relB: contentB}
+}
+
+// buildBigFileModel 单作品单超 64KB 文件的导出模型（头部指纹匹配但尾部不同的全量确认锚定用）
+func buildBigFileModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
+	t.Helper()
+	big := make([]byte, 128*1024+123)
+	for i := range big {
+		big[i] = byte(i % 251)
+	}
+	copy(big, "BIGFILE-PLAINTEXT-MARKER")
+	rel := "store/resource/测试作者/video_000.mp4"
+	abs := filepath.Join(workDir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := &export.Manifest{
+		SchemaVersion: export.SchemaVersion,
+		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Works: []export.WorkRecord{{
+			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
+			Resources: []export.ResourceRecord{{
+				ID: 11, ResourceType: "image",
+				Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: 101}},
+			}},
+		}},
+		Files: []export.FileEntry{{StoreID: 101, StorePath: rel}},
+	}
+	return export.NewExportModel(manifest), map[string][]byte{rel: big}
+}
+
 // testParentTaskID 收件父子树测试的父任务 ID（共享 manifest 落盘目录锚；子任务 ID 用 777 起）
 const testParentTaskID = 999
 
@@ -321,7 +399,7 @@ func (env *receiveTestEnv) buildReceiveHandleForWork(t *testing.T, password stri
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
 	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, cancel := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
 	return h, cancel, exec
 }
 
@@ -346,8 +424,27 @@ func (env *receiveTestEnv) buildDupHandleForWork(t *testing.T, password string, 
 	if ops == nil {
 		ops = &fakeReplaceOps{}
 	}
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, checker, ops)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, checker, ops, nil)
 	return h, cancel, exec, ops
+}
+
+// buildMountHandleForWork 构建带逐文件内容判定能力的收件子任务（checker/ops/mounts 缺省为空桩；
+// mounts 为本地活行 store 挂载载荷桩，nil 时按「无本地数据」安全回退走原替换）
+func (env *receiveTestEnv) buildMountHandleForWork(t *testing.T, password string, manifestID, taskID int64,
+	checker *fakeDuplicateChecker, ops *fakeReplaceOps, mounts *fakeMountReader) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution) {
+	t.Helper()
+	h, cancel, _ := env.buildReceiveHandleForWork(t, password, manifestID, taskID)
+	if checker == nil {
+		checker = &fakeDuplicateChecker{}
+	}
+	if ops == nil {
+		ops = &fakeReplaceOps{}
+	}
+	if mounts == nil {
+		mounts = &fakeMountReader{}
+	}
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, checker, ops, mounts)
+	return h, cancel, exec
 }
 
 // —— 查重 / 替换链桩（收件查重接入普通下载轨道）——
@@ -419,6 +516,71 @@ func (f *fakeReplaceOps) RestoreReplacedStores(ctx context.Context, scope resour
 	f.mu.Lock()
 	f.restoreScopes = append(f.restoreScopes, scope)
 	f.mu.Unlock()
+	return nil
+}
+
+// fakeMountReader 本地活行 store 挂载载荷桩（逐文件内容判定用）：按本地作品 ID 返回挂载清单
+type fakeMountReader struct {
+	byWork map[int64][]resource.StoreMountInfo
+}
+
+func (f *fakeMountReader) ListMountsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]resource.StoreMountInfo, error) {
+	out := make(map[int64][]resource.StoreMountInfo)
+	for _, id := range workIds {
+		if list, ok := f.byWork[id]; ok {
+			out[id] = list
+		}
+	}
+	return out, nil
+}
+
+// localMountFor 构造本地活行 store 挂载载荷：按给定 workDir 相对路径的文件计算头部指纹
+// （与库内 persistent_store.content_fingerprint 同口径），供逐文件内容判定夹具使用
+func localMountFor(t *testing.T, workDir, relPath, storeType string, storeSeq int64) resource.StoreMountInfo {
+	t.Helper()
+	fp, err := fingerprint.NewHeadComputer().Fingerprint(context.Background(),
+		filepath.Join(workDir, filepath.FromSlash(relPath)))
+	require.NoError(t, err)
+	return resource.StoreMountInfo{
+		StoreType:          storeType,
+		StoreSeq:           storeSeq,
+		ContentFingerprint: fp.Digest,
+		StorePath:          relPath,
+	}
+}
+
+// writeLocalStoreFiles 按 workDir 相对路径批量写本地 store 文件（逐文件内容判定的本地源）
+func writeLocalStoreFiles(t *testing.T, workDir string, contentByRelPath map[string][]byte) {
+	t.Helper()
+	for rel, content := range contentByRelPath {
+		abs := filepath.Join(workDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, content, 0o644))
+	}
+}
+
+// sourceBytesByStoreID 宿主 manifest 各文件条目的源内容（按 StoreID 索引；缺席文件除外）
+func sourceBytesByStoreID(t *testing.T, env *receiveTestEnv) map[int64][]byte {
+	t.Helper()
+	out := make(map[int64][]byte)
+	for _, e := range env.manifest.Files {
+		if e.Missing {
+			continue
+		}
+		out[e.StoreID] = env.sourceData[e.StorePath]
+	}
+	return out
+}
+
+// fileEntryByStoreID 宿主 manifest 中按 StoreID 定位文件条目
+func fileEntryByStoreID(t *testing.T, env *receiveTestEnv, storeID int64) *export.FileEntry {
+	t.Helper()
+	for i := range env.manifest.Files {
+		if env.manifest.Files[i].StoreID == storeID {
+			return &env.manifest.Files[i]
+		}
+	}
+	t.Fatalf("manifest 无 StoreID %d", storeID)
 	return nil
 }
 
@@ -557,7 +719,7 @@ func TestReceiveExecutionOverduePayloadFails(t *testing.T) {
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
 	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, _ := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
 
 	finished, failed := waitExecuteDone(t, h, exec)
 	assert.False(t, finished, "过时载荷不应成功")
@@ -633,7 +795,7 @@ func TestReceiveExecutionDialTerminal(t *testing.T) {
 	task.ID = 777
 	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, _ := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
 
 	// 退避压缩：失败路径不含瞬态重试（not_found 终态直达），真实等待可控
 	finished, failed := waitExecuteDone(t, h, exec)
@@ -666,6 +828,7 @@ func TestReceiveExecutionPauseKeepsStaging(t *testing.T) {
 		dialFn: func(addr string) (net.Conn, error) {
 			return nil, errors.New("模拟网络不可达")
 		},
+		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：拨号恒失败场景不受速率门控干扰
 	})
 	h, cancel, exec := env.buildReceiveHandle(t, "")
 	go func() {
@@ -1480,7 +1643,11 @@ func newSelfRefReceiveSvc(env *receiveTestEnv, repo *Repository, taskCtl Builtin
 	svc := NewService(repo, nil, nil,
 		func() string { return env.stub.addr }, func() string { return env.recvDir },
 		"recipient-instance-0001", nil, taskCtl, nil)
-	svc.setTunables(sessionRuntimeOptions{dialFn: dialer.dial, streamRate: 8 << 20})
+	svc.setTunables(sessionRuntimeOptions{
+		dialFn:          dialer.dial,
+		streamRate:      8 << 20,
+		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：绕过默认拨号门控
+	})
 	return svc
 }
 
@@ -1535,4 +1702,255 @@ func TestReceiveSelfReferencePassCrossInstance(t *testing.T) {
 	assert.Equal(t, taskCtl.parent.GetID(), res.ParentTaskID)
 	assert.Len(t, taskCtl.children, 2)
 	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.startedIDs)
+}
+
+// —— 逐文件内容判定（全部匹配整作品跳过 / 部分匹配暂存拷贝）——
+
+// TestReceiveExecutionAllMatchedSkipsWholeWork 全部文件内容匹配 → 整作品跳过：
+// 确认弹窗照常（确认语义不变），但软删零调用、零网络拉取、不入替换集（全跳过语义）、Finished。
+func TestReceiveExecutionAllMatchedSkipsWholeWork(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildAllPresentModel)
+	src := sourceBytesByStoreID(t, env)
+	localA := "store/resource/本地/pic_001.jpg"
+	localB := "store/resource/本地/video_000.mp4"
+	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
+		localA: src[101],
+		localB: src[102],
+	})
+	mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+		500: {
+			localMountFor(t, env.recvDir, localA, entity.StoreTypeImage, 1),
+			localMountFor(t, env.recvDir, localB, entity.StoreTypeVideoMain, 1),
+		},
+	}}
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})},
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+	h, _, exec := env.buildMountHandleForWork(t, "", 1, 777, checker, ops, mounts)
+	h.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败: %s", failed)
+
+	// 确认语义不变：弹窗照常
+	h.mu.Lock()
+	require.Len(t, h.confirmConflicts, 1, "全部匹配仍弹确认窗")
+	h.mu.Unlock()
+	// 全部匹配：不软删、零网络拉取
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 0, "全部匹配整作品跳过不应软删")
+	ops.mu.Unlock()
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 0, "全部匹配应零网络拉取，实际: %+v", reqs)
+	// 导入按全跳过语义（不入任何替换集）
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called, "回灌导入仍调用")
+	require.Nil(t, env.ingestor.opts, "全部匹配作品不入替换集（全跳过语义）")
+	env.ingestor.mu.Unlock()
+}
+
+// TestReceiveExecutionPartialMatchedCopiesLocal 部分匹配：匹配文件零 fetch + 经本地拷贝入暂存
+// （内容与源一致），不匹配文件网络拉取，整作品替换收尾（软删 + 回灌替换集）。
+func TestReceiveExecutionPartialMatchedCopiesLocal(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildAllPresentModel)
+	fileA := fileEntryByStoreID(t, env, 101) // image
+	fileB := fileEntryByStoreID(t, env, 102) // videoMain
+	src := sourceBytesByStoreID(t, env)
+	localA := "store/resource/本地/pic_001.jpg"
+	localB := "store/resource/本地/video_000.mp4"
+	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
+		localA: src[101],
+		localB: []byte("LOCAL-B-CONTENT-DIFFERS"),
+	})
+	mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+		500: {
+			localMountFor(t, env.recvDir, localA, entity.StoreTypeImage, 1),
+			localMountFor(t, env.recvDir, localB, entity.StoreTypeVideoMain, 1),
+		},
+	}}
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})},
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+	h, _, exec := env.buildMountHandleForWork(t, "", 1, 777, checker, ops, mounts)
+	h.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败: %s", failed)
+
+	// 匹配文件零 fetch、不匹配文件拉取（仅 1 个 file 请求 = 不匹配文件）
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 1, "应恰有不匹配文件一个请求，实际: %+v", reqs)
+	assert.Equal(t, "file", reqs[0].Type)
+	assert.Equal(t, fileB.Path, reqs[0].Path, "不匹配文件应网络拉取")
+	// 整作品替换收尾：软删 + 回灌替换集；匹配文件内容经暂存拷贝导入（未拉取故必来自本地拷贝）
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 1, "部分匹配作品仍整作品替换软删")
+	ops.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called)
+	require.NotNil(t, env.ingestor.opts)
+	_, ok := env.ingestor.opts.ReplaceWorks[1]
+	require.True(t, ok, "部分匹配作品应入确认替换集")
+	assert.Equal(t, src[101], env.ingestor.contents[fileA.Path], "匹配文件经暂存本地拷贝导入")
+	assert.Equal(t, src[102], env.ingestor.contents[fileB.Path], "不匹配文件经网络拉取导入")
+	env.ingestor.mu.Unlock()
+	assert.NoDirExists(t, env.stagingDirOf(), "成功后暂存应清理")
+}
+
+// TestReceiveExecutionHeadMatchTailDiffPulls 头部指纹匹配但全量 sha256 不一致（尾部差异）→
+// 该文件走网络拉取（风险1 消除路径——头指纹碰撞不误跳过）
+func TestReceiveExecutionHeadMatchTailDiffPulls(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildBigFileModel)
+	entry := fileEntryByStoreID(t, env, 101)
+	src := env.sourceData[entry.StorePath]
+	// 本地文件：与宿主同尺寸、同头 64KB，但尾部改一字节 → 头部指纹匹配、全量 sha256 不一致
+	localTail := append([]byte(nil), src...)
+	localTail[len(localTail)-1] ^= 0xFF
+	localRel := "store/resource/本地/video_000.mp4"
+	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{localRel: localTail})
+	mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+		500: {localMountFor(t, env.recvDir, localRel, entity.StoreTypeImage, 1)},
+	}}
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})},
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+	h, _, exec := env.buildMountHandleForWork(t, "", 1, 777, checker, ops, mounts)
+	h.confirmDecision = taskManager.ReplaceDecisionReplace
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败: %s", failed)
+
+	// 头指纹匹配但全量不一致 → 该文件走网络拉取（不整作品跳过、不拷本地）
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 1, "应恰有一次拉取请求，实际: %+v", reqs)
+	assert.Equal(t, "file", reqs[0].Type)
+	assert.Equal(t, entry.Path, reqs[0].Path)
+	// 整作品替换收尾
+	ops.mu.Lock()
+	require.Len(t, ops.softCalls, 1)
+	ops.mu.Unlock()
+	env.ingestor.mu.Lock()
+	require.Equal(t, 1, env.ingestor.called)
+	assert.Equal(t, src, env.ingestor.contents[entry.Path], "经网络拉取的内容与源一致")
+	env.ingestor.mu.Unlock()
+}
+
+// TestReceiveExecutionMissingFingerprintFallsBack 本地/宿主缺指纹 → 安全回退原替换：
+// 软删 + 网络拉取 + 入替换集，不误跳过
+func TestReceiveExecutionMissingFingerprintFallsBack(t *testing.T) {
+	runReplace := func(t *testing.T, env *receiveTestEnv, mounts *fakeMountReader) {
+		t.Helper()
+		checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+			{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})},
+		}}
+		ops := &fakeReplaceOps{victimBase: 900}
+		h, _, exec := env.buildMountHandleForWork(t, "", 1, 777, checker, ops, mounts)
+		h.confirmDecision = taskManager.ReplaceDecisionReplace
+		finished, failed := waitExecuteDone(t, h, exec)
+		require.True(t, finished, "应成功终态，失败: %s", failed)
+		// 安全回退：走原整作品替换（软删 + 入替换集）
+		ops.mu.Lock()
+		require.Len(t, ops.softCalls, 1, "缺指纹应走原替换软删")
+		ops.mu.Unlock()
+		env.ingestor.mu.Lock()
+		require.Equal(t, 1, env.ingestor.called)
+		require.NotNil(t, env.ingestor.opts)
+		_, ok := env.ingestor.opts.ReplaceWorks[1]
+		require.True(t, ok, "缺指纹应入确认替换集")
+		env.ingestor.mu.Unlock()
+	}
+
+	t.Run("本地缺指纹", func(t *testing.T) {
+		env := startReceiveEnv(t, SharePublishOptions{})
+		entry := fileEntryByStoreID(t, env, 101)
+		localRel := "store/resource/本地/pic_001.jpg"
+		writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
+			localRel: env.sourceData[entry.StorePath],
+		})
+		// 本地挂载缺 ContentFingerprint（存量未回填）：视为不匹配
+		mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+			500: {{StoreType: entity.StoreTypeImage, StoreSeq: 1, StorePath: localRel}},
+		}}
+		runReplace(t, env, mounts)
+	})
+
+	t.Run("宿主缺指纹", func(t *testing.T) {
+		env := startReceiveEnv(t, SharePublishOptions{})
+		entry := fileEntryByStoreID(t, env, 101)
+		// 清空宿主已填的指纹（模拟旧宿主 manifest 不带哈希）
+		for i := range env.manifest.Files {
+			env.manifest.Files[i].ContentFingerprint = ""
+			env.manifest.Files[i].Sha256 = ""
+		}
+		localRel := "store/resource/本地/pic_001.jpg"
+		writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
+			localRel: env.sourceData[entry.StorePath],
+		})
+		mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+			500: {localMountFor(t, env.recvDir, localRel, entity.StoreTypeImage, 1)},
+		}}
+		runReplace(t, env, mounts)
+	})
+}
+
+// TestReceiveExecutionSharedFileSkipSafe 跳过作品与未跳过作品共享文件 → 共享文件仍应拉取
+// （fileSkipSet「全部引用作品均跳过才不拉」语义不被整作品跳过破坏）
+func TestReceiveExecutionSharedFileSkipSafe(t *testing.T) {
+	manifest := &export.Manifest{
+		Works: []export.WorkRecord{
+			{ID: 1, Resources: []export.ResourceRecord{{Stores: []export.StoreMount{
+				{StoreID: 101}, {StoreID: 103}}}}},
+			{ID: 2, Resources: []export.ResourceRecord{{Stores: []export.StoreMount{
+				{StoreID: 101}}}}},
+		},
+		Files: []export.FileEntry{{StoreID: 101}, {StoreID: 103}},
+	}
+	skip := fileSkipSet(manifest, map[int64]struct{}{1: {}})
+	_, shared := skip[101]
+	_, own := skip[103]
+	assert.False(t, shared, "共享文件（作品1、2 都引用）不得跳过，仍应被未跳过作品拉取")
+	assert.True(t, own, "仅被跳过作品引用的文件应跳过")
+}
+
+// TestReceiveExecutionContentSameRerunZeroDial 端到端联动：内容相同重跑 = 零拨号
+// （fake 网络桩断言 fetch 次数 0——内容相同整作品跳过，两次执行均不产生任何网络请求）
+func TestReceiveExecutionContentSameRerunZeroDial(t *testing.T) {
+	env := startReceiveEnvModel(t, SharePublishOptions{}, buildAllPresentModel)
+	src := sourceBytesByStoreID(t, env)
+	localA := "store/resource/本地/pic_001.jpg"
+	localB := "store/resource/本地/video_000.mp4"
+	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
+		localA: src[101],
+		localB: src[102],
+	})
+	mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
+		500: {
+			localMountFor(t, env.recvDir, localA, entity.StoreTypeImage, 1),
+			localMountFor(t, env.recvDir, localB, entity.StoreTypeVideoMain, 1),
+		},
+	}}
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	run := func() {
+		checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+			{hitConflict(500, "测试作品1001", []string{entity.StoreTypeImage})},
+		}}
+		ops := &fakeReplaceOps{victimBase: 900}
+		h, _, exec := env.buildMountHandleForWork(t, "", 1, 777, checker, ops, mounts)
+		h.confirmDecision = taskManager.ReplaceDecisionReplace
+		finished, failed := waitExecuteDone(t, h, exec)
+		require.True(t, finished, "应成功终态，失败: %s", failed)
+	}
+	run()
+	reqs := parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 0, "内容相同应零拨号，实际: %+v", reqs)
+	run() // 内容相同重跑
+	reqs = parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
+	require.Len(t, reqs, 0, "内容相同重跑仍零拨号，实际: %+v", reqs)
 }

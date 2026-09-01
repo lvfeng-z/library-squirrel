@@ -101,6 +101,7 @@ type receiveClient struct {
 	opts          sessionRuntimeOptions
 	readIdle      time.Duration
 	handshakeWait time.Duration
+	coord         *DialCoordinator // 收件拨号统筹器（每次 fetch 拨号前取令牌/取槽）
 }
 
 // newReceiveClient 构建收件人客户端（构建 E2E 密码学对象；密钥非法即失败）
@@ -114,6 +115,10 @@ func newReceiveClient(p *shareReceivePayload, instanceID string, opts sessionRun
 		return nil, err
 	}
 	merged := defaultRuntimeOptions().withOverrides(opts)
+	if merged.dialCoordinator == nil {
+		// 未注入（单测直构 Service 漏覆写）：回落进程级默认门控，保证生产装配遗漏下仍受约束
+		merged.dialCoordinator = DefaultDialCoordinator
+	}
 	readIdle := defaultRecipientReadIdle
 	if opts.tunnelReadIdle > 0 {
 		readIdle = opts.tunnelReadIdle // 测试覆写通道（生产用收件人默认值）
@@ -127,6 +132,7 @@ func newReceiveClient(p *shareReceivePayload, instanceID string, opts sessionRun
 		opts:          merged,
 		readIdle:      readIdle,
 		handshakeWait: merged.handshakeWait,
+		coord:         merged.dialCoordinator,
 	}, nil
 }
 
@@ -142,12 +148,22 @@ func decodeShareKeyB64(b64 string) ([]byte, error) {
 // fetch 发起一次拉取请求（拨号 → 请求 → 半关闭 → 应答首记录）：成功返回 JSON 头与其后
 // 的明文内容读取器（读取器在 EOF 处校验字节数与头 size 一致）。每次调用独立连接；
 // ctx 取消时关闭底层连接令阻塞读立即中断（调用方据此尽快返回，暂停/停止语义）。
+// 拨号前经统筹器双门控：先取速率令牌（拨号/分钟上限），再取并发流槽（不超发送方会话
+// 流上限被拒）；槽覆盖整条流的下载期，随内容读取器 Close 释放（fetchWithRetry 统一在
+// body 消费后 Close，全链覆盖）。
 func (c *receiveClient) fetch(ctx context.Context, req *streamRequest) (*streamHeader, *streamContentReader, error) {
+	if err := c.coord.TakeDial(ctx); err != nil {
+		return nil, nil, fmt.Errorf("拨号速率门控等待取消: %w", err)
+	}
+	if err := c.coord.AcquireSlot(ctx); err != nil {
+		return nil, nil, fmt.Errorf("并发流槽门控等待取消: %w", err)
+	}
 	conn, err := c.opts.dialFn(c.dialAddr)
 	if err != nil {
+		c.coord.ReleaseSlot() // 拨号失败未开流：槽立即归还，避免泄漏
 		return nil, nil, fmt.Errorf("连接中继失败: %w", err)
 	}
-	r := &streamContentReader{conn: conn, cip: c.cip, readIdle: c.readIdle}
+	r := &streamContentReader{conn: conn, cip: c.cip, readIdle: c.readIdle, coord: c.coord}
 	r.startCtxWatch(ctx)
 	fail := func(err error) (*streamHeader, *streamContentReader, error) {
 		_ = r.Close()
@@ -217,9 +233,10 @@ type streamContentReader struct {
 	conn      net.Conn
 	cip       *e2eCipher
 	readIdle  time.Duration
-	buf       []byte // 当前记录未消费明文
-	expect    int64  // 头声明的总字节数（EOF 校验）
-	got       int64  // 已消费字节数
+	coord     *DialCoordinator // 并发流槽归属（Close 时归还）
+	buf       []byte           // 当前记录未消费明文
+	expect    int64            // 头声明的总字节数（EOF 校验）
+	got       int64            // 已消费字节数
 	closed    bool
 	stopWatch chan struct{} // ctx 取消 watcher 停止信号（Close 收尾）
 	stopOnce  sync.Once
@@ -299,11 +316,14 @@ func (r *streamContentReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// Close 停止 ctx watcher 并关闭底层连接（幂等）
+// Close 停止 ctx watcher、归还并发流槽并关闭底层连接（幂等）
 func (r *streamContentReader) Close() error {
 	r.stopOnce.Do(func() {
 		if r.stopWatch != nil {
 			close(r.stopWatch)
+		}
+		if r.coord != nil {
+			r.coord.ReleaseSlot() // 流收尾归还并发槽（幂等，空槽忽略）
 		}
 	})
 	if r.closed {

@@ -186,19 +186,25 @@ type WorkSetLink struct {
 }
 
 // FileEntry 文件条目（files[]；被 work 的 store 挂载按 StoreID 引用）。
-// 阶段2 数据面：按活行关联纳入全部源文件条目，Path/Size/Sha256/Missing 由阶段3 打包时填充
-// （决策4：源文件缺失 → Missing=true，该 store 缺席、其余照常）。
+// Path/Size/Missing 由规划阶段填充（包内路径命名 + 源文件存在性检查）；内容哈希由产出方
+// 预填——zip 导出打包填 Sha256，分享宿主填 Sha256 与 ContentFingerprint 双字段。
+// 源文件缺失 → Missing=true，该 store 缺席、其余照常。
 type FileEntry struct {
 	// StoreID 源 persistent_store 行 ID（导出模型内锚：store 挂载按此引用文件条目）
 	StoreID int64 `json:"storeId"`
 	// StorePath 源文件 workDir 相对路径（正斜杠；relPath 域）——打包阶段读取源文件、导入阶段落盘参照
 	StorePath string `json:"storePath"`
-	// Path 包内相对路径（按方案第3节确定性规则；阶段3 namer 填充）
+	// Path 包内相对路径（按确定性规则命名；规划阶段填充）
 	Path string `json:"path"`
 	Size int64  `json:"size"`
-	// Sha256 文件内容 SHA256（回灌校验用；阶段3 填充）
+	// ContentFingerprint 文件内容头部指纹（size + 头部 64KB SHA256，`<size>:<hex>`，与库内
+	// persistent_store.content_fingerprint 同口径）；分享宿主会话开始时预计算，供收件方零读盘
+	// 快速判定本地是否已拥有同内容文件。
+	ContentFingerprint string `json:"contentFingerprint,omitempty"`
+	// Sha256 文件内容全量 SHA256（hex）；「文件期望哈希」预下载参考——收件方下载前判定内容
+	// 身份、导入落盘时校验下载完整性。zip 导出打包与分享宿主会话开始时预计算。
 	Sha256 string `json:"sha256,omitempty"`
-	// Missing 源文件缺失标记（决策4）：true=源文件不存在，该 store 缺席、其余照常
+	// Missing 源文件缺失标记：true=源文件不存在，该 store 缺席、其余照常
 	Missing bool `json:"missing"`
 }
 

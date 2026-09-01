@@ -859,11 +859,6 @@ func (app *App) initBaseServices() {
 	// 触碰作品的操作前查询防竞态；进程退出自动解除，无持久化）
 	app.ShareLockRegistry = shareLock.NewShareLockRegistry()
 
-	// resource 服务
-	resourceRepo := resource.NewRepository(app.db)
-	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
-	app.ResourceService = resource.NewService(resourceRepo, resourceStoreRepo)
-
 	// backup 服务
 	backupRepo := backup.NewRepository(app.db)
 	app.BackupService = backup.NewService(backupRepo, func() string {
@@ -877,6 +872,11 @@ func (app *App) initBaseServices() {
 	app.StoreFileHandler.SetStateResolver(app.PersistentStoreService)
 	// /store/ 状态路由：软删记录的文件在 backup/，按 original_file_path 反查服务
 	app.StoreFileHandler.SetBackupResolver(app.BackupService)
+
+	// resource 服务（store 行读取注入 persistentStore.Service：分享收件逐文件内容判定第二跳）
+	resourceRepo := resource.NewRepository(app.db)
+	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
+	app.ResourceService = resource.NewService(resourceRepo, resourceStoreRepo, app.PersistentStoreService)
 
 	// reWorkTag 服务
 	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, app.SiteTagService)
@@ -930,6 +930,10 @@ func (app *App) initBaseServices() {
 		// 供流作品锁登记/解除：收件人拉取中的作品防宿主本地替换/删除（与替换链/回收站查锁同一单例）
 		app.ShareLockRegistry,
 	)
+	// 收件拨号统筹器（进程级单例，并发 8 槽 + 速率 50/min）：注入分享服务——Receive 预拉
+	// manifest 与各收件子任务文件拉取共享同一门控，接收方把并发流数与拨号速率对齐到发送方
+	// 会话上限与中继限流之内，避免并发自由竞争触发流被拒与拨号限流的拥塞反馈。
+	app.ShareService.SetDialCoordinator(share.NewDialCoordinator(8, 50))
 }
 
 // initAdvancedServices 初始化高级服务（依赖其他服务）
@@ -1211,7 +1215,7 @@ func (app *App) initAdvancedServices() error {
 		// （发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor,
-				app.DuplicateService, app.ReplaceService),
+				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
 	)
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）

@@ -29,17 +29,33 @@ type Repository interface {
 	ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error)
 }
 
+// StoreMountInfo 活行 store 挂载的内容判定载荷（分享收件逐文件内容判定与暂存拷贝用）。
+// 域类型归本包（对齐 StoreRef 先例）——share 侧经 StoreMountReader 接口引用，结构性实现免跨包回引。
+type StoreMountInfo struct {
+	StoreType          string // store_type 角色
+	StoreSeq           int64  // store_seq 挂载序
+	ContentFingerprint string // content_fingerprint（缺指纹为空串，视为不匹配）
+	StorePath          string // workDir 相对路径（暂存拷贝源，absPath 域现场 Join）
+}
+
+// StoreRowReader store 行按 ID 批量读取（persistentStore.Service 实现；GORM 软删 scope 下仅活行）
+type StoreRowReader interface {
+	GetByIds(ctx context.Context, ids []int64) ([]*domain.PersistentStore, error)
+}
+
 // Service 资源服务
 type Service struct {
 	repo              Repository
 	resourceStoreRepo *ResourceStoreRepository
+	storeRows         StoreRowReader // store 行读取（内容判定第二跳；persistentStore.Service 实现）
 }
 
 // NewService 创建资源服务
-func NewService(repo Repository, resourceStoreRepo *ResourceStoreRepository) *Service {
+func NewService(repo Repository, resourceStoreRepo *ResourceStoreRepository, storeRows StoreRowReader) *Service {
 	return &Service{
 		repo:              repo,
 		resourceStoreRepo: resourceStoreRepo,
+		storeRows:         storeRows,
 	}
 }
 
@@ -169,6 +185,63 @@ func (s *Service) ListStoreTypeSetsByWorkIds(ctx context.Context, workIds []int6
 		for _, rs := range rsList {
 			result[workId][rs.StoreType] = struct{}{}
 		}
+	}
+	return result, nil
+}
+
+// ListMountsByWorkIds 批量查询多个作品的活行 store 挂载内容载荷（分享收件逐文件内容判定用）：
+// work→resource→resource_store（活行）→persistent_store 两跳批量拼接，避免 N+1。
+// 只计指向活行 store 的关联（STORE_ASSOCIATION_LIVENESS_FILTER——软删残留代不算「作品拥有的挂载」）；
+// store 行读取器未装配时返回空挂载（调用方按无本地数据安全回退，不误判内容相同）。
+func (s *Service) ListMountsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]StoreMountInfo, error) {
+	result := make(map[int64][]StoreMountInfo)
+	if len(workIds) == 0 || s.storeRows == nil {
+		return result, nil
+	}
+	resources, err := s.repo.ListByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if len(resources) == 0 {
+		return result, nil
+	}
+	resourceIds := make([]int64, 0, len(resources))
+	resourceIdToWorkId := make(map[int64]int64, len(resources))
+	for _, r := range resources {
+		resourceIds = append(resourceIds, r.ID)
+		resourceIdToWorkId[r.ID] = r.WorkID
+	}
+	// 第二跳：resource_store 活行 → persistent_store 行（取头部指纹与文件路径）
+	stores, err := s.resourceStoreRepo.ListAliveByResourceIds(ctx, resourceIds)
+	if err != nil {
+		return nil, err
+	}
+	storeIds := make([]int64, 0, len(stores))
+	for _, rs := range stores {
+		if rs.StoreID > 0 {
+			storeIds = append(storeIds, rs.StoreID)
+		}
+	}
+	rows, err := s.storeRows.GetByIds(ctx, storeIds)
+	if err != nil {
+		return nil, err
+	}
+	rowById := make(map[int64]*domain.PersistentStore, len(rows))
+	for _, row := range rows {
+		rowById[row.GetID()] = row
+	}
+	for _, rs := range stores {
+		row := rowById[rs.StoreID]
+		if row == nil {
+			continue
+		}
+		workId := resourceIdToWorkId[rs.ResourceID]
+		result[workId] = append(result[workId], StoreMountInfo{
+			StoreType:          rs.StoreType,
+			StoreSeq:           int64(rs.StoreSeq),
+			ContentFingerprint: row.ContentFingerprint.String,
+			StorePath:          row.FilePath.String,
+		})
 	}
 	return result, nil
 }

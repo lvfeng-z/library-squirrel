@@ -49,7 +49,7 @@ func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	backup := &recordingBackupReader{}
 	recompute := &fakeResourceRecomputer{}
 	lock := shareLock.NewShareLockRegistry()
-	resourceSvc := resource.NewService(resource.NewRepository(db), resource.NewResourceStoreRepository(db))
+	resourceSvc := resource.NewService(resource.NewRepository(db), resource.NewResourceStoreRepository(db), nil)
 	svc := NewService(nil, backup, nil, searchSvc, ps, ps, recompute, nil, func() string { return workDir }, nil, nil, nil, nil, lock, resourceSvc)
 	return &restoreStoreEnv{svc: svc, db: db, ps: ps, backup: backup, recompute: recompute, workDir: workDir, lock: lock}
 }

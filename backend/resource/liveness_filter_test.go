@@ -36,7 +36,7 @@ func newLivenessEnv(t *testing.T) *livenessEnv {
 		t.Fatalf("迁移测试实体失败: %v", err)
 	}
 	repo := NewResourceStoreRepository(db)
-	svc := NewService(NewRepository(db), repo)
+	svc := NewService(NewRepository(db), repo, nil)
 	return &livenessEnv{svc: svc, repo: repo, db: db}
 }
 
