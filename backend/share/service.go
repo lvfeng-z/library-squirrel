@@ -471,6 +471,11 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 		fail(cancelAwareMsg(ctx, err))
 		return
 	}
+	// 发布形态：软删作品不在收集结果（Collect 经活作品查询静默排除）——收窄选择集，
+	// 使标题作品数与记录 work_ids 与收集出的分享内容一致；复原形态按原记录清单忠实比对，不过滤
+	if rec == nil {
+		p.WorkIDs = intersectCollectedWorks(p.WorkIDs, model)
+	}
 	// 复原形态：分享对象必须全部仍可收集——对象删除后经活作品查询静默消失（Collect 不报错），
 	// 此处比对记录清单与收集结果，缺失即落 failed（不复活内容残缺的会话）
 	if rec != nil {
@@ -747,6 +752,30 @@ func missingShareTargets(model *export.ExportModel, workIDs []int64, workSetIDs 
 		}
 	}
 	return missing
+}
+
+// intersectCollectedWorks 收窄发布选择集为仍出现在收集结果中的直接作品（保序、去重）。
+// 软删作品经 Collect 的活作品查询静默消失（不在 Manifest.Works 中），标题作品数与记录
+// work_ids 以收集结果为准。作品集成员不在直接选择集内不受影响；作品集 ID 集不经本函数
+// 过滤（作品集按单元收集，成员缺失属作品集自身口径）。
+func intersectCollectedWorks(workIDs []int64, model *export.ExportModel) []int64 {
+	collected := make(map[int64]struct{}, len(model.Manifest.Works))
+	for _, w := range model.Manifest.Works {
+		collected[w.ID] = struct{}{}
+	}
+	seen := make(map[int64]struct{}, len(workIDs))
+	out := make([]int64, 0, len(workIDs))
+	for _, id := range workIDs {
+		if _, ok := collected[id]; !ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // nextShareID 分配分享会话 ID（"share-{unixMilli}"；同毫秒顺延 +1 保唯一）

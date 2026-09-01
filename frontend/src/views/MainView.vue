@@ -23,7 +23,6 @@ import ExportProgressDialog from '@renderer/components/dialogs/ExportProgressDia
 import SharePublishDialog from '@renderer/components/dialogs/SharePublishDialog.vue'
 import {isNotBlank} from '@renderer/utils/StringUtil.js'
 import {searchQuerySearchConditionPage, searchQueryWorkPage, searchQueryWorkSetPage} from '@apis/http/wrappers/search'
-import {settingsGetSettings, settingsSaveSettings} from '@renderer/apis/http/wrappers/settings'
 import {newPage} from "@renderer/utils/Pager.js";
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
@@ -83,14 +82,13 @@ const currentWorkSetIndex = ref(0)
 const workSetPage: Ref<Page<WorkSetWithCoverDTO>> = ref(new Page<WorkSetWithCoverDTO>())
 // 主页作品/作品集多选选择集（跨页保持；操作栏展示与导出数据源）
 const workSelectionStore = useWorkSelectionStore()
-// 主页多选模式开关（默认关；持久化到 settings.appearance.multiSelectEnabled，重启保持）
+// 主页多选模式开关（默认关；会话内开关，不持久化，重启恒关）
 const multiSelectEnabled: Ref<boolean> = ref(false)
 
 // onMounted
 onMounted(() => {
   resizeObserver.observe(workGridRef.value.$el)
   resizeObserver.observe(workSetGridRef.value.$el)
-  void loadMultiSelectSetting()
 })
 
 // onBeforeUnmount
@@ -303,24 +301,11 @@ function handleClearSelection(): void {
   workSelectionStore.clear()
 }
 
-// 读取设置中的多选开关初始状态（设置缺失/读取失败回落默认关，不阻塞主页渲染）
-async function loadMultiSelectSetting(): Promise<void> {
-  try {
-    const res = await settingsGetSettings()
-    if (!res.success || !res.data) return
-    const appearance = res.data.appearance as { multiSelectEnabled?: boolean } | undefined
-    multiSelectEnabled.value = appearance?.multiSelectEnabled ?? false
-  } catch (e) {
-    console.warn('读取多选开关设置失败', e)
-  }
-}
-
-// 多选开关切换：关闭时清空选择集（操作栏隐藏、勾选态联动取消）；状态持久化到设置
+// 多选开关切换：关闭时清空选择集（操作栏隐藏、勾选态联动取消）；开关状态不持久化，重启恒默认关
 function handleMultiSelectChange(): void {
   if (!multiSelectEnabled.value) {
     workSelectionStore.clear()
   }
-  void settingsSaveSettings([{path: 'appearance.multiSelectEnabled', value: multiSelectEnabled.value}])
 }
 
 // test

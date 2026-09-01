@@ -1129,6 +1129,204 @@ func TestDeleteRecord(t *testing.T) {
 	}
 }
 
+// —— 发布选择集收窄 ——
+
+// buildSelectionModel 构造发布选择集测试模型：fileWorkIDs 每作品配一个已落盘文件条目；
+// bareWorkIDs 为活但无任何文件挂载的作品（身份在 Works 中、贡献 0 文件的边界形态）；
+// workSetIDs 入 WorkSets。软删作品按定义不出现在模型中（Collect 活作品查询的形态）。
+func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs, workSetIDs []int64) *export.ExportModel {
+	t.Helper()
+	manifest := &export.Manifest{
+		SchemaVersion: export.SchemaVersion,
+		Meta:          export.Meta{ExportedAt: 1756000000000, AppVersion: "test"},
+		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+	}
+	for _, id := range fileWorkIDs {
+		rel := fmt.Sprintf("store/resource/测试作者/pic_%03d.jpg", id)
+		abs := filepath.Join(workDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(fmt.Sprintf("selection-%d", id)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		storeID := int64(1000 + id)
+		manifest.Works = append(manifest.Works, export.WorkRecord{
+			ID: id, SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("%d", id)),
+			SiteWorkName: strPtr(fmt.Sprintf("测试作品%d", id)),
+			Resources: []export.ResourceRecord{{
+				ID:           10 * id,
+				ResourceType: "image",
+				Stores:       []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: storeID}},
+			}},
+		})
+		manifest.Files = append(manifest.Files, export.FileEntry{StoreID: storeID, StorePath: rel})
+	}
+	for _, id := range bareWorkIDs {
+		manifest.Works = append(manifest.Works, export.WorkRecord{
+			ID: id, SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("%d", id)),
+			SiteWorkName: strPtr(fmt.Sprintf("测试作品%d", id)),
+		})
+	}
+	for _, id := range workSetIDs {
+		manifest.WorkSets = append(manifest.WorkSets, export.WorkSetRecord{
+			ID: id, SiteID: i64Ptr(1), SiteWorkSetID: strPtr(fmt.Sprintf("ws-%d", id)),
+			SiteWorkSetName: strPtr(fmt.Sprintf("测试作品集%d", id)),
+		})
+	}
+	return export.NewExportModel(manifest)
+}
+
+// publishSelectionAndWait 与 publishAndWait 同构，但支持自定作品/作品集选择集
+// （publishAndWait 固定作品 [1]）
+func publishSelectionAndWait(t *testing.T, svc *Service, em *captureEmitter, workIDs, workSetIDs []int64, opts SharePublishOptions) ShareCompleteData {
+	t.Helper()
+	shareID, err := svc.Publish(context.Background(), workIDs, workSetIDs, opts)
+	if err != nil {
+		t.Fatalf("发布启动失败: %v", err)
+	}
+	return em.waitComplete(t, shareID, 8*time.Second)
+}
+
+// TestHostPublishFiltersSoftDeletedWorks 发布选择含软删作品（不在收集结果中）：标题作品数
+// 与记录 work_ids 收窄为收集结果，与 manifest 一致
+func TestHostPublishFiltersSoftDeletedWorks(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model := buildSelectionModel(t, workDir, []int64{1, 2}, nil, nil)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	// 选择 [1, 222, 2]：222 已软删（活作品查询静默消失），1/2 可收集
+	comp := publishSelectionAndWait(t, svc, em, []int64{1, 222, 2}, nil, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	rec := waitRecordState(t, repo, comp.ShareID, RecordStateActive)
+	workIDs, _ := unmarshalInt64s(rec.WorkIDs)
+	if !slices.Equal(workIDs, []int64{1, 2}) {
+		t.Fatalf("记录 work_ids 应仅含收集到的活作品（保序）: %v", workIDs)
+	}
+	if rec.Title != "分享 2 个作品" {
+		t.Fatalf("标题应按活作品数计: %q", rec.Title)
+	}
+	if comp.Session == nil || comp.Session.Title != "分享 2 个作品" || comp.Session.WorkCount != 2 {
+		t.Fatalf("会话快照标题/作品数应与 manifest 一致: %+v", comp.Session)
+	}
+}
+
+// TestHostPublishKeepsAllCollectable 选择集全部可收集：选择集原样保留（标题/记录与选择集一致，无回归）
+func TestHostPublishKeepsAllCollectable(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model := buildSelectionModel(t, workDir, []int64{1, 2, 3}, nil, nil)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	comp := publishSelectionAndWait(t, svc, em, []int64{3, 1, 2}, nil, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	rec := waitRecordState(t, repo, comp.ShareID, RecordStateActive)
+	workIDs, _ := unmarshalInt64s(rec.WorkIDs)
+	if !slices.Equal(workIDs, []int64{3, 1, 2}) {
+		t.Fatalf("全可收集时记录 work_ids 应与选择集一致（保序）: %v", workIDs)
+	}
+	if rec.Title != "分享 3 个作品" {
+		t.Fatalf("标题应按选择集计数: %q", rec.Title)
+	}
+}
+
+// TestHostPublishWorkSetUnfiltered 作品集分享：作品集按单元收集，work_set_ids 原样保留、
+// 标题按作品集计数（直接作品收窄不影响作品集口径）
+func TestHostPublishWorkSetUnfiltered(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model := buildSelectionModel(t, workDir, []int64{1}, nil, []int64{7})
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	comp := publishSelectionAndWait(t, svc, em, nil, []int64{7}, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	rec := waitRecordState(t, repo, comp.ShareID, RecordStateActive)
+	workSetIDs, _ := unmarshalInt64s(rec.WorkSetIDs)
+	if !slices.Equal(workSetIDs, []int64{7}) {
+		t.Fatalf("记录 work_set_ids 应原样保留: %v", workSetIDs)
+	}
+	if rec.Title != "分享 1 个作品集" {
+		t.Fatalf("标题应按作品集计数: %q", rec.Title)
+	}
+}
+
+// TestHostPublishAliveNoStoreWorkCounted 活但无活 store 的作品：身份在收集结果（Works）中，
+// 仍计入标题与记录 work_ids（贡献 0 文件属规划口径，不属选择集收窄）
+func TestHostPublishAliveNoStoreWorkCounted(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model := buildSelectionModel(t, workDir, nil, []int64{5}, nil)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	comp := publishSelectionAndWait(t, svc, em, []int64{5}, nil, SharePublishOptions{})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	rec := waitRecordState(t, repo, comp.ShareID, RecordStateActive)
+	workIDs, _ := unmarshalInt64s(rec.WorkIDs)
+	if !slices.Equal(workIDs, []int64{5}) {
+		t.Fatalf("活作品应保留在记录 work_ids 中: %v", workIDs)
+	}
+	if rec.Title != "分享 1 个作品" {
+		t.Fatalf("活但无活 store 作品应计入标题: %q", rec.Title)
+	}
+	if rec.FileCount != 0 {
+		t.Fatalf("无活 store 作品贡献 0 文件: %d", rec.FileCount)
+	}
+}
+
+// TestHostRestoreStillRejectsMissing 复原路径：原记录清单中的对象在重新收集结果中缺失仍拒绝
+// ——发布选择集收窄仅作用于发布形态，复原按原记录清单忠实比对
+func TestHostRestoreStillRejectsMissing(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+
+	// 直造 active 记录：清单含作品 1/2，重新收集结果仅剩作品 1（2 已软删）
+	key := make([]byte, shareKeyLen)
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-9101"
+	rec.Token = fmt.Sprintf("stubtoken%013d", 9101)
+	rec.Title = "含缺失对象"
+	rec.WorkIDs = marshalInt64s([]int64{1, 2})
+	rec.RelayAddress = stub.addr
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.ExpireSeconds = -1
+	rec.State = RecordStateActive
+	if err := repo.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	model := buildSelectionModel(t, workDir, []int64{1}, nil, nil)
+	em := newCaptureEmitter()
+	svc := NewService(repo, &fakeCollector{model: model}, export.NewPacker(),
+		func() string { return stub.addr }, func() string { return workDir },
+		"test-instance-0001", em, nil, nil)
+	svc.RestoreAll(context.Background())
+	rec2 := waitRecordState(t, repo, "share-9101", RecordStateFailed)
+	if !strings.Contains(rec2.ErrMsg, "分享对象已删除") {
+		t.Fatalf("失败原因应含分享对象删除语义: %q", rec2.ErrMsg)
+	}
+	if !strings.Contains(rec2.ErrMsg, "作品#2") {
+		t.Fatalf("失败原因应点名缺失对象: %q", rec2.ErrMsg)
+	}
+}
+
 // —— 启动自动复原 ——
 
 // TestRestoreAllBind 复原主链路：重启（新 Service 实例）→ active 记录原 token bind 重绑 →

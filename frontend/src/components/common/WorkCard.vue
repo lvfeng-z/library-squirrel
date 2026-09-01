@@ -51,6 +51,11 @@ function handleElImageFit() {
 }
 function handleImageClicked() {
   clearTimeout(clickTimeout)
+  if (props.checkable) {
+    // 多选模式：点图即勾选（即时切换，不打开详情）
+    checked.value = !checked.value
+    return
+  }
   clickTimeout = setTimeout(() => emit('imageClicked', props.work), 300)
 }
 async function handlePictureClicked() {
