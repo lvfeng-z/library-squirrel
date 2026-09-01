@@ -16,6 +16,7 @@
 判定要点：
 - 同步操作反馈绝不走 `announce`（那是 ElMessage 的职责）。
 - 异步结局绝不走 ElMessage——用户可能停留在别的页面会错过，且无批量聚合。
+- **异步中途的自恢复瞬态提示**（无需决策、无需留档、条件会自行消失）走 ElMessage 轻提示——非「结局」不入 `announce`（无终态语义），通知中心留档对瞬态过重。要求**生产端自带冷却去重**（风暴期不刷屏）。先例：分享接收拨号配额耗尽（后端 10s 冷却去重后推 `share-events` `dial-quota-full`，`MainIpcListener` 转译 ElMessage.warning「等待配额恢复」）。
 - 要留档（事后回看）就必须自己调通知中心，`announce` 不会代写。
 
 另有无文本的**常驻入口提示**通道：菜单红点（`useMenuBadgeStore`，`frontend/src/store/UseMenuBadgeStore.ts`）——按菜单项 slotId 写入计数即在侧边菜单对应按钮显示角标（0 隐藏），适用于「有 N 件事等在某页面处理」的待办类提醒（先例：插件检查更新红点）。它与四轨正交：红点管常驻可发现性，事件结局仍按上表选轨。

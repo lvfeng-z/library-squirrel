@@ -18,6 +18,7 @@
 | `RetryTaskTrees` | 批量重试任务（保留各任务已记录的执行模式） |
 | `Redownload(taskIds, storeRoles, includeWorkInfo)` | 板块重执行（资源 store_type 集合 + 是否含作品元数据；空资源集 + 不含元数据 = 全集） |
 | `GetTaskState(taskId)` | 查询单任务状态（综合内存 + 数据库） |
+| `GetTaskControlConfig()` | 任务控制操作防重入配置（`config.yaml` `task.operationCooldownMs`，前端操作按钮冷却依据；0=不启用） |
 | `GetTaskTreeState(taskId)` | 查询任务状态：父任务返回聚合状态、叶子/独立任务返回自身状态 |
 | `GetTaskSnapshot()` | 获取所有活跃任务的完整状态快照 |
 | `IsIdle()` | 是否空闲（无运行中任务） |
