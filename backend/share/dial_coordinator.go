@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // dialWindow 拨号滑动窗口宽度：窗口内累计的拨号事件数即每分钟拨号速率。
@@ -12,6 +14,9 @@ const dialWindow = time.Minute
 // dialPollInterval 满配额复查周期：等待滑出窗口期间按此间隔醒来重算放行时刻，
 // 使最老事件滑出后能及时放行，而非按首次计算一次睡满剩余窗口。
 const dialPollInterval = 50 * time.Millisecond
+
+// slotBlockLogThreshold 流槽等待超过该时长才记日志（阻塞即卡顿信号；瞬时取得不刷屏）。
+const slotBlockLogThreshold = 50 * time.Millisecond
 
 // DialCoordinator 收件拨号统筹器：统一仲裁 share-receive 各子任务的文件拉取拨号。
 // 双门控——并发流槽（防超发送方会话 8 流上限被拒）+ 拨号速率（防超中继每 IP 每分钟
@@ -45,10 +50,17 @@ func (c *DialCoordinator) AcquireSlot(ctx context.Context) error {
 	if c.slots == nil {
 		return nil // 不限并发
 	}
+	start := time.Now()
 	select {
 	case c.slots <- struct{}{}:
+		if waited := time.Since(start); waited > slotBlockLogThreshold {
+			logger.Log.Debugf("[share-recv] 并发流槽取得（等待%s，池活跃=%d/%d）", waited, len(c.slots), cap(c.slots))
+		}
 		return nil
 	case <-ctx.Done():
+		if waited := time.Since(start); waited > 0 {
+			logger.Log.Debugf("[share-recv] 并发流槽等待被取消 已等%s err=%v", waited, ctx.Err())
+		}
 		return ctx.Err()
 	}
 }
@@ -61,6 +73,7 @@ func (c *DialCoordinator) ReleaseSlot() {
 	// 非阻塞接收：空槽时的多余释放直接忽略，不吞正常令牌。
 	select {
 	case <-c.slots:
+		logger.Log.Debugf("[share-recv] 并发流槽归还 池活跃=%d/%d", len(c.slots), cap(c.slots))
 	default:
 	}
 }
@@ -70,16 +83,25 @@ func (c *DialCoordinator) TakeDial(ctx context.Context) error {
 	if c.dialCap <= 0 {
 		return nil // 不限速率
 	}
+	var blockedStart time.Time
 	for {
 		c.mu.Lock()
 		now := time.Now()
 		c.pruneDialTimes(now)
 		if len(c.dialTimes) < c.dialCap {
 			c.dialTimes = append(c.dialTimes, now)
+			if !blockedStart.IsZero() {
+				logger.Log.Debugf("[share-recv] 拨号速率令牌取得（此前等待%s，窗口=%d/%d）", time.Since(blockedStart), len(c.dialTimes), c.dialCap)
+			}
 			c.mu.Unlock()
 			return nil
 		}
 		// 配额已满：等最老事件滑出窗口，按复查周期醒来重算。
+		if blockedStart.IsZero() {
+			blockedStart = time.Now()
+			logger.Log.Debugf("[share-recv] 拨号速率配额满 等待窗口滑出（窗口=%d/%d，最老事件%v后滑出）",
+				len(c.dialTimes), c.dialCap, c.dialTimes[0].Add(dialWindow).Sub(now))
+		}
 		wait := c.dialTimes[0].Add(dialWindow).Sub(now)
 		c.mu.Unlock()
 		if wait > 0 {

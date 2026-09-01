@@ -15,6 +15,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // 收件人侧默认参数
@@ -102,6 +104,7 @@ type receiveClient struct {
 	readIdle      time.Duration
 	handshakeWait time.Duration
 	coord         *DialCoordinator // 收件拨号统筹器（每次 fetch 拨号前取令牌/取槽）
+	taskID        int64            // 宿主任务 ID（日志关联；manifest 预拉为父任务 ID，0=未关联）
 }
 
 // newReceiveClient 构建收件人客户端（构建 E2E 密码学对象；密钥非法即失败）
@@ -148,24 +151,37 @@ func decodeShareKeyB64(b64 string) ([]byte, error) {
 // fetch 发起一次拉取请求（拨号 → 请求 → 半关闭 → 应答首记录）：成功返回 JSON 头与其后
 // 的明文内容读取器（读取器在 EOF 处校验字节数与头 size 一致）。每次调用独立连接；
 // ctx 取消时关闭底层连接令阻塞读立即中断（调用方据此尽快返回，暂停/停止语义）。
-// 拨号前经统筹器双门控：先取速率令牌（拨号/分钟上限），再取并发流槽（不超发送方会话
-// 流上限被拒）；槽覆盖整条流的下载期，随内容读取器 Close 释放（fetchWithRetry 统一在
+// 拨号前经统筹器双门控：先取并发流槽（不超发送方会话流上限被拒），再取速率令牌（拨号/
+// 分钟上限）——令牌后置，预算只被即将实际拨号的 fetch 消耗，被槽位挡下而取消的 fetch
+// 不再白吃令牌。槽覆盖整条流的下载期，随内容读取器 Close 释放（fetchWithRetry 统一在
 // body 消费后 Close，全链覆盖）。
 func (c *receiveClient) fetch(ctx context.Context, req *streamRequest) (*streamHeader, *streamContentReader, error) {
-	if err := c.coord.TakeDial(ctx); err != nil {
-		return nil, nil, fmt.Errorf("拨号速率门控等待取消: %w", err)
-	}
+	t0 := time.Now()
+	logger.Log.Debugf("[share-recv] task=%d fetch 开始 path=%s offset=%d", c.taskID, req.Path, req.Offset)
+	t1 := time.Now()
 	if err := c.coord.AcquireSlot(ctx); err != nil {
+		logger.Log.Debugf("[share-recv] task=%d fetch path=%s 取并发流槽取消(已等%s)", c.taskID, req.Path, time.Since(t1))
 		return nil, nil, fmt.Errorf("并发流槽门控等待取消: %w", err)
 	}
+	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 取并发流槽耗%s", c.taskID, req.Path, time.Since(t1))
+	t2 := time.Now()
+	if err := c.coord.TakeDial(ctx); err != nil {
+		logger.Log.Debugf("[share-recv] task=%d fetch path=%s 取拨号令牌取消(已等%s)", c.taskID, req.Path, time.Since(t2))
+		c.coord.ReleaseSlot() // 令牌门控等待被取消：未实际拨号，归还已取的流槽
+		return nil, nil, fmt.Errorf("拨号速率门控等待取消: %w", err)
+	}
+	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 取拨号令牌耗%s", c.taskID, req.Path, time.Since(t2))
+	t3 := time.Now()
 	conn, err := c.opts.dialFn(c.dialAddr)
+	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 拨号(relay)耗%s err=%v", c.taskID, req.Path, time.Since(t3), err)
 	if err != nil {
 		c.coord.ReleaseSlot() // 拨号失败未开流：槽立即归还，避免泄漏
 		return nil, nil, fmt.Errorf("连接中继失败: %w", err)
 	}
-	r := &streamContentReader{conn: conn, cip: c.cip, readIdle: c.readIdle, coord: c.coord}
+	r := &streamContentReader{conn: conn, cip: c.cip, readIdle: c.readIdle, coord: c.coord, taskID: c.taskID}
 	r.startCtxWatch(ctx)
 	fail := func(err error) (*streamHeader, *streamContentReader, error) {
+		logger.Log.Debugf("[share-recv] task=%d fetch path=%s 失败(总耗%s) err=%v", c.taskID, req.Path, time.Since(t0), err)
 		_ = r.Close()
 		return nil, nil, err
 	}
@@ -223,6 +239,7 @@ func (c *receiveClient) fetch(ctx context.Context, req *streamRequest) (*streamH
 	if !head.OK {
 		return fail(&streamAppError{code: head.Error})
 	}
+	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 握手+请求耗%s 应答size=%d", c.taskID, req.Path, time.Since(t3), head.Size)
 	r.expect = head.Size
 	return &head, r, nil
 }
@@ -234,6 +251,7 @@ type streamContentReader struct {
 	cip       *e2eCipher
 	readIdle  time.Duration
 	coord     *DialCoordinator // 并发流槽归属（Close 时归还）
+	taskID    int64            // 宿主任务 ID（日志关联）
 	buf       []byte           // 当前记录未消费明文
 	expect    int64            // 头声明的总字节数（EOF 校验）
 	got       int64            // 已消费字节数
@@ -325,6 +343,7 @@ func (r *streamContentReader) Close() error {
 		if r.coord != nil {
 			r.coord.ReleaseSlot() // 流收尾归还并发槽（幂等，空槽忽略）
 		}
+		logger.Log.Debugf("[share-recv] task=%d stream 关闭 got=%d expect=%d 归还流槽", r.taskID, r.got, r.expect)
 	})
 	if r.closed {
 		return nil

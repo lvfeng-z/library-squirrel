@@ -591,6 +591,7 @@ func (m *Manager) dispatchFromQueue() {
 	if len(m.waitingQueue) > 0 {
 		task := m.waitingQueue[0]
 		m.mu.Unlock()
+		logger.Log.Debugf("[TaskManager] dispatchFromQueue 唤醒等待队列任务 %d (队内剩 %d)", task.taskId, len(m.waitingQueue)-1)
 		task.postCmd(taskCmd{kind: cmdResume})
 		return
 	}

@@ -270,6 +270,7 @@ func (s *Service) Receive(ctx context.Context, link string, password string) (*S
 	if err != nil {
 		return nil, err
 	}
+	logger.Log.Debugf("[share-recv] 预拉 manifest 开始 relay=%s token=%s", target.RelayHost, target.Token)
 	// 同步预拉 manifest（建树前唯一网络往返；失败无任务可重试，返回用户可读文案，修正后重新接收）
 	manifest, err := fetchManifest(ctx, client)
 	if err != nil {

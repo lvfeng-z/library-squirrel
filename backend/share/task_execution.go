@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
@@ -106,11 +107,13 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		h.Fail(err.Error())
 		return
 	}
+	logger.Log.Infof("[share-recv] 任务 %d 执行开始 manifest=%s", task.GetID(), payload.ManifestPath)
 	client, err := newReceiveClient(payload, e.svc.instanceID, e.svc.opts)
 	if err != nil {
 		h.Fail(err.Error())
 		return
 	}
+	client.taskID = task.GetID()
 	ctx := h.RunCtx()
 	staging := filepath.Join(workDir, receiveStagingRootName, strconv.FormatInt(task.GetID(), 10))
 	if err := os.MkdirAll(staging, 0o755); err != nil {
@@ -119,7 +122,9 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	}
 
 	// 查重 → 确认 → 逐文件内容判定 → 软删 + 回滚登记（作用域为本作品子集；时序语义同整体路径，见设计七）
+	planStart := time.Now()
 	plan, canceled, err := e.planReplace(ctx, sub, staging, workDir, h)
+	logger.Log.Infof("[share-recv] 任务 %d 查重+确认+内容判定+软删 完成 耗时=%s canceled=%v err=%v", task.GetID(), time.Since(planStart), canceled, err)
 	if err != nil {
 		reportReceiveError(h, ctx, err)
 		return
@@ -128,12 +133,20 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return // 确认被取消（暂停/停止防御性打断）：不上报终态，交控制面接管
 	}
 	if ctx.Err() != nil {
+		logger.Log.Infof("[share-recv] 任务 %d 查重替换阶段被暂停/停止打断", task.GetID())
 		return // 软删窗口内暂停/停止：回滚清单已登记（交 setFailed 单点），暂停延续替换
 	}
 
 	// 阶段二：逐文件拉取至暂存（只拉本作品引用文件；被裁决跳过作品的文件不拉）
+	stageStart := time.Now()
 	if err := e.stageFiles(ctx, client, staging, sub, fileSkipSet(sub, plan.skipWorks), h); err != nil {
+		logger.Log.Debugf("[share-recv] 任务 %d 拉取阶段失败 耗时=%s err=%v", task.GetID(), time.Since(stageStart), err)
 		reportReceiveError(h, ctx, err)
+		return
+	}
+	logger.Log.Infof("[share-recv] 任务 %d 拉取阶段完成 耗时=%s", task.GetID(), time.Since(stageStart))
+	if ctx.Err() != nil {
+		logger.Log.Infof("[share-recv] 任务 %d 拉取完成后被暂停/停止打断", task.GetID())
 		return
 	}
 
@@ -146,13 +159,17 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 			AutoMergeWorks: plan.autoMergeWorks,
 		}
 	}
+	ingestStart := time.Now()
 	if _, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts); err != nil {
+		logger.Log.Debugf("[share-recv] 任务 %d 导入失败 耗时=%s err=%v", task.GetID(), time.Since(ingestStart), err)
 		reportReceiveError(h, ctx, err)
 		return
 	}
+	logger.Log.Infof("[share-recv] 任务 %d 导入完成 耗时=%s", task.GetID(), time.Since(ingestStart))
 	// 成功：清理本任务暂存（共享 manifest.json 在父任务目录，不动；残留由启动清扫回收）
 	_ = os.RemoveAll(staging)
 	h.Finish()
+	logger.Log.Infof("[share-recv] 任务 %d 执行完成", task.GetID())
 }
 
 // readSharedManifest 读本地共享 manifest：workDir 相对路径（正斜杠 relPath 域），
@@ -283,6 +300,7 @@ type replaceSoftTarget struct {
 //     多作品清单合并登记，软删中断窗口三态收口见方案「设计六」）
 func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Manifest,
 	staging, workDir string, h taskManager.StrategyHandle) (*receiveReplacePlan, bool, error) {
+	taskID := h.Task().GetID()
 	plan := &receiveReplacePlan{
 		confirmedWorks: make(map[int64]struct{}),
 		autoMergeWorks: make(map[int64]struct{}),
@@ -319,10 +337,12 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 			Roles:      roles,
 		})
 	}
+	checkStart := time.Now()
 	results, err := e.checker.Check(ctx, items)
 	if err != nil {
 		return nil, false, fmt.Errorf("作品查重判定失败: %w", err)
 	}
+	logger.Log.Debugf("[share-recv] 任务 %d 作品查重完成 耗时=%s 条目=%d", taskID, time.Since(checkStart), len(items))
 
 	// 三分类分流：冲突作品收集确认输入，零交集作品并入自动增补（未命中作品交 ingest 既有创建）
 	var conflicts []taskManager.ConflictInfo
@@ -358,9 +378,13 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 	if len(conflicts) > 0 {
 		if memo := h.ConfirmMemo(); memo != nil && sameIDSet(memo.ConflictWorkIds, conflictWorkIDsOf(conflicts)) {
 			// 记忆命中：复用既有整体决策，不重复弹窗
+			logger.Log.Debugf("[share-recv] 任务 %d 确认决策记忆命中，复用 decision=%d", taskID, memo.Decision)
 			applyConfirmDecision(plan, confirmTargets, memo.Decision)
 		} else {
+			logger.Log.Infof("[share-recv] 任务 %d 弹窗等待替换确认 冲突数=%d", taskID, len(conflicts))
+			confirmStart := time.Now()
 			decision, canceled := h.WaitReplaceConfirm(conflicts)
+			logger.Log.Infof("[share-recv] 任务 %d 替换确认返回 耗时=%s canceled=%v decision=%d", taskID, time.Since(confirmStart), canceled, decision)
 			if canceled {
 				return nil, true, nil // 记忆已由 WaitReplaceConfirm 记录，恢复复用
 			}
@@ -372,9 +396,11 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 	// 全部匹配的整作品跳过（不软删/不拉取/不导入），部分匹配的匹配文件由本地活文件
 	// 拷入暂存免网络重拉。判定仅作用于确认替换目标（confirmTargets），零交集自动增补不受影响。
 	if e.mountReader != nil {
+		contentStart := time.Now()
 		if err := e.applyContentMatches(ctx, manifest, staging, workDir, plan, &confirmTargets); err != nil {
 			return nil, false, fmt.Errorf("逐文件内容判定失败: %w", err)
 		}
+		logger.Log.Debugf("[share-recv] 任务 %d 逐文件内容判定完成 耗时=%s 跳过=%d 确认替换=%d", taskID, time.Since(contentStart), len(plan.skipWorks), len(plan.confirmedWorks))
 	}
 
 	// 软删替换全集（确认替换 ∪ 零交集并入）各作品的软删角色并登记回滚清单；
@@ -383,6 +409,7 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 	if len(plan.confirmedWorks) > 0 {
 		softTargets = append(softTargets, confirmTargets...)
 	}
+	logger.Log.Debugf("[share-recv] 任务 %d 软删替换目标 数量=%d", taskID, len(softTargets))
 	for _, t := range softTargets {
 		roles := t.conflictRoles
 		if len(roles) == 0 {
@@ -676,6 +703,7 @@ func fileSkipSet(manifest *export.Manifest, skipWorks map[int64]struct{}) map[in
 
 func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient, staging string,
 	manifest *export.Manifest, skipFiles map[int64]struct{}, h taskManager.StrategyHandle) error {
+	taskID := h.Task().GetID()
 	// 待拉条目判定：缺包内路径/源缺失标记/被裁决跳过作品的文件 一律跳过
 	pull := func(entry *export.FileEntry) bool {
 		if entry.Path == "" || entry.Missing {
@@ -697,6 +725,7 @@ func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient
 	report := func() {
 		if total > 0 {
 			h.ReportProgress(total, done)
+			logger.Log.Debugf("[share-recv] 任务 %d 进度推进 total=%d done=%d", taskID, total, done)
 		}
 	}
 	// 初始进度：已暂存字节（重试/恢复任务的即时段位）
@@ -715,6 +744,7 @@ func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient
 		if !pull(entry) {
 			continue
 		}
+		fileStart := time.Now()
 		if err := stageFile(ctx, client, staging, entry, func(delta int64) {
 			done += delta
 			report()
@@ -722,11 +752,14 @@ func (e *ReceiveExecution) stageFiles(ctx context.Context, client *receiveClient
 			var ae *streamAppError
 			if errors.As(err, &ae) && ae.code == streamErrMissing {
 				// 分享方现报缺失：置清单缺席标记，导入按挂载缺席降级（其余照常）
+				logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 分享方现报缺失", taskID, entry.Path)
 				entry.Missing = true
 				continue
 			}
+			logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 拉取失败 耗时=%s err=%v", taskID, entry.Path, time.Since(fileStart), err)
 			return err
 		}
+		logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 拉取完成 耗时=%s", taskID, entry.Path, time.Since(fileStart))
 	}
 	report()
 	return nil
@@ -768,6 +801,7 @@ func stageFile(ctx context.Context, client *receiveClient, staging string, entry
 			return fmt.Errorf("重置暂存文件失败: %w", err)
 		}
 	}
+	logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 拉取准备 暂存=%d 声明=%d 续传offset=%d", client.taskID, entry.Path, stagedSize(target), entry.Size, offset)
 	delay := receiveBackoffStart
 	for attempt := 0; ; attempt++ {
 		err := appendFetch(ctx, client, entry, target, offset, onProgress)
@@ -775,11 +809,13 @@ func stageFile(ctx context.Context, client *receiveClient, staging string, entry
 			return nil
 		}
 		if ctx.Err() != nil {
+			logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 拉取被取消(attempt=%d) err=%v", client.taskID, entry.Path, attempt, err)
 			return ctx.Err()
 		}
 		if !isRelayRetryableErr(err) || attempt >= receiveMaxAttempts-1 {
 			return err
 		}
+		logger.Log.Debugf("[share-recv] 任务 %d 文件 %s 拉取瞬态错误重试 attempt=%d err=%v 退避=%s", client.taskID, entry.Path, attempt, err, delay)
 		// 重试前按实际落盘字节重算续传锚（appendFetch 失败点即上次落盘点）
 		offset = stagedSize(target)
 		select {
@@ -856,7 +892,9 @@ func fetchWithRetry[T any](ctx context.Context, client *receiveClient, req *stre
 	var zero T
 	delay := receiveBackoffStart
 	for attempt := 0; ; attempt++ {
+		fetchStart := time.Now()
 		head, r, err := client.fetch(ctx, req)
+		logger.Log.Debugf("[share-recv] task=%d fetch 尝试#%d path=%s 拨号+应答耗%s err=%v", client.taskID, attempt, req.Path, time.Since(fetchStart), err)
 		if err == nil {
 			res, berr := body(head, r)
 			partial := r.got > 0
@@ -865,6 +903,7 @@ func fetchWithRetry[T any](ctx context.Context, client *receiveClient, req *stre
 				return res, nil
 			}
 			err = berr
+			logger.Log.Debugf("[share-recv] task=%d fetch path=%s 内容消费失败 got=%d err=%v", client.taskID, req.Path, r.got, err)
 			// 内容已部分消费后失败：本次尝试已把部分字节写入暂存（O_APPEND 追加），同 offset
 			// 重试会叠加重复字节——文件超长损坏且进度双计（实测：传输中中断即现）。交外层
 			// 续传锚重算（stageFile 按实际落盘字节重设 offset）处理，不再内层重复追加。
@@ -876,8 +915,10 @@ func fetchWithRetry[T any](ctx context.Context, client *receiveClient, req *stre
 			return zero, ctx.Err()
 		}
 		if !isRelayRetryableErr(err) || attempt >= receiveMaxAttempts-1 {
+			logger.Log.Debugf("[share-recv] task=%d fetch path=%s 判定终态错误 attempt=%d err=%v", client.taskID, req.Path, attempt, err)
 			return zero, err
 		}
+		logger.Log.Debugf("[share-recv] task=%d fetch path=%s 重试退避 attempt=%d delay=%s err=%v", client.taskID, req.Path, attempt, delay, err)
 		select {
 		case <-ctx.Done():
 			return zero, ctx.Err()

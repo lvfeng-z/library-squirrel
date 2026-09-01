@@ -586,6 +586,7 @@ func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 			m.slotHeld = true
 			m.dequeueSelf()
 		default:
+			logger.Log.Infof("[TaskManager] 任务 %d 信号量槽位满,入等待队列(等空闲槽位)", m.taskId)
 			m.enqueueSelf()
 			return
 		}
@@ -711,6 +712,7 @@ func (m *ManagedTask) cmdWatcher(stop <-chan struct{}) {
 				if m.inDownload.Load() {
 					// downloadLoop 阶段:优雅暂停——不取消 runCtx,通知 copyLoop 完成当前在途往返(读取→落盘)后退出
 					m.softPause.Store(true)
+					logger.Log.Infof("[TaskManager] 任务 %d 暂停:下载阶段走优雅暂停(softPause drain)", m.taskId)
 					// drain 超时兜底:在途迟迟不落盘则强制取消,退化为有损立即暂停
 					m.drainTimer = time.AfterFunc(drainTimeout, func() {
 						if m.softPause.Load() && m.runCancel != nil {
@@ -720,6 +722,7 @@ func (m *ManagedTask) cmdWatcher(stop <-chan struct{}) {
 					})
 				} else {
 					// setup 阶段:无在途 chunk 需排空,立即取消 runCtx 中断插件 RPC(快速暂停)
+					logger.Log.Infof("[TaskManager] 任务 %d 暂停:setup 阶段立即 runCancel", m.taskId)
 					if m.runCancel != nil {
 						m.runCancel()
 					}
@@ -729,6 +732,7 @@ func (m *ManagedTask) cmdWatcher(stop <-chan struct{}) {
 			}
 			if c.kind == cmdStop {
 				// 停止是放弃,立即取消(不走 drain)
+				logger.Log.Infof("[TaskManager] 任务 %d 停止:立即 runCancel", m.taskId)
 				if m.runCancel != nil {
 					m.runCancel()
 				}
