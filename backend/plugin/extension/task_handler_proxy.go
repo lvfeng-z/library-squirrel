@@ -529,8 +529,8 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			Id:         pb.Site.Id,
 			SiteName:   pb.Site.SiteName,
 			Homepage:   pb.Site.Homepage,
-			CreateTime:      pb.Site.CreateTime,
-			UpdateTime:      pb.Site.UpdateTime,
+			CreateTime: pb.Site.CreateTime,
+			UpdateTime: pb.Site.UpdateTime,
 		}
 	}
 	for _, a := range pb.LocalAuthors {

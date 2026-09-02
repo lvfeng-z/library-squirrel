@@ -31,16 +31,6 @@ func (r *SiteAuthorRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
 }
 
-// CountBySiteId 统计站点的站点作者引用行数（站点删除守卫用，由 site 经窄接口注入）
-func (r *SiteAuthorRepository) CountBySiteId(ctx context.Context, siteId int64) (int64, error) {
-	var count int64
-	err := r.dbFromCtx(ctx).WithContext(ctx).
-		Model(new(entity.SiteAuthor)).
-		Where("site_id = ?", siteId).
-		Count(&count).Error
-	return count, err
-}
-
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *SiteAuthorRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())

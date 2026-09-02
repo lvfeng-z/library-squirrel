@@ -218,6 +218,15 @@ func NewApp() (*App, error) {
 	// 4. 初始化基础服务（按依赖顺序）
 	app.initBaseServices()
 
+	// 4.5 注册表投影同步：站点表 = identity 注册表的本库投影（insert-only），缺失键补建。
+	// 同步失败即启动失败——站点表缺行会让任务创建/导入报「站点未找到」等衍生错误掩盖根因，
+	// 须在插件安装/加载前完成（插件激活不承担站点建行职责）
+	if err := app.SiteService.SyncFromRegistry(context.Background()); err != nil {
+		logger.Log.Errorf("站点注册表投影同步失败: %v", err)
+		return nil, err
+	}
+	logger.Log.Infof("站点注册表投影同步完成")
+
 	// 5. 初始化高级服务
 	if err := app.initAdvancedServices(); err != nil {
 		return nil, err
@@ -497,8 +506,6 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		TaskHandlerRegistry: app.TaskHandlerRegistry,
 		SiteBrowserRegistry: app.SiteBrowserRegistry,
 		Storage:             app.PluginStorageService,
-		SiteSave:            app.SiteService,
-		SiteQuery:           app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		StorePath: &storePathQueryAdapter{
 			taskSvc:       app.TaskService,
@@ -833,19 +840,9 @@ func (app *App) initBaseServices() {
 		workRepo,                // WorkAuthorMirrorClearer（清 work 镜像列，含软删行）
 	)
 
-	// site 服务（需在 siteTag 之前初始化，因为 siteTag 依赖 site 的查询接口；删除守卫注入事务执行器
-	// 与五类引用计数仓储——work/task/workSet 的服务在高级服务阶段创建，经仓储接线满足窄接口以打破装配环，
-	// siteTag/siteAuthor 仓储上方已建）
+	// site 服务（需在 siteTag 之前初始化，因为 siteTag 依赖 site 的查询接口）
 	siteRepo := site.NewRepository(app.db)
-	app.SiteService = site.NewService(
-		siteRepo,
-		&dbTransactorAdapter{db: app.db},
-		workRepo,                      // WorkSiteRefCounter（站点删除守卫：作品计数含软删行）
-		task.NewRepository(app.db),    // TaskSiteRefCounter
-		workSet.NewRepository(app.db), // WorkSetSiteRefCounter（作品集计数含软删行）
-		siteTagRepo,                   // SiteTagSiteRefCounter
-		siteAuthorRepo,                // SiteAuthorSiteRefCounter
-	)
+	app.SiteService = site.NewService(siteRepo)
 
 	// siteTag 服务（删除编排注入事务执行器与 reWorkTag 仓储——reWorkTag 服务构造在其后，
 	// 经仓储接线满足窄接口，与 localTag 删除编排同款）

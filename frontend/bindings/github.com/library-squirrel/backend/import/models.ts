@@ -45,11 +45,6 @@ export class ImportResult {
     "skippedWorkSets": number;
 
     /**
-     * 新建站点数（按键 find-or-create）
-     */
-    "createdSites": number;
-
-    /**
      * 新建本地标签数（按名称 find-or-create）
      */
     "createdLocalTags": number;
@@ -101,9 +96,6 @@ export class ImportResult {
         }
         if (!("skippedWorkSets" in $$source)) {
             this["skippedWorkSets"] = 0;
-        }
-        if (!("createdSites" in $$source)) {
-            this["createdSites"] = 0;
         }
         if (!("createdLocalTags" in $$source)) {
             this["createdLocalTags"] = 0;

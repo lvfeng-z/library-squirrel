@@ -33,6 +33,9 @@ var (
 	// ErrUnregisteredSiteKey manifest 站点记录携带未注册的站点键（含空键）——站点身份键由
 	// SDK identity 注册表统一分配，未注册键的产物来源不可信，整体拒绝导入
 	ErrUnregisteredSiteKey = errors.New("导入产物包含未注册的站点键")
+	// ErrSiteRowMissing manifest 站点键已注册但本库无对应站点行——启动期注册表投影保证
+	// 注册键行必在，缺失属数据库异常，显式报错而非静默自建
+	ErrSiteRowMissing = errors.New("注册站点的本库站点行缺失")
 	// ErrUnsafeStorePath 落盘目标路径不合法（路径穿越 / 反斜杠 / 未注册子目录）
 	ErrUnsafeStorePath = errors.New("导入文件路径不合法")
 	// ErrPackageFileMissing 包内缺少 manifest 声明的文件
@@ -61,7 +64,7 @@ type IngestOptions struct {
 }
 
 // ManifestIngestor manifest 驱动回灌导入能力（分享收件人侧任务执行器复用的能力形态）：
-// 校验版本锚、find-or-create 站点/标签/作者、按 site_id+site_work_id 查重作品、
+// 校验版本锚、站点 find-only/标签/作者 find-or-create、按 site_id+site_work_id 查重作品、
 // 导出库 ID → 本库 ID 重映射、文件落盘与全量关联重建。
 type ManifestIngestor interface {
 	// Ingest 导入一份导出 manifest（文件内容经 fileSource 按包内路径读取），返回结果摘要。
@@ -94,7 +97,6 @@ type ImportResult struct {
 	SkippedWorks        int64 `json:"skippedWorks"`        // 查重命中（site_id+site_work_id 已存在）跳过的作品数
 	CreatedWorkSets     int64 `json:"createdWorkSets"`     // 新建作品集数
 	SkippedWorkSets     int64 `json:"skippedWorkSets"`     // 查重命中跳过的作品集数
-	CreatedSites        int64 `json:"createdSites"`        // 新建站点数（按键 find-or-create）
 	CreatedLocalTags    int64 `json:"createdLocalTags"`    // 新建本地标签数（按名称 find-or-create）
 	CreatedSiteTags     int64 `json:"createdSiteTags"`     // 新建站点标签数（按站点+site_tag_id 匹配）
 	CreatedLocalAuthors int64 `json:"createdLocalAuthors"` // 新建本地作者数（按名称 find-or-create）
@@ -132,7 +134,8 @@ type filePhaseResult struct {
 //
 //	相位一（只读预检）：既有站点映射 + 作品查重圈定待建集（决定哪些文件需要落盘）
 //	相位二（文件落盘）：为待建作品的 store 挂载提取包内文件并经 persistentStore 能力落盘
-//	相位三（单事务入库）：find-or-create 主数据 + 新建作品/资源/挂载/关联 + 全量 ID 重映射
+//	相位三（单事务入库）：主数据解析入库（站点 find-only，标签/作者 find-or-create）+
+//	新建作品/资源/挂载/关联 + 全量 ID 重映射
 //
 // 相位二先于事务（文件 IO 不持有唯一 DB 连接），失败时对已落盘文件做补偿清理。
 func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, opts *IngestOptions) (*ImportResult, error) {
@@ -211,7 +214,7 @@ func replaceUnion(opts *IngestOptions) map[int64]struct{} {
 // ===== 相位一：只读预检 =====
 
 // validateSiteKeys 校验 manifest 站点记录的键全部在 identity 注册表内（空键/未注册键报错，
-// 报错文案即注册渠道指引）。键已注册方可继续——后续 find-or-create 以注册表权威信息建行。
+// 报错文案即注册渠道指引）。键已注册方可继续——后续 ensureSites 按键直查本库站点行。
 func validateSiteKeys(records []export.SiteRecord) error {
 	for _, r := range records {
 		if _, ok := identity.Lookup(r.SiteKey); !ok {
@@ -224,7 +227,7 @@ func validateSiteKeys(records []export.SiteRecord) error {
 }
 
 // mapExistingSites 既有站点行映射（站点按键匹配：site_key 为站点唯一身份）。
-// 只读预检，供作品查重键解析站点侧；真正的 find-or-create 在入库事务内完成（ensureSites）。
+// 只读预检，供作品查重键解析站点侧；站点行的入库解析在入库事务内完成（ensureSites）。
 func (ing *ingestor) mapExistingSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, error) {
 	keys := make([]string, 0, len(records))
 	for _, r := range records {
@@ -456,11 +459,10 @@ func (ing *ingestor) ingestEntities(
 ) (*ImportResult, error) {
 	result := &ImportResult{}
 
-	siteRemap, createdSites, err := ing.ensureSites(ctx, manifest.Sites)
+	siteRemap, err := ing.ensureSites(ctx, manifest.Sites)
 	if err != nil {
 		return nil, err
 	}
-	result.CreatedSites = createdSites
 
 	localTagRemap, createdLocalTags, err := ing.ensureLocalTags(ctx, manifest.LocalTags)
 	if err != nil {
@@ -613,65 +615,33 @@ func countReplaceByKind(toReplace []*export.WorkRecord, opts *IngestOptions) (co
 
 // ===== 主数据 find-or-create =====
 
-// ensureSites 站点 find-or-create（按键匹配，键在本库已存在即复用）。
-// 新建行的键取 manifest 记录键（经入口 identity 校验已注册），名称与主页取注册表权威值——
-// manifest 携带的站点展示信息不落库（站点展示信息以注册表为准）。
-// 返回导出库站点 ID → 本库站点 ID 的全量重映射与新建数。
-func (ing *ingestor) ensureSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, int64, error) {
+// ensureSites 站点行解析（find-only）：manifest 站点记录按键在本库直查复用。
+// 注册键经入口 identity 校验，且启动期注册表投影保证注册键的本库站点行必在，缺失属
+// 数据库异常——显式报错（ErrSiteRowMissing）而非静默自建。
+// 返回导出库站点 ID → 本库站点 ID 的全量重映射。
+func (ing *ingestor) ensureSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, error) {
 	keys := make([]string, 0, len(records))
 	for _, r := range records {
 		keys = append(keys, r.SiteKey)
 	}
 	rows, err := ing.dupRepo.ListSitesByKeys(ctx, util.UniqueString(keys))
 	if err != nil {
-		return nil, 0, fmt.Errorf("查询既有站点失败: %w", err)
+		return nil, fmt.Errorf("查询既有站点失败: %w", err)
 	}
-	remap := make(map[int64]int64, len(records))
 	keyToLocalID := make(map[string]int64, len(rows))
 	for _, row := range rows {
 		keyToLocalID[row.SiteKey] = row.GetID()
 	}
-
-	var creates []*entity.Site
-	var createRecordIDs []int64
-	sessionIdx := make(map[string]int) // 会话内已建行的键 → creates 下标（同批/跨批同键折叠）
-	type dupRef struct {
-		recordID  int64
-		createIdx int
-	}
-	var dups []dupRef
+	remap := make(map[int64]int64, len(records))
 	for _, r := range records {
-		if localID, ok := keyToLocalID[r.SiteKey]; ok {
-			remap[r.ID] = localID
-			continue
+		localID, ok := keyToLocalID[r.SiteKey]
+		if !ok {
+			return nil, fmt.Errorf("%w：%q（站点表为 identity 注册表的启动期投影，注册键行缺失属数据异常）",
+				ErrSiteRowMissing, r.SiteKey)
 		}
-		if idx, ok := sessionIdx[r.SiteKey]; ok {
-			dups = append(dups, dupRef{r.ID, idx})
-			continue
-		}
-		entry, _ := identity.Lookup(r.SiteKey)
-		e := entity.NewSite()
-		e.SiteKey = entry.Key
-		e.SiteName = sql.NullString{String: entry.Name, Valid: true}
-		if entry.Homepage != "" {
-			e.Homepage = sql.NullString{String: entry.Homepage, Valid: true}
-		}
-		e.SetCreateTime(r.CreateTime)
-		e.SetUpdateTime(r.UpdateTime)
-		creates = append(creates, e)
-		createRecordIDs = append(createRecordIDs, r.ID)
-		sessionIdx[r.SiteKey] = len(creates) - 1
+		remap[r.ID] = localID
 	}
-	if err := ing.repo.CreateSites(ctx, creates); err != nil {
-		return nil, 0, fmt.Errorf("新建站点失败: %w", err)
-	}
-	for i, e := range creates {
-		remap[createRecordIDs[i]] = e.GetID()
-	}
-	for _, d := range dups {
-		remap[d.recordID] = creates[d.createIdx].GetID()
-	}
-	return remap, int64(len(creates)), nil
+	return remap, nil
 }
 
 // ensureLocalTags 本地标签 find-or-create（决策15：按名称匹配，同名复用——源库允许重名行，

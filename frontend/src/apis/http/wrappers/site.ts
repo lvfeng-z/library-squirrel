@@ -16,11 +16,6 @@ import IPage from '@renderer/model/util/IPage.ts'
 
 // ========== API 方法 ==========
 
-/** 删除站点 */
-export async function siteDeleteById(id: number): Promise<ApiResult<any>> {
-  return requireResponse(await SiteHandler.Delete(id), '删除站点', false)
-}
-
 /** 更新站点 */
 export async function siteUpdateById(site: SiteDTO): Promise<ApiResult<any>> {
   return requireResponse(await SiteHandler.Update(site), '更新站点', false)

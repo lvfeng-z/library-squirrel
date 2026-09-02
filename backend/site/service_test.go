@@ -3,39 +3,17 @@ package site_test
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"strings"
 	"testing"
 
-	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/site"
-	"github.com/library-squirrel/backend/siteAuthor"
-	"github.com/library-squirrel/backend/siteTag"
-	"github.com/library-squirrel/backend/task"
-	"github.com/library-squirrel/backend/work"
-	"github.com/library-squirrel/backend/workSet"
 	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"gorm.io/gorm"
 )
 
-// txTransactor 真实事务适配器（事务开启后把 tx 放进 ctx，repo 方法经 DBFromContext 取事务连接——
-// 与生产装配 dbTransactorAdapter 同款，验证守卫计数与删除的事务内通路）
-type txTransactor struct {
-	db *gorm.DB
-}
-
-func (t *txTransactor) ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
-	return database.WithTransactionContext(ctx, t.db, func(tx *gorm.DB) error {
-		txCtx := context.WithValue(ctx, database.TxKey, tx)
-		return fn(txCtx)
-	})
-}
-
-// newGuardTestEnv 外键强制内存库 + 五类真实计数仓储装配（site 删除守卫全链）
-func newGuardTestEnv(t *testing.T) (*site.Service, *gorm.DB) {
+// newSyncTestEnv 外键强制内存库 + 经生产构造函数装配的 site 服务（注册表投影同步测试环境）
+func newSyncTestEnv(t *testing.T) (*site.Service, *gorm.DB) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -44,207 +22,118 @@ func newGuardTestEnv(t *testing.T) (*site.Service, *gorm.DB) {
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
-	svc := site.NewService(
-		site.NewRepository(db),
-		&txTransactor{db: db},
-		work.NewRepository(db),
-		task.NewRepository(db),
-		workSet.NewRepository(db),
-		siteTag.NewRepository(db),
-		siteAuthor.NewRepository(db),
-	)
-	return svc, db
+	return site.NewService(site.NewRepository(db)), db
 }
 
-// seedSite 建站点行（id=1；work/task/work_set/site_tag/site_author 五面 site_id 外键的父行）
-func seedSite(t *testing.T, db *gorm.DB) {
-	t.Helper()
-	if err := db.Exec("INSERT INTO site (id, site_key, create_time, update_time) VALUES (1, ?, 0, 0)", identity.Local.Key).Error; err != nil {
-		t.Fatalf("建站点种子失败: %v", err)
-	}
-}
-
-// siteRowExists 站点行是否仍在
-func siteRowExists(t *testing.T, db *gorm.DB) bool {
+// siteRowCount 站点表总行数（测试断言用）
+func siteRowCount(t *testing.T, db *gorm.DB) int64 {
 	t.Helper()
 	var n int64
-	if err := db.Raw("SELECT COUNT(*) FROM site WHERE id = 1").Scan(&n).Error; err != nil {
+	if err := db.Raw("SELECT COUNT(*) FROM site").Scan(&n).Error; err != nil {
 		t.Fatalf("统计站点行失败: %v", err)
 	}
-	return n == 1
+	return n
 }
 
-// assertRejected 断言删除被守卫拒绝：errors.Is 判别成立、消息含各预期片段与清理指引、站点行保留
-func assertRejected(t *testing.T, svc *site.Service, db *gorm.DB, wantMsgParts ...string) {
+// TestSyncFromRegistryInsertsRegistryRows 全新库首次投影：注册表全量条目各建一行，总数与
+// 注册表一致；站名/主页取注册表权威值；无主页条目（local 虚拟站点）主页落 NULL。
+func TestSyncFromRegistryInsertsRegistryRows(t *testing.T) {
+	svc, db := newSyncTestEnv(t)
+
+	if err := svc.SyncFromRegistry(context.Background()); err != nil {
+		t.Fatalf("首次投影同步失败: %v", err)
+	}
+
+	if got, want := siteRowCount(t, db), int64(len(identity.All())); got != want {
+		t.Fatalf("投影后站点行数=%d，期望与注册表一致 %d", got, want)
+	}
+	for _, entry := range identity.All() {
+		var row struct {
+			SiteName sql.NullString
+			Homepage sql.NullString
+		}
+		if err := db.Raw("SELECT site_name, homepage FROM site WHERE site_key = ?", entry.Key).Scan(&row).Error; err != nil {
+			t.Fatalf("查询站点行 %s 失败: %v", entry.Key, err)
+		}
+		if !row.SiteName.Valid || row.SiteName.String != entry.Name {
+			t.Fatalf("站点 %s 的站名应取注册表权威值 %q，实际 %+v", entry.Key, entry.Name, row.SiteName)
+		}
+		if entry.Homepage == "" {
+			if row.Homepage.Valid {
+				t.Fatalf("无主页条目 %s 的主页应落 NULL，实际 %+v", entry.Key, row.Homepage)
+			}
+		} else if !row.Homepage.Valid || row.Homepage.String != entry.Homepage {
+			t.Fatalf("站点 %s 的主页应取注册表权威值 %q，实际 %+v", entry.Key, entry.Homepage, row.Homepage)
+		}
+	}
+}
+
+// TestSyncFromRegistryIdempotent 幂等：连续两次投影同步后行数与注册表一致，
+// 既有行不被重复创建。
+func TestSyncFromRegistryIdempotent(t *testing.T) {
+	svc, db := newSyncTestEnv(t)
+	ctx := context.Background()
+
+	if err := svc.SyncFromRegistry(ctx); err != nil {
+		t.Fatalf("首次投影同步失败: %v", err)
+	}
+	if err := svc.SyncFromRegistry(ctx); err != nil {
+		t.Fatalf("重复投影同步应成功: %v", err)
+	}
+
+	if got, want := siteRowCount(t, db), int64(len(identity.All())); got != want {
+		t.Fatalf("重复同步后站点行数=%d，期望 %d（不重复建行）", got, want)
+	}
+}
+
+// TestSyncFromRegistryInsertOnly insert-only：既有行一律不动——用户改过展示名/清空主页的行
+// 原样保留（编辑持久），非注册键的库内残余行同样保留（注册表只增不改，同步无删除分支），
+// 仅缺失键新建。
+func TestSyncFromRegistryInsertOnly(t *testing.T) {
+	svc, db := newSyncTestEnv(t)
+
+	// 预置 pixiv 行为用户编辑态（展示名改、主页清空）；预置一条非注册键行（库内异常残留）
+	if err := db.Exec("INSERT INTO site (site_key, site_name, homepage, create_time, update_time) VALUES (?, '我的P站', NULL, 0, 0)", identity.Pixiv.Key).Error; err != nil {
+		t.Fatalf("预置 pixiv 行失败: %v", err)
+	}
+	if err := db.Exec("INSERT INTO site (site_key, site_name, create_time, update_time) VALUES ('ghost-key', '幽灵站', 0, 0)").Error; err != nil {
+		t.Fatalf("预置非注册键行失败: %v", err)
+	}
+
+	if err := svc.SyncFromRegistry(context.Background()); err != nil {
+		t.Fatalf("投影同步失败: %v", err)
+	}
+
+	// pixiv 行保持用户编辑态，未被注册表权威值回写
+	if got := queryStringForSite(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Pixiv.Key); got != "我的P站" {
+		t.Fatalf("既有行的展示名不应被投影回写，实际 %q", got)
+	}
+	var pixivHomepage sql.NullString
+	if err := db.Raw("SELECT homepage FROM site WHERE site_key = ?", identity.Pixiv.Key).Scan(&pixivHomepage).Error; err != nil {
+		t.Fatalf("查询 pixiv 主页失败: %v", err)
+	}
+	if pixivHomepage.Valid {
+		t.Fatalf("既有行被清空的主页不应被投影回写，实际 %+v", pixivHomepage)
+	}
+	// 非注册键行保留（无删除分支）
+	if got := queryStringForSite(t, db, "SELECT site_name FROM site WHERE site_key = ?", "ghost-key"); got != "幽灵站" {
+		t.Fatalf("非注册键行应原样保留，实际 site_name=%q", got)
+	}
+	// 缺失键（bilibili/local）补建：总数 = 预置 2 行 + 注册表其余条目
+	if got, want := siteRowCount(t, db), int64(2+len(identity.All())-1); got != want {
+		t.Fatalf("投影后站点行数=%d，期望 %d（既有 2 行保留 + 缺失键补建）", got, want)
+	}
+}
+
+// queryStringForSite 单值字符串查询（SQL NULL 落空串，测试断言用）
+func queryStringForSite(t *testing.T, db *gorm.DB, query string, args ...any) string {
 	t.Helper()
-	err := svc.Delete(context.Background(), 1)
-	if err == nil {
-		t.Fatal("站点删除应被守卫拒绝，实际成功")
+	var ns sql.NullString
+	if err := db.Raw(query, args...).Scan(&ns).Error; err != nil {
+		t.Fatalf("查询失败 %s: %v", query, err)
 	}
-	if !errors.Is(err, site.ErrSiteHasReferences) {
-		t.Fatalf("应返回 ErrSiteHasReferences（errors.Is 判别），实际 %v", err)
+	if !ns.Valid {
+		return ""
 	}
-	if !strings.Contains(err.Error(), "无法删除站点") {
-		t.Fatalf("错误消息应以无法删除站点开头，实际 %q", err.Error())
-	}
-	for _, part := range wantMsgParts {
-		if !strings.Contains(err.Error(), part) {
-			t.Fatalf("错误消息应含 %q，实际 %q", part, err.Error())
-		}
-	}
-	if !siteRowExists(t, db) {
-		t.Fatal("守卫拒绝后站点行应保留")
-	}
-}
-
-// mkWork 建挂在站点 1 下的作品行
-func mkWork(t *testing.T, db *gorm.DB, siteWorkId string) {
-	t.Helper()
-	w := entity.NewWork()
-	w.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-	w.SiteWorkID = sql.NullString{String: siteWorkId, Valid: true}
-	if err := db.Create(w).Error; err != nil {
-		t.Fatalf("建作品 %s 失败: %v", siteWorkId, err)
-	}
-}
-
-// softDeleteWorkById 打软删标志（毫秒时间戳非零=已删）
-func softDeleteWorkById(t *testing.T, db *gorm.DB, siteWorkId string) {
-	t.Helper()
-	if err := db.Exec("UPDATE work SET deleted_at = 1000 WHERE site_work_id = ?", siteWorkId).Error; err != nil {
-		t.Fatalf("软删作品 %s 失败: %v", siteWorkId, err)
-	}
-}
-
-// mkWorkSet 建挂在站点 1 下的作品集行
-func mkWorkSet(t *testing.T, db *gorm.DB, siteWorkSetId string) {
-	t.Helper()
-	ws := entity.NewWorkSet()
-	ws.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-	ws.SiteWorkSetID = sql.NullString{String: siteWorkSetId, Valid: true}
-	if err := db.Create(ws).Error; err != nil {
-		t.Fatalf("建作品集 %s 失败: %v", siteWorkSetId, err)
-	}
-}
-
-// softDeleteWorkSetById 打软删标志（毫秒时间戳非零=已删）
-func softDeleteWorkSetById(t *testing.T, db *gorm.DB, siteWorkSetId string) {
-	t.Helper()
-	if err := db.Exec("UPDATE work_set SET deleted_at = 1000 WHERE site_work_set_id = ?", siteWorkSetId).Error; err != nil {
-		t.Fatalf("软删作品集 %s 失败: %v", siteWorkSetId, err)
-	}
-}
-
-// TestDeleteSiteGuard 站点删除纯守卫：五类引用（作品活/软删行、任务、作品集活/软删行、站点标签、
-// 站点作者）任一存在即拒绝——errors.Is(ErrSiteHasReferences) 成立、消息含对应计数与清理指引、
-// 站点行保留；全部为零 → 删除成功。预置子行均以站点行种子为父（外键强制）
-func TestDeleteSiteGuard(t *testing.T) {
-	t.Run("WorkAliveRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWork(t, db, "w-1")
-		assertRejected(t, svc, db, "作品 1", "在作品页删除相关作品")
-	})
-
-	t.Run("WorkDeletedRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWork(t, db, "w-1")
-		softDeleteWorkById(t, db, "w-1")
-		assertRejected(t, svc, db, "回收站中作品 1", "在回收站彻底删除相关作品")
-	})
-
-	t.Run("WorkAliveAndDeletedAggregated", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWork(t, db, "w-1")
-		mkWork(t, db, "w-2")
-		mkWork(t, db, "w-3")
-		softDeleteWorkById(t, db, "w-3")
-		assertRejected(t, svc, db,
-			"作品 3（含回收站 1）",
-			"在作品页删除相关作品", "在回收站彻底删除相关作品")
-	})
-
-	t.Run("TaskRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		taskRow := entity.NewTask()
-		taskRow.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-		taskRow.TaskName = sql.NullString{String: "任务一", Valid: true}
-		if err := db.Create(taskRow).Error; err != nil {
-			t.Fatalf("建任务失败: %v", err)
-		}
-		assertRejected(t, svc, db, "任务 1", "在任务列表删除相关任务")
-	})
-
-	t.Run("WorkSetAliveRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWorkSet(t, db, "ws-1")
-		assertRejected(t, svc, db, "作品集 1", "在作品集页删除相关作品集")
-	})
-
-	t.Run("WorkSetDeletedRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWorkSet(t, db, "ws-1")
-		softDeleteWorkSetById(t, db, "ws-1")
-		assertRejected(t, svc, db, "回收站中作品集 1", "在回收站彻底删除相关作品集")
-	})
-
-	t.Run("SiteTagRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		tag := entity.NewSiteTag()
-		tag.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-		tag.SiteTagID = sql.NullString{String: "st-1", Valid: true}
-		if err := db.Create(tag).Error; err != nil {
-			t.Fatalf("建站点标签失败: %v", err)
-		}
-		assertRejected(t, svc, db, "站点标签 1", "在站点标签页删除相关标签")
-	})
-
-	t.Run("SiteAuthorRow", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		author := entity.NewSiteAuthor()
-		author.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-		author.SiteAuthorID = sql.NullString{String: "sa-1", Valid: true}
-		if err := db.Create(author).Error; err != nil {
-			t.Fatalf("建站点作者失败: %v", err)
-		}
-		assertRejected(t, svc, db, "站点作者 1", "在站点作者页删除相关作者")
-	})
-
-	t.Run("AllCategoriesTogether", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		mkWork(t, db, "w-1")
-		taskRow := entity.NewTask()
-		taskRow.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-		if err := db.Create(taskRow).Error; err != nil {
-			t.Fatalf("建任务失败: %v", err)
-		}
-		tag := entity.NewSiteTag()
-		tag.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-		tag.SiteTagID = sql.NullString{String: "st-1", Valid: true}
-		if err := db.Create(tag).Error; err != nil {
-			t.Fatalf("建站点标签失败: %v", err)
-		}
-		assertRejected(t, svc, db,
-			"作品 1", "任务 1", "站点标签 1",
-			"在作品页删除相关作品", "在任务列表删除相关任务", "在站点标签页删除相关标签")
-	})
-
-	t.Run("NoReferencesDeletesSite", func(t *testing.T) {
-		svc, db := newGuardTestEnv(t)
-		seedSite(t, db)
-		if err := svc.Delete(context.Background(), 1); err != nil {
-			t.Fatalf("五类引用全空时删除站点应成功，实际失败: %v", err)
-		}
-		if siteRowExists(t, db) {
-			t.Fatal("删除成功后站点行应不存在")
-		}
-	})
+	return ns.String
 }

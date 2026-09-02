@@ -55,7 +55,6 @@ type Repository interface {
 
 	// ===== 批量写入（保留实体自带 create_time/update_time；ID 由数据库自增分配并回填）=====
 
-	CreateSites(ctx context.Context, rows []*entity.Site) error
 	CreateLocalTags(ctx context.Context, rows []*entity.LocalTag) error
 	CreateLocalAuthors(ctx context.Context, rows []*entity.LocalAuthor) error
 	CreateSiteTags(ctx context.Context, rows []*entity.SiteTag) error
@@ -196,10 +195,6 @@ func (r *repository) ListReWorkWorkSetsByWorkIds(ctx context.Context, workIds []
 	var rows []*entity.ReWorkWorkSet
 	err := r.dbFromCtx(ctx).Where("work_id IN ?", workIds).Find(&rows).Error
 	return rows, err
-}
-
-func (r *repository) CreateSites(ctx context.Context, rows []*entity.Site) error {
-	return createBatchPreservingTimestamps(ctx, r.dbFromCtx(ctx), rows)
 }
 
 func (r *repository) CreateLocalTags(ctx context.Context, rows []*entity.LocalTag) error {

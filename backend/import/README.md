@@ -16,8 +16,8 @@
 
 ## 核心概念
 - **ManifestIngestor**（能力接口）：`Ingest(ctx, manifest, fileSource)`——fileSource 为包内路径→内容流的文件源（zip 打开器与分享拉取流各自实现，导入核心不感知来源）。
-- **查重语义（方案决策15）**：作品/作品集按 `site_id+site_work_id`（`site_work_set_id`）联合键查重，命中整体跳过（关联/资源一概不动）；站点按 `site_key` find-or-create（manifest `SiteRecord` 携带必填 `siteKey`，未注册键导入报错；站点身份规范见 `doc/site-identity-spec.md`）；本地标签/本地作者按名称 find-or-create（同名复用，歧义归 todo#10 合并功能）；站点标签/站点作者按（`site_key` 解析的站点 + `site_tag_id`/`site_author_id`）复合身份匹配（与 work 模块 upsert 复合键口径一致）。无站点身份的作品/作品集无跨库稳定身份，恒新建（重复导入会重复建，属查重兜底范围外）。
-- **三相推进**：①只读预检（既有站点键映射 + 作品查重圈定待建集）→ ②文件落盘（仅待建作品；路径冲突派生 `_import<n>` 变体，不改写既有文件）→ ③单事务入库（find-or-create 主数据 + 新建作品/资源/挂载/关联，全部导出库 ID→本库 ID 重映射）。②先于事务（文件 IO 不占唯一 DB 连接），任一相位失败对已落盘文件补偿清理（物理删，不留半成品）。
+- **查重语义（方案决策15）**：作品/作品集按 `site_id+site_work_id`（`site_work_set_id`）联合键查重，命中整体跳过（关联/资源一概不动）；站点按 `site_key` find-only（manifest `SiteRecord` 携带必填 `siteKey`，未注册键导入报错；注册键的本库站点行由启动期注册表投影保证存在，缺失属数据异常显式报错；站点身份规范见 `doc/site-identity-spec.md`）；本地标签/本地作者按名称 find-or-create（同名复用，歧义归 todo#10 合并功能）；站点标签/站点作者按（`site_key` 解析的站点 + `site_tag_id`/`site_author_id`）复合身份匹配（与 work 模块 upsert 复合键口径一致）。无站点身份的作品/作品集无跨库稳定身份，恒新建（重复导入会重复建，属查重兜底范围外）。
+- **三相推进**：①只读预检（既有站点键映射 + 作品查重圈定待建集）→ ②文件落盘（仅待建作品；路径冲突派生 `_import<n>` 变体，不改写既有文件）→ ③单事务入库（站点 find-only、标签/作者 find-or-create + 新建作品/资源/挂载/关联，全部导出库 ID→本库 ID 重映射）。②先于事务（文件 IO 不占唯一 DB 连接），任一相位失败对已落盘文件补偿清理（物理删，不留半成品）。
 - **保真面**：作品/作品集/标签/作者字段与源库时间戳原样落库；namespace（site_tag 行 + re_work_tag 关联级）、role/sort、作品集父边双轨排序、封面、标签层级全保真；同名坍缩令多条 manifest 关联落同一本库行时按唯一索引键折叠、保留首条属性。
 - **降级面**：源库 task_id 不落地（NULL——导入资源非本库任务产出）；挂载缺席（决策4 源文件缺失/无包内路径）跳过该挂载不报错；引用悬空（父标签/桥接/封面指向 manifest 外）按 NULL 落库；环状标签引用按根标签降级。
 

@@ -256,7 +256,6 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	hostDeps := &pluginsdktransport.HostDeps{
 		StorageProvider:         &hostStorageProvider{ctx: deps.PluginCtx},
 		PluginRootProvider:      &hostPluginRootProvider{ctx: deps.PluginCtx},
-		SiteSaveProvider:        &hostSiteSaveProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
 		StorePathQueryProvider:  &hostStorePathProvider{ctx: deps.PluginCtx},
@@ -564,14 +563,6 @@ type hostStorePathProvider struct {
 
 func (p *hostStorePathProvider) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
 	return p.ctx.GetStoreRelPath(taskId, role, storeSeq)
-}
-
-type hostSiteSaveProvider struct {
-	ctx sdkdto.PluginContext
-}
-
-func (p *hostSiteSaveProvider) AddSite(_ context.Context, sites []*sdkdto.SiteDTO) error {
-	return p.ctx.AddSite(sites)
 }
 
 type hostTaskCreateProvider struct {

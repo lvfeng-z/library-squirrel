@@ -28,20 +28,11 @@ import * as gen$0 from "../../../lvfeng-z/library-squirrel-sdk/gen/models.js";
 import * as $models from "./models.js";
 
 /**
- * Delete 删除站点
- */
-export function Delete(id: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(2412603777, id).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * GetById 根据ID获取
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.SiteDTO | null> | null> {
     return $Call.ByID(3918720310, id).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -50,7 +41,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
  */
 export function QueryPage(page: model$0.Page<dto$0.SiteDTO> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteDTO> | null> | null> {
     return $Call.ByID(1393573905, page, query).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType7($result);
     });
 }
 
@@ -59,7 +50,7 @@ export function QueryPage(page: model$0.Page<dto$0.SiteDTO> | null, query: $mode
  */
 export function QuerySelectItemPage(page: model$0.Page<dto$1.SelectItem> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$1.SelectItem> | null> | null> {
     return $Call.ByID(2991076938, page, query).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType12($result);
     });
 }
 
@@ -68,23 +59,23 @@ export function QuerySelectItemPage(page: model$0.Page<dto$1.SelectItem> | null,
  */
 export function Update(site: dto$0.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2051714543, site).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType14($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType0 = gen$0.SiteDTO.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = gen$0.SiteDTO.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
+const $$createType4 = model$0.Page.createFrom($$createType0);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$0.Page.createFrom($$createType2);
+const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = model$0.ApiResponse.createFrom($$createType7);
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = dto$1.SelectItem.createFrom;
-const $$createType11 = model$0.Page.createFrom($$createType10);
+const $$createType8 = dto$1.SelectItem.createFrom;
+const $$createType9 = model$0.Page.createFrom($$createType8);
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
+const $$createType13 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType14 = $Create.Nullable($$createType13);

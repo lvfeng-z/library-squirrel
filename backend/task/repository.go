@@ -381,16 +381,6 @@ func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*doma
 	return r.ListStatus(ctx, ids)
 }
 
-// CountBySiteId 统计站点的任务引用行数（站点删除守卫用，由 site 经窄接口注入；task 无软删）
-func (r *TaskRepository) CountBySiteId(ctx context.Context, siteId int64) (int64, error) {
-	var count int64
-	err := r.dbFromCtx(ctx).WithContext(ctx).
-		Model(new(domain.Task)).
-		Where("site_id = ?", siteId).
-		Count(&count).Error
-	return count, err
-}
-
 // ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（置 NULL=非任务产）。
 // 任务行删除链的前置步：外键强制下引用未清即删任务行被拒；子任务行同随删除链消亡，引用面一并覆盖
 func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) error {

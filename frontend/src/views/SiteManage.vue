@@ -47,8 +47,7 @@ const siteOperationButton: OperationItem<SiteDTO>[] = [
     rule: (row) => siteChangedRows.value.includes(row)
   },
   { label: '查看', icon: 'view', code: DialogMode.VIEW },
-  { label: '编辑', icon: 'edit', code: DialogMode.EDIT },
-  { label: '删除', icon: 'delete', code: 'delete' }
+  { label: '编辑', icon: 'edit', code: DialogMode.EDIT }
 ]
 // 站点的表头
 const siteThead: Ref<Thead<SiteDTO>[]> = ref([
@@ -167,9 +166,6 @@ function handleSiteRowButtonClicked(op: DataTableOperationResponse<SiteDTO>) {
       siteDialogData.value = op.data
       siteDialogState.value = true
       break
-    case 'delete':
-      deleteSite(Number(op.id))
-      break
     default:
       break
   }
@@ -182,16 +178,6 @@ async function saveSiteRowEdit(newData: SiteDTO) {
     ApiUtil.msg(response)
     const index = siteChangedRows.value.indexOf(newData)
     siteChangedRows.value.splice(index, 1)
-  } catch (e) {
-    ElMessage.error((e as Error).message)
-  }
-}
-// 删除站点
-async function deleteSite(id: number) {
-  try {
-    const response = await siteApi.siteDeleteById(id)
-    ApiUtil.msg(response)
-    await siteSearchTable.value.doSearch()
   } catch (e) {
     ElMessage.error((e as Error).message)
   }

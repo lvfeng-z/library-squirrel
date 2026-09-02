@@ -269,8 +269,7 @@ func main() {
     pluginsdk.Serve(&MyTaskHandler{},
         pluginsdk.WithBrowser(&MySiteBrowser{}),       // 可选，注册 SiteBrowser
         pluginsdk.WithActivate(func(ctx sdkdto.PluginContext) {
-            // 在此注册扩展点、添加站点、监听 URL 等
-            ctx.AddSite([]*sdkdto.SiteDTO{...})
+            // 在此注册扩展点、监听 URL 等（站点行由主程序按 identity 注册表自动投影，插件无需建站）
             ctx.RegisterTaskHandler("main", "名称", "描述", &MyTaskHandler{})
             ctx.RegisterSiteBrowser("main", "名称", "描述", &MySiteBrowser{})
             ctx.RegisterUrlListener("main", []string{`https?://example\.com/.*`})
@@ -291,7 +290,7 @@ func main() {
 
 ## 五、PluginContext 完整 API
 
-`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 21 个方法：
+`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 22 个方法：
 
 | 分类 | 方法 | 签名 |
 |---|---|---|
@@ -303,7 +302,6 @@ func main() {
 | | `SetValueEncrypted` | `(key, value string) error` |
 | | `DeleteValue` | `(key string) error` |
 | | `GetAllValues` | `() (map[string]*StorageValue, error)` |
-| 站点写入 | `AddSite` | `(sites []*SiteDTO) error` — 键经 SDK `identity` 注册表校验（未注册键拒绝），见「十九、站点注册与站点身份」 |
 | 任务 | `RegisterUrlListener` | `(extensionId string, patterns []string) error` |
 | | `UnregisterUrlListener` | `(extensionId string) error`（空则清该插件全部监听） |
 | | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
@@ -311,6 +309,7 @@ func main() {
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
 | | `UnsubscribeFrontend` | `(topic string) error` |
 | 路径 | `GetPluginRoot` | `(isRelative bool) string` |
+| | `GetStoreRelPath` | `(taskId int64, role string, storeSeq int) (string, error)` — 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建，故按 `taskId` 查、主程序映射到当前 `PendingResourceID`。供 document lazy 生成等路径可知后按真实文件名引用兄弟文件 |
 | 窗口 | `GetMainWindowHandle` | `() uintptr` |
 | 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | `(template string, args ...any)` |
 | | `GetLogger` | `() Logger`（可 `Named(...)` 派生子 logger） |
@@ -917,7 +916,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 
 ### 何时需要注册
 
-你的插件要对接**注册表未收录的新站点**、并在激活时 `AddSite` 落库该站点——首次 `AddSite` 前必须完成注册，否则主程序报「站点键未注册」拒绝（报错文案即注册指引）。已收录站点（pixiv/bilibili/local，清单见 `identity/registry.go`）直接引用常量即可，无需注册。
+你的插件要对接**注册表未收录的新站点**时须先完成注册——站点行由主程序在启动期按注册表自动投影建行（`identity.All()` → insert-only，落注册表权威值），插件无需建站也无建站入口；未注册键的产物在导入/分享接收处被直接拒绝（报错文案即注册指引）。已收录站点（pixiv/bilibili/local，清单见 `identity/registry.go`）直接引用常量即可，无需注册。
 
 ### 注册步骤（PR 自助）
 
@@ -935,25 +934,13 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
    ```
    虚拟站点（无真实主页）`Homepage` 留空串。
 3. **维护者合并**：合并时查重（键值、常量名不与既有条目冲突，键值与站点官方品牌名一致）。
-4. **生效预期**：注册表随 SDK 发布、主程序随 SDK 更新发布后生效——「合并 + 下次主程序发布」两步时延，注册时预留此窗口。判定：主程序 `AddSite` 不再报未注册。
+4. **生效预期**：注册表随 SDK 发布、主程序随 SDK 更新发布后生效——「合并 + 下次主程序发布」两步时延，注册时预留此窗口。判定：主程序启动后站点管理页经投影出现该站点行，且携带该键的产物导入/分享接收不再报未注册。
 
 注册表只增不改：键一经发布永不重排、永不复用；站点改名只改权威名，键不动。
 
 ### 插件内使用 identity.* 常量（官方插件实例）
 
-**AddSite**（激活时注册站点；pixiv 插件 `activate.go`，localImport 同型用 `identity.Local.Key`）：
-
-```go
-import "github.com/lvfeng-z/library-squirrel-sdk/identity"
-
-// 注册站点（站点名/主页由 identity 注册表权威给定，按键查重，重复注册静默跳过）
-if err := ctx.AddSite([]*sdkdto.SiteDTO{
-    {SiteKey: identity.Pixiv.Key},
-}); err != nil {
-    ctx.Errorf("注册站点失败: %v", err)
-    return
-}
-```
+站点行由主程序启动期按 `identity` 注册表自动投影建行，插件无需建站也无建站入口——插件侧引用 `identity.*` 常量的场景是 Create 应答携带站点键：
 
 **Create 应答带 SiteKey**（pixiv 插件 `task_handler.go`；必填——主程序按键解析站点归属，缺失则该响应被跳过）：
 

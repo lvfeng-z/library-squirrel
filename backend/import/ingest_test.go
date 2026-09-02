@@ -47,8 +47,8 @@ func (t *testTransactor) ExecInTransaction(ctx context.Context, fn func(ctx cont
 }
 
 // newTestSetup 建内存库（migration.OpenTestDB 全量迁移 + 外键强制）+ 真实 persistentStore
-// 服务（workDir 指向测试临时目录），并预置既有站点/同名本地标签（验证 find-or-create 复用
-// 与导出库 ID → 本库 ID 重映射）。
+// 服务（workDir 指向测试临时目录），并预置全量注册站点行/同名本地标签（站点行须已在——
+// 导入为 find-only；标签验证 find-or-create 复用与导出库 ID → 本库 ID 重映射）。
 func newTestSetup(t *testing.T) (ManifestIngestor, *gorm.DB, *persistentStore.Service, string) {
 	t.Helper()
 	db, workDir := newTestDB(t)
@@ -57,8 +57,9 @@ func newTestSetup(t *testing.T) (ManifestIngestor, *gorm.DB, *persistentStore.Se
 	return ing, db, psService, workDir
 }
 
-// newTestDB 建内存库（migration.OpenTestDB 全量迁移 + 外键强制）+ 预置既有站点/同名本地标签
-// （验证 find-or-create 复用与导出库 ID → 本库 ID 重映射），并建临时工作目录。
+// newTestDB 建内存库（migration.OpenTestDB 全量迁移 + 外键强制）+ 预置全量注册站点行与
+// 同名本地标签（模拟启动期注册表投影后的库态——站点导入为 find-only，站点行须已在），
+// 并建临时工作目录。
 func newTestDB(t *testing.T) (*gorm.DB, string) {
 	t.Helper()
 	logger.Log = zap.NewNop().Sugar() // 测试期 logger 未初始化，置 nop 防日志调用 panic
@@ -67,9 +68,23 @@ func newTestDB(t *testing.T) (*gorm.DB, string) {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
 	// 预置行：占住自增 id=1，令导入行必然重映射到不同 ID（重映射语义可断言）。
-	// 键取 Local 注册键（与 fixture 的 pixiv 键不同站，验证按键互不误合并）
+	// local 键取非注册表展示名（模拟用户改名），验证复用行的展示名不被 manifest 覆盖
 	if err := db.Exec("INSERT INTO site (site_key, site_name, create_time, update_time) VALUES (?, 'seed-site', 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("预置站点失败: %v", err)
+	}
+	// 其余注册键按注册表权威值预置（等价启动期投影同步的落库结果；无主页条目落 NULL）
+	for _, entry := range identity.All() {
+		if entry.Key == identity.Local.Key {
+			continue
+		}
+		var homepage interface{}
+		if entry.Homepage != "" {
+			homepage = entry.Homepage
+		}
+		if err := db.Exec("INSERT INTO site (site_key, site_name, homepage, create_time, update_time) VALUES (?, ?, ?, 0, 0)",
+			entry.Key, entry.Name, homepage).Error; err != nil {
+			t.Fatalf("预置注册站点 %s 失败: %v", entry.Key, err)
+		}
 	}
 	if err := db.Exec("INSERT INTO local_tag (local_tag_name, create_time, update_time) VALUES ('同名标签', 0, 0)").Error; err != nil {
 		t.Fatalf("预置本地标签失败: %v", err)
@@ -202,7 +217,8 @@ func queryString(t *testing.T, db *gorm.DB, query string, args ...any) string {
 func assertRowCounts(t *testing.T, db *gorm.DB, label string) {
 	t.Helper()
 	expected := map[string]int64{
-		"site": 2, "local_tag": 3, "site_tag": 1, "local_author": 1, "site_author": 1,
+		"site":      int64(len(identity.All())), // 启动投影态：注册表全量站点行
+		"local_tag": 3, "site_tag": 1, "local_author": 1, "site_author": 1,
 		"work": 1, "resource": 2, "resource_store": 2, "persistent_store": 2,
 		"re_work_tag": 2, "re_work_author": 2, "re_work_work_set": 1, "re_work_set_work_set": 1,
 	}
@@ -228,7 +244,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	if r1.CreatedWorks != 1 || r1.SkippedWorks != 0 || r1.CreatedWorkSets != 2 || r1.SkippedWorkSets != 0 {
 		t.Fatalf("首次导入作品/作品集计数不符: %+v", r1)
 	}
-	if r1.CreatedSites != 1 || r1.CreatedLocalTags != 2 || r1.CreatedSiteTags != 1 ||
+	if r1.CreatedLocalTags != 2 || r1.CreatedSiteTags != 1 ||
 		r1.CreatedLocalAuthors != 1 || r1.CreatedSiteAuthors != 1 {
 		t.Fatalf("首次导入主数据计数不符: %+v", r1)
 	}
@@ -237,7 +253,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	}
 
 	// ===== ① DB 语义保真 =====
-	// 站点：按键 find-or-create 新建，ID 与导出库（100）不同（重映射生效）
+	// 站点：pixiv 行由预置提供（find-only 复用），ID 与导出库（100）不同（重映射生效）
 	siteID := queryInt64(t, db, "SELECT id FROM site WHERE site_key = ?", identity.Pixiv.Key)
 	if siteID == 0 || siteID == 100 {
 		t.Fatalf("站点应按键新建且重映射，实际 id=%d", siteID)
@@ -396,7 +412,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	if r2.CreatedWorks != 0 || r2.SkippedWorks != 1 || r2.CreatedWorkSets != 0 || r2.SkippedWorkSets != 2 {
 		t.Fatalf("二次导入应全量查重跳过: %+v", r2)
 	}
-	if r2.CreatedSites != 0 || r2.CreatedLocalTags != 0 || r2.CreatedSiteTags != 0 ||
+	if r2.CreatedLocalTags != 0 || r2.CreatedSiteTags != 0 ||
 		r2.CreatedLocalAuthors != 0 || r2.CreatedSiteAuthors != 0 {
 		t.Fatalf("二次导入主数据应全量复用: %+v", r2)
 	}
@@ -427,15 +443,14 @@ func TestManifestSchemaVersionGate(t *testing.T) {
 	if !errors.Is(err, ErrSchemaVersionUnsupported) {
 		t.Fatalf("旧版本 manifest 应被版本门拒绝，实际 err=%v", err)
 	}
-	if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != 1 {
-		t.Fatalf("版本拒绝后不应新建站点，实际 site 行数=%d（仅预置 1 行）", got)
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != int64(len(identity.All())) {
+		t.Fatalf("版本拒绝后站点行应维持预置 %d 行，实际 %d 行", len(identity.All()), got)
 	}
 }
 
-// TestIngestSiteKeyFindOrCreate 站点按键 find-or-create：本库已有同键站点行时复用（不新建、
-// 展示名不被 manifest 覆盖）；本库无该键时新建且名称/主页取注册表权威值（manifest 携带的
-// 站点展示信息不落库）。
-func TestIngestSiteKeyFindOrCreate(t *testing.T) {
+// TestIngestSiteKeyFindOnly 站点按键 find-only：本库已有同键站点行时复用（展示名不被
+// manifest 覆盖）；注册键的本库站点行缺失（启动投影下属数据库异常）显式报错，不静默自建。
+func TestIngestSiteKeyFindOnly(t *testing.T) {
 	ing, db, _, _ := newTestSetup(t)
 	ctx := context.Background()
 
@@ -443,12 +458,8 @@ func TestIngestSiteKeyFindOrCreate(t *testing.T) {
 	manifest, files := buildFixture()
 	manifest.Sites[0].SiteKey = identity.Local.Key
 	manifest.Sites[0].SiteName = strPtr("本地站-改名后")
-	r, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil)
-	if err != nil {
+	if _, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil); err != nil {
 		t.Fatalf("导入失败: %v", err)
-	}
-	if r.CreatedSites != 0 {
-		t.Fatalf("同键站点应复用既有行不新建，实际新建 %d", r.CreatedSites)
 	}
 	if got := queryString(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Local.Key); got != "seed-site" {
 		t.Fatalf("复用行的展示名不应被 manifest 覆盖，实际 %q", got)
@@ -458,23 +469,23 @@ func TestIngestSiteKeyFindOrCreate(t *testing.T) {
 		t.Fatalf("作品应挂到复用的本库站点行，实际 site_id=%d 期望 %d", workSite, preset)
 	}
 
-	// 新建分支：本库无 pixiv 键行，manifest 声明非权威展示名，新建行取注册表权威名/主页
+	// 缺行报错分支：删除 pixiv 键行制造数据库异常（注册键经投影行必在，缺失属异常）
+	if err := db.Exec("DELETE FROM site WHERE site_key = ?", identity.Pixiv.Key).Error; err != nil {
+		t.Fatalf("删除 pixiv 站点行失败: %v", err)
+	}
 	manifest2, files2 := buildFixture()
-	manifest2.Sites[0].SiteName = strPtr("P站-改名后")
 	manifest2.Works[0].SiteWorkID = strPtr("w-2")
 	manifest2.WorkSets = nil
-	r2, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), nil)
-	if err != nil {
-		t.Fatalf("导入失败: %v", err)
+	_, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), nil)
+	if !errors.Is(err, ErrSiteRowMissing) {
+		t.Fatalf("注册键的本库站点行缺失应报错，实际 err=%v", err)
 	}
-	if r2.CreatedSites != 1 {
-		t.Fatalf("无既有键行应新建站点，实际新建 %d", r2.CreatedSites)
+	// 缺行报错不静默自建站点行、不残留入库作品
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM site WHERE site_key = ?", identity.Pixiv.Key); got != 0 {
+		t.Fatalf("缺行报错不应静默自建站点行，实际 %d 行", got)
 	}
-	if got := queryString(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Pixiv.Key); got != identity.Pixiv.Name {
-		t.Fatalf("新建站点名应取注册表权威值 %q，实际 %q", identity.Pixiv.Name, got)
-	}
-	if got := queryString(t, db, "SELECT homepage FROM site WHERE site_key = ?", identity.Pixiv.Key); got != identity.Pixiv.Homepage {
-		t.Fatalf("新建站点主页应取注册表权威值 %q，实际 %q", identity.Pixiv.Homepage, got)
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM work WHERE site_work_id = 'w-2'"); got != 0 {
+		t.Fatalf("缺行报错不应入库作品，实际 %d 行", got)
 	}
 }
 
@@ -493,8 +504,8 @@ func TestIngestUnregisteredKeyFails(t *testing.T) {
 			if got := queryInt64(t, db, "SELECT COUNT(*) FROM work"); got != 0 {
 				t.Fatalf("拒绝后不应入库作品，实际 %d 行", got)
 			}
-			if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != 1 {
-				t.Fatalf("拒绝后不应新建站点，实际 %d 行（仅预置 1 行）", got)
+			if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != int64(len(identity.All())) {
+				t.Fatalf("拒绝后站点行应维持预置 %d 行，实际 %d 行", len(identity.All()), got)
 			}
 		})
 	}

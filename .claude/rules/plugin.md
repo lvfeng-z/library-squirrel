@@ -256,7 +256,6 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 | 类别 | SDK 方法 | 说明 |
 |------|----------|------|
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
-| 数据写入 | `AddSite` | 向主库插入站点记录——键经 SDK `identity` 注册表校验（`identity.Lookup`），未注册键报错拒绝（文案含 PR 注册指引）；已注册按键查重跳过、新建取注册表权威名/主页（插件自报名称被忽略）。规范见 `doc/site-identity-spec.md` |
 | 数据查询 | `GetStoreRelPath(taskId, role, storeSeq)` | 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建（`PendingResourceID` 未置位），故按 `taskId` 查、主程序映射到当前 `PendingResourceID`。供插件在路径可知后（如 document lazy 生成）按真实文件名引用兄弟文件 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。读取返回 `*StorageValue`（明文 `Value` + `SchemaVersion`）；写入时主程序按插件声明的 `configSchemaVersion`（plugin.json 顶层，与 `contractVersion` 正交——前者管插件配置结构、后者管 host↔plugin 协议）盖 `schema_version` 戳，供插件配置迁移感知（见 `doc/plugin-dev-guide.md` 8.3）。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |

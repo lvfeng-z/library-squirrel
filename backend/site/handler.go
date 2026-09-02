@@ -19,12 +19,7 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// ========== 增删改操作 ==========
-
-// Delete 删除站点
-func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
-	return model.HandleVoid(h.svc.Delete(ctx, id))
-}
+// ========== 增改操作 ==========
 
 // Update 更新站点
 func (h *Handler) Update(ctx context.Context, site *sdkdto.SiteDTO) *model.ApiResponse[any] {

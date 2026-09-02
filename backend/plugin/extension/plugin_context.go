@@ -2,18 +2,13 @@ package extension
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
-	"github.com/library-squirrel/backend/base/model/entity"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
-	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // --- Provider Interfaces ---
@@ -27,16 +22,6 @@ type PluginStorageService interface {
 	SetValueEncrypted(ctx context.Context, pluginID int64, key, value string, schemaVersion int64) error
 	DeleteValue(ctx context.Context, pluginID int64, key string) error
 	GetAllValues(ctx context.Context, pluginID int64) (map[string]*pluginsdkdto.StorageValue, error)
-}
-
-// SiteSaveProvider 站点保存
-type SiteSaveProvider interface {
-	Create(ctx context.Context, site *entity.Site) error
-}
-
-// SiteQueryProvider 站点查询
-type SiteQueryProvider interface {
-	GetByKey(ctx context.Context, siteKey string) (*entity.Site, error)
 }
 
 // TaskCreateProvider 任务创建
@@ -63,8 +48,6 @@ type PluginContextDeps struct {
 	TaskHandlerRegistry *TaskHandlerRegistry
 	SiteBrowserRegistry *SiteBrowserRegistry
 	Storage             PluginStorageService
-	SiteSave            SiteSaveProvider
-	SiteQuery           SiteQueryProvider
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
 	StorePath           StorePathQueryProvider
@@ -79,8 +62,6 @@ type pluginContext struct {
 	siteBrowserRegistry *SiteBrowserRegistry
 	rootPath            string
 	storage             PluginStorageService
-	siteSave            SiteSaveProvider
-	siteQuery           SiteQueryProvider
 	taskCreate          TaskCreateProvider
 	urlListener         UrlListenerRegistry
 	storePath           StorePathQueryProvider
@@ -104,8 +85,6 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 		siteBrowserRegistry: deps.SiteBrowserRegistry,
 		rootPath:            deps.RootPath,
 		storage:             deps.Storage,
-		siteSave:            deps.SiteSave,
-		siteQuery:           deps.SiteQuery,
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
 		storePath:           deps.StorePath,
@@ -167,41 +146,6 @@ func (pc *pluginContext) DeleteValue(key string) error {
 
 func (pc *pluginContext) GetAllValues() (map[string]*pluginsdkdto.StorageValue, error) {
 	return pc.storage.GetAllValues(context.Background(), pc.pluginInfo.ID)
-}
-
-// --- 业务查询 ---
-
-// AddSite 注册插件声明的站点。siteKey 须经 identity 注册表校验：未注册（含空键）报错拒绝，
-// 报错文案即注册渠道指引（新站点向 SDK identity 包提 PR 注册，随 SDK 发布生效）；
-// 已注册则按键查重（site_key 唯一身份），已存在跳过；新建行的 Name/Homepage 取注册表权威值，
-// 插件自报的名称/描述/主页不落库（站点展示信息以注册表为准）。
-func (pc *pluginContext) AddSite(sites []*pluginsdkdto.SiteDTO) error {
-	ctx := context.Background()
-	for _, site := range sites {
-		entry, ok := identity.Lookup(site.SiteKey)
-		if !ok {
-			return fmt.Errorf("站点键 %q 未注册：站点身份键由 SDK identity 注册表统一分配（品牌 slug，小写字母/数字/连字符），"+
-				"新站点请提 PR 至 github.com/lvfeng-z/library-squirrel-sdk 的 identity 包注册（键取站点官方品牌名），随 SDK 发布生效", site.SiteKey)
-		}
-		existing, err := pc.siteQuery.GetByKey(ctx, site.SiteKey)
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("add site: %w", err)
-		}
-		// record not found = 库中尚无该键的站点行，属首次落库的正常分支，走创建
-		if existing != nil {
-			continue
-		}
-		e := entity.NewSite()
-		e.SiteKey = entry.Key
-		e.SiteName = sql.NullString{String: entry.Name, Valid: true}
-		if entry.Homepage != "" {
-			e.Homepage = sql.NullString{String: entry.Homepage, Valid: true}
-		}
-		if err := pc.siteSave.Create(ctx, e); err != nil {
-			return fmt.Errorf("add site: %w", err)
-		}
-	}
-	return nil
 }
 
 // --- 任务 ---

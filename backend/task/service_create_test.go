@@ -100,7 +100,7 @@ func (fakeTransactor) ExecInTransaction(ctx context.Context, fn func(ctx context
 func newTestService(t *testing.T) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
-	siteSvc := site.NewService(fakeSiteRepo{}, fakeTransactor{}, nil, nil, nil, nil, nil) // 守卫计数提供方不触达（创建路径）
+	siteSvc := site.NewService(fakeSiteRepo{}) // 站点服务仅消费查询（创建路径）
 	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc)
 	return svc, repo
 }
@@ -518,7 +518,7 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	}
 
 	// 经生产构造函数组装（真实 task 仓储 + 真事务执行器 + 真实 site 服务）
-	siteSvc := site.NewService(site.NewRepository(db), nil, nil, nil, nil, nil, nil)
+	siteSvc := site.NewService(site.NewRepository(db))
 	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
 	ctx := context.Background()
 
@@ -863,7 +863,7 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
 
-	siteSvc := site.NewService(site.NewRepository(db), nil, nil, nil, nil, nil, nil)
+	siteSvc := site.NewService(site.NewRepository(db))
 	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
 
 	responses := []*sdkdto.TaskCreateResponse{
@@ -900,7 +900,7 @@ func (nilSiteRepo) Get(_ context.Context, _ *database.QueryOption) (*entity.Site
 // TestTaskCreateUnknownKeyFails 站点键解析失败的两种形态：键在库中查不到（未注册/未建行）报
 // ErrSiteNotFound 同型错误；键缺失报 ErrSiteKeyRequired。失败在字段填充阶段前置暴露，任务不落盘。
 func TestTaskCreateUnknownKeyFails(t *testing.T) {
-	siteSvc := site.NewService(nilSiteRepo{}, fakeTransactor{}, nil, nil, nil, nil, nil)
+	siteSvc := site.NewService(nilSiteRepo{})
 	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc)
 	siteCache := make(map[string]int)
 
