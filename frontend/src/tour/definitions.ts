@@ -15,7 +15,7 @@ export const builtinTours: TourDefinition[] = [
       {
         target: { route: 'settings', targetKey: 'settings.workdirInput' },
         title: '工作目录',
-        description: '在这里设置资源库的根目录，所有下载的资源都会保存到这里',
+        description: '在这里设置资源库的根目录，本软件管理的所有资源都会被保存到这个目录下，请确保这个目录有足够的空间，并且非必要的情况下不要更改此项',
       },
       {
         target: { route: 'taskManage', targetKey: 'taskManage.localImportButton' },
