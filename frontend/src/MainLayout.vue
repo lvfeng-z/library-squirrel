@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
@@ -11,16 +11,35 @@ import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue
 import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
 import ShareReceiveDialog from '@renderer/components/dialogs/ShareReceiveDialog.vue'
 import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
+import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
+import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 
 const router = useRouter()
 const route = useRoute()
 const notificationListState = ref(false)
+const workdirStatus = useWorkdirStatusStore()
+const tourCenter = useTourCenterStore()
 
 // 外壳挂载即拉取插件更新待办：启动期检测（pre-Run InstallBundled）的结果在此进入前端，
 // 「插件」菜单红点与管理页待更新区块均消费本 store
 onMounted(() => {
   usePluginUpdateStore().refresh()
+  // 工作目录未配置的初始判定（拉取式）：向导未完成直接打开首启向导，否则展示常驻横幅；
+  // 运行期由 workdir:unconfigured 事件（MainIpcListener）升格横幅
+  void workdirStatus.refresh()
 })
+
+// 向导结束（完成/跳过）时工作目录仍未配置 → 升常驻横幅（首启向导被跳过时的补升）
+watch(() => tourCenter.isActive, (active, was) => {
+  if (was && !active) {
+    workdirStatus.onTourEnded()
+  }
+})
+
+// 横幅点击跳设置页完成工作目录配置
+async function gotoSettings() {
+  await router.push({ name: 'settings' })
+}
 
 // 根据当前路由路径判断是否显示关闭按钮（非主页时显示）
 const showCloseButton = computed(() => {
@@ -61,6 +80,15 @@ async function handleCloseCurrentView() {
       </el-aside>
 
       <el-main style="padding: 0">
+        <!-- 工作目录未配置常驻横幅：吸附内容区顶部，点击跳设置页（warn tone 令牌配色） -->
+        <div
+          v-if="workdirStatus.bannerVisible"
+          class="workdir-banner z-layer-3"
+          @click="gotoSettings"
+        >
+          <span>工作目录未配置，资源下载、备份与文件服务均不可用</span>
+          <span class="workdir-banner-action">前往设置</span>
+        </div>
         <router-view />
       </el-main>
     </el-container>
@@ -133,6 +161,26 @@ async function handleCloseCurrentView() {
 .main-background-task {
   align-self: center;
   height: 85%;
+}
+
+.workdir-banner {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: var(--el-font-size-base);
+  background-color: var(--app-status-warn-bg);
+  color: var(--app-status-warn-text);
+  border-bottom: 1px solid var(--app-status-warn-border);
+}
+
+.workdir-banner-action {
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 .aside-side-menu {

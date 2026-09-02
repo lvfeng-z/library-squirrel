@@ -4,6 +4,7 @@ import (
 	stdjson "encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/knadh/koanf/parsers/json"
@@ -32,8 +33,7 @@ func (s *Service) SetAfterSave(fn func(*Settings)) {
 // defaultSettings 返回默认配置
 func defaultSettings() *Settings {
 	return &Settings{
-		Initialized: false,
-		WorkDir:     "",
+		WorkDir: "",
 		WorkSettings: WorkSettings{
 			FileNameFormat: DefaultFileNameFormat,
 		},
@@ -155,7 +155,15 @@ func (s *Service) SaveSettings(changes []SettingChange) error {
 
 	// 将变更合并到 koanf
 	for _, change := range changes {
-		s.k.Set(change.Path, change.Value)
+		value := change.Value
+		// 工作目录去首尾空白后落库：空白串等同空串（=未配置），不以含空白的路径值进入
+		// 存储与路径拼接（读取侧按空串判定未配置，不做读取侧 Trim）
+		if change.Path == "workdir" {
+			if str, ok := value.(string); ok {
+				value = strings.TrimSpace(str)
+			}
+		}
+		s.k.Set(change.Path, value)
 	}
 
 	// 写回文件

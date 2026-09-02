@@ -298,6 +298,8 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 		}
 		app.TaskManagerService.SetPusher(pusher)
 	}
+	// 工作目录未配置通知的发射口接线（settings 包级发射口；闭包延迟读取发射器，规避初始化时序问题）
+	settings.SetUnconfiguredEmitter(func() settings.EventEmitter { return app.taskProgressEmitter })
 }
 
 // CreateAssetHandler 创建路由多路复用器并注册所有路由
@@ -988,6 +990,9 @@ func (app *App) initAdvancedServices() error {
 	// D7 开关即时生效：设置保存/重置后联动同步到 storeRegistry（避免改开关需重启）
 	app.SettingsService.SetAfterSave(func(s *settings.Settings) {
 		storeRegistry.SetSuppressEnabled(s.FsmonitorSettings.SuppressEnabled)
+		// /store/ 文件服务的工作目录快照随保存即时刷新（保存即生效，无需重启）；
+		// fsmonitor 懒启动经评估降级为重启生效（保存成功后前端提示），此处不联动
+		app.StoreFileHandler.SetWorkDir(s.WorkDir)
 	})
 	// 启动监控前规范化 file_path 分隔符（历史数据统一正斜杠，避免对账路径比对误报）
 	if n, err := app.PersistentStoreService.NormalizeFilePaths(context.Background()); err != nil {

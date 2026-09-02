@@ -12,6 +12,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	pkgerr "github.com/library-squirrel/backend/error"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
@@ -296,6 +297,11 @@ func (s *Service) fillWorkSetExpireDaysLeft(result *model.Page[dto.RecycleWorkSe
 // overwrite: 检测到 (site_id, site_work_id) 被活作品占位时是否覆盖（占位作品转入回收站）
 // 冲突且 overwrite=false 时返回 ErrRestoreConflict
 func (s *Service) RestoreWork(ctx context.Context, workId int64, overwrite bool) (int64, error) {
+	// 文件还原目标路径以库根为基准，未配置即整体拒绝（restoreWorkFiles 对单文件失败仅告警续走，
+	// 拒绝须在入口收口）
+	if err := settings.RefuseIfUnconfigured(s.workDirGetter(), "recycleBin"); err != nil {
+		return 0, err
+	}
 	// 1. 校验为已删条目
 	work, err := s.workRestorer.GetDeletedWork(ctx, workId)
 	if err != nil {
@@ -549,6 +555,10 @@ func (s *Service) PurgeStoreRecords(ctx context.Context, storeId int64) error {
 // 其自身可再复原——回滚即一次替换，机制单态）。前置：行已软删、有备份、挂载链可达活作品。
 // 关联零操作：本行关联保留（复活即挂载回位）、被置换行关联保留成死（双关联标准形态）
 func (s *Service) RestoreStore(ctx context.Context, storeId int64) error {
+	// 文件还原目标路径以库根为基准，未配置即整体拒绝
+	if err := settings.RefuseIfUnconfigured(s.workDirGetter(), "recycleBin"); err != nil {
+		return err
+	}
 	// 1. 校验：已删行 + 行内备份 + 挂载活作品
 	st, err := s.storeCleaner.GetDeletedStore(ctx, storeId)
 	if err != nil {
@@ -719,8 +729,14 @@ func (s *Service) PurgeWorkSet(ctx context.Context, workSetId int64) error {
 }
 
 // StartCleanup 启动 TTL 自动清理后台 goroutine（启动即清理一次，随后每 24h）
-// 必须在 NewService 后调用；应用关闭时调 Stop 终止
+// 必须在 NewService 后调用；应用关闭时调 Stop 终止。
+// 工作目录未配置（空串）时不启动：清理物理删除条目对应文件，空串基准下
+// 文件定位相对化为进程工作目录而非资源库
 func (s *Service) StartCleanup() {
+	if s.workDirGetter() == "" {
+		logger.Log.Infof("[RecycleBin] 工作目录未配置，回收站 TTL 自动清理未启动")
+		return
+	}
 	go s.cleanupLoop()
 }
 

@@ -22,6 +22,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/task"
 )
 
@@ -216,6 +217,7 @@ func fetchManifest(ctx context.Context, client *receiveClient) (*export.Manifest
 // absPath 域仅存在于 os 调用点现场 join）。落盘失败由调用方按决策5 回滚删树。
 func writeSharedManifestFile(workDir, relPath string, manifest *export.Manifest) error {
 	if workDir == "" {
+		settings.NotifyWorkDirUnconfigured("share")
 		return errors.New("工作目录未配置，无法保存分享清单")
 	}
 	data, err := manifest.Serialize()

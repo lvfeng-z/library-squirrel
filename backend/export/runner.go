@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/settings"
 )
 
 // 导出临时文件命名常量：最终 zip 的临时版本写在同一目录（目标盘同级，保证 rename 原子），
@@ -109,6 +110,8 @@ func (r *Runner) run(ctx context.Context, exportID string, workIDs, workSetIDs [
 
 	workDir := r.workDirFunc()
 	if workDir == "" {
+		// 请求期导出拒绝：领域文案经 complete 事件呈现，同时经统一发射口通知前端引导配置
+		settings.NotifyWorkDirUnconfigured("export")
 		emitComplete(false, "", ErrExportWorkDirEmpty.Error())
 		return
 	}

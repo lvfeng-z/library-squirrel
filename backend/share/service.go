@@ -29,6 +29,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/util"
 )
@@ -203,6 +204,7 @@ func (s *Service) Publish(ctx context.Context, workIDs []int64, workSetIDs []int
 		return "", ErrShareRelayNotConfigured
 	}
 	if s.workDir() == "" {
+		settings.NotifyWorkDirUnconfigured("share")
 		return "", ErrShareWorkDirEmpty
 	}
 	shareID := nextShareID()
@@ -486,6 +488,7 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 	}
 	workDir := s.workDir()
 	if workDir == "" {
+		settings.NotifyWorkDirUnconfigured("share")
 		fail(ErrShareWorkDirEmpty.Error())
 		return
 	}

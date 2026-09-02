@@ -1,6 +1,49 @@
 package persistentStore
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/library-squirrel/backend/settings"
+)
+
+// TestServiceEntriesRefuseUnconfiguredWorkDir 工作目录未配置（GetWorkDir 空串）时，
+// 各触碰库根文件系统的服务层入口一律返回 ErrWorkDirNotConfigured（判定先于仓储与磁盘访问，
+// 故 nil 仓储不可达）
+func TestServiceEntriesRefuseUnconfiguredWorkDir(t *testing.T) {
+	s := NewService(nil, nil, func() string { return "" })
+	ctx := t.Context()
+
+	assertRefused := func(name string, err error) {
+		t.Helper()
+		if !errors.Is(err, settings.ErrWorkDirNotConfigured) {
+			t.Errorf("%s 期望返回 ErrWorkDirNotConfigured，实际 %v", name, err)
+		}
+	}
+
+	_, _, err := s.StoreStream(ctx, "store/resource/a/1.jpg", "1.jpg")
+	assertRefused("StoreStream", err)
+
+	_, err = s.ResumeStream(ctx, 1, 0)
+	assertRefused("ResumeStream", err)
+
+	_, err = s.Store(ctx, "store/resource/a/1.jpg", "1.jpg", strings.NewReader("x"))
+	assertRefused("Store", err)
+
+	_, err = s.StoreFromExternal(ctx, "C:/tmp/src.jpg", "store/resource/a/1.jpg", "1.jpg")
+	assertRefused("StoreFromExternal", err)
+
+	_, err = s.HardDelete(ctx, 1, false)
+	assertRefused("HardDelete", err)
+
+	_, err = s.DeleteWithBackup(ctx, 1)
+	assertRefused("DeleteWithBackup", err)
+
+	assertRefused("SoftDeleteAndDiscardFile", s.SoftDeleteAndDiscardFile(ctx, 1))
+
+	assertRefused("CleanupFileResult", s.CleanupFileResult("store/resource/a/1.jpg"))
+}
 
 // TestUpdateFilePathRejectsOutsideWhitelist UpdateFilePath 拒绝 store/ 白名单外路径
 // （防误报的"移动到 backup"被确认同步后 file_path 指向备份目录等非受管文件）

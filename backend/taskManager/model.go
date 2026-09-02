@@ -19,6 +19,7 @@ import (
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/util/filename"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -890,9 +891,10 @@ func (m *ManagedTask) run() runResult {
 // runSectionCombo 板块组合执行:严格按 runMode 所选板块执行
 // 含任一资源板块(含全集)时走查重(ConfirmReplace 两段式)并产生终态;仅 workInfo 为非终态(保持执行前状态、不持久化)
 func (m *ManagedTask) runSectionCombo() runResult {
-	// workdir 检查（资源板块需要，置于查重前避免无效确认）
+	// workdir 检查（资源板块需要，置于查重前避免无效确认）；领域文案保留，同时经统一发射口通知前端
 	if m.runMode.storeScope.coversStores() && m.deps.WorkDirProvider.GetWorkDir() == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
+		settings.NotifyWorkDirUnconfigured("taskManager")
 		return m.comboFail("未配置资源库目录，请先在设置中指定资源库保存位置")
 	}
 
@@ -1584,6 +1586,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	workDir := m.deps.WorkDirProvider.GetWorkDir()
 	if workDir == "" {
 		logger.Log.Errorf("[TaskManager] 任务 %d 失败: 未配置资源库目录", m.taskId)
+		settings.NotifyWorkDirUnconfigured("taskManager")
 		m.setFailed("未配置资源库目录，请先在设置中指定资源库保存位置")
 		return runResultDone
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 )
@@ -212,8 +213,12 @@ func (s *ReplacementService) SoftDeleteWorkStoreRoles(ctx context.Context, workI
 // 再批量复活行（RestoreByIds 双列同清，顺带清 backup_id），随后清理已还原的备份清单行——
 // 行内 backup_id 未清时删清单行会撞 persistent_store.backup_id 外键拒绝；最后重算
 // victim 所属资源完整度（替换开始时被重置为未校验，须刷回回滚前状态）。
-// 内部失败为 warn-and-continue（与既有回滚链语义一致），方法返回 nil
+// 内部失败为 warn-and-continue（与既有回滚链语义一致），方法返回 nil；
+// 工作目录未配置时入口拒绝返回 ErrWorkDirNotConfigured（文件还原目标以库根为基准）
 func (s *ReplacementService) RestoreReplacedStores(ctx context.Context, scope RestoreScope) error {
+	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "resource"); err != nil {
+		return err
+	}
 	victims, victimResourceIds := s.resolveVictims(ctx, scope)
 	if len(victims) == 0 {
 		return nil

@@ -96,7 +96,13 @@ func (s *Service) SetAutoRepairReader(reader func() AutoRepairConfig) {
 
 // Start 启动监控：离线对账(启动时一次性) + 实时事件源消费 + workDir 变更轮询。
 // 实时事件源未注入(nil)时仅跳过事件消费，离线对账与 workDir 轮询仍执行。
+// 工作目录未配置（空串）时整体不启动：路径层把空串相对化为进程工作目录而非资源库根，
+// 以空串为基准的监控与对账不具资源库语义
 func (s *Service) Start() {
+	if s.workDirGetter() == "" {
+		logger.Log.Infof("[fsmonitor] 工作目录未配置，文件监控与启动对账未启动")
+		return
+	}
 	// 离线对账：检测软件未运行期间的变更（启动时一次性）
 	if s.deps != nil && s.deps.Scanner != nil && s.correlator != nil {
 		go s.runOfflineReconcile()

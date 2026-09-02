@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/library-squirrel/backend/settings"
 )
 
 // ExternalAppEnum 外部应用枚举
@@ -90,6 +92,9 @@ func (s *Service) openWithPotPlayer(filePath string) error {
 // OpenPath 使用系统默认应用打开文件
 // filePath 为相对于资源库根目录（workdir）的相对路径
 func (s *Service) OpenPath(filePath string) error {
+	if err := settings.RefuseIfUnconfigured(s.workDirProvider.GetWorkDir(), "appLauncher"); err != nil {
+		return err
+	}
 	if filePath == "" {
 		return ErrInvalidPath
 	}

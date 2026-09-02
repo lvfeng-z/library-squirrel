@@ -304,7 +304,6 @@ export class SettingChange {
  * Settings 应用设置
  */
 export class Settings {
-    "initialized": boolean;
     "workdir": string;
     "workSettings": WorkSettings;
     "importSettings": ImportSettings;
@@ -320,9 +319,6 @@ export class Settings {
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
-        if (!("initialized" in $$source)) {
-            this["initialized"] = false;
-        }
         if (!("workdir" in $$source)) {
             this["workdir"] = "";
         }
@@ -367,50 +363,50 @@ export class Settings {
      * Creates a new Settings instance from a string or object.
      */
     static createFrom($$source: any = {}): Settings {
-        const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType2;
-        const $$createField4_0 = $$createType3;
-        const $$createField5_0 = $$createType4;
-        const $$createField6_0 = $$createType5;
-        const $$createField7_0 = $$createType6;
-        const $$createField8_0 = $$createType7;
-        const $$createField9_0 = $$createType8;
-        const $$createField10_0 = $$createType9;
-        const $$createField11_0 = $$createType10;
-        const $$createField12_0 = $$createType11;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType6;
+        const $$createField7_0 = $$createType7;
+        const $$createField8_0 = $$createType8;
+        const $$createField9_0 = $$createType9;
+        const $$createField10_0 = $$createType10;
+        const $$createField11_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSettings" in $$parsedSource) {
-            $$parsedSource["workSettings"] = $$createField2_0($$parsedSource["workSettings"]);
+            $$parsedSource["workSettings"] = $$createField1_0($$parsedSource["workSettings"]);
         }
         if ("importSettings" in $$parsedSource) {
-            $$parsedSource["importSettings"] = $$createField3_0($$parsedSource["importSettings"]);
+            $$parsedSource["importSettings"] = $$createField2_0($$parsedSource["importSettings"]);
         }
         if ("pluginSettings" in $$parsedSource) {
-            $$parsedSource["pluginSettings"] = $$createField4_0($$parsedSource["pluginSettings"]);
+            $$parsedSource["pluginSettings"] = $$createField3_0($$parsedSource["pluginSettings"]);
         }
         if ("tour" in $$parsedSource) {
-            $$parsedSource["tour"] = $$createField5_0($$parsedSource["tour"]);
+            $$parsedSource["tour"] = $$createField4_0($$parsedSource["tour"]);
         }
         if ("recycleBin" in $$parsedSource) {
-            $$parsedSource["recycleBin"] = $$createField6_0($$parsedSource["recycleBin"]);
+            $$parsedSource["recycleBin"] = $$createField5_0($$parsedSource["recycleBin"]);
         }
         if ("appearance" in $$parsedSource) {
-            $$parsedSource["appearance"] = $$createField7_0($$parsedSource["appearance"]);
+            $$parsedSource["appearance"] = $$createField6_0($$parsedSource["appearance"]);
         }
         if ("mergeSettings" in $$parsedSource) {
-            $$parsedSource["mergeSettings"] = $$createField8_0($$parsedSource["mergeSettings"]);
+            $$parsedSource["mergeSettings"] = $$createField7_0($$parsedSource["mergeSettings"]);
         }
         if ("fsmonitor" in $$parsedSource) {
-            $$parsedSource["fsmonitor"] = $$createField9_0($$parsedSource["fsmonitor"]);
+            $$parsedSource["fsmonitor"] = $$createField8_0($$parsedSource["fsmonitor"]);
         }
         if ("backupGovernance" in $$parsedSource) {
-            $$parsedSource["backupGovernance"] = $$createField10_0($$parsedSource["backupGovernance"]);
+            $$parsedSource["backupGovernance"] = $$createField9_0($$parsedSource["backupGovernance"]);
         }
         if ("exportSettings" in $$parsedSource) {
-            $$parsedSource["exportSettings"] = $$createField11_0($$parsedSource["exportSettings"]);
+            $$parsedSource["exportSettings"] = $$createField10_0($$parsedSource["exportSettings"]);
         }
         if ("shareSettings" in $$parsedSource) {
-            $$parsedSource["shareSettings"] = $$createField12_0($$parsedSource["shareSettings"]);
+            $$parsedSource["shareSettings"] = $$createField11_0($$parsedSource["shareSettings"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }

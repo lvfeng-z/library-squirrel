@@ -14,6 +14,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 
@@ -81,6 +82,10 @@ func (s *Service) suppressWithinWorkDir(absPath string) func() {
 
 // storeFile 将源文件收入备份目录并建保管清单行；copy=true 复制保留源文件（安装包备份），false 移动（O(1) 同文件系统）
 func (s *Service) storeFile(ctx context.Context, sourcePath string, copy bool) (*entity.Backup, error) {
+	// 备份目录与清单行 Workdir 都以已配置的库根为基准，未配置即拒绝（清单行不再落空串 Workdir）
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "backup"); err != nil {
+		return nil, err
+	}
 	if !util.FileExists(sourcePath) {
 		return nil, fmt.Errorf("备份失败，源文件不存在: %s", sourcePath)
 	}
@@ -298,6 +303,9 @@ func (s *Service) DeleteBackupRecord(ctx context.Context, id int64) error {
 // 源端（backup/ 域）的抑制在本方法内登记——文件移出备份目录即触发 backup 域 Remove 事件，
 // 此时清单行尚未被调用方删除，命中即误报为外部删除
 func (s *Service) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "backup"); err != nil {
+		return err
+	}
 	if !util.FileExists(backupPath) {
 		return fmt.Errorf("还原失败，备份文件不存在: %s", backupPath)
 	}

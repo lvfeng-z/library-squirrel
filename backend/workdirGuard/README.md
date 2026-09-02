@@ -16,7 +16,7 @@
 - **Windows 探针**：在 workDir 根写固定隐藏文件 `.squirrel_guard_probe` 再删除。失败语义：受控文件夹拦截 / ACL 只读 / 磁盘异常都表现为写失败（ACCESS_DENIED），多因无法区分，错误文案覆盖三类成因。探针路径固定于 workDir 根、不在 store/backup 扫描白名单内，且创建/删除登记 `storeRegistry.Suppress`/`Release`——双保险避免探测自身被 fsmonitor 误报为外部变更
 
 ## 依赖关系
-- 依赖（接口注入，app.go 适配）：settings（workDir 闭包）、storeRegistry（探针操作抑制登记）
+- 依赖：storeRegistry（探针操作抑制登记，包级直调）；workDir 非注入——前端调用 `GetWorkDirGuardInfo` 时作为参数传入
 - 被依赖：前端设置页「目录保护」卡片（渲染 Info + 探测结果 + Guide + 重新检测）
 
 ## 关键设计

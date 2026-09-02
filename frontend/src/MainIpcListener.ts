@@ -12,6 +12,7 @@ import { onMergeEvent } from '@renderer/composables/useMergeProgress'
 import { onExportEvent } from '@renderer/composables/useExportProgress'
 import { useShareStore } from '@renderer/store/UseShareStore'
 import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
+import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { shareConsumePendingLink } from '@renderer/apis/http/wrappers/share'
 import { Events } from '@wailsio/runtime'
 import { TaskSnapshotDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models.js'
@@ -169,6 +170,22 @@ export function iniListener() {
       toPath: data.toPath,
       storeId: data.storeId,
       backupId: data.backupId
+    })
+  })
+
+  // 工作目录未配置（后端统一发射口：任何模块在请求期拒绝时触发，payload 携发现来源模块名）
+  // → 升常驻横幅引导前往设置（初始判定不经此通道，走 MainLayout 挂载时的拉取）
+  Events.On('workdir:unconfigured', (event: any) => {
+    const data = event.data as { source?: string }
+    useWorkdirStatusStore().onUnconfiguredEvent(data?.source ?? '')
+  })
+
+  // 工作目录变更（监控运行期间改目录：fsmonitor 已暂停监控）→ 提示重启生效
+  Events.On('fsmonitor:workdir-changed', () => {
+    ElMessage({
+      message: '工作目录已变更，文件监控已暂停，重启应用后生效',
+      type: 'warning',
+      duration: 6000
     })
   })
 

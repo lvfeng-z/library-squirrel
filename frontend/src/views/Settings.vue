@@ -15,6 +15,8 @@ import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/htt
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
 import {emptySettings} from "@renderer/model/util/Settings.js";
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
+import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
+import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
 import type { ThemeId } from '@renderer/theme/themes'
 import type { AutoRepairPolicyDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
 import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/backend/workdirGuard/models'
@@ -203,6 +205,8 @@ async function saveSettings() {
   if (hasPolicyChanges()) {
     changedWithoutPolicies.push({ path: 'fsmonitor.autoRepairPolicies', value: settings.value.fsmonitor.autoRepairPolicies ?? {} })
   }
+  // 保存前的旧工作目录快照（loadSettings 重载会覆盖 oldSettings，转换判定须先取）
+  const previousWorkdir = oldSettings.workdir
   const response = await apis.settingsSaveSettings(changedWithoutPolicies)
   await loadSettings()
   if (ApiUtil.check(response)) {
@@ -212,6 +216,16 @@ async function saveSettings() {
         message: '修改成功',
         type: 'success'
       })
+      // 同步工作目录未配置状态：已配置收起常驻横幅；清空则升横幅
+      void useWorkdirStatusStore().refresh()
+      // 未配置→已配置：文件监控与回收站自动清理不随保存启动（转换按重启生效落地），提示重启
+      if (isBlank(previousWorkdir) && isNotBlank(settings.value.workdir)) {
+        ElMessage({
+          message: '工作目录已配置，文件监控与回收站自动清理将在重启应用后生效',
+          type: 'info',
+          duration: 6000
+        })
+      }
     } else {
       ElMessage({
         message: '修改失败',
@@ -235,6 +249,8 @@ async function resetSettings() {
           message: '重置成功',
           type: 'success'
         })
+        // 重置清空工作目录：同步未配置状态（升常驻横幅）
+        void useWorkdirStatusStore().refresh()
       } else {
         ElMessage({
           message: '重置失败',

@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/util/filename"
@@ -272,12 +273,16 @@ func (s *Service) BackfillFingerprints(ctx context.Context) {
 }
 
 func (s *Service) runBackfillFingerprints(ctx context.Context) {
+	workDir := s.getWorkDir()
+	if workDir == "" {
+		logger.Log.Info("[persistentStore] 工作目录未配置，跳过存量指纹回填（记录相对路径须以已配置的库根解析）")
+		return
+	}
 	records, err := s.repo.List(ctx, &database.QueryOption{})
 	if err != nil {
 		logger.Log.Warn("[persistentStore] 回填指纹：查询记录失败", zap.Error(err))
 		return
 	}
-	workDir := s.getWorkDir()
 	filled := 0
 	for _, r := range records {
 		// 仅回填已完成且指纹缺失的记录
@@ -340,6 +345,9 @@ func (s *Service) getWorkDir() string {
 // CleanupFileResult 删除指定相对路径的磁盘文件并返回真实失败（文件缺失容忍返回 nil）。
 // 供删除流「先文件后记录」两阶段的 Phase A——文件删不动即中止（记录未动），由调用方决定仅删记录或放弃
 func (s *Service) CleanupFileResult(relPath string) error {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return err
+	}
 	storeRegistry.Suppress(relPath)
 	defer storeRegistry.Release(relPath)
 	absPath := filepath.Join(s.getWorkDir(), relPath)
@@ -360,6 +368,9 @@ func (s *Service) CleanupFile(relPath string) {
 // relPath: 相对于 {workDir} 的路径
 // fileName: 原始文件名
 func (s *Service) StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer StoreWriter, err error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return 0, nil, err
+	}
 	// 1. 校验 relPath
 	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, nil, err
@@ -447,6 +458,9 @@ func (s *Service) StoreStream(ctx context.Context, relPath string, fileName stri
 // offset 为续写起始偏移;文件会被截断到 offset(丢弃 offset 之后的多余数据),消除 TOCTOU 竞态。
 // storeId: StoreStream 返回的未完成记录 ID
 func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64) (StoreWriter, error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return nil, err
+	}
 	// 1. 查询记录，确认状态为未完成
 	record, err := s.repo.GetById(ctx, storeId)
 	if err != nil {
@@ -489,6 +503,9 @@ func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64)
 // reader: 文件内容
 // 返回 persistent_store 记录 ID
 func (s *Service) Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return 0, err
+	}
 	// 1. 校验 relPath 是否匹配已注册子目录
 	if err := storeRegistry.ValidatePath(relPath); err != nil {
 		return 0, err
@@ -695,6 +712,9 @@ func (s *Service) DeleteUnscopedByIds(ctx context.Context, ids []int64) error {
 // HardDelete 删除记录及对应文件（物理删记录；软删语义的 Delete 归作品软删链经 DeleteWithBackup/MarkInvalid）
 // backup: 是否对已完成文件进行移动备份，返回备份记录 ID（0 表示未备份）
 func (s *Service) HardDelete(ctx context.Context, id int64, backup bool) (int64, error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return 0, err
+	}
 	// 1. 根据 ID 查询记录
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -743,6 +763,9 @@ func (s *Service) HardDelete(ctx context.Context, id int64, backup bool) (int64,
 // 本方法不看文件完成状态、失败返回错误中断调用方流程（保全优先——降级删除会销毁待复原文件）。
 // 返回备份清单行 ID；0 = 无备份（记录不存在、路径无效、源文件缺失或未注入 FileMover，均不阻断）。
 func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return 0, err
+	}
 	// 查询失败（含脏数据 record not found）不阻断删除：返回 0，调用方按"未备份"跳过该条
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
@@ -779,6 +802,9 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 // 移入 backup/ 只会膨胀备份目录）。文件尽力删（扑空容忍+操作抑制登记），软删经 SoftDeleteWithBackup
 // 单点写入（backup_id=NULL）。完成后行复活时无文件，交文件监控对账裁决
 func (s *Service) SoftDeleteAndDiscardFile(ctx context.Context, id int64) error {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return err
+	}
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -826,6 +852,9 @@ func (s *Service) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*d
 // relPath: 目标相对路径（相对于 {workDir}）
 // fileName: 原始文件名
 func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error) {
+	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
+		return 0, err
+	}
 	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：清旧/抑制登记/落库全程与 DB 基准一致
 	relPath = filepath.ToSlash(relPath)
 	// 1. 校验 relPath

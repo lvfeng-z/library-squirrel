@@ -25,6 +25,7 @@ import (
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
@@ -83,6 +84,7 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	}
 	workDir := e.svc.workDir()
 	if workDir == "" {
+		settings.NotifyWorkDirUnconfigured("share")
 		h.Fail("工作目录未配置，无法接收分享")
 		return
 	}

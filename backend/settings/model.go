@@ -2,7 +2,6 @@ package settings
 
 // Settings 应用设置
 type Settings struct {
-	Initialized        bool                     `json:"initialized" koanf:"initialized"`
 	WorkDir            string                   `json:"workdir" koanf:"workdir"`
 	WorkSettings       WorkSettings             `json:"workSettings" koanf:"workSettings"`
 	ImportSettings     ImportSettings           `json:"importSettings" koanf:"importSettings"`
@@ -103,8 +102,7 @@ const (
 // NewSettings 创建默认设置
 func NewSettings() *Settings {
 	return &Settings{
-		Initialized: false,
-		WorkDir:     "",
+		WorkDir: "",
 		WorkSettings: WorkSettings{
 			FileNameFormat: DefaultFileNameFormat,
 		},
