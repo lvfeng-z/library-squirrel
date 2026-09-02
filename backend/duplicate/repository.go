@@ -9,11 +9,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository 查重判定共享查询能力（自 import ingestor 迁出）：站点名→本库站点映射与
+// Repository 查重判定共享查询能力（自 import ingestor 迁出）：站点键→本库站点映射与
 // 作品批量定位两条查询，由 duplicate.Service 与 import ingestor 共用同一实例。
 type Repository interface {
-	// ListSitesByNames 按站点名批量查询站点（site_name 唯一索引；软删表无此列，全量口径）
-	ListSitesByNames(ctx context.Context, names []string) ([]*entity.Site, error)
+	// ListSitesByKeys 按站点键批量查询站点（site_key 唯一索引；软删表无此列，全量口径）
+	ListSitesByKeys(ctx context.Context, keys []string) ([]*entity.Site, error)
 	// ListWorksBySiteAndWorkIDs 按站点 + 站点作品 ID 批量查询作品（查重口径=活行，软删行经 GORM scope 自动排除）
 	ListWorksBySiteAndWorkIDs(ctx context.Context, siteId int64, siteWorkIds []string) ([]*entity.Work, error)
 }
@@ -33,12 +33,12 @@ func (r *repository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.db)
 }
 
-func (r *repository) ListSitesByNames(ctx context.Context, names []string) ([]*entity.Site, error) {
-	if len(names) == 0 {
+func (r *repository) ListSitesByKeys(ctx context.Context, keys []string) ([]*entity.Site, error) {
+	if len(keys) == 0 {
 		return nil, nil
 	}
 	var rows []*entity.Site
-	if err := r.dbFromCtx(ctx).Where("site_name IN ?", names).Find(&rows).Error; err != nil {
+	if err := r.dbFromCtx(ctx).Where("site_key IN ?", keys).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil

@@ -303,8 +303,7 @@ func main() {
 | | `SetValueEncrypted` | `(key, value string) error` |
 | | `DeleteValue` | `(key string) error` |
 | | `GetAllValues` | `() (map[string]*StorageValue, error)` |
-| 业务查询 | `GetWorkSetBySiteWorkSetId` | `(siteWorkSetId, siteName string) (*WorkSetDTO, error)` |
-| | `AddSite` | `(sites []*SiteDTO) error` |
+| 站点写入 | `AddSite` | `(sites []*SiteDTO) error` — 键经 SDK `identity` 注册表校验（未注册键拒绝），见「十九、站点注册与站点身份」 |
 | 任务 | `RegisterUrlListener` | `(extensionId string, patterns []string) error` |
 | | `UnregisterUrlListener` | `(extensionId string) error`（空则清该插件全部监听） |
 | | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
@@ -351,7 +350,7 @@ type TaskHandler interface {
 | **有 Children**(任务组) | 1 个 parent(HasChild=true、pid=0)+ 每个 child(pid=parent.id、HasChild=false) | len(Children)(parent 容器不计) |
 
 - **不折叠**:即便 `Children` 只有 1 个,也建 parent+1child(2 任务),不把单 child 提升为 leaf。parent 是"作品/目录"容器、child 是"可下载单元",语义不同。
-- **字段落位**:parent 容器只取 `TaskName`/`Url`/`SiteName`/`InvolvedRoles`/`ResourceType`(不带 `SiteWorkId`/`PluginData`);leaf 与 child 取全部身份字段(含 `SiteWorkId`/`PluginData`)。`SiteName` 必填——缺失则该响应被跳过(不入库)。
+- **字段落位**:parent 容器只取 `TaskName`/`Url`/`SiteKey`/`InvolvedRoles`/`ResourceType`(不带 `SiteWorkId`/`PluginData`);leaf 与 child 取全部身份字段(含 `SiteWorkId`/`PluginData`)。`SiteKey` 必填(用 `identity.*` 常量,见「十九、站点注册与站点身份」)——缺失则该响应被跳过(不入库);child 未显式带键时继承 parent 的键。`SiteName` 不参与身份判定(主程序忽略,可不填)。
 - **流式合并(stream 专属)**:一个超大 work 可拆成多个响应流式发,**复用同一 `PluginTaskId`**——主程序把同 `PluginTaskId` 的连续响应合并到同一 parent(children 累加、不重复建 parent)。`PluginTaskId` 是插件稳定的 work 标识;**勿用 `TaskName` 当合并键**(展示名易重复,且 local 一次导入内 `TaskName` 恒定,用它会误把不同目录焊成一个 work)。批量(array)路径不合并,每个响应须自洽。流式适合"work 数量多想渐进反馈"或"单 work 巨大需拆分"的场景(如本地导入含大量文件的目录)。
 
 四例:
@@ -911,3 +910,64 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 
 1. **dirty 盲区**：`git describe --dirty` 只区分"有无未提交改动"——同一 commit 下，前后两天各构建一次 dirty 包，buildId 相同，捆绑升级判定会认为"没变"而漏掉重装。开发期遇到（改了代码但没 commit，升级没触发），用插件管理页的「修复 / 选择安装包修复」手动重装，或 commit 后再构建。
 2. **不要手工编辑 zip 里的 buildId**：它同时是前端资产的缓存键，乱改会导致浏览器长缓存不失效（见第十一节缓存说明）。
+
+## 十九、站点注册与站点身份（site_key）
+
+站点身份 = `site_key`（SDK `identity` 注册表分配的品牌 slug，如 `pixiv`，站点在所有库、所有版本中唯一）；站点名纯展示、不参与任何身份判定。完整规范见 `doc/site-identity-spec.md`，本节给插件开发者最短路径。
+
+### 何时需要注册
+
+你的插件要对接**注册表未收录的新站点**、并在激活时 `AddSite` 落库该站点——首次 `AddSite` 前必须完成注册，否则主程序报「站点键未注册」拒绝（报错文案即注册指引）。已收录站点（pixiv/bilibili/local，清单见 `identity/registry.go`）直接引用常量即可，无需注册。
+
+### 注册步骤（PR 自助）
+
+1. **选定键值**：取站点官方品牌名的稳定 slug（如 `mysite`），满足 `^[a-z][a-z0-9-]{1,30}$`（小写字母开头，小写字母/数字/连字符），不与既有条目近似。
+2. **提 PR**：向 `github.com/lvfeng-z/library-squirrel-sdk` 的 `identity/registry.go` 常量块加条目，常量名用站点的 PascalCase 标识，并随 PR 写**站点级 ID 约定注记**（siteWorkId/siteTagId/siteAuthorId/siteWorkSetId 各取站点侧什么稳定 ID——首个接入插件的权威口径声明）：
+   ```go
+   // Mysite <一句话站点说明>。
+   //
+   // 站点级 ID 约定注记（同站点多插件产出收敛到同一条 norm）：
+   //   siteWorkId    = ...
+   //   siteTagId     = ...
+   //   siteAuthorId  = ...
+   //   siteWorkSetId = ...
+   Mysite = Site{Key: "mysite", Name: "mysite", Homepage: "https://example.com"}
+   ```
+   虚拟站点（无真实主页）`Homepage` 留空串。
+3. **维护者合并**：合并时查重（键值、常量名不与既有条目冲突，键值与站点官方品牌名一致）。
+4. **生效预期**：注册表随 SDK 发布、主程序随 SDK 更新发布后生效——「合并 + 下次主程序发布」两步时延，注册时预留此窗口。判定：主程序 `AddSite` 不再报未注册。
+
+注册表只增不改：键一经发布永不重排、永不复用；站点改名只改权威名，键不动。
+
+### 插件内使用 identity.* 常量（官方插件实例）
+
+**AddSite**（激活时注册站点；pixiv 插件 `activate.go`，localImport 同型用 `identity.Local.Key`）：
+
+```go
+import "github.com/lvfeng-z/library-squirrel-sdk/identity"
+
+// 注册站点（站点名/主页由 identity 注册表权威给定，按键查重，重复注册静默跳过）
+if err := ctx.AddSite([]*sdkdto.SiteDTO{
+    {SiteKey: identity.Pixiv.Key},
+}); err != nil {
+    ctx.Errorf("注册站点失败: %v", err)
+    return
+}
+```
+
+**Create 应答带 SiteKey**（pixiv 插件 `task_handler.go`；必填——主程序按键解析站点归属，缺失则该响应被跳过）：
+
+```go
+parentTask := &sdkdto.TaskCreateResponse{
+    TaskName:   title,
+    SiteWorkId: illustID,
+    Url:        url,
+    SiteKey:    identity.Pixiv.Key,
+    // ...其余字段
+}
+```
+
+### 两条纪律
+
+1. **一律用 `identity.*` 常量，禁止手抄键值字面量**——统一引用防止拼写变体与注册表演进脱节，抄错会静默指向不存在的键而被拒（或指向错误站点）。
+2. **站点侧 ID 须为站点侧稳定 ID**（`SiteWorkId`/siteTagId/siteAuthorId/siteWorkSetId 取站点自身体系的持久标识，禁用展示名/列表序号/URL 临时参数）——稳定性契约与治理分层见规范第五、六节。

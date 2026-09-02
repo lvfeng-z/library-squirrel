@@ -21,16 +21,6 @@ func NewHandler(svc *Service) *Handler {
 
 // ========== 增删改操作 ==========
 
-// Save 保存站点
-func (h *Handler) Save(ctx context.Context, site *sdkdto.SiteDTO) *model.ApiResponse[int64] {
-	domainSite := dto.ToSiteEntity(site)
-
-	if err := h.svc.Create(ctx, domainSite); err != nil {
-		return model.HandleError[int64](err)
-	}
-	return model.Success(domainSite.GetID())
-}
-
 // Delete 删除站点
 func (h *Handler) Delete(ctx context.Context, id int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.Delete(ctx, id))
@@ -91,13 +81,4 @@ func (h *Handler) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 		page = &model.Page[dto.SelectItem]{}
 	}
 	return model.HandleResult(h.svc.QuerySelectItemPage(ctx, page, query))
-}
-
-// GetByName 根据名称获取
-func (h *Handler) GetByName(ctx context.Context, siteName string) *model.ApiResponse[*sdkdto.SiteDTO] {
-	result, err := h.svc.GetByName(ctx, siteName)
-	if err != nil {
-		return model.HandleError[*sdkdto.SiteDTO](err)
-	}
-	return model.Success(dto.NewSiteDTO(result))
 }

@@ -12,10 +12,10 @@ func NewSiteDTO(site *entity.Site) *sdkdto.SiteDTO {
 		return nil
 	}
 	return &sdkdto.SiteDTO{
-		Id:              site.GetID(),
-		SiteName:        util.NullStringToPointer(site.SiteName),
-		SiteDescription: util.NullStringToPointer(site.SiteDescription),
-		Homepage:        util.NullStringToPointer(site.Homepage),
+		Id:         site.GetID(),
+		SiteKey:    site.SiteKey,
+		SiteName:   util.NullStringToPointer(site.SiteName),
+		Homepage:   util.NullStringToPointer(site.Homepage),
 		CreateTime:      site.GetCreateTime(),
 		UpdateTime:      site.GetUpdateTime(),
 	}
@@ -34,19 +34,15 @@ func ToSiteEntity(dto *sdkdto.SiteDTO) *entity.Site {
 		newSite.SetID(dto.Id)
 	}
 
+	// 站点唯一身份键（NOT NULL 列，经前端/插件侧传入）
+	newSite.SiteKey = dto.SiteKey
+
 	// 设置业务字段
 	if dto.SiteName != nil {
 		newSite.SiteName.Valid = true
 		newSite.SiteName.String = *dto.SiteName
 	} else {
 		newSite.SiteName.Valid = false
-	}
-
-	if dto.SiteDescription != nil {
-		newSite.SiteDescription.Valid = true
-		newSite.SiteDescription.String = *dto.SiteDescription
-	} else {
-		newSite.SiteDescription.Valid = false
 	}
 
 	if dto.Homepage != nil {

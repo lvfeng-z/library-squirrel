@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import BaseView from '@renderer/views/BaseView.vue'
 import SearchTable from '@renderer/components/common/SearchTable.vue'
-import { onMounted, ref, Ref } from 'vue'
+import { h, onMounted, ref, Ref } from 'vue'
 import OperationItem from '@renderer/model/util/OperationItem.ts'
 import DialogMode from '@renderer/model/util/DialogMode.ts'
 import { Thead } from '@renderer/model/util/Thead.ts'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
-import {ElMessage} from 'element-plus'
+import {ElLink, ElMessage} from 'element-plus'
+import { Browser } from '@wailsio/runtime'
 import DataTableOperationResponse from '@renderer/model/util/DataTableOperationResponse.ts'
 import lodash from 'lodash'
 import SiteDialog from '@renderer/components/dialogs/SiteDialog.vue'
@@ -15,6 +16,7 @@ import { SortOrder } from '@bindings/github.com/library-squirrel/backend/base/qu
 import { siteApi } from '@renderer/apis/http'
 import {SiteDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
+import { isBlank } from '@renderer/utils/StringUtil.ts'
 
 // onMounted
 onMounted(() => {
@@ -63,15 +65,26 @@ const siteThead: Ref<Thead<SiteDTO>[]> = ref([
     showOverflowTooltip: true
   }),
   new Thead({
-    type: 'textarea',
+    type: 'text',
     defaultDisabled: true,
-    dblclickToEdit: true,
-    key: 'siteDescription',
-    title: '描述',
+    key: 'siteKey',
+    title: '站点键',
     hide: false,
+    width: 100,
     headerAlign: 'center',
     dataAlign: 'center',
     showOverflowTooltip: true
+  }),
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'homepage',
+    title: '首页',
+    hide: false,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    showOverflowTooltip: true,
+    render: (data) => renderHomepage(data as string | null | undefined)
   }),
   new Thead({
     type: 'datetime',
@@ -120,16 +133,23 @@ const siteDialogData: Ref<SiteDTO> = ref(new SiteDTO())
 // })
 
 // 方法
-// 分页查询站点
+// 分页查询站点（工具栏名称/键搜索条件随每次查询合并进查询参数，均为精确匹配）
 async function siteQueryPageFn(page: Page<SiteDTO>): Promise<Page<SiteDTO>> {
+  siteQuery.value.siteName = siteSearchParams.value.siteName
+  siteQuery.value.siteKey = siteSearchParams.value.siteKey
   const response = await siteApi.siteQueryPage(page, siteQuery.value)
   return response.data
 }
-// 处理站点新增按钮点击事件
-async function handleSiteCreateButtonClicked() {
-  siteDialogMode.value = DialogMode.NEW
-  siteDialogData.value = new SiteDTO()
-  siteDialogState.value = true
+// 首页列渲染：空值（local 虚拟站点无首页）显示占位符不出链接；仅 http(s) 前缀的地址放行跳转，
+// 点击经 Browser.OpenURL 调系统浏览器打开（WebView 内 window.open 对外部 URL 不可靠）
+function renderHomepage(url: string | null | undefined) {
+  if (isBlank(url)) {
+    return h('span', '-')
+  }
+  if (!/^https?:\/\//.test(url)) {
+    return h('span', url)
+  }
+  return h(ElLink, { type: 'primary', onClick: () => { Browser.OpenURL(url) } }, { default: () => url })
 }
 // 处理站点数据行按钮点击事件
 function handleSiteRowButtonClicked(op: DataTableOperationResponse<SiteDTO>) {
@@ -203,18 +223,19 @@ function handleSiteDialogRequestSuccess() {
           @row-button-clicked="handleSiteRowButtonClicked"
         >
           <template #toolbarMain>
-            <el-button
-              type="primary"
-              @click="handleSiteCreateButtonClicked"
-            >
-              新增
-            </el-button>
             <el-input
               class="site-manage-search-input"
               v-model="siteSearchParams.siteName.value"
               placeholder="输入站点名称"
               clearable
               @clear="() => siteSearchParams.siteName.value = null"
+            />
+            <el-input
+              class="site-manage-search-input"
+              v-model="siteSearchParams.siteKey.value"
+              placeholder="输入站点键"
+              clearable
+              @clear="() => siteSearchParams.siteKey.value = null"
             />
           </template>
         </search-table>

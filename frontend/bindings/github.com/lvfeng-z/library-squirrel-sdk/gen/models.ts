@@ -55,10 +55,14 @@ export class LocalTagDTO {
 export class SiteDTO {
     "id"?: number;
     "siteName"?: string | null;
-    "siteDescription"?: string | null;
     "homepage"?: string | null;
     "createTime"?: number;
     "updateTime"?: number;
+
+    /**
+     * 站点唯一身份键(identity 注册表分配);主程序侧必填校验,siteName 仅展示
+     */
+    "siteKey"?: string;
 
     /** Creates a new SiteDTO instance. */
     constructor($$source: Partial<SiteDTO> = {}) {

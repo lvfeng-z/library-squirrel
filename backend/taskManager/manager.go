@@ -477,24 +477,24 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	// 站点 ID → 站点名反查（查重输入键形态统一：插件任务侧 SiteID → 站点名，
+	// 站点 ID → 站点键反查（查重输入键形态统一：插件任务侧 SiteID → 站点键，
 	// 与 share-receive/zip 导入的 manifest 域键对齐）
 	siteIds := make([]int64, 0, len(toCheck))
 	for _, child := range toCheck {
 		siteIds = append(siteIds, child.task.SiteID.Int64)
 	}
-	siteIdToName, err := m.resolveSiteNames(checkCtx, siteIds)
+	siteIdToKey, err := m.resolveSiteKeys(checkCtx, siteIds)
 	if err != nil {
-		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 站点名反查失败: %v，降级为 run() 逐个检查", err)
+		logger.Log.Errorf("[TaskManager] batchCheckDuplicates 站点键反查失败: %v，降级为 run() 逐个检查", err)
 		// 查询失败时不设 skipDuplicateCheck，由 run() 兜底
 		return children
 	}
 
-	// 构建查重项（站点名缺失即无站点身份，Check 侧按未命中处理）
+	// 构建查重项（站点键缺失即无站点身份，Check 侧按未命中处理）
 	items := make([]duplicate.DuplicateCheckItem, len(toCheck))
 	for i, child := range toCheck {
 		items[i] = duplicate.DuplicateCheckItem{
-			SiteName:   siteIdToName[child.task.SiteID.Int64],
+			SiteKey:    siteIdToKey[child.task.SiteID.Int64],
 			SiteWorkID: child.task.SiteWorkID.String,
 			Roles:      child.runMode.storeScope.roles,
 		}
@@ -542,11 +542,11 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	return toDispatch
 }
 
-// resolveSiteNames 批量反查站点 ID → 站点名（查重输入键形态统一：插件任务侧把 task.SiteID
-// 反查站点名，与 manifest 域键对齐）。站点行缺失/站点名无效的 ID 不出键，调用方按未命中处理。
-func (m *Manager) resolveSiteNames(ctx context.Context, siteIds []int64) (map[int64]string, error) {
+// resolveSiteKeys 批量反查站点 ID → 站点键（查重输入键形态统一：插件任务侧把 task.SiteID
+// 反查站点键，与 manifest 域键对齐）。站点行缺失/站点键为空的 ID 不出键，调用方按未命中处理。
+func (m *Manager) resolveSiteKeys(ctx context.Context, siteIds []int64) (map[int64]string, error) {
 	result := make(map[int64]string)
-	if len(siteIds) == 0 || m.deps.SiteNameResolver == nil {
+	if len(siteIds) == 0 || m.deps.SiteKeyResolver == nil {
 		return result, nil
 	}
 	distinct := make([]int64, 0, len(siteIds))
@@ -558,13 +558,13 @@ func (m *Manager) resolveSiteNames(ctx context.Context, siteIds []int64) (map[in
 		seen[id] = struct{}{}
 		distinct = append(distinct, id)
 	}
-	sites, err := m.deps.SiteNameResolver.ListByIds(ctx, distinct)
+	sites, err := m.deps.SiteKeyResolver.ListByIds(ctx, distinct)
 	if err != nil {
 		return nil, err
 	}
 	for _, s := range sites {
-		if s.SiteName.Valid {
-			result[s.GetID()] = s.SiteName.String
+		if s.SiteKey != "" {
+			result[s.GetID()] = s.SiteKey
 		}
 	}
 	return result, nil

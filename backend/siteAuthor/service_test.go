@@ -11,6 +11,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkAuthor"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"gorm.io/gorm"
 )
@@ -58,7 +59,7 @@ func TestDeleteSiteAuthorCleansReferences(t *testing.T) {
 	if err := db.Exec("INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (1, 0, 0, 0)").Error; err != nil {
 		t.Fatalf("建作品种子失败: %v", err)
 	}
-	if err := db.Exec("INSERT INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+	if err := db.Exec("INSERT INTO site (id, site_key, create_time, update_time) VALUES (1, ?, 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
 

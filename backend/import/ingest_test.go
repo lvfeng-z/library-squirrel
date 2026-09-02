@@ -24,6 +24,7 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/util"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -65,8 +66,9 @@ func newTestDB(t *testing.T) (*gorm.DB, string) {
 	if err != nil {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
-	// 预置行：占住自增 id=1，令导入行必然重映射到不同 ID（重映射语义可断言）
-	if err := db.Exec("INSERT INTO site (site_name, create_time, update_time) VALUES ('seed-site', 0, 0)").Error; err != nil {
+	// 预置行：占住自增 id=1，令导入行必然重映射到不同 ID（重映射语义可断言）。
+	// 键取 Local 注册键（与 fixture 的 pixiv 键不同站，验证按键互不误合并）
+	if err := db.Exec("INSERT INTO site (site_key, site_name, create_time, update_time) VALUES (?, 'seed-site', 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("预置站点失败: %v", err)
 	}
 	if err := db.Exec("INSERT INTO local_tag (local_tag_name, create_time, update_time) VALUES ('同名标签', 0, 0)").Error; err != nil {
@@ -106,7 +108,7 @@ func buildFixture() (*export.Manifest, map[string]string) {
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{AppVersion: "test", WorkCount: 1, FileCount: 3},
 		Sites: []export.SiteRecord{
-			{ID: 100, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
+			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
 		},
 		LocalTags: []export.TagRecord{
 			{ID: 201, Name: strPtr("同人标签"), Description: strPtr("根标签"), CreateTime: 121, UpdateTime: 122},
@@ -235,10 +237,10 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	}
 
 	// ===== ① DB 语义保真 =====
-	// 站点：按名 find-or-create 新建，ID 与导出库（100）不同（重映射生效）
-	siteID := queryInt64(t, db, "SELECT id FROM site WHERE site_name = 'pixiv'")
+	// 站点：按键 find-or-create 新建，ID 与导出库（100）不同（重映射生效）
+	siteID := queryInt64(t, db, "SELECT id FROM site WHERE site_key = ?", identity.Pixiv.Key)
 	if siteID == 0 || siteID == 100 {
-		t.Fatalf("站点应按名新建且重映射，实际 id=%d", siteID)
+		t.Fatalf("站点应按键新建且重映射，实际 id=%d", siteID)
 	}
 	// 本地标签：根 + 子（层级重映射）；同名标签复用预置行（id=1，不新建）
 	tagRoot := queryInt64(t, db, "SELECT id FROM local_tag WHERE local_tag_name = '同人标签'")
@@ -415,6 +417,89 @@ func TestIngestSchemaVersionRejected(t *testing.T) {
 	}
 }
 
+// TestManifestSchemaVersionGate 版本门锚：v1 旧 manifest（SiteRecord 尚无 siteKey 的契约代）被
+// 版本门严格拒绝（!= 当前版本即拒），不落任何数据。
+func TestManifestSchemaVersionGate(t *testing.T) {
+	ing, db, _, _ := newTestSetup(t)
+	manifest, files := buildFixture()
+	manifest.SchemaVersion = 1
+	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+	if !errors.Is(err, ErrSchemaVersionUnsupported) {
+		t.Fatalf("旧版本 manifest 应被版本门拒绝，实际 err=%v", err)
+	}
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != 1 {
+		t.Fatalf("版本拒绝后不应新建站点，实际 site 行数=%d（仅预置 1 行）", got)
+	}
+}
+
+// TestIngestSiteKeyFindOrCreate 站点按键 find-or-create：本库已有同键站点行时复用（不新建、
+// 展示名不被 manifest 覆盖）；本库无该键时新建且名称/主页取注册表权威值（manifest 携带的
+// 站点展示信息不落库）。
+func TestIngestSiteKeyFindOrCreate(t *testing.T) {
+	ing, db, _, _ := newTestSetup(t)
+	ctx := context.Background()
+
+	// 复用分支：本库预置 Local 键行（展示名与 manifest 声明不同），导入复用该行
+	manifest, files := buildFixture()
+	manifest.Sites[0].SiteKey = identity.Local.Key
+	manifest.Sites[0].SiteName = strPtr("本地站-改名后")
+	r, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil)
+	if err != nil {
+		t.Fatalf("导入失败: %v", err)
+	}
+	if r.CreatedSites != 0 {
+		t.Fatalf("同键站点应复用既有行不新建，实际新建 %d", r.CreatedSites)
+	}
+	if got := queryString(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Local.Key); got != "seed-site" {
+		t.Fatalf("复用行的展示名不应被 manifest 覆盖，实际 %q", got)
+	}
+	workSite := queryInt64(t, db, "SELECT site_id FROM work WHERE site_work_id = 'w-1'")
+	if preset := queryInt64(t, db, "SELECT id FROM site WHERE site_key = ?", identity.Local.Key); workSite != preset {
+		t.Fatalf("作品应挂到复用的本库站点行，实际 site_id=%d 期望 %d", workSite, preset)
+	}
+
+	// 新建分支：本库无 pixiv 键行，manifest 声明非权威展示名，新建行取注册表权威名/主页
+	manifest2, files2 := buildFixture()
+	manifest2.Sites[0].SiteName = strPtr("P站-改名后")
+	manifest2.Works[0].SiteWorkID = strPtr("w-2")
+	manifest2.WorkSets = nil
+	r2, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), nil)
+	if err != nil {
+		t.Fatalf("导入失败: %v", err)
+	}
+	if r2.CreatedSites != 1 {
+		t.Fatalf("无既有键行应新建站点，实际新建 %d", r2.CreatedSites)
+	}
+	if got := queryString(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Pixiv.Key); got != identity.Pixiv.Name {
+		t.Fatalf("新建站点名应取注册表权威值 %q，实际 %q", identity.Pixiv.Name, got)
+	}
+	if got := queryString(t, db, "SELECT homepage FROM site WHERE site_key = ?", identity.Pixiv.Key); got != identity.Pixiv.Homepage {
+		t.Fatalf("新建站点主页应取注册表权威值 %q，实际 %q", identity.Pixiv.Homepage, got)
+	}
+}
+
+// TestIngestUnregisteredKeyFails 未注册站点键（含空键）的 manifest 整体拒绝导入——
+// 站点身份键由 identity 注册表统一分配，未注册键的产物来源不可信。
+func TestIngestUnregisteredKeyFails(t *testing.T) {
+	for name, key := range map[string]string{"未注册键": "s0000notreg01", "空键": ""} {
+		t.Run(name, func(t *testing.T) {
+			ing, db, _, _ := newTestSetup(t)
+			manifest, files := buildFixture()
+			manifest.Sites[0].SiteKey = key
+			_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+			if !errors.Is(err, ErrUnregisteredSiteKey) {
+				t.Fatalf("未注册键应整体拒绝导入，实际 err=%v", err)
+			}
+			if got := queryInt64(t, db, "SELECT COUNT(*) FROM work"); got != 0 {
+				t.Fatalf("拒绝后不应入库作品，实际 %d 行", got)
+			}
+			if got := queryInt64(t, db, "SELECT COUNT(*) FROM site"); got != 1 {
+				t.Fatalf("拒绝后不应新建站点，实际 %d 行（仅预置 1 行）", got)
+			}
+		})
+	}
+}
+
 // TestIngestChecksumMismatch 校验失败时报错并补偿清理（不留半成品文件）。
 func TestIngestChecksumMismatch(t *testing.T) {
 	ing, db, _, workDir := newTestSetup(t)
@@ -541,7 +626,7 @@ func buildReplaceFixture() (*export.Manifest, map[string]string) {
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{AppVersion: "test", WorkCount: 1, FileCount: 1},
 		Sites: []export.SiteRecord{
-			{ID: 100, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
+			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
 		},
 		LocalTags: []export.TagRecord{
 			{ID: 201, Name: strPtr("同人标签"), Description: strPtr("根标签"), CreateTime: 121, UpdateTime: 122},

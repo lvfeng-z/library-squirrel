@@ -45,7 +45,7 @@ export class ImportResult {
     "skippedWorkSets": number;
 
     /**
-     * 新建站点数（按站点名 find-or-create）
+     * 新建站点数（按键 find-or-create）
      */
     "createdSites": number;
 

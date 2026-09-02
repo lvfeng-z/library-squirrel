@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/work"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"gorm.io/gorm"
 )
@@ -58,7 +59,7 @@ func TestDeleteLocalAuthorCleansReferences(t *testing.T) {
 	svc, db := newDeleteTestEnv(t)
 
 	// 站点种子（work.site_id / site_author.site_id 两外键的父行）
-	if err := db.Exec("INSERT INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+	if err := db.Exec("INSERT INTO site (id, site_key, create_time, update_time) VALUES (1, ?, 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
 	author := domain.NewLocalAuthor()

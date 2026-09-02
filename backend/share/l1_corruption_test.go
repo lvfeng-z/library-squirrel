@@ -30,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
 
 // deterministicReader 确定性内容流：seed 区分文件，rand.NewSource(seed) 生成 size 字节。
@@ -74,7 +75,7 @@ func buildNWorkModel(n int, size int64) func(t *testing.T, workDir string) (*exp
 		}
 		manifest := &export.Manifest{
 			SchemaVersion: export.SchemaVersion,
-			Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+			Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 			Works:         works,
 			Files:         files,
 		}

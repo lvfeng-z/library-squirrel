@@ -105,7 +105,8 @@ func NewService(
 	}
 }
 
-// Save 保存站点
+// Create 创建站点行——供插件 AddSite 与导入/分享回灌经 SiteSaveProvider.Create 消费
+// （站点行的全部生产者；键来自 SDK identity 注册表，无 Handler 端点）
 func (s *Service) Create(ctx context.Context, site *entity.Site) error {
 	return s.repo.Create(ctx, site)
 }
@@ -261,9 +262,10 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 	return s.repo.QuerySelectItemPage(ctx, opt)
 }
 
-// GetByName 根据站点名称获取
-func (s *Service) GetByName(ctx context.Context, siteName string) (*entity.Site, error) {
-	where := clause.Eq{Column: "site_name", Value: siteName}
+// GetByKey 根据站点键获取——站点身份查询的规范入口（site_key 为站点唯一身份，
+// 名称仅展示、同名可共存，身份匹配一律走键）
+func (s *Service) GetByKey(ctx context.Context, siteKey string) (*entity.Site, error) {
+	where := clause.Eq{Column: "site_key", Value: siteKey}
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{where},
 	}

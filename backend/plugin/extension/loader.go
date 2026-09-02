@@ -256,7 +256,6 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 	hostDeps := &pluginsdktransport.HostDeps{
 		StorageProvider:         &hostStorageProvider{ctx: deps.PluginCtx},
 		PluginRootProvider:      &hostPluginRootProvider{ctx: deps.PluginCtx},
-		WorkSetQueryProvider:    &hostWorkSetQueryProvider{ctx: deps.PluginCtx},
 		SiteSaveProvider:        &hostSiteSaveProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
@@ -565,14 +564,6 @@ type hostStorePathProvider struct {
 
 func (p *hostStorePathProvider) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
 	return p.ctx.GetStoreRelPath(taskId, role, storeSeq)
-}
-
-type hostWorkSetQueryProvider struct {
-	ctx sdkdto.PluginContext
-}
-
-func (p *hostWorkSetQueryProvider) GetWorkSetBySiteWorkSetId(_ context.Context, siteWorkSetId, siteName string) (*sdkdto.WorkSetDTO, error) {
-	return p.ctx.GetWorkSetBySiteWorkSetId(siteWorkSetId, siteName)
 }
 
 type hostSiteSaveProvider struct {

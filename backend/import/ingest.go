@@ -22,6 +22,7 @@ import (
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
 
 // ===== 导入错误定义 =====
@@ -29,6 +30,9 @@ import (
 var (
 	// ErrSchemaVersionUnsupported manifest 版本锚不匹配（契约破坏性变更防护，对齐 export.SchemaVersion 纪律）
 	ErrSchemaVersionUnsupported = errors.New("导入产物 manifest 版本不支持")
+	// ErrUnregisteredSiteKey manifest 站点记录携带未注册的站点键（含空键）——站点身份键由
+	// SDK identity 注册表统一分配，未注册键的产物来源不可信，整体拒绝导入
+	ErrUnregisteredSiteKey = errors.New("导入产物包含未注册的站点键")
 	// ErrUnsafeStorePath 落盘目标路径不合法（路径穿越 / 反斜杠 / 未注册子目录）
 	ErrUnsafeStorePath = errors.New("导入文件路径不合法")
 	// ErrPackageFileMissing 包内缺少 manifest 声明的文件
@@ -90,7 +94,7 @@ type ImportResult struct {
 	SkippedWorks        int64 `json:"skippedWorks"`        // 查重命中（site_id+site_work_id 已存在）跳过的作品数
 	CreatedWorkSets     int64 `json:"createdWorkSets"`     // 新建作品集数
 	SkippedWorkSets     int64 `json:"skippedWorkSets"`     // 查重命中跳过的作品集数
-	CreatedSites        int64 `json:"createdSites"`        // 新建站点数（按站点名 find-or-create）
+	CreatedSites        int64 `json:"createdSites"`        // 新建站点数（按键 find-or-create）
 	CreatedLocalTags    int64 `json:"createdLocalTags"`    // 新建本地标签数（按名称 find-or-create）
 	CreatedSiteTags     int64 `json:"createdSiteTags"`     // 新建站点标签数（按站点+site_tag_id 匹配）
 	CreatedLocalAuthors int64 `json:"createdLocalAuthors"` // 新建本地作者数（按名称 find-or-create）
@@ -138,6 +142,12 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 	if manifest.SchemaVersion != export.SchemaVersion {
 		return nil, fmt.Errorf("%w：产物版本 %d，本程序支持 %d",
 			ErrSchemaVersionUnsupported, manifest.SchemaVersion, export.SchemaVersion)
+	}
+
+	// 站点键注册校验（入口前置，文件落盘与入库前失败）：manifest 站点记录的 site_key 须全部
+	// 在 identity 注册表内，未注册键（含空键）整体拒绝
+	if err := validateSiteKeys(manifest.Sites); err != nil {
+		return nil, err
 	}
 
 	// 相位一：作品查重圈定（查重键的站点侧需要既有站点映射解析）
@@ -200,32 +210,38 @@ func replaceUnion(opts *IngestOptions) map[int64]struct{} {
 
 // ===== 相位一：只读预检 =====
 
-// mapExistingSites 既有站点行映射（决策15：站点按名称 find-or-create）。
-// 只读预检，供作品查重键解析站点侧；真正的 find-or-create 在入库事务内完成（ensureSites）。
-// 空名站点不参与匹配（无身份）。
-func (ing *ingestor) mapExistingSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, error) {
-	nameToRecordID := make(map[string]int64, len(records))
-	names := make([]string, 0, len(records))
+// validateSiteKeys 校验 manifest 站点记录的键全部在 identity 注册表内（空键/未注册键报错，
+// 报错文案即注册渠道指引）。键已注册方可继续——后续 find-or-create 以注册表权威信息建行。
+func validateSiteKeys(records []export.SiteRecord) error {
 	for _, r := range records {
-		if r.SiteName == nil || *r.SiteName == "" {
-			continue
+		if _, ok := identity.Lookup(r.SiteKey); !ok {
+			return fmt.Errorf("%w：%q。站点身份键由 SDK identity 注册表统一分配，"+
+				"新站点请生成 24 位小写 hex 强随机键值并提 PR 至 github.com/lvfeng-z/library-squirrel-sdk 的 identity 包注册，随 SDK 发布生效",
+				ErrUnregisteredSiteKey, r.SiteKey)
 		}
-		if _, dup := nameToRecordID[*r.SiteName]; !dup {
-			names = append(names, *r.SiteName)
-		}
-		nameToRecordID[*r.SiteName] = r.ID
 	}
-	rows, err := ing.dupRepo.ListSitesByNames(ctx, names)
+	return nil
+}
+
+// mapExistingSites 既有站点行映射（站点按键匹配：site_key 为站点唯一身份）。
+// 只读预检，供作品查重键解析站点侧；真正的 find-or-create 在入库事务内完成（ensureSites）。
+func (ing *ingestor) mapExistingSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, error) {
+	keys := make([]string, 0, len(records))
+	for _, r := range records {
+		keys = append(keys, r.SiteKey)
+	}
+	rows, err := ing.dupRepo.ListSitesByKeys(ctx, util.UniqueString(keys))
 	if err != nil {
 		return nil, fmt.Errorf("查询既有站点失败: %w", err)
 	}
-	remap := make(map[int64]int64, len(records))
+	keyToLocalID := make(map[string]int64, len(rows))
 	for _, row := range rows {
-		if !row.SiteName.Valid {
-			continue
-		}
-		if recordID, ok := nameToRecordID[row.SiteName.String]; ok {
-			remap[recordID] = row.GetID()
+		keyToLocalID[row.SiteKey] = row.GetID()
+	}
+	remap := make(map[int64]int64, len(records))
+	for _, r := range records {
+		if localID, ok := keyToLocalID[r.SiteKey]; ok {
+			remap[r.ID] = localID
 		}
 	}
 	return remap, nil
@@ -597,57 +613,54 @@ func countReplaceByKind(toReplace []*export.WorkRecord, opts *IngestOptions) (co
 
 // ===== 主数据 find-or-create =====
 
-// ensureSites 站点 find-or-create（决策15：按站点名匹配，同名复用）。
-// 空名站点不参与匹配、以 NULL 名新建。返回导出库站点 ID → 本库站点 ID 的全量重映射与新建数。
+// ensureSites 站点 find-or-create（按键匹配，键在本库已存在即复用）。
+// 新建行的键取 manifest 记录键（经入口 identity 校验已注册），名称与主页取注册表权威值——
+// manifest 携带的站点展示信息不落库（站点展示信息以注册表为准）。
+// 返回导出库站点 ID → 本库站点 ID 的全量重映射与新建数。
 func (ing *ingestor) ensureSites(ctx context.Context, records []export.SiteRecord) (map[int64]int64, int64, error) {
-	names := make([]string, 0, len(records))
+	keys := make([]string, 0, len(records))
 	for _, r := range records {
-		if r.SiteName != nil && *r.SiteName != "" {
-			names = append(names, *r.SiteName)
-		}
+		keys = append(keys, r.SiteKey)
 	}
-	rows, err := ing.dupRepo.ListSitesByNames(ctx, util.UniqueString(names))
+	rows, err := ing.dupRepo.ListSitesByKeys(ctx, util.UniqueString(keys))
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询既有站点失败: %w", err)
 	}
 	remap := make(map[int64]int64, len(records))
-	nameToLocalID := make(map[string]int64, len(rows))
+	keyToLocalID := make(map[string]int64, len(rows))
 	for _, row := range rows {
-		if row.SiteName.Valid {
-			nameToLocalID[row.SiteName.String] = row.GetID()
-		}
+		keyToLocalID[row.SiteKey] = row.GetID()
 	}
 
 	var creates []*entity.Site
 	var createRecordIDs []int64
-	sessionIdx := make(map[string]int) // 会话内已建行的名 → creates 下标（同批/跨批重名折叠）
+	sessionIdx := make(map[string]int) // 会话内已建行的键 → creates 下标（同批/跨批同键折叠）
 	type dupRef struct {
 		recordID  int64
 		createIdx int
 	}
 	var dups []dupRef
 	for _, r := range records {
-		if r.SiteName != nil && *r.SiteName != "" {
-			if localID, ok := nameToLocalID[*r.SiteName]; ok {
-				remap[r.ID] = localID
-				continue
-			}
-			if idx, ok := sessionIdx[*r.SiteName]; ok {
-				dups = append(dups, dupRef{r.ID, idx})
-				continue
-			}
+		if localID, ok := keyToLocalID[r.SiteKey]; ok {
+			remap[r.ID] = localID
+			continue
 		}
+		if idx, ok := sessionIdx[r.SiteKey]; ok {
+			dups = append(dups, dupRef{r.ID, idx})
+			continue
+		}
+		entry, _ := identity.Lookup(r.SiteKey)
 		e := entity.NewSite()
-		e.SiteName = nullStringFromPtr(r.SiteName, true)
-		e.SiteDescription = nullStringFromPtr(r.SiteDescription, false)
-		e.Homepage = nullStringFromPtr(r.Homepage, false)
+		e.SiteKey = entry.Key
+		e.SiteName = sql.NullString{String: entry.Name, Valid: true}
+		if entry.Homepage != "" {
+			e.Homepage = sql.NullString{String: entry.Homepage, Valid: true}
+		}
 		e.SetCreateTime(r.CreateTime)
 		e.SetUpdateTime(r.UpdateTime)
 		creates = append(creates, e)
 		createRecordIDs = append(createRecordIDs, r.ID)
-		if r.SiteName != nil && *r.SiteName != "" {
-			sessionIdx[*r.SiteName] = len(creates) - 1
-		}
+		sessionIdx[r.SiteKey] = len(creates) - 1
 	}
 	if err := ing.repo.CreateSites(ctx, creates); err != nil {
 		return nil, 0, fmt.Errorf("新建站点失败: %w", err)

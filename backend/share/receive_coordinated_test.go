@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/library-squirrel/backend/export"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
 
 // buildTenWorkModel 10 作品导出模型（每作品 1 个非缺失文件）——收件拨号统筹并发场景锚定：
@@ -52,7 +53,7 @@ func buildTenWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works:         works,
 		Files:         files,
 	}

@@ -290,7 +290,7 @@ type replaceSoftTarget struct {
 }
 
 // planReplace 查重 → 确认 → 软删与回滚登记（时序改造核心）：
-//   - manifest 作品键（站点名 + 站点侧作品 ID）+ 板块角色集合三分类（DuplicateChecker.Check）
+//   - manifest 作品键（站点键 + 站点侧作品 ID）+ 板块角色集合三分类（DuplicateChecker.Check）
 //   - 命中冲突非空 → WaitReplaceConfirm 整体决策（任务粒度，复用 ConfirmReplace 答复）；
 //     取消返回 canceled=true，Execute 不上报终态交控制面接管
 //   - 零交集命中作品自动并入 autoMergeWorks（查重命中即挂已有作品，弹窗与否只决定确认）
@@ -311,11 +311,11 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 		return plan, false, nil
 	}
 
-	// 反解 manifest 作品键与板块角色集合（站点名取 manifest.Sites 映射；无站点身份作品按未命中处理）
-	siteNameByID := make(map[int64]string, len(manifest.Sites))
+	// 反解 manifest 作品键与板块角色集合（站点键取 manifest.Sites 映射；无站点身份作品按未命中处理）
+	siteKeyByID := make(map[int64]string, len(manifest.Sites))
 	for i := range manifest.Sites {
-		if s := manifest.Sites[i]; s.SiteName != nil {
-			siteNameByID[s.ID] = *s.SiteName
+		if s := manifest.Sites[i]; s.SiteKey != "" {
+			siteKeyByID[s.ID] = s.SiteKey
 		}
 	}
 	items := make([]duplicate.DuplicateCheckItem, 0, len(manifest.Works))
@@ -324,15 +324,15 @@ func (e *ReceiveExecution) planReplace(ctx context.Context, manifest *export.Man
 		w := &manifest.Works[i]
 		roles := manifestWorkRoles(w)
 		rolesByWork[w.ID] = roles
-		var siteName, siteWorkID string
+		var siteKey, siteWorkID string
 		if w.SiteID != nil {
-			siteName = siteNameByID[*w.SiteID]
+			siteKey = siteKeyByID[*w.SiteID]
 		}
 		if w.SiteWorkID != nil {
 			siteWorkID = *w.SiteWorkID
 		}
 		items = append(items, duplicate.DuplicateCheckItem{
-			SiteName:   siteName,
+			SiteKey:    siteKey,
 			SiteWorkID: siteWorkID,
 			Roles:      roles,
 		})

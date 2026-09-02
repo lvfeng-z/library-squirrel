@@ -55,15 +55,6 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
 }
 
 /**
- * GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
- */
-export function GetBySiteWorkSetIdAndSiteName(siteWorkSetId: string, siteName: string): $CancellablePromise<model$0.ApiResponse<dto$0.WorkSetDTO | null> | null> {
-    return $Call.ByID(1868450757, siteWorkSetId, siteName).then(($result: any) => {
-        return $$createType5($result);
-    });
-}
-
-/**
  * GetCoverWorkId 获取封面作品ID
  */
 export function GetCoverWorkId(workSetId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {

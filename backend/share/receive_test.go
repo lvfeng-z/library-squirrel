@@ -33,6 +33,7 @@ import (
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util/fingerprint"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
 
 // —— 链接解析 ——
@@ -272,7 +273,7 @@ func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works: []export.WorkRecord{
 			{ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("作品A"),
 				Resources: []export.ResourceRecord{{ID: 11, ResourceType: "image",
@@ -312,7 +313,7 @@ func buildAllPresentModel(t *testing.T, workDir string) (*export.ExportModel, ma
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works: []export.WorkRecord{{
 			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
 			Resources: []export.ResourceRecord{{
@@ -349,7 +350,7 @@ func buildBigFileModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works: []export.WorkRecord{{
 			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
 			Resources: []export.ResourceRecord{{
@@ -1953,4 +1954,32 @@ func TestReceiveExecutionContentSameRerunZeroDial(t *testing.T) {
 	run() // 内容相同重跑
 	reqs = parseRecordedRequests(t, env.dialer.snapshot(), target.Key)
 	require.Len(t, reqs, 0, "内容相同重跑仍零拨号，实际: %+v", reqs)
+}
+
+// TestShareManifestSchemaVersionGate 分享侧版本门锚（两处）：v1 旧 manifest（SiteRecord 尚无
+// siteKey 的契约代）在 Receive 预拉入口与收件子任务执行入口均被拒绝（import 回灌入口的
+// 版本门见 importer.TestManifestSchemaVersionGate）。
+func TestShareManifestSchemaVersionGate(t *testing.T) {
+	t.Run("Receive预拉入口拒绝", func(t *testing.T) {
+		taskCtl := &fakeBuiltinTaskControl{}
+		env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, func(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
+			m, data := buildTestModel(t, workDir)
+			m.Manifest.SchemaVersion = 1
+			return m, data
+		}, taskCtl)
+		_, err := env.recvSvc.Receive(context.Background(), env.link, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "分享清单版本不支持")
+		assert.Empty(t, taskCtl.children, "版本拒绝不应建任务树")
+	})
+	t.Run("收件子任务执行入口拒绝", func(t *testing.T) {
+		env := startReceiveEnv(t, SharePublishOptions{})
+		env.manifest.SchemaVersion = 1
+		h, cancel, exec := env.buildReceiveHandle(t, "")
+		defer cancel()
+		exec.Execute(h)
+		finished, failed := handleOutcome(h)
+		assert.False(t, finished, "版本拒绝不应成功终态")
+		assert.Contains(t, failed, "共享 manifest 版本不支持")
+	})
 }

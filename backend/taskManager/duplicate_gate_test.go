@@ -39,18 +39,18 @@ func (f *fakeDuplicateChecker) Check(ctx context.Context, items []duplicate.Dupl
 	return out, nil
 }
 
-// fakeSiteNameResolver 站点 ID → 站点名桩(查重输入键形态统一:task.SiteID 反查站点名)
-type fakeSiteNameResolver struct {
-	names map[int64]string
+// fakeSiteKeyResolver 站点 ID → 站点键桩(查重输入键形态统一:task.SiteID 反查站点键)
+type fakeSiteKeyResolver struct {
+	keys map[int64]string
 }
 
-func (f *fakeSiteNameResolver) ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error) {
+func (f *fakeSiteKeyResolver) ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error) {
 	out := make([]*entity.Site, 0, len(ids))
 	for _, id := range ids {
-		if name, ok := f.names[id]; ok {
+		if key, ok := f.keys[id]; ok {
 			s := entity.NewSite()
 			s.ID = id
-			s.SiteName = sql.NullString{String: name, Valid: true}
+			s.SiteKey = key
 			out = append(out, s)
 		}
 	}
@@ -192,7 +192,7 @@ func (s *fakeWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task,
 // newRoleGateTask 构造进入 runSectionCombo 查重段的 ManagedTask(不启动 actor)。
 // 门槛后各段依赖(替换软删/插件执行器)注入桩:Start 桩固定报错,不弹窗用例在下载前终止。
 // 返回替换链桩供用例预置资源图与断言
-func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, resolver *fakeSiteNameResolver, pusher *fakePusher) (*ManagedTask, *fakeResourceReader, *fakeResourceStoreReader, *fakeStoreBackupReader, *fakeStoreReplacer) {
+func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, resolver *fakeSiteKeyResolver, pusher *fakePusher) (*ManagedTask, *fakeResourceReader, *fakeResourceStoreReader, *fakeStoreBackupReader, *fakeStoreReplacer) {
 	m := newTestManagedTask()
 	m.taskId = taskId
 	m.task.TaskName = sql.NullString{String: "t", Valid: true}
@@ -206,7 +206,7 @@ func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, 
 	replacer := &fakeStoreReplacer{}
 	m.deps = &TaskDeps{
 		DuplicateChecker:    checker,
-		SiteNameResolver:    resolver,
+		SiteKeyResolver:     resolver,
 		Pusher:              pusher,
 		WorkDirProvider:     stubWorkDirProvider{dir: "E:/lib"},
 		ResourceReader:      resReader,
@@ -298,7 +298,7 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 			pusher := &fakePusher{}
 
 			m, _, _, _, _ := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}},
-				checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
+				checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, pusher)
 
 			pushed := runDuplicateGate(t, m, pusher)
 			if pushed != tc.wantPush {
@@ -346,7 +346,7 @@ func TestDuplicateGate_RowLevel(t *testing.T) {
 func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
 	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeThumbnail}}},
-		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
+		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, &fakePusher{})
 	pusher := m.deps.Pusher.(*fakePusher)
 	// 预置资源图：作品 500 → 资源 700 → thumbnail 关联(store 800，已完成活行)
 	res := entity.NewResource()
@@ -388,7 +388,7 @@ func TestDuplicateGate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 func TestDuplicateGate_FullModeReplaceSoftDeletesAllRoles(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
 	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeAll}},
-		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
+		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, &fakePusher{})
 	pusher := m.deps.Pusher.(*fakePusher)
 	// 预置资源图：作品 500 → 资源 700 → image(800) 与 thumbnail(801) 两条已完成活行
 	res := entity.NewResource()
@@ -427,7 +427,7 @@ func TestDuplicateGate_FullModeReplaceSoftDeletesAllRoles(t *testing.T) {
 func TestDuplicateGate_FullModeReplaceLockGuard(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
 	m, resReader, rsReader, backupReader, replacer := newRoleGateTask(300, runMode{storeScope: storeScope{kind: scopeAll}},
-		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, &fakePusher{})
+		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, &fakePusher{})
 	pusher := m.deps.Pusher.(*fakePusher)
 	res := entity.NewResource()
 	res.ID = 700
@@ -472,7 +472,7 @@ func TestDuplicateGate_InfoOnlySkipsCheck(t *testing.T) {
 	checker := &fakeDuplicateChecker{result: fakeCheckResult(duplicate.DuplicateHitConflict, nil)}
 	pusher := &fakePusher{}
 	m, _, _, _, _ := newRoleGateTask(300, runMode{workInfo: true, storeScope: storeScope{kind: scopeNone}},
-		checker, &fakeSiteNameResolver{names: map[int64]string{1: "test-site"}}, pusher)
+		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, pusher)
 	m.deps.WorkInfoSaver = &fakeWorkInfoSaver{savedWorkId: 100}
 
 	_ = m.runSectionCombo()

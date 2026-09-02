@@ -126,23 +126,6 @@ export async function workSetSoftDelete(id: number): Promise<ApiResponse<null>> 
 }
 
 /**
- * 根据站点作品集ID和站点名称获取作品集
- */
-export async function workSetGetBySiteWorkSetIdAndSiteName(
-  siteWorkSetId: string,
-  siteName: string
-): Promise<ApiResponse<WorkSetVO>> {
-  const result = await WorkSetHandler.GetBySiteWorkSetIdAndSiteName(siteWorkSetId, siteName)
-  if (!result) {
-    return { success: false, msg: '获取失败：接口返回为空' }
-  }
-  if (!result.success) {
-    return { success: false, msg: result.msg ?? '获取失败' }
-  }
-  return { success: true, msg: result.msg ?? '', data: result.data ? toWorkSetVO(result.data) : undefined }
-}
-
-/**
  * 获取作品集的直接成员作品ID（不含后代子集成员；封面/移除等直接成员专属操作的判定依据）
  */
 export async function workSetGetDirectWorkIds(workSetId: number): Promise<ApiResponse<number[]>> {

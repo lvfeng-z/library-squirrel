@@ -27,7 +27,7 @@ func TestManifestRoundTrip(t *testing.T) {
 			FileCount:        1,
 		},
 		Sites: []SiteRecord{
-			{ID: 10, SiteName: strp("pixiv"), SiteDescription: strp("desc"), Homepage: strp("https://pixiv.net"), CreateTime: 1, UpdateTime: 2},
+			{ID: 10, SiteKey: "pixiv", SiteName: strp("pixiv"), Homepage: strp("https://pixiv.net"), CreateTime: 1, UpdateTime: 2},
 		},
 		LocalAuthors: []AuthorRecord{
 			{ID: 20, Name: strp("画师"), Introduce: strp("简介"), LastUse: int64p(100), CreateTime: 1, UpdateTime: 2},
@@ -89,8 +89,9 @@ func TestManifestRoundTrip(t *testing.T) {
 
 	assert.Equal(t, m, back)
 
-	// schemaVersion 字段须如实序列化（回灌的版本锚）
-	assert.Contains(t, string(data), `"schemaVersion": 1`)
+	// schemaVersion 与 siteKey 字段须如实序列化（回灌的版本锚与站点身份键）
+	assert.Contains(t, string(data), `"schemaVersion": 2`)
+	assert.Contains(t, string(data), `"siteKey": "pixiv"`)
 }
 
 // TestManifestEmptyPointerRoundTrip 空指针字段（omitempty）往返：序列化为 null 语义，反序列化为 nil。

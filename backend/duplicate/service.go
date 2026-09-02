@@ -8,10 +8,10 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 )
 
-// DuplicateCheckItem 查重输入：站点名（manifest/URL 域，内部做名称→本库站点映射）+
-// 站点侧作品 ID + 该作品期望的板块角色集合（空=全量语义）。
+// DuplicateCheckItem 查重输入：站点键（manifest 站点记录/插件任务侧站点行，内部做键→本库站点
+// 映射）+ 站点侧作品 ID + 该作品期望的板块角色集合（空=全量语义）。
 type DuplicateCheckItem struct {
-	SiteName   string
+	SiteKey    string
 	SiteWorkID string
 	Roles      []string
 }
@@ -48,13 +48,13 @@ type StoreRoleSetProvider interface {
 }
 
 // DuplicateChecker 作品查重判定能力：输入查重键 + 期望板块角色，输出三分类判定。
-// 纯查询判定，无副作用。站点名映射、作品批量定位、活行角色集合与交集计算全内聚，
+// 纯查询判定，无副作用。站点键映射、作品批量定位、活行角色集合与交集计算全内聚，
 // 供插件任务（taskManager）、分享收件与 zip 导入等消费方复用。
 type DuplicateChecker interface {
 	Check(ctx context.Context, items []DuplicateCheckItem) ([]DuplicateCheckResult, error)
 }
 
-// Service 查重判定实现。站点名映射、作品定位、行级角色集合为内部组合：
+// Service 查重判定实现。站点键映射、作品定位、行级角色集合为内部组合：
 // 站点映射与作品定位任一失败返回 error（消费方按需降级——批量派发降级逐任务检查、
 // 逐任务按未命中处理）；仅行级角色集合查询失败时命中作品落「保守冲突」（宁多弹不漏弹）。
 type Service struct {
@@ -67,32 +67,32 @@ func NewService(repo Repository, roleSets StoreRoleSetProvider) *Service {
 	return &Service{repo: repo, roleSets: roleSets}
 }
 
-// Check 实现 DuplicateChecker。站点名无法映射到本库站点（空名/站点行不存在）的作品
+// Check 实现 DuplicateChecker。站点键无法映射到本库站点（空键/站点行不存在）的作品
 // 按未命中处理——站点不存在则本库不可能有作品引用它。
 func (s *Service) Check(ctx context.Context, items []DuplicateCheckItem) ([]DuplicateCheckResult, error) {
 	results := make([]DuplicateCheckResult, len(items))
 
-	// 站点名 → 本库站点（一次批量查询，名称去重）
-	nameToSite, err := s.mapSitesByNames(ctx, items)
+	// 站点键 → 本库站点（一次批量查询，键去重）
+	keyToSite, err := s.mapSitesByKeys(ctx, items)
 	if err != nil {
 		return nil, err
 	}
 
 	// 作品批量定位：按本库站点分组查（site_id+site_work_id 等长配对语义）
-	located, err := s.locateWorks(ctx, items, nameToSite)
+	located, err := s.locateWorks(ctx, items, keyToSite)
 	if err != nil {
 		return nil, err
 	}
 
 	// 命中作品收集活行角色集合（一次批量查询）
-	storeTypeSets, setFailed, err := s.collectStoreRoleSets(ctx, items, nameToSite, located)
+	storeTypeSets, setFailed, err := s.collectStoreRoleSets(ctx, items, keyToSite, located)
 	if err != nil {
 		return nil, err
 	}
 
 	// 逐项分类判定
 	for i, item := range items {
-		site, ok := nameToSite[item.SiteName]
+		site, ok := keyToSite[item.SiteKey]
 		if !ok {
 			continue // 未命中
 		}
@@ -140,41 +140,39 @@ type locateKey struct {
 	siteWorkID string
 }
 
-// mapSitesByNames 站点名 → 本库站点映射（名称去重；空名不参与匹配）。
-func (s *Service) mapSitesByNames(ctx context.Context, items []DuplicateCheckItem) (map[string]*entity.Site, error) {
+// mapSitesByKeys 站点键 → 本库站点映射（键去重；空键不参与匹配）。
+func (s *Service) mapSitesByKeys(ctx context.Context, items []DuplicateCheckItem) (map[string]*entity.Site, error) {
 	seen := make(map[string]struct{}, len(items))
-	names := make([]string, 0, len(items))
+	keys := make([]string, 0, len(items))
 	for _, it := range items {
-		if it.SiteName == "" {
+		if it.SiteKey == "" {
 			continue
 		}
-		if _, dup := seen[it.SiteName]; dup {
+		if _, dup := seen[it.SiteKey]; dup {
 			continue
 		}
-		seen[it.SiteName] = struct{}{}
-		names = append(names, it.SiteName)
+		seen[it.SiteKey] = struct{}{}
+		keys = append(keys, it.SiteKey)
 	}
 	result := make(map[string]*entity.Site)
-	if len(names) == 0 {
+	if len(keys) == 0 {
 		return result, nil
 	}
-	rows, err := s.repo.ListSitesByNames(ctx, names)
+	rows, err := s.repo.ListSitesByKeys(ctx, keys)
 	if err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
-		if row.SiteName.Valid {
-			result[row.SiteName.String] = row
-		}
+		result[row.SiteKey] = row
 	}
 	return result, nil
 }
 
-// locateWorks 作品批量定位：站点名映射后按本库站点分组查询。
-func (s *Service) locateWorks(ctx context.Context, items []DuplicateCheckItem, nameToSite map[string]*entity.Site) (map[locateKey]*entity.Work, error) {
+// locateWorks 作品批量定位：站点键映射后按本库站点分组查询。
+func (s *Service) locateWorks(ctx context.Context, items []DuplicateCheckItem, keyToSite map[string]*entity.Site) (map[locateKey]*entity.Work, error) {
 	workIDsBySite := make(map[int64][]string)
 	for _, it := range items {
-		site, ok := nameToSite[it.SiteName]
+		site, ok := keyToSite[it.SiteKey]
 		if !ok {
 			continue
 		}
@@ -197,14 +195,14 @@ func (s *Service) locateWorks(ctx context.Context, items []DuplicateCheckItem, n
 
 // collectStoreRoleSets 命中作品批量收集活行角色集合。
 // 行级查询失败不算整体失败（命中作品落保守冲突）；角色集合提供方未装配同样按不可得处理。
-func (s *Service) collectStoreRoleSets(ctx context.Context, items []DuplicateCheckItem, nameToSite map[string]*entity.Site, located map[locateKey]*entity.Work) (map[int64]map[string]struct{}, bool, error) {
+func (s *Service) collectStoreRoleSets(ctx context.Context, items []DuplicateCheckItem, keyToSite map[string]*entity.Site, located map[locateKey]*entity.Work) (map[int64]map[string]struct{}, bool, error) {
 	if s.roleSets == nil {
 		return nil, false, nil
 	}
 	hitWorkIds := make([]int64, 0, len(items))
 	seen := make(map[int64]struct{})
 	for _, it := range items {
-		site, ok := nameToSite[it.SiteName]
+		site, ok := keyToSite[it.SiteKey]
 		if !ok {
 			continue
 		}

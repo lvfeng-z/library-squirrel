@@ -417,8 +417,13 @@ export class ResourceRecord {
  */
 export class SiteRecord {
     "id": number;
+
+    /**
+     * SiteKey 站点唯一身份键（SDK identity 注册表分配）。跨库站点匹配、查重、
+     * find-or-create 一律以此键为准；回灌侧校验其已注册，空键/未注册键拒绝导入
+     */
+    "siteKey": string;
     "siteName"?: string | null;
-    "siteDescription"?: string | null;
     "homepage"?: string | null;
     "createTime": number;
     "updateTime": number;
@@ -427,6 +432,9 @@ export class SiteRecord {
     constructor($$source: Partial<SiteRecord> = {}) {
         if (!("id" in $$source)) {
             this["id"] = 0;
+        }
+        if (!("siteKey" in $$source)) {
+            this["siteKey"] = "";
         }
         if (!("createTime" in $$source)) {
             this["createTime"] = 0;

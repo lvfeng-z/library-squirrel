@@ -127,7 +127,7 @@ func TestConfirmReplaceRejectsLockedConflictWork(t *testing.T) {
 }
 
 // TestConfirmReplaceBatchRejectsLockedWork 批量 replace 任一涉及作品被锁：整体不投递
-//（全部留在确认表）；强制解锁后重发整批放行
+// （全部留在确认表）；强制解锁后重发整批放行
 func TestConfirmReplaceBatchRejectsLockedWork(t *testing.T) {
 	lock := shareLock.NewShareLockRegistry()
 	mgr := NewManager(2, nil, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil)

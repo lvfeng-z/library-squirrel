@@ -187,9 +187,9 @@ type ResourceSaver interface {
 	Updates(ctx context.Context, resource *entity.Resource) error
 }
 
-// SiteNameResolver 站点 ID → 站点行批量查询（查重输入键形态统一：插件任务侧把 task.SiteID
-// 反查站点名，与 share-receive/zip 导入的 manifest 域键对齐；由 site.Service 实现）
-type SiteNameResolver interface {
+// SiteKeyResolver 站点 ID → 站点行批量查询（查重输入键形态统一：插件任务侧把 task.SiteID
+// 反查站点键，与 share-receive/zip 导入的 manifest 域键对齐；由 site.Service 实现）
+type SiteKeyResolver interface {
 	ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error)
 }
 
@@ -286,7 +286,7 @@ type TaskDeps struct {
 	WorkDirProvider        WorkDirProvider
 	FileNameFormatProvider FileNameFormatProvider
 	DuplicateChecker       duplicate.DuplicateChecker // 作品查重判定能力（两处内联判定改接对象）
-	SiteNameResolver       SiteNameResolver           // 站点 ID → 站点名（查重输入键形态统一）
+	SiteKeyResolver        SiteKeyResolver            // 站点 ID → 站点键（查重输入键形态统一）
 	ResourceReader         ResourceReader
 	WorkLivenessReader     WorkLivenessReader
 	ReplaceStoreOps        resource.ReplaceStoreOps // 替换链能力（resource 模块提供：前置软删/失败回滚复活）
@@ -899,12 +899,12 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	// 含资源板块：查重（fallback；主路径在 Manager.batchCheckDuplicates）
 	if m.runMode.storeScope.coversStores() && !m.skipDuplicateCheck && m.deps.DuplicateChecker != nil &&
 		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
-		// 查重输入键形态统一：插件任务侧把 task.SiteID 反查站点名（一次查询），
-		// 与 share-receive/zip 导入的 manifest 域键（站点名）对齐
-		siteName, ok := m.resolveSiteName(m.runCtx, m.task.SiteID.Int64)
+		// 查重输入键形态统一：插件任务侧把 task.SiteID 反查站点键（一次查询），
+		// 与 share-receive/zip 导入的 manifest 域键（站点键）对齐
+		siteKey, ok := m.resolveSiteKey(m.runCtx, m.task.SiteID.Int64)
 		if ok {
 			results, err := m.deps.DuplicateChecker.Check(m.runCtx, []duplicate.DuplicateCheckItem{{
-				SiteName: siteName, SiteWorkID: m.task.SiteWorkID.String, Roles: m.runMode.storeScope.roles,
+				SiteKey: siteKey, SiteWorkID: m.task.SiteWorkID.String, Roles: m.runMode.storeScope.roles,
 			}})
 			if err == nil && len(results) == 1 {
 				res := results[0]
@@ -1014,17 +1014,17 @@ func (m *ManagedTask) comboFail(errMsg string) runResult {
 	return runResultDone
 }
 
-// resolveSiteName 站点 ID → 站点名（查重输入键形态统一：插件任务侧把 task.SiteID 反查站点名）。
+// resolveSiteKey 站点 ID → 站点键（查重输入键形态统一：插件任务侧把 task.SiteID 反查站点键）。
 // 站点行缺失/查询失败返回 ok=false，调用方按未命中处理（站点不存在则无作品可引用它）。
-func (m *ManagedTask) resolveSiteName(ctx context.Context, siteId int64) (string, bool) {
-	if m.deps.SiteNameResolver == nil {
+func (m *ManagedTask) resolveSiteKey(ctx context.Context, siteId int64) (string, bool) {
+	if m.deps.SiteKeyResolver == nil {
 		return "", false
 	}
-	sites, err := m.deps.SiteNameResolver.ListByIds(ctx, []int64{siteId})
-	if err != nil || len(sites) == 0 || !sites[0].SiteName.Valid {
+	sites, err := m.deps.SiteKeyResolver.ListByIds(ctx, []int64{siteId})
+	if err != nil || len(sites) == 0 || sites[0].SiteKey == "" {
 		return "", false
 	}
-	return sites[0].SiteName.String, true
+	return sites[0].SiteKey, true
 }
 
 // startDownload 为每个 spec 建存储、挂 resource_store、进入多流下载循环

@@ -2,15 +2,17 @@
 
 ## 一句话职责
 
-站点（远程来源）主数据的持久化与查询，供作品/任务/作品集/站点标签/站点作者按 `site_id` 挂靠；站点删除采用**前置守卫**（引用非空即拒，不做级联清理）。
+站点（远程来源）主数据的持久化与查询，供作品/任务/作品集/站点标签/站点作者按 `site_id` 挂靠；站点删除采用**前置守卫**（引用非空即拒，不做级联清理）。站点身份 = `site_key`（SDK `identity` 注册表分配，唯一索引；插件经 AddSite 落库须键已注册，展示信息取注册表权威值），`site_name` 为纯展示列；站点行创建封闭为插件 AddSite 与导入/分享回灌两径，手动建站已退役。
 
 ## 对外接口（Handler）
 
 | 方法 | 作用 |
 | --- | --- |
-| `Save` / `Update` | 创建 / 更新站点 |
+| `Update` | 更新站点 |
 | `Delete` | 删除站点（前置守卫：五类引用任一存在即拒绝并返回聚合计数与清理指引） |
-| `GetById` / `GetByName` / `QueryPage` / `QuerySelectItemPage` | 单查 / 按名查 / 分页 / 选择项分页 |
+| `GetById` / `GetByKey` / `QueryPage` / `QuerySelectItemPage` | 单查 / 按键查（身份解析规范入口）/ 分页 / 选择项分页 |
+
+> 创建不设 Handler 端点：站点行由插件激活 AddSite（`SiteSaveProvider.Create` 消费 `Service.Create`）与导入/分享回灌产生。
 
 ## 核心概念
 
@@ -20,4 +22,4 @@
 ## 依赖关系
 
 - 依赖：database（Transactor，守卫与删除同事务）、work / task / workSet / siteTag / siteAuthor（各自仓储实现按站点计数接口）
-- 被依赖：前端站点管理页、siteTag / siteAuthor（站点查询接口）、task（创建路由经 `GetByName` 回填 SiteID）、work / workSet / search 等（经各自定义的 SiteReader 窄接口）
+- 被依赖：前端站点管理页、siteTag / siteAuthor（站点查询接口）、task（创建路由经 `GetByKey` 回填 SiteID）、plugin/extension（AddSite 按键查重与建行）、work / workSet / search 等（经各自定义的 SiteReader 窄接口）

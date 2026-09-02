@@ -17,7 +17,7 @@ const batchCreateChunk = 500
 // Repository 导入仓储接口（本模块定义所需数据操作，直查共享表——对齐 export 模块先例）。
 // 查询方法走 dbFromCtx（事务感知）；批量写方法保留实体上已设置的时间戳——
 // BaseRepository.CreateBatch 会把时间统一覆写为当前时刻，无法表达「保真源库时间戳」语义，故自定义。
-// 站点名查询与作品查重定位（ListSitesByNames/ListWorksBySiteAndWorkIDs）已迁至 duplicate 模块共享，
+// 站点键查询与作品查重定位（ListSitesByKeys/ListWorksBySiteAndWorkIDs）已迁至 duplicate 模块共享，
 // 经 ingestor 持有的 dupRepo 调用。
 type Repository interface {
 	// ===== 查询（find-or-create 匹配 / 查重）=====

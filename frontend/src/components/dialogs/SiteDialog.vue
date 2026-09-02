@@ -32,23 +32,12 @@ const emits = defineEmits(['requestSuccess'])
 async function handleSaveButtonClicked() {
   if (props.submitEnabled) {
     try {
-      if (props.mode === DialogMode.NEW) {
-        const tempFormData = lodash.cloneDeep(formData.value)
-        const siteDTO = new SiteDTO({
-          siteName: tempFormData.siteName ?? null,
-          homepage: tempFormData.homepage ?? null
-        })
-        const response = await siteApi.siteSave(siteDTO)
-        ApiUtil.msg(response)
-        emits('requestSuccess')
-        state.value = false
-      }
       if (props.mode === DialogMode.EDIT) {
         const tempFormData = lodash.cloneDeep(formData.value)
         const siteDTO = new SiteDTO({
           id: tempFormData.id,
+          siteKey: tempFormData.siteKey,
           siteName: tempFormData.siteName ?? null,
-          siteDescription: tempFormData.siteDescription ?? null,
           homepage: tempFormData.homepage ?? null
         })
         const response = await siteApi.siteUpdateById(siteDTO)
@@ -76,19 +65,19 @@ async function handleSaveButtonClicked() {
     <template #form>
       <el-row>
         <el-col>
-          <el-form-item label="名称">
-            <el-input v-model="formData.siteName" />
+          <el-form-item label="站点键">
+            <el-input
+              v-model="formData.siteKey"
+              disabled
+              placeholder="站点唯一身份键（SDK identity 注册表分配）"
+            />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row>
         <el-col>
-          <el-form-item label="描述">
-            <el-input
-              v-model="formData.siteDescription"
-              type="textarea"
-              autosize
-            />
+          <el-form-item label="名称">
+            <el-input v-model="formData.siteName" />
           </el-form-item>
         </el-col>
       </el-row>

@@ -45,7 +45,7 @@ query.go            — 查询 DTO
 
 ## 核心业务概念
 
-- **Site（站点）**: 远程来源（pixiv 等）
+- **Site（站点）**: 远程来源（pixiv 等）。唯一身份 = `site_key`（SDK `identity` 注册表分配的品牌 slug，如 "pixiv"，not null + 唯一索引；键一经发布不可变、注册表只增不改，未注册键在 AddSite/导入/分享接收被拒绝，手动建站已退役（站点行写入方封闭为 AddSite 与导入/分享回灌两径）；键=身份、名=展示，两列职责分离禁止合并回按名匹配）；`site_name` 纯展示（非唯一，创建取注册表权威名）。跨库匹配/查重/关联一律按键，作品复合键 = (site_key, site_work_id)。规范见 `doc/site-identity-spec.md`
 - **Work（作品）**: 核心实体 — 资源集合 + 元数据
 - **Resource（资源）**: Work 下的可展示单元，带 `ResourceType`（内置 image/video/article/document/audio/unknown 或插件自定义类型）
 - **ResourceType（资源类型）**: 内置 6 类（image/video/article/document/audio/unknown）封闭 + 插件可经 manifest `resourceTypes` 段声明自定义类型（注册进 `ResourceTypeRegistry`，注册时强校验）；决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）

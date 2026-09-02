@@ -64,7 +64,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 		stmt := `SELECT t1.id || 'siteTag' AS value, t1.site_tag_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 2, 'id', t1.id,
 				 'localTag', JSON_OBJECT('id', COALESCE(t2.id, 0), 'localTagName', COALESCE(t2.local_tag_name, ''), 'baseLocalTagId', COALESCE(t2.base_local_tag_id, 0)),
-				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, '')),
+				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, '')),
 				 'namespace', t1.namespace
 				 ) AS extraData
 				 FROM site_tag t1
@@ -100,7 +100,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 		stmt := `SELECT t1.id || 'siteAuthor' AS value, t1.author_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 4, 'id', t1.id,
 				 'siteAuthor', JSON_OBJECT('id', COALESCE(t2.id, 0), 'authorName', COALESCE(t2.author_name, '')),
-				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''), 'siteDescription', COALESCE(t3.site_description, ''))
+				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''))
 				 ) AS extraData
 				 FROM site_author t1
 				 LEFT JOIN local_author t2 ON t1.local_author_id = t2.id
@@ -263,7 +263,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 					'createTime', lt.create_time, 'updateTime', lt.update_time)
 				END,
 				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
-					'id', s.id, 'siteName', s.site_name, 'siteDescription', s.site_description)
+					'id', s.id, 'siteName', s.site_name)
 				END))
 			FROM re_work_tag rwt
 			INNER JOIN site_tag st ON rwt.site_tag_id = st.id
@@ -287,7 +287,7 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 					'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time)
 				END,
 				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
-					'id', s.id, 'siteName', s.site_name, 'siteDescription', s.site_description)
+					'id', s.id, 'siteName', s.site_name)
 				END))
 			FROM re_work_author rwa
 			INNER JOIN site_author sa ON rwa.site_author_id = sa.id

@@ -121,15 +121,6 @@ func (h *Handler) UnlinkWorkFromWorkSet(ctx context.Context, workId, workSetId i
 	return model.HandleVoid(h.svc.UnlinkWorkFromWorkSet(ctx, workId, workSetId))
 }
 
-// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称获取作品集
-func (h *Handler) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) *model.ApiResponse[*sdkdto.WorkSetDTO] {
-	result, err := h.svc.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
-	if err != nil {
-		return model.HandleError[*sdkdto.WorkSetDTO](err)
-	}
-	return model.Success(dto2.NewWorkSetDTO(result))
-}
-
 // LinkBatchToWorkSet 批量关联作品到作品集
 func (h *Handler) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workIds []int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.LinkBatchToWorkSet(ctx, workSetId, workIds))

@@ -34,6 +34,7 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/taskManager"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
 
 // —— 测试夹具 ——
@@ -76,7 +77,7 @@ func buildTestModel(t *testing.T, workDir string) (*export.ExportModel, map[stri
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{ExportedAt: 1756000000000, AppVersion: "test"},
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works: []export.WorkRecord{{
 			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
 			Resources: []export.ResourceRecord{{
@@ -1139,7 +1140,7 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{ExportedAt: 1756000000000, AppVersion: "test"},
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 	}
 	for _, id := range fileWorkIDs {
 		rel := fmt.Sprintf("store/resource/测试作者/pic_%03d.jpg", id)
@@ -1649,7 +1650,7 @@ func TestMetaPayloadWorksName(t *testing.T) {
 	// ③ 空作品清单 register：worksName 键不出现（omitempty）
 	emptyModel := export.NewExportModel(&export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 		Works:         []export.WorkRecord{},
 	})
 	key, err := GenerateShareKey()

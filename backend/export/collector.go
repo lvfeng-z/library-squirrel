@@ -676,10 +676,10 @@ func resourceToRecord(res *entity.Resource) ResourceRecord {
 
 func siteToRecord(s *entity.Site) SiteRecord {
 	return SiteRecord{
-		ID:              s.GetID(),
-		SiteName:        util.NullStringToPointer(s.SiteName),
-		SiteDescription: util.NullStringToPointer(s.SiteDescription),
-		Homepage:        util.NullStringToPointer(s.Homepage),
+		ID:         s.GetID(),
+		SiteKey:    s.SiteKey,
+		SiteName:   util.NullStringToPointer(s.SiteName),
+		Homepage:   util.NullStringToPointer(s.Homepage),
 		CreateTime:      s.GetCreateTime(),
 		UpdateTime:      s.GetUpdateTime(),
 	}

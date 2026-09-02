@@ -13,6 +13,7 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkSetWorkSet"
 	"github.com/library-squirrel/backend/reWorkWorkSet"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"gorm.io/gorm"
 )
@@ -43,8 +44,8 @@ func newLifecycleService(t *testing.T) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Skipf("内存 SQLite 不可用: %v", err)
 	}
-	// 站点行种子（work_set.site_id 外键防线，fixture 统一用 siteId=1）
-	if err := db.Exec("INSERT OR IGNORE INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+	// 站点行种子（work_set.site_id 外键防线，fixture 统一用 siteId=1；site_key NOT NULL 取注册键）
+	if err := db.Exec("INSERT OR IGNORE INTO site (id, site_key, create_time, update_time) VALUES (1, ?, 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
 	svc := NewService(

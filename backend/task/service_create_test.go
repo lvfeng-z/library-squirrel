@@ -40,6 +40,7 @@ func TestMain(m *testing.M) {
 
 const (
 	testSiteName = "pixiv"
+	testSiteKey  = "pixiv" // 与 identity.Pixiv 键一致的种子值（不走注册表校验，任务路径仅按键查库）
 	testSiteID   = int64(100)
 	testPluginID = "plugin-1"
 	testExtID    = "ext-1"
@@ -79,7 +80,7 @@ func (f *fakeTaskRepo) CreateBatch(_ context.Context, tasks []*entity.Task) erro
 	return nil
 }
 
-// fakeSiteRepo 让 site.Service.GetByName 回填固定站点 ID（创建路径经 siteSvc.GetByName→repo.Get）。
+// fakeSiteRepo 让 site.Service.GetByKey 回填固定站点 ID（创建路径经 siteSvc.GetByKey→repo.Get）。
 type fakeSiteRepo struct {
 	site.Repository
 }
@@ -193,7 +194,7 @@ func TestHandleCreateTaskStream_Leaf(t *testing.T) {
 		TaskName:     "单图作品",
 		SiteWorkId:   "w-1",
 		Url:          "http://x/1",
-		SiteName:     testSiteName,
+		SiteKey:      testSiteKey,
 		ResourceType: entity.ResourceTypeImage,
 	}
 	close(in)
@@ -227,10 +228,10 @@ func TestHandleCreateTaskStream_SingleChild(t *testing.T) {
 	in <- &sdkdto.TaskCreateResponse{
 		TaskName:     "work-A",
 		Url:          "http://x/a",
-		SiteName:     testSiteName,
+		SiteKey:      testSiteKey,
 		ResourceType: entity.ResourceTypeImage,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	close(in)
@@ -263,11 +264,11 @@ func TestHandleCreateTaskStream_ParentChildren(t *testing.T) {
 	in <- &sdkdto.TaskCreateResponse{
 		TaskName:     "work-B",
 		Url:          "http://x/b",
-		SiteName:     testSiteName,
+		SiteKey:      testSiteKey,
 		ResourceType: entity.ResourceTypeImage,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
-			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	close(in)
@@ -301,16 +302,16 @@ func TestHandleCreateTaskStream_SameWorkMergedAcrossResponses(t *testing.T) {
 	svc, repo := newTestService(t)
 	in := make(chan *sdkdto.TaskCreateResponse, 2)
 	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteName: testSiteName,
+		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
-			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteName: testSiteName,
+		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p3", SiteWorkId: "c-3", Url: "http://x/3", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p3", SiteWorkId: "c-3", Url: "http://x/3", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	close(in)
@@ -336,15 +337,15 @@ func TestHandleCreateTaskStream_DifferentWorksNotMerged(t *testing.T) {
 	svc, repo := newTestService(t)
 	in := make(chan *sdkdto.TaskCreateResponse, 2)
 	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-A", TaskName: "work-A", Url: "http://x/a", SiteName: testSiteName,
+		PluginTaskId: "work-A", TaskName: "work-A", Url: "http://x/a", SiteKey: testSiteKey,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-B", TaskName: "work-B", Url: "http://x/b", SiteName: testSiteName,
+		PluginTaskId: "work-B", TaskName: "work-B", Url: "http://x/b", SiteKey: testSiteKey,
 		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
 		},
 	}
 	close(in)
@@ -385,7 +386,7 @@ func TestHandleTaskArray_Leaf(t *testing.T) {
 			TaskName:     "独立任务",
 			SiteWorkId:   "w-1",
 			Url:          "http://x/1",
-			SiteName:     testSiteName,
+			SiteKey:      testSiteKey,
 			ResourceType: entity.ResourceTypeImage,
 			// 无 Children
 		},
@@ -415,9 +416,9 @@ func TestHandleTaskArray_SingleChild(t *testing.T) {
 		{
 			TaskName: "work-A",
 			Url:      "http://x/a",
-			SiteName: testSiteName,
+			SiteKey:  testSiteKey,
 			Children: []*sdkdto.TaskCreateChildResponse{
-				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
 			},
 		},
 	}
@@ -462,11 +463,11 @@ func TestHandleTaskArray_ParentChildren(t *testing.T) {
 		{
 			TaskName:     "work-B",
 			Url:          "http://x/b",
-			SiteName:     testSiteName,
+			SiteKey:      testSiteKey,
 			ResourceType: entity.ResourceTypeImage,
 			Children: []*sdkdto.TaskCreateChildResponse{
-				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
-				{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
 			},
 		},
 	}
@@ -508,8 +509,9 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 
-	// 站点种子（task.site_id 外键防线；插件响应路径经 GetByName 查到本行）
+	// 站点种子（task.site_id 外键防线；插件响应路径经 GetByKey 查到本行）
 	seedSite := entity.NewSite()
+	seedSite.SiteKey = testSiteKey
 	seedSite.SiteName = sql.NullString{String: testSiteName, Valid: true}
 	if err := db.Create(seedSite).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
@@ -537,11 +539,11 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 
 	// 入口三：插件响应 array 路径——独立 leaf 与 parent 容器均根级（pid=NULL）、child 指向父
 	responses := []*sdkdto.TaskCreateResponse{
-		{TaskName: "独立leaf", SiteWorkId: "w-1", Url: "http://x/1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+		{TaskName: "独立leaf", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
 		{
-			TaskName: "work-A", Url: "http://x/a", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage,
+			TaskName: "work-A", Url: "http://x/a", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage,
 			Children: []*sdkdto.TaskCreateChildResponse{
-				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/c1", SiteName: testSiteName, ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/c1", ResourceType: entity.ResourceTypeImage},
 			},
 		},
 	}
@@ -837,5 +839,87 @@ func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("子任务创建失败后事务应整体回滚（无残留任务行），得到 %d", count)
+	}
+}
+
+// ---- 站点键解析（任务创建主路径按 site_key 直查站点行）----
+
+// TestTaskCreateResolvesSiteByKey 插件应答的 siteKey 经 GetByKey 解析为 task.SiteID：
+// 独立 leaf 与 parent+children 均按键归属站点；child 应答无键字段，站点归属继承父应答的键。
+// 真实 FK 库锚定（site_id 外键防线，站点行须真实存在）。
+func TestTaskCreateResolvesSiteByKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+
+	seed := entity.NewSite()
+	seed.SiteKey = testSiteKey
+	seed.SiteName = sql.NullString{String: testSiteName, Valid: true}
+	if err := db.Create(seed).Error; err != nil {
+		t.Fatalf("建站点种子失败: %v", err)
+	}
+
+	siteSvc := site.NewService(site.NewRepository(db), nil, nil, nil, nil, nil, nil)
+	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
+
+	responses := []*sdkdto.TaskCreateResponse{
+		{TaskName: "leaf-1", SiteWorkId: "k-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+		{
+			TaskName: "parent-1", Url: "http://x/p", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "c-1", SiteWorkId: "k-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
+		},
+	}
+	if _, err := svc.handleCreateTaskArray(context.Background(), responses, testListener()); err != nil {
+		t.Fatalf("插件响应路径创建失败: %v", err)
+	}
+
+	var got int64
+	if err := db.Raw("SELECT COUNT(*) FROM task WHERE site_id IS NULL OR site_id != ?", seed.GetID()).Scan(&got).Error; err != nil {
+		t.Fatalf("统计任务行失败: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("期望全部 3 个任务（leaf + parent + child）site_id 均解析为种子站点 %d，得到 %d 个未归属行", seed.GetID(), got)
+	}
+}
+
+// nilSiteRepo 站点查询恒空（按键查不到行），供键解析失败测试使用。
+type nilSiteRepo struct {
+	site.Repository
+}
+
+func (nilSiteRepo) Get(_ context.Context, _ *database.QueryOption) (*entity.Site, error) {
+	return nil, nil
+}
+
+// TestTaskCreateUnknownKeyFails 站点键解析失败的两种形态：键在库中查不到（未注册/未建行）报
+// ErrSiteNotFound 同型错误；键缺失报 ErrSiteKeyRequired。失败在字段填充阶段前置暴露，任务不落盘。
+func TestTaskCreateUnknownKeyFails(t *testing.T) {
+	siteSvc := site.NewService(nilSiteRepo{}, fakeTransactor{}, nil, nil, nil, nil, nil)
+	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc)
+	siteCache := make(map[string]int)
+
+	// 键查不到行：ErrSiteNotFound 同型错误（leaf 路径）
+	_, err := svc.planCreateResponse(context.Background(),
+		&sdkdto.TaskCreateResponse{TaskName: "t", Url: "http://x", SiteKey: "s-not-exist", ResourceType: entity.ResourceTypeImage},
+		testListener(), siteCache)
+	if !errors.Is(err, ErrSiteNotFound) {
+		t.Fatalf("未知站点键应报 ErrSiteNotFound 同型错误，得到 %v", err)
+	}
+
+	// 键缺失：ErrSiteKeyRequired（child 继承父键，父键缺失对 children 同样生效）
+	_, err = svc.planCreateResponse(context.Background(),
+		&sdkdto.TaskCreateResponse{TaskName: "t", Url: "http://x", ResourceType: entity.ResourceTypeImage,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "c", SiteWorkId: "k", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+			}},
+		testListener(), siteCache)
+	if !errors.Is(err, ErrSiteKeyRequired) {
+		t.Fatalf("缺失站点键应报 ErrSiteKeyRequired，得到 %v", err)
 	}
 }

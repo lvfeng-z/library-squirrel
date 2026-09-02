@@ -495,7 +495,6 @@ func (app *App) activatePlugin(p *entity2.Plugin) error {
 		TaskHandlerRegistry: app.TaskHandlerRegistry,
 		SiteBrowserRegistry: app.SiteBrowserRegistry,
 		Storage:             app.PluginStorageService,
-		WorkSetQuery:        app.WorkSetService,
 		SiteSave:            app.SiteService,
 		SiteQuery:           app.SiteService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
@@ -1192,7 +1191,7 @@ func (app *App) initAdvancedServices() error {
 			WorkDirProvider:        app.SettingsService,
 			FileNameFormatProvider: app.SettingsService,
 			DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
-			SiteNameResolver:       app.SiteService,            // 实现 SiteNameResolver 接口(查重输入键形态统一)
+			SiteKeyResolver:        app.SiteService,            // 实现 SiteKeyResolver 接口(查重输入键形态统一)
 			ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
 			WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口(失败回滚守卫)
 			ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口(替换链能力)

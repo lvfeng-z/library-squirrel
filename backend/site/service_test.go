@@ -16,6 +16,7 @@ import (
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/work"
 	"github.com/library-squirrel/backend/workSet"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 
 	"gorm.io/gorm"
 )
@@ -58,7 +59,7 @@ func newGuardTestEnv(t *testing.T) (*site.Service, *gorm.DB) {
 // seedSite 建站点行（id=1；work/task/work_set/site_tag/site_author 五面 site_id 外键的父行）
 func seedSite(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	if err := db.Exec("INSERT INTO site (id, create_time, update_time) VALUES (1, 0, 0)").Error; err != nil {
+	if err := db.Exec("INSERT INTO site (id, site_key, create_time, update_time) VALUES (1, ?, 0, 0)", identity.Local.Key).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
 }

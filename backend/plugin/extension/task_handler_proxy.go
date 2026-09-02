@@ -526,10 +526,9 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 	}
 	if pb.Site != nil {
 		resp.Site = &pluginsdkdto.SiteDTO{
-			Id:              pb.Site.Id,
-			SiteName:        pb.Site.SiteName,
-			SiteDescription: pb.Site.SiteDescription,
-			Homepage:        pb.Site.Homepage,
+			Id:         pb.Site.Id,
+			SiteName:   pb.Site.SiteName,
+			Homepage:   pb.Site.Homepage,
 			CreateTime:      pb.Site.CreateTime,
 			UpdateTime:      pb.Site.UpdateTime,
 		}

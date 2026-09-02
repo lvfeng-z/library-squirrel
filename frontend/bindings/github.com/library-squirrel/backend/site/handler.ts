@@ -46,15 +46,6 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
 }
 
 /**
- * GetByName 根据名称获取
- */
-export function GetByName(siteName: string): $CancellablePromise<model$0.ApiResponse<dto$0.SiteDTO | null> | null> {
-    return $Call.ByID(4204078944, siteName).then(($result: any) => {
-        return $$createType5($result);
-    });
-}
-
-/**
  * QueryPage 分页查询
  */
 export function QueryPage(page: model$0.Page<dto$0.SiteDTO> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.SiteDTO> | null> | null> {
@@ -69,15 +60,6 @@ export function QueryPage(page: model$0.Page<dto$0.SiteDTO> | null, query: $mode
 export function QuerySelectItemPage(page: model$0.Page<dto$1.SelectItem> | null, query: $models.SiteQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$1.SelectItem> | null> | null> {
     return $Call.ByID(2991076938, page, query).then(($result: any) => {
         return $$createType14($result);
-    });
-}
-
-/**
- * Save 保存站点
- */
-export function Save(site: dto$0.SiteDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
-    return $Call.ByID(3287502339, site).then(($result: any) => {
-        return $$createType16($result);
     });
 }
 
@@ -106,5 +88,3 @@ const $$createType11 = model$0.Page.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
 const $$createType13 = model$0.ApiResponse.createFrom($$createType12);
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.ApiResponse.createFrom($Create.Any);
-const $$createType16 = $Create.Nullable($$createType15);

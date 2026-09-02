@@ -1,8 +1,6 @@
 package extension
 
 import (
-	"database/sql"
-
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -38,54 +36,4 @@ func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
 	t.PluginData = util.NullStringToPointer(task.PluginData)
 	t.ErrorMessage = util.NullStringToPointer(task.ErrorMessage)
 	return t
-}
-
-// EntityWorkSetToSDK 将 entity.WorkSet 转换为 sdkdto.WorkSetDTO
-func EntityWorkSetToSDK(ws *entity.WorkSet) *sdkdto.WorkSetDTO {
-	if ws == nil {
-		return nil
-	}
-	s := &sdkdto.WorkSetDTO{}
-	if ws.BaseEntity != nil {
-		s.Id = ws.GetID()
-		s.CreateTime = ws.GetCreateTime()
-		s.UpdateTime = ws.GetUpdateTime()
-	}
-	s.SiteId = util.NullInt64ToPointer(ws.SiteID)
-	s.SiteWorkSetId = util.NullStringToPointer(ws.SiteWorkSetID)
-	s.SiteWorkSetName = util.NullStringToPointer(ws.SiteWorkSetName)
-	s.SiteAuthorId = util.NullStringToPointer(ws.SiteAuthorID)
-	s.SiteWorkSetDescription = util.NullStringToPointer(ws.SiteWorkSetDescription)
-	s.SiteUploadTime = util.NullInt64ToPointer(ws.SiteUploadTime)
-	s.SiteUpdateTime = util.NullInt64ToPointer(ws.SiteUpdateTime)
-	s.NickName = util.NullStringToPointer(ws.NickName)
-	s.LastView = util.NullInt64ToPointer(ws.LastView)
-	return s
-}
-
-// SDKSiteToEntity 将 sdkdto.SiteDTO 转换为 entity.Site
-func SDKSiteToEntity(s *sdkdto.SiteDTO) *entity.Site {
-	if s == nil {
-		return nil
-	}
-	e := entity.NewSite()
-	if s.Id != 0 {
-		e.SetID(s.Id)
-	}
-	if s.CreateTime != 0 {
-		e.SetCreateTime(s.CreateTime)
-	}
-	if s.UpdateTime != 0 {
-		e.SetUpdateTime(s.UpdateTime)
-	}
-	if s.SiteName != nil {
-		e.SiteName = sql.NullString{String: *s.SiteName, Valid: true}
-	}
-	if s.SiteDescription != nil {
-		e.SiteDescription = sql.NullString{String: *s.SiteDescription, Valid: true}
-	}
-	if s.Homepage != nil {
-		e.Homepage = sql.NullString{String: *s.Homepage, Valid: true}
-	}
-	return e
 }

@@ -13,7 +13,7 @@
 
 ## 对外接口（Handler）
 
-作品集 CRUD 与成员/层级管理方法（Save/Update/GetById/QueryPage/QueryPageWithCover/GetWorksByWorkSetId/ListWorkSetsByWorkId/LinkBatch/RemoveBatch/AddChildWorkSet/RemoveChildWorkSet/ListChildWorkSets/MergeWorkSetInto/UpdateSortOrders/ApplySiteOrder/SetCover/UnsetCover/GetCoverWorkId/ListWorkSetWithWorkByIds/GetBySiteWorkSetIdAndSiteName/Upsert 系列），以及软删入口 `SoftDeleteWorkSet(id)`。
+作品集 CRUD 与成员/层级管理方法（Save/Update/GetById/QueryPage/QueryPageWithCover/GetWorksByWorkSetId/ListWorkSetsByWorkId/LinkBatch/RemoveBatch/AddChildWorkSet/RemoveChildWorkSet/ListChildWorkSets/MergeWorkSetInto/UpdateSortOrders/ApplySiteOrder/SetCover/UnsetCover/GetCoverWorkId/ListWorkSetWithWorkByIds/Upsert 系列），以及软删入口 `SoftDeleteWorkSet(id)`。
 
 ## 核心概念
 
@@ -28,7 +28,7 @@
 ## 依赖关系
 
 - 依赖：reWorkWorkSet / reWorkSetWorkSet（关联仓储）、database（Transactor）、work（FullWorkReader / WorkReader 封面与成员组装）
-- 被依赖：recycleBin（WorkSetRestorer）、work（入库链经 workSetWriterAdapter）、search（QueryRecycleWorkSetPage 读 work_set 已删行）、site（WorkSetSiteRefCounter：站点删除守卫的作品集引用计数，仓储 `CountBySiteId` 活行/软删行分别计数）、插件链（GetWorkSetBySiteWorkSetId → GetBySiteWorkSetIdAndSiteName，GORM 软删过滤下已删集判不存在走重建）、前端作品集页/回收站作品集 tab
+- 被依赖：recycleBin（WorkSetRestorer）、work（入库链经 workSetWriterAdapter）、search（QueryRecycleWorkSetPage 读 work_set 已删行）、site（WorkSetSiteRefCounter：站点删除守卫的作品集引用计数，仓储 `CountBySiteId` 活行/软删行分别计数）、前端作品集页/回收站作品集 tab
 
 ## 关键设计
 

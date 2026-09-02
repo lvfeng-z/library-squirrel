@@ -25,7 +25,7 @@ import (
 var (
 	ErrUrlNotSupported   = &pkgerr.BusinessError{Code: 400, Message: "url不受支持"}
 	ErrNoPluginFound     = &pkgerr.BusinessError{Code: 500, Message: "尝试了所有插件均未成功"}
-	ErrSiteNameRequired  = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，插件返回的任务信息中缺少站点名称"}
+	ErrSiteKeyRequired   = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，插件返回的任务信息中缺少站点键"}
 	ErrSiteNotFound      = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，没有找到站点对应的信息"}
 	ErrPluginDataInvalid = &pkgerr.BusinessError{Code: 500, Message: "序列化插件保存的pluginData失败"}
 	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
@@ -757,12 +757,14 @@ func (p *createPlan) count() int {
 }
 
 // childToResponse 把子响应适配为 TaskCreateResponse，复用 fillTaskFromResponse 的统一字段映射。
-func childToResponse(c *sdkdto.TaskCreateChildResponse) *sdkdto.TaskCreateResponse {
+// 子应答契约无 siteKey 字段，站点归属继承父应答的键——同一父任务的子任务必属同站点。
+func childToResponse(c *sdkdto.TaskCreateChildResponse, parentSiteKey string) *sdkdto.TaskCreateResponse {
 	return &sdkdto.TaskCreateResponse{
 		TaskName:      c.TaskName,
 		SiteWorkId:    c.SiteWorkId,
 		Url:           c.Url,
 		SiteName:      c.SiteName,
+		SiteKey:       parentSiteKey,
 		PluginData:    c.PluginData,
 		InvolvedRoles: c.InvolvedRoles,
 		ResourceType:  c.ResourceType,
@@ -772,8 +774,9 @@ func childToResponse(c *sdkdto.TaskCreateChildResponse) *sdkdto.TaskCreateRespon
 // fillTaskFromResponse 把响应字段填入一个已分配的 Task（leaf/parent/child 通用，双路径共用）。
 // pid：父任务 ID（child 传 parent.id；leaf/parent 传 0）。pid=0 写 NULL=根级任务（外键引用 task.id，无 id=0 行）。
 // hasChild：是否父任务（容器，不带 SiteWorkID/PluginData）。
-// siteCache：站点名→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
-// SiteName 为空时返回 ErrSiteNameRequired——leaf/parent/child 均须归属站点。
+// siteCache：站点键→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
+// SiteKey 为空时返回 ErrSiteKeyRequired——leaf/parent/child 均须归属站点（child 的键由
+// childToResponse 继承父应答）。
 func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, resp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, pid int64, hasChild bool, siteCache map[string]int) error {
 	task.TaskName = sql.NullString{String: resp.TaskName, Valid: true}
 	task.URL = sql.NullString{String: resp.Url, Valid: true}
@@ -784,17 +787,17 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, r
 	task.PluginPublicID = listener.PublicID
 	task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
-	if resp.SiteName == "" {
-		return errors.Join(ErrSiteNameRequired, errors.New("siteName is empty"))
+	if resp.SiteKey == "" {
+		return errors.Join(ErrSiteKeyRequired, errors.New("siteKey is empty"))
 	}
-	siteId, ok := siteCache[resp.SiteName]
+	siteId, ok := siteCache[resp.SiteKey]
 	if !ok {
-		site, err := s.siteSvc.GetByName(ctx, resp.SiteName)
+		site, err := s.siteSvc.GetByKey(ctx, resp.SiteKey)
 		if err != nil || site == nil {
-			return errors.Join(ErrSiteNotFound, errors.New(resp.SiteName))
+			return errors.Join(ErrSiteNotFound, errors.New(resp.SiteKey))
 		}
 		siteId = int(site.ID)
-		siteCache[resp.SiteName] = siteId
+		siteCache[resp.SiteKey] = siteId
 	}
 	task.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
 
@@ -842,7 +845,7 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 	children := make([]*entity.Task, 0, len(taskResp.Children))
 	for _, childResp := range taskResp.Children {
 		child := &entity.Task{BaseEntity: &model.BaseEntity{}}
-		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp), listener, 0, false, siteCache); err != nil {
+		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp, taskResp.SiteKey), listener, 0, false, siteCache); err != nil {
 			return nil, err
 		}
 		children = append(children, child)
@@ -859,12 +862,12 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 	}
 
 	count := 0
-	siteCache := make(map[string]int) // siteName -> siteId 缓存
+	siteCache := make(map[string]int) // siteKey -> siteId 缓存
 
 	for _, resp := range pluginResponses {
 		plan, err := s.planCreateResponse(ctx, resp, listener, siteCache)
 		if err != nil {
-			// 字段填充失败（如 SiteName 缺失）：跳过此响应
+			// 字段填充失败（如 SiteKey 缺失/未注册）：跳过此响应
 			continue
 		}
 

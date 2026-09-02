@@ -103,21 +103,6 @@ func (r *WorkSetRepository) GetBySiteAndSiteWorkSetID(ctx context.Context, siteI
 	return r.Get(ctx, opt)
 }
 
-// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
-// 注意：需要通过 site 表进行 JOIN 查询
-func (r *WorkSetRepository) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*domain.WorkSet, error) {
-	var result *domain.WorkSet
-	err := r.dbFromCtx(ctx).
-		WithContext(ctx).
-		Joins("INNER JOIN site ON work_set.site_id = site.id").
-		Where("work_set.site_work_set_id = ? AND site.name = ?", siteWorkSetId, siteName).
-		First(&result).Error
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
 // GetDeletedById 按ID获取已软删作品集（复原链入口校验；nil = 非已删条目）
 func (r *WorkSetRepository) GetDeletedById(ctx context.Context, id int64) (*domain.WorkSet, error) {
 	ws, err := r.GetByIdUnscoped(ctx, id)

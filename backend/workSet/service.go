@@ -39,8 +39,6 @@ type Repository interface {
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity2.WorkSet], error)
 	// GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error)
-	// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
-	GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error)
 	// Upsert 原子插入或更新
 	Upsert(ctx context.Context, ws *entity2.WorkSet) error
 	// GetDeletedById 按ID获取已软删行（nil = 非已删条目）
@@ -362,11 +360,6 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity2.WorkSet], q
 // GetBySiteAndSiteWorkSetID 根据站点和站点作品集ID查询
 func (s *Service) GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity2.WorkSet, error) {
 	return s.repo.GetBySiteAndSiteWorkSetID(ctx, siteId, siteWorkSetId)
-}
-
-// GetBySiteWorkSetIdAndSiteName 根据站点作品集ID和站点名称查询
-func (s *Service) GetBySiteWorkSetIdAndSiteName(ctx context.Context, siteWorkSetId string, siteName string) (*entity2.WorkSet, error) {
-	return s.repo.GetBySiteWorkSetIdAndSiteName(ctx, siteWorkSetId, siteName)
 }
 
 // SaveOrUpdateByCompositeKey 按 (siteId, siteWorkSetId) 原子保存或更新作品集，返回内部 DB ID

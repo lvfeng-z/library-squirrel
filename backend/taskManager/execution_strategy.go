@@ -32,7 +32,7 @@ type ExecutionStrategy interface {
 type ReplaceDecision int
 
 const (
-	ReplaceDecisionSkip   ReplaceDecision = iota // 跳过：不替换，保留已有作品
+	ReplaceDecisionSkip    ReplaceDecision = iota // 跳过：不替换，保留已有作品
 	ReplaceDecisionReplace                        // 替换：软删旧 store 后挂新
 )
 

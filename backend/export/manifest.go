@@ -7,7 +7,8 @@ import (
 // SchemaVersion manifest 契约版本（回灌硬约束的版本锚）。
 // 版本纪律对齐插件 plugin_data 的 schemaVersion（见 doc/plugin-dev-guide.md「plugin_data 格式版本约定」）：
 // 仅在结构破坏性变更（删字段/改字段语义/改类型）时递增；加可选字段不必递增（向前兼容）。
-const SchemaVersion = 1
+// v2：SiteRecord 加 siteKey 必填（站点匹配从按名升级为按键，同名不同键站点不得互相回灌）。
+const SchemaVersion = 2
 
 // Manifest 导出产物清单（方案第3节契约）。导出格式一经上线即成为既有产物，
 // 不可回灌的导出等于半成品——字段增删必须受 SchemaVersion 约束。
@@ -40,12 +41,14 @@ type Meta struct {
 
 // SiteRecord 站点（site 表全字段）。
 type SiteRecord struct {
-	ID              int64   `json:"id"`
-	SiteName        *string `json:"siteName,omitempty"`
-	SiteDescription *string `json:"siteDescription,omitempty"`
-	Homepage        *string `json:"homepage,omitempty"`
-	CreateTime      int64   `json:"createTime"`
-	UpdateTime      int64   `json:"updateTime"`
+	ID int64 `json:"id"`
+	// SiteKey 站点唯一身份键（SDK identity 注册表分配）。跨库站点匹配、查重、
+	// find-or-create 一律以此键为准；回灌侧校验其已注册，空键/未注册键拒绝导入
+	SiteKey    string  `json:"siteKey"`
+	SiteName   *string `json:"siteName,omitempty"`
+	Homepage   *string `json:"homepage,omitempty"`
+	CreateTime int64   `json:"createTime"`
+	UpdateTime int64   `json:"updateTime"`
 }
 
 // AuthorRecord 作者（local_author / site_author 两表并型；站点专属字段对本地作者省略）。
