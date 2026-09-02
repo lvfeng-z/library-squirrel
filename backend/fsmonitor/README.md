@@ -37,5 +37,6 @@
 - **路径分隔符统一正斜杠**：DB `file_path` 规范正斜杠（`NormalizeFilePaths` 启动迁移）；`filepath.Dir` 在 Windows 会规范成反斜杠，必须 `ToSlash` 还原
 - **操作抑制（suppression）**：`handleFileChange` 关联前查 `storeRegistry.IsSuppressed`，命中即丢弃（两域同口径）——避免软件自身的写入（store/ 各落盘点、backup/ 的还原移出与清理删除）被误报为外部变更。写方在 Create/Remove/Rename 前向 storeRegistry 登记路径：store/ 侧=persistentStore 各落盘点（含 `Delete`/`DeleteWithBackup`）、repair 复原；backup/ 侧=backup.Service 内部两点（`RestoreFile` 源端、`DeleteBackup` 文件端——单一登记点覆盖全部调用方）。仅作用于 fsnotify 实时事件，离线对账与 USN 段不经抑制（自操作靠 DB 行态已对齐天然免疫）。`settings.fsmonitor.suppressEnabled` 可紧急关闭。
 - **工作目录未配置（空串）时 `Start` 整体短路**：记 info 日志「工作目录未配置，文件监控与启动对账未启动」即返回——路径层把空串相对化为进程工作目录而非资源库根，以空串为基准的监控与对账不具资源库语义（live 源、USN 离线追溯、启动对账均不启动）；配置 workdir 后经重启生效
+- **实时事件源先启消费循环再递归挂表**：fsnotify 的挂表握手（`AddWith` 等回复）与事件推送共用同一内部协程，消费循环未在线时监控树内的并发写入（事件缓冲占满）会阻塞该协程、令递归挂表永等——`Start` 内先启动 `loop` 再 walk；`addWatchRecursive` 按已挂表集合幂等跳过（消费循环的动态补挂与初始 walk 并发可达同一目录）
 - **降级**：能力 nil（如实时事件源不可用、网络盘）时上层走降级路径（仅离线对账 / 关联降级为原始事件日志）
 - **USN readFRN 缓冲须堆分配**：`FSCTL_READ_FILE_USN_DATA`（经文件句柄读单文件/目录 FRN，非管理员可用）属 METHOD_NEITHER，`DeviceIoControl` 输出缓冲必须堆分配（`make([]byte, 64KB)`），栈缓冲（`var buf [N]byte`）触发 `ERROR_INVALID_USER_BUFFER`（C-0b PoC 踩坑）。FRN→路径缓存只存目录（路径解析只查 ParentFRN，恒为目录）

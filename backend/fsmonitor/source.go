@@ -45,7 +45,8 @@ type fsnotifySource struct {
 }
 
 // NewFsnotifySource 创建基于 fsnotify 的事件源。
-// 构造期递归加 watch；失败返回 error，上层据此不注入该能力。
+// 仅完成 watcher 与字段构造；递归加 watch 在 Start 中进行（时序约束见 Start 注释）。
+// watcher 创建失败返回 error，上层据此不注入该能力。
 func NewFsnotifySource(workDir string) (*fsnotifySource, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -59,16 +60,18 @@ func NewFsnotifySource(workDir string) (*fsnotifySource, error) {
 		stopCh:  make(chan struct{}),
 		watches: make(map[string]bool),
 	}
-	if err := s.addWatchRecursive(s.workDir); err != nil {
-		_ = w.Close()
-		return nil, fmt.Errorf("递归监控工作目录失败: %w", err)
-	}
 	return s, nil
 }
 
 // Start 启动事件循环 goroutine，返回事件与错误 channel。
+// 必须先启动消费循环再递归加 watch：fsnotify 的 AddWith 与事件推送共用同一内部协程，
+// 无消费者在线时监控树内并发写入产生的事件会阻塞该协程，挂表握手（AddWith 等待回复）
+// 随之永久阻塞——先挂表后启循环即死锁形态。walk 失败返回 error，上层降级为仅启动对账。
 func (s *fsnotifySource) Start(ctx context.Context) (<-chan FileChange, <-chan error, error) {
 	go s.loop(ctx)
+	if err := s.addWatchRecursive(s.workDir); err != nil {
+		return nil, nil, fmt.Errorf("递归监控工作目录失败: %w", err)
+	}
 	return s.events, s.errs, nil
 }
 
@@ -158,12 +161,20 @@ func (s *fsnotifySource) sendErr(err error) {
 
 // addWatchRecursive 递归为 root 及其所有子目录加 watch。
 // 单个目录加 watch 失败仅告警不中断(降级：部分目录无 watch)。
+// 已在 watches 中的目录跳过：消费循环与初始 walk 并发运行时，
+// Create 目录事件的动态补挂可能先于 walk 到达同一目录，重复 Add 会产生重复监控句柄。
 func (s *fsnotifySource) addWatchRecursive(root string) error {
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
+			return nil
+		}
+		s.mu.Lock()
+		watched := s.watches[path]
+		s.mu.Unlock()
+		if watched {
 			return nil
 		}
 		if err := s.watcher.Add(path); err != nil {

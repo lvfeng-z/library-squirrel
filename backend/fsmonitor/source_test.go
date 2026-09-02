@@ -2,9 +2,11 @@ package fsmonitor
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -13,7 +15,7 @@ import (
 // 文件创建/删除被转为 ChangeCreate/ChangeRemove，路径为相对 workDir 的正斜杠形式。
 func TestFsnotifySource_CreateRemove(t *testing.T) {
 	workDir := t.TempDir()
-	// 在 NewFsnotifySource 前创建子目录，验证 addWatchRecursive 递归覆盖
+	// 在 Start 前创建子目录，验证 addWatchRecursive 递归覆盖
 	subDir := filepath.Join(workDir, "sub")
 	if err := os.Mkdir(subDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -97,6 +99,70 @@ func TestFsnotifySource_DynamicSubDir(t *testing.T) {
 	ev = waitEvent(t, events, 3*time.Second)
 	if ev.Kind != ChangeCreate || !strings.HasSuffix(ev.Path, "dynamic/inner.txt") {
 		t.Fatalf("期望动态子目录内文件的 ChangeCreate，得到 %+v", ev)
+	}
+}
+
+// TestFsnotifySource_ConcurrentWritesNoDeadlock 回归锚定：监控树内持续有并发写入时，
+// 构造+启动全流程不得死锁。死锁形态：fsnotify 的 AddWith 挂表握手与事件推送共用同一内部协程，
+// 消费循环未在线时事件写入方阻塞该协程，递归挂表随之永等。
+// 构造一个已存在且被持续写入的热点目录 + 一棵拖长挂表时间的深目录树，
+// 全流程经超时看门狗判定成败（死锁表现为 NewFsnotifySource/Start 永不返回）。
+func TestFsnotifySource_ConcurrentWritesNoDeadlock(t *testing.T) {
+	workDir := t.TempDir()
+	hotDir := filepath.Join(workDir, "hot")
+	if err := os.Mkdir(hotDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 500; i++ {
+		if err := os.MkdirAll(filepath.Join(workDir, fmt.Sprintf("d%03d", i), "leaf"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stopWrite := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stopWrite:
+				return
+			default:
+			}
+			_ = os.WriteFile(filepath.Join(hotDir, fmt.Sprintf("w%05d", i)), []byte("x"), 0o644)
+		}
+	}()
+	defer func() {
+		close(stopWrite)
+		wg.Wait()
+	}()
+
+	type startResult struct {
+		src *fsnotifySource
+		err error
+	}
+	done := make(chan startResult, 1)
+	go func() {
+		src, err := NewFsnotifySource(workDir)
+		if err != nil {
+			done <- startResult{nil, err}
+			return
+		}
+		_, _, err = src.Start(context.Background())
+		done <- startResult{src, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("构造/启动失败: %v", r.err)
+		}
+		if r.src != nil {
+			r.src.Stop()
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("监控树并发写入期间构造+启动超时：挂表与事件推送死锁（消费循环未先于递归挂表启动）")
 	}
 }
 
