@@ -215,8 +215,8 @@ func replaceUnion(opts *IngestOptions) map[int64]struct{} {
 func validateSiteKeys(records []export.SiteRecord) error {
 	for _, r := range records {
 		if _, ok := identity.Lookup(r.SiteKey); !ok {
-			return fmt.Errorf("%w：%q。站点身份键由 SDK identity 注册表统一分配，"+
-				"新站点请生成 24 位小写 hex 强随机键值并提 PR 至 github.com/lvfeng-z/library-squirrel-sdk 的 identity 包注册，随 SDK 发布生效",
+			return fmt.Errorf("%w：%q。站点身份键由 SDK identity 注册表统一分配（品牌 slug，小写字母/数字/连字符），"+
+				"新站点请提 PR 至 github.com/lvfeng-z/library-squirrel-sdk 的 identity 包注册（键取站点官方品牌名），随 SDK 发布生效",
 				ErrUnregisteredSiteKey, r.SiteKey)
 		}
 	}
