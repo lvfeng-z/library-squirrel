@@ -79,8 +79,8 @@ async function handleCloseCurrentView() {
         />
       </el-aside>
 
-      <el-main style="padding: 0">
-        <!-- 工作目录未配置常驻横幅：吸附内容区顶部，点击跳设置页（warn tone 令牌配色） -->
+      <el-main class="main-page-content">
+        <!-- 工作目录未配置常驻横幅：文档流内占位、下方视图区让出等高空间，点击跳设置页（warn tone 令牌配色） -->
         <div
           v-if="workdirStatus.bannerVisible"
           class="workdir-banner z-layer-3"
@@ -89,7 +89,9 @@ async function handleCloseCurrentView() {
           <span>工作目录未配置，资源下载、备份与文件服务均不可用</span>
           <span class="workdir-banner-action">前往设置</span>
         </div>
-        <router-view />
+        <div class="main-view-host">
+          <router-view />
+        </div>
       </el-main>
     </el-container>
 
@@ -163,9 +165,21 @@ async function handleCloseCurrentView() {
   height: 85%;
 }
 
+/* 内容区纵向 flex：横幅文档流占位取自然高度，视图宿主吃剩余高度，两者恰好填满不溢出 */
+.main-page-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* 视图宿主：各视图根的 height:100%/calc(100%-*) 以本容器为基准，横幅升降时视图随之伸缩 */
+.main-view-host {
+  flex: 1;
+  min-height: 0;
+}
+
 .workdir-banner {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
