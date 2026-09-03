@@ -868,12 +868,14 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		plan, err := s.planCreateResponse(ctx, resp, listener, siteCache)
 		if err != nil {
 			// 字段填充失败（如 SiteKey 缺失/未注册）：跳过此响应
+			logger.Log.Errorf("[Task] 插件响应字段填充失败，跳过 (plugin=%s, taskName=%s): %v", listener.PublicID.String, resp.TaskName, err)
 			continue
 		}
 
 		if plan.leaf != nil {
 			// 独立 leaf：直接落盘
 			if err := s.repo.CreateTask(ctx, plan.leaf); err != nil {
+				logger.Log.Errorf("[Task] 创建独立任务失败 (plugin=%s, taskName=%s): %v", listener.PublicID.String, plan.leaf.TaskName.String, err)
 				continue
 			}
 			count += plan.count()
