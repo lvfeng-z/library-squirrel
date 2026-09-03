@@ -4,10 +4,10 @@
 
 ## 项目概述
 
-**LibrarySquirrel** 是一个基于 Wails 3 的桌面应用，用于创建和维护基于标签的个人资源库。它从远程站点（如 pixiv）下载资源到本地库，并提供基于标签的搜索。后端：Go，前端：Vue 3 + TypeScript，通信：Wails IPC bindings。
+**LibrarySquirrel** 是一个基于 Wails 3 的桌面应用，用于创建和维护个人资源库。它从远程站点（如 pixiv）下载资源到本地库，并提供基于标签的搜索。后端：Go，前端：Vue 3 + TypeScript，通信：Wails IPC bindings。
 
 ## 项目背景
-本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-sdk)，此外存在两个插件[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)和[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)，以及分享功能的盲转中继服务仓库 [library-squirrel-relay](https://github.com/lvfeng-z/library-squirrel-relay)（AGPL-3.0 分许可，`doc/plan/分享功能总体方案.md`），以上仓库的开发环境都位于本项目的同级目录下。
+本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-sdk)，此外存在两个插件[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)和[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)，以及分享功能的盲转中继服务仓库 [library-squirrel-relay](https://github.com/lvfeng-z/library-squirrel-relay)（AGPL-3.0 分许可，`../library-squirrel-docs/plan/分享功能总体方案.md`），以上仓库的开发环境都位于本项目的同级目录下。开发过程文档（计划/待办/缺陷分析/实测报告/任务派生图）位于同级**私有**文档库 `../library-squirrel-docs/`（plan/ bug/ todo.md testing/ workflow/，结构见其 README.md），主仓库内引用一律以 `../library-squirrel-docs/` 相对路径书写。
 
 ## 构建与开发命令
 
@@ -120,7 +120,7 @@ task build:server && task run:server
 
 - **注释**: 使用中文，专有名词用对应语言。注释须**自包含**——读者不查阅外部文档即可理解当前代码：
   - 只写代码当前“做什么”与非显然时的“为什么”（用领域语言）；**禁止变更叙事**（“从 A 改为 B”“已移除 X”“原逻辑为”）与**假设性后果**（“防止 X”“否则会 Y”）。
-  - **禁止引用计划/工单标签**：“纪律 N”“见 doc/plan/x.md”“fix #123”等只在开发计划里有意义的标识不进注释；需要的背景用领域语言直接写进注释本身。
+  - **禁止引用计划/工单标签**：“纪律 N”“见方案文档 x.md”“fix #123”等只在开发计划里有意义的标识不进注释；需要的背景用领域语言直接写进注释本身。
   - 名称已表达的含义不复述；注释补充名称承载不了的信息。
   - 反例：`// 纪律 4:已完成 role 过滤(防 416)。磁盘已写满(offset>=size)但 store.Status 未对齐 Complete 的 role,按 Range@满 续传会 416`（计划标签 + 假设性后果 + 术语缩写）
   - 正例：`// 剔除已落盘完整的 role(spec.Size>0 且 streamOffsets[role]>=spec.Size)：上游仅按 store.Status==Complete 排除,文件已写满时 Status 可能仍为未完成,故据实际偏移补充过滤`
@@ -151,7 +151,7 @@ task build:server && task run:server
 核心复杂模块与命名不直观模块在其目录下维护 `README.md`，描述当前职责、对外接口、依赖关系与关键设计，供快速定位（不读代码即知"是否来对地方"）。简单 CRUD 模块（<300 行且职责单一）无需写。
 
 - **模板**：`doc/module-spec-template.md`（结构骨架、填写要点、维护机制）
-- **范围**：只写"是什么 / 提供什么 / 依赖谁"，不重复编码规则（`.claude/rules/`）与变更历史（`doc/plan/`）
+- **范围**：只写"是什么 / 提供什么 / 依赖谁"，不重复编码规则（`.claude/rules/`）与变更历史（`../library-squirrel-docs/plan/`）
 - **维护**：修改模块行为时同步更新其 `README.md`
 - 已覆盖：`taskManager`、`task`、`work`、`workSet`、`resource`、`plugin`、`backup`、`persistentStore`、`reWorkAuthor`、`reWorkTag`、`recycleBin`、`fsmonitor`、`backupGovernance`、`workdirGuard`、`export`、`import`、`share`、`settings`
 
@@ -165,14 +165,14 @@ task build:server && task run:server
 6. 新增核心复杂模块时，按 `doc/module-spec-template.md` 创建该模块 `README.md`
 
 ## 交互规则
-- 当用户意图制定计划或方案时，直接用 Write 工具将计划文件写到 `doc/plan/` 目录下，然后停下来询问用户要执行计划还是要检查计划，不要直接开始执行。**方案会话不承载实施**：用户选「执行」时不直接开工，而是按 `phase-executor` 技能的 kickoff 模板输出实施会话启动提示词（≤10 行、指向方案文档不复制内容），由用户新开会话执行——方案会话的探索历史在定稿时已蒸馏进文档，实施骑乘其上会反复重读死上下文（实测占 token 总量 66%）。
-- 写入 `doc/plan/` 的计划/设计文档，首段必须为「审查摘要」（关键声明带 `file:line` 锚点 / 待决策 / 自曝风险三清单），详见 `doc/plan/_CONVENTIONS.md`；凡"已核验/已就位/零改动"类论断无锚点视为未核验。
+- 当用户意图制定计划或方案时，直接用 Write 工具将计划文件写到 `../library-squirrel-docs/plan/` 目录下（私有文档库），然后停下来询问用户要执行计划还是要检查计划，不要直接开始执行。**方案会话不承载实施**：用户选「执行」时不直接开工，而是按 `phase-executor` 技能的 kickoff 模板输出实施会话启动提示词（≤10 行、指向方案文档不复制内容），由用户新开会话执行——方案会话的探索历史在定稿时已蒸馏进文档，实施骑乘其上会反复重读死上下文（实测占 token 总量 66%）。
+- 写入 `../library-squirrel-docs/plan/` 的计划/设计文档，首段必须为「审查摘要」（关键声明带 `file:line` 锚点 / 待决策 / 自曝风险三清单），详见 `../library-squirrel-docs/plan/_CONVENTIONS.md`；凡"已核验/已就位/零改动"类论断无锚点视为未核验。
 - 当本次对项目的修改达到某个里程碑或完成时，请判断当前的修改是否导致项目的实际逻辑与你所理解的项目上下文（比如本文档或rule中的规则）出现了差异，如果有差异，则向用户询问是否需要对文档进行同步。
 - 当用户描述现象而又没提供日志时，尝试从开发环境的日志文件[log](log)中获取相关日志
 - 执行 Bash 命令时，工作目录默认为项目根，禁止添加 `cd <项目根>` 前缀；需要切换目录时使用绝对路径，避免 `cd` 与输出重定向（`2>&1`、`2>/dev/null`、`>` 等）出现在同一复合命令中触发安全检查。
-- 当开始一个会层层派生出多层基建任务的功能/修复/重构时，启用 `task-graph` 技能（`/task-graph`）维护宏观任务派生图，防止跨会话/上下文压缩后遗忘根任务、派生链与延后分支。**派生即记**：干活时一旦发现「这需要先做 X」（阻塞 → `derive` 下钻）或「这引出了 Y」（可延后 → `reveal` 记分支），必须先把该任务 `derive`/`reveal` 写进 `.claude/workflow/active/<谱系>/TREE.md` 再继续当前工作——未入树的派生终会被遗忘。**链接同步**：当某节点新建/确定详情文档（`doc/plan/` 或 `<ID>.md`）或状态/焦点变化时，立即在 TREE.md 该节点行同步外链与状态——TREE.md 是导航中枢，节点信息不得滞后（如为节点写完 plan 后必须回树补 `| doc/plan/<x>.md`）。
+- 当开始一个会层层派生出多层基建任务的功能/修复/重构时，启用 `task-graph` 技能（`/task-graph`）维护宏观任务派生图，防止跨会话/上下文压缩后遗忘根任务、派生链与延后分支。**派生即记**：干活时一旦发现「这需要先做 X」（阻塞 → `derive` 下钻）或「这引出了 Y」（可延后 → `reveal` 记分支），必须先把该任务 `derive`/`reveal` 写进 `../library-squirrel-docs/workflow/active/<谱系>/TREE.md` 再继续当前工作——未入树的派生终会被遗忘。**链接同步**：当某节点新建/确定详情文档（`../library-squirrel-docs/plan/` 或 `<ID>.md`）或状态/焦点变化时，立即在 TREE.md 该节点行同步外链与状态——TREE.md 是导航中枢，节点信息不得滞后（如为节点写完 plan 后必须回树补 `| plan/<x>.md`）。
 - 当任务到达「dev 实机手测」里程碑（方案测试锚定要求实机验证）或用户要求验证功能在真实应用中的表现时，启用 `live-test` 技能（`/live-test`）执行 AI 实机测试：AI 直接驱动真实运行的应用（CDP + 真实前端链路 + 外部文件操作 + 只读断言）产出清单+证据+结论一体的测试报告，用户仅做最终终审。
-- 当用户要求执行一份含「阶段清单」的计划时，启用 `phase-executor` 技能（`/phase-executor`）：主会话按阶段清单逐阶段委派子代理实施，自身只做编排与交接，不把阶段涉及文件读进主上下文（防上下文膨胀）。阶段清单契约见 `doc/plan/_CONVENTIONS.md`「阶段清单」节。
+- 当用户要求执行一份含「阶段清单」的计划时，启用 `phase-executor` 技能（`/phase-executor`）：主会话按阶段清单逐阶段委派子代理实施，自身只做编排与交接，不把阶段涉及文件读进主上下文（防上下文膨胀）。阶段清单契约见 `../library-squirrel-docs/plan/_CONVENTIONS.md`「阶段清单」节。
 
 ## 架构分析规则
 - 绝不把理论上的缺陷描述为已确认/已观察到的缺陷

@@ -51,9 +51,9 @@ query.go            — 查询 DTO
 - **ResourceType（资源类型）**: 内置 6 类（image/video/article/document/audio/unknown）封闭 + 插件可经 manifest `resourceTypes` 段声明自定义类型（注册进 `ResourceTypeRegistry`，注册时强校验）；决定 store 角色组合（基数）+ 展示主体优先级（PrimaryRoles）+ 文件标准；规约见 `doc/resource-type-spec.md`，实现 `backend/base/model/entity/resource_type.go`（`ResourceTypeRegistry`）
 - **store（resource_store）**: Resource 挂 N 个 typed store，`store_type` ∈ image/document/thumbnail/videoTrack/audioTrack/videoMain/audioMain（内置封闭枚举；videoMain 为视频可播放主体、audioMain 为音频可播放主体；插件自定义 store 角色延后）
 - **本地标签/作者 ↔ 站点标签/作者**: 通过关联实现跨站点统一搜索
-- **namespace（tag 关联级属性）**: tag 关联（`re_work_tag`）的 namespace 维度，**非 tag 身份的一部分**——tag 实体（local_tag/site_tag）身份保持扁平，namespace 挂在关联上（site_tag 也记录站点侧 namespace，但仅作元数据/镜像源、不参与关联维度——关联/搜索维度统一在 re_work_tag.namespace）。开放字符串 + 内置已知集（language/character/parody/female/male/misc/general；artist 归 author 体系不入 namespace），未知 namespace 允许、前端兜底；无 namespace 站点（pixiv 等）落 NULL，对插件无感（不声明即空串→NULL）；支持 per-namespace 搜索过滤。设计见 `doc/plan/tag体系演化方案.md`
+- **namespace（tag 关联级属性）**: tag 关联（`re_work_tag`）的 namespace 维度，**非 tag 身份的一部分**——tag 实体（local_tag/site_tag）身份保持扁平，namespace 挂在关联上（site_tag 也记录站点侧 namespace，但仅作元数据/镜像源、不参与关联维度——关联/搜索维度统一在 re_work_tag.namespace）。开放字符串 + 内置已知集（language/character/parody/female/male/misc/general；artist 归 author 体系不入 namespace），未知 namespace 允许、前端兜底；无 namespace 站点（pixiv 等）落 NULL，对插件无感（不声明即空串→NULL）；支持 per-namespace 搜索过滤。设计见 `../library-squirrel-docs/plan/tag体系演化方案.md`
 - **Task（任务）**: 作品创建流程（URL → 插件 → 保存），插件 Create 声明 ResourceType
-- **WorkDir（工作目录）**: 用户配置的资源库根目录（settings 模块管理，`GetWorkDir` 空串=未配置）。**未配置是合法显式状态**：读取侧判空串不 Trim、保存侧 Trim 落库；依赖模块自行处理该状态——启动期服务（fsmonitor 监控/对账、recycleBin 清扫）空串不启动，请求期入口（落盘/还原/导出/打开目录等）经 `settings.RefuseIfUnconfigured` 返回哨兵错误并发射 `workdir:unconfigured`（事件统一、既有守卫的领域文案不统一）；禁止把空串当合法路径拼接文件系统操作（会被静默相对化为进程工作目录）。设计见 `doc/plan/工作目录未配置态显式化方案.md`
+- **WorkDir（工作目录）**: 用户配置的资源库根目录（settings 模块管理，`GetWorkDir` 空串=未配置）。**未配置是合法显式状态**：读取侧判空串不 Trim、保存侧 Trim 落库；依赖模块自行处理该状态——启动期服务（fsmonitor 监控/对账、recycleBin 清扫）空串不启动，请求期入口（落盘/还原/导出/打开目录等）经 `settings.RefuseIfUnconfigured` 返回哨兵错误并发射 `workdir:unconfigured`（事件统一、既有守卫的领域文案不统一）；禁止把空串当合法路径拼接文件系统操作（会被静默相对化为进程工作目录）。设计见 `../library-squirrel-docs/plan/工作目录未配置态显式化方案.md`
 
 ## Go 后端编码规则
 

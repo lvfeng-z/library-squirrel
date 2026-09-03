@@ -1,7 +1,7 @@
 # Store 落盘命名规约
 
 > 适用于插件产出的所有 store(image/document/videoTrack/audioTrack/thumbnail)的落盘文件名与路径。
-> 实施背景与决策见 `doc/plan/store-naming-convention-plan.md`。
+> 实施背景与决策见 `../library-squirrel-docs/plan/store-naming-convention-plan.md`。
 
 ## bas 基准名
 

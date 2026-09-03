@@ -44,9 +44,6 @@ build/plugins.local.json
 # 分享设备绑定持久实例 ID（运行时生成，溯源用）
 config/share-instance-id
 
-# task-graph 技能的活态任务依赖图（个人进行中状态，非团队共享设计；完成后归档于同目录）
-.claude/workflow/
-# live-test 输出（runs=run 目录整体 ignore——报告/截图/证据全不进库；shots/evidence=旧落点模型遗留目录，冻结但仍有暂存噪声可能）
+# task-graph 技能的任务派生图已迁私有文档库（同级 library-squirrel-docs/workflow/）
+# live-test 运行时输出（runs=run 目录整体 ignore，报告随 run 目录不进库；冻结遗留区 reports/shots/evidence 已迁私有文档库 testing/ 下）
 .claude/testing/runs
-.claude/testing/evidence
-.claude/testing/shots

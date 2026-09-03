@@ -61,9 +61,9 @@ type MergeSettings struct {
 
 // FsmonitorSettings 工作目录监控设置
 type FsmonitorSettings struct {
-	UsnEnabled         bool              `json:"usnEnabled" koanf:"usnEnabled"`                 // USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
-	SuppressEnabled    bool              `json:"suppressEnabled" koanf:"suppressEnabled"`       // 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 doc/plan/store操作抑制suppression方案.md
-	AutoRepairEnabled  bool              `json:"autoRepairEnabled" koanf:"autoRepairEnabled"`   // 自动修复模式开关（决策1）：默认关，用户显式开启。开启后 live 路径变更按策略自动处理，offline 一律人工确认。详见 doc/plan/工作目录外部操作防护方案.md
+	UsnEnabled         bool              `json:"usnEnabled" koanf:"usnEnabled"`                 // USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 ../library-squirrel-docs/plan/USN离线追溯方案.md D8
+	SuppressEnabled    bool              `json:"suppressEnabled" koanf:"suppressEnabled"`       // 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 ../library-squirrel-docs/plan/store操作抑制suppression方案.md
+	AutoRepairEnabled  bool              `json:"autoRepairEnabled" koanf:"autoRepairEnabled"`   // 自动修复模式开关（决策1）：默认关，用户显式开启。开启后 live 路径变更按策略自动处理，offline 一律人工确认。详见 ../library-squirrel-docs/plan/工作目录外部操作防护方案.md
 	AutoRepairPolicies map[string]string `json:"autoRepairPolicies" koanf:"autoRepairPolicies"` // 自动修复策略覆盖表（key="<domain>:<kind>"，value=动作；未覆盖的组合回落内置默认，可选项由 fsmonitor 策略表约束）
 }
 

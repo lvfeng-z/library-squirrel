@@ -3,7 +3,7 @@
 > 目录名 `backend/import`，包名 `importer`（`import` 是 Go 关键字不能作包名）。
 
 ## 一句话职责
-把导出产物（manifest 契约 + 包内文件）回灌导入本库：完整重建作品与全部关联（往返保真），入库逻辑抽为 **ManifestIngestor 能力接口**，供导出回灌（本模块 Handler）与分享收件人侧（share-receive 任务执行器）两个消费方复用（方案见 `doc/plan/分享功能总体方案.md` 阶段2）。
+把导出产物（manifest 契约 + 包内文件）回灌导入本库：完整重建作品与全部关联（往返保真），入库逻辑抽为 **ManifestIngestor 能力接口**，供导出回灌（本模块 Handler）与分享收件人侧（share-receive 任务执行器）两个消费方复用（方案见 `../library-squirrel-docs/plan/分享功能总体方案.md` 阶段2）。
 
 ## 边界
 - 与 export：export 是导出数据面（收集 + 打包），本模块是其逆向（回灌）；manifest 契约直接复用 `backend/export/manifest.go`（SchemaVersion 版本锚），**禁止重定义**。

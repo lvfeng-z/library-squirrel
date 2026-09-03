@@ -31,7 +31,7 @@
 - 被依赖：前端 `ChangeConfirmDialog`（确认 UI，域感知文案）、`MainIpcListener`（事件监听）
 
 ## 关键设计
-- **指纹落库是移动匹配的必要条件**：Missing 文件已不在磁盘无法现场算指纹，故 `persistent_store` 落盘完成时同步算 `content_fingerprint`（size + 头部 64KB SHA256，几毫秒，不异步）。backup 清单行无指纹列——backup 域运行时无配对能力是既定边界（改名降级 Delete 报告，方案见 `doc/plan/fsmonitor覆盖backup方案.md` 决策7）
+- **指纹落库是移动匹配的必要条件**：Missing 文件已不在磁盘无法现场算指纹，故 `persistent_store` 落盘完成时同步算 `content_fingerprint`（size + 头部 64KB SHA256，几毫秒，不异步）。backup 清单行无指纹列——backup 域运行时无配对能力是既定边界（改名降级 Delete 报告，方案见 `../library-squirrel-docs/plan/fsmonitor覆盖backup方案.md` 决策7）
 - **fsnotify Windows rename 只发 Create(新名)**：`renamedFrom` 字段未导出；旧名腿按场景分两种——同目录改名=Rename Op、跨目录移动=Remove Op（行为锚定 `source_rename_probe_test.go`）。`source.go` 把 Rename Op 转发为 `ChangeRemove{FromRename:true}`（旧路径文件确实消失）：backup 域消费（同目录改名的唯一运行时信号），store 域跳过（改名检出走 Create 新名指纹配对，旧名腿进关联会与 Move 双报告）；跨目录移动的 Remove 腿两域都消费
 - **目录改名检测**：目录 Create 触发下级扫描（采样 50 文件算指纹配对 DB）→ 聚合最常见旧目录前缀 → `DirMove`；修复用 `GLOB` 批量 REPLACE 下级路径前缀（走 `file_path` 索引，`LIKE` 默认不走索引）
 - **路径分隔符统一正斜杠**：DB `file_path` 规范正斜杠（`NormalizeFilePaths` 启动迁移）；`filepath.Dir` 在 Windows 会规范成反斜杠，必须 `ToSlash` 还原

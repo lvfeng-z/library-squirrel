@@ -245,7 +245,7 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 
 主程序对插件注入的前端内容做故障隔离，确保插件的数据/组件错误不传播到主程序（不白屏）。**对插件透明，声明方式不变。**
 
-- **组件边界 `PluginBoundary`（`frontend/src/components/common/PluginBoundary.vue`）**：插件**组件**（embed/dialog/view/replaceView）渲染抛错时，由 `onErrorCaptured` 捕获并 `return false` 阻断冒泡，仅将出错子树降级为 fallback（「插件渲染失败 [重试]」），主程序与其他插件继续运行。采用 **component-prop 模式**（边界自身 `<component :is>` 渲染子组件），**禁止用 `<slot/>` 模式**（slot 内容 parent 归属提供方，`onErrorCaptured` 不触发，详见 `doc/plan/fix-plugin-menu-icon-crash.md` 第六节）。
+- **组件边界 `PluginBoundary`（`frontend/src/components/common/PluginBoundary.vue`）**：插件**组件**（embed/dialog/view/replaceView）渲染抛错时，由 `onErrorCaptured` 捕获并 `return false` 阻断冒泡，仅将出错子树降级为 fallback（「插件渲染失败 [重试]」），主程序与其他插件继续运行。采用 **component-prop 模式**（边界自身 `<component :is>` 渲染子组件），**禁止用 `<slot/>` 模式**（slot 内容 parent 归属提供方，`onErrorCaptured` 不触发，详见 `../library-squirrel-docs/plan/fix-plugin-menu-icon-crash.md` 第六节）。
 - **数据边界 `AppIcon`（`frontend/src/components/common/AppIcon.vue`）**：主程序用插件**数据**渲染时（如菜单图标），字符串图标走 `<el-image>` + `#error` 兜底，避免脏字符串喂给 `<component :is>` 触发 `createElement` 异常。
 - **全局兜底**：`main.ts` 的 `app.config.errorHandler` 仅记录日志，无法恢复渲染，作为最后防线。
 
@@ -273,15 +273,15 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 插件是 Go 子进程，经 `PluginContext` 拥有完整宿主能力。信任模型为**来源追溯 + 知情同意 + 运行门控**的最小集（非沙箱隔离），完整沙箱属延后项。
 
 - **来源判定（host 权威）**：`plugin.Source`（枚举 `bundled`/`local`/`url`/`marketplace`，常量定义于 `backend/plugin/service.go`）由主程序按**安装入口**判定（`InstallBundled`→bundled、`InstallFromPath`→local），**不由插件声明**——`plugin.json` 无 source/trust/integrity 字段，自声明可伪造、不作信任锚。`plugin.SourceDetail` 记录安装包路径/URL 供追溯。source 是**纯渠道维度**：升级判变资格（`needBundledUpgrade`）与受限模式放行继续挂它，官方性展示不挂它（见下条 Official）。
-- **官方身份判定（Official，展示维度）**：`plugin.Official`（`sql.NullBool`）语义为「本行已装内容经 host 证实为官方发布产物」，与渠道、与 Trusted 双正交——Trusted=用户知情同意（运行门控，是否运行），Official=发布者身份（是谁产的，UI 绿「官方」标与免责豁免指向）；**恒不接入信任/运行门控等安全语义**：手装官方包（名单命中）不自动 trusted（知情同意弹窗照常），bundled 渠道强制 trusted 的既有规则不变。判定权威源为编译进二进制的官方指纹名单 `backend/config/locked_config.yaml`（**订死层**：独立 `go:embed` + `yaml.Unmarshal` 直读，**不参与 viper 两层合并链**、磁盘无对应覆盖物，防篡改由「覆盖路径不存在」保证；随 `task build:plugins` 构建管线整体重写维护，同 publicId+buildId 覆盖、新 buildId 追加、旧条目永不删除——历届官方版本累积收录；未来其他「随二进制分发的权威数据」加新顶层键进本文件，纪律恒为不进 viper 合并链）。安装时按包内容摘要 contentDigest（包内全部文件的「相对路径 + 内容 sha256」对按路径字典序排序拼接后再 sha256，排除 zip 容器元数据）比对名单（buildId 不在条目集先短路），命中即 true；`installCore` 统一推导落库，重装换内容随内容重算。NULL/false=未证实（未命中/窗口期新版/存量未迁移），前端保守显示非官方。设计见 `doc/plan/插件官方身份判定与来源维度拆分方案.md`。
-- **构建身份（BuildID）**：`plugin.BuildID`，构建管线注入 plugin.json `buildId` 字段（`git describe --tags --always --dirty` 输出；同源码状态重构建永远同值，与构建机器/路径/时间无关）。`InstallBundled` 以它做捆绑插件升级检测（bundled 来源已装 buildId 与 zip 不一致或已装缺失即重装；zip 未打标回落 version 比较）；亦作静态资产 URL/ETag 缓存键（重构建必变，令 immutable 长缓存随构建失效）。设计见 `doc/plan/插件构建身份与升级判据机制.md`。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除。
+- **官方身份判定（Official，展示维度）**：`plugin.Official`（`sql.NullBool`）语义为「本行已装内容经 host 证实为官方发布产物」，与渠道、与 Trusted 双正交——Trusted=用户知情同意（运行门控，是否运行），Official=发布者身份（是谁产的，UI 绿「官方」标与免责豁免指向）；**恒不接入信任/运行门控等安全语义**：手装官方包（名单命中）不自动 trusted（知情同意弹窗照常），bundled 渠道强制 trusted 的既有规则不变。判定权威源为编译进二进制的官方指纹名单 `backend/config/locked_config.yaml`（**订死层**：独立 `go:embed` + `yaml.Unmarshal` 直读，**不参与 viper 两层合并链**、磁盘无对应覆盖物，防篡改由「覆盖路径不存在」保证；随 `task build:plugins` 构建管线整体重写维护，同 publicId+buildId 覆盖、新 buildId 追加、旧条目永不删除——历届官方版本累积收录；未来其他「随二进制分发的权威数据」加新顶层键进本文件，纪律恒为不进 viper 合并链）。安装时按包内容摘要 contentDigest（包内全部文件的「相对路径 + 内容 sha256」对按路径字典序排序拼接后再 sha256，排除 zip 容器元数据）比对名单（buildId 不在条目集先短路），命中即 true；`installCore` 统一推导落库，重装换内容随内容重算。NULL/false=未证实（未命中/窗口期新版/存量未迁移），前端保守显示非官方。设计见 `../library-squirrel-docs/plan/插件官方身份判定与来源维度拆分方案.md`。
+- **构建身份（BuildID）**：`plugin.BuildID`，构建管线注入 plugin.json `buildId` 字段（`git describe --tags --always --dirty` 输出；同源码状态重构建永远同值，与构建机器/路径/时间无关）。`InstallBundled` 以它做捆绑插件升级检测（bundled 来源已装 buildId 与 zip 不一致或已装缺失即重装；zip 未打标回落 version 比较）；亦作静态资产 URL/ETag 缓存键（重构建必变，令 immutable 长缓存随构建失效）。设计见 `../library-squirrel-docs/plan/插件构建身份与升级判据机制.md`。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除。
 - **信任标记与 consent**：`plugin.Trusted`（`sql.NullBool`）服务端权威写入——bundled 安装即 `true`；第三方（`InstallFromPath`）的 `trusted` 由前端弹窗收集用户知情同意后经 handler 参数透传（`Handler.InstallFromPath(ctx, packagePath, trusted bool)`），**缺省/绕过 UI 一律落 false**。
 - **运行门控**：`trusted=false` 的插件**不 Activate**（`activatePlugin` 起始检查）。用户在插件管理页「信任」后置 `true` 并激活（`Handler.SetTrusted`）；取消信任仅更新标记，下次启动不再激活（当前运行需重启）。**这是「是否运行」的二值门控，非「裁剪 HostService 能力」**——trusted=true 运行后能力仍全开；按信任裁剪 RPC 属延后项（完整沙箱）。
 - **受限模式（Restricted Mode）**：`settings.pluginSettings.restrictedMode` 开关，启用时 `loadInstalledPlugins` 跳过所有非 bundled 插件（不论 trusted；来源未设置视作非 bundled），作安全启动救生圈；与运行门控正交。
 
 ## 插件检查更新流
 
-bundled 插件的升级检测与用户答复流（设计见 `doc/plan/插件检查更新方案.md`）：
+bundled 插件的升级检测与用户答复流（设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`）：
 
 - **检测**：pre-Run `InstallBundled`（**仅此入口**——其契约强制分支直装绕过参与者否决，运行期一律走 `ApplyPendingUpgrade`）。已装判变成立时分支优先级：契约不兼容强制直装 > 拒绝标记等值静默跳过 > 未打标（buildId 空）维持 version 静默升级 > 记 available 待办保留旧版运行。
 - **待办（pendingUpgrade）**：service 内存态（available/forced/error 三类，重启重检），前端「插件」菜单按钮红点计 available 数（`usePluginUpdateStore` 写通用菜单红点注册表 `useMenuBadgeStore`，MainLayout mounted 拉取）；答复在插件管理页——行内 [升级]/[跳过此构建] 按钮（仅有待办的行显示）+ 多选批量升级（顺序执行逐项否决），升级走换版链当次会话生效（运行中任务否决、Paused 不拦）。

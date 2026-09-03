@@ -62,7 +62,7 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 - 同目录 `shots/` 存本 run 全部截图、`evidence/` 存本 run 的日志/dump 等文本证据文件。
 - 截图命名 `<报告项编号或短代号>-<语义描述>.png`（如 `01-replace-confirm.png`）；复验不覆盖已有文件，追加 `-rN` 后缀（历史证据保留）。
 - 报告内截图引用用 Markdown 嵌入语法 `![描述](shots/x.png)`（相对路径，报告与证据同目录，IDE 预览直接见图）；文本类证据仍以行内代码路径提及。
-- **遗留冻结区**：`.claude/testing/` 下旧 `shots/`、`reports/`、`evidence/` 三目录属旧落点模型遗留，冻结原地（存量报告以旧路径引用截图，引用链必须保持可解析），勿往其中新增任何文件。
+- **遗留冻结区**：旧落点模型的 `shots/`、`reports/`、`evidence/` 三目录已迁私有文档库 `../library-squirrel-docs/testing/` 下（存量报告以原相对结构引用截图，引用链保持可解析），冻结勿往其中新增任何文件；主仓库不再有这三目录，勿重建。
 
 **项数收敛原则**：能自动验证的不设用户项；单元测试已锚定的逻辑不重复实测（记跳过+原因）；用户项只留终审。
 
@@ -115,7 +115,7 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 
 ## 与其他体系的衔接
 
-- **task-graph**：手测里程碑触发本技能；报告落 runs/ run 目录，谱系 TREE.md 节点行以 `../../../testing/runs/<dir>/` 相对路径外链（active→archive 归档不改相对深度，链接不断）。
+- **task-graph**：手测里程碑触发本技能；报告落主仓 runs/ run 目录，谱系 TREE.md（在私有文档库）节点行以 `../library-squirrel/.claude/testing/runs/<dir>/` 路径外链（私有库根相对）。
 - **plan 文档**：清单项从方案的「测试锚定」节提取；结论回填提交信息。
 - **commit**：本技能报告通过 + 用户终审 = 提交前置条件之一。
-- 首跑范例：`.claude/workflow/archive/work-lineage-soft-delete/VERIFY-H.md`（属旧落点模型遗留——当时报告落谱系目录随归档收存；新报告一律落 runs/）。
+- 首跑范例：`../library-squirrel-docs/workflow/archive/work-lineage-soft-delete/VERIFY-H.md`（属旧落点模型遗留——当时报告落谱系目录随归档收存；新报告一律落 runs/）。

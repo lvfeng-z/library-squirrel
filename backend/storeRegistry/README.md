@@ -24,6 +24,6 @@ store 域协作中介：① store 子目录白名单单一源（`RegisteredDirs`
 ## 关键设计
 
 - **白名单单一源**：`RegisteredDirs` 为权威（store 域），`RegisteredPaths` 从其派生，`ValidatePath`/`InScanDirs` 都基于 `RegisteredDirs`——消除历史上 `persistentStore/dir.go` 与 `fsmonitor/scanner.go` 的双份镜像。backup 根（`BackupDirPath`）与 store 白名单分立——backup 不参与 persistentStore 落盘校验，仅作 fsmonitor backup 域监控范围谓词。
-- **操作抑制（suppression）**：写方在产生 fsnotify Create/Remove 事件的磁盘操作（`os.Create`/`os.Remove`/`os.Rename`）前 `Suppress`，`Release` 走 3s 宽限期覆盖 fsnotify 异步延迟；读方 `IsSuppressed` 查精确 + 祖先前缀。键为 workDir 相对正斜杠路径（与 `FileChange.Path` / DB `file_path` 同基准）。仅作用于 fsnotify 实时事件，离线对账不经抑制。详见 `doc/plan/store操作抑制suppression方案.md`。
+- **操作抑制（suppression）**：写方在产生 fsnotify Create/Remove 事件的磁盘操作（`os.Create`/`os.Remove`/`os.Rename`）前 `Suppress`，`Release` 走 3s 宽限期覆盖 fsnotify 异步延迟；读方 `IsSuppressed` 查精确 + 祖先前缀。键为 workDir 相对正斜杠路径（与 `FileChange.Path` / DB `file_path` 同基准）。仅作用于 fsnotify 实时事件，离线对账不经抑制。详见 `../library-squirrel-docs/plan/store操作抑制suppression方案.md`。
 - **事件模型前提**：fsnotify 只对 Create/Remove 发事件（Write 不发），故抑制只需覆盖"文件出现/消失那一瞬 + 延迟"，不需覆盖整个写入过程——各落盘点局部登记即可，storeWriter 不持有抑制状态。
 - **泄漏兜底**：`Suppress` 设 30s 最长存活，防写方崩溃/忘 Release 致永久抑制；写操作时顺带惰性清理过期项。

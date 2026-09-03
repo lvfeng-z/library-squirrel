@@ -100,17 +100,17 @@ export class ExportSettings {
  */
 export class FsmonitorSettings {
     /**
-     * USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 doc/plan/USN离线追溯方案.md D8
+     * USN 离线精确追溯开关（仅 Windows，需管理员运行）；默认关，离线走全量对账。详见 ../library-squirrel-docs/plan/USN离线追溯方案.md D8
      */
     "usnEnabled": boolean;
 
     /**
-     * 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 doc/plan/store操作抑制suppression方案.md
+     * 操作抑制开关（D7）：默认开，关闭则 fsmonitor 不抑制内部写入（退回误报原状态，对账兜底）。详见 ../library-squirrel-docs/plan/store操作抑制suppression方案.md
      */
     "suppressEnabled": boolean;
 
     /**
-     * 自动修复模式开关（决策1）：默认关，用户显式开启。开启后 live 路径变更按策略自动处理，offline 一律人工确认。详见 doc/plan/工作目录外部操作防护方案.md
+     * 自动修复模式开关（决策1）：默认关，用户显式开启。开启后 live 路径变更按策略自动处理，offline 一律人工确认。详见 ../library-squirrel-docs/plan/工作目录外部操作防护方案.md
      */
     "autoRepairEnabled": boolean;
 

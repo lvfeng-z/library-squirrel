@@ -48,7 +48,7 @@ globs:
 
 > 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`completed_at`（落盘完成时刻毫秒时间戳，0=未完成）是合法零值——GORM Updates 跳零值，「续传重置回未完成」须经 `ResetCompleted` 显式列更新（service 层已封装）。
 
-> 注：`site_tag.namespace` / `re_work_tag.namespace`（`sql.NullString`，tag 关联级 namespace 维度，非路径字段）：站点有 namespace 时存值（如 e-hentai 的 character），无 namespace 站点（pixiv）落 NULL。落库守卫 `Valid: namespace != ""`——插件不声明（空串）→ `Valid:false` = NULL，对无 namespace 站点插件无感。`re_work_tag.namespace` 为所指 `site_tag.namespace` 镜像（site 关联）或用户自设（local 关联）。**`site_tag.namespace` 仅作站点元数据/镜像源，不直接参与关联/搜索维度——namespace 维度统一在 `re_work_tag.namespace`（搜索过滤 `rwt.namespace`，不读 site_tag.namespace）**。设计见 `doc/plan/tag体系演化方案.md`。
+> 注：`site_tag.namespace` / `re_work_tag.namespace`（`sql.NullString`，tag 关联级 namespace 维度，非路径字段）：站点有 namespace 时存值（如 e-hentai 的 character），无 namespace 站点（pixiv）落 NULL。落库守卫 `Valid: namespace != ""`——插件不声明（空串）→ `Valid:false` = NULL，对无 namespace 站点插件无感。`re_work_tag.namespace` 为所指 `site_tag.namespace` 镜像（site 关联）或用户自设（local 关联）。**`site_tag.namespace` 仅作站点元数据/镜像源，不直接参与关联/搜索维度——namespace 维度统一在 `re_work_tag.namespace`（搜索过滤 `rwt.namespace`，不读 site_tag.namespace）**。设计见 `../library-squirrel-docs/plan/tag体系演化方案.md`。
 
 ### 路径解析约定
 
