@@ -39,10 +39,11 @@ const apis = {
 } // 接口
 // 工作目录输入组件实例
 const workdirInput = ref()
-// 工作目录设置区块容器（「工作目录」标题 + 目录输入行，横幅跳转强调环定位目标）
+// 工作目录设置区块容器（「工作目录」标题 + 目录输入行，向导区块高亮目标）
 const workdirSection = ref()
 // 向导目标注册
 const { register: registerTourTarget } = useTourTargets()
+registerTourTarget('settings.workdirSection', workdirSection)
 registerTourTarget('settings.workdirInput', workdirInput)
 // 主要容器的实例
 const containerRef = ref()
@@ -453,7 +454,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 >
                   基本设置
                 </el-text>
-              <!-- 工作目录设置区块：标题 + 输入行同容器圈定，横幅跳转强调环定位 -->
+              <!-- 工作目录设置区块：标题 + 输入行同容器圈定，供向导区块级高亮（settings.workdirSection）与横幅跳转强调环定位 -->
               <div ref="workdirSection">
                 <el-divider
                   content-position="left"

@@ -1,9 +1,29 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
+import { useTourTargets } from '@renderer/composables/useTourTargets'
 
 const store = useTourCenterStore()
 const { tourList, status, activeTourId } = storeToRefs(store)
+
+// 向导目标注册：guide-center-intro 向导高亮本面板内元素；本面板仅挂载于 guide 视图，
+// targetKey 按 {viewId}.{element} 约定取 guide 前缀
+const { register: registerTourTarget } = useTourTargets()
+const panelRef = ref()
+const listRef = ref()
+const resetButtonRef = ref()
+registerTourTarget('guide.tourCenterPanel', panelRef)
+registerTourTarget('guide.tourCenterList', listRef)
+registerTourTarget('guide.tourCenterReset', resetButtonRef)
+
+// 「重置」按钮仅在已完成向导的条目上渲染（0..N 枚）：函数 ref 保留最新挂载实例，
+// 卸载回调传 null 不清空引用——消费时机（向导高亮）处于遮罩期内，列表不发生重置交互
+function setResetButtonRef(el: unknown) {
+  if (el) {
+    resetButtonRef.value = el
+  }
+}
 
 function isActive(id: string): boolean {
   return status.value === 'running' && activeTourId.value === id
@@ -23,12 +43,18 @@ function handleStop() {
 </script>
 
 <template>
-  <div class="tour-center-panel">
+  <div
+    ref="panelRef"
+    class="tour-center-panel"
+  >
     <div class="tour-center-header">
       <span class="tour-center-title">向导中心</span>
       <span class="tour-center-hint">点击「启动」开始对应向导，可随时重置已完成向导重新查看</span>
     </div>
-    <el-scrollbar class="tour-center-list">
+    <el-scrollbar
+      ref="listRef"
+      class="tour-center-list"
+    >
       <div
         v-for="tour in tourList"
         :key="tour.id"
@@ -75,6 +101,7 @@ function handleStop() {
             v-if="store.isCompleted(tour.id)"
             size="small"
             text
+            :ref="setResetButtonRef"
             @click="handleReset(tour.id)"
           >
             重置

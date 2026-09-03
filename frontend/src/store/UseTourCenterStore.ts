@@ -257,7 +257,7 @@ export const useTourCenterStore = defineStore('tourCenter', {
 
     /**
      * 存量迁移：settings 中旧首启向导键 first-time 为 true 视为已看过拆分后的
-     * workdir-setup 与 task-creation 两段内容——置新键、删旧键并持久化；
+     * workdir-setup 与 task-creation 两段内容及首启欢迎弹窗——置新键、删旧键并持久化；
      * 旧键删除后不再命中，天然幂等。持久化失败时下次启动重迁，自愈
      */
     async migrateLegacyFirstTime() {
@@ -267,6 +267,9 @@ export const useTourCenterStore = defineStore('tourCenter', {
       }
       if (!this.completed.get('task-creation')) {
         this.completed.set('task-creation', true)
+      }
+      if (!this.completed.get('welcome-shown')) {
+        this.completed.set('welcome-shown', true)
       }
       this.completed.delete('first-time')
       try {

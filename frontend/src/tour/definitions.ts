@@ -13,14 +13,39 @@ export const builtinTours: TourDefinition[] = [
     description: '工作目录未配置的影响与配置入口',
     steps: [
       {
-        target: { route: 'mainPage' },
-        title: '重要提示：工作目录',
-        description: '若不配置工作目录，本软件无法正常使用——资源下载、备份与文件服务均不可用',
+        target: { route: 'settings', targetKey: 'settings.workdirSection' },
+        title: '工作目录',
+        description: '这里设置资源库的根目录，本软件管理的所有资源都会被保存到这个目录下。若不配置工作目录，资源下载、备份与文件服务均不可用',
       },
       {
         target: { route: 'settings', targetKey: 'settings.workdirInput' },
-        title: '工作目录',
+        title: '设置目录',
         description: '在这里设置资源库的根目录，本软件管理的所有资源都会被保存到这个目录下，请确保这个目录有足够的空间，并且非必要的情况下不要更改此项',
+      },
+    ],
+  },
+  {
+    id: 'guide-center-intro',
+    name: '向导中心介绍',
+    description: '认识向导中心，了解如何查看与重看引导向导',
+    steps: [
+      {
+        target: { route: 'guide', targetKey: 'guide.tourCenterPanel' },
+        title: '向导中心',
+        description: '这里是向导中心，本软件的全部引导向导都收录在这里，随时可以从左侧菜单的「向导」页面回到这里',
+        placement: 'right',
+      },
+      {
+        target: { route: 'guide', targetKey: 'guide.tourCenterList' },
+        title: '向导列表',
+        description: '列表中的每一项都是一个引导向导，点击「启动」即可查看，进行中的向导可点击「结束」停止',
+        placement: 'right',
+      },
+      {
+        target: { route: 'guide', targetKey: 'guide.tourCenterReset' },
+        title: '重新体验',
+        description: '已完成的向导会显示「重置」按钮，点击重置后即可重新体验对应的引导',
+        placement: 'right',
       },
     ],
   },

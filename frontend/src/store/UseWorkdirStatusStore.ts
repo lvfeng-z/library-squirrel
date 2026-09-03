@@ -11,7 +11,7 @@ import type { Settings } from '@bindings/github.com/library-squirrel/backend/set
  *   避免事件早于前端 Events.On 注册即丢失；
  * - 运行期由后端统一发射口的 workdir:unconfigured 事件（MainIpcListener 转发
  *   onUnconfiguredEvent）升常驻横幅；
- * - 同源去重：首启向导会话内至多弹一次（wizardAttempted），横幅升格幂等，
+ * - 同源去重：首启欢迎弹窗会话内至多弹一次（welcomeAttempted），横幅升格幂等，
  *   向导进行中不叠横幅（向导结束经 onTourEnded 补升）
  */
 export const useWorkdirStatusStore = defineStore('workdirStatus', {
@@ -20,18 +20,21 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
     configured: boolean
     /** 常驻横幅（「工作目录未配置，点击前往设置」）是否展示 */
     bannerVisible: boolean
-    /** 本会话是否已弹过首启向导（会话内不重复弹） */
-    wizardAttempted: boolean
+    /** 首启欢迎弹窗是否展示 */
+    welcomeVisible: boolean
+    /** 本会话是否已弹过首启欢迎弹窗（会话内不重复弹） */
+    welcomeAttempted: boolean
   } => ({
     configured: true,
     bannerVisible: false,
-    wizardAttempted: false
+    welcomeVisible: false,
+    welcomeAttempted: false
   }),
   actions: {
     /**
      * 拉取 settings 收敛未配置状态：启动水合（MainLayout 挂载）与设置保存/重置后
-     * 刷新共用。未配置时按工作目录向导完成与否分流——未完成且本会话未弹过则直接打开
-     * 工作目录配置向导（首步为居中警告，第二步高亮目录输入），否则升常驻横幅；
+     * 刷新共用。未配置时按欢迎弹窗看过与否分流——未看过且本会话未弹过则弹首启
+     * 欢迎弹窗（两按钮分别导向新手向导与直接开始），否则升常驻横幅；
      * 已配置则收起横幅
      */
     async refresh(): Promise<void> {
@@ -39,7 +42,7 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
         const response = await settingsGetSettings()
         if (!ApiUtil.check(response)) return
         const settings = ApiUtil.data<Settings>(response)
-        this.applyPulled(settings?.workdir ?? '', settings?.tour?.completed?.['workdir-setup'] === true)
+        this.applyPulled(settings?.workdir ?? '', settings?.tour?.completed?.['welcome-shown'] === true)
       } catch (e) {
         console.warn('[workdirStatus] 拉取设置失败', e)
       }
@@ -60,17 +63,32 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
       }
     },
 
-    /** 按拉取结果分流：未配置时工作目录向导未完成且本会话未弹过 → 弹工作目录配置向导；否则升横幅 */
-    applyPulled(workdir: string, workdirSetupCompleted: boolean): void {
+    /**
+     * 欢迎弹窗关闭入口（弹窗两按钮共用）：关弹窗并持久化「已看过欢迎」——以用户
+     * 主动关闭为凭证，显示瞬间不标记。welcome-shown 为非向导标记借住向导完成表
+     * （completed 只被向导中心按注册表遍历，借住键不会出现在向导中心列表）。
+     * 「开始使用」关闭且未配置时升常驻横幅；「查看新手向导」由调用方随后
+     * start('workdir-setup') 接管，横幅交给向导结束链（onTourEnded）兜底
+     */
+    closeWelcome(action: 'start-using' | 'view-tour'): void {
+      this.welcomeVisible = false
+      useTourCenterStore().markCompleted('welcome-shown')
+      if (action === 'start-using' && !this.configured && !this.bannerVisible) {
+        this.bannerVisible = true
+      }
+    },
+
+    /** 按拉取结果分流：未配置时欢迎未看过且本会话未弹过 → 弹首启欢迎弹窗；否则升横幅 */
+    applyPulled(workdir: string, welcomeShown: boolean): void {
       if (!isBlank(workdir)) {
         this.configured = true
         this.bannerVisible = false
         return
       }
       this.configured = false
-      if (!workdirSetupCompleted && !this.wizardAttempted) {
-        this.wizardAttempted = true
-        void useTourCenterStore().start('workdir-setup').catch((e) => console.warn('[workdirStatus] 打开工作目录配置向导失败', e))
+      if (!welcomeShown && !this.welcomeAttempted) {
+        this.welcomeAttempted = true
+        this.welcomeVisible = true
         return
       }
       if (!useTourCenterStore().isActive) {

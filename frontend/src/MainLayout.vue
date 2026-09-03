@@ -9,6 +9,7 @@ import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDia
 import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
 import TourOverlay from '@renderer/components/tour/TourOverlay.vue'
+import WelcomeDialog from '@renderer/components/tour/WelcomeDialog.vue'
 import ShareReceiveDialog from '@renderer/components/dialogs/ShareReceiveDialog.vue'
 import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
@@ -31,13 +32,19 @@ onMounted(async () => {
   void workdirStatus.refresh()
 })
 
-// 向导结束编排：工作目录向导「走完」且目录已配置且任务创建向导未看过 → 自动接续任务创建向导；
-// 其余结束（跳过 / 走完但未配置 / 已看过任务向导）走 onTourEnded——仍未配置则升常驻横幅
+// 向导结束编排：接续判据统一为「走完（done）」——跳过（skip）即结束引导链。工作目录向导走完且未看过
+// 向导中心介绍则先接续介绍向导；介绍向导走完（或工作目录向导走完但已看过介绍）在已配置且未看过任务
+// 创建向导时接续之；其余结束走 onTourEnded——仍未配置则升常驻横幅
 watch(() => tourCenter.isActive, (active, was) => {
   if (!was || active) return
   const ended = tourCenter.lastEnded
-  if (ended?.tourId === 'workdir-setup' && ended.reason === 'done'
-    && workdirStatus.configured && !tourCenter.isCompleted('task-creation')) {
+  if (ended?.tourId === 'workdir-setup' && ended.reason === 'done' && !tourCenter.isCompleted('guide-center-intro')) {
+    void tourCenter.start('guide-center-intro').catch((e) => console.warn('[MainLayout] 自动接续向导中心介绍失败', e))
+    return
+  }
+  const fromWorkdirDone = ended?.tourId === 'workdir-setup' && ended.reason === 'done'
+  const fromIntroEnded = ended?.tourId === 'guide-center-intro' && ended.reason === 'done'
+  if ((fromWorkdirDone || fromIntroEnded) && workdirStatus.configured && !tourCenter.isCompleted('task-creation')) {
     void tourCenter.start('task-creation').catch((e) => console.warn('[MainLayout] 自动接续任务创建向导失败', e))
     return
   }
@@ -120,6 +127,9 @@ async function handleCloseCurrentView() {
 
     <!-- 向导覆盖层（新向导系统） -->
     <TourOverlay />
+
+    <!-- 首启欢迎弹窗（未配置且未看过欢迎时由 workdirStatus store 触发，两按钮导向新手向导或直接开始） -->
+    <WelcomeDialog />
   </div>
 </template>
 
