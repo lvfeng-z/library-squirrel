@@ -2,7 +2,6 @@ import { getCurrentInstance } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import GotoPageConfig from '@renderer/model/util/GotoPageConfig.ts'
 import { PageEnum } from '@renderer/model/constant/PageEnum.ts'
-import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 
 /**
  * 获取 router 实例
@@ -49,7 +48,4 @@ export function askGotoPage(config: GotoPageConfig) {
   ElMessageBox.alert(config.content, config.title, config.options).then(async () => {
     await gotoPage(config.page)
   })
-  if (config.page === PageEnum.Settings && (config.extraData as boolean)) {
-    void useTourCenterStore().start('first-time')
-  }
 }

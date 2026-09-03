@@ -30,8 +30,8 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
   actions: {
     /**
      * 拉取 settings 收敛未配置状态：启动水合（MainLayout 挂载）与设置保存/重置后
-     * 刷新共用。未配置时按首启向导完成与否分流——未完成且本会话未弹过则直接打开
-     * 向导（复用 first-time 定义，首步即工作目录输入），否则升常驻横幅；
+     * 刷新共用。未配置时按工作目录向导完成与否分流——未完成且本会话未弹过则直接打开
+     * 工作目录配置向导（首步为居中警告，第二步高亮目录输入），否则升常驻横幅；
      * 已配置则收起横幅
      */
     async refresh(): Promise<void> {
@@ -39,7 +39,7 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
         const response = await settingsGetSettings()
         if (!ApiUtil.check(response)) return
         const settings = ApiUtil.data<Settings>(response)
-        this.applyPulled(settings?.workdir ?? '', settings?.tour?.completed?.['first-time'] === true)
+        this.applyPulled(settings?.workdir ?? '', settings?.tour?.completed?.['workdir-setup'] === true)
       } catch (e) {
         console.warn('[workdirStatus] 拉取设置失败', e)
       }
@@ -60,17 +60,17 @@ export const useWorkdirStatusStore = defineStore('workdirStatus', {
       }
     },
 
-    /** 按拉取结果分流：未配置时向导未完成且本会话未弹过 → 弹首启向导；否则升横幅 */
-    applyPulled(workdir: string, firstTimeTourCompleted: boolean): void {
+    /** 按拉取结果分流：未配置时工作目录向导未完成且本会话未弹过 → 弹工作目录配置向导；否则升横幅 */
+    applyPulled(workdir: string, workdirSetupCompleted: boolean): void {
       if (!isBlank(workdir)) {
         this.configured = true
         this.bannerVisible = false
         return
       }
       this.configured = false
-      if (!firstTimeTourCompleted && !this.wizardAttempted) {
+      if (!workdirSetupCompleted && !this.wizardAttempted) {
         this.wizardAttempted = true
-        void useTourCenterStore().start('first-time').catch((e) => console.warn('[workdirStatus] 打开首启向导失败', e))
+        void useTourCenterStore().start('workdir-setup').catch((e) => console.warn('[workdirStatus] 打开工作目录配置向导失败', e))
         return
       }
       if (!useTourCenterStore().isActive) {

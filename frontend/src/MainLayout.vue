@@ -22,18 +22,26 @@ const tourCenter = useTourCenterStore()
 
 // 外壳挂载即拉取插件更新待办：启动期检测（pre-Run InstallBundled）的结果在此进入前端，
 // 「插件」菜单红点与管理页待更新区块均消费本 store
-onMounted(() => {
+onMounted(async () => {
   usePluginUpdateStore().refresh()
-  // 工作目录未配置的初始判定（拉取式）：向导未完成直接打开首启向导，否则展示常驻横幅；
-  // 运行期由 workdir:unconfigured 事件（MainIpcListener）升格横幅
+  // 先等向导完成标记加载（含旧向导键存量迁移落库），再拉取工作目录状态——
+  // 首启判定读到的是迁移后的新键，存量用户不会误弹工作目录向导；运行期由
+  // workdir:unconfigured 事件（MainIpcListener）升格横幅
+  await tourCenter.loadCompleted().catch((e) => console.warn('[MainLayout] 加载向导完成标记失败', e))
   void workdirStatus.refresh()
 })
 
-// 向导结束（完成/跳过）时工作目录仍未配置 → 升常驻横幅（首启向导被跳过时的补升）
+// 向导结束编排：工作目录向导「走完」且目录已配置且任务创建向导未看过 → 自动接续任务创建向导；
+// 其余结束（跳过 / 走完但未配置 / 已看过任务向导）走 onTourEnded——仍未配置则升常驻横幅
 watch(() => tourCenter.isActive, (active, was) => {
-  if (was && !active) {
-    workdirStatus.onTourEnded()
+  if (!was || active) return
+  const ended = tourCenter.lastEnded
+  if (ended?.tourId === 'workdir-setup' && ended.reason === 'done'
+    && workdirStatus.configured && !tourCenter.isCompleted('task-creation')) {
+    void tourCenter.start('task-creation').catch((e) => console.warn('[MainLayout] 自动接续任务创建向导失败', e))
+    return
   }
+  workdirStatus.onTourEnded()
 })
 
 // 横幅点击跳设置页完成工作目录配置

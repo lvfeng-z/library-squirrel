@@ -10,6 +10,15 @@ import type { TourContext, TourDefinition, TourStep, TourStatus } from '@rendere
 const TARGET_WAIT_INTERVAL = 50
 const TARGET_WAIT_TIMEOUT = 3000
 
+/** 向导结束原因：done = 走完全部步骤；skip = 跳过（气泡「跳过」按钮 / 遮罩关闭 / 向导中心「结束」） */
+export type TourEndReason = 'done' | 'skip'
+
+/** 最近一次向导结束记录（start 时清空、finish 时写入，供外部编排消费——如工作目录向导走完后的自动接续） */
+export interface TourEndedInfo {
+  tourId: string
+  reason: TourEndReason
+}
+
 // ============ 模块级：目标元素注册表 ============
 const targetResolvers = new Map<string, () => Element | null | undefined>()
 
@@ -78,6 +87,7 @@ export const useTourCenterStore = defineStore('tourCenter', {
     stepResolved: false,
     context: null as TourContext | null,
     completed: new Map<string, boolean>(),
+    lastEnded: null as TourEndedInfo | null,
   }),
   getters: {
     activeTour(state): TourDefinition | null {
@@ -134,15 +144,16 @@ export const useTourCenterStore = defineStore('tourCenter', {
       this.activeTourId = tourId
       this.activeStepIndex = 0
       this.status = 'running'
+      this.lastEnded = null
       await this.resolveStep(0, payload)
     },
 
-    /** 下一步（最后一步则结束） */
+    /** 下一步（最后一步则走完结束） */
     async next() {
       const tour = this.activeTour
       if (!tour) return
       if (this.activeStepIndex >= tour.steps.length - 1) {
-        await this.finish()
+        await this.finish('done')
         return
       }
       this.activeStepIndex++
@@ -156,14 +167,18 @@ export const useTourCenterStore = defineStore('tourCenter', {
       }
     },
 
-    /** 跳过当前向导 */
+    /** 跳过当前向导（与走完同记完成标记，结束原因不同） */
     skip() {
-      void this.finish()
+      void this.finish('skip')
     },
 
-    /** 完成向导并记录 */
-    async finish() {
+    /**
+     * 结束向导：先写结束记录（外部 watch isActive 回落时消费，此刻数据已就位），
+     * 再记完成标记（走完/跳过同语义）并重置运行态
+     */
+    async finish(reason: TourEndReason) {
       if (this.activeTourId) {
+        this.lastEnded = { tourId: this.activeTourId, reason }
         this.markCompleted(this.activeTourId)
       }
       this.reset()
@@ -228,7 +243,7 @@ export const useTourCenterStore = defineStore('tourCenter', {
       this.stepResolved = true
     },
 
-    /** 应用启动时从 settings 加载已完成向导 */
+    /** 应用启动时从 settings 加载已完成向导，并做旧向导键的存量迁移 */
     async loadCompleted() {
       const response = await settingsGetSettings()
       if (!ApiUtil.check(response)) return
@@ -236,6 +251,28 @@ export const useTourCenterStore = defineStore('tourCenter', {
       const completed = settings?.tour?.completed
       if (completed && typeof completed === 'object') {
         this.completed = new Map(Object.entries(completed).map(([k, v]) => [k, !!v]))
+      }
+      await this.migrateLegacyFirstTime()
+    },
+
+    /**
+     * 存量迁移：settings 中旧首启向导键 first-time 为 true 视为已看过拆分后的
+     * workdir-setup 与 task-creation 两段内容——置新键、删旧键并持久化；
+     * 旧键删除后不再命中，天然幂等。持久化失败时下次启动重迁，自愈
+     */
+    async migrateLegacyFirstTime() {
+      if (this.completed.get('first-time') !== true) return
+      if (!this.completed.get('workdir-setup')) {
+        this.completed.set('workdir-setup', true)
+      }
+      if (!this.completed.get('task-creation')) {
+        this.completed.set('task-creation', true)
+      }
+      this.completed.delete('first-time')
+      try {
+        await this.persist()
+      } catch (e) {
+        console.warn('[tourCenter] 首启向导存量迁移持久化失败', e)
       }
     },
 

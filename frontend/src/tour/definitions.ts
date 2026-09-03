@@ -8,15 +8,27 @@ import type { TourDefinition } from '@renderer/model/tour/TourDefinition'
  */
 export const builtinTours: TourDefinition[] = [
   {
-    id: 'first-time',
-    name: '首次使用引导',
-    description: '从设置工作目录到创建第一个任务',
+    id: 'workdir-setup',
+    name: '工作目录配置引导',
+    description: '工作目录未配置的影响与配置入口',
     steps: [
+      {
+        target: { route: 'mainPage' },
+        title: '重要提示：工作目录',
+        description: '若不配置工作目录，本软件无法正常使用——资源下载、备份与文件服务均不可用',
+      },
       {
         target: { route: 'settings', targetKey: 'settings.workdirInput' },
         title: '工作目录',
         description: '在这里设置资源库的根目录，本软件管理的所有资源都会被保存到这个目录下，请确保这个目录有足够的空间，并且非必要的情况下不要更改此项',
       },
+    ],
+  },
+  {
+    id: 'task-creation',
+    name: '任务创建引导',
+    description: '认识本地导入与站点下载两个任务创建入口',
+    steps: [
       {
         target: { route: 'taskManage', targetKey: 'taskManage.localImportButton' },
         title: '从本地导入',
