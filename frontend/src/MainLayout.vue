@@ -44,9 +44,9 @@ watch(() => tourCenter.isActive, (active, was) => {
   workdirStatus.onTourEnded()
 })
 
-// 横幅点击跳设置页完成工作目录配置
+// 横幅点击跳设置页完成工作目录配置；query 携带一次性信号 highlight=workdir，设置页据此滚动定位并脉冲强调该区块
 async function gotoSettings() {
-  await router.push({ name: 'settings' })
+  await router.push({ name: 'settings', query: { highlight: 'workdir' } })
 }
 
 // 根据当前路由路径判断是否显示关闭按钮（非主页时显示）

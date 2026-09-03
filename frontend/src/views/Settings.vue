@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import BaseView from './BaseView.vue'
-import { computed, nextTick, onBeforeMount, onBeforeUnmount, Ref, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import lodash from 'lodash'
 import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
+import HighlightRing from '@renderer/components/common/HighlightRing.vue'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
 import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi } from '@renderer/apis/http'
@@ -38,6 +39,8 @@ const apis = {
 } // 接口
 // 工作目录输入组件实例
 const workdirInput = ref()
+// 工作目录设置区块容器（「工作目录」标题 + 目录输入行，横幅跳转强调环定位目标）
+const workdirSection = ref()
 // 向导目标注册
 const { register: registerTourTarget } = useTourTargets()
 registerTourTarget('settings.workdirInput', workdirInput)
@@ -98,6 +101,43 @@ async function handleUnregisterProtocol(): Promise<void> {
 const workSettingsFileNameFormatDialogState: Ref<boolean> = ref(false)
 // 路由实例
 const router = useRouter()
+const route = useRoute()
+
+// 横幅跳转强调：外壳横幅点击携带 query 信号 highlight=workdir 到达本页时，滚动定位工作目录区块并施加
+// warn tone 强调环（HighlightRing 画于 body 层，不受滚动容器裁剪/相邻元素遮挡，与未配置横幅同色系）
+const workdirSectionHighlighted = ref(false)
+// 强调环目标：高亮期指向工作目录区块元素，撤除后置空（HighlightRing 以空 target 卸环）
+const workdirHighlightTarget = computed<HTMLElement | null>(() =>
+  workdirSectionHighlighted.value ? (workdirSection.value ?? null) : null
+)
+// 呼吸动画 3 轮 × 1.2s；动画结束撤环，重复触发时旧计时器作废重排
+let workdirHighlightTimer: ReturnType<typeof setTimeout> | null = null
+const WORKDIR_HIGHLIGHT_DURATION_MS = 3600
+// 强调环重启序号：每次触发递增，组件 :key 随之重排——环元素重建令 CSS 动画重新播放
+// （环挂载期间元素不重建则动画不重启，重复点击只重排 timer，环播完静止透明无再强调反馈）
+const workdirHighlightSeq = ref(0)
+
+function consumeHighlightWorkdirQuery() {
+  // 一次性信号：消费即从 query 清除
+  void router.replace({ query: { ...route.query, highlight: undefined } })
+  workdirSection.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  workdirSectionHighlighted.value = true
+  workdirHighlightSeq.value++
+  if (workdirHighlightTimer) clearTimeout(workdirHighlightTimer)
+  workdirHighlightTimer = setTimeout(() => {
+    workdirSectionHighlighted.value = false
+    workdirHighlightTimer = null
+  }, WORKDIR_HIGHLIGHT_DURATION_MS)
+}
+
+// 首次到达由 onMounted 捕获（组件挂载时 query 已就位）；横幅常驻于外壳，设置页内再次点击
+// 横幅属同页 query 变化，由 watch 捕获
+onMounted(() => {
+  if (route.query.highlight === 'workdir') consumeHighlightWorkdirQuery()
+})
+watch(() => route.query.highlight, (highlight) => {
+  if (highlight === 'workdir') consumeHighlightWorkdirQuery()
+})
 
 // 方法
 // autoRepairPolicies 为 map：递归 diff 只遍历旧键，新键不产出变更——整表比较判定变更
@@ -413,6 +453,8 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 >
                   基本设置
                 </el-text>
+              <!-- 工作目录设置区块：标题 + 输入行同容器圈定，横幅跳转强调环定位 -->
+              <div ref="workdirSection">
                 <el-divider
                   content-position="left"
                   border-style="dotted"
@@ -447,6 +489,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-col>
                   </el-row>
                 </el-tooltip>
+              </div>
                 <el-card
                   shadow="never"
                   class="settings-guard-card"
@@ -1138,6 +1181,13 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
           </div>
         </el-scrollbar>
       </el-dialog>
+      <!-- 横幅跳转到达的工作目录区块强调环（画于 body 层跟随目标，gap 留出与组件的间距；
+           :key 绑触发序号，重复点击横幅时重建环元素重启动画） -->
+      <HighlightRing
+        :key="workdirHighlightSeq"
+        :target="workdirHighlightTarget"
+        :gap="10"
+      />
     </template>
   </base-view>
 </template>
