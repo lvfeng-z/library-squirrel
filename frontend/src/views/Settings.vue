@@ -447,54 +447,47 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               class="settings-scrollbar-container"
             >
               <div id="basicSettings">
-                <el-text
-                  class="mx-1"
-                  size="large"
-                  tag="b"
-                >
-                  基本设置
-                </el-text>
+              <el-text class="settings-section-title">
+                基本设置
+              </el-text>
               <!-- 工作目录设置区块：标题 + 输入行同容器圈定，供向导区块级高亮（settings.workdirSection）与横幅跳转强调环定位 -->
               <div ref="workdirSection">
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>工作目录</el-text>
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                  content="LibrarySquirrel所管理的所有资源都会被保存到这个目录下，请确保这个目录有足够的空间，并且非必要的情况下不要更改此项"
-                >
-                  <el-row>
-                    <el-col :span="22">
-                      <el-input
-                        ref="workdirInput"
-                        v-model="settings.workdir"
-                      />
-                    </el-col>
-                    <el-col :span="1">
-                      <el-button
-                        icon="FolderOpened"
-                        @click="selectDir"
-                      />
-                    </el-col>
-                    <el-col :span="1">
-                      <el-button
-                        type="danger"
-                        class="tone-fail"
-                        icon="RefreshLeft"
-                        @click="settings.workdir = oldSettings.workdir"
-                      />
-                    </el-col>
-                  </el-row>
-                </el-tooltip>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">工作目录</span>
+                  </div>
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
+                    content="LibrarySquirrel所管理的所有资源都会被保存到这个目录下，请确保这个目录有足够的空间，并且非必要的情况下不要更改此项"
+                  >
+                    <el-row>
+                      <el-col :span="22">
+                        <el-input
+                          ref="workdirInput"
+                          v-model="settings.workdir"
+                        />
+                      </el-col>
+                      <el-col :span="1">
+                        <el-button
+                          icon="FolderOpened"
+                          @click="selectDir"
+                        />
+                      </el-col>
+                      <el-col :span="1">
+                        <el-button
+                          type="danger"
+                          class="tone-fail"
+                          icon="RefreshLeft"
+                          @click="settings.workdir = oldSettings.workdir"
+                        />
+                      </el-col>
+                    </el-row>
+                  </el-tooltip>
+                </div>
               </div>
-                <el-card
-                  shadow="never"
-                  class="settings-guard-card"
-                >
+              <div class="settings-item">
+                <el-card shadow="never">
                   <template #header>
                     <div class="settings-guard-card-header">
                       <span>目录保护</span>
@@ -549,12 +542,11 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </div>
                   </template>
                 </el-card>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>导出默认目录</el-text>
-                </el-divider>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">导出默认目录</span>
+                </div>
                 <el-tooltip
                   placement="top"
                   effect="customized"
@@ -583,12 +575,11 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-col>
                   </el-row>
                 </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>分享中继地址</el-text>
-                </el-divider>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">分享中继地址</span>
+                </div>
                 <el-tooltip
                   placement="top"
                   effect="customized"
@@ -600,26 +591,23 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     clearable
                   />
                 </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>深链协议注册</el-text>
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                  content="library-squirrel:// 分享链接的唤起注册：安装版随安装器写入（卸载时清理），便携版由应用启动时自注册。此入口仅取消便携自注册（HKCU），下次启动会重新注册。"
-                >
-                  <div class="settings-protocol-row">
-                    <el-text
-                      size="small"
-                      :type="protocolStatus?.registered ? 'success' : 'info'"
-                    >
-                      {{ protocolStatus?.registered
-                        ? (protocolStatus.currentExe ? '已注册（当前程序）' : '已注册（其他程序路径）')
-                        : '未注册（非 Windows 平台或未自注册）' }}
-                    </el-text>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">深链协议注册</span>
+                  <el-text
+                    size="small"
+                    :type="protocolStatus?.registered ? 'success' : 'info'"
+                  >
+                    {{ protocolStatus?.registered
+                      ? (protocolStatus.currentExe ? '已注册（当前程序）' : '已注册（其他程序路径）')
+                      : '未注册（非 Windows 平台或未自注册）' }}
+                  </el-text>
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
+                    content="library-squirrel:// 分享链接的唤起注册：安装版随安装器写入（卸载时清理），便携版由应用启动时自注册。此入口仅取消便携自注册（HKCU），下次启动会重新注册。"
+                  >
                     <el-button
                       size="small"
                       type="danger"
@@ -629,93 +617,87 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     >
                       取消注册
                     </el-button>
-                  </div>
-                </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>USN 离线追溯（实验性）</el-text>
+                  </el-tooltip>
+                </div>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">USN 离线追溯（实验性）</span>
                   <el-switch
                     v-model="settings.fsmonitor.usnEnabled"
-                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="开"
                     inactive-text="关"
                   />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    开启后，软件未运行期间对工作目录的文件操作将通过 Windows USN Journal 精确追溯（区别于默认的全量对账，能区分"本次离线变的"与"历史遗留不一致"）。<br>
-                    <b>需以管理员身份运行</b>，非管理员运行时自动降级为全量对账。仅 Windows 支持。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
                   >
-                    什么是 USN 离线追溯？
-                  </el-text>
-                </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>操作抑制</el-text>
+                    <template #content>
+                      开启后，软件未运行期间对工作目录的文件操作将通过 Windows USN Journal 精确追溯（区别于默认的全量对账，能区分"本次离线变的"与"历史遗留不一致"）。<br>
+                      <b>需以管理员身份运行</b>，非管理员运行时自动降级为全量对账。仅 Windows 支持。
+                    </template>
+                    <el-text
+                      type="info"
+                      size="small"
+                    >
+                      什么是 USN 离线追溯？
+                    </el-text>
+                  </el-tooltip>
+                </div>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">操作抑制</span>
                   <el-switch
                     v-model="settings.fsmonitor.suppressEnabled"
-                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="开"
                     inactive-text="关"
                   />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    开启后，软件自身的 store/ 写入（下载落盘、合并、还原等）不会被监控误报为外部变更。仅在排查误报/漏报问题时关闭——关闭后内部写入会重新触发"外部新增"误报（对账兜底，不致数据损坏）。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
                   >
-                    什么是操作抑制？
-                  </el-text>
-                </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>自动修复</el-text>
+                    <template #content>
+                      开启后，软件自身的 store/ 写入（下载落盘、合并、还原等）不会被监控误报为外部变更。仅在排查误报/漏报问题时关闭——关闭后内部写入会重新触发"外部新增"误报（对账兜底，不致数据损坏）。
+                    </template>
+                    <el-text
+                      type="info"
+                      size="small"
+                    >
+                      什么是操作抑制？
+                    </el-text>
+                  </el-tooltip>
+                </div>
+              </div>
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">自动修复</span>
                   <el-switch
                     v-model="settings.fsmonitor.autoRepairEnabled"
-                    class="settings-element-in-divider"
                     inline-prompt
                     size="large"
                     active-text="开"
                     inactive-text="关"
                   />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    开启后，软件运行期间检测到的路径层面外部变更（资源文件/目录移动、备份文件移动）将按下方策略自动处理，不再逐条弹窗确认；自动执行失败会降级为人工确认。离线对账发现的变更始终保留人工确认。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
                   >
-                    什么是自动修复？
-                  </el-text>
-                </el-tooltip>
+                    <template #content>
+                      开启后，软件运行期间检测到的路径层面外部变更（资源文件/目录移动、备份文件移动）将按下方策略自动处理，不再逐条弹窗确认；自动执行失败会降级为人工确认。离线对账发现的变更始终保留人工确认。
+                    </template>
+                    <el-text
+                      type="info"
+                      size="small"
+                    >
+                      什么是自动修复？
+                    </el-text>
+                  </el-tooltip>
+                </div>
                 <div
                   v-if="settings.fsmonitor.autoRepairEnabled"
                   class="settings-auto-repair-policies"
@@ -741,96 +723,79 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </el-select>
                   </div>
                 </div>
-                <el-divider />
+              </div>
               </div>
               <div id="appearanceSettings">
-                <el-text
-                  class="mx-1"
-                  size="large"
-                  tag="b"
-                >
-                  外观
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>主题</el-text>
-                </el-divider>
-                <div class="appearance-theme-list">
-                  <div
-                    v-for="theme in themeStore.themeList"
-                    :key="theme.id"
-                    :class="['appearance-theme-card', { 'appearance-theme-card-active': theme.id === themeStore.currentThemeId }]"
-                    @click="handleSelectTheme(theme.id)"
-                  >
+              <el-text class="settings-section-title">
+                外观
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">主题</span>
+                  </div>
+                  <div class="appearance-theme-list">
                     <div
-                      class="appearance-theme-swatch"
-                      :style="{ backgroundColor: theme.swatch.bg }"
+                      v-for="theme in themeStore.themeList"
+                      :key="theme.id"
+                      :class="['appearance-theme-card', { 'appearance-theme-card-active': theme.id === themeStore.currentThemeId }]"
+                      @click="handleSelectTheme(theme.id)"
                     >
                       <div
-                        class="appearance-theme-swatch-surface"
-                        :style="{ backgroundColor: theme.swatch.surface }"
+                        class="appearance-theme-swatch"
+                        :style="{ backgroundColor: theme.swatch.bg }"
                       >
                         <div
-                          class="appearance-theme-swatch-primary"
-                          :style="{ backgroundColor: theme.swatch.primary }"
-                        />
+                          class="appearance-theme-swatch-surface"
+                          :style="{ backgroundColor: theme.swatch.surface }"
+                        >
+                          <div
+                            class="appearance-theme-swatch-primary"
+                            :style="{ backgroundColor: theme.swatch.primary }"
+                          />
+                        </div>
                       </div>
+                      <el-text>{{ theme.name }}</el-text>
                     </div>
-                    <el-text>{{ theme.name }}</el-text>
                   </div>
                 </div>
-                <el-divider />
               </div>
               <div id="downloadSettings">
-                <el-text
-                  class="mx-1"
-                  size="large"
-                  tag="b"
-                >
-                  下载
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>并行下载数</el-text>
-                  <el-input-number
+              <el-text class="settings-section-title">
+                下载
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">并行下载数</span>
+                    <el-input-number
                       v-model="settings.importSettings.maxParallelImport"
                       :max="20"
                       :min="1"
                       controls-position="right"
-                      class="settings-element-in-divider"
-                  />
-                </el-divider>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                  class="settings-consecutive-divider"
-                >
-                  <el-text>重新下载时是否更新作品信息</el-text>
-                  <el-switch
-                    v-model="settings.importSettings.updateWorkInfoWhenImport"
-                    class="settings-element-in-divider"
-                    inline-prompt
-                    size="large"
-                    active-text="是"
-                    inactive-text="否"
-                  />
-                </el-divider>
+                    />
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">重新下载时是否更新作品信息</span>
+                    <el-switch
+                      v-model="settings.importSettings.updateWorkInfoWhenImport"
+                      inline-prompt
+                      size="large"
+                      active-text="是"
+                      inactive-text="否"
+                    />
+                  </div>
+                </div>
               </div>
               <div id="workSettings">
-                <el-text size="large" tag="b">
-                  作品
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>作品的文件命名格式</el-text>
-                </el-divider>
-                <el-row class="work-settings-file-name-format-button">
+              <el-text class="settings-section-title">
+                作品
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">作品的文件命名格式</span>
+                  </div>
+                  <el-row class="work-settings-file-name-format-button">
                   <el-button @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, false)">
                     {{ ResFileNameFormatEnum.AUTHOR.name }}
                   </el-button>
@@ -865,167 +830,147 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   ref="workSettingsFileNameFormatInput"
                   v-model="settings.workSettings.fileNameFormat"
                 />
-                <el-divider />
+                </div>
               </div>
               <div id="pluginSettings">
-                <el-text size="large" tag="b">
-                  插件
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>运行时编译</el-text>
-                  <el-switch
-                    v-model="settings.pluginSettings.allowUnsafeEval"
-                    class="settings-element-in-divider"
-                    inline-prompt
-                    size="large"
-                    active-text="开"
-                    inactive-text="关"
-                  />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    开启此选项可以解决某些插件页面无法正常显示的问题。<br>这会降低应用的安全性，建议仅在遇到页面加载异常时临时开启。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
-                  >
-                    什么是运行时编译？
-                  </el-text>
-                </el-tooltip>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>受限模式</el-text>
-                  <el-switch
-                    v-model="settings.pluginSettings.restrictedMode"
-                    class="settings-element-in-divider"
-                    inline-prompt
-                    size="large"
-                    active-text="开"
-                    inactive-text="关"
-                  />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    开启后，应用启动时仅激活官方捆绑插件，跳过所有第三方插件。<br>用于排查第三方插件问题时的安全启动；重启应用后生效。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
-                  >
-                    什么是受限模式？
-                  </el-text>
-                </el-tooltip>
-                <el-divider />
+              <el-text class="settings-section-title">
+                插件
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">运行时编译</span>
+                    <el-switch
+                      v-model="settings.pluginSettings.allowUnsafeEval"
+                      inline-prompt
+                      size="large"
+                      active-text="开"
+                      inactive-text="关"
+                    />
+                    <el-tooltip
+                      placement="top"
+                      effect="customized"
+                    >
+                      <template #content>
+                        开启此选项可以解决某些插件页面无法正常显示的问题。<br>这会降低应用的安全性，建议仅在遇到页面加载异常时临时开启。
+                      </template>
+                      <el-text
+                        type="info"
+                        size="small"
+                      >
+                        什么是运行时编译？
+                      </el-text>
+                    </el-tooltip>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">受限模式</span>
+                    <el-switch
+                      v-model="settings.pluginSettings.restrictedMode"
+                      inline-prompt
+                      size="large"
+                      active-text="开"
+                      inactive-text="关"
+                    />
+                    <el-tooltip
+                      placement="top"
+                      effect="customized"
+                    >
+                      <template #content>
+                        开启后，应用启动时仅激活官方捆绑插件，跳过所有第三方插件。<br>用于排查第三方插件问题时的安全启动；重启应用后生效。
+                      </template>
+                      <el-text
+                        type="info"
+                        size="small"
+                      >
+                        什么是受限模式？
+                      </el-text>
+                    </el-tooltip>
+                  </div>
+                </div>
               </div>
               <div id="recycleBinSettings">
-                <el-text size="large" tag="b">
-                  回收站
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>自动清理</el-text>
-                  <el-switch
-                    v-model="settings.recycleBin.autoCleanupEnabled"
-                    class="settings-element-in-divider"
-                    inline-prompt
-                    size="large"
-                    active-text="开"
-                    inactive-text="关"
-                  />
-                </el-divider>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                  class="settings-consecutive-divider"
-                >
-                  <el-text>保留天数</el-text>
-                  <el-input-number
-                    v-model="settings.recycleBin.retentionDays"
-                    :min="1"
-                    controls-position="right"
-                    class="settings-element-in-divider"
-                  />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    回收站中的作品超过保留天数后将自动彻底删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
-                  >
-                    自动清理规则
-                  </el-text>
-                </el-tooltip>
-                <el-divider />
+              <el-text class="settings-section-title">
+                回收站
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">自动清理</span>
+                    <el-switch
+                      v-model="settings.recycleBin.autoCleanupEnabled"
+                      inline-prompt
+                      size="large"
+                      active-text="开"
+                      inactive-text="关"
+                    />
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">保留天数</span>
+                    <el-input-number
+                      v-model="settings.recycleBin.retentionDays"
+                      :min="1"
+                      controls-position="right"
+                    />
+                    <el-tooltip
+                      placement="top"
+                      effect="customized"
+                    >
+                      <template #content>
+                        回收站中的作品超过保留天数后将自动彻底删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次。
+                      </template>
+                      <el-text
+                        type="info"
+                        size="small"
+                      >
+                        自动清理规则
+                      </el-text>
+                    </el-tooltip>
+                  </div>
+                </div>
               </div>
               <div id="backupGovernanceSettings">
-                <el-text size="large" tag="b">
-                  备份治理
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>无主备份保留天数</el-text>
-                  <el-input-number
-                    v-model="settings.backupGovernance.retentionDays"
-                    :min="1"
-                    controls-position="right"
-                    class="settings-element-in-divider"
-                  />
-                </el-divider>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                >
-                  <template #content>
-                    不再被任何作品/插件引用的备份超过保留天数后将自动删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次；替换任务在途期间其还原点备份受引用保护，不受保留期影响。
-                  </template>
-                  <el-text
-                    type="info"
-                    size="small"
-                  >
-                    清理规则
-                  </el-text>
-                </el-tooltip>
-                <el-divider />
+              <el-text class="settings-section-title">
+                备份治理
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">无主备份保留天数</span>
+                    <el-input-number
+                      v-model="settings.backupGovernance.retentionDays"
+                      :min="1"
+                      controls-position="right"
+                    />
+                    <el-tooltip
+                      placement="top"
+                      effect="customized"
+                    >
+                      <template #content>
+                        不再被任何作品/插件引用的备份超过保留天数后将自动删除（不可恢复）。<br>应用启动时检查一次，之后每 24 小时检查一次；替换任务在途期间其还原点备份受引用保护，不受保留期影响。
+                      </template>
+                      <el-text
+                        type="info"
+                        size="small"
+                      >
+                        清理规则
+                      </el-text>
+                    </el-tooltip>
+                  </div>
+                </div>
               </div>
               <div id="otherSettings">
-                <el-text
-                  class="mx-1"
-                  size="large"
-                  tag="b"
-                >
-                  其他
-                </el-text>
-                <el-divider
-                  content-position="left"
-                  border-style="dotted"
-                >
-                  <el-text>向导</el-text>
-                </el-divider>
-                <el-button @click="useTourCenterStore().resetAllCompleted()">
-                  重置向导
-                </el-button>
-                <el-divider />
+              <el-text class="settings-section-title">
+                其他
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">向导</span>
+                    <el-button @click="useTourCenterStore().resetAllCompleted()">
+                      重置向导
+                    </el-button>
+                  </div>
+                </div>
               </div>
             </div>
           </el-scrollbar>
@@ -1259,27 +1204,40 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 .settings-work-settings-file-name-format-dialog > :deep(.el-scrollbar__wrap) {
   max-height: 65vh;
 }
-.settings-consecutive-divider {
-  margin-top: 40px
+/* 设置区块小节标题（el-text 渲染为行内元素，块级化以承载纵向间距）；
+   层级由字号/字重区分：20/700 → 16/600 → 14/400，颜色统一用常规灰（正文 el-text 默认同级色） */
+.settings-section-title {
+  display: block;
+  margin: 28px 0 8px;
+  font-size: var(--el-font-size-extra-large);
+  font-weight: 700;
+  color: var(--app-text-regular);
 }
-.settings-element-in-divider {
-  margin-left: 20px;
+/* 设置项：每项 = 标题行（标题 + 可并排的小控件 + 说明链接）+ 可选内容区（宽控件/卡片/策略表），
+   项间以一条实线分隔 */
+.settings-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--app-border-color);
+}
+.settings-item-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.settings-item-header:not(:last-child) {
+  margin-bottom: 10px;
+}
+.settings-item-title {
+  font-size: var(--el-font-size-medium);
+  font-weight: 500;
+  color: var(--app-text-regular);
 }
 .work-settings-file-name-format-button {
   margin-bottom: 10px;
 }
-.settings-protocol-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-}
 .work-settings-file-name-format-input {
   padding-right: 10px;
-}
-.settings-guard-card {
-  margin-top: 12px;
 }
 .settings-guard-card-header {
   display: flex;
@@ -1306,7 +1264,6 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   white-space: pre-wrap;
 }
 .settings-auto-repair-policies {
-  margin-top: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
