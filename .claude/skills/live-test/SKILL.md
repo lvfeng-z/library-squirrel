@@ -25,7 +25,11 @@ description: 实机测试协议——AI 直接驱动真实运行中的应用执�
 应用依赖 WebView2，CDP（Chrome DevTools Protocol）远程调试是外部驱动的唯一通路。**环境变量穿透不了 `wails3 dev` 的进程链**，因此手动分层启动：
 
 ```bash
-# 0. 清残留：杀旧 library-squirrel*.exe / 占 9245 端口的 node.exe（vite 残留）
+# 0. 清残留检测（tasklist 的 IMAGENAME 通配过滤不可靠，勿用；占用者身份两步直判）：
+#    wmic process where "name like 'library-squirrel%'" get processid,commandline   # 应用实例
+#    netstat -ano | grep ":9245 .*LISTENING"  → 得 PID → wmic process where processid=<PID> get commandline
+#    注意：监听者可能是用户活跃 dev 栈（msedgewebview2 子进程的 --webview-exe-name 可证归属）——杀前确认为残留，活跃实例问用户
+# 0b. 端口避让：9245 被占且不便清理时，测试栈整体换端口（vite --port 9246 + FRONTEND_DEVSERVER_URL=http://localhost:9246），不碰用户进程
 # 1. vite dev server（端口 9245）：
 cd frontend && npx vite --port 9245 --strictPort          # 后台
 # 2. 测试二进制（CGO 必须开——sqlite；改过 Go 代码须重建）：
@@ -76,6 +80,12 @@ node .claude/testing/cdp-eval.mjs 'location.href'          # 页面上下文求�
 4. **日志 grep**（`log/server.log`）：先 `wc -l` 打标记行号，操作后 `tail -n +<标记> | grep` 断言新增内容。
 5. **截图**：渲染类断言存档 + 终审材料；落当前 run 目录 `shots/`，报告内以 `![描述](shots/x.png)` 嵌入引用（文本类证据落 `evidence/`，行内路径提及）。
 6. **外部文件操作**：`backup-file-op.mjs`（模拟用户经文件管理器删改——对应用而言与真实外部操作无异）。
+
+**截图有效性铁律**（2026-09-04 空截图事故增设）：
+
+- **截图前必须过「页面就绪」机检**——断言被测内容已在 DOM（目标元素数/文本/数据 store 非空），未就绪则等待重试（如 `await new Promise(r=>setTimeout(r,500))` 循环 + 上限），仍不就绪禁止以该截图作通过证据并在报告标注「未能驱动就绪」。
+- **截图结论必须与 DOM/数据断言交叉一致才可采信**；矛盾时以机检断言为准。禁止仅凭「看图」下通过结论——图像解读存在把空页面读成有内容的失败实例。
+- **交互驱动加载的页面须先驱动交互**：本项目主页作品列表无自动首查（触发点=搜索按钮/滚动触底/加载更多，`elScrollbarBottomed` 指令仅监听 scroll 事件、mounted 不触发）——CDP 形态下须先程序化驱动（`el.dispatchEvent(new Event('scroll'))` 模拟触底、或点击「搜索」按钮、或直接调组件内查询函数），再等 DOM 就绪再截图/断言。「bindings 有数据但 DOM 空」≠后端缺陷，先排查前端加载触发形态。
 
 **造数纪律**：测试素材一律经**真实链路**造（bindings 调用软删作品/卸载插件等），禁止直写运行中的库；素材选测试号数据（如 site=2 测试下载、`[test01]_` 前缀）或可再生资源。
 
