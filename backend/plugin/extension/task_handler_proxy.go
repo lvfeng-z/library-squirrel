@@ -2,6 +2,7 @@ package extension
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -43,25 +44,39 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 		return nil, err
 	}
 
-	// 读取首条消息获取模式
+	// 读取首条消息：正常流首块为 mode 块；插件 Create 错误返回时首块（也是唯一块）为 error 块，无 mode 块
 	chunk, err := stream.Recv()
 	if err != nil {
 		return nil, err
 	}
 
+	// error 块承载插件业务失败原因（用户可读文本），必为流的最后一块
+	if reason := chunk.GetError(); reason != "" {
+		result := pluginsdkdto.BatchResult(nil)
+		result.SetReason(reason)
+		return result, nil
+	}
+
 	modeChunk := chunk.GetMode()
 	if modeChunk == nil {
-		return nil, fmt.Errorf("first CreateChunk must contain CreateMode")
+		return nil, fmt.Errorf("first CreateChunk must contain CreateMode or Error")
 	}
 
 	if modeChunk.IsStream {
 		// 流式模式
 		ch := make(chan *pluginsdkdto.TaskCreateResponse, 16)
+		result := pluginsdkdto.StreamResult(ch)
 		go func() {
 			defer close(ch)
 			for {
 				c, err := stream.Recv()
 				if err != nil {
+					return
+				}
+				// error 块为流最后一块：记录原因后结束接收。SetReason 与 close(ch)
+				// 在同一 goroutine 内顺序执行，消费侧在 range 退出后读 Reason() 依赖此顺序
+				if reason := c.GetError(); reason != "" {
+					result.SetReason(reason)
 					return
 				}
 				taskProto := c.GetTask()
@@ -70,22 +85,35 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 				}
 			}
 		}()
-		return pluginsdkdto.StreamResult(ch), nil
+		return result, nil
 	}
 
-	// 批量模式：收集所有 task
+	// 批量模式：收集所有 task 块，末尾 error 块（如有）承载插件声明的业务原因。
+	// io.EOF 为正常收尾；其他 Recv 错误属 gRPC 层故障（进程崩溃/连接中断），原样返回
 	var responses []*pluginsdkdto.TaskCreateResponse
+	var reason string
 	for {
+		if r := chunk.GetError(); r != "" {
+			reason = r
+			break
+		}
 		taskProto := chunk.GetTask()
 		if taskProto != nil {
 			responses = append(responses, protoToTaskCreateResponse(taskProto))
 		}
 		chunk, err = stream.Recv()
 		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return nil, err
+			}
 			break
 		}
 	}
-	return pluginsdkdto.BatchResult(responses), nil
+	result := pluginsdkdto.BatchResult(responses)
+	if reason != "" {
+		result.SetReason(reason)
+	}
+	return result, nil
 }
 
 func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {

@@ -392,12 +392,12 @@ func TestHandleTaskArray_Leaf(t *testing.T) {
 		},
 	}
 
-	count, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
+	count, failed, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
 	if err != nil {
 		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("期望返回叶子单元计数 1，得到 %d", count)
+	if count != 1 || failed != 0 {
+		t.Fatalf("期望返回叶子单元计数 1、失败 0，得到 count=%d failed=%d", count, failed)
 	}
 	if len(repo.tasks) != 1 {
 		t.Fatalf("期望落盘 1 个 leaf 任务，得到 %d 个", len(repo.tasks))
@@ -423,12 +423,12 @@ func TestHandleTaskArray_SingleChild(t *testing.T) {
 		},
 	}
 
-	count, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
+	count, failed, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
 	if err != nil {
 		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("期望返回叶子单元计数 1（1 child），得到 %d", count)
+	if count != 1 || failed != 0 {
+		t.Fatalf("期望返回叶子单元计数 1（1 child）、失败 0，得到 count=%d failed=%d", count, failed)
 	}
 	if len(repo.tasks) != 2 {
 		t.Fatalf("期望落盘 2 个任务（parent+1child，不折叠），得到 %d 个", len(repo.tasks))
@@ -472,12 +472,12 @@ func TestHandleTaskArray_ParentChildren(t *testing.T) {
 		},
 	}
 
-	count, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
+	count, failed, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
 	if err != nil {
 		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("期望返回叶子单元计数 2（2 children），得到 %d", count)
+	if count != 2 || failed != 0 {
+		t.Fatalf("期望返回叶子单元计数 2（2 children）、失败 0，得到 count=%d failed=%d", count, failed)
 	}
 	if len(repo.tasks) != 3 {
 		t.Fatalf("期望落盘 3 个任务（parent+2child），得到 %d 个", len(repo.tasks))
@@ -547,7 +547,7 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 			},
 		},
 	}
-	if _, err := svc.handleCreateTaskArray(ctx, responses, testListener()); err != nil {
+	if _, _, err := svc.handleCreateTaskArray(ctx, responses, testListener()); err != nil {
 		t.Fatalf("插件响应路径创建失败: %v", err)
 	}
 
@@ -875,7 +875,7 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 			},
 		},
 	}
-	if _, err := svc.handleCreateTaskArray(context.Background(), responses, testListener()); err != nil {
+	if _, _, err := svc.handleCreateTaskArray(context.Background(), responses, testListener()); err != nil {
 		t.Fatalf("插件响应路径创建失败: %v", err)
 	}
 
@@ -921,5 +921,285 @@ func TestTaskCreateUnknownKeyFails(t *testing.T) {
 		testListener(), siteCache)
 	if !errors.Is(err, ErrSiteKeyRequired) {
 		t.Fatalf("缺失站点键应报 ErrSiteKeyRequired，得到 %v", err)
+	}
+}
+
+// ---- CreateTaskByURL：失败即终止 + 原因/兜底文案 + 失败计数 ----
+
+// fakeTaskHandlerGetter TaskHandlerProvider 替身：按 (publicId, extensionId) 返回预置处理器，
+// 未预置的键返回错误（模拟插件未激活/处理器不可用）。
+type fakeTaskHandlerGetter struct {
+	handlers map[string]sdkdto.TaskHandler
+}
+
+func (f *fakeTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error) {
+	h, ok := f.handlers[pluginPublicId+"/"+extensionId]
+	if !ok {
+		return nil, errors.New("task handler not found")
+	}
+	return h, nil
+}
+
+// fakePluginTaskHandler 仅实现 Create 的任务处理器替身；其余方法经接口嵌入满足签名，创建路径不触达。
+// createCalls 记录 Create 被调用次数，供「首个失败即终止不轮询」断言。
+type fakePluginTaskHandler struct {
+	sdkdto.TaskHandler
+	createCalls int
+	create      func(url string) (*sdkdto.TaskCreateResult, error)
+}
+
+func (f *fakePluginTaskHandler) Create(url string) (*sdkdto.TaskCreateResult, error) {
+	f.createCalls++
+	return f.create(url)
+}
+
+// namedListener 构造带插件名与 PublicID 的监听器条目（提示文案按插件名点名插件）。
+func namedListener(publicId, name, extId string) *pluginTaskUrlListener.PluginWithExtension {
+	plugin := entity.NewPlugin()
+	plugin.PublicID = sql.NullString{String: publicId, Valid: true}
+	plugin.Name = sql.NullString{String: name, Valid: true}
+	return &pluginTaskUrlListener.PluginWithExtension{Plugin: plugin, ExtensionID: extId}
+}
+
+// newURLListenerService 把监听器条目注册到同一匹配模式（同模式内按注册序返回，顺序确定）。
+func newURLListenerService(entries ...*pluginTaskUrlListener.PluginWithExtension) *pluginTaskUrlListener.Service {
+	svc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
+	for _, e := range entries {
+		svc.Register(e, []string{"^http"})
+	}
+	return svc
+}
+
+// newCreateByURLService 经生产构造函数组装带处理器提供者与监听器服务的 Service（fake 落库）。
+func newCreateByURLService(t *testing.T, getter TaskHandlerProvider, listenerSvc *pluginTaskUrlListener.Service) (*Service, *fakeTaskRepo) {
+	t.Helper()
+	repo := newFakeTaskRepo()
+	siteSvc := site.NewService(fakeSiteRepo{})
+	svc := NewService(repo, fakeTransactor{}, getter, listenerSvc, siteSvc)
+	return svc, repo
+}
+
+// batchResultWithReason 构造带原因的批量结果（reason 空则不声明）。
+func batchResultWithReason(responses []*sdkdto.TaskCreateResponse, reason string) *sdkdto.TaskCreateResult {
+	result := sdkdto.BatchResult(responses)
+	if reason != "" {
+		result.SetReason(reason)
+	}
+	return result
+}
+
+// viableHandler 可正常创建 1 个独立任务的处理器替身，用于「失败后不轮询后续监听器」的对照侧。
+func viableHandler() *fakePluginTaskHandler {
+	return &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
+			{TaskName: "t", SiteWorkId: "w", Url: "http://x", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+		}, ""), nil
+	}}
+}
+
+// TestCreateTaskByURL_PluginReasonPassedThrough 零任务 + reason → 提示点名插件并透传插件业务原因。
+func TestCreateTaskByURL_PluginReasonPassedThrough(t *testing.T) {
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return batchResultWithReason(nil, "获取令牌失败（限制级作品需要登录）"), nil
+	}}
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if resp.Succeed {
+		t.Fatal("零任务不应标记成功")
+	}
+	if want := "插件 插件A 未创建任务：获取令牌失败（限制级作品需要登录）"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+}
+
+// TestCreateTaskByURL_FallbackWhenNoTasksNoReason 零任务且无原因 → 兜底文案点名插件。
+func TestCreateTaskByURL_FallbackWhenNoTasksNoReason(t *testing.T) {
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return sdkdto.BatchResult(nil), nil
+	}}
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if want := "插件 插件A 未返回任务，也未说明原因"; resp.Msg != want {
+		t.Fatalf("期望兜底 Msg %q，得到 %q", want, resp.Msg)
+	}
+}
+
+// TestCreateTaskByURL_HandlerUnavailableStopsPolling 处理器不可用 → 终止并提示，不轮询后续监听器。
+func TestCreateTaskByURL_HandlerUnavailableStopsPolling(t *testing.T) {
+	viable := viableHandler()
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-b/ext-b": viable}},
+		newURLListenerService(
+			namedListener("pub-a", "插件A", "ext-a"),
+			namedListener("pub-b", "插件B", "ext-b"),
+		))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if want := "插件 插件A 未激活或任务处理器不可用"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if viable.createCalls != 0 {
+		t.Fatalf("处理器不可用应终止，后续监听器不应被调用，得到 createCalls=%d", viable.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_CreateErrStopsPolling Create 返回 gRPC 层错误（基础设施故障）→
+// 中性措辞提示点名插件，不轮询后续监听器。
+func TestCreateTaskByURL_CreateErrStopsPolling(t *testing.T) {
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return nil, errors.New("connection refused")
+	}}
+	viable := viableHandler()
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+			"pub-a/ext-a": handler,
+			"pub-b/ext-b": viable,
+		}},
+		newURLListenerService(
+			namedListener("pub-a", "插件A", "ext-a"),
+			namedListener("pub-b", "插件B", "ext-b"),
+		))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if want := "插件 插件A 创建任务失败（异常退出或连接中断）：connection refused"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if viable.createCalls != 0 {
+		t.Fatalf("插件错误返回应终止，后续监听器不应被调用，得到 createCalls=%d", viable.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_FirstFailureStopsPolling 首个监听器零任务且给出原因 → 以其原因返回，
+// 不再尝试后续监听器（首个明确结果即终止）。
+func TestCreateTaskByURL_FirstFailureStopsPolling(t *testing.T) {
+	reasoned := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return batchResultWithReason(nil, "未发现可导入的文件（目录为空）"), nil
+	}}
+	viable := viableHandler()
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+			"pub-a/ext-a": reasoned,
+			"pub-b/ext-b": viable,
+		}},
+		newURLListenerService(
+			namedListener("pub-a", "插件A", "ext-a"),
+			namedListener("pub-b", "插件B", "ext-b"),
+		))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if want := "插件 插件A 未创建任务：未发现可导入的文件（目录为空）"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if viable.createCalls != 0 {
+		t.Fatalf("首个失败即终止，后续监听器不应被调用，得到 createCalls=%d", viable.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_SuccessMsgFromBackend 全部落库成功 → 成功文案由后端 Msg 产出。
+func TestCreateTaskByURL_SuccessMsgFromBackend(t *testing.T) {
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
+			{TaskName: "t-1", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "t-2", SiteWorkId: "w-2", Url: "http://x/2", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+		}, ""), nil
+	}}
+	svc, repo := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if !resp.Succeed || resp.AddedQuantity != 2 {
+		t.Fatalf("期望 Succeed=true AddedQuantity=2，得到 Succeed=%v AddedQuantity=%d", resp.Succeed, resp.AddedQuantity)
+	}
+	if want := "成功创建 2 个任务"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if len(repo.tasks) != 2 {
+		t.Fatalf("期望落盘 2 个任务，得到 %d 个", len(repo.tasks))
+	}
+}
+
+// TestCreateTaskByURL_ArrayPartialFailureCounted 批量路径部分失败：成功项与失败项（填充失败的响应）
+// 分开计数，插件报告的原因（业务维度）追加在失败数（落库维度）之后。
+func TestCreateTaskByURL_ArrayPartialFailureCounted(t *testing.T) {
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
+			{TaskName: "ok-1", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+			{TaskName: "bad", Url: "http://x/2", SiteKey: "", ResourceType: entity.ResourceTypeImage}, // SiteKey 缺失 → 字段填充失败
+			{TaskName: "ok-2", SiteWorkId: "w-2", Url: "http://x/3", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
+		}, "部分任务创建失败"), nil
+	}}
+	svc, repo := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if !resp.Succeed || resp.AddedQuantity != 2 {
+		t.Fatalf("期望 Succeed=true AddedQuantity=2，得到 Succeed=%v AddedQuantity=%d", resp.Succeed, resp.AddedQuantity)
+	}
+	if want := "成功创建 2 个任务，1 个失败（详见日志）；插件报告：部分任务创建失败"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if len(repo.tasks) != 2 {
+		t.Fatalf("期望落盘 2 个任务，得到 %d 个", len(repo.tasks))
+	}
+}
+
+// TestCreateTaskByURL_StreamPartialFailureCounted 流式路径部分失败：输出 channel 的 Error 项计入失败数。
+func TestCreateTaskByURL_StreamPartialFailureCounted(t *testing.T) {
+	in := make(chan *sdkdto.TaskCreateResponse, 3)
+	in <- &sdkdto.TaskCreateResponse{TaskName: "ok-1", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage}
+	in <- &sdkdto.TaskCreateResponse{TaskName: "bad", Url: "http://x/2", SiteKey: "", ResourceType: entity.ResourceTypeImage} // SiteKey 缺失 → 填充失败（Error 项）
+	in <- &sdkdto.TaskCreateResponse{TaskName: "ok-2", SiteWorkId: "w-2", Url: "http://x/3", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage}
+	close(in)
+
+	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		result := sdkdto.StreamResult(in)
+		result.SetReason("部分任务创建失败")
+		return result, nil
+	}}
+	svc, repo := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if !resp.Succeed || resp.AddedQuantity != 2 {
+		t.Fatalf("期望 Succeed=true AddedQuantity=2，得到 Succeed=%v AddedQuantity=%d", resp.Succeed, resp.AddedQuantity)
+	}
+	if want := "成功创建 2 个任务，1 个失败（详见日志）；插件报告：部分任务创建失败"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if len(repo.tasks) != 2 {
+		t.Fatalf("期望落盘 2 个任务，得到 %d 个", len(repo.tasks))
 	}
 }

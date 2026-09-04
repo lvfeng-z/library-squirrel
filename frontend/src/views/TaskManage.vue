@@ -97,8 +97,8 @@ async function createTaskFromSource() {
       const data = response.data
       taskListRef.value.doSearch()
       if (data.succeed) {
-        useNotificationStore().update(notificationId, { terminal: true, level: 'success', statusText: `成功创建 ${data.addedQuantity} 个任务` })
-        ElMessage.success(`成功创建了 ${data.addedQuantity} 个任务`)
+        useNotificationStore().update(notificationId, { terminal: true, level: 'success', statusText: data.msg || '创建成功' })
+        ElMessage.success(data.msg || '创建成功')
       } else {
         useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: data.msg || '未知错误' })
         ElMessage.error('创建失败，' + (data.msg || '未知错误'))

@@ -661,7 +661,9 @@ type CreateTaskByURLResponse struct {
 }
 
 // CreateTaskByURL 根据传入的url创建任务
-// 通过 URL 监听器发现能处理此 URL 的插件，调用插件的 create 方法创建任务
+// 通过 URL 监听器发现能处理此 URL 的插件，调用插件的 create 方法创建任务。
+// 任一监听器出现失败信号（处理器不可用/插件错误返回/零任务）即终止并返回原因提示，
+// 不再尝试后续监听器；监听器缺插件 PublicID 属注册数据缺陷而非插件运行结果，跳过后仍继续。
 func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskByURLResponse, error) {
 	// 1. 查询监听此url的插件
 	listeners := s.urlListener.ListListener(url)
@@ -675,68 +677,115 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		}, nil
 	}
 
-	// 2. 按照排序尝试每个插件
+	// 2. 按监听器顺序尝试
 	for _, listener := range listeners {
 		if !listener.PublicID.Valid || listener.PublicID.String == "" {
 			logger.Log.Warnf("URL监听器缺少插件 PublicID，跳过 (extensionId=%s)", listener.ExtensionID)
 			continue
 		}
 		pluginPublicId := listener.PublicID.String
+		pluginName := listenerPluginName(listener)
 
-		// 获取任务处理器
+		// 获取任务处理器：失败即插件不可运行，终止
 		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ExtensionID)
 		if err != nil {
 			logger.Log.Warnf("获取任务处理器失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, listener.ExtensionID, err)
-			continue
+			return &CreateTaskByURLResponse{
+				Succeed: false,
+				Msg:     fmt.Sprintf("插件 %s 未激活或任务处理器不可用", pluginName),
+			}, nil
 		}
 
-		// 3. 调用插件的 create 方法
+		// 3. 调用插件的 create 方法。gRPC 层错误代表基础设施故障（进程崩溃/连接中断/传输异常）；
+		//    插件业务失败原因经结果对象的 reason 承载，不表现为 err
 		result, err := taskHandler.Create(url)
 		if err != nil {
 			logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
-			continue
+			return &CreateTaskByURLResponse{
+				Succeed: false,
+				Msg:     fmt.Sprintf("插件 %s 创建任务失败（异常退出或连接中断）：%v", pluginName, err),
+			}, nil
 		}
 
-		// 4. 处理插件返回
-		var count int
+		// 4. 处理插件返回，统计成功落库的叶子单元数与失败项数
+		var count, failed int
 		if result.IsStream() {
 			streamCh, streamErr := s.handleCreateTaskStream(ctx, result.Stream(), listener, 100)
 			if streamErr != nil {
 				logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
-				continue
+				return &CreateTaskByURLResponse{
+					Succeed: false,
+					Msg:     fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr),
+				}, nil
 			}
-			// 计数叶子级单元：leaf 与 child（Task 项），parent 容器（Parent 项）不计
+			// 计数叶子级单元：leaf 与 child（Task 项），parent 容器（Parent 项）不计；
+			// 单项字段填充或落库失败以 Error 项计入失败数
 			for item := range streamCh {
 				if item.Task != nil {
 					count++
+				} else if item.Error != nil {
+					failed++
 				}
 			}
 		} else {
 			responses := result.Array()
 			if len(responses) > 0 {
-				count, err = s.handleCreateTaskArray(ctx, responses, listener)
+				count, failed, err = s.handleCreateTaskArray(ctx, responses, listener)
 				if err != nil {
 					logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
-					continue
+					return &CreateTaskByURLResponse{
+						Succeed: false,
+						Msg:     fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, err),
+					}, nil
 				}
 			}
 		}
 
+		// reason（插件声明的业务原因）须在流消费完毕（channel close）之后读取
+		reason := result.Reason()
+
 		if count > 0 {
+			// 有任务落库即成功；失败数为落库维度、插件报告的原因为业务维度，分层表述
+			msg := fmt.Sprintf("成功创建 %d 个任务", count)
+			if failed > 0 {
+				msg = fmt.Sprintf("成功创建 %d 个任务，%d 个失败（详见日志）", count, failed)
+				if reason != "" {
+					msg += fmt.Sprintf("；插件报告：%s", reason)
+				}
+			}
 			return &CreateTaskByURLResponse{
 				Succeed:       true,
 				AddedQuantity: count,
-				Msg:           "创建成功",
+				Msg:           msg,
 			}, nil
 		}
+
+		if reason != "" {
+			return &CreateTaskByURLResponse{
+				Succeed: false,
+				Msg:     fmt.Sprintf("插件 %s 未创建任务：%s", pluginName, reason),
+			}, nil
+		}
+		return &CreateTaskByURLResponse{
+			Succeed: false,
+			Msg:     fmt.Sprintf("插件 %s 未返回任务，也未说明原因", pluginName),
+		}, nil
 	}
 
-	// 未能在循环中返回，则返回失败
+	// 循环内未返回：全部监听器均因缺 PublicID 被跳过
 	return &CreateTaskByURLResponse{
 		Succeed:       false,
 		AddedQuantity: 0,
 		Msg:           fmt.Sprintf("尝试了所有插件均未成功，url: %s", url),
 	}, nil
+}
+
+// listenerPluginName URL 监听器条目的插件展示名，用于提示文案点名插件；插件未设置名时回退 publicId。
+func listenerPluginName(listener *pluginTaskUrlListener.PluginWithExtension) string {
+	if name := listener.Plugin.Name.String; name != "" {
+		return name
+	}
+	return listener.PublicID.String
 }
 
 // createPlan 一个 TaskCreateResponse 经单点判定后的创建计划。
@@ -855,20 +904,23 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 
 // handleCreateTaskArray 处理插件返回的任务数组。
 // 经 planCreateResponse 单点判定：无 Children→独立 leaf；有 Children→parent+children（不折叠）。
-// 返回叶子级任务计数（leaf=1、parent+N=N，parent 容器不计）。
-func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension) (int, error) {
+// 返回成功落库的叶子级任务计数（leaf=1、parent+N=N，parent 容器不计）与失败项计数
+// （字段填充失败或落库失败的响应，按叶子单元口径折算，见 responseLeafUnits）。
+func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension) (int, int, error) {
 	if len(pluginResponses) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	count := 0
+	failed := 0
 	siteCache := make(map[string]int) // siteKey -> siteId 缓存
 
 	for _, resp := range pluginResponses {
 		plan, err := s.planCreateResponse(ctx, resp, listener, siteCache)
 		if err != nil {
-			// 字段填充失败（如 SiteKey 缺失/未注册）：跳过此响应
+			// 字段填充失败（如 SiteKey 缺失/未注册）：此响应的全部叶子单元计为失败
 			logger.Log.Errorf("[Task] 插件响应字段填充失败，跳过 (plugin=%s, taskName=%s): %v", listener.PublicID.String, resp.TaskName, err)
+			failed += responseLeafUnits(resp)
 			continue
 		}
 
@@ -876,6 +928,7 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			// 独立 leaf：直接落盘
 			if err := s.repo.CreateTask(ctx, plan.leaf); err != nil {
 				logger.Log.Errorf("[Task] 创建独立任务失败 (plugin=%s, taskName=%s): %v", listener.PublicID.String, plan.leaf.TaskName.String, err)
+				failed += plan.count()
 				continue
 			}
 			count += plan.count()
@@ -898,12 +951,22 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		})
 		if err != nil {
 			logger.Log.Errorf("[Task] 创建任务组失败: %v", err)
+			failed += plan.count()
 			continue
 		}
 		count += plan.count()
 	}
 
-	return count, nil
+	return count, failed, nil
+}
+
+// responseLeafUnits 一个插件响应对应的叶子单元数（无 Children 记 1，有 Children 记 len(Children)），
+// 与 createPlan.count 口径一致，用于响应整体失败时的失败项折算。
+func responseLeafUnits(resp *sdkdto.TaskCreateResponse) int {
+	if len(resp.Children) == 0 {
+		return 1
+	}
+	return len(resp.Children)
 }
 
 // CreateTaskStreamChan Go 风格的流式任务创建通道
