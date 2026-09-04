@@ -5,11 +5,91 @@ import (
 	"database/sql"
 	"testing"
 
-	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/localAuthor"
+	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/reWorkAuthor"
+	"github.com/library-squirrel/backend/reWorkTag"
+	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/site"
+	"github.com/library-squirrel/backend/siteTag"
+	"github.com/library-squirrel/backend/work"
+
+	domain "github.com/library-squirrel/backend/base/model/entity"
 
 	"gorm.io/gorm"
 )
+
+// newWorkPageServiceEnv 内存库（全量迁移 + FK 强制）+ 真 work.Service（真仓储直连库）注入的 search service。
+// 组装涉及的批量读取依赖（本地/站点作者、本地/站点标签、站点、资源、store 挂载、store 行）全部真件，
+// 与主页作品链无关的依赖（作品集封面、lastUse 更新、写入器等）nil。
+func newWorkPageServiceEnv(t *testing.T) (*Service, *work.Service, *SearchRepository, *gorm.DB) {
+	t.Helper()
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+
+	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return t.TempDir() })
+	resourceSvc := resource.NewService(resource.NewRepository(db), resource.NewResourceStoreRepository(db), psSvc)
+	localTagSvc := localTag.NewService(localTag.NewRepository(db), nil, nil, nil)
+	siteTagSvc := siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil)
+	siteSvc := site.NewService(site.NewRepository(db))
+	localAuthorSvc := localAuthor.NewService(localAuthor.NewRepository(db), nil, nil, nil, nil)
+	reWorkAuthorSvc := reWorkAuthor.NewService(reWorkAuthor.NewRepository(db))
+	reWorkTagSvc := reWorkTag.NewService(reWorkTag.NewRepository(db), nil)
+
+	workSvc := work.NewService(
+		work.NewRepository(db), // Repository
+		nil,                    // Transactor（主页链无事务）
+		nil,                    // LocalTagReader
+		nil,                    // LocalAuthorReader
+		nil,                    // SiteTagReader
+		nil,                    // SiteAuthorReader
+		nil,                    // SiteReader
+		nil,                    // ResourceReader
+		nil,                    // ReWorkTagWriter
+		nil,                    // ReWorkWorkSetWriter
+		nil,                    // ResourceDeleter
+		nil,                    // SiteAuthorWriter
+		nil,                    // SiteTagWriter
+		nil,                    // WorkSetWriter
+		nil,                    // ReWorkAuthorWriter
+		localTagSvc,            // LocalTagBatchReader
+		siteTagSvc,             // SiteTagBatchReader
+		siteSvc,                // SiteBatchReader
+		localAuthorSvc,         // LocalAuthorBatchReader
+		reWorkAuthorSvc,        // SiteAuthorBatchReader
+		resourceSvc,            // ResourceBatchReader
+		resourceSvc,            // ResourceStoreBatchReader
+		psSvc,                  // StoreBatchReader
+		reWorkTagSvc,           // ReWorkTagBatchReader
+		nil,                    // LocalTagFindOrCreator
+		nil,                    // LocalAuthorFindOrCreator
+		nil,                    // StoreDeleter
+		nil,                    // RunningTaskStopper
+		nil,                    // ResourceStoreHardDeleter
+		nil,                    // WorkSetRelationWriter
+		nil,                    // CoverReferenceClearer
+		nil,                    // WorkLockChecker
+	)
+
+	svc := NewService(
+		NewRepository(db), // Repository
+		nil,               // CoverResolver
+		nil,               // WorkSetPageWorkReader
+		nil,               // WorkSetPageResourceReader
+		nil,               // StoreBatchReader
+		nil,               // ResourceStoreBatchReader
+		nil,               // LocalTagUpdater
+		nil,               // SiteTagUpdater
+		nil,               // LocalAuthorUpdater
+		nil,               // SiteAuthorUpdater
+		workSvc,           // FullWorkAssembler
+	)
+	return svc, workSvc, NewRepository(db), db
+}
 
 // buildAuthorFixture 数据面：一作品挂 SITE 作者关联 + 一作品挂 LOCAL 作者关联（含 role_name/sort_order）
 func buildAuthorFixture(t *testing.T, db *gorm.DB) (siteWorkId, localWorkId int64) {
@@ -66,24 +146,20 @@ func buildAuthorFixture(t *testing.T, db *gorm.DB) (siteWorkId, localWorkId int6
 }
 
 // TestQueryWorkPageAuthorAssembled 主页作品分页的作者组装回归：
-// SQL 子查询 JSON 键须与 RankedLocalAuthor/RankedSiteAuthor 对齐（嵌套 author 对象 + roleName/sortOrder），
-// 键不匹配时 json.Unmarshal 静默丢弃、作者元素退化为零值（authorName 空）——卡片作者栏空白即此形态
+// service 编排链（条件圈定作品 ID → work 模块批量组装）须把 SITE/LOCAL 作者名与角色名组装进 WorkFullDTO，
+// 作者环节断裂时作品卡片作者栏空白
 func TestQueryWorkPageAuthorAssembled(t *testing.T) {
-	db, err := migration.OpenTestDB()
-	if err != nil {
-		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
-	}
-	repo := NewRepository(db)
+	svc, _, _, db := newWorkPageServiceEnv(t)
 	siteWorkId, localWorkId := buildAuthorFixture(t, db)
 
-	items, _, err := repo.QueryWorkPage(context.Background(), 1, 10, nil)
+	page, err := svc.QueryWorkPage(context.Background(), 1, 10, nil)
 	if err != nil {
 		t.Fatalf("查询失败: %v", err)
 	}
 
 	foundSite := false
 	foundLocal := false
-	for _, it := range items {
+	for _, it := range page.Data {
 		if it.Work == nil {
 			continue
 		}
@@ -95,10 +171,10 @@ func TestQueryWorkPageAuthorAssembled(t *testing.T) {
 			}
 			got := it.SiteAuthors[0]
 			if got.Author.AuthorName == nil || *got.Author.AuthorName != "站点作者甲" {
-				t.Fatalf("站点作者名应反序列化为「站点作者甲」，实际 %+v", got.Author)
+				t.Fatalf("站点作者名应为「站点作者甲」，实际 %+v", got.Author)
 			}
 			if got.RoleName != "作者" {
-				t.Fatalf("站点作者角色名应反序列化为「作者」，实际 %q", got.RoleName)
+				t.Fatalf("站点作者角色名应为「作者」，实际 %q", got.RoleName)
 			}
 		case localWorkId:
 			foundLocal = true
@@ -107,7 +183,7 @@ func TestQueryWorkPageAuthorAssembled(t *testing.T) {
 			}
 			got := it.LocalAuthors[0]
 			if got.Author.GetAuthorName() != "本地作者乙" {
-				t.Fatalf("本地作者名应反序列化为「本地作者乙」，实际 %q", got.Author.GetAuthorName())
+				t.Fatalf("本地作者名应为「本地作者乙」，实际 %q", got.Author.GetAuthorName())
 			}
 		}
 	}

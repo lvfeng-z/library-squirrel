@@ -16,8 +16,8 @@ import (
 type Repository interface {
 	// QuerySearchConditionPage 查询搜索条件分页（localTag、siteTag、localAuthor、siteAuthor）
 	QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []dto2.SearchType) ([]*dto2.SelectItem, int64, error)
-	// QueryWorkPage 查询作品分页
-	QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error)
+	// QueryWorkIdPage 按搜索条件查询作品分页的 ID 页（条件筛选 + 排序分页；完整信息组装由 service 编排）
+	QueryWorkIdPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]int64, int64, error)
 	// QueryRecycleWorkPage 查询回收站作品分页（work 已删行）
 	QueryRecycleWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition, sortField string, sortDesc bool) ([]*dto2.RecycleWorkDTO, int64, error)
 	// QueryRecycleStorePage 查询回收站文件条目分页（persistent_store 已删行，非「作品已删」聚合形态）
@@ -74,6 +74,12 @@ type SiteAuthorUpdater interface {
 	UpdateLastUse(ctx context.Context, ids []int64) error
 }
 
+// FullWorkAssembler 作品完整信息组装接口（work 模块实现，WorkFullDTO 单产源）
+type FullWorkAssembler interface {
+	// GetFullWorkInfoByIds 批量获取作品完整信息（含资源、作者、标签、站点），按传入 ids 序组装
+	GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto2.WorkFullDTO, error)
+}
+
 // ========== Service ==========
 
 // ResourceStoreBatchReader resource_store 批量读取接口(按 resourceId 分组)
@@ -97,6 +103,7 @@ type Service struct {
 	siteTagUpdater     SiteTagUpdater
 	localAuthorUpdater LocalAuthorUpdater
 	siteAuthorUpdater  SiteAuthorUpdater
+	fullWorkAssembler  FullWorkAssembler
 }
 
 // NewService 创建搜索服务
@@ -111,6 +118,7 @@ func NewService(
 	siteTagUpdater SiteTagUpdater,
 	localAuthorUpdater LocalTagUpdater,
 	siteAuthorUpdater SiteAuthorUpdater,
+	fullWorkAssembler FullWorkAssembler,
 ) *Service {
 	return &Service{
 		repo:                     repo,
@@ -123,6 +131,7 @@ func NewService(
 		siteTagUpdater:           siteTagUpdater,
 		localAuthorUpdater:       localAuthorUpdater,
 		siteAuthorUpdater:        siteAuthorUpdater,
+		fullWorkAssembler:        fullWorkAssembler,
 	}
 }
 
@@ -138,9 +147,18 @@ func (s *Service) QuerySearchConditionPage(ctx context.Context, page, pageSize i
 	return model.NewPage[dto2.SelectItem](items, total, page, pageSize), nil
 }
 
-// QueryWorkPage 查询作品分页
+// QueryWorkPage 查询作品分页（仓储按条件圈定本页作品 ID，完整信息组装委托 work 模块单产源；
+// 组装按传入 ids 序进行，ids 序即 SQL 排序序，结果序不变）
 func (s *Service) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) (*model.Page[dto2.WorkFullDTO], error) {
-	items, total, err := s.repo.QueryWorkPage(ctx, page, pageSize, conditions)
+	ids, total, err := s.repo.QueryWorkIdPage(ctx, page, pageSize, conditions)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return model.NewPage[dto2.WorkFullDTO]([]*dto2.WorkFullDTO{}, total, page, pageSize), nil
+	}
+
+	items, err := s.fullWorkAssembler.GetFullWorkInfoByIds(ctx, ids)
 	if err != nil {
 		return nil, err
 	}

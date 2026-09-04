@@ -1047,6 +1047,7 @@ func (app *App) initAdvancedServices() error {
 		app.SiteTagService,
 		app.LocalAuthorService,
 		app.SiteAuthorService,
+		app.WorkService, // FullWorkAssembler：主页作品分页的完整信息组装（WorkFullDTO 单产源）
 	)
 
 	// recycleBin 服务（work/search/persistentStore/resource/workSet 之后创建：WorkRestorer=app.WorkService、

@@ -787,13 +787,22 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 	}
 
 	// Phase 2: 批量查询本地作者（按 workId 分组）
-	localAuthorMap, _ := s.localAuthorBatchReader.ListReWorkAuthor(ctx, ids)
+	localAuthorMap, err := s.localAuthorBatchReader.ListReWorkAuthor(ctx, ids)
+	if err != nil {
+		logger.Log.Warnf("批量查询作品本地作者失败,本批作品缺本地作者(workIds %d..%d 共%d个): %v", ids[0], ids[len(ids)-1], len(ids), err)
+	}
 
 	// Phase 3: 批量查询站点作者（按 workId 分组）
-	siteAuthorMap, _ := s.siteAuthorBatchReader.ListSiteAuthorsByWorkIds(ctx, ids)
+	siteAuthorMap, err := s.siteAuthorBatchReader.ListSiteAuthorsByWorkIds(ctx, ids)
+	if err != nil {
+		logger.Log.Warnf("批量查询作品站点作者失败,本批作品缺站点作者(workIds %d..%d 共%d个): %v", ids[0], ids[len(ids)-1], len(ids), err)
+	}
 
 	// Phase 4: 批量查询资源（按 workId 分组）
-	resourceMap, _ := s.resourceBatchReader.ListByWorkIds(ctx, ids)
+	resourceMap, err := s.resourceBatchReader.ListByWorkIds(ctx, ids)
+	if err != nil {
+		logger.Log.Warnf("批量查询作品资源失败,本批作品缺资源(workIds %d..%d 共%d个): %v", ids[0], ids[len(ids)-1], len(ids), err)
+	}
 
 	// Phase 4.5: 批量查询 resource_store 行 + PersistentStore 记录(从 resource_store 收集 storeId,不读旧列)
 	var allResourceIds []int64
@@ -802,7 +811,10 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 			allResourceIds = append(allResourceIds, res.GetID())
 		}
 	}
-	resourceStoreMap, _ := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, allResourceIds)
+	resourceStoreMap, err := s.resourceStoreBatchReader.ListStoresByResourceIds(ctx, allResourceIds)
+	if err != nil {
+		logger.Log.Warnf("批量查询资源 store 挂载失败,本批作品缺 store 信息(resourceIds 共%d个): %v", len(allResourceIds), err)
+	}
 	var allStoreIds []int64
 	storeIdSet := make(map[int64]bool)
 	for _, rsList := range resourceStoreMap {
@@ -815,35 +827,50 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 	}
 	storeMap := make(map[int64]*entity2.PersistentStore)
 	if len(allStoreIds) > 0 {
-		stores, _ := s.storeBatchReader.GetByIds(ctx, allStoreIds)
+		stores, err := s.storeBatchReader.GetByIds(ctx, allStoreIds)
+		if err != nil {
+			logger.Log.Warnf("批量查询 persistent_store 失败,本批作品缺 store 实体(storeIds 共%d个): %v", len(allStoreIds), err)
+		}
 		for _, st := range stores {
 			storeMap[st.GetID()] = st
 		}
 	}
 
 	// Phase 5: 批量查询本地标签ID → 本地标签实体
-	localTagIdMap, _ := s.reWorkTagBatchReader.ListLocalTagIdsByWorkIds(ctx, ids)
+	localTagIdMap, err := s.reWorkTagBatchReader.ListLocalTagIdsByWorkIds(ctx, ids)
+	if err != nil {
+		logger.Log.Warnf("批量查询作品本地标签关联失败,本批作品缺本地标签(workIds %d..%d 共%d个): %v", ids[0], ids[len(ids)-1], len(ids), err)
+	}
 	var allLocalTagIds []int64
 	for _, tagIds := range localTagIdMap {
 		allLocalTagIds = append(allLocalTagIds, tagIds...)
 	}
 	localTagEntityMap := make(map[int64]*entity2.LocalTag)
 	if len(allLocalTagIds) > 0 {
-		localTagEntities, _ := s.localTagBatchReader.ListByIds(ctx, allLocalTagIds)
+		localTagEntities, err := s.localTagBatchReader.ListByIds(ctx, allLocalTagIds)
+		if err != nil {
+			logger.Log.Warnf("批量查询本地标签实体失败,本批作品缺本地标签(localTagIds 共%d个): %v", len(allLocalTagIds), err)
+		}
 		for _, t := range localTagEntities {
 			localTagEntityMap[t.GetID()] = t
 		}
 	}
 
 	// Phase 6: 批量查询站点标签ID → 站点标签实体
-	siteTagIdMap, _ := s.reWorkTagBatchReader.ListSiteTagIdsByWorkIds(ctx, ids)
+	siteTagIdMap, err := s.reWorkTagBatchReader.ListSiteTagIdsByWorkIds(ctx, ids)
+	if err != nil {
+		logger.Log.Warnf("批量查询作品站点标签关联失败,本批作品缺站点标签(workIds %d..%d 共%d个): %v", ids[0], ids[len(ids)-1], len(ids), err)
+	}
 	var allSiteTagIds []int64
 	for _, tagIds := range siteTagIdMap {
 		allSiteTagIds = append(allSiteTagIds, tagIds...)
 	}
 	siteTagEntityMap := make(map[int64]*entity2.SiteTag)
 	if len(allSiteTagIds) > 0 {
-		siteTagEntities, _ := s.siteTagBatchReader.ListBySiteTagIds(ctx, allSiteTagIds)
+		siteTagEntities, err := s.siteTagBatchReader.ListBySiteTagIds(ctx, allSiteTagIds)
+		if err != nil {
+			logger.Log.Warnf("批量查询站点标签实体失败,本批作品缺站点标签(siteTagIds 共%d个): %v", len(allSiteTagIds), err)
+		}
 		for _, t := range siteTagEntities {
 			siteTagEntityMap[t.GetID()] = t
 		}
@@ -859,7 +886,10 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 		}
 	}
 	if len(extraLocalTagIds) > 0 {
-		extraLocalTags, _ := s.localTagBatchReader.ListByIds(ctx, extraLocalTagIds)
+		extraLocalTags, err := s.localTagBatchReader.ListByIds(ctx, extraLocalTagIds)
+		if err != nil {
+			logger.Log.Warnf("批量查询站点标签关联的本地标签失败,站点标签缺本地标签(localTagIds 共%d个): %v", len(extraLocalTagIds), err)
+		}
 		for _, lt := range extraLocalTags {
 			localTagEntityMap[lt.GetID()] = lt
 		}
@@ -876,7 +906,10 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 	}
 	siteEntityMap := make(map[int64]*entity2.Site)
 	if len(siteIds) > 0 {
-		siteEntities, _ := s.siteBatchReader.ListByIds(ctx, siteIds)
+		siteEntities, err := s.siteBatchReader.ListByIds(ctx, siteIds)
+		if err != nil {
+			logger.Log.Warnf("批量查询站点失败,本批作品与站点标签缺站点(siteIds 共%d个): %v", len(siteIds), err)
+		}
 		for _, site := range siteEntities {
 			siteEntityMap[site.GetID()] = site
 		}

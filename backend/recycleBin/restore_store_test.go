@@ -45,7 +45,7 @@ func newRestoreStoreEnv(t *testing.T) *restoreStoreEnv {
 	}
 	workDir := t.TempDir()
 	ps := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
-	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	backup := &recordingBackupReader{}
 	recompute := &fakeResourceRecomputer{}
 	lock := shareLock.NewShareLockRegistry()

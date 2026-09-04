@@ -93,7 +93,7 @@ func TestRestoreWorkCleansBackupRecord(t *testing.T) {
 	}
 	workDir := t.TempDir()
 	ps := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
-	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	lock := shareLock.NewShareLockRegistry()
 	resourceSvc := resource.NewService(resource.NewRepository(db), resource.NewResourceStoreRepository(db), nil)
 	bkp := backup.NewService(backup.NewRepository(db), func() string { return workDir })

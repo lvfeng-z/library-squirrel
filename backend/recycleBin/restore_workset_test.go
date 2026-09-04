@@ -54,7 +54,7 @@ func newWsTestEnv(t *testing.T) *wsTestEnv {
 		reWorkSetWorkSet.NewRepository(db),
 		&wsTransactor{db: db}, nil, nil,
 	)
-	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	searchSvc := search.NewService(search.NewRepository(db), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	return &wsTestEnv{
 		svc:     NewService(nil, nil, nil, nil, nil, nil, nil, nil, nil, workSetSvc, searchSvc, nil, nil, nil, nil),
 		workSet: workSetSvc,
@@ -174,7 +174,7 @@ func TestWorkSetEntryQueryAndPurge(t *testing.T) {
 		t.Fatalf("建活集失败: %v", err)
 	}
 
-	svc := search.NewService(search.NewRepository(env.db), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := search.NewService(search.NewRepository(env.db), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// 基线：仅已删集；活成员数=1（死作品不计）
 	page, err := svc.QueryRecycleWorkSetPage(ctx, 1, 10, nil)

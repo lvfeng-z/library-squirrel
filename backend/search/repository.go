@@ -10,7 +10,6 @@ import (
 
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"gorm.io/gorm"
 )
@@ -198,8 +197,9 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 	return results, total, nil
 }
 
-// QueryWorkPage 查询作品分页
-func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*dto2.WorkFullDTO, int64, error) {
+// QueryWorkIdPage 按搜索条件查询作品分页的 ID 页（条件筛选 + 排序分页）；
+// 作品完整信息（资源/作者/标签/站点）由 service 层委托 work 模块批量组装，仓储只圈定本页作品 ID
+func (r *SearchRepository) QueryWorkIdPage(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]int64, int64, error) {
 	// 构建 WHERE 子句
 	whereClause, params := buildWhereClause(conditions)
 
@@ -210,157 +210,21 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 		return nil, 0, err
 	}
 
-	// 分页查询 — SQL 子查询产出的 JSON 结构与 WorkFullDTO 中各子 DTO 类型对齐，可直接 json.Unmarshal
+	// 分页圈定作品 ID；update_time 相同（同毫秒时间戳）时以 id 为次级排序键稳定翻页序
 	offset := (page - 1) * pageSize
 	query := fmt.Sprintf(`
-		SELECT t1.id, t1.create_time, t1.update_time, t1.site_id, t1.site_work_id, t1.site_work_name,
-				t1.site_author_id, t1.site_work_description, t1.site_upload_time, t1.site_update_time,
-				t1.nick_name, t1.local_author_id, t1.last_view,
-			(SELECT JSON_OBJECT(
-				'id', r.id, 'workId', r.work_id, 'taskId', r.task_id,
-				'suggestName', r.suggest_name, 'resourceType', r.resource_type, 'resourceComplete', r.resource_complete,
-				'stores', (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-					'storeType', rs.store_type, 'generation', rs.generation,
-					'store', JSON_OBJECT(
-						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
-						'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at,
-						'createTime', ps.create_time, 'updateTime', ps.update_time)))
-					FROM resource_store rs
-					LEFT JOIN persistent_store ps ON rs.store_id = ps.id
-					WHERE rs.resource_id = r.id),
-				'workStore', COALESCE(
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoMain' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'image' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'document' LIMIT 1),
-					(SELECT JSON_OBJECT('id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name, 'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at, 'createTime', ps.create_time, 'updateTime', ps.update_time) FROM resource_store rs INNER JOIN persistent_store ps ON rs.store_id = ps.id WHERE rs.resource_id = r.id AND rs.store_type = 'videoTrack' LIMIT 1)
-				),
-				'thumbnailStore', (SELECT JSON_OBJECT(
-						'id', ps.id, 'filePath', ps.file_path, 'fileName', ps.file_name,
-						'filenameExtension', ps.filename_extension, 'completedAt', ps.completed_at,
-						'createTime', ps.create_time, 'updateTime', ps.update_time)
-					FROM resource_store rs
-					INNER JOIN persistent_store ps ON rs.store_id = ps.id
-					WHERE rs.resource_id = r.id AND rs.store_type = 'thumbnail' LIMIT 1),
-				'createTime', r.create_time, 'updateTime', r.update_time)
-			FROM resource r
-			WHERE t1.id = r.work_id
-			LIMIT 1) AS resource,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,
-				'description', lt.description, 'lastUse', lt.last_use,
-				'createTime', lt.create_time, 'updateTime', lt.update_time))
-			FROM re_work_tag rwt
-			INNER JOIN local_tag lt ON rwt.local_tag_id = lt.id
-			WHERE t1.id = rwt.work_id) AS localTags,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'siteTag', JSON_OBJECT(
-					'id', st.id, 'siteId', st.site_id, 'siteTagId', st.site_tag_id, 'siteTagName', st.site_tag_name,
-					'baseSiteTagId', st.base_site_tag_id, 'description', st.description, 'localTagId', st.local_tag_id,
-					'lastUse', st.last_use, 'createTime', st.create_time, 'updateTime', st.update_time),
-				'localTag', CASE WHEN lt.id IS NOT NULL THEN JSON_OBJECT(
-					'id', lt.id, 'localTagName', lt.local_tag_name, 'baseLocalTagId', lt.base_local_tag_id,
-					'description', lt.description, 'lastUse', lt.last_use,
-					'createTime', lt.create_time, 'updateTime', lt.update_time)
-				END,
-				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
-					'id', s.id, 'siteName', s.site_name)
-				END))
-			FROM re_work_tag rwt
-			INNER JOIN site_tag st ON rwt.site_tag_id = st.id
-			LEFT JOIN local_tag lt ON st.local_tag_id = lt.id
-			LEFT JOIN site s ON st.site_id = s.id
-			WHERE t1.id = rwt.work_id) AS siteTags,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'author', JSON_OBJECT(
-					'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
-					'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time),
-				'roleName', rwa.role_name, 'sortOrder', rwa.sort_order))
-			FROM re_work_author rwa
-			INNER JOIN local_author la ON rwa.local_author_id = la.id
-			WHERE t1.id = rwa.work_id) AS localAuthors,
-			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'author', JSON_OBJECT(
-					'id', sa.id, 'siteId', sa.site_id, 'siteAuthorId', sa.site_author_id, 'authorName', sa.author_name,
-					'fixedAuthorName', sa.fixed_author_name, 'siteAuthorNameBefore', sa.site_author_name_before,
-					'introduce', sa.introduce, 'homepage', sa.homepage, 'localAuthorId', sa.local_author_id,
-					'lastUse', sa.last_use, 'createTime', sa.create_time, 'updateTime', sa.update_time),
-				'roleName', rwa.role_name, 'sortOrder', rwa.sort_order))
-			FROM re_work_author rwa
-			INNER JOIN site_author sa ON rwa.site_author_id = sa.id
-			WHERE t1.id = rwa.work_id) AS siteAuthors
+		SELECT t1.id
 		FROM work t1
 		%s
-		GROUP BY t1.id
-		ORDER BY t1.update_time DESC
+		ORDER BY t1.update_time DESC, t1.id DESC
 		LIMIT %d OFFSET %d
 	`, whereClause, pageSize, offset)
 
-	rows, err := r.db.WithContext(ctx).Raw(query, params...).Rows()
-	if err != nil {
+	var ids []int64
+	if err := r.db.WithContext(ctx).Raw(query, params...).Scan(&ids).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
-
-	var results []*dto2.WorkFullDTO
-	for rows.Next() {
-		work := entity2.NewWork()
-		var resource, localTags, siteTags, localAuthors, siteAuthors sql.NullString
-
-		if err := rows.Scan(
-			&work.ID, &work.CreateTime, &work.UpdateTime, &work.SiteID, &work.SiteWorkID, &work.SiteWorkName,
-			&work.SiteAuthorID, &work.SiteWorkDescription, &work.SiteUploadTime, &work.SiteUpdateTime,
-			&work.NickName, &work.LocalAuthorID, &work.LastView,
-			&resource, &localTags, &siteTags, &localAuthors, &siteAuthors,
-		); err != nil {
-			return nil, 0, err
-		}
-
-		dto := dto2.NewWorkFullDTO(work)
-
-		// 解析 resource
-		if resource.Valid && resource.String != "" && resource.String != "null" {
-			var resFull *dto2.ResourceFullDTO
-			if json.Unmarshal([]byte(resource.String), &resFull) == nil {
-				dto.Resource = resFull
-			}
-		}
-
-		// 解析 localTags
-		if localTags.Valid && localTags.String != "" && localTags.String != "null" {
-			var tags []*sdkdto.LocalTagDTO
-			if json.Unmarshal([]byte(localTags.String), &tags) == nil {
-				dto.LocalTags = tags
-			}
-		}
-
-		// 解析 siteTags
-		if siteTags.Valid && siteTags.String != "" && siteTags.String != "null" {
-			var tags []*dto2.SiteTagFullDTO
-			if json.Unmarshal([]byte(siteTags.String), &tags) == nil {
-				dto.SiteTags = tags
-			}
-		}
-
-		// 解析 localAuthors
-		if localAuthors.Valid && localAuthors.String != "" && localAuthors.String != "null" {
-			var authors []*dto2.RankedLocalAuthor
-			if json.Unmarshal([]byte(localAuthors.String), &authors) == nil {
-				dto.LocalAuthors = authors
-			}
-		}
-
-		// 解析 siteAuthors
-		if siteAuthors.Valid && siteAuthors.String != "" && siteAuthors.String != "null" {
-			var authors []*dto2.RankedSiteAuthor
-			if json.Unmarshal([]byte(siteAuthors.String), &authors) == nil {
-				dto.SiteAuthors = authors
-			}
-		}
-
-		results = append(results, dto)
-	}
-
-	return results, total, nil
+	return ids, total, nil
 }
 
 // namespaceCondition 构造 namespace 过滤片段。非空 namespace 返回 " AND rwt.namespace = ?" 与对应参数；

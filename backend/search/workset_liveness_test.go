@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// newWorkSetLivenessEnv 内存库（全量迁移）+ 真实搜索仓储（QueryWorkPage 联全部作品谱系表）
+// newWorkSetLivenessEnv 内存库（全量迁移）+ 真实搜索仓储（作品/作品集条件查询联全部作品谱系表）
 func newWorkSetLivenessEnv(t *testing.T) (*SearchRepository, *gorm.DB) {
 	t.Helper()
 	db, err := migration.OpenTestDB()
@@ -108,12 +108,12 @@ func TestWorkSetConditionFiltersDeleted(t *testing.T) {
 		Value:    float64(f.deadId),
 		Operator: dto.NotEqual,
 	}}
-	items, _, err := repo.QueryWorkPage(context.Background(), 1, 10, conds)
+	ids, _, err := repo.QueryWorkIdPage(context.Background(), 1, 10, conds)
 	if err != nil {
 		t.Fatalf("查询失败: %v", err)
 	}
-	for _, it := range items {
-		if it.Work != nil && it.Work.GetId() == f.w2 {
+	for _, id := range ids {
+		if id == f.w2 {
 			return // 已删集成员 w2 出现 = 活性过滤生效
 		}
 	}
