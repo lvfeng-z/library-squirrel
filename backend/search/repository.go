@@ -271,28 +271,22 @@ func (r *SearchRepository) QueryWorkPage(ctx context.Context, page, pageSize int
 			LEFT JOIN site s ON st.site_id = s.id
 			WHERE t1.id = rwt.work_id) AS siteTags,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
-				'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time))
+				'author', JSON_OBJECT(
+					'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
+					'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time),
+				'roleName', rwa.role_name, 'sortOrder', rwa.sort_order))
 			FROM re_work_author rwa
 			INNER JOIN local_author la ON rwa.local_author_id = la.id
 			WHERE t1.id = rwa.work_id) AS localAuthors,
 			(SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
-				'siteAuthor', JSON_OBJECT(
+				'author', JSON_OBJECT(
 					'id', sa.id, 'siteId', sa.site_id, 'siteAuthorId', sa.site_author_id, 'authorName', sa.author_name,
 					'fixedAuthorName', sa.fixed_author_name, 'siteAuthorNameBefore', sa.site_author_name_before,
 					'introduce', sa.introduce, 'homepage', sa.homepage, 'localAuthorId', sa.local_author_id,
 					'lastUse', sa.last_use, 'createTime', sa.create_time, 'updateTime', sa.update_time),
-				'localAuthor', CASE WHEN la.id IS NOT NULL THEN JSON_OBJECT(
-					'id', la.id, 'authorName', la.author_name, 'introduce', la.introduce,
-					'lastUse', la.last_use, 'createTime', la.create_time, 'updateTime', la.update_time)
-				END,
-				'site', CASE WHEN s.id IS NOT NULL THEN JSON_OBJECT(
-					'id', s.id, 'siteName', s.site_name)
-				END))
+				'roleName', rwa.role_name, 'sortOrder', rwa.sort_order))
 			FROM re_work_author rwa
 			INNER JOIN site_author sa ON rwa.site_author_id = sa.id
-			LEFT JOIN local_author la ON sa.local_author_id = la.id
-			LEFT JOIN site s ON sa.site_id = s.id
 			WHERE t1.id = rwa.work_id) AS siteAuthors
 		FROM work t1
 		%s
