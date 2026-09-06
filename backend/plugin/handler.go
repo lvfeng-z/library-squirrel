@@ -20,31 +20,40 @@ func NewHandler(svc *Service) *Handler {
 
 // ========== 增删改操作 ==========
 
+// successOrDegraded 成功响应构造：degraded 非空时 Msg 携带降级文案（操作主体成功、附带环节
+// 失败的提醒），空时回落默认成功文案 "success"
+func successOrDegraded[T any](data T, degraded string) *model.ApiResponse[T] {
+	if degraded != "" {
+		return model.SuccessWithMsg(data, degraded)
+	}
+	return model.Success(data)
+}
+
 // InstallFromPath 从插件包路径安装插件。trusted 透传用户知情同意结果（true=用户已确认信任，false=绕过 UI 的异常安装）
 func (h *Handler) InstallFromPath(ctx context.Context, packagePath string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.InstallFromPath(ctx, packagePath, trusted)
+	result, degraded, err := h.svc.InstallFromPath(ctx, packagePath, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
-	return model.Success(domain.NewPluginDTO(result))
+	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
 // Reinstall 重新安装插件。trusted 透传用户知情同意结果
 func (h *Handler) Reinstall(ctx context.Context, pluginPublicId string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.Reinstall(ctx, pluginPublicId, trusted)
+	result, degraded, err := h.svc.Reinstall(ctx, pluginPublicId, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
-	return model.Success(domain.NewPluginDTO(result))
+	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
 // ReinstallFromPath 从指定路径重新安装插件。trusted 透传用户知情同意结果
 func (h *Handler) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, trusted bool) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, trusted)
+	result, degraded, err := h.svc.ReinstallFromPath(ctx, pluginPublicId, packagePath, trusted)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
-	return model.Success(domain.NewPluginDTO(result))
+	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
 // ========== 检查更新流 ==========
@@ -56,11 +65,11 @@ func (h *Handler) GetPendingUpgrades(ctx context.Context) *model.ApiResponse[[]*
 
 // ApplyPendingUpgrade 答复「升级」：对 available 待办执行运行期换版（当次会话生效，运行中任务被参与者否决）
 func (h *Handler) ApplyPendingUpgrade(ctx context.Context, pluginPublicId string) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.ApplyPendingUpgrade(ctx, pluginPublicId)
+	result, degraded, err := h.svc.ApplyPendingUpgrade(ctx, pluginPublicId)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
-	return model.Success(domain.NewPluginDTO(result))
+	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
 // DeclinePendingUpgrade 答复「跳过此构建」：持久化拒绝标记，下次启动对等值 buildId 静默跳过
@@ -89,11 +98,11 @@ func (h *Handler) Uninstall(ctx context.Context, pluginPublicId string) *model.A
 // SetTrusted 设置插件信任状态（手动信任/取消信任）。trusted=true 时后端激活插件；
 // trusted=false 即时停用运行时，force=前端确认对话框明示代价后强制停（跳过参与者否决检查）
 func (h *Handler) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool, force bool) *model.ApiResponse[*domain.PluginDTO] {
-	result, err := h.svc.SetTrusted(ctx, pluginPublicId, trusted, force)
+	result, degraded, err := h.svc.SetTrusted(ctx, pluginPublicId, trusted, force)
 	if err != nil {
 		return model.HandleError[*domain.PluginDTO](err)
 	}
-	return model.Success(domain.NewPluginDTO(result))
+	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
 // ========== 查询操作 ==========

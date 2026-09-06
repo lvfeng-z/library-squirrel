@@ -18,6 +18,7 @@ import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plug
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isNotBlank} from '@renderer/utils/StringUtil.ts'
 import {fileSysUtilApi, pluginApi, taskApi} from '@renderer/apis/http'
+import type {ApiResult} from '@renderer/apis/http/types'
 import {PluginDTO, PendingUpgradeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 import {usePluginUpdateStore} from '@renderer/store/UsePluginUpdateStore.ts'
@@ -189,6 +190,21 @@ function versionText(item: PendingUpgradeDTO): string {
   return `v${item.installedVersion} → v${item.targetVersion}${direction}`
 }
 
+// 插件生命周期操作（安装/重装/升级/信任）成功响应的降级判定：msg 非 "success" 即后端降级文案
+// （操作主体成功但激活失败），Success 默认 Msg 为 "success"
+function isDegradedMsg(res: { msg: string }): boolean {
+  return res.msg !== 'success'
+}
+
+// 生命周期操作成功分支提示：降级文案以 warning 取代默认成功提示——同一动作不弹两条成功系提示
+function toastSuccessOrDegraded(res: { msg: string }, successToast: () => void): void {
+  if (isDegradedMsg(res)) {
+    ElMessage.warning(res.msg)
+  } else {
+    successToast()
+  }
+}
+
 // 点击升级：先按运行中任务数分流——N>0 引导先去暂停（服务端必否决，不提供「仍要尝试」），N=0 直接确认执行
 async function handleUpgradeClicked(item: PendingUpgradeDTO) {
   const activeCount = (await taskApi.taskGetActiveCountByPlugin(item.publicId)).data ?? 0
@@ -211,17 +227,17 @@ async function handleUpgradeClicked(item: PendingUpgradeDTO) {
     .catch(() => {})
 }
 
-// 执行换版核心（无提示；运行期热重载，被运行中任务否决时返回 false）。单条与批量共用
-async function doApplyUpgrade(item: PendingUpgradeDTO): Promise<boolean> {
+// 执行换版核心（无提示；运行期热重载，被运行中任务否决时返回 null）。单条与批量共用；
+// 成功时返回响应（msg 非 "success" 即激活失败降级文案）
+async function doApplyUpgrade(item: PendingUpgradeDTO): Promise<ApiResult<PluginDTO> | null> {
   if (applyingIds.value.includes(item.publicId)) {
-    return false
+    return null
   }
   applyingIds.value.push(item.publicId)
   try {
-    await pluginApi.pluginApplyPendingUpgrade(item.publicId)
-    return true
+    return await pluginApi.pluginApplyPendingUpgrade(item.publicId)
   } catch {
-    return false
+    return null
   } finally {
     applyingIds.value = applyingIds.value.filter((id) => id !== item.publicId)
   }
@@ -229,9 +245,9 @@ async function doApplyUpgrade(item: PendingUpgradeDTO): Promise<boolean> {
 
 // 单条升级（行内按钮路径）：成败即时提示并刷新
 async function applyPendingUpgrade(item: PendingUpgradeDTO) {
-  const success = await doApplyUpgrade(item)
-  if (success) {
-    ElMessage.success(`【${item.pluginName}】已升级到 v${item.targetVersion}`)
+  const result = await doApplyUpgrade(item)
+  if (notNullish(result)) {
+    toastSuccessOrDegraded(result, () => ElMessage.success(`【${item.pluginName}】已升级到 v${item.targetVersion}`))
   } else {
     ElMessage.error(`升级失败：${item.pluginName}（存在运行中任务或执行中，请暂停任务后重试）`)
   }
@@ -252,9 +268,14 @@ function handleBatchUpgradeClicked() {
     .then(async () => {
       let successCount = 0
       const failures: string[] = []
+      const degraded: string[] = []
       for (const item of targets) {
-        if (await doApplyUpgrade(item)) {
+        const result = await doApplyUpgrade(item)
+        if (notNullish(result)) {
           successCount++
+          if (isDegradedMsg(result)) {
+            degraded.push(`【${item.pluginName}】${result.msg}`)
+          }
         } else {
           failures.push(item.pluginName)
         }
@@ -263,6 +284,9 @@ function handleBatchUpgradeClicked() {
         ElMessage.success(`批量升级完成：${successCount} 个成功`)
       } else {
         ElMessage.warning(`批量升级完成：${successCount} 个成功，${failures.length} 个失败（${failures.join('、')}）`)
+      }
+      if (arrayNotEmpty(degraded)) {
+        ElMessage.warning(`升级后激活失败：${degraded.join('；')}`)
       }
       await pluginUpdateStore.refresh()
       pluginSearchTable.value.doSearch()
@@ -414,9 +438,9 @@ async function beforeReInstall(pluginPublicId: string) {
 // 重新安装
 async function reInstall(pluginPublicId: string) {
   try {
-    await pluginApi.pluginReinstall(pluginPublicId, true)
+    const result = await pluginApi.pluginReinstall(pluginPublicId, true)
     pluginSearchTable.value.doSearch()
-    ElMessage({ type: 'success', message: '修复完成' })
+    toastSuccessOrDegraded(result, () => ElMessage({ type: 'success', message: '修复完成' }))
   } catch (e) {
     pluginSearchTable.value.doSearch()
     ElMessage({ type: 'error', message: `修复失败，${(e as Error).message}` })
@@ -462,9 +486,9 @@ async function handleTrust(plugin: PluginDTO) {
       .catch(() => {})
   } else {
     try {
-      await pluginApi.pluginSetTrusted(publicId, true)
+      const result = await pluginApi.pluginSetTrusted(publicId, true)
       pluginSearchTable.value.doSearch()
-      ElMessage.success('已信任并激活')
+      toastSuccessOrDegraded(result, () => ElMessage.success('已信任并激活'))
     } catch (e) {
       ElMessage.error((e as Error).message)
     }
@@ -501,7 +525,7 @@ async function handleInstallClicked() {
 async function installFromPath(packagePath: string, trusted: boolean = false) {
   try {
     const result = await pluginApi.pluginInstallFromPath(packagePath, trusted)
-    ApiUtil.msg(result)
+    toastSuccessOrDegraded(result, () => ApiUtil.msg(result))
     pluginSearchTable.value.doSearch()
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -511,7 +535,7 @@ async function installFromPath(packagePath: string, trusted: boolean = false) {
 async function reInstallFromPath(publicPublicId: string, packagePath: string) {
   try {
     const result = await pluginApi.pluginReinstallFromPath(publicPublicId, packagePath, true)
-    ApiUtil.msg(result)
+    toastSuccessOrDegraded(result, () => ApiUtil.msg(result))
     pluginSearchTable.value.doSearch()
   } catch (e) {
     ElMessage.error((e as Error).message)

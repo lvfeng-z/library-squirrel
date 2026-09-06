@@ -45,6 +45,11 @@ const sourceStatusKey = computed(() => `plugin-${plugin.value?.source ?? ''}`)
 const trustedStatusKey = computed(() =>
   plugin.value?.trusted === true ? 'plugin-trusted' : 'plugin-unverified'
 )
+// 生命周期状态 key（后端 lifecycleState 值直接拼 plugin-{state}，与渠道维度同拼法；空值兜底未激活）
+const lifecycleStatusKey = computed(() => {
+  const state = status.value?.lifecycleState
+  return isNotBlank(state) ? `plugin-${state}` : 'plugin-inactive'
+})
 
 function formatTime(timestamp: number | undefined): string {
   if (!timestamp) return '-'
@@ -91,6 +96,15 @@ function formatTime(timestamp: number | undefined): string {
         </el-descriptions-item>
       </el-descriptions>
 
+      <!-- 激活失败告警（最近一次激活失败原因，重试成功后自动消失） -->
+      <div
+        v-if="isNotBlank(status.activateError)"
+        class="activate-error"
+      >
+        <span class="activate-error__title">激活失败</span>
+        <span class="activate-error__text">{{ status.activateError }}</span>
+      </div>
+
       <!-- 运行时状态 -->
       <el-descriptions
         title="运行时状态"
@@ -98,6 +112,12 @@ function formatTime(timestamp: number | undefined): string {
         border
         size="small"
       >
+        <el-descriptions-item label="生命周期">
+          <StatusTag
+            size="small"
+            :status="lifecycleStatusKey"
+          />
+        </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag
             :type="status.isRunning ? 'success' : 'info'"
@@ -220,6 +240,30 @@ function formatTime(timestamp: number | undefined): string {
 .status-tag {
   margin-right: 4px;
   margin-bottom: 4px;
+}
+
+/* 激活失败告警行（fail tone：与失败状态语义同源，随主题逐主题调色） */
+.activate-error {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--app-status-fail-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-status-fail-bg);
+}
+
+.activate-error__title {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--app-status-fail-text);
+}
+
+.activate-error__text {
+  color: var(--app-status-fail-text);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .text-muted {

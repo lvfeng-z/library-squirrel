@@ -2,6 +2,11 @@ package plugin
 
 // PluginStatusDTO 插件状态
 type PluginStatusDTO struct {
+	// 生命周期状态（inactive=未激活、activating=激活中、active=运行中、stopping=停用中）
+	LifecycleState string `json:"lifecycleState"`
+	// 最近一次激活失败原因（空=无；下次激活成功时清空）
+	ActivateError string `json:"activateError"`
+
 	// 运行时状态
 	IsRunning   bool  `json:"isRunning"`
 	PID         int   `json:"pid"`

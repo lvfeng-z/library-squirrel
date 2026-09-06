@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/library-squirrel/backend/base"
@@ -138,6 +139,9 @@ type App struct {
 	// 任务URL监听器
 	PluginTaskUrlListenerSvc *pluginTaskUrlListener.Service
 
+	// 插件加载一次守卫（LoadPlugins 重入 CAS：异常信号重复触发窗口就绪事件时跳过整轮重复激活）
+	pluginsLoaded atomic.Bool
+
 	// Wails 事件发射器（用于任务进度推送）
 	taskProgressEmitter taskManager.WailsEventEmitter
 	// 前端事件监听函数（用于插件 SubscribeFrontend）
@@ -255,8 +259,14 @@ func (app *App) SetMainWindow(window application.Window) {
 	}
 }
 
-// LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后调用）
+// LoadPlugins 加载已安装的插件（必须在 SetEventEmitter 之后、主窗口 native handle 就绪后调用）。
+// 一次守卫：异常信号重复触发窗口就绪事件时直接跳过——生命周期状态机对重复激活本已幂等，
+// 守卫为异常留痕与免整轮空转而设
 func (app *App) LoadPlugins() {
+	if !app.pluginsLoaded.CompareAndSwap(false, true) {
+		logger.Log.Warn("LoadPlugins 重入，跳过本次加载")
+		return
+	}
 	app.loadInstalledPlugins()
 }
 
@@ -361,7 +371,8 @@ func (app *App) loadInstalledPlugins() {
 			continue
 		}
 
-		if err := app.activatePlugin(p); err != nil {
+		if err := app.PluginService.ActivatePlugin(ctx, p); err != nil {
+			logger.Log.Warnf("启动期激活插件失败: %s, %v", p.PublicID.String, err)
 			continue
 		}
 
@@ -383,154 +394,6 @@ func (app *App) loadInstalledPlugins() {
 
 	logger.Log.Infof("插件加载完成: %d 个运行时, %d 个纯 UI, 共 %d 个; 未信任待激活 %d 个, 受限模式跳过 %d 个",
 		runtimeLoaded, pureUICount, len(plugins), pendingTrust, restrictedSkipped)
-}
-
-// Activate 实现 PluginActivator 接口，激活单个插件
-func (app *App) Activate(p *entity2.Plugin) error {
-	return app.activatePlugin(p)
-}
-
-// activatePlugin 激活单个插件：读取 manifest、注册静态资源、注册前端扩展、启动运行时子进程
-func (app *App) activatePlugin(p *entity2.Plugin) error {
-	// 跳过没有 PublicID 的插件
-	if !p.PublicID.Valid || p.PublicID.String == "" {
-		return fmt.Errorf("插件缺少 PublicID")
-	}
-
-	// 信任门控（决策6）：trusted 非真（未设置或显式 false）不激活，需用户在管理页显式信任后由 Activate 重新激活
-	if !p.Trusted.Valid || !p.Trusted.Bool {
-		return fmt.Errorf("插件未信任，拒绝激活: %s", p.PublicID.String)
-	}
-
-	// 跳过没有 RootPath 的插件
-	if !p.RootPath.Valid || p.RootPath.String == "" {
-		return fmt.Errorf("插件缺少 RootPath")
-	}
-
-	rootPath := util.RootPath()
-	publicId := p.PublicID.String
-	pluginRootDir := filepath.Join(rootPath, p.RootPath.String)
-	logger.Log.Infof("正在激活插件: %s (root=%s)", publicId, pluginRootDir)
-
-	// 读取 plugin.json
-	manifestPath := filepath.Join(pluginRootDir, "plugin.json")
-	manifestBytes, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return fmt.Errorf("读取 plugin.json 失败 %s: %w", publicId, err)
-	}
-
-	// 解析 manifest
-	var manifest dto.PluginManifest
-	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return fmt.Errorf("解析 plugin.json 失败 %s: %w", publicId, err)
-	}
-
-	ext := manifest.Extensions
-	if ext == nil {
-		logger.Log.Warnf("插件 %s 无扩展点，跳过", publicId)
-		return nil
-	}
-
-	// 注册静态资源
-	var allowedDirs []string
-	if ext.StaticResources != nil {
-		allowedDirs = ext.StaticResources.Directories
-	}
-	// 缓存键：构建身份 buildId 优先（同源码状态永远同值、源码变化必变，令资产 URL/ETag 随构建失效，
-	// immutable 长缓存才安全）；未打标包回落 version
-	cacheKey := manifest.BuildID
-	if cacheKey == "" && p.Version.Valid {
-		cacheKey = p.Version.String
-	}
-	app.StaticResourceService.RegisterPlugin(publicId, pluginRootDir, allowedDirs, cacheKey)
-	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", publicId, allowedDirs)
-
-	// 声明式注册前端扩展
-	for _, fe := range ext.FrontendExtensions {
-		feConfig := base.NewFrontendExtensionConfig()
-		feConfig.Metadata.ID = fe.ID
-		feConfig.Metadata.PluginID = p.GetID()
-		feConfig.Metadata.PluginPublicID = publicId
-		feConfig.Metadata.Name = fe.Name
-		feConfig.Metadata.Description = fe.Description
-		feConfig.Kind = base.FrontendExtensionKind(fe.Kind)
-		feConfig.Order = fe.Order
-
-		// 按 kind 解析 content
-		if err := parseFrontendExtensionContent(fe, feConfig, publicId, cacheKey); err != nil {
-			logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
-			continue
-		}
-
-		extension := model.NewExtension(*feConfig.Metadata, feConfig)
-		if err := app.FrontendExtensionRegistry.Register(extension); err != nil {
-			logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)
-		}
-	}
-
-	if len(ext.FrontendExtensions) > 0 {
-		logger.Log.Infof("插件 %s: 已注册 %d 个前端扩展", publicId, len(ext.FrontendExtensions))
-	}
-
-	// 判断是否为纯 UI 插件（无运行时扩展点）
-	hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
-	if !hasRuntime {
-		logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
-		return nil
-	}
-
-	// 非纯 UI 插件：以子进程模式加载运行时
-	if !p.EntryPath.Valid || p.EntryPath.String == "" {
-		logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
-		return nil
-	}
-
-	pluginPath := filepath.Join(rootPath, p.EntryPath.String)
-	pluginInfo := &extension2.PluginInfo{
-		ID:                  p.GetID(),
-		PublicID:            publicId,
-		Name:                p.Name.String,
-		Version:             p.Version.String,
-		ContractVersion:     int(p.ContractVersion.Int64),
-		ConfigSchemaVersion: p.ConfigSchemaVersion.Int64,
-		Capabilities:        extension2.UnmarshalCapabilities(p.Capabilities),
-		ResourceTypes:       extension2.UnmarshalResourceTypes(p.ResourceTypes),
-		Author:              p.Author.String,
-		EntryPath:           p.EntryPath.String,
-		RootPath:            p.RootPath.String,
-	}
-
-	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
-		PluginInfo:          pluginInfo,
-		RootPath:            rootPath,
-		TaskHandlerRegistry: app.TaskHandlerRegistry,
-		SiteBrowserRegistry: app.SiteBrowserRegistry,
-		Storage:             app.PluginStorageService,
-		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
-		StorePath: &storePathQueryAdapter{
-			taskSvc:       app.TaskService,
-			storeRepo:     resource.NewResourceStoreRepository(app.db),
-			persistentSvc: app.PersistentStoreService,
-		},
-		UrlListener: &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: p},
-		FrontendEvent: &wailsFrontendEventProvider{
-			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
-			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
-		},
-	})
-
-	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
-	if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
-		PluginInfo:          pluginInfo,
-		PluginCtx:           pluginCtx,
-		TaskHandlerRegistry: app.TaskHandlerRegistry,
-		SiteBrowserRegistry: app.SiteBrowserRegistry,
-		MainHWND:            app.mainHWND,
-	}); err != nil {
-		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
-	}
-
-	return nil
 }
 
 // parseFrontendExtensionContent 按 kind 解析 content 字段并填充 FrontendExtensionConfig（决策6：各类定位键非空校验统一在后端）
@@ -1095,13 +958,11 @@ func (app *App) initAdvancedServices() error {
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
 	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath())
-	app.PluginService.SetActivator(app)
-	// 插件停用生命周期：loader 为运行时停止器（停进程+清其所属注册表），
-	// 持运行时痕迹的模块注册为参与者（停用清理完备性的审计点），清单集中于此
-	app.PluginService.SetRuntimeStopper(app.pluginLoader.UnloadPlugin)
+	// 插件生命周期参与者：凡持有插件运行痕迹的域注册为参与者（注册顺序即激活相位顺序，
+	// 停用按注册逆序清理），清单集中于此；进程参与者与任务否决参与者在各自依赖就绪后注册
 	app.PluginService.RegisterLifecycleParticipant(&staticResourceParticipant{svc: app.StaticResourceService})
 	app.PluginService.RegisterLifecycleParticipant(&frontendExtensionParticipant{registry: app.FrontendExtensionRegistry})
-	// 崩溃路径与显式停用共用参与者清理集合：Loader 自身清理后回调触发参与者 OnStopped
+	// 崩溃路径与显式停用共用参与者清理集合：Loader 摘除进程表条目后回调触发统一清理
 	app.pluginLoader.SetCrashNotifier(func(pluginPublicId string) {
 		app.PluginService.NotifyPluginCrashed(context.Background(), pluginPublicId)
 	})
@@ -1220,6 +1081,9 @@ func (app *App) initAdvancedServices() error {
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
 	)
+	// 进程参与者注册在静态资源/前端扩展之后（停用逆序即先停进程再清痕迹）、任务否决参与者之前；
+	// 其激活相位依赖的 TaskService 等服务此时已就绪，mainHWND 窗口就绪后才写入、经 *App 惰性读取
+	app.PluginService.RegisterLifecycleParticipant(&pluginProcessParticipant{app: app})
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）
 	app.PluginService.RegisterLifecycleParticipant(&taskManagerParticipant{mgr: app.TaskManagerService})
 
@@ -1625,9 +1489,31 @@ func (a *extensionListProviderAdapter) GetFrontendExtensionsByPlugin(pluginPubli
 	return result
 }
 
-// staticResourceParticipant 静态资源生命周期参与者：停用后注销插件静态资源目录
+// manifestCacheKey 插件静态资产缓存键：构建身份 buildId 优先（同源码状态永远同值、
+// 源码变化必变，令资产 URL/ETag 随构建失效，immutable 长缓存才安全）；未打标包回落 version
+func manifestCacheKey(manifest *dto.PluginManifest, plugin *entity2.Plugin) string {
+	cacheKey := manifest.BuildID
+	if cacheKey == "" && plugin.Version.Valid {
+		cacheKey = plugin.Version.String
+	}
+	return cacheKey
+}
+
+// staticResourceParticipant 静态资源生命周期参与者：激活时注册插件静态资源目录，停用后注销
 type staticResourceParticipant struct {
 	svc *extension2.StaticResourceService
+}
+
+func (p *staticResourceParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
+	ext := manifest.Extensions
+	var allowedDirs []string
+	if ext != nil && ext.StaticResources != nil {
+		allowedDirs = ext.StaticResources.Directories
+	}
+	pluginRootDir := filepath.Join(util.RootPath(), plugin.RootPath.String)
+	p.svc.RegisterPlugin(plugin.PublicID.String, pluginRootDir, allowedDirs, manifestCacheKey(manifest, plugin))
+	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", plugin.PublicID.String, allowedDirs)
+	return nil
 }
 
 func (p *staticResourceParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
@@ -1638,9 +1524,42 @@ func (p *staticResourceParticipant) OnStopped(ctx context.Context, pluginPublicI
 	p.svc.UnregisterPlugin(pluginPublicId)
 }
 
-// frontendExtensionParticipant 前端扩展生命周期参与者：停用后注销全部前端扩展（触发前端注销事件）
+// frontendExtensionParticipant 前端扩展生命周期参与者：激活时按 manifest 声明逐条注册，
+// 停用后注销全部前端扩展（触发前端注销事件）
 type frontendExtensionParticipant struct {
 	registry *extension2.FrontendExtensionRegistry
+}
+
+func (p *frontendExtensionParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
+	ext := manifest.Extensions
+	if ext == nil || len(ext.FrontendExtensions) == 0 {
+		return nil
+	}
+	publicId := plugin.PublicID.String
+	cacheKey := manifestCacheKey(manifest, plugin)
+	for _, fe := range ext.FrontendExtensions {
+		feConfig := base.NewFrontendExtensionConfig()
+		feConfig.Metadata.ID = fe.ID
+		feConfig.Metadata.PluginID = plugin.GetID()
+		feConfig.Metadata.PluginPublicID = publicId
+		feConfig.Metadata.Name = fe.Name
+		feConfig.Metadata.Description = fe.Description
+		feConfig.Kind = base.FrontendExtensionKind(fe.Kind)
+		feConfig.Order = fe.Order
+
+		// 按 kind 解析 content；解析失败跳过该条，不株连插件其余扩展
+		if err := parseFrontendExtensionContent(fe, feConfig, publicId, cacheKey); err != nil {
+			logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
+			continue
+		}
+
+		extension := model.NewExtension(*feConfig.Metadata, feConfig)
+		if err := p.registry.Register(extension); err != nil {
+			logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)
+		}
+	}
+	logger.Log.Infof("插件 %s: 已注册 %d 个前端扩展", publicId, len(ext.FrontendExtensions))
+	return nil
 }
 
 func (p *frontendExtensionParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
@@ -1653,11 +1572,97 @@ func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPubl
 	}
 }
 
+// pluginProcessParticipant 插件进程生命周期参与者：激活相位组装插件信息与宿主上下文并
+// 启动运行时子进程；停用相位停止子进程并清理其所属运行时注册表（任务处理器/站点浏览器/
+// URL 监听）。激活相位依赖的 TaskService 等服务与 mainHWND 均在本参与者构造后才绪，
+// 统一经 *App 惰性读取（激活只发生在装配完成与窗口就绪后）
+type pluginProcessParticipant struct {
+	app *App
+}
+
+func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
+	app := p.app
+	publicId := plugin.PublicID.String
+	ext := manifest.Extensions
+
+	// 纯 UI 插件（无运行时扩展点）与有运行时扩展点但缺入口路径的插件不起子进程，激活即成功
+	hasRuntime := ext != nil && (len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0)
+	if !hasRuntime {
+		logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
+		return nil
+	}
+	if !plugin.EntryPath.Valid || plugin.EntryPath.String == "" {
+		logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
+		return nil
+	}
+
+	rootPath := util.RootPath()
+	pluginPath := filepath.Join(rootPath, plugin.EntryPath.String)
+	pluginInfo := &extension2.PluginInfo{
+		ID:                  plugin.GetID(),
+		PublicID:            publicId,
+		Name:                plugin.Name.String,
+		Version:             plugin.Version.String,
+		ContractVersion:     int(plugin.ContractVersion.Int64),
+		ConfigSchemaVersion: plugin.ConfigSchemaVersion.Int64,
+		Capabilities:        extension2.UnmarshalCapabilities(plugin.Capabilities),
+		ResourceTypes:       extension2.UnmarshalResourceTypes(plugin.ResourceTypes),
+		Author:              plugin.Author.String,
+		EntryPath:           plugin.EntryPath.String,
+		RootPath:            plugin.RootPath.String,
+	}
+
+	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
+		PluginInfo:          pluginInfo,
+		RootPath:            rootPath,
+		TaskHandlerRegistry: app.TaskHandlerRegistry,
+		SiteBrowserRegistry: app.SiteBrowserRegistry,
+		Storage:             app.PluginStorageService,
+		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
+		StorePath: &storePathQueryAdapter{
+			taskSvc:       app.TaskService,
+			storeRepo:     resource.NewResourceStoreRepository(app.db),
+			persistentSvc: app.PersistentStoreService,
+		},
+		UrlListener: &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: plugin},
+		FrontendEvent: &wailsFrontendEventProvider{
+			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
+			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
+		},
+	})
+
+	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
+	if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
+		PluginInfo:          pluginInfo,
+		PluginCtx:           pluginCtx,
+		TaskHandlerRegistry: app.TaskHandlerRegistry,
+		SiteBrowserRegistry: app.SiteBrowserRegistry,
+		MainHWND:            app.mainHWND,
+	}); err != nil {
+		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
+	}
+	return nil
+}
+
+func (p *pluginProcessParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
+	return nil // 进程停止无否决条件（任务级拦截由 taskManagerParticipant 负责）
+}
+
+func (p *pluginProcessParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	if err := p.app.pluginLoader.UnloadPlugin(pluginPublicId); err != nil {
+		logger.Log.Warnf("停用卸载插件进程失败: %s, %v", pluginPublicId, err)
+	}
+}
+
 // taskManagerParticipant 任务生命周期参与者：停用/换版前拦截该插件运行中任务的操作。
 // 卸载/更新/重装统一拦「运行中」（Paused 不拦，存续由用户处置）；取消信任不否决——
 // 安全意图执行，任务代价由前端确认对话框明示
 type taskManagerParticipant struct {
 	mgr *taskManager.Manager
+}
+
+func (p *taskManagerParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
+	return nil // 任务域不持插件激活痕迹，纯否决型参与者
 }
 
 func (p *taskManagerParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
@@ -1718,6 +1723,8 @@ func (app *App) shutdownPlugins() {
 		return
 	}
 
+	// 关机直清不经生命周期状态机：主进程即将退出，前端注销事件推送无接收方、
+	// 停用否决也无意义，直接停进程并清注册表即可
 	// UnloadAll 返回已卸载的插件 ID 列表，并已注销 TaskHandler/SiteBrowser
 	ids := app.pluginLoader.UnloadAll()
 

@@ -121,24 +121,25 @@ func (s *Service) GetPendingUpgrades(ctx context.Context) []*domain.PendingUpgra
 
 // ApplyPendingUpgrade 答复「升级」：对 available 待办执行运行期换版（当次会话生效）。
 // 走 ReinstallFromPath 内部链（参与者否决 → 停进程 → 删文件 → 重装并激活），zip 路径由服务端
-// 从待办项自持（检测期记录），不经前端回传；运行中任务由参与者否决（Paused 不拦）
-func (s *Service) ApplyPendingUpgrade(ctx context.Context, publicId string) (*entity2.Plugin, error) {
+// 从待办项自持（检测期记录），不经前端回传；运行中任务由参与者否决（Paused 不拦）。
+// degraded 非空表示换版成功但激活失败（降级文案，换版主体不回滚）
+func (s *Service) ApplyPendingUpgrade(ctx context.Context, publicId string) (*entity2.Plugin, string, error) {
 	entry, err := s.claimPending(publicId)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if entry.Kind != PendingKindAvailable {
 		s.finishPending(publicId, false)
-		return nil, errors.New("only available pending upgrade can be applied")
+		return nil, "", errors.New("only available pending upgrade can be applied")
 	}
 
-	plugin, err := s.ReinstallFromPath(ctx, publicId, entry.PackagePath, true)
+	plugin, degraded, err := s.ReinstallFromPath(ctx, publicId, entry.PackagePath, true)
 	s.finishPending(publicId, err == nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	logger.Log.Infof("插件更新待办已执行换版: %s -> v%s (buildId=%s)", publicId, entry.TargetVersion, entry.TargetBuildID)
-	return plugin, nil
+	return plugin, degraded, nil
 }
 
 // DeclinePendingUpgrade 答复「跳过此构建」：把目标 buildId 写入拒绝标记并移除待办。

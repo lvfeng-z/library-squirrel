@@ -247,6 +247,15 @@ func (l *Loader) unregisterUrlListener(pluginPublicId string) {
 // pluginPublicId: 插件公开ID
 // deps: 加载插件所需的依赖（含 HostDeps 用于 HostService 注册）
 func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps PluginProcessDeps) error {
+	// 活条目拒绝守卫：同名插件已有活跃进程条目时拒绝二次加载（与三注册表 already-exists
+	// 守卫对齐——裸覆盖旧条目会令旧进程失去管理句柄成为孤儿）
+	l.mu.Lock()
+	_, loaded := l.processes[pluginPublicId]
+	l.mu.Unlock()
+	if loaded {
+		return fmt.Errorf("%w: %s", ErrPluginAlreadyLoaded, pluginPublicId)
+	}
+
 	// 契约版本兼容校验（加载期终检，与安装期 loadPluginPackage 预检互为兜底）
 	if err := ValidateContractVersion(deps.PluginInfo.ContractVersion); err != nil {
 		return fmt.Errorf("%w: %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
@@ -486,7 +495,8 @@ func (l *Loader) GetPluginRuntimeStatus(pluginPublicId string) *RuntimeStatus {
 	}
 }
 
-// handlePluginCrash 处理插件进程崩溃
+// handlePluginCrash 处理插件进程崩溃：摘除进程表条目并触发崩溃通知。
+// 任务处理器/站点浏览器/URL 监听等运行痕迹的清理统一经生命周期参与者的 OnStopped 执行
 func (l *Loader) handlePluginCrash(pluginPublicId string) {
 	l.mu.Lock()
 	_, stillInMap := l.processes[pluginPublicId]
@@ -496,9 +506,6 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 	l.mu.Unlock()
 
 	if stillInMap {
-		l.taskHandlerRegistry.UnregisterAll(pluginPublicId)
-		l.siteBrowserRegistry.UnregisterAll(pluginPublicId)
-		l.unregisterUrlListener(pluginPublicId)
 		if l.crashNotifier != nil {
 			l.crashNotifier(pluginPublicId)
 		}

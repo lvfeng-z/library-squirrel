@@ -45,6 +45,11 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   'plugin-official': { key: 'plugin-official', label: '官方', category: 'plugin' },
   'plugin-unverified': { key: 'plugin-unverified', label: '未信任', category: 'plugin' },
   'plugin-trusted': { key: 'plugin-trusted', label: '已信任', category: 'plugin' },
+  // —— 插件生命周期（lifecycleState 直拼：inactive=未激活、active=运行中为稳定态；activating/stopping 为瞬态） ——
+  'plugin-inactive': { key: 'plugin-inactive', label: '未激活', category: 'plugin' },
+  'plugin-activating': { key: 'plugin-activating', label: '激活中', category: 'plugin' },
+  'plugin-active': { key: 'plugin-active', label: '运行中', category: 'plugin' },
+  'plugin-stopping': { key: 'plugin-stopping', label: '停用中', category: 'plugin' },
   // —— 备份引用态（有主=被业务行引用，由回收站/插件流程管理；无主=可清理） ——
   'backup-referenced': { key: 'backup-referenced', label: '有主', category: 'backup' },
   'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' },

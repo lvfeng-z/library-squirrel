@@ -208,6 +208,16 @@ export class PluginQueryDTO {
  */
 export class PluginStatusDTO {
     /**
+     * 生命周期状态（inactive=未激活、activating=激活中、active=运行中、stopping=停用中）
+     */
+    "lifecycleState": string;
+
+    /**
+     * 最近一次激活失败原因（空=无；下次激活成功时清空）
+     */
+    "activateError": string;
+
+    /**
      * 运行时状态
      */
     "isRunning": boolean;
@@ -232,6 +242,12 @@ export class PluginStatusDTO {
 
     /** Creates a new PluginStatusDTO instance. */
     constructor($$source: Partial<PluginStatusDTO> = {}) {
+        if (!("lifecycleState" in $$source)) {
+            this["lifecycleState"] = "";
+        }
+        if (!("activateError" in $$source)) {
+            this["activateError"] = "";
+        }
         if (!("isRunning" in $$source)) {
             this["isRunning"] = false;
         }
@@ -261,22 +277,22 @@ export class PluginStatusDTO {
      * Creates a new PluginStatusDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginStatusDTO {
-        const $$createField3_0 = $$createType4;
-        const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType6;
-        const $$createField6_0 = $$createType7;
+        const $$createField5_0 = $$createType4;
+        const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("taskHandlers" in $$parsedSource) {
-            $$parsedSource["taskHandlers"] = $$createField3_0($$parsedSource["taskHandlers"]);
+            $$parsedSource["taskHandlers"] = $$createField5_0($$parsedSource["taskHandlers"]);
         }
         if ("siteBrowsers" in $$parsedSource) {
-            $$parsedSource["siteBrowsers"] = $$createField4_0($$parsedSource["siteBrowsers"]);
+            $$parsedSource["siteBrowsers"] = $$createField6_0($$parsedSource["siteBrowsers"]);
         }
         if ("frontendExtensions" in $$parsedSource) {
-            $$parsedSource["frontendExtensions"] = $$createField5_0($$parsedSource["frontendExtensions"]);
+            $$parsedSource["frontendExtensions"] = $$createField7_0($$parsedSource["frontendExtensions"]);
         }
         if ("urlPatterns" in $$parsedSource) {
-            $$parsedSource["urlPatterns"] = $$createField6_0($$parsedSource["urlPatterns"]);
+            $$parsedSource["urlPatterns"] = $$createField8_0($$parsedSource["urlPatterns"]);
         }
         return new PluginStatusDTO($$parsedSource as Partial<PluginStatusDTO>);
     }

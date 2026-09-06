@@ -224,6 +224,20 @@
   --app-status-plugin-trusted-text: var(--app-status-done-text);
   --app-status-plugin-trusted-border: var(--app-status-done-border);
 
+  /* —— 插件生命周期（lifecycle：inactive=未激活→灰、activating=激活中瞬态→橙（同任务进行中）、active=运行中稳定态→绿、stopping=停用中瞬态→黄（同任务停止中））—— */
+  --app-status-plugin-inactive-bg: var(--app-status-idle-bg);
+  --app-status-plugin-inactive-text: var(--app-status-idle-text);
+  --app-status-plugin-inactive-border: var(--app-status-idle-border);
+  --app-status-plugin-activating-bg: var(--app-status-active-bg);
+  --app-status-plugin-activating-text: var(--app-status-active-text);
+  --app-status-plugin-activating-border: var(--app-status-active-border);
+  --app-status-plugin-active-bg: var(--app-status-done-bg);
+  --app-status-plugin-active-text: var(--app-status-done-text);
+  --app-status-plugin-active-border: var(--app-status-done-border);
+  --app-status-plugin-stopping-bg: var(--app-status-warn-bg);
+  --app-status-plugin-stopping-text: var(--app-status-warn-text);
+  --app-status-plugin-stopping-border: var(--app-status-warn-border);
+
   --app-status-toggle-disabled-bg: var(--app-status-idle-bg);
   --app-status-toggle-disabled-text: var(--app-status-idle-text);
   --app-status-toggle-disabled-border: var(--app-status-idle-border);

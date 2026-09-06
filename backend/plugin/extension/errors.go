@@ -8,4 +8,6 @@ var (
 	ErrExtensionNotFound = errors.New("extension not found")
 	// ErrExtensionAlreadyExists 扩展点已存在
 	ErrExtensionAlreadyExists = errors.New("extension already exists")
+	// ErrPluginAlreadyLoaded 插件进程已加载（同名插件已有活跃进程条目）
+	ErrPluginAlreadyLoaded = errors.New("plugin already loaded")
 )

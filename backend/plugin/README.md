@@ -23,7 +23,7 @@
 | `Page(query)` | 分页查询 |
 | `CheckInstalled(publicId)` | 检查是否已安装 |
 | `GetPluginRoot()` | 获取插件运行时根目录 |
-| `GetPluginStatus(pluginPublicId)` | 获取插件运行状态 |
+| `GetPluginStatus(pluginPublicId)` | 获取插件运行状态（生命周期状态、最近一次激活失败原因、进程存活、扩展点列表） |
 | `GetPendingUpgrades()` | 获取检查更新待办（available 可答复计入红点；forced/error 只读告知） |
 | `ApplyPendingUpgrade(pluginPublicId)` | 答复「升级」：对 available 待办执行运行期换版（当次会话生效；运行中任务被参与者否决） |
 | `DeclinePendingUpgrade(pluginPublicId)` | 答复「跳过此构建」：持久化拒绝标记（`UpgradeDeclinedBuildID`），下次启动对等值 buildId 静默跳过 |
@@ -43,9 +43,9 @@
 - **来源（Source）**：插件安装来源（bundled/local/url/marketplace），由主程序按安装入口判定、写入 `plugin.Source`，不由插件声明。
 - **信任标记（Trusted）**：`plugin.Trusted`（bool）。bundled 默认 true；第三方经用户知情同意后 true；false 则不激活（运行门控）。
 - **官方身份（Official）**：`plugin.Official`（bool；NULL/false=未证实）。判定=内容摘要命中主程序内嵌的官方指纹名单（`backend/config/locked_config.yaml`，构建管线生成维护、不参与配置两层合并、磁盘无覆盖物）。与渠道（source）、信任（trusted）均正交：bundled 渠道不短路判定（清单被换自制 zip 时 source=bundled 但 official=false），官方身份恒不接入信任/运行门控与升级资格。安装路径 `installCore` 统一推导（重装换内容随此重算）；启动扫描对判变不成立的已装行按已装目录摘要顺带证实（存量纠正，buildId 命中名单为门槛）。实现在 `official.go`，设计见 `../library-squirrel-docs/plan/插件官方身份判定与来源维度拆分方案.md`。
-- **构建身份（BuildID）**：构建管线注入 plugin.json `buildId` 字段的 git describe 标识（同源码状态重构建永远同值，与构建环境无关）。`InstallBundled` 以它做捆绑插件升级检测；静态资产 URL/ETag 缓存键同源（激活时优先 buildId，未打标包回落 version，见 `app.go` activatePlugin）。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除（无判据性读取方）。设计见 `../library-squirrel-docs/plan/插件构建身份与升级判据机制.md`。
+- **构建身份（BuildID）**：构建管线注入 plugin.json `buildId` 字段的 git describe 标识（同源码状态重构建永远同值，与构建环境无关）。`InstallBundled` 以它做捆绑插件升级检测；静态资产 URL/ETag 缓存键同源（优先 buildId，未打标包回落 version，键取自 `app.go` 的 `manifestCacheKey`，静态资源/前端扩展参与者在激活相位消费）。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除（无判据性读取方）。设计见 `../library-squirrel-docs/plan/插件构建身份与升级判据机制.md`。
 - **检查更新待办（pendingUpgrade，内存态）**：启动期检测出的更新事项（available/forced/error 三类），进程生命周期、重启重检；前端「插件」菜单红点与管理页待更新区块消费。落库的只有拒绝标记 `UpgradeDeclinedBuildID`（「跳过此构建」持久化，重装全字段覆盖自然清零）。设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`。
-- **PluginStatus**：插件运行时状态（进程存活、激活情况等）。
+- **PluginStatus**：插件运行状态——生命周期状态（inactive/activating/active/stopping）与最近一次激活失败原因（`GetPluginStatus` 取自状态机只读快照）、进程存活/PID、扩展点列表。
 - **PluginStorage（插件自存信息）**：统一 KV 存储（`plugin_storage` 单表），取代旧的 `plugin.plugin_data` 与 `secure_storage`。明文项直接读写，加密项 `SetValueEncrypted` 存密文（`util/crypto` 加解密）、读取自动解密。
 
 ## 依赖关系
@@ -57,7 +57,8 @@
 
 - **安装包备份生命周期**：备份（`plugin.BackupID` 内嵌引用 backup 清单行）仅服务**当前安装版本**的重装修复（`Reinstall` 以备份文件为安装源）。换版/重装成功后直清旧备份（installCore 末尾，行内引用已指向新备份）；卸载时清空引用并直清备份（失败均留无主由治理保留期兜底）。行永不物理删（卸载仅标记）——重装复用行时 `plugin_storage` 按 ID 延续、设置不丢。第三方插件卸载/换版后重装或回退须自备安装包（bundled 不受影响：重启自动重装用捆绑 zip）。
 
-- **停用生命周期（能力分散、契约集中）**：停用/换版统一走 `stopRuntime`（`lifecycle.go`）——参与者 `PrepareStop` 否决检查 → 运行时停止器（loader.UnloadPlugin，停进程+清其所属注册表）→ 参与者 `OnStopped` 清痕迹；`removeFiles` 独立成原子操作。凡持有插件运行时痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配静态资源/前端扩展/taskManager 三个参与者），注册表是停用清理完备性的唯一审计点。taskManager 参与者在卸载/更新/重装时否决存在运行中任务的操作（Processing/Pausing/Stopping/WaitingForInput；Paused 不拦），取消信任不否决（代价由前端确认框按 `GetActiveTaskCount` 明示后 force 强制停）。卸载=stopRuntime+removeFiles+标记；重装/换版=stopRuntime+removeFiles+installCore+Activate；取消信任=仅 stopRuntime。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置。**崩溃路径对称**：loader 崩溃清理后经 `SetCrashNotifier` 回调 `NotifyPluginCrashed`，执行同一参与者 OnStopped 集合（不否决、不停进程）。设计见 `../library-squirrel-docs/plan/插件热重载体系完善方案.md`。
+- **生命周期状态机与激活**：`lifecycleManager`（`lifecycle_manager.go`）以 publicId 为键跟踪插件状态——未激活（不占状态表项）/激活中/运行中/停用中；互斥锁在参与者相位回调执行期间保持持有，生命周期操作全程串行，参与者实现禁止回调生命周期方法（重入死锁）。激活唯一入口 `ActivatePlugin`（`service.go`，启动期批量加载/安装/信任三条路径共用）：信任门控与必填字段校验 → 状态机读 manifest → 参与者按注册顺序正向执行 Activate 注册本域痕迹；任一相位失败即全体参与者逆序 OnStopped 统一回滚（幂等清理）并记录失败原因（下次激活成功时清除，经 `GetPluginStatus` 只读快照透出）；与该插件进行中瞬态（激活中/停用中）交错的调用被 `ErrPluginLifecycleBusy` 拒绝。设计见 `../library-squirrel-docs/plan/插件生命周期统一治理方案.md`。
+- **停用与崩溃清理（参与者相位编排）**：停用=全体参与者 PrepareStop 否决检查（force=true 跳过；否决时插件保持运行）→ 按注册逆序 OnStopped 清痕迹。凡持有插件运行痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配四个参与者，注册顺序即激活相位顺序：静态资源 → 前端扩展 → 进程 → 任务否决；进程参与者起停子进程并清理任务处理器/站点浏览器/URL 监听注册表，激活相位依赖的服务与 mainHWND 就绪晚于装配、经 `*App` 惰性读取），注册表是停用清理完备性的唯一审计点——逆序清理令进程域先停、痕迹域后清。插件目录删除（`removeFiles`）独立成原子操作。组合链：卸载=停用+删文件+标记已卸载并清备份引用；重装/换版=停用+删文件+installCore+激活；取消信任=仅停用（不删文件），停用成功才落标记。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置——taskManager 参与者在卸载/换版时否决存在运行中任务的操作（Processing/Pausing/Stopping/WaitingForInput；Paused 不拦），取消信任不否决（代价由前端确认框按 `GetActiveTaskCount` 明示后 force 强制停）。**崩溃路径对称**：loader 崩溃清理摘除进程表条目后经 `SetCrashNotifier` 回调 `NotifyPluginCrashed`，状态机按注册逆序执行同一参与者 OnStopped 集合（仅运行中状态执行；不否决、不停进程）；`LoadPluginProcess` 入口对同名插件已有活跃进程条目返回 `ErrPluginAlreadyLoaded`。设计见 `../library-squirrel-docs/plan/插件热重载体系完善方案.md`。
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
 - **检查更新流（bundled 生产者）**：检测在 pre-Run（`InstallBundled`，仅此入口——强制分支直装会绕过参与者否决，运行期一律走 `ApplyPendingUpgrade`）；提醒=前端 mounted 拉取 `GetPendingUpgrades` 写 store，经通用菜单红点注册表在「插件」菜单按钮显示 available 数；答复当次生效（`ApplyPendingUpgrade` 走换版链热重载，插件管理页行内升级/跳过按钮 + 多选批量升级）；未打标包与拒绝标记等值时不进待办（维持静默/跳过）；非 bundled 网络检查更新留接口未实现（待办列表/DTO/handler 命名不绑死 bundled）。设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`。
-- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`activatePlugin` 起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `../library-squirrel-docs/plan/插件信任模型最小集方案.md`。
+- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`ActivatePlugin`（唯一激活入口）起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `../library-squirrel-docs/plan/插件信任模型最小集方案.md`。

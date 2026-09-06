@@ -43,8 +43,14 @@ async function reInstall(pluginPublicId: string | undefined | null) {
     return
   }
   try {
-    await pluginApi.pluginReinstall(pluginPublicId)
-    ElMessage({ type: 'success', message: '修复完成' })
+    const result = await pluginApi.pluginReinstall(pluginPublicId)
+    // 重装成功响应的降级判定：msg 非 "success" 即后端降级文案（重装成功但激活失败），
+    // 以 warning 取代默认成功提示——同一动作不弹两条成功系提示
+    if (result.msg !== 'success') {
+      ElMessage.warning(result.msg)
+    } else {
+      ElMessage({ type: 'success', message: '修复完成' })
+    }
   } catch (e) {
     ElMessage({ type: 'error', message: `修复失败，${(e as Error).message}` })
   }

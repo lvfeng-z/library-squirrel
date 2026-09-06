@@ -169,7 +169,7 @@ func TestApplyPendingUpgradeRejectsNonAvailable(t *testing.T) {
 	const pid = "com.test.plugin"
 	svc.recordPending(&pendingUpgradeEntry{PublicID: pid, Kind: PendingKindForced})
 
-	if _, err := svc.ApplyPendingUpgrade(context.Background(), pid); err == nil {
+	if _, _, err := svc.ApplyPendingUpgrade(context.Background(), pid); err == nil {
 		t.Fatal("forced 待办执行换版应报错")
 	}
 	pending := svc.GetPendingUpgrades(context.Background())

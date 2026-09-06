@@ -20,6 +20,16 @@ func Success[T any](data T) *ApiResponse[T] {
 	}
 }
 
+// SuccessWithMsg 成功响应（自定义 Msg）：操作主体成功但需向用户附带降级说明时使用
+// （如插件已安装/已信任但激活失败），前端成功分支按 Msg 与默认文案 "success" 的差异提示降级
+func SuccessWithMsg[T any](data T, msg string) *ApiResponse[T] {
+	return &ApiResponse[T]{
+		Success: true,
+		Msg:     msg,
+		Data:    data,
+	}
+}
+
 // Error 错误响应
 func Error[T any](message string) *ApiResponse[T] {
 	var zero T

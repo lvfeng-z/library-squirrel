@@ -109,19 +109,11 @@ type BackupProvider interface {
 	DeleteBackup(ctx context.Context, id int64) error
 }
 
-// PluginActivator 插件激活器接口，由应用层实现，负责读取 manifest、注册静态资源、前端扩展和启动子进程
-type PluginActivator interface {
-	// Activate 激活已安装的插件
-	Activate(plugin *entity2.Plugin) error
-}
-
 // Service 插件服务
 type Service struct {
 	repo           Repository
 	backupProvider BackupProvider
-	activator      PluginActivator
-	participants   []LifecycleParticipant
-	runtimeStopper func(pluginPublicId string) error
+	lifecycle      *lifecycleManager
 
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
@@ -136,13 +128,27 @@ func NewService(repo Repository, backupProvider BackupProvider) *Service {
 	return &Service{
 		repo:            repo,
 		backupProvider:  backupProvider,
+		lifecycle:       newLifecycleManager(),
 		pendingUpgrades: make(map[string]*pendingUpgradeEntry),
 	}
 }
 
-// SetActivator 设置插件激活器
-func (s *Service) SetActivator(activator PluginActivator) {
-	s.activator = activator
+// ActivatePlugin 激活插件（唯一激活入口，启动期批量加载/安装/信任三条路径共用）：
+// 信任门控与必填字段校验后，交生命周期状态机读 manifest 并按参与者相位编排注册。
+// 状态机内建幂等：已运行的插件直接跳过返回成功；与该插件进行中瞬态交错的调用被
+// ErrPluginLifecycleBusy 拒绝
+func (s *Service) ActivatePlugin(ctx context.Context, plugin *entity2.Plugin) error {
+	if !plugin.PublicID.Valid || plugin.PublicID.String == "" {
+		return fmt.Errorf("插件缺少 PublicID")
+	}
+	// 信任门控：trusted 非真（未设置或显式 false）不激活，需用户在管理页显式信任后重新激活
+	if !plugin.Trusted.Valid || !plugin.Trusted.Bool {
+		return fmt.Errorf("插件未信任，拒绝激活: %s", plugin.PublicID.String)
+	}
+	if !plugin.RootPath.Valid || plugin.RootPath.String == "" {
+		return fmt.Errorf("插件缺少 RootPath")
+	}
+	return s.lifecycle.activate(ctx, plugin)
 }
 
 // RuntimeStatusProvider 运行时状态提供者接口
@@ -239,16 +245,17 @@ func (s *Service) GetByPublicId(ctx context.Context, publicId string) (*entity2.
 
 // InstallFromPath 从本地插件包路径安装插件。来源固定 local；trusted 由调用方透传用户的知情同意结果，
 // 缺省/绕过 UI 的异常安装为 false（运行门控：trusted=false 的插件不激活，需用户在管理页显式信任）。
-func (s *Service) InstallFromPath(ctx context.Context, packagePath string, trusted bool) (*entity2.Plugin, error) {
+// degraded 非空表示安装成功但激活失败（降级文案，安装主体不回滚）
+func (s *Service) InstallFromPath(ctx context.Context, packagePath string, trusted bool) (*entity2.Plugin, string, error) {
 	// 验证文件存在
 	if !util.FileExists(packagePath) {
-		return nil, fmt.Errorf("plugin package not found: %s", packagePath)
+		return nil, "", fmt.Errorf("plugin package not found: %s", packagePath)
 	}
 
 	// 加载插件包
 	installDTO, err := s.loadPluginPackage(packagePath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	return s.install(ctx, installDTO, false, installContext{Source: SourceLocal, Trusted: trusted})
@@ -330,28 +337,31 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	return installDTO, nil
 }
 
-// install 安装插件（包含激活）。reinstall=true 为重装/升级（复用同 publicId 原记录覆盖），false 为全新安装（已存在且未卸载则报错）
-func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool, ictx installContext) (*entity2.Plugin, error) {
+// install 安装插件（包含激活）。reinstall=true 为重装/升级（复用同 publicId 原记录覆盖），false 为全新安装（已存在且未卸载则报错）。
+// degraded 非空表示安装主体成功（DB 已落库）但激活失败，携带降级文案供前端提示；未信任安装被
+// 信任门控拦下属设计内状态（待用户在管理页显式信任），不产生降级
+func (s *Service) install(ctx context.Context, installDTO *domain.PluginInstallDTO, reinstall bool, ictx installContext) (*entity2.Plugin, string, error) {
 	plugin, err := s.installCore(ctx, installDTO, reinstall, ictx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	// 激活插件
-	if s.activator != nil {
-		if err := s.activator.Activate(plugin); err != nil {
-			logger.Log.Warnf("插件激活失败: %s, %v", installDTO.PublicID, err)
+	// 激活插件（含信任门控）；激活失败不回滚安装主体，原因经 degraded 透传前端
+	if err := s.ActivatePlugin(ctx, plugin); err != nil {
+		logger.Log.Warnf("插件激活失败: %s, %v", installDTO.PublicID, err)
+		if ictx.Trusted {
+			return plugin, fmt.Sprintf("已安装（已信任）但激活失败: %v", err), nil
 		}
 	}
 
-	return plugin, nil
+	return plugin, "", nil
 }
 
 // InstallBundled 安装捆绑插件（检查更新流的检测入口）。仅 pre-Run 由启动扫描调用：
 // 运行期换版必须走 ApplyPendingUpgrade（含参与者否决），勿复用本方法——强制分支的直装会绕过否决。
 // 分支优先级（已装且未卸载、判变成立时）：契约不兼容强制 > 拒绝标记短路 > 未打标记默升级 > 记 available 待办。
 // 仅 bundled 来源记录参与判变（尊重用户手动安装的版本）；非 bundled 静默跳过。
-// 与 InstallFromPath 的区别：不调用 activator.Activate()，已安装时不报错
+// 与 InstallFromPath 的区别：不激活（pre-Run 阶段窗口与事件通道未就绪），已安装时不报错
 func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*entity2.Plugin, error) {
 	// 加载插件包：失败（含契约不兼容装不进）记 error 待办供管理页告知，原错误继续上抛（调用方记日志）
 	installDTO, err := s.loadPluginPackage(packagePath)
@@ -588,27 +598,28 @@ func (s *Service) ClearBackupRefsByBackupIDs(ctx context.Context, ids []int64) e
 	return s.repo.ClearBackupRefsByBackupIds(ctx, ids)
 }
 
-// Reinstall 重新安装插件（trusted 由调用方透传；source 沿用原插件来源）
-func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, trusted bool) (*entity2.Plugin, error) {
+// Reinstall 重新安装插件（trusted 由调用方透传；source 沿用原插件来源）。
+// degraded 非空表示重装成功但激活失败（降级文案，重装主体不回滚）
+func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, trusted bool) (*entity2.Plugin, string, error) {
 	// 获取插件
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if plugin == nil {
-		return nil, ErrPluginNotFound
+		return nil, "", ErrPluginNotFound
 	}
 	if !plugin.BackupID.Valid || plugin.BackupID.Int64 == 0 {
-		return nil, ErrBackupNotFound
+		return nil, "", ErrBackupNotFound
 	}
 
 	// 获取备份（行内 BackupID 直查保管清单）
 	backup, err := s.backupProvider.GetById(ctx, plugin.BackupID.Int64)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if backup == nil {
-		return nil, ErrBackupNotFound
+		return nil, "", ErrBackupNotFound
 	}
 
 	// 构建备份文件路径
@@ -625,35 +636,36 @@ func (s *Service) Reinstall(ctx context.Context, pluginPublicId string, trusted 
 	return s.ReinstallFromPath(ctx, pluginPublicId, packagePath, trusted)
 }
 
-// ReinstallFromPath 从指定路径重新安装插件。source 沿用原插件来源；bundled 强制 trusted=true，第三方用调用方透传的 trusted
-func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, trusted bool) (*entity2.Plugin, error) {
+// ReinstallFromPath 从指定路径重新安装插件。source 沿用原插件来源；bundled 强制 trusted=true，第三方用调用方透传的 trusted。
+// degraded 非空表示重装成功但激活失败（降级文案，重装主体不回滚）
+func (s *Service) ReinstallFromPath(ctx context.Context, pluginPublicId string, packagePath string, trusted bool) (*entity2.Plugin, string, error) {
 	if packagePath == "" {
-		return nil, fmt.Errorf("package path is required")
+		return nil, "", fmt.Errorf("package path is required")
 	}
 
 	// 获取原插件信息
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if plugin == nil {
-		return nil, ErrPluginNotFound
+		return nil, "", ErrPluginNotFound
 	}
 
 	// 停止旧插件运行时并删除旧文件（不修改数据库状态）
 	if err := s.deactivate(ctx, pluginPublicId, PluginStopOpUpdate); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// 加载新插件包
 	installDTO, err := s.loadPluginPackage(packagePath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// 验证 publicId 一致
 	if installDTO.PublicID != pluginPublicId {
-		return nil, fmt.Errorf("plugin publicId mismatch")
+		return nil, "", fmt.Errorf("plugin publicId mismatch")
 	}
 
 	// 重新安装（来源沿用原插件、bundled 强制信任、第三方沿用透传 trusted）
@@ -677,35 +689,37 @@ func (s *Service) Uninstall(ctx context.Context, pluginPublicId string) error {
 // SetTrusted 设置插件信任状态（手动信任/取消信任入口）。
 // trusted=true 落标记后立即激活；trusted=false 即时停用运行时（停进程+清痕迹，不删文件不卸载标记），
 // 停用成功才落标记——参与者否决（如运行中任务拦截）时插件保持运行、标记不变；
-// force=true 跳过否决检查（前端确认对话框明示代价后传入）
-func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool, force bool) (*entity2.Plugin, error) {
+// force=true 跳过否决检查（前端确认对话框明示代价后传入）。
+// degraded 非空表示信任标记已落库但激活失败（降级文案，标记不回滚）
+func (s *Service) SetTrusted(ctx context.Context, pluginPublicId string, trusted bool, force bool) (*entity2.Plugin, string, error) {
 	plugin, err := s.repo.GetByPublicId(ctx, pluginPublicId)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if plugin == nil {
-		return nil, ErrPluginNotFound
+		return nil, "", ErrPluginNotFound
 	}
 
 	if !trusted {
-		if err := s.stopRuntime(ctx, pluginPublicId, PluginStopOpUntrust, force); err != nil {
-			return nil, err
+		if err := s.lifecycle.deactivate(ctx, pluginPublicId, PluginStopOpUntrust, force); err != nil {
+			return nil, "", err
 		}
 	}
 
 	plugin.Trusted = sql.NullBool{Bool: trusted, Valid: true}
 	if err := s.repo.Save(ctx, plugin); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	if trusted && s.activator != nil {
-		if err := s.activator.Activate(plugin); err != nil {
+	if trusted {
+		if err := s.ActivatePlugin(ctx, plugin); err != nil {
 			logger.Log.Warnf("信任后激活插件失败: %s, %v", pluginPublicId, err)
+			return plugin, fmt.Sprintf("已安装（已信任）但激活失败: %v", err), nil
 		}
 	}
 
 	logger.Log.Infof("插件信任状态已更新: %s trusted=%v", pluginPublicId, trusted)
-	return plugin, nil
+	return plugin, "", nil
 }
 
 // uninstall 卸载插件核心逻辑
@@ -761,7 +775,7 @@ func (s *Service) deactivate(ctx context.Context, pluginPublicId string, op Plug
 
 	logger.Log.Infof("正在停用插件: %s (op=%s)", pluginPublicId, op)
 
-	if err := s.stopRuntime(ctx, pluginPublicId, op, false); err != nil {
+	if err := s.lifecycle.deactivate(ctx, pluginPublicId, op, false); err != nil {
 		return err
 	}
 
@@ -790,6 +804,13 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 	}
 
 	status := &PluginStatusDTO{}
+
+	// 生命周期状态与最近一次激活失败原因
+	lifecycleState, activateErr := s.lifecycle.lifecycleStatusOf(pluginPublicId)
+	status.LifecycleState = lifecycleState
+	if activateErr != nil {
+		status.ActivateError = activateErr.Error()
+	}
 
 	// 运行时状态
 	if s.runtimeStatusProvider != nil {
