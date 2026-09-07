@@ -6,28 +6,19 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 )
 
-// Task 任务
+// TaskTypePluginDownload 插件下载任务的 task_type 取值（作品任务领域行 work_task 的行集来源）
+const TaskTypePluginDownload = "plugin-download"
+
+// Task 任务核心控制行：承载生命周期与树形关系；插件下载领域字段在 work_task（1:1 共享主键）、
+// 分享接收领域字段在 share_task，均不落本表
 type Task struct {
 	*model.BaseEntity                // 嵌入基础实体
 	HasChild          sql.NullBool   `gorm:"column:has_child" json:"hasChild"`
 	Pid               sql.NullInt64  `gorm:"column:pid" json:"pid"`
 	TaskName          sql.NullString `gorm:"column:task_name" json:"taskName"`
-	SiteID            sql.NullInt64  `gorm:"column:site_id" json:"siteId"`
-	SiteWorkID        sql.NullString `gorm:"column:site_work_id" json:"siteWorkId"`
-	URL               sql.NullString `gorm:"column:url" json:"url"`
 	Status            int            `gorm:"column:status" json:"status"`
-	PendingResourceID sql.NullInt64  `gorm:"column:pending_resource_id" json:"pendingResourceId"`
-	Continuable       sql.NullBool   `gorm:"column:continuable" json:"continuable"`
-	PluginPublicID    sql.NullString `gorm:"column:plugin_public_id" json:"pluginPublicId"`
-	PluginExtensionID sql.NullString `gorm:"column:plugin_extension_id" json:"pluginExtensionId"`
-	PluginData        sql.NullString `gorm:"column:plugin_data" json:"pluginData"`
 	ErrorMessage      sql.NullString `gorm:"column:error_message" json:"errorMessage"`
-	StoreRoles        sql.NullString `gorm:"column:store_roles" json:"storeRoles"`            // 本次执行所选 store_type 集合(逗号分隔);空/全集表示全量
-	InvolvedRoles     sql.NullString `gorm:"column:involved_roles" json:"involvedRoles"`      // 任务涉及的 store_type 集合(创建期声明,universe;逗号分隔);NULL=未确定/默认,执行期插件下全量
-	ResourceType      sql.NullString `gorm:"column:resource_type" json:"resourceType"`        // 任务产生的 resource 的资源类型(创建期声明,预定义值);NULL=未声明
-	IncludeWorkInfo   bool           `gorm:"column:include_work_info" json:"includeWorkInfo"` // 是否执行作品元数据板块
-	TaskType          sql.NullString `gorm:"column:task_type" json:"taskType"`                // 任务类型:NULL/空=插件任务;内置类型(share-receive)经 taskManager 注册的执行面策略执行
-	Payload           sql.NullString `gorm:"column:payload" json:"payload"`                   // 内置任务的执行载荷 JSON(由该类型执行面自有解析,任务模块不感知内容);插件任务恒 NULL
+	TaskType          sql.NullString `gorm:"column:task_type" json:"taskType"` // 任务类型:plugin-download=插件下载;其余取值=内置类型(经 taskManager 注册的执行面策略执行)
 }
 
 // NewTask 创建任务

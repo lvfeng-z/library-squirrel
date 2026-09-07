@@ -2,6 +2,8 @@ package migration
 
 import (
 	"database/sql"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -80,6 +82,86 @@ func TestForeignKeysDeclared(t *testing.T) {
 		if !done {
 			t.Fatalf("表 %s 的外键声明不完整", spec.Table)
 		}
+	}
+}
+
+// TestTaskDomainTablesSchema 任务三表 schema 锚定：列集与外键在册。
+// task 为纯核心控制表（9 核心列，无任何领域列）；work_task/share_task 与 task 1:1 共享主键
+// （主键 id 即所属 task.id，无独立任务外键列）：work_task 承载插件下载任务领域列，
+// share_task 承载分享接收领域列
+func TestTaskDomainTablesSchema(t *testing.T) {
+	db := openFKTestDB(t)
+
+	assertColumns := func(table string, want []string) {
+		t.Helper()
+		var rows []struct{ Name string }
+		if err := db.Raw(fmt.Sprintf("PRAGMA table_info('%s')", table)).Scan(&rows).Error; err != nil {
+			t.Fatalf("读取 %s 列清单失败: %v", table, err)
+		}
+		got := make([]string, 0, len(rows))
+		for _, r := range rows {
+			got = append(got, r.Name)
+		}
+		slices.Sort(got)
+		sorted := slices.Clone(want)
+		slices.Sort(sorted)
+		if !slices.Equal(got, sorted) {
+			t.Fatalf("表 %s 列集不符:\n期望 %v\n实际 %v", table, sorted, got)
+		}
+	}
+
+	// task 仅 9 核心列：任何领域列回流本表即断言失败
+	assertColumns("task", []string{
+		"id", "create_time", "update_time",
+		"has_child", "pid", "task_name", "status", "error_message", "task_type",
+	})
+	assertColumns("work_task", []string{
+		"id", "create_time", "update_time",
+		"site_id", "site_work_id", "url", "pending_resource_id", "continuable",
+		"plugin_public_id", "plugin_extension_id", "plugin_data",
+		"store_roles", "involved_roles", "resource_type", "include_work_info",
+	})
+	assertColumns("share_task", []string{
+		"id", "create_time", "update_time",
+		"relay_dial", "relay_host", "token", "key_b64", "password_hash", "manifest_path", "manifest_id",
+	})
+
+	// FK 在册：共享主键 id→task；work_task 另挂站点与资源引用
+	wtSpec := fkTable{Table: "work_task", FKs: []fkSpec{
+		{Column: "id", Parent: "task"},
+		{Column: "site_id", Parent: "site"},
+		{Column: "pending_resource_id", Parent: "resource"},
+	}}
+	if done, err := fkDeclared(db, wtSpec); err != nil || !done {
+		t.Fatalf("work_task 外键应全部在册: done=%v err=%v", done, err)
+	}
+	stSpec := fkTable{Table: "share_task", FKs: []fkSpec{{Column: "id", Parent: "task"}}}
+	if done, err := fkDeclared(db, stSpec); err != nil || !done {
+		t.Fatalf("share_task 外键应全部在册: done=%v err=%v", done, err)
+	}
+
+	// resource.task_id 改指锚定：REFERENCES task 恰 0 份、REFERENCES work_task 恰 1 份
+	var refs []struct {
+		Table string
+		From  string
+	}
+	if err := db.Raw("PRAGMA foreign_key_list('resource')").Scan(&refs).Error; err != nil {
+		t.Fatalf("读取 resource 外键清单失败: %v", err)
+	}
+	refTask, refWorkTask := 0, 0
+	for _, r := range refs {
+		switch r.Table {
+		case "task":
+			refTask++
+		case "work_task":
+			refWorkTask++
+		}
+	}
+	if refTask != 0 {
+		t.Fatalf("resource 的 REFERENCES task 应恰 0 份，实际 %d 份: %+v", refTask, refs)
+	}
+	if refWorkTask != 1 {
+		t.Fatalf("resource 的 REFERENCES work_task 应恰 1 份，实际 %d 份: %+v", refWorkTask, refs)
 	}
 }
 

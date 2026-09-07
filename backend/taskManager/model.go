@@ -82,19 +82,19 @@ var runModeFull = runMode{workInfo: true, storeScope: storeScope{kind: scopeAll}
 
 func (m runMode) hasWorkInfo() bool { return m.workInfo }
 
-// runModeFromTask 从 task 持久化字段派生 runMode(三态产出)
+// runModeFromTask 从作品任务领域行持久化字段派生 runMode(三态产出)
 // StoreRoles NULL(Start/首次执行,含默认插件)→All,roles 取 universe(空 universe=插件自决全量)
 // StoreRoles Valid(Redownload 已记录)→空串=None(仅作品信息),非空=Selected(用户子集)
 // workInfo 统一取 IncludeWorkInfo 字段(首跑由 StartTaskTree 记录为 true)
-func runModeFromTask(t *entity.Task) runMode {
-	if !t.StoreRoles.Valid {
-		return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeAll, roles: parseStoreRoles(t.InvolvedRoles)}}
+func runModeFromTask(wt *entity.WorkTask) runMode {
+	if !wt.StoreRoles.Valid {
+		return runMode{workInfo: wt.IncludeWorkInfo, storeScope: storeScope{kind: scopeAll, roles: parseStoreRoles(wt.InvolvedRoles)}}
 	}
-	sel := parseStoreRoles(t.StoreRoles)
+	sel := parseStoreRoles(wt.StoreRoles)
 	if len(sel) == 0 {
-		return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeNone}}
+		return runMode{workInfo: wt.IncludeWorkInfo, storeScope: storeScope{kind: scopeNone}}
 	}
-	return runMode{workInfo: t.IncludeWorkInfo, storeScope: storeScope{kind: scopeSelected, roles: sel}}
+	return runMode{workInfo: wt.IncludeWorkInfo, storeScope: storeScope{kind: scopeSelected, roles: sel}}
 }
 
 // parseStoreRoles 解析逗号分隔的 store_type 字符串为切片
@@ -154,12 +154,12 @@ func isStableState(state TaskState) bool {
 // TaskExecutor 任务执行器接口
 // 由 TaskManager 定义，Plugin 模块实现
 type TaskExecutor interface {
-	// CreateWorkInfo 创建作品信息
-	CreateWorkInfo(ctx context.Context, task *entity.Task) (*sdkdto.WorkResponse, error)
+	// CreateWorkInfo 创建作品信息（核心行 + 作品任务领域行两参；插件身份在领域行）
+	CreateWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask) (*sdkdto.WorkResponse, error)
 
 	// Start 开始任务,按 storeRoles 选择性返回 StoreSpec 流集合(含 downloaded 与 derived)、WorkResponse 或错误
 	// 调用方负责关闭各 StoreSpec.ReadCloser
-	Start(ctx context.Context, task *entity.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
+	Start(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务（任务级，广播到全部 stream）
 	Pause(ctx context.Context, param *sdkdto.TaskResParam) error
@@ -173,7 +173,7 @@ type TaskExecutor interface {
 
 // WorkInfoSaver 作品完整信息保存接口
 type WorkInfoSaver interface {
-	SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *sdkdto.WorkResponse) (int64, error)
+	SaveWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, workResp *sdkdto.WorkResponse) (int64, error)
 }
 
 // WorkMetaLoader 已有作品命名元数据加载接口
@@ -437,9 +437,10 @@ type ManagedTask struct {
 	// 当前错误信息（仅 TaskStateFailed 时有效，通过 onStateChange 回调传递到 Manager）
 	errorMessage string
 
-	// 任务信息
-	task   *entity.Task
-	workId int64
+	// 任务信息：核心控制行 + 作品任务领域行（插件任务恒有领域行；内置类型任务领域行为 nil）
+	task     *entity.Task
+	workTask *entity.WorkTask
+	workId   int64
 	// 本次执行 saveResource 产出的 Resource ID（替换场景失败后，还原旧 store 完重挂 resource_store 用）
 	currentResourceId int64
 
@@ -459,8 +460,9 @@ type ManagedTask struct {
 	onResourceIDUpdate func(taskId int64, resourceID sql.NullInt64)
 }
 
-// NewManagedTask 创建托管任务并启动 actor goroutine(一生一灭,任务级可变状态只在其内修改)
-func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskExecutor, deps *TaskDeps, manager *Manager, semaphore chan struct{}) *ManagedTask {
+// NewManagedTask 创建托管任务并启动 actor goroutine(一生一灭,任务级可变状态只在其内修改)。
+// workTask 为作品任务领域行（插件任务恒有；内置类型任务传 nil）
+func NewManagedTask(taskId, parentId int64, task *entity.Task, workTask *entity.WorkTask, pluginExec TaskExecutor, deps *TaskDeps, manager *Manager, semaphore chan struct{}) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedTask{
 		taskId:     taskId,
@@ -477,6 +479,7 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, pluginExec TaskEx
 		pluginExec: pluginExec,
 		deps:       deps,
 		task:       task,
+		workTask:   workTask,
 		workId:     taskId,
 	}
 	// actorStarted 保持零值 false:它是 dispatch 的 CAS(false→true) 首派守卫,首次 dispatch 据此投 cmdStart。
@@ -804,8 +807,8 @@ func (m *ManagedTask) handlePauseCmd(cmd taskCmd) {
 	// 内置任务类型无插件执行器,RunCtx 取消即中断信号,无需额外通知。
 	if m.pluginExec != nil {
 		param := &sdkdto.TaskResParam{
-			Task:       dto.NewTaskDTO(m.task),
-			ResourceId: m.task.PendingResourceID.Int64,
+			Task:       dto.AssembleTaskDTO(m.task, m.workTask, nil),
+			ResourceId: m.workTask.PendingResourceID.Int64,
 		}
 		if err := m.pluginExec.Pause(m.ctx, param); err != nil {
 			logger.Log.Warnf("[TaskManager] 任务 %d 插件 Pause 失败: %v", m.taskId, err)
@@ -835,8 +838,8 @@ func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
 	// 内置任务类型无插件执行器;RunCtx 取消即终止信号
 	if m.pluginExec != nil {
 		param := &sdkdto.TaskResParam{
-			Task:       dto.NewTaskDTO(m.task),
-			ResourceId: m.task.PendingResourceID.Int64,
+			Task:       dto.AssembleTaskDTO(m.task, m.workTask, nil),
+			ResourceId: m.workTask.PendingResourceID.Int64,
 		}
 		if err := m.pluginExec.Stop(m.ctx, param); err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Stop 失败: %v", m.taskId, err)
@@ -882,7 +885,7 @@ func (m *ManagedTask) run() runResult {
 		return runResultPaused
 	}
 	m.setState(TaskStateProcessing)
-	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, storeScope:%+v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeScope, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.task.Continuable.Valid)
+	logger.Log.Infof("[TaskManager] run() 入口: taskId=%d, runMode={workInfo:%v, storeScope:%+v}, PendingResourceID={Valid:%v, Int64:%d}, continuable=%v", m.taskId, m.runMode.hasWorkInfo(), m.runMode.storeScope, m.workTask.PendingResourceID.Valid, m.workTask.PendingResourceID.Int64, m.workTask.Continuable.Valid)
 
 	// 统一走板块组合执行（全集等价完整下载含查重；真子集按所选板块）
 	return m.runSectionCombo()
@@ -900,13 +903,13 @@ func (m *ManagedTask) runSectionCombo() runResult {
 
 	// 含资源板块：查重（fallback；主路径在 Manager.batchCheckDuplicates）
 	if m.runMode.storeScope.coversStores() && !m.skipDuplicateCheck && m.deps.DuplicateChecker != nil &&
-		m.task.SiteID.Valid && m.task.SiteWorkID.Valid && m.task.SiteWorkID.String != "" {
+		m.workTask.SiteID.Valid && m.workTask.SiteWorkID.Valid && m.workTask.SiteWorkID.String != "" {
 		// 查重输入键形态统一：插件任务侧把 task.SiteID 反查站点键（一次查询），
 		// 与 share-receive/zip 导入的 manifest 域键（站点键）对齐
-		siteKey, ok := m.resolveSiteKey(m.runCtx, m.task.SiteID.Int64)
+		siteKey, ok := m.resolveSiteKey(m.runCtx, m.workTask.SiteID.Int64)
 		if ok {
 			results, err := m.deps.DuplicateChecker.Check(m.runCtx, []duplicate.DuplicateCheckItem{{
-				SiteKey: siteKey, SiteWorkID: m.task.SiteWorkID.String, Roles: m.runMode.storeScope.roles,
+				SiteKey: siteKey, SiteWorkID: m.workTask.SiteWorkID.String, Roles: m.runMode.storeScope.roles,
 			}})
 			if err == nil && len(results) == 1 {
 				res := results[0]
@@ -960,12 +963,12 @@ func (m *ManagedTask) runSectionCombo() runResult {
 	var workResp *sdkdto.WorkResponse
 	if m.runMode.hasWorkInfo() {
 		var err error
-		workResp, err = m.pluginExec.CreateWorkInfo(m.runCtx, m.task)
+		workResp, err = m.pluginExec.CreateWorkInfo(m.runCtx, m.task, m.workTask)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d CreateWorkInfo 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("创建作品信息失败: %v", err))
 		}
-		savedWorkId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.runCtx, m.task, workResp)
+		savedWorkId, err := m.deps.WorkInfoSaver.SaveWorkInfo(m.runCtx, m.task, m.workTask, workResp)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 保存作品信息失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("保存作品信息失败: %v", err))
@@ -975,7 +978,7 @@ func (m *ManagedTask) runSectionCombo() runResult {
 
 	// 资源板块:coversStores 时 Start 按 scope 携带角色选择性产出(All 空 universe=插件自决全量)
 	if m.runMode.storeScope.coversStores() {
-		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.runMode.storeScope.roles)
+		specs, startResp, err := m.pluginExec.Start(m.runCtx, m.task, m.workTask, m.runMode.storeScope.roles)
 		if err != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d Start 失败: %v", m.taskId, err)
 			return m.comboFail(fmt.Sprintf("获取资源流集合失败: %v", err))
@@ -1062,9 +1065,9 @@ func (m *ManagedTask) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.
 		}
 		m.currentResourceId = resourceId
 
-		// 同步更新 pending_resource_id（事务内直接写 DB）
-		m.task.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
-		return m.deps.PendingResourceUpdater.UpdatePendingResourceID(txCtx, m.taskId, m.task.PendingResourceID)
+		// 同步更新 pending_resource_id（事务内直接写 DB，作品任务领域行与内存对象同步）
+		m.workTask.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
+		return m.deps.PendingResourceUpdater.UpdatePendingResourceID(txCtx, m.taskId, m.workTask.PendingResourceID)
 	})
 	if txErr != nil {
 		// 事务回滚：DB 记录已全部回滚，需显式关闭句柄并清理文件
@@ -1156,7 +1159,7 @@ func (m *ManagedTask) saveResource(ctx context.Context, workId int64, mounts []p
 		resource.TaskID = sql.NullInt64{Int64: m.task.GetID(), Valid: true}
 		resource.ResourceComplete = sql.NullInt64{Int64: 0, Valid: true} // 下载未完成
 		// 创建期声明的资源类型;严格识别——空值或非预定义值在写入前抛错,不兜底
-		resourceType := m.task.ResourceType.String
+		resourceType := m.workTask.ResourceType.String
 		if err := entity.ValidateResourceType(resourceType); err != nil {
 			return 0, fmt.Errorf("资源类型声明无效: %w", err)
 		}
@@ -1573,13 +1576,13 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	m.setState(TaskStateProcessing)
 
 	// 1. 通过 pending_resource_id 加载 Resource 实体
-	if !m.task.PendingResourceID.Valid {
+	if !m.workTask.PendingResourceID.Valid {
 		logger.Log.Warnf("[TaskManager] 任务 %d 无有效的 pending_resource_id，降级为完整重新执行", m.taskId)
 		return m.run()
 	}
-	resource, err := m.deps.ResourceReader.GetById(m.runCtx, m.task.PendingResourceID.Int64)
+	resource, err := m.deps.ResourceReader.GetById(m.runCtx, m.workTask.PendingResourceID.Int64)
 	if err != nil || resource == nil {
-		logger.Log.Warnf("[TaskManager] 任务 %d 加载 Resource(id=%d) 失败: %v，降级为完整重新执行", m.taskId, m.task.PendingResourceID.Int64, err)
+		logger.Log.Warnf("[TaskManager] 任务 %d 加载 Resource(id=%d) 失败: %v，降级为完整重新执行", m.taskId, m.workTask.PendingResourceID.Int64, err)
 		return m.run()
 	}
 
@@ -1651,7 +1654,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded store,身份化 role+store_seq)
 	param := &sdkdto.TaskResumeParam{
-		Task:          dto.NewTaskDTO(m.task),
+		Task:          dto.AssembleTaskDTO(m.task, m.workTask, nil),
 		StreamOffsets: streamOffsets,
 	}
 	specs, newResp, err := m.pluginExec.Resume(m.runCtx, param)
@@ -1673,7 +1676,7 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 
 	// 缺陷3: 未完成的 derived 轨由 Start 重新生成(Resume 只续传 downloaded;derived 一次性产物未完成须整轨重产)
 	if len(incompleteDerivedRoles) > 0 {
-		derivedSpecs, _, startErr := m.pluginExec.Start(m.runCtx, m.task, incompleteDerivedRoles)
+		derivedSpecs, _, startErr := m.pluginExec.Start(m.runCtx, m.task, m.workTask, incompleteDerivedRoles)
 		if startErr != nil {
 			logger.Log.Errorf("[TaskManager] 任务 %d 重产 derived 轨 %v 失败: %v", m.taskId, incompleteDerivedRoles, startErr)
 			// Pause 在 derived 重产进行中取消 ctx:视为暂停,不置失败
@@ -1796,17 +1799,22 @@ func (m *ManagedTask) prepareForResume() {
 	m.closeStreamReaders()
 	m.streams = nil
 	// 有 PendingResourceID 走 resumeFromPersistedState（内部按各轨 store 状态续传/重产）
-	// 无 PendingResourceID 走 run()（从头执行）
-	m.resumeFromDB = m.task.PendingResourceID.Valid
-	logger.Log.Infof("[TaskManager] prepareForResume: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, resumeFromDB=%v",
-		m.taskId, m.task.PendingResourceID.Valid, m.task.PendingResourceID.Int64, m.resumeFromDB)
+	// 无 PendingResourceID 走 run()（从头执行）。内置类型任务无作品领域行，恒走 run() 路径
+	// （实际主体在策略执行面，两路径对其等价——runOnce 先分流 strategy）
+	if m.workTask != nil {
+		m.resumeFromDB = m.workTask.PendingResourceID.Valid
+		logger.Log.Infof("[TaskManager] prepareForResume: taskId=%d, PendingResourceID={Valid:%v, Int64:%d}, resumeFromDB=%v",
+			m.taskId, m.workTask.PendingResourceID.Valid, m.workTask.PendingResourceID.Int64, m.resumeFromDB)
+	} else {
+		m.resumeFromDB = false
+	}
 }
 
-// clearPendingResourceID 清除任务的 pending_resource_id（下载完成时调用）
+// clearPendingResourceID 清除任务的 pending_resource_id（下载完成时调用，作品任务领域行）
 func (m *ManagedTask) clearPendingResourceID() {
-	m.task.PendingResourceID = sql.NullInt64{Valid: false}
+	m.workTask.PendingResourceID = sql.NullInt64{Valid: false}
 	if m.onResourceIDUpdate != nil {
-		m.onResourceIDUpdate(m.taskId, m.task.PendingResourceID)
+		m.onResourceIDUpdate(m.taskId, m.workTask.PendingResourceID)
 	}
 }
 
@@ -1844,7 +1852,7 @@ func (m *ManagedTask) setFailed(errMsg string) {
 	m.errorMessage = errMsg
 	m.setState(TaskStateFailed)
 	m.confirmMemo = nil // 失败终态清空确认决策记忆（重跑重新弹窗）；置于单点而非 triggerTerminalRollback——其按登记是否为空早退，会漏清
-	if m.task.PendingResourceID.Valid {
+	if m.workTask != nil && m.workTask.PendingResourceID.Valid {
 		m.clearPendingResourceID()
 	}
 	if m.strategy != nil {

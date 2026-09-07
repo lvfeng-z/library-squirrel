@@ -15,7 +15,7 @@ func TestCountActiveByPlugin(t *testing.T) {
 	mk := func(id int64, plugin string, state TaskState) *ManagedTask {
 		mt := newTestManagedTask()
 		mt.taskId = id
-		mt.task.PluginPublicID = sql.NullString{String: plugin, Valid: true}
+		mt.workTask.PluginPublicID = sql.NullString{String: plugin, Valid: true}
 		mt.setState(state)
 		return mt
 	}

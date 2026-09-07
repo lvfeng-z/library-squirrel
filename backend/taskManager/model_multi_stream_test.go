@@ -148,7 +148,7 @@ func nopLogger() {
 	logger.Log = zap.NewNop().Sugar()
 }
 
-// newTestManagedTask 构造最小可测 ManagedTask(ctx/pauseCh/cmdCh/state/done/task),不启动 actor(供 copyLoop/downloadLoop 单元测试)
+// newTestManagedTask 构造最小可测 ManagedTask(ctx/pauseCh/cmdCh/state/done/task+workTask),不启动 actor(供 copyLoop/downloadLoop 单元测试)
 func newTestManagedTask() *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedTask{
@@ -161,6 +161,7 @@ func newTestManagedTask() *ManagedTask {
 		actorDone: make(chan struct{}),
 		done:      make(chan struct{}),
 		task:      entity.NewTask(),
+		workTask:  entity.NewWorkTask(1),
 	}
 	m.state.Store(int32(TaskStateProcessing))
 	return m
@@ -234,7 +235,7 @@ func TestNormalizeExt(t *testing.T) {
 func TestRunModeFromTask(t *testing.T) {
 	// StoreRoles=NULL(首次执行 / StartTaskTree 重置后)= All:roles 取 universe(InvolvedRoles)
 	// 回归:Redownload 持久化的子集 StoreRoles 不应泄漏(StartTaskTree 重置为 NULL → runModeFromTask 回退 universe)
-	t1 := entity.NewTask()
+	t1 := entity.NewWorkTask(1)
 	t1.IncludeWorkInfo = true // StartTaskTree 记录 workInfo=true
 	t1.InvolvedRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
 	mode := runModeFromTask(t1)
@@ -243,7 +244,7 @@ func TestRunModeFromTask(t *testing.T) {
 	}
 
 	// StoreRoles=NULL 且 universe 空 = All 空角色(插件自决全量)
-	t1b := entity.NewTask()
+	t1b := entity.NewWorkTask(1)
 	t1b.IncludeWorkInfo = true
 	mode = runModeFromTask(t1b)
 	if mode.storeScope.kind != scopeAll || len(mode.storeScope.roles) != 0 {
@@ -251,7 +252,7 @@ func TestRunModeFromTask(t *testing.T) {
 	}
 
 	// StoreRoles=空串(Redownload 仅作品信息)= None:不拉资源、不产生任务终态
-	t2 := entity.NewTask()
+	t2 := entity.NewWorkTask(1)
 	t2.StoreRoles = sql.NullString{String: "", Valid: true}
 	t2.IncludeWorkInfo = true
 	mode = runModeFromTask(t2)
@@ -260,7 +261,7 @@ func TestRunModeFromTask(t *testing.T) {
 	}
 
 	// StoreRoles="thumbnail"(Redownload 子集)= Selected:仅缩略图
-	t3 := entity.NewTask()
+	t3 := entity.NewWorkTask(1)
 	t3.StoreRoles = sql.NullString{String: entity.StoreTypeThumbnail, Valid: true}
 	t3.IncludeWorkInfo = false
 	mode = runModeFromTask(t3)
@@ -269,7 +270,7 @@ func TestRunModeFromTask(t *testing.T) {
 	}
 
 	// StoreRoles="main,thumbnail" + includeWorkInfo=true = Selected 显式全集(用户勾选全部)
-	t4 := entity.NewTask()
+	t4 := entity.NewWorkTask(1)
 	t4.StoreRoles = sql.NullString{String: entity.StoreTypeImage + "," + entity.StoreTypeThumbnail, Valid: true}
 	t4.IncludeWorkInfo = true
 	mode = runModeFromTask(t4)
@@ -545,7 +546,7 @@ func TestHandlePause(t *testing.T) {
 func TestDownloadLoop_AllComplete(t *testing.T) {
 	nopLogger()
 	m := newTestManagedTask()
-	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
+	m.workTask.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 	var resourceCleared bool
 	m.onResourceIDUpdate = func(_ int64, id sql.NullInt64) {
 		if !id.Valid {
@@ -578,7 +579,7 @@ func TestDownloadLoop_AllComplete(t *testing.T) {
 func TestDownloadLoop_OneFails(t *testing.T) {
 	nopLogger()
 	m := newTestManagedTask()
-	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
+	m.workTask.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 	m.onResourceIDUpdate = func(_ int64, _ sql.NullInt64) {}
 
 	wMain, wFail := &fakeStoreWriter{}, &fakeStoreWriter{}
@@ -606,7 +607,7 @@ func TestDownloadLoop_OneFails(t *testing.T) {
 func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	nopLogger()
 	m := newTestManagedTask()
-	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
+	m.workTask.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 	m.onResourceIDUpdate = func(_ int64, _ sql.NullInt64) {}
 
 	// 两轨用 gatedReader:第一次 Read 阻塞等 first,精确卡 softPause 时序
@@ -724,7 +725,7 @@ var _ = sync.Mutex{}
 func TestPrepareForResume_NoBlockAndResetsFields(t *testing.T) {
 	m := newTestManagedTask()
 	m.streams = []*streamController{{role: "stale"}}
-	m.task.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
+	m.workTask.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
 
 	// 应立即返回,不阻塞
 	done := make(chan struct{})
@@ -776,10 +777,11 @@ func TestNewManagedTask_ActorStartedZero(t *testing.T) {
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	task := entity.NewTask()
-	task.PluginPublicID = sql.NullString{String: "test-plugin", Valid: true}
+	wt := entity.NewWorkTask(1)
+	wt.PluginPublicID = sql.NullString{String: "test-plugin", Valid: true}
 	task.TaskName = sql.NullString{String: "t", Valid: true}
 
-	mt := NewManagedTask(1, 0, task, nil, nil, mgr, make(chan struct{}, 1))
+	mt := NewManagedTask(1, 0, task, wt, nil, nil, mgr, make(chan struct{}, 1))
 	mt.cancel()
 	<-mt.actorDone
 

@@ -42,16 +42,16 @@
 
 ## 核心概念
 
-- **执行面策略（ExecutionStrategy，内置任务类型）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——`task.task_type` 非空的任务经按类型注册的策略执行（Manager 构造时注入策略表，app.go 装配；如 share-receive 归 share 模块实现），策略经 `StrategyHandle` 上报终态（Finish/Fail）与进度，RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管；未注册策略的类型不可构建。`StrategyHandle` 另提供执行内挂起等待覆盖确认（`WaitReplaceConfirm`——置 WaitingForInput、逐条推冲突事件、记录冲突作品集合供替换答复前置锁预检、等待期间释放信号量槽位，复用现有 `ConfirmReplace(taskId, action)` 整体答复）与终态回滚登记（`SetTerminalRollback`——失败/停止时由 setFailed 单点触发复活软删行）。插件任务（task_type 空）维持既有执行路径（板块组合 + 多轨下载/续传），其执行面的物理外提归 longops D 阶段。
-- **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。
+- **执行面策略（ExecutionStrategy，内置任务类型）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——执行面按 `task.task_type` 显式判定路由（`newManagedTask`）：`'plugin-download'` → 插件执行器；其余非空类型 → 按类型注册的策略表（Manager 构造时注入，app.go 装配；如 share-receive 归 share 模块实现）；空类型/未注册类型拒启。策略经 `StrategyHandle` 上报终态（Finish/Fail）与进度，RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管。`StrategyHandle` 另提供执行内挂起等待覆盖确认（`WaitReplaceConfirm`——置 WaitingForInput、逐条推冲突事件、记录冲突作品集合供替换答复前置锁预检、等待期间释放信号量槽位，复用现有 `ConfirmReplace(taskId, action)` 整体答复）与终态回滚登记（`SetTerminalRollback`——失败/停止时由 setFailed 单点触发复活软删行）。插件任务维持既有执行路径（板块组合 + 多轨下载/续传），其执行面的物理外提归 longops D 阶段。
+- **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。ManagedTask 持任务核心行（task）与作品任务领域行（workTask）并列——插件任务恒有领域行（领域字段读写的唯一载体），内置类型任务领域行为 nil。
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
-- **板块执行模式**（runMode）：`{workInfo, storeScope}`——`workInfo` 为作品元数据独立板块，`storeScope` 为资源板块三态选择（AMBIGUOUS_VALUE_MUST_ENUM 治本：取代 storeRoles+fetchStores 组合两义）：`None`=仅作品信息（不拉资源、不产生任务终态）、`All`=全量板块（roles 携带插件 universe，空 universe=插件自决）、`Selected`=用户子集（roles 非空）。mode 不再由调用方传参，而从 task 实体的 `StoreRoles`/`IncludeWorkInfo` 字段派生（`runModeFromTask`，三态产出：NULL→All、空串→None、非空→Selected），故暂停 / 跨重启恢复时保持原板块选择，不退化为全量。`Redownload` 入口负责写入这两个字段后启动。终态（Finished/Failed/PartlyFinished）**不清空**执行模式持久化——重试（`RetryTaskTrees` 不重记模式）按原模式再来一次；后续全量开始/重下经 `loadAndStartTaskTrees` 的 recordMode 记录覆盖，不泄漏到下次执行。
+- **板块执行模式**（runMode）：`{workInfo, storeScope}`——`workInfo` 为作品元数据独立板块，`storeScope` 为资源板块三态选择（AMBIGUOUS_VALUE_MUST_ENUM 治本：取代 storeRoles+fetchStores 组合两义）：`None`=仅作品信息（不拉资源、不产生任务终态）、`All`=全量板块（roles 携带插件 universe，空 universe=插件自决）、`Selected`=用户子集（roles 非空）。mode 不再由调用方传参，而从作品任务领域行（work_task）的 `StoreRoles`/`IncludeWorkInfo` 字段派生（`runModeFromTask` 收 WorkTask，三态产出：NULL→All、空串→None、非空→Selected），故暂停 / 跨重启恢复时保持原板块选择，不退化为全量。`Redownload` 入口负责写入这两个字段后启动。终态（Finished/Failed/PartlyFinished）**不清空**执行模式持久化——重试（`RetryTaskTrees` 不重记模式）按原模式再来一次；后续全量开始/重下经 `loadAndStartTaskTrees` 的 recordMode 记录覆盖，不泄漏到下次执行。
 - **进度推送器**（TaskProgressPusher）：两种实现——Wails 事件直推、快照模式（SnapshotPusher）。
 - **状态落盘**：终态（Finished/Failed/PartlyFinished）即时同步写库，进程崩溃也不丢失；非终态（Paused）状态、进度、pending_resource_id 仍攒在内存，由 `flushLoop` 每 200ms 批量刷库，避免高频写放大。终态即时写与 `doFlush` 的批量 status 写都在 `pendingMu` 临界区内，互斥执行，杜绝批量通道的过时快照回写覆盖终态。
 
 ## 依赖关系
 
-- 依赖：`Repository`（任务树查询 / 批量状态设置）、`task` 包（TaskStatusEnum 状态枚举）、`WorkDirProvider`、`FileNameFormatProvider`、`pluginExecFactory`（插件执行器，TaskExecutor）、`TaskProgressPusher`、内置任务类型执行面策略表（task_type → ExecutionStrategy，构造注入）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）
+- 依赖：`Repository`（任务树查询（核心行 + work_task/share_task 领域行双查装配）/ 批量状态设置）、`task` 包（TaskStatusEnum 状态枚举）、`WorkDirProvider`、`FileNameFormatProvider`、`pluginExecFactory`（插件执行器，TaskExecutor）、`TaskProgressPusher`、内置任务类型执行面策略表（task_type → ExecutionStrategy，构造注入）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）
 - 被依赖：前端任务执行面板（操作栏）、share（实现 share-receive 执行面策略）
 
 ## 关键设计

@@ -16,7 +16,7 @@ repository.go       — 数据访问接口 + 实现
 query.go            — 查询 DTO
 ```
 
-共享模型位于 `backend/base/model/entity/`（18 个实体）和 `backend/base/model/dto/`。
+共享模型位于 `backend/base/model/entity/`（24 个实体）和 `backend/base/model/dto/`。
 
 ## 文件与命名规范
 

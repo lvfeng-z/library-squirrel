@@ -103,6 +103,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Plugin{},
 		&entity2.PluginStorage{},
 		&entity2.Task{},
+		// 任务领域行（1:1 共享主键 id=task.id，任务类型专属领域字段载体）
+		&entity2.WorkTask{},
+		&entity2.ShareTask{},
 		&entity2.ShareRecord{},
 		&entity2.Resource{},
 		&entity2.ResourceStore{},

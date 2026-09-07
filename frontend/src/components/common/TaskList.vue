@@ -6,6 +6,7 @@ import AutoLoadSelect from './AutoLoadSelect.vue'
 import { onUnmounted, Ref, ref, toRaw, watch } from 'vue'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { taskStatusToKey } from '@renderer/constants/StatusRegistry'
+import { BUILTIN_TASK_TYPES } from '@renderer/constants/builtinTaskType.ts'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { getNodeByPath } from '@renderer/utils/TreeUtil.ts'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
@@ -122,10 +123,10 @@ function getStatus(row: TaskProgressTreeDTO): number {
 function getStatusKey(row: TaskProgressTreeDTO): string {
   return taskStatusToKey(getStatus(row))
 }
-// 内置任务类型（taskType 非空=非插件任务）：名称列前置类型标签
+// 内置任务类型（taskType ∈ 内置任务类型集合）：名称列前置类型标签；插件任务不显示标签
 function isBuiltinTaskType(row: TaskProgressTreeDTO): boolean {
   const taskType = row.taskProgress?.task?.taskType
-  return notNullish(taskType) && taskType !== ''
+  return notNullish(taskType) && BUILTIN_TASK_TYPES.has(taskType)
 }
 // 内置任务类型显示名（未登记类型回退原始字符串）
 const builtinTaskTypeLabels: Record<string, string> = {

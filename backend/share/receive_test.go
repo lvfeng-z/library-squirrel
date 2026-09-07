@@ -185,6 +185,45 @@ func handleOutcome(h *fakeStrategyHandle) (bool, string) {
 	return h.finished, h.errMsg
 }
 
+// fakeShareTaskStore 收件任务领域行内存桩：记录建树补写的领域行（含主键与子任务 id 的
+// 1:1 同值锚点）并供执行面读取；writeErr 注入补写失败（回滚路径）
+type fakeShareTaskStore struct {
+	mu       sync.Mutex
+	rows     map[int64]*entity.ShareTask
+	writeErr error
+}
+
+func newFakeShareTaskStore() *fakeShareTaskStore {
+	return &fakeShareTaskStore{rows: make(map[int64]*entity.ShareTask)}
+}
+
+func (f *fakeShareTaskStore) CreateForTask(ctx context.Context, taskID int64, st *entity.ShareTask) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.writeErr != nil {
+		return f.writeErr
+	}
+	st.SetID(taskID)
+	f.rows[taskID] = st
+	return nil
+}
+
+func (f *fakeShareTaskStore) GetById(ctx context.Context, id int64) (*entity.ShareTask, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	st, ok := f.rows[id]
+	if !ok {
+		return nil, errors.New("record not found")
+	}
+	return st, nil
+}
+
+func (f *fakeShareTaskStore) rowOf(id int64) *entity.ShareTask {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rows[id]
+}
+
 // receiveTestEnv 收件端到端夹具：中继桩 + 宿主会话（真实 Service/Packer）+ 收件 Service
 type receiveTestEnv struct {
 	stub       *relayStub
@@ -198,6 +237,7 @@ type receiveTestEnv struct {
 	ingestor   *fakeIngestor
 	dialer     *recordingDialer
 	sourceData map[string][]byte
+	shareTasks *fakeShareTaskStore // 收件任务领域行桩（建树补写 + 执行面读取）
 }
 
 // startReceiveEnv 发布分享并构建收件执行器夹具（link 为完整分享链接；默认单作品模型）
@@ -235,9 +275,11 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 
 	// 收件侧：独立 Service（工作目录指向收件方临时目录）
 	recvDir := t.TempDir()
+	shareTasks := newFakeShareTaskStore()
 	recvSvc := NewService(nil, nil, nil,
 		func() string { return stub.addr }, func() string { return recvDir },
 		"recipient-instance-0001", nil, taskCtl, nil)
+	recvSvc.SetShareTaskStore(shareTasks)
 	recvSvc.setTunables(sessionRuntimeOptions{
 		dialFn:          dialer.dial,
 		streamRate:      8 << 20,
@@ -248,6 +290,7 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 		stub: stub, hostSvc: hostSvc, recvSvc: recvSvc, em: em,
 		link: comp.Link, workDir: hostWorkDir, recvDir: recvDir,
 		manifest: model.Manifest, ingestor: &fakeIngestor{}, dialer: dialer, sourceData: sourceData,
+		shareTasks: shareTasks,
 	}
 }
 
@@ -387,20 +430,21 @@ func (env *receiveTestEnv) buildReceiveHandle(t *testing.T, password string) (*f
 }
 
 // buildReceiveHandleForWork 构建收件子任务与执行句柄（指定负责的 manifest 作品 ID 与任务 ID）：
-// 写本地共享 manifest + 子任务载荷（ManifestPath/ManifestID）落任务行
+// 写本地共享 manifest + 子任务 share_task 领域行（ManifestPath/ManifestID）
 func (env *receiveTestEnv) buildReceiveHandleForWork(t *testing.T, password string, manifestID, taskID int64) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution) {
 	t.Helper()
 	rel := env.writeSharedManifest(t)
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
-	payload, err := newShareReceiveChildPayload(target, password, rel, manifestID)
-	require.NoError(t, err)
+	st := newChildShareTask(taskID, buildReceiveConnParams(target, password), rel, manifestID)
+	env.shareTasks.mu.Lock()
+	env.shareTasks.rows[taskID] = st
+	env.shareTasks.mu.Unlock()
 	task := entity.NewTask()
 	task.ID = taskID
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
-	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, cancel := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.shareTasks, env.ingestor, nil, nil, nil)
 	return h, cancel, exec
 }
 
@@ -425,7 +469,7 @@ func (env *receiveTestEnv) buildDupHandleForWork(t *testing.T, password string, 
 	if ops == nil {
 		ops = &fakeReplaceOps{}
 	}
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, checker, ops, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.shareTasks, env.ingestor, checker, ops, nil)
 	return h, cancel, exec, ops
 }
 
@@ -444,7 +488,7 @@ func (env *receiveTestEnv) buildMountHandleForWork(t *testing.T, password string
 	if mounts == nil {
 		mounts = &fakeMountReader{}
 	}
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, checker, ops, mounts)
+	exec := NewReceiveExecution(env.recvSvc, env.shareTasks, env.ingestor, checker, ops, mounts)
 	return h, cancel, exec
 }
 
@@ -706,25 +750,36 @@ func TestReceiveExecutionSubTaskFiltersWork(t *testing.T) {
 	assert.Equal(t, file.Path, reqs[0].Path)
 }
 
-// TestReceiveExecutionOverduePayloadFails 过时载荷（ManifestID==0，存量整体任务）显式 Fail
-// 并返回用户可读文案（决策2 不兼容存量，不做迁移或降级）
+// TestReceiveExecutionOverduePayloadFails 过时领域行（ManifestID==0，存量整体任务）显式 Fail
+// 并返回用户可读文案（不兼容存量，不做迁移或降级）；领域行缺失（建树崩溃窗口遗留）同文案 Fail
 func TestReceiveExecutionOverduePayloadFails(t *testing.T) {
 	env := startReceiveEnv(t, SharePublishOptions{})
+	rel := env.writeSharedManifest(t)
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
-	// 旧载荷：newShareReceivePayload 不写子任务字段 → ManifestID==0（过时载荷）
-	payload, err := newShareReceivePayload(target, "")
-	require.NoError(t, err)
+	// 旧形态：领域行不带子任务定位字段 → ManifestID==0（过时）
+	st := newChildShareTask(777, buildReceiveConnParams(target, ""), rel, 0)
+	env.shareTasks.rows[777] = st
 	task := entity.NewTask()
 	task.ID = 777
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
-	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, _ := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.shareTasks, env.ingestor, nil, nil, nil)
 
 	finished, failed := waitExecuteDone(t, h, exec)
-	assert.False(t, finished, "过时载荷不应成功")
+	assert.False(t, finished, "过时领域行不应成功")
 	assert.Equal(t, "请删除本任务后重新接收分享", failed)
+
+	// 领域行缺失：同过时载荷文案 Fail（建树链崩溃窗口遗留的兜底语义）
+	h2, _ := newReceiveHandle(func() *entity.Task {
+		tk := entity.NewTask()
+		tk.ID = 778
+		tk.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
+		return tk
+	}())
+	finished2, failed2 := waitExecuteDone(t, h2, exec)
+	assert.False(t, finished2, "领域行缺失不应成功")
+	assert.Equal(t, "请删除本任务后重新接收分享", failed2)
 }
 
 // TestReceiveExecutionResumeFromStaging 断点续传：预置完整小文件 + 半个大文件暂存，
@@ -790,13 +845,12 @@ func TestReceiveExecutionDialTerminal(t *testing.T) {
 		RelayDial: target.RelayDial, RelayHost: target.RelayHost,
 		Token: "zzzzzzzzzzzzzzzzzzzzzz", Key: target.Key,
 	}
-	payload, err := newShareReceiveChildPayload(badTarget, "", rel, env.manifest.Works[0].ID)
-	require.NoError(t, err)
+	env.shareTasks.rows[777] = newChildShareTask(777, buildReceiveConnParams(badTarget, ""), rel, env.manifest.Works[0].ID)
 	task := entity.NewTask()
 	task.ID = 777
-	task.Payload = sql.NullString{String: payload, Valid: true}
+	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
 	h, _ := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, env.shareTasks, env.ingestor, nil, nil, nil)
 
 	// 退避压缩：失败路径不含瞬态重试（not_found 终态直达），真实等待可控
 	finished, failed := waitExecuteDone(t, h, exec)
@@ -1450,7 +1504,7 @@ type fakeBuiltinTaskControl struct {
 	createChildrenErr error
 }
 
-func (f *fakeBuiltinTaskControl) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
+func (f *fakeBuiltinTaskControl) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error) {
 	return 0, nil
 }
 
@@ -1477,7 +1531,6 @@ func (f *fakeBuiltinTaskControl) CreateBuiltinTaskTree(ctx context.Context, task
 		child.Pid = sql.NullInt64{Int64: parent.ID, Valid: true}
 		child.TaskName = sql.NullString{String: c.TaskName, Valid: true}
 		child.TaskType = sql.NullString{String: taskType, Valid: true}
-		child.Payload = sql.NullString{String: c.Payload, Valid: c.Payload != ""}
 		child.HasChild = sql.NullBool{Bool: false, Valid: true}
 		f.children = append(f.children, child)
 	}
@@ -1498,12 +1551,13 @@ func (f *fakeBuiltinTaskControl) CreateBuiltinTaskParent(ctx context.Context, ta
 	return parent, nil
 }
 
-func (f *fakeBuiltinTaskControl) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error {
+func (f *fakeBuiltinTaskControl) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) ([]*entity.Task, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.createChildrenErr != nil {
-		return f.createChildrenErr
+		return nil, f.createChildrenErr
 	}
+	created := make([]*entity.Task, 0, len(children))
 	for _, c := range children {
 		f.nextTaskID++
 		child := entity.NewTask()
@@ -1511,11 +1565,11 @@ func (f *fakeBuiltinTaskControl) CreateBuiltinTaskChildren(ctx context.Context, 
 		child.Pid = sql.NullInt64{Int64: parentID, Valid: true}
 		child.TaskName = sql.NullString{String: c.TaskName, Valid: true}
 		child.TaskType = sql.NullString{String: taskType, Valid: true}
-		child.Payload = sql.NullString{String: c.Payload, Valid: c.Payload != ""}
 		child.HasChild = sql.NullBool{Bool: false, Valid: true}
 		f.children = append(f.children, child)
+		created = append(created, child)
 	}
-	return nil
+	return created, nil
 }
 
 func (f *fakeBuiltinTaskControl) DeleteTask(ctx context.Context, ids []int64) error {
@@ -1550,7 +1604,8 @@ func TestReceiveBuildsTaskTree(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprintf("拉取分享（%s）", target.RelayHost), parent.TaskName.String)
 
-	// 子任务：pid=父ID、has_child=false、task_type 落值、命名 = 净化后作品名、载荷含 ManifestPath+ManifestID
+	// 子任务：pid=父ID、has_child=false、task_type 落值、命名 = 净化后作品名；share_task 领域行
+	// 携带 ManifestPath+ManifestID，主键与子任务 id 严格同值（1:1 共享主键锚点）
 	require.Len(t, taskCtl.children, 2)
 	wantManifestPath := path.Join(receiveStagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
 	for i, want := range []struct {
@@ -1562,10 +1617,11 @@ func TestReceiveBuildsTaskTree(t *testing.T) {
 		assert.False(t, child.HasChild.Bool)
 		assert.Equal(t, TaskTypeReceive, child.TaskType.String)
 		assert.Equal(t, want.name, child.TaskName.String)
-		payload, err := parseShareReceivePayload(child.Payload.String)
-		require.NoError(t, err)
-		assert.Equal(t, wantManifestPath, payload.ManifestPath)
-		assert.Equal(t, want.manifestID, payload.ManifestID)
+		st := env.shareTasks.rowOf(child.GetID())
+		require.NotNil(t, st, "子任务应有 share_task 领域行")
+		assert.Equal(t, child.GetID(), st.GetID(), "领域行主键应与子任务 id 同值")
+		assert.Equal(t, wantManifestPath, st.ManifestPath)
+		assert.Equal(t, want.manifestID, st.ManifestID)
 	}
 
 	// 共享 manifest 落盘父任务目录（可反序列化、schemaVersion 匹配、含全部作品）
@@ -1644,6 +1700,7 @@ func newSelfRefReceiveSvc(env *receiveTestEnv, repo *Repository, taskCtl Builtin
 	svc := NewService(repo, nil, nil,
 		func() string { return env.stub.addr }, func() string { return env.recvDir },
 		"recipient-instance-0001", nil, taskCtl, nil)
+	svc.SetShareTaskStore(env.shareTasks)
 	svc.setTunables(sessionRuntimeOptions{
 		dialFn:          dialer.dial,
 		streamRate:      8 << 20,

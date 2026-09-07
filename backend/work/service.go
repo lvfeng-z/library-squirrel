@@ -1074,12 +1074,13 @@ var (
 // siteOrderSyncTimeout 原站序拉取超时（网络调用，须事务外异步）
 const siteOrderSyncTimeout = 30 * time.Second
 
-// SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID
-func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+// SaveWorkInfo 保存作品及全部周边数据，返回作品内部 DB ID。
+// 任务领域字段（站点归属/插件身份）在作品任务领域行 workTask
+func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workTask *entity2.WorkTask, workResp *sdkdto.WorkResponse) (int64, error) {
 	var workId int64
 	err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		var err error
-		workId, err = s.saveWorkInfoInTx(txCtx, task, workResp)
+		workId, err = s.saveWorkInfoInTx(txCtx, task, workTask, workResp)
 		return err
 	})
 	if err != nil {
@@ -1087,25 +1088,25 @@ func (s *Service) SaveWorkInfo(ctx context.Context, task *entity2.Task, workResp
 	}
 	// 事务提交后异步拉取原站序写 site_sort_order：网络调用须事务外（MaxOpenConns=1 死锁），异步不阻塞入库流程
 	if s.workSetOrderFetcher != nil && len(workResp.WorkSets) > 0 {
-		go s.syncSiteSortOrders(task, workResp)
+		go s.syncSiteSortOrders(workTask, workResp)
 	}
 	// 事务提交后异步拉取作品集父集关系，建立层级 + 写 site_sort_order（同上：网络调用须事务外异步）
 	if s.workSetRelationFetcher != nil && len(workResp.WorkSets) > 0 {
-		go s.syncWorkSetRelations(task, workResp)
+		go s.syncWorkSetRelations(workTask, workResp)
 	}
 	return workId, nil
 }
 
 // syncSiteSortOrders 作品入库后异步拉取其所属各 workSet 的原站全序，映射并写 site_sort_order（事务外、带超时）
-func (s *Service) syncSiteSortOrders(task *entity2.Task, workResp *sdkdto.WorkResponse) {
+func (s *Service) syncSiteSortOrders(workTask *entity2.WorkTask, workResp *sdkdto.WorkResponse) {
 	ctx, cancel := context.WithTimeout(context.Background(), siteOrderSyncTimeout)
 	defer cancel()
-	siteId := task.SiteID.Int64
+	siteId := workTask.SiteID.Int64
 	for _, ws := range workResp.WorkSets {
-		if ws.SiteWorkSetId == "" || !task.PluginPublicID.Valid {
+		if ws.SiteWorkSetId == "" || !workTask.PluginPublicID.Valid {
 			continue
 		}
-		entries, err := s.workSetOrderFetcher.QueryWorkSetOrder(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
+		entries, err := s.workSetOrderFetcher.QueryWorkSetOrder(ctx, workTask.PluginPublicID.String, workTask.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
 		if err != nil {
 			logger.Log.Warnf("拉取作品集原站序失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
 			continue
@@ -1157,12 +1158,12 @@ func (s *Service) applySiteSortOrders(ctx context.Context, siteId int64, siteWor
 
 // syncWorkSetRelations 作品入库后异步拉取其所属各 workSet 的父集关系，建立层级 + 写 site_sort_order（事务外、带超时）
 // 对齐 syncSiteSortOrders 的拉取范式（主程序→插件 pull），遍历 workResp.WorkSets 逐集拉取其父集关系
-func (s *Service) syncWorkSetRelations(task *entity2.Task, workResp *sdkdto.WorkResponse) {
+func (s *Service) syncWorkSetRelations(workTask *entity2.WorkTask, workResp *sdkdto.WorkResponse) {
 	ctx, cancel := context.WithTimeout(context.Background(), siteOrderSyncTimeout)
 	defer cancel()
-	siteId := task.SiteID.Int64
+	siteId := workTask.SiteID.Int64
 	for _, ws := range workResp.WorkSets {
-		if ws.SiteWorkSetId == "" || !task.PluginPublicID.Valid {
+		if ws.SiteWorkSetId == "" || !workTask.PluginPublicID.Valid {
 			continue
 		}
 		childWorkSet, err := s.workSetWriter.GetBySiteAndSiteWorkSetID(ctx, siteId, ws.SiteWorkSetId)
@@ -1170,7 +1171,7 @@ func (s *Service) syncWorkSetRelations(task *entity2.Task, workResp *sdkdto.Work
 			logger.Log.Warnf("查询子作品集失败(跳过父集关系同步) siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
 			continue
 		}
-		parents, err := s.workSetRelationFetcher.QueryWorkSetRelations(ctx, task.PluginPublicID.String, task.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
+		parents, err := s.workSetRelationFetcher.QueryWorkSetRelations(ctx, workTask.PluginPublicID.String, workTask.PluginExtensionID.String, siteId, ws.SiteWorkSetId)
 		if err != nil {
 			logger.Log.Warnf("拉取作品集父集关系失败 siteWorkSetId=%s: %v", ws.SiteWorkSetId, err)
 			continue
@@ -1236,12 +1237,12 @@ func (s *Service) applyWorkSetRelations(ctx context.Context, siteId, childWorkSe
 }
 
 // saveWorkInfoInTx 事务内执行 SaveWorkInfo 的核心逻辑
-func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, workTask *entity2.WorkTask, workResp *sdkdto.WorkResponse) (int64, error) {
 	work := dto2.ToWorkEntity(workResp.Work)
 
-	// 确保 SiteID 来自任务
-	if task.SiteID.Valid {
-		work.SiteID = task.SiteID
+	// 确保 SiteID 来自任务（作品任务领域行）
+	if workTask.SiteID.Valid {
+		work.SiteID = workTask.SiteID
 	}
 
 	if !work.SiteID.Valid || work.SiteID.Int64 == 0 {

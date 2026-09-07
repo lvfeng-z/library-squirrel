@@ -112,6 +112,9 @@ type App struct {
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
+	// 作品/分享任务领域行仓储（与 taskRepo 同库；插件 RPC 路径查询与收件领域行写入用）
+	workTaskRepo  *task.WorkTaskRepository
+	shareTaskRepo *task.ShareTaskRepository
 
 	// 导出产物回灌导入能力（import handler 与 share-receive 任务执行器共用同一实例）
 	manifestIngestor importer.ManifestIngestor
@@ -569,23 +572,23 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 }
 
 // storePathQueryAdapter 实现 extension2.StorePathQueryProvider:据 task+role+seq 查资源 store 真实落盘路径。
-// 链路:taskId → 任务 PendingResourceID → resource_store(role+store_seq) → store_id → persistent_store.file_path(workDir 相对)。
+// 链路:taskId → 作品任务领域行 PendingResourceID → resource_store(role+store_seq) → store_id → persistent_store.file_path(workDir 相对)。
 // 时序前提:downloadLoop(此处被插件 lazy 生成调用)在 startDownload/resume 事务提交之后,故 PendingResourceID 与 resource_store 已落盘可见。
 type storePathQueryAdapter struct {
-	taskSvc       *task.Service
+	workTaskRepo  *task.WorkTaskRepository
 	storeRepo     *resource.ResourceStoreRepository
 	persistentSvc *persistentStore.Service
 }
 
 func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
-	t, err := a.taskSvc.GetById(ctx, taskId)
+	wt, err := a.workTaskRepo.GetById(ctx, taskId)
 	if err != nil {
-		return "", fmt.Errorf("查询任务 %d 失败: %w", taskId, err)
+		return "", fmt.Errorf("查询任务 %d 的作品领域行失败: %w", taskId, err)
 	}
-	if !t.PendingResourceID.Valid {
+	if !wt.PendingResourceID.Valid {
 		return "", fmt.Errorf("任务 %d 无 PendingResourceID(资源未创建)", taskId)
 	}
-	resourceId := t.PendingResourceID.Int64
+	resourceId := wt.PendingResourceID.Int64
 	stores, err := a.storeRepo.ListByResourceId(ctx, resourceId)
 	if err != nil {
 		return "", fmt.Errorf("查询资源 %d 的 store 列表失败: %w", resourceId, err)
@@ -991,6 +994,10 @@ func (app *App) initAdvancedServices() error {
 
 	// task 仓储和服务
 	app.taskRepo = task.NewRepository(app.db)
+	app.workTaskRepo = task.NewWorkTaskRepository(app.db)
+	app.shareTaskRepo = task.NewShareTaskRepository(app.db)
+	// share 收件任务领域行存取（ShareService 创建早于 task 仓储，此处回填）
+	app.ShareService.SetShareTaskStore(app.shareTaskRepo)
 
 	// task 服务（依赖 TaskHandlerRegistry 作为 TaskHandlerProvider）
 	app.TaskService = task.NewService(
@@ -1077,7 +1084,7 @@ func (app *App) initAdvancedServices() error {
 		// 导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经任务模块
 		// （发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
-			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.manifestIngestor,
+			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.shareTaskRepo, app.manifestIngestor,
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
 	)
@@ -1120,6 +1127,8 @@ func (app *App) initAdvancedServices() error {
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
+	// 将 TaskManager（持执行面策略表）注入 TaskService 作为已知任务类型提供者（创建路径成员校验）
+	app.TaskService.SetTaskTypeRegistry(app.TaskManagerService)
 
 	// 将 TaskManager 注入到 work 作为运行中任务停止器（打破 work ↔ TaskManager 循环依赖）
 	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
@@ -1160,8 +1169,8 @@ type shareTaskControlAdapter struct {
 	getMgr     func() *taskManager.Manager
 }
 
-func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error) {
-	t, err := a.getTaskSvc().CreateBuiltinTask(ctx, taskType, taskName, payload)
+func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error) {
+	t, err := a.getTaskSvc().CreateBuiltinTask(ctx, taskType, taskName)
 	if err != nil {
 		return 0, err
 	}
@@ -1182,8 +1191,9 @@ func (a *shareTaskControlAdapter) CreateBuiltinTaskParent(ctx context.Context, t
 	return a.getTaskSvc().CreateBuiltinTaskParent(ctx, taskType, parentName)
 }
 
-// CreateBuiltinTaskChildren 委托 task.Service 在既有父任务下补建子任务
-func (a *shareTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error {
+// CreateBuiltinTaskChildren 委托 task.Service 在既有父任务下补建子任务，返回创建的子任务
+// （share 据此逐子任务写 share_task 领域行）
+func (a *shareTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) ([]*entity2.Task, error) {
 	return a.getTaskSvc().CreateBuiltinTaskChildren(ctx, taskType, parentID, children)
 }
 
@@ -1620,7 +1630,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		Storage:             app.PluginStorageService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		StorePath: &storePathQueryAdapter{
-			taskSvc:       app.TaskService,
+			workTaskRepo:  app.workTaskRepo,
 			storeRepo:     resource.NewResourceStoreRepository(app.db),
 			persistentSvc: app.PersistentStoreService,
 		},

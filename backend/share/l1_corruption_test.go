@@ -202,20 +202,20 @@ func (env *l1Env) writeL1SharedManifest(t *testing.T) string {
 	return path.Join(receiveStagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
 }
 
-// buildL1HandleForWork 构建指定作品的收件子任务执行句柄（cancel 供 live 取消路径）
+// buildL1HandleForWork 构建指定作品的收件子任务执行句柄（cancel 供 live 取消路径）。
+// 领域行经内存 ShareTaskStore 桩承载（执行面按任务 id 读取）
 func (env *l1Env) buildL1HandleForWork(t *testing.T, manifestID, taskID int64) (*fakeStrategyHandle, context.CancelFunc, *ReceiveExecution) {
 	t.Helper()
 	rel := env.writeL1SharedManifest(t)
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
-	payload, err := newShareReceiveChildPayload(target, "", rel, manifestID)
-	require.NoError(t, err)
+	store := newFakeShareTaskStore()
+	store.rows[taskID] = newChildShareTask(taskID, buildReceiveConnParams(target, ""), rel, manifestID)
 	task := entity.NewTask()
 	task.ID = taskID
 	task.TaskType = sql.NullString{String: TaskTypeReceive, Valid: true}
-	task.Payload = sql.NullString{String: payload, Valid: true}
 	h, cancel := newReceiveHandle(task)
-	exec := NewReceiveExecution(env.recvSvc, env.ingestor, nil, nil, nil)
+	exec := NewReceiveExecution(env.recvSvc, store, env.ingestor, nil, nil, nil)
 	return h, cancel, exec
 }
 

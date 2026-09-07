@@ -107,8 +107,9 @@ type receiveClient struct {
 	taskID        int64            // 宿主任务 ID（日志关联；manifest 预拉为父任务 ID，0=未关联）
 }
 
-// newReceiveClient 构建收件人客户端（构建 E2E 密码学对象；密钥非法即失败）
-func newReceiveClient(p *shareReceivePayload, instanceID string, opts sessionRuntimeOptions) (*receiveClient, error) {
+// newReceiveClient 构建收件人客户端（构建 E2E 密码学对象；密钥非法即失败）。
+// 连接参数既来自链接解析产物（预拉 manifest 阶段），也来自任务的 share_task 领域行（执行阶段）
+func newReceiveClient(p *receiveConnParams, instanceID string, opts sessionRuntimeOptions) (*receiveClient, error) {
 	key, err := decodeShareKeyB64(p.KeyB64)
 	if err != nil {
 		return nil, err

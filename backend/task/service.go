@@ -18,6 +18,7 @@ import (
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -73,13 +74,13 @@ func isTransientStatus(status int) bool {
 
 // Repository 任务仓储接口（由 service 定义需要的数据库操作方法）
 type Repository interface {
-	// Create 新建
+	// Create 新建（核心行）
 	Create(ctx context.Context, task *entity.Task) error
-	// CreateBatch 批量新建
+	// CreateBatch 批量新建（核心行）
 	CreateBatch(ctx context.Context, tasks []*entity.Task) error
-	// Updates 更新
+	// Updates 更新（核心行）
 	Updates(ctx context.Context, task *entity.Task) error
-	// GetById 根据ID获取
+	// GetById 根据ID获取（核心行）
 	GetById(ctx context.Context, id int64) (*entity.Task, error)
 	// List 查询列表
 	List(ctx context.Context, opt *database.QueryOption) ([]*entity.Task, error)
@@ -89,34 +90,51 @@ type Repository interface {
 	Delete(ctx context.Context, id int64) error
 	// Page 分页查询
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
-	// QueryParentPage 分页查询父任务
+	// QueryParentPage 分页查询父任务（挂作品任务领域表左连接，支持领域列过滤）
 	QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
 	// RefreshTaskStatus 刷新任务状态
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
-	// ListTaskTree 获取任务树列表
-	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity.Task, error)
+	// ListTaskTree 获取任务树列表（核心行圈定 + 领域行双查组装）
+	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) (*TaskTreeRows, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status TaskStatusEnum, includeStatus ...TaskStatusEnum) (int64, error)
 	// ListStatus 查询状态列表
 	ListStatus(ctx context.Context, ids []int64) ([]*entity.Task, error)
-	// CreateTask 创建任务
+	// CreateTask 创建任务核心行
 	CreateTask(ctx context.Context, task *entity.Task) error
+	// CreateWorkTaskForTask 为已落库核心行建作品任务领域行（主键覆写为 taskID）
+	CreateWorkTaskForTask(ctx context.Context, taskID int64, wt *entity.WorkTask) error
+	// CreateWorkTaskBatch 批量建作品任务领域行（各领域行已持核心行共享主键）
+	CreateWorkTaskBatch(ctx context.Context, wts []*entity.WorkTask) error
+	// SaveWorkTaskForTask 全字段 UPSERT 作品任务领域行（通用编辑端点用）
+	SaveWorkTaskForTask(ctx context.Context, taskID int64, wt *entity.WorkTask) error
+	// GetWorkTaskById 按共享主键（=所属任务 id）查询作品任务领域行
+	GetWorkTaskById(ctx context.Context, taskID int64) (*entity.WorkTask, error)
+	// ListWorkTasksByIds 按共享主键集合批量查询作品任务领域行
+	ListWorkTasksByIds(ctx context.Context, ids []int64) (map[int64]*entity.WorkTask, error)
 	// ListChildrenTask 查询子任务列表
 	ListChildrenTask(ctx context.Context, pid int64) ([]*entity.Task, error)
-	// QueryChildrenTaskPage 查询子任务分页
+	// QueryChildrenTaskPage 查询子任务分页（挂作品任务领域表左连接）
 	QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
-	// DeleteTask 删除任务（包含子任务）- 批量删除
+	// DeleteTask 删除任务（包含子任务：领域行先于核心行）- 批量删除
 	DeleteTask(ctx context.Context, ids []int64) error
 	// ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（删除链前置步）
 	ClearResourceTaskId(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error
-	// UpdatePendingResourceID 更新任务的 pending_resource_id
+	// UpdatePendingResourceID 更新任务的 pending_resource_id（作品任务领域行）
 	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 	// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*entity.Task, error)
+}
+
+// TaskWithWorkTask 任务核心行与其作品任务领域行的成对载体：创建计划的成员与
+// 分页/树查询双查后的组装单元（WorkTask 可为 nil——内置类型任务无作品领域行）
+type TaskWithWorkTask struct {
+	Task     *entity.Task
+	WorkTask *entity.WorkTask
 }
 
 // taskProgressTreeBuilder 任务进度树构建器，复用通用 TreeBuilder
@@ -135,14 +153,14 @@ func setTaskProgressTreeChildren(node *dto.TaskProgressTreeDTO, children []*dto.
 	node.Children = children
 }
 
-// buildTaskProgressTree 将任务实体列表构建为 TaskProgressTreeDTO 树形结构
-func buildTaskProgressTree(tasks []*entity.Task) []*dto.TaskProgressTreeDTO {
-	if len(tasks) == 0 {
+// buildTaskProgressTree 将任务成对载体列表构建为 TaskProgressTreeDTO 树形结构
+func buildTaskProgressTree(pairs []*TaskWithWorkTask) []*dto.TaskProgressTreeDTO {
+	if len(pairs) == 0 {
 		return nil
 	}
-	dtos := make([]*dto.TaskProgressTreeDTO, len(tasks))
-	for i, task := range tasks {
-		dtos[i] = dto.NewTaskProgressTreeDTO(dto.NewTaskDTO(task))
+	dtos := make([]*dto.TaskProgressTreeDTO, len(pairs))
+	for i, pair := range pairs {
+		dtos[i] = dto.NewTaskProgressTreeDTO(dto.AssembleTaskDTO(pair.Task, pair.WorkTask, nil))
 	}
 	return taskProgressTreeBuilder.BuildTree(dtos, setTaskProgressTreeChildren)
 }
@@ -159,6 +177,13 @@ type Transactor interface {
 	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// TaskTypeRegistry 已知任务类型提供者（taskManager 持执行面策略表实现；延迟注入解决
+// 装配时序——TaskService 先于 TaskManager 创建）。nil 时不校验成员资格（仅非空校验）
+type TaskTypeRegistry interface {
+	// IsKnownTaskType 任务类型是否已注册（执行面策略表成员 ∪ 插件下载类型）
+	IsKnownTaskType(taskType string) bool
+}
+
 // Service 任务服务
 type Service struct {
 	repo              Repository
@@ -167,6 +192,7 @@ type Service struct {
 	urlListener       *pluginTaskUrlListener.Service
 	siteSvc           *site.Service
 	memoryProvider    MemoryStateProvider
+	taskTypeRegistry  TaskTypeRegistry
 }
 
 // NewService 创建任务服务
@@ -185,10 +211,26 @@ func (s *Service) SetMemoryProvider(provider MemoryStateProvider) {
 	s.memoryProvider = provider
 }
 
+// SetTaskTypeRegistry 设置已知任务类型提供者（延迟注入：TaskManager 创建后回填）
+func (s *Service) SetTaskTypeRegistry(reg TaskTypeRegistry) {
+	s.taskTypeRegistry = reg
+}
+
 // buildPageOptionWithMemory 构建 PageOption，综合内存中的任务状态调整查询条件
+// 并挂作品任务领域表左连接（领域列过滤经全限定列名引用）
 // 瞬态状态：从内存收集匹配 ID → 清除 Status 条件 → 添加 id IN (匹配IDs)
 // 稳态状态：从内存收集不匹配 ID → 保留 Status 条件 → 追加 id NOT IN (不匹配IDs)
 func (s *Service) buildPageOptionWithMemory(query TaskQueryDTO, page, pageSize int) (*database.PageOption, error) {
+	opt, err := s.buildPageOptionCore(query, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	opt.Joins = append(opt.Joins, workTaskLeftJoin())
+	return opt, nil
+}
+
+// buildPageOptionCore 构建 PageOption 的内存状态综合部分（连接子句由外层追加）
+func (s *Service) buildPageOptionCore(query TaskQueryDTO, page, pageSize int) (*database.PageOption, error) {
 	// 无状态过滤或无内存提供者：标准转换
 	if query.Status.Value == nil || s.memoryProvider == nil {
 		conv := querypkg.NewConverter(entity.Task{})
@@ -271,24 +313,49 @@ func (s *Service) overlayMemoryStates(tasks []*entity.Task) {
 	}
 }
 
-// GetById 根据ID获取
-func (s *Service) GetById(ctx context.Context, id int64) (*entity.Task, error) {
-	return s.repo.GetById(ctx, id)
+// GetById 根据ID获取：核心行 + 作品任务领域行成对返回（内置类型无作品领域行，WorkTask 为 nil）
+func (s *Service) GetById(ctx context.Context, id int64) (*entity.Task, *entity.WorkTask, error) {
+	task, err := s.repo.GetById(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	workTask, err := s.repo.GetWorkTaskById(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return task, nil, nil
+		}
+		return nil, nil, err
+	}
+	return task, workTask, nil
 }
 
-// Save 保存任务
-func (s *Service) Save(ctx context.Context, task *entity.Task) error {
-	return s.repo.Create(ctx, task)
+// Save 保存任务：核心行与作品任务领域行成对创建（workTask 为 nil 时仅建核心行）
+func (s *Service) Save(ctx context.Context, task *entity.Task, workTask *entity.WorkTask) error {
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, task); err != nil {
+			return err
+		}
+		if workTask == nil {
+			return nil
+		}
+		return s.repo.CreateWorkTaskForTask(txCtx, task.GetID(), workTask)
+	})
 }
 
-// SaveBatch 批量保存任务
+// SaveBatch 批量保存任务核心行
 func (s *Service) SaveBatch(ctx context.Context, tasks []*entity.Task) error {
 	return s.repo.CreateBatch(ctx, tasks)
 }
 
-// Update 更新任务
-func (s *Service) Update(ctx context.Context, task *entity.Task) error {
-	return s.repo.Updates(ctx, task)
+// Update 更新任务：核心行走部分更新；作品任务领域行全字段 UPSERT（为 nil 时仅更新核心行）
+func (s *Service) Update(ctx context.Context, task *entity.Task, workTask *entity.WorkTask) error {
+	if err := s.repo.Updates(ctx, task); err != nil {
+		return err
+	}
+	if workTask == nil {
+		return nil
+	}
+	return s.repo.SaveWorkTaskForTask(ctx, task.GetID(), workTask)
 }
 
 // Delete 删除任务
@@ -306,8 +373,8 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Page 分页查询
-func (s *Service) Page(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
+// Page 分页查询：核心行分页 + 作品任务领域行批量装配
+func (s *Service) Page(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[TaskWithWorkTask], error) {
 	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
@@ -317,11 +384,11 @@ func (s *Service) Page(ctx context.Context, page *model.Page[entity.Task], query
 		return nil, err
 	}
 	s.overlayMemoryStates(result.Data)
-	return result, nil
+	return s.pairWithWorkTasks(ctx, result)
 }
 
-// QueryParentPage 分页查询父任务
-func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
+// QueryParentPage 分页查询父任务：核心行分页 + 作品任务领域行批量装配
+func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[TaskWithWorkTask], error) {
 	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
@@ -331,7 +398,27 @@ func (s *Service) QueryParentPage(ctx context.Context, page *model.Page[entity.T
 		return nil, err
 	}
 	s.overlayMemoryStates(result.Data)
-	return result, nil
+	return s.pairWithWorkTasks(ctx, result)
+}
+
+// pairWithWorkTasks 核心行分页批量装配作品任务领域行（双查组装，无领域行处 nil）
+func (s *Service) pairWithWorkTasks(ctx context.Context, page *model.Page[entity.Task]) (*model.Page[TaskWithWorkTask], error) {
+	if len(page.Data) == 0 {
+		return model.NewPage[TaskWithWorkTask](nil, page.DataCount, page.PageNumber, page.PageSize), nil
+	}
+	ids := make([]int64, 0, len(page.Data))
+	for _, t := range page.Data {
+		ids = append(ids, t.GetID())
+	}
+	workTasks, err := s.repo.ListWorkTasksByIds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]*TaskWithWorkTask, 0, len(page.Data))
+	for _, t := range page.Data {
+		data = append(data, &TaskWithWorkTask{Task: t, WorkTask: workTasks[t.GetID()]})
+	}
+	return model.NewPage[TaskWithWorkTask](data, page.DataCount, page.PageNumber, page.PageSize), nil
 }
 
 // RefreshTaskStatus 刷新任务状态
@@ -344,20 +431,24 @@ func (s *Service) SetTreeStatus(ctx context.Context, taskIds []int64, status Tas
 	return s.repo.SetTaskTreeStatus(ctx, taskIds, status, includeStatus...)
 }
 
-// ListTaskTree 获取任务树列表
-func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*entity.Task, error) {
+// ListTaskTree 获取任务树列表（核心行 + 领域行双查组装）
+func (s *Service) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) (*TaskTreeRows, error) {
 	return s.repo.ListTaskTree(ctx, taskIds, includeStatus...)
 }
 
-// ListStatus 查询状态列表
+// ListStatus 查询状态列表：核心行批量查 + 作品任务领域行装配为进度 DTO
 func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgressDTO, error) {
 	tasks, err := s.repo.ListStatus(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
+	workTasks, err := s.repo.ListWorkTasksByIds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]*dto.TaskProgressDTO, len(tasks))
 	for i, task := range tasks {
-		taskDTO := dto.NewTaskDTO(task)
+		taskDTO := dto.AssembleTaskDTO(task, workTasks[task.GetID()], nil)
 		progressDTO := dto.NewTaskProgressDTO(taskDTO)
 		if task.Status == int(TaskStatusFinished) {
 			progressDTO.Schedule = new(100)
@@ -367,24 +458,34 @@ func (s *Service) ListStatus(ctx context.Context, ids []int64) ([]*dto.TaskProgr
 	return result, nil
 }
 
-// CreateTask 创建任务
+// CreateTask 创建任务（IPC 入口）：核心行写显式插件下载类型，与作品任务领域行事务内成对落库
 func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*entity.Task, error) {
 	task := &entity.Task{
 		BaseEntity: &model.BaseEntity{},
 		// pid 外键引用 task.id（无 id=0 行）：req.Pid=0 → NULL=根级任务
 		Pid:      sql.NullInt64{Int64: req.Pid, Valid: req.Pid != 0},
 		TaskName: sql.NullString{String: req.TaskName, Valid: true},
-		// site_id 外键引用 site.id（无 id=0 行）：req.SiteID=0 → NULL=未关联站点
+		HasChild: sql.NullBool{Bool: req.HasChild, Valid: true},
+		Status:   int(TaskStatusCreated),
+		TaskType: sql.NullString{String: entity.TaskTypePluginDownload, Valid: true},
+	}
+	// site_id 外键引用 site.id（无 id=0 行）：req.SiteID=0 → NULL=未关联站点。
+	// 领域行主键未绑定（落库口 CreateForTask 覆写为核心行 id）
+	wt := &entity.WorkTask{BaseEntity: &model.BaseEntity{},
 		SiteID:            sql.NullInt64{Int64: int64(req.SiteID), Valid: req.SiteID != 0},
 		SiteWorkID:        sql.NullString{String: req.SiteWorkID, Valid: true},
 		URL:               sql.NullString{String: req.URL, Valid: true},
-		HasChild:          sql.NullBool{Bool: req.HasChild, Valid: true},
-		Status:            int(TaskStatusCreated),
 		PluginPublicID:    sql.NullString{String: req.PluginPublicID, Valid: true},
 		PluginExtensionID: sql.NullString{String: req.PluginExtensionID, Valid: true},
 		PluginData:        sql.NullString{String: req.PluginData, Valid: true},
 	}
-	if err := s.repo.CreateTask(ctx, task); err != nil {
+	err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.CreateTask(txCtx, task); err != nil {
+			return err
+		}
+		return s.repo.CreateWorkTaskForTask(txCtx, task.GetID(), wt)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -393,20 +494,34 @@ func (s *Service) CreateTask(ctx context.Context, req *dto.CreateTaskRequest) (*
 // ErrTaskTypeEmpty 创建内置任务时任务类型为空
 var ErrTaskTypeEmpty = &pkgerr.BusinessError{Code: 400, Message: "任务类型为空"}
 
-// CreateBuiltinTask 创建内置类型任务（task_type 非空，非插件执行）。
-// taskName 供任务面板展示；payload 为该类型执行面自有的 JSON 载荷，任务模块不解析其内容。
-// 创建后停留 Created，启动/暂停/停止等运行控制与插件任务一致（经 taskManager）。
-func (s *Service) CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (*entity.Task, error) {
-	taskType = strings.TrimSpace(taskType)
+// ErrTaskTypeUnknown 创建内置任务时任务类型未注册（既非执行面策略类型也非插件下载类型）
+var ErrTaskTypeUnknown = &pkgerr.BusinessError{Code: 400, Message: "未知的任务类型"}
+
+// validateBuiltinTaskType 校验内置任务类型：非空 + 成员资格（任务类型注册器已注入时；
+// nil 注册器跳过成员校验——装配早期/最小测试装配场景）
+func (s *Service) validateBuiltinTaskType(taskType string) error {
 	if taskType == "" {
-		return nil, ErrTaskTypeEmpty
+		return ErrTaskTypeEmpty
+	}
+	if s.taskTypeRegistry != nil && !s.taskTypeRegistry.IsKnownTaskType(taskType) {
+		return ErrTaskTypeUnknown
+	}
+	return nil
+}
+
+// CreateBuiltinTask 创建内置类型任务（task_type 非插件下载类型，非插件执行；领域载荷由
+// 该类型归属方写自有领域表，任务核心行不承载）。taskName 供任务面板展示。
+// 创建后停留 Created，启动/暂停/停止等运行控制与插件任务一致（经 taskManager）。
+func (s *Service) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (*entity.Task, error) {
+	taskType = strings.TrimSpace(taskType)
+	if err := s.validateBuiltinTaskType(taskType); err != nil {
+		return nil, err
 	}
 	task := &entity.Task{
 		BaseEntity: &model.BaseEntity{},
 		TaskName:   sql.NullString{String: taskName, Valid: true},
 		Status:     int(TaskStatusCreated),
 		TaskType:   sql.NullString{String: taskType, Valid: true},
-		Payload:    sql.NullString{String: payload, Valid: payload != ""},
 		// 内置任务恒为独立叶子任务：has_child 须落 0 而非 NULL——任务树查询以
 		// has_child = 0/1 二值圈定 children/parent，NULL 与两分支皆不匹配（行从树查询消失）
 		HasChild: sql.NullBool{Bool: false, Valid: true},
@@ -417,11 +532,11 @@ func (s *Service) CreateBuiltinTask(ctx context.Context, taskType string, taskNa
 	return task, nil
 }
 
-// BuiltinTaskChild 内置任务树子任务入参：任务名 + 载荷（执行面自有 JSON，任务模块不解析其内容）。
-// children 顺序即子任务展示顺序（任务树查询按创建序返回子任务）。
+// BuiltinTaskChild 内置任务树子任务入参：任务名。
+// children 顺序即子任务展示顺序（任务树查询按创建序返回子任务）；领域载荷由建树调用方
+// 持子任务 ID 后写入自有领域表
 type BuiltinTaskChild struct {
 	TaskName string
-	Payload  string
 }
 
 // ErrBuiltinTaskNoChildren 创建内置任务树时子任务为空
@@ -443,7 +558,7 @@ func newBuiltinTaskParent(taskType string, parentName string) *entity.Task {
 	}
 }
 
-// newBuiltinTaskChild 构造内置任务树子任务实体：pid=parentID、has_child=false、task_type/payload 落值。
+// newBuiltinTaskChild 构造内置任务树子任务实体：pid=parentID、has_child=false、task_type 落值。
 func newBuiltinTaskChild(taskType string, parentID int64, c BuiltinTaskChild) *entity.Task {
 	return &entity.Task{
 		BaseEntity: &model.BaseEntity{},
@@ -451,7 +566,6 @@ func newBuiltinTaskChild(taskType string, parentID int64, c BuiltinTaskChild) *e
 		TaskName:   sql.NullString{String: c.TaskName, Valid: true},
 		Status:     int(TaskStatusCreated),
 		TaskType:   sql.NullString{String: taskType, Valid: true},
-		Payload:    sql.NullString{String: c.Payload, Valid: c.Payload != ""},
 		HasChild:   sql.NullBool{Bool: false, Valid: true},
 	}
 }
@@ -462,8 +576,8 @@ func newBuiltinTaskChild(taskType string, parentID int64, c BuiltinTaskChild) *e
 // 父容器为纯聚合节点（has_child=1），无执行面；子任务各自独立执行。
 func (s *Service) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []BuiltinTaskChild) (*entity.Task, error) {
 	taskType = strings.TrimSpace(taskType)
-	if taskType == "" {
-		return nil, ErrTaskTypeEmpty
+	if err := s.validateBuiltinTaskType(taskType); err != nil {
+		return nil, err
 	}
 	if len(children) == 0 {
 		return nil, ErrBuiltinTaskNoChildren
@@ -489,11 +603,11 @@ func (s *Service) CreateBuiltinTaskTree(ctx context.Context, taskType string, pa
 
 // CreateBuiltinTaskParent 创建内置任务树父容器（has_child=true、pid=NULL、task_type 落值）。
 // 单独建父供调用方在「子任务入参依赖父任务 ID」的场景——如收件建树先建父任务、落盘共享清单
-// 到父任务目录、再建子任务（子任务载荷含清单路径）；失败回滚由调用方显式 DeleteTask 整树。
+// 到父任务目录、再建子任务（子任务领域行经父目录路径定位清单）；失败回滚由调用方显式 DeleteTask 整树。
 func (s *Service) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity.Task, error) {
 	taskType = strings.TrimSpace(taskType)
-	if taskType == "" {
-		return nil, ErrTaskTypeEmpty
+	if err := s.validateBuiltinTaskType(taskType); err != nil {
+		return nil, err
 	}
 	parent := newBuiltinTaskParent(taskType, parentName)
 	if err := s.repo.CreateTask(ctx, parent); err != nil {
@@ -503,25 +617,28 @@ func (s *Service) CreateBuiltinTaskParent(ctx context.Context, taskType string, 
 }
 
 // CreateBuiltinTaskChildren 在既有父任务下创建内置任务树子任务（pid=parentID、has_child=false、
-// task_type/payload 落值）。children 顺序即子任务展示顺序。非事务——调用方（share Receive 建树）
-// 在建子失败时自行 DeleteTask 回滚整树（决策5 显式删树语义）。
-func (s *Service) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []BuiltinTaskChild) error {
+// task_type 落值），返回创建的子任务（含 ID，供调用方写各自领域行）。children 顺序即子任务展示顺序。
+// 非事务——调用方（share Receive 建树）在建子失败时自行 DeleteTask 回滚整树（显式删树语义）。
+func (s *Service) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []BuiltinTaskChild) ([]*entity.Task, error) {
 	taskType = strings.TrimSpace(taskType)
-	if taskType == "" {
-		return ErrTaskTypeEmpty
+	if err := s.validateBuiltinTaskType(taskType); err != nil {
+		return nil, err
 	}
 	if parentID <= 0 {
-		return ErrBuiltinTaskChildrenNoParent
+		return nil, ErrBuiltinTaskChildrenNoParent
 	}
 	if len(children) == 0 {
-		return ErrBuiltinTaskNoChildren
+		return nil, ErrBuiltinTaskNoChildren
 	}
+	created := make([]*entity.Task, 0, len(children))
 	for _, c := range children {
-		if err := s.repo.CreateTask(ctx, newBuiltinTaskChild(taskType, parentID, c)); err != nil {
-			return err
+		child := newBuiltinTaskChild(taskType, parentID, c)
+		if err := s.repo.CreateTask(ctx, child); err != nil {
+			return nil, err
 		}
+		created = append(created, child)
 	}
-	return nil
+	return created, nil
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
@@ -542,44 +659,77 @@ func (s *Service) QueryTreeDataPage(ctx context.Context, page, pageSize int, que
 	if err != nil {
 		return nil, err
 	}
+	opt.Joins = append(opt.Joins, workTaskLeftJoin())
 
-	// 分页查询父任务（has_child=1 OR pid IS NULL，根级任务 pid=NULL）
+	// 分页查询父任务（has_child=1 OR pid IS NULL，根级任务 pid=NULL）+ 领域行装配
 	resultPage, err := s.repo.QueryParentPage(ctx, opt)
+	if err != nil {
+		return nil, err
+	}
+	pairPage, err := s.pairWithWorkTasks(ctx, resultPage)
 	if err != nil {
 		return nil, err
 	}
 
 	// 将分页数据构建为 TaskProgressTreeDTO 树
-	tree := buildTaskProgressTree(resultPage.Data)
+	tree := buildTaskProgressTree(pairPage.Data)
 
 	// 获取 TreeID 和 TreeName（从分页数据中获取）
 	var treeID int64
 	var treeName string
-	if len(resultPage.Data) > 0 {
-		treeID = resultPage.Data[0].GetID()
-		treeName = resultPage.Data[0].TaskName.String
+	if len(pairPage.Data) > 0 {
+		treeID = pairPage.Data[0].Task.GetID()
+		treeName = pairPage.Data[0].Task.TaskName.String
 	}
 
 	return &dto.TreeDataPageDTO{
 		TreeID:   treeID,
 		TreeName: treeName,
-		Total:    resultPage.DataCount,
+		Total:    pairPage.DataCount,
 		Tasks:    tree,
 	}, nil
 }
 
-// ListChildrenTask 查询子任务列表
-func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*entity.Task, error) {
-	return s.repo.ListChildrenTask(ctx, pid)
+// ListChildrenTask 查询子任务列表：核心行 + 作品任务领域行成对装配
+func (s *Service) ListChildrenTask(ctx context.Context, pid int64) ([]*TaskWithWorkTask, error) {
+	tasks, err := s.repo.ListChildrenTask(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	return s.attachWorkTasks(ctx, tasks)
 }
 
-// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表
-func (s *Service) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*entity.Task, error) {
-	return s.repo.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表（核心行 + 领域行成对装配）
+func (s *Service) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*TaskWithWorkTask, error) {
+	tasks, err := s.repo.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+	if err != nil {
+		return nil, err
+	}
+	return s.attachWorkTasks(ctx, tasks)
 }
 
-// QueryChildrenTaskPage 查询子任务分页
-func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[entity.Task], error) {
+// attachWorkTasks 为核心行列表批量装配作品任务领域行（无领域行处 nil）
+func (s *Service) attachWorkTasks(ctx context.Context, tasks []*entity.Task) ([]*TaskWithWorkTask, error) {
+	if len(tasks) == 0 {
+		return make([]*TaskWithWorkTask, 0), nil
+	}
+	ids := make([]int64, 0, len(tasks))
+	for _, t := range tasks {
+		ids = append(ids, t.GetID())
+	}
+	workTasks, err := s.repo.ListWorkTasksByIds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	pairs := make([]*TaskWithWorkTask, 0, len(tasks))
+	for _, t := range tasks {
+		pairs = append(pairs, &TaskWithWorkTask{Task: t, WorkTask: workTasks[t.GetID()]})
+	}
+	return pairs, nil
+}
+
+// QueryChildrenTaskPage 查询子任务分页：核心行分页 + 作品任务领域行批量装配
+func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[entity.Task], query TaskQueryDTO) (*model.Page[TaskWithWorkTask], error) {
 	opt, err := s.buildPageOptionWithMemory(query, page.PageNumber, page.PageSize)
 	if err != nil {
 		return nil, err
@@ -589,22 +739,22 @@ func (s *Service) QueryChildrenTaskPage(ctx context.Context, page *model.Page[en
 		return nil, err
 	}
 	s.overlayMemoryStates(result.Data)
-	return result, nil
+	return s.pairWithWorkTasks(ctx, result)
 }
 
-// EnrichTaskProgressTreePage 将 Task 实体分页丰富为 TaskProgressTreeDTO 分页
+// EnrichTaskProgressTreePage 将核心行+领域行成对分页丰富为 TaskProgressTreeDTO 分页
 // 批量查询站点名称并注入，同时填充树形结构字段（hasChildren、children、isLeaf）
-func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[entity.Task]) (*model.Page[dto.TaskProgressTreeDTO], error) {
-	tasks := rawPage.Data
-	if len(tasks) == 0 {
+func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model.Page[TaskWithWorkTask]) (*model.Page[dto.TaskProgressTreeDTO], error) {
+	pairs := rawPage.Data
+	if len(pairs) == 0 {
 		return model.NewPage[dto.TaskProgressTreeDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
 	}
 
-	// 1. 收集 siteIds（去重）
+	// 1. 收集 siteIds（去重）——站点身份在作品任务领域行
 	siteIdSet := make(map[int64]struct{})
-	for _, task := range tasks {
-		if task.SiteID.Valid && task.SiteID.Int64 > 0 {
-			siteIdSet[task.SiteID.Int64] = struct{}{}
+	for _, pair := range pairs {
+		if pair.WorkTask != nil && pair.WorkTask.SiteID.Valid && pair.WorkTask.SiteID.Int64 > 0 {
+			siteIdSet[pair.WorkTask.SiteID.Int64] = struct{}{}
 		}
 	}
 
@@ -627,13 +777,13 @@ func (s *Service) EnrichTaskProgressTreePage(ctx context.Context, rawPage *model
 	}
 
 	// 3. 转换并丰富
-	data := make([]*dto.TaskProgressTreeDTO, 0, len(tasks))
-	for _, task := range tasks {
-		taskDTO := dto.NewTaskDTO(task)
+	data := make([]*dto.TaskProgressTreeDTO, 0, len(pairs))
+	for _, pair := range pairs {
+		taskDTO := dto.AssembleTaskDTO(pair.Task, pair.WorkTask, nil)
 		treeDTO := dto.NewTaskProgressTreeDTO(taskDTO)
 		// 注入站点名称
-		if task.SiteID.Valid {
-			if siteName, ok := siteNameMap[task.SiteID.Int64]; ok {
+		if pair.WorkTask != nil && pair.WorkTask.SiteID.Valid {
+			if siteName, ok := siteNameMap[pair.WorkTask.SiteID.Int64]; ok {
 				treeDTO.TaskProgress.SiteName = &siteName
 			}
 		}
@@ -788,13 +938,13 @@ func listenerPluginName(listener *pluginTaskUrlListener.PluginWithExtension) str
 	return listener.PublicID.String
 }
 
-// createPlan 一个 TaskCreateResponse 经单点判定后的创建计划。
+// createPlan 一个 TaskCreateResponse 经单点判定后的创建计划（成员均为核心行+作品领域行成对载体）。
 // leaf 与 parent 互斥：无 Children 时 leaf 非空（独立任务）；有 Children 时 parent+children。
 // children 的 Pid 待调用方落盘 parent 后回填。
 type createPlan struct {
-	leaf     *entity.Task
-	parent   *entity.Task
-	children []*entity.Task
+	leaf     *TaskWithWorkTask
+	parent   *TaskWithWorkTask
+	children []*TaskWithWorkTask
 }
 
 // count 此计划贡献的叶子级任务计数（leaf=1；parent+N=N，parent 容器不计）。
@@ -820,21 +970,24 @@ func childToResponse(c *sdkdto.TaskCreateChildResponse, parentSiteKey string) *s
 	}
 }
 
-// fillTaskFromResponse 把响应字段填入一个已分配的 Task（leaf/parent/child 通用，双路径共用）。
+// fillTaskFromResponse 把响应字段填入一个成对载体（leaf/parent/child 通用，双路径共用）：
+// 控制字段落核心行（task_type=插件下载类型），领域字段落作品任务领域行（主键在落库口绑定核心行 id）。
 // pid：父任务 ID（child 传 parent.id；leaf/parent 传 0）。pid=0 写 NULL=根级任务（外键引用 task.id，无 id=0 行）。
 // hasChild：是否父任务（容器，不带 SiteWorkID/PluginData）。
 // siteCache：站点键→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
 // SiteKey 为空时返回 ErrSiteKeyRequired——leaf/parent/child 均须归属站点（child 的键由
 // childToResponse 继承父应答）。
-func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, resp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, pid int64, hasChild bool, siteCache map[string]int) error {
+func (s *Service) fillTaskFromResponse(ctx context.Context, pair *TaskWithWorkTask, resp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, pid int64, hasChild bool, siteCache map[string]int) error {
+	task, wt := pair.Task, pair.WorkTask
 	task.TaskName = sql.NullString{String: resp.TaskName, Valid: true}
-	task.URL = sql.NullString{String: resp.Url, Valid: true}
 	task.Status = int(TaskStatusCreated)
 	task.HasChild = sql.NullBool{Bool: hasChild, Valid: true}
+	task.TaskType = sql.NullString{String: entity.TaskTypePluginDownload, Valid: true}
 	// pid=0 → NULL=根级任务（外键引用 task.id，无 id=0 行，写 0 必违约）；child 落盘前由调用方回填父 ID
 	task.Pid = sql.NullInt64{Int64: pid, Valid: pid != 0}
-	task.PluginPublicID = listener.PublicID
-	task.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
+	wt.URL = sql.NullString{String: resp.Url, Valid: true}
+	wt.PluginPublicID = listener.PublicID
+	wt.PluginExtensionID = sql.NullString{String: listener.ExtensionID, Valid: true}
 
 	if resp.SiteKey == "" {
 		return errors.Join(ErrSiteKeyRequired, errors.New("siteKey is empty"))
@@ -848,24 +1001,24 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, r
 		siteId = int(site.ID)
 		siteCache[resp.SiteKey] = siteId
 	}
-	task.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
+	wt.SiteID = sql.NullInt64{Int64: int64(siteId), Valid: true}
 
 	// 身份字段：leaf/child 带 SiteWorkID/PluginData；parent 容器不带
 	if !hasChild {
-		task.SiteWorkID = sql.NullString{String: resp.SiteWorkId, Valid: true}
+		wt.SiteWorkID = sql.NullString{String: resp.SiteWorkId, Valid: true}
 		if resp.PluginData != "" {
-			task.PluginData = sql.NullString{String: resp.PluginData, Valid: true}
+			wt.PluginData = sql.NullString{String: resp.PluginData, Valid: true}
 		}
 	}
 
 	// involvedRoles:创建期声明的涉及板块(universe),逗号join;空=NULL(未确定/默认)
 	if len(resp.InvolvedRoles) > 0 {
-		task.InvolvedRoles = sql.NullString{String: strings.Join(resp.InvolvedRoles, ","), Valid: true}
+		wt.InvolvedRoles = sql.NullString{String: strings.Join(resp.InvolvedRoles, ","), Valid: true}
 	}
 
 	// resourceType:创建期声明的资源类型(预定义值);空=NULL(未声明);有 children 时由各 child 声明
 	if resp.ResourceType != "" {
-		task.ResourceType = sql.NullString{String: resp.ResourceType, Valid: true}
+		wt.ResourceType = sql.NullString{String: resp.ResourceType, Valid: true}
 	}
 
 	return nil
@@ -878,8 +1031,12 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, task *entity.Task, r
 // 通信契约详见 doc/plugin-dev-guide.md「Create 返回的任务结构契约」。
 func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, siteCache map[string]int) (*createPlan, error) {
 	if len(taskResp.Children) == 0 {
-		// 无 Children：独立 leaf（如 local 单文件导入），pid=NULL（根级）、HasChild=false
-		leaf := &entity.Task{BaseEntity: &model.BaseEntity{}}
+		// 无 Children：独立 leaf（如 local 单文件导入），pid=NULL（根级）、HasChild=false。
+		// 领域行主键未绑定（落库口 CreateForTask 覆写为核心行 id），BaseEntity 须显式初始化
+		leaf := &TaskWithWorkTask{
+			Task:     &entity.Task{BaseEntity: &model.BaseEntity{}},
+			WorkTask: &entity.WorkTask{BaseEntity: &model.BaseEntity{}},
+		}
 		if err := s.fillTaskFromResponse(ctx, leaf, taskResp, listener, 0, false, siteCache); err != nil {
 			return nil, err
 		}
@@ -887,19 +1044,35 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 	}
 
 	// 有 Children：parent + 每个 child，不折叠
-	parent := &entity.Task{BaseEntity: &model.BaseEntity{}}
+	parent := &TaskWithWorkTask{
+		Task:     &entity.Task{BaseEntity: &model.BaseEntity{}},
+		WorkTask: &entity.WorkTask{BaseEntity: &model.BaseEntity{}},
+	}
 	if err := s.fillTaskFromResponse(ctx, parent, taskResp, listener, 0, true, siteCache); err != nil {
 		return nil, err
 	}
-	children := make([]*entity.Task, 0, len(taskResp.Children))
+	children := make([]*TaskWithWorkTask, 0, len(taskResp.Children))
 	for _, childResp := range taskResp.Children {
-		child := &entity.Task{BaseEntity: &model.BaseEntity{}}
+		child := &TaskWithWorkTask{
+			Task:     &entity.Task{BaseEntity: &model.BaseEntity{}},
+			WorkTask: &entity.WorkTask{BaseEntity: &model.BaseEntity{}},
+		}
 		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp, taskResp.SiteKey), listener, 0, false, siteCache); err != nil {
 			return nil, err
 		}
 		children = append(children, child)
 	}
 	return &createPlan{parent: parent, children: children}, nil
+}
+
+// persistPlanPair 事务内成对落库一个计划成员：核心行拿 id → 领域行绑定同值共享主键
+func (s *Service) persistPlanPair(ctx context.Context, pair *TaskWithWorkTask) error {
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.CreateTask(txCtx, pair.Task); err != nil {
+			return err
+		}
+		return s.repo.CreateWorkTaskForTask(txCtx, pair.Task.GetID(), pair.WorkTask)
+	})
 }
 
 // handleCreateTaskArray 处理插件返回的任务数组。
@@ -925,9 +1098,9 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 		}
 
 		if plan.leaf != nil {
-			// 独立 leaf：直接落盘
-			if err := s.repo.CreateTask(ctx, plan.leaf); err != nil {
-				logger.Log.Errorf("[Task] 创建独立任务失败 (plugin=%s, taskName=%s): %v", listener.PublicID.String, plan.leaf.TaskName.String, err)
+			// 独立 leaf：事务内成对落盘
+			if err := s.persistPlanPair(ctx, plan.leaf); err != nil {
+				logger.Log.Errorf("[Task] 创建独立任务失败 (plugin=%s, taskName=%s): %v", listener.PublicID.String, plan.leaf.Task.TaskName.String, err)
 				failed += plan.count()
 				continue
 			}
@@ -935,15 +1108,21 @@ func (s *Service) handleCreateTaskArray(ctx context.Context, pluginResponses []*
 			continue
 		}
 
-		// parent + children：事务内落盘 parent → 回填 children.Pid → 落盘 children
+		// parent + children：事务内落盘 parent → 回填 children.Pid → 成对落盘 children
 		err = s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-			if err := s.repo.CreateTask(txCtx, plan.parent); err != nil {
+			if err := s.repo.CreateTask(txCtx, plan.parent.Task); err != nil {
 				return err
 			}
-			parentId := plan.parent.GetID()
+			parentId := plan.parent.Task.GetID()
+			if err := s.repo.CreateWorkTaskForTask(txCtx, parentId, plan.parent.WorkTask); err != nil {
+				return err
+			}
 			for _, child := range plan.children {
-				child.Pid = sql.NullInt64{Int64: parentId, Valid: true}
-				if err := s.repo.CreateTask(txCtx, child); err != nil {
+				child.Task.Pid = sql.NullInt64{Int64: parentId, Valid: true}
+				if err := s.repo.CreateTask(txCtx, child.Task); err != nil {
+					return err
+				}
+				if err := s.repo.CreateWorkTaskForTask(txCtx, child.Task.GetID(), child.WorkTask); err != nil {
 					return err
 				}
 			}
@@ -989,22 +1168,39 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 		defer close(outChan)
 
 		siteCache := make(map[string]int)
-		batch := make([]*entity.Task, 0, batchSize)
+		batch := make([]*TaskWithWorkTask, 0, batchSize)
 		// 当前 work 的父任务与其 PluginTaskId；同 PluginTaskId 的后续响应归入同一父（合并续传），
 		// 不同 PluginTaskId 或空值则建新父——以 PluginTaskId（插件稳定 work 标识）为合并键。
-		var currentParent *entity.Task
+		var currentParent *TaskWithWorkTask
 		var currentPluginTaskId string
 
-		// 批量保存缓存中的 leaf/child
+		// 批量保存缓存中的 leaf/child：核心行批量落库拿 id → 领域行批量绑定共享主键（同一事务）
 		flushBatch := func() {
-			if len(batch) > 0 {
-				if err := s.repo.CreateBatch(ctx, batch); err != nil {
-					for range batch {
-						outChan <- &CreateTaskStreamChan{Error: err}
-					}
-				}
-				batch = batch[:0]
+			if len(batch) == 0 {
+				return
 			}
+			pending := batch
+			err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+				coreBatch := make([]*entity.Task, 0, len(pending))
+				for _, pair := range pending {
+					coreBatch = append(coreBatch, pair.Task)
+				}
+				if err := s.repo.CreateBatch(txCtx, coreBatch); err != nil {
+					return err
+				}
+				workBatch := make([]*entity.WorkTask, 0, len(pending))
+				for _, pair := range pending {
+					pair.WorkTask.SetID(pair.Task.GetID())
+					workBatch = append(workBatch, pair.WorkTask)
+				}
+				return s.repo.CreateWorkTaskBatch(txCtx, workBatch)
+			})
+			if err != nil {
+				for range pending {
+					outChan <- &CreateTaskStreamChan{Error: err}
+				}
+			}
+			batch = batch[:0]
 		}
 
 		for taskResp := range taskChan {
@@ -1026,28 +1222,28 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 				if len(batch) >= batchSize {
 					flushBatch()
 				}
-				outChan <- &CreateTaskStreamChan{Task: plan.leaf}
+				outChan <- &CreateTaskStreamChan{Task: plan.leaf.Task}
 				continue
 			}
 
 			// parent + children：同 PluginTaskId 复用现有 parent（合并续传），否则建新 parent
 			if currentParent == nil || taskResp.PluginTaskId == "" || taskResp.PluginTaskId != currentPluginTaskId {
-				if err := s.repo.CreateTask(ctx, plan.parent); err != nil {
+				if err := s.persistPlanPair(ctx, plan.parent); err != nil {
 					outChan <- &CreateTaskStreamChan{Error: err}
 					continue
 				}
-				outChan <- &CreateTaskStreamChan{Parent: plan.parent}
+				outChan <- &CreateTaskStreamChan{Parent: plan.parent.Task}
 				currentParent = plan.parent
 				currentPluginTaskId = taskResp.PluginTaskId
 			}
-			parentId := currentParent.GetID()
+			parentId := currentParent.Task.GetID()
 			for _, child := range plan.children {
-				child.Pid = sql.NullInt64{Int64: parentId, Valid: true}
+				child.Task.Pid = sql.NullInt64{Int64: parentId, Valid: true}
 				batch = append(batch, child)
 				if len(batch) >= batchSize {
 					flushBatch()
 				}
-				outChan <- &CreateTaskStreamChan{Task: child}
+				outChan <- &CreateTaskStreamChan{Task: child.Task}
 			}
 		}
 

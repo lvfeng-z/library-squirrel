@@ -79,7 +79,8 @@ func TestSaveWorkInfoInTxFoldsDuplicateSiteMetadata(t *testing.T) {
 	}
 
 	task := entity2.NewTask()
-	task.SiteID = sql.NullInt64{Int64: site.GetID(), Valid: true}
+	wt := entity2.NewWorkTask(1)
+	wt.SiteID = sql.NullInt64{Int64: site.GetID(), Valid: true}
 
 	siteWorkId := "dup-meta-work-1"
 	workResp := &sdkdto.WorkResponse{
@@ -98,7 +99,7 @@ func TestSaveWorkInfoInTxFoldsDuplicateSiteMetadata(t *testing.T) {
 		},
 	}
 
-	workId, err := svc.saveWorkInfoInTx(context.Background(), task, workResp)
+	workId, err := svc.saveWorkInfoInTx(context.Background(), task, wt, workResp)
 	if err != nil {
 		t.Fatalf("saveWorkInfoInTx 失败（重复站点元数据应折叠为单条关联）: %v", err)
 	}

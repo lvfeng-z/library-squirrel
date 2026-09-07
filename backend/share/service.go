@@ -46,8 +46,8 @@ var (
 	ErrShareNotFound = errors.New("分享会话不存在")
 	// ErrShareTaskControlNil 未注入任务控制能力（装配缺失）
 	ErrShareTaskControlNil = errors.New("分享任务控制能力未装配")
-	// ErrSharePayloadInvalid share-receive 任务载荷非法（版本不支持/JSON 不解析）
-	ErrSharePayloadInvalid = errors.New("分享任务载荷非法")
+	// ErrShareTaskStoreNil 未注入收件任务领域行存取能力（装配缺失）
+	ErrShareTaskStoreNil = errors.New("收件任务参数存储能力未装配")
 	// ErrShareRecordKeyBad 分享记录的 E2E 密钥不合法（非 32 字节 base64url）
 	ErrShareRecordKeyBad = errors.New("分享记录密钥不合法")
 )
@@ -60,19 +60,29 @@ const (
 
 // BuiltinTaskControl share-receive 任务创建与启动能力（task.Service 与 taskManager.Manager 经
 // app.go 适配器组合装配；taskCtl 经延迟闭包取用，装配时序上 ShareService 先于 taskManager 创建）。
+// 任务核心行不含领域载荷：收件参数在 share_task 领域行（建树后由 Service 补写）。
 type BuiltinTaskControl interface {
 	// CreateBuiltinTask 创建内置类型任务（返回任务 ID）
-	CreateBuiltinTask(ctx context.Context, taskType string, taskName string, payload string) (int64, error)
+	CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error)
 	// StartTasks 启动任务树（传父任务 ID 即整树加载派发）
 	StartTasks(ctx context.Context, taskIds []int64) error
 	// CreateBuiltinTaskTree 事务原子创建内置任务树：1 父容器 + N 子任务（父 ID 回填子 pid）
 	CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity.Task, error)
 	// CreateBuiltinTaskParent 创建内置任务树父容器（has_child=true、pid=NULL），供先建父再建子的两段式建树
 	CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity.Task, error)
-	// CreateBuiltinTaskChildren 在既有父任务下创建内置任务树子任务（pid=parentID、has_child=false）
-	CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) error
-	// DeleteTask 批量删除任务（含子任务）；建树失败回滚用
+	// CreateBuiltinTaskChildren 在既有父任务下创建内置任务树子任务（pid=parentID、has_child=false），
+	// 返回创建的子任务（含 ID，供调用方写各自领域行）
+	CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) ([]*entity.Task, error)
+	// DeleteTask 批量删除任务（含子任务与领域行）；建树失败回滚用
 	DeleteTask(ctx context.Context, ids []int64) error
+}
+
+// ShareTaskStore 收件任务领域行存取（task.ShareTaskRepository 实现，接口由本模块声明）
+type ShareTaskStore interface {
+	// CreateForTask 为任务 taskID 建收件任务领域行（主键覆写为 taskID）
+	CreateForTask(ctx context.Context, taskID int64, st *entity.ShareTask) error
+	// GetById 按共享主键（=所属任务 id）查询领域行
+	GetById(ctx context.Context, id int64) (*entity.ShareTask, error)
 }
 
 // hostParams 宿主主体入参（发布选项经此进入主体；复原时由分享记录行构建——
@@ -116,16 +126,17 @@ type SharePublishOptions struct {
 
 // Service 分享服务
 type Service struct {
-	repo       *Repository           // 分享记录仓储（nil=不落记录，单测场景）
-	collector  ExportCollector       // 复用 export 收集能力
-	planner    ExportPlanner         // 复用 export 规划能力
-	relayAddr  func() string         // 中继地址（settings.shareSettings.relayAddress）
-	workDir    func() string         // 工作目录（settings）
-	instanceID string                // 设备绑定实例 ID（溯源锚点，持久化于程序根 config/）
-	emitter    ShareEventEmitter     // nil=不发事件（单测场景）
-	taskCtl    BuiltinTaskControl    // share-receive 任务创建/启动能力（app.go 装配）
-	lockReg    WorkLockRegistrar     // 供流作品锁登记/解除（app.go 注入 shareLock 单例；nil=不登记）
-	opts       sessionRuntimeOptions // 测试覆写（零值=默认）
+	repo           *Repository           // 分享记录仓储（nil=不落记录，单测场景）
+	collector      ExportCollector       // 复用 export 收集能力
+	planner        ExportPlanner         // 复用 export 规划能力
+	relayAddr      func() string         // 中继地址（settings.shareSettings.relayAddress）
+	workDir        func() string         // 工作目录（settings）
+	instanceID     string                // 设备绑定实例 ID（溯源锚点，持久化于程序根 config/）
+	emitter        ShareEventEmitter     // nil=不发事件（单测场景）
+	taskCtl        BuiltinTaskControl    // share-receive 任务创建/启动能力（app.go 装配）
+	shareTaskStore ShareTaskStore        // 收件任务领域行存取（app.go 装配；nil=不可收件）
+	lockReg        WorkLockRegistrar     // 供流作品锁登记/解除（app.go 注入 shareLock 单例；nil=不登记）
+	opts           sessionRuntimeOptions // 测试覆写（零值=默认）
 
 	// dialQuotaFull 配额满通知去重：多 fetch 并发阻塞时只提示一次（冷却期内静默）
 	dialQuotaFullMu         sync.Mutex
@@ -158,6 +169,12 @@ func NewService(repo *Repository, collector ExportCollector, planner ExportPlann
 		lockReg:    lockReg,
 		sessions:   make(map[string]*shareSession),
 	}
+}
+
+// SetShareTaskStore 注入收件任务领域行存取能力（app.go 装配；延迟注入——task 仓储在
+// ShareService 之后创建，本方法在装配尾段回填）
+func (s *Service) SetShareTaskStore(store ShareTaskStore) {
+	s.shareTaskStore = store
 }
 
 // setTunables 覆写会话运行参数（仅测试使用）

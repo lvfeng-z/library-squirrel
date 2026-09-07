@@ -27,7 +27,9 @@ func (t *testTransactor) ExecInTransaction(ctx context.Context, fn func(ctx cont
 
 // TestDeleteTaskClearsResourceTaskId 删任务 → 引用该任务（及其子任务）的 resource 行 task_id 置 NULL、
 // resource 行保留、对照组任务的引用不受影响。外键强制库下删除成功本身即「先清引用后删任务行」
-// 顺序的证明（引用未清即删任务直接 FK 违约报错）
+// 顺序的证明（引用未清即删任务直接 FK 违约报错）。
+// resource.task_id 引用 work_task（同值共享主键），fixture 为各任务建对应领域行；
+// 删除链同时摘除被删任务的领域行（对照组领域行保留）
 func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -43,23 +45,24 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	repo := NewRepository(db)
 	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil)
 
-	// 主任务 + 子任务 + 对照组任务
-	parent := domain.NewTask()
-	parent.TaskName = sql.NullString{String: "主任务", Valid: true}
-	if err := db.Create(parent).Error; err != nil {
-		t.Fatalf("插主任务失败: %v", err)
+	// 主任务 + 子任务 + 对照组任务（各配同 id 作品领域行——resource.task_id 引用防线）
+	newSeededTask := func(name string, pid int64) *domain.Task {
+		tk := domain.NewTask()
+		tk.TaskName = sql.NullString{String: name, Valid: true}
+		if pid > 0 {
+			tk.Pid = sql.NullInt64{Int64: pid, Valid: true}
+		}
+		if err := db.Create(tk).Error; err != nil {
+			t.Fatalf("插任务 %s 失败: %v", name, err)
+		}
+		if err := db.Create(domain.NewWorkTask(tk.GetID())).Error; err != nil {
+			t.Fatalf("插任务 %s 的作品领域行失败: %v", name, err)
+		}
+		return tk
 	}
-	child := domain.NewTask()
-	child.TaskName = sql.NullString{String: "子任务", Valid: true}
-	child.Pid = sql.NullInt64{Int64: parent.GetID(), Valid: true}
-	if err := db.Create(child).Error; err != nil {
-		t.Fatalf("插子任务失败: %v", err)
-	}
-	other := domain.NewTask()
-	other.TaskName = sql.NullString{String: "对照组", Valid: true}
-	if err := db.Create(other).Error; err != nil {
-		t.Fatalf("插对照组任务失败: %v", err)
-	}
+	parent := newSeededTask("主任务", 0)
+	child := newSeededTask("子任务", parent.GetID())
+	other := newSeededTask("对照组", 0)
 
 	// 资源行：引用主任务、引用子任务、无引用（NULL）、引用对照组（引用应保留）
 	newRes := func(taskId int64) *domain.Resource {
@@ -88,6 +91,22 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	}
 	if taskCount != 0 {
 		t.Fatalf("主任务与子任务行应物理消亡，剩余 %d 行", taskCount)
+	}
+
+	// 被删任务的作品领域行随之消亡（领域行先于核心行删除——id→task 外键下顺序错误的删除直接违约）
+	var workTaskCount int64
+	if err := db.Model(&domain.WorkTask{}).Where("id IN ?", []int64{parent.GetID(), child.GetID()}).Count(&workTaskCount).Error; err != nil {
+		t.Fatalf("统计作品领域行失败: %v", err)
+	}
+	if workTaskCount != 0 {
+		t.Fatalf("被删任务的作品领域行应随之消亡，剩余 %d 行", workTaskCount)
+	}
+	var otherWorkTask int64
+	if err := db.Model(&domain.WorkTask{}).Where("id = ?", other.GetID()).Count(&otherWorkTask).Error; err != nil {
+		t.Fatalf("统计对照组领域行失败: %v", err)
+	}
+	if otherWorkTask != 1 {
+		t.Fatalf("对照组任务的作品领域行应保留，实际 %d 行", otherWorkTask)
 	}
 
 	// 资源行全部保留

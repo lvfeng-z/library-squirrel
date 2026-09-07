@@ -88,12 +88,12 @@ type fakeExec struct {
 	startCalls int
 }
 
-func (e *fakeExec) CreateWorkInfo(ctx context.Context, task *entity.Task) (*sdkdto.WorkResponse, error) {
+func (e *fakeExec) CreateWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask) (*sdkdto.WorkResponse, error) {
 	e.savedWork = true
 	return nil, e.createErr
 }
 
-func (e *fakeExec) Start(ctx context.Context, task *entity.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
+func (e *fakeExec) Start(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
 	e.startCalls++
 	return nil, nil, fmt.Errorf("测试桩:不进入下载")
 }
@@ -185,7 +185,7 @@ type fakeWorkInfoSaver struct {
 	savedWorkId int64
 }
 
-func (s *fakeWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task, workResp *sdkdto.WorkResponse) (int64, error) {
+func (s *fakeWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, workResp *sdkdto.WorkResponse) (int64, error) {
 	return s.savedWorkId, nil
 }
 
@@ -196,8 +196,8 @@ func newRoleGateTask(taskId int64, mode runMode, checker *fakeDuplicateChecker, 
 	m := newTestManagedTask()
 	m.taskId = taskId
 	m.task.TaskName = sql.NullString{String: "t", Valid: true}
-	m.task.SiteID = sql.NullInt64{Int64: 1, Valid: true}
-	m.task.SiteWorkID = sql.NullString{String: "sw1", Valid: true}
+	m.workTask.SiteID = sql.NullInt64{Int64: 1, Valid: true}
+	m.workTask.SiteWorkID = sql.NullString{String: "sw1", Valid: true}
 	m.runMode = mode
 	m.pluginExec = &fakeExec{}
 	resReader := &fakeResourceReader{}

@@ -31,11 +31,11 @@ import (
 
 // —— share-receive（收件人拉取）——
 //
-// 数据流：反解子任务载荷 → 读本地共享 manifest（Receive 预拉落盘父任务目录）→ 过滤本作品
-// 子集构造子 manifest → 收件人客户端拨中继逐文件拉取本作品文件至暂存目录（大小对齐即完成；
+// 数据流：按任务 id 查 share_task 领域行 → 读本地共享 manifest（Receive 预拉落盘父任务目录）→
+// 过滤本作品子集构造子 manifest → 收件人客户端拨中继逐文件拉取本作品文件至暂存目录（大小对齐即完成；
 // 中断后按暂存大小续传，非中止清理）→ ManifestIngestor 回灌导入子 manifest → 成功清理暂存。
 // 拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从暂存续传；会话终态
-// （撤销/过期/不存在）以用户可读文案置失败。过时载荷（ManifestID==0，存量整体任务）显式 Fail。
+// （撤销/过期/不存在）以用户可读文案置失败。领域行缺失或过时（ManifestID==0）显式 Fail。
 
 // receiveStagingRootName workDir 下的收件暂存目录名（任务行一个子目录；不在 store/ 白名单
 // 子树内，fsmonitor 不感知）
@@ -57,29 +57,31 @@ type StoreMountReader interface {
 
 // ReceiveExecution share-receive（收件人拉取）任务的执行面策略。
 type ReceiveExecution struct {
-	svc         *Service                   // 提供 workDir / instanceID / 测试可覆写参数
-	ingestor    importer.ManifestIngestor  // 回灌导入能力（与 import handler 同一实例，app.go 装配）
-	checker     duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
-	replaceOps  resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
-	mountReader StoreMountReader           // 活行 store 挂载内容载荷查询（逐文件内容判定；nil=不判定走原替换）
+	svc            *Service                   // 提供 workDir / instanceID / 测试可覆写参数
+	shareTaskStore ShareTaskStore             // 收件任务领域行查询（执行参数来源）
+	ingestor       importer.ManifestIngestor  // 回灌导入能力（与 import handler 同一实例，app.go 装配）
+	checker        duplicate.DuplicateChecker // 查重判定能力（manifest 作品键 + 板块角色三分类）
+	replaceOps     resource.ReplaceStoreOps   // 替换链能力（软删替换目标 + 失败回滚复活）
+	mountReader    StoreMountReader           // 活行 store 挂载内容载荷查询（逐文件内容判定；nil=不判定走原替换）
 }
 
-// NewReceiveExecution 创建 share-receive 执行面策略
-func NewReceiveExecution(svc *Service, ingestor importer.ManifestIngestor,
+// NewReceiveExecution 创建 share-receive 执行面策略（shareTaskStore 为收件任务领域行查询能力）
+func NewReceiveExecution(svc *Service, shareTaskStore ShareTaskStore, ingestor importer.ManifestIngestor,
 	checker duplicate.DuplicateChecker, replaceOps resource.ReplaceStoreOps,
 	mountReader StoreMountReader) *ReceiveExecution {
-	return &ReceiveExecution{svc: svc, ingestor: ingestor, checker: checker,
+	return &ReceiveExecution{svc: svc, shareTaskStore: shareTaskStore, ingestor: ingestor, checker: checker,
 		replaceOps: replaceOps, mountReader: mountReader}
 }
 
 // Execute 收件人子任务拉取主体：读本地共享 manifest → 过滤本作品子集 → 拉取本作品文件至
 // 暂存 → 回灌导入 → 清理暂存并置成功；失败置用户可读文案（暂存保留供重试续传）；
-// ctx 取消（暂停/停止）不上报终态交控制面接管。过时载荷（ManifestID==0）显式 Fail。
+// ctx 取消（暂停/停止）不上报终态交控制面接管。领域行缺失或 ManifestID==0（过时载荷）显式 Fail。
 func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	task := h.Task()
-	payload, err := parseShareReceivePayload(task.Payload.String)
-	if err != nil {
-		h.Fail(err.Error())
+	st, err := e.shareTaskStore.GetById(h.RunCtx(), task.GetID())
+	if err != nil || st == nil {
+		// 领域行缺失（建树链崩溃窗口遗留）：按过时载荷显式 Fail
+		h.Fail("请删除本任务后重新接收分享")
 		return
 	}
 	workDir := e.svc.workDir()
@@ -88,13 +90,13 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		h.Fail("工作目录未配置，无法接收分享")
 		return
 	}
-	if payload.ManifestID == 0 {
+	if st.ManifestID == 0 {
 		// 过时载荷（存量整体任务）：新代码不兼容存量，不做迁移或降级
 		h.Fail("请删除本任务后重新接收分享")
 		return
 	}
 	// 读本地共享 manifest（Receive 预拉落盘父任务目录，子任务不重复网络拉取）
-	manifest, err := readSharedManifest(workDir, payload.ManifestPath)
+	manifest, err := readSharedManifest(workDir, st.ManifestPath)
 	if err != nil {
 		h.Fail(err.Error())
 		return
@@ -104,13 +106,20 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 	// 构造只含本作品的子 manifest（按 ManifestID 定位本作品，查重/暂存/导入均收窄到本作品）
-	sub, err := buildSubManifest(manifest, payload.ManifestID)
+	sub, err := buildSubManifest(manifest, st.ManifestID)
 	if err != nil {
 		h.Fail(err.Error())
 		return
 	}
-	logger.Log.Infof("[share-recv] 任务 %d 执行开始 manifest=%s", task.GetID(), payload.ManifestPath)
-	client, err := newReceiveClient(payload, e.svc.instanceID, e.svc.opts)
+	logger.Log.Infof("[share-recv] 任务 %d 执行开始 manifest=%s", task.GetID(), st.ManifestPath)
+	conn := &receiveConnParams{
+		RelayDial:    st.RelayDial,
+		RelayHost:    st.RelayHost,
+		Token:        st.Token,
+		KeyB64:       st.KeyB64,
+		PasswordHash: st.PasswordHash,
+	}
+	client, err := newReceiveClient(conn, e.svc.instanceID, e.svc.opts)
 	if err != nil {
 		h.Fail(err.Error())
 		return

@@ -55,7 +55,7 @@ export function DeleteTask(ids: number[]): $CancellablePromise<model$0.ApiRespon
 }
 
 /**
- * GetById 根据ID获取
+ * GetById 根据ID获取（核心行 + 作品任务领域行组装）
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$1.TaskDTO | null> | null> {
     return $Call.ByID(489148068, id).then(($result: any) => {
@@ -91,7 +91,7 @@ export function ListStatus(ids: number[]): $CancellablePromise<model$0.ApiRespon
 }
 
 /**
- * ListTaskTree 获取任务树列表
+ * ListTaskTree 获取任务树列表（核心行 + 领域行双查组装）
  */
 export function ListTaskTree(taskIds: number[], ...includeStatus: number[]): $CancellablePromise<model$0.ApiResponse<(dto$1.TaskDTO | null)[]> | null> {
     return $Call.ByID(3819386149, taskIds, includeStatus).then(($result: any) => {
@@ -154,7 +154,7 @@ export function RefreshStatus(taskId: number): $CancellablePromise<model$0.ApiRe
 }
 
 /**
- * Save 保存任务
+ * Save 保存任务（核心行 + 作品任务领域行成对创建）
  */
 export function Save(task: dto$1.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2982935829, task).then(($result: any) => {
@@ -172,7 +172,7 @@ export function SetTreeStatus(taskIds: number[], status: number, includeStatus: 
 }
 
 /**
- * Update 更新任务
+ * Update 更新任务（核心行部分更新；作品任务领域行全字段 UPSERT）
  */
 export function Update(task: dto$1.TaskDTO | null): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3102851929, task).then(($result: any) => {

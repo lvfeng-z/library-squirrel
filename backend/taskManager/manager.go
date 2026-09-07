@@ -18,15 +18,15 @@ import (
 
 // Repository 任务仓储接口（TaskManager 需要的数据库操作）
 type Repository interface {
-	// ListTaskTree 获取任务树列表
-	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) ([]*domain.Task, error)
+	// ListTaskTree 获取任务树列表（核心行 + 领域行双查组装）
+	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) (*task.TaskTreeRows, error)
 	// SetTaskTreeStatus 设置任务树状态
 	SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error)
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
-	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id
+	// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id（作品任务领域行）
 	BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error
-	// UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)
+	// UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)（作品任务领域行）
 	UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error
 	// ListBySiteAndSiteWorkID 按 (site_id, site_work_id) 反查关联任务记录（用于作品删除时停止运行中任务）
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error)
@@ -157,12 +157,14 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	}
 	logger.Log.Infof("loadAndStartTaskTrees: taskIds=%v, skipTerminal=%v", taskIds, skipTerminal)
 
-	// 1. 共享一次 ListTaskTree 查询
-	tasks, err := m.repo.ListTaskTree(ctx, taskIds)
+	// 1. 共享一次 ListTaskTree 双查（核心行 + 领域行按共享主键关联）
+	rows, err := m.repo.ListTaskTree(ctx, taskIds)
 	if err != nil {
 		logger.Log.Errorf("loadAndStartTaskTrees: ListTaskTree 失败: %v", err)
 		return err
 	}
+	tasks := rows.Tasks
+	workTaskById := rows.WorkTasks
 	logger.Log.Infof("loadAndStartTaskTrees: 查询到 %d 条任务记录", len(tasks))
 	if len(tasks) == 0 {
 		return ErrTaskTreeNotFound
@@ -173,6 +175,8 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	// 用户所选——子集=Selected、仅作品信息=None。
 	// 持久化推迟到确定调度范围后按"实际纳入调度的任务"写入(决策1·B):整树 Start 写全部子任务,
 	// 运行中父单元重纳(reinject)只写请求的终态叶子,不波及未被纳入的运行中兄弟。
+	// 执行模式为插件下载任务的领域数据:预写对象为作品任务领域行（内置类型任务无领域行、不参与板块模式，
+	// 其查重跳过判定经 runMode 零值 None 达成）
 	var modeStoreRoles sql.NullString
 	if recordMode != nil {
 		// 执行模式三态落库:All→NULL(执行期由 universe 派生)、None→空串(仅作品信息)、Selected→所选子集
@@ -184,10 +188,10 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		default:
 			modeStoreRoles = sql.NullString{String: strings.Join(recordMode.storeScope.roles, ","), Valid: true}
 		}
-		// 内存字段对全部 tasks 设置:被构建的任务据此派生 runMode,未被构建的任务(如 reinject 跳过的兄弟)不被读取、无害
-		for _, t := range tasks {
-			t.StoreRoles = modeStoreRoles
-			t.IncludeWorkInfo = recordMode.workInfo
+		// 内存字段对全部领域行设置:被构建的任务据此派生 runMode,未被构建的任务(如 reinject 跳过的兄弟)不被读取、无害
+		for _, wt := range workTaskById {
+			wt.StoreRoles = modeStoreRoles
+			wt.IncludeWorkInfo = recordMode.workInfo
 		}
 	}
 
@@ -246,7 +250,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 		processedUnits[unitId] = struct{}{}
 
 		if kind == unitStandalone {
-			child, _ := m.buildOrReuseChild(rootTask, skipTerminal)
+			child, _ := m.buildOrReuseChild(rootTask, workTaskById[rootTask.GetID()], skipTerminal)
 
 			if child == nil {
 				// 已终态，直接持久化当前状态
@@ -266,7 +270,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	allToCheck := make([]*ManagedTask, 0, len(standaloneChildren)+len(parentUnits)*4)
 	allToCheck = append(allToCheck, standaloneChildren...)
 	for _, parentId := range parentUnits {
-		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, leafIdsPerParent[parentId])...)
+		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, workTaskById, parentId, skipTerminal, leafIdsPerParent[parentId])...)
 	}
 
 	// 5. recordMode 持久化:按实际纳入调度的任务范围写入(决策1·B)。整树 Start 时 allToCheck 含全部子任务;
@@ -295,10 +299,11 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 }
 
 // processParentUnit 处理一个父任务单元:创建层 claim 父任务后构建其直接子任务（整树加载到 children 供聚合）。
+// workTaskById 为树加载双查所得作品任务领域行表（构建子任务时随行注入）。
 // leafSet 非空时仅返回集合内的子任务(单独 Start 选中叶子:整树加载但只 dispatch 这些叶子,其余兄弟 Created 不 dispatch);
 // leafSet 为 nil 时返回全部子任务(整树 Start)。并发开始同一父任务时输者(claim 失败)直接返回 nil;
 // 所有子任务已终态时计算父任务最终状态、回退 claim、推送移除,返回 nil。
-func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, actualParentId int64, skipTerminal bool, leafSet map[int64]struct{}) []*ManagedTask {
+func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*domain.Task, workTaskById map[int64]*domain.WorkTask, actualParentId int64, skipTerminal bool, leafSet map[int64]struct{}) []*ManagedTask {
 	parentTaskName := ""
 	if parentEntity := taskById[actualParentId]; parentEntity != nil && parentEntity.TaskName.Valid {
 		parentTaskName = parentEntity.TaskName.String
@@ -311,12 +316,12 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		if len(leafSet) == 0 {
 			return nil
 		}
-		return m.reinjectLeaves(parentTask, taskById, leafSet)
+		return m.reinjectLeaves(parentTask, taskById, workTaskById, leafSet)
 	}
 
 	for _, t := range tasks {
 		if t.Pid.Valid && t.Pid.Int64 == actualParentId {
-			if child, _ := m.buildOrReuseChild(t, skipTerminal); child != nil {
+			if child, _ := m.buildOrReuseChild(t, workTaskById[t.GetID()], skipTerminal); child != nil {
 				parentTask.AddChild(child)
 			}
 		}
@@ -357,7 +362,7 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 //  1. Paused 的恢复由 ResumeTaskTrees 经 resolveTargets 内存路径直接投 cmdResume,不经本路径;
 //  2. 把它们送入 batchCheckDuplicates 会因自身作品命中→误置 WaitingForInput,破坏运行中任务;
 //  3. 对 Processing/Waiting "开始"属幂等/语义模糊,跳过最安全。
-func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.Task, leafSet map[int64]struct{}) []*ManagedTask {
+func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.Task, workTaskById map[int64]*domain.WorkTask, leafSet map[int64]struct{}) []*ManagedTask {
 	out := make([]*ManagedTask, 0, len(leafSet))
 	for leafId := range leafSet {
 		t := taskById[leafId]
@@ -368,7 +373,7 @@ func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.
 			continue // 非终态不纳入,理由见方法注释
 		}
 		// 终态已从 taskMap 清理→claimTask 重建新对象;skipTerminal=false 表示用户显式请求、不跳过
-		child, _ := m.buildOrReuseChild(t, false)
+		child, _ := m.buildOrReuseChild(t, workTaskById[t.GetID()], false)
 		if child == nil {
 			continue
 		}
@@ -378,11 +383,12 @@ func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.
 	return out
 }
 
-// buildOrReuseChild 构建子任务 ManagedTask(创建层 claim 保证对象唯一)。
+// buildOrReuseChild 构建子任务 ManagedTask(创建层 claim 保证对象唯一)。wt 为该任务的作品领域行
+// （核心行+领域行成对构建；内置类型任务 wt=nil）。
 // 若任务在数据库中为 Paused 状态(应用重启后内存已丢失),根据 pending_resource_id 决定续传或重新执行。
 // skipTerminal 为 true 时跳过已终态(Finished/Failed/PartlyFinished)的子任务。
 // 返回的第二个 bool 表示是否为本次创建(输者复用赢家对象时为 false)。
-func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) (*ManagedTask, bool) {
+func (m *Manager) buildOrReuseChild(t *domain.Task, wt *domain.WorkTask, skipTerminal bool) (*ManagedTask, bool) {
 	dbState := TaskState(t.Status)
 
 	// 跳过已终态的子任务（仅 Resume 场景需要）
@@ -390,14 +396,14 @@ func (m *Manager) buildOrReuseChild(t *domain.Task, skipTerminal bool) (*Managed
 		return nil, false
 	}
 
-	mt, created := m.claimTask(t)
+	mt, created := m.claimTask(t, wt)
 	if mt == nil {
 		return nil, false
 	}
 	// 仅赢家设置跨重启续传标记;输者复用赢家的对象,其 resumeFromDB 已由赢家设定
 	if created {
-		if dbState == TaskStatePaused && t.PendingResourceID.Valid {
-			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), t.PendingResourceID.Int64)
+		if dbState == TaskStatePaused && wt != nil && wt.PendingResourceID.Valid {
+			logger.Log.Infof("StartTaskTree: 子任务 %d 跨重启续传，pendingResourceID=%d", t.GetID(), wt.PendingResourceID.Int64)
 			mt.resumeFromDB = true
 		} else if dbState == TaskStatePaused {
 			// Paused 但无 pending_resource_id（setup 阶段暂停或旧数据），从头执行
@@ -449,13 +455,14 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 		if child.resumeFromDB {
 			continue
 		}
-		// 仅作品信息板块的任务不查重（不拉任何资源，不可能覆盖 store 行）
+		// 仅作品信息板块的任务不查重（不拉任何资源，不可能覆盖 store 行）；内置类型任务无作品
+		// 领域行（runMode 零值 None）同样在此跳过——查重在其执行面策略内自有实现
 		if !child.runMode.storeScope.coversStores() {
 			child.skipDuplicateCheck = true
 			continue
 		}
-		// 不具备查重条件，标记跳过 run() 中的重复检测
-		if child.task == nil || !child.task.SiteID.Valid || !child.task.SiteWorkID.Valid || child.task.SiteWorkID.String == "" {
+		// 不具备查重条件（无作品领域行或站点身份缺失），标记跳过 run() 中的重复检测
+		if child.workTask == nil || !child.workTask.SiteID.Valid || !child.workTask.SiteWorkID.Valid || child.workTask.SiteWorkID.String == "" {
 			child.skipDuplicateCheck = true
 			continue
 		}
@@ -481,7 +488,7 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	// 与 share-receive/zip 导入的 manifest 域键对齐）
 	siteIds := make([]int64, 0, len(toCheck))
 	for _, child := range toCheck {
-		siteIds = append(siteIds, child.task.SiteID.Int64)
+		siteIds = append(siteIds, child.workTask.SiteID.Int64)
 	}
 	siteIdToKey, err := m.resolveSiteKeys(checkCtx, siteIds)
 	if err != nil {
@@ -494,8 +501,8 @@ func (m *Manager) batchCheckDuplicates(ctx context.Context, children []*ManagedT
 	items := make([]duplicate.DuplicateCheckItem, len(toCheck))
 	for i, child := range toCheck {
 		items[i] = duplicate.DuplicateCheckItem{
-			SiteKey:    siteIdToKey[child.task.SiteID.Int64],
-			SiteWorkID: child.task.SiteWorkID.String,
+			SiteKey:    siteIdToKey[child.workTask.SiteID.Int64],
+			SiteWorkID: child.workTask.SiteWorkID.String,
 			Roles:      child.runMode.storeScope.roles,
 		}
 	}
@@ -875,13 +882,13 @@ func (m *Manager) IsIdle() bool {
 // CountActiveByPlugin 统计插件名下运行中的任务数。运行中=Processing/Pausing/Stopping/
 // WaitingForInput（在途执行、执行中收敛或执行中待用户确认——插件停用会打断其插件交互）；
 // Created/Waiting/Paused/终态不计（未启动与已暂停的任务不阻塞插件停用，暂停任务随停用
-// 的存续由用户自行处置）
+// 的存续由用户自行处置）。插件身份在作品任务领域行——无领域行的任务（内置类型）不属任何插件
 func (m *Manager) CountActiveByPlugin(pluginPublicId string) int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	count := 0
 	for _, mt := range m.taskMap {
-		if !mt.task.PluginPublicID.Valid || mt.task.PluginPublicID.String != pluginPublicId {
+		if mt.workTask == nil || !mt.workTask.PluginPublicID.Valid || mt.workTask.PluginPublicID.String != pluginPublicId {
 			continue
 		}
 		switch mt.GetState() {
@@ -890,6 +897,12 @@ func (m *Manager) CountActiveByPlugin(pluginPublicId string) int {
 		}
 	}
 	return count
+}
+
+// IsKnownTaskType 任务类型是否已注册：执行面策略表成员 ∪ 插件下载类型。
+// 实现 task.TaskTypeRegistry（app.go 装配注入 task.Service，供创建路径成员校验）
+func (m *Manager) IsKnownTaskType(taskType string) bool {
+	return taskType == domain.TaskTypePluginDownload || m.strategies[taskType] != nil
 }
 
 // ConfirmReplace 用户确认替换或跳过重复作品。
@@ -1071,7 +1084,8 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 // claimTask 原子 insert-or-get 子任务(创建层守卫):同一 taskId 在 taskMap 中只存在一个 ManagedTask。
 // 并发开始同一任务时,赢家创建+注册,输者复用赢家的对象(其本轮 newManagedTask 产物被丢弃)。
 // newManagedTask 在锁外执行(避免持 m.mu 跑 pluginExecFactory),用 double-check 保证唯一插入。
-func (m *Manager) claimTask(t *domain.Task) (mt *ManagedTask, created bool) {
+// wt 为该任务的作品任务领域行（与核心行成对构建）。
+func (m *Manager) claimTask(t *domain.Task, wt *domain.WorkTask) (mt *ManagedTask, created bool) {
 	m.mu.Lock()
 	if existing, ok := m.taskMap[t.GetID()]; ok {
 		m.mu.Unlock()
@@ -1079,7 +1093,7 @@ func (m *Manager) claimTask(t *domain.Task) (mt *ManagedTask, created bool) {
 	}
 	m.mu.Unlock()
 
-	nm := m.newManagedTask(t)
+	nm := m.newManagedTask(t, wt)
 	if nm == nil {
 		return nil, false
 	}
@@ -1322,37 +1336,54 @@ func (m *Manager) BuildSnapshot() *TaskSnapshotDTO {
 	return snapshot
 }
 
-func (m *Manager) newManagedTask(t *domain.Task) *ManagedTask {
-	// 按任务类型取执行面：内置类型（task_type 非空）走注册的策略，插件任务走插件执行器
+// newManagedTask 构建托管任务并按任务类型取执行面：plugin-download（插件下载任务）走插件执行器，
+// 其余非空类型走注册的执行面策略，空类型/未注册类型拒启（创建路径已显式写类型，空值属数据异常）。
+// wt 为作品任务领域行（插件任务执行面与领域字段的载体；内置类型任务传 nil）
+func (m *Manager) newManagedTask(t *domain.Task, wt *domain.WorkTask) *ManagedTask {
 	var pluginExec TaskExecutor
 	var strategy ExecutionStrategy
-	if taskType := t.TaskType.String; t.TaskType.Valid && taskType != "" {
+	taskType := t.TaskType.String
+	switch {
+	case !t.TaskType.Valid || taskType == "":
+		logger.Log.Errorf("获取任务执行面失败: 任务 %d 的 task_type 为空（创建路径未写显式类型）", t.GetID())
+		return nil
+	case taskType == domain.TaskTypePluginDownload:
+		if wt == nil {
+			logger.Log.Errorf("获取任务执行器失败: 插件任务 %d 缺少作品任务领域行", t.GetID())
+			return nil
+		}
+		if !wt.PluginPublicID.Valid {
+			logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
+			return nil
+		}
+		exec, err := m.pluginExecFactory(wt.PluginPublicID.String)
+		if err != nil {
+			logger.Log.Errorf("获取任务执行器失败: %v", err)
+			return nil
+		}
+		pluginExec = exec
+	default:
 		strat, ok := m.strategies[taskType]
 		if !ok {
 			logger.Log.Errorf("获取任务执行面失败: task_type %q 未注册策略", taskType)
 			return nil
 		}
 		strategy = strat
-	} else {
-		if !t.PluginPublicID.Valid {
-			logger.Log.Error("获取任务执行器失败: pluginPublicID is null")
-			return nil
-		}
-		exec, err := m.pluginExecFactory(t.PluginPublicID.String)
-		if err != nil {
-			logger.Log.Errorf("获取任务执行器失败: %v", err)
-			return nil
-		}
-		pluginExec = exec
 	}
 
 	parentId := int64(0)
 	if t.Pid.Valid {
 		parentId = t.Pid.Int64
 	}
-	mt := NewManagedTask(t.GetID(), parentId, t, pluginExec, m.deps, m, m.semaphore)
+	mt := NewManagedTask(t.GetID(), parentId, t, wt, pluginExec, m.deps, m, m.semaphore)
 	mt.strategy = strategy
-	mt.runMode = runModeFromTask(t)
+	// 板块执行模式派生自作品任务领域行；内置类型任务无领域行，板块模式不适用——置 All 使
+	// 终态持久化门（isNonTerminalMode 按无资源板块跳过落盘）不拦截策略任务的终态上报
+	if wt != nil {
+		mt.runMode = runModeFromTask(wt)
+	} else {
+		mt.runMode = runMode{storeScope: storeScope{kind: scopeAll}}
+	}
 
 	// 设置状态变化回调
 	taskName := t.TaskName.String

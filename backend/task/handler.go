@@ -21,21 +21,23 @@ func NewHandler(svc *Service) *Handler {
 
 // ========== 增删改操作 ==========
 
-// Save 保存任务
+// Save 保存任务（核心行 + 作品任务领域行成对创建）
 func (h *Handler) Save(ctx context.Context, task *sdkdto.TaskDTO) *model.ApiResponse[int64] {
 	domainTask := dto2.ToTaskEntity(task)
+	domainWorkTask := dto2.ToWorkTaskEntity(task)
 
-	if err := h.svc.Save(ctx, domainTask); err != nil {
+	if err := h.svc.Save(ctx, domainTask, domainWorkTask); err != nil {
 		return model.HandleError[int64](err)
 	}
 	return model.Success(domainTask.GetID())
 }
 
-// Update 更新任务
+// Update 更新任务（核心行部分更新；作品任务领域行全字段 UPSERT）
 func (h *Handler) Update(ctx context.Context, task *sdkdto.TaskDTO) *model.ApiResponse[any] {
 	domainTask := dto2.ToTaskEntity(task)
+	domainWorkTask := dto2.ToWorkTaskEntity(task)
 
-	if err := h.svc.Update(ctx, domainTask); err != nil {
+	if err := h.svc.Update(ctx, domainTask, domainWorkTask); err != nil {
 		return model.HandleError[any](err)
 	}
 	return model.Success[any](nil)
@@ -84,13 +86,13 @@ func (h *Handler) CreateTaskByURL(ctx context.Context, url string) *model.ApiRes
 
 // ========== 查询操作 ==========
 
-// GetById 根据ID获取
+// GetById 根据ID获取（核心行 + 作品任务领域行组装）
 func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.TaskDTO] {
-	result, err := h.svc.GetById(ctx, id)
+	task, workTask, err := h.svc.GetById(ctx, id)
 	if err != nil {
 		return model.HandleError[*sdkdto.TaskDTO](err)
 	}
-	return model.Success(dto2.NewTaskDTO(result))
+	return model.Success(dto2.AssembleTaskDTO(task, workTask, nil))
 }
 
 // QueryPage 分页查询
@@ -108,8 +110,8 @@ func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.TaskDTO
 	}
 	// 转换为 DTO
 	data := make([]*sdkdto.TaskDTO, 0, len(result.Data))
-	for _, task := range result.Data {
-		data = append(data, dto2.NewTaskDTO(task))
+	for _, pair := range result.Data {
+		data = append(data, dto2.AssembleTaskDTO(pair.Task, pair.WorkTask, nil))
 	}
 	return model.Success(&model.Page[sdkdto.TaskDTO]{
 		PageNumber:   result.PageNumber,
@@ -163,27 +165,27 @@ func (h *Handler) QueryChildrenTaskPage(ctx context.Context, page *model.Page[dt
 
 // ListChildrenTask 查询子任务列表
 func (h *Handler) ListChildrenTask(ctx context.Context, pid int64) *model.ApiResponse[[]*sdkdto.TaskDTO] {
-	result, err := h.svc.ListChildrenTask(ctx, pid)
+	pairs, err := h.svc.ListChildrenTask(ctx, pid)
 	if err != nil {
 		return model.HandleError[[]*sdkdto.TaskDTO](err)
 	}
 	// 转换为 DTO
-	resultDTOs := make([]*sdkdto.TaskDTO, len(result))
-	for i, task := range result {
-		resultDTOs[i] = dto2.NewTaskDTO(task)
+	resultDTOs := make([]*sdkdto.TaskDTO, len(pairs))
+	for i, pair := range pairs {
+		resultDTOs[i] = dto2.AssembleTaskDTO(pair.Task, pair.WorkTask, nil)
 	}
 	return model.Success(resultDTOs)
 }
 
 // ListTasksBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表（供前端选择板块执行的任务）
 func (h *Handler) ListTasksBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) *model.ApiResponse[[]*sdkdto.TaskDTO] {
-	result, err := h.svc.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
+	pairs, err := h.svc.ListBySiteAndSiteWorkID(ctx, siteId, siteWorkId)
 	if err != nil {
 		return model.HandleError[[]*sdkdto.TaskDTO](err)
 	}
-	resultDTOs := make([]*sdkdto.TaskDTO, len(result))
-	for i, task := range result {
-		resultDTOs[i] = dto2.NewTaskDTO(task)
+	resultDTOs := make([]*sdkdto.TaskDTO, len(pairs))
+	for i, pair := range pairs {
+		resultDTOs[i] = dto2.AssembleTaskDTO(pair.Task, pair.WorkTask, nil)
 	}
 	return model.Success(resultDTOs)
 }
@@ -193,21 +195,21 @@ func (h *Handler) QueryTreeDataPage(ctx context.Context, page *model.Page[sdkdto
 	return model.HandleResult(h.svc.QueryTreeDataPage(ctx, page.PageNumber, page.PageSize, &query))
 }
 
-// ListTaskTree 获取任务树列表
+// ListTaskTree 获取任务树列表（核心行 + 领域行双查组装）
 func (h *Handler) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...int) *model.ApiResponse[[]*sdkdto.TaskDTO] {
 	// 转换 includeStatus
 	var statusEnums []TaskStatusEnum
 	for _, s := range includeStatus {
 		statusEnums = append(statusEnums, TaskStatusEnum(s))
 	}
-	result, err := h.svc.ListTaskTree(ctx, taskIds, statusEnums...)
+	rows, err := h.svc.ListTaskTree(ctx, taskIds, statusEnums...)
 	if err != nil {
 		return model.HandleError[[]*sdkdto.TaskDTO](err)
 	}
-	// 转换为 DTO
-	resultDTOs := make([]*sdkdto.TaskDTO, len(result))
-	for i, task := range result {
-		resultDTOs[i] = dto2.NewTaskDTO(task)
+	// 转换为 DTO：按共享主键关联各类领域行统一组装
+	resultDTOs := make([]*sdkdto.TaskDTO, len(rows.Tasks))
+	for i, t := range rows.Tasks {
+		resultDTOs[i] = dto2.AssembleTaskDTO(t, rows.WorkTasks[t.GetID()], rows.ShareTasks[t.GetID()])
 	}
 	return model.Success(resultDTOs)
 }

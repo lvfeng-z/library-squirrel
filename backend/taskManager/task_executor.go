@@ -11,19 +11,21 @@ import (
 // 由 TaskManager 定义，Plugin 模块实现
 // 注意：此接口由 taskManager 模块定义，实现由 plugin 模块提供
 type TaskExecutorInterface interface {
-	// CreateWorkInfo 创建作品信息
+	// CreateWorkInfo 创建作品信息（核心行 + 作品任务领域行两参；插件身份在领域行）
 	// ctx: 上下文
-	// task: 任务信息
+	// task: 任务核心行
+	// workTask: 作品任务领域行
 	// 返回作品响应或错误
-	CreateWorkInfo(ctx context.Context, task *domain.Task) (*sdkdto.WorkResponse, error)
+	CreateWorkInfo(ctx context.Context, task *domain.Task, workTask *domain.WorkTask) (*sdkdto.WorkResponse, error)
 
 	// Start 开始任务
 	// ctx: 上下文，用于取消和超时控制
-	// task: 任务信息
+	// task: 任务核心行
+	// workTask: 作品任务领域行（插件身份与站点归属）
 	// storeRoles: 本次执行所选 store_type 子集(空=全量),插件据此选择性产出
 	// 返回 StoreSpec 流集合(含 downloaded 与 derived)、WorkResponse 或错误
 	// 调用方负责关闭各 StoreSpec.ReadCloser
-	Start(ctx context.Context, task *domain.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
+	Start(ctx context.Context, task *domain.Task, workTask *domain.WorkTask, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error)
 
 	// Pause 暂停任务（任务级，广播到全部 stream）
 	// ctx: 上下文

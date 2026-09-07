@@ -33,8 +33,8 @@ func newFakeBuiltinRepo(tasks ...*domain.Task) *fakeBuiltinRepo {
 	return &fakeBuiltinRepo{tasks: tasks, statuses: make(map[int64]task.StatusUpdate)}
 }
 
-func (r *fakeBuiltinRepo) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) ([]*domain.Task, error) {
-	return r.tasks, nil
+func (r *fakeBuiltinRepo) ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...task.TaskStatusEnum) (*task.TaskTreeRows, error) {
+	return &task.TaskTreeRows{Tasks: r.tasks}, nil
 }
 
 func (r *fakeBuiltinRepo) SetTaskTreeStatus(ctx context.Context, taskIds []int64, status task.TaskStatusEnum, includeStatus ...task.TaskStatusEnum) (int64, error) {
@@ -326,13 +326,13 @@ func TestBuiltinTaskFailTerminal(t *testing.T) {
 func TestBuiltinTaskUnknownTypeStrategy(t *testing.T) {
 	mgr := NewManager(2, nil, nil, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
-	if mt := mgr.newManagedTask(newBuiltinTask(1, "ghost-type")); mt != nil {
+	if mt := mgr.newManagedTask(newBuiltinTask(1, "ghost-type"), nil); mt != nil {
 		t.Fatal("未注册策略的内置类型不应构建 ManagedTask")
 	}
-	// 已注册类型正常构建且不要求 PluginPublicID
+	// 已注册类型正常构建且不要求作品领域行
 	mgr2 := NewManager(2, nil, nil, nil, nil, map[string]ExecutionStrategy{"demo": newScriptedStrategy("finish")})
 	defer func() { close(mgr2.closeCh); <-mgr2.flushDone }()
-	if mt := mgr2.newManagedTask(newBuiltinTask(1, "demo")); mt == nil || mt.strategy == nil {
+	if mt := mgr2.newManagedTask(newBuiltinTask(1, "demo"), nil); mt == nil || mt.strategy == nil {
 		t.Fatal("已注册内置类型应构建 ManagedTask 并绑定策略")
 	}
 }

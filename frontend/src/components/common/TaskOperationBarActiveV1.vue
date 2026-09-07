@@ -3,6 +3,7 @@ import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import { ALL_STORE_ROLES, StoreRoleLabels } from '@renderer/constants/sectionCode.ts'
+import { BUILTIN_TASK_TYPES } from '@renderer/constants/builtinTaskType.ts'
 import { useTaskStore } from '@renderer/store/UseTaskStore.ts'
 import { useParentTaskStore } from '@renderer/store/UseParentTaskStore.ts'
 import { isOpInFlight } from '@renderer/composables/useTaskOperations'
@@ -105,11 +106,11 @@ const status: Ref<number | undefined | null> = computed(() => {
 })
 // 本行操作在途/冷却（防重入守卫）：按钮 loading 反馈「禁止再次操作」
 const opInFlight = computed<boolean>(() => notNullish(rowTaskId.value) && isOpInFlight(rowTaskId.value))
-// 是否为内置任务类型（share-host/share-receive 等，taskType 非空）：无板块概念，
+// 是否为内置任务类型（taskType ∈ 内置任务类型集合，如 share-receive；插件任务不属内置）：无板块概念，
 // 终态不提供板块重下、完成后的"再次"动作语义为重新执行
 const isBuiltinTask = computed<boolean>(() => {
   const taskType = props.row.taskProgress?.task?.taskType
-  return notNullish(taskType) && taskType !== ''
+  return notNullish(taskType) && BUILTIN_TASK_TYPES.has(taskType)
 })
 // 进度（百分比）
 const schedule: Ref<number> = computed<number>((oldValue) => {

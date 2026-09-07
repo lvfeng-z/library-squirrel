@@ -46,18 +46,20 @@ const (
 	testExtID    = "ext-1"
 )
 
-// fakeTaskRepo 记录 CreateTask/CreateBatch 创建的任务并模拟自增主键——
+// fakeTaskRepo 记录 CreateTask/CreateBatch 创建的核心行与成对创建的作品领域行并模拟自增主键——
 // parent→child Pid 链接（parent.GetID()）依赖 CreateTask 回填 ID。
-// 其余 Repository 方法用 nil 接口嵌入满足签名：创建路径仅触达 CreateTask/CreateBatch。
+// 其余 Repository 方法用 nil 接口嵌入满足签名：创建路径仅触达 CreateTask/CreateBatch 与
+// CreateWorkTaskForTask/CreateWorkTaskBatch。
 type fakeTaskRepo struct {
 	Repository
-	mu     sync.Mutex
-	tasks  []*entity.Task
-	nextID int64
+	mu        sync.Mutex
+	tasks     []*entity.Task
+	workTasks map[int64]*entity.WorkTask
+	nextID    int64
 }
 
 func newFakeTaskRepo() *fakeTaskRepo {
-	return &fakeTaskRepo{nextID: 1}
+	return &fakeTaskRepo{workTasks: make(map[int64]*entity.WorkTask), nextID: 1}
 }
 
 func (f *fakeTaskRepo) CreateTask(_ context.Context, task *entity.Task) error {
@@ -78,6 +80,30 @@ func (f *fakeTaskRepo) CreateBatch(_ context.Context, tasks []*entity.Task) erro
 		f.tasks = append(f.tasks, t)
 	}
 	return nil
+}
+
+func (f *fakeTaskRepo) CreateWorkTaskForTask(_ context.Context, taskID int64, wt *entity.WorkTask) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wt.SetID(taskID)
+	f.workTasks[taskID] = wt
+	return nil
+}
+
+func (f *fakeTaskRepo) CreateWorkTaskBatch(_ context.Context, wts []*entity.WorkTask) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, wt := range wts {
+		f.workTasks[wt.GetID()] = wt
+	}
+	return nil
+}
+
+// workTaskOf 取核心行 id 对应的作品领域行（无则 nil）
+func (f *fakeTaskRepo) workTaskOf(id int64) *entity.WorkTask {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.workTasks[id]
 }
 
 // fakeSiteRepo 让 site.Service.GetByKey 回填固定站点 ID（创建路径经 siteSvc.GetByKey→repo.Get）。
@@ -162,9 +188,9 @@ func assertChildrenPid(t *testing.T, ts []*entity.Task, parentID int64, want int
 	}
 }
 
-// ---- 共享断言：leaf 任务字段 ----
+// ---- 共享断言：leaf 任务字段（核心行 + 作品领域行成对） ----
 
-func assertLeafTask(t *testing.T, leaf *entity.Task) {
+func assertLeafTask(t *testing.T, leaf *entity.Task, wt *entity.WorkTask) {
 	t.Helper()
 	if leaf.HasChild.Valid && leaf.HasChild.Bool {
 		t.Errorf("leaf HasChild 应为 false，得到 true")
@@ -173,14 +199,24 @@ func assertLeafTask(t *testing.T, leaf *entity.Task) {
 	if leaf.Pid.Valid {
 		t.Errorf("leaf Pid 应为 NULL（Valid=false，根级），得到 %+v", leaf.Pid)
 	}
-	if !leaf.SiteID.Valid || leaf.SiteID.Int64 != testSiteID {
-		t.Errorf("SiteID 回填应为 %d，得到 %+v", testSiteID, leaf.SiteID)
+	if !leaf.TaskType.Valid || leaf.TaskType.String != entity.TaskTypePluginDownload {
+		t.Errorf("leaf TaskType 应为插件下载类型 %q，得到 %+v", entity.TaskTypePluginDownload, leaf.TaskType)
 	}
-	if !leaf.PluginPublicID.Valid || leaf.PluginPublicID.String != testPluginID {
-		t.Errorf("PluginPublicID 回填错误，得到 %+v", leaf.PluginPublicID)
+	if wt == nil {
+		t.Fatal("插件任务应有成对的作品领域行")
 	}
-	if !leaf.PluginExtensionID.Valid || leaf.PluginExtensionID.String != testExtID {
-		t.Errorf("PluginExtensionID 回填错误，得到 %+v", leaf.PluginExtensionID)
+	if !wt.SiteID.Valid || wt.SiteID.Int64 != testSiteID {
+		t.Errorf("SiteID 回填应为 %d，得到 %+v", testSiteID, wt.SiteID)
+	}
+	if !wt.PluginPublicID.Valid || wt.PluginPublicID.String != testPluginID {
+		t.Errorf("PluginPublicID 回填错误，得到 %+v", wt.PluginPublicID)
+	}
+	if !wt.PluginExtensionID.Valid || wt.PluginExtensionID.String != testExtID {
+		t.Errorf("PluginExtensionID 回填错误，得到 %+v", wt.PluginExtensionID)
+	}
+	// 1:1 共享主键：领域行 id 与核心行 id 严格同值
+	if wt.GetID() != leaf.GetID() {
+		t.Errorf("作品领域行 id %d 应与核心行 id %d 同值", wt.GetID(), leaf.GetID())
 	}
 }
 
@@ -212,9 +248,9 @@ func TestHandleCreateTaskStream_Leaf(t *testing.T) {
 	}
 
 	leaf := repo.tasks[0]
-	assertLeafTask(t, leaf)
-	if !leaf.ResourceType.Valid || leaf.ResourceType.String != entity.ResourceTypeImage {
-		t.Errorf("ResourceType 回填错误，得到 %+v", leaf.ResourceType)
+	assertLeafTask(t, leaf, repo.workTaskOf(leaf.GetID()))
+	if wt := repo.workTaskOf(leaf.GetID()); !wt.ResourceType.Valid || wt.ResourceType.String != entity.ResourceTypeImage {
+		t.Errorf("ResourceType 回填错误，得到 %+v", wt.ResourceType)
 	}
 	if !leaf.TaskName.Valid || leaf.TaskName.String != "单图作品" {
 		t.Errorf("TaskName 回填错误，得到 %+v", leaf.TaskName)
@@ -403,7 +439,7 @@ func TestHandleTaskArray_Leaf(t *testing.T) {
 		t.Fatalf("期望落盘 1 个 leaf 任务，得到 %d 个", len(repo.tasks))
 	}
 
-	assertLeafTask(t, repo.tasks[0])
+	assertLeafTask(t, repo.tasks[0], repo.workTaskOf(repo.tasks[0].GetID()))
 	if !repo.tasks[0].TaskName.Valid || repo.tasks[0].TaskName.String != "独立任务" {
 		t.Errorf("TaskName 回填错误，得到 %+v", repo.tasks[0].TaskName)
 	}
@@ -442,7 +478,7 @@ func TestHandleTaskArray_SingleChild(t *testing.T) {
 		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 1)
-	// 子任务身份字段取自 child 响应
+	// 子任务身份字段取自 child 响应（领域行承载）
 	for _, tk := range repo.tasks {
 		if tk.HasChild.Valid && tk.HasChild.Bool {
 			continue
@@ -450,8 +486,9 @@ func TestHandleTaskArray_SingleChild(t *testing.T) {
 		if !tk.TaskName.Valid || tk.TaskName.String != "p1" {
 			t.Errorf("子任务 TaskName 应为 p1，得到 %+v", tk.TaskName)
 		}
-		if !tk.SiteWorkID.Valid || tk.SiteWorkID.String != "c-1" {
-			t.Errorf("子任务 SiteWorkID 应为 c-1，得到 %+v", tk.SiteWorkID)
+		wt := repo.workTaskOf(tk.GetID())
+		if wt == nil || !wt.SiteWorkID.Valid || wt.SiteWorkID.String != "c-1" {
+			t.Errorf("子任务领域行 SiteWorkID 应为 c-1，得到 %+v", wt)
 		}
 	}
 }
@@ -551,7 +588,7 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 		t.Fatalf("插件响应路径创建失败: %v", err)
 	}
 
-	// pid 落库形态断言（直接查列，不经实体扫描）
+	// pid 落库形态断言（直接查列，不经实体扫描；site_work_id 在作品领域行，经共享主键关联查）
 	pidOf := func(where string, args ...any) sql.NullInt64 {
 		t.Helper()
 		var pid sql.NullInt64
@@ -560,13 +597,21 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 		}
 		return pid
 	}
+	taskIDBySiteWorkID := func(siteWorkID string) int64 {
+		t.Helper()
+		var id int64
+		if err := db.Raw("SELECT id FROM work_task WHERE site_work_id = ?", siteWorkID).Scan(&id).Error; err != nil {
+			t.Fatalf("按 site_work_id 查任务 id 失败(%s): %v", siteWorkID, err)
+		}
+		return id
+	}
 	if pid := pidOf("id = ?", root.GetID()); pid.Valid {
 		t.Errorf("CreateTask 根级任务 pid 应落 NULL，得到 %+v", pid)
 	}
 	if pid := pidOf("id = ?", child.GetID()); !pid.Valid || pid.Int64 != root.GetID() {
 		t.Errorf("CreateTask 子任务 pid 应落父 ID %d，得到 %+v", root.GetID(), pid)
 	}
-	if pid := pidOf("site_work_id = ?", "w-1"); pid.Valid {
+	if pid := pidOf("id = ?", taskIDBySiteWorkID("w-1")); pid.Valid {
 		t.Errorf("插件路径独立 leaf pid 应落 NULL，得到 %+v", pid)
 	}
 	if pid := pidOf("task_name = ?", "work-A"); pid.Valid {
@@ -576,15 +621,15 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	if err := db.Raw("SELECT id FROM task WHERE task_name = ?", "work-A").Scan(&parentId).Error; err != nil {
 		t.Fatalf("查 parent id 失败: %v", err)
 	}
-	if pid := pidOf("site_work_id = ?", "c-1"); !pid.Valid || pid.Int64 != parentId {
+	if pid := pidOf("id = ?", taskIDBySiteWorkID("c-1")); !pid.Valid || pid.Int64 != parentId {
 		t.Errorf("插件路径子任务 pid 应落父 ID %d，得到 %+v", parentId, pid)
 	}
 
-	// site_id 落库形态断言（直接查列，不经实体扫描）
+	// site_id 落库形态断言（直接查列，不经实体扫描；站点归属列在作品领域行）
 	siteIdOf := func(where string, args ...any) sql.NullInt64 {
 		t.Helper()
 		var siteId sql.NullInt64
-		if err := db.Raw("SELECT site_id FROM task WHERE "+where, args...).Scan(&siteId).Error; err != nil {
+		if err := db.Raw("SELECT site_id FROM work_task WHERE "+where, args...).Scan(&siteId).Error; err != nil {
 			t.Fatalf("查 site_id 失败(%s): %v", where, err)
 		}
 		return siteId
@@ -595,9 +640,26 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	if siteId := siteIdOf("id = ?", noSite.GetID()); siteId.Valid {
 		t.Errorf("CreateTask 无站点任务 site_id 应落 NULL，得到 %+v", siteId)
 	}
+
+	// 1:1 共享主键锚定：全部插件下载任务（task_type=plugin-download）均有同值 id 的作品领域行
+	var missing, mismatched int64
+	if err := db.Raw(`SELECT COUNT(*) FROM task t
+		WHERE t.task_type = ? AND NOT EXISTS (SELECT 1 FROM work_task w WHERE w.id = t.id)`,
+		entity.TaskTypePluginDownload).Scan(&missing).Error; err != nil {
+		t.Fatalf("统计缺失领域行的任务失败: %v", err)
+	}
+	if missing != 0 {
+		t.Errorf("插件下载任务应有 %d 个缺失作品领域行", missing)
+	}
+	if err := db.Raw(`SELECT COUNT(*) FROM work_task w JOIN task t ON t.id = w.id`).Scan(&mismatched).Error; err != nil {
+		t.Fatalf("统计领域行失败: %v", err)
+	}
+	if mismatched != 6 {
+		t.Errorf("期望 6 个作品领域行（CreateTask×3 + 插件响应×3），得到 %d", mismatched)
+	}
 }
 
-// TestCreateBuiltinTaskColumns 内置任务创建落库形态：task_type/payload 落值、插件字段恒 NULL、
+// TestCreateBuiltinTaskColumns 内置任务创建落库形态：task_type 落值、无作品领域行、
 // 状态 Created 根级；空类型拒绝（真实 FK 库锚定，与 CreateTask 同一锚定口径）
 func TestCreateBuiltinTaskColumns(t *testing.T) {
 	if testing.Short() {
@@ -610,34 +672,36 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 	svc := NewService(NewRepository(db), nil, nil, nil, nil)
 	ctx := context.Background()
 
-	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型", "{}"); err == nil {
+	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型"); err == nil {
 		t.Fatal("空任务类型应拒绝")
 	}
 
-	created, err := svc.CreateBuiltinTask(ctx, "share-receive", "拉取分享", `{"schemaVersion":1}`)
+	created, err := svc.CreateBuiltinTask(ctx, "share-receive", "拉取分享")
 	if err != nil {
 		t.Fatalf("创建内置任务失败: %v", err)
 	}
 	if created.Status != int(TaskStatusCreated) {
 		t.Fatalf("创建后状态应为 Created: %d", created.Status)
 	}
-	var taskType, payload, pluginID sql.NullString
+	var taskType sql.NullString
 	var pid sql.NullInt64
-	if err := db.Raw("SELECT task_type, payload, plugin_public_id, pid FROM task WHERE id = ?", created.GetID()).
-		Row().Scan(&taskType, &payload, &pluginID, &pid); err != nil {
+	if err := db.Raw("SELECT task_type, pid FROM task WHERE id = ?", created.GetID()).
+		Row().Scan(&taskType, &pid); err != nil {
 		t.Fatalf("查内置任务列失败: %v", err)
 	}
 	if !taskType.Valid || taskType.String != "share-receive" {
 		t.Errorf("task_type 落库不符: %+v", taskType)
 	}
-	if !payload.Valid || payload.String != `{"schemaVersion":1}` {
-		t.Errorf("payload 落库不符: %+v", payload)
-	}
-	if pluginID.Valid {
-		t.Errorf("内置任务 plugin_public_id 应落 NULL: %+v", pluginID)
-	}
 	if pid.Valid {
 		t.Errorf("内置任务应为根级（pid NULL）: %+v", pid)
+	}
+	// 内置类型任务不建作品领域行
+	var workRows int64
+	if err := db.Raw("SELECT COUNT(*) FROM work_task WHERE id = ?", created.GetID()).Scan(&workRows).Error; err != nil {
+		t.Fatalf("统计作品领域行失败: %v", err)
+	}
+	if workRows != 0 {
+		t.Errorf("内置任务不应有作品领域行，得到 %d 行", workRows)
 	}
 }
 
@@ -671,7 +735,7 @@ func TestCreateBuiltinTaskTree(t *testing.T) {
 	}
 
 	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
-		{TaskName: "作品A", Payload: `{"manifestID":1}`},
+		{TaskName: "作品A"},
 		{TaskName: "作品B"},
 	})
 	if err != nil {
@@ -699,10 +763,9 @@ func TestCreateBuiltinTaskTree(t *testing.T) {
 		pidValid bool
 		pid      int64
 		hasChild bool
-		payload  string
 	}{
 		{name: "拉取分享", pidValid: false, hasChild: true},
-		{name: "作品A", pidValid: true, pid: parentID, payload: `{"manifestID":1}`},
+		{name: "作品A", pidValid: true, pid: parentID},
 		{name: "作品B", pidValid: true, pid: parentID},
 	}
 	for i, exp := range expected {
@@ -719,17 +782,17 @@ func TestCreateBuiltinTaskTree(t *testing.T) {
 		if !task.TaskType.Valid || task.TaskType.String != "share-receive" {
 			t.Errorf("落盘顺序 %d task_type 不符: %+v", i, task.TaskType)
 		}
-		if task.Payload.String != exp.payload || task.Payload.Valid != (exp.payload != "") {
-			t.Errorf("落盘顺序 %d payload 不符: %+v（期望 %q）", i, task.Payload, exp.payload)
-		}
 		if task.Status != int(TaskStatusCreated) {
 			t.Errorf("落盘顺序 %d 状态应为 Created: %d", i, task.Status)
+		}
+		if repo.workTaskOf(task.GetID()) != nil {
+			t.Errorf("落盘顺序 %d 内置任务不应有作品领域行", i)
 		}
 	}
 }
 
 // TestCreateBuiltinTaskTreeColumns 内置任务树落库形态（真实 FK 库锚定）：
-// 父行 has_child=1/pid NULL，子行 pid=父ID/has_child=0/task_type/payload 落值，子行按入参顺序排列。
+// 父行 has_child=1/pid NULL，子行 pid=父ID/has_child=0/task_type 落值，子行按入参顺序排列。
 func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -742,8 +805,8 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 	ctx := context.Background()
 
 	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
-		{TaskName: "作品A", Payload: `{"schemaVersion":1,"manifestID":1}`},
-		{TaskName: "作品B", Payload: `{"schemaVersion":1,"manifestID":2}`},
+		{TaskName: "作品A"},
+		{TaskName: "作品B"},
 	})
 	if err != nil {
 		t.Fatalf("创建内置任务树失败: %v", err)
@@ -762,30 +825,26 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 		t.Errorf("父任务 pid 应落 NULL: %+v", pid)
 	}
 
-	rows, err := db.Raw("SELECT task_name, pid, has_child, task_type, payload, status FROM task WHERE pid = ? ORDER BY id", parentID).Rows()
+	rows, err := db.Raw("SELECT task_name, pid, has_child, task_type, status FROM task WHERE pid = ? ORDER BY id", parentID).Rows()
 	if err != nil {
 		t.Fatalf("查子任务列失败: %v", err)
 	}
 	defer rows.Close()
 
-	expectedChildren := []struct{ name, payload string }{
-		{name: "作品A", payload: `{"schemaVersion":1,"manifestID":1}`},
-		{name: "作品B", payload: `{"schemaVersion":1,"manifestID":2}`},
-	}
+	expectedChildren := []string{"作品A", "作品B"}
 	i := 0
 	for rows.Next() {
-		var taskName, taskType, payload sql.NullString
+		var taskName, taskType sql.NullString
 		var childPid sql.NullInt64
 		var childHasChild, status int
-		if err := rows.Scan(&taskName, &childPid, &childHasChild, &taskType, &payload, &status); err != nil {
+		if err := rows.Scan(&taskName, &childPid, &childHasChild, &taskType, &status); err != nil {
 			t.Fatalf("扫子任务行失败: %v", err)
 		}
 		if i >= len(expectedChildren) {
 			t.Fatalf("子任务行数超出预期")
 		}
-		exp := expectedChildren[i]
-		if taskName.String != exp.name {
-			t.Errorf("子任务 %d 任务名不符: 期望 %q 得到 %q", i, exp.name, taskName.String)
+		if taskName.String != expectedChildren[i] {
+			t.Errorf("子任务 %d 任务名不符: 期望 %q 得到 %q", i, expectedChildren[i], taskName.String)
 		}
 		if !childPid.Valid || childPid.Int64 != parentID {
 			t.Errorf("子任务 %d pid 应指向父 %d: %+v", i, parentID, childPid)
@@ -795,9 +854,6 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 		}
 		if !taskType.Valid || taskType.String != "share-receive" {
 			t.Errorf("子任务 %d task_type 不符: %+v", i, taskType)
-		}
-		if payload.String != exp.payload {
-			t.Errorf("子任务 %d payload 不符: 期望 %q 得到 %q", i, exp.payload, payload.String)
 		}
 		if status != int(TaskStatusCreated) {
 			t.Errorf("子任务 %d 状态应为 Created: %d", i, status)
@@ -827,8 +883,8 @@ func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
-		{TaskName: "作品A", Payload: "{}"},
-		{TaskName: "作品B", Payload: "{}"},
+		{TaskName: "作品A"},
+		{TaskName: "作品B"},
 	}); err == nil {
 		t.Fatal("子任务创建失败应返回错误")
 	}
@@ -880,7 +936,8 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 	}
 
 	var got int64
-	if err := db.Raw("SELECT COUNT(*) FROM task WHERE site_id IS NULL OR site_id != ?", seed.GetID()).Scan(&got).Error; err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM task t LEFT JOIN work_task w ON w.id = t.id
+		WHERE w.site_id IS NULL OR w.site_id != ?`, seed.GetID()).Scan(&got).Error; err != nil {
 		t.Fatalf("统计任务行失败: %v", err)
 	}
 	if got != 0 {

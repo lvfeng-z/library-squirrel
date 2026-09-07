@@ -22,28 +22,28 @@ func NewTaskExecutor(registry *TaskHandlerRegistry) *TaskExecutorImpl {
 	return &TaskExecutorImpl{registry: registry}
 }
 
-// CreateWorkInfo 创建作品信息
-func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task) (*sdkdto.WorkResponse, error) {
-	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
+// CreateWorkInfo 创建作品信息（插件身份在作品任务领域行）
+func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task, workTask *domain.WorkTask) (*sdkdto.WorkResponse, error) {
+	pluginPublicId, extensionId := pluginIdsFromWorkTask(workTask)
 	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, err
 	}
-	return handler.CreateWorkInfo(EntityTaskToSDK(task))
+	return handler.CreateWorkInfo(EntityTaskToSDK(task, workTask))
 }
 
 // Start 开始任务,按 storeRoles 选择性返回 StoreSpec 流集合(含下载型 downloaded 与派生型 derived)与作品信息
-func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
-	pluginPublicId, extensionId := pluginIdsFromEntityTask(task)
+func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, workTask *domain.WorkTask, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
+	pluginPublicId, extensionId := pluginIdsFromWorkTask(workTask)
 	handler, err := e.getSDKTaskHandler(pluginPublicId, extensionId)
 	if err != nil {
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, nil, err
 	}
-	return handler.Start(ctx, EntityTaskToSDK(task), storeRoles)
+	return handler.Start(ctx, EntityTaskToSDK(task, workTask), storeRoles)
 }
 
 // Pause 暂停任务
@@ -96,13 +96,16 @@ func (e *TaskExecutorImpl) getSDKTaskHandler(pluginPublicId, extensionId string)
 	return e.registry.GetTaskHandler(pluginPublicId, extensionId)
 }
 
-// pluginIdsFromEntityTask 从 entity.Task 提取插件ID
-func pluginIdsFromEntityTask(task *domain.Task) (pluginPublicId, extensionId string) {
-	if task.PluginPublicID.Valid {
-		pluginPublicId = task.PluginPublicID.String
+// pluginIdsFromWorkTask 从作品任务领域行提取插件ID（插件身份字段归属领域行）
+func pluginIdsFromWorkTask(workTask *domain.WorkTask) (pluginPublicId, extensionId string) {
+	if workTask == nil {
+		return
 	}
-	if task.PluginExtensionID.Valid {
-		extensionId = task.PluginExtensionID.String
+	if workTask.PluginPublicID.Valid {
+		pluginPublicId = workTask.PluginPublicID.String
+	}
+	if workTask.PluginExtensionID.Valid {
+		extensionId = workTask.PluginExtensionID.String
 	}
 	return
 }

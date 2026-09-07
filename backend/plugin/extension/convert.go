@@ -6,8 +6,9 @@ import (
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// EntityTaskToSDK 将 entity.Task 转换为 sdkdto.TaskDTO
-func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
+// EntityTaskToSDK 将任务核心行+作品任务领域行组装为 sdkdto.TaskDTO（跨进程序列化契约，
+// 字段集不随表拆分变化：控制字段取 task，领域字段取 workTask）
+func EntityTaskToSDK(task *entity.Task, workTask *entity.WorkTask) *sdkdto.TaskDTO {
 	if task == nil {
 		return nil
 	}
@@ -26,14 +27,17 @@ func EntityTaskToSDK(task *entity.Task) *sdkdto.TaskDTO {
 		t.Pid = &task.Pid.Int64
 	}
 	t.TaskName = util.NullStringToPointer(task.TaskName)
-	t.SiteId = util.NullInt64ToPointer(task.SiteID)
-	t.SiteWorkId = util.NullStringToPointer(task.SiteWorkID)
-	t.Url = util.NullStringToPointer(task.URL)
-	t.PendingResourceId = util.NullInt64ToPointer(task.PendingResourceID)
-	t.Continuable = util.NullBoolToPointer(task.Continuable)
-	t.PluginPublicId = util.NullStringToPointer(task.PluginPublicID)
-	t.PluginExtensionId = util.NullStringToPointer(task.PluginExtensionID)
-	t.PluginData = util.NullStringToPointer(task.PluginData)
 	t.ErrorMessage = util.NullStringToPointer(task.ErrorMessage)
+	if workTask == nil {
+		return t
+	}
+	t.SiteId = util.NullInt64ToPointer(workTask.SiteID)
+	t.SiteWorkId = util.NullStringToPointer(workTask.SiteWorkID)
+	t.Url = util.NullStringToPointer(workTask.URL)
+	t.PendingResourceId = util.NullInt64ToPointer(workTask.PendingResourceID)
+	t.Continuable = util.NullBoolToPointer(workTask.Continuable)
+	t.PluginPublicId = util.NullStringToPointer(workTask.PluginPublicID)
+	t.PluginExtensionId = util.NullStringToPointer(workTask.PluginExtensionID)
+	t.PluginData = util.NullStringToPointer(workTask.PluginData)
 	return t
 }

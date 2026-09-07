@@ -42,7 +42,9 @@ export class CreateTaskByURLResponse {
 }
 
 /**
- * TaskQueryDTO 任务查询条件
+ * TaskQueryDTO 任务查询条件。
+ * 列名一律带表前缀：查询语句挂 work_task 左连接（领域列在领域表），无前缀的 create_time
+ * 等同名列在连接后产生歧义引用
  */
 export class TaskQueryDTO {
     /**
@@ -51,12 +53,12 @@ export class TaskQueryDTO {
     "pid": query$0.QueryAttribute<number>;
 
     /**
-     * 站点ID
+     * 站点ID（领域列）
      */
     "siteId": query$0.QueryAttribute<number>;
 
     /**
-     * 站点作品ID
+     * 站点作品ID（领域列）
      */
     "siteWorkId": query$0.QueryAttribute<string>;
 
@@ -71,17 +73,17 @@ export class TaskQueryDTO {
     "hasChild": query$0.QueryAttribute<boolean>;
 
     /**
-     * 插件公开ID
+     * 插件公开ID（领域列）
      */
     "pluginPublicId": query$0.QueryAttribute<string>;
 
     /**
-     * 插件贡献ID
+     * 插件贡献ID（领域列）
      */
     "pluginExtensionId": query$0.QueryAttribute<string>;
 
     /**
-     * 是否可继续（0=否，1=是）
+     * 是否可继续（领域列；0=否，1=是）
      */
     "continuable": query$0.QueryAttribute<boolean>;
 

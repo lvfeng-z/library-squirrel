@@ -57,15 +57,23 @@ var fkBatches = []fkTable{
 	}},
 	{Table: "task", FKs: []fkSpec{
 		{Column: "pid", Parent: "task"},
+	}},
+	// 任务领域行（1:1 共享主键）：主键 id 即所属任务 id，FK 挂在主键列上
+	{Table: "work_task", FKs: []fkSpec{
+		{Column: "id", Parent: "task"},
 		{Column: "site_id", Parent: "site"},
 		{Column: "pending_resource_id", Parent: "resource"},
+	}},
+	{Table: "share_task", FKs: []fkSpec{
+		{Column: "id", Parent: "task"},
 	}},
 	{Table: "plugin", FKs: []fkSpec{
 		{Column: "backup_id", Parent: "backup"},
 	}},
 	{Table: "resource", FKs: []fkSpec{
 		{Column: "work_id", Parent: "work"},
-		{Column: "task_id", Parent: "task"},
+		// task_id 引用作品任务领域行（与 task.id 同值 1:1，产出任务的溯源归 work_task）
+		{Column: "task_id", Parent: "work_task"},
 	}},
 	{Table: "resource_store", FKs: []fkSpec{
 		{Column: "resource_id", Parent: "resource"},
@@ -248,6 +256,9 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		"DELETE FROM re_work_work_set WHERE work_set_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_set WHERE id = re_work_work_set.work_set_id)",
 		"DELETE FROM re_work_set_work_set WHERE parent_work_set_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_set WHERE id = re_work_set_work_set.parent_work_set_id)",
 		"DELETE FROM re_work_set_work_set WHERE child_work_set_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_set WHERE id = re_work_set_work_set.child_work_set_id)",
+		// 任务领域行（1:1 共享主键 id=task.id）：核心任务行消亡即领域行失去意义，整行 DELETE
+		"DELETE FROM work_task WHERE NOT EXISTS (SELECT 1 FROM task WHERE id = work_task.id)",
+		"DELETE FROM share_task WHERE NOT EXISTS (SELECT 1 FROM task WHERE id = share_task.id)",
 		// 恒有值族（int64 列，0=未填充）：先摘关联行再删悬空主体行，防止级联产生新悬空
 		"DELETE FROM resource_store WHERE resource_id <> 0 AND NOT EXISTS (SELECT 1 FROM resource WHERE id = resource_store.resource_id)",
 		"DELETE FROM resource_store WHERE store_id <> 0 AND NOT EXISTS (SELECT 1 FROM persistent_store WHERE id = resource_store.store_id)",
@@ -261,14 +272,16 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		"UPDATE work_set SET cover_work_id = NULL WHERE cover_work_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work WHERE id = work_set.cover_work_id)",
 		"UPDATE site_tag SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = site_tag.site_id)",
 		"UPDATE site_author SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = site_author.site_id)",
-		"UPDATE task SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = task.site_id)",
 		// 自引用外键（task.pid→task.id）子查询须以别名引用父行：内层 FROM 若沿用同名 task 会
 		// 遮蔽外层表，task.pid 解析到内层行自身致 NOT EXISTS 恒真、全表 pid 被清（存量事故实锚）
 		"UPDATE task SET pid = NULL WHERE pid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task parent_tk WHERE parent_tk.id = task.pid)",
-		"UPDATE task SET pending_resource_id = NULL WHERE pending_resource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource WHERE id = task.pending_resource_id)",
+		"UPDATE work_task SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = work_task.site_id)",
+		"UPDATE work_task SET pending_resource_id = NULL WHERE pending_resource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource WHERE id = work_task.pending_resource_id)",
 		"UPDATE plugin SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = plugin.backup_id)",
 		"UPDATE persistent_store SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = persistent_store.backup_id)",
-		"UPDATE resource SET task_id = NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task WHERE id = resource.task_id)",
+		// resource.task_id 引用作品任务领域行（1:1 同值键）；上方 deletes 段已清孤儿领域行，
+		// 此处据 work_task 在册性修复悬空引用
+		"UPDATE resource SET task_id = NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_task WHERE id = resource.task_id)",
 		"UPDATE local_tag SET base_local_tag_id = NULL WHERE base_local_tag_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM local_tag parent_lg WHERE parent_lg.id = local_tag.base_local_tag_id)",
 	}
 	// 无引用哨兵 0→NULL 归一（0 哨兵列改 NULL 语义的存量迁移；幂等）

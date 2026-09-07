@@ -3,49 +3,56 @@ package dto
 import (
 	"strings"
 
+	"github.com/library-squirrel/backend/base/model"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// NewTaskDTO 从 entity.Task 创建 TaskDTO
-func NewTaskDTO(task *entity2.Task) *sdkdto.TaskDTO {
+// AssembleTaskDTO 从核心任务行与领域行组装 TaskDTO：控制字段取 task，作品任务领域
+// 字段取 workTask（nil 时领域字段输出零值）。shareTask 为分享接收领域行——当前 TaskDTO
+// 无分享领域字段，参数保留供消费侧统一走三行组装口径
+func AssembleTaskDTO(task *entity2.Task, workTask *entity2.WorkTask, shareTask *entity2.ShareTask) *sdkdto.TaskDTO {
 	if task == nil {
 		return nil
 	}
+	dto := &sdkdto.TaskDTO{
+		Id:           task.GetID(),
+		HasChild:     util.NullBoolToPointer(task.HasChild),
+		Pid:          util.NullInt64ToPointer(task.Pid),
+		TaskName:     util.NullStringToPointer(task.TaskName),
+		Status:       int32(task.Status),
+		ErrorMessage: util.NullStringToPointer(task.ErrorMessage),
+		TaskType:     util.NullStringToPointer(task.TaskType),
+		CreateTime:   task.GetCreateTime(),
+		UpdateTime:   task.GetUpdateTime(),
+	}
+	if workTask == nil {
+		return dto
+	}
 	// involvedRoles:创建期声明的涉及板块(universe),逗号分隔→切片;NULL/空=nil(前端走兜底集)
 	var involvedRoles []string
-	if task.InvolvedRoles.Valid && task.InvolvedRoles.String != "" {
-		for _, p := range strings.Split(task.InvolvedRoles.String, ",") {
+	if workTask.InvolvedRoles.Valid && workTask.InvolvedRoles.String != "" {
+		for _, p := range strings.Split(workTask.InvolvedRoles.String, ",") {
 			if r := strings.TrimSpace(p); r != "" {
 				involvedRoles = append(involvedRoles, r)
 			}
 		}
 	}
-	return &sdkdto.TaskDTO{
-		Id:                task.GetID(),
-		HasChild:          util.NullBoolToPointer(task.HasChild),
-		Pid:               util.NullInt64ToPointer(task.Pid),
-		TaskName:          util.NullStringToPointer(task.TaskName),
-		SiteId:            util.NullInt64ToPointer(task.SiteID),
-		SiteWorkId:        util.NullStringToPointer(task.SiteWorkID),
-		Url:               util.NullStringToPointer(task.URL),
-		Status:            int32(task.Status),
-		PendingResourceId: util.NullInt64ToPointer(task.PendingResourceID),
-		Continuable:       util.NullBoolToPointer(task.Continuable),
-		PluginPublicId:    util.NullStringToPointer(task.PluginPublicID),
-		PluginExtensionId: util.NullStringToPointer(task.PluginExtensionID),
-		PluginData:        util.NullStringToPointer(task.PluginData),
-		ErrorMessage:      util.NullStringToPointer(task.ErrorMessage),
-		InvolvedRoles:     involvedRoles,
-		ResourceType:      task.ResourceType.String, // NULL/未声明=零值 ""
-		TaskType:          util.NullStringToPointer(task.TaskType),
-		CreateTime:        task.GetCreateTime(),
-		UpdateTime:        task.GetUpdateTime(),
-	}
+	dto.SiteId = util.NullInt64ToPointer(workTask.SiteID)
+	dto.SiteWorkId = util.NullStringToPointer(workTask.SiteWorkID)
+	dto.Url = util.NullStringToPointer(workTask.URL)
+	dto.PendingResourceId = util.NullInt64ToPointer(workTask.PendingResourceID)
+	dto.Continuable = util.NullBoolToPointer(workTask.Continuable)
+	dto.PluginPublicId = util.NullStringToPointer(workTask.PluginPublicID)
+	dto.PluginExtensionId = util.NullStringToPointer(workTask.PluginExtensionID)
+	dto.PluginData = util.NullStringToPointer(workTask.PluginData)
+	dto.InvolvedRoles = involvedRoles
+	dto.ResourceType = workTask.ResourceType.String // NULL/未声明=零值 ""
+	return dto
 }
 
-// ToTaskEntity 将 TaskDTO 转换为 Task 实体
+// ToTaskEntity 将 TaskDTO 转换为 Task 核心控制行实体（领域字段经 ToWorkTaskEntity 转换）
 func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 	if dto == nil {
 		return nil
@@ -58,107 +65,30 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 		entity.SetID(dto.Id)
 	}
 
-	// 设置业务字段
 	if dto.HasChild != nil {
 		entity.HasChild.Valid = true
 		entity.HasChild.Bool = *dto.HasChild
-	} else {
-		entity.HasChild.Valid = false
 	}
 
 	// pid 外键引用 task.id（无 id=0 行）：nil 或 0 均为根级语义 → NULL，写 0 必外键违约
 	if dto.Pid != nil && *dto.Pid != 0 {
 		entity.Pid.Valid = true
 		entity.Pid.Int64 = *dto.Pid
-	} else {
-		entity.Pid.Valid = false
 	}
 
 	if dto.TaskName != nil {
 		entity.TaskName.Valid = true
 		entity.TaskName.String = *dto.TaskName
-	} else {
-		entity.TaskName.Valid = false
-	}
-
-	if dto.SiteId != nil {
-		entity.SiteID.Valid = true
-		entity.SiteID.Int64 = *dto.SiteId
-	} else {
-		entity.SiteID.Valid = false
-	}
-
-	if dto.SiteWorkId != nil {
-		entity.SiteWorkID.Valid = true
-		entity.SiteWorkID.String = *dto.SiteWorkId
-	} else {
-		entity.SiteWorkID.Valid = false
-	}
-
-	if dto.Url != nil {
-		entity.URL.Valid = true
-		entity.URL.String = *dto.Url
-	} else {
-		entity.URL.Valid = false
 	}
 
 	entity.Status = int(dto.Status)
 
-	if dto.PendingResourceId != nil {
-		entity.PendingResourceID.Valid = true
-		entity.PendingResourceID.Int64 = *dto.PendingResourceId
-	} else {
-		entity.PendingResourceID.Valid = false
-	}
-
-	if dto.Continuable != nil {
-		entity.Continuable.Valid = true
-		entity.Continuable.Bool = *dto.Continuable
-	} else {
-		entity.Continuable.Valid = false
-	}
-
-	if dto.PluginPublicId != nil {
-		entity.PluginPublicID.Valid = true
-		entity.PluginPublicID.String = *dto.PluginPublicId
-	} else {
-		entity.PluginPublicID.Valid = false
-	}
-
-	if dto.PluginExtensionId != nil {
-		entity.PluginExtensionID.Valid = true
-		entity.PluginExtensionID.String = *dto.PluginExtensionId
-	} else {
-		entity.PluginExtensionID.Valid = false
-	}
-
-	if dto.PluginData != nil {
-		entity.PluginData.Valid = true
-		entity.PluginData.String = *dto.PluginData
-	} else {
-		entity.PluginData.Valid = false
-	}
-
 	if dto.ErrorMessage != nil {
 		entity.ErrorMessage.Valid = true
 		entity.ErrorMessage.String = *dto.ErrorMessage
-	} else {
-		entity.ErrorMessage.Valid = false
 	}
 
-	// involvedRoles:DTO 切片→逗号分隔;空=不设置(保持 NULL=未确定)
-	if len(dto.InvolvedRoles) > 0 {
-		entity.InvolvedRoles.Valid = true
-		entity.InvolvedRoles.String = strings.Join(dto.InvolvedRoles, ",")
-	}
-
-	// resourceType:非空=声明(预定义值);空=不设置(保持 NULL=未声明)
-	if dto.ResourceType != "" {
-		entity.ResourceType.Valid = true
-		entity.ResourceType.String = dto.ResourceType
-	}
-
-	// taskType:非空=内置任务类型;空=不设置(保持 NULL=插件任务)
+	// taskType:空=插件下载任务的显式类型缺失,不设置(保持 NULL)
 	if dto.TaskType != nil && *dto.TaskType != "" {
 		entity.TaskType.Valid = true
 		entity.TaskType.String = *dto.TaskType
@@ -173,6 +103,68 @@ func ToTaskEntity(dto *sdkdto.TaskDTO) *entity2.Task {
 	}
 
 	return entity
+}
+
+// ToWorkTaskEntity 将 TaskDTO 的作品任务领域字段转换为 WorkTask 字段载体。
+// 主键不在此绑定（共享主键值=核心行 id，由落库口 CreateForTask 覆写）；DTO 不携带任何
+// 领域字段时返回 nil=无作品领域行（内置类型任务）
+func ToWorkTaskEntity(dto *sdkdto.TaskDTO) *entity2.WorkTask {
+	if dto == nil {
+		return nil
+	}
+	hasDomain := dto.SiteId != nil || dto.SiteWorkId != nil || dto.Url != nil ||
+		dto.PendingResourceId != nil || dto.Continuable != nil ||
+		dto.PluginPublicId != nil || dto.PluginExtensionId != nil || dto.PluginData != nil ||
+		len(dto.InvolvedRoles) > 0 || dto.ResourceType != ""
+	if !hasDomain {
+		return nil
+	}
+	// 领域行主键不在此绑定（共享主键值=核心行 id，由落库口 CreateForTask 覆写）；
+	// BaseEntity 显式初始化，主键写入在落库口才发生
+	wt := &entity2.WorkTask{BaseEntity: &model.BaseEntity{}}
+	if dto.SiteId != nil {
+		wt.SiteID.Valid = true
+		wt.SiteID.Int64 = *dto.SiteId
+	}
+	if dto.SiteWorkId != nil {
+		wt.SiteWorkID.Valid = true
+		wt.SiteWorkID.String = *dto.SiteWorkId
+	}
+	if dto.Url != nil {
+		wt.URL.Valid = true
+		wt.URL.String = *dto.Url
+	}
+	if dto.PendingResourceId != nil {
+		wt.PendingResourceID.Valid = true
+		wt.PendingResourceID.Int64 = *dto.PendingResourceId
+	}
+	if dto.Continuable != nil {
+		wt.Continuable.Valid = true
+		wt.Continuable.Bool = *dto.Continuable
+	}
+	if dto.PluginPublicId != nil {
+		wt.PluginPublicID.Valid = true
+		wt.PluginPublicID.String = *dto.PluginPublicId
+	}
+	if dto.PluginExtensionId != nil {
+		wt.PluginExtensionID.Valid = true
+		wt.PluginExtensionID.String = *dto.PluginExtensionId
+	}
+	if dto.PluginData != nil {
+		wt.PluginData.Valid = true
+		wt.PluginData.String = *dto.PluginData
+	}
+	// involvedRoles:DTO 切片→逗号分隔;空=不设置(保持 NULL=未确定)
+	if len(dto.InvolvedRoles) > 0 {
+		wt.InvolvedRoles.Valid = true
+		wt.InvolvedRoles.String = strings.Join(dto.InvolvedRoles, ",")
+	}
+	// resourceType:非空=声明(预定义值);空=不设置(保持 NULL=未声明)
+	if dto.ResourceType != "" {
+		wt.ResourceType.Valid = true
+		wt.ResourceType.String = dto.ResourceType
+	}
+	return wt
 }
 
 // ========== 任务进度相关 DTO ==========

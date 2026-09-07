@@ -116,7 +116,7 @@ CreateTaskByURL(ctx, url)
 **批量创建事务**（`handleCreateTaskArray`）：
 
 - 单个子任务：直接 `repo.CreateTask`（单条 INSERT）
-- 多个子任务：**事务内**创建父任务（`HasChild=true`）+ 全部子任务（`Pid=parentId`），保证父子原子性
+- 多个子任务：**事务内**创建父任务（`HasChild=true`）+ 全部子任务（`Pid=parentId`）及各自 work_task 领域行（插件任务核心行与领域行成对建、共享主键同值），保证父子原子性
 
 **流式创建**（`handleCreateTaskStream`）：
 
@@ -132,14 +132,14 @@ Handler.StartTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.RetryTaskTree(taskId, isLeaf) → startTaskTrees([taskId], runModeFull)
 Handler.ResumeTaskTree(taskId, isLeaf) → resumeTaskTrees([taskId])           // 固定 runModeFull, skipTerminal=true
 板块 Redownload(taskIds, storeRoles, includeWorkInfo)
-                                         → 持久化板块选择到 task(UpdateRedownloadSections) + startTaskTrees(taskIds)  // 空 storeRoles + 不含元数据 = 全集
+                                         → 持久化板块选择到 work_task 领域行(UpdateRedownloadSections) + startTaskTrees(taskIds)  // 空 storeRoles + 不含元数据 = 全集
 ```
 
 `loadAndStartTaskTrees(taskIds, skipTerminal, mode)` 接受任意多个 taskId（子任务或父任务），一次构建完整任务树：
 
 ```
 loadAndStartTaskTrees(taskIds, skipTerminal, mode)
-  → repo.ListTaskTree(taskIds)                    // 多根共享一次递归 CTE 查询
+  → repo.ListTaskTree(taskIds)                    // 多根共享一次递归 CTE 查询（核心行）+ 按 id 批量取 work_task/share_task 领域行
   → 重复执行保护：快照运行中的 taskMap/parentMap，跳过已运行单元
   → 确定处理单元并去重：
       独立任务(pid=0,hasChild=false) → 单元 = 自身 taskId
@@ -215,7 +215,7 @@ handleRunCmd(cmd):
 | 0.1 | 替换场景备份(`BackupStores`,板块隔离) | SELECT + 备份 per store | - |
 | 1 | `pluginExec.CreateWorkInfo`(插件 RPC) | 无 | - |
 | 2 | `workInfoSaver.SaveWorkInfo` | 批量 INSERT | **事务 1** |
-| 3 | `pluginExec.Start(ctx, task, storeRoles)`(返回 `[]*StoreSpec` 多流) | 无 | - |
+| 3 | `pluginExec.Start(ctx, task, workTask, storeRoles)`(返回 `[]*StoreSpec` 多流) | 无 | - |
 | — | `startDownload(specs, workResp)`:解析路径 + 事务 2 + downloadLoop | 见下 | **事务 2** |
 
 **startDownload(多流)**:解析保存路径 → 事务 2(为每个 spec `StoreStream` + `mountResourceStores` 写 resource_store 行 + `saveResource` + `UpdatePendingResourceID`)→ `downloadLoop()`。
@@ -229,8 +229,8 @@ transactor.ExecInTransaction(context.Background(), func(txCtx) {
         streams = append(streams, newStreamController(spec, storeId, writer, relPath))
         mounts = append(mounts, {role, generation, storeId})
     resourceId = saveResource(txCtx, workId, mounts)   // 替换更新/新建 Resource + mountResourceStores 写 resource_store
-    task.PendingResourceID = {Int64: resourceId, Valid: true}
-    pendingResourceUpdater.UpdatePendingResourceID(txCtx, taskId, ...)
+    workTask.PendingResourceID = {Int64: resourceId, Valid: true}
+    pendingResourceUpdater.UpdatePendingResourceID(txCtx, taskId, ...)   // 写 work_task 领域行
 })
 ```
 
@@ -396,8 +396,8 @@ Manager.ConfirmReplace(taskId, action):
 | 名称 | 范围 | 位置 |
 |------|------|------|
 | **事务 1** | SaveWorkInfo：Work + 作者 + 标签 + WorkSet 等周边数据 | `work/service.go` `SaveWorkInfo` |
-| **事务 2** | StoreStream DB 记录 + saveResource + UpdatePendingResourceID | `taskManager/model.go` `startDownload()` |
-| **事务 3** | 任务创建：父任务 + 全部子任务 | `task/service.go` `handleCreateTaskArray` |
+| **事务 2** | StoreStream DB 记录 + saveResource + UpdatePendingResourceID（work_task 领域行） | `taskManager/model.go` `startDownload()` |
+| **事务 3** | 任务创建：父任务 + 全部子任务（核心行 + work_task 领域行成对） | `task/service.go` `handleCreateTaskArray` |
 
 ### 事务基础设施
 
@@ -476,7 +476,7 @@ storeFileCleaner.CleanupFile(relativePath)      // 删除磁盘文件
 
 ### PendingResourceID 的作用
 
-`pending_resource_id` 是任务实体上的字段，在事务 2 中设置（步骤 6），在下载完成后清除（`clearPendingResourceID`）。
+`pending_resource_id` 是作品任务领域行（work_task）上的字段，在事务 2 中设置（步骤 6），在下载完成后清除（`clearPendingResourceID`）。
 
 | 阶段 | pending_resource_id | 含义 |
 |------|:---:|------|
@@ -521,7 +521,7 @@ flushLoop:                              // 后台 goroutine，非终态批量通
 doFlush():
   1. pendingMu 锁内:交换 status/resource/progress maps + repo.BatchSetStatus(statusMap)   // status 写与终态即时写互斥
   2. 释放 pendingMu
-  3. repo.BatchUpdatePendingResourceID(resourceMap)    // SQL CASE WHEN 批量更新 pending_resource_id
+  3. repo.BatchUpdatePendingResourceID(resourceMap)    // SQL CASE WHEN 批量更新 work_task.pending_resource_id
   4. pusher.PushProgressBatch(progressBatch)           // 批量推送进度到前端
 ```
 
@@ -547,13 +547,13 @@ runMode 由 `workInfo`(板块 A)与 `storeRoles`(板块 B 资源,多角色)组�
 
 `run()` 统一调 `runSectionCombo`：全集等价完整下载（含查重），真子集按所选板块执行、末尾统一终态化。
 
-前端 `Redownload(taskIds, storeRoles, includeWorkInfo)` 收所选 store_type 集合与是否含作品元数据（空 storeRoles + includeWorkInfo=false 表示全集）。选择先持久化到 task 实体（`UpdateRedownloadSections` 写 `store_roles`/`include_work_info`），`runMode` 经 `runModeFromTask` 从 task 派生，暂停/跨重启恢复保持原板块选择；随后走 `startTaskTrees`：
+前端 `Redownload(taskIds, storeRoles, includeWorkInfo)` 收所选 store_type 集合与是否含作品元数据（空 storeRoles + includeWorkInfo=false 表示全集）。选择先持久化到 work_task 领域行（`UpdateRedownloadSections` 写 `store_roles`/`include_work_info`），`runMode` 经 `runModeFromTask` 从 work_task 派生，暂停/跨重启恢复保持原板块选择；随后走 `startTaskTrees`：
 
 ```go
 func (h *Handler) Redownload(ctx, taskIds []int64, storeRoles []string, includeWorkInfo bool)
 ```
 
-任务定位：重执行所需数据（`PluginPublicID`/`PluginExtensionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在 `entity.Task` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
+任务定位：重执行所需数据（`PluginPublicID`/`PluginExtensionID`/`PluginData`/`URL`/`site_id`/`site_work_id`）均在作品任务领域行 `entity.WorkTask` 上。任务列表行内入口已有 taskId 直接使用；作品详情入口经 `(site_id, site_work_id)` 调 `task.ListTasksBySiteAndSiteWorkID` 反查关联任务，由用户选定（该入口暂未实现）。
 
 ### runSectionCombo 执行流程
 
