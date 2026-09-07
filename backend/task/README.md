@@ -20,7 +20,7 @@
 | `SetTreeStatus(taskIds, status, includeStatus)` | 设置任务树状态 |
 | `GetById` / `QueryPage` | 单查 / 分页查询 |
 | `QueryParentPage` / `QueryChildrenTaskPage` | 父任务 / 子任务分页（带站点名） |
-| `ListChildrenTask` / `ListTaskTree` | 子任务列表 / 任务树列表 |
+| `ListChildrenTask` / `ListTaskTree` / `ListTaskTreeCore` | 子任务列表 / 任务树列表（核心行+领域行双查，查询面用）/ 任务树核心行列表（任务运行时控制面树加载用，只查核心行） |
 | `ListTasksBySiteAndSiteWorkID` | 按站点 + 站点作品ID查关联任务（板块执行选任务） |
 | `QueryTreeDataPage` | 任务树数据分页 |
 | `ListStatus` / `ListSchedule` | 状态 / 进度列表 |
@@ -29,8 +29,8 @@
 
 - **TaskStatusEnum**：任务状态枚举，与 taskManager.TaskState 保持一致。
   `Created(0) / Waiting(1) / Processing(2) / Pausing(3) / Paused(4) / Stopping(5) / Finished(6) / Failed(7) / PartlyFinished(8)`
-- **任务三表形态**：task 核心控制行只承载生命周期与树形关系（status / pid / has_child / task_type 等 9 列）；插件下载领域字段在 **work_task**（1:1 共享主键——主键 id 恒 = 所属 task.id，无独立外键列；行集=全部 `'plugin-download'` 任务行，含树形父行与子行）；分享接收领域字段在 **share_task**（同 1:1 形态，仅收件子任务行）。领域行仓储 `WorkTaskRepository` / `ShareTaskRepository`（`work_task_repository.go` / `share_task_repository.go`）私有组合 BaseRepository——通用写方法不外漏，写路径收口到 `CreateForTask` 族（内部覆写 id 为所属任务 id，防共享主键漂移）；工厂 `NewWorkTask(taskID)` / `NewShareTask(taskID)` 对非正 id panic fail-fast（零值主键插入会被 SQLite 静默按 rowid 分配新值，破坏 1:1 同值约束）。
-- **任务类型（task_type）**：恒有值——插件下载任务写 `'plugin-download'`（常量 `entity.TaskTypePluginDownload`，经 work_task.plugin_public_id 路由到插件执行器）；其他取值为内置类型（如 `'share-receive'`，经 taskManager 注册的执行面策略执行，领域字段在各自领域表）。内置类型创建时经任务类型注册表校验，未知类型拒绝创建。
+- **任务三表形态**：task 核心控制行只承载生命周期与树形关系（status / pid / has_child / task_type 等 9 列）；插件下载领域字段在 **work_task**（1:1 共享主键——主键 id 恒 = 所属 task.id，无独立外键列；行集=全部 `'plugin-download'` 任务行，含树形父行与子行）；分享接收领域字段在 **share_task**（同 1:1 形态，仅收件子任务行）。领域行仓储：share_task 归本模块（`ShareTaskRepository`，私有组合 BaseRepository——通用写方法不外漏，写路径收口到 `CreateForTask`）；work_task 仓储归 download 模块（执行面持有），本模块建树写行与树双查读行经窄接口 `WorkTaskWriter` / `WorkTaskReader` 注入消费（app.go 装配）；工厂 `NewWorkTask(taskID)` / `NewShareTask(taskID)` 对非正 id panic fail-fast（零值主键插入会被 SQLite 静默按 rowid 分配新值，破坏 1:1 同值约束）。
+- **任务类型（task_type）**：恒有值——插件下载任务写 `'plugin-download'`（常量 `entity.TaskTypePluginDownload`，work_task 领域行持插件身份，download 模块实现其执行面策略）；其他取值为内置类型（如 `'share-receive'`，经 taskManager 注册的执行面策略执行，领域字段在各自领域表）。内置类型创建时经任务类型注册表校验，未知类型拒绝创建。
 - **任务树**：父任务聚合子任务，父任务状态由子任务聚合得出（PartlyFinished 为父任务聚合态）。
 - **内置任务树建树**（Service 层能力，非 Handler 暴露；经调用方定义的能力接口注入使用，如 share 的 `BuiltinTaskControl`，app.go 装配）：
   - `CreateBuiltinTask(taskType, taskName)`：创建内置类型独立任务（创建后停留 Created，运行控制与插件任务一致）。
@@ -43,4 +43,4 @@
 ## 依赖关系
 
 - 依赖：URL 监听器（`urlListener.ListListener`，由插件提供）、站点 / 作品集查询、事务执行器（Transactor，删除链编排用）、resource.task_id 引用清理（repository 层原生 UPDATE，删任务前置义务）
-- 被依赖：**taskManager**（消费 TaskStatusEnum 与 work_task 领域行——树加载双查装配、批次状态/pending_resource_id 写库）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树 + `ShareTaskStore` 窄接口读写 share_task 领域行，app.go 装配）、plugin 扩展桥（`GetStoreRelPath` 经 WorkTaskRepository 查 pending_resource_id，app.go 装配）
+- 被依赖：**taskManager**（消费 TaskStatusEnum 与任务树核心行查询 ListTaskTreeCore；板块选择写行/活跃插件计数投影/删除链 pending 清理均经 download 模块仓储）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树 + `ShareTaskStore` 窄接口读写 share_task 领域行，app.go 装配）、download（`SectionRecorder` 写行展开子成员用 `ListChildrenTask`；插件扩展桥 `GetStoreRelPath` 经 download 仓储查 pending_resource_id，app.go 装配）

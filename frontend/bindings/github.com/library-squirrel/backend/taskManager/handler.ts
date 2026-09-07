@@ -102,7 +102,8 @@ export function PauseTaskTrees(taskIds: number[]): $CancellablePromise<model$0.A
 }
 
 /**
- * Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
+ * Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块。
+ * 两步编排（发起方在 handler）：板块选择写行（空资源集=仅作品信息、非空=所选子集）→ 整树启动
  */
 export function Redownload(taskIds: number[], storeRoles: string[], includeWorkInfo: boolean): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1628478088, taskIds, storeRoles, includeWorkInfo).then(($result: any) => {
@@ -129,7 +130,12 @@ export function RetryTaskTrees(taskIds: number[]): $CancellablePromise<model$0.A
 }
 
 /**
- * StartTaskTrees 批量启动任务
+ * StartTaskTrees 批量启动任务（板块全量执行）：两步编排——先把首跑板块选择写入各任务的作品
+ * 任务领域行（store_roles=NULL 表示全量、include_work_info=true；创建默认不含作品信息，不写行
+ * 则执行面派生出不含作品信息的板块组合），再启动任务树。写行范围=各请求任务及其直接子成员
+ * （任务树两级：父→叶子）：整树启动覆盖全部子任务，单独请求叶子只写该叶子自身、不波及其
+ * 运行中兄弟。写行先于调度决策进行——请求树上已被调度层跳过的已运行单元，其行同样被覆盖
+ * 为全量。重试/恢复不经此处，按各任务已记录的板块模式执行
  */
 export function StartTaskTrees(taskIds: number[]): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3175006403, taskIds).then(($result: any) => {

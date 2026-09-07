@@ -1,8 +1,8 @@
 package taskManager
 
-// 替换确认投递前置作品锁预检测试：replace 答复遇涉及作品被分享拉取持有时同步返回
-// shareLock.ErrWorkLocked、不摘确认条目不投递；skip 答复不查锁；强制解锁后重发答复放行。
-// 涉及作品=插件任务的替换定位作品（existingWorkId）与策略任务等待时记录的冲突作品集合
+// 替换确认投递前置作品锁预检测试：replace 答复遇涉及作品（等待确认时记录的冲突作品集合）
+// 被分享拉取持有时同步返回 shareLock.ErrWorkLocked、不摘确认条目不投递；skip 答复不查锁；
+// 强制解锁后重发答复放行。
 
 import (
 	"context"
@@ -13,13 +13,18 @@ import (
 	"github.com/library-squirrel/backend/shareLock"
 )
 
-// newPluginConfirmTask 构造等待确认的插件型任务（strategy 为 nil，确认走命令通道投递），
-// 不启动 actor——命令缓冲在 cmdCh 内，此处只验证确认面的查锁与条目增删
-func newPluginConfirmTask(mgr *Manager, taskId, existingWorkId int64) *ManagedTask {
+// newWaitingConfirmTask 构造等待确认的策略任务（模拟 WaitReplaceConfirm 进入等待时记录冲突
+// 作品集合），不启动 actor——此处只验证确认面的查锁与条目增删
+func newWaitingConfirmTask(mgr *Manager, taskId, conflictWorkId int64) *ManagedTask {
 	m := newTestManagedTask()
 	m.taskId = taskId
+	m.task = newBuiltinTask(taskId, "demo")
 	m.manager = mgr
-	m.existingWorkId = existingWorkId
+	m.semaphore = mgr.semaphore
+	m.confirmCh = make(chan replaceConfirmResult, 1)
+	m.strategy = &stubStrategy{}
+	m.deps = mgr.deps
+	m.confirmConflictWorkIds = []int64{conflictWorkId}
 	mgr.enqueueWaitingForInput(m)
 	return m
 }
@@ -32,13 +37,13 @@ func inWaitingTable(mgr *Manager, taskId int64) bool {
 	return ok
 }
 
-// TestConfirmReplaceRejectsLockedWork 插件任务替换定位作品被锁：replace 拒绝且任务留在确认表；
+// TestConfirmReplaceRejectsLockedWork 涉及冲突作品被锁：replace 拒绝且任务留在确认表；
 // skip 不查锁直接放行；强制解锁后 replace 放行并摘条目
 func TestConfirmReplaceRejectsLockedWork(t *testing.T) {
 	lock := shareLock.NewShareLockRegistry()
-	mgr := NewManager(2, nil, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil)
+	mgr := NewManager(2, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
-	newPluginConfirmTask(mgr, 1, 500)
+	newWaitingConfirmTask(mgr, 1, 500)
 
 	lock.Register(context.Background(), []int64{500}, "session-a")
 	if err := mgr.ConfirmReplace(1, "replace"); !errors.Is(err, shareLock.ErrWorkLocked) {
@@ -60,7 +65,7 @@ func TestConfirmReplaceRejectsLockedWork(t *testing.T) {
 	}
 
 	// 强制解锁后重新入表重发 replace：放行
-	newPluginConfirmTask(mgr, 1, 500)
+	newWaitingConfirmTask(mgr, 1, 500)
 	lock.Register(context.Background(), []int64{500}, "session-b")
 	if err := mgr.ConfirmReplace(1, "replace"); !errors.Is(err, shareLock.ErrWorkLocked) {
 		t.Fatalf("再次锁命中应返回 shareLock.ErrWorkLocked，实际 %v", err)
@@ -78,7 +83,7 @@ func TestConfirmReplaceRejectsLockedWork(t *testing.T) {
 // 集合：冲突作品被锁时 replace 拒绝且等待不解除；强制解锁后重发答复，等待返回替换决策
 func TestConfirmReplaceRejectsLockedConflictWork(t *testing.T) {
 	lock := shareLock.NewShareLockRegistry()
-	mgr := NewManager(2, nil, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil)
+	mgr := NewManager(2, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	m := newTestManagedTask()
@@ -130,10 +135,10 @@ func TestConfirmReplaceRejectsLockedConflictWork(t *testing.T) {
 // （全部留在确认表）；强制解锁后重发整批放行
 func TestConfirmReplaceBatchRejectsLockedWork(t *testing.T) {
 	lock := shareLock.NewShareLockRegistry()
-	mgr := NewManager(2, nil, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil)
+	mgr := NewManager(2, nil, nil, &TaskDeps{Pusher: &fakePusher{}, WorkLockChecker: lock}, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
-	newPluginConfirmTask(mgr, 1, 500)
-	newPluginConfirmTask(mgr, 2, 600)
+	newWaitingConfirmTask(mgr, 1, 500)
+	newWaitingConfirmTask(mgr, 2, 600)
 
 	lock.Register(context.Background(), []int64{600}, "session-a")
 	if err := mgr.ConfirmReplaceBatch([]int64{1, 2}, "replace"); !errors.Is(err, shareLock.ErrWorkLocked) {

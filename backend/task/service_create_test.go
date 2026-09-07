@@ -556,7 +556,8 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 
 	// 经生产构造函数组装（真实 task 仓储 + 真事务执行器 + 真实 site 服务）
 	siteSvc := site.NewService(site.NewRepository(db))
-	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
+	wtStore := newTestWorkTaskStore(db)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc)
 	ctx := context.Background()
 
 	// 入口一/二：CreateTask——req.Pid=0 落 NULL=根级；req.Pid=父 落父 ID
@@ -669,7 +670,8 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
-	svc := NewService(NewRepository(db), nil, nil, nil, nil)
+	wtStore := newTestWorkTaskStore(db)
+	svc := NewService(NewRepository(db, wtStore, wtStore), nil, nil, nil, nil)
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型"); err == nil {
@@ -801,7 +803,8 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
-	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, nil)
+	wtStore := newTestWorkTaskStore(db)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, nil)
 	ctx := context.Background()
 
 	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
@@ -878,7 +881,8 @@ func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	// 父=call1，第一个子任务（call2）注入失败
-	failRepo := &failOnNthCreateRepo{TaskRepository: NewRepository(db), failAt: 2}
+	wtStore := newTestWorkTaskStore(db)
+	failRepo := &failOnNthCreateRepo{TaskRepository: NewRepository(db, wtStore, wtStore), failAt: 2}
 	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -920,7 +924,8 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 	}
 
 	siteSvc := site.NewService(site.NewRepository(db))
-	svc := NewService(NewRepository(db), &testTransactor{db: db}, nil, nil, siteSvc)
+	wtStore := newTestWorkTaskStore(db)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc)
 
 	responses := []*sdkdto.TaskCreateResponse{
 		{TaskName: "leaf-1", SiteWorkId: "k-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},

@@ -32,11 +32,7 @@ func newHostPluginCallbacks(
 }
 
 func (c *hostPluginCallbacks) onRegisterTaskHandler(extensionId, name, description string) error {
-	proxy := &TaskHandlerProxy{
-		serviceAccessor: c.serviceAccessor,
-		pluginPublicId:  c.pluginInfo.PublicID,
-		extensionId:     extensionId,
-	}
+	proxy := newTaskHandlerProxy(c.serviceAccessor, c.pluginInfo.PublicID, extensionId)
 
 	metadata := model.ExtensionMetadata{
 		Type:           model.ExtensionTypeTaskHandler,

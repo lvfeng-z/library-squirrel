@@ -893,8 +893,8 @@ func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.Conflict
 }
 func (h *fakeStrategyHandle) SetTerminalRollback(rollback taskManager.TerminalRollback) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if len(rollback.Victims) == 0 {
-		h.mu.Unlock()
 		return
 	}
 	// 合并累积（对齐真实 strategyHandle：多作品软删按 StoreID 去重登记，终态回滚覆盖全部软删行）
@@ -912,8 +912,20 @@ func (h *fakeStrategyHandle) SetTerminalRollback(rollback taskManager.TerminalRo
 		seen[v.StoreID] = struct{}{}
 		h.rollback.Victims = append(h.rollback.Victims, v)
 	}
-	h.mu.Unlock()
 }
+
+// MarkDrainPhase 排空阶段上报 no-op（收件拉取无下载循环阶段上报面）
+func (h *fakeStrategyHandle) MarkDrainPhase(in bool) {}
+
+// SoftPauseSignal 返回 nil 通道（收件拉取无软暂停消费面，恒不广播）
+func (h *fakeStrategyHandle) SoftPauseSignal() <-chan struct{} { return nil }
+
+// Skip 跳过收口 no-op（收件拉取无跳过收口面——冲突跳过整作品的落位在 plan 层不在任务收口）
+func (h *fakeStrategyHandle) Skip(errMsg string) {}
+
+// ResumeRequested 恒 false（收件拉取的恢复语义无续传分叉——恢复=按暂存大小续传，物理事实承载）
+func (h *fakeStrategyHandle) ResumeRequested() bool { return false }
+
 func (h *fakeStrategyHandle) isTerminal() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

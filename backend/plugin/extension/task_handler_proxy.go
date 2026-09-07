@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 
@@ -19,9 +20,22 @@ type TaskHandlerProxy struct {
 	serviceAccessor ServiceAccessor
 	pluginPublicId  string
 	extensionId     string
+	// readerIdleTimeout 流式链路单次接收等待数据的空闲上限（Create 首块/Start·Resume 首响应/pull
+	// 响应共用），取 SDK 与插件双端一致的权威常量；测试可构造后覆写注入缩时值
+	readerIdleTimeout time.Duration
 }
 
 var _ pluginsdkdto.TaskHandler = (*TaskHandlerProxy)(nil)
+
+// newTaskHandlerProxy 构造任务处理器代理；流式接收空闲超时取 SDK 权威常量
+func newTaskHandlerProxy(serviceAccessor ServiceAccessor, pluginPublicId, extensionId string) *TaskHandlerProxy {
+	return &TaskHandlerProxy{
+		serviceAccessor:   serviceAccessor,
+		pluginPublicId:    pluginPublicId,
+		extensionId:       extensionId,
+		readerIdleTimeout: pluginsdkliveness.ReaderIdleTimeout,
+	}
+}
 
 func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error) {
 	services, ok := p.serviceAccessor.GetServices(p.pluginPublicId)
@@ -31,27 +45,41 @@ func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error)
 	return services.Task, nil
 }
 
+// Create 创建任务。SDK TaskHandler 接口未携带 ctx（跨仓契约），以 Background 为基；
+// 主程序内部调用方经 CreateWithContext 承接调用方取消语义
 func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, error) {
+	return p.CreateWithContext(context.Background(), url)
+}
+
+// CreateWithContext 以调用方 ctx 为基创建任务流：ctx 取消即终结流与接收泵。
+// 首块接收受空闲超时约束——插件建流后不产出（hang）表现为超时错误而非无限阻塞。
+// 流式模式的流收尾责任归接收泵（EOF/错误/ctx 取消任一退出，退出时取消流 ctx 并关闭结果 channel）；
+// 批量模式与错误路径在本函数内就地收尾
+func (p *TaskHandlerProxy) CreateWithContext(ctx context.Context, url string) (*pluginsdkdto.TaskCreateResult, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
 	}
-	stream, err := client.Create(context.Background(), &gen.CreateRequest{
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream, err := client.Create(streamCtx, &gen.CreateRequest{
 		Url:         url,
 		ExtensionId: p.extensionId,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	// 读取首条消息：正常流首块为 mode 块；插件 Create 错误返回时首块（也是唯一块）为 error 块，无 mode 块
-	chunk, err := stream.Recv()
+	chunk, err := recvWithIdleTimeout(stream.Recv, cancel, p.readerIdleTimeout)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	// error 块承载插件业务失败原因（用户可读文本），必为流的最后一块
 	if reason := chunk.GetError(); reason != "" {
+		cancel()
 		result := pluginsdkdto.BatchResult(nil)
 		result.SetReason(reason)
 		return result, nil
@@ -59,6 +87,7 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 
 	modeChunk := chunk.GetMode()
 	if modeChunk == nil {
+		cancel()
 		return nil, fmt.Errorf("first CreateChunk must contain CreateMode or Error")
 	}
 
@@ -68,6 +97,8 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 		result := pluginsdkdto.StreamResult(ch)
 		go func() {
 			defer close(ch)
+			// 泵退出即取消流 ctx：终结 gRPC stream（EOF/错误/ctx 取消三态统一收尾）
+			defer cancel()
 			for {
 				c, err := stream.Recv()
 				if err != nil {
@@ -81,7 +112,12 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 				}
 				taskProto := c.GetTask()
 				if taskProto != nil {
-					ch <- protoToTaskCreateResponse(taskProto)
+					// 消费方停止读取（channel 缓冲占满）时，流 ctx 取消可解除发送阻塞令泵退出
+					select {
+					case ch <- protoToTaskCreateResponse(taskProto):
+					case <-streamCtx.Done():
+						return
+					}
 				}
 			}
 		}()
@@ -104,11 +140,13 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 		chunk, err = stream.Recv()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
+				cancel()
 				return nil, err
 			}
 			break
 		}
 	}
+	cancel()
 	result := pluginsdkdto.BatchResult(responses)
 	if reason != "" {
 		result.SetReason(reason)
@@ -117,11 +155,17 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 }
 
 func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
+	return p.CreateWorkInfoWithContext(context.Background(), task)
+}
+
+// CreateWorkInfoWithContext 以调用方 ctx 为基生成作品信息：调用方取消立即打断 gRPC 等待，
+// UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
+func (p *TaskHandlerProxy) CreateWorkInfoWithContext(ctx context.Context, task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pluginsdkliveness.UnaryRPCTimeout)
 	defer cancel()
 	resp, err := client.CreateWorkInfo(ctx, &gen.CreateWorkInfoRequest{
 		Task:        taskToProto(task),
@@ -162,6 +206,7 @@ func (p *TaskHandlerProxy) Start(ctx context.Context, task *pluginsdkdto.TaskDTO
 		},
 		stream.Recv,
 		cancel,
+		p.readerIdleTimeout,
 	)
 }
 
@@ -244,11 +289,17 @@ func workSetRelationEntriesFromProto(entries []*gen.WorkSetRelationEntry) []*plu
 }
 
 func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
+	return p.PauseWithContext(context.Background(), param)
+}
+
+// PauseWithContext 以调用方 ctx 为基暂停任务：调用方取消立即打断 gRPC 等待，
+// UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
+func (p *TaskHandlerProxy) PauseWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pluginsdkliveness.UnaryRPCTimeout)
 	defer cancel()
 	_, err = client.Pause(ctx, &gen.TaskResParamMessage{
 		Param:       taskResParamToProto(param),
@@ -258,11 +309,17 @@ func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 }
 
 func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
+	return p.StopWithContext(context.Background(), param)
+}
+
+// StopWithContext 以调用方 ctx 为基停止任务：调用方取消立即打断 gRPC 等待，
+// UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
+func (p *TaskHandlerProxy) StopWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
 	client, err := p.getTaskClient()
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), pluginsdkliveness.UnaryRPCTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pluginsdkliveness.UnaryRPCTimeout)
 	defer cancel()
 	_, err = client.Stop(ctx, &gen.TaskResParamMessage{
 		Param:       taskResParamToProto(param),
@@ -297,6 +354,7 @@ func (p *TaskHandlerProxy) Resume(ctx context.Context, param *pluginsdkdto.TaskR
 		},
 		stream.Recv,
 		cancel,
+		p.readerIdleTimeout,
 	)
 }
 
@@ -333,17 +391,45 @@ func (p *SiteBrowserProxy) Close() error {
 
 // ========== 多流按需拉取(pull)==========
 
+// recvWithIdleTimeout 在空闲窗口内等待一次流接收：数据到达即返回（窗口按次起算，不在跨次
+// 等待间累计），到期 cancel 所属流 ctx——阻塞中的接收与该流上的后续读取立即失败，插件 hang
+// （连接活但不产出）表现为调用方收到超时错误而非无限等待。接收在独立 goroutine 执行，
+// cancel 后其结果经缓冲通道送达即弃置
+func recvWithIdleTimeout[T any](recv func() (T, error), cancel context.CancelFunc, idleTimeout time.Duration) (T, error) {
+	var zero T
+	type recvOutcome struct {
+		value T
+		err   error
+	}
+	outcomeCh := make(chan recvOutcome, 1)
+	go func() {
+		value, err := recv()
+		outcomeCh <- recvOutcome{value, err}
+	}()
+	timer := time.NewTimer(idleTimeout)
+	defer timer.Stop()
+	select {
+	case outcome := <-outcomeCh:
+		return outcome.value, outcome.err
+	case <-timer.C:
+		cancel()
+		return zero, fmt.Errorf("插件流空闲超时: %s 内未收到数据", idleTimeout)
+	}
+}
+
 // recvSpecsAndPull 接收 WorkResponse(可选)+ Specs 声明,为每个 role 建 pullReadCloser(共享 bidi stream)。
 // 主程序按需 Read 驱动插件 reader.Read,reader 不领先主程序落盘
 func recvSpecsAndPull(
 	sendPull func(role string, maxBytes int) error,
 	recvChunk func() (*gen.StreamChunk, error),
 	cancel context.CancelFunc,
+	idleTimeout time.Duration,
 ) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
 	var workResp *pluginsdkdto.WorkResponse
 	var metas []*gen.StoreSpecMeta
 	for {
-		chunk, err := recvChunk()
+		// 首响应（WorkResponse 可选 + Specs 声明）的每次接收受空闲超时约束
+		chunk, err := recvWithIdleTimeout(recvChunk, cancel, idleTimeout)
 		if err != nil {
 			cancel()
 			return nil, nil, err
@@ -364,10 +450,11 @@ func recvSpecsAndPull(
 	}
 
 	session := &pullSession{
-		sendPull:  sendPull,
-		recvChunk: recvChunk,
-		cancel:    cancel,
-		refCount:  len(metas),
+		sendPull:    sendPull,
+		recvChunk:   recvChunk,
+		cancel:      cancel,
+		refCount:    len(metas),
+		idleTimeout: idleTimeout,
 	}
 	specs := make([]*pluginsdkdto.StoreSpec, 0, len(metas))
 	for i, meta := range metas {
@@ -388,12 +475,13 @@ func recvSpecsAndPull(
 
 // pullSession 共享一条 bidi stream 的多 role pull 会话
 type pullSession struct {
-	sendPull  func(role string, maxBytes int) error
-	recvChunk func() (*gen.StreamChunk, error)
-	cancel    context.CancelFunc
-	mu        sync.Mutex // 串行化 Send(Pull)+Recv 配对,保证请求/响应配对
-	refCount  int        // 剩余未 Close 的 role
-	closed    bool
+	sendPull    func(role string, maxBytes int) error
+	recvChunk   func() (*gen.StreamChunk, error)
+	cancel      context.CancelFunc
+	idleTimeout time.Duration // 单次 pull 响应等待的空闲上限
+	mu          sync.Mutex    // 串行化 Send(Pull)+Recv 配对,保证请求/响应配对
+	refCount    int           // 剩余未 Close 的 role
+	closed      bool
 }
 
 // pullReadCloser 单 role 的按需读取:Read 一次 = 发一次 PullRequest + 收一次响应
@@ -413,7 +501,9 @@ func (r *pullReadCloser) Read(p []byte) (int, error) {
 	if err := r.session.sendPull(r.role, len(p)); err != nil {
 		return 0, err
 	}
-	chunk, err := r.session.recvChunk()
+	// 单次 pull 响应受空闲超时约束：窗口从本次等待起算，数据到达即返回；到期 cancel 会话流，
+	// 阻塞中的接收与该流上全部后续读取立即失败（多 role 共享一条流，超时即整体失败）
+	chunk, err := recvWithIdleTimeout(r.session.recvChunk, r.session.cancel, r.session.idleTimeout)
 	if err != nil {
 		return 0, err
 	}

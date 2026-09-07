@@ -124,8 +124,6 @@ type Repository interface {
 	ClearResourceTaskId(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
 	BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error
-	// UpdatePendingResourceID 更新任务的 pending_resource_id（作品任务领域行）
-	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
 	// ListBySiteAndSiteWorkID 根据站点和站点作品ID查询关联任务列表
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*entity.Task, error)
 }
@@ -170,6 +168,21 @@ func buildTaskProgressTree(pairs []*TaskWithWorkTask) []*dto.TaskProgressTreeDTO
 type TaskHandlerProvider interface {
 	// GetTaskHandler 获取任务处理器
 	GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error)
+}
+
+// ctxAwareTaskCreator 支持以调用方 ctx 为基创建任务的处理器扩展（TaskHandlerProxy 实现）。
+// SDK TaskHandler 接口的 Create 无 ctx 参数，调用方取消语义经此主程序内部接口传递
+type ctxAwareTaskCreator interface {
+	CreateWithContext(ctx context.Context, url string) (*sdkdto.TaskCreateResult, error)
+}
+
+// createTaskWithContext 优先经 ctx 感知通道以调用方 ctx 为基创建任务（取消即终结插件流与
+// 接收泵），处理器不支持时回落 SDK 接口的无 ctx Create
+func createTaskWithContext(ctx context.Context, handler sdkdto.TaskHandler, url string) (*sdkdto.TaskCreateResult, error) {
+	if creator, ok := handler.(ctxAwareTaskCreator); ok {
+		return creator.CreateWithContext(ctx, url)
+	}
+	return handler.Create(url)
 }
 
 // Transactor 事务执行器接口
@@ -847,8 +860,9 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		}
 
 		// 3. 调用插件的 create 方法。gRPC 层错误代表基础设施故障（进程崩溃/连接中断/传输异常）；
-		//    插件业务失败原因经结果对象的 reason 承载，不表现为 err
-		result, err := taskHandler.Create(url)
+		//    插件业务失败原因经结果对象的 reason 承载，不表现为 err。
+		//    经 ctx 感知通道继承调用方 ctx：取消可终结建流与接收泵
+		result, err := createTaskWithContext(ctx, taskHandler, url)
 		if err != nil {
 			logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
 			return &CreateTaskByURLResponse{

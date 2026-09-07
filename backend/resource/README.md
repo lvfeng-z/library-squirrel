@@ -47,9 +47,9 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 替换链的通用能力（输入 `(workId, roles)` 纯领域参数，不感知任务语义），自 taskManager 抽入本模块，插件任务与 share-receive 两发起方复用。实现于 `replacement.go`，对外接口 `ReplaceStoreOps`。
 
 - **`SoftDeleteWorkStoreRoles(ctx, workId, roles)`**：替换前置软删——软删作品下**指定角色集合**的活行 store（roles 为显式集合，**空集=不软删任何行**；「空选择=全量板块」的展开归发起方——taskManager 展开为 store_type 封闭枚举全集后传入，能力不承接该语义），已完成行走 `DeleteWithBackup`（移文件入 backup 并写行内 backup_id）、未完成行废弃文件软删（partial 无复原价值）、历史残留死行跳过；返回被软删行清单 `[]StoreRef`（供回滚登记）。`resource_store` 关联不摘——软删行经挂载链可联作品、随作品级联净化，失败回滚复活即挂载回位。前置作品锁守卫：软删会移走作品的活行 store 文件，作品正被分享拉取持有时在途拉取会读到源文件消失，拒绝执行并返回 `shareLock.ErrWorkLocked`（上层透传，用户知情强制解锁后重试本操作）。
-- **`RestoreReplacedStores(ctx, scope RestoreScope)`**：失败回滚复活——备份还原文件（还原后清理备份）、批量复活行、重算 victim 所属资源完整度。清单来源两途（`RestoreScope`）：`WorkID` 数据驱动派生（插件任务，按挂载键同键最新死代圈定，软删行即持久还原点；Roles 同为显式集合，空集=无 victim）/ `Victims` 显式清单（策略任务，执行器软删成功后登记的多作品清单）；`WorkID` 途带作品活性守卫（作品已软删则回滚让位）。
+- **`RestoreReplacedStores(ctx, scope RestoreScope)`**：失败回滚复活——先按 `DiscardStoreIDs` 物理丢弃替换执行期新建的 store 行（行+文件+关联，发起方在创建/续接行时登记；释放旧代 file_path，受害者清单内的行不参与丢弃——按受害者处置复活）、再备份还原文件（还原后清理备份）、批量复活行、重算 victim 所属资源完整度。清单来源两途（`RestoreScope`）：`WorkID` 数据驱动派生（按挂载键同键最新死代圈定，软删行即持久还原点；Roles 同为显式集合，空集=无 victim）/ `Victims` 显式清单（策略任务，执行器软删成功后登记的多作品清单）；`WorkID` 途带作品活性守卫（作品已软删则回滚让位）。
 - **派生函数**：`deriveReplaceVictims`/`replaceVictimKey`（同键最新死代圈定，活行残留的键跳过——复活会撞部分唯一索引）随迁本模块。
-- **依赖注入**（接口隔离）：`ReplaceResourceLister`/`ResourceRecomputer`（resource.Service）、`ReplaceResourceStoreLister`（ResourceStoreRepository）、`ReplaceStoreRowReader`/`ReplaceStoreDeleter`（persistentStore.Service）、`ReplaceBackupRestorer`（backup.Service）、`ReplaceWorkLivenessReader`（work.Service）、`ReplaceWorkDirProvider`（settings.Service）、`ReplaceWorkLockChecker`（shareLock.ShareLockRegistry——前置作品锁守卫）。插件任务侧的「清本次新建 store」（依赖执行期 streams 状态）仍由发起方（taskManager 失败回滚单点）在调用前完成，不在能力内。
+- **依赖注入**（接口隔离）：`ReplaceResourceLister`/`ResourceRecomputer`（resource.Service）、`ReplaceResourceStoreLister`/`ReplaceAssocRemover`（ResourceStoreRepository）、`ReplaceStoreRowReader`/`ReplaceStoreDeleter`/`ReplaceRowHardDeleter`（persistentStore.Service）、`ReplaceBackupRestorer`（backup.Service）、`ReplaceWorkLivenessReader`（work.Service）、`ReplaceWorkDirProvider`（settings.Service）、`ReplaceWorkLockChecker`（shareLock.ShareLockRegistry——前置作品锁守卫）。
 
 ## 依赖关系
 

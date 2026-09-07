@@ -79,6 +79,8 @@ func newLockTestService(deleter *lockTestDeleter, lock shareLock.ShareLockRegist
 		noopReplaceRecompute{},
 		replaceWorkDir{workDir: "E:/lib"},
 		lock,
+		noopAssocRemover{},
+		noopRowHardDeleter{},
 	)
 }
 

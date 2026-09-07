@@ -2,22 +2,49 @@ package taskManager
 
 // 确认回路测试：策略任务执行内挂起等待（WaitReplaceConfirm）与终态回滚钩子
 // （SetTerminalRollback）。覆盖：
-// - 整体答复继续：Manager.ConfirmReplace 分流投递确认通道 → WaitReplaceConfirm 返回决策继续执行
+// - 整体答复继续：Manager.ConfirmReplace 投递确认通道 → WaitReplaceConfirm 返回决策继续执行
 // - 取消打断：RunCtx 取消（防御性，暂停/停止旁路）→ 返回 canceled、自确认表移除、槽位保持释放
 // - 排队唤醒：确认挂起期间释放信号量槽位（多策略任务同时等待不挤占并发额度），答复后重新取槽
-// - setFailed 单点触发登记钩子：受害者显式清单复活（与插件任务数据驱动回滚并轨）
+// - setFailed 单点触发登记钩子：受害者显式清单复活
 // - 多次软删受害者合并登记、Finish 清空登记
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/task"
+
+	"gorm.io/plugin/soft_delete"
 )
+
+// fakePusher 推送桩:捕获 PushDuplicateDetected 载荷
+type fakePusher struct {
+	duplicates []duplicateCall
+}
+
+type duplicateCall struct {
+	taskId        int64
+	existingId    int64
+	conflictRoles []string
+}
+
+func (p *fakePusher) PushStateChange(int64, string, TaskState)       {}
+func (p *fakePusher) PushParentStateChange(int64, string, TaskState) {}
+func (p *fakePusher) PushProgress(int64, int64, int64)               {}
+func (p *fakePusher) PushProgressBatch([]*taskScheduleDTO)           {}
+func (p *fakePusher) PushParentProgress(int64, int64, int64)         {}
+func (p *fakePusher) PushError(int64, string)                        {}
+func (p *fakePusher) PushTaskRemove([]int64)                         {}
+func (p *fakePusher) PushParentTaskRemove([]int64)                   {}
+func (p *fakePusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string) {
+	p.duplicates = append(p.duplicates, duplicateCall{taskId: taskId, existingId: existingWorkId, conflictRoles: conflictRoles})
+}
 
 // stubStrategy 无操作执行面策略桩（确认回路测试直接调用 handle，不经 Execute）
 type stubStrategy struct{}
@@ -57,10 +84,202 @@ func (s *confirmStrategy) outcome() (ReplaceDecision, bool) {
 	return s.decision, s.canceled
 }
 
+// ==== 终态回滚链 fakes（triggerTerminalRollback 注入真实 resource.ReplacementService，断言落桩上）====
+
+// stubResourceReader 资源查询桩（回滚派生链取作品资源）
+type stubResourceReader struct {
+	resources []*entity.Resource
+}
+
+func (f *stubResourceReader) ListByWorkId(ctx context.Context, workId int64) ([]*entity.Resource, error) {
+	return f.resources, nil
+}
+
+func (f *stubResourceReader) GetById(ctx context.Context, id int64) (*entity.Resource, error) {
+	return nil, nil
+}
+
+// stubResourceStoreReader 关联查询桩
+type stubResourceStoreReader struct {
+	assocs []*entity.ResourceStore
+}
+
+func (f *stubResourceStoreReader) ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error) {
+	return f.assocs, nil
+}
+
+func (f *stubResourceStoreReader) ListByResourceIds(ctx context.Context, resourceIds []int64) ([]*entity.ResourceStore, error) {
+	return f.assocs, nil
+}
+
+// stubStoreBackupReader store 行含删读取与复活桩
+type stubStoreBackupReader struct {
+	rows        []*entity.PersistentStore
+	restoredIds []int64
+}
+
+func (f *stubStoreBackupReader) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity.PersistentStore {
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	result := make([]*entity.PersistentStore, 0, len(f.rows))
+	for _, row := range f.rows {
+		if want[row.GetID()] {
+			result = append(result, row)
+		}
+	}
+	return result
+}
+
+func (f *stubStoreBackupReader) RestoreByIds(ctx context.Context, ids []int64) error {
+	f.restoredIds = append(f.restoredIds, ids...)
+	return nil
+}
+
+// stubStoreReplacer 替换软删原语桩
+type stubStoreReplacer struct {
+	backupIds    []int64
+	discardedIds []int64
+}
+
+func (f *stubStoreReplacer) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
+	f.backupIds = append(f.backupIds, id)
+	return 0, nil
+}
+
+func (f *stubStoreReplacer) SoftDeleteAndDiscardFile(ctx context.Context, id int64) error {
+	f.discardedIds = append(f.discardedIds, id)
+	return nil
+}
+
+// stubWorkLivenessReader 作品活性桩：nil work = 已软删
+type stubWorkLivenessReader struct {
+	work *entity.Work
+}
+
+func (f *stubWorkLivenessReader) GetById(ctx context.Context, id int64) (*entity.Work, error) {
+	return f.work, nil
+}
+
+// stubBackupFileRestorer 备份文件还原桩：记录还原与删除的清单行 ID
+type stubBackupFileRestorer struct {
+	restoredBackupIds []int64
+	deletedBackupIds  []int64
+}
+
+func (f *stubBackupFileRestorer) GetById(ctx context.Context, id int64) (*entity.Backup, error) {
+	b := entity.NewBackup()
+	b.SetID(id)
+	return b, nil
+}
+
+func (f *stubBackupFileRestorer) GetBackupPath(backup *entity.Backup) string { return "" }
+
+func (f *stubBackupFileRestorer) RestoreFile(ctx context.Context, backupPath string, targetPath string) error {
+	return nil
+}
+
+func (f *stubBackupFileRestorer) DeleteBackup(ctx context.Context, id int64) error {
+	f.deletedBackupIds = append(f.deletedBackupIds, id)
+	return nil
+}
+
+// stubResourceRecomputer 完整度重算记账桩
+type stubResourceRecomputer struct {
+	calledResourceIds []int64
+}
+
+func (f *stubResourceRecomputer) RecomputeResourceComplete(ctx context.Context, resourceId int64) {
+	f.calledResourceIds = append(f.calledResourceIds, resourceId)
+}
+
+// stubAssocRemover 回滚摘除新建行关联记账桩
+type stubAssocRemover struct {
+	removedByStoreIds []int64
+}
+
+func (f *stubAssocRemover) DeleteByStoreIds(ctx context.Context, storeIds []int64) error {
+	f.removedByStoreIds = append(f.removedByStoreIds, storeIds...)
+	return nil
+}
+
+// stubRowHardDeleter 回滚物理删新建行记账桩
+type stubRowHardDeleter struct {
+	hardDeleted []int64
+}
+
+func (f *stubRowHardDeleter) HardDelete(ctx context.Context, id int64, backup bool) (int64, error) {
+	f.hardDeleted = append(f.hardDeleted, id)
+	return 0, nil
+}
+
+// stubWorkDirProvider 工作目录桩
+type stubWorkDirProvider struct {
+	dir string
+}
+
+func (p stubWorkDirProvider) GetWorkDir() string { return p.dir }
+
+// rollbackStubs 终态回滚测试的桩集合
+type rollbackStubs struct {
+	res       *stubResourceReader
+	rs        *stubResourceStoreReader
+	rows      *stubStoreBackupReader
+	replacer  *stubStoreReplacer
+	liveness  *stubWorkLivenessReader
+	restorer  *stubBackupFileRestorer
+	recompute *stubResourceRecomputer
+	assocRm   *stubAssocRemover
+	rowDel    *stubRowHardDeleter
+}
+
+// newRollbackTestTask 构造终态回滚测试任务（不启动 actor）：替换链复活能力注入真实
+// resource.ReplacementService（本文件 stub 作其依赖接口）——复活逻辑在 resource 域执行，
+// 断言仍落到同一批桩上
+func newRollbackTestTask() (*ManagedTask, *rollbackStubs) {
+	m := newTestManagedTask()
+	stubs := &rollbackStubs{
+		res:       &stubResourceReader{},
+		rs:        &stubResourceStoreReader{},
+		rows:      &stubStoreBackupReader{},
+		replacer:  &stubStoreReplacer{},
+		liveness:  &stubWorkLivenessReader{work: entity.NewWork()},
+		restorer:  &stubBackupFileRestorer{},
+		recompute: &stubResourceRecomputer{},
+		assocRm:   &stubAssocRemover{},
+		rowDel:    &stubRowHardDeleter{},
+	}
+	m.deps = &TaskDeps{
+		ReplaceStoreOps: resource.NewReplacementService(
+			stubs.res, stubs.rs, stubs.rows, stubs.replacer,
+			stubs.restorer, stubs.liveness, stubs.recompute,
+			stubWorkDirProvider{dir: "E:/lib"},
+			shareLock.NewShareLockRegistry(),
+			stubs.assocRm,
+			stubs.rowDel,
+		),
+	}
+	return m, stubs
+}
+
+// makeRollbackStoreRow 造一行 persistent_store（供 ListByIdsIncludeDeleted 桩返回）
+func makeRollbackStoreRow(id int64, completed int64, deletedAt int64, backupId int64, path string) *entity.PersistentStore {
+	row := entity.NewPersistentStore()
+	row.SetID(id)
+	row.CompletedAt = completed
+	if deletedAt > 0 {
+		row.DeletedAt = soft_delete.DeletedAt(deletedAt)
+	}
+	row.BackupID = sql.NullInt64{Int64: backupId, Valid: true}
+	row.FilePath = sql.NullString{String: path, Valid: true}
+	return row
+}
+
 // newConfirmTestTask 构建确认回路测试任务（不启动 actor）：直接调 strategyHandle.WaitReplaceConfirm，
-// 管理器仅提供确认表与信号量。strategy 恒非 nil，使 Manager.ConfirmReplace 按策略型分流投递
+// 管理器仅提供确认表与信号量。strategy 恒非 nil，使 Manager.ConfirmReplace 投递确认通道
 func newConfirmTestTask(maxParallel int) (*ManagedTask, *Manager, *fakePusher) {
-	mgr := NewManager(maxParallel, nil, nil, nil, nil, nil)
+	mgr := NewManager(maxParallel, nil, nil, nil, nil, nil, nil)
 	pusher := &fakePusher{}
 	// Manager 与任务共享同一 TaskDeps（对齐生产装配形态；确认面锁预检读 Manager 侧依赖）
 	mgr.deps = &TaskDeps{Pusher: pusher, WorkLockChecker: shareLock.NewShareLockRegistry()}
@@ -284,13 +503,16 @@ func TestConfirmReplaceBatchRoutesStrategy(t *testing.T) {
 // 软删成功后 SetTerminalRollback 登记的受害者显式清单经单点复活（备份还原+清备份+复活+完整度重算）；
 // 一次性：触发后清空登记
 func TestSetFailedTriggersRegisteredStrategyRollback(t *testing.T) {
-	m, stubs := newReplaceTestTask(500)
+	m, stubs := newRollbackTestTask()
 	m.strategy = &stubStrategy{}
 	h := newStrategyHandle(m)
 
 	h.SetTerminalRollback(TerminalRollback{Victims: []resource.StoreRef{
 		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/resource/a/被替换.png"},
 	}})
+	stubs.rows.rows = []*entity.PersistentStore{
+		makeRollbackStoreRow(811, 1, 2000, 92, "store/resource/a/被替换.png"),
+	}
 
 	m.setFailed("任务被用户停止")
 
@@ -311,10 +533,10 @@ func TestSetFailedTriggersRegisteredStrategyRollback(t *testing.T) {
 	}
 }
 
-// TestTerminalRollbackMergeAndFinishClear 多次软删受害者合并去重登记；Finish 清空登记
-// （替换完成软删行进入终态,重试从空态重新登记）
+// TestTerminalRollbackMergeAndFinishClear 多次软删受害者合并去重登记；新建行清单跨执行轮次
+// （两段会话）并集去重登记；Finish 清空登记（替换完成软删行进入终态,重试从空态重新登记）
 func TestTerminalRollbackMergeAndFinishClear(t *testing.T) {
-	m, _ := newReplaceTestTask(500)
+	m, stubs := newRollbackTestTask()
 	m.strategy = &stubStrategy{}
 	h := newStrategyHandle(m)
 
@@ -330,19 +552,113 @@ func TestTerminalRollbackMergeAndFinishClear(t *testing.T) {
 		t.Fatalf("合并清单应为去重后条目,实际 %+v", m.terminalRollback.Victims)
 	}
 
+	// 两段执行会话的新建行登记并集：首段登记 [5]，恢复段对续接行 5 重登记并新增重建行 6
+	h.SetTerminalRollback(TerminalRollback{CreatedStoreIDs: []int64{5}})
+	h.SetTerminalRollback(TerminalRollback{CreatedStoreIDs: []int64{5, 6}})
+	if len(m.terminalRollback.CreatedStoreIDs) != 2 || m.terminalRollback.CreatedStoreIDs[0] != 5 || m.terminalRollback.CreatedStoreIDs[1] != 6 {
+		t.Fatalf("跨会话新建行应并集去重登记,实际 %v", m.terminalRollback.CreatedStoreIDs)
+	}
+
 	h.Finish()
 	if m.terminalRollback != nil {
 		t.Fatal("Finish 后应清空终态回滚登记")
 	}
+	// 成功终态不触发回滚：受害者不复活、新建行不丢弃（重试从空态重新登记）
+	if len(stubs.rows.restoredIds) != 0 || len(stubs.rowDel.hardDeleted) != 0 {
+		t.Fatalf("Finish 不应触发回滚（受害者不复活、新建行保留），实际 复活 %v 物理删 %v",
+			stubs.rows.restoredIds, stubs.rowDel.hardDeleted)
+	}
+}
+
+// TestSetFailedDiscardsCreatedStoresBeforeRevive 停止/失败经 setFailed 单点回滚：先按登记清单
+// 丢弃替换执行期新建行（摘关联+物理删），再复活受害者——新建行清理由控制面统一执行，
+// 覆盖停止于替换执行中（不经会话收口）的路径
+func TestSetFailedDiscardsCreatedStoresBeforeRevive(t *testing.T) {
+	m, stubs := newRollbackTestTask()
+	m.strategy = &stubStrategy{}
+	h := newStrategyHandle(m)
+
+	h.SetTerminalRollback(TerminalRollback{CreatedStoreIDs: []int64{901, 902}})
+	h.SetTerminalRollback(TerminalRollback{Victims: []resource.StoreRef{
+		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/resource/a/被替换.png"},
+	}})
+	stubs.rows.rows = []*entity.PersistentStore{
+		makeRollbackStoreRow(811, 1, 2000, 92, "store/resource/a/被替换.png"),
+	}
+
+	m.setFailed("任务被用户停止")
+
+	if len(stubs.assocRm.removedByStoreIds) != 2 ||
+		stubs.assocRm.removedByStoreIds[0] != 901 || stubs.assocRm.removedByStoreIds[1] != 902 {
+		t.Fatalf("新建行(901,902)关联应被摘除,实际 %v", stubs.assocRm.removedByStoreIds)
+	}
+	if len(stubs.rowDel.hardDeleted) != 2 || stubs.rowDel.hardDeleted[0] != 901 || stubs.rowDel.hardDeleted[1] != 902 {
+		t.Fatalf("新建行(901,902)应被物理删,实际 %v", stubs.rowDel.hardDeleted)
+	}
+	if len(stubs.rows.restoredIds) != 1 || stubs.rows.restoredIds[0] != 811 {
+		t.Fatalf("受害者(811)应复活,实际 %v", stubs.rows.restoredIds)
+	}
+	if m.terminalRollback != nil {
+		t.Fatal("终态回滚触发后应清空登记")
+	}
+}
+
+// TestHandleStopCmdTriggersRegisteredRollback 停止命令路由：替换执行被 runCancel 中断（执行面
+// 不上报终态返回）后，watcher 暂存的 stop 命令经 handleStopCmd → setFailed 单点触发回滚——
+// 新建行丢弃与受害者复活都在此路径完成
+func TestHandleStopCmdTriggersRegisteredRollback(t *testing.T) {
+	m, stubs := newRollbackTestTask()
+	m.strategy = &stubStrategy{}
+	h := newStrategyHandle(m)
+	h.SetTerminalRollback(TerminalRollback{
+		Victims:         []resource.StoreRef{{StoreID: 811, ResourceID: 700}},
+		CreatedStoreIDs: []int64{901},
+	})
+	stubs.rows.rows = []*entity.PersistentStore{
+		makeRollbackStoreRow(811, 1, 2000, 0, "store/resource/a/被替换.png"),
+	}
+
+	m.handleStopCmd(taskCmd{kind: cmdStop})
+
+	if m.GetState() != TaskStateFailed {
+		t.Fatalf("停止后任务应为 Failed,实际 %s", taskStateName(m.GetState()))
+	}
+	if len(stubs.rowDel.hardDeleted) != 1 || stubs.rowDel.hardDeleted[0] != 901 {
+		t.Fatalf("停止路径应丢弃登记的新建行(901),实际 %v", stubs.rowDel.hardDeleted)
+	}
+	if len(stubs.rows.restoredIds) != 1 || stubs.rows.restoredIds[0] != 811 {
+		t.Fatalf("停止路径应复活受害者(811),实际 %v", stubs.rows.restoredIds)
+	}
+}
+
+// TestSetFailedNoVictimsKeepsCreatedStores 非替换失败（无软删受害者）保留已下载成果：
+// 登记的新建行清单随回滚登记作废，不触发丢弃与复活
+func TestSetFailedNoVictimsKeepsCreatedStores(t *testing.T) {
+	m, stubs := newRollbackTestTask()
+	m.strategy = &stubStrategy{}
+	h := newStrategyHandle(m)
+	h.SetTerminalRollback(TerminalRollback{CreatedStoreIDs: []int64{901, 902}})
+
+	m.setFailed("下载失败")
+
+	if len(stubs.rowDel.hardDeleted) != 0 || len(stubs.assocRm.removedByStoreIds) != 0 {
+		t.Fatalf("非替换失败不应丢弃新建行,实际 物理删 %v 摘关联 %v", stubs.rowDel.hardDeleted, stubs.assocRm.removedByStoreIds)
+	}
+	if len(stubs.rows.restoredIds) != 0 {
+		t.Fatalf("无受害者即无复活对象,实际 %v", stubs.rows.restoredIds)
+	}
+	if m.terminalRollback != nil {
+		t.Fatal("终态回滚触发后应清空登记")
+	}
 }
 
 // TestStrategyConfirmThroughManager 控制面集成：策略经 Manager 全链——启动取槽 → Execute 内
-// WaitReplaceConfirm（释放槽位）→ ConfirmReplace 分流 → 整体答复后重新取槽继续 → Finish 终态落盘
+// WaitReplaceConfirm（释放槽位）→ ConfirmReplace 投递 → 整体答复后重新取槽继续 → Finish 终态落盘
 func TestStrategyConfirmThroughManager(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100, WorkName: "作品A", ConflictRoles: []string{"image"}}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
-		map[string]ExecutionStrategy{"demo": strategy})
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+		map[string]ExecutionStrategy{"demo": strategy}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
@@ -371,8 +687,8 @@ func TestStrategyConfirmThroughManager(t *testing.T) {
 func TestStrategyPauseDuringConfirmWait(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
-		map[string]ExecutionStrategy{"demo": strategy})
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+		map[string]ExecutionStrategy{"demo": strategy}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
@@ -404,8 +720,8 @@ func TestStrategyMultipleWaitingNotHogConcurrency(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"), newBuiltinTask(2, "demo"))
 	s1 := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
 	s2 := newConfirmStrategy([]ConflictInfo{{WorkID: 200}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), nil, &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
-		map[string]ExecutionStrategy{"demo": &multiStrategy{s1: s1, s2: s2}})
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+		map[string]ExecutionStrategy{"demo": &multiStrategy{s1: s1, s2: s2}}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	if err := mgr.StartTaskTrees(context.Background(), []int64{1, 2}); err != nil {

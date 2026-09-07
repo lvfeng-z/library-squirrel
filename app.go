@@ -30,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/config"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/download"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/fileSysUtil"
@@ -112,8 +113,9 @@ type App struct {
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
-	// 作品/分享任务领域行仓储（与 taskRepo 同库；插件 RPC 路径查询与收件领域行写入用）
-	workTaskRepo  *task.WorkTaskRepository
+	// 作品/分享任务领域行仓储（与 taskRepo 同库；插件 RPC 路径查询与收件领域行写入用）。
+	// 作品任务领域行仓储在 download 模块，taskRepo 经窄接口注入消费
+	workTaskRepo  *download.WorkTaskRepository
 	shareTaskRepo *task.ShareTaskRepository
 
 	// 导出产物回灌导入能力（import handler 与 share-receive 任务执行器共用同一实例）
@@ -575,7 +577,7 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 // 链路:taskId → 作品任务领域行 PendingResourceID → resource_store(role+store_seq) → store_id → persistent_store.file_path(workDir 相对)。
 // 时序前提:downloadLoop(此处被插件 lazy 生成调用)在 startDownload/resume 事务提交之后,故 PendingResourceID 与 resource_store 已落盘可见。
 type storePathQueryAdapter struct {
-	workTaskRepo  *task.WorkTaskRepository
+	workTaskRepo  *download.WorkTaskRepository
 	storeRepo     *resource.ResourceStoreRepository
 	persistentSvc *persistentStore.Service
 }
@@ -612,6 +614,16 @@ func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int6
 		return ps.FilePath.String, nil
 	}
 	return "", fmt.Errorf("资源 %d 无 (role=%s, store_seq=%d) 的 store", resourceId, role, storeSeq)
+}
+
+// pluginExecFactoryAdapter 实现 download.PluginExecFactory：经任务处理器注册表取插件任务执行器
+type pluginExecFactoryAdapter struct {
+	registry *extension2.TaskHandlerRegistry
+}
+
+// Executor 按插件公开 ID 取执行器（执行器按注册表现取，插件身份在调用参数中携带）
+func (a *pluginExecFactoryAdapter) Executor(pluginPublicId string) (download.PluginExecutor, error) {
+	return extension2.NewTaskExecutor(a.registry), nil
 }
 
 // urlListenerAdapter 适配 PluginTaskUrlListener.Service 到 UrlListenerRegistry 接口
@@ -992,9 +1004,9 @@ func (app *App) initAdvancedServices() error {
 	// 启动治理巡检后台 goroutine（启动即巡检一次 + 每 24h）
 	app.BackupGovernanceService.Start()
 
-	// task 仓储和服务
-	app.taskRepo = task.NewRepository(app.db)
-	app.workTaskRepo = task.NewWorkTaskRepository(app.db)
+	// task 仓储和服务（作品任务领域行仓储在 download 模块先行构造，taskRepo 建树写/双查读经其注入）
+	app.workTaskRepo = download.NewWorkTaskRepository(app.db)
+	app.taskRepo = task.NewRepository(app.db, app.workTaskRepo, app.workTaskRepo)
 	app.shareTaskRepo = task.NewShareTaskRepository(app.db)
 	// share 收件任务领域行存取（ShareService 创建早于 task 仓储，此处回填）
 	app.ShareService.SetShareTaskStore(app.shareTaskRepo)
@@ -1015,16 +1027,13 @@ func (app *App) initAdvancedServices() error {
 	} else {
 		taskManagerPusher = taskManager.NewNoopProgressPusher()
 	}
-	pluginExecFactory := func(pluginPublicId string) (taskManager.TaskExecutor, error) {
-		return extension2.NewTaskExecutor(app.TaskHandlerRegistry), nil
-	}
 
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
-	// resource_store 仓储(taskManager 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
+	// resource_store 仓储(download 多轨续传使用;initBaseServices 中也有一个用于 ResourceService)
 	taskMgrResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 
-	// 替换链能力（resource 模块提供；taskManager 替换链改接与 share-receive 收件复用）。
+	// 替换链能力（resource 模块提供；download 替换链与 share-receive 收件复用）。
 	// store 软删/文件备份/作品活性等能力经接口注入（persistentStore/backup/work/settings 实现）
 	app.ReplaceService = resource.NewReplacementService(
 		app.ResourceService,        // ReplaceResourceLister(ListByWorkId)
@@ -1036,9 +1045,11 @@ func (app *App) initAdvancedServices() error {
 		app.ResourceService,        // ResourceRecomputer(完整度重算)
 		app.SettingsService,        // ReplaceWorkDirProvider(文件还原目标根目录)
 		app.ShareLockRegistry,      // ReplaceWorkLockChecker(前置作品锁守卫)
+		taskMgrResourceStoreRepo,   // ReplaceAssocRemover(回滚摘除新建行关联)
+		app.PersistentStoreService, // ReplaceRowHardDeleter(回滚物理删新建行)
 	)
 
-	// 查重判定能力先行构建（taskManager 查重改接对象；import ingestor 复用其共享查询仓储）
+	// 查重判定能力先行构建（download 查重与 import ingestor 复用其共享查询仓储）
 	dupRepo := duplicate.NewRepository(app.db)
 	app.DuplicateService = duplicate.NewService(dupRepo, app.ResourceService)
 
@@ -1050,44 +1061,55 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 	)
 
+	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）
+	pluginDownloadStrategy := download.NewPluginDownloadStrategy(&download.Deps{
+		WorkTasks:              app.workTaskRepo,
+		PluginExecFactory:      &pluginExecFactoryAdapter{registry: app.TaskHandlerRegistry},
+		WorkInfoSaver:          app.WorkService, // 实现 WorkInfoSaver 接口
+		WorkMetaLoader:         app.WorkService, // 实现 WorkMetaLoader 接口（资源板块单独重下时取命名元数据）
+		ResourceSaver:          resourceSaverAdapter,
+		WorkDirProvider:        app.SettingsService,
+		FileNameFormatProvider: app.SettingsService,
+		DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
+		SiteKeyResolver:        app.SiteService,            // 实现 SiteKeyResolver 接口（查重输入键形态统一）
+		ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
+		WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口（失败回滚守卫）
+		ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口（替换链能力）
+		StoreBackupReader:      app.PersistentStoreService, // 实现 StoreBackupReader 接口（回滚派生/复活）
+		ResourceUpdater:        resourceSaverAdapter,
+		StoreStreamer:          app.PersistentStoreService, // 实现 StoreStreamer 接口
+		StoreReader:            app.PersistentStoreService, // 实现 StoreReader 接口
+		ResourceStoreReader:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
+		ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
+		ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口（完整度共享重算）
+		Transactor:             &dbTransactorAdapter{db: app.db},
+		PendingResourceUpdater: app.workTaskRepo,           // 实现 PendingResourceUpdater 接口（pending 事务内直写）
+		StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
+		StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
+		TaskCoreReader:         app.taskRepo,               // 实现 TaskCoreReader 接口（中断通知组装 TaskResParam）
+	})
+
 	app.TaskManagerService = taskManager.NewManager(
 		app.SettingsService.GetSettings().ImportSettings.MaxParallelImport,
 		app.taskRepo,
 		taskManagerPusher,
-		pluginExecFactory,
 		&taskManager.TaskDeps{
-			WorkInfoSaver:          app.WorkService, // 实现 WorkInfoSaver 接口
-			WorkMetaLoader:         app.WorkService, // 实现 WorkMetaLoader 接口(资源板块单独重下时取命名元数据)
-			ResourceSaver:          resourceSaverAdapter,
-			WorkDirProvider:        app.SettingsService,
-			FileNameFormatProvider: app.SettingsService,
-			DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
-			SiteKeyResolver:        app.SiteService,            // 实现 SiteKeyResolver 接口(查重输入键形态统一)
-			ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
-			WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口(失败回滚守卫)
-			ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口(替换链能力)
-			StoreBackupReader:      app.PersistentStoreService, // 实现 StoreBackupReader 接口(回滚派生/复活)
-			ResourceUpdater:        resourceSaverAdapter,       // 实现 ResourceUpdater 接口
-			Pusher:                 taskManagerPusher,
-			StoreStreamer:          app.PersistentStoreService, // 实现 StoreStreamer 接口
-			StoreReader:            app.PersistentStoreService, // 实现 StoreReader 接口
-			ResourceStoreReader:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
-			ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
-			ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口(完整度共享重算)
-			Transactor:             &dbTransactorAdapter{db: app.db},
-			PendingResourceUpdater: app.taskRepo,               // 实现 PendingResourceUpdater 接口
-			StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
-			StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
-			WorkLockChecker:        app.ShareLockRegistry,      // 实现 WorkLockChecker 接口(替换确认投递前置作品锁守卫)
+			Pusher:          taskManagerPusher,     // 状态/进度/事件推送
+			WorkLockChecker: app.ShareLockRegistry, // 实现 WorkLockChecker 接口(替换确认投递前置作品锁守卫)
+			ReplaceStoreOps: app.ReplaceService,    // 实现 ReplaceStoreOps 接口(终态回滚单点复活)
 		},
-		// 内置任务类型的执行面策略表：收件拉取经任务标准能力承载（share-receive 拉取回灌
-		// 导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经任务模块
-		// （发布直跑 + share_record 生命周期，见 backend/share/service.go）
+		// 任务类型执行面策略表：plugin-download=插件下载（download 模块）、share-receive=分享
+		// 收件拉取（回灌导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经
+		// 任务模块（发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
+			entity2.TaskTypePluginDownload: pluginDownloadStrategy,
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.shareTaskRepo, app.manifestIngestor,
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
+		app.workTaskRepo, // WorkTaskProjector（活跃插件计数窄投影）
+		app.workTaskRepo, // PendingResourceClearer（work 删除链清 pending）
 	)
+
 	// 进程参与者注册在静态资源/前端扩展之后（停用逆序即先停进程再清痕迹）、任务否决参与者之前；
 	// 其激活相位依赖的 TaskService 等服务此时已就绪，mainHWND 窗口就绪后才写入、经 *App 惰性读取
 	app.PluginService.RegisterLifecycleParticipant(&pluginProcessParticipant{app: app})
@@ -1408,7 +1430,9 @@ func (app *App) initHandlers() {
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
 	app.PluginSettingHandler = plugin.NewSettingHandler(app.PluginSettingService)
 	app.TaskHandler = task.NewHandler(app.TaskService)
-	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService)
+	// 板块重执行选择写行（download 提供；重下载 handler 两步编排的第一步——父任务请求展开到全部子成员）
+	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService,
+		download.NewSectionRecorder(app.workTaskRepo, app.taskRepo))
 	app.FrontendExtensionHandler = extension2.NewFrontendExtensionHandler(app.FrontendExtensionRegistry)
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)

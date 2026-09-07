@@ -49,7 +49,8 @@ func TestQueryWithWorkTaskJoin(t *testing.T) {
 	if err != nil {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
-	repo := NewRepository(db)
+	wtStore := newTestWorkTaskStore(db)
+	repo := NewRepository(db, wtStore, wtStore)
 	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil)
 	ctx := context.Background()
 

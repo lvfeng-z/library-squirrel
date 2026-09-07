@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -31,7 +33,7 @@ func (r *ShareTaskRepository) CreateForTask(ctx context.Context, taskID int64, s
 		return fmt.Errorf("创建 share_task 领域行失败: 所属任务 ID 须为正数，实际 %d", taskID)
 	}
 	st.SetID(taskID)
-	FillSharedKeyTimestamps(st.BaseEntity)
+	fillSharedKeyTimestamps(st.BaseEntity)
 	return r.base.Create(ctx, st)
 }
 
@@ -60,4 +62,12 @@ func (r *ShareTaskRepository) ListByIds(ctx context.Context, ids []int64) (map[i
 		result[row.GetID()] = row
 	}
 	return result, nil
+}
+
+// fillSharedKeyTimestamps 共享主键非零时 BaseRepository.Create/Save 不补 CreateTime
+// （其自动填充以零主键为条件），零值时间戳在此补齐；调用方已带核心行时间戳（同事务同值场景）则不覆盖
+func fillSharedKeyTimestamps(base *model.BaseEntity) {
+	if base.GetCreateTime() == 0 {
+		base.SetCreateTime(util.GetCurrentTimestamp())
+	}
 }

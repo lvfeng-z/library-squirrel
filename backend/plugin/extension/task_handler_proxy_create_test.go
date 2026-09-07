@@ -15,7 +15,7 @@ import (
 // 本文件以预置块序列的服务端流替身锚定代理侧的解析行为。
 
 // fakeCreateStream 顺序吐出预置 CreateChunk 的服务端流替身；块耗尽后按 err 字段收尾
-//（nil 为 io.EOF 正常结束，非 nil 模拟连接中断）。
+// （nil 为 io.EOF 正常结束，非 nil 模拟连接中断）。
 type fakeCreateStream struct {
 	grpc.ClientStream
 	chunks []*gen.CreateChunk
@@ -59,11 +59,9 @@ func (a *fakeServiceAccessor) GetServices(string) (*transport.GRPCPluginClient, 
 
 // newCreateProxy 构造以预置块序列为 Create 流的代理。
 func newCreateProxy(chunks ...*gen.CreateChunk) *TaskHandlerProxy {
-	return &TaskHandlerProxy{
-		serviceAccessor: &fakeServiceAccessor{client: &transport.GRPCPluginClient{
-			Task: &fakeTaskClient{stream: &fakeCreateStream{chunks: chunks}},
-		}},
-	}
+	return newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{
+		Task: &fakeTaskClient{stream: &fakeCreateStream{chunks: chunks}},
+	}}, "", "")
 }
 
 // taskChunk 构造承载单个任务声明的块。
@@ -173,9 +171,7 @@ func TestProxyCreate_RecvErrorReturned(t *testing.T) {
 		},
 		err: io.ErrUnexpectedEOF,
 	}}
-	proxy := &TaskHandlerProxy{
-		serviceAccessor: &fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: client}},
-	}
+	proxy := newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: client}}, "", "")
 
 	if _, err := proxy.Create("http://x"); err == nil {
 		t.Fatal("gRPC 层收流错误应原样返回，得到 nil")

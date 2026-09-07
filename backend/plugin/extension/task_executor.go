@@ -7,12 +7,11 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"go.uber.org/zap"
 
-	"github.com/library-squirrel/backend/taskManager"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // TaskExecutorImpl 任务执行器实现
-// 实现 taskManager.TaskExecutorInterface 接口
+// 实现 download.PluginExecutor 接口（装配层的 pluginExecFactoryAdapter 返回处编译期校验）
 type TaskExecutorImpl struct {
 	registry *TaskHandlerRegistry
 }
@@ -31,7 +30,13 @@ func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return nil, err
 	}
-	return handler.CreateWorkInfo(EntityTaskToSDK(task, workTask))
+	sdkTask := EntityTaskToSDK(task, workTask)
+	// SDK TaskHandler 接口的 unary 方法无 ctx 参数；具体代理类型承接调用方 ctx（取消即打断
+	// gRPC 等待），非代理替身（测试）回落接口方法
+	if proxy, ok := handler.(*TaskHandlerProxy); ok {
+		return proxy.CreateWorkInfoWithContext(ctx, sdkTask)
+	}
+	return handler.CreateWorkInfo(sdkTask)
 }
 
 // Start 开始任务,按 storeRoles 选择性返回 StoreSpec 流集合(含下载型 downloaded 与派生型 derived)与作品信息
@@ -58,6 +63,9 @@ func (e *TaskExecutorImpl) Pause(ctx context.Context, param *sdkdto.TaskResParam
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return err
 	}
+	if proxy, ok := handler.(*TaskHandlerProxy); ok {
+		return proxy.PauseWithContext(ctx, param)
+	}
 	return handler.Pause(param)
 }
 
@@ -72,6 +80,9 @@ func (e *TaskExecutorImpl) Stop(ctx context.Context, param *sdkdto.TaskResParam)
 		logger.Log.Error("获取TaskHandler失败", zap.String("pluginPublicId", pluginPublicId),
 			zap.String("extensionId", extensionId), zap.Error(err))
 		return err
+	}
+	if proxy, ok := handler.(*TaskHandlerProxy); ok {
+		return proxy.StopWithContext(ctx, param)
 	}
 	return handler.Stop(param)
 }
@@ -120,6 +131,3 @@ func pluginIdsFromSDKTask(task *sdkdto.TaskDTO) (pluginPublicId, extensionId str
 	}
 	return
 }
-
-// Ensure TaskExecutorImpl implements taskManager.TaskExecutorInterface
-var _ taskManager.TaskExecutorInterface = (*TaskExecutorImpl)(nil)

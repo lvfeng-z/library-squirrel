@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -14,18 +13,41 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// TaskRepository 任务仓储实现：核心表 task 的读写 + 作品/分享领域行仓储的组合持有
-type TaskRepository struct {
-	*database.BaseRepository[domain.Task]
-	workTaskRepo  *WorkTaskRepository
-	shareTaskRepo *ShareTaskRepository
+// WorkTaskWriter 作品任务领域行建树写能力（task 模块定义、作品任务领域行仓储实现、装配层注入）。
+// 写入收口在仓储侧：主键覆写为所属任务 id、非正任务 id 拒绝
+type WorkTaskWriter interface {
+	// CreateForTask 为任务 taskID 建作品任务领域行（入参 id 覆写为 taskID）
+	CreateForTask(ctx context.Context, taskID int64, wt *domain.WorkTask) error
+	// CreateBatchForTask 批量建作品任务领域行（各领域行须已持核心行共享主键）
+	CreateBatchForTask(ctx context.Context, wts []*domain.WorkTask) error
+	// SaveForTask 全字段 UPSERT 作品任务领域行（通用编辑端点用）
+	SaveForTask(ctx context.Context, taskID int64, wt *domain.WorkTask) error
 }
 
-// NewRepository 创建任务仓储
-func NewRepository(db *gorm.DB) *TaskRepository {
+// WorkTaskReader 作品任务领域行读取能力（task 模块定义、作品任务领域行仓储实现、装配层注入）
+type WorkTaskReader interface {
+	// GetById 按共享主键（=所属任务 id）查询领域行
+	GetById(ctx context.Context, id int64) (*domain.WorkTask, error)
+	// ListByIds 按共享主键集合批量查询领域行（树/分页双查的领域行装配步）
+	ListByIds(ctx context.Context, ids []int64) (map[int64]*domain.WorkTask, error)
+}
+
+// TaskRepository 任务仓储实现：核心表 task 的读写 + 分享领域行仓储的组合持有；
+// 作品任务领域行存取经窄接口注入（建树写/双查读）
+type TaskRepository struct {
+	*database.BaseRepository[domain.Task]
+	workTaskWriter WorkTaskWriter
+	workTaskReader WorkTaskReader
+	shareTaskRepo  *ShareTaskRepository
+}
+
+// NewRepository 创建任务仓储。workTaskWriter/workTaskReader 为作品任务领域行存取能力
+// （由作品任务领域行仓储整体实现，装配层注入）
+func NewRepository(db *gorm.DB, workTaskWriter WorkTaskWriter, workTaskReader WorkTaskReader) *TaskRepository {
 	return &TaskRepository{
 		BaseRepository: database.NewBaseRepository[domain.Task](db),
-		workTaskRepo:   NewWorkTaskRepository(db),
+		workTaskWriter: workTaskWriter,
+		workTaskReader: workTaskReader,
 		shareTaskRepo:  NewShareTaskRepository(db),
 	}
 }
@@ -205,51 +227,6 @@ func (r *TaskRepository) SetTaskTreeStatus(ctx context.Context, taskIds []int64,
 	return result.RowsAffected, nil
 }
 
-// UpdatePendingResourceID 更新任务的 pending_resource_id（作品任务领域行）
-func (r *TaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error {
-	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&domain.WorkTask{}).Where("id = ?", taskId).Update("pending_resource_id", resourceID)
-	return result.Error
-}
-
-// UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)（作品任务领域行）。
-// include_work_info 经 map 写入规避 GORM Updates 跳零值（置 false 须落库）
-func (r *TaskRepository) UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error {
-	if len(taskIds) == 0 {
-		return nil
-	}
-	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&domain.WorkTask{}).Where("id IN ?", taskIds).
-		Updates(map[string]any{
-			"store_roles":       storeRoles,
-			"include_work_info": includeWorkInfo,
-		})
-	return result.Error
-}
-
-// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id（作品任务领域行，CASE WHEN 模式）
-func (r *TaskRepository) BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error {
-	if len(updates) == 0 {
-		return nil
-	}
-
-	ids := make([]int64, 0, len(updates))
-	cases := ""
-	args := make([]any, 0, len(updates)*2+len(updates))
-	for id := range updates {
-		ids = append(ids, id)
-		cases += "WHEN id = ? THEN ? "
-	}
-	for _, id := range ids {
-		args = append(args, id, updates[id])
-	}
-	for _, id := range ids {
-		args = append(args, id)
-	}
-
-	statement := "UPDATE work_task SET pending_resource_id = CASE " + cases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
-	result := r.GORM().WithContext(ctx).Exec(statement, args...)
-	return result.Error
-}
-
 // BatchSetStatus 批量设置任务状态（同时更新 error_message）
 func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]StatusUpdate) error {
 	if len(statuses) == 0 {
@@ -346,7 +323,7 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 	for _, t := range rows.Tasks {
 		allIds = append(allIds, t.GetID())
 	}
-	workTasks, err := r.workTaskRepo.ListByIds(ctx, allIds)
+	workTasks, err := r.workTaskReader.ListByIds(ctx, allIds)
 	if err != nil {
 		return nil, err
 	}
@@ -357,6 +334,59 @@ func (r *TaskRepository) ListTaskTree(ctx context.Context, taskIds []int64, incl
 	rows.WorkTasks = workTasks
 	rows.ShareTasks = shareTasks
 	return rows, nil
+}
+
+// ListTaskTreeCore 获取任务树核心行列表：只查 task 核心行（任务运行时控制面的树加载路径——
+// 领域数据由执行面策略按 taskId 自取）。行圈定条件与 ListTaskTree 一致（id/pid/has_child/
+// includeStatus 展开），不含领域行双查
+func (r *TaskRepository) ListTaskTreeCore(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) ([]*domain.Task, error) {
+	if len(taskIds) == 0 {
+		return make([]*domain.Task, 0), nil
+	}
+
+	idsStr := int64ArrayToString(taskIds)
+
+	var statement string
+	if len(includeStatus) > 0 {
+		statusStr := intArrayToString(intStatusToArray(includeStatus[0]))
+		statement = fmt.Sprintf(`
+				WITH children AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 0 AND status IN (%s)
+				),
+				parent AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				SELECT * FROM children
+				UNION
+				SELECT * FROM parent
+				UNION
+				SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
+				UNION
+				SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent) AND t.status IN (%s)`,
+			idsStr, statusStr, idsStr, statusStr)
+	} else {
+		statement = fmt.Sprintf(`
+				WITH children AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 0
+				),
+				parent AS (
+					SELECT * FROM task WHERE id IN (%s) AND has_child = 1
+				)
+				SELECT * FROM children
+				UNION
+				SELECT * FROM parent
+				UNION
+				SELECT t.* FROM task t WHERE t.id IN (SELECT pid FROM children)
+				UNION
+				SELECT t.* FROM task t WHERE t.pid IN (SELECT id FROM parent)`,
+			idsStr, idsStr)
+	}
+
+	var tasks []*domain.Task
+	if err := r.GORM().WithContext(ctx).Raw(statement).Scan(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
 }
 
 // ListStatus 查询状态列表
@@ -380,27 +410,27 @@ func (r *TaskRepository) CreateTask(ctx context.Context, task *domain.Task) erro
 
 // CreateWorkTaskForTask 为已落库核心行建作品任务领域行（主键覆写为 taskID；事务感知）
 func (r *TaskRepository) CreateWorkTaskForTask(ctx context.Context, taskID int64, wt *domain.WorkTask) error {
-	return r.workTaskRepo.CreateForTask(ctx, taskID, wt)
+	return r.workTaskWriter.CreateForTask(ctx, taskID, wt)
 }
 
 // CreateWorkTaskBatch 批量建作品任务领域行（各领域行须已持核心行共享主键）
 func (r *TaskRepository) CreateWorkTaskBatch(ctx context.Context, wts []*domain.WorkTask) error {
-	return r.workTaskRepo.CreateBatchForTask(ctx, wts)
+	return r.workTaskWriter.CreateBatchForTask(ctx, wts)
 }
 
 // SaveWorkTaskForTask 全字段 UPSERT 作品任务领域行（通用编辑端点用）
 func (r *TaskRepository) SaveWorkTaskForTask(ctx context.Context, taskID int64, wt *domain.WorkTask) error {
-	return r.workTaskRepo.SaveForTask(ctx, taskID, wt)
+	return r.workTaskWriter.SaveForTask(ctx, taskID, wt)
 }
 
 // GetWorkTaskById 按共享主键（=所属任务 id）查询作品任务领域行
 func (r *TaskRepository) GetWorkTaskById(ctx context.Context, taskID int64) (*domain.WorkTask, error) {
-	return r.workTaskRepo.GetById(ctx, taskID)
+	return r.workTaskReader.GetById(ctx, taskID)
 }
 
 // ListWorkTasksByIds 按共享主键集合批量查询作品任务领域行
 func (r *TaskRepository) ListWorkTasksByIds(ctx context.Context, ids []int64) (map[int64]*domain.WorkTask, error) {
-	return r.workTaskRepo.ListByIds(ctx, ids)
+	return r.workTaskReader.ListByIds(ctx, ids)
 }
 
 // ListChildrenTask 查询子任务列表

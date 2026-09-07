@@ -2,19 +2,29 @@ package taskManager
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/config"
 )
 
+// SectionRecorder 板块选择写行能力（download 提供，装配注入）：开始/重下载入口两步编排的
+// 第一步——把板块选择写入各任务的作品任务领域行（父任务请求展开到全部子成员，各子任务持有
+// 板块选择供执行派生与单独续传读取），第二步 StartTaskTrees 启动后执行面按行派生板块模式
+type SectionRecorder interface {
+	RecordSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error
+}
+
 // Handler 任务管理器 Handler
 type Handler struct {
-	mgr *Manager
+	mgr             *Manager
+	sectionRecorder SectionRecorder
 }
 
 // NewHandler 创建任务管理器 Handler
-func NewHandler(mgr *Manager) *Handler {
-	return &Handler{mgr: mgr}
+func NewHandler(mgr *Manager, sectionRecorder SectionRecorder) *Handler {
+	return &Handler{mgr: mgr, sectionRecorder: sectionRecorder}
 }
 
 // TaskControlConfigDTO 任务控制操作防重入配置（IPC 响应体）
@@ -33,8 +43,17 @@ func (h *Handler) GetTaskControlConfig() *model.ApiResponse[*TaskControlConfigDT
 	return model.Success(dto)
 }
 
-// StartTaskTrees 批量启动任务
+// StartTaskTrees 批量启动任务（板块全量执行）：两步编排——先把首跑板块选择写入各任务的作品
+// 任务领域行（store_roles=NULL 表示全量、include_work_info=true；创建默认不含作品信息，不写行
+// 则执行面派生出不含作品信息的板块组合），再启动任务树。写行范围=各请求任务及其直接子成员
+// （任务树两级：父→叶子）：整树启动覆盖全部子任务，单独请求叶子只写该叶子自身、不波及其
+// 运行中兄弟。写行先于调度决策进行——请求树上已被调度层跳过的已运行单元，其行同样被覆盖
+// 为全量。重试/恢复不经此处，按各任务已记录的板块模式执行
 func (h *Handler) StartTaskTrees(ctx context.Context, taskIds []int64) *model.ApiResponse[any] {
+	if err := h.sectionRecorder.RecordSections(ctx, taskIds,
+		sql.NullString{Valid: false}, true); err != nil {
+		return model.HandleError[any](err)
+	}
 	return model.HandleVoid(h.mgr.StartTaskTrees(ctx, taskIds))
 }
 
@@ -105,7 +124,12 @@ func (h *Handler) GetTaskSnapshot() *model.ApiResponse[*TaskSnapshotDTO] {
 	return model.Success(snapshot)
 }
 
-// Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块
+// Redownload 板块重执行入口:storeRoles 为所选 store_type 集合,includeWorkInfo 决定是否执行作品元数据板块。
+// 两步编排（发起方在 handler）：板块选择写行（空资源集=仅作品信息、非空=所选子集）→ 整树启动
 func (h *Handler) Redownload(ctx context.Context, taskIds []int64, storeRoles []string, includeWorkInfo bool) *model.ApiResponse[any] {
-	return model.HandleVoid(h.mgr.Redownload(ctx, taskIds, storeRoles, includeWorkInfo))
+	if err := h.sectionRecorder.RecordSections(ctx, taskIds,
+		sql.NullString{String: strings.Join(storeRoles, ","), Valid: true}, includeWorkInfo); err != nil {
+		return model.HandleError[any](err)
+	}
+	return model.HandleVoid(h.mgr.StartTaskTrees(ctx, taskIds))
 }

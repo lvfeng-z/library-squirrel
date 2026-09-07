@@ -27,11 +27,16 @@ type StoreRef struct {
 //   - WorkID 数据驱动：插件任务场景——按作品+角色派生 victim（同键最新死代圈定，软删行即持久还原点）
 //   - Victims 显式清单：策略任务场景——执行器在软删成功后登记的多作品清单
 //
-// 两途皆空则 no-op；Roles 为显式角色集合，空集=无 victim（「空选择=全量」的展开归发起方）
+// 两途皆空则 no-op；Roles 为显式角色集合，空集=无 victim（「空选择=全量」的展开归发起方）。
+// DiscardStoreIDs 为回滚前先物理丢弃的 store 行清单（发起方登记的替换执行期新建行）
 type RestoreScope struct {
 	WorkID  int64
 	Roles   []string
 	Victims []StoreRef
+	// DiscardStoreIDs 复活前物理丢弃的 store 行清单（行+磁盘文件+resource_store 关联）：
+	// 发起方在替换执行期创建/续接 store 行时登记，终态回滚时随载荷传入——旧代复活前先
+	// 丢弃新代活行，释放其占用的 file_path（file_path 部分唯一索引对活行生效）
+	DiscardStoreIDs []int64
 }
 
 // ReplaceStoreOps 替换链能力接口（resource 模块提供）。任务语义（板块选择、确认、任务状态）不进入能力——
@@ -71,6 +76,18 @@ type ReplaceStoreDeleter interface {
 	SoftDeleteAndDiscardFile(ctx context.Context, id int64) error
 }
 
+// ReplaceAssocRemover 回滚摘除新建行关联（由 ResourceStoreRepository 实现）。
+// 新建行物理删前摘其 resource_store 关联——行删除后关联成断链孤儿，混入完整度计数与展示面
+type ReplaceAssocRemover interface {
+	DeleteByStoreIds(ctx context.Context, storeIds []int64) error
+}
+
+// ReplaceRowHardDeleter 回滚物理删除新建 store 行（行+磁盘文件；由 persistentStore.Service 实现）
+type ReplaceRowHardDeleter interface {
+	// HardDelete 删除记录及对应文件（物理删记录；backup=false 直接删除不产生备份）
+	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+}
+
 // ReplaceBackupRestorer 备份文件还原（由 backup.Service 实现）
 type ReplaceBackupRestorer interface {
 	GetById(ctx context.Context, id int64) (*domain.Backup, error)
@@ -107,6 +124,8 @@ type ReplacementService struct {
 	recompute    ResourceRecomputer         // 回滚后完整度重算
 	workDir      ReplaceWorkDirProvider     // 文件还原目标根目录
 	workLock     ReplaceWorkLockChecker     // 替换前置作品锁守卫
+	assocRemove  ReplaceAssocRemover        // 回滚摘除新建行关联
+	rowDiscard   ReplaceRowHardDeleter      // 回滚物理删新建行
 }
 
 // NewReplacementService 创建替换链能力服务
@@ -120,6 +139,8 @@ func NewReplacementService(
 	recompute ResourceRecomputer,
 	workDir ReplaceWorkDirProvider,
 	workLock ReplaceWorkLockChecker,
+	assocRemove ReplaceAssocRemover,
+	rowDiscard ReplaceRowHardDeleter,
 ) *ReplacementService {
 	return &ReplacementService{
 		resources:    resources,
@@ -131,6 +152,8 @@ func NewReplacementService(
 		recompute:    recompute,
 		workDir:      workDir,
 		workLock:     workLock,
+		assocRemove:  assocRemove,
+		rowDiscard:   rowDiscard,
 	}
 }
 
@@ -209,8 +232,10 @@ func (s *ReplacementService) SoftDeleteWorkStoreRoles(ctx context.Context, workI
 
 // RestoreReplacedStores 失败回滚复活：复活被替换软删的旧 store 行。
 // 清单来源两途（RestoreScope）：WorkID 数据驱动派生（插件任务，同键最新死代圈定）或
-// Victims 显式清单（策略任务，执行器在软删成功后登记）。先还原有备份 victim 的文件，
-// 再批量复活行（RestoreByIds 双列同清，顺带清 backup_id），随后清理已还原的备份清单行——
+// Victims 显式清单（策略任务，执行器在软删成功后登记）。先丢弃 DiscardStoreIDs 清单内的
+// 新建行（行+文件+关联，释放其占用的 file_path——file_path 部分唯一索引对活行生效，
+// 新代活行在位时复活旧代整批被拒绝），再还原有备份 victim 的文件，批量复活行
+// （RestoreByIds 双列同清，顺带清 backup_id），随后清理已还原的备份清单行——
 // 行内 backup_id 未清时删清单行会撞 persistent_store.backup_id 外键拒绝；最后重算
 // victim 所属资源完整度（替换开始时被重置为未校验，须刷回回滚前状态）。
 // 内部失败为 warn-and-continue（与既有回滚链语义一致），方法返回 nil；
@@ -219,6 +244,7 @@ func (s *ReplacementService) RestoreReplacedStores(ctx context.Context, scope Re
 	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "resource"); err != nil {
 		return err
 	}
+	s.discardReplacedNewStores(ctx, scope)
 	victims, victimResourceIds := s.resolveVictims(ctx, scope)
 	if len(victims) == 0 {
 		return nil
@@ -261,6 +287,44 @@ func (s *ReplacementService) RestoreReplacedStores(ctx context.Context, scope Re
 		s.recompute.RecomputeResourceComplete(ctx, resourceId)
 	}
 	return nil
+}
+
+// discardReplacedNewStores 丢弃替换执行期新建的 store 行（行+磁盘文件+resource_store 关联）：
+// 旧代复活前的让位清理。清单由发起方在创建/续接 store 行时登记、控制面合并累积——
+// 行已不存在的按已删跳过（HardDelete 对缺失行返回 nil），失败逐行 warn 继续。
+// 受害者清单内的行不参与丢弃：续传降级重跑可把早前会话新建的行软删为受害者（同 ID 同现
+// 两清单），按受害者处置复活而非丢弃，其保留的挂载关联不受摘除影响
+func (s *ReplacementService) discardReplacedNewStores(ctx context.Context, scope RestoreScope) {
+	discardIds := scope.DiscardStoreIDs
+	if len(discardIds) == 0 || s.assocRemove == nil || s.rowDiscard == nil {
+		return
+	}
+	if len(scope.Victims) > 0 {
+		victimSet := make(map[int64]struct{}, len(scope.Victims))
+		for _, v := range scope.Victims {
+			victimSet[v.StoreID] = struct{}{}
+		}
+		filtered := make([]int64, 0, len(discardIds))
+		for _, id := range discardIds {
+			if _, isVictim := victimSet[id]; isVictim {
+				continue
+			}
+			filtered = append(filtered, id)
+		}
+		discardIds = filtered
+	}
+	if len(discardIds) == 0 {
+		return
+	}
+	logger.Log.Infof("[Resource] 失败回滚: 丢弃 %d 个替换期新建 store 行", len(discardIds))
+	if err := s.assocRemove.DeleteByStoreIds(ctx, discardIds); err != nil {
+		logger.Log.Warnf("[Resource] 回滚摘除新建 store 关联失败: %v", err)
+	}
+	for _, id := range discardIds {
+		if _, err := s.rowDiscard.HardDelete(ctx, id, false); err != nil {
+			logger.Log.Warnf("[Resource] 回滚丢弃新建 store(id=%d) 失败: %v", id, err)
+		}
+	}
 }
 
 // resolveVictims 按 RestoreScope 清单来源解析 victim 清单与其涉及的 resource ID 集（回滚后完整度重算用）。

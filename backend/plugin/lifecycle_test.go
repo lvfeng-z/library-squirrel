@@ -44,7 +44,7 @@ func newActiveManager(events *[]string, names ...string) *lifecycleManager {
 }
 
 // TestDeactivatePhaseOrder 验证停用相位顺序：全部参与者否决检查 → 按注册逆序清理
-//（后注册的进程域先清，痕迹域后清），顺序错乱会令痕迹清理先于进程停止或否决失效
+// （后注册的进程域先清，痕迹域后清），顺序错乱会令痕迹清理先于进程停止或否决失效
 func TestDeactivatePhaseOrder(t *testing.T) {
 	var events []string
 	m := newActiveManager(&events, "static", "frontend", "proc")

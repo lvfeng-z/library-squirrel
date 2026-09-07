@@ -42,7 +42,8 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	if err := db.Exec("INSERT INTO work (id, create_time, update_time, deleted_at) VALUES (1, 0, 0, 0)").Error; err != nil {
 		t.Fatalf("建作品种子失败: %v", err)
 	}
-	repo := NewRepository(db)
+	wtStore := newTestWorkTaskStore(db)
+	repo := NewRepository(db, wtStore, wtStore)
 	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil)
 
 	// 主任务 + 子任务 + 对照组任务（各配同 id 作品领域行——resource.task_id 引用防线）
