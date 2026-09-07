@@ -1659,11 +1659,12 @@ func (m *ManagedTask) resumeFromPersistedState() runResult {
 	}
 	specs, newResp, err := m.pluginExec.Resume(m.runCtx, param)
 	if err != nil {
-		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
 		// Pause 在 Resume 进行中取消 ctx(stream ctx 继承任务 ctx):视为暂停,不置失败
 		if m.abortedByPause() {
+			logger.Log.Infof("[TaskManager] 任务 %d Resume 被暂停打断(RPC 已取消): %v", m.taskId, err)
 			return runResultPaused
 		}
+		logger.Log.Errorf("[TaskManager] 任务 %d 跨重启 Resume 失败: %v", m.taskId, err)
 		m.setFailed(fmt.Sprintf("跨重启续传失败: %v", err))
 		return runResultDone
 	}
