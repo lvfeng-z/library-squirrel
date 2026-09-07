@@ -23,6 +23,7 @@ app:
 task:
   useSnapshotMode: true
   operationCooldownMs: 1500
+  operationWaitResponse: true
 
 sites:
   - name: local

@@ -14,10 +14,18 @@ export class TaskControlConfigDTO {
      */
     "operationCooldownMs": number;
 
+    /**
+     * 操作在途守卫是否等待 IPC 响应（false=提交即放行，开发者高频启停测试）
+     */
+    "operationWaitResponse": boolean;
+
     /** Creates a new TaskControlConfigDTO instance. */
     constructor($$source: Partial<TaskControlConfigDTO> = {}) {
         if (!("operationCooldownMs" in $$source)) {
             this["operationCooldownMs"] = 0;
+        }
+        if (!("operationWaitResponse" in $$source)) {
+            this["operationWaitResponse"] = false;
         }
 
         Object.assign(this, $$source);

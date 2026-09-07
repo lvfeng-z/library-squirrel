@@ -19,7 +19,8 @@ func NewHandler(mgr *Manager) *Handler {
 
 // TaskControlConfigDTO 任务控制操作防重入配置（IPC 响应体）
 type TaskControlConfigDTO struct {
-	OperationCooldownMs int `json:"operationCooldownMs"` // 控制操作冷却毫秒（0=不启用，开发者调试放开）
+	OperationCooldownMs   int  `json:"operationCooldownMs"`   // 控制操作冷却毫秒（0=不启用，开发者调试放开）
+	OperationWaitResponse bool `json:"operationWaitResponse"` // 操作在途守卫是否等待 IPC 响应（false=提交即放行，开发者高频启停测试）
 }
 
 // GetTaskControlConfig 获取任务控制操作防重入配置（前端操作栏按钮冷却依据，读 config.yaml）
@@ -27,6 +28,7 @@ func (h *Handler) GetTaskControlConfig() *model.ApiResponse[*TaskControlConfigDT
 	dto := &TaskControlConfigDTO{}
 	if cfg := config.Get(); cfg != nil {
 		dto.OperationCooldownMs = cfg.Task.OperationCooldownMs
+		dto.OperationWaitResponse = cfg.Task.OperationWaitResponse
 	}
 	return model.Success(dto)
 }

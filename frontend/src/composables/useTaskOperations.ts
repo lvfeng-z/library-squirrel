@@ -10,18 +10,27 @@ import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backe
 // 点击被静默忽略。目的：压制高频启停——启停风暴反复重拨会烧尽收件拨号配额
 // （DialCoordinator 速率门控，阻塞至窗口滑出表现为进度 30-60s 不动）。
 const inFlightTreeIds = ref(new Set<number>())
-// 冷却时长（毫秒）：后端 config.yaml 的 task.operationCooldownMs，懒加载一次；
-// 0=不启用（开发者调试放开）。缺省 1500
+// 冷却时长（毫秒）+ 在途守卫是否等待 IPC 响应：后端 config.yaml 的 task 段，懒加载一次；
+// cooldownMs 0=不启用、waitResponse false=操作提交即放行不等响应（均开发者调试放开）。
+// 缺省 1500 / true
 const DEFAULT_OP_COOLDOWN_MS = 1500
-let cooldownMsPromise: Promise<number> | undefined
-function getOperationCooldownMs(): Promise<number> {
-  if (!cooldownMsPromise) {
-    cooldownMsPromise = taskApi
+const DEFAULT_OP_WAIT_RESPONSE = true
+interface OpGuardConfig {
+  cooldownMs: number
+  waitResponse: boolean
+}
+let guardConfigPromise: Promise<OpGuardConfig> | undefined
+function getOpGuardConfig(): Promise<OpGuardConfig> {
+  if (!guardConfigPromise) {
+    guardConfigPromise = taskApi
       .taskGetTaskControlConfig()
-      .then((res) => res.data?.operationCooldownMs ?? DEFAULT_OP_COOLDOWN_MS)
-      .catch(() => DEFAULT_OP_COOLDOWN_MS)
+      .then((res) => ({
+        cooldownMs: res.data?.operationCooldownMs ?? DEFAULT_OP_COOLDOWN_MS,
+        waitResponse: res.data?.operationWaitResponse ?? DEFAULT_OP_WAIT_RESPONSE
+      }))
+      .catch(() => ({ cooldownMs: DEFAULT_OP_COOLDOWN_MS, waitResponse: DEFAULT_OP_WAIT_RESPONSE }))
   }
-  return cooldownMsPromise
+  return guardConfigPromise
 }
 
 // 行按钮在途态（操作栏消费：按钮 loading/禁用，反馈「禁止再次操作」）
@@ -30,36 +39,43 @@ export function isOpInFlight(taskId: number): boolean {
 }
 
 // 单树守卫执行：在途或冷却期内忽略本次操作并返回 false；否则加入集合执行，
-// 冷却期后再放行（返回 true）。冷却期 = 操作返回后仍保留禁止窗口
-async function runGuarded(taskId: number, op: () => Promise<unknown>): Promise<boolean> {
+// 冷却期后再放行（返回 true）。冷却期 = 操作返回后仍保留禁止窗口。
+// waitResponse=false 时不等待 IPC 响应（提交即视为完成，异常仍以 ElMessage 反馈），
+// 供高频启停测试连续下发；forceWait=true 的调用（删除）不受其影响——副作用依赖操作真实完成
+async function runGuarded(taskId: number, op: () => Promise<unknown>, forceWait = false): Promise<boolean> {
   if (inFlightTreeIds.value.has(taskId)) return false
-  const cooldownMs = await getOperationCooldownMs()
+  const { cooldownMs, waitResponse } = await getOpGuardConfig()
   if (inFlightTreeIds.value.has(taskId)) return false // 取配置期间被并发操作抢占
   inFlightTreeIds.value.add(taskId)
-  try {
-    await op()
-    return true
-  } finally {
+  const release = () => {
     if (cooldownMs > 0) {
       setTimeout(() => inFlightTreeIds.value.delete(taskId), cooldownMs)
     } else {
       inFlightTreeIds.value.delete(taskId)
     }
   }
+  try {
+    if (waitResponse || forceWait) {
+      await op()
+    } else {
+      op().catch((e: any) => ElMessage.error(`任务操作失败：${e?.message ?? e}`))
+    }
+    return true
+  } finally {
+    release()
+  }
 }
 
-// 批量守卫执行：任一棵在途/冷却则整批忽略；执行期整批在途，冷却期后逐个放行
-async function runGuardedBatch(taskIds: number[], op: () => Promise<unknown>): Promise<boolean> {
+// 批量守卫执行：任一棵在途/冷却则整批忽略；执行期整批在途，冷却期后逐个放行。
+// waitResponse/forceWait 语义同 runGuarded
+async function runGuardedBatch(taskIds: number[], op: () => Promise<unknown>, forceWait = false): Promise<boolean> {
   if (taskIds.length === 0) return false
   const blocked = taskIds.some((id) => inFlightTreeIds.value.has(id))
   if (blocked) return false
-  const cooldownMs = await getOperationCooldownMs()
+  const { cooldownMs, waitResponse } = await getOpGuardConfig()
   if (taskIds.some((id) => inFlightTreeIds.value.has(id))) return false
   taskIds.forEach((id) => inFlightTreeIds.value.add(id))
-  try {
-    await op()
-    return true
-  } finally {
+  const release = () => {
     taskIds.forEach((id) => {
       if (cooldownMs > 0) {
         setTimeout(() => inFlightTreeIds.value.delete(id), cooldownMs)
@@ -67,6 +83,16 @@ async function runGuardedBatch(taskIds: number[], op: () => Promise<unknown>): P
         inFlightTreeIds.value.delete(id)
       }
     })
+  }
+  try {
+    if (waitResponse || forceWait) {
+      await op()
+    } else {
+      op().catch((e: any) => ElMessage.error(`任务操作失败：${e?.message ?? e}`))
+    }
+    return true
+  } finally {
+    release()
   }
 }
 
@@ -167,7 +193,7 @@ export function useTaskOperations() {
           await runGuarded(taskId, () => taskApi.taskStopTrees([taskId]))
           break
         case TaskOperationCodeEnum.DELETE:
-          if (await runGuarded(taskId, () => deleteTasks([row]))) {
+          if (await runGuarded(taskId, () => deleteTasks([row]), true)) {
             opts.onDeleted?.(row)
           }
           break
@@ -195,7 +221,7 @@ export function useTaskOperations() {
           await runGuardedBatch(ids, () => taskApi.taskPauseTrees(ids))
           break
         case TaskOperationCodeEnum.DELETE:
-          await runGuardedBatch(ids, () => deleteTasks(rows))
+          await runGuardedBatch(ids, () => deleteTasks(rows), true)
           break
         default:
           break
