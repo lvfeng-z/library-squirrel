@@ -117,6 +117,8 @@ type App struct {
 	// 作品任务领域行仓储在 download 模块，taskRepo 经窄接口注入消费
 	workTaskRepo  *download.WorkTaskRepository
 	shareTaskRepo *task.ShareTaskRepository
+	// 插件下载暂存规划注册面（执行面注册运行中规划；插件装配的 GetStoreRelPath 适配器消费）
+	pluginDownloadPlanner *download.StagingPlanner
 
 	// 导出产物回灌导入能力（import handler 与 share-receive 任务执行器共用同一实例）
 	manifestIngestor importer.ManifestIngestor
@@ -574,46 +576,79 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 }
 
 // storePathQueryAdapter 实现 extension2.StorePathQueryProvider:据 task+role+seq 查资源 store 真实落盘路径。
-// 链路:taskId → 作品任务领域行 PendingResourceID → resource_store(role+store_seq) → store_id → persistent_store.file_path(workDir 相对)。
-// 时序前提:downloadLoop(此处被插件 lazy 生成调用)在 startDownload/resume 事务提交之后,故 PendingResourceID 与 resource_store 已落盘可见。
+// 双形态：运行中（暂存规划表命中——暂存模式下文件物理在 task-staging/ 但契约返回最终路径，
+// 插件 document lazy 生成要的是最终文件名）优先；未命中回落已提交行直查（taskId → resource
+// （经 resource.task_id 定位任务产出资源）→ resource_store(role+store_seq) → store_id →
+// persistent_store.file_path）。规划表由下载执行面在 Start/Resume 返回后注册、执行结束注销，
+// 运行中查询不依赖落盘事务可见性
 type storePathQueryAdapter struct {
-	workTaskRepo  *download.WorkTaskRepository
-	storeRepo     *resource.ResourceStoreRepository
-	persistentSvc *persistentStore.Service
+	stagingPlanner *download.StagingPlanner
+	resourceRepo   *resource.ResourceRepository
+	storeRepo      *resource.ResourceStoreRepository
+	persistentSvc  *persistentStore.Service
 }
 
 func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
-	wt, err := a.workTaskRepo.GetById(ctx, taskId)
+	// 运行形态：规划表命中返回最终路径（文件或仍在暂存，命名已定）
+	if a.stagingPlanner != nil {
+		if rel, ok := a.stagingPlanner.FinalRelPath(taskId, role, storeSeq); ok {
+			return rel, nil
+		}
+	}
+	resources, err := a.resourceRepo.ListByTaskId(ctx, taskId)
 	if err != nil {
-		return "", fmt.Errorf("查询任务 %d 的作品领域行失败: %w", taskId, err)
+		return "", fmt.Errorf("查询任务 %d 产出资源失败: %w", taskId, err)
 	}
-	if !wt.PendingResourceID.Valid {
-		return "", fmt.Errorf("任务 %d 无 PendingResourceID(资源未创建)", taskId)
-	}
-	resourceId := wt.PendingResourceID.Int64
-	stores, err := a.storeRepo.ListByResourceId(ctx, resourceId)
-	if err != nil {
-		return "", fmt.Errorf("查询资源 %d 的 store 列表失败: %w", resourceId, err)
-	}
-	for _, s := range stores {
-		if s.StoreType != role || s.StoreSeq != storeSeq {
+	for _, res := range resources {
+		if res == nil {
 			continue
 		}
-		ps, err := a.persistentSvc.GetById(ctx, s.StoreID)
+		stores, err := a.storeRepo.ListByResourceId(ctx, res.GetID())
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				// 关联指向软删行（替换/merge 残留、失效行）：非本代，跳过继续找活行——
-				// 中断查询会令同键存在活行时插件拿不到路径
+			return "", fmt.Errorf("查询资源 %d 的 store 列表失败: %w", res.GetID(), err)
+		}
+		for _, s := range stores {
+			if s.StoreType != role || s.StoreSeq != storeSeq {
 				continue
 			}
-			return "", fmt.Errorf("查询 store %d 失败: %w", s.StoreID, err)
+			ps, err := a.persistentSvc.GetById(ctx, s.StoreID)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// 关联指向软删行（替换/merge 残留、失效行）：非本代，跳过继续找活行——
+					// 中断查询会令同键存在活行时插件拿不到路径
+					continue
+				}
+				return "", fmt.Errorf("查询 store %d 失败: %w", s.StoreID, err)
+			}
+			if !ps.FilePath.Valid {
+				return "", fmt.Errorf("store %d 无 file_path", s.StoreID)
+			}
+			return ps.FilePath.String, nil
 		}
-		if !ps.FilePath.Valid {
-			return "", fmt.Errorf("store %d 无 file_path", s.StoreID)
-		}
-		return ps.FilePath.String, nil
 	}
-	return "", fmt.Errorf("资源 %d 无 (role=%s, store_seq=%d) 的 store", resourceId, role, storeSeq)
+	return "", fmt.Errorf("任务 %d 无 (role=%s, store_seq=%d) 的已提交 store", taskId, role, storeSeq)
+}
+
+// taskStagingAdapter task 模块暂存基建（StagingPath/StagingFileName 包级函数）适配为
+// download.StagingPaths 窄接口——download 与 task 双向零 import，装配层缝合（先例同 WorkTaskWriter/Reader）
+type taskStagingAdapter struct{}
+
+func (taskStagingAdapter) StagingPath(workDir string, taskID int64) string {
+	return task.StagingPath(workDir, taskID)
+}
+
+func (taskStagingAdapter) StagingFileName(role string, storeSeq int, ext string) string {
+	return task.StagingFileName(role, storeSeq, ext)
+}
+
+// taskStagingCleaner task 模块暂存基建适配为 taskManager.StagingCleaner 窄接口（按任务 ID
+// 集合删下载暂存目录，work 删除链治理用）——缝合形态同 taskStagingAdapter
+type taskStagingCleaner struct {
+	workDirGetter func() string
+}
+
+func (c taskStagingCleaner) CleanStagingByTaskIds(ctx context.Context, taskIds []int64) error {
+	return task.CleanupStagingByTaskIds(c.workDirGetter(), taskIds)
 }
 
 // pluginExecFactoryAdapter 实现 download.PluginExecFactory：经任务处理器注册表取插件任务执行器
@@ -1018,6 +1053,7 @@ func (app *App) initAdvancedServices() error {
 		app.TaskHandlerRegistry,          // 直接满足 TaskHandlerProvider 接口
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
+		app.SettingsService.GetWorkDir, // 删除链清理下载暂存目录取 workDir（空串容忍跳过）
 	)
 
 	// taskManager 服务
@@ -1061,32 +1097,31 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 	)
 
-	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）
+	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）。
+	// 暂存规划注册面单例：执行面注册运行中规划，GetStoreRelPath 适配器消费（双形态查询）——
+	// 存 App 字段供插件装配（loadPlugins）引用
+	app.pluginDownloadPlanner = download.NewStagingPlanner()
 	pluginDownloadStrategy := download.NewPluginDownloadStrategy(&download.Deps{
 		WorkTasks:              app.workTaskRepo,
 		PluginExecFactory:      &pluginExecFactoryAdapter{registry: app.TaskHandlerRegistry},
 		WorkInfoSaver:          app.WorkService, // 实现 WorkInfoSaver 接口
 		WorkMetaLoader:         app.WorkService, // 实现 WorkMetaLoader 接口（资源板块单独重下时取命名元数据）
+		WorkLocator:            app.WorkService, // 实现 WorkLocator 接口（续传会话按复合键定位作品）
 		ResourceSaver:          resourceSaverAdapter,
 		WorkDirProvider:        app.SettingsService,
 		FileNameFormatProvider: app.SettingsService,
 		DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
 		SiteKeyResolver:        app.SiteService,            // 实现 SiteKeyResolver 接口（查重输入键形态统一）
 		ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
-		WorkLivenessReader:     app.WorkService,            // 实现 WorkLivenessReader 接口（失败回滚守卫）
 		ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口（替换链能力）
-		StoreBackupReader:      app.PersistentStoreService, // 实现 StoreBackupReader 接口（回滚派生/复活）
-		ResourceUpdater:        resourceSaverAdapter,
-		StoreStreamer:          app.PersistentStoreService, // 实现 StoreStreamer 接口
-		StoreReader:            app.PersistentStoreService, // 实现 StoreReader 接口
-		ResourceStoreReader:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreReader 接口
+		ResourceUpdater:        resourceSaverAdapter,       // 替换场景更新 Resource 的 Store 字段
+		StoreCommitter:         app.PersistentStoreService, // 实现 StoreCommitter 接口（提交点建行）
 		ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
 		ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口（完整度共享重算）
 		Transactor:             &dbTransactorAdapter{db: app.db},
-		PendingResourceUpdater: app.workTaskRepo,           // 实现 PendingResourceUpdater 接口（pending 事务内直写）
-		StoreFileCleaner:       app.PersistentStoreService, // 实现 StoreFileCleaner 接口
-		StoreDeleter:           app.PersistentStoreService, // 实现 StoreDeleter 接口
-		TaskCoreReader:         app.taskRepo,               // 实现 TaskCoreReader 接口（中断通知组装 TaskResParam）
+		TaskCoreReader:         app.taskRepo,              // 实现 TaskCoreReader 接口（中断通知组装 TaskResParam）
+		StagingPaths:           taskStagingAdapter{},      // task 模块暂存基建适配（双向零 import 缝合）
+		Planner:                app.pluginDownloadPlanner, // 运行中暂存规划注册面
 	})
 
 	app.TaskManagerService = taskManager.NewManager(
@@ -1107,7 +1142,7 @@ func (app *App) initAdvancedServices() error {
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
 		app.workTaskRepo, // WorkTaskProjector（活跃插件计数窄投影）
-		app.workTaskRepo, // PendingResourceClearer（work 删除链清 pending）
+		taskStagingCleaner{workDirGetter: app.SettingsService.GetWorkDir}, // StagingCleaner（work 删除链清下载暂存）
 	)
 
 	// 进程参与者注册在静态资源/前端扩展之后（停用逆序即先停进程再清痕迹）、任务否决参与者之前；
@@ -1172,6 +1207,16 @@ func (app *App) initAdvancedServices() error {
 			return err == nil && len(tasks) > 0
 		}); err != nil {
 			logger.Log.Warnf("[share] 收件暂存清扫失败: %v", err)
+		}
+	}
+
+	// 下载暂存清扫：回收任务行已不存在的下载暂存目录（任务删除后/崩溃残留；成功任务提交点消费后已自清）
+	if workDir := app.SettingsService.GetWorkDir(); workDir != "" {
+		if err := task.CleanupOrphanStaging(workDir, func(id int64) bool {
+			tasks, err := app.taskRepo.ListStatus(context.Background(), []int64{id})
+			return err == nil && len(tasks) > 0
+		}); err != nil {
+			logger.Log.Warnf("[task] 下载暂存清扫失败: %v", err)
 		}
 	}
 
@@ -1654,9 +1699,10 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		Storage:             app.PluginStorageService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
 		StorePath: &storePathQueryAdapter{
-			workTaskRepo:  app.workTaskRepo,
-			storeRepo:     resource.NewResourceStoreRepository(app.db),
-			persistentSvc: app.PersistentStoreService,
+			stagingPlanner: app.pluginDownloadPlanner,
+			resourceRepo:   resource.NewRepository(app.db),
+			storeRepo:      resource.NewResourceStoreRepository(app.db),
+			persistentSvc:  app.PersistentStoreService,
 		},
 		UrlListener: &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: plugin},
 		FrontendEvent: &wailsFrontendEventProvider{

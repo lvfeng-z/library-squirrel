@@ -102,7 +102,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 3 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 4 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
@@ -309,7 +309,7 @@ func main() {
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
 | | `UnsubscribeFrontend` | `(topic string) error` |
 | 路径 | `GetPluginRoot` | `(isRelative bool) string` |
-| | `GetStoreRelPath` | `(taskId int64, role string, storeSeq int) (string, error)` — 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建，故按 `taskId` 查、主程序映射到当前 `PendingResourceID`。供 document lazy 生成等路径可知后按真实文件名引用兄弟文件 |
+| | `GetStoreRelPath` | `(taskId int64, role string, storeSeq int) (string, error)` — 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建，故按 `taskId` 查、主程序按任务定位产出资源（运行中查暂存规划表返回最终路径，已提交按 resource.task_id 行链直查）。供 document lazy 生成等路径可知后按真实文件名引用兄弟文件 |
 | 窗口 | `GetMainWindowHandle` | `() uintptr` |
 | 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | `(template string, args ...any)` |
 | | `GetLogger` | `() Logger`（可 `Named(...)` 派生子 logger） |
@@ -338,6 +338,13 @@ type TaskHandler interface {
 - `Retry`:重下执行(通常委托 Start)。
 - `Pause`/`Stop`:任务级控制。应关闭 reader 上游连接(HTTP body / 文件句柄),使在途读取尽快返回。
 - `Resume`:按 StreamOffsets 续传未完成 downloaded 轨;derived 轨未完成时由主程序另行调 Start 整轨重产。
+  **满轨裁决是插件兼容职责**:`StreamOffsets` 携带主程序磁盘暂存中全部未提交 downloaded 轨的已落盘偏移,**可能已达该轨完整大小**——多轨并发下小轨先写满、等待其余轨道一起提交是常态,而本地偏移与来源现值的比对只有插件(站点兼容层)能做。对每条偏移,插件须与来源侧确认轨道状态并按下表表达:
+  | 来源侧状态 | 插件返回 | 主程序行为 |
+  | --- | --- | --- |
+  | 来源现值 == 偏移(轨道已完整) | `Size`=偏移、立即 EOF 流的 spec,或**空过**(不返回该轨) | 续传打开即写满完成(零网络传输)/ 经 Start 重产覆盖 |
+  | 来源现值 ≠ 偏移(内容变更,暂存为旧版残留) | 以来源现值为 `Size` 的完整流 spec | 按声明大小截断整轨重下 |
+  | 来源现值不可知(如 416 响应缺 Content-Range) | 空过 | 经 Start 重产覆盖 |
+  典型实现:来源为 HTTP 且按 Range 续传时,满偏移的 `Range: bytes=<offset>-` 请求会收到 416,其 `Content-Range: bytes */N` 头即来源现值 N——`N==offset` 判满、`N<offset` 判陈旧重发无 Range 全量请求、头缺失空过。
 
 #### Create 返回的任务结构契约(重要)
 
@@ -395,12 +402,14 @@ type StoreSpec struct {
     SuggestName string        // 插件建议文件名
     Continuable *bool         // 是否支持续传(derived 恒为 false)
     ResumeWriteOffset *int64  // 续传写入偏移(仅 Resume);nil=信任主程序磁盘 stat
+    ExpectedSha256 *string    // 来源侧声明的期望 SHA256(内容完整性校验);nil=不校验
 }
 ```
 
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
 - **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(单 store `<bas>.<ext>` / 多 store `<bas>_<role>_<seq>[_<描述>].<ext>`,thumbnail 普通 role 无特例)详见 `doc/store-naming-convention.md`。
+- **`ExpectedSha256` 声明期望哈希(可选)**:插件在 Start/Resume 产出 spec 时声明来源侧的期望 SHA256(十六进制字符串,比对大小写不敏感)。主程序**照单消费、不以本地计算替代声明源**——下载流边写边算实测哈希,暂存写满(EOF 完整性校验通过)后与声明值比对:空(`nil`)=不校验(未声明插件零负担天然兼容);不符=任务失败,报「资源完整性校验失败（<role>）：来源声明的哈希与下载内容不符」,暂存保留供诊断(重试重下覆盖)。声明值应取自来源站点的权威元数据(如 API 返回的文件哈希),不要由插件对下载流自行预计算——预计算与主程序实测同源,校验无增量价值。
 
 #### ctx 与 reader 契约(重要)
 

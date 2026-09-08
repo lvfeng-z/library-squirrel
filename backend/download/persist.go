@@ -1,126 +1,288 @@
 package download
 
-// 入库编排：资源落盘事务（建 store 流 + 挂 resource_store + Resource 保存 + pending_resource_id
-// 直写）与替换链前置软删（成功后登记终端回滚清单，失败复活归控制面单点触发）。
+// 入库编排（暂存模式）：执行前规划（最终路径解析+规划表注册+暂存写入器打开）与提交点
+// （替换软删 → 暂存 rename 进 store/ → 单事务建行挂载 + 抑制登记与失败补偿逆操作）。
+// 替换链坍缩到提交窗口——长下载全程零 DB 副作用，失败补偿为序列内同步逆操作。
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/taskManager"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// softDeleteAndArmRollback 替换前置软删并登记终端回滚：软删作品资源下所选角色的活行 store
-// （委派 resource 替换能力，显式角色集合语义），成功后把被软删行清单登记进控制面
-// （失败/停止时由控制面失败单点按清单复活）。任一步失败按组合执行失败收口。
-// 返回 true 表示执行已中断或失败收口完成，调用方终止板块组合
-func (sess *execSession) softDeleteAndArmRollback() bool {
+// softDeleteReplacedStores 提交窗口首步（替换场景）：软删作品资源下所选角色的活行 store
+// （委派 resource 替换能力，显式角色集合语义），完成后把被软删行清单登记进控制面——提交
+// 序列此后失败时，Fail 上报经 setFailed 单点按清单复活受害者（同一调用栈内同步完成，
+// 不跨会话）；提交成功则 Finish 清空登记（软删行进入被替换终态）。软删中途失败的已软删
+// 部分清单同样登记（复活覆盖部分软删行）。任一被重执行的板块，只要该类型 store 在已有
+// 作品上存在就软删；已完成行移文件入 backup 并写行内 backup_id，未完成行废弃文件，历史
+// 残留死行不动；软删行入回收站文件条目由 TTL 收尾，resource_store 关联保留（复活即挂载回位）。
+// 长下载期间不软删——失败/暂停/停止于下载窗口时旧 store 一动不动，无回滚需求
+func (sess *execSession) softDeleteReplacedStores() error {
 	if sess.deps.ReplaceStoreOps == nil {
-		logger.Log.Errorf("[Download] 任务 %d 替换前置软删失败: %v", sess.taskId, fmt.Errorf("替换链能力未注入"))
-		sess.comboFail(fmt.Sprintf("替换前置软删旧资源失败: %v", fmt.Errorf("替换链能力未注入")))
-		return true
+		return fmt.Errorf("替换链能力未注入")
 	}
-	victims, err := sess.deps.ReplaceStoreOps.SoftDeleteWorkStoreRoles(sess.runCtx(), sess.workId, sess.replaceSoftDeleteRoles())
-	if err != nil {
-		logger.Log.Errorf("[Download] 任务 %d 替换前置软删失败: %v", sess.taskId, err)
-		sess.comboFail(fmt.Sprintf("替换前置软删旧资源失败: %v", err))
-		return true
-	}
+	// 提交窗口不随执行 ctx 中断：序列一旦进入须走完（成功提交或同步补偿收口），
+	// 软删/建行不受暂停/停止打断留下半提交态
+	victims, err := sess.deps.ReplaceStoreOps.SoftDeleteWorkStoreRoles(context.Background(), sess.workId, sess.replaceSoftDeleteRoles())
 	if len(victims) > 0 {
 		sess.handle.SetTerminalRollback(taskManager.TerminalRollback{Victims: victims})
 	}
-	return false
+	if err != nil {
+		return fmt.Errorf("替换软删旧资源失败: %w", err)
+	}
+	return nil
 }
 
-// startDownload 为每个 spec 建存储、挂 resource_store、进入多流下载循环
+// openStagingTracks 执行前规划：为全部 specs 解析最终路径、打开暂存写入器、注册规划表。
+// 命名解析时点在 Start/Resume 返回后（specs 已具名）——最终名前置解析，document lazy 轨
+// （size<=0）同样在此解析（其 spec 已有 role+seq 与命名元数据）；暂存文件名按 role_seq 键，
+// 与最终名解耦。stagingBase 为各轨预置的（role,seq）→已落盘偏移（全新执行为空 map，
+// 续传恢复传入暂存枚举结果——非零偏移轨按续传打开并前缀入哈希）
+func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPath, bas string, multiStore bool,
+	stagedOffsets map[storeIdentity]int64, specSeq map[*sdkdto.StoreSpec]int) ([]*streamController, error) {
+	workDir := sess.deps.WorkDirProvider.GetWorkDir()
+	stagingDir := sess.deps.StagingPaths.StagingPath(workDir, sess.taskId)
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return nil, fmt.Errorf("创建暂存目录失败: %w", err)
+	}
+
+	streams := make([]*streamController, 0, len(specs))
+	finals := make(map[storeIdentity]string, len(specs))
+	for _, spec := range specs {
+		seq := specSeq[spec]
+		relPath, fileName := sess.resolveStorePath(spec, baseRelPath, bas, seq, multiStore)
+		stagingName := sess.deps.StagingPaths.StagingFileName(spec.Role, seq, normalizeExt(spec.Format))
+		stagingAbs := filepath.Join(stagingDir, stagingName)
+		expected := ""
+		if spec.ExpectedSha256 != nil {
+			expected = *spec.ExpectedSha256
+		}
+		var writer *stagingWriter
+		var err error
+		if staged, ok := stagedOffsets[storeIdentity{role: spec.Role, seq: seq}]; ok && staged > 0 &&
+			spec.Generation == entity.GenerationDownloaded {
+			// 续传打开：插件指定写入偏移优先（插件对续传位置有确切认知），否则用暂存已落盘大小
+			writeOffset := staged
+			if spec.ResumeWriteOffset != nil && *spec.ResumeWriteOffset >= 0 {
+				writeOffset = *spec.ResumeWriteOffset
+			}
+			// 暂存残留超过声明大小（清单/内容变更过的旧暂存）：截断重下（share 暂存同构处置）
+			if spec.Size > 0 && writeOffset > spec.Size {
+				writeOffset = 0
+			}
+			writer, err = newStagingWriterResume(stagingAbs, writeOffset, expected)
+			if err == nil {
+				sc := newStreamController(spec, seq, writer, stagingAbs, relPath, fileName)
+				sc.written = writeOffset
+				sc.initialOffset = writeOffset
+				logger.Log.Infof("[StagingMount] taskId=%d role=%s seq=%d mode=resume writeOffset=%d staged=%d",
+					sess.taskId, spec.Role, seq, writeOffset, staged)
+				streams = append(streams, sc)
+				finals[storeIdentity{role: spec.Role, seq: seq}] = relPath
+				continue
+			}
+		}
+		writer, err = newStagingWriterFresh(stagingAbs, expected)
+		if err != nil {
+			return nil, err
+		}
+		logger.Log.Infof("[StagingMount] taskId=%d role=%s seq=%d mode=fresh", sess.taskId, spec.Role, seq)
+		streams = append(streams, newStreamController(spec, seq, writer, stagingAbs, relPath, fileName))
+		finals[storeIdentity{role: spec.Role, seq: seq}] = relPath
+	}
+
+	// 注册规划表：运行中 GetStoreRelPath 查最终路径（文件物理在暂存、契约解耦），
+	// 执行结束（终态/中断返回）由策略入口统一注销
+	sess.deps.Planner.Register(sess.taskId, finals)
+	return streams, nil
+}
+
+// startDownload 为每个 spec 打开暂存写入器、进入多流下载循环，全部写满后执行提交点
 func (sess *execSession) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) comboResult {
 	sess.workResp = workResp
 
 	// 解析 bas 基准名与目录(所有 store 文件名共用;bas 由模板+作品元数据生成,不依赖具体 spec)
 	baseRelPath, bas := sess.resolveBaseName(workResp)
-	roleCounters := make(map[string]int, len(specs))
 	// 多 store 判定(资源级):资源 store 总数>1 则全部带 role+seq;单 store 用 <bas>.<ext>
 	multiStore := len(specs) > 1
+	// 同 role 内 seq 按 specs 顺序分配（Start 全量返回，specs 内重计即全局序）
+	roleCounters := make(map[string]int, len(specs))
+	specSeq := make(map[*sdkdto.StoreSpec]int, len(specs))
+	for _, spec := range specs {
+		specSeq[spec] = roleCounters[spec.Role]
+		roleCounters[spec.Role]++
+	}
 
-	// 事务:为每个 spec 建 StoreStream + 挂 resource_store + Resource Save + PendingResourceID 更新
-	streams := make([]*streamController, 0, len(specs))
-	txErr := sess.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
-		mounts := make([]pendingMount, 0, len(specs))
-		for _, spec := range specs {
-			sameRoleSeq := roleCounters[spec.Role]
-			roleCounters[spec.Role]++
-			relPath, fileName := sess.resolveStorePath(spec, baseRelPath, bas, sameRoleSeq, multiStore)
-			storeId, writer, storeErr := sess.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
-			if storeErr != nil {
-				return storeErr
-			}
-			streams = append(streams, newStreamController(spec, storeId, writer, relPath))
-			mounts = append(mounts, pendingMount{role: spec.Role, generation: spec.Generation, storeId: storeId})
-		}
-
-		// 保存 Resource(替换场景更新 / 新建场景创建) + 挂 resource_store
-		resourceId, resourceErr := sess.saveResource(txCtx, sess.workId, mounts)
-		if resourceErr != nil {
-			return resourceErr
-		}
-		sess.currentResourceId = resourceId
-
-		// 同步更新 pending_resource_id（事务内直接写 DB，作品任务领域行与内存对象同步）
-		sess.workTask.PendingResourceID = sql.NullInt64{Int64: resourceId, Valid: true}
-		return sess.deps.PendingResourceUpdater.UpdatePendingResourceID(txCtx, sess.taskId, sess.workTask.PendingResourceID)
-	})
-	if txErr != nil {
-		// 事务回滚：DB 记录已全部回滚，需显式关闭句柄并清理文件
-		for _, s := range streams {
-			if s.storeWriter != nil {
-				s.storeWriter.Close()
-			}
-			sess.deps.StoreFileCleaner.CleanupFile(s.relPath)
-		}
-		streams = nil
-		logger.Log.Errorf("[Download] 任务 %d 创建资源事务失败: %v", sess.taskId, txErr)
+	streams, err := sess.openStagingTracks(specs, baseRelPath, bas, multiStore, nil, specSeq)
+	if err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 打开暂存失败: %v", sess.taskId, err)
 		if sess.runAborted() {
 			return comboInterrupted
 		}
-		sess.failTerminal(fmt.Sprintf("创建资源失败: %v", txErr))
-		return comboFinished
+		return sess.comboFail(fmt.Sprintf("创建暂存失败: %v", err))
 	}
 
-	// 新建行清单登记进终态回滚载荷（事务提交后、任何中断返回路径前）：停止/暂停恢复后失败
-	// 等中断路径不经会话收口，控制面回滚复活旧代前按此清单丢弃新建行
-	sess.registerCreatedStores(streams)
-
-	// setup 阶段暂停在事务窗口内命中:暂停此时 len(streams)==0 走 cancel 路径,
-	// 事务用 context.Background 不受影响仍提交;此处清理已建句柄并返回暂停,避免带着已取消的 ctx 进入 downloadLoop
+	// setup 阶段暂停在暂存打开后命中:关闭句柄返回暂停,避免带着已取消的 ctx 进入 downloadLoop
 	if sess.runAborted() {
 		for _, s := range streams {
-			if s.storeWriter != nil {
-				s.storeWriter.Sync()
-				s.storeWriter.Close()
-			}
+			s.closeWriter()
 			if s.reader != nil {
 				s.reader.Close()
 			}
 		}
-		sess.streams = nil
 		return comboInterrupted
 	}
 
-	// 时序不变量:downloadLoop 须在上方 startDownload 事务提交后执行。插件 pull chunk 时可能经
-	// GetStoreRelPath 查询 resource_store 路径(如 document 引用兄弟 image 文件名),该查询走独立
-	// DB 连接,仅事务提交后 resource_store 行与任务 PendingResourceID 才对其可见。事务回滚/暂停路径上方已提前 return。
 	sess.streams = streams
 	switch sess.downloadLoop() {
 	case loopDone:
+		// 失败终态已在循环内上报；成功转提交点（提交点内部完成收口）
+		if sess.allStreamsCompleted() {
+			return sess.commitAndFinish()
+		}
 		return comboFinished
 	default:
 		return comboInterrupted
 	}
+}
+
+// allStreamsCompleted 全部流写满收尾（提交点的前置判定；失败路径的流为 failed 态）
+func (sess *execSession) allStreamsCompleted() bool {
+	for _, s := range sess.streams {
+		if streamState(s.state.Load()) != streamCompleted {
+			return false
+		}
+	}
+	return true
+}
+
+// commitAndFinish 提交点+成功收口：全部暂存写满后单点执行（详见 commitStaged），随后重算
+// 资源完整度、上报成功终态（成功即软删受害者进入被替换终态，Finish 清回滚登记）。
+// 提交失败按任务失败收口：暂存已由序列内补偿回退，软删受害者经 Fail 上报由控制面
+// setFailed 单点复活（同步触发，与失败收口同一调用栈完成）
+func (sess *execSession) commitAndFinish() comboResult {
+	if err := sess.commitStaged(); err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 提交资源失败: %v", sess.taskId, err)
+		return sess.comboFail(fmt.Sprintf("提交资源失败: %v", err))
+	}
+	sess.markResourceComplete(sess.runCtx(), sess.currentResourceId)
+	sess.handle.Finish()
+	return comboFinished
+}
+
+// commitStaged 提交点序列：替换软删（首步，腾空 rename 目标并登记回滚清单）→ 暂存 rename
+// 到最终路径（同卷原子；替换场景目标已无活文件——软删分流保证，已完成行移入 backup、
+// 未完成行废弃；非替换场景同键活行不存在——查重确认环保证）→ 单事务建 persistent_store 行
+// （必然完整，completed_at 即时置位+宽高/头指纹/哈希双列）+ resource_store 挂载 + Resource
+// Save（find-or-create）。rename 是 store/ 白名单内文件操作，download 为操作
+// 属主须登记抑制（rename 前登记、事务提交后统一 Release）——否则
+// rename→建行窗口内 fsmonitor 收 Create 事件查无 DB 行，落入误裁决。
+// 失败补偿=序列内逆操作（已 rename 轨逆 rename 回退暂存；软删受害者复活经 Fail 上报由
+// setFailed 单点同步触发；建行段由事务原子性兜底），同步完成不跨会话。序列不随执行 ctx
+// 中断——暂停/停止落进窗口时序列走完，不留半提交态
+func (sess *execSession) commitStaged() error {
+	if sess.deps.StoreCommitter == nil {
+		return fmt.Errorf("提交点建行能力未注入")
+	}
+	workDir := sess.deps.WorkDirProvider.GetWorkDir()
+
+	// 替换场景首步：软删所选板块对应的旧 store（下载窗口零 DB 副作用的坍缩落点——
+	// 软删延后至此，全部暂存写满、提交开始才触碰旧 store）
+	if sess.isReplace && sess.mode.storeScope.coversStores() {
+		if err := sess.softDeleteReplacedStores(); err != nil {
+			return err
+		}
+	}
+
+	// 抑制键登记面：rename 前登记、序列结束（含补偿）后统一 Release（宽限期覆盖 fsnotify 延迟；
+	// 逆 rename 的 Remove 事件同样落在登记窗口内）
+	suppressed := make([]string, 0, len(sess.streams))
+	defer func() {
+		for _, key := range suppressed {
+			storeRegistry.Release(key)
+		}
+	}()
+
+	// 逐轨 rename：暂存（task-staging/，白名单外零登记）→ 最终路径（store/ 白名单内）
+	renamed := make([]*streamController, 0, len(sess.streams))
+	compensate := func() {
+		for i := len(renamed) - 1; i >= 0; i-- {
+			s := renamed[i]
+			finalAbs := filepath.Join(workDir, s.finalRel)
+			if rerr := os.Rename(finalAbs, s.stagingAbs); rerr != nil {
+				logger.Log.Errorf("[Download] 任务 %d 提交补偿回退暂存失败(final=%s): %v", sess.taskId, s.finalRel, rerr)
+			}
+		}
+	}
+	for _, s := range sess.streams {
+		s.closeWriter() // 防御：Windows 句柄未关会令 rename 失败（正常路径 finalize 已关）
+		finalAbs := filepath.Join(workDir, s.finalRel)
+		storeRegistry.Suppress(s.finalRel)
+		suppressed = append(suppressed, s.finalRel)
+		if err := os.MkdirAll(filepath.Dir(finalAbs), 0o755); err != nil {
+			compensate()
+			return fmt.Errorf("创建最终目录失败: %w", err)
+		}
+		if err := os.Rename(s.stagingAbs, finalAbs); err != nil {
+			compensate()
+			return fmt.Errorf("暂存移入最终路径失败: %w", err)
+		}
+		renamed = append(renamed, s)
+	}
+
+	// 单事务：建行 + 挂载 + Resource Save（事务内 repository 方法经 dbFromCtx
+	// 走事务连接，见 database 规则）
+	var resourceId int64
+	txErr := sess.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
+		mounts := make([]pendingMount, 0, len(sess.streams))
+		for _, s := range sess.streams {
+			expectedSha := sql.NullString{}
+			if s.expectedSha != "" {
+				expectedSha = sql.NullString{String: s.expectedSha, Valid: true}
+			}
+			actualSha := sql.NullString{}
+			if s.actualSha != "" {
+				actualSha = sql.NullString{String: s.actualSha, Valid: true}
+			}
+			storeId, err := sess.deps.StoreCommitter.CommitStore(txCtx, s.finalRel, s.finalName, expectedSha, actualSha)
+			if err != nil {
+				return fmt.Errorf("建 store 行失败(%s): %w", s.finalRel, err)
+			}
+			mounts = append(mounts, pendingMount{role: s.role, generation: s.generation, storeId: storeId})
+		}
+
+		// 保存 Resource(替换场景更新 / 新建场景创建) + 挂 resource_store
+		rid, resourceErr := sess.saveResource(txCtx, sess.workId, mounts)
+		if resourceErr != nil {
+			return resourceErr
+		}
+		resourceId = rid
+		return nil
+	})
+	if txErr != nil {
+		// 建行段由事务原子性兜底（行全回滚）；文件段逆 rename 回退暂存（暂存保留，
+		// 恢复/重试可续传或重下）
+		compensate()
+		return txErr
+	}
+	sess.currentResourceId = resourceId
+
+	// 暂存目录收尾：全部轨道已 rename 消费，目录（含未被认领的残留文件）一并回收
+	stagingDir := sess.deps.StagingPaths.StagingPath(workDir, sess.taskId)
+	if err := os.RemoveAll(stagingDir); err != nil {
+		logger.Log.Warnf("[Download] 任务 %d 清理暂存目录失败: %v", sess.taskId, err)
+	}
+	return nil
 }
 
 // pendingMount saveResource 挂载单个 store 的中间结构
@@ -201,7 +363,7 @@ func (sess *execSession) mountResourceStores(ctx context.Context, resourceId int
 		return nil
 	}
 	stores := make([]*entity.ResourceStore, 0, len(mounts))
-	roleSeq := make(map[string]int, len(mounts)) // 同 role 内序号:store 稳定身份(与续传身份匹配、文件名消歧统一)
+	roleSeq := make(map[string]int, len(mounts)) // 同 role 内序号:store 稳定身份(与暂存键/规划表同维度)
 	for _, mt := range mounts {
 		// 严格识别 store_type:非预定义角色抛错,不兜底
 		if err := entity.ValidateStoreType(mt.role); err != nil {
@@ -219,54 +381,11 @@ func (sess *execSession) mountResourceStores(ctx context.Context, resourceId int
 	return sess.deps.ResourceStoreWriter.CreateBatch(ctx, stores)
 }
 
-// filterAliveAssocs 过滤出指向活行 store 的关联（批量判活，无 N+1；行缺失的关联一并剔除）
-func (sess *execSession) filterAliveAssocs(ctx context.Context, rows []*entity.ResourceStore) []*entity.ResourceStore {
-	if len(rows) == 0 || sess.deps.StoreBackupReader == nil {
-		return rows
-	}
-	ids := make([]int64, 0, len(rows))
-	for _, rs := range rows {
-		if rs.StoreID > 0 {
-			ids = append(ids, rs.StoreID)
-		}
-	}
-	stores := sess.deps.StoreBackupReader.ListByIdsIncludeDeleted(ctx, ids)
-	alive := make(map[int64]struct{}, len(stores))
-	for _, st := range stores {
-		if st.DeletedAt == 0 {
-			alive[st.GetID()] = struct{}{}
-		}
-	}
-	result := make([]*entity.ResourceStore, 0, len(rows))
-	for _, rs := range rows {
-		if _, ok := alive[rs.StoreID]; ok {
-			result = append(result, rs)
-		}
-	}
-	return result
-}
-
-// registerCreatedStores 把本会话新建/续接的 store 行清单登记进终态回滚载荷（控制面按
-// store ID 去重合并，跨执行轮次并集保留）。行创建事务提交后调用——登记先于一切中断
-// 返回路径（停止/暂停不经会话收口，控制面回滚丢弃新建行、复活旧代均按登记清单执行）
-func (sess *execSession) registerCreatedStores(streams []*streamController) {
-	if len(streams) == 0 {
-		return
-	}
-	ids := make([]int64, 0, len(streams))
-	for _, s := range streams {
-		ids = append(ids, s.storeId)
-	}
-	sess.handle.SetTerminalRollback(taskManager.TerminalRollback{CreatedStoreIDs: ids})
-}
-
 // closeStreamWriters 关闭全部流的写入句柄（失败收口前调用，释放文件句柄——Windows 文件锁
 // 会阻碍控制面回滚物理删文件；各流自身收尾路径已关闭的为幂等兜底）
 func (sess *execSession) closeStreamWriters() {
 	for _, s := range sess.streams {
-		if s.storeWriter != nil {
-			s.storeWriter.Close()
-		}
+		s.closeWriter()
 	}
 }
 

@@ -168,49 +168,6 @@ func TestResolveStorePath_Description(t *testing.T) {
 	}
 }
 
-// TestResumeSpecSeq 验证 resume 时 spec→全局 store_seq 的正确配对:
-// 同 role 部分 store 完成时,downloaded specs 按 streamOffsets 配对全局 seq(非 specs 内 0-based 重计),
-// derived 按 role 从 storeRows 未完成行查。否则 findStoreRowByIdentity 会匹配已完成行→续传覆盖。
-// resumeSpecSeq 为纯函数,ResourceStore 字面量仅设读取字段(StoreType/StoreSeq/Generation)
-func TestResumeSpecSeq(t *testing.T) {
-	// storeRows:image seq=0 完成 / seq=1,2 未完成(downloaded);document seq=0 完成;thumbnail seq=0 未完成(derived)
-	storeRows := []*entity.ResourceStore{
-		{StoreType: entity.StoreTypeImage, StoreSeq: 0, Generation: entity.GenerationDownloaded},
-		{StoreType: entity.StoreTypeImage, StoreSeq: 1, Generation: entity.GenerationDownloaded},
-		{StoreType: entity.StoreTypeImage, StoreSeq: 2, Generation: entity.GenerationDownloaded},
-		{StoreType: entity.StoreTypeDocument, StoreSeq: 0, Generation: entity.GenerationDerived},
-		{StoreType: entity.StoreTypeThumbnail, StoreSeq: 0, Generation: entity.GenerationDerived},
-	}
-	completed := map[storeIdentity]struct{}{
-		{role: entity.StoreTypeImage, seq: 0}:    {},
-		{role: entity.StoreTypeDocument, seq: 0}: {},
-	}
-	// streamOffsets:主程序按 storeRows 未完成 downloaded 顺序构造,携带全局 StoreSeq
-	streamOffsets := []*sdkdto.StoreResumeOffset{
-		{Role: entity.StoreTypeImage, StoreSeq: 1, Offset: 1024},
-		{Role: entity.StoreTypeImage, StoreSeq: 2, Offset: 0},
-	}
-	// resume 返回 specs:2 个 downloaded image(对应 streamOffsets) + 1 个 derived thumbnail
-	dlImg1 := &sdkdto.StoreSpec{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded}
-	dlImg2 := &sdkdto.StoreSpec{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded}
-	derivedThumb := &sdkdto.StoreSpec{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived}
-	specs := []*sdkdto.StoreSpec{dlImg1, dlImg2, derivedThumb}
-
-	got := resumeSpecSeq(specs, streamOffsets, storeRows, completed)
-
-	// downloaded 配对全局 seq(1,2),非 specs 内重计(0,1)——否则 dlImg1 会错配到已完成 seq=0
-	if got[dlImg1] != 1 {
-		t.Fatalf("dlImg1 期望全局 seq=1(streamOffsets[0]), 实际 %d", got[dlImg1])
-	}
-	if got[dlImg2] != 2 {
-		t.Fatalf("dlImg2 期望全局 seq=2(streamOffsets[1]), 实际 %d", got[dlImg2])
-	}
-	// derived thumbnail 从 storeRows 未完成 derived 行查(seq=0)
-	if got[derivedThumb] != 0 {
-		t.Fatalf("derivedThumb 期望全局 seq=0(storeRows 未完成 derived), 实际 %d", got[derivedThumb])
-	}
-}
-
 // TestRunModeFromTask 板块模式派生：StoreRoles NULL→All（universe 透传）、Valid 空串→None、
 // 非空→Selected；workInfo 统一取 IncludeWorkInfo
 func TestRunModeFromTask(t *testing.T) {

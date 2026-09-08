@@ -475,6 +475,120 @@ func TestResumeRequestedSignal(t *testing.T) {
 	}
 }
 
+// TestResumeSignalColdLoad 冷加载路径的恢复信号：任务不在内存（进程重启后），恢复/开始/重试
+// 入口均从 DB 加载执行——DB 行 status 即执行前稳态（仅稳定态落库），Paused 行带着该状态进入
+// 执行命中恢复信号（跨重启续传分叉可达），Created 行首启、终态行重试全新执行
+func TestResumeSignalColdLoad(t *testing.T) {
+	cases := []struct {
+		name       string
+		rowStatus  TaskState
+		start      func(mgr *Manager) error
+		wantResume bool
+	}{
+		{
+			name:       "Paused 行经恢复入口冷加载",
+			rowStatus:  TaskStatePaused,
+			start:      func(mgr *Manager) error { return mgr.ResumeTaskTrees(context.Background(), []int64{1}) },
+			wantResume: true,
+		},
+		{
+			name:       "Created 行经开始入口冷加载",
+			rowStatus:  TaskStateCreated,
+			start:      func(mgr *Manager) error { return mgr.StartTaskTrees(context.Background(), []int64{1}) },
+			wantResume: false,
+		},
+		{
+			name:       "Failed 行经重试入口冷加载",
+			rowStatus:  TaskStateFailed,
+			start:      func(mgr *Manager) error { return mgr.RetryTaskTrees(context.Background(), []int64{1}) },
+			wantResume: false,
+		},
+		{
+			name:       "Finished 行经重试入口冷加载",
+			rowStatus:  TaskStateFinished,
+			start:      func(mgr *Manager) error { return mgr.RetryTaskTrees(context.Background(), []int64{1}) },
+			wantResume: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := newBuiltinTask(1, "demo")
+			row.Status = int(tc.rowStatus)
+			repo := newFakeBuiltinRepo(row)
+			strat := newScriptedStrategy("fail")
+			mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+				map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+			defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+			if err := tc.start(mgr); err != nil {
+				t.Fatalf("冷加载执行入口失败: %v", err)
+			}
+			select {
+			case <-strat.entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("冷加载后策略未被调度")
+			}
+			if got := strat.lastHandle().ResumeRequested(); got != tc.wantResume {
+				t.Fatalf("恢复信号应=%v, 实际 %v", tc.wantResume, got)
+			}
+			strat.release <- struct{}{}
+			waitIdle(t, mgr, 3*time.Second)
+		})
+	}
+}
+
+// TestResumeSignalHotPath 同会话热路径的恢复信号：执行→暂停→恢复链全程内存态演化（不经 DB
+// 重加载），首启执行信号假、暂停后恢复的执行信号真——判据恒为执行前实时内存态（行快照/DB 行
+// 在暂停落库批量窗口内滞后，不得作判据）
+func TestResumeSignalHotPath(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
+	strat := newScriptedStrategy("interrupt")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	first := strat.lastHandle()
+	if first.ResumeRequested() {
+		t.Fatal("首启执行应为全新执行(恢复信号假)")
+	}
+
+	// 暂停：非可排空阶段立即取消 → interrupt 模式不上报终态 → Paused
+	if err := mgr.PauseTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("暂停失败: %v", err)
+	}
+	waitRunCtxCanceled(t, first)
+	strat.release <- struct{}{}
+	waitState(t, mgr, 1, TaskStatePaused, 3*time.Second)
+
+	// 恢复：内存命中投 cmdResume，二次执行信号真（热路径续传分叉）
+	if err := mgr.ResumeTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("恢复失败: %v", err)
+	}
+	<-strat.entered
+	if second := strat.lastHandle(); !second.ResumeRequested() {
+		t.Fatal("热路径恢复执行应置恢复信号(续传分叉)")
+	}
+
+	// 收场：停止置 Failed（interrupt 模式先取消再释放）
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- mgr.StopTaskTrees(context.Background(), []int64{1}) }()
+	waitRunCtxCanceled(t, strat.lastHandle())
+	strat.release <- struct{}{}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("停止失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("停止超时")
+	}
+	waitState(t, mgr, 1, TaskStateFailed, 3*time.Second)
+}
+
 // TestRunStrategyTerminalGuard 执行器违约防御：既未上报终态也未被取消 → 防御性 Failed
 func TestRunStrategyTerminalGuard(t *testing.T) {
 	strat := newScriptedStrategy("interrupt")

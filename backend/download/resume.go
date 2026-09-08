@@ -1,27 +1,41 @@
 package download
 
-// 跨重启续传：按已持久化的 pending_resource_id 定位资源，据 resource_store 各轨 store 状态
-// 推导续传偏移，调插件 Resume 取新流集合，续接/重建 store 后进入下载循环。资源缺失时降级
-// 为完整重新执行（板块组合重走）。
+// 跨重启续传（暂存模式）：按 taskId 派生暂存目录 → 枚举 role_seq 键文件 → os.Stat 得各轨
+// 偏移 → 调插件 Resume 取流集合 → 暂存续接/重建后进入下载循环（与全新执行共用提交点）。
+// 暂存模式下暂停任务零 DB 足迹（资源行在提交点才建），恢复不读未完成行；任务所属作品按
+// 领域复合键 (site, site_work_id) 从 work_task 行定位。暂存为空（升级前旧暂停任务/全新执行）
+// 或作品定位失败时降级为完整重新执行（板块组合重走）。
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
-	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/plugin/extension"
 	"github.com/library-squirrel/backend/settings"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// resumeFromPersistedState 跨重启续传主体。
-// 任务在之前的运行中已暂停,pending_resource_id 已持久化。本方法跳过 CreateWorkInfo/SaveWorkInfo/Start,
-// 按 resource_store 各轨 PersistentStore 状态计算续传偏移,调用插件 Resume 取新流集合,续接/重建 store 后进入下载循环
+// stagingHasFiles 任务暂存目录是否有轨道文件（执行入口的续传分叉判据：恢复信号 + 暂存
+// 非空才走续传；旧模式暂停任务无暂存锚，降级全新重下）
+func (sess *execSession) stagingHasFiles() bool {
+	workDir := sess.deps.WorkDirProvider.GetWorkDir()
+	if workDir == "" {
+		return false
+	}
+	entries, err := enumerateStaging(sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
+	if err != nil {
+		logger.Log.Warnf("[Download] 任务 %d 枚举暂存目录失败: %v", sess.taskId, err)
+		return false
+	}
+	return len(entries) > 0
+}
+
+// resumeFromPersistedState 跨重启续传主体：暂存枚举推导各轨偏移，调插件 Resume 续传未完成
+// downloaded 轨；Resume 未认领的暂存轨（derived 一次性产物未完成须整轨重产，及插件判定
+// 无需续传的轨）经 Start 重产；全部写满后走提交点（与全新执行共用）
 func (sess *execSession) resumeFromPersistedState() comboResult {
 	defer func() {
 		if r := recover(); r != nil {
@@ -29,17 +43,6 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 			sess.handle.Fail(fmt.Sprintf("跨重启续传 panic: %v", r))
 		}
 	}()
-
-	// 1. 通过 pending_resource_id 加载 Resource 实体（资源缺失/无 pending 时降级完整重新执行）
-	if !sess.workTask.PendingResourceID.Valid {
-		logger.Log.Warnf("[Download] 任务 %d 无有效的 pending_resource_id，降级为完整重新执行", sess.taskId)
-		return sess.runSectionCombo()
-	}
-	resource, err := sess.deps.ResourceReader.GetById(sess.runCtx(), sess.workTask.PendingResourceID.Int64)
-	if err != nil || resource == nil {
-		logger.Log.Warnf("[Download] 任务 %d 加载 Resource(id=%d) 失败: %v，降级为完整重新执行", sess.taskId, sess.workTask.PendingResourceID.Int64, err)
-		return sess.runSectionCombo()
-	}
 
 	workDir := sess.deps.WorkDirProvider.GetWorkDir()
 	if workDir == "" {
@@ -49,68 +52,47 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 		return comboFinished
 	}
 
-	// 2. 读 resource_store 各轨 store 关联
-	if sess.deps.ResourceStoreReader == nil {
-		logger.Log.Warnf("[Download] 任务 %d 未配置 ResourceStoreReader，降级为完整重新执行", sess.taskId)
-		return sess.runSectionCombo()
-	}
-	storeRows, err := sess.deps.ResourceStoreReader.ListByResourceId(sess.runCtx(), resource.GetID())
+	// 1. 枚举暂存轨道（role_seq 键文件 + 已落盘字节数=续传锚）
+	entries, err := enumerateStaging(sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
 	if err != nil {
-		logger.Log.Warnf("[Download] 任务 %d 查询 resource_store 失败: %v，降级为完整重新执行", sess.taskId, err)
+		logger.Log.Errorf("[Download] 任务 %d 枚举暂存目录失败: %v", sess.taskId, err)
+		sess.failTerminal(fmt.Sprintf("枚举下载暂存失败: %v", err))
+		return comboFinished
+	}
+	if len(entries) == 0 {
+		logger.Log.Warnf("[Download] 任务 %d 暂存目录无轨道文件，降级为完整重新执行", sess.taskId)
 		return sess.runSectionCombo()
 	}
-	// 活性过滤：关联保留形态下软删行（替换 victim/外部裁决失效行）的关联也在列，但死行不是续传对象
-	// （被误判"store 记录丢失"触发整轨重下、身份匹配错位）——按行活性过滤后再进续传判定
-	storeRows = sess.filterAliveAssocs(sess.runCtx(), storeRows)
-	if len(storeRows) == 0 {
-		logger.Log.Warnf("[Download] 任务 %d Resource 无活行 store 关联，降级为完整重新执行", sess.taskId)
+
+	// 2. 定位任务所属作品（暂存模式暂停任务无 pending/资源行，按领域复合键回填 workId；
+	// 供提交点 find-or-create 与命名元数据加载）。作品已删除等定位失败降级完整重新执行
+	if sess.deps.WorkLocator == nil || !sess.workTask.SiteID.Valid || !sess.workTask.SiteWorkID.Valid || sess.workTask.SiteWorkID.String == "" {
+		logger.Log.Warnf("[Download] 任务 %d 缺少站点复合键，降级为完整重新执行", sess.taskId)
 		return sess.runSectionCombo()
 	}
-
-	sess.workId = resource.WorkID
-	// 回填本次执行产出的 Resource ID：downloadLoop 完成路径的完整度重算以该字段定位资源，
-	// 恢复会话的资源来自 pending 定位而非本次新建，不回填则重算被零值守卫跳过（完整性标志不落）
-	sess.currentResourceId = resource.GetID()
-
-	// 3. 计算各 downloaded 轨续传偏移 + 收集未完成 derived 轨(整轨重产)
-	// 已完成(状态 Complete 且文件存在)的轨道跳过;downloaded 未完成按文件大小算偏移;derived 未完成收集到 incompleteDerivedRoles
-	streamOffsets := make([]*sdkdto.StoreResumeOffset, 0, len(storeRows))
-	completedSet := make(map[storeIdentity]struct{}, len(storeRows))
-	var incompleteDerivedRoles []string
-	for _, row := range storeRows {
-		ident := storeIdentity{role: row.StoreType, seq: row.StoreSeq}
-		store, storeErr := sess.deps.StoreReader.GetById(sess.runCtx(), row.StoreID)
-		if storeErr != nil || store == nil {
-			// store 记录丢失:downloaded 整轨重下(offset=0),derived 整轨重产
-			if row.Generation == entity.GenerationDerived {
-				incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
-			} else {
-				streamOffsets = append(streamOffsets, &sdkdto.StoreResumeOffset{Role: row.StoreType, StoreSeq: int32(row.StoreSeq), Offset: 0})
-			}
-			continue
-		}
-		absPath := sess.deps.StoreReader.GetAbsPath(store)
-		info, statErr := os.Stat(absPath)
-		if store.CompletedAt > 0 && statErr == nil {
-			// 该 store 已完成:按身份记录,不进入 Resume/重产(同 role 多 store 各自独立判定)
-			completedSet[ident] = struct{}{}
-			continue
-		}
-		// 未完成:downloaded 按偏移续传,derived 整轨重产
-		if row.Generation == entity.GenerationDerived {
-			incompleteDerivedRoles = append(incompleteDerivedRoles, row.StoreType)
-		} else {
-			var offset int64
-			if statErr == nil {
-				offset = info.Size()
-			}
-			streamOffsets = append(streamOffsets, &sdkdto.StoreResumeOffset{Role: row.StoreType, StoreSeq: int32(row.StoreSeq), Offset: offset})
-		}
+	work, err := sess.deps.WorkLocator.GetBySiteAndSiteWorkID(sess.runCtx(), sess.workTask.SiteID.Int64, sess.workTask.SiteWorkID.String)
+	if err != nil || work == nil {
+		logger.Log.Warnf("[Download] 任务 %d 定位所属作品失败(site=%d siteWorkId=%s): %v，降级为完整重新执行",
+			sess.taskId, sess.workTask.SiteID.Int64, sess.workTask.SiteWorkID.String, err)
+		return sess.runSectionCombo()
 	}
+	sess.workId = work.GetID()
+	// 已有作品上的资源重执行即替换：暂停期间软删尚未发生（软删在提交窗口），恢复会话的
+	// 提交点须补位软删——旧 store 让位与回滚登记与全新执行同构
+	sess.isReplace = true
 
-	logger.Log.Infof("[Download] 任务 %d 跨重启续传: resourceID=%d, offsets=%v, completed=%v, regenDerived=%v", sess.taskId, resource.GetID(), streamOffsets, completedSet, incompleteDerivedRoles)
-
-	// 4. 调用插件 Resume(按 StreamOffsets 续传未完成 downloaded store,身份化 role+store_seq)
+	// 3. 调用插件 Resume：全部暂存轨按当前已落盘偏移下发（含已写满轨——多轨并发下小轨先
+	// 写满、等待其余轨道写满一起提交是常态），身份化 role+store_seq。单轨完成状态的确认是
+	// 插件兼容职责（站点对越界 Range 的响应形态各异，本地偏移与来源现值的比对只有插件能做）：
+	// 满轨由插件以立即 EOF 流（Size=偏移，主程序续传打开即写满完成）或空过（主程序经 Start
+	// 重产）表达；来源现值与偏移不符时插件返回以现值为 Size 的完整流，主程序按声明大小截断
+	// 整轨重下
+	streamOffsets := make([]*sdkdto.StoreResumeOffset, 0, len(entries))
+	for _, ent := range entries {
+		streamOffsets = append(streamOffsets, &sdkdto.StoreResumeOffset{
+			Role: ent.role, StoreSeq: int32(ent.seq), Offset: ent.size,
+		})
+	}
 	param := &sdkdto.TaskResumeParam{
 		Task:          dto.AssembleTaskDTO(sess.task, sess.workTask, nil),
 		StreamOffsets: streamOffsets,
@@ -138,188 +120,171 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 	sess.mergeWorkMetaForNaming(newResp, nil)
 	sess.workResp = newResp
 
-	// 未完成的 derived 轨由 Start 重新生成(Resume 只续传 downloaded;derived 一次性产物未完成须整轨重产)
-	if len(incompleteDerivedRoles) > 0 {
-		derivedSpecs, _, startErr := sess.pluginExec.Start(sess.runCtx(), sess.task, sess.workTask, incompleteDerivedRoles)
+	// 4. Resume 认领配对：返回 spec 按角色从暂存轨队列消费全局 seq（同 role 多轨按序对齐，
+	// 与下发的同 role 偏移顺序一致）。未被认领的暂存轨交 Start 重产（derived 一次性产物
+	// 未完成须整轨重产；插件对无需续传的 downloaded 轨经重产覆盖）
+	seqBySpec, uncovered := pairResumeSpecs(entries, specs)
+	// 续接偏移表仅收 Resume 认领的轨：未认领轨（含经 Start 重产的 downloaded 轨）全新写，
+	// 旧暂存前缀截断丢弃——新旧内容来源不同，续接会产生拼接产物
+	uncoveredSet := make(map[storeIdentity]struct{}, len(uncovered))
+	for _, ent := range uncovered {
+		uncoveredSet[storeIdentity{role: ent.role, seq: ent.seq}] = struct{}{}
+	}
+	staged := make(map[storeIdentity]int64, len(entries))
+	for _, ent := range entries {
+		if _, ok := uncoveredSet[storeIdentity{role: ent.role, seq: ent.seq}]; ok {
+			continue
+		}
+		staged[storeIdentity{role: ent.role, seq: ent.seq}] = ent.size
+	}
+	var regenSpecs []*sdkdto.StoreSpec
+	if len(uncovered) > 0 {
+		regenRoles := uniqueStagingRoles(uncovered)
+		rs, _, startErr := sess.pluginExec.Start(sess.runCtx(), sess.task, sess.workTask, regenRoles)
 		if startErr != nil {
-			logger.Log.Errorf("[Download] 任务 %d 重产 derived 轨 %v 失败: %v", sess.taskId, incompleteDerivedRoles, startErr)
-			// Pause 在 derived 重产进行中取消 ctx:视为暂停,不置失败
+			logger.Log.Errorf("[Download] 任务 %d 重产资源轨 %v 失败: %v", sess.taskId, regenRoles, startErr)
+			// Pause 在重产进行中取消 ctx:视为暂停,不置失败
 			if sess.runAborted() {
 				return comboInterrupted
 			}
 			sess.failTerminal(fmt.Sprintf("重产资源失败: %v", startErr))
 			return comboFinished
 		}
-		specs = append(specs, derivedSpecs...)
+		reSeq := pairRegenSpecs(uncovered, rs)
+		for spec, seq := range reSeq {
+			seqBySpec[spec] = seq
+		}
+		regenSpecs = rs
 	}
+	specs = append(specs, regenSpecs...)
 
 	if len(specs) == 0 {
-		// 无未完成轨道需续传/重产:任务直接完成
-		logger.Log.Infof("[Download][resume] taskId=%d resumeFromPersistedState 无未完成轨道,直接 Finished(streamOffsets=%v regenDerived=%v)", sess.taskId, streamOffsets, incompleteDerivedRoles)
-		sess.markResourceComplete(sess.runCtx(), resource.GetID())
-		sess.clearPendingResourceID()
-		sess.handle.Finish()
+		// 暂存非空但插件对全部轨道既不续传也不重产：暂存产物无提交元数据，显式失败保留
+		// 暂存（重试/重新执行可覆盖），不静默丢失
+		logger.Log.Errorf("[Download] 任务 %d 恢复时插件未认领任何暂存轨道(offsets=%v)", sess.taskId, streamOffsets)
+		sess.failTerminal("插件未返回待续传资源，暂存已保留，请重试或重新执行任务")
 		return comboFinished
 	}
 
-	// 5. 为每个返回的 spec 续接(continuable downloaded)或重建 store,构建 streamController
-	// 解析 bas 基准名与目录(与 startDownload 一致)
+	// 5. 规划+打开暂存写入器（认领的 downloaded 轨按偏移续接；重产/derived 轨全新写），
+	// 进入下载循环，全部写满后走提交点。多 store 判定基于暂存枚举的全局轨道数（specs 是
+	// 未完成子集，不能按 specs 内重计——否则部分完成时判定翻转→文件名漂移→错位覆盖）
 	baseRelPath, bas := sess.resolveBaseName(newResp)
-	// 多 store 判定基于资源全局 store 总数:resume 的 specs 是未完成子集(已完成 store 不在其中),
-	// 不能用 len(specs)——否则部分完成时判定翻转→文件名漂移→续传/重建到错误路径
-	multiStore := len(storeRows) > 1
-	// 解析每个 spec 的全局 store_seq(specs 是未完成子集,同 role 部分完成时 specs 内重计会与全局 store_seq
-	// 错位 → findStoreRowByIdentity 匹配已完成行 → 续传覆盖;须按 streamOffsets/storeRows 取全局 seq)
-	specSeq := resumeSpecSeq(specs, streamOffsets, storeRows, completedSet)
-
-	streams := make([]*streamController, 0, len(specs))
-	txErr := sess.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
-		// 未完成 store 的续传/重建:按 spec 处理,记录 (role,seq)→storeId 供全量重挂组装
-		storeIdByIdentity := make(map[storeIdentity]int64, len(specs))
-		for _, spec := range specs {
-			sameRoleSeq := specSeq[spec]
-			relPath, fileName := sess.resolveStorePath(spec, baseRelPath, bas, sameRoleSeq, multiStore)
-			// 身份匹配:同 role 内按 store_seq(sameRoleSeq)精确定位已有行(替代 role 首匹配,支持 N-同 role)
-			existingRow := findStoreRowByIdentity(storeRows, spec.Role, sameRoleSeq)
-			offset, hasOffset := findResumeOffset(streamOffsets, spec.Role, sameRoleSeq)
-			// continuable 的 downloaded store 且有正偏移:用已有 storeId + ResumeStream 续传
-			// 写入偏移:插件指定(spec.ResumeWriteOffset)优先,否则用主程序 stat 的 offset
-			if spec.Generation == entity.GenerationDownloaded && existingRow != nil && hasOffset && offset > 0 {
-				writeOffset := offset
-				if spec.ResumeWriteOffset != nil {
-					writeOffset = *spec.ResumeWriteOffset
-				}
-				writer, resumeErr := sess.deps.StoreStreamer.ResumeStream(txCtx, existingRow.StoreID, writeOffset)
-				if resumeErr != nil {
-					return resumeErr
-				}
-				logger.Log.Infof("[ResumeMount] taskId=%d role=%s seq=%d mode=ResumeStream storeId=%d writeOffset=%d streamOffset=%d",
-					sess.taskId, spec.Role, sameRoleSeq, existingRow.StoreID, writeOffset, offset)
-				sc := newStreamController(spec, existingRow.StoreID, writer, relPath)
-				sc.written = writeOffset
-				sc.initialOffset = writeOffset
-				streams = append(streams, sc)
-				storeIdByIdentity[storeIdentity{spec.Role, sameRoleSeq}] = existingRow.StoreID
-			} else {
-				// derived 或 offset=0 的 downloaded:StoreStream 重建
-				storeId, writer, storeErr := sess.deps.StoreStreamer.StoreStream(txCtx, relPath, fileName)
-				if storeErr != nil {
-					return storeErr
-				}
-				logger.Log.Infof("[ResumeMount] taskId=%d role=%s seq=%d mode=StoreStream storeId=%d writeOffset=0 streamOffset=%d",
-					sess.taskId, spec.Role, sameRoleSeq, storeId, offset)
-				streams = append(streams, newStreamController(spec, storeId, writer, relPath))
-				storeIdByIdentity[storeIdentity{spec.Role, sameRoleSeq}] = storeId
-			}
-		}
-		// 全量重挂:按 storeRows 顺序(保持 store_seq 稳定)组装已完成 + 本次续传/重建的 store。
-		// 已完成用原 storeId(不重下),未完成用 storeIdByIdentity;避免 mountResourceStores 批删丢已完成同 role 关联。
-		mounts := make([]pendingMount, 0, len(storeRows))
-		for _, row := range storeRows {
-			storeId := row.StoreID
-			if newId, ok := storeIdByIdentity[storeIdentity{row.StoreType, row.StoreSeq}]; ok {
-				storeId = newId
-			}
-			mounts = append(mounts, pendingMount{role: row.StoreType, generation: row.Generation, storeId: storeId})
-		}
-		if err := sess.mountResourceStores(txCtx, resource.GetID(), mounts); err != nil {
-			return err
-		}
-		return nil
-	})
-	if txErr != nil {
-		for _, s := range streams {
-			if s.storeWriter != nil {
-				s.storeWriter.Close()
-			}
-			sess.deps.StoreFileCleaner.CleanupFile(s.relPath)
-		}
-		streams = nil
-		logger.Log.Errorf("[Download] 任务 %d 跨重启续传事务失败: %v", sess.taskId, txErr)
+	multiStore := len(entries) > 1
+	streams, err := sess.openStagingTracks(specs, baseRelPath, bas, multiStore, staged, seqBySpec)
+	if err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 恢复打开暂存失败: %v", sess.taskId, err)
 		if sess.runAborted() {
 			return comboInterrupted
 		}
-		sess.failTerminal(fmt.Sprintf("跨重启续传创建存储失败: %v", txErr))
+		sess.failTerminal(fmt.Sprintf("跨重启续传创建存储失败: %v", err))
 		return comboFinished
 	}
+	if sess.runAborted() {
+		for _, s := range streams {
+			s.closeWriter()
+			if s.reader != nil {
+				s.reader.Close()
+			}
+		}
+		return comboInterrupted
+	}
 
-	// 时序不变量:downloadLoop 须在上方续传落盘事务提交后执行。插件 pull chunk 时可能经
-	// GetStoreRelPath 查询 resource_store 路径(如 document 引用兄弟 image 文件名),该查询走独立
-	// DB 连接,仅事务提交后 resource_store 行与任务 PendingResourceID 才对其可见。事务回滚/暂停路径上方已提前 return。
 	sess.streams = streams
-	// 续接的既有行与前会话创建时已登记的行经控制面合并去重，本会话重建的行新登记——
-	// 恢复后失败的回滚须覆盖两段会话累计的全部新建行
-	sess.registerCreatedStores(streams)
 	switch sess.downloadLoop() {
 	case loopDone:
+		if sess.allStreamsCompleted() {
+			return sess.commitAndFinish()
+		}
 		return comboFinished
 	default:
 		return comboInterrupted
 	}
 }
 
-// storeIdentity resource_store 行的身份键:同 role 内 store_seq 唯一定位一个 store(N-同 role 多 store 支持)
-type storeIdentity struct {
-	role string
-	seq  int
-}
-
-// findStoreRowByIdentity 按 (role, store_seq) 身份在 resource_store 行中精确匹配(替代 role 首匹配,避免同 role 歧义)
-func findStoreRowByIdentity(rows []*entity.ResourceStore, role string, storeSeq int) *entity.ResourceStore {
-	for _, r := range rows {
-		if r != nil && r.StoreType == role && r.StoreSeq == storeSeq {
-			return r
-		}
-	}
-	return nil
-}
-
-// findResumeOffset 在续传偏移列表中按 (role, store_seq) 查找;未命中返回 found=false
-func findResumeOffset(offsets []*sdkdto.StoreResumeOffset, role string, storeSeq int) (offset int64, found bool) {
-	for _, o := range offsets {
-		if o != nil && o.Role == role && int(o.StoreSeq) == storeSeq {
-			return o.Offset, true
-		}
-	}
-	return 0, false
-}
-
-// resumeSpecSeq 解析 resume 返回的每个 spec 对应的全局 store_seq。
-// specs 是未完成子集(已完成 store 不在其中),若按 specs 内 roleCounters 重计 seq,同 role 部分完成时会与
-// 全局 store_seq 错位 → findStoreRowByIdentity/findResumeOffset 匹配到已完成行 → 续传覆盖已完成 store。
-// 配对:downloaded specs 按 Resume 返回顺序与 streamOffsets 配对(streamOffsets 由主程序按 storeRows 未完成
-// downloaded 顺序构造,携带全局 StoreSeq);derived specs 按 role 从 storeRows 未完成 derived 行查(同 role 单例)。
-// 依赖插件 Resume/Start 按传入顺序返回 specs 的契约
-func resumeSpecSeq(specs []*sdkdto.StoreSpec, streamOffsets []*sdkdto.StoreResumeOffset, storeRows []*entity.ResourceStore, completed map[storeIdentity]struct{}) map[*sdkdto.StoreSpec]int {
+// pairResumeSpecs Resume 认领配对：返回 spec 按角色消费暂存轨队列的 (role,seq) 全局序，
+// 未被认领的暂存轨按序返回（供重产）。同 role 多轨按暂存枚举序与 spec 返回序对齐
+// （依赖插件按下发顺序返回 specs 的契约）；某 role 的 spec 数超出暂存轨数时按该 role
+// 现有最大序递增分配（插件在恢复轮新增轨道的场景，首个新轨从 0 起）
+func pairResumeSpecs(entries []stagingEntry, specs []*sdkdto.StoreSpec) (map[*sdkdto.StoreSpec]int, []stagingEntry) {
+	queues, maxSeq := stagingRoleQueues(entries)
+	claimed := make(map[storeIdentity]struct{}, len(specs))
 	out := make(map[*sdkdto.StoreSpec]int, len(specs))
-	dlIdx := 0
-	derivedSeq := make(map[string]int)
 	for _, spec := range specs {
 		if spec == nil {
 			continue
 		}
-		if spec.Generation == entity.GenerationDownloaded {
-			if dlIdx < len(streamOffsets) {
-				out[spec] = int(streamOffsets[dlIdx].StoreSeq)
-				dlIdx++
-			}
-			continue
-		}
-		if seq, ok := derivedSeq[spec.Role]; ok {
+		if q := queues[spec.Role]; len(q) > 0 {
+			seq := q[0]
+			queues[spec.Role] = q[1:]
 			out[spec] = seq
+			claimed[storeIdentity{role: spec.Role, seq: seq}] = struct{}{}
+		} else {
+			out[spec] = nextSeqBeyond(maxSeq, spec.Role)
+		}
+	}
+	var uncovered []stagingEntry
+	for _, ent := range entries {
+		if _, ok := claimed[storeIdentity{role: ent.role, seq: ent.seq}]; !ok {
+			uncovered = append(uncovered, ent)
+		}
+	}
+	return out, uncovered
+}
+
+// pairRegenSpecs 重产 spec 配对：重产轨从未认领暂存队列按角色消费序号（同 role 多轨
+// 按序对齐）；超出队列的按最大序递增（该 role 无未认领轨时从 0 起）
+func pairRegenSpecs(uncovered []stagingEntry, specs []*sdkdto.StoreSpec) map[*sdkdto.StoreSpec]int {
+	queues, maxSeq := stagingRoleQueues(uncovered)
+	out := make(map[*sdkdto.StoreSpec]int, len(specs))
+	for _, spec := range specs {
+		if spec == nil {
 			continue
 		}
-		for _, row := range storeRows {
-			if row == nil || row.StoreType != spec.Role || row.Generation != entity.GenerationDerived {
-				continue
-			}
-			if _, complete := completed[storeIdentity{row.StoreType, row.StoreSeq}]; complete {
-				continue
-			}
-			derivedSeq[spec.Role] = row.StoreSeq
-			out[spec] = row.StoreSeq
-			break
+		if q := queues[spec.Role]; len(q) > 0 {
+			out[spec] = q[0]
+			queues[spec.Role] = q[1:]
+		} else {
+			out[spec] = nextSeqBeyond(maxSeq, spec.Role)
 		}
 	}
 	return out
+}
+
+// nextSeqBeyond 按 role 已有最大序递增取下一序号；该 role 尚无任何暂存轨时从 0 起
+func nextSeqBeyond(maxSeq map[string]int, role string) int {
+	if _, ok := maxSeq[role]; ok {
+		maxSeq[role]++
+	} else {
+		maxSeq[role] = 0
+	}
+	return maxSeq[role]
+}
+
+// stagingRoleQueues 暂存条目按角色组建序号队列（条目已按 (role,seq) 有序），并返回各 role
+// 的最大序号（超出队列时递增分配用）
+func stagingRoleQueues(entries []stagingEntry) (queues map[string][]int, maxSeq map[string]int) {
+	queues = make(map[string][]int, len(entries))
+	maxSeq = make(map[string]int, len(entries))
+	for _, ent := range entries {
+		queues[ent.role] = append(queues[ent.role], ent.seq)
+		if ent.seq > maxSeq[ent.role] {
+			maxSeq[ent.role] = ent.seq
+		}
+	}
+	return
+}
+
+// uniqueStagingRoles 提取暂存条目去重后的 role 列表（保持出现顺序）
+func uniqueStagingRoles(entries []stagingEntry) []string {
+	seen := make(map[string]struct{}, len(entries))
+	roles := make([]string, 0, len(entries))
+	for _, ent := range entries {
+		if _, ok := seen[ent.role]; ok {
+			continue
+		}
+		seen[ent.role] = struct{}{}
+		roles = append(roles, ent.role)
+	}
+	return roles
 }

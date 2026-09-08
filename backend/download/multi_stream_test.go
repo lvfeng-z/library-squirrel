@@ -2,24 +2,28 @@ package download
 
 // 多轨流管理与下载循环单测（multi_stream_test.go）
 //
-// 覆盖插件下载执行面的多轨流状态机：
-//   - copyLoop 单流分支：downloaded/derived 完成、不完整、读取错误、runCtx 取消保留文件
-//   - handleEOF / handlePause 收口分支：取消/软暂停/正常完成/不完整
-//   - downloadLoop 多流聚合：全部完成、任一失败、软暂停广播收敛；进度汇总
+// 覆盖插件下载执行面的多轨流状态机（暂存写入载体）：
+//   - copyLoop 单流分支：downloaded/derived 完成、不完整、读取错误、runCtx 取消保留暂存
+//   - handleEOF / handlePause 收口分支：取消/软暂停/正常完成/不完整/哈希校验（不符/未声明）
+//   - downloadLoop 多流聚合：全部完成（转提交点前置态）、任一失败、软暂停广播收敛；进度汇总
 //   - 软暂停信号消费（含暂停窗口的读取错误形态分流矩阵）：
 //     无错误 → 纯排空暂停；传输错误 → 暂停收敛 + Warn 保留细节；EOF → 正常排空不告警；
 //     排空超时强制取消 → 有损保留路径
 //
+// 暂存模式下流写入器为真实暂存文件（t.TempDir() 下 role_seq 键文件），断言落文件与状态；
 // 控制面交互经 fakeHandle 模拟（运行 ctx / 软暂停广播通道 / 终态与排空阶段上报记录），
 // 不依赖控制面真实实现。
 
 import (
 	"bytes"
 	"context"
-	"database/sql"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +32,8 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/taskManager"
+
+	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -41,38 +47,6 @@ func TestMain(m *testing.M) {
 }
 
 // ==== fakes ====
-
-// fakeStoreWriter 内存版 StoreWriter,记录写入字节与生命周期调用
-type fakeStoreWriter struct {
-	buf       bytes.Buffer
-	closed    bool
-	completed bool
-	aborted   bool
-	syncN     int
-	writeErr  error // 注入的写入错误
-}
-
-func (w *fakeStoreWriter) Write(p []byte) (int, error) {
-	if w.writeErr != nil {
-		return 0, w.writeErr
-	}
-	return w.buf.Write(p)
-}
-func (w *fakeStoreWriter) Sync() error { w.syncN++; return nil }
-func (w *fakeStoreWriter) Close() error {
-	w.closed = true
-	return nil
-}
-func (w *fakeStoreWriter) Complete() error {
-	w.completed = true
-	w.closed = true
-	return nil
-}
-func (w *fakeStoreWriter) Abort() error {
-	w.aborted = true
-	w.closed = true
-	return nil
-}
 
 // errorReadCloser 恒定返回 err 的 reader
 type errorReadCloser struct {
@@ -224,37 +198,40 @@ func (h *fakeHandle) MarkDrainPhase(in bool) {
 	h.drainPhase = append(h.drainPhase, in)
 }
 
-// pendingUpdate pending_resource_id 直写记录
-type pendingUpdate struct {
-	taskId int64
-	id     sql.NullInt64
-}
-
-// fakePendingUpdater pending_resource_id 直写记录替身
-type fakePendingUpdater struct {
-	updates []pendingUpdate
-}
-
-func (u *fakePendingUpdater) UpdatePendingResourceID(_ context.Context, taskId int64, id sql.NullInt64) error {
-	u.updates = append(u.updates, pendingUpdate{taskId: taskId, id: id})
-	return nil
-}
-
 // newTestSession 构造最小可测执行会话(自建 fakeHandle 提供运行 ctx 与软暂停通道,无依赖注入)
 func newTestSession() (*execSession, *fakeHandle, context.CancelFunc) {
 	h, cancel := newFakeHandle()
 	return newExecSession(nil, h, entity.NewWorkTask(1)), h, cancel
 }
 
-// newStream 构造一个单流控制器
-func newStream(role, generation string, size int64, reader io.ReadCloser, writer *fakeStoreWriter) *streamController {
-	return &streamController{
-		role:        role,
-		generation:  generation,
-		size:        size,
-		reader:      reader,
-		storeWriter: writer,
+// newStream 构造一个单流控制器（真实暂存写入器，落 t.TempDir() 下 role_000 文件）
+func newStream(t *testing.T, role, generation string, size int64, reader io.ReadCloser) *streamController {
+	t.Helper()
+	stagingAbs := filepath.Join(t.TempDir(), fmt.Sprintf("%s_%03d.bin", role, 0))
+	w, err := newStagingWriterFresh(stagingAbs, "")
+	if err != nil {
+		t.Fatalf("打开测试暂存写入器失败: %v", err)
 	}
+	t.Cleanup(func() { _ = w.Close() })
+	return newStreamController(&sdkdto.StoreSpec{
+		Role: role, Generation: generation, Size: size, Format: "bin", ReadCloser: reader,
+	}, 0, w, stagingAbs, "store/resource/test/"+role+"_000.bin", role+"_000.bin")
+}
+
+// stagedSize 流暂存文件当前字节数
+func stagedSize(t *testing.T, s *streamController) int64 {
+	t.Helper()
+	info, err := os.Stat(s.stagingAbs)
+	if err != nil {
+		t.Fatalf("stat 暂存文件失败: %v", err)
+	}
+	return info.Size()
+}
+
+// stagedExists 流暂存文件是否在位（失败保留断言）
+func stagedExists(s *streamController) bool {
+	_, err := os.Stat(s.stagingAbs)
+	return err == nil
 }
 
 // observeLogs 切换全局 logger 为可观测实例,返回日志观察器(测试结束后调用方恢复 no-op)
@@ -296,18 +273,25 @@ func TestCopyLoop_DownloadedComplete(t *testing.T) {
 	data := bytes.Repeat([]byte("a"), 100)
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, int64(len(data)), io.NopCloser(bytes.NewReader(data)), w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, int64(len(data)), io.NopCloser(bytes.NewReader(data)))
 
 	res := s.copyLoop(sess)
 	if res.kind != resultOK {
 		t.Fatalf("期望 resultOK, 实际 %v (msg=%s)", res.kind, res.errMsg)
 	}
-	if !w.completed {
-		t.Fatalf("期望 writer.Completed")
+	if streamState(s.state.Load()) != streamCompleted {
+		t.Fatalf("期望流状态 completed")
 	}
-	if w.buf.Len() != len(data) {
-		t.Fatalf("期望写入 %d, 实际 %d", len(data), w.buf.Len())
+	if got := stagedSize(t, s); got != int64(len(data)) {
+		t.Fatalf("期望暂存写入 %d, 实际 %d", len(data), got)
+	}
+	// 实测哈希已留存（提交点建行落列）且与内容一致
+	if s.actualSha == "" {
+		t.Fatal("写满后应留存实测 SHA256")
+	}
+	sum := sha256.Sum256(data)
+	if s.actualSha != hex.EncodeToString(sum[:]) {
+		t.Fatalf("实测 SHA256 不符: 期望 %s 实际 %s", hex.EncodeToString(sum[:]), s.actualSha)
 	}
 }
 
@@ -315,16 +299,15 @@ func TestCopyLoop_DerivedComplete(t *testing.T) {
 	data := []byte("thumbdata")
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	// derived: size 未知(0)不校验完整性
-	s := newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 0, io.NopCloser(bytes.NewReader(data)), w)
+	s := newStream(t, entity.StoreTypeThumbnail, entity.GenerationDerived, 0, io.NopCloser(bytes.NewReader(data)))
 
 	res := s.copyLoop(sess)
 	if res.kind != resultOK {
-		t.Fatalf("期望 resultOK, 实际 %v", res.kind)
+		t.Fatalf("期望 resultOK, 实际 %v (msg=%s)", res.kind, res.errMsg)
 	}
-	if !w.completed || w.buf.Len() != len(data) {
-		t.Fatalf("derived 完成校验失败: completed=%v len=%d", w.completed, w.buf.Len())
+	if streamState(s.state.Load()) != streamCompleted || stagedSize(t, s) != int64(len(data)) {
+		t.Fatalf("derived 完成校验失败: state=%v size=%d", s.state.Load(), stagedSize(t, s))
 	}
 }
 
@@ -333,23 +316,22 @@ func TestCopyLoop_DownloadedIncomplete(t *testing.T) {
 	data := bytes.Repeat([]byte("b"), 30)
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, io.NopCloser(bytes.NewReader(data)), w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, io.NopCloser(bytes.NewReader(data)))
 
 	res := s.copyLoop(sess)
 	if res.kind != resultFailed {
 		t.Fatalf("期望 resultFailed(不完整), 实际 %v", res.kind)
 	}
-	if !w.aborted {
-		t.Fatalf("不完整期望 writer.Aborted")
+	// 失败保留暂存（诊断可见，重试重下覆盖），不再走删文件
+	if !stagedExists(s) || stagedSize(t, s) != 30 {
+		t.Fatalf("不完整期望暂存保留 30 字节, exists=%v size=%d", stagedExists(s), stagedSize(t, s))
 	}
 }
 
 func TestCopyLoop_ReadError(t *testing.T) {
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, &errorReadCloser{err: errors.New("net boom")}, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, &errorReadCloser{err: errors.New("net boom")})
 
 	res := s.copyLoop(sess)
 	if res.kind != resultFailed {
@@ -358,19 +340,18 @@ func TestCopyLoop_ReadError(t *testing.T) {
 	if res.errMsg == "" {
 		t.Fatalf("期望错误信息非空")
 	}
-	if !w.aborted {
-		t.Fatalf("读取错误期望 writer.Aborted")
+	if !stagedExists(s) {
+		t.Fatalf("读取错误期望暂存保留")
 	}
 }
 
 func TestCopyLoop_Cancel(t *testing.T) {
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	// runCtx 取消(控制面暂停/停止)统一走 handlePause 保留文件。
-	// 停止的文件删除由控制面停止命令的流清理处理,copyLoop 不再 abort
-	w := &fakeStoreWriter{}
+	// runCtx 取消(控制面暂停/停止)统一走 handlePause 保留暂存。
+	// 停止后的暂存清理由控制面按任务状态处置,copyLoop 不删文件
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: h.runCtx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(sess) }()
@@ -380,24 +361,23 @@ func TestCopyLoop_Cancel(t *testing.T) {
 
 	res := <-done
 	if res.kind != resultPaused {
-		t.Fatalf("期望 resultPaused(runCtx 取消统一保留文件), 实际 %v", res.kind)
+		t.Fatalf("期望 resultPaused(runCtx 取消统一保留暂存), 实际 %v", res.kind)
 	}
-	if w.aborted {
-		t.Fatalf("runCtx 取消不应 Abort(停止的删除由控制面命令处置)")
+	if !stagedExists(s) {
+		t.Fatalf("runCtx 取消应保留暂存文件")
 	}
-	if !w.closed {
+	if !s.writer.closed {
 		t.Fatalf("runCtx 取消应 Sync+Close 保留文件")
 	}
 }
 
-// TestCopyLoop_PauseCancelPreservesFile 回归:runCtx 取消时 copyLoop 应 Sync+Close 保留文件(不 Abort),
+// TestCopyLoop_PauseCancelPreservesFile 回归:runCtx 取消时 copyLoop 应 Sync+Close 保留暂存(不删),
 // 否则下次续传 offset=0 → 进度倒退
 func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	cr := &ctxAwareReader{data: bytes.Repeat([]byte("c"), 50), ctx: h.runCtx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(sess) }()
@@ -409,10 +389,10 @@ func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 	if res.kind != resultPaused {
 		t.Fatalf("期望 resultPaused, 实际 %v", res.kind)
 	}
-	if w.aborted {
-		t.Fatalf("runCtx 取消不应 Abort(应保留文件防进度倒退)")
+	if !stagedExists(s) {
+		t.Fatalf("runCtx 取消不应删除暂存(应保留文件防进度倒退)")
 	}
-	if !w.closed {
+	if !s.writer.closed {
 		t.Fatalf("runCtx 取消应 Sync+Close 保留文件")
 	}
 }
@@ -420,22 +400,21 @@ func TestCopyLoop_PauseCancelPreservesFile(t *testing.T) {
 // ==== handleEOF / handlePause 分支 ====
 
 func TestHandleEOF_RunCtxCanceled(t *testing.T) {
-	// runCtx 取消(停止/排空超时强制取消)导致上游关闭产生 EOF:视为中断,保留文件
+	// runCtx 取消(停止/排空超时强制取消)导致上游关闭产生 EOF:视为中断,保留暂存
 	sess, _, cancel := newTestSession()
 	defer cancel()
 	cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))))
 
 	res := s.handleEOF(sess)
 	if res.kind != resultPaused {
 		t.Fatalf("runCtx 取消时 EOF 期望 resultPaused, 实际 %v", res.kind)
 	}
-	if !w.closed || w.completed {
-		t.Fatalf("期望 Sync+Close(非 Complete): closed=%v completed=%v", w.closed, w.completed)
+	if !s.writer.closed {
+		t.Fatalf("期望 Sync+Close(非完成收尾)")
 	}
 	if streamState(s.state.Load()) != streamPaused {
-		t.Fatalf("期望 stream 状态 paused")
+		t.Fatalf("期望流状态 paused")
 	}
 }
 
@@ -444,66 +423,65 @@ func TestHandleEOF_SoftPause(t *testing.T) {
 	sess, h, cancel := newTestSession()
 	defer cancel()
 	close(h.softPause)
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))), w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte("x"))))
 
 	res := s.handleEOF(sess)
 	if res.kind != resultPaused {
 		t.Fatalf("软暂停进行中 EOF 期望 resultPaused, 实际 %v", res.kind)
 	}
-	if !w.closed || w.completed {
-		t.Fatalf("期望 Sync+Close(非 Complete): closed=%v completed=%v", w.closed, w.completed)
+	if !s.writer.closed {
+		t.Fatalf("期望 Sync+Close(非完成收尾)")
 	}
 	if streamState(s.state.Load()) != streamPaused {
-		t.Fatalf("期望 stream 状态 paused")
+		t.Fatalf("期望流状态 paused")
 	}
 }
 
 func TestHandleEOF_Complete(t *testing.T) {
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, nil, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 10, nil)
 	s.written = 10 // 已写满
 
 	res := s.handleEOF(sess)
 	if res.kind != resultOK {
 		t.Fatalf("期望 resultOK, 实际 %v", res.kind)
 	}
-	if !w.completed {
-		t.Fatalf("期望 writer.Completed")
+	if streamState(s.state.Load()) != streamCompleted {
+		t.Fatalf("期望流状态 completed")
+	}
+	if s.actualSha == "" {
+		t.Fatalf("写满后应留存实测 SHA256")
 	}
 }
 
 func TestHandleEOF_Incomplete(t *testing.T) {
 	sess, _, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil)
 	s.written = 30 // 不足
 
 	res := s.handleEOF(sess)
 	if res.kind != resultFailed {
 		t.Fatalf("期望 resultFailed(不完整), 实际 %v", res.kind)
 	}
-	if !w.aborted {
-		t.Fatalf("不完整期望 writer.Aborted")
+	if !stagedExists(s) {
+		t.Fatalf("不完整期望暂存保留")
 	}
 }
 
 func TestHandlePause(t *testing.T) {
-	w := &fakeStoreWriter{}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte{})), w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 10, io.NopCloser(bytes.NewReader([]byte{})))
 
 	res := s.handlePause(nil)
 	if res.kind != resultPaused {
 		t.Fatalf("期望 resultPaused, 实际 %v", res.kind)
 	}
-	if w.syncN == 0 || !w.closed {
-		t.Fatalf("期望 Sync+Close: syncN=%d closed=%v", w.syncN, w.closed)
+	if !s.writer.closed {
+		t.Fatalf("期望 Sync+Close")
 	}
 	if streamState(s.state.Load()) != streamPaused {
-		t.Fatalf("期望 stream 状态 paused")
+		t.Fatalf("期望流状态 paused")
 	}
 }
 
@@ -512,36 +490,26 @@ func TestHandlePause(t *testing.T) {
 func TestDownloadLoop_AllComplete(t *testing.T) {
 	h, cancel := newFakeHandle()
 	defer cancel()
-	updater := &fakePendingUpdater{}
-	wt := entity.NewWorkTask(1)
-	wt.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
-	sess := newExecSession(&Deps{PendingResourceUpdater: updater}, h, wt)
+	sess := newExecSession(nil, h, entity.NewWorkTask(1))
 
 	data := bytes.Repeat([]byte("a"), 50)
-	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
-	sess.streams = []*streamController{
-		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(data)), w1),
-		newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 0, io.NopCloser(bytes.NewReader([]byte("thumb"))), w2),
-	}
+	s1 := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(data)))
+	s2 := newStream(t, entity.StoreTypeThumbnail, entity.GenerationDerived, 0, io.NopCloser(bytes.NewReader([]byte("thumb"))))
+	sess.streams = []*streamController{s1, s2}
 
 	res := sess.downloadLoop()
 	if res != loopDone {
 		t.Fatalf("期望 loopDone, 实际 %v", res)
 	}
+	// 全部完成转提交点：终态由提交点收口（downloadLoop 只收失败终态）
 	h.mu.Lock()
 	finished, failed := h.finished, h.failed
 	h.mu.Unlock()
-	if !finished || failed {
-		t.Fatalf("期望经 handle 上报成功终态: finished=%v failed=%v", finished, failed)
+	if finished || failed {
+		t.Fatalf("全部完成不应在循环内上报终态(归提交点): finished=%v failed=%v", finished, failed)
 	}
-	if !w1.completed || !w2.completed {
-		t.Fatalf("期望两轨均 Completed: w1=%v w2=%v", w1.completed, w2.completed)
-	}
-	if len(updater.updates) != 1 || updater.updates[0].id.Valid {
-		t.Fatalf("期望完成后清空 PendingResourceID, 实际 %+v", updater.updates)
-	}
-	if wt.PendingResourceID.Valid {
-		t.Fatalf("期望会话内领域行快照同步清空 PendingResourceID")
+	if streamState(s1.state.Load()) != streamCompleted || streamState(s2.state.Load()) != streamCompleted {
+		t.Fatalf("期望两轨均 completed: s1=%v s2=%v", s1.state.Load(), s2.state.Load())
 	}
 	assertDrainPhaseReported(t, h, true, false)
 }
@@ -549,16 +517,11 @@ func TestDownloadLoop_AllComplete(t *testing.T) {
 func TestDownloadLoop_OneFails(t *testing.T) {
 	h, cancel := newFakeHandle()
 	defer cancel()
-	updater := &fakePendingUpdater{}
-	wt := entity.NewWorkTask(1)
-	wt.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
-	sess := newExecSession(&Deps{PendingResourceUpdater: updater}, h, wt)
+	sess := newExecSession(nil, h, entity.NewWorkTask(1))
 
-	wMain, wFail := &fakeStoreWriter{}, &fakeStoreWriter{}
-	sess.streams = []*streamController{
-		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 50))), wMain),
-		newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 0, &errorReadCloser{err: errors.New("thumb gen failed")}, wFail),
-	}
+	sMain := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 50, io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 50))))
+	sFail := newStream(t, entity.StoreTypeThumbnail, entity.GenerationDerived, 0, &errorReadCloser{err: errors.New("thumb gen failed")})
+	sess.streams = []*streamController{sMain, sFail}
 
 	res := sess.downloadLoop()
 	if res != loopDone {
@@ -573,35 +536,26 @@ func TestDownloadLoop_OneFails(t *testing.T) {
 	if failMsg == "" {
 		t.Fatalf("期望失败信息非空")
 	}
-	// 已完成轨保留(Completed 非 Aborted),失败轨 Aborted
-	if !wMain.completed || wMain.aborted {
-		t.Fatalf("主轨应保留: completed=%v aborted=%v", wMain.completed, wMain.aborted)
+	// 已完成轨保留(completed),失败轨暂存保留(诊断可见)
+	if streamState(sMain.state.Load()) != streamCompleted {
+		t.Fatalf("主轨应保留完成态: %v", sMain.state.Load())
 	}
-	if !wFail.aborted {
-		t.Fatalf("失败轨应 Aborted")
-	}
-	// 失败终态清 pending(失败任务不续传)
-	if len(updater.updates) != 1 || updater.updates[0].id.Valid {
-		t.Fatalf("期望失败后清空 PendingResourceID, 实际 %+v", updater.updates)
+	if streamState(sFail.state.Load()) != streamFailed || !stagedExists(sFail) {
+		t.Fatalf("失败轨应为 failed 且暂存保留: state=%v exists=%v", sFail.state.Load(), stagedExists(sFail))
 	}
 }
 
 func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	h, cancel := newFakeHandle()
 	defer cancel()
-	updater := &fakePendingUpdater{}
-	wt := entity.NewWorkTask(1)
-	wt.PendingResourceID = sql.NullInt64{Int64: 99, Valid: true}
-	sess := newExecSession(&Deps{PendingResourceUpdater: updater}, h, wt)
+	sess := newExecSession(nil, h, entity.NewWorkTask(1))
 
 	// 两轨用 gatedReader:第一次 Read 阻塞等 first,精确卡软暂停时序
 	gr1 := &gatedReader{data: bytes.Repeat([]byte("a"), 10), first: make(chan struct{})}
 	gr2 := &gatedReader{data: bytes.Repeat([]byte("b"), 10), first: make(chan struct{})}
-	w1, w2 := &fakeStoreWriter{}, &fakeStoreWriter{}
-	sess.streams = []*streamController{
-		newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr1, w1),
-		newStream(entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, gr2, w2),
-	}
+	s1 := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr1)
+	s2 := newStream(t, entity.StoreTypeVideoTrack, entity.GenerationDownloaded, 100, gr2)
+	sess.streams = []*streamController{s1, s2}
 
 	done := make(chan loopResult, 1)
 	go func() { done <- sess.downloadLoop() }()
@@ -630,17 +584,13 @@ func TestDownloadLoop_PauseBroadcast(t *testing.T) {
 	if h.runCtx.Err() != nil {
 		t.Fatalf("优雅暂停不应取消 runCtx")
 	}
-	// 暂停保留 pending 供恢复续传定位
-	if len(updater.updates) != 0 {
-		t.Fatalf("暂停不应清 PendingResourceID, 实际 %+v", updater.updates)
-	}
-	// 两轨在途数据落盘 + Sync+Close(非 Complete/Abort)
-	for i, w := range []*fakeStoreWriter{w1, w2} {
-		if !w.closed || w.completed || w.aborted {
-			t.Fatalf("轨 %d 应为暂停态: closed=%v completed=%v aborted=%v", i, w.closed, w.completed, w.aborted)
+	// 两轨在途数据落盘 + Sync+Close(非完成收尾),暂存保留
+	for i, s := range []*streamController{s1, s2} {
+		if !s.writer.closed || streamState(s.state.Load()) != streamPaused {
+			t.Fatalf("轨 %d 应为暂停态: closed=%v state=%v", i, s.writer.closed, s.state.Load())
 		}
-		if w.buf.Len() != 10 {
-			t.Fatalf("轨 %d 期望在途 10 字节落盘, 实际 %d", i, w.buf.Len())
+		if got := stagedSize(t, s); got != 10 {
+			t.Fatalf("轨 %d 期望在途 10 字节落盘, 实际 %d", i, got)
 		}
 	}
 	assertDrainPhaseReported(t, h, true, false)
@@ -650,8 +600,8 @@ func TestProgressAggregation(t *testing.T) {
 	sess, h, cancel := newTestSession()
 	defer cancel()
 
-	s1 := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil, &fakeStoreWriter{})
-	s2 := newStream(entity.StoreTypeThumbnail, entity.GenerationDerived, 5, nil, &fakeStoreWriter{})
+	s1 := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, nil)
+	s2 := newStream(t, entity.StoreTypeThumbnail, entity.GenerationDerived, 5, nil)
 	s1.written = 60
 	s2.written = 5
 	sess.streams = []*streamController{s1, s2}
@@ -675,14 +625,13 @@ func TestProgressAggregation(t *testing.T) {
 // ==== 软暂停信号消费 ====
 
 // TestCopyLoop_SoftPause_DrainsInflight 验证优雅暂停核心(在途读取无错误形态):本轮 Read 的
-// 在途数据先落盘,copyLoop 随后退出,且不再 Read(不发起新 PullRequest 拉取新数据)。
+// 在途数据先落暂存,copyLoop 随后退出,且不再 Read(不发起新 PullRequest 拉取新数据)。
 func TestCopyLoop_SoftPause_DrainsInflight(t *testing.T) {
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	// 在途数据 50 字节;size=100 → 若软暂停未生效会继续读到 EOF 判不完整 Failed
 	gr := &gatedReader{data: bytes.Repeat([]byte("x"), 50), first: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(sess) }()
@@ -700,13 +649,10 @@ func TestCopyLoop_SoftPause_DrainsInflight(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("copyLoop 未退出(软暂停路径未生效)")
 	}
-	if w.buf.Len() != 50 {
-		t.Fatalf("期望在途 50 字节落盘, 实际 %d", w.buf.Len())
+	if got := stagedSize(t, s); got != 50 {
+		t.Fatalf("期望在途 50 字节落暂存, 实际 %d", got)
 	}
-	if w.aborted {
-		t.Fatalf("软暂停不应 Abort")
-	}
-	if !w.closed {
+	if !s.writer.closed {
 		t.Fatalf("软暂停应 Sync+Close")
 	}
 	// 仅 Read 一次:在途往返已落盘即退出,未发起新 PullRequest
@@ -716,19 +662,18 @@ func TestCopyLoop_SoftPause_DrainsInflight(t *testing.T) {
 }
 
 // TestCopyLoop_SoftPause_TransferErrorConvergesPauseWithDetail 软暂停窗口出现传输错误(非 EOF):
-// 仍按暂停收敛(用户暂停意图优先、保留文件供续传),但 Warn 日志保留传输错误细节供诊断
+// 仍按暂停收敛(用户暂停意图优先、保留暂存供续传),但 Warn 日志保留传输错误细节供诊断
 func TestCopyLoop_SoftPause_TransferErrorConvergesPauseWithDetail(t *testing.T) {
 	logs := observeLogs()
 	defer func() { logger.Log = zap.NewNop().Sugar() }()
 
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	boom := errors.New("插件传输中断: 连接已重置")
 	// 第二次 Read 先等软暂停广播到达再返回传输错误——第一轮落盘后的软暂停检查
 	// 在广播前已放行进入第二轮读取,确保错误发生在暂停窗口内
 	gr := &softPauseGatedErrReader{data: bytes.Repeat([]byte("x"), 50), err: boom, softPause: h.softPause, secondStarted: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(sess) }()
@@ -744,13 +689,10 @@ func TestCopyLoop_SoftPause_TransferErrorConvergesPauseWithDetail(t *testing.T) 
 	case <-time.After(2 * time.Second):
 		t.Fatal("copyLoop 未退出(软暂停窗口传输错误路径未生效)")
 	}
-	if w.buf.Len() != 50 {
-		t.Fatalf("期望在途 50 字节落盘, 实际 %d", w.buf.Len())
+	if got := stagedSize(t, s); got != 50 {
+		t.Fatalf("期望在途 50 字节落暂存, 实际 %d", got)
 	}
-	if w.aborted {
-		t.Fatalf("软暂停窗口传输错误不应 Abort(保留文件供续传)")
-	}
-	if !w.closed {
+	if !s.writer.closed {
 		t.Fatalf("软暂停窗口传输错误应 Sync+Close")
 	}
 	// Warn 保留传输错误细节(含 role 与错误文本)
@@ -773,9 +715,8 @@ func TestCopyLoop_SoftPause_EOFIsNormalDrain(t *testing.T) {
 
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	gr := &softPauseGatedErrReader{data: bytes.Repeat([]byte("x"), 50), err: io.EOF, softPause: h.softPause, secondStarted: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, gr)
 
 	done := make(chan streamResult, 1)
 	go func() { done <- s.copyLoop(sess) }()
@@ -791,11 +732,11 @@ func TestCopyLoop_SoftPause_EOFIsNormalDrain(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("copyLoop 未退出(软暂停窗口 EOF 路径未生效)")
 	}
-	if w.buf.Len() != 50 {
-		t.Fatalf("期望在途 50 字节落盘, 实际 %d", w.buf.Len())
+	if got := stagedSize(t, s); got != 50 {
+		t.Fatalf("期望在途 50 字节落暂存, 实际 %d", got)
 	}
-	if w.aborted || !w.closed {
-		t.Fatalf("期望 Sync+Close 保留文件: aborted=%v closed=%v", w.aborted, w.closed)
+	if !s.writer.closed {
+		t.Fatalf("期望 Sync+Close 保留暂存")
 	}
 	if warns := warnMessages(logs); len(warns) != 0 {
 		t.Fatalf("软暂停窗口的 EOF 属正常排空,不应告警, 实际 Warn 列表: %v", warns)
@@ -811,10 +752,9 @@ func TestCopyLoop_SoftPauseDrainTimeoutForceCancel(t *testing.T) {
 
 	sess, h, cancel := newTestSession()
 	defer cancel()
-	w := &fakeStoreWriter{}
 	// data 为空:第一次 Read 即阻塞等 runCtx,模拟插件卡死/在途不完成
 	cr := &ctxAwareReader{ctx: h.runCtx, blockedCh: make(chan struct{})}
-	s := newStream(entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr, w)
+	s := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 100, cr)
 
 	close(h.softPause) // 软暂停已广播,转入排空等待
 
@@ -828,18 +768,15 @@ func TestCopyLoop_SoftPauseDrainTimeoutForceCancel(t *testing.T) {
 
 	select {
 	case res := <-done:
-		// runCtx 取消 → Read 返回错误 → 有损路径 handlePause(保留文件)
+		// runCtx 取消 → Read 返回错误 → 有损路径 handlePause(保留暂存)
 		if res.kind != resultPaused {
 			t.Fatalf("期望 resultPaused(超时兜底有损路径), 实际 %v", res.kind)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("copyLoop 未退出(排空超时兜底未生效)")
 	}
-	if !w.closed {
-		t.Fatal("兜底路径应 Sync+Close 保留文件")
-	}
-	if w.aborted {
-		t.Fatal("兜底路径不应 Abort(保留文件供续传)")
+	if !s.writer.closed {
+		t.Fatal("兜底路径应 Sync+Close 保留暂存")
 	}
 	if warns := warnMessages(logs); len(warns) != 0 {
 		t.Fatalf("超时兜底的强制取消属控制面显式决策,不应告警, 实际 Warn 列表: %v", warns)

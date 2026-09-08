@@ -1,9 +1,9 @@
 package download
 
-// 替换链软删与终端回滚登记测试：前置软删分派（已完成→备份软删；未完成→废弃软删）、
-// 软删成功后经 SetTerminalRollback 登记受害者清单（由软删返回值构建）、新建行清单在创建
-// 事务提交后登记（停止/恢复后失败的中断路径由控制面单点按登记丢弃新建行、复活旧行）、
-// 会话失败收口只关闭写入句柄（删除收进控制面单点）。
+// 提交窗口替换软删与终端回滚登记测试：软删分派（已完成→备份软删；未完成→废弃软删）、
+// 软删后经 SetTerminalRollback 登记受害者清单（由软删返回值构建，提交序列失败时复活归
+// 控制面 setFailed 单点）、会话失败收口只关闭写入句柄（复活不在会话侧执行）、中断于下载
+// 窗口零软删零登记（替换链坍缩：长下载全程零 DB 副作用）。
 // 替换链能力注入真实 resource.ReplacementService（本文件 stub 作其依赖接口）——软删/分派
 // 逻辑在 resource 域执行，断言仍落到同一批 stub 上。
 
@@ -19,6 +19,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/shareLock"
+	"github.com/library-squirrel/backend/taskManager"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
@@ -241,9 +242,9 @@ func makeReplaceAssoc(resourceId int64, role string, seq int, storeId int64) *en
 	return rs
 }
 
-// TestSoftDeleteAndArmRollbackDispatchesByCompletion 前置软删分派（板块选择=仅 image）：
+// TestSoftDeleteReplacedStoresDispatchesByCompletion 提交窗口软删分派（板块选择=仅 image）：
 // 已完成行走备份软删、未完成行走废弃软删、历史残留死行跳过、角色过滤外的不动
-func TestSoftDeleteAndArmRollbackDispatchesByCompletion(t *testing.T) {
+func TestSoftDeleteReplacedStoresDispatchesByCompletion(t *testing.T) {
 	sess, h, _, stubs := newReplaceTestSession(500)
 	sess.mode = runMode{storeScope: storeScope{kind: scopeSelected, roles: []string{entity.StoreTypeImage}}}
 	res := entity.NewResource()
@@ -263,8 +264,8 @@ func TestSoftDeleteAndArmRollbackDispatchesByCompletion(t *testing.T) {
 		makeReplaceStoreRow(803, 1, 0, 0, "store/thumb/t.png"),           // 角色外不动
 	}
 
-	if stop := sess.softDeleteAndArmRollback(); stop {
-		t.Fatal("前置软删成功不应终止板块组合")
+	if err := sess.softDeleteReplacedStores(); err != nil {
+		t.Fatalf("软删成功不应返回错误, 实际 %v", err)
 	}
 	if len(stubs.replacer.backupIds) != 1 || stubs.replacer.backupIds[0] != 800 {
 		t.Fatalf("已完成行(800)应走备份软删，实际 %v", stubs.replacer.backupIds)
@@ -293,48 +294,40 @@ func TestSoftDeleteAndArmRollbackDispatchesByCompletion(t *testing.T) {
 	}
 }
 
-// TestFailPathDelegatesDisposalToControlPlane 替换场景失败收口：会话只关闭流写入句柄，
-// 新建 store 的丢弃（行+文件+关联）与旧行复活统一由控制面按登记清单执行——会话侧不直接
-// 删除，中断路径（停止/恢复后失败）与会话收口路径共用控制面单点
-func TestFailPathDelegatesDisposalToControlPlane(t *testing.T) {
+// TestFailPathDelegatesRevivalToControlPlane 替换场景失败收口：会话只关闭流写入句柄，
+// 软删受害者的复活统一由控制面 setFailed 单点按登记清单执行——会话侧不直接复活，
+// 中断路径（停止/恢复后失败）与会话收口路径共用控制面单点
+func TestFailPathDelegatesRevivalToControlPlane(t *testing.T) {
 	sess, h, cancel, stubs := newReplaceTestSession(500)
 	defer cancel()
-	writer := &fakeStoreWriter{}
-	sess.streams = []*streamController{{
-		storeId: 812, relPath: "store/resource/a/x.png", role: entity.StoreTypeImage, storeWriter: writer,
-	}}
-	sess.registerCreatedStores(sess.streams)
+	stream := newStream(t, entity.StoreTypeImage, entity.GenerationDownloaded, 10, nil)
+	sess.streams = []*streamController{stream}
+	// 提交窗口软删后的登记形态（软删与登记在 commitStaged 内一体发生，此处直填登记
+	// 模拟软删之后序列失败的收口路径）
+	sess.handle.SetTerminalRollback(taskManager.TerminalRollback{Victims: []resource.StoreRef{
+		{StoreID: 800, ResourceID: 700, BackupID: 1, FilePath: "store/resource/a/old.png"},
+	}})
 	sess.mode = runMode{storeScope: storeScope{kind: scopeAll}}
 
 	sess.comboFail("下载失败")
 
-	if !writer.closed {
-		t.Fatal("失败收口前应关闭流写入句柄（释放文件锁，控制面回滚物理删文件需要）")
+	if !stream.writer.closed {
+		t.Fatal("失败收口前应关闭流写入句柄（释放文件锁，控制面回滚还原文件需要）")
 	}
-	if len(stubs.writer.deletedByStoreIds) != 0 || len(stubs.deleter.hardDeleted) != 0 {
-		t.Fatalf("会话侧不应直接删除新建 store，实际 摘关联 %v 物理删 %v", stubs.writer.deletedByStoreIds, stubs.deleter.hardDeleted)
+	if len(stubs.rows.restoredIds) != 0 {
+		t.Fatalf("会话侧不应直接复活受害者, 实际 %v", stubs.rows.restoredIds)
 	}
-	var registered []int64
+	var victims []int64
 	for _, rb := range h.rollbacks {
-		registered = append(registered, rb.CreatedStoreIDs...)
+		for _, v := range rb.Victims {
+			victims = append(victims, v.StoreID)
+		}
 	}
-	if len(registered) != 1 || registered[0] != 812 {
-		t.Fatalf("新建行(812)应登记进终态回滚载荷（控制面回滚据此丢弃），实际 %v", registered)
+	if len(victims) != 1 || victims[0] != 800 {
+		t.Fatalf("受害者(800)应保留登记（控制面回滚据此复活）, 实际 %v", victims)
 	}
 	if !h.failed {
 		t.Fatal("含资源板块失败应上报失败终态")
-	}
-}
-
-// TestRegisterCreatedStoresEmptyNoOp 空流集合不登记（无新建行即无回滚丢弃对象）
-func TestRegisterCreatedStoresEmptyNoOp(t *testing.T) {
-	sess, h, cancel, _ := newReplaceTestSession(500)
-	defer cancel()
-
-	sess.registerCreatedStores(nil)
-
-	if len(h.rollbacks) != 0 {
-		t.Fatalf("空流集合不应登记终态回滚，实际 %d 次", len(h.rollbacks))
 	}
 }
 
@@ -345,11 +338,7 @@ func newReplaceTestSession(workId int64) (*execSession, *confirmHandle, context.
 	deps := &Deps{
 		WorkDirProvider:     stubWorkDirProvider{dir: "E:/lib"},
 		ResourceReader:      stubs.res,
-		ResourceStoreReader: stubs.rs,
-		StoreBackupReader:   stubs.rows,
-		WorkLivenessReader:  stubs.liveness,
 		ResourceStoreWriter: stubs.writer,
-		StoreDeleter:        stubs.deleter,
 		ReplaceStoreOps:     newRealReplacementService(stubs, nil),
 	}
 	h, cancel := newConfirmHandle()
@@ -360,25 +349,25 @@ func newReplaceTestSession(workId int64) (*execSession, *confirmHandle, context.
 	return sess, h, cancel, stubs
 }
 
-// TestStartDownloadRegistersLedgerBeforeInterrupt 替换执行中被停止（runCtx 取消、执行面不收口
-// 直接返回）时，新建行清单已在创建事务提交后登记——控制面 handleStopCmd → setFailed 单点回滚
-// 据此丢弃新建行、复活受害者。readers 阻塞至 runCtx 取消，覆盖下载循环内中断形态
-func TestStartDownloadRegistersLedgerBeforeInterrupt(t *testing.T) {
+// TestStartDownloadInterruptRegistersNoRollback 替换执行中被停止（runCtx 取消、执行面
+// 不收口直接返回）时零回滚登记——替换链坍缩后软删在提交窗口，下载窗口中断时旧 store 未动、
+// 暂存保留，无任何回滚需求。readers 阻塞至 runCtx 取消，覆盖下载循环内中断形态
+func TestStartDownloadInterruptRegistersNoRollback(t *testing.T) {
+	env := newStagingTestEnv(t)
 	h, cancel := newConfirmHandle()
 	defer cancel()
 	ctx := h.runCtx
 	deps := &Deps{
 		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
-		StoreStreamer:          &stubStoreStreamer{},
+		WorkDirProvider:        stubWorkDirProvider{dir: env.workDir},
 		Transactor:             stubTransactor{},
 		ResourceReader:         &stubResourceReader{},
 		ResourceSaver:          &stubResourceSaver{},
 		ResourceUpdater:        &stubResourceSaver{},
-		ResourceStoreWriter:    &stubResourceStoreWriter{},
-		PendingResourceUpdater: &fakePendingUpdater{},
-		StoreFileCleaner:       stubStoreFileCleaner{},
-		ResourceStoreReader:    &stubResourceStoreReader{},
-		StoreBackupReader:      &stubStoreBackupReader{},
+		StoreCommitter:         env.streamer,
+		ResourceStoreWriter:    env.assocWrite,
+		StagingPaths:           stubStagingPaths{},
+		Planner:                env.planner,
 	}
 	wt := entity.NewWorkTask(1)
 	wt.ResourceType = sql.NullString{String: entity.ResourceTypeImage, Valid: true}
@@ -402,24 +391,28 @@ func TestStartDownloadRegistersLedgerBeforeInterrupt(t *testing.T) {
 	if res != comboInterrupted {
 		t.Fatalf("runCtx 取消应中断返回,实际 %v", res)
 	}
-	var registered []int64
-	for _, rb := range h.rollbacks {
-		registered = append(registered, rb.CreatedStoreIDs...)
+	if len(h.rollbacks) != 0 {
+		t.Fatalf("中断于下载窗口应零回滚登记（软删未发生，旧 store 不动）,实际 %v", h.rollbacks)
 	}
-	if len(registered) != 2 || registered[0] != 1 || registered[1] != 2 {
-		t.Fatalf("新建行(1,2)应在创建事务提交后登记进终态回滚载荷（中断路径控制面回滚的依据）,实际 %v", registered)
+	// 暂存保留（两轨部分写入落暂存），无任何建行
+	if len(env.streamer.commits) != 0 {
+		t.Fatalf("中断不应建行,实际 %d", len(env.streamer.commits))
+	}
+	for _, name := range []string{"image_000.png", "thumbnail_000.jpg"} {
+		if _, err := os.Stat(filepath.Join(env.stagingDir, name)); err != nil {
+			t.Fatalf("中断暂存应保留(%s): %v", name, err)
+		}
 	}
 }
 
-// TestResumeRegistersContinuedAndRebuiltStores 暂停→恢复的新会话对续接行（前会话已登记）与
-// 重建行都再登记：控制面按 ID 去重合并，恢复后失败的回滚覆盖两段会话累计的全部新建行
-func TestResumeRegistersContinuedAndRebuiltStores(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "partial.png")
-	if err := os.WriteFile(file, bytes.Repeat([]byte("a"), 4), 0o644); err != nil {
-		t.Fatalf("预置半成品文件失败: %v", err)
-	}
-	wt := makeResumeWorkTask(1, 700)
+// TestResumeCommitRegistersNoRollbackLedger 暂停→恢复的会话：续接轨（Resume 认领）与重产轨
+// （未认领经 Start）在提交点建行后零回滚登记——替换链坍缩后 plugin-download 不登记新建行
+// （提交事务原子性兜底建行段，长下载窗口零 DB 副作用）
+func TestResumeCommitRegistersNoRollbackLedger(t *testing.T) {
+	env := newStagingTestEnv(t)
+	seedStaging(t, env, entity.StoreTypeImage, 0, bytes.Repeat([]byte("a"), 4))
+	seedStaging(t, env, entity.StoreTypeThumbnail, 0, []byte("t"))
+	wt := makeResumeWorkTask(1)
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
@@ -427,31 +420,13 @@ func TestResumeRegistersContinuedAndRebuiltStores(t *testing.T) {
 			ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("b"), 6))),
 		}},
 		resumeResp: &sdkdto.WorkResponse{},
-		// 未完成 derived 轨经 Start 重产（恢复会话的重建行）
+		// 未认领的 thumbnail 轨经 Start 重产（恢复会话的重建轨）
 		startSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg",
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t"))),
 		}},
 	}
-	res := entity.NewResource()
-	res.ID = 700
-	res.WorkID = 500
-	derivedRow := entity.NewPersistentStore()
-	derivedRow.SetID(801)
-	derivedRow.CompletedAt = 0
-	downloadedRow := entity.NewPersistentStore()
-	downloadedRow.SetID(800)
-	downloadedRow.CompletedAt = 0
-	derivedAssoc := makeReplaceAssoc(700, entity.StoreTypeThumbnail, 0, 801)
-	derivedAssoc.Generation = entity.GenerationDerived
-	downloadedAssoc := makeReplaceAssoc(700, entity.StoreTypeImage, 0, 800)
-	downloadedAssoc.Generation = entity.GenerationDownloaded
-	streamer := &stubStoreStreamer{}
-	strategy, _ := newResumeTestStrategy(wt, exec, &stubResourceReader{byId: res},
-		&stubResourceStoreReader{assocs: []*entity.ResourceStore{downloadedAssoc, derivedAssoc}},
-		&stubStoreReader{rows: map[int64]*entity.PersistentStore{800: downloadedRow, 801: derivedRow}, path: file},
-		streamer, &fakePendingUpdater{}, &stubRecomputer{}, &stubResourceStoreWriter{},
-		&stubStoreBackupReader{rows: []*entity.PersistentStore{aliveStoreRow(800), aliveStoreRow(801)}})
+	strategy, _ := newResumeTestStrategy(wt, exec, &stubResourceReader{resources: []*entity.Resource{}}, env)
 	h, cancel := newConfirmHandle()
 	defer cancel()
 	h.resumeFlag = true
@@ -461,18 +436,10 @@ func TestResumeRegistersContinuedAndRebuiltStores(t *testing.T) {
 	if !h.finished || h.failed {
 		t.Fatalf("续传+重产完成应成功收口,实际 finished=%v failed=%v(%s)", h.finished, h.failed, h.failMsg)
 	}
-	// 续接行走已有 storeId(800),重建行分配新 storeId(1)
-	if len(streamer.resumeCalls) != 1 || streamer.resumeCalls[0] != 800 {
-		t.Fatalf("未完成 downloaded 轨应续接已有 store(800),实际 %v", streamer.resumeCalls)
+	if len(h.rollbacks) != 0 {
+		t.Fatalf("恢复会话提交应零回滚登记（软删无对象或成功即终态清空）,实际 %v", h.rollbacks)
 	}
-	if len(streamer.storeCalls) != 1 || streamer.storeCalls[0] != 1 {
-		t.Fatalf("未完成 derived 轨应重建新 store,实际 %v", streamer.storeCalls)
-	}
-	var registered []int64
-	for _, rb := range h.rollbacks {
-		registered = append(registered, rb.CreatedStoreIDs...)
-	}
-	if len(registered) != 2 || registered[0] != 800 || registered[1] != 1 {
-		t.Fatalf("恢复会话应登记续接行(800)与重建行(1)（合并去重后覆盖两段会话累计）,实际 %v", registered)
+	if len(env.streamer.commits) != 2 {
+		t.Fatalf("续接轨与重产轨应各建一行,实际 %d", len(env.streamer.commits))
 	}
 }

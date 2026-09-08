@@ -14,7 +14,6 @@ type WorkTask struct {
 	SiteID            sql.NullInt64  `gorm:"column:site_id" json:"siteId"`
 	SiteWorkID        sql.NullString `gorm:"column:site_work_id" json:"siteWorkId"`
 	URL               sql.NullString `gorm:"column:url" json:"url"`
-	PendingResourceID sql.NullInt64  `gorm:"column:pending_resource_id" json:"pendingResourceId"`
 	Continuable       sql.NullBool   `gorm:"column:continuable" json:"continuable"` // 跨进程契约字段，本库只读（无写入点）
 	PluginPublicID    sql.NullString `gorm:"column:plugin_public_id" json:"pluginPublicId"`
 	PluginExtensionID sql.NullString `gorm:"column:plugin_extension_id" json:"pluginExtensionId"`

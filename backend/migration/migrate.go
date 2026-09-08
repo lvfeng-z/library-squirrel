@@ -296,6 +296,19 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// 命名迁移(后置)：work_task.pending_resource_id 列退役（暂存模式下任务产出资源经
+	// resource.task_id 关联，任务级资源定位键不再产生）。列被外键子句引用，ALTER TABLE
+	// DROP COLUMN 不可用，经表重建删列（列序保真+显式列清单拷贝）；以列存在性做幂等标记
+	var workTaskPendingCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('work_task') WHERE name = 'pending_resource_id'").Scan(&workTaskPendingCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 work_task.pending_resource_id 列失败: %w", err)
+	}
+	if workTaskPendingCol > 0 {
+		if err := rebuildTableDropColumn(db, "work_task", "pending_resource_id"); err != nil {
+			return fmt.Errorf("迁移删除 work_task.pending_resource_id 列失败: %w", err)
+		}
+	}
+
 	// 外键声明批次：关联表悬空行清理 + 表重建挂外键。置于全部命名迁移后——
 	// 表结构已为最终形态，重建舞步以此为基准复原列与索引
 	if err := cleanDanglingAssociations(db); err != nil {

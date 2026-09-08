@@ -166,6 +166,10 @@ type ManagedTask struct {
 }
 
 // NewManagedTask 创建托管任务并启动 actor goroutine(一生一灭,任务级可变状态只在其内修改)。
+// 运行态按任务行 status 初始化（直接 Store，不经 setState——构造期不触发状态回调、不关 done
+// 通道）：构造方均为冷加载（任务不在内存时自 DB 行构建），DB 行是上一会话落定的执行前稳态
+// （仅稳定态落库、无刷盘滞后）——Paused 行带着该状态进入执行即命中恢复信号分叉（跨重启续传），
+// Created 行首启、终态行重试均全新执行。
 func NewManagedTask(taskId, parentId int64, task *entity.Task, deps *TaskDeps, manager *Manager, semaphore chan struct{}) *ManagedTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedTask{
@@ -185,8 +189,10 @@ func NewManagedTask(taskId, parentId int64, task *entity.Task, deps *TaskDeps, m
 		deps:           deps,
 		task:           task,
 	}
-	// actorStarted 保持零值 false:它是 dispatch 的 CAS(false→true) 首派守卫,首次 dispatch 据此投 cmdStart。
+	// 运行态自任务行 status 起步（语义见构造注释）；actorStarted 保持零值 false:它是 dispatch 的
+	// CAS(false→true) 首派守卫,首次 dispatch 据此投 cmdStart。
 	// 创建期赋 true 会使守卫永远失败、cmdStart 不投递,新任务卡在 Created 永不执行。
+	m.state.Store(int32(TaskState(task.Status)))
 	go m.actorLoop()
 	return m
 }
@@ -652,8 +658,7 @@ func (m *ManagedTask) setState(state TaskState) {
 // setFailed 设置任务为失败状态，并记录错误信息。失败即触发登记的替换链回滚：按执行器经
 // SetTerminalRollback 登记的受害者显式清单复活被软删行（多作品清单由执行器自持；未登记即无
 // 软删行可复活——本执行未发生替换，直接让位）；触发后清空登记，重试从空态重新登记。
-// 暂停不触发，软删悬空为合法中间态（等恢复延续替换）。失败清 pending_resource_id 由执行面
-// 在 Fail 上报前自行完成
+// 暂停不触发，软删悬空为合法中间态（等恢复延续替换）
 func (m *ManagedTask) setFailed(errMsg string) {
 	m.errorMessage = errMsg
 	m.setState(TaskStateFailed)

@@ -74,6 +74,13 @@ export class ImportResult {
      */
     "absentStores": number;
 
+    /**
+     * CreatedStoreIDs 本次导入新建的 persistent_store 行 ID 清单（导入事务提交后填充）。
+     * 供调用方在导入成功后登记终态回滚：回滚复活被替换旧代前须先丢弃新建行，释放其占用的
+     * file_path（部分唯一索引对活行生效）；无新建行时为 nil
+     */
+    "createdStoreIds": number[];
+
     /** Creates a new ImportResult instance. */
     constructor($$source: Partial<ImportResult> = {}) {
         if (!("createdWorks" in $$source)) {
@@ -115,6 +122,9 @@ export class ImportResult {
         if (!("absentStores" in $$source)) {
             this["absentStores"] = 0;
         }
+        if (!("createdStoreIds" in $$source)) {
+            this["createdStoreIds"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -123,7 +133,14 @@ export class ImportResult {
      * Creates a new ImportResult instance from a string or object.
      */
     static createFrom($$source: any = {}): ImportResult {
+        const $$createField13_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("createdStoreIds" in $$parsedSource) {
+            $$parsedSource["createdStoreIds"] = $$createField13_0($$parsedSource["createdStoreIds"]);
+        }
         return new ImportResult($$parsedSource as Partial<ImportResult>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);

@@ -118,8 +118,8 @@ type Repository interface {
 	QueryChildrenTaskPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
 	// ListSchedule 查询任务进度列表
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
-	// DeleteTask 删除任务（包含子任务：领域行先于核心行）- 批量删除
-	DeleteTask(ctx context.Context, ids []int64) error
+	// DeleteTask 删除任务（包含子任务：领域行先于核心行）- 批量删除，返回全量被删任务 ID 集
+	DeleteTask(ctx context.Context, ids []int64) ([]int64, error)
 	// ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（删除链前置步）
 	ClearResourceTaskId(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
@@ -206,16 +206,19 @@ type Service struct {
 	siteSvc           *site.Service
 	memoryProvider    MemoryStateProvider
 	taskTypeRegistry  TaskTypeRegistry
+	workDirGetter     func() string
 }
 
-// NewService 创建任务服务
-func NewService(repo Repository, transactor Transactor, taskHandlerGetter TaskHandlerProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service) *Service {
+// NewService 创建任务服务。workDirGetter 供删除链清理下载暂存目录取 workDir
+// （空串=未配置，清理函数容忍跳过）
+func NewService(repo Repository, transactor Transactor, taskHandlerGetter TaskHandlerProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service, workDirGetter func() string) *Service {
 	return &Service{
 		repo:              repo,
 		transactor:        transactor,
 		taskHandlerGetter: taskHandlerGetter,
 		urlListener:       urlListener,
 		siteSvc:           siteSvc,
+		workDirGetter:     workDirGetter,
 	}
 }
 
@@ -655,14 +658,32 @@ func (s *Service) CreateBuiltinTaskChildren(ctx context.Context, taskType string
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
-// 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）
+// 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）。
+// 提交后清理被删任务（含子任务）的下载暂存目录——暂存目录按任务 ID 派生，生命周期与任务行一致，
+// 任务行消亡即失去归属；删除时即时清理，不等启动清扫兜底
 func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
-	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+	var deletedIds []int64
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.repo.ClearResourceTaskId(txCtx, ids); err != nil {
 			return err
 		}
-		return s.repo.DeleteTask(txCtx, ids)
-	})
+		deleted, err := s.repo.DeleteTask(txCtx, ids)
+		if err != nil {
+			return err
+		}
+		deletedIds = deleted
+		return nil
+	}); err != nil {
+		return err
+	}
+	// 暂存清理是文件系统副作用，置于事务提交后：事务回滚时任务行仍在，暂存须留给恢复判定。
+	// 清理失败不阻断删除——任务行已消亡，残留暂存由启动清扫按任务行缺失回收
+	if s.workDirGetter != nil {
+		if cerr := CleanupStagingByTaskIds(s.workDirGetter(), deletedIds); cerr != nil {
+			logger.Log.Warnf("清理被删任务下载暂存目录失败: %v", cerr)
+		}
+	}
+	return nil
 }
 
 // QueryTreeDataPage 查询任务树数据分页

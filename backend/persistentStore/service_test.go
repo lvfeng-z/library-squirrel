@@ -22,13 +22,7 @@ func TestServiceEntriesRefuseUnconfiguredWorkDir(t *testing.T) {
 		}
 	}
 
-	_, _, err := s.StoreStream(ctx, "store/resource/a/1.jpg", "1.jpg")
-	assertRefused("StoreStream", err)
-
-	_, err = s.ResumeStream(ctx, 1, 0)
-	assertRefused("ResumeStream", err)
-
-	_, err = s.Store(ctx, "store/resource/a/1.jpg", "1.jpg", strings.NewReader("x"))
+	_, err := s.Store(ctx, "store/resource/a/1.jpg", "1.jpg", strings.NewReader("x"))
 	assertRefused("Store", err)
 
 	_, err = s.StoreFromExternal(ctx, "C:/tmp/src.jpg", "store/resource/a/1.jpg", "1.jpg")

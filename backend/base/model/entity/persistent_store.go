@@ -24,6 +24,11 @@ type PersistentStore struct {
 	// ContentFingerprint 内容指纹（size + 头部 64KB SHA256），用于文件移动/重命名的内容关联匹配
 	// 落盘完成时同步算入；存量记录由回填补入；缺失时无法参与移动匹配（降级为删除/新增）
 	ContentFingerprint sql.NullString `gorm:"column:content_fingerprint" json:"contentFingerprint"`
+	// ExpectedSha256 来源侧声明的期望 SHA256（下载来源插件/分享清单声明；NULL=来源未声明，跳过完整性校验）。
+	// 哈希语义为「来源侧声明、主程序照单消费」，不以本地计算替代声明源
+	ExpectedSha256 sql.NullString `gorm:"column:expected_sha256" json:"expectedSha256"`
+	// ActualSha256 落盘内容的实测全量 SHA256（下载写入流边写边算；NULL=未计算——存量行与非下载产轨道）
+	ActualSha256 sql.NullString `gorm:"column:actual_sha256" json:"actualSha256"`
 	// DeletedAt 软删标志（毫秒时间戳，0=在位）：文件已被移离原路径、记录保留待追踪。
 	// 写入方两类：作品软删链（文件移 backup，复原链清除）；fsmonitor 外部变更裁决不复原（原 invalid_at 退役并入）。
 	// 彻底删除时行物理消亡。查询经 GORM 自动排除已删行（Unscoped/IncludeDeleted 逃逸）

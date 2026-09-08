@@ -30,7 +30,6 @@ func TestAssembleTaskDTOContract(t *testing.T) {
 	wt.SiteID = sql.NullInt64{Int64: 100, Valid: true}
 	wt.SiteWorkID = sql.NullString{String: "w-1", Valid: true}
 	wt.URL = sql.NullString{String: "http://x/1", Valid: true}
-	wt.PendingResourceID = sql.NullInt64{Int64: 55, Valid: true}
 	wt.Continuable = sql.NullBool{Bool: true, Valid: true}
 	wt.PluginPublicID = sql.NullString{String: "pub-1", Valid: true}
 	wt.PluginExtensionID = sql.NullString{String: "ext-1", Valid: true}
@@ -50,7 +49,7 @@ func TestAssembleTaskDTOContract(t *testing.T) {
 		"id": float64(7), "createTime": float64(1000), "updateTime": float64(2000),
 		"hasChild": false, "taskName": "任务",
 		"siteId": float64(100), "siteWorkId": "w-1", "url": "http://x/1",
-		"status": float64(3), "pendingResourceId": float64(55), "continuable": true,
+		"status": float64(3), "continuable": true,
 		"pluginPublicId": "pub-1", "pluginExtensionId": "ext-1", "pluginData": `{"a":1}`,
 		"errorMessage": "e", "involvedRoles": []any{"image", "thumbnail"},
 		"resourceType": entity.ResourceTypeImage, "taskType": entity.TaskTypePluginDownload,

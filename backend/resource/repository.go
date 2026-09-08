@@ -31,6 +31,15 @@ func (r *ResourceRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 	return r.BaseRepository.List(ctx, opt)
 }
 
+// ListByTaskId 查询任务产出的资源（resource.task_id 为任务产出资源的溯源关联列，
+// GetStoreRelPath 非运行态按任务定位已提交资源用）
+func (r *ResourceRepository) ListByTaskId(ctx context.Context, taskId int64) ([]*domain.Resource, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{clause.Eq{Column: "task_id", Value: taskId}},
+	}
+	return r.BaseRepository.List(ctx, opt)
+}
+
 // ListByWorkIds 批量查询多个作品关联的资源
 func (r *ResourceRepository) ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error) {
 	if len(workIds) == 0 {

@@ -15,7 +15,6 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/resource"
-	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/taskManager"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -58,7 +57,8 @@ func (f *fakeSiteKeyResolver) ListByIds(ctx context.Context, ids []int64) ([]*en
 
 // fakePluginExec 插件执行器桩:Start 固定返回错误,使查重门槛通过(不弹窗/答复替换)的用例
 // 在下载前失败终止,无需真实的流/存储依赖;CreateWorkInfo 正常返回空响应(仅作品信息用例);
-// startSpecs 非空时 Start 返回预置流集合(derived 重产登记用例)
+// startSpecs 非空时 Start 返回预置流集合(derived 重产登记用例)。captureOffsets/captureStartRoles
+// 供续传用例捕获下发的偏移/重产角色
 type fakePluginExec struct {
 	createErr   error
 	createdWork bool // CreateWorkInfo 是否被调用(作品信息板块)
@@ -70,6 +70,9 @@ type fakePluginExec struct {
 	resumeSpecs []*sdkdto.StoreSpec
 	resumeResp  *sdkdto.WorkResponse
 	resumeErr   error
+
+	captureOffsets    func(offsets []*sdkdto.StoreResumeOffset)
+	captureStartRoles func(roles []string)
 }
 
 func (e *fakePluginExec) CreateWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask) (*sdkdto.WorkResponse, error) {
@@ -79,6 +82,9 @@ func (e *fakePluginExec) CreateWorkInfo(ctx context.Context, task *entity.Task, 
 
 func (e *fakePluginExec) Start(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, storeRoles []string) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
 	e.startCalls++
+	if e.captureStartRoles != nil {
+		e.captureStartRoles(storeRoles)
+	}
 	if e.startSpecs != nil {
 		return e.startSpecs, e.startResp, nil
 	}
@@ -94,6 +100,9 @@ func (e *fakePluginExec) Stop(ctx context.Context, param *sdkdto.TaskResParam) e
 
 func (e *fakePluginExec) Resume(ctx context.Context, param *sdkdto.TaskResumeParam) ([]*sdkdto.StoreSpec, *sdkdto.WorkResponse, error) {
 	e.resumeCalls++
+	if e.captureOffsets != nil {
+		e.captureOffsets(param.StreamOffsets)
+	}
 	return e.resumeSpecs, e.resumeResp, e.resumeErr
 }
 
@@ -320,7 +329,8 @@ func TestCheckDuplicate_RowLevel(t *testing.T) {
 }
 
 // TestCheckDuplicate_EmptyIntersectionKeepsExistingWorkId 命中无冲突不弹窗但视为替换:
-// 定位到已有作品(workId 置位、isReplace=true)并按所选板块前置软删旧 store
+// 定位到已有作品(workId 置位、isReplace=true)；下载窗口零副作用——软删在提交点，查重后
+// 直接失败也不触碰旧 store
 func TestCheckDuplicate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	checker := &fakeDupChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
 	stubs := newGateStubs()
@@ -345,90 +355,19 @@ func TestCheckDuplicate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 		t.Fatalf("空交集应定位到已有作品并视为替换(existingWorkId=%d workId=%d isReplace=%v)",
 			sess.existingWorkId, sess.workId, sess.isReplace)
 	}
-	if len(stubs.replacer.backupIds) != 1 || stubs.replacer.backupIds[0] != 800 {
-		t.Fatalf("替换场景应按所选板块前置软删旧 store(800), 实际 %v", stubs.replacer.backupIds)
-	}
-	if len(stubs.replacer.discardedIds) != 0 {
-		t.Fatalf("已完成行不应走废弃分支, 实际 %v", stubs.replacer.discardedIds)
-	}
-	// 软删行清单已登记终端回滚（供控制面失败单点复活）
-	if len(h.rollbacks) != 1 || len(h.rollbacks[0].Victims) != 1 {
-		t.Fatalf("软删后应登记受害者清单, 实际 %+v", h.rollbacks)
-	}
-}
-
-// TestCheckDuplicate_FullModeReplaceSoftDeletesAllRoles 空 universe 全量(All)模式的替换软删锚：
-// All 语义=全量板块，替换软删按「是否拉取资源」判定而非「用户是否指定子集」——
-// 生效角色经封闭枚举全集展开覆盖作品全部角色活行
-func TestCheckDuplicate_FullModeReplaceSoftDeletesAllRoles(t *testing.T) {
-	checker := &fakeDupChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
-	stubs := newGateStubs()
-	sess, h, cancel := newComboSession(300, runMode{storeScope: storeScope{kind: scopeAll}},
-		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, &fakePluginExec{},
-		nil, newRealReplacementService(stubs, nil))
-	defer cancel()
-	// 预置资源图：作品 500 → 资源 700 → image(800) 与 thumbnail(801) 两条已完成活行
-	res := entity.NewResource()
-	res.ID = 700
-	res.WorkID = 500
-	stubs.res.resources = []*entity.Resource{res}
-	for i, role := range []string{entity.StoreTypeImage, entity.StoreTypeThumbnail} {
-		stubs.rs.byResourceIds = append(stubs.rs.byResourceIds, makeReplaceAssoc(700, role, 0, int64(800+i)))
-		stubs.rows.rows = append(stubs.rows.rows, makeReplaceStoreRow(int64(800+i), 1, 0, 0, "store/resource/a/x"))
-	}
-
-	sess.runSectionCombo()
-
-	if h.confirmCalls > 0 {
-		t.Fatal("空交集不应弹窗")
-	}
-	if sess.workId != 500 || !sess.isReplace {
-		t.Fatalf("全量模式命中已有作品应视为替换(workId=%d isReplace=%v)", sess.workId, sess.isReplace)
-	}
-	if len(stubs.replacer.backupIds) != 2 {
-		t.Fatalf("全量模式前置软删应覆盖作品全部角色活行(800,801)，实际 %v", stubs.replacer.backupIds)
-	}
-}
-
-// TestCheckDuplicate_FullModeReplaceLockGuard 守卫链含锁锚：全量模式前置软删走作品锁守卫——
-// 作品被分享拉取持有时软删被拒、任务转失败收口，不触碰任何 store 行
-func TestCheckDuplicate_FullModeReplaceLockGuard(t *testing.T) {
-	checker := &fakeDupChecker{result: fakeCheckResult(duplicate.DuplicateHitNoConflict, nil)}
-	stubs := newGateStubs()
-	lock := shareLock.NewShareLockRegistry()
-	lock.Register(context.Background(), []int64{500}, "session-x")
-	sess, h, cancel := newComboSession(300, runMode{storeScope: storeScope{kind: scopeAll}},
-		checker, &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}}, &fakePluginExec{},
-		nil, newRealReplacementService(stubs, lock))
-	defer cancel()
-	res := entity.NewResource()
-	res.ID = 700
-	res.WorkID = 500
-	stubs.res.resources = []*entity.Resource{res}
-	stubs.rs.byResourceIds = []*entity.ResourceStore{makeReplaceAssoc(700, entity.StoreTypeImage, 0, 800)}
-	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 1, 0, 0, "store/resource/a/x.png")}
-
-	sess.runSectionCombo()
-
-	if h.confirmCalls > 0 {
-		t.Fatal("空交集不应弹窗")
-	}
-	if !h.failed {
-		t.Fatal("锁命中应令替换前置软删失败转失败收口")
-	}
+	// 替换定位后、下载前的失败（Start 桩报错）零软删零登记（坍缩后长下载窗口无 DB 副作用）
 	if len(stubs.replacer.backupIds) != 0 || len(stubs.replacer.discardedIds) != 0 {
-		t.Fatalf("锁命中不应触碰 store 行，实际备份软删 %v 废弃 %v", stubs.replacer.backupIds, stubs.replacer.discardedIds)
+		t.Fatalf("下载窗口不应触碰旧 store, 实际 备份软删 %v 废弃 %v", stubs.replacer.backupIds, stubs.replacer.discardedIds)
 	}
-	// 软删整体失败（无部分清单）不应登记回滚
 	if len(h.rollbacks) != 0 {
-		t.Fatalf("锁拒绝分支无被软删行，不应登记回滚，实际 %d 次", len(h.rollbacks))
+		t.Fatalf("下载窗口零回滚登记, 实际 %v", h.rollbacks)
 	}
 }
 
 // ==== 确认环：答复分流 ====
 
-// TestCheckDuplicate_ReplaceAnswerContinues 冲突弹窗后答复替换：继续板块组合（替换定位 +
-// 前置软删），不跳过、不走失败
+// TestCheckDuplicate_ReplaceAnswerContinues 冲突弹窗后答复替换：继续板块组合（替换定位），
+// 不跳过、不走失败
 func TestCheckDuplicate_ReplaceAnswerContinues(t *testing.T) {
 	checker := &fakeDupChecker{result: fakeCheckResult(duplicate.DuplicateHitConflict, []string{entity.StoreTypeImage})}
 	stubs := newGateStubs()
@@ -455,12 +394,12 @@ func TestCheckDuplicate_ReplaceAnswerContinues(t *testing.T) {
 	if sess.workId != 500 || !sess.isReplace {
 		t.Fatalf("答复替换应定位已有作品为替换目标(workId=%d isReplace=%v)", sess.workId, sess.isReplace)
 	}
-	if len(stubs.replacer.backupIds) != 1 || stubs.replacer.backupIds[0] != 800 {
-		t.Fatalf("答复替换应前置软删旧 store(800), 实际 %v", stubs.replacer.backupIds)
-	}
-	// 答复替换后 Start 桩报错 → 失败收口（软删已登记，回滚归控制面）
+	// 答复替换后 Start 桩报错 → 失败收口；下载窗口零软删零登记（软删在提交点）
 	if !h.failed {
 		t.Fatal("答复替换后门槛续行应由 Start 桩报错转失败收口")
+	}
+	if len(stubs.replacer.backupIds) != 0 || len(h.rollbacks) != 0 {
+		t.Fatalf("下载窗口应零软删零登记, 实际 备份软删 %v 登记 %v", stubs.replacer.backupIds, h.rollbacks)
 	}
 }
 

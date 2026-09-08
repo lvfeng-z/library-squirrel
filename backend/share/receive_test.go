@@ -132,6 +132,8 @@ type fakeIngestor struct {
 	opts      *importer.IngestOptions // 最近一次调用的替换选项（断言替换集）
 	contents  map[string][]byte
 	ingestErr error
+	// result 预置导入结果摘要（nil 时返回空摘要）；CreatedStoreIDs 供窗口登记用例注入
+	result *importer.ImportResult
 }
 
 func (f *fakeIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource importer.FileSource, opts *importer.IngestOptions) (*importer.ImportResult, error) {
@@ -146,6 +148,7 @@ func (f *fakeIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fi
 	f.opts = opts
 	f.contents = make(map[string][]byte)
 	manifestCopy := f.manifest
+	result := f.result
 	f.mu.Unlock()
 	for _, entry := range manifestCopy.Files {
 		if entry.Path == "" || entry.Missing {
@@ -168,7 +171,10 @@ func (f *fakeIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fi
 		f.contents[entry.Path] = data
 		f.mu.Unlock()
 	}
-	return &importer.ImportResult{}, nil
+	if result == nil {
+		result = &importer.ImportResult{}
+	}
+	return result, nil
 }
 
 // newReceiveHandle 构建收件执行句柄（复用 share_test.go 的 fakeStrategyHandle；
@@ -1032,6 +1038,38 @@ func TestReceiveExecutionReplaceConfirmPerWork(t *testing.T) {
 	// 各自暂存清理（manifest 在父目录 999，不动）
 	assert.NoDirExists(t, env.stagingDirOfTask(777), "A 成功后暂存应清理")
 	assert.NoDirExists(t, env.stagingDirOfTask(778), "B 成功后暂存应清理")
+}
+
+// TestReceiveExecutionRegistersCreatedStoresAfterIngest ingest 建行后的窗口登记（顺路项）：
+// 替换流软删受害者（登记）→ 回灌导入建新行（事务提交）→ 新建行清单并入终态回滚登记——
+// 导入成功到 Finish 之间的停止/失败窗口内，控制面复活受害者前先丢弃新建行释放 file_path
+func TestReceiveExecutionRegistersCreatedStoresAfterIngest(t *testing.T) {
+	env := startReceiveEnv(t, SharePublishOptions{})
+	checker := &fakeDuplicateChecker{results: [][]duplicate.DuplicateCheckResult{
+		{hitConflict(500, "已存在作品", []string{entity.StoreTypeImage})},
+	}}
+	ops := &fakeReplaceOps{victimBase: 900}
+	h, _, exec, _ := env.buildDupHandle(t, "", checker, ops)
+	h.confirmDecision = taskManager.ReplaceDecisionReplace
+	// 导入桩预置新建行清单（对齐真实 ingest 从文件相位产物透出）
+	env.ingestor.mu.Lock()
+	env.ingestor.result = &importer.ImportResult{CreatedStoreIDs: []int64{1001, 1002}}
+	env.ingestor.mu.Unlock()
+
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败: %s", failed)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	require.NotNil(t, h.rollback, "替换流应登记终态回滚")
+	var victimIds, createdIds []int64
+	for _, v := range h.rollback.Victims {
+		victimIds = append(victimIds, v.StoreID)
+	}
+	createdIds = append(createdIds, h.rollback.CreatedStoreIDs...)
+	require.Len(t, victimIds, 1, "软删受害者(900)应登记, 实际 %v", victimIds)
+	require.Equal(t, int64(900), victimIds[0])
+	require.Equal(t, []int64{1001, 1002}, createdIds, "ingest 新建行应并入终态回滚登记")
 }
 
 // TestReceiveExecutionReplaceSkipPerWork 每作品独立裁决跳过（设计七）：子任务冲突裁决跳过

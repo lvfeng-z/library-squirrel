@@ -28,6 +28,8 @@ import (
 type Repository interface {
 	// Create 新建记录（Create 后通过指针回填 ID）
 	Create(ctx context.Context, store *domain.PersistentStore) error
+	// Save 全字段覆写记录（UPSERT；提交点复用同路径活行时清除旧哈希/元数据零值用）
+	Save(ctx context.Context, store *domain.PersistentStore) error
 	// Updates 更新记录
 	Updates(ctx context.Context, store *domain.PersistentStore) error
 	// GetById 根据 ID 获取记录
@@ -38,8 +40,6 @@ type Repository interface {
 	List(ctx context.Context, opt *database.QueryOption) ([]*domain.PersistentStore, error)
 	// GetByFilePath 根据路径获取记录
 	GetByFilePath(ctx context.Context, filePath string) (*domain.PersistentStore, error)
-	// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）
-	ResetCompleted(ctx context.Context, id int64) error
 	// DeleteUnscoped 物理删除记录（绕过软删改写；软删仅作品软删链经 DeleteWithBackup/MarkInvalid 使用）
 	DeleteUnscoped(ctx context.Context, id int64) error
 	// DeleteUnscopedByIds 批量物理删除记录（单条 SQL；目标为已软删行的物理删除通路——
@@ -64,118 +64,6 @@ type Repository interface {
 	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
 	// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带备份引用的非法态列，返回受影响行数
 	ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error)
-}
-
-// StoreWriter 封装文件句柄和 DB 记录，实现完整的写入生命周期管理
-//
-// 生命周期：
-//
-//	写入中 → Write() + Sync()
-//	暂停   → Close()          关闭文件句柄，保留未完成 DB 记录
-//	成功   → Complete()       同步+关闭+更新 DB 为已完成
-//	失败   → Abort()          关闭+删除文件+删除 DB 记录
-type StoreWriter interface {
-	io.Writer
-	// Sync 同步文件到磁盘
-	Sync() error
-	// Close 关闭文件句柄（暂停），DB 记录保持未完成
-	Close() error
-	// Complete 完成写入：同步+关闭+更新 DB 状态为已完成
-	Complete() error
-	// Abort 放弃写入：关闭+删除文件+删除 DB 记录
-	Abort() error
-}
-
-// storeWriter StoreWriter 的内部实现
-type storeWriter struct {
-	file          *os.File
-	storeId       int64
-	repo          Repository
-	closed        bool
-	workDirGetter func() string        // 每次调用获取最新的 workDir
-	filePath      sql.NullString       // 落盘相对路径（Complete 算宽高 / Abort 删文件用，免读回 DB）
-	ext           sql.NullString       // 文件扩展名（Complete 判断是否图片用）
-	fingerprinter fingerprint.Computer // 可选，nil 时 Complete 不算指纹
-}
-
-func (w *storeWriter) Write(p []byte) (n int, err error) {
-	return w.file.Write(p)
-}
-
-func (w *storeWriter) Sync() error {
-	if w.closed {
-		return nil
-	}
-	return w.file.Sync()
-}
-
-func (w *storeWriter) Close() error {
-	if w.closed {
-		return nil
-	}
-	w.closed = true
-	return w.file.Close()
-}
-
-func (w *storeWriter) Complete() error {
-	// 同步+关闭文件
-	if !w.closed {
-		if err := w.file.Sync(); err != nil {
-			w.file.Close()
-			w.closed = true
-			return fmt.Errorf("同步文件失败: %w", err)
-		}
-		w.closed = true
-		if err := w.file.Close(); err != nil {
-			return fmt.Errorf("关闭文件失败: %w", err)
-		}
-	}
-
-	// 提取图片宽高（用构造时缓存的路径，无需读回 DB 记录）
-	width, height := tryDecodeImageDimensions(w.filePath, w.ext, w.workDirGetter())
-	// 仅写 completed_at + 宽高 + 指纹，其余字段靠 Updates 跳零值保留
-	record := domain.NewPersistentStore()
-	record.SetID(w.storeId)
-	record.CompletedAt = util.GetCurrentTimestamp()
-	record.Width = width
-	record.Height = height
-	if w.fingerprinter != nil && w.filePath.Valid {
-		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
-		if fp, err := w.fingerprinter.Fingerprint(context.Background(), absPath); err == nil {
-			record.ContentFingerprint = sql.NullString{String: fp.Digest, Valid: true}
-		} else {
-			logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
-		}
-	}
-	if err := w.repo.Updates(context.Background(), record); err != nil {
-		return fmt.Errorf("更新记录状态失败: %w", err)
-	}
-	return nil
-}
-
-func (w *storeWriter) Abort() error {
-	// 关闭文件
-	if !w.closed {
-		w.file.Close()
-		w.closed = true
-	}
-
-	// 用构造时缓存的路径删除磁盘文件（无需读回 DB 记录）
-	if w.filePath.Valid {
-		storeRegistry.Suppress(w.filePath.String)
-		defer storeRegistry.Release(w.filePath.String)
-		absPath := filepath.Join(w.workDirGetter(), w.filePath.String)
-		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-			logger.Log.Warn("Abort 时删除文件失败", zap.String("path", absPath), zap.Error(err))
-		}
-	}
-
-	// 删除 DB 记录
-	if err := w.repo.DeleteUnscoped(context.Background(), w.storeId); err != nil {
-		logger.Log.Error("Abort 时删除记录失败", zap.Int64("storeId", w.storeId), zap.Error(err))
-		return err
-	}
-	return nil
 }
 
 // tryDecodeImageDimensions 若为图片则读取文件头部解码返回宽高，否则返回无效值
@@ -364,137 +252,53 @@ func (s *Service) CleanupFile(relPath string) {
 	}
 }
 
-// StoreStream 创建 DB 记录（未完成）+ 目录 + 文件，返回 storeId 和 StoreWriter
-// relPath: 相对于 {workDir} 的路径
-// fileName: 原始文件名
-func (s *Service) StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer StoreWriter, err error) {
+// CommitStore 提交点建行：为已 rename 就位的下载产物建完整 persistent_store 行（下载执行面
+// 暂存模式的提交事务内调用）。文件由调用方先行 rename 到最终路径，本方法只建/复用 DB 行：
+// completed_at 即时置位（必然完整——暂存写满与完整性校验已过），宽高按扩展名图片判定解码、
+// 头指纹按最终路径计算，哈希双列由调用方传入（暂存写入流
+// 边写边算，零额外读盘）。同路径已有活行时复用该行全字段覆写（重下覆盖语义，行 ID 不变）；
+// 旧文件已被调用方 rename 原子替换，此处不再触碰磁盘。返回行 ID（提交点挂载 resource_store 用）
+func (s *Service) CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error) {
 	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
-		return 0, nil, err
+		return 0, err
 	}
-	// 1. 校验 relPath
 	if err := storeRegistry.ValidatePath(relPath); err != nil {
-		return 0, nil, err
+		return 0, err
 	}
-	storeRegistry.Suppress(relPath)
-	defer storeRegistry.Release(relPath)
-
-	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：查旧/抑制登记/落库全程与 DB 基准一致
+	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：查旧/落库全程与 DB 基准一致
 	relPath = filepath.ToSlash(relPath)
 
-	workDir := s.getWorkDir()
-	absPath := filepath.Join(workDir, relPath)
-
-	// 2. 检查 relPath 是否已存在记录
-	existing, err := s.repo.GetByFilePath(ctx, relPath)
-	if err != nil {
-		return 0, nil, fmt.Errorf("查询已有记录失败: %w", err)
-	}
-
-	if existing != nil {
-		// 已存在 → 删除旧文件
-		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-			logger.Log.Warn("删除旧文件失败", zap.String("path", absPath), zap.Error(err))
-		}
-	}
-
-	// 3. 确保目录存在
-	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-		return 0, nil, fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	// 4. 创建文件
-	file, err := os.Create(absPath)
-	if err != nil {
-		return 0, nil, fmt.Errorf("创建文件失败: %w", err)
-	}
-
-	// 5. 提取扩展名
 	ext := filepath.Ext(fileName)
 	if ext == "" {
 		ext = filepath.Ext(relPath)
 	}
 
-	// 6. 创建或更新 DB 记录（未完成状态）
-	if existing != nil {
-		existing.FileName.Valid = true
-		existing.FileName.String = fileName
-		existing.FilenameExtension.Valid = true
-		existing.FilenameExtension.String = ext
-		// completed_at 置 0（续传重置为未完成）是合法业务零值，GORM Updates 会跳过，经显式列更新补写
-		if err := s.repo.Updates(ctx, existing); err != nil {
-			file.Close()
-			os.Remove(absPath)
-			return 0, nil, fmt.Errorf("更新记录失败: %w", err)
-		}
-		if err := s.repo.ResetCompleted(ctx, existing.GetID()); err != nil {
-			file.Close()
-			os.Remove(absPath)
-			return 0, nil, fmt.Errorf("重置未完成状态失败: %w", err)
-		}
-		sw := &storeWriter{file: file, storeId: existing.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: existing.FilePath, ext: existing.FilenameExtension, fingerprinter: s.fingerprinter}
-		return existing.GetID(), sw, nil
-	}
-
-	// 创建新记录
 	store := domain.NewPersistentStore()
-	store.FilePath.Valid = true
-	store.FilePath.String = filepath.ToSlash(relPath)
-	store.FileName.Valid = true
-	store.FileName.String = fileName
-	store.FilenameExtension.Valid = true
-	store.FilenameExtension.String = ext
+	store.FilePath = sql.NullString{String: relPath, Valid: true}
+	store.FileName = sql.NullString{String: fileName, Valid: true}
+	store.FilenameExtension = sql.NullString{String: ext, Valid: true}
+	store.CompletedAt = util.GetCurrentTimestamp()
+	fillImageDimensions(store, s.getWorkDir())
+	s.fillFingerprint(store, filepath.Join(s.getWorkDir(), relPath))
+	store.ExpectedSha256 = expectedSha
+	store.ActualSha256 = actualSha
 
+	existing, err := s.repo.GetByFilePath(ctx, relPath)
+	if err != nil {
+		return 0, fmt.Errorf("查询同路径已有记录失败: %w", err)
+	}
+	if existing != nil {
+		// 复用同路径活行：全字段覆写（Save 含零值，旧哈希/旧元数据一并清除）
+		store.SetID(existing.GetID())
+		if err := s.repo.Save(ctx, store); err != nil {
+			return 0, fmt.Errorf("覆写已有记录失败: %w", err)
+		}
+		return existing.GetID(), nil
+	}
 	if err := s.repo.Create(ctx, store); err != nil {
-		file.Close()
-		os.Remove(absPath)
-		return 0, nil, fmt.Errorf("保存记录失败: %w", err)
+		return 0, fmt.Errorf("保存记录失败: %w", err)
 	}
-
-	sw := &storeWriter{file: file, storeId: store.GetID(), repo: s.repo, workDirGetter: s.workDirGetter, filePath: store.FilePath, ext: store.FilenameExtension, fingerprinter: s.fingerprinter}
-	return store.GetID(), sw, nil
-}
-
-// ResumeStream 恢复存储:Truncate(offset) + O_WRONLY 打开文件,从 offset 位置写入。
-// offset 为续写起始偏移;文件会被截断到 offset(丢弃 offset 之后的多余数据),消除 TOCTOU 竞态。
-// storeId: StoreStream 返回的未完成记录 ID
-func (s *Service) ResumeStream(ctx context.Context, storeId int64, offset int64) (StoreWriter, error) {
-	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
-		return nil, err
-	}
-	// 1. 查询记录，确认状态为未完成
-	record, err := s.repo.GetById(ctx, storeId)
-	if err != nil {
-		return nil, fmt.Errorf("查询记录失败: %w", err)
-	}
-	if record == nil {
-		return nil, fmt.Errorf("记录不存在: storeId=%d", storeId)
-	}
-	if record.CompletedAt != 0 {
-		return nil, fmt.Errorf("记录已完成，无法恢复: storeId=%d, completed_at=%d", storeId, record.CompletedAt)
-	}
-
-	// 2. 获取绝对路径
-	absPath := s.GetAbsPath(record)
-	if absPath == "" {
-		return nil, fmt.Errorf("记录文件路径为空: storeId=%d", storeId)
-	}
-
-	// 3. O_WRONLY 打开(不用 O_APPEND),Truncate 到 offset 后 Seek 到 offset 写入。
-	// Truncate 消除 os.Stat 与文件打开之间的 TOCTOU:即使文件在 stat 后变大,多余部分被截断。
-	file, err := os.OpenFile(absPath, os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("打开文件失败: %w", err)
-	}
-	if err := file.Truncate(offset); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("截断文件到偏移 %d 失败: %w", offset, err)
-	}
-	if _, err := file.Seek(offset, io.SeekStart); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("定位到偏移 %d 失败: %w", offset, err)
-	}
-
-	return &storeWriter{file: file, storeId: storeId, repo: s.repo, workDirGetter: s.workDirGetter, filePath: record.FilePath, ext: record.FilenameExtension}, nil
+	return store.GetID(), nil
 }
 
 // Store 存入文件

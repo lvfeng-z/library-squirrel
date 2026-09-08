@@ -103,6 +103,10 @@ type ImportResult struct {
 	CreatedSiteAuthors  int64 `json:"createdSiteAuthors"`  // 新建站点作者数（按站点+site_author_id 匹配）
 	ExtractedFiles      int64 `json:"extractedFiles"`      // 落盘文件数
 	AbsentStores        int64 `json:"absentStores"`        // 挂载缺席数（源文件缺失/无包内路径，决策4）
+	// CreatedStoreIDs 本次导入新建的 persistent_store 行 ID 清单（导入事务提交后填充）。
+	// 供调用方在导入成功后登记终态回滚：回滚复活被替换旧代前须先丢弃新建行，释放其占用的
+	// file_path（部分唯一索引对活行生效）；无新建行时为 nil
+	CreatedStoreIDs []int64 `json:"createdStoreIds"`
 }
 
 // ingestor ManifestIngestor 实现。
@@ -186,6 +190,7 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 		return nil, err
 	}
 	result.ExtractedFiles = filePhase.extractedFiles
+	result.CreatedStoreIDs = filePhase.createdStores
 	logger.Log.Infof("导入完成：新建作品 %d / 替换 %d（确认 %d / 增补 %d）/ 跳过 %d，新建作品集 %d / 跳过 %d，落盘文件 %d",
 		result.CreatedWorks, result.ReplacedWorks, result.ReplacedConfirmed, result.ReplacedAuto, result.SkippedWorks,
 		result.CreatedWorkSets, result.SkippedWorkSets, result.ExtractedFiles)

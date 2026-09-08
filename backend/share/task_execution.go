@@ -171,10 +171,17 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		}
 	}
 	ingestStart := time.Now()
-	if _, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts); err != nil {
+	imported, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts)
+	if err != nil {
 		logger.Log.Debugf("[share-recv] 任务 %d 导入失败 耗时=%s err=%v", task.GetID(), time.Since(ingestStart), err)
 		reportReceiveError(h, ctx, err)
 		return
+	}
+	// 导入建行事务已提交：新建 store 行清单并入终态回滚登记——导入成功到 Finish 之间的
+	// 停止/失败窗口内，控制面复活被软删受害者前先物理丢弃新建行（释放其占用的 file_path，
+	// 避免新旧两代同路径并存拒绝复活）
+	if len(imported.CreatedStoreIDs) > 0 {
+		h.SetTerminalRollback(taskManager.TerminalRollback{CreatedStoreIDs: imported.CreatedStoreIDs})
 	}
 	logger.Log.Infof("[share-recv] 任务 %d 导入完成 耗时=%s", task.GetID(), time.Since(ingestStart))
 	// 成功：清理本任务暂存（共享 manifest.json 在父任务目录，不动；残留由启动清扫回收）

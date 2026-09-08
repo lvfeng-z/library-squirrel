@@ -125,17 +125,6 @@ func (sess *execSession) runSectionCombo() comboResult {
 		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
 	}
 
-	// 替换场景:软删所选板块对应的旧 store 并登记终端回滚清单（失败复活归控制面单点）。
-	// 含资源板块的重执行即替换(空选择=全量板块同样覆盖),需备份旧 store。
-	// 任一被重执行的板块,只要该类型 store 在已有作品上存在就软删(软删→生成→失败回滚,统一替换语义);
-	// 已完成行移文件入 backup 并写行内 backup_id(同生共死),未完成行废弃文件,历史残留死行不动。
-	// 软删行入回收站文件条目由 TTL 收尾,resource_store 关联保留(失败回滚复活即挂载回位)
-	if sess.isReplace && sess.mode.storeScope.coversStores() {
-		if interr := sess.softDeleteAndArmRollback(); interr {
-			return comboInterrupted
-		}
-	}
-
 	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
 	var workResp *sdkdto.WorkResponse
 	if sess.mode.hasWorkInfo() {
@@ -262,8 +251,9 @@ func sameConflictIDSet(memoIDs, currentIDs []int64) bool {
 
 // comboFail 组合执行失败处理。
 // 执行已中断（暂停/停止）则不收口交控制面；含资源板块为终态失败（先关闭流写入句柄释放
-// 文件锁，新建 store 的丢弃与旧行复活统一由控制面 setFailed 单点按登记清单执行）；无资源
-// 板块为非终态收口（跳过上报携带错误说明：回执行前状态、推送错误通知、不产生终态）
+// 文件锁——提交窗口软删的受害者复活由控制面 setFailed 单点按登记清单同步执行，下载窗口
+// 失败则旧 store 未动、无回滚需求）；无资源板块为非终态收口（跳过上报携带错误说明：
+// 回执行前状态、推送错误通知、不产生终态）
 func (sess *execSession) comboFail(errMsg string) comboResult {
 	if sess.runAborted() {
 		return comboInterrupted

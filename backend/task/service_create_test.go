@@ -127,7 +127,7 @@ func newTestService(t *testing.T) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
 	siteSvc := site.NewService(fakeSiteRepo{}) // 站点服务仅消费查询（创建路径）
-	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc)
+	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc, nil)
 	return svc, repo
 }
 
@@ -557,7 +557,7 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	// 经生产构造函数组装（真实 task 仓储 + 真事务执行器 + 真实 site 服务）
 	siteSvc := site.NewService(site.NewRepository(db))
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil)
 	ctx := context.Background()
 
 	// 入口一/二：CreateTask——req.Pid=0 落 NULL=根级；req.Pid=父 落父 ID
@@ -671,7 +671,7 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), nil, nil, nil, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型"); err == nil {
@@ -804,7 +804,7 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
@@ -883,7 +883,7 @@ func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
 	// 父=call1，第一个子任务（call2）注入失败
 	wtStore := newTestWorkTaskStore(db)
 	failRepo := &failOnNthCreateRepo{TaskRepository: NewRepository(db, wtStore, wtStore), failAt: 2}
-	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil)
+	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
@@ -925,7 +925,7 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 
 	siteSvc := site.NewService(site.NewRepository(db))
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil)
 
 	responses := []*sdkdto.TaskCreateResponse{
 		{TaskName: "leaf-1", SiteWorkId: "k-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
@@ -963,7 +963,7 @@ func (nilSiteRepo) Get(_ context.Context, _ *database.QueryOption) (*entity.Site
 // ErrSiteNotFound 同型错误；键缺失报 ErrSiteKeyRequired。失败在字段填充阶段前置暴露，任务不落盘。
 func TestTaskCreateUnknownKeyFails(t *testing.T) {
 	siteSvc := site.NewService(nilSiteRepo{})
-	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc)
+	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc, nil)
 	siteCache := make(map[string]int)
 
 	// 键查不到行：ErrSiteNotFound 同型错误（leaf 路径）
@@ -1037,7 +1037,7 @@ func newCreateByURLService(t *testing.T, getter TaskHandlerProvider, listenerSvc
 	t.Helper()
 	repo := newFakeTaskRepo()
 	siteSvc := site.NewService(fakeSiteRepo{})
-	svc := NewService(repo, fakeTransactor{}, getter, listenerSvc, siteSvc)
+	svc := NewService(repo, fakeTransactor{}, getter, listenerSvc, siteSvc, nil)
 	return svc, repo
 }
 

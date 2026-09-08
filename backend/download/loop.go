@@ -1,9 +1,12 @@
 package download
 
-// 多轨流管理与下载循环：单流控制器（read→write→累计）+ 多流并发聚合 + 软暂停/取消响应。
+// 多轨流管理与下载循环：单流控制器（read→暂存写→累计）+ 多流并发聚合 + 软暂停/取消响应。
 // 软暂停以信号通道消费（控制面进入软暂停时 close 广播，下载循环非阻塞探测）；进入/离开
 // 下载循环经 MarkDrainPhase 上报，控制面命令监听据此分流暂停处置（可排空阶段走软暂停，
 // 其余阶段立即取消）；排空超时的强制取消归控制面，本侧只消费取消结果。
+// 暂存模式：流写入器为暂存文件（download 直接管理），全程零 DB 副作用；全部轨道写满后由
+// 调用方执行提交点（rename 进 store/ + 建行挂载事务）。失败轨暂存文件保留（诊断可见、
+// 重试重下覆盖），不再走「删文件+删行」的 Abort。
 
 import (
 	"fmt"
@@ -14,7 +17,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/persistentStore"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -50,41 +52,50 @@ type streamResult struct {
 type loopResult int
 
 const (
-	loopDone   loopResult = iota // 终态已定（成功/失败经 handle 上报）
+	loopDone   loopResult = iota // 传输收口（成功转提交点/失败已上报终态）
 	loopPaused                   // 暂停中断（未上报终态，交控制面按暂停收敛）
 )
 
-// streamController 管理单个 store 的传输(downloaded/derived 通用:reader→store 拷贝)
+// streamController 管理单个轨道的传输(downloaded/derived 通用:reader→暂存文件拷贝)
 type streamController struct {
 	role        string // store_type(main/thumbnail/videoTrack/...)
 	generation  string // downloaded | derived
 	format      string // 文件扩展名
-	size        int64  // 远程大小;-1 未知
+	size        int64  // 远程大小;-1/0 未知(document lazy 产物生成前大小未知)
 	suggestName string // 插件建议文件名
 	continuable bool   // 是否支持续传(derived 恒为 false)
+	seq         int    // 同 role 内 0-based 序号(= store_seq；暂存文件名键/规划表键/续传身份)
 
-	reader        io.ReadCloser               // 资源数据流(由调用方关闭)
-	storeWriter   persistentStore.StoreWriter // 当前写入的 StoreWriter
-	storeId       int64                       // PersistentStore 记录 ID
-	relPath       string                      // StoreStream 的相对路径(事务回滚/清理用)
-	written       int64                       // 已写入字节数(mu 保护)
-	initialOffset int64                       // 续传初始偏移(恢复时 = writeOffset;新建轨为 0),进度分母补全完整大小
-	state         atomic.Int32                // streamState
-	mu            sync.Mutex                  // 保护 written 与 drain 期间的 reader/storeWriter 访问
+	expectedSha   string // 来源声明的期望 SHA256（空=未声明，跳过校验）
+	reader        io.ReadCloser
+	writer        *stagingWriter // 暂存文件写入器（含全量 sha256 流式哈希）
+	stagingAbs    string         // 暂存文件绝对路径（absPath 域，仅 os.* 调用点；提交点 rename 源）
+	finalRel      string         // 最终落盘 relPath（规划表值；提交点 rename 目标与建行 file_path）
+	finalName     string         // 最终文件名（提交点建行 file_name）
+	actualSha     string         // 写满后实测 SHA256 hex（finalize 产出，提交点建行落列）
+	written       int64          // 已写入字节数(mu 保护；续传恢复时=写入偏移起点，含前会话已落盘部分)
+	initialOffset int64          // 续传初始偏移(恢复时 = writeOffset;新建轨为 0),进度分母补全完整大小
+	state         atomic.Int32   // streamState
+	mu            sync.Mutex     // 保护 written 与 drain 期间的 reader/writer 访问
 }
 
-// newStreamController 构建单流控制器
-func newStreamController(spec *sdkdto.StoreSpec, storeId int64, writer persistentStore.StoreWriter, relPath string) *streamController {
+// newStreamController 构建单流控制器（spec 身份字段 + 暂存/最终路径与期望哈希）
+func newStreamController(spec *sdkdto.StoreSpec, seq int, writer *stagingWriter, stagingAbs, finalRel, finalName string) *streamController {
 	sc := &streamController{
 		role:        spec.Role,
 		generation:  spec.Generation,
 		format:      spec.Format,
 		size:        spec.Size,
 		suggestName: spec.SuggestName,
-		storeWriter: writer,
-		storeId:     storeId,
-		relPath:     relPath,
+		seq:         seq,
+		writer:      writer,
+		stagingAbs:  stagingAbs,
+		finalRel:    finalRel,
+		finalName:   finalName,
 		reader:      spec.ReadCloser,
+	}
+	if spec.ExpectedSha256 != nil {
+		sc.expectedSha = *spec.ExpectedSha256
 	}
 	if spec.Continuable != nil {
 		sc.continuable = *spec.Continuable
@@ -145,9 +156,10 @@ func (sess *execSession) runAborted() bool {
 	return sess.runCtx().Err() != nil
 }
 
-// downloadLoop 多流并发下载循环:每条流一个 goroutine 跑 read→write→累计。
-// 全部完成 → 重算资源完整度、清 pending 后经 handle 上报成功终态;任一失败 → 清 pending 后
-// 经 handle 上报失败终态(保留已完成轨的 store);任一流暂停 → 不上报终态返回,交控制面按暂停收敛
+// downloadLoop 多流并发下载循环:每条流一个 goroutine 跑 read→暂存写→累计。
+// 任一失败 → 关闭流写入句柄后经 handle 上报失败终态（暂存保留，无 DB 副作用可回滚）;
+// 任一流暂停 → 不上报终态返回,交控制面按暂停收敛;全部完成 → 返回 loopDone 由调用方执行
+// 提交点（rename + 建行事务 + 终态收口）
 func (sess *execSession) downloadLoop() loopResult {
 	// 上报进入可排空阶段:控制面命令监听据此让暂停走软暂停(排空在途再停),离开时上报退出
 	sess.handle.MarkDrainPhase(true)
@@ -206,43 +218,40 @@ func (sess *execSession) downloadLoop() loopResult {
 				msg = s
 			}
 		}
-		// 失败收口：先关闭流写入句柄释放文件锁，新建 store 的丢弃与被软删旧行的复活统一由
-		// 控制面 setFailed 单点按登记清单执行（替换场景丢弃新建行，非替换保留已下载成果）；
-		// 失败终态清 pending(failTerminal 内)后上报失败
+		// 失败收口：关闭流写入句柄释放文件锁（暂存保留供诊断与重试覆盖；替换场景旧 store 的
+		// 复活与新建处置统一由控制面 setFailed 单点按登记清单执行）；失败终态清 pending
+		// (failTerminal 内)后上报失败
 		sess.closeStreamWriters()
 		sess.failTerminal(msg)
 		return loopDone
 	}
-	// 全部完成:先计算并持久化资源完整度(此刻所有 store 已 Complete),再清 pending + 上报成功终态
-	sess.markResourceComplete(sess.runCtx(), sess.currentResourceId)
-	sess.clearPendingResourceID()
-	sess.handle.Finish()
+	// 全部完成:交调用方执行提交点（rename + 建行事务 + 完整度重算 + 清 pending + 成功终态）
 	return loopDone
 }
 
-// copyLoop 单流读取循环:read→write→累计,响应暂停/取消/EOF
+// copyLoop 单流读取循环:read→暂存写→累计,响应暂停/取消/EOF
 func (s *streamController) copyLoop(sess *execSession) streamResult {
 	buf := make([]byte, 32*1024)
 	for {
 		select {
 		case <-sess.runCtx().Done():
-			// runCtx 取消(控制面暂停/停止时取消在途 reader):统一保留文件。
-			// 停止的文件删除由控制面停止命令对流集合的后置清理处理
+			// runCtx 取消(控制面暂停/停止时取消在途 reader):统一保留暂存文件。
+			// 停止的暂存清理由控制面按任务状态处置（任务行在即保留给恢复判定）
 			return s.handlePause(buf)
 		default:
 		}
 
 		n, readErr := s.reader.Read(buf)
 		if n > 0 {
-			written, writeErr := s.storeWriter.Write(buf[:n])
+			written, writeErr := s.writer.Write(buf[:n])
 			if written > 0 {
 				s.mu.Lock()
 				s.written += int64(written)
 				s.mu.Unlock()
 			}
 			if writeErr != nil {
-				logger.Log.Errorf("[Download] 任务 %d 写入文件失败(role=%s): %v", sess.taskId, s.role, writeErr)
-				s.abort()
+				logger.Log.Errorf("[Download] 任务 %d 写入暂存失败(role=%s): %v", sess.taskId, s.role, writeErr)
+				s.closeWriter()
 				s.state.Store(int32(streamFailed))
 				return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("写入文件失败: %v", writeErr)}
 			}
@@ -263,23 +272,23 @@ func (s *streamController) copyLoop(sess *execSession) streamResult {
 			if readErr == io.EOF {
 				return s.handleEOF(sess)
 			}
-			// runCtx 取消导致的读取错误(gRPC stream cancel):视为中断,保留文件,不 Failed
+			// runCtx 取消导致的读取错误(gRPC stream cancel):视为中断,保留暂存,不 Failed
 			if sess.runCtx().Err() != nil {
 				return s.handlePause(buf)
 			}
 			// 非 EOF 非 runCtx 取消:真正的读取失败
 			logger.Log.Errorf("[Download] 任务 %d 下载读取失败(role=%s): %v", sess.taskId, s.role, readErr)
-			s.abort()
+			s.closeWriter()
 			s.state.Store(int32(streamFailed))
 			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("下载读取失败: %v", readErr)}
 		}
 	}
 }
 
-// handleEOF 处理 reader EOF:runCtx 取消或软暂停进行中导致的 EOF 走暂停路径(保留文件),
-// 否则校验完整性并完成
+// handleEOF 处理 reader EOF:runCtx 取消或软暂停进行中导致的 EOF 走暂停路径(保留暂存),
+// 否则校验完整性并收尾暂存（写满即「待提交」，DB 行由提交点统一建）
 func (s *streamController) handleEOF(sess *execSession) streamResult {
-	// runCtx 取消(控制面暂停/停止)导致上游关闭产生 EOF:视为中断,保留文件
+	// runCtx 取消(控制面暂停/停止)导致上游关闭产生 EOF:视为中断,保留暂存
 	if sess.runCtx().Err() != nil {
 		return s.handlePause(nil)
 	}
@@ -296,43 +305,47 @@ func (s *streamController) handleEOF(sess *execSession) streamResult {
 		case s.size > 0 && written < s.size:
 			// 已知预期大小且未下完
 			logger.Log.Errorf("[Download] 任务 %d 下载不完整(role=%s): 已下载 %d / 预期 %d", sess.taskId, s.role, written, s.size)
-			s.abort()
+			s.closeWriter()
 			s.state.Store(int32(streamFailed))
 			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载不完整: 已下载 %d / 预期 %d", s.role, written, s.size)}
 		case written == 0:
 			// 预期大小未知(spec.Size<=0)但一字节未写:空产物,判定不完整
 			logger.Log.Errorf("[Download] 任务 %d 下载为空(role=%s): written=0", sess.taskId, s.role)
-			s.abort()
+			s.closeWriter()
 			s.state.Store(int32(streamFailed))
 			return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("%s 下载为空(written=0)", s.role)}
 		}
 	}
-	if err := s.storeWriter.Complete(); err != nil {
-		logger.Log.Errorf("[Download] 任务 %d Complete 失败(role=%s): %v", sess.taskId, s.role, err)
+	// 暂存写满收尾：Sync+Close 后比对来源声明的完整性哈希。不符按任务失败（暂存保留供诊断，
+	// 重试重下覆盖）；实测哈希留存供提交点建行落 actual_sha256 列
+	actualSha, err := s.writer.finalize()
+	if err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 资源完整性校验失败(role=%s): %v", sess.taskId, s.role, err)
 		s.state.Store(int32(streamFailed))
-		return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("完成存储失败: %v", err)}
+		return streamResult{kind: resultFailed, errMsg: fmt.Sprintf("资源完整性校验失败（%s）：%s", s.role, err)}
 	}
+	s.actualSha = actualSha
 	s.state.Store(int32(streamCompleted))
 	return streamResult{kind: resultOK}
 }
 
-// handlePause 排空缓冲区、同步并关闭写入器、置 paused
+// handlePause 排空缓冲区、同步并关闭暂存写入器、置 paused
 func (s *streamController) handlePause(buf []byte) streamResult {
 	if buf != nil {
 		s.drain(buf)
 	}
-	s.storeWriter.Sync()
-	s.storeWriter.Close()
+	s.writer.Sync()
+	s.writer.Close()
 	s.state.Store(int32(streamPaused))
 	return streamResult{kind: resultPaused}
 }
 
-// drain 排空 reader 中所有已发送数据并写入文件,直到 reader 返回错误或 EOF
+// drain 排空 reader 中所有已发送数据并写入暂存,直到 reader 返回错误或 EOF
 func (s *streamController) drain(buf []byte) {
 	for {
 		n, err := s.reader.Read(buf)
 		if n > 0 {
-			if written, writeErr := s.storeWriter.Write(buf[:n]); writeErr == nil && written > 0 {
+			if written, writeErr := s.writer.Write(buf[:n]); writeErr == nil && written > 0 {
 				s.mu.Lock()
 				s.written += int64(written)
 				s.mu.Unlock()
@@ -344,9 +357,9 @@ func (s *streamController) drain(buf []byte) {
 	}
 }
 
-// abort 放弃写入:关闭句柄 + 删除文件 + 删 DB 记录
-func (s *streamController) abort() {
-	if s.storeWriter != nil {
-		s.storeWriter.Abort()
+// closeWriter 失败路径关闭暂存句柄（暂存文件保留——诊断可见，重试重下覆盖）
+func (s *streamController) closeWriter() {
+	if s.writer != nil {
+		s.writer.Close()
 	}
 }

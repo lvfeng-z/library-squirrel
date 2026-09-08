@@ -34,7 +34,6 @@ func EntityTaskToSDK(task *entity.Task, workTask *entity.WorkTask) *sdkdto.TaskD
 	t.SiteId = util.NullInt64ToPointer(workTask.SiteID)
 	t.SiteWorkId = util.NullStringToPointer(workTask.SiteWorkID)
 	t.Url = util.NullStringToPointer(workTask.URL)
-	t.PendingResourceId = util.NullInt64ToPointer(workTask.PendingResourceID)
 	t.Continuable = util.NullBoolToPointer(workTask.Continuable)
 	t.PluginPublicId = util.NullStringToPointer(workTask.PluginPublicID)
 	t.PluginExtensionId = util.NullStringToPointer(workTask.PluginExtensionID)

@@ -32,10 +32,10 @@ type WorkTaskProjector interface {
 	ListByIds(ctx context.Context, ids []int64) (map[int64]*domain.WorkTask, error)
 }
 
-// PendingResourceClearer 作品任务领域行 pending_resource_id 清理（作品任务领域行仓储实现，
-// 装配注入）：work 删除链治理调用——作品资源即删，残留 pending 会在恢复时误续传已删 resource
-type PendingResourceClearer interface {
-	BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error
+// StagingCleaner 任务下载暂存目录清理（task 模块暂存基建提供，装配注入）：work 删除链治理
+// 调用——作品资源即删，残留暂存会在任务恢复时误续传已删作品的下载产物
+type StagingCleaner interface {
+	CleanStagingByTaskIds(ctx context.Context, taskIds []int64) error
 }
 
 // Manager 任务管理器
@@ -67,8 +67,8 @@ type Manager struct {
 
 	// 作品任务领域行窄投影（活跃插件计数用）
 	workTaskProjector WorkTaskProjector
-	// 作品任务领域行 pending 清理（work 删除链治理调用）
-	pendingClearer PendingResourceClearer
+	// 任务下载暂存目录清理（work 删除链治理调用）
+	stagingCleaner StagingCleaner
 
 	// 进度推送器
 	pusher TaskProgressPusher
@@ -87,8 +87,9 @@ type Manager struct {
 
 // NewManager 创建任务管理器。
 // builtinStrategies 任务类型执行面策略表（task_type → 策略；可为 nil=无注册类型）；
-// workTaskProjector/pendingClearer 为作品任务领域行窄访问（可为 nil=活跃插件计数恒零/清理跳过，测试用）
-func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, deps *TaskDeps, builtinStrategies map[string]ExecutionStrategy, workTaskProjector WorkTaskProjector, pendingClearer PendingResourceClearer) *Manager {
+// workTaskProjector/stagingCleaner 为作品任务领域行窄访问与暂存治理（可为 nil=活跃插件计数
+// 恒零/清理跳过，测试用）
+func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, deps *TaskDeps, builtinStrategies map[string]ExecutionStrategy, workTaskProjector WorkTaskProjector, stagingCleaner StagingCleaner) *Manager {
 	if builtinStrategies == nil {
 		builtinStrategies = make(map[string]ExecutionStrategy)
 	}
@@ -107,7 +108,7 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, dep
 		pusher:                 pusher,
 		strategies:             builtinStrategies,
 		workTaskProjector:      workTaskProjector,
-		pendingClearer:         pendingClearer,
+		stagingCleaner:         stagingCleaner,
 		deps:                   deps,
 		waitingForInputMap:     make(map[int64]*ManagedTask),
 	}
@@ -599,16 +600,12 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 		_ = m.StopTaskTrees(ctx, taskIds)
 	}
 
-	// 清空所有关联任务（含仅存于 DB 的 Paused 任务）的 pending_resource_id：
-	// work 的 resource/store 即将被删除，残留的 pending_resource_id 会指向失效的 resource/store，
-	// 导致后续恢复时误续传。StopTaskTrees 只停内存中的运行实例，DB 中的任务须在此显式清理
-	if len(taskIds) > 0 && m.pendingClearer != nil {
-		updates := make(map[int64]sql.NullInt64, len(taskIds))
-		for _, id := range taskIds {
-			updates[id] = sql.NullInt64{Valid: false}
-		}
-		if err := m.pendingClearer.BatchUpdatePendingResourceID(ctx, updates); err != nil {
-			logger.Log.Warnf("清理作品关联任务 pending_resource_id 失败: %v", err)
+	// 清理所有关联任务（含仅存于 DB 的 Paused 任务）的下载暂存目录：
+	// work 的 resource/store 即将被删除，残留暂存会在任务恢复时误续传已删作品的下载产物。
+	// StopTaskTrees 只停内存中的运行实例，DB 中的任务暂存须在此显式清理
+	if len(taskIds) > 0 && m.stagingCleaner != nil {
+		if err := m.stagingCleaner.CleanStagingByTaskIds(ctx, taskIds); err != nil {
+			logger.Log.Warnf("清理作品关联任务下载暂存目录失败: %v", err)
 		}
 	}
 
@@ -1227,7 +1224,6 @@ func (m *Manager) flushLoop() {
 }
 
 // doFlush 将积攒的任务状态变更批量写入数据库，以及积攒进度变化推送到前端
-// （pending_resource_id 由执行面在落盘事务内直写、失败/完成时即时清理，不经此通道）
 func (m *Manager) doFlush() {
 	m.pendingMu.Lock()
 	if len(m.pendingStatusUpdates) == 0 && len(m.pendingProgressUpdates) == 0 {

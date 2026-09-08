@@ -42,7 +42,6 @@ func AssembleTaskDTO(task *entity2.Task, workTask *entity2.WorkTask, shareTask *
 	dto.SiteId = util.NullInt64ToPointer(workTask.SiteID)
 	dto.SiteWorkId = util.NullStringToPointer(workTask.SiteWorkID)
 	dto.Url = util.NullStringToPointer(workTask.URL)
-	dto.PendingResourceId = util.NullInt64ToPointer(workTask.PendingResourceID)
 	dto.Continuable = util.NullBoolToPointer(workTask.Continuable)
 	dto.PluginPublicId = util.NullStringToPointer(workTask.PluginPublicID)
 	dto.PluginExtensionId = util.NullStringToPointer(workTask.PluginExtensionID)
@@ -113,7 +112,7 @@ func ToWorkTaskEntity(dto *sdkdto.TaskDTO) *entity2.WorkTask {
 		return nil
 	}
 	hasDomain := dto.SiteId != nil || dto.SiteWorkId != nil || dto.Url != nil ||
-		dto.PendingResourceId != nil || dto.Continuable != nil ||
+		dto.Continuable != nil ||
 		dto.PluginPublicId != nil || dto.PluginExtensionId != nil || dto.PluginData != nil ||
 		len(dto.InvolvedRoles) > 0 || dto.ResourceType != ""
 	if !hasDomain {
@@ -133,10 +132,6 @@ func ToWorkTaskEntity(dto *sdkdto.TaskDTO) *entity2.WorkTask {
 	if dto.Url != nil {
 		wt.URL.Valid = true
 		wt.URL.String = *dto.Url
-	}
-	if dto.PendingResourceId != nil {
-		wt.PendingResourceID.Valid = true
-		wt.PendingResourceID.Int64 = *dto.PendingResourceId
 	}
 	if dto.Continuable != nil {
 		wt.Continuable.Valid = true

@@ -56,16 +56,6 @@ func (r *PersistentStoreRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.GORM())
 }
 
-// ResetCompleted 显式重置 completed_at=0（未完成零值是合法业务值，GORM Updates 跳零值故单列更新）。
-// dbFromCtx 模式：StoreStream 在建资源事务内调用（替换流同路径已有行走本方法），非事务连接会与
-// 外层事务争抢唯一连接（MaxOpenConns=1）形成自死锁
-func (r *PersistentStoreRepository) ResetCompleted(ctx context.Context, id int64) error {
-	return r.dbFromCtx(ctx).WithContext(ctx).
-		Model(new(domain.PersistentStore)).
-		Where("id = ?", id).
-		Update("completed_at", 0).Error
-}
-
 // DeleteUnscopedByIds 批量物理删除记录（单条 DELETE IN）。dbFromCtx 模式：可安全用于事务内
 // （作品彻底删除链在事务内调用）。目标为已软删行时 HardDelete 的 GetById 会静默跳过，故走此直删
 func (r *PersistentStoreRepository) DeleteUnscopedByIds(ctx context.Context, ids []int64) error {

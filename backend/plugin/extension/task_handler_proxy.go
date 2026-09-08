@@ -468,6 +468,7 @@ func recvSpecsAndPull(
 			Description:       meta.GetDescription(),
 			Continuable:       meta.Continuable,
 			ResumeWriteOffset: meta.ResumeWriteOffset,
+			ExpectedSha256:    meta.ExpectedSha256,
 		})
 	}
 	return specs, workResp, nil
@@ -552,7 +553,6 @@ func taskToProto(t *pluginsdkdto.TaskDTO) *gen.Task {
 		SiteWorkId:        t.SiteWorkId,
 		Url:               t.Url,
 		Status:            int32(t.Status),
-		PendingResourceId: t.PendingResourceId,
 		Continuable:       t.Continuable,
 		PluginPublicId:    t.PluginPublicId,
 		PluginExtensionId: t.PluginExtensionId,

@@ -90,7 +90,6 @@ export class Task {
     "siteWorkId"?: string | null;
     "url"?: string | null;
     "status"?: number;
-    "pendingResourceId"?: number | null;
     "continuable"?: boolean | null;
     "pluginPublicId"?: string | null;
     "pluginExtensionId"?: string | null;
@@ -122,10 +121,10 @@ export class Task {
      * Creates a new Task instance from a string or object.
      */
     static createFrom($$source: any = {}): Task {
-        const $$createField16_0 = $$createType0;
+        const $$createField15_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("involvedRoles" in $$parsedSource) {
-            $$parsedSource["involvedRoles"] = $$createField16_0($$parsedSource["involvedRoles"]);
+            $$parsedSource["involvedRoles"] = $$createField15_0($$parsedSource["involvedRoles"]);
         }
         return new Task($$parsedSource as Partial<Task>);
     }

@@ -204,8 +204,8 @@ func (pc *pluginContext) GetPluginRoot(isRelative bool) string {
 }
 
 // GetStoreRelPath 查询当前任务资源中指定 store 的真实落盘路径(workDir 相对)。
-// 插件 Start 时资源尚未创建(PendingResourceID 不可用),故用 taskId;主程序在 downloadLoop
-// 查询时事务已提交,PendingResourceID 已就位(provider 据 taskId 反查任务记录定位资源)。
+// 插件 Start 时资源尚未创建,故用 taskId;主程序按 taskId 定位任务产出资源
+// (运行中查暂存规划表,已提交查 resource.task_id 行链)。
 func (pc *pluginContext) GetStoreRelPath(taskId int64, role string, storeSeq int) (string, error) {
 	return pc.storePath.GetStoreRelPath(context.Background(), taskId, role, storeSeq)
 }

@@ -27,9 +27,10 @@ func NewPluginDownloadStrategy(deps *Deps) *PluginDownloadStrategy {
 }
 
 // Execute 插件下载任务主体执行入口：按 taskId 查作品任务领域行（行缺失即失败收口），
-// 按领域行的插件身份取执行器，据恢复信号分叉——恢复且领域行持有 pending_resource_id 时走
-// 跨重启续传（资源缺失时续传主体内部降级完整重新执行），其余走板块组合执行（重走查重/
-// 板块选择/替换链）。中断（暂停/停止）不上报终态交控制面接管
+// 按领域行的插件身份取执行器，据恢复信号分叉——恢复且暂存目录有轨道文件时走跨重启续传
+// （暂存枚举推导偏移；暂存为空/作品定位失败时续传主体内部降级完整重新执行），其余走板块
+// 组合执行（重走查重/板块选择/替换链）。中断（暂停/停止）不上报终态交控制面接管。
+// 执行结束注销暂存规划表（终态/中断返回统一收口；运行中 GetStoreRelPath 查询回落已提交行）
 func (s *PluginDownloadStrategy) Execute(handle taskManager.StrategyHandle) {
 	task := handle.Task()
 	var taskId int64
@@ -50,7 +51,10 @@ func (s *PluginDownloadStrategy) Execute(handle taskManager.StrategyHandle) {
 	sess := newExecSession(s.deps, handle, wt)
 	sess.pluginExec = exec
 	sess.mode = runModeFromTask(wt)
-	if handle.ResumeRequested() && wt.PendingResourceID.Valid {
+	if s.deps.Planner != nil {
+		defer s.deps.Planner.Unregister(taskId)
+	}
+	if handle.ResumeRequested() && sess.stagingHasFiles() {
 		sess.resumeFromPersistedState()
 		return
 	}
@@ -58,9 +62,8 @@ func (s *PluginDownloadStrategy) Execute(handle taskManager.StrategyHandle) {
 }
 
 // NotifyInterrupt 暂停/停止命令处理时的插件 RPC 转发：自查任务核心行与作品任务领域行组装
-// 参数（领域行的 pending_resource_id 供插件按已落盘字节数发起 Range 续传），stop=true 走
-// Stop（放弃语义）、否则走 Pause（保留 validBytes 供续传）。RPC 失败仅告警——中断的主体
-// 信号是运行 ctx 取消，插件侧通知为尽力而为
+// 参数，stop=true 走 Stop（放弃语义）、否则走 Pause（保留已落盘字节供续传）。RPC 失败仅
+// 告警——中断的主体信号是运行 ctx 取消，插件侧通知为尽力而为
 func (s *PluginDownloadStrategy) NotifyInterrupt(ctx context.Context, taskID int64, stop bool) {
 	if s.deps == nil || s.deps.TaskCoreReader == nil || s.deps.WorkTasks == nil || s.deps.PluginExecFactory == nil {
 		return
@@ -81,8 +84,7 @@ func (s *PluginDownloadStrategy) NotifyInterrupt(ctx context.Context, taskID int
 		return
 	}
 	param := &sdkdto.TaskResParam{
-		Task:       dto.AssembleTaskDTO(task, wt, nil),
-		ResourceId: wt.PendingResourceID.Int64,
+		Task: dto.AssembleTaskDTO(task, wt, nil),
 	}
 	if stop {
 		if err := exec.Stop(ctx, param); err != nil {

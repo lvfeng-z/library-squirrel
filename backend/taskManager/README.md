@@ -39,20 +39,20 @@
 ## 状态与生命周期不变量
 
 - **手动触发，无自动执行/恢复**：任务创建后停留 Created，等用户手动"开始"才进 Processing；app 重启后 Paused 任务**不自动恢复**，需手动"恢复"。无启动钩子自动跑任务——跨重启续传仅在手动恢复触发时经执行面（download）按恢复信号执行。
-- **状态以资源实际状态为准**（续传/重下/完成判定归执行面）：执行面决策点以文件 `os.Stat` + `persistent_store.status` 为准，不盲信 `PendingResourceID`；控制面只承载状态机与调度。
+- **状态以资源实际状态为准**（续传/重下/完成判定归执行面）：执行面决策点以暂存文件 `os.Stat` 与已提交 store 行为准；控制面只承载状态机与调度。
 
 ## 核心概念
 
 - **执行面策略（ExecutionStrategy）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——**全部任务类型经按 `task.task_type` 注册的策略表执行**（Manager 构造时注入，app.go 装配）：`'plugin-download'` → download 模块的插件下载策略（板块组合 + 多轨下载/续传 + 替换链）；`'share-receive'` → share 模块的收件拉取策略；空类型/未注册类型拒启。策略经 `StrategyHandle` 上报终态（Finish/Fail）、跳过收口（Skip）与进度；RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管。`StrategyHandle` 另提供：执行内挂起等待覆盖确认（`WaitReplaceConfirm`——置 WaitingForInput、逐条推冲突事件、记录冲突作品集合供替换答复前置锁预检、等待期间释放信号量槽位，复用 `ConfirmReplace(taskId, action)` 整体答复）、终态回滚登记（`SetTerminalRollback`——受害者清单与替换期新建行清单两载荷合并累积；失败/停止时由 setFailed 单点触发：丢弃新建行、复活软删行）、可排空阶段上报（`MarkDrainPhase`——命令监听据此分流暂停处置：可排空阶段走软暂停排空在途再停，其余阶段立即取消）、软暂停广播（`SoftPauseSignal`——控制面进入软暂停时 close，执行面收尾在途读取落盘）、恢复信号（`ResumeRequested`——执行进入策略前任务实时内存状态==Paused 时置位，执行面据此分叉跨重启续传与全新执行）。暂停/停止的插件 RPC 转发经可选能力 `InterruptNotifier`（控制面按类型断言调用，download 实现）。
-- **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。ManagedTask 持任务核心行（加载时 DB 快照——跳过收口回执行前状态的回退基准）；运行态经 atomic state 字段承载。
+- **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。ManagedTask 持任务核心行（加载时 DB 快照——跳过收口回执行前状态的回退基准）；运行态经 atomic state 字段承载，冷加载构造时按 DB 行 status 初始化（进程重启后任务不在内存，DB 行是上一会话落定的执行前稳态、仅稳定态落库——Paused 行带该状态进入执行即命中恢复信号，跨重启续传分叉可达）。
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
 - **板块执行模式**：`{workInfo, storeScope}` 三态——持久化在作品任务领域行（`StoreRoles`/`IncludeWorkInfo`，板块模式唯一源），执行面（download）每次执行查行派生；重下载入口（Handler.Redownload）负责写行后启动；终态不清空（重试按原板块再来一次，后续重下/开始覆盖）。
 - **进度推送器**（TaskProgressPusher）：两种实现——Wails 事件直推、快照模式（SnapshotPusher）。
-- **状态落盘**：终态（Finished/Failed/PartlyFinished）即时同步写库，进程崩溃也不丢失；非终态（Paused）状态与进度攒在内存，由 `flushLoop` 每 200ms 批量刷库，避免高频写放大。终态即时写与 `doFlush` 的批量 status 写都在 `pendingMu` 临界区内，互斥执行，杜绝批量通道的过时快照回写覆盖终态。`pending_resource_id` 由执行面在落盘事务内直写、失败/完成时即时清理，不经批量通道。
+- **状态落盘**：终态（Finished/Failed/PartlyFinished）即时同步写库，进程崩溃也不丢失；非终态（Paused）状态与进度攒在内存，由 `flushLoop` 每 200ms 批量刷库，避免高频写放大。终态即时写与 `doFlush` 的批量 status 写都在 `pendingMu` 临界区内，互斥执行，杜绝批量通道的过时快照回写覆盖终态。
 
 ## 依赖关系
 
-- 依赖：`Repository`（任务树核心行查询 `ListTaskTreeCore`/批量状态设置/按站点作品反查）、`task` 包（TaskStatusEnum 状态枚举）、`WorkTaskProjector`（活跃插件计数的作品任务领域行窄投影，download 仓储实现）、`PendingResourceClearer`（work 删除链清 pending，download 仓储实现）、`SectionRecorder`（重下载板块选择写行，download 实现）、`TaskProgressPusher`、任务类型执行面策略表（task_type → ExecutionStrategy，构造注入；plugin-download/share-receive 均经此）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）、resource 替换链复活能力（终态回滚单点）
+- 依赖：`Repository`（任务树核心行查询 `ListTaskTreeCore`/批量状态设置/按站点作品反查）、`task` 包（TaskStatusEnum 状态枚举）、`WorkTaskProjector`（活跃插件计数的作品任务领域行窄投影，download 仓储实现）、`StagingCleaner`（work 删除链清下载暂存，task 模块暂存基建适配实现）、`SectionRecorder`（重下载板块选择写行，download 实现）、`TaskProgressPusher`、任务类型执行面策略表（task_type → ExecutionStrategy，构造注入；plugin-download/share-receive 均经此）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）、resource 替换链复活能力（终态回滚单点）
 - 被依赖：前端任务执行面板（操作栏）、download（实现 plugin-download 执行面策略）、share（实现 share-receive 执行面策略）
 
 ## 关键设计
@@ -61,4 +61,4 @@
 - **per-task actor 模型**：每个 `ManagedTask` 持一条常驻 goroutine(`actorLoop`) + 命令通道(`cmdCh`),任务级可变状态只在 actor goroutine 内修改。外部操作(`Pause`/`Resume`/`Stop`/`ConfirmReplace`/`dispatch`)退化为向 `cmdCh` 非阻塞投递命令(`postCmd`,投递路径不持 `m.mu` 防死锁),actor 串行处理(`handleRunCmd`/`handlePauseCmd`/`handleStopCmd`)。带应答命令(`Pause`/`Stop`)的等待有界：队列满丢弃即回写错误、actor 已退出立返错误、应答超时(默认 35s,覆盖中断通知 30s 上界)返回错误——控制操作不无限阻塞。actor 退出时取消任务 ctx 并以善后消费接管 `cmdCh`(消费残留命令后随 ctx 取消退出,不随任务对象常驻)。命令队列天然记忆(无丢失唤醒)且保证时序——pause 排在 resume 之后最终生效,从结构上消除滞后 goroutine 按陈旧标志重派发。创建层 `claimTask`/`claimParent`(`m.mu` 下 insert-or-get)保证同一 taskId 只有一个对象;`actorStarted` CAS 保证一任务一 actor。策略主体执行期间 `cmdWatcher` 并发监听 `cmdCh`,收到 pause/stop 按阶段分流（可排空阶段〔`drainPhase`，执行面经 MarkDrainPhase 上报〕走软暂停广播 + 2 秒排空超时兜底强制取消 vs 其余阶段立即 `runCancel` 中断在途）；`runCtx.Done` 统一中断执行面。
 - **执行入口与信号量**:`startTaskTrees`(开始/重试)与`resumeTaskTrees`(恢复)从 DB 加载任务树（只查核心行）后调 `dispatch`;`ResumeTaskTrees`(批量恢复:内存命中直接 postCmd,未命中收集走 `resumeTaskTrees` 从 DB 加载)与`ConfirmReplace`(向执行内挂起等待的确认通道投递答复)。`dispatch` 是首启入口(`actorStarted` CAS + 投 `cmdStart`/`cmdResume`)。信号量槽位获取移入 actor 内部(`handleRunCmd` 中 `select semaphore`,取不到则 `enqueueSelf` 入 `waitingQueue`);槽位释放后 `dispatchFromQueue` 向队首投 `cmdResume` 唤醒。策略任务确认挂起期间 `WaitReplaceConfirm` 自行释放槽位、答复后重新取槽(`releaseSlot` 按 slotHeld 守卫防重复释放)。`PauseTaskTrees`/`StopTaskTrees` 批量循环 `resolveTargets` 后对目标并行投命令(各 actor 独立处理,Stop 带 ack 有界等待终态后对去重 parent `cleanupStoppedTree`)。优雅关闭(`GracefulShutdown`)的暂停阶段同样按任务并行发起——单任务的中断通知等待时长不叠加进整体关闭耗时。
 - **依赖全部接口注入**：策略表、仓储、窄投影、进度推送器均通过构造函数注入，`Manager` 不直接持有具体 Service。
-- **替换链终态回滚单点**：执行面替换前置软删成功后经 `SetTerminalRollback` 登记受害者清单（多次软删合并去重）；执行面在 store 行创建事务提交后登记新建/续接行清单（跨执行轮次并集——停止/暂停恢复后失败等中断路径不经会话收口，台账须在控制面存活）。任务失败/停止（含暂停态直接 Stop）统一经 `setFailed` 单点触发 `triggerTerminalRollback`：先按登记丢弃新建行（行+文件+关联，释放旧代 file_path）、再按受害者清单复活；受害者为空即未发生替换，新建行清单随登记作废（非替换失败保留已下载成果）。Finish 清空登记——重试从空态重新登记，不复活历史软删行。软删/复活/丢弃的能力实现见 resource 模块 README 替换链能力节。
+- **替换链终态回滚单点**：执行面替换软删成功后经 `SetTerminalRollback` 登记受害者清单（多次软删合并去重）；执行面在 store 行创建事务提交后登记新建行清单（跨执行轮次并集——停止/暂停恢复后失败等中断路径不经会话收口，台账须在控制面存活；当前两载荷登记方为 share-receive——plugin-download 替换链坍缩到提交窗口，只登记受害者、提交事务原子性兜底建行段）。任务失败/停止（含暂停态直接 Stop）统一经 `setFailed` 单点触发 `triggerTerminalRollback`：先按登记丢弃新建行（行+文件+关联，释放旧代 file_path）、再按受害者清单复活；受害者为空即未发生替换，新建行清单随登记作废（非替换失败保留已下载成果）。Finish 清空登记——重试从空态重新登记，不复活历史软删行。软删/复活/丢弃的能力实现见 resource 模块 README 替换链能力节。

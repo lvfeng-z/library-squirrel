@@ -117,7 +117,7 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 	})
 	assertColumns("work_task", []string{
 		"id", "create_time", "update_time",
-		"site_id", "site_work_id", "url", "pending_resource_id", "continuable",
+		"site_id", "site_work_id", "url", "continuable",
 		"plugin_public_id", "plugin_extension_id", "plugin_data",
 		"store_roles", "involved_roles", "resource_type", "include_work_info",
 	})
@@ -126,11 +126,10 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 		"relay_dial", "relay_host", "token", "key_b64", "password_hash", "manifest_path", "manifest_id",
 	})
 
-	// FK 在册：共享主键 id→task；work_task 另挂站点与资源引用
+	// FK 在册：共享主键 id→task；work_task 另挂站点引用
 	wtSpec := fkTable{Table: "work_task", FKs: []fkSpec{
 		{Column: "id", Parent: "task"},
 		{Column: "site_id", Parent: "site"},
-		{Column: "pending_resource_id", Parent: "resource"},
 	}}
 	if done, err := fkDeclared(db, wtSpec); err != nil || !done {
 		t.Fatalf("work_task 外键应全部在册: done=%v err=%v", done, err)

@@ -47,5 +47,14 @@
 seq 必须取自资源全局 `store_seq`(M 身份化),不能用 resume specs 内重计:
 
 - resume 的 specs 是未完成子集(已完成 store 不在其中)
-- 同 role 部分完成时,specs 内 roleCounters 重计会与全局 `store_seq` 错位 → `findStoreRowByIdentity` 匹配到已完成行 → 续传覆盖已完成 store(数据损坏)
-- `taskManager.resumeSpecSeq` 按 `streamOffsets`(downloaded,携带全局 StoreSeq)+ `storeRows`(derived,按 role 查未完成行)配对全局 seq
+- 同 role 部分完成时,specs 内 roleCounters 重计会与全局 `store_seq` 错位 → 配对到已完成轨 → 续传覆盖已完成 store(数据损坏)
+
+## 下载暂存命名(暂存模式)
+
+下载执行面落盘走暂存模式:先写 `{workDir}/task-staging/{taskID}/`,全部轨道写满后提交点统一 rename 到上表最终路径。暂存文件名与最终名解耦,为 `role_seq` 派生键:
+
+- 形态 `{role}_{seq 三位零填充}{ext}`(如 `videoTrack_007.mp4`),ext 取自 spec.Format(`StagingFileName`)
+- 用途:续传定位与崩溃清扫直接按文件名还原 (role, seq) 身份,不依赖元数据重解析;最终名由执行前规划(StagingPlanner)持有
+- 全局 seq 推导:全新执行=specs 全集序,恢复=暂存枚举序(同 role 内按 seq 排队,返回 spec 按角色消费队列)
+- `task-staging/` 不在 store/ 白名单子树内,fsmonitor 对其零感知(无需抑制登记);提交点 rename 是白名单内操作,由 download 登记 `storeRegistry.Suppress`
+- 恢复时全局 seq 配对:download `pairResumeSpecs` 把插件 Resume 返回的 specs 与暂存枚举轨按 role 配对、依序消费全局 seq(同 role 多轨按序对齐);未被认领的暂存轨交 Start 整轨重产(derived 一次性产物不可续传)

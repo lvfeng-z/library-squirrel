@@ -72,7 +72,7 @@ func (sess *execSession) resolveBaseName(workResp *sdkdto.WorkResponse) (relativ
 //   - 多 store 资源(multiStore=true):<bas>_<role>_<seq>[_<描述>].<ext>
 //
 // seq 为同 role 内 0-based 序号(= store_seq,续传身份键);描述取自 spec.Description,净化后为空则省略。
-// StoreStream 据 relPath 创建文件,relPath 末段须与 fileName 一致,否则多 store 落盘同一 relPath 互相覆盖
+// 落盘以 relPath 末段为文件名,relPath 末段须与 fileName 一致,否则多 store 落盘同一 relPath 互相覆盖
 func (sess *execSession) resolveStorePath(spec *sdkdto.StoreSpec, baseRelPath, bas string, sameRoleSeq int, multiStore bool) (relativePath, fileName string) {
 	ext := normalizeExt(spec.Format)
 	if !multiStore {

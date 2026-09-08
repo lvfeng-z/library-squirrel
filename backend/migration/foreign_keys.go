@@ -62,7 +62,6 @@ var fkBatches = []fkTable{
 	{Table: "work_task", FKs: []fkSpec{
 		{Column: "id", Parent: "task"},
 		{Column: "site_id", Parent: "site"},
-		{Column: "pending_resource_id", Parent: "resource"},
 	}},
 	{Table: "share_task", FKs: []fkSpec{
 		{Column: "id", Parent: "task"},
@@ -224,7 +223,7 @@ func renameCreateTable(ddl, oldName, newName string) string {
 // injectForeignKeys 在建表 DDL 收口括号前注入缺失的 FK 子句（NO ACTION 为 SQLite 默认
 // 行为，显式写出以自释义）。已在册的 FK 不重复注入——二次重建的表 DDL 含此前批次的子句
 func injectForeignKeys(ddl string, fks []fkSpec) string {
-	norm := strings.NewReplacer("`", "", "\"", "").Replace(ddl)
+	norm := stripIdentifierQuotes(ddl)
 	clauses := make([]string, 0, len(fks))
 	for _, fk := range fks {
 		if strings.Contains(norm, fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s", fk.Column, fk.Parent)) {
@@ -238,6 +237,149 @@ func injectForeignKeys(ddl string, fks []fkSpec) string {
 	closeIdx := strings.LastIndexByte(ddl, ')')
 	body := strings.TrimRight(ddl[:closeIdx], " \t\r\n")
 	return body + ",\n  " + strings.Join(clauses, ",\n  ") + "\n" + ddl[closeIdx:]
+}
+
+// stripIdentifierQuotes 去除 SQL 文本中的反引号与双引号（段落识别用——标识符引号风格随
+// 建表来源而异（GORM 反引号、RENAME 规范化双引号），剥离后按裸名匹配）
+func stripIdentifierQuotes(s string) string {
+	return strings.NewReplacer("`", "", "\"", "").Replace(s)
+}
+
+// rebuildTableDropColumn 经表重建删除列：列被外键子句引用时 ALTER TABLE DROP COLUMN 不可用
+// （SQLite 限制），须整表重建。以 sqlite_master 现表 DDL 为源文本，剔除目标列定义段与其
+// 外键子句段，其余列与外键逐字保留（列序保真，禁用实体重建 DDL 的错位风险同表重建挂外键）；
+// 按显式列清单 INSERT SELECT 拷数据（新旧表列集相差一列，SELECT * 按位拷贝会错位）；
+// 索引随旧表消亡、重建后逐一复原。舞步同 rebuildTableWithFK（foreign_keys 关闭→事务内
+// 建/拷/删/改名→恢复）
+func rebuildTableDropColumn(db *gorm.DB, table string, column string) error {
+	var ddl string
+	if err := db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&ddl).Error; err != nil {
+		return fmt.Errorf("读取 %s 建表 DDL 失败: %w", table, err)
+	}
+	if ddl == "" {
+		return fmt.Errorf("表 %s 不存在，无法删列", table)
+	}
+
+	// 现表列清单（拷贝用）：按实际列序，剔除目标列；列不存在即无事可做（幂等）
+	var cols []struct{ Name string }
+	if err := db.Raw(fmt.Sprintf("PRAGMA table_info('%s')", table)).Scan(&cols).Error; err != nil {
+		return fmt.Errorf("读取 %s 列清单失败: %w", table, err)
+	}
+	keepCols := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c.Name != column {
+			keepCols = append(keepCols, c.Name)
+		}
+	}
+	if len(keepCols) == len(cols) {
+		return nil
+	}
+
+	// 现表索引清单：索引归属旧表、DROP TABLE 时一并消亡，重建后须逐一复原
+	// （sql 为 NULL 的行是 SQLite 自动索引，不在 sqlite_master 存 DDL，无需复原）
+	type indexDDL struct {
+		Name string
+		Sql  string
+	}
+	var idxs []indexDDL
+	if err := db.Raw("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", table).Scan(&idxs).Error; err != nil {
+		return fmt.Errorf("读取 %s 索引清单失败: %w", table, err)
+	}
+
+	open := strings.IndexByte(ddl, '(')
+	closeIdx := strings.LastIndexByte(ddl, ')')
+	if open < 0 || closeIdx < open {
+		return fmt.Errorf("表 %s 建表 DDL 形态异常: %s", table, ddl)
+	}
+	kept := make([]string, 0, len(cols))
+	for _, seg := range splitDDLTopLevelSegments(ddl[open+1 : closeIdx]) {
+		norm := strings.TrimSpace(stripIdentifierQuotes(seg))
+		if norm == "" {
+			continue
+		}
+		// 列定义段：首个标识符即目标列名（裸名后跟空白或段落即止，无前缀误伤）
+		if norm == column || strings.HasPrefix(norm, column+" ") {
+			continue
+		}
+		// 外键子句段：引用目标列（含 CONSTRAINT 命名形态）
+		if strings.Contains(norm, "FOREIGN KEY ("+column+")") {
+			continue
+		}
+		kept = append(kept, strings.TrimSpace(seg))
+	}
+	if len(kept) == 0 {
+		return fmt.Errorf("表 %s 剔除列 %s 后无剩余列定义，拒绝重建", table, column)
+	}
+
+	newName := table + "_drop_rebuild"
+	newDDL := renameCreateTable(ddl[:open+1]+"\n  "+strings.Join(kept, ",\n  ")+"\n"+ddl[closeIdx:], table, newName)
+
+	colList := "`" + strings.Join(keepCols, "`, `") + "`"
+	var prior int
+	if err := db.Raw("PRAGMA foreign_keys").Scan(&prior).Error; err != nil {
+		return fmt.Errorf("读取 foreign_keys 状态失败: %w", err)
+	}
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		return fmt.Errorf("关闭 foreign_keys 失败: %w", err)
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(newDDL).Error; err != nil {
+			return fmt.Errorf("建新表 %s 失败: %w", newName, err)
+		}
+		if err := tx.Exec(fmt.Sprintf("INSERT INTO `%s` (%s) SELECT %s FROM `%s`", newName, colList, colList, table)).Error; err != nil {
+			return fmt.Errorf("拷贝 %s 数据失败: %w", table, err)
+		}
+		if err := tx.Exec(fmt.Sprintf("DROP TABLE `%s`", table)).Error; err != nil {
+			return fmt.Errorf("删旧表 %s 失败: %w", table, err)
+		}
+		// FK 关闭态下 RENAME 不联动修改他表 REFERENCES 子句；终名与原名一致，引用按名照常解析
+		if err := tx.Exec(fmt.Sprintf("ALTER TABLE `%s` RENAME TO `%s`", newName, table)).Error; err != nil {
+			return fmt.Errorf("改回表名 %s 失败: %w", table, err)
+		}
+		for _, idx := range idxs {
+			if err := tx.Exec(idx.Sql).Error; err != nil {
+				return fmt.Errorf("复原索引 %s 失败: %w", idx.Name, err)
+			}
+		}
+		return nil
+	})
+	if restoreErr := db.Exec(fmt.Sprintf("PRAGMA foreign_keys = %d", prior)).Error; restoreErr != nil && err == nil {
+		err = restoreErr
+	}
+	return err
+}
+
+// splitDDLTopLevelSegments 按顶层逗号切分建表 DDL 体：括号内逗号（如 numeric(10,5)、
+// REFERENCES x (id)）不切；引号内（标识符/字符串字面量）逗号不切
+func splitDDLTopLevelSegments(body string) []string {
+	segments := make([]string, 0, 16)
+	depth := 0
+	var quote byte
+	start := 0
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '`', '"', '\'':
+			quote = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				segments = append(segments, body[start:i])
+				start = i + 1
+			}
+		}
+	}
+	segments = append(segments, body[start:])
+	return segments
 }
 
 // cleanDanglingAssociations 清理悬空引用（历史删除链缺口遗留——指向已不存在父行的行）。
@@ -276,7 +418,6 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		// 遮蔽外层表，task.pid 解析到内层行自身致 NOT EXISTS 恒真、全表 pid 被清（存量事故实锚）
 		"UPDATE task SET pid = NULL WHERE pid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM task parent_tk WHERE parent_tk.id = task.pid)",
 		"UPDATE work_task SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = work_task.site_id)",
-		"UPDATE work_task SET pending_resource_id = NULL WHERE pending_resource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM resource WHERE id = work_task.pending_resource_id)",
 		"UPDATE plugin SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = plugin.backup_id)",
 		"UPDATE persistent_store SET backup_id = NULL WHERE backup_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM backup WHERE id = persistent_store.backup_id)",
 		// resource.task_id 引用作品任务领域行（1:1 同值键）；上方 deletes 段已清孤儿领域行，

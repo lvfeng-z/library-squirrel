@@ -9,7 +9,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
-	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/resource"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -80,42 +79,34 @@ type ResourceReader interface {
 	GetById(ctx context.Context, id int64) (*entity.Resource, error)
 }
 
-// WorkLivenessReader 作品活行查询接口（失败还原链守卫：作品已软删则跳过回滚）
-type WorkLivenessReader interface {
-	GetById(ctx context.Context, id int64) (*entity.Work, error)
-}
-
-// StoreBackupReader store 行含删读取与复活（由 persistentStore.Service 实现）
-type StoreBackupReader interface {
-	// ListByIdsIncludeDeleted 按 ID 集合查记录行（含已删行；行内 backup_id/file_path/deleted_at 供失败还原派生）
-	ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity.PersistentStore
-	// RestoreByIds 批量复活记录（清软删标志与 backup_id；文件还原回 store/ 后调用）
-	RestoreByIds(ctx context.Context, ids []int64) error
-}
-
 // ResourceRecomputer 资源完整度重算（由 resource.Service 实现；活行 store 角色计数，
 // 关联保留形态下软删行关联不计入）
 type ResourceRecomputer interface {
 	RecomputeResourceComplete(ctx context.Context, resourceId int64)
 }
 
-// StoreStreamer 创建存储记录并返回 StoreWriter
-type StoreStreamer interface {
-	StoreStream(ctx context.Context, relPath string, fileName string) (storeId int64, writer persistentStore.StoreWriter, err error)
-	ResumeStream(ctx context.Context, storeId int64, offset int64) (writer persistentStore.StoreWriter, err error)
+// StoreCommitter 提交点建行能力（暂存模式下由 persistentStore.Service 实现）：
+// 暂存文件 rename 到最终路径后，在提交事务内建完整 persistent_store 行（completed_at 即时
+// 置位 + 宽高/头指纹/哈希双列），返回行 ID 供 resource_store 挂载
+type StoreCommitter interface {
+	// CommitStore 为已就位的最终路径建/复用完整行。expectedSha/actualSha 为来源声明与
+	// 暂存写入流实测的 SHA256（sql.NullString，无效态=未声明/未算）
+	CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
 }
 
-// StoreReader 查询 PersistentStore 记录
-type StoreReader interface {
-	GetById(ctx context.Context, id int64) (*entity.PersistentStore, error)
-	GetAbsPath(store *entity.PersistentStore) string
+// WorkLocator 续传会话定位任务所属作品（由 work.Service 实现）：暂存模式下暂停任务零 DB
+// 足迹（资源行在提交点才建），恢复时按领域复合键 (site, site_work_id) 从 work_task 行回填 workId
+type WorkLocator interface {
+	GetBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) (*entity.Work, error)
 }
 
-// ResourceStoreReader resource_store 关联查询接口(多轨续传按 role 遍历 store)
-type ResourceStoreReader interface {
-	ListByResourceId(ctx context.Context, resourceId int64) ([]*entity.ResourceStore, error)
-	// ListByResourceIds 批量查询多个 Resource 的关联行（替换链软删/失败还原派生用）
-	ListByResourceIds(ctx context.Context, resourceIds []int64) ([]*entity.ResourceStore, error)
+// StagingPaths 暂存目录派生与暂存文件命名（task 模块暂存基建提供、装配层适配注入——
+// download 与 task 双向零 import，经窄接口缝合，先例同 WorkTaskWriter/Reader）
+type StagingPaths interface {
+	// StagingPath 任务暂存目录绝对路径（absPath 域，仅供 os.* 调用点现场消费）
+	StagingPath(workDir string, taskID int64) string
+	// StagingFileName 暂存文件名（role_seq 三位零填充键，保留扩展名）
+	StagingFileName(role string, storeSeq int, ext string) string
 }
 
 // ResourceStoreWriter resource_store 关联写入接口(saveResource 多 store 挂载)
@@ -123,30 +114,11 @@ type ResourceStoreWriter interface {
 	CreateBatch(ctx context.Context, stores []*entity.ResourceStore) error
 	// DeleteByResourceIdAndTypes 删除指定 Resource 下、store_type 属于给定集合且指向活行 store 的关联
 	DeleteByResourceIdAndTypes(ctx context.Context, resourceId int64, storeTypes []string) error
-	// DeleteByStoreIds 按 store ID 集合物理删除关联行（失败还原清理本次新建 store 的关联）
-	DeleteByStoreIds(ctx context.Context, storeIds []int64) error
 }
 
 // Transactor 事务执行器接口
 type Transactor interface {
 	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
-// PendingResourceUpdater 任务 pending_resource_id 同步更新接口（用于事务内直接写 DB）
-type PendingResourceUpdater interface {
-	UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error
-}
-
-// StoreFileCleaner 事务失败时清理磁盘文件
-type StoreFileCleaner interface {
-	CleanupFile(relPath string)
-}
-
-// StoreDeleter 删除 PersistentStore 记录及磁盘文件（由 persistentStore.Service 实现）
-// 失败还原前清理本次新建 store 时使用，backup=false 表示直接删除不产生备份
-type StoreDeleter interface {
-	// HardDelete 删除记录及对应文件（物理删记录）
-	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
 }
 
 // TaskCoreReader 任务核心控制行查询（由 task 模块仓储实现，装配层注入）：
@@ -170,24 +142,20 @@ type Deps struct {
 	PluginExecFactory      PluginExecFactory          // 插件任务执行器获取
 	WorkInfoSaver          WorkInfoSaver              // 作品完整信息保存
 	WorkMetaLoader         WorkMetaLoader             // 已有作品命名元数据加载
+	WorkLocator            WorkLocator                // 续传会话按 (site, site_work_id) 定位任务所属作品
 	ResourceSaver          ResourceSaver              // 资源保存
 	WorkDirProvider        WorkDirProvider            // 工作目录
 	FileNameFormatProvider FileNameFormatProvider     // 文件名格式模板
 	DuplicateChecker       duplicate.DuplicateChecker // 作品查重判定能力
 	SiteKeyResolver        SiteKeyResolver            // 站点 ID → 站点键（查重输入键形态统一）
 	ResourceReader         ResourceReader             // 已有作品资源查询
-	WorkLivenessReader     WorkLivenessReader         // 作品活行查询（失败还原链守卫）
-	ReplaceStoreOps        resource.ReplaceStoreOps   // 替换链能力（前置软删/失败回滚复活）
-	StoreBackupReader      StoreBackupReader          // store 行含删读取与复活
+	ReplaceStoreOps        resource.ReplaceStoreOps   // 替换链能力（提交窗口软删/失败回滚复活）
 	ResourceUpdater        ResourceSaver              // 替换场景更新 Resource 的 Store 字段
-	StoreStreamer          StoreStreamer              // 落盘流创建/续传
-	StoreReader            StoreReader                // PersistentStore 记录查询
-	ResourceStoreReader    ResourceStoreReader        // resource_store 关联查询
+	StoreCommitter         StoreCommitter             // 提交点建行（暂存产物 rename 后建完整行）
 	ResourceStoreWriter    ResourceStoreWriter        // resource_store 关联写入
 	ResourceRecomputer     ResourceRecomputer         // 资源完整度重算
 	Transactor             Transactor                 // 事务执行
-	PendingResourceUpdater PendingResourceUpdater     // pending_resource_id 事务内直写
-	StoreFileCleaner       StoreFileCleaner           // 事务失败清理磁盘文件
-	StoreDeleter           StoreDeleter               // PersistentStore 记录及文件删除
 	TaskCoreReader         TaskCoreReader             // 任务核心行查询（中断通知组装 TaskResParam）
+	StagingPaths           StagingPaths               // 暂存目录派生与暂存文件命名（task 基建适配）
+	Planner                *StagingPlanner            // 运行中暂存规划注册面（GetStoreRelPath 运行形态查询源）
 }

@@ -150,9 +150,11 @@ type strategyHandle struct {
 }
 
 // newStrategyHandle 构建执行句柄。恢复信号按构造时任务的实时内存状态==Paused 置位——
-// 恢复语义=执行前 Paused；首启/重试（执行前 Created/终态）/跳过重跑（回退态）均非 Paused →
-// 全新执行。不得用任务行快照或查 DB 判定：行快照不随暂停更新（同会话「执行→暂停→恢复」恒为
-// 创建态，判 Paused 必漏续传退化重下），DB 行在暂停落库的批量窗口内可能仍是旧值。
+// 恢复语义=执行前内存态为 Paused。内存态两源合一：同会话操作演化（执行→暂停→恢复均在内存
+// 推进，任务行快照不随暂停更新、DB 行在暂停落库的批量窗口内可能仍是旧值，按行/DB 判定恒漏
+// 续传退化重下）与冷加载构造初始化（进程重启后任务不在内存，构造时按 DB 行 status 初始化——
+// 该行是上一会话落定的执行前稳态，无落库滞后）。首启/重试（执行前 Created/终态）/跳过重跑
+// （回退态）均非 Paused → 全新执行。
 // 构造须先于进入执行的状态置位（runStrategy 在置 Processing 前调用本构造）
 func newStrategyHandle(m *ManagedTask) *strategyHandle {
 	return &strategyHandle{m: m, resumeRequested: m.GetState() == TaskStatePaused}

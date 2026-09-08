@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
@@ -97,12 +96,6 @@ func (r *WorkTaskRepository) ListByIds(ctx context.Context, ids []int64) (map[in
 	return result, nil
 }
 
-// UpdatePendingResourceID 更新任务的 pending_resource_id（作品任务领域行）
-func (r *WorkTaskRepository) UpdatePendingResourceID(ctx context.Context, taskId int64, resourceID sql.NullInt64) error {
-	result := r.dbFromCtx(ctx).WithContext(ctx).Model(&entity.WorkTask{}).Where("id = ?", taskId).Update("pending_resource_id", resourceID)
-	return result.Error
-}
-
 // UpdateRedownloadSections 批量更新任务的板块重执行选择(store_roles + include_work_info)（作品任务领域行）。
 // include_work_info 经 map 写入规避 GORM Updates 跳零值（置 false 须落库）
 func (r *WorkTaskRepository) UpdateRedownloadSections(ctx context.Context, taskIds []int64, storeRoles sql.NullString, includeWorkInfo bool) error {
@@ -114,31 +107,6 @@ func (r *WorkTaskRepository) UpdateRedownloadSections(ctx context.Context, taskI
 			"store_roles":       storeRoles,
 			"include_work_info": includeWorkInfo,
 		})
-	return result.Error
-}
-
-// BatchUpdatePendingResourceID 批量更新任务的 pending_resource_id（作品任务领域行，CASE WHEN 模式）
-func (r *WorkTaskRepository) BatchUpdatePendingResourceID(ctx context.Context, updates map[int64]sql.NullInt64) error {
-	if len(updates) == 0 {
-		return nil
-	}
-
-	ids := make([]int64, 0, len(updates))
-	cases := ""
-	args := make([]any, 0, len(updates)*2+len(updates))
-	for id := range updates {
-		ids = append(ids, id)
-		cases += "WHEN id = ? THEN ? "
-	}
-	for _, id := range ids {
-		args = append(args, id, updates[id])
-	}
-	for _, id := range ids {
-		args = append(args, id)
-	}
-
-	statement := "UPDATE work_task SET pending_resource_id = CASE " + cases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
-	result := r.base.GORM().WithContext(ctx).Exec(statement, args...)
 	return result.Error
 }
 

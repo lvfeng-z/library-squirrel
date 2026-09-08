@@ -894,10 +894,11 @@ func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.Conflict
 func (h *fakeStrategyHandle) SetTerminalRollback(rollback taskManager.TerminalRollback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(rollback.Victims) == 0 {
+	if len(rollback.Victims) == 0 && len(rollback.CreatedStoreIDs) == 0 {
 		return
 	}
-	// 合并累积（对齐真实 strategyHandle：多作品软删按 StoreID 去重登记，终态回滚覆盖全部软删行）
+	// 合并累积（对齐真实 strategyHandle：受害者按 StoreID 去重、新建行按行 ID 去重，
+	// 终态回滚覆盖全部登记）
 	if h.rollback == nil {
 		h.rollback = &taskManager.TerminalRollback{}
 	}
@@ -911,6 +912,17 @@ func (h *fakeStrategyHandle) SetTerminalRollback(rollback taskManager.TerminalRo
 		}
 		seen[v.StoreID] = struct{}{}
 		h.rollback.Victims = append(h.rollback.Victims, v)
+	}
+	createdSeen := make(map[int64]struct{}, len(h.rollback.CreatedStoreIDs))
+	for _, id := range h.rollback.CreatedStoreIDs {
+		createdSeen[id] = struct{}{}
+	}
+	for _, id := range rollback.CreatedStoreIDs {
+		if _, dup := createdSeen[id]; dup {
+			continue
+		}
+		createdSeen[id] = struct{}{}
+		h.rollback.CreatedStoreIDs = append(h.rollback.CreatedStoreIDs, id)
 	}
 }
 

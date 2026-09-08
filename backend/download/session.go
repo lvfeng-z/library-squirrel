@@ -6,9 +6,7 @@ package download
 
 import (
 	"context"
-	"database/sql"
 
-	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/taskManager"
 
@@ -32,7 +30,7 @@ type execSession struct {
 	// 插件任务执行器（执行入口按领域行的插件公开 ID 获取）
 	pluginExec PluginExecutor
 
-	// 替换场景（已有作品上重执行资源板块），前置软删旧 store 的决策位
+	// 替换场景（已有作品上重执行资源板块），提交窗口软删旧 store 的决策位
 	isReplace bool
 	// 跳过查重（覆盖确认答复替换后的续行）
 	skipDuplicateCheck bool
@@ -93,24 +91,7 @@ func (sess *execSession) markResourceComplete(ctx context.Context, resourceId in
 	sess.deps.ResourceRecomputer.RecomputeResourceComplete(ctx, resourceId)
 }
 
-// failTerminal 失败终态收口：失败任务不续传，先清 pending_resource_id（残留值在作品/资源被
-// 外部删除或还原后会指向失效 resource/store），再经 handle 上报失败。暂停保留 pending 供恢复
-// 续传定位，不走此路径
+// failTerminal 失败终态收口：失败任务不续传（暂存保留供诊断、重试覆盖），经 handle 上报失败
 func (sess *execSession) failTerminal(errMsg string) {
-	if sess.workTask.PendingResourceID.Valid {
-		sess.clearPendingResourceID()
-	}
 	sess.handle.Fail(errMsg)
-}
-
-// clearPendingResourceID 清除任务的 pending_resource_id 并直写领域行（成功/失败终态时调用；
-// 暂停保留该值供恢复续传定位）
-func (sess *execSession) clearPendingResourceID() {
-	sess.workTask.PendingResourceID = sql.NullInt64{}
-	if sess.deps == nil || sess.deps.PendingResourceUpdater == nil {
-		return
-	}
-	if err := sess.deps.PendingResourceUpdater.UpdatePendingResourceID(context.Background(), sess.taskId, sess.workTask.PendingResourceID); err != nil {
-		logger.Log.Warnf("[Download] 任务 %d 清除 pending_resource_id 失败: %v", sess.taskId, err)
-	}
 }

@@ -3,6 +3,8 @@ package task
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -12,8 +14,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// 本文件为任务删除链外键前置义务回归测试：删任务前清 resource.task_id 引用（NULL=非任务产），
-// 资源行保留；任务行（主+子）物理消亡。删除链编排在 Service.DeleteTask 事务内完成。
+// 本文件为任务删除链回归测试：①外键前置义务——删任务前清 resource.task_id 引用（NULL=非任务产），
+// 资源行保留、任务行（主+子）物理消亡，删除链编排在 Service.DeleteTask 事务内完成；
+// ②暂存目录联动——被删任务（含子任务）的下载暂存目录随删除链即时移除。
 
 // testTransactor 真事务执行器（事务 DB 经 ctx 传递，仓储 dbFromCtx 感知）
 type testTransactor struct{ db *gorm.DB }
@@ -30,6 +33,68 @@ func (t *testTransactor) ExecInTransaction(ctx context.Context, fn func(ctx cont
 // 顺序的证明（引用未清即删任务直接 FK 违约报错）。
 // resource.task_id 引用 work_task（同值共享主键），fixture 为各任务建对应领域行；
 // 删除链同时摘除被删任务的领域行（对照组领域行保留）
+// TestDeleteTaskCleansStagingDirs 删任务 → 被删任务（含子任务）的下载暂存目录一并移除、
+// 对照组任务的暂存目录保留。暂存目录按任务 ID 派生（task-staging/{taskID}/），
+// 生命周期与任务行一致——删除链在事务提交后即时清理，不等启动清扫兜底
+func TestDeleteTaskCleansStagingDirs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	workDir := t.TempDir()
+	wtStore := newTestWorkTaskStore(db)
+	repo := NewRepository(db, wtStore, wtStore)
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, func() string { return workDir })
+
+	newTask := func(name string, pid int64) *domain.Task {
+		tk := domain.NewTask()
+		tk.TaskName = sql.NullString{String: name, Valid: true}
+		if pid > 0 {
+			tk.Pid = sql.NullInt64{Int64: pid, Valid: true}
+		}
+		if err := db.Create(tk).Error; err != nil {
+			t.Fatalf("插任务 %s 失败: %v", name, err)
+		}
+		return tk
+	}
+	parent := newTask("主任务", 0)
+	child := newTask("子任务", parent.GetID())
+	other := newTask("对照组", 0)
+
+	// 各任务暂存目录内置一个暂存文件（空目录无法区分「已清」与「从未建」）
+	newStaging := func(taskId int64) string {
+		dir := StagingPath(workDir, taskId)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("建暂存目录失败: %v", err)
+		}
+		file := filepath.Join(dir, StagingFileName("image", 0, ".jpg"))
+		if err := os.WriteFile(file, []byte("staged"), 0o644); err != nil {
+			t.Fatalf("写暂存文件失败: %v", err)
+		}
+		return file
+	}
+	parentFile := newStaging(parent.GetID())
+	childFile := newStaging(child.GetID())
+	otherFile := newStaging(other.GetID())
+
+	if err := svc.DeleteTask(context.Background(), []int64{parent.GetID()}); err != nil {
+		t.Fatalf("删除任务失败: %v", err)
+	}
+
+	// 父与子的暂存目录随删除链移除；对照组保留
+	for path, name := range map[string]string{parentFile: "主任务", childFile: "子任务"} {
+		if _, serr := os.Stat(path); !os.IsNotExist(serr) {
+			t.Fatalf("%s的暂存目录应随删除链移除，文件仍存在: %s", name, path)
+		}
+	}
+	if _, serr := os.Stat(otherFile); serr != nil {
+		t.Fatalf("对照组任务的暂存目录应保留: %v", serr)
+	}
+}
+
 func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -44,7 +109,7 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	}
 	wtStore := newTestWorkTaskStore(db)
 	repo := NewRepository(db, wtStore, wtStore)
-	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil)
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil)
 
 	// 主任务 + 子任务 + 对照组任务（各配同 id 作品领域行——resource.task_id 引用防线）
 	newSeededTask := func(name string, pid int64) *domain.Task {

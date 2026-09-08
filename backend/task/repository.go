@@ -495,19 +495,20 @@ func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) e
 		Exec("UPDATE resource SET task_id = NULL WHERE task_id IN (SELECT id FROM task WHERE id IN ? OR pid IN ?)", ids, ids).Error
 }
 
-// DeleteTask 删除任务（包含子任务）- 批量删除。
+// DeleteTask 删除任务（包含子任务）- 批量删除，返回全量被删任务 ID 集（入参与其子任务，
+// 供删除链消费方清理任务级附属物——下载暂存目录键即任务 ID）。
 // dbFromCtx 模式：删除链在事务内执行——清 resource.task_id 引用（见 Service.DeleteTask）→
 // 删 work_task/share_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
-func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) error {
+func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
-		return nil
+		return nil, nil
 	}
 	db := r.dbFromCtx(ctx).WithContext(ctx)
 
 	// 子任务核心行 id 集（其领域行随删除链一并消亡）
 	var childIds []int64
 	if err := db.Model(&domain.Task{}).Where("pid IN ?", ids).Pluck("id", &childIds).Error; err != nil {
-		return err
+		return nil, err
 	}
 	allIds := ids
 	if len(childIds) > 0 {
@@ -516,17 +517,17 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) error {
 
 	// 领域行先删：共享主键外键（id→task）下，核心行先删会被在册领域行拒绝
 	if err := db.Where("id IN ?", allIds).Delete(&domain.WorkTask{}).Error; err != nil {
-		return err
+		return nil, err
 	}
 	if err := db.Where("id IN ?", allIds).Delete(&domain.ShareTask{}).Error; err != nil {
-		return err
+		return nil, err
 	}
 
 	// 先删除所有子任务核心行，再删除主任务核心行
 	if err := db.Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
-		return err
+		return nil, err
 	}
-	return db.Where("id IN ?", ids).Delete(&domain.Task{}).Error
+	return allIds, db.Where("id IN ?", ids).Delete(&domain.Task{}).Error
 }
 
 // 辅助函数：将int64数组转换为逗号分隔的字符串
