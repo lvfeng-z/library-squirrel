@@ -81,9 +81,26 @@ export function initBuiltinMenus() {
       slotId: 'builtin-slotTask',
       index: 'slotTask',
       icon: markRaw(List),
-      label: '任务(Slot)',
+      label: '任务',
       order: 41,
-      viewId: 'taskManage'
+      children: [
+        {
+          slotId: 'builtin-taskManage',
+          index: 'taskManage',
+          icon: markRaw(List),
+          label: '任务面板',
+          order: 41,
+          viewId: 'taskManage'
+        },
+        {
+          slotId: 'builtin-exportTaskManage',
+          index: 'exportTaskManage',
+          icon: markRaw(List),
+          label: '导出',
+          order: 42,
+          viewId: 'exportTaskManage'
+        }
+      ]
     },
     {
       slotId: 'builtin-share',

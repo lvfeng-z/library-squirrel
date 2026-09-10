@@ -30,7 +30,8 @@ const PAGE_ROUTE_NAME_MAP: Record<PageEnum, string> = {
   [PageEnum.Settings]: 'settings',
   [PageEnum.Guide]: 'guide',
   [PageEnum.Developing]: 'developing',
-  [PageEnum.Test]: 'test'
+  [PageEnum.Test]: 'test',
+  [PageEnum.ExportTaskManage]: 'exportTaskManage'
 }
 
 /**

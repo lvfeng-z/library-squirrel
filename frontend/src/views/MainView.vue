@@ -279,14 +279,14 @@ function handleWorkSetCheckedChange(workSetIds: number[]): void {
   workSelectionStore.syncWorkSetIds(workSetIds, visibleWorkSetIds)
 }
 
-// 导出弹窗开关（打开后先在弹窗内确认输出目录，再触发后端异步导出）
+// 导出弹窗开关（打开后在弹窗内确认输出目录，确认后创建导出任务）
 const exportDialogState = ref(false)
 
 // 分享弹窗开关（打开后配置有效期/密码，再触发后端异步发布）
 const shareDialogState = ref(false)
 
-// 导出：把选择集 store 中的选中作品/作品集 id 列表传给后端收集打包（决策5），
-// 弹窗展示进度条与 [取消]，完成后展示产物路径
+// 导出：把选择集 store 中的选中作品/作品集 id 列表传给后端创建导出任务，
+// 进度与终态由导出任务视图承载
 function handleExport(): void {
   exportDialogState.value = true
 }
@@ -526,7 +526,7 @@ function handleTest() {
       v-model:state="workSetCreateDialogState"
       @created="handleWorkSetCreated"
     />
-    <!-- 导出进度弹窗（打开即携带选中 id 列表触发异步导出，进度/取消/完成展示） -->
+    <!-- 导出弹窗（携带选中 id 列表，确认输出目录后创建导出任务） -->
     <export-progress-dialog
       v-model:state="exportDialogState"
       :work-ids="workSelectionStore.workIds"

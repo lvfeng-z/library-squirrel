@@ -6,6 +6,7 @@ package taskManager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -830,6 +831,9 @@ var (
 	ErrCmdQueueFull      = &TaskManagerError{message: "task command queue full, command dropped"}
 	ErrTaskActorExited   = &TaskManagerError{message: "task actor exited"}
 	ErrTaskAckTimeout    = &TaskManagerError{message: "task command ack wait timeout"}
+	// ErrStopWaitTimeout 停止任务后等待终态超时（删除链「先停后删」编排：拒绝本次删除，
+	// 提示稍后重试——任务主体未在等待上限内退出或行无法停止）
+	ErrStopWaitTimeout = errors.New("任务停止超时，请稍后重试删除")
 )
 
 // TaskManagerError 任务管理器错误

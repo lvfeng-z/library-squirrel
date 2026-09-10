@@ -14,5 +14,6 @@ export enum PageEnum {
   Settings = 10,
   Guide = 11,
   Developing = 12,
-  Test = 13
+  Test = 13,
+  ExportTaskManage = 14
 }

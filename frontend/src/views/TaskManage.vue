@@ -11,7 +11,7 @@ import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task/models'
-import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
+import { Operator, QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import type { PluginWithExtensionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
@@ -48,8 +48,10 @@ function onViewRow(row: TaskProgressTreeDTO) {
   taskDialogState.value = true
 }
 
-// 父任务分页查询（排序与默认排序由 TaskList 内部构建 query）
+// 父任务分页查询（排序与默认排序由 TaskList 内部构建 query）；
+// 注入 taskType ne 过滤排除导出任务——视图分工：导出任务在导出视图呈现
 async function taskQueryParentPage(p: Page<TaskProgressTreeDTO>, query: TaskQueryDTO): Promise<Page<TaskProgressTreeDTO> | undefined> {
+  query.taskType = new QueryAttribute({ value: 'export', operator: Operator.OpNe })
   try {
     const response = await taskApi.taskQueryParentPage(p, query)
     return response.data

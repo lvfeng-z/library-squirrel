@@ -68,6 +68,11 @@ export class TaskQueryDTO {
     "status": query$0.QueryAttribute<number>;
 
     /**
+     * 任务类型（内置类型 eq/ne 过滤：任务面板排除、类型专属视图圈定）
+     */
+    "taskType": query$0.QueryAttribute<string>;
+
+    /**
      * 是否有子任务
      */
     "hasChild": query$0.QueryAttribute<boolean>;
@@ -116,6 +121,9 @@ export class TaskQueryDTO {
         if (!("status" in $$source)) {
             this["status"] = (new query$0.QueryAttribute());
         }
+        if (!("taskType" in $$source)) {
+            this["taskType"] = (new query$0.QueryAttribute());
+        }
         if (!("hasChild" in $$source)) {
             this["hasChild"] = (new query$0.QueryAttribute());
         }
@@ -149,13 +157,14 @@ export class TaskQueryDTO {
         const $$createField1_0 = $$createType0;
         const $$createField2_0 = $$createType1;
         const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType1;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType2;
         const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType2;
-        const $$createField8_0 = $$createType1;
-        const $$createField9_0 = $$createType0;
+        const $$createField7_0 = $$createType1;
+        const $$createField8_0 = $$createType2;
+        const $$createField9_0 = $$createType1;
         const $$createField10_0 = $$createType0;
+        const $$createField11_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pid" in $$parsedSource) {
             $$parsedSource["pid"] = $$createField0_0($$parsedSource["pid"]);
@@ -169,26 +178,29 @@ export class TaskQueryDTO {
         if ("status" in $$parsedSource) {
             $$parsedSource["status"] = $$createField3_0($$parsedSource["status"]);
         }
+        if ("taskType" in $$parsedSource) {
+            $$parsedSource["taskType"] = $$createField4_0($$parsedSource["taskType"]);
+        }
         if ("hasChild" in $$parsedSource) {
-            $$parsedSource["hasChild"] = $$createField4_0($$parsedSource["hasChild"]);
+            $$parsedSource["hasChild"] = $$createField5_0($$parsedSource["hasChild"]);
         }
         if ("pluginPublicId" in $$parsedSource) {
-            $$parsedSource["pluginPublicId"] = $$createField5_0($$parsedSource["pluginPublicId"]);
+            $$parsedSource["pluginPublicId"] = $$createField6_0($$parsedSource["pluginPublicId"]);
         }
         if ("pluginExtensionId" in $$parsedSource) {
-            $$parsedSource["pluginExtensionId"] = $$createField6_0($$parsedSource["pluginExtensionId"]);
+            $$parsedSource["pluginExtensionId"] = $$createField7_0($$parsedSource["pluginExtensionId"]);
         }
         if ("continuable" in $$parsedSource) {
-            $$parsedSource["continuable"] = $$createField7_0($$parsedSource["continuable"]);
+            $$parsedSource["continuable"] = $$createField8_0($$parsedSource["continuable"]);
         }
         if ("taskName" in $$parsedSource) {
-            $$parsedSource["taskName"] = $$createField8_0($$parsedSource["taskName"]);
+            $$parsedSource["taskName"] = $$createField9_0($$parsedSource["taskName"]);
         }
         if ("createTime" in $$parsedSource) {
-            $$parsedSource["createTime"] = $$createField9_0($$parsedSource["createTime"]);
+            $$parsedSource["createTime"] = $$createField10_0($$parsedSource["createTime"]);
         }
         if ("updateTime" in $$parsedSource) {
-            $$parsedSource["updateTime"] = $$createField10_0($$parsedSource["updateTime"]);
+            $$parsedSource["updateTime"] = $$createField11_0($$parsedSource["updateTime"]);
         }
         return new TaskQueryDTO($$parsedSource as Partial<TaskQueryDTO>);
     }

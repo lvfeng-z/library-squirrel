@@ -85,10 +85,10 @@ func TestForeignKeysDeclared(t *testing.T) {
 	}
 }
 
-// TestTaskDomainTablesSchema 任务三表 schema 锚定：列集与外键在册。
-// task 为纯核心控制表（9 核心列，无任何领域列）；work_task/share_task 与 task 1:1 共享主键
+// TestTaskDomainTablesSchema 任务四表 schema 锚定：列集与外键在册。
+// task 为纯核心控制表（9 核心列，无任何领域列）；work_task/share_task/export_task 与 task 1:1 共享主键
 // （主键 id 即所属 task.id，无独立任务外键列）：work_task 承载插件下载任务领域列，
-// share_task 承载分享接收领域列
+// share_task 承载分享接收领域列，export_task 承载导出任务领域列
 func TestTaskDomainTablesSchema(t *testing.T) {
 	db := openFKTestDB(t)
 
@@ -125,6 +125,10 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 		"id", "create_time", "update_time",
 		"relay_dial", "relay_host", "token", "key_b64", "password_hash", "manifest_path", "manifest_id",
 	})
+	assertColumns("export_task", []string{
+		"id", "create_time", "update_time",
+		"work_ids", "work_set_ids", "output_dir",
+	})
 
 	// FK 在册：共享主键 id→task；work_task 另挂站点引用
 	wtSpec := fkTable{Table: "work_task", FKs: []fkSpec{
@@ -137,6 +141,10 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 	stSpec := fkTable{Table: "share_task", FKs: []fkSpec{{Column: "id", Parent: "task"}}}
 	if done, err := fkDeclared(db, stSpec); err != nil || !done {
 		t.Fatalf("share_task 外键应全部在册: done=%v err=%v", done, err)
+	}
+	etSpec := fkTable{Table: "export_task", FKs: []fkSpec{{Column: "id", Parent: "task"}}}
+	if done, err := fkDeclared(db, etSpec); err != nil || !done {
+		t.Fatalf("export_task 外键应全部在册: done=%v err=%v", done, err)
 	}
 
 	// resource.task_id 改指锚定：REFERENCES task 恰 0 份、REFERENCES work_task 恰 1 份
@@ -161,6 +169,34 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 	}
 	if refWorkTask != 1 {
 		t.Fatalf("resource 的 REFERENCES work_task 应恰 1 份，实际 %d 份: %+v", refWorkTask, refs)
+	}
+}
+
+// TestExportTaskDanglingCleanup 导出任务领域行悬空清理：共享主键 id 指向已不存在任务行的
+// 领域行整行删除（FK 强制下不可经正常写入产生，关 PRAGMA 种植存量遗留形态）；
+// 在库任务行对应的领域行保留
+func TestExportTaskDanglingCleanup(t *testing.T) {
+	db := openFKTestDB(t)
+	if err := db.Exec(`INSERT INTO task (id, task_name, has_child, status, task_type, create_time, update_time)
+		VALUES (1, '导出（1 项）', 0, 0, 'export', 0, 0)`).Error; err != nil {
+		t.Fatalf("种植 task 行失败: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO export_task (id, work_ids, work_set_ids, output_dir, create_time, update_time)
+		VALUES (1, '[5]', '[]', '', 0, 0)`).Error; err != nil {
+		t.Fatalf("种植在册 export_task 行失败: %v", err)
+	}
+	plantSelfRefDangling(t, db, `INSERT INTO export_task (id, work_ids, work_set_ids, output_dir, create_time, update_time)
+		VALUES (99, '[5]', '[]', '', 0, 0)`)
+
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("二次迁移失败: %v", err)
+	}
+	var n int64
+	if err := db.Raw("SELECT COUNT(*) FROM export_task").Scan(&n).Error; err != nil {
+		t.Fatalf("计数 export_task 失败: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("悬空 export_task 行应被清理、在册行保留，实际 %d 行", n)
 	}
 }
 

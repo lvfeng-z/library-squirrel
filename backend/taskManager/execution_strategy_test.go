@@ -53,6 +53,11 @@ func (r *fakeBuiltinRepo) ListBySiteAndSiteWorkID(ctx context.Context, siteId in
 	return nil, nil
 }
 
+// CountRunningByTreeIds 恒零（桩无运行态行——停止等待终态轮询立即命中）
+func (r *fakeBuiltinRepo) CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error) {
+	return 0, nil
+}
+
 // recordSectionRecorder 板块选择写行桩（重下载两步编排测试用）
 type recordSectionRecorder struct {
 	mu              sync.Mutex
@@ -624,4 +629,38 @@ func TestRunStrategyInterrupted(t *testing.T) {
 	if mt.GetState() == TaskStateFinished || mt.GetState() == TaskStateFailed {
 		t.Fatal("中断路径不应产生终态")
 	}
+}
+
+// TestStopAndWaitTerminalStopsRunningTask 停止等待终态：执行中任务经 StopAndWaitTerminal →
+// runCtx 立即取消、策略检查点退出、停止收口置 Failed 终态即时落盘，等待按运行态计数轮询
+// 即刻命中返回 nil（终态收口在策略退出后由 pendingCmds 路径完成，与 StopTaskTrees 先例同序）
+func TestStopAndWaitTerminalStopsRunningTask(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
+	strat := newScriptedStrategy("interrupt") // 阻塞执行，停止靠控制面取消后释放
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	waitState(t, mgr, 1, TaskStateProcessing, 3*time.Second)
+
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- mgr.StopAndWaitTerminal(context.Background(), []int64{1}, 35*time.Second) }()
+	waitRunCtxCanceled(t, strat.lastHandle())
+	strat.release <- struct{}{} // 策略从检查点退出（interrupt 模式不上报终态，交停止收口）
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("停止等待终态应成功: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StopAndWaitTerminal 未返回")
+	}
+	if u, ok := repo.statusOf(1); !ok || u.Status != task.TaskStatusFailed {
+		t.Fatalf("停止后任务应即时落盘 Failed 终态: %+v ok=%v", u, ok)
+	}
+	// 停止路径内存对象保留至进程内后续清理（与 StopTaskTrees 先例同路径），不等待 IsIdle
 }

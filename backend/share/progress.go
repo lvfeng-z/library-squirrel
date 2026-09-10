@@ -1,6 +1,6 @@
 package share
 
-// 分享事件载荷与推送器（share-events topic，与 export-events 同信封范式）。
+// 分享事件载荷与推送器（share-events topic，type 区分载荷类型的统一信封范式）。
 // 事件类型：progress（发布进行中阶段推进）/ complete（发布终态：成功在线或失败）/
 // state（会话运行态变化：重连/撤销/过期/失败/服务统计更新）/
 // receive-link（深链到达：分享拉取入口链接，前端打开接收对话框）/

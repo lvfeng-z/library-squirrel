@@ -126,6 +126,30 @@ export class ExportModel {
 }
 
 /**
+ * ExportTaskResult StartExport 返回载荷：新建导出任务 ID（执行进度与终态经任务面板统一承载）。
+ */
+export class ExportTaskResult {
+    "taskId": number;
+
+    /** Creates a new ExportTaskResult instance. */
+    constructor($$source: Partial<ExportTaskResult> = {}) {
+        if (!("taskId" in $$source)) {
+            this["taskId"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExportTaskResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExportTaskResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExportTaskResult($$parsedSource as Partial<ExportTaskResult>);
+    }
+}
+
+/**
  * FileEntry 文件条目（files[]；被 work 的 store 挂载按 StoreID 引用）。
  * Path/Size/Missing 由规划阶段填充（包内路径命名 + 源文件存在性检查）；内容哈希由产出方
  * 预填——zip 导出打包填 Sha256，分享宿主填 Sha256 与 ContentFingerprint 双字段。

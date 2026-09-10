@@ -11,6 +11,7 @@ type TaskQueryDTO struct {
 	SiteID            query.QueryAttribute[int64]  `json:"siteId" query:"work_task.site_id"`                        // 站点ID（领域列）
 	SiteWorkID        query.QueryAttribute[string] `json:"siteWorkId" query:"work_task.site_work_id"`               // 站点作品ID（领域列）
 	Status            query.QueryAttribute[int64]  `json:"status" query:"task.status"`                              // 任务状态
+	TaskType          query.QueryAttribute[string] `json:"taskType" query:"task.task_type"`                         // 任务类型（内置类型 eq/ne 过滤：任务面板排除、类型专属视图圈定）
 	HasChild          query.QueryAttribute[bool]   `json:"hasChild" query:"task.has_child"`                         // 是否有子任务
 	PluginPublicID    query.QueryAttribute[string] `json:"pluginPublicId" query:"work_task.plugin_public_id"`       // 插件公开ID（领域列）
 	PluginExtensionID query.QueryAttribute[string] `json:"pluginExtensionId" query:"work_task.plugin_extension_id"` // 插件贡献ID（领域列）

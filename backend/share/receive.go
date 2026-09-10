@@ -266,7 +266,9 @@ func (s *Service) Receive(ctx context.Context, link string, password string) (*S
 		return nil, err
 	}
 	parentID := parent.GetID()
-	manifestRel := path.Join(receiveStagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	// 共享 manifest 落盘统一暂存根的父任务目录（task-staging/{父任务ID}/manifest.json，
+	// 与各子任务暂存目录平级）；manifest_path 列存此值，子任务执行面按列值直读
+	manifestRel := path.Join(task.StagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
 	if err := writeSharedManifestFile(s.workDir(), manifestRel, manifest); err != nil {
 		_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
 		return nil, fmt.Errorf("保存分享清单失败: %v", err)

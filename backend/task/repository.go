@@ -498,7 +498,7 @@ func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) e
 // DeleteTask 删除任务（包含子任务）- 批量删除，返回全量被删任务 ID 集（入参与其子任务，
 // 供删除链消费方清理任务级附属物——下载暂存目录键即任务 ID）。
 // dbFromCtx 模式：删除链在事务内执行——清 resource.task_id 引用（见 Service.DeleteTask）→
-// 删 work_task/share_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
+// 删 work_task/share_task/export_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
 func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -522,12 +522,29 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, 
 	if err := db.Where("id IN ?", allIds).Delete(&domain.ShareTask{}).Error; err != nil {
 		return nil, err
 	}
+	if err := db.Where("id IN ?", allIds).Delete(&domain.ExportTask{}).Error; err != nil {
+		return nil, err
+	}
 
 	// 先删除所有子任务核心行，再删除主任务核心行
 	if err := db.Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
 		return nil, err
 	}
 	return allIds, db.Where("id IN ?", ids).Delete(&domain.Task{}).Error
+}
+
+// CountRunningByTreeIds 统计入参任务与其子任务中运行态（Processing/Waiting，口径同父任务聚合
+// 的 processing 集）行数：任务删除链「先停后删」编排的运行态判定输入与停止后等待终态的轮询依据
+func (r *TaskRepository) CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int64
+	err := r.GORM().WithContext(ctx).Model(&domain.Task{}).
+		Where("(id IN ? OR pid IN ?) AND status IN ?", ids, ids,
+			[]int{int(TaskStatusProcessing), int(TaskStatusWaiting)}).
+		Count(&n).Error
+	return n, err
 }
 
 // 辅助函数：将int64数组转换为逗号分隔的字符串

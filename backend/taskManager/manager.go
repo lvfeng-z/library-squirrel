@@ -24,6 +24,9 @@ type Repository interface {
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// ListBySiteAndSiteWorkID 按 (site_id, site_work_id) 反查关联任务记录（用于作品删除时停止运行中任务）
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error)
+	// CountRunningByTreeIds 统计入参任务树内运行态（Processing/Waiting）行数（删除编排「先停后删」
+	// 的运行态判定与停止后等待终态的轮询依据）
+	CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error)
 }
 
 // WorkTaskProjector 作品任务领域行窄投影（作品任务领域行仓储实现，装配注入）：活跃插件计数先取
@@ -610,6 +613,42 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 	}
 
 	return nil
+}
+
+// stopWaitPollInterval 停止后等待终态的轮询间隔（终态即时落盘，正常路径首轮或次轮即命中）
+const stopWaitPollInterval = 100 * time.Millisecond
+
+// StopAndWaitTerminal 停止任务树并等待全部行离开运行态（task.RunningStopper 实现，任务删除链
+// 「先停后删」编排调用）。停止走 StopTaskTrees 立即取消路径（Waiting=队列摘除、Processing=
+// 取消执行 ctx，终态即时落盘）；等待按 DB 行运行态计数轮询，timeout 内未清零返回
+// ErrStopWaitTimeout（调用方拒绝本次删除，不强行删除——删行但执行继续属不可预期态）。
+// 崩溃残留的运行态行（无内存实例可停）恒不清零，同样由超时兜底拒绝
+func (m *Manager) StopAndWaitTerminal(ctx context.Context, taskIds []int64, timeout time.Duration) error {
+	if len(taskIds) == 0 {
+		return nil
+	}
+	// 等待预算覆盖整体编排（含停止本身的命令应答等待），单次删除的总时延有界
+	deadline := time.Now().Add(timeout)
+	if err := m.StopTaskTrees(ctx, taskIds); err != nil {
+		return err
+	}
+	for {
+		running, err := m.repo.CountRunningByTreeIds(ctx, taskIds)
+		if err != nil {
+			return fmt.Errorf("查询任务运行态失败: %w", err)
+		}
+		if running == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return ErrStopWaitTimeout
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(stopWaitPollInterval):
+		}
+	}
 }
 
 // RetryTaskTrees 批量重试任务(保留各任务已记录的执行模式:重试=按原模式再来一次)

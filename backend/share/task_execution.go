@@ -26,6 +26,7 @@ import (
 	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/settings"
+	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
@@ -37,9 +38,11 @@ import (
 // 拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从暂存续传；会话终态
 // （撤销/过期/不存在）以用户可读文案置失败。领域行缺失或过时（ManifestID==0）显式 Fail。
 
-// receiveStagingRootName workDir 下的收件暂存目录名（任务行一个子目录；不在 store/ 白名单
-// 子树内，fsmonitor 不感知）
-const receiveStagingRootName = "share-receive"
+// legacyReceiveStagingRootName 旧收件暂存根目录名：存量收件任务的暂存与共享清单位于此根下
+// （新收件任务的暂存与清单写入统一暂存根 task-staging/）。本常量仅供旧根的一次性孤儿清扫
+// （CleanupOrphanReceiveStaging）回收任务行已消亡的历史残留；过渡态，待存量收件任务消亡后
+// 随旧根清扫一并退役。
+const legacyReceiveStagingRootName = "share-receive"
 
 // 收件拉取退避参数（瞬态错误：网络/分享方离线/中继限流）
 const (
@@ -77,8 +80,8 @@ func NewReceiveExecution(svc *Service, shareTaskStore ShareTaskStore, ingestor i
 // 暂存 → 回灌导入 → 清理暂存并置成功；失败置用户可读文案（暂存保留供重试续传）；
 // ctx 取消（暂停/停止）不上报终态交控制面接管。领域行缺失或 ManifestID==0（过时载荷）显式 Fail。
 func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
-	task := h.Task()
-	st, err := e.shareTaskStore.GetById(h.RunCtx(), task.GetID())
+	taskID := h.Task().GetID()
+	st, err := e.shareTaskStore.GetById(h.RunCtx(), taskID)
 	if err != nil || st == nil {
 		// 领域行缺失（建树链崩溃窗口遗留）：按过时载荷显式 Fail
 		h.Fail("请删除本任务后重新接收分享")
@@ -111,7 +114,7 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		h.Fail(err.Error())
 		return
 	}
-	logger.Log.Infof("[share-recv] 任务 %d 执行开始 manifest=%s", task.GetID(), st.ManifestPath)
+	logger.Log.Infof("[share-recv] 任务 %d 执行开始 manifest=%s", taskID, st.ManifestPath)
 	conn := &receiveConnParams{
 		RelayDial:    st.RelayDial,
 		RelayHost:    st.RelayHost,
@@ -124,9 +127,11 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		h.Fail(err.Error())
 		return
 	}
-	client.taskID = task.GetID()
+	client.taskID = taskID
 	ctx := h.RunCtx()
-	staging := filepath.Join(workDir, receiveStagingRootName, strconv.FormatInt(task.GetID(), 10))
+	// 子任务暂存目录：与下载任务共用统一暂存根（{workDir}/task-staging/{taskID}/，父任务目录
+	// 放共享 manifest.json，与各子任务目录平级）
+	staging := task.StagingPath(workDir, taskID)
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		h.Fail(fmt.Sprintf("创建暂存目录失败: %v", err))
 		return
@@ -135,7 +140,7 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	// 查重 → 确认 → 逐文件内容判定 → 软删 + 回滚登记（作用域为本作品子集；时序语义同整体路径，见设计七）
 	planStart := time.Now()
 	plan, canceled, err := e.planReplace(ctx, sub, staging, workDir, h)
-	logger.Log.Infof("[share-recv] 任务 %d 查重+确认+内容判定+软删 完成 耗时=%s canceled=%v err=%v", task.GetID(), time.Since(planStart), canceled, err)
+	logger.Log.Infof("[share-recv] 任务 %d 查重+确认+内容判定+软删 完成 耗时=%s canceled=%v err=%v", taskID, time.Since(planStart), canceled, err)
 	if err != nil {
 		reportReceiveError(h, ctx, err)
 		return
@@ -144,20 +149,20 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		return // 确认被取消（暂停/停止防御性打断）：不上报终态，交控制面接管
 	}
 	if ctx.Err() != nil {
-		logger.Log.Infof("[share-recv] 任务 %d 查重替换阶段被暂停/停止打断", task.GetID())
+		logger.Log.Infof("[share-recv] 任务 %d 查重替换阶段被暂停/停止打断", taskID)
 		return // 软删窗口内暂停/停止：回滚清单已登记（交 setFailed 单点），暂停延续替换
 	}
 
 	// 阶段二：逐文件拉取至暂存（只拉本作品引用文件；被裁决跳过作品的文件不拉）
 	stageStart := time.Now()
 	if err := e.stageFiles(ctx, client, staging, sub, fileSkipSet(sub, plan.skipWorks), h); err != nil {
-		logger.Log.Debugf("[share-recv] 任务 %d 拉取阶段失败 耗时=%s err=%v", task.GetID(), time.Since(stageStart), err)
+		logger.Log.Debugf("[share-recv] 任务 %d 拉取阶段失败 耗时=%s err=%v", taskID, time.Since(stageStart), err)
 		reportReceiveError(h, ctx, err)
 		return
 	}
-	logger.Log.Infof("[share-recv] 任务 %d 拉取阶段完成 耗时=%s", task.GetID(), time.Since(stageStart))
+	logger.Log.Infof("[share-recv] 任务 %d 拉取阶段完成 耗时=%s", taskID, time.Since(stageStart))
 	if ctx.Err() != nil {
-		logger.Log.Infof("[share-recv] 任务 %d 拉取完成后被暂停/停止打断", task.GetID())
+		logger.Log.Infof("[share-recv] 任务 %d 拉取完成后被暂停/停止打断", taskID)
 		return
 	}
 
@@ -173,7 +178,7 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	ingestStart := time.Now()
 	imported, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts)
 	if err != nil {
-		logger.Log.Debugf("[share-recv] 任务 %d 导入失败 耗时=%s err=%v", task.GetID(), time.Since(ingestStart), err)
+		logger.Log.Debugf("[share-recv] 任务 %d 导入失败 耗时=%s err=%v", taskID, time.Since(ingestStart), err)
 		reportReceiveError(h, ctx, err)
 		return
 	}
@@ -183,18 +188,18 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	if len(imported.CreatedStoreIDs) > 0 {
 		h.SetTerminalRollback(taskManager.TerminalRollback{CreatedStoreIDs: imported.CreatedStoreIDs})
 	}
-	logger.Log.Infof("[share-recv] 任务 %d 导入完成 耗时=%s", task.GetID(), time.Since(ingestStart))
+	logger.Log.Infof("[share-recv] 任务 %d 导入完成 耗时=%s", taskID, time.Since(ingestStart))
 	// 成功：清理本任务暂存（共享 manifest.json 在父任务目录，不动；残留由启动清扫回收）
 	_ = os.RemoveAll(staging)
 	h.Finish()
-	logger.Log.Infof("[share-recv] 任务 %d 执行完成", task.GetID())
+	logger.Log.Infof("[share-recv] 任务 %d 执行完成", taskID)
 }
 
 // readSharedManifest 读本地共享 manifest：workDir 相对路径（正斜杠 relPath 域），
 // 在 os.ReadFile 调用点现场 join 为绝对路径（absPath 域）。
 func readSharedManifest(workDir, relPath string) (*export.Manifest, error) {
 	if relPath == "" {
-		return nil, errors.New("任务载荷缺少共享 manifest 路径")
+		return nil, errors.New("收件任务缺少共享清单路径")
 	}
 	data, err := os.ReadFile(filepath.Join(workDir, relPath))
 	if err != nil {
@@ -976,16 +981,19 @@ func safeEntryPath(p string) bool {
 	return true
 }
 
-// CleanupOrphanReceiveStaging 启动清扫：回收任务行已不存在的收件暂存目录（任务删除后
-// 其暂存随之失去归属；成功任务的暂存已在执行尾清理，此处兜底崩溃残留与已删任务残留）。
-// 收件任务为父子树形态：父目录 {parentID}/ 含共享 manifest.json，子目录为各子任务文件暂存，
-// 三者均为任务 ID 命名的平级子目录——清扫按任务行存在性逐目录独立判定：父行删除回收父目录
-// （含 manifest）、子行删除回收子目录，互不影响。exists 由调用方提供任务行存在性查询。
+// CleanupOrphanReceiveStaging 旧收件暂存根（share-receive/）的一次性启动清扫：回收任务行已
+// 不存在的旧暂存目录（成功任务的暂存已在执行尾清理，此处兜底崩溃残留与已删任务残留）；根目录
+// 不存在时 no-op。新收件任务的暂存与共享清单位于统一暂存根 task-staging/，由
+// task.CleanupOrphanStaging 统一清扫，不经本函数。旧根目录布局：父目录 {parentID}/ 含共享
+// manifest.json、子目录为各子任务文件暂存，均按任务 ID 命名的平级子目录——清扫按任务行存在性
+// 逐目录独立判定：父行删除回收父目录（含 manifest）、子行删除回收子目录，互不影响。
+// 过渡态：manifest_path 列值指向旧根的存量收件任务消亡后，本清扫随旧根一并退役。
+// exists 由调用方提供任务行存在性查询。
 func CleanupOrphanReceiveStaging(workDir string, exists func(id int64) bool) error {
 	if workDir == "" {
 		return nil
 	}
-	root := filepath.Join(workDir, receiveStagingRootName)
+	root := filepath.Join(workDir, legacyReceiveStagingRootName)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {

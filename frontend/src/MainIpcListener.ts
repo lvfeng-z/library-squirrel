@@ -9,7 +9,6 @@ import { initSlotSyncListener } from '@renderer/composables/useSlotSyncListener'
 import { useReplaceConfirmStore } from '@renderer/store/UseReplaceConfirmStore'
 import { useChangeConfirmStore, changeKindName } from '@renderer/store/UseChangeConfirmStore'
 import { onMergeEvent } from '@renderer/composables/useMergeProgress'
-import { onExportEvent } from '@renderer/composables/useExportProgress'
 import { useShareStore } from '@renderer/store/UseShareStore'
 import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
@@ -72,12 +71,6 @@ export function iniListener() {
   Events.On('merge-events', (event: any) => {
     const { type, data } = event.data as { type: string; data: any }
     onMergeEvent(type, data)
-  })
-
-  // 导出事件（独立 topic，异步导出进度/完成）
-  Events.On('export-events', (event: any) => {
-    const { type, data } = event.data as { type: string; data: any }
-    onExportEvent(type, data)
   })
 
   // 分享事件（独立 topic，分享发布进度/完成/会话状态/深链到达）

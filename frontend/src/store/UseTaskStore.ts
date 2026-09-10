@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { useReminderStore } from '@renderer/store/UseReminderStore.ts'
-import { type NewNotificationItem } from '@renderer/model/util/NotificationItem.ts'
+import { type NewNotificationItem, type NotificationRoute } from '@renderer/model/util/NotificationItem.ts'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import TaskScheduleDTO from '@renderer/model/dto/TaskScheduleDTO.ts'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
@@ -53,6 +53,8 @@ function adaptStateEvent(data: any): TaskProgressDTO {
 export const useTaskStore = defineStore('task', {
   state: (): {
     tasks: Map<number, TaskStoreObj>
+    /** 任务 ID → task_type 登记：任务事件与快照载荷不含 task_type，通知条目按类型路由依赖创建点与视图行登记 */
+    taskTypes: Map<number, string>
     /** 最近被 removeTask 移除的任务 ID，防止过时的 updateTask 事件重新创建幽灵条目 */
     recentlyRemovedIds: Set<number>
     /** 延迟移除的定时器，key 为任务 ID，收到该 ID 的 setTask 时取消定时器以防止误删 */
@@ -60,6 +62,7 @@ export const useTaskStore = defineStore('task', {
   } => {
     return {
       tasks: new Map<number, TaskStoreObj>(),
+      taskTypes: new Map<number, string>(),
       recentlyRemovedIds: new Set<number>(),
       pendingRemoveTimers: new Map<number, ReturnType<typeof setTimeout>>()
     }
@@ -67,6 +70,10 @@ export const useTaskStore = defineStore('task', {
   actions: {
     getTask(taskId: number): TaskProgressDTO | undefined {
       return this.tasks.get(taskId)?.task
+    },
+    /** 登记任务类型（任务创建点与任务视图行数据调用；通知条目构造时按类型决定跳转目标） */
+    setTaskType(taskId: number, taskType: string): void {
+      this.taskTypes.set(taskId, taskType)
     },
     setTask(taskList: any[]): void {
       const taskStatus: Map<number, TaskStoreObj> = this.tasks
@@ -81,7 +88,7 @@ export const useTaskStore = defineStore('task', {
         let notificationId: string | undefined
         // 只有进行中、等待中两种状态才推送到通知Store中
         if (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status) {
-          const notificationItem = buildTaskNotification(task)
+          const notificationItem = buildTaskNotification(task, this.taskTypes.get(id))
           notificationId = useNotificationStore().add(notificationItem)
         }
         taskStatus.set(id, { task, notificationId })
@@ -131,7 +138,7 @@ export const useTaskStore = defineStore('task', {
             (TaskStatusEnum.PROCESSING === task.task.status || TaskStatusEnum.WAITING === task.task.status)
           ) {
             copyIgnoreUndefined(taskStoreObj.task, task)
-            const notificationItem = buildTaskNotification(taskStoreObj.task)
+            const notificationItem = buildTaskNotification(taskStoreObj.task, this.taskTypes.get(id))
             taskStoreObj.notificationId = useNotificationStore().add(notificationItem)
             return
           }
@@ -176,6 +183,7 @@ export const useTaskStore = defineStore('task', {
               useNotificationStore().remove(taskStoreObj.notificationId)
             }
             this.tasks.delete(id)
+            this.taskTypes.delete(id)
             // 记录到最近移除集合，防止并发事件重新创建幽灵条目
             this.recentlyRemovedIds.add(id)
             setTimeout(() => this.recentlyRemovedIds.delete(id), RECENTLY_REMOVED_TTL)
@@ -228,7 +236,7 @@ export const useTaskStore = defineStore('task', {
             statusText: outcome.text,
             terminal: true,
             progress: { current: taskDTO.finished, total: taskDTO.total },
-            route: { name: 'taskManage' }
+            route: taskNotificationRoute(taskDTO.task?.taskType ?? this.taskTypes.get(taskDTO.task?.id ?? 0))
           })
         }
         useReminderStore().announce({
@@ -254,7 +262,7 @@ export const useTaskStore = defineStore('task', {
             notificationId = prev.notificationId
           } else {
             // 新出现的活跃任务：建通知
-            notificationId = notificationStore.add(buildTaskNotification(taskDTO))
+            notificationId = notificationStore.add(buildTaskNotification(taskDTO, this.taskTypes.get(item.id)))
           }
         } else if (notNullish(outcome) && notNullish(prev) && isNullish(terminalOutcome(prev.status))) {
           // 中间态（活跃/待确认/暂停等）→终态：转终态保留并脱离 + 提醒。
@@ -314,14 +322,19 @@ export type TaskStoreObj = {
   notificationId: string | undefined
 }
 
-function buildTaskNotification(task: TaskProgressDTO): NewNotificationItem {
+/** 任务通知条目跳转目标：导出任务去导出视图，其余（插件下载/收件等）去任务面板 */
+function taskNotificationRoute(taskType: string | null | undefined): NotificationRoute {
+  return { name: taskType === 'export' ? 'exportTaskManage' : 'taskManage' }
+}
+
+function buildTaskNotification(task: TaskProgressDTO, taskType?: string): NewNotificationItem {
   return {
     level: 'info',
     category: 'task',
     title: `任务【${task.task?.taskName ?? task.task?.id}】`,
     statusText: '下载中',
     progress: { current: task.finished, total: task.total },
-    route: { name: 'taskManage' }
+    route: taskNotificationRoute(taskType ?? task.task?.taskType)
   }
 }
 

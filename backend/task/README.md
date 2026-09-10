@@ -15,7 +15,7 @@
 | `CreateTask(req)` | 创建任务（含父子任务树） |
 | `CreateTaskByURL(url)` | URL → 查询监听该 URL 的插件 → 创建任务 |
 | `Save` / `Update` | 保存 / 更新任务（DTO 组装/拆向覆盖核心行与领域行双表） |
-| `DeleteTask(ids)` | 批量删除任务（含子任务；事务内先清 resource.task_id 引用（置 NULL=非任务产，resource 行保留）、删 work_task / share_task 领域行，再删任务核心行；提交后清理被删任务（含子任务）的下载暂存目录） |
+| `DeleteTask(ids)` | 批量删除任务（含子任务；运行态编排——树内含 Processing/Waiting 行先经 `RunningStopper` 停止并有界等待终态，超时拒绝删除，非运行态直通；事务内先清 resource.task_id 引用（置 NULL=非任务产，resource 行保留）、删 work_task / share_task 领域行，再删任务核心行；提交后清理被删任务（含子任务）的任务暂存目录） |
 | `RefreshStatus(taskId)` | 刷新任务状态 |
 | `SetTreeStatus(taskIds, status, includeStatus)` | 设置任务树状态 |
 | `GetById` / `QueryPage` | 单查 / 分页查询 |
@@ -30,7 +30,7 @@
 - **TaskStatusEnum**：任务状态枚举，与 taskManager.TaskState 保持一致。
   `Created(0) / Waiting(1) / Processing(2) / Pausing(3) / Paused(4) / Stopping(5) / Finished(6) / Failed(7) / PartlyFinished(8)`
 - **任务三表形态**：task 核心控制行只承载生命周期与树形关系（status / pid / has_child / task_type 等 9 列）；插件下载领域字段在 **work_task**（1:1 共享主键——主键 id 恒 = 所属 task.id，无独立外键列；行集=全部 `'plugin-download'` 任务行，含树形父行与子行）；分享接收领域字段在 **share_task**（同 1:1 形态，仅收件子任务行）。领域行仓储：share_task 归本模块（`ShareTaskRepository`，私有组合 BaseRepository——通用写方法不外漏，写路径收口到 `CreateForTask`）；work_task 仓储归 download 模块（执行面持有），本模块建树写行与树双查读行经窄接口 `WorkTaskWriter` / `WorkTaskReader` 注入消费（app.go 装配）；工厂 `NewWorkTask(taskID)` / `NewShareTask(taskID)` 对非正 id panic fail-fast（零值主键插入会被 SQLite 静默按 rowid 分配新值，破坏 1:1 同值约束）。
-- **任务类型（task_type）**：恒有值——插件下载任务写 `'plugin-download'`（常量 `entity.TaskTypePluginDownload`，work_task 领域行持插件身份，download 模块实现其执行面策略）；其他取值为内置类型（如 `'share-receive'`，经 taskManager 注册的执行面策略执行，领域字段在各自领域表）。内置类型创建时经任务类型注册表校验，未知类型拒绝创建。
+- **任务类型（task_type）**：恒有值——插件下载任务写 `'plugin-download'`（常量 `entity.TaskTypePluginDownload`，work_task 领域行持插件身份，download 模块实现其执行面策略）；其他取值为内置类型（`'share-receive'` / `'export'`，经 taskManager 注册的执行面策略执行，领域字段在各自领域表）。内置类型创建时经任务类型注册表校验，未知类型拒绝创建。查询过滤经 `TaskQueryDTO.TaskType`（`task.task_type`，eq/ne 算子——类型专属视图圈定与任务面板排除）。
 - **任务树**：父任务聚合子任务，父任务状态由子任务聚合得出（PartlyFinished 为父任务聚合态）。
 - **内置任务树建树**（Service 层能力，非 Handler 暴露；经调用方定义的能力接口注入使用，如 share 的 `BuiltinTaskControl`，app.go 装配）：
   - `CreateBuiltinTask(taskType, taskName)`：创建内置类型独立任务（创建后停留 Created，运行控制与插件任务一致）。
@@ -38,10 +38,11 @@
   - `CreateBuiltinTaskParent` + `CreateBuiltinTaskChildren`：两段式建树——先建父容器拿 parentID（子任务入参依赖父 ID 的场景，如子任务领域行经父目录路径定位共享清单），再补建子任务；子任务创建非事务，失败由调用方显式 `DeleteTask` 删树回滚。
   - 入参 `BuiltinTaskChild{TaskName}`（children 顺序即子任务展示顺序；领域数据由建树调用方持子任务 ID 后写入自有领域表，本模块不感知）；错误：子任务为空 `ErrBuiltinTaskNoChildren`、父 ID 无效 `ErrBuiltinTaskChildrenNoParent`。父容器为纯聚合节点（无执行面、无领域行），子任务各自独立执行。
 - **CreateTaskByURL 路由**：URL 匹配插件的 URL 监听器，路由到对应插件创建任务。
-- **下载暂存基建**（`staging.go`）：下载暂存目录的派生单点与清扫——`StagingPath(workDir, taskID)` 派生 `{workDir}/task-staging/{taskID}/`（absPath 域，workDir 未配置由调用侧守卫链拦截）；`StagingFileName(role, storeSeq, ext)` 生成 `role_seq` 派生键暂存文件名（续传定位/崩溃清扫不依赖元数据重解析，最终名由下载执行面规划表持有）；`CleanupStagingByTaskIds(workDir, taskIds)` 按任务 ID 集合删暂存目录（任务删除链 `Service.DeleteTask` 提交后即调 + work 删除链治理经 taskManager `StagingCleaner` 注入适配）；`CleanupOrphanStaging(workDir, exists)` 启动清扫回收任务行已删的孤儿暂存目录（活任务目录保留给恢复判定，app.go 挂载）。task-staging/ 不在 store/ 白名单与 backup/ 域内，fsmonitor 零感知。
+- **运行态删除编排**（`Service.DeleteTask`）：删除前按全量 ID（含子树展开）查运行态行（Processing/Waiting，`CountRunningByTreeIds`）；命中则经 `RunningStopper` 窄接口（本模块定义、taskManager 实现，`SetRunningStopper` 延迟注入解决装配时序）执行「停止 + 有界等待终态」（等待上限 35s，与控制命令 ack 有界等待同量级）；超时拒绝删除（「任务停止超时，请稍后重试删除」），不强行删除——删行但执行继续属不可预期态。全非运行态（含建树回滚删 Created 态树）直通既有删除链，暂存即时清理等收尾自然落在停止完成后。
+- **任务暂存基建**（`staging.go`）：任务暂存目录（下载与收件任务共用）的派生单点与清扫——`StagingPath(workDir, taskID)` 派生 `{workDir}/task-staging/{taskID}/`（absPath 域，workDir 未配置由调用侧守卫链拦截）；`StagingFileName(role, storeSeq, ext)` 生成 `role_seq` 派生键暂存文件名（续传定位/崩溃清扫不依赖元数据重解析，最终名由下载执行面规划表持有）；`CleanupStagingByTaskIds(workDir, taskIds)` 按任务 ID 集合删暂存目录（任务删除链 `Service.DeleteTask` 提交后即调——被删全量 ID 含子任务，收件父/子目录一并清理；work 删除链治理经 taskManager `StagingCleaner` 注入适配）；`CleanupOrphanStaging(workDir, exists)` 启动清扫回收任务行已删的孤儿暂存目录（活任务目录保留给恢复判定，app.go 挂载）。task-staging/ 一级目录恒为任务 ID，同根承载两种目录内容形态——插件下载任务为 `role_seq` 键暂存文件，收件任务父目录含共享 manifest.json、子目录为按清单路径镜像命名的暂存文件（父/子/下载任务目录互为平级一级目录，形态说明见 `staging.go` 头注）；不在 store/ 白名单与 backup/ 域内，fsmonitor 零感知。
 - **leaf/独立任务（pid=NULL 根级）创建高回归区**：无 Children 响应 → 独立 leaf、有 Children → parent+children（不折叠），统一经 `planCreateResponse` 单点判定（stream/array 共用，消除双路径不对称）。根级任务 pid 落 NULL（外键引用 task.id，无 id=0 行，写 0 必违约），子任务 pid=父 ID。改创建路径须保 leaf(pid=NULL) 覆盖，回归测试 `backend/task/service_create_test.go`（fakeRepo 8 例 + OpenTestDB 外键库落盘锚定 1 例）。契约见 `doc/plugin-dev-guide.md`「Create 返回的任务结构契约」。
 
 ## 依赖关系
 
 - 依赖：URL 监听器（`urlListener.ListListener`，由插件提供）、站点 / 作品集查询、事务执行器（Transactor，删除链编排用）、workDir 读取（`workDirGetter func() string`，删除链清下载暂存目录用）、resource.task_id 引用清理（repository 层原生 UPDATE，删任务前置义务）
-- 被依赖：**taskManager**（消费 TaskStatusEnum 与任务树核心行查询 ListTaskTreeCore；板块选择写行/活跃插件计数投影经 download 模块仓储、work 删除链下载暂存清理经本模块暂存基建 `CleanupStagingByTaskIds` 适配）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树 + `ShareTaskStore` 窄接口读写 share_task 领域行，app.go 装配）、download（`SectionRecorder` 写行展开子成员用 `ListChildrenTask`；插件扩展桥 `GetStoreRelPath` 按 taskId 定位任务产出资源，运行中查暂存规划表、已提交查 resource.task_id 行链，app.go 装配）
+- 被依赖：**taskManager**（消费 TaskStatusEnum 与任务树核心行查询 ListTaskTreeCore，并实现本模块定义的 `RunningStopper` 运行态停止器；板块选择写行/活跃插件计数投影经 download 模块仓储、work 删除链下载暂存清理经本模块暂存基建 `CleanupStagingByTaskIds` 适配）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树 + `ShareTaskStore` 窄接口读写 share_task 领域行，app.go 装配）、export（经 `TaskControl` 能力接口两步创建/启动/回滚删除导出任务，app.go 装配）、download（`SectionRecorder` 写行展开子成员用 `ListChildrenTask`；插件扩展桥 `GetStoreRelPath` 按 taskId 定位任务产出资源，运行中查暂存规划表、已提交查 resource.task_id 行链，app.go 装配）

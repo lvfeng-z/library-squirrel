@@ -10,6 +10,7 @@ export {
     AuthorLink,
     AuthorRecord,
     ExportModel,
+    ExportTaskResult,
     FileEntry,
     Manifest,
     Meta,

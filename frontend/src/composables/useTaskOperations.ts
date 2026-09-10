@@ -2,8 +2,35 @@ import { ref } from 'vue'
 import { TaskOperationCodeEnum } from '@renderer/constants/TaskOperationCodeEnum.ts'
 import { TaskStatusEnum } from '@renderer/constants/TaskStatusEnum.ts'
 import { taskApi } from '@renderer/apis/http'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+
+// ===== 运行态删除统一确认（后端删除编排：命中运行态先停止+有界等待终态再删除） =====
+// 运行集口径与后端一致：Processing/Waiting
+function isRunningTaskRow(row: TaskProgressTreeDTO): boolean {
+  const status = row.taskProgress?.task?.status
+  return status === TaskStatusEnum.PROCESSING || status === TaskStatusEnum.WAITING
+}
+
+/** 行集合内是否含运行态（Processing/Waiting）任务 */
+export function hasRunningTaskRows(rows: TaskProgressTreeDTO[]): boolean {
+  return rows.some(isRunningTaskRow)
+}
+
+// 含运行态行时弹统一确认；全非运行态直接放行（既有删除交互不变）。取消返回 false
+async function confirmDeleteRunningRows(rows: TaskProgressTreeDTO[]): Promise<boolean> {
+  if (!hasRunningTaskRows(rows)) return true
+  try {
+    await ElMessageBox.confirm('任务运行中，将停止任务并删除，是否继续？', '删除任务', {
+      type: 'warning',
+      confirmButtonText: '停止并删除',
+      cancelButtonText: '取消'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
 
 // ===== 操作防重入守卫（模块级单例，跨组件共享）=====
 // 任务树 ID → 处于「上一次操作未返回（IPC 在途）或冷却期」的集合：期间该树操作按钮不可再点，
@@ -193,6 +220,7 @@ export function useTaskOperations() {
           await runGuarded(taskId, () => taskApi.taskStopTrees([taskId]))
           break
         case TaskOperationCodeEnum.DELETE:
+          if (!(await confirmDeleteRunningRows([row]))) break
           if (await runGuarded(taskId, () => deleteTasks([row]), true)) {
             opts.onDeleted?.(row)
           }
@@ -206,12 +234,13 @@ export function useTaskOperations() {
    * 构造批量操作分发函数（标题栏 TaskControlBar 用）。
    * 「运行」融合开始/继续（START→startOrResume 按状态分流）；按钮组仅运行/暂停/删除。
    * 批量操作经 runGuardedBatch：任一棵在途/冷却则整批忽略。
+   * 返回是否真正执行（DELETE 运行态确认被取消时 false，调用方据此跳过删除后副作用）。
    */
   function buildBatchHandler(opts: { onDone?: () => void }) {
     return async function handleBatch(
       rows: TaskProgressTreeDTO[],
       code: TaskOperationCodeEnum
-    ): Promise<void> {
+    ): Promise<boolean> {
       const ids = rows.map(getRowTaskId)
       switch (code) {
         case TaskOperationCodeEnum.START:
@@ -221,12 +250,14 @@ export function useTaskOperations() {
           await runGuardedBatch(ids, () => taskApi.taskPauseTrees(ids))
           break
         case TaskOperationCodeEnum.DELETE:
+          if (!(await confirmDeleteRunningRows(rows))) return false
           await runGuardedBatch(ids, () => deleteTasks(rows), true)
           break
         default:
           break
       }
       opts.onDone?.()
+      return true
     }
   }
 

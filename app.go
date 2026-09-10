@@ -808,13 +808,19 @@ func (app *App) initBaseServices() {
 	// frontendLog 服务
 	app.FrontendLogService = frontendLog.NewService()
 
-	// export 服务（导出数据收集 + 异步打包执行；工作目录取 settings，事件经延迟闭包读 emitter）
+	// export 服务（导出数据收集 + 导出任务两步创建编排；工作目录取 settings。打包执行归
+	// ExportExecution 执行面策略，注册进任务管理器策略表；导出任务创建/启动能力经适配器
+	// 延迟取用——ExportService 先于 TaskService/TaskManager 创建）
 	app.ExportService = export.NewService(
 		export.NewRepository(app.db),
+		export.NewExportTaskRepository(app.db),
 		func() string { return constant.AppVersion },
 		func() string { return app.SettingsService.GetWorkDir() },
-		export.NewWailsExportEmitter(func() export.EventEmitter { return app.taskProgressEmitter }),
 	)
+	app.ExportService.SetTaskControl(&exportTaskControlAdapter{
+		getTaskSvc: func() *task.Service { return app.TaskService },
+		getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
+	})
 
 	// share 服务（分享方发布：复用 export 收集/规划数据面 + 出站隧道连中继；事件走 share-events）。
 	// 数据面依赖经接口注入（export.Service 实现 Collect、export.Packer 实现 Plan——发起方 share 编排）；
@@ -1134,12 +1140,14 @@ func (app *App) initAdvancedServices() error {
 			ReplaceStoreOps: app.ReplaceService,    // 实现 ReplaceStoreOps 接口(终态回滚单点复活)
 		},
 		// 任务类型执行面策略表：plugin-download=插件下载（download 模块）、share-receive=分享
-		// 收件拉取（回灌导入，ManifestIngestor 与 import handler 共用同一实例）。分享方发布不经
-		// 任务模块（发布直跑 + share_record 生命周期，见 backend/share/service.go）
+		// 收件拉取（回灌导入，ManifestIngestor 与 import handler 共用同一实例）、export=导出
+		// （读 export_task 领域行打包 zip）。分享方发布不经任务模块（发布直跑 + share_record
+		// 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
 			entity2.TaskTypePluginDownload: pluginDownloadStrategy,
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.shareTaskRepo, app.manifestIngestor,
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
+			export.TaskTypeExport: export.NewExportExecution(app.ExportService, export.NewPacker()),
 		},
 		app.workTaskRepo, // WorkTaskProjector（活跃插件计数窄投影）
 		taskStagingCleaner{workDirGetter: app.SettingsService.GetWorkDir}, // StagingCleaner（work 删除链清下载暂存）
@@ -1186,6 +1194,8 @@ func (app *App) initAdvancedServices() error {
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
 	// 将 TaskManager（持执行面策略表）注入 TaskService 作为已知任务类型提供者（创建路径成员校验）
 	app.TaskService.SetTaskTypeRegistry(app.TaskManagerService)
+	// 将 TaskManager 注入 TaskService 作为运行态任务停止器（任务删除链「先停后删」编排）
+	app.TaskService.SetRunningStopper(app.TaskManagerService)
 
 	// 将 TaskManager 注入到 work 作为运行中任务停止器（打破 work ↔ TaskManager 循环依赖）
 	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
@@ -1266,6 +1276,30 @@ func (a *shareTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context,
 
 // DeleteTask 委托 task.Service 批量删除任务（含子任务；建树失败回滚用）
 func (a *shareTaskControlAdapter) DeleteTask(ctx context.Context, ids []int64) error {
+	return a.getTaskSvc().DeleteTask(ctx, ids)
+}
+
+// exportTaskControlAdapter 导出任务控制适配器（task.Service + taskManager 组合实现
+// export.TaskControl；二者创建晚于 ExportService，经闭包运行期取用）
+type exportTaskControlAdapter struct {
+	getTaskSvc func() *task.Service
+	getMgr     func() *taskManager.Manager
+}
+
+func (a *exportTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error) {
+	t, err := a.getTaskSvc().CreateBuiltinTask(ctx, taskType, taskName)
+	if err != nil {
+		return 0, err
+	}
+	return t.GetID(), nil
+}
+
+func (a *exportTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int64) error {
+	return a.getMgr().StartTaskTrees(ctx, taskIds)
+}
+
+// DeleteTask 委托 task.Service 批量删除任务（含子任务；建任务失败回滚用）
+func (a *exportTaskControlAdapter) DeleteTask(ctx context.Context, ids []int64) error {
 	return a.getTaskSvc().DeleteTask(ctx, ids)
 }
 

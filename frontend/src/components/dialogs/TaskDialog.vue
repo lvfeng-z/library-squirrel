@@ -15,7 +15,7 @@ import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 import { taskApi } from '@renderer/apis/http'
 import { QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import { newPage } from '@renderer/utils/Pager.ts'
-import { useTaskOperations } from '@renderer/composables/useTaskOperations'
+import { hasRunningTaskRows, useTaskOperations } from '@renderer/composables/useTaskOperations'
 import { TaskOperationCodeEnum } from '../../constants/TaskOperationCodeEnum.ts'
 
 // props
@@ -52,10 +52,11 @@ const { buildBatchHandler } = useTaskOperations()
 const handleBatchOperation = buildBatchHandler({
   onDone: () => taskListRef.value?.doSearch()
 })
-// 标题栏操作分发：删除需二次确认；删除当前任务（未选中时）确认后关闭弹窗
+// 标题栏操作分发：删除需二次确认——非运行态行在此弹常规确认，运行态行（停止并删除的统一
+// 确认）由批量分发内承载避免弹两层；删除当前任务（未选中时）确认后关闭弹窗
 async function handleTitleOperation(rows: TaskProgressTreeDTO[], code: TaskOperationCodeEnum) {
   const isBatch = selectedChildren.value.length > 0
-  if (code === TaskOperationCodeEnum.DELETE) {
+  if (code === TaskOperationCodeEnum.DELETE && !hasRunningTaskRows(rows)) {
     const msg = isBatch ? `确认删除选中的 ${rows.length} 个子任务？` : '确认删除当前任务？'
     try {
       await ElMessageBox.confirm(msg, isBatch ? '批量删除' : '删除任务', { type: 'warning' })
@@ -63,8 +64,8 @@ async function handleTitleOperation(rows: TaskProgressTreeDTO[], code: TaskOpera
       return
     }
   }
-  await handleBatchOperation(rows, code)
-  if (code === TaskOperationCodeEnum.DELETE && !isBatch) {
+  const executed = await handleBatchOperation(rows, code)
+  if (code === TaskOperationCodeEnum.DELETE && !isBatch && executed) {
     state.value = false
   }
 }

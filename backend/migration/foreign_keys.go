@@ -66,6 +66,9 @@ var fkBatches = []fkTable{
 	{Table: "share_task", FKs: []fkSpec{
 		{Column: "id", Parent: "task"},
 	}},
+	{Table: "export_task", FKs: []fkSpec{
+		{Column: "id", Parent: "task"},
+	}},
 	{Table: "plugin", FKs: []fkSpec{
 		{Column: "backup_id", Parent: "backup"},
 	}},
@@ -401,6 +404,7 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		// 任务领域行（1:1 共享主键 id=task.id）：核心任务行消亡即领域行失去意义，整行 DELETE
 		"DELETE FROM work_task WHERE NOT EXISTS (SELECT 1 FROM task WHERE id = work_task.id)",
 		"DELETE FROM share_task WHERE NOT EXISTS (SELECT 1 FROM task WHERE id = share_task.id)",
+		"DELETE FROM export_task WHERE NOT EXISTS (SELECT 1 FROM task WHERE id = export_task.id)",
 		// 恒有值族（int64 列，0=未填充）：先摘关联行再删悬空主体行，防止级联产生新悬空
 		"DELETE FROM resource_store WHERE resource_id <> 0 AND NOT EXISTS (SELECT 1 FROM resource WHERE id = resource_store.resource_id)",
 		"DELETE FROM resource_store WHERE store_id <> 0 AND NOT EXISTS (SELECT 1 FROM persistent_store WHERE id = resource_store.store_id)",

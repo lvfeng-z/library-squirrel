@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-任务**运行时控制面**：在内存中管理任务树的生命周期（启动/暂停/恢复/停止/重试）、并发控制、状态机推进与进度推送。负责"任务怎么被调度控制"；"任务主体怎么执行"由按 task_type 注册的执行面策略承载（plugin-download 归 `backend/download`、share-receive 归 `backend/share`）。
+任务**运行时控制面**：在内存中管理任务树的生命周期（启动/暂停/恢复/停止/重试）、并发控制、状态机推进与进度推送。负责"任务怎么被调度控制"；"任务主体怎么执行"由按 task_type 注册的执行面策略承载（plugin-download 归 `backend/download`、share-receive 归 `backend/share`、export 归 `backend/export`）。
 
 ## 边界
 
@@ -43,7 +43,7 @@
 
 ## 核心概念
 
-- **执行面策略（ExecutionStrategy）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——**全部任务类型经按 `task.task_type` 注册的策略表执行**（Manager 构造时注入，app.go 装配）：`'plugin-download'` → download 模块的插件下载策略（板块组合 + 多轨下载/续传 + 替换链）；`'share-receive'` → share 模块的收件拉取策略；空类型/未注册类型拒启。策略经 `StrategyHandle` 上报终态（Finish/Fail）、跳过收口（Skip）与进度；RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管。`StrategyHandle` 另提供：执行内挂起等待覆盖确认（`WaitReplaceConfirm`——置 WaitingForInput、逐条推冲突事件、记录冲突作品集合供替换答复前置锁预检、等待期间释放信号量槽位，复用 `ConfirmReplace(taskId, action)` 整体答复）、终态回滚登记（`SetTerminalRollback`——受害者清单与替换期新建行清单两载荷合并累积；失败/停止时由 setFailed 单点触发：丢弃新建行、复活软删行）、可排空阶段上报（`MarkDrainPhase`——命令监听据此分流暂停处置：可排空阶段走软暂停排空在途再停，其余阶段立即取消）、软暂停广播（`SoftPauseSignal`——控制面进入软暂停时 close，执行面收尾在途读取落盘）、恢复信号（`ResumeRequested`——执行进入策略前任务实时内存状态==Paused 时置位，执行面据此分叉跨重启续传与全新执行）。暂停/停止的插件 RPC 转发经可选能力 `InterruptNotifier`（控制面按类型断言调用，download 实现）。
+- **执行面策略（ExecutionStrategy）**：控制面（actor 循环/信号量/状态机/进度/持久化/恢复调度）留在 taskManager，「任务主体怎么执行」外提为可插拔接口——**全部任务类型经按 `task.task_type` 注册的策略表执行**（Manager 构造时注入，app.go 装配）：`'plugin-download'` → download 模块的插件下载策略（板块组合 + 多轨下载/续传 + 替换链）；`'share-receive'` → share 模块的收件拉取策略；`'export'` → export 模块的导出打包策略（领域行直查取选择参数 → Collect/Plan → 打包 zip，恰用 Task/RunCtx/Fail/Finish/ReportProgress 五方法）；空类型/未注册类型拒启。策略经 `StrategyHandle` 上报终态（Finish/Fail）、跳过收口（Skip）与进度；RunCtx 取消（暂停/停止）即中断信号、终态由控制面接管。`StrategyHandle` 另提供：执行内挂起等待覆盖确认（`WaitReplaceConfirm`——置 WaitingForInput、逐条推冲突事件、记录冲突作品集合供替换答复前置锁预检、等待期间释放信号量槽位，复用 `ConfirmReplace(taskId, action)` 整体答复）、终态回滚登记（`SetTerminalRollback`——受害者清单与替换期新建行清单两载荷合并累积；失败/停止时由 setFailed 单点触发：丢弃新建行、复活软删行）、可排空阶段上报（`MarkDrainPhase`——命令监听据此分流暂停处置：可排空阶段走软暂停排空在途再停，其余阶段立即取消）、软暂停广播（`SoftPauseSignal`——控制面进入软暂停时 close，执行面收尾在途读取落盘）、恢复信号（`ResumeRequested`——执行进入策略前任务实时内存状态==Paused 时置位，执行面据此分叉跨重启续传与全新执行）。暂停/停止的插件 RPC 转发经可选能力 `InterruptNotifier`（控制面按类型断言调用，download 实现）。
 - **ManagedTask / ParentTask**：内存中的运行任务与父任务聚合。ManagedTask 持任务核心行（加载时 DB 快照——跳过收口回执行前状态的回退基准）；运行态经 atomic state 字段承载，冷加载构造时按 DB 行 status 初始化（进程重启后任务不在内存，DB 行是上一会话落定的执行前稳态、仅稳定态落库——Paused 行带该状态进入执行即命中恢复信号，跨重启续传分叉可达）。
 - **信号量**：`maxParallel` 控制全局并发数，超出则进 FIFO 等待队列。
 - **板块执行模式**：`{workInfo, storeScope}` 三态——持久化在作品任务领域行（`StoreRoles`/`IncludeWorkInfo`，板块模式唯一源），执行面（download）每次执行查行派生；重下载入口（Handler.Redownload）负责写行后启动；终态不清空（重试按原板块再来一次，后续重下/开始覆盖）。
@@ -53,7 +53,7 @@
 ## 依赖关系
 
 - 依赖：`Repository`（任务树核心行查询 `ListTaskTreeCore`/批量状态设置/按站点作品反查）、`task` 包（TaskStatusEnum 状态枚举）、`WorkTaskProjector`（活跃插件计数的作品任务领域行窄投影，download 仓储实现）、`StagingCleaner`（work 删除链清下载暂存，task 模块暂存基建适配实现）、`SectionRecorder`（重下载板块选择写行，download 实现）、`TaskProgressPusher`、任务类型执行面策略表（task_type → ExecutionStrategy，构造注入；plugin-download/share-receive 均经此）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）、resource 替换链复活能力（终态回滚单点）
-- 被依赖：前端任务执行面板（操作栏）、download（实现 plugin-download 执行面策略）、share（实现 share-receive 执行面策略）
+- 被依赖：前端任务执行面板（操作栏）、task（运行态任务删除编排的 `RunningStopper` 窄接口实现——`StopAndWaitTerminal(taskIds, timeout)` 停止任务树并轮询等待全部行离开运行态〔Processing/Waiting，终态即时落库〕，超时返回错误令调用方拒绝删除（删行但执行继续属不可预期态）；崩溃残留的运行态行无内存实例可停、恒不清零，同样由超时兜底）、download（实现 plugin-download 执行面策略）、share（实现 share-receive 执行面策略）、export（实现 export 执行面策略）
 
 ## 关键设计
 

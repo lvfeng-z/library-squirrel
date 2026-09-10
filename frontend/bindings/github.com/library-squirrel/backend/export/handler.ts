@@ -19,39 +19,31 @@ import * as model$0 from "../base/model/models.js";
 import * as $models from "./models.js";
 
 /**
- * CancelExport 取消指定导出（无进行中导出则 no-op）。
- */
-export function CancelExport(exportID: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(347395385, exportID).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
-/**
  * Collect 收集导出数据模型（决策5：id 列表透传——前端把选中 work/workSet id 列表传给后端）。
  */
 export function Collect(workIDs: number[], workSetIDs: number[]): $CancellablePromise<model$0.ApiResponse<$models.ExportModel | null> | null> {
     return $Call.ByID(2412892345, workIDs, workSetIDs).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
 /**
- * StartExport 启动导出（异步：立即返回 exportID，进度/完成经 export-events 事件推送）。
+ * StartExport 创建导出任务并启动（两步建任务：前置校验 → 建任务核心行 + export_task 领域行 →
+ * 启动执行）。返回新建任务 ID——执行进度与终态经任务面板统一承载。
  * outputDir 为空时落盘到工作目录根（默认）；非空为自选输出目录（前端经文件选择器挑选并持久化）。
  */
-export function StartExport(workIDs: number[], workSetIDs: number[], outputDir: string): $CancellablePromise<model$0.ApiResponse<string> | null> {
+export function StartExport(workIDs: number[], workSetIDs: number[], outputDir: string): $CancellablePromise<model$0.ApiResponse<$models.ExportTaskResult | null> | null> {
     return $Call.ByID(3732176901, workIDs, workSetIDs, outputDir).then(($result: any) => {
         return $$createType7($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType0 = $models.ExportModel.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.ExportModel.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
+const $$createType4 = $models.ExportTaskResult.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType6 = model$0.ApiResponse.createFrom($$createType5);
 const $$createType7 = $Create.Nullable($$createType6);

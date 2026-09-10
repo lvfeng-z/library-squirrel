@@ -424,7 +424,7 @@ func (env *receiveTestEnv) writeSharedManifest(t *testing.T) string {
 	abs := env.manifestPathOf()
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 	require.NoError(t, os.WriteFile(abs, data, 0o644))
-	return path.Join(receiveStagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
+	return path.Join(task.StagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
 }
 
 // buildReceiveHandle 构建收件子任务与执行句柄（默认负责共享 manifest 第一个作品；
@@ -640,9 +640,9 @@ func (env *receiveTestEnv) stagingDirOf() string {
 	return env.stagingDirOfTask(777)
 }
 
-// stagingDirOfTask 指定任务 ID 的暂存目录
+// stagingDirOfTask 指定任务 ID 的暂存目录（统一暂存根 task-staging/ 下）
 func (env *receiveTestEnv) stagingDirOfTask(taskID int64) string {
-	return filepath.Join(env.recvDir, receiveStagingRootName, strconv.FormatInt(taskID, 10))
+	return task.StagingPath(env.recvDir, taskID)
 }
 
 // manifestPathOf 共享 manifest 的绝对路径（父任务目录内；子任务 Finish 清理自己暂存不动它）
@@ -902,10 +902,12 @@ func TestReceiveExecutionPauseKeepsStaging(t *testing.T) {
 	assert.DirExists(t, env.stagingDirOf(), "暂停应保留暂存")
 }
 
-// TestCleanupOrphanReceiveStaging 启动清扫：仅回收任务行已不存在的暂存目录
+// TestCleanupOrphanReceiveStaging 旧收件暂存根（share-receive/）的一次性启动清扫：仅回收
+// 任务行已不存在的暂存目录（新收件暂存位于统一根 task-staging/，由 task.CleanupOrphanStaging
+// 统一清扫，另见 task 包 staging_test.go）
 func TestCleanupOrphanReceiveStaging(t *testing.T) {
 	workDir := t.TempDir()
-	root := filepath.Join(workDir, receiveStagingRootName)
+	root := filepath.Join(workDir, legacyReceiveStagingRootName)
 	orphan := filepath.Join(root, "101")
 	alive := filepath.Join(root, "102")
 	for _, d := range []string{orphan, alive} {
@@ -924,14 +926,14 @@ func TestCleanupOrphanReceiveStaging(t *testing.T) {
 	require.NoError(t, CleanupOrphanReceiveStaging("", nil))
 }
 
-// TestCleanupOrphanReceiveStagingTreeForm 启动清扫的父子树形态：收件任务为「父容器 + 每作品一
+// TestCleanupOrphanReceiveStagingTreeForm 旧根一次性清扫的父子树形态：收件任务为「父容器 + 每作品一
 // 子任务」，目录布局为父目录 {parentID}/ 含共享 manifest.json、子目录为各子任务文件暂存，三者
 // 均按任务 ID 命名的平级子目录——清扫按任务行存在性逐目录独立判定：父行删除回收父目录（含
 // manifest）、子行删除回收子目录；父目录 manifest 在父行删除前不动（子任务 Finish 只清自己的
 // 暂存目录，见 TestReceiveExecutionEndToEnd 断言）。
 func TestCleanupOrphanReceiveStagingTreeForm(t *testing.T) {
 	workDir := t.TempDir()
-	root := filepath.Join(workDir, receiveStagingRootName)
+	root := filepath.Join(workDir, legacyReceiveStagingRootName)
 
 	const parentID, childA, childB = 999, 777, 778
 	parentDir := filepath.Join(root, strconv.FormatInt(parentID, 10))
@@ -973,6 +975,27 @@ func TestCleanupOrphanReceiveStagingTreeForm(t *testing.T) {
 	delete(aliveSet, childA)
 	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
 	assert.NoDirExists(t, childADir, "A 行删除后 A 子目录应被回收")
+}
+
+// TestDeleteReceiveTaskCleansUnifiedStaging 删除收件任务即时清统一暂存根子目录：任务删除链
+// （Service.DeleteTask 事务提交后）以被删全量 ID〔父+子并集〕调用 task.CleanupStagingByTaskIds，
+// 收件父目录（含共享 manifest.json）与各子任务暂存目录随任务消亡一并清理，不等启动清扫兜底；
+// 未涉及任务的暂存目录不受影响。
+func TestDeleteReceiveTaskCleansUnifiedStaging(t *testing.T) {
+	workDir := t.TempDir()
+	const parentID, childA, childB, otherID = 999, 777, 778, 2001
+	parentDir := task.StagingPath(workDir, parentID)
+	for _, id := range []int64{parentID, childA, childB, otherID} {
+		require.NoError(t, os.MkdirAll(task.StagingPath(workDir, id), 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(parentDir, "manifest.json"), []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(task.StagingPath(workDir, childA), "a.bin"), []byte("a"), 0o644))
+
+	require.NoError(t, task.CleanupStagingByTaskIds(workDir, []int64{parentID, childA, childB}))
+	assert.NoDirExists(t, parentDir, "删除收件父任务应即时清理父目录（含共享 manifest）")
+	assert.NoDirExists(t, task.StagingPath(workDir, childA), "删除子任务应即时清理其暂存目录")
+	assert.NoDirExists(t, task.StagingPath(workDir, childB), "删除子任务应即时清理其暂存目录")
+	assert.DirExists(t, task.StagingPath(workDir, otherID), "未删除任务的暂存目录不受影响")
 }
 
 // —— 查重接入普通下载轨道：端到端时序（设计五）与中断窗口三态（设计六） ——
@@ -1645,7 +1668,7 @@ func TestReceiveBuildsTaskTree(t *testing.T) {
 	// 子任务：pid=父ID、has_child=false、task_type 落值、命名 = 净化后作品名；share_task 领域行
 	// 携带 ManifestPath+ManifestID，主键与子任务 id 严格同值（1:1 共享主键锚点）
 	require.Len(t, taskCtl.children, 2)
-	wantManifestPath := path.Join(receiveStagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	wantManifestPath := path.Join(task.StagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
 	for i, want := range []struct {
 		name       string
 		manifestID int64
@@ -1701,8 +1724,8 @@ func TestReceiveManifestFetchFailsNoTask(t *testing.T) {
 func TestReceiveManifestPersistFailsRollback(t *testing.T) {
 	taskCtl := &fakeBuiltinTaskControl{}
 	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
-	// 令 workDir/share-receive 为普通文件：MkdirAll(workDir/share-receive/{parentID}) 失败
-	blocker := filepath.Join(env.recvDir, receiveStagingRootName)
+	// 令 workDir/task-staging 为普通文件：MkdirAll(workDir/task-staging/{parentID}) 失败
+	blocker := filepath.Join(env.recvDir, task.StagingRootName)
 	require.NoError(t, os.MkdirAll(env.recvDir, 0o755))
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
 

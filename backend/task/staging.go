@@ -1,8 +1,12 @@
 package task
 
-// 下载任务的暂存目录基建：目录派生、暂存文件命名与启动清扫。
+// 任务暂存目录基建：目录派生、暂存文件命名与启动清扫。
 // 暂存模式：下载内容先写 {workDir}/task-staging/{taskID}/，全部轨道写满后由下载执行面在
 // 提交点统一 rename 进 store/ 最终路径——暂存期内长下载全程零 DB 副作用。
+// task-staging/ 一级目录恒为任务 ID，同根承载两种目录内容形态：
+//   - 插件下载任务：role_seq 键命名的暂存文件（见 StagingFileName）；
+//   - 收件任务（share-receive）：父任务目录含共享 manifest.json，子任务目录为按清单内路径
+//     镜像命名的暂存文件——父/子/下载任务目录互为平级一级目录，不嵌套。
 // task-staging/ 不在 store/ 白名单子树（storeRegistry.RegisteredDirs）与 backup/ 域内，
 // fsmonitor 对其文件操作零感知（事件全被白名单过滤，无需抑制登记）。
 
@@ -34,8 +38,10 @@ func StagingFileName(role string, storeSeq int, ext string) string {
 	return fmt.Sprintf("%s_%03d%s", role, storeSeq, ext)
 }
 
-// CleanupStagingByTaskIds 按任务 ID 集合清理下载暂存目录（work 删除链治理：作品资源即删，
-// 残留暂存会在任务恢复时误续传已删作品的下载产物）。目录不存在为容忍态；任一删除失败即返回
+// CleanupStagingByTaskIds 按任务 ID 集合清理任务暂存目录（下载与收件通用：任务删除链以被删
+// 全量 ID〔含子任务〕调用，收件父目录〔含共享 manifest〕与子任务目录随任务消亡一并清理；
+// work 删除链治理：作品资源即删，残留暂存会在任务恢复时误续传已删作品的下载产物）。
+// 目录不存在为容忍态；任一删除失败即返回
 func CleanupStagingByTaskIds(workDir string, taskIds []int64) error {
 	if workDir == "" || len(taskIds) == 0 {
 		return nil
@@ -51,8 +57,9 @@ func CleanupStagingByTaskIds(workDir string, taskIds []int64) error {
 	return nil
 }
 
-// CleanupOrphanStaging 启动清扫：回收任务行已不存在的下载暂存目录（任务删除后暂存随之失去归属；
-// 成功任务的暂存已在提交点消费后清理，此处兜底崩溃残留与已删任务残留）。任务行仍在的暂存目录
+// CleanupOrphanStaging 启动清扫：回收任务行已不存在的任务暂存目录（下载与收件通用，一级目录名
+// =任务 ID；任务删除后暂存随之失去归属，成功任务的暂存已在执行链内自清——下载经提交点 rename
+// 消费、收件在执行尾移除——此处兜底崩溃残留与已删任务残留）。任务行仍在的暂存目录
 // （暂停态待恢复与非暂停态均在内）保留给恢复判定，不误删。exists 由调用方提供任务行存在性查询。
 func CleanupOrphanStaging(workDir string, exists func(id int64) bool) error {
 	if workDir == "" {
