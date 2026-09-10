@@ -24,9 +24,6 @@ type Repository interface {
 	BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error
 	// ListBySiteAndSiteWorkID 按 (site_id, site_work_id) 反查关联任务记录（用于作品删除时停止运行中任务）
 	ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error)
-	// CountRunningByTreeIds 统计入参任务树内运行态（Processing/Waiting）行数（删除编排「先停后删」
-	// 的运行态判定与停止后等待终态的轮询依据）
-	CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error)
 }
 
 // WorkTaskProjector 作品任务领域行窄投影（作品任务领域行仓储实现，装配注入）：活跃插件计数先取
@@ -618,11 +615,11 @@ func (m *Manager) StopRunningBySiteWork(ctx context.Context, siteId int64, siteW
 // stopWaitPollInterval 停止后等待终态的轮询间隔（终态即时落盘，正常路径首轮或次轮即命中）
 const stopWaitPollInterval = 100 * time.Millisecond
 
-// StopAndWaitTerminal 停止任务树并等待全部行离开运行态（task.RunningStopper 实现，任务删除链
-// 「先停后删」编排调用）。停止走 StopTaskTrees 立即取消路径（Waiting=队列摘除、Processing=
-// 取消执行 ctx，终态即时落盘）；等待按 DB 行运行态计数轮询，timeout 内未清零返回
-// ErrStopWaitTimeout（调用方拒绝本次删除，不强行删除——删行但执行继续属不可预期态）。
-// 崩溃残留的运行态行（无内存实例可停）恒不清零，同样由超时兜底拒绝
+// StopAndWaitTerminal 停止任务树并等待全部内存目标离开运行态（task.RunningStopper 实现，任务
+// 删除链「先停后删」编排调用）。停止走 StopTaskTrees 立即取消路径（Waiting=队列摘除、Processing=
+// 取消执行 ctx，终态即时落盘）；等待按内存目标态轮询，timeout 内未清空返回 ErrStopWaitTimeout
+// （调用方拒绝本次删除，不强行删除——删行但执行继续属不可预期态）。不在内存的行（未启动、已
+// 终态清理或崩溃残留）无 actor 可停可等，视为非运行直通
 func (m *Manager) StopAndWaitTerminal(ctx context.Context, taskIds []int64, timeout time.Duration) error {
 	if len(taskIds) == 0 {
 		return nil
@@ -633,11 +630,7 @@ func (m *Manager) StopAndWaitTerminal(ctx context.Context, taskIds []int64, time
 		return err
 	}
 	for {
-		running, err := m.repo.CountRunningByTreeIds(ctx, taskIds)
-		if err != nil {
-			return fmt.Errorf("查询任务运行态失败: %w", err)
-		}
-		if running == 0 {
+		if !m.hasRunningTargets(taskIds) {
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -649,6 +642,31 @@ func (m *Manager) StopAndWaitTerminal(ctx context.Context, taskIds []int64, time
 		case <-time.After(stopWaitPollInterval):
 		}
 	}
+}
+
+// hasRunningTargets 入参任务树内是否有仍处运行态的内存目标。目标解析复用 resolveTargets
+// （与 StopTaskTrees 同一解析——独立任务 pid=0 只入 taskMap 不入 parentMap，绕过该解析会
+// 漏判独立任务）；运行集=可停集：非终态且非「未派发的 Created 兄弟」（整树加载驻留内存但
+// 从未执行、无 actor 活动）。id 不在 taskMap/parentMap（未启动、已终态清理或崩溃残留行）
+// 无内存实例，视为非运行
+func (m *Manager) hasRunningTargets(taskIds []int64) bool {
+	for _, taskId := range taskIds {
+		targets, _, ok := m.resolveTargets(taskId)
+		if !ok {
+			continue
+		}
+		for _, child := range targets {
+			state := child.GetState()
+			// 守卫同 StopTaskTrees：未首次 dispatch 的 Created 兄弟不参与运行判定
+			if state == TaskStateCreated && !child.actorStarted.Load() {
+				continue
+			}
+			if !isTerminalState(state) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RetryTaskTrees 批量重试任务(保留各任务已记录的执行模式:重试=按原模式再来一次)

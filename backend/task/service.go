@@ -121,8 +121,6 @@ type Repository interface {
 	ListSchedule(ctx context.Context, ids []int64) ([]*entity.Task, error)
 	// DeleteTask 删除任务（包含子任务：领域行先于核心行）- 批量删除，返回全量被删任务 ID 集
 	DeleteTask(ctx context.Context, ids []int64) ([]int64, error)
-	// CountRunningByTreeIds 统计入参任务与其子任务中运行态（Processing/Waiting）行数（删除编排判定）
-	CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error)
 	// ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（删除链前置步）
 	ClearResourceTaskId(ctx context.Context, ids []int64) error
 	// BatchSetStatus 批量设置任务状态（同时更新 error_message）
@@ -201,10 +199,10 @@ type TaskTypeRegistry interface {
 }
 
 // RunningStopper 运行态任务停止器（taskManager.Manager 实现；延迟注入解决装配时序——
-// TaskService 先于 TaskManager 创建）。任务删除链对运行态任务的「先停后删」编排依赖
+// TaskService 先于 TaskManager 创建）。任务删除链「先停后删」编排依赖
 type RunningStopper interface {
-	// StopAndWaitTerminal 停止任务树并等待全部行离开运行态（Processing/Waiting）；timeout 内
-	// 未完成返回错误（调用方拒绝本次删除，不强行删除——删行但执行继续属不可预期态）
+	// StopAndWaitTerminal 停止任务树并等待全部内存目标离开运行态（非运行任务快速直通）；
+	// timeout 内未完成返回错误（调用方拒绝本次删除，不强行删除——删行但执行继续属不可预期态）
 	StopAndWaitTerminal(ctx context.Context, taskIds []int64, timeout time.Duration) error
 }
 
@@ -679,23 +677,17 @@ func (s *Service) CreateBuiltinTaskChildren(ctx context.Context, taskType string
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除
-// 运行态编排：入参任务树内有运行态（Processing/Waiting）行时，先经停止器「停止 + 有界等待
-// 终态」再进删除链（暂存即时清理等收尾自然落在停止完成后）；等待超时拒绝删除（提示稍后
-// 重试，不强行删除——删行但执行继续属不可预期态）。全非运行态（含建树回滚删 Created 态树）
-// 直通既有删除链。
+// 删除即放弃执行：无条件先经停止器「停止 + 有界等待终态」再进删除链（暂存即时清理等收尾
+// 自然落在停止完成后）——运行态是瞬态、内存权威、不落库，运行判定由停止器按内存目标集
+// 自查，非运行任务（不在内存或已终态，含建树回滚删 Created 态树）在其内部快速直通；等待
+// 超时拒绝删除（提示稍后重试，不强行删除——删行但执行继续属不可预期态）。
 // 事务内先清 resource.task_id 引用再删任务行：外键强制下引用未清即删行被拒（NULL=非任务产）。
 // 提交后清理被删任务（含子任务）的下载暂存目录——暂存目录按任务 ID 派生，生命周期与任务行一致，
 // 任务行消亡即失去归属；删除时即时清理，不等启动清扫兜底
 func (s *Service) DeleteTask(ctx context.Context, ids []int64) error {
 	if s.runningStopper != nil {
-		running, err := s.repo.CountRunningByTreeIds(ctx, ids)
-		if err != nil {
+		if err := s.runningStopper.StopAndWaitTerminal(ctx, ids, deleteStopWaitTimeout); err != nil {
 			return err
-		}
-		if running > 0 {
-			if err := s.runningStopper.StopAndWaitTerminal(ctx, ids, deleteStopWaitTimeout); err != nil {
-				return err
-			}
 		}
 	}
 	var deletedIds []int64

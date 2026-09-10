@@ -6,6 +6,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -51,11 +52,6 @@ func (r *fakeBuiltinRepo) statusOf(id int64) (task.StatusUpdate, bool) {
 
 func (r *fakeBuiltinRepo) ListBySiteAndSiteWorkID(ctx context.Context, siteId int64, siteWorkId string) ([]*domain.Task, error) {
 	return nil, nil
-}
-
-// CountRunningByTreeIds 恒零（桩无运行态行——停止等待终态轮询立即命中）
-func (r *fakeBuiltinRepo) CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error) {
-	return 0, nil
 }
 
 // recordSectionRecorder 板块选择写行桩（重下载两步编排测试用）
@@ -632,8 +628,8 @@ func TestRunStrategyInterrupted(t *testing.T) {
 }
 
 // TestStopAndWaitTerminalStopsRunningTask 停止等待终态：执行中任务经 StopAndWaitTerminal →
-// runCtx 立即取消、策略检查点退出、停止收口置 Failed 终态即时落盘，等待按运行态计数轮询
-// 即刻命中返回 nil（终态收口在策略退出后由 pendingCmds 路径完成，与 StopTaskTrees 先例同序）
+// runCtx 立即取消、策略检查点退出、停止收口置 Failed 终态即时落盘，等待按内存运行态轮询，
+// 任务真达终态后返回 nil（终态收口在策略退出后由 pendingCmds 路径完成，与 StopTaskTrees 先例同序）
 func TestStopAndWaitTerminalStopsRunningTask(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("interrupt") // 阻塞执行，停止靠控制面取消后释放
@@ -663,4 +659,116 @@ func TestStopAndWaitTerminalStopsRunningTask(t *testing.T) {
 		t.Fatalf("停止后任务应即时落盘 Failed 终态: %+v ok=%v", u, ok)
 	}
 	// 停止路径内存对象保留至进程内后续清理（与 StopTaskTrees 先例同路径），不等待 IsIdle
+}
+
+// TestStopAndWaitTerminalNonRunningFastReturn 非运行 ids 快速直通：行未启动（不在内存，同建树
+// 回滚删 Created 态树形态）无 actor 可停可等，不经轮询挂等即返回 nil
+func TestStopAndWaitTerminalNonRunningFastReturn(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"), newBuiltinTask(2, "demo"))
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": newScriptedStrategy("finish")}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	start := time.Now()
+	if err := mgr.StopAndWaitTerminal(context.Background(), []int64{1, 2}, 3*time.Second); err != nil {
+		t.Fatalf("非运行任务应直通返回: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("非运行任务应立即返回（不得挂到超时量级），实际耗时 %v", elapsed)
+	}
+}
+
+// TestStopAndWaitTerminalUndispatchedSiblingFastReturn 叶子目标解析：单独启动父树下某叶子后，
+// 未派发的 Created 兄弟（整树加载驻留内存但从未执行、无 actor 活动）经 StopAndWaitTerminal
+// 直通——运行判定经 resolveTargets 按目标集自查，叶子只作用自身、不等待运行中的兄弟
+func TestStopAndWaitTerminalUndispatchedSiblingFastReturn(t *testing.T) {
+	parent := newBuiltinTask(10, "demo")
+	parent.HasChild = sql.NullBool{Bool: true, Valid: true}
+	leaf1 := newBuiltinTask(1, "demo")
+	leaf1.Pid = sql.NullInt64{Int64: 10, Valid: true}
+	leaf2 := newBuiltinTask(2, "demo")
+	leaf2.Pid = sql.NullInt64{Int64: 10, Valid: true}
+	repo := newFakeBuiltinRepo(parent, leaf1, leaf2)
+	strat := newScriptedStrategy("interrupt")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	// 单独启动叶子 1：整树加载进内存（兄弟 2 驻留 children/taskMap）但仅派发叶子 1
+	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	waitState(t, mgr, 1, TaskStateProcessing, 3*time.Second)
+
+	start := time.Now()
+	if err := mgr.StopAndWaitTerminal(context.Background(), []int64{2}, 3*time.Second); err != nil {
+		t.Fatalf("未派发兄弟应直通返回: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("未派发 Created 兄弟应立即返回（运行中兄弟不阻塞叶子判定），实际耗时 %v", elapsed)
+	}
+
+	// 收场：停整树（叶子 1 释放策略后收口 Failed），防策略 goroutine 泄漏。停止前捕获叶子
+	// 对象——父树停止会经 cleanupStoppedTree 把子任务移出 taskMap，事后只能按对象断言终态
+	mgr.mu.RLock()
+	leaf1MT := mgr.taskMap[1]
+	mgr.mu.RUnlock()
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- mgr.StopAndWaitTerminal(context.Background(), []int64{10}, 3*time.Second) }()
+	waitRunCtxCanceled(t, strat.lastHandle())
+	strat.release <- struct{}{}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("整树停止失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("整树停止未返回")
+	}
+	if leaf1MT.GetState() != TaskStateFailed {
+		t.Fatalf("整树停止后叶子 1 应达 Failed 终态: %s", taskStateName(leaf1MT.GetState()))
+	}
+}
+
+// TestStopAndWaitTerminalTimeoutRefuses 超时拒绝：策略不理会取消（runCtx 取消后仍阻塞不出），
+// 停止命令应答超时后任务仍处 Processing，等待按内存运行态轮询至超时返回 ErrStopWaitTimeout
+// （调用方拒绝本次删除的信号）。应答上界注入缩短，避免挂满生产默认 35s
+func TestStopAndWaitTerminalTimeoutRefuses(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
+	strat := newScriptedStrategy("interrupt")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	waitState(t, mgr, 1, TaskStateProcessing, 3*time.Second)
+
+	mgr.mu.RLock()
+	mt := mgr.taskMap[1]
+	mgr.mu.RUnlock()
+	if mt == nil {
+		t.Fatal("运行中任务应在 taskMap")
+	}
+	mt.ackWaitTimeout = 250 * time.Millisecond
+
+	start := time.Now()
+	err := mgr.StopAndWaitTerminal(context.Background(), []int64{1}, 900*time.Millisecond)
+	if !errors.Is(err, ErrStopWaitTimeout) {
+		t.Fatalf("任务不可停止时应超时拒绝, 实际 %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("超时等待应以注入 timeout 为界（不含默认应答上界），实际耗时 %v", elapsed)
+	}
+
+	// 收场：释放策略（runCtx 已取消 → 不上报终态 → 待处理停止命令收口 Failed），防 goroutine 泄漏
+	strat.release <- struct{}{}
+	select {
+	case <-mt.actorDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("释放后任务 actor 未退出")
+	}
 }

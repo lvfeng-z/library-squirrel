@@ -224,26 +224,24 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	}
 }
 
-// —— 运行态删除编排测试（先停后删）：非运行态直通 / 运行态经停止器等待终态后删除 / 超时拒绝 ——
+// —— 运行态删除编排测试（先停后删）：无条件停止等待 / 停止器报错拒绝且行保留 ——
+// 运行态是瞬态、不落库（运行中任务 DB 行恒 Created），删除编排无运行态判定门：删除即无条件
+// 经停止器收口，非运行任务由停止器内部快速直通；测试树统一用 Created 行（生产可达形态）
 
-// fakeRunningStopper 运行态任务停止器桩：记录调用；hook 模拟「停止并等待终态」的副作用
-// （把行置离运行态），err 模拟等待超时
+// fakeRunningStopper 运行态任务停止器桩：记录调用；err 模拟等待终态超时
 type fakeRunningStopper struct {
 	calls [][]int64
-	hook  func(ids []int64)
 	err   error
 }
 
 func (f *fakeRunningStopper) StopAndWaitTerminal(_ context.Context, ids []int64, _ time.Duration) error {
 	f.calls = append(f.calls, append([]int64{}, ids...))
-	if f.hook != nil {
-		f.hook(ids)
-	}
 	return f.err
 }
 
-// newDeleteOrchestrationEnv 建删除编排测试环境：内存库 + 任务树（父+子）+ 服务（注入停止器桩）
-func newDeleteOrchestrationEnv(t *testing.T, parentStatus, childStatus int) (*Service, *fakeRunningStopper, *domain.Task, *domain.Task, *gorm.DB) {
+// newDeleteOrchestrationEnv 建删除编排测试环境：内存库 + 全 Created 任务树（同建树回滚形态）
+// + 服务（注入停止器桩）
+func newDeleteOrchestrationEnv(t *testing.T) (*Service, *fakeRunningStopper, *domain.Task, *domain.Task, *gorm.DB) {
 	t.Helper()
 	db, err := migration.OpenTestDB()
 	if err != nil {
@@ -255,68 +253,45 @@ func newDeleteOrchestrationEnv(t *testing.T, parentStatus, childStatus int) (*Se
 	stopper := &fakeRunningStopper{}
 	svc.SetRunningStopper(stopper)
 
-	newTask := func(name string, pid int64, status int) *domain.Task {
+	newTask := func(name string, pid int64) *domain.Task {
 		tk := domain.NewTask()
 		tk.TaskName = sql.NullString{String: name, Valid: true}
-		tk.Status = status
 		if pid > 0 {
 			tk.Pid = sql.NullInt64{Int64: pid, Valid: true}
 		}
 		require.NoError(t, db.Create(tk).Error)
 		return tk
 	}
-	parent := newTask("主任务", 0, parentStatus)
-	child := newTask("子任务", parent.GetID(), childStatus)
+	parent := newTask("主任务", 0)
+	child := newTask("子任务", parent.GetID())
 	return svc, stopper, parent, child, db
 }
 
-// TestDeleteTaskNonRunningDirect 非运行态直通：全 Created 树（建树回滚同形）不经停止器直接删除。
-func TestDeleteTaskNonRunningDirect(t *testing.T) {
+// TestDeleteTaskAlwaysStopsBeforeDelete 删除无条件经停止器收口（含建树回滚删 Created 态树），
+// 停止完成（桩返回 nil）后走既有删除链。
+func TestDeleteTaskAlwaysStopsBeforeDelete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	svc, stopper, parent, child, db := newDeleteOrchestrationEnv(t, int(TaskStatusCreated), int(TaskStatusCreated))
+	svc, stopper, parent, child, db := newDeleteOrchestrationEnv(t)
 
 	if err := svc.DeleteTask(context.Background(), []int64{parent.GetID()}); err != nil {
 		t.Fatalf("删除任务失败: %v", err)
 	}
-	assert.Empty(t, stopper.calls, "非运行态删除不应调用停止器")
-
-	var taskCount int64
-	require.NoError(t, db.Model(&domain.Task{}).Where("id IN ?", []int64{parent.GetID(), child.GetID()}).Count(&taskCount).Error)
-	assert.Equal(t, int64(0), taskCount, "任务树应物理消亡")
-}
-
-// TestDeleteTaskRunningStopsThenDeletes 运行态分叉：树内含运行态行 → 经停止器等待终态后走既有删除链。
-func TestDeleteTaskRunningStopsThenDeletes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("内存 SQLite 依赖 CGO")
-	}
-	svc, stopper, parent, child, db := newDeleteOrchestrationEnv(t, int(TaskStatusProcessing), int(TaskStatusWaiting))
-	// 停止器副作用：模拟停止完成（全部行置 Failed 终态）
-	stopper.hook = func(ids []int64) {
-		require.NoError(t, db.Model(&domain.Task{}).
-			Where("id IN ? OR pid IN ?", ids, ids).
-			Update("status", int(TaskStatusFailed)).Error)
-	}
-
-	if err := svc.DeleteTask(context.Background(), []int64{parent.GetID()}); err != nil {
-		t.Fatalf("删除任务失败: %v", err)
-	}
-	require.Len(t, stopper.calls, 1, "运行态删除应恰调用一次停止器")
+	require.Len(t, stopper.calls, 1, "删除应无条件调用停止器")
 	assert.Equal(t, []int64{parent.GetID()}, stopper.calls[0])
 
 	var taskCount int64
 	require.NoError(t, db.Model(&domain.Task{}).Where("id IN ?", []int64{parent.GetID(), child.GetID()}).Count(&taskCount).Error)
-	assert.Equal(t, int64(0), taskCount, "停止终态后任务树应删除")
+	assert.Equal(t, int64(0), taskCount, "停止完成后任务树应删除")
 }
 
-// TestDeleteTaskStopTimeoutRefuses 停止超时拒绝：等待终态超时返回错误，任务行保留不强行删除。
+// TestDeleteTaskStopTimeoutRefuses 停止器报错（等待终态超时）拒绝删除：任务行保留不强行删除。
 func TestDeleteTaskStopTimeoutRefuses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
-	svc, stopper, parent, child, db := newDeleteOrchestrationEnv(t, int(TaskStatusProcessing), int(TaskStatusCreated))
+	svc, stopper, parent, child, db := newDeleteOrchestrationEnv(t)
 	stopper.err = errors.New("任务停止超时，请稍后重试删除")
 
 	err := svc.DeleteTask(context.Background(), []int64{parent.GetID()})

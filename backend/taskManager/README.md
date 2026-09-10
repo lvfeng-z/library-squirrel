@@ -53,7 +53,7 @@
 ## 依赖关系
 
 - 依赖：`Repository`（任务树核心行查询 `ListTaskTreeCore`/批量状态设置/按站点作品反查）、`task` 包（TaskStatusEnum 状态枚举）、`WorkTaskProjector`（活跃插件计数的作品任务领域行窄投影，download 仓储实现）、`StagingCleaner`（work 删除链清下载暂存，task 模块暂存基建适配实现）、`SectionRecorder`（重下载板块选择写行，download 实现）、`TaskProgressPusher`、任务类型执行面策略表（task_type → ExecutionStrategy，构造注入；plugin-download/share-receive 均经此）、**shareLock**（WorkLockChecker——替换确认投递前置作品锁守卫）、resource 替换链复活能力（终态回滚单点）
-- 被依赖：前端任务执行面板（操作栏）、task（运行态任务删除编排的 `RunningStopper` 窄接口实现——`StopAndWaitTerminal(taskIds, timeout)` 停止任务树并轮询等待全部行离开运行态〔Processing/Waiting，终态即时落库〕，超时返回错误令调用方拒绝删除（删行但执行继续属不可预期态）；崩溃残留的运行态行无内存实例可停、恒不清零，同样由超时兜底）、download（实现 plugin-download 执行面策略）、share（实现 share-receive 执行面策略）、export（实现 export 执行面策略）
+- 被依赖：前端任务执行面板（操作栏）、task（运行态任务删除编排的 `RunningStopper` 窄接口实现——`StopAndWaitTerminal(taskIds, timeout)` 停止任务树并按内存目标集轮询等待全部目标离开运行态〔目标解析复用 `resolveTargets`，运行集=可停集：非终态且非未派发的 Created；运行态瞬态不落库，DB 行判定恒漏识别〕，超时返回错误令调用方拒绝删除（删行但执行继续属不可预期态）；不在内存的行（未启动、已终态清理或崩溃残留）无 actor 可停可等，视为非运行直通）、download（实现 plugin-download 执行面策略）、share（实现 share-receive 执行面策略）、export（实现 export 执行面策略）
 
 ## 关键设计
 

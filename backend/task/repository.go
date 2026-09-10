@@ -533,20 +533,6 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, 
 	return allIds, db.Where("id IN ?", ids).Delete(&domain.Task{}).Error
 }
 
-// CountRunningByTreeIds 统计入参任务与其子任务中运行态（Processing/Waiting，口径同父任务聚合
-// 的 processing 集）行数：任务删除链「先停后删」编排的运行态判定输入与停止后等待终态的轮询依据
-func (r *TaskRepository) CountRunningByTreeIds(ctx context.Context, ids []int64) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	var n int64
-	err := r.GORM().WithContext(ctx).Model(&domain.Task{}).
-		Where("(id IN ? OR pid IN ?) AND status IN ?", ids, ids,
-			[]int{int(TaskStatusProcessing), int(TaskStatusWaiting)}).
-		Count(&n).Error
-	return n, err
-}
-
 // 辅助函数：将int64数组转换为逗号分隔的字符串
 func int64ArrayToString(ids []int64) string {
 	strs := make([]string, len(ids))

@@ -2,6 +2,12 @@
 # 由构建管线 task build:plugins 生成维护，勿手改（手改仅影响本地构建产物）
 officialPlugins:
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: 011dec3
+    contentDigest: 48d668fa71fae86a4742c1e0e97cad28db2204ad87ebf5a2de14b84896c6de1a
+  - publicId: com.lvfeng.bilibiliSuite
+    buildId: 011dec3-dirty
+    contentDigest: 6724485ad885bb52dc3cb18459c1fe6814674e162089b4cf7a8f24ff6f7aef0b
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: "25446e9"
     contentDigest: 9864471a583d727ccc9597cfa7ffe2c2f556fca3b78892aa00f2d03d5418b1a8
   - publicId: com.lvfeng.bilibiliSuite
@@ -9,7 +15,10 @@ officialPlugins:
     contentDigest: 04c3ebbcced1958d038426fa06d9be5be15edcf4c64efd48e8aed4157a341f07
   - publicId: com.lvfeng.bilibiliSuite
     buildId: 9db0847
-    contentDigest: 8ed84c766d94b0fed581ee9b11fbb8738ee78725eafbadfd2e1c1ef76a04b0ed
+    contentDigest: 49b2d8fa30431ceebbc8b03cb05730d3be6f1ead4554dbb1fd59d3b08374fbb8
+  - publicId: com.lvfeng.bilibiliSuite
+    buildId: 9db0847-dirty
+    contentDigest: 67ff521e39947b40663e7c410248621deee7f8f99f9ca68d81fb8fb2f52d508a
   - publicId: com.lvfeng.localImport
     buildId: 30c1d20
     contentDigest: 527a091a6d0cfc0959154e814ac63303f295675179d86371efcafee93f46427b
@@ -18,7 +27,7 @@ officialPlugins:
     contentDigest: 73c5de3197a4e97d9170335d7c6e434f83b3ab7d89a9f588f27faf7a63ea77c4
   - publicId: com.lvfeng.localImport
     buildId: 97f58d4
-    contentDigest: 95f5bbc61a1dbd3b06c1dd58a4d31592745f94e37b254b0c1f2aed465511f0a2
+    contentDigest: 284cf467c9234e3e0ca8abac2ee654702874cff45cf39c5bf9fd229328219c18
   - publicId: com.lvfeng.localImport
     buildId: eb682b5
     contentDigest: c94f71a817ec0f884ba99b5da48c6c9aca37e6226fe2a6a330916b529ba6faa5
@@ -29,11 +38,17 @@ officialPlugins:
     buildId: 745cee4
     contentDigest: 4b8226aa70b8531de00d0766baa3b495c8426932cd995a6cbb89d8345057965b
   - publicId: com.lvfeng.pixivSuite
+    buildId: 745cee4-dirty
+    contentDigest: d86ca010b456a08cc0fe5bf318f1da76bced849073e7e12b4e226bd1d0e8ada5
+  - publicId: com.lvfeng.pixivSuite
     buildId: e1a0f00
     contentDigest: 2fee150459e296942ac1d3e94530cdfddb20b28cf4e79897e073e563f02bd86b
   - publicId: com.lvfeng.pixivSuite
     buildId: e1a0f00-dirty
     contentDigest: 5f8e30884afd3e69acc103d09618437e054f7b87382deb21e88d39d35525a6e8
+  - publicId: com.lvfeng.pixivSuite
+    buildId: e7af41f
+    contentDigest: 12d4b56d2fe5a4e0391365864aeceeeb0b6ebd748835120742d5b9a61a0c8362
   - publicId: com.lvfeng.pixivSuite
     buildId: f119101
     contentDigest: 0b69daedc54c8537be235848b47fe613b0e125264943b742e55b9c450150ef52
