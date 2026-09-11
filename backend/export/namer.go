@@ -68,10 +68,12 @@ func newWorkDirNamer() *workDirNamer {
 	return &workDirNamer{used: make(map[string]struct{})}
 }
 
-// Name 为单个作品分配唯一目录名。
-func (n *workDirNamer) Name(workID int64, siteWorkName *string, siteWorkID *string) string {
-	candidate := ""
-	if siteWorkName != nil {
+// Name 为单个作品分配唯一目录名：优先模板渲染名（与文件名同模板，调用方已净化，空=回退），
+// 回退链 siteWorkName → siteWorkId → work_<id>；跨作品同渲染名冲突消解与文件链同式——
+// 追加 _siteWorkId（空 ID 直入序号）→ 仍冲突追加序号。
+func (n *workDirNamer) Name(workID int64, siteWorkName *string, siteWorkID *string, renderedBase string) string {
+	candidate := renderedBase
+	if candidate == "" && siteWorkName != nil {
 		candidate = sanitizeComponent(*siteWorkName)
 	}
 	if candidate == "" && siteWorkID != nil {
@@ -80,9 +82,15 @@ func (n *workDirNamer) Name(workID int64, siteWorkName *string, siteWorkID *stri
 	if candidate == "" {
 		candidate = fmt.Sprintf("work_%d", workID)
 	}
-	base := candidate
-	for i := 2; n.taken(candidate); i++ {
-		candidate = fmt.Sprintf("%s_%d", base, i)
+	if n.taken(candidate) {
+		// 跨作品同渲染名：追加站点作品 ID 消歧（ID 为空跳过直入序号）
+		if siteWorkID != nil && *siteWorkID != "" {
+			candidate = candidate + "_" + *siteWorkID
+		}
+		base := candidate
+		for i := 2; n.taken(candidate); i++ {
+			candidate = fmt.Sprintf("%s_%d", base, i)
+		}
 	}
 	n.used[strings.ToLower(candidate)] = struct{}{}
 	return candidate
@@ -167,11 +175,11 @@ func splitNameExt(name string) (base, ext string) {
 }
 
 // PlanNames 为导出模型确定包内文件路径（works/<作品目录名>/<文件名>）。
-// 文件名 = 文件名模板（fileNameFormat）按作品字段渲染的基底 + 源文件扩展名；目录名维持
-// 作品名净化（siteWorkName → siteWorkId → work_<id>，冲突追加序号）。
-// 确定性：作品按 manifest 顺序（收集端按 ID 升序）逐个命名，exportTime* 占位符基准取
-// manifest 导出时刻（Meta.ExportedAt）——同 manifest 重复规划输出一致；文件名冲突按
-// fileNamer 固定规则消解。副作用：填充 manifest.Files[].Path。
+// 目录名与文件主名同模板渲染（同作品目录与文件同基底）；渲染为空时目录回退
+// siteWorkName → siteWorkId → work_<id>。目录/文件冲突消解链同式：追加 _siteWorkId
+// 后缀 → 仍冲突追加序号。确定性：作品按 manifest 顺序（收集端按 ID 升序）逐个命名，
+// exportTime* 占位符基准取 manifest 导出时刻（Meta.ExportedAt）——同 manifest 重复
+// 规划输出一致；文件名冲突按 fileNamer 固定规则消解。副作用：填充 manifest.Files[].Path。
 func PlanNames(m *Manifest, fileNameFormat string) error {
 	fileIndex := make(map[int64]int, len(m.Files))
 	for i, f := range m.Files {
@@ -183,10 +191,10 @@ func PlanNames(m *Manifest, fileNameFormat string) error {
 	fileNamer := newFileNamer()
 	for i := range m.Works {
 		w := &m.Works[i]
-		dirName := workNamer.Name(w.ID, w.SiteWorkName, w.SiteWorkID)
 		token := filename.ExtractTokenData(workTemplateFields(m, w, localAuthorNames, siteAuthorNames))
 		renderedBase := sanitizeComponent(filename.FormatFileName(fileNameFormat, token))
 		siteWorkID := ptrStringValue(w.SiteWorkID)
+		dirName := workNamer.Name(w.ID, w.SiteWorkName, w.SiteWorkID, renderedBase)
 		for r := range w.Resources {
 			res := &w.Resources[r]
 			for s := range res.Stores {

@@ -793,7 +793,8 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               </div>
               <div class="settings-item">
                   <div class="settings-item-header">
-                    <span class="settings-item-title">导出文件命名格式</span>
+                    <span class="settings-item-title">导出命名格式</span>
+                    <span class="settings-item-desc">导出包内作品目录与文件名均按此模板渲染</span>
                   </div>
                   <el-row class="export-file-name-format-button">
                   <el-button @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, false)">

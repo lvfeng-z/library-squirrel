@@ -70,4 +70,4 @@ specs 顺序确定性是 SDK 显式契约（`doc/plugin-dev-guide.md` 6.1「spec
 
 ## 导出命名(与库内命名的关系)
 
-导出包内文件名独立于库内命名:按用户设置「导出文件命名格式」模板（`settings.exportSettings.fileNameFormat`，占位符 author/siteWorkId/siteWorkName/uploadTime*/exportTime* 等，详见 `backend/export/namer.go`）以作品字段渲染主名 + 源文件扩展名，同名冲突追加 `_siteWorkId` 后缀、仍冲突追加序号——导出是面向用户的可移植交付物，文件名取可读性；库内 role_seq 形态不进导出包。
+导出包内命名独立于库内命名:按用户设置「导出命名格式」模板（`settings.exportSettings.fileNameFormat`，占位符 author/siteWorkId/siteWorkName/uploadTime*/exportTime* 等，详见 `backend/export/namer.go`）渲染——**作品目录名与文件主名同模板同基底**（目录渲染为空回退 siteWorkName → siteWorkId → work_<id>），文件扩展名取源文件，目录/文件同名冲突均追加 `_siteWorkId` 后缀、仍冲突追加序号——导出是面向用户的可移植交付物，命名取可读性；库内 role_seq 形态不进导出包。

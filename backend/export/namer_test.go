@@ -109,7 +109,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 		Files: []FileEntry{{StoreID: 100, StorePath: "store/resource/a/pic.jpg"}},
 	}
 	require.NoError(t, PlanNames(m, "[${author}]_[${siteWorkId}]_${siteWorkName}.${uploadTimeYear}"))
-	assert.Equal(t, "works/作品A/[本地作者]_[w-100]_作品A.2026.jpg", m.Files[0].Path)
+	assert.Equal(t, "works/[本地作者]_[w-100]_作品A.2026/[本地作者]_[w-100]_作品A.2026.jpg", m.Files[0].Path)
 
 	// exportTime 占位符按 Meta.ExportedAt 基准渲染（与渲染时刻当前时间无关）
 	m2 := &Manifest{
@@ -123,7 +123,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 	}
 	require.NoError(t, PlanNames(m2, "${exportTimeYear}${exportTimeMonth}${exportTimeDay}"))
 	want := time.UnixMilli(exportedAt).Format("20060102")
-	assert.Equal(t, "works/A/"+want+".jpg", m2.Files[0].Path)
+	assert.Equal(t, "works/"+want+"/"+want+".jpg", m2.Files[0].Path)
 }
 
 // TestPlanNamesEmptyRenderFallback 渲染为空（模板仅含未提供值的占位符）回退源文件名净化；
@@ -178,8 +178,8 @@ func TestPlanNamesFileConflictChain(t *testing.T) {
 	assert.Equal(t, "works/A/A_w-1_2.jpg", by[102])
 }
 
-// TestPlanNamesCrossWorkRenderedConflict 同渲染名不同作品：文件名全局唯一，
-// 后作品追加 _siteWorkId 后缀（目录名冲突仍按序号消解）。
+// TestPlanNamesCrossWorkRenderedConflict 同渲染名不同作品：目录与文件名均全局唯一，
+// 后作品目录与文件名同走追加 _siteWorkId 后缀消解。
 func TestPlanNamesCrossWorkRenderedConflict(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
@@ -191,16 +191,22 @@ func TestPlanNamesCrossWorkRenderedConflict(t *testing.T) {
 				Resources: []ResourceRecord{
 					{ID: 20, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 200}}},
 				}},
+			{ID: 3, SiteWorkName: strp("同题"), SiteWorkID: strp("w-3"),
+				Resources: []ResourceRecord{
+					{ID: 30, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 300}}},
+				}},
 		},
 		Files: []FileEntry{
 			{StoreID: 100, StorePath: "store/resource/a/pic.jpg"},
 			{StoreID: 200, StorePath: "store/resource/b/pic.jpg"},
+			{StoreID: 300, StorePath: "store/resource/c/pic.jpg"},
 		},
 	}
 	require.NoError(t, PlanNames(m, "${siteWorkName}"))
 	by := pathByStore(m)
 	assert.Equal(t, "works/同题/同题.jpg", by[100])
-	assert.Equal(t, "works/同题_2/同题_w-2.jpg", by[200])
+	assert.Equal(t, "works/同题_w-2/同题_w-2.jpg", by[200])
+	assert.Equal(t, "works/同题_w-3/同题_w-3.jpg", by[300])
 }
 
 // TestPlanNamesConflictSiteWorkIDEmpty siteWorkId 为空时跳过 ID 后缀直入序号消解。

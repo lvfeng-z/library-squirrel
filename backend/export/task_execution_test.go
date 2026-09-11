@@ -209,8 +209,8 @@ func TestExportExecutionSuccessFinish(t *testing.T) {
 		names = append(names, zf.Name)
 	}
 	assert.Contains(t, names, "manifest.json")
-	// 文件名按默认模板渲染：作者（作品关联本地作者）+ 站点作品 ID + 作品名 + 源文件扩展名
-	assert.Contains(t, names, "works/作品1/[画师A]_[w-1]_作品1.jpg")
+	// 目录与文件名同模板渲染（同基底）：作者（作品关联本地作者）+ 站点作品 ID + 作品名 + 源文件扩展名
+	assert.Contains(t, names, "works/[画师A]_[w-1]_作品1/[画师A]_[w-1]_作品1.jpg")
 
 	// 进度：单源文件 13 字节（"image-content"），末次上报 total=processed=13
 	require.NotEmpty(t, progresses)
