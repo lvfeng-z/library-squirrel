@@ -1487,27 +1487,6 @@ func (app *App) onDomReady() {
 	go app.ShareService.RestoreAll(context.Background())
 }
 
-// onBeforeClose 窗口关闭前的回调（内部使用，不暴露给前端）
-// 返回 true 表示阻止关闭，false 表示允许关闭
-func (app *App) onBeforeClose() bool {
-	if app.TaskManagerService.IsIdle() {
-		return false
-	}
-
-	if app.TaskManagerService.IsShuttingDown() {
-		return true // 正在关闭中，阻止重复触发
-	}
-
-	logger.Log.Info("任务正在运行，开始暂停任务...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := app.TaskManagerService.GracefulShutdown(ctx); err != nil {
-		logger.Log.Warnf("优雅关闭超时，强制退出: %v", err)
-	}
-	return false
-}
-
 // extensionListProviderAdapter 聚合三个 Registry 的扩展点查询能力
 type extensionListProviderAdapter struct {
 	taskHandlerRegistry       *extension2.TaskHandlerRegistry

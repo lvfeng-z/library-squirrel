@@ -525,7 +525,7 @@ doFlush():
   4. pusher.PushProgressBatch(progressBatch)           // 批量推送进度到前端
 ```
 
-**优雅停机**：`GracefulShutdown` 暂停所有 Processing 任务 → 等待全部达到稳定状态 → 触发最终 `doFlush` → 确保所有 DB 写入完成。
+**优雅停机**：`GracefulShutdown` 暂停所有 Processing 任务 → 等待全部任务收口（稳定态，或无在途执行的驻留态——等待队列的 Waiting/确认等待的 WaitingForInput 在关闭起始已被取消、未派发的 Created 从未启动，三者的状态不会自发迁移，不计入等待）→ 触发最终 `doFlush` → 确保所有 DB 写入完成。它作为程序退出阻断项经 `ShutdownGate`（统一阻断点封装）由 app 在窗口销毁后（`Run()` 返回后）、关闭插件/数据库前有界等待（40s，超时记录后强制退出兜底）——不挂在窗口关闭事件上（wails v3 窗口事件监听器并发分发且窗口无条件销毁，事件处理器内的等待拦不住进程退出）；其他模块的退出前收尾将来经同一 gate `Register` 注册。
 
 ---
 

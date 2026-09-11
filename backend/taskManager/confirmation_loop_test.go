@@ -609,6 +609,10 @@ func TestSetFailedDiscardsCreatedStoresBeforeRevive(t *testing.T) {
 func TestHandleStopCmdTriggersRegisteredRollback(t *testing.T) {
 	m, stubs := newRollbackTestTask()
 	m.strategy = &stubStrategy{}
+	// 停止命令收口含内存清理（cleanupFinishedTask），须挂真实 manager（空表幂等）
+	mgr := NewManager(1, nil, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()}, nil, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+	m.manager = mgr
 	h := newStrategyHandle(m)
 	h.SetTerminalRollback(TerminalRollback{
 		Victims:         []resource.StoreRef{{StoreID: 811, ResourceID: 700}},

@@ -343,7 +343,7 @@ func (m *ManagedTask) handleRunCmd(cmd taskCmd) {
 		m.releaseSlot()
 		m.manager.dispatchFromQueue()
 		m.manager.cleanupFinishedTask(m)
-	case runResultPaused: // 中断(暂停交后续恢复;停止的终态由 handleStopCmd 收口)
+	case runResultPaused: // 中断(暂停交后续恢复;停止的终态与内存清理由 handleStopCmd 收口)
 		m.releaseSlot()
 		m.manager.dispatchFromQueue()
 	}
@@ -562,7 +562,10 @@ func (m *ManagedTask) handlePauseCmd(cmd taskCmd) {
 	}
 }
 
-// handleStopCmd 处理 stop 命令:终态 Failed
+// handleStopCmd 处理 stop 命令:置 Failed 终态并清理内存（taskMap 摘除,父任务全部子任务
+// 终态时连带清理 parentMap）。停止轨的内存收口在此单点完成——actor 中断收尾（runResultPaused）
+// 不清理,叶子/独立任务也无 StopTaskTrees 侧的 cleanupStoppedTree 兜底,不清理则对象滞留
+// taskMap（IsIdle 恒假）且重试经 claimTask 复用滞留对象后被 dispatch 幂等丢弃
 func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
 	if isTerminalState(m.GetState()) {
 		if cmd.ack != nil {
@@ -576,6 +579,7 @@ func (m *ManagedTask) handleStopCmd(cmd taskCmd) {
 	}
 	m.notifyInterrupt(true)
 	m.setFailed("任务被用户停止")
+	m.manager.cleanupFinishedTask(m)
 	if cmd.ack != nil {
 		cmd.ack <- nil
 	}

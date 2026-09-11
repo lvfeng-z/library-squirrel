@@ -118,6 +118,13 @@ func (s *scriptedStrategy) lastHandle() StrategyHandle {
 	return s.handles[len(s.handles)-1]
 }
 
+// allHandles 返回全部执行轮次句柄的快照
+func (s *scriptedStrategy) allHandles() []StrategyHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]StrategyHandle(nil), s.handles...)
+}
+
 // newBuiltinTask 构造策略类型任务实体（Created、根级）
 func newBuiltinTask(id int64, taskType string) *domain.Task {
 	t := domain.NewTask()
@@ -385,7 +392,7 @@ func TestBuiltinTaskPauseStopResume(t *testing.T) {
 		t.Fatalf("恢复应重新执行策略: %d", strat.execCount())
 	}
 
-	// 停止：置 Failed（"任务被用户停止"）；StopTaskTrees 带 ack 等待终态，须先取消后释放
+	// 停止：置 Failed（"任务被用户停止"）并即时清理内存；StopTaskTrees 带 ack 等待收口完成，须先取消后释放
 	stopDone := make(chan error, 1)
 	go func() { stopDone <- mgr.StopTaskTrees(context.Background(), []int64{1}) }()
 	waitRunCtxCanceled(t, strat.lastHandle())
@@ -398,10 +405,12 @@ func TestBuiltinTaskPauseStopResume(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("StopTaskTrees 未返回")
 	}
-	// 停止中途终态与插件任务同路径：Failed 落盘、内存对象保留至进程内后续清理
-	waitState(t, mgr, 1, TaskStateFailed, 3*time.Second)
+	// 停止收口：Failed 即时落盘 + taskMap 摘除（应答后于清理，StopTaskTrees 返回即已收口）
 	if u, ok := repo.statusOf(1); !ok || u.Status != task.TaskStatusFailed {
 		t.Fatalf("停止终态应落盘: %+v ok=%v", u, ok)
+	}
+	if !mgr.IsIdle() {
+		t.Fatal("停止后任务应已从内存清理（IsIdle 应为真）")
 	}
 }
 
@@ -416,6 +425,132 @@ func waitRunCtxCanceled(t *testing.T, h StrategyHandle) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("等待 runCtx 取消超时")
+}
+
+// newBuiltinParent 构造父任务实体（HasChild）
+func newBuiltinParent(id int64) *domain.Task {
+	t := newBuiltinTask(id, "")
+	t.TaskName = sql.NullString{String: "父任务样例", Valid: true}
+	t.HasChild = sql.NullBool{Bool: true, Valid: true}
+	return t
+}
+
+// newBuiltinLeaf 构造叶子任务实体（pid>0）
+func newBuiltinLeaf(id, parentId int64, taskType string) *domain.Task {
+	t := newBuiltinTask(id, taskType)
+	t.Pid = sql.NullInt64{Int64: parentId, Valid: true}
+	return t
+}
+
+// stopInterruptedTask 停止处于执行中（脚本化 interrupt 策略）的单任务并等待 StopTaskTrees 收口
+// 返回：中断路径策略不上报终态，收口（Failed 落盘+内存清理）由停止命令处理完成，应答后于清理。
+// 只取消并释放最新一轮执行句柄（单任务的在途执行）
+func stopInterruptedTask(t *testing.T, mgr *Manager, strat *scriptedStrategy, taskId int64) {
+	t.Helper()
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- mgr.StopTaskTrees(context.Background(), []int64{taskId}) }()
+	waitRunCtxCanceled(t, strat.lastHandle())
+	strat.release <- struct{}{}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("停止失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StopTaskTrees 未返回")
+	}
+}
+
+// TestStopLeafCleansAndRetryWorks 停止叶子任务的内存收口与重试可用性（停止轨收口锚定）：
+// 停止叶子 → Failed 落盘 + taskMap/parentMap 清理（叶子停止无停止编排侧的整树清理兜底，收口全在
+// 停止命令处理内）；随后重试同叶子应重建对象重新执行（残留旧对象会被 dispatch 幂等丢弃）
+func TestStopLeafCleansAndRetryWorks(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinParent(10), newBuiltinLeaf(11, 10, "demo"))
+	strat := newScriptedStrategy("interrupt")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{11}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	waitState(t, mgr, 11, TaskStateProcessing, 3*time.Second)
+
+	stopInterruptedTask(t, mgr, strat, 11)
+	if u, ok := repo.statusOf(11); !ok || u.Status != task.TaskStatusFailed {
+		t.Fatalf("停止终态应落盘: %+v ok=%v", u, ok)
+	}
+	if !mgr.IsIdle() {
+		t.Fatal("停止叶子后 taskMap/parentMap 应全清理（IsIdle 应为真）")
+	}
+
+	// 重试同叶子：应重建对象重新执行（第二次进入策略）
+	if err := mgr.StartTaskTrees(context.Background(), []int64{11}); err != nil {
+		t.Fatalf("重试失败: %v", err)
+	}
+	select {
+	case <-strat.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("重试应重新执行策略（残留旧对象会导致请求被静默丢弃）")
+	}
+	if strat.execCount() != 2 {
+		t.Fatalf("重试应重新执行策略, 实际执行 %d 次", strat.execCount())
+	}
+	// 二次停止同样可收口
+	stopInterruptedTask(t, mgr, strat, 11)
+	if !mgr.IsIdle() {
+		t.Fatal("二次停止后应全清理")
+	}
+}
+
+// TestStopTreeCleansAllAndSingleParentRemove 整树停止的收口一致性：各子任务经停止命令自清理，
+// 最后终态子任务连带清 parentMap；停止编排的整树清理对已清树幂等跳过（父移除恰推送一次）
+func TestStopTreeCleansAllAndSingleParentRemove(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinParent(20), newBuiltinLeaf(21, 20, "demo"), newBuiltinLeaf(22, 20, "demo"))
+	strat := newScriptedStrategy("interrupt")
+	pusher := &skipPusher{}
+	mgr := NewManager(2, repo, pusher, &TaskDeps{Pusher: pusher},
+		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{20}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	// 两个叶子均进入执行（并发上限 2）
+	<-strat.entered
+	<-strat.entered
+
+	// 经父任务 id 整树停止：两个叶子的执行同时被取消，须全部取消后再逐个释放
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- mgr.StopTaskTrees(context.Background(), []int64{20}) }()
+	for _, h := range strat.allHandles() {
+		waitRunCtxCanceled(t, h)
+	}
+	strat.release <- struct{}{}
+	strat.release <- struct{}{}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("停止失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StopTaskTrees 未返回")
+	}
+	for _, id := range []int64{21, 22} {
+		if u, ok := repo.statusOf(id); !ok || u.Status != task.TaskStatusFailed {
+			t.Fatalf("子任务 %d 停止终态应落盘: %+v ok=%v", id, u, ok)
+		}
+	}
+	if !mgr.IsIdle() {
+		t.Fatal("整树停止后 taskMap/parentMap 应全清理")
+	}
+	pusher.mu.Lock()
+	parentRemoved := len(pusher.parentRemoved)
+	pusher.mu.Unlock()
+	if parentRemoved != 1 {
+		t.Fatalf("父移除应恰推送一次（整树清理幂等跳过已清树）, 实际 %d 次", parentRemoved)
+	}
 }
 
 // TestBuiltinTaskFailTerminal 策略上报失败终态：Failed 即时落盘并携带错误信息
@@ -574,7 +709,7 @@ func TestResumeSignalHotPath(t *testing.T) {
 		t.Fatal("热路径恢复执行应置恢复信号(续传分叉)")
 	}
 
-	// 收场：停止置 Failed（interrupt 模式先取消再释放）
+	// 收场：停止置 Failed 并清理内存（interrupt 模式先取消再释放）
 	stopDone := make(chan error, 1)
 	go func() { stopDone <- mgr.StopTaskTrees(context.Background(), []int64{1}) }()
 	waitRunCtxCanceled(t, strat.lastHandle())
@@ -587,7 +722,12 @@ func TestResumeSignalHotPath(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("停止超时")
 	}
-	waitState(t, mgr, 1, TaskStateFailed, 3*time.Second)
+	if u, ok := repo.statusOf(1); !ok || u.Status != task.TaskStatusFailed {
+		t.Fatalf("停止终态应落盘: %+v ok=%v", u, ok)
+	}
+	if !mgr.IsIdle() {
+		t.Fatal("停止后任务应已从内存清理")
+	}
 }
 
 // TestRunStrategyTerminalGuard 执行器违约防御：既未上报终态也未被取消 → 防御性 Failed

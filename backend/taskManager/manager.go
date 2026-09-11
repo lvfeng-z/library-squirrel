@@ -83,6 +83,10 @@ type Manager struct {
 	// 等待用户确认的任务（WaitingForInput 状态，已释放信号量）
 	waitingForInputMap map[int64]*ManagedTask
 	waitingForInputMu  sync.Mutex
+
+	// 程序退出阻断点（窗口销毁后、进程退出前由 app 调用 WaitAll；其他模块的退出前收尾
+	// 经同一 gate 注册）。构造时自注册本模块的优雅关闭阻断项
+	shutdownGate *ShutdownGate
 }
 
 // NewManager 创建任务管理器。
@@ -111,9 +115,19 @@ func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, dep
 		stagingCleaner:         stagingCleaner,
 		deps:                   deps,
 		waitingForInputMap:     make(map[int64]*ManagedTask),
+		shutdownGate:           NewShutdownGate(),
 	}
+	// 任务模块自注册退出阻断项：优雅关闭（暂停全部瞬态任务、等待稳态并终刷落盘）——
+	// 程序退出必须等全部任务真正暂停完成后再继续
+	m.shutdownGate.Register("taskManager.gracefulShutdown", m.GracefulShutdown)
 	go m.flushLoop()
 	return m
+}
+
+// ShutdownGate 返回程序退出阻断点：app 在窗口销毁后、进程退出前调用其 WaitAll 有界等待
+// 全部注册项完成；其他模块的退出前收尾经同一 gate 注册，不各自另写等待
+func (m *Manager) ShutdownGate() *ShutdownGate {
+	return m.shutdownGate
 }
 
 // StartTaskTrees 批量启动任务(全量执行)
@@ -579,8 +593,8 @@ func (m *Manager) StopTaskTrees(ctx context.Context, taskIds []int64) error {
 	for _, parent := range seenParents {
 		m.cleanupStoppedTree(parent.taskId, parent)
 	}
-	// 独立任务(parent==nil):各 actor 终态退出时由 cleanupFinishedTask 自清理(taskMap 移除+前端通知),
-	// 无 parentMap 条目,无需主动清理
+	// 叶子/独立任务(parent==nil):停止命令的内存收口由 handleStopCmd 单点完成——setFailed 后
+	// cleanupFinishedTask 摘除 taskMap,父任务全部子任务终态时连带清 parentMap,无需此处主动清理
 
 	return nil
 }
@@ -848,12 +862,8 @@ func (m *Manager) checkConfirmWorkLocks(task *ManagedTask) error {
 	return nil
 }
 
-// IsShuttingDown 检查是否正在优雅关闭
-func (m *Manager) IsShuttingDown() bool {
-	return m.shuttingDown.Load()
-}
-
-// GracefulShutdown 暂停所有瞬态任务并等待进入稳态
+// GracefulShutdown 暂停所有瞬态任务并等待进入稳态（程序关闭阻断项，经 ShutdownGate 由
+// app 在窗口销毁后、进程退出前有界等待）。shuttingDown 标志保证整体流程只执行一次
 func (m *Manager) GracefulShutdown(ctx context.Context) error {
 	if !m.shuttingDown.CompareAndSwap(false, true) {
 		return nil
@@ -913,14 +923,14 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 	}()
 
 	for {
-		allStable := true
+		allSettled := true
 		for _, t := range tasks {
-			if !isStableState(t.GetState()) {
-				allStable = false
+			if !isShutdownSettled(t) {
+				allSettled = false
 				break
 			}
 		}
-		if allStable {
+		if allSettled {
 			// 等待瞬态回调完成
 			time.Sleep(50 * time.Millisecond)
 			return nil
@@ -930,6 +940,22 @@ func (m *Manager) GracefulShutdown(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 		}
+	}
+}
+
+// isShutdownSettled 优雅关闭的单任务收口判定：稳定态，或无在途执行的驻留态——
+// 等待队列的 Waiting/确认等待的 WaitingForInput（两者在关闭起始已被取消，执行已结束）
+// 与未派发的 Created（从未启动）。驻留态不会自发迁移进稳定态，按稳定态等待会耗尽
+// 全部等待预算（进程滞留到超时才退出）
+func isShutdownSettled(t *ManagedTask) bool {
+	if isStableState(t.GetState()) {
+		return true
+	}
+	switch t.GetState() {
+	case TaskStateWaiting, TaskStateWaitingForInput, TaskStateCreated:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1035,6 +1061,13 @@ func (m *Manager) cleanupFinishedTask(mt *ManagedTask) {
 // 对后续退出的 Processing 子任务 goroutine 幂等：其 cleanupFinishedTask 发现 parent 已不在 parentMap 时仅清理自身。
 func (m *Manager) cleanupStoppedTree(parentId int64, parent *ParentTask) {
 	m.mu.Lock()
+	// 幂等守卫:parentMap 已无该父即整树已清（停止命令的子任务自清理经 handleStopCmd→
+	// cleanupFinishedTask,最后终态子任务会连带清掉 parentMap 与仍在 taskMap 的兄弟）,
+	// 重复执行会二次持久化父终态并二次推送移除
+	if _, ok := m.parentMap[parentId]; !ok {
+		m.mu.Unlock()
+		return
+	}
 
 	// 持久化父任务最终状态（停止后通常为 Failed 或 PartlyFinished）
 	parent.refreshMu.Lock()

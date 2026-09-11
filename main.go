@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"net/http"
 	"os"
@@ -224,16 +225,6 @@ func main() {
 		app.onDomReady()
 	})
 
-	window.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		if !app.onBeforeClose() {
-			// Allow close - but we need to call window.Close() explicitly in Wails
-			// The event.Cancel() prevents the close
-		} else {
-			// Cancel the close
-			e.Cancel()
-		}
-	})
-
 	// Create a goroutine that emits an event containing the current time every second.
 	// The frontend can listen to this event and update the UI accordingly.
 	go func() {
@@ -251,6 +242,17 @@ func main() {
 	if err != nil {
 		logger.Log.Fatal(err)
 	}
+
+	// 程序关闭阻断点：窗口已销毁、进程退出前，有界等待全部任务真正暂停完成并落盘。
+	// 窗口关闭事件不做此等待（wails 窗口事件监听器并发分发且窗口无条件销毁，事件处理器
+	// 内的等待拦不住进程退出）；阻断点由任务模块统一封装，其他模块的退出前收尾将来经
+	// 同一 ShutdownGate 注册。等待上界 40s=单任务暂停应答上界 35s+排空超时 2s+收口余量，
+	// 超时记录后继续退出兜底
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 40*time.Second)
+	if gateErr := app.TaskManagerService.ShutdownGate().WaitAll(shutdownCtx); gateErr != nil {
+		logger.Log.Warnf("程序关闭阻断等待未正常完成，强制退出: %v", gateErr)
+	}
+	shutdownCancel()
 
 	// 关闭所有插件子进程
 	app.shutdownPlugins()
