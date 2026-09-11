@@ -41,10 +41,10 @@ globs:
 
 | 表 | 字段 | 根目录 | 说明 | 存储示例 |
 |---|---|---|---|---|
-| `persistent_store` | `file_path` | workDir | 资源文件存储 | `store/resource/作者/文件.mp4`、`store/resource/作者/文件_thumbnail_000.jpg` |
+| `persistent_store` | `file_path` | workDir | 资源文件存储 | `store/resource/pixiv_128937464/image_000.jpg`、`store/resource/bilibili_BV1xx411c7mD_4538792/videoTrack_000.mp4` |
 | `backup` | `file_path` | workDir | 备份文件路径 | `backup/2026/06/08/文件.mp4` |
 
-> 命名规约:所有插件 store(含 thumbnail)统一进 `store/resource/`,文件名按 bas 基准 + 资源级多 store 判定(`<bas>_<role>_<seq>[_<描述>].<ext>`),详见 `doc/store-naming-convention.md`。历史独立目录 `store/thumbnail/` 白名单条目已退役(零写入方、库内零存量行)。
+> 命名规约:所有插件 store(含 thumbnail)与主程序派生 store(videoMain)统一进 `store/resource/{site_key}_{siteWorkId 派生段}/`,文件名恒为 `{role}_{seq 三位}.{ext}`(身份键纯函数派生,SDK `storepath` 包,目录段单射消歧——净化变更追加哈希段、超长截断),详见 `doc/store-naming-convention.md`。历史独立目录 `store/thumbnail/` 白名单条目已退役(零写入方、库内零存量行)。
 
 > 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`completed_at`（落盘完成时刻毫秒时间戳，0=未完成）是合法零值——GORM Updates 跳零值，「续传重置回未完成」须经 `ResetCompleted` 显式列更新（service 层已封装）。
 
