@@ -1,6 +1,6 @@
 package download
 
-// 入库编排（暂存模式）：执行前规划（最终路径解析+规划表注册+暂存写入器打开）与提交点
+// 入库编排（暂存模式）：执行前规划（最终路径解析+暂存写入器打开）与提交点
 // （替换软删 → 暂存 rename 进 store/ → 单事务建行挂载 + 抑制登记与失败补偿逆操作）。
 // 替换链坍缩到提交窗口——长下载全程零 DB 副作用，失败补偿为序列内同步逆操作。
 
@@ -43,12 +43,12 @@ func (sess *execSession) softDeleteReplacedStores() error {
 	return nil
 }
 
-// openStagingTracks 执行前规划：为全部 specs 解析最终路径、打开暂存写入器、注册规划表。
+// openStagingTracks 执行前规划：为全部 specs 解析最终路径、打开暂存写入器。
 // 命名解析时点在 Start/Resume 返回后（specs 已具名）——最终名前置解析，document lazy 轨
-// （size<=0）同样在此解析（其 spec 已有 role+seq 与命名元数据）；暂存文件名按 role_seq 键，
-// 与最终名解耦。stagingBase 为各轨预置的（role,seq）→已落盘偏移（全新执行为空 map，
+// （size<=0）同样在此解析（其 spec 已有 role+seq 与命名身份）；暂存文件名按 role_seq 键，
+// 与最终名解耦。stagedOffsets 为各轨预置的（role,seq）→已落盘偏移（全新执行为空 map，
 // 续传恢复传入暂存枚举结果——非零偏移轨按续传打开并前缀入哈希）
-func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPath, bas string, multiStore bool,
+func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPath string,
 	stagedOffsets map[storeIdentity]int64, specSeq map[*sdkdto.StoreSpec]int) ([]*streamController, error) {
 	workDir := sess.deps.WorkDirProvider.GetWorkDir()
 	stagingDir := sess.deps.StagingPaths.StagingPath(workDir, sess.taskId)
@@ -57,10 +57,12 @@ func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPat
 	}
 
 	streams := make([]*streamController, 0, len(specs))
-	finals := make(map[storeIdentity]string, len(specs))
 	for _, spec := range specs {
 		seq := specSeq[spec]
-		relPath, fileName := sess.resolveStorePath(spec, baseRelPath, bas, seq, multiStore)
+		relPath, fileName, err := resolveStorePath(spec, baseRelPath, seq)
+		if err != nil {
+			return nil, err
+		}
 		stagingName := sess.deps.StagingPaths.StagingFileName(spec.Role, seq, normalizeExt(spec.Format))
 		stagingAbs := filepath.Join(stagingDir, stagingName)
 		expected := ""
@@ -68,7 +70,6 @@ func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPat
 			expected = *spec.ExpectedSha256
 		}
 		var writer *stagingWriter
-		var err error
 		if staged, ok := stagedOffsets[storeIdentity{role: spec.Role, seq: seq}]; ok && staged > 0 &&
 			spec.Generation == entity.GenerationDownloaded {
 			// 续传打开：插件指定写入偏移优先（插件对续传位置有确切认知），否则用暂存已落盘大小
@@ -88,7 +89,6 @@ func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPat
 				logger.Log.Infof("[StagingMount] taskId=%d role=%s seq=%d mode=resume writeOffset=%d staged=%d",
 					sess.taskId, spec.Role, seq, writeOffset, staged)
 				streams = append(streams, sc)
-				finals[storeIdentity{role: spec.Role, seq: seq}] = relPath
 				continue
 			}
 		}
@@ -98,23 +98,22 @@ func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPat
 		}
 		logger.Log.Infof("[StagingMount] taskId=%d role=%s seq=%d mode=fresh", sess.taskId, spec.Role, seq)
 		streams = append(streams, newStreamController(spec, seq, writer, stagingAbs, relPath, fileName))
-		finals[storeIdentity{role: spec.Role, seq: seq}] = relPath
 	}
 
-	// 注册规划表：运行中 GetStoreRelPath 查最终路径（文件物理在暂存、契约解耦），
-	// 执行结束（终态/中断返回）由策略入口统一注销
-	sess.deps.Planner.Register(sess.taskId, finals)
 	return streams, nil
 }
 
 // startDownload 为每个 spec 打开暂存写入器、进入多流下载循环，全部写满后执行提交点
-func (sess *execSession) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkdto.WorkResponse) comboResult {
-	sess.workResp = workResp
-
-	// 解析 bas 基准名与目录(所有 store 文件名共用;bas 由模板+作品元数据生成,不依赖具体 spec)
-	baseRelPath, bas := sess.resolveBaseName(workResp)
-	// 多 store 判定(资源级):资源 store 总数>1 则全部带 role+seq;单 store 用 <bas>.<ext>
-	multiStore := len(specs) > 1
+func (sess *execSession) startDownload(specs []*sdkdto.StoreSpec) comboResult {
+	// 解析作品落盘目录（站点复合键身份派生，详见 resolveStoreDir）
+	baseRelPath, err := sess.resolveStoreDir(sess.runCtx())
+	if err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 解析落盘目录失败: %v", sess.taskId, err)
+		if sess.runAborted() {
+			return comboInterrupted
+		}
+		return sess.comboFail(fmt.Sprintf("解析落盘目录失败: %v", err))
+	}
 	// 同 role 内 seq 按 specs 顺序分配（Start 全量返回，specs 内重计即全局序）
 	roleCounters := make(map[string]int, len(specs))
 	specSeq := make(map[*sdkdto.StoreSpec]int, len(specs))
@@ -123,7 +122,7 @@ func (sess *execSession) startDownload(specs []*sdkdto.StoreSpec, workResp *sdkd
 		roleCounters[spec.Role]++
 	}
 
-	streams, err := sess.openStagingTracks(specs, baseRelPath, bas, multiStore, nil, specSeq)
+	streams, err := sess.openStagingTracks(specs, baseRelPath, nil, specSeq)
 	if err != nil {
 		logger.Log.Errorf("[Download] 任务 %d 打开暂存失败: %v", sess.taskId, err)
 		if sess.runAborted() {
@@ -363,7 +362,7 @@ func (sess *execSession) mountResourceStores(ctx context.Context, resourceId int
 		return nil
 	}
 	stores := make([]*entity.ResourceStore, 0, len(mounts))
-	roleSeq := make(map[string]int, len(mounts)) // 同 role 内序号:store 稳定身份(与暂存键/规划表同维度)
+	roleSeq := make(map[string]int, len(mounts)) // 同 role 内序号:store 稳定身份(与暂存键/续传配对同维度)
 	for _, mt := range mounts {
 		// 严格识别 store_type:非预定义角色抛错,不兜底
 		if err := entity.ValidateStoreType(mt.role); err != nil {

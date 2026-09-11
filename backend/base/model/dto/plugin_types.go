@@ -27,7 +27,7 @@ type PluginManifest struct {
 	Name                string                    `json:"name"`
 	Version             string                    `json:"version"`
 	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
 	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author              string                    `json:"author"`
 	Description         string                    `json:"description,omitempty"`
@@ -44,7 +44,7 @@ type PluginInstallDTO struct {
 	Name                string                    `json:"name"`
 	Version             string                    `json:"version"`
 	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；缺字段=0 视为当前契约放行）
+	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
 	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
 	Author              string                    `json:"author"`
 	Description         string                    `json:"description,omitempty"`

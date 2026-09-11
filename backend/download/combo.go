@@ -125,7 +125,7 @@ func (sess *execSession) runSectionCombo() comboResult {
 		// 含 workInfo 且查重未命中：workInfo 板块的 SaveWorkInfo 会提供 workId(新作品,非替换)
 	}
 
-	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，提供 workId 与文件名模板数据）
+	// 板块 A：作品信息（CreateWorkInfo + SaveWorkInfo，作品元数据入库并提供 workId 供资源板块挂载）
 	var workResp *sdkdto.WorkResponse
 	if sess.mode.hasWorkInfo() {
 		var err error
@@ -144,14 +144,11 @@ func (sess *execSession) runSectionCombo() comboResult {
 
 	// 资源板块:coversStores 时 Start 按 scope 携带角色选择性产出(All 空 universe=插件自决全量)
 	if sess.mode.storeScope.coversStores() {
-		specs, startResp, err := sess.pluginExec.Start(sess.runCtx(), sess.task, sess.workTask, sess.mode.storeScope.roles)
+		specs, _, err := sess.pluginExec.Start(sess.runCtx(), sess.task, sess.workTask, sess.mode.storeScope.roles)
 		if err != nil {
 			logger.Log.Errorf("[Download] 任务 %d Start 失败: %v", sess.taskId, err)
 			return sess.comboFail(fmt.Sprintf("获取资源流集合失败: %v", err))
 		}
-		// 合并作品元数据到 startResp(供文件名模板使用):
-		// 本次跑了作品元数据板块(A)则用其结果;否则(资源板块单独重下)从已有作品加载命名元数据
-		sess.mergeWorkMetaForNaming(startResp, workResp)
 		selected := sess.filterSpecsByRoles(specs)
 		// 防御性排空未选资源角色的 reader:正常情况下插件已按 storeRoles 只产出所选 role(selected==specs,无操作);
 		// 若插件多产出了未选 role,其 io.Pipe 无消费者会永久阻塞 demux(多流复用一条 gRPC stream),此处兜底排空
@@ -160,7 +157,7 @@ func (sess *execSession) runSectionCombo() comboResult {
 			logger.Log.Errorf("[Download] 任务 %d 插件未产出所选资源角色: %v", sess.taskId, sess.mode.storeScope.roles)
 			return sess.comboFail("插件未产出所选资源类型")
 		}
-		return sess.startDownload(selected, startResp)
+		return sess.startDownload(selected)
 	}
 
 	// 无资源板块(纯 workInfo):非终态收口——回执行前状态、不产生终态

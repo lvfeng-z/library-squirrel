@@ -3,7 +3,6 @@ import BaseView from './BaseView.vue'
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import lodash from 'lodash'
-import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -14,7 +13,8 @@ import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
 import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi } from '@renderer/apis/http'
 import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
-import {emptySettings} from "@renderer/model/util/Settings.js";
+import type { Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
+import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
@@ -47,10 +47,10 @@ registerTourTarget('settings.workdirSection', workdirSection)
 registerTourTarget('settings.workdirInput', workdirInput)
 // 主要容器的实例
 const containerRef = ref()
-// 作品文件名称命名格式输入组件实例
-const workSettingsFileNameFormatInput = ref()
-// 作品文件名称命名格式输入弹窗里的组件实例
-const workSettingsFileNameFormatDialogInput = ref()
+// 导出文件命名格式输入组件实例
+const exportFileNameFormatInput = ref()
+// 导出文件命名格式输入弹窗里的组件实例
+const exportFileNameFormatDialogInput = ref()
 // 设置
 const settings: Ref<Settings> = ref(emptySettings)
 let oldSettings: Settings = emptySettings // 原设置
@@ -98,8 +98,8 @@ async function handleUnregisterProtocol(): Promise<void> {
     ElMessage.error(e instanceof Error ? e.message : '取消注册失败')
   }
 }
-// 作品文件名称命名格式对话框开关
-const workSettingsFileNameFormatDialogState: Ref<boolean> = ref(false)
+// 导出文件命名格式对话框开关
+const exportFileNameFormatDialogState: Ref<boolean> = ref(false)
 // 路由实例
 const router = useRouter()
 const route = useRoute()
@@ -368,13 +368,13 @@ async function askBeforeReset(): Promise<boolean> {
       })
   })
 }
-// 作品-添加命名标识符
+// 导出-添加命名标识符
 function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   let inputElement: HTMLInputElement
   if (isDialog) {
-    inputElement = workSettingsFileNameFormatDialogInput.value.textarea
+    inputElement = exportFileNameFormatDialogInput.value.textarea
   } else {
-    inputElement = workSettingsFileNameFormatInput.value.input
+    inputElement = exportFileNameFormatInput.value.input
   }
   if (inputElement) {
     const startPos = inputElement.selectionStart // 光标起始位置
@@ -382,10 +382,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 
     if (notNullish(startPos) && notNullish(endPos)) {
       // 插入字符串到光标位置
-      settings.value.workSettings.fileNameFormat =
-        settings.value.workSettings.fileNameFormat.slice(0, startPos) +
+      settings.value.exportSettings.fileNameFormat =
+        settings.value.exportSettings.fileNameFormat.slice(0, startPos) +
         element.token +
-        settings.value.workSettings.fileNameFormat.slice(endPos)
+        settings.value.exportSettings.fileNameFormat.slice(endPos)
 
       // 设置新的光标位置
       const newCursorPos = startPos + element.token.length
@@ -421,8 +421,8 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               title="下载"
             />
             <el-anchor-link
-              href="#workSettings"
-              title="作品"
+              href="#exportSettings"
+              title="导出"
             />
             <el-anchor-link
               href="#pluginSettings"
@@ -542,39 +542,6 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     </div>
                   </template>
                 </el-card>
-              </div>
-              <div class="settings-item">
-                <div class="settings-item-header">
-                  <span class="settings-item-title">导出默认目录</span>
-                </div>
-                <el-tooltip
-                  placement="top"
-                  effect="customized"
-                  content="导出作品时 ZIP 默认保存到该目录；不设置则使用工作目录。导出弹窗内仍可临时改为其他目录（仅本次有效，不改变此处默认值）。"
-                >
-                  <el-row>
-                    <el-col :span="22">
-                      <el-input
-                        v-model="settings.exportSettings.outputDir"
-                        placeholder="默认：工作目录"
-                      />
-                    </el-col>
-                    <el-col :span="1">
-                      <el-button
-                        icon="FolderOpened"
-                        @click="selectExportDir"
-                      />
-                    </el-col>
-                    <el-col :span="1">
-                      <el-button
-                        type="danger"
-                        class="tone-fail"
-                        icon="RefreshLeft"
-                        @click="resetExportDir"
-                      />
-                    </el-col>
-                  </el-row>
-                </el-tooltip>
               </div>
               <div class="settings-item">
                 <div class="settings-item-header">
@@ -787,15 +754,48 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   </div>
                 </div>
               </div>
-              <div id="workSettings">
+              <div id="exportSettings">
               <el-text class="settings-section-title">
-                作品
+                导出
               </el-text>
-                <div class="settings-item">
+              <div class="settings-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">导出默认目录</span>
+                </div>
+                <el-tooltip
+                  placement="top"
+                  effect="customized"
+                  content="导出作品时 ZIP 默认保存到该目录；不设置则使用工作目录。导出弹窗内仍可临时改为其他目录（仅本次有效，不改变此处默认值）。"
+                >
+                  <el-row>
+                    <el-col :span="22">
+                      <el-input
+                        v-model="settings.exportSettings.outputDir"
+                        placeholder="默认：工作目录"
+                      />
+                    </el-col>
+                    <el-col :span="1">
+                      <el-button
+                        icon="FolderOpened"
+                        @click="selectExportDir"
+                      />
+                    </el-col>
+                    <el-col :span="1">
+                      <el-button
+                        type="danger"
+                        class="tone-fail"
+                        icon="RefreshLeft"
+                        @click="resetExportDir"
+                      />
+                    </el-col>
+                  </el-row>
+                </el-tooltip>
+              </div>
+              <div class="settings-item">
                   <div class="settings-item-header">
-                    <span class="settings-item-title">作品的文件命名格式</span>
+                    <span class="settings-item-title">导出文件命名格式</span>
                   </div>
-                  <el-row class="work-settings-file-name-format-button">
+                  <el-row class="export-file-name-format-button">
                   <el-button @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, false)">
                     {{ ResFileNameFormatEnum.AUTHOR.name }}
                   </el-button>
@@ -821,14 +821,14 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     <template #content>
                       查看更多选项
                     </template>
-                    <el-button @click="workSettingsFileNameFormatDialogState = true">
+                    <el-button @click="exportFileNameFormatDialogState = true">
                       ...
                     </el-button>
                   </el-tooltip>
                 </el-row>
                 <el-input
-                  ref="workSettingsFileNameFormatInput"
-                  v-model="settings.workSettings.fileNameFormat"
+                  ref="exportFileNameFormatInput"
+                  v-model="settings.exportSettings.fileNameFormat"
                 />
                 </div>
               </div>
@@ -998,129 +998,129 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
     </template>
     <template #dialog>
       <el-dialog
-        v-model="workSettingsFileNameFormatDialogState"
+        v-model="exportFileNameFormatDialogState"
         center
         align-center
       >
-        <el-scrollbar class="settings-work-settings-file-name-format-dialog">
+        <el-scrollbar class="settings-export-file-name-format-dialog">
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.AUTHOR, true)"
           >
             {{ ResFileNameFormatEnum.AUTHOR.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.LOCAL_AUTHOR_NAME, true)"
           >
             {{ ResFileNameFormatEnum.LOCAL_AUTHOR_NAME.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.SITE_AUTHOR_NAME, true)"
           >
             {{ ResFileNameFormatEnum.SITE_AUTHOR_NAME.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.SITE_AUTHOR_ID, true)"
           >
             {{ ResFileNameFormatEnum.SITE_AUTHOR_ID.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.SITE_WORK_NAME, true)"
           >
             {{ ResFileNameFormatEnum.SITE_WORK_NAME.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.SITE_WORK_ID, true)"
           >
             {{ ResFileNameFormatEnum.SITE_WORK_ID.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.DESCRIPTION, true)"
           >
             {{ ResFileNameFormatEnum.DESCRIPTION.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_YEAR, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_YEAR.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_MONTH, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_MONTH.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_DAY, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_DAY.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_HOUR, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_HOUR.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_MINUTE, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_MINUTE.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
+            class="export-file-name-format-button"
             @click="insertFormatToken(ResFileNameFormatEnum.UPLOAD_TIME_SECOND, true)"
           >
             {{ ResFileNameFormatEnum.UPLOAD_TIME_SECOND.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_YEAR, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_YEAR, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_YEAR.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_YEAR.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_MONTH, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_MONTH, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_MONTH.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_MONTH.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_DAY, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_DAY, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_DAY.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_DAY.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_HOUR, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_HOUR, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_HOUR.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_HOUR.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_MINUTE, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_MINUTE, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_MINUTE.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_MINUTE.name }}
           </el-button>
           <el-button
-            class="work-settings-file-name-format-button"
-            @click="insertFormatToken(ResFileNameFormatEnum.DOWNLOAD_TIME_SECOND, true)"
+            class="export-file-name-format-button"
+            @click="insertFormatToken(ResFileNameFormatEnum.EXPORT_TIME_SECOND, true)"
           >
-            {{ ResFileNameFormatEnum.DOWNLOAD_TIME_SECOND.name }}
+            {{ ResFileNameFormatEnum.EXPORT_TIME_SECOND.name }}
           </el-button>
-          <div class="work-settings-file-name-format-input">
+          <div class="export-file-name-format-input">
             <el-input
-              ref="workSettingsFileNameFormatDialogInput"
-              v-model="settings.workSettings.fileNameFormat"
+              ref="exportFileNameFormatDialogInput"
+              v-model="settings.exportSettings.fileNameFormat"
               autosize
               type="textarea"
             />
@@ -1201,7 +1201,7 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   height: 24px;
   border-radius: 50%;
 }
-.settings-work-settings-file-name-format-dialog > :deep(.el-scrollbar__wrap) {
+.settings-export-file-name-format-dialog > :deep(.el-scrollbar__wrap) {
   max-height: 65vh;
 }
 /* 设置区块小节标题（el-text 渲染为行内元素，块级化以承载纵向间距）；
@@ -1233,10 +1233,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   font-weight: 500;
   color: var(--app-text-regular);
 }
-.work-settings-file-name-format-button {
+.export-file-name-format-button {
   margin-bottom: 10px;
 }
-.work-settings-file-name-format-input {
+.export-file-name-format-input {
   padding-right: 10px;
 }
 .settings-guard-card-header {

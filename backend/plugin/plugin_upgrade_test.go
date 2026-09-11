@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	entity "github.com/library-squirrel/backend/base/model/entity"
+	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
 // TestMain 测试环境挂 nop logger（生产 logger 由应用启动时 Init，测试中为 nil）
@@ -61,7 +63,8 @@ func writePluginZip(t *testing.T, manifest string) string {
 	return path
 }
 
-// bundledExisting 构造已安装的 bundled 来源插件记录
+// bundledExisting 构造已安装的 bundled 来源插件记录（契约版本声明为 SDK 当前值，
+// 与 availableManifest 对齐——契约不兼容的已装行走强制直装分支，到不了本组测试的待办分支）
 func bundledExisting(publicId, buildID, version string) *entity.Plugin {
 	p := entity.NewPlugin()
 	p.PublicID = ns(publicId)
@@ -69,14 +72,17 @@ func bundledExisting(publicId, buildID, version string) *entity.Plugin {
 	p.Version = ns(version)
 	p.BuildID = ns(buildID)
 	p.Source = ns(SourceBundled)
+	p.ContractVersion = sql.NullInt64{Int64: int64(pluginsdktransport.ContractVersion), Valid: true}
 	p.Uninstalled = sql.NullBool{Bool: false, Valid: true}
 	return p
 }
 
-// availableManifest 构造带 buildId 的捆绑包 manifest（version 1.1.0）
+// availableManifest 构造带 buildId 的捆绑包 manifest（version 1.1.0，契约版本声明为
+// SDK 当前值——未声明/过旧的 manifest 在安装预检即被拒，走不到本组测试的目标分支）
 func availableManifest(publicId, buildID string) string {
 	return `{"id":"` + publicId + `","name":"测试插件","version":"1.1.0","buildId":"` + buildID +
-		`","author":"tester","activation":{"type":1},` +
+		fmt.Sprintf(`","contractVersion":%d,`, pluginsdktransport.ContractVersion) +
+		`"author":"tester","activation":{"type":1},` +
 		`"extensions":{"frontendExtensions":[{"id":"v1","name":"视图","kind":"view","content":{"contentType":"code","source":"1"}}]}}`
 }
 

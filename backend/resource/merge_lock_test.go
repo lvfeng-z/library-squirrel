@@ -42,16 +42,16 @@ func (o *mergeLockStoreOps) DeleteWithBackup(ctx context.Context, id int64) (int
 	o.deletedIds = append(o.deletedIds, id)
 	return 1, nil
 }
-func (o *mergeLockStoreOps) BuildVariantPath(sourceRelPath, suffix string) string { return "" }
 
 // mergeLockSettings 固定 overwrite 策略（置换路径唯一被测分支）
 type mergeLockSettings struct{}
 
 func (mergeLockSettings) GetMergeStrategy() string { return settings.MergeStrategyOverwrite }
 
-// newMergeLockService 装配带真实锁注册中心与记账桩的合并服务（合并/落盘等其余依赖不触达）
+// newMergeLockService 装配带真实锁注册中心与记账桩的合并服务（合并/落盘等其余依赖不触达；
+// work/site 反查链仅供产物路径派生，本组用例不触达故传 nil）
 func newMergeLockService(ops *mergeLockStoreOps, lock shareLock.ShareLockRegistry) *MergeService {
-	return NewMergeService(nil, mergeLockResource{workId: 500}, nil, ops, mergeLockSettings{}, nil, nil, nil, lock)
+	return NewMergeService(nil, mergeLockResource{workId: 500}, nil, nil, nil, ops, mergeLockSettings{}, nil, nil, nil, lock)
 }
 
 // newMergeTrackPair 构造原视频/音频轨 store 行（901/902）

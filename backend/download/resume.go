@@ -97,7 +97,7 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 		Task:          dto.AssembleTaskDTO(sess.task, sess.workTask, nil),
 		StreamOffsets: streamOffsets,
 	}
-	specs, newResp, err := sess.pluginExec.Resume(sess.runCtx(), param)
+	specs, _, err := sess.pluginExec.Resume(sess.runCtx(), param)
 	if err != nil {
 		// Pause 在 Resume 进行中取消 ctx(stream ctx 继承任务 ctx):视为暂停,不置失败
 		if sess.runAborted() {
@@ -113,12 +113,6 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 		sess.failTerminal(msg)
 		return comboFinished
 	}
-	if newResp == nil {
-		newResp = &sdkdto.WorkResponse{}
-	}
-	// 续传同样合并作品命名元数据(与板块组合一致)，避免重建路径落 unknownAuthor
-	sess.mergeWorkMetaForNaming(newResp, nil)
-	sess.workResp = newResp
 
 	// 4. Resume 认领配对：返回 spec 按角色从暂存轨队列消费全局 seq（同 role 多轨按序对齐，
 	// 与下发的同 role 偏移顺序一致）。未被认领的暂存轨交 Start 重产（derived 一次性产物
@@ -167,11 +161,14 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 	}
 
 	// 5. 规划+打开暂存写入器（认领的 downloaded 轨按偏移续接；重产/derived 轨全新写），
-	// 进入下载循环，全部写满后走提交点。多 store 判定基于暂存枚举的全局轨道数（specs 是
-	// 未完成子集，不能按 specs 内重计——否则部分完成时判定翻转→文件名漂移→错位覆盖）
-	baseRelPath, bas := sess.resolveBaseName(newResp)
-	multiStore := len(entries) > 1
-	streams, err := sess.openStagingTracks(specs, baseRelPath, bas, multiStore, staged, seqBySpec)
+	// 进入下载循环，全部写满后走提交点。落盘目录按站点复合键身份派生（与全新执行同源）
+	baseRelPath, err := sess.resolveStoreDir(sess.runCtx())
+	if err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 解析落盘目录失败: %v", sess.taskId, err)
+		sess.failTerminal(fmt.Sprintf("解析落盘目录失败: %v", err))
+		return comboFinished
+	}
+	streams, err := sess.openStagingTracks(specs, baseRelPath, staged, seqBySpec)
 	if err != nil {
 		logger.Log.Errorf("[Download] 任务 %d 恢复打开暂存失败: %v", sess.taskId, err)
 		if sess.runAborted() {

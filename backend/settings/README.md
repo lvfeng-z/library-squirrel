@@ -11,7 +11,8 @@
 | `Reset` | 重置为默认设置 |
 
 ## 核心概念
-- **Settings**：`WorkDir` 顶层字段 + 11 个设置组，koanf 两层合并（代码默认值 → settings.json 文件层；文件缺失/字段缺失/解析失败均回落默认值）
+- **Settings**：`WorkDir` 顶层字段 + 10 个设置组，koanf 两层合并（代码默认值 → settings.json 文件层；文件缺失/字段缺失/解析失败均回落默认值）
+- **导出设置组**（`ExportSettings`）：`outputDir`（导出默认输出目录，空 = 工作目录根；导出弹窗临时改选不写回）+ `fileNameFormat`（导出文件名模板，`GetFileNameFormat` 实现 export 侧 `FileNameFormatProvider` 接口，空回退 `DefaultFileNameFormat` 常量）。新增字段的默认值须 `defaultSettings()` 与 `NewSettings()` 两处同步——koanf 合并下文件层缺字段回落代码默认值，两处不同步会让默认值随加载路径漂移
 - **未配置 = 空串**：`GetWorkDir()` 返回空串即「工作目录未配置」，是合法且显式的状态——各依赖模块须自行处理该状态（启动期不启动 / 请求期拒绝），禁止把空串当合法路径拼接到文件系统操作（空串会被路径层静默相对化为进程工作目录）
 - **未配置三件套**（`unconfigured.go`）：
   - `ErrWorkDirNotConfigured`：哨兵错误（文案引导用户前往设置页配置），消费方 `errors.Is` 判定

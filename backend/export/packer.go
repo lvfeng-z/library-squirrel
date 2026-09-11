@@ -37,11 +37,11 @@ type PackStats struct {
 // ProgressFn 打包进度回调（每写入一个文件回调一次）：已处理文件数/累计字节 + 总文件数/总字节。
 type ProgressFn func(processedFiles, processedBytes, totalFiles, totalBytes int64)
 
-// Plan 打包规划：填充 FileEntry.Path（PlanNames）+ 检查源文件存在性/大小（决策4 分支语义），
-// 返回统计供磁盘空间预检。不写文件，可重复调用（幂等——同输入同输出）。
-// 缺失文件（决策4）：置 Missing=true 计入 MissingFiles，其余照常，不中断。
-func (p *Packer) Plan(ctx context.Context, workDir string, model *ExportModel) (*PackStats, error) {
-	if err := PlanNames(model.Manifest); err != nil {
+// Plan 打包规划：填充 FileEntry.Path（PlanNames 按 fileNameFormat 模板渲染包内文件名）+
+// 检查源文件存在性/大小（决策4 分支语义），返回统计供磁盘空间预检。不写文件，可重复调用
+// （幂等——同输入同输出）。缺失文件（决策4）：置 Missing=true 计入 MissingFiles，其余照常，不中断。
+func (p *Packer) Plan(ctx context.Context, workDir string, model *ExportModel, fileNameFormat string) (*PackStats, error) {
+	if err := PlanNames(model.Manifest, fileNameFormat); err != nil {
 		return nil, err
 	}
 	stats := &PackStats{}

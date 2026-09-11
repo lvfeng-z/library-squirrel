@@ -30,7 +30,7 @@ func StagingPath(workDir string, taskID int64) string {
 
 // StagingFileName 暂存文件名：role_seq 派生键（seq 为同 role 内 0-based 序号 = store_seq，三位零填充），
 // 保留扩展名供人工诊断。续传定位与崩溃清扫直接按文件名还原 (role, seq) 身份，不依赖元数据重解析；
-// 最终文件名由下载执行面的规划表持有，与暂存名解耦。ext 无前导点时补点，空串则无扩展名段。
+// 最终文件名由下载执行面在执行前解析派生，与暂存名解耦。ext 无前导点时补点，空串则无扩展名段。
 func StagingFileName(role string, storeSeq int, ext string) string {
 	if ext != "" && !strings.HasPrefix(ext, ".") {
 		ext = "." + ext

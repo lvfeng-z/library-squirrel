@@ -28,7 +28,7 @@ import (
 var (
 	ErrPluginLoadFailed     = errors.New("plugin load failed")
 	ErrPluginContractTooNew = errors.New("插件契约版本过新，请升级主程序")
-	ErrPluginContractTooOld = errors.New("插件契约版本过旧，请升级插件")
+	ErrPluginContractTooOld = errors.New("插件契约版本过旧或未声明，请升级插件或在 plugin.json 声明 contractVersion")
 )
 
 // currentContractVersion 主程序当前实现的插件契约版本（引用 SDK transport.ContractVersion，
@@ -36,16 +36,16 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-const minSupportedContractVersion = 1
+const minSupportedContractVersion = 5
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
-// pluginContract 为插件声明的契约版本；0 表示未声明/缺字段，视为当前契约放行（决策9：
-// 首发 minSupported=1，旧/手工插件缺字段视为最旧兼容版本，不拒绝）。
+// pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并
+// 提示需在 plugin.json 声明 contractVersion。
 // 返回 ErrPluginContractTooNew（插件比主程序新，需升级主程序）、
-// ErrPluginContractTooOld（插件低于最低支持版本，需升级插件）或 nil。
+// ErrPluginContractTooOld（插件低于最低支持版本或未声明版本，需升级/补声明）或 nil。
 func ValidateContractVersion(pluginContract int) error {
 	if pluginContract == 0 {
-		pluginContract = currentContractVersion
+		return ErrPluginContractTooOld
 	}
 	if pluginContract > currentContractVersion {
 		return ErrPluginContractTooNew
@@ -267,7 +267,6 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		PluginRootProvider:      &hostPluginRootProvider{ctx: deps.PluginCtx},
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
-		StorePathQueryProvider:  &hostStorePathProvider{ctx: deps.PluginCtx},
 		FrontendEventProvider:   &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
 		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
@@ -519,7 +518,7 @@ type PluginInfo struct {
 	PublicID            string
 	Name                string
 	Version             string
-	ContractVersion     int                           // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时视为当前契约放行）
+	ContractVersion     int                           // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时拒载，须声明）
 	ConfigSchemaVersion int64                         // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
 	Capabilities        []string                      // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
 	ResourceTypes       []dto.ResourceTypeDeclaration // 插件自定义资源类型声明(来自 manifest;声明 resourceTypeProvider 通行证时注册进 Registry)
@@ -562,14 +561,6 @@ type hostPluginRootProvider struct {
 
 func (p *hostPluginRootProvider) GetPluginRoot(_ context.Context, isRelative bool) string {
 	return p.ctx.GetPluginRoot(isRelative)
-}
-
-type hostStorePathProvider struct {
-	ctx sdkdto.PluginContext
-}
-
-func (p *hostStorePathProvider) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
-	return p.ctx.GetStoreRelPath(taskId, role, storeSeq)
 }
 
 type hostTaskCreateProvider struct {

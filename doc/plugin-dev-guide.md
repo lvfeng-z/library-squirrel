@@ -102,7 +102,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 4 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 5 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
@@ -188,12 +188,19 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（首发 1）与 `minSupportedContractVersion`（首发 1），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（首发 1）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
 - 插件 `contractVersion` < 主程序 `minSupported` → 插件太旧，拒（提示升级插件）。
-- 缺字段（`contractVersion` 缺省 = 0）→ 视为当前契约放行（兼容旧/手编插件）。
+- 缺字段（`contractVersion` 缺省 = 0）→ 视作低于 `minSupported`，拒（提示在 plugin.json 声明 contractVersion）。
+
+**版本史**：
+- 1 — 初始契约：A 类 proto 单源、能力声明化、render.Context 断链契约。
+- 2 — GetValue/GetAllValues 返回带 schemaVersion（配置 schema 版本感知）。
+- 3 — 资源类型扩展（manifest `resourceTypes` 段声明自定义类型；audio 内置）。
+- 4 — StoreSpec 加 `expectedSha256`；Task 删 `pendingResourceId`。
+- 5 — 落盘路径查询 RPC 退役：最终落盘路径改由 SDK `storepath` 派生函数本地推导（插件据任务身份 + specs 顺序自算，见 6.1 StoreSpec 顺序确定性条款），插件不再向主程序查询；`minSupportedContractVersion` 同步升 5，未声明版本的插件拒载。
 
 **跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段不 bump；删/改字段、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。
 
@@ -309,7 +316,6 @@ func main() {
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
 | | `UnsubscribeFrontend` | `(topic string) error` |
 | 路径 | `GetPluginRoot` | `(isRelative bool) string` |
-| | `GetStoreRelPath` | `(taskId int64, role string, storeSeq int) (string, error)` — 查询当前任务资源中指定 store 的真实落盘路径（workDir 相对）；插件 Start 时资源尚未创建，故按 `taskId` 查、主程序按任务定位产出资源（运行中查暂存规划表返回最终路径，已提交按 resource.task_id 行链直查）。供 document lazy 生成等路径可知后按真实文件名引用兄弟文件 |
 | 窗口 | `GetMainWindowHandle` | `() uintptr` |
 | 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | `(template string, args ...any)` |
 | | `GetLogger` | `() Logger`（可 `Named(...)` 派生子 logger） |
@@ -408,8 +414,9 @@ type StoreSpec struct {
 
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
-- **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(单 store `<bas>.<ext>` / 多 store `<bas>_<role>_<seq>[_<描述>].<ext>`,thumbnail 普通 role 无特例)详见 `doc/store-naming-convention.md`。
+- **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(库内落盘 `store/resource/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.<ext>`,恒带 role_seq、thumbnail 普通 role 无特例,派生函数为本 SDK `storepath` 包)详见 `doc/store-naming-convention.md`。
 - **`ExpectedSha256` 声明期望哈希(可选)**:插件在 Start/Resume 产出 spec 时声明来源侧的期望 SHA256(十六进制字符串,比对大小写不敏感)。主程序**照单消费、不以本地计算替代声明源**——下载流边写边算实测哈希,暂存写满(EOF 完整性校验通过)后与声明值比对:空(`nil`)=不校验(未声明插件零负担天然兼容);不符=任务失败,报「资源完整性校验失败（<role>）：来源声明的哈希与下载内容不符」,暂存保留供诊断(重试重下覆盖)。声明值应取自来源站点的权威元数据(如 API 返回的文件哈希),不要由插件对下载流自行预计算——预计算与主程序实测同源,校验无增量价值。
+- **specs 顺序确定性(重要)**:同 role 内的 `store_seq` 由主程序按 Start/Resume 返回的 specs 顺序分配(spec 在同 role 内的出现序即 store_seq 序)。插件必须保证**同 role 的 specs 相对顺序跨 Start/Resume/重试稳定**(站点内容更新导致轨道增/删除外)——该顺序即落盘文件名(`role_seq`)与续传配对(`StreamOffsets` 按 role+store_seq 匹配)的身份依据:顺序漂移=文件名漂移=引用断裂,已落盘文件与续传偏移会对不上新序的 spec。保证手法:specs 列表由稳定的源顺序(如站点 API 返回序)构建,不要用 map 遍历等无序来源拼装。
 
 #### ctx 与 reader 契约(重要)
 

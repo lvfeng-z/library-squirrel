@@ -47,26 +47,44 @@ var (
 
 // Exporter 打包执行能力（由 *Packer 实现；接口隔离，供测试替换桩验证取消/失败清理路径）。
 type Exporter interface {
-	Plan(ctx context.Context, workDir string, model *ExportModel) (*PackStats, error)
+	Plan(ctx context.Context, workDir string, model *ExportModel, fileNameFormat string) (*PackStats, error)
 	Pack(ctx context.Context, workDir string, model *ExportModel, targetPath string, stats *PackStats, onProgress ProgressFn) error
+}
+
+// FileNameFormatProvider 导出文件名模板供给（由设置服务实现，app.go 装入；
+// 空值回退默认模板由供给方负责）。
+type FileNameFormatProvider interface {
+	GetFileNameFormat() string
 }
 
 // ExportExecution 导出任务执行面策略：执行参数源为 export_task 领域行（核心行不承载领域
 // 载荷，share_task 同形）。暂停/停止由 Pack 逐文件 ctx 检查点退出（.zip.tmp 保留）；恢复/
 // 重试均走重新 Execute 全量重跑（zip 不支持续写，重跑前清扫目标目录残留临时文件）。
 type ExportExecution struct {
-	svc         *Service // 提供 collector（导出数据面）、exportTasks（领域行查询）与 workDir
-	packer      Exporter
-	freeSpaceFn func(dir string) (uint64, error) // 目标盘可用空间查询（测试可替换）
+	svc            *Service // 提供 collector（导出数据面）、exportTasks（领域行查询）与 workDir
+	packer         Exporter
+	fileNameFormat FileNameFormatProvider           // 导出文件名模板供给（nil/空回退默认模板）
+	freeSpaceFn    func(dir string) (uint64, error) // 目标盘可用空间查询（测试可替换）
 }
 
 // NewExportExecution 创建导出执行面策略。
-func NewExportExecution(svc *Service, packer Exporter) *ExportExecution {
+func NewExportExecution(svc *Service, packer Exporter, fileNameFormat FileNameFormatProvider) *ExportExecution {
 	return &ExportExecution{
-		svc:         svc,
-		packer:      packer,
-		freeSpaceFn: diskFreeSpace,
+		svc:            svc,
+		packer:         packer,
+		fileNameFormat: fileNameFormat,
+		freeSpaceFn:    diskFreeSpace,
 	}
+}
+
+// template 取导出文件名模板：供给方为空回退默认模板。
+func (e *ExportExecution) template() string {
+	if e.fileNameFormat != nil {
+		if tpl := e.fileNameFormat.GetFileNameFormat(); tpl != "" {
+			return tpl
+		}
+	}
+	return settings.DefaultFileNameFormat
 }
 
 // Execute 导出任务主体至终态：读领域行 → Collect → 工作目录守卫 → Plan → 输出目录解析 →
@@ -105,7 +123,7 @@ func (e *ExportExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 
-	stats, err := e.packer.Plan(ctx, workDir, model)
+	stats, err := e.packer.Plan(ctx, workDir, model, e.template())
 	if err != nil {
 		failUnlessCanceled(h, ctx, err)
 		return

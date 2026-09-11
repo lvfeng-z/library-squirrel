@@ -149,7 +149,8 @@ func startL1Env(t *testing.T, n int, size int64, streamRate int64) *l1Env {
 
 	hostWorkDir := t.TempDir()
 	model, sourceHash := buildNWorkModel(n, size)(t, hostWorkDir)
-	if _, err := export.NewPacker().Plan(context.Background(), hostWorkDir, model); err != nil {
+	// 空模板=包内文件名回退源文件名命名（保持本夹具的包内路径布局）
+	if _, err := export.NewPacker().Plan(context.Background(), hostWorkDir, model, ""); err != nil {
 		t.Fatalf("规划导出模型失败: %v", err)
 	}
 	em := newCaptureEmitter()

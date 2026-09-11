@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // TokenData 模板占位符对应的数据
@@ -23,32 +21,37 @@ type TokenData struct {
 	UploadHour      string
 	UploadMinute    string
 	UploadSecond    string
-	DownloadYear    string
-	DownloadMonth   string
-	DownloadDay     string
-	DownloadHour    string
-	DownloadMinute  string
-	DownloadSecond  string
+	ExportYear      string
+	ExportMonth     string
+	ExportDay       string
+	ExportHour      string
+	ExportMinute    string
+	ExportSecond    string
+}
+
+// WorkFields 模板占位符值的中立入参：作者名列表 + 作品字段的扁平结构，
+// 由消费方（导出命名等）按自身数据源组装，本包不感知任何上层 DTO
+type WorkFields struct {
+	LocalAuthorNames []string // 本地作者名（按作品关联顺序）
+	SiteAuthorNames  []string // 站点作者名（按作品关联顺序）
+	SiteAuthorID     string
+	SiteWorkID       string
+	SiteWorkName     string
+	Description      string
+	UploadTimeMs     int64 // 站点上传时间（Unix 毫秒）；0=未提供，uploadTime* 占位符留空
+	ExportTimeMs     int64 // 导出时刻（Unix 毫秒），exportTime* 占位符的取值基准
 }
 
 const fallbackAuthor = "unknownAuthor"
 
-// ExtractTokenData 从 WorkResponse 提取所有模板占位符的值
-func ExtractTokenData(workResp *sdkdto.WorkResponse) *TokenData {
+// ExtractTokenData 从中立入参提取所有模板占位符的值
+func ExtractTokenData(fields WorkFields) *TokenData {
 	data := &TokenData{}
 
-	if workResp == nil {
-		setDefaults(data)
-		fillDownloadTime(data)
-		return data
-	}
-
 	// 作者名称
-	data.LocalAuthorName = extractLocalAuthorName(workResp.LocalAuthors)
-	data.SiteAuthorName = extractSiteAuthorName(workResp.SiteAuthors)
-	data.SiteAuthorID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteAuthorId)
-	})
+	data.LocalAuthorName = firstNonEmptyName(fields.LocalAuthorNames)
+	data.SiteAuthorName = firstNonEmptyName(fields.SiteAuthorNames)
+	data.SiteAuthorID = fields.SiteAuthorID
 
 	// ${author}: 优先本地作者，其次站点作者
 	if data.LocalAuthorName != fallbackAuthor {
@@ -58,19 +61,13 @@ func ExtractTokenData(workResp *sdkdto.WorkResponse) *TokenData {
 	}
 
 	// 作品字段
-	data.SiteWorkID = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteWorkId)
-	})
-	data.SiteWorkName = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteWorkName)
-	})
-	data.Description = ptrStringValue(workResp.Work, func(w *sdkdto.WorkDTO) string {
-		return ptrStr(w.SiteWorkDescription)
-	})
+	data.SiteWorkID = fields.SiteWorkID
+	data.SiteWorkName = fields.SiteWorkName
+	data.Description = fields.Description
 
 	// 时间
-	fillUploadTime(data, workResp.Work)
-	fillDownloadTime(data)
+	fillUploadTime(data, fields.UploadTimeMs)
+	fillExportTime(data, fields.ExportTimeMs)
 
 	return data
 }
@@ -95,65 +92,34 @@ func FormatFileName(tpl string, data *TokenData) string {
 		"${uploadTimeHour}", data.UploadHour,
 		"${uploadTimeMinute}", data.UploadMinute,
 		"${uploadTimeSecond}", data.UploadSecond,
-		"${downloadTimeYear}", data.DownloadYear,
-		"${downloadTimeMonth}", data.DownloadMonth,
-		"${downloadTimeDay}", data.DownloadDay,
-		"${downloadTimeHour}", data.DownloadHour,
-		"${downloadTimeMinute}", data.DownloadMinute,
-		"${downloadTimeSecond}", data.DownloadSecond,
+		"${exportTimeYear}", data.ExportYear,
+		"${exportTimeMonth}", data.ExportMonth,
+		"${exportTimeDay}", data.ExportDay,
+		"${exportTimeHour}", data.ExportHour,
+		"${exportTimeMinute}", data.ExportMinute,
+		"${exportTimeSecond}", data.ExportSecond,
 	)
 	return r.Replace(tpl)
 }
 
 // --- 内部辅助函数 ---
 
-func setDefaults(data *TokenData) {
-	data.Author = fallbackAuthor
-	data.LocalAuthorName = fallbackAuthor
-	data.SiteAuthorName = fallbackAuthor
-	data.SiteAuthorID = ""
-}
-
-func extractLocalAuthorName(authors []*sdkdto.LocalAuthorDTO) string {
-	for _, a := range authors {
-		if a.AuthorName != nil && *a.AuthorName != "" {
-			return *a.AuthorName
+// firstNonEmptyName 取列表首个非空名字；全空回退占位作者名
+func firstNonEmptyName(names []string) string {
+	for _, n := range names {
+		if n != "" {
+			return n
 		}
 	}
 	return fallbackAuthor
 }
 
-func extractSiteAuthorName(authors []*sdkdto.TaskSiteAuthorDTO) string {
-	for _, a := range authors {
-		if a.AuthorName != "" {
-			return a.AuthorName
-		}
-	}
-	return fallbackAuthor
-}
-
-// ptrStr 安全解引用 *string
-func ptrStr(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-// ptrStringValue 安全读取 WorkDTO 的指针字段
-func ptrStringValue(work *sdkdto.WorkDTO, getter func(*sdkdto.WorkDTO) string) string {
-	if work == nil {
-		return ""
-	}
-	return getter(work)
-}
-
-// fillUploadTime 从 WorkDTO.SiteUploadTime（Unix 毫秒时间戳）提取时间组件
-func fillUploadTime(data *TokenData, work *sdkdto.WorkDTO) {
-	if work == nil || work.SiteUploadTime == nil || *work.SiteUploadTime == 0 {
+// fillUploadTime 按 Unix 毫秒时间戳填充上传时间组件；0=未提供（组件留空）
+func fillUploadTime(data *TokenData, ms int64) {
+	if ms == 0 {
 		return
 	}
-	t := time.UnixMilli(*work.SiteUploadTime)
+	t := time.UnixMilli(ms)
 	data.UploadYear = fmt.Sprintf("%04d", t.Year())
 	data.UploadMonth = fmt.Sprintf("%02d", t.Month())
 	data.UploadDay = fmt.Sprintf("%02d", t.Day())
@@ -162,13 +128,13 @@ func fillUploadTime(data *TokenData, work *sdkdto.WorkDTO) {
 	data.UploadSecond = fmt.Sprintf("%02d", t.Second())
 }
 
-// fillDownloadTime 使用当前时间填充下载时间组件
-func fillDownloadTime(data *TokenData) {
-	now := time.Now()
-	data.DownloadYear = fmt.Sprintf("%04d", now.Year())
-	data.DownloadMonth = fmt.Sprintf("%02d", now.Month())
-	data.DownloadDay = fmt.Sprintf("%02d", now.Day())
-	data.DownloadHour = fmt.Sprintf("%02d", now.Hour())
-	data.DownloadMinute = fmt.Sprintf("%02d", now.Minute())
-	data.DownloadSecond = fmt.Sprintf("%02d", now.Second())
+// fillExportTime 按 Unix 毫秒时间戳填充导出时间组件
+func fillExportTime(data *TokenData, ms int64) {
+	t := time.UnixMilli(ms)
+	data.ExportYear = fmt.Sprintf("%04d", t.Year())
+	data.ExportMonth = fmt.Sprintf("%02d", t.Month())
+	data.ExportDay = fmt.Sprintf("%02d", t.Day())
+	data.ExportHour = fmt.Sprintf("%02d", t.Hour())
+	data.ExportMinute = fmt.Sprintf("%02d", t.Minute())
+	data.ExportSecond = fmt.Sprintf("%02d", t.Second())
 }

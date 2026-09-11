@@ -77,10 +77,18 @@ export class ExportSettings {
      */
     "outputDir": string;
 
+    /**
+     * FileNameFormat 导出文件名模板（导出包内文件主名渲染；空=回退默认模板）
+     */
+    "fileNameFormat": string;
+
     /** Creates a new ExportSettings instance. */
     constructor($$source: Partial<ExportSettings> = {}) {
         if (!("outputDir" in $$source)) {
             this["outputDir"] = "";
+        }
+        if (!("fileNameFormat" in $$source)) {
+            this["fileNameFormat"] = "";
         }
 
         Object.assign(this, $$source);
@@ -305,7 +313,6 @@ export class SettingChange {
  */
 export class Settings {
     "workdir": string;
-    "workSettings": WorkSettings;
     "importSettings": ImportSettings;
     "pluginSettings": PluginSettings;
     "tour": TourSettings;
@@ -321,9 +328,6 @@ export class Settings {
     constructor($$source: Partial<Settings> = {}) {
         if (!("workdir" in $$source)) {
             this["workdir"] = "";
-        }
-        if (!("workSettings" in $$source)) {
-            this["workSettings"] = (new WorkSettings());
         }
         if (!("importSettings" in $$source)) {
             this["importSettings"] = (new ImportSettings());
@@ -373,40 +377,36 @@ export class Settings {
         const $$createField8_0 = $$createType8;
         const $$createField9_0 = $$createType9;
         const $$createField10_0 = $$createType10;
-        const $$createField11_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("workSettings" in $$parsedSource) {
-            $$parsedSource["workSettings"] = $$createField1_0($$parsedSource["workSettings"]);
-        }
         if ("importSettings" in $$parsedSource) {
-            $$parsedSource["importSettings"] = $$createField2_0($$parsedSource["importSettings"]);
+            $$parsedSource["importSettings"] = $$createField1_0($$parsedSource["importSettings"]);
         }
         if ("pluginSettings" in $$parsedSource) {
-            $$parsedSource["pluginSettings"] = $$createField3_0($$parsedSource["pluginSettings"]);
+            $$parsedSource["pluginSettings"] = $$createField2_0($$parsedSource["pluginSettings"]);
         }
         if ("tour" in $$parsedSource) {
-            $$parsedSource["tour"] = $$createField4_0($$parsedSource["tour"]);
+            $$parsedSource["tour"] = $$createField3_0($$parsedSource["tour"]);
         }
         if ("recycleBin" in $$parsedSource) {
-            $$parsedSource["recycleBin"] = $$createField5_0($$parsedSource["recycleBin"]);
+            $$parsedSource["recycleBin"] = $$createField4_0($$parsedSource["recycleBin"]);
         }
         if ("appearance" in $$parsedSource) {
-            $$parsedSource["appearance"] = $$createField6_0($$parsedSource["appearance"]);
+            $$parsedSource["appearance"] = $$createField5_0($$parsedSource["appearance"]);
         }
         if ("mergeSettings" in $$parsedSource) {
-            $$parsedSource["mergeSettings"] = $$createField7_0($$parsedSource["mergeSettings"]);
+            $$parsedSource["mergeSettings"] = $$createField6_0($$parsedSource["mergeSettings"]);
         }
         if ("fsmonitor" in $$parsedSource) {
-            $$parsedSource["fsmonitor"] = $$createField8_0($$parsedSource["fsmonitor"]);
+            $$parsedSource["fsmonitor"] = $$createField7_0($$parsedSource["fsmonitor"]);
         }
         if ("backupGovernance" in $$parsedSource) {
-            $$parsedSource["backupGovernance"] = $$createField9_0($$parsedSource["backupGovernance"]);
+            $$parsedSource["backupGovernance"] = $$createField8_0($$parsedSource["backupGovernance"]);
         }
         if ("exportSettings" in $$parsedSource) {
-            $$parsedSource["exportSettings"] = $$createField10_0($$parsedSource["exportSettings"]);
+            $$parsedSource["exportSettings"] = $$createField9_0($$parsedSource["exportSettings"]);
         }
         if ("shareSettings" in $$parsedSource) {
-            $$parsedSource["shareSettings"] = $$createField11_0($$parsedSource["shareSettings"]);
+            $$parsedSource["shareSettings"] = $$createField10_0($$parsedSource["shareSettings"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -459,7 +459,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType12;
+        const $$createField0_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -468,41 +468,16 @@ export class TourSettings {
     }
 }
 
-/**
- * WorkSettings 作品相关设置
- */
-export class WorkSettings {
-    "fileNameFormat": string;
-
-    /** Creates a new WorkSettings instance. */
-    constructor($$source: Partial<WorkSettings> = {}) {
-        if (!("fileNameFormat" in $$source)) {
-            this["fileNameFormat"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WorkSettings instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WorkSettings {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new WorkSettings($$parsedSource as Partial<WorkSettings>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = WorkSettings.createFrom;
-const $$createType2 = ImportSettings.createFrom;
-const $$createType3 = PluginSettings.createFrom;
-const $$createType4 = TourSettings.createFrom;
-const $$createType5 = RecycleBinSettings.createFrom;
-const $$createType6 = AppearanceSettings.createFrom;
-const $$createType7 = MergeSettings.createFrom;
-const $$createType8 = FsmonitorSettings.createFrom;
-const $$createType9 = BackupGovernanceSettings.createFrom;
-const $$createType10 = ExportSettings.createFrom;
-const $$createType11 = ShareSettings.createFrom;
-const $$createType12 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = ImportSettings.createFrom;
+const $$createType2 = PluginSettings.createFrom;
+const $$createType3 = TourSettings.createFrom;
+const $$createType4 = RecycleBinSettings.createFrom;
+const $$createType5 = AppearanceSettings.createFrom;
+const $$createType6 = MergeSettings.createFrom;
+const $$createType7 = FsmonitorSettings.createFrom;
+const $$createType8 = BackupGovernanceSettings.createFrom;
+const $$createType9 = ExportSettings.createFrom;
+const $$createType10 = ShareSettings.createFrom;
+const $$createType11 = $Create.Map($Create.Any, $Create.Any);

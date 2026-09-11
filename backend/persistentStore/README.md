@@ -27,12 +27,11 @@
 | `GetById` / `GetByIds` / `GetByFilePath` | 查询 |
 | `Exists` | 存在性校验（/store/ 状态路由用 `ResolveFileState`，含删口径） |
 | `ResolveStorePath` / `GetAbsPath` | 路径解析（relPath → 绝对路径） |
-| `BuildVariantPath(sourceRelPath, suffix)` | 路径变换：从源 store relPath 派生变体路径（同目录 + 文件名追加 suffix + 保扩展 + 净化，正斜杠入库），供合并在已有 store 旁派生产物路径 |
 
 ## 核心概念
 
 - **已注册子目录**（`storeRegistry`）：路径必须以下列前缀开头——
-  `store/resource`（作品资源）、`store/thumbnail`（视频缩略图）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
+  `store/resource`（作品资源，含缩略图与合并产物，命名见 `doc/store-naming-convention.md`）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
 - **路径基准（PATH_SEPARATOR_DISCIPLINE 两域模型）**：所有相对路径（relPath 域）基于 workDir 且**正斜杠**——写入口（CommitStore/Store/StoreFromExternal）入口处 `ToSlash` 规范化一次，查旧/抑制登记/落库全程与 DB 基准一致；absPath（`filepath.Join(workDir, rel)`）仅存在于 os.* 调用点不回流。禁止 `../`、`./` 或绝对路径。
 
 ## 依赖关系

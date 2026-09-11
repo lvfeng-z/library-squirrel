@@ -9,8 +9,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/taskManager"
-
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // execSession 插件下载任务的执行会话：任务核心行经 handle 获取，作品任务领域行为执行入口
@@ -38,8 +36,6 @@ type execSession struct {
 	existingWorkId int64
 	// 本次执行产出的 Resource ID（资源完整度重算用）
 	currentResourceId int64
-	// 作品信息响应（Start/Resume 返回，供文件名模板 token 数据）
-	workResp *sdkdto.WorkResponse
 
 	// 多流控制器集合（按本次所选 storeRoles 过滤后的 spec 构建）
 	streams []*streamController

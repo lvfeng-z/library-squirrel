@@ -3,7 +3,6 @@ package settings
 // Settings 应用设置
 type Settings struct {
 	WorkDir            string                   `json:"workdir" koanf:"workdir"`
-	WorkSettings       WorkSettings             `json:"workSettings" koanf:"workSettings"`
 	ImportSettings     ImportSettings           `json:"importSettings" koanf:"importSettings"`
 	PluginSettings     PluginSettings           `json:"pluginSettings" koanf:"pluginSettings"`
 	Tour               TourSettings             `json:"tour" koanf:"tour"`
@@ -15,15 +14,6 @@ type Settings struct {
 	ExportSettings     ExportSettings           `json:"exportSettings" koanf:"exportSettings"`
 	ShareSettings      ShareSettings            `json:"shareSettings" koanf:"shareSettings"`
 }
-
-// WorkSettings 作品相关设置
-type WorkSettings struct {
-	FileNameFormat string `json:"fileNameFormat" koanf:"fileNameFormat"`
-}
-
-// DefaultFileNameFormat 默认文件名模板(用户未配置或清空时回退)。
-// D2 方案 B:GetFileNameFormat 空时回退此值,根治模板空→落盘名退化为 task.ext→StoreStream 删旧建新无声覆盖
-const DefaultFileNameFormat = "[${author}]_[${siteWorkId}]_${siteWorkName}"
 
 // ImportSettings 导入相关设置
 type ImportSettings struct {
@@ -77,7 +67,12 @@ type ExportSettings struct {
 	// OutputDir 设置页显式配置的导出默认输出目录（空=沿用工作目录作为导出落盘根）；
 	// 导出弹窗内的临时改选仅本次生效，不写回本字段
 	OutputDir string `json:"outputDir" koanf:"outputDir"`
+	// FileNameFormat 导出文件名模板（导出包内文件主名渲染；空=回退默认模板）
+	FileNameFormat string `json:"fileNameFormat" koanf:"fileNameFormat"`
 }
+
+// DefaultFileNameFormat 默认导出文件名模板（设置项为空时回退；空模板渲染不出可用的文件主名）
+const DefaultFileNameFormat = "[${author}]_[${siteWorkId}]_${siteWorkName}"
 
 // ShareSettings 分享相关设置
 type ShareSettings struct {
@@ -103,9 +98,6 @@ const (
 func NewSettings() *Settings {
 	return &Settings{
 		WorkDir: "",
-		WorkSettings: WorkSettings{
-			FileNameFormat: DefaultFileNameFormat,
-		},
 		ImportSettings: ImportSettings{
 			MaxParallelImport:        3,
 			UpdateWorkInfoWhenImport: true,
@@ -137,7 +129,9 @@ func NewSettings() *Settings {
 		BackupGovernance: BackupGovernanceSettings{
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
-		ExportSettings: ExportSettings{},
+		ExportSettings: ExportSettings{
+			FileNameFormat: DefaultFileNameFormat,
+		},
 		ShareSettings: ShareSettings{
 			RelayAddress: DefaultShareRelayAddress,
 		},

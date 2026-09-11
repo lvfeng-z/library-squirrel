@@ -115,7 +115,6 @@ type stagingTestEnv struct {
 	streamer   *stubStoreCommitter
 	recompute  *stubRecomputer
 	assocWrite *stubResourceStoreWriter
-	planner    *StagingPlanner
 	locator    *stubWorkLocator
 }
 
@@ -129,7 +128,6 @@ func newStagingTestEnv(t *testing.T) *stagingTestEnv {
 		streamer:   &stubStoreCommitter{},
 		recompute:  &stubRecomputer{},
 		assocWrite: &stubResourceStoreWriter{},
-		planner:    NewStagingPlanner(),
 		locator:    &stubWorkLocator{work: makeStagingWork()},
 	}
 	return env
@@ -158,23 +156,21 @@ func seedStaging(t *testing.T, env *stagingTestEnv, role string, seq int, conten
 func newResumeTestStrategy(wt *entity.WorkTask, exec PluginExecutor, resReader *stubResourceReader,
 	env *stagingTestEnv) (*PluginDownloadStrategy, *Deps) {
 	deps := &Deps{
-		WorkTasks:              &stubWorkTasks{rows: map[int64]*entity.WorkTask{wt.GetID(): wt}},
-		PluginExecFactory:      &stubExecFactory{exec: exec},
-		WorkDirProvider:        stubWorkDirProvider{dir: env.workDir},
-		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
-		WorkInfoSaver:          &stubWorkInfoSaver{savedWorkId: 500},
-		WorkLocator:            env.locator,
-		ResourceReader:         resReader,
-		ResourceSaver:          &stubResourceSaver{},
-		ResourceUpdater:        &stubResourceSaver{},
-		ReplaceStoreOps:        newRealReplacementService(newReplaceStubs(), nil),
-		StoreCommitter:         env.streamer,
-		ResourceStoreWriter:    env.assocWrite,
-		ResourceRecomputer:     env.recompute,
-		Transactor:             stubTransactor{},
-		WorkMetaLoader:         stubWorkMetaLoader{},
-		StagingPaths:           stubStagingPaths{},
-		Planner:                env.planner,
+		WorkTasks:           &stubWorkTasks{rows: map[int64]*entity.WorkTask{wt.GetID(): wt}},
+		PluginExecFactory:   &stubExecFactory{exec: exec},
+		WorkDirProvider:     stubWorkDirProvider{dir: env.workDir},
+		SiteKeyResolver:     &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
+		WorkInfoSaver:       &stubWorkInfoSaver{savedWorkId: 500},
+		WorkLocator:         env.locator,
+		ResourceReader:      resReader,
+		ResourceSaver:       &stubResourceSaver{},
+		ResourceUpdater:     &stubResourceSaver{},
+		ReplaceStoreOps:     newRealReplacementService(newReplaceStubs(), nil),
+		StoreCommitter:      env.streamer,
+		ResourceStoreWriter: env.assocWrite,
+		ResourceRecomputer:  env.recompute,
+		Transactor:          stubTransactor{},
+		StagingPaths:        stubStagingPaths{},
 	}
 	return NewPluginDownloadStrategy(deps), deps
 }
@@ -190,8 +186,8 @@ func makeResumeWorkTask(taskId int64) *entity.WorkTask {
 	return wt
 }
 
-// stagingWorkResp 命名元数据齐备的作品响应（模板渲染 bas=[author]_[sw1]_name，
-// 最终目录 store/resource/author）
+// stagingWorkResp 作品信息响应桩载荷（Start/Resume 返回的作品元数据，落盘派生不消费，
+// 仅保持插件执行器桩返回形态完整）
 func stagingWorkResp() *sdkdto.WorkResponse {
 	return &sdkdto.WorkResponse{
 		Work:         &sdkdto.WorkDTO{SiteWorkId: pathTestStrPtr("sw1"), SiteWorkName: pathTestStrPtr("name")},
@@ -199,9 +195,10 @@ func stagingWorkResp() *sdkdto.WorkResponse {
 	}
 }
 
-// finalAbsPathOf 命名解析基准下的最终文件绝对路径（stagingWorkResp 元数据 → store/resource/author 目录）
+// finalAbsPath 命名派生基准下的最终文件绝对路径（makeResumeWorkTask 复合键 siteId=1→
+// test-site、siteWorkId=sw1 → store/resource/test-site_sw1 目录）
 func finalAbsPath(env *stagingTestEnv, fileName string) string {
-	return filepath.Join(env.workDir, "store", "resource", "author", fileName)
+	return filepath.Join(env.workDir, "store", "resource", "test-site_sw1", fileName)
 }
 
 // ==== Execute 入口：恢复信号判定 ====
@@ -322,7 +319,7 @@ func TestResumeFromStaging_PartialContinuesAndCommits(t *testing.T) {
 	}
 	// 提交点：暂存 rename 到最终路径，内容 = 前缀 4 字节 + 续传 6 字节
 	want := append(append([]byte{}, prefix...), rest...)
-	got, rerr := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name.png"))
+	got, rerr := os.ReadFile(finalAbsPath(env, "image_000.png"))
 	if rerr != nil {
 		t.Fatalf("最终文件应存在: %v", rerr)
 	}
@@ -330,7 +327,7 @@ func TestResumeFromStaging_PartialContinuesAndCommits(t *testing.T) {
 		t.Fatalf("最终内容应前缀保留+续传, 期望 %q 实际 %q", want, got)
 	}
 	// 建行：relPath 落库、completed（桩记录）
-	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != "store/resource/author/[author]_[sw1]_name.png" {
+	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != "store/resource/test-site_sw1/image_000.png" {
 		t.Fatalf("提交点应建 1 行(final relPath), 实际 %+v", env.streamer.commits)
 	}
 	// 挂载：resource_store 关联插入
@@ -372,7 +369,7 @@ func TestResumeFromStaging_ResumeWriteOffsetPluginPriority(t *testing.T) {
 	if !h.finished || h.failed {
 		t.Fatalf("应成功收口, 实际 finished=%v failed=%v(%s)", h.finished, h.failed, h.failMsg)
 	}
-	got, rerr := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name.png"))
+	got, rerr := os.ReadFile(finalAbsPath(env, "image_000.png"))
 	if rerr != nil {
 		t.Fatalf("最终文件应存在: %v", rerr)
 	}
@@ -405,7 +402,7 @@ func TestResumeFromStaging_CompleteInStagingInstantCommit(t *testing.T) {
 	if !h.finished || h.failed {
 		t.Fatalf("写满轨应瞬时完成提交, 实际 finished=%v failed=%v(%s)", h.finished, h.failed, h.failMsg)
 	}
-	got, rerr := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name.png"))
+	got, rerr := os.ReadFile(finalAbsPath(env, "image_000.png"))
 	if rerr != nil || len(got) != 10 {
 		t.Fatalf("写满轨提交内容应保留, err=%v len=%d", rerr, len(got))
 	}
@@ -435,7 +432,7 @@ func TestResumeFromStaging_StaleStagingRebuilds(t *testing.T) {
 	if !h.finished || h.failed {
 		t.Fatalf("陈旧暂存应重建后成功, 实际 finished=%v failed=%v(%s)", h.finished, h.failed, h.failMsg)
 	}
-	got, rerr := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name.png"))
+	got, rerr := os.ReadFile(finalAbsPath(env, "image_000.png"))
 	if rerr != nil || string(got) != string(bytes.Repeat([]byte("y"), 10)) {
 		t.Fatalf("陈旧暂存应整轨重下, err=%v got=%q", rerr, got)
 	}
@@ -475,10 +472,9 @@ func TestResumeFromStaging_UncoveredRegenerates(t *testing.T) {
 	if len(startRoles) != 1 || startRoles[0] != entity.StoreTypeThumbnail {
 		t.Fatalf("未认领轨应以 [thumbnail] 重产, 实际 %v", startRoles)
 	}
-	// 两轨均提交：续接 image(4+2) 与重产 thumbnail(整轨覆盖旧暂存)；多 store 判定成立（暂存
-	// 枚举 2 轨）→ 文件名带 role+seq 段
-	imgGot, err1 := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name_image_000.png"))
-	thumbGot, err2 := os.ReadFile(finalAbsPath(env, "[author]_[sw1]_name_thumbnail_000.jpg"))
+	// 两轨均提交：续接 image(4+2) 与重产 thumbnail(整轨覆盖旧暂存)；文件名恒带 role+seq 段
+	imgGot, err1 := os.ReadFile(finalAbsPath(env, "image_000.png"))
+	thumbGot, err2 := os.ReadFile(finalAbsPath(env, "thumbnail_000.jpg"))
 	if err1 != nil || string(imgGot) != "aaaabb" {
 		t.Fatalf("续接轨提交内容不符: err=%v got=%q", err1, imgGot)
 	}

@@ -43,12 +43,6 @@ type WorkInfoSaver interface {
 	SaveWorkInfo(ctx context.Context, task *entity.Task, workTask *entity.WorkTask, workResp *sdkdto.WorkResponse) (int64, error)
 }
 
-// WorkMetaLoader 已有作品命名元数据加载接口
-// 资源板块单独重下(未跑作品元数据板块)时,从已有作品获取文件名模板所需元数据(作者等),与板块选择解耦
-type WorkMetaLoader interface {
-	LoadWorkMeta(ctx context.Context, workId int64) (*sdkdto.WorkResponse, error)
-}
-
 // ResourceSaver 资源保存接口
 type ResourceSaver interface {
 	Save(ctx context.Context, resource *entity.Resource) (int64, error)
@@ -60,13 +54,9 @@ type WorkDirProvider interface {
 	GetWorkDir() string
 }
 
-// FileNameFormatProvider 文件名格式模板提供者接口
-type FileNameFormatProvider interface {
-	GetFileNameFormat() string
-}
-
-// SiteKeyResolver 站点 ID → 站点行批量查询（查重输入键形态统一：插件任务侧把 task.SiteID
-// 反查站点键，与 share-receive/zip 导入的 manifest 域键对齐；由 site.Service 实现）
+// SiteKeyResolver 站点 ID → 站点行批量查询（由 site.Service 实现）。两个消费方：查重输入键
+// 形态统一（插件任务侧把 task.SiteID 反查站点键，与 share-receive/zip 导入的 manifest 域键对齐）
+// 与落盘目录派生（resolveStoreDir 取 siteKey 组装作品目录名）
 type SiteKeyResolver interface {
 	ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error)
 }
@@ -138,24 +128,21 @@ type WorkTaskStore interface {
 // （接口由本模块定义、提供方模块实现、app.go 装配注入）
 type Deps struct {
 	// WorkTasks 作品任务领域行读取（执行入口按 taskId 查行/续传判定/板块模式派生源）
-	WorkTasks              WorkTaskStore
-	PluginExecFactory      PluginExecFactory          // 插件任务执行器获取
-	WorkInfoSaver          WorkInfoSaver              // 作品完整信息保存
-	WorkMetaLoader         WorkMetaLoader             // 已有作品命名元数据加载
-	WorkLocator            WorkLocator                // 续传会话按 (site, site_work_id) 定位任务所属作品
-	ResourceSaver          ResourceSaver              // 资源保存
-	WorkDirProvider        WorkDirProvider            // 工作目录
-	FileNameFormatProvider FileNameFormatProvider     // 文件名格式模板
-	DuplicateChecker       duplicate.DuplicateChecker // 作品查重判定能力
-	SiteKeyResolver        SiteKeyResolver            // 站点 ID → 站点键（查重输入键形态统一）
-	ResourceReader         ResourceReader             // 已有作品资源查询
-	ReplaceStoreOps        resource.ReplaceStoreOps   // 替换链能力（提交窗口软删/失败回滚复活）
-	ResourceUpdater        ResourceSaver              // 替换场景更新 Resource 的 Store 字段
-	StoreCommitter         StoreCommitter             // 提交点建行（暂存产物 rename 后建完整行）
-	ResourceStoreWriter    ResourceStoreWriter        // resource_store 关联写入
-	ResourceRecomputer     ResourceRecomputer         // 资源完整度重算
-	Transactor             Transactor                 // 事务执行
-	TaskCoreReader         TaskCoreReader             // 任务核心行查询（中断通知组装 TaskResParam）
-	StagingPaths           StagingPaths               // 暂存目录派生与暂存文件命名（task 基建适配）
-	Planner                *StagingPlanner            // 运行中暂存规划注册面（GetStoreRelPath 运行形态查询源）
+	WorkTasks           WorkTaskStore
+	PluginExecFactory   PluginExecFactory          // 插件任务执行器获取
+	WorkInfoSaver       WorkInfoSaver              // 作品完整信息保存
+	WorkLocator         WorkLocator                // 续传会话按 (site, site_work_id) 定位任务所属作品
+	ResourceSaver       ResourceSaver              // 资源保存
+	WorkDirProvider     WorkDirProvider            // 工作目录
+	DuplicateChecker    duplicate.DuplicateChecker // 作品查重判定能力
+	SiteKeyResolver     SiteKeyResolver            // 站点 ID → 站点键（查重输入键形态统一 + 落盘目录派生 resolveStoreDir）
+	ResourceReader      ResourceReader             // 已有作品资源查询
+	ReplaceStoreOps     resource.ReplaceStoreOps   // 替换链能力（提交窗口软删/失败回滚复活）
+	ResourceUpdater     ResourceSaver              // 替换场景更新 Resource 的 Store 字段
+	StoreCommitter      StoreCommitter             // 提交点建行（暂存产物 rename 后建完整行）
+	ResourceStoreWriter ResourceStoreWriter        // resource_store 关联写入
+	ResourceRecomputer  ResourceRecomputer         // 资源完整度重算
+	Transactor          Transactor                 // 事务执行
+	TaskCoreReader      TaskCoreReader             // 任务核心行查询（中断通知组装 TaskResParam）
+	StagingPaths        StagingPaths               // 暂存目录派生与暂存文件命名（task 基建适配）
 }

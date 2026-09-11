@@ -1,10 +1,8 @@
-import {Settings} from "@bindings/github.com/library-squirrel/backend/settings";
+import {Settings} from "@bindings/github.com/library-squirrel/backend/settings/models";
 
+// emptySettings 默认值骨架（与后端 NewSettings/defaultSettings 默认层对齐）：表单初始态与保存对比基准
 export const emptySettings: Settings = {
   workdir: '',
-  workSettings: {
-    fileNameFormat: '[${author}]_[${siteWorkId}]_${siteWorkName}'
-  },
   importSettings: {
     maxParallelImport: 3,
     updateWorkInfoWhenImport: true
@@ -37,7 +35,8 @@ export const emptySettings: Settings = {
     autoRepairPolicies: {}
   },
   exportSettings: {
-    outputDir: ''
+    outputDir: '',
+    fileNameFormat: '[${author}]_[${siteWorkId}]_${siteWorkName}'
   },
   shareSettings: {
     relayAddress: 'relay.library-squirrel.cn'

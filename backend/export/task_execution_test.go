@@ -78,7 +78,7 @@ type blockingExporter struct {
 	entered chan struct{}
 }
 
-func (p *blockingExporter) Plan(_ context.Context, _ string, model *ExportModel) (*PackStats, error) {
+func (p *blockingExporter) Plan(_ context.Context, _ string, model *ExportModel, _ string) (*PackStats, error) {
 	stats := &PackStats{}
 	for _, f := range model.Manifest.Files {
 		stats.TotalFiles++
@@ -114,6 +114,12 @@ type exportExecEnv struct {
 	workDir string
 }
 
+// fixedFormatProvider 固定模板供给桩：空串经 ExportExecution.template() 回退默认模板
+// （本文件锚定执行面流程，zip 内文件名按默认模板渲染锚定）。
+type fixedFormatProvider struct{}
+
+func (fixedFormatProvider) GetFileNameFormat() string { return "" }
+
 func newExportExecEnv(t *testing.T) *exportExecEnv {
 	t.Helper()
 	db, err := migration.OpenTestDB()
@@ -123,7 +129,7 @@ func newExportExecEnv(t *testing.T) *exportExecEnv {
 	seedExportSourceFile(t, workDir)
 	svc := NewService(NewRepository(db), NewExportTaskRepository(db),
 		func() string { return "test-version" }, func() string { return workDir })
-	exec := NewExportExecution(svc, NewPacker())
+	exec := NewExportExecution(svc, NewPacker(), fixedFormatProvider{})
 	exec.freeSpaceFn = func(string) (uint64, error) { return 1 << 40, nil }
 	return &exportExecEnv{db: db, f: f, svc: svc, exec: exec, workDir: workDir}
 }
@@ -203,7 +209,8 @@ func TestExportExecutionSuccessFinish(t *testing.T) {
 		names = append(names, zf.Name)
 	}
 	assert.Contains(t, names, "manifest.json")
-	assert.Contains(t, names, "works/作品1/作品1.jpg")
+	// 文件名按默认模板渲染：作者（作品关联本地作者）+ 站点作品 ID + 作品名 + 源文件扩展名
+	assert.Contains(t, names, "works/作品1/[画师A]_[w-1]_作品1.jpg")
 
 	// 进度：单源文件 13 字节（"image-content"），末次上报 total=processed=13
 	require.NotEmpty(t, progresses)
@@ -281,7 +288,7 @@ func TestExportExecutionCancelKeepsTempThenRerun(t *testing.T) {
 	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "")
 
 	bp := &blockingExporter{entered: make(chan struct{})}
-	exec := NewExportExecution(env.svc, bp)
+	exec := NewExportExecution(env.svc, bp, fixedFormatProvider{})
 	exec.freeSpaceFn = func(string) (uint64, error) { return 1 << 40, nil }
 
 	ctx, cancel := context.WithCancel(context.Background())

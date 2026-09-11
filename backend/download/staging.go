@@ -1,7 +1,7 @@
 package download
 
 // 下载暂存基建（执行面侧）：暂存文件写入器（download 直接管理文件与全量 sha256 流式哈希）
-// 与运行中任务的暂存规划注册面（GetStoreRelPath 运行形态查询的数据源）。
+// 与暂存目录枚举。
 // 暂存模式下下载内容先写 {workDir}/task-staging/{taskID}/ 下的 role_seq 键文件，
 // 全部轨道写满后由提交点统一 rename 进 store/ 最终路径——暂存期内长下载全程零 DB 副作用；
 // task-staging/ 不在 store/ 白名单子树内，fsmonitor 对其零感知（无需抑制登记）。
@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // stagingWriter 暂存文件写入器：download 直接管理的暂存文件句柄 + 写入流全量 sha256 哈希器。
@@ -117,51 +116,8 @@ func (w *stagingWriter) finalize() (actualSha string, err error) {
 	return actual, nil
 }
 
-// StagingPlanner 运行中任务的暂存规划注册面：taskId → (role, store_seq) → 最终 relPath。
-// 执行面在 Start/Resume 返回 specs 解析出全部最终路径后注册，执行结束（终态/中断返回）注销；
-// GetStoreRelPath 运行形态查询先查本表（插件 document lazy 生成要的是最终文件名，
-// 文件物理在暂存但契约解耦）。map+mutex，注册/注销/查询均 O(1)
-type StagingPlanner struct {
-	mu    sync.Mutex
-	plans map[int64]map[storeIdentity]string
-}
-
-// NewStagingPlanner 构建暂存规划注册面（装配层单例注入执行面与 GetStoreRelPath 适配器）
-func NewStagingPlanner() *StagingPlanner {
-	return &StagingPlanner{plans: make(map[int64]map[storeIdentity]string)}
-}
-
-// Register 注册任务的全部轨道最终路径（同任务重复注册整体覆盖——单 actor 串行执行，无并发覆盖）
-func (p *StagingPlanner) Register(taskId int64, finals map[storeIdentity]string) {
-	if len(finals) == 0 {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.plans[taskId] = finals
-}
-
-// Unregister 注销任务的规划（执行结束调用；后续查询回落到已提交行直查）
-func (p *StagingPlanner) Unregister(taskId int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.plans, taskId)
-}
-
-// FinalRelPath 运行形态查询：命中返回最终 relPath 与 true；未注册/未命中返回 false
-func (p *StagingPlanner) FinalRelPath(taskId int64, role string, storeSeq int) (string, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	plan, ok := p.plans[taskId]
-	if !ok {
-		return "", false
-	}
-	rel, ok := plan[storeIdentity{role: role, seq: storeSeq}]
-	return rel, ok
-}
-
 // storeIdentity store 轨道身份键:同 role 内 store_seq 唯一定位一个 store(N-同 role 多 store
-// 支持)。规划表键与暂存文件名键同维度（role_seq 三位零填充即本键的文件名形态）
+// 支持)。暂存文件名键与续传配对键同维度（role_seq 三位零填充即本键的文件名形态）
 type storeIdentity struct {
 	role string
 	seq  int

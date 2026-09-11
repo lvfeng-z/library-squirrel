@@ -589,7 +589,7 @@ func (h *Handler) Redownload(ctx, taskIds []int64, storeRoles []string, includeW
 | A 作品信息 | 无 | 不动文件 |
 | B 资源文件 | 所选 storeRoles | `BackupStores(workId, storeRoles...)`；`saveResource` 替换分支只重建所选 role 的 resource_store 行,不动其他 role |
 
-缩略图不单列板块：作为 `storeRoles` 中的 `thumbnail` 角色，由插件 Start 返回的 `Generation=derived` StoreSpec 产出，与 downloaded 角色同链路下载/备份/重挂（`resolveStorePath` 无 thumbnail 特例，多 store 资源按 `<bas>_<role>_<seq>` 命名）。任务全程只动插件本次声明的 StoreSpec 对应板块；`videoMain`（分离流场景由用户「合并」操作挂载、不来自插件 specs 时）对任务流程透明——不被删/覆盖/失效。
+缩略图不单列板块：作为 `storeRoles` 中的 `thumbnail` 角色，由插件 Start 返回的 `Generation=derived` StoreSpec 产出，与 downloaded 角色同链路下载/备份/重挂（`resolveStorePath` 无 thumbnail 特例，文件名恒 `{role}_{seq 三位}.{ext}` 形态）。任务全程只动插件本次声明的 StoreSpec 对应板块；`videoMain`（分离流场景由用户「合并」操作挂载、不来自插件 specs 时）对任务流程透明——不被删/覆盖/失效。
 
 ---
 

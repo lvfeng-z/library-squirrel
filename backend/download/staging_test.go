@@ -1,7 +1,7 @@
 package download
 
 // 暂存写入器与提交点测试：写入流全量 sha256（全新/续传前缀入哈希）、finalize 比对（不符/
-// 未声明）、暂存文件名解析、规划注册面（GetStoreRelPath 运行形态契约）、提交点序列
+// 截断）、暂存文件名解析、提交点序列
 // （替换软删+rename+抑制登记窗口+建行挂载事务+暂存回收）、哈希双列落库、提交失败逆 rename
 // 回退、哈希不符失败保留暂存、替换矩阵（替换链坍缩到提交窗口：成功/失败/提交窗口内失败/
 // 软删锁拒绝/暂停停止四态+全角色展开）。
@@ -21,6 +21,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
+	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 
@@ -172,77 +173,6 @@ func TestEnumerateStaging(t *testing.T) {
 	}
 }
 
-// ==== 规划注册面（GetStoreRelPath 运行形态契约） ====
-
-// TestStagingPlannerLifecycle 注册/查询/注销：命中返回最终路径；注销后回落（false）
-func TestStagingPlannerLifecycle(t *testing.T) {
-	p := NewStagingPlanner()
-	p.Register(7, map[storeIdentity]string{
-		{role: entity.StoreTypeImage, seq: 2}: "store/resource/a/x_image_002.png",
-	})
-	if rel, ok := p.FinalRelPath(7, entity.StoreTypeImage, 2); !ok || rel != "store/resource/a/x_image_002.png" {
-		t.Fatalf("命中查询应返回注册的最终路径, ok=%v rel=%q", ok, rel)
-	}
-	if _, ok := p.FinalRelPath(7, entity.StoreTypeImage, 0); ok {
-		t.Fatal("未注册 seq 不应命中")
-	}
-	if _, ok := p.FinalRelPath(8, entity.StoreTypeImage, 2); ok {
-		t.Fatal("未注册任务不应命中")
-	}
-	p.Unregister(7)
-	if _, ok := p.FinalRelPath(7, entity.StoreTypeImage, 2); ok {
-		t.Fatal("注销后不应命中")
-	}
-}
-
-// TestPlannerDuringDownload_RunningLazyContract 运行中 lazy 契约（GetStoreRelPath 双形态的
-// 运行形态源）：下载循环进行中（文件物理在暂存、最终路径无文件）规划表即返回最终路径——
-// 插件 document lazy 生成依赖此契约取兄弟轨最终文件名，且不再依赖落盘事务可见性
-func TestPlannerDuringDownload_RunningLazyContract(t *testing.T) {
-	sess, h, cancel, env := newCommitTestSession(t)
-	defer cancel()
-	// 在途 reader 阻塞至 runCtx 取消：循环进行期间断言规划表
-	cr := &ctxAwareReader{data: []byte("aa"), ctx: h.runCtx, blockedCh: make(chan struct{})}
-	specs := []*sdkdto.StoreSpec{{
-		Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-		Size: 10, ReadCloser: cr,
-	}}
-
-	done := make(chan comboResult, 1)
-	go func() { done <- sess.startDownload(specs, stagingWorkResp()) }()
-
-	<-cr.blockedCh // 循环进行中（在途读取挂起）
-
-	rel, ok := env.planner.FinalRelPath(1, entity.StoreTypeImage, 0)
-	if !ok {
-		t.Fatal("运行中规划表应命中")
-	}
-	wantRel := "store/resource/author/[author]_[sw1]_name.png"
-	if rel != wantRel {
-		t.Fatalf("规划表应返回最终路径 %q, 实际 %q", wantRel, rel)
-	}
-	// 文件物理在暂存（部分写入），最终路径无文件——契约与物理位置解耦
-	if _, err := os.Stat(filepath.Join(env.workDir, rel)); !os.IsNotExist(err) {
-		t.Fatalf("暂存期内最终路径不应有文件, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(env.stagingDir, "image_000.png")); err != nil {
-		t.Fatalf("暂存文件应在位: %v", err)
-	}
-
-	cancel() // 释放挂起的读取（中断返回）
-	res := <-done
-	if res != comboInterrupted {
-		t.Fatalf("runCtx 取消应中断返回, 实际 %v", res)
-	}
-	// 中断返回后暂存保留、无任何建行
-	if _, err := os.Stat(filepath.Join(env.stagingDir, "image_000.png")); err != nil {
-		t.Fatalf("中断暂存应保留: %v", err)
-	}
-	if len(env.streamer.commits) != 0 {
-		t.Fatalf("中断不应建行, 实际 %d", len(env.streamer.commits))
-	}
-}
-
 // ==== 提交点 ====
 
 // newCommitTestSession 构造提交点测试会话（真实暂存文件 + 桩依赖，taskId=1，workId=500）
@@ -252,17 +182,16 @@ func newCommitTestSession(t *testing.T) (*execSession, *confirmHandle, context.C
 	h, cancel := newConfirmHandle()
 	wt := makeResumeWorkTask(1)
 	deps := &Deps{
-		WorkDirProvider:        stubWorkDirProvider{dir: env.workDir},
-		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
-		ResourceReader:         &stubResourceReader{resources: []*entity.Resource{}},
-		ResourceSaver:          &stubResourceSaver{},
-		ResourceUpdater:        &stubResourceSaver{},
-		StoreCommitter:         env.streamer,
-		ResourceStoreWriter:    env.assocWrite,
-		ResourceRecomputer:     env.recompute,
-		Transactor:             stubTransactor{},
-		StagingPaths:           stubStagingPaths{},
-		Planner:                env.planner,
+		WorkDirProvider:     stubWorkDirProvider{dir: env.workDir},
+		SiteKeyResolver:     &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
+		ResourceReader:      &stubResourceReader{resources: []*entity.Resource{}},
+		ResourceSaver:       &stubResourceSaver{},
+		ResourceUpdater:     &stubResourceSaver{},
+		StoreCommitter:      env.streamer,
+		ResourceStoreWriter: env.assocWrite,
+		ResourceRecomputer:  env.recompute,
+		Transactor:          stubTransactor{},
+		StagingPaths:        stubStagingPaths{},
 	}
 	sess := newExecSession(deps, h, wt)
 	sess.workId = 500
@@ -279,7 +208,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	// 抑制窗口断言：建行事务内（rename 已完成）最终路径处于抑制登记态
 	suppressedInView := false
 	env.streamer.hook = func(*stubStoreCommitter) {
-		suppressedInView = storeRegistry.IsSuppressed("store/resource/author/[author]_[sw1]_name.png")
+		suppressedInView = storeRegistry.IsSuppressed("store/resource/test-site_sw1/image_000.png")
 	}
 
 	specs := []*sdkdto.StoreSpec{
@@ -289,7 +218,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
 	}
 
-	res := sess.startDownload(specs, stagingWorkResp())
+	res := sess.startDownload(specs)
 
 	if res != comboFinished {
 		t.Fatalf("期望 comboFinished, 实际 %v", res)
@@ -301,16 +230,16 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 		t.Fatal("rename→建行事务窗口内最终路径应处于抑制登记态（fsmonitor 误裁决防线）")
 	}
 	// 两轨最终文件就位
-	for _, name := range []string{"[author]_[sw1]_name_image_000.png", "[author]_[sw1]_name_thumbnail_000.jpg"} {
+	for _, name := range []string{"image_000.png", "thumbnail_000.jpg"} {
 		if _, err := os.Stat(finalAbsPath(env, name)); err != nil {
 			t.Fatalf("最终文件应就位(%s): %v", name, err)
 		}
 	}
-	// 建行：两行（多 store 判定成立，role+seq 消歧命名）
+	// 建行：两行（文件名恒带 role+seq 段）
 	if len(env.streamer.commits) != 2 {
 		t.Fatalf("期望 2 行建行, 实际 %d: %+v", len(env.streamer.commits), env.streamer.commits)
 	}
-	if env.streamer.commits[0].fileName != "[author]_[sw1]_name_image_000.png" {
+	if env.streamer.commits[0].fileName != "image_000.png" {
 		t.Fatalf("建行 fileName 应为最终文件名, 实际 %q", env.streamer.commits[0].fileName)
 	}
 	// 挂载关联
@@ -338,14 +267,13 @@ func TestCommitHashColumnsPassThrough(t *testing.T) {
 	payload := []byte("hashed")
 	sum := sha256.Sum256(payload)
 	declared := hex.EncodeToString(sum[:])
-	sess.deps.Planner = env.planner
 	specs := []*sdkdto.StoreSpec{
 		{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: int64(len(payload)),
 			ExpectedSha256: &declared,
 			ReadCloser:     io.NopCloser(bytes.NewReader(payload))},
 	}
 
-	res := sess.startDownload(specs, stagingWorkResp())
+	res := sess.startDownload(specs)
 
 	if res != comboFinished || !sess.handleFinished() {
 		t.Fatalf("声明且符应成功提交, res=%v failed=%v", res, sess.failMsgView())
@@ -374,7 +302,7 @@ func TestDownloadHashMismatchFailsKeepsStaging(t *testing.T) {
 			ReadCloser:     io.NopCloser(bytes.NewReader([]byte("actual!")))},
 	}
 
-	res := sess.startDownload(specs, stagingWorkResp())
+	res := sess.startDownload(specs)
 
 	if res != comboFinished || !h.failed {
 		t.Fatal("哈希不符应失败收口")
@@ -389,7 +317,7 @@ func TestDownloadHashMismatchFailsKeepsStaging(t *testing.T) {
 	if len(env.streamer.commits) != 0 {
 		t.Fatalf("不符不应建行, 实际 %d", len(env.streamer.commits))
 	}
-	if _, err := os.Stat(finalAbsPath(env, "[author]_[sw1]_name.png")); !os.IsNotExist(err) {
+	if _, err := os.Stat(finalAbsPath(env, "image_000.png")); !os.IsNotExist(err) {
 		t.Fatal("store/ 最终路径应零残留")
 	}
 }
@@ -411,7 +339,7 @@ func TestCommitTxFailureRevertsToStaging(t *testing.T) {
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
 	}
 
-	res := sess.startDownload(specs, stagingWorkResp())
+	res := sess.startDownload(specs)
 
 	if res != comboFinished || !h.failed {
 		t.Fatal("提交失败应失败收口")
@@ -472,21 +400,19 @@ func newReplaceStagingSession(t *testing.T, lock shareLock.ShareLockRegistry) (*
 	h, cancel := newConfirmHandle()
 	wt := makeResumeWorkTask(1)
 	deps := &Deps{
-		WorkDirProvider:        stubWorkDirProvider{dir: env.workDir},
-		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
-		DuplicateChecker:       &fakeDupChecker{result: duplicate.DuplicateCheckResult{Class: duplicate.DuplicateHitNoConflict, WorkID: 500, WorkName: "已存在作品"}},
-		SiteKeyResolver:        &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
-		WorkInfoSaver:          &stubWorkInfoSaver{savedWorkId: 500},
-		ResourceReader:         stubs.res,
-		ReplaceStoreOps:        newRealReplacementService(stubs, lock),
-		ResourceSaver:          &stubResourceSaver{},
-		ResourceUpdater:        &stubResourceSaver{},
-		StoreCommitter:         env.streamer,
-		ResourceStoreWriter:    env.assocWrite,
-		ResourceRecomputer:     env.recompute,
-		Transactor:             stubTransactor{},
-		StagingPaths:           stubStagingPaths{},
-		Planner:                env.planner,
+		WorkDirProvider:     stubWorkDirProvider{dir: env.workDir},
+		SiteKeyResolver:     &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
+		DuplicateChecker:    &fakeDupChecker{result: duplicate.DuplicateCheckResult{Class: duplicate.DuplicateHitNoConflict, WorkID: 500, WorkName: "已存在作品"}},
+		WorkInfoSaver:       &stubWorkInfoSaver{savedWorkId: 500},
+		ResourceReader:      stubs.res,
+		ReplaceStoreOps:     newRealReplacementService(stubs, lock),
+		ResourceSaver:       &stubResourceSaver{},
+		ResourceUpdater:     &stubResourceSaver{},
+		StoreCommitter:      env.streamer,
+		ResourceStoreWriter: env.assocWrite,
+		ResourceRecomputer:  env.recompute,
+		Transactor:          stubTransactor{},
+		StagingPaths:        stubStagingPaths{},
 	}
 	sess := newExecSession(deps, h, wt)
 	sess.mode = runMode{storeScope: storeScope{kind: scopeAll}}
@@ -564,11 +490,95 @@ func TestReplaceMatrix_Success(t *testing.T) {
 		t.Fatalf("替换链坍缩后新建行零登记, 实际 %v", created)
 	}
 	// 新文件就位、暂存回收
-	if _, err := os.Stat(finalAbsPath(env, "[author]_[sw1]_name.png")); err != nil {
+	if _, err := os.Stat(finalAbsPath(env, "image_000.png")); err != nil {
 		t.Fatalf("替换新文件应就位: %v", err)
 	}
 	if _, err := os.Stat(env.stagingDir); !os.IsNotExist(err) {
 		t.Fatal("提交后暂存目录应回收")
+	}
+}
+
+// observingReplaceOps 软删观察桩：在替换软删调用时点读取并移出受害者物理文件（生产上
+// 备份软删把已完成行文件移入 backup 的同构动作），记录调用时点旧路径的文件内容——内容
+// 为旧内容即证明 rename 尚未写入该路径（提交序列顺序锚）
+type observingReplaceOps struct {
+	delegate            resource.ReplaceStoreOps
+	victimAbs           string
+	backupAbs           string
+	contentAtSoftDelete string
+	moved               bool
+}
+
+func (o *observingReplaceOps) SoftDeleteWorkStoreRoles(ctx context.Context, workId int64, roles []string) ([]resource.StoreRef, error) {
+	if content, err := os.ReadFile(o.victimAbs); err == nil {
+		o.contentAtSoftDelete = string(content)
+		if rerr := os.Rename(o.victimAbs, o.backupAbs); rerr == nil {
+			o.moved = true
+		}
+	}
+	return o.delegate.SoftDeleteWorkStoreRoles(ctx, workId, roles)
+}
+
+func (o *observingReplaceOps) RestoreReplacedStores(ctx context.Context, scope resource.RestoreScope) error {
+	return o.delegate.RestoreReplacedStores(ctx, scope)
+}
+
+// TestRedownloadSamePath_VictimFileMovedBeforeRename 风险1 时序锚定：ID 名下重下同作品
+// 恒命中同一路径——受害者旧文件所在路径与新下载的派生路径相同（站点复合键 siteId=1→
+// test-site、siteWorkId=sw1 → store/resource/test-site_sw1/image_000.png）。提交序列的
+// 替换软删（首步，生产上物理移文件入 backup）先于 rename 写入同路径：软删时点旧路径
+// 内容仍为旧内容（若 rename 先行，该路径已被新内容覆盖）；移出后 rename 写入新内容，
+// 旧内容留备份位
+func TestRedownloadSamePath_VictimFileMovedBeforeRename(t *testing.T) {
+	sess, h, cancel, env, stubs := newReplaceStagingSession(t, nil)
+	defer cancel()
+	// 受害者已完成 image 行的 file_path 预置为新下载将派生的同一路径（重下同路径锚定）
+	finalRel := "store/resource/test-site_sw1/image_000.png"
+	seedReplaceVictims(stubs)
+	stubs.rows.rows = []*entity.PersistentStore{
+		makeReplaceStoreRow(800, 1, 0, 0, finalRel),
+		makeReplaceStoreRow(801, 1, 0, 0, "store/resource/test-site_sw1/old_thumb.jpg"),
+	}
+	// 物理旧文件预置在最终路径
+	victimAbs := filepath.Join(env.workDir, filepath.FromSlash(finalRel))
+	if err := os.MkdirAll(filepath.Dir(victimAbs), 0o755); err != nil {
+		t.Fatalf("创建最终目录失败: %v", err)
+	}
+	if err := os.WriteFile(victimAbs, []byte("old-content"), 0o644); err != nil {
+		t.Fatalf("预置受害者旧文件失败: %v", err)
+	}
+	backupAbs := filepath.Join(t.TempDir(), "victim-backup.png")
+	obs := &observingReplaceOps{delegate: sess.deps.ReplaceStoreOps, victimAbs: victimAbs, backupAbs: backupAbs}
+	sess.deps.ReplaceStoreOps = obs
+
+	sess.pluginExec = &fakePluginExec{
+		startSpecs: []*sdkdto.StoreSpec{{
+			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
+			ReadCloser: io.NopCloser(bytes.NewReader([]byte("new"))),
+		}},
+	}
+
+	res := sess.runSectionCombo()
+
+	if res != comboFinished || !h.finished || h.failed {
+		t.Fatalf("重下替换应成功收口: res=%v finished=%v failed=%v(%s)", res, h.finished, h.failed, h.failMsg)
+	}
+	// 软删先于 rename：软删时点最终路径内容为旧内容（若 rename 先行则已被新内容覆盖）
+	if !obs.moved || obs.contentAtSoftDelete != "old-content" {
+		t.Fatalf("替换软删应先于 rename 读取并移出旧文件: moved=%v contentAtSoftDelete=%q", obs.moved, obs.contentAtSoftDelete)
+	}
+	// rename 写入同一路径：最终路径为新内容、备份位保留旧内容
+	got, rerr := os.ReadFile(victimAbs)
+	if rerr != nil || string(got) != "new" {
+		t.Fatalf("重下应写入与旧文件相同的最终路径: err=%v content=%q", rerr, got)
+	}
+	gotBackup, berr := os.ReadFile(backupAbs)
+	if berr != nil || string(gotBackup) != "old-content" {
+		t.Fatalf("受害者旧内容应移入备份位: err=%v content=%q", berr, gotBackup)
+	}
+	// 建行落库路径 = 受害者原路径（ID 名下重下命中同一路径）
+	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != finalRel {
+		t.Fatalf("建行 relPath 应为重下同路径 %s, 实际 %+v", finalRel, env.streamer.commits)
 	}
 }
 

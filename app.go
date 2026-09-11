@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -117,8 +116,6 @@ type App struct {
 	// 作品任务领域行仓储在 download 模块，taskRepo 经窄接口注入消费
 	workTaskRepo  *download.WorkTaskRepository
 	shareTaskRepo *task.ShareTaskRepository
-	// 插件下载暂存规划注册面（执行面注册运行中规划；插件装配的 GetStoreRelPath 适配器消费）
-	pluginDownloadPlanner *download.StagingPlanner
 
 	// 导出产物回灌导入能力（import handler 与 share-receive 任务执行器共用同一实例）
 	manifestIngestor importer.ManifestIngestor
@@ -575,60 +572,6 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 	}, nil
 }
 
-// storePathQueryAdapter 实现 extension2.StorePathQueryProvider:据 task+role+seq 查资源 store 真实落盘路径。
-// 双形态：运行中（暂存规划表命中——暂存模式下文件物理在 task-staging/ 但契约返回最终路径，
-// 插件 document lazy 生成要的是最终文件名）优先；未命中回落已提交行直查（taskId → resource
-// （经 resource.task_id 定位任务产出资源）→ resource_store(role+store_seq) → store_id →
-// persistent_store.file_path）。规划表由下载执行面在 Start/Resume 返回后注册、执行结束注销，
-// 运行中查询不依赖落盘事务可见性
-type storePathQueryAdapter struct {
-	stagingPlanner *download.StagingPlanner
-	resourceRepo   *resource.ResourceRepository
-	storeRepo      *resource.ResourceStoreRepository
-	persistentSvc  *persistentStore.Service
-}
-
-func (a *storePathQueryAdapter) GetStoreRelPath(ctx context.Context, taskId int64, role string, storeSeq int) (string, error) {
-	// 运行形态：规划表命中返回最终路径（文件或仍在暂存，命名已定）
-	if a.stagingPlanner != nil {
-		if rel, ok := a.stagingPlanner.FinalRelPath(taskId, role, storeSeq); ok {
-			return rel, nil
-		}
-	}
-	resources, err := a.resourceRepo.ListByTaskId(ctx, taskId)
-	if err != nil {
-		return "", fmt.Errorf("查询任务 %d 产出资源失败: %w", taskId, err)
-	}
-	for _, res := range resources {
-		if res == nil {
-			continue
-		}
-		stores, err := a.storeRepo.ListByResourceId(ctx, res.GetID())
-		if err != nil {
-			return "", fmt.Errorf("查询资源 %d 的 store 列表失败: %w", res.GetID(), err)
-		}
-		for _, s := range stores {
-			if s.StoreType != role || s.StoreSeq != storeSeq {
-				continue
-			}
-			ps, err := a.persistentSvc.GetById(ctx, s.StoreID)
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// 关联指向软删行（替换/merge 残留、失效行）：非本代，跳过继续找活行——
-					// 中断查询会令同键存在活行时插件拿不到路径
-					continue
-				}
-				return "", fmt.Errorf("查询 store %d 失败: %w", s.StoreID, err)
-			}
-			if !ps.FilePath.Valid {
-				return "", fmt.Errorf("store %d 无 file_path", s.StoreID)
-			}
-			return ps.FilePath.String, nil
-		}
-	}
-	return "", fmt.Errorf("任务 %d 无 (role=%s, store_seq=%d) 的已提交 store", taskId, role, storeSeq)
-}
-
 // taskStagingAdapter task 模块暂存基建（StagingPath/StagingFileName 包级函数）适配为
 // download.StagingPaths 窄接口——download 与 task 双向零 import，装配层缝合（先例同 WorkTaskWriter/Reader）
 type taskStagingAdapter struct{}
@@ -847,6 +790,8 @@ func (app *App) initBaseServices() {
 		// 供流作品锁登记/解除：收件人拉取中的作品防宿主本地替换/删除（与替换链/回收站查锁同一单例）
 		app.ShareLockRegistry,
 	)
+	// 分享包内文件名模板与导出任务同源取值（同名同式），经设置服务读取
+	app.ShareService.SetFileNameFormat(app.SettingsService.GetFileNameFormat)
 	// 收件拨号统筹器（进程级单例，并发 8 槽 + 速率 50/min）：注入分享服务——Receive 预拉
 	// manifest 与各收件子任务文件拉取共享同一门控，接收方把并发流数与拨号速率对齐到发送方
 	// 会话上限与中继限流之内，避免并发自由竞争触发流被拒与拨号限流的拥塞反馈。
@@ -1103,31 +1048,25 @@ func (app *App) initAdvancedServices() error {
 		app.PersistentStoreService,
 	)
 
-	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）。
-	// 暂存规划注册面单例：执行面注册运行中规划，GetStoreRelPath 适配器消费（双形态查询）——
-	// 存 App 字段供插件装配（loadPlugins）引用
-	app.pluginDownloadPlanner = download.NewStagingPlanner()
+	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）
 	pluginDownloadStrategy := download.NewPluginDownloadStrategy(&download.Deps{
-		WorkTasks:              app.workTaskRepo,
-		PluginExecFactory:      &pluginExecFactoryAdapter{registry: app.TaskHandlerRegistry},
-		WorkInfoSaver:          app.WorkService, // 实现 WorkInfoSaver 接口
-		WorkMetaLoader:         app.WorkService, // 实现 WorkMetaLoader 接口（资源板块单独重下时取命名元数据）
-		WorkLocator:            app.WorkService, // 实现 WorkLocator 接口（续传会话按复合键定位作品）
-		ResourceSaver:          resourceSaverAdapter,
-		WorkDirProvider:        app.SettingsService,
-		FileNameFormatProvider: app.SettingsService,
-		DuplicateChecker:       app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
-		SiteKeyResolver:        app.SiteService,            // 实现 SiteKeyResolver 接口（查重输入键形态统一）
-		ResourceReader:         app.ResourceService,        // 实现 ResourceReader 接口
-		ReplaceStoreOps:        app.ReplaceService,         // 实现 ReplaceStoreOps 接口（替换链能力）
-		ResourceUpdater:        resourceSaverAdapter,       // 替换场景更新 Resource 的 Store 字段
-		StoreCommitter:         app.PersistentStoreService, // 实现 StoreCommitter 接口（提交点建行）
-		ResourceStoreWriter:    taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
-		ResourceRecomputer:     app.ResourceService,        // 实现 ResourceRecomputer 接口（完整度共享重算）
-		Transactor:             &dbTransactorAdapter{db: app.db},
-		TaskCoreReader:         app.taskRepo,              // 实现 TaskCoreReader 接口（中断通知组装 TaskResParam）
-		StagingPaths:           taskStagingAdapter{},      // task 模块暂存基建适配（双向零 import 缝合）
-		Planner:                app.pluginDownloadPlanner, // 运行中暂存规划注册面
+		WorkTasks:           app.workTaskRepo,
+		PluginExecFactory:   &pluginExecFactoryAdapter{registry: app.TaskHandlerRegistry},
+		WorkInfoSaver:       app.WorkService, // 实现 WorkInfoSaver 接口
+		WorkLocator:         app.WorkService, // 实现 WorkLocator 接口（续传会话按复合键定位作品）
+		ResourceSaver:       resourceSaverAdapter,
+		WorkDirProvider:     app.SettingsService,
+		DuplicateChecker:    app.DuplicateService,       // 实现 DuplicateChecker 接口（查重判定能力）
+		SiteKeyResolver:     app.SiteService,            // 实现 SiteKeyResolver 接口（查重输入键形态统一）
+		ResourceReader:      app.ResourceService,        // 实现 ResourceReader 接口
+		ReplaceStoreOps:     app.ReplaceService,         // 实现 ReplaceStoreOps 接口（替换链能力）
+		ResourceUpdater:     resourceSaverAdapter,       // 替换场景更新 Resource 的 Store 字段
+		StoreCommitter:      app.PersistentStoreService, // 实现 StoreCommitter 接口（提交点建行）
+		ResourceStoreWriter: taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
+		ResourceRecomputer:  app.ResourceService,        // 实现 ResourceRecomputer 接口（完整度共享重算）
+		Transactor:          &dbTransactorAdapter{db: app.db},
+		TaskCoreReader:      app.taskRepo,         // 实现 TaskCoreReader 接口（中断通知组装 TaskResParam）
+		StagingPaths:        taskStagingAdapter{}, // task 模块暂存基建适配（双向零 import 缝合）
 	})
 
 	app.TaskManagerService = taskManager.NewManager(
@@ -1147,7 +1086,7 @@ func (app *App) initAdvancedServices() error {
 			entity2.TaskTypePluginDownload: pluginDownloadStrategy,
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.shareTaskRepo, app.manifestIngestor,
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
-			export.TaskTypeExport: export.NewExportExecution(app.ExportService, export.NewPacker()),
+			export.TaskTypeExport: export.NewExportExecution(app.ExportService, export.NewPacker(), app.SettingsService),
 		},
 		app.workTaskRepo, // WorkTaskProjector（活跃插件计数窄投影）
 		taskStagingCleaner{workDirGetter: app.SettingsService.GetWorkDir}, // StagingCleaner（work 删除链清下载暂存）
@@ -1171,6 +1110,8 @@ func (app *App) initAdvancedServices() error {
 	app.MergeService = resource.NewMergeService(
 		mergeResourceStoreRepo,
 		mergeResourceRepo,
+		app.WorkService, // MergeWorkReader（合并产物目录名派生：resource → work 反查站点复合键）
+		app.SiteService, // MergeSiteReader（siteId → site_key 反查）
 		mergeMerger,
 		app.PersistentStoreService,
 		app.SettingsService,
@@ -1732,13 +1673,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		SiteBrowserRegistry: app.SiteBrowserRegistry,
 		Storage:             app.PluginStorageService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
-		StorePath: &storePathQueryAdapter{
-			stagingPlanner: app.pluginDownloadPlanner,
-			resourceRepo:   resource.NewRepository(app.db),
-			storeRepo:      resource.NewResourceStoreRepository(app.db),
-			persistentSvc:  app.PersistentStoreService,
-		},
-		UrlListener: &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: plugin},
+		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: plugin},
 		FrontendEvent: &wailsFrontendEventProvider{
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },

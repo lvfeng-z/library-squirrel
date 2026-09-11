@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/shareLock"
+	"github.com/lvfeng-z/library-squirrel-sdk/storepath"
 
 	"gorm.io/gorm"
 )
@@ -70,7 +72,17 @@ type StoreOps interface {
 	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）——
 	// overwrite 删原轨道用：轨道行入回收站文件条目，可经复原置换回滚
 	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
-	BuildVariantPath(sourceRelPath, suffix string) string
+}
+
+// MergeWorkReader 作品读取（由 work.Service 实现）。合并产物落盘目录取作品站点复合键，
+// 须经作品行反查
+type MergeWorkReader interface {
+	GetById(ctx context.Context, id int64) (*domain.Work, error)
+}
+
+// MergeSiteReader 站点读取（由 site.Service 实现）。合并产物目录名派生需 siteId → site_key 反查
+type MergeSiteReader interface {
+	GetById(ctx context.Context, id int64) (*domain.Site, error)
 }
 
 // MergeSettingsReader 读合并策略（由 settings.Service 实现）。
@@ -109,6 +121,8 @@ type ResourceAccessor interface {
 type MergeService struct {
 	resourceStoreRepo *ResourceStoreRepository
 	resource          ResourceAccessor
+	work              MergeWorkReader
+	site              MergeSiteReader
 	merger            Merger
 	storeOps          StoreOps
 	settings          MergeSettingsReader
@@ -124,10 +138,13 @@ type MergeService struct {
 // emitter 用于异步合并的进度/完成推送（阶段1 独立 merge-events topic，不进 taskManager）。
 // completer 为资源完整度重算（幂等命中与合并完成两路径共用）。
 // workLock 为 overwrite 原轨道置换前置作品锁守卫（shareLock.ShareLockRegistry 实现）。
-func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter, workLock MergeWorkLockChecker) *MergeService {
+// work/site 为合并产物目录名派生所需的站点复合键反查链（resource → work → site）。
+func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, work MergeWorkReader, site MergeSiteReader, merger Merger, storeOps StoreOps, settings MergeSettingsReader, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter, workLock MergeWorkLockChecker) *MergeService {
 	return &MergeService{
 		resourceStoreRepo: resourceStoreRepo,
 		resource:          resource,
+		work:              work,
+		site:              site,
 		merger:            merger,
 		storeOps:          storeOps,
 		settings:          settings,
@@ -235,9 +252,13 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 	// 否则 cancel 与 ffmpeg 完成的竞态会让 StoreFromFile 撞上已取消的 ctx 报"落盘失败: context canceled"。
 	commitCtx := context.Background()
 
-	// 产物相对路径（源视频轨旁、文件名加 _merged）与展示文件名
-	mergedRelPath := s.storeOps.BuildVariantPath(videoPS.FilePath.String, "_merged")
-	mergedFileName := buildMergedFileName(videoPS.FileName.String, videoExt)
+	// 产物路径与文件名：与下载侧同口径派生（store/resource/{作品目录}/videoMain_000.{ext}），
+	// 合并产物为单实例派生 store，seq 恒 0；键缺失时按写入路径严格识别失败收口
+	mergedRelPath, mergedFileName, err := s.deriveMergedPaths(commitCtx, resourceId, videoExt)
+	if err != nil {
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("派生合并产物路径失败: %v", err))
+		return
+	}
 
 	// 落盘 + 建 PersistentStore；临时文件已复制为产物，随之清除
 	mergedPsId, err := s.storeOps.StoreFromFile(commitCtx, mergedRelPath, mergedFileName, tmpOut)
@@ -316,13 +337,38 @@ func (s *MergeService) CancelMerge(resourceId int64) {
 	s.jobsMu.Unlock()
 }
 
-// buildMergedFileName 由源文件名构造合并产物展示名（源名去扩展 + _merged + 扩展）。
-func buildMergedFileName(srcFileName, ext string) string {
-	base := strings.TrimSuffix(srcFileName, filepath.Ext(srcFileName))
-	if base == "" {
-		base = "merged"
+// deriveMergedPaths 派生合并产物的落盘相对路径与文件名，与下载侧同口径：
+// store/resource/{storepath.WorkDirName(siteKey, siteWorkId)}/videoMain_000.{ext}。
+// 身份输入经 resource → work → site 反查站点复合键；键缺失或站点行查不到时显式报错
+// （写入路径严格识别，不回落），由调用方按合并失败收口。ext 为合并产物实际扩展名（含点）
+func (s *MergeService) deriveMergedPaths(ctx context.Context, resourceId int64, ext string) (string, string, error) {
+	res, err := s.resource.GetById(ctx, resourceId)
+	if err != nil || res == nil {
+		return "", "", fmt.Errorf("资源 %d 反查所属作品失败: %v", resourceId, err)
 	}
-	return base + "_merged" + ext
+	w, err := s.work.GetById(ctx, res.WorkID)
+	if err != nil || w == nil {
+		return "", "", fmt.Errorf("作品 %d 读取失败: %v", res.WorkID, err)
+	}
+	if !w.SiteID.Valid || !w.SiteWorkID.Valid || w.SiteWorkID.String == "" {
+		return "", "", fmt.Errorf("作品 %d 缺少站点复合键（siteId valid=%v, siteWorkId valid=%v）",
+			w.GetID(), w.SiteID.Valid, w.SiteWorkID.Valid)
+	}
+	site, err := s.site.GetById(ctx, w.SiteID.Int64)
+	if err != nil || site == nil {
+		return "", "", fmt.Errorf("站点行缺失（siteId=%d）: %v", w.SiteID.Int64, err)
+	}
+	dirName, err := storepath.WorkDirName(site.SiteKey, w.SiteWorkID.String)
+	if err != nil {
+		return "", "", fmt.Errorf("派生作品目录名失败: %w", err)
+	}
+	// 合并产物为 videoMain 单实例派生 store，seq 恒 0
+	fileName, err := storepath.StoreFileName(domain.StoreTypeVideoMain, 0, ext)
+	if err != nil {
+		return "", "", fmt.Errorf("派生合并产物文件名失败: %w", err)
+	}
+	// relPath 域用 path.Join（正斜杠），与落库/查重基准一致
+	return path.Join("store", "resource", dirName, fileName), fileName, nil
 }
 
 // CleanupResidualTempFiles 清理合并产物临时文件残留（os.TempDir() 下 mergeTempFilePrefix 前缀文件）。

@@ -18,6 +18,5 @@ export {
     SettingChange,
     Settings,
     ShareSettings,
-    TourSettings,
-    WorkSettings
+    TourSettings
 } from "./models.js";

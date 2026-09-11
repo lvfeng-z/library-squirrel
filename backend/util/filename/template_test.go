@@ -2,8 +2,7 @@ package filename
 
 import (
 	"testing"
-
-	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"time"
 )
 
 // --- SanitizeFileName 测试 ---
@@ -69,16 +68,16 @@ func TestFormatFileName_AllTokens(t *testing.T) {
 		UploadHour:      "10",
 		UploadMinute:    "30",
 		UploadSecond:    "45",
-		DownloadYear:    "2026",
-		DownloadMonth:   "05",
-		DownloadDay:     "18",
-		DownloadHour:    "12",
-		DownloadMinute:  "00",
-		DownloadSecond:  "00",
+		ExportYear:      "2026",
+		ExportMonth:     "09",
+		ExportDay:       "11",
+		ExportHour:      "12",
+		ExportMinute:    "00",
+		ExportSecond:    "00",
 	}
 
-	tpl := "[${author}]_[${siteWorkId}]_${siteWorkName}_${description}_${localAuthorName}_${siteAuthorName}_${siteAuthorId}_${uploadTimeYear}${uploadTimeMonth}${uploadTimeDay}_${downloadTimeYear}${downloadTimeMonth}${downloadTimeDay}"
-	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor_SiteAuthor_author123_20260518_20260518"
+	tpl := "[${author}]_[${siteWorkId}]_${siteWorkName}_${description}_${localAuthorName}_${siteAuthorName}_${siteAuthorId}_${uploadTimeYear}${uploadTimeMonth}${uploadTimeDay}_${exportTimeYear}${exportTimeMonth}${exportTimeDay}"
+	expected := "[TestAuthor]_[work456]_MyWork_A test work_LocalAuthor_SiteAuthor_author123_20260518_20260911"
 	result := FormatFileName(tpl, data)
 	if result != expected {
 		t.Errorf("FormatFileName() = %q, want %q", result, expected)
@@ -90,6 +89,16 @@ func TestFormatFileName_UnknownToken(t *testing.T) {
 	result := FormatFileName("${author}_${unknownToken}", data)
 	if result != "A_${unknownToken}" {
 		t.Errorf("FormatFileName() = %q, want %q", result, "A_${unknownToken}")
+	}
+}
+
+// TestFormatFileName_DownloadTimeNotRecognized 旧占位符 downloadTime* 已改名为 exportTime*：
+// 旧写法按未识别占位符原样保留，杜绝新旧两套占位符并存
+func TestFormatFileName_DownloadTimeNotRecognized(t *testing.T) {
+	data := &TokenData{Author: "A", ExportYear: "2026"}
+	result := FormatFileName("${downloadTimeYear}_${exportTimeYear}", data)
+	if result != "${downloadTimeYear}_2026" {
+		t.Errorf("FormatFileName() = %q, want %q", result, "${downloadTimeYear}_2026")
 	}
 }
 
@@ -114,36 +123,29 @@ func TestFormatFileName_NilData(t *testing.T) {
 	}
 }
 
-// --- ExtractTokenData 测试 ---
+// --- ExtractTokenData 测试（中立入参） ---
 
-func strPtr(s string) *string { return &s }
-func int64Ptr(v int64) *int64 { return &v }
-
-func TestExtractTokenData_NilResponse(t *testing.T) {
-	data := ExtractTokenData(nil)
+func TestExtractTokenData_EmptyFields(t *testing.T) {
+	data := ExtractTokenData(WorkFields{})
 	if data.Author != fallbackAuthor {
 		t.Errorf("Author = %q, want %q", data.Author, fallbackAuthor)
 	}
-	if data.SiteWorkID != "" {
-		t.Errorf("SiteWorkID = %q, want empty", data.SiteWorkID)
+	if data.LocalAuthorName != fallbackAuthor || data.SiteAuthorName != fallbackAuthor {
+		t.Errorf("作者名应回退占位值，实际 local=%q site=%q", data.LocalAuthorName, data.SiteAuthorName)
+	}
+	if data.SiteWorkID != "" || data.SiteWorkName != "" || data.Description != "" || data.SiteAuthorID != "" {
+		t.Error("作品字段零值应为空串")
 	}
 }
 
 func TestExtractTokenData_SiteAuthorOnly(t *testing.T) {
-	resp := &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{
-			SiteWorkId:          strPtr("art123"),
-			SiteWorkName:        strPtr("Test Art"),
-			SiteUploadTime:      int64Ptr(1779542400000), // 2026-05-21 00:00:00 UTC
-			SiteAuthorId:        strPtr("author456"),
-			SiteWorkDescription: strPtr("desc"),
-		},
-		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
-			{SiteAuthorId: "1", AuthorName: "PixivArtist"},
-		},
-	}
-
-	data := ExtractTokenData(resp)
+	data := ExtractTokenData(WorkFields{
+		SiteWorkID:      "art123",
+		SiteWorkName:    "Test Art",
+		SiteAuthorID:    "author456",
+		Description:     "desc",
+		SiteAuthorNames: []string{"PixivArtist"},
+	})
 	if data.Author != "PixivArtist" {
 		t.Errorf("Author = %q, want %q", data.Author, "PixivArtist")
 	}
@@ -162,82 +164,68 @@ func TestExtractTokenData_SiteAuthorOnly(t *testing.T) {
 	if data.Description != "desc" {
 		t.Errorf("Description = %q, want %q", data.Description, "desc")
 	}
-	if data.UploadYear != "2026" {
-		t.Errorf("UploadYear = %q, want %q", data.UploadYear, "2026")
-	}
 }
 
 func TestExtractTokenData_LocalAuthorPreferred(t *testing.T) {
-	resp := &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{},
-		LocalAuthors: []*sdkdto.LocalAuthorDTO{
-			{AuthorName: strPtr("LocalArtist")},
-		},
-		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
-			{AuthorName: "SiteArtist"},
-		},
-	}
-
-	data := ExtractTokenData(resp)
-	if data.Author != "LocalArtist" {
-		t.Errorf("Author = %q, want %q (local author should be preferred)", data.Author, "LocalArtist")
-	}
-}
-
-func TestExtractTokenData_NoAuthors(t *testing.T) {
-	resp := &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{},
-	}
-
-	data := ExtractTokenData(resp)
-	if data.Author != fallbackAuthor {
-		t.Errorf("Author = %q, want %q", data.Author, fallbackAuthor)
-	}
-}
-
-func TestExtractTokenData_EmptyAuthorName(t *testing.T) {
-	resp := &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{},
-		LocalAuthors: []*sdkdto.LocalAuthorDTO{
-			{AuthorName: strPtr("")},
-		},
-		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
-			{AuthorName: ""},
-		},
-	}
-
-	data := ExtractTokenData(resp)
-	if data.Author != fallbackAuthor {
-		t.Errorf("Author = %q, want %q", data.Author, fallbackAuthor)
-	}
-}
-
-func TestExtractTokenData_DownloadTime(t *testing.T) {
-	data := ExtractTokenData(&sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{},
+	data := ExtractTokenData(WorkFields{
+		LocalAuthorNames: []string{"LocalArtist"},
+		SiteAuthorNames:  []string{"SiteArtist"},
 	})
-	if data.DownloadYear == "" {
-		t.Error("DownloadYear should not be empty")
+	if data.Author != "LocalArtist" {
+		t.Errorf("Author = %q, want %q (本地作者优先)", data.Author, "LocalArtist")
 	}
-	if len(data.DownloadYear) != 4 {
-		t.Errorf("DownloadYear = %q, want 4-digit year", data.DownloadYear)
+}
+
+func TestExtractTokenData_EmptyAuthorNames(t *testing.T) {
+	data := ExtractTokenData(WorkFields{
+		LocalAuthorNames: []string{""},
+		SiteAuthorNames:  []string{""},
+	})
+	if data.Author != fallbackAuthor {
+		t.Errorf("Author = %q, want %q", data.Author, fallbackAuthor)
+	}
+}
+
+// TestExtractTokenData_UploadTime 上传时间组件按本地时区格式化；0=未提供组件留空
+func TestExtractTokenData_UploadTime(t *testing.T) {
+	ms := int64(1779542400000)
+	data := ExtractTokenData(WorkFields{UploadTimeMs: ms})
+	want := time.UnixMilli(ms)
+	if data.UploadYear != want.Format("2006") || data.UploadMonth != want.Format("01") || data.UploadDay != want.Format("02") {
+		t.Errorf("UploadDate = %s-%s-%s, want %s", data.UploadYear, data.UploadMonth, data.UploadDay, want.Format("2006-01-02"))
+	}
+	if data.UploadHour != want.Format("15") || data.UploadMinute != want.Format("04") || data.UploadSecond != want.Format("05") {
+		t.Errorf("UploadTime 组件应按本地时区格式化，实际 %s:%s:%s", data.UploadHour, data.UploadMinute, data.UploadSecond)
+	}
+
+	empty := ExtractTokenData(WorkFields{})
+	if empty.UploadYear != "" || empty.UploadSecond != "" {
+		t.Error("未提供上传时间（0）时组件应留空")
+	}
+}
+
+// TestExtractTokenData_ExportTime 导出时间组件取入参基准时刻（非取当前时间，
+// 供消费方锚定同输入同输出）
+func TestExtractTokenData_ExportTime(t *testing.T) {
+	ms := int64(1725000000000)
+	data := ExtractTokenData(WorkFields{ExportTimeMs: ms})
+	want := time.UnixMilli(ms)
+	if data.ExportYear != want.Format("2006") || data.ExportMonth != want.Format("01") || data.ExportDay != want.Format("02") {
+		t.Errorf("ExportDate = %s-%s-%s, want %s", data.ExportYear, data.ExportMonth, data.ExportDay, want.Format("2006-01-02"))
+	}
+	if data.ExportHour != want.Format("15") || data.ExportMinute != want.Format("04") || data.ExportSecond != want.Format("05") {
+		t.Errorf("ExportTime 组件应与基准时刻一致，实际 %s:%s:%s", data.ExportHour, data.ExportMinute, data.ExportSecond)
 	}
 }
 
 // --- 集成测试：完整流程 ---
 
 func TestFullFlow_TemplateWithSanitize(t *testing.T) {
-	resp := &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{
-			SiteWorkId:   strPtr("12345"),
-			SiteWorkName: strPtr("Test: Art*Work?"),
-		},
-		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{
-			{AuthorName: "Artist<Name>"},
-		},
-	}
-
-	data := ExtractTokenData(resp)
+	data := ExtractTokenData(WorkFields{
+		SiteWorkID:      "12345",
+		SiteWorkName:    "Test: Art*Work?",
+		SiteAuthorNames: []string{"Artist<Name>"},
+	})
 	tpl := "[${author}]_[${siteWorkId}]_${siteWorkName}"
 	result := FormatFileName(tpl, data)
 	sanitized := SanitizeFileName(result)

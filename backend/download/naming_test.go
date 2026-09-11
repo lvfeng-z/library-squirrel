@@ -1,15 +1,20 @@
 package download
 
-// 命名解析测试（自任务管理器迁移，断言不变）：bas 基准名（模板占位符替换+净化）、
-// 单/多 store 文件名消歧（role+seq+描述段）、resume 的 spec→全局 store_seq 配对。
+// 命名派生测试：作品目录段（siteKey_siteWorkId 派生段——合法 ID 原文直用、净化变更追加
+// 消歧、超长截断消歧、空值拒绝、同键恒同路径）与 store 文件名（恒带 role_seq 三位零填充、
+// 扩展名规范化、描述段退役）。替换链「软删移出先于 rename 写入同路径」的时序锚定见
+// staging_test.go 的 TestRedownloadSamePath_VictimFileMovedBeforeRename。
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
-	"path/filepath"
+	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/entity"
+
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
@@ -19,152 +24,162 @@ func pathTestStrPtr(s string) *string { return &s }
 // pathTestNullStr 测试辅助:可空字符串
 func pathTestNullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: true} }
 
-// pathTestFormatProvider 测试用文件名模板提供者
-type pathTestFormatProvider struct{ format string }
-
-func (p pathTestFormatProvider) GetFileNameFormat() string { return p.format }
-
-// newNamingSession 构造命名测试执行会话(模板 [${author}]_[${siteWorkId}]_${siteWorkName} + 作品元数据)。
-// resolveBaseName 算出的 bas = [作者]_[workId]_作品名
-func newNamingSession(author, workId, workName string) (*execSession, context.CancelFunc) {
+// newNamingSession 构造命名派生测试会话（siteId=1，站点键经 resolver 桩映射为 siteKey，
+// 领域行携带站点复合键 siteWorkId）
+func newNamingSession(siteKey, siteWorkId string) (*execSession, context.CancelFunc) {
 	deps := &Deps{
-		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
+		SiteKeyResolver: &fakeSiteKeyResolver{keys: map[int64]string{1: siteKey}},
 	}
 	h, cancel := newFakeHandle()
-	sess := newExecSession(deps, h, nil)
-	sess.workResp = &sdkdto.WorkResponse{
-		Work: &sdkdto.WorkDTO{
-			SiteWorkId:   pathTestStrPtr(workId),
-			SiteWorkName: pathTestStrPtr(workName),
-		},
-		LocalAuthors: []*sdkdto.LocalAuthorDTO{{AuthorName: pathTestStrPtr(author)}},
-	}
+	wt := entity.NewWorkTask(1)
+	wt.SiteID = sql.NullInt64{Int64: 1, Valid: true}
+	wt.SiteWorkID = sql.NullString{String: siteWorkId, Valid: true}
+	sess := newExecSession(deps, h, wt)
 	return sess, cancel
 }
 
-// TestResolveStorePath_SingleStoreNoSuffix 验证单 store 资源用 <bas>.<ext>(无 role/seq 后缀)。
-// 对应 pixiv 单图:InvolvedRoles=[image],specs 仅一个 image store
-func TestResolveStorePath_SingleStoreNoSuffix(t *testing.T) {
-	sess, cancel := newNamingSession("author2", "456", "single")
-	defer cancel()
-	specs := []*sdkdto.StoreSpec{
-		{Role: entity.StoreTypeImage, Format: "png"},
-	}
-	baseRelPath, bas := sess.resolveBaseName(sess.workResp)
-	multiStore := len(specs) > 1
-	relPath, fileName := sess.resolveStorePath(specs[0], baseRelPath, bas, 0, multiStore)
-
-	if bas != "[author2]_[456]_single" {
-		t.Fatalf("bas 期望 [author2]_[456]_single 实际 %s", bas)
-	}
-	if fileName != "[author2]_[456]_single.png" {
-		t.Fatalf("单 store 文件名期望 [author2]_[456]_single.png 实际 %s", fileName)
-	}
-	wantRel := filepath.ToSlash(filepath.Join("store", "resource", "author2", "[author2]_[456]_single.png"))
-	if relPath != wantRel {
-		t.Fatalf("单 store 路径期望 %s 实际 %s", wantRel, relPath)
-	}
+// hashPrefix siteWorkId 的 sha256 前 digits 位 hex（与 SDK storepath 消歧哈希段同源算法，
+// 期望值在测试侧独立计算）
+func hashPrefix(siteWorkId string, digits int) string {
+	sum := sha256.Sum256([]byte(siteWorkId))
+	return hex.EncodeToString(sum[:])[:digits]
 }
 
-// TestResolveStorePath_MultiStoreRoleSeq 验证多 store 资源全部带 role+seq(article:document + N image)。
-// 多 store 判定为资源级:store 总数>1 即全部带后缀,不论各 role 单例与否
-func TestResolveStorePath_MultiStoreRoleSeq(t *testing.T) {
-	sess, cancel := newNamingSession("author1", "123", "test")
-	defer cancel()
-	specs := []*sdkdto.StoreSpec{
-		{Role: entity.StoreTypeDocument, Format: "md", Generation: entity.GenerationDerived},
-		{Role: entity.StoreTypeImage, Format: "png", Generation: entity.GenerationDownloaded},
-		{Role: entity.StoreTypeImage, Format: "png", Generation: entity.GenerationDownloaded},
-		{Role: entity.StoreTypeImage, Format: "png", Generation: entity.GenerationDownloaded},
+// TestResolveStoreDir_IdentityForms 目录段形态：siteKey 原文 + siteWorkId 派生段
+// （合法字符 ID 原文直用——覆盖 pixiv 数字 ID、bilibili 混合 ID、local 64 位 hex ID）
+func TestResolveStoreDir_IdentityForms(t *testing.T) {
+	localId := strings.Repeat("3f2a", 16) // 64 位 hex（local 导入作品的站点侧 ID 形态）
+	cases := []struct {
+		siteKey    string
+		siteWorkId string
+		want       string
+	}{
+		{"pixiv", "128937464", "store/resource/pixiv_128937464"},
+		{"bilibili", "BV1xx411c7mD_4538792", "store/resource/bilibili_BV1xx411c7mD_4538792"},
+		{"local", localId, "store/resource/local_" + localId},
 	}
-	baseRelPath, bas := sess.resolveBaseName(sess.workResp)
-	multiStore := len(specs) > 1
-
-	counters := map[string]int{}
-	seen := make(map[string]string, len(specs))
-	var imageNames []string
-	for _, spec := range specs {
-		seq := counters[spec.Role]
-		counters[spec.Role]++
-		_, fileName := sess.resolveStorePath(spec, baseRelPath, bas, seq, multiStore)
-		if other, dup := seen[fileName]; dup {
-			t.Fatalf("文件名重复: %s (role=%s 与 %s)", fileName, spec.Role, other)
+	for _, c := range cases {
+		sess, cancel := newNamingSession(c.siteKey, c.siteWorkId)
+		got, err := sess.resolveStoreDir(context.Background())
+		cancel()
+		if err != nil {
+			t.Fatalf("派生失败(%s_%s): %v", c.siteKey, c.siteWorkId, err)
 		}
-		seen[fileName] = spec.Role
-		if spec.Role == entity.StoreTypeImage {
-			imageNames = append(imageNames, fileName)
-		}
-	}
-
-	// document 虽是单例,但资源多 store → 仍带 role+seq
-	if _, ok := seen["[author1]_[123]_test_document_000.md"]; !ok {
-		t.Fatalf("document 应带 role+seq [author1]_[123]_test_document_000.md, 实际=%v", seen)
-	}
-	// 3 个 image 各带递增 seq(同 role 内 0-based)
-	wantImages := []string{
-		"[author1]_[123]_test_image_000.png",
-		"[author1]_[123]_test_image_001.png",
-		"[author1]_[123]_test_image_002.png",
-	}
-	if len(imageNames) != len(wantImages) {
-		t.Fatalf("期望 %d 个 image 文件名, 实际 %d (%v)", len(wantImages), len(imageNames), imageNames)
-	}
-	for i, w := range wantImages {
-		if imageNames[i] != w {
-			t.Fatalf("image[%d] 期望 %s 实际 %s", i, w, imageNames[i])
+		if got != c.want {
+			t.Fatalf("目录期望 %s 实际 %s", c.want, got)
 		}
 	}
 }
 
-// TestResolveStorePath_ThumbnailOrdinaryRole 验证 thumbnail 作为普通 role:
-// 多 store 资源含 thumbnail 时(thumbnail 与主资源共享 bas,需 role 区分),thumbnail 带 _thumbnail_000
-func TestResolveStorePath_ThumbnailOrdinaryRole(t *testing.T) {
-	sess, cancel := newNamingSession("author3", "789", "thumb")
+// TestResolveStoreDir_SanitizeAppendsDisambiguator 净化发生变更（含 Windows 非法字符）时
+// 追加消歧哈希段：派生段 = 净化结果 + "_" + sha256(原始 ID) 前 8 位 hex
+func TestResolveStoreDir_SanitizeAppendsDisambiguator(t *testing.T) {
+	sess, cancel := newNamingSession("pixiv", `a/b:c`)
 	defer cancel()
-	// 多 store 资源含 thumbnail(如本地视频导入:image + thumbnail)
-	specs := []*sdkdto.StoreSpec{
-		{Role: entity.StoreTypeImage, Format: "png"},
-		{Role: entity.StoreTypeThumbnail, Format: "jpg"},
+	got, err := sess.resolveStoreDir(context.Background())
+	if err != nil {
+		t.Fatalf("派生失败: %v", err)
 	}
-	baseRelPath, bas := sess.resolveBaseName(sess.workResp)
-	multiStore := len(specs) > 1
-
-	counters := map[string]int{}
-	got := map[string]string{}
-	for _, spec := range specs {
-		seq := counters[spec.Role]
-		counters[spec.Role]++
-		_, fileName := sess.resolveStorePath(spec, baseRelPath, bas, seq, multiStore)
-		got[spec.Role] = fileName
-	}
-	if got[entity.StoreTypeImage] != "[author3]_[789]_thumb_image_000.png" {
-		t.Fatalf("image 期望 [author3]_[789]_thumb_image_000.png 实际 %s", got[entity.StoreTypeImage])
-	}
-	if got[entity.StoreTypeThumbnail] != "[author3]_[789]_thumb_thumbnail_000.jpg" {
-		t.Fatalf("thumbnail 普通 role 期望 [author3]_[789]_thumb_thumbnail_000.jpg 实际 %s", got[entity.StoreTypeThumbnail])
+	want := "store/resource/pixiv_a／b：c_" + hashPrefix(`a/b:c`, 8)
+	if got != want {
+		t.Fatalf("净化消歧段期望 %s 实际 %s", want, got)
 	}
 }
 
-// TestResolveStorePath_Description 验证 spec.Description 作为多 store 文件名的可选拼段:有则拼接,空则省略
-func TestResolveStorePath_Description(t *testing.T) {
-	sess, cancel := newNamingSession("author4", "111", "desc")
+// TestResolveStoreDir_TruncationBranch 派生段超长（>96 字符）截断消歧：净化结果前 88 字符
+// + "_" + sha256(原始 ID) 前 8 位 hex
+func TestResolveStoreDir_TruncationBranch(t *testing.T) {
+	id := strings.Repeat("a", 120)
+	sess, cancel := newNamingSession("pixiv", id)
 	defer cancel()
-	baseRelPath, bas := sess.resolveBaseName(sess.workResp)
-	multiStore := true
-
-	withDesc := &sdkdto.StoreSpec{Role: entity.StoreTypeImage, Format: "png", Description: "cover"}
-	withoutDesc := &sdkdto.StoreSpec{Role: entity.StoreTypeImage, Format: "png"}
-
-	_, nameWith := sess.resolveStorePath(withDesc, baseRelPath, bas, 0, multiStore)
-	_, nameWithout := sess.resolveStorePath(withoutDesc, baseRelPath, bas, 1, multiStore)
-
-	// 有描述:<bas>_image_000_cover.png
-	if nameWith != "[author4]_[111]_desc_image_000_cover.png" {
-		t.Fatalf("有描述期望 [author4]_[111]_desc_image_000_cover.png 实际 %s", nameWith)
+	got, err := sess.resolveStoreDir(context.Background())
+	if err != nil {
+		t.Fatalf("派生失败: %v", err)
 	}
-	// 无描述:省略描述段
-	if nameWithout != "[author4]_[111]_desc_image_001.png" {
-		t.Fatalf("无描述期望 [author4]_[111]_desc_image_001.png 实际 %s", nameWithout)
+	want := "store/resource/pixiv_" + strings.Repeat("a", 88) + "_" + hashPrefix(id, 8)
+	if got != want {
+		t.Fatalf("截断消歧段期望 %s 实际 %s", want, got)
+	}
+}
+
+// TestResolveStoreDir_SameIdentitySamePath 同一站点复合键恒派生同一目录（ID 名下重下同作品
+// 命中同一路径的身份前提）；净化后同形的不同 ID 由消歧哈希段区分（单射——半角非法字符与
+// 其全角等价字符净化后同形，消歧按原始 ID 计算承担区分）
+func TestResolveStoreDir_SameIdentitySamePath(t *testing.T) {
+	s1, cancel1 := newNamingSession("pixiv", "123456")
+	a, errA := s1.resolveStoreDir(context.Background())
+	cancel1()
+	s2, cancel2 := newNamingSession("pixiv", "123456")
+	b, errB := s2.resolveStoreDir(context.Background())
+	cancel2()
+	if errA != nil || errB != nil || a != b {
+		t.Fatalf("同一复合键应恒派生同一路径: %q/%q err=%v/%v", a, b, errA, errB)
+	}
+
+	s3, cancel3 := newNamingSession("pixiv", "ab/cd") // 净化为全角 → 追加消歧段
+	c, errC := s3.resolveStoreDir(context.Background())
+	cancel3()
+	s4, cancel4 := newNamingSession("pixiv", "ab／cd") // 原文合法（全角本就安全）→ 原文直用
+	d, errD := s4.resolveStoreDir(context.Background())
+	cancel4()
+	if errC != nil || errD != nil {
+		t.Fatalf("派生失败: %v/%v", errC, errD)
+	}
+	if c == d {
+		t.Fatalf("净化后同形的不同 ID 应得不同目录（消歧单射）: %q", c)
+	}
+}
+
+// TestResolveStoreDir_RejectsMissingIdentity 空值严格拒绝：领域行缺站点复合键或站点行
+// 查不到时显式报错（写入路径严格识别，不回落）
+func TestResolveStoreDir_RejectsMissingIdentity(t *testing.T) {
+	h, cancel := newFakeHandle()
+	defer cancel()
+	deps := &Deps{SiteKeyResolver: &fakeSiteKeyResolver{keys: map[int64]string{1: "pixiv"}}}
+
+	wtNoWorkId := entity.NewWorkTask(1)
+	wtNoWorkId.SiteID = sql.NullInt64{Int64: 1, Valid: true}
+	if _, err := newExecSession(deps, h, wtNoWorkId).resolveStoreDir(context.Background()); err == nil {
+		t.Fatal("缺 siteWorkId 应显式报错")
+	}
+
+	wtNoSiteId := entity.NewWorkTask(1)
+	wtNoSiteId.SiteWorkID = sql.NullString{String: "123", Valid: true}
+	if _, err := newExecSession(deps, h, wtNoSiteId).resolveStoreDir(context.Background()); err == nil {
+		t.Fatal("缺 siteId 应显式报错")
+	}
+
+	// 站点行缺失（resolver 无该 id 映射）
+	wtNoSiteRow := entity.NewWorkTask(1)
+	wtNoSiteRow.SiteID = sql.NullInt64{Int64: 9, Valid: true}
+	wtNoSiteRow.SiteWorkID = sql.NullString{String: "123", Valid: true}
+	if _, err := newExecSession(deps, h, wtNoSiteRow).resolveStoreDir(context.Background()); err == nil {
+		t.Fatal("站点行缺失应显式报错")
+	}
+}
+
+// TestResolveStorePath_Form 文件名恒带 role_seq（单 store 资源不省略段）；ext 经 normalizeExt
+// 补前导点；spec.Description 不参与最终名（描述段退役）
+func TestResolveStorePath_Form(t *testing.T) {
+	base := "store/resource/pixiv_123"
+	// 单 store 资源（旧命名在此场景省略 role_seq）
+	rel, name, err := resolveStorePath(&sdkdto.StoreSpec{Role: entity.StoreTypeImage, Format: "jpg"}, base, 0)
+	if err != nil || name != "image_000.jpg" || rel != "store/resource/pixiv_123/image_000.jpg" {
+		t.Fatalf("单 store 应恒带 role_seq: name=%q rel=%q err=%v", name, rel, err)
+	}
+	// 同 role 多轨递增 seq（三位零填充）、ext 已带点直用
+	rel2, name2, err2 := resolveStorePath(&sdkdto.StoreSpec{Role: entity.StoreTypeVideoTrack, Format: ".mp4"}, base, 12)
+	if err2 != nil || name2 != "videoTrack_012.mp4" || rel2 != "store/resource/pixiv_123/videoTrack_012.mp4" {
+		t.Fatalf("多轨 seq 递增失败: name=%q rel=%q err=%v", name2, rel2, err2)
+	}
+	// 描述段退役：Description 不影响最终名
+	_, withDesc, err3 := resolveStorePath(&sdkdto.StoreSpec{Role: entity.StoreTypeImage, Format: "jpg", Description: "cover"}, base, 0)
+	if err3 != nil || withDesc != "image_000.jpg" {
+		t.Fatalf("Description 不应参与文件名: %q err=%v", withDesc, err3)
+	}
+	// 非法 role 显式报错（契约输入严格识别）
+	if _, _, err4 := resolveStorePath(&sdkdto.StoreSpec{Role: "a/b", Format: "jpg"}, base, 0); err4 == nil {
+		t.Fatal("非法 role 应显式报错")
 	}
 }
 

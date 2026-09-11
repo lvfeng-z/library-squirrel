@@ -268,7 +268,8 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 	// 宿主侧：模型 + 源文件落临时目录 + 规划（填充包内路径/大小/缺失）
 	hostWorkDir := t.TempDir()
 	model, sourceData := build(t, hostWorkDir)
-	if _, err := export.NewPacker().Plan(context.Background(), hostWorkDir, model); err != nil {
+	// 空模板=包内文件名回退源文件名命名（保持本夹具的包内路径布局）
+	if _, err := export.NewPacker().Plan(context.Background(), hostWorkDir, model, ""); err != nil {
 		t.Fatalf("规划导出模型失败: %v", err)
 	}
 	em := newCaptureEmitter()

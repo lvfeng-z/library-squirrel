@@ -294,7 +294,7 @@ func compareVersion(a, b string) int {
 	return 0
 }
 
-// contractVersionOf 取插件记录的契约版本（NULL/0 = 未声明，校验时视为当前契约放行，与加载终检同语义）
+// contractVersionOf 取插件记录的契约版本（NULL/0 = 未声明，校验时拒载，与加载终检同语义）
 func contractVersionOf(p *entity2.Plugin) int {
 	if p.ContractVersion.Valid {
 		return int(p.ContractVersion.Int64)

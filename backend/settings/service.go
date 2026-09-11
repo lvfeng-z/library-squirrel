@@ -34,9 +34,6 @@ func (s *Service) SetAfterSave(fn func(*Settings)) {
 func defaultSettings() *Settings {
 	return &Settings{
 		WorkDir: "",
-		WorkSettings: WorkSettings{
-			FileNameFormat: DefaultFileNameFormat,
-		},
 		ImportSettings: ImportSettings{
 			MaxParallelImport:        3,
 			UpdateWorkInfoWhenImport: true,
@@ -67,7 +64,9 @@ func defaultSettings() *Settings {
 		BackupGovernance: BackupGovernanceSettings{
 			RetentionDays: DefaultBackupGovernanceRetentionDays,
 		},
-		ExportSettings: ExportSettings{},
+		ExportSettings: ExportSettings{
+			FileNameFormat: DefaultFileNameFormat,
+		},
 		ShareSettings: ShareSettings{
 			RelayAddress: DefaultShareRelayAddress,
 		},
@@ -118,10 +117,10 @@ func (s *Service) GetWorkDir() string {
 	return s.GetSettings().WorkDir
 }
 
-// GetFileNameFormat 获取文件名格式模板（实现 taskManager.FileNameFormatProvider 接口）。
-// 空时回退默认模板(D2 方案 B):根治模板空→落盘名退化为 task.ext→StoreStream 删旧建新无声覆盖
+// GetFileNameFormat 获取导出文件名模板（实现 export.FileNameFormatProvider 接口）。
+// 空值回退默认模板（空模板渲染不出可用的文件主名）
 func (s *Service) GetFileNameFormat() string {
-	if tpl := s.GetSettings().WorkSettings.FileNameFormat; tpl != "" {
+	if tpl := s.GetSettings().ExportSettings.FileNameFormat; tpl != "" {
 		return tpl
 	}
 	return DefaultFileNameFormat

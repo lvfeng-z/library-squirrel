@@ -16,11 +16,11 @@
 | `strategy.go` | PluginDownloadStrategy 执行入口（按 taskId 查领域行、按恢复信号×暂存存在性分叉）+ 中断通知（转发插件 Pause/Stop RPC） |
 | `session.go` | 执行会话（一次执行的状态载体：领域行快照/流集合/软暂停消费/失败终态清 pending） |
 | `combo.go` | 板块组合执行 + runMode 三态派生（板块模式唯一源=领域行）+ 查重编排（WaitReplaceConfirm 挂起、决策记忆匹配） |
-| `persist.go` | 执行前规划（最终路径解析+规划表注册+暂存写入器打开）+ 提交点序列（替换软删+rename+建行挂载事务+抑制登记+失败补偿逆操作） |
-| `staging.go` | 暂存基建：暂存写入器（文件句柄+全量 sha256 流式哈希+finalize 比对）、StagingPlanner 规划注册面、暂存目录枚举（role_seq 键解析+偏移推导） |
+| `persist.go` | 执行前规划（最终路径解析+暂存写入器打开）+ 提交点序列（替换软删+rename+建行挂载事务+抑制登记+失败补偿逆操作） |
+| `staging.go` | 暂存基建：暂存写入器（文件句柄+全量 sha256 流式哈希+finalize 比对）、暂存目录枚举（role_seq 键解析+偏移推导） |
 | `loop.go` | 多轨流管理与下载循环（copyLoop/handleEOF 完整性与哈希校验/软暂停信号消费/进度聚合） |
 | `resume.go` | 跨重启续传（暂存枚举偏移、插件 Resume、认领配对与未认领重产；作品定位失败/暂存为空降级完整重跑） |
-| `naming.go` | 文件名模板与落盘路径解析（bas 基准名、多 store 消歧） |
+| `naming.go` | 落盘路径派生（SDK storepath：作品目录段 = 站点复合键单射派生、文件名恒 `{role}_{seq三位}.{ext}`；本文件组装身份输入与 `store/resource/` 库内布局前缀） |
 | `interfaces.go` | 对外窄接口与依赖集合（Deps；各能力接口由提供方模块实现） |
 | `work_task_repository.go` | 作品任务领域行仓储（共享主键覆写守卫、板块选择写行、pending 直写 SQL） |
 | `section_recorder.go` | 板块重执行选择写行器（重下载入口两步编排第一步；父请求展开到全部子成员） |
@@ -28,7 +28,7 @@
 ## 核心概念
 
 - **执行入口分叉**：按 taskId 查 work_task 行（缺失即失败收口）→ 恢复信号（`handle.ResumeRequested()`，控制面按执行前实时状态==Paused 置位）且暂存目录有轨道文件时走跨重启续传（暂存枚举推导偏移），其余走板块组合（重走查重/板块选择/替换链）。旧模式暂停任务（有未完成行无暂存锚）自动降级全新重下。
-- **暂存模式**：执行前为全部 specs 解析最终路径并注册进 `StagingPlanner`（运行中 GetStoreRelPath 查最终路径——文件物理在暂存但契约解耦，document lazy 生成取兄弟轨最终文件名不依赖落盘事务可见性）；暂存文件名按 role_seq 三位零填充键（续传定位与清扫不依赖元数据重解析）。下载循环写暂存（流写入器带全量 sha256 边写边算），失败轨暂存保留（诊断可见、重试重下覆盖）。
+- **暂存模式**：执行前为全部 specs 解析最终路径（最终名前置解析，暂存文件名按 role_seq 三位零填充键——续传定位与清扫不依赖元数据重解析，与最终名解耦）。下载循环写暂存（流写入器带全量 sha256 边写边算），失败轨暂存保留（诊断可见、重试重下覆盖）。
 - **板块模式三态**（runMode）：`None`=仅作品信息（不拉资源、经 Skip 收口不产生终态）/`All`=全量（roles 取插件 universe，空=插件自决）/`Selected`=用户子集；从领域行 `StoreRoles`（NULL→All、空串→None、非空→Selected）+ `IncludeWorkInfo` 派生，每执行查行（板块模式唯一源）。
 - **查重内移**：含资源板块时执行内判定重复——命中冲突先匹配确认决策记忆（冲突作品集一致才复用，跨暂停/恢复不重复弹窗），未命中经 `WaitReplaceConfirm` 挂起等待用户整体答复；跳过答复经 `Skip` 上报回执行前状态。
 - **替换链（坍缩到提交窗口）**：含资源板块在已有作品上重执行即替换——软删所选板块旧 store 并登记受害者清单发生在提交点序列首步（全部暂存写满、提交开始才触碰旧 store；腾空 rename 目标：已完成行移文件入 backup、未完成行废弃文件）。下载窗口零软删零登记——失败/暂停/停止于下载时旧 store 一动不动、暂存保留，无回滚需求。提交序列失败时经 Fail 上报由控制面 setFailed 单点按清单复活受害者（同一调用栈同步触发）；成功则 Finish 清登记（软删行进入被替换终态）。恢复会话在作品定位后置替换位（暂停期间软删未发生，提交点补位软删）。会话失败收口只负责关闭流写入句柄释放文件锁，复活动作全部收在控制面单点。
@@ -39,11 +39,11 @@
 
 ## 依赖关系
 
-- 依赖（`Deps`，接口由本模块定义、提供方实现、app.go 装配）：插件执行器工厂（plugin 扩展桥）、作品信息保存/命名元数据加载/作品复合键定位（work）、资源保存/关联写入/完整度重算（resource）、查重判定（duplicate）、站点键解析（site）、提交点建行（persistentStore）、替换链能力（resource）、工作目录与文件名模板（settings）、事务执行器、pending 直写、任务核心行查询（task）、暂存目录派生（task 基建适配）
-- 被依赖：taskManager（plugin-download 执行面策略注册 + 重下载板块写行 `SectionRecorder` + 活跃插件计数投影 + work 删除链 pending 清理）、task（建树写行/树双查读行窄接口消费本模块仓储）、plugin 扩展桥（`GetStoreRelPath` 经 `StagingPlanner` 运行形态查询——装配层把 planner 注入适配器）
+- 依赖（`Deps`，接口由本模块定义、提供方实现、app.go 装配）：插件执行器工厂（plugin 扩展桥）、作品信息保存/作品复合键定位（work）、资源保存/关联写入/完整度重算（resource）、查重判定（duplicate）、站点键解析（site，查重输入键与目录段派生共用）、提交点建行（persistentStore）、替换链能力（resource）、工作目录（settings）、事务执行器、pending 直写、任务核心行查询（task）、暂存目录派生（task 基建适配）
+- 被依赖：taskManager（plugin-download 执行面策略注册 + 重下载板块写行 `SectionRecorder` + 活跃插件计数投影 + work 删除链 pending 清理）、task（建树写行/树双查读行窄接口消费本模块仓储）
 
 ## 关键设计
 
-- **无跨执行可变状态**：策略对象无状态，每次 Execute 自建执行会话（领域行快照/流集合/决策位随会话生灭）；规划注册面（planner）在执行结束统一注销。
-- **多 store 身份**：同 role 内 `store_seq` 唯一定位 store（暂存文件名键/规划表键/续传配对同维度）；resume 的 specs 是未完成子集，全局 seq 从暂存枚举（或全新执行的 specs 全集序）推导，不按 specs 内重计（防部分完成时错位覆盖）。多 store 判定（文件名是否带 role+seq 段）基于全局轨道数：全新执行=len(specs)，恢复=len(暂存枚举)。
+- **无跨执行可变状态**：策略对象无状态，每次 Execute 自建执行会话（领域行快照/流集合/决策位随会话生灭）。
+- **多 store 身份**：同 role 内 `store_seq` 唯一定位 store（落盘文件名键/暂存文件名键/续传配对同维度）；resume 的 specs 是未完成子集，全局 seq 从暂存枚举（或全新执行的 specs 全集序）推导，不按 specs 内重计（防部分完成时错位覆盖）。文件名恒带 role_seq 段（单 store 资源不省略），派生规则见 `doc/store-naming-convention.md`。
 - **失败终态清 pending**：失败任务不续传（残留 pending 在作品/资源被外部删除或还原后指向失效对象），Fail 上报前清理；暂停保留 pending 供恢复续传定位。

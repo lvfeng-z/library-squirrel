@@ -116,13 +116,6 @@ func (s *stubWorkInfoSaver) SaveWorkInfo(ctx context.Context, task *entity.Task,
 	return s.savedWorkId, s.err
 }
 
-// stubWorkMetaLoader 命名元数据加载桩（返回空，避免命中真实加载分支）
-type stubWorkMetaLoader struct{}
-
-func (s stubWorkMetaLoader) LoadWorkMeta(ctx context.Context, workId int64) (*sdkdto.WorkResponse, error) {
-	return nil, nil
-}
-
 // confirmHandle fakeHandle 的可编程扩展：覆盖确认答复/取消、决策记忆注入、跳过收口与
 // 终态回滚登记记录（指针嵌入复用基础终态/进度/排空阶段记录，避免拷贝内嵌锁）
 type confirmHandle struct {
@@ -198,7 +191,6 @@ func newComboSession(taskId int64, mode runMode, checker *fakeDupChecker, resolv
 		DuplicateChecker:    checker,
 		SiteKeyResolver:     resolver,
 		WorkInfoSaver:       saver,
-		WorkMetaLoader:      stubWorkMetaLoader{},
 		PluginExecFactory:   nil,
 		ReplaceStoreOps:     replaceOps,
 		ResourceStoreWriter: &stubResourceStoreWriter{},

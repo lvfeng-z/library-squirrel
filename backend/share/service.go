@@ -109,9 +109,10 @@ type ExportCollector interface {
 	Collect(ctx context.Context, workIDs []int64, workSetIDs []int64) (*export.ExportModel, error)
 }
 
-// ExportPlanner 分享数据面依赖：复用导出打包规划（填充包内路径/大小/缺失标记，不写盘）
+// ExportPlanner 分享数据面依赖：复用导出打包规划（按文件名模板渲染包内路径、检查大小/缺失
+// 标记，不写盘）。fileNameFormat 与导出任务同源取值，保证分享包内命名与导出同名同式。
 type ExportPlanner interface {
-	Plan(ctx context.Context, workDir string, model *export.ExportModel) (*export.PackStats, error)
+	Plan(ctx context.Context, workDir string, model *export.ExportModel, fileNameFormat string) (*export.PackStats, error)
 }
 
 // SharePublishOptions 发布选项（IPC 入参）
@@ -136,6 +137,7 @@ type Service struct {
 	taskCtl        BuiltinTaskControl    // share-receive 任务创建/启动能力（app.go 装配）
 	shareTaskStore ShareTaskStore        // 收件任务领域行存取（app.go 装配；nil=不可收件）
 	lockReg        WorkLockRegistrar     // 供流作品锁登记/解除（app.go 注入 shareLock 单例；nil=不登记）
+	fileNameFormat func() string         // 导出文件名模板（与导出任务同源；nil=默认模板，单测场景）
 	opts           sessionRuntimeOptions // 测试覆写（零值=默认）
 
 	// dialQuotaFull 配额满通知去重：多 fetch 并发阻塞时只提示一次（冷却期内静默）
@@ -175,6 +177,22 @@ func NewService(repo *Repository, collector ExportCollector, planner ExportPlann
 // ShareService 之后创建，本方法在装配尾段回填）
 func (s *Service) SetShareTaskStore(store ShareTaskStore) {
 	s.shareTaskStore = store
+}
+
+// SetFileNameFormat 注入导出文件名模板读取（app.go 装配，与导出任务同源取值——分享包内
+// 命名与导出同名同式）；未注入时规划按默认模板渲染（单测场景）。
+func (s *Service) SetFileNameFormat(fn func() string) {
+	s.fileNameFormat = fn
+}
+
+// exportFileNameFormat 取导出文件名模板：未注入（单测场景）回退默认模板。
+func (s *Service) exportFileNameFormat() string {
+	if s.fileNameFormat != nil {
+		if tpl := s.fileNameFormat(); tpl != "" {
+			return tpl
+		}
+	}
+	return settings.DefaultFileNameFormat
 }
 
 // setTunables 覆写会话运行参数（仅测试使用）
@@ -509,7 +527,7 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 		fail(ErrShareWorkDirEmpty.Error())
 		return
 	}
-	if _, err := s.planner.Plan(ctx, workDir, model); err != nil {
+	if _, err := s.planner.Plan(ctx, workDir, model, s.exportFileNameFormat()); err != nil {
 		if ctx.Err() != nil {
 			interrupted()
 			return

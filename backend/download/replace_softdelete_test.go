@@ -358,19 +358,17 @@ func TestStartDownloadInterruptRegistersNoRollback(t *testing.T) {
 	defer cancel()
 	ctx := h.runCtx
 	deps := &Deps{
-		FileNameFormatProvider: pathTestFormatProvider{format: "[${author}]_[${siteWorkId}]_${siteWorkName}"},
-		WorkDirProvider:        stubWorkDirProvider{dir: env.workDir},
-		Transactor:             stubTransactor{},
-		ResourceReader:         &stubResourceReader{},
-		ResourceSaver:          &stubResourceSaver{},
-		ResourceUpdater:        &stubResourceSaver{},
-		StoreCommitter:         env.streamer,
-		ResourceStoreWriter:    env.assocWrite,
-		StagingPaths:           stubStagingPaths{},
-		Planner:                env.planner,
+		SiteKeyResolver:     &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
+		WorkDirProvider:     stubWorkDirProvider{dir: env.workDir},
+		Transactor:          stubTransactor{},
+		ResourceReader:      &stubResourceReader{},
+		ResourceSaver:       &stubResourceSaver{},
+		ResourceUpdater:     &stubResourceSaver{},
+		StoreCommitter:      env.streamer,
+		ResourceStoreWriter: env.assocWrite,
+		StagingPaths:        stubStagingPaths{},
 	}
-	wt := entity.NewWorkTask(1)
-	wt.ResourceType = sql.NullString{String: entity.ResourceTypeImage, Valid: true}
+	wt := makeResumeWorkTask(1)
 	sess := newExecSession(deps, h, wt)
 	sess.workId = 500
 	blocked := []chan struct{}{make(chan struct{}), make(chan struct{})}
@@ -387,7 +385,7 @@ func TestStartDownloadInterruptRegistersNoRollback(t *testing.T) {
 		cancel()
 	}()
 
-	res := sess.startDownload(specs, &sdkdto.WorkResponse{})
+	res := sess.startDownload(specs)
 	if res != comboInterrupted {
 		t.Fatalf("runCtx 取消应中断返回,实际 %v", res)
 	}

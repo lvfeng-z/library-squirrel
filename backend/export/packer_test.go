@@ -53,10 +53,11 @@ func buildPackFixture(t *testing.T) (workDir string, model *ExportModel) {
 }
 
 // packFixture 执行 Plan+Pack 到指定目标，返回 zip 条目与方法。
+// 模板传空串=包内文件名回退源文件名命名（本文件锚定打包面行为，命名面由 namer_test 锚定）。
 func packFixture(t *testing.T, workDir string, model *ExportModel, target string) []*zip.File {
 	t.Helper()
 	p := NewPacker()
-	stats, err := p.Plan(context.Background(), workDir, model)
+	stats, err := p.Plan(context.Background(), workDir, model, "")
 	require.NoError(t, err)
 	require.NoError(t, p.Pack(context.Background(), workDir, model, target, stats, nil))
 
@@ -134,7 +135,7 @@ func TestPackMissingOnlyTotal(t *testing.T) {
 		Files: []FileEntry{{StoreID: 100, StorePath: "store/resource/a/none.jpg"}},
 	})
 	p := NewPacker()
-	stats, err := p.Plan(context.Background(), workDir, model)
+	stats, err := p.Plan(context.Background(), workDir, model, "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), stats.TotalFiles)
 	assert.Equal(t, int64(1), stats.MissingFiles)
@@ -144,7 +145,7 @@ func TestPackMissingOnlyTotal(t *testing.T) {
 func TestPackProgress(t *testing.T) {
 	workDir, model := buildPackFixture(t)
 	p := NewPacker()
-	stats, err := p.Plan(context.Background(), workDir, model)
+	stats, err := p.Plan(context.Background(), workDir, model, "")
 	require.NoError(t, err)
 	require.Equal(t, int64(2), stats.TotalFiles)
 
@@ -167,7 +168,7 @@ func TestPackDeterminism(t *testing.T) {
 	p := NewPacker()
 
 	packOnce := func() []byte {
-		stats, err := p.Plan(context.Background(), workDir, model)
+		stats, err := p.Plan(context.Background(), workDir, model, "")
 		require.NoError(t, err)
 		target := filepath.Join(t.TempDir(), "out.zip")
 		require.NoError(t, p.Pack(context.Background(), workDir, model, target, stats, nil))
@@ -184,7 +185,7 @@ func TestPackDeterminism(t *testing.T) {
 func TestPackSha256(t *testing.T) {
 	workDir, model := buildPackFixture(t)
 	p := NewPacker()
-	stats, err := p.Plan(context.Background(), workDir, model)
+	stats, err := p.Plan(context.Background(), workDir, model, "")
 	require.NoError(t, err)
 	target := filepath.Join(t.TempDir(), "out.zip")
 	require.NoError(t, p.Pack(context.Background(), workDir, model, target, stats, nil))
@@ -200,7 +201,7 @@ func TestPackContextCancel(t *testing.T) {
 	workDir, model := buildPackFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	p := NewPacker()
-	stats, err := p.Plan(ctx, workDir, model)
+	stats, err := p.Plan(ctx, workDir, model, "")
 	require.NoError(t, err)
 	cancel() // 打包前取消：Pack 首个 ctx 检查即中断
 	target := filepath.Join(t.TempDir(), "out.zip")

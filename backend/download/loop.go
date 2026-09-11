@@ -64,13 +64,13 @@ type streamController struct {
 	size        int64  // 远程大小;-1/0 未知(document lazy 产物生成前大小未知)
 	suggestName string // 插件建议文件名
 	continuable bool   // 是否支持续传(derived 恒为 false)
-	seq         int    // 同 role 内 0-based 序号(= store_seq；暂存文件名键/规划表键/续传身份)
+	seq         int    // 同 role 内 0-based 序号(= store_seq；暂存文件名键/续传身份)
 
 	expectedSha   string // 来源声明的期望 SHA256（空=未声明，跳过校验）
 	reader        io.ReadCloser
 	writer        *stagingWriter // 暂存文件写入器（含全量 sha256 流式哈希）
 	stagingAbs    string         // 暂存文件绝对路径（absPath 域，仅 os.* 调用点；提交点 rename 源）
-	finalRel      string         // 最终落盘 relPath（规划表值；提交点 rename 目标与建行 file_path）
+	finalRel      string         // 最终落盘 relPath（执行前解析派生；提交点 rename 目标与建行 file_path）
 	finalName     string         // 最终文件名（提交点建行 file_name）
 	actualSha     string         // 写满后实测 SHA256 hex（finalize 产出，提交点建行落列）
 	written       int64          // 已写入字节数(mu 保护；续传恢复时=写入偏移起点，含前会话已落盘部分)
