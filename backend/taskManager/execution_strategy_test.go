@@ -375,12 +375,20 @@ func TestBuiltinTaskPauseStopResume(t *testing.T) {
 	h := strat.lastHandle()
 	waitState(t, mgr, 1, TaskStateProcessing, 3*time.Second)
 
-	// 暂停：watcher runCancel → 等策略 runCtx 取消后释放（interrupt 模式不上报）→ Paused
-	if err := mgr.PauseTaskTrees(context.Background(), []int64{1}); err != nil {
-		t.Fatalf("暂停失败: %v", err)
-	}
+	// 暂停：watcher runCancel → 等策略 runCtx 取消后释放（interrupt 模式不上报）→ Paused。
+	// 暂停按应答收口（返回即已置 Paused），与策略释放交错——异步发起，取消确认后释放
+	pauseDone := make(chan error, 1)
+	go func() { pauseDone <- mgr.PauseTaskTrees(context.Background(), []int64{1}) }()
 	waitRunCtxCanceled(t, h)
 	strat.release <- struct{}{}
+	select {
+	case err := <-pauseDone:
+		if err != nil {
+			t.Fatalf("暂停失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("PauseTaskTrees 未返回")
+	}
 	waitState(t, mgr, 1, TaskStatePaused, 3*time.Second)
 
 	// 恢复：重新进入 Execute
@@ -502,6 +510,105 @@ func TestStopLeafCleansAndRetryWorks(t *testing.T) {
 	if !mgr.IsIdle() {
 		t.Fatal("二次停止后应全清理")
 	}
+}
+
+// TestPauseTerminalTargetReturnsNotProcessing 暂停语义收紧：对已终态任务暂停返回
+// ErrTaskNotProcessing（不假成功），状态不被改写
+func TestPauseTerminalTargetReturnsNotProcessing(t *testing.T) {
+	repo := newFakeBuiltinRepo()
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"demo": newScriptedStrategy("interrupt")}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	mt := mgr.newManagedTask(newBuiltinTask(1, "demo"))
+	mt.setState(TaskStateFinished)
+	mgr.mu.Lock()
+	mgr.taskMap[1] = mt
+	mgr.mu.Unlock()
+
+	if err := mgr.PauseTaskTrees(context.Background(), []int64{1}); !errors.Is(err, ErrTaskNotProcessing) {
+		t.Fatalf("暂停已终态任务应返回 ErrTaskNotProcessing, 实际 %v", err)
+	}
+	if mt.GetState() != TaskStateFinished {
+		t.Fatalf("终态不应被改写, 实际 %s", taskStateName(mt.GetState()))
+	}
+	mt.cancel()
+}
+
+// TestPauseTreeSkipsFinishedSibling 混合树暂停：终态兄弟静默跳过不阻塞其余目标，
+// 调用整体成功、运行中子任务正常落 Paused
+func TestPauseTreeSkipsFinishedSibling(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinParent(30), newBuiltinLeaf(31, 30, "finisher"), newBuiltinLeaf(32, 30, "demo"))
+	finisher := newScriptedStrategy("finish")
+	runner := newScriptedStrategy("interrupt")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"finisher": finisher, "demo": runner}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{30}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-finisher.entered
+	<-runner.entered
+	// 先完成叶子 31（终态兄弟）
+	finisher.release <- struct{}{}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if u, ok := repo.statusOf(31); ok && u.Status == task.TaskStatusFinished {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// 暂停整树：31 终态跳过、32 投递暂停，整体成功
+	pauseDone := make(chan error, 1)
+	go func() { pauseDone <- mgr.PauseTaskTrees(context.Background(), []int64{30}) }()
+	waitRunCtxCanceled(t, runner.lastHandle())
+	runner.release <- struct{}{}
+	select {
+	case err := <-pauseDone:
+		if err != nil {
+			t.Fatalf("混合树暂停应整体成功（终态兄弟跳过）: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("PauseTaskTrees 未返回")
+	}
+	waitState(t, mgr, 32, TaskStatePaused, 3*time.Second)
+	if u, ok := repo.statusOf(31); !ok || u.Status != task.TaskStatusFinished {
+		t.Fatalf("终态兄弟应保持 Finished: %+v ok=%v", u, ok)
+	}
+}
+
+// TestPauseRacingFinishSurfacesError 暂停竞态完成的如实上抛：暂停投递后任务在排空窗口内
+// 转入终态（策略上报 Finish），handlePauseCmd 终态分支回 ErrTaskNotProcessing——已投目标
+// 全部应答失败时 PauseTaskTrees 聚合上抛，不假成功
+func TestPauseRacingFinishSurfacesError(t *testing.T) {
+	repo := newFakeBuiltinRepo(newBuiltinTask(1, "finisher"))
+	strat := newScriptedStrategy("finish")
+	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+		map[string]ExecutionStrategy{"finisher": strat}, nil, nil)
+	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
+
+	if err := mgr.StartTaskTrees(context.Background(), []int64{1}); err != nil {
+		t.Fatalf("启动失败: %v", err)
+	}
+	<-strat.entered
+	waitState(t, mgr, 1, TaskStateProcessing, 3*time.Second)
+
+	pauseDone := make(chan error, 1)
+	go func() { pauseDone <- mgr.PauseTaskTrees(context.Background(), []int64{1}) }()
+	// 暂停已被 watcher 处理（runCancel 到达执行面）后释放，策略上报 Finish 转入终态
+	waitRunCtxCanceled(t, strat.lastHandle())
+	strat.release <- struct{}{}
+	select {
+	case err := <-pauseDone:
+		if !errors.Is(err, ErrTaskNotProcessing) {
+			t.Fatalf("暂停竞态完成应上抛 ErrTaskNotProcessing, 实际 %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("PauseTaskTrees 未返回")
+	}
+	waitIdle(t, mgr, 3*time.Second)
 }
 
 // TestStopTreeCleansAllAndSingleParentRemove 整树停止的收口一致性：各子任务经停止命令自清理，
@@ -692,12 +799,20 @@ func TestResumeSignalHotPath(t *testing.T) {
 		t.Fatal("首启执行应为全新执行(恢复信号假)")
 	}
 
-	// 暂停：非可排空阶段立即取消 → interrupt 模式不上报终态 → Paused
-	if err := mgr.PauseTaskTrees(context.Background(), []int64{1}); err != nil {
-		t.Fatalf("暂停失败: %v", err)
-	}
+	// 暂停：非可排空阶段立即取消 → interrupt 模式不上报终态 → Paused。
+	// 暂停按应答收口，与策略释放交错——异步发起，取消确认后释放
+	pauseDone := make(chan error, 1)
+	go func() { pauseDone <- mgr.PauseTaskTrees(context.Background(), []int64{1}) }()
 	waitRunCtxCanceled(t, first)
 	strat.release <- struct{}{}
+	select {
+	case err := <-pauseDone:
+		if err != nil {
+			t.Fatalf("暂停失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("PauseTaskTrees 未返回")
+	}
 	waitState(t, mgr, 1, TaskStatePaused, 3*time.Second)
 
 	// 恢复：内存命中投 cmdResume，二次执行信号真（热路径续传分叉）

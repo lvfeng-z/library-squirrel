@@ -35,6 +35,7 @@
 - **未启动兄弟守卫**：Pause/Stop/Resume 对 `!actorStarted && Created` 的兄弟（整树加载驻留但未 dispatch）跳过不投命令（避免误推 Paused/Failed）；`cleanupStoppedTree` 对这些兄弟 `cancel()` 退出 actor 防泄漏。
 - **跳过收口（Skip）**：用户在覆盖确认选跳过、或仅作品信息板块完成时，执行面经 `StrategyHandle.Skip` 上报——控制面释放槽位、置 `skipped` 收口标志（内存态、不持久化，`AllChildrenTerminal` 据此视为终态）、状态回任务行加载时 DB 快照（执行前状态，不产生终态）并单次清理。崩溃重启当作未跳过重新执行。
 - **静默跳过**：Pause/Stop/Resume 对不在内存的 taskId（`!ok`）静默跳过 return nil（控制操作幂等）。
+- **暂停应答语义**：`PauseTaskTrees` 按任务并行投 cmdPause 并有界等待应答（应答先于 Paused 置位，返回即收口——与 `StopTaskTrees` 同形，等待上界=命令应答超时 35s）。结果不假成功：命中的目标全部不可暂停（已终态/未派发）返回 `ErrTaskNotProcessing`；已投目标全部应答失败（如排空窗口内任务恰好完成转入终态，actor 终态分支回 `ErrTaskNotProcessing`）聚合上抛；部分成功返回 nil（混合树中的终态兄弟静默跳过，不阻塞其余目标）。
 - **停止即收口**：停止命令处理（`handleStopCmd`）置 Failed 后在同一处完成内存清理（taskMap 摘除、父任务全部子任务终态时连带清 parentMap、前端移除推送），应答后于清理——`StopTaskTrees` 返回即已收口。叶子/独立任务停止后可立即重试（重试重建对象重新执行）；不清理则对象滞留 taskMap（IsIdle 恒假）且重试复用滞留对象后被 dispatch 幂等丢弃。
 
 ## 状态与生命周期不变量

@@ -6,6 +6,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -87,7 +88,7 @@ func TestNewManagedTask_ActorStartedZero(t *testing.T) {
 }
 
 // TestPauseTaskTree_PostsCmdPause 回归:PauseTaskTree 对非终态子任务投 cmdPause(actor 命令队列保证 pause 覆盖陈旧 resume)。
-// 本测试验证 cmdPause 被投递到子任务 cmdCh。
+// 本测试验证 cmdPause 被投递到子任务 cmdCh（带应答通道），且无 actor 应答时调用如实返回应答超时而非假成功。
 func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 	mgr := NewManager(2, nil, nil, nil, nil, nil, nil)
 	defer func() {
@@ -97,6 +98,7 @@ func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 
 	child := newTestManagedTask()
 	child.setState(TaskStatePaused)
+	child.ackWaitTimeout = 100 * time.Millisecond // 字面量任务无 actor 应答，缩短应答等待上界
 
 	parent := NewParentTask(254, "parent")
 	parent.AddChild(child)
@@ -104,8 +106,8 @@ func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 	mgr.parentMap[254] = parent
 	mgr.mu.Unlock()
 
-	if err := mgr.PauseTaskTrees(context.Background(), []int64{254}); err != nil {
-		t.Fatalf("PauseTaskTrees 失败: %v", err)
+	if err := mgr.PauseTaskTrees(context.Background(), []int64{254}); !errors.Is(err, ErrTaskAckTimeout) {
+		t.Fatalf("无 actor 应答的暂停应返回应答超时, 实际 %v", err)
 	}
 
 	// cmdPause 应被投递到 child.cmdCh(不启动 actor,直接读 channel)
@@ -113,6 +115,9 @@ func TestPauseTaskTree_PostsCmdPause(t *testing.T) {
 	case cmd := <-child.cmdCh:
 		if cmd.kind != cmdPause {
 			t.Fatalf("期望 cmdPause, 实际 %d", cmd.kind)
+		}
+		if cmd.ack == nil {
+			t.Fatal("cmdPause 应携带应答通道（暂停应答等待语义）")
 		}
 	default:
 		t.Fatal("PauseTaskTree 应投递 cmdPause 到子任务")

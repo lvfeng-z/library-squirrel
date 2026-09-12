@@ -3,6 +3,7 @@ package taskManager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -447,8 +448,13 @@ func (m *Manager) removeFromQueue(taskId int64) {
 	m.waitingQueue = kept
 }
 
-// PauseTaskTrees 批量暂停任务:对每个 taskId 的目标(父→整树、叶子→自身、独立→自身)投 cmdPause。
-// 整树加载但未 dispatch 的 Created 兄弟不响应(守卫);!ok(不在内存)静默跳过。
+// PauseTaskTrees 批量暂停任务:对每个 taskId 的目标(父→整树、叶子→自身、独立→自身)投 cmdPause
+// 并按任务并行有界等待应答（应答先于 Paused 置位，返回即已收口；与 StopTaskTrees 同形）。
+// 结果语义:命中的目标全部不可暂停（已终态/未派发——对它们暂停是无效操作）返回
+// ErrTaskNotProcessing 不假成功；已投目标全部应答失败（如排空窗口内任务恰好完成转入终态，
+// handlePauseCmd 回 ErrTaskNotProcessing）如实上抛聚合错误；部分成功返回 nil（混合树中的
+// 终态兄弟静默跳过，不阻塞其余目标）。!ok（不在内存）静默跳过；整树加载但未 dispatch 的
+// Created 兄弟不响应（守卫）。
 func (m *Manager) PauseTaskTrees(ctx context.Context, taskIds []int64) error {
 	if len(taskIds) == 0 {
 		return nil
@@ -456,6 +462,12 @@ func (m *Manager) PauseTaskTrees(ctx context.Context, taskIds []int64) error {
 	logger.Log.Infof("[TaskManager] 批量暂停任务: taskIds=%v", taskIds)
 	// seen 去重:同一 child 可能被多个 taskId 的 resolveTargets 解析出(如父+其子),避免重复投命令
 	seen := make(map[int64]struct{})
+	// 并行投 cmdPause(各 actor 独立处理,可排空阶段走软暂停排空后置 Paused);wg.Wait 等全部应答
+	var wg sync.WaitGroup
+	var ackMu sync.Mutex
+	var ackErrs []error
+	considered := 0 // 命中且去重后的目标数（含因终态/未派发被跳过者）
+	posted := 0     // 实际投递并等待应答的目标数
 	for _, taskId := range taskIds {
 		targets, _, ok := m.resolveTargets(taskId)
 		if !ok {
@@ -468,10 +480,12 @@ func (m *Manager) PauseTaskTrees(ctx context.Context, taskIds []int64) error {
 				continue
 			}
 			seen[child.taskId] = struct{}{}
+			considered++
 			// 守卫:未首次 dispatch 的 Created 兄弟(整树加载驻留 children 但未启动)不响应控制命令
 			if !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
 				continue
 			}
+			// 已终态子任务(混合树中的完成兄弟)跳过:暂停对它们是无效操作
 			if isTerminalState(child.GetState()) {
 				continue
 			}
@@ -485,8 +499,31 @@ func (m *Manager) PauseTaskTrees(ctx context.Context, taskIds []int64) error {
 				delete(m.waitingForInputMap, child.taskId)
 				m.waitingForInputMu.Unlock()
 			}
-			child.postCmd(taskCmd{kind: cmdPause})
+			posted++
+			wg.Add(1)
+			go func(c *ManagedTask) {
+				defer wg.Done()
+				ack := make(chan error, 1)
+				c.postCmd(taskCmd{kind: cmdPause, ack: ack})
+				// 有界等待:命令被队列满丢弃、actor 已退出或应答超时即返回,不无限等待
+				if err := c.waitAck(ack); err != nil {
+					logger.Log.Warnf("[TaskManager] 批量暂停:任务 %d 暂停应答异常: %v", c.taskId, err)
+					ackMu.Lock()
+					ackErrs = append(ackErrs, err)
+					ackMu.Unlock()
+				}
+			}(child)
 		}
+	}
+	wg.Wait()
+	if posted == 0 {
+		if considered > 0 {
+			return ErrTaskNotProcessing
+		}
+		return nil
+	}
+	if len(ackErrs) == posted {
+		return errors.Join(ackErrs...)
 	}
 	return nil
 }
