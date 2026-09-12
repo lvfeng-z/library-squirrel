@@ -1,9 +1,9 @@
 package download
 
-// 命名派生测试：作品目录段（siteKey_siteWorkId 派生段——合法 ID 原文直用、净化变更追加
-// 消歧、超长截断消歧、空值拒绝、同键恒同路径）与 store 文件名（恒带 role_seq 三位零填充、
-// 扩展名规范化、描述段退役）。替换链「软删移出先于 rename 写入同路径」的时序锚定见
-// staging_test.go 的 TestRedownloadSamePath_VictimFileMovedBeforeRename。
+// 命名派生测试：桶段（复合键哈希前 2 位 hex，同键恒同桶）与作品目录段（siteKey_siteWorkId
+// 派生段——合法 ID 原文直用、净化变更追加消歧、超长截断消歧、空值拒绝、同键恒同路径）及
+// store 文件名（恒带 role_seq 三位零填充、扩展名规范化、描述段退役）。替换链「软删移出先于
+// rename 写入同路径」的时序锚定见 staging_test.go 的 TestRedownloadSamePath_VictimFileMovedBeforeRename。
 
 import (
 	"context"
@@ -45,8 +45,16 @@ func hashPrefix(siteWorkId string, digits int) string {
 	return hex.EncodeToString(sum[:])[:digits]
 }
 
-// TestResolveStoreDir_IdentityForms 目录段形态：siteKey 原文 + siteWorkId 派生段
-// （合法字符 ID 原文直用——覆盖 pixiv 数字 ID、bilibili 混合 ID、local 64 位 hex ID）
+// bucketOf 复合键（siteKey + "_" + siteWorkId）的 sha256 前 2 位 hex（与 SDK storepath
+// 桶段同源算法，期望值在测试侧独立计算）
+func bucketOf(siteKey, siteWorkId string) string {
+	sum := sha256.Sum256([]byte(siteKey + "_" + siteWorkId))
+	return hex.EncodeToString(sum[:])[:2]
+}
+
+// TestResolveStoreDir_IdentityForms 目录段形态：store/resource/{桶段}/siteKey 原文 +
+// siteWorkId 派生段（合法字符 ID 原文直用——覆盖 pixiv 数字 ID、bilibili 混合 ID、
+// local 64 位 hex ID）；桶段随复合键各自不同
 func TestResolveStoreDir_IdentityForms(t *testing.T) {
 	localId := strings.Repeat("3f2a", 16) // 64 位 hex（local 导入作品的站点侧 ID 形态）
 	cases := []struct {
@@ -54,9 +62,9 @@ func TestResolveStoreDir_IdentityForms(t *testing.T) {
 		siteWorkId string
 		want       string
 	}{
-		{"pixiv", "128937464", "store/resource/pixiv_128937464"},
-		{"bilibili", "BV1xx411c7mD_4538792", "store/resource/bilibili_BV1xx411c7mD_4538792"},
-		{"local", localId, "store/resource/local_" + localId},
+		{"pixiv", "128937464", "store/resource/" + bucketOf("pixiv", "128937464") + "/pixiv_128937464"},
+		{"bilibili", "BV1xx411c7mD_4538792", "store/resource/" + bucketOf("bilibili", "BV1xx411c7mD_4538792") + "/bilibili_BV1xx411c7mD_4538792"},
+		{"local", localId, "store/resource/" + bucketOf("local", localId) + "/local_" + localId},
 	}
 	for _, c := range cases {
 		sess, cancel := newNamingSession(c.siteKey, c.siteWorkId)
@@ -80,7 +88,7 @@ func TestResolveStoreDir_SanitizeAppendsDisambiguator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("派生失败: %v", err)
 	}
-	want := "store/resource/pixiv_a／b：c_" + hashPrefix(`a/b:c`, 8)
+	want := "store/resource/" + bucketOf("pixiv", `a/b:c`) + "/pixiv_a／b：c_" + hashPrefix(`a/b:c`, 8)
 	if got != want {
 		t.Fatalf("净化消歧段期望 %s 实际 %s", want, got)
 	}
@@ -96,7 +104,7 @@ func TestResolveStoreDir_TruncationBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("派生失败: %v", err)
 	}
-	want := "store/resource/pixiv_" + strings.Repeat("a", 88) + "_" + hashPrefix(id, 8)
+	want := "store/resource/" + bucketOf("pixiv", id) + "/pixiv_" + strings.Repeat("a", 88) + "_" + hashPrefix(id, 8)
 	if got != want {
 		t.Fatalf("截断消歧段期望 %s 实际 %s", want, got)
 	}
@@ -127,6 +135,31 @@ func TestResolveStoreDir_SameIdentitySamePath(t *testing.T) {
 	}
 	if c == d {
 		t.Fatalf("净化后同形的不同 ID 应得不同目录（消歧单射）: %q", c)
+	}
+}
+
+// TestResolveStoreDir_BucketSegmentStable 桶段显式锚定：派生路径的第三段恒为复合键哈希
+// 前 2 位 hex——同 siteKey+siteWorkId 两次派生路径一致（同键恒同桶→恒同路径，ID 名下
+// 重下命中同路径的桶层前提）；不同复合键的桶段按各自键哈希独立得出（可以不同）
+func TestResolveStoreDir_BucketSegmentStable(t *testing.T) {
+	keys := [][2]string{
+		{"pixiv", "128937464"},
+		{"bilibili", "BV1xx411c7mD_4538792"},
+	}
+	for _, k := range keys {
+		s1, cancel1 := newNamingSession(k[0], k[1])
+		a, errA := s1.resolveStoreDir(context.Background())
+		cancel1()
+		s2, cancel2 := newNamingSession(k[0], k[1])
+		b, errB := s2.resolveStoreDir(context.Background())
+		cancel2()
+		if errA != nil || errB != nil || a != b {
+			t.Fatalf("同一复合键(%s_%s)两次派生应恒同路径: %q/%q err=%v/%v", k[0], k[1], a, b, errA, errB)
+		}
+		parts := strings.Split(a, "/")
+		if len(parts) != 4 || parts[0] != "store" || parts[1] != "resource" || parts[2] != bucketOf(k[0], k[1]) {
+			t.Fatalf("路径桶段应为复合键哈希前 2 位 hex(%s_%s → %s): %q", k[0], k[1], bucketOf(k[0], k[1]), a)
+		}
 	}
 }
 

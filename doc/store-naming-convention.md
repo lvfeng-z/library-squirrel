@@ -6,15 +6,22 @@
 ## 落盘布局
 
 ```
-store/resource/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.{ext}
+store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.{ext}
 
-示例：store/resource/pixiv_128937464/image_000.jpg
-      store/resource/bilibili_BV1xx411c7mD_4538792/videoTrack_000.mp4
+示例：store/resource/73/pixiv_128937464/image_000.jpg
+      store/resource/16/bilibili_BV1xx411c7mD_4538792/videoTrack_000.mp4
 ```
 
-- 每作品一目录；所有 store（含缩略图与合并产物）统一进 `store/resource/` 下该作品目录，无按作者/按类型的其他布局层级
+- 桶段摊薄 `store/resource/` 根目录扇出：几万作品级库若无分桶，根目录下作品目录数与作品数同量级，Explorer/外部工具打开根目录卡顿；256 桶把每层目录数摊薄约两个量级
+- 每作品一目录（桶内）；所有 store（含缩略图与合并产物）统一进 `store/resource/{桶段}/` 下该作品目录，无按作者/按类型的其他布局层级
 - 路径由身份键（站点复合键 + role + seq）确定性派生，站点元数据（作者/作品名/描述等展示字段）不进路径
 - **空值严格拒绝**：siteKey/siteWorkId 为空时派生函数显式报错（`ErrEmptySiteKey`/`ErrEmptySiteWorkId`，写入路径严格识别不回落）；role/ext/seq 非法同样显式报错
+
+## 桶段:{复合键 SHA256 前 2 位小写 hex}
+
+- 桶段 = 复合键（`siteKey + "_" + siteWorkId`）SHA256 前 2 位小写 hex，共 256 桶（`storepath.BucketSegment`）
+- **同键恒同桶**——桶段与作品目录段取同一对 siteKey/siteWorkId，确定性派生令路径锚定不变量（同复合键恒同库内路径）在分桶形态下保持
+- 桶序无语义、不承载身份——作品完整身份键在目录段与文件名，桶段仅摊扇出；site_key 注册表 regex（`^[a-z][a-z0-9-]{1,30}$`，不含下划线）保证复合键的下划线连接边界无歧义，桶哈希输入与目录段身份输入一一对应
 
 ## 目录段:{site_key}_{siteWorkId 派生段}
 
@@ -37,17 +44,21 @@ store/resource/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.{e
 
 ## 主程序侧组装
 
-`store/resource/` 前缀属主程序库内布局（storeRegistry 权威），不进 SDK storepath；主程序侧 `path.Join("store/resource", WorkDirName, StoreFileName)` 组合完整 relPath（正斜杠域）。组装点：
+`store/resource/` 前缀属主程序库内布局（storeRegistry 权威），不进 SDK storepath；主程序侧 `path.Join("store/resource", BucketSegment, WorkDirName, StoreFileName)` 组合完整 relPath（正斜杠域）。组装点：
 
-- **下载侧**：`backend/download/naming.go` `resolveStoreDir`/`resolveStorePath`——身份输入取领域行站点复合键（siteWorkId 原文 + siteId 反查站点行取 site_key），键缺失或站点行查不到时按执行失败收口
-- **merge 产物**：`backend/resource/merge_service.go` `deriveMergedPaths`——同一对派生函数，身份经 resource → work → site 反查站点复合键；videoMain 为单实例派生 store，seq 恒 0（产物恒 `videoMain_000.{ext}`），与下载 store 同口径
+- **下载侧**：`backend/download/naming.go` `resolveStoreDir`/`resolveStorePath`——身份输入取领域行站点复合键（siteWorkId 原文 + siteId 反查站点行取 site_key），派生桶段与作品目录段，键缺失或站点行查不到时按执行失败收口
+- **merge 产物**：`backend/resource/merge_service.go` `deriveMergedPaths`——同一组派生函数（BucketSegment/WorkDirName/StoreFileName），身份经 resource → work → site 反查站点复合键；videoMain 为单实例派生 store，seq 恒 0（产物恒 `videoMain_000.{ext}`），与下载 store 同口径
 - **插件侧推导**：插件可引用 SDK storepath 推导兄弟文件名（如 document lazy 生成时关联的 image），输入 = 任务身份（siteWorkId + identity 常量）+ specs 顺序知识 + ext 重算，本地推导不向主程序查询
 
 ## 确定性
 
-- **同键恒同路径**：同一身份键恒派生同一路径——重试/续传/重下（站点内容未变）命中同一文件，续传锚自然成立
+- **同键恒同路径**：同一身份键恒派生同一路径（桶段与目录段同源于复合键，同键恒同桶）——重试/续传/重下（站点内容未变）命中同一文件，续传锚自然成立
 - **站点内容更新走替换链**：同键新实例重下命中同路径，由提交点既有顺序「软删移位（受害者文件移出）→ rename 写入」腾位；受害者文件移出先于 rename 写入同路径
 - **命名输入禁止时变**：时刻类信息不参与库内命名（资源唯一性由身份键保证，无需时变量）
+
+## 混合布局(导入/分享接收件)
+
+导入（导出包回灌）与分享接收件按 manifest 路径**原样落盘，无桶层**——导入核心按 manifest `files[].storePath` 过 storeRegistry 白名单校验后直写（`backend/import/ingest.go`），不按本库身份键重推导；重下载件走本文桶式推导路径。同一作品两类件并存时可能跨目录（manifest 路径目录与桶式目录各在各处）——与改造前同性质（导入件路径本就独立于推导链），替换链按站点复合键查重定位、不按路径前缀圈定，功能不受影响。
 
 ## resume 配对口径
 

@@ -252,7 +252,7 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 	// 否则 cancel 与 ffmpeg 完成的竞态会让 StoreFromFile 撞上已取消的 ctx 报"落盘失败: context canceled"。
 	commitCtx := context.Background()
 
-	// 产物路径与文件名：与下载侧同口径派生（store/resource/{作品目录}/videoMain_000.{ext}），
+	// 产物路径与文件名：与下载侧同口径派生（store/resource/{桶段}/{作品目录}/videoMain_000.{ext}），
 	// 合并产物为单实例派生 store，seq 恒 0；键缺失时按写入路径严格识别失败收口
 	mergedRelPath, mergedFileName, err := s.deriveMergedPaths(commitCtx, resourceId, videoExt)
 	if err != nil {
@@ -338,7 +338,8 @@ func (s *MergeService) CancelMerge(resourceId int64) {
 }
 
 // deriveMergedPaths 派生合并产物的落盘相对路径与文件名，与下载侧同口径：
-// store/resource/{storepath.WorkDirName(siteKey, siteWorkId)}/videoMain_000.{ext}。
+// store/resource/{桶段}/{storepath.WorkDirName(siteKey, siteWorkId)}/videoMain_000.{ext}。
+// 桶段 = 复合键 SHA256 前 2 位 hex（storepath.BucketSegment，摊薄根目录扇出；同键恒同桶）。
 // 身份输入经 resource → work → site 反查站点复合键；键缺失或站点行查不到时显式报错
 // （写入路径严格识别，不回落），由调用方按合并失败收口。ext 为合并产物实际扩展名（含点）
 func (s *MergeService) deriveMergedPaths(ctx context.Context, resourceId int64, ext string) (string, string, error) {
@@ -362,13 +363,14 @@ func (s *MergeService) deriveMergedPaths(ctx context.Context, resourceId int64, 
 	if err != nil {
 		return "", "", fmt.Errorf("派生作品目录名失败: %w", err)
 	}
+	bucket := storepath.BucketSegment(site.SiteKey, w.SiteWorkID.String)
 	// 合并产物为 videoMain 单实例派生 store，seq 恒 0
 	fileName, err := storepath.StoreFileName(domain.StoreTypeVideoMain, 0, ext)
 	if err != nil {
 		return "", "", fmt.Errorf("派生合并产物文件名失败: %w", err)
 	}
 	// relPath 域用 path.Join（正斜杠），与落库/查重基准一致
-	return path.Join("store", "resource", dirName, fileName), fileName, nil
+	return path.Join("store", "resource", bucket, dirName, fileName), fileName, nil
 }
 
 // CleanupResidualTempFiles 清理合并产物临时文件残留（os.TempDir() 下 mergeTempFilePrefix 前缀文件）。

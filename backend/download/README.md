@@ -20,7 +20,7 @@
 | `staging.go` | 暂存基建：暂存写入器（文件句柄+全量 sha256 流式哈希+finalize 比对）、暂存目录枚举（role_seq 键解析+偏移推导） |
 | `loop.go` | 多轨流管理与下载循环（copyLoop/handleEOF 完整性与哈希校验/软暂停信号消费/进度聚合） |
 | `resume.go` | 跨重启续传（暂存枚举偏移、插件 Resume、认领配对与未认领重产；作品定位失败/暂存为空降级完整重跑） |
-| `naming.go` | 落盘路径派生（SDK storepath：作品目录段 = 站点复合键单射派生、文件名恒 `{role}_{seq三位}.{ext}`；本文件组装身份输入与 `store/resource/` 库内布局前缀） |
+| `naming.go` | 落盘路径派生（SDK storepath：桶段 = 复合键 SHA256 前 2 位 hex、作品目录段 = 站点复合键单射派生、文件名恒 `{role}_{seq三位}.{ext}`；本文件组装身份输入与 `store/resource/` 库内布局前缀） |
 | `interfaces.go` | 对外窄接口与依赖集合（Deps；各能力接口由提供方模块实现） |
 | `work_task_repository.go` | 作品任务领域行仓储（共享主键覆写守卫、板块选择写行、pending 直写 SQL） |
 | `section_recorder.go` | 板块重执行选择写行器（重下载入口两步编排第一步；父请求展开到全部子成员） |

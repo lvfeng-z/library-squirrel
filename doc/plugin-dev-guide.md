@@ -414,7 +414,7 @@ type StoreSpec struct {
 
 - `downloaded`:流式下载资源(主图/视频轨),支持断点续传。
 - `derived`:一次性派生产物(缩略图),整轨产出不可续传,ReadCloser 常用 `io.NopCloser(bytes.NewReader(payload))`。
-- **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(库内落盘 `store/resource/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.<ext>`,恒带 role_seq、thumbnail 普通 role 无特例,派生函数为本 SDK `storepath` 包)详见 `doc/store-naming-convention.md`。
+- **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(库内落盘 `store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.<ext>`,桶段=复合键 SHA256 前 2 位 hex,恒带 role_seq、thumbnail 普通 role 无特例,派生函数为本 SDK `storepath` 包)详见 `doc/store-naming-convention.md`。
 - **`ExpectedSha256` 声明期望哈希(可选)**:插件在 Start/Resume 产出 spec 时声明来源侧的期望 SHA256(十六进制字符串,比对大小写不敏感)。主程序**照单消费、不以本地计算替代声明源**——下载流边写边算实测哈希,暂存写满(EOF 完整性校验通过)后与声明值比对:空(`nil`)=不校验(未声明插件零负担天然兼容);不符=任务失败,报「资源完整性校验失败（<role>）：来源声明的哈希与下载内容不符」,暂存保留供诊断(重试重下覆盖)。声明值应取自来源站点的权威元数据(如 API 返回的文件哈希),不要由插件对下载流自行预计算——预计算与主程序实测同源,校验无增量价值。
 - **specs 顺序确定性(重要)**:同 role 内的 `store_seq` 由主程序按 Start/Resume 返回的 specs 顺序分配(spec 在同 role 内的出现序即 store_seq 序)。插件必须保证**同 role 的 specs 相对顺序跨 Start/Resume/重试稳定**(站点内容更新导致轨道增/删除外)——该顺序即落盘文件名(`role_seq`)与续传配对(`StreamOffsets` 按 role+store_seq 匹配)的身份依据:顺序漂移=文件名漂移=引用断裂,已落盘文件与续传偏移会对不上新序的 spec。保证手法:specs 列表由稳定的源顺序(如站点 API 返回序)构建,不要用 map 遍历等无序来源拼装。
 

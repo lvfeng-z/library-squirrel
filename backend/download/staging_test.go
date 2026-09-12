@@ -207,8 +207,9 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	defer cancel()
 	// 抑制窗口断言：建行事务内（rename 已完成）最终路径处于抑制登记态
 	suppressedInView := false
+	suppressedPath := "store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png"
 	env.streamer.hook = func(*stubStoreCommitter) {
-		suppressedInView = storeRegistry.IsSuppressed("store/resource/test-site_sw1/image_000.png")
+		suppressedInView = storeRegistry.IsSuppressed(suppressedPath)
 	}
 
 	specs := []*sdkdto.StoreSpec{
@@ -525,7 +526,8 @@ func (o *observingReplaceOps) RestoreReplacedStores(ctx context.Context, scope r
 
 // TestRedownloadSamePath_VictimFileMovedBeforeRename 风险1 时序锚定：ID 名下重下同作品
 // 恒命中同一路径——受害者旧文件所在路径与新下载的派生路径相同（站点复合键 siteId=1→
-// test-site、siteWorkId=sw1 → store/resource/test-site_sw1/image_000.png）。提交序列的
+// test-site、siteWorkId=sw1 → store/resource/{bucketOf("test-site","sw1")}/test-site_sw1/
+// image_000.png，同键恒同桶→恒同路径）。提交序列的
 // 替换软删（首步，生产上物理移文件入 backup）先于 rename 写入同路径：软删时点旧路径
 // 内容仍为旧内容（若 rename 先行，该路径已被新内容覆盖）；移出后 rename 写入新内容，
 // 旧内容留备份位
@@ -533,11 +535,11 @@ func TestRedownloadSamePath_VictimFileMovedBeforeRename(t *testing.T) {
 	sess, h, cancel, env, stubs := newReplaceStagingSession(t, nil)
 	defer cancel()
 	// 受害者已完成 image 行的 file_path 预置为新下载将派生的同一路径（重下同路径锚定）
-	finalRel := "store/resource/test-site_sw1/image_000.png"
+	finalRel := "store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png"
 	seedReplaceVictims(stubs)
 	stubs.rows.rows = []*entity.PersistentStore{
 		makeReplaceStoreRow(800, 1, 0, 0, finalRel),
-		makeReplaceStoreRow(801, 1, 0, 0, "store/resource/test-site_sw1/old_thumb.jpg"),
+		makeReplaceStoreRow(801, 1, 0, 0, "store/resource/"+bucketOf("test-site", "sw1")+"/test-site_sw1/old_thumb.jpg"),
 	}
 	// 物理旧文件预置在最终路径
 	victimAbs := filepath.Join(env.workDir, filepath.FromSlash(finalRel))

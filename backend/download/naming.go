@@ -1,8 +1,8 @@
 package download
 
-// 命名派生：作品目录段与 store 文件名（store/resource/{siteKey}_{siteWorkId派生段}/
-// {role}_{seq 三位零填充}.{ext}）。派生规则（净化/截断/单射消歧）由 SDK storepath 权威
-// 承载，本文件组装身份输入（领域行站点复合键）与库内布局前缀（store/resource/，归
+// 命名派生：作品目录段与 store 文件名（store/resource/{桶段}/{siteKey}_{siteWorkId派生段}/
+// {role}_{seq 三位零填充}.{ext}）。派生规则（净化/截断/单射消歧、桶段哈希）由 SDK storepath
+// 权威承载，本文件组装身份输入（领域行站点复合键）与库内布局前缀（store/resource/，归
 // storeRegistry 权威）。
 
 import (
@@ -16,7 +16,9 @@ import (
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// resolveStoreDir 解析作品落盘目录（relPath 域，正斜杠）：store/resource/{siteKey}_{siteWorkId派生段}。
+// resolveStoreDir 解析作品落盘目录（relPath 域，正斜杠）：store/resource/{桶段}/
+// {siteKey}_{siteWorkId派生段}。桶段 = 复合键 SHA256 前 2 位 hex（256 桶，摊薄
+// store/resource 根目录扇出；同键恒同桶，路径锚定不变量保持）。
 // 身份输入取领域行站点复合键：siteWorkId 用原文，siteKey 经站点 ID 反查站点行；键缺失或
 // 站点行查不到时显式报错（写入路径严格识别，不回落），由调用方按执行失败收口
 func (sess *execSession) resolveStoreDir(ctx context.Context) (string, error) {
@@ -32,8 +34,9 @@ func (sess *execSession) resolveStoreDir(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("派生作品目录名失败: %w", err)
 	}
+	bucket := storepath.BucketSegment(siteKey, sess.workTask.SiteWorkID.String)
 	// relPath 域用 path.Join（正斜杠），落库/查重基准一致
-	return path.Join("store", "resource", dirName), nil
+	return path.Join("store", "resource", bucket, dirName), nil
 }
 
 // resolveStorePath 拼单个 store 的最终相对路径与文件名：{role}_{seq 三位零填充}.{ext}

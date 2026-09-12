@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -196,9 +197,9 @@ func stagingWorkResp() *sdkdto.WorkResponse {
 }
 
 // finalAbsPath 命名派生基准下的最终文件绝对路径（makeResumeWorkTask 复合键 siteId=1→
-// test-site、siteWorkId=sw1 → store/resource/test-site_sw1 目录）
+// test-site、siteWorkId=sw1 → store/resource/{bucketOf("test-site","sw1")}/test-site_sw1 目录）
 func finalAbsPath(env *stagingTestEnv, fileName string) string {
-	return filepath.Join(env.workDir, "store", "resource", "test-site_sw1", fileName)
+	return filepath.Join(env.workDir, "store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", fileName)
 }
 
 // ==== Execute 入口：恢复信号判定 ====
@@ -327,7 +328,8 @@ func TestResumeFromStaging_PartialContinuesAndCommits(t *testing.T) {
 		t.Fatalf("最终内容应前缀保留+续传, 期望 %q 实际 %q", want, got)
 	}
 	// 建行：relPath 落库、completed（桩记录）
-	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != "store/resource/test-site_sw1/image_000.png" {
+	wantRel := path.Join("store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.png")
+	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != wantRel {
 		t.Fatalf("提交点应建 1 行(final relPath), 实际 %+v", env.streamer.commits)
 	}
 	// 挂载：resource_store 关联插入

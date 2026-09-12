@@ -3,12 +3,15 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"path"
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
+
+	"github.com/lvfeng-z/library-squirrel-sdk/storepath"
 )
 
-// ==== 合并产物路径派生测试（与下载侧同口径：store/resource/{作品目录}/videoMain_000.{ext}）====
+// ==== 合并产物路径派生测试（与下载侧同口径：store/resource/{桶段}/{作品目录}/videoMain_000.{ext}）====
 
 // mergeNamingResource 资源桩：资源 700 属作品 500
 type mergeNamingResource struct{}
@@ -50,7 +53,8 @@ func newMergeNamingService(work mergeNamingWork, site mergeNamingSite) *MergeSer
 }
 
 // TestDeriveMergedPathsMatchesDownloadLayout 产物路径与文件名为派生形态（与下载侧
-// store/resource/{siteKey}_{siteWorkId}/{role}_{seq}.{ext} 同口径）：合并产物是 videoMain
+// store/resource/{桶段}/{siteKey}_{siteWorkId}/{role}_{seq}.{ext} 同口径，桶段=复合键
+// SHA256 前 2 位 hex）：合并产物是 videoMain
 // 单实例派生 store，seq 恒 0；文件名同时作为 store 行 file_name
 func TestDeriveMergedPathsMatchesDownloadLayout(t *testing.T) {
 	s := newMergeNamingService(
@@ -64,7 +68,10 @@ func TestDeriveMergedPathsMatchesDownloadLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("派生应成功，实际失败: %v", err)
 	}
-	if want := "store/resource/bilibili_BV1xx411c7mD_4538792/videoMain_000.mp4"; relPath != want {
+	want := path.Join("store", "resource",
+		storepath.BucketSegment("bilibili", "BV1xx411c7mD_4538792"),
+		"bilibili_BV1xx411c7mD_4538792", "videoMain_000.mp4")
+	if relPath != want {
 		t.Errorf("产物路径 = %q, want %q", relPath, want)
 	}
 	if want := "videoMain_000.mp4"; fileName != want {
