@@ -1638,16 +1638,11 @@ type pluginProcessParticipant struct {
 func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
 	app := p.app
 	publicId := plugin.PublicID.String
-	ext := manifest.Extensions
 
-	// 纯 UI 插件（无运行时扩展点）与有运行时扩展点但缺入口路径的插件不起子进程，激活即成功
-	hasRuntime := ext != nil && (len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0)
-	if !hasRuntime {
-		logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
-		return nil
-	}
+	// 无入口路径 = 纯 UI 插件，不起子进程，激活即成功；入口在场即运行时插件——含仅用
+	// 宿主查询与前端 view、无任务/浏览器扩展声明的工具型形态（进程判据以入口为准）
 	if !plugin.EntryPath.Valid || plugin.EntryPath.String == "" {
-		logger.Log.Warnf("插件 %s 有运行时扩展点但无入口路径", publicId)
+		logger.Log.Infof("插件 %s: 纯 UI 插件，跳过子进程", publicId)
 		return nil
 	}
 

@@ -377,6 +377,7 @@ func main() {
 
 - `StoreInfo.size`（文件字节数）当前宿主恒缺省——`persistent_store` 无字节列，字段为契约留位；需要体积信息时插件可对 `file_path` 自行 `os.Stat`。
 - `QueryWorks` 作者名过滤匹配 `author_name`（本地/站点两轨任一命中即匹配）；站点轨的 `fixed_author_name`（排序固定名）**未纳入**匹配域。
+- 安装门禁要求 manifest 至少声明一个扩展（taskHandlers / siteBrowsers / frontendExtensions 任一非空，`backend/plugin/service.go:320`）——纯查询无任何扩展声明的插件**不可安装**；工具型插件至少声明一个前端扩展（如惰性 view）。已安装后，子进程启动判据是**入口文件在场**（有 `entryFile` 即运行时插件，含仅查询+view 的工具型形态），与扩展声明解耦。
 - 任务历史不在查询面（任务域刚完成表拆分、查询语义未稳定，留待需求）。
 - 库查询是 Tier 1 只读面：写库数据接口（Tier 2）未开放——仅有准入判据无实现；host→插件事件推送方向留位未做。两者均不得在插件中假设可用。
 
