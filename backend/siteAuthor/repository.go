@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -87,6 +88,22 @@ func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAu
 			"introduce", "homepage", "update_time",
 		}),
 	}).Create(author).Error
+}
+
+// PageByFilter 按站点与名称关键词过滤分页查询（siteId 0=全部站点；空关键词=不过滤；按 id 升序稳定分页）
+func (r *SiteAuthorRepository) PageByFilter(ctx context.Context, siteId int64, nameKeyword string, page, pageSize int) (*model.Page[entity.SiteAuthor], error) {
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+	if siteId > 0 {
+		opt.Conditions = append(opt.Conditions, clause.Eq{Column: "site_id", Value: siteId})
+	}
+	if nameKeyword != "" {
+		opt.Conditions = append(opt.Conditions, clause.Like{Column: "author_name", Value: "%" + nameKeyword + "%"})
+	}
+	return r.Page(ctx, opt)
 }
 
 // ListByWorkId 查询作品的站点作者

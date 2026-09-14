@@ -93,6 +93,22 @@ func (r *SiteTagRepository) GetBySiteAndSiteTagID(ctx context.Context, siteId in
 	return &tag, nil
 }
 
+// PageByFilter 按站点与名称关键词过滤分页查询（siteId 0=全部站点；空关键词=不过滤；按 id 升序稳定分页）
+func (r *SiteTagRepository) PageByFilter(ctx context.Context, siteId int64, nameKeyword string, page, pageSize int) (*model.Page[entity2.SiteTag], error) {
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+	if siteId > 0 {
+		opt.Conditions = append(opt.Conditions, clause.Eq{Column: "site_id", Value: siteId})
+	}
+	if nameKeyword != "" {
+		opt.Conditions = append(opt.Conditions, clause.Like{Column: "site_tag_name", Value: "%" + nameKeyword + "%"})
+	}
+	return r.Page(ctx, opt)
+}
+
 // ListByWorkId 查询作品的站点标签
 func (r *SiteTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]*entity2.SiteTag, error) {
 	query := `

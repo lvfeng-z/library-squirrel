@@ -171,6 +171,32 @@ func (r *LocalTagRepository) ListByWorkId(ctx context.Context, workId int64) ([]
 	return tags, nil
 }
 
+// ListByIds 根据ID列表批量查询
+func (r *LocalTagRepository) ListByIds(ctx context.Context, ids []int64) ([]*entity.LocalTag, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.IN{Column: "id", Values: util.ToAnySlice(ids)},
+		},
+	}
+	return r.List(ctx, opt)
+}
+
+// PageByNameKeyword 按名称关键词模糊匹配分页查询（空关键词=全量；按 id 升序稳定分页）
+func (r *LocalTagRepository) PageByNameKeyword(ctx context.Context, nameKeyword string, page, pageSize int) (*model.Page[entity.LocalTag], error) {
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+	if nameKeyword != "" {
+		opt.Conditions = append(opt.Conditions, clause.Like{Column: "local_tag_name", Value: "%" + nameKeyword + "%"})
+	}
+	return r.Page(ctx, opt)
+}
+
 // ListSelectItems 查询选择项列表
 func (r *LocalTagRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
 	var results []*dto.SelectItem

@@ -51,6 +51,19 @@ func (r *PersistentStoreRepository) ExistsByFilePath(ctx context.Context, filePa
 	return record != nil
 }
 
+// ListByIds 根据ID列表批量查询（软删行经 GORM scope 自动排除）
+func (r *PersistentStoreRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.PersistentStore, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.IN{Column: "id", Values: util.ToAnySlice(ids)},
+		},
+	}
+	return r.List(ctx, opt)
+}
+
 // dbFromCtx 获取当前 context 对应的 GORM DB 实例，支持事务感知
 func (r *PersistentStoreRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.GORM())

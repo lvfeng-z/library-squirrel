@@ -37,7 +37,7 @@
 ## 依赖关系
 
 - 依赖：workDir 提供者（根目录）
-- 被依赖：**task**（下载资源落盘）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreByIds` 复活，purge 经 `DeleteUnscopedByIds` 物理删行）、**taskManager**（替换前置软删 StoreReplacer / 失败回滚派生与复活 StoreBackupReader）、**recycleBin**（复原编排 StoreRestorer + 文件条目清理 StoreCleaner）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）、**backupGovernance**（BackupReferencer：引用集投影 `ListReferencedBackupIDs`（Unscoped 含已删行）、悬空清列 `ClearBackupRefsByBackupIDs`、非法活行防御清列）
+- 被依赖：**task**（下载资源落盘）、**work**（软删除经 `DeleteWithBackup` 移文件并软删记录，复原经 `RestoreByIds` 复活，purge 经 `DeleteUnscopedByIds` 物理删行）、**taskManager**（替换前置软删 StoreReplacer / 失败回滚派生与复活 StoreBackupReader）、**recycleBin**（复原编排 StoreRestorer + 文件条目清理 StoreCleaner）、**resource**、**fsmonitor**（StoreReader 对账 + 裁决失效经 MarkInvalid）、**assetserver**（/store/ 状态路由 ResolveFileState）、**backupGovernance**（BackupReferencer：引用集投影 `ListReferencedBackupIDs`（Unscoped 含已删行）、悬空清列 `ClearBackupRefsByBackupIDs`、非法活行防御清列）、**extension**（插件库查询：仓储 `ListByIds` 批量读 store 行组装活行摘要，软删行经 scope 自动排除）
 
 ## 关键设计
 

@@ -128,6 +128,9 @@ type App struct {
 	// 插件加载器
 	pluginLoader *extension2.Loader
 
+	// 插件库查询依赖（Tier 1 只读；各域 repository 组装一次，激活插件时构造共享查询核心注入）
+	pluginLibraryQueryDeps extension2.LibraryQueryDeps
+
 	// 主窗口原生句柄
 	mainHWND uintptr
 	// 主窗口实例（用于实时获取原生句柄，标题栏等能力使用）
@@ -959,6 +962,25 @@ func (app *App) initAdvancedServices() error {
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
 	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath())
+
+	// 插件库查询依赖（Tier 1 只读）：各域 repository 直连组装（extension 定义注入接口，
+	// 过滤语义落在各域 repository 的 GORM 管线，provider 不自拼 SQL）
+	app.pluginLibraryQueryDeps = extension2.LibraryQueryDeps{
+		Works:          work.NewRepository(app.db),
+		Sites:          site.NewRepository(app.db),
+		Resources:      resource.NewRepository(app.db),
+		ResourceStores: resource.NewResourceStoreRepository(app.db),
+		Stores:         persistentStore.NewRepository(app.db),
+		LocalAuthors:   localAuthor.NewRepository(app.db),
+		SiteAuthors:    siteAuthor.NewRepository(app.db),
+		LocalTags:      localTag.NewRepository(app.db),
+		SiteTags:       siteTag.NewRepository(app.db),
+		WorkTagRels:    reWorkTag.NewRepository(app.db),
+		WorkSets:       workSet.NewRepository(app.db),
+		WorkWorkSets:   reWorkWorkSet.NewRepository(app.db),
+		WorkSetGraph:   reWorkSetWorkSet.NewRepository(app.db),
+		WorkDir:        app.SettingsService,
+	}
 	// 插件生命周期参与者：凡持有插件运行痕迹的域注册为参与者（注册顺序即激活相位顺序，
 	// 停用按注册逆序清理），清单集中于此；进程参与者与任务否决参与者在各自依赖就绪后注册
 	app.PluginService.RegisterLifecycleParticipant(&staticResourceParticipant{svc: app.StaticResourceService})
@@ -1657,6 +1679,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
 		},
+		LibraryQuery: extension2.NewLibraryQueryProvider(app.pluginLibraryQueryDeps),
 	})
 
 	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)

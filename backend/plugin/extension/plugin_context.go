@@ -9,6 +9,8 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // --- Provider Interfaces ---
@@ -45,6 +47,8 @@ type PluginContextDeps struct {
 	TaskCreate          TaskCreateProvider
 	UrlListener         UrlListenerRegistry
 	FrontendEvent       pluginsdkdto.FrontendEventProvider
+	// LibraryQuery 库查询核心（Tier 1 只读查询；装配处构造一次全体插件共享）
+	LibraryQuery *libraryQueryProvider
 }
 
 // --- Implementation ---
@@ -58,6 +62,7 @@ type pluginContext struct {
 	taskCreate          TaskCreateProvider
 	urlListener         UrlListenerRegistry
 	frontendEvent       pluginsdkdto.FrontendEventProvider
+	query               *libraryQueryProvider
 	scopedLogger        *zap.SugaredLogger
 	logger              pluginsdkdto.Logger
 }
@@ -80,6 +85,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 		taskCreate:          deps.TaskCreate,
 		urlListener:         deps.UrlListener,
 		frontendEvent:       deps.FrontendEvent,
+		query:               deps.LibraryQuery,
 		scopedLogger:        sugar,
 		logger:              newHostLogger(sugar),
 	}
@@ -183,6 +189,207 @@ func (pc *pluginContext) UnsubscribeFrontend(topic string) error {
 		return fmt.Errorf("frontend event provider not configured")
 	}
 	return pc.frontendEvent.UnsubscribeFrontend(topic)
+}
+
+// --- 库查询（Tier 1 只读）---
+// 逐方法记录调用方插件与端点（诊断级使用线索，随日志轮转留存），委托共享查询核心。
+// 未注入查询核心时以 Unimplemented 语义码拒绝（对应宿主不注册 LibraryQuery 服务的形态）
+
+// queryCore 取库查询核心，未注入时返回 Unimplemented
+func (pc *pluginContext) queryCore() (*libraryQueryProvider, error) {
+	if pc.query == nil {
+		return nil, status.Error(codes.Unimplemented, "库查询能力未配置")
+	}
+	return pc.query, nil
+}
+
+func (pc *pluginContext) GetWorkById(workId int64) (*pluginsdkdto.WorkWithSite, error) {
+	pc.scopedLogger.Infof("库查询 GetWorkById(workId=%d)", workId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getWorkById(context.Background(), workId)
+}
+
+func (pc *pluginContext) GetWorkBySiteKey(siteKey string, siteWorkId string) (*pluginsdkdto.WorkWithSite, error) {
+	pc.scopedLogger.Infof("库查询 GetWorkBySiteKey(siteKey=%s, siteWorkId=%s)", siteKey, siteWorkId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getWorkBySiteKey(context.Background(), siteKey, siteWorkId)
+}
+
+func (pc *pluginContext) QueryWorks(req *pluginsdkdto.QueryWorksRequest) (*pluginsdkdto.QueryWorksResponse, error) {
+	pc.scopedLogger.Infof("库查询 QueryWorks(siteKey=%s, page=%d, pageSize=%d)", req.SiteKey, req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.queryWorks(context.Background(), req)
+}
+
+func (pc *pluginContext) ListResourcesByWorkId(workId int64) (*pluginsdkdto.ListResourcesByWorkIdResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListResourcesByWorkId(workId=%d)", workId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listResourcesByWorkId(context.Background(), workId)
+}
+
+func (pc *pluginContext) GetLocalAuthorById(localAuthorId int64) (*pluginsdkdto.LocalAuthorDTO, error) {
+	pc.scopedLogger.Infof("库查询 GetLocalAuthorById(localAuthorId=%d)", localAuthorId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getLocalAuthorById(context.Background(), localAuthorId)
+}
+
+func (pc *pluginContext) QueryLocalAuthors(req *pluginsdkdto.QueryLocalAuthorsRequest) (*pluginsdkdto.QueryLocalAuthorsResponse, error) {
+	pc.scopedLogger.Infof("库查询 QueryLocalAuthors(page=%d, pageSize=%d)", req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.queryLocalAuthors(context.Background(), req)
+}
+
+func (pc *pluginContext) GetSiteAuthorBySiteKey(siteKey string, siteAuthorId string) (*pluginsdkdto.SiteAuthorInfo, error) {
+	pc.scopedLogger.Infof("库查询 GetSiteAuthorBySiteKey(siteKey=%s, siteAuthorId=%s)", siteKey, siteAuthorId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getSiteAuthorBySiteKey(context.Background(), siteKey, siteAuthorId)
+}
+
+func (pc *pluginContext) QuerySiteAuthors(req *pluginsdkdto.QuerySiteAuthorsRequest) (*pluginsdkdto.QuerySiteAuthorsResponse, error) {
+	pc.scopedLogger.Infof("库查询 QuerySiteAuthors(siteKey=%s, page=%d, pageSize=%d)", req.SiteKey, req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.querySiteAuthors(context.Background(), req)
+}
+
+func (pc *pluginContext) ListAuthorsByWorkId(workId int64) (*pluginsdkdto.ListAuthorsByWorkIdResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListAuthorsByWorkId(workId=%d)", workId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listAuthorsByWorkId(context.Background(), workId)
+}
+
+func (pc *pluginContext) GetLocalTagById(localTagId int64) (*pluginsdkdto.LocalTagDTO, error) {
+	pc.scopedLogger.Infof("库查询 GetLocalTagById(localTagId=%d)", localTagId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getLocalTagById(context.Background(), localTagId)
+}
+
+func (pc *pluginContext) QueryLocalTags(req *pluginsdkdto.QueryLocalTagsRequest) (*pluginsdkdto.QueryLocalTagsResponse, error) {
+	pc.scopedLogger.Infof("库查询 QueryLocalTags(page=%d, pageSize=%d)", req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.queryLocalTags(context.Background(), req)
+}
+
+func (pc *pluginContext) GetSiteTagBySiteKey(siteKey string, siteTagId string) (*pluginsdkdto.SiteTagInfo, error) {
+	pc.scopedLogger.Infof("库查询 GetSiteTagBySiteKey(siteKey=%s, siteTagId=%s)", siteKey, siteTagId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getSiteTagBySiteKey(context.Background(), siteKey, siteTagId)
+}
+
+func (pc *pluginContext) QuerySiteTags(req *pluginsdkdto.QuerySiteTagsRequest) (*pluginsdkdto.QuerySiteTagsResponse, error) {
+	pc.scopedLogger.Infof("库查询 QuerySiteTags(siteKey=%s, page=%d, pageSize=%d)", req.SiteKey, req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.querySiteTags(context.Background(), req)
+}
+
+func (pc *pluginContext) ListTagsByWorkId(workId int64) (*pluginsdkdto.ListTagsByWorkIdResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListTagsByWorkId(workId=%d)", workId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listTagsByWorkId(context.Background(), workId)
+}
+
+func (pc *pluginContext) GetWorkSetById(workSetId int64) (*pluginsdkdto.WorkSetDTO, error) {
+	pc.scopedLogger.Infof("库查询 GetWorkSetById(workSetId=%d)", workSetId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getWorkSetById(context.Background(), workSetId)
+}
+
+func (pc *pluginContext) GetWorkSetBySiteKey(siteKey string, siteWorkSetId string) (*pluginsdkdto.WorkSetDTO, error) {
+	pc.scopedLogger.Infof("库查询 GetWorkSetBySiteKey(siteKey=%s, siteWorkSetId=%s)", siteKey, siteWorkSetId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getWorkSetBySiteKey(context.Background(), siteKey, siteWorkSetId)
+}
+
+func (pc *pluginContext) ListWorkSetsByWorkId(workId int64) (*pluginsdkdto.ListWorkSetsByWorkIdResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListWorkSetsByWorkId(workId=%d)", workId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listWorkSetsByWorkId(context.Background(), workId)
+}
+
+func (pc *pluginContext) ListParentWorkSets(workSetId int64) (*pluginsdkdto.ListParentWorkSetsResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListParentWorkSets(workSetId=%d)", workSetId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listParentWorkSets(context.Background(), workSetId)
+}
+
+func (pc *pluginContext) ListChildWorkSets(workSetId int64) (*pluginsdkdto.ListChildWorkSetsResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListChildWorkSets(workSetId=%d)", workSetId)
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listChildWorkSets(context.Background(), workSetId)
+}
+
+func (pc *pluginContext) ListSites() (*pluginsdkdto.ListSitesResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListSites()")
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listSites(context.Background())
+}
+
+func (pc *pluginContext) GetWorkDir() (*pluginsdkdto.GetWorkDirResponse, error) {
+	pc.scopedLogger.Infof("库查询 GetWorkDir()")
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.getWorkDir(pc.pluginInfo.PublicID)
 }
 
 // --- 路径 ---

@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SiteRepository 站点仓储实现
@@ -26,6 +27,28 @@ func NewRepository(db *gorm.DB) *SiteRepository {
 // GORM 返回底层 GORM DB 实例
 func (r *SiteRepository) GORM() *gorm.DB {
 	return r.BaseRepository.GORM()
+}
+
+// GetByKey 按站点身份键查询（跨库匹配/查重/关联的权威寻址方式；未命中返回 gorm.ErrRecordNotFound）
+func (r *SiteRepository) GetByKey(ctx context.Context, siteKey string) (*entity.Site, error) {
+	opt := &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.Eq{Column: "site_key", Value: siteKey},
+		},
+	}
+	return r.Get(ctx, opt)
+}
+
+// ListAll 全量查询站点（注册表投影，站点键只增不改、个位数级，不分页），按 id 升序
+func (r *SiteRepository) ListAll(ctx context.Context) ([]*entity.Site, error) {
+	opt := &database.QueryOption{
+		OrderBy: []clause.Expression{
+			clause.OrderBy{Columns: []clause.OrderByColumn{
+				{Column: clause.Column{Name: "id"}},
+			}},
+		},
+	}
+	return r.List(ctx, opt)
 }
 
 // QuerySelectItemPage 分页查询选择项

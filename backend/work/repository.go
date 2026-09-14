@@ -3,6 +3,7 @@ package work
 import (
 	"context"
 
+	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"gorm.io/gorm"
@@ -141,6 +142,64 @@ func (r *WorkRepository) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds [
 		all = append(all, batch...)
 	}
 	return all, nil
+}
+
+// WorkQueryFilter 作品过滤查询条件（名称/作者名/标签名/时间范围的过滤语义单一落点；
+// 零值字段 = 不过滤。作者名/标签名命中指本地轨或站点轨任一关联名匹配）
+type WorkQueryFilter struct {
+	SiteID          int64  // 站点过滤（精确；0=全部站点）
+	NameKeyword     string // 作品名模糊匹配（site_work_name；空=不过滤）
+	AuthorKeyword   string // 作者名匹配（关联的本地/站点作者 author_name；空=不过滤）
+	TagKeyword      string // 标签名匹配（关联的本地/站点标签名；空=不过滤）
+	CreateTimeStart int64  // 入库时间下界（毫秒时间戳，含；0=不限）
+	CreateTimeEnd   int64  // 入库时间上界（毫秒时间戳，含；0=不限）
+}
+
+// PageByFilter 按过滤条件分页查询作品（GORM 管线，软删行经 scope 自动排除），
+// 按入库时间倒序、id 倒序保证稳定分页顺序
+func (r *WorkRepository) PageByFilter(ctx context.Context, filter *WorkQueryFilter, page, pageSize int) (*model.Page[domain.Work], error) {
+	var conds []clause.Expression
+	if filter.SiteID > 0 {
+		conds = append(conds, clause.Eq{Column: "site_id", Value: filter.SiteID})
+	}
+	if filter.NameKeyword != "" {
+		conds = append(conds, clause.Like{Column: "site_work_name", Value: "%" + filter.NameKeyword + "%"})
+	}
+	if filter.AuthorKeyword != "" {
+		authorLike := "%" + filter.AuthorKeyword + "%"
+		conds = append(conds, clause.Expr{
+			SQL: `(EXISTS (SELECT 1 FROM re_work_author rwa JOIN local_author la ON rwa.local_author_id = la.id WHERE rwa.work_id = work.id AND la.author_name LIKE ?)
+				OR EXISTS (SELECT 1 FROM re_work_author rwa JOIN site_author sa ON rwa.site_author_id = sa.id WHERE rwa.work_id = work.id AND sa.author_name LIKE ?))`,
+			Vars: []interface{}{authorLike, authorLike},
+		})
+	}
+	if filter.TagKeyword != "" {
+		tagLike := "%" + filter.TagKeyword + "%"
+		conds = append(conds, clause.Expr{
+			SQL: `(EXISTS (SELECT 1 FROM re_work_tag rwt JOIN local_tag lt ON rwt.local_tag_id = lt.id WHERE rwt.work_id = work.id AND lt.local_tag_name LIKE ?)
+				OR EXISTS (SELECT 1 FROM re_work_tag rwt JOIN site_tag st ON rwt.site_tag_id = st.id WHERE rwt.work_id = work.id AND st.site_tag_name LIKE ?))`,
+			Vars: []interface{}{tagLike, tagLike},
+		})
+	}
+	if filter.CreateTimeStart > 0 {
+		conds = append(conds, clause.Gte{Column: "create_time", Value: filter.CreateTimeStart})
+	}
+	if filter.CreateTimeEnd > 0 {
+		conds = append(conds, clause.Lte{Column: "create_time", Value: filter.CreateTimeEnd})
+	}
+	return r.Page(ctx, &database.PageOption{
+		QueryOption: database.QueryOption{
+			Conditions: conds,
+			OrderBy: []clause.Expression{
+				clause.OrderBy{Columns: []clause.OrderByColumn{
+					{Column: clause.Column{Name: "create_time"}, Desc: true},
+					{Column: clause.Column{Name: "id"}, Desc: true},
+				}},
+			},
+		},
+		Page:     page,
+		PageSize: pageSize,
+	})
 }
 
 // toInterfaceSlice converts int64 slice to interface{} slice

@@ -134,6 +134,19 @@ func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 	return results, nil
 }
 
+// PageByNameKeyword 按名称关键词模糊匹配分页查询（空关键词=全量；按 id 升序稳定分页）
+func (r *LocalAuthorRepository) PageByNameKeyword(ctx context.Context, nameKeyword string, page, pageSize int) (*model.Page[entity.LocalAuthor], error) {
+	opt := &database.PageOption{
+		QueryOption: database.QueryOption{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+	if nameKeyword != "" {
+		opt.Conditions = append(opt.Conditions, clause.Like{Column: "author_name", Value: "%" + nameKeyword + "%"})
+	}
+	return r.Page(ctx, opt)
+}
+
 // ListSelectItems 查询选择项列表
 func (r *LocalAuthorRepository) ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error) {
 	var results []*dto.SelectItem

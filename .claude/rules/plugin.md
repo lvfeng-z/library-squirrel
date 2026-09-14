@@ -251,12 +251,13 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 
 ## 插件 SDK 能力边界
 
-插件通过 `PluginContext`（gRPC `HostService`）访问宿主能力，不限于扩展点注册。所有可用能力：
+插件通过 `PluginContext`（gRPC `HostService` + `LibraryQuery`）访问宿主能力，不限于扩展点注册。所有可用能力：
 
 | 类别 | SDK 方法 | 说明 |
 |------|----------|------|
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
 | 落盘路径派生 | `storepath` 包（`BucketSegment`/`WorkDirName`/`StoreFileName`，本地纯函数零依赖） | 库内最终落盘路径（`store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位}.{ext}`，桶段=复合键 SHA256 前 2 位 hex）由插件据任务身份与 specs 顺序本地推导（顺序确定性契约见 `doc/plugin-dev-guide.md` 6.1），不经宿主 RPC 查询 |
+| 库查询（Tier 1 只读） | `GetWorkById`/`GetWorkBySiteKey`/`QueryWorks`/`ListResourcesByWorkId`/作者 5 个/标签 5 个/作品集 5 个/`ListSites`/`GetWorkDir`（共 21 个，`dto.PluginContext` 方法组） | 查询库内已有作品及周边数据：身份键复合寻址（`(site_key, 站点侧 id)`，DB id 仅会话内句柄）、`Query*` 族强制分页（page_size 上限 200——宿主数据库单连接与 UI 共享，重查询需节制）、默认只返回活数据（软删/死关联不出现）、`file_path` 为 relPath 域正斜杠；无需 capabilities 声明直接调用。完整使用规则见 `doc/plugin-dev-guide.md` 5.1 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。读取返回 `*StorageValue`（明文 `Value` + `SchemaVersion`）；写入时主程序按插件声明的 `configSchemaVersion`（plugin.json 顶层，与 `contractVersion` 正交——前者管插件配置结构、后者管 host↔plugin 协议）盖 `schema_version` 戳，供插件配置迁移感知（见 `doc/plugin-dev-guide.md` 8.3）。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
 | URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener(extensionId)` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler；`UnregisterUrlListener` 按 extensionId 精细注销（空则清该插件全部，用于卸载） |
@@ -293,7 +294,7 @@ bundled 插件的升级检测与用户答复流（设计见 `../library-squirrel
 
 - **前端扩展注册**：通过 `plugin.json` 的 `extensions.frontendExtensions` 声明式注册（`kind` 区分类型），调用 `RegisterSlot()` 的这种方式已不再被支持
 - **静态资源**：在 `extensions.staticResources.directories` 声明可访问目录
-- **入口函数**：运行时插件导出 `func Activate(ctx pluginsdk.PluginContext)`
+- **入口函数**：运行时插件 `main` 调用 `sdkplugin.Serve(opts ...ServeOption)`（全选项化、无必填参数：`WithTaskHandler`/`WithBrowser`/`WithActivate`/`WithShutdown`；工具型插件可省略 `WithTaskHandler`，此时任务相关 RPC 得 gRPC Unimplemented），Activate 回调内注册扩展点与 URL 监听
 - **PRECOMPILED_OVER_VUESOURCE** (P0): 新组件优先使用 `precompiled` contentType，`vueSource` 需要运行时 SFC 编译开销更大
 - **FACTORY_IMPORT_AS** (P0): 预编译组件中禁止使用 `import { X as Y }` 的 `as` 语法（Vite 工厂插件不兼容），需要别名时直接修改变量名
 - **LAZY_EMITTER_CLOSURE** (P1): 主程序中引用 `emitter` 必须通过闭包延迟读取，禁止在初始化阶段直接持有 emitter 引用

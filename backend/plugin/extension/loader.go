@@ -268,6 +268,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
 		FrontendEventProvider:   &hostFrontendEventProvider{ctx: deps.PluginCtx},
+		LibraryQueryProvider:    &hostLibraryQueryProvider{ctx: deps.PluginCtx},
 		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
 		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
 		OnUnregisterSiteBrowser: callbacks.onUnregisterSiteBrowser,
@@ -608,4 +609,107 @@ func (p *hostFrontendEventProvider) SubscribeFrontend(topic string, pushCh func(
 
 func (p *hostFrontendEventProvider) UnsubscribeFrontend(topic string) error {
 	return p.ctx.UnsubscribeFrontend(topic)
+}
+
+// hostLibraryQueryProvider 将 PluginContext 的库查询方法组适配为 HostDeps 的
+// dto.LibraryQueryProvider（context.Context + 契约请求消息形态），供 LibraryQuery
+// gRPC 服务端委托；未命中/未配置等语义码错误由 pluginContext 内部产生并原样透传
+type hostLibraryQueryProvider struct {
+	ctx sdkdto.PluginContext
+}
+
+// ===== 作品 =====
+
+func (p *hostLibraryQueryProvider) GetWorkById(ctx context.Context, req *gen.GetWorkByIdRequest) (*gen.WorkWithSite, error) {
+	return p.ctx.GetWorkById(req.WorkId)
+}
+
+func (p *hostLibraryQueryProvider) GetWorkBySiteKey(ctx context.Context, req *gen.GetWorkBySiteKeyRequest) (*gen.WorkWithSite, error) {
+	return p.ctx.GetWorkBySiteKey(req.SiteKey, req.SiteWorkId)
+}
+
+func (p *hostLibraryQueryProvider) QueryWorks(ctx context.Context, req *gen.QueryWorksRequest) (*gen.QueryWorksResponse, error) {
+	return p.ctx.QueryWorks(req)
+}
+
+// ===== 资源与 store =====
+
+func (p *hostLibraryQueryProvider) ListResourcesByWorkId(ctx context.Context, req *gen.ListResourcesByWorkIdRequest) (*gen.ListResourcesByWorkIdResponse, error) {
+	return p.ctx.ListResourcesByWorkId(req.WorkId)
+}
+
+// ===== 作者 =====
+
+func (p *hostLibraryQueryProvider) GetLocalAuthorById(ctx context.Context, req *gen.GetLocalAuthorByIdRequest) (*gen.LocalAuthorDTO, error) {
+	return p.ctx.GetLocalAuthorById(req.LocalAuthorId)
+}
+
+func (p *hostLibraryQueryProvider) QueryLocalAuthors(ctx context.Context, req *gen.QueryLocalAuthorsRequest) (*gen.QueryLocalAuthorsResponse, error) {
+	return p.ctx.QueryLocalAuthors(req)
+}
+
+func (p *hostLibraryQueryProvider) GetSiteAuthorBySiteKey(ctx context.Context, req *gen.GetSiteAuthorBySiteKeyRequest) (*gen.SiteAuthorInfo, error) {
+	return p.ctx.GetSiteAuthorBySiteKey(req.SiteKey, req.SiteAuthorId)
+}
+
+func (p *hostLibraryQueryProvider) QuerySiteAuthors(ctx context.Context, req *gen.QuerySiteAuthorsRequest) (*gen.QuerySiteAuthorsResponse, error) {
+	return p.ctx.QuerySiteAuthors(req)
+}
+
+func (p *hostLibraryQueryProvider) ListAuthorsByWorkId(ctx context.Context, req *gen.ListAuthorsByWorkIdRequest) (*gen.ListAuthorsByWorkIdResponse, error) {
+	return p.ctx.ListAuthorsByWorkId(req.WorkId)
+}
+
+// ===== 标签 =====
+
+func (p *hostLibraryQueryProvider) GetLocalTagById(ctx context.Context, req *gen.GetLocalTagByIdRequest) (*gen.LocalTagDTO, error) {
+	return p.ctx.GetLocalTagById(req.LocalTagId)
+}
+
+func (p *hostLibraryQueryProvider) QueryLocalTags(ctx context.Context, req *gen.QueryLocalTagsRequest) (*gen.QueryLocalTagsResponse, error) {
+	return p.ctx.QueryLocalTags(req)
+}
+
+func (p *hostLibraryQueryProvider) GetSiteTagBySiteKey(ctx context.Context, req *gen.GetSiteTagBySiteKeyRequest) (*gen.SiteTagInfo, error) {
+	return p.ctx.GetSiteTagBySiteKey(req.SiteKey, req.SiteTagId)
+}
+
+func (p *hostLibraryQueryProvider) QuerySiteTags(ctx context.Context, req *gen.QuerySiteTagsRequest) (*gen.QuerySiteTagsResponse, error) {
+	return p.ctx.QuerySiteTags(req)
+}
+
+func (p *hostLibraryQueryProvider) ListTagsByWorkId(ctx context.Context, req *gen.ListTagsByWorkIdRequest) (*gen.ListTagsByWorkIdResponse, error) {
+	return p.ctx.ListTagsByWorkId(req.WorkId)
+}
+
+// ===== 作品集 =====
+
+func (p *hostLibraryQueryProvider) GetWorkSetById(ctx context.Context, req *gen.GetWorkSetByIdRequest) (*gen.WorkSet, error) {
+	return p.ctx.GetWorkSetById(req.WorkSetId)
+}
+
+func (p *hostLibraryQueryProvider) GetWorkSetBySiteKey(ctx context.Context, req *gen.GetWorkSetBySiteKeyRequest) (*gen.WorkSet, error) {
+	return p.ctx.GetWorkSetBySiteKey(req.SiteKey, req.SiteWorkSetId)
+}
+
+func (p *hostLibraryQueryProvider) ListWorkSetsByWorkId(ctx context.Context, req *gen.ListWorkSetsByWorkIdRequest) (*gen.ListWorkSetsByWorkIdResponse, error) {
+	return p.ctx.ListWorkSetsByWorkId(req.WorkId)
+}
+
+func (p *hostLibraryQueryProvider) ListParentWorkSets(ctx context.Context, req *gen.ListParentWorkSetsRequest) (*gen.ListParentWorkSetsResponse, error) {
+	return p.ctx.ListParentWorkSets(req.WorkSetId)
+}
+
+func (p *hostLibraryQueryProvider) ListChildWorkSets(ctx context.Context, req *gen.ListChildWorkSetsRequest) (*gen.ListChildWorkSetsResponse, error) {
+	return p.ctx.ListChildWorkSets(req.WorkSetId)
+}
+
+// ===== 站点 / 工作目录 =====
+
+func (p *hostLibraryQueryProvider) ListSites(ctx context.Context, req *gen.Empty) (*gen.ListSitesResponse, error) {
+	return p.ctx.ListSites()
+}
+
+func (p *hostLibraryQueryProvider) GetWorkDir(ctx context.Context, req *gen.Empty) (*gen.GetWorkDirResponse, error) {
+	return p.ctx.GetWorkDir()
 }

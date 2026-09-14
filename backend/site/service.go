@@ -24,6 +24,8 @@ type Repository interface {
 	Updates(ctx context.Context, site *entity.Site) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.Site, error)
+	// GetByKey 按站点身份键获取（跨库身份寻址的规范入口）
+	GetByKey(ctx context.Context, siteKey string) (*entity.Site, error)
 	// Get 根据条件获取单个
 	Get(ctx context.Context, opt *database.QueryOption) (*entity.Site, error)
 	// List 查询列表
@@ -142,11 +144,7 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 // GetByKey 根据站点键获取——站点身份查询的规范入口（site_key 为站点唯一身份，
 // 名称仅展示、同名可共存，身份匹配一律走键）
 func (s *Service) GetByKey(ctx context.Context, siteKey string) (*entity.Site, error) {
-	where := clause.Eq{Column: "site_key", Value: siteKey}
-	opt := &database.QueryOption{
-		Conditions: []clause.Expression{where},
-	}
-	return s.repo.Get(ctx, opt)
+	return s.repo.GetByKey(ctx, siteKey)
 }
 
 // 错误定义

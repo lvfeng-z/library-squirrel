@@ -6,13 +6,13 @@
 
 Library Squirrel 通过插件扩展支持的站点（pixiv、本地导入等）与 UI。插件是**独立可执行程序**（Windows 下 `.exe`），由主程序以**子进程**方式启动，通过 **gRPC** 通信。
 
-主程序使用 [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin) 库管理插件子进程的完整生命周期：进程启动、握手鉴权（MagicCookie）、gRPC 通道建立、崩溃检测、优雅关闭（先发 `Shutdown` RPC 等待插件清理，超时后强制终止）；Windows 下还通过 Job Object 将子进程归组，主进程异常退出时自动终止所有插件子进程，避免残留。插件侧调用 `pluginsdk.Serve(...)` 即接入这套机制（握手密钥与插件名由 SDK 固化，开发者无需关心）。
+主程序使用 [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin) 库管理插件子进程的完整生命周期：进程启动、握手鉴权（MagicCookie）、gRPC 通道建立、崩溃检测、优雅关闭（先发 `Shutdown` RPC 等待插件清理，超时后强制终止）；Windows 下还通过 Job Object 将子进程归组，主进程异常退出时自动终止所有插件子进程，避免残留。插件侧调用 `sdkplugin.Serve(...)` 即接入这套机制（握手密钥与插件名由 SDK 固化，开发者无需关心）。
 
 ### 两种插件模式
 
 | 模式 | 入口文件 | 子进程 | 适用 |
 |---|---|---|---|
-| **运行时插件** | 需要 `entryFile` | 需要 | 含 TaskHandler（下载任务）或 SiteBrowser（站点浏览）的插件 |
+| **运行时插件** | 需要 `entryFile` | 需要 | 需要 Go 子进程能力的插件：TaskHandler（下载任务）、SiteBrowser（站点浏览）、工具型（库查询 + 声明式前端扩展，无 TaskHandler，见第四节） |
 | **纯 UI 插件** | 不需要 | 不需要 | 仅提供 Slot 扩展（菜单、视图、弹窗、嵌入组件、入口卡片等） |
 
 ### 扩展点
@@ -52,14 +52,16 @@ replace github.com/lvfeng-z/library-squirrel-sdk => ../library-squirrel-sdk
 package main
 
 import (
-    pluginsdk "github.com/lvfeng-z/library-squirrel-sdk"
+    sdkplugin "github.com/lvfeng-z/library-squirrel-sdk/plugin"
     sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 func main() {
-    pluginsdk.Serve(&MyTaskHandler{},
-        pluginsdk.WithActivate(func(ctx sdkdto.PluginContext) {
-            ctx.RegisterTaskHandler("main", "我的任务处理器", "处理下载", &MyTaskHandler{})
+    handler := &MyTaskHandler{}
+    sdkplugin.Serve(
+        sdkplugin.WithTaskHandler(handler),
+        sdkplugin.WithActivate(func(ctx sdkdto.PluginContext) {
+            ctx.RegisterTaskHandler("main", "我的任务处理器", "处理下载", handler)
             ctx.RegisterUrlListener("main", []string{`https?://example\.com/.*`})
         }),
     )
@@ -87,7 +89,7 @@ type MyTaskHandler struct{}
 }
 ```
 
-> **关键**：插件入口是 `pluginsdk.Serve(handler, opts...)`，在 `main` 函数中调用。`WithActivate` 的回调签名是 `func(ctx sdkdto.PluginContext)`——这是 SDK 唯一约定的 Activate 形式。
+> **关键**：插件入口是 `sdkplugin.Serve(opts...)`（`github.com/lvfeng-z/library-squirrel-sdk/plugin` 包，全选项化、无必填参数），在 `main` 函数中调用。`WithActivate` 的回调签名是 `func(ctx sdkdto.PluginContext)`——这是 SDK 唯一约定的 Activate 形式。
 
 ## 三、plugin.json 清单
 
@@ -188,7 +190,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（首发 1）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 6，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -201,16 +203,18 @@ type MyTaskHandler struct{}
 - 3 — 资源类型扩展（manifest `resourceTypes` 段声明自定义类型；audio 内置）。
 - 4 — StoreSpec 加 `expectedSha256`；Task 删 `pendingResourceId`。
 - 5 — 落盘路径查询 RPC 退役：最终落盘路径改由 SDK `storepath` 派生函数本地推导（插件据任务身份 + specs 顺序自算，见 6.1 StoreSpec 顺序确定性条款），插件不再向主程序查询；`minSupportedContractVersion` 同步升 5，未声明版本的插件拒载。
+- 6 — 新增 `LibraryQuery` 库查询服务（Tier 1 只读，21 个端点，见 5.1）；删除 HostService 死声明 `GetWorkSetBySiteWorkSetId`（无桥接无调用的废弃 RPC，查询能力吸收为 `LibraryQuery.GetWorkSetBySiteKey`）——**删 RPC 属破坏性变更故升版**。主程序 `minSupportedContractVersion` 保持 5（v5 既有捆绑包仍可加载；升 6 属发布时重建捆绑包的动作）。
 
-**跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段不 bump；删/改字段、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。
+**跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
 ### 能力声明
 
-`capabilities` 是内置枚举数组，声明插件提供的**可选能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口或解析对应声明段。当前 2 值：
+`capabilities` 是内置枚举数组，声明插件提供的**可选能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口或解析对应声明段。当前 3 值：
 
 | 能力 | 含义 | 对应接口/声明 |
 |---|---|---|
 | `workOrderQuery` | 提供作品集作品原站序查询 | `WorkOrderQuerier`（TaskHandler 可选扩展） |
+| `workSetRelationQuery` | 提供作品集父集关系查询 | `WorkSetRelationQuerier`（TaskHandler 可选扩展） |
 | `resourceTypeProvider` | 提供自定义资源类型声明 | manifest `resourceTypes` 段（见「自定义资源类型声明」） |
 
 实现 `WorkOrderQuerier` 的插件（如 pixiv）须声明 `"capabilities": ["workOrderQuery"]`；声明自定义资源类型的插件须含 `"resourceTypeProvider"`（主程序据此解析 `resourceTypes` 段）。未声明者省略或 `[]`。能力不单独版本化，演进由全局 `contractVersion` 兜底。
@@ -269,35 +273,56 @@ store_type / resource_type / generation 的字符串值**单一真相源**在 SD
 
 ## 四、插件入口
 
-运行时插件的 `main` 函数调用 `pluginsdk.Serve`：
+运行时插件的 `main` 函数调用 `sdkplugin.Serve`（下载型示例）：
 
 ```go
 func main() {
-    pluginsdk.Serve(&MyTaskHandler{},
-        pluginsdk.WithBrowser(&MySiteBrowser{}),       // 可选，注册 SiteBrowser
-        pluginsdk.WithActivate(func(ctx sdkdto.PluginContext) {
+    handler := &MyTaskHandler{}
+    browser := &MySiteBrowser{}
+    sdkplugin.Serve(
+        sdkplugin.WithTaskHandler(handler),  // 下载型插件：注册 TaskHandler
+        sdkplugin.WithBrowser(browser),      // 可选，注册 SiteBrowser
+        sdkplugin.WithActivate(func(ctx sdkdto.PluginContext) {
             // 在此注册扩展点、监听 URL 等（站点行由主程序按 identity 注册表自动投影，插件无需建站）
-            ctx.RegisterTaskHandler("main", "名称", "描述", &MyTaskHandler{})
-            ctx.RegisterSiteBrowser("main", "名称", "描述", &MySiteBrowser{})
             ctx.RegisterUrlListener("main", []string{`https?://example\.com/.*`})
         }),
-        pluginsdk.WithShutdown(func() {
+        sdkplugin.WithShutdown(func() {
             // 可选，进程关闭前的清理
         }),
     )
 }
 ```
 
-- `Serve(handler, opts...)`：`handler`（TaskHandler）为必填位置参数。
-- `WithActivate(fn)`：回调签名 `func(ctx sdkdto.PluginContext)`，主程序握手完成后调用。**这是注册扩展点的唯一时机**。
+- `Serve(opts...)`：全部能力以选项提供，**无必填参数**。未设置 `WithTaskHandler` 时插件进程不注册 TaskHandlerService，主程序侧任务相关 RPC 得到 gRPC `Unimplemented`。
+- `WithTaskHandler(handler)`：注册 TaskHandler 扩展点（下载任务生命周期，见 6.1）。
 - `WithBrowser(browser)`：注册 SiteBrowser（也可在 Activate 内 `RegisterSiteBrowser`）。
+- `WithActivate(fn)`：回调签名 `func(ctx sdkdto.PluginContext)`，主程序握手完成后调用。**这是注册扩展点的唯一时机**。
 - `WithShutdown(fn)`：进程关闭前回调（主程序 `UnloadPlugin` 时触发）。
 
-> **依赖注入**：若你的 handler/browser 需要持有 `ctx` 或其他对象，用闭包捕获（参考 pixiv 的 `main.go`：先 new 出 handler/browser，再在 `WithActivate` 闭包里把 ctx 注入）。
+**工具型插件形态**（无下载功能，仅用宿主库查询 + 声明式前端扩展，如统计面板/去重扫描）：省略 `WithTaskHandler`，在 Activate 里持住 `ctx` 即可调用库查询方法组（见 5.1）：
+
+```go
+func main() {
+    sdkplugin.Serve(
+        sdkplugin.WithActivate(func(ctx sdkdto.PluginContext) {
+            go func() {
+                resp, err := ctx.QueryWorks(&sdkdto.QueryWorksRequest{
+                    SiteKey: "pixiv", Page: &sdkdto.PageRequest{Page: 1, PageSize: 50},
+                })
+                // ... 消费查询结果（分页/错误语义见 5.1）
+                _ = resp
+                _ = err
+            }()
+        }),
+    )
+}
+```
+
+> **依赖注入**：若你的 handler/browser 需要持有 `ctx` 或其他对象，用闭包捕获（参考 local-import 的 `main.go`：先 new 出 handler，再在 `WithActivate` 闭包里把 ctx 注入）。
 
 ## 五、PluginContext 完整 API
 
-`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 22 个方法：
+`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 43 个方法（22 个通用方法 + 21 个库查询方法，后者见 5.1）：
 
 | 分类 | 方法 | 签名 |
 |---|---|---|
@@ -315,10 +340,45 @@ func main() {
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
 | | `UnsubscribeFrontend` | `(topic string) error` |
+| 库查询 | 21 个只读方法（作品 / 资源与 store / 作者 / 标签 / 作品集 / 站点 / 工作目录） | 见 5.1「宿主库查询」 |
 | 路径 | `GetPluginRoot` | `(isRelative bool) string` |
 | 窗口 | `GetMainWindowHandle` | `() uintptr` |
 | 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | `(template string, args ...any)` |
 | | `GetLogger` | `() Logger`（可 `Named(...)` 派生子 logger） |
+
+### 5.1 宿主库查询（Tier 1 只读）
+
+`PluginContext` 暴露 21 个库查询方法，打到宿主 `LibraryQuery` gRPC 服务（契约定义：SDK `proto/plugin.proto` 的 `service LibraryQuery`，proto 单源、dto 层别名透出），查询主程序库内**已有**的作品及周边数据——统计面板、去重扫描、跨站聚合、导出同步、元数据补全等工具型形态的数据面。查询 RPC **无需任何 `capabilities` 声明**，与 `GetValue`/`CreateTask` 等 HostService RPC 同等对待、直接调用（capabilities 门控的是主程序→插件方向，见「能力声明」；宿主对每次调用记诊断级日志——调用方插件 + 端点 + 关键参数，日志短留存不作台账）。
+
+**端点分组**（21 个）：
+
+| 分组 | 方法 | 说明 |
+|---|---|---|
+| 作品 | `GetWorkById(workId)` / `GetWorkBySiteKey(siteKey, siteWorkId)` / `QueryWorks(req)` | `QueryWorks` 过滤：site_key（精确）、作品名/作者名/标签名模糊、入库时间范围；返回 `WorkWithSite`（作品 + 归属站点） |
+| 资源与 store | `ListResourcesByWorkId(workId)` | 每资源带活行 store 摘要 `ResourceInfo.stores[]`（role / store_seq / file_path / format / width / height / completed_at） |
+| 作者 | `GetLocalAuthorById` / `QueryLocalAuthors`（本地轨）；`GetSiteAuthorBySiteKey` / `QuerySiteAuthors`（站点轨）；`ListAuthorsByWorkId`（作品关联） | 作品关联结果分 local / site 两轨返回 |
+| 标签 | `GetLocalTagById` / `QueryLocalTags` / `GetSiteTagBySiteKey` / `QuerySiteTags` / `ListTagsByWorkId`（与作者对称） | `ListTagsByWorkId` 条目带**关联级 namespace** 维度；站点标签含站点侧 namespace 元数据 |
+| 作品集 | `GetWorkSetById` / `GetWorkSetBySiteKey` / `ListWorkSetsByWorkId` / `ListParentWorkSets` / `ListChildWorkSets` | 父子导航按库内作品集行 id |
+| 站点 | `ListSites()` | identity 注册表投影全集，只读 |
+| 工作目录 | `GetWorkDir()` | 资源库根目录绝对路径（OS 原生分隔符） |
+
+**使用规则**：
+
+1. **身份键优先**：跨库语义寻址一律 `(site_key, 站点侧 id)` 复合键（如 `GetWorkBySiteKey("pixiv", "128937464")`）。消息内各 int64 id 是库内行 id，仅作**会话内不透明句柄**（Get 结果携带 → `List*` 导航链路使用），不构成跨会话稳定标识。站点侧作者/标签/作品集同理（`GetSiteAuthorBySiteKey(siteKey, siteAuthorId)` 等）。
+2. **分页强制**：`Query*` 族（无界集合）强制分页——请求带 `PageRequest{page, page_size}`，响应带 `PageInfo{total, page, page_size}` 回执（dto 层为 gen 类型别名）。宿主钳制：`page < 1` 按 1、`page_size` 缺省 20、**上限 200**（超限截到 200），实际生效值以 `PageInfo` 回执为准。按归属锚定的完整关联（`List*ByWorkId` 族、作品集父子导航——语义即全集，体量由归属上界锚定）与 `ListSites`（站点键只增不改，个位数级）不分页。
+3. **重查询节制（指导原则）**：主程序数据库连接池 `MaxOpenConns=1`（SQLite 单写者），插件查询与主程序 UI/任务操作**共享同一连接**——重查询会阻塞用户界面。优先用过滤条件收窄结果集，避免「大页 + 全量翻页遍历」形态；扫描类需求先取 `PageInfo.total` 估算规模再定策略。
+4. **软删/活行语义**：查询**默认只返回活数据**——软删作品/store 不出现在任何结果，`resource_store` 关联按活行过滤（软删残留不现役）。无 IncludeDeleted 通道（插件无消费死行的合法场景）。
+5. **未命中语义**：`Get*` 族未命中返回 gRPC `NotFound`；`Query*` 族的 `site_key` 是过滤条件而非寻址——site_key 未命中注册表返回**空集**（不报错）。
+6. **relPath 正斜杠纪律**：`StoreInfo.file_path` 是 workDir 相对路径（relPath 域），分隔符**恒为正斜杠**（与库内存储一致）。Windows 插件拼 OS 路径自行 `filepath.Join(workDir, filePath)` 现场转换，禁止把反斜杠版本回存或作为比较键。
+7. **文件访问边界（「给位置」档）**：查询 API 给位置不给内容——结果携带 `file_path`，配合 `GetWorkDir` 可定位库内文件。当前信任模型下插件是可信子进程：拿到位置物理上可自读、可直写库内文件——**API 永不提供写入口 ≠ 物理防住**。绕过主程序直写库内文件会破坏一致性（fsmonitor 对账、软删状态、路径/命名规约），后果自负；需要写入时走既有业务流（任务管线 `CreateTask`）。
+8. **Unimplemented 降级约定**：加 RPC 不 bump contractVersion（见「契约版本协商」），版本门拦不住「同代宿主缺某查询端点」的组合——典型如用新 SDK 编译、manifest 手动声明低契约版本的插件运行在旧宿主上。调用宿主未实现的查询端点得到 gRPC `Unimplemented`，应作为「宿主过旧、无此查询能力」的探测信号**优雅降级**（隐藏依赖该端点的功能 / 提示升级主程序），禁止当作数据错误或无限重试。跨代组合（插件声明 > 宿主 current）在加载期即被拒，不会进入运行期。
+
+**已知边界（如实记录）**：
+
+- `StoreInfo.size`（文件字节数）当前宿主恒缺省——`persistent_store` 无字节列，字段为契约留位；需要体积信息时插件可对 `file_path` 自行 `os.Stat`。
+- `QueryWorks` 作者名过滤匹配 `author_name`（本地/站点两轨任一命中即匹配）；站点轨的 `fixed_author_name`（排序固定名）**未纳入**匹配域。
+- 任务历史不在查询面（任务域刚完成表拆分、查询语义未稳定，留待需求）。
+- 库查询是 Tier 1 只读面：写库数据接口（Tier 2）未开放——仅有准入判据无实现；host→插件事件推送方向留位未做。两者均不得在插件中假设可用。
 
 ## 六、扩展点
 
@@ -607,12 +667,15 @@ all, _ := ctx.GetAllValues()                // map[key]*StorageValue（加密项
 - 插件在 `Activate` 开头用 SDK 助手 `plugin.MigrateConfig` 自行迁移。
 
 ```go
-import "github.com/lvfeng-z/library-squirrel-sdk/plugin"
+import (
+    sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+    "github.com/lvfeng-z/library-squirrel-sdk/plugin"
+)
 
-func Activate(ctx pluginsdk.PluginContext, ...) {
+func Activate(ctx sdkdto.PluginContext, ...) {
     // 第一件事：配置迁移（幂等，best-effort）
     plugin.MigrateConfig(ctx, 3, map[int]plugin.MigrateStep{
-        2: func(ctx pluginsdk.PluginContext) error { // v1 → v2：dlQuality 改名 downloadQuality
+        2: func(ctx sdkdto.PluginContext) error { // v1 → v2：dlQuality 改名 downloadQuality
             old, _ := ctx.GetValue("dlQuality")
             if old != nil && old.SchemaVersion < 2 {
                 ctx.SetValue("downloadQuality", old.Value) // 主程序自动盖新版本戳
@@ -620,7 +683,7 @@ func Activate(ctx pluginsdk.PluginContext, ...) {
             }
             return nil
         },
-        3: func(ctx pluginsdk.PluginContext) error { /* v2 → v3 */ return nil },
+        3: func(ctx sdkdto.PluginContext) error { /* v2 → v3 */ return nil },
     })
     // 注册扩展点、读配置 ...
 }
@@ -878,8 +941,8 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 声明 contractVersion**：发布前确认 `contractVersion` 与目标主程序契约版本一致（首发 1，跟随 SDK `transport.ContractVersion`）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
-20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 须声明 `"capabilities": ["workOrderQuery"]`；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
+19. **manifest 声明 contractVersion**：发布前确认 `contractVersion` 与目标主程序契约版本一致（跟随 SDK `transport.ContractVersion`）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 须声明 `"capabilities": ["workOrderQuery"]`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
 
