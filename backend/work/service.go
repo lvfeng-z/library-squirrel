@@ -54,6 +54,8 @@ type SiteAuthorReader interface {
 type SiteReader interface {
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.Site, error)
+	// GetByKey 按站点身份键获取（站点表为注册表投影，键未注册即无行返回未命中错误）
+	GetByKey(ctx context.Context, siteKey string) (*entity2.Site, error)
 }
 
 // ResourceReader 资源读取接口
@@ -1311,8 +1313,56 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	return workId, nil
 }
 
-// upsertSiteAuthors 批量 upsert 站点作者，返回 DB ID 列表（与 dtos 顺序一致）
+// upsertSiteAuthors 批量处理站点作者声明，返回 DB ID 列表（与 dtos 顺序一致）。
+// DTO.SiteKey 缺省（空）或等于作品站点键 = 本站声明（批量 upsert，建行/改行）；声明其他站点键 =
+// 跨站引用（find-only 查既有行挂联，不写行不造行，站点键未注册或行不存在报错）
 func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	sameDtos, sameIdx, cross, err := partitionCrossSite(ctx, s.siteReader, siteId, dtos,
+		func(d *sdkdto.TaskSiteAuthorDTO) string { return d.SiteKey },
+		func(d *sdkdto.TaskSiteAuthorDTO) string { return d.SiteAuthorId })
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, len(dtos))
+	if len(cross) > 0 {
+		crossIds, err := s.resolveCrossSiteRefs(ctx, cross, "站点作者", "siteAuthorId",
+			func(ctx context.Context, siteId int64, siteAuthorIds []string) (map[string]int64, error) {
+				existing, err := s.siteAuthorWriter.ListBySiteAndSiteAuthorIDs(ctx, siteId, siteAuthorIds)
+				if err != nil {
+					return nil, err
+				}
+				idMap := make(map[string]int64, len(existing))
+				for _, sa := range existing {
+					if sa.SiteAuthorID.Valid {
+						idMap[sa.SiteAuthorID.String] = sa.ID
+					}
+				}
+				return idMap, nil
+			})
+		if err != nil {
+			return nil, err
+		}
+		for i, id := range crossIds {
+			ids[i] = id
+		}
+	}
+	if len(sameDtos) > 0 {
+		sameIds, err := s.batchUpsertSiteAuthors(ctx, sameDtos, siteId)
+		if err != nil {
+			return nil, err
+		}
+		for j, i := range sameIdx {
+			ids[i] = sameIds[j]
+		}
+	}
+	return ids, nil
+}
+
+// batchUpsertSiteAuthors 批量 upsert 本站（作品站点）的站点作者，返回 DB ID 列表（与 dtos 顺序一致）
+func (s *Service) batchUpsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSiteAuthorDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -1352,8 +1402,55 @@ func (s *Service) upsertSiteAuthors(ctx context.Context, dtos []*sdkdto.TaskSite
 	return ids, nil
 }
 
-// upsertSiteTags 批量 upsert 站点标签，返回 DB ID 列表（与 dtos 顺序一致）
+// upsertSiteTags 批量处理站点标签声明，返回 DB ID 列表（与 dtos 顺序一致）。
+// 站点键语义同 upsertSiteAuthors：缺省/等于作品站点键 = 本站批量 upsert，其他站点键 = 跨站 find-only
 func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	sameDtos, sameIdx, cross, err := partitionCrossSite(ctx, s.siteReader, siteId, dtos,
+		func(d *sdkdto.TaskSiteTagDTO) string { return d.SiteKey },
+		func(d *sdkdto.TaskSiteTagDTO) string { return d.SiteTagId })
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, len(dtos))
+	if len(cross) > 0 {
+		crossIds, err := s.resolveCrossSiteRefs(ctx, cross, "站点标签", "siteTagId",
+			func(ctx context.Context, siteId int64, siteTagIds []string) (map[string]int64, error) {
+				existing, err := s.siteTagWriter.ListBySiteAndSiteTagIDs(ctx, siteId, siteTagIds)
+				if err != nil {
+					return nil, err
+				}
+				idMap := make(map[string]int64, len(existing))
+				for _, st := range existing {
+					if st.SiteTagID.Valid {
+						idMap[st.SiteTagID.String] = st.ID
+					}
+				}
+				return idMap, nil
+			})
+		if err != nil {
+			return nil, err
+		}
+		for i, id := range crossIds {
+			ids[i] = id
+		}
+	}
+	if len(sameDtos) > 0 {
+		sameIds, err := s.batchUpsertSiteTags(ctx, sameDtos, siteId)
+		if err != nil {
+			return nil, err
+		}
+		for j, i := range sameIdx {
+			ids[i] = sameIds[j]
+		}
+	}
+	return ids, nil
+}
+
+// batchUpsertSiteTags 批量 upsert 本站（作品站点）的站点标签，返回 DB ID 列表（与 dtos 顺序一致）
+func (s *Service) batchUpsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTagDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -1393,8 +1490,55 @@ func (s *Service) upsertSiteTags(ctx context.Context, dtos []*sdkdto.TaskSiteTag
 	return ids, nil
 }
 
-// upsertWorkSets 批量 upsert 作品集，返回 DB ID 列表（与 dtos 顺序一致）
+// upsertWorkSets 批量处理作品集声明，返回 DB ID 列表（与 dtos 顺序一致）。
+// 站点键语义同 upsertSiteAuthors：缺省/等于作品站点键 = 本站批量 upsert，其他站点键 = 跨站 find-only
 func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
+	if len(dtos) == 0 {
+		return nil, nil
+	}
+	sameDtos, sameIdx, cross, err := partitionCrossSite(ctx, s.siteReader, siteId, dtos,
+		func(d *sdkdto.TaskWorkSetDTO) string { return d.SiteKey },
+		func(d *sdkdto.TaskWorkSetDTO) string { return d.SiteWorkSetId })
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, len(dtos))
+	if len(cross) > 0 {
+		crossIds, err := s.resolveCrossSiteRefs(ctx, cross, "作品集", "siteWorkSetId",
+			func(ctx context.Context, siteId int64, siteWorkSetIds []string) (map[string]int64, error) {
+				existing, err := s.workSetWriter.ListBySiteAndSiteWorkSetIDs(ctx, siteId, siteWorkSetIds)
+				if err != nil {
+					return nil, err
+				}
+				idMap := make(map[string]int64, len(existing))
+				for _, ws := range existing {
+					if ws.SiteWorkSetID.Valid {
+						idMap[ws.SiteWorkSetID.String] = ws.ID
+					}
+				}
+				return idMap, nil
+			})
+		if err != nil {
+			return nil, err
+		}
+		for i, id := range crossIds {
+			ids[i] = id
+		}
+	}
+	if len(sameDtos) > 0 {
+		sameIds, err := s.batchUpsertWorkSets(ctx, sameDtos, siteId)
+		if err != nil {
+			return nil, err
+		}
+		for j, i := range sameIdx {
+			ids[i] = sameIds[j]
+		}
+	}
+	return ids, nil
+}
+
+// batchUpsertWorkSets 批量 upsert 本站（作品站点）的作品集，返回 DB ID 列表（与 dtos 顺序一致）
+func (s *Service) batchUpsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSetDTO, siteId int64) ([]int64, error) {
 	if len(dtos) == 0 {
 		return nil, nil
 	}
@@ -1432,6 +1576,94 @@ func (s *Service) upsertWorkSets(ctx context.Context, dtos []*sdkdto.TaskWorkSet
 		ids[i] = idMap[d.SiteWorkSetId]
 	}
 	return ids, nil
+}
+
+// crossSiteRef 周边数据声明的跨站引用统一形态：dto 在原列表中的下标、声明的站点键与站点侧 ID
+type crossSiteRef struct {
+	idx        int
+	siteKey    string
+	siteSideID string
+}
+
+// partitionCrossSite 按声明的站点键拆分周边 DTO：缺省（空键）与等于作品站点键的条目为本站声明
+// （返回本站子集与各元素在原列表的下标，供调用方还原输出顺序），其余条目为跨站引用。
+// 全部条目都未声明站点键时不查询站点行——本站路径零额外查询，行为与纯本站声明时一致
+func partitionCrossSite[T any](ctx context.Context, siteReader SiteReader, siteId int64, dtos []T, siteKeyOf func(T) string, sideIdOf func(T) string) ([]T, []int, []crossSiteRef, error) {
+	declared := false
+	for _, d := range dtos {
+		if siteKeyOf(d) != "" {
+			declared = true
+			break
+		}
+	}
+	sameIdx := make([]int, len(dtos))
+	if !declared {
+		for i := range dtos {
+			sameIdx[i] = i
+		}
+		return dtos, sameIdx, nil, nil
+	}
+	// 有声明站点键才需要作品站点键做本站/跨站判定
+	site, err := siteReader.GetById(ctx, siteId)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("查询作品所属站点失败 siteId=%d: %w", siteId, err)
+	}
+	same := make([]T, 0, len(dtos))
+	var cross []crossSiteRef
+	for i, d := range dtos {
+		key := siteKeyOf(d)
+		if key == "" || key == site.SiteKey {
+			same = append(same, d)
+			sameIdx[len(same)-1] = i
+		} else {
+			cross = append(cross, crossSiteRef{idx: i, siteKey: key, siteSideID: sideIdOf(d)})
+		}
+	}
+	return same, sameIdx[:len(same)], cross, nil
+}
+
+// resolveCrossSiteRefs find-only 解析跨站引用的既有行 DB ID（站点域跨站引用只挂联既有行，
+// 不写行不造行——行的身份只能来自其站点的站点侧 ID）。站点键按站点表键寻址解析（站点表为
+// SDK identity 注册表的启动投影，未注册键无行即报错）；同站点条目一次批量查行（lookup 返回
+// 站点侧 ID → 行 DB ID）；缺行报错并携带站点键与站点侧 ID 供插件定位声明错误。
+// 返回 dto 下标 → 行 DB ID
+func (s *Service) resolveCrossSiteRefs(ctx context.Context, refs []crossSiteRef, kindLabel, sideIdLabel string, lookup func(ctx context.Context, siteId int64, sideIds []string) (map[string]int64, error)) (map[int]int64, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	// 按站点键分组（保序），同站点一次批量查行
+	keys := make([]string, 0, len(refs))
+	byKey := make(map[string][]crossSiteRef, len(refs))
+	for _, r := range refs {
+		if _, ok := byKey[r.siteKey]; !ok {
+			keys = append(keys, r.siteKey)
+		}
+		byKey[r.siteKey] = append(byKey[r.siteKey], r)
+	}
+	result := make(map[int]int64, len(refs))
+	for _, key := range keys {
+		site, err := s.siteReader.GetByKey(ctx, key)
+		if err != nil || site == nil {
+			return nil, fmt.Errorf("跨站引用%s失败: 站点键未注册 siteKey=%s: %v", kindLabel, key, err)
+		}
+		grp := byKey[key]
+		sideIds := make([]string, len(grp))
+		for i, r := range grp {
+			sideIds[i] = r.siteSideID
+		}
+		idMap, err := lookup(ctx, site.ID, sideIds)
+		if err != nil {
+			return nil, fmt.Errorf("跨站引用%s查行失败 siteKey=%s: %w", kindLabel, key, err)
+		}
+		for _, r := range grp {
+			if id, ok := idMap[r.siteSideID]; ok {
+				result[r.idx] = id
+			} else {
+				return nil, fmt.Errorf("跨站引用%s行不存在 siteKey=%s %s=%s", kindLabel, key, sideIdLabel, r.siteSideID)
+			}
+		}
+	}
+	return result, nil
 }
 
 // resolveLocalAuthors 处理本地作者，返回 DB ID 列表

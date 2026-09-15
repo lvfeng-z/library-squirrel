@@ -680,6 +680,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			Homepage:        a.Homepage,
 			FixedAuthorName: a.FixedAuthorName,
 			Introduce:       a.Introduce,
+			SiteKey:         a.SiteKey,
 		})
 	}
 	for _, t := range pb.SiteTags {
@@ -687,12 +688,15 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			SiteTagId:   t.SiteTagId,
 			TagName:     t.TagName,
 			Description: t.Description,
+			Namespace:   t.Namespace,
+			SiteKey:     t.SiteKey,
 		})
 	}
 	for _, ws := range pb.WorkSets {
 		resp.WorkSets = append(resp.WorkSets, &pluginsdkdto.TaskWorkSetDTO{
 			SiteWorkSetId: ws.SiteWorkSetId,
 			WorkSetName:   ws.WorkSetName,
+			SiteKey:       ws.SiteKey,
 		})
 	}
 	return resp

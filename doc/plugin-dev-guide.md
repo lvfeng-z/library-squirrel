@@ -104,7 +104,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 5 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 7 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
@@ -190,7 +190,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 6，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 7，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -204,6 +204,7 @@ type MyTaskHandler struct{}
 - 4 — StoreSpec 加 `expectedSha256`；Task 删 `pendingResourceId`。
 - 5 — 落盘路径查询 RPC 退役：最终落盘路径改由 SDK `storepath` 派生函数本地推导（插件据任务身份 + specs 顺序自算，见 6.1 StoreSpec 顺序确定性条款），插件不再向主程序查询；`minSupportedContractVersion` 同步升 5，未声明版本的插件拒载。
 - 6 — 新增 `LibraryQuery` 库查询服务（Tier 1 只读，21 个端点，见 5.1）；删除 HostService 死声明 `GetWorkSetBySiteWorkSetId`（无桥接无调用的废弃 RPC，查询能力吸收为 `LibraryQuery.GetWorkSetBySiteKey`）——**删 RPC 属破坏性变更故升版**。主程序 `minSupportedContractVersion` 保持 5（v5 既有捆绑包仍可加载；升 6 属发布时重建捆绑包的动作）。
+- 7 — 周边数据写面契约：任务声明期周边三 DTO（`TaskSiteAuthorDTO`/`TaskSiteTagDTO`/`TaskWorkSetDTO`）加可选 `siteKey` 字段——周边数据跨站寻址（声明站点≠作品站点时 find-only 引用既有行，缺省=作品站点本站 upsert，见 6.1「作品及周边数据写面契约」）。加字段向前兼容，作为周边写面新能力标识升版；主程序 `minSupportedContractVersion` 维持 5，v5/v6 插件混装载不受影响。
 
 **跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
@@ -379,7 +380,7 @@ func main() {
 - `QueryWorks` 作者名过滤匹配 `author_name`（本地/站点两轨任一命中即匹配）；站点轨的 `fixed_author_name`（排序固定名）**未纳入**匹配域。
 - 安装门禁要求 manifest 至少声明一个扩展（taskHandlers / siteBrowsers / frontendExtensions 任一非空，`backend/plugin/service.go:320`）——纯查询无任何扩展声明的插件**不可安装**；工具型插件至少声明一个前端扩展（如惰性 view）。已安装后，子进程启动判据是**入口文件在场**（有 `entryFile` 即运行时插件，含仅查询+view 的工具型形态），与扩展声明解耦。
 - 任务历史不在查询面（任务域刚完成表拆分、查询语义未稳定，留待需求）。
-- 库查询是 Tier 1 只读面：写库数据接口（Tier 2）未开放——仅有准入判据无实现；host→插件事件推送方向留位未做。两者均不得在插件中假设可用。
+- 库查询是 Tier 1 只读面：写库数据接口（Tier 2）未开放——仅有准入判据无实现；作品及周边数据的写入走任务管线声明面（`WorkResponse` 周边 DTO，统一矩阵见 6.1「作品及周边数据写面契约」），不经库查询面。host→插件事件推送方向留位未做，不得在插件中假设可用。
 
 ## 六、扩展点
 
@@ -523,10 +524,78 @@ CreateWorkInfo(task) → 反序列化 task.PluginData
 
 关键 DTO 字段(**留空则该字段不入库/不前端展示**):
 
-- `TaskSiteAuthorDTO`:`SiteAuthorID`、`AuthorName`、`Introduce`(作者简介/签名)、`Homepage`、`Rank`(等级等)、`FixedAuthorName` 等。
-- `TaskSiteTagDTO`:`SiteTagID`、`TagName`、`Description`(标签简介)。
+- `TaskSiteAuthorDTO`:`SiteAuthorID`、`AuthorName`、`Introduce`(作者简介/签名)、`Homepage`、`FixedAuthorName`、`SiteKey`(周边跨站寻址,见下「作品及周边数据写面契约」)。
+- `TaskSiteTagDTO`:`SiteTagID`、`TagName`、`Description`(标签简介)、`Namespace`、`SiteKey`。
+- `LocalAuthorDTO`/`LocalTagDTO`:`Id`(引用既有本地行)或 `AuthorName`/`LocalTagName`(按名 find-or-create)。
+- `TaskWorkSetDTO`:`SiteWorkSetId`、`WorkSetName`、`SiteKey`。
 
 **兜底原则**:作者/标签的富信息(简介/等级)获取失败时(站点风控、字段不存在等),回退基本字段(name + homepage),标记为非致命——`CreateWorkInfo` 不应因富信息缺失而整体失败。站点返回的字段名/结构务必先 curl 确认(见第十五节),勿盲猜字段名。
+
+#### 作品及周边数据写面契约（统一矩阵）
+
+作品及周边数据（站点/本地作者、标签、作品集）的写入面是**任务管线的声明面**：`CreateWorkInfo` 构建 `WorkResponse`（周边 DTO 集合，proto 字段 `localAuthors`/`localTags`/`siteAuthors`/`siteTags`/`workSets`），主程序 `SaveWorkInfo` 按下列统一矩阵落库（`backend/work/service.go:1204` saveWorkInfoInTx）。查询走 5.1 库查询；**删除不开放**——矩阵显式记录空档，删除归主程序 UI/回收站，插件无删除入口。
+
+**统一心智模型**：站点域对象按复合键寻址、本站声明可建可改、跨站引用只读挂联；本地域对象按 ID 引用或按名创建、行归用户策展不可改；删除一律不开放；关联分「插件声明面（SITE 列删后重建）」与「用户策展面（LOCAL 列只增）」两轨。
+
+| 对象 | 键寻址 | 不存在时 | 改行 | 删行 | 关联轨道 |
+|---|---|---|---|---|---|
+| 作品 | `(siteKey, siteWorkId)`，siteKey 由 `TaskCreateResponse.SiteKey` 声明（必填） | 复合键 upsert 创建 | 非零字段覆盖（`backend/work/service.go:1921`） | 不开放 | —（作品是各关联的主体） |
+| 站点作者（本站=作品站点） | `(作品站点, siteAuthorId)` | upsert 创建 | upsert 即改 | 不开放 | 插件声明面：SITE 作者关联删后重建（`backend/work/service.go:1255`） |
+| 站点标签（本站） | `(作品站点, siteTagId)` | upsert 创建 | upsert 即改 | 不开放 | 同上；关联级 namespace 随声明镜像（`backend/work/service.go:1276`） |
+| 站点作者/标签/作品集（跨站，DTO `siteKey` 声明站点） | `(dto.siteKey, 站点侧 ID)`；`siteKey` 缺省=作品站点 | **find-only：报错**（站点键未注册或行不存在均报错，携带站点键与站点侧 ID，`backend/work/service.go:1630`） | 不改（只挂联既有行，不写行不造行） | 不开放 | 挂进各对象既有关联轨道（作者/标签=删后重建、作品集=增量保留；跨站混入的覆盖语义归「重拉覆盖策略」后续任务） |
+| 本地作者/本地标签 | DB ID（会话内句柄）或名称 | ID 寻址=校验存在（缺行报错）；名寻址=find-or-create（`backend/work/service.go:1671`） | **插件不可改**（行归用户策展） | 不开放 | 用户策展面：LOCAL 关联只增（`backend/work/service.go:1265`） |
+| 作品集（本站） | `(作品站点, siteWorkSetId)` | upsert 创建 | upsert 即改 | 不开放 | 增量保留（已存在跳过、不删历史关联，`backend/work/service.go:1295`） |
+
+**规则明细**：
+
+1. **站点域键即身份**：站点域行（site_author/site_tag/work_set）的身份只能来自其站点的站点侧 ID——无站点侧 ID 不造行。用户供数只有名字时按名落本地域（`LocalAuthorDTO.AuthorName`/`LocalTagDTO.LocalTagName`、`Id=0`，宿主 find-or-create）；local 站点 ID 约定注记中的 `siteTag:{标签名}`/`siteAuthor:{作者名}` 为历史形态（SDK `identity/registry.go` Local 注记），存量行不迁移，读侧按普通站点行装配展示。
+2. **周边跨站寻址（proto 字段 `siteKey`，三 DTO 同语义）**：`TaskSiteAuthorDTO.SiteKey`/`TaskSiteTagDTO.SiteKey`/`TaskWorkSetDTO.SiteKey` 缺省空=作品所属站点（本站 upsert，行为不变）；非空且≠作品站点=跨站引用——宿主按站点表键解析站点（未注册键报错）、按 `(站点, 站点侧 ID)` 查既有行，命中挂联、缺行报错，**不建行不改行**。引用前建议用 5.1 `GetSiteAuthorBySiteKey`/`GetSiteTagBySiteKey`/`GetWorkSetBySiteKey` 确认行在场。该字段属契约 v7 能力（见「契约版本协商」）——宿主 `currentContractVersion` 低于 7 时，声明 v7 的插件在加载期即被拒；跨站引用是宿主统一能力，各插件按需消费。
+3. **作品归属按真实性分轨**：作品行的站点键只能来自真实归属。插件解析出真实站点侧作品 ID（如文件名解析出 pixiv 页级 ID）→ 声明 `(真实站点键, 真实 ID)`，与站点下载同键合并为同一作品行；解析不出 → 落 local（`identity.Local.Key`，作品身份用内容哈希等本地造 ID）。**本地造 ID 永不进真实域**——与真实下载撞键合并会污染既有作品行。真实 ID 的解析归插件，主程序不做解析。
+4. **本站声明零额外成本**：周边 DTO 全部未声明 `siteKey` 时宿主不查站点行（`partitionCrossSite` 全空快路径，`backend/work/service.go:1588`），落库行为与该字段缺省时完全一致——纯本站插件无需关心本节。
+5. **声明面唯一**：周边 DTO 全部产自 `CreateWorkInfo` 应答（数据流见上一小节）；插件自管的任务数据（PluginData）中内嵌的周边声明，由插件按自管 `schemaVersion` 轴转换后走本矩阵（见「plugin_data 格式版本约定」——主程序不解析 PluginData 内容）。
+
+**示例**：
+
+跨站引用（作品落 pixiv 域，周边引用 bilibili 既有作者行）：
+
+```go
+resp := &sdkdto.WorkResponse{
+    Work: &sdkdto.WorkDTO{ /* SiteWorkId: "12345678"，任务站点=pixiv ... */ },
+    SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{{
+        SiteAuthorId: "42",                  // bilibili UP 主 mid（站点侧 ID）
+        AuthorName:   "某UP主",               // 跨站引用不写行，富字段不落库
+        SiteKey:      identity.Bilibili.Key, // ≠ 作品站点(pixiv) → find-only 挂联
+    }},
+}
+```
+
+真实域归属（localImport 归属分轨，插件仓 `attribution.go`）：
+
+```go
+// pixiv 原图文件名形态 {illustid}[-{hex}]?_p{页号} 与注册表约定的站点侧作品 ID 形态同构，
+// 锚定全匹配解析（带前后缀的形似名不命中）
+resolveWorkAttribution("12345678_p0.jpg", "")
+  → {SiteKey: "pixiv", PageWorkID: "12345678_p0"} // 声明 (pixiv, 12345678_p0)——与站点下载同键合并
+resolveWorkAttribution("IMG_20260101.jpg", "")
+  → {SiteKey: "local",  PageWorkID: ""}            // 解析不出 → local 回退，作品身份=内容哈希
+```
+
+用户只有名字（按名落本地域，不造站点域行）：
+
+```go
+// 分类面板只收集到作者名（无站点侧 ID）——Id=0 名称模式，宿主对本地域实体 find-or-create
+name := m.Name
+resp.LocalAuthors = append(resp.LocalAuthors, &sdkdto.LocalAuthorDTO{AuthorName: &name})
+```
+
+**覆盖语义披露**：
+
+- **同键双来源的资源路径撞名与覆盖**：store 落盘路径由复合键派生（`doc/store-naming-convention.md`），本地导入解析出真实键的作品与同键站点下载作品是同一作品行、资源文件落同一路径。落盘前宿主清理目标路径旧 store（含磁盘文件，`backend/persistentStore/service.go:683`、`backend/resource/replacement.go:369`）——同作品再次站点下载会替换本地导入的文件，该覆盖语义经用户裁定接受。需保留本地文件版本时，导入面板把该子树显式分类为 local 站点（压制文件名形态推断），作品即落 local 域、不与站点下载合并。
+- **作品集两源混居保守并集**：作品集关联增量保留（只增不删），同一作品集行可同时接收本站声明与跨站引用两类来源的挂联，行上无来源标记——关联集呈保守并集，插件侧无法要求摘除；混合来源的覆盖/清理语义归「作品重拉元数据覆盖策略」后续任务。
+
+**冒领边界**：
+
+站点键的合法性由编译期注册表校验（未注册键在任务创建与跨站引用处均报错拒绝）；站点侧 ID 的忠实性运行时不可校验，靠注册表常量附带的「站点级 ID 约定注记」+ 插件准入审查收敛（治理分层见 SDK `identity/registry.go` 包注释与第十九节）。trusted 插件本就拥有全量宿主能力（见第十七节信任模型），跨站引用字段不构成新攻击面——谎报站点键/站点侧 ID 至多造成错误关联或错误合并，与既有作品/周边声明同级风险。本地导入类插件从文件名解析真实键属**用户手动桥接自负**：文件名形似而非该作品（手工改名、非原图规格名）会产出错误键关联；插件应锚定全匹配形态解析、解析不出即回退 local，并向用户披露「形似误绑」风险。
 
 #### plugin_data 格式版本约定
 

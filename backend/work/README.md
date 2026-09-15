@@ -26,6 +26,7 @@
 ## 核心概念
 
 - **关联写入中枢**：work 持有 reWork 系列的 Writer / Reader 接口，保存作品时 SITE 作者/标签关联删后重建（`DeleteSiteByWorkId` + `SaveBatchOnConflict`，同 ID 元数据多条 DTO 批内折叠）、LOCAL 关联与作品集关联增量保留。`buildWorkSetLinks` 按各 workSet 当前最大 sort_order +1 续排（纠正维度错位，避免集内塌 0）。
+- **周边声明按站点键分轨**：`SaveWorkInfo` 处理站点作者/站点标签/作品集声明时，DTO 的 `siteKey` 缺省（空）或等于作品站点键 = 本站声明，批量 upsert（建行/改行）；声明其他站点键 = 跨站引用，站点键经 site `GetByKey` 按键寻址解析（站点表为 identity 注册表投影，未注册键无行报错），行按 `(站点, 站点侧 ID)` find-only 查回挂联——不写行不造行（键即身份，站点域不按名寻址），行不存在报错并携带站点键与站点侧 ID。
 - **原站序拉取编排**：`SaveWorkInfo` 作品入库事务提交后，异步经 `WorkSetOrderFetcher`（plugin 提供，`SetWorkSetOrderFetcher` 延迟注入）拉取作品所属作品集的原站序，映射 siteWorkId→work.id 写 `re_work_work_set.site_sort_order`（ORCHESTRATION_BY_CALLER：编排归入库发起方 work，获取能力归 plugin）。网络调用须事务外（`MaxOpenConns=1` 死锁），故事务提交后异步派发。
 - **作品集父集关系拉取编排**：同窗口异步经 `WorkSetRelationFetcher`（plugin 提供，`SetWorkSetRelationFetcher` 延迟注入）拉取作品所属作品集的父集关系，upsert 父集 + 建立父子关系（事务内 `CollectAncestorWorkSetIds` 环路检测）+ 写 `re_work_set_work_set.site_sort_order`（对齐原站序拉取范式）。初始本地序 `sort_order` 取原站序，`SaveRelation` 的 OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽。
 - **软删除（聚合根单表标志）**：`SoftDeleteWork` = 停关联任务 → 事务外逐 store 移文件进 backup（backup.work_id 归属）→ 事务内 work 一条软删 UPDATE（`deleted_at` 毫秒时间戳，soft_delete 插件改写）。从属行（resource / resource_store / re_work_*）与 persistent_store 记录原地保留——复原仅需文件还原 + 清标志，无需重建。业务键唯一性由部分索引 `idx_work_site_site_work_active`（WHERE deleted_at = 0）承担：已删行释放键，删除后可重新下载同作品，复原撞占位作品走「放弃/覆盖」。软删前置查作品锁（`WorkLockChecker`，shareLock 实现）：作品正被分享拉取持有时拒绝（`shareLock.ErrWorkLocked`，强制解锁后重试）。
@@ -35,5 +36,5 @@
 
 ## 依赖关系
 
-- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/带归属备份删除）、resource（Resource 保存/删除/resource_store 级联删除）、localTagFindOrCreator、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）、shareLock（WorkLockChecker：软删除前置作品锁守卫）
+- 依赖：reWorkAuthor / reWorkTag / reWorkWorkSet（Writer / Reader 接口）、reWorkSetWorkSet（WorkSetRelationWriter：父子关系写入 + 环路检测）、persistentStore（Store 删除/带归属备份删除）、resource（Resource 保存/删除/resource_store 级联删除）、localTagFindOrCreator、site（SiteReader：周边声明站点键解析——作品站点键判定 + 跨站键 `GetByKey`）、plugin（WorkSetOrderFetcher：原站序获取；WorkSetRelationFetcher：父集关系获取，均延迟注入）、shareLock（WorkLockChecker：软删除前置作品锁守卫）
 - 被依赖：前端作品库（列表 / 详情 / 编辑）、taskManager（任务执行后落库作品，`WorkInfoSaver` 接口——`SaveWorkInfo(task, workTask, workResp)` 核心行+作品任务领域行两参）、recycleBin（WorkRestorer：软删/复原/彻底删除原子能力）、search（作品搜索：查询经 BaseRepository 自动排除已删行）、localAuthor（WorkAuthorMirrorClearer：删除本地作者时清 `work.local_author_id` 镜像列——仓储 `ClearLocalAuthorOnWorks` 原生 UPDATE 覆盖含软删行，外键拦截不分行态）、site（WorkSiteRefCounter：站点删除守卫的作品引用计数，仓储 `CountBySiteId` 活行/软删行分别计数）、extension（插件库查询 WorkQuerySource：id/复合键直查 + `PageByFilter` 过滤分页——名称/作者名/标签名/时间范围过滤经 EXISTS 关联子查询落在仓储，作品过滤语义的域内单一落点）
