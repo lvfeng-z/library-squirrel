@@ -7,7 +7,7 @@
 **LibrarySquirrel** 是一个基于 Wails 3 的桌面应用，用于创建和维护个人资源库。它从远程站点（如 pixiv）下载资源到本地库，并提供基于标签的搜索。后端：Go，前端：Vue 3 + TypeScript，通信：Wails IPC bindings。
 
 ## 项目背景
-本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-sdk)，此外存在两个插件[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)和[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)，以及分享功能的盲转中继服务仓库 [library-squirrel-relay](https://github.com/lvfeng-z/library-squirrel-relay)（AGPL-3.0 分许可，`../library-squirrel-docs/plan/分享功能总体方案.md`），以上仓库的开发环境都位于本项目的同级目录下。开发过程文档（计划/待办/缺陷分析/实测报告/任务派生图）位于同级**私有**文档库 `../library-squirrel-docs/`（plan/ bug/ todo.md testing/ workflow/，结构见其 README.md），主仓库内引用一律以 `../library-squirrel-docs/` 相对路径书写。
+本项目由[LibrarySquirrel](https://gitee.com/lv__feng/library-squirrel.git)重构而来，本项目依赖[SDK](https://github.com/lvfeng-z/library-squirrel-sdk)，此外存在四个捆绑插件源仓库——[localImport](https://github.com/lvfeng-z/library-squirrel-plugin-local.git)、[pixivSuite](https://github.com/lvfeng-z/library-squirrel-plugin-pixiv-go.git)、[bilibiliSuite](https://github.com/lvfeng-z/library-squirrel-plugin-bilibili.git)（test 纯 UI 测试插件 `library-squirrel-plugin-test`，发布前应移除），**权威清单 = `build/plugins.local.json`**（`task build:plugins` 按它构建捆绑包，涉及「全部插件」的任务以此为准而非本段叙述）；以及分享功能的盲转中继服务仓库 [library-squirrel-relay](https://github.com/lvfeng-z/library-squirrel-relay)（AGPL-3.0 分许可，`../library-squirrel-docs/plan/分享功能总体方案.md`），以上仓库的开发环境都位于本项目的同级目录下。开发过程文档（计划/待办/缺陷分析/实测报告/任务派生图）位于同级**私有**文档库 `../library-squirrel-docs/`（plan/ bug/ todo.md testing/ workflow/，结构见其 README.md），主仓库内引用一律以 `../library-squirrel-docs/` 相对路径书写。
 
 ## 构建与开发命令
 
