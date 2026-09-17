@@ -39,7 +39,7 @@ func TestManifestRoundTrip(t *testing.T) {
 			{ID: 40, Name: strp("R-18"), BaseLocalTagID: int64p(41), Description: strp("成人"), LastUse: int64p(200), CreateTime: 1, UpdateTime: 2},
 		},
 		SiteTags: []TagRecord{
-			{ID: 50, Name: strp("女仆"), SiteID: int64p(10), SiteTagID: &siteTagID, Namespace: strp("character"), LocalTagID: int64p(40), CreateTime: 1, UpdateTime: 2},
+			{ID: 50, Name: strp("女仆"), SiteID: int64p(10), SiteTagID: &siteTagID, LocalTagID: int64p(40), CreateTime: 1, UpdateTime: 2},
 		},
 		WorkSets: []WorkSetRecord{
 			{

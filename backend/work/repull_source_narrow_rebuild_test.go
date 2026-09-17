@@ -9,7 +9,7 @@ import (
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/reWorkTag"
 	"github.com/library-squirrel/backend/reWorkWorkSet"
-	"github.com/library-squirrel/backend/siteTag"
+	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/workSet"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
@@ -17,11 +17,12 @@ import (
 )
 
 // 关联来源（source 列）窄域重建语义锚定：插件来源关联按本次声明重建（未声明即清理）、用户来源关联
-// （手动挂联）重拉永不触碰、冲突（插件再声明用户已手动挂的关联）不翻转来源不重复建行。
+// （手动挂联）重拉永不触碰、冲突（插件再声明用户已手动挂的同 ns 关联）不翻转来源不重复建行。
 
-// newManualTagLinker 用户手动挂联的真实 reWorkTag 服务（SITE 关联 namespace 镜像需 siteTag 查询件）
+// newManualTagLinker 用户手动挂联的真实 reWorkTag 服务（SITE 关联 ns 用调用方传值；
+// 事务执行器与 ns 清单登记同注入——真实链形态）
 func newManualTagLinker(db *gorm.DB) *reWorkTag.Service {
-	return reWorkTag.NewService(reWorkTag.NewRepository(db), siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil))
+	return reWorkTag.NewService(reWorkTag.NewRepository(db), &txTransactor{db: db}, tagNamespace.NewService(tagNamespace.NewRepository(db)))
 }
 
 // newManualWorkSetLinker 用户手动挂联的真实 workSet 服务（Link 方法仅用作品集成员关联仓储）
@@ -30,13 +31,12 @@ func newManualWorkSetLinker(db *gorm.DB) *workSet.Service {
 }
 
 // seedSiteTagRow 直插站点标签行（不走入库链——手动挂联的目标行须先于插件声明存在）
-func seedSiteTagRow(t *testing.T, db *gorm.DB, siteId int64, siteTagId, namespace string) *entity2.SiteTag {
+func seedSiteTagRow(t *testing.T, db *gorm.DB, siteId int64, siteTagId string) *entity2.SiteTag {
 	t.Helper()
 	st := entity2.NewSiteTag()
 	st.SiteID = sql.NullInt64{Int64: siteId, Valid: true}
 	st.SiteTagID = sql.NullString{String: siteTagId, Valid: true}
 	st.SiteTagName = sql.NullString{String: siteTagId + "-名", Valid: true}
-	st.Namespace = sql.NullString{String: namespace, Valid: namespace != ""}
 	if err := db.Create(st).Error; err != nil {
 		t.Fatalf("插站点标签行失败 %s: %v", siteTagId, err)
 	}
@@ -67,9 +67,9 @@ func seedLocalTagRow(t *testing.T, db *gorm.DB, name string) *entity2.LocalTag {
 	return lt
 }
 
-// TestRepullRefreshesTagNamespaceMirror 重拉时标签 namespace 变化：site_tag.namespace 与插件来源
-// SITE 关联的 re_work_tag.namespace 镜像同步刷新（插件权威字段，插入期与重拉期同权）
-func TestRepullRefreshesTagNamespaceMirror(t *testing.T) {
+// TestRepullRefreshesTagNamespaceOnAssociation 重拉时标签 namespace 声明变化：插件声明的 ns
+// 直写关联行（namespace 是关联级维度，不经 site_tag 行），PLUGIN 关联按本次声明刷新
+func TestRepullRefreshesTagNamespaceOnAssociation(t *testing.T) {
 	svc, db := newCrossSiteTestEnv(t)
 	pixiv := seedSite(t, db, "pixiv")
 
@@ -86,34 +86,29 @@ func TestRepullRefreshesTagNamespaceMirror(t *testing.T) {
 		t.Fatalf("首次入库失败: %v", err)
 	}
 
-	var tag entity2.SiteTag
-	if err := db.Where("site_tag_id = ?", "px-t1").First(&tag).Error; err != nil {
-		t.Fatalf("回查 site_tag 失败: %v", err)
-	}
-	if tag.Namespace.String != "character" {
-		t.Fatalf("首插 site_tag.namespace 应为 character，实际 %q", tag.Namespace.String)
-	}
-
-	// 重拉：namespace 声明变化为 male
-	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, pull("male")); err != nil {
-		t.Fatalf("重拉入库失败: %v", err)
-	}
-
-	if err := db.Where("site_tag_id = ?", "px-t1").First(&tag).Error; err != nil {
-		t.Fatalf("重拉后回查 site_tag 失败: %v", err)
-	}
-	if tag.Namespace.String != "male" {
-		t.Fatalf("重拉应刷新 site_tag.namespace 为 male，实际 %q", tag.Namespace.String)
-	}
 	var rel entity2.ReWorkTag
 	if err := db.Where("work_id = ? AND tag_type = ?", workId, constant.SITE).First(&rel).Error; err != nil {
 		t.Fatalf("回查 SITE 标签关联失败: %v", err)
 	}
-	if !rel.Namespace.Valid || rel.Namespace.String != "male" {
-		t.Fatalf("重拉应刷新插件来源 SITE 关联 namespace 镜像为 male，实际 Valid=%v value=%q", rel.Namespace.Valid, rel.Namespace.String)
+	if rel.Namespace != "character" {
+		t.Fatalf("首插插件来源 SITE 关联 namespace 应为 character，实际 %q", rel.Namespace)
 	}
-	if rel.Source != constant.PLUGIN {
-		t.Fatalf("入库链建的 SITE 标签关联 source 应为 PLUGIN，实际 %d", rel.Source)
+
+	// 重拉：namespace 声明变化为 male → PLUGIN 关联按本次声明重建刷新（删后重插，行 id 更换，
+	// 回查用新变量——First 复用带主键的 dest 会附加 id 条件查旧行）
+	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, pull("male")); err != nil {
+		t.Fatalf("重拉入库失败: %v", err)
+	}
+
+	var repulled entity2.ReWorkTag
+	if err := db.Where("work_id = ? AND tag_type = ?", workId, constant.SITE).First(&repulled).Error; err != nil {
+		t.Fatalf("重拉后回查 SITE 标签关联失败: %v", err)
+	}
+	if repulled.Namespace != "male" {
+		t.Fatalf("重拉应按本次声明刷新关联行 namespace 为 male，实际 %q", repulled.Namespace)
+	}
+	if repulled.Source != constant.PLUGIN {
+		t.Fatalf("入库链建的 SITE 标签关联 source 应为 PLUGIN，实际 %d", repulled.Source)
 	}
 }
 
@@ -124,8 +119,8 @@ func TestRepullKeepsManualSiteLinkAndTidiesCrossSiteRef(t *testing.T) {
 	pixiv := seedSite(t, db, "pixiv")
 	bili := seedSite(t, db, "bilibili")
 
-	biliTag := seedSiteTagRow(t, db, bili.GetID(), "bili-t1", "")
-	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t2", "")
+	biliTag := seedSiteTagRow(t, db, bili.GetID(), "bili-t1")
+	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t2")
 
 	siteWorkId := "repull-manual-cross-work"
 	buildResp := func(cross bool) *sdkdto.WorkResponse {
@@ -183,7 +178,7 @@ func TestRepullCleansUndeclaredPluginLinksKeepsManual(t *testing.T) {
 	svc, db := newCrossSiteTestEnv(t)
 	pixiv := seedSite(t, db, "pixiv")
 
-	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t3", "")
+	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t3")
 	manualWs := seedWorkSetRow(t, db, pixiv.GetID(), "px-ws3")
 
 	siteWorkId := "repull-narrow-rebuild-work"
@@ -266,7 +261,8 @@ func workSetDbIdBySiteKey(t *testing.T, db *gorm.DB, siteId int64, siteWorkSetId
 }
 
 // TestRepullPluginRedeclareManualLinkNoFlipNoDup 插件再声明用户已手动挂的关联：
-// 不翻转来源（保持 MANUAL）、不重复建行、namespace 刷镜像、sort_order 不动
+// 同 ns 重声明构成唯一键冲突——不翻转来源（保持 MANUAL）、不重复建行；异 ns 声明构成独立
+// 关联行（同作品同标签多 ns 并存），手动行（含用户自设 ns）不动；作品集关联 sort_order 不动
 func TestRepullPluginRedeclareManualLinkNoFlipNoDup(t *testing.T) {
 	svc, db := newCrossSiteTestEnv(t)
 	pixiv := seedSite(t, db, "pixiv")
@@ -280,18 +276,18 @@ func TestRepullPluginRedeclareManualLinkNoFlipNoDup(t *testing.T) {
 		t.Fatalf("首次入库失败: %v", err)
 	}
 
-	// 用户先手动挂 SITE 标签（此时插件未声明过）：行落 source=MANUAL，namespace 镜像挂联时的 site_tag.namespace
-	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t1", "character")
+	// 用户先手动挂 SITE 标签（此时插件未声明过）：行落 source=MANUAL，ns 为用户自设值
+	manualTag := seedSiteTagRow(t, db, pixiv.GetID(), "px-t1")
 	tagLinker := newManualTagLinker(db)
-	if err := tagLinker.LinkBatchToWork(context.Background(), workId, constant.SITE, []int64{manualTag.GetID()}, nil); err != nil {
+	if err := tagLinker.LinkBatchToWork(context.Background(), workId, constant.SITE, []int64{manualTag.GetID()}, []string{"character"}); err != nil {
 		t.Fatalf("手动挂 SITE 标签失败: %v", err)
 	}
 	var manualRel entity2.ReWorkTag
 	if err := db.Where("work_id = ? AND site_tag_id = ?", workId, manualTag.GetID()).First(&manualRel).Error; err != nil {
 		t.Fatalf("回查手动关联失败: %v", err)
 	}
-	if !manualRel.Namespace.Valid || manualRel.Namespace.String != "character" {
-		t.Fatalf("手动挂联时应镜像 site_tag.namespace=character，实际 %q", manualRel.Namespace.String)
+	if manualRel.Namespace != "character" {
+		t.Fatalf("手动挂联应落用户自设 namespace=character，实际 %q", manualRel.Namespace)
 	}
 
 	// 用户手动挂作品集成员并拖出用户序 42（sort_order 属用户策展）
@@ -305,28 +301,28 @@ func TestRepullPluginRedeclareManualLinkNoFlipNoDup(t *testing.T) {
 		t.Fatalf("注入用户拖拽序失败: %v", err)
 	}
 
-	// 重拉：插件再声明同一标签（namespace 已变化）与同一作品集成员
+	// 重拉一：插件再声明同一标签（同 ns=character）与同一作品集成员——同 ns 命中唯一键冲突
 	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, &sdkdto.WorkResponse{
 		Work:     &sdkdto.WorkDTO{SiteWorkId: &siteWorkId, SiteWorkName: &siteWorkId},
-		SiteTags: []*sdkdto.TaskSiteTagDTO{{SiteTagId: "px-t1", TagName: "标签名", Namespace: "male"}},
+		SiteTags: []*sdkdto.TaskSiteTagDTO{{SiteTagId: "px-t1", TagName: "标签名", Namespace: "character"}},
 		WorkSets: []*sdkdto.TaskWorkSetDTO{{SiteWorkSetId: "px-ws1", WorkSetName: "集名"}},
 	}); err != nil {
-		t.Fatalf("重拉（再声明手动关联）失败: %v", err)
+		t.Fatalf("重拉（同 ns 再声明）失败: %v", err)
 	}
 
-	// 标签：单行、不翻转来源、namespace 刷镜像
+	// 标签：单行、不翻转来源、ns 保持
 	var rel entity2.ReWorkTag
 	if err := db.Where("work_id = ? AND site_tag_id = ?", workId, manualTag.GetID()).First(&rel).Error; err != nil {
 		t.Fatalf("回查冲突关联失败: %v", err)
 	}
 	if n := countRows(t, db, &entity2.ReWorkTag{}, "work_id = ? AND site_tag_id = ?", workId, manualTag.GetID()); n != 1 {
-		t.Fatalf("插件再声明手动关联不应重复建行，实际 %d 条", n)
+		t.Fatalf("插件同 ns 再声明不应重复建行，实际 %d 条", n)
 	}
 	if rel.Source != constant.MANUAL {
 		t.Fatalf("插件再声明不应翻转来源，应保持 MANUAL，实际 %d", rel.Source)
 	}
-	if !rel.Namespace.Valid || rel.Namespace.String != "male" {
-		t.Fatalf("冲突应刷新 namespace 镜像为 male，实际 Valid=%v value=%q", rel.Namespace.Valid, rel.Namespace.String)
+	if rel.Namespace != "character" {
+		t.Fatalf("同 ns 冲突行 ns 应保持 character，实际 %q", rel.Namespace)
 	}
 	// 作品集成员：单行、不翻转来源、sort_order 不动
 	var wsRel entity2.ReWorkWorkSet
@@ -338,6 +334,32 @@ func TestRepullPluginRedeclareManualLinkNoFlipNoDup(t *testing.T) {
 	}
 	if !wsRel.SortOrder.Valid || wsRel.SortOrder.Int64 != 42 {
 		t.Fatalf("插件再声明不应动用户拖拽序 sort_order，实际 Valid=%v value=%d", wsRel.SortOrder.Valid, wsRel.SortOrder.Int64)
+	}
+
+	// 重拉二：插件改声明 ns=male——与手动行不同唯一键，插件关联独立落行，手动行不动
+	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, &sdkdto.WorkResponse{
+		Work:     &sdkdto.WorkDTO{SiteWorkId: &siteWorkId, SiteWorkName: &siteWorkId},
+		SiteTags: []*sdkdto.TaskSiteTagDTO{{SiteTagId: "px-t1", TagName: "标签名", Namespace: "male"}},
+		WorkSets: []*sdkdto.TaskWorkSetDTO{{SiteWorkSetId: "px-ws1", WorkSetName: "集名"}},
+	}); err != nil {
+		t.Fatalf("重拉（异 ns 再声明）失败: %v", err)
+	}
+
+	if n := countRows(t, db, &entity2.ReWorkTag{}, "work_id = ? AND site_tag_id = ?", workId, manualTag.GetID()); n != 2 {
+		t.Fatalf("同作品同标签多 ns 应并存 2 条关联，实际 %d 条", n)
+	}
+	var maleRel entity2.ReWorkTag
+	if err := db.Where("work_id = ? AND site_tag_id = ? AND namespace = ?", workId, manualTag.GetID(), "male").First(&maleRel).Error; err != nil {
+		t.Fatalf("回查插件 male 关联失败: %v", err)
+	}
+	if maleRel.Source != constant.PLUGIN {
+		t.Fatalf("异 ns 声明的新关联行 source 应为 PLUGIN，实际 %d", maleRel.Source)
+	}
+	if err := db.Where("work_id = ? AND site_tag_id = ? AND namespace = ?", workId, manualTag.GetID(), "character").First(&rel).Error; err != nil {
+		t.Fatalf("回查手动 character 关联失败: %v", err)
+	}
+	if rel.Source != constant.MANUAL || rel.Namespace != "character" {
+		t.Fatalf("手动关联（含用户自设 ns）应原样保留，实际 source=%d ns=%q", rel.Source, rel.Namespace)
 	}
 }
 
@@ -377,8 +399,8 @@ func TestRepullKeepsLocalTagUserNamespace(t *testing.T) {
 	if rel.Source != constant.MANUAL {
 		t.Fatalf("LOCAL 关联 source 应为 MANUAL，实际 %d", rel.Source)
 	}
-	if !rel.Namespace.Valid || rel.Namespace.String != "我的标记" {
-		t.Fatalf("LOCAL 关联用户自设 namespace 应保留，实际 Valid=%v value=%q", rel.Namespace.Valid, rel.Namespace.String)
+	if rel.Namespace != "我的标记" {
+		t.Fatalf("LOCAL 关联用户自设 namespace 应保留，实际 %q", rel.Namespace)
 	}
 }
 

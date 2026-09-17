@@ -8,8 +8,8 @@ import (
 )
 
 // TestValidateContractVersion 契约版本协商矩阵：currentContractVersion 跟随 SDK
-// transport.ContractVersion，minSupportedContractVersion=5（v5 落盘路径查询 RPC 退役的
-// 破坏性变更分界），未声明（=0）视作低于 minSupported 拒载。
+// transport.ContractVersion，minSupportedContractVersion=8（v8 ListAuthorsByWorkId 返回类型
+// 更换 + SiteTagInfo.Namespace 删除的破坏性变更分界），未声明（=0）视作低于 minSupported 拒载。
 func TestValidateContractVersion(t *testing.T) {
 	tests := []struct {
 		name          string

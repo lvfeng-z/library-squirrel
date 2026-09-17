@@ -20,14 +20,21 @@ func NewHandler(svc *Service) *Handler {
 // ========== 写入操作 ==========
 
 // Link 链接作者到作品。roleNames 与 authorIds 等长配对（local/site 关联均用前端传值，
-// 空数组=全无角色），空串角色落 NULL；冲突不翻转来源（插件先建的关联保持 PLUGIN）。
+// 空数组=全无角色），空串=无 role；冲突不翻转来源（插件先建的关联保持 PLUGIN）。
+// 同作品同作者不同 role 落独立关联行（身兼数职）
 func (h *Handler) Link(ctx context.Context, authorType int, authorIds []int64, roleNames []string, workId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.LinkBatchToWork(ctx, workId, authorType, authorIds, roleNames))
 }
 
-// Unlink 从作品移除作者
+// Unlink 从作品移除作者（该作者的全部 role 关联行）
 func (h *Handler) Unlink(ctx context.Context, authorType int, authorIds []int64, workId int64) *model.ApiResponse[any] {
 	return model.HandleVoid(h.svc.RemoveBatchFromWork(ctx, workId, authorType, authorIds))
+}
+
+// UnlinkDimension 精确摘除维度关联行：roleNames 与 authorIds 等长配对，只删 (work, author, role)
+// 命中行，不波及同作者其他 role 行（改 role 的旧值行删除入口——新值行走 Link）
+func (h *Handler) UnlinkDimension(ctx context.Context, authorType int, authorIds []int64, roleNames []string, workId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.RemoveDimensionFromWork(ctx, workId, authorType, authorIds, roleNames))
 }
 
 // ========== 查询操作 ==========

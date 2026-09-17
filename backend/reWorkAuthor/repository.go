@@ -50,7 +50,7 @@ func (r *ReWorkAuthorRepository) DeletePluginSiteByWorkId(ctx context.Context, w
 }
 
 // SaveBatchOnConflict 批量保存，遇任何唯一约束冲突跳过该行（OnConflict DoNothing）。
-// LOCAL 关联增量入库用：已存在的 (work_id, local_author_id) 跳过，不覆盖用户手动建的关联。
+// LOCAL 关联增量入库用：已存在的 (work_id, local_author_id, role_name) 跳过，不覆盖既有关联。
 func (r *ReWorkAuthorRepository) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkAuthor) error {
 	if len(rels) == 0 {
 		return nil
@@ -65,9 +65,10 @@ func (r *ReWorkAuthorRepository) SaveBatchOnConflict(ctx context.Context, rels [
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(rels).Error
 }
 
-// UpsertBatch 批量 upsert 关联：按 (work_id, author_id) 唯一约束冲突时更新用户可编辑字段（role_name/sort_order），否则插入。
-// authorType 决定冲突列：local→(work_id, local_author_id)，site→(work_id, site_author_id)。
-// 已存在的关联（如已绑定作者改了角色重新确认）走 UPDATE 用户可编辑字段；新关联走 INSERT。
+// UpsertBatch 批量 upsert 关联：按 (work_id, author_id, role_name) 唯一约束冲突时更新用户可编辑字段（sort_order），否则插入。
+// authorType 决定冲突列：local→(work_id, local_author_id, role_name)，site→(work_id, site_author_id, role_name)。
+// role_name 属冲突键：命中冲突即三方同值（同作品同作者同 role），更新面收窄至 sort_order。
+// 同作品同作者不同 role 不构成冲突，落独立关联行（身兼数职）。
 // 冲突更新列不含 source：先建行者的来源（插件声明或用户手动）保持不变，插件再声明用户手动挂的
 // 关联不翻转来源、不重复建行，仅刷新用户可编辑字段。
 func (r *ReWorkAuthorRepository) UpsertBatch(ctx context.Context, rels []*domain.ReWorkAuthor, authorType int) error {
@@ -83,18 +84,18 @@ func (r *ReWorkAuthorRepository) UpsertBatch(ctx context.Context, rels []*domain
 	}
 	var conflictCols []clause.Column
 	if authorType == constant.LOCAL {
-		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "local_author_id"}}
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "local_author_id"}, {Name: "role_name"}}
 	} else {
-		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "site_author_id"}}
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "site_author_id"}, {Name: "role_name"}}
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   conflictCols,
-			DoUpdates: clause.AssignmentColumns([]string{"role_name", "sort_order", "update_time"}),
+			DoUpdates: clause.AssignmentColumns([]string{"sort_order", "update_time"}),
 		}).Create(rels).Error
 }
 
-// DeleteByWorkAndAuthor 根据作品ID和作者删除关联（authorType 非法时无操作）
+// DeleteByWorkAndAuthor 根据作品ID和作者删除关联（该作者的全部 role 关联行；authorType 非法时无操作）
 func (r *ReWorkAuthorRepository) DeleteByWorkAndAuthor(ctx context.Context, workId int64, authorType int, authorId int64) error {
 	query := r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ?", workId)
 
@@ -108,6 +109,24 @@ func (r *ReWorkAuthorRepository) DeleteByWorkAndAuthor(ctx context.Context, work
 	}
 
 	return query.Delete(&domain.ReWorkAuthor{}).Error
+}
+
+// DeleteByWorkAuthorAndRole 按作品+作者+role 精确删除关联行（改 role 的旧值行摘除，
+// 不波及同作者其他 role 行）；role 值归一化后比对（与关联写入同规则）
+func (r *ReWorkAuthorRepository) DeleteByWorkAuthorAndRole(ctx context.Context, workId int64, authorType int, authorId int64, roleName string) error {
+	query := r.dbFromCtx(ctx).WithContext(ctx).Where("work_id = ?", workId)
+
+	switch authorType {
+	case constant.LOCAL:
+		query = query.Where("local_author_id = ?", authorId)
+	case constant.SITE:
+		query = query.Where("site_author_id = ?", authorId)
+	default:
+		return nil
+	}
+
+	return query.Where("role_name = ?", constant.NormalizeDimensionValue(roleName)).
+		Delete(&domain.ReWorkAuthor{}).Error
 }
 
 // DeleteByLocalAuthorId 根据本地作者ID删除所有关联

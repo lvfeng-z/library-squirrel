@@ -129,8 +129,22 @@ type ReWorkTagWriter interface {
 	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库，保留用户手动设的 namespace 等字段）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkTag) error
-	// UpsertBatch 批量 upsert：按 (work_id, tag_id) 冲突更新 namespace（不翻转 source、不动 sort_order），否则插入
+	// UpsertBatch 批量 upsert：按 (work_id, tag_id, namespace) 冲突仅刷 update_time（不翻转 source、不动 sort_order），否则插入
 	UpsertBatch(ctx context.Context, rels []*entity2.ReWorkTag, tagType int) error
+}
+
+// TagNamespaceInventoryWriter tag namespace 维度清单写入（tagNamespace.Service 实现）：
+// 入库链写关联 ns 时登记清单行（find-or-create + origin 升级 + last_use 刷新），与关联写入同事务
+type TagNamespaceInventoryWriter interface {
+	// EnsureUsedBatch 批量登记维度值使用（值归一化，空串不产生清单行）
+	EnsureUsedBatch(ctx context.Context, values []string, origin int64) error
+}
+
+// AuthorRoleInventoryWriter 作者 role 维度清单写入（authorRole.Service 实现）：
+// 入库链写关联 role 时登记清单行（find-or-create + origin 升级 + last_use 刷新），与关联写入同事务
+type AuthorRoleInventoryWriter interface {
+	// EnsureUsedBatch 批量登记维度值使用（值归一化，空串不产生清单行）
+	EnsureUsedBatch(ctx context.Context, values []string, origin int64) error
 }
 
 // ReWorkWorkSetWriter 作品-作品集关联写入接口
@@ -367,6 +381,9 @@ type Service struct {
 	localTagFindOrCreator    LocalTagFindOrCreator
 	localAuthorFindOrCreator LocalAuthorFindOrCreator
 	workSetRelationWriter    WorkSetRelationWriter
+	// 关联级维度清单写入（入库链写 ns/role 时登记清单行，与关联写入同事务）
+	tagNamespaceInventory TagNamespaceInventoryWriter
+	authorRoleInventory   AuthorRoleInventoryWriter
 
 	// 原站序获取能力（入库后异步拉取，nil 时跳过；经 SetWorkSetOrderFetcher 延迟注入）
 	// 作品集父集关系获取能力（入库后异步拉取，nil 时跳过；经 SetWorkSetRelationFetcher 延迟注入）
@@ -418,6 +435,8 @@ func NewService(
 	workSetRelationWriter WorkSetRelationWriter,
 	coverReferenceClearer CoverReferenceClearer,
 	workLock WorkLockChecker,
+	tagNamespaceInventory TagNamespaceInventoryWriter,
+	authorRoleInventory AuthorRoleInventoryWriter,
 ) *Service {
 	return &Service{
 		repo:                     repo,
@@ -452,6 +471,8 @@ func NewService(
 		workSetRelationWriter:    workSetRelationWriter,
 		coverReferenceClearer:    coverReferenceClearer,
 		workLock:                 workLock,
+		tagNamespaceInventory:    tagNamespaceInventory,
+		authorRoleInventory:      authorRoleInventory,
 	}
 }
 
@@ -947,10 +968,18 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 			}
 		}
 
-		// 本地标签
+		// 本地标签 / 站点标签条目按唯一标签去重：关联唯一键含 ns（同作品同标签多 ns = 多条关联行），
+		// 而标签条目不携带 ns（ns 属关联行，由 reWorkTag.ListByWorkId 原始关联返回）——按关联行
+		// 展开会产出全同条目，须收敛为每唯一标签一条。作者侧相反：Ranked 条目携带 role，
+		// 同作者多 role = 多条目（每关联行一条，见 render_context_convert 注释）
 		if tagIds, ok := localTagIdMap[id]; ok && len(tagIds) > 0 {
+			seenLocalTagIds := make(map[int64]struct{}, len(tagIds))
 			fullDTO.LocalTags = make([]*sdkdto.LocalTagDTO, 0, len(tagIds))
 			for _, tagId := range tagIds {
+				if _, dup := seenLocalTagIds[tagId]; dup {
+					continue
+				}
+				seenLocalTagIds[tagId] = struct{}{}
 				if tag, ok := localTagEntityMap[tagId]; ok {
 					fullDTO.LocalTags = append(fullDTO.LocalTags, dto2.NewLocalTagDTO(tag))
 				}
@@ -959,8 +988,13 @@ func (s *Service) GetFullWorkInfoByIds(ctx context.Context, ids []int64) ([]*dto
 
 		// 站点标签
 		if tagIds, ok := siteTagIdMap[id]; ok && len(tagIds) > 0 {
+			seenSiteTagIds := make(map[int64]struct{}, len(tagIds))
 			fullDTO.SiteTags = make([]*dto2.SiteTagFullDTO, 0, len(tagIds))
 			for _, tagId := range tagIds {
+				if _, dup := seenSiteTagIds[tagId]; dup {
+					continue
+				}
+				seenSiteTagIds[tagId] = struct{}{}
 				if tag, ok := siteTagEntityMap[tagId]; ok {
 					stDTO := dto2.NewSiteTagFullDTO(tag)
 					if tag.SiteID.Valid && tag.SiteID.Int64 > 0 {
@@ -1250,7 +1284,7 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	// === Phase 3: 保存 Work + 关联窄域重建 ===
 	// 关联权威随来源（source 列）：插件来源关联按本次声明窄域重建——删「source=PLUGIN 且本次未声明」，
 	// 站点移除标签/移出合集时库自动对齐插件声明面；用户来源关联（手动挂联、物理纳入复制）永不触碰。
-	// 插件再声明用户已手动挂的关联时冲突不翻转来源、不重复建行：SITE 标签轨仅刷 namespace 镜像，
+	// 插件再声明用户已手动挂的同值关联时（唯一键三元组重合）不翻转来源、不重复建行；
 	// sort_order 属用户策展不动（PLUGIN 关联删后重插，声明序自然刷新）。
 	workId, err := s.saveOrUpdateWork(ctx, work)
 	if err != nil {
@@ -1261,7 +1295,17 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	if err := s.reWorkAuthorWriter.DeletePluginSiteByWorkId(ctx, workId); err != nil {
 		return 0, fmt.Errorf("删除作品插件来源 SITE 作者关联失败: %w", err)
 	}
-	siteAuthorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
+	// 插件声明的 role 直写关联行（role 是关联级维度，不写作者实体行）；维度值归一化，
+	// 顺序与 siteAuthorDBIds 一致（upsertSiteAuthors 按 dtos 顺序返回）。
+	// role 清单登记与关联写入同事务（ctx 即 SaveWorkInfo 事务上下文），来源 origin=plugin
+	siteAuthorRoleNames := make([]string, len(workResp.SiteAuthors))
+	for i, a := range workResp.SiteAuthors {
+		siteAuthorRoleNames[i] = constant.NormalizeDimensionValue(a.RoleName)
+	}
+	if err := s.authorRoleInventory.EnsureUsedBatch(ctx, siteAuthorRoleNames, constant.ORIGIN_PLUGIN); err != nil {
+		return 0, fmt.Errorf("登记 role 维度清单失败: %w", err)
+	}
+	siteAuthorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds, siteAuthorRoleNames)
 	if len(siteAuthorLinks) > 0 {
 		// OnConflict：插件元数据对同一作者产出多条同 ID DTO 时（upsert 落同一 site_author 行、回查输出重复 DB ID），批内重复折叠为单条关联
 		if err := s.reWorkAuthorWriter.SaveBatchOnConflict(ctx, siteAuthorLinks); err != nil {
@@ -1279,15 +1323,21 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	if err := s.reWorkTagWriter.DeletePluginSiteByWorkId(ctx, workId); err != nil {
 		return 0, fmt.Errorf("删除作品插件来源 SITE 标签关联失败: %w", err)
 	}
-	// re_work_tag.namespace 镜像所指 site_tag.namespace（site 关联）；顺序与 siteTagDBIds 一致（upsertSiteTags 按 dtos 顺序返回）
+	// re_work_tag.namespace 直写插件声明值（namespace 是关联级维度，不经 site_tag 行）；维度值归一化，
+	// 顺序与 siteTagDBIds 一致（upsertSiteTags 按 dtos 顺序返回）。
+	// ns 清单登记与关联写入同事务（ctx 即 SaveWorkInfo 事务上下文），来源 origin=plugin
 	siteTagNamespaces := make([]string, len(workResp.SiteTags))
 	for i, t := range workResp.SiteTags {
-		siteTagNamespaces[i] = t.Namespace
+		siteTagNamespaces[i] = constant.NormalizeDimensionValue(t.Namespace)
+	}
+	if err := s.tagNamespaceInventory.EnsureUsedBatch(ctx, siteTagNamespaces, constant.ORIGIN_PLUGIN); err != nil {
+		return 0, fmt.Errorf("登记 ns 维度清单失败: %w", err)
 	}
 	siteTagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
 	if len(siteTagLinks) > 0 {
-		// upsert 冲突更新 namespace：PLUGIN 行已随窄域删除重插（镜像自然刷新），与用户手动挂的关联
-		// 冲突时仅刷镜像不翻转来源；插件元数据同 ID 标签 DTO 重复时批内折叠（冲突列 (work_id, site_tag_id)）
+		// upsert 冲突（同 work+tag+ns 三元组重合，即插件声明与用户手动挂的关联完全同值）仅刷 update_time
+		// 不翻转来源：PLUGIN 行已随窄域删除重插（按本次声明自然刷新），用户手动挂的同值关联保持不动；
+		// 插件元数据同 ID 标签 DTO 重复时批内折叠（冲突列 (work_id, site_tag_id, namespace)）
 		if err := s.reWorkTagWriter.UpsertBatch(ctx, siteTagLinks, constant.SITE); err != nil {
 			return 0, fmt.Errorf("保存作品 SITE 标签关联失败: %w", err)
 		}
@@ -1969,7 +2019,6 @@ func taskSiteTagDTOToEntity(d *sdkdto.TaskSiteTagDTO, siteId int64) *entity2.Sit
 		SiteTagID:   sql.NullString{String: d.SiteTagId, Valid: true},
 		SiteTagName: sql.NullString{String: d.TagName, Valid: true},
 		Description: sql.NullString{String: d.Description, Valid: d.Description != ""},
-		Namespace:   sql.NullString{String: d.Namespace, Valid: d.Namespace != ""},
 	}
 }
 
@@ -1984,14 +2033,19 @@ func taskWorkSetDTOToEntity(d *sdkdto.TaskWorkSetDTO, siteId int64) *entity2.Wor
 
 // ========== 关联实体构建辅助函数 ==========
 
-func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWorkAuthor {
+func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64, roleNames []string) []*entity2.ReWorkAuthor {
 	links := make([]*entity2.ReWorkAuthor, 0, len(siteAuthorIds))
 	for i, authorId := range siteAuthorIds {
+		role := ""
+		if i < len(roleNames) {
+			role = roleNames[i]
+		}
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:   &model.BaseEntity{},
 			AuthorType:   sql.NullInt64{Int64: constant.SITE, Valid: true},
 			WorkID:       sql.NullInt64{Int64: workId, Valid: true},
 			SiteAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
+			RoleName:     role,
 			SortOrder:    sql.NullInt64{Int64: int64(i), Valid: true},
 			Source:       constant.PLUGIN,
 		})
@@ -2011,7 +2065,7 @@ func buildSiteTagLinks(workId int64, siteTagIds []int64, namespaces []string) []
 			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
 			TagType:    sql.NullInt64{Int64: constant.SITE, Valid: true},
 			SiteTagID:  sql.NullInt64{Int64: tagId, Valid: true},
-			Namespace:  sql.NullString{String: ns, Valid: ns != ""},
+			Namespace:  ns,
 			Source:     constant.PLUGIN,
 		})
 	}

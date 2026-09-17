@@ -122,7 +122,6 @@ func seedExportFixture(t *testing.T, db *gorm.DB) *exportFixture {
 	st.SiteID = ni(f.siteID)
 	st.SiteTagID = ns("st-1")
 	st.SiteTagName = ns("女仆")
-	st.Namespace = ns("character")
 	st.LocalTagID = ni(f.ltChildID)
 	require.NoError(t, db.Create(st).Error)
 	f.stID = st.GetID()
@@ -185,7 +184,7 @@ func seedExportFixture(t *testing.T, db *gorm.DB) *exportFixture {
 	rwt2.WorkID = ni(f.w1ID)
 	rwt2.TagType = ni(int64(constant.SITE))
 	rwt2.SiteTagID = ni(f.stID)
-	rwt2.Namespace = ns("character")
+	rwt2.Namespace = "character"
 	require.NoError(t, db.Create(rwt2).Error)
 
 	// 作品-作者关联：W1 挂本地作者 + 站点作者（re_work_author 无工厂方法，生产代码同用字面量构建）
@@ -323,12 +322,11 @@ func TestCollectSelectionUnit(t *testing.T) {
 		assert.Equal(t, "store/resource/作品1.jpg", m.Files[0].StorePath)
 		assert.False(t, m.Files[0].Missing) // 阶段2 数据面：按活行关联纳入，缺失标记阶段3 判定
 
-		// 标签：本地含祖先链（子+父），站点含 namespace
+		// 标签：本地含祖先链（子+父）；站点标签记录无 namespace 列（关联级 ns 随 TagLink 行）
 		require.Len(t, m.LocalTags, 2)
 		require.Len(t, m.SiteTags, 1)
-		assert.Equal(t, "character", *m.SiteTags[0].Namespace)
 
-		// W1 标签关联：本地子标签 + 站点标签（namespace 随行）
+		// W1 标签关联：本地子标签 + 站点标签（关联级 namespace 随行）
 		assert.Len(t, w1Rec.TagLinks, 2)
 		siteTagLink := findTagLinkByType(w1Rec, constant.SITE)
 		require.NotNil(t, siteTagLink)

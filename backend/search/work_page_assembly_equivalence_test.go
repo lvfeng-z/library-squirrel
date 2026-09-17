@@ -59,7 +59,6 @@ func buildFullSpectrumFixture(t *testing.T, db *gorm.DB) *fullSpectrumFixture {
 	siteTagRow.SiteID = sql.NullInt64{Int64: siteRow.GetID(), Valid: true}
 	siteTagRow.SiteTagID = sql.NullString{String: "st-1", Valid: true}
 	siteTagRow.SiteTagName = sql.NullString{String: "站点标签", Valid: true}
-	siteTagRow.Namespace = sql.NullString{String: "character", Valid: true}
 	// 站点标签绑定本地标签（SiteTags 嵌套 LocalTag 的数据源）
 	siteTagRow.LocalTagID = sql.NullInt64{Int64: localTagRow.GetID(), Valid: true}
 	if err := db.Create(siteTagRow).Error; err != nil {
@@ -84,7 +83,7 @@ func buildFullSpectrumFixture(t *testing.T, db *gorm.DB) *fullSpectrumFixture {
 	linkSiteAuthor.AuthorType = sql.NullInt64{Int64: constant.SITE, Valid: true}
 	linkSiteAuthor.WorkID = sql.NullInt64{Int64: fullWorkId, Valid: true}
 	linkSiteAuthor.SiteAuthorID = sql.NullInt64{Int64: siteAuthorRow.GetID(), Valid: true}
-	linkSiteAuthor.RoleName = sql.NullString{String: "作者", Valid: true}
+	linkSiteAuthor.RoleName = "作者"
 	linkSiteAuthor.SortOrder = sql.NullInt64{Int64: 1, Valid: true}
 	if err := db.Create(linkSiteAuthor).Error; err != nil {
 		t.Fatalf("挂站点作者关联失败: %v", err)
@@ -110,7 +109,7 @@ func buildFullSpectrumFixture(t *testing.T, db *gorm.DB) *fullSpectrumFixture {
 	linkSiteTag.WorkID = sql.NullInt64{Int64: fullWorkId, Valid: true}
 	linkSiteTag.TagType = sql.NullInt64{Int64: constant.SITE, Valid: true}
 	linkSiteTag.SiteTagID = sql.NullInt64{Int64: siteTagRow.GetID(), Valid: true}
-	linkSiteTag.Namespace = sql.NullString{String: "character", Valid: true} // site 关联镜像所指 site_tag.namespace
+	linkSiteTag.Namespace = "character" // 关联级 namespace（站点标签关联自带维度值）
 	if err := db.Create(linkSiteTag).Error; err != nil {
 		t.Fatalf("挂站点标签关联失败: %v", err)
 	}

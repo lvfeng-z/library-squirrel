@@ -414,8 +414,8 @@ async function querySearchItemPage(p: IPage<SelectItem>, input?: string): Promis
 function handleConditionTypeChange() {
   searchConditionBar.value.newSearch()
 }
-// namespace 由已选 tag 的 ns 段编辑写入 extraData.namespace（local=用户点 ns 段设搜索 ns、site=站点自带固定 ns）；author 不带
-// 空串视作未设：DB 空串落 NULL，无命中
+// namespace 由已选 tag 的 ns 段编辑写入 extraData.namespace（local/site 均为用户点 ns 段自设搜索 ns）；author 不带
+// 空串视作未设（undefined）：不设 ns 即不过滤（命中该标签全部 ns 的关联，含无 ns），需精确时由用户显式指定
 function resolveSearchNamespace(extraData: { type: SearchType; namespace?: string }): string | undefined {
   if (extraData.type === SearchType.LocalTag || extraData.type === SearchType.SiteTag) {
     return extraData.namespace || undefined

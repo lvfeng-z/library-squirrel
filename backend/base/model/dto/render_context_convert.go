@@ -20,6 +20,10 @@ func ToRenderContext(work *WorkFullDTO) *render.Context {
 	}
 }
 
+// toRenderLocalAuthors 本地作者条目投射。聚合规则：每关联行一条 Ranked 条目——同作者多 role
+// （唯一键含 role_name，身兼数职 = 多条 re_work_author 行）产生多条目，RoleName 随行携带、
+// 无损传导给插件渲染器；SortOrder 保序。与标签侧相反（标签条目不携带 ns，按唯一标签去重，
+// 见 work.GetFullWorkInfoByIds 组装处注释）
 func toRenderLocalAuthors(authors []*RankedLocalAuthor) []*render.RankedLocalAuthor {
 	if len(authors) == 0 {
 		return nil
@@ -38,6 +42,8 @@ func toRenderLocalAuthors(authors []*RankedLocalAuthor) []*render.RankedLocalAut
 	return result
 }
 
+// toRenderSiteAuthors 站点作者条目投射。聚合规则同 toRenderLocalAuthors：每关联行一条
+// Ranked 条目（同作者多 role = 多条目，RoleName 区分）
 func toRenderSiteAuthors(authors []*RankedSiteAuthor) []*render.RankedSiteAuthor {
 	if len(authors) == 0 {
 		return nil

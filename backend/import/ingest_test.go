@@ -132,7 +132,7 @@ func buildFixture() (*export.Manifest, map[string]string) {
 		},
 		SiteTags: []export.TagRecord{
 			{ID: 301, SiteID: i64Ptr(100), SiteTagID: strPtr("site-tag-x"), Name: strPtr("原站标签"),
-				Namespace: strPtr("character"), LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
+				LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
 		},
 		LocalAuthors: []export.AuthorRecord{
 			{ID: 401, Name: strPtr("本地作者甲"), Introduce: strPtr("作者介绍"), CreateTime: 141, UpdateTime: 142},
@@ -276,13 +276,11 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	if got := queryInt64(t, db, "SELECT create_time FROM local_tag WHERE id = ?", tagRoot); got != 121 {
 		t.Fatalf("本地标签源库时间戳未保真: create_time=%d 期望 121", got)
 	}
-	// 站点标签：复合身份落库、namespace 与 site→local 桥接保真
+	// 站点标签：复合身份落库、site→local 桥接保真（namespace 是关联级维度，由 TagLink 落关联行，
+	// 断言见下方标签关联段）
 	siteTagID := queryInt64(t, db, "SELECT id FROM site_tag WHERE site_id = ? AND site_tag_id = 'site-tag-x'", siteID)
 	if siteTagID == 0 {
 		t.Fatalf("站点标签未落库")
-	}
-	if got := queryString(t, db, "SELECT namespace FROM site_tag WHERE id = ?", siteTagID); got != "character" {
-		t.Fatalf("站点标签 namespace 未保真: %q", got)
 	}
 	if got := queryInt64(t, db, "SELECT local_tag_id FROM site_tag WHERE id = ?", siteTagID); got != tagRoot {
 		t.Fatalf("站点标签桥接未重映射: local_tag_id=%d 期望 %d", got, tagRoot)
@@ -313,7 +311,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	if got := queryInt64(t, db, "SELECT create_time FROM work WHERE id = ?", workID); got != 171 {
 		t.Fatalf("作品源库时间戳未保真: create_time=%d 期望 171", got)
 	}
-	// 标签关联：site 关联带 namespace 镜像、local 关联 namespace 落 NULL、tag_type 分轨
+	// 标签关联：site 关联携带关联级 namespace、local 关联 namespace 落空串（无 ns）、tag_type 分轨
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM re_work_tag WHERE work_id = ?", workID); got != 2 {
 		t.Fatalf("标签关联行数=%d 期望 2", got)
 	}
@@ -330,7 +328,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	}
 	if got := queryString(t, db,
 		"SELECT namespace FROM re_work_tag WHERE work_id = ? AND local_tag_id = ?", workID, tagChild); got != "" {
-		t.Fatalf("local 标签关联 namespace 应为 NULL，实际 %q", got)
+		t.Fatalf("local 标签关联 namespace 应为空串（无 ns），实际 %q", got)
 	}
 	// 作者关联：role/sort 保真
 	if got := queryString(t, db,
@@ -646,7 +644,7 @@ func buildReplaceFixture() (*export.Manifest, map[string]string) {
 		},
 		SiteTags: []export.TagRecord{
 			{ID: 301, SiteID: i64Ptr(100), SiteTagID: strPtr("site-tag-x"), Name: strPtr("原站标签"),
-				Namespace: strPtr("character"), LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
+				LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
 		},
 		LocalAuthors: []export.AuthorRecord{
 			{ID: 401, Name: strPtr("本地作者甲"), Introduce: strPtr("作者介绍"), CreateTime: 141, UpdateTime: 142},

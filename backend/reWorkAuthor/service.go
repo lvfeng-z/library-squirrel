@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -27,8 +28,10 @@ type Repository interface {
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// DeleteByWorkAndAuthor 根据作品ID和作者删除关联（authorType 非法时无操作）
+	// DeleteByWorkAndAuthor 根据作品ID和作者删除关联（该作者的全部 role 关联行；authorType 非法时无操作）
 	DeleteByWorkAndAuthor(ctx context.Context, workId int64, authorType int, authorId int64) error
+	// DeleteByWorkAuthorAndRole 按作品+作者+role 精确删除关联行（不波及同作者其他 role 行）
+	DeleteByWorkAuthorAndRole(ctx context.Context, workId int64, authorType int, authorId int64, roleName string) error
 	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 作者关联（保留 LOCAL 与用户来源关联）
 	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库用）
@@ -60,13 +63,30 @@ type Repository interface {
 
 // Service 作品-作者关联服务
 type Service struct {
-	repo Repository
+	repo          Repository
+	transactor    Transactor
+	roleInventory RoleInventoryWriter
+}
+
+// Transactor 事务执行器（手动挂联链的关联写入与 role 清单登记同事务，事务连接经 ctx 传递）
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// RoleInventoryWriter 作者 role 维度清单写入（authorRole.Service 实现）：
+// 挂联写 role 时同事务登记清单行（find-or-create + origin 升级 + last_use 刷新）
+type RoleInventoryWriter interface {
+	// EnsureUsedBatch 批量登记维度值使用（空串不产生清单行）
+	EnsureUsedBatch(ctx context.Context, values []string, origin int64) error
 }
 
 // NewService 创建作品-作者关联服务
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, transactor Transactor, roleInventory RoleInventoryWriter) *Service {
 	return &Service{
-		repo: repo,
+		repo:          repo,
+		transactor:    transactor,
+		roleInventory: roleInventory,
 	}
 }
 
@@ -219,21 +239,6 @@ func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64)
 
 // ========== 用户手动挂联 ==========
 
-// LinkAuthorToWork 链接作者到作品（用户手动挂联，来源 MANUAL；roleName 空串落 NULL）
-func (s *Service) LinkAuthorToWork(ctx context.Context, workId int64, authorType int, authorId int64, roleName string) error {
-	rel := domain.NewReWorkAuthor()
-	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-	rel.AuthorType = sql.NullInt64{Int64: int64(authorType), Valid: true}
-	rel.Source = constant.MANUAL
-	rel.RoleName = sql.NullString{String: roleName, Valid: roleName != ""}
-	if authorType == constant.LOCAL {
-		rel.LocalAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
-	} else {
-		rel.SiteAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
-	}
-	return s.repo.Create(ctx, rel)
-}
-
 // UnlinkAuthorFromWork 从作品移除作者
 func (s *Service) UnlinkAuthorFromWork(ctx context.Context, workId int64, authorType int, authorId int64) error {
 	return s.repo.DeleteByWorkAndAuthor(ctx, workId, authorType, authorId)
@@ -242,9 +247,11 @@ func (s *Service) UnlinkAuthorFromWork(ctx context.Context, workId int64, author
 // ErrRoleNameCountMismatch roleNames 与 authorIds 长度不匹配（须等长配对或全空）
 var ErrRoleNameCountMismatch = errors.New("roleNames 与 authorIds 长度不匹配")
 
-// LinkBatchToWork 批量链接作者到作品（upsert：同 work_id+author_id 已存在则更新 role_name/sort_order，否则新增）。
-// roleNames 与 authorIds 等长配对（local/site 关联均用调用方值——作者无站点侧镜像语义），空数组=全无角色。
+// LinkBatchToWork 批量链接作者到作品（upsert：同 work_id+author_id+role_name 已存在则更新 sort_order，否则新增）。
+// roleNames 与 authorIds 等长配对（local/site 关联均用调用方值），空数组=全无角色。
+// 维度值归一化（去空白+小写折叠）后写入；同作品同作者不同 role 不构成冲突，落独立关联行（身兼数职）。
 // 冲突不翻转来源：已存在的关联（插件声明或用户手动先建）source 保持不变，仅刷新用户可编辑字段。
+// role 清单登记与关联写入同事务（失败整体回滚，不留孤儿候选行），来源 origin=user
 func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, authorType int, authorIds []int64, roleNames []string) error {
 	if len(authorIds) == 0 {
 		return nil
@@ -260,11 +267,10 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, authorType 
 		rel.AuthorType = sql.NullInt64{Int64: int64(authorType), Valid: true}
 		rel.Source = constant.MANUAL
 
-		role := ""
+		// role 取调用方传值并归一化（越界守卫：配对数组短于 authorIds 时余下关联按无 role 处理）
 		if i < len(roleNames) {
-			role = roleNames[i]
+			rel.RoleName = constant.NormalizeDimensionValue(roleNames[i])
 		}
-		rel.RoleName = sql.NullString{String: role, Valid: role != ""}
 
 		if authorType == constant.LOCAL {
 			rel.LocalAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
@@ -275,16 +281,43 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, authorType 
 		}
 		rels[i] = rel
 	}
-	return s.repo.UpsertBatch(ctx, rels, authorType)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.roleInventory.EnsureUsedBatch(txCtx, roleNames, constant.ORIGIN_USER); err != nil {
+			return fmt.Errorf("登记 role 维度清单失败: %w", err)
+		}
+		return s.repo.UpsertBatch(txCtx, rels, authorType)
+	})
 }
 
-// RemoveBatchFromWork 批量从作品移除作者
+// RemoveBatchFromWork 批量从作品移除作者（该作者的全部 role 关联行）
 func (s *Service) RemoveBatchFromWork(ctx context.Context, workId int64, authorType int, authorIds []int64) error {
 	if len(authorIds) == 0 {
 		return nil
 	}
 	for _, authorId := range authorIds {
 		if err := s.repo.DeleteByWorkAndAuthor(ctx, workId, authorType, authorId); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveDimensionFromWork 批量精确摘除维度关联行（改 role 的旧值行删除：与 RemoveBatchFromWork 的
+// 区别是只删 (work, author, role) 命中行，不波及同作者其他 role 行）。roleNames 与 authorIds 等长
+// 配对（空数组=全无 role 行），值归一化后比对。清单行不随摘除清理（清单=见过的值，删后复活语义）
+func (s *Service) RemoveDimensionFromWork(ctx context.Context, workId int64, authorType int, authorIds []int64, roleNames []string) error {
+	if len(authorIds) == 0 {
+		return nil
+	}
+	if len(roleNames) != 0 && len(roleNames) != len(authorIds) {
+		return ErrRoleNameCountMismatch
+	}
+	for i, authorId := range authorIds {
+		role := ""
+		if i < len(roleNames) {
+			role = roleNames[i]
+		}
+		if err := s.repo.DeleteByWorkAuthorAndRole(ctx, workId, authorType, authorId, role); err != nil {
 			return err
 		}
 	}

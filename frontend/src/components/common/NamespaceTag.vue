@@ -2,11 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
-import { BUILTIN_NAMESPACES } from '@renderer/constants/namespace.ts'
+import { useDimensionListStore } from '@renderer/store/UseDimensionListStore.ts'
 
 // NamespaceTag：包一层 SegmentedTag，把 namespace 作为视觉一体的末段；ns 段点击弹 el-popover 编辑，其余点击透传。
 // 可编辑性 = editableNs prop（区域级，TagBox 透传）|| extraData.nsEditable（tag 数据级，兼容）；
-// ns 值（extraData.namespace）始终纯 tag 数据，popover 提交时回写。
+// ns 值（extraData.namespace）始终纯 tag 数据，popover 提交时回写。多 ns 关联聚合为 '/' 连接串，
+// 编辑取单值、确认时由父组件 diff 替换全部旧值。
 // 作 TagBox 默认 tagComponent——非编辑态不显示 ns 段、不创建 popover，退化为纯 SegmentedTag。
 const props = defineProps<{
   item: SegmentedTagItem
@@ -17,14 +18,18 @@ const props = defineProps<{
 
 const emits = defineEmits(['clicked', 'mainLabelClicked', 'subLabelClicked', 'close', 'nsEdited'])
 
+// 维度清单 store：候选分组（内置/用户/插件、last_use 降序）与值→显示名解析；首次使用触发会话内一次拉取
+const dimensionStore = useDimensionListStore()
+dimensionStore.loadNamespaces()
+
 // 是否可编辑（显示 ns 选择框）：区域级 editableNs prop 优先，兼容 tag 数据 extraData.nsEditable
 const editable = computed(() => props.editableNs || !!props.item.extraData?.nsEditable)
 // namespace 本地真源（extraData:any 非深响应，用本地 ref 驱动展示；popover 提交时回写 extraData.namespace）
 const editingNs = ref<string>(props.item.extraData?.namespace ?? '')
-// ns 段展示文案：有 ns 显示 ns 名（内置用中文 label）；无 ns 时可编辑显示 "+",不可编辑显示空（不显示段）
+// ns 段展示文案：有 ns 显示 ns 名（清单 label，'/' 连接的多值串逐段解析）；无 ns 时可编辑显示 "+",不可编辑显示空（不显示段）
 const nsSegmentText = computed(() => {
   if (editingNs.value) {
-    return BUILTIN_NAMESPACES.find((n) => n.value === editingNs.value)?.label ?? editingNs.value
+    return dimensionStore.nsLabelOf(editingNs.value)
   }
   return editable.value ? '+' : ''
 })
@@ -52,7 +57,7 @@ function onSubLabelClicked(index: number, event: MouseEvent) {
 }
 
 // editingNs 变更即回写 extraData.namespace（供父组件 confirm 时读取），并通知父组件 ns 被编辑
-// （已绑定区编辑后由 ExchangeBox 移至缓冲区，待重新确认走 upsert 更新）
+// （已绑定区编辑后由 ExchangeBox 移至缓冲区，待重新确认时由父组件 diff：Link 新值 + UnlinkDimension 摘旧值）
 watch(editingNs, (ns) => {
   props.item.extraData = { ...(props.item.extraData ?? {}), namespace: ns }
   emits('nsEdited')
@@ -110,12 +115,18 @@ onBeforeUnmount(() => {
       placeholder="namespace"
       style="width: 100%"
     >
-      <el-option
-        v-for="ns in BUILTIN_NAMESPACES"
-        :key="ns.value"
-        :label="ns.label"
-        :value="ns.value"
-      />
+      <el-option-group
+        v-for="group in dimensionStore.nsGroups"
+        :key="group.label"
+        :label="group.label"
+      >
+        <el-option
+          v-for="ns in group.options"
+          :key="ns.value"
+          :label="ns.label || ns.value"
+          :value="ns.value"
+        />
+      </el-option-group>
     </el-select>
   </el-popover>
 </template>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -13,12 +14,14 @@ import (
 type Repository interface {
 	// Create 新建关联
 	Create(ctx context.Context, rel *domain.ReWorkTag) error
-	// UpsertBatch 批量 upsert：按 (work_id, tag_id) 冲突更新 namespace，否则插入
+	// UpsertBatch 批量 upsert：按 (work_id, tag_id, namespace) 冲突仅刷 update_time，否则插入
 	UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error
 	// Delete 删除关联
 	Delete(ctx context.Context, id int64) error
-	// DeleteByWorkAndTag 根据作品ID和标签删除
+	// DeleteByWorkAndTag 根据作品ID和标签删除（该标签的全部 ns 关联行）
 	DeleteByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) error
+	// DeleteByWorkTagAndNamespace 按作品+标签+namespace 精确删除关联行（不波及同标签其他 ns 行）
+	DeleteByWorkTagAndNamespace(ctx context.Context, workId int64, tagType int, tagId int64, namespace string) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
 	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 标签关联（保留 LOCAL 与用户手动挂的 SITE 关联）
@@ -45,23 +48,32 @@ type Repository interface {
 	ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]int64, error)
 }
 
-// SiteTagNamespaceReader 提供 site_tag 查询，供 site 关联镜像 namespace。
-// siteTag.Service 的 ListBySiteTagIds 结构化匹配此接口（无需 siteTag 反向依赖 reWorkTag）。
-type SiteTagNamespaceReader interface {
-	ListBySiteTagIds(ctx context.Context, siteTagIds []int64) ([]*domain.SiteTag, error)
+// Transactor 事务执行器（手动挂联链的关联写入与 ns 清单登记同事务，事务连接经 ctx 传递）
+type Transactor interface {
+	// ExecInTransaction 在事务中执行 fn，事务 DB 实例通过 ctx 传递
+	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// NamespaceInventoryWriter tag namespace 维度清单写入（tagNamespace.Service 实现）：
+// 挂联写 ns 时同事务登记清单行（find-or-create + origin 升级 + last_use 刷新）
+type NamespaceInventoryWriter interface {
+	// EnsureUsedBatch 批量登记维度值使用（空串不产生清单行）
+	EnsureUsedBatch(ctx context.Context, values []string, origin int64) error
 }
 
 // Service 作品-标签关联服务
 type Service struct {
-	repo          Repository
-	siteTagReader SiteTagNamespaceReader
+	repo        Repository
+	transactor  Transactor
+	nsInventory NamespaceInventoryWriter
 }
 
-// NewService 创建关联服务。siteTagReader 用于 site 关联镜像 site_tag.namespace（可为 nil，仅 site 分支需要）。
-func NewService(repo Repository, siteTagReader SiteTagNamespaceReader) *Service {
+// NewService 创建关联服务
+func NewService(repo Repository, transactor Transactor, nsInventory NamespaceInventoryWriter) *Service {
 	return &Service{
-		repo:          repo,
-		siteTagReader: siteTagReader,
+		repo:        repo,
+		transactor:  transactor,
+		nsInventory: nsInventory,
 	}
 }
 
@@ -89,8 +101,8 @@ func (s *Service) DeletePluginSiteByWorkId(ctx context.Context, workId int64) er
 	return s.repo.DeletePluginSiteByWorkId(ctx, workId)
 }
 
-// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 冲突更新 namespace（不翻转 source），否则插入。
-// tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)
+// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id, namespace) 冲突仅刷 update_time（不翻转 source），否则插入。
+// tagType 决定冲突列：local→(work_id, local_tag_id, namespace)，site→(work_id, site_tag_id, namespace)
 func (s *Service) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
 	return s.repo.UpsertBatch(ctx, rels, tagType)
 }
@@ -146,20 +158,6 @@ func (s *Service) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) 
 	return s.repo.ListSiteTagIdsByWorkIds(ctx, workIds)
 }
 
-// LinkTagToWork 链接标签到作品（用户手动挂联，来源 MANUAL）
-func (s *Service) LinkTagToWork(ctx context.Context, workId int64, tagType int, tagId int64) error {
-	rel := domain.NewReWorkTag()
-	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-	rel.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
-	rel.Source = constant.MANUAL
-	if tagType == constant.LOCAL {
-		rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
-	} else {
-		rel.SiteTagID = sql.NullInt64{Int64: tagId, Valid: true}
-	}
-	return s.repo.Create(ctx, rel)
-}
-
 // UnlinkTagFromWork 从作品移除标签
 func (s *Service) UnlinkTagFromWork(ctx context.Context, workId int64, tagType int, tagId int64) error {
 	return s.repo.DeleteByWorkAndTag(ctx, workId, tagType, tagId)
@@ -168,29 +166,16 @@ func (s *Service) UnlinkTagFromWork(ctx context.Context, workId int64, tagType i
 // ErrNamespaceCountMismatch namespaces 与 tagIds 长度不匹配（须等长配对或全空）
 var ErrNamespaceCountMismatch = errors.New("namespaces 与 tagIds 长度不匹配")
 
-// LinkBatchToWork 批量链接标签到作品（upsert：同 work_id+tag_id 已存在则更新 namespace，否则新增）。
-// namespaces：local 关联由前端传用户自设值（与 tagIds 等长配对，空数组=全无 namespace）；
-// site 关联忽略前端传值，由后端按 site_tag.namespace 镜像（re_work_tag.namespace = 所指 site_tag.namespace）。
+// LinkBatchToWork 批量链接标签到作品（upsert：同 work_id+tag_id+namespace 已存在则冲突更新，否则新增）。
+// namespaces：与 tagIds 等长配对（空数组=全无 namespace）。local 与 site 关联均用调用方传值——
+// namespace 是关联级开放维度，site 关联同样开放用户自设。维度值归一化（去空白+小写折叠）后写入；
+// ns 清单登记与关联写入同事务（失败整体回滚，不留孤儿候选行），来源 origin=user
 func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int, tagIds []int64, namespaces []string) error {
 	if len(tagIds) == 0 {
 		return nil
 	}
 	if len(namespaces) != 0 && len(namespaces) != len(tagIds) {
 		return ErrNamespaceCountMismatch
-	}
-
-	// site 关联的 namespace 按 site_tag.namespace 镜像（local 用前端传值，无需查 site_tag）
-	nsByTagId := make(map[int64]string, len(tagIds))
-	if tagType == constant.SITE && s.siteTagReader != nil {
-		siteTags, err := s.siteTagReader.ListBySiteTagIds(ctx, tagIds)
-		if err != nil {
-			return err
-		}
-		for _, st := range siteTags {
-			if st.Namespace.Valid {
-				nsByTagId[st.ID] = st.Namespace.String
-			}
-		}
 	}
 
 	rels := make([]*domain.ReWorkTag, len(tagIds))
@@ -200,16 +185,10 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int
 		rel.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
 		rel.Source = constant.MANUAL
 
-		// namespace 解析：local 用前端传值（越界守卫），site 用镜像 map
-		ns := ""
-		if tagType == constant.LOCAL {
-			if i < len(namespaces) {
-				ns = namespaces[i]
-			}
-		} else {
-			ns = nsByTagId[tagId]
+		// namespace 取调用方传值并归一化（越界守卫：配对数组短于 tagIds 时余下关联按无 namespace 处理）
+		if i < len(namespaces) {
+			rel.Namespace = constant.NormalizeDimensionValue(namespaces[i])
 		}
-		rel.Namespace = sql.NullString{String: ns, Valid: ns != ""}
 
 		if tagType == constant.LOCAL {
 			rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
@@ -220,16 +199,43 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int
 		}
 		rels[i] = rel
 	}
-	return s.repo.UpsertBatch(ctx, rels, tagType)
+	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.nsInventory.EnsureUsedBatch(txCtx, namespaces, constant.ORIGIN_USER); err != nil {
+			return fmt.Errorf("登记 ns 维度清单失败: %w", err)
+		}
+		return s.repo.UpsertBatch(txCtx, rels, tagType)
+	})
 }
 
-// RemoveBatchFromWork 批量从作品移除标签
+// RemoveBatchFromWork 批量从作品移除标签（该标签的全部 ns 关联行）
 func (s *Service) RemoveBatchFromWork(ctx context.Context, workId int64, tagType int, tagIds []int64) error {
 	if len(tagIds) == 0 {
 		return nil
 	}
 	for _, tagId := range tagIds {
 		if err := s.repo.DeleteByWorkAndTag(ctx, workId, tagType, tagId); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveDimensionFromWork 批量精确摘除维度关联行（改 ns 的旧值行删除：与 RemoveBatchFromWork 的
+// 区别是只删 (work, tag, ns) 命中行，不波及同标签其他 ns 行）。namespaces 与 tagIds 等长配对
+// （空数组=全无 ns 行），值归一化后比对。清单行不随摘除清理（清单=见过的值，删后复活语义）
+func (s *Service) RemoveDimensionFromWork(ctx context.Context, workId int64, tagType int, tagIds []int64, namespaces []string) error {
+	if len(tagIds) == 0 {
+		return nil
+	}
+	if len(namespaces) != 0 && len(namespaces) != len(tagIds) {
+		return ErrNamespaceCountMismatch
+	}
+	for i, tagId := range tagIds {
+		ns := ""
+		if i < len(namespaces) {
+			ns = namespaces[i]
+		}
+		if err := s.repo.DeleteByWorkTagAndNamespace(ctx, workId, tagType, tagId, ns); err != nil {
 			return err
 		}
 	}

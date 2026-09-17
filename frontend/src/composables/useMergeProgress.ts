@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 
 // 合并状态（按 resourceId 索引），由后端 merge-events 事件驱动。
-// 阶段1 合并不进 taskManager 控制面，故独立维护状态；当前仅 WorkDialog 消费，
+// 阶段1 合并不进 taskManager 控制面，故独立维护状态；当前仅 WorkDetailDialog 消费，
 // 用模块级单例 reactive Map 保持最小（消费方增多再升格 Pinia store）。
 export interface MergeState {
   // 合并进度百分比：-1=不定态（尚未收到进度事件），0~100

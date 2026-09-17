@@ -37,8 +37,8 @@ func newWorkPageServiceEnv(t *testing.T) (*Service, *work.Service, *SearchReposi
 	siteTagSvc := siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil)
 	siteSvc := site.NewService(site.NewRepository(db))
 	localAuthorSvc := localAuthor.NewService(localAuthor.NewRepository(db), nil, nil, nil, nil)
-	reWorkAuthorSvc := reWorkAuthor.NewService(reWorkAuthor.NewRepository(db))
-	reWorkTagSvc := reWorkTag.NewService(reWorkTag.NewRepository(db), nil)
+	reWorkAuthorSvc := reWorkAuthor.NewService(reWorkAuthor.NewRepository(db), nil, nil)
+	reWorkTagSvc := reWorkTag.NewService(reWorkTag.NewRepository(db), nil, nil)
 
 	workSvc := work.NewService(
 		work.NewRepository(db), // Repository
@@ -73,6 +73,8 @@ func newWorkPageServiceEnv(t *testing.T) (*Service, *work.Service, *SearchReposi
 		nil,                    // WorkSetRelationWriter
 		nil,                    // CoverReferenceClearer
 		nil,                    // WorkLockChecker
+		nil,                    // TagNamespaceInventoryWriter（主页链只读，无入库写入）
+		nil,                    // AuthorRoleInventoryWriter（主页链只读，无入库写入）
 	)
 
 	svc := NewService(
@@ -130,7 +132,7 @@ func buildAuthorFixture(t *testing.T, db *gorm.DB) (siteWorkId, localWorkId int6
 	linkSite.AuthorType = sql.NullInt64{Int64: 1, Valid: true}
 	linkSite.WorkID = sql.NullInt64{Int64: siteWorkId, Valid: true}
 	linkSite.SiteAuthorID = sql.NullInt64{Int64: site.GetID(), Valid: true}
-	linkSite.RoleName = sql.NullString{String: "作者", Valid: true}
+	linkSite.RoleName = "作者"
 	if err := db.Create(linkSite).Error; err != nil {
 		t.Fatalf("挂站点作者关联失败: %v", err)
 	}

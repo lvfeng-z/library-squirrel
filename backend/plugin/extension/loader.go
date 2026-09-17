@@ -36,7 +36,8 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-const minSupportedContractVersion = 5
+// v8 分界：ListAuthorsByWorkId 返回消息类型整体更换（线级破坏）+ SiteTagInfo.Namespace 删除（源级破坏）
+const minSupportedContractVersion = 8
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并

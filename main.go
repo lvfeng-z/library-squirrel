@@ -135,6 +135,8 @@ func main() {
 			application.NewService(app.SiteBrowserHandler),
 			application.NewService(app.ReWorkAuthorHandler),
 			application.NewService(app.ReWorkTagHandler),
+			application.NewService(app.TagNamespaceHandler),
+			application.NewService(app.AuthorRoleHandler),
 			application.NewService(app.PluginTaskUrlListenerHandler),
 			application.NewService(app.RecycleBinHandler),
 			application.NewService(app.ExportHandler),

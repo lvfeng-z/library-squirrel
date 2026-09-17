@@ -680,6 +680,7 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			Homepage:        a.Homepage,
 			FixedAuthorName: a.FixedAuthorName,
 			Introduce:       a.Introduce,
+			RoleName:        a.RoleName,
 			SiteKey:         a.SiteKey,
 		})
 	}

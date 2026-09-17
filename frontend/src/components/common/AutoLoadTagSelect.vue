@@ -137,10 +137,10 @@ function handelTagClicked(tag: SegmentedTagItem, optional: boolean) {
     if (isNullish(tag.disabled) || !tag.disabled) {
       // 如果标签未禁用，则把这个标签放进已选栏，待选栏中的这个标签设为禁用，同时清除输入文本
       const tempTag = lodash.cloneDeep(tag)
-      // local 标签开启 namespace 可编辑（ns 段显示 '+'，用户点选设搜索 ns）；
-      // site 标签自带固定 namespace 只读、author 无 namespace，均不设
+      // 本地/站点标签均开启 namespace 可编辑（ns 段显示 '+'，用户点选设搜索 ns——候选来自后端 ns 清单）；
+      // author 无 namespace，不设
       const extraData = tempTag.extraData as { type?: SearchType } | undefined
-      if (extraData?.type === SearchType.LocalTag) {
+      if (extraData?.type === SearchType.LocalTag || extraData?.type === SearchType.SiteTag) {
         tempTag.extraData = { ...extraData, nsEditable: true }
       }
       selectedData.value.push(tempTag)

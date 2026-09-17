@@ -352,6 +352,125 @@ func rebuildTableDropColumn(db *gorm.DB, table string, column string) error {
 	return err
 }
 
+// rebuildTableColumnToNotNullText 表重建改列：目标列定义段替换为 `text NOT NULL DEFAULT ”`
+// （关联级维度列的空串=无该维度形态）。以 sqlite_master 现表 DDL 为源文本，其余列与外键子句
+// 逐字保留（列序保真，禁用实体重建 DDL 的错位风险同 rebuildTableDropColumn）；按显式列清单
+// INSERT SELECT 拷数据，目标列包 COALESCE 归一（存量 NULL→”，满足 NOT NULL 的结构必需转换，
+// 非存量语义回填）；索引随旧表消亡、重建后逐一复原。舞步同 rebuildTableWithFK（foreign_keys
+// 关闭→事务内建/拷/删/改名→恢复）
+func rebuildTableColumnToNotNullText(db *gorm.DB, table string, column string) error {
+	var ddl string
+	if err := db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&ddl).Error; err != nil {
+		return fmt.Errorf("读取 %s 建表 DDL 失败: %w", table, err)
+	}
+	if ddl == "" {
+		return fmt.Errorf("表 %s 不存在，无法改列", table)
+	}
+
+	// 现表列清单（拷贝用，按实际列序）
+	var cols []struct{ Name string }
+	if err := db.Raw(fmt.Sprintf("PRAGMA table_info('%s')", table)).Scan(&cols).Error; err != nil {
+		return fmt.Errorf("读取 %s 列清单失败: %w", table, err)
+	}
+	columnExists := false
+	for _, c := range cols {
+		if c.Name == column {
+			columnExists = true
+			break
+		}
+	}
+	if !columnExists {
+		return fmt.Errorf("表 %s 无列 %s，无法改列", table, column)
+	}
+
+	// 现表索引清单：索引归属旧表、DROP TABLE 时一并消亡，重建后须逐一复原
+	// （sql 为 NULL 的行是 SQLite 自动索引，不在 sqlite_master 存 DDL，无需复原）
+	type indexDDL struct {
+		Name string
+		Sql  string
+	}
+	var idxs []indexDDL
+	if err := db.Raw("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", table).Scan(&idxs).Error; err != nil {
+		return fmt.Errorf("读取 %s 索引清单失败: %w", table, err)
+	}
+
+	open := strings.IndexByte(ddl, '(')
+	closeIdx := strings.LastIndexByte(ddl, ')')
+	if open < 0 || closeIdx < open {
+		return fmt.Errorf("表 %s 建表 DDL 形态异常: %s", table, ddl)
+	}
+	newColumnDef := "`" + column + "` text NOT NULL DEFAULT ''"
+	replaced := false
+	segments := make([]string, 0, len(cols))
+	for _, seg := range splitDDLTopLevelSegments(ddl[open+1 : closeIdx]) {
+		norm := strings.TrimSpace(stripIdentifierQuotes(seg))
+		if norm == "" {
+			continue
+		}
+		// 列定义段：首个标识符即目标列名（裸名后跟空白或段落即止，无前缀误伤）
+		if norm == column || strings.HasPrefix(norm, column+" ") {
+			segments = append(segments, newColumnDef)
+			replaced = true
+			continue
+		}
+		segments = append(segments, strings.TrimSpace(seg))
+	}
+	if !replaced {
+		return fmt.Errorf("表 %s 建表 DDL 未找到列 %s 定义段", table, column)
+	}
+
+	newName := table + "_dimcol_rebuild"
+	newDDL := renameCreateTable(ddl[:open+1]+"\n  "+strings.Join(segments, ",\n  ")+"\n"+ddl[closeIdx:], table, newName)
+
+	// 拷贝表达式清单：目标列包 COALESCE 归一（存量 NULL → ''），其余列直拷；
+	// 插入侧按全列名清单对应（新旧表列集一致，仅目标列定义变更）
+	insertCols := make([]string, 0, len(cols))
+	selectExprs := make([]string, 0, len(cols))
+	for _, c := range cols {
+		insertCols = append(insertCols, "`"+c.Name+"`")
+		if c.Name == column {
+			selectExprs = append(selectExprs, fmt.Sprintf("COALESCE(`%s`, '')", c.Name))
+		} else {
+			selectExprs = append(selectExprs, "`"+c.Name+"`")
+		}
+	}
+	insertList := strings.Join(insertCols, ", ")
+	selectList := strings.Join(selectExprs, ", ")
+
+	var prior int
+	if err := db.Raw("PRAGMA foreign_keys").Scan(&prior).Error; err != nil {
+		return fmt.Errorf("读取 foreign_keys 状态失败: %w", err)
+	}
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		return fmt.Errorf("关闭 foreign_keys 失败: %w", err)
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(newDDL).Error; err != nil {
+			return fmt.Errorf("建新表 %s 失败: %w", newName, err)
+		}
+		if err := tx.Exec(fmt.Sprintf("INSERT INTO `%s` (%s) SELECT %s FROM `%s`", newName, insertList, selectList, table)).Error; err != nil {
+			return fmt.Errorf("拷贝 %s 数据失败: %w", table, err)
+		}
+		if err := tx.Exec(fmt.Sprintf("DROP TABLE `%s`", table)).Error; err != nil {
+			return fmt.Errorf("删旧表 %s 失败: %w", table, err)
+		}
+		// FK 关闭态下 RENAME 不联动修改他表 REFERENCES 子句；终名与原名一致，引用按名照常解析
+		if err := tx.Exec(fmt.Sprintf("ALTER TABLE `%s` RENAME TO `%s`", newName, table)).Error; err != nil {
+			return fmt.Errorf("改回表名 %s 失败: %w", table, err)
+		}
+		for _, idx := range idxs {
+			if err := tx.Exec(idx.Sql).Error; err != nil {
+				return fmt.Errorf("复原索引 %s 失败: %w", idx.Name, err)
+			}
+		}
+		return nil
+	})
+	if restoreErr := db.Exec(fmt.Sprintf("PRAGMA foreign_keys = %d", prior)).Error; restoreErr != nil && err == nil {
+		err = restoreErr
+	}
+	return err
+}
+
 // splitDDLTopLevelSegments 按顶层逗号切分建表 DDL 体：括号内逗号（如 numeric(10,5)、
 // REFERENCES x (id)）不切；引号内（标识符/字符串字面量）逗号不切
 func splitDDLTopLevelSegments(body string) []string {

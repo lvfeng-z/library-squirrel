@@ -8,6 +8,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/constant"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/authorRole"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkTag"
@@ -16,6 +17,7 @@ import (
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteTag"
+	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/workSet"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
@@ -65,13 +67,13 @@ func newCrossSiteTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		nil, // SiteAuthorReader
 		site.NewService(site.NewRepository(db)), // SiteReader（真实件：跨站站点键解析）
 		nil,                                     // ResourceReader
-		reWorkTag.NewService(reWorkTag.NewRepository(db), nil), // ReWorkTagWriter（真实件）
+		reWorkTag.NewService(reWorkTag.NewRepository(db), &txTransactor{db: db}, tagNamespace.NewService(tagNamespace.NewRepository(db))), // ReWorkTagWriter（真实件）
 		reWorkWorkSet.NewRepository(db),                         // ReWorkWorkSetWriter（真实件）
 		nil,                                                     // ResourceDeleter
 		siteAuthor.NewService(siteAuthor.NewRepository(db), nil, nil, nil, nil), // SiteAuthorWriter（真实件）
 		siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil),  // SiteTagWriter（真实件）
 		&crossSiteTestWorkSetWriter{WorkSetRepository: workSet.NewRepository(db)}, // WorkSetWriter（真实件）
-		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db)),                   // ReWorkAuthorWriter（真实件）
+		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db), &txTransactor{db: db}, authorRole.NewService(authorRole.NewRepository(db))), // ReWorkAuthorWriter（真实件）
 		nil, // LocalTagBatchReader
 		nil, // SiteTagBatchReader
 		nil, // SiteBatchReader
@@ -88,7 +90,9 @@ func newCrossSiteTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		nil, // ResourceStoreHardDeleter
 		nil, // WorkSetRelationWriter
 		nil, // CoverReferenceClearer
-		shareLock.NewShareLockRegistry(), // WorkLockChecker（真实件：纯内存能力，零外部依赖）
+		shareLock.NewShareLockRegistry(),                     // WorkLockChecker（真实件：纯内存能力，零外部依赖）
+		tagNamespace.NewService(tagNamespace.NewRepository(db)), // TagNamespaceInventoryWriter（真实件：入库链 ns 清单登记）
+		authorRole.NewService(authorRole.NewRepository(db)),     // AuthorRoleInventoryWriter（真实件：入库链 role 清单登记）
 	)
 	return svc, db
 }

@@ -19,7 +19,8 @@ import * as dto$0 from "../base/model/dto/models.js";
 
 /**
  * Link 链接作者到作品。roleNames 与 authorIds 等长配对（local/site 关联均用前端传值，
- * 空数组=全无角色），空串角色落 NULL；冲突不翻转来源（插件先建的关联保持 PLUGIN）。
+ * 空数组=全无角色），空串=无 role；冲突不翻转来源（插件先建的关联保持 PLUGIN）。
+ * 同作品同作者不同 role 落独立关联行（身兼数职）
  */
 export function Link(authorType: number, authorIds: number[], roleNames: string[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(57828990, authorType, authorIds, roleNames, workId).then(($result: any) => {
@@ -100,10 +101,20 @@ export function ListSiteAuthorsByWorkId(workId: number): $CancellablePromise<mod
 }
 
 /**
- * Unlink 从作品移除作者
+ * Unlink 从作品移除作者（该作者的全部 role 关联行）
  */
 export function Unlink(authorType: number, authorIds: number[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1611110985, authorType, authorIds, workId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * UnlinkDimension 精确摘除维度关联行：roleNames 与 authorIds 等长配对，只删 (work, author, role)
+ * 命中行，不波及同作者其他 role 行（改 role 的旧值行删除入口——新值行走 Link）
+ */
+export function UnlinkDimension(authorType: number, authorIds: number[], roleNames: string[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(78280223, authorType, authorIds, roleNames, workId).then(($result: any) => {
         return $$createType1($result);
     });
 }

@@ -45,7 +45,7 @@ func newDeleteTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		NewRepository(db),
 		&txTransactor{db: db},
 		siteAuthor.NewRepository(db),
-		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db)),
+		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db), nil, nil), // ReWorkAuthorDeleter（删除链不触手动挂联依赖）
 		work.NewRepository(db),
 	)
 	return svc, db

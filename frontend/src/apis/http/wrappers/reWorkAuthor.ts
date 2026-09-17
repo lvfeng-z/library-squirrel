@@ -19,10 +19,32 @@ export async function reWorkAuthorLink(
   if (authorIds.length === 0) {
     return { success: false, msg: 'authorIds 不能为空' }
   }
-  // roleNames 与 authorIds 等长配对（local/site 关联均由用户手填，空串角色落 NULL）
+  // roleNames 与 authorIds 等长配对（local/site 关联均为用户自设 role，空串=无 role；同作者不同 role 落独立关联行）
   const result = await ReWorkAuthorHandler.Link(authorType, authorIds, roleNames, workId)
   if (!result) {
     return { success: false, msg: '关联失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '' }
+}
+
+// 精确摘除维度关联行：roleNames 与 authorIds 等长配对，只删 (work, author, role) 命中行。
+// 改 role 场景由调用方 diff 组合：新值走 reWorkAuthorLink、旧值行走本方法（维度盲删 reWorkAuthorUnlink
+// 会连同其他 role 行一起删，多维度值场景禁止用于改值）
+export async function reWorkAuthorUnlinkDimension(
+  workId: number,
+  authorType: number,
+  authorIds: number[],
+  roleNames: string[]
+): Promise<ApiResponse<boolean>> {
+  if (authorIds.length === 0) {
+    return { success: false, msg: 'authorIds 不能为空' }
+  }
+  if (authorIds.length !== roleNames.length) {
+    return { success: false, msg: 'authorIds 与 roleNames 须等长配对' }
+  }
+  const result = await ReWorkAuthorHandler.UnlinkDimension(authorType, authorIds, roleNames, workId)
+  if (!result) {
+    return { success: false, msg: '精确取消关联失败：接口返回为空' }
   }
   return { success: result.success, msg: result.msg ?? '' }
 }

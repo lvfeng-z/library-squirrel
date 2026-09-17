@@ -63,8 +63,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 		stmt := `SELECT t1.id || 'siteTag' AS value, t1.site_tag_name AS label, t1.last_use AS lastUse,
 				 JSON_OBJECT('type', 2, 'id', t1.id,
 				 'localTag', JSON_OBJECT('id', COALESCE(t2.id, 0), 'localTagName', COALESCE(t2.local_tag_name, ''), 'baseLocalTagId', COALESCE(t2.base_local_tag_id, 0)),
-				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, '')),
-				 'namespace', t1.namespace
+				 'site', JSON_OBJECT('id', COALESCE(t3.id, 0), 'siteName', COALESCE(t3.site_name, ''))
 				 ) AS extraData
 				 FROM site_tag t1
 				 LEFT JOIN local_tag t2 ON t1.local_tag_id = t2.id
@@ -228,7 +227,8 @@ func (r *SearchRepository) QueryWorkIdPage(ctx context.Context, page, pageSize i
 }
 
 // namespaceCondition 构造 namespace 过滤片段。非空 namespace 返回 " AND rwt.namespace = ?" 与对应参数；
-// 空 namespace 返回空串（不限制 namespace）。SQL 中 NULL=? 为 unknown 不命中，指定 namespace 时不匹配无 namespace 关联。
+// 空 namespace 返回空串（不限制 namespace）。namespace 列为 not null 空串形态（空串=无 ns），
+// 指定 namespace 时空串关联不命中，无 ns 关联须以「不设 ns 过滤」表达
 func namespaceCondition(namespace string) (string, []interface{}) {
 	if namespace == "" {
 		return "", nil

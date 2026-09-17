@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
-import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
+import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import { LocalTagDTO, WorkSetDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import {
@@ -60,6 +60,7 @@ const apis = {
   siteTagQuerySelectItemPageByWorkId: siteTagApi.siteTagQuerySelectItemPageByWorkId,
   reWorkTagLink: reWorkTagApi.reWorkTagLink,
   reWorkTagUnlink: reWorkTagApi.reWorkTagUnlink,
+  reWorkTagUnlinkDimension: reWorkTagApi.reWorkTagUnlinkDimension,
   reWorkTagListByWorkId: reWorkTagApi.reWorkTagListByWorkId,
   workSoftDelete: workApi.workSoftDelete,
   workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
@@ -68,6 +69,7 @@ const apis = {
   siteAuthorQuerySelectItemPage: siteAuthorApi.siteAuthorQuerySelectItemPage,
   reWorkAuthorLink: reWorkAuthorApi.reWorkAuthorLink,
   reWorkAuthorUnlink: reWorkAuthorApi.reWorkAuthorUnlink,
+  reWorkAuthorUnlinkDimension: reWorkAuthorApi.reWorkAuthorUnlinkDimension,
   reWorkAuthorListLocalAuthorsByWorkId: reWorkAuthorApi.reWorkAuthorListLocalAuthorsByWorkId,
   reWorkAuthorListSiteAuthorsByWorkId: reWorkAuthorApi.reWorkAuthorListSiteAuthorsByWorkId
 }
@@ -90,8 +92,9 @@ const currentWorkFullInfo: Ref<WorkFullDTO> = computed(() => {
 const localTags: Ref<SegmentedTagItem[]> = ref([])
 // 站点标签
 const siteTags: Ref<SegmentedTagItem[]> = ref([])
-// 作品已绑定 tag 的 namespace 映射（localTagId→ns、siteTagId→ns），供已绑定候选区/详情区只读展示 ns 子段
-const workTagNs = ref<{ local: Map<number, string>; site: Map<number, string> }>({ local: new Map(), site: new Map() })
+// 作品已绑定 tag 的 namespace 映射（localTagId→ns 列表、siteTagId→ns 列表——同标签多 ns 关联
+// 各占一行，值为全量 ns），供已绑定候选区/详情区展示 ns 子段与编辑确认时 diff 旧值
+const workTagNs = ref<{ local: Map<number, string[]>; site: Map<number, string[]> }>({ local: new Map(), site: new Map() })
 // 刷新作品已绑定 tag 的 namespace 映射（local/site 各一）；失败不阻断（仅无 ns 展示）
 async function refreshWorkTagNs() {
   const workId = currentWorkFullInfo.value.work?.id
@@ -102,14 +105,19 @@ async function refreshWorkTagNs() {
   try {
     const response = await apis.reWorkTagListByWorkId(workId)
     const rels = ApiUtil.data<(ReWorkTag | null)[]>(response) ?? []
-    const local = new Map<number, string>()
-    const site = new Map<number, string>()
+    const local = new Map<number, string[]>()
+    const site = new Map<number, string[]>()
     for (const rel of rels) {
-      if (!rel?.namespace?.Valid || !rel.namespace.String) continue
+      // 空串=无 ns，不产生 ns 段
+      if (!rel?.namespace) continue
       if (rel.tagType?.Int64 === OriginType.LOCAL && rel.localTagId?.Valid) {
-        local.set(rel.localTagId.Int64, rel.namespace.String)
+        const list = local.get(rel.localTagId.Int64) ?? []
+        list.push(rel.namespace)
+        local.set(rel.localTagId.Int64, list)
       } else if (rel.tagType?.Int64 === OriginType.SITE && rel.siteTagId?.Valid) {
-        site.set(rel.siteTagId.Int64, rel.namespace.String)
+        const list = site.get(rel.siteTagId.Int64) ?? []
+        list.push(rel.namespace)
+        site.set(rel.siteTagId.Int64, list)
       }
     }
     workTagNs.value = { local, site }
@@ -120,18 +128,36 @@ async function refreshWorkTagNs() {
 // 作品集
 const workSets: Ref<SegmentedTagItem[]> = ref([])
 // 展示作者列表：本地作者全部 + 未绑定本地作者的站点作者（已绑定本地作者由本地作者代表展示）；
+// 同作者多 role 的多条关联行按作者聚合为一个条目（AuthorTag 并列展示全部 role 段）；
 // origin 标记来源供模板 key 区分（local/site 两表 id 空间重叠）
-const displayAuthors = computed<{ author: RankedLocalAuthor | RankedSiteAuthor; origin: OriginType }[]>(() => {
+const displayAuthors = computed<{ author: RankedLocalAuthor | RankedSiteAuthor; origin: OriginType; roles: string[] }[]>(() => {
   const localAuthors = currentWorkFullInfo.value.localAuthors?.filter(notNullish) ?? []
   const siteAuthors = currentWorkFullInfo.value.siteAuthors?.filter(notNullish) ?? []
-  const noLocalAuthorSiteAuthors = siteAuthors.filter(
-    (siteAuthor) => !localAuthors.some((localAuthor) => siteAuthor.author.localAuthorId === localAuthor.author.id)
+  const localAggregated = aggregateAuthorRoles(localAuthors)
+  const localAuthorIds = new Set(localAggregated.map((entry) => entry.id))
+  const siteAggregated = aggregateAuthorRoles(
+    siteAuthors.filter((siteAuthor) => !localAuthorIds.has(siteAuthor.author.localAuthorId ?? Number.NaN))
   )
   return [
-    ...localAuthors.map((author) => ({ author, origin: OriginType.LOCAL })),
-    ...noLocalAuthorSiteAuthors.map((author) => ({ author, origin: OriginType.SITE }))
+    ...localAggregated.map((entry) => ({ author: entry.author, roles: entry.roles, origin: OriginType.LOCAL })),
+    ...siteAggregated.map((entry) => ({ author: entry.author, roles: entry.roles, origin: OriginType.SITE }))
   ]
 })
+// 同作者多 role 的关联行按作者聚合：author 取首行（同作者行仅 roleName/sortOrder 不同），roles 去重收集；
+// 返回条目带非空 id（模板 key 与绑定索引的键）
+function aggregateAuthorRoles<T extends RankedLocalAuthor | RankedSiteAuthor>(authors: T[]): { id: number; author: T; roles: string[] }[] {
+  const byId = new Map<number, { id: number; author: T; roles: string[] }>()
+  for (const entry of authors) {
+    const id = entry.author.id
+    if (isNullish(id)) continue
+    const aggregated = byId.get(id) ?? { id, author: entry, roles: [] }
+    if (entry.roleName && !aggregated.roles.includes(entry.roleName)) {
+      aggregated.roles.push(entry.roleName)
+    }
+    byId.set(id, aggregated)
+  }
+  return [...byId.values()]
+}
 // 元数据抽屉开关
 const drawerState: Ref<boolean> = ref(false)
 // 标签编辑模式（编辑 drawer 内本地/站点 ExchangeBox 切换）
@@ -158,6 +184,9 @@ const siteAuthorExchangeUpperSearchParams: Ref<SiteAuthorQueryDTO> = ref(new Sit
 const siteAuthorExchangeLowerSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 作品已绑定作者 id 集合（localAuthorId/siteAuthorId 各一），供候选区分页过滤已绑定项
 const boundAuthorIds: Ref<{ local: Set<number>; site: Set<number> }> = ref({ local: new Set(), site: new Set() })
+// 作品已绑定作者 role 索引（localAuthorId/siteAuthorId → 该作者全部关联级 role——同作者多 role
+// 各占一行），供绑定确认时 diff 出被替换的旧 role 值
+const workAuthorRoles: Ref<{ local: Map<number, string[]>; site: Map<number, string[]> }> = ref({ local: new Map(), site: new Map() })
 
 // 当前资源是否可合并（含视频轨+音频轨）
 const mergeable: Ref<boolean> = computed(() => isResourceMergeable(currentWorkFullInfo.value.resource))
@@ -240,7 +269,8 @@ function refreshTags() {
     (localTag) => new SegmentedTagItem({
       value: localTag.id as number,
       label: localTag.localTagName as string,
-      extraData: { namespace: workTagNs.value.local.get(localTag.id as number) },
+      // 多 ns 关联聚合为 '/' 连接串，NamespaceTag 按清单逐段解析显示名
+      extraData: { namespace: workTagNs.value.local.get(localTag.id as number)?.join('/') },
       disabled: false
     })
   )
@@ -250,7 +280,7 @@ function refreshTags() {
       value: (siteTag.siteTag?.id ?? 0) as number,
       label: (siteTag.siteTag?.siteTagName ?? '') as string,
       subLabels: [(isBlank(siteTag.site?.siteName) ? '?' : siteTag.site?.siteName) as string],
-      extraData: { namespace: workTagNs.value.site.get((siteTag.siteTag?.id ?? 0) as number) },
+      extraData: { namespace: workTagNs.value.site.get((siteTag.siteTag?.id ?? 0) as number)?.join('/') },
       disabled: false
     })
   )
@@ -288,16 +318,40 @@ async function refreshWorkInfo() {
 async function handleTagExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {
   const workId = currentWorkFullInfo.value.work?.id
   if (!workId) return
-  if (isNullish(isUpper) ? true : isUpper) {
-    const boundIds = upper.map((item) => item.value)
-    // namespace：local 关联取 upperBuffer 各 tag 的 extraData.namespace（NamespaceTag 编辑写入）；site 关联后端镜像，此处传 '' 由后端反查 site_tag.namespace
-    const namespaces = upper.map((item) => item.extraData?.namespace ?? '')
-    const boundResponse: ApiResponse = await apis.reWorkTagLink(workId, type, boundIds as number[], namespaces)
-    if (ApiUtil.check(boundResponse)) {
+  if ((isNullish(isUpper) ? true : isUpper) && arrayNotEmpty(upper)) {
+    // 绑定缓冲区（新增绑定 + 改 ns 重确认）：新值走 Link；改 ns 的旧值行走 UnlinkDimension——
+    // 唯一键含 ns，仅 Link 新值会令旧值行残留。多 ns 聚合展示的 tag 编辑为单值 = 替换全部旧值。
+    // 先 Link 后摘旧：Link 失败中止（缓冲区保留供重试），摘旧失败仅提示（新旧并存可重试编辑）
+    const linkIds: number[] = []
+    const linkNamespaces: string[] = []
+    const unlinkDimIds: number[] = []
+    const unlinkDimNamespaces: string[] = []
+    const oldNsMap = OriginType.LOCAL === type ? workTagNs.value.local : workTagNs.value.site
+    for (const item of upper) {
+      const tagId = item.value as number
+      const newNs = (item.extraData?.namespace as string) ?? ''
+      linkIds.push(tagId)
+      linkNamespaces.push(newNs)
+      for (const oldNs of oldNsMap.get(tagId) ?? []) {
+        if (oldNs !== newNs) {
+          unlinkDimIds.push(tagId)
+          unlinkDimNamespaces.push(oldNs)
+        }
+      }
+    }
+    const boundResponse: ApiResponse = await apis.reWorkTagLink(workId, type, linkIds, linkNamespaces)
+    if (!ApiUtil.check(boundResponse)) {
       ApiUtil.msg(boundResponse)
+      return
+    }
+    ApiUtil.msg(boundResponse)
+    if (unlinkDimIds.length > 0) {
+      const unlinkResponse: ApiResponse = await apis.reWorkTagUnlinkDimension(workId, type, unlinkDimIds, unlinkDimNamespaces)
+      ApiUtil.msg(unlinkResponse)
     }
   }
-  if (isNullish(isUpper) ? true : !isUpper) {
+  if ((isNullish(isUpper) ? true : !isUpper) && arrayNotEmpty(lower)) {
+    // 解绑缓冲区：整标签移除（该标签全部 ns 行）
     const unboundIds = lower.map((item) => item.value)
     const unboundResponse: ApiResponse = await apis.reWorkTagUnlink(workId, type, unboundIds as number[])
     if (ApiUtil.check(unboundResponse)) {
@@ -335,23 +389,39 @@ async function updateWorkTags(type: OriginType) {
     }
   }
 }
-// 拉取当前作品已绑定作者 id 集合（local/site 各一），供候选区分页过滤已绑定项
+// 拉取当前作品已绑定作者索引（id 集合 + 每作者 role 列表，local/site 各一）：候选区分页过滤
+// 已绑定项、绑定确认 diff 旧 role 值、upper 区 role 聚合展示共用同一数据
 async function refreshAuthorBoundIds(type: OriginType) {
   const workId = currentWorkFullInfo.value.work?.id
   if (!workId) {
     boundAuthorIds.value = { local: new Set(), site: new Set() }
+    workAuthorRoles.value = { local: new Map(), site: new Map() }
     return
   }
   if (OriginType.LOCAL === type) {
     const authors = (await apis.reWorkAuthorListLocalAuthorsByWorkId(workId)).data.filter(notNullish)
-    boundAuthorIds.value.local = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+    writeAuthorIndex(OriginType.LOCAL, authors)
   } else {
     const authors = (await apis.reWorkAuthorListSiteAuthorsByWorkId(workId)).data.filter(notNullish)
-    boundAuthorIds.value.site = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+    writeAuthorIndex(OriginType.SITE, authors)
+  }
+}
+// 由关联行（同作者多 role 各一行）重建绑定索引：id 集合与每作者 role 列表
+function writeAuthorIndex(type: OriginType, authors: (RankedLocalAuthor | RankedSiteAuthor)[]) {
+  const aggregated = aggregateAuthorRoles(authors)
+  const ids = new Set(aggregated.map((entry) => entry.id))
+  const roles = new Map(aggregated.map((entry) => [entry.id, entry.roles]))
+  if (OriginType.LOCAL === type) {
+    boundAuthorIds.value.local = ids
+    workAuthorRoles.value.local = roles
+  } else {
+    boundAuthorIds.value.site = ids
+    workAuthorRoles.value.site = roles
   }
 }
 // 请求作品已绑定作者（upper）：作品作者量小，全量拉取伪分页单页返回；搜索为前端过滤；
-// roleName 回写 extraData.role 供 AuthorRoleTag 展示/编辑，顺带重建已绑定集合
+// 同作者多 role 关联行聚合为一项（extraData.role 为 '/' 连接串，AuthorRoleTag 展示/编辑），
+// 顺带重建绑定索引
 async function requestWorkAuthorUpperPage(type: OriginType, page: IPage<SelectItem>): Promise<IPage<SelectItem>> {
   const workId = currentWorkFullInfo.value.work?.id
   if (!workId) return page
@@ -361,27 +431,27 @@ async function requestWorkAuthorUpperPage(type: OriginType, page: IPage<SelectIt
   if (OriginType.LOCAL === type) {
     keyword = localAuthorExchangeUpperSearchParams.value.authorNameStr?.value ?? ''
     const authors = (await apis.reWorkAuthorListLocalAuthorsByWorkId(workId)).data.filter(notNullish)
-    boundAuthorIds.value.local = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
-    items = authors
-      .filter((author) => !keyword || (author.author.authorName ?? '').includes(keyword))
-      .flatMap((author) => (notNullish(author.author.id) ? [new SelectItem({
-        value: author.author.id,
-        label: author.author.authorName ?? '',
-        extraData: { role: author.roleName ?? '' }
-      })] : []))
+    writeAuthorIndex(OriginType.LOCAL, authors)
+    items = aggregateAuthorRoles(authors)
+      .filter((entry) => !keyword || (entry.author.author.authorName ?? '').includes(keyword))
+      .map((entry) => new SelectItem({
+        value: entry.id,
+        label: entry.author.author.authorName ?? '',
+        extraData: { role: entry.roles.join('/') }
+      }))
   } else {
     keyword = siteAuthorExchangeUpperSearchParams.value.authorName?.value ?? ''
     siteId = siteAuthorExchangeUpperSearchParams.value.siteId?.value ?? undefined
     const authors = (await apis.reWorkAuthorListSiteAuthorsByWorkId(workId)).data.filter(notNullish)
-    boundAuthorIds.value.site = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
-    items = authors
-      .filter((author) => (!keyword || (author.author.authorName ?? '').includes(keyword))
-        && (isNullish(siteId) || author.author.siteId === siteId))
-      .flatMap((author) => (notNullish(author.author.id) ? [new SelectItem({
-        value: author.author.id,
-        label: author.author.authorName ?? '',
-        extraData: { role: author.roleName ?? '' }
-      })] : []))
+    writeAuthorIndex(OriginType.SITE, authors)
+    items = aggregateAuthorRoles(authors)
+      .filter((entry) => (!keyword || (entry.author.author.authorName ?? '').includes(keyword))
+        && (isNullish(siteId) || entry.author.author.siteId === siteId))
+      .map((entry) => new SelectItem({
+        value: entry.id,
+        label: entry.author.author.authorName ?? '',
+        extraData: { role: entry.roles.join('/') }
+      }))
   }
   const resultPage = new Page<SelectItem>()
   resultPage.pageNumber = 1
@@ -423,13 +493,36 @@ async function requestWorkSiteAuthorLowerPage(page: IPage<SelectItem>): Promise<
 async function handleAuthorExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {
   const workId = currentWorkFullInfo.value.work?.id
   if (!workId) return
-  if (isNullish(isUpper) ? true : isUpper) {
-    const authorIds = upper.map((item) => item.value)
-    // role：取 upperBuffer 各作者的 extraData.role（AuthorRoleTag 编辑写入）；空串=无角色落 NULL
-    const roleNames = upper.map((item) => item.extraData?.role ?? '')
-    const boundResponse: ApiResponse = await apis.reWorkAuthorLink(workId, type, authorIds as number[], roleNames)
-    if (ApiUtil.check(boundResponse)) {
+  if ((isNullish(isUpper) ? true : isUpper) && arrayNotEmpty(upper)) {
+    // 绑定缓冲区（新增绑定 + 改 role 重确认）：新值走 Link；改 role 的旧值行走 UnlinkDimension——
+    // 唯一键含 role，仅 Link 新值会令旧值行残留。多 role 聚合展示的作者编辑为单值 = 替换全部旧值。
+    // 先 Link 后摘旧：Link 失败中止（缓冲区保留供重试），摘旧失败仅提示（新旧并存可重试编辑）
+    const linkIds: number[] = []
+    const linkRoles: string[] = []
+    const unlinkDimIds: number[] = []
+    const unlinkDimRoles: string[] = []
+    const oldRoleMap = OriginType.LOCAL === type ? workAuthorRoles.value.local : workAuthorRoles.value.site
+    for (const item of upper) {
+      const authorId = item.value as number
+      const newRole = (item.extraData?.role as string) ?? ''
+      linkIds.push(authorId)
+      linkRoles.push(newRole)
+      for (const oldRole of oldRoleMap.get(authorId) ?? []) {
+        if (oldRole !== newRole) {
+          unlinkDimIds.push(authorId)
+          unlinkDimRoles.push(oldRole)
+        }
+      }
+    }
+    const boundResponse: ApiResponse = await apis.reWorkAuthorLink(workId, type, linkIds, linkRoles)
+    if (!ApiUtil.check(boundResponse)) {
       ApiUtil.msg(boundResponse)
+      return
+    }
+    ApiUtil.msg(boundResponse)
+    if (unlinkDimIds.length > 0) {
+      const unlinkResponse: ApiResponse = await apis.reWorkAuthorUnlinkDimension(workId, type, unlinkDimIds, unlinkDimRoles)
+      ApiUtil.msg(unlinkResponse)
     }
     // 集合增量同步（覆盖 refreshData 重拉窗口，候选区过滤即时生效）
     for (const item of upper) {
@@ -440,7 +533,8 @@ async function handleAuthorExchangeConfirm(type: OriginType, upper: SelectItem[]
       }
     }
   }
-  if (isNullish(isUpper) ? true : !isUpper) {
+  if ((isNullish(isUpper) ? true : !isUpper) && arrayNotEmpty(lower)) {
+    // 解绑缓冲区：整作者移除（该作者全部 role 行）
     const unboundIds = lower.map((item) => item.value)
     const unboundResponse: ApiResponse = await apis.reWorkAuthorUnlink(workId, type, unboundIds as number[])
     if (ApiUtil.check(unboundResponse)) {
@@ -490,10 +584,11 @@ async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     if (!isNullish(newPage)) {
-      // namespace 值回写 tag 数据；可编辑性由区域 prop 控制（local ExchangeBox upperEditableNs=true 开启绑定区编辑，候选区不可编辑）
+      // namespace 值回写 tag 数据（多 ns 聚合为 '/' 连接串）；可编辑性由区域 prop 控制
+      // （local/site ExchangeBox upperEditableNs=true 均开启绑定区编辑，候选区不可编辑）
       for (const item of newPage.data ?? []) {
         if (!item) continue
-        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.local.get(item.value as number) }
+        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.local.get(item.value as number)?.join('/') }
       }
       return newPage
     }
@@ -514,10 +609,10 @@ async function requestWorkSiteTagPage(page: IPage<SelectItem>, bounded: boolean)
   if (ApiUtil.check(response)) {
     const newPage = ApiUtil.data<IPage<SelectItem>>(response)
     if (!isNullish(newPage)) {
-      // site tag ns 为 site_tag.namespace 镜像，只读（不可编辑）
+      // site tag ns 同为关联级值（workTagNs.site 取回，多 ns 聚合为 '/' 连接串），绑定区与 local 同样开放编辑
       for (const item of newPage.data ?? []) {
         if (!item) continue
-        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.site.get(item.value as number) }
+        item.extraData = { ...(item.extraData ?? {}), namespace: workTagNs.value.site.get(item.value as number)?.join('/') }
       }
       return newPage
     }
@@ -752,9 +847,9 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
                     v-for="displayAuthor in displayAuthors"
                     :key="`${displayAuthor.origin}-${displayAuthor.author.author.id}`"
                     :author="displayAuthor.author"
+                    :roles="displayAuthor.roles"
                   />
-                </div>
-              </el-descriptions-item>
+                </div>              </el-descriptions-item>
               <el-descriptions-item label="简介">
                 <div>{{ currentWorkFullInfo.work?.siteWorkDescription }}</div>
               </el-descriptions-item>
@@ -851,8 +946,9 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
             :lower-load="(_page) => requestWorkSiteTagPage(_page, false)"
             :search-button-disabled="false"
             tags-gap="10px"
-            @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.SITE, upper, lower)"
-            @lower-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.SITE, upper, lower)"
+            :upper-editable-ns="true"
+            @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.SITE, upper, lower, true)"
+            @lower-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.SITE, upper, lower, false)"
             @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleTagExchangeConfirm(OriginType.SITE, upper, lower)"
           >
             <template #upperToolbarMain>

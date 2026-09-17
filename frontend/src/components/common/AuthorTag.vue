@@ -4,22 +4,23 @@ import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { RankedLocalAuthor, RankedSiteAuthor } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 
-// AuthorTag：单个作者的分段 tag 展示（主段作者名 + 第二段关联级角色），
-// hover 任一 tag 弹 popover 显示该作者简介。主段/角色段底色由 block 模式
-// neutral 令牌分节（main=neutral-bg、sub=neutral-bg-strong），随主题令牌变化。
+// AuthorTag：单个作者的分段 tag 展示（主段作者名 + 其后并列多个 role 段——同作者身兼数职时
+// 每个关联级 role 一段，视觉上沿用 SegmentedTag 既有分节），hover 任一 tag 弹 popover 显示该作者简介。
+// 主段/role 段底色由 block 模式 neutral 令牌分节（main=neutral-bg、sub=neutral-bg-strong），随主题令牌变化。
 const props = defineProps<{
-  /** 单个作者（本地/站点统一形态：均含 authorName/introduce 与关联级 roleName） */
+  /** 单个作者（本地/站点统一形态：均含 authorName/introduce） */
   author: RankedLocalAuthor | RankedSiteAuthor
+  /** 该作者在本作品的全部关联级 role（去重；空数组=无角色只显主段） */
+  roles: string[]
 }>()
 
-// 分段 tag 数据：主段作者名；role 非空时追加第二段（无角色只显主段）
+// 分段 tag 数据：主段作者名；role 非空时逐个追加段
 const tagItem = computed<SegmentedTagItem>(() => {
-  const roleName = props.author.roleName ?? ''
   return new SegmentedTagItem({
     value: props.author.author.id,
     label: props.author.author.authorName ?? '',
     disabled: false,
-    ...(roleName ? { subLabels: [roleName] } : {})
+    ...(props.roles.length > 0 ? { subLabels: [...props.roles] } : {})
   })
 })
 </script>

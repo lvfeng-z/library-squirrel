@@ -42,7 +42,7 @@ func newDeleteTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		nil, // LocalAuthorOperator（删除编排不触及）
 		nil, // SiteOperator（删除编排不触及）
 		&txTransactor{db: db},
-		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db)),
+		reWorkAuthor.NewService(reWorkAuthor.NewRepository(db), nil, nil), // ReWorkAuthorDeleter（删除链不触手动挂联依赖）
 	)
 	return svc, db
 }

@@ -180,6 +180,8 @@ func newPurgeTestEnv(t *testing.T) (*Service, *persistentStore.Service, *gorm.DB
 		nil,                              // WorkSetRelationWriter
 		workSet.NewRepository(db),        // CoverReferenceClearer（真实件：purge 链首步清封面引用）
 		shareLock.NewShareLockRegistry(), // WorkLockChecker（真实件：纯内存能力，零外部依赖）
+		nil,                              // TagNamespaceInventoryWriter（purge 链只删不写，无入库写入）
+		nil,                              // AuthorRoleInventoryWriter（purge 链只删不写，无入库写入）
 	)
 	return svc, psSvc, db
 }

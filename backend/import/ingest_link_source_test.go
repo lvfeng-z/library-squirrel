@@ -76,7 +76,7 @@ func seedLinkSourceFixture(t *testing.T, db *gorm.DB) *linkSourceFixture {
 	rwtSite.WorkID = nullInt(f.workID)
 	rwtSite.TagType = nullInt(int64(constant.SITE))
 	rwtSite.SiteTagID = nullInt(st.GetID())
-	rwtSite.Namespace = nullStr("character")
+	rwtSite.Namespace = "character"
 	rwtSite.Source = constant.MANUAL
 	createSourceRow(t, db, rwtSite)
 

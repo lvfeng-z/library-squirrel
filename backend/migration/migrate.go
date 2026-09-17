@@ -89,6 +89,33 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// 命名迁移(前置)：关联级维度体系 schema——site_tag 删 namespace 列（namespace 从站点标签
+	// 实体行收回关联级）、re_work_tag.namespace / re_work_author.role_name 改型 not null default ''
+	//（空串=无该维度值；SQLite 唯一索引中 NULL 不参与唯一性比较，可空列会令含维度唯一键失效）、
+	// 旧两列唯一索引（不含维度值）退役、新三列唯一索引由 AutoMigrate 按实体索引名重建。
+	// 列改型须在 AutoMigrate 前执行：实体已声明 not null;default:''，旧库列为无默认值的可空 text，
+	// AutoMigrate 的列默认值比对会触发 GORM 自建列变更（FK 表经其 SQLite 重建可能掉外键子句）；
+	// 前置改型后比对命中、不再触发。改列经表重建舞步（以现表 DDL 为源文本，列序保真），拷数据时
+	// NULL→'' 规范化属结构必需（满足 NOT NULL），非存量语义回填。幂等标记：site_tag 以列存在性判，
+	// 关联表以列可空性判（新形态 NOT NULL，二次启动跳过）；旧索引 DROP 用 IF EXISTS
+	var siteTagNsCol int
+	if err := db.Raw("SELECT COUNT(*) FROM pragma_table_info('site_tag') WHERE name = 'namespace'").Scan(&siteTagNsCol).Error; err != nil {
+		return fmt.Errorf("迁移检查 site_tag.namespace 列失败: %w", err)
+	}
+	if siteTagNsCol > 0 {
+		if err := rebuildTableDropColumn(db, "site_tag", "namespace"); err != nil {
+			return fmt.Errorf("迁移删除 site_tag.namespace 列失败: %w", err)
+		}
+	}
+	if err := migrateDimensionColumn(db, "re_work_tag", "namespace",
+		[]string{"idx_re_work_tag_work_local_tag", "idx_re_work_tag_work_site_tag"}); err != nil {
+		return err
+	}
+	if err := migrateDimensionColumn(db, "re_work_author", "role_name",
+		[]string{"idx_re_work_author_work_local_author", "idx_re_work_author_work_site_author"}); err != nil {
+		return err
+	}
+
 	// 定义所有需要迁移的模型(按依赖顺序排列)
 	models := []interface{}{
 		// 基础表(无外键依赖)
@@ -102,6 +129,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Poi{},
 		&entity2.Plugin{},
 		&entity2.PluginStorage{},
+		entity2.NewTagNamespace(),
+		entity2.NewAuthorRole(),
 		&entity2.Task{},
 		// 任务领域行（1:1 共享主键 id=task.id，任务类型专属领域字段载体）
 		&entity2.WorkTask{},
@@ -319,5 +348,28 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+// migrateDimensionColumn 关联表维度列改型（可空 text → text NOT NULL DEFAULT ”，空串=无该维度值）
+// 并退役旧两列唯一索引。改型以列可空性为幂等标记：表不存在（全新库，AutoMigrate 直接建新形态）或
+// 列已 NOT NULL（已完成改型）均跳过重建；旧索引随改型重建复原后由本函数显式 DROP
+// （AutoMigrate 不删旧索引，IF EXISTS 幂等——全新库旧索引从未存在时静默跳过），新三列唯一索引
+// （含维度值）随后由 AutoMigrate 按实体索引声明重建
+func migrateDimensionColumn(db *gorm.DB, table, column string, oldUniqueIndexes []string) error {
+	var nullableCount int
+	if err := db.Raw(fmt.Sprintf("SELECT COUNT(*) FROM pragma_table_info('%s') WHERE name = '%s' AND \"notnull\" = 0", table, column)).Scan(&nullableCount).Error; err != nil {
+		return fmt.Errorf("迁移检查 %s.%s 列可空性失败: %w", table, column, err)
+	}
+	if nullableCount > 0 {
+		if err := rebuildTableColumnToNotNullText(db, table, column); err != nil {
+			return fmt.Errorf("迁移改型 %s.%s 为 NOT NULL DEFAULT '' 失败: %w", table, column, err)
+		}
+	}
+	for _, idx := range oldUniqueIndexes {
+		if err := db.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", idx)).Error; err != nil {
+			return fmt.Errorf("迁移删除 %s 旧唯一索引 %s 失败: %w", table, idx, err)
+		}
+	}
 	return nil
 }

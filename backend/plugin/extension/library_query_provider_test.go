@@ -385,7 +385,6 @@ func TestListTagsByWorkIdNamespaceDimension(t *testing.T) {
 	st.SiteID = sql.NullInt64{Int64: s.GetID(), Valid: true}
 	st.SiteTagID = sql.NullString{String: "t1", Valid: true}
 	st.SiteTagName = sql.NullString{String: "site tag", Valid: true}
-	st.Namespace = sql.NullString{String: "character", Valid: true}
 	if err := siteTag.NewRepository(db).Create(ctx, st); err != nil {
 		t.Fatalf("种子站点标签失败: %v", err)
 	}
@@ -399,7 +398,7 @@ func TestListTagsByWorkIdNamespaceDimension(t *testing.T) {
 	siteRel.WorkID = sql.NullInt64{Int64: w.GetID(), Valid: true}
 	siteRel.SiteTagID = sql.NullInt64{Int64: st.GetID(), Valid: true}
 	siteRel.TagType = sql.NullInt64{Int64: constant.SITE, Valid: true}
-	siteRel.Namespace = sql.NullString{String: "character", Valid: true}
+	siteRel.Namespace = "character"
 	if err := rtRepo.CreateBatch(ctx, []*entity.ReWorkTag{localRel, siteRel}); err != nil {
 		t.Fatalf("种子标签关联失败: %v", err)
 	}
@@ -415,11 +414,11 @@ func TestListTagsByWorkIdNamespaceDimension(t *testing.T) {
 		t.Fatalf("站点标签条目数 = %d, 期望 1", len(resp.SiteTags))
 	}
 	entry := resp.SiteTags[0]
-	if entry.Tag.Id != st.GetID() || entry.Tag.SiteKey != "ehentai" || entry.Tag.Namespace != "character" {
+	if entry.Tag.Id != st.GetID() || entry.Tag.SiteKey != "ehentai" {
 		t.Fatalf("站点标签条目映射错误: %+v", entry)
 	}
 	if entry.Namespace != "character" {
-		t.Fatalf("关联级 namespace 镜像缺失: %q", entry.Namespace)
+		t.Fatalf("关联级 namespace 缺失: %q", entry.Namespace)
 	}
 }
 

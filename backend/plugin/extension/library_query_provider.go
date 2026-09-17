@@ -251,7 +251,6 @@ func siteTagEntityToInfo(t *entity.SiteTag, siteKey string) *gen.SiteTagInfo {
 		SiteTagId:   nullStringOr(t.SiteTagID),
 		TagName:     nullStringOr(t.SiteTagName),
 		Description: nullStringOr(t.Description),
-		Namespace:   nullStringOr(t.Namespace),
 		LocalTagId:  util.NullInt64ToPointer(t.LocalTagID),
 	}
 }
@@ -516,15 +515,20 @@ func (p *libraryQueryProvider) listAuthorsByWorkId(ctx context.Context, workId i
 	if err != nil {
 		return nil, err
 	}
-	localItems := make([]*gen.LocalAuthorDTO, 0, len(localRanked))
+	// 关联条目（作者 + 关联级 role）：role 取 re_work_author.role_name（关联行维度），
+	// 实体级作者信息填条目内 author 字段
+	localItems := make([]*gen.WorkLocalAuthorEntry, 0, len(localRanked))
 	for _, r := range localRanked {
 		// 取字段地址而非按值拷贝（proto 消息含 MessageState 锁，按值拷贝非法）；
 		// RankedLocalAuthor.Author 即 SDK 契约类型本体（gen.LocalAuthorDTO 别名）
-		localItems = append(localItems, &r.Author)
+		localItems = append(localItems, &gen.WorkLocalAuthorEntry{Author: &r.Author, RoleName: r.RoleName})
 	}
-	siteItems := make([]*gen.SiteAuthorInfo, 0, len(siteRanked))
+	siteItems := make([]*gen.WorkSiteAuthorEntry, 0, len(siteRanked))
 	for _, r := range siteRanked {
-		siteItems = append(siteItems, siteAuthorDTOToInfo(r.Author, siteKeyOf(siteMap, derefOrZero(r.Author.SiteID))))
+		siteItems = append(siteItems, &gen.WorkSiteAuthorEntry{
+			Author:   siteAuthorDTOToInfo(r.Author, siteKeyOf(siteMap, derefOrZero(r.Author.SiteID))),
+			RoleName: r.RoleName,
+		})
 	}
 	return &gen.ListAuthorsByWorkIdResponse{LocalAuthors: localItems, SiteAuthors: siteItems}, nil
 }
@@ -674,7 +678,7 @@ func (p *libraryQueryProvider) listTagsByWorkId(ctx context.Context, workId int6
 			if t, ok := localTagMap[rel.LocalTagID.Int64]; ok {
 				localItems = append(localItems, &gen.WorkLocalTagEntry{
 					Tag:       dto.NewLocalTagDTO(t),
-					Namespace: nullStringOr(rel.Namespace),
+					Namespace: rel.Namespace,
 				})
 			}
 		}
@@ -682,7 +686,7 @@ func (p *libraryQueryProvider) listTagsByWorkId(ctx context.Context, workId int6
 			if t, ok := siteTagMap[rel.SiteTagID.Int64]; ok {
 				siteItems = append(siteItems, &gen.WorkSiteTagEntry{
 					Tag:       siteTagEntityToInfo(t, siteKeyOf(siteMap, nullInt64Or(t.SiteID))),
-					Namespace: nullStringOr(rel.Namespace),
+					Namespace: rel.Namespace,
 				})
 			}
 		}

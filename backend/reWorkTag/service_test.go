@@ -2,7 +2,6 @@ package reWorkTag
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/library-squirrel/backend/base/constant"
@@ -22,55 +21,44 @@ func (f *fakeRepo) UpsertBatch(_ context.Context, rels []*domain.ReWorkTag, tagT
 	return nil
 }
 
-// fakeSiteTagReader 实现 SiteTagNamespaceReader，按 id 返回预设 siteTag（带 Namespace）。
-type fakeSiteTagReader struct {
-	byId map[int64]*domain.SiteTag
+// directTransactor 直接执行 fn（fake 仓储链无 DB，事务语义不适用）
+type directTransactor struct{}
+
+func (directTransactor) ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
 }
 
-func (f fakeSiteTagReader) ListBySiteTagIds(_ context.Context, ids []int64) ([]*domain.SiteTag, error) {
-	res := make([]*domain.SiteTag, 0, len(ids))
-	for _, id := range ids {
-		if st, ok := f.byId[id]; ok {
-			res = append(res, st)
-		}
-	}
-	return res, nil
-}
+// noopInventory 清单登记空实现（fake 链不触 DB）
+type noopInventory struct{}
 
-func newSiteTag(id int64, ns string) *domain.SiteTag {
-	st := domain.NewSiteTag()
-	st.SetID(id)
-	if ns != "" {
-		st.Namespace = sql.NullString{String: ns, Valid: true}
-	}
-	return st
-}
+func (noopInventory) EnsureUsedBatch(context.Context, []string, int64) error { return nil }
 
-// TestLinkBatchToWork_LocalNamespaces local 关联用前端传的 namespaces（越界守卫 + 空→NULL）。
+// TestLinkBatchToWork_LocalNamespaces local 关联用调用方传的 namespaces（越界守卫 + 空→空串无 ns），
+// 值归一化写入（大写折叠小写）。
 func TestLinkBatchToWork_LocalNamespaces(t *testing.T) {
 	repo := &fakeRepo{}
-	svc := NewService(repo, nil)
-	if err := svc.LinkBatchToWork(context.Background(), 1, constant.LOCAL, []int64{10, 11}, []string{"character", ""}); err != nil {
+	svc := NewService(repo, directTransactor{}, noopInventory{})
+	if err := svc.LinkBatchToWork(context.Background(), 1, constant.LOCAL, []int64{10, 11}, []string{"Character ", ""}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(repo.rels) != 2 {
 		t.Fatalf("expected 2 rels, got %d", len(repo.rels))
 	}
 	if repo.tagType != constant.LOCAL {
-		t.Errorf("local 分支 upsert 应按 (work_id, local_tag_id) 冲突，tagType 得到 %d", repo.tagType)
+		t.Errorf("local 分支 upsert 应按 (work_id, local_tag_id, namespace) 冲突，tagType 得到 %d", repo.tagType)
 	}
-	if !repo.rels[0].Namespace.Valid || repo.rels[0].Namespace.String != "character" {
-		t.Errorf("rels[0] namespace 应为 character，得到 %+v", repo.rels[0].Namespace)
+	if repo.rels[0].Namespace != "character" {
+		t.Errorf("rels[0] namespace 应归一化为 character，得到 %q", repo.rels[0].Namespace)
 	}
-	if repo.rels[1].Namespace.Valid {
-		t.Errorf("rels[1] namespace 应为 NULL（空串），得到 %+v", repo.rels[1].Namespace)
+	if repo.rels[1].Namespace != "" {
+		t.Errorf("rels[1] namespace 应为空串（无 ns），得到 %q", repo.rels[1].Namespace)
 	}
 }
 
 // TestLinkBatchToWork_LenMismatch namespaces 与 tagIds 长度不匹配须报错且不落盘。
 func TestLinkBatchToWork_LenMismatch(t *testing.T) {
 	repo := &fakeRepo{}
-	svc := NewService(repo, nil)
+	svc := NewService(repo, directTransactor{}, noopInventory{})
 	if err := svc.LinkBatchToWork(context.Background(), 1, constant.LOCAL, []int64{10, 11}, []string{"character"}); err != ErrNamespaceCountMismatch {
 		t.Fatalf("期望 ErrNamespaceCountMismatch，得到 %v", err)
 	}
@@ -79,28 +67,24 @@ func TestLinkBatchToWork_LenMismatch(t *testing.T) {
 	}
 }
 
-// TestLinkBatchToWork_SiteMirror site 关联忽略前端传值，由后端按 site_tag.namespace 镜像。
-func TestLinkBatchToWork_SiteMirror(t *testing.T) {
+// TestLinkBatchToWork_SiteNamespaces site 关联同样用调用方传的 namespaces——namespace 是
+// 关联级开放维度，site 轨开放用户自设（不再镜像 site_tag 行）；空串=无 ns。
+func TestLinkBatchToWork_SiteNamespaces(t *testing.T) {
 	repo := &fakeRepo{}
-	reader := fakeSiteTagReader{byId: map[int64]*domain.SiteTag{
-		20: newSiteTag(20, "parody"),
-		21: newSiteTag(21, ""), // site_tag 无 namespace → 关联 NULL
-	}}
-	svc := NewService(repo, reader)
-	// site 分支前端不传 ns（nil），后端反查镜像
-	if err := svc.LinkBatchToWork(context.Background(), 1, constant.SITE, []int64{20, 21}, nil); err != nil {
+	svc := NewService(repo, directTransactor{}, noopInventory{})
+	if err := svc.LinkBatchToWork(context.Background(), 1, constant.SITE, []int64{20, 21}, []string{"parody", ""}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(repo.rels) != 2 {
 		t.Fatalf("expected 2 rels, got %d", len(repo.rels))
 	}
 	if repo.tagType != constant.SITE {
-		t.Errorf("site 分支 upsert 应按 (work_id, site_tag_id) 冲突，tagType 得到 %d", repo.tagType)
+		t.Errorf("site 分支 upsert 应按 (work_id, site_tag_id, namespace) 冲突，tagType 得到 %d", repo.tagType)
 	}
-	if !repo.rels[0].Namespace.Valid || repo.rels[0].Namespace.String != "parody" {
-		t.Errorf("rels[0]（site_tag 20）应镜像 parody，得到 %+v", repo.rels[0].Namespace)
+	if repo.rels[0].Namespace != "parody" {
+		t.Errorf("rels[0] namespace 应为用户自设 parody，得到 %q", repo.rels[0].Namespace)
 	}
-	if repo.rels[1].Namespace.Valid {
-		t.Errorf("rels[1]（site_tag 21 无 ns）应为 NULL，得到 %+v", repo.rels[1].Namespace)
+	if repo.rels[1].Namespace != "" {
+		t.Errorf("rels[1] namespace 应为空串（无 ns），得到 %q", repo.rels[1].Namespace)
 	}
 }

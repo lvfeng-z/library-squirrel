@@ -29,7 +29,7 @@ func (r *ReWorkTagRepository) dbFromCtx(ctx context.Context) *gorm.DB {
 	return database.DBFromContext(ctx, r.BaseRepository.GORM())
 }
 
-// DeleteByWorkAndTag 根据作品ID和标签删除
+// DeleteByWorkAndTag 根据作品ID和标签删除（该标签的全部 ns 关联行）
 func (r *ReWorkTagRepository) DeleteByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) error {
 	query := r.dbFromCtx(ctx).
 		WithContext(ctx).
@@ -45,6 +45,26 @@ func (r *ReWorkTagRepository) DeleteByWorkAndTag(ctx context.Context, workId int
 	}
 
 	return query.Delete(new(domain.ReWorkTag)).Error
+}
+
+// DeleteByWorkTagAndNamespace 按作品+标签+namespace 精确删除关联行（改 ns 的旧值行摘除，
+// 不波及同标签其他 ns 行）；namespace 值归一化后比对（与关联写入同规则）
+func (r *ReWorkTagRepository) DeleteByWorkTagAndNamespace(ctx context.Context, workId int64, tagType int, tagId int64, namespace string) error {
+	query := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("work_id = ?", workId)
+
+	switch tagType {
+	case constant.LOCAL:
+		query = query.Where("local_tag_id = ?", tagId)
+	case constant.SITE:
+		query = query.Where("site_tag_id = ?", tagId)
+	default:
+		return nil
+	}
+
+	return query.Where("namespace = ?", constant.NormalizeDimensionValue(namespace)).
+		Delete(new(domain.ReWorkTag)).Error
 }
 
 // DeleteByWorkId 根据作品ID删除所有关联
@@ -81,7 +101,7 @@ func (r *ReWorkTagRepository) DeleteBySiteTagId(ctx context.Context, siteTagId i
 }
 
 // SaveBatchOnConflict 批量保存，遇任何唯一约束冲突跳过该行（OnConflict DoNothing）。
-// LOCAL 关联增量入库用：已存在的 (work_id, local_tag_id) 跳过，保留用户手动设的 namespace 等字段不被新行零值覆盖。
+// LOCAL 关联增量入库用：已存在的 (work_id, local_tag_id, namespace) 跳过，保留既有行的关联级字段不被新行零值覆盖。
 func (r *ReWorkTagRepository) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {
 	if len(rels) == 0 {
 		return nil
@@ -99,11 +119,11 @@ func (r *ReWorkTagRepository) SaveBatchOnConflict(ctx context.Context, rels []*d
 		Create(rels).Error
 }
 
-// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 唯一约束冲突时更新 namespace，否则插入。
-// tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)。
-// 已存在的关联（如已绑定 tag 改了 namespace 重新确认）走 UPDATE namespace；新关联走 INSERT。
+// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id, namespace) 唯一约束冲突时仅刷 update_time，否则插入。
+// tagType 决定冲突列：local→(work_id, local_tag_id, namespace)，site→(work_id, site_tag_id, namespace)。
+// namespace 属冲突键：命中冲突即三方同值（同作品同标签同 ns），无字段需要刷写，仅更新时间。
 // 冲突更新列不含 source：先建行者的来源（插件声明或用户手动）保持不变，插件再声明用户手动挂的
-// 关联不翻转来源、不重复建行，仅刷新 namespace 镜像。
+// 关联不翻转来源、不重复建行；同作品同标签不同 ns 则不构成冲突，落独立关联行
 func (r *ReWorkTagRepository) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
 	if len(rels) == 0 {
 		return nil
@@ -117,14 +137,14 @@ func (r *ReWorkTagRepository) UpsertBatch(ctx context.Context, rels []*domain.Re
 	}
 	var conflictCols []clause.Column
 	if tagType == constant.LOCAL {
-		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "local_tag_id"}}
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "local_tag_id"}, {Name: "namespace"}}
 	} else {
-		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "site_tag_id"}}
+		conflictCols = []clause.Column{{Name: "work_id"}, {Name: "site_tag_id"}, {Name: "namespace"}}
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   conflictCols,
-			DoUpdates: clause.AssignmentColumns([]string{"namespace", "update_time"}),
+			DoUpdates: clause.AssignmentColumns([]string{"update_time"}),
 		}).Create(rels).Error
 }
 

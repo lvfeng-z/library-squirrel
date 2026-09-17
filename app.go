@@ -24,6 +24,7 @@ import (
 
 	"github.com/library-squirrel/backend/appLauncher"
 	"github.com/library-squirrel/backend/assetserver"
+	"github.com/library-squirrel/backend/authorRole"
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/backupGovernance"
 	"github.com/library-squirrel/backend/base/constant"
@@ -58,6 +59,7 @@ import (
 	"github.com/library-squirrel/backend/siteBrowser"
 	"github.com/library-squirrel/backend/siteTag"
 	"github.com/library-squirrel/backend/storeRegistry"
+	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util"
@@ -87,6 +89,8 @@ type App struct {
 	DuplicateService        *duplicate.Service           // 查重判定能力（taskManager 查重改接；分享收件接入见阶段5）
 	ReWorkAuthorService     *reWorkAuthor.Service
 	ReWorkTagService        *reWorkTag.Service
+	TagNamespaceService     *tagNamespace.Service
+	AuthorRoleService       *authorRole.Service
 	WorkService             *work.Service
 	WorkSetService          *workSet.Service
 	SearchService           *search.Service
@@ -176,6 +180,8 @@ type App struct {
 	SiteBrowserHandler           *siteBrowser.Handler
 	ReWorkAuthorHandler          *reWorkAuthor.Handler
 	ReWorkTagHandler             *reWorkTag.Handler
+	TagNamespaceHandler          *tagNamespace.Handler
+	AuthorRoleHandler            *authorRole.Handler
 	PluginTaskUrlListenerHandler *pluginTaskUrlListener.Handler
 	RecycleBinHandler            *recycleBin.Handler
 	ExportHandler                *export.Handler
@@ -237,6 +243,18 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	logger.Log.Infof("站点注册表投影同步完成")
+
+	// 4.6 维度内置集投影同步：tag_namespace / author_role 清单表 = 后端内置常量集的本库投影
+	//（insert-only，缺失值按权威值补建；同 site 投影同语义——既有行不动）。失败即启动失败（fail-fast）
+	if err := app.TagNamespaceService.SyncBuiltins(context.Background()); err != nil {
+		logger.Log.Errorf("tag namespace 内置集投影同步失败: %v", err)
+		return nil, err
+	}
+	if err := app.AuthorRoleService.SyncBuiltins(context.Background()); err != nil {
+		logger.Log.Errorf("author role 内置集投影同步失败: %v", err)
+		return nil, err
+	}
+	logger.Log.Infof("维度内置集投影同步完成")
 
 	// 5. 初始化高级服务
 	if err := app.initAdvancedServices(); err != nil {
@@ -676,6 +694,11 @@ func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {
 func (app *App) initBaseServices() {
 	rootPath := util.RootPath()
 
+	// 维度清单服务（tag namespace / author role 关联级维度的候选值清单，同构独立两模块）。
+	// 先于 reWorkTag/reWorkAuthor 创建——两者的手动挂联链注入清单登记与事务执行器
+	app.TagNamespaceService = tagNamespace.NewService(tagNamespace.NewRepository(app.db))
+	app.AuthorRoleService = authorRole.NewService(authorRole.NewRepository(app.db))
+
 	// localTag 服务（删除编排注入事务执行器与 siteTag/reWorkTag 仓储——siteTag 服务构造依赖
 	// localTag 服务，经仓储接线满足窄接口以打破装配环）
 	localTagRepo := localTag.NewRepository(app.db)
@@ -683,9 +706,10 @@ func (app *App) initBaseServices() {
 	reWorkTagRepo := reWorkTag.NewRepository(app.db)
 	app.LocalTagService = localTag.NewService(localTagRepo, &dbTransactorAdapter{db: app.db}, siteTagRepo, reWorkTagRepo)
 
-	// reWorkAuthor 服务（localAuthor 删除编排的关联删除提供方，须先于 localAuthor 创建）
+	// reWorkAuthor 服务（localAuthor 删除编排的关联删除提供方，须先于 localAuthor 创建；
+	// 手动挂联链注入事务执行器与 role 清单登记——关联写入与清单登记同事务）
 	reWorkAuthorRepo := reWorkAuthor.NewRepository(app.db)
-	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo)
+	app.ReWorkAuthorService = reWorkAuthor.NewService(reWorkAuthorRepo, &dbTransactorAdapter{db: app.db}, app.AuthorRoleService)
 
 	// localAuthor 服务（删除编排注入：事务执行器 + 站点绑定/镜像列清理仓储 + 关联删除服务）
 	localAuthorRepo := localAuthor.NewRepository(app.db)
@@ -735,8 +759,8 @@ func (app *App) initBaseServices() {
 	resourceStoreRepo := resource.NewResourceStoreRepository(app.db)
 	app.ResourceService = resource.NewService(resourceRepo, resourceStoreRepo, app.PersistentStoreService)
 
-	// reWorkTag 服务
-	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, app.SiteTagService)
+	// reWorkTag 服务（手动挂联链注入事务执行器与 ns 清单登记——关联写入与清单登记同事务）
+	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, &dbTransactorAdapter{db: app.db}, app.TagNamespaceService)
 
 	// settings 服务
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
@@ -846,6 +870,8 @@ func (app *App) initAdvancedServices() error {
 		reWorkSetWorkSetRepo,
 		workSetRepo,           // CoverReferenceClearer（purge 链首步清封面引用）
 		app.ShareLockRegistry, // WorkLockChecker（软删除前置作品锁守卫）
+		app.TagNamespaceService, // TagNamespaceInventoryWriter（入库链 ns 清单登记）
+		app.AuthorRoleService,   // AuthorRoleInventoryWriter（入库链 role 清单登记）
 	)
 
 	// fsmonitor 工作目录监控服务（事件驱动监控外部文件操作 + workDir 切换暂停）
@@ -1479,6 +1505,8 @@ func (app *App) initHandlers() {
 	app.SiteBrowserHandler = siteBrowser.NewHandler(app.SiteBrowserService)
 	app.ReWorkAuthorHandler = reWorkAuthor.NewHandler(app.ReWorkAuthorService)
 	app.ReWorkTagHandler = reWorkTag.NewHandler(app.ReWorkTagService)
+	app.TagNamespaceHandler = tagNamespace.NewHandler(app.TagNamespaceService)
+	app.AuthorRoleHandler = authorRole.NewHandler(app.AuthorRoleService)
 	app.PluginTaskUrlListenerHandler = pluginTaskUrlListener.NewHandler(app.PluginTaskUrlListenerSvc)
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService, app.ShareLockRegistry)
 	app.ExportHandler = export.NewHandler(app.ExportService)

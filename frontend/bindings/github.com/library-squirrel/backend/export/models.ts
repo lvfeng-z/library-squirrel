@@ -595,11 +595,6 @@ export class TagRecord {
     "baseSiteTagId"?: string | null;
 
     /**
-     * 站点侧 namespace（language/character/...；null=站点无 namespace）
-     */
-    "namespace"?: string | null;
-
-    /**
      * site→local 桥接
      */
     "localTagId"?: number | null;

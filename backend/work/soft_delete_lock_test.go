@@ -95,6 +95,8 @@ func newSoftDeleteLockEnv() (*Service, *softDeleteLockRepo, shareLock.ShareLockR
 		nil,                              // WorkSetRelationWriter
 		nil,                              // CoverReferenceClearer
 		lock,                             // WorkLockChecker（真实件）
+		nil,                              // TagNamespaceInventoryWriter（软删链只删不写）
+		nil,                              // AuthorRoleInventoryWriter（软删链只删不写）
 	)
 	return svc, repo, lock
 }

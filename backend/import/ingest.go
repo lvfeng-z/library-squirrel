@@ -929,7 +929,8 @@ func (ing *ingestor) ensureSiteTags(ctx context.Context, records []export.TagRec
 		}
 		e.SiteTagName = nullStringFromPtr(r.Name, false)
 		e.BaseSiteTagID = nullStringFromPtr(r.BaseSiteTagID, false)
-		e.Namespace = nullStringFromPtr(r.Namespace, true) // 落库守卫：空串按 NULL
+		// 旧版导出包的标签记录 namespace 键在反序列化时按未知字段静默丢弃（site_tag 行已无该列；
+		// 标签关联级 ns 由 TagLink 承载、写关联行，语义不丢）
 		e.LocalTagID = remappedRef(r.LocalTagID, localTagRemap)
 		e.Description = nullStringFromPtr(r.Description, false)
 		e.LastUse = nullInt64FromPtr(r.LastUse)
@@ -1176,10 +1177,10 @@ func (ing *ingestor) ensureWorkSets(ctx context.Context, records []export.WorkSe
 }
 
 // ensureWorkLinks 为新建作品挂标签/作者/作品集关联、为替换作品做关联合并。find-or-create 的
-// 同名坍缩可能令多条 manifest 关联落到同一本库行，按各关联表的唯一索引键（work+tag /
-// work+author / work+workset）批内折叠，保留 manifest 首条的关联级属性（namespace/role/sort 等）。
-// 替换作品（replaceLocalIDs）预读本库已有关联键进 seen 防撞唯一索引——本地已有关联不删、
-// manifest 关联增量挂载。
+// 同名坍缩可能令多条 manifest 关联落到同一本库行，按各关联表的唯一索引键（work+tag+ns /
+// work+author+role / work+workset）批内折叠，保留 manifest 首条的关联级属性（sort 等；ns/role
+// 属唯一键成分，同键异值不折叠为多行）。替换作品（replaceLocalIDs）预读本库已有关联键进 seen
+// 防撞唯一索引——本地已有关联不删、manifest 关联增量挂载。
 func (ing *ingestor) ensureWorkLinks(
 	ctx context.Context,
 	toCreate []*export.WorkRecord,
@@ -1244,14 +1245,14 @@ func (ing *ingestor) ensureWorkLinks(
 					continue // 引用悬空（数据异常），跳过该关联
 				}
 				e.LocalTagID = sql.NullInt64{Int64: localTagID, Valid: true}
-				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.LOCAL, localTagID)
+				seenKey = fmt.Sprintf("%d|%d|%d|%s", localWorkID, constant.LOCAL, localTagID, nsOfLink(link))
 			case constant.SITE:
 				localSiteTagID, ok := siteTagRemap[link.TagID]
 				if !ok {
 					continue
 				}
 				e.SiteTagID = sql.NullInt64{Int64: localSiteTagID, Valid: true}
-				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.SITE, localSiteTagID)
+				seenKey = fmt.Sprintf("%d|%d|%d|%s", localWorkID, constant.SITE, localSiteTagID, nsOfLink(link))
 			default:
 				continue // 未知关联类型（数据异常），跳过
 			}
@@ -1259,8 +1260,9 @@ func (ing *ingestor) ensureWorkLinks(
 				continue
 			}
 			tagSeen[seenKey] = struct{}{}
-			e.Namespace = nullStringFromPtr(link.Namespace, true) // 落库守卫：空串按 NULL
-			e.Source = link.Source                                // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
+			// 去重键含 namespace（唯一键 (work_id, tag_id, namespace)，同作品同标签多 ns 是合法多行关联）
+			e.Namespace = nsOfLink(link) // 关联级 ns 随 TagLink 回灌；空串=无 ns
+			e.Source = link.Source       // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
 			e.SetCreateTime(now)
 			e.SetUpdateTime(now)
 			tagRows = append(tagRows, e)
@@ -1277,14 +1279,14 @@ func (ing *ingestor) ensureWorkLinks(
 					continue
 				}
 				e.LocalAuthorID = sql.NullInt64{Int64: localAuthorID, Valid: true}
-				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.LOCAL, localAuthorID)
+				seenKey = fmt.Sprintf("%d|%d|%d|%s", localWorkID, constant.LOCAL, localAuthorID, roleOfLink(link))
 			case constant.SITE:
 				localSiteAuthorID, ok := siteAuthorRemap[link.AuthorID]
 				if !ok {
 					continue
 				}
 				e.SiteAuthorID = sql.NullInt64{Int64: localSiteAuthorID, Valid: true}
-				seenKey = fmt.Sprintf("%d|%d|%d", localWorkID, constant.SITE, localSiteAuthorID)
+				seenKey = fmt.Sprintf("%d|%d|%d|%s", localWorkID, constant.SITE, localSiteAuthorID, roleOfLink(link))
 			default:
 				continue
 			}
@@ -1292,7 +1294,8 @@ func (ing *ingestor) ensureWorkLinks(
 				continue
 			}
 			authorSeen[seenKey] = struct{}{}
-			e.RoleName = nullStringFromPtr(link.RoleName, false)
+			// 去重键含 role（唯一键 (work_id, author_id, role_name)，同作品同作者多 role 是合法多行关联）
+			e.RoleName = roleOfLink(link) // 关联级 role 随 AuthorLink 回灌；空串=无 role
 			e.SortOrder = nullInt64FromPtr(link.SortOrder)
 			e.Source = link.Source // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
 			e.SetCreateTime(now)
@@ -1333,31 +1336,32 @@ func (ing *ingestor) ensureWorkLinks(
 	return nil
 }
 
-// existingTagLinkKey 本库已有标签关联的去重键（work_id + 标签类型 + 本库标签 ID），
-// 与 ensureWorkLinks 新增关联的 seenKey 同型（按唯一索引键去重）。
+// existingTagLinkKey 本库已有标签关联的去重键（work_id + 标签类型 + 本库标签 ID + namespace），
+// 与 ensureWorkLinks 新增关联的 seenKey 同型（按唯一索引键去重——namespace 属键，同键异 ns 不互斥）。
 func existingTagLinkKey(r *entity.ReWorkTag) string {
 	if !r.WorkID.Valid {
 		return ""
 	}
 	if r.LocalTagID.Valid {
-		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.LOCAL, r.LocalTagID.Int64)
+		return fmt.Sprintf("%d|%d|%d|%s", r.WorkID.Int64, constant.LOCAL, r.LocalTagID.Int64, r.Namespace)
 	}
 	if r.SiteTagID.Valid {
-		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.SITE, r.SiteTagID.Int64)
+		return fmt.Sprintf("%d|%d|%d|%s", r.WorkID.Int64, constant.SITE, r.SiteTagID.Int64, r.Namespace)
 	}
 	return ""
 }
 
-// existingAuthorLinkKey 本库已有作者关联的去重键（work_id + 作者类型 + 本库作者 ID）。
+// existingAuthorLinkKey 本库已有作者关联的去重键（work_id + 作者类型 + 本库作者 ID + role），
+// 与 ensureWorkLinks 新增关联的 seenKey 同型（按唯一索引键去重——role 属键，同键异 role 不互斥）。
 func existingAuthorLinkKey(r *entity.ReWorkAuthor) string {
 	if !r.WorkID.Valid {
 		return ""
 	}
 	if r.LocalAuthorID.Valid {
-		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.LOCAL, r.LocalAuthorID.Int64)
+		return fmt.Sprintf("%d|%d|%d|%s", r.WorkID.Int64, constant.LOCAL, r.LocalAuthorID.Int64, r.RoleName)
 	}
 	if r.SiteAuthorID.Valid {
-		return fmt.Sprintf("%d|%d|%d", r.WorkID.Int64, constant.SITE, r.SiteAuthorID.Int64)
+		return fmt.Sprintf("%d|%d|%d|%s", r.WorkID.Int64, constant.SITE, r.SiteAuthorID.Int64, r.RoleName)
 	}
 	return ""
 }
@@ -1475,6 +1479,22 @@ func nullInt64FromPtr(p *int64) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: *p, Valid: true}
+}
+
+// nsOfLink 关联级 namespace 取值：nil 指针（旧包未携带/无 ns）→ 空串
+func nsOfLink(link export.TagLink) string {
+	if link.Namespace == nil {
+		return ""
+	}
+	return *link.Namespace
+}
+
+// roleOfLink 关联级 role 取值：nil 指针（旧包未携带/无 role）→ 空串
+func roleOfLink(link export.AuthorLink) string {
+	if link.RoleName == nil {
+		return ""
+	}
+	return *link.RoleName
 }
 
 // remappedRef 导出库引用 → 本库引用重映射；引用未命中重映射时落 NULL（引用悬空降级）。

@@ -2,12 +2,14 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SegmentedTag from '@renderer/components/common/SegmentedTag.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
+import { useDimensionListStore } from '@renderer/store/UseDimensionListStore.ts'
 
 // AuthorRoleTag：包一层 SegmentedTag，把 role 作为视觉一体的末段；role 段点击弹 el-popover
-// 文本输入，其余点击透传。可编辑性 = editableNs prop（TagBox 透传链固定该 prop 名，在此语义为
-// role 段可编辑）|| extraData.roleEditable（tag 数据级，兼容）；role 值（extraData.role）始终纯
-// tag 数据，popover 输入时回写。供作者编辑 ExchangeBox 经 tagComponent 注入；非编辑态不显示
-// role 段、不创建 popover，退化为纯 SegmentedTag。
+// 清单驱动选择器（保留 allow-create 自定义开口），其余点击透传。可编辑性 = editableNs prop
+// （TagBox 透传链固定该 prop 名，在此语义为 role 段可编辑）|| extraData.roleEditable（tag 数据级，
+// 兼容）；role 值（extraData.role）始终纯 tag 数据，popover 提交时回写。多 role 关联聚合为 '/' 连接串，
+// 编辑取单值、确认时由父组件 diff 替换全部旧值。供作者编辑 ExchangeBox 经 tagComponent 注入；
+// 非编辑态不显示 role 段、不创建 popover，退化为纯 SegmentedTag。
 const props = defineProps<{
   item: SegmentedTagItem
   closeable?: boolean
@@ -17,12 +19,21 @@ const props = defineProps<{
 
 const emits = defineEmits(['clicked', 'mainLabelClicked', 'subLabelClicked', 'close', 'nsEdited'])
 
-// 是否可编辑（显示 role 输入框）：区域级 editableNs prop 优先，兼容 tag 数据 extraData.roleEditable
+// 维度清单 store：role 候选分组（用户用过的/插件声明的，last_use 降序）与值→显示名解析；首次使用触发会话内一次拉取
+const dimensionStore = useDimensionListStore()
+dimensionStore.loadRoles()
+
+// 是否可编辑（显示 role 选择框）：区域级 editableNs prop 优先，兼容 tag 数据 extraData.roleEditable
 const editable = computed(() => props.editableNs || !!props.item.extraData?.roleEditable)
-// role 本地真源（extraData:any 非深响应，用本地 ref 驱动展示；popover 输入时回写 extraData.role）
+// role 本地真源（extraData:any 非深响应，用本地 ref 驱动展示；popover 提交时回写 extraData.role）
 const editingRole = ref<string>(props.item.extraData?.role ?? '')
-// role 段展示文案：有 role 显示 role；无 role 时可编辑显示 "+"，不可编辑显示空（不显示段）
-const roleSegmentText = computed(() => (editingRole.value ? editingRole.value : editable.value ? '+' : ''))
+// role 段展示文案：有 role 显示 role 名（清单 label，'/' 连接的多值串逐段解析）；无 role 时可编辑显示 "+"，不可编辑显示空（不显示段）
+const roleSegmentText = computed(() => {
+  if (editingRole.value) {
+    return dimensionStore.roleLabelOf(editingRole.value)
+  }
+  return editable.value ? '+' : ''
+})
 // 派生展示 item：浅拷 + 末尾追加 role 段（仅当有段文案；不 mutate 原始 item.subLabels，避免编辑回路累加）
 const displayItem = computed<SegmentedTagItem>(() => {
   const subs = [...(props.item.subLabels ?? [])]
@@ -55,7 +66,7 @@ watch(editingRole, (role) => {
 })
 
 // outside-click 关闭：trigger="manual" 下 EP 不自动 outside-click，手动监听 document mousedown——
-// target 在 role 段（virtual-ref）或 popover 内容（el-input）内不关，否则关
+// target 在 role 段（virtual-ref）或 popover 内容（el-select 及其 options）内不关，否则关
 function handleOutsideClick(event: MouseEvent) {
   if (!popoverVisible.value) return
   const target = event.target as HTMLElement | null
@@ -96,12 +107,28 @@ onBeforeUnmount(() => {
     placement="bottom"
     :width="220"
   >
-    <el-input
+    <el-select
       v-model="editingRole"
+      filterable
+      allow-create
+      default-first-option
       clearable
-      maxlength="64"
+      :teleported="false"
       placeholder="角色（可选，如：原画）"
       style="width: 100%"
-    />
+    >
+      <el-option-group
+        v-for="group in dimensionStore.roleGroups"
+        :key="group.label"
+        :label="group.label"
+      >
+        <el-option
+          v-for="role in group.options"
+          :key="role.value"
+          :label="role.label || role.value"
+          :value="role.value"
+        />
+      </el-option-group>
+    </el-select>
   </el-popover>
 </template>

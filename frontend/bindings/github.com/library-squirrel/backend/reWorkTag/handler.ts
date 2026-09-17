@@ -18,8 +18,8 @@ import * as model$0 from "../base/model/models.js";
 import * as entity$0 from "../base/model/entity/models.js";
 
 /**
- * Link 链接标签到作品。namespaces 与 tagIds 等长配对（local=用户自设 ns，空串=无 ns）；
- * site 关联的 namespace 由后端按 site_tag.namespace 镜像，namespaces 传值被忽略。
+ * Link 链接标签到作品。namespaces 与 tagIds 等长配对（local/site 关联均用调用方传值，
+ * 空串=无 namespace——namespace 是关联级开放维度，site 关联同样开放用户自设）
  */
 export function Link(tagType: number, tagIds: number[], namespaces: string[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(3897435833, tagType, tagIds, namespaces, workId).then(($result: any) => {
@@ -55,10 +55,20 @@ export function ListSiteTagIdsByWorkId(workId: number): $CancellablePromise<mode
 }
 
 /**
- * Unlink 从作品移除标签
+ * Unlink 从作品移除标签（该标签的全部 ns 关联行）
  */
 export function Unlink(tagType: number, tagIds: number[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(352252674, tagType, tagIds, workId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * UnlinkDimension 精确摘除维度关联行：namespaces 与 tagIds 等长配对，只删 (work, tag, ns) 命中行，
+ * 不波及同标签其他 ns 行（改 ns 的旧值行删除入口——新值行走 Link）
+ */
+export function UnlinkDimension(tagType: number, tagIds: number[], namespaces: string[], workId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(4087587466, tagType, tagIds, namespaces, workId).then(($result: any) => {
         return $$createType1($result);
     });
 }

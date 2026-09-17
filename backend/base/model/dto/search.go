@@ -24,7 +24,7 @@ type SearchCondition struct {
 	Type      SearchType         `json:"type"`
 	Value     interface{}        `json:"value"`
 	Operator  WorkSearchOperator `json:"operator,omitempty"`
-	Namespace string             `json:"namespace,omitempty"` // namespace 过滤维度（character/parody/female/male/language/misc/general 等），仅 LocalTag/SiteTag 生效；空=不按 namespace 过滤（命中全部含 null）
+	Namespace string             `json:"namespace,omitempty"` // namespace 过滤维度（关联级开放字符串，空串=无 ns），仅 LocalTag/SiteTag 生效；空=不按 namespace 过滤（命中该标签全部关联，含空串无 ns 与其他 ns 的关联）
 }
 
 // WorkSearchOperator 作品搜索操作符

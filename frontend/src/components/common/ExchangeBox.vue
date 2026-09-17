@@ -192,7 +192,8 @@ function handleBufferToggle() {
   upperBufferState.value = arrayNotEmpty(upperBufferData.value)
   lowerBufferState.value = arrayNotEmpty(lowerBufferData.value)
 }
-// 处理 upper 主区域 tag 的 namespace 被编辑：移至 upper 缓冲区待重新确认（确认时 upsert 更新现有绑定 ns）
+// 处理 upper 主区域 tag 的 namespace 被编辑：移至 upper 缓冲区待重新确认
+// （确认时由父组件 diff：Link 新维度值 + UnlinkDimension 摘旧维度值行）
 function handleUpperDataNsEdited(tag: SelectItem) {
   exchange(upperData.value, upperBufferData.value, tag)
   upperBufferId.value.add(tag.value)

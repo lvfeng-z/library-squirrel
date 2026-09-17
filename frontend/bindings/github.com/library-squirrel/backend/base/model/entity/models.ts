@@ -10,6 +10,72 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as sql$0 from "../../../../../../database/sql/models.js";
 
 /**
+ * AuthorRole 作者 role 维度清单行（re_work_author 关联级 role 维度的候选值登记）。
+ * 清单 = 「见过的值」而非约束：re_work_author.role_name 为开放字符串，未知值允许写入不依赖本表
+ */
+export class AuthorRole {
+    "id": number;
+    "createTime": number;
+    "updateTime": number;
+
+    /**
+     * Value 归一化后的维度值（去首尾空白 + 小写折叠），清单唯一键
+     */
+    "value": string;
+
+    /**
+     * Label 显示名，空串=前端直接展示 value
+     */
+    "label": string;
+
+    /**
+     * Origin 来源三态（constant.ORIGIN_PLUGIN/USER/BUILTIN；零值=plugin——缺省来源取最低优先级）。
+     * 优先级 builtin > user > plugin：同值多来源时取最高优先级，内置行的 label/origin 为权威值不被改写
+     */
+    "origin": number;
+
+    /**
+     * LastUse 最近使用毫秒时间戳，0=从未使用（使用统计属展示排序，不参与来源权威）
+     */
+    "lastUse": number;
+
+    /** Creates a new AuthorRole instance. */
+    constructor($$source: Partial<AuthorRole> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("value" in $$source)) {
+            this["value"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("origin" in $$source)) {
+            this["origin"] = 0;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuthorRole instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AuthorRole {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuthorRole($$parsedSource as Partial<AuthorRole>);
+    }
+}
+
+/**
  * ReWorkTag 作品与标签关联
  */
 export class ReWorkTag {
@@ -22,9 +88,10 @@ export class ReWorkTag {
     "siteTagId": sql$0.NullInt64;
 
     /**
-     * 关联级 namespace（site 关联=所指 site_tag.namespace 镜像；local 关联=用户自设/null）
+     * Namespace 关联级 namespace 维度值（开放字符串，空串=无 ns）。唯一键含本列——同作品同标签
+     * 多 ns 关联并存（如 e-hentai 的 female:tagA 与 male:tagA 共用同一纯名 site_tag 行）
      */
-    "namespace": sql$0.NullString;
+    "namespace": string;
 
     /**
      * Source 关联写入来源（constant.PLUGIN/MANUAL）：作品重拉只窄域重建插件来源关联，用户手动挂的关联不动；
@@ -56,7 +123,7 @@ export class ReWorkTag {
             this["siteTagId"] = (new sql$0.NullInt64());
         }
         if (!("namespace" in $$source)) {
-            this["namespace"] = (new sql$0.NullString());
+            this["namespace"] = "";
         }
         if (!("source" in $$source)) {
             this["source"] = 0;
@@ -73,7 +140,6 @@ export class ReWorkTag {
         const $$createField4_0 = $$createType0;
         const $$createField5_0 = $$createType0;
         const $$createField6_0 = $$createType0;
-        const $$createField7_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workId" in $$parsedSource) {
             $$parsedSource["workId"] = $$createField3_0($$parsedSource["workId"]);
@@ -87,13 +153,75 @@ export class ReWorkTag {
         if ("siteTagId" in $$parsedSource) {
             $$parsedSource["siteTagId"] = $$createField6_0($$parsedSource["siteTagId"]);
         }
-        if ("namespace" in $$parsedSource) {
-            $$parsedSource["namespace"] = $$createField7_0($$parsedSource["namespace"]);
-        }
         return new ReWorkTag($$parsedSource as Partial<ReWorkTag>);
+    }
+}
+
+/**
+ * TagNamespace 标签 namespace 维度清单行（tag 关联级 namespace 维度的候选值登记）。
+ * 清单 = 「见过的值」而非约束：re_work_tag.namespace 为开放字符串，未知值允许写入不依赖本表
+ */
+export class TagNamespace {
+    "id": number;
+    "createTime": number;
+    "updateTime": number;
+
+    /**
+     * Value 归一化后的维度值（去首尾空白 + 小写折叠），清单唯一键
+     */
+    "value": string;
+
+    /**
+     * Label 显示名，空串=前端直接展示 value
+     */
+    "label": string;
+
+    /**
+     * Origin 来源三态（constant.ORIGIN_PLUGIN/USER/BUILTIN；零值=plugin——缺省来源取最低优先级）。
+     * 优先级 builtin > user > plugin：同值多来源时取最高优先级，内置行的 label/origin 为权威值不被改写
+     */
+    "origin": number;
+
+    /**
+     * LastUse 最近使用毫秒时间戳，0=从未使用（使用统计属展示排序，不参与来源权威）
+     */
+    "lastUse": number;
+
+    /** Creates a new TagNamespace instance. */
+    constructor($$source: Partial<TagNamespace> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+        if (!("value" in $$source)) {
+            this["value"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("origin" in $$source)) {
+            this["origin"] = 0;
+        }
+        if (!("lastUse" in $$source)) {
+            this["lastUse"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TagNamespace instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TagNamespace {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TagNamespace($$parsedSource as Partial<TagNamespace>);
     }
 }
 
 // Private type creation functions
 const $$createType0 = sql$0.NullInt64.createFrom;
-const $$createType1 = sql$0.NullString.createFrom;

@@ -13,7 +13,7 @@
 
 | 组件 | 职责 |
 | --- | --- |
-| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=5）、capabilities 枚举与声明查询、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
+| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=8——v8 作者关联条目返回面更换 + SiteTagInfo.Namespace 删除的破坏性分界）、capabilities 枚举与声明查询、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
 | `library_query_provider.go` | **库查询核心（Tier 1 只读）**：实现 SDK `LibraryQuery` 契约 21 端点，逐端点桥接 14 个域只读接口（`LibraryQueryDeps`）并映射为契约消息；分页钳制（page≥1、缺省 20、上限 200）；Get* 未命中 `NotFound`、GetWorkDir 未配置 `FailedPrecondition`；零自拼 SQL——查询全走各域 repository GORM 管线（软删 scope 自动排除、resource_store 关联活行过滤） |
 | `plugin_context.go` | 插件侧 `PluginContext` 实现：扩展点注册、自存 KV、任务触发、前端通信转发、库查询方法组收口（每调用记诊断级日志——调用方插件 + 端点 + 关键参数） |
 | `plugin_host.go` | HostDeps 注册回调实现（loader 经 `OnRegisterTaskHandler` 等字段注入） |

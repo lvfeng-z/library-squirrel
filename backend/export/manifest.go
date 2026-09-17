@@ -81,7 +81,6 @@ type TagRecord struct {
 	SiteID        *int64  `json:"siteId,omitempty"`
 	SiteTagID     *string `json:"siteTagId,omitempty"`
 	BaseSiteTagID *string `json:"baseSiteTagId,omitempty"`
-	Namespace     *string `json:"namespace,omitempty"`  // 站点侧 namespace（language/character/...；null=站点无 namespace）
 	LocalTagID    *int64  `json:"localTagId,omitempty"` // site→local 桥接
 
 	// 本地标签专属

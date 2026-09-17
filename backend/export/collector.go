@@ -732,7 +732,6 @@ func siteTagToRecord(t *entity.SiteTag) TagRecord {
 		SiteID:        util.NullInt64ToPointer(t.SiteID),
 		SiteTagID:     util.NullStringToPointer(t.SiteTagID),
 		BaseSiteTagID: util.NullStringToPointer(t.BaseSiteTagID),
-		Namespace:     util.NullStringToPointer(t.Namespace),
 		LocalTagID:    util.NullInt64ToPointer(t.LocalTagID),
 		Description:   util.NullStringToPointer(t.Description),
 		LastUse:       util.NullInt64ToPointer(t.LastUse),
@@ -743,20 +742,20 @@ func siteTagToRecord(t *entity.SiteTag) TagRecord {
 
 func reWorkTagToLink(t *entity.ReWorkTag) (TagLink, bool) {
 	if t.LocalTagID.Valid && t.LocalTagID.Int64 > 0 {
-		return TagLink{TagType: constant.LOCAL, TagID: t.LocalTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace), Source: t.Source}, true
+		return TagLink{TagType: constant.LOCAL, TagID: t.LocalTagID.Int64, Namespace: util.StringPtrIfValid(t.Namespace), Source: t.Source}, true
 	}
 	if t.SiteTagID.Valid && t.SiteTagID.Int64 > 0 {
-		return TagLink{TagType: constant.SITE, TagID: t.SiteTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace), Source: t.Source}, true
+		return TagLink{TagType: constant.SITE, TagID: t.SiteTagID.Int64, Namespace: util.StringPtrIfValid(t.Namespace), Source: t.Source}, true
 	}
 	return TagLink{}, false
 }
 
 func reWorkAuthorToLink(a *entity.ReWorkAuthor) (AuthorLink, bool) {
 	if a.LocalAuthorID.Valid && a.LocalAuthorID.Int64 > 0 {
-		return AuthorLink{AuthorType: constant.LOCAL, AuthorID: a.LocalAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
+		return AuthorLink{AuthorType: constant.LOCAL, AuthorID: a.LocalAuthorID.Int64, RoleName: util.StringPtrIfValid(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
 	}
 	if a.SiteAuthorID.Valid && a.SiteAuthorID.Int64 > 0 {
-		return AuthorLink{AuthorType: constant.SITE, AuthorID: a.SiteAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
+		return AuthorLink{AuthorType: constant.SITE, AuthorID: a.SiteAuthorID.Int64, RoleName: util.StringPtrIfValid(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
 	}
 	return AuthorLink{}, false
 }

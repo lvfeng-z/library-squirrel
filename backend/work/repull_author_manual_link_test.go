@@ -7,6 +7,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/constant"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/authorRole"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 
@@ -17,9 +18,9 @@ import (
 // 重拉窄域重建不动用户来源关联、插件再声明用户已手动挂的作者不翻转来源不重复建行、
 // Unlink 摘除用户来源行。
 
-// newManualAuthorLinker 用户手动挂联的真实 reWorkAuthor 服务
+// newManualAuthorLinker 用户手动挂联的真实 reWorkAuthor 服务（事务执行器与 role 清单登记同注入——真实链形态）
 func newManualAuthorLinker(db *gorm.DB) *reWorkAuthor.Service {
-	return reWorkAuthor.NewService(reWorkAuthor.NewRepository(db))
+	return reWorkAuthor.NewService(reWorkAuthor.NewRepository(db), &txTransactor{db: db}, authorRole.NewService(authorRole.NewRepository(db)))
 }
 
 // seedSiteAuthorRow 直插站点作者行（不走入库链——手动挂联的目标行须先于插件声明存在）
@@ -47,7 +48,7 @@ func seedLocalAuthorRow(t *testing.T, db *gorm.DB, name string) *entity2.LocalAu
 }
 
 // TestManualAuthorLinkCreatesManualRowWithRole 手动挂联建行：SITE 关联携带 roleNames 落 role_name、
-// LOCAL 关联空 roleNames 落 NULL、单条挂联同语义；roleNames 与 authorIds 长度不匹配报错不落盘。
+// LOCAL 关联空 roleNames 落空串（无 role）、单条挂联同语义；roleNames 与 authorIds 长度不匹配报错不落盘。
 func TestManualAuthorLinkCreatesManualRowWithRole(t *testing.T) {
 	svc, db := newCrossSiteTestEnv(t)
 	pixiv := seedSite(t, db, "pixiv")
@@ -79,8 +80,8 @@ func TestManualAuthorLinkCreatesManualRowWithRole(t *testing.T) {
 	if siteRel.Source != constant.MANUAL {
 		t.Fatalf("手动挂的 SITE 作者关联 source 应为 MANUAL，实际 %d", siteRel.Source)
 	}
-	if !siteRel.RoleName.Valid || siteRel.RoleName.String != "原作" {
-		t.Fatalf("SITE 作者关联 role_name 应为 原作，实际 Valid=%v value=%q", siteRel.RoleName.Valid, siteRel.RoleName.String)
+	if siteRel.RoleName != "原作" {
+		t.Fatalf("SITE 作者关联 role_name 应为 原作，实际 %q", siteRel.RoleName)
 	}
 	var localRel entity2.ReWorkAuthor
 	if err := db.Where("work_id = ? AND local_author_id = ?", workId, localAuthor.GetID()).First(&localRel).Error; err != nil {
@@ -89,8 +90,8 @@ func TestManualAuthorLinkCreatesManualRowWithRole(t *testing.T) {
 	if localRel.Source != constant.MANUAL {
 		t.Fatalf("手动挂的 LOCAL 作者关联 source 应为 MANUAL，实际 %d", localRel.Source)
 	}
-	if localRel.RoleName.Valid {
-		t.Fatalf("空 roleNames 挂联的 LOCAL 关联 role_name 应为 NULL，实际 %q", localRel.RoleName.String)
+	if localRel.RoleName != "" {
+		t.Fatalf("空 roleNames 挂联的 LOCAL 关联 role_name 应为空串（无 role），实际 %q", localRel.RoleName)
 	}
 
 	// 长度不匹配：报错且不落盘
@@ -157,8 +158,8 @@ func TestRepullKeepsManualAuthorLinks(t *testing.T) {
 	if manualRel.Source != constant.MANUAL {
 		t.Fatalf("手动挂的 px-a3 关联 source 应为 MANUAL，实际 %d", manualRel.Source)
 	}
-	if !manualRel.RoleName.Valid || manualRel.RoleName.String != "赞助" {
-		t.Fatalf("手动挂的 px-a3 关联 role_name 应保留 赞助，实际 Valid=%v value=%q", manualRel.RoleName.Valid, manualRel.RoleName.String)
+	if manualRel.RoleName != "赞助" {
+		t.Fatalf("手动挂的 px-a3 关联 role_name 应保留 赞助，实际 %q", manualRel.RoleName)
 	}
 }
 
@@ -173,9 +174,9 @@ func seededAuthorDbIdBySiteKey(t *testing.T, db *gorm.DB, siteId int64, siteAuth
 	return sa.GetID()
 }
 
-// TestRepullPluginRedeclareManualAuthorNoFlipNoDup 插件再声明用户已手动挂的作者：
-// 重拉链不翻转来源（保持 MANUAL）、不重复建行；仓储 UpsertBatch 直击——冲突 DoUpdates
-// 刷用户可编辑字段（role_name/sort_order）但不含 source，插件来源行不翻转手动行的来源。
+// TestRepullPluginRedeclareManualAuthorNoFlipNoDup 插件再声明用户已手动挂的作者：role 属唯一键——
+// 插件来源行（无 role）与手动行（用户自设 role）不同键、各落一行（多 role 并存），手动行不翻转不动；
+// 仓储 UpsertBatch 直击——同键（同 role）冲突只刷 sort_order 不写 source，异 role 落独立关联行。
 func TestRepullPluginRedeclareManualAuthorNoFlipNoDup(t *testing.T) {
 	svc, db := newCrossSiteTestEnv(t)
 	pixiv := seedSite(t, db, "pixiv")
@@ -196,7 +197,8 @@ func TestRepullPluginRedeclareManualAuthorNoFlipNoDup(t *testing.T) {
 		t.Fatalf("手动挂 SITE 作者失败: %v", err)
 	}
 
-	// 重拉：插件再声明同一作者
+	// 重拉：插件再声明同一作者——入库链建的插件来源行 role_name 为空串（无 role），与手动行
+	//（role=原作）不同唯一键，落独立关联行
 	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, &sdkdto.WorkResponse{
 		Work:        &sdkdto.WorkDTO{SiteWorkId: &siteWorkId, SiteWorkName: &siteWorkId},
 		SiteAuthors: []*sdkdto.TaskSiteAuthorDTO{{SiteAuthorId: "px-a1", AuthorName: "作者名"}},
@@ -204,44 +206,51 @@ func TestRepullPluginRedeclareManualAuthorNoFlipNoDup(t *testing.T) {
 		t.Fatalf("重拉（再声明手动关联的作者）失败: %v", err)
 	}
 
-	var rel entity2.ReWorkAuthor
-	if err := db.Where("work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()).First(&rel).Error; err != nil {
-		t.Fatalf("回查冲突关联失败: %v", err)
+	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()); n != 2 {
+		t.Fatalf("插件无 role 再声明与手动 role 行应各存一行（多 role 并存），实际 %d 条", n)
 	}
-	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()); n != 1 {
-		t.Fatalf("插件再声明手动关联的作者不应重复建行，实际 %d 条", n)
+	var manualRel entity2.ReWorkAuthor
+	if err := db.Where("work_id = ? AND site_author_id = ? AND role_name = ?", workId, manualAuthor.GetID(), "原作").First(&manualRel).Error; err != nil {
+		t.Fatalf("回查手动 role 行失败: %v", err)
 	}
-	if rel.Source != constant.MANUAL {
-		t.Fatalf("插件再声明不应翻转来源，应保持 MANUAL，实际 %d", rel.Source)
+	if manualRel.Source != constant.MANUAL {
+		t.Fatalf("插件再声明不应翻转手动行来源，应保持 MANUAL，实际 %d", manualRel.Source)
 	}
-	if !rel.RoleName.Valid || rel.RoleName.String != "原作" {
-		t.Fatalf("插件再声明不应覆盖用户角色，实际 Valid=%v value=%q", rel.RoleName.Valid, rel.RoleName.String)
+	if manualRel.RoleName != "原作" {
+		t.Fatalf("插件再声明不应覆盖用户角色，实际 %q", manualRel.RoleName)
+	}
+	var pluginRelRow entity2.ReWorkAuthor
+	if err := db.Where("work_id = ? AND site_author_id = ? AND role_name = ''", workId, manualAuthor.GetID()).First(&pluginRelRow).Error; err != nil {
+		t.Fatalf("回查插件无 role 行失败: %v", err)
+	}
+	if pluginRelRow.Source != constant.PLUGIN {
+		t.Fatalf("插件再声明新落的行 source 应为 PLUGIN，实际 %d", pluginRelRow.Source)
 	}
 
-	// 仓储直击：upsert 一条插件来源行（role/sort 带值），冲突只刷用户可编辑字段、不写 source
-	pluginRel := entity2.NewReWorkAuthor()
-	pluginRel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
-	pluginRel.AuthorType = sql.NullInt64{Int64: constant.SITE, Valid: true}
-	pluginRel.SiteAuthorID = sql.NullInt64{Int64: manualAuthor.GetID(), Valid: true}
-	pluginRel.RoleName = sql.NullString{String: "插旗角色", Valid: true}
-	pluginRel.SortOrder = sql.NullInt64{Int64: 7, Valid: true}
-	pluginRel.Source = constant.PLUGIN
+	// 仓储直击：同 role（同唯一键）upsert——冲突只刷 sort_order、不写 source，不重复建行
+	sameRoleRel := entity2.NewReWorkAuthor()
+	sameRoleRel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+	sameRoleRel.AuthorType = sql.NullInt64{Int64: constant.SITE, Valid: true}
+	sameRoleRel.SiteAuthorID = sql.NullInt64{Int64: manualAuthor.GetID(), Valid: true}
+	sameRoleRel.RoleName = "原作"
+	sameRoleRel.SortOrder = sql.NullInt64{Int64: 7, Valid: true}
+	sameRoleRel.Source = constant.PLUGIN
 	repo := reWorkAuthor.NewRepository(db)
-	if err := repo.UpsertBatch(context.Background(), []*entity2.ReWorkAuthor{pluginRel}, constant.SITE); err != nil {
+	if err := repo.UpsertBatch(context.Background(), []*entity2.ReWorkAuthor{sameRoleRel}, constant.SITE); err != nil {
 		t.Fatalf("仓储 UpsertBatch 直击失败: %v", err)
 	}
 	var after entity2.ReWorkAuthor
-	if err := db.Where("work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()).First(&after).Error; err != nil {
+	if err := db.Where("work_id = ? AND site_author_id = ? AND role_name = ?", workId, manualAuthor.GetID(), "原作").First(&after).Error; err != nil {
 		t.Fatalf("回查直击后关联失败: %v", err)
 	}
-	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()); n != 1 {
-		t.Fatalf("UpsertBatch 冲突不应重复建行，实际 %d 条", n)
+	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND site_author_id = ?", workId, manualAuthor.GetID()); n != 2 {
+		t.Fatalf("UpsertBatch 同键冲突不应重复建行，实际 %d 条", n)
 	}
 	if after.Source != constant.MANUAL {
 		t.Fatalf("UpsertBatch 冲突不应翻转来源，应保持 MANUAL，实际 %d", after.Source)
 	}
-	if !after.RoleName.Valid || after.RoleName.String != "插旗角色" {
-		t.Fatalf("UpsertBatch 冲突应刷新 role_name，实际 Valid=%v value=%q", after.RoleName.Valid, after.RoleName.String)
+	if after.RoleName != "原作" {
+		t.Fatalf("UpsertBatch 同键冲突 role_name 应保持 原作，实际 %q", after.RoleName)
 	}
 	if !after.SortOrder.Valid || after.SortOrder.Int64 != 7 {
 		t.Fatalf("UpsertBatch 冲突应刷新 sort_order，实际 Valid=%v value=%d", after.SortOrder.Valid, after.SortOrder.Int64)
