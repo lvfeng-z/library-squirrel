@@ -48,7 +48,7 @@ globs:
 
 > 注：`persistent_store` 另有 `width`/`height` 字段（`sql.NullInt64`，图像像素宽高，非图片资源 Valid=false），由落盘时 `image.DecodeConfig` 提取，供前端瀑布流预计算卡片高度；属图像元数据，非路径字段。`completed_at`（落盘完成时刻毫秒时间戳，0=未完成）是合法零值——GORM Updates 跳零值，「续传重置回未完成」须经 `ResetCompleted` 显式列更新（service 层已封装）。
 
-> 注：`site_tag.namespace` / `re_work_tag.namespace`（`sql.NullString`，tag 关联级 namespace 维度，非路径字段）：站点有 namespace 时存值（如 e-hentai 的 character），无 namespace 站点（pixiv）落 NULL。落库守卫 `Valid: namespace != ""`——插件不声明（空串）→ `Valid:false` = NULL，对无 namespace 站点插件无感。`re_work_tag.namespace` 为所指 `site_tag.namespace` 镜像（site 关联）或用户自设（local 关联）。**`site_tag.namespace` 仅作站点元数据/镜像源，不直接参与关联/搜索维度——namespace 维度统一在 `re_work_tag.namespace`（搜索过滤 `rwt.namespace`，不读 site_tag.namespace）**。设计见 `../library-squirrel-docs/plan/tag体系演化方案.md`。
+> 注：`re_work_tag.namespace` / `re_work_author.role_name`（关联级维度列，非路径字段）：`string not null default ''`，**空串=无该维度**（NULL 不参与 SQLite 唯一性比较，会令含维度列的唯一索引失效，故禁 NULL 形态）；两表各两条唯一索引含维度列——同作品同标签多 ns / 同作品同作者多 role 可达。维度值是开放字符串（无外键），配套清单表 `tag_namespace` / `author_role`（`value` 唯一 + `label` + `origin` 三态 + `last_use`）仅承接 UI 候选展示、不构成写入约束；写入前统一归一化（TrimSpace + 小写折叠），清单 find-or-create 与关联写入同事务（dbFromCtx）。搜索维度统一在关联列（如 `rwt.namespace`）。tag/author 实体表（site_tag/site_author/local_tag/local_author）无维度列——维度只在关联行上。设计见 `../library-squirrel-docs/plan/关联级维度体系重构方案.md`。
 
 ### 路径解析约定
 

@@ -104,7 +104,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 7 |
+| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 8 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
 | `extensions` | object | 是 | 扩展点集合（见下） |
@@ -190,7 +190,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 7，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 5），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 8，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 8），插件 manifest 声明自己编译时锁定的 `contractVersion`。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -204,7 +204,8 @@ type MyTaskHandler struct{}
 - 4 — StoreSpec 加 `expectedSha256`；Task 删 `pendingResourceId`。
 - 5 — 落盘路径查询 RPC 退役：最终落盘路径改由 SDK `storepath` 派生函数本地推导（插件据任务身份 + specs 顺序自算，见 6.1 StoreSpec 顺序确定性条款），插件不再向主程序查询；`minSupportedContractVersion` 同步升 5，未声明版本的插件拒载。
 - 6 — 新增 `LibraryQuery` 库查询服务（Tier 1 只读，21 个端点，见 5.1）；删除 HostService 死声明 `GetWorkSetBySiteWorkSetId`（无桥接无调用的废弃 RPC，查询能力吸收为 `LibraryQuery.GetWorkSetBySiteKey`）——**删 RPC 属破坏性变更故升版**。主程序 `minSupportedContractVersion` 保持 5（v5 既有捆绑包仍可加载；升 6 属发布时重建捆绑包的动作）。
-- 7 — 周边数据写面契约：任务声明期周边三 DTO（`TaskSiteAuthorDTO`/`TaskSiteTagDTO`/`TaskWorkSetDTO`）加可选 `siteKey` 字段——周边数据跨站寻址（声明站点≠作品站点时 find-only 引用既有行，缺省=作品站点本站 upsert，见 6.1「作品及周边数据写面契约」）。加字段向前兼容，作为周边写面新能力标识升版；主程序 `minSupportedContractVersion` 维持 5，v5/v6 插件混装载不受影响。
+- 7 — 周边数据写面契约：任务声明期周边三 DTO（`TaskSiteAuthorDTO`/`TaskSiteTagDTO`/`TaskWorkSetDTO`）加可选 `siteKey` 字段——周边数据跨站寻址（声明站点≠作品站点时 find-only 引用既有行，缺省=作品站点本站 upsert，见 6.1「作品及周边数据写面契约」）。加字段向前兼容，作为周边写面新能力标识升版。
+- 8 — 关联级维度体系（tag namespace + author role 同构）：ns 从 site_tag 实体行收回关联级——`SiteTagInfo` 删 `Namespace` 字段（**删字段属破坏性变更**），`TaskSiteTagDTO.Namespace` 保留、语义=本作品上该标签的关联级 ns；role 同构补齐——`TaskSiteAuthorDTO` 加 `RoleName` 声明面，`ListAuthorsByWorkId` 返回面由实体级 DTO 整体更换为关联条目 `WorkLocalAuthorEntry`/`WorkSiteAuthorEntry`（`author` + 关联级 `role_name`，**返回消息类型更换属破坏性变更**）；实体级 DTO 不携带关联维度。主程序 `minSupportedContractVersion` 同步升 8（v8 以下插件拒载，捆绑包随之重建）。
 
 **跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
@@ -357,8 +358,8 @@ func main() {
 |---|---|---|
 | 作品 | `GetWorkById(workId)` / `GetWorkBySiteKey(siteKey, siteWorkId)` / `QueryWorks(req)` | `QueryWorks` 过滤：site_key（精确）、作品名/作者名/标签名模糊、入库时间范围；返回 `WorkWithSite`（作品 + 归属站点） |
 | 资源与 store | `ListResourcesByWorkId(workId)` | 每资源带活行 store 摘要 `ResourceInfo.stores[]`（role / store_seq / file_path / format / width / height / completed_at） |
-| 作者 | `GetLocalAuthorById` / `QueryLocalAuthors`（本地轨）；`GetSiteAuthorBySiteKey` / `QuerySiteAuthors`（站点轨）；`ListAuthorsByWorkId`（作品关联） | 作品关联结果分 local / site 两轨返回 |
-| 标签 | `GetLocalTagById` / `QueryLocalTags` / `GetSiteTagBySiteKey` / `QuerySiteTags` / `ListTagsByWorkId`（与作者对称） | `ListTagsByWorkId` 条目带**关联级 namespace** 维度；站点标签含站点侧 namespace 元数据 |
+| 作者 | `GetLocalAuthorById` / `QueryLocalAuthors`（本地轨）；`GetSiteAuthorBySiteKey` / `QuerySiteAuthors`（站点轨）；`ListAuthorsByWorkId`（作品关联） | 作品关联结果分 local / site 两轨返回；条目为**关联条目** `WorkLocalAuthorEntry`/`WorkSiteAuthorEntry`（`author` + `role_name` 关联级角色，空串=无 role）——role 不在作者实体上，实体级查询（`Get*`/`Query*`）不携带 |
+| 标签 | `GetLocalTagById` / `QueryLocalTags` / `GetSiteTagBySiteKey` / `QuerySiteTags` / `ListTagsByWorkId`（与作者对称） | `ListTagsByWorkId` 条目带**关联级 namespace**（该标签在本作品关联行上的 ns，空串=无 ns）；站点标签实体查询（`GetSiteTagBySiteKey`/`QuerySiteTags`）不携带 namespace——ns 只在关联行上 |
 | 作品集 | `GetWorkSetById` / `GetWorkSetBySiteKey` / `ListWorkSetsByWorkId` / `ListParentWorkSets` / `ListChildWorkSets` | 父子导航按库内作品集行 id |
 | 站点 | `ListSites()` | identity 注册表投影全集，只读 |
 | 工作目录 | `GetWorkDir()` | 资源库根目录绝对路径（OS 原生分隔符） |
@@ -524,8 +525,8 @@ CreateWorkInfo(task) → 反序列化 task.PluginData
 
 关键 DTO 字段(**留空则该字段不入库/不前端展示**):
 
-- `TaskSiteAuthorDTO`:`SiteAuthorID`、`AuthorName`、`Introduce`(作者简介/签名)、`Homepage`、`FixedAuthorName`、`SiteKey`(周边跨站寻址,见下「作品及周边数据写面契约」)。
-- `TaskSiteTagDTO`:`SiteTagID`、`TagName`、`Description`(标签简介)、`Namespace`、`SiteKey`。
+- `TaskSiteAuthorDTO`:`SiteAuthorID`、`AuthorName`、`Introduce`(作者简介/签名)、`Homepage`、`FixedAuthorName`、`RoleName`(关联级角色:本作品上该作者的分工,空串=无 role,直写关联行不写作者实体)、`SiteKey`(周边跨站寻址,见下「作品及周边数据写面契约」)。
+- `TaskSiteTagDTO`:`SiteTagID`、`TagName`、`Description`(标签简介)、`Namespace`(关联级值:本作品上该标签的 ns,空串=无 ns,直写关联行不写 site_tag 实体行)、`SiteKey`。
 - `LocalAuthorDTO`/`LocalTagDTO`:`Id`(引用既有本地行)或 `AuthorName`/`LocalTagName`(按名 find-or-create)。
 - `TaskWorkSetDTO`:`SiteWorkSetId`、`WorkSetName`、`SiteKey`。
 
@@ -540,8 +541,8 @@ CreateWorkInfo(task) → 反序列化 task.PluginData
 | 对象 | 键寻址 | 不存在时 | 改行 | 删行 | 关联轨道 |
 |---|---|---|---|---|---|
 | 作品 | `(siteKey, siteWorkId)`，siteKey 由 `TaskCreateResponse.SiteKey` 声明（必填） | 复合键 upsert 创建 | 非零字段覆盖（`backend/work/service.go:1921`） | 不开放 | —（作品是各关联的主体） |
-| 站点作者（本站=作品站点） | `(作品站点, siteAuthorId)` | upsert 创建 | upsert 即改 | 不开放 | 插件来源关联：SITE 作者轨窄域重建（删 source=PLUGIN 的 SITE 关联再按本次声明重建，`backend/work/service.go:1261`）；用户手动挂的不动 |
-| 站点标签（本站） | `(作品站点, siteTagId)` | upsert 创建 | upsert 即改（含 namespace） | 不开放 | 同上（`backend/work/service.go:1279`）；关联级 namespace 随声明镜像（`backend/work/service.go:1289`） |
+| 站点作者（本站=作品站点） | `(作品站点, siteAuthorId)` | upsert 创建 | upsert 即改 | 不开放 | 插件来源关联：SITE 作者轨窄域重建（删 source=PLUGIN 的 SITE 关联再按本次声明重建，`backend/work/service.go:1295`；重建行按声明写关联级 role，`backend/work/service.go:1298`）；用户手动挂的不动 |
+| 站点标签（本站） | `(作品站点, siteTagId)` | upsert 创建 | upsert 即改（仅站点侧权威列名称/简介，`backend/siteTag/repository.go:57`） | 不开放 | 同上（`backend/work/service.go:1323`）；重建行按声明直写关联级 namespace（`backend/work/service.go:1326`）——同作品同标签多 ns 可达（e-hentai `female:tagA`+`male:tagA` 落一行 site_tag + 两条关联） |
 | 站点作者/标签/作品集（跨站，DTO `siteKey` 声明站点） | `(dto.siteKey, 站点侧 ID)`；`siteKey` 缺省=作品站点 | **find-only：报错**（站点键未注册或行不存在均报错，携带站点键与站点侧 ID，`backend/work/service.go:1630`） | 不改（只挂联既有行，不写行不造行） | 不开放 | 挂进各对象既有关联轨道并落 source=PLUGIN——重拉不再声明即清理（跨站引用声明史归声明它的插件管辖，见下「重拉覆盖策略」） |
 | 本地作者/本地标签 | DB ID（会话内句柄）或名称 | ID 寻址=校验存在（缺行报错）；名寻址=find-or-create（`backend/work/service.go:1671`） | **插件不可改**（行归用户策展） | 不开放 | LOCAL 关联增量追加（已存在跳过、不删历史，`backend/work/service.go:1273`）——插件与用户挂的并存 |
 | 作品集（本站） | `(作品站点, siteWorkSetId)` | upsert 创建 | upsert 即改 | 不开放 | 插件来源成员关联窄域重建（删 source=PLUGIN 且本次未声明的成员关联，`backend/work/service.go:1303`）；用户挂的/物理纳入复制的不动 |
@@ -597,12 +598,12 @@ resp.LocalAuthors = append(resp.LocalAuthors, &sdkdto.LocalAuthorDTO{AuthorName:
 
 重复入库（重拉）同一作品时，周边行与关联的覆盖语义按「行面只写插件独占权威字段 + 关联面权威随来源」收口：
 
-1. **行面只写插件独占权威字段**：site_tag/site_author/work_set 行 upsert 冲突只更新站点侧权威列（名称/简介/namespace 等插件 DTO 携带的字段，`backend/siteTag/repository.go:57`、`backend/siteAuthor/repository.go`、`backend/workSet/repository.go:65`）；用户策展列（站点↔本地桥接 local_tag_id/local_author_id、作品集改名 nick_name、浏览/使用痕迹 last_view/last_use）不在冲突更新列，重拉永不覆盖。work 行同族——用户字段（nick_name/last_view/local_author_id）依赖「插件在 `WorkResponse.Work` 不填 + 结构体 Updates 跳零值」双层约定保留（`backend/work/service.go:1930`）；插件填了用户字段即写入（写面契约约束，无代码防线）——插件不应填这三个字段。
-2. **关联面权威随来源（source 列）**：三类作品关联（标签/作者/作品集成员）行带写入来源（库内 source 列：插件声明=PLUGIN / 用户手动=MANUAL，DTO 不透出、插件无感知）。重拉只窄域重建插件来源的关联——「source=PLUGIN 且本次未声明」被清理（SITE 标签轨/SITE 作者轨/作品集成员轨，`backend/work/service.go:1250`）：站点移除标签/移出合集时库自动对齐插件声明面；插件自己的跨站引用声明史也归该插件管辖（本次不再声明即清理）。LOCAL 关联（标签/作者）不走删除、维持增量追加——插件按名声明挂的与用户手动挂的并存。用户来源的关联（前端手动挂联、作品集物理纳入复制的成员关联）重拉**永不触碰**（不增不删不改）。
-3. **冲突所有权**：插件再声明用户已手动挂的关联——不翻转来源（保持 MANUAL）、不重复建行，仅刷 namespace 镜像（SITE 标签轨，`backend/reWorkTag/repository.go:105`）；sort_order 属用户策展不动。
-4. **导出回灌**：导出包（manifest）三 Link 条目携带 `source` 字段，回灌按携带值落库（`backend/export/manifest.go:174`、`backend/import/ingest.go:1263`）；旧版导出包缺该字段反序列化得零值恰为 PLUGIN，回灌缺省天然成立。
+1. **行面只写插件独占权威字段**：site_tag/site_author/work_set 行 upsert 冲突只更新站点侧权威列（名称/简介等插件 DTO 携带的字段，`backend/siteTag/repository.go:57`、`backend/siteAuthor/repository.go`、`backend/workSet/repository.go:65`）；用户策展列（站点↔本地桥接 local_tag_id/local_author_id、作品集改名 nick_name、浏览/使用痕迹 last_view/last_use）不在冲突更新列，重拉永不覆盖。work 行同族——用户字段（nick_name/last_view/local_author_id）依赖「插件在 `WorkResponse.Work` 不填 + 结构体 Updates 跳零值」双层约定保留（`backend/work/service.go:1981`）；插件填了用户字段即写入（写面契约约束，无代码防线）——插件不应填这三个字段。
+2. **关联面权威随来源（source 列）**：三类作品关联（标签/作者/作品集成员）行带写入来源（库内 source 列：插件声明=PLUGIN / 用户手动=MANUAL，DTO 不透出、插件无感知）。重拉只窄域重建插件来源的关联——「source=PLUGIN 且本次未声明」被清理（SITE 标签轨/SITE 作者轨/作品集成员轨，`backend/work/service.go:1285`）：站点移除标签/移出合集时库自动对齐插件声明面；插件自己的跨站引用声明史也归该插件管辖（本次不再声明即清理）。LOCAL 关联（标签/作者）不走删除、维持增量追加——插件按名声明挂的与用户手动挂的并存。用户来源的关联（前端手动挂联、作品集物理纳入复制的成员关联）重拉**永不触碰**（不增不删不改）。
+3. **冲突所有权**：插件再声明用户已手动挂的关联——不翻转来源（保持 MANUAL）、不重复建行，仅刷 update_time（`backend/reWorkTag/service.go:104`）；PLUGIN 关联已随窄域重建按本次声明刷新（关联级 ns/role 随重建自然更新，`backend/work/service.go:1287`）；sort_order 属用户策展不动。
+4. **导出回灌**：导出包（manifest）三 Link 条目携带 `source` 字段，回灌按携带值落库（`backend/export/manifest.go:175`、`backend/import/ingest.go:1265`）；旧版导出包缺该字段反序列化得零值恰为 PLUGIN，回灌缺省天然成立。Link 条目的关联级维度（TagLink 的 namespace / AuthorLink 的 role）随关联行往返保真——旧包 `TagRecord.Namespace`（site_tag 行级字段）回灌被忽略，关联侧 ns 由 `TagLink` 承载。
 
-本策略是写面契约「改行权限」条款在重拉场景的执行细化与关联面的来源治理——**不改契约矩阵结构与寻址语义**：改动全部在主程序库内行语义（DB 列、upsert 列集、清理域）与主程序导出包格式，SDK proto/DTO 零改动、插件声明面无新能力无破坏，**不升契约版本**（v7 维持，`minSupportedContractVersion` 维持 5）。
+本策略是写面契约「改行权限」条款在重拉场景的执行细化与关联面的来源治理——**不改契约矩阵结构与寻址语义**：改动全部在主程序库内行语义（DB 列、upsert 列集、清理域）与主程序导出包格式，SDK proto/DTO 零改动、插件声明面无新能力无破坏，策略本身不升契约版本（契约版本基线随关联级维度体系重构升至 v8，见「契约版本协商」）。
 
 **冒领边界**：
 

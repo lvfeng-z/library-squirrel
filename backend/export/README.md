@@ -17,7 +17,7 @@
 
 ## 核心概念
 - **选择即单位**：选择只作用于作品/作品集；标签/作者恒完整连带导出。选中作品集 + 其成员作品（含子作品集递归闭包）构成导出闭包；成员关系（`re_work_work_set`）、作品集父子边（`re_work_set_work_set`）仅保留两端均在闭包内的边，指向未选作品集的边丢弃。
-- **manifest 契约**：`schemaVersion` 版本锚（对齐插件 plugin_data 版本纪律）；`meta` 导出时间/来源 app 版本/计数；`sites[]`/`localAuthors[]`/`siteAuthors[]`/`localTags[]`（含层级引用）/`siteTags[]`（含 namespace）；`worksets[]`（全字段 + 父边 + 封面）；`works[]`（全字段 + `resources[]` 的 resource_store 活行挂载 + 标签/作者关联含 namespace + 作品集成员关系）；`files[]`（被 store 挂载按 StoreID 引用；打包时填充 `path`/`size`/`sha256`，缺失置 `missing`）。
+- **manifest 契约**：`schemaVersion` 版本锚（对齐插件 plugin_data 版本纪律）；`meta` 导出时间/来源 app 版本/计数；`sites[]`/`localAuthors[]`/`siteAuthors[]`/`localTags[]`（含层级引用）/`siteTags[]`（标签行记录无维度列——ns 只在关联上）；`worksets[]`（全字段 + 父边 + 封面）；`works[]`（全字段 + `resources[]` 的 resource_store 活行挂载 + 标签/作者关联含关联级维度（`TagLink.Namespace` / `AuthorLink.RoleName`，空串↔nil 往返）+ 作品集成员关系）；`files[]`（被 store 挂载按 StoreID 引用；打包时填充 `path`/`size`/`sha256`，缺失置 `missing`）。
 - **store 活行过滤**：`resource_store` 关联只取指向活行 `persistent_store` 的行（`deleted_at = 0`），软删行关联（替换/merge 残留代）不进导出，遵循 STORE_ASSOCIATION_LIVENESS_FILTER。
 - **完整连带**：站点（work/work_set 的 site_id 去重）、本地标签祖先链（`base_local_tag_id` 逐层补齐）、site→local 桥接（`site_author.local_tag_id`/`site_tag.local_tag_id`、work 的 `local_author_id` 镜像列）均随行导出，保证回灌不悬空。
 - **确定性打包**：包内按 `works/<作品目录名>/<文件>` 组织。作品目录名与文件主名同模板渲染（`exportSettings.fileNameFormat`，空回退默认模板）同基底：目录渲染为空回退 `sanitize(siteWorkName)` → `sanitize(siteWorkId)` → 再空回退 `work_<id>`；文件扩展名取源文件（渲染为空回退源文件名净化，再空回退 `<作品目录名>_<role>_<seq>` 兜底）。目录/文件同名冲突消解链同式：追加 `_siteWorkId` 后缀消解（区分不同作品的同渲染名），仍冲突追加序号。同输入同输出、结构可复现。

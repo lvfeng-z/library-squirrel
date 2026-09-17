@@ -21,8 +21,9 @@
 
 | 方法 | 作用 |
 | --- | --- |
-| `Link(authorType, authorIds, roleNames, workId)` | 用户手动挂联作者（可选角色，与 authorIds 等长配对，空串角色落 NULL），冲突不翻转来源 |
-| `Unlink(authorType, authorIds, workId)` | 批量从作品移除作者关联 |
+| `Link(authorType, authorIds, roleNames, workId)` | 用户手动挂联作者（roleNames 与 authorIds 等长配对，空串=无 role；同作品同作者不同 role 落独立关联行——身兼数职），冲突不翻转来源 |
+| `Unlink(authorType, authorIds, workId)` | 批量从作品移除作者关联（该作者的全部 role 关联行——维度盲删） |
+| `UnlinkDimension(authorType, authorIds, roleNames, workId)` | 精确摘除维度关联行：只删 (work, author, role) 命中行、不波及同作者其他 role 行（改 role 的旧值行删除入口，新值行走 Link） |
 | `ListByWorkId(workId)` | 获取单个作品关联的本地 + 站点作者 |
 | `ListByWorkIds(workIds)` | 批量获取多个作品的作者关联 |
 | `ListLocalAuthorsByWorkId(workId)` | 查询作品关联的本地作者 |
@@ -30,16 +31,16 @@
 | `ListRankedLocalAuthorWithWorkIdByWorkIds(workIds)` | 批量查询本地作者（带作品ID） |
 | `ListRankedSiteAuthorWithWorkIdByWorkIds(workIds)` | 批量查询站点作者（带作品ID） |
 
-> `Link`/`Unlink` 走用户手动挂联链（source=MANUAL，批量 upsert 冲突刷 role_name/sort_order 不含 source）；入库链写入（`DeleteByWorkId` / `DeletePluginSiteByWorkId` / `SaveBatchOnConflict`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用；`DeleteByLocalAuthorId` 由 localAuthor 删除编排调用（删本地作者时清其全部作品关联）；`DeleteBySiteAuthorId` 由 siteAuthor 删除编排调用（删站点作者时清其全部作品关联）。
+> `Link`/`Unlink`/`UnlinkDimension` 走用户手动挂联链（source=MANUAL，批量 upsert 按 (work, author, role) 冲突仅刷 sort_order/update_time、不含 source）；入库链写入（`DeleteByWorkId` / `DeletePluginSiteByWorkId` / `SaveBatchOnConflict`）不暴露给前端，由 work 通过 `ReWorkAuthorWriter` 接口调用；`DeleteByLocalAuthorId` 由 localAuthor 删除编排调用（删本地作者时清其全部作品关联）；`DeleteBySiteAuthorId` 由 siteAuthor 删除编排调用（删站点作者时清其全部作品关联）。
 
 ## 核心概念
 
 - **本地作者 / 站点作者双层**：同一作品可同时关联本地作者（用户体系）与站点作者（pixiv 等），DTO 分别为 `RankedLocalAuthor` / `RankedSiteAuthor`。
-- **role_name**：作者在本作品中的角色（如原作、系列作者）。
+- **role_name（关联级维度）**：作者在本作品中的角色（如原作、脚本、声优），`string not null default ''`、空串=无 role——与 reWorkTag 的 namespace 同构（维度挂关联行、不进作者实体表）。维度值归一化（TrimSpace + 小写折叠）后写入，并同事务登记 `author_role` 清单行（find-or-create + origin 升级 + last_use 刷新，origin=user）。
 - **sort_order**：作者在作品中的展示排序。
-- **增量同步（权威随来源）**：work 入库链写入时，SITE 轨按来源窄域重建——删「SITE 且 source=PLUGIN」的关联（`DeletePluginSiteByWorkId`）后按本次声明重建（`SaveBatchOnConflict`——插件元数据对同一作者产出多条同 ID DTO 时批内重复折叠为单条关联），LOCAL 关联增量保留（已存在跳过），用户手动挂的关联（source=MANUAL，`Link`/`Unlink`）不在清理域、重拉不动；冲突 upsert（`UpsertBatch`）不写 source 列，先建行者的来源保持不变。`(work_id, local_author_id)` / `(work_id, site_author_id)` 唯一索引是增量去重的约束保障（SQLite NULL 不参与唯一性，LOCAL/SITE 两类互不冲突）。
+- **增量同步（权威随来源）**：work 入库链写入时，SITE 轨按来源窄域重建——删「SITE 且 source=PLUGIN」的关联（`DeletePluginSiteByWorkId`）后按本次声明重建（`SaveBatchOnConflict`——插件元数据对同一作者产出多条同 ID DTO 时批内重复折叠为单条关联），LOCAL 关联增量保留（已存在跳过），用户手动挂的关联（source=MANUAL，`Link`/`Unlink`/`UnlinkDimension`）不在清理域、重拉不动；冲突 upsert（`UpsertBatch`）不写 source 列，先建行者的来源保持不变。`(work_id, local_author_id, role_name)` / `(work_id, site_author_id, role_name)` 唯一索引（含 role）是增量去重与「同作品同作者多 role」的约束保障。
 
 ## 依赖关系
 
-- 依赖：`localAuthor`、`siteAuthor` 实体（通过关联表 JOIN 查询作者信息）
+- 依赖：`localAuthor`、`siteAuthor` 实体（通过关联表 JOIN 查询作者信息）；**authorRole**（注入 `RoleInventoryWriter` 接口，关联写入时同事务登记 role 清单行）
 - 被依赖：**work**（通过 `ReWorkAuthorWriter` / `ReWorkAuthorReader` 接口写入与快照采集）、**localAuthor**（删除本地作者时通过 `DeleteByLocalAuthorId` 清作品关联）、**siteAuthor**（删除站点作者时通过 `DeleteBySiteAuthorId` 清作品关联）、前端作品详情展示（通过 Handler 查询）

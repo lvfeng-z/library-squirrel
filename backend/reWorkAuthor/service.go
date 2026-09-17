@@ -36,7 +36,8 @@ type Repository interface {
 	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库用）
 	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
-	// UpsertBatch 批量 upsert：按 (work_id, author_id) 冲突更新 role_name/sort_order（不含 source），否则插入
+	// UpsertBatch 批量 upsert：按 (work_id, author_id, role_name) 冲突更新 sort_order（不含 source），否则插入；
+	// 同作品同作者不同 role 不构成冲突，落独立关联行
 	UpsertBatch(ctx context.Context, rels []*domain.ReWorkAuthor, authorType int) error
 	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
 	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
