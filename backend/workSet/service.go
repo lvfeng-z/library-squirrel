@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/model"
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
@@ -260,13 +261,15 @@ func (s *Service) MergeWorkSetInto(ctx context.Context, sourceWorkSetId, targetW
 	if err != nil {
 		return err
 	}
-	// 构造复制关联：OnConflict DoNothing 去重（单条重复不拒整批）
+	// 构造复制关联：OnConflict DoNothing 去重（单条重复不拒整批）。
+	// 物理纳入是用户策展动作，复制行落 source=MANUAL——作品重拉的窄域重建不清理它们
 	rels := make([]*entity2.ReWorkWorkSet, 0, len(workIds))
 	for i, workId := range workIds {
 		rel := entity2.NewReWorkWorkSet()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: targetWorkSetId, Valid: true}
 		rel.SortOrder = sql.NullInt64{Int64: maxSort + 1 + int64(i), Valid: true}
+		rel.Source = constant.MANUAL
 		rels = append(rels, rel)
 	}
 	return s.reWorkWorkSetRepo.SaveBatchOnConflict(ctx, rels)
@@ -377,11 +380,12 @@ func (s *Service) SaveOrUpdateByCompositeKey(ctx context.Context, ws *entity2.Wo
 	return existing.ID, nil
 }
 
-// LinkWorkToWorkSet 链接作品到作品集
+// LinkWorkToWorkSet 链接作品到作品集（用户手动挂联，来源 MANUAL）
 func (s *Service) LinkWorkToWorkSet(ctx context.Context, workId, workSetId int64) error {
 	rel := entity2.NewReWorkWorkSet()
 	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 	rel.WorkSetID = sql.NullInt64{Int64: workSetId, Valid: true}
+	rel.Source = constant.MANUAL
 	return s.reWorkWorkSetRepo.Create(ctx, rel)
 }
 
@@ -390,7 +394,7 @@ func (s *Service) UnlinkWorkFromWorkSet(ctx context.Context, workId, workSetId i
 	return s.reWorkWorkSetRepo.DeleteByWorkAndWorkSet(ctx, workId, workSetId)
 }
 
-// LinkBatchToWorkSet 批量链接作品到作品集
+// LinkBatchToWorkSet 批量链接作品到作品集（用户手动挂联，来源 MANUAL）
 func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workIds []int64) error {
 	if len(workIds) == 0 {
 		return nil
@@ -400,6 +404,7 @@ func (s *Service) LinkBatchToWorkSet(ctx context.Context, workSetId int64, workI
 		rel := entity2.NewReWorkWorkSet()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: workSetId, Valid: true}
+		rel.Source = constant.MANUAL
 		rels[i] = rel
 	}
 	return s.reWorkWorkSetRepo.CreateBatch(ctx, rels)

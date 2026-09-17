@@ -15,6 +15,9 @@ type ReWorkAuthor struct {
 	SiteAuthorID  sql.NullInt64  `gorm:"column:site_author_id;uniqueIndex:idx_re_work_author_work_site_author" json:"siteAuthorId"`
 	RoleName      sql.NullString `gorm:"column:role_name" json:"roleName"`
 	SortOrder     sql.NullInt64  `gorm:"column:sort_order" json:"sortOrder"`
+	// Source 关联写入来源（constant.PLUGIN/MANUAL）：作品重拉只窄域重建插件来源关联，用户手动挂的关联不动；
+	// 冲突 upsert 不写本列，先建行者的来源保持不变
+	Source int64 `gorm:"column:source;not null;default:0" json:"source"`
 }
 
 func (ReWorkAuthor) TableName() string {

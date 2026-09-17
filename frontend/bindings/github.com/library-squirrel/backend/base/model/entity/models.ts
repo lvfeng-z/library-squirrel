@@ -26,6 +26,12 @@ export class ReWorkTag {
      */
     "namespace": sql$0.NullString;
 
+    /**
+     * Source 关联写入来源（constant.PLUGIN/MANUAL）：作品重拉只窄域重建插件来源关联，用户手动挂的关联不动；
+     * 冲突 upsert 不写本列，先建行者的来源保持不变
+     */
+    "source": number;
+
     /** Creates a new ReWorkTag instance. */
     constructor($$source: Partial<ReWorkTag> = {}) {
         if (!("id" in $$source)) {
@@ -51,6 +57,9 @@ export class ReWorkTag {
         }
         if (!("namespace" in $$source)) {
             this["namespace"] = (new sql$0.NullString());
+        }
+        if (!("source" in $$source)) {
+            this["source"] = 0;
         }
 
         Object.assign(this, $$source);

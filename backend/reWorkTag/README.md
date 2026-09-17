@@ -12,14 +12,14 @@
 
 - 与 **reWorkAuthor**：结构同构（作品关联表），但交互方式不同——
   - **reWorkTag 暴露写入**（`Link` / `Unlink`）：标签由用户在作品详情页交互式增删；
-  - **reWorkAuthor 只读**（Handler 无写入）：作者关联由 work 在保存作品时按 SITE 删后重建、LOCAL 增量保留。
+  - **reWorkAuthor 只读**（Handler 无写入）：作者关联由 work 入库链按来源窄域重建（SITE 插件来源删后重建、LOCAL 增量保留）。
 - 与 **localTag / siteTag**：标签实体由 localTag / siteTag 管理；本模块只管"作品关联了哪些标签"这层关系，tagType=LOCAL 填 LocalTagID，tagType=SITE 填 SiteTagID。
 
 ## 对外接口（Handler）
 
 | 方法 | 作用 |
 | --- | --- |
-| `Link(tagType, tagIds, namespaces, workId)` | 批量链接标签到作品（upsert：同 work+tag 已存在则更新 namespace，否则新增；namespace 来源按 tagType 区分，见下） |
+| `Link(tagType, tagIds, namespaces, workId)` | 批量链接标签到作品（用户手动挂联，建行落 source=MANUAL；upsert：同 work+tag 已存在则更新 namespace，否则新增；namespace 来源按 tagType 区分，见下） |
 | `Unlink(tagType, tagIds, workId)` | 批量从作品移除标签 |
 | `ListByWorkId(workId)` | 查询作品关联的所有标签 |
 | `ListLocalTagIdsByWorkId(workId)` | 查询作品关联的本地标签ID |
@@ -28,9 +28,10 @@
 ## 核心概念
 
 - **tagType 双层**：`constant.LOCAL`（本地标签，填 LocalTagID）/ `constant.SITE`（站点标签，填 SiteTagID），同一 ReWorkTag 记录二选一。
+- **source（关联写入来源）**：`source` 列记关联由谁建立（PLUGIN=插件声明 / MANUAL=用户手动）——work 入库链重拉时只窄域重建插件来源的 SITE 关联（`DeletePluginSiteByWorkId` 删「SITE 且 source=PLUGIN」），用户手动挂的 SITE/LOCAL 关联永不触碰；LOCAL 关联（含插件按名声明挂的）不删、增量追加。
 - **批量增删**：Link / Unlink 接收标签ID数组，对应 `LinkBatchToWork` / `RemoveBatchFromWork`。
 - **namespace（关联级属性）**：`re_work_tag.namespace` 挂在关联上（非 tag 实体身份）。Link 时 local 关联用前端传的 namespaces（用户自设，与 tagIds 等长配对，空串→NULL）；site 关联由后端按所指 `site_tag.namespace` 镜像（忽略前端传值）。
-- **upsert 落库**：`LinkBatchToWork` → `UpsertBatch`（`clause.OnConflict`），按 (work_id, tag_id) 唯一约束冲突时 UPDATE namespace，否则 INSERT——支持「已绑定 tag 改 namespace 重新确认」（前端编辑 ns 后移入待确认缓冲区，确认走 upsert 更新而非重复插入）。
+- **upsert 落库**：`LinkBatchToWork` → `UpsertBatch`（`clause.OnConflict`），按 (work_id, tag_id) 唯一约束冲突时 UPDATE namespace，否则 INSERT——支持「已绑定 tag 改 namespace 重新确认」（前端编辑 ns 后移入待确认缓冲区，确认走 upsert 更新而非重复插入）。冲突更新列不含 source：先建行者的来源保持不变，插件再声明用户手动挂的关联不翻转来源、不重复建行，仅刷新 namespace 镜像。
 
 ## 依赖关系
 

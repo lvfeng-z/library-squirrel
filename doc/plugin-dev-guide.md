@@ -535,16 +535,16 @@ CreateWorkInfo(task) → 反序列化 task.PluginData
 
 作品及周边数据（站点/本地作者、标签、作品集）的写入面是**任务管线的声明面**：`CreateWorkInfo` 构建 `WorkResponse`（周边 DTO 集合，proto 字段 `localAuthors`/`localTags`/`siteAuthors`/`siteTags`/`workSets`），主程序 `SaveWorkInfo` 按下列统一矩阵落库（`backend/work/service.go:1204` saveWorkInfoInTx）。查询走 5.1 库查询；**删除不开放**——矩阵显式记录空档，删除归主程序 UI/回收站，插件无删除入口。
 
-**统一心智模型**：站点域对象按复合键寻址、本站声明可建可改、跨站引用只读挂联；本地域对象按 ID 引用或按名创建、行归用户策展不可改；删除一律不开放；关联分「插件声明面（SITE 列删后重建）」与「用户策展面（LOCAL 列只增）」两轨。
+**统一心智模型**：站点域对象按复合键寻址、本站声明可建可改、跨站引用只读挂联；本地域对象按 ID 引用或按名创建、行归用户策展不可改；删除一律不开放；关联按写入来源分轨——插件来源（source=PLUGIN）窄域重建、用户来源（source=MANUAL）重拉永不触碰（见下「重拉覆盖策略」）。
 
 | 对象 | 键寻址 | 不存在时 | 改行 | 删行 | 关联轨道 |
 |---|---|---|---|---|---|
 | 作品 | `(siteKey, siteWorkId)`，siteKey 由 `TaskCreateResponse.SiteKey` 声明（必填） | 复合键 upsert 创建 | 非零字段覆盖（`backend/work/service.go:1921`） | 不开放 | —（作品是各关联的主体） |
-| 站点作者（本站=作品站点） | `(作品站点, siteAuthorId)` | upsert 创建 | upsert 即改 | 不开放 | 插件声明面：SITE 作者关联删后重建（`backend/work/service.go:1255`） |
-| 站点标签（本站） | `(作品站点, siteTagId)` | upsert 创建 | upsert 即改 | 不开放 | 同上；关联级 namespace 随声明镜像（`backend/work/service.go:1276`） |
-| 站点作者/标签/作品集（跨站，DTO `siteKey` 声明站点） | `(dto.siteKey, 站点侧 ID)`；`siteKey` 缺省=作品站点 | **find-only：报错**（站点键未注册或行不存在均报错，携带站点键与站点侧 ID，`backend/work/service.go:1630`） | 不改（只挂联既有行，不写行不造行） | 不开放 | 挂进各对象既有关联轨道（作者/标签=删后重建、作品集=增量保留；跨站混入的覆盖语义归「重拉覆盖策略」后续任务） |
-| 本地作者/本地标签 | DB ID（会话内句柄）或名称 | ID 寻址=校验存在（缺行报错）；名寻址=find-or-create（`backend/work/service.go:1671`） | **插件不可改**（行归用户策展） | 不开放 | 用户策展面：LOCAL 关联只增（`backend/work/service.go:1265`） |
-| 作品集（本站） | `(作品站点, siteWorkSetId)` | upsert 创建 | upsert 即改 | 不开放 | 增量保留（已存在跳过、不删历史关联，`backend/work/service.go:1295`） |
+| 站点作者（本站=作品站点） | `(作品站点, siteAuthorId)` | upsert 创建 | upsert 即改 | 不开放 | 插件来源关联：SITE 作者轨窄域重建（删 source=PLUGIN 的 SITE 关联再按本次声明重建，`backend/work/service.go:1261`）；用户手动挂的不动 |
+| 站点标签（本站） | `(作品站点, siteTagId)` | upsert 创建 | upsert 即改（含 namespace） | 不开放 | 同上（`backend/work/service.go:1279`）；关联级 namespace 随声明镜像（`backend/work/service.go:1289`） |
+| 站点作者/标签/作品集（跨站，DTO `siteKey` 声明站点） | `(dto.siteKey, 站点侧 ID)`；`siteKey` 缺省=作品站点 | **find-only：报错**（站点键未注册或行不存在均报错，携带站点键与站点侧 ID，`backend/work/service.go:1630`） | 不改（只挂联既有行，不写行不造行） | 不开放 | 挂进各对象既有关联轨道并落 source=PLUGIN——重拉不再声明即清理（跨站引用声明史归声明它的插件管辖，见下「重拉覆盖策略」） |
+| 本地作者/本地标签 | DB ID（会话内句柄）或名称 | ID 寻址=校验存在（缺行报错）；名寻址=find-or-create（`backend/work/service.go:1671`） | **插件不可改**（行归用户策展） | 不开放 | LOCAL 关联增量追加（已存在跳过、不删历史，`backend/work/service.go:1273`）——插件与用户挂的并存 |
+| 作品集（本站） | `(作品站点, siteWorkSetId)` | upsert 创建 | upsert 即改 | 不开放 | 插件来源成员关联窄域重建（删 source=PLUGIN 且本次未声明的成员关联，`backend/work/service.go:1303`）；用户挂的/物理纳入复制的不动 |
 
 **规则明细**：
 
@@ -591,7 +591,18 @@ resp.LocalAuthors = append(resp.LocalAuthors, &sdkdto.LocalAuthorDTO{AuthorName:
 **覆盖语义披露**：
 
 - **同键双来源的资源路径撞名与覆盖**：store 落盘路径由复合键派生（`doc/store-naming-convention.md`），本地导入解析出真实键的作品与同键站点下载作品是同一作品行、资源文件落同一路径。落盘前宿主清理目标路径旧 store（含磁盘文件，`backend/persistentStore/service.go:683`、`backend/resource/replacement.go:369`）——同作品再次站点下载会替换本地导入的文件，该覆盖语义经用户裁定接受。需保留本地文件版本时，导入面板把该子树显式分类为 local 站点（压制文件名形态推断），作品即落 local 域、不与站点下载合并。
-- **作品集两源混居保守并集**：作品集关联增量保留（只增不删），同一作品集行可同时接收本站声明与跨站引用两类来源的挂联，行上无来源标记——关联集呈保守并集，插件侧无法要求摘除；混合来源的覆盖/清理语义归「作品重拉元数据覆盖策略」后续任务。
+- **关联来源共存的清理边界**：同一作品集行可同时接收本站声明与跨站引用两类声明的挂联（关联行带 source 列区分写入来源）——插件来源关联的重拉清理语义见下「重拉覆盖策略」；用户来源关联（手动挂联、物理纳入复制）重拉永不触碰。
+
+**重拉覆盖策略（重复入库同一作品）**：
+
+重复入库（重拉）同一作品时，周边行与关联的覆盖语义按「行面只写插件独占权威字段 + 关联面权威随来源」收口：
+
+1. **行面只写插件独占权威字段**：site_tag/site_author/work_set 行 upsert 冲突只更新站点侧权威列（名称/简介/namespace 等插件 DTO 携带的字段，`backend/siteTag/repository.go:57`、`backend/siteAuthor/repository.go`、`backend/workSet/repository.go:65`）；用户策展列（站点↔本地桥接 local_tag_id/local_author_id、作品集改名 nick_name、浏览/使用痕迹 last_view/last_use）不在冲突更新列，重拉永不覆盖。work 行同族——用户字段（nick_name/last_view/local_author_id）依赖「插件在 `WorkResponse.Work` 不填 + 结构体 Updates 跳零值」双层约定保留（`backend/work/service.go:1930`）；插件填了用户字段即写入（写面契约约束，无代码防线）——插件不应填这三个字段。
+2. **关联面权威随来源（source 列）**：三类作品关联（标签/作者/作品集成员）行带写入来源（库内 source 列：插件声明=PLUGIN / 用户手动=MANUAL，DTO 不透出、插件无感知）。重拉只窄域重建插件来源的关联——「source=PLUGIN 且本次未声明」被清理（SITE 标签轨/SITE 作者轨/作品集成员轨，`backend/work/service.go:1250`）：站点移除标签/移出合集时库自动对齐插件声明面；插件自己的跨站引用声明史也归该插件管辖（本次不再声明即清理）。LOCAL 关联（标签/作者）不走删除、维持增量追加——插件按名声明挂的与用户手动挂的并存。用户来源的关联（前端手动挂联、作品集物理纳入复制的成员关联）重拉**永不触碰**（不增不删不改）。
+3. **冲突所有权**：插件再声明用户已手动挂的关联——不翻转来源（保持 MANUAL）、不重复建行，仅刷 namespace 镜像（SITE 标签轨，`backend/reWorkTag/repository.go:105`）；sort_order 属用户策展不动。
+4. **导出回灌**：导出包（manifest）三 Link 条目携带 `source` 字段，回灌按携带值落库（`backend/export/manifest.go:174`、`backend/import/ingest.go:1263`）；旧版导出包缺该字段反序列化得零值恰为 PLUGIN，回灌缺省天然成立。
+
+本策略是写面契约「改行权限」条款在重拉场景的执行细化与关联面的来源治理——**不改契约矩阵结构与寻址语义**：改动全部在主程序库内行语义（DB 列、upsert 列集、清理域）与主程序导出包格式，SDK proto/DTO 零改动、插件声明面无新能力无破坏，**不升契约版本**（v7 维持，`minSupportedContractVersion` 维持 5）。
 
 **冒领边界**：
 

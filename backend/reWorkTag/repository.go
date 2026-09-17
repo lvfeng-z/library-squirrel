@@ -55,11 +55,12 @@ func (r *ReWorkTagRepository) DeleteByWorkId(ctx context.Context, workId int64) 
 		Delete(new(domain.ReWorkTag)).Error
 }
 
-// DeleteSiteByWorkId 删除作品的全部 SITE 标签关联（保留 LOCAL 关联）
-func (r *ReWorkTagRepository) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 标签关联（重拉窄域重建用）：
+// 用户手动挂的 SITE 关联（source=MANUAL）与 LOCAL 关联均不在清理域
+func (r *ReWorkTagRepository) DeletePluginSiteByWorkId(ctx context.Context, workId int64) error {
 	return r.dbFromCtx(ctx).
 		WithContext(ctx).
-		Where("work_id = ? AND tag_type = ?", workId, constant.SITE).
+		Where("work_id = ? AND tag_type = ? AND source = ?", workId, constant.SITE, constant.PLUGIN).
 		Delete(new(domain.ReWorkTag)).Error
 }
 
@@ -101,6 +102,8 @@ func (r *ReWorkTagRepository) SaveBatchOnConflict(ctx context.Context, rels []*d
 // UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 唯一约束冲突时更新 namespace，否则插入。
 // tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)。
 // 已存在的关联（如已绑定 tag 改了 namespace 重新确认）走 UPDATE namespace；新关联走 INSERT。
+// 冲突更新列不含 source：先建行者的来源（插件声明或用户手动）保持不变，插件再声明用户手动挂的
+// 关联不翻转来源、不重复建行，仅刷新 namespace 镜像。
 func (r *ReWorkTagRepository) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
 	if len(rels) == 0 {
 		return nil

@@ -10,6 +10,7 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkTag"
+	"github.com/library-squirrel/backend/reWorkWorkSet"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteTag"
@@ -39,8 +40,8 @@ func newSaveWorkInfoTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		nil, // SiteReader
 		nil, // ResourceReader
 		reWorkTag.NewService(reWorkTag.NewRepository(db), nil), // ReWorkTagWriter（真实件）
-		nil, // ReWorkWorkSetWriter
-		nil, // ResourceDeleter
+		reWorkWorkSet.NewRepository(db),                        // ReWorkWorkSetWriter（真实件：作品集窄域清空声明集为空也走删除）
+		nil,                                                    // ResourceDeleter
 		siteAuthor.NewService(siteAuthor.NewRepository(db), nil, nil, nil, nil), // SiteAuthorWriter（真实件）
 		siteTag.NewService(siteTag.NewRepository(db), nil, nil, nil, nil, nil),  // SiteTagWriter（真实件）
 		nil, // WorkSetWriter

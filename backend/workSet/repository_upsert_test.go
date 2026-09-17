@@ -2,6 +2,7 @@ package workSet
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
@@ -82,6 +83,49 @@ func TestUpsertDeadRowNotRevived(t *testing.T) {
 	if aliveName != "新代" {
 		t.Fatalf("活行应为新代，实际 %q", aliveName)
 	}
+}
+
+// TestUpsertUserCurationColumnsNotInConflictSet 键冲突时用户策展列（nick_name 用户改名、last_view
+// 浏览痕迹）不被 excluded（待插入行）零值 NULL 覆盖，站点侧权威列照常刷新。Upsert 与 BatchUpsert
+// 共用同一冲突更新列集，两法一并锚定
+func TestUpsertUserCurationColumnsNotInConflictSet(t *testing.T) {
+	repo := newUpsertTestRepo(t)
+	ctx := context.Background()
+
+	seed := newKeyedWorkSet(1, "abc", "站点集名v1")
+	seed.NickName = sql.NullString{String: "用户改名", Valid: true}
+	seed.LastView = sql.NullInt64{Int64: 111222333, Valid: true}
+	if err := repo.Create(ctx, seed); err != nil {
+		t.Fatalf("首插失败: %v", err)
+	}
+
+	assertPreserved := func(stage string) {
+		t.Helper()
+		var ws entity2.WorkSet
+		if err := repo.GORM().Where("site_work_set_id = ? AND deleted_at = 0", "abc").First(&ws).Error; err != nil {
+			t.Fatalf("回查失败(%s): %v", stage, err)
+		}
+		if ws.SiteWorkSetName.String != "站点集名v2" {
+			t.Fatalf("%s: 站点侧集名应刷新，实际 %q", stage, ws.SiteWorkSetName.String)
+		}
+		if !ws.NickName.Valid || ws.NickName.String != "用户改名" {
+			t.Fatalf("%s: nick_name 应保持用户值，实际 Valid=%v value=%q", stage, ws.NickName.Valid, ws.NickName.String)
+		}
+		if !ws.LastView.Valid || ws.LastView.Int64 != 111222333 {
+			t.Fatalf("%s: last_view 应保持用户值，实际 Valid=%v value=%d", stage, ws.LastView.Valid, ws.LastView.Int64)
+		}
+	}
+
+	// 入库链映射只填站点侧三列，用户列在待插入实体上为零值
+	if err := repo.Upsert(ctx, newKeyedWorkSet(1, "abc", "站点集名v2")); err != nil {
+		t.Fatalf("Upsert 失败: %v", err)
+	}
+	assertPreserved("Upsert")
+
+	if err := repo.BatchUpsert(ctx, []*entity2.WorkSet{newKeyedWorkSet(1, "abc", "站点集名v2")}); err != nil {
+		t.Fatalf("BatchUpsert 失败: %v", err)
+	}
+	assertPreserved("BatchUpsert")
 }
 
 // TestBatchUpsertMixed 混合批：活行键更新、死行键新建、全新键新建

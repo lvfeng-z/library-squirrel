@@ -2,19 +2,19 @@
 
 ## 一句话职责
 
-作品**核心实体**的业务编排层：管理作品记录的增删改查，并作为关联写入中枢——在保存 / 更新 / 删除作品时，通过接口驱动 reWorkAuthor / reWorkTag / reWorkWorkSet 完成关联的全量替换。
+作品**核心实体**的业务编排层：管理作品记录的增删改查，并作为关联写入中枢——插件入库链（`SaveWorkInfo`）按来源窄域重建插件声明的关联（SITE 标签/作者轨与作品集成员轨删「source=PLUGIN 且本次未声明」再按本次声明重建，用户来源关联永不触碰；LOCAL 关联增量追加），经接口驱动 reWorkAuthor / reWorkTag / reWorkWorkSet。
 
 ## 边界
 
-- 与 **reWorkAuthor / reWorkTag / reWorkWorkSet**：reWork 系列只管"关联怎么存取"；work 决定"什么时候建立关联"（保存 / 更新作品时全量替换），通过 `ReWorkAuthorWriter` / `ReWorkTagReader` 等接口调用，不持有具体 Service。
+- 与 **reWorkAuthor / reWorkTag / reWorkWorkSet**：reWork 系列只管"关联怎么存取"；work 决定"什么时候建立关联"（入库链窄域重建），通过 `ReWorkAuthorWriter` / `ReWorkTagReader` 等接口调用，不持有具体 Service。
 - 与 **persistentStore / resource**：work 管作品实体与关联编排；资源文件由 persistentStore 存储，Resource 实体由 resource 模块管理。
 
 ## 对外接口（Handler）
 
 | 方法 | 作用 |
 | --- | --- |
-| `Save(work)` | 保存作品（含重建关联） |
-| `Update(work)` | 更新作品（全量替换关联） |
+| `Save(work)` | 保存作品（记录本身，不碰关联——关联由入库链/前端 Link 入口各自驱动） |
+| `Update(work)` | 更新作品（结构体 Updates 跳零值字段，用户字段依赖跳零值不被清） |
 | `Delete(id)` | 删除作品记录（裸删，不级联） |
 | `SoftDelete(id)` | 软删除（进回收站：文件移 backup + work 行打 deleted_at 标志，从属行原地保留） |
 | `GetById` / `QueryPage` | 单查 / 分页 |
@@ -25,7 +25,8 @@
 
 ## 核心概念
 
-- **关联写入中枢**：work 持有 reWork 系列的 Writer / Reader 接口，保存作品时 SITE 作者/标签关联删后重建（`DeleteSiteByWorkId` + `SaveBatchOnConflict`，同 ID 元数据多条 DTO 批内折叠）、LOCAL 关联与作品集关联增量保留。`buildWorkSetLinks` 按各 workSet 当前最大 sort_order +1 续排（纠正维度错位，避免集内塌 0）。
+- **关联写入中枢（权威随来源）**：work 持有 reWork 系列的 Writer / Reader 接口。重拉时按关联行 source 列窄域重建插件来源关联——SITE 作者/标签轨删「source=PLUGIN 的 SITE 关联」（`DeletePluginSiteByWorkId`）后按本次声明重建（同 ID 元数据多条 DTO 批内折叠），作品集成员轨删「source=PLUGIN 且本次未声明」（`DeletePluginByWorkIdExcluding`）；用户来源（手动挂联、物理纳入复制）永不触碰，LOCAL 关联增量追加（插件与用户挂的并存）。SITE 标签轨 upsert 冲突仅刷 namespace 镜像不翻转来源。`buildWorkSetLinks` 按各 workSet 当前最大 sort_order +1 续排（纠正维度错位，避免集内塌 0）。
+- **重拉行面白名单**：重拉对周边行的更新收口为插件独占权威字段（siteTag/siteAuthor/workSet 仓储 upsert 冲突列白名单）；work 行用户策展字段（nick_name/last_view/local_author_id）依赖「插件不填 + 结构体 Updates 跳零值」双层约定保留（`saveOrUpdateWork` 注释锚定）。
 - **周边声明按站点键分轨**：`SaveWorkInfo` 处理站点作者/站点标签/作品集声明时，DTO 的 `siteKey` 缺省（空）或等于作品站点键 = 本站声明，批量 upsert（建行/改行）；声明其他站点键 = 跨站引用，站点键经 site `GetByKey` 按键寻址解析（站点表为 identity 注册表投影，未注册键无行报错），行按 `(站点, 站点侧 ID)` find-only 查回挂联——不写行不造行（键即身份，站点域不按名寻址），行不存在报错并携带站点键与站点侧 ID。
 - **原站序拉取编排**：`SaveWorkInfo` 作品入库事务提交后，异步经 `WorkSetOrderFetcher`（plugin 提供，`SetWorkSetOrderFetcher` 延迟注入）拉取作品所属作品集的原站序，映射 siteWorkId→work.id 写 `re_work_work_set.site_sort_order`（ORCHESTRATION_BY_CALLER：编排归入库发起方 work，获取能力归 plugin）。网络调用须事务外（`MaxOpenConns=1` 死锁），故事务提交后异步派发。
 - **作品集父集关系拉取编排**：同窗口异步经 `WorkSetRelationFetcher`（plugin 提供，`SetWorkSetRelationFetcher` 延迟注入）拉取作品所属作品集的父集关系，upsert 父集 + 建立父子关系（事务内 `CollectAncestorWorkSetIds` 环路检测）+ 写 `re_work_set_work_set.site_sort_order`（对齐原站序拉取范式）。初始本地序 `sort_order` 取原站序，`SaveRelation` 的 OnConflict DoNothing 保证重复拉取不覆盖用户后续拖拽。

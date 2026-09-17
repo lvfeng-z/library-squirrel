@@ -21,6 +21,12 @@ export class AuthorLink {
     "roleName"?: string | null;
     "sortOrder"?: number | null;
 
+    /**
+     * Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+     * 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+     */
+    "source": number;
+
     /** Creates a new AuthorLink instance. */
     constructor($$source: Partial<AuthorLink> = {}) {
         if (!("authorType" in $$source)) {
@@ -28,6 +34,9 @@ export class AuthorLink {
         }
         if (!("authorId" in $$source)) {
             this["authorId"] = 0;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -541,6 +550,12 @@ export class TagLink {
     "tagId": number;
     "namespace"?: string | null;
 
+    /**
+     * Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+     * 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+     */
+    "source": number;
+
     /** Creates a new TagLink instance. */
     constructor($$source: Partial<TagLink> = {}) {
         if (!("tagType" in $$source)) {
@@ -548,6 +563,9 @@ export class TagLink {
         }
         if (!("tagId" in $$source)) {
             this["tagId"] = 0;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -702,10 +720,19 @@ export class WorkSetLink {
     "sortOrder"?: number | null;
     "siteSortOrder"?: number | null;
 
+    /**
+     * Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+     * 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+     */
+    "source": number;
+
     /** Creates a new WorkSetLink instance. */
     constructor($$source: Partial<WorkSetLink> = {}) {
         if (!("workSetId" in $$source)) {
             this["workSetId"] = 0;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = 0;
         }
 
         Object.assign(this, $$source);

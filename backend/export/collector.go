@@ -680,8 +680,8 @@ func siteToRecord(s *entity.Site) SiteRecord {
 		SiteKey:    s.SiteKey,
 		SiteName:   util.NullStringToPointer(s.SiteName),
 		Homepage:   util.NullStringToPointer(s.Homepage),
-		CreateTime:      s.GetCreateTime(),
-		UpdateTime:      s.GetUpdateTime(),
+		CreateTime: s.GetCreateTime(),
+		UpdateTime: s.GetUpdateTime(),
 	}
 }
 
@@ -743,20 +743,20 @@ func siteTagToRecord(t *entity.SiteTag) TagRecord {
 
 func reWorkTagToLink(t *entity.ReWorkTag) (TagLink, bool) {
 	if t.LocalTagID.Valid && t.LocalTagID.Int64 > 0 {
-		return TagLink{TagType: constant.LOCAL, TagID: t.LocalTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace)}, true
+		return TagLink{TagType: constant.LOCAL, TagID: t.LocalTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace), Source: t.Source}, true
 	}
 	if t.SiteTagID.Valid && t.SiteTagID.Int64 > 0 {
-		return TagLink{TagType: constant.SITE, TagID: t.SiteTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace)}, true
+		return TagLink{TagType: constant.SITE, TagID: t.SiteTagID.Int64, Namespace: util.NullStringToPointer(t.Namespace), Source: t.Source}, true
 	}
 	return TagLink{}, false
 }
 
 func reWorkAuthorToLink(a *entity.ReWorkAuthor) (AuthorLink, bool) {
 	if a.LocalAuthorID.Valid && a.LocalAuthorID.Int64 > 0 {
-		return AuthorLink{AuthorType: constant.LOCAL, AuthorID: a.LocalAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder)}, true
+		return AuthorLink{AuthorType: constant.LOCAL, AuthorID: a.LocalAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
 	}
 	if a.SiteAuthorID.Valid && a.SiteAuthorID.Int64 > 0 {
-		return AuthorLink{AuthorType: constant.SITE, AuthorID: a.SiteAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder)}, true
+		return AuthorLink{AuthorType: constant.SITE, AuthorID: a.SiteAuthorID.Int64, RoleName: util.NullStringToPointer(a.RoleName), SortOrder: util.NullInt64ToPointer(a.SortOrder), Source: a.Source}, true
 	}
 	return AuthorLink{}, false
 }
@@ -766,6 +766,7 @@ func reWorkWorkSetToLink(rel *entity.ReWorkWorkSet) WorkSetLink {
 		WorkSetID:     rel.WorkSetID.Int64,
 		SortOrder:     util.NullInt64ToPointer(rel.SortOrder),
 		SiteSortOrder: util.NullInt64ToPointer(rel.SiteSortOrder),
+		Source:        rel.Source,
 	}
 }
 

@@ -171,6 +171,9 @@ type TagLink struct {
 	TagType   int     `json:"tagType"` // 0=local（constant.LOCAL）/ 1=site（constant.SITE），按 tag_id 列非空判定
 	TagID     int64   `json:"tagId"`   // local_tag.id 或 site_tag.id（引用顶层 LocalTags/SiteTags）
 	Namespace *string `json:"namespace,omitempty"`
+	// Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+	// 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+	Source int64 `json:"source"`
 }
 
 // AuthorLink 作品-作者关联（re_work_author 一行）。
@@ -179,6 +182,9 @@ type AuthorLink struct {
 	AuthorID   int64   `json:"authorId"`   // local_author.id 或 site_author.id
 	RoleName   *string `json:"roleName,omitempty"`
 	SortOrder  *int64  `json:"sortOrder,omitempty"`
+	// Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+	// 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+	Source int64 `json:"source"`
 }
 
 // WorkSetLink 作品-作品集成员关系（re_work_work_set 一行；仅保留作品与作品集均在导出闭包内的边）。
@@ -186,6 +192,9 @@ type WorkSetLink struct {
 	WorkSetID     int64  `json:"workSetId"`
 	SortOrder     *int64 `json:"sortOrder,omitempty"`
 	SiteSortOrder *int64 `json:"siteSortOrder,omitempty"`
+	// Source 关联写入来源（constant 包 LinkSource 枚举：PLUGIN=0 / MANUAL=1）。非指针非 omitempty——
+	// 新包恒显式携带；旧版导出包无本字段，反序列化得零值 0 恰为 PLUGIN，回灌缺省天然成立
+	Source int64 `json:"source"`
 }
 
 // FileEntry 文件条目（files[]；被 work 的 store 挂载按 StoreID 引用）。

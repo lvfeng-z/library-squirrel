@@ -125,19 +125,23 @@ type ReWorkTagBatchReader interface {
 type ReWorkTagWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// DeleteSiteByWorkId 删除作品的 SITE 标签关联（保留 LOCAL）
-	DeleteSiteByWorkId(ctx context.Context, workId int64) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库，保留用户手动设的 namespace 等字段）
+	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 标签关联（重拉窄域重建：用户手动挂的 SITE 关联与 LOCAL 关联不动）
+	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过（LOCAL 关联增量入库，保留用户手动设的 namespace 等字段）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkTag) error
+	// UpsertBatch 批量 upsert：按 (work_id, tag_id) 冲突更新 namespace（不翻转 source、不动 sort_order），否则插入
+	UpsertBatch(ctx context.Context, rels []*entity2.ReWorkTag, tagType int) error
 }
 
 // ReWorkWorkSetWriter 作品-作品集关联写入接口
 type ReWorkWorkSetWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
+	// DeletePluginByWorkIdExcluding 删除作品插件来源的作品集成员关联中不在 keepWorkSetIds 内的行（重拉窄域重建）
+	DeletePluginByWorkIdExcluding(ctx context.Context, workId int64, keepWorkSetIds []int64) error
 	// CreateBatch 批量新建关联
 	CreateBatch(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
-	// SaveBatchOnConflict 批量保存，唯一冲突跳过（增量入库，保留历史关联与 sort_order 元数据）
+	// SaveBatchOnConflict 批量保存，唯一冲突跳过该行（增量入库，保留历史关联与 sort_order 元数据）
 	SaveBatchOnConflict(ctx context.Context, rels []*entity2.ReWorkWorkSet) error
 	// UpdateSiteSortOrders 批量更新原站排序（写 site_sort_order，不影响本地 sort_order）
 	UpdateSiteSortOrders(ctx context.Context, workSetId int64, sortOrders map[int64]int) error
@@ -236,8 +240,8 @@ type Transactor interface {
 type ReWorkAuthorWriter interface {
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
-	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 作者关联（重拉窄域重建：用户来源关联与 LOCAL 关联不动）
+	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库，不覆盖用户手动建的关联）
 	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*entity2.ReWorkAuthor) error
 }
@@ -1243,17 +1247,19 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	if err != nil {
 		return 0, fmt.Errorf("处理本地标签失败: %w", err)
 	}
-	// === Phase 3: 保存 Work + 关联增量同步 ===
-	// SITE 关联由插件权威管理（按 type 删后重建）；LOCAL 关联归用户管理，保留不动，插件返回的 local 增量追加（已存在跳过）；
-	// workSet 增量保留（不删历史关联，避免丢失用户手动加的关联与 sort_order 元数据）。
+	// === Phase 3: 保存 Work + 关联窄域重建 ===
+	// 关联权威随来源（source 列）：插件来源关联按本次声明窄域重建——删「source=PLUGIN 且本次未声明」，
+	// 站点移除标签/移出合集时库自动对齐插件声明面；用户来源关联（手动挂联、物理纳入复制）永不触碰。
+	// 插件再声明用户已手动挂的关联时冲突不翻转来源、不重复建行：SITE 标签轨仅刷 namespace 镜像，
+	// sort_order 属用户策展不动（PLUGIN 关联删后重插，声明序自然刷新）。
 	workId, err := s.saveOrUpdateWork(ctx, work)
 	if err != nil {
 		return 0, fmt.Errorf("保存作品失败: %w", err)
 	}
 
-	// 作者关联：SITE 删后重建，LOCAL 增量追加
-	if err := s.reWorkAuthorWriter.DeleteSiteByWorkId(ctx, workId); err != nil {
-		return 0, fmt.Errorf("删除作品 SITE 作者关联失败: %w", err)
+	// 作者关联：SITE 插件来源窄域重建，LOCAL 增量追加
+	if err := s.reWorkAuthorWriter.DeletePluginSiteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品插件来源 SITE 作者关联失败: %w", err)
 	}
 	siteAuthorLinks := buildSiteAuthorLinks(workId, siteAuthorDBIds)
 	if len(siteAuthorLinks) > 0 {
@@ -1269,9 +1275,9 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 		}
 	}
 
-	// 标签关联：SITE 删后重建，LOCAL 增量追加
-	if err := s.reWorkTagWriter.DeleteSiteByWorkId(ctx, workId); err != nil {
-		return 0, fmt.Errorf("删除作品 SITE 标签关联失败: %w", err)
+	// 标签关联：SITE 插件来源窄域重建，LOCAL 增量追加
+	if err := s.reWorkTagWriter.DeletePluginSiteByWorkId(ctx, workId); err != nil {
+		return 0, fmt.Errorf("删除作品插件来源 SITE 标签关联失败: %w", err)
 	}
 	// re_work_tag.namespace 镜像所指 site_tag.namespace（site 关联）；顺序与 siteTagDBIds 一致（upsertSiteTags 按 dtos 顺序返回）
 	siteTagNamespaces := make([]string, len(workResp.SiteTags))
@@ -1280,8 +1286,9 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	}
 	siteTagLinks := buildSiteTagLinks(workId, siteTagDBIds, siteTagNamespaces)
 	if len(siteTagLinks) > 0 {
-		// OnConflict：同 SITE 作者——插件元数据同 ID 标签 DTO 重复时批内折叠
-		if err := s.reWorkTagWriter.SaveBatchOnConflict(ctx, siteTagLinks); err != nil {
+		// upsert 冲突更新 namespace：PLUGIN 行已随窄域删除重插（镜像自然刷新），与用户手动挂的关联
+		// 冲突时仅刷镜像不翻转来源；插件元数据同 ID 标签 DTO 重复时批内折叠（冲突列 (work_id, site_tag_id)）
+		if err := s.reWorkTagWriter.UpsertBatch(ctx, siteTagLinks, constant.SITE); err != nil {
 			return 0, fmt.Errorf("保存作品 SITE 标签关联失败: %w", err)
 		}
 	}
@@ -1292,7 +1299,10 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 		}
 	}
 
-	// 作品集关联：增量保留（已存在跳过，不删历史关联）
+	// 作品集成员关联：插件来源按本次声明窄域重建（未声明的成员关联清理），用户来源关联不动
+	if err := s.reWorkWorkSetWriter.DeletePluginByWorkIdExcluding(ctx, workId, workSetDBIds); err != nil {
+		return 0, fmt.Errorf("清理作品未声明的插件来源作品集关联失败: %w", err)
+	}
 	if len(workSetDBIds) > 0 {
 		// 各 workSet 当前最大 sort_order，供 buildWorkSetLinks 续排（该 work 排末尾，纠正维度错位不再塌 0）。
 		// workSetDBIds 为该 work 声明的少数 workSet，逐个查 max 非典型 N+1。
@@ -1917,7 +1927,12 @@ func (s *Service) resolveLocalTags(ctx context.Context, dtos []*sdkdto.LocalTagD
 	return ids, nil
 }
 
-// saveOrUpdateWork 按复合键保存或更新作品
+// saveOrUpdateWork 按复合键保存或更新作品。
+// 重拉键命中走 Updates 分支时，用户策展字段（nick_name/last_view/local_author_id）不被覆盖依赖
+// 双层行为约定：①插件在 WorkResponse.Work 不填三用户字段——ToWorkEntity 携带三字段完整映射且
+// gRPC 链逐字段透传（前端用户编辑链依赖该携带，插件填值即写入，无代码防线）；②结构体 Updates 跳零值
+// 字段（BaseRepository.Updates 仅更新非零字段），插件未填的字段 Valid=false 属零值被跳过。
+// 二者任一破坏（插件填值 / Updates 改全字段写）即保护失效。
 func (s *Service) saveOrUpdateWork(ctx context.Context, work *entity2.Work) (int64, error) {
 	existing, err := s.repo.GetBySiteAndSiteWorkID(ctx, work.SiteID.Int64, work.SiteWorkID.String)
 	if err == nil && existing != nil {
@@ -1978,6 +1993,7 @@ func buildSiteAuthorLinks(workId int64, siteAuthorIds []int64) []*entity2.ReWork
 			WorkID:       sql.NullInt64{Int64: workId, Valid: true},
 			SiteAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
 			SortOrder:    sql.NullInt64{Int64: int64(i), Valid: true},
+			Source:       constant.PLUGIN,
 		})
 	}
 	return links
@@ -1996,6 +2012,7 @@ func buildSiteTagLinks(workId int64, siteTagIds []int64, namespaces []string) []
 			TagType:    sql.NullInt64{Int64: constant.SITE, Valid: true},
 			SiteTagID:  sql.NullInt64{Int64: tagId, Valid: true},
 			Namespace:  sql.NullString{String: ns, Valid: ns != ""},
+			Source:     constant.PLUGIN,
 		})
 	}
 	return links
@@ -2010,6 +2027,7 @@ func buildLocalAuthorLinks(workId int64, localAuthorIds []int64) []*entity2.ReWo
 			WorkID:        sql.NullInt64{Int64: workId, Valid: true},
 			LocalAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
 			SortOrder:     sql.NullInt64{Int64: int64(i), Valid: true},
+			Source:        constant.PLUGIN,
 		})
 	}
 	return links
@@ -2023,6 +2041,7 @@ func buildLocalTagLinks(workId int64, localTagIds []int64) []*entity2.ReWorkTag 
 			WorkID:     sql.NullInt64{Int64: workId, Valid: true},
 			TagType:    sql.NullInt64{Int64: constant.LOCAL, Valid: true},
 			LocalTagID: sql.NullInt64{Int64: tagId, Valid: true},
+			Source:     constant.PLUGIN,
 		})
 	}
 	return links
@@ -2037,6 +2056,7 @@ func buildWorkSetLinks(workId int64, workSetIds []int64, maxSortOrders map[int64
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.WorkSetID = sql.NullInt64{Int64: wsId, Valid: true}
 		rel.SortOrder = sql.NullInt64{Int64: maxSortOrders[wsId] + 1, Valid: true}
+		rel.Source = constant.PLUGIN
 		links = append(links, rel)
 	}
 	return links

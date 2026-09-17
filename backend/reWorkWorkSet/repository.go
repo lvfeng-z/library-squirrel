@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/library-squirrel/backend/base/constant"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
@@ -53,6 +54,19 @@ func (r *ReWorkWorkSetRepository) DeleteByWorkId(ctx context.Context, workId int
 		WithContext(ctx).
 		Where("work_id = ?", workId).
 		Delete(new(domain.ReWorkWorkSet)).Error
+}
+
+// DeletePluginByWorkIdExcluding 删除作品插件来源的作品集成员关联中不在 keepWorkSetIds 内的行
+// （重拉窄域重建用：站点移出合集时插件本次未声明的成员关联自动清理；用户来源关联——手动挂联/
+// 物理纳入复制——与本次声明的关联均不动）。keepWorkSetIds 空 = 清空该作品全部插件来源成员关联
+func (r *ReWorkWorkSetRepository) DeletePluginByWorkIdExcluding(ctx context.Context, workId int64, keepWorkSetIds []int64) error {
+	query := r.dbFromCtx(ctx).
+		WithContext(ctx).
+		Where("work_id = ? AND source = ?", workId, constant.PLUGIN)
+	if len(keepWorkSetIds) > 0 {
+		query = query.Where("work_set_id NOT IN ?", keepWorkSetIds)
+	}
+	return query.Delete(new(domain.ReWorkWorkSet)).Error
 }
 
 // ListByWorkSetId 查询作品集关联的所有作品ID

@@ -2,7 +2,10 @@ package reWorkAuthor
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
+	"github.com/library-squirrel/backend/base/constant"
 	"github.com/library-squirrel/backend/base/model/dto"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
@@ -24,10 +27,14 @@ type Repository interface {
 	Count(ctx context.Context, opt *database.QueryOption) (int64, error)
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// DeleteSiteByWorkId 删除作品的 SITE 作者关联（保留 LOCAL）
-	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// DeleteByWorkAndAuthor 根据作品ID和作者删除关联（authorType 非法时无操作）
+	DeleteByWorkAndAuthor(ctx context.Context, workId int64, authorType int, authorId int64) error
+	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 作者关联（保留 LOCAL 与用户来源关联）
+	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// SaveBatchOnConflict 批量保存，唯一冲突跳过（SITE 删后重建批内重复元数据折叠 + LOCAL 关联增量入库用）
 	SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error
+	// UpsertBatch 批量 upsert：按 (work_id, author_id) 冲突更新 role_name/sort_order（不含 source），否则插入
+	UpsertBatch(ctx context.Context, rels []*domain.ReWorkAuthor, authorType int) error
 	// DeleteByLocalAuthorId 根据本地作者ID删除所有关联
 	DeleteByLocalAuthorId(ctx context.Context, localAuthorId int64) error
 	// DeleteBySiteAuthorId 根据站点作者ID删除所有关联
@@ -100,8 +107,8 @@ func (s *Service) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return s.repo.DeleteByWorkId(ctx, workId)
 }
 
-func (s *Service) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
-	return s.repo.DeleteSiteByWorkId(ctx, workId)
+func (s *Service) DeletePluginSiteByWorkId(ctx context.Context, workId int64) error {
+	return s.repo.DeletePluginSiteByWorkId(ctx, workId)
 }
 
 func (s *Service) SaveBatchOnConflict(ctx context.Context, reWorkAuthors []*domain.ReWorkAuthor) error {
@@ -208,4 +215,78 @@ func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, w
 // ListSiteAuthorsByWorkIds 批量查询作品的站点作者，按 workId 分组
 func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
 	return s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
+}
+
+// ========== 用户手动挂联 ==========
+
+// LinkAuthorToWork 链接作者到作品（用户手动挂联，来源 MANUAL；roleName 空串落 NULL）
+func (s *Service) LinkAuthorToWork(ctx context.Context, workId int64, authorType int, authorId int64, roleName string) error {
+	rel := domain.NewReWorkAuthor()
+	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+	rel.AuthorType = sql.NullInt64{Int64: int64(authorType), Valid: true}
+	rel.Source = constant.MANUAL
+	rel.RoleName = sql.NullString{String: roleName, Valid: roleName != ""}
+	if authorType == constant.LOCAL {
+		rel.LocalAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
+	} else {
+		rel.SiteAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
+	}
+	return s.repo.Create(ctx, rel)
+}
+
+// UnlinkAuthorFromWork 从作品移除作者
+func (s *Service) UnlinkAuthorFromWork(ctx context.Context, workId int64, authorType int, authorId int64) error {
+	return s.repo.DeleteByWorkAndAuthor(ctx, workId, authorType, authorId)
+}
+
+// ErrRoleNameCountMismatch roleNames 与 authorIds 长度不匹配（须等长配对或全空）
+var ErrRoleNameCountMismatch = errors.New("roleNames 与 authorIds 长度不匹配")
+
+// LinkBatchToWork 批量链接作者到作品（upsert：同 work_id+author_id 已存在则更新 role_name/sort_order，否则新增）。
+// roleNames 与 authorIds 等长配对（local/site 关联均用调用方值——作者无站点侧镜像语义），空数组=全无角色。
+// 冲突不翻转来源：已存在的关联（插件声明或用户手动先建）source 保持不变，仅刷新用户可编辑字段。
+func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, authorType int, authorIds []int64, roleNames []string) error {
+	if len(authorIds) == 0 {
+		return nil
+	}
+	if len(roleNames) != 0 && len(roleNames) != len(authorIds) {
+		return ErrRoleNameCountMismatch
+	}
+
+	rels := make([]*domain.ReWorkAuthor, len(authorIds))
+	for i, authorId := range authorIds {
+		rel := domain.NewReWorkAuthor()
+		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+		rel.AuthorType = sql.NullInt64{Int64: int64(authorType), Valid: true}
+		rel.Source = constant.MANUAL
+
+		role := ""
+		if i < len(roleNames) {
+			role = roleNames[i]
+		}
+		rel.RoleName = sql.NullString{String: role, Valid: role != ""}
+
+		if authorType == constant.LOCAL {
+			rel.LocalAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
+			rel.SiteAuthorID = sql.NullInt64{Valid: false}
+		} else {
+			rel.LocalAuthorID = sql.NullInt64{Valid: false}
+			rel.SiteAuthorID = sql.NullInt64{Int64: authorId, Valid: true}
+		}
+		rels[i] = rel
+	}
+	return s.repo.UpsertBatch(ctx, rels, authorType)
+}
+
+// RemoveBatchFromWork 批量从作品移除作者
+func (s *Service) RemoveBatchFromWork(ctx context.Context, workId int64, authorType int, authorIds []int64) error {
+	if len(authorIds) == 0 {
+		return nil
+	}
+	for _, authorId := range authorIds {
+		if err := s.repo.DeleteByWorkAndAuthor(ctx, workId, authorType, authorId); err != nil {
+			return err
+		}
+	}
+	return nil
 }

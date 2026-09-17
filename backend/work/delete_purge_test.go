@@ -71,16 +71,21 @@ func (f *purgeRsBatchReader) ListStoresByResourceIds(ctx context.Context, resour
 // （purge 链焦点在 store 行物理消亡，关联删除不在焦点；接口方法集各自对齐）
 type purgeReWorkTagWriter struct{}
 
-func (purgeReWorkTagWriter) DeleteByWorkId(ctx context.Context, workId int64) error     { return nil }
-func (purgeReWorkTagWriter) DeleteSiteByWorkId(ctx context.Context, workId int64) error { return nil }
+func (purgeReWorkTagWriter) DeleteByWorkId(ctx context.Context, workId int64) error { return nil }
+func (purgeReWorkTagWriter) DeletePluginSiteByWorkId(ctx context.Context, workId int64) error {
+	return nil
+}
 func (purgeReWorkTagWriter) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkTag) error {
+	return nil
+}
+func (purgeReWorkTagWriter) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
 	return nil
 }
 
 type purgeReWorkAuthorWriter struct{}
 
 func (purgeReWorkAuthorWriter) DeleteByWorkId(ctx context.Context, workId int64) error { return nil }
-func (purgeReWorkAuthorWriter) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
+func (purgeReWorkAuthorWriter) DeletePluginSiteByWorkId(ctx context.Context, workId int64) error {
 	return nil
 }
 func (purgeReWorkAuthorWriter) SaveBatchOnConflict(ctx context.Context, rels []*domain.ReWorkAuthor) error {
@@ -90,6 +95,9 @@ func (purgeReWorkAuthorWriter) SaveBatchOnConflict(ctx context.Context, rels []*
 type purgeReWorkWorkSetWriter struct{}
 
 func (purgeReWorkWorkSetWriter) DeleteByWorkId(ctx context.Context, workId int64) error { return nil }
+func (purgeReWorkWorkSetWriter) DeletePluginByWorkIdExcluding(ctx context.Context, workId int64, keepWorkSetIds []int64) error {
+	return nil
+}
 func (purgeReWorkWorkSetWriter) CreateBatch(ctx context.Context, rels []*domain.ReWorkWorkSet) error {
 	return nil
 }

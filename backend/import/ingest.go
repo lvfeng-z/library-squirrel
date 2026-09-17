@@ -1260,6 +1260,7 @@ func (ing *ingestor) ensureWorkLinks(
 			}
 			tagSeen[seenKey] = struct{}{}
 			e.Namespace = nullStringFromPtr(link.Namespace, true) // 落库守卫：空串按 NULL
+			e.Source = link.Source                                // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
 			e.SetCreateTime(now)
 			e.SetUpdateTime(now)
 			tagRows = append(tagRows, e)
@@ -1293,6 +1294,7 @@ func (ing *ingestor) ensureWorkLinks(
 			authorSeen[seenKey] = struct{}{}
 			e.RoleName = nullStringFromPtr(link.RoleName, false)
 			e.SortOrder = nullInt64FromPtr(link.SortOrder)
+			e.Source = link.Source // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
 			e.SetCreateTime(now)
 			e.SetUpdateTime(now)
 			authorRows = append(authorRows, e)
@@ -1312,6 +1314,7 @@ func (ing *ingestor) ensureWorkLinks(
 			e.WorkSetID = sql.NullInt64{Int64: localSetID, Valid: true}
 			e.SortOrder = nullInt64FromPtr(link.SortOrder)
 			e.SiteSortOrder = nullInt64FromPtr(link.SiteSortOrder)
+			e.Source = link.Source // 旧版导出包无 source 字段，零值即 PLUGIN；既有行经 seen 去重跳过，来源不翻转
 			e.SetCreateTime(now)
 			e.SetUpdateTime(now)
 			setRows = append(setRows, e)

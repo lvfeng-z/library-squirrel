@@ -17,6 +17,19 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// ========== 写入操作 ==========
+
+// Link 链接作者到作品。roleNames 与 authorIds 等长配对（local/site 关联均用前端传值，
+// 空数组=全无角色），空串角色落 NULL；冲突不翻转来源（插件先建的关联保持 PLUGIN）。
+func (h *Handler) Link(ctx context.Context, authorType int, authorIds []int64, roleNames []string, workId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.LinkBatchToWork(ctx, workId, authorType, authorIds, roleNames))
+}
+
+// Unlink 从作品移除作者
+func (h *Handler) Unlink(ctx context.Context, authorType int, authorIds []int64, workId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.RemoveBatchFromWork(ctx, workId, authorType, authorIds))
+}
+
 // ========== 查询操作 ==========
 
 // ListByWorkId 获取单个作品的作者关联信息

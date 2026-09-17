@@ -60,9 +60,11 @@ func (r *WorkSetRepository) BatchUpsert(ctx context.Context, workSets []*domain.
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}, {Name: "deleted_at"}},
+		// upsert 仅更新插件权威字段。nick_name（用户改名）、last_view（浏览痕迹）是用户策展列：
+		// 入库链映射只填站点侧三列，excluded（待插入新行）的这两列为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_work_set_name", "site_author_id", "site_work_set_description",
-			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
+			"site_upload_time", "site_update_time", "update_time",
 		}),
 	}).Create(workSets).Error
 }
@@ -83,9 +85,11 @@ func (r *WorkSetRepository) ListBySiteAndSiteWorkSetIDs(ctx context.Context, sit
 func (r *WorkSetRepository) Upsert(ctx context.Context, ws *domain.WorkSet) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_work_set_id"}, {Name: "deleted_at"}},
+		// upsert 仅更新插件权威字段。nick_name（用户改名）、last_view（浏览痕迹）是用户策展列：
+		// 入库链映射只填站点侧三列，excluded（待插入新行）的这两列为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
 		DoUpdates: clause.AssignmentColumns([]string{
 			"site_work_set_name", "site_author_id", "site_work_set_description",
-			"site_upload_time", "site_update_time", "nick_name", "last_view", "update_time",
+			"site_upload_time", "site_update_time", "update_time",
 		}),
 	}).Create(ws).Error
 }

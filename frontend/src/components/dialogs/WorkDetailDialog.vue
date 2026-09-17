@@ -4,7 +4,7 @@ import { isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TagBox from '../common/TagBox.vue'
 import { LocalTagDTO, WorkSetDTO } from '@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto'
 import {
-  SelectItem, WorkFullDTO, SiteTagFullDTO, ResourceFullDTO
+  SelectItem, WorkFullDTO, SiteTagFullDTO, ResourceFullDTO, RankedLocalAuthor, RankedSiteAuthor, SiteAuthorDTO
 } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model/models'
 import ApiUtil from '@renderer/utils/ApiUtil'
@@ -14,16 +14,19 @@ import ApiResponse from '@renderer/model/util/ApiResponse.ts'
 import IPage from '@renderer/model/util/IPage.ts'
 import { OriginType } from '@renderer/constants/OriginType.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import AuthorInfo from '@renderer/components/common/AuthorInfo.vue'
+import AuthorTag from '@renderer/components/common/AuthorTag.vue'
+import AuthorRoleTag from '@renderer/components/common/AuthorRoleTag.vue'
 import { siteQuerySelectItemPageBySiteName } from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import SegmentedTagItem from '@renderer/model/util/SegmentedTagItem.ts'
 import { LocalTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/localTag/models'
 import { SiteTagQueryDTO } from '@bindings/github.com/library-squirrel/backend/siteTag/models'
+import { LocalAuthorQueryDTO } from '@bindings/github.com/library-squirrel/backend/localAuthor/models'
+import { SiteAuthorQueryDTO } from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
 import { copyIgnoreUndefined } from '@renderer/utils/ObjectUtil.ts'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
-import { localTagApi, siteTagApi, workApi, workSetApi } from '@renderer/apis/http'
-import { reWorkTagApi } from '@renderer/apis/http'
+import { localTagApi, siteTagApi, workApi, workSetApi, localAuthorApi, siteAuthorApi } from '@renderer/apis/http'
+import { reWorkTagApi, reWorkAuthorApi } from '@renderer/apis/http'
 import { resourceMerge, resourceMergeCancel } from '@renderer/apis/http/wrappers/resource'
 import { getMergeState, markMergeStarted, clearMergeState } from '@renderer/composables/useMergeProgress'
 import { useWorkLockConfirm } from '@renderer/composables/useWorkLockConfirm'
@@ -60,13 +63,22 @@ const apis = {
   reWorkTagListByWorkId: reWorkTagApi.reWorkTagListByWorkId,
   workSoftDelete: workApi.workSoftDelete,
   workGetFullWorkInfoById: workApi.workGetFullWorkInfoById,
-  workSetListByWorkId: workSetApi.workSetListByWorkId
+  workSetListByWorkId: workSetApi.workSetListByWorkId,
+  localAuthorQuerySelectItemPage: localAuthorApi.localAuthorQuerySelectItemPage,
+  siteAuthorQuerySelectItemPage: siteAuthorApi.siteAuthorQuerySelectItemPage,
+  reWorkAuthorLink: reWorkAuthorApi.reWorkAuthorLink,
+  reWorkAuthorUnlink: reWorkAuthorApi.reWorkAuthorUnlink,
+  reWorkAuthorListLocalAuthorsByWorkId: reWorkAuthorApi.reWorkAuthorListLocalAuthorsByWorkId,
+  reWorkAuthorListSiteAuthorsByWorkId: reWorkAuthorApi.reWorkAuthorListSiteAuthorsByWorkId
 }
 // 作品分享拉取锁交互（删除命中锁时弹强制解锁确认）
 const { isWorkLockedResponse, confirmWorkForceUnlock } = useWorkLockConfirm()
 // ExchangeBox 组件实例
 const localTagExchangeBox = ref()
 const siteTagExchangeBox = ref()
+// 作者编辑 ExchangeBox 组件实例（localAuthor/siteAuthor 各一）
+const localAuthorExchangeBox = ref()
+const siteAuthorExchangeBox = ref()
 // 作品信息
 const currentWorkFullInfo: Ref<WorkFullDTO> = computed(() => {
   const raw = props.work[currentWorkIndex.value]
@@ -107,6 +119,19 @@ async function refreshWorkTagNs() {
 }
 // 作品集
 const workSets: Ref<SegmentedTagItem[]> = ref([])
+// 展示作者列表：本地作者全部 + 未绑定本地作者的站点作者（已绑定本地作者由本地作者代表展示）；
+// origin 标记来源供模板 key 区分（local/site 两表 id 空间重叠）
+const displayAuthors = computed<{ author: RankedLocalAuthor | RankedSiteAuthor; origin: OriginType }[]>(() => {
+  const localAuthors = currentWorkFullInfo.value.localAuthors?.filter(notNullish) ?? []
+  const siteAuthors = currentWorkFullInfo.value.siteAuthors?.filter(notNullish) ?? []
+  const noLocalAuthorSiteAuthors = siteAuthors.filter(
+    (siteAuthor) => !localAuthors.some((localAuthor) => siteAuthor.author.localAuthorId === localAuthor.author.id)
+  )
+  return [
+    ...localAuthors.map((author) => ({ author, origin: OriginType.LOCAL })),
+    ...noLocalAuthorSiteAuthors.map((author) => ({ author, origin: OriginType.SITE }))
+  ]
+})
 // 元数据抽屉开关
 const drawerState: Ref<boolean> = ref(false)
 // 标签编辑模式（编辑 drawer 内本地/站点 ExchangeBox 切换）
@@ -120,6 +145,19 @@ const localTagExchangeLowerSearchParams: Ref<LocalTagQueryDTO> = ref(new LocalTa
 // 站点标签查询参数
 const siteTagExchangeUpperSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
 const siteTagExchangeLowerSearchParams: Ref<SiteTagQueryDTO> = ref(new SiteTagQueryDTO())
+// 作者编辑模式（作者编辑 drawer 内本地/站点 ExchangeBox 切换）
+const localAuthorEdit: Ref<boolean> = ref(false)
+const siteAuthorEdit: Ref<boolean> = ref(false)
+// 作者编辑抽屉（独立于标签编辑抽屉：编辑时关元数据抽屉，关闭回元数据抽屉）
+const authorDrawerState: Ref<boolean> = ref(false)
+// 本地作者查询参数（upper=已绑定区前端过滤词，lower=候选区后端分页条件）
+const localAuthorExchangeUpperSearchParams: Ref<LocalAuthorQueryDTO> = ref(new LocalAuthorQueryDTO())
+const localAuthorExchangeLowerSearchParams: Ref<LocalAuthorQueryDTO> = ref(new LocalAuthorQueryDTO())
+// 站点作者查询参数（upper=已绑定区前端过滤词，lower=候选区后端分页条件）
+const siteAuthorExchangeUpperSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
+const siteAuthorExchangeLowerSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
+// 作品已绑定作者 id 集合（localAuthorId/siteAuthorId 各一），供候选区分页过滤已绑定项
+const boundAuthorIds: Ref<{ local: Set<number>; site: Set<number> }> = ref({ local: new Set(), site: new Set() })
 
 // 当前资源是否可合并（含视频轨+音频轨）
 const mergeable: Ref<boolean> = computed(() => isResourceMergeable(currentWorkFullInfo.value.resource))
@@ -297,6 +335,148 @@ async function updateWorkTags(type: OriginType) {
     }
   }
 }
+// 拉取当前作品已绑定作者 id 集合（local/site 各一），供候选区分页过滤已绑定项
+async function refreshAuthorBoundIds(type: OriginType) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) {
+    boundAuthorIds.value = { local: new Set(), site: new Set() }
+    return
+  }
+  if (OriginType.LOCAL === type) {
+    const authors = (await apis.reWorkAuthorListLocalAuthorsByWorkId(workId)).data.filter(notNullish)
+    boundAuthorIds.value.local = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+  } else {
+    const authors = (await apis.reWorkAuthorListSiteAuthorsByWorkId(workId)).data.filter(notNullish)
+    boundAuthorIds.value.site = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+  }
+}
+// 请求作品已绑定作者（upper）：作品作者量小，全量拉取伪分页单页返回；搜索为前端过滤；
+// roleName 回写 extraData.role 供 AuthorRoleTag 展示/编辑，顺带重建已绑定集合
+async function requestWorkAuthorUpperPage(type: OriginType, page: IPage<SelectItem>): Promise<IPage<SelectItem>> {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return page
+  let keyword = ''
+  let siteId: number | undefined
+  let items: SelectItem[] = []
+  if (OriginType.LOCAL === type) {
+    keyword = localAuthorExchangeUpperSearchParams.value.authorNameStr?.value ?? ''
+    const authors = (await apis.reWorkAuthorListLocalAuthorsByWorkId(workId)).data.filter(notNullish)
+    boundAuthorIds.value.local = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+    items = authors
+      .filter((author) => !keyword || (author.author.authorName ?? '').includes(keyword))
+      .flatMap((author) => (notNullish(author.author.id) ? [new SelectItem({
+        value: author.author.id,
+        label: author.author.authorName ?? '',
+        extraData: { role: author.roleName ?? '' }
+      })] : []))
+  } else {
+    keyword = siteAuthorExchangeUpperSearchParams.value.authorName?.value ?? ''
+    siteId = siteAuthorExchangeUpperSearchParams.value.siteId?.value ?? undefined
+    const authors = (await apis.reWorkAuthorListSiteAuthorsByWorkId(workId)).data.filter(notNullish)
+    boundAuthorIds.value.site = new Set(authors.flatMap((author) => (notNullish(author.author.id) ? [author.author.id] : [])))
+    items = authors
+      .filter((author) => (!keyword || (author.author.authorName ?? '').includes(keyword))
+        && (isNullish(siteId) || author.author.siteId === siteId))
+      .flatMap((author) => (notNullish(author.author.id) ? [new SelectItem({
+        value: author.author.id,
+        label: author.author.authorName ?? '',
+        extraData: { role: author.roleName ?? '' }
+      })] : []))
+  }
+  const resultPage = new Page<SelectItem>()
+  resultPage.pageNumber = 1
+  resultPage.pageSize = items.length > 0 ? items.length : page.pageSize
+  resultPage.pageCount = 1
+  resultPage.dataCount = items.length
+  resultPage.data = items
+  return resultPage
+}
+// 请求作品未绑定本地作者候选（lower）：后端查询无作品维度绑定态过滤，已绑定项前端剔除
+async function requestWorkLocalAuthorLowerPage(page: IPage<SelectItem>): Promise<IPage<SelectItem>> {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return page
+  const bindingsPage = new Page<SelectItem>()
+  bindingsPage.pageNumber = page.pageNumber
+  bindingsPage.pageSize = page.pageSize
+  const response = await apis.localAuthorQuerySelectItemPage(bindingsPage, localAuthorExchangeLowerSearchParams.value)
+  const newPage = response.data
+  newPage.data = (newPage.data ?? []).filter(
+    (item) => notNullish(item) && !boundAuthorIds.value.local.has(item.value as number)
+  )
+  return newPage
+}
+// 请求作品未绑定站点作者候选（lower）：已绑定项前端剔除
+async function requestWorkSiteAuthorLowerPage(page: IPage<SelectItem>): Promise<IPage<SelectItem>> {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return page
+  const bindingsPage = new Page<SiteAuthorDTO>()
+  bindingsPage.pageNumber = page.pageNumber
+  bindingsPage.pageSize = page.pageSize
+  const response = await apis.siteAuthorQuerySelectItemPage(bindingsPage, siteAuthorExchangeLowerSearchParams.value)
+  const newPage = response.data
+  newPage.data = (newPage.data ?? []).filter(
+    (item) => notNullish(item) && !boundAuthorIds.value.site.has(item.value as number)
+  )
+  return newPage
+}
+// 处理作者exchangeBox确认交换事件
+async function handleAuthorExchangeConfirm(type: OriginType, upper: SelectItem[], lower: SelectItem[], isUpper?: boolean) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return
+  if (isNullish(isUpper) ? true : isUpper) {
+    const authorIds = upper.map((item) => item.value)
+    // role：取 upperBuffer 各作者的 extraData.role（AuthorRoleTag 编辑写入）；空串=无角色落 NULL
+    const roleNames = upper.map((item) => item.extraData?.role ?? '')
+    const boundResponse: ApiResponse = await apis.reWorkAuthorLink(workId, type, authorIds as number[], roleNames)
+    if (ApiUtil.check(boundResponse)) {
+      ApiUtil.msg(boundResponse)
+    }
+    // 集合增量同步（覆盖 refreshData 重拉窗口，候选区过滤即时生效）
+    for (const item of upper) {
+      if (OriginType.LOCAL === type) {
+        boundAuthorIds.value.local.add(item.value as number)
+      } else {
+        boundAuthorIds.value.site.add(item.value as number)
+      }
+    }
+  }
+  if (isNullish(isUpper) ? true : !isUpper) {
+    const unboundIds = lower.map((item) => item.value)
+    const unboundResponse: ApiResponse = await apis.reWorkAuthorUnlink(workId, type, unboundIds as number[])
+    if (ApiUtil.check(unboundResponse)) {
+      ApiUtil.msg(unboundResponse)
+    }
+    for (const item of lower) {
+      if (OriginType.LOCAL === type) {
+        boundAuthorIds.value.local.delete(item.value as number)
+      } else {
+        boundAuthorIds.value.site.delete(item.value as number)
+      }
+    }
+  }
+  await updateWorkAuthors(type)
+  if (OriginType.LOCAL === type) {
+    localAuthorExchangeBox.value?.refreshData(isUpper)
+  } else {
+    siteAuthorExchangeBox.value?.refreshData(isUpper)
+  }
+}
+// 更新作品作者数据（确认后重拉，作品作者区分段 tag 展示随之刷新）
+async function updateWorkAuthors(type: OriginType) {
+  const workId = currentWorkFullInfo.value.work?.id
+  if (!workId) return
+  if (OriginType.LOCAL === type) {
+    const response = await apis.reWorkAuthorListLocalAuthorsByWorkId(workId)
+    if (ApiUtil.check(response)) {
+      currentWorkFullInfo.value.localAuthors = ApiUtil.data<RankedLocalAuthor[]>(response)?.filter(notNullish)
+    }
+  } else {
+    const response = await apis.reWorkAuthorListSiteAuthorsByWorkId(workId)
+    if (ApiUtil.check(response)) {
+      currentWorkFullInfo.value.siteAuthors = ApiUtil.data<RankedSiteAuthor[]>(response)?.filter(notNullish)
+    }
+  }
+}
 // 请求作品绑定的本地标签分页
 async function requestWorkLocalTagPage(page: IPage<SelectItem>, bounded: boolean) {
   const workId = currentWorkFullInfo.value.work?.id
@@ -422,6 +602,30 @@ function closeEditDrawer() {
   siteTagEdit.value = false
   drawerState.value = true
 }
+// 进入作者编辑：关元数据抽屉，开作者编辑抽屉（对齐标签编辑抽屉结构）；先拉当前框已绑定集合，避免候选区分页混入已绑定作者
+async function openAuthorEdit(type: OriginType) {
+  drawerState.value = false
+  if (OriginType.LOCAL === type) {
+    siteAuthorEdit.value = false
+    localAuthorEdit.value = true
+  } else {
+    localAuthorEdit.value = false
+    siteAuthorEdit.value = true
+  }
+  await refreshAuthorBoundIds(type)
+  authorDrawerState.value = true
+  nextTick(() => {
+    if (localAuthorEdit.value) localAuthorExchangeBox.value?.refreshData()
+    if (siteAuthorEdit.value) siteAuthorExchangeBox.value?.refreshData()
+  })
+}
+// 关闭作者编辑抽屉：重置编辑模式，回元数据抽屉
+function closeAuthorDrawer() {
+  authorDrawerState.value = false
+  localAuthorEdit.value = false
+  siteAuthorEdit.value = false
+  drawerState.value = true
+}
 // 处理作品集标签点击
 function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
   emits('openWorkSet', workSetTag.value)
@@ -527,11 +731,29 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
               :column="1"
               border
             >
-              <el-descriptions-item label="作者">
-                <author-info
-                  :local-authors="currentWorkFullInfo.localAuthors?.filter(notNullish)"
-                  :site-authors="currentWorkFullInfo.siteAuthors?.filter(notNullish)"
-                />
+              <el-descriptions-item>
+                <template #label>
+                  <span>作者 </span>
+                  <el-button
+                    size="small"
+                    @click="openAuthorEdit(OriginType.LOCAL)"
+                  >
+                    编辑本地
+                  </el-button>
+                  <el-button
+                    size="small"
+                    @click="openAuthorEdit(OriginType.SITE)"
+                  >
+                    编辑站点
+                  </el-button>
+                </template>
+                <div class="work-detail-author-tags">
+                  <author-tag
+                    v-for="displayAuthor in displayAuthors"
+                    :key="`${displayAuthor.origin}-${displayAuthor.author.author.id}`"
+                    :author="displayAuthor.author"
+                  />
+                </div>
               </el-descriptions-item>
               <el-descriptions-item label="简介">
                 <div>{{ currentWorkFullInfo.work?.siteWorkDescription }}</div>
@@ -705,6 +927,142 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
             </template>
           </exchange-box>
         </el-drawer>
+        <!-- 作者编辑抽屉：ExchangeBox 独占（本地/站点互斥），关闭回元数据抽屉；确认挂联走 reWorkAuthor Link/Unlink -->
+        <el-drawer
+          v-model="authorDrawerState"
+          size="55%"
+          :with-header="false"
+          @close="closeAuthorDrawer"
+        >
+          <exchange-box
+            v-if="localAuthorEdit"
+            ref="localAuthorExchangeBox"
+            v-model:upper-search-params="localAuthorExchangeUpperSearchParams"
+            v-model:lower-search-params="localAuthorExchangeLowerSearchParams"
+            class="work-detail-tag-exchange-box"
+            :upper-load="(_page: IPage<SelectItem>) => requestWorkAuthorUpperPage(OriginType.LOCAL, _page)"
+            :lower-load="(_page: IPage<SelectItem>) => requestWorkLocalAuthorLowerPage(_page)"
+            :search-button-disabled="false"
+            tags-gap="10px"
+            :upper-editable-ns="true"
+            :tag-component="AuthorRoleTag"
+            @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.LOCAL, upper, lower, true)"
+            @lower-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.LOCAL, upper, lower, false)"
+            @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.LOCAL, upper, lower)"
+          >
+            <template #upperToolbarMain>
+              <el-input
+                v-model="localAuthorExchangeUpperSearchParams.authorNameStr.value"
+                placeholder="输入本地作者名称"
+                clearable
+              />
+            </template>
+            <template #lowerToolbarMain>
+              <el-input
+                v-model="localAuthorExchangeLowerSearchParams.authorNameStr.value"
+                placeholder="输入本地作者名称"
+                clearable
+              />
+            </template>
+            <template #upperTitle>
+              <div class="work-detail-tag-exchange-box-title">
+                <span class="work-detail-tag-exchange-box-title-text">已绑定</span>
+              </div>
+            </template>
+            <template #lowerTitle>
+              <div class="work-detail-tag-exchange-box-title">
+                <span class="work-detail-tag-exchange-box-title-text">未绑定</span>
+              </div>
+            </template>
+          </exchange-box>
+          <exchange-box
+            v-else-if="siteAuthorEdit"
+            ref="siteAuthorExchangeBox"
+            v-model:upper-search-params="siteAuthorExchangeUpperSearchParams"
+            v-model:lower-search-params="siteAuthorExchangeLowerSearchParams"
+            class="work-detail-tag-exchange-box"
+            :upper-load="(_page: IPage<SelectItem>) => requestWorkAuthorUpperPage(OriginType.SITE, _page)"
+            :lower-load="(_page: IPage<SelectItem>) => requestWorkSiteAuthorLowerPage(_page)"
+            :search-button-disabled="false"
+            tags-gap="10px"
+            :upper-editable-ns="true"
+            :tag-component="AuthorRoleTag"
+            @upper-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.SITE, upper, lower, true)"
+            @lower-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.SITE, upper, lower, false)"
+            @all-confirm="(upper: SelectItem[], lower: SelectItem[]) => handleAuthorExchangeConfirm(OriginType.SITE, upper, lower)"
+          >
+            <template #upperToolbarMain>
+              <el-row class="work-detail-search-bar">
+                <el-col :span="18">
+                  <el-input
+                    v-model="siteAuthorExchangeUpperSearchParams.authorName.value"
+                    placeholder="输入站点作者名称"
+                    clearable
+                  />
+                </el-col>
+                <el-col :span="6">
+                  <auto-load-select
+                    v-model="siteAuthorExchangeUpperSearchParams.siteId.value"
+                    :load="siteQuerySelectItemPageBySiteName"
+                    placeholder="选择站点"
+                    remote
+                    filterable
+                    clearable
+                  >
+                    <template #default="{ list }">
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
+                    </template>
+                  </auto-load-select>
+                </el-col>
+              </el-row>
+            </template>
+            <template #lowerToolbarMain>
+              <el-row class="work-detail-search-bar">
+                <el-col :span="18">
+                  <el-input
+                    v-model="siteAuthorExchangeLowerSearchParams.authorName.value"
+                    placeholder="输入站点作者名称"
+                    clearable
+                  />
+                </el-col>
+                <el-col :span="6">
+                  <auto-load-select
+                    v-model="siteAuthorExchangeLowerSearchParams.siteId.value"
+                    :load="siteQuerySelectItemPageBySiteName"
+                    placeholder="选择站点"
+                    remote
+                    filterable
+                    clearable
+                  >
+                    <template #default="{ list }">
+                      <el-option
+                        v-for="item in list"
+                        :key="item.value"
+                        :value="item.value"
+                        :label="item.label"
+                      />
+                    </template>
+                  </auto-load-select>
+                </el-col>
+              </el-row>
+            </template>
+            <template #upperTitle>
+              <div class="work-detail-tag-exchange-box-title">
+                <span class="work-detail-tag-exchange-box-title-text">已绑定</span>
+              </div>
+            </template>
+            <template #lowerTitle>
+              <div class="work-detail-tag-exchange-box-title">
+                <span class="work-detail-tag-exchange-box-title-text">未绑定</span>
+              </div>
+            </template>
+          </exchange-box>
+        </el-drawer>
       </div>
     </el-dialog>
   </teleport>
@@ -755,6 +1113,12 @@ function handleWorkSetClicked(workSetTag: SegmentedTagItem) {
 }
 .work-detail-drawer-scrollbar {
   padding: 12px;
+}
+.work-detail-author-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
 }
 .work-detail-tag-exchange-box {
   height: 100%;

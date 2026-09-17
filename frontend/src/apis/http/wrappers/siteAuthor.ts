@@ -7,10 +7,11 @@ import {
   Handler as SiteAuthorHandler,
   SiteAuthorQueryDTO
 } from '@bindings/github.com/library-squirrel/backend/siteAuthor'
-import { SiteAuthorDTO, SiteAuthorLocalRelateDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import { SiteAuthorDTO, SiteAuthorLocalRelateDTO, SelectItem } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
+import { notNullish } from '@renderer/utils/CommonUtil.ts'
 
 // ========== API 方法 ==========
 
@@ -32,6 +33,27 @@ export async function siteAuthorUpdateById(author: SiteAuthorDTO): Promise<ApiRe
 /** 分页查询站点作者 */
 export async function siteAuthorQueryPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResult<Page<SiteAuthorDTO>>> {
   return requireResponse(await SiteAuthorHandler.QueryPage(page, query), '查询站点作者')
+}
+
+/**
+ * 分页查询站点作者选择项（后端无 SelectItem 专用端点，QueryPage 后前端组装 SelectItem；
+ * value=site_author.id，label 优先作者名，缺省回退固定名/站点侧作者ID）
+ */
+export async function siteAuthorQuerySelectItemPage(page: Page<SiteAuthorDTO>, query: SiteAuthorQueryDTO): Promise<ApiResult<Page<SelectItem>>> {
+  const response = await siteAuthorQueryPage(page, query)
+  const dtoPage = response.data
+  const itemPage = new Page<SelectItem>()
+  itemPage.pageNumber = dtoPage?.pageNumber ?? page.pageNumber
+  itemPage.pageSize = dtoPage?.pageSize ?? page.pageSize
+  itemPage.pageCount = dtoPage?.pageCount ?? 0
+  itemPage.dataCount = dtoPage?.dataCount ?? 0
+  itemPage.data = (dtoPage?.data ?? []).filter(notNullish).map(
+    (author) => new SelectItem({
+      value: author.id,
+      label: author.authorName ?? author.fixedAuthorName ?? author.siteAuthorId ?? ''
+    })
+  )
+  return { ...response, data: itemPage }
 }
 
 /** 查询绑定或未绑定到本地作者的站点作者分页 */

@@ -21,8 +21,8 @@ type Repository interface {
 	DeleteByWorkAndTag(ctx context.Context, workId int64, tagType int, tagId int64) error
 	// DeleteByWorkId 根据作品ID删除所有关联
 	DeleteByWorkId(ctx context.Context, workId int64) error
-	// DeleteSiteByWorkId 删除作品的 SITE 标签关联（保留 LOCAL）
-	DeleteSiteByWorkId(ctx context.Context, workId int64) error
+	// DeletePluginSiteByWorkId 删除作品插件来源的 SITE 标签关联（保留 LOCAL 与用户手动挂的 SITE 关联）
+	DeletePluginSiteByWorkId(ctx context.Context, workId int64) error
 	// DeleteByLocalTagId 根据本地标签ID删除所有关联
 	DeleteByLocalTagId(ctx context.Context, localTagId int64) error
 	// DeleteBySiteTagId 根据站点标签ID删除所有关联
@@ -85,8 +85,14 @@ func (s *Service) DeleteByWorkId(ctx context.Context, workId int64) error {
 	return s.repo.DeleteByWorkId(ctx, workId)
 }
 
-func (s *Service) DeleteSiteByWorkId(ctx context.Context, workId int64) error {
-	return s.repo.DeleteSiteByWorkId(ctx, workId)
+func (s *Service) DeletePluginSiteByWorkId(ctx context.Context, workId int64) error {
+	return s.repo.DeletePluginSiteByWorkId(ctx, workId)
+}
+
+// UpsertBatch 批量 upsert 关联：按 (work_id, tag_id) 冲突更新 namespace（不翻转 source），否则插入。
+// tagType 决定冲突列：local→(work_id, local_tag_id)，site→(work_id, site_tag_id)
+func (s *Service) UpsertBatch(ctx context.Context, rels []*domain.ReWorkTag, tagType int) error {
+	return s.repo.UpsertBatch(ctx, rels, tagType)
 }
 
 // DeleteByLocalTagId 根据本地标签ID删除所有关联（供 localTag 删除编排调用——
@@ -140,12 +146,12 @@ func (s *Service) ListSiteTagIdsByWorkIds(ctx context.Context, workIds []int64) 
 	return s.repo.ListSiteTagIdsByWorkIds(ctx, workIds)
 }
 
-// LinkTagToWork 链接标签到作品
+// LinkTagToWork 链接标签到作品（用户手动挂联，来源 MANUAL）
 func (s *Service) LinkTagToWork(ctx context.Context, workId int64, tagType int, tagId int64) error {
-	rel := &domain.ReWorkTag{
-		WorkID:  sql.NullInt64{Int64: workId, Valid: true},
-		TagType: sql.NullInt64{Int64: int64(tagType), Valid: true},
-	}
+	rel := domain.NewReWorkTag()
+	rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
+	rel.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
+	rel.Source = constant.MANUAL
 	if tagType == constant.LOCAL {
 		rel.LocalTagID = sql.NullInt64{Int64: tagId, Valid: true}
 	} else {
@@ -192,6 +198,7 @@ func (s *Service) LinkBatchToWork(ctx context.Context, workId int64, tagType int
 		rel := domain.NewReWorkTag()
 		rel.WorkID = sql.NullInt64{Int64: workId, Valid: true}
 		rel.TagType = sql.NullInt64{Int64: int64(tagType), Valid: true}
+		rel.Source = constant.MANUAL
 
 		// namespace 解析：local 用前端传值（越界守卫），site 用镜像 map
 		ns := ""

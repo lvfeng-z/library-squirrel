@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SearchToolbar from '@renderer/components/common/SearchToolbar.vue'
-import { Ref, ref } from 'vue'
+import { type Component, Ref, ref } from 'vue'
 import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import TagBox from './TagBox.vue'
 import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
@@ -18,6 +18,8 @@ const props = defineProps<{
   tagsGap?: string
   /** 绑定区（upper 主区域+缓冲区）是否开启 namespace 编辑：true=绑定区 tag 的 ns 段可编辑 */
   upperEditableNs?: boolean
+  /** 自定义 tag 渲染组件（透传给上下区与缓冲区 TagBox，默认 NamespaceTag；如作者区传 AuthorRoleTag 渲染可编辑 role 段） */
+  tagComponent?: Component
 }>()
 
 // 事件
@@ -270,6 +272,7 @@ function handleUpperDataNsEdited(tag: SelectItem) {
             :load="(_page: IPage<SelectItem>) => requestNextPage(_page, true)"
             :tags-gap="tagsGap"
             :editable-ns="upperEditableNs"
+            :tag-component="tagComponent"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperData')"
             @tag-ns-edited="(tag: SelectItem) => handleUpperDataNsEdited(tag)"
           />
@@ -310,6 +313,7 @@ function handleUpperDataNsEdited(tag: SelectItem) {
               v-model:data="upperBufferData"
               class="exchange-box-middle-buffer-upper"
               :editable-ns="upperEditableNs"
+              :tag-component="tagComponent"
               @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'upperBuffer')"
             />
           </collapse-panel>
@@ -324,6 +328,7 @@ function handleUpperDataNsEdited(tag: SelectItem) {
             class="exchange-box-lower-tag-box"
             :load="(_page: IPage<SelectItem>) => requestNextPage(_page, false)"
             :tags-gap="tagsGap"
+            :tag-component="tagComponent"
             @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'lowerData')"
           />
           <collapse-panel
@@ -362,6 +367,7 @@ function handleUpperDataNsEdited(tag: SelectItem) {
             <tag-box
               v-model:data="lowerBufferData"
               class="exchange-box-middle-buffer-lower"
+              :tag-component="tagComponent"
               @tag-clicked="(tag: SelectItem) => handleCheckTagClick(tag, 'lowerBuffer')"
             />
           </collapse-panel>
