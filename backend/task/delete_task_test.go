@@ -38,7 +38,7 @@ func (t *testTransactor) ExecInTransaction(ctx context.Context, fn func(ctx cont
 // resource.task_id 引用 work_task（同值共享主键），fixture 为各任务建对应领域行；
 // 删除链同时摘除被删任务的领域行（对照组领域行保留）
 // TestDeleteTaskCleansStagingDirs 删任务 → 被删任务（含子任务）的下载暂存目录一并移除、
-// 对照组任务的暂存目录保留。暂存目录按任务 ID 派生（task-staging/{taskID}/），
+// 对照组任务的暂存目录保留。暂存目录按任务 ID 派生（staging/download/{taskID}/），
 // 生命周期与任务行一致——删除链在事务提交后即时清理，不等启动清扫兜底
 func TestDeleteTaskCleansStagingDirs(t *testing.T) {
 	if testing.Short() {
@@ -70,7 +70,7 @@ func TestDeleteTaskCleansStagingDirs(t *testing.T) {
 
 	// 各任务暂存目录内置一个暂存文件（空目录无法区分「已清」与「从未建」）
 	newStaging := func(taskId int64) string {
-		dir := StagingPath(workDir, taskId)
+		dir := DownloadStagingPath(workDir, taskId)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("建暂存目录失败: %v", err)
 		}

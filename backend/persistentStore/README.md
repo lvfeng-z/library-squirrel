@@ -42,7 +42,7 @@
 ## 关键设计
 
 - **记录-文件不变量（2026-08-19 修复，2026-08-20 补 backup_id）**：状态字段如实反映物理世界——`completed_at`（落盘完成时刻，0=未完成）+ `deleted_at`（软删：文件移 backup 或 fsmonitor 外部裁决不复从，复原/裁决链清除）+ `backup_id`（备份清单行引用，软删链与 deleted_at 单条 UPDATE 同生共死写入、复原双列同清，外部删除失效行保持 0）。/store/ 文件服务按状态路由：软删记录按行内 backup_id 查 backup 保管清单定位文件（同路径多代各行指各的，代次隔离）。
-- **行只在提交点建（必然完整）**：下载链走暂存模式——内容先写 `{workDir}/task-staging/`（fsmonitor 零感知），全部写满后由 download 提交点 rename 到最终路径并经 `CommitStore` 建行，`completed_at` 即时置位，不产生未完成中间态行。`completed_at=0` 的未完成行为历史中间态遗留（存量库可能有）：/store/ 读取层按 completed 状态路由（未完成 404 防半成品）、对账基线 `ListValidComplete` 仅收 completed_at>0、其磁盘文件列 Untracked 提示，由 recycleBin/replacement 的未完成分流分支与删除链处置。
+- **行只在提交点建（必然完整）**：下载链走暂存模式——内容先写 `{workDir}/staging/download/`（fsmonitor 零感知），全部写满后由 download 提交点 rename 到最终路径并经 `CommitStore` 建行，`completed_at` 即时置位，不产生未完成中间态行。`completed_at=0` 的未完成行为历史中间态遗留（存量库可能有）：/store/ 读取层按 completed 状态路由（未完成 404 防半成品）、对账基线 `ListValidComplete` 仅收 completed_at>0、其磁盘文件列 Untracked 提示，由 recycleBin/replacement 的未完成分流分支与删除链处置。
 - **路径强校验**：`storeRegistry.ValidatePath` 拒绝未注册子目录，统一正斜杠比较以兼容 Windows。
 - **操作抑制登记（suppression）**：各 Create/Remove/Rename 落盘点（`Store`/`StoreFromExternal`/`Delete`/`DeleteWithBackup`/`CleanupFile`/`CleanupFileResult`）在磁盘操作前 `storeRegistry.Suppress(relPath)` + `defer Release`，让 fsmonitor 把自身写入与外部操作区分开。`CleanupFileResult` 为 `CleanupFile` 的返回错误变体（供删除流「先文件后记录」Phase A 判定文件删除是否真实失败）。backup 模块的 `MoveBackup` 亦在汇点自登记（覆盖所有移入 backup 的调用方）；download 提交点的 rename 窗口由 download 自登记（操作属主纪律）。
 - **fsmonitor 查询的软删排除**：store 行软删后经 GORM 自动 scope 从 StoreReader 三方法（`GetByFingerprint`/`GetByFilePathComplete`/`ListValidComplete`）排除——文件软删期间位于 backup/（监控白名单外）。曾用消费侧 JOIN work 的 `notDeletedWorkCond`（persistentStore 越界感知业务实体），已随软删落地删除。fsmonitor 外部裁决不复从经 `MarkInvalid`（软删）实现，原 invalid_at 列退役。

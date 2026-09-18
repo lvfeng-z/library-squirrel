@@ -1,23 +1,34 @@
 package task
 
-// 暂存基建测试：目录派生、暂存文件命名、启动清扫（孤儿回收/活任务保留）、
-// fsmonitor 零感知锚定（暂存子树不在监控白名单与 backup 域内）。
+// 暂存基建测试：目录派生（两属主根）、作用域确保（原子创建/既有复用）、按任务 ID 清理
+// （两根各回收）、归属判活谓词、fsmonitor 零感知锚定（暂存子树不在监控白名单与 backup 域内）。
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/storeRegistry"
 )
 
-// TestStagingPathDerivation 暂存目录派生单点：{workDir}/task-staging/{taskID}/ 结构
+// TestStagingPathDerivation 两属主根的目录派生单点：staging/download/{taskID}/ 与
+// staging/share-receive/{taskID}/；收件共享清单相对路径随父任务作用域派生（正斜杠）
 func TestStagingPathDerivation(t *testing.T) {
 	workDir := filepath.Join("w", "workdir")
-	got := StagingPath(workDir, 42)
-	want := filepath.Join(workDir, StagingRootName, "42")
-	if got != want {
-		t.Fatalf("StagingPath = %q, want %q", got, want)
+	if got := DownloadStagingPath(workDir, 42); got != filepath.Join(workDir, "staging", "download", "42") {
+		t.Fatalf("DownloadStagingPath = %q", got)
+	}
+	if got := ReceiveStagingPath(workDir, 7); got != filepath.Join(workDir, "staging", "share-receive", "7") {
+		t.Fatalf("ReceiveStagingPath = %q", got)
+	}
+	if got := ReceiveManifestRelPath(999); got != "staging/share-receive/999/manifest.json" {
+		t.Fatalf("ReceiveManifestRelPath = %q", got)
 	}
 }
 
@@ -41,13 +52,14 @@ func TestStagingFileName(t *testing.T) {
 	}
 }
 
-// TestStagingOutsideMonitorScope fsmonitor 零感知锚定：暂存子树路径（目录与文件两级）不在
+// TestStagingOutsideMonitorScope fsmonitor 零感知锚定：暂存子树路径（根/作用域/文件三级）不在
 // store/ 白名单与 backup/ 域——fsnotify 事件过滤与 USN 路径过滤共用这两个谓词，命中即丢弃
 func TestStagingOutsideMonitorScope(t *testing.T) {
 	rels := []string{
-		StagingRootName,
-		StagingRootName + "/123",
-		StagingRootName + "/123/" + StagingFileName("videoTrack", 0, "mp4"),
+		staging.RootName,
+		"staging/download/123",
+		"staging/download/123/" + StagingFileName("videoTrack", 0, "mp4"),
+		"staging/share-receive/999/manifest.json",
 	}
 	for _, rel := range rels {
 		if storeRegistry.InScanDirs(rel) {
@@ -59,53 +71,150 @@ func TestStagingOutsideMonitorScope(t *testing.T) {
 	}
 }
 
-// TestCleanupOrphanStaging 启动清扫：任务行已删=孤儿回收（目录含暂存文件一并移除）、
-// 任务行在=保留、非目录条目与非数字名目录跳过不动、根缺失与空 workDir 静默返回
-func TestCleanupOrphanStaging(t *testing.T) {
+// TestEnsureTaskScope 作用域确保：首建落自证描述（scope.json 承载作用域键与内容形态）、
+// 既有目录（恢复场景）复用不报错、空 workDir 显式拒绝
+func TestEnsureTaskScope(t *testing.T) {
+	ctx := context.Background()
 	workDir := t.TempDir()
-	aliveDir := StagingPath(workDir, 1)  // 任务行在 → 保留
-	orphanDir := StagingPath(workDir, 2) // 任务行删 → 回收
-	for _, d := range []string{aliveDir, orphanDir} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatalf("建暂存目录失败: %v", err)
+
+	dlDir, err := EnsureDownloadScope(ctx, workDir, 42)
+	if err != nil {
+		t.Fatalf("创建下载作用域失败: %v", err)
+	}
+	if dlDir != DownloadStagingPath(workDir, 42) {
+		t.Fatalf("返回目录与派生单点不一致: %q", dlDir)
+	}
+	assertScopeDesc(t, dlDir, "42", downloadScopeContentShape)
+
+	recvDir, err := EnsureReceiveScope(ctx, workDir, 999)
+	if err != nil {
+		t.Fatalf("创建收件作用域失败: %v", err)
+	}
+	assertScopeDesc(t, recvDir, "999", receiveScopeContentShape)
+
+	// 既有目录（暂停/崩溃后恢复）复用：返回同路径、描述原样
+	again, err := EnsureDownloadScope(ctx, workDir, 42)
+	if err != nil {
+		t.Fatalf("既有作用域复用失败: %v", err)
+	}
+	if again != dlDir {
+		t.Fatalf("复用应返回同目录: %q != %q", again, dlDir)
+	}
+	assertScopeDesc(t, dlDir, "42", downloadScopeContentShape)
+
+	if _, err := EnsureDownloadScope(ctx, "", 42); !errors.Is(err, staging.ErrWorkDirEmpty) {
+		t.Fatalf("空 workDir 应返回 ErrWorkDirEmpty, got %v", err)
+	}
+}
+
+// assertScopeDesc 断言作用域目录内自证描述可解析且键与内容形态正确
+func assertScopeDesc(t *testing.T, scopeDir, wantKey, wantShape string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(scopeDir, "scope.json"))
+	if err != nil {
+		t.Fatalf("读作用域描述失败: %v", err)
+	}
+	var desc staging.ScopeDescription
+	if err := json.Unmarshal(data, &desc); err != nil {
+		t.Fatalf("作用域描述不可解析: %v", err)
+	}
+	if desc.ScopeKey != wantKey || desc.ContentShape != wantShape {
+		t.Fatalf("作用域描述键/形态不符: key=%q shape=%q", desc.ScopeKey, desc.ContentShape)
+	}
+}
+
+// TestCleanupStagingByTaskIds 按任务 ID 清理两属主根：被删 ID 的下载与收件作用域均回收、
+// 未涉及 ID 不受影响、空 workDir 与空集合静默返回
+func TestCleanupStagingByTaskIds(t *testing.T) {
+	workDir := t.TempDir()
+	for _, id := range []int64{1, 2, 3} {
+		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id)} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatalf("建暂存目录失败: %v", err)
+			}
 		}
 	}
-	// 孤儿目录内暂存文件占位（回收判定按目录归属，与内容无关）
-	if err := os.WriteFile(filepath.Join(orphanDir, StagingFileName("image", 0, "jpg")), []byte("x"), 0o644); err != nil {
-		t.Fatalf("写暂存文件失败: %v", err)
-	}
-	// 非目录条目与非数字名目录：清扫职责外，跳过不动
-	junkFile := filepath.Join(workDir, StagingRootName, "junk.txt")
-	if err := os.WriteFile(junkFile, []byte("x"), 0o644); err != nil {
-		t.Fatalf("写噪声文件失败: %v", err)
-	}
-	junkDir := filepath.Join(workDir, StagingRootName, "not-a-task-id")
-	if err := os.MkdirAll(junkDir, 0o755); err != nil {
-		t.Fatalf("建噪声目录失败: %v", err)
+	if err := os.WriteFile(filepath.Join(ReceiveStagingPath(workDir, 1), "manifest.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("写清单失败: %v", err)
 	}
 
-	exists := func(id int64) bool { return id == 1 }
-	if err := CleanupOrphanStaging(workDir, exists); err != nil {
-		t.Fatalf("清扫失败: %v", err)
+	if err := CleanupStagingByTaskIds(workDir, []int64{1, 2}); err != nil {
+		t.Fatalf("清理失败: %v", err)
 	}
-	if _, err := os.Stat(orphanDir); !os.IsNotExist(err) {
-		t.Fatalf("孤儿暂存目录应被回收, stat err=%v", err)
+	for _, id := range []int64{1, 2} {
+		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id)} {
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("被删任务 %d 的暂存目录应回收: %s err=%v", id, dir, err)
+			}
+		}
 	}
-	if _, err := os.Stat(aliveDir); err != nil {
-		t.Fatalf("活任务暂存目录应保留: %v", err)
-	}
-	if _, err := os.Stat(junkFile); err != nil {
-		t.Fatalf("非目录条目应跳过不动: %v", err)
-	}
-	if _, err := os.Stat(junkDir); err != nil {
-		t.Fatalf("非数字名目录应跳过不动: %v", err)
+	for _, dir := range []string{DownloadStagingPath(workDir, 3), ReceiveStagingPath(workDir, 3)} {
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("未涉及任务的暂存目录不应受影响: %s: %v", dir, err)
+		}
 	}
 
-	// 根缺失（全新库无暂存目录）与空 workDir（未配置态）：静默返回不报错
-	if err := CleanupOrphanStaging(filepath.Join(workDir, "no-such-root"), exists); err != nil {
-		t.Fatalf("根缺失应静默返回: %v", err)
+	if err := CleanupStagingByTaskIds(workDir, nil); err != nil {
+		t.Fatalf("空集合应静默返回: %v", err)
 	}
-	if err := CleanupOrphanStaging("", exists); err != nil {
+	if err := CleanupStagingByTaskIds("", []int64{1}); err != nil {
 		t.Fatalf("空 workDir 应静默返回: %v", err)
+	}
+}
+
+// TestNewStagingOwnerAlive 归属判活谓词：装载的 ID 集合判活、集合外判死、非数字键（任务属主根
+// 下目录名恒为任务 ID）判死、装载失败返回错误
+func TestNewStagingOwnerAlive(t *testing.T) {
+	alive, err := NewStagingOwnerAlive(context.Background(), fakeIdLister{ids: []int64{1, 2}})
+	if err != nil {
+		t.Fatalf("构造谓词失败: %v", err)
+	}
+	if !alive("1") || !alive("2") {
+		t.Fatalf("装载集合内的键应判活")
+	}
+	if alive("3") {
+		t.Fatalf("集合外的键应判死")
+	}
+	if alive("not-a-task-id") {
+		t.Fatalf("非数字键应判死")
+	}
+
+	if _, err := NewStagingOwnerAlive(context.Background(), fakeIdLister{err: errors.New("查询失败")}); err == nil {
+		t.Fatalf("装载失败应返回错误")
+	}
+}
+
+// fakeIdLister 任务行 ID 装载桩
+type fakeIdLister struct {
+	ids []int64
+	err error
+}
+
+func (f fakeIdLister) ListAllIds(ctx context.Context) ([]int64, error) {
+	return f.ids, f.err
+}
+
+// TestListAllIds 仓储全量 ID 装载（外键强制测试库）：插三行收回三元
+func TestListAllIds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	db, err := migration.OpenTestDB()
+	if err != nil {
+		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
+	}
+	repo := NewRepository(db, nil, nil)
+	for i := 0; i < 3; i++ {
+		tk := entity.NewTask()
+		if err := db.Create(tk).Error; err != nil {
+			t.Fatalf("插任务失败: %v", err)
+		}
+	}
+	ids, err := repo.ListAllIds(context.Background())
+	if err != nil {
+		t.Fatalf("装载失败: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("应装载 3 个 ID, got %d", len(ids))
 	}
 }

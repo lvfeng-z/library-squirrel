@@ -51,9 +51,9 @@ func (sess *execSession) softDeleteReplacedStores() error {
 func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPath string,
 	stagedOffsets map[storeIdentity]int64, specSeq map[*sdkdto.StoreSpec]int) ([]*streamController, error) {
 	workDir := sess.deps.WorkDirProvider.GetWorkDir()
-	stagingDir := sess.deps.StagingPaths.StagingPath(workDir, sess.taskId)
-	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建暂存目录失败: %w", err)
+	stagingDir, err := sess.deps.StagingPaths.EnsureStagingScope(sess.runCtx(), workDir, sess.taskId)
+	if err != nil {
+		return nil, fmt.Errorf("创建暂存作用域失败: %w", err)
 	}
 
 	streams := make([]*streamController, 0, len(specs))
@@ -212,7 +212,7 @@ func (sess *execSession) commitStaged() error {
 		}
 	}()
 
-	// 逐轨 rename：暂存（task-staging/，白名单外零登记）→ 最终路径（store/ 白名单内）
+	// 逐轨 rename：暂存（staging/，白名单外零登记）→ 最终路径（store/ 白名单内）
 	renamed := make([]*streamController, 0, len(sess.streams))
 	compensate := func() {
 		for i := len(renamed) - 1; i >= 0; i-- {

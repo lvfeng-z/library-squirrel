@@ -12,10 +12,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -186,7 +184,8 @@ func fetchManifest(ctx context.Context, client *receiveClient) (*export.Manifest
 }
 
 // writeSharedManifestFile 将 manifest 序列化落盘到 workDir 相对路径（relPath 域正斜杠；
-// absPath 域仅存在于 os 调用点现场 join）。落盘失败由调用方按决策5 回滚删树。
+// absPath 域仅存在于 os 调用点现场 join）。落盘目录由调用方先经 EnsureReceiveScope 确保
+// 作用域存在（唯一合法的作用域创建入口），本函数不建目录。落盘失败由调用方按决策5 回滚删树。
 func writeSharedManifestFile(workDir, relPath string, manifest *export.Manifest) error {
 	if workDir == "" {
 		settings.NotifyWorkDirUnconfigured("share")
@@ -197,9 +196,6 @@ func writeSharedManifestFile(workDir, relPath string, manifest *export.Manifest)
 		return fmt.Errorf("序列化分享清单失败: %w", err)
 	}
 	abs := filepath.Join(workDir, filepath.FromSlash(relPath))
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return err
-	}
 	return os.WriteFile(abs, data, 0o644)
 }
 
@@ -266,9 +262,13 @@ func (s *Service) Receive(ctx context.Context, link string, password string) (*S
 		return nil, err
 	}
 	parentID := parent.GetID()
-	// 共享 manifest 落盘统一暂存根的父任务目录（task-staging/{父任务ID}/manifest.json，
-	// 与各子任务暂存目录平级）；manifest_path 列存此值，子任务执行面按列值直读
-	manifestRel := path.Join(task.StagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	// 共享 manifest 落盘收件暂存根的父任务作用域（staging/share-receive/{父任务ID}/manifest.json，
+	// 与各子任务暂存作用域平级）；manifest_path 列存此值，子任务执行面按列值直读
+	if _, err := task.EnsureReceiveScope(ctx, s.workDir(), parentID); err != nil {
+		_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
+		return nil, fmt.Errorf("创建收件暂存目录失败: %w", err)
+	}
+	manifestRel := task.ReceiveManifestRelPath(parentID)
 	if err := writeSharedManifestFile(s.workDir(), manifestRel, manifest); err != nil {
 		_ = s.taskCtl.DeleteTask(ctx, []int64{parentID})
 		return nil, fmt.Errorf("保存分享清单失败: %v", err)

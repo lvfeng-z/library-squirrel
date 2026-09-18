@@ -24,15 +24,15 @@
 - **源文件缺失**：打包逐文件判源存在性，缺失 → 跳过 + `files[]` 该条目置 `missing=true`（store 缺席、其余照常），不中断导出。
 - **export_task 领域行**：导出任务的选择参数载体，与所属 task 核心行 1:1 共享主键（`entity.ExportTask`，工厂 `NewExportTask(taskID)` 对非正 id panic）。列：`work_ids`/`work_set_ids`（JSON 数组文本，恒序列化、空集存 `[]`）、`output_dir`（输出目录原值，空串=执行时取 workDir 根）。仓储归本模块（`ExportTaskRepository`：`CreateForTask` 单口写入 + `GetById`）。
 - **两步建任务**（`Service.StartExport`）：前置校验选择非空（失败不建任务行）→ 建任务核心行（经 `TaskControl.CreateBuiltinTask`，任务名「导出（N 项）」）→ 补写 export_task 领域行 → `StartTasks` 启动；任一步失败显式 `DeleteTask` 回滚（不留孤儿任务）。`TaskControl` 窄接口（CreateBuiltinTask/StartTasks/DeleteTask）由 task.Service 与 taskManager 经 app.go 适配器组合实现、延迟 setter 注入（ExportService 创建早于二者）。
-- **执行面策略 ExportExecution**（`task_execution.go`，按 task_type 注册进 taskManager 执行面策略表）：读 export_task 领域行取选择参数（行缺失/JSON 损坏按过时载荷显式 Fail「请删除本任务后重新导出」）→ Collect → workDir 守卫（空则 `settings.NotifyWorkDirUnconfigured("export")` + Fail 可读文案）→ Plan → 输出目录解析（`output_dir` 空取 workDir 根、非空且≠workDir 则 MkdirAll）→ 目标目录残留清扫 → 磁盘预检 → Pack 写 `.zip.tmp`（进度回调按字节映射 `ReportProgress(totalBytes, processedBytes)`，前端按比值展示）→ 原子 rename 为最终 zip → `Finish`。`StrategyHandle` 使用集恰五方法（Task/RunCtx/Fail/Finish/ReportProgress）：无覆盖确认、无 DB 回滚登记、无板块/排空概念（暂停走立即取消，Pack 逐文件 ctx 检查点即退出点）；RunCtx 取消（暂停/停止不可区分）静默返回不上报终态，由控制面接管。
-- **暂停/恢复语义**：暂停/停止检查点退出并保留 `.zip.tmp`；恢复/重试走重新 Execute 全量重跑（zip 不支持续写，重跑前清扫目标目录残留）；停止终态后的残留由下次导出前清扫兜底。
-- **导出暂存私例**：`.zip.tmp` 写目标目录同级（同卷保证 rename 原子），不进统一暂存根 `task-staging/`——输出目录可为任意自选目录（含与工作目录异卷），统一暂存根固定在 workDir 卷，跨卷 rename 不可绕。
-- **产物命名与并发**：最终 zip 为 `library-squirrel-export-<毫秒时间戳>.zip`（毫秒时间戳抗同目录并发碰撞）；并发导出同 outDir 不互斥——写入期 Windows 句柄占用使清扫删除失败仅告警不中断。
-- **自选输出目录**：`outputDir` 空 = 工作目录根（缺省），非空 = 自选输出目录。默认值由设置页显式配置（`settings.exportSettings.outputDir`）；导出弹窗内可临时改选（仅本次有效、不写回设置）。目标路径/磁盘预检/残留清扫均以输出目录为准；输出目录不存在时创建。
+- **执行面策略 ExportExecution**（`task_execution.go`，按 task_type 注册进 taskManager 执行面策略表）：读 export_task 领域行取选择参数（行缺失/JSON 损坏按过时载荷显式 Fail「请删除本任务后重新导出」）→ Collect → workDir 守卫（空则 `settings.NotifyWorkDirUnconfigured("export")` + Fail 可读文案）→ Plan → 输出目录解析（`output_dir` 空取 workDir 根、非空且≠workDir 则 MkdirAll）→ 磁盘预检 → 建导出暂存作用域（`staging/export/{铸造键}/`，账本记目标目录与临时文件名）→ Pack 写 `.zip.tmp`（进度回调按字节映射 `ReportProgress(totalBytes, processedBytes)`，前端按比值展示）→ 原子 rename 为最终 zip → `Finish`（暂存作用域经 defer 在全部退出路径回收）。`StrategyHandle` 使用集恰五方法（Task/RunCtx/Fail/Finish/ReportProgress）：无覆盖确认、无 DB 回滚登记、无板块/排空概念（暂停走立即取消，Pack 逐文件 ctx 检查点即退出点）；RunCtx 取消（暂停/停止不可区分）静默返回不上报终态，由控制面接管。
+- **暂停/恢复语义**：暂停/停止在 Pack 逐文件 ctx 检查点退出，显式删除 `.zip.tmp` 并回收暂存作用域（zip 不支持续写，不保留半成品）；失败路径同样删除临时文件；恢复/重试走重新 Execute 全量重跑；崩溃残留由启动清扫按账本回收。
+- **导出暂存（账本登记形态）**：`.zip.tmp` 物理写最终产物的目标目录同级（同卷保证 rename 原子）——输出目录可为任意自选目录（含与工作目录异卷），暂存总根固定在 workDir 卷，跨卷 rename 不可绕；纳入暂存域的方式是 `staging/export/{铸造键}/` 作用域目录内只放描述（scope.json 账本记目标目录与临时文件名），回收按账本执行、不扫描用户盘（目标盘不可达容忍失败，作用域保留待下次启动重试）。
+- **产物命名与并发**：最终 zip 为 `library-squirrel-export-<毫秒时间戳>.zip`（毫秒时间戳抗同目录并发碰撞）；并发导出同 outDir 不互斥——启动清扫删临时文件遇占用/不可达不落定时作用域保留，下次启动凭账本重试。
+- **自选输出目录**：`outputDir` 空 = 工作目录根（缺省），非空 = 自选输出目录。默认值由设置页显式配置（`settings.exportSettings.outputDir`）；导出弹窗内可临时改选（仅本次有效、不写回设置）。目标路径/磁盘预检/暂存账本登记均以输出目录为准；输出目录不存在时创建。
 - **磁盘预检**：导出前查输出目录所在卷可用空间（store 模式 zip≈源文件总量，预检新增 zip 容量 + 1/10 余量），不足 Fail 带容量文案。
 
 ## 依赖关系
-- 依赖：`Repository`（`repository.go`，数据面直查共享表，app.go 以 `*gorm.DB` 装配）、`ExportTaskRepository`（自有领域行仓储）、`TaskControl` 窄接口（app.go 延迟 setter 适配）、workDir 来源（settings，`func() string` 延迟读取）、文件名模板供给（settings，`FileNameFormatProvider`——`GetFileNameFormat()`，空回退默认模板）、`settings.NotifyWorkDirUnconfigured`（workDir 未配置统一通知）。
+- 依赖：`Repository`（`repository.go`，数据面直查共享表，app.go 以 `*gorm.DB` 装配）、`ExportTaskRepository`（自有领域行仓储）、`TaskControl` 窄接口（app.go 延迟 setter 适配）、workDir 来源（settings，`func() string` 延迟读取）、文件名模板供给（settings，`FileNameFormatProvider`——`GetFileNameFormat()`，空回退默认模板）、`settings.NotifyWorkDirUnconfigured`（workDir 未配置统一通知）、staging 能力包（导出暂存作用域创建/回收）。
 - 被依赖：taskManager（`ExportExecution` 按 task_type 注册进执行面策略表，app.go 装配）；share（发布复用 Collect/Plan 数据面）；前端导出入口（`ExportProgressDialog` 确认弹窗发起 StartExport；导出任务行在导出视图 `ExportTaskManage` 呈现——任务面板与导出视图经 `task.task_type` 的 ne/eq 查询过滤分工，任务成功/失败终态由任务模块统一通知承载并按类型路由到导出视图）。
 
 ## 关键设计
@@ -41,4 +41,4 @@
 - **确定性**：manifest 各域数组按 ID 升序输出；命名分配按固定顺序（作品 ID → 资源 ID → store 挂载序；`exportTime*` 占位符基准取 manifest 导出时刻 `Meta.ExportedAt`——同 manifest 重复规划输出一致），zip 条目按 `files[]`（StoreID 升序）写入，zip 条目时间固定为导出时刻——同输入同输出、字节级可复现。
 - **压缩策略**：`manifest.json` deflate 压缩（体积小）；媒体文件 store 模式不压缩（大文件免重复压缩）。
 - **路径纪律**：包内路径（`works/...`）与源 `store_path` 均为 relPath 域正斜杠（`path.Join`/`path.Base`）；absPath 仅 os.* 调用点现场 `filepath.Join(workDir, rel)` 构造。
-- **残留清扫双轨**：启动清扫 `CleanupResidualTempFiles`（app.go 接线，只扫工作目录根）；每次导出前 `sweepStaleTemp(outDir)` 兜底自选目录（自选目录不在启动清扫范围，并发占用删除失败留待下次再清）。
+- **残留回收**：导出暂存纳入 `staging/export/` 账本作用域——执行面各退出路径（暂停/停止/失败/成功）显式清理临时文件并回收作用域；崩溃残留由启动清扫（staging 能力包统一派发）按账本删目标侧临时文件后回收作用域，目标侧真失败保留作用域留待下次启动重试。

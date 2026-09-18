@@ -2,12 +2,12 @@
 
 ## 一句话职责
 
-插件下载任务的**执行面**：实现 `plugin-download` 任务类型的 ExecutionStrategy（板块组合执行、查重内移确认、多轨下载与断点续传、提交窗口替换软删与失败回滚登记），另持有作品任务领域行（work_task）仓储与板块重执行选择写行器。落盘走**暂存模式**：下载内容先写 `{workDir}/task-staging/{taskID}/` 下的 role_seq 键暂存文件，全部轨道写满后在提交点统一 rename 进 store/ 并建行挂载——长下载全程零 DB 副作用。
+插件下载任务的**执行面**：实现 `plugin-download` 任务类型的 ExecutionStrategy（板块组合执行、查重内移确认、多轨下载与断点续传、提交窗口替换软删与失败回滚登记），另持有作品任务领域行（work_task）仓储与板块重执行选择写行器。落盘走**暂存模式**：下载内容先写 `{workDir}/staging/download/{taskID}/` 下的 role_seq 键暂存文件（作用域创建经 task 暂存基建确保入口，目录内含 scope.json 自证描述），全部轨道写满后在提交点统一 rename 进 store/ 并建行挂载——长下载全程零 DB 副作用。
 
 ## 边界
 
 - 与 **taskManager**：taskManager 是任务运行时**控制面**（调度/状态机/信号量），本模块是 plugin-download 的执行面——经 `taskManager.StrategyHandle` 上报终态/进度/覆盖确认/跳过，经其恢复信号分叉续传与全新执行；暂停/停止的插件 RPC 转发经 `taskManager.InterruptNotifier`。
-- 与 **task**：本模块持有作品任务领域行（work_task）仓储；task 模块建树写行与树双查读行经窄接口（`WorkTaskWriter`/`WorkTaskReader`）注入本仓储消费，双向零 import（app.go 装配缝合）。暂存目录派生与暂存文件命名（task 模块 `StagingPath`/`StagingFileName` 基建）同样经窄接口 `StagingPaths` 注入，维持零 import。
+- 与 **task**：本模块持有作品任务领域行（work_task）仓储；task 模块建树写行与树双查读行经窄接口（`WorkTaskWriter`/`WorkTaskReader`）注入本仓储消费，双向零 import（app.go 装配缝合）。暂存目录派生、暂存文件命名与作用域确保（task 模块 `DownloadStagingPath`/`StagingFileName`/`EnsureDownloadScope` 基建）同样经窄接口 `StagingPaths` 注入，维持零 import。
 
 ## 文件结构
 

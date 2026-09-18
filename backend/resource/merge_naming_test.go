@@ -49,7 +49,7 @@ func (s mergeNamingSite) GetById(ctx context.Context, id int64) (*domain.Site, e
 }
 
 func newMergeNamingService(work mergeNamingWork, site mergeNamingSite) *MergeService {
-	return NewMergeService(nil, mergeNamingResource{}, work, site, nil, nil, nil, nil, nil, nil, nil)
+	return NewMergeService(nil, mergeNamingResource{}, work, site, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 // TestDeriveMergedPathsMatchesDownloadLayout 产物路径与文件名为派生形态（与下载侧

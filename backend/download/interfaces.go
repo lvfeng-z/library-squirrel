@@ -97,6 +97,9 @@ type StagingPaths interface {
 	StagingPath(workDir string, taskID int64) string
 	// StagingFileName 暂存文件名（role_seq 三位零填充键，保留扩展名）
 	StagingFileName(role string, storeSeq int, ext string) string
+	// EnsureStagingScope 确保任务暂存作用域存在：不存在则经暂存能力包原子入口创建（目录内写
+	// 自证描述），已存在（暂停/崩溃后恢复的续传场景）复用；返回目录绝对路径（absPath 域）
+	EnsureStagingScope(ctx context.Context, workDir string, taskID int64) (string, error)
 }
 
 // ResourceStoreWriter resource_store 关联写入接口(saveResource 多 store 挂载)

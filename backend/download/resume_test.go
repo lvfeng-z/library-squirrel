@@ -97,16 +97,24 @@ func (s *stubWorkLocator) GetBySiteAndSiteWorkID(ctx context.Context, siteId int
 	return s.work, s.err
 }
 
-// stubStagingPaths 暂存目录派生桩（与 task.StagingPath/StagingFileName 同构；download 包
-// 不 import task，测试自造同构实现）
+// stubStagingPaths 暂存目录派生桩（与 task.DownloadStagingPath/StagingFileName 同构；download 包
+// 不 import task，测试自造同构实现；Ensure 走裸 MkdirAll 不写自证描述——测试只关心目录形态）
 type stubStagingPaths struct{}
 
 func (p stubStagingPaths) StagingPath(workDir string, taskID int64) string {
-	return filepath.Join(workDir, "task-staging", strconv.FormatInt(taskID, 10))
+	return filepath.Join(workDir, "staging", "download", strconv.FormatInt(taskID, 10))
 }
 
 func (p stubStagingPaths) StagingFileName(role string, storeSeq int, ext string) string {
 	return fmt.Sprintf("%s_%03d%s", role, storeSeq, ext)
+}
+
+func (p stubStagingPaths) EnsureStagingScope(ctx context.Context, workDir string, taskID int64) (string, error) {
+	dir := p.StagingPath(workDir, taskID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // stagingTestEnv 续传/提交点测试环境：临时 workDir + 已就位依赖（真实暂存文件落盘）

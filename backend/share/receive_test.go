@@ -2,7 +2,7 @@ package share
 
 // 收件人侧测试：链接解析校验、深链到达缓存/消费、ReceiveExecution 端到端拉取回灌
 // （经中继桩 + 真实宿主会话）、暂存断点续传（offset 请求锚断言）、拨号终态拒绝、
-// 暂停保留暂存、启动清扫。
+// 暂停保留暂存、任务删除链清收件暂存作用域。
 
 import (
 	"context"
@@ -15,9 +15,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +28,7 @@ import (
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/resource"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 	"github.com/library-squirrel/backend/util/fingerprint"
@@ -425,7 +424,7 @@ func (env *receiveTestEnv) writeSharedManifest(t *testing.T) string {
 	abs := env.manifestPathOf()
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 	require.NoError(t, os.WriteFile(abs, data, 0o644))
-	return path.Join(task.StagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
+	return task.ReceiveManifestRelPath(testParentTaskID)
 }
 
 // buildReceiveHandle 构建收件子任务与执行句柄（默认负责共享 manifest 第一个作品；
@@ -641,9 +640,9 @@ func (env *receiveTestEnv) stagingDirOf() string {
 	return env.stagingDirOfTask(777)
 }
 
-// stagingDirOfTask 指定任务 ID 的暂存目录（统一暂存根 task-staging/ 下）
+// stagingDirOfTask 指定任务 ID 的暂存目录（收件暂存根 staging/share-receive/ 下）
 func (env *receiveTestEnv) stagingDirOfTask(taskID int64) string {
-	return task.StagingPath(env.recvDir, taskID)
+	return task.ReceiveStagingPath(env.recvDir, taskID)
 }
 
 // manifestPathOf 共享 manifest 的绝对路径（父任务目录内；子任务 Finish 清理自己暂存不动它）
@@ -903,100 +902,25 @@ func TestReceiveExecutionPauseKeepsStaging(t *testing.T) {
 	assert.DirExists(t, env.stagingDirOf(), "暂停应保留暂存")
 }
 
-// TestCleanupOrphanReceiveStaging 旧收件暂存根（share-receive/）的一次性启动清扫：仅回收
-// 任务行已不存在的暂存目录（新收件暂存位于统一根 task-staging/，由 task.CleanupOrphanStaging
-// 统一清扫，另见 task 包 staging_test.go）
-func TestCleanupOrphanReceiveStaging(t *testing.T) {
-	workDir := t.TempDir()
-	root := filepath.Join(workDir, legacyReceiveStagingRootName)
-	orphan := filepath.Join(root, "101")
-	alive := filepath.Join(root, "102")
-	for _, d := range []string{orphan, alive} {
-		require.NoError(t, os.MkdirAll(d, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(d, "x.bin"), []byte("x"), 0o644))
-	}
-	require.NoError(t, os.WriteFile(filepath.Join(root, "not-a-task"), []byte("junk"), 0o644))
-
-	err := CleanupOrphanReceiveStaging(workDir, func(id int64) bool { return id == 102 })
-	require.NoError(t, err)
-	assert.NoDirExists(t, orphan, "任务行不存在的暂存应被回收")
-	assert.DirExists(t, alive, "任务行仍存在的暂存应保留")
-	_, statErr := os.Stat(filepath.Join(root, "not-a-task"))
-	assert.NoError(t, statErr, "非任务目录不碰")
-
-	require.NoError(t, CleanupOrphanReceiveStaging("", nil))
-}
-
-// TestCleanupOrphanReceiveStagingTreeForm 旧根一次性清扫的父子树形态：收件任务为「父容器 + 每作品一
-// 子任务」，目录布局为父目录 {parentID}/ 含共享 manifest.json、子目录为各子任务文件暂存，三者
-// 均按任务 ID 命名的平级子目录——清扫按任务行存在性逐目录独立判定：父行删除回收父目录（含
-// manifest）、子行删除回收子目录；父目录 manifest 在父行删除前不动（子任务 Finish 只清自己的
-// 暂存目录，见 TestReceiveExecutionEndToEnd 断言）。
-func TestCleanupOrphanReceiveStagingTreeForm(t *testing.T) {
-	workDir := t.TempDir()
-	root := filepath.Join(workDir, legacyReceiveStagingRootName)
-
-	const parentID, childA, childB = 999, 777, 778
-	parentDir := filepath.Join(root, strconv.FormatInt(parentID, 10))
-	childADir := filepath.Join(root, strconv.FormatInt(childA, 10))
-	childBDir := filepath.Join(root, strconv.FormatInt(childB, 10))
-	for _, d := range []string{parentDir, childADir, childBDir} {
-		require.NoError(t, os.MkdirAll(d, 0o755))
-	}
-	require.NoError(t, os.WriteFile(filepath.Join(parentDir, "manifest.json"), []byte("{}"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(childADir, "a.bin"), []byte("a"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(childBDir, "b.bin"), []byte("b"), 0o644))
-
-	aliveSet := map[int64]bool{parentID: true, childA: true, childB: true}
-	exists := func(id int64) bool { return aliveSet[id] }
-
-	// 全树行存活：父目录（含 manifest）与全部子目录保留
-	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
-	assert.DirExists(t, parentDir, "父行存活时父目录应保留")
-	assert.FileExists(t, filepath.Join(parentDir, "manifest.json"), "父行存活时共享 manifest 应保留")
-	assert.DirExists(t, childADir, "子行存活时子目录应保留")
-	assert.DirExists(t, childBDir, "子行存活时子目录应保留")
-
-	// 仅子任务 B 行删除：回收 B 子目录，父目录（含 manifest）与 A 子目录保留
-	delete(aliveSet, childB)
-	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
-	assert.DirExists(t, parentDir, "父行存活时父目录应保留")
-	assert.FileExists(t, filepath.Join(parentDir, "manifest.json"), "manifest 应保留直至父行删除")
-	assert.DirExists(t, childADir, "A 行存活时 A 子目录应保留")
-	assert.NoDirExists(t, childBDir, "B 行删除后 B 子目录应被回收")
-
-	// 父任务行删除：回收父目录（含 manifest）；A 子目录（行仍存活）保留
-	delete(aliveSet, parentID)
-	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
-	assert.NoDirExists(t, parentDir, "父行删除后父目录（含 manifest）应被回收")
-	assert.NoFileExists(t, filepath.Join(parentDir, "manifest.json"), "manifest 随父目录一并回收")
-	assert.DirExists(t, childADir, "A 行仍存活时 A 子目录应保留")
-
-	// 最后 A 行也删除：A 子目录回收
-	delete(aliveSet, childA)
-	require.NoError(t, CleanupOrphanReceiveStaging(workDir, exists))
-	assert.NoDirExists(t, childADir, "A 行删除后 A 子目录应被回收")
-}
-
-// TestDeleteReceiveTaskCleansUnifiedStaging 删除收件任务即时清统一暂存根子目录：任务删除链
+// TestDeleteReceiveTaskCleansStagingScopes 删除收件任务即时清收件暂存根下作用域：任务删除链
 // （Service.DeleteTask 事务提交后）以被删全量 ID〔父+子并集〕调用 task.CleanupStagingByTaskIds，
-// 收件父目录（含共享 manifest.json）与各子任务暂存目录随任务消亡一并清理，不等启动清扫兜底；
-// 未涉及任务的暂存目录不受影响。
-func TestDeleteReceiveTaskCleansUnifiedStaging(t *testing.T) {
+// 收件父作用域（含共享 manifest.json）与各子任务作用域随任务消亡一并清理，不等启动清扫兜底；
+// 未涉及任务的暂存作用域不受影响。
+func TestDeleteReceiveTaskCleansStagingScopes(t *testing.T) {
 	workDir := t.TempDir()
 	const parentID, childA, childB, otherID = 999, 777, 778, 2001
-	parentDir := task.StagingPath(workDir, parentID)
+	parentDir := task.ReceiveStagingPath(workDir, parentID)
 	for _, id := range []int64{parentID, childA, childB, otherID} {
-		require.NoError(t, os.MkdirAll(task.StagingPath(workDir, id), 0o755))
+		require.NoError(t, os.MkdirAll(task.ReceiveStagingPath(workDir, id), 0o755))
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(parentDir, "manifest.json"), []byte("{}"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(task.StagingPath(workDir, childA), "a.bin"), []byte("a"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(task.ReceiveStagingPath(workDir, childA), "a.bin"), []byte("a"), 0o644))
 
 	require.NoError(t, task.CleanupStagingByTaskIds(workDir, []int64{parentID, childA, childB}))
-	assert.NoDirExists(t, parentDir, "删除收件父任务应即时清理父目录（含共享 manifest）")
-	assert.NoDirExists(t, task.StagingPath(workDir, childA), "删除子任务应即时清理其暂存目录")
-	assert.NoDirExists(t, task.StagingPath(workDir, childB), "删除子任务应即时清理其暂存目录")
-	assert.DirExists(t, task.StagingPath(workDir, otherID), "未删除任务的暂存目录不受影响")
+	assert.NoDirExists(t, parentDir, "删除收件父任务应即时清理父作用域（含共享 manifest）")
+	assert.NoDirExists(t, task.ReceiveStagingPath(workDir, childA), "删除子任务应即时清理其暂存作用域")
+	assert.NoDirExists(t, task.ReceiveStagingPath(workDir, childB), "删除子任务应即时清理其暂存作用域")
+	assert.DirExists(t, task.ReceiveStagingPath(workDir, otherID), "未删除任务的暂存作用域不受影响")
 }
 
 // —— 查重接入普通下载轨道：端到端时序（设计五）与中断窗口三态（设计六） ——
@@ -1669,7 +1593,7 @@ func TestReceiveBuildsTaskTree(t *testing.T) {
 	// 子任务：pid=父ID、has_child=false、task_type 落值、命名 = 净化后作品名；share_task 领域行
 	// 携带 ManifestPath+ManifestID，主键与子任务 id 严格同值（1:1 共享主键锚点）
 	require.Len(t, taskCtl.children, 2)
-	wantManifestPath := path.Join(task.StagingRootName, strconv.FormatInt(parentID, 10), "manifest.json")
+	wantManifestPath := task.ReceiveManifestRelPath(parentID)
 	for i, want := range []struct {
 		name       string
 		manifestID int64
@@ -1720,19 +1644,19 @@ func TestReceiveManifestFetchFailsNoTask(t *testing.T) {
 	assert.Empty(t, taskCtl.deletedIDs)
 }
 
-// TestReceiveManifestPersistFailsRollback 阶段3 失败语义：父任务创建后 manifest 落盘失败
+// TestReceiveManifestPersistFailsRollback 阶段3 失败语义：父任务创建后暂存作用域创建失败
 // → 显式删除已建父任务（DeleteTask 含子任务，此处尚无子任务），不留孤儿。
 func TestReceiveManifestPersistFailsRollback(t *testing.T) {
 	taskCtl := &fakeBuiltinTaskControl{}
 	env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, buildTwoWorkModel, taskCtl)
-	// 令 workDir/task-staging 为普通文件：MkdirAll(workDir/task-staging/{parentID}) 失败
-	blocker := filepath.Join(env.recvDir, task.StagingRootName)
+	// 令 workDir/staging 为普通文件：暂存总根下任何目录创建（含作用域原子落盘）失败
+	blocker := filepath.Join(env.recvDir, staging.RootName)
 	require.NoError(t, os.MkdirAll(env.recvDir, 0o755))
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
 
 	_, err := env.recvSvc.Receive(context.Background(), env.link, "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "保存分享清单失败")
+	assert.Contains(t, err.Error(), "创建收件暂存目录失败")
 	// 回滚：删除已建父任务；未建子任务、未启动
 	require.NotNil(t, taskCtl.parent)
 	assert.Equal(t, []int64{taskCtl.parent.GetID()}, taskCtl.deletedIDs)

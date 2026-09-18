@@ -71,12 +71,12 @@ specs 顺序确定性是 SDK 显式契约（`doc/plugin-dev-guide.md` 6.1「spec
 
 ## 下载暂存命名(暂存模式)
 
-下载执行面落盘走暂存模式:先写 `{workDir}/task-staging/{taskID}/`,全部轨道写满后提交点统一 rename 到最终路径。暂存文件名与最终名解耦,为 `role_seq` 派生键:
+下载执行面落盘走暂存模式:先写 `{workDir}/staging/download/{taskID}/`(作用域经 staging 能力包原子创建,目录内含 scope.json 自证描述),全部轨道写满后提交点统一 rename 到最终路径。暂存文件名与最终名解耦,为 `role_seq` 派生键:
 
 - 形态 `{role}_{seq 三位零填充}{ext}`(如 `videoTrack_007.mp4`),ext 取自 spec.Format(`StagingFileName`)
 - 用途:续传定位与崩溃清扫直接按文件名还原 (role, seq) 身份,不依赖元数据重解析;最终名由执行前解析派生,随流控制器(streamController)进入提交点
 - 全局 seq 推导:全新执行=specs 全集序,恢复=暂存枚举序(同 role 内按 seq 排队,返回 spec 按角色消费队列)
-- `task-staging/` 不在 store/ 白名单子树内,fsmonitor 对其零感知(无需抑制登记);提交点 rename 是白名单内操作,由 download 登记 `storeRegistry.Suppress`
+- 暂存总根 `staging/` 不在 store/ 白名单子树内,fsmonitor 对其零感知(无需抑制登记);提交点 rename 是白名单内操作,由 download 登记 `storeRegistry.Suppress`
 - 恢复时全局 seq 配对:download `pairResumeSpecs` 把插件 Resume 返回的 specs 与暂存枚举轨按 role 配对、依序消费全局 seq(同 role 多轨按序对齐);未被认领的暂存轨交 Start 整轨重产(derived 一次性产物不可续传)
 
 ## 导出命名(与库内命名的关系)

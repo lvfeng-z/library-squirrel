@@ -12,7 +12,6 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/site"
@@ -106,12 +105,12 @@ func (f *fakeTaskRepo) workTaskOf(id int64) *entity.WorkTask {
 	return f.workTasks[id]
 }
 
-// fakeSiteRepo 让 site.Service.GetByKey 回填固定站点 ID（创建路径经 siteSvc.GetByKey→repo.Get）。
+// fakeSiteRepo 让 site.Service.GetByKey 回填固定站点 ID（创建路径经 siteSvc.GetByKey→repo.GetByKey）。
 type fakeSiteRepo struct {
 	site.Repository
 }
 
-func (fakeSiteRepo) Get(_ context.Context, _ *database.QueryOption) (*entity.Site, error) {
+func (fakeSiteRepo) GetByKey(_ context.Context, _ string) (*entity.Site, error) {
 	return &entity.Site{BaseEntity: &model.BaseEntity{ID: testSiteID}}, nil
 }
 
@@ -955,7 +954,7 @@ type nilSiteRepo struct {
 	site.Repository
 }
 
-func (nilSiteRepo) Get(_ context.Context, _ *database.QueryOption) (*entity.Site, error) {
+func (nilSiteRepo) GetByKey(_ context.Context, _ string) (*entity.Site, error) {
 	return nil, nil
 }
 

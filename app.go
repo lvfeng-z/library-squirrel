@@ -58,6 +58,7 @@ import (
 	"github.com/library-squirrel/backend/siteAuthor"
 	"github.com/library-squirrel/backend/siteBrowser"
 	"github.com/library-squirrel/backend/siteTag"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/task"
@@ -593,16 +594,20 @@ func (a *taskCreateAdapter) CreateTaskByURL(ctx context.Context, url string) (*p
 	}, nil
 }
 
-// taskStagingAdapter task 模块暂存基建（StagingPath/StagingFileName 包级函数）适配为
+// taskStagingAdapter task 模块暂存基建（路径派生/命名/作用域确保的包级函数）适配为
 // download.StagingPaths 窄接口——download 与 task 双向零 import，装配层缝合（先例同 WorkTaskWriter/Reader）
 type taskStagingAdapter struct{}
 
 func (taskStagingAdapter) StagingPath(workDir string, taskID int64) string {
-	return task.StagingPath(workDir, taskID)
+	return task.DownloadStagingPath(workDir, taskID)
 }
 
 func (taskStagingAdapter) StagingFileName(role string, storeSeq int, ext string) string {
 	return task.StagingFileName(role, storeSeq, ext)
+}
+
+func (taskStagingAdapter) EnsureStagingScope(ctx context.Context, workDir string, taskID int64) (string, error) {
+	return task.EnsureDownloadScope(ctx, workDir, taskID)
 }
 
 // taskStagingCleaner task 模块暂存基建适配为 taskManager.StagingCleaner 窄接口（按任务 ID
@@ -868,8 +873,8 @@ func (app *App) initAdvancedServices() error {
 		nil,
 		workResourceStoreRepo, // ResourceStoreHardDeleter(DeleteByResourceIds)
 		reWorkSetWorkSetRepo,
-		workSetRepo,           // CoverReferenceClearer（purge 链首步清封面引用）
-		app.ShareLockRegistry, // WorkLockChecker（软删除前置作品锁守卫）
+		workSetRepo,             // CoverReferenceClearer（purge 链首步清封面引用）
+		app.ShareLockRegistry,   // WorkLockChecker（软删除前置作品锁守卫）
 		app.TagNamespaceService, // TagNamespaceInventoryWriter（入库链 ns 清单登记）
 		app.AuthorRoleService,   // AuthorRoleInventoryWriter（入库链 role 清单登记）
 	)
@@ -1163,21 +1168,12 @@ func (app *App) initAdvancedServices() error {
 		mergeMerger,
 		app.PersistentStoreService,
 		app.SettingsService,
+		app.SettingsService, // MergeWorkDirProvider（合并产物暂存作用域与最终落位的根目录）
 		&dbTransactorAdapter{db: app.db},
 		app.ResourceService, // ResourceRecomputer（资源完整度重算，按活行 store 角色计数）
 		resource.NewWailsMergeEmitter(func() resource.EventEmitter { return app.taskProgressEmitter }),
 		app.ShareLockRegistry, // MergeWorkLockChecker（overwrite 原轨道置换前置作品锁守卫）
 	)
-
-	// 启动清理：合并产物临时文件残留（ls-merge-*，进程崩溃未 os.Remove 时残留）
-	if err := app.MergeService.CleanupResidualTempFiles(context.Background()); err != nil {
-		logger.Log.Warnf("清理合并产物临时残留失败: %v", err)
-	}
-
-	// 启动清理：导出临时文件残留（library-squirrel-export-*.zip.tmp，进程崩溃未 rename 时残留）
-	if err := app.ExportService.CleanupResidualTempFiles(); err != nil {
-		logger.Log.Warnf("清理导出临时残留失败: %v", err)
-	}
 
 	// 将 TaskManager 注入到 TaskService 作为内存状态提供者
 	app.TaskService.SetMemoryProvider(app.TaskManagerService)
@@ -1199,23 +1195,22 @@ func (app *App) initAdvancedServices() error {
 		logger.Log.Warnf("[share] 深链协议自注册失败: %v", err)
 	}
 
-	// 收件暂存清扫：回收任务行已不存在的暂存目录（任务删除后/崩溃残留；成功任务执行尾已自清）
+	// 暂存域启动治理（先于任何能创建作用域的服务执行——任务派发均需用户操作，此时尚无作用域
+	// 可被误回收）：① 旧版暂存根（task-staging/ 与 share-receive/）一次性整体作废回收；② 新暂存
+	// 总根（staging/）按根注册表统一清扫——任务属主根（download/share-receive）按任务行存在性
+	// 判活（ID 集合一次装载），import/merge 启动清空，export 按描述账本回收
 	if workDir := app.SettingsService.GetWorkDir(); workDir != "" {
-		if err := share.CleanupOrphanReceiveStaging(workDir, func(id int64) bool {
-			tasks, err := app.taskRepo.ListStatus(context.Background(), []int64{id})
-			return err == nil && len(tasks) > 0
-		}); err != nil {
-			logger.Log.Warnf("[share] 收件暂存清扫失败: %v", err)
+		sweepCtx := context.Background()
+		if err := staging.RetireLegacyRoots(sweepCtx, workDir); err != nil {
+			logger.Log.Warnf("[staging] 旧版暂存根回收失败: %v", err)
 		}
-	}
-
-	// 下载暂存清扫：回收任务行已不存在的下载暂存目录（任务删除后/崩溃残留；成功任务提交点消费后已自清）
-	if workDir := app.SettingsService.GetWorkDir(); workDir != "" {
-		if err := task.CleanupOrphanStaging(workDir, func(id int64) bool {
-			tasks, err := app.taskRepo.ListStatus(context.Background(), []int64{id})
-			return err == nil && len(tasks) > 0
-		}); err != nil {
-			logger.Log.Warnf("[task] 下载暂存清扫失败: %v", err)
+		ownerAlive, aliveErr := task.NewStagingOwnerAlive(sweepCtx, app.taskRepo)
+		if aliveErr != nil {
+			// 谓词装载失败不阻断清扫：任务属主根下作用域宁留勿毁（staging 包内置语义），下次启动重试
+			logger.Log.Warnf("[staging] 装载任务归属判活集合失败: %v", aliveErr)
+		}
+		if err := staging.SweepAtStartup(sweepCtx, workDir, ownerAlive); err != nil {
+			logger.Log.Warnf("[staging] 暂存启动清扫失败: %v", err)
 		}
 	}
 

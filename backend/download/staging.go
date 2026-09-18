@@ -2,9 +2,9 @@ package download
 
 // 下载暂存基建（执行面侧）：暂存文件写入器（download 直接管理文件与全量 sha256 流式哈希）
 // 与暂存目录枚举。
-// 暂存模式下下载内容先写 {workDir}/task-staging/{taskID}/ 下的 role_seq 键文件，
+// 暂存模式下下载内容先写 {workDir}/staging/download/{taskID}/ 下的 role_seq 键文件，
 // 全部轨道写满后由提交点统一 rename 进 store/ 最终路径——暂存期内长下载全程零 DB 副作用；
-// task-staging/ 不在 store/ 白名单子树内，fsmonitor 对其零感知（无需抑制登记）。
+// 暂存总根不在 store/ 白名单子树内，fsmonitor 对其零感知（无需抑制登记）。
 
 import (
 	"crypto/sha256"

@@ -16,7 +16,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,17 +31,11 @@ import (
 
 // —— share-receive（收件人拉取）——
 //
-// 数据流：按任务 id 查 share_task 领域行 → 读本地共享 manifest（Receive 预拉落盘父任务目录）→
-// 过滤本作品子集构造子 manifest → 收件人客户端拨中继逐文件拉取本作品文件至暂存目录（大小对齐即完成；
-// 中断后按暂存大小续传，非中止清理）→ ManifestIngestor 回灌导入子 manifest → 成功清理暂存。
-// 拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从暂存续传；会话终态
+// 数据流：按任务 id 查 share_task 领域行 → 读本地共享 manifest（Receive 预拉落盘父任务作用域）→
+// 过滤本作品子集构造子 manifest → 收件人客户端拨中继逐文件拉取本作品文件至暂存作用域（大小对齐
+// 即完成；中断后按暂存大小续传，非中止清理）→ ManifestIngestor 回灌导入子 manifest → 成功清理
+// 暂存。拉取中断/分享方离线由任务模型承接：暂停/停止保留暂存，重试/恢复从暂存续传；会话终态
 // （撤销/过期/不存在）以用户可读文案置失败。领域行缺失或过时（ManifestID==0）显式 Fail。
-
-// legacyReceiveStagingRootName 旧收件暂存根目录名：存量收件任务的暂存与共享清单位于此根下
-// （新收件任务的暂存与清单写入统一暂存根 task-staging/）。本常量仅供旧根的一次性孤儿清扫
-// （CleanupOrphanReceiveStaging）回收任务行已消亡的历史残留；过渡态，待存量收件任务消亡后
-// 随旧根清扫一并退役。
-const legacyReceiveStagingRootName = "share-receive"
 
 // 收件拉取退避参数（瞬态错误：网络/分享方离线/中继限流）
 const (
@@ -129,10 +122,10 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 	}
 	client.taskID = taskID
 	ctx := h.RunCtx()
-	// 子任务暂存目录：与下载任务共用统一暂存根（{workDir}/task-staging/{taskID}/，父任务目录
-	// 放共享 manifest.json，与各子任务目录平级）
-	staging := task.StagingPath(workDir, taskID)
-	if err := os.MkdirAll(staging, 0o755); err != nil {
+	// 子任务暂存作用域：收件暂存根下按任务 ID（{workDir}/staging/share-receive/{taskID}/，父任务
+	// 作用域含共享 manifest.json，与各子任务作用域平级）；恢复场景复用既有作用域
+	staging, err := task.EnsureReceiveScope(ctx, workDir, taskID)
+	if err != nil {
 		h.Fail(fmt.Sprintf("创建暂存目录失败: %v", err))
 		return
 	}
@@ -979,41 +972,4 @@ func safeEntryPath(p string) bool {
 		}
 	}
 	return true
-}
-
-// CleanupOrphanReceiveStaging 旧收件暂存根（share-receive/）的一次性启动清扫：回收任务行已
-// 不存在的旧暂存目录（成功任务的暂存已在执行尾清理，此处兜底崩溃残留与已删任务残留）；根目录
-// 不存在时 no-op。新收件任务的暂存与共享清单位于统一暂存根 task-staging/，由
-// task.CleanupOrphanStaging 统一清扫，不经本函数。旧根目录布局：父目录 {parentID}/ 含共享
-// manifest.json、子目录为各子任务文件暂存，均按任务 ID 命名的平级子目录——清扫按任务行存在性
-// 逐目录独立判定：父行删除回收父目录（含 manifest）、子行删除回收子目录，互不影响。
-// 过渡态：manifest_path 列值指向旧根的存量收件任务消亡后，本清扫随旧根一并退役。
-// exists 由调用方提供任务行存在性查询。
-func CleanupOrphanReceiveStaging(workDir string, exists func(id int64) bool) error {
-	if workDir == "" {
-		return nil
-	}
-	root := filepath.Join(workDir, legacyReceiveStagingRootName)
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	for _, ent := range entries {
-		if !ent.IsDir() {
-			continue
-		}
-		id, perr := strconv.ParseInt(ent.Name(), 10, 64)
-		if perr != nil || id <= 0 {
-			continue
-		}
-		if !exists(id) {
-			if rerr := os.RemoveAll(filepath.Join(root, ent.Name())); rerr != nil {
-				return rerr
-			}
-		}
-	}
-	return nil
 }

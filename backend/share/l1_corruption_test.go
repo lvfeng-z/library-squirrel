@@ -18,9 +18,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -186,11 +184,11 @@ func startL1Env(t *testing.T, n int, size int64, streamRate int64) *l1Env {
 }
 
 func (env *l1Env) manifestPath() string {
-	return filepath.Join(task.StagingPath(env.recvDir, testParentTaskID), "manifest.json")
+	return filepath.Join(task.ReceiveStagingPath(env.recvDir, testParentTaskID), "manifest.json")
 }
 
 func (env *l1Env) stagingDirOfTask(taskID int64) string {
-	return task.StagingPath(env.recvDir, taskID)
+	return task.ReceiveStagingPath(env.recvDir, taskID)
 }
 
 // writeL1SharedManifest 将共享 manifest 序列化落盘到收件方父任务目录
@@ -201,7 +199,7 @@ func (env *l1Env) writeL1SharedManifest(t *testing.T) string {
 	abs := env.manifestPath()
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 	require.NoError(t, os.WriteFile(abs, data, 0o644))
-	return path.Join(task.StagingRootName, strconv.FormatInt(testParentTaskID, 10), "manifest.json")
+	return task.ReceiveManifestRelPath(testParentTaskID)
 }
 
 // buildL1HandleForWork 构建指定作品的收件子任务执行句柄（cancel 供 live 取消路径）。

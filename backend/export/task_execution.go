@@ -3,7 +3,8 @@ package export
 // export 任务的执行面策略（taskManager.ExecutionStrategy 实现，按 task_type 注册进
 // Manager 策略表，app.go 装配）：
 //   - ExportExecution：读 export_task 领域行取选择参数 → Collect 收集 → Plan 规划 →
-//     磁盘预检 → Pack 写目标目录同级 .zip.tmp → 原子 rename 为最终 zip
+//     磁盘预检 → 建导出暂存作用域（账本登记目标位置与临时文件名）→ Pack 写目标目录同级
+//     .zip.tmp → 原子 rename 为最终 zip → 回收作用域
 //
 // 进度/终态不经本模块推送：进度经 handle.ReportProgress 上报控制面（任务面板按比值展示），
 // 成功/失败终态由任务模块统一通知承载。
@@ -15,25 +16,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/settings"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/taskManager"
 )
 
-// 导出临时文件命名常量：最终 zip 的临时版本写在同一目录（目标盘同级，保证 rename 原子），
-// 启动清理与导出前清扫据此识别残留（进程在 rename 前退出、暂停/停止退出的未清理文件）——
-// 对齐 merge 包 ls-merge- 先例。导出暂存不进统一暂存根 task-staging/：输出目录可为任意
-// 自选目录（含与工作目录异卷），统一暂存根固定在 workDir 卷，跨卷 rename 不可绕，故维持
-// 「目标目录同级」私例。
+// 导出临时文件命名常量：最终 zip 的临时版本写在同一目录（目标盘同级，保证 rename 原子）。
+// 输出目录可为任意自选目录（含与工作目录异卷），跨卷 rename 不可绕，故物理临时文件恒留
+// 目标目录同级、不进暂存总根；其在暂存总根的登记形态为「作用域目录内只放描述」——账本
+// 记录目标目录与临时文件名，正常退出路径显式回收，崩溃残留由启动清扫按账本删目标侧
+// 临时文件后回收作用域。
 const (
 	exportZipPrefix  = "library-squirrel-export-"
 	exportZipSuffix  = ".zip"
 	exportTempSuffix = ".zip.tmp"
 )
+
+// exportScopeContentShape 导出作用域内容形态标签：作用域目录内只有自证描述、无内容文件
+// （物理临时文件留目标目录同级，位置与名字记入账本）。
+const exportScopeContentShape = "export-zip"
 
 // 导出执行错误定义。
 var (
@@ -58,8 +63,8 @@ type FileNameFormatProvider interface {
 }
 
 // ExportExecution 导出任务执行面策略：执行参数源为 export_task 领域行（核心行不承载领域
-// 载荷，share_task 同形）。暂停/停止由 Pack 逐文件 ctx 检查点退出（.zip.tmp 保留）；恢复/
-// 重试均走重新 Execute 全量重跑（zip 不支持续写，重跑前清扫目标目录残留临时文件）。
+// 载荷，share_task 同形）。暂停/停止由 Pack 逐文件 ctx 检查点退出，退出时显式清理目标目录
+// 临时文件与暂存作用域；恢复/重试均走重新 Execute 全量重跑（zip 不支持续写）。
 type ExportExecution struct {
 	svc            *Service // 提供 collector（导出数据面）、exportTasks（领域行查询）与 workDir
 	packer         Exporter
@@ -88,7 +93,7 @@ func (e *ExportExecution) template() string {
 }
 
 // Execute 导出任务主体至终态：读领域行 → Collect → 工作目录守卫 → Plan → 输出目录解析 →
-// 残留清扫 → 磁盘预检 → Pack → 原子 rename → Finish。错误分流：RunCtx 取消（用户暂停/停止）
+// 磁盘预检 → 建暂存作用域 → Pack → 原子 rename → Finish。错误分流：RunCtx 取消（用户暂停/停止）
 // 直接返回不上报终态（控制面接管：暂停→Paused、停止→Failed）；其余错误上报用户可读文案。
 // 领域行缺失或载荷损坏按过时载荷显式 Fail（建任务链崩溃窗口遗留，重跑无法自愈）。
 func (e *ExportExecution) Execute(h taskManager.StrategyHandle) {
@@ -140,14 +145,6 @@ func (e *ExportExecution) Execute(h taskManager.StrategyHandle) {
 		}
 	}
 
-	// 目标目录残留临时文件清扫：自选目录不在启动清理范围（只扫工作目录），导出前统一清扫
-	// 兜底——崩溃残留与暂停/停止残留均在此清除（全量重跑不续写临时文件）。并发导出同目录
-	// 写入期句柄占用致删除失败仅告警不中断
-	if err := sweepStaleTemp(outDir); err != nil {
-		h.Fail(fmt.Sprintf("清理目标目录残留失败: %v", err))
-		return
-	}
-
 	// 导出前预检目标盘剩余空间：store 模式 zip≈源文件总量，源已占用既有空间，预检的是新增
 	// zip 的容量，留 1/10 余量覆盖 zip 目录结构与头部开销；自选目录按所在卷预检
 	if err := e.checkDiskSpace(outDir, stats.TotalBytes); err != nil {
@@ -158,13 +155,36 @@ func (e *ExportExecution) Execute(h taskManager.StrategyHandle) {
 	targetPath := buildExportTargetPath(outDir)
 	tempPath := targetPath + exportTempSuffix
 
+	// 导出暂存作用域：staging/export/{铸造键}/ 目录内只放描述，账本一次写全目标目录与临时
+	// 文件名（物理临时文件留目标目录同级）；本流程任何退出路径显式回收，崩溃残留由启动清扫
+	// 按账本删目标侧临时文件后回收作用域
+	scopeKey, err := staging.MintScopeKey()
+	if err != nil {
+		h.Fail(fmt.Sprintf("铸造导出暂存作用域键失败: %v", err))
+		return
+	}
+	if _, err := staging.CreateExportScope(ctx, workDir, scopeKey, exportScopeContentShape, staging.ExportLedger{
+		TargetDir: outDir,
+		TempFiles: []string{filepath.Base(tempPath)},
+	}); err != nil {
+		h.Fail(fmt.Sprintf("创建导出暂存作用域失败: %v", err))
+		return
+	}
+	defer func() {
+		if rerr := staging.RemoveScope(context.Background(), workDir, staging.OwnerExport, scopeKey); rerr != nil {
+			logger.Log.Warnf("[export] 回收导出暂存作用域失败（留待启动清扫）: %v", rerr)
+		}
+	}()
+
 	err = e.packer.Pack(ctx, workDir, model, tempPath, stats, func(processedFiles, processedBytes, totalFiles, totalBytes int64) {
 		// 字节语义映射到控制面两字段比值模型（前端按比值展示，文件数维度不透出）
 		h.ReportProgress(totalBytes, processedBytes)
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			// 暂停/停止：检查点退出保留 .zip.tmp（重跑前清扫回收），终态交控制面接管
+			// 暂停/停止：检查点退出显式清理临时文件（zip 不支持续写，恢复全量重跑），终态交
+			// 控制面接管
+			_ = os.Remove(tempPath)
 			return
 		}
 		_ = os.Remove(tempPath) // 失败：不留下半成品 zip
@@ -210,30 +230,6 @@ func (e *ExportExecution) checkDiskSpace(dir string, totalBytes int64) error {
 // buildExportTargetPath 生成最终 zip 路径：dir 根下 library-squirrel-export-<毫秒时间戳>.zip。
 func buildExportTargetPath(dir string) string {
 	return filepath.Join(dir, fmt.Sprintf("%s%d%s", exportZipPrefix, time.Now().UnixMilli(), exportZipSuffix))
-}
-
-// sweepStaleTemp 清理 dir 下导出临时文件残留（exportZipPrefix 前缀 + exportTempSuffix 后缀文件）。
-// 幂等——无残留无副作用；单个删除失败不中断整体清理（残留可能被占用，下次再清）。
-func sweepStaleTemp(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("读取目录失败: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasPrefix(name, exportZipPrefix) && strings.HasSuffix(name, exportTempSuffix) {
-			if err := os.Remove(filepath.Join(dir, name)); err != nil {
-				logger.Log.Warnf("清理导出临时文件失败 %s: %v", name, err)
-			}
-		}
-	}
-	return nil
 }
 
 // parseExportSelection 解析导出任务领域行的选择参数（JSON 数组文本）。载荷损坏（非法 JSON）

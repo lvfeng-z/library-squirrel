@@ -98,13 +98,3 @@ func (s *Service) StartExport(ctx context.Context, workIDs []int64, workSetIDs [
 	}
 	return &ExportTaskResult{TaskID: taskID}, nil
 }
-
-// CleanupResidualTempFiles 清理工作目录下导出临时文件残留（应用启动时调用，自选目录不在扫描
-// 范围——自选目录残留由每次导出前的目标目录清扫兜底）。
-func (s *Service) CleanupResidualTempFiles() error {
-	workDir := s.workDir()
-	if workDir == "" {
-		return nil
-	}
-	return sweepStaleTemp(workDir)
-}

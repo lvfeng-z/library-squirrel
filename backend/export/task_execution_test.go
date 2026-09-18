@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/download"
 	"github.com/library-squirrel/backend/migration"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/taskManager"
 
@@ -281,11 +284,13 @@ func TestExportExecutionDiskSpaceFail(t *testing.T) {
 	findNoExportArtifact(t, env.workDir)
 }
 
-// TestExportExecutionCancelKeepsTempThenRerun 取消语义：RunCtx 取消 → 不上报终态且 .zip.tmp
-// 保留（重跑不续写）；恢复重跑 → 清扫先清自身残留再全量重写为最终 zip
-func TestExportExecutionCancelKeepsTempThenRerun(t *testing.T) {
+// TestExportExecutionCancelCleansTempAndScope 取消语义：RunCtx 取消 → 不上报终态、显式清理
+// 目标目录临时文件与暂存作用域（zip 不支持续写，恢复全量重跑）；在途账本登记目标目录与
+// 实际临时文件名；恢复重跑全量重写为最终 zip 且无作用域残留
+func TestExportExecutionCancelCleansTempAndScope(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "")
+	outDir := t.TempDir() // 自选输出目录（区别于 workDir，锚定账本登记的目标位置）
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", outDir)
 
 	bp := &blockingExporter{entered: make(chan struct{})}
 	exec := NewExportExecution(env.svc, bp, fixedFormatProvider{})
@@ -298,7 +303,15 @@ func TestExportExecutionCancelKeepsTempThenRerun(t *testing.T) {
 		defer close(done)
 		exec.Execute(h)
 	}()
-	<-bp.entered // 等打包桩进入（临时文件已创建）
+	<-bp.entered // 等打包桩进入（作用域已建、临时文件已写）
+
+	// 在途账本：作用域描述登记目标目录与实际在写的临时文件名
+	ledgers := readExportScopeLedgers(t, env.workDir)
+	require.Len(t, ledgers, 1, "应恰有一个在途导出作用域")
+	assert.Equal(t, outDir, ledgers[0].TargetDir)
+	require.Len(t, ledgers[0].TempFiles, 1)
+	assert.Equal(t, soleTempFileName(t, outDir), ledgers[0].TempFiles[0])
+
 	cancel()
 	<-done
 
@@ -308,49 +321,168 @@ func TestExportExecutionCancelKeepsTempThenRerun(t *testing.T) {
 	assert.False(t, finished, "取消退出不上报 Finish")
 	assert.False(t, failed, "取消退出不上报 Fail（终态交控制面接管）")
 
-	// .zip.tmp 保留（暂停/停止残留由重跑前清扫回收）
-	entries, err := os.ReadDir(env.workDir)
+	// 取消清理：目标目录临时文件与暂存作用域均回收
+	assertExportRootEmpty(t, env.workDir)
+	entries, err := os.ReadDir(outDir)
 	require.NoError(t, err)
-	tmpCount := 0
 	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".tmp" {
-			tmpCount++
-		}
+		assert.NotContains(t, e.Name(), exportTempSuffix, "取消后目标目录应无临时文件残留")
 	}
-	require.Equal(t, 1, tmpCount, "取消后应恰有一个 .zip.tmp 残留")
 
-	// 恢复重跑（真实 Packer）：清扫先清残留，全量重写并成功收口
+	// 恢复重跑（真实 Packer）：全量重写并成功收口
 	h2 := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
 	env.exec.Execute(h2)
 	h2.mu.Lock()
 	rerunFinished := h2.finished
 	h2.mu.Unlock()
 	require.True(t, rerunFinished, "重跑应成功收口")
-	findSingleExportZip(t, env.workDir)
-
-	entries, err = os.ReadDir(env.workDir)
-	require.NoError(t, err)
-	for _, e := range entries {
-		assert.NotContains(t, e.Name(), exportTempSuffix, "重跑后无临时残留")
-	}
+	findSingleExportZip(t, outDir)
+	assertExportRootEmpty(t, env.workDir)
 }
 
-// TestExportExecutionSweepsStaleResidue 历史残留清扫：导出前清扫目标目录内崩溃/暂停残留的
-// .zip.tmp（保留最终 zip 与无关文件）
-func TestExportExecutionSweepsStaleResidue(t *testing.T) {
-	env := newExportExecEnv(t)
-	stale := filepath.Join(env.workDir, "library-squirrel-export-123.zip.tmp")
-	require.NoError(t, os.WriteFile(stale, []byte("x"), 0o644))
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "")
+// TestExportCrashResidueRecoveredByStartupSweep 崩溃残留回收：作用域账本与目标目录临时文件
+// 留盘（进程在导出中途崩溃形态）→ 启动清扫按账本删目标侧临时文件并回收作用域；账外文件
+// 不动（描述即权威清单，不扫描目标目录）
+func TestExportCrashResidueRecoveredByStartupSweep(t *testing.T) {
+	workDir := t.TempDir()
+	target := t.TempDir()
+	tempName := "library-squirrel-export-1690000000000.zip.zip.tmp"
+	require.NoError(t, os.WriteFile(filepath.Join(target, tempName), []byte("x"), 0o644))
+	keep := filepath.Join(target, "unrelated.txt")
+	require.NoError(t, os.WriteFile(keep, []byte("k"), 0o644))
+	scopeKey, err := staging.MintScopeKey()
+	require.NoError(t, err)
+	scopeDir, err := staging.CreateExportScope(context.Background(), workDir, scopeKey,
+		exportScopeContentShape, staging.ExportLedger{
+			TargetDir: target,
+			TempFiles: []string{tempName},
+		})
+	require.NoError(t, err)
 
-	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
-	env.exec.Execute(h)
+	require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil))
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	require.True(t, h.finished)
-	assert.NoFileExists(t, stale, "历史残留临时文件应被清扫")
-	findSingleExportZip(t, env.workDir)
+	assert.NoFileExists(t, filepath.Join(target, tempName), "账内临时文件未被删除")
+	assert.FileExists(t, keep, "账外文件被误删")
+	assert.NoDirExists(t, scopeDir, "作用域未被回收")
+}
+
+// TestExportSweepUnreachableTargetTolerated 目标目录不存在（目标侧本无临时文件，IsNotExist
+// 按已清理落定）：清扫容忍不报错、作用域照常回收；重复清扫幂等无副作用
+func TestExportSweepUnreachableTargetTolerated(t *testing.T) {
+	workDir := t.TempDir()
+	scopeKey, err := staging.MintScopeKey()
+	require.NoError(t, err)
+	scopeDir, err := staging.CreateExportScope(context.Background(), workDir, scopeKey,
+		exportScopeContentShape, staging.ExportLedger{
+			TargetDir: filepath.Join(workDir, "已卸载的目标盘"),
+			TempFiles: []string{"library-squirrel-export-1690000000001.zip.zip.tmp"},
+		})
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ { // 首次清扫 + 幂等复扫
+		require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil),
+			"目标盘不可达不应令清扫报错")
+	}
+	assert.NoDirExists(t, scopeDir, "作用域未被回收")
+}
+
+// TestExportSweepTargetDeletionFailureKeepsScopeForRetry 目标侧删除真失败（以非空目录占据
+// 账本临时文件位模拟文件被占用/目标盘不可达——os.Remove 对非空目录报错且非 IsNotExist，
+// 区别于目标目录不存在的已清理落定分支）：本轮不回收作用域（账本仍在）、目标路径仍在；
+// 占用解除后再次清扫，两者皆清——下次启动凭账本重试的完整语义
+func TestExportSweepTargetDeletionFailureKeepsScopeForRetry(t *testing.T) {
+	workDir := t.TempDir()
+	target := t.TempDir()
+	tempName := "library-squirrel-export-1690000000002.zip.zip.tmp"
+	tempPath := filepath.Join(target, tempName)
+	require.NoError(t, os.MkdirAll(tempPath, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempPath, "held.txt"), []byte("x"), 0o644))
+	scopeKey, err := staging.MintScopeKey()
+	require.NoError(t, err)
+	scopeDir, err := staging.CreateExportScope(context.Background(), workDir, scopeKey,
+		exportScopeContentShape, staging.ExportLedger{
+			TargetDir: target,
+			TempFiles: []string{tempName},
+		})
+	require.NoError(t, err)
+
+	require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil))
+	assert.DirExists(t, scopeDir, "目标侧清理未落定，作用域应保留供下次重试")
+	assert.DirExists(t, tempPath, "被占用的目标路径不应被删除")
+
+	// 占用解除（占位目录清空）：再次清扫凭账本重试，目标路径删除、作用域回收
+	require.NoError(t, os.Remove(filepath.Join(tempPath, "held.txt")))
+	require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil))
+	assert.NoDirExists(t, tempPath, "重试应删除目标临时文件")
+	assert.NoDirExists(t, scopeDir, "清理落定后作用域应回收")
+}
+
+// TestExportSweepReclaimsScopeWithoutValidDesc 描述缺失/描述损坏（外部改动形态）：作用域按
+// 无主数据回收
+func TestExportSweepReclaimsScopeWithoutValidDesc(t *testing.T) {
+	workDir := t.TempDir()
+	exportRoot := filepath.Join(workDir, staging.RootName, string(staging.OwnerExport))
+	noDesc := filepath.Join(exportRoot, "aaa")
+	require.NoError(t, os.MkdirAll(noDesc, 0o755))
+	corrupt := filepath.Join(exportRoot, "bbb")
+	require.NoError(t, os.MkdirAll(corrupt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(corrupt, "scope.json"), []byte("{bad"), 0o644))
+
+	require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil))
+
+	assert.NoDirExists(t, noDesc, "无描述作用域未被回收")
+	assert.NoDirExists(t, corrupt, "描述损坏作用域未被回收")
+}
+
+// readExportScopeLedgers 读取 workDir 暂存总根 export 属主根下全部作用域描述的账本。
+func readExportScopeLedgers(t *testing.T, workDir string) []staging.ExportLedger {
+	t.Helper()
+	root := filepath.Join(workDir, staging.RootName, string(staging.OwnerExport))
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		require.True(t, os.IsNotExist(err), "读取导出属主根失败: %v", err)
+		return nil
+	}
+	var ledgers []staging.ExportLedger
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(root, ent.Name(), "scope.json"))
+		require.NoError(t, rerr)
+		var desc staging.ScopeDescription
+		require.NoError(t, json.Unmarshal(data, &desc))
+		require.NotNil(t, desc.Export, "导出作用域描述应含账本: %s", ent.Name())
+		ledgers = append(ledgers, *desc.Export)
+	}
+	return ledgers
+}
+
+// assertExportRootEmpty 断言暂存总根 export 属主根下无作用域残留（目录不存在或为空）。
+func assertExportRootEmpty(t *testing.T, workDir string) {
+	t.Helper()
+	root := filepath.Join(workDir, staging.RootName, string(staging.OwnerExport))
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		require.True(t, os.IsNotExist(err), "读取导出属主根失败: %v", err)
+		return
+	}
+	assert.Empty(t, entries, "导出属主根应无作用域残留")
+}
+
+// soleTempFileName 找出 dir 下唯一的导出临时文件名。
+func soleTempFileName(t *testing.T, dir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), exportTempSuffix) {
+			names = append(names, e.Name())
+		}
+	}
+	require.Len(t, names, 1, "应恰有一个在途临时文件，实际: %v", names)
+	return names[0]
 }
 
 // findNoExportArtifact 断言目录内无导出产物（最终 zip 与临时文件均不存在）

@@ -403,6 +403,16 @@ func (r *TaskRepository) ListStatus(ctx context.Context, ids []int64) ([]*domain
 	return tasks, nil
 }
 
+// ListAllIds 全量任务行 ID 装载（暂存归属判活谓词的批量数据源：启动清扫在先于任何能创建
+// 作用域的服务执行，装载时刻的快照即权威）
+func (r *TaskRepository) ListAllIds(ctx context.Context) ([]int64, error) {
+	var ids []int64
+	if err := r.dbFromCtx(ctx).Model(&domain.Task{}).Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // CreateTask 创建任务核心行
 func (r *TaskRepository) CreateTask(ctx context.Context, task *domain.Task) error {
 	return r.Create(ctx, task)
