@@ -467,7 +467,7 @@ async function recycleBinQueryPageFn(p: Page<RecycleWorkDTO>): Promise<Page<Recy
   const response = await recycleBinApi.recycleBinPageWorks(p, query.value)
   return response.data
 }
-// 组装文件条目查询（文件域条件体系；改动后需手动点查询刷新）
+// 组装文件条目查询（文件域条件体系；筛选改动后由工具栏内置搜索按钮触发刷新）
 function buildStoreQuery(): RecycleStorePageQuery {
   const backup = storeBackupFilter.value === 'all' ? null : storeBackupFilter.value === 'backup'
   return new RecycleStorePageQuery({
@@ -486,7 +486,7 @@ async function storeQueryPageFn(p: Page<RecycleStoreDTO>): Promise<Page<RecycleS
   return response.data
 }
 
-// 组装作品集条目查询（作品集域平铺条件；改动后需手动点查询刷新）
+// 组装作品集条目查询（作品集域平铺条件；筛选改动后由工具栏内置搜索按钮触发刷新）
 function buildWorkSetQuery(): RecycleWorkSetPageQuery {
   return new RecycleWorkSetPageQuery({
     name: workSetName.value,
@@ -902,7 +902,6 @@ async function purgeWorkSet(item: RecycleWorkSetDTO) {
                     <el-option value="backup" label="有备份" />
                     <el-option value="none" label="无备份" />
                   </el-select>
-                  <el-button type="primary" @click="storeSearchTable?.doSearch()">查询</el-button>
                 </div>
               </template>
               <template #toolbarDropdown>
@@ -976,7 +975,6 @@ async function purgeWorkSet(item: RecycleWorkSetDTO) {
                       />
                     </template>
                   </auto-load-select>
-                  <el-button type="primary" @click="workSetSearchTable?.doSearch()">查询</el-button>
                 </div>
               </template>
               <template #toolbarDropdown>
