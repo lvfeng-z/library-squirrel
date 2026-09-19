@@ -6,10 +6,10 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 ## 边界
 
-- 与 **persistentStore**：persistentStore 管具体文件与 `persistent_store` 记录；resource 通过 `resource_store` 关联表引用 store（1 Resource 挂 N typed store）。合并编排经暂存作用域产物同卷 rename 落位，persistentStore 承接提交点建行（CommitStore）与路径变换。
+- 与 **persistentStore**：persistentStore 管具体文件与 `persistent_store` 记录；resource 通过 `resource_store` 关联表引用 store（1 Resource 挂 N typed store）。合并编排经暂存作用域产出产物，persistentStore 承接入库事务（StoreIngestor 四调用：登记→落位→事务内建行）与行管理。
 - 与 **work**：work 是作品实体与编排；resource 是作品下的资源映射，work 通过 ResourceUpdater 接口操作 resource。
 - 与 **merge**：merge 包提供纯合并能力（`FFmpegMuxer.MergeRemux`）；本模块 MergeService 注入它做音视频合并编排，merge 不感知 store（MODULE_BOUNDARY_PURITY）。
-- 与 **backup**：StoreBackupOrchestrator 按 StoreType 选择性备份 Resource 的 store。
+- 与 **backup**：替换链失败回滚经 `ReplaceBackupRestorer`（backup.Service 实现）把软删受害者的文件从 backup 还原回 store/ 并清理备份记录。
 
 ## 对外接口（Handler）
 
@@ -35,12 +35,12 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 音视频合并的业务编排层。合并**异步执行**（不阻塞 IPC），进度与结果经独立 `merge-events` 事件推送（不进 taskManager 控制面，阶段1 止血设计）。设计详见 `../library-squirrel-docs/plan/merge-business.md`（同步期）与 `../library-squirrel-docs/plan/merge-async-stage1.md`（异步化）。
 
 - **异步执行**：`MergeResource` 同步做前置校验（ffmpeg 可用 / 工作目录已配置 / 已存在 videoMain 幂等 / 缺轨 fail-fast / in-flight 守卫），通过则注册 in-flight job（detached ctx，脱离 IPC handler ctx，handler 返回后合并仍跑）并在独立 goroutine 跑合并，立即返回。in-flight 注册表（resourceId→job）防并发叠加 + 作 cancel 锚点。
-- **流程**（goroutine 内）：取 videoTrack/audioTrack store → 经 staging 能力包建产物暂存作用域 `staging/merge/{铸造键}/`（内容形态 merge-out）→ 调 `merge.FFmpegMuxer.MergeRemux` 写作用域内产物文件（带进度回调）→ 产物同卷 rename 落位到最终路径（路径与文件名经 SDK storepath 派生，与下载侧同口径 `store/resource/{桶段}/{作品目录}/videoMain_000.{ext}`——桶段与作品目录按 resource→work→site 反查站点复合键；rename 前登记 storeRegistry 抑制，防 fsmonitor 在建行窗口内误裁决）→ 事务建 PersistentStore(videoMain) 行 + 挂 `resource_store`。流程退出显式回收暂存作用域，崩溃/中断残留由启动清扫按 merge 根「一律回收」策略兜底。
+- **流程**（goroutine 内）：取 videoTrack/audioTrack store → 经 staging 能力包建产物暂存作用域 `staging/merge/{铸造键}/`（内容形态 merge-out）→ 调 `merge.FFmpegMuxer.MergeRemux` 写作用域内产物文件（带进度回调）→ 入库事务提交点：`PrepareIngest` 登记意图（合并产物为 derived 一次性产物，可整轨重产，撤回处置恒声明**丢弃**）→ `PlaceIngest` 落位（产物路径与文件名经 SDK storepath 派生，与下载侧同口径 `store/resource/{桶段}/{作品目录}/videoMain_000.{ext}`——桶段与作品目录按 resource→work→site 反查站点复合键；同卷 rename，操作抑制内置）→ 事务内 `CommitIngest` 建 PersistentStore(videoMain) 行（与删登记行同生共死）+ 挂 `resource_store`。落位/事务失败按登记声明撤回（撤回失败仅记日志，登记行留启动恢复收口）；流程退出显式回收暂存作用域，崩溃/中断残留由启动清扫按 merge 根「一律回收」策略兜底。
 - **进度与完成**：ffmpeg stderr 的 `-progress` 输出解析为百分比，经 `MergeEventEmitter.PushProgress` 推前端；终态（成功 mergedStoreId / 失败 errMsg）经 `PushComplete` 推送。前端 useMergeProgress 组合式消费（complete 为权威终态，忽略迟到 progress 防乱序闪烁）。
 - **取消**：`MergeCancel` 调 job 的 ctx.cancel，杀 ffmpeg 子进程（`exec.CommandContext`）；取消在 MergeRemux 阶段生效，落盘/overwrite 仅成功路径执行，故不误删原轨。
 - **mergeStrategy**（settings.MergeSettings）：`keep`（默认，新建 videoMain 保留原轨道）/ `overwrite`（新建 videoMain、原轨道 store+文件转入回收站——经 `DeleteWithBackup` 软删带备份，可经回收站文件条目复原置换回滚，TTL 到期自动清理）。overwrite 置换前置带作品锁守卫：原轨道所属作品正被分享拉取持有时拒绝置换（返回 `shareLock.ErrWorkLocked`，产物已挂载保留、原轨道不动；资源反查异常时告警放行的软防护）。
-- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，含 CommitStore 提交点建行与 DeleteWithBackup）、`MergeWorkReader`（work.Service——产物目录名派生反查作品站点复合键）、`MergeSiteReader`（site.Service——siteId→site_key 反查）、`MergeSettingsReader`（settings.Service）、`MergeWorkDirProvider`（settings.Service——暂存作用域与最终落位的根目录）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）、`MergeWorkLockChecker`（shareLock.ShareLockRegistry——overwrite 原轨道置换前置作品锁守卫）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
-- **事务**：建 PersistentStore 行与挂 resource_store 同事务（dbTransactorAdapter，tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；失败时行随事务回滚，已落位的产物文件随之清除。
+- **依赖注入**（接口隔离）：`Merger`（merge.FFmpegMuxer）、`StoreOps`（persistentStore.Service，store 行查询/绝对路径原语/overwrite 软删 DeleteWithBackup）、`StoreIngestor`（persistentStore.Service，入库事务四调用——提交点建行）、`MergeWorkReader`（work.Service——产物目录名派生反查作品站点复合键）、`MergeSiteReader`（site.Service——siteId→site_key 反查）、`MergeSettingsReader`（settings.Service）、`MergeWorkDirProvider`（settings.Service——暂存作用域与最终落位的根目录）、`Transactor`（dbTransactorAdapter）、`ResourceRecomputer`（resource.Service 完整度共享重算）、`MergeEventEmitter`（wailsMergeEmitter，闭包延迟读 Wails emitter，app.go 注入）、`MergeWorkLockChecker`（shareLock.ShareLockRegistry——overwrite 原轨道置换前置作品锁守卫）。ffmpeg 缺失时 merger=nil，调用返回 `ErrMergeUnavailable`。
+- **事务**：建 PersistentStore 行（`CommitIngest`，与删入库登记行同事务）与挂 resource_store 同一调用方事务（dbTransactorAdapter，tx 入 ctx，BaseRepository 经 dbFromCtx 感知）；失败时行与登记行删除一并回滚（登记行保留），已落位的产物文件由撤回按丢弃声明清除。
 
 ## 替换链能力（ReplacementService）
 
@@ -53,7 +53,7 @@ Resource 实体管理与资源编排：一份 Resource 关联一个作品，通�
 
 ## 依赖关系
 
-- 依赖（MergeService）：**merge**（Merger）、**staging**（产物暂存作用域创建/回收）、**persistentStore**（StoreOps）、**work**（MergeWorkReader）、**site**（MergeSiteReader）、**settings**（MergeSettingsReader + MergeWorkDirProvider）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）、**shareLock**（MergeWorkLockChecker——overwrite 原轨道置换前置作品锁守卫）
+- 依赖（MergeService）：**merge**（Merger）、**staging**（产物暂存作用域创建/回收）、**persistentStore**（StoreOps + StoreIngestor）、**work**（MergeWorkReader）、**site**（MergeSiteReader）、**settings**（MergeSettingsReader + MergeWorkDirProvider）、database（Transactor）、Wails 事件管道（MergeEventEmitter，经闭包延迟读取，merge-events topic）、**shareLock**（MergeWorkLockChecker——overwrite 原轨道置换前置作品锁守卫）
 - 依赖（ReplacementService）：**shareLock**（ReplaceWorkLockChecker——替换前置作品锁守卫；其余依赖见「替换链能力」节）
 - 被依赖：**work**（ResourceUpdater）、**task**（任务产出资源）、**taskManager**（`ListStoreTypeSetsByWorkIds`——覆盖确认行级判定查已有作品**活行** store 角色集合，软删残留代不算；`RecomputeResourceComplete`——完整度共享重算；`ReplaceStoreOps`——替换链能力，前置软删/失败回滚复活）、**recycleBin**（`RecomputeResourceComplete`——复原置换后重算）、**merge**（由本模块 MergeService 编排）
 

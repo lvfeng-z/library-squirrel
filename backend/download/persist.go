@@ -1,8 +1,9 @@
 package download
 
 // 入库编排（暂存模式）：执行前规划（最终路径解析+暂存写入器打开）与提交点
-// （替换软删 → 暂存 rename 进 store/ → 单事务建行挂载 + 抑制登记与失败补偿逆操作）。
-// 替换链坍缩到提交窗口——长下载全程零 DB 副作用，失败补偿为序列内同步逆操作。
+// （替换软删 → 入库事务：登记意图（撤回处置按轨声明）→ 落位（同卷 rename，操作抑制内置）
+// → 业务事务内建行挂载并删登记行；失败按声明撤回）。
+// 替换链坍缩到提交窗口——长下载全程零 DB 副作用，失败补偿为撤回+控制面复活。
 
 import (
 	"context"
@@ -10,10 +11,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/storeRegistry"
+	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/taskManager"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -47,7 +49,8 @@ func (sess *execSession) softDeleteReplacedStores() error {
 // 命名解析时点在 Start/Resume 返回后（specs 已具名）——最终名前置解析，document lazy 轨
 // （size<=0）同样在此解析（其 spec 已有 role+seq 与命名身份）；暂存文件名按 role_seq 键，
 // 与最终名解耦。stagedOffsets 为各轨预置的（role,seq）→已落盘偏移（全新执行为空 map，
-// 续传恢复传入暂存枚举结果——非零偏移轨按续传打开并前缀入哈希）
+// 续传恢复传入暂存枚举结果——非零偏移轨按续传打开并前缀入哈希；续传打开失败的轨降级
+// 全新写并记 Warn 日志）
 func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPath string,
 	stagedOffsets map[storeIdentity]int64, specSeq map[*sdkdto.StoreSpec]int) ([]*streamController, error) {
 	workDir := sess.deps.WorkDirProvider.GetWorkDir()
@@ -91,6 +94,9 @@ func (sess *execSession) openStagingTracks(specs []*sdkdto.StoreSpec, baseRelPat
 				streams = append(streams, sc)
 				continue
 			}
+			// 续传打开失败：该轨降级全新写（截断覆盖既有暂存），失败原因与打开目标留痕
+			logger.Log.Warnf("[Download] 任务 %d 续传打开暂存失败，降级全新重写(role=%s seq=%d file=%s 期望写入偏移=%d): %v",
+				sess.taskId, spec.Role, seq, stagingName, writeOffset, err)
 		}
 		writer, err = newStagingWriterFresh(stagingAbs, expected)
 		if err != nil {
@@ -167,8 +173,8 @@ func (sess *execSession) allStreamsCompleted() bool {
 
 // commitAndFinish 提交点+成功收口：全部暂存写满后单点执行（详见 commitStaged），随后重算
 // 资源完整度、上报成功终态（成功即软删受害者进入被替换终态，Finish 清回滚登记）。
-// 提交失败按任务失败收口：暂存已由序列内补偿回退，软删受害者经 Fail 上报由控制面
-// setFailed 单点复活（同步触发，与失败收口同一调用栈完成）
+// 提交失败按任务失败收口：已落位文件由撤回按登记声明收口（可续传轨退回暂存），软删受害者
+// 经 Fail 上报由控制面 setFailed 单点复活（同步触发，与失败收口同一调用栈完成）
 func (sess *execSession) commitAndFinish() comboResult {
 	if err := sess.commitStaged(); err != nil {
 		logger.Log.Errorf("[Download] 任务 %d 提交资源失败: %v", sess.taskId, err)
@@ -179,19 +185,20 @@ func (sess *execSession) commitAndFinish() comboResult {
 	return comboFinished
 }
 
-// commitStaged 提交点序列：替换软删（首步，腾空 rename 目标并登记回滚清单）→ 暂存 rename
-// 到最终路径（同卷原子；替换场景目标已无活文件——软删分流保证，已完成行移入 backup、
-// 未完成行废弃；非替换场景同键活行不存在——查重确认环保证）→ 单事务建 persistent_store 行
-// （必然完整，completed_at 即时置位+宽高/头指纹/哈希双列）+ resource_store 挂载 + Resource
-// Save（find-or-create）。rename 是 store/ 白名单内文件操作，download 为操作
-// 属主须登记抑制（rename 前登记、事务提交后统一 Release）——否则
-// rename→建行窗口内 fsmonitor 收 Create 事件查无 DB 行，落入误裁决。
-// 失败补偿=序列内逆操作（已 rename 轨逆 rename 回退暂存；软删受害者复活经 Fail 上报由
-// setFailed 单点同步触发；建行段由事务原子性兜底），同步完成不跨会话。序列不随执行 ctx
-// 中断——暂停/停止落进窗口时序列走完，不留半提交态
+// commitStaged 提交点序列：替换软删（首步，腾空落位目标并登记回滚清单）→ 登记入库意图
+// （每文件一行独立事务立即提交，撤回处置按轨声明）→ 落位（暂存同卷 rename 进最终路径，
+// store/ 白名单内文件操作，操作抑制由落位内置登记——rename→建行窗口内 fsmonitor 收 Create
+// 事件不落入外部变更误裁决）→ 业务事务内建 persistent_store 行 + 删登记行（同事务）+
+// resource_store 挂载 + Resource Save（find-or-create）→ 暂存目录回收。替换场景 rename 目标
+// 已无活文件——软删分流保证（已完成行移入 backup、未完成行废弃）；非替换场景同键活行不存在
+// ——查重确认环保证。
+// 失败补偿=按声明撤回（可续传轨退回暂存保住已下载字节、一次性轨删文件；建行段由事务原子性
+// 兜底）+ 软删受害者复活经 Fail 上报由 setFailed 单点同步触发，同步完成不跨会话；撤回失败的
+// 登记行保留，由启动恢复收口。序列不随执行 ctx 中断——暂停/停止落进窗口时序列走完，
+// 不留半提交态
 func (sess *execSession) commitStaged() error {
-	if sess.deps.StoreCommitter == nil {
-		return fmt.Errorf("提交点建行能力未注入")
+	if sess.deps.StoreIngestor == nil {
+		return fmt.Errorf("提交点入库事务能力未注入")
 	}
 	workDir := sess.deps.WorkDirProvider.GetWorkDir()
 
@@ -203,48 +210,36 @@ func (sess *execSession) commitStaged() error {
 		}
 	}
 
-	// 抑制键登记面：rename 前登记、序列结束（含补偿）后统一 Release（宽限期覆盖 fsnotify 延迟；
-	// 逆 rename 的 Remove 事件同样落在登记窗口内）
-	suppressed := make([]string, 0, len(sess.streams))
-	defer func() {
-		for _, key := range suppressed {
-			storeRegistry.Release(key)
-		}
-	}()
-
-	// 逐轨 rename：暂存（staging/，白名单外零登记）→ 最终路径（store/ 白名单内）
-	renamed := make([]*streamController, 0, len(sess.streams))
-	compensate := func() {
-		for i := len(renamed) - 1; i >= 0; i-- {
-			s := renamed[i]
-			finalAbs := filepath.Join(workDir, s.finalRel)
-			if rerr := os.Rename(finalAbs, s.stagingAbs); rerr != nil {
-				logger.Log.Errorf("[Download] 任务 %d 提交补偿回退暂存失败(final=%s): %v", sess.taskId, s.finalRel, rerr)
-			}
-		}
-	}
+	// 登记入库意图：崩溃后据此收口（文件已落位而行未建时按声明退回/丢弃）
+	items := make([]persistentStore.IngestItem, 0, len(sess.streams))
 	for _, s := range sess.streams {
 		s.closeWriter() // 防御：Windows 句柄未关会令 rename 失败（正常路径 finalize 已关）
-		finalAbs := filepath.Join(workDir, s.finalRel)
-		storeRegistry.Suppress(s.finalRel)
-		suppressed = append(suppressed, s.finalRel)
-		if err := os.MkdirAll(filepath.Dir(finalAbs), 0o755); err != nil {
-			compensate()
-			return fmt.Errorf("创建最终目录失败: %w", err)
+		stagingRel, serr := stagingRelPath(workDir, s.stagingAbs)
+		if serr != nil {
+			return serr
 		}
-		if err := os.Rename(s.stagingAbs, finalAbs); err != nil {
-			compensate()
-			return fmt.Errorf("暂存移入最终路径失败: %w", err)
-		}
-		renamed = append(renamed, s)
+		items = append(items, persistentStore.IngestItem{
+			FilePath:    s.finalRel,
+			StagingPath: stagingRel,
+			AbortAction: s.ingestAbortAction(),
+		})
+	}
+	intentIds, err := sess.deps.StoreIngestor.PrepareIngest(context.Background(), items)
+	if err != nil {
+		return fmt.Errorf("登记入库意图失败: %w", err)
 	}
 
-	// 单事务：建行 + 挂载 + Resource Save（事务内 repository 方法经 dbFromCtx
+	// 落位：暂存（staging/，白名单外零登记）→ 最终路径（store/ 白名单内）
+	if err := sess.deps.StoreIngestor.PlaceIngest(context.Background(), intentIds); err != nil {
+		return sess.abortIngested(intentIds, fmt.Errorf("暂存落位失败: %w", err))
+	}
+
+	// 业务事务：建行 + 删登记行 + 挂载 + Resource Save（事务内 repository 方法经 dbFromCtx
 	// 走事务连接，见 database 规则）
 	var resourceId int64
 	txErr := sess.deps.Transactor.ExecInTransaction(context.Background(), func(txCtx context.Context) error {
 		mounts := make([]pendingMount, 0, len(sess.streams))
-		for _, s := range sess.streams {
+		for i, s := range sess.streams {
 			expectedSha := sql.NullString{}
 			if s.expectedSha != "" {
 				expectedSha = sql.NullString{String: s.expectedSha, Valid: true}
@@ -253,7 +248,7 @@ func (sess *execSession) commitStaged() error {
 			if s.actualSha != "" {
 				actualSha = sql.NullString{String: s.actualSha, Valid: true}
 			}
-			storeId, err := sess.deps.StoreCommitter.CommitStore(txCtx, s.finalRel, s.finalName, expectedSha, actualSha)
+			storeId, err := sess.deps.StoreIngestor.CommitIngest(txCtx, intentIds[i], s.finalRel, s.finalName, expectedSha, actualSha)
 			if err != nil {
 				return fmt.Errorf("建 store 行失败(%s): %w", s.finalRel, err)
 			}
@@ -269,19 +264,49 @@ func (sess *execSession) commitStaged() error {
 		return nil
 	})
 	if txErr != nil {
-		// 建行段由事务原子性兜底（行全回滚）；文件段逆 rename 回退暂存（暂存保留，
-		// 恢复/重试可续传或重下）
-		compensate()
-		return txErr
+		// 建行段由事务原子性兜底（行全回滚，登记行删除一并撤销）；文件段按声明撤回
+		return sess.abortIngested(intentIds, txErr)
 	}
 	sess.currentResourceId = resourceId
 
-	// 暂存目录收尾：全部轨道已 rename 消费，目录（含未被认领的残留文件）一并回收
+	// 暂存目录收尾：全部轨道已落位消费，目录（含未被认领的残留文件）一并回收
 	stagingDir := sess.deps.StagingPaths.StagingPath(workDir, sess.taskId)
 	if err := os.RemoveAll(stagingDir); err != nil {
 		logger.Log.Warnf("[Download] 任务 %d 清理暂存目录失败: %v", sess.taskId, err)
 	}
 	return nil
+}
+
+// ingestAbortAction 撤回处置声明（唯一判据=该轨的可续传标记，插件声明、derived 恒不可续传）：
+// 可续传轨退回暂存后恢复会话可经插件 Resume 认领直达提交点（保住已下载字节），derived 等
+// 一次性轨与插件未声明可续传的轨恢复时整轨重产并截断旧暂存前缀，退回无收益
+func (s *streamController) ingestAbortAction() entity.IngestAbortAction {
+	if s.continuable {
+		return entity.AbortActionReturnToStaging
+	}
+	return entity.AbortActionDiscard
+}
+
+// stagingRelPath 暂存文件的 workDir 相对路径（relPath 域，正斜杠）：暂存绝对路径由
+// EnsureStagingScope 以 workDir 为基派生，此处按前缀剥离还原相对形（跨模块收参边界
+// ToSlash 规范化一次），前缀不匹配（路径派生异常）显式报错不兜底
+func stagingRelPath(workDir, stagingAbs string) (string, error) {
+	absSlash := filepath.ToSlash(stagingAbs)
+	rootSlash := strings.TrimSuffix(filepath.ToSlash(workDir), "/")
+	if workDir == "" || !strings.HasPrefix(absSlash, rootSlash+"/") {
+		return "", fmt.Errorf("暂存路径未落在工作目录下(%s)", stagingAbs)
+	}
+	return strings.TrimPrefix(absSlash, rootSlash+"/"), nil
+}
+
+// abortIngested 提交点失败撤回：按各行登记时声明的处置把已落位文件撤出最终路径（可续传轨
+// 退回暂存、一次性轨删文件）并收口登记行，幂等；撤回自身失败仅记日志——失败行登记行保留，
+// 由启动恢复收口，触发撤回的失败原因照常上抛
+func (sess *execSession) abortIngested(intentIds []int64, cause error) error {
+	if err := sess.deps.StoreIngestor.AbortIngest(context.Background(), intentIds); err != nil {
+		logger.Log.Errorf("[Download] 任务 %d 撤回入库失败（登记行保留，启动恢复收口）: %v", sess.taskId, err)
+	}
+	return cause
 }
 
 // pendingMount saveResource 挂载单个 store 的中间结构

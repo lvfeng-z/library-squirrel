@@ -140,6 +140,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Resource{},
 		&entity2.ResourceStore{},
 		entity2.NewPersistentStore(),
+		// 入库登记表（persistent_store 自有账本，无外键、无软删列，纯 AutoMigrate 建表即可）
+		entity2.NewStoreIngestJournal(),
 		entity2.NewFsmonitorCursor(),
 
 		// 关联表(有外键依赖)

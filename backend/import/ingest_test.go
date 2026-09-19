@@ -57,6 +57,27 @@ func newTestSetup(t *testing.T) (ManifestIngestor, *gorm.DB, *persistentStore.Se
 	return ing, db, psService, workDir
 }
 
+// zipStagingFor 测试用 zip 解包暂存层（真实 ZipUnpackStaging，库根指向测试临时目录）。
+func zipStagingFor(workDir string) IngestStaging {
+	return NewZipUnpackStaging(func() string { return workDir })
+}
+
+// assertNoImportScopeResidual 断言 zip 解包暂存属主根下无残留作用域（属主根目录自身可留空壳——
+// 作用域回收只删作用域目录，根目录归暂存域布局）。
+func assertNoImportScopeResidual(t *testing.T, workDir string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(workDir, "staging", "import"))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("读取解包暂存属主根失败: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("解包暂存属主根应无残留作用域，实际 %d 项", len(entries))
+	}
+}
+
 // newTestDB 建内存库（migration.OpenTestDB 全量迁移 + 外键强制）+ 预置全量注册站点行与
 // 同名本地标签（模拟启动期注册表投影后的库态——站点导入为 find-only，站点行须已在），
 // 并建临时工作目录。
@@ -235,7 +256,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	ctx := context.Background()
 	manifest, files := buildFixture()
 
-	r1, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil)
+	r1, err := ing.Ingest(ctx, manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if err != nil {
 		t.Fatalf("首次导入失败: %v", err)
 	}
@@ -378,6 +399,14 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 		if got := queryInt64(t, db, "SELECT completed_at FROM persistent_store WHERE id = ?", psID); got <= 0 {
 			t.Fatalf("persistent_store 未落完成态 %s", rel)
 		}
+		// sha 双列随行落库：期望=manifest 声明、实测=解包流边读边算（两列一致即校验链承接在位）
+		wantSha := sha256Hex(files[key])
+		if got := queryString(t, db, "SELECT expected_sha256 FROM persistent_store WHERE id = ?", psID); got != wantSha {
+			t.Fatalf("persistent_store 期望 sha 未随声明落列 %s: %q", rel, got)
+		}
+		if got := queryString(t, db, "SELECT actual_sha256 FROM persistent_store WHERE id = ?", psID); got != wantSha {
+			t.Fatalf("persistent_store 实测 sha 未随解包落列 %s: %q", rel, got)
+		}
 	}
 	psPic := queryInt64(t, db, "SELECT id FROM persistent_store WHERE file_path = 'store/resource/作者甲/pic.jpg'")
 	// resource_store：image 挂载指向重映射后的 persistent_store 行
@@ -403,7 +432,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 
 	// ===== ③ 幂等：重复导入不重复建 =====
 	assertRowCounts(t, db, "首次导入后")
-	r2, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil)
+	r2, err := ing.Ingest(ctx, manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if err != nil {
 		t.Fatalf("二次导入失败: %v", err)
 	}
@@ -422,10 +451,10 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 
 // TestIngestSchemaVersionRejected 版本锚不匹配的产物拒绝导入（契约破坏性变更防护）。
 func TestIngestSchemaVersionRejected(t *testing.T) {
-	ing, _, _, _ := newTestSetup(t)
+	ing, _, _, workDir := newTestSetup(t)
 	manifest, files := buildFixture()
 	manifest.SchemaVersion = export.SchemaVersion + 1
-	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrSchemaVersionUnsupported) {
 		t.Fatalf("应拒绝不支持的版本，实际 err=%v", err)
 	}
@@ -434,10 +463,10 @@ func TestIngestSchemaVersionRejected(t *testing.T) {
 // TestManifestSchemaVersionGate 版本门锚：v1 旧 manifest（SiteRecord 尚无 siteKey 的契约代）被
 // 版本门严格拒绝（!= 当前版本即拒），不落任何数据。
 func TestManifestSchemaVersionGate(t *testing.T) {
-	ing, db, _, _ := newTestSetup(t)
+	ing, db, _, workDir := newTestSetup(t)
 	manifest, files := buildFixture()
 	manifest.SchemaVersion = 1
-	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrSchemaVersionUnsupported) {
 		t.Fatalf("旧版本 manifest 应被版本门拒绝，实际 err=%v", err)
 	}
@@ -449,14 +478,14 @@ func TestManifestSchemaVersionGate(t *testing.T) {
 // TestIngestSiteKeyFindOnly 站点按键 find-only：本库已有同键站点行时复用（展示名不被
 // manifest 覆盖）；注册键的本库站点行缺失（启动投影下属数据库异常）显式报错，不静默自建。
 func TestIngestSiteKeyFindOnly(t *testing.T) {
-	ing, db, _, _ := newTestSetup(t)
+	ing, db, _, workDir := newTestSetup(t)
 	ctx := context.Background()
 
 	// 复用分支：本库预置 Local 键行（展示名与 manifest 声明不同），导入复用该行
 	manifest, files := buildFixture()
 	manifest.Sites[0].SiteKey = identity.Local.Key
 	manifest.Sites[0].SiteName = strPtr("本地站-改名后")
-	if _, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil); err != nil {
+	if _, err := ing.Ingest(ctx, manifest, mapFileSource(files), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("导入失败: %v", err)
 	}
 	if got := queryString(t, db, "SELECT site_name FROM site WHERE site_key = ?", identity.Local.Key); got != "seed-site" {
@@ -474,7 +503,7 @@ func TestIngestSiteKeyFindOnly(t *testing.T) {
 	manifest2, files2 := buildFixture()
 	manifest2.Works[0].SiteWorkID = strPtr("w-2")
 	manifest2.WorkSets = nil
-	_, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), nil)
+	_, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrSiteRowMissing) {
 		t.Fatalf("注册键的本库站点行缺失应报错，实际 err=%v", err)
 	}
@@ -492,10 +521,10 @@ func TestIngestSiteKeyFindOnly(t *testing.T) {
 func TestIngestUnregisteredKeyFails(t *testing.T) {
 	for name, key := range map[string]string{"未注册键": "s0000notreg01", "空键": ""} {
 		t.Run(name, func(t *testing.T) {
-			ing, db, _, _ := newTestSetup(t)
+			ing, db, _, workDir := newTestSetup(t)
 			manifest, files := buildFixture()
 			manifest.Sites[0].SiteKey = key
-			_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+			_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 			if !errors.Is(err, ErrUnregisteredSiteKey) {
 				t.Fatalf("未注册键应整体拒绝导入，实际 err=%v", err)
 			}
@@ -509,12 +538,14 @@ func TestIngestUnregisteredKeyFails(t *testing.T) {
 	}
 }
 
-// TestIngestChecksumMismatch 校验失败时报错并补偿清理（不留半成品文件）。
+// TestIngestChecksumMismatch 校验失败时报错并补偿清理（不留半成品文件与登记行残余）：
+// 篡改包内文件（实测 sha ≠ manifest 声明）在解包相位即失败，文件不入库、不落最终路径、
+// 入库登记行零残留、解包暂存作用域回收。
 func TestIngestChecksumMismatch(t *testing.T) {
 	ing, db, _, workDir := newTestSetup(t)
 	manifest, files := buildFixture()
 	files["works/作品一/pic.jpg"] = "tampered-content"
-	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), nil)
+	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrChecksumMismatch) {
 		t.Fatalf("应报校验失败，实际 err=%v", err)
 	}
@@ -522,25 +553,35 @@ func TestIngestChecksumMismatch(t *testing.T) {
 		t.Fatalf("校验失败不应入库作品，实际 %d 行", got)
 	}
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM persistent_store"); got != 0 {
-		t.Fatalf("校验失败应补偿清理文件记录，实际 %d 行", got)
+		t.Fatalf("校验失败不应建文件记录，实际 %d 行", got)
+	}
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM store_ingest_journal"); got != 0 {
+		t.Fatalf("校验失败登记行应零残留，实际 %d 行", got)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, "store/resource/作者甲/pic.jpg")); !os.IsNotExist(err) {
-		t.Fatalf("校验失败应补偿清理半成品文件")
+		t.Fatalf("校验失败文件不得落最终路径")
 	}
+	assertNoImportScopeResidual(t, workDir)
 }
 
 // TestIngestPathCollisionVariant 目标路径被既有记录占用时派生变体路径，
-// 不改写既有作品文件（对persistentStore.Store 同路径覆盖语义的规避）。
+// 不改写既有作品文件（落位/建行对同路径既有行是覆盖语义，导入须消解规避）。
 func TestIngestPathCollisionVariant(t *testing.T) {
 	ing, db, psService, workDir := newTestSetup(t)
 	ctx := context.Background()
-	// 预占目标路径：既有记录 + 既有文件内容
-	if _, err := psService.Store(ctx, "store/resource/作者甲/pic.jpg", "pic.jpg",
-		strings.NewReader("existing-work-file")); err != nil {
+	// 预占目标路径：既有文件（先落盘）+ 既有活行记录（建行按提交点口径）
+	occupied := filepath.Join(workDir, "store/resource/作者甲/pic.jpg")
+	if err := os.MkdirAll(filepath.Dir(occupied), 0o755); err != nil {
+		t.Fatalf("建预占目录失败: %v", err)
+	}
+	if err := os.WriteFile(occupied, []byte("existing-work-file"), 0o644); err != nil {
+		t.Fatalf("写预占文件失败: %v", err)
+	}
+	if _, err := psService.CommitStore(ctx, "store/resource/作者甲/pic.jpg", "pic.jpg", sql.NullString{}, sql.NullString{}); err != nil {
 		t.Fatalf("预置占用记录失败: %v", err)
 	}
 	manifest, files := buildFixture()
-	r1, err := ing.Ingest(ctx, manifest, mapFileSource(files), nil)
+	r1, err := ing.Ingest(ctx, manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if err != nil {
 		t.Fatalf("导入失败: %v", err)
 	}
@@ -581,7 +622,8 @@ func TestHandlerImportFromZip(t *testing.T) {
 	zipPath := writeZip(t, entries)
 
 	handler := NewHandler(NewIngestor(duplicate.NewRepository(db), NewRepository(db), &testTransactor{db: db},
-		persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })))
+		persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })),
+		func() string { return workDir })
 	resp := handler.ImportFromZip(context.Background(), zipPath)
 	if !resp.Success {
 		t.Fatalf("ZIP 导入失败: %s", resp.Msg)
@@ -724,7 +766,7 @@ func TestIngestReplaceWorks(t *testing.T) {
 	ing, db, _, workDir := newTestSetup(t)
 	ctx := context.Background()
 	baseManifest, baseFiles := buildFixture()
-	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), nil); err != nil {
+	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("首次导入失败: %v", err)
 	}
 	workID := queryInt64(t, db, "SELECT id FROM work WHERE site_work_id = 'w-1'")
@@ -735,7 +777,7 @@ func TestIngestReplaceWorks(t *testing.T) {
 	softDeleteWorkStores(t, db, workID, "image")
 
 	repManifest, repFiles := buildReplaceFixture()
-	r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), &IngestOptions{
+	r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), zipStagingFor(workDir), &IngestOptions{
 		ReplaceWorks: map[int64]struct{}{701: {}},
 	})
 	if err != nil {
@@ -828,17 +870,17 @@ func TestIngestReplaceWorks(t *testing.T) {
 // TestIngestReplaceAutoMerge 零交集自动增补：AutoMergeWorks 命中作品走替换分支，计数按
 // 「自动增补」拆分（ReplacedConfirmed=0 / ReplacedAuto=1）。
 func TestIngestReplaceAutoMerge(t *testing.T) {
-	ing, db, _, _ := newTestSetup(t)
+	ing, db, _, workDir := newTestSetup(t)
 	ctx := context.Background()
 	baseManifest, baseFiles := buildFixture()
-	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), nil); err != nil {
+	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("首次导入失败: %v", err)
 	}
 	workID := queryInt64(t, db, "SELECT id FROM work WHERE site_work_id = 'w-1'")
 	softDeleteWorkStores(t, db, workID, "image")
 
 	repManifest, repFiles := buildReplaceFixture()
-	r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), &IngestOptions{
+	r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), zipStagingFor(workDir), &IngestOptions{
 		AutoMergeWorks: map[int64]struct{}{701: {}},
 	})
 	if err != nil {
@@ -855,10 +897,10 @@ func TestIngestReplaceAutoMerge(t *testing.T) {
 // TestIngestReplaceNilOptsSkips nil opts 行为等价旧签名：替换 manifest 不带 opts（nil 或空
 // 选项）时命中作品维持现状全跳过语义——文件/记录/关联一概不动。
 func TestIngestReplaceNilOptsSkips(t *testing.T) {
-	ing, db, _, _ := newTestSetup(t)
+	ing, db, _, workDir := newTestSetup(t)
 	ctx := context.Background()
 	baseManifest, baseFiles := buildFixture()
-	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), nil); err != nil {
+	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("首次导入失败: %v", err)
 	}
 	workID := queryInt64(t, db, "SELECT id FROM work WHERE site_work_id = 'w-1'")
@@ -869,7 +911,7 @@ func TestIngestReplaceNilOptsSkips(t *testing.T) {
 		if label == "empty" {
 			opts = &IngestOptions{}
 		}
-		r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), opts)
+		r, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), zipStagingFor(workDir), opts)
 		if err != nil {
 			t.Fatalf("[%s] 无替换选项导入失败: %v", label, err)
 		}
@@ -902,17 +944,18 @@ func (r *failCreateResourcesRepo) CreateResources(ctx context.Context, rows []*e
 	return r.Repository.CreateResources(ctx, rows)
 }
 
-// TestIngestReplaceTransactionRollback 替换分支相位三单事务失败 → 事务回滚不动库：
-// 元数据未覆盖、空壳未净化、新资源未挂、新增标签关联未落、相位二落盘文件补偿清理。
+// TestIngestReplaceTransactionRollback 替换分支业务事务失败 → 事务回滚不动库：
+// 元数据未覆盖、空壳未净化、新资源未挂、新增标签关联未落、已落位文件按丢弃声明撤回、
+// 入库登记行零残留。
 func TestIngestReplaceTransactionRollback(t *testing.T) {
 	db, workDir := newTestDB(t)
 	ctx := context.Background()
 	psService := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	wrapped := &failCreateResourcesRepo{Repository: NewRepository(db)}
-	ing := &ingestor{repo: wrapped, dupRepo: duplicate.NewRepository(db), transactor: &testTransactor{db: db}, fileStore: psService}
+	ing := NewIngestor(duplicate.NewRepository(db), wrapped, &testTransactor{db: db}, psService)
 
 	baseManifest, baseFiles := buildFixture()
-	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), nil); err != nil {
+	if _, err := ing.Ingest(ctx, baseManifest, mapFileSource(baseFiles), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("首次导入失败: %v", err)
 	}
 	workID := queryInt64(t, db, "SELECT id FROM work WHERE site_work_id = 'w-1'")
@@ -920,7 +963,7 @@ func TestIngestReplaceTransactionRollback(t *testing.T) {
 
 	repManifest, repFiles := buildReplaceFixture()
 	wrapped.fail = true
-	if _, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), &IngestOptions{
+	if _, err := ing.Ingest(ctx, repManifest, mapFileSource(repFiles), zipStagingFor(workDir), &IngestOptions{
 		ReplaceWorks: map[int64]struct{}{701: {}},
 	}); err == nil {
 		t.Fatalf("注入失败后替换导入应报错")
@@ -943,7 +986,7 @@ func TestIngestReplaceTransactionRollback(t *testing.T) {
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM re_work_tag WHERE work_id = ?", workID); got != 2 {
 		t.Fatalf("事务失败后标签关联应保持 2，实际 %d", got)
 	}
-	// 相位二落盘的新 persistent_store 行被补偿清理（work 资源下仅剩 2 行：旧 image 软删 + thumbnail 活行）
+	// 相位三业务事务内建的新 persistent_store 行随事务回滚（work 资源下仅剩 2 行：旧 image 软删 + thumbnail 活行）
 	if got := queryInt64(t, db, `
 		SELECT COUNT(*) FROM persistent_store ps
 		JOIN resource_store rs ON rs.store_id = ps.id
@@ -951,4 +994,71 @@ func TestIngestReplaceTransactionRollback(t *testing.T) {
 		WHERE r.work_id = ?`, workID); got != 2 {
 		t.Fatalf("事务失败后持久化 store 行应保持 2（软删 image + 活 thumbnail），实际 %d", got)
 	}
+	// 已落位文件按丢弃声明撤回（最终路径无文件）、入库登记行零残留
+	if _, err := os.Stat(filepath.Join(workDir, "store/resource/作者甲/pic.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("事务失败后已落位文件应按丢弃声明撤回")
+	}
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM store_ingest_journal"); got != 0 {
+		t.Fatalf("事务失败后入库登记行应零残留，实际 %d 行", got)
+	}
+	assertNoImportScopeResidual(t, workDir)
+}
+
+// TestZipUnpackStagingScopeLifecycle zip 解包暂存层生命周期：惰性建作用域（staging 能力包
+// 原子入口 + 自证描述在位）、条目按序号平铺互不覆盖、登记路径落 relPath 域正斜杠、Release
+// 回收作用域、撤回处置声明=丢弃。
+func TestZipUnpackStagingScopeLifecycle(t *testing.T) {
+	workDir := t.TempDir()
+	z := NewZipUnpackStaging(func() string { return workDir })
+
+	// 未解包任何条目前不建作用域
+	if _, err := os.Stat(filepath.Join(workDir, "staging", "import")); !os.IsNotExist(err) {
+		t.Fatalf("无条目时不应创建解包暂存作用域")
+	}
+
+	var firstRel string
+	for i, entry := range []string{"works/a/pic.jpg", "works/b/clip.mp4"} {
+		w, rel, err := z.Stage(context.Background(), entry)
+		if err != nil {
+			t.Fatalf("Stage %s 失败: %v", entry, err)
+		}
+		if _, err := w.Write([]byte("content")); err != nil {
+			t.Fatalf("写暂存失败: %v", err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("关闭暂存失败: %v", err)
+		}
+		if strings.ContainsRune(rel, '\\') || strings.HasPrefix(rel, "/") {
+			t.Fatalf("登记暂存路径应属 relPath 域正斜杠: %q", rel)
+		}
+		if !strings.HasPrefix(rel, "staging/import/") {
+			t.Fatalf("登记暂存路径应落在 import 属主根: %q", rel)
+		}
+		abs := filepath.Join(workDir, filepath.FromSlash(rel))
+		data, err := os.ReadFile(abs)
+		if err != nil || string(data) != "content" {
+			t.Fatalf("暂存文件内容不符: %q err=%v", string(data), err)
+		}
+		if i == 0 {
+			firstRel = rel
+		} else if rel == firstRel {
+			t.Fatalf("不同条目应落到不同暂存文件: %q", rel)
+		}
+	}
+	// 作用域自证描述在位（原子入口写好描述后才定名）
+	scopeDir := filepath.Dir(filepath.Join(workDir, filepath.FromSlash(firstRel)))
+	if _, err := os.Stat(filepath.Join(scopeDir, "scope.json")); err != nil {
+		t.Fatalf("作用域自证描述缺失: %v", err)
+	}
+	if z.AbortAction() != entity.AbortActionDiscard {
+		t.Fatalf("zip 解包轨撤回处置应为丢弃，实际 %s", z.AbortAction())
+	}
+
+	z.Release(context.Background())
+	if _, err := os.Stat(scopeDir); !os.IsNotExist(err) {
+		t.Fatalf("Release 后解包暂存作用域应回收")
+	}
+	assertNoImportScopeResidual(t, workDir)
+	// 未建作用域的实例 Release 为空操作（不报错）
+	NewZipUnpackStaging(func() string { return workDir }).Release(context.Background())
 }

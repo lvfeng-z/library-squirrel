@@ -135,7 +135,7 @@ type fakeIngestor struct {
 	result *importer.ImportResult
 }
 
-func (f *fakeIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource importer.FileSource, opts *importer.IngestOptions) (*importer.ImportResult, error) {
+func (f *fakeIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource importer.FileSource, staging importer.IngestStaging, opts *importer.IngestOptions) (*importer.ImportResult, error) {
 	f.mu.Lock()
 	if f.ingestErr != nil {
 		err := f.ingestErr
@@ -2025,4 +2025,30 @@ func TestShareManifestSchemaVersionGate(t *testing.T) {
 		assert.False(t, finished, "版本拒绝不应成功终态")
 		assert.Contains(t, failed, "共享 manifest 版本不支持")
 	})
+}
+
+// TestReceiveStagingLayer 收件暂存轨导入暂存层：登记暂存路径=收件作用域内条目镜像路径
+// （relPath 域正斜杠）、不提供写入句柄（内容已在作用域）、撤回处置声明=退回暂存（收件文件
+// 按暂存大小偏移续传，字节保留即免重拉）、Release 不回收作用域（生命周期归任务）。
+func TestReceiveStagingLayer(t *testing.T) {
+	workDir := t.TempDir()
+	stagingDir, err := task.EnsureReceiveScope(context.Background(), workDir, 777)
+	require.NoError(t, err)
+	s := receiveStaging{workDir: workDir, staging: stagingDir}
+
+	for _, entry := range []string{"works/作品一/pic.jpg", "a/b/c.bin"} {
+		writer, rel, err := s.Stage(context.Background(), entry)
+		require.NoError(t, err, entry)
+		assert.Nil(t, writer, "内容已在收件作用域，不应提供写入句柄: %s", entry)
+		assert.Equal(t, "staging/share-receive/777/"+entry, rel, entry)
+	}
+	assert.Equal(t, entity.AbortActionReturnToStaging, s.AbortAction())
+
+	s.Release(context.Background())
+	assert.DirExists(t, stagingDir, "Release 不应回收收件作用域（生命周期归任务）")
+
+	// 作用域路径不在库根下（路径派生异常）显式报错不兜底
+	if _, _, err := (receiveStaging{workDir: workDir, staging: t.TempDir()}).Stage(context.Background(), "x.jpg"); err == nil {
+		t.Fatal("作用域未落在库根下应报错")
+	}
 }

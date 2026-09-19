@@ -201,8 +201,8 @@ func TestIngestLinkSourceRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("反序列化失败: %v", err)
 	}
-	ingA, dbA, _, _ := newTestSetup(t)
-	if _, err := ingA.Ingest(ctx, newM, mapFileSource(nil), nil); err != nil {
+	ingA, dbA, _, workDirA := newTestSetup(t)
+	if _, err := ingA.Ingest(ctx, newM, mapFileSource(nil), zipStagingFor(workDirA), nil); err != nil {
 		t.Fatalf("新包回灌失败: %v", err)
 	}
 	assertAllLinkSource(t, dbA, constant.MANUAL)
@@ -218,14 +218,14 @@ func TestIngestLinkSourceRoundTrip(t *testing.T) {
 			t.Fatalf("旧包反序列化标签关联 source=%d，期望零值 PLUGIN", l.Source)
 		}
 	}
-	ingB, dbB, _, _ := newTestSetup(t)
-	if _, err := ingB.Ingest(ctx, oldM, mapFileSource(nil), nil); err != nil {
+	ingB, dbB, _, workDirB := newTestSetup(t)
+	if _, err := ingB.Ingest(ctx, oldM, mapFileSource(nil), zipStagingFor(workDirB), nil); err != nil {
 		t.Fatalf("旧包回灌失败: %v", err)
 	}
 	assertAllLinkSource(t, dbB, constant.PLUGIN)
 
 	// ===== ④ 冲突不翻转：同作品替换式再回灌携带 MANUAL 的新包，既有行不翻转、不重复建行 =====
-	if _, err := ingB.Ingest(ctx, newM, mapFileSource(nil), &IngestOptions{ReplaceWorks: map[int64]struct{}{f.workID: {}}}); err != nil {
+	if _, err := ingB.Ingest(ctx, newM, mapFileSource(nil), zipStagingFor(workDirB), &IngestOptions{ReplaceWorks: map[int64]struct{}{f.workID: {}}}); err != nil {
 		t.Fatalf("替换回灌失败: %v", err)
 	}
 	assertAllLinkSource(t, dbB, constant.PLUGIN)

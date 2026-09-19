@@ -63,7 +63,7 @@ func TestPrefixMatch(t *testing.T) {
 	}
 }
 
-// TestDescendantMatch 登记文件命中其祖先目录查询（文件登记覆盖父目录 Create 事件，如 StoreStream 的 MkdirAll）
+// TestDescendantMatch 登记文件命中其祖先目录查询（文件登记覆盖父目录 Create 事件，如落位方 MkdirAll 建最终目录）
 func TestDescendantMatch(t *testing.T) {
 	clearSuppress()
 	Suppress("store/resource/作者/x.jpg")

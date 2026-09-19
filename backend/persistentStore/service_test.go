@@ -2,7 +2,6 @@ package persistentStore
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/library-squirrel/backend/settings"
@@ -10,7 +9,7 @@ import (
 
 // TestServiceEntriesRefuseUnconfiguredWorkDir 工作目录未配置（GetWorkDir 空串）时，
 // 各触碰库根文件系统的服务层入口一律返回 ErrWorkDirNotConfigured（判定先于仓储与磁盘访问，
-// 故 nil 仓储不可达）
+// 故 nil 仓储不可达）；入库事务 API 的同款守卫见 ingest_tx_test.go
 func TestServiceEntriesRefuseUnconfiguredWorkDir(t *testing.T) {
 	s := NewService(nil, nil, func() string { return "" })
 	ctx := t.Context()
@@ -22,13 +21,7 @@ func TestServiceEntriesRefuseUnconfiguredWorkDir(t *testing.T) {
 		}
 	}
 
-	_, err := s.Store(ctx, "store/resource/a/1.jpg", "1.jpg", strings.NewReader("x"))
-	assertRefused("Store", err)
-
-	_, err = s.StoreFromExternal(ctx, "C:/tmp/src.jpg", "store/resource/a/1.jpg", "1.jpg")
-	assertRefused("StoreFromExternal", err)
-
-	_, err = s.HardDelete(ctx, 1, false)
+	_, err := s.HardDelete(ctx, 1, false)
 	assertRefused("HardDelete", err)
 
 	_, err = s.DeleteWithBackup(ctx, 1)

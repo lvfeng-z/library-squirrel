@@ -15,13 +15,48 @@ import (
 // PersistentStoreRepository 文件持久存储仓储实现
 type PersistentStoreRepository struct {
 	*database.BaseRepository[domain.PersistentStore]
+	// journalRepo 入库登记表仓储（store_ingest_journal——persistent_store 自有账本，
+	// 与 store 行同库，经独立泛型仓储实例获得 BaseRepository 全套能力）
+	journalRepo *database.BaseRepository[domain.StoreIngestJournal]
 }
 
 // NewRepository 创建文件持久存储仓储
 func NewRepository(db *gorm.DB) *PersistentStoreRepository {
 	return &PersistentStoreRepository{
 		BaseRepository: database.NewBaseRepository[domain.PersistentStore](db),
+		journalRepo:    database.NewBaseRepository[domain.StoreIngestJournal](db),
 	}
+}
+
+// CreateIngestJournals 批量登记入库意图（每文件一行；单条 INSERT 语句随语句提交——
+// 登记独立于调用方后续的业务事务，进程在任何时点崩溃后启动恢复都能凭登记行收口）。
+// ID 经切片指针回填
+func (r *PersistentStoreRepository) CreateIngestJournals(ctx context.Context, rows []*domain.StoreIngestJournal) error {
+	return r.journalRepo.CreateBatch(ctx, rows)
+}
+
+// ListIngestJournals 全量列出登记行（启动恢复逐行收口）
+func (r *PersistentStoreRepository) ListIngestJournals(ctx context.Context) ([]*domain.StoreIngestJournal, error) {
+	return r.journalRepo.List(ctx, &database.QueryOption{})
+}
+
+// ListIngestJournalsByIds 按 ID 批量查登记行（落位与撤回取回登记内容）
+func (r *PersistentStoreRepository) ListIngestJournalsByIds(ctx context.Context, ids []int64) ([]*domain.StoreIngestJournal, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return r.journalRepo.List(ctx, &database.QueryOption{
+		Conditions: []clause.Expression{
+			clause.IN{Column: "id", Values: util.ToAnySlice(ids)},
+		},
+	})
+}
+
+// DeleteIngestJournalsByIds 批量物理删登记行（表无软删列，DELETE 即物理删；登记行生命
+// 周期止于提交/撤回/恢复的收口）。dbFromCtx 模式：CommitIngest 在调用方事务内删行，
+// 与建 persistent_store 行同事务
+func (r *PersistentStoreRepository) DeleteIngestJournalsByIds(ctx context.Context, ids []int64) error {
+	return r.journalRepo.DeleteBatch(ctx, ids)
 }
 
 // GetByFilePath 根据文件路径获取记录

@@ -360,11 +360,11 @@ func TestStartDownloadInterruptRegistersNoRollback(t *testing.T) {
 	deps := &Deps{
 		SiteKeyResolver:     &fakeSiteKeyResolver{keys: map[int64]string{1: "test-site"}},
 		WorkDirProvider:     stubWorkDirProvider{dir: env.workDir},
-		Transactor:          stubTransactor{},
+		Transactor:          stubTransactor{ingestor: env.streamer},
 		ResourceReader:      &stubResourceReader{},
 		ResourceSaver:       &stubResourceSaver{},
 		ResourceUpdater:     &stubResourceSaver{},
-		StoreCommitter:      env.streamer,
+		StoreIngestor:       env.streamer,
 		ResourceStoreWriter: env.assocWrite,
 		StagingPaths:        stubStagingPaths{},
 	}

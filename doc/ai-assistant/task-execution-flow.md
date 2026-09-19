@@ -416,46 +416,30 @@ BaseRepository.getDb(ctx)
 
 ## 补偿机制
 
-### 备份还原（StoreBackupOrchestrator）
+### 替换链软删与失败回滚（resource.ReplacementService）
 
-**触发时机**：替换场景（步骤 0.1 等价位置），用户确认替换后在第二次 `run()` 中执行。
+**触发时机**：含资源板块的组合在已有作品上重执行即替换——软删所选板块旧 store 坍缩到提交窗口（全部暂存写满、提交开始才触碰旧 store），由 download 提交点首步执行；下载窗口零软删零登记（失败/暂停/停止于下载时旧 store 一动不动）。
 
-统一用 `BackupStores(ctx, workId, types...)` 按类型备份（板块隔离：各板块只备份/操作自身 Store）：
+替换链能力统一经 `ReplaceStoreOps` 能力接口（定义见 `backend/resource/replacement.go`）：
 
-| 调用方 | 备份范围 | 说明 |
-|--------|---------|------|
-| 含资源板块的组合 替换 | `BackupStores(workId, storeRoles...)` 仅所选板块角色 | 空交集放行/确认替换后重执行时备份将被覆盖的旧 store |
+| 调用方 | 动作 | 说明 |
+|--------|------|------|
+| download 提交点首步 / share 确认替换 / 策略任务 | `SoftDeleteWorkStoreRoles(workId, roles)` | 软删作品下指定角色集合的活行 store：已完成行经 persistentStore `DeleteWithBackup` 移文件入 `workdir/backup/YYYY/MM/DD/` 建保管清单行 + 行内写 backup_id + 记录软删（随回收站文件条目可复原置换回滚）；未完成行废弃文件软删（partial 无复原价值）；返回受害者清单供回滚登记 |
 
-> 历史 `BackupAllStores`（一次性全量）与单类型 `StoreTypeWork`/`StoreTypeThumbnail` 拆分备份均已删除：替换备份统一按 `runMode.storeRoles` 展开为类型集合，缩略图作为普通 role 随所选板块参与备份（无独立链路）。
-
-**BackupStores 流程**：
+**失败回滚流程**（任务失败终态由控制面 `setFailed` 单点按登记清单同步触发）：
 
 ```
-BackupStores(ctx, workId, types...)        // types 决定只处理哪些 StoreType
-  → 查询 workId 下所有 enabled 的 Resource
-  → 对每个 Resource 的每个匹配 types 的 Store（所选 store_type 集合内的角色）：
-      storeDeleter.Delete(ctx, storeId, backup=true)
-        → 物理文件移动到 workdir/backup/YYYY/MM/DD/
-        → 创建 Backup DB 记录（保存原始路径元数据）
-        → 删除 PersistentStore DB 记录
-  → 返回 []*StoreBackupItem（记录 ResourceID、BackupID、StoreType）
+RestoreReplacedStores(ctx, scope)
+  → 物理丢弃替换执行期新建的 store 行（行+文件+关联，释放旧代 file_path）
+  → 对每个有备份 victim：
+      1. 获取 Backup 清单行 → 拼接 {workdir}/{filePath}
+      2. RestoreFile → 移动备份文件回 store/ 原路径
+  3. 批量复活软删行（清软删标志与 backup_id 双列——引用未清时删清单行会撞外键）
+  4. 清理已还原的备份清单行
+  5. 重算 victim 所属资源完整度
 ```
 
-**RestoreAllStores 流程**：
-
-```
-RestoreAllStores(ctx, items)                     // 使用 context.Background()
-  → 跳过 BackupID <= 0 的条目（已直接删除，无法恢复）
-  → 对每个可恢复条目：
-      1. 获取 Backup 记录 → 读取 OriginalFilePath、OriginalFileName
-      2. storeImporter.StoreFromExternal → 移动备份文件回原路径 + 创建新 PersistentStore 记录
-      3. 更新 resource_store 关联(同 role 指向新 store ID)
-      4. 删除 Backup DB 记录
-```
-
-还原触发：`run()` 的 defer（含资源板块的组合终态 Failed 时还原备份项）。备份/还原各管自身调用方传入的 Store 备份项。
-
-**降级处理**：如果备份过程中某个 Store 备份失败，`BackupID` 为 0。还原时跳过此类条目，该 Store 文件永久丢失，Resource 对应字段保持 null。
+成功终态（Finish）清回滚登记，软删行进入被替换终态（由回收站 TTL 或复原链处置）。
 
 ### 事务失败文件清理
 

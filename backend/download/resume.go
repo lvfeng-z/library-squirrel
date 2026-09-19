@@ -25,7 +25,7 @@ func (sess *execSession) stagingHasFiles() bool {
 	if workDir == "" {
 		return false
 	}
-	entries, err := enumerateStaging(sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
+	entries, err := enumerateStaging(sess.taskId, sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
 	if err != nil {
 		logger.Log.Warnf("[Download] 任务 %d 枚举暂存目录失败: %v", sess.taskId, err)
 		return false
@@ -52,8 +52,9 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 		return comboFinished
 	}
 
-	// 1. 枚举暂存轨道（role_seq 键文件 + 已落盘字节数=续传锚）
-	entries, err := enumerateStaging(sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
+	// 1. 枚举暂存轨道（role_seq 键文件 + 已落盘字节数=续传锚，文件名扩展名段=轨级实际
+	// 扩展名的唯一载体）
+	entries, err := enumerateStaging(sess.taskId, sess.deps.StagingPaths.StagingPath(workDir, sess.taskId))
 	if err != nil {
 		logger.Log.Errorf("[Download] 任务 %d 枚举暂存目录失败: %v", sess.taskId, err)
 		sess.failTerminal(fmt.Sprintf("枚举下载暂存失败: %v", err))
@@ -202,7 +203,10 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 // pairResumeSpecs Resume 认领配对：返回 spec 按角色消费暂存轨队列的 (role,seq) 全局序，
 // 未被认领的暂存轨按序返回（供重产）。同 role 多轨按暂存枚举序与 spec 返回序对齐
 // （依赖插件按下发顺序返回 specs 的契约）；某 role 的 spec 数超出暂存轨数时按该 role
-// 现有最大序递增分配（插件在恢复轮新增轨道的场景，首个新轨从 0 起）
+// 现有最大序递增分配（插件在恢复轮新增轨道的场景，首个新轨从 0 起）。
+// 认领轨的扩展名以暂存文件名所载的创建期声明为准——恢复轮当次响应的 Format 不复现创建期
+// 声明（如 416 转译空 Header 得空值），按当次响应派生暂存名会脱离磁盘上的既有文件；未经
+// 认领的 spec（新增轨）保持当次声明（创建行为，声明本来就是新的）
 func pairResumeSpecs(entries []stagingEntry, specs []*sdkdto.StoreSpec) (map[*sdkdto.StoreSpec]int, []stagingEntry) {
 	queues, maxSeq := stagingRoleQueues(entries)
 	claimed := make(map[storeIdentity]struct{}, len(specs))
@@ -212,10 +216,11 @@ func pairResumeSpecs(entries []stagingEntry, specs []*sdkdto.StoreSpec) (map[*sd
 			continue
 		}
 		if q := queues[spec.Role]; len(q) > 0 {
-			seq := q[0]
+			ent := q[0]
 			queues[spec.Role] = q[1:]
-			out[spec] = seq
-			claimed[storeIdentity{role: spec.Role, seq: seq}] = struct{}{}
+			out[spec] = ent.seq
+			spec.Format = ent.ext
+			claimed[storeIdentity{role: spec.Role, seq: ent.seq}] = struct{}{}
 		} else {
 			out[spec] = nextSeqBeyond(maxSeq, spec.Role)
 		}
@@ -230,7 +235,8 @@ func pairResumeSpecs(entries []stagingEntry, specs []*sdkdto.StoreSpec) (map[*sd
 }
 
 // pairRegenSpecs 重产 spec 配对：重产轨从未认领暂存队列按角色消费序号（同 role 多轨
-// 按序对齐）；超出队列的按最大序递增（该 role 无未认领轨时从 0 起）
+// 按序对齐）；超出队列的按最大序递增（该 role 无未认领轨时从 0 起）。重产为整轨全新写，
+// 扩展名保持当次声明（旧暂存文件成为残留，随暂存目录在提交点一并回收）
 func pairRegenSpecs(uncovered []stagingEntry, specs []*sdkdto.StoreSpec) map[*sdkdto.StoreSpec]int {
 	queues, maxSeq := stagingRoleQueues(uncovered)
 	out := make(map[*sdkdto.StoreSpec]int, len(specs))
@@ -239,7 +245,7 @@ func pairRegenSpecs(uncovered []stagingEntry, specs []*sdkdto.StoreSpec) map[*sd
 			continue
 		}
 		if q := queues[spec.Role]; len(q) > 0 {
-			out[spec] = q[0]
+			out[spec] = q[0].seq
 			queues[spec.Role] = q[1:]
 		} else {
 			out[spec] = nextSeqBeyond(maxSeq, spec.Role)
@@ -258,13 +264,13 @@ func nextSeqBeyond(maxSeq map[string]int, role string) int {
 	return maxSeq[role]
 }
 
-// stagingRoleQueues 暂存条目按角色组建序号队列（条目已按 (role,seq) 有序），并返回各 role
+// stagingRoleQueues 暂存条目按角色组建消费队列（条目已按 (role,seq) 有序），并返回各 role
 // 的最大序号（超出队列时递增分配用）
-func stagingRoleQueues(entries []stagingEntry) (queues map[string][]int, maxSeq map[string]int) {
-	queues = make(map[string][]int, len(entries))
+func stagingRoleQueues(entries []stagingEntry) (queues map[string][]stagingEntry, maxSeq map[string]int) {
+	queues = make(map[string][]stagingEntry, len(entries))
 	maxSeq = make(map[string]int, len(entries))
 	for _, ent := range entries {
-		queues[ent.role] = append(queues[ent.role], ent.seq)
+		queues[ent.role] = append(queues[ent.role], ent)
 		if ent.seq > maxSeq[ent.role] {
 			maxSeq[ent.role] = ent.seq
 		}

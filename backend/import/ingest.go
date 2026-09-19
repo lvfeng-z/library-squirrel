@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/library-squirrel/backend/base/constant"
@@ -20,6 +22,8 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/persistentStore"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/util"
 	"github.com/lvfeng-z/library-squirrel-sdk/identity"
@@ -67,10 +71,11 @@ type IngestOptions struct {
 // 校验版本锚、站点 find-only/标签/作者 find-or-create、按 site_id+site_work_id 查重作品、
 // 导出库 ID → 本库 ID 重映射、文件落盘与全量关联重建。
 type ManifestIngestor interface {
-	// Ingest 导入一份导出 manifest（文件内容经 fileSource 按包内路径读取），返回结果摘要。
-	// opts 为 nil 时行为与现签名完全一致：已存在作品整体跳过；opts 携带替换集时命中作品
-	// 走替换分支（资源面新建挂载、元数据覆盖、关联合并、空壳净化，见 IngestOptions 注释）。
-	Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, opts *IngestOptions) (*ImportResult, error)
+	// Ingest 导入一份导出 manifest（文件内容经 fileSource 按包内路径读取、解包暂存经
+	// staging 层落点），返回结果摘要。opts 为 nil 时已存在作品整体跳过（现状全跳过语义）；
+	// opts 携带替换集时命中作品走替换分支（资源面新建挂载、元数据覆盖、关联合并、空壳净化，
+	// 见 IngestOptions 注释）。
+	Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, staging IngestStaging, opts *IngestOptions) (*ImportResult, error)
 }
 
 // Transactor 事务执行器（事务 DB 经 ctx 传递；app.go 以 dbTransactorAdapter 装配）。
@@ -79,13 +84,34 @@ type Transactor interface {
 	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// FileStoreOperator 导入文件落盘能力（由 persistentStore.Service 实现）：
-// 文件 + persistent_store 记录同写（含 fsmonitor 操作抑制登记、内容指纹、图片宽高提取）、
-// 按路径查活行记录（落位冲突检测）、物理删记录与文件（导入失败补偿清理）。
-type FileStoreOperator interface {
-	Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error)
+// StoreIngestOperator 入库事务能力（由 persistentStore.Service 实现）：按路径查活行记录
+// （落位冲突检测）+ 入库事务四调用——登记意图（撤回处置声明随登记行持久化）→ 落位（暂存
+// 同卷 rename 进最终路径，操作抑制内置）→ 调用方业务事务内建 persistent_store 行并删登记行
+// （同事务）→ 失败按各行登记时声明的处置撤回。调用方自持业务事务，编排归发起方。
+type StoreIngestOperator interface {
 	GetByFilePath(ctx context.Context, filePath string) (*entity.PersistentStore, error)
-	HardDelete(ctx context.Context, id int64, backup bool) (int64, error)
+	PrepareIngest(ctx context.Context, items []persistentStore.IngestItem) ([]int64, error)
+	PlaceIngest(ctx context.Context, intentIds []int64) error
+	CommitIngest(ctx context.Context, intentId int64, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
+	AbortIngest(ctx context.Context, intentIds []int64) error
+}
+
+// IngestStaging 相位二解包暂存层（按内容来源形态由调用方提供）：
+//   - zip 解包轨（本模块 ZipUnpackStaging）：包内容先落 staging/import/{铸造键}/ 作用域再
+//     落位；撤回处置=丢弃（整包可重新导入，无续传语义）；
+//   - 收件暂存轨（share 模块实现）：文件已在 staging/share-receive/{taskID}/ 可续传作用域，
+//     直接作落位来源；撤回处置=退回暂存（字节回到可续传位置，任务重试免网络重拉）。
+type IngestStaging interface {
+	// Stage 单个包内条目的暂存安排：writer 非 nil 时由调用方把条目内容流式写入；writer 为
+	// nil 表示内容已在暂存落点（调用方仅读流实测 sha，不再写暂存）。journalRel 为登记行
+	// 暂存路径（relPath 域正斜杠——落位 rename 的源路径、处置=退回暂存时的退回目标）
+	Stage(ctx context.Context, entryPath string) (writer io.WriteCloser, journalRel string, err error)
+	// AbortAction 撤回处置声明（随入库登记行持久化；按内容可续传性/可重产性由提供方声明，
+	// 撤回与启动恢复只执行声明不推断）
+	AbortAction() entity.IngestAbortAction
+	// Release 导入退出收尾（成功/失败统一）：回收本轨自有的暂存作用域；作用域生命周期归
+	// 任务的轨（收件暂存）为空操作。崩溃残留由启动清扫兜底
+	Release(ctx context.Context)
 }
 
 // ImportResult 导入结果摘要。
@@ -111,38 +137,52 @@ type ImportResult struct {
 
 // ingestor ManifestIngestor 实现。
 type ingestor struct {
-	repo       Repository
-	dupRepo    duplicate.Repository // 站点名/作品查重共享查询（自本模块迁出，与 duplicate.Service 共用同一实例）
-	transactor Transactor
-	fileStore  FileStoreOperator
+	repo        Repository
+	dupRepo     duplicate.Repository // 站点名/作品查重共享查询（自本模块迁出，与 duplicate.Service 共用同一实例）
+	transactor  Transactor
+	storeIngest StoreIngestOperator // 入库事务能力（查活行 + 登记→落位→事务内建行删登记→撤回）
 }
 
 // NewIngestor 创建导入器。
-func NewIngestor(dupRepo duplicate.Repository, repo Repository, transactor Transactor, fileStore FileStoreOperator) ManifestIngestor {
+func NewIngestor(dupRepo duplicate.Repository, repo Repository, transactor Transactor, storeIngest StoreIngestOperator) ManifestIngestor {
 	return &ingestor{
-		repo:       repo,
-		dupRepo:    dupRepo,
-		transactor: transactor,
-		fileStore:  fileStore,
+		repo:        repo,
+		dupRepo:     dupRepo,
+		transactor:  transactor,
+		storeIngest: storeIngest,
 	}
+}
+
+// stagedFile 相位二已解包待入库的单个文件条目。
+type stagedFile struct {
+	storeID     int64  // manifest 文件条目的 store 键（导出库 persistent_store ID，挂载重映射用）
+	finalRel    string // 冲突消解后的最终落位路径（relPath 域）
+	fileName    string // 最终文件名
+	stagingRel  string // 暂存落点（relPath 域；登记行暂存路径=落位 rename 的源路径）
+	expectedSha string // manifest 声明的期望 sha256（空=来源未声明，跳过校验）
+	actualSha   string // 解包实测 sha256（hex，随暂存读流边读边算）
 }
 
 // filePhaseResult 文件相位产物。
 type filePhaseResult struct {
-	storeRemap     map[int64]int64 // 导出库 persistent_store ID → 本库新记录 ID
-	createdStores  []int64         // 本次导入创建的 persistent_store ID（失败补偿清理用）
+	staged         []stagedFile // 已解包待入库条目（相位三逐条登记/落位/事务内建行）
+	createdStores  []int64      // 本次导入新建的 persistent_store ID（相位三事务内填充，成功后随摘要返回）
 	extractedFiles int64
 }
 
 // Ingest 导入主流程，三相推进：
 //
 //	相位一（只读预检）：既有站点映射 + 作品查重圈定待建集（决定哪些文件需要落盘）
-//	相位二（文件落盘）：为待建作品的 store 挂载提取包内文件并经 persistentStore 能力落盘
-//	相位三（单事务入库）：主数据解析入库（站点 find-only，标签/作者 find-or-create）+
-//	新建作品/资源/挂载/关联 + 全量 ID 重映射
+//	相位二（解包到暂存）：为待建与替换作品的 store 挂载提取包内文件，经暂存层流式落暂存
+//	（TeeReader 边读边算 sha）并逐条与 manifest 声明的期望 sha 比对
+//	相位三（入库事务序列）：登记入库意图（撤回处置按暂存层声明）→ 落位（暂存同卷 rename
+//	进最终路径）→ 业务事务内逐文件建 persistent_store 行删登记行 + 主数据解析入库（站点
+//	find-only，标签/作者 find-or-create）+ 新建作品/资源/挂载/关联 + 全量 ID 重映射
 //
-// 相位二先于事务（文件 IO 不持有唯一 DB 连接），失败时对已落盘文件做补偿清理。
-func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, opts *IngestOptions) (*ImportResult, error) {
+// 相位二先于事务（文件 IO 不持有唯一 DB 连接）；相位三序列经独立 ctx 执行——序列一旦进入
+// 须走完（成功提交或同步补偿收口），不受调用方取消影响。任一相位失败：已落位文件按登记
+// 时声明的处置撤回（退回暂存/丢弃），暂存层统一退出收尾。
+func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource FileSource, staging IngestStaging, opts *IngestOptions) (*ImportResult, error) {
 	if manifest == nil {
 		return nil, errors.New("导入 manifest 为空")
 	}
@@ -168,25 +208,21 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 		return nil, err
 	}
 
-	// 相位二：文件落盘（待建与替换作品；其余查重命中的作品其文件与记录一概不动）
+	// 相位二：解包到暂存（待建与替换作品；其余查重命中的作品其文件与记录一概不动）
 	toExtract := make([]*export.WorkRecord, 0, len(toCreateWorks)+len(toReplaceWorks))
 	toExtract = append(toExtract, toCreateWorks...)
 	toExtract = append(toExtract, toReplaceWorks...)
-	filePhase, err := ing.extractFiles(ctx, manifest, toExtract, fileSource)
+	filePhase, err := ing.extractFiles(ctx, manifest, toExtract, fileSource, staging)
 	if err != nil {
-		ing.cleanupCreatedStores(ctx, filePhase.createdStores)
+		if staging != nil {
+			staging.Release(context.Background())
+		}
 		return nil, err
 	}
 
-	// 相位三：单事务入库
-	var result *ImportResult
-	err = ing.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-		var txErr error
-		result, txErr = ing.ingestEntities(txCtx, manifest, toCreateWorks, toReplaceWorks, existingWorks, opts, filePhase.storeRemap)
-		return txErr
-	})
+	// 相位三：入库事务序列（登记 → 落位 → 业务事务内建行删登记 + 实体重建）
+	result, err := ing.commitStaged(context.Background(), filePhase, staging, manifest, toCreateWorks, toReplaceWorks, existingWorks, opts)
 	if err != nil {
-		ing.cleanupCreatedStores(ctx, filePhase.createdStores)
 		return nil, err
 	}
 	result.ExtractedFiles = filePhase.extractedFiles
@@ -195,6 +231,93 @@ func (ing *ingestor) Ingest(ctx context.Context, manifest *export.Manifest, file
 		result.CreatedWorks, result.ReplacedWorks, result.ReplacedConfirmed, result.ReplacedAuto, result.SkippedWorks,
 		result.CreatedWorkSets, result.SkippedWorkSets, result.ExtractedFiles)
 	return result, nil
+}
+
+// commitStaged 相位三入库事务序列：登记入库意图（每文件一行独立事务立即提交）→ 落位 →
+// 业务事务内逐文件 CommitIngest（建 persistent_store 行 + 删登记行，同事务）+ 既有实体
+// 重建编排（ingestEntities）。失败补偿：文件段按各行登记时声明的处置撤回（幂等；撤回失败
+// 的登记行保留由启动恢复收口）、建行段由事务原子性兜底，暂存层退出收尾统一执行
+func (ing *ingestor) commitStaged(
+	ctx context.Context,
+	filePhase *filePhaseResult,
+	staging IngestStaging,
+	manifest *export.Manifest,
+	toCreateWorks []*export.WorkRecord,
+	toReplaceWorks []*export.WorkRecord,
+	existingWorks map[int64]int64,
+	opts *IngestOptions,
+) (*ImportResult, error) {
+	releaseStaging := func() {
+		if staging != nil {
+			staging.Release(ctx)
+		}
+	}
+	var intentIds []int64
+	if len(filePhase.staged) > 0 {
+		items := make([]persistentStore.IngestItem, 0, len(filePhase.staged))
+		for _, sf := range filePhase.staged {
+			items = append(items, persistentStore.IngestItem{
+				FilePath:    sf.finalRel,
+				StagingPath: sf.stagingRel,
+				AbortAction: staging.AbortAction(),
+			})
+		}
+		var err error
+		intentIds, err = ing.storeIngest.PrepareIngest(ctx, items)
+		if err != nil {
+			releaseStaging()
+			return nil, fmt.Errorf("登记入库意图失败: %w", err)
+		}
+		if err := ing.storeIngest.PlaceIngest(ctx, intentIds); err != nil {
+			ing.abortIngested(ctx, intentIds)
+			releaseStaging()
+			return nil, fmt.Errorf("暂存落位失败: %w", err)
+		}
+	}
+
+	var result *ImportResult
+	txErr := ing.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		storeRemap := make(map[int64]int64, len(filePhase.staged))
+		for i := range filePhase.staged {
+			sf := &filePhase.staged[i]
+			storeId, cerr := ing.storeIngest.CommitIngest(txCtx, intentIds[i], sf.finalRel, sf.fileName,
+				shaNullString(sf.expectedSha), shaNullString(sf.actualSha))
+			if cerr != nil {
+				return fmt.Errorf("建 store 行失败(%s): %w", sf.finalRel, cerr)
+			}
+			storeRemap[sf.storeID] = storeId
+			filePhase.createdStores = append(filePhase.createdStores, storeId)
+		}
+		var txErr error
+		result, txErr = ing.ingestEntities(txCtx, manifest, toCreateWorks, toReplaceWorks, existingWorks, opts, storeRemap)
+		return txErr
+	})
+	if txErr != nil {
+		if len(intentIds) > 0 {
+			ing.abortIngested(ctx, intentIds)
+		}
+		releaseStaging()
+		return nil, txErr
+	}
+	releaseStaging()
+	return result, nil
+}
+
+// abortIngested 入库序列失败撤回：按各行登记时声明的处置把已落位文件撤出最终路径（退回
+// 暂存/丢弃）并收口登记行，幂等；撤回自身失败仅记日志——失败行登记行保留由启动恢复收口，
+// 触发撤回的失败原因照常上抛
+func (ing *ingestor) abortIngested(ctx context.Context, intentIds []int64) {
+	if err := ing.storeIngest.AbortIngest(ctx, intentIds); err != nil {
+		logger.Log.Warnf("导入失败撤回入库失败（登记行保留，启动恢复收口）: %v", err)
+	}
+}
+
+// shaNullString sha 十六进制串 → sql.NullString（空串=未声明/未实测，落 NULL）
+func shaNullString(hex string) sql.NullString {
+	if hex == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: hex, Valid: true}
 }
 
 // replaceUnion 计算替换全集（确认替换 ∪ 零交集自动增补）；opts 为空或两集皆空返回 nil
@@ -312,14 +435,16 @@ func (ing *ingestor) partitionWorks(ctx context.Context, works []export.WorkReco
 	return existing, toCreate, toReplace, nil
 }
 
-// ===== 相位二：文件落盘 =====
+// ===== 相位二：解包到暂存 =====
 
-// extractFiles 为待建与替换作品的 store 挂载提取包内文件并落盘。
+// extractFiles 为待建与替换作品的 store 挂载提取包内文件到暂存层。
 // 结构校验（ResourceType/StoreType/Generation 严格识别）前置到本相位开头——非法产物在写盘前失败。
+// 逐条目：路径冲突消解 → 暂存层落点 → 流式解包（TeeReader 边读边算 sha，不引入第二遍读盘）
+// → 与 manifest 声明的期望 sha 比对（声明了才比对），不符即失败。
 // 挂载缺席（决策4：源文件缺失标记 / 无包内路径 / files 未收录）不落盘、不报错，
 // 缺席计数由入库相位在挂载级统计。
-func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest, toExtract []*export.WorkRecord, fileSource FileSource) (*filePhaseResult, error) {
-	result := &filePhaseResult{storeRemap: make(map[int64]int64)}
+func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest, toExtract []*export.WorkRecord, fileSource FileSource, staging IngestStaging) (*filePhaseResult, error) {
+	result := &filePhaseResult{}
 
 	// 结构校验 + 收集待提取的文件条目（按挂载遍历序去重保序）
 	filesByStoreID := make(map[int64]*export.FileEntry, len(manifest.Files))
@@ -356,8 +481,11 @@ func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest
 	if fileSource == nil {
 		return result, ErrNoFileSource
 	}
+	if staging == nil {
+		return result, errors.New("导入产物包含文件但未提供暂存层")
+	}
 
-	// 逐条目落盘：路径冲突消解 → 流式落盘（内容哈希随流计算）→ sha256 校验
+	// 逐条目解包：路径冲突消解 → 暂存落点 → 流式写入（边读边算 sha）→ sha 校验
 	claimed := make(map[string]struct{}, len(needed))
 	for _, entry := range needed {
 		if entry.Missing || entry.Path == "" || entry.StorePath == "" {
@@ -374,20 +502,43 @@ func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest
 		if err != nil {
 			return result, fmt.Errorf("%w：%s", ErrPackageFileMissing, entry.Path)
 		}
-		hasher := sha256.New()
-		newID, storeErr := ing.fileStore.Store(ctx, relPath, path.Base(entry.StorePath), io.TeeReader(src, hasher))
-		closeErr := src.Close()
-		if storeErr != nil {
-			return result, fmt.Errorf("落盘文件失败 %s: %w", entry.StorePath, storeErr)
+		writer, stagingRel, err := staging.Stage(ctx, entry.Path)
+		if err != nil {
+			_ = src.Close()
+			return result, err
 		}
-		result.createdStores = append(result.createdStores, newID)
+		hasher := sha256.New()
+		// 解包与 sha 实测同一条流（TeeReader）；内容已在暂存落点的轨（writer=nil）仅读流实测
+		var copyErr error
+		if writer != nil {
+			_, copyErr = io.Copy(writer, io.TeeReader(src, hasher))
+		} else {
+			_, copyErr = io.Copy(io.Discard, io.TeeReader(src, hasher))
+		}
+		if writer != nil {
+			if werr := writer.Close(); werr != nil && copyErr == nil {
+				copyErr = fmt.Errorf("关闭暂存文件失败: %w", werr)
+			}
+		}
+		closeErr := src.Close()
+		if copyErr != nil {
+			return result, fmt.Errorf("解包文件失败 %s: %w", entry.StorePath, copyErr)
+		}
 		if closeErr != nil {
 			return result, fmt.Errorf("关闭包内文件失败 %s: %w", entry.Path, closeErr)
 		}
-		if entry.Sha256 != "" && hex.EncodeToString(hasher.Sum(nil)) != entry.Sha256 {
+		actualSha := hex.EncodeToString(hasher.Sum(nil))
+		if entry.Sha256 != "" && actualSha != entry.Sha256 {
 			return result, fmt.Errorf("%w：%s", ErrChecksumMismatch, entry.Path)
 		}
-		result.storeRemap[entry.StoreID] = newID
+		result.staged = append(result.staged, stagedFile{
+			storeID:     entry.StoreID,
+			finalRel:    relPath,
+			fileName:    path.Base(entry.StorePath),
+			stagingRel:  stagingRel,
+			expectedSha: entry.Sha256,
+			actualSha:   actualSha,
+		})
 		result.extractedFiles++
 	}
 	return result, nil
@@ -412,7 +563,7 @@ func validateRelPath(relPath string) error {
 
 // claimPath 为落盘目标路径消解冲突：与库内既有活行 persistent_store 记录及本次导入已占用
 // 路径均不重叠时采用原路径；冲突时保留目录与扩展名、文件名追加 _import<n> 序号派生变体
-// （避免 persistentStore.Store 的同路径覆盖语义改写既有作品的文件与记录）。
+// （落位/建行对同路径既有行是覆盖语义——导入场景须派生变体，保护既有作品的文件与记录）。
 func (ing *ingestor) claimPath(ctx context.Context, desired string, claimed map[string]struct{}) (string, error) {
 	ext := path.Ext(desired)
 	stem := strings.TrimSuffix(path.Base(desired), ext)
@@ -425,7 +576,7 @@ func (ing *ingestor) claimPath(ctx context.Context, desired string, claimed map[
 		if _, taken := claimed[candidate]; taken {
 			continue
 		}
-		rec, err := ing.fileStore.GetByFilePath(ctx, candidate)
+		rec, err := ing.storeIngest.GetByFilePath(ctx, candidate)
 		if err != nil {
 			return "", fmt.Errorf("查询落盘路径占用失败 %s: %w", candidate, err)
 		}
@@ -436,17 +587,65 @@ func (ing *ingestor) claimPath(ctx context.Context, desired string, claimed map[
 	}
 }
 
-// cleanupCreatedStores 导入失败补偿清理：物理删除本次已创建的 persistent_store 记录与文件
-// （不产生备份——半成品导入不留残余）。失败仅记日志，补偿自身不阻断错误上报。
-func (ing *ingestor) cleanupCreatedStores(ctx context.Context, storeIds []int64) {
-	for _, id := range storeIds {
-		if _, err := ing.fileStore.HardDelete(ctx, id, false); err != nil {
-			logger.Log.Warnf("导入失败补偿清理文件记录失败 storeId=%d: %v", id, err)
+// zipUnpackContentShape zip 解包作用域的内容形态标签：条目按解包序号平铺命名（无子目录）。
+const zipUnpackContentShape = "flat-by-extract-index"
+
+// ZipUnpackStaging zip 解包轨暂存层（IngestStaging 的 zip 回灌实现）：首次解包时铸造作用域
+// 键、经 staging 能力包原子入口创建 {workDir}/staging/import/{铸造键}/ 作用域，条目内容按
+// 解包序号平铺落文件（随后的落位把文件同卷 rename 进最终路径）。撤回处置=丢弃：解包产物是
+// 一次性副本，导入包整包在手可重新导入，无续传语义。
+type ZipUnpackStaging struct {
+	workDirGetter func() string // 库根读取器（每次读取最新值）
+	scopeKey      string        // 作用域键（首次 Stage 时铸造；空=尚未创建作用域）
+	scopeAbs      string        // 作用域目录绝对路径（absPath 域，仅供 os.* 写入现场消费）
+	next          int           // 下一个解包序号（作用域内暂存文件名成分）
+}
+
+// NewZipUnpackStaging 创建 zip 解包暂存层（作用域惰性创建——无待解包条目时不建目录）。
+func NewZipUnpackStaging(workDirGetter func() string) *ZipUnpackStaging {
+	return &ZipUnpackStaging{workDirGetter: workDirGetter}
+}
+
+// Stage 解包条目的暂存落点：作用域内按序号平铺命名（保留条目扩展名），返回写入句柄与
+// 登记行暂存路径（relPath 域正斜杠）。
+func (z *ZipUnpackStaging) Stage(ctx context.Context, entryPath string) (io.WriteCloser, string, error) {
+	if z.scopeAbs == "" {
+		key, err := staging.MintScopeKey()
+		if err != nil {
+			return nil, "", err
 		}
+		dir, err := staging.CreateScope(ctx, z.workDirGetter(), staging.OwnerImport, key, zipUnpackContentShape)
+		if err != nil {
+			return nil, "", fmt.Errorf("创建导入暂存作用域失败: %w", err)
+		}
+		z.scopeKey, z.scopeAbs = key, dir
+	}
+	name := fmt.Sprintf("%04d%s", z.next, path.Ext(entryPath))
+	z.next++
+	f, err := os.Create(filepath.Join(z.scopeAbs, name))
+	if err != nil {
+		return nil, "", fmt.Errorf("创建导入暂存文件失败: %w", err)
+	}
+	return f, path.Join(staging.RootName, string(staging.OwnerImport), z.scopeKey, name), nil
+}
+
+// AbortAction 撤回处置声明：丢弃（解包产物可由导入包整体重产，无续传语义）。
+func (z *ZipUnpackStaging) AbortAction() entity.IngestAbortAction {
+	return entity.AbortActionDiscard
+}
+
+// Release 回收导入暂存作用域（未创建时为空操作；回收失败残留由启动清扫兜底——import 属主
+// 根启动一律回收）。
+func (z *ZipUnpackStaging) Release(ctx context.Context) {
+	if z.scopeAbs == "" {
+		return
+	}
+	if err := staging.RemoveScope(ctx, z.workDirGetter(), staging.OwnerImport, z.scopeKey); err != nil {
+		logger.Log.Warnf("回收导入暂存作用域失败（残留交启动清扫）: %v", err)
 	}
 }
 
-// ===== 相位三：单事务入库 =====
+// ===== 相位三（业务事务段）：实体重建 =====
 
 // ingestEntities 事务内重建全部主数据与关联。顺序满足外键依赖：
 // 站点 → 本地标签（层级按轮次）→ 本地作者 → 站点标签/站点作者 → 作品 → 资源 →

@@ -895,6 +895,14 @@ func (app *App) initAdvancedServices() error {
 	} else if n > 0 {
 		logger.Log.Infof("[persistentStore] file_path 分隔符规范化完成，共 %d 条", n)
 	}
+	// 入库登记行启动恢复（须早于 fsmonitor 启动——文件收口动作先于任何监控事件发生）：
+	// 未提交入库的登记行按登记时声明的处置收口（退回暂存/丢弃/未落位删行），库根不匹配行
+	// 保留；工作目录未配置时 RecoverIngest 内部短路
+	if recovered, err := app.PersistentStoreService.RecoverIngest(context.Background()); err != nil {
+		logger.Log.Warnf("[persistentStore] 入库登记行恢复失败: %v", err)
+	} else if recovered > 0 {
+		logger.Log.Infof("[persistentStore] 入库登记行恢复完成，收口 %d 条", recovered)
+	}
 	// backup 清单行同款规范化：历史反斜杠行与 fsmonitor backup 域对账的正斜杠磁盘键永不匹配即恒判缺失
 	if n, err := app.BackupService.NormalizeFilePaths(context.Background()); err != nil {
 		logger.Log.Warnf("[backup] 规范化 file_path 分隔符失败: %v", err)
@@ -1114,7 +1122,7 @@ func (app *App) initAdvancedServices() error {
 		ResourceReader:      app.ResourceService,        // 实现 ResourceReader 接口
 		ReplaceStoreOps:     app.ReplaceService,         // 实现 ReplaceStoreOps 接口（替换链能力）
 		ResourceUpdater:     resourceSaverAdapter,       // 替换场景更新 Resource 的 Store 字段
-		StoreCommitter:      app.PersistentStoreService, // 实现 StoreCommitter 接口（提交点建行）
+		StoreIngestor:       app.PersistentStoreService, // 实现 StoreIngestor 接口（提交点入库事务：登记→落位→事务内建行+删登记）
 		ResourceStoreWriter: taskMgrResourceStoreRepo,   // 实现 ResourceStoreWriter 接口
 		ResourceRecomputer:  app.ResourceService,        // 实现 ResourceRecomputer 接口（完整度共享重算）
 		Transactor:          &dbTransactorAdapter{db: app.db},
@@ -1166,7 +1174,8 @@ func (app *App) initAdvancedServices() error {
 		app.WorkService, // MergeWorkReader（合并产物目录名派生：resource → work 反查站点复合键）
 		app.SiteService, // MergeSiteReader（siteId → site_key 反查）
 		mergeMerger,
-		app.PersistentStoreService,
+		app.PersistentStoreService, // StoreOps（store 行查询/软删与绝对路径）
+		app.PersistentStoreService, // StoreIngestor（提交点入库事务：登记→落位→事务内建行+删登记；合并产物撤回处置恒丢弃）
 		app.SettingsService,
 		app.SettingsService, // MergeWorkDirProvider（合并产物暂存作用域与最终落位的根目录）
 		&dbTransactorAdapter{db: app.db},
@@ -1507,8 +1516,9 @@ func (app *App) initHandlers() {
 	app.ExportHandler = export.NewHandler(app.ExportService)
 	app.ShareHandler = share.NewHandler(app.ShareService)
 	// import：导出产物回灌导入 handler（入库能力为 ManifestIngestor，与 share-receive
-	// 任务执行器共用 app.manifestIngestor 同一实例；文件落盘复用 persistentStore 能力）
-	app.ImportHandler = importer.NewHandler(app.manifestIngestor)
+	// 任务执行器共用 app.manifestIngestor 同一实例；解包暂存落 staging/import/ 作用域、
+	// 入库走 persistentStore 入库事务能力）
+	app.ImportHandler = importer.NewHandler(app.manifestIngestor, app.SettingsService.GetWorkDir)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)

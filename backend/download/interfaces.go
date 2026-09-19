@@ -9,6 +9,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
+	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/resource"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -75,13 +76,25 @@ type ResourceRecomputer interface {
 	RecomputeResourceComplete(ctx context.Context, resourceId int64)
 }
 
-// StoreCommitter 提交点建行能力（暂存模式下由 persistentStore.Service 实现）：
-// 暂存文件 rename 到最终路径后，在提交事务内建完整 persistent_store 行（completed_at 即时
-// 置位 + 宽高/头指纹/哈希双列），返回行 ID 供 resource_store 挂载
-type StoreCommitter interface {
-	// CommitStore 为已就位的最终路径建/复用完整行。expectedSha/actualSha 为来源声明与
-	// 暂存写入流实测的 SHA256（sql.NullString，无效态=未声明/未算）
-	CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
+// StoreIngestor 提交点入库事务能力（由 persistentStore.Service 实现）：登记（PrepareIngest，
+// 撤回处置声明必填、由调用方按轨声明）→ 落位（PlaceIngest，暂存同卷 rename 到最终路径，
+// 操作抑制登记内置其中）→ 调用方业务事务内建行并删登记行（CommitIngest）→ 失败按声明撤回
+// （AbortIngest）。调用方自持业务事务，编排归发起方
+type StoreIngestor interface {
+	// PrepareIngest 登记入库意图：每文件一行独立事务立即提交，返回登记行 ID 清单（与入参
+	// 顺序一致）。IngestItem 处置声明必填（该轨能否续传、是否可重产只有调用方知道），
+	// 路径均 relPath 域正斜杠
+	PrepareIngest(ctx context.Context, items []persistentStore.IngestItem) ([]int64, error)
+	// PlaceIngest 落位：逐登记行把文件从暂存位置同卷 rename 到最终路径；任一失败即中止，
+	// 已落位文件不动，由调用方决定撤回或重试
+	PlaceIngest(ctx context.Context, intentIds []int64) error
+	// CommitIngest 在调用方业务事务内（ctx 携带事务）建完整 persistent_store 行并删该文件的
+	// 登记行——两动作同生共死，事务回滚则一并撤销。expectedSha/actualSha 为来源声明与暂存
+	// 写入流实测的 SHA256（sql.NullString，无效态=未声明/未算）。返回行 ID 供 resource_store 挂载
+	CommitIngest(ctx context.Context, intentId int64, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
+	// AbortIngest 按各行登记时声明的处置撤回（退回暂存/丢弃文件）并删登记行，幂等；未落位的
+	// 登记行仅收口登记
+	AbortIngest(ctx context.Context, intentIds []int64) error
 }
 
 // WorkLocator 续传会话定位任务所属作品（由 work.Service 实现）：暂存模式下暂停任务零 DB
@@ -142,7 +155,7 @@ type Deps struct {
 	ResourceReader      ResourceReader             // 已有作品资源查询
 	ReplaceStoreOps     resource.ReplaceStoreOps   // 替换链能力（提交窗口软删/失败回滚复活）
 	ResourceUpdater     ResourceSaver              // 替换场景更新 Resource 的 Store 字段
-	StoreCommitter      StoreCommitter             // 提交点建行（暂存产物 rename 后建完整行）
+	StoreIngestor       StoreIngestor              // 提交点入库事务（登记→落位→事务内建行+删登记；失败按声明撤回）
 	ResourceStoreWriter ResourceStoreWriter        // resource_store 关联写入
 	ResourceRecomputer  ResourceRecomputer         // 资源完整度重算
 	Transactor          Transactor                 // 事务执行

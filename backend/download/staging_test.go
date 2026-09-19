@@ -2,8 +2,8 @@ package download
 
 // 暂存写入器与提交点测试：写入流全量 sha256（全新/续传前缀入哈希）、finalize 比对（不符/
 // 截断）、暂存文件名解析、提交点序列
-// （替换软删+rename+抑制登记窗口+建行挂载事务+暂存回收）、哈希双列落库、提交失败逆 rename
-// 回退、哈希不符失败保留暂存、替换矩阵（替换链坍缩到提交窗口：成功/失败/提交窗口内失败/
+// （替换软删+登记意图+落位抑制时点+建行挂载事务+暂存回收）、哈希双列落库、提交失败按声明
+// 撤回、哈希不符失败保留暂存、替换矩阵（替换链坍缩到提交窗口：成功/失败/提交窗口内失败/
 // 软删锁拒绝/暂停停止四态+全角色展开）。
 
 import (
@@ -16,16 +16,20 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
+	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/storeRegistry"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"go.uber.org/zap"
 )
 
 // ==== 暂存写入器 ====
@@ -125,18 +129,23 @@ func TestStagingWriter_TruncateOnResume(t *testing.T) {
 	}
 }
 
-// TestParseStagingFileName 暂存文件名 role_seq 键解析（StagingFileName 的逆）
+// TestParseStagingFileName 暂存文件名 role_seq 键解析（StagingFileName 的逆）：含点号
+// 扩展名段还原、无扩展名形态为空串
 func TestParseStagingFileName(t *testing.T) {
-	role, seq, err := parseStagingFileName("videoTrack_007.mp4")
-	if err != nil || role != "videoTrack" || seq != 7 {
-		t.Fatalf("解析期望 (videoTrack,7), 实际 (%s,%d,%v)", role, seq, err)
+	role, seq, ext, err := parseStagingFileName("videoTrack_007.mp4")
+	if err != nil || role != "videoTrack" || seq != 7 || ext != ".mp4" {
+		t.Fatalf("解析期望 (videoTrack,7,.mp4), 实际 (%s,%d,%s,%v)", role, seq, ext, err)
 	}
-	if _, _, err := parseStagingFileName("noisy.txt"); err == nil {
+	role, seq, ext, err = parseStagingFileName("image_000")
+	if err != nil || role != "image" || seq != 0 || ext != "" {
+		t.Fatalf("无扩展名形态应得空 ext, 实际 (%s,%d,%s,%v)", role, seq, ext, err)
+	}
+	if _, _, _, err := parseStagingFileName("noisy.txt"); err == nil {
 		t.Fatal("无 role_seq 键应解析失败")
 	}
 }
 
-// TestEnumerateStaging 暂存枚举：role_seq 还原 + 大小 + 稳定排序；不可解析文件跳过
+// TestEnumerateStaging 暂存枚举：role_seq 还原 + 大小 + 扩展名 + 稳定排序；不可解析文件跳过
 func TestEnumerateStaging(t *testing.T) {
 	dir := t.TempDir()
 	for name, content := range map[string]string{
@@ -149,7 +158,7 @@ func TestEnumerateStaging(t *testing.T) {
 			t.Fatalf("预置 %s 失败: %v", name, err)
 		}
 	}
-	entries, err := enumerateStaging(dir)
+	entries, err := enumerateStaging(1, dir)
 	if err != nil {
 		t.Fatalf("枚举失败: %v", err)
 	}
@@ -161,14 +170,66 @@ func TestEnumerateStaging(t *testing.T) {
 		role string
 		seq  int
 		size int64
+		ext  string
 	}{
-		{entity.StoreTypeImage, 0, 4},
-		{entity.StoreTypeImage, 1, 2},
-		{entity.StoreTypeThumbnail, 0, 1},
+		{entity.StoreTypeImage, 0, 4, ".png"},
+		{entity.StoreTypeImage, 1, 2, ".png"},
+		{entity.StoreTypeThumbnail, 0, 1, ".jpg"},
 	}
 	for i, w := range want {
-		if entries[i].role != w.role || entries[i].seq != w.seq || entries[i].size != w.size {
+		if entries[i].role != w.role || entries[i].seq != w.seq || entries[i].size != w.size || entries[i].ext != w.ext {
 			t.Fatalf("条目 %d 期望 %+v 实际 %+v", i, w, entries[i])
+		}
+	}
+}
+
+// TestEnumerateStaging_DuplicateKeyResolution 同键 (role,seq) 多文件收敛：字节多者择取
+// （0 字节残留与真身并存的并存形态）；字节数并列（含皆零）丢弃该键不认领；两种处置均记
+// Warn 日志
+func TestEnumerateStaging_DuplicateKeyResolution(t *testing.T) {
+	dir := t.TempDir()
+	logs := observeLogs()
+	defer func() { logger.Log = zap.NewNop().Sugar() }()
+
+	// image#0：0 字节无扩展名残留 + 10B 真身 → 择取 .jpg
+	// image#1：两个 5B 并列 → 丢弃
+	// image#2：两个 0 字节 → 丢弃
+	for name, content := range map[string]string{
+		"image_000":      "",
+		"image_000.jpg":  "0123456789",
+		"image_001.png":  "aaaaa",
+		"image_001.jpg":  "bbbbb",
+		"image_002":      "",
+		"image_002.webp": "",
+		"image_003.png":  "solo",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("预置 %s 失败: %v", name, err)
+		}
+	}
+	entries, err := enumerateStaging(7, dir)
+	if err != nil {
+		t.Fatalf("枚举失败: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("同键收敛后应剩 2 轨(择取的 image#0 与唯一文件的 image#3), 实际 %d: %+v", len(entries), entries)
+	}
+	if entries[0].role != entity.StoreTypeImage || entries[0].seq != 0 || entries[0].ext != ".jpg" || entries[0].size != 10 {
+		t.Fatalf("image#0 应择取字节数最多的 .jpg 真身, 实际 %+v", entries[0])
+	}
+	if entries[1].seq != 3 || entries[1].ext != ".png" {
+		t.Fatalf("无冲突键应原样保留, 实际 %+v", entries[1])
+	}
+	msgs := warnMessages(logs)
+	if len(msgs) != 3 {
+		t.Fatalf("三次同键处置应各记一条 Warn, 实际 %d: %v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "按字节数最多者择取") || !strings.Contains(msgs[0], ".jpg") {
+		t.Fatalf("择取处置日志应含择取结果, 实际 %q", msgs[0])
+	}
+	for _, m := range msgs[1:] {
+		if !strings.Contains(m, "并列") {
+			t.Fatalf("并列处置日志应说明无法择取, 实际 %q", m)
 		}
 	}
 }
@@ -187,10 +248,10 @@ func newCommitTestSession(t *testing.T) (*execSession, *confirmHandle, context.C
 		ResourceReader:      &stubResourceReader{resources: []*entity.Resource{}},
 		ResourceSaver:       &stubResourceSaver{},
 		ResourceUpdater:     &stubResourceSaver{},
-		StoreCommitter:      env.streamer,
+		StoreIngestor:       env.streamer,
 		ResourceStoreWriter: env.assocWrite,
 		ResourceRecomputer:  env.recompute,
-		Transactor:          stubTransactor{},
+		Transactor:          stubTransactor{ingestor: env.streamer},
 		StagingPaths:        stubStagingPaths{},
 	}
 	sess := newExecSession(deps, h, wt)
@@ -199,22 +260,35 @@ func newCommitTestSession(t *testing.T) (*execSession, *confirmHandle, context.C
 	return sess, h, cancel, env
 }
 
-// TestCommitAndFinish_RenamesCreatesRowsAndFinishes 提交点主链：全部写满 → rename 到最终
-// 路径 → 事务建行（哈希双列）+挂载 → 完整度重算+Finish →
-// 暂存目录回收。rename→建行事务内（rename 已完成）最终路径处于抑制登记态（抑制登记纪律）
+// TestCommitAndFinish_RenamesCreatesRowsAndFinishes 提交点主链（落位+抑制登记时点锚）：
+// 全部写满 → 登记意图（处置按轨声明）→ 落位（同卷 rename，抑制先于 rename 登记）→
+// 事务建行（哈希双列）+挂载 → 完整度重算+Finish → 暂存目录回收。落位抑制先于 rename
+// （placeHook 时点：抑制已登记、文件未到最终路径）；建行事务内（rename 已完成）最终路径
+// 仍处于抑制登记态（落位宽限窗口覆盖建行，fsmonitor 误裁决防线）；提交成功后登记行全收口
 func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	sess, h, cancel, env := newCommitTestSession(t)
 	defer cancel()
-	// 抑制窗口断言：建行事务内（rename 已完成）最终路径处于抑制登记态
+	// 落位时点断言：首轨抑制已登记、rename 未发生（文件未到最终路径）
+	suppressedBeforeRename := false
+	fileAbsentAtSuppress := false
+	env.streamer.placeHook = func(*stubStoreIngestor) {
+		suppressedBeforeRename = storeRegistry.IsSuppressed("store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
+		_, statErr := os.Stat(finalAbsPath(env, "image_000.png"))
+		fileAbsentAtSuppress = os.IsNotExist(statErr)
+	}
+	// 建行事务内（rename 已完成）最终路径处于抑制登记态
 	suppressedInView := false
-	suppressedPath := "store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png"
-	env.streamer.hook = func(*stubStoreCommitter) {
-		suppressedInView = storeRegistry.IsSuppressed(suppressedPath)
+	movedInView := false
+	env.streamer.hook = func(*stubStoreIngestor) {
+		suppressedInView = storeRegistry.IsSuppressed("store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
+		_, statErr := os.Stat(finalAbsPath(env, "image_000.png"))
+		movedInView = statErr == nil
 	}
 
 	specs := []*sdkdto.StoreSpec{
 		{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-			ReadCloser: io.NopCloser(bytes.NewReader([]byte("abc")))},
+			Continuable: boolPtr(true),
+			ReadCloser:  io.NopCloser(bytes.NewReader([]byte("abc")))},
 		{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
 	}
@@ -227,8 +301,27 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	if !h.finished || h.failed {
 		t.Fatalf("提交点应成功收口: finished=%v failed=%v(%s)", h.finished, h.failed, h.failMsg)
 	}
+	if !suppressedBeforeRename || !fileAbsentAtSuppress {
+		t.Fatal("落位抑制应先于 rename 登记（时点：抑制已登记、文件未到最终路径）")
+	}
 	if !suppressedInView {
-		t.Fatal("rename→建行事务窗口内最终路径应处于抑制登记态（fsmonitor 误裁决防线）")
+		t.Fatal("落位→建行事务窗口内最终路径应处于抑制登记态（fsmonitor 误裁决防线）")
+	}
+	if !movedInView {
+		t.Fatal("建行事务时点文件应已落位最终路径（落位先于建行）")
+	}
+	// 处置声明按轨判定：可续传 image 轨退回暂存、derived 轨丢弃；暂存路径为 workDir 相对正斜杠
+	if len(env.streamer.preps) != 2 ||
+		env.streamer.preps[0].AbortAction != entity.AbortActionReturnToStaging ||
+		env.streamer.preps[1].AbortAction != entity.AbortActionDiscard {
+		t.Fatalf("处置声明应为 (image=退回暂存, thumbnail=丢弃), 实际 %+v", env.streamer.preps)
+	}
+	if env.streamer.preps[0].StagingPath != "staging/download/1/image_000.png" ||
+		env.streamer.preps[0].FilePath != "store/resource/"+bucketOf("test-site", "sw1")+"/test-site_sw1/image_000.png" {
+		t.Fatalf("登记意图路径应 relPath 域正斜杠, 实际 %+v", env.streamer.preps[0])
+	}
+	if len(env.streamer.journals) != 0 {
+		t.Fatalf("提交成功后登记行应全部收口, 实际剩 %d 条", len(env.streamer.journals))
 	}
 	// 两轨最终文件就位
 	for _, name := range []string{"image_000.png", "thumbnail_000.jpg"} {
@@ -257,6 +350,23 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	}
 	if _, err := os.Stat(env.stagingDir); !os.IsNotExist(err) {
 		t.Fatalf("提交后暂存目录应回收, stat err=%v", err)
+	}
+}
+
+// TestIngestAbortActionByContinuableMarker 处置声明判据=轨的可续传标记（唯一判据）：
+// 插件声明可续传的轨退回暂存；derived 等不可续传轨（含插件未声明可续传的 downloaded 轨）丢弃
+func TestIngestAbortActionByContinuableMarker(t *testing.T) {
+	continuable := &streamController{continuable: true}
+	if got := continuable.ingestAbortAction(); got != entity.AbortActionReturnToStaging {
+		t.Fatalf("可续传轨应声明退回暂存, 实际 %s", got)
+	}
+	for name, sc := range map[string]*streamController{
+		"derived 轨":  {continuable: false},
+		"插件未声明可续传的轨": {continuable: false},
+	} {
+		if got := sc.ingestAbortAction(); got != entity.AbortActionDiscard {
+			t.Fatalf("%s 应声明丢弃, 实际 %s", name, got)
+		}
 	}
 }
 
@@ -323,19 +433,21 @@ func TestDownloadHashMismatchFailsKeepsStaging(t *testing.T) {
 	}
 }
 
-// TestCommitTxFailureRevertsToStaging 提交事务失败补偿：已 rename 轨逆 rename 回退暂存
-// （暂存保留供重试），零建行零挂载
-func TestCommitTxFailureRevertsToStaging(t *testing.T) {
+// TestCommitTxFailureAbortsByDeclaredAction 提交事务失败按声明撤回：可续传轨（声明退回暂存）
+// 逆 rename 回退暂存保住写满字节；derived 轨（声明丢弃）文件删除、两处皆无；零建行零挂载、
+// 登记行全收口（事务回滚复原首轨的建行与删登记）
+func TestCommitTxFailureAbortsByDeclaredAction(t *testing.T) {
 	sess, h, cancel, env := newCommitTestSession(t)
 	defer cancel()
-	env.streamer.hook = func(*stubStoreCommitter) {} // 占位（保持 hook 非 nil 语义清晰）
+	env.streamer.hook = func(*stubStoreIngestor) {} // 占位（保持 hook 非 nil 语义清晰）
 	// 让第二轨建行失败：事务内返回错误
-	failing := &failingCommitter{delegate: env.streamer, failOnNth: 2}
-	sess.deps.StoreCommitter = failing
+	failing := &failingIngestor{delegate: env.streamer, failOnNth: 2}
+	sess.deps.StoreIngestor = failing
 
 	specs := []*sdkdto.StoreSpec{
 		{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-			ReadCloser: io.NopCloser(bytes.NewReader([]byte("abc")))},
+			Continuable: boolPtr(true),
+			ReadCloser:  io.NopCloser(bytes.NewReader([]byte("abc")))},
 		{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
 	}
@@ -345,30 +457,55 @@ func TestCommitTxFailureRevertsToStaging(t *testing.T) {
 	if res != comboFinished || !h.failed {
 		t.Fatal("提交失败应失败收口")
 	}
-	// 补偿：两轨均回退暂存（首轨已 rename 也回退）
+	// 可续传轨退回暂存（内容保住）；丢弃轨两处皆无
+	got, err := os.ReadFile(filepath.Join(env.stagingDir, "image_000.png"))
+	if err != nil || string(got) != "abc" {
+		t.Fatalf("可续传轨应退回暂存且内容保住, err=%v got=%q", err, got)
+	}
+	if _, err := os.Stat(filepath.Join(env.stagingDir, "thumbnail_000.jpg")); !os.IsNotExist(err) {
+		t.Fatal("丢弃轨不应退回暂存")
+	}
 	for _, name := range []string{"image_000.png", "thumbnail_000.jpg"} {
-		if _, err := os.Stat(filepath.Join(env.stagingDir, name)); err != nil {
-			t.Fatalf("提交失败轨应回退暂存(%s): %v", name, err)
+		if _, err := os.Stat(finalAbsPath(env, name)); !os.IsNotExist(err) {
+			t.Fatalf("撤回后最终路径应无残留(%s)", name)
 		}
+	}
+	if len(env.streamer.commits) != 0 {
+		t.Fatalf("事务失败建行应全部回滚, 实际 %d", len(env.streamer.commits))
 	}
 	if len(env.assocWrite.created) != 0 {
 		t.Fatalf("失败不应挂载, 实际 %d", len(env.assocWrite.created))
 	}
+	if len(env.streamer.journals) != 0 {
+		t.Fatalf("撤回应收口全部登记行, 实际剩 %d 条", len(env.streamer.journals))
+	}
 }
 
-// failingCommitter 前 n-1 次委派真桩、第 n 次失败（事务失败注入）
-type failingCommitter struct {
-	delegate  *stubStoreCommitter
+// failingIngestor 前 n-1 次建行委派真桩、第 n 次失败（事务失败注入）；登记/落位/撤回调委派真桩
+type failingIngestor struct {
+	delegate  *stubStoreIngestor
 	failOnNth int64
 	n         int64
 }
 
-func (f *failingCommitter) CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error) {
+func (f *failingIngestor) PrepareIngest(ctx context.Context, items []persistentStore.IngestItem) ([]int64, error) {
+	return f.delegate.PrepareIngest(ctx, items)
+}
+
+func (f *failingIngestor) PlaceIngest(ctx context.Context, intentIds []int64) error {
+	return f.delegate.PlaceIngest(ctx, intentIds)
+}
+
+func (f *failingIngestor) CommitIngest(ctx context.Context, intentId int64, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error) {
 	f.n++
 	if f.n == f.failOnNth {
 		return 0, fmt.Errorf("注入建行失败")
 	}
-	return f.delegate.CommitStore(ctx, relPath, fileName, expectedSha, actualSha)
+	return f.delegate.CommitIngest(ctx, intentId, relPath, fileName, expectedSha, actualSha)
+}
+
+func (f *failingIngestor) AbortIngest(ctx context.Context, intentIds []int64) error {
+	return f.delegate.AbortIngest(ctx, intentIds)
 }
 
 // handleFinished / failMsgView 会话侧终态观测（经 confirmHandle 记录）
@@ -409,10 +546,10 @@ func newReplaceStagingSession(t *testing.T, lock shareLock.ShareLockRegistry) (*
 		ReplaceStoreOps:     newRealReplacementService(stubs, lock),
 		ResourceSaver:       &stubResourceSaver{},
 		ResourceUpdater:     &stubResourceSaver{},
-		StoreCommitter:      env.streamer,
+		StoreIngestor:       env.streamer,
 		ResourceStoreWriter: env.assocWrite,
 		ResourceRecomputer:  env.recompute,
-		Transactor:          stubTransactor{},
+		Transactor:          stubTransactor{ingestor: env.streamer},
 		StagingPaths:        stubStagingPaths{},
 	}
 	sess := newExecSession(deps, h, wt)
@@ -613,20 +750,21 @@ func TestReplaceMatrix_FailureBeforeDownload(t *testing.T) {
 }
 
 // TestReplaceMatrix_FailureDuringCommit 替换×失败（提交窗口内）：未完成受害者走废弃软删
-// （腾空 rename 目标的未完成行分流）→ 建行事务失败 → 补偿逆 rename 回退暂存（暂存保留）
-// + 受害者登记交控制面复活（Fail 上报经 setFailed 单点同步触发，真实复活在 taskManager 侧，
-// 此处断言登记到位）；会话侧零物理删零复活
+// （腾空 rename 目标的未完成行分流）→ 建行事务失败 → 按声明撤回（可续传 image 轨退回暂存
+// 保住字节、derived 轨丢弃）+ 受害者登记交控制面复活（Fail 上报经 setFailed 单点同步触发，
+// 真实复活在 taskManager 侧，此处断言登记到位）；会话侧零物理删零复活
 func TestReplaceMatrix_FailureDuringCommit(t *testing.T) {
 	sess, h, cancel, env, stubs := newReplaceStagingSession(t, nil)
 	defer cancel()
 	seedReplaceIncompleteVictim(stubs)
 	// 第二轨建行失败注入（事务失败）
-	failing := &failingCommitter{delegate: env.streamer, failOnNth: 2}
-	sess.deps.StoreCommitter = failing
+	failing := &failingIngestor{delegate: env.streamer, failOnNth: 2}
+	sess.deps.StoreIngestor = failing
 	sess.pluginExec = &fakePluginExec{
 		startSpecs: []*sdkdto.StoreSpec{
 			{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-				ReadCloser: io.NopCloser(bytes.NewReader([]byte("new")))},
+				Continuable: boolPtr(true),
+				ReadCloser:  io.NopCloser(bytes.NewReader([]byte("new")))},
 			{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 				ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
 		},
@@ -651,11 +789,13 @@ func TestReplaceMatrix_FailureDuringCommit(t *testing.T) {
 	if len(victims) != 1 || victims[0] != 800 {
 		t.Fatalf("受害者(800)应登记供控制面复活, 实际 %v", victims)
 	}
-	// 补偿：两轨均回退暂存（暂存保留供重试），零挂载
-	for _, name := range []string{"image_000.png", "thumbnail_000.jpg"} {
-		if _, err := os.Stat(filepath.Join(env.stagingDir, name)); err != nil {
-			t.Fatalf("提交失败轨应回退暂存(%s): %v", name, err)
-		}
+	// 撤回按声明：可续传 image 轨退回暂存（内容保住），derived 轨丢弃两处皆无
+	got, err := os.ReadFile(filepath.Join(env.stagingDir, "image_000.png"))
+	if err != nil || string(got) != "new" {
+		t.Fatalf("可续传轨应退回暂存且内容保住, err=%v got=%q", err, got)
+	}
+	if _, err := os.Stat(filepath.Join(env.stagingDir, "thumbnail_000.jpg")); !os.IsNotExist(err) {
+		t.Fatal("丢弃轨不应退回暂存")
 	}
 	if len(env.assocWrite.created) != 0 {
 		t.Fatalf("事务失败应零挂载, 实际 %d", len(env.assocWrite.created))

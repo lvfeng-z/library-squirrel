@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/library-squirrel/backend/base/logger"
 )
 
 // stagingWriter 暂存文件写入器：download 直接管理的暂存文件句柄 + 写入流全量 sha256 哈希器。
@@ -123,16 +125,21 @@ type storeIdentity struct {
 	seq  int
 }
 
-// stagingEntry 暂存目录枚举出的单轨条目（role_seq 文件名还原身份 + 已落盘字节数）
+// stagingEntry 暂存目录枚举出的单轨条目（role_seq 文件名还原身份 + 已落盘字节数 +
+// 文件名扩展名段——含点号，无扩展名形态为空串；提交点前轨级实际扩展名在主程序侧的
+// 唯一载体）
 type stagingEntry struct {
 	role string
 	seq  int
 	size int64
+	ext  string
 }
 
 // enumerateStaging 枚举任务暂存目录的全部轨道：文件名按 role_seq 键解析身份，os.Stat 得
-// 各轨偏移（暂停/崩溃后恢复的续传锚来源）。无法解析身份的文件跳过（人工诊断残留）
-func enumerateStaging(stagingDir string) ([]stagingEntry, error) {
+// 各轨偏移（暂停/崩溃后恢复的续传锚来源）。无法解析身份的文件跳过（人工诊断残留）。
+// 同一 (role,seq) 键多文件并存（不同扩展名）时收敛为单条目（择取策略见
+// collapseStagingKeyDuplicates），下游（偏移下发/认领配对）所见每键至多一轨
+func enumerateStaging(taskId int64, stagingDir string) ([]stagingEntry, error) {
 	entries, err := os.ReadDir(stagingDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -145,7 +152,7 @@ func enumerateStaging(stagingDir string) ([]stagingEntry, error) {
 		if ent.IsDir() {
 			continue
 		}
-		role, seq, perr := parseStagingFileName(ent.Name())
+		role, seq, ext, perr := parseStagingFileName(ent.Name())
 		if perr != nil {
 			continue
 		}
@@ -153,7 +160,7 @@ func enumerateStaging(stagingDir string) ([]stagingEntry, error) {
 		if serr != nil {
 			continue
 		}
-		out = append(out, stagingEntry{role: role, seq: seq, size: info.Size()})
+		out = append(out, stagingEntry{role: role, seq: seq, size: info.Size(), ext: ext})
 	}
 	// ReadDir 已按名排序；再按 (role, seq) 稳定排序，保证偏移列表顺序确定（spec 配对依赖）
 	sort.Slice(out, func(i, j int) bool {
@@ -162,20 +169,69 @@ func enumerateStaging(stagingDir string) ([]stagingEntry, error) {
 		}
 		return out[i].seq < out[j].seq
 	})
-	return out, nil
+	return collapseStagingKeyDuplicates(taskId, out), nil
 }
 
-// parseStagingFileName 解析暂存文件名 {role}_{seq 三位零填充}{ext} 还原 (role, seq)。
-// store_type 封闭枚举值不含下划线，取最后一个下划线分段为 seq（StagingFileName 的逆）
-func parseStagingFileName(name string) (role string, seq int, err error) {
-	base := strings.TrimSuffix(name, filepath.Ext(name))
+// collapseStagingKeyDuplicates 同键多文件收敛：同一 (role,seq) 键下多文件并存时按字节数
+// 最多者择取（0 字节残留与真身并存的并存形态，字节多者为有效产物）；字节数并列（含皆零）
+// 无法确定性择取，丢弃该键不认领（该轨按无暂存全新写）。两种处置均记日志留痕
+func collapseStagingKeyDuplicates(taskId int64, entries []stagingEntry) []stagingEntry {
+	out := make([]stagingEntry, 0, len(entries))
+	for i := 0; i < len(entries); {
+		j := i + 1
+		for j < len(entries) && entries[j].role == entries[i].role && entries[j].seq == entries[i].seq {
+			j++
+		}
+		group := entries[i:j]
+		if len(group) == 1 {
+			out = append(out, group[0])
+			i = j
+			continue
+		}
+		best, tied := 0, false
+		for k := 1; k < len(group); k++ {
+			switch {
+			case group[k].size > group[best].size:
+				best, tied = k, false
+			case group[k].size == group[best].size:
+				tied = true
+			}
+		}
+		if tied {
+			logger.Log.Warnf("[Download] 任务 %d 暂存同键多文件字节数并列无法确定性择取，该轨按无暂存全新写: role=%s seq=%d 候选 %s",
+				taskId, group[0].role, group[0].seq, describeStagingCandidates(group))
+		} else {
+			out = append(out, group[best])
+			logger.Log.Warnf("[Download] 任务 %d 暂存同键多文件并存，按字节数最多者择取: role=%s seq=%d 选中 ext=%s 其余弃用，候选 %s",
+				taskId, group[0].role, group[0].seq, group[best].ext, describeStagingCandidates(group))
+		}
+		i = j
+	}
+	return out
+}
+
+// describeStagingCandidates 同键候选文件的日志形态（ext 与字节数）
+func describeStagingCandidates(group []stagingEntry) string {
+	parts := make([]string, 0, len(group))
+	for _, e := range group {
+		parts = append(parts, fmt.Sprintf("ext=%q %dB", e.ext, e.size))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// parseStagingFileName 解析暂存文件名 {role}_{seq 三位零填充}{ext} 还原 (role, seq, ext)。
+// ext 为含点号的扩展名段（无扩展名形态为空串）；store_type 封闭枚举值不含下划线，取最后
+// 一个下划线分段为 seq（StagingFileName 的逆）
+func parseStagingFileName(name string) (role string, seq int, ext string, err error) {
+	ext = filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
 	idx := strings.LastIndex(base, "_")
 	if idx <= 0 || idx == len(base)-1 {
-		return "", 0, fmt.Errorf("暂存文件名 %q 不含 role_seq 键", name)
+		return "", 0, "", fmt.Errorf("暂存文件名 %q 不含 role_seq 键", name)
 	}
 	seq, serr := strconv.Atoi(base[idx+1:])
 	if serr != nil || seq < 0 {
-		return "", 0, fmt.Errorf("暂存文件名 %q 的 seq 段无法解析", name)
+		return "", 0, "", fmt.Errorf("暂存文件名 %q 的 seq 段无法解析", name)
 	}
-	return base[:idx], seq, nil
+	return base[:idx], seq, ext, nil
 }

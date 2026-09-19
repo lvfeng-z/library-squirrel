@@ -146,8 +146,8 @@ func TestIngestDimensionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("反序列化失败: %v", err)
 	}
-	ing, db, _, _ := newTestSetup(t)
-	if _, err := ing.Ingest(ctx, newM, mapFileSource(nil), nil); err != nil {
+	ing, db, _, workDir := newTestSetup(t)
+	if _, err := ing.Ingest(ctx, newM, mapFileSource(nil), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("回灌失败: %v", err)
 	}
 	if n := queryInt64(t, db, "SELECT COUNT(*) FROM re_work_tag WHERE namespace = 'female'"); n != 1 {
@@ -186,8 +186,8 @@ func TestIngestDimensionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("旧包反序列化应忽略未知键，实际报错: %v", err)
 	}
-	ing2, db2, _, _ := newTestSetup(t)
-	if _, err := ing2.Ingest(ctx, oldM, mapFileSource(nil), nil); err != nil {
+	ing2, db2, _, workDir2 := newTestSetup(t)
+	if _, err := ing2.Ingest(ctx, oldM, mapFileSource(nil), zipStagingFor(workDir2), nil); err != nil {
 		t.Fatalf("旧包回灌应成功（标签记录级 namespace 静默忽略），实际报错: %v", err)
 	}
 	// 关联侧 ns 由 TagLink 承载，不受标签记录级键影响

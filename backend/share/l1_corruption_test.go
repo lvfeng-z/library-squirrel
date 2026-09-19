@@ -91,7 +91,7 @@ type l1HashIngestor struct {
 	ingestErr error
 }
 
-func (f *l1HashIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource importer.FileSource, opts *importer.IngestOptions) (*importer.ImportResult, error) {
+func (f *l1HashIngestor) Ingest(ctx context.Context, manifest *export.Manifest, fileSource importer.FileSource, staging importer.IngestStaging, opts *importer.IngestOptions) (*importer.ImportResult, error) {
 	f.mu.Lock()
 	if f.ingestErr != nil {
 		err := f.ingestErr

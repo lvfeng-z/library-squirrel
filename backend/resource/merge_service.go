@@ -5,17 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/staging"
-	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/lvfeng-z/library-squirrel-sdk/storepath"
 
 	"gorm.io/gorm"
@@ -64,17 +63,31 @@ type mergeJob struct {
 	cancel context.CancelFunc
 }
 
-// StoreOps store 提交点建行/查询/删除/路径原语（由 persistentStore.Service 实现）。
+// StoreOps store 行查询/软删与绝对路径原语（由 persistentStore.Service 实现）。
 type StoreOps interface {
 	GetById(ctx context.Context, id int64) (*domain.PersistentStore, error)
 	GetAbsPath(store *domain.PersistentStore) string
-	// CommitStore 提交点建行：产物文件已由调用方 rename 就位，本方法只建/复用 DB 行（completed_at
-	// 即时置位、宽高/头指纹按最终路径计算），不触碰磁盘——合并产物同卷 rename 落位后建行用，
-	// 与下载提交点同口径
-	CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
 	// DeleteWithBackup 删除 store 文件（移入 backup 建保管清单行并写行内 backup_id，记录随软删）——
 	// overwrite 删原轨道用：轨道行入回收站文件条目，可经复原置换回滚
 	DeleteWithBackup(ctx context.Context, id int64) (int64, error)
+}
+
+// StoreIngestor 提交点入库事务能力（由 persistentStore.Service 实现）：登记（PrepareIngest，
+// 撤回处置声明必填、由调用方按产物可重产性声明）→ 落位（PlaceIngest，暂存同卷 rename 到
+// 最终路径，store/ 白名单内文件的操作抑制登记内置其中）→ 调用方业务事务内建行并删登记行
+// （CommitIngest）→ 失败按登记声明撤回（AbortIngest）。调用方自持业务事务，编排归发起方
+type StoreIngestor interface {
+	// PrepareIngest 登记入库意图：每文件一行独立事务立即提交，返回登记行 ID 清单（与入参顺序
+	// 一致）。IngestItem 处置声明必填，路径均 relPath 域正斜杠
+	PrepareIngest(ctx context.Context, items []persistentStore.IngestItem) ([]int64, error)
+	// PlaceIngest 落位：把文件从暂存位置同卷 rename 到最终路径；任一失败即中止，由调用方
+	// 决定撤回或重试
+	PlaceIngest(ctx context.Context, intentIds []int64) error
+	// CommitIngest 在调用方业务事务内（ctx 携带事务）建 persistent_store 行并删该文件的登记行
+	// ——两动作同生共死，事务回滚则一并撤销。返回行 ID 供 resource_store 挂载
+	CommitIngest(ctx context.Context, intentId int64, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error)
+	// AbortIngest 按各行登记时声明的处置撤回（退回暂存/丢弃文件）并删登记行，幂等
+	AbortIngest(ctx context.Context, intentIds []int64) error
 }
 
 // MergeWorkReader 作品读取（由 work.Service 实现）。合并产物落盘目录取作品站点复合键，
@@ -125,8 +138,9 @@ type ResourceAccessor interface {
 }
 
 // MergeService 音视频合并业务编排：取 resource 的 videoTrack/audioTrack → 调合并 →
-// 产物暂存于 staging/merge 作用域、同卷 rename 落位 → 事务建 PersistentStore(videoMain) 行 +
-// 挂 resource_store。合并能力由 Merger 提供，store 建行/路径由 StoreOps 提供，本服务只做编排。
+// 产物暂存于 staging/merge 作用域、经入库事务落位（登记 → 落位）→ 事务建 PersistentStore(videoMain) 行 +
+// 挂 resource_store（建行与删登记行同事务）。合并能力由 Merger 提供，store 行查询/路径由 StoreOps 提供、
+// 提交点入库事务由 StoreIngestor 提供，本服务只做编排。
 // 合并异步执行（不阻塞 IPC），进度与结果经 emitter 推送。
 type MergeService struct {
 	resourceStoreRepo *ResourceStoreRepository
@@ -135,6 +149,7 @@ type MergeService struct {
 	site              MergeSiteReader
 	merger            Merger
 	storeOps          StoreOps
+	ingestor          StoreIngestor // 提交点入库事务（登记→落位→事务内建行+删登记；失败撤回）
 	settings          MergeSettingsReader
 	workDirProvider   MergeWorkDirProvider // 合并产物暂存作用域与最终落位的根目录
 	tx                Transactor
@@ -151,7 +166,8 @@ type MergeService struct {
 // workLock 为 overwrite 原轨道置换前置作品锁守卫（shareLock.ShareLockRegistry 实现）。
 // work/site 为合并产物目录名派生所需的站点复合键反查链（resource → work → site）。
 // workDirProvider 为合并产物暂存作用域与最终落位的根目录读取。
-func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, work MergeWorkReader, site MergeSiteReader, merger Merger, storeOps StoreOps, settings MergeSettingsReader, workDirProvider MergeWorkDirProvider, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter, workLock MergeWorkLockChecker) *MergeService {
+// ingestor 为提交点入库事务能力（persistentStore.Service 实现）。
+func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource ResourceAccessor, work MergeWorkReader, site MergeSiteReader, merger Merger, storeOps StoreOps, ingestor StoreIngestor, settings MergeSettingsReader, workDirProvider MergeWorkDirProvider, tx Transactor, completer ResourceRecomputer, emitter MergeEventEmitter, workLock MergeWorkLockChecker) *MergeService {
 	return &MergeService{
 		resourceStoreRepo: resourceStoreRepo,
 		resource:          resource,
@@ -159,6 +175,7 @@ func NewMergeService(resourceStoreRepo *ResourceStoreRepository, resource Resour
 		site:              site,
 		merger:            merger,
 		storeOps:          storeOps,
+		ingestor:          ingestor,
 		settings:          settings,
 		workDirProvider:   workDirProvider,
 		tx:                tx,
@@ -226,8 +243,8 @@ func (s *MergeService) MergeResource(ctx context.Context, resourceId int64) erro
 	return nil
 }
 
-// runMerge 在独立 goroutine 中执行合并全流程（ffmpeg 写暂存作用域 → 产物同卷 rename 落位 →
-// 事务建行挂 store → overwrite → 重算完整度）。
+// runMerge 在独立 goroutine 中执行合并全流程（ffmpeg 写暂存作用域 → 入库事务提交点
+// （登记意图 → 落位 → 事务建行挂 store）→ overwrite → 重算完整度）。
 // 进度经 emitter.PushProgress 推送，终态经 emitter.PushComplete 推送；任何退出路径都从 jobs 删除（defer）。
 // 取消（CancelMerge 触发 ctx 取消）仅在 MergeRemux 阶段生效：ffmpeg 运行中取消则中止合并、报"已取消"；
 // ffmpeg 既已完成则改用独立 commitCtx 落位（不随取消中断），避免 cancel 与 ffmpeg 完成的竞态误报失败。落位/overwrite 仅成功路径执行，故取消不会误删原轨。
@@ -304,26 +321,31 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 		return
 	}
 
-	// 同卷 rename 落位（暂存作用域与 store/ 同在 workDir 卷）。rename 是 store/ 白名单内文件
-	// 操作，须登记抑制：rename→建行窗口内 fsmonitor 收 Create 事件查无 DB 行会误裁决；Release
-	// 延迟到本流程退出，宽限期覆盖 fsnotify 延迟
-	finalAbs := filepath.Join(workDir, mergedRelPath)
-	storeRegistry.Suppress(mergedRelPath)
-	defer storeRegistry.Release(mergedRelPath)
-	if err := os.MkdirAll(filepath.Dir(finalAbs), 0o755); err != nil {
-		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("创建产物目录失败: %v", err))
+	// 入库事务提交点：登记意图 → 落位 → 事务内建行挂载。合并产物是 derived 一次性产物
+	// （可整轨重产、无续传语义），撤回处置恒声明丢弃。落位把同卷 rename 与其操作抑制登记
+	// 收在 PlaceIngest 一处；落位/事务失败按登记声明撤回，撤回失败仅记日志、登记行留启动
+	// 恢复收口
+	stagingRel := path.Join(staging.RootName, string(staging.OwnerMerge), scopeKey, productName)
+	intentIds, err := s.ingestor.PrepareIngest(commitCtx, []persistentStore.IngestItem{{
+		FilePath:    mergedRelPath,
+		StagingPath: stagingRel,
+		AbortAction: domain.AbortActionDiscard,
+	}})
+	if err != nil {
+		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("登记合并产物入库意图失败: %v", err))
 		return
 	}
-	if err := os.Rename(tmpOut, finalAbs); err != nil {
+	if err := s.ingestor.PlaceIngest(commitCtx, intentIds); err != nil {
+		s.abortIngested(resourceId, intentIds)
 		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("合并产物落位失败: %v", err))
 		return
 	}
 
-	// 单事务：建 PersistentStore 行 + 挂 resource_store(videoMain)。行随事务原子成败；失败时
-	// 已落位的产物文件成为无行孤儿，随之清除
+	// 单事务：建 PersistentStore 行（与删登记行同生共死）+ 挂 resource_store(videoMain)。
+	// 事务失败时行与登记行删除一并回滚（登记行保留），已落位的产物文件由撤回按丢弃声明清除
 	var mergedPsId int64
 	if err := s.tx.ExecInTransaction(commitCtx, func(txCtx context.Context) error {
-		id, cerr := s.storeOps.CommitStore(txCtx, mergedRelPath, mergedFileName, sql.NullString{}, sql.NullString{})
+		id, cerr := s.ingestor.CommitIngest(txCtx, intentIds[0], mergedRelPath, mergedFileName, sql.NullString{}, sql.NullString{})
 		if cerr != nil {
 			return fmt.Errorf("建产物 store 行失败: %w", cerr)
 		}
@@ -336,9 +358,7 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 		rs.StoreID = mergedPsId
 		return s.resourceStoreRepo.Create(txCtx, rs)
 	}); err != nil {
-		if rerr := os.Remove(finalAbs); rerr != nil && !os.IsNotExist(rerr) {
-			logger.Log.Errorf("[MergeService] 提交失败清理已落位产物文件也失败: resourceId=%d 路径=%s 提交错误=%v 清理错误=%v", resourceId, mergedRelPath, err, rerr)
-		}
+		s.abortIngested(resourceId, intentIds)
 		s.emitter.PushComplete(resourceId, false, 0, fmt.Sprintf("提交合并产物失败: %v", err))
 		return
 	}
@@ -353,6 +373,14 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 
 	s.completer.RecomputeResourceComplete(commitCtx, resourceId) // 合并改变 store 构成,重算(分离流下载时缺 videoMain 判 2,合并后应升为 1)
 	s.emitter.PushComplete(resourceId, true, mergedPsId, "")
+}
+
+// abortIngested 合并提交失败撤回：按登记时声明的丢弃处置清走已落位产物并收口登记行，幂等；
+// 撤回自身失败仅记日志——失败行登记行保留，由启动恢复收口
+func (s *MergeService) abortIngested(resourceId int64, intentIds []int64) {
+	if err := s.ingestor.AbortIngest(context.Background(), intentIds); err != nil {
+		logger.Log.Errorf("[MergeService] 撤回合并产物入库失败（登记行保留，启动恢复收口）: resourceId=%d 错误=%v", resourceId, err)
+	}
 }
 
 // overwriteOriginalTracks overwrite 策略收尾：软删原视频/音频轨——文件移 backup 建保管清单行，

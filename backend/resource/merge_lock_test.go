@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 
@@ -33,9 +32,6 @@ func (o *mergeLockStoreOps) GetById(ctx context.Context, id int64) (*domain.Pers
 	return nil, nil
 }
 func (o *mergeLockStoreOps) GetAbsPath(store *domain.PersistentStore) string { return "" }
-func (o *mergeLockStoreOps) CommitStore(ctx context.Context, relPath string, fileName string, expectedSha, actualSha sql.NullString) (int64, error) {
-	return 0, nil
-}
 func (o *mergeLockStoreOps) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
 	o.deletedIds = append(o.deletedIds, id)
 	return 1, nil
@@ -49,7 +45,7 @@ func (mergeLockSettings) GetMergeStrategy() string { return settings.MergeStrate
 // newMergeLockService 装配带真实锁注册中心与记账桩的合并服务（合并/落盘等其余依赖不触达；
 // work/site 反查链仅供产物路径派生，本组用例不触达故传 nil）
 func newMergeLockService(ops *mergeLockStoreOps, lock shareLock.ShareLockRegistry) *MergeService {
-	return NewMergeService(nil, mergeLockResource{workId: 500}, nil, nil, nil, ops, mergeLockSettings{}, nil, nil, nil, nil, lock)
+	return NewMergeService(nil, mergeLockResource{workId: 500}, nil, nil, nil, ops, nil, mergeLockSettings{}, nil, nil, nil, nil, lock)
 }
 
 // newMergeTrackPair 构造原视频/音频轨 store 行（901/902）

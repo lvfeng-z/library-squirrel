@@ -15,11 +15,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
 	importer "github.com/library-squirrel/backend/import"
@@ -169,7 +171,7 @@ func (e *ReceiveExecution) Execute(h taskManager.StrategyHandle) {
 		}
 	}
 	ingestStart := time.Now()
-	imported, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), opts)
+	imported, err := e.ingestor.Ingest(ctx, sub, stagedFileSource(staging), receiveStaging{workDir: workDir, staging: staging}, opts)
 	if err != nil {
 		logger.Log.Debugf("[share-recv] 任务 %d 导入失败 耗时=%s err=%v", taskID, time.Since(ingestStart), err)
 		reportReceiveError(h, ctx, err)
@@ -959,6 +961,46 @@ func stagedFileSource(staging string) importer.FileSource {
 		}
 		return f, nil
 	}
+}
+
+// receiveStaging 收件暂存轨的导入暂存层（importer.IngestStaging 实现）：文件已由拉取阶段落
+// {workDir}/staging/share-receive/{taskID}/ 可续传作用域（暂存大小对齐声明即跳过重拉、不足按
+// 偏移续传，见 stageFile），直接作落位来源——解包相位不写暂存（writer=nil）、仅读流实测 sha；
+// 撤回处置=退回暂存（落位后失败/中断的字节回到可续传位置，任务重试免网络重拉）；导入退出
+// 不回收作用域（生命周期归任务：成功由执行面清理、暂停/失败保留续传、任务删除链与启动清扫
+// 兜底）。
+type receiveStaging struct {
+	workDir string // 库根（登记行暂存路径的派生基准）
+	staging string // 收件作用域绝对路径（absPath 域）
+}
+
+// Stage 内容已在收件作用域：不写暂存（writer=nil），登记行暂存路径=作用域内条目镜像路径。
+func (s receiveStaging) Stage(ctx context.Context, entryPath string) (io.WriteCloser, string, error) {
+	rel, err := receiveStagingRel(s.workDir, s.staging, entryPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return nil, rel, nil
+}
+
+// AbortAction 撤回处置声明：退回暂存（收件文件按暂存大小偏移续传，字节保留即免重拉）。
+func (s receiveStaging) AbortAction() entity.IngestAbortAction {
+	return entity.AbortActionReturnToStaging
+}
+
+// Release 导入退出收尾：收件作用域生命周期归任务，导入不回收（空操作）。
+func (s receiveStaging) Release(ctx context.Context) {}
+
+// receiveStagingRel 收件作用域内条目的 workDir 相对路径（relPath 域正斜杠）：作用域绝对路径
+// 按 workDir 前缀剥离还原（跨域收参边界 ToSlash 规范化），前缀不匹配（路径派生异常）显式
+// 报错不兜底。
+func receiveStagingRel(workDir, stagingAbs, entryPath string) (string, error) {
+	absSlash := filepath.ToSlash(stagingAbs)
+	rootSlash := strings.TrimSuffix(filepath.ToSlash(workDir), "/")
+	if workDir == "" || !strings.HasPrefix(absSlash, rootSlash+"/") {
+		return "", fmt.Errorf("收件暂存路径未落在工作目录下(%s)", stagingAbs)
+	}
+	return path.Join(strings.TrimPrefix(absSlash, rootSlash+"/"), entryPath), nil
 }
 
 // safeEntryPath 包内路径白名单校验：非空、正斜杠相对路径、无穿越段

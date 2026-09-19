@@ -105,7 +105,7 @@ func IsSuppressed(relPath string) bool {
 		}
 	}
 	// 后代匹配：key 是某登记项的祖先目录（文件登记命中其父目录的 Create 事件，
-	// 覆盖 StoreStream 的 os.MkdirAll 触发的目录 Create）
+	// 覆盖落位方 MkdirAll 创建最终目录时触发的目录 Create）
 	prefix := key + "/"
 	for k, e := range suppressSet {
 		if e.expiry > now && strings.HasPrefix(k, prefix) {

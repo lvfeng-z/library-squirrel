@@ -16,12 +16,13 @@ const manifestEntryName = "manifest.json"
 
 // Handler 导入 Handler（Wails Bind 方法，经 IPC 暴露给前端）。
 type Handler struct {
-	ingestor ManifestIngestor
+	ingestor      ManifestIngestor
+	workDirGetter func() string // 库根读取器（zip 解包暂存作用域在其下创建）
 }
 
-// NewHandler 创建导入 Handler。
-func NewHandler(ing ManifestIngestor) *Handler {
-	return &Handler{ingestor: ing}
+// NewHandler 创建导入 Handler（workDirGetter 为库根读取器，每次导入铸造独立的解包暂存作用域）。
+func NewHandler(ing ManifestIngestor, workDirGetter func() string) *Handler {
+	return &Handler{ingestor: ing, workDirGetter: workDirGetter}
 }
 
 // ImportFromZip 从导出 ZIP 产物回灌导入：解包读 manifest → 校验版本锚（Ingest 内）→
@@ -49,7 +50,7 @@ func (h *Handler) importFromZip(ctx context.Context, zipPath string) (*ImportRes
 	if err != nil {
 		return nil, err
 	}
-	return h.ingestor.Ingest(ctx, manifest, zipFileSource(&reader.Reader), nil)
+	return h.ingestor.Ingest(ctx, manifest, zipFileSource(&reader.Reader), NewZipUnpackStaging(h.workDirGetter), nil)
 }
 
 // readManifest 读取包内 manifest.json 并反序列化（版本锚校验由 Ingest 承担——能力契约对

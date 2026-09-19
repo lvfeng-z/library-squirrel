@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +62,14 @@ type Repository interface {
 	ClearBackupRefsByBackupIds(ctx context.Context, ids []int64) error
 	// ClearIllegalAliveBackupRefs 清活行（deleted_at=0）携带备份引用的非法态列，返回受影响行数
 	ClearIllegalAliveBackupRefs(ctx context.Context) (int64, error)
+	// CreateIngestJournals 批量登记入库意图（入库事务 API；ID 经切片指针回填）
+	CreateIngestJournals(ctx context.Context, rows []*domain.StoreIngestJournal) error
+	// ListIngestJournals 全量列出登记行（启动恢复逐行收口）
+	ListIngestJournals(ctx context.Context) ([]*domain.StoreIngestJournal, error)
+	// ListIngestJournalsByIds 按 ID 批量查登记行（落位与撤回取回登记内容）
+	ListIngestJournalsByIds(ctx context.Context, ids []int64) ([]*domain.StoreIngestJournal, error)
+	// DeleteIngestJournalsByIds 批量物理删登记行（CommitIngest 在调用方事务内删行）
+	DeleteIngestJournalsByIds(ctx context.Context, ids []int64) error
 }
 
 // tryDecodeImageDimensions 若为图片则读取文件头部解码返回宽高，否则返回无效值
@@ -298,115 +305,6 @@ func (s *Service) CommitStore(ctx context.Context, relPath string, fileName stri
 		return 0, fmt.Errorf("保存记录失败: %w", err)
 	}
 	return store.GetID(), nil
-}
-
-// Store 存入文件
-// relPath: 相对于 {workDir}/store/ 的路径（由调用方指定，必须匹配已注册子目录）
-// fileName: 原始文件名
-// reader: 文件内容
-// 返回 persistent_store 记录 ID
-func (s *Service) Store(ctx context.Context, relPath string, fileName string, reader io.Reader) (int64, error) {
-	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
-		return 0, err
-	}
-	// 1. 校验 relPath 是否匹配已注册子目录
-	if err := storeRegistry.ValidatePath(relPath); err != nil {
-		return 0, err
-	}
-	storeRegistry.Suppress(relPath)
-	defer storeRegistry.Release(relPath)
-
-	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：查旧/抑制登记/落库全程与 DB 基准一致
-	relPath = filepath.ToSlash(relPath)
-
-	workDir := s.getWorkDir()
-	absPath := filepath.Join(workDir, relPath)
-
-	// 2. 检查 relPath 是否已存在记录
-	existing, err := s.repo.GetByFilePath(ctx, relPath)
-	if err != nil {
-		return 0, fmt.Errorf("查询已有记录失败: %w", err)
-	}
-
-	if existing != nil {
-		// 已存在 → 删除旧文件 + 更新记录
-		if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-			logger.Log.Warn("删除旧文件失败", zap.String("path", absPath), zap.Error(err))
-		}
-	}
-
-	// 3. 确保目录存在
-	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-		return 0, fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	// 4. 写入文件
-	file, err := os.Create(absPath)
-	if err != nil {
-		return 0, fmt.Errorf("创建文件失败: %w", err)
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, reader); err != nil {
-		// 写入失败时清理已创建的文件
-		os.Remove(absPath)
-		return 0, fmt.Errorf("写入文件失败: %w", err)
-	}
-
-	// 5. 提取扩展名
-	ext := filepath.Ext(fileName)
-	if ext == "" {
-		ext = filepath.Ext(relPath)
-	}
-
-	if existing != nil {
-		// 更新已有记录
-		existing.FileName.Valid = true
-		existing.FileName.String = fileName
-		existing.FilenameExtension.Valid = true
-		existing.FilenameExtension.String = ext
-		existing.CompletedAt = util.GetCurrentTimestamp()
-		fillImageDimensions(existing, workDir)
-		s.fillFingerprint(existing, absPath)
-		if err := s.repo.Updates(ctx, existing); err != nil {
-			return 0, fmt.Errorf("更新记录失败: %w", err)
-		}
-		return existing.GetID(), nil
-	}
-
-	// 6. 创建记录（已完成）
-	store := domain.NewPersistentStore()
-	store.FilePath.Valid = true
-	store.FilePath.String = filepath.ToSlash(relPath)
-	store.FileName.Valid = true
-	store.FileName.String = fileName
-	store.FilenameExtension.Valid = true
-	store.FilenameExtension.String = ext
-	store.CompletedAt = util.GetCurrentTimestamp()
-	fillImageDimensions(store, workDir)
-	s.fillFingerprint(store, absPath)
-
-	if err := s.repo.Create(ctx, store); err != nil {
-		// 记录创建失败时清理文件
-		os.Remove(absPath)
-		return 0, fmt.Errorf("保存记录失败: %w", err)
-	}
-
-	return store.GetID(), nil
-}
-
-// StoreFromFile 从本地文件存入
-// relPath: 相对于 {workDir}/store/ 的路径
-// fileName: 原始文件名
-// srcAbsPath: 源文件的绝对路径
-func (s *Service) StoreFromFile(ctx context.Context, relPath string, fileName string, srcAbsPath string) (int64, error) {
-	srcFile, err := os.Open(srcAbsPath)
-	if err != nil {
-		return 0, fmt.Errorf("打开源文件失败: %w", err)
-	}
-	defer srcFile.Close()
-
-	return s.Store(ctx, relPath, fileName, srcFile)
 }
 
 // GetById 根据 ID 获取记录
@@ -647,95 +545,6 @@ func (s *Service) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*d
 		return []*domain.PersistentStore{}
 	}
 	return records
-}
-
-// StoreFromExternal 将外部文件导入到 store 目录并创建 DB 记录
-// PersistentStore 全权负责文件移动和 DB 记录的创建
-// srcAbsPath: 外部源文件绝对路径（移动后源文件消失）
-// relPath: 目标相对路径（相对于 {workDir}）
-// fileName: 原始文件名
-func (s *Service) StoreFromExternal(ctx context.Context, srcAbsPath string, relPath string, fileName string) (int64, error) {
-	if err := settings.RefuseIfUnconfigured(s.getWorkDir(), "persistentStore"); err != nil {
-		return 0, err
-	}
-	// 入口规范化为正斜杠（PATH_SEPARATOR_DISCIPLINE）：清旧/抑制登记/落库全程与 DB 基准一致
-	relPath = filepath.ToSlash(relPath)
-	// 1. 校验 relPath
-	if err := storeRegistry.ValidatePath(relPath); err != nil {
-		return 0, err
-	}
-	storeRegistry.Suppress(relPath)
-	defer storeRegistry.Release(relPath)
-
-	// 2. 确认源文件存在
-	if _, err := os.Stat(srcAbsPath); err != nil {
-		return 0, fmt.Errorf("源文件不存在: %s: %w", srcAbsPath, err)
-	}
-
-	workDir := s.getWorkDir()
-	targetAbsPath := filepath.Join(workDir, relPath)
-
-	// 3. 确保目标目录存在
-	if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0755); err != nil {
-		return 0, fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	// 4. 清理目标路径旧 store：先删同 file_path 的既有记录(含其磁盘文件)，再兜底删残留磁盘文件
-	//    避免导入路径被既有 store 占用时 INSERT 触发 file_path UNIQUE 冲突
-	if _, err := s.HardDeleteByFilePath(ctx, relPath, false); err != nil {
-		return 0, fmt.Errorf("清理目标路径旧 store 记录失败: %w", err)
-	}
-	if _, err := os.Stat(targetAbsPath); err == nil {
-		if err := os.Remove(targetAbsPath); err != nil {
-			return 0, fmt.Errorf("删除已有文件失败: %w", err)
-		}
-	}
-
-	// 5. 移动源文件到 store 目录（同文件系统 O(1)）
-	if err := os.Rename(srcAbsPath, targetAbsPath); err != nil {
-		// 跨文件系统时回退为复制
-		logger.Log.Warn("移动文件失败（回退为复制）", zap.String("src", srcAbsPath), zap.String("dst", targetAbsPath), zap.Error(err))
-		if copyErr := util.CopyFile(srcAbsPath, targetAbsPath); copyErr != nil {
-			return 0, fmt.Errorf("移动文件失败，回退复制也失败: %w（原始移动错误: %v）", copyErr, err)
-		}
-		_ = os.Remove(srcAbsPath)
-	}
-
-	// 6. 提取扩展名
-	ext := filepath.Ext(fileName)
-	if ext == "" {
-		ext = filepath.Ext(relPath)
-	}
-
-	// 7. 创建 PersistentStore 记录（已完成状态）
-	store := domain.NewPersistentStore()
-	store.FilePath.Valid = true
-	store.FilePath.String = filepath.ToSlash(relPath)
-	store.FileName.Valid = true
-	store.FileName.String = fileName
-	store.FilenameExtension.Valid = true
-	store.FilenameExtension.String = ext
-	store.CompletedAt = util.GetCurrentTimestamp()
-	fillImageDimensions(store, workDir)
-	s.fillFingerprint(store, targetAbsPath)
-
-	if err := s.repo.Create(ctx, store); err != nil {
-		return 0, fmt.Errorf("注册 PersistentStore 记录失败: %w", err)
-	}
-
-	return store.GetID(), nil
-}
-
-// HardDeleteByFilePath 根据路径删除记录及文件（物理删）
-func (s *Service) HardDeleteByFilePath(ctx context.Context, filePath string, backup bool) (int64, error) {
-	record, err := s.repo.GetByFilePath(ctx, filePath)
-	if err != nil {
-		return 0, err
-	}
-	if record == nil {
-		return 0, nil
-	}
-	return s.HardDelete(ctx, record.GetID(), backup)
 }
 
 // Exists 检查文件是否存在（记录存在且磁盘文件存在）
