@@ -2,9 +2,11 @@ package fsmonitor
 
 import (
 	"context"
+	"path/filepath"
 	"runtime"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/util/fingerprint"
 )
 
@@ -48,7 +50,9 @@ func NewPlatformDeps(workDir string, usnEnabled bool, cursorStore CursorStore) *
 	d := &Deps{
 		Fingerprinter: fingerprint.NewHeadComputer(),
 	}
-	if src, err := NewFsnotifySource(workDir); err == nil {
+	// 暂存总根整体免挂 watch：其内作用域创建走「临时目录→rename 定名」，动态补 watch 的
+	// 打开窗口与该 rename 竞态会令其随机撞 sharing violation；且暂存事件不入任何处理域
+	if src, err := NewFsnotifySource(workDir, filepath.Join(workDir, staging.RootName)); err == nil {
 		d.LiveSource = src
 	} else {
 		logger.Log.Warnf("[fsmonitor] 实时事件源不可用，运行时监控降级为仅启动对账: %v", err)

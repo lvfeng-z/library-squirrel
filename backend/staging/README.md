@@ -8,7 +8,7 @@
 {workDir}/
 ├─ store/            ← 库内资源（store 白名单，fsmonitor 监控）
 ├─ backup/           ← 备份根（backup 域，fsmonitor 监控）
-└─ staging/          ← 暂存总根（不在白名单与 backup 域 → fsmonitor 零感知）
+└─ staging/          ← 暂存总根（不在白名单与 backup 域，fsmonitor 零感知：事件不消费 + watch 层整体免挂——动态补 watch 的打开窗口会与作用域「临时目录→rename 定名」竞态，Windows 上 rename 撞 sharing violation）
    ├─ download/{taskID}/       ← 插件下载任务：role_seq 键暂存文件平铺
    ├─ share-receive/{taskID}/  ← 分享收件任务：父作用域含共享 manifest.json，子作用域为按清单路径镜像命名的暂存文件
    ├─ import/{scopeKey}/       ← UI 回灌导入（根已登记，暂无生产消费方）

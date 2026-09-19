@@ -34,6 +34,12 @@ type fsnotifySource struct {
 	workDir string
 	watcher *fsnotify.Watcher
 
+	// excludeDirs 整体免挂 watch 的绝对路径清单（含其整个子树）。监控层对新建目录动态补挂
+	// watch 的打开窗口，会与「先建临时名目录、随即 rename 定名」的目录操作竞态——Windows 上
+	// rename 撞 sharing violation，操作随机失败。做这类原子定名的子树（暂存总根）必须整体
+	// 免挂；其内部事件本就不入任何处理域，监控纯属句柄开销。
+	excludeDirs []string
+
 	events chan FileChange
 	errs   chan error
 
@@ -47,18 +53,24 @@ type fsnotifySource struct {
 // NewFsnotifySource 创建基于 fsnotify 的事件源。
 // 仅完成 watcher 与字段构造；递归加 watch 在 Start 中进行（时序约束见 Start 注释）。
 // watcher 创建失败返回 error，上层据此不注入该能力。
-func NewFsnotifySource(workDir string) (*fsnotifySource, error) {
+// excludeDirs 为整体免挂 watch 的绝对路径清单（含子树，理由见字段注释）；未传则监控全工作目录树。
+func NewFsnotifySource(workDir string, excludeDirs ...string) (*fsnotifySource, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("创建 fsnotify watcher 失败: %w", err)
 	}
+	cleaned := make([]string, 0, len(excludeDirs))
+	for _, dir := range excludeDirs {
+		cleaned = append(cleaned, filepath.Clean(dir))
+	}
 	s := &fsnotifySource{
-		workDir: filepath.Clean(workDir),
-		watcher: w,
-		events:  make(chan FileChange, 256),
-		errs:    make(chan error, 4),
-		stopCh:  make(chan struct{}),
-		watches: make(map[string]bool),
+		workDir:     filepath.Clean(workDir),
+		watcher:     w,
+		excludeDirs: cleaned,
+		events:      make(chan FileChange, 256),
+		errs:        make(chan error, 4),
+		stopCh:      make(chan struct{}),
+		watches:     make(map[string]bool),
 	}
 	return s, nil
 }
@@ -128,7 +140,7 @@ func (s *fsnotifySource) handleEvent(ev fsnotify.Event) {
 		s.send(FileChange{Kind: ChangeRemove, Path: rel, IsDir: isDir, FromRename: true, DetectedAt: util.GetCurrentTimestamp()})
 	case ev.Op&fsnotify.Create != 0:
 		isDir := s.isDirAtCreate(ev.Name)
-		if isDir {
+		if isDir && !s.isExcludedDir(ev.Name) {
 			// 新建目录递归补 watch
 			if err := s.addWatchRecursive(ev.Name); err != nil {
 				logger.Log.Warnf("[fsmonitor] 动态补 watch 失败 %s: %v", ev.Name, err)
@@ -161,8 +173,9 @@ func (s *fsnotifySource) sendErr(err error) {
 
 // addWatchRecursive 递归为 root 及其所有子目录加 watch。
 // 单个目录加 watch 失败仅告警不中断(降级：部分目录无 watch)。
-// 已在 watches 中的目录跳过：消费循环与初始 walk 并发运行时，
-// Create 目录事件的动态补挂可能先于 walk 到达同一目录，重复 Add 会产生重复监控句柄。
+// 排除清单命中的目录整棵子树跳过（不挂句柄）；已在 watches 中的目录跳过：消费循环与初始
+// walk 并发运行时，Create 目录事件的动态补挂可能先于 walk 到达同一目录，重复 Add 会产生
+// 重复监控句柄。
 func (s *fsnotifySource) addWatchRecursive(root string) error {
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -170,6 +183,9 @@ func (s *fsnotifySource) addWatchRecursive(root string) error {
 		}
 		if !info.IsDir() {
 			return nil
+		}
+		if s.isExcludedDir(path) {
+			return filepath.SkipDir
 		}
 		s.mu.Lock()
 		watched := s.watches[path]
@@ -186,6 +202,17 @@ func (s *fsnotifySource) addWatchRecursive(root string) error {
 		s.mu.Unlock()
 		return nil
 	})
+}
+
+// isExcludedDir 判断绝对路径是否命中排除清单（清单成员本身即子树根，命中即整棵免挂）。
+func (s *fsnotifySource) isExcludedDir(absPath string) bool {
+	cleaned := filepath.Clean(absPath)
+	for _, dir := range s.excludeDirs {
+		if cleaned == dir {
+			return true
+		}
+	}
+	return false
 }
 
 // isDirAtCreate Create 事件到达时判断是否目录(文件刚创建，stat 可能有 race，失败按文件处理)。
