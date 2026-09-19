@@ -112,23 +112,24 @@ const isBuiltinTask = computed<boolean>(() => {
   const taskType = props.row.taskProgress?.task?.taskType
   return notNullish(taskType) && BUILTIN_TASK_TYPES.has(taskType)
 })
-// 进度（百分比）
+// 进度（百分比）。实时值取任务 store；终态任务脱离实时 store 后行内 taskProgress 已同步终值，
+// store 未命中时回落行内值。完成态恒示 100%（与后端 ListStatus 的 Schedule=100 同义）：
+// 瞬时提交路径全程无进度事件，store 与行内皆无终值可算比值
 const schedule: Ref<number> = computed<number>((oldValue) => {
   const taskId = props.row.taskProgress?.task?.id
   if (isNullish(taskId)) return isNullish(oldValue) ? 0 : oldValue
+  if (status.value === TaskStatusEnum.FINISHED) {
+    return 100
+  }
   const tempStatus = props.row.hasChildren
     ? parentTaskStore.getTask(taskId)
     : taskStore.getTask(taskId)
-  if (notNullish(tempStatus)) {
-    const finished = tempStatus.finished
-    const total = tempStatus.total
-    if (isNullish(finished) || isNullish(total) || total === 0) {
-      return 0
-    }
-    return Math.round((finished / total) * 100)
-  } else {
+  const finished = notNullish(tempStatus) ? tempStatus.finished : props.row.taskProgress?.finished
+  const total = notNullish(tempStatus) ? tempStatus.total : props.row.taskProgress?.total
+  if (isNullish(finished) || isNullish(total) || total === 0) {
     return 0
   }
+  return Math.round((finished / total) * 100)
 })
 // 进度（数据量）
 const scheduleByte: Ref<string> = computed(() => {
