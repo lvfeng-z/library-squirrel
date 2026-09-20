@@ -102,7 +102,7 @@ func (p *blockingExporter) Pack(ctx context.Context, _ string, _ *ExportModel, t
 // seedExportSourceFile 在测试 workDir 下播种夹具作品的源文件（store 活行指向）。
 func seedExportSourceFile(t *testing.T, workDir string) {
 	t.Helper()
-	rel := filepath.Join("store", "resource", "作品1.jpg")
+	rel := filepath.Join("store", "work", "作品1.jpg")
 	abs := filepath.Join(workDir, rel)
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 	require.NoError(t, os.WriteFile(abs, []byte("image-content"), 0o644))

@@ -84,7 +84,7 @@ func (e *purgeStoreTestEnv) storeRowExists(t *testing.T, id int64) bool {
 // TestPurgeStoreConsumesBackup 彻底删除文件条目：行物理消亡 + 行内引用的备份消费式删除
 func TestPurgeStoreConsumesBackup(t *testing.T) {
 	env := newPurgeStoreTestEnv(t)
-	storeId := env.insertDeletedStore(t, "带备份残迹", "store/resource/作者/带备份残迹.mp4", 701)
+	storeId := env.insertDeletedStore(t, "带备份残迹", "store/work/作者/带备份残迹.mp4", 701)
 
 	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
 		t.Fatalf("清理文件条目失败: %v", err)
@@ -106,7 +106,7 @@ func TestPurgeStoreConsumesBackup(t *testing.T) {
 // TestPurgeStoreWithoutBackup 无备份行（MarkInvalid 失效形态）清理：仅删行，无备份调用
 func TestPurgeStoreWithoutBackup(t *testing.T) {
 	env := newPurgeStoreTestEnv(t)
-	storeId := env.insertDeletedStore(t, "失效行", "store/resource/作者/失效行.png", 0)
+	storeId := env.insertDeletedStore(t, "失效行", "store/work/作者/失效行.png", 0)
 
 	if err := env.svc.PurgeStore(context.Background(), storeId); err != nil {
 		t.Fatalf("清理失效行失败: %v", err)
@@ -140,7 +140,7 @@ func TestPurgeStoreRemovesResidualFile(t *testing.T) {
 		t.Fatalf("残迹文件应随行清除，实际 Stat 结果 err=%v", err)
 	}
 	// 不存在路径的行：清理扑空无害不报错
-	storeId2 := env.insertDeletedStore(t, "路径已失行", "store/resource/作者/不存在.mp4", 0)
+	storeId2 := env.insertDeletedStore(t, "路径已失行", "store/work/作者/不存在.mp4", 0)
 	if err := env.svc.PurgeStore(context.Background(), storeId2); err != nil {
 		t.Fatalf("路径扑空的清理不应报错: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestPurgeStoreRemovesAssociations(t *testing.T) {
 	if err := env.db.Exec("INSERT INTO resource (id, create_time, update_time, work_id, resource_type) VALUES (1, 0, 0, 1, 'image')").Error; err != nil {
 		t.Fatalf("建资源种子失败: %v", err)
 	}
-	storeId := env.insertDeletedStore(t, "带关联行", "store/resource/作者/带关联行.png", 0)
+	storeId := env.insertDeletedStore(t, "带关联行", "store/work/作者/带关联行.png", 0)
 	if err := env.db.Exec("INSERT INTO resource_store (resource_id, store_id, store_type, store_seq, create_time, update_time) VALUES (1, ?, 'image', 1, 0, 0)", storeId).Error; err != nil {
 		t.Fatalf("建关联种子失败: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestPurgeStoreRejectsAliveRow(t *testing.T) {
 // 不静默删记录制造「记录消失、文件残留」孤儿。用非空目录制造跨平台 os.Remove 失败
 func TestPurgeStoreFileFailureRetainsRecord(t *testing.T) {
 	env := newPurgeStoreTestEnv(t)
-	rel := "store/resource/作者/删不动"
+	rel := "store/work/作者/删不动"
 	if err := os.MkdirAll(filepath.Join(env.workDir, rel, "inner"), 0o755); err != nil {
 		t.Fatalf("造非空目录失败: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestPurgeStoreFileFailureRetainsRecord(t *testing.T) {
 // TestPurgeStoreRecordsKeepsFile 仅删记录（用户对文件失败显式选择）：记录删除、磁盘文件保留
 func TestPurgeStoreRecordsKeepsFile(t *testing.T) {
 	env := newPurgeStoreTestEnv(t)
-	rel := "store/resource/作者/仅删记录.mp4"
+	rel := "store/work/作者/仅删记录.mp4"
 	abs := filepath.Join(env.workDir, rel)
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		t.Fatalf("造目录失败: %v", err)

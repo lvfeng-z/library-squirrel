@@ -303,8 +303,8 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 // buildTwoWorkModel 双作品导出模型（任务粒度整体决策应用全部冲突作品的多作品验证）
 func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
 	t.Helper()
-	relA := "store/resource/测试作者/a_001.jpg"
-	relB := "store/resource/测试作者/b_001.jpg"
+	relA := "store/work/测试作者/a_001.jpg"
+	relB := "store/work/测试作者/b_001.jpg"
 	contentA := []byte("WORK-A-PLAINTEXT-CONTENT")
 	contentB := []byte("WORK-B-PLAINTEXT-CONTENT")
 	for _, p := range []string{relA, relB} {
@@ -343,8 +343,8 @@ func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 // 无缺失文件——缺失文件会阻断「全部匹配」判定）
 func buildAllPresentModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
 	t.Helper()
-	relA := "store/resource/测试作者/a_001.jpg"
-	relB := "store/resource/测试作者/video_000.mp4"
+	relA := "store/work/测试作者/a_001.jpg"
+	relB := "store/work/测试作者/video_000.mp4"
 	contentA := []byte("FILE-A-PLAINTEXT-CONTENT-分享明文锚点")
 	contentB := []byte("FILE-B-PLAINTEXT-CONTENT-分享明文锚点")
 	for _, p := range []string{relA, relB} {
@@ -389,7 +389,7 @@ func buildBigFileModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 		big[i] = byte(i % 251)
 	}
 	copy(big, "BIGFILE-PLAINTEXT-MARKER")
-	rel := "store/resource/测试作者/video_000.mp4"
+	rel := "store/work/测试作者/video_000.mp4"
 	abs := filepath.Join(workDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		t.Fatal(err)
@@ -560,7 +560,7 @@ func (f *fakeReplaceOps) SoftDeleteWorkStoreRoles(ctx context.Context, workId in
 		return nil, nil
 	}
 	// 按调用序生成不同 victim（验证多作品回滚清单合并登记）
-	return []resource.StoreRef{{StoreID: base + int64(n-1), ResourceID: 700, BackupID: 800 + int64(n-1), FilePath: "store/resource/x.png"}}, nil
+	return []resource.StoreRef{{StoreID: base + int64(n-1), ResourceID: 700, BackupID: 800 + int64(n-1), FilePath: "store/work/x.png"}}, nil
 }
 
 func (f *fakeReplaceOps) RestoreReplacedStores(ctx context.Context, scope resource.RestoreScope) error {
@@ -1755,8 +1755,8 @@ func TestReceiveSelfReferencePassCrossInstance(t *testing.T) {
 func TestReceiveExecutionAllMatchedSkipsWholeWork(t *testing.T) {
 	env := startReceiveEnvModel(t, SharePublishOptions{}, buildAllPresentModel)
 	src := sourceBytesByStoreID(t, env)
-	localA := "store/resource/本地/pic_001.jpg"
-	localB := "store/resource/本地/video_000.mp4"
+	localA := "store/work/本地/pic_001.jpg"
+	localB := "store/work/本地/video_000.mp4"
 	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
 		localA: src[101],
 		localB: src[102],
@@ -1802,8 +1802,8 @@ func TestReceiveExecutionPartialMatchedCopiesLocal(t *testing.T) {
 	fileA := fileEntryByStoreID(t, env, 101) // image
 	fileB := fileEntryByStoreID(t, env, 102) // videoMain
 	src := sourceBytesByStoreID(t, env)
-	localA := "store/resource/本地/pic_001.jpg"
-	localB := "store/resource/本地/video_000.mp4"
+	localA := "store/work/本地/pic_001.jpg"
+	localB := "store/work/本地/video_000.mp4"
 	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
 		localA: src[101],
 		localB: []byte("LOCAL-B-CONTENT-DIFFERS"),
@@ -1854,7 +1854,7 @@ func TestReceiveExecutionHeadMatchTailDiffPulls(t *testing.T) {
 	// 本地文件：与宿主同尺寸、同头 64KB，但尾部改一字节 → 头部指纹匹配、全量 sha256 不一致
 	localTail := append([]byte(nil), src...)
 	localTail[len(localTail)-1] ^= 0xFF
-	localRel := "store/resource/本地/video_000.mp4"
+	localRel := "store/work/本地/video_000.mp4"
 	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{localRel: localTail})
 	mounts := &fakeMountReader{byWork: map[int64][]resource.StoreMountInfo{
 		500: {localMountFor(t, env.recvDir, localRel, entity.StoreTypeImage, 1)},
@@ -1913,7 +1913,7 @@ func TestReceiveExecutionMissingFingerprintFallsBack(t *testing.T) {
 	t.Run("本地缺指纹", func(t *testing.T) {
 		env := startReceiveEnv(t, SharePublishOptions{})
 		entry := fileEntryByStoreID(t, env, 101)
-		localRel := "store/resource/本地/pic_001.jpg"
+		localRel := "store/work/本地/pic_001.jpg"
 		writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
 			localRel: env.sourceData[entry.StorePath],
 		})
@@ -1932,7 +1932,7 @@ func TestReceiveExecutionMissingFingerprintFallsBack(t *testing.T) {
 			env.manifest.Files[i].ContentFingerprint = ""
 			env.manifest.Files[i].Sha256 = ""
 		}
-		localRel := "store/resource/本地/pic_001.jpg"
+		localRel := "store/work/本地/pic_001.jpg"
 		writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
 			localRel: env.sourceData[entry.StorePath],
 		})
@@ -1967,8 +1967,8 @@ func TestReceiveExecutionSharedFileSkipSafe(t *testing.T) {
 func TestReceiveExecutionContentSameRerunZeroDial(t *testing.T) {
 	env := startReceiveEnvModel(t, SharePublishOptions{}, buildAllPresentModel)
 	src := sourceBytesByStoreID(t, env)
-	localA := "store/resource/本地/pic_001.jpg"
-	localB := "store/resource/本地/video_000.mp4"
+	localA := "store/work/本地/pic_001.jpg"
+	localB := "store/work/本地/video_000.mp4"
 	writeLocalStoreFiles(t, env.recvDir, map[string][]byte{
 		localA: src[101],
 		localB: src[102],

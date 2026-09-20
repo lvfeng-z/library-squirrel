@@ -72,10 +72,10 @@ func TestPlanNamesDeterminism(t *testing.T) {
 					}},
 			},
 			Files: []FileEntry{
-				{StoreID: 100, StorePath: "store/resource/a/作品.jpg"},
-				{StoreID: 101, StorePath: "store/resource/a/作品_thumbnail_001.png"},
-				{StoreID: 102, StorePath: "store/resource/a/作品_document_000.md"},
-				{StoreID: 200, StorePath: "store/resource/b/作品.txt"},
+				{StoreID: 100, StorePath: "store/work/a/作品.jpg"},
+				{StoreID: 101, StorePath: "store/work/a/作品_thumbnail_001.png"},
+				{StoreID: 102, StorePath: "store/work/a/作品_document_000.md"},
+				{StoreID: 200, StorePath: "store/work/b/作品.txt"},
 			},
 		}
 	}
@@ -106,7 +106,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 					{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 				}},
 		},
-		Files: []FileEntry{{StoreID: 100, StorePath: "store/resource/a/pic.jpg"}},
+		Files: []FileEntry{{StoreID: 100, StorePath: "store/work/a/pic.jpg"}},
 	}
 	require.NoError(t, PlanNames(m, "[${author}]_[${siteWorkId}]_${siteWorkName}.${uploadTimeYear}"))
 	assert.Equal(t, "works/[本地作者]_[w-100]_作品A.2026/[本地作者]_[w-100]_作品A.2026.jpg", m.Files[0].Path)
@@ -119,7 +119,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 				{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 			}},
 		},
-		Files: []FileEntry{{StoreID: 100, StorePath: "store/resource/a/pic.jpg"}},
+		Files: []FileEntry{{StoreID: 100, StorePath: "store/work/a/pic.jpg"}},
 	}
 	require.NoError(t, PlanNames(m2, "${exportTimeYear}${exportTimeMonth}${exportTimeDay}"))
 	want := time.UnixMilli(exportedAt).Format("20060102")
@@ -141,8 +141,8 @@ func TestPlanNamesEmptyRenderFallback(t *testing.T) {
 				}},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/pic.jpg"},
-			{StoreID: 101, StorePath: "store/resource/a/..."},
+			{StoreID: 100, StorePath: "store/work/a/pic.jpg"},
+			{StoreID: 101, StorePath: "store/work/a/..."},
 		},
 	}
 	require.NoError(t, PlanNames(m, "${description}"))
@@ -166,9 +166,9 @@ func TestPlanNamesFileConflictChain(t *testing.T) {
 				}},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/pic.jpg"},
-			{StoreID: 101, StorePath: "store/resource/b/pic.jpg"},
-			{StoreID: 102, StorePath: "store/resource/c/pic.jpg"},
+			{StoreID: 100, StorePath: "store/work/a/pic.jpg"},
+			{StoreID: 101, StorePath: "store/work/b/pic.jpg"},
+			{StoreID: 102, StorePath: "store/work/c/pic.jpg"},
 		},
 	}
 	require.NoError(t, PlanNames(m, "${siteWorkName}"))
@@ -197,9 +197,9 @@ func TestPlanNamesCrossWorkRenderedConflict(t *testing.T) {
 				}},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/pic.jpg"},
-			{StoreID: 200, StorePath: "store/resource/b/pic.jpg"},
-			{StoreID: 300, StorePath: "store/resource/c/pic.jpg"},
+			{StoreID: 100, StorePath: "store/work/a/pic.jpg"},
+			{StoreID: 200, StorePath: "store/work/b/pic.jpg"},
+			{StoreID: 300, StorePath: "store/work/c/pic.jpg"},
 		},
 	}
 	require.NoError(t, PlanNames(m, "${siteWorkName}"))
@@ -223,8 +223,8 @@ func TestPlanNamesConflictSiteWorkIDEmpty(t *testing.T) {
 				}},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/pic.jpg"},
-			{StoreID: 200, StorePath: "store/resource/b/pic.jpg"},
+			{StoreID: 100, StorePath: "store/work/a/pic.jpg"},
+			{StoreID: 200, StorePath: "store/work/b/pic.jpg"},
 		},
 	}
 	require.NoError(t, PlanNames(m, "${siteWorkName}"))
@@ -242,9 +242,9 @@ func TestPlanNamesEmptyFallback(t *testing.T) {
 			{ID: 3, SiteWorkName: strp("w-1"), SiteWorkID: strp("")}, // 名与作品1 目录冲突 → w-1_2
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/x.jpg"},
-			{StoreID: 200, StorePath: "store/resource/b/y.jpg"},
-			{StoreID: 300, StorePath: "store/resource/c/z.jpg"},
+			{StoreID: 100, StorePath: "store/work/a/x.jpg"},
+			{StoreID: 200, StorePath: "store/work/b/y.jpg"},
+			{StoreID: 300, StorePath: "store/work/c/z.jpg"},
 		},
 	}
 	// 每个作品挂一个文件以触发目录命名

@@ -90,7 +90,7 @@ func TestRestoreReplacedStoresBackupOrder(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	workDir := t.TempDir()
-	storeRel := "store/resource/x.mp4"
+	storeRel := "store/work/x.mp4"
 	storeAbs := filepath.Join(workDir, storeRel)
 	if err := os.MkdirAll(filepath.Dir(storeAbs), 0o755); err != nil {
 		t.Fatalf("建 store 目录失败: %v", err)
@@ -183,7 +183,7 @@ func TestRestoreReplacedStoresDiscardsNewGenerationBeforeRevive(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	workDir := t.TempDir()
-	storeRel := "store/resource/y.mp4"
+	storeRel := "store/work/y.mp4"
 	storeAbs := filepath.Join(workDir, storeRel)
 	if err := os.MkdirAll(filepath.Dir(storeAbs), 0o755); err != nil {
 		t.Fatalf("建 store 目录失败: %v", err)
@@ -243,7 +243,7 @@ func TestRestoreReplacedStoresDiscardsNewGenerationBeforeRevive(t *testing.T) {
 	// 降级重跑形成的受害者：早前会话新建的行（在新建登记清单内）后被软删为受害者——
 	// 同 ID 同现两清单时按受害者处置（复活、挂载关联保留），不参与丢弃
 	victim2 := domain.NewPersistentStore()
-	victim2.FilePath = sql.NullString{String: "store/resource/y2.png", Valid: true}
+	victim2.FilePath = sql.NullString{String: "store/work/y2.png", Valid: true}
 	victim2.CompletedAt = 0
 	if err := storeRepo.Create(ctx, victim2); err != nil {
 		t.Fatalf("插入第二受害者行失败: %v", err)

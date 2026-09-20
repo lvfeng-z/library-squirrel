@@ -78,7 +78,7 @@ func (e *restoreStoreEnv) seedVictim(t *testing.T, role string, backupId int64) 
 		t.Fatalf("插 resource 失败: %v", err)
 	}
 	row := domain.NewPersistentStore()
-	row.FilePath = sql.NullString{String: "store/resource/a/被替换版本.png", Valid: true}
+	row.FilePath = sql.NullString{String: "store/work/a/被替换版本.png", Valid: true}
 	row.CompletedAt = 1
 	if err := e.db.Create(row).Error; err != nil {
 		t.Fatalf("插 store 失败: %v", err)
@@ -127,7 +127,7 @@ func (e *restoreStoreEnv) seedLiveSameKey(t *testing.T, resourceId int64, role s
 // 本行复活（双列清）、备份清单行删除、完整度重算触发；关联零操作（双关联形态成立）
 func TestRestoreStoreSwapsCurrentGeneration(t *testing.T) {
 	env := newRestoreStoreEnv(t)
-	const victimPath = "store/resource/a/被替换版本.png"
+	const victimPath = "store/work/a/被替换版本.png"
 	resourceId, victimId := env.seedVictim(t, domain.StoreTypeImage, 501)
 	placeholderId := env.seedLiveSameKey(t, resourceId, domain.StoreTypeImage, victimPath)
 

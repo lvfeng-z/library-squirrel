@@ -24,8 +24,8 @@ func buildPackFixture(t *testing.T) (workDir string, model *ExportModel) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 		require.NoError(t, os.WriteFile(abs, content, 0o644))
 	}
-	writeFile("store/resource/a/作品1.jpg", []byte("image-data-1"))
-	writeFile("store/resource/a/作品1.png", []byte("image-data-2-longer-content"))
+	writeFile("store/work/a/作品1.jpg", []byte("image-data-1"))
+	writeFile("store/work/a/作品1.png", []byte("image-data-2-longer-content"))
 	// StoreID 102 指向的源文件缺失：不创建
 
 	model = NewExportModel(&Manifest{
@@ -44,9 +44,9 @@ func buildPackFixture(t *testing.T) (workDir string, model *ExportModel) {
 				}},
 		},
 		Files: []FileEntry{
-			{StoreID: 100, StorePath: "store/resource/a/作品1.jpg"},
-			{StoreID: 101, StorePath: "store/resource/a/作品1.png"},
-			{StoreID: 102, StorePath: "store/resource/a/missing.jpg"},
+			{StoreID: 100, StorePath: "store/work/a/作品1.jpg"},
+			{StoreID: 101, StorePath: "store/work/a/作品1.png"},
+			{StoreID: 102, StorePath: "store/work/a/missing.jpg"},
 		},
 	})
 	return workDir, model
@@ -132,7 +132,7 @@ func TestPackMissingOnlyTotal(t *testing.T) {
 				{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 			}},
 		},
-		Files: []FileEntry{{StoreID: 100, StorePath: "store/resource/a/none.jpg"}},
+		Files: []FileEntry{{StoreID: 100, StorePath: "store/work/a/none.jpg"}},
 	})
 	p := NewPacker()
 	stats, err := p.Plan(context.Background(), workDir, model, "")
@@ -190,7 +190,7 @@ func TestPackSha256(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "out.zip")
 	require.NoError(t, p.Pack(context.Background(), workDir, model, target, stats, nil))
 
-	src, err := os.ReadFile(filepath.Join(workDir, "store/resource/a/作品1.jpg"))
+	src, err := os.ReadFile(filepath.Join(workDir, "store/work/a/作品1.jpg"))
 	require.NoError(t, err)
 	sum := sha256.Sum256(src)
 	assert.Equal(t, hex.EncodeToString(sum[:]), model.Manifest.Files[0].Sha256)

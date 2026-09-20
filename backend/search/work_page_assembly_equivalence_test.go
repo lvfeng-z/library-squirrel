@@ -143,10 +143,10 @@ func buildFullSpectrumFixture(t *testing.T, db *gorm.DB) *fullSpectrumFixture {
 	}
 
 	// 全谱作品：image 资源挂三代 store——image 活行（展示主体）、thumbnail 活行、image 序 1 指向软删行
-	f.imageMainPath = "store/resource/作者甲/全谱作品.jpg"
+	f.imageMainPath = "store/work/作者甲/全谱作品.jpg"
 	imageStoreId := newStore(f.imageMainPath, ".jpg")
-	thumbStoreId := newStore("store/resource/作者甲/全谱作品_thumbnail_000.jpg", ".jpg")
-	f.deadStorePath = "store/resource/作者甲/全谱作品_旧代.jpg"
+	thumbStoreId := newStore("store/work/作者甲/全谱作品_thumbnail_000.jpg", ".jpg")
+	f.deadStorePath = "store/work/作者甲/全谱作品_旧代.jpg"
 	deadStoreId := newStore(f.deadStorePath, ".jpg")
 
 	imageRes := domain.NewResource()
@@ -164,9 +164,9 @@ func buildFullSpectrumFixture(t *testing.T, db *gorm.DB) *fullSpectrumFixture {
 	}
 
 	// 音频作品：audio 资源挂 audioMain（可播放主体）+ thumbnail
-	f.audioMainPath = "store/resource/作者乙/音频作品.mp3"
+	f.audioMainPath = "store/work/作者乙/音频作品.mp3"
 	audioMainStoreId := newStore(f.audioMainPath, ".mp3")
-	audioThumbStoreId := newStore("store/resource/作者乙/音频作品_thumbnail_000.jpg", ".jpg")
+	audioThumbStoreId := newStore("store/work/作者乙/音频作品_thumbnail_000.jpg", ".jpg")
 
 	audioRes := domain.NewResource()
 	audioRes.WorkID = audioWorkId

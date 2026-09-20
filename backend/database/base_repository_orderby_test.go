@@ -29,7 +29,7 @@ func TestQueryOptionOrderByNotSilentlyDropped(t *testing.T) {
 
 	// 先插已删行（id 更小）、后插活行——无排序时 SQLite 按索引序返回先插的已删行
 	deleted := entity.NewPersistentStore()
-	deleted.FilePath = sql.NullString{String: "store/resource/a.mp4", Valid: true}
+	deleted.FilePath = sql.NullString{String: "store/work/a.mp4", Valid: true}
 	if err := db.Create(deleted).Error; err != nil {
 		t.Fatalf("插入已删行失败: %v", err)
 	}
@@ -37,14 +37,14 @@ func TestQueryOptionOrderByNotSilentlyDropped(t *testing.T) {
 		t.Fatalf("标记已删失败: %v", err)
 	}
 	active := entity.NewPersistentStore()
-	active.FilePath = sql.NullString{String: "store/resource/a.mp4", Valid: true}
+	active.FilePath = sql.NullString{String: "store/work/a.mp4", Valid: true}
 	if err := db.Create(active).Error; err != nil {
 		t.Fatalf("插入活行失败: %v", err)
 	}
 
 	repo := NewBaseRepository[entity.PersistentStore](db)
 	opt := &QueryOption{
-		Conditions:     []clause.Expression{clause.Eq{Column: "file_path", Value: "store/resource/a.mp4"}},
+		Conditions:     []clause.Expression{clause.Eq{Column: "file_path", Value: "store/work/a.mp4"}},
 		OrderBy:        []clause.Expression{clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "deleted_at"}}}}},
 		IncludeDeleted: true,
 		Limit:          1,

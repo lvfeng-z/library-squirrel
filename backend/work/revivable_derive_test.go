@@ -74,11 +74,11 @@ func TestDeriveRevivableStoresPicksNewestDeadPerKey(t *testing.T) {
 		t.Fatalf("插 resource 失败: %v", err)
 	}
 
-	const sharedPath = "store/resource/作者/同键多代.png"
+	const sharedPath = "store/work/作者/同键多代.png"
 	gen1 := makeStoreRow(t, env, sharedPath, 1000, 101)                   // res1 key(image,0) 第一代死行
 	gen2 := makeStoreRow(t, env, sharedPath, 2000, 102)                   // res1 key(image,0) 最新死行（应被圈定）
-	live := makeStoreRow(t, env, "store/resource/作者/活行.png", 0, 0)        // res1 key(image,1) 活行不进复活集
-	other := makeStoreRow(t, env, "store/resource/作者/他资源.png", 3000, 103) // res2 key(image,0) 同 role 跨资源
+	live := makeStoreRow(t, env, "store/work/作者/活行.png", 0, 0)        // res1 key(image,1) 活行不进复活集
+	other := makeStoreRow(t, env, "store/work/作者/他资源.png", 3000, 103) // res2 key(image,0) 同 role 跨资源
 
 	env.rd = &purgeResourceDeleter{db: db, resources: []*domain.Resource{res1, res2}}
 	env.rsBr = &purgeRsBatchReader{rsMap: map[int64][]*domain.ResourceStore{
@@ -127,7 +127,7 @@ func TestRestoreWorkStoresRevivesOnlyNewestGeneration(t *testing.T) {
 	if err := db.Create(res).Error; err != nil {
 		t.Fatalf("插 resource 失败: %v", err)
 	}
-	const sharedPath = "store/resource/作者/双代同路径.png"
+	const sharedPath = "store/work/作者/双代同路径.png"
 	gen1 := makeStoreRow(t, env, sharedPath, 1000, 201)
 	gen2 := makeStoreRow(t, env, sharedPath, 2000, 202)
 

@@ -154,7 +154,7 @@ func TestBackupWatcherMovePairing(t *testing.T) {
 		t.Fatalf("子树内移动应产 Move(ID=9)，实际 %+v", items)
 	}
 
-	items = w.Process(ctx, FileChange{Kind: ChangeMove, Path: "backup/2026/a.mp4", ToPath: "store/resource/a.mp4", DetectedAt: 100})
+	items = w.Process(ctx, FileChange{Kind: ChangeMove, Path: "backup/2026/a.mp4", ToPath: "store/work/a.mp4", DetectedAt: 100})
 	if len(items) != 1 || items[0].Kind != SemanticDelete {
 		t.Fatalf("移出 backup 子树应产 Delete（保管语义不成立），实际 %+v", items)
 	}
@@ -309,7 +309,7 @@ func TestRenameOldLegRouting(t *testing.T) {
 	deps := &Deps{
 		Fingerprinter: stubFingerprinter{digest: "fp"},
 		StoreReader: mockStoreReader{byPath: map[string]StoreRecord{
-			"store/resource/A/旧.jpg": {ID: 42, FilePath: "store/resource/A/旧.jpg", ContentFingerprint: "fp"},
+			"store/work/A/旧.jpg": {ID: 42, FilePath: "store/work/A/旧.jpg", ContentFingerprint: "fp"},
 		}},
 		StoreRepairer:  noopStoreRepairer{},
 		BackupReader:   &fakeBackupReader{rows: []BackupRecord{{ID: 7, FilePath: "backup/2026/a.mp4"}}},
@@ -325,13 +325,13 @@ func TestRenameOldLegRouting(t *testing.T) {
 	}
 
 	// store 域：旧名腿跳过（记录存在也不报）
-	svc.handleFileChange(ctx, FileChange{Kind: ChangeRemove, Path: "store/resource/A/旧.jpg", FromRename: true, DetectedAt: 101})
+	svc.handleFileChange(ctx, FileChange{Kind: ChangeRemove, Path: "store/work/A/旧.jpg", FromRename: true, DetectedAt: 101})
 	if len(emitter.events) != 1 {
 		t.Fatalf("store 域旧名腿应跳过，emits=%d", len(emitter.events))
 	}
 
 	// store 域：普通 Remove 不受影响（真删除照报）
-	svc.handleFileChange(ctx, FileChange{Kind: ChangeRemove, Path: "store/resource/A/旧.jpg", DetectedAt: 102})
+	svc.handleFileChange(ctx, FileChange{Kind: ChangeRemove, Path: "store/work/A/旧.jpg", DetectedAt: 102})
 	if len(emitter.events) != 2 {
 		t.Fatalf("store 域普通删除应照报，emits=%d", len(emitter.events))
 	}

@@ -272,7 +272,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	suppressedBeforeRename := false
 	fileAbsentAtSuppress := false
 	env.streamer.placeHook = func(*stubStoreIngestor) {
-		suppressedBeforeRename = storeRegistry.IsSuppressed("store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
+		suppressedBeforeRename = storeRegistry.IsSuppressed("store/work/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
 		_, statErr := os.Stat(finalAbsPath(env, "image_000.png"))
 		fileAbsentAtSuppress = os.IsNotExist(statErr)
 	}
@@ -280,7 +280,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 	suppressedInView := false
 	movedInView := false
 	env.streamer.hook = func(*stubStoreIngestor) {
-		suppressedInView = storeRegistry.IsSuppressed("store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
+		suppressedInView = storeRegistry.IsSuppressed("store/work/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png")
 		_, statErr := os.Stat(finalAbsPath(env, "image_000.png"))
 		movedInView = statErr == nil
 	}
@@ -317,7 +317,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 		t.Fatalf("处置声明应为 (image=退回暂存, thumbnail=丢弃), 实际 %+v", env.streamer.preps)
 	}
 	if env.streamer.preps[0].StagingPath != "staging/download/1/image_000.png" ||
-		env.streamer.preps[0].FilePath != "store/resource/"+bucketOf("test-site", "sw1")+"/test-site_sw1/image_000.png" {
+		env.streamer.preps[0].FilePath != "store/work/"+bucketOf("test-site", "sw1")+"/test-site_sw1/image_000.png" {
 		t.Fatalf("登记意图路径应 relPath 域正斜杠, 实际 %+v", env.streamer.preps[0])
 	}
 	if len(env.streamer.journals) != 0 {
@@ -569,8 +569,8 @@ func seedReplaceVictims(stubs *replaceStubs) {
 		makeReplaceAssoc(700, entity.StoreTypeThumbnail, 0, 801),
 	}
 	stubs.rows.rows = []*entity.PersistentStore{
-		makeReplaceStoreRow(800, 1, 0, 0, "store/resource/a/old_image.png"),
-		makeReplaceStoreRow(801, 1, 0, 0, "store/resource/a/old_thumb.jpg"),
+		makeReplaceStoreRow(800, 1, 0, 0, "store/work/a/old_image.png"),
+		makeReplaceStoreRow(801, 1, 0, 0, "store/work/a/old_thumb.jpg"),
 	}
 }
 
@@ -582,7 +582,7 @@ func seedReplaceIncompleteVictim(stubs *replaceStubs) {
 	res.WorkID = 500
 	stubs.res.resources = []*entity.Resource{res}
 	stubs.rs.byResourceIds = []*entity.ResourceStore{makeReplaceAssoc(700, entity.StoreTypeImage, 0, 800)}
-	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 0, 0, 0, "store/resource/a/partial.png")}
+	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 0, 0, 0, "store/work/a/partial.png")}
 }
 
 // TestReplaceMatrix_Success 替换×成功：暂存下载全程旧 store 不动 → 提交窗口软删全部角色
@@ -663,7 +663,7 @@ func (o *observingReplaceOps) RestoreReplacedStores(ctx context.Context, scope r
 
 // TestRedownloadSamePath_VictimFileMovedBeforeRename 风险1 时序锚定：ID 名下重下同作品
 // 恒命中同一路径——受害者旧文件所在路径与新下载的派生路径相同（站点复合键 siteId=1→
-// test-site、siteWorkId=sw1 → store/resource/{bucketOf("test-site","sw1")}/test-site_sw1/
+// test-site、siteWorkId=sw1 → store/work/{bucketOf("test-site","sw1")}/test-site_sw1/
 // image_000.png，同键恒同桶→恒同路径）。提交序列的
 // 替换软删（首步，生产上物理移文件入 backup）先于 rename 写入同路径：软删时点旧路径
 // 内容仍为旧内容（若 rename 先行，该路径已被新内容覆盖）；移出后 rename 写入新内容，
@@ -672,11 +672,11 @@ func TestRedownloadSamePath_VictimFileMovedBeforeRename(t *testing.T) {
 	sess, h, cancel, env, stubs := newReplaceStagingSession(t, nil)
 	defer cancel()
 	// 受害者已完成 image 行的 file_path 预置为新下载将派生的同一路径（重下同路径锚定）
-	finalRel := "store/resource/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png"
+	finalRel := "store/work/" + bucketOf("test-site", "sw1") + "/test-site_sw1/image_000.png"
 	seedReplaceVictims(stubs)
 	stubs.rows.rows = []*entity.PersistentStore{
 		makeReplaceStoreRow(800, 1, 0, 0, finalRel),
-		makeReplaceStoreRow(801, 1, 0, 0, "store/resource/"+bucketOf("test-site", "sw1")+"/test-site_sw1/old_thumb.jpg"),
+		makeReplaceStoreRow(801, 1, 0, 0, "store/work/"+bucketOf("test-site", "sw1")+"/test-site_sw1/old_thumb.jpg"),
 	}
 	// 物理旧文件预置在最终路径
 	victimAbs := filepath.Join(env.workDir, filepath.FromSlash(finalRel))

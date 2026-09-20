@@ -258,9 +258,9 @@ func TestSoftDeleteReplacedStoresDispatchesByCompletion(t *testing.T) {
 		makeReplaceAssoc(700, entity.StoreTypeThumbnail, 0, 803),
 	}
 	stubs.rows.rows = []*entity.PersistentStore{
-		makeReplaceStoreRow(800, 1, 0, 0, "store/resource/a/已完成.png"),    // → 备份软删
-		makeReplaceStoreRow(801, 0, 0, 0, "store/resource/a/未完成.png"),    // → 废弃软删
-		makeReplaceStoreRow(802, 1, 1000, 99, "store/resource/a/残留.png"), // 死行跳过
+		makeReplaceStoreRow(800, 1, 0, 0, "store/work/a/已完成.png"),    // → 备份软删
+		makeReplaceStoreRow(801, 0, 0, 0, "store/work/a/未完成.png"),    // → 废弃软删
+		makeReplaceStoreRow(802, 1, 1000, 99, "store/work/a/残留.png"), // 死行跳过
 		makeReplaceStoreRow(803, 1, 0, 0, "store/thumb/t.png"),           // 角色外不动
 	}
 
@@ -305,7 +305,7 @@ func TestFailPathDelegatesRevivalToControlPlane(t *testing.T) {
 	// 提交窗口软删后的登记形态（软删与登记在 commitStaged 内一体发生，此处直填登记
 	// 模拟软删之后序列失败的收口路径）
 	sess.handle.SetTerminalRollback(taskManager.TerminalRollback{Victims: []resource.StoreRef{
-		{StoreID: 800, ResourceID: 700, BackupID: 1, FilePath: "store/resource/a/old.png"},
+		{StoreID: 800, ResourceID: 700, BackupID: 1, FilePath: "store/work/a/old.png"},
 	}})
 	sess.mode = runMode{storeScope: storeScope{kind: scopeAll}}
 

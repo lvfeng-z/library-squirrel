@@ -20,7 +20,7 @@ func TestPersistentStoreHashColumnsMigration(t *testing.T) {
 
 	// 存量行（先于哈希列存在的旧形态）
 	legacy := entity.NewPersistentStore()
-	legacy.FilePath = sql.NullString{String: "store/resource/author/legacy.mp4", Valid: true}
+	legacy.FilePath = sql.NullString{String: "store/work/author/legacy.mp4", Valid: true}
 	if err := db.Create(legacy).Error; err != nil {
 		t.Fatalf("插存量行失败: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestPersistentStoreHashColumnsMigration(t *testing.T) {
 
 	// 新行写值落库（声明哈希与实测哈希各一）
 	fresh := entity.NewPersistentStore()
-	fresh.FilePath = sql.NullString{String: "store/resource/author/fresh.mp4", Valid: true}
+	fresh.FilePath = sql.NullString{String: "store/work/author/fresh.mp4", Valid: true}
 	fresh.ExpectedSha256 = sql.NullString{String: "aa11", Valid: true}
 	fresh.ActualSha256 = sql.NullString{String: "bb22", Valid: true}
 	if err := db.Create(fresh).Error; err != nil {

@@ -30,9 +30,9 @@ func TestFsMonitorQueriesAgainstCurrentSchema(t *testing.T) {
 	svc, _ := newLifecycleTestService(t)
 	ctx := context.Background()
 
-	active := insertFingerprintRow(t, svc, "store/resource/active.mp4", "fp-a", true)
-	_ = insertFingerprintRow(t, svc, "store/resource/unfinished.mp4", "fp-b", false)
-	deletedRow := insertFingerprintRow(t, svc, "store/resource/deleted.mp4", "fp-c", true)
+	active := insertFingerprintRow(t, svc, "store/work/active.mp4", "fp-a", true)
+	_ = insertFingerprintRow(t, svc, "store/work/unfinished.mp4", "fp-b", false)
+	deletedRow := insertFingerprintRow(t, svc, "store/work/deleted.mp4", "fp-c", true)
 	if err := svc.repo.SoftDeleteWithBackup(ctx, deletedRow.GetID(), 0); err != nil {
 		t.Fatalf("软删失败: %v", err)
 	}
@@ -46,13 +46,13 @@ func TestFsMonitorQueriesAgainstCurrentSchema(t *testing.T) {
 	}
 
 	// GetByFilePathComplete：在位完成行命中；软删行/未完成行不命中
-	if got, err := svc.GetByFilePathComplete(ctx, "store/resource/active.mp4"); err != nil || got == nil {
+	if got, err := svc.GetByFilePathComplete(ctx, "store/work/active.mp4"); err != nil || got == nil {
 		t.Fatalf("GetByFilePathComplete 在位完成行期望命中，实际 got=%v err=%v", got, err)
 	}
-	if got, err := svc.GetByFilePathComplete(ctx, "store/resource/deleted.mp4"); err != nil || got != nil {
+	if got, err := svc.GetByFilePathComplete(ctx, "store/work/deleted.mp4"); err != nil || got != nil {
 		t.Fatalf("GetByFilePathComplete 软删行须被排除，实际 got=%v err=%v", got, err)
 	}
-	if got, err := svc.GetByFilePathComplete(ctx, "store/resource/unfinished.mp4"); err != nil || got != nil {
+	if got, err := svc.GetByFilePathComplete(ctx, "store/work/unfinished.mp4"); err != nil || got != nil {
 		t.Fatalf("GetByFilePathComplete 未完成行须被排除，实际 got=%v err=%v", got, err)
 	}
 

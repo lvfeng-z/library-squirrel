@@ -17,10 +17,10 @@ func (p stubWorkDirProvider) GetWorkDir() string { return p.workDir }
 func TestOpenPathRefusesUnconfiguredWorkDir(t *testing.T) {
 	svc := NewService(stubWorkDirProvider{workDir: ""})
 
-	if err := svc.OpenPath("store/resource/a/1.jpg"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
+	if err := svc.OpenPath("store/work/a/1.jpg"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
 		t.Errorf("OpenPath 期望返回 ErrWorkDirNotConfigured，实际 %v", err)
 	}
-	if err := svc.OpenImage("store/resource/a/1.jpg"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
+	if err := svc.OpenImage("store/work/a/1.jpg"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
 		t.Errorf("OpenImage 期望返回 ErrWorkDirNotConfigured，实际 %v", err)
 	}
 }

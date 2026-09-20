@@ -228,8 +228,8 @@ func TestListResourcesAliveStoreFilter(t *testing.T) {
 	s := seedSite(t, db, "pixiv")
 	w := seedWork(t, db, s.GetID(), "1", "甲")
 
-	alive := seedStore(t, db, "store/resource/ab/pixiv_1/image_000.jpg")
-	dead := seedStore(t, db, "store/resource/ab/pixiv_1/image_001.jpg")
+	alive := seedStore(t, db, "store/work/ab/pixiv_1/image_000.jpg")
+	dead := seedStore(t, db, "store/work/ab/pixiv_1/image_001.jpg")
 	if err := db.Exec("UPDATE persistent_store SET deleted_at = 12345 WHERE id = ?", dead.GetID()).Error; err != nil {
 		t.Fatalf("软删 store 失败: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestListResourcesAliveStoreFilter(t *testing.T) {
 	if store.Role != entity.StoreTypeImage || store.StoreSeq != 0 {
 		t.Fatalf("store 角色/序号映射错误: %+v", store)
 	}
-	if store.FilePath == nil || *store.FilePath != "store/resource/ab/pixiv_1/image_000.jpg" {
+	if store.FilePath == nil || *store.FilePath != "store/work/ab/pixiv_1/image_000.jpg" {
 		t.Fatalf("file_path 映射错误（relPath 域正斜杠原样）: %v", store.FilePath)
 	}
 	if store.Width == nil || *store.Width != 800 || store.Height == nil || *store.Height != 600 {

@@ -508,10 +508,10 @@ func TestSetFailedTriggersRegisteredStrategyRollback(t *testing.T) {
 	h := newStrategyHandle(m)
 
 	h.SetTerminalRollback(TerminalRollback{Victims: []resource.StoreRef{
-		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/resource/a/被替换.png"},
+		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/work/a/被替换.png"},
 	}})
 	stubs.rows.rows = []*entity.PersistentStore{
-		makeRollbackStoreRow(811, 1, 2000, 92, "store/resource/a/被替换.png"),
+		makeRollbackStoreRow(811, 1, 2000, 92, "store/work/a/被替换.png"),
 	}
 
 	m.setFailed("任务被用户停止")
@@ -580,10 +580,10 @@ func TestSetFailedDiscardsCreatedStoresBeforeRevive(t *testing.T) {
 
 	h.SetTerminalRollback(TerminalRollback{CreatedStoreIDs: []int64{901, 902}})
 	h.SetTerminalRollback(TerminalRollback{Victims: []resource.StoreRef{
-		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/resource/a/被替换.png"},
+		{StoreID: 811, ResourceID: 700, BackupID: 92, FilePath: "store/work/a/被替换.png"},
 	}})
 	stubs.rows.rows = []*entity.PersistentStore{
-		makeRollbackStoreRow(811, 1, 2000, 92, "store/resource/a/被替换.png"),
+		makeRollbackStoreRow(811, 1, 2000, 92, "store/work/a/被替换.png"),
 	}
 
 	m.setFailed("任务被用户停止")
@@ -619,7 +619,7 @@ func TestHandleStopCmdTriggersRegisteredRollback(t *testing.T) {
 		CreatedStoreIDs: []int64{901},
 	})
 	stubs.rows.rows = []*entity.PersistentStore{
-		makeRollbackStoreRow(811, 1, 2000, 0, "store/resource/a/被替换.png"),
+		makeRollbackStoreRow(811, 1, 2000, 0, "store/work/a/被替换.png"),
 	}
 
 	m.handleStopCmd(taskCmd{kind: cmdStop})

@@ -215,7 +215,7 @@ func newStream(t *testing.T, role, generation string, size int64, reader io.Read
 	t.Cleanup(func() { _ = w.Close() })
 	return newStreamController(&sdkdto.StoreSpec{
 		Role: role, Generation: generation, Size: size, Format: "bin", ReadCloser: reader,
-	}, 0, w, stagingAbs, "store/resource/test/"+role+"_000.bin", role+"_000.bin")
+	}, 0, w, stagingAbs, "store/work/test/"+role+"_000.bin", role+"_000.bin")
 }
 
 // stagedSize 流暂存文件当前字节数

@@ -175,10 +175,10 @@ func TestAutoRepairLiveAutoApplied(t *testing.T) {
 		Policies: map[string]string{"store:Move": "sync"},
 	})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticMove, FromPath: "store/resource/A/old.jpg", ToPath: "store/resource/B/new.jpg", StoreID: 42},
+		&SemanticChange{Kind: SemanticMove, FromPath: "store/work/A/old.jpg", ToPath: "store/work/B/new.jpg", StoreID: 42},
 		changeSourceLive)
 
-	if got := repairer.updatedPaths(); len(got) != 1 || got[0] != "store/resource/B/new.jpg" {
+	if got := repairer.updatedPaths(); len(got) != 1 || got[0] != "store/work/B/new.jpg" {
 		t.Fatalf("live Move 应自动 sync 更新路径，实际 %v", got)
 	}
 	if len(svc.ListPendingChanges()) != 0 {
@@ -205,7 +205,7 @@ func TestAutoRepairOfflineNotAuto(t *testing.T) {
 		Policies: map[string]string{"store:Move": "sync"},
 	})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticMove, FromPath: "store/resource/A/old.jpg", ToPath: "store/resource/B/new.jpg", StoreID: 42},
+		&SemanticChange{Kind: SemanticMove, FromPath: "store/work/A/old.jpg", ToPath: "store/work/B/new.jpg", StoreID: 42},
 		changeSourceOffline)
 
 	if got := repairer.updatedPaths(); len(got) != 0 {
@@ -225,7 +225,7 @@ func TestAutoRepairDisabled(t *testing.T) {
 	repairer := &recordingStoreRepairer{}
 	svc := newAutoRepairService(repairer, nil, nil, nil, AutoRepairConfig{Enabled: false, Policies: nil})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticMove, FromPath: "store/resource/a.jpg", ToPath: "store/resource/b.jpg", StoreID: 1},
+		&SemanticChange{Kind: SemanticMove, FromPath: "store/work/a.jpg", ToPath: "store/work/b.jpg", StoreID: 1},
 		changeSourceLive)
 	if got := repairer.updatedPaths(); len(got) != 0 {
 		t.Fatalf("开关关闭不应自动处理，实际 %v", got)
@@ -244,7 +244,7 @@ func TestAutoRepairFailureFallback(t *testing.T) {
 		Policies: map[string]string{"store:Delete": "ack"},
 	})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticDelete, FromPath: "store/resource/gone.jpg", StoreID: 9},
+		&SemanticChange{Kind: SemanticDelete, FromPath: "store/work/gone.jpg", StoreID: 9},
 		changeSourceLive)
 	if len(svc.ListPendingChanges()) != 1 {
 		t.Fatalf("自动执行失败应降级入队，实际 %d", len(svc.ListPendingChanges()))
@@ -263,7 +263,7 @@ func TestAutoRepairStoreDeleteAck(t *testing.T) {
 		Policies: map[string]string{"store:Delete": "ack"},
 	})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticDelete, FromPath: "store/resource/gone.jpg", StoreID: 9},
+		&SemanticChange{Kind: SemanticDelete, FromPath: "store/work/gone.jpg", StoreID: 9},
 		changeSourceLive)
 	if got := repairer.invalidIDs(); len(got) != 1 || got[0] != 9 {
 		t.Fatalf("store Delete 自动 ack 应 MarkInvalid(9)，实际 %v", got)
@@ -295,7 +295,7 @@ func TestAutoRepairUntrackedNotAuto(t *testing.T) {
 	emitter := &payloadEmitter{}
 	svc := newAutoRepairService(repairer, nil, nil, emitter, AutoRepairConfig{Enabled: true, Policies: nil})
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticUntracked, ToPath: "store/resource/new.jpg"},
+		&SemanticChange{Kind: SemanticUntracked, ToPath: "store/work/new.jpg"},
 		changeSourceLive)
 	if got := repairer.updatedPaths(); len(got) != 0 {
 		t.Fatalf("Untracked 不应自动处理，实际 %v", got)
@@ -314,7 +314,7 @@ func TestAutoRepairReaderUnset(t *testing.T) {
 	repairer := &recordingStoreRepairer{}
 	svc := NewService(&Deps{StoreRepairer: repairer}, func() string { return "X:/wd" }, func() EventEmitter { return nil })
 	svc.dispatchSemanticChange(context.Background(),
-		&SemanticChange{Kind: SemanticMove, FromPath: "store/resource/a.jpg", ToPath: "store/resource/b.jpg", StoreID: 1},
+		&SemanticChange{Kind: SemanticMove, FromPath: "store/work/a.jpg", ToPath: "store/work/b.jpg", StoreID: 1},
 		changeSourceLive)
 	if got := repairer.updatedPaths(); len(got) != 0 {
 		t.Fatalf("未装配自动修复不应自动处理，实际 %v", got)

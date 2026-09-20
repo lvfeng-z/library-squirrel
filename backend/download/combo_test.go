@@ -336,7 +336,7 @@ func TestCheckDuplicate_EmptyIntersectionKeepsExistingWorkId(t *testing.T) {
 	res.WorkID = 500
 	stubs.res.resources = []*entity.Resource{res}
 	stubs.rs.byResourceIds = []*entity.ResourceStore{makeReplaceAssoc(700, entity.StoreTypeThumbnail, 0, 800)}
-	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 1, 0, 0, "store/resource/a/t.jpg")}
+	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 1, 0, 0, "store/work/a/t.jpg")}
 
 	sess.runSectionCombo()
 
@@ -373,7 +373,7 @@ func TestCheckDuplicate_ReplaceAnswerContinues(t *testing.T) {
 	res.WorkID = 500
 	stubs.res.resources = []*entity.Resource{res}
 	stubs.rs.byResourceIds = []*entity.ResourceStore{makeReplaceAssoc(700, entity.StoreTypeImage, 0, 800)}
-	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 1, 0, 0, "store/resource/a/x.png")}
+	stubs.rows.rows = []*entity.PersistentStore{makeReplaceStoreRow(800, 1, 0, 0, "store/work/a/x.png")}
 
 	sess.runSectionCombo()
 

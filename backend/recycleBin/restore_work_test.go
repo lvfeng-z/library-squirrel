@@ -110,7 +110,7 @@ func TestRestoreWorkCleansBackupRecord(t *testing.T) {
 		t.Fatalf("插 resource 失败: %v", err)
 	}
 	store := domain.NewPersistentStore()
-	store.FilePath = sql.NullString{String: "store/resource/a/restore-target.png", Valid: true}
+	store.FilePath = sql.NullString{String: "store/work/a/restore-target.png", Valid: true}
 	store.CompletedAt = 1
 	if err := db.Create(store).Error; err != nil {
 		t.Fatalf("插 store 失败: %v", err)
@@ -177,7 +177,7 @@ func TestRestoreWorkCleansBackupRecord(t *testing.T) {
 	if backupCount != 0 {
 		t.Fatalf("备份清单行 %d 应被删除（修复前外键时序缺陷留孤儿行），实际仍存在", backupID)
 	}
-	if _, err := os.Stat(filepath.Join(workDir, "store/resource/a/restore-target.png")); err != nil {
+	if _, err := os.Stat(filepath.Join(workDir, "store/work/a/restore-target.png")); err != nil {
 		t.Fatalf("还原文件应存在于 store 目标路径: %v", err)
 	}
 }

@@ -16,8 +16,8 @@ func clearSuppress() {
 // TestSuppressAndHit 登记后精确命中
 func TestSuppressAndHit(t *testing.T) {
 	clearSuppress()
-	Suppress("store/resource/作者/x.jpg")
-	if !IsSuppressed("store/resource/作者/x.jpg") {
+	Suppress("store/work/作者/x.jpg")
+	if !IsSuppressed("store/work/作者/x.jpg") {
 		t.Fatal("登记后精确路径应命中")
 	}
 }
@@ -25,9 +25,9 @@ func TestSuppressAndHit(t *testing.T) {
 // TestReleaseGrace Release 后宽限期内仍命中（expiry 刷新到 now+grace）
 func TestReleaseGrace(t *testing.T) {
 	clearSuppress()
-	Suppress("store/resource/a.mp4")
-	Release("store/resource/a.mp4")
-	if !IsSuppressed("store/resource/a.mp4") {
+	Suppress("store/work/a.mp4")
+	Release("store/work/a.mp4")
+	if !IsSuppressed("store/work/a.mp4") {
 		t.Fatal("Release 后宽限期内应仍命中")
 	}
 }
@@ -35,8 +35,8 @@ func TestReleaseGrace(t *testing.T) {
 // TestReleaseUnregistered 未登记项 Release 不续命
 func TestReleaseUnregistered(t *testing.T) {
 	clearSuppress()
-	Release("store/resource/never.jpg") // 未登记，应无副作用
-	if IsSuppressed("store/resource/never.jpg") {
+	Release("store/work/never.jpg") // 未登记，应无副作用
+	if IsSuppressed("store/work/never.jpg") {
 		t.Fatal("未登记项 Release 后不应命中")
 	}
 }
@@ -44,16 +44,16 @@ func TestReleaseUnregistered(t *testing.T) {
 // TestPrefixMatch 登记目录命中下级文件（祖先前缀匹配，含分隔符边界）
 func TestPrefixMatch(t *testing.T) {
 	clearSuppress()
-	Suppress("store/resource/作者")
+	Suppress("store/work/作者")
 	cases := []struct {
 		path string
 		want bool
 	}{
-		{"store/resource/作者/x.jpg", true},     // 下级文件
-		{"store/resource/作者/sub/y.jpg", true}, // 多级下级
-		{"store/resource/作者", true},           // 目录自身
-		{"store/resource/作者X/z.jpg", false},   // 同前缀串但非祖先（分隔符边界）
-		{"store/resource/其他/w.jpg", false},    // 兄弟目录
+		{"store/work/作者/x.jpg", true},     // 下级文件
+		{"store/work/作者/sub/y.jpg", true}, // 多级下级
+		{"store/work/作者", true},           // 目录自身
+		{"store/work/作者X/z.jpg", false},   // 同前缀串但非祖先（分隔符边界）
+		{"store/work/其他/w.jpg", false},    // 兄弟目录
 		{"store/thumbnail/t.jpg", false},      // 无关
 	}
 	for _, c := range cases {
@@ -66,15 +66,15 @@ func TestPrefixMatch(t *testing.T) {
 // TestDescendantMatch 登记文件命中其祖先目录查询（文件登记覆盖父目录 Create 事件，如落位方 MkdirAll 建最终目录）
 func TestDescendantMatch(t *testing.T) {
 	clearSuppress()
-	Suppress("store/resource/作者/x.jpg")
+	Suppress("store/work/作者/x.jpg")
 	cases := []struct {
 		path string
 		want bool
 	}{
-		{"store/resource/作者", true},  // 父目录（后代匹配）
-		{"store/resource", true},     // 祖父目录（后代匹配）
+		{"store/work/作者", true},  // 父目录（后代匹配）
+		{"store/work", true},     // 祖父目录（后代匹配）
 		{"store", true},              // 根（后代匹配）
-		{"store/resource/其他", false}, // 兄弟（无后代关系）
+		{"store/work/其他", false}, // 兄弟（无后代关系）
 		{"store/thumbnail", false},   // 无关
 	}
 	for _, c := range cases {
@@ -87,7 +87,7 @@ func TestDescendantMatch(t *testing.T) {
 // TestNotRegistered 未登记路径不命中
 func TestNotRegistered(t *testing.T) {
 	clearSuppress()
-	if IsSuppressed("store/resource/x.jpg") {
+	if IsSuppressed("store/work/x.jpg") {
 		t.Fatal("未登记路径不应命中")
 	}
 }
@@ -95,8 +95,8 @@ func TestNotRegistered(t *testing.T) {
 // TestKeyNormalize 平台分隔符登记与正斜杠查询等价（归一）
 func TestKeyNormalize(t *testing.T) {
 	clearSuppress()
-	Suppress(filepath.Join("store", "resource", "a.jpg")) // Windows 下 Join 产反斜杠
-	if !IsSuppressed("store/resource/a.jpg") {
+	Suppress(filepath.Join("store", "work", "a.jpg")) // Windows 下 Join 产反斜杠
+	if !IsSuppressed("store/work/a.jpg") {
 		t.Fatal("平台分隔符登记应与正斜杠查询等价")
 	}
 }
@@ -105,9 +105,9 @@ func TestKeyNormalize(t *testing.T) {
 func TestExpiry(t *testing.T) {
 	clearSuppress()
 	suppressMu.Lock()
-	suppressSet["store/resource/old.jpg"] = suppressEntry{expiry: nowMs() - 1000} // 已过期
+	suppressSet["store/work/old.jpg"] = suppressEntry{expiry: nowMs() - 1000} // 已过期
 	suppressMu.Unlock()
-	if IsSuppressed("store/resource/old.jpg") {
+	if IsSuppressed("store/work/old.jpg") {
 		t.Fatal("过期项不应命中")
 	}
 }
@@ -116,9 +116,9 @@ func TestExpiry(t *testing.T) {
 func TestSetSuppressEnabled(t *testing.T) {
 	clearSuppress()
 	defer SetSuppressEnabled(true) // 恢复默认，避免污染其他用例
-	Suppress("store/resource/a.jpg")
+	Suppress("store/work/a.jpg")
 	SetSuppressEnabled(false)
-	if IsSuppressed("store/resource/a.jpg") {
+	if IsSuppressed("store/work/a.jpg") {
 		t.Fatal("suppressEnabled=false 时不应命中")
 	}
 }
@@ -129,9 +129,9 @@ func TestConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(3)
-		go func() { defer wg.Done(); Suppress("store/resource/a.jpg") }()
-		go func() { defer wg.Done(); Release("store/resource/a.jpg") }()
-		go func() { defer wg.Done(); IsSuppressed("store/resource/a.jpg") }()
+		go func() { defer wg.Done(); Suppress("store/work/a.jpg") }()
+		go func() { defer wg.Done(); Release("store/work/a.jpg") }()
+		go func() { defer wg.Done(); IsSuppressed("store/work/a.jpg") }()
 	}
 	wg.Wait()
 }

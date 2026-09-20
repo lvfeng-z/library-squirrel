@@ -22,7 +22,7 @@ func TestServiceRefusesUnconfiguredWorkDir(t *testing.T) {
 	if _, err := svc.MoveToBackup(ctx, "C:/src.mp4"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
 		t.Errorf("MoveToBackup 期望返回 ErrWorkDirNotConfigured，实际 %v", err)
 	}
-	if err := svc.RestoreFile(ctx, "C:/backup/2026/09/02/x.mp4", "C:/store/resource/a/x.mp4"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
+	if err := svc.RestoreFile(ctx, "C:/backup/2026/09/02/x.mp4", "C:/store/work/a/x.mp4"); !errors.Is(err, settings.ErrWorkDirNotConfigured) {
 		t.Errorf("RestoreFile 期望返回 ErrWorkDirNotConfigured，实际 %v", err)
 	}
 }

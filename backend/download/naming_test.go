@@ -52,7 +52,7 @@ func bucketOf(siteKey, siteWorkId string) string {
 	return hex.EncodeToString(sum[:])[:2]
 }
 
-// TestResolveStoreDir_IdentityForms 目录段形态：store/resource/{桶段}/siteKey 原文 +
+// TestResolveStoreDir_IdentityForms 目录段形态：store/work/{桶段}/siteKey 原文 +
 // siteWorkId 派生段（合法字符 ID 原文直用——覆盖 pixiv 数字 ID、bilibili 混合 ID、
 // local 64 位 hex ID）；桶段随复合键各自不同
 func TestResolveStoreDir_IdentityForms(t *testing.T) {
@@ -62,9 +62,9 @@ func TestResolveStoreDir_IdentityForms(t *testing.T) {
 		siteWorkId string
 		want       string
 	}{
-		{"pixiv", "128937464", "store/resource/" + bucketOf("pixiv", "128937464") + "/pixiv_128937464"},
-		{"bilibili", "BV1xx411c7mD_4538792", "store/resource/" + bucketOf("bilibili", "BV1xx411c7mD_4538792") + "/bilibili_BV1xx411c7mD_4538792"},
-		{"local", localId, "store/resource/" + bucketOf("local", localId) + "/local_" + localId},
+		{"pixiv", "128937464", "store/work/" + bucketOf("pixiv", "128937464") + "/pixiv_128937464"},
+		{"bilibili", "BV1xx411c7mD_4538792", "store/work/" + bucketOf("bilibili", "BV1xx411c7mD_4538792") + "/bilibili_BV1xx411c7mD_4538792"},
+		{"local", localId, "store/work/" + bucketOf("local", localId) + "/local_" + localId},
 	}
 	for _, c := range cases {
 		sess, cancel := newNamingSession(c.siteKey, c.siteWorkId)
@@ -88,7 +88,7 @@ func TestResolveStoreDir_SanitizeAppendsDisambiguator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("派生失败: %v", err)
 	}
-	want := "store/resource/" + bucketOf("pixiv", `a/b:c`) + "/pixiv_a／b：c_" + hashPrefix(`a/b:c`, 8)
+	want := "store/work/" + bucketOf("pixiv", `a/b:c`) + "/pixiv_a／b：c_" + hashPrefix(`a/b:c`, 8)
 	if got != want {
 		t.Fatalf("净化消歧段期望 %s 实际 %s", want, got)
 	}
@@ -104,7 +104,7 @@ func TestResolveStoreDir_TruncationBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("派生失败: %v", err)
 	}
-	want := "store/resource/" + bucketOf("pixiv", id) + "/pixiv_" + strings.Repeat("a", 88) + "_" + hashPrefix(id, 8)
+	want := "store/work/" + bucketOf("pixiv", id) + "/pixiv_" + strings.Repeat("a", 88) + "_" + hashPrefix(id, 8)
 	if got != want {
 		t.Fatalf("截断消歧段期望 %s 实际 %s", want, got)
 	}
@@ -157,7 +157,7 @@ func TestResolveStoreDir_BucketSegmentStable(t *testing.T) {
 			t.Fatalf("同一复合键(%s_%s)两次派生应恒同路径: %q/%q err=%v/%v", k[0], k[1], a, b, errA, errB)
 		}
 		parts := strings.Split(a, "/")
-		if len(parts) != 4 || parts[0] != "store" || parts[1] != "resource" || parts[2] != bucketOf(k[0], k[1]) {
+		if len(parts) != 4 || parts[0] != "store" || parts[1] != "work" || parts[2] != bucketOf(k[0], k[1]) {
 			t.Fatalf("路径桶段应为复合键哈希前 2 位 hex(%s_%s → %s): %q", k[0], k[1], bucketOf(k[0], k[1]), a)
 		}
 	}
@@ -194,15 +194,15 @@ func TestResolveStoreDir_RejectsMissingIdentity(t *testing.T) {
 // TestResolveStorePath_Form 文件名恒带 role_seq（单 store 资源不省略段）；ext 经 normalizeExt
 // 补前导点；spec.Description 不参与最终名（描述段退役）
 func TestResolveStorePath_Form(t *testing.T) {
-	base := "store/resource/pixiv_123"
+	base := "store/work/pixiv_123"
 	// 单 store 资源（旧命名在此场景省略 role_seq）
 	rel, name, err := resolveStorePath(&sdkdto.StoreSpec{Role: entity.StoreTypeImage, Format: "jpg"}, base, 0)
-	if err != nil || name != "image_000.jpg" || rel != "store/resource/pixiv_123/image_000.jpg" {
+	if err != nil || name != "image_000.jpg" || rel != "store/work/pixiv_123/image_000.jpg" {
 		t.Fatalf("单 store 应恒带 role_seq: name=%q rel=%q err=%v", name, rel, err)
 	}
 	// 同 role 多轨递增 seq（三位零填充）、ext 已带点直用
 	rel2, name2, err2 := resolveStorePath(&sdkdto.StoreSpec{Role: entity.StoreTypeVideoTrack, Format: ".mp4"}, base, 12)
-	if err2 != nil || name2 != "videoTrack_012.mp4" || rel2 != "store/resource/pixiv_123/videoTrack_012.mp4" {
+	if err2 != nil || name2 != "videoTrack_012.mp4" || rel2 != "store/work/pixiv_123/videoTrack_012.mp4" {
 		t.Fatalf("多轨 seq 递增失败: name=%q rel=%q err=%v", name2, rel2, err2)
 	}
 	// 描述段退役：Description 不影响最终名

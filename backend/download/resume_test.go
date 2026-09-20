@@ -358,9 +358,9 @@ func stagingWorkResp() *sdkdto.WorkResponse {
 }
 
 // finalAbsPath 命名派生基准下的最终文件绝对路径（makeResumeWorkTask 复合键 siteId=1→
-// test-site、siteWorkId=sw1 → store/resource/{bucketOf("test-site","sw1")}/test-site_sw1 目录）
+// test-site、siteWorkId=sw1 → store/work/{bucketOf("test-site","sw1")}/test-site_sw1 目录）
 func finalAbsPath(env *stagingTestEnv, fileName string) string {
-	return filepath.Join(env.workDir, "store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", fileName)
+	return filepath.Join(env.workDir, "store", "work", bucketOf("test-site", "sw1"), "test-site_sw1", fileName)
 }
 
 // ==== Execute 入口：恢复信号判定 ====
@@ -489,7 +489,7 @@ func TestResumeFromStaging_PartialContinuesAndCommits(t *testing.T) {
 		t.Fatalf("最终内容应前缀保留+续传, 期望 %q 实际 %q", want, got)
 	}
 	// 建行：relPath 落库、completed（桩记录）
-	wantRel := path.Join("store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.png")
+	wantRel := path.Join("store", "work", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.png")
 	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != wantRel {
 		t.Fatalf("提交点应建 1 行(final relPath), 实际 %+v", env.streamer.commits)
 	}
@@ -654,7 +654,7 @@ func TestCommitAbortThenResumeInstantCommit(t *testing.T) {
 	if rerr != nil || !bytes.Equal(got2, payload) {
 		t.Fatalf("瞬时提交内容应为退回暂存的原始字节, err=%v len=%d", rerr, len(got2))
 	}
-	wantRel := path.Join("store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.png")
+	wantRel := path.Join("store", "work", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.png")
 	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != wantRel {
 		t.Fatalf("恢复提交应建 1 行(%s), 实际 %+v", wantRel, env.streamer.commits)
 	}
@@ -875,7 +875,7 @@ func TestResumeFromStaging_FullTrackExtBackfilledFromStagingName(t *testing.T) {
 	if _, err := os.Stat(finalAbsPath(env, "image_000")); !os.IsNotExist(err) {
 		t.Fatal("不应产生无扩展名产物")
 	}
-	wantRel := path.Join("store", "resource", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.jpg")
+	wantRel := path.Join("store", "work", bucketOf("test-site", "sw1"), "test-site_sw1", "image_000.jpg")
 	if len(env.streamer.commits) != 1 || env.streamer.commits[0].relPath != wantRel {
 		t.Fatalf("store 行 file_path 应带 .jpg, 实际 %+v", env.streamer.commits)
 	}

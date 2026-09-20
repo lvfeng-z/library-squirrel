@@ -54,7 +54,7 @@ func buildRsFixture(t *testing.T, db *gorm.DB) *rsFixtureEnv {
 		s := domain.NewPersistentStore()
 		s.FileName = sql.NullString{String: name, Valid: true}
 		s.FilenameExtension = sql.NullString{String: ext, Valid: true}
-		s.FilePath = sql.NullString{String: fmt.Sprintf("store/resource/作者/%s%s", name, ext), Valid: true}
+		s.FilePath = sql.NullString{String: fmt.Sprintf("store/work/作者/%s%s", name, ext), Valid: true}
 		s.CompletedAt = 1
 		if err := db.Create(s).Error; err != nil {
 			t.Fatalf("插 store 失败: %v", err)

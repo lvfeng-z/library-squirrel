@@ -78,7 +78,7 @@ func (r *recordingBackupReader) DeleteBackupRecord(ctx context.Context, id int64
 // 复原作品 A 只消耗 A 各行 backup_id 指向的备份，作品 B 的备份原封不动。
 // 回归锚定：曾按 original_file_path 反查命中全部代次、复原 A 误删 B 的全部备份
 func TestRestoreWorkFilesGenerationIsolation(t *testing.T) {
-	const sharedPath = "store/resource/作者/同路径文件.mp4"
+	const sharedPath = "store/work/作者/同路径文件.mp4"
 	newRow := func(backupId int64) *domain.PersistentStore {
 		row := domain.NewPersistentStore()
 		row.BackupID = sql.NullInt64{Int64: backupId, Valid: true}

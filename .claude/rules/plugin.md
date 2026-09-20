@@ -256,7 +256,7 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 | 类别 | SDK 方法 | 说明 |
 |------|----------|------|
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
-| 落盘路径派生 | `storepath` 包（`BucketSegment`/`WorkDirName`/`StoreFileName`，本地纯函数零依赖） | 库内最终落盘路径（`store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位}.{ext}`，桶段=复合键 SHA256 前 2 位 hex）由插件据任务身份与 specs 顺序本地推导（顺序确定性契约见 `doc/plugin-dev-guide.md` 6.1），不经宿主 RPC 查询 |
+| 落盘路径派生 | `storepath` 包（`BucketSegment`/`WorkDirName`/`StoreFileName`，本地纯函数零依赖） | 库内最终落盘路径（`store/work/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位}.{ext}`，桶段=复合键 SHA256 前 2 位 hex）由插件据任务身份与 specs 顺序本地推导（顺序确定性契约见 `doc/plugin-dev-guide.md` 6.1），不经宿主 RPC 查询 |
 | 库查询（Tier 1 只读） | `GetWorkById`/`GetWorkBySiteKey`/`QueryWorks`/`ListResourcesByWorkId`/作者 5 个/标签 5 个/作品集 5 个/`ListSites`/`GetWorkDir`（共 21 个，`dto.PluginContext` 方法组） | 查询库内已有作品及周边数据：身份键复合寻址（`(site_key, 站点侧 id)`，DB id 仅会话内句柄）、`Query*` 族强制分页（page_size 上限 200——宿主数据库单连接与 UI 共享，重查询需节制）、默认只返回活数据（软删/死关联不出现）、`file_path` 为 relPath 域正斜杠；无需 capabilities 声明直接调用。完整使用规则见 `doc/plugin-dev-guide.md` 5.1 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。读取返回 `*StorageValue`（明文 `Value` + `SchemaVersion`）；写入时主程序按插件声明的 `configSchemaVersion`（plugin.json 顶层，与 `contractVersion` 正交——前者管插件配置结构、后者管 host↔plugin 协议）盖 `schema_version` 戳，供插件配置迁移感知（见 `doc/plugin-dev-guide.md` 8.3）。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |

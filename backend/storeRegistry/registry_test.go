@@ -11,9 +11,9 @@ func TestInScanDirs(t *testing.T) {
 		rel  string
 		want bool
 	}{
-		{"store/resource/作者/x.jpg", true},
-		{"store/resource", true},         // 子树根自身
-		{"store/thumbnail/t.jpg", false}, // 已退役目录（缩略图统一进 store/resource，不再独立子目录）
+		{"store/work/作者/x.jpg", true},
+		{"store/work", true},         // 子树根自身
+		{"store/thumbnail/t.jpg", false}, // 已退役目录（缩略图统一进 store/work，不再独立子目录）
 		{"store/avatar/local/a.png", true},
 		{"store/avatar/site/b.png", true},
 		{"store/avatar", false}, // 仅 store/avatar 不在白名单（只有 local/site）
@@ -22,7 +22,7 @@ func TestInScanDirs(t *testing.T) {
 		{"log/server.log", false},
 		{"", false},
 		{".", false},
-		{"store/resourceX/y.jpg", false}, // 前缀串匹配须按分隔符，非 store/resourceX
+		{"store/workX/y.jpg", false}, // 前缀串匹配须按分隔符，非 store/workX
 	}
 	for _, c := range cases {
 		if got := InScanDirs(c.rel); got != c.want {
@@ -40,7 +40,7 @@ func TestInBackupDir(t *testing.T) {
 		{"backup", true}, // 子树根自身
 		{"backup/2026/08/23/x.mp4", true},
 		{"backupX/y.mp4", false}, // 前缀串匹配须按分隔符
-		{"store/resource/x.jpg", false},
+		{"store/work/x.jpg", false},
 		{"", false},
 		{".", false},
 	}
@@ -54,8 +54,8 @@ func TestInBackupDir(t *testing.T) {
 // TestValidatePath 验证落盘前路径校验：白名单内放行、白名单外拒绝、反斜杠归一。
 func TestValidatePath(t *testing.T) {
 	ok := []string{
-		"store/resource/作者/video.mp4",
-		"store/resource",
+		"store/work/作者/video.mp4",
+		"store/work",
 		"store/avatar/local/1.png",
 		"store/avatar/site/2.png",
 	}
@@ -68,7 +68,7 @@ func TestValidatePath(t *testing.T) {
 		"backup/2026/x.mp4",
 		"store/thumbnail/x.jpg", // 已退役目录，不再放行
 		"store/avatar",          // 仅 store/avatar，未注册子目录
-		"store/resourceX/y.jpg", // 前缀串匹配按分隔符，不误命中
+		"store/workX/y.jpg", // 前缀串匹配按分隔符，不误命中
 		".git/config",
 	}
 	for _, p := range bad {
@@ -77,7 +77,7 @@ func TestValidatePath(t *testing.T) {
 		}
 	}
 	// Windows 反斜杠路径也须放行（ToSlash 归一）
-	if err := ValidatePath(`store\resource\作者\v.mp4`); err != nil {
+	if err := ValidatePath(`store\work\作者\v.mp4`); err != nil {
 		t.Errorf("ValidatePath(反斜杠) 期望通过，实际错误: %v", err)
 	}
 }

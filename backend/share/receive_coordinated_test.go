@@ -30,7 +30,7 @@ func buildTenWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	files := make([]export.FileEntry, 0, n)
 	contents := make(map[string][]byte, n)
 	for i := 1; i <= n; i++ {
-		rel := fmt.Sprintf("store/resource/测试作者/work_%02d.jpg", i)
+		rel := fmt.Sprintf("store/work/测试作者/work_%02d.jpg", i)
 		content := []byte(fmt.Sprintf("TEN-WORK-PLAINTEXT-%02d", i))
 		abs := filepath.Join(workDir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {

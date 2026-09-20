@@ -199,7 +199,7 @@ func insertDeletedWorkWithStore(t *testing.T, db *gorm.DB, psSvc *persistentStor
 	}
 	store := domain.NewPersistentStore()
 	store.FilePath.Valid = true
-	store.FilePath.String = "store/resource/作者/purge_test.mp4"
+	store.FilePath.String = "store/work/作者/purge_test.mp4"
 	store.CompletedAt = 1
 	if err := db.Create(store).Error; err != nil {
 		t.Fatalf("插 store 失败: %v", err)

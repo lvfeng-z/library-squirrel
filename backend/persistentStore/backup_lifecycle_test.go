@@ -55,7 +55,7 @@ func newLifecycleTestService(t *testing.T) (*Service, string) {
 		t.Fatalf("迁移测试实体失败: %v", err)
 	}
 	workDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(workDir, "store/resource"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, "store/work"), 0o755); err != nil {
 		t.Fatalf("建 store 目录失败: %v", err)
 	}
 	repo := NewRepository(db)
@@ -91,8 +91,8 @@ func getRowById(t *testing.T, svc *Service, id int64) *domain.PersistentStore {
 func TestDeleteWithBackupLifecycle(t *testing.T) {
 	svc, workDir := newLifecycleTestService(t)
 	ctx := context.Background()
-	row := insertStoreRow(t, svc, "store/resource/a.mp4")
-	if err := os.WriteFile(filepath.Join(workDir, "store/resource/a.mp4"), []byte("x"), 0o644); err != nil {
+	row := insertStoreRow(t, svc, "store/work/a.mp4")
+	if err := os.WriteFile(filepath.Join(workDir, "store/work/a.mp4"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("造源文件失败: %v", err)
 	}
 
@@ -129,7 +129,7 @@ func TestDeleteWithBackupLifecycle(t *testing.T) {
 func TestResolveFileStateGenerationOrder(t *testing.T) {
 	svc, _ := newLifecycleTestService(t)
 	ctx := context.Background()
-	const relPath = "store/resource/gen.mp4"
+	const relPath = "store/work/gen.mp4"
 
 	// 逐代「插入→软删」构造两死一活（部分唯一索引约束活行路径唯一，多活行同路径不可直插）。
 	// 死代引用的备份清单行须真实存在（persistent_store.backup_id 外键防线）

@@ -56,9 +56,9 @@ func buildTestModel(t *testing.T, workDir string) (*export.ExportModel, map[stri
 		big[i] = byte(i % 251)
 	}
 	copy(big, "BIGFILE-PLAINTEXT-MARKER")
-	relSmall := "store/resource/测试作者/pic_001.jpg"
-	relBig := "store/resource/测试作者/video_000.mp4"
-	relMissing := "store/resource/测试作者/doc.md"
+	relSmall := "store/work/测试作者/pic_001.jpg"
+	relBig := "store/work/测试作者/video_000.mp4"
+	relMissing := "store/work/测试作者/doc.md"
 	for _, p := range []string{relSmall, relBig} {
 		var content []byte
 		if p == relSmall {
@@ -446,7 +446,7 @@ func TestE2EHardAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("拉取文件失败: %v", err)
 	}
-	smallWant := files["store/resource/测试作者/pic_001.jpg"]
+	smallWant := files["store/work/测试作者/pic_001.jpg"]
 	if !head.OK || head.Kind != "file" || head.Size != int64(len(smallWant)) {
 		t.Fatalf("文件应答头异常: %+v", head)
 	}
@@ -498,7 +498,7 @@ func TestRecipientPullFileChunked(t *testing.T) {
 	}
 	key, _ := keyFromLink(t, comp.Link)
 	cip, _ := newE2ECipher(key)
-	bigWant := files["store/resource/测试作者/video_000.mp4"]
+	bigWant := files["store/work/测试作者/video_000.mp4"]
 
 	conn, err := recipientDial(t, stub.addr, comp.Session.Token, "")
 	if err != nil {
@@ -775,7 +775,7 @@ func TestReconnectBind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重连后拉取失败: %v", err)
 	}
-	if !head.OK || !bytes.Equal(content, files["store/resource/测试作者/pic_001.jpg"]) {
+	if !head.OK || !bytes.Equal(content, files["store/work/测试作者/pic_001.jpg"]) {
 		t.Fatal("重连后拉取内容不一致")
 	}
 	_ = conn.Close()
@@ -1167,7 +1167,7 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
 	}
 	for _, id := range fileWorkIDs {
-		rel := fmt.Sprintf("store/resource/测试作者/pic_%03d.jpg", id)
+		rel := fmt.Sprintf("store/work/测试作者/pic_%03d.jpg", id)
 		abs := filepath.Join(workDir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			t.Fatal(err)

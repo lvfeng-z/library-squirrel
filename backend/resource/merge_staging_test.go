@@ -52,11 +52,11 @@ type mergeStageStoreOps struct {
 func (o *mergeStageStoreOps) GetById(ctx context.Context, id int64) (*domain.PersistentStore, error) {
 	ps := domain.NewPersistentStore()
 	ps.SetID(id)
-	ps.FilePath = sql.NullString{String: "store/resource/track/videoTrack_000.mp4", Valid: true}
+	ps.FilePath = sql.NullString{String: "store/work/track/videoTrack_000.mp4", Valid: true}
 	return ps, nil
 }
 func (o *mergeStageStoreOps) GetAbsPath(store *domain.PersistentStore) string {
-	return filepath.Join(o.workDir, "store/resource/track/videoTrack_000.mp4")
+	return filepath.Join(o.workDir, "store/work/track/videoTrack_000.mp4")
 }
 func (o *mergeStageStoreOps) DeleteWithBackup(ctx context.Context, id int64) (int64, error) {
 	return 0, nil
@@ -291,7 +291,7 @@ func mergeStageFinalPath(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("派生作品目录名失败: %v", err)
 	}
-	return path.Join("store", "resource",
+	return path.Join("store", "work",
 		storepath.BucketSegment(mergeStageSiteKey, mergeStageSiteWorkId),
 		dirName,
 		"videoMain_000.mp4")
@@ -332,7 +332,7 @@ func TestRunMergeIngestsThroughTxAPI(t *testing.T) {
 	// 行 ID 由建行桩返回）
 	seedMergeStageBase(t, db)
 	psRow := domain.NewPersistentStore()
-	psRow.FilePath = sql.NullString{String: "store/resource/track/videoTrack_000.mp4", Valid: true}
+	psRow.FilePath = sql.NullString{String: "store/work/track/videoTrack_000.mp4", Valid: true}
 	psRow.CompletedAt = 1
 	if err := db.Create(psRow).Error; err != nil {
 		t.Fatalf("插 persistent_store 失败: %v", err)

@@ -47,7 +47,7 @@ func buildNWorkModel(n int, size int64) func(t *testing.T, workDir string) (*exp
 		var files []export.FileEntry
 		sourceHash := make(map[string]string, n)
 		for i := 1; i <= n; i++ {
-			rel := fmt.Sprintf("store/resource/测试作者/work_%02d_000.jpg", i)
+			rel := fmt.Sprintf("store/work/测试作者/work_%02d_000.jpg", i)
 			abs := filepath.Join(workDir, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 				t.Fatal(err)

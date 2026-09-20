@@ -226,14 +226,14 @@ func seedExportFixture(t *testing.T, db *gorm.DB) *exportFixture {
 	f.r1ID = r1.GetID()
 
 	s1 := entity.NewPersistentStore()
-	s1.FilePath = ns("store/resource/作品1.jpg")
+	s1.FilePath = ns("store/work/作品1.jpg")
 	s1.FileName = ns("作品1.jpg")
 	s1.CompletedAt = 100
 	require.NoError(t, db.Create(s1).Error)
 	f.s1ID = s1.GetID()
 
 	s2 := entity.NewPersistentStore()
-	s2.FilePath = ns("store/resource/作品1_thumb.jpg")
+	s2.FilePath = ns("store/work/作品1_thumb.jpg")
 	s2.FileName = ns("作品1_thumb.jpg")
 	s2.CompletedAt = 100
 	require.NoError(t, db.Create(s2).Error)
@@ -319,7 +319,7 @@ func TestCollectSelectionUnit(t *testing.T) {
 
 		require.Len(t, m.Files, 1)
 		assert.Equal(t, f.s1ID, m.Files[0].StoreID)
-		assert.Equal(t, "store/resource/作品1.jpg", m.Files[0].StorePath)
+		assert.Equal(t, "store/work/作品1.jpg", m.Files[0].StorePath)
 		assert.False(t, m.Files[0].Missing) // 阶段2 数据面：按活行关联纳入，缺失标记阶段3 判定
 
 		// 标签：本地含祖先链（子+父）；站点标签记录无 namespace 列（关联级 ns 随 TagLink 行）

@@ -32,7 +32,7 @@
 ## 核心概念
 
 - **已注册子目录**（`storeRegistry`）：路径必须以下列前缀开头——
-  `store/resource`（作品资源，含缩略图与合并产物，命名见 `doc/store-naming-convention.md`）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
+  `store/work`（作品资源，含缩略图与合并产物，命名见 `doc/store-naming-convention.md`）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
 - **路径基准（PATH_SEPARATOR_DISCIPLINE 两域模型）**：所有相对路径（relPath 域）基于 workDir 且**正斜杠**——写入口（PrepareIngest/CommitStore）入口处 `ToSlash` 规范化一次，查旧/抑制登记/落库全程与 DB 基准一致；absPath（`filepath.Join(workDir, rel)`）仅存在于 os.* 调用点不回流。禁止 `../`、`./` 或绝对路径。
 
 ## 入库事务机制

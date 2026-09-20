@@ -201,11 +201,11 @@ func buildFixture() (*export.Manifest, map[string]string) {
 			},
 		},
 		Files: []export.FileEntry{
-			{StoreID: 901, StorePath: "store/resource/作者甲/pic.jpg", Path: "works/作品一/pic.jpg",
+			{StoreID: 901, StorePath: "store/work/作者甲/pic.jpg", Path: "works/作品一/pic.jpg",
 				Size: int64(len(files["works/作品一/pic.jpg"])), Sha256: sha256Hex(files["works/作品一/pic.jpg"])},
-			{StoreID: 902, StorePath: "store/resource/作者甲/pic_thumb.jpg", Path: "works/作品一/pic_thumb.jpg",
+			{StoreID: 902, StorePath: "store/work/作者甲/pic_thumb.jpg", Path: "works/作品一/pic_thumb.jpg",
 				Size: int64(len(files["works/作品一/pic_thumb.jpg"])), Sha256: sha256Hex(files["works/作品一/pic_thumb.jpg"])},
-			{StoreID: 903, StorePath: "store/resource/作者甲/doc.md", Missing: true},
+			{StoreID: 903, StorePath: "store/work/作者甲/doc.md", Missing: true},
 		},
 	}
 	return m, files
@@ -383,7 +383,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 	}
 
 	// ===== ② 文件落位与记录就位 =====
-	for _, rel := range []string{"store/resource/作者甲/pic.jpg", "store/resource/作者甲/pic_thumb.jpg"} {
+	for _, rel := range []string{"store/work/作者甲/pic.jpg", "store/work/作者甲/pic_thumb.jpg"} {
 		content, err := os.ReadFile(filepath.Join(workDir, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("文件未落位 %s: %v", rel, err)
@@ -408,7 +408,7 @@ func TestIngestRoundTripThenIdempotent(t *testing.T) {
 			t.Fatalf("persistent_store 实测 sha 未随解包落列 %s: %q", rel, got)
 		}
 	}
-	psPic := queryInt64(t, db, "SELECT id FROM persistent_store WHERE file_path = 'store/resource/作者甲/pic.jpg'")
+	psPic := queryInt64(t, db, "SELECT id FROM persistent_store WHERE file_path = 'store/work/作者甲/pic.jpg'")
 	// resource_store：image 挂载指向重映射后的 persistent_store 行
 	rsID := queryInt64(t, db,
 		"SELECT rs.id FROM resource_store rs JOIN resource r ON r.id = rs.resource_id WHERE r.work_id = ? AND rs.store_type = 'image'", workID)
@@ -558,7 +558,7 @@ func TestIngestChecksumMismatch(t *testing.T) {
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM store_ingest_journal"); got != 0 {
 		t.Fatalf("校验失败登记行应零残留，实际 %d 行", got)
 	}
-	if _, err := os.Stat(filepath.Join(workDir, "store/resource/作者甲/pic.jpg")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workDir, "store/work/作者甲/pic.jpg")); !os.IsNotExist(err) {
 		t.Fatalf("校验失败文件不得落最终路径")
 	}
 	assertNoImportScopeResidual(t, workDir)
@@ -570,14 +570,14 @@ func TestIngestPathCollisionVariant(t *testing.T) {
 	ing, db, psService, workDir := newTestSetup(t)
 	ctx := context.Background()
 	// 预占目标路径：既有文件（先落盘）+ 既有活行记录（建行按提交点口径）
-	occupied := filepath.Join(workDir, "store/resource/作者甲/pic.jpg")
+	occupied := filepath.Join(workDir, "store/work/作者甲/pic.jpg")
 	if err := os.MkdirAll(filepath.Dir(occupied), 0o755); err != nil {
 		t.Fatalf("建预占目录失败: %v", err)
 	}
 	if err := os.WriteFile(occupied, []byte("existing-work-file"), 0o644); err != nil {
 		t.Fatalf("写预占文件失败: %v", err)
 	}
-	if _, err := psService.CommitStore(ctx, "store/resource/作者甲/pic.jpg", "pic.jpg", sql.NullString{}, sql.NullString{}); err != nil {
+	if _, err := psService.CommitStore(ctx, "store/work/作者甲/pic.jpg", "pic.jpg", sql.NullString{}, sql.NullString{}); err != nil {
 		t.Fatalf("预置占用记录失败: %v", err)
 	}
 	manifest, files := buildFixture()
@@ -589,19 +589,19 @@ func TestIngestPathCollisionVariant(t *testing.T) {
 		t.Fatalf("路径冲突不应阻断导入: %+v", r1)
 	}
 	// 既有文件原样保留
-	content, err := os.ReadFile(filepath.Join(workDir, "store/resource/作者甲/pic.jpg"))
+	content, err := os.ReadFile(filepath.Join(workDir, "store/work/作者甲/pic.jpg"))
 	if err != nil || string(content) != "existing-work-file" {
 		t.Fatalf("既有作品文件被改写: %q err=%v", string(content), err)
 	}
 	// 导入文件落在变体路径，内容正确
-	variant, err := os.ReadFile(filepath.Join(workDir, "store/resource/作者甲/pic_import1.jpg"))
+	variant, err := os.ReadFile(filepath.Join(workDir, "store/work/作者甲/pic_import1.jpg"))
 	if err != nil {
 		t.Fatalf("导入文件未落到变体路径: %v", err)
 	}
 	if string(variant) != files["works/作品一/pic.jpg"] {
 		t.Fatalf("变体路径文件内容不符")
 	}
-	if got := queryInt64(t, db, "SELECT COUNT(*) FROM persistent_store WHERE file_path LIKE 'store/resource/作者甲/%'"); got != 3 {
+	if got := queryInt64(t, db, "SELECT COUNT(*) FROM persistent_store WHERE file_path LIKE 'store/work/作者甲/%'"); got != 3 {
 		t.Fatalf("占用+导入两文件应三行记录，实际 %d", got)
 	}
 }
@@ -728,7 +728,7 @@ func buildReplaceFixture() (*export.Manifest, map[string]string) {
 			},
 		},
 		Files: []export.FileEntry{
-			{StoreID: 911, StorePath: "store/resource/作者甲/pic.jpg", Path: "works/作品一/pic_new.jpg",
+			{StoreID: 911, StorePath: "store/work/作者甲/pic.jpg", Path: "works/作品一/pic_new.jpg",
 				Size: int64(len(files["works/作品一/pic_new.jpg"])), Sha256: sha256Hex(files["works/作品一/pic_new.jpg"])},
 		},
 	}
@@ -836,12 +836,12 @@ func TestIngestReplaceWorks(t *testing.T) {
 		t.Fatalf("旧 image 软删行关联应保留（替换链语义），实际 %d", got)
 	}
 	// 新文件落位到与旧 image 同路径（软删释放路径后复用），内容为替换版
-	content, err := os.ReadFile(filepath.Join(workDir, "store/resource/作者甲/pic.jpg"))
+	content, err := os.ReadFile(filepath.Join(workDir, "store/work/作者甲/pic.jpg"))
 	if err != nil || string(content) != "picture-bytes-replace-701" {
 		t.Fatalf("新文件未落位或内容不符: %q err=%v", string(content), err)
 	}
 	// 本地独有角色文件保留（thumbnail 未被替换）
-	thumb, err := os.ReadFile(filepath.Join(workDir, "store/resource/作者甲/pic_thumb.jpg"))
+	thumb, err := os.ReadFile(filepath.Join(workDir, "store/work/作者甲/pic_thumb.jpg"))
 	if err != nil || string(thumb) != "thumb-bytes-701" {
 		t.Fatalf("本地独有 thumbnail 文件被改写: %q err=%v", string(thumb), err)
 	}
@@ -995,7 +995,7 @@ func TestIngestReplaceTransactionRollback(t *testing.T) {
 		t.Fatalf("事务失败后持久化 store 行应保持 2（软删 image + 活 thumbnail），实际 %d", got)
 	}
 	// 已落位文件按丢弃声明撤回（最终路径无文件）、入库登记行零残留
-	if _, err := os.Stat(filepath.Join(workDir, "store/resource/作者甲/pic.jpg")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workDir, "store/work/作者甲/pic.jpg")); !os.IsNotExist(err) {
 		t.Fatalf("事务失败后已落位文件应按丢弃声明撤回")
 	}
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM store_ingest_journal"); got != 0 {

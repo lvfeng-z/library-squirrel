@@ -51,7 +51,7 @@ func (e *livenessEnv) seedDualAssociation(t *testing.T, role string) (resourceId
 		t.Fatalf("插 resource 失败: %v", err)
 	}
 	dead := domain.NewPersistentStore()
-	dead.FilePath = sql.NullString{String: "store/resource/a/同键同路径.png", Valid: true}
+	dead.FilePath = sql.NullString{String: "store/work/a/同键同路径.png", Valid: true}
 	dead.CompletedAt = 1
 	if err := e.db.Create(dead).Error; err != nil {
 		t.Fatalf("插死行失败: %v", err)
@@ -64,7 +64,7 @@ func (e *livenessEnv) seedDualAssociation(t *testing.T, role string) (resourceId
 		t.Fatalf("软删失败: %v", err)
 	}
 	live := domain.NewPersistentStore()
-	live.FilePath = sql.NullString{String: "store/resource/a/同键同路径.png", Valid: true}
+	live.FilePath = sql.NullString{String: "store/work/a/同键同路径.png", Valid: true}
 	live.CompletedAt = 1
 	if err := e.db.Create(live).Error; err != nil {
 		t.Fatalf("插活行失败: %v", err)
@@ -192,7 +192,7 @@ func TestListStoreTypeSetsByWorkIdsExcludesDeadStores(t *testing.T) {
 	var workId int64
 	env.db.Raw("SELECT work_id FROM resource WHERE id = ?", resourceId).Scan(&workId)
 	thumb := domain.NewPersistentStore()
-	thumb.FilePath = sql.NullString{String: "store/resource/a/轨道残留.png", Valid: true}
+	thumb.FilePath = sql.NullString{String: "store/work/a/轨道残留.png", Valid: true}
 	thumb.CompletedAt = 1
 	if err := env.db.Create(thumb).Error; err != nil {
 		t.Fatalf("插轨道残留行失败: %v", err)

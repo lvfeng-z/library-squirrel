@@ -18,7 +18,7 @@ func TestPageBackupsReferencedFilterAndMarking(t *testing.T) {
 	storeRef := makeBackup(t, backupSvc, db, workDir, 0)
 	pluginRef := makeBackup(t, backupSvc, db, workDir, 0)
 	orphan := makeBackup(t, backupSvc, db, workDir, 0)
-	store := makeStoreRow(t, db, "store/resource/page-a.mp4")
+	store := makeStoreRow(t, db, "store/work/page-a.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), storeRef.GetID())
 	makePluginRow(t, db, pluginRef.GetID(), true) // 已卸载行引用仍判有主
 
@@ -117,7 +117,7 @@ func TestDeleteBackupsReferencedGuard(t *testing.T) {
 	storeRef := makeBackup(t, backupSvc, db, workDir, 0)
 	pluginRef := makeBackup(t, backupSvc, db, workDir, 0)
 	orphan := makeBackup(t, backupSvc, db, workDir, 0)
-	store := makeStoreRow(t, db, "store/resource/del-a.mp4")
+	store := makeStoreRow(t, db, "store/work/del-a.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), storeRef.GetID())
 	makePluginRow(t, db, pluginRef.GetID(), true)
 
@@ -168,7 +168,7 @@ func TestRunReconciliationNowReturnsStats(t *testing.T) {
 	ctx := context.Background()
 
 	// 悬空引用两条：store 行引用不存在的 999、plugin 行引用不存在的 888
-	store := makeStoreRow(t, db, "store/resource/stats-dangling.mp4")
+	store := makeStoreRow(t, db, "store/work/stats-dangling.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), 999)
 	plantDanglingPluginRef(t, db, 888)
 	// 无主超期一份（保留期 7 天）
@@ -194,7 +194,7 @@ func TestGetBackupStats(t *testing.T) {
 
 	fileBytes := int64(len("backup-content"))
 	referenced := makeBackup(t, backupSvc, db, workDir, 100) // 有主（超龄但被引用，不入超期圈定）
-	store := makeStoreRow(t, db, "store/resource/stats-old.mp4")
+	store := makeStoreRow(t, db, "store/work/stats-old.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), referenced.GetID())
 	expiredOrphan := makeBackup(t, backupSvc, db, workDir, 8) // 无主超期 → 入圈定
 	freshOrphan := makeBackup(t, backupSvc, db, workDir, 0)   // 无主未超期 → 不入圈定

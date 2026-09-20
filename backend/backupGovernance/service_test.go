@@ -190,7 +190,7 @@ func TestRunOnceOrphanCleanup(t *testing.T) {
 	orphan := makeBackup(t, backupSvc, db, workDir, 8)     // 无主超期 → 清
 	fresh := makeBackup(t, backupSvc, db, workDir, 0)      // 无主未超期 → 保留
 	referenced := makeBackup(t, backupSvc, db, workDir, 8) // 软删行引用 + 超期 → 保留
-	store := makeStoreRow(t, db, "store/resource/c.mp4")
+	store := makeStoreRow(t, db, "store/work/c.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), referenced.GetID())
 
 	svc.RunOnce(ctx)
@@ -236,7 +236,7 @@ func TestRunOnceDanglingRefsCleared(t *testing.T) {
 	svc, _, _, db, _ := newGovernanceTestEnv(t, 7)
 	ctx := context.Background()
 
-	store := makeStoreRow(t, db, "store/resource/dangling.mp4")
+	store := makeStoreRow(t, db, "store/work/dangling.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), 999) // 999 无对应清单行
 	pRow := plantDanglingPluginRef(t, db, 888)        // 888 无对应清单行
 
@@ -258,7 +258,7 @@ func TestRunOnceIllegalAliveRefsCleared(t *testing.T) {
 	ctx := context.Background()
 
 	backupRow := makeBackup(t, backupSvc, db, workDir, 0)
-	store := makeStoreRow(t, db, "store/resource/alive.mp4")
+	store := makeStoreRow(t, db, "store/work/alive.mp4")
 	// 直改 DB 造非法态（活行带引用）
 	if err := db.Exec("UPDATE persistent_store SET backup_id = ? WHERE id = ?", backupRow.GetID(), store.GetID()).Error; err != nil {
 		t.Fatalf("造非法态失败: %v", err)
@@ -281,7 +281,7 @@ func TestComputeReferencerStats(t *testing.T) {
 
 	oldBackup := makeBackup(t, backupSvc, db, workDir, 100)
 	newBackup := makeBackup(t, backupSvc, db, workDir, 10)
-	store := makeStoreRow(t, db, "store/resource/old.mp4")
+	store := makeStoreRow(t, db, "store/work/old.mp4")
 	softDeleteStoreWithRef(t, db, store.GetID(), oldBackup.GetID())
 	makePluginRow(t, db, newBackup.GetID(), false)
 
@@ -332,7 +332,7 @@ func TestEndToEndRestoreAfterGovernance(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. 造真实文件与记录，走生产软删链（文件移入 backup、行软删带 backup_id）
-	const relPath = "store/resource/e2e.mp4"
+	const relPath = "store/work/e2e.mp4"
 	absPath := filepath.Join(workDir, relPath)
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		t.Fatalf("建目录失败: %v", err)

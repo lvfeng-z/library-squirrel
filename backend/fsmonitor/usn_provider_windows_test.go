@@ -42,7 +42,7 @@ func newCache(entries map[uint64]string) *frnPathCache {
 
 // TestPairAndResolve_FileRename 文件 rename OLD/NEW 同 FRN → 单条 ChangeMove（旧→新）。
 func TestPairAndResolve_FileRename(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "store/resource"})
+	cache := newCache(map[uint64]string{100: "store/work"})
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonRenameOld, false, "old.jpg"),
 		urec(1, 100, usnReasonRenameNew, false, "new.jpg"),
@@ -50,14 +50,14 @@ func TestPairAndResolve_FileRename(t *testing.T) {
 	if len(out) != 1 || out[0].Kind != ChangeMove {
 		t.Fatalf("期望 1 条 ChangeMove，got %+v", out)
 	}
-	if out[0].Path != "store/resource/old.jpg" || out[0].ToPath != "store/resource/new.jpg" || out[0].IsDir {
+	if out[0].Path != "store/work/old.jpg" || out[0].ToPath != "store/work/new.jpg" || out[0].IsDir {
 		t.Fatalf("ChangeMove 字段错: %+v", out[0])
 	}
 }
 
 // TestPairAndResolve_NonAdjacentRename OLD 与 NEW 非相邻（中间夹无关记录），仍按 FRN 配对（R7）。
 func TestPairAndResolve_NonAdjacentRename(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "store/resource"})
+	cache := newCache(map[uint64]string{100: "store/work"})
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonRenameOld, false, "old.jpg"),    // OLD（FRN=1）
 		urec(2, 100, usnReasonFileCreate, false, "other.jpg"), // 无关 create（FRN=2）
@@ -74,32 +74,32 @@ func TestPairAndResolve_NonAdjacentRename(t *testing.T) {
 			create = &out[i]
 		}
 	}
-	if move == nil || move.Path != "store/resource/old.jpg" || move.ToPath != "store/resource/new.jpg" {
+	if move == nil || move.Path != "store/work/old.jpg" || move.ToPath != "store/work/new.jpg" {
 		t.Fatalf("非相邻 rename 应配对为 ChangeMove，got %+v", move)
 	}
-	if create == nil || create.Path != "store/resource/other.jpg" {
+	if create == nil || create.Path != "store/work/other.jpg" {
 		t.Fatalf("夹杂的无关 create 应独立产出，got %+v", create)
 	}
 }
 
 // TestPairAndResolve_UnpairedOldFallback 未配上 NEW 的 OLD → 兜底 ChangeRemove。
 func TestPairAndResolve_UnpairedOldFallback(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "store/resource"})
+	cache := newCache(map[uint64]string{100: "store/work"})
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonRenameOld, false, "x.jpg"),
 	}, cache)
-	if len(out) != 1 || out[0].Kind != ChangeRemove || out[0].Path != "store/resource/x.jpg" {
+	if len(out) != 1 || out[0].Kind != ChangeRemove || out[0].Path != "store/work/x.jpg" {
 		t.Fatalf("未配 OLD 应兜底 ChangeRemove，got %+v", out)
 	}
 }
 
 // TestPairAndResolve_UnpairedNewFallback 无 OLD 配对的 NEW → 兜底 ChangeCreate。
 func TestPairAndResolve_UnpairedNewFallback(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "store/resource"})
+	cache := newCache(map[uint64]string{100: "store/work"})
 	out := pairAndResolve([]usnRecord{
 		urec(1, 100, usnReasonRenameNew, false, "x.jpg"),
 	}, cache)
-	if len(out) != 1 || out[0].Kind != ChangeCreate || out[0].Path != "store/resource/x.jpg" {
+	if len(out) != 1 || out[0].Kind != ChangeCreate || out[0].Path != "store/work/x.jpg" {
 		t.Fatalf("无 OLD 的 NEW 应兜底 ChangeCreate，got %+v", out)
 	}
 }
@@ -107,29 +107,29 @@ func TestPairAndResolve_UnpairedNewFallback(t *testing.T) {
 // TestPairAndResolve_DirRename 目录 rename → OnDirRename 迁移缓存（含下级）+ 发 ChangeCreate(IsDir)，不发 ChangeMove(IsDir)。
 func TestPairAndResolve_DirRename(t *testing.T) {
 	cache := newCache(map[uint64]string{
-		100: "store/resource",
-		200: "store/resource/olddir",
-		300: "store/resource/olddir/sub",
+		100: "store/work",
+		200: "store/work/olddir",
+		300: "store/work/olddir/sub",
 	})
 	out := pairAndResolve([]usnRecord{
 		urec(200, 100, usnReasonRenameOld, true, "olddir"),
 		urec(200, 100, usnReasonRenameNew, true, "newdir"),
 	}, cache)
-	if len(out) != 1 || out[0].Kind != ChangeCreate || !out[0].IsDir || out[0].Path != "store/resource/newdir" {
+	if len(out) != 1 || out[0].Kind != ChangeCreate || !out[0].IsDir || out[0].Path != "store/work/newdir" {
 		t.Fatalf("目录 rename 应发 ChangeCreate(IsDir)（走 processDirCreate），got %+v", out)
 	}
 	// OnDirRename 应迁移目录及下级
-	if cache.frnToRel[200] != "store/resource/newdir" {
+	if cache.frnToRel[200] != "store/work/newdir" {
 		t.Fatalf("OnDirRename 未迁移目录自身: got %q", cache.frnToRel[200])
 	}
-	if cache.frnToRel[300] != "store/resource/newdir/sub" {
+	if cache.frnToRel[300] != "store/work/newdir/sub" {
 		t.Fatalf("OnDirRename 未迁移下级: got %q", cache.frnToRel[300])
 	}
 }
 
 // TestPairAndResolve_ExternalParentDropped 父目录不在缓存（workDir 子树外）→ 丢弃。
 func TestPairAndResolve_ExternalParentDropped(t *testing.T) {
-	cache := newCache(map[uint64]string{100: "store/resource"}) // 仅 100 在缓存
+	cache := newCache(map[uint64]string{100: "store/work"}) // 仅 100 在缓存
 	out := pairAndResolve([]usnRecord{
 		urec(1, 999, usnReasonFileCreate, false, "x.jpg"), // ParentFRN=999 不在缓存
 	}, cache)

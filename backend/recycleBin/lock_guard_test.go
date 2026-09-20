@@ -18,7 +18,7 @@ import (
 // 强制解锁→重试放行，完成同键置换
 func TestRestoreStoreRejectsLockedWork(t *testing.T) {
 	env := newRestoreStoreEnv(t)
-	const victimPath = "store/resource/a/被拉取中版本.png"
+	const victimPath = "store/work/a/被拉取中版本.png"
 	resourceId, victimId := env.seedVictim(t, domain.StoreTypeImage, 601)
 	placeholderId := env.seedLiveSameKey(t, resourceId, domain.StoreTypeImage, victimPath)
 	var workId int64

@@ -17,7 +17,7 @@ func TestRetireLegacyRoots(t *testing.T) {
 	writeTextT(t, filepath.Join(oldUnified, "image_000.jpg.part"), "x")
 	oldReceive := mkdirAllT(t, workDir, "share-receive", "999")
 	writeTextT(t, filepath.Join(oldReceive, "manifest.json"), "{}")
-	bystander := mkdirAllT(t, workDir, "store", "resource")
+	bystander := mkdirAllT(t, workDir, "store", "work")
 
 	logs := withLogObserver(t, zapcore.InfoLevel)
 	if err := RetireLegacyRoots(context.Background(), workDir); err != nil {

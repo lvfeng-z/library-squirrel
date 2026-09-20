@@ -39,7 +39,7 @@ var (
 const mergeScopeContentShape = "merge-out"
 
 // Merger 文件合并能力（由 merge.FFmpegMuxer 实现）。
-// 输入输出均为文件绝对路径，不感知 store/resource；onProgress 上报合并百分比(0~100)，nil 不上报。
+// 输入输出均为文件绝对路径，不感知 store/work；onProgress 上报合并百分比(0~100)，nil 不上报。
 type Merger interface {
 	MergeRemux(ctx context.Context, videoPath, audioPath, outPath string, onProgress func(percent int)) error
 }
@@ -313,7 +313,7 @@ func (s *MergeService) runMerge(ctx context.Context, resourceId int64, videoRS, 
 	// 否则 cancel 与 ffmpeg 完成的竞态会让建行撞上已取消的 ctx 报"context canceled"。
 	commitCtx := context.Background()
 
-	// 产物路径与文件名：与下载侧同口径派生（store/resource/{桶段}/{作品目录}/videoMain_000.{ext}），
+	// 产物路径与文件名：与下载侧同口径派生（store/work/{桶段}/{作品目录}/videoMain_000.{ext}），
 	// 合并产物为单实例派生 store，seq 恒 0；键缺失时按写入路径严格识别失败收口
 	mergedRelPath, mergedFileName, err := s.deriveMergedPaths(commitCtx, resourceId, videoExt)
 	if err != nil {
@@ -424,7 +424,7 @@ func (s *MergeService) CancelMerge(resourceId int64) {
 }
 
 // deriveMergedPaths 派生合并产物的落盘相对路径与文件名，与下载侧同口径：
-// store/resource/{桶段}/{storepath.WorkDirName(siteKey, siteWorkId)}/videoMain_000.{ext}。
+// store/work/{桶段}/{storepath.WorkDirName(siteKey, siteWorkId)}/videoMain_000.{ext}。
 // 桶段 = 复合键 SHA256 前 2 位 hex（storepath.BucketSegment，摊薄根目录扇出；同键恒同桶）。
 // 身份输入经 resource → work → site 反查站点复合键；键缺失或站点行查不到时显式报错
 // （写入路径严格识别，不回落），由调用方按合并失败收口。ext 为合并产物实际扩展名（含点）
@@ -456,7 +456,7 @@ func (s *MergeService) deriveMergedPaths(ctx context.Context, resourceId int64, 
 		return "", "", fmt.Errorf("派生合并产物文件名失败: %w", err)
 	}
 	// relPath 域用 path.Join（正斜杠），与落库/查重基准一致
-	return path.Join("store", "resource", bucket, dirName, fileName), fileName, nil
+	return path.Join("store", "work", bucket, dirName, fileName), fileName, nil
 }
 
 // wailsMergeEmitter 基于 Wails Events 的合并事件推送器，推 merge-events topic。

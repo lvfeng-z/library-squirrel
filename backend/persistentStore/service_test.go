@@ -29,7 +29,7 @@ func TestServiceEntriesRefuseUnconfiguredWorkDir(t *testing.T) {
 
 	assertRefused("SoftDeleteAndDiscardFile", s.SoftDeleteAndDiscardFile(ctx, 1))
 
-	assertRefused("CleanupFileResult", s.CleanupFileResult("store/resource/a/1.jpg"))
+	assertRefused("CleanupFileResult", s.CleanupFileResult("store/work/a/1.jpg"))
 }
 
 // TestUpdateFilePathRejectsOutsideWhitelist UpdateFilePath 拒绝 store/ 白名单外路径

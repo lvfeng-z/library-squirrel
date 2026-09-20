@@ -31,7 +31,7 @@ func newIngestTxTestService(t *testing.T) (*Service, string, *gorm.DB) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	workDir := t.TempDir()
-	for _, dir := range []string{"store/resource", "staging/download"} {
+	for _, dir := range []string{"store/work", "staging/download"} {
 		if err := os.MkdirAll(filepath.Join(workDir, dir), 0o755); err != nil {
 			t.Fatalf("建目录 %s 失败: %v", dir, err)
 		}
@@ -113,14 +113,14 @@ func TestPrepareIngestRejectsUndeclaredAbortAction(t *testing.T) {
 	ctx := t.Context()
 
 	_, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/x.bin", StagingPath: "staging/download/1/x.bin",
+		FilePath: "store/work/a/x.bin", StagingPath: "staging/download/1/x.bin",
 	}})
 	if !errors.Is(err, domain.ErrIngestAbortActionUndeclared) {
 		t.Errorf("未声明处置期望 ErrIngestAbortActionUndeclared，实际 %v", err)
 	}
 
 	_, err = svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/x.bin", StagingPath: "staging/download/1/x.bin",
+		FilePath: "store/work/a/x.bin", StagingPath: "staging/download/1/x.bin",
 		AbortAction: domain.IngestAbortAction("bogus"),
 	}})
 	if !errors.Is(err, domain.ErrIngestAbortActionInvalid) {
@@ -129,8 +129,8 @@ func TestPrepareIngestRejectsUndeclaredAbortAction(t *testing.T) {
 
 	// 混入未声明项：整批拒绝，合法项不落行
 	_, err = svc.PrepareIngest(ctx, []IngestItem{
-		{FilePath: "store/resource/a/ok.bin", StagingPath: "staging/download/1/ok.bin", AbortAction: domain.AbortActionDiscard},
-		{FilePath: "store/resource/a/bad.bin", StagingPath: "staging/download/1/bad.bin"},
+		{FilePath: "store/work/a/ok.bin", StagingPath: "staging/download/1/ok.bin", AbortAction: domain.AbortActionDiscard},
+		{FilePath: "store/work/a/bad.bin", StagingPath: "staging/download/1/bad.bin"},
 	})
 	if !errors.Is(err, domain.ErrIngestAbortActionUndeclared) {
 		t.Errorf("混入未声明项期望整批拒绝，实际 %v", err)
@@ -149,8 +149,8 @@ func TestPrepareIngestRejectsUndeclaredAbortAction(t *testing.T) {
 
 	// 合法登记：路径规范化为正斜杠落库、库根与处置随行记录，ID 数量与入参一致
 	ids, err := svc.PrepareIngest(ctx, []IngestItem{
-		{FilePath: `store\resource\a\one.bin`, StagingPath: `staging\download\1\one.bin`, AbortAction: domain.AbortActionReturnToStaging},
-		{FilePath: "store/resource/a/two.bin", StagingPath: "staging/download/1/two.bin", AbortAction: domain.AbortActionDiscard},
+		{FilePath: `store\work\a\one.bin`, StagingPath: `staging\download\1\one.bin`, AbortAction: domain.AbortActionReturnToStaging},
+		{FilePath: "store/work/a/two.bin", StagingPath: "staging/download/1/two.bin", AbortAction: domain.AbortActionDiscard},
 	})
 	if err != nil {
 		t.Fatalf("合法登记失败: %v", err)
@@ -158,7 +158,7 @@ func TestPrepareIngestRejectsUndeclaredAbortAction(t *testing.T) {
 	if len(ids) != 2 {
 		t.Fatalf("期望返回 2 个登记行 ID，实际 %d", len(ids))
 	}
-	one := journalByFilePath(t, svc, "store/resource/a/one.bin")
+	one := journalByFilePath(t, svc, "store/work/a/one.bin")
 	if one == nil {
 		t.Fatalf("登记行未按正斜杠规范化落库")
 	}
@@ -167,7 +167,7 @@ func TestPrepareIngestRejectsUndeclaredAbortAction(t *testing.T) {
 		t.Errorf("登记行字段不符: staging=%q workdir=%q action=%q",
 			one.StagingPath, one.Workdir, one.AbortAction)
 	}
-	if journalByFilePath(t, svc, "store/resource/a/two.bin") == nil {
+	if journalByFilePath(t, svc, "store/work/a/two.bin") == nil {
 		t.Errorf("第二项登记行缺失")
 	}
 }
@@ -181,7 +181,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 
 	// 提交成功
 	ids, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/commit.bin", StagingPath: "staging/download/2/commit.bin",
+		FilePath: "store/work/a/commit.bin", StagingPath: "staging/download/2/commit.bin",
 		AbortAction: domain.AbortActionReturnToStaging,
 	}})
 	if err != nil {
@@ -194,7 +194,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 	var storeId int64
 	err = database.WithTransaction(db, func(tx *gorm.DB) error {
 		txCtx := context.WithValue(ctx, database.TxKey, tx)
-		id, err := svc.CommitIngest(txCtx, ids[0], "store/resource/a/commit.bin", "commit.bin",
+		id, err := svc.CommitIngest(txCtx, ids[0], "store/work/a/commit.bin", "commit.bin",
 			sql.NullString{}, sql.NullString{})
 		if err != nil {
 			return err
@@ -208,7 +208,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 	if rows := listJournals(t, svc); len(rows) != 0 {
 		t.Errorf("提交成功后登记行应消失，实际剩 %d 条", len(rows))
 	}
-	row, err := svc.repo.GetByFilePath(ctx, "store/resource/a/commit.bin")
+	row, err := svc.repo.GetByFilePath(ctx, "store/work/a/commit.bin")
 	if err != nil || row == nil {
 		t.Fatalf("store 行应已建: err=%v row=%v", err, row)
 	}
@@ -218,7 +218,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 
 	// 业务事务回滚
 	ids2, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/rollback.bin", StagingPath: "staging/download/2/rollback.bin",
+		FilePath: "store/work/a/rollback.bin", StagingPath: "staging/download/2/rollback.bin",
 		AbortAction: domain.AbortActionReturnToStaging,
 	}})
 	if err != nil {
@@ -231,7 +231,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 	sentinel := errors.New("业务事务失败")
 	err = database.WithTransaction(db, func(tx *gorm.DB) error {
 		txCtx := context.WithValue(ctx, database.TxKey, tx)
-		if _, err := svc.CommitIngest(txCtx, ids2[0], "store/resource/a/rollback.bin", "rollback.bin",
+		if _, err := svc.CommitIngest(txCtx, ids2[0], "store/work/a/rollback.bin", "rollback.bin",
 			sql.NullString{}, sql.NullString{}); err != nil {
 			return err
 		}
@@ -241,11 +241,11 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 		t.Fatalf("业务事务应带回滚错误，实际 %v", err)
 	}
 	// 回滚后登记行仍在（建行与删登记同生共死），store 行未建
-	kept := journalByFilePath(t, svc, "store/resource/a/rollback.bin")
+	kept := journalByFilePath(t, svc, "store/work/a/rollback.bin")
 	if kept == nil {
 		t.Fatalf("事务回滚后登记行应保留")
 	}
-	if row, _ := svc.repo.GetByFilePath(ctx, "store/resource/a/rollback.bin"); row != nil {
+	if row, _ := svc.repo.GetByFilePath(ctx, "store/work/a/rollback.bin"); row != nil {
 		t.Errorf("事务回滚后 store 行不应存在")
 	}
 	// 下一轮恢复能收口：文件在最终路径 + 声明退回 → 退回暂存 + 删登记行
@@ -254,7 +254,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 		t.Fatalf("恢复收口期望 1 行，实际 recovered=%d err=%v", recovered, err)
 	}
 	assertFileContent(t, workDir, "staging/download/2/rollback.bin", "rollback-content")
-	assertFileGone(t, workDir, "store/resource/a/rollback.bin")
+	assertFileGone(t, workDir, "store/work/a/rollback.bin")
 	if rows := listJournals(t, svc); len(rows) != 0 {
 		t.Errorf("恢复后登记行应收口清零，实际剩 %d 条", len(rows))
 	}
@@ -264,7 +264,7 @@ func TestCommitIngestSharesTransactionWithStoreRow(t *testing.T) {
 // （建行与删登记脱离同事务会静默失去判据精确性）
 func TestCommitIngestRequiresCallerTransaction(t *testing.T) {
 	svc, _, _ := newIngestTxTestService(t)
-	if _, err := svc.CommitIngest(t.Context(), 1, "store/resource/a/x.bin", "x.bin",
+	if _, err := svc.CommitIngest(t.Context(), 1, "store/work/a/x.bin", "x.bin",
 		sql.NullString{}, sql.NullString{}); !errors.Is(err, ErrCommitIngestOutsideTransaction) {
 		t.Errorf("期望 ErrCommitIngestOutsideTransaction，实际 %v", err)
 	}
@@ -278,7 +278,7 @@ func TestAbortIngestFollowsDeclaredAction(t *testing.T) {
 
 	// 声明退回暂存：落位后撤回 → 文件回到暂存位置，目标残留被同身份覆盖
 	ids, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/one.bin", StagingPath: "staging/download/9/one.bin",
+		FilePath: "store/work/a/one.bin", StagingPath: "staging/download/9/one.bin",
 		AbortAction: domain.AbortActionReturnToStaging,
 	}})
 	if err != nil {
@@ -293,7 +293,7 @@ func TestAbortIngestFollowsDeclaredAction(t *testing.T) {
 		t.Fatalf("撤回失败: %v", err)
 	}
 	assertFileContent(t, workDir, "staging/download/9/one.bin", "one-content")
-	assertFileGone(t, workDir, "store/resource/a/one.bin")
+	assertFileGone(t, workDir, "store/work/a/one.bin")
 	if rows := listJournals(t, svc); len(rows) != 0 {
 		t.Fatalf("撤回后登记行应收口，实际剩 %d 条", len(rows))
 	}
@@ -305,7 +305,7 @@ func TestAbortIngestFollowsDeclaredAction(t *testing.T) {
 
 	// 声明丢弃：落位后撤回 → 文件删除（暂存已随落位消费，两处皆无）
 	ids2, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/two.bin", StagingPath: "staging/download/9/two.bin",
+		FilePath: "store/work/a/two.bin", StagingPath: "staging/download/9/two.bin",
 		AbortAction: domain.AbortActionDiscard,
 	}})
 	if err != nil {
@@ -318,7 +318,7 @@ func TestAbortIngestFollowsDeclaredAction(t *testing.T) {
 	if err := svc.AbortIngest(ctx, ids2); err != nil {
 		t.Fatalf("撤回失败: %v", err)
 	}
-	assertFileGone(t, workDir, "store/resource/a/two.bin")
+	assertFileGone(t, workDir, "store/work/a/two.bin")
 	assertFileGone(t, workDir, "staging/download/9/two.bin")
 	if rows := listJournals(t, svc); len(rows) != 0 {
 		t.Fatalf("撤回后登记行应收口，实际剩 %d 条", len(rows))
@@ -326,7 +326,7 @@ func TestAbortIngestFollowsDeclaredAction(t *testing.T) {
 
 	// 撤回先于落位：仅删登记行，暂存文件原样保留
 	ids3, err := svc.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/three.bin", StagingPath: "staging/download/9/three.bin",
+		FilePath: "store/work/a/three.bin", StagingPath: "staging/download/9/three.bin",
 		AbortAction: domain.AbortActionReturnToStaging,
 	}})
 	if err != nil {
@@ -350,37 +350,37 @@ func TestRecoverIngestBranches(t *testing.T) {
 	ctx := t.Context()
 
 	// 退回暂存——文件在最终路径
-	insertJournal(t, svc, "store/resource/a/return.bin", "staging/download/1/return.bin",
+	insertJournal(t, svc, "store/work/a/return.bin", "staging/download/1/return.bin",
 		workDir, domain.AbortActionReturnToStaging)
-	writeFileAt(t, workDir, "store/resource/a/return.bin", "return-content")
+	writeFileAt(t, workDir, "store/work/a/return.bin", "return-content")
 
 	// 丢弃——文件在最终路径
-	insertJournal(t, svc, "store/resource/a/discard.bin", "staging/download/1/discard.bin",
+	insertJournal(t, svc, "store/work/a/discard.bin", "staging/download/1/discard.bin",
 		workDir, domain.AbortActionDiscard)
-	writeFileAt(t, workDir, "store/resource/a/discard.bin", "discard-content")
+	writeFileAt(t, workDir, "store/work/a/discard.bin", "discard-content")
 
 	// 退回暂存——文件未落位（仍在暂存）：恢复不动暂存文件，仅删登记行
-	insertJournal(t, svc, "store/resource/a/unplaced.bin", "staging/download/1/unplaced.bin",
+	insertJournal(t, svc, "store/work/a/unplaced.bin", "staging/download/1/unplaced.bin",
 		workDir, domain.AbortActionReturnToStaging)
 	writeFileAt(t, workDir, "staging/download/1/unplaced.bin", "staged-content")
 
 	// 丢弃——文件未落位
-	insertJournal(t, svc, "store/resource/a/unplaced-discard.bin", "staging/download/1/unplaced-discard.bin",
+	insertJournal(t, svc, "store/work/a/unplaced-discard.bin", "staging/download/1/unplaced-discard.bin",
 		workDir, domain.AbortActionDiscard)
 
 	// 退回不可达——暂存目标父路径被普通文件占据（目录建不出），兜底删最终路径文件
-	insertJournal(t, svc, "store/resource/a/blocked.bin", "staging/blocked/x.bin",
+	insertJournal(t, svc, "store/work/a/blocked.bin", "staging/blocked/x.bin",
 		workDir, domain.AbortActionReturnToStaging)
-	writeFileAt(t, workDir, "store/resource/a/blocked.bin", "blocked-content")
+	writeFileAt(t, workDir, "store/work/a/blocked.bin", "blocked-content")
 	writeFileAt(t, workDir, "staging/blocked", "occupier")
 
 	// 库根不匹配——登记行与文件都保留，待对应库根恢复
-	insertJournal(t, svc, "store/resource/a/mismatch.bin", "staging/download/1/mismatch.bin",
+	insertJournal(t, svc, "store/work/a/mismatch.bin", "staging/download/1/mismatch.bin",
 		"Z:/elsewhere", domain.AbortActionReturnToStaging)
-	writeFileAt(t, workDir, "store/resource/a/mismatch.bin", "mismatch-content")
+	writeFileAt(t, workDir, "store/work/a/mismatch.bin", "mismatch-content")
 
 	// 无登记行 + 无 store 行 + 文件在位：非我方现场，恢复不动
-	writeFileAt(t, workDir, "store/resource/a/foreign.bin", "foreign-content")
+	writeFileAt(t, workDir, "store/work/a/foreign.bin", "foreign-content")
 
 	recovered, err := svc.RecoverIngest(ctx)
 	if err != nil {
@@ -391,15 +391,15 @@ func TestRecoverIngestBranches(t *testing.T) {
 	}
 
 	assertFileContent(t, workDir, "staging/download/1/return.bin", "return-content")
-	assertFileGone(t, workDir, "store/resource/a/return.bin")
-	assertFileGone(t, workDir, "store/resource/a/discard.bin")
+	assertFileGone(t, workDir, "store/work/a/return.bin")
+	assertFileGone(t, workDir, "store/work/a/discard.bin")
 	assertFileContent(t, workDir, "staging/download/1/unplaced.bin", "staged-content")
-	assertFileGone(t, workDir, "store/resource/a/blocked.bin")
-	assertFileContent(t, workDir, "store/resource/a/mismatch.bin", "mismatch-content")
-	assertFileContent(t, workDir, "store/resource/a/foreign.bin", "foreign-content")
+	assertFileGone(t, workDir, "store/work/a/blocked.bin")
+	assertFileContent(t, workDir, "store/work/a/mismatch.bin", "mismatch-content")
+	assertFileContent(t, workDir, "store/work/a/foreign.bin", "foreign-content")
 
 	rows := listJournals(t, svc)
-	if len(rows) != 1 || rows[0].FilePath != "store/resource/a/mismatch.bin" {
+	if len(rows) != 1 || rows[0].FilePath != "store/work/a/mismatch.bin" {
 		t.Fatalf("库根不匹配行应唯一保留，实际 %d 条", len(rows))
 	}
 
@@ -411,7 +411,7 @@ func TestRecoverIngestBranches(t *testing.T) {
 	if recovered2 != 0 {
 		t.Errorf("重复恢复期望收口 0 行，实际 %d", recovered2)
 	}
-	assertFileContent(t, workDir, "store/resource/a/mismatch.bin", "mismatch-content")
+	assertFileContent(t, workDir, "store/work/a/mismatch.bin", "mismatch-content")
 	if rows := listJournals(t, svc); len(rows) != 1 {
 		t.Errorf("重复恢复后不匹配行应仍在，实际剩 %d 条", len(rows))
 	}
@@ -436,7 +436,7 @@ func TestIngestEntriesShortCircuitOnUnconfiguredWorkDir(t *testing.T) {
 		}
 	}
 	_, err := s.PrepareIngest(ctx, []IngestItem{{
-		FilePath: "store/resource/a/x.bin", StagingPath: "staging/download/1/x.bin",
+		FilePath: "store/work/a/x.bin", StagingPath: "staging/download/1/x.bin",
 		AbortAction: domain.AbortActionDiscard,
 	}})
 	assertRefused("PrepareIngest", err)

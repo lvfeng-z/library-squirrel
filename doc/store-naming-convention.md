@@ -6,14 +6,14 @@
 ## 落盘布局
 
 ```
-store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.{ext}
+store/work/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.{ext}
 
-示例：store/resource/73/pixiv_128937464/image_000.jpg
-      store/resource/16/bilibili_BV1xx411c7mD_4538792/videoTrack_000.mp4
+示例：store/work/73/pixiv_128937464/image_000.jpg
+      store/work/16/bilibili_BV1xx411c7mD_4538792/videoTrack_000.mp4
 ```
 
-- 桶段摊薄 `store/resource/` 根目录扇出：几万作品级库若无分桶，根目录下作品目录数与作品数同量级，Explorer/外部工具打开根目录卡顿；256 桶把每层目录数摊薄约两个量级
-- 每作品一目录（桶内）；所有 store（含缩略图与合并产物）统一进 `store/resource/{桶段}/` 下该作品目录，无按作者/按类型的其他布局层级
+- 桶段摊薄 `store/work/` 根目录扇出：几万作品级库若无分桶，根目录下作品目录数与作品数同量级，Explorer/外部工具打开根目录卡顿；256 桶把每层目录数摊薄约两个量级
+- 每作品一目录（桶内）；所有 store（含缩略图与合并产物）统一进 `store/work/{桶段}/` 下该作品目录，无按作者/按类型的其他布局层级
 - 路径由身份键（站点复合键 + role + seq）确定性派生，站点元数据（作者/作品名/描述等展示字段）不进路径
 - **空值严格拒绝**：siteKey/siteWorkId 为空时派生函数显式报错（`ErrEmptySiteKey`/`ErrEmptySiteWorkId`，写入路径严格识别不回落）；role/ext/seq 非法同样显式报错
 
@@ -44,7 +44,7 @@ store/resource/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零�
 
 ## 主程序侧组装
 
-`store/resource/` 前缀属主程序库内布局（storeRegistry 权威），不进 SDK storepath；主程序侧 `path.Join("store/resource", BucketSegment, WorkDirName, StoreFileName)` 组合完整 relPath（正斜杠域）。组装点：
+`store/work/` 前缀属主程序库内布局（storeRegistry 权威），不进 SDK storepath；主程序侧 `path.Join("store/work", BucketSegment, WorkDirName, StoreFileName)` 组合完整 relPath（正斜杠域）。组装点：
 
 - **下载侧**：`backend/download/naming.go` `resolveStoreDir`/`resolveStorePath`——身份输入取领域行站点复合键（siteWorkId 原文 + siteId 反查站点行取 site_key），派生桶段与作品目录段，键缺失或站点行查不到时按执行失败收口
 - **merge 产物**：`backend/resource/merge_service.go` `deriveMergedPaths`——同一组派生函数（BucketSegment/WorkDirName/StoreFileName），身份经 resource → work → site 反查站点复合键；videoMain 为单实例派生 store，seq 恒 0（产物恒 `videoMain_000.{ext}`），与下载 store 同口径
