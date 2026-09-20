@@ -386,6 +386,12 @@ export class RankedLocalAuthor {
     "roleName": string;
     "sortOrder": number;
 
+    /**
+     * AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+     * 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+     */
+    "avatarFilePath"?: string | null;
+
     /** Creates a new RankedLocalAuthor instance. */
     constructor($$source: Partial<RankedLocalAuthor> = {}) {
         if (!("author" in $$source)) {
@@ -422,6 +428,11 @@ export class RankedLocalAuthorWithWorkId {
     "roleName": string;
     "sortOrder": number;
     "workId": number;
+
+    /**
+     * AvatarFilePath 头像文件 workDir 相对路径（语义同 RankedLocalAuthor.AvatarFilePath）
+     */
+    "avatarFilePath"?: string | null;
 
     /** Creates a new RankedLocalAuthorWithWorkId instance. */
     constructor($$source: Partial<RankedLocalAuthorWithWorkId> = {}) {
@@ -462,6 +473,12 @@ export class RankedSiteAuthor {
     "roleName": string;
     "sortOrder": number;
 
+    /**
+     * AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+     * 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+     */
+    "avatarFilePath"?: string | null;
+
     /** Creates a new RankedSiteAuthor instance. */
     constructor($$source: Partial<RankedSiteAuthor> = {}) {
         if (!("author" in $$source)) {
@@ -498,6 +515,11 @@ export class RankedSiteAuthorWithWorkId {
     "roleName": string;
     "sortOrder": number;
     "workId": number;
+
+    /**
+     * AvatarFilePath 头像文件 workDir 相对路径（语义同 RankedSiteAuthor.AvatarFilePath）
+     */
+    "avatarFilePath"?: string | null;
 
     /** Creates a new RankedSiteAuthorWithWorkId instance. */
     constructor($$source: Partial<RankedSiteAuthorWithWorkId> = {}) {
@@ -1380,6 +1402,12 @@ export class SiteAuthorLocalRelateDTO {
      * 是否有同名本地作者
      */
     "hasSameNameLocalAuthor": boolean;
+
+    /**
+     * AvatarFilePath 站点作者头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+     * 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+     */
+    "avatarFilePath"?: string | null;
 
     /** Creates a new SiteAuthorLocalRelateDTO instance. */
     constructor($$source: Partial<SiteAuthorLocalRelateDTO> = {}) {

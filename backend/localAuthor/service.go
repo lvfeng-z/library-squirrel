@@ -85,6 +85,13 @@ type AvatarFileCleaner interface {
 	RemoveAvatarFiles(relPaths []string)
 }
 
+// AvatarStoreReader 头像 persistent_store 行批量读取（persistentStore.Service 实现）：GetByIds
+// 经 GORM 软删 scope 自动排除死行，落盘完成判定由 dto.AvatarFilePathByStoreID 统一承担
+type AvatarStoreReader interface {
+	// GetByIds 根据 ID 列表批量查询记录
+	GetByIds(ctx context.Context, ids []int64) ([]*domain.PersistentStore, error)
+}
+
 // Service 本地作者服务
 type Service struct {
 	repo Repository
@@ -96,6 +103,8 @@ type Service struct {
 	workAuthorMirrorClearer  WorkAuthorMirrorClearer
 	// 删除编排的头像清理提供方（authorInfo 在本服务之后创建，经 setter 注入；nil=跳过头像清理）
 	avatarFileCleaner AvatarFileCleaner
+	// 头像 store 行读取（persistentStore 在本服务之后创建，经 setter 注入；nil=跳过头像 enrich）
+	avatarStoreReader AvatarStoreReader
 }
 
 // NewService 创建本地作者服务
@@ -259,6 +268,48 @@ func (s *Service) SetAvatarFileCleaner(cleaner AvatarFileCleaner) {
 	s.avatarFileCleaner = cleaner
 }
 
+// SetAvatarStoreReader 注入头像 store 行读取（persistentStore 服务在本服务之后创建，装配处接线）
+func (s *Service) SetAvatarStoreReader(reader AvatarStoreReader) {
+	s.avatarStoreReader = reader
+}
+
+// AvatarFilePathsByAuthorIds 批量解析本地作者头像展示路径（作者 DB id → workDir 相对路径；
+// 无可展示头像的 id 不出现在返回 map，展示侧占位图兜底）。供本模块展示链组装与 reWorkAuthor
+// 的 Ranked* 产出后置 enrich 共用
+func (s *Service) AvatarFilePathsByAuthorIds(ctx context.Context, authorIds []int64) (map[int64]*string, error) {
+	authorIds = util.UniqueInt64(authorIds)
+	if len(authorIds) == 0 || s.avatarStoreReader == nil {
+		return nil, nil
+	}
+	authors, err := s.ListByIds(ctx, authorIds)
+	if err != nil {
+		return nil, err
+	}
+	storeIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.AvatarStoreID.Valid && author.AvatarStoreID.Int64 > 0 {
+			storeIds = append(storeIds, author.AvatarStoreID.Int64)
+		}
+	}
+	if len(storeIds) == 0 {
+		return nil, nil
+	}
+	stores, err := s.avatarStoreReader.GetByIds(ctx, storeIds)
+	if err != nil {
+		return nil, err
+	}
+	avatarPaths := dto.AvatarFilePathByStoreID(stores)
+	result := make(map[int64]*string, len(authors))
+	for _, author := range authors {
+		if author.AvatarStoreID.Valid && author.AvatarStoreID.Int64 > 0 {
+			if path, ok := avatarPaths[author.AvatarStoreID.Int64]; ok {
+				result[author.GetID()] = path
+			}
+		}
+	}
+	return result, nil
+}
+
 // UpdateAvatarStoreId 更新本地作者头像引用列（可入头像导入编排事务；NULL=清除引用）
 func (s *Service) UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error {
 	return s.repo.UpdateAvatarStoreId(ctx, localAuthorId, storeId)
@@ -304,17 +355,73 @@ func (s *Service) QuerySelectItemPage(ctx context.Context, page *model.Page[dto.
 
 // ListReWorkAuthor 批量获取作品与作者的关联
 func (s *Service) ListReWorkAuthor(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedLocalAuthor, error) {
-	return s.repo.ListReWorkAuthor(ctx, workIds)
+	resultMap, err := s.repo.ListReWorkAuthor(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if len(resultMap) == 0 {
+		return resultMap, nil
+	}
+	ranked := make([]*dto.RankedLocalAuthor, 0)
+	for _, list := range resultMap {
+		ranked = append(ranked, list...)
+	}
+	if err := s.fillRankedAvatarFilePaths(ctx, ranked); err != nil {
+		return nil, err
+	}
+	return resultMap, nil
 }
 
 // ListByWorkId 查询作品的本地作者
 func (s *Service) ListByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
-	return s.repo.ListByWorkId(ctx, workId)
+	results, err := s.repo.ListByWorkId(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillRankedAvatarFilePaths(ctx, results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表
 func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
-	return s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
+	results, err := s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	authorIds := make([]int64, 0, len(results))
+	for _, author := range results {
+		if author.Author.Id > 0 {
+			authorIds = append(authorIds, author.Author.Id)
+		}
+	}
+	avatarPaths, err := s.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return nil, err
+	}
+	for _, author := range results {
+		author.AvatarFilePath = avatarPaths[author.Author.Id]
+	}
+	return results, nil
+}
+
+// fillRankedAvatarFilePaths 批量填充带排序本地作者 DTO 的头像字段（后置 enrich）
+func (s *Service) fillRankedAvatarFilePaths(ctx context.Context, authors []*dto.RankedLocalAuthor) error {
+	authorIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.Author.Id > 0 {
+			authorIds = append(authorIds, author.Author.Id)
+		}
+	}
+	avatarPaths, err := s.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return err
+	}
+	for _, author := range authors {
+		author.AvatarFilePath = avatarPaths[author.Author.Id]
+	}
+	return nil
 }
 
 // 错误定义

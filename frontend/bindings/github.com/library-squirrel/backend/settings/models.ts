@@ -41,6 +41,34 @@ export class AppearanceSettings {
 }
 
 /**
+ * AuthorSettings 作者信息相关设置
+ */
+export class AuthorSettings {
+    /**
+     * AutoFetchInfo 作品入库后自动拉取站点作者信息（元数据+头像）开关。只控制自动触发面，
+     * 手动拉取不受限制；默认开
+     */
+    "autoFetchInfo": boolean;
+
+    /** Creates a new AuthorSettings instance. */
+    constructor($$source: Partial<AuthorSettings> = {}) {
+        if (!("autoFetchInfo" in $$source)) {
+            this["autoFetchInfo"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuthorSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AuthorSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuthorSettings($$parsedSource as Partial<AuthorSettings>);
+    }
+}
+
+/**
  * BackupGovernanceSettings 备份治理设置（治理常开无开关，仅保留期可配）
  */
 export class BackupGovernanceSettings {
@@ -323,6 +351,7 @@ export class Settings {
     "backupGovernance": BackupGovernanceSettings;
     "exportSettings": ExportSettings;
     "shareSettings": ShareSettings;
+    "authorSettings": AuthorSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -359,6 +388,9 @@ export class Settings {
         if (!("shareSettings" in $$source)) {
             this["shareSettings"] = (new ShareSettings());
         }
+        if (!("authorSettings" in $$source)) {
+            this["authorSettings"] = (new AuthorSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -377,6 +409,7 @@ export class Settings {
         const $$createField8_0 = $$createType8;
         const $$createField9_0 = $$createType9;
         const $$createField10_0 = $$createType10;
+        const $$createField11_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("importSettings" in $$parsedSource) {
             $$parsedSource["importSettings"] = $$createField1_0($$parsedSource["importSettings"]);
@@ -407,6 +440,9 @@ export class Settings {
         }
         if ("shareSettings" in $$parsedSource) {
             $$parsedSource["shareSettings"] = $$createField10_0($$parsedSource["shareSettings"]);
+        }
+        if ("authorSettings" in $$parsedSource) {
+            $$parsedSource["authorSettings"] = $$createField11_0($$parsedSource["authorSettings"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -459,7 +495,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType11;
+        const $$createField0_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -480,4 +516,5 @@ const $$createType7 = FsmonitorSettings.createFrom;
 const $$createType8 = BackupGovernanceSettings.createFrom;
 const $$createType9 = ExportSettings.createFrom;
 const $$createType10 = ShareSettings.createFrom;
-const $$createType11 = $Create.Map($Create.Any, $Create.Any);
+const $$createType11 = AuthorSettings.createFrom;
+const $$createType12 = $Create.Map($Create.Any, $Create.Any);

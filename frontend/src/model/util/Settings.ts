@@ -40,5 +40,8 @@ export const emptySettings: Settings = {
   },
   shareSettings: {
     relayAddress: 'relay.library-squirrel.cn'
+  },
+  authorSettings: {
+    autoFetchInfo: true
   }
 }

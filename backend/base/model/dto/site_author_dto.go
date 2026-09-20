@@ -73,6 +73,9 @@ type SiteAuthorLocalRelateDTO struct {
 	Site *sdkdto.SiteDTO `json:"site,omitempty"`
 	// 是否有同名本地作者
 	HasSameNameLocalAuthor bool `json:"hasSameNameLocalAuthor"`
+	// AvatarFilePath 站点作者头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+	// 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
 }
 
 // NewSiteAuthorLocalRelateDTO 创建站点作者与本地作者关联DTO
@@ -90,6 +93,9 @@ type RankedSiteAuthor struct {
 	Author    SiteAuthorDTO `json:"author"`
 	RoleName  string        `json:"roleName"`
 	SortOrder int           `json:"sortOrder"`
+	// AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+	// 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
 }
 
 // RankedSiteAuthorWithWorkId 带作品ID的站点作者
@@ -98,6 +104,8 @@ type RankedSiteAuthorWithWorkId struct {
 	RoleName  string        `json:"roleName"`
 	SortOrder int           `json:"sortOrder"`
 	WorkId    int64         `json:"workId"`
+	// AvatarFilePath 头像文件 workDir 相对路径（语义同 RankedSiteAuthor.AvatarFilePath）
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
 }
 
 // SiteAuthorFetchTarget 站点作者信息拉取目标行（site_author JOIN site 的窄投影）：

@@ -1055,6 +1055,8 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 
 	// 收集所有本地作者ID
 	authorMap := make(map[int64]*dto2.RankedLocalAuthor)
+	// 作者 DB id → 头像 store 行引用（循环内实体已持有，收集供组装后批量解析头像路径）
+	avatarStoreIds := make(map[int64]int64)
 	for _, work := range works {
 		if work.LocalAuthorID.Valid && work.LocalAuthorID.Int64 > 0 {
 			localAuthorId := work.LocalAuthorID.Int64
@@ -1064,7 +1066,28 @@ func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, 
 					authorMap[localAuthorId] = &dto2.RankedLocalAuthor{
 						Author: *dto2.NewLocalAuthorDTO(localAuthor),
 					}
+					if localAuthor.AvatarStoreID.Valid && localAuthor.AvatarStoreID.Int64 > 0 {
+						avatarStoreIds[localAuthorId] = localAuthor.AvatarStoreID.Int64
+					}
 				}
+			}
+		}
+	}
+
+	// 批量解析头像路径（软删/未完成行不产出路径）
+	if len(avatarStoreIds) > 0 {
+		storeIds := make([]int64, 0, len(avatarStoreIds))
+		for _, storeId := range avatarStoreIds {
+			storeIds = append(storeIds, storeId)
+		}
+		stores, err := s.storeBatchReader.GetByIds(ctx, storeIds)
+		if err != nil {
+			return nil, err
+		}
+		avatarPaths := dto2.AvatarFilePathByStoreID(stores)
+		for authorId, ranked := range authorMap {
+			if storeId, ok := avatarStoreIds[authorId]; ok {
+				ranked.AvatarFilePath = avatarPaths[storeId]
 			}
 		}
 	}

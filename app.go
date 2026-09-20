@@ -789,6 +789,12 @@ func (app *App) initBaseServices() {
 	// 删除联动接线：siteAuthor/localAuthor 删除编排经窄接口清理被删作者的头像行与文件
 	app.SiteAuthorService.SetAvatarFileCleaner(app.AuthorInfoService)
 	app.LocalAuthorService.SetAvatarFileCleaner(app.AuthorInfoService)
+	// 头像展示 enrich 接线：siteAuthor/localAuthor 展示链组装处批量补头像路径（persistentStore
+	// 服务在两服务之后创建，经 setter 注入）；reWorkAuthor 的 Ranked* 产出（作品卡片/详情的作者
+	// 数据源）经两侧路径解析器后置补齐
+	app.SiteAuthorService.SetAvatarStoreReader(app.PersistentStoreService)
+	app.LocalAuthorService.SetAvatarStoreReader(app.PersistentStoreService)
+	app.ReWorkAuthorService.SetAvatarPathResolvers(app.SiteAuthorService, app.LocalAuthorService)
 
 	// 设置工作目录
 	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())

@@ -67,6 +67,10 @@ type Service struct {
 	repo          Repository
 	transactor    Transactor
 	roleInventory RoleInventoryWriter
+	// 头像路径解析提供方（siteAuthor/localAuthor 服务在本服务之后创建，经 setter 注入；
+	// 各自 nil=跳过对应侧的头像 enrich）
+	siteAvatarResolver  SiteAuthorAvatarPathResolver
+	localAvatarResolver LocalAuthorAvatarPathResolver
 }
 
 // Transactor 事务执行器（手动挂联链的关联写入与 role 清单登记同事务，事务连接经 ctx 传递）
@@ -82,6 +86,19 @@ type RoleInventoryWriter interface {
 	EnsureUsedBatch(ctx context.Context, values []string, origin int64) error
 }
 
+// SiteAuthorAvatarPathResolver 站点作者头像路径解析（siteAuthor.Service 实现）：本模块的 Ranked*
+// 站点作者产出自关联行 JOIN 作者表而来，不含头像引用列，经此反查补齐
+type SiteAuthorAvatarPathResolver interface {
+	// AvatarFilePathsByAuthorIds 批量解析站点作者头像展示路径（无可展示头像的 id 不在返回 map）
+	AvatarFilePathsByAuthorIds(ctx context.Context, authorIds []int64) (map[int64]*string, error)
+}
+
+// LocalAuthorAvatarPathResolver 本地作者头像路径解析（localAuthor.Service 实现，语义同站点侧）
+type LocalAuthorAvatarPathResolver interface {
+	// AvatarFilePathsByAuthorIds 批量解析本地作者头像展示路径（无可展示头像的 id 不在返回 map）
+	AvatarFilePathsByAuthorIds(ctx context.Context, authorIds []int64) (map[int64]*string, error)
+}
+
 // NewService 创建作品-作者关联服务
 func NewService(repo Repository, transactor Transactor, roleInventory RoleInventoryWriter) *Service {
 	return &Service{
@@ -89,6 +106,97 @@ func NewService(repo Repository, transactor Transactor, roleInventory RoleInvent
 		transactor:    transactor,
 		roleInventory: roleInventory,
 	}
+}
+
+// SetAvatarPathResolvers 注入作者头像路径解析提供方（siteAuthor/localAuthor 服务在本服务之后创建，
+// 装配处接线；各自 nil=跳过对应侧的头像 enrich）
+func (s *Service) SetAvatarPathResolvers(site SiteAuthorAvatarPathResolver, local LocalAuthorAvatarPathResolver) {
+	s.siteAvatarResolver = site
+	s.localAvatarResolver = local
+}
+
+// fillSiteAuthorAvatars 批量填充站点作者 Ranked DTO 的头像字段（后置 enrich）
+func (s *Service) fillSiteAuthorAvatars(ctx context.Context, authors []*dto.RankedSiteAuthor) error {
+	if s.siteAvatarResolver == nil || len(authors) == 0 {
+		return nil
+	}
+	authorIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.Author.ID > 0 {
+			authorIds = append(authorIds, author.Author.ID)
+		}
+	}
+	avatarPaths, err := s.siteAvatarResolver.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return err
+	}
+	for _, author := range authors {
+		author.AvatarFilePath = avatarPaths[author.Author.ID]
+	}
+	return nil
+}
+
+// fillLocalAuthorAvatars 批量填充本地作者 Ranked DTO 的头像字段（后置 enrich）
+func (s *Service) fillLocalAuthorAvatars(ctx context.Context, authors []*dto.RankedLocalAuthor) error {
+	if s.localAvatarResolver == nil || len(authors) == 0 {
+		return nil
+	}
+	authorIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.Author.Id > 0 {
+			authorIds = append(authorIds, author.Author.Id)
+		}
+	}
+	avatarPaths, err := s.localAvatarResolver.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return err
+	}
+	for _, author := range authors {
+		author.AvatarFilePath = avatarPaths[author.Author.Id]
+	}
+	return nil
+}
+
+// fillSiteAuthorAvatarsWithWorkId 批量填充带作品ID站点作者 DTO 的头像字段（后置 enrich）
+func (s *Service) fillSiteAuthorAvatarsWithWorkId(ctx context.Context, authors []*dto.RankedSiteAuthorWithWorkId) error {
+	if s.siteAvatarResolver == nil || len(authors) == 0 {
+		return nil
+	}
+	authorIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.Author.ID > 0 {
+			authorIds = append(authorIds, author.Author.ID)
+		}
+	}
+	avatarPaths, err := s.siteAvatarResolver.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return err
+	}
+	for _, author := range authors {
+		author.AvatarFilePath = avatarPaths[author.Author.ID]
+	}
+	return nil
+}
+
+// fillLocalAuthorAvatarsWithWorkId 批量填充带作品ID本地作者 DTO 的头像字段（后置 enrich）
+func (s *Service) fillLocalAuthorAvatarsWithWorkId(ctx context.Context, authors []*dto.RankedLocalAuthorWithWorkId) error {
+	if s.localAvatarResolver == nil || len(authors) == 0 {
+		return nil
+	}
+	authorIds := make([]int64, 0, len(authors))
+	for _, author := range authors {
+		if author.Author.Id > 0 {
+			authorIds = append(authorIds, author.Author.Id)
+		}
+	}
+	avatarPaths, err := s.localAvatarResolver.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return err
+	}
+	for _, author := range authors {
+		author.AvatarFilePath = avatarPaths[author.Author.Id]
+	}
+	return nil
 }
 
 // ========== 基础 CRUD 操作 ==========
@@ -162,11 +270,17 @@ func (s *Service) ListByWorkId(ctx context.Context, workId int64) (*dto.WorkAuth
 	if err != nil {
 		return nil, err
 	}
+	if err := s.fillLocalAuthorAvatars(ctx, localAuthors); err != nil {
+		return nil, err
+	}
 	result.LocalAuthors = localAuthors
 
 	// 查询站点作者
 	siteAuthors, err := s.repo.ListSiteAuthorsByWorkId(ctx, workId)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.fillSiteAuthorAvatars(ctx, siteAuthors); err != nil {
 		return nil, err
 	}
 	result.SiteAuthors = siteAuthors
@@ -185,10 +299,16 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*dto.Wo
 	if err != nil {
 		return nil, err
 	}
+	if err := s.fillLocalAuthorAvatarMap(ctx, localAuthorMap); err != nil {
+		return nil, err
+	}
 
 	// 批量查询站点作者
 	siteAuthorMap, err := s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.fillSiteAuthorAvatarMap(ctx, siteAuthorMap); err != nil {
 		return nil, err
 	}
 
@@ -213,29 +333,88 @@ func (s *Service) ListByWorkIds(ctx context.Context, workIds []int64) ([]*dto.Wo
 	return results, nil
 }
 
+// fillLocalAuthorAvatarMap 批量填充按作品分组的本地作者 Ranked DTO 的头像字段（聚合为一次批量解析）
+func (s *Service) fillLocalAuthorAvatarMap(ctx context.Context, authorMap map[int64][]*dto.RankedLocalAuthor) error {
+	if len(authorMap) == 0 {
+		return nil
+	}
+	ranked := make([]*dto.RankedLocalAuthor, 0)
+	for _, list := range authorMap {
+		ranked = append(ranked, list...)
+	}
+	return s.fillLocalAuthorAvatars(ctx, ranked)
+}
+
+// fillSiteAuthorAvatarMap 批量填充按作品分组的站点作者 Ranked DTO 的头像字段（聚合为一次批量解析）
+func (s *Service) fillSiteAuthorAvatarMap(ctx context.Context, authorMap map[int64][]*dto.RankedSiteAuthor) error {
+	if len(authorMap) == 0 {
+		return nil
+	}
+	ranked := make([]*dto.RankedSiteAuthor, 0)
+	for _, list := range authorMap {
+		ranked = append(ranked, list...)
+	}
+	return s.fillSiteAuthorAvatars(ctx, ranked)
+}
+
 // ListLocalAuthorsByWorkId 查询作品关联的本地作者
 func (s *Service) ListLocalAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedLocalAuthor, error) {
-	return s.repo.ListLocalAuthorsByWorkId(ctx, workId)
+	results, err := s.repo.ListLocalAuthorsByWorkId(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillLocalAuthorAvatars(ctx, results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // ListSiteAuthorsByWorkId 查询作品关联的站点作者
 func (s *Service) ListSiteAuthorsByWorkId(ctx context.Context, workId int64) ([]*dto.RankedSiteAuthor, error) {
-	return s.repo.ListSiteAuthorsByWorkId(ctx, workId)
+	results, err := s.repo.ListSiteAuthorsByWorkId(ctx, workId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillSiteAuthorAvatars(ctx, results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // ListRankedLocalAuthorWithWorkIdByWorkIds 查询多个作品的本地作者列表（带作品ID）
 func (s *Service) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedLocalAuthorWithWorkId, error) {
-	return s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
+	results, err := s.repo.ListRankedLocalAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillLocalAuthorAvatarsWithWorkId(ctx, results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表（带作品ID）
 func (s *Service) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx context.Context, workIds []int64) ([]*dto.RankedSiteAuthorWithWorkId, error) {
-	return s.repo.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
+	results, err := s.repo.ListRankedSiteAuthorWithWorkIdByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillSiteAuthorAvatarsWithWorkId(ctx, results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // ListSiteAuthorsByWorkIds 批量查询作品的站点作者，按 workId 分组
 func (s *Service) ListSiteAuthorsByWorkIds(ctx context.Context, workIds []int64) (map[int64][]*dto.RankedSiteAuthor, error) {
-	return s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
+	resultMap, err := s.repo.ListSiteAuthorsByWorkIds(ctx, workIds)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillSiteAuthorAvatarMap(ctx, resultMap); err != nil {
+		return nil, err
+	}
+	return resultMap, nil
 }
 
 // ========== 用户手动挂联 ==========

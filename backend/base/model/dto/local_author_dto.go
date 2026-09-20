@@ -72,6 +72,9 @@ type RankedLocalAuthor struct {
 	Author    sdkdto.LocalAuthorDTO `json:"author"`
 	RoleName  string                `json:"roleName"`
 	SortOrder int                   `json:"sortOrder"`
+	// AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+	// 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
 }
 
 // RankedLocalAuthorWithWorkId 带作品ID的本地作者
@@ -80,4 +83,6 @@ type RankedLocalAuthorWithWorkId struct {
 	RoleName  string                `json:"roleName"`
 	SortOrder int                   `json:"sortOrder"`
 	WorkId    int64                 `json:"workId"`
+	// AvatarFilePath 头像文件 workDir 相对路径（语义同 RankedLocalAuthor.AvatarFilePath）
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
 }
