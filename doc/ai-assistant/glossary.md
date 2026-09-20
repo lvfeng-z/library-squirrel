@@ -42,7 +42,7 @@
 - **英文**：Store Directory (StoreDir)
 - **定义**：PersistentStore 中已注册的存储子目录，路径相对于 `{workDir}/store/`
 - **领域角色**：约束文件存储路径，避免目录混乱
-- **已注册子目录**：`resource`（作品资源迁移过渡用）、`thumbnail`（视频缩略图）、`avatar/local`（本地作者头像）、`avatar/site`（站点作者头像）
+- **已注册子目录**（装配期由调用方注册，清单随注册方演进而非固定）：`work`（作品资源，注册方 resource）、`avatar/local`（本地作者头像，注册方 author 占位）、`avatar/site`（站点作者头像，注册方 author 占位）
 - **多级支持**：子目录可以是多级的（如 `avatar/local`），调用方可在此基础上创建动态子目录
 - **校验规则**：路径必须以某个已注册子目录为前缀（精确匹配或后接 `/`）
 - **相关文件**：`backend/storeRegistry/registry.go`
