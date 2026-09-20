@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
-	"github.com/library-squirrel/backend/base/model/entity"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
@@ -48,41 +47,25 @@ func (h *Handler) Update(ctx context.Context, author *sdkdto.LocalAuthorDTO) *mo
 
 // ========== 查询操作 ==========
 
-// GetById 根据ID获取
-func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*sdkdto.LocalAuthorDTO] {
-	author, err := h.svc.GetById(ctx, id)
+// GetById 根据ID获取（宿主侧展示 DTO：SDK 实体 DTO + 头像展示路径）
+func (h *Handler) GetById(ctx context.Context, id int64) *model.ApiResponse[*dto.LocalAuthorFullDTO] {
+	result, err := h.svc.GetFullById(ctx, id)
 	if err != nil {
-		return model.HandleError[*sdkdto.LocalAuthorDTO](err)
+		return model.HandleError[*dto.LocalAuthorFullDTO](err)
 	}
-	return model.Success(dto.NewLocalAuthorDTO(author))
+	return model.Success(result)
 }
 
-// QueryPage 分页查询
-func (h *Handler) QueryPage(ctx context.Context, page *model.Page[sdkdto.LocalAuthorDTO], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[sdkdto.LocalAuthorDTO]] {
+// QueryPage 分页查询（宿主侧展示 DTO：SDK 实体 DTO + 头像展示路径）
+func (h *Handler) QueryPage(ctx context.Context, page *model.Page[dto.LocalAuthorFullDTO], query LocalAuthorQueryDTO) *model.ApiResponse[*model.Page[dto.LocalAuthorFullDTO]] {
 	if page == nil {
-		page = &model.Page[sdkdto.LocalAuthorDTO]{}
+		page = &model.Page[dto.LocalAuthorFullDTO]{}
 	}
-	domainPage := &model.Page[entity.LocalAuthor]{
-		PageNumber: page.PageNumber,
-		PageSize:   page.PageSize,
-	}
-	result, err := h.svc.Page(ctx, domainPage, query)
+	result, err := h.svc.QueryFullPage(ctx, page, query)
 	if err != nil {
-		return model.HandleError[*model.Page[sdkdto.LocalAuthorDTO]](err)
+		return model.HandleError[*model.Page[dto.LocalAuthorFullDTO]](err)
 	}
-	// 转换为 DTO
-	data := make([]*sdkdto.LocalAuthorDTO, 0, len(result.Data))
-	for _, author := range result.Data {
-		data = append(data, dto.NewLocalAuthorDTO(author))
-	}
-	return model.Success(&model.Page[sdkdto.LocalAuthorDTO]{
-		PageNumber:   result.PageNumber,
-		PageSize:     result.PageSize,
-		PageCount:    result.PageCount,
-		DataCount:    result.DataCount,
-		CurrentCount: result.CurrentCount,
-		Data:         data,
-	})
+	return model.Success(result)
 }
 
 // ListSelectItems 查询选择项列表

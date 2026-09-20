@@ -421,6 +421,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
               title="下载"
             />
             <el-anchor-link
+              href="#authorSettings"
+              title="作者"
+            />
+            <el-anchor-link
               href="#exportSettings"
               title="导出"
             />
@@ -751,6 +755,38 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                       active-text="是"
                       inactive-text="否"
                     />
+                  </div>
+                </div>
+              </div>
+              <div id="authorSettings">
+                <el-text class="settings-section-title">
+                  作者
+                </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">作品入库后自动拉取作者信息</span>
+                    <el-switch
+                      v-model="settings.authorSettings.autoFetchInfo"
+                      inline-prompt
+                      size="large"
+                      active-text="开"
+                      inactive-text="关"
+                    />
+                    <el-tooltip
+                      placement="top"
+                      effect="customized"
+                    >
+                      <template #content>
+                        作品入库完成后自动从来源站点拉取作者介绍与头像（无对应能力的插件或无法确定归属站点时静默跳过）。<br>
+                        只控制自动触发面，站点作者管理页的手动/批量拉取不受此开关影响。
+                      </template>
+                      <el-text
+                        type="info"
+                        size="small"
+                      >
+                        拉取范围？
+                      </el-text>
+                    </el-tooltip>
                   </div>
                 </div>
               </div>

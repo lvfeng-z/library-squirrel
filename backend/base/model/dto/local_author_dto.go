@@ -67,6 +67,27 @@ func ToLocalAuthorEntity(dto *sdkdto.LocalAuthorDTO) *entity.LocalAuthor {
 	return entity
 }
 
+// LocalAuthorFullDTO 本地作者宿主侧展示 DTO（SDK LocalAuthorDTO 作命名字段 + 头像展示路径，
+// 管理页列表与详情数据源；与站点侧 SiteAuthorLocalRelateDTO 对称的包装形态——SDK 契约类型
+// 不可加字段，宿主展示字段在包装层顶置）
+type LocalAuthorFullDTO struct {
+	Author sdkdto.LocalAuthorDTO `json:"author"`
+	// AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+	// 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+	AvatarFilePath *string `json:"avatarFilePath,omitempty"`
+}
+
+// NewLocalAuthorFullDTO 从 entity.LocalAuthor 创建本地作者宿主侧展示 DTO（头像路径由组装处后置 enrich）
+func NewLocalAuthorFullDTO(author *entity.LocalAuthor) *LocalAuthorFullDTO {
+	if author == nil {
+		return nil
+	}
+	authorDTO := NewLocalAuthorDTO(author)
+	return &LocalAuthorFullDTO{
+		Author: *authorDTO,
+	}
+}
+
 // RankedLocalAuthor 带排序的本地作者
 type RankedLocalAuthor struct {
 	Author    sdkdto.LocalAuthorDTO `json:"author"`

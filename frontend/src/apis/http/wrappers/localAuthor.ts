@@ -8,7 +8,7 @@ import {
   LocalAuthorQueryDTO
 } from "@bindings/github.com/library-squirrel/backend/localAuthor"
 import { LocalAuthorDTO } from "@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto"
-import { SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import { LocalAuthorFullDTO, SelectItem } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import { Page } from "@bindings/github.com/library-squirrel/backend/base/model"
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
@@ -33,13 +33,13 @@ export async function localAuthorUpdateById(author: LocalAuthorDTO): Promise<Api
   return requireResponse(await LocalAuthorHandler.Update(author), '更新本地作者', false)
 }
 
-/** 获取单个本地作者 */
-export async function localAuthorGetById(id: number): Promise<ApiResult<LocalAuthorDTO>> {
+/** 获取单个本地作者（宿主侧展示 DTO：SDK 实体 DTO + 头像展示路径） */
+export async function localAuthorGetById(id: number): Promise<ApiResult<LocalAuthorFullDTO>> {
   return requireResponse(await LocalAuthorHandler.GetById(id), '获取本地作者')
 }
 
-/** 分页查询本地作者 */
-export async function localAuthorQueryPage(page: Page<LocalAuthorDTO>, query: LocalAuthorQueryDTO): Promise<ApiResult<Page<LocalAuthorDTO>>> {
+/** 分页查询本地作者（宿主侧展示 DTO：SDK 实体 DTO + 头像展示路径） */
+export async function localAuthorQueryPage(page: Page<LocalAuthorFullDTO>, query: LocalAuthorQueryDTO): Promise<ApiResult<Page<LocalAuthorFullDTO>>> {
   return requireResponse(await LocalAuthorHandler.QueryPage(page, query), '查询本地作者')
 }
 

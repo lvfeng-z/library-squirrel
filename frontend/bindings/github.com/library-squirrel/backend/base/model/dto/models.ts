@@ -69,6 +69,42 @@ export class CreateTaskRequest {
 }
 
 /**
+ * LocalAuthorFullDTO 本地作者宿主侧展示 DTO（SDK LocalAuthorDTO 作命名字段 + 头像展示路径，
+ * 管理页列表与详情数据源；与站点侧 SiteAuthorLocalRelateDTO 对称的包装形态——SDK 契约类型
+ * 不可加字段，宿主展示字段在包装层顶置）
+ */
+export class LocalAuthorFullDTO {
+    "author": dto$0.LocalAuthorDTO;
+
+    /**
+     * AvatarFilePath 头像文件 workDir 相对路径（正斜杠；前端经 buildStoreUrl 转 /store/ URL）。
+     * 仅头像引用指向活行且落盘完成时非空，其余（无头像/软删失效/未完成）为 nil——展示侧占位图兜底
+     */
+    "avatarFilePath"?: string | null;
+
+    /** Creates a new LocalAuthorFullDTO instance. */
+    constructor($$source: Partial<LocalAuthorFullDTO> = {}) {
+        if (!("author" in $$source)) {
+            this["author"] = (new dto$0.LocalAuthorDTO());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LocalAuthorFullDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LocalAuthorFullDTO {
+        const $$createField0_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("author" in $$parsedSource) {
+            $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
+        }
+        return new LocalAuthorFullDTO($$parsedSource as Partial<LocalAuthorFullDTO>);
+    }
+}
+
+/**
  * LocalTagWithBaseTagDTO 本地标签及其基础标签数据传输对象
  */
 export class LocalTagWithBaseTagDTO {
@@ -85,8 +121,8 @@ export class LocalTagWithBaseTagDTO {
      * Creates a new LocalTagWithBaseTagDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): LocalTagWithBaseTagDTO {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType1;
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("localTag" in $$parsedSource) {
             $$parsedSource["localTag"] = $$createField0_0($$parsedSource["localTag"]);
@@ -411,7 +447,7 @@ export class RankedLocalAuthor {
      * Creates a new RankedLocalAuthor instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedLocalAuthor {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("author" in $$parsedSource) {
             $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
@@ -456,7 +492,7 @@ export class RankedLocalAuthorWithWorkId {
      * Creates a new RankedLocalAuthorWithWorkId instance from a string or object.
      */
     static createFrom($$source: any = {}): RankedLocalAuthorWithWorkId {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("author" in $$parsedSource) {
             $$parsedSource["author"] = $$createField0_0($$parsedSource["author"]);
@@ -1558,7 +1594,7 @@ export class SiteTagFullDTO {
      */
     static createFrom($$source: any = {}): SiteTagFullDTO {
         const $$createField0_0 = $$createType15;
-        const $$createField1_0 = $$createType1;
+        const $$createField1_0 = $$createType2;
         const $$createField2_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteTag" in $$parsedSource) {
@@ -1597,7 +1633,7 @@ export class SiteTagLocalRelateDTO {
      */
     static createFrom($$source: any = {}): SiteTagLocalRelateDTO {
         const $$createField0_0 = $$createType15;
-        const $$createField1_0 = $$createType1;
+        const $$createField1_0 = $$createType2;
         const $$createField2_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("siteTag" in $$parsedSource) {
@@ -1934,9 +1970,9 @@ export class WorkSetWithWorksResultDTO {
 }
 
 // Private type creation functions
-const $$createType0 = gen$0.LocalTagDTO.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = gen$0.LocalAuthorDTO.createFrom;
+const $$createType0 = gen$0.LocalAuthorDTO.createFrom;
+const $$createType1 = gen$0.LocalTagDTO.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
 const $$createType3 = SiteAuthorDTO.createFrom;
 const $$createType4 = ResourceStoreDTO.createFrom;
 const $$createType5 = $Create.Array($$createType4);
@@ -1945,7 +1981,7 @@ const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $Create.Array($Create.Any);
 const $$createType9 = $Create.Array($Create.Any);
 const $$createType10 = $Create.Nullable($$createType3);
-const $$createType11 = $Create.Nullable($$createType2);
+const $$createType11 = $Create.Nullable($$createType0);
 const $$createType12 = gen$0.SiteDTO.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
 const $$createType14 = SiteTagDTO.createFrom;
@@ -1965,7 +2001,7 @@ const $$createType27 = $Create.Nullable($$createType26);
 const $$createType28 = $Create.Array($$createType27);
 const $$createType29 = gen$0.Work.createFrom;
 const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = $Create.Array($$createType1);
+const $$createType31 = $Create.Array($$createType2);
 const $$createType32 = SiteTagFullDTO.createFrom;
 const $$createType33 = $Create.Nullable($$createType32);
 const $$createType34 = $Create.Array($$createType33);

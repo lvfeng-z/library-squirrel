@@ -2,6 +2,7 @@
 import { computed, Ref, ref } from 'vue'
 import { arrayNotEmpty, notNullish } from '@renderer/utils/CommonUtil'
 import { RankedLocalAuthor, RankedSiteAuthor } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import AvatarThumb from '@renderer/components/common/AvatarThumb.vue'
 
 // props
 const props = withDefaults(
@@ -64,9 +65,16 @@ const cursorParam: Ref<string> = ref(props.useHandCursor ? 'pointer' : 'default'
       popper-class="author-info-popper"
     >
       <template #reference>
-        <el-text class="author-info-text">
-          {{ authorNames.join('、') }}
-        </el-text>
+        <div class="author-info-reference">
+          <!-- 作者名前小头像：多作者时取第一位（与名称列表首位对应），无头像占位图标 -->
+          <avatar-thumb
+            :file-path="authors[0]?.avatarFilePath"
+            :size="18"
+          />
+          <el-text class="author-info-text">
+            {{ authorNames.join('、') }}
+          </el-text>
+        </div>
       </template>
       <template #default>
         <el-segmented
@@ -84,6 +92,12 @@ const cursorParam: Ref<string> = ref(props.useHandCursor ? 'pointer' : 'default'
 <style scoped>
 .author-info-container {
   cursor: v-bind(cursorParam);
+}
+.author-info-reference {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 .author-info-text {
   width: 100%;

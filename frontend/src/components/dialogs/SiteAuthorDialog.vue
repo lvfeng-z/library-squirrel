@@ -5,6 +5,7 @@ import {ElMessage} from 'element-plus'
 import {Link} from '@element-plus/icons-vue'
 import lodash from 'lodash'
 import FormDialog from '@renderer/components/dialogs/FormDialog.vue'
+import AvatarThumb from '@renderer/components/common/AvatarThumb.vue'
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
 import {localAuthorQuerySelectItemPageByName, siteApi, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
@@ -104,6 +105,17 @@ async function handleOpenHomepage() {
     @save-button-clicked="handleSaveButtonClicked"
   >
     <template #form>
+      <el-row>
+        <el-col>
+          <el-form-item label="头像">
+            <!-- 站点作者头像大图：头像文件经 /store/ 通道展示，无头像/加载失败由组件降级为占位图标 -->
+            <avatar-thumb
+              :file-path="formData.avatarFilePath"
+              :size="80"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
       <el-row>
         <el-col>
           <el-form-item label="名称">

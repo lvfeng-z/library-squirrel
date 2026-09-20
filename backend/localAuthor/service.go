@@ -325,6 +325,49 @@ func (s *Service) Page(ctx context.Context, page *model.Page[domain.LocalAuthor]
 	return s.repo.Page(ctx, opt)
 }
 
+// GetFullById 根据 ID 获取宿主侧展示 DTO（SDK 实体 DTO + 头像展示路径后置 enrich），
+// 管理页详情数据源
+func (s *Service) GetFullById(ctx context.Context, id int64) (*dto.LocalAuthorFullDTO, error) {
+	author, err := s.repo.GetById(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	result := dto.NewLocalAuthorFullDTO(author)
+	avatarPaths, err := s.AvatarFilePathsByAuthorIds(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	result.AvatarFilePath = avatarPaths[id]
+	return result, nil
+}
+
+// QueryFullPage 分页查询宿主侧展示 DTO（SDK 实体 DTO + 头像展示路径批量后置 enrich），
+// 管理页列表数据源
+func (s *Service) QueryFullPage(ctx context.Context, page *model.Page[dto.LocalAuthorFullDTO], queryDTO LocalAuthorQueryDTO) (*model.Page[dto.LocalAuthorFullDTO], error) {
+	rawPage, err := s.Page(ctx, &model.Page[domain.LocalAuthor]{PageNumber: page.PageNumber, PageSize: page.PageSize}, queryDTO)
+	if err != nil {
+		return nil, err
+	}
+	if len(rawPage.Data) == 0 {
+		return model.NewPage[dto.LocalAuthorFullDTO](nil, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+	}
+	authorIds := make([]int64, 0, len(rawPage.Data))
+	for _, author := range rawPage.Data {
+		authorIds = append(authorIds, author.GetID())
+	}
+	avatarPaths, err := s.AvatarFilePathsByAuthorIds(ctx, authorIds)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]*dto.LocalAuthorFullDTO, 0, len(rawPage.Data))
+	for _, author := range rawPage.Data {
+		full := dto.NewLocalAuthorFullDTO(author)
+		full.AvatarFilePath = avatarPaths[author.GetID()]
+		data = append(data, full)
+	}
+	return model.NewPage[dto.LocalAuthorFullDTO](data, rawPage.DataCount, rawPage.PageNumber, rawPage.PageSize), nil
+}
+
 // ListSelectItems 查询选择项列表
 func (s *Service) ListSelectItems(ctx context.Context, queryDTO LocalAuthorQueryDTO) ([]*dto.SelectItem, error) {
 	conv := query.NewConverter(domain.LocalAuthor{})

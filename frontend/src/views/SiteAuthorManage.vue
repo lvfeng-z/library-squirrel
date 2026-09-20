@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, Ref, ref} from 'vue'
+import {h, onMounted, Ref, ref} from 'vue'
 import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ApiUtil from '../utils/ApiUtil.ts'
@@ -8,11 +8,13 @@ import DataTableOperationResponse from '../model/util/DataTableOperationResponse
 import {Thead} from '../model/util/Thead.ts'
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
-import {isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
+import {arrayIsEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
+import AvatarThumb from '@renderer/components/common/AvatarThumb.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
-import {localAuthorQuerySelectItemPageByName, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
+import {authorInfoApi, localAuthorQuerySelectItemPageByName, siteAuthorApi, appLauncherApi} from '@renderer/apis/http'
+import {useNotificationStore} from '@renderer/store/UseNotificationStore.ts'
 import {
   LocalAuthorDTO,
   SiteDTO
@@ -57,6 +59,7 @@ const operationButton: OperationItem<SiteAuthorLocalRelateDTO>[] = [
     code: 'create',
     rule: (row) => !row.hasSameNameLocalAuthor
   },
+  { label: '拉取信息', icon: 'Download', code: 'fetchInfo' },
   { label: '主页', icon: 'Link', code: 'homepage', rule: (row) => notNullish(row.siteAuthor?.homepage) },
   { label: '查看', icon: 'view', code: DialogMode.VIEW },
   { label: '编辑', icon: 'edit', code: DialogMode.EDIT },
@@ -64,6 +67,18 @@ const operationButton: OperationItem<SiteAuthorLocalRelateDTO>[] = [
 ]
 // 站点作者SearchTable的表头
 const siteAuthorThead: Ref<Thead<SiteAuthorLocalRelateDTO>[]> = ref([
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'avatarFilePath',
+    title: '头像',
+    hide: false,
+    width: 70,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 头像列小图（32px）：无头像/加载失败由 AvatarThumb 统一降级为占位图标
+    render: (data) => h(AvatarThumb, { filePath: data as string | null | undefined, size: 32 })
+  }),
   new Thead({
     type: 'text',
     defaultDisabled: true,
@@ -175,6 +190,12 @@ const siteAuthorDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 const dialogState: Ref<boolean> = ref(false)
 // 站点作者对话框的数据
 const dialogData: Ref<SiteAuthorLocalRelateDTO> = ref(new SiteAuthorLocalRelateDTO())
+// 表格当前多选选中的站点作者行（批量拉取入口的输入）
+const selectedRows: Ref<SiteAuthorLocalRelateDTO[]> = ref([])
+// 单行「拉取信息」进行中（表格区挂 loading）
+const fetchInfoLoading: Ref<boolean> = ref(false)
+// 批量拉取进行中（按钮 loading + 表格区挂 loading）
+const batchFetchLoading: Ref<boolean> = ref(false)
 
 // 方法
 // 分页查询站点作者的函数
@@ -199,6 +220,9 @@ async function handleRowButtonClicked(op: DataTableOperationResponse<SiteAuthorL
     case 'create':
       await creatSameNameLocalAuthorAndBind(op.data)
       siteAuthorSearchTable.value.doSearch()
+      break
+    case 'fetchInfo':
+      await fetchSiteAuthorInfo(op.data)
       break
     case 'save':
       saveRowEdit(op.data)
@@ -274,12 +298,91 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
     ElMessage.error((e as Error).message)
   }
 }
+// 处理站点作者表格选中项变化事件
+function handleSelectionChange(selections: SiteAuthorLocalRelateDTO[]) {
+  selectedRows.value = selections
+}
+// 行操作「拉取信息」：从来源站点拉取该作者的最新介绍与头像，拉取期间表格区挂 loading
+async function fetchSiteAuthorInfo(row: SiteAuthorLocalRelateDTO) {
+  const id = row.siteAuthor?.id
+  if (isNullish(id)) {
+    ElMessage.error('拉取作者信息失败：行数据缺少作者标识')
+    return
+  }
+  fetchInfoLoading.value = true
+  try {
+    await authorInfoApi.authorInfoFetchSiteAuthorInfo(id)
+    ElMessage.success(`已拉取「${row.siteAuthor?.authorName ?? id}」的作者信息`)
+    // 介绍/头像可能已更新，刷新表格与已打开的对话框数据源
+    refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  } finally {
+    fetchInfoLoading.value = false
+  }
+}
+// 工具栏「批量拉取信息」：对多选行逐条拉取；逐条结果反馈——汇总一条 ElMessage，
+// 存在失败时另在通知中心留一条含逐条明细的终态通知供回看
+async function handleBatchFetchClicked() {
+  const ids = selectedRows.value
+    .map((row) => row.siteAuthor?.id)
+    .filter((id): id is number => notNullish(id))
+  if (arrayIsEmpty(ids)) {
+    ElMessage.warning('请先勾选要拉取的站点作者')
+    return
+  }
+  // 作者标识 → 展示名索引（失败明细按行数据取名，取名不到回落 id）
+  const nameById = new Map<number, string>()
+  for (const row of selectedRows.value) {
+    const id = row.siteAuthor?.id
+    const authorName = row.siteAuthor?.authorName
+    if (notNullish(id)) {
+      nameById.set(id, isBlank(authorName) ? String(id) : authorName)
+    }
+  }
+  batchFetchLoading.value = true
+  try {
+    const response = await authorInfoApi.authorInfoFetchSiteAuthorsInfo(ids)
+    const results = response.data?.filter(notNullish) ?? []
+    const failures = results.filter((item) => !item.success)
+    if (arrayIsEmpty(failures)) {
+      ElMessage.success(`批量拉取完成：成功 ${results.length} 条`)
+    } else {
+      ElMessage.warning(`批量拉取完成：成功 ${results.length - failures.length} 条，失败 ${failures.length} 条（明细见通知中心）`)
+      useNotificationStore().add({
+        level: 'warning',
+        category: 'authorInfo',
+        title: '批量拉取作者信息',
+        statusText: `${failures.length} 条失败`,
+        terminal: true,
+        render: () => h(
+          'div',
+          { style: 'display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--app-text-regular);' },
+          failures.map((item) => h(
+            'span',
+            { title: item.message },
+            `${nameById.get(item.siteAuthorId) ?? item.siteAuthorId}：${isBlank(item.message) ? '未知原因' : item.message}`
+          ))
+        )
+      })
+    }
+    refreshTable()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  } finally {
+    batchFetchLoading.value = false
+  }
+}
 </script>
 
 <template>
   <base-view>
     <template #default>
-      <div class="tag-manage-container">
+      <div
+        v-loading="fetchInfoLoading || batchFetchLoading"
+        :element-loading-text="batchFetchLoading ? '批量拉取作者信息中...' : '拉取作者信息中...'"
+        class="tag-manage-container"
+      >
         <search-table
           ref="siteAuthorSearchTable"
           v-model:page="page"
@@ -295,7 +398,9 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
           :selectable="true"
           :page-sizes="[10, 20, 50, 100, 1000]"
           :operation-width="260"
+          :search-button-disabled="fetchInfoLoading || batchFetchLoading"
           @row-button-clicked="handleRowButtonClicked"
+          @selection-change="handleSelectionChange"
         >
           <template #toolbarMain>
             <el-button
@@ -303,6 +408,16 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
               @click="handleCreateButtonClicked"
             >
               新增
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              icon="Download"
+              :loading="batchFetchLoading"
+              :disabled="arrayIsEmpty(selectedRows) || fetchInfoLoading"
+              @click="handleBatchFetchClicked"
+            >
+              批量拉取信息
             </el-button>
             <el-row class="site-author-manage-search-bar">
               <el-col :span="20">

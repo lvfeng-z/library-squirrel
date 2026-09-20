@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import {nextTick, onMounted, Ref, ref} from 'vue'
+import {h, nextTick, onMounted, Ref, ref} from 'vue'
 import BaseView from './BaseView.vue'
 import SearchTable from '../components/common/SearchTable.vue'
 import ExchangeBox from '../components/common/ExchangeBox.vue'
 import LocalAuthorDialog from '../components/dialogs/LocalAuthorDialog.vue'
+import AvatarThumb from '@renderer/components/common/AvatarThumb.vue'
 import lodash from 'lodash'
 import ApiUtil from '../utils/ApiUtil.ts'
 import DataTableOperationResponse from '../model/util/DataTableOperationResponse.ts'
 import {Thead} from '../model/util/Thead.ts'
-import {LocalAuthorDTO} from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
-import {SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {LocalAuthorFullDTO, SelectItem, SiteAuthorLocalRelateDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
@@ -45,15 +45,15 @@ const localAuthorSearchTable = ref()
 // siteAuthorExchangeBox的组件实例
 const siteAuthorExchangeBox = ref()
 // 本地作者SearchTable的分页
-const page: Ref<Page<LocalAuthorDTO>> = ref(new Page<LocalAuthorDTO>())
+const page: Ref<Page<LocalAuthorFullDTO>> = ref(new Page<LocalAuthorFullDTO>())
 // 本地作者查询参数
 const localAuthorQuery: Ref<LocalAuthorQueryDTO> = ref(new LocalAuthorQueryDTO())
 // 被改变的数据行
-const changedRows: Ref<LocalAuthorDTO[]> = ref([])
+const changedRows: Ref<LocalAuthorFullDTO[]> = ref([])
 // 被选中的本地作者
-const localAuthorSelected: Ref<LocalAuthorDTO> = ref(new LocalAuthorDTO())
+const localAuthorSelected: Ref<LocalAuthorFullDTO> = ref(new LocalAuthorFullDTO())
 // 本地作者SearchTable的operationButton
-const operationButton: OperationItem<LocalAuthorDTO>[] = [
+const operationButton: OperationItem<LocalAuthorFullDTO>[] = [
   {
     label: '保存',
     icon: 'Checked',
@@ -66,12 +66,24 @@ const operationButton: OperationItem<LocalAuthorDTO>[] = [
   { label: '删除', icon: 'delete', code: 'delete' }
 ]
 // 本地作者SearchTable的表头
-const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
+const localAuthorThead: Ref<Thead<LocalAuthorFullDTO>[]> = ref([
+  new Thead({
+    type: 'custom',
+    defaultDisabled: true,
+    key: 'avatarFilePath',
+    title: '头像',
+    hide: false,
+    width: 70,
+    headerAlign: 'center',
+    dataAlign: 'center',
+    // 头像列小图（32px）：无头像/加载失败由 AvatarThumb 统一降级为占位图标
+    render: (data) => h(AvatarThumb, { filePath: data as string | null | undefined, size: 32 })
+  }),
   new Thead({
     type: 'text',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'authorName',
+    key: 'author.authorName',
     title: '名称',
     hide: false,
     width: 150,
@@ -83,7 +95,7 @@ const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
     type: 'text',
     defaultDisabled: true,
     dblclickToEdit: true,
-    key: 'introduce',
+    key: 'author.introduce',
     title: '介绍',
     hide: false,
     width: 150,
@@ -94,7 +106,7 @@ const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
   new Thead({
     type: 'datetime',
     defaultDisabled: true,
-    key: 'updateTime',
+    key: 'author.updateTime',
     title: '修改时间',
     hide: false,
     width: 200,
@@ -105,7 +117,7 @@ const localAuthorThead: Ref<Thead<LocalAuthorDTO>[]> = ref([
   new Thead({
     type: 'datetime',
     defaultDisabled: true,
-    key: 'createTime',
+    key: 'author.createTime',
     title: '创建时间',
     hide: false,
     width: 200,
@@ -119,7 +131,7 @@ const localAuthorDialogMode: Ref<DialogMode> = ref(DialogMode.EDIT)
 // 本地作者的对话框开关
 const dialogState: Ref<boolean> = ref(false)
 // 本地作者对话框的数据
-const dialogData: Ref<LocalAuthorDTO> = ref(new LocalAuthorDTO())
+const dialogData: Ref<LocalAuthorFullDTO> = ref(new LocalAuthorFullDTO())
 // 站点作者ExchangeBox的upper的查询参数
 const exchangeBoxUpperSearchParams: Ref<SiteAuthorQueryDTO> = ref(new SiteAuthorQueryDTO())
 // 站点作者ExchangeBox的lower的查询参数
@@ -130,19 +142,19 @@ const disableExcSearchButton: Ref<boolean> = ref(false)
 // 方法
 // 分页查询本地作者的函数
 async function localAuthorQueryPageFn(
-  page: Page<LocalAuthorDTO>
-): Promise<Page<LocalAuthorDTO>> {
+  page: Page<LocalAuthorFullDTO>
+): Promise<Page<LocalAuthorFullDTO>> {
   const response = await apis.localAuthorQueryPage(page, localAuthorQuery.value)
   return response.data
 }
 // 处理本地作者新增按钮点击事件
 async function handleCreateButtonClicked() {
   localAuthorDialogMode.value = DialogMode.NEW
-  dialogData.value = new LocalAuthorDTO()
+  dialogData.value = new LocalAuthorFullDTO()
   dialogState.value = true
 }
 // 处理本地作者数据行按钮点击事件
-function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthorDTO>) {
+function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthorFullDTO>) {
   switch (op.code) {
     case 'save':
       saveRowEdit(op.data)
@@ -165,7 +177,7 @@ function handleRowButtonClicked(op: DataTableOperationResponse<LocalAuthorDTO>) 
   }
 }
 // 处理被选中的本地作者改变的事件
-async function handleLocalAuthorSelectionChange(selections: LocalAuthorDTO[]) {
+async function handleLocalAuthorSelectionChange(selections: LocalAuthorFullDTO[]) {
   if (selections.length > 0) {
     disableExcSearchButton.value = false
     localAuthorSelected.value = selections[0]
@@ -179,10 +191,10 @@ function refreshTable() {
   localAuthorSearchTable.value.doSearch()
 }
 // 保存行数据编辑
-async function saveRowEdit(newData: LocalAuthorDTO) {
+async function saveRowEdit(newData: LocalAuthorFullDTO) {
   const tempData = lodash.cloneDeep(newData)
   try {
-    const response = await apis.localAuthorUpdateById(tempData)
+    const response = await apis.localAuthorUpdateById(tempData.author)
     ApiUtil.msg(response)
     const index = changedRows.value.indexOf(newData)
     changedRows.value.splice(index, 1)
@@ -215,7 +227,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
     if (isNullish(isUpper) ? true : isUpper) {
       if (arrayNotEmpty(upper)) {
         const boundIds = upper.map((item) => Number(item.value))
-        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.id ?? null, boundIds)
+        await siteAuthorApi.siteAuthorUpdateBindLocalAuthor(localAuthorSelected.value.author?.id ?? null, boundIds)
       }
     }
     if (isNullish(isUpper) ? true : !isUpper) {
@@ -233,7 +245,7 @@ async function handleExchangeBoxConfirm(isUpper: boolean | undefined, upper: Sel
 async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded: boolean): Promise<Page<SelectItem>> {
   const query = bounded ? exchangeBoxUpperSearchParams.value : exchangeBoxLowerSearchParams.value
   query.authorName.operator = Operator.OpLike
-  query.localAuthorId = new QueryAttribute({value: localAuthorSelected.value.id})
+  query.localAuthorId = new QueryAttribute({value: localAuthorSelected.value.author?.id})
   query.boundOnLocalAuthorId = new QueryAttribute({value: bounded})
   const tempPage = copyPage<SiteAuthorLocalRelateDTO>(page)
   const response = await siteAuthorApi.siteAuthorQueryBoundOrUnboundInLocalAuthorPage(tempPage, query)

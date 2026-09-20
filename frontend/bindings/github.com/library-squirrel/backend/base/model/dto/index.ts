@@ -3,6 +3,7 @@
 
 export {
     CreateTaskRequest,
+    LocalAuthorFullDTO,
     LocalTagWithBaseTagDTO,
     PendingUpgradeDTO,
     PersistentStoreDTO,
