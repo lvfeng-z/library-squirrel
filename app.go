@@ -24,6 +24,7 @@ import (
 
 	"github.com/library-squirrel/backend/appLauncher"
 	"github.com/library-squirrel/backend/assetserver"
+	"github.com/library-squirrel/backend/authorInfo"
 	"github.com/library-squirrel/backend/authorRole"
 	"github.com/library-squirrel/backend/backup"
 	"github.com/library-squirrel/backend/backupGovernance"
@@ -838,15 +839,10 @@ func registerStoreDirs() error {
 	if err := resource.RegisterStoreDirs(); err != nil {
 		return err
 	}
-	// 头像两条目为作者个人信息文件资源预留（本地作者落 local、站点作者落 site）；
-	// 该域功能未落地，Owner 暂以作者域占位，待其注册方接入时精化接管
-	for _, d := range []storeRegistry.StoreDir{
-		{Path: "store/avatar/local", Owner: "author"}, // 本地作者头像
-		{Path: "store/avatar/site", Owner: "author"},  // 站点作者头像
-	} {
-		if err := storeRegistry.Register(d); err != nil {
-			return fmt.Errorf("注册存储目录 %q（属主 %s）失败: %w", d.Path, d.Owner, err)
-		}
+	// 作者头像域条目（store/avatar/local|site）的路径与属主声明在作者个人信息模块，
+	// 单一源，此处仅按装配时序调用
+	if err := authorInfo.RegisterStoreDirs(); err != nil {
+		return err
 	}
 	return nil
 }

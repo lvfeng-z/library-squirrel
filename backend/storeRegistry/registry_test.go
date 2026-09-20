@@ -10,8 +10,8 @@ import (
 // 供白名单谓词类用例以生产口径运行。
 var canonicalDirs = []StoreDir{
 	{Path: "store/work", Owner: "resource"},
-	{Path: "store/avatar/local", Owner: "author"},
-	{Path: "store/avatar/site", Owner: "author"},
+	{Path: "store/avatar/local", Owner: "authorInfo"},
+	{Path: "store/avatar/site", Owner: "authorInfo"},
 }
 
 // resetRegistry 清空注册表。注册只发生在装配期（单一窗口），生产无重置入口；

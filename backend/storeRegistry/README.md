@@ -29,7 +29,7 @@
 - **注册时机**：装配期（`app.go` `registerStoreDirs()`）、fsmonitor 启动之前——fsmonitor 的对账扫描根与 USN 缓存种子在监控启动时取注册快照一次，晚于监控启动的注册对既取快照不可见（时序守卫测试 `TestStartupSnapshotTakesPostRegistrationState` 锚定）。
 - **前缀唯一**：注册目录两两不重叠（父子前缀均拒绝），按 `/` 段边界判定（`store/workX` 不与 `store/work` 冲突）。
 - **注册权不开放插件与前端**：插件如需持久文件产出，走宿主入库通道写已注册目录，不得自建存储目录。
-- **当前条目**：`store/work`（属主 `resource`，路径与属主声明在 `backend/resource/store_dir.go`——单一源，装配只按调用时序接入）、`store/avatar/local` 与 `store/avatar/site`（属主 `author` 占位，头像域接入时转移属主）。守卫探针路径（workdirGuard）不纳入注册表——白名单隐式排除 + 探针自登记抑制双保险；暂存总根不纳入——走 fsmonitor excludeDirs。
+- **当前条目**：`store/work`（属主 `resource`，路径与属主声明在 `backend/resource/store_dir.go`——单一源，装配只按调用时序接入）、`store/avatar/local` 与 `store/avatar/site`（属主 `authorInfo`，路径与属主声明在 `backend/authorInfo/store_dir.go`——同款单一源）。守卫探针路径（workdirGuard）不纳入注册表——白名单隐式排除 + 探针自登记抑制双保险；暂存总根不纳入——走 fsmonitor excludeDirs。
 
 ## 五处消费面（全部读同一注册表）
 

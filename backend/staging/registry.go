@@ -33,6 +33,7 @@ var rootRegistry = []rootEntry{
 	{owner: OwnerImport, policy: policyStartupPurge},
 	{owner: OwnerMerge, policy: policyStartupPurge},
 	{owner: OwnerExport, policy: policyDescriptionLedger},
+	{owner: OwnerAuthorInfo, policy: policyStartupPurge},
 }
 
 // findRootEntry 按根目录名查注册表（属主常量值即根名）；未登记返回 nil。

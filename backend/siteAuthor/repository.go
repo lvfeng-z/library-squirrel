@@ -51,11 +51,13 @@ func (r *SiteAuthorRepository) BatchUpsert(ctx context.Context, authors []*entit
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
-		// upsert 仅更新插件来源字段。local_author_id（用户手动 site→local 桥接）、last_use
-		// 不归插件管：它们不在插件 DTO 中，excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
+		// upsert 仅更新插件来源字段。local_author_id（用户手动 site→local 桥接）、last_use、
+		// avatar_store_id（host 域头像文件引用）不归插件管：它们不在插件 DTO 中，
+		// excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
+		// avatar_source_url 属站点声明权威域（拉取期插件回报），随插件域列一并覆盖
 		DoUpdates: clause.AssignmentColumns([]string{
 			"author_name", "fixed_author_name", "site_author_name_before",
-			"introduce", "homepage", "update_time",
+			"introduce", "homepage", "avatar_source_url", "update_time",
 		}),
 	}).Create(authors).Error
 }
@@ -81,11 +83,13 @@ func (r *SiteAuthorRepository) Upsert(ctx context.Context, author *entity.SiteAu
 	author.SetUpdateTime(now)
 	return r.dbFromCtx(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "site_id"}, {Name: "site_author_id"}},
-		// upsert 仅更新插件来源字段。local_author_id（用户手动 site→local 桥接）、last_use
-		// 不归插件管：它们不在插件 DTO 中，excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
+		// upsert 仅更新插件来源字段。local_author_id（用户手动 site→local 桥接）、last_use、
+		// avatar_store_id（host 域头像文件引用）不归插件管：它们不在插件 DTO 中，
+		// excluded（待插入新行）为零值 NULL，列入 DoUpdates 会用 NULL 覆盖已有值。
+		// avatar_source_url 属站点声明权威域（拉取期插件回报），随插件域列一并覆盖
 		DoUpdates: clause.AssignmentColumns([]string{
 			"author_name", "fixed_author_name", "site_author_name_before",
-			"introduce", "homepage", "update_time",
+			"introduce", "homepage", "avatar_source_url", "update_time",
 		}),
 	}).Create(author).Error
 }

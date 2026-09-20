@@ -59,6 +59,9 @@ const (
 	// OwnerExport 导出：作用域目录内只放描述，物理临时文件留在最终产物的目标目录同级（跨卷
 	// rename 不可绕），目标位置与临时文件名记入描述账本。
 	OwnerExport Owner = "export"
+	// OwnerAuthorInfo 作者个人信息拉取/导入（头像字节中转），作用域键=作者行 ID（site_author/
+	// local_author 的 DB id），非任务单次操作、启动一律回收。
+	OwnerAuthorInfo Owner = "author-info"
 )
 
 // ScopePath 作用域目录绝对路径派生单点：{workDir}/staging/{owner}/{scopeKey}/。

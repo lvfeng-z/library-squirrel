@@ -54,6 +54,11 @@ var fkBatches = []fkTable{
 	}},
 	{Table: "site_author", FKs: []fkSpec{
 		{Column: "site_id", Parent: "site"},
+		// 头像文件引用（作者行内嵌引用 persistent_store 保管行；软删行不触发 FK，物理删联动归删除编排）
+		{Column: "avatar_store_id", Parent: "persistent_store"},
+	}},
+	{Table: "local_author", FKs: []fkSpec{
+		{Column: "avatar_store_id", Parent: "persistent_store"},
 	}},
 	{Table: "task", FKs: []fkSpec{
 		{Column: "pid", Parent: "task"},
@@ -547,12 +552,17 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		// 此处据 work_task 在册性修复悬空引用
 		"UPDATE resource SET task_id = NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_task WHERE id = resource.task_id)",
 		"UPDATE local_tag SET base_local_tag_id = NULL WHERE base_local_tag_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM local_tag parent_lg WHERE parent_lg.id = local_tag.base_local_tag_id)",
+		// 作者头像引用（指向已消亡的 persistent_store 行即悬空，作者行存续故清引用而非删行）
+		"UPDATE site_author SET avatar_store_id = NULL WHERE avatar_store_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM persistent_store WHERE id = site_author.avatar_store_id)",
+		"UPDATE local_author SET avatar_store_id = NULL WHERE avatar_store_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM persistent_store WHERE id = local_author.avatar_store_id)",
 	}
 	// 无引用哨兵 0→NULL 归一（0 哨兵列改 NULL 语义的存量迁移；幂等）
 	zeroToNull := []string{
 		"UPDATE persistent_store SET backup_id = NULL WHERE backup_id = 0",
 		"UPDATE resource SET task_id = NULL WHERE task_id = 0",
 		"UPDATE local_tag SET base_local_tag_id = NULL WHERE base_local_tag_id = 0",
+		"UPDATE site_author SET avatar_store_id = NULL WHERE avatar_store_id = 0",
+		"UPDATE local_author SET avatar_store_id = NULL WHERE avatar_store_id = 0",
 	}
 	for _, stmt := range zeroToNull {
 		if err := db.Exec(stmt).Error; err != nil {

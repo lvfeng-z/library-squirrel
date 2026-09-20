@@ -18,6 +18,12 @@ type SiteAuthor struct {
 	Homepage             sql.NullString `gorm:"column:homepage" json:"homepage"`
 	LocalAuthorID        sql.NullInt64  `gorm:"column:local_author_id" json:"localAuthorId"`
 	LastUse              sql.NullInt64  `gorm:"column:last_use" json:"lastUse"`
+	// AvatarStoreID 头像文件的 persistent_store 行内嵌引用（作者行发起入库，拉取/导入编排事务内写；
+	// 重拉与元数据回写均不进 upsert 覆盖域，随行保留）
+	AvatarStoreID sql.NullInt64 `gorm:"column:avatar_store_id" json:"avatarStoreId"`
+	// AvatarSourceURL 拉取期插件回报的头像来源 URL（站点声明权威域，进 upsert 覆盖域；
+	// 后续拉取以其为变更检测比对键）
+	AvatarSourceURL sql.NullString `gorm:"column:avatar_source_url" json:"avatarSourceUrl"`
 }
 
 func NewSiteAuthor() *SiteAuthor {
