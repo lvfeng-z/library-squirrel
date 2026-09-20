@@ -31,8 +31,7 @@
 
 ## 核心概念
 
-- **已注册子目录**（`storeRegistry`）：路径必须以下列前缀开头——
-  `store/work`（作品资源，含缩略图与合并产物，命名见 `doc/store-naming-convention.md`）、`store/avatar/local`（本地作者头像）、`store/avatar/site`（站点作者头像）。
+- **已注册子目录**（`storeRegistry` 存储目录注册表）：白名单条目由各业务域在装配期注册（`app.go` `registerStoreDirs()`，先于 fsmonitor 启动——注册契约与消费面清单见 `backend/storeRegistry/README.md`），当前三条：`store/work`（属主 resource；作品资源，含缩略图与合并产物，命名见 `doc/store-naming-convention.md`）、`store/avatar/local`、`store/avatar/site`（属主 author 占位，头像域）。所有落盘路径必须命中注册子树（`ValidatePath` 闸门），代管能力面（落盘、指纹、记录行、抑制登记、URL 解析、软删语义）对全部注册子树一视同仁。
 - **路径基准（PATH_SEPARATOR_DISCIPLINE 两域模型）**：所有相对路径（relPath 域）基于 workDir 且**正斜杠**——写入口（PrepareIngest/CommitStore）入口处 `ToSlash` 规范化一次，查旧/抑制登记/落库全程与 DB 基准一致；absPath（`filepath.Join(workDir, rel)`）仅存在于 os.* 调用点不回流。禁止 `../`、`./` 或绝对路径。
 
 ## 入库事务机制

@@ -830,6 +830,27 @@ func (app *App) initBaseServices() {
 	app.ShareService.SetDialCoordinator(share.NewDialCoordinator(8, 50))
 }
 
+// registerStoreDirs 装配期注册 store 存储目录白名单（调用须先于 fsmonitor 启动——
+// 对账扫描根与 USN 缓存种子在监控启动时取注册快照）。各业务域在此登记自己的库内持久
+// 数据子树，persistentStore 据此代管落盘校验与对账监控。
+func registerStoreDirs() error {
+	// 作品资源域条目（store/work）的路径与属主声明在作品资源模块，单一源，此处仅按装配时序调用
+	if err := resource.RegisterStoreDirs(); err != nil {
+		return err
+	}
+	// 头像两条目为作者个人信息文件资源预留（本地作者落 local、站点作者落 site）；
+	// 该域功能未落地，Owner 暂以作者域占位，待其注册方接入时精化接管
+	for _, d := range []storeRegistry.StoreDir{
+		{Path: "store/avatar/local", Owner: "author"}, // 本地作者头像
+		{Path: "store/avatar/site", Owner: "author"},  // 站点作者头像
+	} {
+		if err := storeRegistry.Register(d); err != nil {
+			return fmt.Errorf("注册存储目录 %q（属主 %s）失败: %w", d.Path, d.Owner, err)
+		}
+	}
+	return nil
+}
+
 // initAdvancedServices 初始化高级服务（依赖其他服务）
 func (app *App) initAdvancedServices() error {
 	// workSet 仓储（提前创建，用于 workSetWriterAdapter + 复原引用校验）
@@ -908,6 +929,13 @@ func (app *App) initAdvancedServices() error {
 		logger.Log.Warnf("[backup] 规范化 file_path 分隔符失败: %v", err)
 	} else if n > 0 {
 		logger.Log.Infof("[backup] file_path 分隔符规范化完成，共 %d 条", n)
+	}
+	// store 存储目录注册（须先于 fsmonitor 启动——对账扫描根与 USN 缓存种子在监控启动时取注册
+	// 快照）：各业务域的库内持久数据子树在此登记，persistentStore 据白名单代管（落盘校验、指纹、
+	// 记录行、抑制登记）。前缀冲突/路径非法属装配错误，fail-fast 阻断启动
+	if err := registerStoreDirs(); err != nil {
+		logger.Log.Errorf("store 存储目录注册失败: %v", err)
+		return err
 	}
 	cursorRepo := fsmonitor.NewCursorRepository(app.db)
 	fsmonitorDeps := fsmonitor.NewPlatformDeps(app.SettingsService.GetWorkDir(), app.SettingsService.GetSettings().FsmonitorSettings.UsnEnabled, cursorRepo)

@@ -53,7 +53,7 @@ globs:
 ### 路径解析约定
 
 - **绝对路径解析**：`filepath.Join(rootDir, relativePath)`，禁止额外拼接中间目录（如 `"store"`）
-- **路径校验**：`persistent_store.file_path` 必须以 `storeRegistry` 中已注册的子目录开头（如 `store/work`、`store/avatar/local`、`store/avatar/site`）
+- **路径校验**：`persistent_store.file_path` 必须以 `storeRegistry` 存储目录注册表中已注册的子目录开头（条目由各业务域装配期注册，当前三条：`store/work`、`store/avatar/local`、`store/avatar/site`；注册契约见 `backend/storeRegistry/README.md`）
 - **URL 映射**：前端 `buildStoreUrl(filePath)` 将 workDir 相对路径编码为 `/store/{encoded}` URL，后端 `StoreFileHandler` 剥离 `/store/` 前缀后直接 `filepath.Join(workDir, path)` 解析
 
 ## 软删除（GORM soft_delete）

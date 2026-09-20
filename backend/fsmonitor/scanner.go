@@ -92,7 +92,7 @@ func (s *scanner) scanBackup(ctx context.Context, workDir string, diff *DiffSet)
 // collectDiskFiles 遍历白名单子目录，收集所有文件的相对 workDir 正斜杠路径集合
 func (s *scanner) collectDiskFiles(workDir string) (map[string]bool, error) {
 	files := make(map[string]bool)
-	for _, dir := range storeRegistry.RegisteredDirs {
+	for _, dir := range storeRegistry.RegisteredDirs() {
 		if err := walkSubtree(workDir, dir.Path, files); err != nil {
 			logger.Log.Warnf("[fsmonitor] 对账扫描：遍历目录失败 %s: %v", dir.Path, err)
 		}

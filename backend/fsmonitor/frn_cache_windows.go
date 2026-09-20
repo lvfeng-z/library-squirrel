@@ -84,7 +84,7 @@ func newFrnPathCache(workDir string) *frnPathCache {
 // 单目录读失败（权限/非 NTFS）记日志跳过并继续；全部失败返回错误，调用方据此降级全量对账。
 func (c *frnPathCache) Build(ctx context.Context) error {
 	read := 0
-	for _, sub := range storeRegistry.RegisteredPaths {
+	for _, sub := range storeRegistry.RegisteredPaths() {
 		absSub := filepath.Join(c.workDir, filepath.FromSlash(sub))
 		info, err := os.Stat(absSub)
 		if err != nil {

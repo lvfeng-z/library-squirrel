@@ -27,10 +27,11 @@
 - **自动修复模式（AutoRepair）**：`settings.fsmonitor.autoRepairEnabled` 开启时，live 路径变更在派发链路（`dispatchSemanticChange`，携带 ctx + live/offline 来源）先尝试 `AutoApply`——按策略表（`autoRepairPolicies` 覆盖 + 内置默认）查动作并复用既有 `apply` 执行，成功则不入队、事件 payload 带 `autoHandled=true`；**offline（启动对账）来源一律入队人工确认**（离线批量高发诱因是环境异常——挂载断开/云盘占位/杀软隔离，自动处理会造成无感知批量失效）；失败/无默认动作降级入队。策略可选项集见 `GetAutoRepairPolicySchema`（store/backup × Move/DirMove/Delete，选项受 apply 能力约束；Untracked 不可配置）。自动执行复用 apply 天然带操作抑制。设置读取器（`SetAutoRepairReader`）由 app.go 接线为惰性闭包，运行时改开关/策略即时生效
 
 ## 依赖关系
-- 依赖（接口注入，app.go 适配）：persistentStore（`StoreReader` 查记录 / `StoreRepairer` 改路径+失效）、backup（`BackupReader` 查清单行 / `BackupRepairer` 删行+改路径）、backupGovernance（`BackupRefCleaner` 删行后即时清引用）、settings（workDir 闭包 + `AutoRepairConfig` 惰性读取器）、WailsEventEmitter（闭包延迟）；指纹由 `util/fingerprint` 提供（`NewPlatformDeps` 自建注入 correlator）；监控范围（store 白名单 + backup 根）由 `storeRegistry` 提供
+- 依赖（接口注入，app.go 适配）：persistentStore（`StoreReader` 查记录 / `StoreRepairer` 改路径+失效）、backup（`BackupReader` 查清单行 / `BackupRepairer` 删行+改路径）、backupGovernance（`BackupRefCleaner` 删行后即时清引用）、settings（workDir 闭包 + `AutoRepairConfig` 惰性读取器）、WailsEventEmitter（闭包延迟）；指纹由 `util/fingerprint` 提供（`NewPlatformDeps` 自建注入 correlator）。监控范围三面分工：store 白名单 = `storeRegistry` 存储目录注册表（各业务域装配期注册，注册契约见 `backend/storeRegistry/README.md`）、backup 根 = `storeRegistry.BackupDirPath`、域外排除 = 装配期 excludeDirs（`NewPlatformDeps` 传暂存总根，唯一排除面）
 - 被依赖：前端 `ChangeConfirmDialog`（确认 UI，域感知文案）、`MainIpcListener`（事件监听）
 
 ## 关键设计
+- **store 白名单快照时序**：store 存储目录白名单来自 `storeRegistry` 注册表，注册发生在装配期（`app.go` `registerStoreDirs`）且**先于本模块 `Start`**——离线对账扫描根（`scanner.go` collectDiskFiles 遍历 `RegisteredDirs`）与 USN 文件名缓存种子（`frn_cache_windows.go` Build 遍历 `RegisteredPaths`）在监控启动时取注册快照一次，晚于启动的注册对既取快照不可见；实时事件过滤（`handleFileChange` 的 `InScanDirs`）与 USN 路径过滤（emit 的 `InScanDirs`）按事件动态查询注册表
 - **指纹落库是移动匹配的必要条件**：Missing 文件已不在磁盘无法现场算指纹，故 `persistent_store` 落盘完成时同步算 `content_fingerprint`（size + 头部 64KB SHA256，几毫秒，不异步）。backup 清单行无指纹列——backup 域运行时无配对能力是既定边界（改名降级 Delete 报告，方案见 `../library-squirrel-docs/plan/fsmonitor覆盖backup方案.md` 决策7）
 - **fsnotify Windows rename 只发 Create(新名)**：`renamedFrom` 字段未导出；旧名腿按场景分两种——同目录改名=Rename Op、跨目录移动=Remove Op（行为锚定 `source_rename_probe_test.go`）。`source.go` 把 Rename Op 转发为 `ChangeRemove{FromRename:true}`（旧路径文件确实消失）：backup 域消费（同目录改名的唯一运行时信号），store 域跳过（改名检出走 Create 新名指纹配对，旧名腿进关联会与 Move 双报告）；跨目录移动的 Remove 腿两域都消费
 - **目录改名检测**：目录 Create 触发下级扫描（采样 50 文件算指纹配对 DB）→ 聚合最常见旧目录前缀 → `DirMove`；修复用 `GLOB` 批量 REPLACE 下级路径前缀（走 `file_path` 索引，`LIKE` 默认不走索引）

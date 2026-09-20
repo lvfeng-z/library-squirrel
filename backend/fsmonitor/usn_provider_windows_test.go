@@ -187,7 +187,7 @@ func TestUsnProvider_Integration(t *testing.T) {
 	}
 	logger.Log = zap.NewNop().Sugar() // 测试期 logger 未初始化，置 nop 防 ChangesSince 日志调用 panic
 	workDir := t.TempDir()            // 系统盘 NTFS 临时目录
-	for _, sub := range storeRegistry.RegisteredPaths {
+	for _, sub := range storeRegistry.RegisteredPaths() {
 		if err := os.MkdirAll(filepath.Join(workDir, filepath.FromSlash(sub)), 0o755); err != nil {
 			t.Fatalf("建白名单子树失败 %s: %v", sub, err)
 		}

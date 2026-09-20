@@ -183,7 +183,7 @@ func TestOnDirRename_ChainedConvergence(t *testing.T) {
 func TestFrnPathCache_Build(t *testing.T) {
 	logger.Log = zap.NewNop().Sugar() // 测试期 logger 未初始化，置 nop 防日志调用 panic
 	workDir := t.TempDir()
-	for _, sub := range storeRegistry.RegisteredPaths {
+	for _, sub := range storeRegistry.RegisteredPaths() {
 		if err := os.MkdirAll(filepath.Join(workDir, filepath.FromSlash(sub)), 0o755); err != nil {
 			t.Fatalf("建目录失败 %s: %v", sub, err)
 		}
@@ -208,8 +208,8 @@ func TestFrnPathCache_Build(t *testing.T) {
 		t.Fatal("Build 后缓存为空")
 	}
 	// 至少缓存各白名单子树根 + 作者 子目录
-	if len(c.frnToRel) < len(storeRegistry.RegisteredPaths) {
-		t.Fatalf("缓存目录数 %d < 白名单根数 %d", len(c.frnToRel), len(storeRegistry.RegisteredPaths))
+	if len(c.frnToRel) < len(storeRegistry.RegisteredPaths()) {
+		t.Fatalf("缓存目录数 %d < 白名单根数 %d", len(c.frnToRel), len(storeRegistry.RegisteredPaths()))
 	}
 	// 验证多级中文目录命中缓存
 	found := false
