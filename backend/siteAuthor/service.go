@@ -3,6 +3,7 @@ package siteAuthor
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -12,6 +13,7 @@ import (
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -82,6 +84,18 @@ type SiteOperator interface {
 	ListByIds(ctx context.Context, ids []int64) ([]*entity.Site, error)
 }
 
+// AvatarFileCleaner 作者头像清理接口（authorInfo 服务实现）：删除联动的头像行面进本模块
+// 删除事务、文件面在事务提交后清理
+type AvatarFileCleaner interface {
+	// DeleteAvatarStoreRows 事务内物理删头像 persistent_store 行（dbFromCtx 入本删除事务；
+	// 须在作者行删除之后调用——FK NO ACTION，引用未释放时删行被拒）。返回被删行的文件
+	// 相对路径清单（供事务提交后删文件）
+	DeleteAvatarStoreRows(ctx context.Context, storeIds []int64) ([]string, error)
+	// RemoveAvatarFiles 事务提交后物理删头像文件（含 fsmonitor 操作抑制登记；尽力而为，
+	// 失败记日志留对账裁决）
+	RemoveAvatarFiles(relPaths []string)
+}
+
 // Service 站点作者服务
 type Service struct {
 	repo          Repository
@@ -91,6 +105,8 @@ type Service struct {
 	transactor Transactor
 	// 删除编排的关联清理提供方（窄接口注入）
 	reWorkAuthorDeleter ReWorkAuthorDeleter
+	// 删除编排的头像清理提供方（authorInfo 在本服务之后创建，经 setter 注入；nil=跳过头像清理）
+	avatarFileCleaner AvatarFileCleaner
 }
 
 // NewService 创建站点作者服务。transactor 承载删除编排事务；reWorkAuthorDeleter 供
@@ -144,16 +160,56 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除站点作者：同一事务内先删该作者挂载的全部作品-作者关联，再删作者行——
-// re_work_author.site_author_id 有外键，未清关联即删作者行会被外键拒绝，先清子后删父为强制顺序
+// Delete 删除站点作者：同一事务内先删该作者挂载的全部作品-作者关联，再删作者行，最后物理删
+// 头像 persistent_store 行（文件面在事务提交后清理）——re_work_author.site_author_id 与
+// site_author.avatar_store_id 均有外键防线，先清子后删父为强制顺序；头像行删除排在作者行
+// 之后（作者行即引用方，行未删即删 store 行会被外键拒绝）
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+	// 事务前读作者行头像引用（作者行删除后不可再读）
+	var avatarStoreIds []int64
+	if s.avatarFileCleaner != nil {
+		author, err := s.repo.GetById(ctx, id)
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			author = nil
+		}
+		if author != nil && author.AvatarStoreID.Valid {
+			avatarStoreIds = append(avatarStoreIds, author.AvatarStoreID.Int64)
+		}
+	}
+	var avatarRelPaths []string
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.reWorkAuthorDeleter.DeleteBySiteAuthorId(txCtx, id); err != nil {
 			return err
 		}
 		// 关联已清空，外键放行
-		return s.repo.Delete(txCtx, id)
-	})
+		if err := s.repo.Delete(txCtx, id); err != nil {
+			return err
+		}
+		if len(avatarStoreIds) == 0 {
+			return nil
+		}
+		paths, err := s.avatarFileCleaner.DeleteAvatarStoreRows(txCtx, avatarStoreIds)
+		if err != nil {
+			return err
+		}
+		avatarRelPaths = paths
+		return nil
+	}); err != nil {
+		return err
+	}
+	// 事务提交后清理头像文件（行面已消亡，文件面尽力而为）
+	if len(avatarRelPaths) > 0 {
+		s.avatarFileCleaner.RemoveAvatarFiles(avatarRelPaths)
+	}
+	return nil
+}
+
+// SetAvatarFileCleaner 注入头像清理提供方（authorInfo 服务在本服务之后创建，装配处接线）
+func (s *Service) SetAvatarFileCleaner(cleaner AvatarFileCleaner) {
+	s.avatarFileCleaner = cleaner
 }
 
 // Page 分页查询

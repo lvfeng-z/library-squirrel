@@ -2,6 +2,7 @@ package localAuthor
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/util"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -145,6 +147,13 @@ func (r *LocalAuthorRepository) PageByNameKeyword(ctx context.Context, nameKeywo
 		opt.Conditions = append(opt.Conditions, clause.Like{Column: "author_name", Value: "%" + nameKeyword + "%"})
 	}
 	return r.Page(ctx, opt)
+}
+
+// UpdateAvatarStoreId 更新本地作者头像引用列（dbFromCtx 模式，可入头像导入编排事务；NULL=清除引用）
+func (r *LocalAuthorRepository) UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error {
+	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.LocalAuthor)).
+		Where("id = ?", localAuthorId).
+		Updates(map[string]interface{}{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // ListSelectItems 查询选择项列表

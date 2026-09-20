@@ -3,6 +3,7 @@ package localAuthor
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/library-squirrel/backend/base/model"
@@ -12,6 +13,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/util"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -43,6 +45,8 @@ type Repository interface {
 	ListSelectItems(ctx context.Context, where clause.Expression, order clause.Expression) ([]*dto.SelectItem, error)
 	// QuerySelectItemPage 分页查询选择项
 	QuerySelectItemPage(ctx context.Context, opt *database.PageOption) (*model.Page[dto.SelectItem], error)
+	// UpdateAvatarStoreId 更新头像引用列（可入头像导入编排事务；NULL=清除引用）
+	UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error
 }
 
 // Transactor 数据库事务执行器（删除编排用）
@@ -69,6 +73,18 @@ type WorkAuthorMirrorClearer interface {
 	ClearLocalAuthorOnWorks(ctx context.Context, localAuthorId int64) error
 }
 
+// AvatarFileCleaner 作者头像清理接口（authorInfo 服务实现）：删除联动的头像行面进本模块
+// 删除事务、文件面在事务提交后清理
+type AvatarFileCleaner interface {
+	// DeleteAvatarStoreRows 事务内物理删头像 persistent_store 行（dbFromCtx 入本删除事务；
+	// 须在作者行删除之后调用——FK NO ACTION，引用未释放时删行被拒）。返回被删行的文件
+	// 相对路径清单（供事务提交后删文件）
+	DeleteAvatarStoreRows(ctx context.Context, storeIds []int64) ([]string, error)
+	// RemoveAvatarFiles 事务提交后物理删头像文件（含 fsmonitor 操作抑制登记；尽力而为，
+	// 失败记日志留对账裁决）
+	RemoveAvatarFiles(relPaths []string)
+}
+
 // Service 本地作者服务
 type Service struct {
 	repo Repository
@@ -78,6 +94,8 @@ type Service struct {
 	siteAuthorBindingClearer SiteAuthorBindingClearer
 	reWorkAuthorDeleter      ReWorkAuthorDeleter
 	workAuthorMirrorClearer  WorkAuthorMirrorClearer
+	// 删除编排的头像清理提供方（authorInfo 在本服务之后创建，经 setter 注入；nil=跳过头像清理）
+	avatarFileCleaner AvatarFileCleaner
 }
 
 // NewService 创建本地作者服务
@@ -180,12 +198,30 @@ func (s *Service) Count(ctx context.Context, opt *database.QueryOption) (int64, 
 	return s.repo.Count(ctx, opt)
 }
 
-// Delete 删除本地作者。三类指向引用在同一事务内先行清理，最后删作者行：
+// Delete 删除本地作者。三类指向引用在同一事务内先行清理，再删作者行，最后物理删头像
+// persistent_store 行（文件面在事务提交后清理）：
 // ①站点绑定列（site_author.local_author_id 无外键防线，不清则留静默悬空引用）
 // ②作品-作者关联行（re_work_author，有外键防线，不清则删作者被拒）
 // ③作品镜像列（work.local_author_id，有外键防线且拦截不分行态——软删作品行的引用同样须清）
+// 头像行删除排在作者行之后：local_author.avatar_store_id 有外键（NO ACTION），作者行未删
+// 即删 store 行会被外键拒绝，先删父引用方为强制顺序
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+	// 事务前读作者行头像引用（作者行删除后不可再读）
+	var avatarStoreIds []int64
+	if s.avatarFileCleaner != nil {
+		author, err := s.repo.GetById(ctx, id)
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			author = nil
+		}
+		if author != nil && author.AvatarStoreID.Valid {
+			avatarStoreIds = append(avatarStoreIds, author.AvatarStoreID.Int64)
+		}
+	}
+	var avatarRelPaths []string
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.siteAuthorBindingClearer.ClearLocalAuthorBinding(txCtx, id); err != nil {
 			return err
 		}
@@ -196,8 +232,36 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 			return err
 		}
 		// 引用已清空，外键放行
-		return s.repo.Delete(txCtx, id)
-	})
+		if err := s.repo.Delete(txCtx, id); err != nil {
+			return err
+		}
+		if len(avatarStoreIds) == 0 {
+			return nil
+		}
+		paths, err := s.avatarFileCleaner.DeleteAvatarStoreRows(txCtx, avatarStoreIds)
+		if err != nil {
+			return err
+		}
+		avatarRelPaths = paths
+		return nil
+	}); err != nil {
+		return err
+	}
+	// 事务提交后清理头像文件（行面已消亡，文件面尽力而为）
+	if len(avatarRelPaths) > 0 {
+		s.avatarFileCleaner.RemoveAvatarFiles(avatarRelPaths)
+	}
+	return nil
+}
+
+// SetAvatarFileCleaner 注入头像清理提供方（authorInfo 服务在本服务之后创建，装配处接线）
+func (s *Service) SetAvatarFileCleaner(cleaner AvatarFileCleaner) {
+	s.avatarFileCleaner = cleaner
+}
+
+// UpdateAvatarStoreId 更新本地作者头像引用列（可入头像导入编排事务；NULL=清除引用）
+func (s *Service) UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error {
+	return s.repo.UpdateAvatarStoreId(ctx, localAuthorId, storeId)
 }
 
 // Page 分页查询

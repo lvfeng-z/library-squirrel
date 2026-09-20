@@ -1,17 +1,18 @@
 package authorInfo
 
-// 作者个人信息拉取编排（site 侧主链）：发起方为 authorInfo（ORCHESTRATION_BY_CALLER），
-// 经 interfaces.go 的窄接口注入各提供方能力自行串联。单作者拉取序列：能力广播定位插件 →
-// RPC 流式首块 meta 回写元数据（插件权威域白名单列）→ 判定需落字节（来源 URL 变化或行无
-// 引用）→ 换头像先删旧 → 头像字节写暂存（尺寸上限）→ 四调用入库 → 业务事务内建行 +
-// 同事务写 site_author.avatar_store_id → 作用域回收。两触发面（作品入库后自动带开关、
-// 手动单条/批量）共用同一拉取序列与在途去重集合。
+// 作者个人信息编排：site 侧拉取主链（能力广播定位插件 → RPC 流式首块 meta 回写元数据（插件
+// 权威域白名单列）→ 判定需落字节（来源 URL 变化或行无引用）→ 换头像先删旧 → 头像字节写暂存
+// （尺寸上限）→ 四调用入库 → 业务事务内建行 + 同事务写 site_author.avatar_store_id → 作用域
+// 回收。两触发面（作品入库后自动带开关、手动单条/批量）共用同一拉取序列与在途去重集合）；
+// local 侧头像手动导入/移除；siteAuthor/localAuthor 删除联动的头像行清理（AvatarFileCleaner，
+// 行面入调用方删除事务、文件面在事务提交后清理）。
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -46,16 +47,22 @@ const (
 	authorFetchTimeout = 60 * time.Second
 	// siteAvatarScopeContentShape site 侧拉取暂存作用域的内容形态标签（作用域内单头像文件平铺）
 	siteAvatarScopeContentShape = "site-author-avatar"
+	// localAvatarScopeContentShape local 侧导入暂存作用域的内容形态标签（作用域内单头像文件平铺）
+	localAvatarScopeContentShape = "local-author-avatar"
+	// localAvatarScopeKeyPrefix local 侧导入暂存作用域键前缀：siteAuthor/local_author 两表 DB id
+	// 独立编号，裸数字键会同值跨表撞作用域目录，前缀消歧
+	localAvatarScopeKeyPrefix = "local-"
 )
 
-// Service 作者个人信息拉取编排服务（site 侧主链宿主；local 侧导入属删除联动+local 导入阶段）
+// Service 作者个人信息编排服务（site 侧拉取主链 + local 侧头像导入/移除 + 删除联动头像清理）
 type Service struct {
-	siteAuthors SiteAuthorStore
-	ingestor    StoreIngestor
-	storeOps    AvatarStoreOps
-	fetchCfg    AuthorFetchSettings
-	workDir     WorkDirProvider
-	transactor  Transactor
+	siteAuthors  SiteAuthorStore
+	localAuthors LocalAuthorStore
+	ingestor     StoreIngestor
+	storeOps     AvatarStoreOps
+	fetchCfg     AuthorFetchSettings
+	workDir      WorkDirProvider
+	transactor   Transactor
 
 	// fetcher 站点作者信息拉取能力桥（plugin 模块实现）。plugin 模块在本服务之后初始化
 	// （能力桥依赖插件加载器就绪），经 SetSiteAuthorFetcher 延迟注入；nil 时两触发面均跳过
@@ -66,9 +73,10 @@ type Service struct {
 	inFlight map[int64]struct{}
 }
 
-// NewService 创建作者信息拉取编排服务
+// NewService 创建作者信息编排服务
 func NewService(
 	siteAuthors SiteAuthorStore,
+	localAuthors LocalAuthorStore,
 	ingestor StoreIngestor,
 	storeOps AvatarStoreOps,
 	fetchCfg AuthorFetchSettings,
@@ -76,13 +84,14 @@ func NewService(
 	transactor Transactor,
 ) *Service {
 	return &Service{
-		siteAuthors: siteAuthors,
-		ingestor:    ingestor,
-		storeOps:    storeOps,
-		fetchCfg:    fetchCfg,
-		workDir:     workDir,
-		transactor:  transactor,
-		inFlight:    make(map[int64]struct{}),
+		siteAuthors:  siteAuthors,
+		localAuthors: localAuthors,
+		ingestor:     ingestor,
+		storeOps:     storeOps,
+		fetchCfg:     fetchCfg,
+		workDir:      workDir,
+		transactor:   transactor,
+		inFlight:     make(map[int64]struct{}),
 	}
 }
 
@@ -268,7 +277,10 @@ func (sess *avatarFetchSession) onMeta(meta *pluginsdkdto.AuthorInfoMeta) (bool,
 	}
 	// 换头像：来源 URL 已变化 → 先删旧（崩溃窗口收敛为「无头像」，下次触发重拉）
 	if sess.target.AvatarStoreID.Valid {
-		if err := sess.svc.deleteReferencedAvatar(sess.ctx, sess.target.ID, sess.target.AvatarStoreID.Int64); err != nil {
+		siteAuthorId := sess.target.ID
+		if err := sess.svc.deleteAvatarByReference(sess.ctx, sess.target.AvatarStoreID.Int64, func(txCtx context.Context) error {
+			return sess.svc.siteAuthors.UpdateAvatarStoreId(txCtx, siteAuthorId, sql.NullInt64{})
+		}); err != nil {
 			return false, err
 		}
 	}
@@ -406,11 +418,12 @@ func (s *Service) writeBackMeta(ctx context.Context, target *dto.SiteAuthorFetch
 	return nil
 }
 
-// deleteReferencedAvatar 删除作者当前引用的头像（换头像先删旧）：事务内先清引用列（FK NO
-// ACTION 要求释放引用后方可删 store 行）再物理删 store 行，事务提交后按行内 file_path
-// 物理删文件（含操作抑制登记——文件离开 store/ 白名单子树会触发 fsmonitor 外部变更裁决）。
+// deleteAvatarByReference 删除指定引用的头像（site 换头像删旧 / local 移除头像与换头像共用）：
+// 事务内先清引用列（FK NO ACTION 要求释放引用后方可删 store 行）再物理删 store 行，事务提交后
+// 按行内 file_path 物理删文件（含操作抑制登记——文件离开 store/ 白名单子树会触发 fsmonitor 外部
+// 变更裁决）。clearRef 为引用列清理动作（调用方闭包携带作者行身份与置 NULL 写入）。
 // 引用指向的行若为软删行（外部裁决失效态），GetById 经软删 scope 不可见，仅清引用列
-func (s *Service) deleteReferencedAvatar(ctx context.Context, siteAuthorId, storeId int64) error {
+func (s *Service) deleteAvatarByReference(ctx context.Context, storeId int64, clearRef func(ctx context.Context) error) error {
 	var relForFile string
 	store, err := s.storeOps.GetById(ctx, storeId)
 	if err != nil {
@@ -423,23 +436,193 @@ func (s *Service) deleteReferencedAvatar(ctx context.Context, siteAuthorId, stor
 		relForFile = store.FilePath.String
 	}
 	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
-		if err := s.siteAuthors.UpdateAvatarStoreId(txCtx, siteAuthorId, sql.NullInt64{}); err != nil {
+		if err := clearRef(txCtx); err != nil {
 			return fmt.Errorf("清除头像引用列失败: %w", err)
 		}
 		return s.storeOps.DeleteUnscopedByIds(txCtx, []int64{storeId})
 	}); err != nil {
 		return err
 	}
-	if relForFile == "" {
-		return nil
-	}
-	storeRegistry.Suppress(relForFile)
-	defer storeRegistry.Release(relForFile)
-	if err := os.Remove(filepath.Join(s.workDir.GetWorkDir(), relForFile)); err != nil && !os.IsNotExist(err) {
-		// 行已删，残留文件交 fsmonitor 对账裁决（Untracked 外部文件）
-		logger.Log.Warnf("[authorInfo] 删除旧头像文件失败: %v", err)
+	if relForFile != "" {
+		s.removeAvatarFile(s.workDir.GetWorkDir(), relForFile)
 	}
 	return nil
+}
+
+// removeAvatarFile 物理删单个头像文件（absPath 域现场拼接；含 fsmonitor 操作抑制登记——文件
+// 离开 store/ 白名单子树会触发外部变更裁决）。尽力而为：文件不存在视为已删，其他失败记日志
+// 留 fsmonitor 对账裁决；工作目录未配置态无库内文件可删，直接跳过
+func (s *Service) removeAvatarFile(workDir, relPath string) {
+	if workDir == "" {
+		return
+	}
+	storeRegistry.Suppress(relPath)
+	defer storeRegistry.Release(relPath)
+	if err := os.Remove(filepath.Join(workDir, relPath)); err != nil && !os.IsNotExist(err) {
+		logger.Log.Warnf("[authorInfo] 删除头像文件失败: %v", err)
+	}
+}
+
+// ===== local 侧头像手动导入（Handler 经 SetLocalAuthorAvatar / RemoveLocalAuthorAvatar 消费） =====
+
+// SetLocalAuthorAvatar 为本地作者设置头像：源文件为用户经前端文件对话框选取的任意盘绝对路径，
+// 校验图片格式白名单后拷入暂存作用域（跨卷不可 rename，恒 copy；尺寸上限与 site 侧一致）→
+// 旧头像按换头像形态先行删除（同扩展名时新旧路径相同，先删旧保证不做同路径覆写、亦不撞
+// file_path 活行唯一索引）→ 四调用入库（撤回处置=丢弃，重导入即重产）→ 业务事务内建 store 行 +
+// 同事务写 local_author.avatar_store_id（引用列与建行同生共死）。失败不留半成品，旧头像在拷贝
+// 成功后才删——源文件不可读/超限的失败不伤及现有头像
+func (s *Service) SetLocalAuthorAvatar(ctx context.Context, localAuthorId int64, sourceAbsPath string) error {
+	workDir := s.workDir.GetWorkDir()
+	if err := settings.RefuseIfUnconfigured(workDir, "authorInfo"); err != nil {
+		return err
+	}
+	author, err := s.localAuthors.GetById(ctx, localAuthorId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerr.NewBusinessError(404, "本地作者不存在")
+		}
+		return fmt.Errorf("查询本地作者失败: %w", err)
+	}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(sourceAbsPath), "."))
+	if !avatarFormatWhitelist[ext] {
+		return pkgerr.NewBusinessError(400, "不支持的头像图片格式（支持 jpg/jpeg/png/gif/webp/bmp）")
+	}
+	finalRel, err := LocalAvatarRelPath(localAuthorId, ext)
+	if err != nil {
+		return fmt.Errorf("派生本地作者头像落盘路径失败: %w", err)
+	}
+	scopeKey := localAvatarScopeKeyPrefix + strconv.FormatInt(localAuthorId, 10)
+	// 作用域先清后建：本作者私有暂存目录自愈残留（上次会话未回收的作用域内容已无消费价值）
+	if err := staging.RemoveScope(ctx, workDir, staging.OwnerAuthorInfo, scopeKey); err != nil {
+		return fmt.Errorf("清理头像导入暂存作用域失败: %w", err)
+	}
+	if _, err := staging.CreateScope(ctx, workDir, staging.OwnerAuthorInfo, scopeKey, localAvatarScopeContentShape); err != nil {
+		return fmt.Errorf("创建头像导入暂存作用域失败: %w", err)
+	}
+	defer func() {
+		if err := staging.RemoveScope(context.Background(), workDir, staging.OwnerAuthorInfo, scopeKey); err != nil {
+			logger.Log.Warnf("[authorInfo] 回收头像导入暂存作用域失败（留待启动清扫）: %v", err)
+		}
+	}()
+	stagingFileRel := path.Join(staging.RootName, string(staging.OwnerAuthorInfo), scopeKey, path.Base(finalRel))
+	if err := copyCappedFile(sourceAbsPath, filepath.Join(workDir, filepath.FromSlash(stagingFileRel)), maxAvatarBytes); err != nil {
+		return err
+	}
+	// 换头像先删旧：拷贝已成功，此后的失败路径崩溃窗口收敛为「无头像」，重新导入即可
+	if author.AvatarStoreID.Valid {
+		if err := s.deleteAvatarByReference(ctx, author.AvatarStoreID.Int64, func(txCtx context.Context) error {
+			return s.localAuthors.UpdateAvatarStoreId(txCtx, localAuthorId, sql.NullInt64{})
+		}); err != nil {
+			return err
+		}
+	}
+	intentIds, err := s.ingestor.PrepareIngest(ctx, []persistentStore.IngestItem{{
+		FilePath:    finalRel,
+		StagingPath: stagingFileRel,
+		AbortAction: entity.AbortActionDiscard,
+	}})
+	if err != nil {
+		return fmt.Errorf("登记头像入库意图失败: %w", err)
+	}
+	abort := func() {
+		if err := s.ingestor.AbortIngest(context.Background(), intentIds); err != nil {
+			logger.Log.Warnf("[authorInfo] 撤回头像入库失败（登记行保留，启动恢复收口）: %v", err)
+		}
+	}
+	if err := s.ingestor.PlaceIngest(ctx, intentIds); err != nil {
+		abort()
+		return fmt.Errorf("头像落位失败: %w", err)
+	}
+	if err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+		storeId, cerr := s.ingestor.CommitIngest(txCtx, intentIds[0], finalRel, path.Base(finalRel),
+			sql.NullString{}, sql.NullString{})
+		if cerr != nil {
+			return fmt.Errorf("建头像 store 行失败: %w", cerr)
+		}
+		return s.localAuthors.UpdateAvatarStoreId(txCtx, localAuthorId, sql.NullInt64{Int64: storeId, Valid: true})
+	}); err != nil {
+		abort()
+		return fmt.Errorf("提交头像入库失败: %w", err)
+	}
+	return nil
+}
+
+// RemoveLocalAuthorAvatar 移除本地作者头像：置 NULL + 删 store 行（同一事务）+ 事务提交后删文件。
+// 无头像（引用列空）为幂等成功
+func (s *Service) RemoveLocalAuthorAvatar(ctx context.Context, localAuthorId int64) error {
+	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "authorInfo"); err != nil {
+		return err
+	}
+	author, err := s.localAuthors.GetById(ctx, localAuthorId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerr.NewBusinessError(404, "本地作者不存在")
+		}
+		return fmt.Errorf("查询本地作者失败: %w", err)
+	}
+	if !author.AvatarStoreID.Valid {
+		return nil
+	}
+	return s.deleteAvatarByReference(ctx, author.AvatarStoreID.Int64, func(txCtx context.Context) error {
+		return s.localAuthors.UpdateAvatarStoreId(txCtx, localAuthorId, sql.NullInt64{})
+	})
+}
+
+// copyCappedFile 拷贝文件到目标路径（目标目录须已存在；上限 maxBytes 超限报错——读取侧
+// 截断到 max+1 字节判定）。源头像可在任意盘，跨卷 rename 不可行故恒 copy
+func copyCappedFile(sourceAbsPath, dstAbsPath string, maxBytes int64) error {
+	src, err := os.Open(sourceAbsPath)
+	if err != nil {
+		return pkgerr.NewBusinessError(400, fmt.Sprintf("打开头像源文件失败: %v", err))
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(dstAbsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("打开头像暂存文件失败: %w", err)
+	}
+	defer dst.Close()
+	n, err := io.Copy(dst, io.LimitReader(src, maxBytes+1))
+	if err != nil {
+		return fmt.Errorf("拷贝头像文件失败: %w", err)
+	}
+	if n > maxBytes {
+		return pkgerr.NewBusinessError(400, fmt.Sprintf("头像文件超过上限 %dMB", maxBytes/(1024*1024)))
+	}
+	return nil
+}
+
+// ===== 删除联动头像清理（siteAuthor/localAuthor 的 AvatarFileCleaner 实现） =====
+
+// DeleteAvatarStoreRows 删除联动的行面：在调用方删除事务内执行（ctx 携带事务连接）——读被删
+// 引用的头像行（含软删失效行——作者行消亡后其头像行即无主死行，一并物理删清不留回收站孤儿）
+// 取文件路径，再物理删行。调用契约：须在作者行删除之后调用，FK NO ACTION 下引用未释放时
+// 删行被外键拒绝。返回被删行的文件相对路径清单（供事务提交后删文件；行缺失返回空清单）
+func (s *Service) DeleteAvatarStoreRows(ctx context.Context, storeIds []int64) ([]string, error) {
+	if len(storeIds) == 0 {
+		return nil, nil
+	}
+	relPaths := make([]string, 0, len(storeIds))
+	for _, row := range s.storeOps.ListByIdsIncludeDeleted(ctx, storeIds) {
+		if row.FilePath.Valid && row.FilePath.String != "" {
+			relPaths = append(relPaths, row.FilePath.String)
+		}
+	}
+	if err := s.storeOps.DeleteUnscopedByIds(ctx, storeIds); err != nil {
+		return nil, fmt.Errorf("物理删头像 store 行失败: %w", err)
+	}
+	return relPaths, nil
+}
+
+// RemoveAvatarFiles 删除联动的文件面：事务提交后按 relPath 物理删头像文件（含 fsmonitor 操作
+// 抑制登记）。尽力而为——失败记日志留对账裁决，不阻断调用方删除链收尾
+func (s *Service) RemoveAvatarFiles(relPaths []string) {
+	if len(relPaths) == 0 {
+		return
+	}
+	workDir := s.workDir.GetWorkDir()
+	for _, rel := range relPaths {
+		s.removeAvatarFile(workDir, rel)
+	}
 }
 
 // acquire 在途去重登记：命中（该作者已在拉取中）返回 false。两触发面共用

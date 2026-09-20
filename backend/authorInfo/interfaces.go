@@ -36,6 +36,14 @@ type SiteAuthorStore interface {
 	UpdateAvatarStoreId(ctx context.Context, siteAuthorId int64, storeId sql.NullInt64) error
 }
 
+// LocalAuthorStore 本地作者行存取窄接口（localAuthor 模块实现）
+type LocalAuthorStore interface {
+	// GetById 查本地作者行（头像导入/移除入口：存在性校验与当前引用读取）
+	GetById(ctx context.Context, id int64) (*entity.LocalAuthor, error)
+	// UpdateAvatarStoreId 更新头像引用列（dbFromCtx 模式，可入导入编排事务；NULL=清除引用）
+	UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error
+}
+
 // StoreIngestor 提交点入库事务窄接口（persistentStore.Service 实现，四调用拆分见
 // backend/persistentStore/README.md「入库事务机制」）
 type StoreIngestor interface {
@@ -48,9 +56,12 @@ type StoreIngestor interface {
 
 // AvatarStoreOps 头像 persistent_store 行操作窄接口（persistentStore.Service 实现）
 type AvatarStoreOps interface {
-	// GetById 查 store 行（换头像删旧时读旧行文件路径）
+	// GetById 查活行 store 行（换头像删旧时读旧行文件路径）
 	GetById(ctx context.Context, id int64) (*entity.PersistentStore, error)
-	// DeleteUnscopedByIds 物理删 store 行（dbFromCtx 模式，可入换头像事务；不动文件）
+	// ListByIdsIncludeDeleted 按 ID 集合查 store 行（含软删行；删除联动读被引用头像行的文件
+	// 路径——被删作者的软删失效行同样须一并物理删清，不留无主死行）
+	ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*entity.PersistentStore
+	// DeleteUnscopedByIds 物理删 store 行（dbFromCtx 模式，可入换头像/删除联动事务；不动文件）
 	DeleteUnscopedByIds(ctx context.Context, ids []int64) error
 }
 

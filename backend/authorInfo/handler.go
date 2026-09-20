@@ -1,7 +1,6 @@
 package authorInfo
 
-// 作者个人信息 Handler：site 侧手动拉取入口（单条/批量）。local 侧导入入口
-// （SetLocalAuthorAvatar/RemoveLocalAuthorAvatar）属删除联动+local 导入阶段。
+// 作者个人信息 Handler：site 侧手动拉取入口（单条/批量）与 local 侧头像导入/移除入口。
 
 import (
 	"context"
@@ -31,4 +30,15 @@ func (h *Handler) FetchSiteAuthorsInfo(ctx context.Context, siteAuthorIds []int6
 		return model.HandleError[[]*SiteAuthorFetchItemResult](err)
 	}
 	return model.Success(results)
+}
+
+// SetLocalAuthorAvatar 为本地作者设置头像（源文件为前端文件对话框选取的绝对路径；换头像形态
+// 先删旧，失败不伤现有头像）
+func (h *Handler) SetLocalAuthorAvatar(ctx context.Context, localAuthorId int64, sourceAbsPath string) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.SetLocalAuthorAvatar(ctx, localAuthorId, sourceAbsPath))
+}
+
+// RemoveLocalAuthorAvatar 移除本地作者头像（显式破坏操作，前端二次确认）
+func (h *Handler) RemoveLocalAuthorAvatar(ctx context.Context, localAuthorId int64) *model.ApiResponse[any] {
+	return model.HandleVoid(h.svc.RemoveLocalAuthorAvatar(ctx, localAuthorId))
 }

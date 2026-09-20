@@ -19,6 +19,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
+	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/settings"
@@ -141,7 +142,7 @@ func (w *refFailingSiteAuthorStore) UpdateAvatarStoreId(ctx context.Context, sit
 }
 
 // fetchTestEnv 拉取编排测试环境：内存库（外键强制 + 完整迁移）+ 临时工作目录 + 真实
-// persistentStore/siteAuthor/settings 参与件 + 脚本化拉取替身
+// persistentStore/siteAuthor/localAuthor/settings 参与件 + 脚本化拉取替身
 type fetchTestEnv struct {
 	svc      *Service
 	db       *gorm.DB
@@ -149,6 +150,7 @@ type fetchTestEnv struct {
 	settings *settings.Service
 	fetcher  *scriptedFetcher
 	saSvc    *siteAuthor.Service
+	laSvc    *localAuthor.Service
 }
 
 func newFetchTestEnv(t *testing.T) *fetchTestEnv {
@@ -165,11 +167,13 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 		t.Fatalf("配置工作目录失败: %v", err)
 	}
 	saSvc := siteAuthor.NewService(siteAuthor.NewRepository(db), nil, nil, &txTransactor{db: db}, nil)
+	// localAuthor 参与件：拉取/导入测试只触及行查询与引用列，删除编排依赖传 nil
+	laSvc := localAuthor.NewService(localAuthor.NewRepository(db), &txTransactor{db: db}, nil, nil, nil)
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	fetcher := &scriptedFetcher{plan: map[string]fetchScript{}}
-	svc := NewService(saSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
+	svc := NewService(saSvc, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
 	svc.SetSiteAuthorFetcher(fetcher)
-	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc}
+	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc}
 }
 
 // seedSiteAuthor 建站点+站点作者种子行，返回作者行
@@ -444,7 +448,7 @@ func TestCommitIngestRollsBackStoreRowWhenRefUpdateFails(t *testing.T) {
 	}
 	// 以失败注入的仓储重建服务（其余参与件沿用测试环境）
 	wrapped := &refFailingSiteAuthorStore{Service: env.saSvc, failRefUpdate: true}
-	svc := NewService(wrapped, persistentStore.NewService(persistentStore.NewRepository(env.db), nil, func() string { return env.workDir }),
+	svc := NewService(wrapped, env.laSvc, persistentStore.NewService(persistentStore.NewRepository(env.db), nil, func() string { return env.workDir }),
 		persistentStore.NewService(persistentStore.NewRepository(env.db), nil, func() string { return env.workDir }),
 		env.settings, env.settings, &txTransactor{db: env.db})
 	svc.SetSiteAuthorFetcher(env.fetcher)

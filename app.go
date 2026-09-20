@@ -774,16 +774,21 @@ func (app *App) initBaseServices() {
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
 	app.SettingsService = settings.NewService(settingsFilePath)
 
-	// authorInfo 服务（作者个人信息拉取编排：site 侧元数据回写 + 头像四调用入库）。
-	// 拉取能力桥依赖插件加载器，经 SetSiteAuthorFetcher 在插件装配段延迟注入
+	// authorInfo 服务（作者个人信息编排：site 侧拉取主链元数据回写+头像四调用入库、local 侧
+	// 头像导入/移除、作者删除联动头像清理）。拉取能力桥依赖插件加载器，经 SetSiteAuthorFetcher
+	// 在插件装配段延迟注入
 	app.AuthorInfoService = authorInfo.NewService(
 		app.SiteAuthorService,      // SiteAuthorStore（目标行反查/元数据回写/引用列）
+		app.LocalAuthorService,     // LocalAuthorStore（local 头像导入：行校验/引用列）
 		app.PersistentStoreService, // StoreIngestor（四调用入库）
-		app.PersistentStoreService, // AvatarStoreOps（换头像删旧行）
+		app.PersistentStoreService, // AvatarStoreOps（换头像删旧行/删除联动行清理）
 		app.SettingsService,        // AuthorFetchSettings
 		app.SettingsService,        // WorkDirProvider
 		&dbTransactorAdapter{db: app.db},
 	)
+	// 删除联动接线：siteAuthor/localAuthor 删除编排经窄接口清理被删作者的头像行与文件
+	app.SiteAuthorService.SetAvatarFileCleaner(app.AuthorInfoService)
+	app.LocalAuthorService.SetAvatarFileCleaner(app.AuthorInfoService)
 
 	// 设置工作目录
 	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
