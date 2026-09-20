@@ -277,7 +277,7 @@ async function requestSiteAuthorSelectItemPage(page: IPage<SelectItem>, bounded:
             class="local-author-manage-left-search-table"
             toolbar-radius="var(--app-radius)"
             data-radius="var(--app-radius)"
-            data-key="id"
+            data-key="author.id"
             :operation-button="operationButton"
             :thead="localAuthorThead"
             :search="localAuthorQueryPageFn"
