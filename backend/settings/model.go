@@ -13,6 +13,7 @@ type Settings struct {
 	BackupGovernance   BackupGovernanceSettings `json:"backupGovernance" koanf:"backupGovernance"`
 	ExportSettings     ExportSettings           `json:"exportSettings" koanf:"exportSettings"`
 	ShareSettings      ShareSettings            `json:"shareSettings" koanf:"shareSettings"`
+	AuthorSettings     AuthorSettings           `json:"authorSettings" koanf:"authorSettings"`
 }
 
 // ImportSettings 导入相关设置
@@ -81,6 +82,13 @@ type ShareSettings struct {
 	RelayAddress string `json:"relayAddress" koanf:"relayAddress"`
 }
 
+// AuthorSettings 作者信息相关设置
+type AuthorSettings struct {
+	// AutoFetchInfo 作品入库后自动拉取站点作者信息（元数据+头像）开关。只控制自动触发面，
+	// 手动拉取不受限制；默认开
+	AutoFetchInfo bool `json:"autoFetchInfo" koanf:"autoFetchInfo"`
+}
+
 // DefaultShareRelayAddress 官方中继占位地址（正式部署前为占位值，用户可在设置页改指社区自建中继）
 const DefaultShareRelayAddress = "relay.library-squirrel.cn"
 
@@ -134,6 +142,9 @@ func NewSettings() *Settings {
 		},
 		ShareSettings: ShareSettings{
 			RelayAddress: DefaultShareRelayAddress,
+		},
+		AuthorSettings: AuthorSettings{
+			AutoFetchInfo: true,
 		},
 	}
 }

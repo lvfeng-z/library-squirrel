@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -89,6 +90,10 @@ const (
 	CapabilityWorkOrderQuery = "workOrderQuery"
 	// CapabilityWorkSetRelationQuery 作品集父集关系查询能力（插件实现 sdkdto.WorkSetRelationQuerier 可选接口）。
 	CapabilityWorkSetRelationQuery = "workSetRelationQuery"
+	// CapabilitySiteAuthorFetch 站点作者信息拉取能力（插件实现 sdkdto.SiteAuthorFetcher 可选接口）。
+	// 主程序按请求 siteKey 能力广播路由——遍历声明本能力的已激活插件逐个调用，插件归属
+	// 自判（未归属经 PermissionDenied 表达，主程序静默跳过），命中一个即止
+	CapabilitySiteAuthorFetch = "siteAuthorFetch"
 	// CapabilityResourceTypeProvider 自定义资源类型提供能力(插件 manifest 声明 resourceTypes 段;
 	// 主程序加载时解析并注册进 ResourceTypeRegistry,使插件 Create 可声明该类型资源)。
 	CapabilityResourceTypeProvider = "resourceTypeProvider"
@@ -99,6 +104,11 @@ type CapabilityQuerier interface {
 	GetCapabilities(pluginPublicId string) []string
 }
 
+// ActivePluginLister 枚举当前已激活插件进程的公开 ID（Loader 实现，供能力广播路由遍历）。
+type ActivePluginLister interface {
+	ListActivePluginIds() []string
+}
+
 // GetCapabilities 返回插件声明的可选能力集合（供主程序决定是否调用对应能力；未加载/未声明返回 nil）。
 func (l *Loader) GetCapabilities(pluginPublicId string) []string {
 	l.mu.RLock()
@@ -107,6 +117,19 @@ func (l *Loader) GetCapabilities(pluginPublicId string) []string {
 		return entry.info.Capabilities
 	}
 	return nil
+}
+
+// ListActivePluginIds 返回当前已激活插件进程的公开 ID 清单（字典序——广播路由按序遍历，
+// 「命中一个即止」的归属判定须可复现；未激活返回空清单）
+func (l *Loader) ListActivePluginIds() []string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	ids := make([]string, 0, len(l.processes))
+	for id := range l.processes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // hasCapability 判断插件是否声明了指定能力。

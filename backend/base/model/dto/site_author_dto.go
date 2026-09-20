@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"database/sql"
+
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -96,6 +98,24 @@ type RankedSiteAuthorWithWorkId struct {
 	RoleName  string        `json:"roleName"`
 	SortOrder int           `json:"sortOrder"`
 	WorkId    int64         `json:"workId"`
+}
+
+// SiteAuthorFetchTarget 站点作者信息拉取目标行（site_author JOIN site 的窄投影）：
+// 拉取编排据此路由（siteKey + 站点侧作者 id）并做头像变更检测（存量来源 URL 与 store 行引用）。
+// 由按 DB id 批量反查产出，目标集含跨站引用作者（站点键按行各自解析）
+type SiteAuthorFetchTarget struct {
+	// ID site_author 行 DB id（在途去重键、暂存作用域键）
+	ID int64 `json:"id"`
+	// SiteID 站点行 id（元数据回写 upsert 的复合键段）
+	SiteID int64 `json:"siteId"`
+	// SiteKey 站点身份键（能力广播路由的归属判据；空=站点行缺失，该行不可路由）
+	SiteKey string `json:"siteKey"`
+	// SiteAuthorID 站点侧作者 id（拉取请求参数）
+	SiteAuthorID string `json:"siteAuthorId"`
+	// AvatarSourceURL 存量头像来源 URL（变更检测比对键；NULL=从未回报）
+	AvatarSourceURL sql.NullString `json:"avatarSourceUrl"`
+	// AvatarStoreID 存量头像 persistent_store 行引用（NULL=无头像文件）
+	AvatarStoreID sql.NullInt64 `json:"avatarStoreId"`
 }
 
 // ToSiteAuthorEntity 将 SiteAuthorDTO 转换为 SiteAuthor 实体

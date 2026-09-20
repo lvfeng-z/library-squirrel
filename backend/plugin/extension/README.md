@@ -23,13 +23,14 @@
 | `static_resource_service.go` | 插件静态资源路径映射与文件服务 |
 | `wails_pusher.go` | 前端扩展事件推送器（插件→前端事件经 Wails Emit 转发） |
 | `workset_order_fetcher.go` / `workset_relation_fetcher.go` | capabilities 声明驱动的可选能力获取器（实现 work 模块定义的 `WorkSetOrderFetcher`/`WorkSetRelationFetcher`；插件未声明对应能力则跳过不调用） |
+| `site_author_fetcher.go` | 站点作者信息拉取能力桥（实现 authorInfo 模块定义的 `SiteAuthorFetcher`；能力广播路由内嵌——遍历声明 `siteAuthorFetch` 能力的已激活插件，插件按请求 siteKey 归属自判，未归属 PermissionDenied 静默跳过、命中一个即止） |
 | `convert.go` | 任务实体 → SDK `TaskDTO` 跨进程序列化组装（字段集不随表拆分变化） |
 | `process_group_windows.go` / `process_group_other.go` | 子进程 Job Object 归组（主进程异常退出时终止插件子进程，Windows） |
 
 ## 依赖关系
 
 - 依赖：插件 SDK（transport/dto/gen 契约与握手）；库查询核心经 `LibraryQueryDeps`（装配处 app.go 构造一次、全体插件共享）注入 14 个域只读接口——work/site/resource（含 resource_store）/persistentStore/localAuthor/siteAuthor/localTag/siteTag/reWorkTag/workSet/reWorkWorkSet/reWorkSetWorkSet 各域 repository 与 settings.Service（工作目录读取）
-- 被依赖：app.go 装配（进程加载、`NewLibraryQueryProvider`）；download/taskManager（TaskExecutor 任务执行）；work 模块（作品集原站序/父集关系获取器）；前端（前端扩展声明与静态资源）
+- 被依赖：app.go 装配（进程加载、`NewLibraryQueryProvider`）；download/taskManager（TaskExecutor 任务执行）；work 模块（作品集原站序/父集关系获取器）；authorInfo 模块（站点作者信息拉取能力桥）；前端（前端扩展声明与静态资源）
 
 ## 关键设计
 

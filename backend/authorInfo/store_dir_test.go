@@ -10,9 +10,10 @@ import (
 
 // TestRegisterStoreDirs 注册面锚定：两条头像子树以属主 authorInfo 登记，路径与既有
 // 占位注册等价（store/avatar/local、store/avatar/site 不变——属主转移不改变子树范围，
-// 对账扫描根与白名单口径不受影响）。
+// 对账扫描根与白名单口径不受影响）。注册只发生在装配期（单一窗口，无重置入口），
+// 测试进程 TestMain 已按生产入口注册，此处容忍重复注册哨兵。
 func TestRegisterStoreDirs(t *testing.T) {
-	if err := RegisterStoreDirs(); err != nil {
+	if err := RegisterStoreDirs(); err != nil && !errors.Is(err, storeRegistry.ErrDuplicateDir) {
 		t.Fatalf("注册作者头像存储目录失败: %v", err)
 	}
 	want := []storeRegistry.StoreDir{

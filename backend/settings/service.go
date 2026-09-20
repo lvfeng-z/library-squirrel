@@ -70,6 +70,9 @@ func defaultSettings() *Settings {
 		ShareSettings: ShareSettings{
 			RelayAddress: DefaultShareRelayAddress,
 		},
+		AuthorSettings: AuthorSettings{
+			AutoFetchInfo: true,
+		},
 	}
 }
 
@@ -144,6 +147,12 @@ func (s *Service) GetBackupGovernanceRetentionDays() int {
 // GetMergeStrategy 获取合并产物挂载策略（实现 resource.MergeSettingsReader 接口）
 func (s *Service) GetMergeStrategy() string {
 	return s.GetSettings().MergeSettings.Strategy
+}
+
+// AuthorAutoFetchInfoEnabled 获取作品入库后自动拉取站点作者信息开关（实现
+// authorInfo.AuthorFetchSettings 接口；只控制自动触发面，手动拉取不受限）
+func (s *Service) AuthorAutoFetchInfoEnabled() bool {
+	return s.GetSettings().AuthorSettings.AutoFetchInfo
 }
 
 // SaveSettings 保存设置变更

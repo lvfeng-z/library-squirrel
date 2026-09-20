@@ -2,6 +2,7 @@ package siteAuthor
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -50,6 +51,10 @@ type Repository interface {
 	BatchUpsert(ctx context.Context, authors []*entity.SiteAuthor) error
 	// ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
 	ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error)
+	// ListFetchTargetsByIds 批量反查信息拉取目标行（JOIN site 反查 site_key；authorInfo 拉取编排消费）
+	ListFetchTargetsByIds(ctx context.Context, ids []int64) ([]*dto.SiteAuthorFetchTarget, error)
+	// UpdateAvatarStoreId 更新头像引用列（可入拉取编排事务；NULL=清除引用）
+	UpdateAvatarStoreId(ctx context.Context, siteAuthorId int64, storeId sql.NullInt64) error
 }
 
 // Transactor 数据库事务执行器（删除编排用）
@@ -399,6 +404,22 @@ func (s *Service) BatchUpsert(ctx context.Context, authors []*entity.SiteAuthor)
 // ListBySiteAndSiteAuthorIDs 根据站点ID和站点作者ID列表批量查询
 func (s *Service) ListBySiteAndSiteAuthorIDs(ctx context.Context, siteId int64, siteAuthorIds []string) ([]*entity.SiteAuthor, error) {
 	return s.repo.ListBySiteAndSiteAuthorIDs(ctx, siteId, siteAuthorIds)
+}
+
+// Upsert 原子插入或更新站点作者（插件权威域白名单列覆盖语义——拉取元数据回写经此复用，
+// 与任务链重拉一套覆盖语义）
+func (s *Service) Upsert(ctx context.Context, author *entity.SiteAuthor) error {
+	return s.repo.Upsert(ctx, author)
+}
+
+// ListFetchTargetsByIds 批量反查站点作者信息拉取目标行（authorInfo 拉取编排消费）
+func (s *Service) ListFetchTargetsByIds(ctx context.Context, ids []int64) ([]*dto.SiteAuthorFetchTarget, error) {
+	return s.repo.ListFetchTargetsByIds(ctx, ids)
+}
+
+// UpdateAvatarStoreId 更新站点作者头像引用列（可入拉取编排事务；NULL=清除引用）
+func (s *Service) UpdateAvatarStoreId(ctx context.Context, siteAuthorId int64, storeId sql.NullInt64) error {
+	return s.repo.UpdateAvatarStoreId(ctx, siteAuthorId, storeId)
 }
 
 // 错误定义

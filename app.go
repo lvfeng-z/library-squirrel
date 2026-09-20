@@ -108,6 +108,7 @@ type App struct {
 	TaskManagerService      *taskManager.Manager
 	SiteBrowserService      *siteBrowser.Service
 	PersistentStoreService  *persistentStore.Service
+	AuthorInfoService       *authorInfo.Service
 	ExportService           *export.Service
 	ShareService            *share.Service
 	ShareLockRegistry       shareLock.ShareLockRegistry
@@ -192,6 +193,7 @@ type App struct {
 	FsmonitorHandler             *fsmonitor.Handler
 	BackupGovernanceHandler      *backupGovernance.Handler
 	WorkDirGuardHandler          *workdirGuard.Handler
+	AuthorInfoHandler            *authorInfo.Handler
 	WindowHandler                *window.Handler
 }
 
@@ -772,6 +774,17 @@ func (app *App) initBaseServices() {
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
 	app.SettingsService = settings.NewService(settingsFilePath)
 
+	// authorInfo 服务（作者个人信息拉取编排：site 侧元数据回写 + 头像四调用入库）。
+	// 拉取能力桥依赖插件加载器，经 SetSiteAuthorFetcher 在插件装配段延迟注入
+	app.AuthorInfoService = authorInfo.NewService(
+		app.SiteAuthorService,      // SiteAuthorStore（目标行反查/元数据回写/引用列）
+		app.PersistentStoreService, // StoreIngestor（四调用入库）
+		app.PersistentStoreService, // AvatarStoreOps（换头像删旧行）
+		app.SettingsService,        // AuthorFetchSettings
+		app.SettingsService,        // WorkDirProvider
+		&dbTransactorAdapter{db: app.db},
+	)
+
 	// 设置工作目录
 	app.StoreFileHandler.SetWorkDir(app.SettingsService.GetWorkDir())
 
@@ -1222,6 +1235,9 @@ func (app *App) initAdvancedServices() error {
 	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
 	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
+	// 注入站点作者信息拉取能力（plugin 能力桥提供，广播路由内嵌于实现侧）+ work 入库后自动触发面接线
+	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader))
+	app.WorkService.SetSiteAuthorRefreshScheduler(app.AuthorInfoService)
 
 	// 深链协议自注册（便携分发：HKCU 幂等自写；安装版 HKLM 由 NSIS 管理；失败仅记日志不阻断）
 	if err := share.EnsureShareProtocolRegistered(); err != nil {
@@ -1546,6 +1562,7 @@ func (app *App) initHandlers() {
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)
+	app.AuthorInfoHandler = authorInfo.NewHandler(app.AuthorInfoService)
 	// 主窗口句柄实时获取（构造时窗口尚未创建，运行时通过 mainWindow 实时读取原生句柄）
 	app.WindowHandler = window.NewHandler(window.NewService(func() uintptr {
 		if app.mainWindow == nil {

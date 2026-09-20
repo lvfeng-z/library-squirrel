@@ -188,6 +188,14 @@ type WorkSetRelationFetcher interface {
 	QueryWorkSetRelations(ctx context.Context, pluginPublicId, extensionId string, siteId int64, siteWorkSetId string) ([]*sdkdto.WorkSetRelationEntry, error)
 }
 
+// SiteAuthorRefreshScheduler 站点作者信息刷新调度（authorInfo 模块实现，作品入库后自动拉取
+// 作者元数据+头像）。契约：实现须非阻塞（内部自行起 goroutine），事务内调用安全；nil（未注入）时跳过
+type SiteAuthorRefreshScheduler interface {
+	// OnSiteAuthorsUpserted 站点作者已 upsert 完成通知——只传作者 DB ID 集合（返回集含跨站引用
+	// 作者，其站点键 ≠ 作品站点，由实现侧按行 JOIN site 反查各自 site_key）
+	OnSiteAuthorsUpserted(siteAuthorIds []int64)
+}
+
 // LocalTagFindOrCreator 本地标签查找或创建接口
 type LocalTagFindOrCreator interface {
 	// GetByNames 根据名称列表批量查询
@@ -390,6 +398,9 @@ type Service struct {
 	workSetOrderFetcher    WorkSetOrderFetcher
 	workSetRelationFetcher WorkSetRelationFetcher
 
+	// 站点作者信息刷新调度（入库后自动拉取，nil 时跳过；经 SetSiteAuthorRefreshScheduler 延迟注入）
+	siteAuthorRefreshScheduler SiteAuthorRefreshScheduler
+
 	// 逻辑删除（SoftDeleteWork）所需配置
 	runningTaskStopper RunningTaskStopper // 可选，nil 时跳过任务停止
 	workLock           WorkLockChecker    // 软删除前置作品锁守卫（作品被分享拉取持有时拒绝）
@@ -485,6 +496,12 @@ func (s *Service) SetWorkSetOrderFetcher(f WorkSetOrderFetcher) {
 // SetWorkSetRelationFetcher 延迟注入作品集父集关系获取能力（同 SetWorkSetOrderFetcher 的延迟注入理由）
 func (s *Service) SetWorkSetRelationFetcher(f WorkSetRelationFetcher) {
 	s.workSetRelationFetcher = f
+}
+
+// SetSiteAuthorRefreshScheduler 延迟注入站点作者信息刷新调度（authorInfo 模块在 work 之后
+// 创建其能力依赖，经此 setter 接线；未注入时入库链不触发作者信息拉取）
+func (s *Service) SetSiteAuthorRefreshScheduler(scheduler SiteAuthorRefreshScheduler) {
+	s.siteAuthorRefreshScheduler = scheduler
 }
 
 // SetRunningTaskStopper 延迟注入运行中任务停止器
@@ -1260,6 +1277,11 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 	siteAuthorDBIds, err := s.upsertSiteAuthors(ctx, workResp.SiteAuthors, siteId)
 	if err != nil {
 		return 0, fmt.Errorf("upsert 站点作者失败: %w", err)
+	}
+	// 站点作者信息刷新调度（authorInfo 实现，非阻塞契约——内部自行起 goroutine，本事务
+	// 不等待；goroutine 内首次库读在单连接上排队至本事务提交后，读到的是已提交状态）
+	if s.siteAuthorRefreshScheduler != nil && len(siteAuthorDBIds) > 0 {
+		s.siteAuthorRefreshScheduler.OnSiteAuthorsUpserted(siteAuthorDBIds)
 	}
 
 	siteTagDBIds, err := s.upsertSiteTags(ctx, workResp.SiteTags, siteId)

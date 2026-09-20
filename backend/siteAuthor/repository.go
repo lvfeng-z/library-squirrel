@@ -2,6 +2,7 @@ package siteAuthor
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -145,6 +146,34 @@ func (r *SiteAuthorRepository) ListBySiteAuthorIds(ctx context.Context, siteAuth
 		return nil, err
 	}
 	return results, nil
+}
+
+// ListFetchTargetsByIds 批量反查站点作者信息拉取目标行（JOIN site 反查 site_key——目标集含
+// 跨站引用作者，站点键须按行各自解析）。LEFT JOIN：站点行缺失的作者行照常返回（site_key
+// 为空，由调用方按不可路由跳过——站点表为注册表投影，正常不缺失）。行缺失不报错，返回交集
+func (r *SiteAuthorRepository) ListFetchTargetsByIds(ctx context.Context, ids []int64) ([]*dto.SiteAuthorFetchTarget, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []*dto.SiteAuthorFetchTarget
+	err := r.dbFromCtx(ctx).WithContext(ctx).Raw(`
+		SELECT t1.id, t1.site_id, t2.site_key, t1.site_author_id, t1.avatar_source_url, t1.avatar_store_id
+		FROM site_author t1
+		LEFT JOIN site t2 ON t1.site_id = t2.id
+		WHERE t1.id IN ?
+	`, ids).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// UpdateAvatarStoreId 更新站点作者头像引用列（dbFromCtx 模式，可安全用于拉取编排事务内；
+// NULL=清除引用）。引用域列仅拉取/导入编排事务内写，不进 upsert 覆盖域
+func (r *SiteAuthorRepository) UpdateAvatarStoreId(ctx context.Context, siteAuthorId int64, storeId sql.NullInt64) error {
+	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor)).
+		Where("id = ?", siteAuthorId).
+		Updates(map[string]interface{}{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表

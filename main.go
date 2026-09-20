@@ -145,6 +145,7 @@ func main() {
 			application.NewService(app.FsmonitorHandler),
 			application.NewService(app.BackupGovernanceHandler),
 			application.NewService(app.WorkDirGuardHandler),
+			application.NewService(app.AuthorInfoHandler),
 			application.NewService(app.WindowHandler),
 		},
 		Assets: application.AssetOptions{
