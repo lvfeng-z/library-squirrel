@@ -52,6 +52,36 @@ type fetchScript struct {
 	errAfterMeta error
 }
 
+// orderTrace 编排调用次序记录（锚定「先解析目标行、再算候选」的机检载体；自动触发面在
+// goroutine 内调用，故带锁）
+type orderTrace struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (t *orderTrace) add(event string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = append(t.events, event)
+}
+
+func (t *orderTrace) snapshot() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.events...)
+}
+
+// countOf 事件出现次数
+func (t *orderTrace) countOf(event string) int {
+	n := 0
+	for _, e := range t.snapshot() {
+		if e == event {
+			n++
+		}
+	}
+	return n
+}
+
 // scriptedFetcher 脚本化拉取替身：按站点侧作者 id 取脚本回放，记录调用、显选键与字节下发次数
 type scriptedFetcher struct {
 	mu         sync.Mutex
@@ -59,8 +89,10 @@ type scriptedFetcher struct {
 	chosenKeys []string
 	dataChunks int
 	plan       map[string]fetchScript
-	// candidates 候选清单（默认单一候选：无冲突态），多候选场景按需替换
-	candidates []*dto.PluginCandidate
+	// candidatesBySite 各站点键的候选清单（缺项=该站点零候选，即无冲突态）
+	candidatesBySite map[string][]*dto.PluginCandidate
+	// trace 编排次序记录（非 nil 时逐站点枚举候选记事件，供次序断言）
+	trace *orderTrace
 }
 
 func (f *scriptedFetcher) FetchSiteAuthorInfo(_ context.Context, siteKey, siteAuthorId, chosenPluginPublicId string,
@@ -95,16 +127,26 @@ func (f *scriptedFetcher) FetchSiteAuthorInfo(_ context.Context, siteKey, siteAu
 	return nil
 }
 
-func (f *scriptedFetcher) ListSiteAuthorFetchCandidates(context.Context) ([]*dto.PluginCandidate, error) {
+func (f *scriptedFetcher) ListSiteAuthorFetchCandidates(_ context.Context, siteKey string) ([]*dto.PluginCandidate, error) {
+	if f.trace != nil {
+		f.trace.add("candidates:" + siteKey)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.candidates, nil
+	return f.candidatesBySite[siteKey], nil
 }
 
 func (f *scriptedFetcher) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.calls)
+}
+
+// chosenKeysSnapshot 逐次拉取携带的显选键（按调用序）
+func (f *scriptedFetcher) chosenKeysSnapshot() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.chosenKeys...)
 }
 
 // lastChosenKey 最近一次拉取携带的显选键（空串 = 未显选）
@@ -142,7 +184,7 @@ func (f *blockingFetcher) FetchSiteAuthorInfo(_ context.Context, _, _, _ string,
 	return nil
 }
 
-func (f *blockingFetcher) ListSiteAuthorFetchCandidates(context.Context) ([]*dto.PluginCandidate, error) {
+func (f *blockingFetcher) ListSiteAuthorFetchCandidates(context.Context, string) ([]*dto.PluginCandidate, error) {
 	return nil, nil
 }
 
@@ -166,8 +208,20 @@ func (w *refFailingSiteAuthorStore) UpdateAvatarStoreId(ctx context.Context, sit
 	return w.Service.UpdateAvatarStoreId(ctx, siteAuthorId, storeId)
 }
 
+// tracingSiteAuthorStore 记录目标行反查事件的 siteAuthor 包装：与候选枚举事件共用一个次序记录，
+// 供「先解析目标行、再算候选」的次序断言
+type tracingSiteAuthorStore struct {
+	*siteAuthor.Service
+	trace *orderTrace
+}
+
+func (w *tracingSiteAuthorStore) ListFetchTargetsByIds(ctx context.Context, ids []int64) ([]*dto.SiteAuthorFetchTarget, error) {
+	w.trace.add("targets")
+	return w.Service.ListFetchTargetsByIds(ctx, ids)
+}
+
 // fetchTestEnv 拉取编排测试环境：内存库（外键强制 + 完整迁移）+ 临时工作目录 + 真实
-// persistentStore/siteAuthor/localAuthor/settings 参与件 + 脚本化拉取替身
+// persistentStore/siteAuthor/localAuthor/settings 参与件 + 脚本化拉取替身 + 编排次序记录
 type fetchTestEnv struct {
 	svc      *Service
 	db       *gorm.DB
@@ -176,6 +230,7 @@ type fetchTestEnv struct {
 	fetcher  *scriptedFetcher
 	saSvc    *siteAuthor.Service
 	laSvc    *localAuthor.Service
+	trace    *orderTrace
 }
 
 func newFetchTestEnv(t *testing.T) *fetchTestEnv {
@@ -195,19 +250,26 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 	// localAuthor 参与件：拉取/导入测试只触及行查询与引用列，删除编排依赖传 nil
 	laSvc := localAuthor.NewService(localAuthor.NewRepository(db), &txTransactor{db: db}, nil, nil, nil)
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
+	trace := &orderTrace{}
 	fetcher := &scriptedFetcher{
-		plan:       map[string]fetchScript{},
-		candidates: []*dto.PluginCandidate{{PluginPublicId: "p-a", PluginName: "p-a"}},
+		plan:             map[string]fetchScript{},
+		candidatesBySite: map[string][]*dto.PluginCandidate{"pixiv": {{PluginPublicId: "p-a", PluginName: "p-a"}}},
+		trace:            trace,
 	}
-	svc := NewService(saSvc, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
+	svc := NewService(&tracingSiteAuthorStore{Service: saSvc, trace: trace}, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
 	svc.SetSiteAuthorFetcher(fetcher)
-	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc}
+	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc, trace: trace}
 }
 
-// seedSiteAuthor 建站点+站点作者种子行，返回作者行
+// fetchChoice 构造单站点显选键
+func fetchChoice(siteKey, pluginPublicId string) []*dto.SiteAuthorFetchChoice {
+	return []*dto.SiteAuthorFetchChoice{{SiteKey: siteKey, PluginPublicId: pluginPublicId}}
+}
+
+// seedSiteAuthor 建站点+站点作者种子行，返回作者行（同站点多作者时可重复调用：站点行已存在即复用）
 func (env *fetchTestEnv) seedSiteAuthor(t *testing.T, siteKey, siteAuthorId string, mutate func(row *entity.SiteAuthor)) *entity.SiteAuthor {
 	t.Helper()
-	if err := env.db.Exec("INSERT INTO site (site_key, site_name, create_time, update_time) VALUES (?, ?, 0, 0)",
+	if err := env.db.Exec("INSERT OR IGNORE INTO site (site_key, site_name, create_time, update_time) VALUES (?, ?, 0, 0)",
 		siteKey, siteKey).Error; err != nil {
 		t.Fatalf("建站点种子失败: %v", err)
 	}
@@ -306,7 +368,7 @@ func TestManualFetchWritesMetaWhitelistAndIngestsAvatar(t *testing.T) {
 		chunks: [][]byte{avatarBytes[:6], avatarBytes[6:]},
 	}
 
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), ""); err != nil {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil); err != nil {
 		t.Fatalf("手动拉取失败: %v", err)
 	}
 
@@ -369,7 +431,7 @@ func TestFetchSkipsAvatarWhenUrlUnchanged(t *testing.T) {
 		chunks: [][]byte{[]byte("should-not-be-consumed")},
 	}
 
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), ""); err != nil {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil); err != nil {
 		t.Fatalf("拉取失败: %v", err)
 	}
 	if got := env.fetcher.dataChunkCount(); got != 0 {
@@ -408,7 +470,7 @@ func TestAvatarUrlChangeReplacesOldAvatar(t *testing.T) {
 		chunks: [][]byte{[]byte("new-avatar")},
 	}
 
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), ""); err != nil {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil); err != nil {
 		t.Fatalf("拉取失败: %v", err)
 	}
 	if n := env.countStoreRows(t, oldRel); n != 0 {
@@ -442,7 +504,7 @@ func TestStreamFailureAfterMetaLeavesNoResourceTrace(t *testing.T) {
 		errAfterMeta: errors.New("模拟连接中断"),
 	}
 
-	_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "")
+	_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil)
 	if err == nil || !strings.Contains(err.Error(), "模拟连接中断") {
 		t.Fatalf("应上抛流中断错误, 实际 %v", err)
 	}
@@ -482,7 +544,7 @@ func TestCommitIngestRollsBackStoreRowWhenRefUpdateFails(t *testing.T) {
 	svc.SetSiteAuthorFetcher(env.fetcher)
 
 	newRel := "store/avatar/site/2e/pixiv_12345.jpg"
-	if _, err := svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), ""); err == nil {
+	if _, err := svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil); err == nil {
 		t.Fatal("写引用列失败应上抛")
 	}
 	if n := env.countStoreRows(t, newRel); n != 0 {
@@ -509,7 +571,7 @@ func TestInFlightDedupSharedAcrossFaces(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "")
+		_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil)
 		done <- err
 	}()
 	select {
@@ -519,11 +581,11 @@ func TestInFlightDedupSharedAcrossFaces(t *testing.T) {
 	}
 
 	// 再次手动：在途拒绝
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), ""); err == nil || !strings.Contains(err.Error(), "正在拉取") {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil); err == nil || !strings.Contains(err.Error(), "正在拉取") {
 		t.Fatalf("在途作者手动拉取应拒绝, 实际 %v", err)
 	}
 	// 批量：在途记跳过
-	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, "")
+	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, nil)
 	if err != nil {
 		t.Fatalf("批量拉取失败: %v", err)
 	}
@@ -591,7 +653,7 @@ func TestFetchRejectsBadAvatarFormat(t *testing.T) {
 		meta:   metaOf("名", "", "", "https://img.example/1.exe", "exe"),
 		chunks: [][]byte{[]byte("MZ")},
 	}
-	_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "")
+	_, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil)
 	if err == nil || !strings.Contains(err.Error(), "白名单") {
 		t.Fatalf("白名单外格式应中止, 实际 %v", err)
 	}
@@ -609,10 +671,10 @@ func TestManualFetchUnknownAuthor(t *testing.T) {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
 	env := newFetchTestEnv(t)
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), 999, ""); err == nil || !strings.Contains(err.Error(), "不存在") {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), 999, nil); err == nil || !strings.Contains(err.Error(), "不存在") {
 		t.Fatalf("不存在作者应显式报错, 实际 %v", err)
 	}
-	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{999}, "")
+	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{999}, nil)
 	if err != nil {
 		t.Fatalf("批量入口不应整体失败: %v", err)
 	}
@@ -630,26 +692,30 @@ func multiCandidatePlugins() []*dto.PluginCandidate {
 	}
 }
 
-// TestManualFetchConflictBeforePluginCall 多候选且未显选：单条触发返回冲突载荷（候选清单原样
-// 交回）且在任何插件调用前收口——未调用能力桥、未回写元数据、无冲突以外的错误
-func TestManualFetchConflictBeforePluginCall(t *testing.T) {
+// TestManualFetchConflictAfterTargetResolution 多候选且未显选：单条触发返回冲突载荷（候选清单
+// 原样交回、站点键随组带回）且在任何插件调用前收口——未调用能力桥、未回写元数据；
+// 冲突判定在解析目标行之后（次序以事件记录机检：目标行反查先于候选枚举）
+func TestManualFetchConflictAfterTargetResolution(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
 	env := newFetchTestEnv(t)
 	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
-	env.fetcher.candidates = multiCandidatePlugins()
+	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 	env.fetcher.plan["12345"] = fetchScript{meta: metaOf("不应到达", "", "", "", "")}
 
-	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "")
+	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), nil)
 	if err != nil {
 		t.Fatalf("冲突不是错误: %v", err)
 	}
-	if outcome.Conflict == nil || !outcome.Conflict.Conflict {
-		t.Fatalf("应返回冲突载荷, 实际 %+v", outcome)
+	if len(outcome.Conflicts) != 1 || !outcome.Conflicts[0].Conflict {
+		t.Fatalf("应返回一组冲突载荷, 实际 %+v", outcome)
 	}
-	if len(outcome.Conflict.Candidates) != 2 || outcome.Conflict.Candidates[0].PluginPublicId != "p-a" {
-		t.Fatalf("候选清单应原样交回（首位=默认选中项）, 实际 %+v", outcome.Conflict.Candidates)
+	if outcome.Conflicts[0].SiteKey != "pixiv" {
+		t.Fatalf("冲突组应携带站点键, 实际 %+v", outcome.Conflicts[0])
+	}
+	if len(outcome.Conflicts[0].Candidates) != 2 || outcome.Conflicts[0].Candidates[0].PluginPublicId != "p-a" {
+		t.Fatalf("候选清单应原样交回（首位=默认选中项）, 实际 %+v", outcome.Conflicts[0].Candidates)
 	}
 	if got := env.fetcher.callCount(); got != 0 {
 		t.Fatalf("冲突路径不应调用插件, 实际 %d 次", got)
@@ -657,30 +723,105 @@ func TestManualFetchConflictBeforePluginCall(t *testing.T) {
 	if got := env.loadSiteAuthor(t, row.GetID()).AuthorName.String; got != "旧名" {
 		t.Fatalf("冲突路径不应回写元数据, 实际 %v", got)
 	}
+	// 次序机检：候选依赖站点键，站点键须解析目标行才拿到
+	events := env.trace.snapshot()
+	targetIdx, candidatesIdx := -1, -1
+	for i, event := range events {
+		if event == "targets" && targetIdx < 0 {
+			targetIdx = i
+		}
+		if event == "candidates:pixiv" && candidatesIdx < 0 {
+			candidatesIdx = i
+		}
+	}
+	if targetIdx < 0 || candidatesIdx < 0 || targetIdx > candidatesIdx {
+		t.Fatalf("冲突判定须在解析目标行之后（事件序 %v）", events)
+	}
 }
 
-// TestBatchFetchConflictAskedOnce 批量触发遇多候选未显选：整批前置返回一次冲突载荷（不逐作者
-// 询问、不落逐条结果），未调用任何插件
-func TestBatchFetchConflictAskedOnce(t *testing.T) {
+// TestManualFetchUnknownAuthorSkipsCandidateEnum 目标行缺失：候选枚举不发生（冲突判定在解析
+// 目标行之后，解析失败即收口），零候选枚举/零插件调用
+func TestManualFetchUnknownAuthorSkipsCandidateEnum(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
 	env := newFetchTestEnv(t)
-	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
-	env.fetcher.candidates = multiCandidatePlugins()
+	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 
-	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID(), 999}, "")
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), 999, nil); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("不存在作者应显式报错, 实际 %v", err)
+	}
+	if got := env.trace.countOf("candidates:pixiv"); got != 0 {
+		t.Fatalf("目标行缺失不应枚举候选, 实际 %d 次", got)
+	}
+	if got := env.fetcher.callCount(); got != 0 {
+		t.Fatalf("目标行缺失不应调用插件, 实际 %d 次", got)
+	}
+}
+
+// TestBatchFetchConflictGroupedBySite 批量含两站点、各站多候选未显选：冲突按站点分组整批交回
+// ——同站点只枚举一次候选（只问一次）、异站点各一组；带逐站点显选重发后无冲突，各作者的拉取
+// 各按本站点显选下达能力桥（一个显选键不再对另一站点失效）
+func TestBatchFetchConflictGroupedBySite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	env := newFetchTestEnv(t)
+	pixivA := env.seedSiteAuthor(t, "pixiv", "a1", nil)
+	pixivB := env.seedSiteAuthor(t, "pixiv", "a2", nil)
+	bili := env.seedSiteAuthor(t, "bilibili", "b1", nil)
+	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
+	env.fetcher.candidatesBySite["bilibili"] = multiCandidatePlugins()
+	ids := []int64{pixivA.GetID(), pixivB.GetID(), bili.GetID()}
+
+	outcome, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), ids, nil)
 	if err != nil {
 		t.Fatalf("冲突不是错误: %v", err)
 	}
-	if outcome.Conflict == nil || !outcome.Conflict.Conflict {
-		t.Fatalf("应返回冲突载荷, 实际 %+v", outcome)
+	if len(outcome.Conflicts) != 2 {
+		t.Fatalf("两站点应各一组冲突, 实际 %+v", outcome.Conflicts)
+	}
+	if outcome.Conflicts[0].SiteKey != "pixiv" || outcome.Conflicts[1].SiteKey != "bilibili" {
+		t.Fatalf("冲突组应与入参作者序的站点首次出现序同序, 实际 %+v", outcome.Conflicts)
 	}
 	if len(outcome.Items) != 0 {
 		t.Fatalf("冲突整批前置返回不应落逐条结果, 实际 %+v", outcome.Items)
 	}
+	if got := env.trace.countOf("candidates:pixiv"); got != 1 {
+		t.Fatalf("同站点只应枚举候选一次（只问一次）, 实际 %d 次", got)
+	}
 	if got := env.fetcher.callCount(); got != 0 {
 		t.Fatalf("冲突路径不应调用插件, 实际 %d 次", got)
+	}
+
+	// 带逐站点显选重发：无冲突，各站点作者按本站点显选下达能力桥
+	env.trace = &orderTrace{}
+	env.fetcher.trace = env.trace
+	env.fetcher.plan["a1"] = fetchScript{meta: metaOf("a1 新名", "", "", "", "")}
+	env.fetcher.plan["a2"] = fetchScript{meta: metaOf("a2 新名", "", "", "", "")}
+	env.fetcher.plan["b1"] = fetchScript{meta: metaOf("b1 新名", "", "", "", "")}
+	chosen := []*dto.SiteAuthorFetchChoice{
+		{SiteKey: "pixiv", PluginPublicId: "p-b"},
+		{SiteKey: "bilibili", PluginPublicId: "p-a"},
+	}
+	outcome, err = env.svc.FetchSiteAuthorsInfoByIds(context.Background(), ids, chosen)
+	if err != nil {
+		t.Fatalf("显选拉取失败: %v", err)
+	}
+	if len(outcome.Conflicts) != 0 {
+		t.Fatalf("已逐站点显选不应返回冲突载荷, 实际 %+v", outcome.Conflicts)
+	}
+	if len(outcome.Items) != 3 {
+		t.Fatalf("应落三条逐条结果, 实际 %+v", outcome.Items)
+	}
+	for _, item := range outcome.Items {
+		if !item.Success {
+			t.Fatalf("逐站点显选后各条应成功, 实际 %+v", item)
+		}
+	}
+	wantChosen := []string{"p-b", "p-b", "p-a"}
+	if got := env.fetcher.chosenKeysSnapshot(); len(got) != 3 || got[0] != wantChosen[0] || got[1] != wantChosen[1] || got[2] != wantChosen[2] {
+		t.Fatalf("各作者应按本站点显选下达能力桥（异站点显选互不串用）, 期望 %v 实际 %v", wantChosen, got)
 	}
 }
 
@@ -691,15 +832,15 @@ func TestManualFetchChosenPluginPropagated(t *testing.T) {
 	}
 	env := newFetchTestEnv(t)
 	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
-	env.fetcher.candidates = multiCandidatePlugins()
+	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 	env.fetcher.plan["12345"] = fetchScript{meta: metaOf("显选后的新名", "", "", "", "")}
 
-	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "p-b")
+	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-b"))
 	if err != nil {
 		t.Fatalf("显选拉取失败: %v", err)
 	}
-	if outcome.Conflict != nil {
-		t.Fatalf("已显选不应返回冲突载荷, 实际 %+v", outcome.Conflict)
+	if len(outcome.Conflicts) != 0 {
+		t.Fatalf("已显选不应返回冲突载荷, 实际 %+v", outcome.Conflicts)
 	}
 	if got := env.fetcher.lastChosenKey(); got != "p-b" {
 		t.Fatalf("显选键应下达能力桥, 实际 %q", got)
@@ -709,20 +850,20 @@ func TestManualFetchChosenPluginPropagated(t *testing.T) {
 	}
 }
 
-// TestManualFetchInvalidChoiceRejected 显选键未命中候选集：单条与批量两入口均报错，且不在
-// 任何插件调用前放行
+// TestManualFetchInvalidChoiceRejected 显选键未命中该站点的候选集：单条与批量两入口均报错，
+// 且不在任何插件调用前放行
 func TestManualFetchInvalidChoiceRejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
 	env := newFetchTestEnv(t)
 	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
-	env.fetcher.candidates = multiCandidatePlugins()
+	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), "p-x"); err == nil || !strings.Contains(err.Error(), "候选集") {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-x")); err == nil || !strings.Contains(err.Error(), "候选集") {
 		t.Fatalf("单条非法显选应报错, 实际 %v", err)
 	}
-	if _, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, "p-x"); err == nil || !strings.Contains(err.Error(), "候选集") {
+	if _, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, fetchChoice("pixiv", "p-x")); err == nil || !strings.Contains(err.Error(), "候选集") {
 		t.Fatalf("批量非法显选应报错, 实际 %v", err)
 	}
 	if got := env.fetcher.callCount(); got != 0 {

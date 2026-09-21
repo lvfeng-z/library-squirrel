@@ -13,7 +13,7 @@
 
 | 组件 | 职责 |
 | --- | --- |
-| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=8——v8 作者关联条目返回面更换 + SiteTagInfo.Namespace 删除的破坏性分界）、capabilities 枚举与声明查询、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
+| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=9——v9 插件声明面重构的破坏性分界，`loader.go:38-42`）、声明面门控查询（清单原文校验 `ValidateManifestDeclarations`、能力集合派生 `deriveCapabilities`、站点范围 `SiteAuthorFetchSites`、条目级 `HasTaskHandlerOption`——`loader.go:106-146,232-271`）、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
 | `library_query_provider.go` | **库查询核心（Tier 1 只读）**：实现 SDK `LibraryQuery` 契约 21 端点，逐端点桥接 14 个域只读接口（`LibraryQueryDeps`）并映射为契约消息；分页钳制（page≥1、缺省 20、上限 200）；Get* 未命中 `NotFound`、GetWorkDir 未配置 `FailedPrecondition`；零自拼 SQL——查询全走各域 repository GORM 管线（软删 scope 自动排除、resource_store 关联活行过滤） |
 | `plugin_context.go` | 插件侧 `PluginContext` 实现：扩展点注册、自存 KV、任务触发、前端通信转发、库查询方法组收口（每调用记诊断级日志——调用方插件 + 端点 + 关键参数） |
 | `plugin_host.go` | HostDeps 注册回调实现（loader 经 `OnRegisterTaskHandler` 等字段注入） |
@@ -22,8 +22,8 @@
 | `handler.go` | 前端扩展 IPC 响应 DTO（`FrontendExtensionResponse`） |
 | `static_resource_service.go` | 插件静态资源路径映射与文件服务 |
 | `wails_pusher.go` | 前端扩展事件推送器（插件→前端事件经 Wails Emit 转发） |
-| `workset_order_fetcher.go` / `workset_relation_fetcher.go` | capabilities 声明驱动的可选能力获取器（实现 work 模块定义的 `WorkSetOrderFetcher`/`WorkSetRelationFetcher`；插件未声明对应能力则跳过不调用） |
-| `site_author_fetcher.go` | 站点作者信息拉取能力桥（实现 authorInfo 模块定义的 `SiteAuthorFetcher`：拉取与候选枚举两面）。候选 = 声明 `siteAuthorFetch` 能力且有可用服务客户端的已激活插件（候选粒度=插件），经 `backend/route` 基座按候选序逐个调用流，插件按请求 siteKey 归属自判（未归属=PermissionDenied 顺延），命中一个即止；收口**两态分报**（零声明者 / 全不适配并列候选名）。候选枚举面按插件标识字典序返回、首位即默认选中项，供交互面判冲突与校验显选键 |
+| `workset_order_fetcher.go` / `workset_relation_fetcher.go` | **条目级**声明驱动的可选能力获取器（实现 work 模块定义的 `WorkSetOrderFetcher`/`WorkSetRelationFetcher`；该（插件, taskHandler 条目）未在 `extensions.taskHandlers[].options` 声明对应方法组则跳过不盲调 gRPC——`workset_order_fetcher.go:27,42-47`） |
+| `site_author_fetcher.go` | 站点作者信息拉取能力桥（实现 authorInfo 模块定义的 `SiteAuthorFetcher`：拉取与候选枚举两面）。候选 = 声明 `extensions.siteAuthorFetch` 段、且该段 `sites` 含本次请求站点键、且有可用服务客户端的已激活插件（候选粒度=插件；发现侧即按站点归属收窄，**候选集恒等于归属集**，插件不自判归属——`site_author_fetcher.go:92-107`），经 `backend/route` 基座按候选序逐个调用流，首个成功者即终点、任一候选失败即终止并点名插件（单极，无不适配态——`site_author_fetcher.go:148-158`）；零候选单态收口报「无插件覆盖该站点」（`site_author_fetcher.go:57-63`）。候选枚举面按插件标识字典序返回、首位即默认选中项，供交互面判冲突与校验显选键 |
 | `convert.go` | 任务实体 → SDK `TaskDTO` 跨进程序列化组装（字段集不随表拆分变化） |
 | `process_group_windows.go` / `process_group_other.go` | 子进程 Job Object 归组（主进程异常退出时终止插件子进程，Windows） |
 
@@ -36,5 +36,5 @@
 
 - **查询实现分层**：插件查询不走 search、provider 不自拼 SQL——同一过滤语义的单一落点 = 各域 repository（缺口过滤在对应域 repository 补方法，前端将来亦可复用）。
 - **库查询核心无插件态**：`libraryQueryProvider` 不感知调用方插件；诊断日志与调用方归因在 `pluginContext` 调用点记录。
-- **能力声明方向性**：capabilities 门控**主程序→插件**方向的可选能力调用（fetcher 声明驱动）；插件→宿主方向的库查询 RPC 无声明直接调用。
-- **激活插件清单载体**：`ActivePluginLister.ListActivePlugins()` 返回 `[]ActivePlugin{PublicID, Name}`（非裸 ID 清单）——同一清单既作广播路由的候选集、又作交互面的候选展示名来源（插件未设置名时回落公开 ID）；清单按字典序返回，「命中一个即止」的归属判定据此可复现。
+- **声明面门控方向性**：声明面（`extensions` 各条目）门控**主程序→插件**方向的可选能力调用（能力包在场 / 条目 `options` 声明驱动）；插件→宿主方向的库查询 RPC 无声明直接调用。
+- **激活插件清单载体**：`ActivePluginLister.ListActivePlugins()` 返回 `[]ActivePlugin{PublicID, Name}`（非裸 ID 清单）——同一清单既作广播路由的候选集、又作交互面的候选展示名来源（插件未设置名时回落公开 ID）；清单按字典序返回（`loader.go:273-274,286`），「命中一个即止」的候选序据此可复现。

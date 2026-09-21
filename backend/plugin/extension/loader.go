@@ -2,13 +2,13 @@ package extension
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
+	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 	pluginsdkliveness "github.com/lvfeng-z/library-squirrel-sdk/liveness"
 	"go.uber.org/zap"
 
@@ -37,8 +38,8 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-// v8 分界：ListAuthorsByWorkId 返回消息类型整体更换（线级破坏）+ SiteTagInfo.Namespace 删除（源级破坏）
-const minSupportedContractVersion = 8
+// v9 分界：插件清单声明面重构（顶层 capabilities 段取消，能力声明并入 extensions 段）
+const minSupportedContractVersion = 9
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并
@@ -58,50 +59,35 @@ func ValidateContractVersion(pluginContract int) error {
 	return nil
 }
 
-// UnmarshalCapabilities 解析 entity 持久化的 capabilities JSON 字符串为切片。
-// s 无效/空/"null" 返回 nil（插件未声明能力）。
-func UnmarshalCapabilities(s sql.NullString) []string {
-	if !s.Valid || s.String == "" || s.String == "null" {
-		return nil
-	}
-	var caps []string
-	if err := json.Unmarshal([]byte(s.String), &caps); err != nil {
-		return nil
-	}
-	return caps
-}
-
-// UnmarshalResourceTypes 解析 entity 持久化的 resourceTypes JSON 字符串为声明切片。
-// s 无效/空/"null" 返回 nil(插件未声明自定义资源类型)。
-func UnmarshalResourceTypes(s sql.NullString) []dto.ResourceTypeDeclaration {
-	if !s.Valid || s.String == "" || s.String == "null" {
-		return nil
-	}
-	var decls []dto.ResourceTypeDeclaration
-	if err := json.Unmarshal([]byte(s.String), &decls); err != nil {
-		return nil
-	}
-	return decls
-}
-
-// 插件能力枚举（内置集,可随主程序版本扩展;插件 manifest capabilities 引用这些值,主程序据未声明者跳过对应能力调用）。
+// 插件可选能力枚举（内置集,可随主程序版本扩展）。能力由清单声明面派生——siteAuthorFetch 段
+// 与 taskHandlers[].options，主程序据未声明者跳过对应能力调用。
 const (
-	// CapabilityWorkOrderQuery 作品集原站序查询能力（插件实现 sdkdto.WorkOrderQuerier 可选接口）。
+	// CapabilityWorkOrderQuery 作品集原站序查询能力（插件实现 sdkdto.WorkOrderQuerier 可选接口），
+	// 由 extensions.taskHandlers[].options 声明该值。
 	CapabilityWorkOrderQuery = "workOrderQuery"
-	// CapabilityWorkSetRelationQuery 作品集父集关系查询能力（插件实现 sdkdto.WorkSetRelationQuerier 可选接口）。
+	// CapabilityWorkSetRelationQuery 作品集父集关系查询能力（插件实现 sdkdto.WorkSetRelationQuerier 可选接口），
+	// 由 extensions.taskHandlers[].options 声明该值。
 	CapabilityWorkSetRelationQuery = "workSetRelationQuery"
-	// CapabilitySiteAuthorFetch 站点作者信息拉取能力（插件实现 sdkdto.SiteAuthorFetcher 可选接口）。
-	// 主程序按请求 siteKey 能力广播路由——遍历声明本能力的已激活插件逐个调用，插件归属
-	// 自判（未归属经 PermissionDenied 表达，主程序静默跳过），命中一个即止
+	// CapabilitySiteAuthorFetch 站点作者信息拉取能力（插件实现 sdkdto.SiteAuthorFetcher 可选接口），
+	// 由 extensions.siteAuthorFetch 段声明。主程序按能力声明广播路由——遍历声明本能力的已激活插件逐个调用，命中一个即止
 	CapabilitySiteAuthorFetch = "siteAuthorFetch"
-	// CapabilityResourceTypeProvider 自定义资源类型提供能力(插件 manifest 声明 resourceTypes 段;
-	// 主程序加载时解析并注册进 ResourceTypeRegistry,使插件 Create 可声明该类型资源)。
-	CapabilityResourceTypeProvider = "resourceTypeProvider"
 )
 
 // CapabilityQuerier 按插件公开 ID 查询其声明的能力集合（Loader 实现，供 fetcher 声明驱动调用）。
 type CapabilityQuerier interface {
 	GetCapabilities(pluginPublicId string) []string
+}
+
+// SiteAuthorFetchScopeQuerier 按插件公开 ID 查询其站点作者拉取能力包声明的归属站点键清单
+// （Loader 实现，供 fetcher 按站点收窄候选）。
+type SiteAuthorFetchScopeQuerier interface {
+	SiteAuthorFetchSites(pluginPublicId string) []string
+}
+
+// TaskHandlerOptionQuerier 按（插件公开 ID, 任务处理器条目 ID）查询该条目声明的可选方法组
+// （Loader 实现，供 fetcher 条目级门控：未声明某方法组的条目不经该条目被调用）。
+type TaskHandlerOptionQuerier interface {
+	HasTaskHandlerOption(pluginPublicId, extensionId, option string) bool
 }
 
 // ActivePlugin 已激活插件的公开 ID 与展示名（候选枚举面的最小载体；Name 为空串=插件未设置名）
@@ -115,18 +101,177 @@ type ActivePluginLister interface {
 	ListActivePlugins() []ActivePlugin
 }
 
-// GetCapabilities 返回插件声明的可选能力集合（供主程序决定是否调用对应能力；未加载/未声明返回 nil）。
+// GetCapabilities 返回插件声明的可选能力集合（由清单声明面派生，供主程序决定是否调用对应能力；
+// 未加载/未声明返回 nil）。
 func (l *Loader) GetCapabilities(pluginPublicId string) []string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if entry, ok := l.processes[pluginPublicId]; ok && entry.info != nil {
-		return entry.info.Capabilities
+		return deriveCapabilities(entry.info)
+	}
+	return nil
+}
+
+// SiteAuthorFetchSites 返回插件声明的站点作者拉取能力包归属站点键清单（未加载/未声明该能力包返回 nil）。
+func (l *Loader) SiteAuthorFetchSites(pluginPublicId string) []string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if entry, ok := l.processes[pluginPublicId]; ok && entry.info != nil && entry.info.SiteAuthorFetch != nil {
+		return entry.info.SiteAuthorFetch.Sites
+	}
+	return nil
+}
+
+// HasTaskHandlerOption 查询插件指定任务处理器条目是否声明了该方法组（未加载/无该条目/该条目未声明
+// 均返回 false，调用方据此不经该条目调用）。
+func (l *Loader) HasTaskHandlerOption(pluginPublicId, extensionId, option string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	entry, ok := l.processes[pluginPublicId]
+	if !ok || entry.info == nil {
+		return false
+	}
+	for _, handler := range entry.info.TaskHandlers {
+		if handler.ID != extensionId {
+			continue
+		}
+		for _, declared := range handler.Options {
+			if declared == option {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// deriveCapabilities 由插件声明面派生可选能力集合：siteAuthorFetch 段在场 → CapabilitySiteAuthorFetch；
+// taskHandlers 各条目的 options 逐项取用。resourceTypes 段不派生能力——该段在场即注册自定义资源类型。
+// 去重保序（声明序）。
+func deriveCapabilities(info *PluginInfo) []string {
+	if info == nil {
+		return nil
+	}
+	var caps []string
+	seen := make(map[string]struct{})
+	appendCap := func(capability string) {
+		if _, ok := seen[capability]; ok {
+			return
+		}
+		seen[capability] = struct{}{}
+		caps = append(caps, capability)
+	}
+	if info.SiteAuthorFetch != nil {
+		appendCap(CapabilitySiteAuthorFetch)
+	}
+	for _, handler := range info.TaskHandlers {
+		for _, option := range handler.Options {
+			appendCap(option)
+		}
+	}
+	return caps
+}
+
+// ApplyManifestDeclarations 把已解析清单的扩展点声明填入插件信息（任务处理器条目及其可选方法组、
+// 站点作者拉取能力包及其归属站点、自定义资源类型）。清单或 extensions 段缺失时声明字段保持零值
+// （等同未声明）。
+func ApplyManifestDeclarations(info *PluginInfo, manifest *dto.PluginManifest) {
+	if info == nil || manifest == nil || manifest.Extensions == nil {
+		return
+	}
+	ext := manifest.Extensions
+	info.TaskHandlers = ext.TaskHandlers
+	info.SiteAuthorFetch = ext.SiteAuthorFetch
+	info.ResourceTypes = ext.ResourceTypes
+}
+
+// ErrManifestDeclarationInvalid 清单声明面校验不合格（不合格项与期望形态见错误文本）。
+var ErrManifestDeclarationInvalid = errors.New("插件清单声明面校验失败")
+
+// validTaskHandlerOptions 任务处理器条目可选方法组的内置封闭枚举（键为枚举值）；
+// 骑在任务处理器服务上的可选能力都住在这里，见 Capability* 常量。
+var validTaskHandlerOptions = map[string]struct{}{
+	CapabilityWorkOrderQuery:       {},
+	CapabilityWorkSetRelationQuery: {},
+}
+
+// isValidTaskHandlerOption 判断可选方法组取值是否在枚举内。
+func isValidTaskHandlerOption(option string) bool {
+	_, ok := validTaskHandlerOptions[option]
+	return ok
+}
+
+// validTaskHandlerOptionList 可选方法组枚举文本（字母序，供校验错误文本列出合法值）。
+func validTaskHandlerOptionList() string {
+	values := make([]string, 0, len(validTaskHandlerOptions))
+	for value := range validTaskHandlerOptions {
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return strings.Join(values, "、")
+}
+
+// registeredSiteKeyList 站点注册表全量键文本（注册序，供校验错误文本列出合法值）。
+func registeredSiteKeyList() string {
+	entries := identity.All()
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		keys = append(keys, entry.Key)
+	}
+	return strings.Join(keys, "、")
+}
+
+// ValidateManifestDeclarations 校验 plugin.json 原文的声明面，安装期预检与加载期终检共用同一判据：
+//   - 顶层 capabilities 键在场（值恰为 null 亦然——键在场即该段在场）判不合格：该段不构成声明面，
+//     能力声明住在 extensions 各条目内
+//   - extensions.siteAuthorFetch.sites：须非空，且每项为 SDK 站点注册表内的已注册键
+//   - extensions.taskHandlers[].options：每项须为内置可选方法组枚举值
+//
+// manifestRaw 为 plugin.json 原文：顶层残留段在已解析结构里没有承载字段，只能就原文探测顶层键是否在场。
+// 返回的错误逐项点名不合格项与期望形态；清单无 extensions 段（等同无声明）通过。
+func ValidateManifestDeclarations(manifestRaw []byte) error {
+	// 顶层键探针：只问键在场与否，不看取值
+	topLevelKeys := map[string]json.RawMessage{}
+	if err := json.Unmarshal(manifestRaw, &topLevelKeys); err != nil {
+		return fmt.Errorf("%w: 清单非合法 JSON: %v", ErrManifestDeclarationInvalid, err)
+	}
+	if _, present := topLevelKeys["capabilities"]; present {
+		return fmt.Errorf("%w: 顶层 capabilities 段不在声明面内，能力声明须住 extensions 各条目（siteAuthorFetch 段 / taskHandlers[].options）",
+			ErrManifestDeclarationInvalid)
+	}
+	var manifest dto.PluginManifest
+	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
+		return fmt.Errorf("%w: 清单非合法 JSON: %v", ErrManifestDeclarationInvalid, err)
+	}
+	if manifest.Extensions == nil {
+		return nil
+	}
+	ext := manifest.Extensions
+	if fetch := ext.SiteAuthorFetch; fetch != nil {
+		if len(fetch.Sites) == 0 {
+			return fmt.Errorf("%w: extensions.siteAuthorFetch.sites 为空，须列出该能力包服务的站点键（已注册键：%s）",
+				ErrManifestDeclarationInvalid, registeredSiteKeyList())
+		}
+		for _, siteKey := range fetch.Sites {
+			if _, ok := identity.Lookup(siteKey); !ok {
+				return fmt.Errorf("%w: extensions.siteAuthorFetch.sites 含未注册站点键 %q，须为 SDK 站点注册表内的键（已注册键：%s）",
+					ErrManifestDeclarationInvalid, siteKey, registeredSiteKeyList())
+			}
+		}
+	}
+	for _, handler := range ext.TaskHandlers {
+		for _, option := range handler.Options {
+			if !isValidTaskHandlerOption(option) {
+				return fmt.Errorf("%w: extensions.taskHandlers[%s].options 含未识别的可选方法组 %q，合法取值：%s",
+					ErrManifestDeclarationInvalid, handler.ID, option, validTaskHandlerOptionList())
+			}
+		}
 	}
 	return nil
 }
 
 // ListActivePlugins 返回当前已激活插件进程的公开 ID 与展示名清单（字典序——广播路由按序遍历，
-// 「命中一个即止」的归属判定须可复现；未激活返回空清单）
+// 「命中一个即止」的候选序须可复现；未激活返回空清单）
 func (l *Loader) ListActivePlugins() []ActivePlugin {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -153,17 +298,17 @@ func hasCapability(caps []string, cap string) bool {
 }
 
 // registerPluginResourceTypes 注册插件声明的自定义资源类型到 ResourceTypeRegistry。
-// 仅当声明 CapabilityResourceTypeProvider 通行证时解析 resourceTypes 段;每个 declaration 转 Spec 注册,
-// 强校验失败(决策7同名/决策8前缀/Roles合法性)记日志跳过、不株连其他类型与插件能力。
+// 每个 declaration 转 Spec 注册,强校验失败(同名/前缀/Roles合法性)记日志跳过、不株连其他类型与插件能力。
 func registerPluginResourceTypes(info *PluginInfo) {
-	if info == nil || !hasCapability(info.Capabilities, CapabilityResourceTypeProvider) {
+	if info == nil {
 		return
 	}
 	for _, decl := range info.ResourceTypes {
 		spec := entity.ResourceTypeSpec{
-			ResourceType: decl.Type,
-			Roles:        toStoreRoleSpecs(decl.Roles),
-			PrimaryRoles: decl.PrimaryRoles,
+			ResourceType:   decl.Type,
+			Roles:          toStoreRoleSpecs(decl.Roles),
+			PrimaryRoles:   decl.PrimaryRoles,
+			StoreStandards: toStoreStandards(decl.StoreStandards),
 		}
 		if err := entity.ResourceTypeRegistry.Register(spec); err != nil {
 			logger.Log.Warnf("插件 %s 自定义资源类型 %s 注册失败,跳过(不株连其他能力): %v", info.PublicID, decl.Type, err)
@@ -175,7 +320,7 @@ func registerPluginResourceTypes(info *PluginInfo) {
 
 // unregisterPluginResourceTypes 反注册插件声明的自定义资源类型(卸载时清理);内置类型受白名单保护不会被删。
 func unregisterPluginResourceTypes(info *PluginInfo) {
-	if info == nil || !hasCapability(info.Capabilities, CapabilityResourceTypeProvider) {
+	if info == nil {
 		return
 	}
 	for _, decl := range info.ResourceTypes {
@@ -188,6 +333,19 @@ func toStoreRoleSpecs(roles []dto.StoreRoleDeclaration) []entity.StoreRoleSpec {
 	out := make([]entity.StoreRoleSpec, 0, len(roles))
 	for _, r := range roles {
 		out = append(out, entity.StoreRoleSpec{StoreType: r.StoreType, Min: r.Min, Max: r.Max})
+	}
+	return out
+}
+
+// toStoreStandards 将 manifest 声明的各角色文件标准转 Registry StoreStandard（key=storeType；
+// 未声明该字段时返回 nil，规格里的文件标准整体缺失）。
+func toStoreStandards(standards map[string]dto.StoreStandardDeclaration) map[string]entity.StoreStandard {
+	if len(standards) == 0 {
+		return nil
+	}
+	out := make(map[string]entity.StoreStandard, len(standards))
+	for storeType, s := range standards {
+		out[storeType] = entity.StoreStandard{Description: s.Description, Formats: s.Formats, Generation: s.Generation}
 	}
 	return out
 }
@@ -407,8 +565,8 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		}
 	}
 
-	// 注册插件自定义资源类型(声明 CapabilityResourceTypeProvider 通行证时);
-	// best-effort:坏 spec/同名(决策7)记日志跳过,不阻断加载、不株连插件其他能力。
+	// 注册插件自定义资源类型(声明 extensions.resourceTypes 段时);
+	// best-effort:坏 spec/同名记日志跳过,不阻断加载、不株连插件其他能力。
 	registerPluginResourceTypes(deps.PluginInfo)
 
 	entry := &pluginEntry{
@@ -553,10 +711,11 @@ type PluginInfo struct {
 	PublicID            string
 	Name                string
 	Version             string
-	ContractVersion     int                           // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时拒载，须声明）
-	ConfigSchemaVersion int64                         // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
-	Capabilities        []string                      // 声明的可选能力（来自 manifest，主程序据此决定是否调用对应能力）
-	ResourceTypes       []dto.ResourceTypeDeclaration // 插件自定义资源类型声明(来自 manifest;声明 resourceTypeProvider 通行证时注册进 Registry)
+	ContractVersion     int                             // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时拒载，须声明）
+	ConfigSchemaVersion int64                           // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
+	TaskHandlers        []dto.TaskHandlerDeclaration    // 任务处理器条目声明（含各自的 options 可选方法组；来自 manifest）
+	SiteAuthorFetch     *dto.SiteAuthorFetchDeclaration // 站点作者拉取能力包声明（sites=该插件服务的站点键清单；nil=未声明该能力包）
+	ResourceTypes       []dto.ResourceTypeDeclaration   // 插件自定义资源类型声明（来自 manifest；该段在场即注册进 Registry）
 	Author              string
 	EntryPath           string
 	RootPath            string

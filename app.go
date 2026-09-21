@@ -1246,8 +1246,8 @@ func (app *App) initAdvancedServices() error {
 	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
 	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
-	// 注入站点作者信息拉取能力（plugin 能力桥提供，广播路由内嵌于实现侧）+ work 入库后自动触发面接线
-	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader))
+	// 注入站点作者信息拉取能力（plugin 能力桥提供，候选广播路由内嵌于实现侧）+ work 入库后自动触发面接线
+	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader, app.pluginLoader))
 	app.WorkService.SetSiteAuthorRefreshScheduler(app.AuthorInfoService)
 
 	// 深链协议自注册（便携分发：HKCU 幂等自写；安装版 HKLM 由 NSIS 管理；失败仅记日志不阻断）
@@ -1740,12 +1740,12 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		Version:             plugin.Version.String,
 		ContractVersion:     int(plugin.ContractVersion.Int64),
 		ConfigSchemaVersion: plugin.ConfigSchemaVersion.Int64,
-		Capabilities:        extension2.UnmarshalCapabilities(plugin.Capabilities),
-		ResourceTypes:       extension2.UnmarshalResourceTypes(plugin.ResourceTypes),
 		Author:              plugin.Author.String,
 		EntryPath:           plugin.EntryPath.String,
 		RootPath:            plugin.RootPath.String,
 	}
+	// 声明面（扩展点条目/站点归属/自定义资源类型）取自已解析的清单：清单是声明的唯一来源，不入库
+	extension2.ApplyManifestDeclarations(pluginInfo, manifest)
 
 	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
 		PluginInfo:          pluginInfo,

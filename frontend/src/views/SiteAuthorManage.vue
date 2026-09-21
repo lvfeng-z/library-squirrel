@@ -24,6 +24,8 @@ import {
   SelectItem,
   PluginCandidate,
   SiteAuthorDTO,
+  SiteAuthorFetchChoice,
+  SiteAuthorFetchConflict,
   SiteAuthorLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {SiteAuthorFetchResponse} from "@bindings/github.com/library-squirrel/backend/authorInfo"
@@ -199,13 +201,17 @@ const selectedRows: Ref<SiteAuthorLocalRelateDTO[]> = ref([])
 const fetchInfoLoading: Ref<boolean> = ref(false)
 // 批量拉取进行中（按钮 loading + 表格区挂 loading）
 const batchFetchLoading: Ref<boolean> = ref(false)
-// 插件候选选择器开关与其候选清单（候选多于一个且未显选时弹出）
+// 插件候选选择器开关与其候选清单（候选多于一个且未显选时弹出）、当前询问的站点键
 const pluginSelectState: Ref<boolean> = ref(false)
 const pluginSelectCandidates: Ref<PluginCandidate[]> = ref([])
-// 冲突挂起的拉取：等待用户选择期间持有待拉取作者标识、展示名索引与单/批形态，选择后据此重发
+let pluginSelectSiteKey = ''
+// 冲突挂起的拉取：等待用户选择期间持有待拉取作者标识、展示名索引与单/批形态；冲突按站点分组，
+// 逐个询问并逐站点记显选键，全部问完后据此重发
 let pendingFetchIds: number[] = []
 let pendingFetchNameById: Map<number, string> = new Map()
 let pendingFetchSingle = true
+let pendingConflictGroups: SiteAuthorFetchConflict[] = []
+let pendingFetchChoices: SiteAuthorFetchChoice[] = []
 
 // 方法
 // 分页查询站点作者的函数
@@ -312,42 +318,60 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
 function handleSelectionChange(selections: SiteAuthorLocalRelateDTO[]) {
   selectedRows.value = selections
 }
-// 冲突候选清单：载荷处于「候选多于一个且未显选」态时返回候选清单（首位即默认选中项），否则返回 null
-function conflictCandidatesOf(payload: SiteAuthorFetchResponse): PluginCandidate[] | null {
-  const conflict = payload.conflict
-  if (isNullish(conflict) || !conflict.conflict) {
-    return null
-  }
-  return conflict.candidates.filter(notNullish)
+// 冲突候选清单：载荷处于冲突态时返回逐站点分组的冲突清单（每组首位即该站点默认选中项），否则返回 null
+function conflictGroupsOf(payload: SiteAuthorFetchResponse): SiteAuthorFetchConflict[] | null {
+  const groups = payload.conflicts?.filter(notNullish).filter((group) => group.conflict) ?? []
+  return arrayIsEmpty(groups) ? null : groups
 }
-// 挂起本次拉取并弹出插件选择器：确认后带显选键重发，取消则丢弃（冲突态未调用任何插件，无副作用需回滚）
-function holdFetchConflict(candidates: PluginCandidate[], ids: number[], nameById: Map<number, string>, single: boolean) {
+// 挂起本次拉取并按站点分组逐个询问：确认一组记一条该站点的显选键，全部问完后带逐站点显选键重发；
+// 取消则丢弃（冲突态未调用任何插件，无副作用需回滚）
+function holdFetchConflict(groups: SiteAuthorFetchConflict[], ids: number[], nameById: Map<number, string>, single: boolean) {
   pendingFetchIds = ids
   pendingFetchNameById = nameById
   pendingFetchSingle = single
-  pluginSelectCandidates.value = candidates
-  pluginSelectState.value = true
+  pendingConflictGroups = groups
+  pendingFetchChoices = []
+  askNextConflictGroup()
 }
-// 选择器确认：带插件显选键重发本次拉取（批量整批同选，重发时整批仍只问这一次）
-function handlePluginChosen(candidate: PluginCandidate) {
-  if (arrayIsEmpty(pendingFetchIds)) {
+// 询问下一组站点冲突；组已问完即带逐站点显选键重发本次拉取
+function askNextConflictGroup() {
+  const group = pendingConflictGroups.shift()
+  if (isNullish(group)) {
+    const ids = pendingFetchIds
+    const nameById = pendingFetchNameById
+    const single = pendingFetchSingle
+    const choices = pendingFetchChoices
+    pendingFetchIds = []
+    pendingFetchNameById = new Map()
+    pendingFetchChoices = []
+    if (arrayIsEmpty(ids)) {
+      return
+    }
+    if (single) {
+      void fetchSiteAuthorInfoById(ids[0], nameById, choices)
+    } else {
+      void batchFetchSiteAuthorsInfo(ids, nameById, choices)
+    }
     return
   }
-  const ids = pendingFetchIds
-  const nameById = pendingFetchNameById
-  const single = pendingFetchSingle
-  pendingFetchIds = []
-  pendingFetchNameById = new Map()
-  if (single) {
-    void fetchSiteAuthorInfoById(ids[0], nameById, candidate.pluginPublicId)
-  } else {
-    void batchFetchSiteAuthorsInfo(ids, nameById, candidate.pluginPublicId)
-  }
+  pluginSelectSiteKey = group.siteKey
+  pluginSelectCandidates.value = group.candidates.filter(notNullish)
+  pluginSelectState.value = true
+}
+// 选择器确认：记下本组站点键的显选插件，继续问下一组站点
+function handlePluginChosen(candidate: PluginCandidate) {
+  pendingFetchChoices.push(new SiteAuthorFetchChoice({
+    siteKey: pluginSelectSiteKey,
+    pluginPublicId: candidate.pluginPublicId
+  }))
+  askNextConflictGroup()
 }
 // 选择器取消：不重发（不算拉取失败）
 function handlePluginChooseCanceled() {
   pendingFetchIds = []
   pendingFetchNameById = new Map()
+  pendingConflictGroups = []
+  pendingFetchChoices = []
 }
 // 行操作「拉取信息」：从来源站点拉取该作者的最新介绍与头像，拉取期间表格区挂 loading
 async function fetchSiteAuthorInfo(row: SiteAuthorLocalRelateDTO) {
@@ -358,16 +382,16 @@ async function fetchSiteAuthorInfo(row: SiteAuthorLocalRelateDTO) {
   }
   const authorName = row.siteAuthor?.authorName
   const nameById = new Map<number, string>([[id, isBlank(authorName) ? String(id) : authorName]])
-  await fetchSiteAuthorInfoById(id, nameById, '')
+  await fetchSiteAuthorInfoById(id, nameById, [])
 }
-// 单作者拉取：显选键为空 = 首次触发；命中冲突转插件选择器，由用户点名后带键重发
-async function fetchSiteAuthorInfoById(id: number, nameById: Map<number, string>, chosenPluginPublicId: string) {
+// 单作者拉取：显选清单为空 = 首次触发；命中冲突转插件选择器，由用户按站点点名后带显选键重发
+async function fetchSiteAuthorInfoById(id: number, nameById: Map<number, string>, chosenPlugins: SiteAuthorFetchChoice[]) {
   fetchInfoLoading.value = true
   try {
-    const response = await authorInfoApi.authorInfoFetchSiteAuthorInfo(id, chosenPluginPublicId)
-    const candidates = conflictCandidatesOf(response.data)
-    if (notNullish(candidates)) {
-      holdFetchConflict(candidates, [id], nameById, true)
+    const response = await authorInfoApi.authorInfoFetchSiteAuthorInfo(id, chosenPlugins)
+    const groups = conflictGroupsOf(response.data)
+    if (notNullish(groups)) {
+      holdFetchConflict(groups, [id], nameById, true)
       return
     }
     ElMessage.success(`已拉取「${nameById.get(id) ?? id}」的作者信息`)
@@ -398,17 +422,17 @@ async function handleBatchFetchClicked() {
       nameById.set(id, isBlank(authorName) ? String(id) : authorName)
     }
   }
-  await batchFetchSiteAuthorsInfo(ids, nameById, '')
+  await batchFetchSiteAuthorsInfo(ids, nameById, [])
 }
-// 批量拉取：整批一次触发（候选冲突为整批前置返回，问一次）；逐条结果反馈——汇总一条 ElMessage，
-// 存在失败时另在通知中心留一条含逐条明细的终态通知供回看
-async function batchFetchSiteAuthorsInfo(ids: number[], nameById: Map<number, string>, chosenPluginPublicId: string) {
+// 批量拉取：整批一次触发（冲突按站点分组整批前置返回，同一站点只问一次）；逐条结果反馈——汇总一条
+// ElMessage，存在失败时另在通知中心留一条含逐条明细的终态通知供回看
+async function batchFetchSiteAuthorsInfo(ids: number[], nameById: Map<number, string>, chosenPlugins: SiteAuthorFetchChoice[]) {
   batchFetchLoading.value = true
   try {
-    const response = await authorInfoApi.authorInfoFetchSiteAuthorsInfo(ids, chosenPluginPublicId)
-    const candidates = conflictCandidatesOf(response.data)
-    if (notNullish(candidates)) {
-      holdFetchConflict(candidates, ids, nameById, false)
+    const response = await authorInfoApi.authorInfoFetchSiteAuthorsInfo(ids, chosenPlugins)
+    const groups = conflictGroupsOf(response.data)
+    if (notNullish(groups)) {
+      holdFetchConflict(groups, ids, nameById, false)
       return
     }
     const results = response.data.items?.filter(notNullish) ?? []
@@ -527,10 +551,11 @@ async function batchFetchSiteAuthorsInfo(ids: number[], nameById: Map<number, st
         :mode="siteAuthorDialogMode"
         @request-success="refreshTable"
       />
-      <!-- 插件候选选择器：拉取信息命中多个候选插件时由拉取流程唤起（批量整批问一次） -->
+      <!-- 插件候选选择器：拉取信息命中多个候选插件时由拉取流程唤起（候选按站点分组，逐站点问一次） -->
       <plugin-candidate-select-dialog
         v-model:state="pluginSelectState"
         :candidates="pluginSelectCandidates"
+        :tip="`站点「${pluginSelectSiteKey}」的作者信息可由多个插件拉取，请选择本次使用的插件`"
         @confirm="handlePluginChosen"
         @cancel="handlePluginChooseCanceled"
       />

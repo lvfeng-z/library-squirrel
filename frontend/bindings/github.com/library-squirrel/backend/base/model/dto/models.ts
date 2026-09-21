@@ -1453,18 +1453,52 @@ export class SiteAuthorDTO {
 }
 
 /**
- * SiteAuthorFetchConflict 站点作者信息拉取的多候选冲突载荷：候选多于一个且本次触发未显选时
- * 随响应交回调用方（此时未调用任何插件），调用方发起选择后带显选插件重发。
- * Candidates 为候选清单，按插件标识字典序，首位即默认选中项。
+ * SiteAuthorFetchChoice 交互面显选：某站点键下用户点名的插件。站点不同则候选集不同，
+ * 故显选按站点键逐站给出。
+ */
+export class SiteAuthorFetchChoice {
+    "siteKey": string;
+    "pluginPublicId": string;
+
+    /** Creates a new SiteAuthorFetchChoice instance. */
+    constructor($$source: Partial<SiteAuthorFetchChoice> = {}) {
+        if (!("siteKey" in $$source)) {
+            this["siteKey"] = "";
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteAuthorFetchChoice instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteAuthorFetchChoice {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SiteAuthorFetchChoice($$parsedSource as Partial<SiteAuthorFetchChoice>);
+    }
+}
+
+/**
+ * SiteAuthorFetchConflict 站点作者信息拉取的候选冲突载荷：该站点的候选多于一个且本次触发对该
+ * 站点未显选时随响应交回调用方（此时未调用任何插件），调用方发起选择后带显选重发。
+ * 候选按站点收窄，故一组冲突恒对应一个站点键（SiteKey）；Candidates 为该站点的候选清单，
+ * 按插件标识字典序，首位即默认选中项。
  */
 export class SiteAuthorFetchConflict {
     "conflict": boolean;
+    "siteKey": string;
     "candidates": (PluginCandidate | null)[];
 
     /** Creates a new SiteAuthorFetchConflict instance. */
     constructor($$source: Partial<SiteAuthorFetchConflict> = {}) {
         if (!("conflict" in $$source)) {
             this["conflict"] = false;
+        }
+        if (!("siteKey" in $$source)) {
+            this["siteKey"] = "";
         }
         if (!("candidates" in $$source)) {
             this["candidates"] = [];
@@ -1477,10 +1511,10 @@ export class SiteAuthorFetchConflict {
      * Creates a new SiteAuthorFetchConflict instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorFetchConflict {
-        const $$createField1_0 = $$createType12;
+        const $$createField2_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("candidates" in $$parsedSource) {
-            $$parsedSource["candidates"] = $$createField1_0($$parsedSource["candidates"]);
+            $$parsedSource["candidates"] = $$createField2_0($$parsedSource["candidates"]);
         }
         return new SiteAuthorFetchConflict($$parsedSource as Partial<SiteAuthorFetchConflict>);
     }

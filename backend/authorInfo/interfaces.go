@@ -14,20 +14,21 @@ import (
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
-// SiteAuthorFetcher 站点作者信息拉取能力（plugin 模块实现，能力广播路由内嵌于实现侧：
-// 遍历声明 siteAuthorFetch 能力的已激活插件，插件按请求 siteKey 归属自判，未归属静默跳过、
-// 命中一个即止；无归属插件时返回错误）。onMeta 收到首块元数据（恒为首块且仅一块），返回
-// 是否继续接收头像字节——false 时实现侧取消流并按成功收尾；onMeta/onData 返回错误即中止流
-// 并作为整体失败上抛
+// SiteAuthorFetcher 站点作者信息拉取能力（plugin 模块实现，候选广播路由内嵌于实现侧）：
+// 候选按站点收窄——已激活插件中声明了站点作者拉取能力包、且该能力包声明的站点键含本次请求站点键、
+// 且有可用服务客户端者（故候选集恒等于归属集，插件不必自判归属，也不存在「调用后才知不归属」）。
+// 按候选序逐个调用，命中一个即止；候选为空（无可归属插件）时返回错误。onMeta 收到首块元数据
+// （恒为首块且仅一块），返回是否继续接收头像字节——false 时实现侧取消流并按成功收尾；
+// onMeta/onData 返回错误即中止流并作为整体失败上抛
 type SiteAuthorFetcher interface {
 	// FetchSiteAuthorInfo 拉取单个站点作者信息。chosenPluginPublicId 非空时该插件候选置于候选序
 	// 首位，空串则候选全按插件标识字典序（自动面与单候选场景即此态）
 	FetchSiteAuthorInfo(ctx context.Context, siteKey, siteAuthorId, chosenPluginPublicId string,
 		onMeta func(meta *pluginsdkdto.AuthorInfoMeta) (wantAvatar bool, err error),
 		onData func(data []byte) error) error
-	// ListSiteAuthorFetchCandidates 候选清单（插件级消费面，ExtensionId 恒空串），按插件标识
-	// 字典序，首位即默认选中项——交互面在调用前据清单判候选冲突与校验显选键
-	ListSiteAuthorFetchCandidates(ctx context.Context) ([]*dto.PluginCandidate, error)
+	// ListSiteAuthorFetchCandidates 指定站点键下的候选清单（插件级消费面，ExtensionId 恒空串），
+	// 按插件标识字典序，首位即默认选中项——交互面在调用前据清单判候选冲突与校验显选键
+	ListSiteAuthorFetchCandidates(ctx context.Context, siteKey string) ([]*dto.PluginCandidate, error)
 }
 
 // SiteAuthorStore 站点作者行存取窄接口（siteAuthor 模块实现）

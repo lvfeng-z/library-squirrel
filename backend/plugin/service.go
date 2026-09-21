@@ -123,14 +123,32 @@ type Service struct {
 	pendingUpgrades map[string]*pendingUpgradeEntry // 启动期检测出的更新待办（内存态，重启重检）
 }
 
-// NewService 创建插件服务
+// NewService 创建插件服务。激活期读清单时经声明面校验（加载期闸门）：不合格的清单不入参与者相位、
+// 插件不激活，原因仅落日志
 func NewService(repo Repository, backupProvider BackupProvider) *Service {
+	lifecycle := newLifecycleManager()
+	lifecycle.readManifest = readValidatedManifest
 	return &Service{
 		repo:            repo,
 		backupProvider:  backupProvider,
-		lifecycle:       newLifecycleManager(),
+		lifecycle:       lifecycle,
 		pendingUpgrades: make(map[string]*pendingUpgradeEntry),
 	}
+}
+
+// readValidatedManifest 读取插件清单原文并校验声明面（加载期闸门，覆盖「旧版本装的、新版本跑」：
+// 行存量与升级后的校验规则可能不符）。不合格时返回错误，激活在参与者相位之前中止、插件保持未激活；
+// 原因仅落日志，不进管理页/IPC
+func readValidatedManifest(plugin *entity2.Plugin) (*domain.PluginManifest, error) {
+	manifestBytes, err := readPluginManifestBytes(plugin)
+	if err != nil {
+		return nil, err
+	}
+	if err := extension.ValidateManifestDeclarations(manifestBytes); err != nil {
+		logger.Log.Warnf("插件 %s 清单声明面校验不合格，跳过激活: %v", plugin.PublicID.String, err)
+		return nil, err
+	}
+	return parsePluginManifest(plugin.PublicID.String, manifestBytes)
 }
 
 // ActivatePlugin 激活插件（唯一激活入口，启动期批量加载/安装/信任三条路径共用）：
@@ -332,6 +350,11 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, err
 	}
 
+	// 声明面校验（安装期闸门）：不合格即拒收，错误文本点名不合格项与期望形态
+	if err := extension.ValidateManifestDeclarations(manifestBytes); err != nil {
+		return nil, err
+	}
+
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
 	return installDTO, nil
@@ -504,16 +527,6 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
 	plugin.ContractVersion = sql.NullInt64{Int64: int64(installDTO.ContractVersion), Valid: installDTO.ContractVersion > 0}
 	plugin.ConfigSchemaVersion = sql.NullInt64{Int64: int64(installDTO.ConfigSchemaVersion), Valid: true} // 0=legacy/未管理，总是写入
-	if len(installDTO.Capabilities) > 0 {
-		if capsJSON, err := json.Marshal(installDTO.Capabilities); err == nil {
-			plugin.Capabilities = sql.NullString{String: string(capsJSON), Valid: true}
-		}
-	}
-	if len(installDTO.ResourceTypes) > 0 {
-		if rtJSON, err := json.Marshal(installDTO.ResourceTypes); err == nil {
-			plugin.ResourceTypes = sql.NullString{String: string(rtJSON), Valid: true}
-		}
-	}
 	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}

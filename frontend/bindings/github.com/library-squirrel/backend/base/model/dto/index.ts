@@ -27,6 +27,7 @@ export {
     SelectItem,
     SettingOption,
     SiteAuthorDTO,
+    SiteAuthorFetchChoice,
     SiteAuthorFetchConflict,
     SiteAuthorLocalRelateDTO,
     SiteBrowserDTO,

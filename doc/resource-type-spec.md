@@ -15,7 +15,7 @@ ResourceTypeSpec { Roles[](结构角色+基数), PrimaryRoles[](展示优先级)
 ```
 
 - `Resource.ResourceType` 由插件在创建任务时声明，主程序写入 `resource.resource_type` 列（NOT NULL）。
-- `ResourceTypeRegistry` 内置 6 种资源类型（image/video/article/document/audio/unknown）；插件可经 manifest `resourceTypes` 段 + `resourceTypeProvider` 通行证声明自定义类型（注册时强校验，见第七节）。
+- `ResourceTypeRegistry` 内置 6 种资源类型（image/video/article/document/audio/unknown）；插件可经 manifest `extensions.resourceTypes` 段声明自定义类型（**段存在即启用**——自契约 v9 起自顶层迁入 `extensions`，不再需要 `resourceTypeProvider` 通行证；注册时强校验，见第七节）。
 - 前端**纯消费**：渲染/外部打开按 ResourceType 分发，展示主体用后端派生的 `workStore`，零主体决策。
 
 ## 二、store_type 七角色（内置封闭枚举）
@@ -122,7 +122,8 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 
 插件可声明**自定义资源类型**，经注册进 `ResourceTypeRegistry` 纳入可识别范围。机制：
 
-1. **声明载体**：plugin.json `resourceTypes` 段（结构化声明：type + roles + primaryRoles）+ `capabilities` 含 `resourceTypeProvider` 通行证。要求主程序 `contractVersion`≥3。
+1. **声明载体**：plugin.json `extensions.resourceTypes` 段（结构化声明：type + roles + primaryRoles + 可选 storeStandards）——**段存在即启用**（自契约 v9 起自顶层迁入 `extensions`；`resourceTypeProvider` 通行证取消，一把锁不再需要两把钥匙）。要求主程序 `contractVersion`≥3（自 v9 起主程序 `minSupportedContractVersion` 升至 9）。
+   - 段内条目可选字段 `storeStandards`（key=storeType）：`description`/`formats`/`generation`，与宿主侧规约结构 `ResourceTypeSpec.StoreStandards` 对齐（`backend/base/model/entity/resource_type.go:45-57`）；**描述性、校验不强制其存在**，当前无读取点。
 2. **注册时强校验**（守卫严格识别不变量）：type 强制反向域名前缀（如 `com.example.xxx`，防抢占内置名）；`roles.storeType` 必须 ∈ 内置 7 角色（插件自定义 store 角色延后）；Min≤Max；primaryRoles ⊆ roles。坏 spec 拒绝并记日志跳过，不株连插件其他能力。
 3. **同名冲突**：两插件声明同 type 值 → 后注册者拒绝 + 日志告警。
 4. **渲染/完整性自动跟随**：自定义类型注册后，前端 resourceViewer 按该类型查找插件渲染器（命中则覆盖内置）；完整性校验按声明的 Roles 基数自动判定。无插件渲染器则降级 UnknownRenderer。

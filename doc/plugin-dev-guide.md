@@ -104,10 +104,9 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（与主程序协商，见「契约版本协商」）；当前 = 8 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 9 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
-| `capabilities` | string[] | 否 | 可选能力声明（封闭枚举，见「能力声明」）；如 `["workOrderQuery"]` |
-| `extensions` | object | 是 | 扩展点集合（见下） |
+| `extensions` | object | 是 | 扩展点集合（见下）——插件的全部对外声明都住在这里 |
 
 > 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
 
@@ -115,8 +114,10 @@ type MyTaskHandler struct{}
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `taskHandlers` | `[{id, name?, description?}]` | 三选一 | TaskHandler 声明（运行时注册） |
+| `taskHandlers` | `[{id, name?, description?, options?}]` | 三选一 | TaskHandler 声明（运行时注册）；`options` 为该条目启用的可选方法组（内置枚举，见「能力声明」） |
 | `siteBrowsers` | `[{id, name?, description?}]` | 三选一 | SiteBrowser 声明（运行时注册） |
+| `siteAuthorFetch` | `{sites: string[]}` | 否 | 站点作者信息拉取能力包；`sites` 为该插件服务的站点键清单（作用域 = 归属），见「能力声明」 |
+| `resourceTypes` | `[ResourceTypeDeclaration]` | 否 | 自定义资源类型声明（自契约 v9 起住本段，段存在即启用，见「自定义资源类型声明」） |
 | `frontendExtensions` | `[FrontendExtensionDeclaration]` | 三选一 | UI 前端扩展（声明式注册，见 6.3） |
 | `staticResources` | `{directories: string[]}` | 否 | 允许前端访问的资源目录白名单 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项（见 8.2） |
@@ -125,7 +126,9 @@ type MyTaskHandler struct{}
 - `id/name/version/author` 必填。
 - `extensions` 必须存在，且 `taskHandlers/siteBrowsers/frontendExtensions` 至少一个非空。
 - `entryFile` 仅在含运行时扩展点（taskHandlers 或 siteBrowsers）时必填；纯 UI 插件可省略。
-- 枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
+- `extensions.siteAuthorFetch.sites` 与 `extensions.taskHandlers[].options` **安装时强校验**：`sites` 须非空且每项为 SDK 站点注册表内的已注册键，`options` 每项须为内置可选方法组枚举值，不合格即拒收并点名不合格项（`backend/plugin/extension/loader.go:224-271`，安装闸门 `backend/plugin/service.go:354`）。
+- 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:238-241`）。
+- 其余枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
 ### 前端扩展声明
 
@@ -190,7 +193,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 8，直接引用 SDK `transport.ContractVersion` 常量）与 `minSupportedContractVersion`（当前 8），插件 manifest 声明自己编译时锁定的 `contractVersion`。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 9，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:38`）与 `minSupportedContractVersion`（当前 9，`backend/plugin/extension/loader.go:42`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -206,40 +209,49 @@ type MyTaskHandler struct{}
 - 6 — 新增 `LibraryQuery` 库查询服务（Tier 1 只读，21 个端点，见 5.1）；删除 HostService 死声明 `GetWorkSetBySiteWorkSetId`（无桥接无调用的废弃 RPC，查询能力吸收为 `LibraryQuery.GetWorkSetBySiteKey`）——**删 RPC 属破坏性变更故升版**。主程序 `minSupportedContractVersion` 保持 5（v5 既有捆绑包仍可加载；升 6 属发布时重建捆绑包的动作）。
 - 7 — 周边数据写面契约：任务声明期周边三 DTO（`TaskSiteAuthorDTO`/`TaskSiteTagDTO`/`TaskWorkSetDTO`）加可选 `siteKey` 字段——周边数据跨站寻址（声明站点≠作品站点时 find-only 引用既有行，缺省=作品站点本站 upsert，见 6.1「作品及周边数据写面契约」）。加字段向前兼容，作为周边写面新能力标识升版。
 - 8 — 关联级维度体系（tag namespace + author role 同构）：ns 从 site_tag 实体行收回关联级——`SiteTagInfo` 删 `Namespace` 字段（**删字段属破坏性变更**），`TaskSiteTagDTO.Namespace` 保留、语义=本作品上该标签的关联级 ns；role 同构补齐——`TaskSiteAuthorDTO` 加 `RoleName` 声明面，`ListAuthorsByWorkId` 返回面由实体级 DTO 整体更换为关联条目 `WorkLocalAuthorEntry`/`WorkSiteAuthorEntry`（`author` + 关联级 `role_name`，**返回消息类型更换属破坏性变更**）；实体级 DTO 不携带关联维度。主程序 `minSupportedContractVersion` 同步升 8（v8 以下插件拒载，捆绑包随之重建）。
+- 9 — 插件声明面重构（能力包模型）：顶层 `capabilities` 段取消，其声明移入 `extensions` 段——`siteAuthorFetch` 携 `sites` 作用域、`workOrderQuery` 与 `workSetRelationQuery` 下沉 `taskHandlers[].options`、`resourceTypeProvider` 取消（`resourceTypes` 迁入 `extensions` 段后「段存在即启用」），门控粒度相应改为（插件, 扩展点）**条目级**；站点归属自判机制退役——插件侧身份键比对辅助、跨进程未归属错误信号及其转译与宿主侧判定一并删除，作者拉取候选改由宿主按插件已声明的站点范围收窄，插件不再自判归属。声明面结构更换与导出符号删除属源级破坏。主程序 `minSupportedContractVersion` 同步升 9（v9 以下插件拒载，捆绑包随之重建）。
 
-**跟随 SDK**：插件作者按 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）填 manifest 即可，无需自行判断。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
+**填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
-### 能力声明
+### 能力声明（能力包与可选功能）
 
-`capabilities` 是内置枚举数组，声明插件提供的**可选能力**（区别于 `extensions` 扩展点实例）。主程序查声明才调用对应接口或解析对应声明段。当前 3 值：
+自契约 v9 起，**顶层 `capabilities` 段已删除**——插件的全部对外声明都住在 `extensions` 段：每个条目 = 插件对外提供的一个能力包，包内的可选项与作用域声明在包内。原先 `capabilities` 的各值各有新去向：
 
-| 能力 | 含义 | 对应接口/声明 |
+| 原 `capabilities` 值 | 新去向 | 说明 |
 |---|---|---|
-| `workOrderQuery` | 提供作品集作品原站序查询 | `WorkOrderQuerier`（TaskHandler 可选扩展） |
-| `workSetRelationQuery` | 提供作品集父集关系查询 | `WorkSetRelationQuerier`（TaskHandler 可选扩展） |
-| `resourceTypeProvider` | 提供自定义资源类型声明 | manifest `resourceTypes` 段（见「自定义资源类型声明」） |
+| `siteAuthorFetch` | `extensions.siteAuthorFetch` | 单对象 `{"sites": ["bilibili"]}`：`sites` 为该插件服务的站点键清单（作用域 = 归属），须非空且每项为 SDK 站点注册表内的已注册键；宿主据此收窄作者拉取候选——`sites` 不含本次请求站点即不成为候选 |
+| `workOrderQuery` | `extensions.taskHandlers[].options` | 包内**条目级**可选方法组，对应 `WorkOrderQuerier`（实现该接口的 taskHandler 条目声明此值，如 pixiv） |
+| `workSetRelationQuery` | `extensions.taskHandlers[].options` | 同上，对应 `WorkSetRelationQuerier` |
+| `resourceTypeProvider` | **取消** | `resourceTypes` 迁入 `extensions` 段后「段存在即启用」，一把锁不再需要两把钥匙 |
 
-实现 `WorkOrderQuerier` 的插件（如 pixiv）须声明 `"capabilities": ["workOrderQuery"]`；声明自定义资源类型的插件须含 `"resourceTypeProvider"`（主程序据此解析 `resourceTypes` 段）。未声明者省略或 `[]`。能力不单独版本化，演进由全局 `contractVersion` 兜底。
+`options` 的合法取值 = 内置封闭枚举（当前 `workOrderQuery`、`workSetRelationQuery`，见 `backend/plugin/extension/loader.go:64-74`）；非法值安装期与加载期均拒。**门控粒度为条目级**——（插件, 扩展点条目）粒度判定，未声明某 `options` 项的 taskHandler 条目不经该条目被调用（`backend/plugin/extension/loader.go:125-146`）。
+
+顶层 `capabilities` 键在场（值恰为 `null` 亦然）即视为**未迁移**：安装时拒收、加载时跳过（校验入口 `backend/plugin/extension/loader.go:224-241`；安装闸门 `backend/plugin/service.go:354`、加载闸门 `backend/plugin/service.go:147`）。能力不单独版本化，演进由全局 `contractVersion` 兜底。
 
 ### 自定义资源类型声明（resourceTypes 段）
 
 插件可声明**自定义资源类型**，经主程序注册进 `ResourceTypeRegistry` 后，插件 Create 即可声明该类型资源（`TaskCreateResponse.ResourceType` 填声明的类型值）。要求主程序 `contractVersion`≥3。
 
-**声明方式**：plugin.json 顶层加 `resourceTypes` 段 + `capabilities` 含 `resourceTypeProvider` 通行证：
+**声明方式**：plugin.json 的 `extensions.resourceTypes` 段（自契约 v9 起自顶层迁入 `extensions`；**段存在即启用**，不再需要 `resourceTypeProvider` 通行证）：
 
-```json
+```jsonc
 {
-  "capabilities": ["resourceTypeProvider"],
-  "resourceTypes": [
-    {
-      "type": "com.example.interactiveNovel",
-      "roles": [
-        {"storeType": "document", "min": 1, "max": 1},
-        {"storeType": "image", "min": 0, "max": 0}
-      ],
-      "primaryRoles": ["document"]
-    }
-  ]
+  "extensions": {
+    "resourceTypes": [
+      {
+        "type": "com.example.interactiveNovel",
+        "roles": [
+          {"storeType": "document", "min": 1, "max": 1},
+          {"storeType": "image", "min": 0, "max": 0}
+        ],
+        "primaryRoles": ["document"],
+        "storeStandards": {                    // 可选，描述性
+          "document": {"description": "剧本正文", "formats": [".md"], "generation": "derived"},
+          "image":    {"description": "插图", "formats": [".jpg", ".png"], "generation": "downloaded"}
+        }
+      }
+    ]
+  }
 }
 ```
 
@@ -247,6 +259,7 @@ type MyTaskHandler struct{}
 - `type`：类型值，**强制反向域名前缀**（如 `com.example.xxx`），禁止裸通用词（防抢占内置名）。插件 Create 时填此值。
 - `roles`：结构角色 + 基数。`storeType` 必须 ∈ 内置 7 角色（`image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain`）；**插件自定义 store 角色当前不支持**（延后）。`min`=最少数量(0=可选,1=必含)，`max`=最多数量(0=不限,1=单例)。
 - `primaryRoles`：展示主体优先级链，每项须在 `roles.storeType` 集合内。
+- `storeStandards`（可选）：各 store 角色的文件标准声明（key=storeType），字段 `description`（角色用途说明）、`formats`（期望文件扩展名，描述性非强制）、`generation`（该角色典型 generation：`downloaded`/`derived`，可跨多种 generation 的角色留空）。**描述性信息，不做内容校验**，校验不强制其存在；与宿主侧规约结构 `entity.StoreStandard` 对齐（`backend/base/model/entity/resource_type.go:45-48`、`ResourceTypeSpec.StoreStandards` 见 `:53-57`）。该字段目前无读取点（仅内置类型的规约赋值），补齐它使插件自定义类型的规约声明完整。
 
 **注册时强校验**（守卫严格识别不变量；坏 spec 拒绝并记日志跳过，不株连插件其他能力）：
 - `type` 缺反向域名前缀 → 拒；`roles.storeType` 非 7 角色 / `min`>`max` / `primaryRoles` 不在 roles → 拒。
@@ -350,7 +363,7 @@ func main() {
 
 ### 5.1 宿主库查询（Tier 1 只读）
 
-`PluginContext` 暴露 21 个库查询方法，打到宿主 `LibraryQuery` gRPC 服务（契约定义：SDK `proto/plugin.proto` 的 `service LibraryQuery`，proto 单源、dto 层别名透出），查询主程序库内**已有**的作品及周边数据——统计面板、去重扫描、跨站聚合、导出同步、元数据补全等工具型形态的数据面。查询 RPC **无需任何 `capabilities` 声明**，与 `GetValue`/`CreateTask` 等 HostService RPC 同等对待、直接调用（capabilities 门控的是主程序→插件方向，见「能力声明」；宿主对每次调用记诊断级日志——调用方插件 + 端点 + 关键参数，日志短留存不作台账）。
+`PluginContext` 暴露 21 个库查询方法，打到宿主 `LibraryQuery` gRPC 服务（契约定义：SDK `proto/plugin.proto` 的 `service LibraryQuery`，proto 单源、dto 层别名透出），查询主程序库内**已有**的作品及周边数据——统计面板、去重扫描、跨站聚合、导出同步、元数据补全等工具型形态的数据面。查询 RPC **无需任何声明**，与 `GetValue`/`CreateTask` 等 HostService RPC 同等对待、直接调用（声明面约束的是主程序→插件方向——主程序按 `extensions` 各条目的声明决定是否调用插件的能力，见「能力声明」；插件对宿主的调用不受声明面约束。宿主对每次调用记诊断级日志——调用方插件 + 端点 + 关键参数，日志短留存不作台账）。
 
 **端点分组**（21 个）：
 
@@ -1023,8 +1036,8 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 声明 contractVersion**：发布前确认 `contractVersion` 与目标主程序契约版本一致（跟随 SDK `transport.ContractVersion`）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
-20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 须声明 `"capabilities": ["workOrderQuery"]`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 9）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 taskHandler 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch.sites` 列出其服务的站点键；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
 

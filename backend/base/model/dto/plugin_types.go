@@ -21,40 +21,36 @@ type PluginActivation struct {
 	Type ActivationType `json:"type"`
 }
 
-// PluginManifest 插件清单（从 plugin.json 解析）
+// PluginManifest 插件清单（从 plugin.json 解析）；插件的全部对外声明都住在 extensions 段
 type PluginManifest struct {
-	ID                  string                    `json:"id"`
-	Name                string                    `json:"name"`
-	Version             string                    `json:"version"`
-	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
-	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author              string                    `json:"author"`
-	Description         string                    `json:"description,omitempty"`
-	Extensions          *PluginExtensions         `json:"extensions"`
-	Activation          PluginActivation          `json:"activation"`
-	EntryFile           string                    `json:"entryFile"`
-	Capabilities        []string                  `json:"capabilities,omitempty"`  // 声明的可选能力（内置枚举,可随主程序版本扩展;主程序加载时读取,未声明者跳过对应能力调用）
-	ResourceTypes       []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(须配合 capabilities 含 resourceTypeProvider 通行证)
+	ID                  string            `json:"id"`
+	Name                string            `json:"name"`
+	Version             string            `json:"version"`
+	BuildID             string            `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int               `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
+	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string            `json:"author"`
+	Description         string            `json:"description,omitempty"`
+	Extensions          *PluginExtensions `json:"extensions"`
+	Activation          PluginActivation  `json:"activation"`
+	EntryFile           string            `json:"entryFile"`
 }
 
 // PluginInstallDTO 插件安装数据传输对象
 type PluginInstallDTO struct {
-	ID                  string                    `json:"id"`
-	Name                string                    `json:"name"`
-	Version             string                    `json:"version"`
-	BuildID             string                    `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int                       `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
-	ConfigSchemaVersion int                       `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author              string                    `json:"author"`
-	Description         string                    `json:"description,omitempty"`
-	Extensions          *PluginExtensions         `json:"extensions"`
-	Activation          PluginActivation          `json:"activation"`
-	EntryFile           string                    `json:"entryFile"`
-	Capabilities        []string                  `json:"capabilities,omitempty"`  // 声明的可选能力
-	ResourceTypes       []ResourceTypeDeclaration `json:"resourceTypes,omitempty"` // 插件自定义资源类型声明(透传 manifest)
-	PackagePath         string                    `json:"packagePath,omitempty"`
-	PublicID            string                    `json:"publicId,omitempty"`
+	ID                  string            `json:"id"`
+	Name                string            `json:"name"`
+	Version             string            `json:"version"`
+	BuildID             string            `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int               `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
+	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string            `json:"author"`
+	Description         string            `json:"description,omitempty"`
+	Extensions          *PluginExtensions `json:"extensions"`
+	Activation          PluginActivation  `json:"activation"`
+	EntryFile           string            `json:"entryFile"`
+	PackagePath         string            `json:"packagePath,omitempty"`
+	PublicID            string            `json:"publicId,omitempty"`
 }
 
 // ToPluginInstallDTO 转换为安装DTO。publicId 即插件 id（纯反向域名，全局唯一身份键），
@@ -72,8 +68,6 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		Extensions:          p.Extensions,
 		Activation:          p.Activation,
 		EntryFile:           p.EntryFile,
-		Capabilities:        p.Capabilities,
-		ResourceTypes:       p.ResourceTypes,
 		PackagePath:         packagePath,
 		PublicID:            p.ID,
 	}
@@ -95,13 +89,22 @@ func NewPluginManifest() *PluginManifest {
 	return &PluginManifest{}
 }
 
-// PluginExtensions 插件扩展点集合（plugin.json 的 extensions 段）
+// PluginExtensions 插件扩展点集合（plugin.json 的 extensions 段）；
+// 每段 = 插件对外提供的一个能力包，包内的可选项与作用域声明在包内条目上
 type PluginExtensions struct {
 	TaskHandlers       []TaskHandlerDeclaration       `json:"taskHandlers,omitempty"`
 	SiteBrowsers       []SiteBrowserDeclaration       `json:"siteBrowsers,omitempty"`
+	SiteAuthorFetch    *SiteAuthorFetchDeclaration    `json:"siteAuthorFetch,omitempty"`
+	ResourceTypes      []ResourceTypeDeclaration      `json:"resourceTypes,omitempty"`
 	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
 	StaticResources    *StaticResourcesConfig         `json:"staticResources,omitempty"`
 	Settings           []SettingDeclaration           `json:"settings,omitempty"`
+}
+
+// SiteAuthorFetchDeclaration 站点作者拉取能力包声明（plugin.json extensions.siteAuthorFetch）；
+// sites 为该插件服务的站点键清单（作用域 = 归属），取值须为 SDK 站点注册表内的注册键
+type SiteAuthorFetchDeclaration struct {
+	Sites []string `json:"sites"`
 }
 
 // SettingDeclaration 用户设置项声明（plugin.json extensions.settings）
@@ -127,9 +130,10 @@ type SettingOption struct {
 
 // TaskHandlerDeclaration 任务处理器声明
 type TaskHandlerDeclaration struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Options     []string `json:"options,omitempty"` // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
 }
 
 // SiteBrowserDeclaration 站点浏览器声明
@@ -206,13 +210,22 @@ type StaticResourcesConfig struct {
 	Directories []string `json:"directories"`
 }
 
-// ResourceTypeDeclaration 插件自定义资源类型声明（plugin.json 顶层 resourceTypes 段每项）。
-// 主程序加载时见 CapabilityResourceTypeProvider 通行证后解析此段,转为 entity.ResourceTypeSpec 注册进 Registry。
-// 注册时强校验(决策7同名拒绝+决策8反向域名前缀+Roles合法性),坏 spec 拒绝并记日志跳过、不株连插件其他能力。
+// ResourceTypeDeclaration 插件自定义资源类型声明（plugin.json extensions.resourceTypes 段每项）。
+// 该段存在即注册进 ResourceTypeRegistry,使插件 Create 可声明该类型资源。
+// 注册时强校验(同名拒绝+反向域名前缀+Roles合法性),坏 spec 拒绝并记日志跳过、不株连插件其他能力。
 type ResourceTypeDeclaration struct {
-	Type         string                 `json:"type"`         // 类型值(强制反向域名前缀如 com.example.xxx;决策8)
-	Roles        []StoreRoleDeclaration `json:"roles"`        // 结构角色 + 基数(完整性校验)
-	PrimaryRoles []string               `json:"primaryRoles"` // 展示主体优先级链(每项须在 Roles.storeType 集合内)
+	Type           string                              `json:"type"`                     // 类型值(强制反向域名前缀如 com.example.xxx;决策8)
+	Roles          []StoreRoleDeclaration              `json:"roles"`                    // 结构角色 + 基数(完整性校验)
+	PrimaryRoles   []string                            `json:"primaryRoles"`             // 展示主体优先级链(每项须在 Roles.storeType 集合内)
+	StoreStandards map[string]StoreStandardDeclaration `json:"storeStandards,omitempty"` // 各 store 角色的文件标准(key=storeType);可选,描述性,不强制声明
+}
+
+// StoreStandardDeclaration 单个 store 角色的文件标准声明(plugin.json 解析用,与宿主侧规约
+// entity.StoreStandard 对齐):描述、期望扩展名、典型产出方式,均为描述性信息(不做内容校验)。
+type StoreStandardDeclaration struct {
+	Description string   `json:"description"`          // 角色用途说明
+	Formats     []string `json:"formats,omitempty"`    // 期望文件扩展名(描述性,非强制)
+	Generation  string   `json:"generation,omitempty"` // 该角色的典型 generation(downloaded/derived);可跨多种 generation 的角色留空
 }
 
 // StoreRoleDeclaration ResourceTypeDeclaration 的结构角色声明(plugin.json 解析用,独立于 entity.StoreRoleSpec)。

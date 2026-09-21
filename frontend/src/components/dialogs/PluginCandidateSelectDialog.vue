@@ -12,6 +12,8 @@ const state = defineModel<boolean>('state', { required: true })
 const props = defineProps<{
   /** 候选清单，顺序即展示序——首位为默认选中项（由后端按复合全键字典序排定，此处不再重排） */
   candidates: PluginCandidate[]
+  /** 引导文案（可选）：候选按站点分组逐个询问时由调用方点明本次问的是哪个站点，缺省用通用文案 */
+  tip?: string
 }>()
 
 // 事件
@@ -37,12 +39,14 @@ function candidateName(candidate: PluginCandidate): string {
   return isNotBlank(candidate.pluginName) ? candidate.pluginName : candidate.pluginPublicId
 }
 
-// 每次打开重置选中的候选（首位即默认选中项）
+// 每次打开重置选中的候选（首位即默认选中项）与确认标记：连续询问多组时确认后随即再次打开，
+// 关闭事件的到达可能落在再次打开之后，标记一律在打开时清零
 watch(state, (visible) => {
   if (!visible) {
     return
   }
   selectedIndex.value = 0
+  confirmed = false
 })
 
 // 确认：带出选中候选并关闭
@@ -80,7 +84,7 @@ function handleClosed() {
     @closed="handleClosed"
   >
     <div class="plugin-candidate-select-tip">
-      该操作可由多个插件处理，请选择本次使用的插件
+      {{ isNotBlank(props.tip) ? props.tip : '该操作可由多个插件处理，请选择本次使用的插件' }}
     </div>
     <el-radio-group
       v-model="selectedIndex"

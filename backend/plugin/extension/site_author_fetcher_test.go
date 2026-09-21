@@ -1,7 +1,7 @@
 package extension
 
-// siteAuthorFetcher 能力广播路由锚定：未归属（PermissionDenied，开流或首个 Recv 到达均覆盖）
-// 静默跳过继续广播、真失败命中即止、无能力/无归属收口报错、消费侧免字节时取消流正常收尾。
+// siteAuthorFetcher 能力广播路由锚定：插件侧拒绝（PermissionDenied，开流或首个 Recv 到达均覆盖）
+// 与其余错误同为真失败（命中即止并点名插件）、无候选时收口报错、消费侧免字节时取消流正常收尾。
 
 import (
 	"context"
@@ -39,15 +39,18 @@ func (s *fakeAuthorInfoStream) Recv() (*gen.AuthorInfoChunk, error) {
 	return c, nil
 }
 
-// fakeSiteAuthorFetchClient 作者信息拉取服务客户端替身：openErr 非 nil 时开流即失败（未归属
-// 信号可出现在开流），否则返回预置流（未归属信号亦可出现在首个 Recv——经 stream.err 表达）
+// fakeSiteAuthorFetchClient 作者信息拉取服务客户端替身：openErr 非 nil 时开流即失败（错误
+// 可出现在开流），否则返回预置流（错误亦可出现在首个 Recv——经 stream.err 表达）。
+// opened 记录开流是否发生——「零插件调用」的机检锚点
 type fakeSiteAuthorFetchClient struct {
 	gen.SiteAuthorFetchServiceClient
 	openErr error
 	stream  *fakeAuthorInfoStream
+	opened  bool
 }
 
 func (c *fakeSiteAuthorFetchClient) FetchSiteAuthorInfo(context.Context, *gen.FetchSiteAuthorInfoRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[gen.AuthorInfoChunk], error) {
+	c.opened = true
 	if c.openErr != nil {
 		return nil, c.openErr
 	}
@@ -64,13 +67,26 @@ func (a *authorInfoAccessor) GetServices(pluginId string) (*transport.GRPCPlugin
 	return c, ok
 }
 
-// authorInfoCapsQuery 声明驱动查询器替身
+// authorInfoCapsQuery 声明驱动查询器替身：能力集由归属站点声明派生——sites 有该插件条目即视作
+// 声明了 siteAuthorFetch 能力包（与生产 Loader 的能力集/站点清单两查询同源，同一结构段派生）
 type authorInfoCapsQuery struct {
-	caps map[string][]string
+	sites map[string][]string
 }
 
 func (q *authorInfoCapsQuery) GetCapabilities(pluginId string) []string {
-	return q.caps[pluginId]
+	if _, ok := q.sites[pluginId]; !ok {
+		return nil
+	}
+	return []string{CapabilitySiteAuthorFetch}
+}
+
+// authorInfoScopeQuery 站点归属声明查询器替身：sites 按公开 ID 给出能力包声明的站点键清单
+type authorInfoScopeQuery struct {
+	sites map[string][]string
+}
+
+func (q *authorInfoScopeQuery) SiteAuthorFetchSites(pluginId string) []string {
+	return q.sites[pluginId]
 }
 
 // authorInfoLister 广播遍历清单替身：ids 给出激活序，names 按公开 ID 给出插件展示名
@@ -88,16 +104,18 @@ func (l *authorInfoLister) ListActivePlugins() []ActivePlugin {
 	return plugins
 }
 
-func newBroadcastFetcher(ids []string, caps map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
-	return newBroadcastFetcherNamed(ids, nil, caps, byPlugin)
+func newBroadcastFetcher(ids []string, sites map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
+	return newBroadcastFetcherNamed(ids, nil, sites, byPlugin)
 }
 
 // newBroadcastFetcherNamed 同 newBroadcastFetcher，另指定各插件的展示名
-func newBroadcastFetcherNamed(ids []string, names map[string]string, caps map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
-	return NewSiteAuthorFetcher(&authorInfoLister{ids: ids, names: names}, &authorInfoCapsQuery{caps: caps}, &authorInfoAccessor{byPlugin: byPlugin})
+func newBroadcastFetcherNamed(ids []string, names map[string]string, sites map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
+	return NewSiteAuthorFetcher(&authorInfoLister{ids: ids, names: names},
+		&authorInfoCapsQuery{sites: sites}, &authorInfoScopeQuery{sites: sites}, &authorInfoAccessor{byPlugin: byPlugin})
 }
 
-func notOwnedErr() error {
+// permissionDeniedErr 插件侧拒绝（gRPC PermissionDenied）：与任何插件错误一样按真失败处理
+func permissionDeniedErr() error {
 	return status.Error(codes.PermissionDenied, "site not owned")
 }
 
@@ -109,17 +127,47 @@ func resourceChunk(data string) *gen.AuthorInfoChunk {
 	return &gen.AuthorInfoChunk{Payload: &gen.AuthorInfoChunk_Resource{Resource: &gen.AuthorResourceData{Data: []byte(data)}}}
 }
 
-// TestSiteAuthorFetcherBroadcastSkipsNotOwned 未归属信号（开流与首个 Recv 两种到达形态）均
-// 静默跳过继续广播，命中归属插件后正常交付
-func TestSiteAuthorFetcherBroadcastSkipsNotOwned(t *testing.T) {
-	// p-a：未归属出现在开流；p-b：未归属出现在首个 Recv（流首即错误）；p-c：归属，正常流
+// TestSiteAuthorFetcherPluginErrorStopsBroadcast 插件侧拒绝（开流与首个 Recv 两种到达形态）按真
+// 失败终止并点名插件，不再尝试后续候选
+func TestSiteAuthorFetcherPluginErrorStopsBroadcast(t *testing.T) {
+	cases := []struct {
+		name   string
+		client *fakeSiteAuthorFetchClient
+	}{
+		{"拒绝出现在开流", &fakeSiteAuthorFetchClient{openErr: permissionDeniedErr()}},
+		{"拒绝出现在首个 Recv", &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{err: permissionDeniedErr()}}},
+	}
+	for _, tc := range cases {
+		fetcher := newBroadcastFetcher(
+			[]string{"p-a", "p-b"},
+			map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}},
+			map[string]*transport.GRPCPluginClient{
+				"p-a": {SiteAuthorFetch: tc.client},
+				"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{
+					metaChunk("后续候选"),
+				}}}},
+			},
+		)
+		var gotMeta string
+		err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
+			func(meta *gen.AuthorInfoMeta) (bool, error) { gotMeta = meta.GetAuthorName(); return true, nil },
+			func(data []byte) error { return nil })
+		if err == nil || !strings.Contains(err.Error(), "p-a") {
+			t.Fatalf("%s: 应真失败并点名 p-a, 实际 %v", tc.name, err)
+		}
+		if gotMeta != "" {
+			t.Fatalf("%s: 失败后不应继续尝试后续候选, 实际交付 meta=%q", tc.name, gotMeta)
+		}
+	}
+}
+
+// TestSiteAuthorFetcherStreamDeliveredOnSuccess 首个候选的成功流：meta 与资源字节按序交付消费侧
+func TestSiteAuthorFetcherStreamDeliveredOnSuccess(t *testing.T) {
 	fetcher := newBroadcastFetcher(
-		[]string{"p-a", "p-b", "p-c"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}, "p-c": {CapabilitySiteAuthorFetch}},
+		[]string{"p-a"},
+		map[string][]string{"p-a": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
-			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{openErr: notOwnedErr()}},
-			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{err: notOwnedErr()}}},
-			"p-c": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{
+			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{
 				metaChunk("归属作者"),
 				resourceChunk("bytes"),
 			}}}},
@@ -131,7 +179,7 @@ func TestSiteAuthorFetcherBroadcastSkipsNotOwned(t *testing.T) {
 		func(meta *gen.AuthorInfoMeta) (bool, error) { gotMeta = meta.GetAuthorName(); return true, nil },
 		func(data []byte) error { gotData = append(gotData, string(data)); return nil })
 	if err != nil {
-		t.Fatalf("广播应命中 p-c 成功: %v", err)
+		t.Fatalf("成功流应无错误: %v", err)
 	}
 	if gotMeta != "归属作者" || len(gotData) != 1 || gotData[0] != "bytes" {
 		t.Fatalf("交付不符: meta=%q data=%v", gotMeta, gotData)
@@ -143,7 +191,7 @@ func TestSiteAuthorFetcherBroadcastSkipsNotOwned(t *testing.T) {
 func TestSiteAuthorFetcherStopsAtTrueFailure(t *testing.T) {
 	fetcher := newBroadcastFetcher(
 		[]string{"p-a", "p-b"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+		map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{openErr: status.Error(codes.Internal, "boom")}},
 			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk("不应到达")}}}},
@@ -160,11 +208,11 @@ func TestSiteAuthorFetcherStopsAtTrueFailure(t *testing.T) {
 	}
 }
 
-// TestSiteAuthorFetcherNoOwner 无已激活插件声明能力（或全部未归属）时收口报错，不盲调
+// TestSiteAuthorFetcherNoOwner 无已激活插件声明可处理该站点的能力包时零候选收口报错，不盲调
 func TestSiteAuthorFetcherNoOwner(t *testing.T) {
 	fetcher := newBroadcastFetcher(
 		[]string{"p-a", "p-b"},
-		map[string][]string{"p-a": {"otherCapability"}},
+		map[string][]string{"p-a": {"bilibili"}}, // 声明了能力包但未声明 pixiv；p-b 未声明能力包
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 		},
@@ -173,7 +221,63 @@ func TestSiteAuthorFetcherNoOwner(t *testing.T) {
 		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
 		func(data []byte) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "无归属") {
-		t.Fatalf("无归属应收口报错, 实际 %v", err)
+		t.Fatalf("零候选应收口报错, 实际 %v", err)
+	}
+	if !strings.Contains(err.Error(), "无已激活插件声明") {
+		t.Fatalf("零候选文案应点名无能力声明, 实际 %v", err)
+	}
+}
+
+// TestSiteAuthorFetchUnclaimedSiteZeroCandidateNoCall 非归属站点（声明者未把该站点键列入能力包）：
+// 零候选且零插件调用——「零插件调用」以客户端 open 标志机检（候选为空时基座不接入调用）
+func TestSiteAuthorFetchUnclaimedSiteZeroCandidateNoCall(t *testing.T) {
+	client := &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{
+		metaChunk("不应到达"),
+	}}}
+	fetcher := newBroadcastFetcher(
+		[]string{"p-a", "p-b"},
+		map[string][]string{"p-a": {"pixiv"}, "p-b": {"bilibili"}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a": {SiteAuthorFetch: client},
+			"p-b": {SiteAuthorFetch: client},
+		},
+	)
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "local", "42", "",
+		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
+		func(data []byte) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "无归属") {
+		t.Fatalf("非归属站点应零候选收口报错, 实际 %v", err)
+	}
+	if client.opened {
+		t.Fatal("非归属站点不应调用任何插件")
+	}
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background(), "local")
+	if err != nil {
+		t.Fatalf("枚举候选失败: %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("非归属站点候选应为空, 实际 %+v", candidates)
+	}
+}
+
+// TestListSiteAuthorFetchCandidatesSameSiteDeclarers 同站点两个声明者 → 两候选（按插件标识
+// 字典序），非声明该站点的插件不进候选
+func TestListSiteAuthorFetchCandidatesSameSiteDeclarers(t *testing.T) {
+	fetcher := newBroadcastFetcher(
+		[]string{"p-b", "p-a", "p-other"},
+		map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}, "p-other": {"bilibili"}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a":     {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+			"p-b":     {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+			"p-other": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+		},
+	)
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background(), "pixiv")
+	if err != nil {
+		t.Fatalf("枚举候选失败: %v", err)
+	}
+	if len(candidates) != 2 || candidates[0].PluginPublicId != "p-a" || candidates[1].PluginPublicId != "p-b" {
+		t.Fatalf("同站点两声明者应成两候选且按标识字典序, 实际 %+v", candidates)
 	}
 }
 
@@ -182,7 +286,7 @@ func TestSiteAuthorFetcherNoOwner(t *testing.T) {
 func TestSiteAuthorFetcherMetaOnlyEndsCleanly(t *testing.T) {
 	fetcher := newBroadcastFetcher(
 		[]string{"p-a"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}},
+		map[string][]string{"p-a": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{
 				metaChunk("作者"),
@@ -214,7 +318,7 @@ func TestSiteAuthorFetcherProtocolViolations(t *testing.T) {
 	for _, tc := range cases {
 		fetcher := newBroadcastFetcher(
 			[]string{"p-a"},
-			map[string][]string{"p-a": {CapabilitySiteAuthorFetch}},
+			map[string][]string{"p-a": {"pixiv"}},
 			map[string]*transport.GRPCPluginClient{
 				"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: tc.chunks}}},
 			},
@@ -232,7 +336,7 @@ func TestSiteAuthorFetcherProtocolViolations(t *testing.T) {
 func TestSiteAuthorFetcherConsumerErrorPropagates(t *testing.T) {
 	fetcher := newBroadcastFetcher(
 		[]string{"p-a"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}},
+		map[string][]string{"p-a": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk("作者")}}}},
 		},
@@ -243,47 +347,6 @@ func TestSiteAuthorFetcherConsumerErrorPropagates(t *testing.T) {
 		func(data []byte) error { return nil })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("消费回调错误应原样上抛, 实际 %v", err)
-	}
-}
-
-// TestSiteAuthorFetcherClosureStatesReportedSeparately 收口两态分报：零声明者（无插件声明能力）
-// 与候选全不适配（候选均声明不归属）各自独立文案，后者列名已试候选
-func TestSiteAuthorFetcherClosureStatesReportedSeparately(t *testing.T) {
-	noDeclarer := newBroadcastFetcher(
-		[]string{"p-a", "p-b"},
-		map[string][]string{"p-a": {"otherCapability"}},
-		map[string]*transport.GRPCPluginClient{
-			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk("不应到达")}}}},
-		},
-	)
-	allNotOwned := newBroadcastFetcher(
-		[]string{"p-a", "p-b"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
-		map[string]*transport.GRPCPluginClient{
-			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{openErr: notOwnedErr()}},
-			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{err: notOwnedErr()}}},
-		},
-	)
-	noDeclarerErr := noDeclarer.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
-		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
-		func(data []byte) error { return nil })
-	allNotOwnedErr := allNotOwned.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
-		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
-		func(data []byte) error { return nil })
-	if noDeclarerErr == nil || allNotOwnedErr == nil {
-		t.Fatalf("两态均应报错: 零声明者=%v 全不适配=%v", noDeclarerErr, allNotOwnedErr)
-	}
-	if noDeclarerErr.Error() == allNotOwnedErr.Error() {
-		t.Fatalf("两态应收口为不同文案, 实际同为 %v", noDeclarerErr)
-	}
-	if !strings.Contains(noDeclarerErr.Error(), "无已激活插件声明") {
-		t.Fatalf("零声明者文案应点名无能力声明: %v", noDeclarerErr)
-	}
-	if strings.Contains(allNotOwnedErr.Error(), "无已激活插件声明") {
-		t.Fatalf("全不适配文案不应复用零声明者文案: %v", allNotOwnedErr)
-	}
-	if !strings.Contains(allNotOwnedErr.Error(), "p-a") || !strings.Contains(allNotOwnedErr.Error(), "p-b") {
-		t.Fatalf("全不适配文案应列出已试候选: %v", allNotOwnedErr)
 	}
 }
 
@@ -307,7 +370,7 @@ func TestSiteAuthorFetchAdapterPreferredCandidateGoesFirst(t *testing.T) {
 	for _, tc := range cases {
 		fetcher := newBroadcastFetcher(
 			[]string{"p-a", "p-b"},
-			map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+			map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}},
 			map[string]*transport.GRPCPluginClient{"p-a": pluginClient("p-a 作者"), "p-b": pluginClient("p-b 作者")},
 		)
 		var gotMeta string
@@ -347,7 +410,7 @@ func TestSiteAuthorFetcherChosenCandidateGoesFirst(t *testing.T) {
 	for _, tc := range cases {
 		fetcher := newBroadcastFetcher(
 			[]string{"p-a", "p-b"},
-			map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+			map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}},
 			map[string]*transport.GRPCPluginClient{"p-a": pluginClient("p-a 作者"), "p-b": pluginClient("p-b 作者")},
 		)
 		var gotMeta string
@@ -363,19 +426,20 @@ func TestSiteAuthorFetcherChosenCandidateGoesFirst(t *testing.T) {
 	}
 }
 
-// TestListSiteAuthorFetchCandidatesFilteredOrdered 候选清单=已激活 ∩ 声明能力 ∩ 客户端可用，
-// 按插件标识字典序（与激活清单给出的序无关），元素为插件级候选（扩展点 ID 恒空串）
+// TestListSiteAuthorFetchCandidatesFilteredOrdered 候选清单=已激活 ∩ 声明能力包 ∩ 声明站点
+// 含请求站点键 ∩ 客户端可用，按插件标识字典序（与激活清单给出的序无关），元素为插件级候选
+// （扩展点 ID 恒空串）
 func TestListSiteAuthorFetchCandidatesFilteredOrdered(t *testing.T) {
 	fetcher := newBroadcastFetcher(
 		[]string{"p-c", "p-b", "p-a"},
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}, "p-c": {CapabilitySiteAuthorFetch}},
+		map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}, "p-c": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 			// p-c 声明能力但无可用服务客户端，不成候选
 		},
 	)
-	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background())
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background(), "pixiv")
 	if err != nil {
 		t.Fatalf("枚举候选失败: %v", err)
 	}
@@ -396,13 +460,13 @@ func TestListSiteAuthorFetchCandidatesPluginName(t *testing.T) {
 	fetcher := newBroadcastFetcherNamed(
 		[]string{"p-a", "p-b"},
 		map[string]string{"p-a": "比卡套件"}, // p-b 未设置展示名
-		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+		map[string][]string{"p-a": {"pixiv"}, "p-b": {"pixiv"}},
 		map[string]*transport.GRPCPluginClient{
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 		},
 	)
-	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background())
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background(), "pixiv")
 	if err != nil {
 		t.Fatalf("枚举候选失败: %v", err)
 	}

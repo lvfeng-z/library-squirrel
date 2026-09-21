@@ -11,8 +11,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
 
 | 方法 | 作用 |
 | --- | --- |
-| `FetchSiteAuthorInfo(ctx, siteAuthorId, chosenPluginPublicId)` | 手动拉取单个站点作者信息（行操作）。`chosenPluginPublicId` 为交互面显选键（空=未显选）：多候选且未显选时返回冲突载荷 `SiteAuthorFetchConflict{Conflict, Candidates}`（未调用任何插件），前端选择后带键重发；失败上抛 |
-| `FetchSiteAuthorsInfo(ctx, siteAuthorIds, chosenPluginPublicId)` | 手动批量拉取（逐作者串行，返回逐条成功/失败清单 `[]*SiteAuthorFetchItemResult`）；候选冲突**整批前置问一次**（未调用任何插件），否则逐条结果与入参顺序一致 |
+| `FetchSiteAuthorInfo(ctx, siteAuthorId, chosenPlugins)` | 手动拉取单个站点作者信息（行操作）。`chosenPlugins` 为交互面显选清单（站点键 → 插件，空=未显选）：该站点候选 ≥2 且未显选时返回冲突载荷 `SiteAuthorFetchConflict{Conflict, SiteKey, Candidates}`（未调用任何插件），前端选择后带键重发；失败上抛（`handler.go:38-48`） |
+| `FetchSiteAuthorsInfo(ctx, siteAuthorIds, chosenPlugins)` | 手动批量拉取（逐作者串行，返回逐条成功/失败清单 `[]*SiteAuthorFetchItemResult`）；候选冲突**按站点分组整批前置问一次**（同站点只问一次，未调用任何插件），否则逐条结果与入参顺序一致（`handler.go:50-62`） |
 | `SetLocalAuthorAvatar(ctx, localAuthorId, sourceAbsPath)` | 为本地作者导入头像（源=前端文件对话框选取的任意盘绝对路径；换头像先删旧） |
 | `RemoveLocalAuthorAvatar(ctx, localAuthorId)` | 移除本地作者头像（显式破坏操作，前端二次确认；无头像幂等成功） |
 
@@ -29,8 +29,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
   （站点声明头像且（来源 URL 变化或行无 avatar_store_id））→ 换头像先删旧 → 字节写暂存（10MB
   上限）→ persistentStore 四调用入库（撤回处置恒丢弃）→ 业务事务内建 store 行 + 同事务写
   `site_author.avatar_store_id` → 作用域回收。
-- **能力广播路由**：候选=声明 `siteAuthorFetch` 能力且有可用服务客户端的已激活插件（插件级消费面，候选粒度=插件），经 `backend/route` 基座按候选序逐个调用，插件按请求 siteKey 归属自判（未归属=PermissionDenied 静默顺延），命中一个即止。收口**两态分报**：零声明者与候选全不适配各报一条文案（后者并列已试候选名）。
-- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测——候选清单来自能力声明（不含站点归属过滤，与具体作者无关），多候选且未显选即返回冲突载荷；显选键非空须命中候选集，否则报 `ErrChosenPluginInvalid`。批量拉取**整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按插件标识字典序，首位即默认选中项）。
+- **能力广播路由**：候选=声明 `extensions.siteAuthorFetch` 能力包、且该包 `sites` 含本次请求站点键、且有可用服务客户端的已激活插件（插件级消费面，候选粒度=插件）。候选在发现侧即按站点归属收窄，故**候选集恒等于归属集**，插件不自判归属、「调用后才知不归属」态不复存在（`site_author_fetcher.go:92-107`）。经 `backend/route` 基座按候选序逐个调用，命中一个即止、任一候选失败即终止并点名插件（单极，无不适配顺延）；零候选单态收口报「无插件覆盖该站点」（`site_author_fetcher.go:57-63`）。
+- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测——候选按站点收窄，故须**先解析目标行拿站点键**再做检测（`service.go:211-213,248-249`）；按本次触发的站点键逐站枚举候选，未显选且该站点候选 ≥2 即记一组冲突（同站点只记一组，返回冲突载荷且未调用任何插件），显选键非空须命中该站点候选集，否则报 `ErrChosenPluginInvalid`（`service.go:144-170`）。批量拉取**按站点分组整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按插件标识字典序，首位即默认选中项）。
 - **两触发面共用在途去重**：mutex + map 的作者 DB ID 集合；在途时再次手动拒绝（409）、批量记
   跳过、自动触发静默跳过。开关 `authorSettings.autoFetchInfo`（默认开）只控制自动触发面。
 - **失败语义**：meta 回写与资源落库各自独立成功（头像缺省是合法态）；流中断/入库失败不留

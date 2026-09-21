@@ -91,14 +91,28 @@ func (m *lifecycleManager) registerParticipant(p LifecycleParticipant) {
 
 // readPluginManifest 从插件安装目录读取并解析 plugin.json
 func readPluginManifest(plugin *entity2.Plugin) (*dto.PluginManifest, error) {
+	manifestBytes, err := readPluginManifestBytes(plugin)
+	if err != nil {
+		return nil, err
+	}
+	return parsePluginManifest(plugin.PublicID.String, manifestBytes)
+}
+
+// readPluginManifestBytes 读取插件安装目录下的 plugin.json 原文（声明面校验就原文探测顶层键，
+// 故需要原文而非仅解析结果）
+func readPluginManifestBytes(plugin *entity2.Plugin) ([]byte, error) {
 	publicId := plugin.PublicID.String
 	pluginRootDir := filepath.Join(util.RootPath(), plugin.RootPath.String)
 	logger.Log.Infof("正在激活插件: %s (root=%s)", publicId, pluginRootDir)
-	manifestPath := filepath.Join(pluginRootDir, "plugin.json")
-	manifestBytes, err := os.ReadFile(manifestPath)
+	manifestBytes, err := os.ReadFile(filepath.Join(pluginRootDir, "plugin.json"))
 	if err != nil {
 		return nil, fmt.Errorf("读取 plugin.json 失败 %s: %w", publicId, err)
 	}
+	return manifestBytes, nil
+}
+
+// parsePluginManifest 解析 plugin.json 原文
+func parsePluginManifest(publicId string, manifestBytes []byte) (*dto.PluginManifest, error) {
 	var manifest dto.PluginManifest
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return nil, fmt.Errorf("解析 plugin.json 失败 %s: %w", publicId, err)

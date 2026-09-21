@@ -4,9 +4,9 @@ package authorInfo
 // 权威域白名单列）→ 判定需落字节（来源 URL 变化或行无引用）→ 换头像先删旧 → 头像字节写暂存
 // （尺寸上限）→ 四调用入库 → 业务事务内建行 + 同事务写 site_author.avatar_store_id → 作用域
 // 回收。两触发面（作品入库后自动带开关、手动单条/批量）共用同一拉取序列与在途去重集合）；
-// 手动面在任何插件调用前做候选冲突前置检测（多候选未显选即返回冲突载荷，批量整批问一次）；
-// local 侧头像手动导入/移除；siteAuthor/localAuthor 删除联动的头像行清理（AvatarFileCleaner，
-// 行面入调用方删除事务、文件面在事务提交后清理）。
+// 手动面在任何插件调用前先按行解析站点键、再按站点做候选冲突检测（该站点多候选未显选即返回冲突
+// 载荷，批量按站点分组整批交回）；local 侧头像手动导入/移除；siteAuthor/localAuthor 删除联动的
+// 头像行清理（AvatarFileCleaner，行面入调用方删除事务、文件面在事务提交后清理）。
 
 import (
 	"context"
@@ -55,7 +55,7 @@ const (
 	localAvatarScopeKeyPrefix = "local-"
 )
 
-// ErrChosenPluginInvalid 交互面显选插件未命中候选集（候选发现不含站点归属过滤，与具体作者无关）
+// ErrChosenPluginInvalid 交互面显选插件未命中该站点键的候选集
 var ErrChosenPluginInvalid = pkgerr.NewBusinessError(400, "所选的插件不在作者信息拉取的候选集内")
 
 // Service 作者个人信息编排服务（site 侧拉取主链 + local 侧头像导入/移除 + 删除联动头像清理）
@@ -133,58 +133,105 @@ func (s *Service) OnSiteAuthorsUpserted(siteAuthorIds []int64) {
 
 // ===== 触发面二：手动拉取（单条/批量，不受开关限制） =====
 
-// SiteAuthorFetchResponse 手动拉取的响应载荷：Conflict 非空即候选冲突态（未调用任何插件，
-// Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）
+// SiteAuthorFetchResponse 手动拉取的响应载荷：Conflicts 非空即候选冲突态（未调用任何插件，
+// Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）。
+// 候选按站点收窄，故冲突按站点分组交回——同一站点=同一候选集=同一冲突集，单条触发至多一组
 type SiteAuthorFetchResponse struct {
-	Conflict *dto.SiteAuthorFetchConflict `json:"conflict"`
-	Items    []*SiteAuthorFetchItemResult `json:"items"`
+	Conflicts []*dto.SiteAuthorFetchConflict `json:"conflicts"`
+	Items     []*SiteAuthorFetchItemResult   `json:"items"`
 }
 
-// resolveFetchSelection 候选冲突前置检测与显选校验：候选清单来自能力声明（不含站点归属过滤，
-// 与具体作者无关）。未显选且候选多于一个即返回冲突载荷，调用方据此询问用户后带显选插件重发；
-// 显选非空须命中候选集
-func (s *Service) resolveFetchSelection(ctx context.Context, chosenPluginPublicId string) (*dto.SiteAuthorFetchConflict, error) {
-	candidates, err := s.fetcher.ListSiteAuthorFetchCandidates(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("枚举作者信息拉取候选失败: %w", err)
-	}
-	if chosenPluginPublicId != "" {
-		for _, candidate := range candidates {
-			if candidate.PluginPublicId == chosenPluginPublicId {
-				return nil, nil
-			}
+// resolveFetchSelection 候选冲突检测与显选校验：候选依赖站点键（站点不同则候选集不同），故
+// 调用方须先解析目标行拿站点键。按本次触发的站点键逐站枚举候选——未显选且该站点候选多于一个即
+// 记一组冲突（同站点只记一组），调用方据此询问用户后带显选重发；显选键须命中该站点的候选集。
+// siteKeys 为本次触发的站点键（去重保序）；chosen 中站点键不在 siteKeys 内的条目不参与本次触发
+// （本次触发没有该站点的目标行）。冲突组与入参站点序同序
+func (s *Service) resolveFetchSelection(ctx context.Context, siteKeys []string,
+	chosen []*dto.SiteAuthorFetchChoice) ([]*dto.SiteAuthorFetchConflict, error) {
+	var conflicts []*dto.SiteAuthorFetchConflict
+	for _, siteKey := range siteKeys {
+		candidates, err := s.fetcher.ListSiteAuthorFetchCandidates(ctx, siteKey)
+		if err != nil {
+			return nil, fmt.Errorf("枚举站点 %s 的作者信息拉取候选失败: %w", siteKey, err)
 		}
-		return nil, ErrChosenPluginInvalid
+		picked := chosenPluginOf(chosen, siteKey)
+		if picked != "" {
+			hit := false
+			for _, candidate := range candidates {
+				if candidate.PluginPublicId == picked {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				return nil, ErrChosenPluginInvalid
+			}
+			continue
+		}
+		if len(candidates) >= 2 {
+			conflicts = append(conflicts, &dto.SiteAuthorFetchConflict{
+				Conflict:   true,
+				SiteKey:    siteKey,
+				Candidates: candidates,
+			})
+		}
 	}
-	if len(candidates) >= 2 {
-		return &dto.SiteAuthorFetchConflict{Conflict: true, Candidates: candidates}, nil
-	}
-	return nil, nil
+	return conflicts, nil
 }
 
-// FetchSiteAuthorInfoById 手动拉取单个站点作者信息：先做候选冲突前置检测（命中即返回冲突载荷，
-// 未调用任何插件），再按行取站点键后广播路由。命中在途拉取直接拒绝（用户可稍后重试）。失败上抛
-// （前端行操作 loading 态由调用侧承载）
-func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int64, chosenPluginPublicId string) (*SiteAuthorFetchResponse, error) {
+// chosenPluginOf 取本次触发对该站点的显选插件键（空串=未显选）
+func chosenPluginOf(chosen []*dto.SiteAuthorFetchChoice, siteKey string) string {
+	for _, choice := range chosen {
+		if choice != nil && choice.SiteKey == siteKey {
+			return choice.PluginPublicId
+		}
+	}
+	return ""
+}
+
+// triggerSiteKeys 本次触发的站点键（按入参作者序去重保序）：仅含已解析到目标行的作者，
+// 行缺失者不参与候选与冲突判定
+func triggerSiteKeys(siteAuthorIds []int64, targetById map[int64]*dto.SiteAuthorFetchTarget) []string {
+	siteKeys := make([]string, 0, len(targetById))
+	seen := make(map[string]struct{}, len(targetById))
+	for _, id := range siteAuthorIds {
+		target, ok := targetById[id]
+		if !ok {
+			continue
+		}
+		if _, dup := seen[target.SiteKey]; dup {
+			continue
+		}
+		seen[target.SiteKey] = struct{}{}
+		siteKeys = append(siteKeys, target.SiteKey)
+	}
+	return siteKeys
+}
+
+// FetchSiteAuthorInfoById 手动拉取单个站点作者信息：先按行取站点键（候选按站点收窄，站点键须
+// 解析目标行才拿到，故冲突检测在解析之后），命中冲突即返回冲突载荷（未调用任何插件），再广播路由。
+// 命中在途拉取直接拒绝（用户可稍后重试）。失败上抛（前端行操作 loading 态由调用侧承载）
+func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int64,
+	chosen []*dto.SiteAuthorFetchChoice) (*SiteAuthorFetchResponse, error) {
 	if s.fetcher == nil {
 		return nil, pkgerr.NewBusinessError(500, "作者信息拉取能力未就绪")
-	}
-	conflict, err := s.resolveFetchSelection(ctx, chosenPluginPublicId)
-	if err != nil {
-		return nil, err
-	}
-	if conflict != nil {
-		return &SiteAuthorFetchResponse{Conflict: conflict}, nil
 	}
 	target, err := s.resolveTarget(ctx, siteAuthorId)
 	if err != nil {
 		return nil, err
 	}
+	conflicts, err := s.resolveFetchSelection(ctx, []string{target.SiteKey}, chosen)
+	if err != nil {
+		return nil, err
+	}
+	if len(conflicts) > 0 {
+		return &SiteAuthorFetchResponse{Conflicts: conflicts}, nil
+	}
 	if !s.acquire(target.ID) {
 		return nil, pkgerr.NewBusinessError(409, "该作者的信息正在拉取中，请稍后再试")
 	}
 	defer s.release(target.ID)
-	if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginPublicId); err != nil {
+	if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginOf(chosen, target.SiteKey)); err != nil {
 		logger.Log.Warnf("[authorInfo] 手动拉取站点作者 %d 信息失败: %v", siteAuthorId, err)
 		return nil, err
 	}
@@ -198,22 +245,18 @@ type SiteAuthorFetchItemResult struct {
 	Message      string `json:"message"`
 }
 
-// FetchSiteAuthorsInfoByIds 手动批量拉取：候选冲突整批前置返回（一次触发问一次，未调用任何插件），
-// 否则逐作者串行走同一拉取序列、共用在途去重；单作者失败不阻断其余，逐条结果与入参顺序一致
-func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds []int64, chosenPluginPublicId string) (*SiteAuthorFetchResponse, error) {
+// FetchSiteAuthorsInfoByIds 手动批量拉取：先解析整批目标行拿站点键，再按站点分组做候选冲突检测
+// ——同一站点=同一候选集=同一冲突集，只问一次；不同站点各记一组，整批一次触发交回（未调用任何插件）。
+// 无冲突则逐作者串行走同一拉取序列、共用在途去重与逐站点显选；单作者失败不阻断其余，
+// 逐条结果与入参顺序一致
+func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds []int64,
+	chosen []*dto.SiteAuthorFetchChoice) (*SiteAuthorFetchResponse, error) {
 	if s.fetcher == nil {
 		return nil, pkgerr.NewBusinessError(500, "作者信息拉取能力未就绪")
 	}
 	results := make([]*SiteAuthorFetchItemResult, 0, len(siteAuthorIds))
 	if len(siteAuthorIds) == 0 {
 		return &SiteAuthorFetchResponse{Items: results}, nil
-	}
-	conflict, err := s.resolveFetchSelection(ctx, chosenPluginPublicId)
-	if err != nil {
-		return nil, err
-	}
-	if conflict != nil {
-		return &SiteAuthorFetchResponse{Conflict: conflict}, nil
 	}
 	targets, err := s.siteAuthors.ListFetchTargetsByIds(ctx, siteAuthorIds)
 	if err != nil {
@@ -222,6 +265,13 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 	targetById := make(map[int64]*dto.SiteAuthorFetchTarget, len(targets))
 	for _, t := range targets {
 		targetById[t.ID] = t
+	}
+	conflicts, err := s.resolveFetchSelection(ctx, triggerSiteKeys(siteAuthorIds, targetById), chosen)
+	if err != nil {
+		return nil, err
+	}
+	if len(conflicts) > 0 {
+		return &SiteAuthorFetchResponse{Conflicts: conflicts}, nil
 	}
 	for _, id := range siteAuthorIds {
 		result := &SiteAuthorFetchItemResult{SiteAuthorId: id}
@@ -232,7 +282,7 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 		case !s.acquire(id):
 			result.Message = "正在拉取中，已跳过"
 		default:
-			if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginPublicId); err != nil {
+			if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginOf(chosen, target.SiteKey)); err != nil {
 				logger.Log.Warnf("[authorInfo] 批量拉取站点作者 %d 信息失败: %v", id, err)
 				result.Message = err.Error()
 			} else {

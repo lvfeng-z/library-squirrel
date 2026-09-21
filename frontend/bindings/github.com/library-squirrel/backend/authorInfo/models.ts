@@ -42,17 +42,18 @@ export class SiteAuthorFetchItemResult {
 }
 
 /**
- * SiteAuthorFetchResponse 手动拉取的响应载荷：Conflict 非空即候选冲突态（未调用任何插件，
- * Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）
+ * SiteAuthorFetchResponse 手动拉取的响应载荷：Conflicts 非空即候选冲突态（未调用任何插件，
+ * Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）。
+ * 候选按站点收窄，故冲突按站点分组交回——同一站点=同一候选集=同一冲突集，单条触发至多一组
  */
 export class SiteAuthorFetchResponse {
-    "conflict": dto$0.SiteAuthorFetchConflict | null;
+    "conflicts": (dto$0.SiteAuthorFetchConflict | null)[];
     "items": (SiteAuthorFetchItemResult | null)[];
 
     /** Creates a new SiteAuthorFetchResponse instance. */
     constructor($$source: Partial<SiteAuthorFetchResponse> = {}) {
-        if (!("conflict" in $$source)) {
-            this["conflict"] = null;
+        if (!("conflicts" in $$source)) {
+            this["conflicts"] = [];
         }
         if (!("items" in $$source)) {
             this["items"] = [];
@@ -65,11 +66,11 @@ export class SiteAuthorFetchResponse {
      * Creates a new SiteAuthorFetchResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): SiteAuthorFetchResponse {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType4;
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("conflict" in $$parsedSource) {
-            $$parsedSource["conflict"] = $$createField0_0($$parsedSource["conflict"]);
+        if ("conflicts" in $$parsedSource) {
+            $$parsedSource["conflicts"] = $$createField0_0($$parsedSource["conflicts"]);
         }
         if ("items" in $$parsedSource) {
             $$parsedSource["items"] = $$createField1_0($$parsedSource["items"]);
@@ -81,6 +82,7 @@ export class SiteAuthorFetchResponse {
 // Private type creation functions
 const $$createType0 = dto$0.SiteAuthorFetchConflict.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = SiteAuthorFetchItemResult.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($$createType3);
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = SiteAuthorFetchItemResult.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $Create.Array($$createType4);

@@ -9,7 +9,7 @@ officialPlugins:
     contentDigest: 6724485ad885bb52dc3cb18459c1fe6814674e162089b4cf7a8f24ff6f7aef0b
   - publicId: com.lvfeng.bilibiliSuite
     buildId: 071cfba
-    contentDigest: 6e50d9f793d964f7ff6d537d83dc32689b9f55b4c9c6482334d58cab4bb28996
+    contentDigest: b4c39f551412b9ce65214badc1035766e1d954ad932b3abce0cd21b60d58ce4b
   - publicId: com.lvfeng.bilibiliSuite
     buildId: 11b2c36
     contentDigest: 88af50fff9371cabc0806752cdaf4a38173ae28242831c059ea1978b75c4563c
@@ -20,6 +20,9 @@ officialPlugins:
     buildId: 2acb0ff
     contentDigest: 04c3ebbcced1958d038426fa06d9be5be15edcf4c64efd48e8aed4157a341f07
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: 2b003f7
+    contentDigest: f1c61580057091f840580dd8535d5be899a61a287edef202345dba47c679c214
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: 3f9aa64
     contentDigest: 14dea1e6150b833fffd5deb56e7bfcf79105dbdde3caaeb23d87e20500c87b26
   - publicId: com.lvfeng.bilibiliSuite
@@ -28,6 +31,12 @@ officialPlugins:
   - publicId: com.lvfeng.bilibiliSuite
     buildId: 9db0847-dirty
     contentDigest: 67ff521e39947b40663e7c410248621deee7f8f99f9ca68d81fb8fb2f52d508a
+  - publicId: com.lvfeng.bilibiliSuite
+    buildId: c3ea033
+    contentDigest: e26b4557ff0f7ef0570f2e9cfc975d8edf38fa73faa28b15cb2ef034b985e133
+  - publicId: com.lvfeng.bilibiliSuite
+    buildId: c3ea033-dirty
+    contentDigest: b76da5914b17c0c6b9bc8f41b1102f2a43c0a875c51f0a930f0fca3ff31b6679
   - publicId: com.lvfeng.localImport
     buildId: 15f3735
     contentDigest: 2ffaa54b027cdbab27c45859d7499aaa25f30d8c3d695421b08a1f02f9379fb7
@@ -42,7 +51,13 @@ officialPlugins:
     contentDigest: 73c5de3197a4e97d9170335d7c6e434f83b3ab7d89a9f588f27faf7a63ea77c4
   - publicId: com.lvfeng.localImport
     buildId: 85325ad
-    contentDigest: 7eaf0e87c55d5e0f840477faa37d96f6b847487b36277d9b3c627ea44fd37e0e
+    contentDigest: 266e07fe5628b51701d456ca39d5d08ddd587ad63c24425be82f9f963c997ddf
+  - publicId: com.lvfeng.localImport
+    buildId: 85325ad-dirty
+    contentDigest: e256511c9029d9ec6071c00321bcc751ea2faca038f4d2b77b14f16c81700ebd
+  - publicId: com.lvfeng.localImport
+    buildId: 9073b9c
+    contentDigest: 7e265cfb56b795124a79e787f23710011f4b64aea25579f9bd3038e4d601229b
   - publicId: com.lvfeng.localImport
     buildId: 97f58d4
     contentDigest: 284cf467c9234e3e0ca8abac2ee654702874cff45cf39c5bf9fd229328219c18
@@ -69,7 +84,10 @@ officialPlugins:
     contentDigest: d86ca010b456a08cc0fe5bf318f1da76bced849073e7e12b4e226bd1d0e8ada5
   - publicId: com.lvfeng.pixivSuite
     buildId: cb4363f
-    contentDigest: d0ad214755598ace7c44b2dd60da0b7316043eadb95552ea55aa374c91e801eb
+    contentDigest: b54941485b30cf37b41dffcac3194d1074a46d30339dc0b2efb20599c1afbbca
+  - publicId: com.lvfeng.pixivSuite
+    buildId: cb4363f-dirty
+    contentDigest: 6016704cf75b3c8132f23dd2bcf92f5047cad609b3574af851ddb7a6b153137d
   - publicId: com.lvfeng.pixivSuite
     buildId: e1a0f00
     contentDigest: 2fee150459e296942ac1d3e94530cdfddb20b28cf4e79897e073e563f02bd86b
@@ -79,6 +97,9 @@ officialPlugins:
   - publicId: com.lvfeng.pixivSuite
     buildId: e7af41f
     contentDigest: 12d4b56d2fe5a4e0391365864aeceeeb0b6ebd748835120742d5b9a61a0c8362
+  - publicId: com.lvfeng.pixivSuite
+    buildId: e9a1dc6
+    contentDigest: 712ef8e98b484b2c0e39db05e258e3ec97e323880e867e532c5309be5726c771
   - publicId: com.lvfeng.pixivSuite
     buildId: f119101
     contentDigest: 0b69daedc54c8537be235848b47fe613b0e125264943b742e55b9c450150ef52
@@ -92,5 +113,11 @@ officialPlugins:
     buildId: dbe1851
     contentDigest: 5bec821a3da5842d9b53ae310c1c9ff011da7b64c487e60a2d279d29b96502a2
   - publicId: com.lvfeng.test-plugin
+    buildId: dbe1851-dirty
+    contentDigest: b5117d17d5cb9819ea85f470b2c825ed54524301af9c700ecc39f91eebf8fec8
+  - publicId: com.lvfeng.test-plugin
     buildId: eb13cc3
     contentDigest: 3eecf0954e65c45a3b8cad79390712e7f4d9f81101d34847f1d4844d3a977ba6
+  - publicId: com.lvfeng.test-plugin
+    buildId: f248c2e
+    contentDigest: 79b0cbd680a905d3132f006a19ae0d68ca1c56680999daab96deb61db88201a6
