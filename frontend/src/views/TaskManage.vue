@@ -5,12 +5,14 @@ import DialogMode from '../model/util/DialogMode.ts'
 import { ElMessage } from 'element-plus'
 import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import TaskDialog from '../components/dialogs/TaskDialog.vue'
+import PluginCandidateSelectDialog from '../components/dialogs/PluginCandidateSelectDialog.vue'
 import TaskList from '../components/common/TaskList.vue'
 
 import { useNotificationStore } from '@renderer/store/UseNotificationStore.ts'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { fileSysUtilApi, taskApi, pluginTaskUrlListenerApi } from '@renderer/apis/http'
 import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task/models'
+import { PluginCandidate } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Operator, QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import type { PluginWithExtensionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
@@ -40,6 +42,11 @@ const downloadInputPlaceholder: Ref<string> = ref('')
 const sourceUrl: Ref<string> = ref('')
 const supportedPluginListenerList: Ref<PluginWithExtensionVO[]> = ref([])
 const supportStatus: Ref<string> = ref('')
+// 插件候选选择器开关与其候选清单（URL 命中多个候选扩展点时弹出）
+const pluginSelectState: Ref<boolean> = ref(false)
+const pluginSelectCandidates: Ref<PluginCandidate[]> = ref([])
+// 冲突挂起的创建请求：等待用户选择期间持有 URL 与通知 id，选择或取消后据此收口
+let pendingCreate: { url: string; notificationId: string } | null = null
 
 // 方法
 // 查看行：打开任务详情弹窗
@@ -86,35 +93,73 @@ async function load(row: TaskProgressTreeDTO): Promise<TaskProgressTreeDTO[]> {
   }
 }
 
-async function createTaskFromSource() {
+function createTaskFromSource() {
+  const url = sourceUrl.value
   const notificationId = useNotificationStore().add({
     level: 'info',
     category: 'task',
-    title: `正在根据【${sourceUrl.value}】创建任务`,
+    title: `正在根据【${url}】创建任务`,
     statusText: '创建中',
     route: { name: 'taskManage' }
   })
-  taskApi.taskCreateByUrl(sourceUrl.value)
-    .then((response) => {
-      const data = response.data
-      taskListRef.value.doSearch()
-      if (data.succeed) {
-        useNotificationStore().update(notificationId, { terminal: true, level: 'success', statusText: data.msg || '创建成功' })
-        ElMessage.success(data.msg || '创建成功')
-      } else {
-        useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: data.msg || '未知错误' })
-        ElMessage.error('创建失败，' + (data.msg || '未知错误'))
-      }
-    })
-    .catch((e: Error) => {
-      useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: e.message })
-      ElMessage.error(e.message)
-    })
   downloadDialogState.value = false
   // 移除url
   sourceUrl.value = ''
   // 移除url支持情况文本
   supportStatus.value = ''
+  void createTaskByUrlWithChoice(url, '', '', notificationId)
+}
+
+// 显选键（插件公开 ID 与扩展点 ID）均空 = 未显选；响应为冲突载荷时后端未调用任何插件，
+// 转为弹插件选择器、由用户点名后带两键重发；单候选时后端不返回冲突，不会弹选择器
+async function createTaskByUrlWithChoice(
+  url: string,
+  chosenPluginPublicId: string,
+  chosenExtensionId: string,
+  notificationId: string
+) {
+  try {
+    const response = await taskApi.taskCreateByUrl(url, chosenPluginPublicId, chosenExtensionId)
+    const data = response.data
+    taskListRef.value.doSearch()
+    if (data.conflict) {
+      // 冲突：本次未创建任何任务，通知保持进行中直至用户选择（重发续用该通知）或取消
+      pendingCreate = { url, notificationId }
+      pluginSelectCandidates.value = data.conflictCandidates.filter(notNullish)
+      useNotificationStore().update(notificationId, { statusText: '等待选择插件' })
+      pluginSelectState.value = true
+      return
+    }
+    if (data.succeed) {
+      useNotificationStore().update(notificationId, { terminal: true, level: 'success', statusText: data.msg || '创建成功' })
+      ElMessage.success(data.msg || '创建成功')
+    } else {
+      useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: data.msg || '未知错误' })
+      ElMessage.error('创建失败，' + (data.msg || '未知错误'))
+    }
+  } catch (e: any) {
+    useNotificationStore().update(notificationId, { terminal: true, level: 'error', statusText: '创建失败', exception: e.message })
+    ElMessage.error(e.message)
+  }
+}
+
+// 选择器确认：带插件与扩展点两键重发（联合定位用户点名的扩展点候选）
+function handlePluginChosen(candidate: PluginCandidate) {
+  if (isNullish(pendingCreate)) {
+    return
+  }
+  const pending = pendingCreate
+  pendingCreate = null
+  void createTaskByUrlWithChoice(pending.url, candidate.pluginPublicId, candidate.extensionId, pending.notificationId)
+}
+
+// 选择器取消：不重发、不视为创建失败，冲突挂起的通知按已取消收口
+function handlePluginChooseCanceled() {
+  if (isNullish(pendingCreate)) {
+    return
+  }
+  useNotificationStore().update(pendingCreate.notificationId, { terminal: true, level: 'info', statusText: '已取消创建' })
+  pendingCreate = null
 }
 
 // 选择文件夹导入
@@ -243,6 +288,13 @@ async function handleSourceUrlInput() {
         v-model:form-data="dialogData"
         :mode="DialogMode.VIEW"
         width="90%"
+      />
+      <!-- 插件候选选择器：URL 命中多个候选扩展点时由创建流程唤起 -->
+      <plugin-candidate-select-dialog
+        v-model:state="pluginSelectState"
+        :candidates="pluginSelectCandidates"
+        @confirm="handlePluginChosen"
+        @cancel="handlePluginChooseCanceled"
       />
       <el-dialog
         v-model="downloadDialogState"

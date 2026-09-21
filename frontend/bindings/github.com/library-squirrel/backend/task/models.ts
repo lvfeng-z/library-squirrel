@@ -7,7 +7,47 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dto$0 from "../base/model/dto/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as query$0 from "../base/query/models.js";
+
+/**
+ * CreateTaskByURLRequest 根据URL创建任务的请求
+ */
+export class CreateTaskByURLRequest {
+    "url": string;
+
+    /**
+     * ChosenPluginPublicId 与 ChosenExtensionId 为交互面显选键：两键联合定位一个扩展点候选，
+     * 均空 = 未显选（程序化入口恒为此态）
+     */
+    "chosenPluginPublicId": string;
+    "chosenExtensionId": string;
+
+    /** Creates a new CreateTaskByURLRequest instance. */
+    constructor($$source: Partial<CreateTaskByURLRequest> = {}) {
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("chosenPluginPublicId" in $$source)) {
+            this["chosenPluginPublicId"] = "";
+        }
+        if (!("chosenExtensionId" in $$source)) {
+            this["chosenExtensionId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateTaskByURLRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateTaskByURLRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CreateTaskByURLRequest($$parsedSource as Partial<CreateTaskByURLRequest>);
+    }
+}
 
 /**
  * CreateTaskByURLResponse 根据URL创建任务的响应
@@ -16,6 +56,13 @@ export class CreateTaskByURLResponse {
     "succeed": boolean;
     "addedQuantity": number;
     "msg": string;
+
+    /**
+     * Conflict 为真表示该 URL 命中了多个候选扩展点且本次触发未显选：未调用任何插件，
+     * 由调用方发起选择后带显选键重发；ConflictCandidates 为候选清单，首位即默认选中项
+     */
+    "conflict": boolean;
+    "conflictCandidates": (dto$0.PluginCandidate | null)[];
 
     /** Creates a new CreateTaskByURLResponse instance. */
     constructor($$source: Partial<CreateTaskByURLResponse> = {}) {
@@ -28,6 +75,12 @@ export class CreateTaskByURLResponse {
         if (!("msg" in $$source)) {
             this["msg"] = "";
         }
+        if (!("conflict" in $$source)) {
+            this["conflict"] = false;
+        }
+        if (!("conflictCandidates" in $$source)) {
+            this["conflictCandidates"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -36,7 +89,11 @@ export class CreateTaskByURLResponse {
      * Creates a new CreateTaskByURLResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): CreateTaskByURLResponse {
+        const $$createField4_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("conflictCandidates" in $$parsedSource) {
+            $$parsedSource["conflictCandidates"] = $$createField4_0($$parsedSource["conflictCandidates"]);
+        }
         return new CreateTaskByURLResponse($$parsedSource as Partial<CreateTaskByURLResponse>);
     }
 }
@@ -153,18 +210,18 @@ export class TaskQueryDTO {
      * Creates a new TaskQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskQueryDTO {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType2;
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType1;
-        const $$createField8_0 = $$createType2;
-        const $$createField9_0 = $$createType1;
-        const $$createField10_0 = $$createType0;
-        const $$createField11_0 = $$createType0;
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType3;
+        const $$createField2_0 = $$createType4;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType4;
+        const $$createField8_0 = $$createType5;
+        const $$createField9_0 = $$createType4;
+        const $$createField10_0 = $$createType3;
+        const $$createField11_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pid" in $$parsedSource) {
             $$parsedSource["pid"] = $$createField0_0($$parsedSource["pid"]);
@@ -207,6 +264,9 @@ export class TaskQueryDTO {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType0 = dto$0.PluginCandidate.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType5 = query$0.QueryAttribute.createFrom($Create.Any);

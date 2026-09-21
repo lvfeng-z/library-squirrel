@@ -23,13 +23,13 @@
 | `static_resource_service.go` | 插件静态资源路径映射与文件服务 |
 | `wails_pusher.go` | 前端扩展事件推送器（插件→前端事件经 Wails Emit 转发） |
 | `workset_order_fetcher.go` / `workset_relation_fetcher.go` | capabilities 声明驱动的可选能力获取器（实现 work 模块定义的 `WorkSetOrderFetcher`/`WorkSetRelationFetcher`；插件未声明对应能力则跳过不调用） |
-| `site_author_fetcher.go` | 站点作者信息拉取能力桥（实现 authorInfo 模块定义的 `SiteAuthorFetcher`；能力广播路由内嵌——遍历声明 `siteAuthorFetch` 能力的已激活插件，插件按请求 siteKey 归属自判，未归属 PermissionDenied 静默跳过、命中一个即止） |
+| `site_author_fetcher.go` | 站点作者信息拉取能力桥（实现 authorInfo 模块定义的 `SiteAuthorFetcher`：拉取与候选枚举两面）。候选 = 声明 `siteAuthorFetch` 能力且有可用服务客户端的已激活插件（候选粒度=插件），经 `backend/route` 基座按候选序逐个调用流，插件按请求 siteKey 归属自判（未归属=PermissionDenied 顺延），命中一个即止；收口**两态分报**（零声明者 / 全不适配并列候选名）。候选枚举面按插件标识字典序返回、首位即默认选中项，供交互面判冲突与校验显选键 |
 | `convert.go` | 任务实体 → SDK `TaskDTO` 跨进程序列化组装（字段集不随表拆分变化） |
 | `process_group_windows.go` / `process_group_other.go` | 子进程 Job Object 归组（主进程异常退出时终止插件子进程，Windows） |
 
 ## 依赖关系
 
-- 依赖：插件 SDK（transport/dto/gen 契约与握手）；库查询核心经 `LibraryQueryDeps`（装配处 app.go 构造一次、全体插件共享）注入 14 个域只读接口——work/site/resource（含 resource_store）/persistentStore/localAuthor/siteAuthor/localTag/siteTag/reWorkTag/workSet/reWorkWorkSet/reWorkSetWorkSet 各域 repository 与 settings.Service（工作目录读取）
+- 依赖：插件 SDK（transport/dto/gen 契约与握手）；多候选路由基座（`backend/route`，站点作者拉取广播经其按序尝试）；库查询核心经 `LibraryQueryDeps`（装配处 app.go 构造一次、全体插件共享）注入 14 个域只读接口——work/site/resource（含 resource_store）/persistentStore/localAuthor/siteAuthor/localTag/siteTag/reWorkTag/workSet/reWorkWorkSet/reWorkSetWorkSet 各域 repository 与 settings.Service（工作目录读取）
 - 被依赖：app.go 装配（进程加载、`NewLibraryQueryProvider`）；download/taskManager（TaskExecutor 任务执行）；work 模块（作品集原站序/父集关系获取器）；authorInfo 模块（站点作者信息拉取能力桥）；前端（前端扩展声明与静态资源）
 
 ## 关键设计
@@ -37,3 +37,4 @@
 - **查询实现分层**：插件查询不走 search、provider 不自拼 SQL——同一过滤语义的单一落点 = 各域 repository（缺口过滤在对应域 repository 补方法，前端将来亦可复用）。
 - **库查询核心无插件态**：`libraryQueryProvider` 不感知调用方插件；诊断日志与调用方归因在 `pluginContext` 调用点记录。
 - **能力声明方向性**：capabilities 门控**主程序→插件**方向的可选能力调用（fetcher 声明驱动）；插件→宿主方向的库查询 RPC 无声明直接调用。
+- **激活插件清单载体**：`ActivePluginLister.ListActivePlugins()` 返回 `[]ActivePlugin{PublicID, Name}`（非裸 ID 清单）——同一清单既作广播路由的候选集、又作交互面的候选展示名来源（插件未设置名时回落公开 ID）；清单按字典序返回，「命中一个即止」的归属判定据此可复现。

@@ -1264,3 +1264,211 @@ func TestCreateTaskByURL_StreamPartialFailureCounted(t *testing.T) {
 		t.Fatalf("期望落盘 2 个任务，得到 %d 个", len(repo.tasks))
 	}
 }
+
+// ---- CreateTaskByURL：候选路由（确定性序 / 显选 / 冲突载荷） ----
+//
+// 候选粒度 = 扩展点（插件 × extensionId），尝试序 = 候选全键（插件 ID + 扩展点 ID）字典序。
+// 交互入口 CreateTaskByURLWithChoice 在候选多于一个且未显选时返回冲突载荷且不调用任何插件；
+// 程序化入口 CreateTaskByURL 无显选通道，恒按全键字典序尝试。
+
+// countingTaskHandlerGetter 记录 GetTaskHandler 调用次数，锚定「冲突路径不触达插件」。
+type countingTaskHandlerGetter struct {
+	inner *fakeTaskHandlerGetter
+	calls int
+}
+
+func (c *countingTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error) {
+	c.calls++
+	return c.inner.GetTaskHandler(pluginPublicId, extensionId)
+}
+
+// TestCreateTaskByURL_SingleCandidateNoConflict 单候选：交互入口与程序化入口同走该候选，
+// 无冲突载荷，行为与现状一致。
+func TestCreateTaskByURL_SingleCandidateNoConflict(t *testing.T) {
+	handler := viableHandler()
+	svc, repo := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "")
+	if err != nil {
+		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
+	}
+	if resp.Conflict {
+		t.Fatal("单候选不应产生冲突载荷")
+	}
+	if len(resp.ConflictCandidates) != 0 {
+		t.Fatalf("单候选不应返回候选清单，得到 %d 项", len(resp.ConflictCandidates))
+	}
+	if !resp.Succeed || resp.AddedQuantity != 1 {
+		t.Fatalf("期望 Succeed=true AddedQuantity=1，得到 Succeed=%v AddedQuantity=%d", resp.Succeed, resp.AddedQuantity)
+	}
+	if want := "成功创建 1 个任务"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if handler.createCalls != 1 || len(repo.tasks) != 1 {
+		t.Fatalf("期望候选被调用 1 次并落盘 1 个任务，得到 createCalls=%d 落盘=%d", handler.createCalls, len(repo.tasks))
+	}
+}
+
+// TestCreateTaskByURL_ConflictReturnsWithoutCallingPlugins 多候选且未显选：返回冲突载荷与候选清单
+// （按候选全键字典序，首位即默认选中项），不调用任何插件。
+func TestCreateTaskByURL_ConflictReturnsWithoutCallingPlugins(t *testing.T) {
+	handlerA, handlerB := viableHandler(), viableHandler()
+	getter := &countingTaskHandlerGetter{inner: &fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		"pub-a/ext-a": handlerA,
+		"pub-b/ext-b": handlerB,
+	}}}
+	// 注册序为 B→A：冲突载荷仍应按全键字典序给出 A 在前
+	svc, repo := newCreateByURLService(t, getter, newURLListenerService(
+		namedListener("pub-b", "插件B", "ext-b"),
+		namedListener("pub-a", "插件A", "ext-a"),
+	))
+
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "")
+	if err != nil {
+		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
+	}
+	if !resp.Conflict {
+		t.Fatal("多候选且未显选应返回冲突载荷")
+	}
+	if resp.Succeed {
+		t.Fatal("冲突路径不应标记成功")
+	}
+	if want := "该链接可由多个插件处理，请选择插件"; resp.Msg != want {
+		t.Fatalf("期望引导性 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if len(resp.ConflictCandidates) != 2 {
+		t.Fatalf("期望候选清单 2 项，得到 %d 项", len(resp.ConflictCandidates))
+	}
+	if first := resp.ConflictCandidates[0]; first.PluginPublicId != "pub-a" || first.ExtensionId != "ext-a" || first.PluginName != "插件A" {
+		t.Fatalf("候选清单首位应为全键字典序最小的 pub-a/ext-a，得到 %+v", first)
+	}
+	if second := resp.ConflictCandidates[1]; second.PluginPublicId != "pub-b" || second.ExtensionId != "ext-b" || second.PluginName != "插件B" {
+		t.Fatalf("候选清单次位应为 pub-b/ext-b，得到 %+v", second)
+	}
+	if getter.calls != 0 || handlerA.createCalls != 0 || handlerB.createCalls != 0 || len(repo.tasks) != 0 {
+		t.Fatalf("冲突路径不得调用任何插件（getter=%d createA=%d createB=%d 落盘=%d）",
+			getter.calls, handlerA.createCalls, handlerB.createCalls, len(repo.tasks))
+	}
+}
+
+// TestCreateTaskByURL_ChosenCandidateRoutesToItOnly 显选非默认候选：该候选置于路由首位，
+// 非被选候选不被调用（非被选者若被调用必失败，可反证尝试序）。
+func TestCreateTaskByURL_ChosenCandidateRoutesToItOnly(t *testing.T) {
+	handlerA := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		return nil, errors.New("非被选候选被调用")
+	}}
+	handlerB := viableHandler()
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+			"pub-a/ext-a": handlerA,
+			"pub-b/ext-b": handlerB,
+		}},
+		newURLListenerService(
+			namedListener("pub-a", "插件A", "ext-a"),
+			namedListener("pub-b", "插件B", "ext-b"),
+		))
+
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-b", "ext-b")
+	if err != nil {
+		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
+	}
+	if resp.Conflict {
+		t.Fatal("已显选不应返回冲突载荷")
+	}
+	if !resp.Succeed {
+		t.Fatalf("被选候选应创建成功，得到 Msg=%q", resp.Msg)
+	}
+	if handlerB.createCalls != 1 || handlerA.createCalls != 0 {
+		t.Fatalf("仅被选扩展点应被调用，得到 createB=%d createA=%d", handlerB.createCalls, handlerA.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_ChosenFailureTerminates 被选候选真失败即终止：文案点名被选插件且不带路由
+// 基座的候选前缀，也不回退其余候选（任务创建面无协议级不适配信号）。
+func TestCreateTaskByURL_ChosenFailureTerminates(t *testing.T) {
+	handlerA := viableHandler()
+	handlerA.create = func(string) (*sdkdto.TaskCreateResult, error) {
+		return nil, errors.New("connection refused")
+	}
+	handlerB := viableHandler()
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+			"pub-a/ext-a": handlerA,
+			"pub-b/ext-b": handlerB,
+		}},
+		newURLListenerService(
+			namedListener("pub-a", "插件A", "ext-a"),
+			namedListener("pub-b", "插件B", "ext-b"),
+		))
+
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-a", "ext-a")
+	if err != nil {
+		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
+	}
+	if resp.Succeed {
+		t.Fatal("被选候选失败不应标记成功")
+	}
+	if want := "插件 插件A 创建任务失败（异常退出或连接中断）：connection refused"; resp.Msg != want {
+		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
+	}
+	if handlerB.createCalls != 0 {
+		t.Fatalf("被选候选失败即终止，不得回退其余候选，得到 createB=%d", handlerB.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_ChosenCandidateNotInCandidatesFails 显选键不匹配候选集：报
+// ErrChosenCandidateInvalid 且不调用任何插件；插件键命中而扩展点键不符同样非法（两键联合匹配）。
+func TestCreateTaskByURL_ChosenCandidateNotInCandidatesFails(t *testing.T) {
+	handlerA, handlerB := viableHandler(), viableHandler()
+	getter := &countingTaskHandlerGetter{inner: &fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		"pub-a/ext-a": handlerA,
+		"pub-b/ext-b": handlerB,
+	}}}
+	svc, _ := newCreateByURLService(t, getter, newURLListenerService(
+		namedListener("pub-a", "插件A", "ext-a"),
+		namedListener("pub-b", "插件B", "ext-b"),
+	))
+	ctx := context.Background()
+
+	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-c", "ext-c"); !errors.Is(err, ErrChosenCandidateInvalid) {
+		t.Fatalf("插件键不匹配候选集应报 ErrChosenCandidateInvalid，得到 %v", err)
+	}
+	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-a", "ext-z"); !errors.Is(err, ErrChosenCandidateInvalid) {
+		t.Fatalf("扩展点键不匹配候选集应报 ErrChosenCandidateInvalid，得到 %v", err)
+	}
+	if getter.calls != 0 || handlerA.createCalls != 0 || handlerB.createCalls != 0 {
+		t.Fatalf("非法显选不得调用任何插件（getter=%d createA=%d createB=%d）",
+			getter.calls, handlerA.createCalls, handlerB.createCalls)
+	}
+}
+
+// TestCreateTaskByURL_ProgrammaticEntryUsesFullKeyOrder 程序化入口无显选通道：候选经两个匹配模式
+// 产出（ListListener 遍历 Go map，产出序随迭代随机）时，仍恒按全键字典序命中首个候选。
+func TestCreateTaskByURL_ProgrammaticEntryUsesFullKeyOrder(t *testing.T) {
+	handlerA, handlerB := viableHandler(), viableHandler()
+	listenerSvc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
+	listenerSvc.Register(namedListener("pub-b", "插件B", "ext-b"), []string{"^http"})
+	listenerSvc.Register(namedListener("pub-a", "插件A", "ext-a"), []string{"^http://x"})
+	svc, _ := newCreateByURLService(t,
+		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+			"pub-a/ext-a": handlerA,
+			"pub-b/ext-b": handlerB,
+		}}, listenerSvc)
+
+	const rounds = 8
+	for i := 0; i < rounds; i++ {
+		resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+		if err != nil {
+			t.Fatalf("第 %d 次 CreateTaskByURL 返回错误: %v", i, err)
+		}
+		if !resp.Succeed {
+			t.Fatalf("第 %d 次 CreateTaskByURL 应由 pub-a/ext-a 创建成功，得到 Msg=%q", i, resp.Msg)
+		}
+	}
+	if handlerA.createCalls != rounds || handlerB.createCalls != 0 {
+		t.Fatalf("程序化入口应恒以全键字典序命中 pub-a/ext-a，得到 createA=%d createB=%d",
+			handlerA.createCalls, handlerB.createCalls)
+	}
+}

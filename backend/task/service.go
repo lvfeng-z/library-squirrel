@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/library-squirrel/backend/database"
 	pkgerr "github.com/library-squirrel/backend/error"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
+	"github.com/library-squirrel/backend/route"
 	"github.com/library-squirrel/backend/site"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
@@ -31,6 +33,8 @@ var (
 	ErrSiteNotFound      = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，没有找到站点对应的信息"}
 	ErrPluginDataInvalid = &pkgerr.BusinessError{Code: 500, Message: "序列化插件保存的pluginData失败"}
 	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
+	// ErrChosenCandidateInvalid 交互面显选键未命中该 URL 的候选集（两键联合定位一个扩展点候选）
+	ErrChosenCandidateInvalid = &pkgerr.BusinessError{Code: 400, Message: "所选的插件扩展点不在该链接的候选集内"}
 )
 
 // StatusUpdate 待持久化的状态变更（包含状态和错误信息）
@@ -863,6 +867,10 @@ func (s *Service) ListSchedule(ctx context.Context, ids []int64) ([]*dto.TaskPro
 // CreateTaskByURLRequest 根据URL创建任务的请求
 type CreateTaskByURLRequest struct {
 	URL string `json:"url" binding:"required"`
+	// ChosenPluginPublicId 与 ChosenExtensionId 为交互面显选键：两键联合定位一个扩展点候选，
+	// 均空 = 未显选（程序化入口恒为此态）
+	ChosenPluginPublicId string `json:"chosenPluginPublicId"`
+	ChosenExtensionId    string `json:"chosenExtensionId"`
 }
 
 // CreateTaskByURLResponse 根据URL创建任务的响应
@@ -870,14 +878,51 @@ type CreateTaskByURLResponse struct {
 	Succeed       bool   `json:"succeed"`
 	AddedQuantity int    `json:"addedQuantity"`
 	Msg           string `json:"msg"`
+	// Conflict 为真表示该 URL 命中了多个候选扩展点且本次触发未显选：未调用任何插件，
+	// 由调用方发起选择后带显选键重发；ConflictCandidates 为候选清单，首位即默认选中项
+	Conflict           bool                   `json:"conflict"`
+	ConflictCandidates []*dto.PluginCandidate `json:"conflictCandidates"`
 }
 
-// CreateTaskByURL 根据传入的url创建任务
-// 通过 URL 监听器发现能处理此 URL 的插件，调用插件的 create 方法创建任务。
-// 任一监听器出现失败信号（处理器不可用/插件错误返回/零任务）即终止并返回原因提示，
-// 不再尝试后续监听器；监听器缺插件 PublicID 属注册数据缺陷而非插件运行结果，跳过后仍继续。
+// taskEntry 建任务触发的形态：交互面可在多候选未显选时发起显选，程序化入口无此通道。
+type taskEntry int
+
+const (
+	// taskEntryProgrammatic 程序化触发（宿主 CreateTask、插件经宿主建任务）：恒不问，按候选全键字典序尝试
+	taskEntryProgrammatic taskEntry = iota
+	// taskEntryInteractive 交互触发（前端手动建任务）：多候选且未显选时返回冲突载荷，由调用方选择后带键重发
+	taskEntryInteractive
+)
+
+// taskChoice 交互面的显选键：两键联合定位候选集内的一个扩展点候选
+type taskChoice struct {
+	PluginPublicId string
+	ExtensionId    string
+}
+
+// hasSelection 本次触发是否携带显选键（两键均空 = 未显选）
+func (c taskChoice) hasSelection() bool {
+	return c.PluginPublicId != "" || c.ExtensionId != ""
+}
+
+// CreateTaskByURL 根据传入的url创建任务（程序化入口：宿主 CreateTask、插件经宿主建任务）。
+// 通过 URL 监听器发现能处理此 URL 的扩展点候选（粒度 = 插件 × extensionId），按候选全键字典序
+// 逐个尝试，调用插件的 create 方法创建任务。任一候选出现失败信号（处理器不可用/插件错误返回/零任务）
+// 即终止并返回原因提示，不再尝试后续候选；监听器缺插件 PublicID 属注册数据缺陷而非插件运行结果，
+// 跳过后仍继续。
 func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskByURLResponse, error) {
-	// 1. 查询监听此url的插件
+	return s.createTaskByURL(ctx, url, taskEntryProgrammatic, taskChoice{})
+}
+
+// CreateTaskByURLWithChoice 交互触发（前端手动建任务）的建任务入口：携带显选键时该扩展点候选置于
+// 路由首位；未携带且候选多于一个时返回冲突载荷（Conflict=true + 候选清单）且不调用任何插件。
+func (s *Service) CreateTaskByURLWithChoice(ctx context.Context, url, chosenPluginPublicId, chosenExtensionId string) (*CreateTaskByURLResponse, error) {
+	choice := taskChoice{PluginPublicId: chosenPluginPublicId, ExtensionId: chosenExtensionId}
+	return s.createTaskByURL(ctx, url, taskEntryInteractive, choice)
+}
+
+// createTaskByURL 两入口共用的执行核：发现候选 → 交互面显选校验与冲突收口 → 经路由基座按序尝试。
+func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEntry, choice taskChoice) (*CreateTaskByURLResponse, error) {
 	listeners := s.urlListener.ListListener(url)
 	logger.Log.Infof("[CreateTaskByURL] url=%s 匹配监听器 %d 个", url, len(listeners))
 	if len(listeners) == 0 {
@@ -889,108 +934,199 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 		}, nil
 	}
 
-	// 2. 按监听器顺序尝试
+	candidates := orderedRoutableCandidates(listeners)
+
+	if entry == taskEntryInteractive {
+		switch {
+		case choice.hasSelection():
+			if !containsCandidate(candidates, choice) {
+				return nil, errors.Join(ErrChosenCandidateInvalid,
+					fmt.Errorf("plugin=%s extensionId=%s", choice.PluginPublicId, choice.ExtensionId))
+			}
+		case len(candidates) >= 2:
+			return &CreateTaskByURLResponse{
+				Succeed:            false,
+				AddedQuantity:      0,
+				Msg:                "该链接可由多个插件处理，请选择插件",
+				Conflict:           true,
+				ConflictCandidates: toPluginCandidates(candidates),
+			}, nil
+		}
+	}
+
+	resp, err := route.Route(ctx, &taskRouteAdapter{service: s, url: url, candidates: candidates, chosen: choice})
+	if err != nil {
+		var failure *candidateFailure
+		if errors.As(err, &failure) {
+			return failure.resp, nil
+		}
+		logger.Log.Warnf("[CreateTaskByURL] 无候选可路由 url=%s: %v", url, err)
+		return &CreateTaskByURLResponse{
+			Succeed:       false,
+			AddedQuantity: 0,
+			Msg:           fmt.Sprintf("尝试了所有插件均未成功，url: %s", url),
+		}, nil
+	}
+	return resp, nil
+}
+
+// orderedRoutableCandidates 筛出可路由候选（扩展点粒度）并按候选全键字典序排列。缺插件 PublicID 的
+// 监听器条目无法定位插件与任务处理器，属注册数据缺陷而非插件运行结果，剔除。
+// 该序即冲突载荷的默认序，与基座路由序同源（同用 candidateOrderKey）。
+func orderedRoutableCandidates(listeners []*pluginTaskUrlListener.PluginWithExtension) []*pluginTaskUrlListener.PluginWithExtension {
+	candidates := make([]*pluginTaskUrlListener.PluginWithExtension, 0, len(listeners))
 	for _, listener := range listeners {
 		if !listener.PublicID.Valid || listener.PublicID.String == "" {
 			logger.Log.Warnf("URL监听器缺少插件 PublicID，跳过 (extensionId=%s)", listener.ExtensionID)
 			continue
 		}
-		pluginPublicId := listener.PublicID.String
-		pluginName := listenerPluginName(listener)
+		candidates = append(candidates, listener)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidateOrderKey(candidates[i].PublicID.String, candidates[i].ExtensionID) <
+			candidateOrderKey(candidates[j].PublicID.String, candidates[j].ExtensionID)
+	})
+	return candidates
+}
 
-		// 获取任务处理器：失败即插件不可运行，终止
-		taskHandler, err := s.taskHandlerGetter.GetTaskHandler(pluginPublicId, listener.ExtensionID)
-		if err != nil {
-			logger.Log.Warnf("获取任务处理器失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, listener.ExtensionID, err)
-			return &CreateTaskByURLResponse{
-				Succeed: false,
-				Msg:     fmt.Sprintf("插件 %s 未激活或任务处理器不可用", pluginName),
-			}, nil
+// candidateOrderKey 候选全键：插件 ID 与扩展点 ID 以 NUL 拼接。NUL 不在标识符取值域内，
+// ("a","bc") 与 ("ab","c") 不会撞键。
+func candidateOrderKey(pluginPublicId, extensionId string) string {
+	return pluginPublicId + "\x00" + extensionId
+}
+
+// containsCandidate 显选键是否命中候选集（两键联合匹配一个扩展点候选）
+func containsCandidate(candidates []*pluginTaskUrlListener.PluginWithExtension, choice taskChoice) bool {
+	for _, candidate := range candidates {
+		if candidate.PublicID.String == choice.PluginPublicId && candidate.ExtensionID == choice.ExtensionId {
+			return true
 		}
+	}
+	return false
+}
 
-		// 3. 调用插件的 create 方法。gRPC 层错误代表基础设施故障（进程崩溃/连接中断/传输异常）；
-		//    插件业务失败原因经结果对象的 reason 承载，不表现为 err。
-		//    经 ctx 感知通道继承调用方 ctx：取消可终结建流与接收泵
-		result, err := createTaskWithContext(ctx, taskHandler, url)
-		if err != nil {
-			logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
-			return &CreateTaskByURLResponse{
-				Succeed: false,
-				Msg:     fmt.Sprintf("插件 %s 创建任务失败（异常退出或连接中断）：%v", pluginName, err),
-			}, nil
-		}
+// toPluginCandidates 候选清单转为共享 DTO（按候选全键字典序，首位即默认选中项）
+func toPluginCandidates(candidates []*pluginTaskUrlListener.PluginWithExtension) []*dto.PluginCandidate {
+	result := make([]*dto.PluginCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		result = append(result, &dto.PluginCandidate{
+			PluginPublicId: candidate.PublicID.String,
+			PluginName:     listenerPluginName(candidate),
+			ExtensionId:    candidate.ExtensionID,
+		})
+	}
+	return result
+}
 
-		// 4. 处理插件返回，统计成功落库的叶子单元数与失败项数
-		var count, failed int
-		if result.IsStream() {
-			streamCh, streamErr := s.handleCreateTaskStream(ctx, result.Stream(), listener, 100)
-			if streamErr != nil {
-				logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
-				return &CreateTaskByURLResponse{
-					Succeed: false,
-					Msg:     fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr),
-				}, nil
-			}
-			// 计数叶子级单元：leaf 与 child（Task 项），parent 容器（Parent 项）不计；
-			// 单项字段填充或落库失败以 Error 项计入失败数
-			for item := range streamCh {
-				if item.Task != nil {
-					count++
-				} else if item.Error != nil {
-					failed++
-				}
-			}
-		} else {
-			responses := result.Array()
-			if len(responses) > 0 {
-				count, failed, err = s.handleCreateTaskArray(ctx, responses, listener)
-				if err != nil {
-					logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, err)
-					return &CreateTaskByURLResponse{
-						Succeed: false,
-						Msg:     fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, err),
-					}, nil
-				}
-			}
-		}
+// taskRouteAdapter 任务创建面的路由接入：URL 监听器即候选发现，调用插件 create 并消费其返回落库
+// （成功后的字段填充与落库链属本消费面内部事务）。该消费面没有协议级不适配信号（正则命中即预期处理），
+// 故一切失败皆判为真失败。
+type taskRouteAdapter struct {
+	service    *Service
+	url        string
+	candidates []*pluginTaskUrlListener.PluginWithExtension
+	chosen     taskChoice
+}
 
-		// reason（插件声明的业务原因）须在流消费完毕（channel close）之后读取
-		reason := result.Reason()
+func (a *taskRouteAdapter) Candidates(_ context.Context) ([]*pluginTaskUrlListener.PluginWithExtension, error) {
+	return a.candidates, nil
+}
 
-		if count > 0 {
-			// 有任务落库即成功；失败数为落库维度、插件报告的原因为业务维度，分层表述
-			msg := fmt.Sprintf("成功创建 %d 个任务", count)
-			if failed > 0 {
-				msg = fmt.Sprintf("成功创建 %d 个任务，%d 个失败（详见日志）", count, failed)
-				if reason != "" {
-					msg += fmt.Sprintf("；插件报告：%s", reason)
-				}
-			}
-			return &CreateTaskByURLResponse{
-				Succeed:       true,
-				AddedQuantity: count,
-				Msg:           msg,
-			}, nil
-		}
+// OrderKey 候选排序键：显选候选前缀 "0"、其余前缀 "1"，令显选项排在其前。前缀定长且施加于全体候选，
+// 组内相对序仍为候选全键字典序。
+func (a *taskRouteAdapter) OrderKey(c *pluginTaskUrlListener.PluginWithExtension) string {
+	if a.chosen.hasSelection() && c.PublicID.String == a.chosen.PluginPublicId && c.ExtensionID == a.chosen.ExtensionId {
+		return "0" + candidateOrderKey(c.PublicID.String, c.ExtensionID)
+	}
+	return "1" + candidateOrderKey(c.PublicID.String, c.ExtensionID)
+}
 
-		if reason != "" {
-			return &CreateTaskByURLResponse{
-				Succeed: false,
-				Msg:     fmt.Sprintf("插件 %s 未创建任务：%s", pluginName, reason),
-			}, nil
-		}
-		return &CreateTaskByURLResponse{
-			Succeed: false,
-			Msg:     fmt.Sprintf("插件 %s 未返回任务，也未说明原因", pluginName),
-		}, nil
+// Describe 候选点名：插件展示名 + 扩展点 ID，定位一个路由原子
+func (a *taskRouteAdapter) Describe(c *pluginTaskUrlListener.PluginWithExtension) string {
+	return fmt.Sprintf("%s/%s", listenerPluginName(c), c.ExtensionID)
+}
+
+// Invoke 取候选的任务处理器并消费其返回：流与数组两路径统一落库，产出任务的候选即路由终点。
+// 处理器不可用、传输层错误、消费失败与零任务均为真失败，响应文案经 candidateFailure 原样交回调用方。
+func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.PluginWithExtension) (*CreateTaskByURLResponse, route.Outcome, error) {
+	pluginPublicId := c.PublicID.String
+	pluginName := listenerPluginName(c)
+
+	// 获取任务处理器：失败即插件不可运行，终止
+	taskHandler, err := a.service.taskHandlerGetter.GetTaskHandler(pluginPublicId, c.ExtensionID)
+	if err != nil {
+		logger.Log.Warnf("获取任务处理器失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, c.ExtensionID, err)
+		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 未激活或任务处理器不可用", pluginName))
 	}
 
-	// 循环内未返回：全部监听器均因缺 PublicID 被跳过
-	return &CreateTaskByURLResponse{
-		Succeed:       false,
-		AddedQuantity: 0,
-		Msg:           fmt.Sprintf("尝试了所有插件均未成功，url: %s", url),
-	}, nil
+	// 调用插件的 create 方法。gRPC 层错误代表基础设施故障（进程崩溃/连接中断/传输异常）；
+	// 插件业务失败原因经结果对象的 reason 承载，不表现为 err。
+	// 经 ctx 感知通道继承调用方 ctx：取消可终结建流与接收泵
+	result, err := createTaskWithContext(ctx, taskHandler, a.url)
+	if err != nil {
+		logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
+		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败（异常退出或连接中断）：%v", pluginName, err))
+	}
+
+	// 处理插件返回，统计成功落库的叶子单元数与失败项数
+	var count, failed int
+	if result.IsStream() {
+		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, result.Stream(), c, 100)
+		if streamErr != nil {
+			logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
+			return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr))
+		}
+		// 计数叶子级单元：leaf 与 child（Task 项），parent 容器（Parent 项）不计；
+		// 单项字段填充或落库失败以 Error 项计入失败数
+		for item := range streamCh {
+			if item.Task != nil {
+				count++
+			} else if item.Error != nil {
+				failed++
+			}
+		}
+	} else {
+		responses := result.Array()
+		if len(responses) > 0 {
+			var arrayErr error
+			count, failed, arrayErr = a.service.handleCreateTaskArray(ctx, responses, c)
+			if arrayErr != nil {
+				logger.Log.Errorf("处理插件返回数据失败 (plugin=%s): %v", pluginPublicId, arrayErr)
+				return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, arrayErr))
+			}
+		}
+	}
+
+	// reason（插件声明的业务原因）须在流消费完毕（channel close）之后读取
+	reason := result.Reason()
+
+	if count > 0 {
+		// 有任务落库即成功；失败数为落库维度、插件报告的原因为业务维度，分层表述
+		msg := fmt.Sprintf("成功创建 %d 个任务", count)
+		if failed > 0 {
+			msg = fmt.Sprintf("成功创建 %d 个任务，%d 个失败（详见日志）", count, failed)
+			if reason != "" {
+				msg += fmt.Sprintf("；插件报告：%s", reason)
+			}
+		}
+		return &CreateTaskByURLResponse{Succeed: true, AddedQuantity: count, Msg: msg}, route.Succeeded, nil
+	}
+
+	if reason != "" {
+		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 未创建任务：%s", pluginName, reason))
+	}
+	return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 未返回任务，也未说明原因", pluginName))
+}
+
+// candidateFailure 候选失败的收口载体：resp 即面向调用方的最终响应（Succeed=false + 文案）。
+// 基座把失败原因包进自身的候选点名文案，故须经本类型把响应原样交回，文案不带基座前缀。
+type candidateFailure struct{ resp *CreateTaskByURLResponse }
+
+func (e *candidateFailure) Error() string { return e.resp.Msg }
+
+// failedCandidate 以面向调用方的失败文案构造候选失败
+func failedCandidate(msg string) *candidateFailure {
+	return &candidateFailure{resp: &CreateTaskByURLResponse{Succeed: false, AddedQuantity: 0, Msg: msg}}
 }
 
 // listenerPluginName URL 监听器条目的插件展示名，用于提示文案点名插件；插件未设置名时回退 publicId。

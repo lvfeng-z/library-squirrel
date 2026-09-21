@@ -20,9 +20,14 @@ import (
 // 是否继续接收头像字节——false 时实现侧取消流并按成功收尾；onMeta/onData 返回错误即中止流
 // 并作为整体失败上抛
 type SiteAuthorFetcher interface {
-	FetchSiteAuthorInfo(ctx context.Context, siteKey, siteAuthorId string,
+	// FetchSiteAuthorInfo 拉取单个站点作者信息。chosenPluginPublicId 非空时该插件候选置于候选序
+	// 首位，空串则候选全按插件标识字典序（自动面与单候选场景即此态）
+	FetchSiteAuthorInfo(ctx context.Context, siteKey, siteAuthorId, chosenPluginPublicId string,
 		onMeta func(meta *pluginsdkdto.AuthorInfoMeta) (wantAvatar bool, err error),
 		onData func(data []byte) error) error
+	// ListSiteAuthorFetchCandidates 候选清单（插件级消费面，ExtensionId 恒空串），按插件标识
+	// 字典序，首位即默认选中项——交互面在调用前据清单判候选冲突与校验显选键
+	ListSiteAuthorFetchCandidates(ctx context.Context) ([]*dto.PluginCandidate, error)
 }
 
 // SiteAuthorStore 站点作者行存取窄接口（siteAuthor 模块实现）

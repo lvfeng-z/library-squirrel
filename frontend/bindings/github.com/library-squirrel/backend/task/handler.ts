@@ -37,10 +37,11 @@ export function CreateTask(req: dto$0.CreateTaskRequest | null): $CancellablePro
 }
 
 /**
- * CreateTaskByURL 根据传入的url创建任务
+ * CreateTaskByURL 根据传入的url创建任务（交互面：请求携带显选键时该扩展点候选置于路由首位；
+ * 命中多个候选且未显选时响应为冲突载荷且未调用任何插件，由前端选择后带键重发）
  */
-export function CreateTaskByURL(url: string): $CancellablePromise<model$0.ApiResponse<$models.CreateTaskByURLResponse | null> | null> {
-    return $Call.ByID(871230313, url).then(($result: any) => {
+export function CreateTaskByURL(req: $models.CreateTaskByURLRequest | null): $CancellablePromise<model$0.ApiResponse<$models.CreateTaskByURLResponse | null> | null> {
+    return $Call.ByID(871230313, req).then(($result: any) => {
         return $$createType5($result);
     });
 }

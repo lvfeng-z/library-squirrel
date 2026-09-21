@@ -7,5 +7,6 @@ export {
 };
 
 export {
-    SiteAuthorFetchItemResult
+    SiteAuthorFetchItemResult,
+    SiteAuthorFetchResponse
 } from "./models.js";

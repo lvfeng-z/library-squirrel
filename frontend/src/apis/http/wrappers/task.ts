@@ -6,7 +6,7 @@
 import { requireResponse, type ApiResult } from '../types'
 import { Handler as TaskHandler } from '@bindings/github.com/library-squirrel/backend/task'
 import { Handler as TaskManagerHandler } from '@bindings/github.com/library-squirrel/backend/taskManager'
-import { TaskQueryDTO, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
+import { TaskQueryDTO, CreateTaskByURLRequest, CreateTaskByURLResponse } from '@bindings/github.com/library-squirrel/backend/task/models'
 import { TaskControlConfigDTO } from '@bindings/github.com/library-squirrel/backend/taskManager/models'
 import { TaskDTO } from '@bindings/github.com/lvfeng-z/library-squirrel-sdk/dto/models'
 import { TaskProgressDTO, TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
@@ -71,8 +71,20 @@ export async function taskSetTreeStatus(
   return requireResponse(await TaskHandler.SetTreeStatus(taskIds, status, includeStatus ?? []), '设置任务树状态')
 }
 
-export async function taskCreateByUrl(url: string): Promise<ApiResult<CreateTaskByURLResponse>> {
-  return requireResponse(await TaskHandler.CreateTaskByURL(url), '创建任务')
+/**
+ * 根据 URL 创建任务
+ *
+ * 显选键（插件公开 ID + 扩展点 ID）联合定位一个扩展点候选，两者均留空 = 未显选。
+ * URL 命中多个候选且未显选时，响应为冲突载荷（外层成功、data.conflict 为真、data.conflictCandidates 为候选清单，
+ * 首位即默认选中项，候选清单顺序由后端给定不再重排），此时后端未调用任何插件，由调用方弹出插件选择器后带键重发。
+ */
+export async function taskCreateByUrl(
+  url: string,
+  chosenPluginPublicId: string,
+  chosenExtensionId: string
+): Promise<ApiResult<CreateTaskByURLResponse>> {
+  const request = new CreateTaskByURLRequest({ url, chosenPluginPublicId, chosenExtensionId })
+  return requireResponse(await TaskHandler.CreateTaskByURL(request), '创建任务')
 }
 
 // ========== TaskManager 操作 ==========

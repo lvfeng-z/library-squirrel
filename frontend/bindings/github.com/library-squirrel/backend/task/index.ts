@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    CreateTaskByURLRequest,
     CreateTaskByURLResponse,
     TaskQueryDTO
 } from "./models.js";

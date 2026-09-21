@@ -155,7 +155,7 @@ task build:server && task run:server
 - **模板**：`doc/module-spec-template.md`（结构骨架、填写要点、维护机制）
 - **范围**：只写"是什么 / 提供什么 / 依赖谁"，不重复编码规则（`.claude/rules/`）与变更历史（`../library-squirrel-docs/plan/`）
 - **维护**：修改模块行为时同步更新其 `README.md`
-- 已覆盖：`taskManager`、`task`、`download`、`work`、`workSet`、`resource`、`plugin`、`backup`、`persistentStore`、`storeRegistry`、`reWorkAuthor`、`reWorkTag`、`recycleBin`、`fsmonitor`、`backupGovernance`、`workdirGuard`、`export`、`import`、`share`、`settings`、`authorInfo`
+- 已覆盖：`taskManager`、`task`、`download`、`work`、`workSet`、`resource`、`plugin`、`backup`、`persistentStore`、`storeRegistry`、`reWorkAuthor`、`reWorkTag`、`recycleBin`、`fsmonitor`、`backupGovernance`、`workdirGuard`、`export`、`import`、`share`、`settings`、`authorInfo`、`route`
 
 ## 添加新功能
 

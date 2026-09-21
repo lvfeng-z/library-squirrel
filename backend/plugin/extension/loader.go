@@ -104,9 +104,15 @@ type CapabilityQuerier interface {
 	GetCapabilities(pluginPublicId string) []string
 }
 
-// ActivePluginLister 枚举当前已激活插件进程的公开 ID（Loader 实现，供能力广播路由遍历）。
+// ActivePlugin 已激活插件的公开 ID 与展示名（候选枚举面的最小载体；Name 为空串=插件未设置名）
+type ActivePlugin struct {
+	PublicID string
+	Name     string
+}
+
+// ActivePluginLister 枚举当前已激活插件进程的公开 ID 与展示名（Loader 实现，供能力广播路由遍历与候选展示）。
 type ActivePluginLister interface {
-	ListActivePluginIds() []string
+	ListActivePlugins() []ActivePlugin
 }
 
 // GetCapabilities 返回插件声明的可选能力集合（供主程序决定是否调用对应能力；未加载/未声明返回 nil）。
@@ -119,17 +125,21 @@ func (l *Loader) GetCapabilities(pluginPublicId string) []string {
 	return nil
 }
 
-// ListActivePluginIds 返回当前已激活插件进程的公开 ID 清单（字典序——广播路由按序遍历，
+// ListActivePlugins 返回当前已激活插件进程的公开 ID 与展示名清单（字典序——广播路由按序遍历，
 // 「命中一个即止」的归属判定须可复现；未激活返回空清单）
-func (l *Loader) ListActivePluginIds() []string {
+func (l *Loader) ListActivePlugins() []ActivePlugin {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	ids := make([]string, 0, len(l.processes))
-	for id := range l.processes {
-		ids = append(ids, id)
+	plugins := make([]ActivePlugin, 0, len(l.processes))
+	for id, entry := range l.processes {
+		plugin := ActivePlugin{PublicID: id}
+		if entry.info != nil {
+			plugin.Name = entry.info.Name
+		}
+		plugins = append(plugins, plugin)
 	}
-	sort.Strings(ids)
-	return ids
+	sort.Slice(plugins, func(i, j int) bool { return plugins[i].PublicID < plugins[j].PublicID })
+	return plugins
 }
 
 // hasCapability 判断插件是否声明了指定能力。

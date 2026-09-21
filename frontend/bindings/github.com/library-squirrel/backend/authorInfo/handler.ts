@@ -19,20 +19,23 @@ import * as model$0 from "../base/model/models.js";
 import * as $models from "./models.js";
 
 /**
- * FetchSiteAuthorInfo 手动拉取单个站点作者信息（前端行操作，loading 态由前端按调用挂起）
+ * FetchSiteAuthorInfo 手动拉取单个站点作者信息（前端行操作，loading 态由前端按调用挂起）。
+ * chosenPluginPublicId 为交互面显选键（空=未显选）：候选多于一个且未显选时返回冲突载荷且
+ * 未调用任何插件，由前端选择后带键重发
  */
-export function FetchSiteAuthorInfo(siteAuthorId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
-    return $Call.ByID(3836208242, siteAuthorId).then(($result: any) => {
-        return $$createType1($result);
+export function FetchSiteAuthorInfo(siteAuthorId: number, chosenPluginPublicId: string): $CancellablePromise<model$0.ApiResponse<$models.SiteAuthorFetchResponse | null> | null> {
+    return $Call.ByID(3836208242, siteAuthorId, chosenPluginPublicId).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
 /**
- * FetchSiteAuthorsInfo 手动批量拉取站点作者信息（逐作者串行，返回与入参顺序一致的逐条结果清单）
+ * FetchSiteAuthorsInfo 手动批量拉取站点作者信息（逐作者串行）；候选冲突整批前置返回冲突载荷
+ * （一次触发问一次），否则数据载荷的 items 为与入参顺序一致的逐条清单
  */
-export function FetchSiteAuthorsInfo(siteAuthorIds: number[]): $CancellablePromise<model$0.ApiResponse<($models.SiteAuthorFetchItemResult | null)[]> | null> {
-    return $Call.ByID(2402746719, siteAuthorIds).then(($result: any) => {
-        return $$createType6($result);
+export function FetchSiteAuthorsInfo(siteAuthorIds: number[], chosenPluginPublicId: string): $CancellablePromise<model$0.ApiResponse<$models.SiteAuthorFetchResponse | null> | null> {
+    return $Call.ByID(2402746719, siteAuthorIds, chosenPluginPublicId).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
@@ -41,7 +44,7 @@ export function FetchSiteAuthorsInfo(siteAuthorIds: number[]): $CancellablePromi
  */
 export function RemoveLocalAuthorAvatar(localAuthorId: number): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2460748347, localAuthorId).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType5($result);
     });
 }
 
@@ -51,15 +54,14 @@ export function RemoveLocalAuthorAvatar(localAuthorId: number): $CancellableProm
  */
 export function SetLocalAuthorAvatar(localAuthorId: number, sourceAbsPath: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(2607558639, localAuthorId, sourceAbsPath).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType5($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType0 = $models.SiteAuthorFetchResponse.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $models.SiteAuthorFetchItemResult.createFrom;
+const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = model$0.ApiResponse.createFrom($$createType4);
-const $$createType6 = $Create.Nullable($$createType5);
+const $$createType4 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType5 = $Create.Nullable($$createType4);

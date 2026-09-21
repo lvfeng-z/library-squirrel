@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/library-squirrel/backend/base/model/dto"
+	"github.com/library-squirrel/backend/route"
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	transport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 	"google.golang.org/grpc"
@@ -71,17 +73,28 @@ func (q *authorInfoCapsQuery) GetCapabilities(pluginId string) []string {
 	return q.caps[pluginId]
 }
 
-// authorInfoLister 广播遍历清单替身
+// authorInfoLister 广播遍历清单替身：ids 给出激活序，names 按公开 ID 给出插件展示名
+// （缺项/空串=该插件未设置展示名）
 type authorInfoLister struct {
-	ids []string
+	ids   []string
+	names map[string]string
 }
 
-func (l *authorInfoLister) ListActivePluginIds() []string {
-	return l.ids
+func (l *authorInfoLister) ListActivePlugins() []ActivePlugin {
+	plugins := make([]ActivePlugin, 0, len(l.ids))
+	for _, id := range l.ids {
+		plugins = append(plugins, ActivePlugin{PublicID: id, Name: l.names[id]})
+	}
+	return plugins
 }
 
 func newBroadcastFetcher(ids []string, caps map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
-	return NewSiteAuthorFetcher(&authorInfoLister{ids: ids}, &authorInfoCapsQuery{caps: caps}, &authorInfoAccessor{byPlugin: byPlugin})
+	return newBroadcastFetcherNamed(ids, nil, caps, byPlugin)
+}
+
+// newBroadcastFetcherNamed 同 newBroadcastFetcher，另指定各插件的展示名
+func newBroadcastFetcherNamed(ids []string, names map[string]string, caps map[string][]string, byPlugin map[string]*transport.GRPCPluginClient) *siteAuthorFetcher {
+	return NewSiteAuthorFetcher(&authorInfoLister{ids: ids, names: names}, &authorInfoCapsQuery{caps: caps}, &authorInfoAccessor{byPlugin: byPlugin})
 }
 
 func notOwnedErr() error {
@@ -114,7 +127,7 @@ func TestSiteAuthorFetcherBroadcastSkipsNotOwned(t *testing.T) {
 	)
 	var gotMeta string
 	var gotData []string
-	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 		func(meta *gen.AuthorInfoMeta) (bool, error) { gotMeta = meta.GetAuthorName(); return true, nil },
 		func(data []byte) error { gotData = append(gotData, string(data)); return nil })
 	if err != nil {
@@ -136,7 +149,7 @@ func TestSiteAuthorFetcherStopsAtTrueFailure(t *testing.T) {
 			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk("不应到达")}}}},
 		},
 	)
-	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
 		func(data []byte) error { return nil })
 	if err == nil {
@@ -156,7 +169,7 @@ func TestSiteAuthorFetcherNoOwner(t *testing.T) {
 			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
 		},
 	)
-	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
 		func(data []byte) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "无归属") {
@@ -178,7 +191,7 @@ func TestSiteAuthorFetcherMetaOnlyEndsCleanly(t *testing.T) {
 		},
 	)
 	dataSeen := false
-	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
 		func(data []byte) error { dataSeen = true; return nil })
 	if err != nil {
@@ -206,7 +219,7 @@ func TestSiteAuthorFetcherProtocolViolations(t *testing.T) {
 				"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: tc.chunks}}},
 			},
 		)
-		err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+		err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 			func(meta *gen.AuthorInfoMeta) (bool, error) { return true, nil },
 			func(data []byte) error { return nil })
 		if err == nil || !strings.Contains(err.Error(), "协议违规") {
@@ -225,10 +238,182 @@ func TestSiteAuthorFetcherConsumerErrorPropagates(t *testing.T) {
 		},
 	)
 	wantErr := errors.New("消费侧中止")
-	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42",
+	err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
 		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, wantErr },
 		func(data []byte) error { return nil })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("消费回调错误应原样上抛, 实际 %v", err)
+	}
+}
+
+// TestSiteAuthorFetcherClosureStatesReportedSeparately 收口两态分报：零声明者（无插件声明能力）
+// 与候选全不适配（候选均声明不归属）各自独立文案，后者列名已试候选
+func TestSiteAuthorFetcherClosureStatesReportedSeparately(t *testing.T) {
+	noDeclarer := newBroadcastFetcher(
+		[]string{"p-a", "p-b"},
+		map[string][]string{"p-a": {"otherCapability"}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk("不应到达")}}}},
+		},
+	)
+	allNotOwned := newBroadcastFetcher(
+		[]string{"p-a", "p-b"},
+		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{openErr: notOwnedErr()}},
+			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{err: notOwnedErr()}}},
+		},
+	)
+	noDeclarerErr := noDeclarer.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
+		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
+		func(data []byte) error { return nil })
+	allNotOwnedErr := allNotOwned.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", "",
+		func(meta *gen.AuthorInfoMeta) (bool, error) { return false, nil },
+		func(data []byte) error { return nil })
+	if noDeclarerErr == nil || allNotOwnedErr == nil {
+		t.Fatalf("两态均应报错: 零声明者=%v 全不适配=%v", noDeclarerErr, allNotOwnedErr)
+	}
+	if noDeclarerErr.Error() == allNotOwnedErr.Error() {
+		t.Fatalf("两态应收口为不同文案, 实际同为 %v", noDeclarerErr)
+	}
+	if !strings.Contains(noDeclarerErr.Error(), "无已激活插件声明") {
+		t.Fatalf("零声明者文案应点名无能力声明: %v", noDeclarerErr)
+	}
+	if strings.Contains(allNotOwnedErr.Error(), "无已激活插件声明") {
+		t.Fatalf("全不适配文案不应复用零声明者文案: %v", allNotOwnedErr)
+	}
+	if !strings.Contains(allNotOwnedErr.Error(), "p-a") || !strings.Contains(allNotOwnedErr.Error(), "p-b") {
+		t.Fatalf("全不适配文案应列出已试候选: %v", allNotOwnedErr)
+	}
+}
+
+// TestSiteAuthorFetchAdapterPreferredCandidateGoesFirst 置首候选键命中候选集时该候选先于标识
+// 字典序在前的候选被尝试：两候选均可成功时交付置首者，置首键为空时回落标识字典序首位
+// （交互面显选注入的接缝）
+func TestSiteAuthorFetchAdapterPreferredCandidateGoesFirst(t *testing.T) {
+	pluginClient := func(authorName string) *transport.GRPCPluginClient {
+		return &transport.GRPCPluginClient{SiteAuthorFetch: &fakeSiteAuthorFetchClient{
+			stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk(authorName)}},
+		}}
+	}
+	cases := []struct {
+		name              string
+		preferredPluginId string
+		wantMeta          string
+	}{
+		{"置首 p-b", "p-b", "p-b 作者"},
+		{"无置首回落字典序首位", "", "p-a 作者"},
+	}
+	for _, tc := range cases {
+		fetcher := newBroadcastFetcher(
+			[]string{"p-a", "p-b"},
+			map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+			map[string]*transport.GRPCPluginClient{"p-a": pluginClient("p-a 作者"), "p-b": pluginClient("p-b 作者")},
+		)
+		var gotMeta string
+		adapter := &siteAuthorFetchAdapter{
+			fetcher:           fetcher,
+			siteKey:           "pixiv",
+			siteAuthorId:      "42",
+			preferredPluginId: tc.preferredPluginId,
+			onMeta:            func(meta *gen.AuthorInfoMeta) (bool, error) { gotMeta = meta.GetAuthorName(); return false, nil },
+			onData:            func(data []byte) error { return nil },
+		}
+		if _, err := route.Route[string, struct{}](context.Background(), adapter); err != nil {
+			t.Fatalf("%s: 应路由成功: %v", tc.name, err)
+		}
+		if gotMeta != tc.wantMeta {
+			t.Fatalf("%s: 交付作者应为 %q, 实际 %q", tc.name, tc.wantMeta, gotMeta)
+		}
+	}
+}
+
+// TestSiteAuthorFetcherChosenCandidateGoesFirst 显选键经公开拉取入口贯通到候选排序：两候选均
+// 可成功时交付显选者，未显选回落标识字典序首位
+func TestSiteAuthorFetcherChosenCandidateGoesFirst(t *testing.T) {
+	pluginClient := func(authorName string) *transport.GRPCPluginClient {
+		return &transport.GRPCPluginClient{SiteAuthorFetch: &fakeSiteAuthorFetchClient{
+			stream: &fakeAuthorInfoStream{chunks: []*gen.AuthorInfoChunk{metaChunk(authorName)}},
+		}}
+	}
+	cases := []struct {
+		name           string
+		chosenPluginId string
+		wantMeta       string
+	}{
+		{"显选 p-b", "p-b", "p-b 作者"},
+		{"未显选回落字典序首位", "", "p-a 作者"},
+	}
+	for _, tc := range cases {
+		fetcher := newBroadcastFetcher(
+			[]string{"p-a", "p-b"},
+			map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+			map[string]*transport.GRPCPluginClient{"p-a": pluginClient("p-a 作者"), "p-b": pluginClient("p-b 作者")},
+		)
+		var gotMeta string
+		err := fetcher.FetchSiteAuthorInfo(context.Background(), "pixiv", "42", tc.chosenPluginId,
+			func(meta *gen.AuthorInfoMeta) (bool, error) { gotMeta = meta.GetAuthorName(); return false, nil },
+			func(data []byte) error { return nil })
+		if err != nil {
+			t.Fatalf("%s: 应路由成功: %v", tc.name, err)
+		}
+		if gotMeta != tc.wantMeta {
+			t.Fatalf("%s: 交付作者应为 %q, 实际 %q", tc.name, tc.wantMeta, gotMeta)
+		}
+	}
+}
+
+// TestListSiteAuthorFetchCandidatesFilteredOrdered 候选清单=已激活 ∩ 声明能力 ∩ 客户端可用，
+// 按插件标识字典序（与激活清单给出的序无关），元素为插件级候选（扩展点 ID 恒空串）
+func TestListSiteAuthorFetchCandidatesFilteredOrdered(t *testing.T) {
+	fetcher := newBroadcastFetcher(
+		[]string{"p-c", "p-b", "p-a"},
+		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}, "p-c": {CapabilitySiteAuthorFetch}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+			// p-c 声明能力但无可用服务客户端，不成候选
+		},
+	)
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("枚举候选失败: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("候选应为声明能力且有客户端的 p-a/p-b, 实际 %+v", candidates)
+	}
+	if candidates[0].PluginPublicId != "p-a" || candidates[1].PluginPublicId != "p-b" {
+		t.Fatalf("候选应按插件标识字典序, 实际 %+v", candidates)
+	}
+	if candidates[0].ExtensionId != "" || candidates[1].ExtensionId != "" {
+		t.Fatalf("插件级消费面候选的扩展点 ID 应恒为空串, 实际 %+v", candidates)
+	}
+}
+
+// TestListSiteAuthorFetchCandidatesPluginName 候选展示名取插件展示名，插件未设置展示名时
+// 回落公开标识（两态均由展示面消费）
+func TestListSiteAuthorFetchCandidatesPluginName(t *testing.T) {
+	fetcher := newBroadcastFetcherNamed(
+		[]string{"p-a", "p-b"},
+		map[string]string{"p-a": "比卡套件"}, // p-b 未设置展示名
+		map[string][]string{"p-a": {CapabilitySiteAuthorFetch}, "p-b": {CapabilitySiteAuthorFetch}},
+		map[string]*transport.GRPCPluginClient{
+			"p-a": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+			"p-b": {SiteAuthorFetch: &fakeSiteAuthorFetchClient{stream: &fakeAuthorInfoStream{}}},
+		},
+	)
+	candidates, err := fetcher.ListSiteAuthorFetchCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("枚举候选失败: %v", err)
+	}
+	byId := make(map[string]*dto.PluginCandidate, len(candidates))
+	for _, c := range candidates {
+		byId[c.PluginPublicId] = c
+	}
+	if got := byId["p-a"]; got == nil || got.PluginName != "比卡套件" {
+		t.Fatalf("候选展示名应取插件展示名, 实际 %+v", got)
+	}
+	if got := byId["p-b"]; got == nil || got.PluginName != "p-b" {
+		t.Fatalf("插件未设置展示名时应回落公开标识, 实际 %+v", got)
 	}
 }

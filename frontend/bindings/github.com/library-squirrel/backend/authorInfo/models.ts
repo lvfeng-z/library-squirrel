@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dto$0 from "../base/model/dto/models.js";
+
 /**
  * SiteAuthorFetchItemResult 批量拉取的逐条结果（前端逐条反馈成功/失败与原因）
  */
@@ -36,3 +40,47 @@ export class SiteAuthorFetchItemResult {
         return new SiteAuthorFetchItemResult($$parsedSource as Partial<SiteAuthorFetchItemResult>);
     }
 }
+
+/**
+ * SiteAuthorFetchResponse 手动拉取的响应载荷：Conflict 非空即候选冲突态（未调用任何插件，
+ * Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）
+ */
+export class SiteAuthorFetchResponse {
+    "conflict": dto$0.SiteAuthorFetchConflict | null;
+    "items": (SiteAuthorFetchItemResult | null)[];
+
+    /** Creates a new SiteAuthorFetchResponse instance. */
+    constructor($$source: Partial<SiteAuthorFetchResponse> = {}) {
+        if (!("conflict" in $$source)) {
+            this["conflict"] = null;
+        }
+        if (!("items" in $$source)) {
+            this["items"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SiteAuthorFetchResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SiteAuthorFetchResponse {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("conflict" in $$parsedSource) {
+            $$parsedSource["conflict"] = $$createField0_0($$parsedSource["conflict"]);
+        }
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField1_0($$parsedSource["items"]);
+        }
+        return new SiteAuthorFetchResponse($$parsedSource as Partial<SiteAuthorFetchResponse>);
+    }
+}
+
+// Private type creation functions
+const $$createType0 = dto$0.SiteAuthorFetchConflict.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = SiteAuthorFetchItemResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);

@@ -79,9 +79,10 @@ func (h *Handler) DeleteTask(ctx context.Context, ids []int64) *model.ApiRespons
 	return model.HandleVoid(h.svc.DeleteTask(ctx, ids))
 }
 
-// CreateTaskByURL 根据传入的url创建任务
-func (h *Handler) CreateTaskByURL(ctx context.Context, url string) *model.ApiResponse[*CreateTaskByURLResponse] {
-	return model.HandleResult(h.svc.CreateTaskByURL(ctx, url))
+// CreateTaskByURL 根据传入的url创建任务（交互面：请求携带显选键时该扩展点候选置于路由首位；
+// 命中多个候选且未显选时响应为冲突载荷且未调用任何插件，由前端选择后带键重发）
+func (h *Handler) CreateTaskByURL(ctx context.Context, req *CreateTaskByURLRequest) *model.ApiResponse[*CreateTaskByURLResponse] {
+	return model.HandleResult(h.svc.CreateTaskByURLWithChoice(ctx, req.URL, req.ChosenPluginPublicId, req.ChosenExtensionId))
 }
 
 // ========== 查询操作 ==========

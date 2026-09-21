@@ -11,8 +11,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
 
 | 方法 | 作用 |
 | --- | --- |
-| `FetchSiteAuthorInfo(ctx, siteAuthorId)` | 手动拉取单个站点作者信息（行操作，失败上抛） |
-| `FetchSiteAuthorsInfo(ctx, siteAuthorIds)` | 手动批量拉取（逐作者串行，返回逐条成功/失败清单 `[]*SiteAuthorFetchItemResult`） |
+| `FetchSiteAuthorInfo(ctx, siteAuthorId, chosenPluginPublicId)` | 手动拉取单个站点作者信息（行操作）。`chosenPluginPublicId` 为交互面显选键（空=未显选）：多候选且未显选时返回冲突载荷 `SiteAuthorFetchConflict{Conflict, Candidates}`（未调用任何插件），前端选择后带键重发；失败上抛 |
+| `FetchSiteAuthorsInfo(ctx, siteAuthorIds, chosenPluginPublicId)` | 手动批量拉取（逐作者串行，返回逐条成功/失败清单 `[]*SiteAuthorFetchItemResult`）；候选冲突**整批前置问一次**（未调用任何插件），否则逐条结果与入参顺序一致 |
 | `SetLocalAuthorAvatar(ctx, localAuthorId, sourceAbsPath)` | 为本地作者导入头像（源=前端文件对话框选取的任意盘绝对路径；换头像先删旧） |
 | `RemoveLocalAuthorAvatar(ctx, localAuthorId)` | 移除本地作者头像（显式破坏操作，前端二次确认；无头像幂等成功） |
 
@@ -29,8 +29,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
   （站点声明头像且（来源 URL 变化或行无 avatar_store_id））→ 换头像先删旧 → 字节写暂存（10MB
   上限）→ persistentStore 四调用入库（撤回处置恒丢弃）→ 业务事务内建 store 行 + 同事务写
   `site_author.avatar_store_id` → 作用域回收。
-- **能力广播路由**：按 siteKey 遍历声明 `siteAuthorFetch` 能力的已激活插件逐个调用，插件归属
-  自判（未归属=PermissionDenied 静默跳过），命中一个即止；无归属收口报错。
+- **能力广播路由**：候选=声明 `siteAuthorFetch` 能力且有可用服务客户端的已激活插件（插件级消费面，候选粒度=插件），经 `backend/route` 基座按候选序逐个调用，插件按请求 siteKey 归属自判（未归属=PermissionDenied 静默顺延），命中一个即止。收口**两态分报**：零声明者与候选全不适配各报一条文案（后者并列已试候选名）。
+- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测——候选清单来自能力声明（不含站点归属过滤，与具体作者无关），多候选且未显选即返回冲突载荷；显选键非空须命中候选集，否则报 `ErrChosenPluginInvalid`。批量拉取**整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按插件标识字典序，首位即默认选中项）。
 - **两触发面共用在途去重**：mutex + map 的作者 DB ID 集合；在途时再次手动拒绝（409）、批量记
   跳过、自动触发静默跳过。开关 `authorSettings.autoFetchInfo`（默认开）只控制自动触发面。
 - **失败语义**：meta 回写与资源落库各自独立成功（头像缺省是合法态）；流中断/入库失败不留
@@ -46,7 +46,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
 
 ## 依赖关系
 
-- 依赖：plugin/extension（`SiteAuthorFetcher` 能力桥，`SetSiteAuthorFetcher` 延迟注入）、
+- 依赖：plugin/extension（`SiteAuthorFetcher` 能力桥，`SetSiteAuthorFetcher` 延迟注入；该窄接口含拉取与
+  候选枚举两面 `FetchSiteAuthorInfo` / `ListSiteAuthorFetchCandidates`）、
   siteAuthor（`SiteAuthorStore`：目标行 JOIN site 反查 / 元数据回写 upsert / 引用列更新）、
   localAuthor（`LocalAuthorStore`：行查询 / 引用列更新）、persistentStore（`StoreIngestor` 四
   调用入库 + `AvatarStoreOps` 行查询与事务内物理删）、settings（`AuthorFetchSettings` 开关 +

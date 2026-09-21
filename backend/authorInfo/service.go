@@ -4,6 +4,7 @@ package authorInfo
 // 权威域白名单列）→ 判定需落字节（来源 URL 变化或行无引用）→ 换头像先删旧 → 头像字节写暂存
 // （尺寸上限）→ 四调用入库 → 业务事务内建行 + 同事务写 site_author.avatar_store_id → 作用域
 // 回收。两触发面（作品入库后自动带开关、手动单条/批量）共用同一拉取序列与在途去重集合）；
+// 手动面在任何插件调用前做候选冲突前置检测（多候选未显选即返回冲突载荷，批量整批问一次）；
 // local 侧头像手动导入/移除；siteAuthor/localAuthor 删除联动的头像行清理（AvatarFileCleaner，
 // 行面入调用方删除事务、文件面在事务提交后清理）。
 
@@ -53,6 +54,9 @@ const (
 	// 独立编号，裸数字键会同值跨表撞作用域目录，前缀消歧
 	localAvatarScopeKeyPrefix = "local-"
 )
+
+// ErrChosenPluginInvalid 交互面显选插件未命中候选集（候选发现不含站点归属过滤，与具体作者无关）
+var ErrChosenPluginInvalid = pkgerr.NewBusinessError(400, "所选的插件不在作者信息拉取的候选集内")
 
 // Service 作者个人信息编排服务（site 侧拉取主链 + local 侧头像导入/移除 + 删除联动头像清理）
 type Service struct {
@@ -121,7 +125,7 @@ func (s *Service) OnSiteAuthorsUpserted(siteAuthorIds []int64) {
 			if !s.acquire(target.ID) {
 				continue
 			}
-			s.fetchTargetWithTimeout(ctx, target)
+			s.fetchTargetWithTimeout(ctx, target, "")
 			s.release(target.ID)
 		}
 	}()
@@ -129,25 +133,62 @@ func (s *Service) OnSiteAuthorsUpserted(siteAuthorIds []int64) {
 
 // ===== 触发面二：手动拉取（单条/批量，不受开关限制） =====
 
-// FetchSiteAuthorInfoById 手动拉取单个站点作者信息：按行取站点键后广播路由。命中在途拉取
-// 直接拒绝（用户可稍后重试）。失败上抛（前端行操作 loading 态由调用侧承载）
-func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int64) error {
+// SiteAuthorFetchResponse 手动拉取的响应载荷：Conflict 非空即候选冲突态（未调用任何插件，
+// Items 为空），否则 Items 为逐条结果（单条触发恒为空清单）
+type SiteAuthorFetchResponse struct {
+	Conflict *dto.SiteAuthorFetchConflict `json:"conflict"`
+	Items    []*SiteAuthorFetchItemResult `json:"items"`
+}
+
+// resolveFetchSelection 候选冲突前置检测与显选校验：候选清单来自能力声明（不含站点归属过滤，
+// 与具体作者无关）。未显选且候选多于一个即返回冲突载荷，调用方据此询问用户后带显选插件重发；
+// 显选非空须命中候选集
+func (s *Service) resolveFetchSelection(ctx context.Context, chosenPluginPublicId string) (*dto.SiteAuthorFetchConflict, error) {
+	candidates, err := s.fetcher.ListSiteAuthorFetchCandidates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("枚举作者信息拉取候选失败: %w", err)
+	}
+	if chosenPluginPublicId != "" {
+		for _, candidate := range candidates {
+			if candidate.PluginPublicId == chosenPluginPublicId {
+				return nil, nil
+			}
+		}
+		return nil, ErrChosenPluginInvalid
+	}
+	if len(candidates) >= 2 {
+		return &dto.SiteAuthorFetchConflict{Conflict: true, Candidates: candidates}, nil
+	}
+	return nil, nil
+}
+
+// FetchSiteAuthorInfoById 手动拉取单个站点作者信息：先做候选冲突前置检测（命中即返回冲突载荷，
+// 未调用任何插件），再按行取站点键后广播路由。命中在途拉取直接拒绝（用户可稍后重试）。失败上抛
+// （前端行操作 loading 态由调用侧承载）
+func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int64, chosenPluginPublicId string) (*SiteAuthorFetchResponse, error) {
 	if s.fetcher == nil {
-		return pkgerr.NewBusinessError(500, "作者信息拉取能力未就绪")
+		return nil, pkgerr.NewBusinessError(500, "作者信息拉取能力未就绪")
+	}
+	conflict, err := s.resolveFetchSelection(ctx, chosenPluginPublicId)
+	if err != nil {
+		return nil, err
+	}
+	if conflict != nil {
+		return &SiteAuthorFetchResponse{Conflict: conflict}, nil
 	}
 	target, err := s.resolveTarget(ctx, siteAuthorId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !s.acquire(target.ID) {
-		return pkgerr.NewBusinessError(409, "该作者的信息正在拉取中，请稍后再试")
+		return nil, pkgerr.NewBusinessError(409, "该作者的信息正在拉取中，请稍后再试")
 	}
 	defer s.release(target.ID)
-	if err := s.fetchTargetWithTimeout(ctx, target); err != nil {
+	if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginPublicId); err != nil {
 		logger.Log.Warnf("[authorInfo] 手动拉取站点作者 %d 信息失败: %v", siteAuthorId, err)
-		return err
+		return nil, err
 	}
-	return nil
+	return &SiteAuthorFetchResponse{}, nil
 }
 
 // SiteAuthorFetchItemResult 批量拉取的逐条结果（前端逐条反馈成功/失败与原因）
@@ -157,15 +198,22 @@ type SiteAuthorFetchItemResult struct {
 	Message      string `json:"message"`
 }
 
-// FetchSiteAuthorsInfoByIds 手动批量拉取：逐作者串行走同一拉取序列、共用在途去重；单作者
-// 失败不阻断其余，返回与入参顺序一致的逐条结果清单
-func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds []int64) ([]*SiteAuthorFetchItemResult, error) {
+// FetchSiteAuthorsInfoByIds 手动批量拉取：候选冲突整批前置返回（一次触发问一次，未调用任何插件），
+// 否则逐作者串行走同一拉取序列、共用在途去重；单作者失败不阻断其余，逐条结果与入参顺序一致
+func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds []int64, chosenPluginPublicId string) (*SiteAuthorFetchResponse, error) {
 	if s.fetcher == nil {
 		return nil, pkgerr.NewBusinessError(500, "作者信息拉取能力未就绪")
 	}
 	results := make([]*SiteAuthorFetchItemResult, 0, len(siteAuthorIds))
 	if len(siteAuthorIds) == 0 {
-		return results, nil
+		return &SiteAuthorFetchResponse{Items: results}, nil
+	}
+	conflict, err := s.resolveFetchSelection(ctx, chosenPluginPublicId)
+	if err != nil {
+		return nil, err
+	}
+	if conflict != nil {
+		return &SiteAuthorFetchResponse{Conflict: conflict}, nil
 	}
 	targets, err := s.siteAuthors.ListFetchTargetsByIds(ctx, siteAuthorIds)
 	if err != nil {
@@ -184,7 +232,7 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 		case !s.acquire(id):
 			result.Message = "正在拉取中，已跳过"
 		default:
-			if err := s.fetchTargetWithTimeout(ctx, target); err != nil {
+			if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginPublicId); err != nil {
 				logger.Log.Warnf("[authorInfo] 批量拉取站点作者 %d 信息失败: %v", id, err)
 				result.Message = err.Error()
 			} else {
@@ -194,14 +242,14 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 		}
 		results = append(results, result)
 	}
-	return results, nil
+	return &SiteAuthorFetchResponse{Items: results}, nil
 }
 
 // fetchTargetWithTimeout 带整程超时的单作者拉取（在途去重由调用方持有）
-func (s *Service) fetchTargetWithTimeout(ctx context.Context, target *dto.SiteAuthorFetchTarget) error {
+func (s *Service) fetchTargetWithTimeout(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosenPluginPublicId string) error {
 	ctx, cancel := context.WithTimeout(ctx, authorFetchTimeout)
 	defer cancel()
-	return s.fetchSiteAuthor(ctx, target)
+	return s.fetchSiteAuthor(ctx, target, chosenPluginPublicId)
 }
 
 // resolveTarget 按单 ID 反查拉取目标行
@@ -220,8 +268,9 @@ func (s *Service) resolveTarget(ctx context.Context, siteAuthorId int64) (*dto.S
 
 // fetchSiteAuthor 单作者拉取序列（调用方须已持有在途去重）：广播定位插件 → 流式首块 meta
 // 回写元数据 → 资源轨道（按需：换头像删旧 → 暂存字节 → 四调用入库 → 同事务写引用列）。
-// 失败上抛不留半成品——元数据回写与资源落库各自独立成功，头像缺省是合法态
-func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFetchTarget) error {
+// chosenPluginPublicId 经能力桥置于候选序首位。失败上抛不留半成品——元数据回写与资源落库
+// 各自独立成功，头像缺省是合法态
+func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosenPluginPublicId string) error {
 	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "authorInfo"); err != nil {
 		return err
 	}
@@ -232,7 +281,7 @@ func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFet
 		return fmt.Errorf("作者 %d 缺少站点侧作者 id", target.ID)
 	}
 	session := &avatarFetchSession{svc: s, target: target, ctx: ctx}
-	if err := s.fetcher.FetchSiteAuthorInfo(ctx, target.SiteKey, target.SiteAuthorID, session.onMeta, session.onData); err != nil {
+	if err := s.fetcher.FetchSiteAuthorInfo(ctx, target.SiteKey, target.SiteAuthorID, chosenPluginPublicId, session.onMeta, session.onData); err != nil {
 		session.cleanupScope()
 		return err
 	}

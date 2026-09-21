@@ -10,6 +10,7 @@ import OperationItem from '../model/util/OperationItem.ts'
 import DialogMode from '../model/util/DialogMode.ts'
 import {arrayIsEmpty, isNullish, notNullish} from '@renderer/utils/CommonUtil.ts'
 import SiteAuthorDialog from '@renderer/components/dialogs/SiteAuthorDialog.vue'
+import PluginCandidateSelectDialog from '@renderer/components/dialogs/PluginCandidateSelectDialog.vue'
 import AvatarThumb from '@renderer/components/common/AvatarThumb.vue'
 import {siteQuerySelectItemPageBySiteName} from '@renderer/apis/http'
 import AutoLoadSelect from '@renderer/components/common/AutoLoadSelect.vue'
@@ -21,9 +22,11 @@ import {
 } from "@bindings/github.com//lvfeng-z/library-squirrel-sdk/dto"
 import {
   SelectItem,
+  PluginCandidate,
   SiteAuthorDTO,
   SiteAuthorLocalRelateDTO
 } from "@bindings/github.com/library-squirrel/backend/base/model/dto"
+import {SiteAuthorFetchResponse} from "@bindings/github.com/library-squirrel/backend/authorInfo"
 import {SiteAuthorQueryDTO} from '@bindings/github.com/library-squirrel/backend/siteAuthor/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
@@ -196,6 +199,13 @@ const selectedRows: Ref<SiteAuthorLocalRelateDTO[]> = ref([])
 const fetchInfoLoading: Ref<boolean> = ref(false)
 // 批量拉取进行中（按钮 loading + 表格区挂 loading）
 const batchFetchLoading: Ref<boolean> = ref(false)
+// 插件候选选择器开关与其候选清单（候选多于一个且未显选时弹出）
+const pluginSelectState: Ref<boolean> = ref(false)
+const pluginSelectCandidates: Ref<PluginCandidate[]> = ref([])
+// 冲突挂起的拉取：等待用户选择期间持有待拉取作者标识、展示名索引与单/批形态，选择后据此重发
+let pendingFetchIds: number[] = []
+let pendingFetchNameById: Map<number, string> = new Map()
+let pendingFetchSingle = true
 
 // 方法
 // 分页查询站点作者的函数
@@ -302,6 +312,43 @@ async function creatSameNameLocalAuthorAndBind(relateData: SiteAuthorLocalRelate
 function handleSelectionChange(selections: SiteAuthorLocalRelateDTO[]) {
   selectedRows.value = selections
 }
+// 冲突候选清单：载荷处于「候选多于一个且未显选」态时返回候选清单（首位即默认选中项），否则返回 null
+function conflictCandidatesOf(payload: SiteAuthorFetchResponse): PluginCandidate[] | null {
+  const conflict = payload.conflict
+  if (isNullish(conflict) || !conflict.conflict) {
+    return null
+  }
+  return conflict.candidates.filter(notNullish)
+}
+// 挂起本次拉取并弹出插件选择器：确认后带显选键重发，取消则丢弃（冲突态未调用任何插件，无副作用需回滚）
+function holdFetchConflict(candidates: PluginCandidate[], ids: number[], nameById: Map<number, string>, single: boolean) {
+  pendingFetchIds = ids
+  pendingFetchNameById = nameById
+  pendingFetchSingle = single
+  pluginSelectCandidates.value = candidates
+  pluginSelectState.value = true
+}
+// 选择器确认：带插件显选键重发本次拉取（批量整批同选，重发时整批仍只问这一次）
+function handlePluginChosen(candidate: PluginCandidate) {
+  if (arrayIsEmpty(pendingFetchIds)) {
+    return
+  }
+  const ids = pendingFetchIds
+  const nameById = pendingFetchNameById
+  const single = pendingFetchSingle
+  pendingFetchIds = []
+  pendingFetchNameById = new Map()
+  if (single) {
+    void fetchSiteAuthorInfoById(ids[0], nameById, candidate.pluginPublicId)
+  } else {
+    void batchFetchSiteAuthorsInfo(ids, nameById, candidate.pluginPublicId)
+  }
+}
+// 选择器取消：不重发（不算拉取失败）
+function handlePluginChooseCanceled() {
+  pendingFetchIds = []
+  pendingFetchNameById = new Map()
+}
 // 行操作「拉取信息」：从来源站点拉取该作者的最新介绍与头像，拉取期间表格区挂 loading
 async function fetchSiteAuthorInfo(row: SiteAuthorLocalRelateDTO) {
   const id = row.siteAuthor?.id
@@ -309,10 +356,21 @@ async function fetchSiteAuthorInfo(row: SiteAuthorLocalRelateDTO) {
     ElMessage.error('拉取作者信息失败：行数据缺少作者标识')
     return
   }
+  const authorName = row.siteAuthor?.authorName
+  const nameById = new Map<number, string>([[id, isBlank(authorName) ? String(id) : authorName]])
+  await fetchSiteAuthorInfoById(id, nameById, '')
+}
+// 单作者拉取：显选键为空 = 首次触发；命中冲突转插件选择器，由用户点名后带键重发
+async function fetchSiteAuthorInfoById(id: number, nameById: Map<number, string>, chosenPluginPublicId: string) {
   fetchInfoLoading.value = true
   try {
-    await authorInfoApi.authorInfoFetchSiteAuthorInfo(id)
-    ElMessage.success(`已拉取「${row.siteAuthor?.authorName ?? id}」的作者信息`)
+    const response = await authorInfoApi.authorInfoFetchSiteAuthorInfo(id, chosenPluginPublicId)
+    const candidates = conflictCandidatesOf(response.data)
+    if (notNullish(candidates)) {
+      holdFetchConflict(candidates, [id], nameById, true)
+      return
+    }
+    ElMessage.success(`已拉取「${nameById.get(id) ?? id}」的作者信息`)
     // 介绍/头像可能已更新，刷新表格与已打开的对话框数据源
     refreshTable()
   } catch (e) {
@@ -340,10 +398,20 @@ async function handleBatchFetchClicked() {
       nameById.set(id, isBlank(authorName) ? String(id) : authorName)
     }
   }
+  await batchFetchSiteAuthorsInfo(ids, nameById, '')
+}
+// 批量拉取：整批一次触发（候选冲突为整批前置返回，问一次）；逐条结果反馈——汇总一条 ElMessage，
+// 存在失败时另在通知中心留一条含逐条明细的终态通知供回看
+async function batchFetchSiteAuthorsInfo(ids: number[], nameById: Map<number, string>, chosenPluginPublicId: string) {
   batchFetchLoading.value = true
   try {
-    const response = await authorInfoApi.authorInfoFetchSiteAuthorsInfo(ids)
-    const results = response.data?.filter(notNullish) ?? []
+    const response = await authorInfoApi.authorInfoFetchSiteAuthorsInfo(ids, chosenPluginPublicId)
+    const candidates = conflictCandidatesOf(response.data)
+    if (notNullish(candidates)) {
+      holdFetchConflict(candidates, ids, nameById, false)
+      return
+    }
+    const results = response.data.items?.filter(notNullish) ?? []
     const failures = results.filter((item) => !item.success)
     if (arrayIsEmpty(failures)) {
       ElMessage.success(`批量拉取完成：成功 ${results.length} 条`)
@@ -458,6 +526,13 @@ async function handleBatchFetchClicked() {
         v-model:state="dialogState"
         :mode="siteAuthorDialogMode"
         @request-success="refreshTable"
+      />
+      <!-- 插件候选选择器：拉取信息命中多个候选插件时由拉取流程唤起（批量整批问一次） -->
+      <plugin-candidate-select-dialog
+        v-model:state="pluginSelectState"
+        :candidates="pluginSelectCandidates"
+        @confirm="handlePluginChosen"
+        @cancel="handlePluginChooseCanceled"
       />
     </template>
   </base-view>
