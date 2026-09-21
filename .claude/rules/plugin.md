@@ -14,7 +14,7 @@ globs:
 ## 插件系统概述
 - 插件位于 `plugin/`，由 `app.go` 的 `loadInstalledPlugins()` 加载
 - **两种类型**：运行时插件（Go 子进程）和纯 UI 插件（仅 `plugin.json`）
-- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式前端扩展（`plugin.json` 的 `extensions.frontendExtensions`）后端 7 种 kind 平级（embed/view/replaceView/dialog/menu/siteBrowserList/resourceViewer），前端按消费契约二分——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）
+- **扩展点**：TaskHandler、SiteBrowser（运行时注册）；声明式前端扩展（`plugin.json` 的 `extensions.frontendExtensions`）后端 7 种 kind 平级（embed/view/replaceView/dialog/menu/siteBrowserList/resourceViewer），前端按消费契约二分——**Slot（主动注入型）**：view/replaceView/embed/dialog/menu/siteBrowserList；**Handler（被动响应型）**：resourceViewer（主程序渲染某 resourceType 资源时按 resourceType 查找命中后调用，覆盖内置渲染器）；另有声明式能力包 `extensions.siteAuthorFetch`（单对象，含 `sites` 作用域）——宿主按插件声明的站点范围收窄作者拉取候选，插件不自判归属
 - **插件 SDK**：`github.com/lvfeng-z/library-squirrel-sdk`（本地 replace 指令）
 - **静态资源服务地址**：`http://wails.localhost:{backend-port}/plugin/{id}/{cacheKey}/...`（cacheKey 为缓存键 = plugin.json `buildId`，未打标包回落 version）
 
@@ -32,17 +32,22 @@ globs:
 
 ## plugin.json 结构
 
+> **能力包模型（契约 v9 起）**：`extensions` 的每个条目 = 插件对外提供的一个**能力包**，可选项与作用域声明在包内，不再集中挂顶层——`taskHandlers[]` 条目级可选功能 `options`（合法值 `workOrderQuery`/`workSetRelationQuery`，门控粒度 =（插件, 扩展点）条目级）；`siteAuthorFetch` 携 `sites` 作用域（必须非空，每项为 SDK 站点注册表已注册键）；`resourceTypes` 段存在即启用（无通行证字段）。顶层 `capabilities` 段已删除：清单原文顶层该键在场（值 `null` 亦然）即判**未迁移**——安装时拒收、加载时跳过（原因仅落日志）。校验实现：`backend/plugin/extension/loader.go`（`ValidateManifestDeclarations`）。
+
 ### 顶层字段
 ```json
 {
   "id": "com.example.plugin_uuid",
   "name": "插件名称",
   "version": "1.0.0",
+  "contractVersion": 9,
   "entryFile": "plugin.exe",
   "activation": {"type": 1},
   "extensions": { ... }
 }
 ```
+
+> `contractVersion` **必填且手填**（不随 SDK 自动跟随）：低于宿主最低支持版本即拒载。`buildId` 由构建管线注入（勿手填）；`configSchemaVersion` 选填（与 contractVersion 正交，管插件配置结构）。`extensions` 段除下列 `frontendExtensions`/`settings` 外，还承载能力包声明 `taskHandlers`（含条目级 `options`）、`siteAuthorFetch`（含 `sites`）、`siteBrowsers`、`resourceTypes`——见上方能力包模型。
 
 ### extensions.frontendExtensions[] 声明
 
@@ -146,7 +151,7 @@ globs:
 {"contentType": "precompiled", "source": {"js": "views/article-viewer.js", "css": "views/article-viewer.css"}, "resourceType": "article"}
 ```
 
-> 渲染器组件接收 `{context: render.Context}` props（运行时注入，非静态 props）。`render.Context` 是 SDK 定义的插件渲染契约类型（`github.com/lvfeng-z/library-squirrel-sdk/dto/render`），字段集独立演进——不随主程序展示 DTO 变化，破坏性变更由主程序 `contractVersion` 约束。同 resourceType 多插件声明取 order 最小者。覆盖内置 6 种 ResourceType（含 audio）与插件自定义类型（自定义类型经 manifest `resourceTypes` 段 + `resourceTypeProvider` 通行证声明，详见 `doc/plugin-dev-guide.md`）。
+> 渲染器组件接收 `{context: render.Context}` props（运行时注入，非静态 props）。`render.Context` 是 SDK 定义的插件渲染契约类型（`github.com/lvfeng-z/library-squirrel-sdk/dto/render`），字段集独立演进——不随主程序展示 DTO 变化，破坏性变更由主程序 `contractVersion` 约束。同 resourceType 多插件声明取 order 最小者。覆盖内置 6 种 ResourceType（含 audio）与插件自定义类型（自定义类型经 manifest `extensions.resourceTypes` 段声明，段存在即启用；详见 `doc/plugin-dev-guide.md`）。
 
 ### source 格式（contentType 对应）
 
@@ -257,7 +262,7 @@ plugin.json → FrontendExtensionDeclaration(解析 DTO) → FrontendExtensionCo
 |------|----------|------|
 | 扩展点注册 | `RegisterTaskHandler`、`RegisterSiteBrowser`、`UnregisterSiteBrowser` | 注册运行时扩展点 |
 | 落盘路径派生 | `storepath` 包（`BucketSegment`/`WorkDirName`/`StoreFileName`，本地纯函数零依赖） | 库内最终落盘路径（`store/work/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位}.{ext}`，桶段=复合键 SHA256 前 2 位 hex）由插件据任务身份与 specs 顺序本地推导（顺序确定性契约见 `doc/plugin-dev-guide.md` 6.1），不经宿主 RPC 查询 |
-| 库查询（Tier 1 只读） | `GetWorkById`/`GetWorkBySiteKey`/`QueryWorks`/`ListResourcesByWorkId`/作者 5 个/标签 5 个/作品集 5 个/`ListSites`/`GetWorkDir`（共 21 个，`dto.PluginContext` 方法组） | 查询库内已有作品及周边数据：身份键复合寻址（`(site_key, 站点侧 id)`，DB id 仅会话内句柄）、`Query*` 族强制分页（page_size 上限 200——宿主数据库单连接与 UI 共享，重查询需节制）、默认只返回活数据（软删/死关联不出现）、`file_path` 为 relPath 域正斜杠；无需 capabilities 声明直接调用。完整使用规则见 `doc/plugin-dev-guide.md` 5.1 |
+| 库查询（Tier 1 只读） | `GetWorkById`/`GetWorkBySiteKey`/`QueryWorks`/`ListResourcesByWorkId`/作者 5 个/标签 5 个/作品集 5 个/`ListSites`/`GetWorkDir`（共 21 个，`dto.PluginContext` 方法组） | 查询库内已有作品及周边数据：身份键复合寻址（`(site_key, 站点侧 id)`，DB id 仅会话内句柄）、`Query*` 族强制分页（page_size 上限 200——宿主数据库单连接与 UI 共享，重查询需节制）、默认只返回活数据（软删/死关联不出现）、`file_path` 为 relPath 域正斜杠；无需任何声明面开关，直接调用。完整使用规则见 `doc/plugin-dev-guide.md` 5.1 |
 | 插件自存信息 | `GetValue` / `SetValue` / `SetValueEncrypted` / `DeleteValue` / `GetAllValues` | 统一 KV 持久化（`plugin_storage` 单表）；明文项直接读写，加密项 `SetValueEncrypted` 存密文、读取自动解密。读取返回 `*StorageValue`（明文 `Value` + `SchemaVersion`）；写入时主程序按插件声明的 `configSchemaVersion`（plugin.json 顶层，与 `contractVersion` 正交——前者管插件配置结构、后者管 host↔plugin 协议）盖 `schema_version` 戳，供插件配置迁移感知（见 `doc/plugin-dev-guide.md` 8.3）。取代旧的 `GetPluginData/SetPluginData` 与加密存储 |
 | 任务触发 | `CreateTask` | 向主程序提交 URL 创建任务（路由到匹配的插件） |
 | URL 监听 | `RegisterUrlListener` / `UnregisterUrlListener(extensionId)` | 注册 URL 匹配模式，匹配时路由到本插件的 TaskHandler；`UnregisterUrlListener` 按 extensionId 精细注销（空则清该插件全部，用于卸载） |
