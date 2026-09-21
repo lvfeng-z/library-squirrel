@@ -28,18 +28,7 @@
   - 技术架构要点
   - 开发模式和常见场景
 
-### 3. [glossary.md](glossary.md) - 术语表
-
-- **用途**：统一理解项目中的领域特定术语
-- **适合场景**：遇到不熟悉的术语时参考
-- **包含内容**：
-  - 核心实体术语定义
-  - 作者/标签系统术语
-  - 插件系统术语
-  - 架构和开发约定术语
-
-
-### 4. [plugin-development.md](plugin-development.md) - 插件系统开发指南
+### 3. [plugin-development.md](plugin-development.md) - 插件系统开发指南
 
 - **用途**：理解插件系统的架构和开发方法
 - **适合场景**：开发或扩展插件功能时
@@ -52,7 +41,7 @@
   - 主程序端管理器
   - IPC 通信和扩展方法
 
-### 5. [task-execution-flow.md](task-execution-flow.md) - 任务执行流程
+### 4. [task-execution-flow.md](task-execution-flow.md) - 任务执行流程
 
 - **用途**：理解任务从创建到完成的完整生命周期
 - **适合场景**：修改任务执行逻辑、排查任务问题、理解事务和补偿机制时
@@ -64,7 +53,7 @@
   - 崩溃恢复（PendingResourceID 机制）
   - 插件交互（TaskExecutor 接口、StoreWriter 生命周期）
 
-### 6. [module-migration-guide.md](module-migration-guide.md) - 模块迁移修复指南
+### 5. [module-migration-guide.md](module-migration-guide.md) - 模块迁移修复指南
 
 - **用途**：模块从 Electron 架构修复到 Wails 架构的统一模式参考
 - **适合场景**：修复尚未完成迁移的业务模块时参考
@@ -74,7 +63,7 @@
   - 已完成模块记录与待修复模块清单
   - 修复验证要点
 
-### 7. [tour-feature.md](tour-feature.md) - 向导功能规格
+### 6. [tour-feature.md](tour-feature.md) - 向导功能规格
 
 - **用途**：理解向导（Tour）功能的架构、数据模型、运行时序和扩展规范
 - **适合场景**：新增向导、修改向导引擎、排查跨页面引导或元素高亮问题时
@@ -92,11 +81,10 @@
 
 1. **首先阅读**：`architecture-quick-reference.md` - 获取快速概览
 2. **深入理解**：`business-logic.md` - 理解完整业务模型
-3. **术语澄清**：`glossary.md` - 统一术语理解
 
 ### 对于具体问题诊断
 
-1. **定位相关概念**：使用`glossary.md`确定涉及的术语
+1. **定位相关概念**：读对应模块的 `README.md` 与相关规约文档——术语在使用的正文里就地解释，不查集中词表
 2. **理解业务逻辑**：参考`business-logic.md`相关章节
 3. **查阅模块说明**：参考核心复杂模块目录下的 `README.md`
 
@@ -206,7 +194,7 @@ const data = (await someApi.someMethod(args)).data  // requireResponse 已在 Wr
 
 当项目架构或业务逻辑发生变化时，应相应更新这些文档以保持同步。特别是：
 
-- 添加新的核心业务概念时更新`glossary.md`
+- 术语在使用的正文里就地解释——通用词不挪用为项目语义，代码或业务独有的词首次出现时给半句说明（不建集中词表：集中词表追不上术语的出生速率，膨胀后又反过来造成阅读困难）
 - 架构重大变更时更新`architecture-quick-reference.md`
 - 发现新的常见错误时更新文档
 
