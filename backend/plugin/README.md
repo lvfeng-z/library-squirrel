@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-插件**生命周期管理**与**自存信息**：从 ZIP 包安装、激活、卸载、重装插件，维护插件记录与运行状态；并通过 `plugin_storage`（统一 KV）提供插件自存信息与用户设置（清单根级 `settings` 段声明）的存取。插件系统的架构（扩展点、SDK、前端扩展通信、初始化时序）详见 `.claude/rules/plugin.md`，本文件只描述模块职责与对外接口。
+插件**生命周期管理**与**自存信息**：从 ZIP 包安装、激活、卸载、重装插件，维护插件记录与运行状态；并通过 `plugin_storage`（统一 KV）提供插件自存信息与用户设置（清单根级 `settings` 段声明）的存取。插件系统的架构（扩展点、SDK、前端扩展通信、初始化时序）详见私有环境仓 rules/plugin.md，本文件只描述模块职责与对外接口。
 
 ## 边界
 
@@ -61,4 +61,4 @@
 - **停用与崩溃清理（参与者相位编排）**：停用=全体参与者 PrepareStop 否决检查（force=true 跳过；否决时插件保持运行）→ 按注册逆序 OnStopped 清痕迹。凡持有插件运行痕迹的模块经 `RegisterLifecycleParticipant` 注册（app.go 装配四个参与者，注册顺序即激活相位顺序：静态资源 → 前端扩展 → 进程 → 任务否决；进程参与者起停子进程并清理任务处理器/站点浏览器/URL 监听注册表，激活相位依赖的服务与 mainHWND 就绪晚于装配、经 `*App` 惰性读取），注册表是停用清理完备性的唯一审计点——逆序清理令进程域先停、痕迹域后清。插件目录删除（`removeFiles`）独立成原子操作。组合链：卸载=停用+删文件+标记已卸载并清备份引用；重装/换版=停用+删文件+installCore+激活；取消信任=仅停用（不删文件），停用成功才落标记。操作类型（`PluginStopOp`：uninstall/update/untrust）与 force 透传给参与者分级处置——taskManager 参与者在卸载/换版时否决存在运行中任务的操作（Processing/Pausing/Stopping/WaitingForInput；Paused 不拦），取消信任不否决（代价由前端确认框按 `GetActiveTaskCount` 明示后 force 强制停）。**崩溃路径对称**：loader 崩溃清理摘除进程表条目后经 `SetCrashNotifier` 回调 `NotifyPluginCrashed`，状态机按注册逆序执行同一参与者 OnStopped 集合（仅运行中状态执行；不否决、不停进程）；`LoadPluginProcess` 入口对同名插件已有活跃进程条目返回 `ErrPluginAlreadyLoaded`。设计见 `../library-squirrel-docs/plan/插件热重载体系完善方案.md`。
 - **初始化时序约束**：必须先 `SetEventEmitter` 再 `LoadPlugins`，否则插件事件通道不可用（详见 plugin.md）。
 - **检查更新流（bundled 生产者）**：检测在 pre-Run（`InstallBundled`，仅此入口——强制分支直装会绕过参与者否决，运行期一律走 `ApplyPendingUpgrade`）；提醒=前端 mounted 拉取 `GetPendingUpgrades` 写 store，经通用菜单红点注册表在「插件」菜单按钮显示 available 数；答复当次生效（`ApplyPendingUpgrade` 走换版链热重载，插件管理页行内升级/跳过按钮 + 多选批量升级）；未打标包与拒绝标记等值时不进待办（维持静默/跳过）；非 bundled 网络检查更新留接口未实现（待办列表/DTO/handler 命名不绑死 bundled）。设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`。
-- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`ActivatePlugin`（唯一激活入口）起始统一拦截 trusted 非真。完整设计见 `.claude/rules/plugin.md`「插件信任模型」节与 `../library-squirrel-docs/plan/插件信任模型最小集方案.md`。
+- **插件信任模型（最小集）**：来源追溯 + 知情同意 + 运行门控，非沙箱隔离。`LoadPlugins` → `loadInstalledPlugins` 按 trusted 门控（非真不激活）+ Restricted Mode（settings 开关，仅 bundled，来源未设置视作非 bundled）加载；`ActivatePlugin`（唯一激活入口）起始统一拦截 trusted 非真。完整设计见私有环境仓 rules/plugin.md「插件信任模型」节与 `../library-squirrel-docs/plan/插件信任模型最小集方案.md`。

@@ -2,7 +2,7 @@
 
 ## 一句话职责
 
-运行时插件与主程序之间的**桥接层**：以 go-plugin 子进程方式加载运行时插件，把 SDK 契约的 gRPC 服务接线上主程序各域——插件侧能力入口 `PluginContext` 的实现、主程序侧 HostService/LibraryQuery 服务的桥接、扩展点注册表与 TaskHandler 调用代理。插件系统整体架构（协议、时序、信任模型）见 `.claude/rules/plugin.md`，生命周期管理入口见上级 `backend/plugin/README.md`。
+运行时插件与主程序之间的**桥接层**：以 go-plugin 子进程方式加载运行时插件，把 SDK 契约的 gRPC 服务接线上主程序各域——插件侧能力入口 `PluginContext` 的实现、主程序侧 HostService/LibraryQuery 服务的桥接、扩展点注册表与 TaskHandler 调用代理。插件系统整体架构（协议、时序、信任模型）见私有环境仓 rules/plugin.md，生命周期管理入口见上级 `backend/plugin/README.md`。
 
 ## 边界
 

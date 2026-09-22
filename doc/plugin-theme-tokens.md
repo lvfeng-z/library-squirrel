@@ -50,7 +50,7 @@
 | `--app-status-toggle-{enabled,disabled}` | 开关/运行态 | enabled=done(绿)、disabled=idle(灰) |
 | `--app-status-resource-{downloaded,missing,damaged}` | 资源/作品状态 | downloaded=done(绿)、missing=warn(橙)、damaged=fail(红) |
 
-主程序内部渲染状态用 `StatusTag` 组件（传 `status` key）；插件可直接用上述令牌。新增状态：复用现有 tone 只需加别名引用；需新色相则先加 tone 三分量（text hex + `color-mix` bg/border），详见 `tokens.css` 与 `.claude/rules/frontend.md` STATUS_TOKEN_USAGE。
+主程序内部渲染状态用 `StatusTag` 组件（传 `status` key）；插件可直接用上述令牌。新增状态：复用现有 tone 只需加别名引用；需新色相则先加 tone 三分量（text hex + `color-mix` bg/border），详见 `tokens.css` 与私有环境仓 rules/frontend.md 的 STATUS_TOKEN_USAGE。
 
 ### 圆角与阴影
 | 令牌 | 值 |

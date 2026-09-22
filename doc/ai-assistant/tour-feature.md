@@ -285,7 +285,7 @@ useTourReady(async (ctx) => {
 
 ---
 
-## 编码规则（摘自 `.claude/rules/frontend.md`）
+## 编码规则（摘自私有环境仓 rules/frontend.md）
 
 - **TOUR_FRAMEWORK (P1)**：向导统一由 `useTourCenterStore` 控制，定义集中在 `tour/definitions.ts`，渲染统一由 `TourOverlay`（挂载于 `MainLayout`）完成。**禁止在各页面内自行编写 `el-tour`**。需被高亮的元素通过 `useTourTargets().register(key, ref)` 注册，`targetKey` 命名约定为 `{viewId}.{element}`。跨页面或需定位数据的步骤携带 `TourStepData`，目标页面通过 `useTourReady(onLocate)` 据 `ctx.data` 定位后报告就绪，引擎收到就绪信号后才显示该步气泡。
 

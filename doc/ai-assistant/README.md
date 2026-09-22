@@ -91,7 +91,7 @@
 ### 对于新功能开发
 
 1. **检查架构约束**：`architecture-quick-reference.md`中的技术要点
-2. **遵循代码规范**：`.claude/rules/` 中按领域拆分的编码规则（backend/frontend/database/plugin）
+2. **遵循代码规范**：私有环境仓 `rules/` 中按领域拆分的编码规则（backend/frontend/database/plugin）
 
 ## 关键架构要点（快速记忆）
 
@@ -111,7 +111,7 @@
 - Repository 模式：数据访问通过接口隔离
 - 消除循环依赖：使用依赖倒置原则
 - 包内聚合：handler、service、repository 在同一模块内（实体集中在 `backend/base/model/entity`）
-- 详细规范见 [.claude/rules/backend.md](../../.claude/rules/backend.md)
+- 详细规范见私有环境仓 rules/backend.md
 
 ### Vue Router 前端路由
 
@@ -200,6 +200,6 @@ const data = (await someApi.someMethod(args)).data  // requireResponse 已在 Wr
 
 ## 相关项目文档
 
-- [../../CLAUDE.md](../../CLAUDE.md) - 项目级开发指南
+- 私有环境仓 project.md — 项目级开发指南（不在本仓内）
 - [../../README.md](../../README.md) - 项目基本说明
 - 代码中的注释和类型定义

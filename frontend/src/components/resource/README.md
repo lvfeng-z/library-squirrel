@@ -24,7 +24,7 @@
 
 ## 插件覆盖（Handler 通道）
 
-插件在 `plugin.json` 声明 frontendExtension `kind: "resourceViewer"` + `content.resourceType`，前端 `useSlotSyncListener` 路由到 `HandlerRegistryStore`（不进 SlotRegistryStore）。同 resourceType 多插件取 `order` 最小者。插件渲染器组件接收 `{ context: renderContext }` props（运行时注入，SDK render.Context 契约）。声明契约见 `.claude/rules/plugin.md`，二分框架（Slot 主动注入 vs Handler 被动响应）见同文件。
+插件在 `plugin.json` 声明 frontendExtension `kind: "resourceViewer"` + `content.resourceType`，前端 `useSlotSyncListener` 路由到 `HandlerRegistryStore`（不进 SlotRegistryStore）。同 resourceType 多插件取 `order` 最小者。插件渲染器组件接收 `{ context: renderContext }` props（运行时注入，SDK render.Context 契约）。声明契约见私有环境仓 rules/plugin.md，二分框架（Slot 主动注入 vs Handler 被动响应）见同文件。
 
 ## 追加新内置渲染器
 

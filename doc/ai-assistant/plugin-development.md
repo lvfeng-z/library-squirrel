@@ -8,7 +8,7 @@
 
 👉 **[doc/plugin-dev-guide.md](../plugin-dev-guide.md)**
 
-新文档与 `library-squirrel-sdk` 的 `dto.PluginContext`、`.claude/rules/plugin.md`、pixiv/local-import 示例严格对齐，涵盖：
+新文档与 `library-squirrel-sdk` 的 `dto.PluginContext`、私有环境仓 rules/plugin.md、pixiv/local-import 示例严格对齐，涵盖：
 
 - plugin.json 完整 schema（含 settings）
 - 插件入口 `plugin.Serve` + Activate 标准签名

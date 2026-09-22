@@ -136,7 +136,7 @@ task build:server && task run:server   # 服务器模式（无 GUI）
 └── build/                    # 构建配置（多平台）
 ```
 
-更多架构细节见 [CLAUDE.md](CLAUDE.md) 与 [doc/](doc/) 目录（含资源类型规约、消息系统接入指南、插件开发指南等）。
+更多架构细节见 [doc/](doc/) 目录（含资源类型规约、消息系统接入指南、插件开发指南等）。
 
 ## 许可协议
 

@@ -1,6 +1,6 @@
 # 状态色调色小抄
 
-> 状态语义 tone 色板的调色参考。体系规则见 `.claude/rules/frontend.md` 的 STATUS_TOKEN_USAGE，实现见 `frontend/src/styles/theme/tokens.css`，可视化校准见「状态色板」测试页（路由 `#/statusPalette`）。
+> 状态语义 tone 色板的调色参考。体系规则见私有环境仓 rules/frontend.md 的 STATUS_TOKEN_USAGE，实现见 `frontend/src/styles/theme/tokens.css`，可视化校准见「状态色板」测试页（路由 `#/statusPalette`）。
 
 ## 体系一句话
 
